@@ -13,6 +13,7 @@
 
 #include "../common/diagnostic_log.hpp"
 #include "livekit_connect_policy.hpp"
+#include "media_operation.hpp"
 
 namespace syrnike::desktop_native::media {
 namespace {
@@ -128,25 +129,25 @@ class ScreenPublicationController::Implementation {
     );
 
     if (candidate_) {
-      candidate_->cancel_requested.store(true);
+      candidate_->operation.requestCancel();
       throwCapacityOccupied("screen publication attempt is still completing");
     }
     if (active_) {
-      if (matches(*active_, command) && credentialsMatch(*active_, command)) {
+      if (matches(*active_, command) && publicationIdentityMatches(*active_, command)) {
         emitter_.emit(successfulReply(command));
         return;
       }
       throw std::logic_error(
-        "cannot preconnect or retag a screen room while capture is active"
+        "cannot prepare or retag a screen publication while capture is active"
       );
     }
-    if (prepared_ && credentialsMatch(*prepared_, command)) {
+    if (prepared_ && publicationIdentityMatches(*prepared_, command)) {
       const bool committed = commit_if_current_(
         command.session_id,
         command.generation,
         [&] {
-          prepared_->command = command;
-          prepared_->room->updateIdentity(command.session_id, command.generation);
+          prepared_->command = trackCommand(command);
+          prepared_->publication->updateIdentity(command.session_id, command.generation);
         }
       );
       if (!committed) throw std::runtime_error("stale screen connect generation");
@@ -159,9 +160,9 @@ class ScreenPublicationController::Implementation {
 
     auto attempt = std::make_shared<AttemptState>();
     attempt->kind = AttemptKind::Prepare;
-    attempt->command = command;
+    attempt->command = trackCommand(command);
     attempt->resources = std::make_unique<ScreenResources>();
-    attempt->resources->command = command;
+    attempt->resources->command = trackCommand(command);
     if (prepared_) attempt->obsolete = std::move(prepared_);
     launchAttempt(std::move(attempt));
   }
@@ -182,7 +183,7 @@ class ScreenPublicationController::Implementation {
     );
 
     if (candidate_) {
-      candidate_->cancel_requested.store(true);
+      candidate_->operation.requestCancel();
       throwCapacityOccupied("screen publication attempt is still completing");
     }
     if (active_ && matches(*active_, command)) {
@@ -201,13 +202,13 @@ class ScreenPublicationController::Implementation {
 
     auto attempt = std::make_shared<AttemptState>();
     attempt->kind = AttemptKind::Start;
-    attempt->command = command;
-    if (prepared_ && credentialsMatch(*prepared_, command)) {
+    attempt->command = trackCommand(command);
+    if (prepared_ && publicationIdentityMatches(*prepared_, command)) {
       attempt->resources = std::move(prepared_);
-      attempt->resources->command = command;
+      attempt->resources->command = trackCommand(command);
     } else {
       attempt->resources = std::make_unique<ScreenResources>();
-      attempt->resources->command = command;
+      attempt->resources->command = trackCommand(command);
       if (prepared_) attempt->obsolete = std::move(prepared_);
     }
     launchAttempt(std::move(attempt));
@@ -237,7 +238,7 @@ class ScreenPublicationController::Implementation {
     }
     if (candidate_ && candidate_->kind == AttemptKind::Start &&
         candidate_->command.session_id == command.session_id) {
-      candidate_->cancel_requested.store(true);
+      candidate_->operation.requestCancel();
     }
     if (!active_ || (!command.session_id.empty() && !matchesSession(*active_, command))) return;
     const auto stopped_session_id = active_->command.session_id;
@@ -292,7 +293,7 @@ class ScreenPublicationController::Implementation {
     }
     if (candidate_ &&
         (command.session_id.empty() || candidate_->command.session_id == command.session_id)) {
-      candidate_->cancel_requested.store(true);
+      candidate_->operation.requestCancel();
       matched = true;
     }
     if (active_ && (command.session_id.empty() || matchesSession(*active_, command))) {
@@ -324,7 +325,7 @@ class ScreenPublicationController::Implementation {
     }
     if (candidate_ && matches(*candidate_, command) &&
         (livekit_terminal || candidate_->kind == AttemptKind::Start)) {
-      affected = !candidate_->cancel_requested.exchange(true);
+      affected = candidate_->operation.requestCancel();
       if (affected) {
         candidate_->terminal_cancelled = true;
         candidate_->terminal_reason = command.internal_message;
@@ -355,7 +356,7 @@ class ScreenPublicationController::Implementation {
   RuntimeEvent probe(const MediaCommand& command) {
     reapFinishedWork();
     const auto now = now_();
-    const auto stuck_threshold = LiveKitConnectPolicy::kOuterRequestDeadline;
+    const auto stuck_threshold = LiveKitConnectPolicy::kNativeOperationDeadline;
     const bool candidate_stuck = candidate_ &&
       now - candidate_->started_at >= stuck_threshold;
     const bool retirement_stuck = retiring_ &&
@@ -417,9 +418,9 @@ class ScreenPublicationController::Implementation {
     pending_restart_.reset();
     logScreen("screen_shutdown_start");
     if (candidate_) {
-      candidate_->cancel_requested.store(true);
+      candidate_->operation.requestCancel();
       if (candidate_->worker.joinable()) candidate_->worker.join();
-      if (candidate_->resources && candidate_->resources->room) {
+      if (candidate_->resources && candidate_->resources->publication) {
         try { retireResources(std::move(candidate_->resources)); } catch (...) {}
       }
       candidate_.reset();
@@ -439,7 +440,7 @@ class ScreenPublicationController::Implementation {
 
   struct ScreenResources {
     MediaCommand command;
-    std::unique_ptr<LiveKitRoomSession> room;
+    std::unique_ptr<LiveKitTrackPublication> publication;
     ScreenPublicationDescription description;
     std::shared_ptr<std::atomic_bool> capture_running;
     std::thread capture_thread;
@@ -459,7 +460,7 @@ class ScreenPublicationController::Implementation {
     std::unique_ptr<ScreenResources> resources;
     std::unique_ptr<ScreenResources> obsolete;
     std::thread worker;
-    std::atomic_bool cancel_requested{false};
+    MediaOperation operation;
     std::atomic_bool finished{false};
     LiveKitConnectPolicy::Clock::time_point started_at = LiveKitConnectPolicy::Clock::now();
     bool succeeded = false;
@@ -513,8 +514,6 @@ class ScreenPublicationController::Implementation {
   }
 
   void validateConnect(const MediaCommand& command) const {
-    if (command.livekit_url.empty()) throw std::invalid_argument("LiveKit URL is required");
-    if (command.livekit_token.empty()) throw std::invalid_argument("LiveKit token is required");
     if (command.participant_identity.empty()) {
       throw std::invalid_argument("participantIdentity is required");
     }
@@ -542,27 +541,33 @@ class ScreenPublicationController::Implementation {
     return resources.command.session_id == command.session_id;
   }
 
-  static bool credentialsMatch(
+  static MediaCommand trackCommand(MediaCommand command) {
+    command.livekit_url.clear();
+    command.livekit_token.clear();
+    return command;
+  }
+
+  static bool publicationIdentityMatches(
     const ScreenResources& resources,
     const MediaCommand& command
   ) {
-    return resources.room &&
-      resources.command.livekit_url == command.livekit_url &&
-      resources.command.livekit_token == command.livekit_token &&
+    return resources.publication &&
+      resources.command.session_id == command.session_id &&
       resources.command.participant_identity == command.participant_identity;
   }
 
   bool isCurrent(const std::shared_ptr<AttemptState>& attempt) const {
-    return !attempt->cancel_requested.load() &&
+    return !attempt->operation.cancelled() &&
+      !attempt->operation.expired() &&
       is_current_(attempt->command.session_id, attempt->command.generation);
   }
 
   [[noreturn]] void throwCapacityOccupied(const char* message) const {
     const auto now = now_();
     const bool attempt_overdue = candidate_ &&
-      now - candidate_->started_at >= LiveKitConnectPolicy::kOuterRequestDeadline;
+      now - candidate_->started_at >= LiveKitConnectPolicy::kNativeOperationDeadline;
     const bool retirement_overdue = retiring_ &&
-      now - retiring_->started_at >= LiveKitConnectPolicy::kOuterRequestDeadline;
+      now - retiring_->started_at >= LiveKitConnectPolicy::kNativeOperationDeadline;
     if (attempt_overdue || retirement_overdue) {
       throw ScreenActorUnresponsiveError(message);
     }
@@ -579,7 +584,7 @@ class ScreenPublicationController::Implementation {
         {"sessionId", candidate->command.session_id},
         {"generation", candidate->command.generation},
         {"operation", candidate->kind == AttemptKind::Prepare ? "prepare" : "start"},
-        {"replacesPreparedRoom", candidate->obsolete != nullptr}
+        {"replacesPreparedPublication", candidate->obsolete != nullptr}
       }
     );
     try {
@@ -587,7 +592,7 @@ class ScreenPublicationController::Implementation {
     } catch (...) {
       auto failed = std::move(candidate_);
       if (failed->obsolete) prepared_ = std::move(failed->obsolete);
-      else if (failed->resources && failed->resources->room) {
+      else if (failed->resources && failed->resources->publication) {
         prepared_ = std::move(failed->resources);
       }
       throw ScreenActorUnresponsiveError("failed to start screen publication worker");
@@ -599,7 +604,7 @@ class ScreenPublicationController::Implementation {
     try {
       if (attempt->obsolete) {
         logScreen(
-          "screen_attempt_retire_obsolete_room",
+          "screen_attempt_retire_obsolete_publication",
           {
             {"sessionId", attempt->obsolete->command.session_id},
             {"generation", attempt->obsolete->command.generation}
@@ -610,41 +615,13 @@ class ScreenPublicationController::Implementation {
       if (!isCurrent(attempt)) throw std::runtime_error("stale screen connect generation");
       auto& resources = *attempt->resources;
       const auto& command = attempt->command;
-      const auto connect_started_at = LiveKitConnectPolicy::Clock::now();
-      if (!resources.room) {
-        resources.room = livekit_client_->createScreenSession(
+      if (!resources.publication) {
+        resources.publication = livekit_client_->createScreenPublication(
           command.session_id,
-          command.generation,
-          post_
+          command.generation
         );
-        const auto connect_timeout = LiveKitConnectPolicy::remainingConnectTimeout(
-          connect_started_at,
-          LiveKitConnectPolicy::Clock::now()
-        );
-        if (connect_timeout <= std::chrono::milliseconds(0)) {
-          throw std::runtime_error("LiveKit screen preparation exceeded its deadline");
-        }
-        auto options = LiveKitConnectPolicy::roomOptions(connect_timeout);
-        logScreen(
-          "screen_connect_livekit_connect_start",
-          {
-            {"sessionId", command.session_id},
-            {"generation", command.generation},
-            {"connectTimeoutMs", static_cast<std::uint64_t>(connect_timeout.count())}
-          }
-        );
-        if (!resources.room->connect(command.livekit_url, command.livekit_token, options)) {
-          throw std::runtime_error("LiveKit screen connect returned false");
-        }
-        const auto post_connect_wait = LiveKitConnectPolicy::remainingPostConnectWait(
-          connect_started_at,
-          LiveKitConnectPolicy::Clock::now()
-        );
-        if (!resources.room->isConnected() && (
-              post_connect_wait <= std::chrono::milliseconds(0) ||
-              !resources.room->waitConnected(post_connect_wait)
-            )) {
-          throw std::runtime_error("LiveKit screen connection timed out");
+        if (!resources.publication->isRoomConnected()) {
+          throw std::runtime_error("LiveKit voice Room is not connected");
         }
         logScreen(
           "screen_connect_livekit_connected",
@@ -656,12 +633,12 @@ class ScreenPublicationController::Implementation {
         );
       } else {
         logScreen(
-          "screen_connect_reuse_prepared_room",
+          "screen_connect_reuse_prepared_publication",
           {{"sessionId", command.session_id}, {"generation", command.generation}}
         );
       }
-      resources.command = command;
-      resources.room->updateIdentity(command.session_id, command.generation);
+      resources.command = trackCommand(command);
+      resources.publication->updateIdentity(command.session_id, command.generation);
       if (!isCurrent(attempt)) throw std::runtime_error("stale screen connect generation");
 
       if (attempt->kind == AttemptKind::Start) {
@@ -680,7 +657,7 @@ class ScreenPublicationController::Implementation {
       );
     } catch (const std::exception& error) {
       attempt->error = error.what();
-      attempt->stale = attempt->cancel_requested.load() ||
+      attempt->stale = attempt->operation.cancelled() ||
         std::string_view(error.what()).starts_with("stale ");
       if (attempt->resources) cleanupResources(*attempt->resources);
       attempt->succeeded = false;
@@ -696,7 +673,7 @@ class ScreenPublicationController::Implementation {
       );
     } catch (...) {
       attempt->error = "unknown screen publication failure";
-      attempt->stale = attempt->cancel_requested.load();
+      attempt->stale = attempt->operation.cancelled();
       if (attempt->resources) cleanupResources(*attempt->resources);
       attempt->succeeded = false;
     }
@@ -751,7 +728,7 @@ class ScreenPublicationController::Implementation {
       "screen_publish_start",
       {{"sessionId", command.session_id}, {"generation", command.generation}}
     );
-    resources.video_publication_sid = resources.room->publishVideoTrack(
+    resources.video_publication_sid = resources.publication->publishVideoTrack(
       resources.video_track,
       video_options
     );
@@ -781,7 +758,7 @@ class ScreenPublicationController::Implementation {
         "screen_audio_publish_start",
         {{"sessionId", command.session_id}, {"generation", command.generation}}
       );
-      resources.audio_publication_sid = resources.room->publishAudioTrack(
+      resources.audio_publication_sid = resources.publication->publishAudioTrack(
         resources.audio_track,
         audio_options
       );
@@ -820,7 +797,8 @@ class ScreenPublicationController::Implementation {
       is_current_(attempt->command.session_id, attempt->command.generation);
     bool promoted = false;
     if (attempt->succeeded && !attempt->stale &&
-        !attempt->cancel_requested.load() && !terminal_failure) {
+        !attempt->operation.cancelled() && !attempt->operation.expired() &&
+        !terminal_failure) {
       promoted = commit_if_current_(
         attempt->command.session_id,
         attempt->command.generation,
@@ -833,28 +811,31 @@ class ScreenPublicationController::Implementation {
         }
       );
     }
-    bool stale = attempt->stale || attempt->cancel_requested.load();
+    const bool expired = attempt->operation.expired();
+    bool stale = attempt->stale || attempt->operation.cancelled();
     if (attempt->succeeded) stale = stale || !promoted;
     else if (!stale) {
       stale = !is_current_(attempt->command.session_id, attempt->command.generation);
     }
     if (terminal_failure) stale = false;
     if (!attempt->succeeded || !promoted) {
-      if (attempt->resources && attempt->resources->room) {
+      if (attempt->resources && attempt->resources->publication) {
         retireResources(std::move(attempt->resources));
       }
       emitter_.emit(failedReply(
         attempt->command,
         terminal_failure
           ? "screen_runtime_lost"
-          : (stale ? "stale_generation" : screenFailureCode(attempt->error)),
+          : (stale ? "stale_generation" :
+              (expired ? "native_operation_timeout" : screenFailureCode(attempt->error))),
         terminal_failure
           ? (attempt->terminal_reason.empty()
               ? "screen runtime ended during publication"
               : attempt->terminal_reason)
-          : (attempt->error.empty()
+          : (expired ? "screen publication deadline expired" :
+              (attempt->error.empty()
               ? (stale ? "stale screen publication generation" : "screen publication failed")
-              : attempt->error),
+              : attempt->error)),
         terminal_failure || !stale
       ));
       logScreen(
@@ -945,13 +926,13 @@ class ScreenPublicationController::Implementation {
     if (resources.capture_running) resources.capture_running->store(false);
     if (resources.capture_thread.joinable()) resources.capture_thread.join();
     if (resources.audio_thread.joinable()) resources.audio_thread.join();
-    if (resources.room && !resources.video_publication_sid.empty()) {
+    if (resources.publication && !resources.video_publication_sid.empty()) {
       logScreen(
         "screen_unpublish_video_start",
         {{"sessionId", session_id}, {"generation", generation}}
       );
       try {
-        resources.room->unpublishTrack(resources.video_publication_sid);
+        resources.publication->unpublishTrack(resources.video_publication_sid);
         logScreen(
           "screen_unpublish_video_done",
           {{"sessionId", session_id}, {"generation", generation}}
@@ -972,13 +953,13 @@ class ScreenPublicationController::Implementation {
         );
       }
     }
-    if (resources.room && !resources.audio_publication_sid.empty()) {
+    if (resources.publication && !resources.audio_publication_sid.empty()) {
       logScreen(
         "screen_unpublish_audio_start",
         {{"sessionId", session_id}, {"generation", generation}}
       );
       try {
-        resources.room->unpublishTrack(resources.audio_publication_sid);
+        resources.publication->unpublishTrack(resources.audio_publication_sid);
         logScreen(
           "screen_unpublish_audio_done",
           {{"sessionId", session_id}, {"generation", generation}}
@@ -1001,35 +982,7 @@ class ScreenPublicationController::Implementation {
     }
     resources.video_publication_sid.clear();
     resources.audio_publication_sid.clear();
-    if (resources.room) resources.room->markIntentionalDisconnect();
-    if (resources.room) {
-      logScreen(
-        "screen_disconnect_room_start",
-        {{"sessionId", session_id}, {"generation", generation}}
-      );
-      try {
-        resources.room->disconnect();
-        logScreen(
-          "screen_disconnect_room_done",
-          {{"sessionId", session_id}, {"generation", generation}}
-        );
-      } catch (const std::exception& error) {
-        logScreen(
-          "screen_disconnect_room_failed",
-          {
-            {"sessionId", session_id},
-            {"generation", generation},
-            {"message", sanitizeDiagnosticMessage(error.what())}
-          }
-        );
-      } catch (...) {
-        logScreen(
-          "screen_disconnect_room_failed_unknown",
-          {{"sessionId", session_id}, {"generation", generation}}
-        );
-      }
-    }
-    resources.room.reset();
+    resources.publication.reset();
     resources.video_track.reset();
     resources.audio_track.reset();
     resources.video_source.reset();

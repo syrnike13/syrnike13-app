@@ -61,7 +61,6 @@ MediaCommand command(std::uint64_t generation, std::string request_id = "request
   MediaCommand result;
   result.type = "connectCamera"; result.request_id = std::move(request_id);
   result.session_id = "voice"; result.generation = generation;
-  result.livekit_url = "wss://example.invalid"; result.livekit_token = "token";
   result.participant_identity = "user:native-camera";
   result.width = 16; result.height = 16; result.fps = 30;
   return result;
@@ -73,6 +72,7 @@ int main() try {
   auto sink = std::make_shared<Sink>();
   SequencedEmitter emitter(sink);
   auto client = std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+  client->setVoiceSessionForTest("voice");
   auto factory = std::make_shared<Factory>();
   std::mutex posted_mutex;
   std::vector<MediaCommand> posted;
@@ -87,12 +87,23 @@ int main() try {
   try { actor->connect(command(1)); } catch (const std::exception&) { stale = true; }
   if (!stale) throw std::runtime_error("stale camera generation was accepted");
 
+  MediaCommand probe;
+  probe.type = "probeCameraActor";
+  probe.request_id = "probe-available";
+  if (actor->probe(probe).state != "available") {
+    throw std::runtime_error("idle camera actor did not report available capacity");
+  }
+
   // A publication blocked in the worker must not occupy the camera command lane.
   // Disconnect settles the original request immediately; a newer generation can
   // start before the stale SDK call returns.
-  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Connect, true);
+  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, true);
   actor->connect(command(2, "blocked"));
-  client->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Connect, 1);
+  client->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Publish, 1);
+  probe.request_id = "probe-busy";
+  if (actor->probe(probe).state != "busy") {
+    throw std::runtime_error("pending camera publication did not report busy capacity");
+  }
   current.store(3);
   auto cancel = command(2, "cancel"); cancel.type = "disconnectCamera";
   const auto started = std::chrono::steady_clock::now();
@@ -105,36 +116,52 @@ int main() try {
       blocked_reply.error->code != "stale_generation") {
     throw std::runtime_error("cancelled camera connect did not receive typed reply");
   }
-  client->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Connect,
-    {.bool_result = false});
+  client->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Publish,
+    {.publication_sid = {}});
   for (int i = 0; i < 200 &&
-      client->pending(DeterministicFakeLiveKitPublicationClient::Operation::Connect) != 0; ++i) {
+      client->pending(DeterministicFakeLiveKitPublicationClient::Operation::Publish) != 0; ++i) {
     std::this_thread::sleep_for(5ms);
   }
-  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Connect, false);
-  client->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Connect,
-    {.bool_result = false});
+  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, false);
   actor->connect(command(3, "replacement"));
   const auto replacement_reply = waitReply(sink, "replacement");
-  if (replacement_reply.ok || !replacement_reply.error ||
-      replacement_reply.error->code != "native_command_failed") {
+  if (!replacement_reply.ok) {
     throw std::runtime_error("replacement camera attempt was not launched and settled");
   }
 
-  client->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Connect);
-  client->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Publish);
   current.store(4);
   actor->connect(command(4, "preview"));
   const auto preview_reply = waitReply(sink, "preview");
-  if (!preview_reply.ok || client->localCameraPreviewStartCount() != 1) {
+  if (!preview_reply.ok || client->localCameraPreviewStartCount() != 2) {
     throw std::runtime_error("camera publication did not start its local preview");
   }
   auto disconnect = command(4, "disconnect-preview");
   disconnect.type = "disconnectCamera";
   actor->disconnect(disconnect);
-  if (client->localCameraPreviewStopCount() != 1) {
+  if (client->localCameraPreviewStopCount() != 2) {
     throw std::runtime_error("camera disconnect did not stop its local preview");
   }
+
+  // Cleanup failures are secondary: a stale attempt still settles with its
+  // original typed result even when the SDK throws while unpublishing it.
+  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, true);
+  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, true);
+  current.store(5);
+  actor->connect(command(5, "cleanup-throws"));
+  client->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Publish, 1);
+  current.store(6);
+  client->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Publish,
+    {.publication_sid = "cleanup-publication"});
+  client->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, 1);
+  client->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Unpublish,
+    {.error_message = "injected unpublish cleanup failure"});
+  const auto cleanup_reply = waitReply(sink, "cleanup-throws");
+  if (cleanup_reply.ok || !cleanup_reply.error ||
+      cleanup_reply.error->code != "stale_generation") {
+    throw std::runtime_error("camera cleanup exception suppressed the original failure");
+  }
+  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, false);
+  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, false);
 
   actor->shutdown();
   actor.reset();

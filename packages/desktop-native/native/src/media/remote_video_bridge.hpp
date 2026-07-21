@@ -15,10 +15,24 @@
 #include <livekit/track.h>
 
 #include "../common/runtime_types.hpp"
+#include "lifetime_safe_frame_release.hpp"
 
 namespace syrnike::desktop_native::media {
 
 inline constexpr auto kRemoteVideoFirstFrameTimeout = std::chrono::seconds(5);
+
+enum class FirstFrameState : std::uint8_t { Pending, Received, TimedOut };
+
+inline bool claimFirstFrame(std::atomic<FirstFrameState>& state) noexcept {
+  auto expected = FirstFrameState::Pending;
+  return state.compare_exchange_strong(expected, FirstFrameState::Received) ||
+    expected == FirstFrameState::Received;
+}
+
+inline bool claimFirstFrameTimeout(std::atomic<FirstFrameState>& state) noexcept {
+  auto expected = FirstFrameState::Pending;
+  return state.compare_exchange_strong(expected, FirstFrameState::TimedOut);
+}
 
 std::string remoteVideoSourceLabel(
   std::optional<livekit::TrackSource> publication_source,
@@ -85,6 +99,7 @@ class RemoteVideoBridge {
   OnEnded on_ended_;
   OnHealthy on_healthy_;
   VideoBridgeEventTypes event_types_;
+  std::shared_ptr<LifetimeSafeFrameRelease> release_router_;
   std::mutex lifecycle_mutex_;
   std::mutex mutex_;
   std::string session_id_;

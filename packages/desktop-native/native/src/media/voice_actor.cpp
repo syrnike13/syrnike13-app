@@ -1,8 +1,11 @@
 #include "voice_actor.hpp"
 
+#include "media_operation.hpp"
+
+#include <atomic>
 #include <mutex>
-#include <optional>
 #include <stdexcept>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -73,31 +76,54 @@ class VoiceActor::Implementation {
 
     retireAttempt();
     emitter_.emit(lifecycle(command, "starting", "livekit_connecting"));
-    {
-      std::lock_guard lock(mutex_);
-      attempt_command_ = command;
-      attempt_ = std::thread([this, command] {
-        MediaCommand completion;
-        completion.type = "__voiceConnectCompleted";
-        completion.session_id = command.session_id;
-        completion.generation = command.generation;
-        try {
-          if (!client_->connectVoice(
-                command.session_id,
-                command.generation,
-                command.livekit_url,
-                command.livekit_token,
-                post_
-              )) {
-            completion.internal_message = "LiveKit voice connection failed";
-          }
-        } catch (const std::exception& error) {
-          completion.internal_message = error.what();
-        } catch (...) {
+    auto state = std::make_shared<AttemptState>();
+    state->command = command;
+    auto attempt = std::thread([
+      client = client_,
+      post = post_,
+      state
+    ] {
+      while (!state->committed.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+      }
+      const auto& command = state->command;
+      MediaCommand completion;
+      completion.type = "__voiceConnectCompleted";
+      completion.session_id = command.session_id;
+      completion.generation = command.generation;
+      try {
+        if (!client->connectVoice(
+              command.session_id,
+              command.generation,
+              command.livekit_url,
+              command.livekit_token,
+              post
+            )) {
           completion.internal_message = "LiveKit voice connection failed";
         }
-        if (!post_(std::move(completion))) return;
-      });
+      } catch (const std::exception& error) {
+        completion.internal_message = error.what();
+        if (std::string_view(error.what()).starts_with("voice_connection_conflict:")) {
+          completion.video_source = "voice_connection_conflict";
+        }
+      } catch (...) {
+        completion.internal_message = "LiveKit voice connection failed";
+      }
+      if (state->operation.expired()) {
+        if (completion.internal_message.empty()) {
+          completion.internal_message = "LiveKit voice connection deadline expired";
+        }
+        completion.video_source = "native_operation_timeout";
+      }
+      state->finished.store(true, std::memory_order_release);
+      if (state->operation.cancelled()) return;
+      post(std::move(completion));
+    });
+    {
+      std::lock_guard lock(mutex_);
+      attempt_state_ = state;
+      attempt_ = std::move(attempt);
+      state->committed.store(true, std::memory_order_release);
     }
   }
 
@@ -110,19 +136,20 @@ class VoiceActor::Implementation {
 
   void handleWorkerCommand(const MediaCommand& completion) {
     std::thread attempt;
-    std::optional<MediaCommand> original;
+    std::shared_ptr<AttemptState> state;
     {
       std::lock_guard lock(mutex_);
-      if (!attempt_command_ ||
-          attempt_command_->session_id != completion.session_id ||
-          attempt_command_->generation != completion.generation) {
+      if (!attempt_state_ ||
+          attempt_state_->command.session_id != completion.session_id ||
+          attempt_state_->command.generation != completion.generation) {
         return;
       }
       attempt = std::move(attempt_);
-      original = std::move(attempt_command_);
-      attempt_command_.reset();
+      state = std::move(attempt_state_);
+      attempt_state_.reset();
     }
     if (attempt.joinable()) attempt.join();
+    const auto& original = state->command;
 
     // A disconnect or newer connect owns cancellation. A stale completion must
     // never call disconnectVoice(), because that Room may already belong to the
@@ -130,51 +157,59 @@ class VoiceActor::Implementation {
     if (!is_current_(completion.session_id, completion.generation)) return;
     if (!completion.internal_message.empty()) {
       NativeError error{
-        "native_command_failed",
+        completion.video_source.empty() ? "native_command_failed" : completion.video_source,
         completion.internal_message,
         "connectVoice",
         true,
-        original->session_id,
-        original->generation,
+        original.session_id,
+        original.generation,
       };
-      auto failed = reply(*original);
+      auto failed = reply(original);
       failed.ok = false;
       failed.error = error;
       emitter_.emit(std::move(failed));
 
       RuntimeEvent runtime_error;
       runtime_error.type = "runtimeError";
-      runtime_error.request_id = original->request_id;
-      runtime_error.session_id = original->session_id;
-      runtime_error.generation = original->generation;
+      runtime_error.request_id = original.request_id;
+      runtime_error.session_id = original.session_id;
+      runtime_error.generation = original.generation;
       runtime_error.error = std::move(error);
       emitter_.emit(std::move(runtime_error));
       return;
     }
-    emitter_.emit(reply(*original));
-    emitter_.emit(lifecycle(*original, "running"));
+    emitter_.emit(reply(original));
+    emitter_.emit(lifecycle(original, "running"));
   }
 
   void shutdown() { retireAttempt(false); }
 
  private:
+  struct AttemptState {
+    MediaCommand command;
+    MediaOperation operation;
+    std::atomic_bool committed{false};
+    std::atomic_bool finished{false};
+  };
+
   void retireAttempt(bool emit_cancelled_reply = true) {
     std::thread attempt;
-    std::optional<MediaCommand> original;
+    std::shared_ptr<AttemptState> state;
     {
       std::lock_guard lock(mutex_);
-      // Real LiveKit detaches the current Room under its own mutex before
-      // disconnecting it, which makes waitConnected return cooperatively.
-      client_->disconnectVoice();
       attempt = std::move(attempt_);
-      original = std::move(attempt_command_);
-      attempt_command_.reset();
+      state = std::move(attempt_state_);
+      attempt_state_.reset();
     }
+    if (state) state->operation.requestCancel();
+    // Real LiveKit detaches the current Room under its own mutex before
+    // disconnecting it, which makes waitConnected return cooperatively.
+    client_->disconnectVoice();
     if (attempt.joinable() && attempt.get_id() != std::this_thread::get_id()) {
       attempt.join();
     }
-    if (emit_cancelled_reply && original && !original->request_id.empty()) {
-      emitter_.emit(cancelledReply(*original));
+    if (emit_cancelled_reply && state && !state->command.request_id.empty()) {
+      emitter_.emit(cancelledReply(state->command));
     }
   }
 
@@ -184,7 +219,7 @@ class VoiceActor::Implementation {
   std::shared_ptr<LiveKitPublicationClient> client_;
   std::mutex mutex_;
   std::thread attempt_;
-  std::optional<MediaCommand> attempt_command_;
+  std::shared_ptr<AttemptState> attempt_state_;
 };
 
 VoiceActor::VoiceActor(

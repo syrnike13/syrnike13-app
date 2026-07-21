@@ -11,6 +11,7 @@
 #include "../common/diagnostic_log.hpp"
 #include "audio_constants.hpp"
 #include "livekit_connect_policy.hpp"
+#include "media_operation.hpp"
 
 namespace syrnike::desktop_native::media {
 namespace {
@@ -61,7 +62,9 @@ RuntimeEvent startedReply(const MediaCommand &command,
 }
 
 RuntimeEvent failedReply(const MediaCommand &command, const std::string &code,
-                         const std::string &message, bool retryable) {
+                         const std::string &message, bool retryable,
+                         std::string stage = {},
+                         std::optional<std::int64_t> hresult = {}) {
   RuntimeEvent event;
   event.type = "reply";
   event.request_id = command.request_id;
@@ -69,14 +72,31 @@ RuntimeEvent failedReply(const MediaCommand &command, const std::string &code,
   event.generation = command.generation;
   event.ok = false;
   event.error = NativeError{
-      code,
-      message,
-      command.type,
-      retryable,
-      command.session_id,
-      command.generation,
+      .code = code,
+      .message = message,
+      .stage = stage.empty() ? command.type : std::move(stage),
+      .retryable = retryable,
+      .session_id = command.session_id,
+      .generation = command.generation,
+      .hresult = hresult,
   };
   return event;
+}
+
+std::string terminalFailureCode(const MediaCommand &command) {
+  return command.video_source.empty() ? "microphone_runtime_lost"
+                                      : command.video_source;
+}
+
+std::string terminalFailureStage(const MediaCommand &command) {
+  return command.device_kind.empty() ? "microphone_publication"
+                                     : command.device_kind;
+}
+
+std::optional<std::int64_t> terminalFailureHresult(
+    const MediaCommand &command) {
+  if (command.diagnostic_hresult == 0) return std::nullopt;
+  return command.diagnostic_hresult;
 }
 
 }  // namespace
@@ -84,21 +104,23 @@ RuntimeEvent failedReply(const MediaCommand &command, const std::string &code,
 void validateMicrophonePublicationCommand(const MediaCommand &command) {
   if (command.session_id.empty())
     throw std::invalid_argument("sessionId is required");
-  if (command.livekit_url.empty())
-    throw std::invalid_argument("LiveKit URL is required");
-  if (command.livekit_token.empty())
-    throw std::invalid_argument("LiveKit token is required");
   if (command.participant_identity.empty()) {
     throw std::invalid_argument("participantIdentity is required");
   }
 }
 
-struct MicrophonePublicationController::PublishedRoom {
+MediaCommand trackCommand(MediaCommand command) {
+  command.livekit_url.clear();
+  command.livekit_token.clear();
+  return command;
+}
+
+struct MicrophonePublicationController::PublishedTrack {
   std::string session_id;
   std::uint64_t generation = 0;
   std::string participant_identity;
   std::string publication_sid;
-  std::unique_ptr<LiveKitRoomSession> room;
+  std::unique_ptr<LiveKitTrackPublication> publication;
   std::shared_ptr<livekit::AudioSource> source;
   std::shared_ptr<livekit::LocalAudioTrack> track;
 };
@@ -108,14 +130,12 @@ struct MicrophonePublicationController::AttemptState {
   MicrophonePipelineSnapshot pipeline;
   std::shared_ptr<livekit::AudioSource> source;
   std::shared_ptr<livekit::LocalAudioTrack> track;
-  std::unique_ptr<LiveKitRoomSession> room;
+  std::unique_ptr<LiveKitTrackPublication> publication;
   std::thread worker;
   std::mutex mutex;
-  LiveKitConnectPolicy::Clock::time_point started_at =
-      LiveKitConnectPolicy::Clock::now();
+  MediaOperation operation;
   std::atomic_bool finished{false};
   bool desired_muted = false;
-  bool cancel_requested = false;
   bool succeeded = false;
   bool stale = false;
   bool outcome_emitted = false;
@@ -127,7 +147,7 @@ struct MicrophonePublicationController::AttemptState {
 struct MicrophonePublicationController::RetiringState {
   std::string session_id;
   std::uint64_t generation = 0;
-  std::shared_ptr<PublishedRoom> room;
+  std::shared_ptr<PublishedTrack> track;
   std::thread worker;
   LiveKitConnectPolicy::Clock::time_point started_at =
       LiveKitConnectPolicy::Clock::now();
@@ -138,6 +158,10 @@ struct FallbackTransportLoss {
   std::string session_id;
   std::uint64_t generation = 0;
   std::string detail;
+  std::string code;
+  std::string stage;
+  bool retryable = true;
+  std::optional<std::int64_t> hresult;
 };
 
 class MicrophonePublicationController::Implementation {
@@ -205,7 +229,7 @@ class MicrophonePublicationController::Implementation {
     }
 
     auto attempt = std::make_shared<AttemptState>();
-    attempt->command = command;
+    attempt->command = trackCommand(command);
     attempt->pipeline = pipeline;
     attempt->desired_muted = command.muted;
     attempt->source = std::make_shared<livekit::AudioSource>(
@@ -278,9 +302,16 @@ class MicrophonePublicationController::Implementation {
 
   void handleTerminal(const MediaCommand &command) {
     reapFinishedRetiring();
+    const auto code = terminalFailureCode(command);
+    const auto stage = terminalFailureStage(command);
+    const auto hresult = terminalFailureHresult(command);
+    const bool retryable = command.video_source.empty()
+                               ? true
+                               : command.diagnostic_retryable;
     if (candidate_ && candidate_->command.session_id == command.session_id &&
         candidate_->command.generation == command.generation) {
-      cancelAttempt(candidate_, command.internal_message, true);
+      cancelAttempt(candidate_, command.internal_message, true, code, stage,
+                    retryable, hresult);
       return;
     }
     if (committed_ && committed_->session_id == command.session_id &&
@@ -290,7 +321,8 @@ class MicrophonePublicationController::Implementation {
           is_current_(candidate_->command.session_id,
                       candidate_->command.generation)) {
         fallback_transport_loss_ = FallbackTransportLoss{
-            command.session_id, command.generation, command.internal_message};
+            command.session_id, command.generation, command.internal_message,
+            code, stage, retryable, hresult};
         retireCommittedOrDefer();
         logPublication(
             "fallback_transport_lost_during_candidate",
@@ -308,12 +340,13 @@ class MicrophonePublicationController::Implementation {
       event.status = "error";
       event.detail = command.internal_message;
       event.error = NativeError{
-          "microphone_runtime_lost",
-          command.internal_message,
-          "microphone",
-          true,
-          command.session_id,
-          command.generation,
+          .code = code,
+          .message = command.internal_message,
+          .stage = stage,
+          .retryable = retryable,
+          .session_id = command.session_id,
+          .generation = command.generation,
+          .hresult = hresult,
       };
       emitter_.emit(std::move(event));
       RuntimeEvent stopped;
@@ -342,6 +375,16 @@ class MicrophonePublicationController::Implementation {
     }
   }
 
+  void updatePendingPipeline(
+      const std::string &session_id, std::uint64_t generation,
+      const MicrophonePipelineSnapshot &pipeline) {
+    if (!candidate_ || (!session_id.empty() &&
+        (candidate_->command.session_id != session_id ||
+         candidate_->command.generation != generation))) return;
+    std::lock_guard lock(candidate_->mutex);
+    candidate_->pipeline = pipeline;
+  }
+
   void shutdown() {
     if (candidate_) {
       cancelAttempt(candidate_, "microphone runtime is shutting down");
@@ -352,15 +395,15 @@ class MicrophonePublicationController::Implementation {
     if (committed_) {
       remove_sink_(committed_->source);
       auto previous = std::move(committed_);
-      disconnectRoomBlocking(*previous);
+      unpublishTrackBlocking(*previous);
     }
     committed_pending_retire_ = false;
     committed_pending_since_.reset();
     if (retiring_) {
       waitJoin(retiring_->worker);
       if (!retiring_->finished.load(std::memory_order_acquire) &&
-          retiring_->room) {
-        disconnectRoomBlocking(*retiring_->room);
+          retiring_->track) {
+        unpublishTrackBlocking(*retiring_->track);
       }
       retiring_.reset();
     }
@@ -388,13 +431,13 @@ class MicrophonePublicationController::Implementation {
         [&](LiveKitConnectPolicy::Clock::time_point started_at) {
           if (!oldest || started_at < *oldest) oldest = started_at;
         };
-    if (candidate_) include(candidate_->started_at);
+    if (candidate_) include(candidate_->operation.startedAt());
     if (retiring_) include(retiring_->started_at);
     if (committed_pending_retire_ && committed_pending_since_) {
       include(*committed_pending_since_);
     }
     if (!oldest) return MicrophonePublicationCapacityStatus::Available;
-    if (now - *oldest >= LiveKitConnectPolicy::kOuterRequestDeadline) {
+    if (now - *oldest >= LiveKitConnectPolicy::kNativeOperationDeadline) {
       return MicrophonePublicationCapacityStatus::ActorUnresponsive;
     }
     return MicrophonePublicationCapacityStatus::ActorBusy;
@@ -402,31 +445,13 @@ class MicrophonePublicationController::Implementation {
 
  private:
   void runAttempt(const std::shared_ptr<AttemptState> &attempt) {
-    std::unique_ptr<LiveKitRoomSession> candidate_room;
+    std::unique_ptr<LiveKitTrackPublication> candidate_publication;
     std::string candidate_publication_sid;
     try {
-      const auto connect_started_at = LiveKitConnectPolicy::Clock::now();
-      candidate_room = livekit_client_->createMicrophoneSession(
-          attempt->command.session_id, attempt->command.generation, post_);
-      const auto connect_timeout =
-          LiveKitConnectPolicy::remainingConnectTimeout(
-              connect_started_at, LiveKitConnectPolicy::Clock::now());
-      if (connect_timeout <= std::chrono::milliseconds(0)) {
-        throw std::runtime_error(
-            "LiveKit microphone preparation exceeded its deadline");
-      }
-      auto options = LiveKitConnectPolicy::roomOptions(connect_timeout);
-      if (!candidate_room->connect(attempt->command.livekit_url,
-                                   attempt->command.livekit_token, options)) {
-        throw std::runtime_error("LiveKit microphone connect returned false");
-      }
-      const auto post_connect_wait =
-          LiveKitConnectPolicy::remainingPostConnectWait(
-              connect_started_at, LiveKitConnectPolicy::Clock::now());
-      if (!candidate_room->isConnected() &&
-          (post_connect_wait <= std::chrono::milliseconds(0) ||
-           !candidate_room->waitConnected(post_connect_wait))) {
-        throw std::runtime_error("LiveKit microphone connection timed out");
+      candidate_publication = livekit_client_->createMicrophonePublication(
+          attempt->command.session_id, attempt->command.generation);
+      if (!candidate_publication->isRoomConnected()) {
+        throw std::runtime_error("LiveKit voice Room is not connected");
       }
       if (!isCurrentCandidate(attempt)) {
         throw std::runtime_error("stale microphone connect generation");
@@ -439,7 +464,7 @@ class MicrophonePublicationController::Implementation {
       publish_options.dtx = true;
       publish_options.source = livekit::TrackSource::SOURCE_MICROPHONE;
       candidate_publication_sid =
-          candidate_room->publishAudioTrack(track, publish_options);
+          candidate_publication->publishAudioTrack(track, publish_options);
       if (candidate_publication_sid.empty()) {
         throw std::runtime_error(
             "LiveKit microphone publication was not acknowledged");
@@ -457,7 +482,7 @@ class MicrophonePublicationController::Implementation {
       }
       {
         std::lock_guard lock(attempt->mutex);
-        attempt->room = std::move(candidate_room);
+        attempt->publication = std::move(candidate_publication);
         attempt->track = std::move(track);
         attempt->publication_sid = std::move(candidate_publication_sid);
         attempt->succeeded = true;
@@ -475,16 +500,9 @@ class MicrophonePublicationController::Implementation {
         attempt->error = error.what();
         attempt->succeeded = false;
       }
-      if (candidate_room && !candidate_publication_sid.empty()) {
+      if (candidate_publication && !candidate_publication_sid.empty()) {
         try {
-          candidate_room->unpublishTrack(candidate_publication_sid);
-        } catch (...) {
-        }
-      }
-      if (candidate_room) candidate_room->markIntentionalDisconnect();
-      if (candidate_room) {
-        try {
-          candidate_room->disconnect();
+          candidate_publication->unpublishTrack(candidate_publication_sid);
         } catch (...) {
         }
       }
@@ -500,7 +518,8 @@ class MicrophonePublicationController::Implementation {
 
   bool isCurrentCandidate(const std::shared_ptr<AttemptState> &attempt) {
     std::lock_guard lock(attempt->mutex);
-    return !attempt->cancel_requested &&
+    return !attempt->operation.cancelled() &&
+           !attempt->operation.expired() &&
            is_current_(attempt->command.session_id,
                        attempt->command.generation);
   }
@@ -514,30 +533,34 @@ class MicrophonePublicationController::Implementation {
     waitJoin(attempt->worker);
     bool succeeded = false;
     bool stale = false;
+    bool expired = false;
     bool desired_muted = false;
     std::string error;
     {
       std::lock_guard lock(attempt->mutex);
       succeeded = attempt->succeeded;
-      stale = attempt->stale || attempt->cancel_requested;
+      stale = attempt->stale || attempt->operation.cancelled();
+      expired = attempt->operation.expired();
       desired_muted = attempt->desired_muted;
       error = attempt->error;
     }
     stale = stale || !is_current_(session_id, generation);
 
-    if (!succeeded || stale) {
+    if (!succeeded || stale || expired) {
       removeAttemptSink(attempt);
       emitAttemptFailureOnce(
-          attempt, stale ? "stale_generation" : "native_command_failed",
-          error.empty() ? (stale ? "stale microphone publish generation"
+          attempt, stale ? "stale_generation" :
+            (expired ? "native_operation_timeout" : "native_command_failed"),
+          expired ? "microphone publication deadline expired" :
+            (error.empty() ? (stale ? "stale microphone publish generation"
                                  : "microphone publication failed")
-                        : error,
+                        : error),
           !stale);
-      if (attempt->room && retiring_) {
+      if (attempt->publication && retiring_) {
         return;
       }
-      if (attempt->room) {
-        auto cleanup = takePublishedRoom(attempt);
+      if (attempt->publication) {
+        auto cleanup = takePublishedTrack(attempt);
         tryStartRetiring(std::move(cleanup));
       }
       candidate_.reset();
@@ -552,11 +575,11 @@ class MicrophonePublicationController::Implementation {
       removeAttemptSink(attempt);
       emitAttemptFailureOnce(attempt, "stale_generation",
                              "stale microphone publish generation", false);
-      if (attempt->room && retiring_) {
+      if (attempt->publication && retiring_) {
         return;
       }
-      if (attempt->room) {
-        auto cleanup = takePublishedRoom(attempt);
+      if (attempt->publication) {
+        auto cleanup = takePublishedTrack(attempt);
         tryStartRetiring(std::move(cleanup));
       }
       candidate_.reset();
@@ -574,7 +597,7 @@ class MicrophonePublicationController::Implementation {
       removeAttemptSink(attempt);
       emitAttemptFailureOnce(attempt, "native_command_failed",
                              mute_error.what(), true);
-      auto cleanup = takePublishedRoom(attempt);
+      auto cleanup = takePublishedTrack(attempt);
       tryStartRetiring(std::move(cleanup));
       candidate_.reset();
       emitFallbackLossIfUnrecoverable(session_id);
@@ -585,14 +608,14 @@ class MicrophonePublicationController::Implementation {
       removeAttemptSink(attempt);
       emitAttemptFailureOnce(attempt, "stale_generation",
                              "stale microphone publish generation", false);
-      auto cleanup = takePublishedRoom(attempt);
+      auto cleanup = takePublishedTrack(attempt);
       tryStartRetiring(std::move(cleanup));
       candidate_.reset();
       emitFallbackLossIfUnrecoverable(session_id);
       return;
     }
 
-    add_sink_(attempt->source);
+    add_sink_(attempt->source, session_id, generation);
     attempt->sink_attached = true;
     logPublication(
         "committed",
@@ -604,14 +627,14 @@ class MicrophonePublicationController::Implementation {
       removeAttemptSink(attempt);
       emitAttemptFailureOnce(attempt, "stale_generation",
                              "stale microphone publish generation", false);
-      auto cleanup = takePublishedRoom(attempt);
+      auto cleanup = takePublishedTrack(attempt);
       tryStartRetiring(std::move(cleanup));
       candidate_.reset();
       emitFallbackLossIfUnrecoverable(session_id);
       return;
     }
 
-    auto next = takePublishedRoom(attempt);
+    auto next = takePublishedTrack(attempt);
     candidate_.reset();
     if (fallback_transport_loss_ &&
         fallback_transport_loss_->session_id == session_id) {
@@ -633,23 +656,23 @@ class MicrophonePublicationController::Implementation {
     }
   }
 
-  bool tryStartRetiring(std::unique_ptr<PublishedRoom> room) {
-    if (!room) return true;
+  bool tryStartRetiring(std::unique_ptr<PublishedTrack> track) {
+    if (!track) return true;
     if (retiring_) return false;
     retiring_ = std::make_shared<RetiringState>();
-    retiring_->session_id = room->session_id;
-    retiring_->generation = room->generation;
-    retiring_->room = std::shared_ptr<PublishedRoom>(std::move(room));
+    retiring_->session_id = track->session_id;
+    retiring_->generation = track->generation;
+    retiring_->track = std::shared_ptr<PublishedTrack>(std::move(track));
     const auto state = retiring_;
     try {
       state->worker = std::thread([this, state] {
-        disconnectRoomBlocking(*state->room);
+        unpublishTrackBlocking(*state->track);
+        state->finished.store(true, std::memory_order_release);
         MediaCommand internal;
         internal.type = "__microphoneRetireDone";
         internal.session_id = state->session_id;
         internal.generation = state->generation;
         post_(std::move(internal));
-        state->finished.store(true, std::memory_order_release);
       });
     } catch (...) {
       logPublication("retiring_worker_launch_failed",
@@ -717,7 +740,17 @@ class MicrophonePublicationController::Implementation {
     MediaCommand logical;
     logical.session_id = loss.session_id;
     logical.generation = loss.generation;
-    emitter_.emit(lifecycle(logical, "error", loss.detail));
+    auto failed = lifecycle(logical, "error", loss.detail);
+    failed.error = NativeError{
+        .code = loss.code,
+        .message = loss.detail,
+        .stage = loss.stage,
+        .retryable = loss.retryable,
+        .session_id = loss.session_id,
+        .generation = loss.generation,
+        .hresult = loss.hresult,
+    };
+    emitter_.emit(std::move(failed));
 
     RuntimeEvent stopped;
     stopped.type = "sessionStopped";
@@ -729,26 +762,44 @@ class MicrophonePublicationController::Implementation {
 
   void emitAttemptFailureOnce(const std::shared_ptr<AttemptState> &attempt,
                               const std::string &code,
-                              const std::string &message, bool retryable) {
+                              const std::string &message, bool retryable,
+                              std::string stage = {},
+                              std::optional<std::int64_t> hresult = {}) {
     if (!attempt || attempt->outcome_emitted) return;
     attempt->outcome_emitted = true;
-    emitter_.emit(failedReply(attempt->command, code, message, retryable));
+    emitter_.emit(failedReply(attempt->command, code, message, retryable,
+                              std::move(stage), hresult));
   }
 
   void cancelAttempt(const std::shared_ptr<AttemptState> &attempt,
-                     const std::string &reason, bool emit_terminal = false) {
+                     const std::string &reason, bool emit_terminal = false,
+                     std::string code = "microphone_runtime_lost",
+                     std::string stage = "microphone_publication",
+                     bool retryable = true,
+                     std::optional<std::int64_t> hresult = {}) {
     if (!attempt) return;
     {
       std::lock_guard lock(attempt->mutex);
-      attempt->cancel_requested = true;
+      attempt->operation.requestCancel();
       attempt->error = reason;
     }
     removeAttemptSink(attempt);
     if (emit_terminal && !attempt->outcome_emitted) {
-      emitter_.emit(lifecycle(attempt->command, "error", reason));
+      auto failed = lifecycle(attempt->command, "error", reason);
+      failed.error = NativeError{
+          .code = code,
+          .message = reason,
+          .stage = stage,
+          .retryable = retryable,
+          .session_id = attempt->command.session_id,
+          .generation = attempt->command.generation,
+          .hresult = hresult,
+      };
+      emitter_.emit(std::move(failed));
       emitAttemptFailureOnce(
-          attempt, "microphone_runtime_lost",
-          reason.empty() ? "microphone publication terminated" : reason, true);
+          attempt, code,
+          reason.empty() ? "microphone publication terminated" : reason,
+          retryable, std::move(stage), hresult);
     }
   }
 
@@ -766,25 +817,24 @@ class MicrophonePublicationController::Implementation {
     finishRetiring();
   }
 
-  static std::unique_ptr<PublishedRoom> takePublishedRoom(
+  static std::unique_ptr<PublishedTrack> takePublishedTrack(
       const std::shared_ptr<AttemptState> &attempt) {
-    auto room = std::make_unique<PublishedRoom>();
+    auto room = std::make_unique<PublishedTrack>();
     room->session_id = attempt->command.session_id;
     room->generation = attempt->command.generation;
     room->participant_identity = attempt->command.participant_identity;
     room->publication_sid = std::move(attempt->publication_sid);
     room->source = std::move(attempt->source);
     room->track = std::move(attempt->track);
-    room->room = std::move(attempt->room);
+    room->publication = std::move(attempt->publication);
     return room;
   }
 
-  static void disconnectRoomBlocking(PublishedRoom &room) {
-    if (room.room) room.room->markIntentionalDisconnect();
-    if (room.room) {
+  static void unpublishTrackBlocking(PublishedTrack &room) {
+    if (room.publication) {
       if (!room.publication_sid.empty()) {
         try {
-          room.room->unpublishTrack(room.publication_sid);
+          room.publication->unpublishTrack(room.publication_sid);
           logPublication(
               "unpublished",
               {{"sessionId", room.session_id},
@@ -796,26 +846,17 @@ class MicrophonePublicationController::Implementation {
                {"generation", room.generation}});
         }
       }
-      try {
-        room.room->disconnect();
-      } catch (...) {
-      }
     }
   }
 
   static void disconnectAttemptBlocking(
       const std::shared_ptr<AttemptState> &attempt) {
-    if (!attempt || !attempt->room) return;
-    attempt->room->markIntentionalDisconnect();
+    if (!attempt || !attempt->publication) return;
     if (!attempt->publication_sid.empty()) {
       try {
-        attempt->room->unpublishTrack(attempt->publication_sid);
+        attempt->publication->unpublishTrack(attempt->publication_sid);
       } catch (...) {
       }
-    }
-    try {
-      attempt->room->disconnect();
-    } catch (...) {
     }
   }
 
@@ -835,7 +876,7 @@ class MicrophonePublicationController::Implementation {
   CaptureHealthy capture_healthy_;
   std::shared_ptr<LiveKitPublicationClient> livekit_client_;
   ApplyMute apply_mute_;
-  std::unique_ptr<PublishedRoom> committed_;
+  std::unique_ptr<PublishedTrack> committed_;
   std::shared_ptr<AttemptState> candidate_;
   std::shared_ptr<RetiringState> retiring_;
   bool committed_pending_retire_ = false;
@@ -874,6 +915,11 @@ void MicrophonePublicationController::handleTerminal(
 void MicrophonePublicationController::handleWorkerCommand(
     const MediaCommand &command) {
   implementation_->handleWorkerCommand(command);
+}
+void MicrophonePublicationController::updatePendingPipeline(
+    const std::string &session_id, std::uint64_t generation,
+    const MicrophonePipelineSnapshot &pipeline) {
+  implementation_->updatePendingPipeline(session_id, generation, pipeline);
 }
 void MicrophonePublicationController::shutdown() {
   implementation_->shutdown();

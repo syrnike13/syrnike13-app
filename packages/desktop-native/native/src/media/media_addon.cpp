@@ -269,7 +269,7 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
   result.Set("platform", "win32");
   result.Set("available", true);
   result.Set("runtime", "media");
-  result.Set("contractVersion", 3);
+  result.Set("contractVersion", 4);
   result.Set("pid", GetCurrentProcessId());
   result.Set("napi", std::to_string(NAPI_VERSION));
   result.Set("livekit", "1.3.0");

@@ -38,31 +38,15 @@ int main() try {
     return true;
   }};
 
+  // Room connect/disconnect gates belong only to the voice owner. Creating a
+  // track publication must never enter either gate.
   client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Connect, true);
-  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Disconnect, true);
-
-  auto blocked_connect = client->createMicrophoneSession("mic", 1, noop_post);
-  auto blocked_disconnect = client->createScreenSession("screen", 9, noop_post);
   auto connect_future = std::async(std::launch::async, [&] {
-    return blocked_connect->connect("wss://example.invalid", "token", livekit::RoomOptions{});
+    return client->connectVoice(
+      "voice", 1, "wss://example.invalid", "token", noop_post);
   });
   client->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Connect, 1);
   requireNotReady(connect_future, "blocked connect completed before release");
-
-  auto disconnect_future = std::async(std::launch::async, [&] {
-    blocked_disconnect->disconnect();
-    return true;
-  });
-  client->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Disconnect, 1);
-  requireNotReady(disconnect_future, "blocked disconnect completed before release");
-
-  client->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Disconnect);
-  requireReady(disconnect_future, "released disconnect did not finish");
-  if (!disconnect_future.get()) {
-    throw std::runtime_error("released disconnect returned false");
-  }
-  requireNotReady(connect_future, "disconnect release also unblocked connect");
-
   client->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Connect);
   requireReady(connect_future, "released connect did not finish");
   if (!connect_future.get()) {
@@ -72,8 +56,14 @@ int main() try {
   client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, true);
   client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, true);
 
-  auto blocked_publish = client->createMicrophoneSession("mic", 2, noop_post);
-  auto blocked_unpublish = client->createScreenSession("screen", 10, noop_post);
+  auto blocked_publish = client->createMicrophonePublication("voice", 1);
+  auto blocked_unpublish = client->createScreenPublication("voice", 1);
+  if (!blocked_publish->isRoomConnected() || !blocked_unpublish->isRoomConnected()) {
+    throw std::runtime_error("track publication did not observe the shared voice Room");
+  }
+  if (client->pending(DeterministicFakeLiveKitPublicationClient::Operation::Connect) != 0) {
+    throw std::runtime_error("track publication attempted to connect its own Room");
+  }
   auto publish_future = std::async(std::launch::async, [&] {
     return blocked_publish->publishAudioTrack({}, livekit::TrackPublishOptions{});
   });
@@ -106,15 +96,16 @@ int main() try {
     throw std::runtime_error("publish release lost its deterministic publication SID");
   }
 
-  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Connect, true);
-  auto failing_connect = client->createMicrophoneSession("mic", 3, noop_post);
+  auto failing_client = std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+  failing_client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Connect, true);
   auto failing_future = std::async(std::launch::async, [&] {
-    return failing_connect->connect("wss://example.invalid", "token", livekit::RoomOptions{});
+    return failing_client->connectVoice(
+      "failing", 1, "wss://example.invalid", "token", noop_post);
   });
-  client->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Connect, 1);
+  failing_client->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Connect, 1);
   DeterministicFakeLiveKitPublicationClient::Release failed_connect_release;
   failed_connect_release.bool_result = false;
-  client->releaseNext(
+  failing_client->releaseNext(
     DeterministicFakeLiveKitPublicationClient::Operation::Connect,
     std::move(failed_connect_release)
   );
@@ -135,32 +126,66 @@ int main() try {
       )) {
     throw std::runtime_error("shared voice Room did not connect");
   }
-  auto shared_microphone = shared_client->createMicrophoneSession("mic", 1, noop_post);
-  auto shared_screen = shared_client->createScreenSession("screen", 1, noop_post);
-  if (!shared_microphone->connect(
-        "wss://example.invalid",
-        "shared-token",
-        livekit::RoomOptions{}
-      ) ||
-      !shared_screen->connect(
-        "wss://example.invalid",
-        "shared-token",
-        livekit::RoomOptions{}
-      )) {
-    throw std::runtime_error("track session did not reuse shared voice Room");
+  bool conflicting_duplicate_rejected = false;
+  try {
+    shared_client->connectVoice(
+      "voice-op", 1, "wss://example.invalid", "other-token", noop_post);
+  } catch (const std::exception&) {
+    conflicting_duplicate_rejected = true;
   }
-  shared_microphone->disconnect();
-  shared_screen->disconnect();
+  if (!conflicting_duplicate_rejected) {
+    throw std::runtime_error("duplicate voice epoch accepted another credential lease");
+  }
+  auto shared_microphone = shared_client->createMicrophonePublication("voice-op", 41);
+  auto shared_screen = shared_client->createScreenPublication("voice-op", 93);
+  if (!shared_microphone->isRoomConnected() || !shared_screen->isRoomConnected()) {
+    throw std::runtime_error("track publication did not reuse shared voice Room");
+  }
+  auto stale_publication = shared_client->createCameraPublication("voice-op", 7);
+  shared_microphone.reset();
+  shared_screen.reset();
   if (!shared_client->isVoiceConnected()) {
     throw std::runtime_error("track retirement disconnected shared voice Room");
   }
   // Receive-side controls are properties of the existing Room lease. They
   // must not reconnect or retire the participant.
   shared_client->setVoiceDeafened(true);
-  shared_client->setVoiceOutputDevice("communications-output");
+  const auto output_epoch_a =
+    shared_client->setVoiceOutputDevice(
+      "communications-output",
+      syrnike::desktop_native::media::AudioOutputDeviceIntent::UserConfiguration
+    );
+  if (!shared_client->isVoiceOutputEpochCurrent(output_epoch_a)) {
+    throw std::runtime_error("committed output renderer epoch was not current");
+  }
+  const auto output_epoch_b = shared_client->setVoiceOutputDevice(
+    "default",
+    syrnike::desktop_native::media::AudioOutputDeviceIntent::UserConfiguration
+  );
+  if (shared_client->isVoiceOutputEpochCurrent(output_epoch_a) ||
+      !shared_client->isVoiceOutputEpochCurrent(output_epoch_b)) {
+    throw std::runtime_error("replaced output renderer epoch accepted a stale failure");
+  }
   shared_client->setVoiceDeafened(false);
   if (!shared_client->isVoiceConnected()) {
     throw std::runtime_error("output/deafen update disconnected shared voice Room");
+  }
+  shared_client->disconnectVoice();
+  if (!shared_client->connectVoice(
+        "voice-recovered", 2, "wss://example.invalid", "replacement-token", noop_post)) {
+    throw std::runtime_error("replacement voice Room did not connect");
+  }
+  if (stale_publication->isRoomConnected()) {
+    throw std::runtime_error("old track publication observed the replacement voice Room");
+  }
+  bool stale_publish_rejected = false;
+  try {
+    stale_publication->publishVideoTrack({}, livekit::TrackPublishOptions{});
+  } catch (const std::exception&) {
+    stale_publish_rejected = true;
+  }
+  if (!stale_publish_rejected) {
+    throw std::runtime_error("old track publication published into a replacement voice Room");
   }
   shared_client->disconnectVoice();
   for (int attempt = 0; attempt < 32; ++attempt) shared_client->disconnectVoice();

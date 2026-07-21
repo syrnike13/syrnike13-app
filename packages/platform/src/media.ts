@@ -45,12 +45,6 @@ export type NativeMediaDeviceInfo = {
   label: string
 }
 
-export type NativeMediaLiveKitCredentials = {
-  url: string
-  token: string
-  participantIdentity: string
-}
-
 export type LiveKitNativePublisherCredentials = Readonly<{
   url: string
   token: string
@@ -79,11 +73,11 @@ export type NativeMediaScreenSessionStartOptions = {
   audio?: {
     requested: boolean
   }
-  livekit: NativeMediaLiveKitCredentials
+  participantIdentity: string
 }
 
 export type NativeMediaScreenSessionPrepareOptions = {
-  livekit: NativeMediaLiveKitCredentials
+  participantIdentity: string
 }
 
 export type NativeMediaMicrophoneSessionStartOptions = {
@@ -91,7 +85,7 @@ export type NativeMediaMicrophoneSessionStartOptions = {
   requestId: string
   audioBitrate?: number
   muted?: boolean
-  livekit: NativeMediaLiveKitCredentials
+  participantIdentity: string
 }
 
 export type NativeMicrophonePipelineConfig = {
@@ -251,6 +245,7 @@ export type NativeMediaStatsEvent = {
 }
 
 export type NativeMicrophoneMetricsEvent = {
+  revision: number
   inputDb: number
   thresholdDb: number
   open: boolean
@@ -263,6 +258,8 @@ export type NativeMicrophonePreviewStateEvent =
 
 export type NativeMediaStateEvent = NativeMediaSessionStatus & {
   sessionId?: string
+  deviceId?: string
+  message?: string
   audio?: {
     mode: NativeMediaAudioMode
     sampleRate?: 48_000

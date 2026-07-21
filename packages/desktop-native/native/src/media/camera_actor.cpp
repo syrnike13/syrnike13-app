@@ -1,5 +1,7 @@
 #include "camera_actor.hpp"
 
+#include "media_operation.hpp"
+
 #include <mfapi.h>
 
 #include <algorithm>
@@ -33,6 +35,12 @@ RuntimeEvent cancelledReply(const MediaCommand& command) {
   return event;
 }
 
+MediaCommand trackCommand(MediaCommand command) {
+  command.livekit_url.clear();
+  command.livekit_token.clear();
+  return command;
+}
+
 }  // namespace
 
 class CameraActor::Implementation {
@@ -53,9 +61,6 @@ class CameraActor::Implementation {
     if (!is_current_(command.session_id, command.generation)) {
       throw std::runtime_error("stale camera generation");
     }
-    if (command.livekit_url.empty() || command.livekit_token.empty()) {
-      throw std::invalid_argument("camera LiveKit credentials are required");
-    }
     if (command.participant_identity.empty()) {
       throw std::invalid_argument("camera participantIdentity is required");
     }
@@ -73,14 +78,25 @@ class CameraActor::Implementation {
     }
 
     auto state = std::make_shared<AttemptState>();
-    state->command = command;
+    state->command = trackCommand(command);
     auto worker = std::make_unique<Attempt>();
     worker->state = state;
-    {
+    worker->thread = std::thread([this, state] {
+      while (!state->committed.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+      }
+      runAttempt(state);
+    });
+    try {
       std::lock_guard lock(mutex_);
-      current_attempt_ = state;
       attempts_.push_back(std::move(worker));
-      attempts_.back()->thread = std::thread([this, state] { runAttempt(state); });
+      current_attempt_ = state;
+      state->committed.store(true, std::memory_order_release);
+    } catch (...) {
+      state->operation.requestCancel();
+      state->committed.store(true, std::memory_order_release);
+      if (worker && worker->thread.joinable()) worker->thread.join();
+      throw;
     }
   }
 
@@ -97,6 +113,30 @@ class CameraActor::Implementation {
     event.kind = "camera";
     event.status = "stopped";
     emitter_.emit(std::move(event));
+  }
+
+  RuntimeEvent probe(const MediaCommand& command) {
+    reapFinishedAttempts();
+    RuntimeEvent result = reply(command);
+    result.state = "available";
+    std::lock_guard lock(mutex_);
+    for (const auto& attempt : attempts_) {
+      if (attempt->state->finished.load()) continue;
+      if (attempt->state->operation.expired()) {
+        result.ok = false;
+        result.error = NativeError{
+          "actor_unresponsive",
+          "camera publication worker exceeded its operation deadline",
+          "probeCameraActor",
+          true,
+          attempt->state->command.session_id,
+          attempt->state->command.generation,
+        };
+        return result;
+      }
+      result.state = "busy";
+    }
+    return result;
   }
 
   void releasePreviewFrame(const MediaCommand& command) {
@@ -143,7 +183,8 @@ class CameraActor::Implementation {
  private:
   struct AttemptState {
     MediaCommand command;
-    std::atomic_bool cancelled{false};
+    MediaOperation operation;
+    std::atomic_bool committed{false};
     std::atomic_bool finished{false};
     std::atomic_bool reply_emitted{false};
   };
@@ -155,13 +196,13 @@ class CameraActor::Implementation {
 
   void stopActive() {
     std::thread thread;
-    std::unique_ptr<LiveKitRoomSession> room;
+    std::unique_ptr<LiveKitTrackPublication> publication;
     std::string publication_sid;
     {
       std::lock_guard lock(mutex_);
       if (running_) running_->store(false);
       thread = std::move(capture_thread_);
-      room = std::move(room_);
+      publication = std::move(publication_);
       publication_sid = std::move(publication_sid_);
       running_.reset();
       source_.reset();
@@ -170,8 +211,7 @@ class CameraActor::Implementation {
       generation_ = 0;
     }
     if (thread.joinable() && thread.get_id() != std::this_thread::get_id()) thread.join();
-    if (!publication_sid.empty()) client_->stopLocalCameraPreview(publication_sid);
-    if (room && !publication_sid.empty()) room->unpublishTrack(publication_sid);
+    cleanupFailedAttempt(publication.get(), publication_sid);
   }
 
   void cancelAttempts(bool emit_replies) {
@@ -180,7 +220,7 @@ class CameraActor::Implementation {
       std::lock_guard lock(mutex_);
       for (auto& attempt : attempts_) {
         if (attempt->state->finished.load()) continue;
-        attempt->state->cancelled.store(true);
+        attempt->state->operation.requestCancel();
         if (emit_replies && !attempt->state->command.request_id.empty() &&
             !attempt->state->reply_emitted.exchange(true)) {
           cancelled.push_back(attempt->state->command);
@@ -221,23 +261,40 @@ class CameraActor::Implementation {
   }
 
   bool attemptIsCurrent(const std::shared_ptr<AttemptState>& attempt) {
-    if (attempt->cancelled.load() ||
+    if (attempt->operation.cancelled() || attempt->operation.expired() ||
         !is_current_(attempt->command.session_id, attempt->command.generation)) return false;
     std::lock_guard lock(mutex_);
-    return current_attempt_ == attempt && !attempt->cancelled.load();
+    return current_attempt_ == attempt && !attempt->operation.cancelled() &&
+      !attempt->operation.expired();
+  }
+
+  void cleanupFailedAttempt(
+    LiveKitTrackPublication* publication,
+    const std::string& publication_sid
+  ) noexcept {
+    if (publication_sid.empty()) return;
+    try {
+      client_->stopLocalCameraPreview(publication_sid);
+    } catch (...) {
+      // Preserve the original publication failure; preview cleanup is best effort.
+    }
+    if (!publication) return;
+    try {
+      publication->unpublishTrack(publication_sid);
+    } catch (...) {
+      // A failed unpublish must not escape the attempt thread or suppress its reply.
+    }
   }
 
   void runAttempt(const std::shared_ptr<AttemptState>& attempt) {
     const auto command = attempt->command;
-    std::unique_ptr<LiveKitRoomSession> room;
+    std::unique_ptr<LiveKitTrackPublication> publication;
     std::string publication_sid;
     try {
-      room = client_->createCameraSession(command.session_id, command.generation, post_);
-      livekit::RoomOptions room_options;
-      room_options.auto_subscribe = true;
-      if (!room->connect(command.livekit_url, command.livekit_token, room_options) ||
-          !room->waitConnected(std::chrono::seconds(20))) {
-        throw std::runtime_error("LiveKit camera Room connection failed");
+      publication = client_->createCameraPublication(
+        command.session_id, command.generation);
+      if (!publication->isRoomConnected()) {
+        throw std::runtime_error("LiveKit voice Room is not connected");
       }
       if (!attemptIsCurrent(attempt)) throw std::runtime_error("stale camera generation");
       std::unique_lock publication_lock(publication_mutex_);
@@ -253,7 +310,7 @@ class CameraActor::Implementation {
       options.simulcast = false;
       options.video_encoding = livekit::VideoEncodingOptions{
         static_cast<std::uint64_t>(command.bitrate), static_cast<double>(fps)};
-      publication_sid = room->publishVideoTrack(track, options);
+      publication_sid = publication->publishVideoTrack(track, options);
       if (publication_sid.empty()) throw std::runtime_error("LiveKit camera publication SID is empty");
       client_->startLocalCameraPreview(
         command.session_id,
@@ -264,23 +321,36 @@ class CameraActor::Implementation {
       );
 
       auto running = std::make_shared<std::atomic_bool>(true);
+      auto capture_committed = std::make_shared<std::atomic_bool>(false);
+      auto capture_session_id = command.session_id;
+      auto capture_thread = std::thread([
+        this, command, width, height, fps, source, running, capture_committed
+      ] {
+        while (!capture_committed->load(std::memory_order_acquire) && running->load()) {
+          std::this_thread::yield();
+        }
+        if (running->load()) captureLoop(command, width, height, fps, source, running);
+      });
       {
         std::lock_guard lock(mutex_);
-        if (current_attempt_ != attempt || attempt->cancelled.load() ||
+        if (current_attempt_ != attempt || attempt->operation.cancelled() ||
+            attempt->operation.expired() ||
             !is_current_(command.session_id, command.generation)) {
+          running->store(false);
+          capture_committed->store(true, std::memory_order_release);
+          capture_thread.join();
           throw std::runtime_error("stale camera generation");
         }
-        session_id_ = command.session_id;
+        session_id_ = std::move(capture_session_id);
         generation_ = command.generation;
-        room_ = std::move(room);
+        publication_ = std::move(publication);
         publication_sid_ = publication_sid;
         source_ = source;
         track_ = std::move(track);
         running_ = running;
-        capture_thread_ = std::thread([this, command, width, height, fps, source, running] {
-          captureLoop(command, width, height, fps, source, running);
-        });
+        capture_thread_ = std::move(capture_thread);
         current_attempt_.reset();
+        capture_committed->store(true, std::memory_order_release);
       }
       if (!attempt->reply_emitted.exchange(true)) emitter_.emit(reply(command));
       RuntimeEvent event;
@@ -289,21 +359,23 @@ class CameraActor::Implementation {
       event.device_id = command.device_id; event.width = width; event.height = height; event.fps = fps;
       emitter_.emit(std::move(event));
     } catch (const std::exception& error) {
-      if (!publication_sid.empty()) client_->stopLocalCameraPreview(publication_sid);
-      if (room && !publication_sid.empty()) room->unpublishTrack(publication_sid);
+      cleanupFailedAttempt(publication.get(), publication_sid);
       if (!attempt->reply_emitted.exchange(true)) {
         auto failed = reply(command);
         failed.ok = false;
-        const bool cancelled = attempt->cancelled.load() ||
+        const bool cancelled = attempt->operation.cancelled() ||
           !is_current_(command.session_id, command.generation);
-        failed.error = NativeError{cancelled ? "stale_generation" : "native_command_failed",
-          cancelled ? "Camera connection attempt was superseded" : error.what(),
+        const bool expired = attempt->operation.expired();
+        failed.error = NativeError{
+          cancelled ? "stale_generation" :
+            (expired ? "native_operation_timeout" : "native_command_failed"),
+          cancelled ? "Camera connection attempt was superseded" :
+            (expired ? "Camera publication deadline expired" : error.what()),
           "connectCamera", !cancelled, command.session_id, command.generation};
         emitter_.emit(std::move(failed));
       }
     } catch (...) {
-      if (!publication_sid.empty()) client_->stopLocalCameraPreview(publication_sid);
-      if (room && !publication_sid.empty()) room->unpublishTrack(publication_sid);
+      cleanupFailedAttempt(publication.get(), publication_sid);
       if (!attempt->reply_emitted.exchange(true)) {
         auto failed = reply(command); failed.ok = false;
         failed.error = NativeError{"native_command_failed", "Camera publication failed",
@@ -361,7 +433,7 @@ class CameraActor::Implementation {
   std::mutex publication_mutex_;
   std::string session_id_;
   std::uint64_t generation_ = 0;
-  std::unique_ptr<LiveKitRoomSession> room_;
+  std::unique_ptr<LiveKitTrackPublication> publication_;
   std::string publication_sid_;
   std::shared_ptr<livekit::VideoSource> source_;
   std::shared_ptr<livekit::LocalVideoTrack> track_;
@@ -378,6 +450,9 @@ CameraActor::CameraActor(SequencedEmitter& emitter, InternalPost post, IsCurrent
       std::move(current), std::move(client), std::move(factory))) {}
 CameraActor::~CameraActor() = default;
 void CameraActor::connect(const MediaCommand& command) { implementation_->connect(command); }
+RuntimeEvent CameraActor::probe(const MediaCommand& command) {
+  return implementation_->probe(command);
+}
 void CameraActor::disconnect(const MediaCommand& command, bool emit) {
   implementation_->disconnect(command, emit);
 }

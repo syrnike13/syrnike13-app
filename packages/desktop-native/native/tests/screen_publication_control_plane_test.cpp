@@ -119,6 +119,15 @@ void require(bool condition, const char* message) {
   if (!condition) throw std::runtime_error(message);
 }
 
+template <typename Verify>
+void verifyPhase(const char* name, Verify verify) {
+  try {
+    verify();
+  } catch (const std::exception& error) {
+    throw std::runtime_error(std::string(name) + ": " + error.what());
+  }
+}
+
 syrnike::desktop_native::MediaCommand screenCommand(
   std::string type,
   std::string request_id,
@@ -130,8 +139,6 @@ syrnike::desktop_native::MediaCommand screenCommand(
   command.request_id = std::move(request_id);
   command.session_id = std::move(session_id);
   command.generation = generation;
-  command.livekit_url = "wss://livekit.example";
-  command.livekit_token = "token";
   command.participant_identity = "user:desktop-native:screen";
   command.source_id = "screen:1";
   command.width = 1280;
@@ -184,6 +191,7 @@ class ScreenControllerHarness final {
   ) : sink(std::make_shared<CollectingSink>()),
       emitter(sink),
       livekit(std::make_shared<FakeLiveKit>()) {
+    livekit->setVoiceSessionForTest("screen-di");
     controller = std::make_unique<Controller>(
       emitter,
       [this](syrnike::desktop_native::MediaCommand command) {
@@ -224,10 +232,8 @@ class ScreenControllerHarness final {
   }
 
   ~ScreenControllerHarness() {
-    livekit->setBlocked(FakeLiveKit::Operation::Connect, false);
     livekit->setBlocked(FakeLiveKit::Operation::Publish, false);
     livekit->setBlocked(FakeLiveKit::Operation::Unpublish, false);
-    livekit->setBlocked(FakeLiveKit::Operation::Disconnect, false);
     if (controller) controller->shutdown();
   }
 
@@ -337,14 +343,17 @@ void verifyCancelledPublishRollsBackExactSid() {
 
   const auto start = screenCommand("startScreenCapture", "di-stale", "screen-di", 1);
   harness.controller->startCapture(start);
-  harness.livekit->waitUntilPending(ScreenControllerHarness::FakeLiveKit::Operation::Publish, 1, kTestWatchdog);
+  harness.livekit->waitUntilPending(
+    ScreenControllerHarness::FakeLiveKit::Operation::Publish,
+    1,
+    kTestWatchdog
+  );
 
   harness.setCurrent(2);
   const auto cancel = screenCommand("disconnectScreen", "di-cancel", "screen-di", 2);
   harness.controller->disconnect(cancel, false);
 
   harness.livekit->setBlocked(ScreenControllerHarness::FakeLiveKit::Operation::Unpublish, true);
-  harness.livekit->setBlocked(ScreenControllerHarness::FakeLiveKit::Operation::Disconnect, true);
   ScreenControllerHarness::FakeLiveKit::Release published;
   published.publication_sid = "screen-video-exact";
   harness.livekit->releaseNext(
@@ -357,12 +366,6 @@ void verifyCancelledPublishRollsBackExactSid() {
     kTestWatchdog
   );
   harness.livekit->releaseNext(ScreenControllerHarness::FakeLiveKit::Operation::Unpublish);
-  harness.livekit->waitUntilPending(
-    ScreenControllerHarness::FakeLiveKit::Operation::Disconnect,
-    1,
-    kTestWatchdog
-  );
-  harness.livekit->releaseNext(ScreenControllerHarness::FakeLiveKit::Operation::Disconnect);
 
   harness.handleNextWorkerCommand();
   const auto reply = harness.sink->waitReply("di-stale");
@@ -402,8 +405,6 @@ void releaseRetirement(ScreenControllerHarness& harness) {
   using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
   harness.livekit->waitUntilPending(Operation::Unpublish, 1, kTestWatchdog);
   harness.livekit->releaseNext(Operation::Unpublish);
-  harness.livekit->waitUntilPending(Operation::Disconnect, 1, kTestWatchdog);
-  harness.livekit->releaseNext(Operation::Disconnect);
   harness.handleNextWorkerCommand();
 }
 
@@ -417,14 +418,13 @@ void verifyRtpStallRestartsCapture() {
   );
 
   harness.livekit->setBlocked(Operation::Unpublish, true);
-  harness.livekit->setBlocked(Operation::Disconnect, true);
-  harness.livekit->setBlocked(Operation::Connect, true);
+  harness.livekit->setBlocked(Operation::Publish, true);
   auto stalled = screenCommand("__screenRtpStalled", {}, "screen-di", 1);
   harness.controller->restartCaptureAfterStall(stalled);
 
   releaseRetirement(harness);
-  harness.livekit->waitUntilPending(Operation::Connect, 1, kTestWatchdog);
-  harness.livekit->releaseNext(Operation::Connect);
+  harness.livekit->waitUntilPending(Operation::Publish, 1, kTestWatchdog);
+  harness.livekit->releaseNext(Operation::Publish);
   harness.handleNextWorkerCommand();
 
   require(
@@ -443,8 +443,7 @@ void verifyManualStopCancelsPendingStallRestart() {
   startHarnessCapture(harness, "di-stop-start");
 
   harness.livekit->setBlocked(Operation::Unpublish, true);
-  harness.livekit->setBlocked(Operation::Disconnect, true);
-  harness.livekit->setBlocked(Operation::Connect, true);
+  harness.livekit->setBlocked(Operation::Publish, true);
   auto stalled = screenCommand("__screenRtpStalled", {}, "screen-di", 1);
   harness.controller->restartCaptureAfterStall(stalled);
   harness.livekit->waitUntilPending(Operation::Unpublish, 1, kTestWatchdog);
@@ -457,7 +456,7 @@ void verifyManualStopCancelsPendingStallRestart() {
   );
   require(
     probe.state == "available" &&
-      harness.livekit->pending(Operation::Connect) == 0,
+      harness.livekit->pending(Operation::Publish) == 0,
     "manual stop launched the pending RTP stall restart"
   );
   require(
@@ -529,80 +528,26 @@ int main() try {
   MediaRuntime runtime(sink, livekit, [&] {
     return clock_origin + std::chrono::milliseconds(clock_offset_ms.load());
   });
+  runtime.waitUntilReady();
 
-  livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Connect, true);
-  const auto prepare_a = screenCommand("connectScreen", "prepare-a", "screen-a", 1);
-  require(runtime.dispatch(prepare_a), "runtime rejected blocked screen connect");
-  livekit->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Connect, 1, kTestWatchdog);
-  requireProbe(runtime, sink, "probe-connect");
+  verifyPhase("unavailable encoder", verifyUnavailableEncoderFailsClosed);
+  verifyPhase("null encoder source", verifyNullEncoderSourceFailsClosed);
+  verifyPhase("cancelled publish rollback", verifyCancelledPublishRollsBackExactSid);
+  verifyPhase("RTP stall restart", verifyRtpStallRestartsCapture);
+  verifyPhase("manual stop cancels restart", verifyManualStopCancelsPendingStallRestart);
 
-  const auto supersede_a = screenCommand("connectScreen", "supersede-a", "screen-a", 2);
-  require(runtime.dispatch(supersede_a), "runtime rejected bounded screen supersession");
-  const auto supersede_reply = sink->waitReply("supersede-a");
-  require(!supersede_reply.ok, "second screen attempt unexpectedly started in parallel");
-  require(
-    supersede_reply.error && supersede_reply.error->code == "actor_busy",
-    "healthy bounded screen contention did not fail fast as actor_busy"
-  );
-  require(
-    livekit->pending(DeterministicFakeLiveKitPublicationClient::Operation::Connect) == 1,
-    "screen actor spawned a second LiveKit connect worker"
-  );
-
-  clock_offset_ms.store(21'000);
-  const auto overdue_a = screenCommand("connectScreen", "overdue-a", "screen-a", 3);
-  require(runtime.dispatch(overdue_a), "runtime rejected overdue screen attempt check");
-  const auto overdue_reply = sink->waitReply("overdue-a");
-  require(!overdue_reply.ok, "overdue screen attempt unexpectedly started in parallel");
-  require(
-    overdue_reply.error && overdue_reply.error->code == "actor_unresponsive",
-    "lost screen attempt capacity did not fail as actor_unresponsive"
-  );
-
-  syrnike::desktop_native::MediaCommand overdue_probe;
-  overdue_probe.type = "probeScreenActor";
-  overdue_probe.request_id = "probe-overdue";
-  require(runtime.dispatch(overdue_probe), "runtime rejected overdue screen actor probe");
-  const auto overdue_probe_reply = sink->waitReply("probe-overdue");
-  require(
-    !overdue_probe_reply.ok && overdue_probe_reply.error &&
-      overdue_probe_reply.error->code == "actor_unresponsive",
-    "overdue screen actor probe did not expose lost capacity"
-  );
-
-  auto cancel_a = screenCommand("disconnectScreen", "cancel-a", "screen-a", 4);
-  require(runtime.dispatch(cancel_a), "runtime rejected screen cancel during blocked connect");
-  require(
-    sink->waitReply("cancel-a").ok,
-    "screen disconnect did not reply while connect was blocked"
-  );
-  livekit->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Connect);
-  const auto reply_a = sink->waitReply("prepare-a");
-  require(!reply_a.ok, "superseded screen connect resolved as success");
-  require(
-    reply_a.error && reply_a.error->code == "stale_generation",
-    "superseded screen connect did not fail as stale_generation"
-  );
-
-  verifyUnavailableEncoderFailsClosed();
-  verifyNullEncoderSourceFailsClosed();
-  verifyCancelledPublishRollsBackExactSid();
-  verifyRtpStallRestartsCapture();
-  verifyManualStopCancelsPendingStallRestart();
-
-  livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Connect, false);
+  livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, false);
+  livekit->setVoiceSessionForTest("screen-c");
   const auto prepare_c = screenCommand("connectScreen", "prepare-c", "screen-c", 7);
   require(runtime.dispatch(prepare_c), "runtime rejected terminal-semantics prepare");
   require(sink->waitReply("prepare-c").ok, "terminal-semantics prepare failed");
 
-  livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Disconnect, true);
   syrnike::desktop_native::MediaCommand terminal;
   terminal.type = "__screenTerminal";
   terminal.session_id = "screen-c";
   terminal.generation = 7;
   terminal.internal_message = "livekit_disconnected:network";
   require(runtime.dispatch(terminal), "runtime rejected screen terminal event");
-  livekit->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Disconnect, 1, kTestWatchdog);
   const auto ended = sink->waitEvent("screenCaptureEnded", "screen-c", 7);
   require(ended.reason == "runtime_error", "terminal disconnect lost screen ended semantics");
   require(
@@ -615,7 +560,6 @@ int main() try {
     "terminal disconnect lost sessionStopped semantics"
   );
   requireProbe(runtime, sink, "probe-terminal-retire");
-  livekit->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Disconnect);
 
   runtime.requestShutdown();
   runtime.shutdownAndWait();

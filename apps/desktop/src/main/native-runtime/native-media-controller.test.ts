@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { MediaRuntimeCommand, MediaRuntimeEvent } from './contract'
 import { NativeMediaController } from './native-media-controller'
+import { NativeRuntimeRequestError } from './runtime-supervisor'
 import type {
   NativeRuntimeSupervisor,
   NativeRuntimeSupervisorSnapshot,
@@ -60,6 +61,14 @@ function createHarness(remoteVideoFirstFrameTimeoutMs?: number) {
     getSelfWindowHwnd: () => '42',
     remoteVideoFirstFrameTimeoutMs,
   })
+  eventListener?.({
+    type: 'sessionLifecycle',
+    sequence: 0,
+    sessionId: 'voice',
+    generation: 3,
+    kind: 'voice',
+    state: { status: 'running', sessionId: 'voice' },
+  })
   return {
     controller,
     request,
@@ -82,6 +91,200 @@ async function waitUntil(predicate: () => boolean) {
 }
 
 describe('NativeMediaController retained tools', () => {
+  it('owns demand only for the current voice session and clears timers on turnover', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = createHarness(1_000)
+      await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', true)
+      harness.request.mockClear()
+
+      harness.event({
+        type: 'sessionLifecycle',
+        sequence: 1,
+        sessionId: 'next-voice',
+        generation: 4,
+        kind: 'voice',
+        state: { status: 'starting', sessionId: 'next-voice' },
+      })
+      await vi.runAllTimersAsync()
+      await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', true)
+
+      expect(harness.request).not.toHaveBeenCalled()
+      expect(harness.controller.isCurrentVoiceSession('next-voice', 4)).toBe(true)
+
+      harness.event({
+        type: 'sessionLifecycle',
+        sequence: 2,
+        sessionId: 'stale-voice',
+        generation: 3,
+        kind: 'voice',
+        state: { status: 'running', sessionId: 'stale-voice' },
+      })
+      expect(harness.controller.isCurrentVoiceSession('next-voice', 4)).toBe(true)
+
+      harness.event({
+        type: 'sessionLifecycle',
+        sequence: 3,
+        sessionId: 'next-voice',
+        generation: 3,
+        kind: 'voice',
+        state: { status: 'idle' },
+      })
+      expect(harness.controller.isCurrentVoiceSession('next-voice', 4)).toBe(true)
+
+      harness.event({
+        type: 'sessionLifecycle',
+        sequence: 4,
+        sessionId: 'next-voice',
+        generation: 5,
+        kind: 'voice',
+        state: { status: 'idle' },
+      })
+      expect(harness.controller.isCurrentVoiceSession('next-voice', 4)).toBe(false)
+      await harness.controller.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('retains current screen publications for a new renderer and fences stale events', () => {
+    const harness = createHarness()
+    harness.event({
+      type: 'remoteScreenPublicationAvailable',
+      sequence: 1,
+      sessionId: 'voice',
+      generation: 3,
+      trackId: 'screen-a',
+      participantIdentity: 'member-a',
+      source: 'screen',
+    })
+
+    expect(harness.controller.listRemoteScreenPublications()).toEqual([{
+      sessionId: 'voice',
+      generation: 3,
+      trackId: 'screen-a',
+      participantIdentity: 'member-a',
+      source: 'screen',
+    }])
+
+    harness.event({
+      type: 'remoteScreenPublicationUnavailable',
+      sequence: 2,
+      sessionId: 'voice',
+      generation: 2,
+      trackId: 'screen-a',
+      participantIdentity: 'member-a',
+      source: 'screen',
+    })
+    expect(harness.controller.listRemoteScreenPublications()).toHaveLength(1)
+
+    harness.event({
+      type: 'sessionLifecycle',
+      sequence: 3,
+      sessionId: 'voice-next',
+      generation: 4,
+      kind: 'voice',
+      state: { status: 'running', sessionId: 'voice-next' },
+    })
+    expect(harness.controller.listRemoteScreenPublications()).toEqual([])
+  })
+
+  it('retires remote video immediately when the current voice epoch terminates', () => {
+    const harness = createHarness()
+    const listener = vi.fn()
+    harness.controller.subscribe(listener)
+    harness.event({
+      type: 'remoteScreenPublicationAvailable',
+      sequence: 1,
+      sessionId: 'voice',
+      generation: 3,
+      trackId: 'screen-a',
+      participantIdentity: 'member-a',
+      source: 'screen',
+    })
+
+    harness.event({
+      type: 'voiceTerminal',
+      sequence: 2,
+      sessionId: 'voice',
+      generation: 3,
+      error: {
+        code: 'rtc_terminal',
+        message: 'transport ended',
+        stage: 'connectVoice',
+        retryable: true,
+      },
+    })
+
+    expect(harness.controller.listRemoteScreenPublications()).toEqual([])
+    expect(harness.controller.isCurrentVoiceSession('voice', 3)).toBe(false)
+    expect(listener).toHaveBeenCalledWith({
+      type: 'remoteVideoSessionReset',
+      sessionId: 'voice',
+      generation: 3,
+    })
+  })
+
+  it('treats stale generation replies as superseded without retrying', async () => {
+    const harness = createHarness()
+    harness.request.mockRejectedValueOnce(new NativeRuntimeRequestError({
+      code: 'stale_generation',
+      message: 'superseded',
+      retryable: false,
+    }))
+
+    await expect(
+      harness.controller.setRemoteVideoDemand('voice', 3, 'screen', true),
+    ).resolves.toBeUndefined()
+    harness.request.mockClear()
+    await expect(
+      harness.controller.recoverRemoteVideoDemand('voice', 3, 'screen'),
+    ).resolves.toBe(false)
+    expect(harness.request).not.toHaveBeenCalled()
+    await harness.controller.dispose()
+  })
+
+  it('retires recovery when native reports a stale generation', async () => {
+    const harness = createHarness()
+    await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', true)
+    harness.request.mockRejectedValueOnce(new NativeRuntimeRequestError({
+      code: 'stale_generation',
+      message: 'superseded',
+      retryable: false,
+    }))
+
+    await expect(
+      harness.controller.recoverRemoteVideoDemand('voice', 3, 'screen'),
+    ).resolves.toBe(false)
+    harness.request.mockClear()
+    await expect(
+      harness.controller.recoverRemoteVideoDemand('voice', 3, 'screen'),
+    ).resolves.toBe(false)
+    expect(harness.request).not.toHaveBeenCalled()
+    await harness.controller.dispose()
+  })
+
+  it('unsubscribes and cancels recovery when the renderer resets', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = createHarness(1_000)
+      await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', true)
+      harness.request.mockClear()
+
+      harness.controller.resetRemoteVideoDemands()
+      await vi.runAllTimersAsync()
+
+      expect(harness.request).toHaveBeenCalledTimes(1)
+      expect(harness.request).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'setRemoteVideoDemand',
+        demanded: false,
+      }), expect.any(Number))
+      await harness.controller.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('restarts a demanded screen when no first frame arrives', async () => {
     vi.useFakeTimers()
     try {
@@ -309,7 +512,18 @@ describe('NativeMediaController retained tools', () => {
     vi.useFakeTimers()
     try {
       const harness = createHarness(1_000)
+      const listener = vi.fn()
+      harness.controller.subscribe(listener)
       await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', true)
+      harness.event({
+        type: 'remoteScreenPublicationAvailable',
+        sequence: 1,
+        sessionId: 'voice',
+        generation: 3,
+        trackId: 'screen',
+        participantIdentity: 'remote',
+        source: 'screen',
+      })
       harness.request.mockClear()
       harness.state({
         runtime: 'media',
@@ -321,6 +535,15 @@ describe('NativeMediaController retained tools', () => {
       await vi.advanceTimersByTimeAsync(30_000)
 
       expect(harness.request).not.toHaveBeenCalled()
+      expect(listener).toHaveBeenCalledWith({
+        type: 'remoteVideoSessionReset',
+        sessionId: 'voice',
+        generation: 3,
+      })
+      expect(harness.controller.listRemoteScreenPublications()).toEqual([])
+      await expect(
+        harness.controller.recoverRemoteVideoDemand('voice', 3, 'screen'),
+      ).resolves.toBe(false)
       await harness.controller.dispose()
     } finally {
       vi.useRealTimers()
@@ -496,10 +719,31 @@ describe('NativeMediaController retained tools', () => {
     }), expect.any(Number))
 
     harness.event({
-      type: 'sessionStopped',
+      type: 'sessionLifecycle',
       sequence: 2,
       sessionId: 'screen-a',
+      generation: 3,
+      kind: 'screen',
+      state: { status: 'idle' },
+    })
+    harness.request.mockClear()
+    await harness.controller.setLocalScreenPreviewDemand({
+      demanded: true,
+      width: 1600,
+      height: 900,
+      fps: 30,
+    })
+    expect(harness.request).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'setLocalScreenPreviewDemand',
+      sessionId: 'screen-a',
       generation: 4,
+    }), expect.any(Number))
+
+    harness.event({
+      type: 'sessionStopped',
+      sequence: 3,
+      sessionId: 'screen-a',
+      generation: 5,
     })
     harness.request.mockClear()
     await harness.controller.setLocalScreenPreviewDemand({
@@ -511,7 +755,7 @@ describe('NativeMediaController retained tools', () => {
     expect(harness.request).not.toHaveBeenCalled()
     harness.event({
       type: 'sessionLifecycle',
-      sequence: 3,
+      sequence: 4,
       sessionId: 'screen-b',
       generation: 5,
       kind: 'screen',
@@ -559,12 +803,12 @@ describe('NativeMediaController retained tools', () => {
     harness.event({
       type: 'microphoneMetrics',
       sequence: 1,
-      metrics: { inputDb: -18, thresholdDb: -28, open: true },
+      metrics: { revision: 1, inputDb: -18, thresholdDb: -28, open: true },
     })
 
     expect(listener).toHaveBeenCalledWith({
       type: 'microphoneMetrics',
-      event: { inputDb: -18, thresholdDb: -28, open: true },
+      event: { revision: 1, inputDb: -18, thresholdDb: -28, open: true },
     })
     expect(
       harness.request.mock.calls.some(
@@ -643,7 +887,7 @@ describe('NativeMediaController retained tools', () => {
     harness.event({
       type: 'microphoneMetrics',
       sequence: 1,
-      metrics: { inputDb: -12, thresholdDb: -28, open: true },
+      metrics: { revision: 1, inputDb: -12, thresholdDb: -28, open: true },
     })
     harness.event({
       type: 'runtimeError',
@@ -660,7 +904,7 @@ describe('NativeMediaController retained tools', () => {
 
     expect(listener).toHaveBeenCalledWith({
       type: 'microphoneMetrics',
-      event: { inputDb: -12, thresholdDb: -28, open: true },
+      event: { revision: 1, inputDb: -12, thresholdDb: -28, open: true },
     })
     expect(listener).toHaveBeenCalledWith({
       type: 'microphonePreviewState',

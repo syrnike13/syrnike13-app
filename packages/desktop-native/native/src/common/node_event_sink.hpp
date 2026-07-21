@@ -9,6 +9,8 @@
 
 namespace syrnike::desktop_native {
 
+class CoalescingEventLane;
+
 class NodeEventSink final : public EventSink {
  public:
   NodeEventSink(Napi::Env env, Napi::Function callback, const char* resource_name);
@@ -20,7 +22,9 @@ class NodeEventSink final : public EventSink {
  private:
   std::atomic_bool closed_{false};
   Napi::ThreadSafeFunction control_callback_;
+  Napi::ThreadSafeFunction media_callback_;
   Napi::ThreadSafeFunction metrics_callback_;
+  std::shared_ptr<CoalescingEventLane> media_lane_;
 };
 
 }  // namespace syrnike::desktop_native

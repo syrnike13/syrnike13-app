@@ -68,6 +68,10 @@ export class VoiceDirector {
   private reconcileRequested = false
   private reconcilePromise: Promise<void> | null = null
   private operationAbort: AbortController | null = null
+  private engineAvailable = true
+  private engineAvailabilityFailure: VoiceFailure | undefined
+  private readonly engineAvailabilityWaiters = new Set<() => void>()
+  private terminalCleanupRequested = false
   private selfStateRevision = 0
   private selfStateHandledRevision = 0
   private selfStateSync: Promise<void> | null = null
@@ -222,6 +226,7 @@ export class VoiceDirector {
 
   async shutdown(reason: 'app_exit' | 'sleep' | 'logout') {
     if (this.disposed) return
+    this.terminalCleanupRequested = false
     this.resetCameraAndScreenForIntentChange(null)
     this.desiredChannelId = null
     this.desiredRevision += 1
@@ -240,6 +245,7 @@ export class VoiceDirector {
     this.unsubscribeEngine()
     this.listeners.clear()
     this.commitWaiters.clear()
+    this.engineAvailabilityWaiters.clear()
   }
 
   private join(channelId: string, recipients?: readonly string[]) {
@@ -264,6 +270,7 @@ export class VoiceDirector {
   }
 
   private bumpIntentRevision() {
+    this.terminalCleanupRequested = false
     this.desiredRevision += 1
     this.operationAbort?.abort('superseded')
     this.updateSnapshot({
@@ -293,6 +300,20 @@ export class VoiceDirector {
 
   private async reconcileOnce(revision: number) {
     const target = this.desiredChannelId
+    if (this.terminalCleanupRequested) {
+      const terminalFailure = this.snapshotValue.failure
+      this.terminalCleanupRequested = false
+      await this.cleanupFailedAttempt('connect_failed')
+      if (revision !== this.desiredRevision) return
+      this.updateSnapshot({
+        connection: 'failed',
+        membershipChannelId: null,
+        speakingUserIds: [],
+        retryAttempt: undefined,
+        failure: terminalFailure,
+      })
+      return
+    }
     if (!target) {
       await this.disconnectCurrent('leave')
       if (revision !== this.desiredRevision) return
@@ -327,7 +348,8 @@ export class VoiceDirector {
     const delays = recovery ? this.recoveryDelaysMs : [0]
     let lastFailure: VoiceFailure | undefined
 
-    for (let index = 0; index < delays.length; index += 1) {
+    let index = 0
+    while (index < delays.length) {
       if (revision !== this.desiredRevision || target !== this.desiredChannelId) {
         return
       }
@@ -335,21 +357,23 @@ export class VoiceDirector {
       const abort = new AbortController()
       this.operationAbort = abort
       const attempt = index + 1
-      if (delays[index] > 0) {
-        this.updateSnapshot({
-          connection: 'recovering',
-          retryAttempt: attempt,
-          failure: lastFailure,
-        })
-        try {
-          await this.delay(delays[index], abort.signal)
-        } catch (error) {
-          if (isAbortError(error)) return
-          throw error
-        }
-      }
-
       try {
+        if (recovery && !this.engineAvailable) {
+          this.updateSnapshot({
+            connection: 'recovering',
+            retryAttempt: attempt,
+            failure: lastFailure,
+          })
+          await this.waitForEngineAvailability(abort.signal)
+        }
+        if (delays[index] > 0) {
+          this.updateSnapshot({
+            connection: 'recovering',
+            retryAttempt: attempt,
+            failure: lastFailure,
+          })
+          await this.delay(delays[index], abort.signal)
+        }
         await this.connectTarget(target, revision, recovery, attempt, abort)
         this.recoveryRequested = false
         return
@@ -364,7 +388,11 @@ export class VoiceDirector {
         }
         lastFailure = normalizeFailure(error, 'voice_connect_failed')
         await this.cleanupFailedAttempt('connect_failed')
-        if (!recovery || index === delays.length - 1) {
+        if (
+          !lastFailure.retryable ||
+          !recovery ||
+          index === delays.length - 1
+        ) {
           this.updateSnapshot({
             connection: 'failed',
             membershipChannelId: null,
@@ -373,6 +401,9 @@ export class VoiceDirector {
           })
           return
         }
+        // Runtime recovery owns host restart/backoff. Do not consume Voice
+        // Recovery attempts while that runtime is unavailable.
+        if (this.engineAvailable) index += 1
       } finally {
         if (this.operationAbort === abort) this.operationAbort = null
       }
@@ -448,6 +479,34 @@ export class VoiceDirector {
     } finally {
       this.transitionInProgress = false
     }
+  }
+
+  private waitForEngineAvailability(signal: AbortSignal) {
+    if (this.engineAvailable) return Promise.resolve()
+    if (this.engineAvailabilityFailure?.retryable === false) {
+      return Promise.reject(failureError(this.engineAvailabilityFailure))
+    }
+    return new Promise<void>((resolve, reject) => {
+      let settled = false
+      const finish = (callback: () => void) => {
+        if (settled) return
+        settled = true
+        this.engineAvailabilityWaiters.delete(onAvailable)
+        signal.removeEventListener('abort', onAbort)
+        callback()
+      }
+      const onAvailable = () => {
+        if (this.engineAvailable) {
+          finish(resolve)
+        } else if (this.engineAvailabilityFailure?.retryable === false) {
+          finish(() => reject(failureError(this.engineAvailabilityFailure!)))
+        }
+      }
+      const onAbort = () => finish(() => reject(abortError()))
+      this.engineAvailabilityWaiters.add(onAvailable)
+      signal.addEventListener('abort', onAbort, { once: true })
+      if (this.engineAvailable) onAvailable()
+    })
   }
 
   private async disconnectCurrent(cause: VoiceDisconnectCause) {
@@ -671,6 +730,12 @@ export class VoiceDirector {
 
   private handleEngineEvent(event: VoiceEngineEvent) {
     if (this.disposed) return
+    if (event.type === 'availabilityChanged') {
+      this.engineAvailable = event.available
+      this.engineAvailabilityFailure = event.failure
+      for (const resolve of [...this.engineAvailabilityWaiters]) resolve()
+      return
+    }
     const lease = this.activeLease
     if (
       !lease ||
@@ -699,14 +764,15 @@ export class VoiceDirector {
     }
     if (event.type === 'terminalFailure') {
       if (!this.activeCommitted) return
-      this.recoveryRequested = true
+      this.recoveryRequested = event.failure.retryable
+      this.terminalCleanupRequested = !event.failure.retryable
       this.desiredRevision += 1
       this.operationAbort?.abort('runtime_lost')
       this.updateSnapshot({
-        connection: 'recovering',
+        connection: event.failure.retryable ? 'recovering' : 'failed',
         membershipChannelId: null,
         speakingUserIds: [],
-        retryAttempt: 0,
+        retryAttempt: event.failure.retryable ? 0 : undefined,
         failure: event.failure,
       })
       this.requestReconcile()

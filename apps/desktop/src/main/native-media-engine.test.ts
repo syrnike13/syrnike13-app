@@ -17,4 +17,12 @@ describe('native media runtime façade', () => {
     expect(runtime.startNativeMediaRuntime).toEqual(expect.any(Function))
     expect(runtime.disposeNativeMediaRuntime).toEqual(expect.any(Function))
   })
+
+  it('resets renderer-owned media only for a full main-frame navigation', async () => {
+    const { isRendererReplacementNavigation } = await import('./native-media-engine')
+
+    expect(isRendererReplacementNavigation(false, true)).toBe(true)
+    expect(isRendererReplacementNavigation(true, true)).toBe(false)
+    expect(isRendererReplacementNavigation(false, false)).toBe(false)
+  })
 })

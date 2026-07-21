@@ -640,6 +640,14 @@ class ScreenActor::Implementation {
             preview_command.width = static_cast<int>(preview.width);
             preview_command.height = static_cast<int>(preview.height);
             preview_command.nt_handle = preview.nt_handle;
+            try {
+              preview_command.on_drop = [capturer, sequence = preview.sequence] {
+                capturer->releasePreviewFrame(sequence);
+              };
+            } catch (...) {
+              capturer->releasePreviewFrame(preview.sequence);
+              throw;
+            }
             if (!post_(std::move(preview_command))) {
               capturer->releasePreviewFrame(preview.sequence);
             }

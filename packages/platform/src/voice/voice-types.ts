@@ -28,6 +28,7 @@ export type VoiceMediaError = Readonly<{
   message: string
   retryable: boolean
   stage?: string
+  hresult?: number
 }>
 
 export type VoiceMediaSnapshot = Readonly<{
@@ -105,6 +106,7 @@ export type VoiceFailure = Readonly<{
   message: string
   retryable: boolean
   stage?: string
+  hresult?: number
 }>
 
 export type VoiceSnapshot = Readonly<{

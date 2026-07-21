@@ -39,7 +39,8 @@ class MicrophonePublicationController final {
   using InternalPost = std::function<bool(MediaCommand)>;
   using IsCurrent = std::function<bool(const std::string &, std::uint64_t)>;
   using AddSink =
-      std::function<void(const std::shared_ptr<livekit::AudioSource> &)>;
+      std::function<void(const std::shared_ptr<livekit::AudioSource> &,
+                         const std::string &, std::uint64_t)>;
   using RemoveSink =
       std::function<void(const std::shared_ptr<livekit::AudioSource> &)>;
   using CaptureHealthy = std::function<bool()>;
@@ -64,6 +65,9 @@ class MicrophonePublicationController final {
   void disconnect(const MediaCommand &command, bool emit_stopped = true);
   void handleTerminal(const MediaCommand &command);
   void handleWorkerCommand(const MediaCommand &command);
+  void updatePendingPipeline(
+      const std::string &session_id, std::uint64_t generation,
+      const MicrophonePipelineSnapshot &pipeline);
   void shutdown();
 
   std::string activeSessionId() const;
@@ -74,7 +78,7 @@ class MicrophonePublicationController final {
   [[nodiscard]] bool hasBlockedCapacity() const;
 
  private:
-  struct PublishedRoom;
+  struct PublishedTrack;
   struct AttemptState;
   struct RetiringState;
 
