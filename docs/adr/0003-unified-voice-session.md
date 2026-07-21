@@ -2,6 +2,8 @@
 
 - **Status:** Accepted
 - **Date:** 2026-07-11
+- **Implementation clarification:** 2026-07-21 — native Windows failure
+  containment, transport lanes, and Runtime Availability ownership
 - **Supersedes:** ADR-0001 execution model and ADR-0002 media/host ownership
 
 ## Context
@@ -94,6 +96,12 @@ Electron is pinned to 43.1.0 because this cutover relies on its typed
 `sharedTexture` import API; Electron 35 cannot provide the GPU bridge contract
 and is not ABI-compatible with this native distribution.
 
+Electron main retains the current remote-screen publication inventory because
+the native Voice Session outlives a renderer. A replacement renderer installs
+its message listener and then requests an atomic publication replay before it
+creates Media Demand; same-document and subframe navigation do not reset demand.
+This keeps renderer lifecycle independent from Room and publication lifecycle.
+
 Speaking Activity is owned by the RTC Engine adapter rather than the renderer.
 The web adapter derives it from the processed local microphone and decoded
 remote microphone tracks; the native adapter derives local activity from the
@@ -155,6 +163,57 @@ utility processes:
 
 Each host has its own supervisor, contract, diagnostics, and recovery. A crash
 in one host cannot restart either of the others.
+
+### Windows media failure containment and Runtime Availability
+
+The Native Media Session is the only owner of the Windows audio endpoint
+lifecycle and the one LiveKit Room for a Connection Epoch. Track publication
+actors may publish and unpublish through that Room, but never connect,
+disconnect, replace, or retain credentials for it.
+
+Microphone and output endpoint failures retain their original HRESULT category.
+Device invalidation, current-default changes, candidate health, and bounded
+endpoint recreation remain inside the Native Media Session. A candidate input
+or output becomes active only after healthy PCM or render progress. Media
+Failure never tears down the Room; if local recovery is exhausted, only the
+affected media path becomes failed.
+
+Endpoint intent is separate from the currently active capture or renderer. A
+missing explicit endpoint may fall back to the communications default only for
+device-not-found or invalidation failures; access denial and unsupported media
+configuration remain terminal for that path. If the default is also unavailable,
+the fallback stays pending so a later Windows default-change notification retries
+it. Notifications never open an idle microphone without media intent. Each
+renderer start has an internal epoch, so a late failure from a retired output
+renderer cannot replace a newer healthy device.
+
+`NativeRuntimeSupervisor` owns Runtime Availability for one host epoch:
+startup, handshake, typed crash cause, restart backoff, and circuit state. It
+emits one causal Runtime Loss for an epoch and never creates a Voice Operation.
+The Voice Director remains the sole owner of Voice Recovery, waits for Runtime
+Availability without consuming an attempt, and stops immediately on a
+non-retryable availability outcome.
+
+Native events use independent delivery policy. Replies, cancellation, terminal
+and lifecycle events use an ordered lossless control lane. Video and preview
+frames use a bounded latest-per-track media lane, active-speaker state is
+latest-per-voice-epoch, and meters and stats use a lossy telemetry lane. Media or
+telemetry pressure may drop data and must release its resources, but cannot
+saturate control or terminate the host. Failure to deliver already accepted
+control state remains a Runtime Loss.
+
+Lane classification starts at the first asynchronous actor mailbox, before a
+frame can compete with a state transition. Control is always drained before
+media, while each bounded media key owns at most one retained native resource;
+replacement, eviction, rejection, and shutdown release that resource exactly
+once. Endpoint notifications are serialized with the endpoint intent they may
+change, while capture and renderer epochs fence late callbacks, so an old Windows
+notification or worker failure cannot overwrite a newer healthy device.
+
+Native operation deadlines form one monotonic budget. Actor/SDK work expires
+before the Electron transport deadline, leaving the accepted two-second cancel
+and cleanup budget. Late completion is fenced by Connection Epoch and can never
+promote current state.
 
 ### Diagnostics and delivery
 

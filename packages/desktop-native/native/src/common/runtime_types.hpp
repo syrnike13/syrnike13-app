@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -15,6 +16,7 @@ struct NativeError {
   bool retryable = false;
   std::string session_id;
   std::optional<std::uint64_t> generation;
+  std::optional<std::int64_t> hresult;
 };
 
 struct DeviceInfo {
@@ -122,9 +124,22 @@ struct RuntimeEvent {
   std::uint64_t frame_sequence = 0;
   std::uint64_t timestamp_us = 0;
   std::uint64_t nt_handle = 0;
+  // Media events may own resources in the utility process until Electron
+  // accepts the event. A lossy event sink invokes this synchronously when it
+  // drops the event before JS can release the resource.
+  std::function<void()> on_drop;
 };
 
 struct MediaCommand {
+  MediaCommand() = default;
+  MediaCommand(const MediaCommand&) = default;
+  MediaCommand& operator=(const MediaCommand&) = default;
+  // All dynamic members use standard allocators and transfer ownership on
+  // move. Declaring that transfer noexcept lets fixed-capacity native
+  // mailboxes move commands without opening an allocation/failure window.
+  MediaCommand(MediaCommand&&) noexcept = default;
+  MediaCommand& operator=(MediaCommand&&) noexcept = default;
+
   std::string type;
   std::string request_id;
   std::string session_id;
@@ -187,6 +202,11 @@ struct MediaCommand {
   std::uint32_t electron_main_pid = 0;
   std::int64_t diagnostic_hresult = 0;
   std::uint64_t diagnostic_suppressed = 0;
+  bool diagnostic_retryable = true;
+  // Coalesced native media owns its GPU handle until the actor consumes it.
+  // The first native mailbox seam invokes this exactly once when it displaces
+  // or discards an accepted frame. A rejected producer post retains ownership.
+  std::function<void()> on_drop;
 };
 
 struct HooksCommand {

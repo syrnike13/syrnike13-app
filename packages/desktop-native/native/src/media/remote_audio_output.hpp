@@ -6,8 +6,12 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <stop_token>
+#include <thread>
 #include <unordered_map>
 #include <vector>
+
+#include "audio_failure.hpp"
 
 namespace livekit { class Track; }
 
@@ -43,20 +47,43 @@ float resolveRemoteAudioGain(
 );
 float remoteAudioLimiterTargetGain(float peak) noexcept;
 
+enum class AudioOutputDeviceIntent {
+  UserConfiguration,
+  EndpointRecovery,
+};
+
+bool retainAudioOutputEndpointRetry(
+  AudioOutputDeviceIntent intent,
+  AudioFailureKind failure
+) noexcept;
+
+void startAudioOutputWithRollback(
+  const std::function<void()>& start_candidate,
+  const std::function<void()>& restore_previous,
+  const std::function<void()>& start_previous
+);
+
 // Owns all receive-side AudioStreams and the single WASAPI mix renderer.
 // Every operation is synchronous with respect to ownership: after removeTrack
 // or stop returns, no worker can access the corresponding stream or this object.
 class RemoteAudioOutput final {
  public:
-  using FailureHandler = std::function<void(std::string, std::string)>;
+  using FailureHandler = std::function<void(
+    AudioFailureInfo,
+    std::string,
+    std::uint64_t
+  )>;
   // Called when the aggregate set of remote microphone speakers changes.
   // The callback receives normalized participant identities and is never
   // invoked while RemoteAudioOutput's internal mutex is held.
   using SpeakingActivityHandler = std::function<void(std::vector<std::string>)>;
+  using WorkerTask = std::function<void(std::stop_token)>;
+  using WorkerFactory = std::function<std::jthread(WorkerTask)>;
 
   explicit RemoteAudioOutput(
     FailureHandler on_failure = {},
-    SpeakingActivityHandler on_speaking_activity = {}
+    SpeakingActivityHandler on_speaking_activity = {},
+    WorkerFactory worker_factory = {}
   );
   ~RemoteAudioOutput();
   RemoteAudioOutput(const RemoteAudioOutput&) = delete;
@@ -66,7 +93,11 @@ class RemoteAudioOutput final {
                 std::shared_ptr<livekit::Track> track);
   void removeTrack(const std::string& track_sid);
   void setDeafened(bool deafened);
-  void setOutputDevice(std::string device_id);
+  std::uint64_t setOutputDevice(
+    std::string device_id,
+    AudioOutputDeviceIntent intent
+  );
+  bool isRendererEpochCurrent(std::uint64_t epoch) const;
   void setVolume(float volume);
   void configure(RemoteAudioSettings settings);
   void stop();

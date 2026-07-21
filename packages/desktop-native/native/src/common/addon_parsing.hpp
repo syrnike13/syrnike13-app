@@ -125,9 +125,20 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   if (command.device_id.empty()) command.device_id = stringField(object, "deviceId");
   command.device_kind = stringField(object, "kind");
   command.source_id = stringField(settings, "sourceId");
-  command.livekit_url = nestedStringField(settings, "livekit", "url");
-  command.livekit_token = nestedStringField(settings, "livekit", "token");
-  command.participant_identity = nestedStringField(settings, "livekit", "participantIdentity");
+  if (command.type == "connectVoice") {
+    command.livekit_url = nestedStringField(settings, "livekit", "url");
+    command.livekit_token = nestedStringField(settings, "livekit", "token");
+    command.participant_identity = nestedStringField(
+      settings, "livekit", "participantIdentity"
+    );
+  } else {
+    if (!settings.Get("livekit").IsUndefined()) {
+      throw std::invalid_argument(
+        "LiveKit credentials are only accepted by connectVoice"
+      );
+    }
+    command.participant_identity = stringField(settings, "participantIdentity");
+  }
   command.track_id = stringField(object, "trackId");
   command.frame_sequence = uint64Field(object, "sequence");
   command.width = intField(settings, "width", command.width);

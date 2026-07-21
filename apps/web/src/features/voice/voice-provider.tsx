@@ -102,10 +102,8 @@ import {
 } from '#/features/voice/voice-screen-viewer-sounds'
 import { voiceSnapshotTransitionSounds } from '#/features/voice/voice-transition-sounds'
 import { getSyrnikeDesktop } from '#/platform/runtime'
-import {
-  recordDiagnosticEvent,
-  sendDiagnosticReport,
-} from '#/features/diagnostics/diagnostic-reporter'
+import { recordDiagnosticEvent } from '#/features/diagnostics/diagnostic-reporter'
+import { enqueueAutomaticDiagnosticIncident } from '#/features/diagnostics/automatic-diagnostic-incidents'
 
 type VoiceClient = {
   dispatch(command: VoiceCommand): void
@@ -546,15 +544,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (failureKey && failureKey !== previousFailureRef.current) {
       toast.error(snapshot.failure?.message ?? 'Не удалось подключиться к голосу')
       if (auth.session?.token && snapshot.failure) {
-        void sendDiagnosticReport({
-          token: auth.session.token,
-          desktop,
+        enqueueAutomaticDiagnosticIncident({
           area: 'voice',
           severity: 'error',
           triggerCode: snapshot.failure.code,
           context: { snapshot, rtcHistory: diagnosticRtcHistoryRef.current },
-          automatic: true,
-        }).catch(() => undefined)
+        })
       }
     }
     previousFailureRef.current = failureKey
@@ -579,15 +574,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         toast.error(error?.message ?? 'Медиа недоступно')
       }
       if (auth.session?.token && error && mediaFailure) {
-        void sendDiagnosticReport({
-          token: auth.session.token,
-          desktop,
+        enqueueAutomaticDiagnosticIncident({
           area: mediaFailure[0] === 'screen_audio' ? 'screen' : mediaFailure[0],
           severity: error.code === 'output_device_fallback' ? 'warning' : 'error',
           triggerCode: error.code,
           context: { snapshot, rtcHistory: diagnosticRtcHistoryRef.current },
-          automatic: true,
-        }).catch(() => undefined)
+        })
       }
     }
     previousMediaFailureRef.current = failureKey
@@ -987,29 +979,23 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           stalledLocalScreenSamplesRef.current === 3 &&
           auth.session?.token
         ) {
-          void sendDiagnosticReport({
-            token: auth.session.token,
-            desktop,
+          enqueueAutomaticDiagnosticIncident({
             area: 'screen',
             severity: 'error',
             triggerCode: 'screen_publication_stalled',
             context: next,
-            automatic: true,
-          }).catch(() => undefined)
+          })
         }
         if (
           stalledRemoteScreenSamplesRef.current === 3 &&
           auth.session?.token
         ) {
-          void sendDiagnosticReport({
-            token: auth.session.token,
-            desktop,
+          enqueueAutomaticDiagnosticIncident({
             area: 'screen',
             severity: 'error',
             triggerCode: 'screen_subscription_stalled',
             context: next,
-            automatic: true,
-          }).catch(() => undefined)
+          })
         }
         if (rtcDebugEnabled) {
           setRtcDebugSnapshot(next)

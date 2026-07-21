@@ -16,7 +16,18 @@ class SequencedEmitter {
   bool emit(RuntimeEvent event) {
     std::lock_guard lock(mutex_);
     event.sequence = next_sequence_++;
-    if (sink_ && sink_->emit(std::move(event))) return true;
+    RuntimeEventResourceGuard resource(event);
+    try {
+      resource.attach(event);
+      if (sink_ && sink_->emit(std::move(event))) {
+        resource.transfer();
+        return true;
+      }
+    } catch (...) {
+      // Event sinks are a fault-containment boundary. An exception must never
+      // be reclassified by the calling actor as a media/capture failure.
+    }
+    resource.discard();
     // Lifecycle and control events are not lossy. A saturated JS event seam
     // means the utility host can no longer report trustworthy state, so fail
     // closed and let Electron's supervisor restart the isolated host.

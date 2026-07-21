@@ -14,7 +14,7 @@ import type {
 } from '@syrnike13/platform'
 import { isVoiceRemoteAudioSettings } from '@syrnike13/platform'
 
-export const NATIVE_RUNTIME_CONTRACT_VERSION = 3
+export const NATIVE_RUNTIME_CONTRACT_VERSION = 4
 export const NATIVE_RUNTIME_MAX_PENDING_REQUESTS = 256
 
 export type NativeRuntimeKind = 'media' | 'hotkey' | 'overlay'
@@ -71,6 +71,7 @@ export type NativeRuntimeError = {
   retryable: boolean
   sessionId?: string
   generation?: number
+  hresult?: number
 }
 
 type SessionCommandBase = {
@@ -155,11 +156,7 @@ export type MediaRuntimeCommand =
         height?: number
         fps?: number
         bitrate?: number
-        livekit: {
-          url: string
-          token: string
-          participantIdentity: string
-        }
+        participantIdentity: string
       }
     } & SessionCommandBase)
   | ({ type: 'disconnectCamera' } & SessionCommandBase)
@@ -173,6 +170,7 @@ export type MediaRuntimeCommand =
   | ({ type: 'setMicrophoneMuted'; muted: boolean } & SessionCommandBase)
   | { type: 'probeMicrophoneActor' }
   | { type: 'probeScreenActor' }
+  | { type: 'probeCameraActor' }
   | { type: 'probeQueryWorker' }
   | { type: 'shutdown' }
 
@@ -217,6 +215,7 @@ export type MediaRuntimeEvent =
       type: 'sessionLifecycle'
       kind?: 'voice' | 'microphone' | 'screen' | 'camera' | 'output'
       state: NativeMediaStateEvent
+      error?: NativeRuntimeError
     } & SessionEventBase)
   | ({ type: 'sessionStarted'; session: NativeMediaSession } & SessionEventBase)
   | ({ type: 'sessionStopped'; reason?: string } & SessionEventBase)
@@ -319,7 +318,8 @@ function isRuntimeError(value: unknown): value is NativeRuntimeError {
     (value.stage === undefined || isNonEmptyString(value.stage, 128)) &&
     (value.sessionId === undefined || isNonEmptyString(value.sessionId, 256)) &&
     (value.generation === undefined ||
-      (Number.isSafeInteger(value.generation) && Number(value.generation) >= 0))
+      (Number.isSafeInteger(value.generation) && Number(value.generation) >= 0)) &&
+    (value.hresult === undefined || Number.isSafeInteger(value.hresult))
   )
 }
 
@@ -396,12 +396,17 @@ function isMicrophoneStartOptions(
     isNonEmptyString(value.requestId, 256) &&
     (value.audioBitrate === undefined || isIntegerInRange(value.audioBitrate, 6_000, 512_000)) &&
     (value.muted === undefined || typeof value.muted === 'boolean') &&
-    isLiveKitCredentials(value.livekit)
+    isNonEmptyString(value.participantIdentity, 512) &&
+    value.livekit === undefined
   )
 }
 
 function isCameraStartOptions(value: unknown) {
-  if (!isRecord(value) || !isLiveKitCredentials(value.livekit)) return false
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.participantIdentity, 512) ||
+    value.livekit !== undefined
+  ) return false
   return (
     (value.deviceId === undefined || isNonEmptyString(value.deviceId, 2_048)) &&
     (value.width === undefined || isIntegerInRange(value.width, 16, 7_680)) &&
@@ -424,7 +429,8 @@ function isScreenStartOptions(value: unknown) {
     (value.audioBitrate === undefined || isIntegerInRange(value.audioBitrate, 6_000, 512_000)) &&
     (value.audio === undefined ||
       (isRecord(value.audio) && typeof value.audio.requested === 'boolean')) &&
-    isLiveKitCredentials(value.livekit)
+    isNonEmptyString(value.participantIdentity, 512) &&
+    value.livekit === undefined
   )
 }
 
@@ -496,6 +502,12 @@ export function isNativeMediaSession(value: unknown): value is NativeMediaSessio
 function isNativeMediaStateEvent(value: unknown, sessionId: string) {
   if (!isRecord(value)) return false
   if (value.sessionId !== undefined && value.sessionId !== sessionId) return false
+  if (value.message !== undefined && !isNonEmptyString(value.message, 4_096)) {
+    return false
+  }
+  if (value.deviceId !== undefined && !isNonEmptyString(value.deviceId, 512)) {
+    return false
+  }
   if (
     !isOptionalInteger(value.width, 16, 7_680) ||
     !isOptionalInteger(value.height, 16, 4_320) ||
@@ -634,7 +646,8 @@ export function isNativeRuntimeCommand(value: unknown): value is NativeRuntimeCo
       return (
         isSessionCommand(value) &&
         isRecord(value.options) &&
-        isLiveKitCredentials(value.options.livekit)
+        isNonEmptyString(value.options.participantIdentity, 512) &&
+        value.options.livekit === undefined
       )
     case 'disconnectScreen':
       return (
@@ -674,6 +687,7 @@ export function isNativeRuntimeCommand(value: unknown): value is NativeRuntimeCo
       return isSessionCommand(value) && typeof value.muted === 'boolean'
     case 'probeMicrophoneActor':
     case 'probeScreenActor':
+    case 'probeCameraActor':
     case 'probeQueryWorker':
     case 'startHotkeys':
     case 'stopHotkeys':
@@ -816,6 +830,8 @@ export function isNativeRuntimeEvent(
   if (value.type === 'microphoneMetrics') {
     return (
       isRecord(value.metrics) &&
+      Number.isSafeInteger(value.metrics.revision) &&
+      Number(value.metrics.revision) >= 0 &&
       Number.isFinite(value.metrics.inputDb) &&
       Number.isFinite(value.metrics.thresholdDb) &&
       typeof value.metrics.open === 'boolean'
@@ -842,7 +858,11 @@ export function isNativeRuntimeEvent(
           value.kind === 'screen' ||
           value.kind === 'camera' ||
           value.kind === 'output') &&
-        isNativeMediaStateEvent(value.state, value.sessionId)
+        isNativeMediaStateEvent(value.state, value.sessionId) &&
+        (value.error === undefined ||
+          (isRuntimeError(value.error) &&
+            (value.error.sessionId === undefined || value.error.sessionId === value.sessionId) &&
+            (value.error.generation === undefined || value.error.generation === value.generation)))
       )
     case 'sessionStarted':
       return (
@@ -941,6 +961,7 @@ export function nativeRuntimeError(
     stage: options.stage,
     sessionId: options.sessionId,
     generation: options.generation,
+    hresult: options.hresult,
   }
 }
 

@@ -23,6 +23,7 @@ export const IPC = {
   settingsLoad: 'syrnike-desktop:settings:load',
   settingsUpdate: 'syrnike-desktop:settings:update',
   diagnosticsCreateBundle: 'syrnike-desktop:diagnostics:create-bundle',
+  diagnosticsEnqueueIncident: 'syrnike-desktop:diagnostics:enqueue-incident',
   diagnosticsLeaseNativeIncidents:
     'syrnike-desktop:diagnostics:lease-native-incidents',
   diagnosticsAcknowledgeNativeIncidents:
@@ -54,6 +55,10 @@ export const IPC = {
     'syrnike-desktop:media:microphone-preview-state',
   mediaDisplayPickerResolved: 'syrnike-desktop:media:display-picker-resolved',
   mediaSetRemoteVideoDemand: 'syrnike-desktop:media:set-remote-video-demand',
+  mediaReplayRemoteScreenPublications:
+    'syrnike-desktop:media:replay-remote-screen-publications',
+  mediaRemoteVideoSessionReset:
+    'syrnike-desktop:media:remote-video-session-reset',
   mediaSetLocalScreenPreviewDemand:
     'syrnike-desktop:media:set-local-screen-preview-demand',
   voiceDispatch: 'syrnike-desktop:voice:dispatch',

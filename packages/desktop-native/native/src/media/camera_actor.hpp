@@ -26,6 +26,7 @@ class CameraActor final {
   ~CameraActor();
 
   void connect(const MediaCommand& command);
+  RuntimeEvent probe(const MediaCommand& command);
   void disconnect(const MediaCommand& command, bool emit_event = true);
   void releasePreviewFrame(const MediaCommand& command);
   void handleTerminal(const MediaCommand& command);

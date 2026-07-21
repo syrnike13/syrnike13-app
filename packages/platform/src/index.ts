@@ -9,7 +9,6 @@ export type {
   NativeMediaFrameMethod,
   NativeMediaFrameStats,
   NativeMediaLoopbackMode,
-  NativeMediaLiveKitCredentials,
   NativeMediaEngineCapabilities,
   NativeMediaEngineSessionSummary,
   NativeMediaMicrophoneEngineSessionSummary,
@@ -92,6 +91,7 @@ export {
   type NativeDiagnosticIncident,
   type NativeDiagnosticIncidentBatch,
   type NativeDiagnosticIncidentSeverity,
+  type RendererDiagnosticIncident,
 } from './diagnostics'
 export { IPC, type IpcChannel } from './ipc'
 export {

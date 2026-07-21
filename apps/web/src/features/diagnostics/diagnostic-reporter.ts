@@ -10,6 +10,7 @@ import { apiRequest } from '#/lib/api/client'
 import { config } from '#/lib/config'
 import { loadDesktopLocalSettings } from '#/features/settings/desktop-local-settings-client'
 import { readBrowserDiagnosticReportsEnabled } from './diagnostic-preferences'
+import { clearPendingAutomaticDiagnosticIncidents } from './automatic-diagnostic-incidents'
 
 type DiagnosticSeverity = 'warning' | 'error' | 'fatal'
 
@@ -22,6 +23,7 @@ export type SendDiagnosticReportOptions = {
   description?: string
   context?: unknown
   automatic?: boolean
+  automaticLease?: boolean
   automaticCooldownMs?: number
 }
 
@@ -50,6 +52,17 @@ const automaticReports = new Map<string, number>()
 const deduplicatedEvents = new Map<string, DeduplicatedEventState>()
 const events: string[] = []
 let eventBufferBytes = 0
+let diagnosticAccountId: string | null | undefined
+let diagnosticAccountRevision = 0
+
+export function configureRendererDiagnosticAccount(accountId: string | null) {
+  const normalized = accountId?.trim() || null
+  if (diagnosticAccountId === normalized) return
+  diagnosticAccountId = normalized
+  diagnosticAccountRevision += 1
+  clearDiagnosticState()
+  clearPendingAutomaticDiagnosticIncidents()
+}
 
 export function recordDiagnosticEvent(
   area: string,
@@ -121,23 +134,27 @@ export function recordDiagnosticEvent(
 export async function sendDiagnosticReport(
   options: SendDiagnosticReportOptions,
 ): Promise<DiagnosticReportCreated | null> {
-  const automaticKey = options.automatic
+  const accountRevision = diagnosticAccountRevision
+  const automaticKey = options.automatic && !options.automaticLease
     ? `${options.area}:${options.triggerCode}`
     : null
-  if (automaticKey) {
+  if (options.automatic) {
     if (options.desktop) {
       const settings = await loadDesktopLocalSettings()
       if (!settings?.observability.diagnosticReports) return null
     } else if (!readBrowserDiagnosticReportsEnabled()) {
       return null
     }
-    const previous = automaticReports.get(automaticKey) ?? 0
-    const cooldownMs = Math.max(
-      5_000,
-      options.automaticCooldownMs ?? AUTOMATIC_COOLDOWN_MS,
-    )
-    if (Date.now() - previous < cooldownMs) return null
-    automaticReports.set(automaticKey, Date.now())
+    if (accountRevision !== diagnosticAccountRevision) return null
+    if (automaticKey) {
+      const previous = automaticReports.get(automaticKey) ?? 0
+      const cooldownMs = Math.max(
+        5_000,
+        options.automaticCooldownMs ?? AUTOMATIC_COOLDOWN_MS,
+      )
+      if (Date.now() - previous < cooldownMs) return null
+      automaticReports.set(automaticKey, Date.now())
+    }
   }
 
   try {
@@ -205,6 +222,12 @@ export function diagnosticEventsJsonForTests() {
 }
 
 export function clearDiagnosticEventsForTests() {
+  diagnosticAccountId = undefined
+  diagnosticAccountRevision = 0
+  clearDiagnosticState()
+}
+
+function clearDiagnosticState() {
   events.length = 0
   eventBufferBytes = 0
   automaticReports.clear()

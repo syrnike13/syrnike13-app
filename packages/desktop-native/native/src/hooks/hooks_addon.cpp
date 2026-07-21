@@ -174,7 +174,7 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
   result.Set("platform", "win32");
   result.Set("available", true);
   result.Set("runtime", kRuntimeName);
-  result.Set("contractVersion", 3);
+  result.Set("contractVersion", 4);
   result.Set("pid", GetCurrentProcessId());
   result.Set("napi", std::to_string(NAPI_VERSION));
   result.Set("commit", SYRNIKE_NATIVE_COMMIT);

@@ -15,6 +15,8 @@
 #include <utility>
 
 #include "audio_devices.hpp"
+#include "audio_failure.hpp"
+#include "actor_mailbox.hpp"
 #include "camera_actor.hpp"
 #include "camera_capture.hpp"
 #include "../common/diagnostic_log.hpp"
@@ -56,17 +58,13 @@ class MediaRuntime::Implementation {
   ) : emitter_(std::move(sink)),
       livekit_client_(std::move(livekit_client)),
       microphone_(emitter_, [this](MediaCommand command) {
-        if (microphone_commands_.tryPush(std::move(command))) return true;
-        if (shutting_down_.load()) return false;
-        std::terminate();
+        return postInternal(microphone_commands_, std::move(command));
       },
       [this](const std::string& session_id, std::uint64_t generation) {
         return desired_microphone_.isCurrent(session_id, generation);
       }, livekit_client_),
       screen_(emitter_, [this](MediaCommand command) {
-        if (screen_commands_.tryPush(std::move(command))) return true;
-        if (shutting_down_.load()) return false;
-        std::terminate();
+        return postInternal(screen_commands_, std::move(command));
       }, [this](const std::string& session_id, std::uint64_t generation) {
         return desired_screen_.isCurrent(session_id, generation);
       }, livekit_client_, [this](
@@ -81,16 +79,20 @@ class MediaRuntime::Implementation {
         );
       }, std::move(screen_now)),
       camera_(emitter_, [this](MediaCommand command) {
-        if (camera_commands_.tryPush(std::move(command))) return true;
-        if (shutting_down_.load()) return false;
-        std::terminate();
+        return postInternal(camera_commands_, std::move(command));
       }, [this](const std::string& session_id, std::uint64_t generation) {
         return desired_camera_.isCurrent(session_id, generation);
       }, livekit_client_),
       preview_(emitter_),
       voice_(emitter_, [this](MediaCommand command) {
-        if (voice_commands_.tryPush(std::move(command))) return true;
-        return shutting_down_.load();
+        if (
+          command.type == "__localCameraPreviewFrame" ||
+          command.type == "__localCameraPreviewFailed" ||
+          command.type == "__localCameraPreviewTrackRemoved"
+        ) {
+          return postInternal(camera_commands_, std::move(command));
+        }
+        return postInternal(voice_commands_, std::move(command));
       }, [this](const std::string& session_id, std::uint64_t generation) {
         return desired_voice_.isCurrent(session_id, generation);
       }, livekit_client_),
@@ -236,6 +238,7 @@ class MediaRuntime::Implementation {
       type == "configureVoiceOutput" ||
       type == "__voiceConnectCompleted" ||
       type == "__voiceOutputFailed" ||
+      type == "__voiceRemoteAudioTrackFailed" ||
       type == "__voiceActiveSpeakers" ||
       type == "__remoteVideoFrame" ||
       type == "__remoteVideoTrackRemoved" ||
@@ -290,6 +293,7 @@ class MediaRuntime::Implementation {
     } else if (
       type == "__cameraTerminal" || type == "connectCamera" ||
       type == "disconnectCamera" ||
+      type == "probeCameraActor" ||
       type == "releaseLocalCameraPreviewFrame" ||
       type == "__localCameraPreviewFrame" ||
       type == "__localCameraPreviewFailed" ||
@@ -381,10 +385,45 @@ class MediaRuntime::Implementation {
     std::lock_guard lock(shutdown_mutex_);
     requestShutdown();
     if (worker_.joinable() && worker_.get_id() != std::this_thread::get_id()) worker_.join();
+    // Pending lossy media events own GPU frame handles through on_drop. Drain
+    // them while ScreenActor/CameraActor and the shared LiveKit client are
+    // still alive; emitter_ is declared first and would otherwise be destroyed
+    // after those owners.
+    emitter_.close();
     logRuntime("media_runtime_shutdown_joined");
   }
 
  private:
+  template <typename Queue>
+  bool postInternal(Queue& queue, MediaCommand command) {
+    const auto traffic = classifyActorCommand(command);
+    command.internal_enqueued_steady_ms = steadyNowMs();
+    command.internal_queue_depth = static_cast<std::uint32_t>(queue.size() + 1);
+    if (traffic == ActorCommandTraffic::CoalescedMedia) {
+      // This path stays allocation-free after the producer has attached its
+      // release callback. Rejection leaves release ownership with producer.
+      return queue.tryPush(std::move(command));
+    }
+    const auto type = command.type;
+    const auto session_id = command.session_id;
+    const auto generation = command.generation;
+    if (queue.tryPush(std::move(command))) return true;
+    if (shutting_down_.load()) return false;
+    // A lost terminal/completion event leaves an actor live with no owner able
+    // to retire it. Fail closed so the desktop host recycles the utility
+    // process instead of continuing in an unknowable media state.
+    logRuntime(
+      "media_runtime_internal_control_overflow",
+      {
+        {"command", type},
+        {"sessionId", session_id},
+        {"generation", generation},
+        {"queueDepth", static_cast<std::uint64_t>(queue.size())}
+      }
+    );
+    std::terminate();
+  }
+
   void runtimeError(const MediaCommand& command, NativeError error) {
     error.session_id = command.session_id;
     if (!command.session_id.empty()) error.generation = command.generation;
@@ -397,11 +436,23 @@ class MediaRuntime::Implementation {
     emitter_.emit(std::move(event));
   }
 
+  static void dropCommandResource(MediaCommand& command) noexcept {
+    auto on_drop = std::move(command.on_drop);
+    command.on_drop = {};
+    if (!on_drop) return;
+    try {
+      on_drop();
+    } catch (...) {
+      std::terminate();
+    }
+  }
+
   void handleMicrophone(const MediaCommand& command) {
     if (command.type == "__microphoneTerminal") {
+      const bool fail_preview = microphone_.handleTerminal(command);
       if (
-        !preview_session_id_.empty() &&
-        microphone_.isCurrentCaptureFailure(command)
+        fail_preview &&
+        !preview_session_id_.empty()
       ) {
         microphone_.clearPreviewConsumer(preview_session_id_, preview_generation_);
         preview_.failFromCapture(
@@ -412,13 +463,13 @@ class MediaRuntime::Implementation {
         preview_session_id_.clear();
         preview_generation_ = 0;
       }
-      microphone_.handleTerminal(command);
       return;
     }
     if (
       command.type == "__microphoneAttemptReady" ||
       command.type == "__microphoneAttemptFailed" ||
-      command.type == "__microphoneRetireDone"
+      command.type == "__microphoneRetireDone" ||
+      command.type == "__microphoneEndpointChanged"
     ) {
       microphone_.handleWorkerCommand(command);
       return;
@@ -498,7 +549,7 @@ class MediaRuntime::Implementation {
     unknown(command);
   }
 
-  void handleVoice(const MediaCommand& command) {
+  void handleVoice(MediaCommand& command) {
     if (command.type == "__voiceConnectCompleted") {
       voice_.handleWorkerCommand(command);
       return;
@@ -520,28 +571,143 @@ class MediaRuntime::Implementation {
     }
     if (command.type == "__voiceOutputFailed") {
       if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
+      const bool fallback_committed =
+        command.video_source == "audio_output_fallback_default";
+      const bool default_recovery_committed =
+        command.video_source == "audio_output_default_recovered";
+      if (!livekit_client_->isVoiceOutputEpochCurrent(command.internal_epoch)) {
+        return;
+      }
       RuntimeEvent event;
       event.type = "sessionLifecycle";
       event.session_id = command.session_id;
       event.generation = command.generation;
       event.kind = "output";
-      if (!command.device_id.empty() && command.device_id != "default") {
-        livekit_client_->setVoiceOutputDevice("default");
+      const auto failure_code = command.video_source.empty()
+        ? std::string("audio_output_failed")
+        : command.video_source;
+      const bool endpoint_loss =
+        audioFailureCodeAllowsDefaultFallback(failure_code);
+      if (fallback_committed || default_recovery_committed ||
+          (endpoint_loss &&
+           !command.device_id.empty() && command.device_id != "default")) {
+        if (!fallback_committed && !default_recovery_committed) {
+          try {
+            livekit_client_->setVoiceOutputDevice(
+              "default",
+              AudioOutputDeviceIntent::EndpointRecovery
+            );
+          } catch (const std::exception& recovery_error) {
+            const auto recovery_failure = describeAudioFailure(recovery_error);
+            event.status = audioFailureAllowsDefaultFallback(recovery_failure.kind)
+              ? "starting"
+              : "error";
+            event.detail = recovery_failure.message;
+            event.error = NativeError{
+              recovery_failure.code,
+              recovery_failure.message,
+              "recoverVoiceOutput",
+              recovery_failure.retryable,
+              command.session_id,
+              command.generation,
+              recovery_failure.hresult == S_OK
+                ? std::optional<std::int64_t>{}
+                : std::optional<std::int64_t>{
+                    static_cast<std::int64_t>(recovery_failure.hresult)
+                  },
+            };
+            emitter_.emit(std::move(event));
+            return;
+          }
+        }
         event.status = "running";
         event.device_id = "default";
-        event.detail = "Selected audio output is unavailable; using system default";
+        event.detail = default_recovery_committed
+          ? "audio_output_default_recovered"
+          : (command.internal_message.empty()
+              ? "Selected audio output is unavailable; using system default"
+              : command.internal_message);
+        if (!default_recovery_committed) {
+          event.error = NativeError{
+            failure_code,
+            event.detail,
+            "configureVoiceOutput",
+            command.diagnostic_retryable,
+            command.session_id,
+            command.generation,
+            command.diagnostic_hresult == 0
+              ? std::optional<std::int64_t>{}
+              : std::optional<std::int64_t>{command.diagnostic_hresult},
+          };
+        }
+      } else if (endpoint_loss) {
+        event.status = "starting";
+        event.device_id = "default";
+        event.detail = command.internal_message.empty()
+          ? "Default audio output is temporarily unavailable"
+          : command.internal_message;
+        event.error = NativeError{
+          failure_code,
+          event.detail,
+          "recoverVoiceOutput",
+          command.diagnostic_retryable,
+          command.session_id,
+          command.generation,
+          command.diagnostic_hresult == 0
+            ? std::optional<std::int64_t>{}
+            : std::optional<std::int64_t>{command.diagnostic_hresult},
+        };
       } else {
         event.status = "error";
         event.detail = command.internal_message.empty()
           ? "Remote audio renderer failed"
           : command.internal_message;
+        event.error = NativeError{
+          failure_code,
+          event.detail,
+          "configureVoiceOutput",
+          command.diagnostic_retryable,
+          command.session_id,
+          command.generation,
+          command.diagnostic_hresult == 0
+            ? std::optional<std::int64_t>{}
+            : std::optional<std::int64_t>{command.diagnostic_hresult},
+        };
       }
+      emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "__voiceRemoteAudioTrackFailed") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
+      RuntimeEvent event;
+      event.type = "runtimeError";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.track_id = command.track_id;
+      event.detail = command.internal_message;
+      event.error = NativeError{
+        command.video_source.empty()
+          ? "audio_output_stream_start_failed"
+          : command.video_source,
+        command.internal_message,
+        "remoteAudioTrack",
+        command.diagnostic_retryable,
+        command.session_id,
+        command.generation,
+        command.diagnostic_hresult == 0
+          ? std::optional<std::int64_t>{}
+          : std::optional<std::int64_t>{command.diagnostic_hresult},
+      };
       emitter_.emit(std::move(event));
       return;
     }
     if (command.type == "__remoteVideoFrame") {
       if (!desired_voice_.isCurrent(command.session_id, command.generation)) {
-        livekit_client_->releaseRemoteVideoFrame(command.track_id, command.frame_sequence);
+        if (command.on_drop) {
+          dropCommandResource(command);
+        } else {
+          livekit_client_->releaseRemoteVideoFrame(command.track_id, command.frame_sequence);
+        }
         return;
       }
       RuntimeEvent event;
@@ -556,6 +722,15 @@ class MediaRuntime::Implementation {
       event.nt_handle = command.nt_handle;
       event.width = command.width;
       event.height = command.height;
+      event.on_drop = std::move(command.on_drop);
+      if (!event.on_drop) {
+        const auto client = livekit_client_;
+        const auto track_id = command.track_id;
+        const auto frame_sequence = command.frame_sequence;
+        event.on_drop = [client, track_id, frame_sequence] {
+          client->releaseRemoteVideoFrame(track_id, frame_sequence);
+        };
+      }
       emitter_.emit(std::move(event));
       return;
     }
@@ -590,6 +765,9 @@ class MediaRuntime::Implementation {
       return;
     }
     if (command.type == "__voiceTerminal") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
+      desired_voice_.set("__voice_terminal__", command.generation);
+      voice_commands_.discardMedia(command.session_id, command.generation);
       RuntimeEvent event;
       event.type = "voiceTerminal";
       event.session_id = command.session_id;
@@ -635,8 +813,14 @@ class MediaRuntime::Implementation {
       if (!command.has_deafened) {
         throw std::invalid_argument("deafened is required");
       }
+      // Device selection is the only fallible part of this bundled update.
+      // Commit scalar controls only after it succeeds so a failed candidate
+      // leaves the previous output configuration intact.
+      livekit_client_->setVoiceOutputDevice(
+        command.device_id,
+        AudioOutputDeviceIntent::UserConfiguration
+      );
       livekit_client_->setVoiceDeafened(command.deafened);
-      livekit_client_->setVoiceOutputDevice(command.device_id);
       if (command.has_output_volume) {
         livekit_client_->setVoiceOutputVolume(command.output_volume);
       }
@@ -664,20 +848,10 @@ class MediaRuntime::Implementation {
       emitter_.emit(reply(command));
       return;
     }
-    if (
-      command.type == "__localCameraPreviewFrame" ||
-      command.type == "__localCameraPreviewFailed" ||
-      command.type == "__localCameraPreviewTrackRemoved"
-    ) {
-      // The shared LiveKit room retains the VoiceActor callback that created it,
-      // so its local-camera bridge posts these events onto the voice queue.
-      handleCamera(command);
-      return;
-    }
     unknown(command);
   }
 
-  void handleScreen(const MediaCommand& command) {
+  void handleScreen(MediaCommand& command) {
     if (command.type == "__localScreenPreviewFailed") {
       const auto message = command.internal_message +
         " (HRESULT " + std::to_string(command.diagnostic_hresult) + ")";
@@ -703,16 +877,23 @@ class MediaRuntime::Implementation {
         command.video_source,
         true,
         command.session_id,
-        command.generation
+        command.generation,
+        command.diagnostic_hresult == 0
+          ? std::optional<std::int64_t>{}
+          : std::optional<std::int64_t>{command.diagnostic_hresult}
       };
       emitter_.emit(std::move(event));
       return;
     }
     if (command.type == "__localScreenPreviewFrame") {
       if (!desired_screen_.isCurrent(command.session_id, command.generation)) {
-        MediaCommand release = command;
-        release.type = "releaseLocalScreenPreviewFrame";
-        screen_.handleWorkerCommand(release);
+        if (command.on_drop) {
+          dropCommandResource(command);
+        } else {
+          MediaCommand release = command;
+          release.type = "releaseLocalScreenPreviewFrame";
+          screen_.handleWorkerCommand(release);
+        }
         return;
       }
       RuntimeEvent event;
@@ -727,6 +908,14 @@ class MediaRuntime::Implementation {
       event.nt_handle = command.nt_handle;
       event.width = command.width;
       event.height = command.height;
+      event.on_drop = std::move(command.on_drop);
+      if (!event.on_drop) {
+        MediaCommand release = command;
+        release.type = "releaseLocalScreenPreviewFrame";
+        event.on_drop = [this, release = std::move(release)] {
+          screen_.handleWorkerCommand(release);
+        };
+      }
       emitter_.emit(std::move(event));
       return;
     }
@@ -754,7 +943,16 @@ class MediaRuntime::Implementation {
       return;
     }
     if (command.type == "__screenTerminal") {
-      screen_.handleTerminal(command);
+      if (!desired_screen_.isCurrent(command.session_id, command.generation)) return;
+      try {
+        screen_.handleTerminal(command);
+      } catch (...) {
+        desired_screen_.set("__screen_terminal__", command.generation);
+        screen_commands_.discardMedia(command.session_id, command.generation);
+        throw;
+      }
+      desired_screen_.set("__screen_terminal__", command.generation);
+      screen_commands_.discardMedia(command.session_id, command.generation);
       return;
     }
     if (
@@ -793,10 +991,14 @@ class MediaRuntime::Implementation {
     unknown(command);
   }
 
-  void handleCamera(const MediaCommand& command) {
+  void handleCamera(MediaCommand& command) {
     if (command.type == "__localCameraPreviewFrame") {
       if (!desired_camera_.isCurrent(command.session_id, command.generation)) {
-        camera_.releasePreviewFrame(command);
+        if (command.on_drop) {
+          dropCommandResource(command);
+        } else {
+          camera_.releasePreviewFrame(command);
+        }
         return;
       }
       RuntimeEvent event;
@@ -811,6 +1013,15 @@ class MediaRuntime::Implementation {
       event.nt_handle = command.nt_handle;
       event.width = command.width;
       event.height = command.height;
+      event.on_drop = std::move(command.on_drop);
+      if (!event.on_drop) {
+        const auto client = livekit_client_;
+        const auto track_id = command.track_id;
+        const auto frame_sequence = command.frame_sequence;
+        event.on_drop = [client, track_id, frame_sequence] {
+          client->releaseLocalCameraPreviewFrame(track_id, frame_sequence);
+        };
+      }
       emitter_.emit(std::move(event));
       return;
     }
@@ -850,12 +1061,25 @@ class MediaRuntime::Implementation {
       return;
     }
     if (command.type == "__cameraTerminal") {
-      camera_.handleTerminal(command);
+      if (!desired_camera_.isCurrent(command.session_id, command.generation)) return;
+      try {
+        camera_.handleTerminal(command);
+      } catch (...) {
+        desired_camera_.set("__camera_terminal__", command.generation);
+        camera_commands_.discardMedia(command.session_id, command.generation);
+        throw;
+      }
+      desired_camera_.set("__camera_terminal__", command.generation);
+      camera_commands_.discardMedia(command.session_id, command.generation);
       return;
     }
     if (command.type == "connectCamera") {
       emitter_.emit(lifecycle(command, "camera", "starting", "capture_starting"));
       camera_.connect(command);
+      return;
+    }
+    if (command.type == "probeCameraActor") {
+      emitter_.emit(camera_.probe(command));
       return;
     }
     if (command.type == "disconnectCamera") {
@@ -914,9 +1138,10 @@ class MediaRuntime::Implementation {
     runtimeError(command, std::move(error));
   }
 
-  template <typename Handler>
-  void commandLoop(const char* queue_name, BoundedQueue<MediaCommand, 256>& queue, Handler handler) {
-    while (const auto command = queue.waitPop()) {
+  template <typename Queue, typename Handler>
+  void commandLoop(const char* queue_name, Queue& queue, Handler handler) {
+    while (auto command = queue.waitPop()) {
+      ActorCommandResourceGuard resource_guard(*command);
       const auto command_started_at = steadyNowMs();
       if (diagnostics::DiagnosticLog::instance().enabled()) {
         const auto wait_ms = command->internal_enqueued_steady_ms == 0
@@ -955,18 +1180,24 @@ class MediaRuntime::Implementation {
           dynamic_cast<const ScreenActorUnresponsiveError*>(&error) != nullptr;
         const bool actor_busy =
           dynamic_cast<const ScreenActorBusyError*>(&error) != nullptr;
+        const auto* audio_failure = dynamic_cast<const AudioFailure*>(&error);
         NativeError native_error{
           stale_generation
             ? "stale_generation"
-            : (actor_unresponsive
+            : (audio_failure
+                ? audio_failure->code()
+                : (actor_unresponsive
                 ? "actor_unresponsive"
-                : (actor_busy ? "actor_busy" : "native_command_failed")),
+                : (actor_busy ? "actor_busy" : "native_command_failed"))),
           message,
           command->type,
-          !stale_generation,
+          audio_failure ? audio_failure->retryable() : !stale_generation,
         };
         native_error.session_id = command->session_id;
         if (!command->session_id.empty()) native_error.generation = command->generation;
+        if (audio_failure && audio_failure->hresult() != S_OK) {
+          native_error.hresult = static_cast<std::int64_t>(audio_failure->hresult());
+        }
         emitter_.emit(failedReply(*command, native_error));
         runtimeError(*command, std::move(native_error));
         logRuntime(
@@ -1041,7 +1272,7 @@ class MediaRuntime::Implementation {
     try {
       livekit.emplace();
       voice_worker = std::thread([this] {
-        commandLoop("voice", voice_commands_, [this](const auto& command) {
+        commandLoop("voice", voice_commands_, [this](auto& command) {
           handleVoice(command);
         });
       });
@@ -1051,12 +1282,12 @@ class MediaRuntime::Implementation {
         });
       });
       screen_worker = std::thread([this] {
-        commandLoop("screen", screen_commands_, [this](const auto& command) {
+        commandLoop("screen", screen_commands_, [this](auto& command) {
           handleScreen(command);
         });
       });
       camera_worker = std::thread([this] {
-        commandLoop("camera", camera_commands_, [this](const auto& command) {
+        commandLoop("camera", camera_commands_, [this](auto& command) {
           handleCamera(command);
         });
       });
@@ -1137,10 +1368,10 @@ class MediaRuntime::Implementation {
   CameraActor camera_;
   PreviewActor preview_;
   VoiceActor voice_;
-  BoundedQueue<MediaCommand, 256> voice_commands_;
+  ActorMailbox<> voice_commands_;
   BoundedQueue<MediaCommand, 256> microphone_commands_;
-  BoundedQueue<MediaCommand, 256> screen_commands_;
-  BoundedQueue<MediaCommand, 256> camera_commands_;
+  ActorMailbox<> screen_commands_;
+  ActorMailbox<> camera_commands_;
   BoundedQueue<MediaCommand, 256> query_commands_;
   BoundedQueue<MediaCommand, 4> control_commands_;
   std::atomic_bool shutting_down_{false};

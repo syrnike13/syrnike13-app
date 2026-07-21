@@ -42,7 +42,9 @@ class MicrophoneActor final {
   void clearPreviewConsumer(const std::string& session_id, std::uint64_t generation);
   bool isCurrentCaptureFailure(const MediaCommand& command);
   void disconnect(const MediaCommand& command, bool emit_stopped = true);
-  void handleTerminal(const MediaCommand& command);
+  // Returns true only when a current capture failure could not be recovered,
+  // allowing the owning runtime to fail a standalone preview as well.
+  bool handleTerminal(const MediaCommand& command);
   void handleWorkerCommand(const MediaCommand& command);
   RuntimeEvent probe(const MediaCommand& command);
   void shutdown();

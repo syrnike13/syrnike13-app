@@ -166,6 +166,22 @@ describe('NativeSharedTextureBridge', () => {
     expect(h.release).toHaveBeenCalledTimes(1)
   })
 
+  it('retires every retained frame for a lost native voice session', async () => {
+    const h = harness()
+    const camera = frame(1, 'camera')
+    const screen = frame(1, 'screen')
+    await h.bridge.deliver(camera)
+    await h.bridge.deliver(screen)
+
+    h.bridge.resetSession('s', 2)
+
+    expect(h.release).not.toHaveBeenCalled()
+    h.callbacks[0]()
+    h.callbacks[1]()
+    expect(h.release).toHaveBeenCalledWith(camera)
+    expect(h.release).toHaveBeenCalledWith(screen)
+  })
+
   it('does not carry delivery failures into a reloaded renderer', async () => {
     const h = harness()
     h.importTexture.mockImplementation(() => {

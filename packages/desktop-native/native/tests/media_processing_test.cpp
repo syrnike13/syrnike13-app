@@ -1,14 +1,17 @@
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "media/audio_constants.hpp"
 #include "media/camera_capture.hpp"
 #include "media/livekit_connect_policy.hpp"
+#include "media/media_operation.hpp"
 #include "media/microphone_audio_processor.hpp"
 #include "media/microphone_echo_reference.hpp"
 #include "media/microphone_metrics_cadence.hpp"
@@ -167,6 +170,63 @@ int main() try {
       connect_started_at + std::chrono::seconds(8)
     ) == std::chrono::milliseconds(0),
     "post-connect settle budget exceeded the cleanup headroom"
+  );
+  using MediaOperation = syrnike::desktop_native::media::MediaOperation;
+  const MediaOperation operation(connect_started_at);
+  require(
+    operation.deadline() == connect_started_at + std::chrono::seconds(18),
+    "native media deadline did not reserve the two-second cleanup budget"
+  );
+  require(
+    !operation.expired(connect_started_at + std::chrono::milliseconds(17'999)) &&
+      operation.expired(connect_started_at + std::chrono::seconds(18)),
+    "native media deadline boundary is not absolute"
+  );
+  MediaOperation cancelled_operation(connect_started_at);
+  cancelled_operation.requestCancel(connect_started_at + std::chrono::seconds(3));
+  require(
+    !cancelled_operation.cancellationExpired(
+      connect_started_at + std::chrono::milliseconds(4'999)
+    ) && cancelled_operation.cancellationExpired(
+      connect_started_at + std::chrono::seconds(5)
+    ),
+    "native media cancellation cleanup boundary changed"
+  );
+  MediaOperation concurrent_cancel(connect_started_at);
+  std::atomic_int cancel_winners{0};
+  std::vector<std::thread> cancellers;
+  for (int index = 0; index < 8; ++index) {
+    cancellers.emplace_back([&] {
+      if (concurrent_cancel.requestCancel(
+            connect_started_at + std::chrono::seconds(6))) {
+        cancel_winners.fetch_add(1);
+      }
+    });
+  }
+  for (auto& canceller : cancellers) canceller.join();
+  require(cancel_winners.load() == 1 && concurrent_cancel.cancelled(),
+          "media cancellation did not publish one atomic timestamp winner");
+
+  using syrnike::desktop_native::media::FirstFrameState;
+  std::atomic<FirstFrameState> received_first{FirstFrameState::Pending};
+  require(
+    syrnike::desktop_native::media::claimFirstFrame(received_first) &&
+      !syrnike::desktop_native::media::claimFirstFrameTimeout(received_first),
+    "first-frame winner was overwritten by the watchdog"
+  );
+  std::atomic<FirstFrameState> timed_out_first{FirstFrameState::Pending};
+  require(
+    syrnike::desktop_native::media::claimFirstFrameTimeout(timed_out_first) &&
+      !syrnike::desktop_native::media::claimFirstFrame(timed_out_first),
+    "watchdog winner allowed a healthy first frame"
+  );
+  require(
+    !concurrent_cancel.cancellationExpired(
+      connect_started_at + std::chrono::milliseconds(7'999)
+    ) && concurrent_cancel.cancellationExpired(
+      connect_started_at + std::chrono::seconds(8)
+    ),
+    "concurrent cancellation exposed an uninitialized timestamp"
   );
 
   using MicrophoneMetricsCadence =

@@ -7,7 +7,10 @@ import type {
   DesktopOverlaySnapshot,
   DesktopOverlayState,
 } from './overlay'
-import type { NativeDiagnosticIncidentBatch } from './diagnostics'
+import type {
+  NativeDiagnosticIncidentBatch,
+  RendererDiagnosticIncident,
+} from './diagnostics'
 import type { DesktopLocalSettings, DesktopLocalSettingsPatch } from './settings'
 import type { VoiceCommand, VoiceSnapshot } from './voice/voice-types'
 
@@ -154,7 +157,6 @@ export type {
   NativeMediaFrameMethod,
   NativeMediaFrameStats,
   NativeMediaLoopbackMode,
-  NativeMediaLiveKitCredentials,
   NativeMicrophonePipelineConfig,
   NativeMicrophonePreviewStateEvent,
   NativeMediaTarget,
@@ -205,9 +207,13 @@ export interface SyrnikeDesktopApi {
   }
   diagnostics: {
     createBundle(rendererJsonl: string): Promise<Uint8Array>
-    leaseNativeIncidents(): Promise<NativeDiagnosticIncidentBatch | null>
-    acknowledgeNativeIncidents(batchId: string): Promise<boolean>
-    releaseNativeIncidents(batchId: string): Promise<boolean>
+    enqueueIncident(
+      accountId: string,
+      incident: RendererDiagnosticIncident,
+    ): Promise<boolean>
+    leaseNativeIncidents(accountId: string): Promise<NativeDiagnosticIncidentBatch | null>
+    acknowledgeNativeIncidents(accountId: string, batchId: string): Promise<boolean>
+    releaseNativeIncidents(accountId: string, batchId: string): Promise<boolean>
   }
   updates: {
     getState(): Promise<DesktopUpdateState>
@@ -253,6 +259,7 @@ export interface SyrnikeDesktopApi {
       trackId: string,
       demanded: boolean,
     ): Promise<void>
+    replayRemoteScreenPublications(): Promise<void>
     setLocalScreenPreviewDemand(demand: {
       demanded: boolean
       width: number

@@ -70,6 +70,22 @@ export class NativeSharedTextureBridge {
     this.lastDeliveryRecoveryAt.clear()
   }
 
+  resetSession(sessionId: string, generation: number) {
+    const prefix = `${sessionId}:${generation}:`
+    for (const [key, entry] of this.inFlight) {
+      if (key.startsWith(prefix)) this.retireEntry(key, entry)
+    }
+    for (const values of [
+      this.latestSequence,
+      this.deliveryFailures,
+      this.lastDeliveryRecoveryAt,
+    ]) {
+      for (const key of values.keys()) {
+        if (key.startsWith(prefix)) values.delete(key)
+      }
+    }
+  }
+
   removeTrack(sessionId: string, generation: number, trackId: string) {
     const prefix = `${sessionId}:${generation}:${trackId}:`
     for (const [key, entry] of this.inFlight) {

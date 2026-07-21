@@ -102,6 +102,8 @@ endfunction()
 add_library(syrnike_media_core STATIC
   src/common/diagnostic_log.cpp
   src/media/audio_devices.cpp
+  src/media/audio_failure.cpp
+  src/media/audio_failure.hpp
   src/media/audio_processing.cpp
   src/media/camera_actor.cpp
   src/media/camera_capture.cpp
@@ -109,6 +111,7 @@ add_library(syrnike_media_core STATIC
   src/media/livekit_publication_client.cpp
   src/media/media_runtime.cpp
   src/media/media_runtime_support.cpp
+  src/media/media_operation.hpp
   src/media/microphone_actor.cpp
   src/media/microphone_audio_processor.cpp
   src/media/microphone_publication_controller.cpp
@@ -176,6 +179,7 @@ endif()
 foreach(HOOK_RUNTIME hotkey overlay)
   add_library(syrnike_${HOOK_RUNTIME} MODULE
     ${CMAKE_JS_SRC}
+    src/common/diagnostic_log.cpp
     src/common/node_event_sink.cpp
     src/hooks/hooks_addon.cpp
   )
@@ -196,6 +200,15 @@ foreach(HOOK_RUNTIME hotkey overlay)
 endforeach()
 
 enable_testing()
+add_executable(syrnike-native-actor-mailbox-tests
+  tests/actor_mailbox_test.cpp
+)
+syrnike_native_target(syrnike-native-actor-mailbox-tests)
+add_test(
+  NAME syrnike-native-actor-mailbox-tests
+  COMMAND syrnike-native-actor-mailbox-tests
+)
+
 add_executable(syrnike-native-runtime-core-tests
   tests/runtime_core_test.cpp
   src/common/diagnostic_log.cpp

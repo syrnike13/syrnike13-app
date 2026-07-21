@@ -226,7 +226,7 @@ describe('NativeRuntimeSupervisor', () => {
       event: {
         type: 'microphoneMetrics',
         sequence: 10,
-        metrics: { inputDb: -30, thresholdDb: -28, open: false },
+        metrics: { revision: 1, inputDb: -30, thresholdDb: -28, open: false },
       },
     })
     adapter.callbacks?.onMessage({
@@ -249,6 +249,54 @@ describe('NativeRuntimeSupervisor', () => {
     ])
   })
 
+  it('keeps lossy frame delivery independent from the control sequence fence', async () => {
+    const adapter = new FakeAdapter()
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+    })
+    const eventListener = vi.fn()
+    supervisor.onEvent(eventListener)
+
+    const start = supervisor.start()
+    adapter.ready(MEDIA_READY)
+    await start
+    adapter.callbacks?.onMessage({
+      type: 'event',
+      event: {
+        type: 'remoteVideoFrame',
+        sequence: 10,
+        sessionId: 'epoch-a',
+        generation: 1,
+        trackId: 'track-a',
+        participantIdentity: 'participant-a',
+        source: 'camera',
+        frameSequence: 1,
+        timestampUs: 1,
+        width: 1280,
+        height: 720,
+        ntHandle: new Uint8Array(8),
+      },
+    })
+    adapter.callbacks?.onMessage({
+      type: 'event',
+      event: {
+        type: 'runtimeError',
+        sequence: 9,
+        error: {
+          code: 'control_after_frame',
+          message: 'control lane is independently ordered',
+          retryable: false,
+        },
+      },
+    })
+
+    expect(eventListener.mock.calls.map(([event]) => event.type)).toEqual([
+      'remoteVideoFrame',
+      'runtimeError',
+    ])
+  })
+
   it('rejects a synchronous initial start failure and schedules recovery once', async () => {
     const adapter = new FakeAdapter()
     adapter.startError = new Error('load failed')
@@ -266,7 +314,126 @@ describe('NativeRuntimeSupervisor', () => {
       detail: { code: 'handshake_failed' },
     })
     expect(supervisor.getSnapshot().status).toBe('recovering')
+    expect(supervisor.getSnapshot().failure).toMatchObject({
+      cause: 'spawn_failed',
+      retryable: true,
+    })
     expect(scheduled).toHaveLength(1)
+  })
+
+  it('treats a synchronous exit during start as one terminal host epoch', async () => {
+    const adapter = new FakeAdapter()
+    const scheduled: Array<() => void> = []
+    adapter.start = (callbacks) => {
+      adapter.callbacks = callbacks
+      callbacks.onExit({ code: 1 })
+      throw new Error('start unwound after exit')
+    }
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'hotkey',
+      createAdapter: () => adapter,
+      schedule: (callback) => {
+        scheduled.push(callback)
+        return 1 as unknown as ReturnType<typeof setTimeout>
+      },
+    })
+
+    await expect(supervisor.start()).rejects.toMatchObject({
+      detail: { code: 'runtime_lost' },
+    })
+    expect(scheduled).toHaveLength(1)
+    expect(supervisor.getSnapshot()).toMatchObject({
+      status: 'recovering',
+      hostEpoch: 1,
+      failure: { cause: 'process_exit' },
+    })
+  })
+
+  it('fences a timed-out handshake and ignores late ready from that epoch', async () => {
+    vi.useFakeTimers()
+    const adapters: FakeAdapter[] = []
+    const scheduled: Array<() => void> = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'hotkey',
+      createAdapter: () => {
+        const adapter = new FakeAdapter()
+        adapters.push(adapter)
+        return adapter
+      },
+      handshakeTimeoutMs: 5,
+      schedule: (callback) => {
+        scheduled.push(callback)
+        return scheduled.length as unknown as ReturnType<typeof setTimeout>
+      },
+    })
+
+    const start = supervisor.start()
+    const failedStart = expect(start).rejects.toMatchObject({
+      detail: { code: 'handshake_failed', retryable: true },
+    })
+    await vi.advanceTimersByTimeAsync(5)
+    await failedStart
+    expect(supervisor.getSnapshot()).toMatchObject({
+      status: 'recovering',
+      hostEpoch: 1,
+      failure: { cause: 'handshake_timeout' },
+    })
+
+    adapters[0].ready()
+    expect(supervisor.getSnapshot().status).toBe('recovering')
+    scheduled[0]()
+    adapters[1].ready()
+    await vi.waitFor(() => expect(supervisor.getSnapshot()).toMatchObject({
+      status: 'ready',
+      hostEpoch: 2,
+    }))
+    vi.useRealTimers()
+  })
+
+  it('publishes starting only after reentrant start is fenced by the same promise', async () => {
+    const adapters: FakeAdapter[] = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'hotkey',
+      createAdapter: () => {
+        const adapter = new FakeAdapter()
+        adapters.push(adapter)
+        return adapter
+      },
+    })
+    let reentrantStart: Promise<NativeRuntimeReady> | null = null
+    supervisor.onStateChange((snapshot) => {
+      if (snapshot.status === 'starting') reentrantStart = supervisor.start()
+    })
+
+    const start = supervisor.start()
+    expect(adapters).toHaveLength(1)
+    expect(reentrantStart).toBe(start)
+    adapters[0].ready()
+    await expect(start).resolves.toEqual(READY)
+  })
+
+  it('does not spawn a host after a starting observer shuts the supervisor down', async () => {
+    const adapters: FakeAdapter[] = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'hotkey',
+      createAdapter: () => {
+        const adapter = new FakeAdapter()
+        adapters.push(adapter)
+        return adapter
+      },
+    })
+    let shutdown: Promise<void> | null = null
+    supervisor.onStateChange((snapshot) => {
+      if (snapshot.status === 'starting') shutdown = supervisor.shutdown()
+    })
+
+    const start = supervisor.start()
+    await expect(start).rejects.toMatchObject({
+      detail: { code: 'runtime_stopped' },
+    })
+    await shutdown
+    expect(adapters).toHaveLength(0)
+    expect(supervisor.getSnapshot().status).toBe('stopped')
   })
 
   it('rejects pending work as runtime_lost and enters the circuit after crashes', async () => {
@@ -325,7 +492,13 @@ describe('NativeRuntimeSupervisor', () => {
     const start = supervisor.start()
     adapter.callbacks?.onMessage({ ...READY, contractVersion: 999 })
     await expect(start).rejects.toBeInstanceOf(NativeRuntimeRequestError)
-    expect(supervisor.getSnapshot().status).toBe('degraded')
+    expect(supervisor.getSnapshot()).toMatchObject({
+      status: 'degraded',
+      failure: {
+        cause: 'handshake_incompatible',
+        retryable: false,
+      },
+    })
   })
 
   it('rejects an addon with missing runtime identity without starting workers', async () => {
@@ -484,6 +657,9 @@ describe('NativeRuntimeSupervisor', () => {
     await vi.advanceTimersByTimeAsync(10)
     await collateralExpectation
     expect(adapter.killed).toBe(true)
+    expect(supervisor.getSnapshot().failure).toMatchObject({
+      cause: 'liveness_probe_failed',
+    })
     vi.useRealTimers()
   })
 
@@ -507,6 +683,46 @@ describe('NativeRuntimeSupervisor', () => {
     })
     expect(adapter.killed).toBe(true)
     expect(supervisor.getSnapshot().status).toBe('recovering')
+    expect(supervisor.getSnapshot().failure).toMatchObject({
+      cause: 'actor_unresponsive',
+    })
+  })
+
+  it('labels an uncertain mutating timeout without parsing its message', async () => {
+    const adapter = new FakeAdapter()
+    vi.useFakeTimers()
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+      schedule: () => 1 as unknown as ReturnType<typeof setTimeout>,
+    })
+    const start = supervisor.start()
+    adapter.ready(MEDIA_READY)
+    await start
+
+    const request = supervisor.request({
+      type: 'connectVoice',
+      sessionId: 'voice-a',
+      generation: 1,
+      options: {
+        livekit: {
+          url: 'wss://voice.invalid',
+          token: 'token-a',
+          participantIdentity: 'participant-a',
+        },
+      },
+    }, 5)
+    const expectation = expect(request).rejects.toMatchObject({
+      detail: { code: 'request_timeout' },
+    })
+    await vi.advanceTimersByTimeAsync(5)
+    await expectation
+
+    expect(adapter.killed).toBe(true)
+    expect(supervisor.getSnapshot().failure).toMatchObject({
+      cause: 'request_outcome_unknown',
+    })
+    vi.useRealTimers()
   })
 
   it('coalesces concurrent query timeouts into one lane probe', async () => {
@@ -584,7 +800,99 @@ describe('NativeRuntimeSupervisor', () => {
     await Promise.resolve()
 
     expect(adapter.killed).toBe(true)
+    expect(supervisor.getSnapshot().failure).toMatchObject({
+      cause: 'actor_unresponsive',
+    })
     vi.useRealTimers()
+  })
+
+  it('keeps checking a timed-out camera attempt until its actor retires', async () => {
+    const adapter = new FakeAdapter()
+    vi.useFakeTimers()
+    try {
+      const supervisor = new NativeRuntimeSupervisor({
+        runtime: 'media',
+        createAdapter: () => adapter,
+        probeTimeoutMs: 100,
+        schedule: () => 1 as unknown as ReturnType<typeof setTimeout>,
+      })
+      const start = supervisor.start()
+      adapter.ready(MEDIA_READY)
+      await start
+
+      const connect = supervisor.request({
+        type: 'connectCamera',
+        sessionId: 'voice-a',
+        generation: 1,
+        options: { participantIdentity: 'participant-a' },
+      }, 5)
+      const timeout = expect(connect).rejects.toMatchObject({
+        detail: { code: 'request_timeout' },
+      })
+      await vi.advanceTimersByTimeAsync(5)
+      await timeout
+      expect(adapter.requests[1]?.command.type).toBe('probeCameraActor')
+
+      adapter.reply(1, { state: 'busy' })
+      await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(adapter.requests[2]?.command.type).toBe('probeCameraActor')
+      expect(adapter.killed).toBe(false)
+      adapter.reply(2, { state: 'available' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not probe behind legitimate work in the same retirement lane', async () => {
+    const adapter = new FakeAdapter()
+    vi.useFakeTimers()
+    try {
+      const supervisor = new NativeRuntimeSupervisor({
+        runtime: 'media',
+        createAdapter: () => adapter,
+        probeTimeoutMs: 100,
+        schedule: () => 1 as unknown as ReturnType<typeof setTimeout>,
+      })
+      const start = supervisor.start()
+      adapter.ready(MEDIA_READY)
+      await start
+
+      const connect = supervisor.request({
+        type: 'connectScreen',
+        sessionId: 'voice-a',
+        generation: 1,
+        options: { participantIdentity: 'participant-a' },
+      }, 20_000)
+      await vi.waitFor(() => expect(adapter.requests).toHaveLength(1))
+      adapter.reply(0, undefined)
+      await connect
+
+      const capture = supervisor.request({
+        type: 'startScreenCapture',
+        sessionId: 'voice-a',
+        generation: 1,
+        excludeProcessId: 42,
+        options: {
+          kind: 'screen',
+          requestId: 'screen-a',
+          sourceId: 'screen:1:0',
+          participantIdentity: 'participant-a',
+        },
+      }, 20_000)
+      await vi.waitFor(() => expect(adapter.requests).toHaveLength(2))
+
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(adapter.requests).toHaveLength(2)
+      expect(adapter.killed).toBe(false)
+
+      adapter.reply(1, undefined)
+      await capture
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(adapter.requests[2]?.command.type).toBe('probeScreenActor')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not let a stale probe recycle a replacement adapter', async () => {
@@ -653,6 +961,9 @@ describe('NativeRuntimeSupervisor', () => {
     ).rejects.toMatchObject({ detail: { code: 'runtime_lost' } })
     expect(adapter.killed).toBe(true)
     expect(supervisor.getSnapshot().status).toBe('recovering')
+    expect(supervisor.getSnapshot().failure).toMatchObject({
+      cause: 'transport_error',
+    })
     expect(scheduled).toHaveLength(1)
   })
 
@@ -693,6 +1004,50 @@ describe('NativeRuntimeSupervisor', () => {
 
     await shutdown
     expect(adapter.killed).toBe(false)
+    expect(supervisor.getSnapshot().status).toBe('stopped')
+  })
+
+  it('does not overlap a new start with graceful shutdown', async () => {
+    const adapter = new FakeAdapter()
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'hotkey',
+      createAdapter: () => adapter,
+    })
+    const start = supervisor.start()
+    adapter.ready()
+    await start
+
+    const shutdown = supervisor.shutdown()
+    await vi.waitFor(() => expect(adapter.requests).toHaveLength(1))
+    await expect(supervisor.start()).rejects.toMatchObject({
+      detail: { code: 'runtime_stopped' },
+    })
+    adapter.reply(0, undefined)
+    adapter.exit(0)
+    await shutdown
+
+    expect(supervisor.getSnapshot().status).toBe('stopped')
+  })
+
+  it('joins reentrant shutdown calls from stopped observers', async () => {
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'hotkey',
+      createAdapter: () => new FakeAdapter(),
+    })
+    let reentrantShutdown: Promise<void> | null = null
+    let stoppedNotifications = 0
+    supervisor.onStateChange((snapshot) => {
+      if (snapshot.status !== 'stopped') return
+      stoppedNotifications += 1
+      reentrantShutdown = supervisor.shutdown()
+    })
+
+    const shutdown = supervisor.shutdown()
+    await shutdown
+    await reentrantShutdown
+
+    expect(reentrantShutdown).toBe(shutdown)
+    expect(stoppedNotifications).toBe(1)
     expect(supervisor.getSnapshot().status).toBe('stopped')
   })
 })

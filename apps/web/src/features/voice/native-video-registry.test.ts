@@ -391,6 +391,29 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     expect(registry.listTracks()).toEqual([])
   })
 
+  it('clears retained publications and pending frames when the native session is lost', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, remoteFrameMessage(1, new FakeVideoFrame()))
+    const consumer = canvasStub()
+    registry.getTrack('remote-screen')!.attachCanvas(consumer.canvas)
+    const pending = new FakeVideoFrame()
+    deliver(registry, remoteFrameMessage(2, pending))
+
+    deliver(registry, {
+      type: 'syrnike-native-video-session-reset',
+      metadata: { sessionId: 'session', generation: 1 },
+    })
+
+    expect(pending.close).toHaveBeenCalledOnce()
+    expect(registry.listPublications()).toEqual([])
+    expect(registry.listTracks()).toEqual([])
+    const late = new FakeVideoFrame()
+    deliver(registry, remoteFrameMessage(3, late))
+    expect(late.close).toHaveBeenCalledOnce()
+    expect(registry.listTracks()).toEqual([])
+  })
+
   it('purges the previous session when a newer generation starts', () => {
     const registry = new NativeVideoRegistry()
     deliver(registry, publicationMessage('available'))
@@ -415,6 +438,45 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     ])
     deliver(registry, publicationMessage('available'))
     expect(registry.listPublications()).toHaveLength(1)
+  })
+
+  it('requests a publication replay after installing its renderer listener', () => {
+    const registry = new NativeVideoRegistry()
+
+    registry.start()
+    registry.start()
+
+    expect(runtimeWindow.addEventListener).toHaveBeenCalledOnce()
+    expect(
+      runtimeWindow.syrnikeDesktop.media.replayRemoteScreenPublications,
+    ).toHaveBeenCalledOnce()
+    expect(runtimeWindow.addEventListener.mock.invocationCallOrder[0]).toBeLessThan(
+      runtimeWindow.syrnikeDesktop.media.replayRemoteScreenPublications.mock
+        .invocationCallOrder[0],
+    )
+  })
+
+  it('does not compare generations across voice sessions', () => {
+    const registry = new NativeVideoRegistry()
+    const oldPublication = publicationMessage('available')
+    oldPublication.metadata.generation = 9
+    deliver(registry, oldPublication)
+
+    const nextPublication = publicationMessage('available')
+    nextPublication.metadata = {
+      ...nextPublication.metadata,
+      sessionId: 'next-session',
+      generation: 1,
+    }
+    deliver(registry, nextPublication)
+
+    expect(registry.listPublications()).toEqual([
+      expect.objectContaining({ sessionId: 'next-session', generation: 1 }),
+    ])
+    deliver(registry, oldPublication)
+    expect(registry.listPublications()).toEqual([
+      expect.objectContaining({ sessionId: 'next-session', generation: 1 }),
+    ])
   })
 })
 
@@ -522,6 +584,11 @@ function createRuntimeWindow() {
   const callbacks = new Map<number, FrameRequestCallback>()
   return {
     location: { origin: 'https://app.test' },
+    syrnikeDesktop: {
+      media: {
+        replayRemoteScreenPublications: vi.fn(async () => undefined),
+      },
+    },
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     requestAnimationFrame: vi.fn((callback: FrameRequestCallback) => {

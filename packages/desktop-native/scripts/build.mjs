@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const LIVEKIT_VERSION = '1.3.0'
-const CONTRACT_VERSION = 3
+const CONTRACT_VERSION = 4
 const LIVEKIT_REVISION = '7596552cdba189fd908c8daa1b55c353efd015a3'
 const LIVEKIT_RUST_REVISION = 'dad794d414fda9e8c1de83af1c0f190506a15f8f'
 const NAPI_VERSION = 8

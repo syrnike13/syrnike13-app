@@ -11,6 +11,7 @@ import type {
   DesktopLocalSettings,
   DesktopLocalSettingsPatch,
   NativeDiagnosticIncidentBatch,
+  RendererDiagnosticIncident,
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSelection,
   DesktopDisplayMediaSource,
@@ -51,6 +52,13 @@ sharedTexture.setSharedTextureReceiver(async ({ importedSharedTexture }, metadat
 ipcRenderer.on('syrnike-desktop:media:remote-video-track-removed', (_event, metadata) => {
   window.postMessage(
     { type: 'syrnike-native-video-track-removed', metadata },
+    window.location.origin,
+  )
+})
+
+ipcRenderer.on(IPC.mediaRemoteVideoSessionReset, (_event, metadata) => {
+  window.postMessage(
+    { type: 'syrnike-native-video-session-reset', metadata },
     window.location.origin,
   )
 })
@@ -187,20 +195,30 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       )
       return new Uint8Array(value)
     },
-    leaseNativeIncidents() {
+    enqueueIncident(accountId: string, incident: RendererDiagnosticIncident) {
+      return ipcRenderer.invoke(
+        IPC.diagnosticsEnqueueIncident,
+        accountId,
+        incident,
+      ) as Promise<boolean>
+    },
+    leaseNativeIncidents(accountId: string) {
       return ipcRenderer.invoke(
         IPC.diagnosticsLeaseNativeIncidents,
+        accountId,
       ) as Promise<NativeDiagnosticIncidentBatch | null>
     },
-    acknowledgeNativeIncidents(batchId: string) {
+    acknowledgeNativeIncidents(accountId: string, batchId: string) {
       return ipcRenderer.invoke(
         IPC.diagnosticsAcknowledgeNativeIncidents,
+        accountId,
         batchId,
       ) as Promise<boolean>
     },
-    releaseNativeIncidents(batchId: string) {
+    releaseNativeIncidents(accountId: string, batchId: string) {
       return ipcRenderer.invoke(
         IPC.diagnosticsReleaseNativeIncidents,
+        accountId,
         batchId,
       ) as Promise<boolean>
     },
@@ -337,6 +355,9 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         trackId,
         demanded,
       )
+    },
+    replayRemoteScreenPublications() {
+      return ipcRenderer.invoke(IPC.mediaReplayRemoteScreenPublications)
     },
     setLocalScreenPreviewDemand(demand) {
       return ipcRenderer.invoke(IPC.mediaSetLocalScreenPreviewDemand, demand)
@@ -512,6 +533,8 @@ function isNativeMicrophoneMetricsEvent(
   if (!value || typeof value !== 'object') return false
   const event = value as NativeMicrophoneMetricsEvent
   return (
+    Number.isSafeInteger(event.revision) &&
+    event.revision >= 0 &&
     typeof event.inputDb === 'number' &&
     typeof event.thresholdDb === 'number' &&
     typeof event.open === 'boolean'

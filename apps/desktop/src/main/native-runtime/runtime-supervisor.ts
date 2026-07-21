@@ -31,15 +31,41 @@ export type NativeRuntimeSupervisorStatus =
   | 'recovering'
   | 'degraded'
 
+export type NativeRuntimeFailureCause =
+  | 'spawn_failed'
+  | 'handshake_timeout'
+  | 'handshake_incompatible'
+  | 'process_exit'
+  | 'transport_error'
+  | 'request_outcome_unknown'
+  | 'actor_unresponsive'
+  | 'liveness_probe_failed'
+  | 'circuit_open'
+
+export type NativeRuntimeFailure = {
+  cause: NativeRuntimeFailureCause
+  message: string
+  retryable: boolean
+}
+
 export type NativeRuntimeSupervisorSnapshot = {
   runtime: NativeRuntimeKind
   status: NativeRuntimeSupervisorStatus
   pid?: number
   restartCount: number
+  /** Monotonic identity of the utility host whose state is being reported. */
+  hostEpoch?: number
+  failure?: NativeRuntimeFailure
   degradedReason?: string
   lastFailure?: string
   ready?: NativeRuntimeReady
 }
+
+export type NativeRuntimeGenerationLane =
+  | 'voice'
+  | 'microphone'
+  | 'screen'
+  | 'camera'
 
 export class NativeRuntimeRequestError extends Error {
   constructor(readonly detail: NativeRuntimeError) {
@@ -104,6 +130,7 @@ export type NativeRuntimeSupervisorOptions = {
 
 type NativeRuntimeRequestOptions = {
   probeOnTimeout?: boolean
+  allowDuringShutdown?: boolean
 }
 
 export class NativeRuntimeSupervisor {
@@ -120,9 +147,24 @@ export class NativeRuntimeSupervisor {
   private handshakeTimer: ReturnType<typeof setTimeout> | null = null
   private restartTimer: ReturnType<typeof setTimeout> | null = null
   private crashTimes: number[] = []
-  private expectedExit = false
+  private expectedExitEpoch: number | null = null
+  private startEpoch: number | null = null
+  private restartScheduleEpoch = 0
+  private shutdownPromise: Promise<void> | null = null
   private requestSequence = 0
   private adapterEpoch = 0
+  // Native generation fences outlive account-scoped RTC adapters, so their
+  // sequence source must share the supervisor's runtime lifetime.
+  private readonly generationSequences: Record<
+    NativeRuntimeGenerationLane,
+    number
+  > = {
+    voice: 0,
+    microphone: 0,
+    screen: 0,
+    camera: 0,
+  }
+  private microphoneConfigRevision = 0
   private lastControlEventSequence = -1
   private readonly activeProbeKeys = new Set<string>()
   private readonly retirementWatchdogs = new Map<
@@ -146,6 +188,20 @@ export class NativeRuntimeSupervisor {
     return this.pending.size
   }
 
+  allocateGeneration(lane: NativeRuntimeGenerationLane) {
+    const generation = this.generationSequences[lane] + 1
+    assertSafeSequence(generation, `${lane} generation`)
+    this.generationSequences[lane] = generation
+    return generation
+  }
+
+  allocateMicrophoneConfigRevision() {
+    const revision = this.microphoneConfigRevision + 1
+    assertSafeSequence(revision, 'microphone config revision')
+    this.microphoneConfigRevision = revision
+    return revision
+  }
+
   onEvent(listener: (event: NativeRuntimeEvent) => void) {
     this.eventListeners.add(listener)
     return () => this.eventListeners.delete(listener)
@@ -157,6 +213,13 @@ export class NativeRuntimeSupervisor {
   }
 
   start() {
+    if (this.shutdownPromise) {
+      return Promise.reject(
+        new NativeRuntimeRequestError(
+          nativeRuntimeError('runtime_stopped', 'Native runtime is stopping'),
+        ),
+      )
+    }
     if (this.snapshot.status === 'ready' && this.snapshot.ready) {
       return Promise.resolve(this.snapshot.ready)
     }
@@ -173,7 +236,14 @@ export class NativeRuntimeSupervisor {
       )
     }
 
-    this.expectedExit = false
+    this.expectedExitEpoch = null
+    const adapterEpoch = ++this.adapterEpoch
+    this.startEpoch = adapterEpoch
+    const startPromise = new Promise<NativeRuntimeReady>((resolve, reject) => {
+      this.resolveStart = resolve
+      this.rejectStart = reject
+    })
+    this.startPromise = startPromise
     this.log('start_requested', {
       status: this.snapshot.status,
       restartCount: this.snapshot.restartCount,
@@ -183,43 +253,57 @@ export class NativeRuntimeSupervisor {
       status: this.snapshot.restartCount > 0 ? 'recovering' : 'starting',
       degradedReason: undefined,
       lastFailure: undefined,
+      failure: undefined,
       ready: undefined,
+      hostEpoch: adapterEpoch,
     })
-    const startPromise = new Promise<NativeRuntimeReady>((resolve, reject) => {
-      this.resolveStart = resolve
-      this.rejectStart = reject
-    })
-    this.startPromise = startPromise
+    if (this.startEpoch !== adapterEpoch) return startPromise
 
-    let adapter: NativeRuntimeAdapter
+    let adapter: NativeRuntimeAdapter | null = null
     try {
-      adapter = this.options.createAdapter()
-      this.adapter = adapter
-      this.adapterEpoch += 1
+      const createdAdapter = this.options.createAdapter()
+      adapter = createdAdapter
+      this.adapter = createdAdapter
       this.lastControlEventSequence = -1
       this.log('adapter_created', {
         pendingCount: this.pending.size,
       })
       this.handshakeTimer = setTimeout(
-        () => this.failHandshake('Native runtime handshake timed out'),
+        () => this.failHandshake(
+          createdAdapter,
+          adapterEpoch,
+          failure('handshake_timeout', 'Native runtime handshake timed out'),
+        ),
         this.options.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS,
       )
       this.log('handshake_started', {
         pendingCount: this.pending.size,
       })
-      adapter.start({
-        onMessage: (message) => this.handleMessage(adapter, message),
-        onExit: (exit) => this.handleExit(adapter, exit),
+      createdAdapter.start({
+        onMessage: (message) => this.handleMessage(createdAdapter, adapterEpoch, message),
+        onExit: (exit) => this.handleExit(createdAdapter, adapterEpoch, exit),
       })
-      this.updateSnapshot({ pid: adapter.pid })
+      if (!this.isCurrentHost(createdAdapter, adapterEpoch)) return startPromise
+      this.updateSnapshot({ pid: createdAdapter.pid })
       this.log('adapter_started', {
-        adapterPid: adapter.pid,
+        adapterPid: createdAdapter.pid,
         pendingCount: this.pending.size,
       })
     } catch (error) {
-      this.failHandshake(
-        error instanceof Error ? error.message : 'Native runtime failed to start',
-      )
+      const message = error instanceof Error
+        ? error.message
+        : 'Native runtime failed to start'
+      const activeAdapter = this.adapter
+      const activeEpoch = this.adapterEpoch
+      if (adapter && activeAdapter === adapter) {
+        this.failHandshake(
+          activeAdapter,
+          activeEpoch,
+          failure('spawn_failed', message),
+        )
+      } else if (!adapter) {
+        this.failStartWithoutHost(failure('spawn_failed', message))
+      }
     }
     return startPromise
   }
@@ -235,7 +319,7 @@ export class NativeRuntimeSupervisor {
       timeoutMs,
       pendingCount: this.pending.size,
     })
-    await this.start()
+    if (!options.allowDuringShutdown) await this.start()
     if (!this.adapter || this.snapshot.status !== 'ready') {
       this.log('request_rejected_not_ready', {
         ...context,
@@ -296,6 +380,7 @@ export class NativeRuntimeSupervisor {
         if (hasUncertainMutationOutcome(command)) {
           this.recycleHungAdapterIfCurrent(
             timedOut.adapterEpoch,
+            'request_outcome_unknown',
             timeoutMessage,
             'Native runtime recycled after a mutating command timed out with an uncertain outcome',
           )
@@ -304,6 +389,7 @@ export class NativeRuntimeSupervisor {
         if (timedOut.kind === 'probe') {
           this.recycleHungAdapterIfCurrent(
             timedOut.adapterEpoch,
+            'liveness_probe_failed',
             `Native runtime liveness probe timed out (${context.lane ?? 'unknown'})`,
             'Native runtime recycled after an actor liveness probe timed out',
           )
@@ -361,6 +447,7 @@ export class NativeRuntimeSupervisor {
       // trusted even if Electron has not delivered its exit event yet.
       this.recycleHungAdapterIfCurrent(
         adapterEpoch,
+        'transport_error',
         message,
       )
     }
@@ -381,12 +468,38 @@ export class NativeRuntimeSupervisor {
       restartCount: this.snapshot.restartCount + 1,
       degradedReason: undefined,
       lastFailure: undefined,
+      failure: undefined,
     })
     return this.start()
   }
 
-  async shutdown() {
-    this.expectedExit = true
+  shutdown() {
+    if (this.shutdownPromise) return this.shutdownPromise
+    let resolveShutdown!: () => void
+    let rejectShutdown!: (error: unknown) => void
+    const shutdown = new Promise<void>((resolve, reject) => {
+      resolveShutdown = resolve
+      rejectShutdown = reject
+    })
+    // Publish the sentinel before shutdownAtomic can synchronously notify an
+    // observer. Reentrant shutdown calls must join this exact transition.
+    this.shutdownPromise = shutdown
+    void this.shutdownAtomic().then(
+      () => {
+        if (this.shutdownPromise === shutdown) this.shutdownPromise = null
+        resolveShutdown()
+      },
+      (error) => {
+        if (this.shutdownPromise === shutdown) this.shutdownPromise = null
+        rejectShutdown(error)
+      },
+    )
+    return shutdown
+  }
+
+  private async shutdownAtomic() {
+    const shutdownEpoch = this.adapterEpoch
+    this.expectedExitEpoch = shutdownEpoch
     this.log('shutdown_requested', {
       pendingCount: this.pending.size,
       status: this.snapshot.status,
@@ -409,6 +522,7 @@ export class NativeRuntimeSupervisor {
           Promise.all([
             this.request({ type: 'shutdown' }, 2_000, {
               probeOnTimeout: false,
+              allowDuringShutdown: true,
             }).catch(() => undefined),
             exited,
           ]),
@@ -442,11 +556,16 @@ export class NativeRuntimeSupervisor {
       pid: undefined,
       ready: undefined,
       degradedReason: undefined,
+      failure: undefined,
     })
   }
 
-  private handleMessage(adapter: NativeRuntimeAdapter, message: unknown) {
-    if (this.adapter !== adapter || !isNativeRuntimeMessage(message)) return
+  private handleMessage(
+    adapter: NativeRuntimeAdapter,
+    adapterEpoch: number,
+    message: unknown,
+  ) {
+    if (!this.isCurrentHost(adapter, adapterEpoch) || !isNativeRuntimeMessage(message)) return
     if (message.type === 'ready') {
       if (
         message.runtime !== this.options.runtime ||
@@ -456,9 +575,7 @@ export class NativeRuntimeSupervisor {
           message.runtime !== this.options.runtime
             ? `Native runtime kind mismatch (expected ${this.options.runtime}, received ${message.runtime})`
             : `Native runtime contract mismatch (expected ${NATIVE_RUNTIME_CONTRACT_VERSION}, received ${message.contractVersion})`
-        this.degrade(
-          reason,
-        )
+        this.degrade(failure('handshake_incompatible', reason, false), adapterEpoch)
         return
       }
       this.log('handshake_ready', {
@@ -470,9 +587,10 @@ export class NativeRuntimeSupervisor {
         pid: adapter.pid,
         ready: message,
         degradedReason: undefined,
+        failure: undefined,
       })
       this.resolveStart?.(message)
-      this.clearStartPromise()
+      this.clearStartPromise(adapterEpoch)
       return
     }
     if (message.type === 'reply') {
@@ -489,6 +607,16 @@ export class NativeRuntimeSupervisor {
           pendingCount: this.pending.size,
         })
         pending.resolve(message.result)
+        if (
+          pending.kind === 'probe' &&
+          pending.context.lane &&
+          isBusyProbeResult(message.result)
+        ) {
+          this.armRetirementWatchdog(
+            pending.context.lane,
+            pending.adapterEpoch,
+          )
+        }
         if (
           pending.kind === 'command' &&
           pending.context.lane &&
@@ -513,12 +641,14 @@ export class NativeRuntimeSupervisor {
         if (pending.kind === 'probe') {
           this.recycleHungAdapterIfCurrent(
             pending.adapterEpoch,
+            'liveness_probe_failed',
             `Native runtime liveness probe failed (${pending.context.lane ?? 'unknown'})`,
             'Native runtime recycled after an actor liveness probe failed',
           )
         } else if (message.error.code === 'actor_unresponsive') {
           this.recycleHungAdapterIfCurrent(
             pending.adapterEpoch,
+            'actor_unresponsive',
             `Native runtime actor reported lost capacity (${pending.context.lane ?? 'unknown'})`,
             'Native runtime recycled after an actor became unresponsive',
           )
@@ -527,8 +657,8 @@ export class NativeRuntimeSupervisor {
       return
     }
     const event = message.event
-    const isTelemetry = event.type === 'microphoneMetrics' || event.type === 'stats'
-    if (!isTelemetry && event.sequence <= this.lastControlEventSequence) {
+    const isLossyMedia = isLossyMediaEvent(event)
+    if (!isLossyMedia && event.sequence <= this.lastControlEventSequence) {
       this.log('runtime_event_dropped_out_of_order', {
         nativeEventType: event.type,
         nativeSequence: event.sequence,
@@ -537,7 +667,7 @@ export class NativeRuntimeSupervisor {
       })
       return
     }
-    if (!isTelemetry) {
+    if (!isLossyMedia) {
       this.lastControlEventSequence = event.sequence
       this.log('runtime_event_received', {
         nativeEventType: event.type,
@@ -561,8 +691,12 @@ export class NativeRuntimeSupervisor {
     }
   }
 
-  private handleExit(adapter: NativeRuntimeAdapter, exit: NativeRuntimeAdapterExit) {
-    if (this.adapter !== adapter) return
+  private handleExit(
+    adapter: NativeRuntimeAdapter,
+    adapterEpoch: number,
+    exit: NativeRuntimeAdapterExit,
+  ) {
+    if (!this.isCurrentHost(adapter, adapterEpoch)) return
     this.adapter = null
     this.clearHandshake()
     this.clearRetirementWatchdogs()
@@ -572,32 +706,38 @@ export class NativeRuntimeSupervisor {
     this.log('adapter_exited', {
       pendingCount: this.pending.size,
       message,
-      reason: this.expectedExit ? 'expected' : 'unexpected',
+      reason: this.expectedExitEpoch === adapterEpoch ? 'expected' : 'unexpected',
     })
     this.rejectStart?.(
       new NativeRuntimeRequestError(
         nativeRuntimeError('runtime_lost', message, { retryable: true }),
       ),
     )
-    this.clearStartPromise()
+    this.clearStartPromise(adapterEpoch)
     this.rejectAllPending('runtime_lost', message)
-    if (this.expectedExit) {
+    if (this.expectedExitEpoch === adapterEpoch) {
       this.updateSnapshot({ status: 'stopped', pid: undefined, ready: undefined })
       return
     }
-    this.scheduleRestart(message)
+    this.scheduleRestart(failure(
+      exit.error ? 'transport_error' : 'process_exit',
+      message,
+    ), adapterEpoch)
   }
 
-  private scheduleRestart(reason: string) {
+  private scheduleRestart(runtimeFailure: NativeRuntimeFailure, hostEpoch = this.adapterEpoch) {
     const now = (this.options.now ?? Date.now)()
     this.crashTimes = this.crashTimes.filter((time) => now - time <= CRASH_WINDOW_MS)
     this.crashTimes.push(now)
     if (this.crashTimes.length >= 3) {
       this.log('restart_aborted_circuit_open', {
         pendingCount: this.pending.size,
-        message: redactSensitiveText(reason),
+        message: redactSensitiveText(runtimeFailure.message),
       })
-      this.degrade(reason)
+      this.degrade(
+        failure('circuit_open', runtimeFailure.message, false),
+        hostEpoch,
+      )
       return
     }
     const restartCount = this.snapshot.restartCount + 1
@@ -606,8 +746,10 @@ export class NativeRuntimeSupervisor {
       pid: undefined,
       ready: undefined,
       restartCount,
-      lastFailure: redactSensitiveText(reason),
+      lastFailure: redactSensitiveText(runtimeFailure.message),
+      failure: sanitizeFailure(runtimeFailure),
     })
+    if (this.expectedExitEpoch === hostEpoch || this.shutdownPromise) return
     const crashIndex = Math.min(
       this.crashTimes.length - 1,
       RESTART_DELAYS_MS.length - 1,
@@ -617,58 +759,70 @@ export class NativeRuntimeSupervisor {
       pendingCount: this.pending.size,
       restartCount,
       delayMs: delay,
-      message: redactSensitiveText(reason),
+      message: redactSensitiveText(runtimeFailure.message),
     })
     const schedule = this.options.schedule ?? setTimeout
+    const scheduleEpoch = ++this.restartScheduleEpoch
     this.restartTimer = schedule(() => {
+      if (scheduleEpoch !== this.restartScheduleEpoch || this.shutdownPromise) return
       this.restartTimer = null
       void this.start().catch(() => {})
     }, delay)
   }
 
-  private failHandshake(message: string) {
-    const adapter = this.adapter
+  private failHandshake(
+    adapter: NativeRuntimeAdapter,
+    adapterEpoch: number,
+    runtimeFailure: NativeRuntimeFailure,
+  ) {
+    if (!this.isCurrentHost(adapter, adapterEpoch)) return
     this.adapter = null
-    adapter?.kill()
+    adapter.kill()
     this.log('handshake_failed', {
       pendingCount: this.pending.size,
-      message: redactSensitiveText(message),
+      message: redactSensitiveText(runtimeFailure.message),
     })
     this.clearHandshake()
     this.clearRetirementWatchdogs()
     const error = new NativeRuntimeRequestError(
-      nativeRuntimeError('handshake_failed', redactSensitiveText(message), {
-        retryable: true,
+      nativeRuntimeError('handshake_failed', redactSensitiveText(runtimeFailure.message), {
+        retryable: runtimeFailure.retryable,
       }),
     )
     this.rejectStart?.(error)
-    this.clearStartPromise()
-    this.scheduleRestart(error.message)
+    this.clearStartPromise(adapterEpoch)
+    this.scheduleRestart(runtimeFailure, adapterEpoch)
   }
 
-  private degrade(reason: string) {
-    this.expectedExit = true
+  private degrade(runtimeFailure: NativeRuntimeFailure, hostEpoch = this.adapterEpoch) {
+    if (hostEpoch !== this.adapterEpoch) return
+    this.expectedExitEpoch = hostEpoch
     this.adapter?.kill()
     this.adapter = null
     this.log('runtime_degraded', {
       pendingCount: this.pending.size,
-      message: redactSensitiveText(reason),
+      message: redactSensitiveText(runtimeFailure.message),
     })
     this.clearHandshake()
     this.clearRestartTimer()
     this.clearRetirementWatchdogs()
     this.rejectStart?.(
       new NativeRuntimeRequestError(
-        nativeRuntimeError('runtime_degraded', redactSensitiveText(reason)),
+        nativeRuntimeError(
+          'runtime_degraded',
+          redactSensitiveText(runtimeFailure.message),
+          { retryable: runtimeFailure.retryable },
+        ),
       ),
     )
-    this.clearStartPromise()
-    this.rejectAllPending('runtime_degraded', reason)
+    this.clearStartPromise(hostEpoch)
+    this.rejectAllPending('runtime_degraded', runtimeFailure.message)
     this.updateSnapshot({
       status: 'degraded',
       pid: undefined,
       ready: undefined,
-      degradedReason: redactSensitiveText(reason),
+      degradedReason: redactSensitiveText(runtimeFailure.message),
+      failure: sanitizeFailure(runtimeFailure),
     })
   }
 
@@ -692,14 +846,21 @@ export class NativeRuntimeSupervisor {
 
   private recycleHungAdapterIfCurrent(
     adapterEpoch: number,
+    cause: NativeRuntimeFailureCause,
     reason: string,
     pendingMessage = reason,
   ) {
     if (this.adapterEpoch !== adapterEpoch) return
-    this.recycleHungAdapter(reason, pendingMessage)
+    this.recycleHungAdapter(
+      failure(cause, reason),
+      pendingMessage,
+    )
   }
 
-  private recycleHungAdapter(reason: string, pendingMessage = reason) {
+  private recycleHungAdapter(
+    runtimeFailure: NativeRuntimeFailure,
+    pendingMessage = runtimeFailure.message,
+  ) {
     const adapter = this.adapter
     if (!adapter) return
     this.adapter = null
@@ -707,11 +868,11 @@ export class NativeRuntimeSupervisor {
     adapter.kill()
     this.log('adapter_recycled', {
       pendingCount: this.pending.size,
-      message: redactSensitiveText(reason),
+      message: redactSensitiveText(runtimeFailure.message),
       reason: redactSensitiveText(pendingMessage),
     })
     this.rejectAllPending('runtime_lost', pendingMessage)
-    if (this.expectedExit) {
+    if (this.expectedExitEpoch === this.adapterEpoch) {
       this.updateSnapshot({
         status: 'stopped',
         pid: undefined,
@@ -719,7 +880,7 @@ export class NativeRuntimeSupervisor {
       })
       return
     }
-    this.scheduleRestart(reason)
+    this.scheduleRestart(runtimeFailure)
   }
 
   private rejectAllPending(code: string, message: string) {
@@ -744,6 +905,7 @@ export class NativeRuntimeSupervisor {
   }
 
   private clearRestartTimer() {
+    this.restartScheduleEpoch += 1
     if (!this.restartTimer) return
     clearTimeout(this.restartTimer)
     this.restartTimer = null
@@ -753,7 +915,7 @@ export class NativeRuntimeSupervisor {
     lane: NativeRuntimeLane,
     adapterEpoch: number,
   ) {
-    if (lane !== 'microphone' && lane !== 'screen') return
+    if (lane !== 'microphone' && lane !== 'screen' && lane !== 'camera') return
     const existing = this.retirementWatchdogs.get(lane)
     if (existing) clearTimeout(existing)
     const timer = setTimeout(() => {
@@ -774,6 +936,10 @@ export class NativeRuntimeSupervisor {
     ) {
       return
     }
+    if (this.hasPendingLaneCommand(lane, adapterEpoch)) {
+      this.armRetirementWatchdog(lane, adapterEpoch)
+      return
+    }
     const command = probeCommand(this.options.runtime, lane)
     if (!command) return
     try {
@@ -788,6 +954,7 @@ export class NativeRuntimeSupervisor {
     } catch (error) {
       this.recycleHungAdapterIfCurrent(
         adapterEpoch,
+        'liveness_probe_failed',
         error instanceof Error
           ? error.message
           : `Native runtime retirement watchdog failed (${lane})`,
@@ -801,10 +968,12 @@ export class NativeRuntimeSupervisor {
     this.retirementWatchdogs.clear()
   }
 
-  private clearStartPromise() {
+  private clearStartPromise(epoch?: number) {
+    if (epoch !== undefined && this.startEpoch !== epoch) return
     this.startPromise = null
     this.resolveStart = null
     this.rejectStart = null
+    this.startEpoch = null
   }
 
   private waitForScheduledStart() {
@@ -883,6 +1052,7 @@ export class NativeRuntimeSupervisor {
       )
       this.recycleHungAdapterIfCurrent(
         adapterEpoch,
+        'liveness_probe_failed',
         `Native runtime liveness probe timed out (${lane})`,
         'Native runtime recycled after an actor liveness probe timed out',
       )
@@ -921,7 +1091,7 @@ export class NativeRuntimeSupervisor {
           }),
         ),
       )
-      this.recycleHungAdapterIfCurrent(adapterEpoch, message)
+      this.recycleHungAdapterIfCurrent(adapterEpoch, 'transport_error', message)
     }
   }
 
@@ -948,6 +1118,39 @@ export class NativeRuntimeSupervisor {
     }
   }
 
+  private hasPendingLaneCommand(
+    lane: NativeRuntimeLane,
+    adapterEpoch: number,
+  ) {
+    for (const pending of this.pending.values()) {
+      if (
+        pending.kind === 'command' &&
+        pending.adapterEpoch === adapterEpoch &&
+        pending.context.lane === lane
+      ) {
+        return true
+      }
+    }
+    return false
+  }
+
+  private isCurrentHost(adapter: NativeRuntimeAdapter, epoch: number) {
+    return this.adapter === adapter && this.adapterEpoch === epoch
+  }
+
+  private failStartWithoutHost(runtimeFailure: NativeRuntimeFailure) {
+    const error = new NativeRuntimeRequestError(
+      nativeRuntimeError(
+        'handshake_failed',
+        redactSensitiveText(runtimeFailure.message),
+        { retryable: runtimeFailure.retryable },
+      ),
+    )
+    this.rejectStart?.(error)
+    this.clearStartPromise()
+    this.scheduleRestart(runtimeFailure)
+  }
+
   private now() {
     return (this.options.now ?? Date.now)()
   }
@@ -966,6 +1169,34 @@ export class NativeRuntimeSupervisor {
       ...detail,
     })
   }
+}
+
+function failure(
+  cause: NativeRuntimeFailureCause,
+  message: string,
+  retryable = true,
+): NativeRuntimeFailure {
+  return { cause, message: redactSensitiveText(message), retryable }
+}
+
+function assertSafeSequence(value: number, label: string) {
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`Native runtime ${label} exhausted`)
+  }
+}
+
+function sanitizeFailure(value: NativeRuntimeFailure): NativeRuntimeFailure {
+  return { ...value, message: redactSensitiveText(value.message) }
+}
+
+function isLossyMediaEvent(event: NativeRuntimeEvent) {
+  return (
+    event.type === 'microphoneMetrics' ||
+    event.type === 'stats' ||
+    event.type === 'remoteVideoFrame' ||
+    event.type === 'localScreenPreviewFrame' ||
+    event.type === 'localCameraPreviewFrame'
+  )
 }
 
 function requestLane(command: NativeRuntimeCommand): NativeRuntimeLane | undefined {
@@ -993,6 +1224,7 @@ function requestLane(command: NativeRuntimeCommand): NativeRuntimeLane | undefin
       return 'screen'
     case 'connectCamera':
     case 'disconnectCamera':
+    case 'probeCameraActor':
       return 'camera'
     case 'listDevices':
     case 'listDisplaySources':
@@ -1028,7 +1260,9 @@ function shouldWatchRetirementAfter(
     stage === 'connectScreen' ||
     stage === 'startScreenCapture' ||
     stage === 'stopScreenCapture' ||
-    stage === 'disconnectScreen'
+    stage === 'disconnectScreen' ||
+    stage === 'connectCamera' ||
+    stage === 'disconnectCamera'
   )
 }
 
@@ -1039,6 +1273,7 @@ function probeCommand(
   if (runtime === 'media') {
     if (lane === 'microphone') return { type: 'probeMicrophoneActor' }
     if (lane === 'screen') return { type: 'probeScreenActor' }
+    if (lane === 'camera') return { type: 'probeCameraActor' }
     if (lane === 'query') return { type: 'probeQueryWorker' }
     return null
   }
@@ -1046,4 +1281,11 @@ function probeCommand(
     return { type: 'probeHooksRuntime' }
   }
   return null
+}
+
+function isBusyProbeResult(value: unknown) {
+  return Boolean(
+    value && typeof value === 'object' &&
+    'state' in value && value.state === 'busy',
+  )
 }

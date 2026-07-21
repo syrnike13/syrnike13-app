@@ -55,7 +55,7 @@ describe('ElectronUtilityAdapter', () => {
     expect(fork.mock.calls[0]?.[2]).toMatchObject({ stdio: 'ignore' })
     expect(fork.mock.calls[0]?.[2]?.env).toMatchObject({
       SYRNIKE_NATIVE_APP_VERSION: '0.5.1',
-      SYRNIKE_NATIVE_CONTRACT_VERSION: '3',
+      SYRNIKE_NATIVE_CONTRACT_VERSION: '4',
       SYRNIKE_NATIVE_LIVEKIT_VERSION: '1.3.0',
       SYRNIKE_NATIVE_COMMIT_SHA: 'a'.repeat(40),
       SYRNIKE_NATIVE_RELEASE_CHANNEL: DESKTOP_RELEASE_CHANNEL,
@@ -99,7 +99,7 @@ describe('ElectronUtilityAdapter', () => {
       requestId: 'request-1',
       command: { type: 'shutdown' },
     })
-    child.emit('message', { type: 'ready', contractVersion: 3, runtime: 'media' })
+    child.emit('message', { type: 'ready', contractVersion: 4, runtime: 'media' })
     adapter.kill()
 
     expect(fork.mock.calls[0]?.[2]?.env).toMatchObject({

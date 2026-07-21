@@ -30,6 +30,7 @@ describe('native runtime error privacy', () => {
         retryable: true,
         sessionId: 'session-1',
         generation: 7,
+        hresult: -2_147_024_895,
       }),
     ).toEqual({
       code: 'connect_failed',
@@ -38,7 +39,51 @@ describe('native runtime error privacy', () => {
       retryable: true,
       sessionId: 'session-1',
       generation: 7,
+      hresult: -2_147_024_895,
     })
+  })
+
+  it('rejects an unsafe HRESULT in a native event', () => {
+    expect(isNativeRuntimeEvent({
+      type: 'runtimeError',
+      sequence: 1,
+      error: {
+        code: 'audio_endpoint_failed',
+        message: 'Audio endpoint failed',
+        retryable: false,
+        hresult: Number.MAX_SAFE_INTEGER + 1,
+      },
+    })).toBe(false)
+  })
+
+  it('accepts a generation-fenced microphone fallback lifecycle', () => {
+    const event = {
+      type: 'sessionLifecycle',
+      sequence: 2,
+      sessionId: 'voice-session',
+      generation: 7,
+      kind: 'microphone',
+      state: {
+        status: 'running',
+        sessionId: 'voice-session',
+        deviceId: 'default',
+        message: 'Selected audio input is unavailable; using system default',
+      },
+      error: {
+        code: 'audio_input_fallback_default',
+        message: 'Selected audio input is unavailable; using system default',
+        stage: 'configureMicrophoneInput',
+        retryable: false,
+        sessionId: 'voice-session',
+        generation: 7,
+      },
+    } as const
+
+    expect(isNativeRuntimeEvent(event)).toBe(true)
+    expect(isNativeRuntimeEvent({
+      ...event,
+      state: { ...event.state, deviceId: 42 },
+    })).toBe(false)
   })
 })
 
@@ -56,15 +101,34 @@ describe('native runtime command validation', () => {
       noiseSuppression: true,
       echoCancellation: true,
       inputVolume: 1,
-      livekit: {
-        url: 'wss://voice.example',
-        token: 'token',
-        participantIdentity: 'participant',
-      },
+      participantIdentity: 'participant',
     },
   }
 
-  it('accepts WebSocket LiveKit URLs and bounded Windows identifiers', () => {
+  it('accepts credentials only on connectVoice and requires a WebSocket URL', () => {
+    const connectVoice = {
+      type: 'connectVoice' as const,
+      sessionId: 'voice-session',
+      generation: 1,
+      options: {
+        livekit: {
+          url: 'wss://voice.example',
+          token: 'token',
+          participantIdentity: 'participant',
+        },
+      },
+    }
+
+    expect(isNativeRuntimeCommand(connectVoice)).toBe(true)
+    expect(isNativeRuntimeCommand({
+      ...connectVoice,
+      options: {
+        livekit: { ...connectVoice.options.livekit, url: 'https://voice.example' },
+      },
+    })).toBe(false)
+  })
+
+  it('accepts track publication identity and bounded Windows identifiers', () => {
     expect(isNativeRuntimeCommand(microphone)).toBe(true)
     expect(
       isNativeRuntimeCommand({
@@ -74,19 +138,27 @@ describe('native runtime command validation', () => {
     ).toBe(true)
   })
 
-  it('rejects HTTP LiveKit URLs and overflowing Windows identifiers', () => {
+  it('rejects missing track publication identity and overflowing Windows identifiers', () => {
     expect(
       isNativeRuntimeCommand({
         ...microphone,
-        options: {
-          ...microphone.options,
-          livekit: { ...microphone.options.livekit, url: 'https://voice.example' },
-        },
+        options: { ...microphone.options, participantIdentity: '' },
       }),
     ).toBe(false)
     expect(
       isNativeRuntimeCommand({ ...microphone, excludeProcessId: -1 }),
     ).toBe(false)
+    expect(isNativeRuntimeCommand({
+      ...microphone,
+      options: {
+        ...microphone.options,
+        livekit: {
+          url: 'wss://voice.example',
+          token: 'must-not-cross-track-interface',
+          participantIdentity: 'participant',
+        },
+      },
+    })).toBe(false)
     expect(
       isNativeRuntimeCommand({
         type: 'listDisplaySources',
