@@ -476,6 +476,10 @@ pub async fn edit(
                     .has_channel_permission(ChannelPermission::ViewChannel);
                 let permissions =
                     calculate_channel_permissions(&mut query.voice_channel_membership()).await;
+                let server_muted =
+                    !permissions.has_channel_permission(ChannelPermission::Speak);
+                let server_deafened =
+                    !permissions.has_channel_permission(ChannelPermission::Listen);
 
                 voice_client
                     .create_room(&new_node, &new_voice_channel)
@@ -514,6 +518,8 @@ pub async fn edit(
                     .as_ref()
                     .map(|state| state.version.saturating_add(1))
                     .unwrap_or(1);
+                pending_session.server_muted = server_muted;
+                pending_session.server_deafened = server_deafened;
                 create_voice_session(&pending_session).await?;
 
                 let authority_version =

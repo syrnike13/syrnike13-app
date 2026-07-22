@@ -8,7 +8,8 @@ use syrnike_database::{
     util::permissions::DatabasePermissionQuery,
     voice::{
         call_lifecycle::{get_channel_voice_call, VoiceCallPhase as StoredVoiceCallPhase},
-        get_channel_voice_state, UserVoiceChannel,
+        get_channel_voice_state, get_current_voice_reservation, get_current_voice_session,
+        UserVoiceChannel,
     },
     Channel, Database, Member, Presence, RelationshipStatus, Role,
 };
@@ -463,6 +464,18 @@ impl State {
             .users
             .get(&self.cache.user_id)
             .expect("authorization perspective missing from gateway cache");
+        let voice_membership_channels = [
+            get_current_voice_session(&perspective.id)
+                .await
+                .ok()
+                .flatten()
+                .map(|session| session.channel.id),
+            get_current_voice_reservation(&perspective.id)
+                .await
+                .ok()
+                .flatten()
+                .map(|reservation| reservation.channel.id),
+        ];
 
         let mut servers = HashMap::new();
         for (server_id, server) in &self.cache.servers {
@@ -478,7 +491,9 @@ impl State {
 
         let mut channels = HashMap::new();
         for (channel_id, channel) in &self.cache.channels {
-            let mut query = DatabasePermissionQuery::new(db, perspective).channel(channel);
+            let mut query = DatabasePermissionQuery::new(db, perspective)
+                .channel(channel)
+                .known_voice_membership_channels(voice_membership_channels.clone());
             if let Some(server_id) = channel.server() {
                 if let Some(server) = self.cache.servers.get(server_id) {
                     query = query.server(server);

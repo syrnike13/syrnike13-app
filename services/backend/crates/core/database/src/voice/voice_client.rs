@@ -109,6 +109,7 @@ impl VoiceClient {
 
         let limits = user.limits().await;
         let allowed_sources = get_allowed_sources(&limits, permissions);
+        let can_publish = !allowed_sources.is_empty();
 
         AccessToken::with_api_key(&room.node.key, &room.node.secret)
             .with_name(&format!("{}#{}", user.username, user.discriminator))
@@ -120,7 +121,7 @@ impl VoiceClient {
             .with_ttl(NATIVE_VOICE_TOKEN_TTL)
             .with_grants(VideoGrants {
                 room_join: true,
-                can_publish: true,
+                can_publish,
                 can_publish_data: false,
                 can_publish_sources: allowed_sources
                     .into_iter()

@@ -25,6 +25,7 @@ pub struct DatabasePermissionQuery<'a> {
     cached_mutual_connection: Option<bool>,
     cached_permission: Option<u64>,
     forced_voice_channel_membership: bool,
+    known_voice_membership_channels: Option<[Option<String>; 2]>,
 }
 
 #[async_trait]
@@ -346,6 +347,13 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
             return true;
         }
 
+        if let Some(known_channels) = &self.known_voice_membership_channels {
+            return known_channels
+                .iter()
+                .flatten()
+                .any(|channel_id| channel_id == channel.id());
+        }
+
         if get_current_voice_session(&self.perspective.id)
             .await
             .ok()
@@ -433,6 +441,7 @@ impl<'a> DatabasePermissionQuery<'a> {
             cached_user_permission: None,
             cached_permission: None,
             forced_voice_channel_membership: false,
+            known_voice_membership_channels: None,
         }
     }
 
@@ -534,6 +543,18 @@ impl<'a> DatabasePermissionQuery<'a> {
     pub fn voice_channel_membership(self) -> DatabasePermissionQuery<'a> {
         DatabasePermissionQuery {
             forced_voice_channel_membership: true,
+            ..self
+        }
+    }
+
+    /// Reuse voice authority lookups when calculating many channel permissions
+    /// for the same perspective user.
+    pub fn known_voice_membership_channels(
+        self,
+        channels: [Option<String>; 2],
+    ) -> DatabasePermissionQuery<'a> {
+        DatabasePermissionQuery {
+            known_voice_membership_channels: Some(channels),
             ..self
         }
     }
