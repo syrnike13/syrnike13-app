@@ -251,15 +251,21 @@ pub async fn edit(
 
     let actor_rank = query.get_member_rank();
 
-    // Voice moderation is explicitly permission-gated above and is allowed
-    // against the server owner. Server kick/ban/roles and other punitive
-    // mutations keep their separate hierarchy policy.
+    let changes_voice_moderation = data.can_publish.is_some()
+        || data.remove.contains(&v0::FieldsMember::CanPublish)
+        || data.can_receive.is_some()
+        || data.remove.contains(&v0::FieldsMember::CanReceive)
+        || explicit_voice_membership_change;
+
+    // Voice moderation keeps normal hierarchy enforcement, with explicit
+    // exceptions for self-actions and actions against the server owner.
     let changes_ranked_member_fields = data.nickname.is_some()
         || data.remove.contains(&v0::FieldsMember::Nickname)
         || data.avatar.is_some()
         || data.remove.contains(&v0::FieldsMember::Avatar)
         || data.timeout.is_some()
-        || data.remove.contains(&v0::FieldsMember::Timeout);
+        || data.remove.contains(&v0::FieldsMember::Timeout)
+        || (changes_voice_moderation && member.id.user != server.owner);
 
     if member.id.user != user.id && changes_ranked_member_fields {
         hierarchy_policy::ensure_member_below_actor(&user, &server, actor_rank, &member)?;
@@ -492,7 +498,7 @@ pub async fn edit(
                     )
                     .await?;
                 let created_at = Timestamp::now_utc();
-                create_voice_session(&voice_session_for_join_request(
+                let mut pending_session = voice_session_for_join_request(
                     &operation_id,
                     &target_user.id,
                     &new_user_voice_channel,
@@ -503,8 +509,12 @@ pub async fn edit(
                     self_mute,
                     self_deaf,
                     created_at,
-                )?)
-                .await?;
+                )?;
+                pending_session.version = existing_voice_state
+                    .as_ref()
+                    .map(|state| state.version.saturating_add(1))
+                    .unwrap_or(1);
+                create_voice_session(&pending_session).await?;
 
                 let authority_version =
                     syrnike_database::voice::get_voice_authority_snapshot(&target_user.id)
@@ -1170,6 +1180,60 @@ mod test {
             .expect("member fetched");
 
         assert!(updated.can_publish);
+    }
+
+    #[rocket::async_test]
+    async fn member_with_voice_permission_can_mute_server_owner() {
+        let context = MemberEditTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            owner user 0
+            moderator user 1
+            server server 4);
+
+        let mut moderator_role = server
+            .roles
+            .values()
+            .find(|role| role.name == "Moderator")
+            .expect("moderator role")
+            .clone();
+        moderator_role
+            .update(
+                &context.db,
+                &server.id,
+                PartialRole {
+                    permissions: Some(OverrideField {
+                        a: ChannelPermission::MuteMembers as i64,
+                        d: 0,
+                    }),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .await
+            .expect("moderator can mute");
+
+        let (_, moderator_session) = context.account_from_user(moderator.id.clone()).await;
+        let response = context
+            .client
+            .patch(format!("/servers/{}/members/{}", server.id, owner.id))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({ "can_publish": false }).to_string())
+            .header(Header::new(
+                "x-session-token",
+                moderator_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::Ok);
+
+        let updated = context
+            .db
+            .fetch_member(&server.id, &owner.id)
+            .await
+            .expect("owner member fetched");
+        assert!(!updated.can_publish);
     }
 
     #[rocket::async_test]

@@ -611,13 +611,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const resetRemoteStageMedia = useCallback((targetChannelId: string | null) => {
     nativeVideoRegistry.clearRemote()
+    let removedWatch = false
     for (const [mediaId, watchedChannelId] of
       watchedScreenViewerChannelsRef.current) {
       if (watchedChannelId === targetChannelId) continue
       cancelScreenRepublishGrace(mediaId)
-      watchedScreenViewerChannelsRef.current.delete(mediaId)
+      removedWatch =
+        watchedScreenViewerChannelsRef.current.delete(mediaId) || removedWatch
       pendingScreenWatchIdsRef.current.delete(mediaId)
       notifiedScreenViewerIdsRef.current.delete(mediaId)
+    }
+    if (removedWatch) {
+      setRoomRevision((revision) => revision + 1)
     }
   }, [cancelScreenRepublishGrace])
 
@@ -899,6 +904,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
       }
     }
+    let removedWatch = false
     for (const [mediaId, targetChannelId] of watchedScreenViewerChannelsRef.current) {
       if (targetChannelId !== channelId) continue
       if (availableRemoteScreenIds.has(mediaId)) {
@@ -912,9 +918,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         continue
       }
       cancelScreenRepublishGrace(mediaId)
-      watchedScreenViewerChannelsRef.current.delete(mediaId)
+      removedWatch =
+        watchedScreenViewerChannelsRef.current.delete(mediaId) || removedWatch
       pendingScreenWatchIdsRef.current.delete(mediaId)
       notifiedScreenViewerIdsRef.current.delete(mediaId)
+    }
+    if (removedWatch) {
+      setRoomRevision((revision) => revision + 1)
     }
   }, [
     auth.user?._id,

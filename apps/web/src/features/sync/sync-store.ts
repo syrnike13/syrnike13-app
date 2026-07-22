@@ -732,11 +732,11 @@ export const syncStore = {
     toChannelId: string,
     participant: UserVoiceState,
   ) {
-    // Versions are scoped to a voice channel operation and may restart from 1
-    // after a server-authoritative move. A higher version in the source must
-    // not make a fresh move look stale.
-    const existingInDestination = state.voiceParticipants[toChannelId]?.[userId]
-    if (!shouldApplyVoiceState(existingInDestination, participant)) return
+    const existing = userCanAppearInMultipleVoiceChannels(userId)
+      ? state.voiceParticipants[fromChannelId]?.[userId] ??
+        state.voiceParticipants[toChannelId]?.[userId]
+      : findVoiceParticipantInAnyChannel(userId)
+    if (!shouldApplyVoiceState(existing, participant)) return
 
     const voiceParticipants = { ...state.voiceParticipants }
     if (!userCanAppearInMultipleVoiceChannels(userId)) {

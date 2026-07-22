@@ -5,7 +5,7 @@ use syrnike_permissions::{
     RelationshipStatus, DEFAULT_PERMISSION_DIRECT_MESSAGE,
 };
 
-use crate::voice::get_current_voice_session;
+use crate::voice::{get_current_voice_reservation, get_current_voice_session};
 use crate::{Channel, Database, Member, Server, User};
 
 /// Permissions calculator
@@ -346,11 +346,20 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
             return true;
         }
 
-        get_current_voice_session(&self.perspective.id)
+        if get_current_voice_session(&self.perspective.id)
             .await
             .ok()
             .flatten()
             .is_some_and(|session| session.channel.id == channel.id())
+        {
+            return true;
+        }
+
+        get_current_voice_reservation(&self.perspective.id)
+            .await
+            .ok()
+            .flatten()
+            .is_some_and(|reservation| reservation.channel.id == channel.id())
     }
 
     /// Set the current user as the recipient of this channel

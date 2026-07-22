@@ -1,6 +1,6 @@
 use crate::{
     calculate_channel_permissions, calculate_server_permissions, calculate_user_permissions,
-    ChannelPermission, ChannelType, Override, PermissionQuery, RelationshipStatus,
+    ChannelPermission, ChannelType, Override, PermissionQuery, RelationshipStatus, UserPermission,
     DEFAULT_PERMISSION_DIRECT_MESSAGE, DEFAULT_PERMISSION_SERVER, DEFAULT_PERMISSION_VIEW_ONLY,
 };
 
@@ -12,7 +12,10 @@ async fn validate_user_permissions() {
     let mut query = Scenario {};
 
     let perms = calculate_user_permissions(&mut query).await;
-    assert!(perms.has(u64::MAX));
+    assert!(perms.has_user_permission(UserPermission::Access));
+    assert!(perms.has_user_permission(UserPermission::ViewProfile));
+    assert!(perms.has_user_permission(UserPermission::SendMessage));
+    assert!(perms.has_user_permission(UserPermission::Invite));
 
     let perms = calculate_channel_permissions(&mut query).await;
     let value: u64 = perms.into();
