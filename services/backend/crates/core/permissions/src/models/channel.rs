@@ -78,6 +78,10 @@ pub enum ChannelPermission {
     /// Bypass slowmode
     BypassSlowmode = 1 << 39,
 
+    /// Grant every regular server permission and bypass channel overrides.
+    /// Owner-only actions and hierarchy checks remain enforced separately.
+    Administrator = 1 << 40,
+
     // * Voice permissions
     /// Connect to a voice channel
     Connect = 1 << 30,
@@ -101,7 +105,7 @@ pub enum ChannelPermission {
     MentionRoles = 1 << 38,
 
     // * Misc. permissions
-    // % Bits 39 to 52: free area
+    // % Bits 41 to 52: free area
     // % Bits 53 to 64: do not use
 
     // * Grant all permissions

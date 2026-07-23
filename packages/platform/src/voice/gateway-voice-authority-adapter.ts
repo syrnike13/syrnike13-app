@@ -227,6 +227,13 @@ export class GatewayVoiceAuthorityAdapter implements VoiceAuthorityAdapter {
   }
 
   private handleEvent(event: Record<string, unknown>) {
+    if (event.type === 'Bulk') {
+      const items = Array.isArray(event.v) ? event.v : []
+      for (const item of items) {
+        if (isRecord(item)) this.handleEvent(item)
+      }
+      return
+    }
     if (event.type === 'VoiceServerUpdate') {
       this.handleServerUpdate(event)
       return

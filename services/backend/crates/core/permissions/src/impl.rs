@@ -4,15 +4,20 @@ use crate::{
     DEFAULT_PERMISSION_SAVED_MESSAGES, DEFAULT_PERMISSION_VIEW_ONLY,
 };
 
+const ALL_USER_PERMISSIONS: u64 = UserPermission::Access as u64
+    | UserPermission::ViewProfile as u64
+    | UserPermission::SendMessage as u64
+    | UserPermission::Invite as u64;
+
 /// Calculate permissions against a user
 pub async fn calculate_user_permissions<P: PermissionQuery>(query: &mut P) -> PermissionValue {
     if query.are_the_users_same().await {
-        return u64::MAX.into();
+        return ALL_USER_PERMISSIONS.into();
     }
 
     let mut permissions = 0_u64;
     match query.user_relationship().await {
-        RelationshipStatus::Friend => return u64::MAX.into(),
+        RelationshipStatus::Friend => return ALL_USER_PERMISSIONS.into(),
         RelationshipStatus::Blocked | RelationshipStatus::BlockedOther => {
             return (UserPermission::Access as u64).into()
         }
@@ -44,7 +49,17 @@ pub async fn calculate_user_permissions<P: PermissionQuery>(query: &mut P) -> Pe
 /// Calculate permissions against a server
 pub async fn calculate_server_permissions<P: PermissionQuery>(query: &mut P) -> PermissionValue {
     if query.are_we_server_owner().await {
-        return ChannelPermission::GrantAllSafe.into();
+        let publish_override = query.do_we_have_publish_overwrites().await;
+        let receive_override = query.do_we_have_receive_overwrites().await;
+        let mut permissions: PermissionValue = ChannelPermission::GrantAllSafe.into();
+        if !publish_override {
+            permissions.revoke(ChannelPermission::Speak as u64);
+            permissions.revoke(ChannelPermission::Video as u64);
+        }
+        if !receive_override {
+            permissions.revoke(ChannelPermission::Listen as u64);
+        }
+        return permissions;
     }
 
     if !query.are_we_a_member().await {
@@ -57,6 +72,12 @@ pub async fn calculate_server_permissions<P: PermissionQuery>(query: &mut P) -> 
         permissions.apply(role_override);
     }
 
+    let is_administrator =
+        permissions.has_channel_permission(ChannelPermission::Administrator);
+    if is_administrator {
+        permissions = ChannelPermission::GrantAllSafe.into();
+    }
+
     if !query.do_we_have_publish_overwrites().await {
         permissions.revoke(ChannelPermission::Speak as u64);
         permissions.revoke(ChannelPermission::Video as u64);
@@ -66,7 +87,7 @@ pub async fn calculate_server_permissions<P: PermissionQuery>(query: &mut P) -> 
         permissions.revoke(ChannelPermission::Listen as u64);
     }
 
-    if query.are_we_timed_out().await {
+    if !is_administrator && query.are_we_timed_out().await {
         permissions.restrict(*ALLOW_IN_TIMEOUT);
     }
 
@@ -111,23 +132,33 @@ pub async fn calculate_channel_permissions<P: PermissionQuery>(query: &mut P) ->
         ChannelType::ServerChannel => {
             query.set_server_from_channel().await;
 
-            if query.are_we_server_owner().await {
-                ChannelPermission::GrantAllSafe.into()
-            } else if query.are_we_a_member().await {
+            if query.are_we_a_member().await {
+                let is_server_owner = query.are_we_server_owner().await;
                 let mut permissions = calculate_server_permissions(query).await;
-                permissions.apply(query.get_default_channel_permissions().await);
+                let bypass_channel_overrides = is_server_owner
+                    || permissions.has_channel_permission(ChannelPermission::Administrator);
 
-                apply_channel_role_overrides(
-                    &mut permissions,
-                    query.get_our_channel_role_overrides().await,
-                );
+                if !bypass_channel_overrides {
+                    permissions.apply(query.get_default_channel_permissions().await);
 
-                if let Some(user_override) = query.get_our_channel_user_override().await {
-                    permissions.apply(user_override);
+                    apply_channel_role_overrides(
+                        &mut permissions,
+                        query.get_our_channel_role_overrides().await,
+                    );
+
+                    if let Some(user_override) = query.get_our_channel_user_override().await {
+                        permissions.apply(user_override);
+                    }
+
+                    if query.are_we_timed_out().await {
+                        permissions.restrict(*ALLOW_IN_TIMEOUT);
+                    }
                 }
 
-                if query.are_we_timed_out().await {
-                    permissions.restrict(*ALLOW_IN_TIMEOUT);
+                if query.have_voice_channel_membership().await {
+                    permissions.allow(
+                        ChannelPermission::ViewChannel as u64 | ChannelPermission::Connect as u64,
+                    );
                 }
 
                 if !permissions.has_channel_permission(ChannelPermission::ViewChannel) {

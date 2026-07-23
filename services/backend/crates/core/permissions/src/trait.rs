@@ -64,6 +64,10 @@ pub trait PermissionQuery {
     /// Are we a recipient of this channel?
     async fn are_we_part_of_the_channel(&mut self) -> bool;
 
+    /// Are we currently connected (or being moved) to this server voice channel?
+    /// Implementations that do not track live voice membership fail closed.
+    async fn have_voice_channel_membership(&mut self) -> bool;
+
     /// Set the current user as the recipient of this channel
     /// (this will only ever be called for DirectMessage channels, use unimplemented!() for other code paths)
     async fn set_recipient_as_user(&mut self);

@@ -352,8 +352,11 @@ pub struct VoiceReservation {
     pub state: VoiceReservationState,
     pub self_mute: bool,
     pub self_deaf: bool,
+    pub server_muted: bool,
+    pub server_deafened: bool,
     pub screensharing: bool,
     pub camera: bool,
+    pub version: u64,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     pub expires_at: Timestamp,
@@ -458,8 +461,11 @@ impl VoiceReservation {
             state: VoiceReservationState::Prepared,
             self_mute: session.self_mute,
             self_deaf: session.self_deaf,
+            server_muted: session.server_muted,
+            server_deafened: session.server_deafened,
             screensharing: session.screensharing,
             camera: session.camera,
+            version: session.version,
             created_at: session.created_at,
             updated_at: session.updated_at,
             expires_at: session.expires_at,
@@ -481,11 +487,11 @@ impl VoiceReservation {
             state: VoiceSessionState::AwaitingLivekitJoin,
             self_mute: self.self_mute,
             self_deaf: self.self_deaf,
-            server_muted: false,
-            server_deafened: false,
+            server_muted: self.server_muted,
+            server_deafened: self.server_deafened,
             screensharing: self.screensharing,
             camera: self.camera,
-            version: 1,
+            version: self.version,
             joined_at: None,
             created_at: self.created_at,
             updated_at: self.updated_at,
@@ -812,8 +818,11 @@ pub async fn create_voice_session_if_current(
             reservation.created_at = current.created_at;
             reservation.self_mute = current.self_mute;
             reservation.self_deaf = current.self_deaf;
+            reservation.server_muted = current.server_muted;
+            reservation.server_deafened = current.server_deafened;
             reservation.screensharing = current.screensharing;
             reservation.camera = current.camera;
+            reservation.version = current.version;
         }
         let raw_reservation = serde_json::to_string(&reservation).to_internal_error()?;
         let finalized_session_key = voice_session_key(
@@ -1433,6 +1442,9 @@ mod tests {
     fn reservation_tracks_expected_finalized_operation() {
         let mut pending = awaiting_session();
         pending.screensharing = true;
+        pending.server_muted = true;
+        pending.server_deafened = true;
+        pending.version = 7;
         let reservation = VoiceReservation::from_pending_session(
             &pending,
             Some("op-pending".to_string()),
@@ -1458,6 +1470,12 @@ mod tests {
         assert!(reservation.screensharing);
         assert!(reservation.awaiting_session().screensharing);
         assert!(!reservation.camera);
+        assert!(reservation.server_muted);
+        assert!(reservation.server_deafened);
+        assert!(reservation.awaiting_session().server_muted);
+        assert!(reservation.awaiting_session().server_deafened);
+        assert_eq!(reservation.version, 7);
+        assert_eq!(reservation.awaiting_session().version, 7);
     }
 
     #[test]

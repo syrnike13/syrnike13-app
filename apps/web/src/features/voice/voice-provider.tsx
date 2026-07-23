@@ -603,13 +603,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const resetRemoteStageMedia = useCallback((targetChannelId: string | null) => {
     nativeVideoRegistry.clearRemote()
+    let removedWatch = false
     for (const [mediaId, watchedChannelId] of
       watchedScreenViewerChannelsRef.current) {
       if (watchedChannelId === targetChannelId) continue
       cancelScreenRepublishGrace(mediaId)
-      watchedScreenViewerChannelsRef.current.delete(mediaId)
+      removedWatch =
+        watchedScreenViewerChannelsRef.current.delete(mediaId) || removedWatch
       pendingScreenWatchIdsRef.current.delete(mediaId)
       notifiedScreenViewerIdsRef.current.delete(mediaId)
+    }
+    if (removedWatch) {
+      setRoomRevision((revision) => revision + 1)
     }
   }, [cancelScreenRepublishGrace])
 
@@ -765,12 +770,16 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [inputDevices, micIssue, videoDevices],
   )
 
-  const stageMediaItems = useMemo(() => {
-    const watchedRemoteScreenIds = new Set(
+  const viewedRemoteScreenIds = useMemo(
+    () =>
       [...watchedScreenViewerChannelsRef.current]
         .filter(([, targetChannelId]) => targetChannelId === channelId)
         .map(([mediaId]) => mediaId),
-    )
+    [channelId, roomRevision],
+  )
+
+  const stageMediaItems = useMemo(() => {
+    const watchedRemoteScreenIds = new Set(viewedRemoteScreenIds)
     const items = buildStageItems({
       room,
       participants,
@@ -805,6 +814,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     stageMediaFilters,
     status,
     setNativeScreenDemand,
+    viewedRemoteScreenIds,
   ])
   stageMediaItemsRef.current = stageMediaItems
 
@@ -886,6 +896,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
       }
     }
+    let removedWatch = false
     for (const [mediaId, targetChannelId] of watchedScreenViewerChannelsRef.current) {
       if (targetChannelId !== channelId) continue
       if (availableRemoteScreenIds.has(mediaId)) {
@@ -899,9 +910,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         continue
       }
       cancelScreenRepublishGrace(mediaId)
-      watchedScreenViewerChannelsRef.current.delete(mediaId)
+      removedWatch =
+        watchedScreenViewerChannelsRef.current.delete(mediaId) || removedWatch
       pendingScreenWatchIdsRef.current.delete(mediaId)
       notifiedScreenViewerIdsRef.current.delete(mediaId)
+    }
+    if (removedWatch) {
+      setRoomRevision((revision) => revision + 1)
     }
   }, [
     auth.user?._id,
@@ -1069,6 +1084,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const setStageMediaSubscribed = useCallback(
     (mediaId: string, subscribed: boolean) => {
       const item = stageMediaItems.find((candidate) => candidate.id === mediaId)
+      const screenUserId = stageScreenMediaUserId(mediaId)
       if (item?.kind === 'screen') {
         const action = setStageScreenSubscription(item, subscribed)
         if (action === 'stop-local-screen') {
@@ -1086,6 +1102,23 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           if (room) {
             updateScreenViewerNotification(room, item.id, item.userId, subscribed)
           }
+        }
+      } else if (screenUserId) {
+        if (subscribed && channelId) {
+          watchedScreenViewerChannelsRef.current.set(mediaId, channelId)
+          pendingScreenWatchIdsRef.current.delete(mediaId)
+        } else if (!subscribed) {
+          cancelScreenRepublishGrace(mediaId)
+          watchedScreenViewerChannelsRef.current.delete(mediaId)
+          pendingScreenWatchIdsRef.current.delete(mediaId)
+        }
+        if (room) {
+          updateScreenViewerNotification(
+            room,
+            mediaId,
+            screenUserId,
+            subscribed,
+          )
         }
       } else {
         item?.publication?.setSubscribed?.(subscribed)
@@ -1159,6 +1192,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     () => ({
       stageChannelId: channelId,
       stageMediaItems,
+      viewedRemoteScreenIds,
       focusedMediaId,
       setFocusedMediaId,
       stageFocusNonce,
@@ -1182,6 +1216,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       stageFullscreen,
       stageMediaFilters,
       stageMediaItems,
+      viewedRemoteScreenIds,
       watchParticipantScreenShare,
     ],
   )

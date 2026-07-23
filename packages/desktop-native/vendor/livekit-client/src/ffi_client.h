@@ -24,6 +24,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <stdexcept>
 #include <thread>
 #include <unordered_map>
@@ -90,7 +91,7 @@ public:
 
   bool isInitialized() const noexcept;
 
-  ListenerId addListener(const Listener& listener);
+  ListenerId addListener(const Listener& listener, std::string debug_name = "anonymous");
   void removeListener(ListenerId id);
 
   // Room APIs
@@ -191,10 +192,12 @@ private:
   /// Additional data structure to track listener callbacks and their state.
   /// This is used to coordinate the FFI thread and the app thread, and prevent race conditions/use-after-free scenarios
   struct ListenerSlot {
-    explicit ListenerSlot(Listener cb) : listener(std::move(cb)) {}
+    ListenerSlot(Listener cb, std::string name) : listener(std::move(cb)), debug_name(std::move(name)) {}
 
     /// The user-provided listener callback
     Listener listener;
+    /// Temporary runtime diagnostic label for identifying a failing listener.
+    std::string debug_name;
     /// Mutex to protect the listener slot
     std::mutex mutex;
     /// Condition variable to wait for the listener to finish

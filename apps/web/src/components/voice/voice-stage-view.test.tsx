@@ -27,6 +27,7 @@ const testState = vi.hoisted(() => ({
       live: boolean
       pending?: boolean
     }>,
+    viewedRemoteScreenIds: [] as string[],
     focusedMediaId: null as string | null,
     setFocusedMediaId: vi.fn(),
     stageFocusNonce: 0,

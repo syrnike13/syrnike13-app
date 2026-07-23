@@ -2,21 +2,21 @@ use std::collections::{HashMap, HashSet};
 
 use futures::future::join_all;
 use syrnike_database::{
-    Channel, Database, Member, Presence, RelationshipStatus, Role,
     events::client::{
         AuthorizationSnapshot, EventV1, ReadyPayloadFields, VoiceCall, VoiceCallPhase,
     },
     util::permissions::DatabasePermissionQuery,
     voice::{
+        call_lifecycle::{get_channel_voice_call, VoiceCallPhase as StoredVoiceCallPhase},
+        get_channel_voice_state, get_current_voice_reservation, get_current_voice_session,
         UserVoiceChannel,
-        call_lifecycle::{VoiceCallPhase as StoredVoiceCallPhase, get_channel_voice_call},
-        get_channel_voice_state,
     },
+    Channel, Database, Member, Presence, RelationshipStatus, Role,
 };
 use syrnike_models::v0;
 use syrnike_permissions::{
-    ChannelPermission, GlobalPermission, calculate_channel_permissions,
-    calculate_server_permissions, calculate_user_permissions,
+    calculate_channel_permissions, calculate_server_permissions, calculate_user_permissions,
+    ChannelPermission, GlobalPermission,
 };
 use syrnike_presence::filter_online;
 use syrnike_result::Result;
@@ -27,6 +27,22 @@ use super::state::{Cache, State};
 impl Cache {
     /// Check whether the current user can view a channel
     pub async fn can_view_channel(&self, db: &Database, channel: &Channel) -> bool {
+        self.can_view_channel_inner(db, channel, false).await
+    }
+
+    /// Evaluate the destination using a trusted voice authority move as proof
+    /// of temporary voice membership. The durable session projection can lag
+    /// a few moments behind the authority event.
+    async fn can_view_voice_move_destination(&self, db: &Database, channel: &Channel) -> bool {
+        self.can_view_channel_inner(db, channel, true).await
+    }
+
+    async fn can_view_channel_inner(
+        &self,
+        db: &Database,
+        channel: &Channel,
+        forced_voice_membership: bool,
+    ) -> bool {
         #[allow(deprecated)]
         match &channel {
             Channel::TextChannel { server, .. } => {
@@ -43,6 +59,10 @@ impl Cache {
 
                 if let Some(server) = server {
                     query = query.server(server);
+                }
+
+                if forced_voice_membership {
+                    query = query.voice_channel_membership();
                 }
 
                 calculate_channel_permissions(&mut query)
@@ -444,6 +464,18 @@ impl State {
             .users
             .get(&self.cache.user_id)
             .expect("authorization perspective missing from gateway cache");
+        let voice_membership_channels = [
+            get_current_voice_session(&perspective.id)
+                .await
+                .ok()
+                .flatten()
+                .map(|session| session.channel.id),
+            get_current_voice_reservation(&perspective.id)
+                .await
+                .ok()
+                .flatten()
+                .map(|reservation| reservation.channel.id),
+        ];
 
         let mut servers = HashMap::new();
         for (server_id, server) in &self.cache.servers {
@@ -459,7 +491,9 @@ impl State {
 
         let mut channels = HashMap::new();
         for (channel_id, channel) in &self.cache.channels {
-            let mut query = DatabasePermissionQuery::new(db, perspective).channel(channel);
+            let mut query = DatabasePermissionQuery::new(db, perspective)
+                .channel(channel)
+                .known_voice_membership_channels(voice_membership_channels.clone());
             if let Some(server_id) = channel.server() {
                 if let Some(server) = self.cache.servers.get(server_id) {
                     query = query.server(server);
@@ -1201,6 +1235,75 @@ impl State {
                 refresh_authorization = true;
             }
 
+            EventV1::VoiceAuthorityMove { lease, .. } => {
+                let channel_id = lease.channel_id.clone();
+                refresh_authorization = true;
+
+                if let Some(server_id) = self
+                    .cache
+                    .channels
+                    .get(&channel_id)
+                    .and_then(Channel::server)
+                    .map(str::to_owned)
+                {
+                    queue_server = Some(server_id);
+                } else {
+                    match db.fetch_channels(std::slice::from_ref(&channel_id)).await {
+                        Ok(channels) => {
+                            if let Some(channel) = channels.into_iter().next() {
+                                let can_view = self
+                                    .cache
+                                    .can_view_voice_move_destination(db, &channel)
+                                    .await;
+                                if can_view {
+                                    // Do not immediately run the ordinary server
+                                    // recalculation: the durable voice-session
+                                    // projection may still lag behind this trusted
+                                    // authority event and would remove the channel.
+                                    self.cache
+                                        .channels
+                                        .insert(channel_id.clone(), channel.clone());
+                                    self.insert_subscription(channel_id).await;
+
+                                    let original =
+                                        std::mem::replace(event, EventV1::Bulk { v: vec![] });
+                                    *event = EventV1::Bulk {
+                                        v: vec![EventV1::ChannelCreate(channel.into()), original],
+                                    };
+                                }
+                            } else {
+                                warn!(
+                                    "VoiceAuthorityMove destination {channel_id} was absent from the channel lookup"
+                                );
+                            }
+                        }
+                        Err(error) => {
+                            warn!(
+                                "Failed to recover VoiceAuthorityMove destination {channel_id}: {error:?}"
+                            );
+                        }
+                    }
+                }
+            }
+            EventV1::VoiceChannelMove { user, to, .. } if user == &self.cache.user_id => {
+                refresh_authorization = true;
+                queue_server = self
+                    .cache
+                    .channels
+                    .get(to)
+                    .and_then(Channel::server)
+                    .map(str::to_owned);
+            }
+            EventV1::VoiceChannelLeave { id, user, .. } if user == &self.cache.user_id => {
+                refresh_authorization = true;
+                queue_server = self
+                    .cache
+                    .channels
+                    .get(id)
+                    .and_then(Channel::server)
+                    .map(str::to_owned);
+            }
+
             EventV1::Message(message) => {
                 // Since Message events are fanned out to many clients,
                 // we must reconstruct the relationship value at this end.
@@ -1219,8 +1322,8 @@ impl State {
         }
 
         // Calculate server permissions if requested.
-        if let Some(server_id) = queue_server {
-            self.recalculate_server(db, &server_id, event).await;
+        if let Some(server_id) = queue_server.as_deref() {
+            self.recalculate_server(db, server_id, event).await;
         }
 
         // Sub / unsub accordingly.

@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react'
+import { PhoneXmark } from 'iconoir-react/solid'
 import {
   ChevronDownIcon,
   ExternalLinkIcon,
   HeadphoneOffIcon,
   HeadphonesIcon,
   Loader2Icon,
+  LogOutIcon,
   Maximize2Icon,
   MessageSquareIcon,
   MicIcon,
@@ -13,13 +15,20 @@ import {
   MonitorUpIcon,
   MonitorXIcon,
   MoreHorizontalIcon,
-  PhoneOffIcon,
   Settings2Icon,
   VideoIcon,
   VideoOffIcon,
 } from '#/components/icons'
 
 import { Button } from '#/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '#/components/ui/dropdown-menu'
 import {
   Popover,
   PopoverContent,
@@ -47,6 +56,10 @@ import {
   splitControlDangerStandaloneClass,
 } from '#/components/voice/voice-split-control'
 import { voiceStagePopoverSettingsClass } from '#/components/voice/voice-stage-popover-styles'
+import {
+  voiceStageViewSessionExitLabel,
+  type VoiceStageViewSession,
+} from '#/features/voice/voice-stage-view-session'
 import { cn } from '#/lib/utils'
 
 type VoiceStageControlsProps = {
@@ -64,7 +77,13 @@ type VoiceStageControlsProps = {
   incomingCall?: boolean
   declineLabel?: string
   onDeclineIncomingCall?: () => void
+  viewSessions?: readonly VoiceStageViewSession[]
+  focusedStageItemId?: string | null
+  onExitViewSession?: (session: VoiceStageViewSession) => void
 }
+
+const EMPTY_VIEW_SESSIONS: readonly VoiceStageViewSession[] = []
+const ignoreViewSessionExit = () => undefined
 
 const stageControlGroupClass =
   'flex items-center gap-0.5 rounded-lg border border-white/10 bg-card p-1.5'
@@ -243,6 +262,9 @@ export function VoiceStageControls({
   incomingCall = false,
   declineLabel = 'Отменить',
   onDeclineIncomingCall,
+  viewSessions = EMPTY_VIEW_SESSIONS,
+  focusedStageItemId = null,
+  onExitViewSession = ignoreViewSessionExit,
 }: VoiceStageControlsProps) {
   const voiceSession = useVoiceSession()
   const voiceMedia = useVoiceMedia()
@@ -297,6 +319,9 @@ export function VoiceStageControls({
         onToggleCamera={voiceMedia.toggleCamera}
         onToggleScreenShare={voiceMedia.toggleScreenShare}
         onLeave={voiceSession.leave}
+        viewSessions={viewSessions}
+        focusedStageItemId={focusedStageItemId}
+        onExitViewSession={onExitViewSession}
         onJoin={() => void voiceSession.join(channelId)}
       />
     )
@@ -318,6 +343,9 @@ export function VoiceStageControls({
       onToggleCamera={voiceMedia.toggleCamera}
       onToggleScreenShare={voiceMedia.toggleScreenShare}
       onLeave={voiceSession.leave}
+      viewSessions={viewSessions}
+      focusedStageItemId={focusedStageItemId}
+      onExitViewSession={onExitViewSession}
     />
   ) : (
     <LegacyControlBar
@@ -336,6 +364,9 @@ export function VoiceStageControls({
       onToggleCamera={voiceMedia.toggleCamera}
       onToggleScreenShare={voiceMedia.toggleScreenShare}
       onLeave={voiceSession.leave}
+      viewSessions={viewSessions}
+      focusedStageItemId={focusedStageItemId}
+      onExitViewSession={onExitViewSession}
     />
   )
 
@@ -410,6 +441,9 @@ type ControlBarStateProps = {
   onToggleCamera: () => void
   onToggleScreenShare: () => void
   onLeave: () => void
+  viewSessions: readonly VoiceStageViewSession[]
+  focusedStageItemId: string | null
+  onExitViewSession: (session: VoiceStageViewSession) => void
 }
 
 function VoiceStageMobileDrawerControlBar({
@@ -433,6 +467,9 @@ function VoiceStageMobileDrawerControlBar({
   onToggleCamera,
   onToggleScreenShare,
   onLeave,
+  viewSessions,
+  focusedStageItemId,
+  onExitViewSession,
   onJoin,
 }: ControlBarStateProps & {
   channelId: string
@@ -565,15 +602,14 @@ function VoiceStageMobileDrawerControlBar({
             )}
           </MobileDrawerIconButton>
           <StageViewSettings compact overlay trigger="more" />
-          <button
-            type="button"
-            title="Отключиться"
+          <VoiceStageExitControl
+            surface="mobile"
             disabled={connecting}
-            onClick={onLeave}
-            className="flex size-11 shrink-0 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50"
-          >
-            <PhoneOffIcon className="size-5" />
-          </button>
+            sessions={viewSessions}
+            focusedStageItemId={focusedStageItemId}
+            onExitSession={onExitViewSession}
+            onLeaveVoice={onLeave}
+          />
         </div>
         {onToggleChat ? (
           <button
@@ -645,6 +681,9 @@ function VoiceStageOverlayControlBar({
   onToggleCamera,
   onToggleScreenShare,
   onLeave,
+  viewSessions,
+  focusedStageItemId,
+  onExitViewSession,
 }: ControlBarStateProps) {
   return (
     <TooltipProvider delayDuration={300}>
@@ -707,17 +746,163 @@ function VoiceStageOverlayControlBar({
         <StageViewSettings overlay trigger="more" />
       </div>
 
-      <button
-        type="button"
-        title="Отключиться"
+      <VoiceStageExitControl
+        surface="overlay"
         disabled={connecting}
-        onClick={onLeave}
-        className="flex min-w-[3.75rem] shrink-0 items-center justify-center rounded-lg bg-destructive px-3 text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50"
-      >
-        <PhoneOffIcon className="size-5" />
-      </button>
+        sessions={viewSessions}
+        focusedStageItemId={focusedStageItemId}
+        onExitSession={onExitViewSession}
+        onLeaveVoice={onLeave}
+      />
     </div>
     </TooltipProvider>
+  )
+}
+
+type VoiceStageExitControlProps = {
+  surface: 'overlay' | 'mobile' | 'legacy'
+  compact?: boolean
+  disabled: boolean
+  sessions: readonly VoiceStageViewSession[]
+  focusedStageItemId: string | null
+  onExitSession: (session: VoiceStageViewSession) => void
+  onLeaveVoice: () => void
+}
+
+function VoiceStageExitControl({
+  surface,
+  compact = false,
+  disabled,
+  sessions,
+  focusedStageItemId,
+  onExitSession,
+  onLeaveVoice,
+}: VoiceStageExitControlProps) {
+  const focusedSession = sessions.find(
+    (session) => session.stageItemId === focusedStageItemId,
+  )
+  const hasMenu = sessions.length > 0 && !focusedSession
+  const title = focusedSession
+    ? voiceStageViewSessionExitLabel(focusedSession)
+    : 'Отключиться от голоса'
+  const onPrimaryAction = () => {
+    if (focusedSession) {
+      onExitSession(focusedSession)
+      return
+    }
+    onLeaveVoice()
+  }
+
+  const mainButton = (
+    <VoiceControlTooltip title={title}>
+      <button
+        type="button"
+        title={title}
+        aria-label={title}
+        disabled={disabled}
+        onClick={onPrimaryAction}
+        className={cn(
+          'flex shrink-0 items-center justify-center bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50',
+          surface === 'overlay' && 'min-w-[3.75rem] self-stretch px-3',
+          surface === 'mobile' && 'h-11 min-w-11 px-3',
+          surface === 'legacy' &&
+            (compact ? 'h-8 min-w-8 px-2' : 'h-11 min-w-11 px-3'),
+          hasMenu
+            ? surface === 'overlay'
+              ? 'rounded-l-lg'
+              : 'rounded-l-full'
+            : surface === 'overlay'
+              ? 'rounded-lg'
+              : 'rounded-full',
+        )}
+      >
+        {focusedSession?.kind === 'stream' ? (
+          <span
+            className="inline-flex size-5 shrink-0"
+            data-voice-stage-exit-icon="stream"
+            aria-hidden
+          >
+            <MonitorXIcon className="size-5" />
+          </span>
+        ) : focusedSession?.kind === 'activity' ? (
+          <span
+            className="inline-flex size-5 shrink-0"
+            data-voice-stage-exit-icon="activity"
+            aria-hidden
+          >
+            <LogOutIcon className="size-5" />
+          </span>
+        ) : (
+          <span
+            className="inline-flex size-5 shrink-0"
+            data-voice-stage-exit-icon="voice"
+            aria-hidden
+          >
+            <PhoneXmark className="size-5" />
+          </span>
+        )}
+      </button>
+    </VoiceControlTooltip>
+  )
+
+  if (!hasMenu) return mainButton
+
+  return (
+    <DropdownMenu>
+      <div className="flex shrink-0 items-stretch gap-px">
+        {mainButton}
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label="Выбрать, что завершить"
+            title="Выбрать, что завершить"
+            disabled={disabled}
+            className={cn(
+              'flex shrink-0 items-center justify-center bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50',
+              surface === 'overlay' && 'w-8 self-stretch rounded-r-lg',
+              surface === 'mobile' && 'h-11 w-7 rounded-r-full',
+              surface === 'legacy' &&
+                (compact
+                  ? 'h-8 w-6 rounded-r-full'
+                  : 'h-11 w-7 rounded-r-full'),
+            )}
+          >
+            <ChevronDownIcon className="size-4" />
+          </button>
+        </DropdownMenuTrigger>
+      </div>
+      <DropdownMenuContent
+        side="top"
+        align="end"
+        sideOffset={8}
+        className="w-72"
+      >
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Активные просмотры</DropdownMenuLabel>
+          {sessions.map((session) => {
+            const SessionIcon =
+              session.kind === 'activity' ? LogOutIcon : MonitorXIcon
+            return (
+              <DropdownMenuItem
+                key={session.id}
+                onSelect={() => onExitSession(session)}
+              >
+                <span
+                  className="inline-flex size-4 shrink-0"
+                  data-voice-stage-exit-icon={session.kind}
+                  aria-hidden
+                >
+                  <SessionIcon className="size-4" />
+                </span>
+                <span className="min-w-0 truncate">
+                  {voiceStageViewSessionExitLabel(session)}
+                </span>
+              </DropdownMenuItem>
+            )
+          })}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -822,6 +1007,9 @@ function LegacyControlBar({
   onToggleCamera,
   onToggleScreenShare,
   onLeave,
+  viewSessions,
+  focusedStageItemId,
+  onExitViewSession,
 }: ControlBarStateProps & { compact: boolean }) {
   const voiceMedia = useVoiceMedia()
   const micControl = microphoneMediaControlState({
@@ -891,20 +1079,15 @@ function LegacyControlBar({
 
       <StageViewSettings compact={compact} trigger="settings" />
 
-      <Button
-        type="button"
-        size="icon"
-        variant="ghost"
-        className={cn(
-          'rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90 hover:text-destructive-foreground',
-          compact ? 'size-8' : 'size-11',
-        )}
-        title="Отключиться"
+      <VoiceStageExitControl
+        surface="legacy"
+        compact={compact}
         disabled={connecting}
-        onClick={onLeave}
-      >
-        <PhoneOffIcon className="size-5" />
-      </Button>
+        sessions={viewSessions}
+        focusedStageItemId={focusedStageItemId}
+        onExitSession={onExitViewSession}
+        onLeaveVoice={onLeave}
+      />
     </div>
     </TooltipProvider>
   )

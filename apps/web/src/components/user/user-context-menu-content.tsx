@@ -452,7 +452,7 @@ export function UserContextMenuContent({
     }
   }
 
-  const showVoiceControls = inVoice && !isSelf
+  const showVoiceControls = inVoice
   const showModeration = canKick || canBan
 
   return (

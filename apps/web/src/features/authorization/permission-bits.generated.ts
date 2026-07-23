@@ -27,6 +27,7 @@ export const ServerPermission = {
   Masquerade: permissionBit(28),
   React: permissionBit(29),
   BypassSlowmode: permissionBit(39),
+  Administrator: permissionBit(40),
   Connect: permissionBit(30),
   Speak: permissionBit(31),
   Video: permissionBit(32),
