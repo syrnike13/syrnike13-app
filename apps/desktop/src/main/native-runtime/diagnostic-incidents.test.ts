@@ -164,6 +164,20 @@ describe('native diagnostic incident monitor', () => {
     }))
   })
 
+  it.each([
+    'runtime_degraded',
+    'session_rotation_failed',
+  ])('preserves non-control desktop voice diagnostic %s', (event) => {
+    expect(captureNativeDiagnosticIncident({
+      scope: 'desktop-voice',
+      event,
+      fatal: false,
+    })).toMatchObject({
+      event,
+      severity: 'error',
+    })
+  })
+
   it('keeps renderer cooldown and upload lease ownership in electron main', () => {
     expect(captureRendererDiagnosticIncident({
       area: 'voice',

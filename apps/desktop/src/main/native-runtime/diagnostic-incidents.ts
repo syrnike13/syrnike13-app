@@ -87,7 +87,11 @@ export function captureNativeDiagnosticIncident(
   // Gateway control errors with fatal=false are evidence for the active voice
   // operation, not root incidents. A typed terminal projection will create
   // the incident if the operation actually ends.
-  if (record.scope === 'desktop-voice' && record.fatal === false) return null
+  if (
+    record.scope === 'desktop-voice' &&
+    record.event === 'control_event' &&
+    record.fatal === false
+  ) return null
   if (NON_INCIDENT_PROJECTIONS.has(record.event)) return null
   if (!record.errorCode && !FAILURE_EVENTS.has(record.event)) return null
 
