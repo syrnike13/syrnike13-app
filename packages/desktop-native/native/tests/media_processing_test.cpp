@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -90,6 +91,54 @@ int main() try {
       padded_rows.data() + 8, -8, 1, 2) ==
       std::vector<std::uint8_t>{5, 6, 7, 8, 1, 2, 3, 4},
     "camera BGRA copy did not normalize a bottom-up frame"
+  );
+  require(
+    syrnike::desktop_native::media::copyCameraBgraBuffer(
+      padded_rows.data(), padded_rows.size(), 8, 1, 2) ==
+      std::vector<std::uint8_t>{1, 2, 3, 4, 5, 6, 7, 8},
+    "camera contiguous BGRA copy retained source-row padding"
+  );
+  require(
+    syrnike::desktop_native::media::copyCameraBgraBuffer(
+      padded_rows.data(), padded_rows.size(), -8, 1, 2) ==
+      std::vector<std::uint8_t>{5, 6, 7, 8, 1, 2, 3, 4},
+    "camera contiguous BGRA copy did not normalize negative pitch"
+  );
+  bool truncated_camera_buffer_rejected = false;
+  try {
+    (void)syrnike::desktop_native::media::copyCameraBgraBuffer(
+      padded_rows.data(), 15, 8, 2, 2);
+  } catch (const std::runtime_error&) {
+    truncated_camera_buffer_rejected = true;
+  }
+  require(
+    truncated_camera_buffer_rejected,
+    "camera contiguous BGRA copy read beyond a truncated buffer"
+  );
+  bool minimum_stride_rejected = false;
+  try {
+    (void)syrnike::desktop_native::media::copyCameraBgraBuffer(
+      padded_rows.data(), padded_rows.size(), 3, 1, 2);
+  } catch (const std::invalid_argument&) {
+    minimum_stride_rejected = true;
+  }
+  require(
+    minimum_stride_rejected,
+    "camera contiguous BGRA copy accepted a stride smaller than one row"
+  );
+  bool minimum_stride_overflow_rejected = false;
+  try {
+    (void)syrnike::desktop_native::media::copyCameraBgraRows(
+      padded_rows.data(),
+      std::numeric_limits<std::ptrdiff_t>::min(),
+      1,
+      2);
+  } catch (const std::overflow_error&) {
+    minimum_stride_overflow_rejected = true;
+  }
+  require(
+    minimum_stride_overflow_rejected,
+    "camera BGRA copy overflowed while normalizing PTRDIFF_MIN"
   );
 
   syrnike::voice::RuntimeConfig config;

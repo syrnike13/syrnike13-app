@@ -554,6 +554,18 @@ int main(int argc, char** argv) try {
     "stale generation commit was accepted"
   );
   require(!committed_stale, "stale generation commit mutated actor state");
+  require(
+    !desired.setIfCurrent("active", 7, "__terminal__", 7),
+    "stale terminal transition overwrote a newer generation"
+  );
+  require(
+    desired.setIfCurrent("next", 8, "__terminal__", 8),
+    "current terminal transition was rejected"
+  );
+  require(
+    desired.isCurrent("__terminal__", 8),
+    "terminal transition did not update the current generation atomically"
+  );
 
   const auto redacted = syrnike::desktop_native::diagnostics::redactForDiagnostics(
     "wss://example.com/rtc token=abc123 bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig"

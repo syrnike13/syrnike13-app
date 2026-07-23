@@ -729,7 +729,9 @@ export class NativeRuntimeSupervisor {
     const now = (this.options.now ?? Date.now)()
     this.crashTimes = this.crashTimes.filter((time) => now - time <= CRASH_WINDOW_MS)
     this.crashTimes.push(now)
-    if (this.crashTimes.length >= 3) {
+    // Three configured delays represent three allowed restart attempts. Open
+    // the circuit only when a fourth host fails inside the crash window.
+    if (this.crashTimes.length > RESTART_DELAYS_MS.length) {
       this.log('restart_aborted_circuit_open', {
         pendingCount: this.pending.size,
         message: redactSensitiveText(runtimeFailure.message),

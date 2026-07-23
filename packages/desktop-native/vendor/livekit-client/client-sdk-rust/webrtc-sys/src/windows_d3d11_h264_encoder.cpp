@@ -22,6 +22,7 @@
 #include <limits>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -151,7 +152,24 @@ bool SetCodecU32(IMFTransform* transform, const GUID& key, UINT32 value) {
   VARIANT setting{};
   setting.vt = VT_UI4;
   setting.ulVal = value;
-  return SUCCEEDED(api->SetValue(&key, &setting));
+  return api->SetValue(&key, &setting) == S_OK;
+}
+
+bool SetCodecBool(IMFTransform* transform, const GUID& key, bool value) {
+  ComPtr<ICodecAPI> api;
+  if (FAILED(transform->QueryInterface(IID_PPV_ARGS(&api))))
+    return false;
+  VARIANT setting{};
+  setting.vt = VT_BOOL;
+  setting.boolVal = value ? VARIANT_TRUE : VARIANT_FALSE;
+  return api->SetValue(&key, &setting) == S_OK;
+}
+
+bool ConfigureRequiredCodecControls(IMFTransform* transform, UINT32 bitrate) {
+  return SetCodecU32(transform, CODECAPI_AVEncCommonRateControlMode,
+                     eAVEncCommonRateControlMode_CBR) &&
+         SetCodecU32(transform, CODECAPI_AVEncCommonMeanBitRate, bitrate) &&
+         SetCodecU32(transform, CODECAPI_AVEncVideoForceKeyFrame, FALSE);
 }
 
 bool EnumerateHardwareH264(IMFActivate*** activations, UINT32* count) {
@@ -160,6 +178,30 @@ bool EnumerateHardwareH264(IMFActivate*** activations, UINT32* count) {
              MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER,
                        MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER,
                        nullptr, &output, activations, count)) &&
+         *count > 0;
+}
+
+bool EnumerateHardwareH264ForAdapter(uint64_t adapter_luid,
+                                     IMFActivate*** activations,
+                                     UINT32* count) {
+  ComPtr<IMFAttributes> attributes;
+  if (FAILED(MFCreateAttributes(&attributes, 1)))
+    return false;
+  const LUID luid{
+      static_cast<DWORD>(adapter_luid),
+      static_cast<LONG>(adapter_luid >> 32),
+  };
+  if (FAILED(attributes->SetBlob(
+          MFT_ENUM_ADAPTER_LUID,
+          reinterpret_cast<const UINT8*>(&luid),
+          sizeof(luid)))) {
+    return false;
+  }
+  MFT_REGISTER_TYPE_INFO output{MFMediaType_Video, MFVideoFormat_H264};
+  return SUCCEEDED(
+             MFTEnum2(MFT_CATEGORY_VIDEO_ENCODER,
+                      MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER,
+                      nullptr, &output, attributes.Get(), activations, count)) &&
          *count > 0;
 }
 
@@ -458,122 +500,218 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
 
  private:
   bool InitializeLocked(uint64_t adapter_luid) {
-    if (FAILED(MFStartup(MF_VERSION)))
+    HRESULT hr = MFStartup(MF_VERSION);
+    if (FAILED(hr)) {
+      TraceEncoder("InitializeMFStartup", hr);
       return false;
+    }
     mf_started_ = true;
-    UINT flags =
-        D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT;
     device1_ = CreateDeviceForLuid(adapter_luid);
-    if (!device1_ || FAILED(device1_.As(&device_)))
+    if (!device1_) {
+      TraceEncoder("InitializeD3DDevice", E_FAIL,
+                   static_cast<long long>(adapter_luid));
       return false;
+    }
+    hr = device1_.As(&device_);
+    if (FAILED(hr)) {
+      TraceEncoder("InitializeD3DDeviceInterface", hr);
+      return false;
+    }
     ComPtr<ID3D10Multithread> multithread;
-    if (FAILED(device_.As(&multithread)))
+    hr = device_.As(&multithread);
+    if (FAILED(hr)) {
+      TraceEncoder("InitializeD3DMultithread", hr);
       return false;
+    }
     multithread->SetMultithreadProtected(TRUE);
     device_->SetExceptionMode(0);
 
+    UINT manager_token = 0;
+    hr = MFCreateDXGIDeviceManager(&manager_token, &manager_);
+    if (SUCCEEDED(hr))
+      hr = manager_->ResetDevice(device_.Get(), manager_token);
+    if (FAILED(hr)) {
+      TraceEncoder("InitializeD3DManager", hr);
+      return false;
+    }
+
     IMFActivate** raw = nullptr;
     UINT32 count = 0;
-    if (!EnumerateHardwareH264(&raw, &count))
+    if (!EnumerateHardwareH264ForAdapter(adapter_luid, &raw, &count)) {
+      TraceEncoder("InitializeEnumerateCandidates", E_FAIL);
       return false;
+    }
+
     for (UINT32 i = 0; i < count; ++i) {
       ComPtr<IMFTransform> candidate;
-      if (FAILED(raw[i]->ActivateObject(IID_PPV_ARGS(&candidate))))
+      hr = raw[i]->ActivateObject(IID_PPV_ARGS(&candidate));
+      if (FAILED(hr)) {
+        TraceEncoder("CandidateActivate", hr, i);
         continue;
+      }
       ComPtr<IMFAttributes> attributes;
       UINT32 candidate_async = FALSE;
-      bool usable = SUCCEEDED(candidate->GetAttributes(&attributes));
-      if (usable) {
+      UINT32 d3d11_aware = FALSE;
+      hr = candidate->GetAttributes(&attributes);
+      if (SUCCEEDED(hr)) {
         attributes->GetUINT32(MF_TRANSFORM_ASYNC, &candidate_async);
-        usable = SUCCEEDED(attributes->SetUINT32(MF_LOW_LATENCY, TRUE));
+        hr = attributes->GetUINT32(MF_SA_D3D11_AWARE, &d3d11_aware);
       }
       ComPtr<IMFMediaEventGenerator> events;
-      ComPtr<IMFShutdown> shutdown;
-      if (usable && candidate_async) {
-        usable =
-            SUCCEEDED(attributes->SetUINT32(MF_TRANSFORM_ASYNC_UNLOCK, TRUE)) &&
-            SUCCEEDED(candidate.As(&events)) &&
-            SUCCEEDED(candidate.As(&shutdown));
-      }
-      if (!usable) {
+      ComPtr<IMFShutdown> candidate_shutdown;
+      if (FAILED(hr) || !d3d11_aware) {
+        TraceEncoder("CandidateD3D11Awareness",
+                     FAILED(hr) ? hr : MF_E_UNSUPPORTED_D3D_TYPE, i);
         raw[i]->ShutdownObject();
         continue;
       }
+      // Latency tuning is a policy hint. Some valid vendor MFTs expose the
+      // attribute as read-only or omit it entirely.
+      attributes->SetUINT32(MF_LOW_LATENCY, TRUE);
+      if (candidate_async) {
+        hr = attributes->SetUINT32(MF_TRANSFORM_ASYNC_UNLOCK, TRUE);
+        if (SUCCEEDED(hr))
+          hr = candidate.As(&events);
+        if (SUCCEEDED(hr))
+          hr = candidate.As(&candidate_shutdown);
+      }
+      if (FAILED(hr)) {
+        TraceEncoder("CandidateAsyncInterfaces", hr, i);
+        raw[i]->ShutdownObject();
+        continue;
+      }
+
+      hr = candidate->ProcessMessage(
+          MFT_MESSAGE_SET_D3D_MANAGER,
+          reinterpret_cast<ULONG_PTR>(manager_.Get()));
+      if (FAILED(hr)) {
+        TraceEncoder("CandidateSetD3DManager", hr, i);
+        if (candidate_shutdown)
+          candidate_shutdown->Shutdown();
+        raw[i]->ShutdownObject();
+        continue;
+      }
+
+      // Static rate-control hints must precede SetOutputType, but they remain
+      // best effort because MF_MT_AVG_BITRATE fully describes a valid stream.
+      if (!SetCodecBool(candidate.Get(), CODECAPI_AVLowLatencyMode, true))
+        TraceEncoder("CandidateOptionalLowLatency", E_NOTIMPL, i);
+      if (!ConfigureRequiredCodecControls(candidate.Get(), bitrate_bps_)) {
+        TraceEncoder("CandidateRequiredCodecControls", E_NOTIMPL, i);
+        if (candidate_shutdown)
+          candidate_shutdown->Shutdown();
+        raw[i]->ShutdownObject();
+        continue;
+      }
+      if (!SetCodecU32(candidate.Get(), CODECAPI_AVEncMPVDefaultBPictureCount,
+                       0))
+        TraceEncoder("CandidateOptionalBFrames", E_NOTIMPL, i);
+
+      ComPtr<IMFMediaType> output;
+      hr = MFCreateMediaType(&output);
+      if (SUCCEEDED(hr))
+        hr = output->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+      if (SUCCEEDED(hr))
+        hr = output->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
+      if (SUCCEEDED(hr))
+        hr = MFSetAttributeSize(output.Get(), MF_MT_FRAME_SIZE, width_, height_);
+      if (SUCCEEDED(hr))
+        hr = MFSetAttributeRatio(output.Get(), MF_MT_FRAME_RATE, fps_, 1);
+      if (SUCCEEDED(hr))
+        hr = MFSetAttributeRatio(output.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+      if (SUCCEEDED(hr))
+        hr = output->SetUINT32(MF_MT_AVG_BITRATE, bitrate_bps_);
+      if (SUCCEEDED(hr))
+        hr = output->SetUINT32(MF_MT_INTERLACE_MODE,
+                               MFVideoInterlace_Progressive);
+      if (SUCCEEDED(hr))
+        hr = output->SetUINT32(MF_MT_MPEG2_PROFILE,
+                               eAVEncH264VProfile_ConstrainedBase);
+      if (SUCCEEDED(hr))
+        hr = output->SetUINT32(MF_MT_YUV_MATRIX,
+                               MFVideoTransferMatrix_BT709);
+      if (SUCCEEDED(hr))
+        hr = output->SetUINT32(MF_MT_VIDEO_PRIMARIES,
+                               MFVideoPrimaries_BT709);
+      if (SUCCEEDED(hr))
+        hr = output->SetUINT32(MF_MT_TRANSFER_FUNCTION,
+                               MFVideoTransFunc_709);
+      if (SUCCEEDED(hr))
+        hr = output->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE,
+                               MFNominalRange_16_235);
+      if (SUCCEEDED(hr))
+        hr = candidate->SetOutputType(0, output.Get(), 0);
+      if (FAILED(hr)) {
+        TraceEncoder("CandidateOutputType", hr, i);
+        if (candidate_shutdown)
+          candidate_shutdown->Shutdown();
+        raw[i]->ShutdownObject();
+        continue;
+      }
+
+      ComPtr<IMFMediaType> input;
+      hr = MFCreateMediaType(&input);
+      if (SUCCEEDED(hr))
+        hr = input->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+      if (SUCCEEDED(hr))
+        hr = input->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
+      if (SUCCEEDED(hr))
+        hr = MFSetAttributeSize(input.Get(), MF_MT_FRAME_SIZE, width_, height_);
+      if (SUCCEEDED(hr))
+        hr = MFSetAttributeRatio(input.Get(), MF_MT_FRAME_RATE, fps_, 1);
+      if (SUCCEEDED(hr))
+        hr = input->SetUINT32(MF_MT_INTERLACE_MODE,
+                              MFVideoInterlace_Progressive);
+      if (SUCCEEDED(hr))
+        hr = input->SetUINT32(MF_MT_YUV_MATRIX,
+                              MFVideoTransferMatrix_BT709);
+      if (SUCCEEDED(hr))
+        hr = input->SetUINT32(MF_MT_VIDEO_PRIMARIES,
+                              MFVideoPrimaries_BT709);
+      if (SUCCEEDED(hr))
+        hr = input->SetUINT32(MF_MT_TRANSFER_FUNCTION,
+                              MFVideoTransFunc_709);
+      if (SUCCEEDED(hr))
+        hr = input->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE,
+                              MFNominalRange_16_235);
+      if (SUCCEEDED(hr))
+        hr = candidate->SetInputType(0, input.Get(), 0);
+      MFT_OUTPUT_STREAM_INFO candidate_output_info{};
+      if (SUCCEEDED(hr))
+        hr = candidate->GetOutputStreamInfo(0, &candidate_output_info);
+      if (SUCCEEDED(hr))
+        hr = candidate->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
+      if (SUCCEEDED(hr))
+        hr = candidate->ProcessMessage(
+            MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
+      if (SUCCEEDED(hr))
+        hr = candidate->ProcessMessage(
+            MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
+      if (FAILED(hr)) {
+        TraceEncoder("CandidateInputAndStart", hr, i);
+        if (candidate_shutdown)
+          candidate_shutdown->Shutdown();
+        raw[i]->ShutdownObject();
+        continue;
+      }
+
       activation_ = raw[i];
       encoder_ = std::move(candidate);
       event_generator_ = std::move(events);
-      shutdown_ = std::move(shutdown);
+      shutdown_ = std::move(candidate_shutdown);
       asynchronous_ = candidate_async;
+      output_info_ = candidate_output_info;
+      TraceEncoder("CandidateSelected", S_OK, i);
       break;
     }
     for (UINT32 i = 0; i < count; ++i)
       raw[i]->Release();
     CoTaskMemFree(raw);
-    if (!encoder_ || !activation_)
-      return false;
-    UINT token = 0;
-    if (FAILED(MFCreateDXGIDeviceManager(&token, &manager_)) ||
-        FAILED(manager_->ResetDevice(device_.Get(), token)) ||
-        FAILED(encoder_->ProcessMessage(
-            MFT_MESSAGE_SET_D3D_MANAGER,
-            reinterpret_cast<ULONG_PTR>(manager_.Get())))) {
+    if (!encoder_ || !activation_) {
+      TraceEncoder("InitializeNoCompatibleCandidate", MF_E_INVALIDMEDIATYPE,
+                   count);
       return false;
     }
-    ComPtr<IMFMediaType> output;
-    if (FAILED(MFCreateMediaType(&output)) ||
-        FAILED(output->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video)) ||
-        FAILED(output->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264)) ||
-        FAILED(MFSetAttributeSize(output.Get(), MF_MT_FRAME_SIZE, width_,
-                                  height_)) ||
-        FAILED(MFSetAttributeRatio(output.Get(), MF_MT_FRAME_RATE, fps_, 1)) ||
-        FAILED(MFSetAttributeRatio(output.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1,
-                                   1)) ||
-        FAILED(output->SetUINT32(MF_MT_AVG_BITRATE, bitrate_bps_)) ||
-        FAILED(output->SetUINT32(MF_MT_INTERLACE_MODE,
-                                 MFVideoInterlace_Progressive)) ||
-        FAILED(output->SetUINT32(MF_MT_MPEG2_PROFILE,
-                                 eAVEncH264VProfile_ConstrainedBase)) ||
-        FAILED(
-            output->SetUINT32(MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT709)) ||
-        FAILED(
-            output->SetUINT32(MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_BT709)) ||
-        FAILED(
-            output->SetUINT32(MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_709)) ||
-        FAILED(output->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE,
-                                 MFNominalRange_16_235)) ||
-        FAILED(encoder_->SetOutputType(0, output.Get(), 0)))
-      return false;
-    ComPtr<IMFMediaType> input;
-    if (FAILED(MFCreateMediaType(&input)) ||
-        FAILED(input->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video)) ||
-        FAILED(input->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12)) ||
-        FAILED(MFSetAttributeSize(input.Get(), MF_MT_FRAME_SIZE, width_,
-                                  height_)) ||
-        FAILED(MFSetAttributeRatio(input.Get(), MF_MT_FRAME_RATE, fps_, 1)) ||
-        FAILED(input->SetUINT32(MF_MT_INTERLACE_MODE,
-                                MFVideoInterlace_Progressive)) ||
-        FAILED(
-            input->SetUINT32(MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT709)) ||
-        FAILED(
-            input->SetUINT32(MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_BT709)) ||
-        FAILED(
-            input->SetUINT32(MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_709)) ||
-        FAILED(input->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE,
-                                MFNominalRange_16_235)) ||
-        FAILED(encoder_->SetInputType(0, input.Get(), 0)) ||
-        !SetCodecU32(encoder_.Get(), CODECAPI_AVLowLatencyMode, TRUE) ||
-        !SetCodecU32(encoder_.Get(), CODECAPI_AVEncCommonRateControlMode,
-                     eAVEncCommonRateControlMode_CBR) ||
-        !SetCodecU32(encoder_.Get(), CODECAPI_AVEncCommonMeanBitRate,
-                     bitrate_bps_))
-      return false;
-    SetCodecU32(encoder_.Get(), CODECAPI_AVEncMPVDefaultBPictureCount, 0);
-    if (FAILED(encoder_->GetOutputStreamInfo(0, &output_info_)) ||
-        FAILED(encoder_->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0)) ||
-        FAILED(
-            encoder_->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0)) ||
-        FAILED(encoder_->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0)))
-      return false;
     rates_dirty_ = false;
     return true;
   }
@@ -743,8 +881,13 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
 
   SubmitResult Submit(InputJob&& job) {
     if (job.keyframe &&
-        !SetCodecU32(encoder_.Get(), CODECAPI_AVEncVideoForceKeyFrame, TRUE))
+        !SetCodecU32(encoder_.Get(), CODECAPI_AVEncVideoForceKeyFrame, TRUE)) {
+      // A PLI/FIR cannot be acknowledged as accepted when the MFT did not
+      // promise an IDR for this input. Fail the encoder so WebRTC recreates it
+      // and preserves decodability for a late subscriber.
+      TraceEncoder("RequiredForceKeyFrame", E_NOTIMPL, job.sample_time);
       return SubmitResult::kFailed;
+    }
     const HRESULT hr = encoder_->ProcessInput(0, job.sample.Get(), 0);
     if (hr == MF_E_NOTACCEPTING) {
       TraceEncoder("ProcessInputNotAccepting", hr, job.sample_time);
@@ -809,6 +952,8 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
     bool input_blocked_until_output = false;
     size_t not_accepting_retries = 0;
     std::chrono::steady_clock::time_point not_accepting_deadline{};
+    std::optional<std::chrono::steady_clock::time_point>
+        first_need_input_deadline;
     bool drain_complete = false;
     for (;;) {
       bool stopping = false;
@@ -823,11 +968,12 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
       }
       if (stopping)
         break;
-      // Some hardware MFTs reject a redundant or mid-stream bitrate update.
-      // The stream remains valid at its last applied bitrate, so a rate-control
-      // rejection must not terminate encoding after the first frame.
       if (rates_dirty) {
-        SetCodecU32(encoder_.Get(), CODECAPI_AVEncCommonMeanBitRate, bitrate);
+        if (!SetCodecU32(encoder_.Get(),
+                         CODECAPI_AVEncCommonMeanBitRate, bitrate)) {
+          FailWorker("UpdateMeanBitrate");
+          break;
+        }
       }
       if (asynchronous_) {
         bool produced_output = false;
@@ -848,6 +994,21 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
           input_blocked_until_output = false;
           TraceEncoder("ProcessInputRetryWatchdog", MF_E_NOTACCEPTING,
                        static_cast<long long>(not_accepting_retries));
+        }
+        bool queued_input = false;
+        {
+          std::lock_guard lock(mutex_);
+          queued_input = !input_jobs_.empty();
+        }
+        if (need_input_count > 0 || !queued_input) {
+          first_need_input_deadline.reset();
+        } else if (!first_need_input_deadline) {
+          first_need_input_deadline =
+              std::chrono::steady_clock::now() + kFirstNeedInputTimeout;
+        } else if (std::chrono::steady_clock::now() >=
+                   *first_need_input_deadline) {
+          FailWorker("FirstNeedInputTimeout");
+          break;
         }
       }
       InputJob job;
@@ -984,6 +1145,7 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
   static constexpr size_t kMaxNotAcceptingRetries = 4;
   static constexpr auto kNotAcceptingRetryDelay =
       std::chrono::milliseconds(500);
+  static constexpr auto kFirstNeedInputTimeout = std::chrono::seconds(3);
   mutable std::mutex mutex_;
   std::condition_variable cv_;
   std::thread worker_;
@@ -1140,18 +1302,25 @@ bool IsWindowsD3D11HardwareH264Supported() {
           continue;
         ComPtr<IMFAttributes> attributes;
         UINT32 async = FALSE;
-        if (SUCCEEDED(transform->GetAttributes(&attributes))) {
+        UINT32 d3d11_aware = FALSE;
+        bool usable = SUCCEEDED(transform->GetAttributes(&attributes));
+        if (usable) {
           attributes->GetUINT32(MF_TRANSFORM_ASYNC, &async);
+          usable =
+              SUCCEEDED(attributes->GetUINT32(MF_SA_D3D11_AWARE,
+                                               &d3d11_aware)) &&
+              d3d11_aware;
         }
-        bool usable = true;
-        if (async) {
+        if (usable && async) {
           ComPtr<IMFMediaEventGenerator> events;
           ComPtr<IMFShutdown> shutdown;
-          usable = attributes &&
-                   SUCCEEDED(attributes->SetUINT32(MF_TRANSFORM_ASYNC_UNLOCK,
-                                                   TRUE)) &&
+          usable = SUCCEEDED(attributes->SetUINT32(
+                                 MF_TRANSFORM_ASYNC_UNLOCK, TRUE)) &&
                    SUCCEEDED(transform.As(&events)) &&
                    SUCCEEDED(transform.As(&shutdown));
+        }
+        if (usable) {
+          usable = ConfigureRequiredCodecControls(transform.Get(), 2'500'000);
         }
         activations[i]->ShutdownObject();
         if (usable) {

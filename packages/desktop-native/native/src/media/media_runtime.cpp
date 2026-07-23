@@ -277,6 +277,7 @@ class MediaRuntime::Implementation {
       type == "__screenAttemptFailed" ||
       type == "__screenRetireDone" ||
       type == "__screenRtpStalled" ||
+      type == "__screenRecoveryFailed" ||
       type == "connectScreen" || type == "startScreenCapture" ||
       type == "stopScreenCapture" || type == "disconnectScreen" ||
       type == "setLocalScreenPreviewDemand" ||
@@ -947,11 +948,30 @@ class MediaRuntime::Implementation {
       try {
         screen_.handleTerminal(command);
       } catch (...) {
-        desired_screen_.set("__screen_terminal__", command.generation);
+        desired_screen_.setIfCurrent(
+          command.session_id,
+          command.generation,
+          "__screen_terminal__",
+          command.generation);
         screen_commands_.discardMedia(command.session_id, command.generation);
         throw;
       }
-      desired_screen_.set("__screen_terminal__", command.generation);
+      desired_screen_.setIfCurrent(
+        command.session_id,
+        command.generation,
+        "__screen_terminal__",
+        command.generation);
+      screen_commands_.discardMedia(command.session_id, command.generation);
+      return;
+    }
+    if (command.type == "__screenRecoveryFailed") {
+      if (!desired_screen_.isCurrent(command.session_id, command.generation)) return;
+      screen_.handleWorkerCommand(command);
+      desired_screen_.setIfCurrent(
+        command.session_id,
+        command.generation,
+        "__screen_recovery_failed__",
+        command.generation);
       screen_commands_.discardMedia(command.session_id, command.generation);
       return;
     }

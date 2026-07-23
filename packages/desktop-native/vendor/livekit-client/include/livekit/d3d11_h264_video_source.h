@@ -50,6 +50,11 @@ struct D3D11H264Capability {
 /// Reports whether this SDK binary contains the strict D3D11 H.264 encoder.
 LIVEKIT_API D3D11H264Capability queryD3D11H264Capability();
 
+/// Reports whether the strict encoder is available for the exact adapter that
+/// owns captured D3D11 textures.
+LIVEKIT_API D3D11H264Capability queryD3D11H264CapabilityForAdapter(
+    std::uint64_t adapter_luid);
+
 /// GPU-native screen source contract. Implementations hand leases to the
 /// WebRTC VideoEncoder path, which remains responsible for rate control,
 /// keyframe requests, packetization, and RTP transport.

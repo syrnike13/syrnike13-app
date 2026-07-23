@@ -38,6 +38,14 @@ std::vector<std::uint8_t> copyCameraBgraRows(
   std::uint32_t height
 );
 
+std::vector<std::uint8_t> copyCameraBgraBuffer(
+  const std::uint8_t* buffer,
+  std::size_t buffer_length,
+  std::ptrdiff_t stride,
+  std::uint32_t width,
+  std::uint32_t height
+);
+
 class CameraCapture {
  public:
   virtual ~CameraCapture() = default;
