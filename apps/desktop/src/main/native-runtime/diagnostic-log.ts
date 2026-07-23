@@ -44,6 +44,7 @@ export type DiagnosticLogRecord = {
   fenceGeneration?: number
   revision?: number
   muted?: boolean
+  fatal?: boolean
   pendingCount?: number
   queueDepth?: number
   queueWaitMs?: number

@@ -192,16 +192,26 @@ class ScreenActor::Implementation {
         {"message", reason}
       }
     );
+    emitCaptureEnded(command.session_id, command.generation, reason);
+  }
+
+  void emitCaptureEnded(
+    const std::string& session_id,
+    std::uint64_t generation,
+    const std::string& reason
+  ) {
     RuntimeEvent ended;
     ended.type = "screenCaptureEnded";
-    ended.session_id = command.session_id;
-    ended.generation = command.generation;
+    ended.session_id = session_id;
+    ended.generation = generation;
     constexpr std::string_view allowed_reasons[] = {
       "target_closed",
       "gpu_capture_unavailable",
       "gpu_encoder_unavailable",
       "gpu_interop_unavailable",
       "gpu_device_lost",
+      "rtp_stall_recovery_exhausted",
+      "screen_recovery_timeout",
     };
     ended.reason = "runtime_error";
     for (const auto allowed : allowed_reasons) {
@@ -214,8 +224,8 @@ class ScreenActor::Implementation {
     emitter_.emit(std::move(ended));
     RuntimeEvent stopped;
     stopped.type = "sessionStopped";
-    stopped.session_id = command.session_id;
-    stopped.generation = command.generation;
+    stopped.session_id = session_id;
+    stopped.generation = generation;
     stopped.reason = reason;
     emitter_.emit(std::move(stopped));
   }
@@ -231,6 +241,17 @@ class ScreenActor::Implementation {
     }
     if (command.type == "__screenRtpStalled") {
       publication_->restartCaptureAfterStall(command);
+      return;
+    }
+    if (command.type == "__screenRecoveryFailed") {
+      publication_->disconnect(command, false);
+      emitCaptureEnded(
+        command.session_id,
+        command.generation,
+        command.internal_message.empty()
+          ? std::string("gpu_encoder_unavailable")
+          : command.internal_message
+      );
       return;
     }
     publication_->handleWorkerCommand(command);
@@ -295,6 +316,13 @@ class ScreenActor::Implementation {
       );
     } catch (const ScreenGpuCaptureError& error) {
       throw std::runtime_error(std::string(gpuCaptureReason(error.code())));
+    }
+    const auto adapter_capability =
+      livekit::queryD3D11H264CapabilityForAdapter(
+        packLuid(capturer->adapterLuid()));
+    if (!adapter_capability.available) {
+      throw std::runtime_error(
+        "gpu_encoder_unavailable: " + adapter_capability.reason);
     }
     if (!is_current()) throw std::runtime_error("stale screen capture generation");
     registerPreviewCapturer(command, capturer);
@@ -476,6 +504,7 @@ class ScreenActor::Implementation {
   struct OutboundStatsSample {
     bool available = false;
     bool active = false;
+    std::uint64_t frames_encoded = 0;
     std::uint64_t frames_sent = 0;
   };
 
@@ -563,7 +592,12 @@ class ScreenActor::Implementation {
           {"active", active}
         }
       );
-      return OutboundStatsSample{available, active, frames_sent};
+      return OutboundStatsSample{
+        available,
+        active,
+        frames_encoded,
+        frames_sent,
+      };
     } catch (const std::exception& error) {
       logScreen(
         "screen_rtp_stats_error",
@@ -605,7 +639,7 @@ class ScreenActor::Implementation {
     auto next_rtp_stats_at = next_frame + std::chrono::seconds(1);
     const auto started = next_frame;
     EncoderBackpressureStallDetector encoder_backpressure_stall;
-    OutboundRtpStallDetector outbound_rtp_stall;
+    ScreenOutputStallDetector output_stall;
     bool rtp_stall_reported = false;
     std::uint64_t frames = 0;
     std::uint64_t method_wgc_gpu = 0;
@@ -742,22 +776,30 @@ class ScreenActor::Implementation {
         if (now >= next_rtp_stats_at) {
           const auto stats = sampleOutboundStats(session_id, generation, track);
           if (stats && stats->available) {
-            if (!rtp_stall_reported && outbound_rtp_stall.observe(
-                  now,
-                  stats->active,
-                  stats->frames_sent,
-                  std::chrono::seconds(5))) {
+            const auto stall = output_stall.observe(
+              now,
+              stats->active,
+              frames,
+              stats->frames_encoded,
+              stats->frames_sent,
+              std::chrono::seconds(5));
+            if (!rtp_stall_reported &&
+                stall != ScreenOutputStall::None) {
               MediaCommand stalled;
               stalled.type = "__screenRtpStalled";
               stalled.session_id = session_id;
               stalled.generation = generation;
-              stalled.internal_message = "rtp_output_stalled";
+              stalled.internal_message =
+                stall == ScreenOutputStall::Encoder
+                  ? "encoder_output_stalled"
+                  : "rtp_output_stalled";
               logScreen(
                 "screen_rtp_stall_detected",
                 {
                   {"sessionId", session_id},
                   {"generation", generation},
                   {"frames", frames},
+                  {"framesEncoded", stats->frames_encoded},
                   {"framesSent", stats->frames_sent}
                 }
               );

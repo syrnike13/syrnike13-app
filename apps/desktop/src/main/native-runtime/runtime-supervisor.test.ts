@@ -479,7 +479,7 @@ describe('NativeRuntimeSupervisor', () => {
     expect(supervisor.getSnapshot().status).toBe('stopped')
   })
 
-  it('rejects pending work as runtime_lost and enters the circuit after crashes', async () => {
+  it('uses every configured restart delay before opening the crash circuit', async () => {
     const adapters: FakeAdapter[] = []
     const scheduled: Array<() => void> = []
     const supervisor = new NativeRuntimeSupervisor({
@@ -519,10 +519,16 @@ describe('NativeRuntimeSupervisor', () => {
     third.ready()
     await vi.waitFor(() => expect(supervisor.getSnapshot().status).toBe('ready'))
     third.exit()
+    scheduled.shift()?.()
+    await vi.waitFor(() => expect(adapters).toHaveLength(4))
+    const fourth = adapters[3]
+    fourth.ready()
+    await vi.waitFor(() => expect(supervisor.getSnapshot().status).toBe('ready'))
+    fourth.exit()
 
     expect(supervisor.getSnapshot()).toMatchObject({
       status: 'degraded',
-      restartCount: 2,
+      restartCount: 3,
     })
   })
 

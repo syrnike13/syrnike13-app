@@ -240,6 +240,12 @@ class ScreenControllerHarness final {
   void setCurrent(std::uint64_t generation) { generation_.store(generation); }
 
   void handleNextWorkerCommand(std::chrono::milliseconds timeout = kTestWatchdog) {
+    controller->handleWorkerCommand(takeNextWorkerCommand(timeout));
+  }
+
+  syrnike::desktop_native::MediaCommand takeNextWorkerCommand(
+    std::chrono::milliseconds timeout = kTestWatchdog
+  ) {
     syrnike::desktop_native::MediaCommand command;
     {
       std::unique_lock lock(commands_mutex_);
@@ -249,7 +255,7 @@ class ScreenControllerHarness final {
       command = std::move(commands_.front());
       commands_.pop_front();
     }
-    controller->handleWorkerCommand(command);
+    return command;
   }
 
   std::shared_ptr<CollectingSink> sink;
@@ -428,8 +434,8 @@ void verifyRtpStallRestartsCapture() {
   harness.handleNextWorkerCommand();
 
   require(
-    harness.sink->countSessionStarted("screen-di", 1) == 2,
-    "RTP stall did not promote a replacement screen capture"
+    harness.sink->countSessionStarted("screen-di", 1) == 1,
+    "internal RTP recovery emitted a duplicate sessionStarted event"
   );
   require(
     harness.sink->countRepliesWithEmptyRequestId() == 0,
@@ -465,6 +471,94 @@ void verifyManualStopCancelsPendingStallRestart() {
   );
 }
 
+void verifyRecoveryBudgetStopsOscillation() {
+  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
+  auto harness = makeWorkingHarness();
+  startHarnessCapture(harness, "di-budget-start");
+  harness.livekit->setBlocked(Operation::Unpublish, true);
+  harness.livekit->setBlocked(Operation::Publish, true);
+
+  auto stalled = screenCommand("__screenRtpStalled", {}, "screen-di", 1);
+  stalled.internal_message = "encoder_output_stalled";
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    harness.controller->restartCaptureAfterStall(stalled);
+    releaseRetirement(harness);
+    harness.livekit->waitUntilPending(Operation::Publish, 1, kTestWatchdog);
+    harness.livekit->releaseNext(Operation::Publish);
+    harness.handleNextWorkerCommand();
+  }
+
+  harness.controller->restartCaptureAfterStall(stalled);
+  const auto terminal = harness.takeNextWorkerCommand();
+  require(
+    terminal.type == "__screenRecoveryFailed" &&
+      terminal.session_id == "screen-di" &&
+      terminal.generation == 1 &&
+      terminal.internal_message == "gpu_encoder_unavailable",
+    "fourth identical encoder stall did not open the screen-only circuit"
+  );
+  require(
+    harness.sink->countSessionStarted("screen-di", 1) == 1,
+    "bounded recovery exposed internal restarts as new sessions"
+  );
+  require(
+    harness.sink->countRepliesWithEmptyRequestId() == 0,
+    "bounded recovery emitted an invalid empty-request reply"
+  );
+}
+
+void waitForAvailable(
+  syrnike::desktop_native::media::MediaRuntime& runtime,
+  const std::shared_ptr<CollectingSink>& sink,
+  const std::string& request_prefix
+) {
+  const auto deadline = std::chrono::steady_clock::now() + kTestWatchdog;
+  for (std::size_t attempt = 0;
+       std::chrono::steady_clock::now() < deadline;
+       ++attempt) {
+    const auto request_id = request_prefix + "-" + std::to_string(attempt);
+    syrnike::desktop_native::MediaCommand probe;
+    probe.type = "probeScreenActor";
+    probe.request_id = request_id;
+    require(runtime.dispatch(probe), "runtime rejected availability probe");
+    const auto reply = sink->waitReply(request_id);
+    if (reply.ok && reply.state == "available") return;
+    std::this_thread::sleep_for(1ms);
+  }
+  throw std::runtime_error("screen actor did not become available");
+}
+
+void verifyInternalRecoveryFailureDoesNotReply() {
+  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
+  auto harness = makeWorkingHarness();
+  startHarnessCapture(harness, "di-failure-start");
+  harness.livekit->setBlocked(Operation::Unpublish, true);
+  harness.livekit->setBlocked(Operation::Publish, true);
+
+  auto stalled = screenCommand("__screenRtpStalled", {}, "screen-di", 1);
+  stalled.internal_message = "encoder_output_stalled";
+  harness.controller->restartCaptureAfterStall(stalled);
+  releaseRetirement(harness);
+  harness.livekit->waitUntilPending(Operation::Publish, 1, kTestWatchdog);
+  harness.livekit->releaseNext(
+    Operation::Publish,
+    {.error_message = "gpu_encoder_unavailable"}
+  );
+  harness.handleNextWorkerCommand();
+  const auto failure = harness.takeNextWorkerCommand();
+  require(
+    failure.type == "__screenRecoveryFailed" &&
+      failure.session_id == "screen-di" &&
+      failure.generation == 1 &&
+      failure.internal_message == "gpu_encoder_unavailable",
+    "internal recovery failure did not produce a typed media failure"
+  );
+  require(
+    harness.sink->countRepliesWithEmptyRequestId() == 0,
+    "internal recovery failure emitted a reply with an empty request id"
+  );
+}
+
 }  // namespace
 
 int main() try {
@@ -489,32 +583,53 @@ int main() try {
     );
   }
   {
-    using syrnike::desktop_native::media::OutboundRtpStallDetector;
-    OutboundRtpStallDetector detector;
+    using syrnike::desktop_native::media::ScreenOutputStall;
+    using syrnike::desktop_native::media::ScreenOutputStallDetector;
+    ScreenOutputStallDetector detector;
     const auto started = std::chrono::steady_clock::now();
     require(
-      !detector.observe(started, false, 0, 5s),
-      "inactive RTP output started a stall watchdog"
+      detector.observe(started, false, 0, 0, 0, 5s) ==
+        ScreenOutputStall::None,
+      "inactive screen output started a stall watchdog"
     );
     require(
-      !detector.observe(started + 1s, true, 0, 5s),
-      "first active zero-frame RTP sample fired immediately"
+      detector.observe(started + 1s, true, 1, 0, 0, 5s) ==
+        ScreenOutputStall::None,
+      "first active zero-frame output sample fired immediately"
     );
     require(
-      detector.observe(started + 6s, true, 0, 5s),
-      "active RTP output with no first frame was not detected"
+      detector.observe(started + 7s, true, 2, 0, 0, 5s) ==
+        ScreenOutputStall::Encoder,
+      "growing ingress with no encoded frame was not classified as encoder stall"
+    );
+    detector.reset();
+    require(
+      detector.observe(started + 8s, true, 1, 0, 0, 5s) ==
+        ScreenOutputStall::None &&
+      detector.observe(started + 14s, true, 1, 0, 0, 5s) ==
+        ScreenOutputStall::Encoder,
+      "a static first frame masked an encoder that never produced output"
+    );
+    detector.reset();
+    require(
+      detector.observe(started + 15s, true, 3, 1, 0, 5s) ==
+        ScreenOutputStall::None &&
+      detector.observe(started + 21s, true, 3, 1, 0, 5s) ==
+        ScreenOutputStall::Transport,
+      "encoded output with no sent frame was not classified as transport stall"
+    );
+    detector.reset();
+    require(
+      detector.observe(started + 22s, true, 5, 5, 5, 5s) ==
+        ScreenOutputStall::None &&
+      detector.observe(started + 28s, true, 5, 5, 5, 5s) ==
+        ScreenOutputStall::None,
+      "static screen content was treated as failed output"
     );
     require(
-      !detector.observe(started + 7s, true, 1, 5s),
-      "first sent RTP frame did not reset the stall watchdog"
-    );
-    require(
-      !detector.observe(started + 20s, false, 1, 5s),
-      "inactive RTP output was treated as stalled"
-    );
-    require(
-      !detector.observe(started + 21s, true, 1, 5s),
-      "RTP watchdog retained inactive time after a viewer returned"
+      detector.observe(started + 29s, false, 6, 5, 5, 5s) ==
+        ScreenOutputStall::None,
+      "inactive output retained a stale watchdog"
     );
   }
 
@@ -535,6 +650,11 @@ int main() try {
   verifyPhase("cancelled publish rollback", verifyCancelledPublishRollsBackExactSid);
   verifyPhase("RTP stall restart", verifyRtpStallRestartsCapture);
   verifyPhase("manual stop cancels restart", verifyManualStopCancelsPendingStallRestart);
+  verifyPhase("bounded stall recovery", verifyRecoveryBudgetStopsOscillation);
+  verifyPhase(
+    "internal stall recovery failure",
+    verifyInternalRecoveryFailureDoesNotReply
+  );
 
   livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, false);
   livekit->setVoiceSessionForTest("screen-c");
@@ -560,6 +680,57 @@ int main() try {
     "terminal disconnect lost sessionStopped semantics"
   );
   requireProbe(runtime, sink, "probe-terminal-retire");
+
+  livekit->setVoiceSessionForTest("screen-recovery");
+  const auto prepare_recovery = screenCommand(
+    "connectScreen", "prepare-recovery", "screen-recovery", 8);
+  require(
+    runtime.dispatch(prepare_recovery),
+    "runtime rejected recovery-failure prepare");
+  require(
+    sink->waitReply("prepare-recovery").ok,
+    "recovery-failure prepare failed");
+  syrnike::desktop_native::MediaCommand recovery_failed;
+  recovery_failed.type = "__screenRecoveryFailed";
+  recovery_failed.session_id = "screen-recovery";
+  recovery_failed.generation = 8;
+  recovery_failed.internal_message = "rtp_stall_recovery_exhausted";
+  require(
+    runtime.dispatch(recovery_failed),
+    "runtime rejected internal screen recovery failure");
+  const auto recovery_ended =
+    sink->waitEvent("screenCaptureEnded", "screen-recovery", 8);
+  require(
+    recovery_ended.reason == "rtp_stall_recovery_exhausted",
+    "screen recovery circuit reason was rewritten");
+  const auto stale_recovery_retry = screenCommand(
+    "connectScreen",
+    "recovery-stale",
+    "screen-recovery",
+    8);
+  require(
+    runtime.dispatch(stale_recovery_retry),
+    "runtime rejected dispatch of a fenced recovery retry");
+  const auto stale_recovery_reply = sink->waitReply("recovery-stale");
+  require(
+    stale_recovery_reply.error &&
+      stale_recovery_reply.error->code == "stale_generation",
+    "same-generation retry escaped the recovery terminal fence");
+
+  waitForAvailable(runtime, sink, "recovery-available");
+  livekit->setVoiceSessionForTest("screen-recovery-next");
+  const auto next_recovery_retry = screenCommand(
+    "connectScreen",
+    "recovery-next",
+    "screen-recovery-next",
+    9);
+  require(
+    runtime.dispatch(next_recovery_retry),
+    "runtime rejected a newer generation after recovery failure");
+  const auto next_recovery_reply = sink->waitReply("recovery-next");
+  require(
+    next_recovery_reply.ok,
+    "recovery terminal fence did not accept a newer generation");
 
   runtime.requestShutdown();
   runtime.shutdownAndWait();

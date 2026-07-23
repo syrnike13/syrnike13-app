@@ -367,6 +367,11 @@ function nativeVoiceDiagnosticRecord(
     ),
     reason: diagnosticString(detail.reason),
     stage: diagnosticString(detail.stage ?? failure.stage),
+    fatal: typeof detail.fatal === 'boolean'
+      ? detail.fatal
+      : typeof failure.fatal === 'boolean'
+        ? failure.fatal
+        : undefined,
     errorCode: diagnosticString(
       detail.errorCode ?? detail.errorType ?? failure.code,
     ),

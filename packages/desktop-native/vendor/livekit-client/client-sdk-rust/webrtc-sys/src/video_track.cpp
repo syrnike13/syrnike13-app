@@ -327,10 +327,10 @@ bool VideoTrackSource::capture_d3d11_frame(
                    .set_rotation(webrtc::kVideoRotation_0)
                    .set_timestamp_us(timestamp_us)
                    .build();
-  // AdaptFrame may normally drop a frame (for example, before a sink exists).
-  // Destruction still reclaims the producer slot through the keyed mutex.
-  source_->on_captured_frame(frame, FrameMetadata{});
-  return true;
+  // Propagate the actual source decision. A rejected frame is reclaimed by
+  // D3D11TextureFrameBuffer destruction and must not be acknowledged to the
+  // producer as accepted encoder ingress.
+  return source_->on_captured_frame(frame, FrameMetadata{});
 #else
   return false;
 #endif

@@ -50,6 +50,38 @@ bool validFormat(const CameraFormat& format) {
     format.frame_rate_numerator > 0 && format.frame_rate_denominator > 0;
 }
 
+std::size_t checkedCameraRowBytes(std::uint32_t width) {
+  if (width == 0 ||
+      width > std::numeric_limits<std::size_t>::max() / 4) {
+    throw std::overflow_error("camera row size overflow");
+  }
+  return static_cast<std::size_t>(width) * 4;
+}
+
+std::size_t checkedAbsoluteStride(std::ptrdiff_t stride) {
+  if (stride == std::numeric_limits<std::ptrdiff_t>::min()) {
+    throw std::overflow_error("camera frame stride overflow");
+  }
+  return static_cast<std::size_t>(stride < 0 ? -stride : stride);
+}
+
+std::size_t checkedCameraFrameBytes(
+  std::size_t absolute_stride,
+  std::size_t row_bytes,
+  std::uint32_t height
+) {
+  if (height == 0 || absolute_stride < row_bytes) {
+    throw std::invalid_argument("camera frame stride is too small");
+  }
+  const auto preceding_rows = static_cast<std::size_t>(height - 1);
+  if (preceding_rows >
+      (std::numeric_limits<std::size_t>::max() - row_bytes) /
+        absolute_stride) {
+    throw std::overflow_error("camera frame size overflow");
+  }
+  return absolute_stride * preceding_rows + row_bytes;
+}
+
 double formatDistance(const CameraFormat& candidate, const CameraFormat& requested) {
   const auto width_ratio = static_cast<double>(candidate.width) / requested.width;
   const auto height_ratio = static_cast<double>(candidate.height) / requested.height;
@@ -92,6 +124,7 @@ std::vector<CameraFormat> readNativeFormats(IMFSourceReader* reader) {
 
 ComPtr<IMFMediaType> makeRgb32Type(const CameraFormat& format) {
   ComPtr<IMFMediaType> type;
+  LONG default_stride = 0;
   check(MFCreateMediaType(&type), "camera media type creation failed");
   check(type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video), "camera major type failed");
   check(type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32), "camera RGB32 type failed");
@@ -108,6 +141,12 @@ ComPtr<IMFMediaType> makeRgb32Type(const CameraFormat& format) {
     "camera interlace mode failed");
   check(MFSetAttributeRatio(type.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1),
     "camera pixel aspect ratio failed");
+  check(MFGetStrideForBitmapInfoHeader(
+        MFVideoFormat_RGB32.Data1, format.width, &default_stride),
+    "camera RGB32 stride calculation failed");
+  check(type->SetUINT32(
+        MF_MT_DEFAULT_STRIDE, static_cast<UINT32>(default_stride)),
+    "camera default stride failed");
   return type;
 }
 
@@ -215,50 +254,39 @@ void copySampleToFrame(
     }
     check(buffer_2d_v2->Unlock2D(), "camera 2D buffer unlock failed");
   } else {
-    ComPtr<IMF2DBuffer> buffer_2d;
-    if (SUCCEEDED(buffer.As(&buffer_2d))) {
-      BYTE* scanline_zero = nullptr;
-      LONG pitch = 0;
-      check(buffer_2d->Lock2D(&scanline_zero, &pitch), "camera 2D buffer lock failed");
-      try {
-        frame.bgra = copyCameraBgraRows(
-          scanline_zero, pitch, format.width, format.height);
-      } catch (...) {
-        unlock2D(buffer_2d.Get());
-        throw;
+    // IMF2DBuffer::Lock2D does not expose the backing allocation length, so
+    // bounds cannot be proven before copying rows. IMFMediaBuffer::Lock
+    // provides a contiguous representation (copying internally when needed)
+    // together with its valid length, which keeps the legacy v1 path safe.
+    BYTE* bytes = nullptr;
+    DWORD current_length = 0;
+    check(buffer->Lock(&bytes, nullptr, &current_length),
+      "camera buffer lock failed");
+    try {
+      UINT32 raw_stride = 0;
+      const auto row_bytes = checkedCameraRowBytes(format.width);
+      if (row_bytes > static_cast<std::size_t>(
+            std::numeric_limits<LONG>::max())) {
+        throw std::overflow_error("camera row stride exceeds Media Foundation limits");
       }
-      check(buffer_2d->Unlock2D(), "camera 2D buffer unlock failed");
-    } else {
-      BYTE* bytes = nullptr;
-      DWORD current_length = 0;
-      check(buffer->Lock(&bytes, nullptr, &current_length),
-        "camera buffer lock failed");
-      try {
-        UINT32 raw_stride = 0;
-        LONG stride = static_cast<LONG>(format.width * 4);
-        if (SUCCEEDED(type->GetUINT32(MF_MT_DEFAULT_STRIDE, &raw_stride))) {
-          stride = static_cast<LONG>(raw_stride);
-        }
-        const auto absolute_stride = static_cast<std::uint64_t>(
-          stride < 0 ? -static_cast<std::int64_t>(stride) : stride);
-        const auto row_bytes = static_cast<std::uint64_t>(format.width) * 4;
-        const auto required_length =
-          absolute_stride * (static_cast<std::uint64_t>(format.height) - 1) +
-          row_bytes;
-        if (absolute_stride < row_bytes || required_length > current_length) {
-          throw std::runtime_error("camera contiguous buffer has an invalid stride");
-        }
-        const auto scanline_zero = stride < 0
-          ? bytes + absolute_stride * (static_cast<std::uint64_t>(format.height) - 1)
-          : bytes;
-        frame.bgra = copyCameraBgraRows(
-          scanline_zero, stride, format.width, format.height);
-      } catch (...) {
-        unlockBuffer(buffer.Get());
-        throw;
+      LONG stride = static_cast<LONG>(row_bytes);
+      if (SUCCEEDED(type->GetUINT32(MF_MT_DEFAULT_STRIDE, &raw_stride))) {
+        stride = static_cast<LONG>(raw_stride);
+      } else {
+        GUID subtype = GUID_NULL;
+        check(type->GetGUID(MF_MT_SUBTYPE, &subtype),
+          "camera buffer subtype unavailable");
+        check(MFGetStrideForBitmapInfoHeader(
+              subtype.Data1, format.width, &stride),
+          "camera default stride calculation failed");
       }
-      check(buffer->Unlock(), "camera buffer unlock failed");
+      frame.bgra = copyCameraBgraBuffer(
+        bytes, current_length, stride, format.width, format.height);
+    } catch (...) {
+      unlockBuffer(buffer.Get());
+      throw;
     }
+    check(buffer->Unlock(), "camera buffer unlock failed");
   }
   frame.width = format.width;
   frame.height = format.height;
@@ -399,13 +427,11 @@ std::vector<std::uint8_t> copyCameraBgraRows(
   if (!scanline_zero || width == 0 || height == 0) {
     throw std::invalid_argument("camera frame geometry is invalid");
   }
-  const auto row_bytes = static_cast<std::size_t>(width) * 4;
-  if (row_bytes / 4 != width ||
-      height > std::numeric_limits<std::size_t>::max() / row_bytes) {
+  const auto row_bytes = checkedCameraRowBytes(width);
+  if (height > std::numeric_limits<std::size_t>::max() / row_bytes) {
     throw std::overflow_error("camera frame size overflow");
   }
-  const auto absolute_stride = stride < 0 ? -stride : stride;
-  if (static_cast<std::size_t>(absolute_stride) < row_bytes) {
+  if (checkedAbsoluteStride(stride) < row_bytes) {
     throw std::invalid_argument("camera frame stride is too small");
   }
 
@@ -417,6 +443,29 @@ std::vector<std::uint8_t> copyCameraBgraRows(
       row_bytes);
   }
   return result;
+}
+
+std::vector<std::uint8_t> copyCameraBgraBuffer(
+  const std::uint8_t* buffer,
+  std::size_t buffer_length,
+  std::ptrdiff_t stride,
+  std::uint32_t width,
+  std::uint32_t height
+) {
+  if (!buffer) {
+    throw std::invalid_argument("camera frame buffer is null");
+  }
+  const auto row_bytes = checkedCameraRowBytes(width);
+  const auto absolute_stride = checkedAbsoluteStride(stride);
+  const auto required_length =
+    checkedCameraFrameBytes(absolute_stride, row_bytes, height);
+  if (required_length > buffer_length) {
+    throw std::runtime_error("camera frame exceeds its media buffer");
+  }
+  const auto* scanline_zero = stride < 0
+    ? buffer + absolute_stride * static_cast<std::size_t>(height - 1)
+    : buffer;
+  return copyCameraBgraRows(scanline_zero, stride, width, height);
 }
 
 std::shared_ptr<CameraCaptureFactory> createMediaFoundationCameraCaptureFactory() {

@@ -142,6 +142,42 @@ describe('native diagnostic incident monitor', () => {
     })).toBeNull()
   })
 
+  it('keeps non-fatal gateway errors as evidence instead of root incidents', () => {
+    expect(captureNativeDiagnosticIncident({
+      scope: 'desktop-voice',
+      event: 'control_event',
+      errorCode: 'InvalidOperation',
+      fatal: false,
+    })).toBeNull()
+
+    captureNativeDiagnosticIncident({
+      scope: 'desktop-voice',
+      event: 'control_event',
+      errorCode: 'InvalidSession',
+      fatal: true,
+    })
+    expect(
+      leaseNativeDiagnosticIncidents('test-account')?.incidents[0],
+    ).toEqual(expect.objectContaining({
+      triggerCode: 'desktop-voice.InvalidSession',
+      severity: 'fatal',
+    }))
+  })
+
+  it.each([
+    'runtime_degraded',
+    'session_rotation_failed',
+  ])('preserves non-control desktop voice diagnostic %s', (event) => {
+    expect(captureNativeDiagnosticIncident({
+      scope: 'desktop-voice',
+      event,
+      fatal: false,
+    })).toMatchObject({
+      event,
+      severity: 'error',
+    })
+  })
+
   it('keeps renderer cooldown and upload lease ownership in electron main', () => {
     expect(captureRendererDiagnosticIncident({
       area: 'voice',

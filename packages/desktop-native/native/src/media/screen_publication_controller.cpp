@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <deque>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -57,6 +58,14 @@ std::string screenFailureCode(std::string_view message) {
     }
   }
   return "native_command_failed";
+}
+
+std::string screenStallTerminalReason(std::string_view cause) {
+  if (cause == "encoder_backpressure" ||
+      cause == "encoder_output_stalled") {
+    return "gpu_encoder_unavailable";
+  }
+  return "rtp_stall_recovery_exhausted";
 }
 
 }  // namespace
@@ -232,8 +241,8 @@ class ScreenPublicationController::Implementation {
       throw std::runtime_error("stale screen stop generation");
     }
     if (pending_restart_ &&
-        pending_restart_->session_id == command.session_id &&
-        pending_restart_->generation == command.generation) {
+        pending_restart_->command.session_id == command.session_id &&
+        pending_restart_->command.generation == command.generation) {
       pending_restart_.reset();
     }
     if (candidate_ && candidate_->kind == AttemptKind::Start &&
@@ -249,16 +258,61 @@ class ScreenPublicationController::Implementation {
 
   void restartCaptureAfterStall(const MediaCommand& command) {
     reapFinishedWork();
-    if (shutdown_ || !is_current_(command.session_id, command.generation)) return;
-    if (!active_ || !matches(*active_, command) || pending_restart_) return;
+    if (shutdown_ || !is_current_(command.session_id, command.generation)) {
+      return;
+    }
+    if (!active_ || !matches(*active_, command) || pending_restart_) {
+      return;
+    }
 
-    pending_restart_ = active_->command;
-    pending_restart_->request_id.clear();
+    const auto now = now_();
+    while (!recovery_attempts_.empty() &&
+           now - recovery_attempts_.front() >= kRecoveryWindow) {
+      recovery_attempts_.pop_front();
+    }
+    if (recovery_session_id_ != command.session_id ||
+        recovery_generation_ != command.generation) {
+      recovery_session_id_ = command.session_id;
+      recovery_generation_ = command.generation;
+      recovery_attempts_.clear();
+    }
+    if (recovery_attempts_.size() >= kMaxRecoveryAttempts) {
+      const auto terminal_reason =
+        screenStallTerminalReason(command.internal_message);
+      logScreen(
+        "screen_stall_recovery_exhausted",
+        {
+          {"sessionId", command.session_id},
+          {"generation", command.generation},
+          {"attempts", static_cast<std::uint64_t>(recovery_attempts_.size())},
+          {"cause", command.internal_message},
+          {"terminalReason", terminal_reason}
+        }
+      );
+      MediaCommand failure;
+      failure.type = "__screenRecoveryFailed";
+      failure.session_id = command.session_id;
+      failure.generation = command.generation;
+      failure.internal_message = std::move(terminal_reason);
+      post_(std::move(failure));
+      return;
+    }
+    recovery_attempts_.push_back(now);
+
+    PendingRestart restart;
+    restart.command = active_->command;
+    restart.command.request_id.clear();
+    restart.cause = command.internal_message;
+    restart.attempt = recovery_attempts_.size();
+    pending_restart_ = std::move(restart);
     logScreen(
       "screen_stall_restart_requested",
       {
         {"sessionId", command.session_id},
-        {"generation", command.generation}
+        {"generation", command.generation},
+        {"cause", command.internal_message},
+        {"attempt", static_cast<std::uint64_t>(recovery_attempts_.size())},
+        {"maxAttempts", static_cast<std::uint64_t>(kMaxRecoveryAttempts)}
       }
     );
     retireResources(std::move(active_));
@@ -287,7 +341,7 @@ class ScreenPublicationController::Implementation {
     bool matched = false;
     if (pending_restart_ &&
         (command.session_id.empty() ||
-         pending_restart_->session_id == command.session_id)) {
+         pending_restart_->command.session_id == command.session_id)) {
       pending_restart_.reset();
       matched = true;
     }
@@ -318,8 +372,8 @@ class ScreenPublicationController::Implementation {
     reapFinishedWork();
     bool affected = false;
     if (pending_restart_ &&
-        pending_restart_->session_id == command.session_id &&
-        pending_restart_->generation == command.generation) {
+        pending_restart_->command.session_id == command.session_id &&
+        pending_restart_->command.generation == command.generation) {
       pending_restart_.reset();
       affected = true;
     }
@@ -437,6 +491,13 @@ class ScreenPublicationController::Implementation {
 
  private:
   enum class AttemptKind { Prepare, Start };
+  enum class AttemptOrigin { ExternalRequest, InternalRecovery };
+
+  struct PendingRestart {
+    MediaCommand command;
+    std::string cause;
+    std::size_t attempt = 0;
+  };
 
   struct ScreenResources {
     MediaCommand command;
@@ -456,7 +517,10 @@ class ScreenPublicationController::Implementation {
 
   struct AttemptState {
     AttemptKind kind = AttemptKind::Prepare;
+    AttemptOrigin origin = AttemptOrigin::ExternalRequest;
     MediaCommand command;
+    std::string recovery_cause;
+    std::size_t recovery_attempt = 0;
     std::unique_ptr<ScreenResources> resources;
     std::unique_ptr<ScreenResources> obsolete;
     std::thread worker;
@@ -657,8 +721,13 @@ class ScreenPublicationController::Implementation {
       );
     } catch (const std::exception& error) {
       attempt->error = error.what();
+      // Deadline expiry is a terminal failure for the current generation, not
+      // stale work. Only explicit cancellation or a superseded generation may
+      // suppress the attempt's terminal projection.
       attempt->stale = attempt->operation.cancelled() ||
-        std::string_view(error.what()).starts_with("stale ");
+        !is_current_(
+          attempt->command.session_id,
+          attempt->command.generation);
       if (attempt->resources) cleanupResources(*attempt->resources);
       attempt->succeeded = false;
       logScreen(
@@ -822,22 +891,38 @@ class ScreenPublicationController::Implementation {
       if (attempt->resources && attempt->resources->publication) {
         retireResources(std::move(attempt->resources));
       }
-      emitter_.emit(failedReply(
-        attempt->command,
-        terminal_failure
-          ? "screen_runtime_lost"
-          : (stale ? "stale_generation" :
-              (expired ? "native_operation_timeout" : screenFailureCode(attempt->error))),
-        terminal_failure
-          ? (attempt->terminal_reason.empty()
-              ? "screen runtime ended during publication"
-              : attempt->terminal_reason)
-          : (expired ? "screen publication deadline expired" :
-              (attempt->error.empty()
-              ? (stale ? "stale screen publication generation" : "screen publication failed")
-              : attempt->error)),
-        terminal_failure || !stale
-      ));
+      if (attempt->origin == AttemptOrigin::ExternalRequest) {
+        emitter_.emit(failedReply(
+          attempt->command,
+          terminal_failure
+            ? "screen_runtime_lost"
+            : (stale ? "stale_generation" :
+                (expired ? "native_operation_timeout" : screenFailureCode(attempt->error))),
+          terminal_failure
+            ? (attempt->terminal_reason.empty()
+                ? "screen runtime ended during publication"
+                : attempt->terminal_reason)
+            : (expired ? "screen publication deadline expired" :
+                (attempt->error.empty()
+                ? (stale ? "stale screen publication generation" : "screen publication failed")
+                : attempt->error)),
+          terminal_failure || !stale
+        ));
+      } else if (!stale && !terminal_failure &&
+                 is_current_(attempt->command.session_id,
+                             attempt->command.generation)) {
+        MediaCommand failure;
+        failure.type = "__screenRecoveryFailed";
+        failure.session_id = attempt->command.session_id;
+        failure.generation = attempt->command.generation;
+        const auto failure_code = screenFailureCode(attempt->error);
+        failure.internal_message = expired
+          ? std::string("screen_recovery_timeout")
+          : (failure_code == "native_command_failed"
+              ? screenStallTerminalReason(attempt->recovery_cause)
+              : failure_code);
+        post_(std::move(failure));
+      }
       logScreen(
         "screen_attempt_not_promoted",
         {
@@ -859,7 +944,11 @@ class ScreenPublicationController::Implementation {
       return;
     }
     capture_promoted_(attempt->command.session_id, attempt->command.generation);
-    emitStarted(attempt->command, *active_, true);
+    emitStarted(
+      attempt->command,
+      *active_,
+      attempt->origin == AttemptOrigin::ExternalRequest
+    );
     logScreen(
       "screen_capture_promoted",
       {{"sessionId", attempt->command.session_id}, {"generation", attempt->command.generation}}
@@ -1057,20 +1146,26 @@ class ScreenPublicationController::Implementation {
   void startPendingRestart() {
     if (shutdown_ || retiring_ || deferred_retire_ || candidate_ ||
         !pending_restart_) return;
-    auto command = std::move(*pending_restart_);
+    auto restart = std::move(*pending_restart_);
     pending_restart_.reset();
+    auto command = std::move(restart.command);
     if (!is_current_(command.session_id, command.generation)) return;
 
     auto attempt = std::make_shared<AttemptState>();
     attempt->kind = AttemptKind::Start;
+    attempt->origin = AttemptOrigin::InternalRecovery;
     attempt->command = std::move(command);
+    attempt->recovery_cause = std::move(restart.cause);
+    attempt->recovery_attempt = restart.attempt;
     attempt->resources = std::make_unique<ScreenResources>();
     attempt->resources->command = attempt->command;
     logScreen(
       "screen_stall_restart_launch",
       {
         {"sessionId", attempt->command.session_id},
-        {"generation", attempt->command.generation}
+        {"generation", attempt->command.generation},
+        {"cause", attempt->recovery_cause},
+        {"attempt", static_cast<std::uint64_t>(attempt->recovery_attempt)}
       }
     );
     launchAttempt(std::move(attempt));
@@ -1116,7 +1211,12 @@ class ScreenPublicationController::Implementation {
   std::shared_ptr<AttemptState> candidate_;
   std::shared_ptr<RetiringState> retiring_;
   std::unique_ptr<ScreenResources> deferred_retire_;
-  std::optional<MediaCommand> pending_restart_;
+  std::optional<PendingRestart> pending_restart_;
+  std::string recovery_session_id_;
+  std::uint64_t recovery_generation_ = 0;
+  std::deque<LiveKitConnectPolicy::Clock::time_point> recovery_attempts_;
+  static constexpr std::size_t kMaxRecoveryAttempts = 3;
+  static constexpr auto kRecoveryWindow = std::chrono::seconds(60);
   std::uint64_t next_retire_id_ = 0;
   bool shutdown_ = false;
 };
