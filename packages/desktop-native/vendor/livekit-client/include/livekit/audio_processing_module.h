@@ -141,6 +141,10 @@ public:
   /// @throws std::runtime_error if setting the delay fails.
   void setStreamDelayMs(int delay_ms);
 
+  /// Apply processing feature changes without replacing the APM instance, so
+  /// adaptive filter state survives runtime settings changes.
+  void applyOptions(const Options& options);
+
 private:
   /// Check if the APM handle is valid (used internally).
   bool valid() const noexcept { return handle_.valid(); }

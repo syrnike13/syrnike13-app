@@ -169,6 +169,18 @@ message ApmSetStreamDelayResponse {
   optional string error = 1;
 }
 
+message ApmApplyConfigRequest {
+  required uint64 apm_handle = 1;
+  required bool echo_canceller_enabled = 2;
+  required bool gain_controller_enabled = 3;
+  required bool high_pass_filter_enabled = 4;
+  required bool noise_suppression_enabled = 5;
+}
+
+message ApmApplyConfigResponse {
+  optional string error = 1;
+}
+
 
 // New resampler using SoX (much better quality)
 

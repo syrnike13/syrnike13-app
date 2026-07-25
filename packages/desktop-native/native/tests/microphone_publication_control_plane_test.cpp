@@ -1,3 +1,4 @@
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <deque>
@@ -203,10 +204,17 @@ int main() try {
     require(desired.advance("mic-a", 1),
             "initial microphone generation was rejected");
     livekit->setVoiceSessionForTest("mic-a");
-    controller.start(connect_a, MicrophonePipelineSnapshot{});
+    controller.start(connect_a, MicrophonePipelineSnapshot{
+      .noise_suppression = "software",
+      .echo_cancellation = "unavailable",
+    });
     handle_worker("__microphoneAttemptReady");
     const auto connect_a_reply = sink->waitReply("connect-a");
     require(connect_a_reply.ok, "initial microphone connect failed");
+    require(
+        connect_a_reply.noise_suppression == "software" &&
+            connect_a_reply.echo_cancellation == "unavailable",
+        "microphone connect reply projected requested AEC instead of actual status");
 
     livekit->setBlocked(
         DeterministicFakeLiveKitPublicationClient::Operation::Publish, true);
@@ -668,6 +676,281 @@ int main() try {
         privacy_controller.shutdown();
       }
     }
+
+  {
+    auto sink = std::make_shared<CollectingSink>();
+    SequencedEmitter emitter(sink);
+    DeferredCommands deferred("bounded shutdown quarantine");
+    GenerationFence desired;
+    auto blocked_livekit =
+      std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+    MicrophonePublicationController controller(
+      emitter,
+      [&](MediaCommand command) { return deferred.post(std::move(command)); },
+      [&](const std::string& session_id, std::uint64_t generation) {
+        return desired.isCurrent(session_id, generation);
+      },
+      [](const auto&, const auto&, auto) {},
+      [](const auto&) {},
+      [] { return true; },
+      blocked_livekit
+    );
+    desired.advance("mic-shutdown-blocked", 1);
+    blocked_livekit->setVoiceSessionForTest("mic-shutdown-blocked");
+    blocked_livekit->setBlocked(
+      DeterministicFakeLiveKitPublicationClient::Operation::Publish,
+      true
+    );
+    blocked_livekit->setBlocked(
+      DeterministicFakeLiveKitPublicationClient::Operation::Unpublish,
+      true
+    );
+    controller.start(
+      connectCommand(
+        "connect-shutdown-blocked",
+        "mic-shutdown-blocked",
+        1
+      ),
+      MicrophonePipelineSnapshot{}
+    );
+    blocked_livekit->waitUntilPending(
+      DeterministicFakeLiveKitPublicationClient::Operation::Publish,
+      1,
+      kTestWatchdog
+    );
+    const auto shutdown_started = std::chrono::steady_clock::now();
+    controller.shutdown();
+    require(
+      std::chrono::steady_clock::now() - shutdown_started <
+        std::chrono::milliseconds(100),
+      "blocked microphone publish exceeded the native shutdown budget"
+    );
+    blocked_livekit->releaseNext(
+      DeterministicFakeLiveKitPublicationClient::Operation::Publish
+    );
+    blocked_livekit->waitUntilPending(
+      DeterministicFakeLiveKitPublicationClient::Operation::Unpublish,
+      1,
+      kTestWatchdog
+    );
+    blocked_livekit->releaseNext(
+      DeterministicFakeLiveKitPublicationClient::Operation::Unpublish
+    );
+    const auto cleanup_deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (
+      blocked_livekit->unpublishedPublicationSids().size() != 1 &&
+      std::chrono::steady_clock::now() < cleanup_deadline
+    ) {
+      std::this_thread::yield();
+    }
+    require(
+      blocked_livekit->unpublishedPublicationSids().size() == 1,
+      "late microphone publication was not retired exactly once"
+    );
+  }
+
+  {
+    auto sink = std::make_shared<CollectingSink>();
+    SequencedEmitter emitter(sink);
+    DeferredCommands deferred("candidate cleanup launcher retry");
+    GenerationFence desired;
+    auto client =
+      std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+    desired.advance("mic-launch-candidate", 1);
+    client->setVoiceSessionForTest("mic-launch-candidate");
+    std::atomic_int launch_attempts{0};
+    MicrophonePublicationController controller(
+      emitter,
+      [&](MediaCommand command) { return deferred.post(std::move(command)); },
+      [&](const std::string& session_id, std::uint64_t generation) {
+        return desired.isCurrent(session_id, generation);
+      },
+      [](const auto&, const auto&, auto) {},
+      [](const auto&) {},
+      [] { return true; },
+      client,
+      {},
+      [&](syrnike::desktop_native::AsyncCleanupTask task) -> std::thread {
+        if (launch_attempts.fetch_add(1) == 0) {
+          throw std::runtime_error(
+            "injected candidate cleanup launch failure"
+          );
+        }
+        return std::thread(std::move(task));
+      }
+    );
+    controller.start(
+      connectCommand(
+        "mic-launch-candidate",
+        "mic-launch-candidate",
+        1
+      ),
+      MicrophonePipelineSnapshot{}
+    );
+    static_cast<void>(
+      deferred.waitTake("__microphoneAttemptReady")
+    );
+    controller.shutdown();
+    const auto cleanup_deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (
+      client->unpublishedPublicationSids().size() != 1 &&
+      std::chrono::steady_clock::now() < cleanup_deadline
+    ) {
+      std::this_thread::yield();
+    }
+    require(
+      launch_attempts.load() >= 2 &&
+        client->unpublishedPublicationSids().size() == 1,
+      "failed candidate cleanup launch lost or duplicated its publication"
+    );
+  }
+
+  {
+    auto sink = std::make_shared<CollectingSink>();
+    SequencedEmitter emitter(sink);
+    DeferredCommands deferred("committed cleanup launcher retry");
+    GenerationFence desired;
+    auto client =
+      std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+    desired.advance("mic-launch-committed", 1);
+    client->setVoiceSessionForTest("mic-launch-committed");
+    std::atomic_int launch_attempts{0};
+    MicrophonePublicationController controller(
+      emitter,
+      [&](MediaCommand command) { return deferred.post(std::move(command)); },
+      [&](const std::string& session_id, std::uint64_t generation) {
+        return desired.isCurrent(session_id, generation);
+      },
+      [](const auto&, const auto&, auto) {},
+      [](const auto&) {},
+      [] { return true; },
+      client,
+      {},
+      [&](syrnike::desktop_native::AsyncCleanupTask task) -> std::thread {
+        if (launch_attempts.fetch_add(1) == 0) {
+          throw std::runtime_error(
+            "injected committed cleanup launch failure"
+          );
+        }
+        return std::thread(std::move(task));
+      }
+    );
+    controller.start(
+      connectCommand(
+        "mic-launch-committed",
+        "mic-launch-committed",
+        1
+      ),
+      MicrophonePipelineSnapshot{}
+    );
+    controller.handleWorkerCommand(
+      deferred.waitTake("__microphoneAttemptReady")
+    );
+    require(
+      sink->waitReply("mic-launch-committed").ok,
+      "launcher test microphone did not commit"
+    );
+    controller.shutdown();
+    const auto cleanup_deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (
+      client->unpublishedPublicationSids().size() != 1 &&
+      std::chrono::steady_clock::now() < cleanup_deadline
+    ) {
+      std::this_thread::yield();
+    }
+    require(
+      launch_attempts.load() >= 2 &&
+        client->unpublishedPublicationSids().size() == 1,
+      "failed committed cleanup launch lost or duplicated its publication"
+    );
+  }
+
+  {
+    auto sink = std::make_shared<CollectingSink>();
+    SequencedEmitter emitter(sink);
+    DeferredCommands deferred("retiring worker launcher retry");
+    GenerationFence desired;
+    auto client =
+      std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+    desired.advance("mic-launch-retiring", 1);
+    client->setVoiceSessionForTest("mic-launch-retiring");
+    std::atomic_int launch_attempts{0};
+    std::atomic_int enqueue_attempts{0};
+    std::atomic_int finalize_attempts{0};
+    MicrophonePublicationController controller(
+      emitter,
+      [&](MediaCommand command) { return deferred.post(std::move(command)); },
+      [&](const std::string& session_id, std::uint64_t generation) {
+        return desired.isCurrent(session_id, generation);
+      },
+      [](const auto&, const auto&, auto) {},
+      [](const auto&) {},
+      [] { return true; },
+      client,
+      {},
+      [&](syrnike::desktop_native::AsyncCleanupTask task) -> std::thread {
+        if (launch_attempts.fetch_add(1) == 0) {
+          throw std::runtime_error(
+            "injected retiring worker launch failure"
+          );
+        }
+        return std::thread(std::move(task));
+      },
+      [&] {
+        if (enqueue_attempts.fetch_add(1) == 0) {
+          throw std::bad_alloc();
+        }
+      },
+      [&] {
+        finalize_attempts.fetch_add(1);
+        throw std::runtime_error(
+          "injected retirement diagnostic failure"
+        );
+      }
+    );
+    controller.start(
+      connectCommand(
+        "mic-launch-retiring-connect",
+        "mic-launch-retiring",
+        1
+      ),
+      MicrophonePipelineSnapshot{}
+    );
+    controller.handleWorkerCommand(
+      deferred.waitTake("__microphoneAttemptReady")
+    );
+    require(
+      sink->waitReply("mic-launch-retiring-connect").ok,
+      "retiring launcher test microphone did not commit"
+    );
+    MediaCommand disconnect;
+    disconnect.type = "disconnectMicrophone";
+    disconnect.session_id = "mic-launch-retiring";
+    disconnect.generation = 1;
+    const auto disconnect_started = std::chrono::steady_clock::now();
+    controller.disconnect(disconnect, false);
+    require(
+      std::chrono::steady_clock::now() - disconnect_started <
+        std::chrono::milliseconds(100),
+      "microphone cleanup allocation/enqueue failure blocked disconnect"
+    );
+    controller.handleWorkerCommand(
+      deferred.waitTake("__microphoneRetireDone")
+    );
+    require(
+      finalize_attempts.load() == 1 &&
+        enqueue_attempts.load() >= 2 &&
+        launch_attempts.load() >= 2 &&
+        client->unpublishedPublicationSids().size() == 1 &&
+        controller.capacityStatus() ==
+          MicrophonePublicationCapacityStatus::Available,
+      "failed retirement finalization leaked publication capacity"
+    );
+    controller.shutdown();
+  }
 
   livekit::shutdown();
   return 0;

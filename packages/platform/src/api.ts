@@ -1,5 +1,6 @@
 import type {
   NativeMediaDeviceInfo,
+  NativeMediaRuntimeState,
   NativeMicrophoneMetricsEvent,
   NativeMicrophonePreviewStateEvent,
 } from './media'
@@ -240,6 +241,8 @@ export interface SyrnikeDesktopApi {
     onStateChange(handler: (state: DesktopOverlayState) => void): () => void
   }
   media: {
+    getRuntimeState(): Promise<NativeMediaRuntimeState>
+    retryRuntime(): Promise<NativeMediaRuntimeState>
     getDisplaySources(requestId: string): Promise<DesktopDisplayMediaSource[]>
     selectDisplaySource(
       requestId: string,
@@ -275,6 +278,9 @@ export interface SyrnikeDesktopApi {
     ): () => void
     onMicrophonePreviewState(
       handler: (event: NativeMicrophonePreviewStateEvent) => void,
+    ): () => void
+    onRuntimeState(
+      handler: (state: NativeMediaRuntimeState) => void,
     ): () => void
   }
 }

@@ -118,4 +118,33 @@ impl AudioProcessingModule {
             })
         }
     }
+
+    pub fn apply_config(
+        &mut self,
+        echo_canceller_enabled: bool,
+        gain_controller_enabled: bool,
+        high_pass_filter_enabled: bool,
+        noise_suppression_enabled: bool,
+    ) -> Result<(), RtcError> {
+        let config = unsafe {
+            sys_apm::create_apm_config(
+                echo_canceller_enabled,
+                gain_controller_enabled,
+                high_pass_filter_enabled,
+                noise_suppression_enabled,
+            )
+        };
+        let config = config.as_ref().ok_or_else(|| RtcError {
+            error_type: RtcErrorType::Internal,
+            message: "Failed to allocate APM config".to_string(),
+        })?;
+        if self.sys_handle.pin_mut().apply_config(config) == 0 {
+            Ok(())
+        } else {
+            Err(RtcError {
+                error_type: RtcErrorType::Internal,
+                message: "Failed to apply APM config".to_string(),
+            })
+        }
+    }
 }

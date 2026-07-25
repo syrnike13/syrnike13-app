@@ -52,6 +52,9 @@ export function registerNativeMediaIpc(
     const win = getWindow()
     if (!win || win.isDestroyed()) return
     switch (message.type) {
+      case 'runtimeState':
+        win.webContents.send(IPC.mediaRuntimeStateChanged, message.state)
+        return
       case 'microphoneMetrics':
         win.webContents.send(IPC.mediaMicrophoneMetrics, message.event)
         return
@@ -76,6 +79,16 @@ export function registerNativeMediaIpc(
         )
         return
     }
+  })
+
+  ipcMain.handle(IPC.mediaGetRuntimeState, async (event) => {
+    assertTrusted(event, getWindow, 'runtime state')
+    return controller.getRuntimeState()
+  })
+
+  ipcMain.handle(IPC.mediaRetryRuntime, async (event) => {
+    assertTrusted(event, getWindow, 'runtime retry')
+    return controller.retryRuntime()
   })
 
   ipcMain.handle(

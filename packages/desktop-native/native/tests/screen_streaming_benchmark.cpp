@@ -21,6 +21,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "media/screen_gpu_capture.hpp"
@@ -925,6 +926,7 @@ int main(int argc, char **argv) try {
         std::size_t capture_calls = 0;
         std::size_t preview_frames = 0;
         double call_ms = 0;
+        std::vector<int> dxgi_hold_us;
       };
       const auto measure_phase = [&](bool preview_enabled) {
         capturer->setPreviewDemand({
@@ -949,6 +951,12 @@ int main(int argc, char **argv) try {
             phase.call_ms += std::chrono::duration<double, std::milli>(
                                  call_end - call_begin)
                                  .count();
+            constexpr std::size_t hold_warmup_frames = 5;
+            if (std::string_view(result.method) == "dxgi_gpu" &&
+                phase.capture_calls > hold_warmup_frames) {
+              phase.dxgi_hold_us.push_back(
+                  result.metrics.duplication_hold_us);
+            }
             capturer->discard(phase_frame);
           } else if (result.status == ScreenGpuFrameStatus::FatalError ||
                      result.status == ScreenGpuFrameStatus::TargetClosed) {
@@ -977,6 +985,36 @@ int main(int argc, char **argv) try {
       const auto overhead_per_preview_ms =
           (with_preview.call_ms - without_preview_avg * with_preview.capture_calls) /
           with_preview.preview_frames;
+      auto hold_samples = without_preview.dxgi_hold_us;
+      hold_samples.insert(
+          hold_samples.end(),
+          with_preview.dxgi_hold_us.begin(),
+          with_preview.dxgi_hold_us.end());
+      if (!hold_samples.empty()) {
+        constexpr std::size_t minimum_hold_samples = 20;
+        constexpr int maximum_allowed_hold_us = 2'000;
+        if (hold_samples.size() < minimum_hold_samples) {
+          throw std::runtime_error(
+              "DXGI duplication hold sample count is below 20 after warmup");
+        }
+        std::sort(hold_samples.begin(), hold_samples.end());
+        const auto p95_index =
+            (hold_samples.size() * 95 + 99) / 100 - 1;
+        const auto p95_hold_us = hold_samples[p95_index];
+        const auto max_hold_us = hold_samples.back();
+        std::cout << "RESULT path=dxgi_duplication_hold warmup_frames=5 "
+                  << "samples=" << hold_samples.size()
+                  << " p95_us=" << p95_hold_us
+                  << " max_us=" << max_hold_us << '\n';
+        if (max_hold_us >= maximum_allowed_hold_us) {
+          std::cout << "ASSERT dxgi_duplication_hold_lt_2ms=fail\n";
+          throw std::runtime_error(
+              "DXGI duplication frame hold reached or exceeded 2ms");
+        }
+        std::cout << "ASSERT dxgi_duplication_hold_lt_2ms=pass\n";
+      } else {
+        std::cout << "SKIP dxgi_duplication_hold reason=active_backend_not_dxgi\n";
+      }
       std::cout << "RESULT path=local_screen_gpu_preview_steady fps_limit=60 "
                 << "preview_frames=" << with_preview.preview_frames
                 << " capture_calls=" << with_preview.capture_calls

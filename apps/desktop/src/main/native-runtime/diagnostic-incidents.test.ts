@@ -20,6 +20,7 @@ describe('native diagnostic incident monitor', () => {
     ['request_rejected_queue_full', 'warning'],
     ['restart_scheduled', 'warning'],
     ['runtime_event_dropped_out_of_order', 'warning'],
+    ['screen_backend_restart', 'warning'],
     ['native_contract_corruption', 'fatal'],
     ['restart_aborted_circuit_open', 'fatal'],
     ['runtime_contract_corrupt', 'fatal'],
@@ -38,6 +39,7 @@ describe('native diagnostic incident monitor', () => {
     ['request_reply_error', 'error'],
     ['request_timed_out', 'error'],
     ['runtime_degraded', 'error'],
+    ['camera_read_stall', 'error'],
     ['screen_publication_failed', 'error'],
     ['session_rotation_failed', 'error'],
   ] as const)(

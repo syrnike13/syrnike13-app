@@ -1,8 +1,15 @@
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "common/event_sink.hpp"
@@ -30,6 +37,11 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     return events_.size();
   }
 
+  std::vector<syrnike::desktop_native::RuntimeEvent> events() const {
+    std::lock_guard lock(mutex_);
+    return events_;
+  }
+
  private:
   mutable std::mutex mutex_;
   std::vector<syrnike::desktop_native::RuntimeEvent> events_;
@@ -50,6 +62,43 @@ void requireThrows(Action action, const char* message) {
 int main() try {
   using namespace syrnike::desktop_native;
   using namespace syrnike::desktop_native::media;
+
+  {
+    auto incident_sink = std::make_shared<CollectingSink>();
+    SequencedEmitter incident_emitter(incident_sink);
+    const ScreenGpuRecoveryTransition transition{
+      "wgc_gpu", "switch_backend", 1
+    };
+    if (!emitScreenBackendRestart(
+          incident_emitter, "screen-transition", 7, transition)) {
+      throw std::runtime_error("screen backend restart event was rejected");
+    }
+    RuntimeEvent terminal;
+    terminal.type = "screenCaptureEnded";
+    terminal.session_id = "screen-transition";
+    terminal.generation = 7;
+    incident_emitter.emit(std::move(terminal));
+
+    const auto events = incident_sink->events();
+    const auto incidents = std::count_if(
+      events.begin(),
+      events.end(),
+      [](const RuntimeEvent& event) {
+        return event.type == "screenBackendRestart";
+      }
+    );
+    if (
+      events.size() != 2 ||
+      events[0].type != "screenBackendRestart" ||
+      events[0].video_recoverable_lost_count != 1 ||
+      events[1].type != "screenCaptureEnded" ||
+      incidents != 1
+    ) {
+      throw std::runtime_error(
+        "transition followed by terminal did not emit exactly one incident"
+      );
+    }
+  }
 
   const auto participant_removed =
     describeLiveKitDisconnectReason(livekit::DisconnectReason::ParticipantRemoved);
@@ -78,12 +127,19 @@ int main() try {
   auto sink = std::make_shared<CollectingSink>();
   SequencedEmitter emitter(sink);
   auto post = [](MediaCommand) { return true; };
+  auto actor_livekit =
+    std::make_shared<DeterministicFakeLiveKitPublicationClient>();
   GenerationFence microphone_intent;
   microphone_intent.advance("mic", 1);
   auto microphone_current = [&](const std::string& session_id, std::uint64_t generation) {
     return microphone_intent.isCurrent(session_id, generation);
   };
-  MicrophoneActor microphone(emitter, post, microphone_current);
+  MicrophoneActor microphone(
+    emitter,
+    post,
+    microphone_current,
+    actor_livekit
+  );
   MediaCommand invalid_microphone;
   invalid_microphone.type = "connectMicrophone";
   invalid_microphone.session_id = "mic";
@@ -139,12 +195,59 @@ int main() try {
   microphone.shutdown();
   microphone.shutdown();
 
+  std::mutex idle_post_mutex;
+  std::condition_variable idle_post_changed;
+  int idle_post_attempts = 0;
+  std::optional<MediaCommand> accepted_idle_expiry;
+  auto idle_livekit =
+    std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+  MicrophoneActor idle_retry_microphone(
+    emitter,
+    [&](MediaCommand command) {
+      if (command.type != "__microphoneIdleExpired") return true;
+      std::lock_guard lock(idle_post_mutex);
+      ++idle_post_attempts;
+      if (idle_post_attempts > 1) accepted_idle_expiry = command;
+      idle_post_changed.notify_all();
+      return idle_post_attempts > 1;
+    },
+    microphone_current,
+    idle_livekit,
+    MicrophoneIdleCaptureTiming{
+      .grace = std::chrono::milliseconds(10),
+      .post_retry = std::chrono::milliseconds(10),
+    }
+  );
+  idle_retry_microphone.setPreviewConsumer(
+    "preview-idle-retry",
+    1,
+    [](std::span<const std::int16_t>) {}
+  );
+  idle_retry_microphone.clearPreviewConsumer("preview-idle-retry", 1);
+  {
+    std::unique_lock lock(idle_post_mutex);
+    if (!idle_post_changed.wait_for(
+          lock,
+          std::chrono::milliseconds(250),
+          [&] { return idle_post_attempts >= 2; }
+        )) {
+      throw std::runtime_error(
+        "rejected microphone idle expiry was not retried within its bound"
+      );
+    }
+  }
+  if (!accepted_idle_expiry) {
+    throw std::runtime_error("microphone idle expiry retry was not accepted");
+  }
+  idle_retry_microphone.handleWorkerCommand(*accepted_idle_expiry);
+  idle_retry_microphone.shutdown();
+
   GenerationFence screen_intent;
   screen_intent.advance("screen", 1);
   auto screen_current = [&](const std::string& session_id, std::uint64_t generation) {
     return screen_intent.isCurrent(session_id, generation);
   };
-  ScreenActor screen(emitter, post, screen_current);
+  ScreenActor screen(emitter, post, screen_current, actor_livekit);
   MediaCommand invalid_screen;
   invalid_screen.type = "connectScreen";
   invalid_screen.session_id = "screen";
@@ -180,6 +283,44 @@ int main() try {
   preview.shutdown();
   preview.shutdown();
 
+  std::mutex preview_gate_mutex;
+  std::condition_variable preview_gate_changed;
+  bool preview_gate_entered = false;
+  bool preview_gate_release = false;
+  auto blocked_preview = std::make_unique<PreviewActor>(
+      emitter,
+      [&] {
+        std::unique_lock lock(preview_gate_mutex);
+        preview_gate_entered = true;
+        preview_gate_changed.notify_all();
+        preview_gate_changed.wait(lock, [&] { return preview_gate_release; });
+      });
+  MediaCommand start_preview;
+  start_preview.type = "startMicrophonePreview";
+  start_preview.request_id = "blocked-preview";
+  start_preview.session_id = "preview";
+  start_preview.generation = 1;
+  static_cast<void>(blocked_preview->start(start_preview));
+  {
+    std::unique_lock lock(preview_gate_mutex);
+    if (!preview_gate_changed.wait_for(
+            lock, std::chrono::seconds(1),
+            [&] { return preview_gate_entered; })) {
+      throw std::runtime_error("preview worker did not enter injected block");
+    }
+  }
+  const auto preview_destroy_started = std::chrono::steady_clock::now();
+  blocked_preview.reset();
+  if (std::chrono::steady_clock::now() - preview_destroy_started >
+      std::chrono::milliseconds(1800)) {
+    throw std::runtime_error("preview destructor exceeded shutdown deadline");
+  }
+  {
+    std::lock_guard lock(preview_gate_mutex);
+    preview_gate_release = true;
+  }
+  preview_gate_changed.notify_all();
+
   if (sink->size() != 0) {
     throw std::runtime_error("idle actor lifecycle emitted phantom events");
   }
@@ -188,3 +329,5 @@ int main() try {
   std::cerr << error.what() << '\n';
   return 1;
 }
+#include <chrono>
+#include <condition_variable>

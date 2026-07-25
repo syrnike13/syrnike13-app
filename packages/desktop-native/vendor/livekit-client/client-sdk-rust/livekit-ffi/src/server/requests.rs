@@ -1045,6 +1045,27 @@ fn on_apm_set_stream_delay(
     Ok(proto::ApmSetStreamDelayResponse { error: None })
 }
 
+fn on_apm_apply_config(
+    server: &'static FfiServer,
+    request: proto::ApmApplyConfigRequest,
+) -> FfiResult<proto::ApmApplyConfigResponse> {
+    let apm = server
+        .retrieve_handle::<Arc<Mutex<apm::AudioProcessingModule>>>(request.apm_handle)?
+        .clone();
+    let mut apm = apm.lock();
+    if let Err(error) = apm.apply_config(
+        request.echo_canceller_enabled,
+        request.gain_controller_enabled,
+        request.high_pass_filter_enabled,
+        request.noise_suppression_enabled,
+    ) {
+        return Ok(proto::ApmApplyConfigResponse {
+            error: Some(error.to_string()),
+        });
+    }
+    Ok(proto::ApmApplyConfigResponse { error: None })
+}
+
 fn on_perform_rpc(
     server: &'static FfiServer,
     request: proto::PerformRpcRequest,
@@ -1387,6 +1408,7 @@ pub fn handle_request(
         Request::ApmProcessStream(req) => on_apm_process_stream(server, req)?.into(),
         Request::ApmProcessReverseStream(req) => on_apm_process_reverse_stream(server, req)?.into(),
         Request::ApmSetStreamDelay(req) => on_apm_set_stream_delay(server, req)?.into(),
+        Request::ApmApplyConfig(req) => on_apm_apply_config(server, req)?.into(),
         Request::PerformRpc(req) => on_perform_rpc(server, req)?.into(),
         Request::RegisterRpcMethod(req) => on_register_rpc_method(server, req)?.into(),
         Request::UnregisterRpcMethod(req) => on_unregister_rpc_method(server, req)?.into(),

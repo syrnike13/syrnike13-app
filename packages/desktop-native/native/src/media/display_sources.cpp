@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+#include "display_source_window_probe.hpp"
+
 namespace syrnike::desktop_native::media {
 namespace {
 
@@ -139,7 +141,7 @@ std::string captureThumbnailDataUrl(HWND hwnd, const RECT& rect) {
       hwnd ? 0 : rect.top,
       source_width,
       source_height,
-      SRCCOPY | CAPTUREBLT);
+      SRCCOPY);
 
   std::string data_url;
   if (copied) {
@@ -226,8 +228,21 @@ std::string iconDataUrl(HICON icon) {
 }
 
 std::string appIconDataUrl(HWND hwnd, DWORD process_id) {
-  HICON icon = reinterpret_cast<HICON>(SendMessageW(hwnd, WM_GETICON, ICON_SMALL2, 0));
-  if (!icon) icon = reinterpret_cast<HICON>(SendMessageW(hwnd, WM_GETICON, ICON_SMALL, 0));
+  const auto message_icon = queryWindowMessageIcon(
+      [hwnd](std::uintptr_t icon_kind, std::chrono::milliseconds timeout) {
+        DWORD_PTR result = 0;
+        const LRESULT sent = SendMessageTimeoutW(
+            hwnd,
+            WM_GETICON,
+            static_cast<WPARAM>(icon_kind),
+            0,
+            SMTO_ABORTIFHUNG | SMTO_BLOCK,
+            static_cast<UINT>(timeout.count()),
+            &result);
+        return WindowMessageIconResult{
+            sent != 0, static_cast<std::uintptr_t>(result)};
+      });
+  HICON icon = reinterpret_cast<HICON>(message_icon);
   if (!icon) icon = reinterpret_cast<HICON>(GetClassLongPtrW(hwnd, GCLP_HICONSM));
   if (!icon) icon = reinterpret_cast<HICON>(GetClassLongPtrW(hwnd, GCLP_HICON));
   if (icon) return iconDataUrl(icon);
@@ -331,8 +346,15 @@ BOOL CALLBACK enumMonitorProc(
 
   std::ostringstream name;
   name << "Screen " << index << " (" << width << "x" << height << ")";
+  DISPLAY_DEVICEW display{};
+  display.cb = sizeof(display);
+  std::wstring stable_id(info.szDevice);
+  if (EnumDisplayDevicesW(info.szDevice, 0, &display, EDD_GET_DEVICE_INTERFACE_NAME) &&
+      display.DeviceID[0] != L'\0') {
+    stable_id = display.DeviceID;
+  }
   sources->push_back({
-      "screen:" + std::to_string(index),
+      "screen:" + toUtf8(stable_id),
       name.str(),
       "screen",
       captureThumbnailDataUrl(nullptr, info.rcMonitor),

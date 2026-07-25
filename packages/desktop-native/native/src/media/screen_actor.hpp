@@ -4,13 +4,62 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <thread>
+#include <vector>
 
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
 #include "livekit_publication_client.hpp"
+#include "screen_gpu_capture.hpp"
 #include "screen_publication_controller.hpp"
 
 namespace syrnike::desktop_native::media {
+
+using LaunchScreenWorker =
+  std::function<std::thread(std::function<void()>)>;
+using PrepareOwnedScreenWork = std::function<void()> (*)(
+  std::shared_ptr<void>,
+  std::function<void()>
+);
+
+std::thread launchOptionalScreenStatsWorker(
+  const LaunchScreenWorker& launcher,
+  std::function<void()> work
+) noexcept;
+
+std::thread launchScreenCaptureWorker(
+  const LaunchScreenWorker& launcher,
+  std::shared_ptr<void> owner,
+  std::function<void()> work,
+  std::function<void()> rollback,
+  PrepareOwnedScreenWork prepare_owned_work = nullptr
+);
+
+class ScreenCapturerRetireDispatcher final {
+ public:
+  using LaunchWorker = LaunchScreenWorker;
+
+  explicit ScreenCapturerRetireDispatcher(LaunchWorker launcher = {});
+  ~ScreenCapturerRetireDispatcher();
+
+  void submit(std::shared_ptr<ScreenGpuCapturer> capturer);
+  void submit(std::vector<std::shared_ptr<ScreenGpuCapturer>> capturers);
+  void submitShutdown(
+    std::vector<std::shared_ptr<ScreenGpuCapturer>> capturers
+  ) noexcept;
+  void close(std::chrono::steady_clock::time_point deadline) noexcept;
+
+ private:
+  class Implementation;
+  std::shared_ptr<Implementation> implementation_;
+};
+
+bool emitScreenBackendRestart(
+  SequencedEmitter& emitter,
+  const std::string& session_id,
+  std::uint64_t generation,
+  const ScreenGpuRecoveryTransition& transition
+);
 
 class EncoderBackpressureStallDetector final {
  public:
@@ -131,14 +180,18 @@ class ScreenActor final {
     std::function<void()>
   )>;
   using Now = std::function<std::chrono::steady_clock::time_point()>;
+  using LaunchRetireWorker = ScreenCapturerRetireDispatcher::LaunchWorker;
 
   ScreenActor(
     SequencedEmitter& emitter,
     InternalPost post,
     IsCurrent is_current,
-    std::shared_ptr<LiveKitPublicationClient> livekit_client = createRealLiveKitPublicationClient(),
+    std::shared_ptr<LiveKitPublicationClient> livekit_client,
     CommitIfCurrent commit_if_current = {},
-    Now now = {}
+    Now now = {},
+    LaunchRetireWorker launch_retire_worker = {},
+    LaunchScreenWorker launch_stats_worker = {},
+    LaunchScreenWorker launch_capture_worker = {}
   );
   ~ScreenActor();
 
@@ -150,10 +203,11 @@ class ScreenActor final {
   void handleWorkerCommand(const MediaCommand& command);
   RuntimeEvent probe(const MediaCommand& command);
   void shutdown();
+  void shutdown(std::chrono::steady_clock::time_point deadline);
 
  private:
   class Implementation;
-  std::unique_ptr<Implementation> implementation_;
+  std::shared_ptr<Implementation> implementation_;
 };
 
 }  // namespace syrnike::desktop_native::media

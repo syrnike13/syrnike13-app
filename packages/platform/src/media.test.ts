@@ -1,7 +1,11 @@
-import { describe, expectTypeOf, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import type { SyrnikeDesktopApi } from './api'
-import type { NativeMediaStatsEvent, NativeMicrophonePipelineConfig } from './media'
+import {
+  isNativeMediaRuntimeState,
+  type NativeMediaStatsEvent,
+  type NativeMicrophonePipelineConfig,
+} from './media'
 
 describe('native media support contracts', () => {
   it('keeps the microphone pipeline command config for runtime users', () => {
@@ -22,11 +26,17 @@ describe('native media support contracts', () => {
     expectTypeOf<NativeMediaStatsEvent>().toMatchTypeOf<{
       sessionId: string
       methods: { wgc_gpu: number; dxgi_gpu: number }
+      videoGpuPoolSlotsAvailable?: number
+      videoGpuPoolSlotsTotal?: number
+      videoDxgiDuplicationHoldUsMax?: number
     }>()
   })
 
   it('exposes only renderer-owned media support operations', () => {
     type DesktopMediaApi = SyrnikeDesktopApi['media']
+    expectTypeOf<DesktopMediaApi>().toHaveProperty('getRuntimeState')
+    expectTypeOf<DesktopMediaApi>().toHaveProperty('retryRuntime')
+    expectTypeOf<DesktopMediaApi>().toHaveProperty('onRuntimeState')
     expectTypeOf<DesktopMediaApi>().toHaveProperty('startMicrophonePreview')
     expectTypeOf<DesktopMediaApi>().toHaveProperty('setRemoteVideoDemand')
     expectTypeOf<DesktopMediaApi>().toHaveProperty('setLocalScreenPreviewDemand')
@@ -34,5 +44,21 @@ describe('native media support contracts', () => {
     expectTypeOf<DesktopMediaApi>().not.toHaveProperty('configureMicrophonePipeline')
     expectTypeOf<DesktopMediaApi>().not.toHaveProperty('getState')
     expectTypeOf<DesktopMediaApi>().not.toHaveProperty('onStats')
+  })
+
+  it('validates the runtime state crossing the preload boundary', () => {
+    expect(isNativeMediaRuntimeState({
+      available: true,
+      status: 'degraded',
+      restartCount: 3,
+      degradedReason: 'circuit open',
+      degradedRetryAttempt: 1,
+      nextRetryAt: 30_000,
+    })).toBe(true)
+    expect(isNativeMediaRuntimeState({
+      available: true,
+      status: 'degraded',
+      restartCount: -1,
+    })).toBe(false)
   })
 })

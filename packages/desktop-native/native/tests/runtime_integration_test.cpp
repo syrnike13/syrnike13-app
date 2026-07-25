@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <iostream>
 #include <chrono>
 #include <condition_variable>
@@ -76,6 +77,41 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     return changed_.wait_for(lock, std::chrono::seconds(2), found);
   }
 
+  bool waitForRuntimeErrorStage(const std::string& stage) {
+    std::unique_lock lock(mutex_);
+    return changed_.wait_for(lock, std::chrono::seconds(2), [&] {
+      for (const auto& event : events_) {
+        if (
+          event.type == "runtimeError" &&
+          event.error &&
+          event.error->stage == stage
+        ) {
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+
+  bool consumeRuntimeErrorStage(const std::string& stage) {
+    std::lock_guard lock(mutex_);
+    const auto found = std::find_if(events_.begin(), events_.end(), [&](const auto& event) {
+      return event.type == "runtimeError" && event.error &&
+        event.error->stage == stage;
+    });
+    if (found == events_.end()) return false;
+    events_.erase(found);
+    return true;
+  }
+
+  bool hasReplyFor(const std::string& request_id) const {
+    std::lock_guard lock(mutex_);
+    for (const auto& event : events_) {
+      if (event.type == "reply" && event.request_id == request_id) return true;
+    }
+    return false;
+  }
+
   std::size_t count(const std::string& type) const {
     std::lock_guard lock(mutex_);
     std::size_t result = 0;
@@ -108,6 +144,23 @@ int main() try {
     if (!runtime.dispatch(std::move(preview_failure)) ||
         !media_sink->waitForPreviewFailure()) {
       throw std::runtime_error("local preview failure diagnostic was not emitted");
+    }
+
+    syrnike::desktop_native::MediaCommand unsupported_internal;
+    unsupported_internal.type = "__unsupportedInternalCommand";
+    if (
+      !runtime.dispatch(std::move(unsupported_internal)) ||
+      !media_sink->waitForRuntimeErrorStage("__unsupportedInternalCommand") ||
+      !media_sink->consumeRuntimeErrorStage("__unsupportedInternalCommand")
+    ) {
+      throw std::runtime_error(
+        "internal command failure without request id emitted no runtime error"
+      );
+    }
+    if (media_sink->hasReplyFor("")) {
+      throw std::runtime_error(
+        "internal command failure without request id emitted an empty reply"
+      );
     }
 
     syrnike::desktop_native::MediaCommand screen_available;
@@ -178,7 +231,7 @@ int main() try {
     }
 
     syrnike::desktop_native::MediaCommand screen_stalled;
-    screen_stalled.type = "__screenRtpStalled";
+    screen_stalled.type = "__screenExecutePublicationRestart";
     screen_stalled.session_id = "retired-screen-session";
     screen_stalled.generation = 9;
     if (!runtime.dispatch(std::move(screen_stalled))) {

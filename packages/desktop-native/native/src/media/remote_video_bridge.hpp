@@ -10,11 +10,13 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
-#include <unordered_set>
 
 #include <livekit/track.h>
+#include <livekit/video_stream.h>
 
+#include "../common/async_cleanup_dispatcher.hpp"
 #include "../common/runtime_types.hpp"
+#include "../common/bounded_release_ledger.hpp"
 #include "lifetime_safe_frame_release.hpp"
 
 namespace syrnike::desktop_native::media {
@@ -48,7 +50,17 @@ struct VideoBridgeEventTypes {
 
 class RemoteVideoBridge {
  public:
+  class StreamReader {
+   public:
+    virtual ~StreamReader() = default;
+    virtual bool read(livekit::VideoFrameEvent& event) = 0;
+    virtual void close() = 0;
+  };
+
   using Post = std::function<bool(MediaCommand)>;
+  using StreamFactory = std::function<std::shared_ptr<StreamReader>(
+    const std::shared_ptr<livekit::Track>&
+  )>;
   using OnEnded = std::function<void(
     const std::string&,
     const std::shared_ptr<livekit::Track>&,
@@ -64,7 +76,9 @@ class RemoteVideoBridge {
     Post post,
     OnEnded on_ended = {},
     OnHealthy on_healthy = {},
-    VideoBridgeEventTypes event_types = {}
+    VideoBridgeEventTypes event_types = {},
+    StreamFactory stream_factory = {},
+    AsyncCleanupLauncher cleanup_launcher = {}
   );
   ~RemoteVideoBridge();
 
@@ -86,6 +100,7 @@ class RemoteVideoBridge {
   );
   void release(const std::string& track_id, std::uint64_t sequence);
   void stop();
+  void stop(std::shared_ptr<void> lifetime_owner);
 
  private:
   struct TrackWorker;
@@ -94,11 +109,15 @@ class RemoteVideoBridge {
     const std::shared_ptr<livekit::Track>& expected_track,
     bool notify
   );
+  AsyncCleanupDispatcher* cleanup_dispatcher_;
+  std::shared_ptr<AsyncCleanupNode> cleanup_node_;
+  std::atomic_bool cleanup_submitted_{false};
   std::uint32_t electron_main_pid_;
   Post post_;
   OnEnded on_ended_;
   OnHealthy on_healthy_;
   VideoBridgeEventTypes event_types_;
+  StreamFactory stream_factory_;
   std::shared_ptr<LifetimeSafeFrameRelease> release_router_;
   std::mutex lifecycle_mutex_;
   std::mutex mutex_;
@@ -107,8 +126,12 @@ class RemoteVideoBridge {
   std::uint64_t next_frame_sequence_ = 0;
   std::unordered_map<std::string, std::unique_ptr<TrackWorker>> tracks_;
 #ifdef _WIN32
-  std::unordered_map<std::uint64_t, std::shared_ptr<void>> retired_frames_;
-  std::unordered_set<std::uint64_t> released_frame_sequences_;
+  struct RetiredFrame {
+    std::string track_id;
+    std::shared_ptr<void> resource;
+  };
+  std::unordered_map<std::uint64_t, RetiredFrame> retired_frames_;
+  BoundedReleaseLedger released_frame_sequences_;
 #endif
 };
 

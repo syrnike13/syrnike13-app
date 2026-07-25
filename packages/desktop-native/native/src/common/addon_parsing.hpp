@@ -74,6 +74,23 @@ inline std::uint64_t uint64Field(const Napi::Object& object, const char* key) {
   return 0;
 }
 
+inline std::uint64_t positiveSafeIntegerField(
+  const Napi::Object& object,
+  const char* key
+) {
+  const auto value = object.Get(key);
+  if (!value.IsNumber()) {
+    throw std::invalid_argument(std::string(key) + " must be a positive integer");
+  }
+  const auto number = value.As<Napi::Number>().DoubleValue();
+  constexpr auto kMaximumSafeInteger = 9'007'199'254'740'991.0;
+  if (!std::isfinite(number) || number < 1 ||
+      number > kMaximumSafeInteger || std::floor(number) != number) {
+    throw std::invalid_argument(std::string(key) + " must be a positive safe integer");
+  }
+  return static_cast<std::uint64_t>(number);
+}
+
 inline std::string nestedStringField(
   const Napi::Object& object,
   const char* object_key,
@@ -140,7 +157,18 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
     command.participant_identity = stringField(settings, "participantIdentity");
   }
   command.track_id = stringField(object, "trackId");
-  command.frame_sequence = uint64Field(object, "sequence");
+  if (
+    command.type == "releaseRemoteVideoFrame" ||
+    command.type == "releaseLocalScreenPreviewFrame" ||
+    command.type == "releaseLocalCameraPreviewFrame"
+  ) {
+    if (command.track_id.empty()) {
+      throw std::invalid_argument("trackId is required for frame release");
+    }
+    command.frame_sequence = positiveSafeIntegerField(object, "sequence");
+  } else {
+    command.frame_sequence = uint64Field(object, "sequence");
+  }
   command.width = intField(settings, "width", command.width);
   command.height = intField(settings, "height", command.height);
   command.fps = intField(settings, "fps", command.fps);

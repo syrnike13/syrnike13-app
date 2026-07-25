@@ -1,4 +1,5 @@
 #include <iostream>
+
 #include <windows.h>
 
 #include <atomic>
@@ -6,6 +7,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <mutex>
@@ -18,7 +20,9 @@
 #include <vector>
 
 #include "common/bounded_queue.hpp"
+#include "common/bounded_release_ledger.hpp"
 #include "common/coalescing_event_lane.hpp"
+#include "common/control_event_lane.hpp"
 #include "common/diagnostic_log.hpp"
 #include "common/sequenced_emitter.hpp"
 #include "hooks/input_state.hpp"
@@ -82,119 +86,84 @@ class RejectingSink final : public syrnike::desktop_native::EventSink {
   void close() override {}
 };
 
-bool throwingControlSinkFailsClosed() {
-  std::wstring executable(MAX_PATH, L'\0');
-  const auto length = GetModuleFileNameW(
-    nullptr,
-    executable.data(),
-    static_cast<DWORD>(executable.size())
-  );
-  if (length == 0 || length >= executable.size()) return false;
-  executable.resize(length);
-  std::wstring command = L"\"" + executable + L"\" --throwing-control-sink";
-  STARTUPINFOW startup{};
-  startup.cb = sizeof(startup);
-  PROCESS_INFORMATION process{};
-  if (!CreateProcessW(
-        nullptr,
-        command.data(),
-        nullptr,
-        nullptr,
-        FALSE,
-        CREATE_NO_WINDOW,
-        nullptr,
-        nullptr,
-        &startup,
-        &process
-      )) {
-    return false;
+class ReentrantCloseSink final : public syrnike::desktop_native::EventSink {
+ public:
+  bool emit(syrnike::desktop_native::RuntimeEvent) override { return true; }
+  void close() override {
+    if (!dispatch_during_close) return;
+    syrnike::desktop_native::RuntimeEvent event;
+    event.type = "sessionLifecycle";
+    dispatch_result = dispatch_during_close(std::move(event));
   }
-  WaitForSingleObject(process.hProcess, INFINITE);
-  DWORD exit_code = 0;
-  const bool read_exit = GetExitCodeProcess(process.hProcess, &exit_code) != FALSE;
-  CloseHandle(process.hThread);
-  CloseHandle(process.hProcess);
-  return read_exit && exit_code == 86;
-}
 
-bool rejectedEventReleasesOnce() {
-  wchar_t executable_buffer[MAX_PATH]{};
-  const auto length = GetModuleFileNameW(nullptr, executable_buffer, MAX_PATH);
-  if (length == 0 || length >= MAX_PATH) return false;
-  const std::wstring executable(executable_buffer, length);
-  const auto marker = std::filesystem::temp_directory_path() /
-    ("syrnike-event-release-" + std::to_string(GetCurrentProcessId()) + ".txt");
-  std::error_code ignored;
-  std::filesystem::remove(marker, ignored);
-  std::wstring command = L"\"" + executable +
-    L"\" --rejecting-resource-sink \"" + marker.wstring() + L"\"";
-  STARTUPINFOW startup{};
-  startup.cb = sizeof(startup);
-  PROCESS_INFORMATION process{};
-  if (!CreateProcessW(
-        nullptr,
-        command.data(),
-        nullptr,
-        nullptr,
-        FALSE,
-        CREATE_NO_WINDOW,
-        nullptr,
-        nullptr,
-        &startup,
-        &process
-      )) {
+  std::function<bool(syrnike::desktop_native::RuntimeEvent)> dispatch_during_close;
+  bool dispatch_result = true;
+};
+
+class BlockingControlLaneSink final
+  : public syrnike::desktop_native::EventSink {
+ public:
+  bool emit(syrnike::desktop_native::RuntimeEvent event) override {
+    active_emits.fetch_add(1);
+    const auto pushed = lane_.push(std::move(event));
+    active_emits.fetch_sub(1);
+    if (pushed.accepted) return true;
+    // Returning false keeps release ownership in SequencedEmitter's fallback
+    // guard. The rejected moved copy must not release the same resource.
+    if (pushed.rejected) pushed.rejected->on_drop = {};
     return false;
   }
-  WaitForSingleObject(process.hProcess, INFINITE);
-  DWORD exit_code = 0;
-  const bool read_exit = GetExitCodeProcess(process.hProcess, &exit_code) != FALSE;
-  CloseHandle(process.hThread);
-  CloseHandle(process.hProcess);
-  std::ifstream input(marker, std::ios::binary);
-  const std::string releases{
-    std::istreambuf_iterator<char>(input),
-    std::istreambuf_iterator<char>()
+
+  void close() override {
+    close_raced_with_emit.store(active_emits.load() != 0);
+    lane_.closeAndDiscard();
+  }
+
+  std::atomic_int active_emits{0};
+  std::atomic_bool close_raced_with_emit{false};
+
+ private:
+  syrnike::desktop_native::ControlEventLane lane_{
+    1,
+    std::chrono::seconds(10)
   };
-  input.close();
-  std::filesystem::remove(marker, ignored);
-  return read_exit && exit_code == 86 && releases == "x";
-}
+};
 
 }  // namespace
 
-int main(int argc, char** argv) try {
-  if (argc == 2 && std::string(argv[1]) == "--throwing-control-sink") {
-    std::set_terminate([] { ExitProcess(86); });
-    auto throwing_sink = std::make_shared<ThrowingSink>();
-    syrnike::desktop_native::SequencedEmitter throwing_emitter(throwing_sink);
-    syrnike::desktop_native::RuntimeEvent event;
-    event.type = "sessionLifecycle";
-    throwing_emitter.emit(std::move(event));
-    return 1;
-  }
-  if (argc == 3 && std::string(argv[1]) == "--rejecting-resource-sink") {
-    std::set_terminate([] { ExitProcess(86); });
-    auto rejecting_sink = std::make_shared<RejectingSink>();
-    syrnike::desktop_native::SequencedEmitter rejecting_emitter(rejecting_sink);
-    syrnike::desktop_native::RuntimeEvent event;
-    event.type = "sessionLifecycle";
-    const std::filesystem::path marker(argv[2]);
-    event.on_drop = [marker] {
-      std::ofstream output(marker, std::ios::binary | std::ios::app);
-      output << 'x';
-    };
-    rejecting_emitter.emit(std::move(event));
-    return 1;
-  }
+int main() try {
   using syrnike::desktop_native::BoundedQueue;
 
+  auto throwing_sink = std::make_shared<ThrowingSink>();
+  syrnike::desktop_native::SequencedEmitter throwing_emitter(throwing_sink);
+  syrnike::desktop_native::RuntimeEvent throwing_event;
+  throwing_event.type = "sessionLifecycle";
   require(
-    throwingControlSinkFailsClosed(),
-    "throwing control sink did not fail-close the utility process"
+    !throwing_emitter.emit(std::move(throwing_event)),
+    "throwing control sink was not reported as a bounded rejection"
   );
+  auto rejecting_sink = std::make_shared<RejectingSink>();
+  syrnike::desktop_native::SequencedEmitter rejecting_emitter(rejecting_sink);
+  int rejected_releases = 0;
+  syrnike::desktop_native::RuntimeEvent rejected_event;
+  rejected_event.type = "sessionLifecycle";
+  rejected_event.on_drop = [&] { ++rejected_releases; };
   require(
-    rejectedEventReleasesOnce(),
-    "rejected event resource was not released exactly once before fail-close"
+    !rejecting_emitter.emit(std::move(rejected_event)) &&
+      rejected_releases == 1,
+    "rejected event resource was not released exactly once"
+  );
+  auto reentrant_close_sink = std::make_shared<ReentrantCloseSink>();
+  syrnike::desktop_native::SequencedEmitter reentrant_close_emitter(
+    reentrant_close_sink
+  );
+  reentrant_close_sink->dispatch_during_close = [&](auto event) {
+    return reentrant_close_emitter.emit(std::move(event));
+  };
+  reentrant_close_emitter.close();
+  require(
+    !reentrant_close_sink->dispatch_result,
+    "shutdown callback did not observe the emitter's closed state"
   );
 
   BoundedQueue<std::string, 2> queue;
@@ -253,7 +222,77 @@ int main(int argc, char** argv) try {
   event_sink->release_blocked_emit.store(true);
   final_emit.join();
   close_thread.join();
-  require(!event_sink->concurrent_close.load(), "event sink close raced with emit");
+  require(
+    event_sink->concurrent_close.load(),
+    "emitter close did not reach a sink while its producer was blocked"
+  );
+  for (int iteration = 0; iteration < 1'000; ++iteration) {
+    auto race_sink = std::make_shared<ConcurrencyDetectingSink>();
+    syrnike::desktop_native::SequencedEmitter race_emitter(race_sink);
+    std::thread dispatching([&] {
+      syrnike::desktop_native::RuntimeEvent event;
+      event.type = "sessionLifecycle";
+      static_cast<void>(race_emitter.emit(std::move(event)));
+    });
+    std::thread closing([&] { race_emitter.close(); });
+    dispatching.join();
+    closing.join();
+    require(
+      race_sink->active_calls.load() == 0,
+      "dispatch/close stress left an in-flight sink call"
+    );
+  }
+
+  auto blocking_sink = std::make_shared<BlockingControlLaneSink>();
+  syrnike::desktop_native::SequencedEmitter blocking_emitter(blocking_sink);
+  int first_blocked_release_count = 0;
+  syrnike::desktop_native::RuntimeEvent first_blocked_event;
+  first_blocked_event.type = "reply";
+  first_blocked_event.on_drop = [&] { ++first_blocked_release_count; };
+  require(
+    blocking_emitter.emit(std::move(first_blocked_event)),
+    "blocking sink rejected its lane-filling event"
+  );
+  int waiting_release_count = 0;
+  std::atomic_bool waiting_emit_finished{false};
+  std::atomic_bool waiting_emit_rejected{false};
+  std::thread waiting_emit([&] {
+    syrnike::desktop_native::RuntimeEvent event;
+    event.type = "reply";
+    event.on_drop = [&] { ++waiting_release_count; };
+    waiting_emit_rejected = !blocking_emitter.emit(std::move(event));
+    waiting_emit_finished = true;
+  });
+  const auto wait_deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  while (
+    blocking_sink->active_emits.load() == 0 &&
+    std::chrono::steady_clock::now() < wait_deadline
+  ) {
+    std::this_thread::yield();
+  }
+  const bool producer_blocked = blocking_sink->active_emits.load() == 1;
+  const auto close_started = std::chrono::steady_clock::now();
+  blocking_emitter.close();
+  const auto close_elapsed = std::chrono::steady_clock::now() - close_started;
+  waiting_emit.join();
+  require(
+    producer_blocked,
+    "control producer did not block on the full lane"
+  );
+  require(
+    close_elapsed < std::chrono::milliseconds(250) &&
+      waiting_emit_finished.load() && waiting_emit_rejected.load(),
+    "close did not promptly wake the blocked control producer"
+  );
+  require(
+    blocking_sink->close_raced_with_emit.load(),
+    "blocking sink close did not exercise concurrent emit shutdown"
+  );
+  require(
+    first_blocked_release_count == 1 && waiting_release_count == 1,
+    "blocked-producer shutdown did not release both events exactly once"
+  );
 
   syrnike::desktop_native::RuntimeEvent control_event;
   control_event.type = "sessionLifecycle";
@@ -336,6 +375,87 @@ int main(int argc, char** argv) try {
     "microphone metrics did not use the telemetry lane"
   );
 
+  syrnike::desktop_native::ControlEventLane control_lane(
+    2,
+    std::chrono::milliseconds(20)
+  );
+  syrnike::desktop_native::RuntimeEvent first_control;
+  first_control.type = "reply";
+  first_control.sequence = 1;
+  syrnike::desktop_native::RuntimeEvent second_control;
+  second_control.type = "sessionLifecycle";
+  second_control.sequence = 2;
+  require(
+    control_lane.push(std::move(first_control)).schedule_callback,
+    "control lane did not schedule its first callback"
+  );
+  require(
+    control_lane.push(std::move(second_control)).accepted,
+    "control lane rejected capacity that was still available"
+  );
+  syrnike::desktop_native::RuntimeEvent blocked_control;
+  blocked_control.type = "runtimeError";
+  const auto blocked_started = std::chrono::steady_clock::now();
+  const auto blocked_push = control_lane.push(std::move(blocked_control));
+  const auto blocked_elapsed = std::chrono::steady_clock::now() - blocked_started;
+  require(
+    !blocked_push.accepted && blocked_push.timed_out &&
+      blocked_elapsed >= std::chrono::milliseconds(15),
+    "control lane did not apply bounded producer backpressure"
+  );
+  require(
+    blocked_push.rejected != nullptr,
+    "control lane lost ownership of a timed-out event"
+  );
+  auto control_batch = control_lane.beginCallback();
+  require(
+    control_batch.size() == 2 &&
+      control_batch[0]->sequence == 1 &&
+      control_batch[1]->sequence == 2,
+    "control lane did not preserve accepted event ordering"
+  );
+  control_lane.closeAndDiscard();
+
+  syrnike::desktop_native::ControlEventLane schedule_failure_lane(2);
+  int schedule_failure_releases = 0;
+  syrnike::desktop_native::RuntimeEvent schedule_failure_event;
+  schedule_failure_event.type = "reply";
+  schedule_failure_event.sequence = 91;
+  schedule_failure_event.on_drop = [&] { ++schedule_failure_releases; };
+  {
+    syrnike::desktop_native::RuntimeEventResourceGuard emitter_fallback(
+      schedule_failure_event
+    );
+    emitter_fallback.attach(schedule_failure_event);
+    const auto staged =
+      schedule_failure_lane.push(std::move(schedule_failure_event));
+    require(
+      staged.accepted && staged.schedule_callback,
+      "control schedule-failure fixture was not staged"
+    );
+    schedule_failure_lane.rejectScheduledCallbackAndDiscard(91);
+    emitter_fallback.discard();
+  }
+  require(
+    schedule_failure_releases == 1 && schedule_failure_lane.size() == 0,
+    "control callback schedule failure double-released or retained its event"
+  );
+
+  syrnike::desktop_native::RuntimeEvent closed_control;
+  closed_control.type = "runtimeError";
+  bool closed_control_released = false;
+  closed_control.on_drop = [&] { closed_control_released = true; };
+  auto closed_control_push = control_lane.push(std::move(closed_control));
+  require(
+    !closed_control_push.accepted && closed_control_push.rejected != nullptr,
+    "closed control lane lost ownership of a rejected event"
+  );
+  syrnike::desktop_native::discardEvent(*closed_control_push.rejected);
+  require(
+    closed_control_released,
+    "closed control lane leaked a rejected event resource"
+  );
+
   syrnike::desktop_native::CoalescingEventLane media_lane;
   syrnike::desktop_native::RuntimeEvent first_frame;
   first_frame.type = "remoteVideoFrame";
@@ -371,13 +491,16 @@ int main(int argc, char** argv) try {
   other_track_frame.sequence = 11;
   auto other_push = media_lane.push(std::move(other_track_frame));
   require(other_push.accepted, "media lane rejected a second track");
-  const auto latest_frames = media_lane.take();
+  auto latest_frames_batch = media_lane.beginCallback();
+  require(latest_frames_batch.active(), "media lane did not start its callback");
+  const auto& latest_frames = latest_frames_batch.events();
   require(latest_frames.size() == 2, "media lane did not retain one frame per track");
   require(
     latest_frames[0]->sequence == 11 && latest_frames[1]->sequence == 12,
     "media lane did not drain latest frames in sequence order"
   );
-  media_lane.close();
+  latest_frames_batch = {};
+  media_lane.closeAndDiscard();
   syrnike::desktop_native::RuntimeEvent after_close;
   after_close.type = "remoteVideoFrame";
   after_close.track_id = "camera-a";
@@ -409,10 +532,11 @@ int main(int argc, char** argv) try {
   std::atomic_bool close_waiting{false};
   std::atomic_bool close_finished{false};
   std::thread lane_close([&] {
-    auto pending = callback_lane.close();
-    syrnike::desktop_native::discardEventBatch(pending);
+    callback_lane.closeAndDiscard();
     close_waiting = true;
-    callback_lane.waitForInFlightCallbacks();
+    static_cast<void>(callback_lane.waitForInFlightCallbacks(
+      std::chrono::seconds(1)
+    ));
     close_finished = true;
   });
   while (!close_waiting.load()) std::this_thread::yield();
@@ -438,8 +562,7 @@ int main(int argc, char** argv) try {
     failed_schedule_lane.push(std::move(unscheduled_frame)).schedule_callback,
     "media lane did not schedule its initial failed callback"
   );
-  auto unscheduled = failed_schedule_lane.cancelScheduledCallback();
-  syrnike::desktop_native::discardEventBatch(unscheduled);
+  failed_schedule_lane.cancelScheduledCallbackAndDiscard();
   require(unscheduled_frame_released, "failed media callback scheduling leaked its resource");
   syrnike::desktop_native::RuntimeEvent retry_frame;
   retry_frame.type = "remoteVideoFrame";
@@ -480,7 +603,7 @@ int main(int argc, char** argv) try {
     "media lane was corrupted by a failed insertion"
   );
   require(
-    throwing_media_lane.take().size() == 1,
+    throwing_media_lane.beginCallback().events().size() == 1,
     "media lane retained an orphan key after a failed insertion"
   );
 
@@ -504,12 +627,43 @@ int main(int argc, char** argv) try {
     speakers_push.accepted && speakers_push.discarded != nullptr,
     "speaker lane did not coalesce the same voice epoch"
   );
-  const auto latest_speaker_batch = speaker_lane.take();
+  auto latest_speaker_callback = speaker_lane.beginCallback();
+  const auto& latest_speaker_batch = latest_speaker_callback.events();
   require(
     latest_speaker_batch.size() == 1 &&
       latest_speaker_batch.front()->participant_identities ==
         std::vector<std::string>{"latest-speaker"},
     "speaker lane did not retain the latest voice activity state"
+  );
+
+  syrnike::desktop_native::BoundedReleaseLedger release_ledger(2);
+  require(
+    !release_ledger.remember("track-a", 0, 10) &&
+      !release_ledger.remember("", 1, 10) &&
+      !release_ledger.remember("track-a", 11, 10),
+    "release ledger accepted malformed or unissued frame identities"
+  );
+  require(
+    release_ledger.remember("track-a", 1, 10) &&
+      release_ledger.remember("track-b", 2, 10),
+    "release ledger rejected valid racing releases"
+  );
+  require(
+    !release_ledger.consume("track-b", 1) &&
+      release_ledger.consume("track-a", 1),
+    "release ledger allowed a cross-track release"
+  );
+  require(
+    release_ledger.remember("track-b", 1, 10) &&
+      release_ledger.consume("track-b", 1),
+    "release ledger conflated equal sequences from different tracks"
+  );
+  require(
+    release_ledger.remember("track-c", 3, 10) &&
+      release_ledger.remember("track-d", 4, 10) &&
+      release_ledger.size() == 2 &&
+      !release_ledger.consume("track-b", 2),
+    "release ledger did not evict its oldest tombstone at capacity"
   );
 
   syrnike::hotkeys::InputState input;
@@ -635,16 +789,51 @@ int main(int argc, char** argv) try {
       {"deviceId", "private-device"}
     }
   );
+  const std::string rotation_payload(4'096, 'x');
+  for (std::uint64_t index = 0; index < 3'000; ++index) {
+    diagnostic_log.write(
+      "native_core_rotation_event",
+      {
+        {"index", index},
+        {"message", rotation_payload}
+      }
+    );
+  }
+  // The production logger intentionally bounds its producer queue. Let the
+  // writer catch up before the final marker so this assertion tests segment
+  // rotation order rather than queue saturation on a slow debug filesystem.
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  diagnostic_log.write(
+    "native_core_rotation_event",
+    {
+      {"index", std::uint64_t{3'000}},
+      {"message", rotation_payload}
+    }
+  );
   diagnostic_log.shutdown();
   require(
     std::filesystem::is_regular_file(diagnostic_path),
     "native diagnostic logger did not use the configured exact path"
   );
-  std::ifstream diagnostic_file(diagnostic_path, std::ios::binary);
-  const std::string diagnostic_contents{
-    std::istreambuf_iterator<char>(diagnostic_file),
-    std::istreambuf_iterator<char>()
+  const auto diagnostic_extension = diagnostic_path.extension().wstring();
+  const auto diagnostic_stem = diagnostic_path.stem().wstring();
+  const auto rolled_diagnostic_path = [&](std::size_t index) {
+    return diagnostic_path.parent_path() /
+      (diagnostic_stem + L"." + std::to_wstring(index) + diagnostic_extension);
   };
+  const std::vector<std::filesystem::path> diagnostic_segments{
+    diagnostic_path,
+    rolled_diagnostic_path(1),
+    rolled_diagnostic_path(2),
+  };
+  std::string diagnostic_contents;
+  for (const auto& segment : diagnostic_segments) {
+    std::ifstream segment_stream(segment, std::ios::binary);
+    diagnostic_contents.append(
+      std::istreambuf_iterator<char>(segment_stream),
+      std::istreambuf_iterator<char>()
+    );
+  }
   require(
     diagnostic_contents.find("native-core-test-run") != std::string::npos,
     "native diagnostic logger ignored the shared run id"
@@ -661,8 +850,39 @@ int main(int argc, char** argv) try {
       diagnostic_contents.find("private-device") == std::string::npos,
     "native diagnostic file leaked private values"
   );
-  diagnostic_file.close();
+  for (const auto& segment : diagnostic_segments) {
+    require(
+      std::filesystem::is_regular_file(segment),
+      "native diagnostic rotation omitted a retained segment"
+    );
+    require(
+      std::filesystem::file_size(segment) <= 5ULL * 1024ULL * 1024ULL,
+      "native diagnostic rotation exceeded the per-file bound"
+    );
+    std::ifstream segment_verification_stream(segment, std::ios::binary);
+    const std::string contents{
+      std::istreambuf_iterator<char>(segment_verification_stream),
+      std::istreambuf_iterator<char>()
+    };
+    require(
+      contents.find("\"role\":\"native\"") != std::string::npos &&
+        contents.find("\"runId\":\"native-core-test-run\"") != std::string::npos,
+      "native diagnostic rotation lost role or run id continuity"
+    );
+  }
+  std::ifstream latest_diagnostic(diagnostic_path, std::ios::binary);
+  const std::string latest_diagnostic_contents{
+    std::istreambuf_iterator<char>(latest_diagnostic),
+    std::istreambuf_iterator<char>()
+  };
+  require(
+    latest_diagnostic_contents.find("\"index\":3000") != std::string::npos,
+    "native diagnostic rotation did not retain the newest event"
+  );
+  latest_diagnostic.close();
   std::filesystem::remove(diagnostic_path);
+  std::filesystem::remove(rolled_diagnostic_path(1));
+  std::filesystem::remove(rolled_diagnostic_path(2));
   SetEnvironmentVariableW(L"SYRNIKE_NATIVE_MEDIA_LOG_PATH", nullptr);
   SetEnvironmentVariableW(L"SYRNIKE_NATIVE_DIAGNOSTIC_RUN_ID", nullptr);
   SetEnvironmentVariableW(L"SYRNIKE_NATIVE_APP_VERSION", nullptr);

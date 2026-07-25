@@ -179,8 +179,9 @@ message FfiRequest {
 
     // Room event ready signal
     ReadyForRoomEventRequest ready_for_room_event = 83;
+    ApmApplyConfigRequest apm_apply_config = 85;
 
-    // NEXT_ID: 85
+    // NEXT_ID: 86
   }
 }
 
@@ -305,8 +306,9 @@ message FfiResponse {
 
     // Room event ready signal
     ReadyForRoomEventResponse ready_for_room_event = 82;
+    ApmApplyConfigResponse apm_apply_config = 85;
 
-    // NEXT_ID: 85
+    // NEXT_ID: 86
   }
 }
 

@@ -8,6 +8,7 @@ import {
   createNativeDiagnosticLog,
   createNativeDiagnosticSession,
   pruneNativeDiagnosticSessions,
+  rolledDiagnosticFilePath,
 } from './diagnostic-log'
 
 const directories: string[] = []
@@ -135,6 +136,48 @@ describe('native diagnostic log', () => {
       .split('\n')
       .map((line) => JSON.parse(line))
     expect(lines.map((line) => line.event)).toEqual(['utility_ready'])
+  })
+
+  it('rotates JSONL files before they exceed the configured bound', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'syrnike-native-diagnostic-'))
+    directories.push(rootDir)
+    const session = createNativeDiagnosticSession({
+      runtime: 'media',
+      rootDir,
+      randomUUID: () => 'run-rotation',
+    })
+    const log = createNativeDiagnosticLog({
+      runtime: 'media',
+      role: 'electron-main',
+      runId: session.runId,
+      directory: session.directory,
+      filePath: session.paths.electronMainPath,
+      maxFileBytes: 1_024,
+      maxRolledFiles: 2,
+    })
+
+    for (let index = 0; index < 12; index += 1) {
+      log.log('bounded_entry', {
+        index,
+        message: `entry-${index}-${'x'.repeat(180)}`,
+      })
+    }
+    await log.close()
+
+    const files = [
+      session.paths.electronMainPath,
+      rolledDiagnosticFilePath(session.paths.electronMainPath, 1),
+      rolledDiagnosticFilePath(session.paths.electronMainPath, 2),
+    ]
+    const sizes = await Promise.all(files.map((file) => stat(file).then((value) => value.size)))
+    expect(sizes.every((size) => size <= 1_024)).toBe(true)
+    const retained = (
+      await Promise.all(files.reverse().map((file) => readFile(file, 'utf8')))
+    )
+      .flatMap((value) => value.trim().split('\n'))
+      .map((line) => JSON.parse(line).data.payload.index)
+    expect(retained.at(-1)).toBe(11)
+    expect(retained.length).toBeLessThan(12)
   })
 
   it('removes diagnostic sessions older than seven days', async () => {

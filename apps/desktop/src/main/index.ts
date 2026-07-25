@@ -30,6 +30,7 @@ import {
 } from './overlay-manager'
 import {
   disposeNativeMediaRuntime,
+  logNativeVoiceDiagnostic,
   startNativeMediaRuntime,
 } from './native-media-engine'
 import { resolveWebDistRoot } from './paths'
@@ -64,6 +65,10 @@ import {
 } from './desktop-observability'
 import { anonymousNativeMetricsReporter } from './native-runtime/anonymous-metrics'
 import { desktopVoiceService } from './voice/desktop-voice-service'
+import {
+  disposeWithinDesktopShutdownBudget,
+  VOICE_SHUTDOWN_GRACE_MS,
+} from './shutdown-budget'
 
 installStdioPipeErrorHandlers()
 
@@ -79,8 +84,6 @@ let creatingApp: Promise<void> | null = null
 let trayVoiceState: DesktopTrayVoiceState = 'default'
 let shutdownPromise: Promise<void> | null = null
 let shutdownComplete = false
-
-const APP_SHUTDOWN_TIMEOUT_MS = 5_000
 
 const isDev = !app.isPackaged
 
@@ -381,41 +384,45 @@ function setupSingleInstance() {
 async function disposeAppResources() {
   const server = embeddedServer
   embeddedServer = null
-  await desktopVoiceService.dispose()
-  await Promise.allSettled([
-    Promise.resolve().then(() => disposeDesktopAutoUpdate()),
-    Promise.resolve().then(async () => {
-      disposeHotkeys()
-      disposeDesktopOverlay()
-      await hooksRuntimeController.dispose()
-    }),
-    Promise.resolve().then(() => disposeNativeMediaRuntime()),
-    Promise.resolve().then(() => server?.close()),
-    Promise.resolve().then(() =>
-      anonymousNativeMetricsReporter.flush().finally(() => {
-        anonymousNativeMetricsReporter.dispose()
-      }),
-    ),
-    Promise.resolve().then(() => {
-      tray?.destroy()
-      tray = null
-    }),
-  ])
-}
-
-async function disposeAppResourcesWithinDeadline() {
-  let timeout: ReturnType<typeof setTimeout> | null = null
-  try {
-    await Promise.race([
-      disposeAppResources(),
-      new Promise<void>((resolve) => {
-        timeout = setTimeout(resolve, APP_SHUTDOWN_TIMEOUT_MS)
-      }),
-    ])
-  } finally {
-    if (timeout) clearTimeout(timeout)
-    anonymousNativeMetricsReporter.dispose()
-  }
+  await disposeWithinDesktopShutdownBudget({
+    disposeVoice: () => desktopVoiceService.dispose(),
+    onVoiceDisposeError: (error) => {
+      logNativeVoiceDiagnostic('dispose_failed', {
+        stage: 'voice_shutdown',
+        message: error instanceof Error ? error.message : 'Voice shutdown failed',
+      })
+    },
+    onVoiceDeadlineExceeded: (timeoutMs) => {
+      logNativeVoiceDiagnostic('dispose_deadline_exceeded', {
+        stage: 'voice_shutdown',
+        timeoutMs,
+      })
+    },
+    disposeRemaining: async () => {
+      await Promise.allSettled([
+        Promise.resolve().then(() => disposeDesktopAutoUpdate()),
+        Promise.resolve().then(async () => {
+          disposeHotkeys()
+          disposeDesktopOverlay()
+          await hooksRuntimeController.dispose()
+        }),
+        Promise.resolve().then(() => disposeNativeMediaRuntime()),
+        Promise.resolve().then(() => server?.close()),
+        Promise.resolve().then(() =>
+          anonymousNativeMetricsReporter.flush().finally(() => {
+            anonymousNativeMetricsReporter.dispose()
+          }),
+        ),
+        Promise.resolve().then(() => {
+          tray?.destroy()
+          tray = null
+        }),
+      ])
+    },
+    onDeadlineSettled: () => {
+      anonymousNativeMetricsReporter.dispose()
+    },
+  })
 }
 
 configureChromium()
@@ -481,7 +488,7 @@ if (setupSingleInstance()) {
     if (shutdownComplete) return
     event.preventDefault()
     if (shutdownPromise) return
-    shutdownPromise = disposeAppResourcesWithinDeadline()
+    shutdownPromise = disposeAppResources()
     void shutdownPromise.finally(() => {
       shutdownComplete = true
       app.quit()

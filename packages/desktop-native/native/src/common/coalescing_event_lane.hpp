@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
@@ -109,21 +110,6 @@ class CoalescingEventLane final {
     return result;
   }
 
-  std::vector<std::unique_ptr<RuntimeEvent>> take() {
-    std::vector<std::unique_ptr<RuntimeEvent>> result;
-    {
-      std::lock_guard lock(mutex_);
-      result.reserve(pending_.size());
-      for (auto& [_, event] : pending_) result.push_back(std::move(event));
-      pending_.clear();
-      callback_scheduled_ = false;
-    }
-    std::sort(result.begin(), result.end(), [](const auto& left, const auto& right) {
-      return left->sequence < right->sequence;
-    });
-    return result;
-  }
-
   CallbackBatch beginCallback() noexcept {
     std::vector<std::unique_ptr<RuntimeEvent>> events;
     decltype(pending_) allocation_failure;
@@ -159,29 +145,21 @@ class CoalescingEventLane final {
     return CallbackBatch(this, std::move(events), deliver);
   }
 
-  std::vector<std::unique_ptr<RuntimeEvent>> cancelScheduledCallback() {
-    return take();
-  }
-
   void cancelScheduledCallbackAndDiscard() noexcept {
     discardPending(false);
-  }
-
-  std::vector<std::unique_ptr<RuntimeEvent>> close() {
-    {
-      std::lock_guard lock(mutex_);
-      closed_ = true;
-    }
-    return take();
   }
 
   void closeAndDiscard() noexcept {
     discardPending(true);
   }
 
-  void waitForInFlightCallbacks() {
+  bool waitForInFlightCallbacks(std::chrono::milliseconds timeout) {
     std::unique_lock lock(mutex_);
-    callbacks_finished_.wait(lock, [&] { return callbacks_in_flight_ == 0; });
+    return callbacks_finished_.wait_for(
+      lock,
+      timeout,
+      [&] { return callbacks_in_flight_ == 0; }
+    );
   }
 
   std::uint64_t noteDropped() {

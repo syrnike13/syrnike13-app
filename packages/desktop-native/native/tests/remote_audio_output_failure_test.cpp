@@ -16,6 +16,24 @@
 #include "media/audio_devices.hpp"
 #include "media/remote_audio_output.hpp"
 
+namespace {
+
+struct BlockingOutputOwner {
+  BlockingOutputOwner(
+    syrnike::desktop_native::media::RemoteAudioOutput::WorkerFactory factory,
+    syrnike::desktop_native::AsyncCleanupLauncher cleanup_launcher
+  ) : output(
+        {},
+        {},
+        std::move(factory),
+        std::move(cleanup_launcher)
+      ) {}
+
+  syrnike::desktop_native::media::RemoteAudioOutput output;
+};
+
+}  // namespace
+
 int main() try {
   if (!livekit::initialize(livekit::LogLevel::Off)) return 1;
   std::mutex mutex;
@@ -110,9 +128,20 @@ int main() try {
   const AudioEndpointChange default_changed{
     eRender, AudioEndpointChangeKind::DefaultChanged, "default-b"
   };
+  const AudioEndpointChange communications_default_changed{
+    eRender,
+    AudioEndpointChangeKind::DefaultChanged,
+    "communications-default",
+    eCommunications
+  };
   if (!audioEndpointChangeRequiresDefaultRetry("explicit-a", false, removed_a) ||
       !audioEndpointChangeRequiresDefaultRetry("explicit-a", true, default_changed) ||
-      audioEndpointChangeRequiresDefaultRetry("explicit-b", false, removed_a)) {
+      audioEndpointChangeRequiresDefaultRetry("explicit-b", false, removed_a) ||
+      audioEndpointChangeRequiresDefaultRetry(
+        "default",
+        false,
+        communications_default_changed
+      )) {
     throw std::runtime_error("endpoint fallback policy regressed selected/stale handling");
   }
   if (configuredAudioOutputEndpointChangeRequiresDefaultRetry(
@@ -206,6 +235,57 @@ int main() try {
   duplicate_output.stop();
   if (duplicate_workers.load() != 2) {
     throw std::runtime_error("replacement remote audio SID did not retire and restart cleanly");
+  }
+  std::atomic_bool release_blocked_worker{false};
+  std::atomic_int cleanup_launches{0};
+  auto blocked_owner = std::make_shared<BlockingOutputOwner>(
+    [&](auto) {
+      return std::jthread([&](std::stop_token) {
+        while (!release_blocked_worker.load()) std::this_thread::yield();
+      });
+    },
+    [&](syrnike::desktop_native::AsyncCleanupTask task) -> std::thread {
+      if (cleanup_launches.fetch_add(1) == 0) {
+        throw std::runtime_error(
+          "injected remote audio quarantine launch failure"
+        );
+      }
+      return std::thread(std::move(task));
+    }
+  );
+  blocked_owner->output.addTrack(
+    "blocked-shutdown",
+    "user:blocked",
+    false,
+    track
+  );
+  const auto blocked_stop_started = std::chrono::steady_clock::now();
+  blocked_owner->output.stop(blocked_owner);
+  if (std::chrono::steady_clock::now() - blocked_stop_started >=
+      std::chrono::milliseconds(100)) {
+    throw std::runtime_error("remote audio quarantine blocked Room shutdown");
+  }
+  std::weak_ptr<BlockingOutputOwner> blocked_owner_lifetime = blocked_owner;
+  blocked_owner.reset();
+  if (blocked_owner_lifetime.expired()) {
+    throw std::runtime_error("blocked remote audio worker lost its lifetime owner");
+  }
+  release_blocked_worker = true;
+  const auto owner_release_deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  while (
+    !blocked_owner_lifetime.expired() &&
+    std::chrono::steady_clock::now() < owner_release_deadline
+  ) {
+    std::this_thread::yield();
+  }
+  if (!blocked_owner_lifetime.expired()) {
+    throw std::runtime_error("remote audio quarantine retained its owner after completion");
+  }
+  if (cleanup_launches.load() < 2) {
+    throw std::runtime_error(
+      "remote audio quarantine did not retry its failed cleanup launch"
+    );
   }
   }
   livekit::shutdown();

@@ -15,6 +15,7 @@
 
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
+#include "../common/async_cleanup_dispatcher.hpp"
 #include "livekit_publication_client.hpp"
 
 namespace syrnike::desktop_native::media {
@@ -28,8 +29,8 @@ enum class MicrophonePublicationCapacityStatus {
 struct MicrophonePipelineSnapshot {
   std::string device_id;
   std::uint64_t revision = 0;
-  bool noise_suppression_enabled = true;
-  bool echo_cancellation_enabled = false;
+  std::string noise_suppression = "disabled";
+  std::string echo_cancellation = "disabled";
 };
 
 void validateMicrophonePublicationCommand(const MediaCommand &command);
@@ -46,12 +47,16 @@ class MicrophonePublicationController final {
   using CaptureHealthy = std::function<bool()>;
   using ApplyMute = std::function<void(
       const std::shared_ptr<livekit::LocalAudioTrack> &, bool)>;
+  using RetirementFinalizeProbe = std::function<void()>;
 
   MicrophonePublicationController(
       SequencedEmitter &emitter, InternalPost post, IsCurrent is_current,
       AddSink add_sink, RemoveSink remove_sink, CaptureHealthy capture_healthy,
       std::shared_ptr<LiveKitPublicationClient> livekit_client,
-      ApplyMute apply_mute = {});
+      ApplyMute apply_mute = {},
+      AsyncCleanupLauncher async_cleanup_launcher = {},
+      AsyncCleanupEnqueueProbe async_cleanup_enqueue_probe = {},
+      RetirementFinalizeProbe retirement_finalize_probe = {});
   ~MicrophonePublicationController();
 
   MicrophonePublicationController(const MicrophonePublicationController &) =
@@ -65,7 +70,7 @@ class MicrophonePublicationController final {
   void disconnect(const MediaCommand &command, bool emit_stopped = true);
   void handleTerminal(const MediaCommand &command);
   void handleWorkerCommand(const MediaCommand &command);
-  void updatePendingPipeline(
+  void updatePipeline(
       const std::string &session_id, std::uint64_t generation,
       const MicrophonePipelineSnapshot &pipeline);
   void shutdown();

@@ -112,6 +112,10 @@ struct RuntimeEvent {
   std::string echo_cancellation = "disabled";
   std::uint64_t method_wgc_gpu = 0;
   std::uint64_t method_dxgi_gpu = 0;
+  std::uint64_t video_recoverable_lost_count = 0;
+  std::uint64_t video_gpu_pool_slots_available = 0;
+  std::uint64_t video_gpu_pool_slots_total = 0;
+  std::uint64_t video_dxgi_duplication_hold_us_max = 0;
   bool rtp_stats_available = false;
   std::uint64_t rtp_packets_sent = 0;
   std::uint64_t rtp_bytes_sent = 0;
