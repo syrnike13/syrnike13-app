@@ -249,6 +249,105 @@ describe('NativeRuntimeSupervisor', () => {
     ])
   })
 
+  it('records each screen backend recovery counter advance once', async () => {
+    const adapter = new FakeAdapter()
+    const diagnostics: Array<Record<string, unknown>> = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+      diagnostics: (record) => diagnostics.push(record),
+    })
+    const start = supervisor.start()
+    adapter.ready(MEDIA_READY)
+    await start
+
+    const sendStats = (sequence: number, count: number) => {
+      adapter.callbacks?.onMessage({
+        type: 'event',
+        event: {
+          type: 'stats',
+          sequence,
+          sessionId: 'screen-a',
+          generation: 3,
+          stats: {
+            sessionId: 'screen-a',
+            methods: { wgc_gpu: 1, dxgi_gpu: 1 },
+            videoRecoverableLostCount: count,
+          },
+        },
+      })
+    }
+    sendStats(1, 1)
+    sendStats(2, 1)
+    sendStats(3, 2)
+
+    expect(
+      diagnostics.filter((record) => record.event === 'screen_backend_restart'),
+    ).toEqual([
+      expect.objectContaining({
+        lane: 'screen',
+        sessionId: 'screen-a',
+        generation: 3,
+        message: 'recoverable_lost_count=1',
+      }),
+      expect.objectContaining({
+        lane: 'screen',
+        sessionId: 'screen-a',
+        generation: 3,
+        message: 'recoverable_lost_count=2',
+      }),
+    ])
+  })
+
+  it('records a typed screen recovery before an immediate terminal exactly once', async () => {
+    const adapter = new FakeAdapter()
+    const diagnostics: Array<Record<string, unknown>> = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+      diagnostics: (record) => diagnostics.push(record),
+    })
+    const start = supervisor.start()
+    adapter.ready(MEDIA_READY)
+    await start
+
+    adapter.callbacks?.onMessage({
+      type: 'event',
+      event: {
+        type: 'screenBackendRestart',
+        sequence: 1,
+        sessionId: 'screen-terminal',
+        generation: 4,
+        backend: 'wgc_gpu',
+        reason: 'switch_backend',
+        count: 1,
+      },
+    })
+    adapter.callbacks?.onMessage({
+      type: 'event',
+      event: {
+        type: 'screenCaptureEnded',
+        sequence: 2,
+        sessionId: 'screen-terminal',
+        generation: 4,
+        reason: 'gpu_capture_unavailable',
+      },
+    })
+
+    expect(
+      diagnostics.filter((record) => record.event === 'screen_backend_restart'),
+    ).toEqual([
+      expect.objectContaining({
+        lane: 'screen',
+        sessionId: 'screen-terminal',
+        generation: 4,
+        kind: 'wgc_gpu',
+        reason: 'switch_backend',
+        restartCount: 1,
+      }),
+    ])
+  })
+
   it('keeps active speaker delivery independent from the control sequence fence', async () => {
     const adapter = new FakeAdapter()
     const supervisor = new NativeRuntimeSupervisor({
@@ -479,7 +578,7 @@ describe('NativeRuntimeSupervisor', () => {
     expect(supervisor.getSnapshot().status).toBe('stopped')
   })
 
-  it('rejects pending work as runtime_lost and enters the circuit after crashes', async () => {
+  it('uses every configured restart delay before opening the crash circuit', async () => {
     const adapters: FakeAdapter[] = []
     const scheduled: Array<() => void> = []
     const supervisor = new NativeRuntimeSupervisor({
@@ -519,11 +618,155 @@ describe('NativeRuntimeSupervisor', () => {
     third.ready()
     await vi.waitFor(() => expect(supervisor.getSnapshot().status).toBe('ready'))
     third.exit()
+    scheduled.shift()?.()
+    await vi.waitFor(() => expect(adapters).toHaveLength(4))
+    const fourth = adapters[3]
+    fourth.ready()
+    await vi.waitFor(() => expect(supervisor.getSnapshot().status).toBe('ready'))
+    fourth.exit()
 
     expect(supervisor.getSnapshot()).toMatchObject({
       status: 'degraded',
-      restartCount: 2,
+      restartCount: 3,
     })
+  })
+
+  it('automatically retries a circuit-open runtime after the degraded backoff', async () => {
+    const adapters: FakeAdapter[] = []
+    const scheduled: Array<{ callback(): void; delayMs: number }> = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'hotkey',
+      createAdapter: () => {
+        const adapter = new FakeAdapter()
+        adapters.push(adapter)
+        return adapter
+      },
+      now: () => 1_000,
+      schedule: (callback, delayMs) => {
+        scheduled.push({ callback, delayMs })
+        return scheduled.length as unknown as ReturnType<typeof setTimeout>
+      },
+    })
+
+    const initial = supervisor.start()
+    adapters[0].ready()
+    await initial
+    for (let index = 0; index < 3; index += 1) {
+      adapters[index].exit()
+      const restart = scheduled.shift()
+      expect(restart?.delayMs).toBe([250, 1_000, 5_000][index])
+      restart?.callback()
+      adapters[index + 1].ready()
+      await vi.waitFor(() => expect(supervisor.getSnapshot().status).toBe('ready'))
+    }
+    adapters[3].exit()
+
+    expect(supervisor.getSnapshot()).toMatchObject({
+      status: 'degraded',
+      degradedRetryAttempt: 1,
+      nextRetryAt: 31_000,
+      failure: { cause: 'circuit_open', retryable: true },
+    })
+    const automaticRetry = scheduled.shift()
+    expect(automaticRetry?.delayMs).toBe(30_000)
+    automaticRetry?.callback()
+    expect(adapters).toHaveLength(5)
+    adapters[4].ready()
+    await vi.waitFor(() => expect(supervisor.getSnapshot().status).toBe('ready'))
+    expect(supervisor.getSnapshot()).toMatchObject({
+      restartCount: 4,
+      degradedRetryAttempt: undefined,
+      nextRetryAt: undefined,
+    })
+  })
+
+  it('ignores a cancelled degraded retry callback from an older circuit-open cycle', async () => {
+    const adapters: FakeAdapter[] = []
+    const scheduled: Array<{ callback(): void; delayMs: number }> = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'hotkey',
+      createAdapter: () => {
+        const adapter = new FakeAdapter()
+        adapters.push(adapter)
+        return adapter
+      },
+      now: () => 1_000,
+      schedule: (callback, delayMs) => {
+        scheduled.push({ callback, delayMs })
+        return scheduled.length as unknown as ReturnType<typeof setTimeout>
+      },
+    })
+    const crashUntilDegraded = async () => {
+      for (let index = 0; index < 3; index += 1) {
+        adapters.at(-1)?.exit()
+        const restart = scheduled.shift()
+        expect(restart?.delayMs).toBe([250, 1_000, 5_000][index])
+        restart?.callback()
+        adapters.at(-1)?.ready()
+        await vi.waitFor(() =>
+          expect(supervisor.getSnapshot().status).toBe('ready'),
+        )
+      }
+      adapters.at(-1)?.exit()
+      await vi.waitFor(() =>
+        expect(supervisor.getSnapshot().status).toBe('degraded'),
+      )
+    }
+
+    const initial = supervisor.start()
+    adapters[0].ready()
+    await initial
+    await crashUntilDegraded()
+    const staleRetry = scheduled.shift()
+    expect(staleRetry?.delayMs).toBe(30_000)
+
+    const manualRetry = supervisor.retry()
+    adapters.at(-1)?.ready()
+    await manualRetry
+    await crashUntilDegraded()
+    const currentRetry = scheduled.shift()
+    expect(currentRetry?.delayMs).toBe(30_000)
+
+    const adapterCount = adapters.length
+    staleRetry?.callback()
+    expect(adapters).toHaveLength(adapterCount)
+    expect(supervisor.getSnapshot().status).toBe('degraded')
+
+    currentRetry?.callback()
+    expect(adapters).toHaveLength(adapterCount + 1)
+  })
+
+  it('allows the default 2.5-second actor probe deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      const adapter = new FakeAdapter()
+      const supervisor = new NativeRuntimeSupervisor({
+        runtime: 'media',
+        createAdapter: () => adapter,
+      })
+      const start = supervisor.start()
+      adapter.ready(MEDIA_READY)
+      await start
+
+      const request = supervisor.request({ type: 'listDevices', kind: 'audioinput' }, 10)
+      const rejection = expect(request).rejects.toMatchObject({
+        detail: { code: 'request_timeout' },
+      })
+      await vi.advanceTimersByTimeAsync(10)
+      await rejection
+      expect(
+        adapter.requests.some(
+          (item) => item.command.type === 'probeQueryWorker',
+        ),
+      ).toBe(true)
+
+      await vi.advanceTimersByTimeAsync(2_499)
+      expect(adapter.killed).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(adapter.killed).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('rejects a mismatched contract without a restart loop', async () => {
@@ -666,6 +909,103 @@ describe('NativeRuntimeSupervisor', () => {
     expect(adapter.killed).toBe(false)
     adapter.replyByType('probeMicrophoneActor', { state: 'available' })
     expect(supervisor.getSnapshot().status).toBe('ready')
+  })
+
+  it('keeps a slow microphone operation healthy when its independent probe replies', async () => {
+    vi.useFakeTimers()
+    const adapter = new FakeAdapter()
+    const diagnostics: Array<Record<string, unknown>> = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+      diagnostics: (record) => diagnostics.push(record),
+    })
+    const start = supervisor.start()
+    adapter.ready(MEDIA_READY)
+    await start
+
+    const configure = supervisor.request(
+      {
+        type: 'configureMicrophone',
+        revision: 1,
+        config: {
+          deviceId: null,
+          bypassSystemAudioInputProcessing: true,
+          automaticGainControl: true,
+          noiseSuppression: true,
+          echoCancellation: false,
+          inputVolume: 1,
+          voiceGateEnabled: true,
+          voiceGateThresholdDb: -28,
+          voiceGateAutoThreshold: true,
+        },
+      },
+      5_000,
+    )
+    const configureFailure = expect(configure).rejects.toMatchObject({
+      detail: { code: 'request_timeout', stage: 'configureMicrophone' },
+    })
+    await vi.advanceTimersByTimeAsync(5_000)
+    await configureFailure
+    expect(adapter.requests.map(({ command }) => command.type)).toEqual([
+      'configureMicrophone',
+      'probeMicrophoneActor',
+    ])
+    await vi.advanceTimersByTimeAsync(2_499)
+    expect(adapter.killed).toBe(false)
+    adapter.replyByType('probeMicrophoneActor', { state: 'available' })
+    await vi.runAllTicks()
+    expect(adapter.killed).toBe(false)
+    expect(diagnostics).not.toContainEqual(
+      expect.objectContaining({ event: 'liveness_probe_failed' }),
+    )
+    vi.useRealTimers()
+  })
+
+  it('records an actual camera read watchdog timeout as an incident', async () => {
+    const adapter = new FakeAdapter()
+    const diagnostics: Array<Record<string, unknown>> = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+      diagnostics: (record) => diagnostics.push(record),
+    })
+    const start = supervisor.start()
+    adapter.ready(MEDIA_READY)
+    await start
+
+    adapter.callbacks?.onMessage({
+      type: 'event',
+      event: {
+        type: 'cameraTerminal',
+        sequence: 1,
+        sessionId: 'camera-a',
+        generation: 7,
+        error: {
+          code: 'camera_read_stall',
+          message: 'Camera stopped delivering asynchronous samples',
+          stage: 'connectCamera',
+          retryable: true,
+          sessionId: 'camera-a',
+          generation: 7,
+        },
+      },
+    })
+
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        scope: 'native-runtime-supervisor',
+        event: 'camera_read_stall',
+        runtime: 'media',
+        lane: 'camera',
+        nativeEventType: 'cameraTerminal',
+        nativeSequence: 1,
+        sessionId: 'camera-a',
+        generation: 7,
+        stage: 'connectCamera',
+        errorCode: 'camera_read_stall',
+      }),
+    )
   })
 
   it('recycles only after the lane probe also times out and then rejects collateral work', async () => {

@@ -367,6 +367,11 @@ function nativeVoiceDiagnosticRecord(
     ),
     reason: diagnosticString(detail.reason),
     stage: diagnosticString(detail.stage ?? failure.stage),
+    fatal: typeof detail.fatal === 'boolean'
+      ? detail.fatal
+      : typeof failure.fatal === 'boolean'
+        ? failure.fatal
+        : undefined,
     errorCode: diagnosticString(
       detail.errorCode ?? detail.errorType ?? failure.code,
     ),
@@ -392,10 +397,7 @@ function ensureNativeMediaDiagnostics(): NativeMediaDiagnostics | null {
   // permanent diagnostics failure for the rest of the process lifetime.
   if (!app.isReady()) return null
   if (nativeMediaDiagnostics !== undefined) return nativeMediaDiagnostics
-  if (
-    process.platform !== 'win32' ||
-    process.env.SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS !== '1'
-  ) {
+  if (!nativeMediaDiagnosticsEnabled()) {
     nativeMediaDiagnostics = null
     return null
   }
@@ -430,4 +432,11 @@ function ensureNativeMediaDiagnostics(): NativeMediaDiagnostics | null {
     nativeMediaDiagnostics = null
     return null
   }
+}
+
+export function nativeMediaDiagnosticsEnabled(
+  platform = process.platform,
+  configured = process.env.SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS,
+) {
+  return platform === 'win32' && configured !== '0'
 }

@@ -7,6 +7,10 @@ import { DESKTOP_RELEASE_CHANNEL } from '../desktop-app-identity'
 import {
   createNativeDiagnosticLog,
   createNativeDiagnosticSession,
+  NATIVE_DIAGNOSTIC_MAX_FILE_BYTES,
+  NATIVE_DIAGNOSTIC_MAX_ROLLED_FILES,
+  redactDiagnosticText,
+  rolledDiagnosticFilePath,
   type NativeDiagnosticLog,
   type NativeDiagnosticSession,
 } from './diagnostic-log'
@@ -31,6 +35,9 @@ export type NativeRuntimeAdapterExit = {
   code: number | null
   signal?: string
   error?: Error
+  stderrBytesSeen?: number
+  stderrBytesCaptured?: number
+  stderrTruncated?: boolean
 }
 
 export type NativeRuntimeAdapterCallbacks = {
@@ -47,7 +54,10 @@ export interface NativeRuntimeAdapter {
 
 export type NativeRuntimeAdapterFactory = () => NativeRuntimeAdapter
 
-type UtilityProcessLike = Pick<UtilityProcess, 'pid' | 'postMessage' | 'kill' | 'on'>
+type UtilityProcessLike =
+  Pick<UtilityProcess, 'pid' | 'postMessage' | 'kill' | 'on'> & {
+    stderr: NodeJS.ReadableStream | null
+  }
 
 export type ElectronUtilityAdapterOptions = {
   runtime: NativeRuntimeKind
@@ -126,14 +136,36 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
         ? path.basename(diagnosticSession.paths.nativePath)
         : undefined,
     })
+    if (diagnosticSession) {
+      for (const filePath of [
+        diagnosticSession.paths.utilityPath,
+        diagnosticSession.paths.nativePath,
+      ]) {
+        try {
+          rotateOversizedDiagnosticFileSync(filePath)
+        } catch (error) {
+          this.diagnosticLog?.log('diagnostic_prespawn_rotation_failed', {
+            fileName: path.basename(filePath),
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+    }
     const child = fork(this.options.utilityEntryPath, [], {
       serviceName: `syrnike-${this.options.runtime}-runtime`,
-      // Native logging must never be able to fill an unread pipe and stall the
-      // runtime. Structured events are the only supported host -> main seam.
-      stdio: 'ignore',
+      // stdout remains ignored, while stderr is drained into a bounded tail so
+      // a native crash cannot fill a pipe or erase its last useful evidence.
+      stdio: ['ignore', 'ignore', 'pipe'],
       env,
     })
     this.child = child
+    const stderr = new BoundedByteTail()
+    const stderrStream = child.stderr as
+      | (NodeJS.ReadableStream & { readableEnded?: boolean })
+      | null
+    stderrStream?.on('data', (chunk) => {
+      stderr.append(chunk)
+    })
     this.diagnosticLog?.log('transport_started', {
       adapterPid: child.pid,
     })
@@ -142,13 +174,6 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
       if (terminal) return
       terminal = true
       if (this.child === child) this.child = null
-      this.diagnosticLog?.log('transport_exit', {
-        adapterPid: child.pid,
-        code: exit.code,
-        signal: exit.signal,
-        error: exit.error?.message,
-        terminate,
-      })
       if (terminate) {
         try {
           child.kill()
@@ -156,8 +181,41 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
           // The error event is already terminal; the supervisor must still recover.
         }
       }
-      this.releaseDiagnosticLog()
-      callbacks.onExit(exit)
+      let finalized = false
+      let drainTimer: ReturnType<typeof setTimeout> | null = null
+      const finalize = () => {
+        if (finalized) return
+        finalized = true
+        if (drainTimer) clearTimeout(drainTimer)
+        stderrStream?.removeListener('end', finalize)
+        const stderrSnapshot = stderr.snapshot()
+        const exitWithDiagnostics = {
+          ...exit,
+          stderrBytesSeen: stderrSnapshot.bytesSeen,
+          stderrBytesCaptured: stderrSnapshot.value.byteLength,
+          stderrTruncated: stderrSnapshot.truncated,
+        }
+        this.diagnosticLog?.log('transport_exit', {
+          adapterPid: child.pid,
+          code: exitWithDiagnostics.code,
+          signal: exitWithDiagnostics.signal,
+          error: exitWithDiagnostics.error?.message,
+          terminate,
+          stderrBytesSeen: exitWithDiagnostics.stderrBytesSeen,
+          stderrBytesCaptured: exitWithDiagnostics.stderrBytesCaptured,
+          stderrTruncated: exitWithDiagnostics.stderrTruncated,
+          stderrTailChunks: diagnosticTextChunks(stderrSnapshot.value),
+        })
+        this.releaseDiagnosticLog()
+        callbacks.onExit(exitWithDiagnostics)
+      }
+      if (!stderrStream || stderrStream.readableEnded) {
+        finalize()
+        return
+      }
+      stderrStream.once('end', finalize)
+      drainTimer = setTimeout(finalize, STDERR_DRAIN_GRACE_MS)
+      drainTimer.unref?.()
     }
     child.on('message', (message) => {
       if (!isMicrophoneMetricsTransportMessage(message)) {
@@ -193,13 +251,106 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
       // Killing an already exited Electron utility process is idempotent here.
     }
     this.child = null
-    this.releaseDiagnosticLog()
+    // The exit/error path owns stderr draining and releases the log only after
+    // the bounded tail has been recorded.
   }
 
   private releaseDiagnosticLog() {
     if (this.ownsDiagnosticLog) void this.diagnosticLog?.close()
     this.diagnosticLog = null
     this.ownsDiagnosticLog = false
+  }
+}
+
+const MAX_STDERR_TAIL_BYTES = 16 * 1024
+const MAX_DIAGNOSTIC_TEXT_CHUNK_BYTES = 4 * 1024
+const STDERR_DRAIN_GRACE_MS = 100
+
+export class BoundedByteTail {
+  private value = Buffer.alloc(0)
+  private bytesSeen = 0
+
+  constructor(private readonly maximumBytes = MAX_STDERR_TAIL_BYTES) {}
+
+  append(chunk: unknown) {
+    const next = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))
+    this.bytesSeen += next.byteLength
+    if (this.maximumBytes <= 0) return
+    if (next.byteLength >= this.maximumBytes) {
+      this.value = Buffer.from(next.subarray(next.byteLength - this.maximumBytes))
+      return
+    }
+    const keepFromCurrent = Math.min(
+      this.value.byteLength,
+      this.maximumBytes - next.byteLength,
+    )
+    this.value = Buffer.concat([
+      this.value.subarray(this.value.byteLength - keepFromCurrent),
+      next,
+    ])
+  }
+
+  snapshot() {
+    return {
+      value: Buffer.from(this.value),
+      bytesSeen: this.bytesSeen,
+      truncated: this.bytesSeen > this.value.byteLength,
+    }
+  }
+}
+
+function diagnosticTextChunks(value: Buffer) {
+  const text = redactDiagnosticText(
+    value.toString('utf8'),
+    Number.MAX_SAFE_INTEGER,
+  )
+  const chunks: string[] = []
+  for (
+    let offset = 0;
+    offset < text.length;
+    offset += MAX_DIAGNOSTIC_TEXT_CHUNK_BYTES
+  ) {
+    chunks.push(text.slice(offset, offset + MAX_DIAGNOSTIC_TEXT_CHUNK_BYTES))
+  }
+  return chunks
+}
+
+function rotateOversizedDiagnosticFileSync(filePath: string) {
+  let size = 0
+  try {
+    size = fs.statSync(filePath).size
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
+  if (size < NATIVE_DIAGNOSTIC_MAX_FILE_BYTES) return
+  const last = rolledDiagnosticFilePath(
+    filePath,
+    NATIVE_DIAGNOSTIC_MAX_ROLLED_FILES,
+  )
+  try {
+    fs.unlinkSync(last)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+  for (
+    let index = NATIVE_DIAGNOSTIC_MAX_ROLLED_FILES - 1;
+    index >= 1;
+    index -= 1
+  ) {
+    renameSyncIfPresent(
+      rolledDiagnosticFilePath(filePath, index),
+      rolledDiagnosticFilePath(filePath, index + 1),
+    )
+  }
+  renameSyncIfPresent(filePath, rolledDiagnosticFilePath(filePath, 1))
+}
+
+function renameSyncIfPresent(source: string, destination: string) {
+  try {
+    fs.renameSync(source, destination)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
 }
 

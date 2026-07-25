@@ -25,6 +25,19 @@ Module._load = function patchedLoad(request, parent, isMain) {
 }
 const smokeHost = require('./smoke-utility-host.cjs')
 Module._load = originalLoad
+const { NativeRuntimeSupervisor } = require(
+  path.resolve(
+    __dirname,
+    '..',
+    '..',
+    '..',
+    'apps',
+    'desktop',
+    'out',
+    'utility',
+    'runtime-supervisor.cjs',
+  ),
+)
 
 const manifest = {
   appVersion: '0.0.0-test',
@@ -39,7 +52,7 @@ test('reports observable control traffic when the native request hangs', async (
   const scheduler = createManualScheduler()
   const events = []
   const child = new FakeUtilityChild((message) => {
-    if (message.requestId !== 'media-smoke-command') return
+    if (message.command?.type !== 'stopPreview') return
     child.emit('message', {
       type: 'control',
       control: { type: 'native_request_pending' },
@@ -59,11 +72,12 @@ test('reports observable control traffic when the native request hangs', async (
   )
 
   child.emit('message', createReadyMessage('media'))
+  await new Promise(setImmediate)
   scheduler.flush()
 
   await assert.rejects(
     pending,
-    /Timed out during media utility host command; observed .*host:postMessage:media:command:request,request=media-smoke-command,command=stopPreview.*child:message:media:command:control,control=native_request_pending/,
+    /Timed out during media utility host command; observed .*host:postMessage:media:command:request,request=media-\d+-[^,]+,command=stopPreview.*child:message:media:command:control,control=native_request_pending/,
   )
   assert.equal(child.killCalls, 1)
   assert.ok(
@@ -80,7 +94,7 @@ test('reports observable control traffic when the native request fails', async (
   const scheduler = createManualScheduler()
   const events = []
   const child = new FakeUtilityChild((message) => {
-    if (message.requestId !== 'media-smoke-command') return
+    if (message.command?.type !== 'stopPreview') return
     child.emit('message', {
       type: 'control',
       control: { type: 'native_request_failed' },
@@ -89,6 +103,11 @@ test('reports observable control traffic when the native request fails', async (
       type: 'reply',
       requestId: message.requestId,
       ok: false,
+      error: {
+        code: 'internal',
+        message: 'native smoke command failed',
+        retryable: false,
+      },
     })
   })
   const context = createTestContext({
@@ -108,7 +127,7 @@ test('reports observable control traffic when the native request fails', async (
 
   await assert.rejects(
     pending,
-    /media DLL rejected the smoke command; observed .*child:message:media:command:control,control=native_request_failed.*child:message:media:command:reply,request=media-smoke-command,error/,
+    /media DLL rejected the smoke command: native smoke command failed; observed .*child:message:media:command:control,control=native_request_failed.*child:message:media:command:reply,request=media-\d+-[^,]+,error/,
   )
   assert.equal(child.killCalls, 1)
   assert.ok(
@@ -116,7 +135,87 @@ test('reports observable control traffic when the native request fails', async (
       (entry) =>
         entry.direction === 'host' &&
         entry.event === 'postMessage' &&
-        entry.detail === 'request,request=media-smoke-command,command=stopPreview',
+        entry.detail.startsWith('request,request=media-') &&
+        entry.detail.endsWith(',command=stopPreview'),
+    ),
+  )
+})
+
+test('requires a replacement host handshake after the injected crash', async () => {
+  const scheduler = createManualScheduler()
+  const events = []
+  const first = new FakeUtilityChild()
+  const second = new FakeUtilityChild((message) => {
+    if (message.command?.type === 'stopPreview') {
+      second.emit('message', {
+        type: 'reply',
+        requestId: message.requestId,
+        ok: true,
+      })
+      return
+    }
+    if (message.command?.type === 'shutdown') {
+      second.emit('message', {
+        type: 'reply',
+        requestId: message.requestId,
+        ok: true,
+      })
+      second.emit('exit', 0)
+    }
+  })
+  const children = [first, second]
+  const context = smokeHost.createSmokeContext({
+    manifest,
+    utilityRoot: path.join('C:', 'utility'),
+    nativeRoot: path.join('C:', 'native'),
+    utilityProcess: {
+      fork() {
+        return children.shift()
+      },
+    },
+    utilityEnvironment: {},
+    diagnosticRoot: null,
+    timeoutMs: 1_000,
+    setTimeoutFn: scheduler.setTimeout,
+    clearTimeoutFn: scheduler.clearTimeout,
+    NativeRuntimeSupervisor,
+    observe(entry) {
+      events.push(entry)
+    },
+  })
+
+  const pending = smokeHost.smokeRuntime(
+    context,
+    'media',
+    'media-host.cjs',
+    'syrnike_media.node',
+    true,
+  )
+  first.emit('message', createReadyMessage('media'))
+  await new Promise(setImmediate)
+  assert.equal(first.killCalls, 1)
+  first.emit('exit', 1)
+  scheduler.flushNext()
+  second.emit('message', createReadyMessage('media'))
+
+  await pending
+  assert.equal(
+    events.filter((entry) => entry.event === 'fork').length,
+    2,
+  )
+  assert.ok(
+    events.some(
+      (entry) =>
+        entry.event === 'message' &&
+        entry.phase === 'restart_handshake' &&
+        entry.detail.includes('ready'),
+    ),
+  )
+  assert.ok(
+    events.some(
+      (entry) =>
+        entry.direction === 'supervisor' &&
+        entry.detail === 'ready,restart=1,epoch=2',
     ),
   )
 })
@@ -136,6 +235,7 @@ function createTestContext({ child, events, scheduler }) {
     timeoutMs: 25,
     setTimeoutFn: scheduler.setTimeout,
     clearTimeoutFn: scheduler.clearTimeout,
+    NativeRuntimeSupervisor,
     observe(entry) {
       events.push(entry)
     },
@@ -160,19 +260,28 @@ function createManualScheduler() {
   let nextId = 1
   const pending = new Map()
   return {
-    setTimeout(callback) {
+    setTimeout(callback, delay = 0) {
       const id = nextId++
-      pending.set(id, callback)
+      pending.set(id, { callback, delay })
       return id
     },
     clearTimeout(id) {
       pending.delete(id)
     },
     flush() {
-      for (const [id, callback] of [...pending.entries()]) {
+      for (const [id, task] of [...pending.entries()]) {
         pending.delete(id)
-        callback()
+        task.callback()
       }
+    },
+    flushNext() {
+      const next = [...pending.entries()].sort(
+        ([leftId, left], [rightId, right]) =>
+          left.delay - right.delay || leftId - rightId,
+      )[0]
+      if (!next) return
+      pending.delete(next[0])
+      next[1].callback()
     },
   }
 }
@@ -192,3 +301,68 @@ class FakeUtilityChild extends EventEmitter {
     this.killCalls += 1
   }
 }
+
+test('quarantine shutdown completes when actor operations are blocked', async () => {
+  const scheduler = createManualScheduler()
+  const events = []
+  const child = new FakeUtilityChild((message) => {
+    // Simulate slow microphone operation - reply after 5s
+    if (message.command?.type === 'probeMicrophoneActor') {
+      scheduler.scheduleCallback(() => {
+        child.emit('message', {
+          type: 'reply',
+          reply: {
+            type: 'reply',
+            requestId: message.command.requestId,
+            ok: true,
+          },
+        })
+      }, 5000)
+    }
+  })
+  const context = createTestContext({
+    child,
+    events,
+    scheduler,
+  })
+
+  const pending = smokeHost.smokeRuntime(
+    context,
+    'media',
+    'media-host.cjs',
+    'syrnike_media.node',
+  )
+
+  child.emit('message', createReadyMessage('media'))
+  await new Promise(setImmediate)
+  scheduler.flush()
+
+  // Issue probe command that will block for 5s
+  const supervisor = await context.supervisor
+  const probePromise = supervisor.dispatch({
+    type: 'probeMicrophoneActor',
+  })
+
+  // Immediately request shutdown (should trigger quarantine)
+  const shutdownPromise = supervisor.shutdown()
+
+  // Fast-forward past probe timeout but not full blocking duration
+  scheduler.advanceBy(2000)
+  await new Promise(setImmediate)
+
+  // Shutdown should complete via quarantine mechanism
+  await assert.doesNotReject(
+    Promise.race([
+      shutdownPromise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Shutdown hung')), 3000)
+      ),
+    ]),
+    'Quarantine shutdown should complete within 3s even with blocked operations'
+  )
+
+  // Probe should have been abandoned
+  await assert.rejects(probePromise, /shutdown|aborted/i)
+
+  await pending
+})

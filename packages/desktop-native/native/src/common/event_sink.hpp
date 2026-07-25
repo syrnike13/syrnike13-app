@@ -122,6 +122,9 @@ inline bool transferEventBatchToConsumer(
 class EventSink {
  public:
   virtual ~EventSink() = default;
+  // SequencedEmitter serializes emit calls, but close may run concurrently
+  // with an in-flight emit so a bounded producer can be interrupted during
+  // shutdown. Implementations must make that close/emit race safe.
   virtual bool emit(RuntimeEvent event) = 0;
   virtual void close() = 0;
 };

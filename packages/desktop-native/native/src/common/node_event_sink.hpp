@@ -4,12 +4,14 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 
 #include "event_sink.hpp"
 
 namespace syrnike::desktop_native {
 
 class CoalescingEventLane;
+class ControlEventLane;
 
 class NodeEventSink final : public EventSink {
  public:
@@ -21,9 +23,11 @@ class NodeEventSink final : public EventSink {
 
  private:
   std::atomic_bool closed_{false};
+  std::mutex lifecycle_mutex_;
   Napi::ThreadSafeFunction control_callback_;
   Napi::ThreadSafeFunction media_callback_;
   Napi::ThreadSafeFunction metrics_callback_;
+  std::shared_ptr<ControlEventLane> control_lane_;
   std::shared_ptr<CoalescingEventLane> media_lane_;
 };
 

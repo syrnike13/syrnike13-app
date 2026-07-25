@@ -21,9 +21,7 @@ class LifetimeSafeFrameRelease final {
     if (!handler_) return;
     try {
       handler_(track_id, sequence);
-    } catch (...) {
-      std::terminate();
-    }
+    } catch (...) {}
   }
 
   void detach() noexcept {

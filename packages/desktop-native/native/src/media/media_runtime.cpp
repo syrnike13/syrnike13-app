@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <atomic>
+#include <cassert>
 #include <condition_variable>
 #include <cstdint>
 #include <exception>
@@ -47,16 +48,39 @@ void logRuntime(
   logger.write(event, fields);
 }
 
+std::shared_ptr<LiveKitPublicationClient> bindLiveKitRuntimeLifetime(
+  std::shared_ptr<LiveKitPublicationClient> client,
+  const std::shared_ptr<LiveKitRuntimeLifetime>& lifetime
+) {
+  if (!client) client = createRealLiveKitPublicationClient(lifetime);
+  client->retainRuntimeLifetime(lifetime);
+  return client;
+}
+
 }  // namespace
 
-class MediaRuntime::Implementation {
+class MediaRuntime::Implementation
+  : public std::enable_shared_from_this<MediaRuntime::Implementation> {
  public:
   Implementation(
     EventSinkPtr sink,
     std::shared_ptr<LiveKitPublicationClient> livekit_client,
-    MediaRuntime::SteadyNow screen_now
+    MediaRuntime::SteadyNow screen_now,
+    MediaRuntime::BeforeMicrophoneOperation before_microphone_operation,
+    MediaRuntime::BeforeVoiceShutdown before_voice_shutdown,
+    std::shared_ptr<LiveKitRuntimeLifetime> livekit_lifetime
   ) : emitter_(std::move(sink)),
-      livekit_client_(std::move(livekit_client)),
+      livekit_lifetime_(
+        livekit_lifetime
+          ? std::move(livekit_lifetime)
+          : std::make_shared<LiveKitRuntimeLifetime>()
+      ),
+      livekit_client_(bindLiveKitRuntimeLifetime(
+        std::move(livekit_client),
+        livekit_lifetime_
+      )),
+      before_microphone_operation_(std::move(before_microphone_operation)),
+      before_voice_shutdown_(std::move(before_voice_shutdown)),
       microphone_(emitter_, [this](MediaCommand command) {
         return postInternal(microphone_commands_, std::move(command));
       },
@@ -109,7 +133,15 @@ class MediaRuntime::Implementation {
     throw std::runtime_error(startup_error_);
   }
 
-  ~Implementation() { shutdownAndWait(); }
+  ~Implementation() {
+    try {
+      shutdownAndWait();
+    } catch (...) {
+      // Destructors are the final containment boundary for environments that
+      // drop the ObjectWrap without awaiting shutdown.
+    }
+    destroying_.store(true, std::memory_order_release);
+  }
 
   bool dispatch(MediaCommand command) {
     const auto dispatch_started_at = steadyNowMs();
@@ -260,6 +292,9 @@ class MediaRuntime::Implementation {
       type == "__microphoneAttemptReady" ||
       type == "__microphoneAttemptFailed" ||
       type == "__microphoneRetireDone" ||
+      type == "__microphoneEndpointChanged" ||
+      type == "__microphoneProcessingStatus" ||
+      type == "__microphoneIdleExpired" ||
       type == "warmMicrophone" || type == "connectMicrophone" ||
       type == "configureMicrophone" || type == "setMicrophoneMuted" ||
       type == "disconnectMicrophone" || type == "startPreview" ||
@@ -276,7 +311,8 @@ class MediaRuntime::Implementation {
       type == "__screenAttemptReady" ||
       type == "__screenAttemptFailed" ||
       type == "__screenRetireDone" ||
-      type == "__screenRtpStalled" ||
+      type == "__screenExecutePublicationRestart" ||
+      type == "__screenRecoveryFailed" ||
       type == "connectScreen" || type == "startScreenCapture" ||
       type == "stopScreenCapture" || type == "disconnectScreen" ||
       type == "setLocalScreenPreviewDemand" ||
@@ -396,9 +432,23 @@ class MediaRuntime::Implementation {
  private:
   template <typename Queue>
   bool postInternal(Queue& queue, MediaCommand command) {
+    assert(
+      !destroying_.load(std::memory_order_acquire) &&
+      "actor posted after MediaRuntime destruction began"
+    );
     const auto traffic = classifyActorCommand(command);
     command.internal_enqueued_steady_ms = steadyNowMs();
-    command.internal_queue_depth = static_cast<std::uint32_t>(queue.size() + 1);
+    const auto depth = queue.size() + 1;
+    command.internal_queue_depth = static_cast<std::uint32_t>(depth);
+
+    // Telemetry: track queue depth for capacity planning
+    if (depth > 10 && (depth % 50 == 0 || depth > 200)) {
+      logRuntime(
+        "actor_queue_depth_high",
+        {{"depth", static_cast<std::uint64_t>(depth)}}
+      );
+    }
+
     if (traffic == ActorCommandTraffic::CoalescedMedia) {
       // This path stays allocation-free after the producer has attached its
       // release callback. Rejection leaves release ownership with producer.
@@ -407,13 +457,12 @@ class MediaRuntime::Implementation {
     const auto type = command.type;
     const auto session_id = command.session_id;
     const auto generation = command.generation;
-    if (queue.tryPush(std::move(command))) return true;
+    if (queue.tryPushFor(std::move(command), std::chrono::milliseconds(250))) {
+      return true;
+    }
     if (shutting_down_.load()) return false;
-    // A lost terminal/completion event leaves an actor live with no owner able
-    // to retire it. Fail closed so the desktop host recycles the utility
-    // process instead of continuing in an unknowable media state.
     logRuntime(
-      "media_runtime_internal_control_overflow",
+      "media_runtime_internal_control_backpressure_timeout",
       {
         {"command", type},
         {"sessionId", session_id},
@@ -421,7 +470,7 @@ class MediaRuntime::Implementation {
         {"queueDepth", static_cast<std::uint64_t>(queue.size())}
       }
     );
-    std::terminate();
+    return false;
   }
 
   void runtimeError(const MediaCommand& command, NativeError error) {
@@ -443,7 +492,7 @@ class MediaRuntime::Implementation {
     try {
       on_drop();
     } catch (...) {
-      std::terminate();
+      logRuntime("media_runtime_command_resource_release_failed");
     }
   }
 
@@ -469,7 +518,9 @@ class MediaRuntime::Implementation {
       command.type == "__microphoneAttemptReady" ||
       command.type == "__microphoneAttemptFailed" ||
       command.type == "__microphoneRetireDone" ||
-      command.type == "__microphoneEndpointChanged"
+      command.type == "__microphoneEndpointChanged" ||
+      command.type == "__microphoneProcessingStatus" ||
+      command.type == "__microphoneIdleExpired"
     ) {
       microphone_.handleWorkerCommand(command);
       return;
@@ -547,6 +598,25 @@ class MediaRuntime::Implementation {
       return;
     }
     unknown(command);
+  }
+
+  void routeMicrophone(MediaCommand& command) {
+    if (command.type == "probeMicrophoneActor") {
+      emitter_.emit(microphone_.probe(command));
+      return;
+    }
+    if (!microphone_operations_.tryPushFor(
+          command,
+          std::chrono::milliseconds(250)
+        )) {
+      throw std::runtime_error(
+        "microphone operation queue remained full past its bounded deadline"
+      );
+    }
+    // The operation queue now owns any command-scoped native release. Disarm
+    // the routing queue's guard so a future resource-bearing command cannot
+    // release the same payload twice.
+    command.on_drop = {};
   }
 
   void handleVoice(MediaCommand& command) {
@@ -947,11 +1017,30 @@ class MediaRuntime::Implementation {
       try {
         screen_.handleTerminal(command);
       } catch (...) {
-        desired_screen_.set("__screen_terminal__", command.generation);
+        desired_screen_.setIfCurrent(
+          command.session_id,
+          command.generation,
+          "__screen_terminal__",
+          command.generation);
         screen_commands_.discardMedia(command.session_id, command.generation);
         throw;
       }
-      desired_screen_.set("__screen_terminal__", command.generation);
+      desired_screen_.setIfCurrent(
+        command.session_id,
+        command.generation,
+        "__screen_terminal__",
+        command.generation);
+      screen_commands_.discardMedia(command.session_id, command.generation);
+      return;
+    }
+    if (command.type == "__screenRecoveryFailed") {
+      if (!desired_screen_.isCurrent(command.session_id, command.generation)) return;
+      screen_.handleWorkerCommand(command);
+      desired_screen_.setIfCurrent(
+        command.session_id,
+        command.generation,
+        "__screen_recovery_failed__",
+        command.generation);
       screen_commands_.discardMedia(command.session_id, command.generation);
       return;
     }
@@ -959,7 +1048,7 @@ class MediaRuntime::Implementation {
       command.type == "__screenAttemptReady" ||
       command.type == "__screenAttemptFailed" ||
       command.type == "__screenRetireDone" ||
-      command.type == "__screenRtpStalled"
+      command.type == "__screenExecutePublicationRestart"
     ) {
       screen_.handleWorkerCommand(command);
       return;
@@ -1134,12 +1223,27 @@ class MediaRuntime::Implementation {
       command.type,
       false,
     };
-    emitter_.emit(failedReply(command, error));
+    emitCommandFailure(command, std::move(error));
+  }
+
+  static bool isInternalCommand(const MediaCommand& command) noexcept {
+    return command.type.starts_with("__");
+  }
+
+  void emitCommandFailure(const MediaCommand& command, NativeError error) {
+    if (!command.request_id.empty()) {
+      emitter_.emit(failedReply(command, error));
+    }
     runtimeError(command, std::move(error));
   }
 
   template <typename Queue, typename Handler>
-  void commandLoop(const char* queue_name, Queue& queue, Handler handler) {
+  void commandLoop(
+    const char* queue_name,
+    Queue& queue,
+    Handler handler,
+    bool decrement_pending = true
+  ) {
     while (auto command = queue.waitPop()) {
       ActorCommandResourceGuard resource_guard(*command);
       const auto command_started_at = steadyNowMs();
@@ -1198,8 +1302,7 @@ class MediaRuntime::Implementation {
         if (audio_failure && audio_failure->hresult() != S_OK) {
           native_error.hresult = static_cast<std::int64_t>(audio_failure->hresult());
         }
-        emitter_.emit(failedReply(*command, native_error));
-        runtimeError(*command, std::move(native_error));
+        emitCommandFailure(*command, std::move(native_error));
         logRuntime(
           "media_runtime_command_error",
           {
@@ -1213,8 +1316,28 @@ class MediaRuntime::Implementation {
             {"stale", stale_generation}
           }
         );
+      } catch (...) {
+        NativeError native_error{
+          "native_command_failed",
+          "Native command failed with an unknown exception",
+          command->type,
+          true,
+          command->session_id,
+          command->session_id.empty()
+            ? std::optional<std::uint64_t>{}
+            : std::optional<std::uint64_t>{command->generation},
+        };
+        emitCommandFailure(*command, std::move(native_error));
+        logRuntime(
+          "media_runtime_command_unknown_error",
+          {
+            {"queue", queue_name},
+            {"command", command->type},
+            {"internal", isInternalCommand(*command)}
+          }
+        );
       }
-      if (!command->request_id.empty()) {
+      if (decrement_pending && !command->request_id.empty()) {
         pending_commands_.fetch_sub(1, std::memory_order_relaxed);
       }
     }
@@ -1252,34 +1375,111 @@ class MediaRuntime::Implementation {
     screen_commands_.closeAndDiscard();
     camera_commands_.closeAndDiscard();
     query_commands_.closeAndDiscard();
+    microphone_operations_.closeAndDiscard();
   }
 
   static void joinIfRunning(std::thread& worker) {
     if (worker.joinable()) worker.join();
   }
 
+  bool quarantineSubsystemShutdown(
+    std::chrono::steady_clock::time_point deadline,
+    std::thread voice_worker,
+    std::thread microphone_worker,
+    std::thread microphone_operation_worker,
+    std::thread screen_worker,
+    std::thread camera_worker,
+    std::thread query_worker
+  ) {
+    auto owner = weak_from_this().lock();
+    if (!owner) {
+      joinIfRunning(voice_worker);
+      try { voice_.shutdown(); } catch (...) {}
+      joinIfRunning(screen_worker);
+      try { screen_.shutdown(deadline); } catch (...) {}
+      joinIfRunning(camera_worker);
+      try { camera_.shutdown(deadline); } catch (...) {}
+      joinIfRunning(query_worker);
+      joinIfRunning(microphone_worker);
+      joinIfRunning(microphone_operation_worker);
+      try { preview_.shutdown(deadline); } catch (...) {}
+      try { microphone_.shutdown(); } catch (...) {}
+      return true;
+    }
+    auto cleanup_task = [
+      owner,
+      deadline,
+      voice_worker = std::move(voice_worker),
+      microphone_worker = std::move(microphone_worker),
+      microphone_operation_worker = std::move(microphone_operation_worker),
+      screen_worker = std::move(screen_worker),
+      camera_worker = std::move(camera_worker),
+      query_worker = std::move(query_worker)
+    ]() mutable {
+      joinIfRunning(voice_worker);
+      try { owner->voice_.shutdown(); } catch (...) {}
+      joinIfRunning(screen_worker);
+      try { owner->screen_.shutdown(deadline); } catch (...) {}
+      joinIfRunning(camera_worker);
+      try { owner->camera_.shutdown(deadline); } catch (...) {}
+      joinIfRunning(query_worker);
+      joinIfRunning(microphone_worker);
+      joinIfRunning(microphone_operation_worker);
+      if (!owner->preview_session_id_.empty()) {
+        owner->microphone_.clearPreviewConsumer(
+          owner->preview_session_id_,
+          owner->preview_generation_
+        );
+      }
+      try { owner->preview_.shutdown(deadline); } catch (...) {}
+      try { owner->microphone_.shutdown(); } catch (...) {}
+    };
+    auto cleanup = std::make_shared<decltype(cleanup_task)>(
+      std::move(cleanup_task)
+    );
+    try {
+      std::thread([cleanup] { (*cleanup)(); }).detach();
+    } catch (...) {
+      (*cleanup)();
+    }
+    return true;
+  }
+
   void run() {
     logRuntime("media_runtime_worker_start");
     const auto com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     const bool com_initialized = SUCCEEDED(com_result);
-    std::optional<LiveKitLease> livekit;
     std::thread microphone_worker;
+    std::thread microphone_operation_worker;
     std::thread screen_worker;
     std::thread camera_worker;
     std::thread query_worker;
     std::thread voice_worker;
     bool startup_ready = false;
     try {
-      livekit.emplace();
+      livekit_lifetime_->initialize();
       voice_worker = std::thread([this] {
         commandLoop("voice", voice_commands_, [this](auto& command) {
           handleVoice(command);
         });
       });
       microphone_worker = std::thread([this] {
-        commandLoop("microphone", microphone_commands_, [this](const auto& command) {
-          handleMicrophone(command);
+        commandLoop("microphone", microphone_commands_, [this](auto& command) {
+          routeMicrophone(command);
         });
+      });
+      microphone_operation_worker = std::thread([this] {
+        commandLoop(
+          "microphone-operation",
+          microphone_operations_,
+          [this](const auto& command) {
+            if (before_microphone_operation_) {
+              before_microphone_operation_(command);
+            }
+            handleMicrophone(command);
+          },
+          false
+        );
       });
       screen_worker = std::thread([this] {
         commandLoop("screen", screen_commands_, [this](auto& command) {
@@ -1305,19 +1505,24 @@ class MediaRuntime::Implementation {
       }
       shutting_down_.store(true);
       closeWorkerQueues();
-      joinIfRunning(voice_worker);
-      joinIfRunning(microphone_worker);
-      joinIfRunning(screen_worker);
-      joinIfRunning(camera_worker);
-      joinIfRunning(query_worker);
-      if (!preview_session_id_.empty()) {
-        microphone_.clearPreviewConsumer(preview_session_id_, preview_generation_);
+      const auto actor_shutdown_deadline =
+          std::chrono::steady_clock::now() + kNativeShutdownBudget;
+      if (before_voice_shutdown_) {
+        try { before_voice_shutdown_(); } catch (...) {}
       }
-      preview_.shutdown();
-      microphone_.shutdown();
-      screen_.shutdown();
-      camera_.shutdown();
-      voice_.shutdown();
+      if (!quarantineSubsystemShutdown(
+            actor_shutdown_deadline,
+            std::move(voice_worker),
+            std::move(microphone_worker),
+            std::move(microphone_operation_worker),
+            std::move(screen_worker),
+            std::move(camera_worker),
+            std::move(query_worker)
+          )) {
+        throw std::runtime_error(
+          "native runtime shutdown owner was not established"
+        );
+      }
       if (shutdown_command && shutdown_command->type == "shutdown") {
         emitter_.emit(reply(*shutdown_command));
       }
@@ -1327,18 +1532,20 @@ class MediaRuntime::Implementation {
       closeWorkerQueues();
       joinIfRunning(voice_worker);
       joinIfRunning(microphone_worker);
+      joinIfRunning(microphone_operation_worker);
       joinIfRunning(screen_worker);
       joinIfRunning(camera_worker);
       joinIfRunning(query_worker);
       if (!preview_session_id_.empty()) {
         microphone_.clearPreviewConsumer(preview_session_id_, preview_generation_);
       }
-      try { preview_.shutdown(); } catch (...) {}
+      const auto actor_shutdown_deadline =
+          std::chrono::steady_clock::now() + kNativeShutdownBudget;
+      try { preview_.shutdown(actor_shutdown_deadline); } catch (...) {}
       try { microphone_.shutdown(); } catch (...) {}
-      try { screen_.shutdown(); } catch (...) {}
-      try { camera_.shutdown(); } catch (...) {}
+      try { screen_.shutdown(actor_shutdown_deadline); } catch (...) {}
+      try { camera_.shutdown(actor_shutdown_deadline); } catch (...) {}
       try { voice_.shutdown(); } catch (...) {}
-      livekit.reset();
       if (!startup_ready) {
         markStartupFailed(error.what());
         if (com_initialized) CoUninitialize();
@@ -1349,33 +1556,42 @@ class MediaRuntime::Implementation {
       event.error = NativeError{"livekit_initialize_failed", error.what(), "initialize", false};
       emitter_.emit(std::move(event));
       logRuntime("media_runtime_worker_exit_fatal", {{"message", error.what()}});
-      std::terminate();
+      shutting_down_.store(true, std::memory_order_release);
+      if (com_initialized) CoUninitialize();
+      return;
     }
-    livekit.reset();
     if (com_initialized) CoUninitialize();
     logRuntime("media_runtime_worker_exit");
   }
 
+  // Lifetime invariant: callback targets are declared before every actor that
+  // captures them. Reverse member destruction therefore stops actors before
+  // their queues, generation fences, LiveKit client/lease, and emitter die.
   SequencedEmitter emitter_;
-  std::shared_ptr<LiveKitPublicationClient> livekit_client_ = createRealLiveKitPublicationClient();
-  GenerationFence desired_voice_;
-  GenerationFence desired_microphone_;
-  GenerationFence desired_microphone_warm_;
-  MicrophoneActor microphone_;
-  GenerationFence desired_screen_;
-  ScreenActor screen_;
-  GenerationFence desired_camera_;
-  CameraActor camera_;
-  PreviewActor preview_;
-  VoiceActor voice_;
   ActorMailbox<> voice_commands_;
   BoundedQueue<MediaCommand, 256> microphone_commands_;
+  BoundedQueue<MediaCommand, 256> microphone_operations_;
   ActorMailbox<> screen_commands_;
   ActorMailbox<> camera_commands_;
   BoundedQueue<MediaCommand, 256> query_commands_;
   BoundedQueue<MediaCommand, 4> control_commands_;
   std::atomic_bool shutting_down_{false};
+  std::atomic_bool destroying_{false};
   std::atomic_uint32_t pending_commands_{0};
+  GenerationFence desired_voice_;
+  GenerationFence desired_microphone_;
+  GenerationFence desired_microphone_warm_;
+  GenerationFence desired_screen_;
+  GenerationFence desired_camera_;
+  std::shared_ptr<LiveKitRuntimeLifetime> livekit_lifetime_;
+  std::shared_ptr<LiveKitPublicationClient> livekit_client_;
+  MediaRuntime::BeforeMicrophoneOperation before_microphone_operation_;
+  MediaRuntime::BeforeVoiceShutdown before_voice_shutdown_;
+  MicrophoneActor microphone_;
+  ScreenActor screen_;
+  CameraActor camera_;
+  PreviewActor preview_;
+  VoiceActor voice_;
   std::string preview_session_id_;
   std::uint64_t preview_generation_ = 0;
   std::mutex shutdown_mutex_;
@@ -1389,11 +1605,17 @@ class MediaRuntime::Implementation {
 MediaRuntime::MediaRuntime(
   EventSinkPtr sink,
   std::shared_ptr<LiveKitPublicationClient> livekit_client,
-  SteadyNow screen_now
-) : implementation_(std::make_unique<Implementation>(
+  SteadyNow screen_now,
+  BeforeMicrophoneOperation before_microphone_operation,
+  BeforeVoiceShutdown before_voice_shutdown,
+  std::shared_ptr<LiveKitRuntimeLifetime> livekit_lifetime
+) : implementation_(std::make_shared<Implementation>(
       std::move(sink),
       std::move(livekit_client),
-      std::move(screen_now)
+      std::move(screen_now),
+      std::move(before_microphone_operation),
+      std::move(before_voice_shutdown),
+      std::move(livekit_lifetime)
     )) {}
 
 MediaRuntime::~MediaRuntime() = default;

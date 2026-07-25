@@ -19,6 +19,7 @@ const WARNING_EVENTS = new Set([
   'request_rejected_queue_full',
   'restart_scheduled',
   'runtime_event_dropped_out_of_order',
+  'screen_backend_restart',
 ])
 const FATAL_EVENTS = new Set([
   'native_contract_corruption',
@@ -43,6 +44,7 @@ const FAILURE_EVENTS = new Set([
   'request_reply_error',
   'request_timed_out',
   'runtime_degraded',
+  'camera_read_stall',
   'screen_publication_failed',
   'session_rotation_failed',
 ])
@@ -84,6 +86,14 @@ export function captureNativeDiagnosticIncident(
   if (activeAccountId === null) return null
   if (record.event === 'adapter_exited' && record.reason === 'expected') return null
   if (record.errorCode === 'stale_generation') return null
+  // Gateway control errors with fatal=false are evidence for the active voice
+  // operation, not root incidents. A typed terminal projection will create
+  // the incident if the operation actually ends.
+  if (
+    record.scope === 'desktop-voice' &&
+    record.event === 'control_event' &&
+    record.fatal === false
+  ) return null
   if (NON_INCIDENT_PROJECTIONS.has(record.event)) return null
   if (!record.errorCode && !FAILURE_EVENTS.has(record.event)) return null
 
@@ -365,6 +375,7 @@ function incidentSeverity(
   record: DiagnosticLogRecord,
 ): NativeDiagnosticIncidentSeverity {
   if (FATAL_EVENTS.has(record.event)) return 'fatal'
+  if (record.fatal === true) return 'fatal'
   if (WARNING_EVENTS.has(record.event)) return 'warning'
   return 'error'
 }

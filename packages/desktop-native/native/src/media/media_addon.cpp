@@ -1,13 +1,17 @@
 #include <napi.h>
+#include <uv.h>
 #include <windows.h>
 
+#include <atomic>
 #include <memory>
 #include <filesystem>
 #include <mutex>
+#include <new>
 #include <stdexcept>
 #include <thread>
 
 #include "../common/addon_parsing.hpp"
+#include "../common/async_cleanup_dispatcher.hpp"
 #include "../common/diagnostic_log.hpp"
 #include "../common/node_event_sink.hpp"
 #include "media_runtime.hpp"
@@ -15,9 +19,16 @@
 namespace syrnike::desktop_native::media {
 namespace {
 
-std::mutex runtimes_mutex;
-std::shared_ptr<MediaRuntime> active_runtime;
-Napi::FunctionReference runtime_constructor;
+struct MediaRuntimeRegistry final {
+  std::mutex runtime_mutex;
+  std::shared_ptr<MediaRuntime> active_runtime;
+};
+
+struct MediaAddonState final {
+  Napi::FunctionReference runtime_constructor;
+  std::shared_ptr<MediaRuntimeRegistry> registry =
+    std::make_shared<MediaRuntimeRegistry>();
+};
 
 void ensureLiveKitLoaded() {
   auto& diagnostics = diagnostics::DiagnosticLog::instance();
@@ -54,58 +65,157 @@ void ensureLiveKitLoaded() {
   }
 }
 
-void cleanupRuntimes() {
+void cleanupRuntimes(const std::shared_ptr<MediaRuntimeRegistry>& registry) {
+  if (!registry) return;
   auto& diagnostics = diagnostics::DiagnosticLog::instance();
   if (diagnostics.enabled()) diagnostics.write("media_addon_cleanup_start");
   std::shared_ptr<MediaRuntime> owned;
   {
-    std::lock_guard lock(runtimes_mutex);
-    owned = std::move(active_runtime);
+    std::lock_guard lock(registry->runtime_mutex);
+    owned = std::move(registry->active_runtime);
   }
-  if (!owned) return;
-  owned->requestShutdown();
-  owned->shutdownAndWait();
+  if (owned) {
+    try {
+      owned->requestShutdown();
+      owned->shutdownAndWait();
+    } catch (...) {
+      // Environment cleanup must always reach hook removal.
+    }
+  }
   if (diagnostics.enabled()) diagnostics.write("media_addon_cleanup_done");
 }
 
-void releaseRuntime(const std::shared_ptr<MediaRuntime>& runtime) {
-  std::lock_guard lock(runtimes_mutex);
-  if (active_runtime == runtime) active_runtime.reset();
+void releaseRuntime(
+  const std::shared_ptr<MediaRuntimeRegistry>& registry,
+  const std::shared_ptr<MediaRuntime>& runtime
+) {
+  if (!registry) return;
+  std::lock_guard lock(registry->runtime_mutex);
+  if (registry->active_runtime == runtime) registry->active_runtime.reset();
 }
 
-void asyncCleanup(napi_async_cleanup_hook_handle handle, void*) {
-  std::thread([handle] {
-    cleanupRuntimes();
+struct AsyncCleanupRegistration final {
+  uv_loop_t* loop = nullptr;
+  std::shared_ptr<MediaRuntimeRegistry> registry;
+  std::shared_ptr<AsyncCleanupNode> cleanup_node;
+  bool fail_dispatch_after_uv_init = false;
+};
+
+struct AsyncCleanupContext final {
+  napi_async_cleanup_hook_handle hook = nullptr;
+  uv_async_t completion{};
+  std::shared_ptr<MediaRuntimeRegistry> registry;
+};
+
+void finishAsyncCleanup(uv_async_t* async) {
+  auto* context = static_cast<AsyncCleanupContext*>(async->data);
+  if (!context) return;
+  napi_remove_async_cleanup_hook(context->hook);
+  uv_close(
+    reinterpret_cast<uv_handle_t*>(&context->completion),
+    [](uv_handle_t* handle) {
+      delete static_cast<AsyncCleanupContext*>(handle->data);
+    }
+  );
+}
+
+bool injectionEnabled(const char* name) {
+  char value[2]{};
+  return GetEnvironmentVariableA(name, value, 2) == 1 && value[0] == '1';
+}
+
+void completeAsyncCleanup(AsyncCleanupContext* context) noexcept {
+  try {
+    cleanupRuntimes(context->registry);
+  } catch (...) {
+  }
+  try {
+    diagnostics::DiagnosticLog::instance().shutdown();
+  } catch (...) {
+  }
+  static_cast<void>(uv_async_send(&context->completion));
+}
+
+void asyncCleanup(napi_async_cleanup_hook_handle handle, void* data) {
+  std::unique_ptr<AsyncCleanupRegistration> registration(
+    static_cast<AsyncCleanupRegistration*>(data)
+  );
+  auto* context = new (std::nothrow) AsyncCleanupContext;
+  if (!registration || !registration->loop || !context) {
+    delete context;
+    cleanupRuntimes(registration ? registration->registry : nullptr);
     diagnostics::DiagnosticLog::instance().shutdown();
     napi_remove_async_cleanup_hook(handle);
-  }).detach();
+    return;
+  }
+  context->hook = handle;
+  context->registry = registration->registry;
+  context->completion.data = context;
+  if (uv_async_init(
+        registration->loop,
+        &context->completion,
+        finishAsyncCleanup
+      ) != 0) {
+    delete context;
+    cleanupRuntimes(registration->registry);
+    diagnostics::DiagnosticLog::instance().shutdown();
+    napi_remove_async_cleanup_hook(handle);
+    return;
+  }
+  try {
+    if (registration->fail_dispatch_after_uv_init) {
+      throw std::bad_alloc();
+    }
+    registration->cleanup_node->prepareRaw(
+      context,
+      [](void* owner) noexcept {
+        completeAsyncCleanup(
+          static_cast<AsyncCleanupContext*>(owner)
+        );
+      }
+    );
+    AsyncCleanupDispatcher::instance().submit(
+      std::move(registration->cleanup_node)
+    );
+  } catch (...) {
+    completeAsyncCleanup(context);
+  }
 }
 
 class ShutdownWorker final : public Napi::AsyncWorker {
  public:
-  ShutdownWorker(Napi::Env env, std::shared_ptr<MediaRuntime> runtime)
+  ShutdownWorker(
+    Napi::Env env,
+    std::shared_ptr<MediaRuntimeRegistry> registry,
+    std::shared_ptr<MediaRuntime> runtime
+  )
     : Napi::AsyncWorker(env), deferred_(Napi::Promise::Deferred::New(env)),
-      runtime_(std::move(runtime)) {}
+      registry_(std::move(registry)), runtime_(std::move(runtime)) {}
 
   Napi::Promise promise() const { return deferred_.Promise(); }
 
   void Execute() override {
-    auto& diagnostics = diagnostics::DiagnosticLog::instance();
-    if (diagnostics.enabled()) diagnostics.write("media_addon_shutdown_worker_execute");
-    runtime_->requestShutdown();
-    runtime_->shutdownAndWait();
-    if (diagnostics.enabled()) diagnostics.write("media_addon_shutdown_worker_flushing");
-    diagnostics.shutdown();
+    try {
+      auto& diagnostics = diagnostics::DiagnosticLog::instance();
+      if (diagnostics.enabled()) diagnostics.write("media_addon_shutdown_worker_execute");
+      runtime_->requestShutdown();
+      runtime_->shutdownAndWait();
+      if (diagnostics.enabled()) diagnostics.write("media_addon_shutdown_worker_flushing");
+      diagnostics.shutdown();
+    } catch (const std::exception& error) {
+      SetError(error.what());
+    } catch (...) {
+      SetError("unknown native media shutdown failure");
+    }
+    releaseRuntime(registry_, runtime_);
   }
 
   void OnOK() override {
-    releaseRuntime(runtime_);
     auto& diagnostics = diagnostics::DiagnosticLog::instance();
     if (diagnostics.enabled()) diagnostics.write("media_addon_shutdown_worker_ok");
     deferred_.Resolve(Env().Undefined());
   }
   void OnError(const Napi::Error& error) override {
-    releaseRuntime(runtime_);
     auto& diagnostics = diagnostics::DiagnosticLog::instance();
     if (diagnostics.enabled()) {
       diagnostics.write(
@@ -118,6 +228,7 @@ class ShutdownWorker final : public Napi::AsyncWorker {
 
  private:
   Napi::Promise::Deferred deferred_;
+  std::shared_ptr<MediaRuntimeRegistry> registry_;
   std::shared_ptr<MediaRuntime> runtime_;
 };
 
@@ -162,8 +273,9 @@ class MediaRuntimeBinding final : public Napi::ObjectWrap<MediaRuntimeBinding> {
       InstanceMethod("dispatch", &MediaRuntimeBinding::dispatch),
       InstanceMethod("shutdown", &MediaRuntimeBinding::shutdown),
     });
-    runtime_constructor = Napi::Persistent(constructor);
-    runtime_constructor.SuppressDestruct();
+    auto* state = env.GetInstanceData<MediaAddonState>();
+    if (!state) throw Napi::Error::New(env, "media addon state is unavailable");
+    state->runtime_constructor = Napi::Persistent(constructor);
   }
 
   explicit MediaRuntimeBinding(const Napi::CallbackInfo& info)
@@ -172,10 +284,15 @@ class MediaRuntimeBinding final : public Napi::ObjectWrap<MediaRuntimeBinding> {
     if (info.Length() != 1 || !info[0].IsFunction()) {
       throw Napi::TypeError::New(info.Env(), "createMediaRuntime requires an event callback");
     }
-    std::lock_guard lock(runtimes_mutex);
-    if (active_runtime) {
+    auto* state = info.Env().GetInstanceData<MediaAddonState>();
+    if (!state || !state->registry) {
+      throw Napi::Error::New(info.Env(), "media addon state is unavailable");
+    }
+    registry_ = state->registry;
+    std::lock_guard lock(registry_->runtime_mutex);
+    if (registry_->active_runtime) {
       throw Napi::Error::New(
-        info.Env(), "runtime_already_created: media runtime is singleton per utility process"
+        info.Env(), "runtime_already_created: media runtime is singleton per environment"
       );
     }
     auto sink = std::make_shared<NodeEventSink>(
@@ -192,8 +309,21 @@ class MediaRuntimeBinding final : public Napi::ObjectWrap<MediaRuntimeBinding> {
         info.Env(), std::string("native_runtime_initialize_failed: ") + error.what()
       );
     }
-    active_runtime = runtime_;
+    registry_->active_runtime = runtime_;
     if (diagnostics.enabled()) diagnostics.write("media_addon_runtime_create_ok");
+  }
+
+  ~MediaRuntimeBinding() {
+    auto runtime = std::move(runtime_);
+    if (!runtime) return;
+    runtime->requestShutdown();
+    try {
+      runtime->shutdownAndWait();
+    } catch (...) {
+      // The registry must be cleared even if a contained actor reports a
+      // teardown failure, otherwise a collected wrapper poisons this env.
+    }
+    releaseRuntime(registry_, runtime);
   }
 
  private:
@@ -248,12 +378,17 @@ class MediaRuntimeBinding final : public Napi::ObjectWrap<MediaRuntimeBinding> {
     }
     if (diagnostics.enabled()) diagnostics.write("media_addon_shutdown_requested");
     auto runtime = std::move(runtime_);
-    auto* worker = new ShutdownWorker(info.Env(), std::move(runtime));
+    auto* worker = new ShutdownWorker(
+      info.Env(),
+      registry_,
+      std::move(runtime)
+    );
     const auto promise = worker->promise();
     worker->Queue();
     return promise;
   }
 
+  std::shared_ptr<MediaRuntimeRegistry> registry_;
   std::shared_ptr<MediaRuntime> runtime_;
 };
 
@@ -261,7 +396,11 @@ Napi::Value createMediaRuntime(const Napi::CallbackInfo& info) {
   if (info.Length() != 1 || !info[0].IsFunction()) {
     throw Napi::TypeError::New(info.Env(), "createMediaRuntime requires an event callback");
   }
-  return runtime_constructor.New({info[0]});
+  auto* state = info.Env().GetInstanceData<MediaAddonState>();
+  if (!state || state->runtime_constructor.IsEmpty()) {
+    throw Napi::Error::New(info.Env(), "media addon constructor is unavailable");
+  }
+  return state->runtime_constructor.New({info[0]});
 }
 
 Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
@@ -292,6 +431,8 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
 }
 
 Napi::Object initialize(Napi::Env env, Napi::Object exports) {
+  auto* state = new MediaAddonState;
+  env.SetInstanceData(state);
   auto& diagnostics = diagnostics::DiagnosticLog::instance();
   diagnostics.initializeForMediaProcess();
   if (diagnostics.enabled()) {
@@ -312,8 +453,33 @@ Napi::Object initialize(Napi::Env env, Napi::Object exports) {
     throw;
   }
   MediaRuntimeBinding::initialize(env);
+  static_cast<void>(AsyncCleanupDispatcher::instance());
+  uv_loop_t* loop = nullptr;
+  if (napi_get_uv_event_loop(env, &loop) != napi_ok || !loop) {
+    throw Napi::Error::New(env, "media addon uv loop is unavailable");
+  }
+  auto* cleanup_registration = new AsyncCleanupRegistration{
+    loop,
+    state->registry,
+    std::make_shared<AsyncCleanupNode>(
+      failFirstAsyncCleanupLauncher(injectionEnabled(
+        "SYRNIKE_NATIVE_FAIL_ASYNC_CLEANUP_LAUNCH_ONCE"
+      ))
+    ),
+    injectionEnabled(
+      "SYRNIKE_NATIVE_FAIL_ASYNC_CLEANUP_DISPATCH_ONCE"
+    ),
+  };
   napi_async_cleanup_hook_handle cleanup_handle = nullptr;
-  napi_add_async_cleanup_hook(env, asyncCleanup, nullptr, &cleanup_handle);
+  if (napi_add_async_cleanup_hook(
+        env,
+        asyncCleanup,
+        cleanup_registration,
+        &cleanup_handle
+      ) != napi_ok) {
+    delete cleanup_registration;
+    throw Napi::Error::New(env, "media addon cleanup hook registration failed");
+  }
   exports.Set("createMediaRuntime", Napi::Function::New(env, createMediaRuntime));
   exports.Set("getRuntimeInfo", Napi::Function::New(env, getRuntimeInfo));
   return exports;

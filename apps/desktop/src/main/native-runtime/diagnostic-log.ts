@@ -1,4 +1,12 @@
-import { appendFile, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  appendFile,
+  mkdir,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { performance } from 'node:perf_hooks'
@@ -44,6 +52,7 @@ export type DiagnosticLogRecord = {
   fenceGeneration?: number
   revision?: number
   muted?: boolean
+  fatal?: boolean
   pendingCount?: number
   queueDepth?: number
   queueWaitMs?: number
@@ -93,7 +102,12 @@ type CreateNativeDiagnosticLogOptions = {
   pid?: number
   mkdirImpl?: typeof mkdir
   appendFileImpl?: typeof appendFile
+  renameImpl?: typeof rename
+  rmImpl?: typeof rm
+  statImpl?: typeof stat
   writeFileImpl?: typeof writeFile
+  maxFileBytes?: number
+  maxRolledFiles?: number
 }
 
 export interface NativeDiagnosticLog {
@@ -122,6 +136,10 @@ const MAX_DEPTH = 6
 const MAX_ARRAY_ITEMS = 32
 const MAX_OBJECT_KEYS = 64
 const DIAGNOSTIC_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000
+export const NATIVE_DIAGNOSTIC_MAX_FILE_BYTES = 5 * 1024 * 1024
+export const NATIVE_DIAGNOSTIC_MAX_ROLLED_FILES = 2
+const MAX_RETAINED_DIAGNOSTIC_SESSIONS = 20
+const MAX_RETAINED_DIAGNOSTIC_BYTES = 200 * 1024 * 1024
 
 const SENSITIVE_KEY =
   /token|authorization|url|identity|participant|user(?:id)?|device|label|source(?:id)?|window|hwnd|room(?:id|name|url)?|process(?:id|path)|path/i
@@ -159,18 +177,51 @@ export async function pruneNativeDiagnosticSessions(
     },
   )
   const cutoff = now - DIAGNOSTIC_RETENTION_MS
+  const sessions = (
+    await Promise.all(
+      entries
+        .filter(
+          (entry) =>
+            entry.isDirectory() &&
+            /^native-(?:media|hotkey|overlay)-/.test(entry.name),
+        )
+        .map(async (entry) => {
+          const directory = path.join(rootDir, entry.name)
+          const [metadata, files] = await Promise.all([
+            stat(directory),
+            readdir(directory, { withFileTypes: true }).catch(() => []),
+          ])
+          const size = (
+            await Promise.all(
+              files
+                .filter((file) => file.isFile())
+                .map((file) =>
+                  stat(path.join(directory, file.name))
+                    .then((fileMetadata) => fileMetadata.size)
+                    .catch(() => 0),
+                ),
+            )
+          ).reduce((total, fileSize) => total + fileSize, 0)
+          return { directory, modifiedAt: metadata.mtimeMs, size }
+        }),
+    )
+  ).sort((left, right) => right.modifiedAt - left.modifiedAt)
+
+  let retainedBytes = 0
   await Promise.all(
-    entries
-      .filter(
-        (entry) =>
-          entry.isDirectory() && /^native-(?:media|hotkey|overlay)-/.test(entry.name),
-      )
-      .map(async (entry) => {
-        const directory = path.join(rootDir, entry.name)
-        const metadata = await stat(directory)
-        if (metadata.mtimeMs >= cutoff) return
-        await rm(directory, { recursive: true, force: true })
-      }),
+    sessions.map(async (session, index) => {
+      const expired = session.modifiedAt < cutoff
+      const overCount = index >= MAX_RETAINED_DIAGNOSTIC_SESSIONS
+      const overBytes =
+        !expired &&
+        !overCount &&
+        retainedBytes + session.size > MAX_RETAINED_DIAGNOSTIC_BYTES
+      if (expired || overCount || overBytes) {
+        await rm(session.directory, { recursive: true, force: true })
+        return
+      }
+      retainedBytes += session.size
+    }),
   )
 }
 
@@ -179,14 +230,28 @@ export function createNativeDiagnosticLog(
 ): NativeDiagnosticLog {
   const mkdirImpl = options.mkdirImpl ?? mkdir
   const appendFileImpl = options.appendFileImpl ?? appendFile
+  const renameImpl = options.renameImpl ?? rename
+  const rmImpl = options.rmImpl ?? rm
+  const statImpl = options.statImpl ?? stat
   const writeFileImpl = options.writeFileImpl ?? writeFile
+  const maxFileBytes =
+    options.maxFileBytes ?? NATIVE_DIAGNOSTIC_MAX_FILE_BYTES
+  const maxRolledFiles =
+    options.maxRolledFiles ?? NATIVE_DIAGNOSTIC_MAX_ROLLED_FILES
   const now = options.now ?? Date.now
   const monotonicNow = options.monotonicNow ?? (() => performance.now())
   const pid = options.pid ?? process.pid
   let closed = false
   let sequence = 0
+  let writtenBytes = 0
 
   let queue = mkdirImpl(options.directory, { recursive: true }).then(async () => {
+    writtenBytes = await statImpl(options.filePath)
+      .then((metadata) => metadata.size)
+      .catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return 0
+        throw error
+      })
     if (!options.latestPath || !options.paths) return
     const latest = {
       runtime: options.runtime,
@@ -243,9 +308,25 @@ export function createNativeDiagnosticLog(
         if (sanitized !== undefined) {
           entry.data.payload = sanitized
         }
-        void enqueue(() =>
-          appendFileImpl(options.filePath, `${JSON.stringify(entry)}\n`, 'utf8'),
-        ).catch(() => undefined)
+        const line = `${JSON.stringify(entry)}\n`
+        const lineBytes = Buffer.byteLength(line)
+        void enqueue(async () => {
+          if (
+            maxFileBytes > 0 &&
+            writtenBytes > 0 &&
+            writtenBytes + lineBytes > maxFileBytes
+          ) {
+            await rotateDiagnosticFile(
+              options.filePath,
+              maxRolledFiles,
+              renameImpl,
+              rmImpl,
+            )
+            writtenBytes = 0
+          }
+          await appendFileImpl(options.filePath, line, 'utf8')
+          writtenBytes += lineBytes
+        }).catch(() => undefined)
       } catch {
         // Diagnostics must never change runtime behavior.
       }
@@ -262,6 +343,49 @@ export function createNativeDiagnosticLog(
       await queue.catch(() => undefined)
     },
   }
+}
+
+export function rolledDiagnosticFilePath(filePath: string, index: number) {
+  const extension = path.extname(filePath)
+  const stem = extension ? filePath.slice(0, -extension.length) : filePath
+  return `${stem}.${index}${extension}`
+}
+
+async function rotateDiagnosticFile(
+  filePath: string,
+  maxRolledFiles: number,
+  renameImpl: typeof rename,
+  rmImpl: typeof rm,
+) {
+  if (maxRolledFiles <= 0) {
+    await rmImpl(filePath, { force: true })
+    return
+  }
+  await rmImpl(rolledDiagnosticFilePath(filePath, maxRolledFiles), {
+    force: true,
+  })
+  for (let index = maxRolledFiles - 1; index >= 1; index -= 1) {
+    await renameIfPresent(
+      rolledDiagnosticFilePath(filePath, index),
+      rolledDiagnosticFilePath(filePath, index + 1),
+      renameImpl,
+    )
+  }
+  await renameIfPresent(
+    filePath,
+    rolledDiagnosticFilePath(filePath, 1),
+    renameImpl,
+  )
+}
+
+async function renameIfPresent(
+  source: string,
+  destination: string,
+  renameImpl: typeof rename,
+) {
+  await renameImpl(source, destination).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== 'ENOENT') throw error
+  })
 }
 
 export function sanitizeDiagnosticValue(value: unknown): JsonValue | undefined {
@@ -303,15 +427,18 @@ function sanitizeValue(value: unknown, depth: number): JsonValue | undefined {
   return OMITTED
 }
 
-function redactDiagnosticText(value: string) {
-  return redactSensitiveText(value)
+export function redactDiagnosticText(
+  value: string,
+  maximumLength = 4_096,
+) {
+  return redactSensitiveText(value, Number.MAX_SAFE_INTEGER)
     .replace(
       /\b(identity|participant(?:Identity)?|user(?:Id)?|room(?:Id|Name|Url)?|device(?:Id|Name)?|source(?:Id)?|window(?:Title)?|processPath)\s*[:=]\s*(?:["']?)[^\s,;"'}\]]+/gi,
       '$1=[redacted]',
     )
     .replace(/\b[A-Za-z]:[\\/][^\r\n"',;}\]]+/g, '[redacted-path]')
     .replace(/\\\\[^\\\s]+\\[^\r\n"',;}\]]+/g, '[redacted-path]')
-    .slice(0, 4_096)
+    .slice(0, maximumLength)
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

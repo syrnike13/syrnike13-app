@@ -14,11 +14,16 @@ namespace syrnike::desktop_native::media {
 class MediaRuntime final {
  public:
   using SteadyNow = std::function<std::chrono::steady_clock::time_point()>;
+  using BeforeMicrophoneOperation = std::function<void(const MediaCommand&)>;
+  using BeforeVoiceShutdown = std::function<void()>;
 
   explicit MediaRuntime(
     EventSinkPtr sink,
-    std::shared_ptr<LiveKitPublicationClient> livekit_client = createRealLiveKitPublicationClient(),
-    SteadyNow screen_now = {}
+    std::shared_ptr<LiveKitPublicationClient> livekit_client = {},
+    SteadyNow screen_now = {},
+    BeforeMicrophoneOperation before_microphone_operation = {},
+    BeforeVoiceShutdown before_voice_shutdown = {},
+    std::shared_ptr<LiveKitRuntimeLifetime> livekit_lifetime = {}
   );
   ~MediaRuntime();
 
@@ -32,7 +37,7 @@ class MediaRuntime final {
 
  private:
   class Implementation;
-  std::unique_ptr<Implementation> implementation_;
+  std::shared_ptr<Implementation> implementation_;
 };
 
 }  // namespace syrnike::desktop_native::media

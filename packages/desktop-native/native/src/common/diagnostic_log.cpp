@@ -32,7 +32,8 @@ constexpr wchar_t kCommitShaEnv[] = L"SYRNIKE_NATIVE_COMMIT_SHA";
 constexpr std::size_t kMaxQueuedLines = 4096;
 constexpr std::size_t kMaxBatchLines = 128;
 constexpr std::size_t kMaxDiagnosticTextLength = 4096;
-constexpr std::uint64_t kMaxLiveKitTraceBytes = 64ULL * 1024ULL * 1024ULL;
+constexpr std::uint64_t kMaxDiagnosticFileBytes = 5ULL * 1024ULL * 1024ULL;
+constexpr std::size_t kMaxRolledDiagnosticFiles = 2;
 
 std::string narrowUtf8(const std::wstring& value) {
   if (value.empty()) return {};
@@ -415,6 +416,7 @@ class DiagnosticLogState final {
   }
 
   void shutdown() noexcept {
+    std::lock_guard shutdown_lock(shutdown_mutex_);
     enabled_.store(false);
     {
       std::lock_guard lock(mutex_);
@@ -544,13 +546,17 @@ class DiagnosticLogState final {
         batch.clear();
         continue;
       }
-      for (const auto& line : batch) writeLine(line);
+      for (const auto& line : batch) {
+        if (!ensureCapacityFor(line.content.size())) break;
+        writeLine(line);
+      }
       std::fflush(file_);
       batch.clear();
     }
     if (!file_) return;
     std::lock_guard lock(mutex_);
     while (!lines_.empty()) {
+      if (!ensureCapacityFor(lines_.front().content.size())) break;
       writeLine(lines_.front());
       lines_.pop_front();
     }
@@ -561,6 +567,7 @@ class DiagnosticLogState final {
   std::atomic_bool enabled_{false};
   std::atomic_uint64_t sequence_{0};
   std::atomic_uint64_t dropped_lines_{0};
+  std::mutex shutdown_mutex_;
   mutable std::mutex mutex_;
   std::condition_variable ready_;
   struct QueuedLine {
@@ -568,11 +575,71 @@ class DiagnosticLogState final {
     bool is_trace = false;
   };
 
-  void writeLine(const QueuedLine& line) noexcept {
-    if (line.is_trace && written_bytes_ >= kMaxLiveKitTraceBytes) {
-      dropped_lines_.fetch_add(1);
-      return;
+  [[nodiscard]] std::filesystem::path rolledPath(std::size_t index) const {
+    const std::filesystem::path current(path_);
+    const auto extension = current.extension().wstring();
+    const auto stem = current.stem().wstring();
+    return current.parent_path() /
+      (stem + L"." + std::to_wstring(index) + extension);
+  }
+
+  bool openCurrentFile() noexcept {
+    file_ = _wfsopen(path_.c_str(), L"ab", _SH_DENYNO);
+    if (!file_) return false;
+    setvbuf(file_, nullptr, _IOFBF, 64 * 1024);
+    std::error_code file_size_error;
+    written_bytes_ = std::filesystem::file_size(path_, file_size_error);
+    if (file_size_error) written_bytes_ = 0;
+    return true;
+  }
+
+  bool rotate() noexcept {
+    if (!file_) return false;
+    std::fflush(file_);
+    std::fclose(file_);
+    file_ = nullptr;
+
+    std::error_code error;
+    std::filesystem::remove(rolledPath(kMaxRolledDiagnosticFiles), error);
+    error.clear();
+    for (std::size_t index = kMaxRolledDiagnosticFiles; index > 1; --index) {
+      const auto source = rolledPath(index - 1);
+      if (!std::filesystem::exists(source, error)) {
+        error.clear();
+        continue;
+      }
+      std::filesystem::rename(source, rolledPath(index), error);
+      if (error) break;
     }
+    if (!error && std::filesystem::exists(path_, error)) {
+      if (!error) std::filesystem::rename(path_, rolledPath(1), error);
+    }
+
+    if (error) {
+      // Retention is best-effort, but the active file bound is not. If Windows
+      // rejects a rename (for example because a collector opened the segment
+      // without delete sharing), truncate the active segment and keep logging.
+      dropped_lines_.fetch_add(1);
+      file_ = _wfsopen(path_.c_str(), L"wb", _SH_DENYNO);
+      if (!file_) return false;
+      setvbuf(file_, nullptr, _IOFBF, 64 * 1024);
+      written_bytes_ = 0;
+      return true;
+    }
+    return openCurrentFile();
+  }
+
+  bool ensureCapacityFor(std::size_t line_bytes) noexcept {
+    if (!file_) return false;
+    if (written_bytes_ == 0 ||
+        written_bytes_ + static_cast<std::uint64_t>(line_bytes) <=
+          kMaxDiagnosticFileBytes) {
+      return true;
+    }
+    return rotate();
+  }
+
+  void writeLine(const QueuedLine& line) noexcept {
     written_bytes_ += static_cast<std::uint64_t>(
       std::fwrite(line.content.data(), 1, line.content.size(), file_)
     );

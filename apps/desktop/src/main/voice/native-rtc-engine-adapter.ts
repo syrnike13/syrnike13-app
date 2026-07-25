@@ -977,6 +977,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       this.runtimeEpoch += 1
       this.microphoneConfigKey = null
       this.microphonePipelineWarm = false
+      this.microphoneAppliedConfigRevision = 0
     }
     const available = snapshot.status === 'ready'
     this.runtimeLost =
