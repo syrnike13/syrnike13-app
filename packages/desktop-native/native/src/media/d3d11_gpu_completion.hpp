@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <thread>
 
 namespace syrnike::desktop_native::media {
 
@@ -41,6 +42,7 @@ class D3d11GpuCompletion final {
     const auto deadline = started_at + timeout;
     context_->End(query_.Get());
     context_->Flush();
+    std::uint32_t polls = 0;
     for (;;) {
       const HRESULT result = context_->GetData(
           query_.Get(), nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH);
@@ -58,7 +60,13 @@ class D3d11GpuCompletion final {
         const HRESULT removed = device_->GetDeviceRemovedReason();
         return FAILED(removed) ? removed : DXGI_ERROR_WAIT_TIMEOUT;
       }
-      SwitchToThread();
+      // A short yield keeps sub-frame completions cheap. Longer GPU work must
+      // relinquish the core instead of spinning an MMCSS capture thread.
+      if (++polls <= 8) {
+        std::this_thread::yield();
+      } else {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
     }
   }
 

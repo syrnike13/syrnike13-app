@@ -1,9 +1,12 @@
 #include "screen_actor.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
+#include <exception>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -21,6 +24,8 @@
 
 #include "../common/diagnostic_log.hpp"
 #include "livekit_disconnect_reason.hpp"
+#include "media_runtime_support.hpp"
+#include "capture_backend_supervisor.hpp"
 #include "screen_audio_capture.hpp"
 #include "screen_capture_priority.hpp"
 #include "screen_gpu_capture.hpp"
@@ -105,6 +110,261 @@ class ScreenTextureLease final : public livekit::D3D11TextureLease {
 
 }  // namespace
 
+bool emitScreenBackendRestart(
+  SequencedEmitter& emitter,
+  const std::string& session_id,
+  std::uint64_t generation,
+  const ScreenGpuRecoveryTransition& transition
+) {
+  RuntimeEvent event;
+  event.type = "screenBackendRestart";
+  event.session_id = session_id;
+  event.generation = generation;
+  event.capture_method = transition.backend;
+  event.reason = transition.action;
+  event.video_recoverable_lost_count = transition.count;
+  return emitter.emit(std::move(event));
+}
+
+std::thread launchOptionalScreenStatsWorker(
+    const LaunchScreenWorker& launcher,
+    std::function<void()> work) noexcept {
+  try {
+    if (launcher) return launcher(std::move(work));
+    return std::thread(std::move(work));
+  } catch (...) {
+    logScreen(
+      "screen_stats_worker_launch_failed",
+      {{"reason", "worker_launch_failed"}}
+    );
+    return {};
+  }
+}
+
+std::thread launchScreenCaptureWorker(
+    const LaunchScreenWorker& launcher,
+    std::function<void()> work,
+    std::function<void()> rollback) {
+  try {
+    if (launcher) return launcher(std::move(work));
+    return std::thread(std::move(work));
+  } catch (...) {
+    const auto launch_error = std::current_exception();
+    try {
+      if (rollback) rollback();
+    } catch (...) {
+    }
+    std::rethrow_exception(launch_error);
+  }
+}
+
+class ScreenCapturerRetireDispatcher::Implementation final {
+ public:
+  explicit Implementation(LaunchWorker launcher)
+      : state_(std::make_shared<State>()) {
+    if (!launcher) {
+      launcher = [](std::function<void()> work) {
+        return std::thread(std::move(work));
+      };
+    }
+    state_->launcher = std::move(launcher);
+    for (auto& slot : state_->slots) {
+      slot.capturers.reserve(kCapturersPerSlot);
+    }
+    management_thread_ = std::thread([state = state_] {
+      runManagement(std::move(state));
+    });
+  }
+
+  ~Implementation() {
+    close(std::chrono::steady_clock::now() + kNativeShutdownBudget);
+  }
+
+  void submit(
+      std::vector<std::shared_ptr<ScreenGpuCapturer>> capturers) {
+    if (capturers.empty()) return;
+    {
+      std::lock_guard lock(state_->mutex);
+      auto& slot = claimSlot(*state_);
+      slot.capturers = std::move(capturers);
+      slot.occupied = true;
+    }
+    state_->changed.notify_all();
+  }
+
+  void submit(std::shared_ptr<ScreenGpuCapturer> capturer) {
+    if (!capturer) return;
+    {
+      std::lock_guard lock(state_->mutex);
+      auto& slot = claimSlot(*state_);
+      slot.capturers.push_back(std::move(capturer));
+      slot.occupied = true;
+    }
+    state_->changed.notify_all();
+  }
+
+  void submitShutdown(
+      std::vector<std::shared_ptr<ScreenGpuCapturer>> capturers) noexcept {
+    if (capturers.empty()) return;
+    {
+      std::lock_guard lock(state_->mutex);
+      auto& slot = state_->slots[kRuntimeSlotCount];
+      slot.capturers = std::move(capturers);
+      slot.occupied = true;
+    }
+    state_->changed.notify_all();
+  }
+
+  void close(std::chrono::steady_clock::time_point deadline) noexcept {
+    if (!management_thread_.joinable()) return;
+    {
+      std::lock_guard lock(state_->mutex);
+      state_->closing = true;
+    }
+    state_->changed.notify_all();
+    bool finished = false;
+    {
+      std::unique_lock lock(state_->mutex);
+      state_->finished_changed.wait_until(
+          lock, deadline, [&] { return state_->finished; });
+      finished = state_->finished;
+    }
+    if (finished) {
+      management_thread_.join();
+    } else {
+      management_thread_.detach();
+      logScreen(
+        "screen_capturer_retire_dispatcher_detached",
+        {{"reason", "shutdown_deadline"}}
+      );
+    }
+  }
+
+ private:
+  static constexpr std::size_t kRuntimeSlotCount = 8;
+  static constexpr std::size_t kSlotCount = kRuntimeSlotCount + 1;
+  static constexpr std::size_t kCapturersPerSlot = 8;
+
+  struct Slot {
+    std::vector<std::shared_ptr<ScreenGpuCapturer>> capturers;
+    bool occupied = false;
+    bool launched = false;
+  };
+
+  struct State {
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::condition_variable finished_changed;
+    std::array<Slot, kSlotCount> slots;
+    LaunchWorker launcher;
+    bool closing = false;
+    bool finished = false;
+  };
+
+  static Slot& claimSlot(State& state) {
+    for (std::size_t index = 0; index < kRuntimeSlotCount; ++index) {
+      if (!state.slots[index].occupied) return state.slots[index];
+    }
+    throw std::runtime_error("screen capturer retire capacity exhausted");
+  }
+
+  static void runManagement(std::shared_ptr<State> state) noexcept {
+    for (;;) {
+      std::size_t slot_index = kSlotCount;
+      {
+        std::unique_lock lock(state->mutex);
+        state->changed.wait(lock, [&] {
+          if (state->closing) return true;
+          return std::any_of(
+            state->slots.begin(), state->slots.end(),
+            [](const Slot& slot) {
+              return slot.occupied && !slot.launched;
+            });
+        });
+        for (std::size_t index = 0; index < state->slots.size(); ++index) {
+          if (state->slots[index].occupied &&
+              !state->slots[index].launched) {
+            slot_index = index;
+            state->slots[index].launched = true;
+            break;
+          }
+        }
+        if (slot_index == kSlotCount) {
+          const bool occupied = std::any_of(
+            state->slots.begin(), state->slots.end(),
+            [](const Slot& slot) { return slot.occupied; });
+          if (occupied || !state->closing) {
+            state->changed.wait_for(lock, std::chrono::milliseconds(25));
+            continue;
+          }
+          state->finished = true;
+          state->finished_changed.notify_all();
+          return;
+        }
+      }
+      try {
+        auto worker = state->launcher([state, slot_index] {
+          // The occupied/launched flags prevent every other thread from
+          // touching this preallocated slot until COM destruction completes.
+          state->slots[slot_index].capturers.clear();
+          {
+            std::lock_guard lock(state->mutex);
+            auto& slot = state->slots[slot_index];
+            slot.launched = false;
+            slot.occupied = false;
+          }
+          state->changed.notify_all();
+        });
+        worker.detach();
+      } catch (...) {
+        {
+          std::lock_guard lock(state->mutex);
+          state->slots[slot_index].launched = false;
+        }
+        logScreen(
+          "screen_capturer_retire_worker_failed",
+          {{"reason", "worker_launch_failed"}}
+        );
+        std::unique_lock lock(state->mutex);
+        state->changed.wait_for(lock, std::chrono::milliseconds(25));
+      }
+    }
+  }
+
+  std::shared_ptr<State> state_;
+  std::thread management_thread_;
+};
+
+ScreenCapturerRetireDispatcher::ScreenCapturerRetireDispatcher(
+    LaunchWorker launcher)
+    : implementation_(
+          std::make_shared<Implementation>(std::move(launcher))) {}
+
+ScreenCapturerRetireDispatcher::~ScreenCapturerRetireDispatcher() {
+  if (implementation_) implementation_->close(
+      std::chrono::steady_clock::now() + kNativeShutdownBudget);
+}
+
+void ScreenCapturerRetireDispatcher::submit(
+    std::shared_ptr<ScreenGpuCapturer> capturer) {
+  implementation_->submit(std::move(capturer));
+}
+
+void ScreenCapturerRetireDispatcher::submit(
+    std::vector<std::shared_ptr<ScreenGpuCapturer>> capturers) {
+  implementation_->submit(std::move(capturers));
+}
+
+void ScreenCapturerRetireDispatcher::submitShutdown(
+    std::vector<std::shared_ptr<ScreenGpuCapturer>> capturers) noexcept {
+  implementation_->submitShutdown(std::move(capturers));
+}
+
+void ScreenCapturerRetireDispatcher::close(
+    std::chrono::steady_clock::time_point deadline) noexcept {
+  implementation_->close(deadline);
+}
+
 class ScreenActor::Implementation {
  public:
   Implementation(
@@ -113,9 +373,16 @@ class ScreenActor::Implementation {
     IsCurrent is_current,
     std::shared_ptr<LiveKitPublicationClient> livekit_client,
     CommitIfCurrent commit_if_current,
-    Now now
+    Now now,
+    LaunchRetireWorker launch_retire_worker,
+    LaunchScreenWorker launch_stats_worker,
+    LaunchScreenWorker launch_capture_worker
   ) : emitter_(emitter),
       post_(std::move(post)),
+      launch_stats_worker_(std::move(launch_stats_worker)),
+      launch_capture_worker_(std::move(launch_capture_worker)),
+      capturer_retire_dispatcher_(
+          std::move(launch_retire_worker)),
       publication_(std::make_unique<ScreenPublicationController>(
         emitter,
         post_,
@@ -133,6 +400,7 @@ class ScreenActor::Implementation {
           const std::shared_ptr<livekit::LocalVideoTrack>& video_track,
           const std::shared_ptr<livekit::AudioSource>& audio_source,
           const std::shared_ptr<std::atomic_bool>& running,
+          const std::shared_ptr<syrnike::voice::ScreenAudioStopSignal>& audio_stop,
           const std::function<bool()>& is_current,
           std::thread& capture_thread,
           std::thread& audio_thread
@@ -144,6 +412,7 @@ class ScreenActor::Implementation {
             video_track,
             audio_source,
             running,
+            audio_stop,
             is_current,
             capture_thread,
             audio_thread
@@ -152,7 +421,29 @@ class ScreenActor::Implementation {
         [this](const std::string& session_id, std::uint64_t generation) {
           resetStats(session_id, generation);
         }
-      )) {}
+      )) {
+    preview_reaper_thread_ = std::thread([this] {
+      while (!preview_reaper_stop_.load(std::memory_order_acquire)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::vector<std::shared_ptr<ScreenGpuCapturer>> retired;
+        {
+          std::lock_guard lock(preview_mutex_);
+          for (auto iterator = preview_capturers_.begin();
+               iterator != preview_capturers_.end();) {
+            if (iterator->second.active || !iterator->second.capturer ||
+                iterator->second.capturer->previewFramesInFlight() != 0) {
+              ++iterator;
+              continue;
+            }
+            retired.push_back(std::move(iterator->second.capturer));
+            iterator = preview_capturers_.erase(iterator);
+          }
+        }
+        // D3D/WGC teardown is allowed to block only this retire thread.
+        retired.clear();
+      }
+    });
+  }
 
   ~Implementation() { shutdown(); }
 
@@ -192,16 +483,26 @@ class ScreenActor::Implementation {
         {"message", reason}
       }
     );
+    emitCaptureEnded(command.session_id, command.generation, reason);
+  }
+
+  void emitCaptureEnded(
+    const std::string& session_id,
+    std::uint64_t generation,
+    const std::string& reason
+  ) {
     RuntimeEvent ended;
     ended.type = "screenCaptureEnded";
-    ended.session_id = command.session_id;
-    ended.generation = command.generation;
+    ended.session_id = session_id;
+    ended.generation = generation;
     constexpr std::string_view allowed_reasons[] = {
       "target_closed",
       "gpu_capture_unavailable",
       "gpu_encoder_unavailable",
       "gpu_interop_unavailable",
       "gpu_device_lost",
+      "rtp_stall_recovery_exhausted",
+      "screen_recovery_timeout",
     };
     ended.reason = "runtime_error";
     for (const auto allowed : allowed_reasons) {
@@ -214,8 +515,8 @@ class ScreenActor::Implementation {
     emitter_.emit(std::move(ended));
     RuntimeEvent stopped;
     stopped.type = "sessionStopped";
-    stopped.session_id = command.session_id;
-    stopped.generation = command.generation;
+    stopped.session_id = session_id;
+    stopped.generation = generation;
     stopped.reason = reason;
     emitter_.emit(std::move(stopped));
   }
@@ -229,8 +530,19 @@ class ScreenActor::Implementation {
       releasePreviewFrame(command);
       return;
     }
-    if (command.type == "__screenRtpStalled") {
-      publication_->restartCaptureAfterStall(command);
+    if (command.type == "__screenExecutePublicationRestart") {
+      publication_->executePublicationRestart(command);
+      return;
+    }
+    if (command.type == "__screenRecoveryFailed") {
+      publication_->disconnect(command, false);
+      emitCaptureEnded(
+        command.session_id,
+        command.generation,
+        command.internal_message.empty()
+          ? std::string("gpu_encoder_unavailable")
+          : command.internal_message
+      );
       return;
     }
     publication_->handleWorkerCommand(command);
@@ -240,9 +552,29 @@ class ScreenActor::Implementation {
     return publication_->probe(command);
   }
 
-  void shutdown() {
-    if (!publication_) return;
-    publication_->shutdown();
+  void shutdown(
+      std::optional<std::chrono::steady_clock::time_point> stop_by =
+          std::nullopt) {
+    const auto deadline = stop_by.value_or(
+        std::chrono::steady_clock::now() + kNativeShutdownBudget);
+    if (publication_) publication_->shutdown(deadline);
+    preview_reaper_stop_.store(true, std::memory_order_release);
+    if (preview_reaper_thread_.joinable() &&
+        preview_reaper_thread_.get_id() != std::this_thread::get_id()) {
+      preview_reaper_thread_.join();
+    }
+    std::vector<std::shared_ptr<ScreenGpuCapturer>> retired;
+    {
+      std::lock_guard lock(preview_mutex_);
+      for (auto& [key, state] : preview_capturers_) {
+        if (state.capturer) retired.push_back(std::move(state.capturer));
+      }
+      preview_capturers_.clear();
+    }
+    if (!retired.empty()) {
+      capturer_retire_dispatcher_.submitShutdown(std::move(retired));
+    }
+    capturer_retire_dispatcher_.close(deadline);
   }
 
  private:
@@ -282,6 +614,7 @@ class ScreenActor::Implementation {
     const std::shared_ptr<livekit::LocalVideoTrack>& video_track,
     const std::shared_ptr<livekit::AudioSource>& audio_source,
     const std::shared_ptr<std::atomic_bool>& running,
+    const std::shared_ptr<syrnike::voice::ScreenAudioStopSignal>& audio_stop,
     const std::function<bool()>& is_current,
     std::thread& capture_thread,
     std::thread& audio_thread
@@ -291,15 +624,26 @@ class ScreenActor::Implementation {
       capturer = ScreenGpuCapturer::create(
         description.target,
         description.width,
-        description.height
+        description.height,
+        capture_supervisor_
       );
     } catch (const ScreenGpuCaptureError& error) {
       throw std::runtime_error(std::string(gpuCaptureReason(error.code())));
     }
+    const auto adapter_capability =
+      livekit::queryD3D11H264CapabilityForAdapter(
+        packLuid(capturer->adapterLuid()));
+    if (!adapter_capability.available) {
+      throw std::runtime_error(
+        "gpu_encoder_unavailable: " + adapter_capability.reason);
+    }
     if (!is_current()) throw std::runtime_error("stale screen capture generation");
-    registerPreviewCapturer(command, capturer);
-    capture_thread = std::thread(
-      [this,
+    const auto preview_key =
+      previewKey(command.session_id, command.generation);
+    std::function<void()> rollback = [this, preview_key] {
+      rollbackPreviewCapturer(preview_key);
+    };
+    std::function<void()> capture_work = [this,
        session_id = command.session_id,
        generation = command.generation,
        width = description.width,
@@ -309,7 +653,7 @@ class ScreenActor::Implementation {
        source = video_source,
        track = video_track,
        running,
-       capturer = std::move(capturer)]() mutable {
+       capturer]() mutable {
         captureLoop(
           std::move(session_id),
           generation,
@@ -322,7 +666,12 @@ class ScreenActor::Implementation {
           std::move(running),
           std::move(capturer)
         );
-      }
+    };
+    registerPreviewCapturer(command, preview_key, capturer);
+    capture_thread = launchScreenCaptureWorker(
+      launch_capture_worker_,
+      std::move(capture_work),
+      std::move(rollback)
     );
     if (description.publish_audio) {
       startAudioCapture(
@@ -330,6 +679,7 @@ class ScreenActor::Implementation {
         description.target,
         audio_source,
         running,
+        audio_stop,
         audio_thread
       );
     }
@@ -340,6 +690,7 @@ class ScreenActor::Implementation {
     const syrnike::voice::ScreenCaptureTarget& target,
     const std::shared_ptr<livekit::AudioSource>& audio_source,
     const std::shared_ptr<std::atomic_bool>& running,
+    const std::shared_ptr<syrnike::voice::ScreenAudioStopSignal>& stop_signal,
     std::thread& audio_thread
   ) {
     const auto session_id = command.session_id;
@@ -367,6 +718,7 @@ class ScreenActor::Implementation {
         session_id,
         audio_source,
         running,
+        stop_signal,
         std::move(on_failure),
         std::move(on_stats)
       );
@@ -377,6 +729,7 @@ class ScreenActor::Implementation {
         session_id,
         audio_source,
         running,
+        stop_signal,
         std::move(on_failure),
         std::move(on_stats)
       );
@@ -384,7 +737,10 @@ class ScreenActor::Implementation {
   }
 
   void resetStats(const std::string& session_id, std::uint64_t generation) {
+    bool new_publication_session = false;
     std::lock_guard lock(stats_mutex_);
+    new_publication_session =
+      stats_session_id_ != session_id || stats_generation_ != generation;
     stats_session_id_ = session_id;
     stats_generation_ = generation;
     stats_video_frames_ = 0;
@@ -392,6 +748,10 @@ class ScreenActor::Implementation {
     stats_audio_packets_ = 0;
     stats_method_wgc_gpu_ = 0;
     stats_method_dxgi_gpu_ = 0;
+    stats_video_recoverable_lost_count_ = 0;
+    stats_video_gpu_pool_slots_available_ = 0;
+    stats_video_gpu_pool_slots_total_ = 0;
+    stats_video_dxgi_duplication_hold_us_max_ = 0;
     stats_audio_peak_db_ = -120.0;
     stats_audio_rms_db_ = -120.0;
     stats_capture_method_.clear();
@@ -402,6 +762,9 @@ class ScreenActor::Implementation {
     stats_rtp_frames_encoded_ = 0;
     stats_encoder_implementation_.clear();
     next_stats_at_ = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    if (new_publication_session) {
+      capture_supervisor_->resetPublicationRecovery();
+    }
   }
 
   void emitStatsIfDue(const std::string& session_id, std::uint64_t generation) {
@@ -423,6 +786,13 @@ class ScreenActor::Implementation {
       event.capture_method = stats_capture_method_;
       event.method_wgc_gpu = stats_method_wgc_gpu_;
       event.method_dxgi_gpu = stats_method_dxgi_gpu_;
+      event.video_recoverable_lost_count =
+        stats_video_recoverable_lost_count_;
+      event.video_gpu_pool_slots_available =
+        stats_video_gpu_pool_slots_available_;
+      event.video_gpu_pool_slots_total = stats_video_gpu_pool_slots_total_;
+      event.video_dxgi_duplication_hold_us_max =
+        stats_video_dxgi_duplication_hold_us_max_;
       event.rtp_stats_available = stats_rtp_available_;
       event.rtp_packets_sent = stats_rtp_packets_sent_;
       event.rtp_bytes_sent = stats_rtp_bytes_sent_;
@@ -430,6 +800,7 @@ class ScreenActor::Implementation {
       event.rtp_frames_encoded = stats_rtp_frames_encoded_;
       event.encoder_implementation = stats_encoder_implementation_;
       snapshot = std::move(event);
+      stats_video_dxgi_duplication_hold_us_max_ = 0;
       next_stats_at_ = now + std::chrono::seconds(1);
     }
     emitter_.emit(std::move(*snapshot));
@@ -460,7 +831,11 @@ class ScreenActor::Implementation {
     std::uint64_t frames,
     const std::string& method,
     std::uint64_t method_wgc_gpu,
-    std::uint64_t method_dxgi_gpu
+    std::uint64_t method_dxgi_gpu,
+    std::uint64_t recoverable_lost_count,
+    std::size_t gpu_pool_slots_available,
+    std::size_t gpu_pool_slots_total,
+    int dxgi_duplication_hold_us
   ) {
     {
       std::lock_guard lock(stats_mutex_);
@@ -469,6 +844,14 @@ class ScreenActor::Implementation {
       stats_capture_method_ = method;
       stats_method_wgc_gpu_ = method_wgc_gpu;
       stats_method_dxgi_gpu_ = method_dxgi_gpu;
+      stats_video_recoverable_lost_count_ = recoverable_lost_count;
+      stats_video_gpu_pool_slots_available_ = gpu_pool_slots_available;
+      stats_video_gpu_pool_slots_total_ = gpu_pool_slots_total;
+      if (dxgi_duplication_hold_us > 0) {
+        stats_video_dxgi_duplication_hold_us_max_ = std::max<std::uint64_t>(
+          stats_video_dxgi_duplication_hold_us_max_,
+          static_cast<std::uint64_t>(dxgi_duplication_hold_us));
+      }
     }
     emitStatsIfDue(session_id, generation);
   }
@@ -476,6 +859,7 @@ class ScreenActor::Implementation {
   struct OutboundStatsSample {
     bool available = false;
     bool active = false;
+    std::uint64_t frames_encoded = 0;
     std::uint64_t frames_sent = 0;
   };
 
@@ -563,7 +947,12 @@ class ScreenActor::Implementation {
           {"active", active}
         }
       );
-      return OutboundStatsSample{available, active, frames_sent};
+      return OutboundStatsSample{
+        available,
+        active,
+        frames_encoded,
+        frames_sent,
+      };
     } catch (const std::exception& error) {
       logScreen(
         "screen_rtp_stats_error",
@@ -602,11 +991,35 @@ class ScreenActor::Implementation {
     syrnike::voice::ScreenCapturePriorityScope priority;
     const auto interval = std::chrono::microseconds(1'000'000 / fps);
     auto next_frame = std::chrono::steady_clock::now();
-    auto next_rtp_stats_at = next_frame + std::chrono::seconds(1);
     const auto started = next_frame;
     EncoderBackpressureStallDetector encoder_backpressure_stall;
-    OutboundRtpStallDetector outbound_rtp_stall;
+    ScreenOutputStallDetector output_stall;
     bool rtp_stall_reported = false;
+    const auto request_publication_recovery =
+      [&](std::string cause, std::chrono::steady_clock::time_point now) {
+        const auto decision =
+          capture_supervisor_->observePublicationStall(now);
+        if (
+          decision.action != CaptureBackendAction::RestartPublication &&
+          decision.action != CaptureBackendAction::Fail
+        ) {
+          return;
+        }
+        MediaCommand recovery;
+        recovery.type = decision.action == CaptureBackendAction::Fail
+          ? "__screenRecoveryFailed"
+          : "__screenExecutePublicationRestart";
+        recovery.session_id = session_id;
+        recovery.generation = generation;
+        recovery.revision = capture_supervisor_->publicationRecoveryCount();
+        recovery.internal_message = decision.action == CaptureBackendAction::Fail
+          ? "rtp_stall_recovery_exhausted"
+          : std::move(cause);
+        if (post_(std::move(recovery))) {
+          rtp_stall_reported = true;
+          running->store(false);
+        }
+      };
     std::uint64_t frames = 0;
     std::uint64_t method_wgc_gpu = 0;
     std::uint64_t method_dxgi_gpu = 0;
@@ -614,6 +1027,35 @@ class ScreenActor::Implementation {
     ScreenGpuFrame captured;
     const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     const bool uninitialize_com = SUCCEEDED(com_result);
+    std::atomic_bool stats_running{true};
+    std::mutex sampled_stats_mutex;
+    std::optional<OutboundStatsSample> sampled_stats;
+    std::uint64_t sampled_stats_revision = 0;
+    std::uint64_t consumed_stats_revision = 0;
+    std::thread stats_thread = launchOptionalScreenStatsWorker(
+      launch_stats_worker_,
+      [&] {
+      auto next_sample = std::chrono::steady_clock::now();
+      while (stats_running.load(std::memory_order_acquire)) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now < next_sample) {
+          std::this_thread::sleep_for(std::min(
+              std::chrono::milliseconds(50),
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  next_sample - now)));
+          continue;
+        }
+        auto sample = sampleOutboundStats(session_id, generation, track);
+        {
+          std::lock_guard lock(sampled_stats_mutex);
+          sampled_stats = std::move(sample);
+          ++sampled_stats_revision;
+        }
+        next_sample = std::chrono::steady_clock::now() +
+            std::chrono::seconds(1);
+      }
+      }
+    );
 
     try {
       if (FAILED(com_result) && com_result != RPC_E_CHANGED_MODE) {
@@ -625,6 +1067,14 @@ class ScreenActor::Implementation {
       }
       while (running->load()) {
         const auto capture = capturer->capture(captured);
+        if (capture.recovery_transition) {
+          emitScreenBackendRestart(
+            emitter_,
+            session_id,
+            generation,
+            *capture.recovery_transition
+          );
+        }
         if (capture.method && capture.method[0] != '\0') method = capture.method;
         ScreenPreviewFrame preview;
         if (capturer->takePreviewFrame(preview)) {
@@ -681,11 +1131,6 @@ class ScreenActor::Implementation {
           const auto now = std::chrono::steady_clock::now();
           if (!rtp_stall_reported && encoder_backpressure_stall.observe(
                 now, std::chrono::seconds(2))) {
-            MediaCommand stalled;
-            stalled.type = "__screenRtpStalled";
-            stalled.session_id = session_id;
-            stalled.generation = generation;
-            stalled.internal_message = "encoder_backpressure";
             logScreen(
               "screen_encoder_backpressure_stall",
               {
@@ -695,10 +1140,7 @@ class ScreenActor::Implementation {
                 {"method", method}
               }
             );
-            if (post_(std::move(stalled))) {
-              rtp_stall_reported = true;
-              running->store(false);
-            }
+            request_publication_recovery("encoder_backpressure", now);
           }
         } else if (capture.status == ScreenGpuFrameStatus::RecoverableLost) {
           encoder_backpressure_stall.noteProgress();
@@ -739,35 +1181,42 @@ class ScreenActor::Implementation {
         }
 
         const auto now = std::chrono::steady_clock::now();
-        if (now >= next_rtp_stats_at) {
-          const auto stats = sampleOutboundStats(session_id, generation, track);
+        std::optional<OutboundStatsSample> stats;
+        {
+          std::lock_guard lock(sampled_stats_mutex);
+          if (sampled_stats_revision != consumed_stats_revision) {
+            stats = sampled_stats;
+            consumed_stats_revision = sampled_stats_revision;
+          }
+        }
+        if (stats) {
           if (stats && stats->available) {
-            if (!rtp_stall_reported && outbound_rtp_stall.observe(
-                  now,
-                  stats->active,
-                  stats->frames_sent,
-                  std::chrono::seconds(5))) {
-              MediaCommand stalled;
-              stalled.type = "__screenRtpStalled";
-              stalled.session_id = session_id;
-              stalled.generation = generation;
-              stalled.internal_message = "rtp_output_stalled";
+            const auto stall = output_stall.observe(
+              now,
+              stats->active,
+              frames,
+              stats->frames_encoded,
+              stats->frames_sent,
+              std::chrono::seconds(5));
+            if (!rtp_stall_reported &&
+                stall != ScreenOutputStall::None) {
+              const std::string cause =
+                stall == ScreenOutputStall::Encoder
+                  ? "encoder_output_stalled"
+                  : "rtp_output_stalled";
               logScreen(
                 "screen_rtp_stall_detected",
                 {
                   {"sessionId", session_id},
                   {"generation", generation},
                   {"frames", frames},
+                  {"framesEncoded", stats->frames_encoded},
                   {"framesSent", stats->frames_sent}
                 }
               );
-              if (post_(std::move(stalled))) {
-                rtp_stall_reported = true;
-                running->store(false);
-              }
+              request_publication_recovery(cause, now);
             }
           }
-          next_rtp_stats_at = now + std::chrono::seconds(1);
         }
         recordVideoStats(
           session_id,
@@ -775,7 +1224,11 @@ class ScreenActor::Implementation {
           frames,
           method,
           method_wgc_gpu,
-          method_dxgi_gpu
+          method_dxgi_gpu,
+          capturer->recoverableLossCount(),
+          capturer->frameSlotsAvailable(),
+          capturer->frameSlotsTotal(),
+          capture.metrics.duplication_hold_us
         );
         next_frame += interval;
         if (now > next_frame + interval) next_frame = now;
@@ -820,6 +1273,8 @@ class ScreenActor::Implementation {
         post_(std::move(terminal));
       }
     }
+    stats_running.store(false, std::memory_order_release);
+    if (stats_thread.joinable()) stats_thread.join();
     retirePreviewCapturer(session_id, generation, capturer);
     capturer.reset();
     source.reset();
@@ -851,10 +1306,11 @@ class ScreenActor::Implementation {
 
   void registerPreviewCapturer(
     const MediaCommand& command,
+    const std::string& key,
     const std::shared_ptr<ScreenGpuCapturer>& capturer
   ) {
     std::lock_guard lock(preview_mutex_);
-    auto& state = preview_capturers_[previewKey(command.session_id, command.generation)];
+    auto& state = preview_capturers_[key];
     state.capturer = capturer;
     state.active = true;
     if (preview_session_id_ == command.session_id &&
@@ -862,6 +1318,36 @@ class ScreenActor::Implementation {
       capturer->setPreviewDemand(preview_demand_);
     } else {
       capturer->setPreviewDemand({});
+    }
+  }
+
+  void rollbackPreviewCapturer(const std::string& key) noexcept {
+    std::shared_ptr<ScreenGpuCapturer> retired;
+    try {
+      std::lock_guard lock(preview_mutex_);
+      const auto found = preview_capturers_.find(key);
+      if (found == preview_capturers_.end()) return;
+      retired = found->second.capturer;
+      found->second.active = false;
+    } catch (...) {
+      return;
+    }
+    try {
+      capturer_retire_dispatcher_.submit(retired);
+      std::lock_guard lock(preview_mutex_);
+      const auto found = preview_capturers_.find(key);
+      if (found != preview_capturers_.end() &&
+          found->second.capturer == retired) {
+        preview_capturers_.erase(found);
+      }
+    } catch (...) {
+      // Preserve ownership for the existing retire reaper if the fixed
+      // dispatcher capacity is temporarily occupied. The reaper extracts and
+      // destroys outside preview_mutex_.
+      try {
+        logScreen("screen_capture_launch_rollback_submit_failed");
+      } catch (...) {
+      }
     }
   }
 
@@ -919,6 +1405,11 @@ class ScreenActor::Implementation {
 
   SequencedEmitter& emitter_;
   InternalPost post_;
+  LaunchScreenWorker launch_stats_worker_;
+  LaunchScreenWorker launch_capture_worker_;
+  std::shared_ptr<CaptureBackendSupervisor> capture_supervisor_ =
+    std::make_shared<CaptureBackendSupervisor>();
+  ScreenCapturerRetireDispatcher capturer_retire_dispatcher_;
   std::unique_ptr<ScreenPublicationController> publication_;
   std::mutex stats_mutex_;
   std::string stats_session_id_;
@@ -928,6 +1419,10 @@ class ScreenActor::Implementation {
   std::uint64_t stats_audio_packets_ = 0;
   std::uint64_t stats_method_wgc_gpu_ = 0;
   std::uint64_t stats_method_dxgi_gpu_ = 0;
+  std::uint64_t stats_video_recoverable_lost_count_ = 0;
+  std::uint64_t stats_video_gpu_pool_slots_available_ = 0;
+  std::uint64_t stats_video_gpu_pool_slots_total_ = 0;
+  std::uint64_t stats_video_dxgi_duplication_hold_us_max_ = 0;
   double stats_audio_peak_db_ = -120.0;
   double stats_audio_rms_db_ = -120.0;
   std::string stats_capture_method_;
@@ -947,6 +1442,8 @@ class ScreenActor::Implementation {
   std::string preview_session_id_;
   std::uint64_t preview_generation_ = 0;
   std::unordered_map<std::string, PreviewCapturerState> preview_capturers_;
+  std::atomic_bool preview_reaper_stop_{false};
+  std::thread preview_reaper_thread_;
 };
 
 ScreenActor::ScreenActor(
@@ -955,14 +1452,20 @@ ScreenActor::ScreenActor(
   IsCurrent is_current,
   std::shared_ptr<LiveKitPublicationClient> livekit_client,
   CommitIfCurrent commit_if_current,
-  Now now
+  Now now,
+  LaunchRetireWorker launch_retire_worker,
+  LaunchScreenWorker launch_stats_worker,
+  LaunchScreenWorker launch_capture_worker
 ) : implementation_(std::make_unique<Implementation>(
       emitter,
       std::move(post),
       std::move(is_current),
       std::move(livekit_client),
       std::move(commit_if_current),
-      std::move(now)
+      std::move(now),
+      std::move(launch_retire_worker),
+      std::move(launch_stats_worker),
+      std::move(launch_capture_worker)
     )) {}
 
 ScreenActor::~ScreenActor() = default;
@@ -994,5 +1497,8 @@ RuntimeEvent ScreenActor::probe(const MediaCommand& command) {
 }
 
 void ScreenActor::shutdown() { implementation_->shutdown(); }
+void ScreenActor::shutdown(std::chrono::steady_clock::time_point deadline) {
+  implementation_->shutdown(deadline);
+}
 
 }  // namespace syrnike::desktop_native::media

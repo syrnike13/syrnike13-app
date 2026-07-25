@@ -16,6 +16,7 @@
 #include "../common/sequenced_emitter.hpp"
 #include "livekit_publication_client.hpp"
 #include "screen_video_capture.hpp"
+#include "screen_audio_capture.hpp"
 
 namespace syrnike::desktop_native::media {
 
@@ -60,6 +61,7 @@ class ScreenPublicationController final {
     const std::shared_ptr<livekit::LocalVideoTrack>&,
     const std::shared_ptr<livekit::AudioSource>&,
     const std::shared_ptr<std::atomic_bool>&,
+    const std::shared_ptr<syrnike::voice::ScreenAudioStopSignal>&,
     const std::function<bool()>&,
     std::thread&,
     std::thread&
@@ -70,6 +72,10 @@ class ScreenPublicationController final {
     int,
     int
   )>;
+  using LaunchRetireWorker =
+    std::function<std::thread(std::function<void()>)>;
+  using BeforeRetireEnqueue = std::function<void()>;
+  using BeforeResourceCleanup = std::function<void()>;
 
   ScreenPublicationController(
     SequencedEmitter& emitter,
@@ -82,7 +88,10 @@ class ScreenPublicationController final {
     StartCaptureWorkers start_capture_workers,
     CapturePromoted capture_promoted,
     QueryEncoderCapability query_encoder_capability = {},
-    CreateVideoSource create_video_source = {}
+    CreateVideoSource create_video_source = {},
+    LaunchRetireWorker launch_retire_worker = {},
+    BeforeRetireEnqueue before_retire_enqueue = {},
+    BeforeResourceCleanup before_resource_cleanup = {}
   );
   ~ScreenPublicationController();
 
@@ -92,7 +101,7 @@ class ScreenPublicationController final {
   void connect(const MediaCommand& command);
   void startCapture(const MediaCommand& command);
   void stopCapture(const MediaCommand& command, bool emit_stopped = true);
-  void restartCaptureAfterStall(const MediaCommand& command);
+  void executePublicationRestart(const MediaCommand& command);
   void disconnect(const MediaCommand& command, bool emit_stopped = true);
   [[nodiscard]] bool handleTerminal(
     const MediaCommand& command,
@@ -101,10 +110,11 @@ class ScreenPublicationController final {
   void handleWorkerCommand(const MediaCommand& command);
   RuntimeEvent probe(const MediaCommand& command);
   void shutdown();
+  void shutdown(std::chrono::steady_clock::time_point deadline);
 
  private:
   class Implementation;
-  std::unique_ptr<Implementation> implementation_;
+  std::shared_ptr<Implementation> implementation_;
 };
 
 }  // namespace syrnike::desktop_native::media

@@ -6,12 +6,15 @@
 #include <cstdint>
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
 #include "screen_video_capture.hpp"
 
 namespace syrnike::desktop_native::media {
+
+class CaptureBackendSupervisor;
 
 enum class ScreenGpuCaptureErrorCode {
   CaptureUnavailable,
@@ -43,24 +46,6 @@ enum class ScreenGpuFrameStatus {
   FatalError,
 };
 
-class DxgiFallbackPolicy final {
- public:
-  [[nodiscard]] bool shouldFallback(ScreenGpuFrameStatus status) noexcept {
-    if (status == ScreenGpuFrameStatus::FatalError) {
-      consecutive_recoveries_ = 0;
-      return true;
-    }
-    if (status == ScreenGpuFrameStatus::RecoverableLost) {
-      return ++consecutive_recoveries_ >= 3;
-    }
-    consecutive_recoveries_ = 0;
-    return false;
-  }
-
- private:
-  std::uint32_t consecutive_recoveries_ = 0;
-};
-
 struct ScreenGpuFrame {
   std::uint64_t sequence = 0;
   std::uint64_t timestamp_us = 0;
@@ -72,11 +57,18 @@ struct ScreenGpuFrame {
   DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
 };
 
+struct ScreenGpuRecoveryTransition {
+  std::string backend;
+  std::string action;
+  std::uint64_t count = 0;
+};
+
 struct ScreenGpuFrameResult {
   ScreenGpuFrameStatus status = ScreenGpuFrameStatus::NoFrame;
   syrnike::voice::ScreenCaptureFrameMetrics metrics;
   const char* method = "unknown";
   ScreenGpuCaptureErrorCode error_code = ScreenGpuCaptureErrorCode::CaptureUnavailable;
+  std::optional<ScreenGpuRecoveryTransition> recovery_transition;
 };
 
 struct ScreenPreviewDemand {
@@ -110,7 +102,8 @@ class ScreenGpuCapturer {
   static std::shared_ptr<ScreenGpuCapturer> create(
       const syrnike::voice::ScreenCaptureTarget& target,
       std::uint32_t width,
-      std::uint32_t height);
+      std::uint32_t height,
+      std::shared_ptr<CaptureBackendSupervisor> supervisor = {});
 
   virtual ~ScreenGpuCapturer() = default;
   virtual ScreenGpuFrameResult capture(ScreenGpuFrame& frame) = 0;
@@ -122,6 +115,11 @@ class ScreenGpuCapturer {
   [[nodiscard]] virtual std::size_t previewFramesInFlight() const noexcept = 0;
   [[nodiscard]] virtual const char* method() const noexcept = 0;
   [[nodiscard]] virtual LUID adapterLuid() const noexcept = 0;
+  [[nodiscard]] virtual std::size_t frameSlotsAvailable() const noexcept = 0;
+  [[nodiscard]] virtual std::size_t frameSlotsTotal() const noexcept = 0;
+  [[nodiscard]] virtual std::uint64_t recoverableLossCount() const noexcept {
+    return 0;
+  }
 };
 
 }  // namespace syrnike::desktop_native::media

@@ -2,6 +2,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "media/screen_video_capture.hpp"
 
@@ -38,6 +39,30 @@ int main() try {
   // NV12 requires even dimensions, so odd target/preset edges round down only.
   requireSize({0, 0, 1663, 1081}, 1920, 1080, 1660, 1080);
   requireSize({0, 0, 2560, 1440}, 1919, 1079, 1918, 1078);
+
+  const std::vector<syrnike::voice::ScreenMonitorIdentity> listed = {
+      {{0, 0, 1920, 1080}, R"(\\?\DISPLAY#PANEL_A)"},
+      {{1920, 0, 4480, 1440}, R"(\\?\DISPLAY#PANEL_B)"},
+  };
+  const std::string selected_source = "screen:" + listed[1].device_id;
+  const std::vector<syrnike::voice::ScreenMonitorIdentity> reordered = {
+      {{-2560, 0, 0, 1440}, R"(\\?\DISPLAY#PANEL_B)"},
+      {{0, 0, 1920, 1080}, R"(\\?\DISPLAY#PANEL_A)"},
+  };
+  const auto stable_target =
+      syrnike::voice::resolveScreenMonitorTarget(selected_source, reordered);
+  if (stable_target.screen_index != 1 ||
+      !EqualRect(&stable_target.rect, &reordered[0].rect)) {
+    throw std::runtime_error(
+        "stable monitor DeviceID did not survive enumeration reorder");
+  }
+
+  const auto legacy_target =
+      syrnike::voice::resolveScreenMonitorTarget("screen:2", reordered);
+  if (legacy_target.screen_index != 2 ||
+      !EqualRect(&legacy_target.rect, &reordered[1].rect)) {
+    throw std::runtime_error("legacy screen:N selection is not compatible");
+  }
 
   std::cout << "screen capture preset-bound sizing tests passed\n";
   return 0;
