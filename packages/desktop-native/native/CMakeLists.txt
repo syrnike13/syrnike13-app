@@ -134,6 +134,7 @@ syrnike_native_target(syrnike_media_core)
 target_link_libraries(syrnike_media_core PUBLIC
   LiveKit::livekit
   avrt
+  cfgmgr32
   Mmdevapi
   mf
   mfplat
@@ -320,6 +321,36 @@ add_test(
   COMMAND syrnike-native-screen-capture-target-tests
 )
 
+add_executable(syrnike-native-screen-capture-slot-state-tests
+  tests/screen_capture_slot_state_test.cpp
+)
+syrnike_native_target(syrnike-native-screen-capture-slot-state-tests)
+add_test(
+  NAME syrnike-native-screen-capture-slot-state-tests
+  COMMAND syrnike-native-screen-capture-slot-state-tests
+)
+
+add_executable(syrnike-native-display-source-window-probe-tests
+  tests/display_source_window_probe_test.cpp
+)
+syrnike_native_target(syrnike-native-display-source-window-probe-tests)
+add_test(
+  NAME syrnike-native-display-source-window-probe-tests
+  COMMAND syrnike-native-display-source-window-probe-tests
+)
+
+add_executable(syrnike-native-capture-backend-supervisor-tests
+  tests/capture_backend_supervisor_test.cpp
+)
+syrnike_native_target(syrnike-native-capture-backend-supervisor-tests)
+target_link_libraries(
+  syrnike-native-capture-backend-supervisor-tests PRIVATE user32 dxgi
+)
+add_test(
+  NAME syrnike-native-capture-backend-supervisor-tests
+  COMMAND syrnike-native-capture-backend-supervisor-tests
+)
+
 add_executable(syrnike-native-camera-actor-lifecycle-tests
   tests/camera_actor_lifecycle_test.cpp
 )
@@ -351,6 +382,19 @@ syrnike_copy_livekit_runtime(syrnike-native-remote-audio-output-failure-tests)
 add_test(
   NAME syrnike-native-remote-audio-output-failure-tests
   COMMAND syrnike-native-remote-audio-output-failure-tests
+)
+
+add_executable(syrnike-native-remote-video-bridge-shutdown-tests
+  tests/remote_video_bridge_shutdown_test.cpp
+)
+syrnike_native_target(syrnike-native-remote-video-bridge-shutdown-tests)
+target_link_libraries(
+  syrnike-native-remote-video-bridge-shutdown-tests PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(syrnike-native-remote-video-bridge-shutdown-tests)
+add_test(
+  NAME syrnike-native-remote-video-bridge-shutdown-tests
+  COMMAND syrnike-native-remote-video-bridge-shutdown-tests
 )
 
 add_executable(syrnike-native-hooks-runtime-lifecycle-tests
@@ -396,7 +440,7 @@ add_executable(syrnike-native-screen-streaming-benchmark
   src/media/screen_capture_priority.cpp
   src/media/screen_dxgi_compositor.cpp
   src/media/screen_gpu_capture.cpp
-  src/media/screen_video_capture.cpp
+  tests/screen_video_capture_benchmark.cpp
 )
 syrnike_native_target(syrnike-native-screen-streaming-benchmark)
 target_link_libraries(syrnike-native-screen-streaming-benchmark PRIVATE

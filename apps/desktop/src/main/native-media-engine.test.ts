@@ -25,4 +25,13 @@ describe('native media runtime façade', () => {
     expect(isRendererReplacementNavigation(true, true)).toBe(false)
     expect(isRendererReplacementNavigation(false, false)).toBe(false)
   })
+
+  it('enables local native diagnostics by default with an explicit opt-out', async () => {
+    const { nativeMediaDiagnosticsEnabled } = await import('./native-media-engine')
+
+    expect(nativeMediaDiagnosticsEnabled('win32', undefined)).toBe(true)
+    expect(nativeMediaDiagnosticsEnabled('win32', '1')).toBe(true)
+    expect(nativeMediaDiagnosticsEnabled('win32', '0')).toBe(false)
+    expect(nativeMediaDiagnosticsEnabled('linux', undefined)).toBe(false)
+  })
 })

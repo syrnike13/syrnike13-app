@@ -220,6 +220,16 @@ export type MediaRuntimeEvent =
   | ({ type: 'sessionStarted'; session: NativeMediaSession } & SessionEventBase)
   | ({ type: 'sessionStopped'; reason?: string } & SessionEventBase)
   | ({ type: 'stats'; stats: NativeMediaStatsEvent } & SessionEventBase)
+  | ({
+      type: 'screenBackendRestart'
+      backend: 'dxgi_gpu' | 'wgc_gpu'
+      reason:
+        | 'reinitialize_active'
+        | 'recreate_device'
+        | 'switch_backend'
+        | 'probe_preferred_backend'
+      count: number
+    } & SessionEventBase)
   | ({ type: 'microphoneMetrics'; metrics: NativeMicrophoneMetricsEvent } &
       RuntimeEventBase)
   | ({ type: 'microphonePreviewStarted'; preview: { sessionId: string } } &
@@ -560,6 +570,9 @@ function isNativeMediaStats(value: unknown, sessionId: string) {
     'videoNoFrameCount',
     'videoRepeatedFrameCount',
     'videoRecoverableLostCount',
+    'videoGpuPoolSlotsAvailable',
+    'videoGpuPoolSlotsTotal',
+    'videoDxgiDuplicationHoldUsMax',
     'videoAvgCaptureUs',
     'videoAvgReadbackUs',
     'videoAvgScaleUs',
@@ -745,6 +758,21 @@ export function isNativeRuntimeReply(value: unknown): value is NativeRuntimeRepl
   return value.ok || isRuntimeError(value.error)
 }
 
+export function isUncorrelatedNativeRuntimeReply(
+  value: unknown,
+): value is Record<string, unknown> & {
+  type: 'reply'
+  requestId?: undefined
+  ok: boolean
+} {
+  return (
+    isRecord(value) &&
+    value.type === 'reply' &&
+    value.requestId === undefined &&
+    typeof value.ok === 'boolean'
+  )
+}
+
 export function isNativeRuntimeEvent(
   value: unknown,
 ): value is NativeRuntimeEvent {
@@ -873,6 +901,16 @@ export function isNativeRuntimeEvent(
       return value.reason === undefined || typeof value.reason === 'string'
     case 'stats':
       return isNativeMediaStats(value.stats, value.sessionId)
+    case 'screenBackendRestart':
+      return (
+        (value.backend === 'dxgi_gpu' || value.backend === 'wgc_gpu') &&
+        (value.reason === 'reinitialize_active' ||
+          value.reason === 'recreate_device' ||
+          value.reason === 'switch_backend' ||
+          value.reason === 'probe_preferred_backend') &&
+        Number.isSafeInteger(value.count) &&
+        Number(value.count) > 0
+      )
     case 'microphonePreviewStarted':
       return (
         isRecord(value.preview) &&
@@ -977,7 +1015,10 @@ export function sanitizeRuntimeError(error: unknown): NativeRuntimeError {
   return nativeRuntimeError('native_failure', redactSensitiveText(message))
 }
 
-export function redactSensitiveText(value: string) {
+export function redactSensitiveText(
+  value: string,
+  maximumLength = 4_096,
+) {
   return value
     .replace(
       /\b(token|access_token|authorization)\s*[:=]\s*([^\s,;]+)/gi,
@@ -989,5 +1030,5 @@ export function redactSensitiveText(value: string) {
       /[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
       '[redacted]',
     )
-    .slice(0, 4_096)
+    .slice(0, maximumLength)
 }

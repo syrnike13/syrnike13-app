@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -54,7 +55,7 @@ class ActorCommandResourceGuard final {
     try {
       on_drop();
     } catch (...) {
-      std::terminate();
+      // Resource cleanup is best effort during mailbox teardown.
     }
   }
   ActorCommandResourceGuard(const ActorCommandResourceGuard&) = delete;
@@ -85,6 +86,30 @@ class ActorMailbox {
     {
       std::lock_guard lock(mutex_);
       if (closed_ || control_size_ >= ControlCapacity) return false;
+      const auto tail = (control_head_ + control_size_) % ControlCapacity;
+      control_[tail].emplace(std::move(command));
+      ++control_size_;
+    }
+    ready_.notify_one();
+    return true;
+  }
+
+  template <typename Rep, typename Period>
+  bool tryPushFor(
+    MediaCommand command,
+    const std::chrono::duration<Rep, Period>& timeout
+  ) {
+    if (classifyActorCommand(command) == ActorCommandTraffic::CoalescedMedia) {
+      return tryPushLatest(std::move(command));
+    }
+    {
+      std::unique_lock lock(mutex_);
+      if (!space_available_.wait_for(lock, timeout, [&] {
+            return closed_ || control_size_ < ControlCapacity;
+          })) {
+        return false;
+      }
+      if (closed_) return false;
       const auto tail = (control_head_ + control_size_) % ControlCapacity;
       control_[tail].emplace(std::move(command));
       ++control_size_;
@@ -145,6 +170,7 @@ class ActorMailbox {
       control_[control_head_].reset();
       control_head_ = (control_head_ + 1) % ControlCapacity;
       --control_size_;
+      space_available_.notify_one();
       return command;
     }
     if (media_size_ != 0) {
@@ -187,6 +213,7 @@ class ActorMailbox {
     }
     for (auto& command : dropped) drop(std::move(command));
     ready_.notify_all();
+    space_available_.notify_all();
     return discarded;
   }
 
@@ -234,7 +261,8 @@ class ActorMailbox {
     try {
       command->on_drop();
     } catch (...) {
-      std::terminate();
+      // Resource cleanup is best effort and must not turn queue teardown into
+      // a process failure.
     }
   }
 
@@ -243,12 +271,13 @@ class ActorMailbox {
     try {
       command.on_drop();
     } catch (...) {
-      std::terminate();
+      // See the optional overload above.
     }
   }
 
   mutable std::mutex mutex_;
   std::condition_variable ready_;
+  std::condition_variable space_available_;
   std::array<std::optional<MediaCommand>, ControlCapacity> control_;
   struct MediaSlot {
     std::optional<MediaCommand> command;

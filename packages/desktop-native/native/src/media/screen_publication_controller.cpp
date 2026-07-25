@@ -5,16 +5,19 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "../common/diagnostic_log.hpp"
 #include "livekit_connect_policy.hpp"
 #include "media_operation.hpp"
+#include "media_runtime_support.hpp"
 
 namespace syrnike::desktop_native::media {
 namespace {
@@ -68,9 +71,286 @@ std::string screenStallTerminalReason(std::string_view cause) {
   return "rtp_stall_recovery_exhausted";
 }
 
+class ScreenPostGate final {
+ public:
+  explicit ScreenPostGate(
+      ScreenPublicationController::InternalPost post)
+      : post_(std::move(post)) {}
+
+  bool post(MediaCommand command) {
+    ScreenPublicationController::InternalPost post;
+    {
+      std::lock_guard lock(mutex_);
+      if (!enabled_) return false;
+      post = post_;
+      ++in_flight_;
+    }
+    bool posted = false;
+    try {
+      posted = post && post(std::move(command));
+    } catch (...) {
+      leave();
+      throw;
+    }
+    leave();
+    return posted;
+  }
+
+  void disable() noexcept {
+    std::unique_lock lock(mutex_);
+    enabled_ = false;
+    changed_.wait(lock, [&] { return in_flight_ == 0; });
+    post_ = {};
+  }
+
+ private:
+  void leave() noexcept {
+    std::lock_guard lock(mutex_);
+    --in_flight_;
+    if (in_flight_ == 0) changed_.notify_all();
+  }
+
+  std::mutex mutex_;
+  std::condition_variable changed_;
+  bool enabled_ = true;
+  std::size_t in_flight_ = 0;
+  ScreenPublicationController::InternalPost post_;
+};
+
+class ScreenCurrentGate final {
+ public:
+  explicit ScreenCurrentGate(
+      ScreenPublicationController::IsCurrent current)
+      : current_(std::move(current)) {}
+
+  bool current(const std::string& session_id, std::uint64_t generation) {
+    ScreenPublicationController::IsCurrent current;
+    {
+      std::lock_guard lock(mutex_);
+      if (!enabled_) return false;
+      current = current_;
+      ++in_flight_;
+    }
+    bool result = false;
+    try {
+      result = current && current(session_id, generation);
+    } catch (...) {
+      leave();
+      throw;
+    }
+    leave();
+    return result;
+  }
+
+  void disable() noexcept {
+    std::unique_lock lock(mutex_);
+    enabled_ = false;
+    changed_.wait(lock, [&] { return in_flight_ == 0; });
+    current_ = {};
+  }
+
+ private:
+  void leave() noexcept {
+    std::lock_guard lock(mutex_);
+    --in_flight_;
+    if (in_flight_ == 0) changed_.notify_all();
+  }
+
+  std::mutex mutex_;
+  std::condition_variable changed_;
+  bool enabled_ = true;
+  std::size_t in_flight_ = 0;
+  ScreenPublicationController::IsCurrent current_;
+};
+
+class ScreenRetireCleanupTask final {
+ public:
+  using CleanupThunk = void (*)(
+      const std::shared_ptr<void>&,
+      const std::shared_ptr<void>&) noexcept;
+
+  void configure(
+      std::shared_ptr<void> owner,
+      std::shared_ptr<void> state,
+      CleanupThunk cleanup) noexcept {
+    owner_ = std::move(owner);
+    state_ = std::move(state);
+    cleanup_ = cleanup;
+  }
+
+  void run() noexcept {
+    if (started_.exchange(true, std::memory_order_acq_rel)) return;
+    if (cleanup_) cleanup_(owner_, state_);
+    cleanup_ = nullptr;
+    state_.reset();
+    owner_.reset();
+  }
+
+  void retainBefore(std::shared_ptr<ScreenRetireCleanupTask> next) noexcept {
+    retained_next_ = std::move(next);
+  }
+
+  std::shared_ptr<ScreenRetireCleanupTask> takeRetainedNext() noexcept {
+    return std::move(retained_next_);
+  }
+
+ private:
+  std::atomic_bool started_{false};
+  std::shared_ptr<void> owner_;
+  std::shared_ptr<void> state_;
+  CleanupThunk cleanup_ = nullptr;
+  std::shared_ptr<ScreenRetireCleanupTask> retained_next_;
+};
+
+class ScreenRetireFallbackDispatcher final {
+ public:
+  using Task = std::shared_ptr<ScreenRetireCleanupTask>;
+
+  explicit ScreenRetireFallbackDispatcher(
+      ScreenPublicationController::LaunchRetireWorker launcher,
+      ScreenPublicationController::BeforeRetireEnqueue before_enqueue)
+      : state_(std::make_shared<State>()) {
+    if (!launcher) {
+      launcher = [](std::function<void()> work) {
+        return std::thread(std::move(work));
+      };
+    }
+    state_->launcher = std::move(launcher);
+    state_->before_enqueue = std::move(before_enqueue);
+    management_thread_ = std::thread([state = state_] {
+      runManagement(std::move(state));
+    });
+  }
+
+  ~ScreenRetireFallbackDispatcher() {
+    close(std::chrono::steady_clock::now() + kNativeShutdownBudget);
+  }
+
+  void submit(Task task) {
+    {
+      std::lock_guard lock(state_->mutex);
+      bool force_retained = false;
+      try {
+        if (state_->before_enqueue) state_->before_enqueue();
+      } catch (...) {
+        force_retained = true;
+      }
+      if (!force_retained && state_->ready.size() < kReadyCapacity) {
+        try {
+          state_->ready.push_back(task);
+        } catch (...) {
+          task->retainBefore(std::move(state_->retained_overflow));
+          state_->retained_overflow = std::move(task);
+        }
+      } else {
+        task->retainBefore(std::move(state_->retained_overflow));
+        state_->retained_overflow = std::move(task);
+      }
+    }
+    state_->changed.notify_all();
+  }
+
+  void close(std::chrono::steady_clock::time_point deadline) noexcept {
+    if (!management_thread_.joinable()) return;
+    {
+      std::lock_guard lock(state_->mutex);
+      state_->closing = true;
+    }
+    state_->changed.notify_all();
+    bool finished = false;
+    {
+      std::unique_lock lock(state_->mutex);
+      state_->finished_changed.wait_until(
+          lock, deadline, [&] { return state_->finished; });
+      finished = state_->finished;
+    }
+    if (finished) {
+      management_thread_.join();
+    } else {
+      management_thread_.detach();
+      logScreen(
+        "screen_retire_dispatcher_detached",
+        {{"reason", "shutdown_deadline"}}
+      );
+    }
+  }
+
+ private:
+  static constexpr std::size_t kReadyCapacity = 8;
+
+  struct State {
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::condition_variable finished_changed;
+    std::deque<Task> ready;
+    Task retained_overflow;
+    ScreenPublicationController::LaunchRetireWorker launcher;
+    ScreenPublicationController::BeforeRetireEnqueue before_enqueue;
+    bool closing = false;
+    bool finished = false;
+  };
+
+  static void runManagement(std::shared_ptr<State> state) noexcept {
+    for (;;) {
+      Task task;
+      {
+        std::unique_lock lock(state->mutex);
+        state->changed.wait(lock, [&] {
+          return state->closing || !state->ready.empty() ||
+              state->retained_overflow != nullptr;
+        });
+        if (state->ready.empty() && state->retained_overflow) {
+          task = std::move(state->retained_overflow);
+          state->retained_overflow = task->takeRetainedNext();
+        } else if (!state->ready.empty()) {
+          task = state->ready.front();
+        }
+        if (!task) {
+          state->finished = true;
+          state->finished_changed.notify_all();
+          return;
+        }
+      }
+
+      try {
+        auto worker = state->launcher([task] { task->run(); });
+        worker.detach();
+        std::lock_guard lock(state->mutex);
+        if (!state->ready.empty() &&
+            state->ready.front() == task) {
+          state->ready.pop_front();
+        }
+      } catch (...) {
+        {
+          std::lock_guard lock(state->mutex);
+          if (state->ready.empty() ||
+              state->ready.front() != task) {
+            task->retainBefore(std::move(state->retained_overflow));
+            state->retained_overflow = task;
+          }
+        }
+        try {
+          logScreen(
+            "screen_retire_dispatcher_worker_failed",
+            {{"reason", "worker_launch_failed"}}
+          );
+        } catch (...) {
+        }
+        std::unique_lock lock(state->mutex);
+        state->changed.wait_for(lock, std::chrono::milliseconds(25));
+      }
+    }
+  }
+
+  std::shared_ptr<State> state_;
+  std::thread management_thread_;
+};
+
 }  // namespace
 
-class ScreenPublicationController::Implementation {
+class ScreenPublicationController::Implementation
+    : public std::enable_shared_from_this<
+          ScreenPublicationController::Implementation> {
  public:
   Implementation(
     SequencedEmitter& emitter,
@@ -83,10 +363,14 @@ class ScreenPublicationController::Implementation {
     StartCaptureWorkers start_capture_workers,
     CapturePromoted capture_promoted,
     QueryEncoderCapability query_encoder_capability,
-    CreateVideoSource create_video_source
+    CreateVideoSource create_video_source,
+    LaunchRetireWorker launch_retire_worker,
+    BeforeRetireEnqueue before_retire_enqueue,
+    BeforeResourceCleanup before_resource_cleanup
   ) : emitter_(emitter),
-      post_(std::move(post)),
-      is_current_(std::move(is_current)),
+      post_(std::make_shared<ScreenPostGate>(std::move(post))),
+      is_current_(std::make_shared<ScreenCurrentGate>(
+          std::move(is_current))),
       livekit_client_(std::move(livekit_client)),
       commit_if_current_(std::move(commit_if_current)),
       now_(std::move(now)),
@@ -94,14 +378,28 @@ class ScreenPublicationController::Implementation {
       start_capture_workers_(std::move(start_capture_workers)),
       capture_promoted_(std::move(capture_promoted)),
       query_encoder_capability_(std::move(query_encoder_capability)),
-      create_video_source_(std::move(create_video_source)) {
+      create_video_source_(std::move(create_video_source)),
+      before_resource_cleanup_(std::move(before_resource_cleanup)),
+      launch_retire_worker_(
+          launch_retire_worker
+            ? std::move(launch_retire_worker)
+            : LaunchRetireWorker([](std::function<void()> work) {
+                return std::thread(std::move(work));
+              })),
+      shutdown_cleanup_task_(
+          std::make_shared<ScreenRetireCleanupTask>()),
+      shutdown_retiring_state_(std::make_shared<RetiringState>()),
+      retire_dispatcher_(
+          std::make_shared<ScreenRetireFallbackDispatcher>(
+              launch_retire_worker_,
+              std::move(before_retire_enqueue))) {
     if (!commit_if_current_) {
       commit_if_current_ = [this](
         const std::string& session_id,
         std::uint64_t generation,
         std::function<void()> commit
       ) {
-        if (!is_current_(session_id, generation)) return false;
+        if (!is_current_->current(session_id, generation)) return false;
         commit();
         return true;
       };
@@ -233,7 +531,7 @@ class ScreenPublicationController::Implementation {
         {"emitStopped", emit_stopped}
       }
     );
-    if (!is_current_(command.session_id, command.generation)) {
+    if (!is_current_->current(command.session_id, command.generation)) {
       logScreen(
         "screen_stop_stale",
         {{"sessionId", command.session_id}, {"generation", command.generation}}
@@ -256,54 +554,21 @@ class ScreenPublicationController::Implementation {
     if (emit_stopped) emitStopped(stopped_session_id, stopped_generation, "stopped");
   }
 
-  void restartCaptureAfterStall(const MediaCommand& command) {
+  void executePublicationRestart(const MediaCommand& command) {
     reapFinishedWork();
-    if (shutdown_ || !is_current_(command.session_id, command.generation)) {
+    if (shutdown_ ||
+        !is_current_->current(command.session_id, command.generation)) {
       return;
     }
     if (!active_ || !matches(*active_, command) || pending_restart_) {
       return;
     }
 
-    const auto now = now_();
-    while (!recovery_attempts_.empty() &&
-           now - recovery_attempts_.front() >= kRecoveryWindow) {
-      recovery_attempts_.pop_front();
-    }
-    if (recovery_session_id_ != command.session_id ||
-        recovery_generation_ != command.generation) {
-      recovery_session_id_ = command.session_id;
-      recovery_generation_ = command.generation;
-      recovery_attempts_.clear();
-    }
-    if (recovery_attempts_.size() >= kMaxRecoveryAttempts) {
-      const auto terminal_reason =
-        screenStallTerminalReason(command.internal_message);
-      logScreen(
-        "screen_stall_recovery_exhausted",
-        {
-          {"sessionId", command.session_id},
-          {"generation", command.generation},
-          {"attempts", static_cast<std::uint64_t>(recovery_attempts_.size())},
-          {"cause", command.internal_message},
-          {"terminalReason", terminal_reason}
-        }
-      );
-      MediaCommand failure;
-      failure.type = "__screenRecoveryFailed";
-      failure.session_id = command.session_id;
-      failure.generation = command.generation;
-      failure.internal_message = std::move(terminal_reason);
-      post_(std::move(failure));
-      return;
-    }
-    recovery_attempts_.push_back(now);
-
     PendingRestart restart;
     restart.command = active_->command;
     restart.command.request_id.clear();
     restart.cause = command.internal_message;
-    restart.attempt = recovery_attempts_.size();
+    restart.attempt = static_cast<std::size_t>(command.revision);
     pending_restart_ = std::move(restart);
     logScreen(
       "screen_stall_restart_requested",
@@ -311,8 +576,7 @@ class ScreenPublicationController::Implementation {
         {"sessionId", command.session_id},
         {"generation", command.generation},
         {"cause", command.internal_message},
-        {"attempt", static_cast<std::uint64_t>(recovery_attempts_.size())},
-        {"maxAttempts", static_cast<std::uint64_t>(kMaxRecoveryAttempts)}
+        {"attempt", command.revision}
       }
     );
     retireResources(std::move(active_));
@@ -331,7 +595,7 @@ class ScreenPublicationController::Implementation {
       }
     );
     if ((command.type == "disconnectScreen" || command.terminal || command.force) &&
-        !is_current_(command.session_id, command.generation)) {
+        !is_current_->current(command.session_id, command.generation)) {
       logScreen(
         "screen_disconnect_stale",
         {{"sessionId", command.session_id}, {"generation", command.generation}}
@@ -466,16 +730,31 @@ class ScreenPublicationController::Implementation {
     return result;
   }
 
-  void shutdown() {
+  void shutdown(
+      std::optional<std::chrono::steady_clock::time_point> stop_by =
+          std::nullopt) {
     if (shutdown_) return;
+    const auto deadline = stop_by.value_or(
+        std::chrono::steady_clock::now() + kNativeShutdownBudget);
     shutdown_ = true;
+    shutdown_requested_.store(true, std::memory_order_release);
+    post_->disable();
+    is_current_->disable();
     pending_restart_.reset();
     logScreen("screen_shutdown_start");
     if (candidate_) {
       candidate_->operation.requestCancel();
-      if (candidate_->worker.joinable()) candidate_->worker.join();
-      if (candidate_->resources && candidate_->resources->publication) {
-        try { retireResources(std::move(candidate_->resources)); } catch (...) {}
+      while (!candidate_->finished.load(std::memory_order_acquire) &&
+             std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
+      if (candidate_->worker.joinable()) {
+        if (candidate_->finished.load(std::memory_order_acquire)) {
+          candidate_->worker.join();
+        } else {
+          candidate_->worker.detach();
+          logScreen("screen_attempt_detached_at_shutdown");
+        }
       }
       candidate_.reset();
     }
@@ -485,7 +764,7 @@ class ScreenPublicationController::Implementation {
     if (prepared_) {
       try { retireResources(std::move(prepared_)); } catch (...) {}
     }
-    drainRetirements();
+    drainRetirements(deadline);
     logScreen("screen_shutdown_done");
   }
 
@@ -504,6 +783,7 @@ class ScreenPublicationController::Implementation {
     std::unique_ptr<LiveKitTrackPublication> publication;
     ScreenPublicationDescription description;
     std::shared_ptr<std::atomic_bool> capture_running;
+    std::shared_ptr<syrnike::voice::ScreenAudioStopSignal> audio_stop;
     std::thread capture_thread;
     std::thread audio_thread;
     std::shared_ptr<livekit::D3D11H264VideoSource> video_source;
@@ -540,6 +820,7 @@ class ScreenPublicationController::Implementation {
     std::uint64_t generation = 0;
     std::unique_ptr<ScreenResources> resources;
     std::thread worker;
+    std::atomic_bool cleanup_started{false};
     std::atomic_bool finished{false};
     LiveKitConnectPolicy::Clock::time_point started_at = LiveKitConnectPolicy::Clock::now();
   };
@@ -584,7 +865,7 @@ class ScreenPublicationController::Implementation {
   }
 
   void validateCurrent(const MediaCommand& command, const char* operation) const {
-    if (is_current_(command.session_id, command.generation)) return;
+    if (is_current_->current(command.session_id, command.generation)) return;
     throw std::runtime_error(std::string("stale screen ") + operation + " generation");
   }
 
@@ -621,9 +902,11 @@ class ScreenPublicationController::Implementation {
   }
 
   bool isCurrent(const std::shared_ptr<AttemptState>& attempt) const {
-    return !attempt->operation.cancelled() &&
+    return !shutdown_requested_.load(std::memory_order_acquire) &&
+      !attempt->operation.cancelled() &&
       !attempt->operation.expired() &&
-      is_current_(attempt->command.session_id, attempt->command.generation);
+      is_current_->current(
+          attempt->command.session_id, attempt->command.generation);
   }
 
   [[noreturn]] void throwCapacityOccupied(const char* message) const {
@@ -652,7 +935,9 @@ class ScreenPublicationController::Implementation {
       }
     );
     try {
-      candidate->worker = std::thread([this, candidate] { runAttempt(candidate); });
+      const auto self = shared_from_this();
+      candidate->worker =
+          std::thread([self, candidate] { self->runAttempt(candidate); });
     } catch (...) {
       auto failed = std::move(candidate_);
       if (failed->obsolete) prepared_ = std::move(failed->obsolete);
@@ -724,8 +1009,10 @@ class ScreenPublicationController::Implementation {
       // Deadline expiry is a terminal failure for the current generation, not
       // stale work. Only explicit cancellation or a superseded generation may
       // suppress the attempt's terminal projection.
-      attempt->stale = attempt->operation.cancelled() ||
-        !is_current_(
+      attempt->stale =
+        shutdown_requested_.load(std::memory_order_acquire) ||
+        attempt->operation.cancelled() ||
+        !is_current_->current(
           attempt->command.session_id,
           attempt->command.generation);
       if (attempt->resources) cleanupResources(*attempt->resources);
@@ -753,7 +1040,9 @@ class ScreenPublicationController::Implementation {
     internal.session_id = attempt->command.session_id;
     internal.generation = attempt->command.generation;
     internal.internal_message = attempt->error;
-    post_(std::move(internal));
+    if (!shutdown_requested_.load(std::memory_order_acquire)) {
+      post_->post(std::move(internal));
+    }
   }
 
   void publishAndStartCapture(
@@ -844,6 +1133,8 @@ class ScreenPublicationController::Implementation {
     }
 
     resources.capture_running = std::make_shared<std::atomic_bool>(true);
+    resources.audio_stop =
+      std::make_shared<syrnike::voice::ScreenAudioStopSignal>();
     start_capture_workers_(
       command,
       description,
@@ -851,7 +1142,10 @@ class ScreenPublicationController::Implementation {
       resources.video_track,
       resources.audio_source,
       resources.capture_running,
-      [this, attempt] { return isCurrent(attempt); },
+      resources.audio_stop,
+      [self = shared_from_this(), attempt] {
+        return self->isCurrent(attempt);
+      },
       resources.capture_thread,
       resources.audio_thread
     );
@@ -863,7 +1157,8 @@ class ScreenPublicationController::Implementation {
     auto attempt = std::move(candidate_);
     if (attempt->worker.joinable()) attempt->worker.join();
     const bool terminal_failure = attempt->terminal_cancelled &&
-      is_current_(attempt->command.session_id, attempt->command.generation);
+      is_current_->current(
+          attempt->command.session_id, attempt->command.generation);
     bool promoted = false;
     if (attempt->succeeded && !attempt->stale &&
         !attempt->operation.cancelled() && !attempt->operation.expired() &&
@@ -884,7 +1179,8 @@ class ScreenPublicationController::Implementation {
     bool stale = attempt->stale || attempt->operation.cancelled();
     if (attempt->succeeded) stale = stale || !promoted;
     else if (!stale) {
-      stale = !is_current_(attempt->command.session_id, attempt->command.generation);
+      stale = !is_current_->current(
+          attempt->command.session_id, attempt->command.generation);
     }
     if (terminal_failure) stale = false;
     if (!attempt->succeeded || !promoted) {
@@ -909,7 +1205,7 @@ class ScreenPublicationController::Implementation {
           terminal_failure || !stale
         ));
       } else if (!stale && !terminal_failure &&
-                 is_current_(attempt->command.session_id,
+                 is_current_->current(attempt->command.session_id,
                              attempt->command.generation)) {
         MediaCommand failure;
         failure.type = "__screenRecoveryFailed";
@@ -921,7 +1217,7 @@ class ScreenPublicationController::Implementation {
           : (failure_code == "native_command_failed"
               ? screenStallTerminalReason(attempt->recovery_cause)
               : failure_code);
-        post_(std::move(failure));
+        post_->post(std::move(failure));
       }
       logScreen(
         "screen_attempt_not_promoted",
@@ -1009,122 +1305,197 @@ class ScreenPublicationController::Implementation {
     emitter_.emit(std::move(event));
   }
 
-  void cleanupResources(ScreenResources& resources) {
-    const auto session_id = resources.command.session_id;
-    const auto generation = resources.command.generation;
+  void cleanupResources(ScreenResources& resources) noexcept {
     if (resources.capture_running) resources.capture_running->store(false);
-    if (resources.capture_thread.joinable()) resources.capture_thread.join();
-    if (resources.audio_thread.joinable()) resources.audio_thread.join();
-    if (resources.publication && !resources.video_publication_sid.empty()) {
-      logScreen(
-        "screen_unpublish_video_start",
-        {{"sessionId", session_id}, {"generation", generation}}
-      );
+    if (resources.audio_stop) resources.audio_stop->signal();
+    auto finish_thread = [](std::thread& worker) noexcept {
+      if (!worker.joinable()) return;
       try {
-        resources.publication->unpublishTrack(resources.video_publication_sid);
-        logScreen(
-          "screen_unpublish_video_done",
-          {{"sessionId", session_id}, {"generation", generation}}
-        );
-      } catch (const std::exception& error) {
-        logScreen(
-          "screen_unpublish_video_failed",
-          {
-            {"sessionId", session_id},
-            {"generation", generation},
-            {"message", sanitizeDiagnosticMessage(error.what())}
-          }
-        );
+        worker.join();
       } catch (...) {
-        logScreen(
-          "screen_unpublish_video_failed_unknown",
-          {{"sessionId", session_id}, {"generation", generation}}
-        );
+        try {
+          if (worker.joinable()) worker.detach();
+        } catch (...) {
+        }
+      }
+    };
+    finish_thread(resources.capture_thread);
+    finish_thread(resources.audio_thread);
+
+    auto publication = std::move(resources.publication);
+    auto video_sid = std::move(resources.video_publication_sid);
+    auto audio_sid = std::move(resources.audio_publication_sid);
+    try {
+      if (before_resource_cleanup_) before_resource_cleanup_();
+    } catch (...) {
+    }
+    if (publication && !video_sid.empty()) {
+      try {
+        publication->unpublishTrack(video_sid);
+      } catch (...) {
       }
     }
-    if (resources.publication && !resources.audio_publication_sid.empty()) {
-      logScreen(
-        "screen_unpublish_audio_start",
-        {{"sessionId", session_id}, {"generation", generation}}
-      );
+    if (publication && !audio_sid.empty()) {
       try {
-        resources.publication->unpublishTrack(resources.audio_publication_sid);
-        logScreen(
-          "screen_unpublish_audio_done",
-          {{"sessionId", session_id}, {"generation", generation}}
-        );
-      } catch (const std::exception& error) {
-        logScreen(
-          "screen_unpublish_audio_failed",
-          {
-            {"sessionId", session_id},
-            {"generation", generation},
-            {"message", sanitizeDiagnosticMessage(error.what())}
-          }
-        );
+        publication->unpublishTrack(audio_sid);
       } catch (...) {
-        logScreen(
-          "screen_unpublish_audio_failed_unknown",
-          {{"sessionId", session_id}, {"generation", generation}}
-        );
       }
     }
-    resources.video_publication_sid.clear();
-    resources.audio_publication_sid.clear();
-    resources.publication.reset();
+    publication.reset();
     resources.video_track.reset();
     resources.audio_track.reset();
     resources.video_source.reset();
     resources.audio_source.reset();
     resources.capture_running.reset();
+    resources.audio_stop.reset();
   }
 
-  void retireResources(std::unique_ptr<ScreenResources> resources) {
-    if (!resources) return;
-    if (resources->capture_running) resources->capture_running->store(false);
-    if (resources->retire_requested_at == LiveKitConnectPolicy::Clock::time_point{}) {
-      resources->retire_requested_at = now_();
-    }
-    if (retiring_) {
-      if (deferred_retire_) {
-        throw std::logic_error("screen retirement bound exceeded");
-      }
-      deferred_retire_ = std::move(resources);
-      logScreen("screen_retire_deferred");
+  void finalizeRetirement(
+      const std::shared_ptr<RetiringState>& state) noexcept {
+    if (!state ||
+        state->cleanup_started.exchange(true, std::memory_order_acq_rel)) {
       return;
     }
-    auto retiring = std::make_shared<RetiringState>();
-    retiring->id = std::to_string(++next_retire_id_);
-    retiring->resources = std::move(resources);
-    retiring->session_id = retiring->resources->command.session_id;
-    retiring->generation = retiring->resources->command.generation;
-    retiring->started_at = retiring->resources->retire_requested_at;
-    logScreen(
-      "screen_retire_launch",
-      {
-        {"retireId", retiring->id},
-        {"sessionId", retiring->resources->command.session_id},
-        {"generation", retiring->resources->command.generation}
+    try {
+      if (state->resources) {
+        cleanupResources(*state->resources);
+      }
+    } catch (...) {
+    }
+    state->resources.reset();
+    state->finished.store(true, std::memory_order_release);
+  }
+
+  void retainRetirement(
+      const std::shared_ptr<RetiringState>& state,
+      std::shared_ptr<ScreenRetireCleanupTask> task) noexcept {
+    const auto self = shared_from_this();
+    task->configure(
+      self,
+      state,
+      [](
+          const std::shared_ptr<void>& owner,
+          const std::shared_ptr<void>& retained_state) noexcept {
+        const auto implementation =
+          std::static_pointer_cast<Implementation>(owner);
+        const auto retirement =
+          std::static_pointer_cast<RetiringState>(retained_state);
+        implementation->finalizeRetirement(retirement);
       }
     );
-    const auto state = retiring;
+    retire_dispatcher_->submit(std::move(task));
+  }
+
+  void retireResources(std::unique_ptr<ScreenResources> resources) noexcept {
     try {
-      retiring->worker = std::thread(
-        [this, state]() mutable {
-          cleanupResources(*state->resources);
-          state->resources.reset();
-          state->finished.store(true);
-          MediaCommand done;
-          done.type = "__screenRetireDone";
-          done.internal_message = state->id;
-          post_(std::move(done));
+      if (!resources) return;
+      if (resources->capture_running) resources->capture_running->store(false);
+      if (resources->audio_stop) resources->audio_stop->signal();
+      if (resources->retire_requested_at ==
+          LiveKitConnectPolicy::Clock::time_point{}) {
+        resources->retire_requested_at = now_();
+      }
+      if (retiring_) {
+        if (deferred_retire_) {
+          auto cleanup_task = std::make_shared<ScreenRetireCleanupTask>();
+          auto overflow = std::make_shared<RetiringState>();
+          overflow->id = "overflow-" + std::to_string(++next_retire_id_);
+          overflow->resources = std::move(resources);
+          overflow->session_id = overflow->resources->command.session_id;
+          overflow->generation = overflow->resources->command.generation;
+          overflow->started_at = overflow->resources->retire_requested_at;
+          try {
+            overflow_retiring_.push_back(overflow);
+          } catch (...) {
+            retainRetirement(overflow, std::move(cleanup_task));
+            return;
+          }
+          try {
+            const auto state = overflow;
+            const auto self = shared_from_this();
+            overflow->worker = launch_retire_worker_([self, state] {
+              self->finalizeRetirement(state);
+            });
+          } catch (...) {
+            overflow_retiring_.pop_back();
+            retainRetirement(overflow, std::move(cleanup_task));
+            try {
+              logScreen("screen_retire_overflow_worker_start_failed");
+            } catch (...) {
+            }
+            return;
+          }
+          try {
+            logScreen("screen_retire_overflow_forced");
+          } catch (...) {
+          }
+          return;
+        }
+        deferred_retire_ = std::move(resources);
+        logScreen("screen_retire_deferred");
+        return;
+      }
+      auto retiring = std::make_shared<RetiringState>();
+      retiring->id = std::to_string(++next_retire_id_);
+      retiring->resources = std::move(resources);
+      retiring->session_id = retiring->resources->command.session_id;
+      retiring->generation = retiring->resources->command.generation;
+      retiring->started_at = retiring->resources->retire_requested_at;
+      logScreen(
+        "screen_retire_launch",
+        {
+          {"retireId", retiring->id},
+          {"sessionId", retiring->resources->command.session_id},
+          {"generation", retiring->resources->command.generation}
         }
       );
+      const auto state = retiring;
+      try {
+        const auto self = shared_from_this();
+        retiring->worker = launch_retire_worker_(
+          [self, state]() mutable {
+            self->finalizeRetirement(state);
+            try {
+              const auto retry_warning_at =
+                std::chrono::steady_clock::now() + std::chrono::seconds(5);
+              bool warned = false;
+              while (!self->shutdown_requested_.load(
+                  std::memory_order_acquire)) {
+                MediaCommand done;
+                done.type = "__screenRetireDone";
+                done.internal_message = state->id;
+                if (self->post_->post(std::move(done))) return;
+                if (!warned &&
+                    std::chrono::steady_clock::now() >= retry_warning_at) {
+                  warned = true;
+                  try {
+                    logScreen(
+                      "screen_retire_completion_retry_delayed",
+                      {{"retireId", state->id}}
+                    );
+                  } catch (...) {
+                  }
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+              }
+            } catch (...) {
+            }
+          }
+        );
+      } catch (...) {
+        deferred_retire_ = std::move(retiring->resources);
+        logScreen("screen_retire_worker_start_failed");
+        return;
+      }
+      retiring_ = std::move(retiring);
     } catch (...) {
-      deferred_retire_ = std::move(retiring->resources);
-      throw ScreenActorUnresponsiveError("failed to start screen retirement worker");
+      // This function is called from terminal/disconnect paths. Allocation or
+      // logging failures must not escape them or terminate the utility host.
+      try {
+        if (resources) cleanupResources(*resources);
+      } catch (...) {
+      }
     }
-    retiring_ = std::move(retiring);
   }
 
   void finishRetire(const std::string& id) {
@@ -1149,7 +1520,8 @@ class ScreenPublicationController::Implementation {
     auto restart = std::move(*pending_restart_);
     pending_restart_.reset();
     auto command = std::move(restart.command);
-    if (!is_current_(command.session_id, command.generation)) return;
+    if (!is_current_->current(
+            command.session_id, command.generation)) return;
 
     auto attempt = std::make_shared<AttemptState>();
     attempt->kind = AttemptKind::Start;
@@ -1181,23 +1553,76 @@ class ScreenPublicationController::Implementation {
     }
     if (!retiring_ && deferred_retire_) startDeferredRetire();
     if (!retiring_ && !deferred_retire_) startPendingRestart();
-  }
-
-  void drainRetirements() {
-    while (retiring_ || deferred_retire_) {
-      if (!retiring_ && deferred_retire_) {
-        auto resources = std::move(deferred_retire_);
-        cleanupResources(*resources);
+    for (auto iterator = overflow_retiring_.begin();
+         iterator != overflow_retiring_.end();) {
+      if (!(*iterator)->finished.load(std::memory_order_acquire)) {
+        ++iterator;
         continue;
       }
-      if (retiring_ && retiring_->worker.joinable()) retiring_->worker.join();
-      retiring_.reset();
+      if ((*iterator)->worker.joinable()) (*iterator)->worker.join();
+      iterator = overflow_retiring_.erase(iterator);
     }
   }
 
+  void drainRetirements(
+      std::chrono::steady_clock::time_point deadline) noexcept {
+    if (deferred_retire_) {
+      auto state = std::move(shutdown_retiring_state_);
+      state->resources = std::move(deferred_retire_);
+      state->generation = state->resources->command.generation;
+      state->started_at = state->resources->retire_requested_at;
+      shutdown_retiring_in_flight_ = state;
+      try {
+        const auto self = shared_from_this();
+        state->worker = launch_retire_worker_([self, state] {
+          self->finalizeRetirement(state);
+        });
+      } catch (...) {
+        shutdown_retiring_in_flight_.reset();
+        // The management dispatcher owns this exact cleanup and retries worker
+        // launch independently of any later actor command. SDK teardown never
+        // runs on the management thread, so one hung unpublish cannot stall
+        // subsequent retained retirements.
+        auto task = std::move(shutdown_cleanup_task_);
+        retainRetirement(state, std::move(task));
+        try {
+          logScreen("screen_shutdown_deferred_retire_launch_failed");
+        } catch (...) {
+        }
+      }
+    }
+
+    auto wait_state = [&](const std::shared_ptr<RetiringState>& state) {
+      while (!state->finished.load(std::memory_order_acquire) &&
+             std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
+      if (!state->worker.joinable()) return;
+      if (state->finished.load(std::memory_order_acquire)) {
+        state->worker.join();
+      } else {
+        state->worker.detach();
+        logScreen(
+          "screen_retire_detached_at_shutdown",
+          {{"retireId", state->id}}
+        );
+      }
+    };
+
+    if (retiring_) wait_state(retiring_);
+    for (const auto& overflow : overflow_retiring_) wait_state(overflow);
+    if (shutdown_retiring_in_flight_) {
+      wait_state(shutdown_retiring_in_flight_);
+    }
+    retiring_.reset();
+    overflow_retiring_.clear();
+    shutdown_retiring_in_flight_.reset();
+    retire_dispatcher_->close(deadline);
+  }
+
   SequencedEmitter& emitter_;
-  InternalPost post_;
-  IsCurrent is_current_;
+  std::shared_ptr<ScreenPostGate> post_;
+  std::shared_ptr<ScreenCurrentGate> is_current_;
   std::shared_ptr<LiveKitPublicationClient> livekit_client_;
   CommitIfCurrent commit_if_current_;
   Now now_;
@@ -1206,17 +1631,20 @@ class ScreenPublicationController::Implementation {
   CapturePromoted capture_promoted_;
   QueryEncoderCapability query_encoder_capability_;
   CreateVideoSource create_video_source_;
+  BeforeResourceCleanup before_resource_cleanup_;
+  LaunchRetireWorker launch_retire_worker_;
+  std::shared_ptr<ScreenRetireCleanupTask> shutdown_cleanup_task_;
+  std::shared_ptr<RetiringState> shutdown_retiring_state_;
+  std::shared_ptr<RetiringState> shutdown_retiring_in_flight_;
+  std::shared_ptr<ScreenRetireFallbackDispatcher> retire_dispatcher_;
   std::unique_ptr<ScreenResources> prepared_;
   std::unique_ptr<ScreenResources> active_;
   std::shared_ptr<AttemptState> candidate_;
   std::shared_ptr<RetiringState> retiring_;
   std::unique_ptr<ScreenResources> deferred_retire_;
+  std::vector<std::shared_ptr<RetiringState>> overflow_retiring_;
   std::optional<PendingRestart> pending_restart_;
-  std::string recovery_session_id_;
-  std::uint64_t recovery_generation_ = 0;
-  std::deque<LiveKitConnectPolicy::Clock::time_point> recovery_attempts_;
-  static constexpr std::size_t kMaxRecoveryAttempts = 3;
-  static constexpr auto kRecoveryWindow = std::chrono::seconds(60);
+  std::atomic_bool shutdown_requested_{false};
   std::uint64_t next_retire_id_ = 0;
   bool shutdown_ = false;
 };
@@ -1232,8 +1660,11 @@ ScreenPublicationController::ScreenPublicationController(
   StartCaptureWorkers start_capture_workers,
   CapturePromoted capture_promoted,
   QueryEncoderCapability query_encoder_capability,
-  CreateVideoSource create_video_source
-) : implementation_(std::make_unique<Implementation>(
+  CreateVideoSource create_video_source,
+  LaunchRetireWorker launch_retire_worker,
+  BeforeRetireEnqueue before_retire_enqueue,
+  BeforeResourceCleanup before_resource_cleanup
+) : implementation_(std::make_shared<Implementation>(
       emitter,
       std::move(post),
       std::move(is_current),
@@ -1244,10 +1675,15 @@ ScreenPublicationController::ScreenPublicationController(
       std::move(start_capture_workers),
       std::move(capture_promoted),
       std::move(query_encoder_capability),
-      std::move(create_video_source)
+      std::move(create_video_source),
+      std::move(launch_retire_worker),
+      std::move(before_retire_enqueue),
+      std::move(before_resource_cleanup)
     )) {}
 
-ScreenPublicationController::~ScreenPublicationController() = default;
+ScreenPublicationController::~ScreenPublicationController() {
+  if (implementation_) implementation_->shutdown();
+}
 
 void ScreenPublicationController::connect(const MediaCommand& command) {
   implementation_->connect(command);
@@ -1264,10 +1700,10 @@ void ScreenPublicationController::stopCapture(
   implementation_->stopCapture(command, emit_stopped);
 }
 
-void ScreenPublicationController::restartCaptureAfterStall(
+void ScreenPublicationController::executePublicationRestart(
   const MediaCommand& command
 ) {
-  implementation_->restartCaptureAfterStall(command);
+  implementation_->executePublicationRestart(command);
 }
 
 void ScreenPublicationController::disconnect(
@@ -1293,5 +1729,9 @@ RuntimeEvent ScreenPublicationController::probe(const MediaCommand& command) {
 }
 
 void ScreenPublicationController::shutdown() { implementation_->shutdown(); }
+void ScreenPublicationController::shutdown(
+    std::chrono::steady_clock::time_point deadline) {
+  implementation_->shutdown(deadline);
+}
 
 }  // namespace syrnike::desktop_native::media

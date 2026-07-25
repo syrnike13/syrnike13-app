@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, sharedTexture } from 'electron'
 import {
   IPC,
+  isNativeMediaRuntimeState,
   isVoiceSnapshot,
 } from '@syrnike13/platform'
 
@@ -23,6 +24,7 @@ import type {
   HotkeyAction,
   HotkeyBinding,
   NativeMediaDeviceInfo,
+  NativeMediaRuntimeState,
   NativeMicrophoneMetricsEvent,
   NativeMicrophonePreviewStateEvent,
   NativeInputEvent,
@@ -308,6 +310,20 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     },
   },
   media: {
+    async getRuntimeState() {
+      const state: unknown = await ipcRenderer.invoke(IPC.mediaGetRuntimeState)
+      if (!isNativeMediaRuntimeState(state)) {
+        throw new TypeError('Invalid native media runtime state')
+      }
+      return state
+    },
+    async retryRuntime() {
+      const state: unknown = await ipcRenderer.invoke(IPC.mediaRetryRuntime)
+      if (!isNativeMediaRuntimeState(state)) {
+        throw new TypeError('Invalid native media runtime state')
+      }
+      return state
+    },
     getDisplaySources(requestId: string) {
       return ipcRenderer.invoke(
         IPC.mediaGetDisplaySources,
@@ -400,6 +416,15 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       ipcRenderer.on(IPC.mediaMicrophonePreviewState, listener)
       return () => {
         ipcRenderer.removeListener(IPC.mediaMicrophonePreviewState, listener)
+      }
+    },
+    onRuntimeState(handler: (state: NativeMediaRuntimeState) => void) {
+      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        if (isNativeMediaRuntimeState(payload)) handler(payload)
+      }
+      ipcRenderer.on(IPC.mediaRuntimeStateChanged, listener)
+      return () => {
+        ipcRenderer.removeListener(IPC.mediaRuntimeStateChanged, listener)
       }
     },
   },

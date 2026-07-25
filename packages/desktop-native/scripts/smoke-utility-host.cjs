@@ -40,6 +40,7 @@ function createSmokeContext(overrides = {}) {
   return {
     fs: overrides.fs ?? fs,
     path: overrides.path ?? path,
+    spawn: overrides.spawn ?? spawn,
     app: overrides.app ?? app,
     utilityProcess: overrides.utilityProcess ?? utilityProcess,
     manifest,
@@ -66,11 +67,36 @@ function createSmokeContext(overrides = {}) {
     setTimeoutFn: overrides.setTimeoutFn ?? setTimeout,
     clearTimeoutFn: overrides.clearTimeoutFn ?? clearTimeout,
     observe: overrides.observe ?? null,
+    NativeRuntimeSupervisor: overrides.NativeRuntimeSupervisor ?? null,
   }
 }
 
 async function runSmokeSuite(context) {
   await smokeMediaEventSerialization(context)
+  await smokeNodeEventSink(context)
+  await smokeActiveCallShutdown(context)
+  await smokeNativeQuarantineShutdown(context)
+  await smokeDroppedObjectWrap(context)
+  await smokeAsyncCleanupLaunchFailure(
+    context,
+    'syrnike_media.node',
+    'createMediaRuntime',
+  )
+  await smokeAsyncCleanupLaunchFailure(
+    context,
+    'syrnike_hotkey.node',
+    'createHotkeyRuntime',
+  )
+  await smokeAsyncCleanupDispatchFailure(
+    context,
+    'syrnike_media.node',
+    'createMediaRuntime',
+  )
+  await smokeAsyncCleanupDispatchFailure(
+    context,
+    'syrnike_hotkey.node',
+    'createHotkeyRuntime',
+  )
   await smokeRuntime(context, 'media', 'media-host.cjs', 'syrnike_media.node')
   await smokeRuntime(context, 'hotkey', 'hotkey-host.cjs', 'syrnike_hotkey.node')
   await smokeRuntime(context, 'overlay', 'overlay-host.cjs', 'syrnike_overlay.node')
@@ -82,6 +108,271 @@ async function runSmokeSuite(context) {
     true,
   )
   verifyDiagnostics(context)
+}
+
+async function smokeAsyncCleanupLaunchFailure(
+  context,
+  addonName,
+  factoryName,
+) {
+  return smokeAsyncCleanupFailure(
+    context,
+    addonName,
+    factoryName,
+    'SYRNIKE_NATIVE_FAIL_ASYNC_CLEANUP_LAUNCH_ONCE',
+    'async cleanup retry',
+  )
+}
+
+async function smokeAsyncCleanupDispatchFailure(
+  context,
+  addonName,
+  factoryName,
+) {
+  return smokeAsyncCleanupFailure(
+    context,
+    addonName,
+    factoryName,
+    'SYRNIKE_NATIVE_FAIL_ASYNC_CLEANUP_DISPATCH_ONCE',
+    'post-init async cleanup fallback',
+  )
+}
+
+async function smokeAsyncCleanupFailure(
+  context,
+  addonName,
+  factoryName,
+  injectionName,
+  description,
+) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [
+        context.path.resolve(
+          __dirname,
+          'smoke-async-cleanup-launch-failure-host.cjs',
+        ),
+      ],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          SYRNIKE_NATIVE_FAIL_ASYNC_CLEANUP_LAUNCH_ONCE: '0',
+          SYRNIKE_NATIVE_FAIL_ASYNC_CLEANUP_DISPATCH_ONCE: '0',
+          [injectionName]: '1',
+          SYRNIKE_NATIVE_MODULE_PATH: context.path.resolve(
+            context.nativeRoot,
+            addonName,
+          ),
+          SYRNIKE_NATIVE_RUNTIME_FACTORY: factoryName,
+        },
+      },
+    )
+    let armed = false
+    let settled = false
+    let stderr = ''
+    const finish = (error) => {
+      if (settled) return
+      settled = true
+      context.clearTimeoutFn(timeout)
+      child.kill()
+      if (error) reject(error)
+      else resolve()
+    }
+    const timeout = context.setTimeoutFn(
+      () => finish(new Error(
+        `Timed out waiting for ${description}: ${addonName}`,
+      )),
+      5_000,
+    )
+    child.once('error', finish)
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString()
+    })
+    child.stdout.on('data', (chunk) => {
+      if (chunk.toString().includes('async-cleanup-launch-failure-armed')) {
+        armed = true
+      }
+    })
+    child.once('exit', (code) => {
+      if (code === 0 && armed) {
+        finish()
+      } else {
+        finish(new Error(
+          `${description} smoke exited with code ${code}: ${stderr.trim()}`,
+        ))
+      }
+    })
+  })
+}
+
+async function smokeActiveCallShutdown(context) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [context.path.resolve(__dirname, 'smoke-active-call-shutdown-host.cjs')],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          SYRNIKE_UTILITY_ROOT: context.utilityRoot,
+        },
+      },
+    )
+    let settled = false
+    let stderr = ''
+    const finish = (error) => {
+      if (settled) return
+      settled = true
+      context.clearTimeoutFn(timeout)
+      child.kill()
+      if (error) reject(error)
+      else resolve()
+    }
+    const timeout = context.setTimeoutFn(
+      () => finish(new Error('Timed out waiting for active-call shutdown smoke')),
+      5_000,
+    )
+    child.once('error', finish)
+    child.once('exit', (code) => {
+      if (code === 0) {
+        finish()
+      } else {
+        finish(new Error(
+          `Active-call shutdown smoke exited with code ${code}: ${stderr.trim()}`,
+        ))
+      }
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString()
+    })
+    child.stdout.on('data', (chunk) => {
+      if (chunk.toString().includes('active-call-shutdown-budget-ok')) finish()
+    })
+  })
+}
+
+async function smokeNodeEventSink(context) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [context.path.resolve(__dirname, 'smoke-node-event-sink-host.cjs')],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          SYRNIKE_NATIVE_SMOKE_TEST_MODE: '1',
+          SYRNIKE_NATIVE_CONTROL_EVENT_CAPACITY: '64',
+          ...(context.diagnosticPaths
+            ? {
+                SYRNIKE_NATIVE_DIAGNOSTIC_RUN_ID: context.diagnosticRunId,
+                SYRNIKE_NATIVE_MEDIA_LOG_PATH: context.diagnosticPaths.native,
+              }
+            : {}),
+          SYRNIKE_NATIVE_MODULE_PATH: context.path.resolve(
+            context.nativeRoot,
+            'syrnike_media.node',
+          ),
+        },
+      },
+    )
+    let settled = false
+    let stderr = ''
+    const finish = (error) => {
+      if (settled) return
+      settled = true
+      context.clearTimeoutFn(timeout)
+      child.kill()
+      if (error) reject(error)
+      else resolve()
+    }
+    const timeout = context.setTimeoutFn(
+      () => finish(new Error('Timed out waiting for Node event sink smoke')),
+      context.timeoutMs,
+    )
+    child.once('error', finish)
+    let passed = false
+    child.once('exit', (code) => {
+      if (code === 0 && passed) {
+        finish()
+      } else {
+        finish(new Error(
+          `Node event sink smoke exited with code ${code}: ${stderr.trim()}`,
+        ))
+      }
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString()
+    })
+    child.stdout.on('data', (chunk) => {
+      if (chunk.toString().includes('node-event-listener-and-backpressure-ok')) {
+        passed = true
+      }
+    })
+  })
+}
+
+async function smokeNativeQuarantineShutdown(context) {
+  return new Promise((resolve, reject) => {
+    const child = context.spawn(
+      process.execPath,
+      [context.path.resolve(
+        __dirname,
+        'smoke-quarantine-shutdown-host.cjs',
+      )],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          SYRNIKE_NATIVE_MODULE_PATH: context.path.resolve(
+            context.nativeRoot,
+            'syrnike_media.node',
+          ),
+          SYRNIKE_NATIVE_BLOCK_MICROPHONE_OPERATION_ONCE: '1',
+          SYRNIKE_NATIVE_FAIL_MEDIA_QUARANTINE_LAUNCH_ONCE: '1',
+          SYRNIKE_NATIVE_OBSERVE_MEDIA_QUARANTINE_CLEANUP: '1',
+        },
+      },
+    )
+    let settled = false
+    let stdout = ''
+    let stderr = ''
+    const finish = (error) => {
+      if (settled) return
+      settled = true
+      context.clearTimeoutFn(timeout)
+      if (error) {
+        child.kill()
+        reject(error)
+      } else {
+        resolve()
+      }
+    }
+    const timeout = context.setTimeoutFn(
+      () => finish(new Error('Timed out waiting for native quarantine smoke')),
+      context.timeoutMs,
+    )
+    child.once('error', finish)
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString()
+    })
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString()
+    })
+    child.once('close', (code) => {
+      if (
+        code === 0 &&
+        stdout.includes('native-quarantine-launch-retry-ok')
+      ) {
+        finish()
+      } else {
+        finish(new Error(
+          `Native quarantine smoke closed with code ${code}: ${stderr.trim()}`,
+        ))
+      }
+    })
+  })
 }
 
 async function smokeMediaEventSerialization(context) {
@@ -126,151 +417,272 @@ async function smokeMediaEventSerialization(context) {
   })
 }
 
-function smokeRuntime(context, runtime, hostName, addonName, injectCrash = false) {
+async function smokeDroppedObjectWrap(context) {
   return new Promise((resolve, reject) => {
-    const child = context.utilityProcess.fork(
-      context.path.resolve(context.utilityRoot, hostName),
-      [],
+    const child = spawn(
+      process.execPath,
+      [
+        '--js-flags=--expose-gc',
+        context.path.resolve(__dirname, 'smoke-dropped-objectwrap-host.cjs'),
+      ],
       {
-        serviceName: `syrnike-${runtime}-smoke`,
-        stdio: 'ignore',
-        env: buildChildEnvironment(context, runtime, addonName),
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          SYRNIKE_NATIVE_MODULE_PATH: context.path.resolve(
+            context.nativeRoot,
+            'syrnike_media.node',
+          ),
+        },
       },
     )
-    const commandRequestId = `${runtime}-smoke-command`
-    const shutdownRequestId = `${runtime}-smoke-shutdown`
-    const observationLog = []
-    let phase = 'handshake'
     let settled = false
-
-    observe(context, observationLog, {
-      direction: 'host',
-      event: 'fork',
-      runtime,
-      hostName,
-      serviceName: `syrnike-${runtime}-smoke`,
-    })
-
+    let stderr = ''
     const finish = (error) => {
       if (settled) return
       settled = true
       context.clearTimeoutFn(timeout)
-      if (error) {
-        child.kill()
-        reject(attachObservation(error, observationLog))
-        return
-      }
-      resolve()
+      child.kill()
+      if (error) reject(error)
+      else resolve()
     }
-    const timeout = context.setTimeoutFn(() => {
-      finish(new Error(`Timed out during ${runtime} utility host ${phase}`))
-    }, context.timeoutMs)
-
-    child.once('error', (error) => {
-      observe(context, observationLog, {
-        direction: 'child',
-        event: 'error',
-        runtime,
-        phase,
-        detail: describeError(error),
-      })
-      finish(error)
-    })
+    const timeout = context.setTimeoutFn(
+      () => finish(new Error('Timed out waiting for dropped ObjectWrap smoke')),
+      context.timeoutMs,
+    )
+    child.once('error', finish)
     child.once('exit', (code) => {
-      observe(context, observationLog, {
-        direction: 'child',
-        event: 'exit',
-        runtime,
-        phase,
-        code,
-      })
-      if (phase === 'crash') {
-        finish()
-        return
-      }
-      if (phase === 'shutdown' && code === 0) {
-        finish()
-        return
-      }
-      finish(
-        new Error(
-          `${runtime} utility host exited during ${phase} (code ${code})`,
-        ),
-      )
+      finish(new Error(
+        `Dropped ObjectWrap smoke exited with code ${code}: ${stderr.trim()}`,
+      ))
     })
-    child.on('message', (message) => {
-      observe(context, observationLog, {
-        direction: 'child',
-        event: 'message',
-        runtime,
-        phase,
-        detail: describeMessage(message),
-      })
-      if (!message || typeof message !== 'object') return
-      if (phase === 'handshake') {
-        if (message.type !== 'ready' || message.runtime !== runtime) return
-        if (
-          message.contractVersion !== context.manifest.contractVersion ||
-          message.build?.commit !== context.manifest.commitSha ||
-          message.build?.napi !== String(context.manifest.napiVersion) ||
-          (runtime === 'media' &&
-            message.build?.livekit !== context.manifest.liveKitVersion) ||
-          !requiredCapabilities(runtime).every((capability) =>
-            message.capabilities?.includes(capability),
-          )
-        ) {
-          finish(
-            new Error(
-              `${runtime} utility host returned incompatible build metadata`,
-            ),
-          )
-          return
-        }
-        if (injectCrash) {
-          phase = 'crash'
-          child.kill()
-          return
-        }
-        phase = 'command'
-        postMessage(context, child, observationLog, runtime, phase, {
-          type: 'request',
-          requestId: commandRequestId,
-          command:
-            runtime === 'media'
-              ? { type: 'stopPreview' }
-              : runtime === 'hotkey'
-                ? { type: 'stopHotkeys' }
-                : { type: 'stopOverlay' },
-        })
-        return
-      }
-      if (
-        phase === 'command' &&
-        message.type === 'reply' &&
-        message.requestId === commandRequestId
-      ) {
-        if (message.ok !== true) {
-          finish(new Error(`${runtime} DLL rejected the smoke command`))
-          return
-        }
-        phase = 'shutdown'
-        postMessage(context, child, observationLog, runtime, phase, {
-          type: 'request',
-          requestId: shutdownRequestId,
-          command: { type: 'shutdown' },
-        })
-        return
-      }
-      if (
-        phase === 'shutdown' &&
-        message.type === 'reply' &&
-        message.requestId === shutdownRequestId &&
-        message.ok !== true
-      ) {
-        finish(new Error(`${runtime} DLL rejected graceful shutdown`))
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString()
+    })
+    child.stdout.on('data', (chunk) => {
+      if (chunk.toString().includes('dropped-objectwrap-immediate-recreate-ok')) {
+        finish()
       }
     })
   })
+}
+
+function smokeRuntime(context, runtime, hostName, addonName, injectCrash = false) {
+  const observationLog = []
+  let phase = 'handshake'
+  let activeAdapter = null
+  let timeout = null
+  let settled = false
+  const Supervisor =
+    context.NativeRuntimeSupervisor ??
+    require(
+      context.path.resolve(context.utilityRoot, 'runtime-supervisor.cjs'),
+    ).NativeRuntimeSupervisor
+  const supervisor = new Supervisor({
+    runtime,
+    handshakeTimeoutMs: context.timeoutMs,
+    schedule: context.setTimeoutFn,
+    createAdapter: () => {
+      const adapter = createSmokeAdapter(
+        context,
+        observationLog,
+        runtime,
+        hostName,
+        addonName,
+        () => phase,
+      )
+      activeAdapter = adapter
+      return adapter
+    },
+  })
+  supervisor.onStateChange((snapshot) => {
+    observe(context, observationLog, {
+      direction: 'supervisor',
+      event: 'state',
+      runtime,
+      phase,
+      detail: `${snapshot.status},restart=${snapshot.restartCount},epoch=${snapshot.hostEpoch ?? 'none'}`,
+    })
+  })
+
+  const operation = (async () => {
+    const initialReady = await supervisor.start()
+    validateReady(context, runtime, initialReady)
+
+    if (injectCrash) {
+      phase = 'crash'
+      const recovered = waitForSupervisorState(
+        supervisor,
+        (snapshot) =>
+          snapshot.status === 'ready' &&
+          snapshot.restartCount > 0 &&
+          snapshot.hostEpoch !== undefined,
+      )
+      activeAdapter?.kill()
+      phase = 'restart_handshake'
+      await recovered
+      const restartedReady = supervisor.getSnapshot().ready
+      validateReady(context, runtime, restartedReady)
+    }
+
+    phase = 'command'
+    await supervisor.request(
+      runtime === 'media'
+        ? { type: 'stopPreview' }
+        : runtime === 'hotkey'
+          ? { type: 'stopHotkeys' }
+          : { type: 'stopOverlay' },
+      context.timeoutMs,
+      { probeOnTimeout: false },
+    )
+
+    phase = 'shutdown'
+    await supervisor.shutdown()
+  })()
+
+  return new Promise((resolve, reject) => {
+    const finish = (error) => {
+      if (settled) return
+      settled = true
+      if (timeout) context.clearTimeoutFn(timeout)
+      if (error) {
+        activeAdapter?.kill()
+        reject(attachObservation(error, observationLog))
+      } else {
+        resolve()
+      }
+    }
+
+    timeout = context.setTimeoutFn(() => {
+      finish(new Error(`Timed out during ${runtime} utility host ${phase}`))
+    }, context.timeoutMs)
+    operation.then(
+      () => finish(),
+      (error) => {
+        const message =
+          error instanceof Error ? error.message : `${runtime} utility host failed`
+        const smokeError =
+          phase === 'command'
+            ? new Error(`${runtime} DLL rejected the smoke command: ${message}`)
+            : error instanceof Error
+              ? error
+              : new Error(message)
+        finish(smokeError)
+      },
+    )
+  })
+}
+
+function createSmokeAdapter(
+  context,
+  observationLog,
+  runtime,
+  hostName,
+  addonName,
+  currentPhase,
+) {
+  let child = null
+  let callbacks = null
+  return {
+    get pid() {
+      return child?.pid
+    },
+    start(nextCallbacks) {
+      callbacks = nextCallbacks
+      child = context.utilityProcess.fork(
+        context.path.resolve(context.utilityRoot, hostName),
+        [],
+        {
+          serviceName: `syrnike-${runtime}-smoke`,
+          stdio: 'ignore',
+          env: buildChildEnvironment(context, runtime, addonName),
+        },
+      )
+      observe(context, observationLog, {
+        direction: 'host',
+        event: 'fork',
+        runtime,
+        hostName,
+        phase: currentPhase(),
+        serviceName: `syrnike-${runtime}-smoke`,
+      })
+      child.once('error', (error) => {
+        observe(context, observationLog, {
+          direction: 'child',
+          event: 'error',
+          runtime,
+          phase: currentPhase(),
+          detail: describeError(error),
+        })
+        callbacks?.onExit({ code: null, error })
+      })
+      child.once('exit', (code) => {
+        observe(context, observationLog, {
+          direction: 'child',
+          event: 'exit',
+          runtime,
+          phase: currentPhase(),
+          code,
+        })
+        callbacks?.onExit({ code })
+      })
+      child.on('message', (message) => {
+        observe(context, observationLog, {
+          direction: 'child',
+          event: 'message',
+          runtime,
+          phase: currentPhase(),
+          detail: describeMessage(message),
+        })
+        callbacks?.onMessage(message)
+      })
+    },
+    postMessage(message) {
+      postMessage(
+        context,
+        child,
+        observationLog,
+        runtime,
+        currentPhase(),
+        message,
+      )
+    },
+    kill() {
+      child?.kill()
+    },
+  }
+}
+
+function waitForSupervisorState(supervisor, predicate) {
+  const current = supervisor.getSnapshot()
+  if (predicate(current)) return Promise.resolve(current)
+  return new Promise((resolve) => {
+    const unsubscribe = supervisor.onStateChange((snapshot) => {
+      if (!predicate(snapshot)) return
+      unsubscribe()
+      resolve(snapshot)
+    })
+  })
+}
+
+function validateReady(context, runtime, message) {
+  if (
+    !message ||
+    message.type !== 'ready' ||
+    message.runtime !== runtime ||
+    message.contractVersion !== context.manifest.contractVersion ||
+    message.build?.commit !== context.manifest.commitSha ||
+    message.build?.napi !== String(context.manifest.napiVersion) ||
+    (runtime === 'media' &&
+      message.build?.livekit !== context.manifest.liveKitVersion) ||
+    !requiredCapabilities(runtime).every((capability) =>
+      message.capabilities?.includes(capability),
+    )
+  ) {
+    throw new Error(
+      `${runtime} utility host returned incompatible build metadata`,
+    )
+  }
 }
 
 function buildChildEnvironment(context, runtime, addonName) {
@@ -310,6 +722,13 @@ function verifyDiagnostics(context) {
     if (records.some((record) => record.runId !== context.diagnosticRunId)) {
       throw new Error(`${role} diagnostic file lost the shared run id`)
     }
+  }
+  const nativeRecords = context.fs.readFileSync(
+    context.diagnosticPaths.native,
+    'utf8',
+  )
+  if (!nativeRecords.includes('"event":"native_event_listener_exception"')) {
+    throw new Error('Native diagnostics omitted the injected JS listener failure')
   }
 }
 
@@ -409,6 +828,11 @@ module.exports = {
   formatObservationLog,
   requiredCapabilities,
   runSmokeSuite,
+  smokeActiveCallShutdown,
+  smokeNativeQuarantineShutdown,
+  smokeAsyncCleanupLaunchFailure,
+  smokeAsyncCleanupDispatchFailure,
+  smokeNodeEventSink,
   smokeRuntime,
   verifyDiagnostics,
 }

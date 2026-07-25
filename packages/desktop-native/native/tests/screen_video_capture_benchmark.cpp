@@ -1,4 +1,4 @@
-#include "screen_video_capture_benchmark.hpp"
+#include "../src/media/screen_video_capture_benchmark.hpp"
 
 #include <d3d11.h>
 #include <dxgi1_2.h>
@@ -23,7 +23,7 @@
 #include <stdexcept>
 #include <thread>
 
-#include "screen_capture_priority.hpp"
+#include "../src/media/screen_capture_priority.hpp"
 
 using Microsoft::WRL::ComPtr;
 namespace capture = winrt::Windows::Graphics::Capture;

@@ -62,12 +62,19 @@ class AudioProcessingModule {
                              int num_channels);
 
   int set_stream_delay_ms(int delay_ms);
+  int apply_config(const AudioProcessingConfig& config);
 
  private:
   webrtc::scoped_refptr<webrtc::AudioProcessing> apm_;
 };
 
 std::unique_ptr<AudioProcessingModule> create_apm(
+    bool echo_canceller_enabled,
+    bool gain_controller_enabled,
+    bool high_pass_filter_enabled,
+    bool noise_suppression_enabled);
+
+std::unique_ptr<AudioProcessingConfig> create_apm_config(
     bool echo_canceller_enabled,
     bool gain_controller_enabled,
     bool high_pass_filter_enabled,

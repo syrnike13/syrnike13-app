@@ -1,4 +1,5 @@
 #include <chrono>
+#include <atomic>
 #include <condition_variable>
 #include <iostream>
 #include <memory>
@@ -85,7 +86,72 @@ int main() try {
   auto livekit = std::make_shared<DeterministicFakeLiveKitPublicationClient>();
   livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Connect, true);
 
-  MediaRuntime runtime(sink, livekit);
+  std::mutex slow_microphone_mutex;
+  std::condition_variable slow_microphone_changed;
+  bool slow_microphone_started = false;
+  bool release_slow_microphone = false;
+  MediaRuntime runtime(
+    sink,
+    livekit,
+    {},
+    [&](const MediaCommand& command) {
+      if (command.type != "configureMicrophone") return;
+      std::unique_lock lock(slow_microphone_mutex);
+      slow_microphone_started = true;
+      slow_microphone_changed.notify_all();
+      slow_microphone_changed.wait_for(
+        lock,
+        std::chrono::seconds(5),
+        [&] { return release_slow_microphone; }
+      );
+    }
+  );
+
+  MediaCommand configure;
+  configure.type = "configureMicrophone";
+  configure.request_id = "slow-microphone-configure";
+  configure.revision = 1;
+  configure.has_revision = true;
+  require(runtime.dispatch(configure), "media runtime rejected microphone configure");
+  {
+    std::unique_lock lock(slow_microphone_mutex);
+    require(
+      slow_microphone_changed.wait_for(
+        lock,
+        std::chrono::seconds(1),
+        [&] { return slow_microphone_started; }
+      ),
+      "slow microphone operation did not reach its worker"
+    );
+  }
+
+  MediaCommand microphone_probe;
+  microphone_probe.type = "probeMicrophoneActor";
+  microphone_probe.request_id = "probe-microphone";
+  const auto microphone_probe_started = std::chrono::steady_clock::now();
+  require(runtime.dispatch(microphone_probe), "media runtime rejected microphone probe");
+  require(
+    sink->waitReply("probe-microphone", std::chrono::milliseconds(500)),
+    "microphone probe waited behind the slow microphone operation"
+  );
+  require(
+    std::chrono::steady_clock::now() - microphone_probe_started <
+      std::chrono::milliseconds(500),
+    "microphone probe exceeded its independent routing deadline"
+  );
+  require(
+    !sink->hasReply("slow-microphone-configure"),
+    "slow microphone operation completed before its device delay was released"
+  );
+  {
+    std::lock_guard lock(slow_microphone_mutex);
+    release_slow_microphone = true;
+  }
+  slow_microphone_changed.notify_all();
+  require(
+    sink->waitReply("slow-microphone-configure", std::chrono::seconds(1)),
+    "microphone configure did not complete after the slow device was released"
+  );
 
   MediaCommand connect;
   connect.type = "connectVoice";

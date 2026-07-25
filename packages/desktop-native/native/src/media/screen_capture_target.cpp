@@ -2,26 +2,72 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <stdexcept>
 #include <vector>
 
 namespace syrnike::voice {
 namespace {
 
-std::vector<RECT> monitorRects() {
-  std::vector<RECT> rects;
+struct EnumeratedMonitor {
+  HMONITOR handle = nullptr;
+  ScreenMonitorIdentity identity;
+};
+
+std::string utf8(const std::wstring& value) {
+  if (value.empty()) return {};
+  const int size = WideCharToMultiByte(
+      CP_UTF8,
+      0,
+      value.data(),
+      static_cast<int>(value.size()),
+      nullptr,
+      0,
+      nullptr,
+      nullptr);
+  std::string result(static_cast<std::size_t>(size), '\0');
+  WideCharToMultiByte(
+      CP_UTF8,
+      0,
+      value.data(),
+      static_cast<int>(value.size()),
+      result.data(),
+      size,
+      nullptr,
+      nullptr);
+  return result;
+}
+
+std::vector<EnumeratedMonitor> monitors() {
+  std::vector<EnumeratedMonitor> result;
   EnumDisplayMonitors(
       nullptr,
       nullptr,
       [](HMONITOR monitor, HDC, LPRECT, LPARAM data) -> BOOL {
-        auto* out = reinterpret_cast<std::vector<RECT>*>(data);
+        auto* out =
+            reinterpret_cast<std::vector<EnumeratedMonitor>*>(data);
         MONITORINFOEXW info{};
         info.cbSize = sizeof(info);
-        if (GetMonitorInfoW(monitor, &info)) out->push_back(info.rcMonitor);
+        if (!GetMonitorInfoW(monitor, &info)) return TRUE;
+        DISPLAY_DEVICEW display{};
+        display.cb = sizeof(display);
+        std::wstring device_id(info.szDevice);
+        if (EnumDisplayDevicesW(
+                info.szDevice,
+                0,
+                &display,
+                EDD_GET_DEVICE_INTERFACE_NAME) &&
+            display.DeviceID[0] != L'\0') {
+          device_id = display.DeviceID;
+        }
+        out->push_back({
+            monitor,
+            {info.rcMonitor, utf8(device_id)},
+        });
         return TRUE;
       },
-      reinterpret_cast<LPARAM>(&rects));
-  return rects;
+      reinterpret_cast<LPARAM>(&result));
+  return result;
 }
 
 int parseIndex(const std::string& value, const std::string& prefix) {
@@ -65,14 +111,77 @@ ScreenCaptureTarget resolveScreenCaptureTarget(const std::string& source_id) {
     return target;
   }
 
-  const auto rects = monitorRects();
-  const int index = parseIndex(source_id, "screen:");
-  if (index <= 0 || index > static_cast<int>(rects.size())) {
+  const auto current = monitors();
+  std::vector<ScreenMonitorIdentity> identities;
+  identities.reserve(current.size());
+  std::transform(
+      current.begin(),
+      current.end(),
+      std::back_inserter(identities),
+      [](const EnumeratedMonitor& monitor) {
+        return monitor.identity;
+      });
+  return resolveScreenMonitorTarget(source_id, identities);
+}
+
+ScreenCaptureTarget resolveScreenMonitorTarget(
+    const std::string& source_id,
+    std::span<const ScreenMonitorIdentity> available) {
+  ScreenCaptureTarget target;
+  const auto requested = source_id.rfind("screen:", 0) == 0
+      ? source_id.substr(7)
+      : std::string{};
+  const bool legacy_index = !requested.empty() &&
+      std::all_of(requested.begin(), requested.end(), [](unsigned char value) {
+        return value >= '0' && value <= '9';
+      });
+  if (legacy_index) {
+    const int index = parseIndex(source_id, "screen:");
+    if (index <= 0 || index > static_cast<int>(available.size())) {
+      throw std::runtime_error("selected screen is no longer available");
+    }
+    target.screen_index = index;
+    const auto& selected = available[static_cast<std::size_t>(index - 1)];
+    target.rect = selected.rect;
+    target.monitor_device_id = selected.device_id;
+    return target;
+  }
+  const auto found = std::find_if(
+      available.begin(), available.end(), [&](const ScreenMonitorIdentity& monitor) {
+        return _stricmp(monitor.device_id.c_str(), requested.c_str()) == 0;
+      });
+  if (found == available.end()) {
     throw std::runtime_error("selected screen is no longer available");
   }
-  target.screen_index = index;
-  target.rect = rects[static_cast<std::size_t>(index - 1)];
+  target.screen_index =
+      static_cast<int>(std::distance(available.begin(), found)) + 1;
+  target.rect = found->rect;
+  target.monitor_device_id = found->device_id;
   return target;
+}
+
+bool screenMonitorTargetMatches(
+    const ScreenCaptureTarget& target,
+    const ScreenMonitorIdentity& monitor) noexcept {
+  if (target.window) return false;
+  if (!target.monitor_device_id.empty()) {
+    return _stricmp(
+        target.monitor_device_id.c_str(),
+        monitor.device_id.c_str()) == 0;
+  }
+  return EqualRect(&target.rect, &monitor.rect) != FALSE;
+}
+
+HMONITOR resolveScreenMonitorHandle(const ScreenCaptureTarget& target) {
+  if (target.window) return nullptr;
+  const auto current = monitors();
+  const auto found = std::find_if(
+      current.begin(),
+      current.end(),
+      [&](const EnumeratedMonitor& monitor) {
+        return screenMonitorTargetMatches(target, monitor.identity);
+      });
+  return found == current.end() ? nullptr : found->handle;
 }
 
 void resolveScreenCaptureSize(

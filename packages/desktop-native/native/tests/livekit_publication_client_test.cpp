@@ -1,13 +1,19 @@
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <future>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 
 #include <livekit/livekit.h>
 
+#include "common/event_sink.hpp"
 #include "media/livekit_publication_client.hpp"
+#include "media/media_runtime.hpp"
+#include "media/media_runtime_support.hpp"
 
 namespace {
 
@@ -27,6 +33,85 @@ void requireReady(Future& future, const char* message) {
   }
 }
 
+struct BlockingRetireState {
+  std::mutex mutex;
+  std::condition_variable changed;
+  bool retire_entered = false;
+  bool release_retire = false;
+  std::atomic_bool block_next_retire{true};
+};
+
+class NoopSink final : public syrnike::desktop_native::EventSink {
+ public:
+  bool emit(syrnike::desktop_native::RuntimeEvent) override { return true; }
+  void close() override {}
+};
+
+class FakeVoiceRoomOwner final
+  : public syrnike::desktop_native::media::LiveKitVoiceRoomOwner {
+ public:
+  explicit FakeVoiceRoomOwner(std::shared_ptr<BlockingRetireState> state)
+    : state_(std::move(state)) {}
+
+  ~FakeVoiceRoomOwner() override {
+    if (!state_->block_next_retire.exchange(false)) return;
+    std::unique_lock lock(state_->mutex);
+    state_->retire_entered = true;
+    state_->changed.notify_all();
+    state_->changed.wait(lock, [&] { return state_->release_retire; });
+  }
+
+  bool connect(
+    const std::string&,
+    const std::string&,
+    const livekit::RoomOptions&
+  ) override {
+    connected_ = true;
+    return true;
+  }
+  bool isConnected() const override { return false; }
+  bool waitConnected(std::chrono::milliseconds) override { return connected_; }
+  void markIntentionalDisconnect() override {}
+  void stopAudio() override {}
+  void disconnect() override { connected_ = false; }
+  void setDeafened(bool) override {}
+  std::uint64_t setOutputDevice(
+    std::string,
+    syrnike::desktop_native::media::AudioOutputDeviceIntent
+  ) override { return 1; }
+  std::string outputDeviceId() const override { return "default"; }
+  bool isOutputEpochCurrent(std::uint64_t) const override { return true; }
+  void setOutputVolume(float) override {}
+  void configureRemoteAudio(
+    syrnike::desktop_native::media::RemoteAudioSettings
+  ) override {}
+  void releaseRemoteVideoFrame(std::string, std::uint64_t) override {}
+  void setRemoteVideoDemand(std::string, bool) override {}
+  void retryRemoteVideo(std::string, std::string) override {}
+  void startLocalCameraPreview(
+    std::string,
+    std::uint64_t,
+    std::string,
+    std::string,
+    const std::shared_ptr<livekit::LocalVideoTrack>&
+  ) override {}
+  void stopLocalCameraPreview(const std::string&) override {}
+  void releaseLocalCameraPreviewFrame(std::string, std::uint64_t) override {}
+  std::string publishAudioTrack(
+    const std::shared_ptr<livekit::LocalAudioTrack>&,
+    const livekit::TrackPublishOptions&
+  ) override { return "fake-audio"; }
+  std::string publishVideoTrack(
+    const std::shared_ptr<livekit::LocalVideoTrack>&,
+    const livekit::TrackPublishOptions&
+  ) override { return "fake-video"; }
+  void unpublishTrack(const std::string&) override {}
+
+ private:
+  std::shared_ptr<BlockingRetireState> state_;
+  bool connected_ = false;
+};
+
 }  // namespace
 
 int main() try {
@@ -37,6 +122,122 @@ int main() try {
   auto noop_post = LiveKitPublicationClient::InternalPost{[](syrnike::desktop_native::MediaCommand) {
     return true;
   }};
+
+  bool rejected_missing_lifetime = false;
+  try {
+    static_cast<void>(
+      syrnike::desktop_native::media::createRealLiveKitPublicationClient({})
+    );
+  } catch (const std::invalid_argument&) {
+    rejected_missing_lifetime = true;
+  }
+  if (!rejected_missing_lifetime) {
+    throw std::runtime_error("real client factory accepted a missing runtime lifetime");
+  }
+
+  auto real_path_lifetime =
+    std::make_shared<syrnike::desktop_native::media::LiveKitRuntimeLifetime>();
+  auto retire_state = std::make_shared<BlockingRetireState>();
+  auto real_path_client =
+    syrnike::desktop_native::media::createRealLiveKitPublicationClient(
+      real_path_lifetime,
+      [retire_state](auto, auto, auto, auto, auto) {
+        return std::make_shared<FakeVoiceRoomOwner>(retire_state);
+      }
+    );
+  bool rejected_uninitialized_lifetime = false;
+  try {
+    static_cast<void>(real_path_client->connectVoice(
+      "uninitialized",
+      0,
+      "wss://example.invalid",
+      "token",
+      noop_post
+    ));
+  } catch (const std::logic_error&) {
+    rejected_uninitialized_lifetime = true;
+  }
+  if (!rejected_uninitialized_lifetime) {
+    throw std::runtime_error(
+      "real client used SDK state before its runtime lifetime was initialized"
+    );
+  }
+  syrnike::desktop_native::media::MediaRuntime real_path_runtime(
+    std::make_shared<NoopSink>(),
+    real_path_client,
+    {},
+    {},
+    {},
+    real_path_lifetime
+  );
+  real_path_runtime.waitUntilReady();
+  if (!real_path_client->connectVoice(
+        "real-path",
+        1,
+        "wss://example.invalid",
+        "token-a",
+        noop_post
+      )) {
+    throw std::runtime_error("real client seam did not establish its first owner");
+  }
+  auto replacing_owner = std::async(std::launch::async, [&] {
+    return real_path_client->connectVoice(
+      "real-path",
+      2,
+      "wss://example.invalid",
+      "token-b",
+      noop_post
+    );
+  });
+  {
+    std::unique_lock lock(retire_state->mutex);
+    if (!retire_state->changed.wait_for(
+          lock,
+          1s,
+          [&] { return retire_state->retire_entered; }
+        )) {
+      throw std::runtime_error("replacement did not enter old owner teardown");
+    }
+  }
+  const auto snapshot_started = std::chrono::steady_clock::now();
+  static_cast<void>(real_path_client->isVoiceConnected());
+  real_path_client->releaseRemoteVideoFrame("track", 1);
+  if (std::chrono::steady_clock::now() - snapshot_started >= 50ms) {
+    throw std::runtime_error(
+      "old Room teardown retained the real client mutex across JS-facing calls"
+    );
+  }
+  requireNotReady(
+    replacing_owner,
+    "replacement connect completed before old owner teardown was released"
+  );
+  {
+    std::lock_guard lock(retire_state->mutex);
+    retire_state->release_retire = true;
+  }
+  retire_state->changed.notify_all();
+  requireReady(replacing_owner, "replacement connect did not resume after teardown");
+  if (!replacing_owner.get()) {
+    throw std::runtime_error("replacement connect failed after teardown");
+  }
+  for (std::uint64_t generation = 3; generation < 53; ++generation) {
+    const auto reconnect_started = std::chrono::steady_clock::now();
+    if (!real_path_client->connectVoice(
+          "real-path",
+          generation,
+          "wss://example.invalid",
+          "token-" + std::to_string(generation),
+          noop_post
+        )) {
+      throw std::runtime_error("real client reconnect seam failed");
+    }
+    if (std::chrono::steady_clock::now() - reconnect_started >= 50ms) {
+      throw std::runtime_error("real client reconnect exceeded 50ms");
+    }
+  }
+  real_path_client->disconnectVoice();
+  real_path_runtime.requestShutdown();
+  real_path_runtime.shutdownAndWait();
 
   // Room connect/disconnect gates belong only to the voice owner. Creating a
   // track publication must never enter either gate.

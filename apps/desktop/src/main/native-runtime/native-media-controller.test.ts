@@ -39,6 +39,8 @@ function createHarness(remoteVideoFirstFrameTimeoutMs?: number) {
     }
     return undefined
   })
+  const retry = vi.fn(async () => snapshot.ready)
+  const shutdown = vi.fn(async () => undefined)
   const supervisor = {
     onEvent(listener: (event: MediaRuntimeEvent) => void) {
       eventListener = listener
@@ -52,8 +54,9 @@ function createHarness(remoteVideoFirstFrameTimeoutMs?: number) {
     },
     getSnapshot: () => snapshot,
     start: vi.fn(async () => snapshot.ready),
+    retry,
     request,
-    shutdown: vi.fn(async () => undefined),
+    shutdown,
   } as unknown as NativeRuntimeSupervisor
   const controller = new NativeMediaController({
     supervisor,
@@ -72,6 +75,8 @@ function createHarness(remoteVideoFirstFrameTimeoutMs?: number) {
   return {
     controller,
     request,
+    retry,
+    shutdown,
     event(event: MediaRuntimeEvent) {
       eventListener?.(event)
     },
@@ -91,6 +96,29 @@ async function waitUntil(predicate: () => boolean) {
 }
 
 describe('NativeMediaController retained tools', () => {
+  it('projects degraded state and delegates retry to the supervisor', async () => {
+    const harness = createHarness()
+    harness.state({
+      runtime: 'media',
+      status: 'degraded',
+      restartCount: 3,
+      degradedReason: 'circuit open',
+      degradedRetryAttempt: 1,
+      nextRetryAt: 30_000,
+    })
+
+    expect(harness.controller.getRuntimeState()).toEqual({
+      available: true,
+      status: 'degraded',
+      restartCount: 3,
+      degradedReason: 'circuit open',
+      degradedRetryAttempt: 1,
+      nextRetryAt: 30_000,
+    })
+    await harness.controller.retryRuntime()
+    expect(harness.retry).toHaveBeenCalledTimes(1)
+  })
+
   it('owns demand only for the current voice session and clears timers on turnover', async () => {
     vi.useFakeTimers()
     try {
@@ -954,10 +982,25 @@ describe('NativeMediaController retained tools', () => {
       .filter((command) => command.type === 'startPreview')
       .at(-1)
     expect(restored).toMatchObject({
-      sessionId: first.sessionId,
+      sessionId: expect.any(String),
       generation: expect.any(Number),
     })
+    expect(restored?.sessionId).not.toBe(first.sessionId)
     expect(restored?.generation).toBeGreaterThan(first.generation)
+  })
+
+  it('lets runtime shutdown own preview teardown during app disposal', async () => {
+    const harness = createHarness()
+    await harness.controller.startMicrophonePreview()
+    harness.request.mockClear()
+
+    await harness.controller.dispose()
+
+    expect(harness.request).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'stopPreview' }),
+      expect.anything(),
+    )
+    expect(harness.shutdown).toHaveBeenCalledTimes(1)
   })
 
   it('keeps device queries and screen capability narrow', async () => {

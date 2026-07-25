@@ -283,13 +283,18 @@ void DxgiFrameCompositor::updateCursor(
 
   cursor_shape_.resize(frame_info.PointerShapeBufferSize);
   UINT required_size = 0;
-  requireCompositor(
-      duplication->GetFramePointerShape(
-          static_cast<UINT>(cursor_shape_.size()),
-          cursor_shape_.data(),
-          &required_size,
-          &cursor_info_),
-      "failed to read DXGI cursor shape");
+  const HRESULT shape_result = duplication->GetFramePointerShape(
+      static_cast<UINT>(cursor_shape_.size()),
+      cursor_shape_.data(),
+      &required_size,
+      &cursor_info_);
+  if (FAILED(shape_result)) {
+    // Cursor metadata is auxiliary. A transient shape read failure must not
+    // tear down an otherwise healthy desktop duplication session.
+    cursor_visible_ = false;
+    cursor_shape_.clear();
+    return;
+  }
   cursor_shape_.resize(required_size);
   uploadCursorTexture();
 }

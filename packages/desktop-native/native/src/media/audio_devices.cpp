@@ -4,6 +4,7 @@
 #include <propsys.h>
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -13,9 +14,11 @@
 #include <mutex>
 #include <stdexcept>
 #include <thread>
+#include <unordered_set>
 
 #include "audio_failure.hpp"
 #include "../common/diagnostic_log.hpp"
+#include "wasapi_event.hpp"
 using Microsoft::WRL::ComPtr;
 
 namespace syrnike::desktop_native::media {
@@ -42,7 +45,7 @@ ComPtr<IMMDeviceEnumerator> enumerator() {
 
 ComPtr<IMMDevice> defaultDevice(EDataFlow flow) {
   ComPtr<IMMDevice> device;
-  const auto result = enumerator()->GetDefaultAudioEndpoint(flow, eCommunications, &device);
+  const auto result = enumerator()->GetDefaultAudioEndpoint(flow, eConsole, &device);
   if (FAILED(result)) {
     throwAudioFailure(
       result,
@@ -181,7 +184,8 @@ bool audioEndpointChangeRequiresDefaultRetry(
   const bool follows_default =
     selected_device_id.empty() || selected_device_id == "default";
   const bool default_changed =
-    change.kind == AudioEndpointChangeKind::DefaultChanged;
+    change.kind == AudioEndpointChangeKind::DefaultChanged &&
+    change.role == eConsole;
   const bool selected_lost =
     !follows_default && selected_device_id == change.device_id;
   return selected_lost || (default_changed && (follows_default || fallback_pending));
@@ -201,8 +205,15 @@ namespace {
 
 class EndpointNotificationClient final : public IMMNotificationClient {
  public:
-  EndpointNotificationClient(EDataFlow flow, AudioEndpointMonitor::Handler handler)
-    : flow_(flow), handler_(std::move(handler)) {}
+  EndpointNotificationClient(
+    EDataFlow flow,
+    ComPtr<IMMDeviceEnumerator> device_enumerator,
+    AudioEndpointMonitor::Handler handler
+  ) : flow_(flow),
+      device_enumerator_(std::move(device_enumerator)),
+      handler_(std::move(handler)) {
+    rememberCurrentEndpoints();
+  }
 
   ULONG STDMETHODCALLTYPE AddRef() override { return ++references_; }
   ULONG STDMETHODCALLTYPE Release() override {
@@ -225,18 +236,29 @@ class EndpointNotificationClient final : public IMMNotificationClient {
     ERole role,
     LPCWSTR id
   ) override {
-    if (flow == flow_ && role == eCommunications) {
-      notify(AudioEndpointChangeKind::DefaultChanged, id);
+    if (flow == flow_ && (role == eConsole || role == eCommunications)) {
+      notify(AudioEndpointChangeKind::DefaultChanged, id, role);
     }
     return S_OK;
   }
-  HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR) override { return S_OK; }
+  HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR id) override {
+    (void)belongsToMonitoredFlow(id, true);
+    return S_OK;
+  }
   HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR id) override {
-    notify(AudioEndpointChangeKind::Removed, id);
+    const auto key = utf8(id);
+    bool was_monitored = false;
+    {
+      std::lock_guard lock(endpoints_mutex_);
+      was_monitored = known_endpoint_ids_.erase(key) != 0;
+    }
+    if (was_monitored) notify(AudioEndpointChangeKind::Removed, id);
     return S_OK;
   }
   HRESULT STDMETHODCALLTYPE OnDeviceStateChanged(LPCWSTR id, DWORD state) override {
-    if ((state & DEVICE_STATE_ACTIVE) == 0) {
+    if ((state & DEVICE_STATE_ACTIVE) != 0) {
+      (void)belongsToMonitoredFlow(id, true);
+    } else if (belongsToMonitoredFlow(id, false)) {
       notify(AudioEndpointChangeKind::Disabled, id);
     }
     return S_OK;
@@ -246,10 +268,58 @@ class EndpointNotificationClient final : public IMMNotificationClient {
   }
 
  private:
-  void notify(AudioEndpointChangeKind kind, LPCWSTR id) noexcept {
+  void rememberCurrentEndpoints() noexcept {
+    try {
+      if (!device_enumerator_) return;
+      ComPtr<IMMDeviceCollection> collection;
+      if (FAILED(device_enumerator_->EnumAudioEndpoints(
+            flow_, DEVICE_STATEMASK_ALL, &collection))) return;
+      UINT count = 0;
+      if (FAILED(collection->GetCount(&count))) return;
+      std::lock_guard lock(endpoints_mutex_);
+      for (UINT index = 0; index < count; ++index) {
+        ComPtr<IMMDevice> device;
+        if (FAILED(collection->Item(index, &device))) continue;
+        auto id = deviceId(device.Get());
+        if (!id.empty()) known_endpoint_ids_.insert(std::move(id));
+      }
+    } catch (...) {
+    }
+  }
+
+  bool belongsToMonitoredFlow(LPCWSTR id, bool remember) noexcept {
+    const auto key = utf8(id);
+    if (key.empty()) return false;
+    {
+      std::lock_guard lock(endpoints_mutex_);
+      if (known_endpoint_ids_.contains(key)) return true;
+    }
+    try {
+      if (!device_enumerator_) return false;
+      ComPtr<IMMDevice> device;
+      if (FAILED(device_enumerator_->GetDevice(id, &device))) return false;
+      ComPtr<IMMEndpoint> endpoint;
+      if (FAILED(device.As(&endpoint))) return false;
+      EDataFlow flow = eAll;
+      if (FAILED(endpoint->GetDataFlow(&flow)) || flow != flow_) return false;
+      if (remember) {
+        std::lock_guard lock(endpoints_mutex_);
+        known_endpoint_ids_.insert(key);
+      }
+      return true;
+    } catch (...) {
+      return false;
+    }
+  }
+
+  void notify(
+    AudioEndpointChangeKind kind,
+    LPCWSTR id,
+    ERole role = eConsole
+  ) noexcept {
     try {
       if (!handler_) return;
-      handler_(AudioEndpointChange{flow_, kind, utf8(id)});
+      handler_(AudioEndpointChange{flow_, kind, utf8(id), role});
     } catch (...) {
       // No C++ exception may cross the Windows COM callback ABI. Losing one
       // notification is safe because capture/render failure paths also drive
@@ -259,7 +329,10 @@ class EndpointNotificationClient final : public IMMNotificationClient {
 
   std::atomic_ulong references_{1};
   EDataFlow flow_;
+  ComPtr<IMMDeviceEnumerator> device_enumerator_;
   AudioEndpointMonitor::Handler handler_;
+  std::mutex endpoints_mutex_;
+  std::unordered_set<std::string> known_endpoint_ids_;
 };
 
 // IMMDeviceEnumerator normally releases its callback during unregister, but a
@@ -274,7 +347,8 @@ class EndpointNotificationQueue final {
       if (stopping_) return;
       for (auto iterator = pending_.begin(); iterator != pending_.end();) {
         const bool same_default = change.kind == AudioEndpointChangeKind::DefaultChanged &&
-          iterator->kind == AudioEndpointChangeKind::DefaultChanged;
+          iterator->kind == AudioEndpointChangeKind::DefaultChanged &&
+          iterator->role == change.role;
         const bool same_endpoint = iterator->kind == change.kind &&
           iterator->device_id == change.device_id;
         if (same_default || same_endpoint) iterator = pending_.erase(iterator);
@@ -393,9 +467,13 @@ class AudioEndpointMonitor::Implementation {
     };
     try {
       device_enumerator = enumerator();
-      client = new EndpointNotificationClient(flow_, [queue = endpoint_changes_](AudioEndpointChange change) {
-        queue->enqueue(std::move(change));
-      });
+      client = new EndpointNotificationClient(
+        flow_,
+        device_enumerator,
+        [queue = endpoint_changes_](AudioEndpointChange change) {
+          queue->enqueue(std::move(change));
+        }
+      );
       const auto result = device_enumerator->RegisterEndpointNotificationCallback(client);
       if (FAILED(result)) {
         throw AudioFailure(
@@ -453,14 +531,21 @@ void probeCaptureDevice(
     reinterpret_cast<void**>(client.GetAddressOf())
   );
   if (FAILED(result)) throwAudioFailure(result, "activate microphone candidate failed");
+  WasapiEventPair stream_events;
   auto mutable_format = format;
   result = client->Initialize(
     AUDCLNT_SHAREMODE_SHARED,
-    AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-    10'000'000, 0, &mutable_format, nullptr
+    AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+      AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
+      AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+    400'000, 0, &mutable_format, nullptr
   );
   if (FAILED(result)) {
     throwAudioFailure(result, "initialize microphone candidate failed");
+  }
+  result = client->SetEventHandle(stream_events.audioReadyHandle());
+  if (FAILED(result)) {
+    throwAudioFailure(result, "set microphone candidate event failed");
   }
   ComPtr<IAudioCaptureClient> capture;
   result = client->GetService(IID_PPV_ARGS(&capture));
@@ -471,6 +556,13 @@ void probeCaptureDevice(
   }
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   while (std::chrono::steady_clock::now() < deadline) {
+    const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+      deadline - std::chrono::steady_clock::now()
+    );
+    const auto wait_result = stream_events.wait(static_cast<DWORD>(
+      std::max<std::int64_t>(1, remaining.count())
+    ));
+    if (wait_result == WasapiEventPair::WaitResult::TimedOut) break;
     UINT32 frames = 0;
     result = capture->GetNextPacketSize(&frames);
     if (FAILED(result)) {
@@ -488,7 +580,6 @@ void probeCaptureDevice(
       }
       return;
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(2));
   }
   client->Stop();
   throw AudioFailure(

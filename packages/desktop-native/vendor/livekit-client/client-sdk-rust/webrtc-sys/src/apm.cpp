@@ -57,6 +57,11 @@ int AudioProcessingModule::set_stream_delay_ms(int delay_ms) {
   return apm_->set_stream_delay_ms(delay_ms);
 }
 
+int AudioProcessingModule::apply_config(const AudioProcessingConfig& config) {
+  apm_->ApplyConfig(config.ToWebrtcConfig());
+  return 0;
+}
+
 std::unique_ptr<AudioProcessingModule> create_apm(
     bool echo_canceller_enabled,
     bool gain_controller_enabled,
@@ -68,6 +73,19 @@ std::unique_ptr<AudioProcessingModule> create_apm(
   config.high_pass_filter_enabled = high_pass_filter_enabled;
   config.noise_suppression_enabled = noise_suppression_enabled;
   return std::make_unique<AudioProcessingModule>(config);
+}
+
+std::unique_ptr<AudioProcessingConfig> create_apm_config(
+    bool echo_canceller_enabled,
+    bool gain_controller_enabled,
+    bool high_pass_filter_enabled,
+    bool noise_suppression_enabled) {
+  auto config = std::make_unique<AudioProcessingConfig>();
+  config->echo_canceller_enabled = echo_canceller_enabled;
+  config->gain_controller_enabled = gain_controller_enabled;
+  config->high_pass_filter_enabled = high_pass_filter_enabled;
+  config->noise_suppression_enabled = noise_suppression_enabled;
+  return config;
 }
 
 }  // namespace livekit_ffi

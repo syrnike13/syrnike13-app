@@ -364,6 +364,26 @@ TEST_F(AudioProcessingModuleTest, SetStreamDelayMs) {
   EXPECT_NO_THROW(apm.setStreamDelayMs(200));
 }
 
+TEST_F(AudioProcessingModuleTest, AppliesOptionsWithoutReplacingModule) {
+  AudioProcessingModule::Options initial;
+  initial.noise_suppression = true;
+  AudioProcessingModule apm(initial);
+
+  AudioFrame frame = create10msFrame(48000, 1);
+  fillWithNoise(frame);
+  EXPECT_NO_THROW(apm.processStream(frame));
+
+  AudioProcessingModule::Options with_echo = initial;
+  with_echo.echo_cancellation = true;
+  EXPECT_NO_THROW(apm.applyOptions(with_echo));
+  EXPECT_NO_THROW(apm.setStreamDelayMs(35));
+
+  AudioFrame reverse = create10msFrame(48000, 1);
+  fillWithSineWave(reverse, 440.0);
+  EXPECT_NO_THROW(apm.processReverseStream(reverse));
+  EXPECT_NO_THROW(apm.processStream(frame));
+}
+
 // ============================================================================
 // Echo Cancellation Workflow Tests
 // ============================================================================

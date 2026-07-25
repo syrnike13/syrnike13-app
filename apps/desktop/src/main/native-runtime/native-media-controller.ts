@@ -1,6 +1,7 @@
 import type {
   DesktopDisplayMediaSource,
   NativeMediaDeviceInfo,
+  NativeMediaRuntimeState,
   NativeMicrophoneMetricsEvent,
   NativeMicrophonePreviewStateEvent,
 } from '@syrnike13/platform'
@@ -47,6 +48,7 @@ export type RemoteScreenPublication = {
 }
 
 export type NativeMediaControllerEvent =
+  | { type: 'runtimeState'; state: NativeMediaRuntimeState }
   | { type: 'microphoneMetrics'; event: NativeMicrophoneMetricsEvent }
   | { type: 'microphonePreviewState'; event: NativeMicrophonePreviewStateEvent }
   | {
@@ -128,6 +130,24 @@ export class NativeMediaController {
   async start() {
     if (!this.options.runtimeAvailable()) return
     await this.options.supervisor.start()
+  }
+
+  getRuntimeState(): NativeMediaRuntimeState {
+    const snapshot = this.options.supervisor.getSnapshot()
+    return {
+      available: this.options.runtimeAvailable(),
+      status: snapshot.status,
+      restartCount: snapshot.restartCount,
+      degradedReason: snapshot.degradedReason,
+      degradedRetryAttempt: snapshot.degradedRetryAttempt,
+      nextRetryAt: snapshot.nextRetryAt,
+    }
+  }
+
+  async retryRuntime() {
+    if (!this.options.runtimeAvailable()) return this.getRuntimeState()
+    await this.options.supervisor.retry()
+    return this.getRuntimeState()
   }
 
   async supportsNativeScreenCapture() {
@@ -348,8 +368,17 @@ export class NativeMediaController {
 
   async dispose() {
     if (this.disposed) return
-    await this.stopMicrophonePreview().catch(() => undefined)
     this.disposed = true
+    const hadPreview = Boolean(this.preview || this.previewStartOperation)
+    this.preview = null
+    this.previewStartOperation = null
+    ++this.previewGeneration
+    if (hadPreview) {
+      this.emit({
+        type: 'microphonePreviewState',
+        event: { status: 'stopped' },
+      })
+    }
     this.retireVoiceSession()
     this.clearRemoteVideoDemands()
     this.remoteScreenPublications.clear()
@@ -526,6 +555,17 @@ export class NativeMediaController {
   }
 
   private handleSupervisorState(snapshot: NativeRuntimeSupervisorSnapshot) {
+    this.emit({
+      type: 'runtimeState',
+      state: {
+        available: this.options.runtimeAvailable(),
+        status: snapshot.status,
+        restartCount: snapshot.restartCount,
+        degradedReason: snapshot.degradedReason,
+        degradedRetryAttempt: snapshot.degradedRetryAttempt,
+        nextRetryAt: snapshot.nextRetryAt,
+      },
+    })
     if (
       snapshot.status === 'degraded' ||
       snapshot.status === 'recovering' ||
@@ -545,13 +585,22 @@ export class NativeMediaController {
     }
     if (snapshot.status !== 'ready' || snapshot.restartCount <= this.lastRestoredRestartCount) return
     this.lastRestoredRestartCount = snapshot.restartCount
-    const preview = this.preview
-    if (!preview || preview.status !== 'running') return
-    preview.generation = ++this.previewGeneration
+    const previousPreview = this.preview
+    if (!previousPreview || previousPreview.status !== 'running') return
+    const preview: PreviewSessionState = {
+      sessionId: crypto.randomUUID(),
+      generation: ++this.previewGeneration,
+      status: 'starting',
+    }
+    this.preview = preview
     void this.request(
       { type: 'startPreview', sessionId: preview.sessionId, generation: preview.generation },
       SESSION_TIMEOUT_MS,
     )
+      .then((result) => {
+        readPreviewResult(result, preview.sessionId)
+        if (this.preview === preview) preview.status = 'running'
+      })
       .catch((error) => {
         if (this.preview !== preview) return
         this.preview = null

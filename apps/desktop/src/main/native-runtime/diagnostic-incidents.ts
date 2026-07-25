@@ -19,6 +19,7 @@ const WARNING_EVENTS = new Set([
   'request_rejected_queue_full',
   'restart_scheduled',
   'runtime_event_dropped_out_of_order',
+  'screen_backend_restart',
 ])
 const FATAL_EVENTS = new Set([
   'native_contract_corruption',
@@ -43,6 +44,7 @@ const FAILURE_EVENTS = new Set([
   'request_reply_error',
   'request_timed_out',
   'runtime_degraded',
+  'camera_read_stall',
   'screen_publication_failed',
   'session_rotation_failed',
 ])

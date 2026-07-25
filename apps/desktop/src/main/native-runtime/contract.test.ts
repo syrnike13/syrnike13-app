@@ -3,11 +3,33 @@ import { describe, expect, it } from 'vitest'
 import {
   isNativeRuntimeCommand,
   isNativeRuntimeEvent,
+  isUncorrelatedNativeRuntimeReply,
   redactSensitiveText,
   sanitizeRuntimeError,
 } from './contract'
 
 describe('native runtime error privacy', () => {
+  it('classifies a requestless native failure reply as uncorrelated', () => {
+    expect(
+      isUncorrelatedNativeRuntimeReply({
+        type: 'reply',
+        ok: false,
+        error: {
+          code: 'capture_failed',
+          message: 'Capture failed',
+          retryable: true,
+        },
+      }),
+    ).toBe(true)
+    expect(
+      isUncorrelatedNativeRuntimeReply({
+        type: 'reply',
+        requestId: 'request-1',
+        ok: false,
+      }),
+    ).toBe(false)
+  })
+
   it('redacts tokens, bearer credentials, and room URLs', () => {
     const redacted = redactSensitiveText(
       'connect wss://voice.example/room?access_token=secret token=abc Bearer ey.secret.value',
@@ -84,6 +106,49 @@ describe('native runtime error privacy', () => {
       ...event,
       state: { ...event.state, deviceId: 42 },
     })).toBe(false)
+  })
+})
+
+describe('native screen capture telemetry validation', () => {
+  const statsEvent = {
+    type: 'stats',
+    sequence: 1,
+    sessionId: 'screen-session',
+    generation: 3,
+    stats: {
+      sessionId: 'screen-session',
+      methods: { wgc_gpu: 0, dxgi_gpu: 120 },
+      activeMethod: 'dxgi_gpu',
+      videoGpuPoolSlotsAvailable: 4,
+      videoGpuPoolSlotsTotal: 5,
+      videoDxgiDuplicationHoldUsMax: 2_400,
+    },
+  } as const
+
+  it('accepts bounded GPU-slot and DXGI hold telemetry', () => {
+    expect(isNativeRuntimeEvent(statsEvent)).toBe(true)
+  })
+
+  it('rejects non-finite GPU-slot and DXGI hold telemetry', () => {
+    expect(isNativeRuntimeEvent({
+      ...statsEvent,
+      stats: {
+        ...statsEvent.stats,
+        videoDxgiDuplicationHoldUsMax: Number.NaN,
+      },
+    })).toBe(false)
+  })
+
+  it('accepts a generation-fenced immediate screen backend restart', () => {
+    expect(isNativeRuntimeEvent({
+      type: 'screenBackendRestart',
+      sequence: 2,
+      sessionId: 'screen-session',
+      generation: 3,
+      backend: 'wgc_gpu',
+      reason: 'switch_backend',
+      count: 1,
+    })).toBe(true)
   })
 })
 

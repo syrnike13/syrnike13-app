@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../common/async_cleanup_dispatcher.hpp"
 #include "audio_failure.hpp"
 
 namespace livekit { class Track; }
@@ -64,8 +65,6 @@ void startAudioOutputWithRollback(
 );
 
 // Owns all receive-side AudioStreams and the single WASAPI mix renderer.
-// Every operation is synchronous with respect to ownership: after removeTrack
-// or stop returns, no worker can access the corresponding stream or this object.
 class RemoteAudioOutput final {
  public:
   using FailureHandler = std::function<void(
@@ -83,7 +82,8 @@ class RemoteAudioOutput final {
   explicit RemoteAudioOutput(
     FailureHandler on_failure = {},
     SpeakingActivityHandler on_speaking_activity = {},
-    WorkerFactory worker_factory = {}
+    WorkerFactory worker_factory = {},
+    AsyncCleanupLauncher cleanup_launcher = {}
   );
   ~RemoteAudioOutput();
   RemoteAudioOutput(const RemoteAudioOutput&) = delete;
@@ -97,13 +97,18 @@ class RemoteAudioOutput final {
     std::string device_id,
     AudioOutputDeviceIntent intent
   );
+  std::string outputDeviceId() const;
   bool isRendererEpochCurrent(std::uint64_t epoch) const;
   void setVolume(float volume);
   void configure(RemoteAudioSettings settings);
   void stop();
+  void stop(std::shared_ptr<void> lifetime_owner);
 
  private:
   class Implementation;
+  AsyncCleanupDispatcher* cleanup_dispatcher_;
+  std::shared_ptr<AsyncCleanupNode> cleanup_node_;
+  std::atomic_bool cleanup_submitted_{false};
   std::unique_ptr<Implementation> implementation_;
 };
 

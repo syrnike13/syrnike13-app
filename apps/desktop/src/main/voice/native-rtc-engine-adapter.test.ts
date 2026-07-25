@@ -464,7 +464,6 @@ describe('NativeRtcEngineAdapter', () => {
       createInitialVoiceMediaDesiredState(),
       new AbortController().signal,
     )
-
     runtime.emitEvent({
       type: 'voiceTerminal',
       sequence: 1,
@@ -533,6 +532,16 @@ describe('NativeRtcEngineAdapter', () => {
       createInitialVoiceMediaDesiredState(),
       new AbortController().signal,
     )
+    await waitUntil(() =>
+      runtime.commands.some((command) => command.type === 'configureMicrophone'),
+    )
+    expect(
+      (
+        adapter as unknown as {
+          microphoneAppliedConfigRevision: number
+        }
+      ).microphoneAppliedConfigRevision,
+    ).toBeGreaterThan(0)
 
     const recovering: NativeRuntimeSupervisorSnapshot = {
       runtime: 'media',
@@ -549,6 +558,13 @@ describe('NativeRtcEngineAdapter', () => {
     runtime.emitState(recovering)
     runtime.emitState(recovering)
 
+    expect(
+      (
+        adapter as unknown as {
+          microphoneAppliedConfigRevision: number
+        }
+      ).microphoneAppliedConfigRevision,
+    ).toBe(0)
     expect(events.filter((event) =>
       typeof event === 'object' && event !== null &&
       'type' in event && event.type === 'terminalFailure')).toHaveLength(1)

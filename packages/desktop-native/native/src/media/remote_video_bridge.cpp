@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iomanip>
+#include <latch>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -171,15 +172,38 @@ class D3DSharedTextureUploader {
   std::unique_ptr<D3d11GpuCompletion> completion_;
 };
 #endif
+
+class LiveKitVideoStreamReader final : public RemoteVideoBridge::StreamReader {
+ public:
+  explicit LiveKitVideoStreamReader(
+    const std::shared_ptr<livekit::Track>& track
+  ) {
+    livekit::VideoStream::Options options;
+    options.capacity = 1;
+    options.format = livekit::VideoBufferType::BGRA;
+    stream_ = livekit::VideoStream::fromTrack(track, options);
+  }
+
+  bool read(livekit::VideoFrameEvent& event) override {
+    return stream_->read(event);
+  }
+
+  void close() override {
+    stream_->close();
+  }
+
+ private:
+  std::shared_ptr<livekit::VideoStream> stream_;
+};
 }  // namespace
 
 struct RemoteVideoBridge::TrackWorker {
   std::shared_ptr<livekit::Track> track;
-  std::shared_ptr<livekit::VideoStream> stream;
+  std::shared_ptr<StreamReader> stream;
   std::thread thread;
   std::thread first_frame_watchdog;
   std::atomic_bool stopped{false};
-  std::atomic_bool committed{false};
+  std::latch committed{1};
   std::atomic<FirstFrameState> first_frame_state{FirstFrameState::Pending};
   std::mutex frames_mutex;
 #ifdef _WIN32
@@ -192,12 +216,25 @@ RemoteVideoBridge::RemoteVideoBridge(
   Post post,
   OnEnded on_ended,
   OnHealthy on_healthy,
-  VideoBridgeEventTypes event_types
-) : electron_main_pid_(electron_main_pid),
+  VideoBridgeEventTypes event_types,
+  StreamFactory stream_factory,
+  AsyncCleanupLauncher cleanup_launcher
+) : cleanup_dispatcher_(&AsyncCleanupDispatcher::instance()),
+    cleanup_node_(std::make_shared<AsyncCleanupNode>(
+      std::move(cleanup_launcher)
+    )),
+    electron_main_pid_(electron_main_pid),
     post_(std::move(post)),
     on_ended_(std::move(on_ended)),
     on_healthy_(std::move(on_healthy)),
     event_types_(std::move(event_types)),
+    stream_factory_(
+      stream_factory
+        ? std::move(stream_factory)
+        : StreamFactory([](const std::shared_ptr<livekit::Track>& track) {
+            return std::make_shared<LiveKitVideoStreamReader>(track);
+          })
+    ),
     release_router_(std::make_shared<LifetimeSafeFrameRelease>(
       [this](const std::string& track_id, std::uint64_t sequence) {
         release(track_id, sequence);
@@ -241,28 +278,29 @@ void RemoteVideoBridge::addTrack(
   // A repeated subscribed callback replaces the decoder for the same SID. It
   // is an implementation detail, not a track removal visible to the renderer.
   removeTrackLocked(track_id, {}, false);
-  livekit::VideoStream::Options options;
-  options.capacity = 1;
-  options.format = livekit::VideoBufferType::BGRA;
   auto worker = std::make_unique<TrackWorker>();
   worker->track = track;
-  worker->stream = livekit::VideoStream::fromTrack(track, options);
+  worker->stream = stream_factory_(track);
+  if (!worker->stream) {
+    throw std::runtime_error("remote video stream factory returned no reader");
+  }
   auto* raw = worker.get();
   const auto source = remoteVideoSourceLabel(publication_source, track->source());
   try {
     raw->thread = std::thread([
       this, raw, track_id, participant_identity = std::move(participant_identity), source
     ] {
-    while (!raw->committed.load(std::memory_order_acquire)) {
-      std::this_thread::yield();
-    }
+    raw->committed.wait();
 #ifdef _WIN32
     try {
-      D3DSharedTextureUploader uploader;
+      std::unique_ptr<D3DSharedTextureUploader> uploader;
       livekit::VideoFrameEvent frame_event;
       bool healthy_reported = false;
       while (!raw->stopped.load() && raw->stream->read(frame_event)) {
         if (!claimFirstFrame(raw->first_frame_state)) break;
+        if (!uploader) {
+          uploader = std::make_unique<D3DSharedTextureUploader>();
+        }
         std::uint64_t next = 0;
         {
           std::lock_guard lock(mutex_);
@@ -272,7 +310,10 @@ void RemoteVideoBridge::addTrack(
           std::lock_guard frames_lock(raw->frames_mutex);
           if (raw->frames.size() >= max_in_flight) continue;
         }
-        auto [handle, retained] = uploader.upload(frame_event.frame, electron_main_pid_);
+        auto [handle, retained] = uploader->upload(
+          frame_event.frame,
+          electron_main_pid_
+        );
         {
           std::lock_guard frames_lock(raw->frames_mutex);
           raw->frames.emplace(next, std::move(retained));
@@ -361,9 +402,7 @@ void RemoteVideoBridge::addTrack(
 #endif
     });
     raw->first_frame_watchdog = std::thread([raw] {
-    while (!raw->committed.load(std::memory_order_acquire)) {
-      std::this_thread::yield();
-    }
+    raw->committed.wait();
     if (raw->stopped.load()) return;
     const auto deadline = std::chrono::steady_clock::now() +
       kRemoteVideoFirstFrameTimeout;
@@ -378,7 +417,7 @@ void RemoteVideoBridge::addTrack(
     });
   } catch (...) {
     raw->stopped.store(true);
-    raw->committed.store(true, std::memory_order_release);
+    raw->committed.count_down();
     raw->stream->close();
     if (raw->thread.joinable()) raw->thread.join();
     if (raw->first_frame_watchdog.joinable()) raw->first_frame_watchdog.join();
@@ -388,10 +427,10 @@ void RemoteVideoBridge::addTrack(
     std::lock_guard lock(mutex_);
     const auto [_, inserted] = tracks_.try_emplace(track_id, std::move(worker));
     if (!inserted) throw std::runtime_error("duplicate remote video track SID");
-    raw->committed.store(true, std::memory_order_release);
+    raw->committed.count_down();
   } catch (...) {
     raw->stopped.store(true);
-    raw->committed.store(true, std::memory_order_release);
+    raw->committed.count_down();
     raw->stream->close();
     if (worker) {
       if (worker->thread.joinable()) worker->thread.join();
@@ -443,8 +482,11 @@ void RemoteVideoBridge::removeTrackLocked(
     std::lock_guard lock(mutex_);
     std::lock_guard frames_lock(worker->frames_mutex);
     for (auto& [sequence, frame] : worker->frames) {
-      if (released_frame_sequences_.erase(sequence) == 0) {
-        retired_frames_.emplace(sequence, std::move(frame));
+      if (!released_frame_sequences_.consume(track_id, sequence)) {
+        retired_frames_.emplace(
+          sequence,
+          RetiredFrame{track_id, std::move(frame)}
+        );
       }
     }
     worker->frames.clear();
@@ -471,11 +513,21 @@ void RemoteVideoBridge::release(const std::string& track_id, std::uint64_t seque
     std::lock_guard frames_lock(found->second->frames_mutex);
     released = found->second->frames.erase(sequence) != 0;
   }
-  released = retired_frames_.erase(sequence) != 0 || released;
+  if (const auto retired = retired_frames_.find(sequence);
+      retired != retired_frames_.end() && retired->second.track_id == track_id) {
+    retired_frames_.erase(retired);
+    released = true;
+  }
   // A release can race the short interval between removing a worker from the
   // active map and migrating its in-flight textures. Remember it so migration
   // never resurrects an already released handle.
-  if (!released) released_frame_sequences_.insert(sequence);
+  if (!released) {
+    static_cast<void>(released_frame_sequences_.remember(
+      track_id,
+      sequence,
+      next_frame_sequence_
+    ));
+  }
 #endif
 }
 
@@ -487,6 +539,18 @@ void RemoteVideoBridge::stop() {
     for (const auto& [id, _] : tracks_) ids.push_back(id);
   }
   for (const auto& id : ids) removeTrack(id);
+}
+
+void RemoteVideoBridge::stop(std::shared_ptr<void> lifetime_owner) {
+  if (cleanup_submitted_.exchange(true)) return;
+  cleanup_node_->prepare(
+    std::move(lifetime_owner),
+    this,
+    [](void* context) {
+      static_cast<RemoteVideoBridge*>(context)->stop();
+    }
+  );
+  cleanup_dispatcher_->submit(cleanup_node_);
 }
 
 }  // namespace syrnike::desktop_native::media

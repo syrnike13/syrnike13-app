@@ -19,10 +19,12 @@ import type {
 } from './utility-adapter'
 
 const DEFAULT_HANDSHAKE_TIMEOUT_MS = 5_000
-const DEFAULT_PROBE_TIMEOUT_MS = 1_000
+const DEFAULT_PROBE_TIMEOUT_MS = 2_500
 const RETIREMENT_WATCHDOG_INTERVAL_MS = 1_000
 const RESTART_DELAYS_MS = [250, 1_000, 5_000] as const
+const DEGRADED_RETRY_DELAYS_MS = [30_000, 60_000, 5 * 60_000] as const
 const CRASH_WINDOW_MS = 60_000
+const MAX_TRACKED_SCREEN_RECOVERY_EPOCHS = 256
 
 export type NativeRuntimeSupervisorStatus =
   | 'stopped'
@@ -57,6 +59,8 @@ export type NativeRuntimeSupervisorSnapshot = {
   hostEpoch?: number
   failure?: NativeRuntimeFailure
   degradedReason?: string
+  degradedRetryAttempt?: number
+  nextRetryAt?: number
   lastFailure?: string
   ready?: NativeRuntimeReady
 }
@@ -125,6 +129,7 @@ export type NativeRuntimeSupervisorOptions = {
   probeTimeoutMs?: number
   now?: () => number
   schedule?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>
+  degradedRetryDelaysMs?: readonly number[]
   diagnostics?: DiagnosticLogSink
 }
 
@@ -146,6 +151,9 @@ export class NativeRuntimeSupervisor {
   private rejectStart: ((error: Error) => void) | null = null
   private handshakeTimer: ReturnType<typeof setTimeout> | null = null
   private restartTimer: ReturnType<typeof setTimeout> | null = null
+  private degradedRetryTimer: ReturnType<typeof setTimeout> | null = null
+  private degradedRetryScheduleEpoch = 0
+  private degradedRetryAttempt = 0
   private crashTimes: number[] = []
   private expectedExitEpoch: number | null = null
   private startEpoch: number | null = null
@@ -171,6 +179,7 @@ export class NativeRuntimeSupervisor {
     NativeRuntimeLane,
     ReturnType<typeof setTimeout>
   >()
+  private readonly screenRecoverableLostCounts = new Map<string, number>()
 
   constructor(private readonly options: NativeRuntimeSupervisorOptions) {
     this.snapshot = {
@@ -252,6 +261,8 @@ export class NativeRuntimeSupervisor {
     this.updateSnapshot({
       status: this.snapshot.restartCount > 0 ? 'recovering' : 'starting',
       degradedReason: undefined,
+      degradedRetryAttempt: undefined,
+      nextRetryAt: undefined,
       lastFailure: undefined,
       failure: undefined,
       ready: undefined,
@@ -265,6 +276,7 @@ export class NativeRuntimeSupervisor {
       adapter = createdAdapter
       this.adapter = createdAdapter
       this.lastControlEventSequence = -1
+      this.screenRecoverableLostCounts.clear()
       this.log('adapter_created', {
         pendingCount: this.pending.size,
       })
@@ -455,18 +467,29 @@ export class NativeRuntimeSupervisor {
   }
 
   retry() {
+    return this.retryDegraded('manual')
+  }
+
+  private retryDegraded(source: 'manual' | 'automatic') {
     if (this.snapshot.status !== 'degraded') return this.start()
+    this.clearDegradedRetryTimer()
+    if (source === 'manual') this.degradedRetryAttempt = 0
     this.crashTimes = []
-    this.log('retry_requested', {
+    this.log(
+      source === 'manual' ? 'retry_requested' : 'degraded_auto_retry_started',
+      {
       restartCount: this.snapshot.restartCount,
       pendingCount: this.pending.size,
-    })
+      },
+    )
     this.updateSnapshot({
       status: 'stopped',
       // Keep this epoch monotonic so controllers can distinguish a manual
       // circuit reset from the host instance that just degraded.
       restartCount: this.snapshot.restartCount + 1,
       degradedReason: undefined,
+      degradedRetryAttempt: undefined,
+      nextRetryAt: undefined,
       lastFailure: undefined,
       failure: undefined,
     })
@@ -505,6 +528,7 @@ export class NativeRuntimeSupervisor {
       status: this.snapshot.status,
     })
     this.clearRestartTimer()
+    this.clearDegradedRetryTimer()
     this.clearRetirementWatchdogs()
     const adapter = this.adapter
     if (adapter && this.snapshot.status === 'ready') {
@@ -556,6 +580,8 @@ export class NativeRuntimeSupervisor {
       pid: undefined,
       ready: undefined,
       degradedReason: undefined,
+      degradedRetryAttempt: undefined,
+      nextRetryAt: undefined,
       failure: undefined,
     })
   }
@@ -587,8 +613,12 @@ export class NativeRuntimeSupervisor {
         pid: adapter.pid,
         ready: message,
         degradedReason: undefined,
+        degradedRetryAttempt: undefined,
+        nextRetryAt: undefined,
         failure: undefined,
       })
+      this.clearDegradedRetryTimer()
+      this.degradedRetryAttempt = 0
       this.resolveStart?.(message)
       this.clearStartPromise(adapterEpoch)
       return
@@ -669,6 +699,7 @@ export class NativeRuntimeSupervisor {
     }
     if (!isLossyMedia) {
       this.lastControlEventSequence = event.sequence
+      this.recordCameraReadStallEvent(event)
       this.log('runtime_event_received', {
         nativeEventType: event.type,
         nativeSequence: event.sequence,
@@ -682,6 +713,7 @@ export class NativeRuntimeSupervisor {
         pendingCount: this.pending.size,
       })
     }
+    this.recordScreenBackendRestart(event)
     for (const listener of this.eventListeners) {
       try {
         listener(event)
@@ -737,7 +769,7 @@ export class NativeRuntimeSupervisor {
         message: redactSensitiveText(runtimeFailure.message),
       })
       this.degrade(
-        failure('circuit_open', runtimeFailure.message, false),
+        failure('circuit_open', runtimeFailure.message),
         hostEpoch,
       )
       return
@@ -807,6 +839,7 @@ export class NativeRuntimeSupervisor {
     })
     this.clearHandshake()
     this.clearRestartTimer()
+    this.clearDegradedRetryTimer()
     this.clearRetirementWatchdogs()
     this.rejectStart?.(
       new NativeRuntimeRequestError(
@@ -824,8 +857,11 @@ export class NativeRuntimeSupervisor {
       pid: undefined,
       ready: undefined,
       degradedReason: redactSensitiveText(runtimeFailure.message),
+      degradedRetryAttempt: undefined,
+      nextRetryAt: undefined,
       failure: sanitizeFailure(runtimeFailure),
     })
+    this.scheduleDegradedRetry(runtimeFailure)
   }
 
   private rejectPending(requestId: string, error: Error) {
@@ -913,6 +949,47 @@ export class NativeRuntimeSupervisor {
     this.restartTimer = null
   }
 
+  private scheduleDegradedRetry(runtimeFailure: NativeRuntimeFailure) {
+    if (this.snapshot.status !== 'degraded' || this.shutdownPromise) return
+    if (runtimeFailure.cause === 'handshake_incompatible') return
+    const delays =
+      this.options.degradedRetryDelaysMs ?? DEGRADED_RETRY_DELAYS_MS
+    if (delays.length === 0) return
+    const index = Math.min(this.degradedRetryAttempt, delays.length - 1)
+    const configuredDelay =
+      delays[index] ?? delays[delays.length - 1] ?? DEGRADED_RETRY_DELAYS_MS[0]
+    const delayMs = Number.isFinite(configuredDelay)
+      ? Math.max(0, configuredDelay)
+      : DEGRADED_RETRY_DELAYS_MS[0]
+    const attempt = ++this.degradedRetryAttempt
+    const nextRetryAt = this.now() + delayMs
+    this.log('degraded_auto_retry_scheduled', {
+      restartCount: this.snapshot.restartCount,
+      delayMs,
+      message: redactSensitiveText(runtimeFailure.message),
+    })
+    this.updateSnapshot({
+      degradedRetryAttempt: attempt,
+      nextRetryAt,
+    })
+    const schedule = this.options.schedule ?? setTimeout
+    const scheduleEpoch = ++this.degradedRetryScheduleEpoch
+    this.degradedRetryTimer = schedule(() => {
+      if (scheduleEpoch !== this.degradedRetryScheduleEpoch) return
+      this.degradedRetryTimer = null
+      if (this.shutdownPromise || this.snapshot.status !== 'degraded') return
+      void this.retryDegraded('automatic').catch(() => undefined)
+    }, delayMs)
+    this.degradedRetryTimer.unref?.()
+  }
+
+  private clearDegradedRetryTimer() {
+    this.degradedRetryScheduleEpoch += 1
+    if (!this.degradedRetryTimer) return
+    clearTimeout(this.degradedRetryTimer)
+    this.degradedRetryTimer = null
+  }
+
   private armRetirementWatchdog(
     lane: NativeRuntimeLane,
     adapterEpoch: number,
@@ -954,6 +1031,11 @@ export class NativeRuntimeSupervisor {
         this.armRetirementWatchdog(lane, adapterEpoch)
       }
     } catch (error) {
+      this.recordCameraReadStall(
+        lane,
+        this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS,
+        error instanceof Error ? error.message : undefined,
+      )
       this.recycleHungAdapterIfCurrent(
         adapterEpoch,
         'liveness_probe_failed',
@@ -1040,6 +1122,11 @@ export class NativeRuntimeSupervisor {
         durationMs: this.now() - startedAt,
         pendingCount: this.pending.size,
       })
+      this.recordCameraReadStall(
+        lane,
+        timeoutMs,
+        `Native runtime liveness probe timed out (${lane})`,
+      )
       pending.reject(
         new NativeRuntimeRequestError(
           nativeRuntimeError(
@@ -1118,6 +1205,71 @@ export class NativeRuntimeSupervisor {
         // Supervisor lifecycle must remain independent from observer failures.
       }
     }
+  }
+
+  private recordScreenBackendRestart(event: NativeRuntimeEvent) {
+    if (event.type !== 'stats' && event.type !== 'screenBackendRestart') return
+    const count = event.type === 'screenBackendRestart'
+      ? event.count
+      : event.stats.videoRecoverableLostCount
+    if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
+      return
+    }
+    const key = `${event.sessionId}:${event.generation}`
+    if (
+      !this.screenRecoverableLostCounts.has(key) &&
+      this.screenRecoverableLostCounts.size >= MAX_TRACKED_SCREEN_RECOVERY_EPOCHS
+    ) {
+      const oldest = this.screenRecoverableLostCounts.keys().next().value
+      if (oldest !== undefined) this.screenRecoverableLostCounts.delete(oldest)
+    }
+    const previous = this.screenRecoverableLostCounts.get(key) ?? 0
+    this.screenRecoverableLostCounts.set(key, count)
+    if (count <= previous) return
+    this.log('screen_backend_restart', {
+      lane: 'screen',
+      sessionId: event.sessionId,
+      generation: event.generation,
+      kind: event.type === 'screenBackendRestart' ? event.backend : undefined,
+      reason: event.type === 'screenBackendRestart' ? event.reason : undefined,
+      restartCount: count,
+      message: event.type === 'screenBackendRestart'
+        ? `backend=${event.backend} action=${event.reason} count=${count}`
+        : `recoverable_lost_count=${count}`,
+    })
+  }
+
+  private recordCameraReadStall(
+    lane: NativeRuntimeLane,
+    timeoutMs: number,
+    message?: string,
+  ) {
+    if (lane !== 'camera') return
+    this.log('camera_read_stall', {
+      lane,
+      stage: 'probeCameraActor',
+      timeoutMs,
+      message,
+    })
+  }
+
+  private recordCameraReadStallEvent(event: NativeRuntimeEvent) {
+    if (
+      event.type !== 'cameraTerminal' ||
+      event.error.code !== 'camera_read_stall'
+    ) {
+      return
+    }
+    this.log('camera_read_stall', {
+      lane: 'camera',
+      nativeEventType: event.type,
+      nativeSequence: event.sequence,
+      sessionId: event.sessionId,
+      generation: event.generation,
+      stage: event.error.stage ?? 'cameraCapture',
+      errorCode: event.error.code,
+      message: event.error.message,
+    })
   }
 
   private hasPendingLaneCommand(
