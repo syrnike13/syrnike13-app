@@ -72,7 +72,6 @@ void VoiceGateProcessor::updateConfig(const VoiceGateConfig& config) {
   const bool mode_changed = !first_config &&
     config_.auto_threshold != next.auto_threshold;
   const bool lookahead_topology_changed = !first_config &&
-    (config_.auto_threshold || next.auto_threshold) &&
     config_.lookahead_ms != next.lookahead_ms;
 
   config_ = next;
@@ -80,7 +79,7 @@ void VoiceGateProcessor::updateConfig(const VoiceGateConfig& config) {
   if (first_config || enabled_changed || mode_changed) {
     resetAdaptiveState();
   }
-  if (first_config || enabled_changed || mode_changed || lookahead_topology_changed) {
+  if (first_config || enabled_changed || lookahead_topology_changed) {
     resetGateState(!config_.enabled);
   }
 }
@@ -154,7 +153,7 @@ void VoiceGateProcessor::resetGateState(bool open) {
 }
 
 int VoiceGateProcessor::lookaheadFrameCount(std::span<float> samples) const {
-  if (!config_.enabled || !config_.auto_threshold || config_.lookahead_ms <= 0) {
+  if (!config_.enabled || config_.lookahead_ms <= 0) {
     return 0;
   }
   const int frame_ms = std::max(1, frameDurationMs(samples));
@@ -163,7 +162,6 @@ int VoiceGateProcessor::lookaheadFrameCount(std::span<float> samples) const {
 
 void VoiceGateProcessor::resetAdaptiveState() {
   quiet_history_.clear();
-  lookahead_frames_.clear();
   noise_floor_db_ = clampDb(config_.manual_threshold_db - config_.auto_margin_db);
 }
 

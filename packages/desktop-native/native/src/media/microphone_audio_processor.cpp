@@ -33,59 +33,72 @@ MicrophoneAudioProcessor::~MicrophoneAudioProcessor() = default;
 bool MicrophoneAudioProcessor::ensureCleanupApm(
   const MicrophoneCleanupApmOptions& options
 ) {
-  if (options == active_cleanup_options_ && cleanup_apm_ != nullptr) {
-    return true;
-  }
-
-  if (options != active_cleanup_options_) {
-    active_cleanup_options_ = options;
-    cleanup_apm_.reset();
-  }
-
   if (!options.noise_suppression &&
       !options.echo_cancellation &&
       !options.high_pass_filter) {
+    if (cleanup_apm_ && options != active_cleanup_options_) {
+      try {
+        cleanup_apm_->applyOptions({});
+        active_cleanup_options_ = options;
+      } catch (...) {
+        cleanup_apm_.reset();
+      }
+    }
     return false;
   }
 
-  livekit::AudioProcessingModule::Options livekit_options;
-  livekit_options.noise_suppression = options.noise_suppression;
-  livekit_options.echo_cancellation = options.echo_cancellation;
-  livekit_options.high_pass_filter = options.high_pass_filter;
-  livekit_options.auto_gain_control = false;
-
   try {
-    cleanup_apm_ =
-      std::make_unique<livekit::AudioProcessingModule>(livekit_options);
+    livekit::AudioProcessingModule::Options livekit_options;
+    livekit_options.noise_suppression = options.noise_suppression;
+    livekit_options.echo_cancellation = options.echo_cancellation;
+    livekit_options.high_pass_filter = options.high_pass_filter;
+    livekit_options.auto_gain_control = false;
+    if (!cleanup_apm_) {
+      cleanup_apm_ =
+        std::make_unique<livekit::AudioProcessingModule>(livekit_options);
+    } else if (options != active_cleanup_options_) {
+      cleanup_apm_->applyOptions(livekit_options);
+    }
+    active_cleanup_options_ = options;
   } catch (...) {
-    cleanup_apm_.reset();
+    try {
+      livekit::AudioProcessingModule::Options livekit_options;
+      livekit_options.noise_suppression = options.noise_suppression;
+      livekit_options.echo_cancellation = options.echo_cancellation;
+      livekit_options.high_pass_filter = options.high_pass_filter;
+      cleanup_apm_ =
+        std::make_unique<livekit::AudioProcessingModule>(livekit_options);
+      active_cleanup_options_ = options;
+    } catch (...) {
+      cleanup_apm_.reset();
+    }
   }
 
   return cleanup_apm_ != nullptr;
 }
 
 bool MicrophoneAudioProcessor::ensureAgcApm(bool enabled) {
-  if (enabled == active_agc_enabled_ && agc_apm_ != nullptr) {
-    return true;
-  }
-
-  if (enabled != active_agc_enabled_) {
-    active_agc_enabled_ = enabled;
-    agc_apm_.reset();
-  }
-
   if (!enabled) {
+    if (agc_apm_ && active_agc_enabled_) {
+      try {
+        agc_apm_->applyOptions({});
+      } catch (...) {
+        agc_apm_.reset();
+      }
+    }
+    active_agc_enabled_ = false;
     return false;
   }
 
-  livekit::AudioProcessingModule::Options livekit_options;
-  livekit_options.noise_suppression = false;
-  livekit_options.echo_cancellation = false;
-  livekit_options.high_pass_filter = false;
-  livekit_options.auto_gain_control = true;
-
   try {
-    agc_apm_ = std::make_unique<livekit::AudioProcessingModule>(livekit_options);
+    livekit::AudioProcessingModule::Options livekit_options;
+    livekit_options.auto_gain_control = true;
+    if (!agc_apm_) {
+      agc_apm_ = std::make_unique<livekit::AudioProcessingModule>(livekit_options);
+    } else if (!active_agc_enabled_) {
+      agc_apm_->applyOptions(livekit_options);
+    }
+    active_agc_enabled_ = true;
   } catch (...) {
     agc_apm_.reset();
   }
@@ -93,10 +106,28 @@ bool MicrophoneAudioProcessor::ensureAgcApm(bool enabled) {
   return agc_apm_ != nullptr;
 }
 
+void MicrophoneAudioProcessor::resetEchoPath(
+  const MicrophoneCleanupApmOptions& options
+) {
+  if (!cleanup_apm_ || !options.echo_cancellation) return;
+  livekit::AudioProcessingModule::Options without_echo;
+  without_echo.noise_suppression = options.noise_suppression;
+  without_echo.high_pass_filter = options.high_pass_filter;
+  cleanup_apm_->applyOptions(without_echo);
+  livekit::AudioProcessingModule::Options restored;
+  restored.noise_suppression = options.noise_suppression;
+  restored.echo_cancellation = true;
+  restored.high_pass_filter = options.high_pass_filter;
+  cleanup_apm_->applyOptions(restored);
+  active_stream_delay_ms_ = -1;
+}
+
 MicrophoneAudioProcessorFrame MicrophoneAudioProcessor::processFrame(
   const std::vector<float>& raw_frame,
   const RuntimeConfig& config,
-  const std::vector<std::int16_t>* echo_reference_frame
+  const std::vector<std::int16_t>* echo_reference_frame,
+  int stream_delay_ms,
+  bool echo_reference_discontinuity
 ) {
   if (raw_frame.size() != kSamplesPer10Ms) {
     throw std::invalid_argument("microphone processor requires exactly 10ms frames");
@@ -118,6 +149,9 @@ MicrophoneAudioProcessorFrame MicrophoneAudioProcessor::processFrame(
   if (cleanup_apm_ready && cleanup_apm_) {
     try {
       if (cleanup_options.echo_cancellation && echo_reference_frame) {
+        if (echo_reference_discontinuity) {
+          resetEchoPath(cleanup_options);
+        }
         livekit::AudioFrame reverse(
           std::vector<std::int16_t>(*echo_reference_frame),
           kSampleRate,
@@ -125,7 +159,11 @@ MicrophoneAudioProcessorFrame MicrophoneAudioProcessor::processFrame(
           kSamplesPer10Ms
         );
         cleanup_apm_->processReverseStream(reverse);
-        cleanup_apm_->setStreamDelayMs(50);
+        const int bounded_delay = std::clamp(stream_delay_ms, 0, 500);
+        if (active_stream_delay_ms_ != bounded_delay) {
+          cleanup_apm_->setStreamDelayMs(bounded_delay);
+          active_stream_delay_ms_ = bounded_delay;
+        }
       }
 
       livekit::AudioFrame forward(

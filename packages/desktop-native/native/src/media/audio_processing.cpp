@@ -29,6 +29,12 @@ VoiceGateConfig voiceGateConfigFromRuntimeConfig(const RuntimeConfig& config) {
   gate.enabled = config.voice_gate_enabled;
   gate.auto_threshold = config.voice_gate_auto_threshold;
   gate.manual_threshold_db = config.voice_gate_threshold_db;
+  gate.auto_margin_db = config.voice_gate_auto_margin_db;
+  gate.hysteresis_db = config.voice_gate_hysteresis_db;
+  gate.attack_ms = config.voice_gate_attack_ms;
+  gate.hold_ms = config.voice_gate_hold_ms;
+  gate.release_ms = config.voice_gate_release_ms;
+  gate.lookahead_ms = config.voice_gate_lookahead_ms;
   return gate;
 }
 

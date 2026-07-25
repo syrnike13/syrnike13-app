@@ -2,6 +2,7 @@ import { Outlet, useMatch, useRouterState } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
 import { ConnectionStatusBanner } from '#/components/layout/connection-status-banner'
+import { NativeMediaRuntimeBanner } from '#/features/desktop/native-media-runtime-banner'
 import { HomeSidebar } from '#/components/home/home-sidebar'
 import { ChannelSidebar } from '#/components/layout/channel-sidebar'
 import { ShellContentFrame } from '#/components/layout/shell-content-frame'
@@ -178,6 +179,7 @@ export function DesktopShell() {
   return (
     <div className="theme-surface-lowest gradient-surface-lowest flex h-svh flex-col text-foreground">
       <ConnectionStatusBanner />
+      <NativeMediaRuntimeBanner />
       <ShellTitleBar />
       <div className="relative flex min-h-0 flex-1">
         <div

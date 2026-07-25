@@ -28,6 +28,7 @@ struct AudioEndpointChange {
   EDataFlow flow = eAll;
   AudioEndpointChangeKind kind = AudioEndpointChangeKind::Disabled;
   std::string device_id;
+  ERole role = eConsole;
 };
 
 bool audioEndpointChangeRequiresDefaultRetry(
