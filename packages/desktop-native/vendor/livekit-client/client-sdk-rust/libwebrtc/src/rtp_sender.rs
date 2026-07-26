@@ -83,14 +83,6 @@ impl RtpSender {
     pub fn set_parameters(&self, parameters: RtpParameters) -> Result<(), RtcError> {
         self.handle.set_parameters(parameters)
     }
-
-    /// Sets the preferred video encoder backend for this sender.
-    ///
-    /// Explicit backends are strict. If the requested backend is unavailable,
-    /// encoder creation fails instead of selecting a different implementation.
-    pub fn set_video_encoder_backend(&self, backend: VideoEncoderBackend) {
-        self.handle.set_video_encoder_backend(backend)
-    }
 }
 
 impl Debug for RtpSender {

@@ -103,7 +103,8 @@ class PeerConnection : webrtc::PeerConnectionObserver {
 
   std::shared_ptr<RtpTransceiver> add_transceiver(
       std::shared_ptr<MediaStreamTrack> track,
-      RtpTransceiverInit init) const;
+      RtpTransceiverInit init,
+      VideoEncoderBackend video_encoder_backend) const;
 
   std::shared_ptr<RtpTransceiver> add_transceiver_for_media(
       MediaType media_type,

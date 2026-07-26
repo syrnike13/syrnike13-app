@@ -15,9 +15,10 @@
  */
 
 #include "livekit/peer_connection.h"
-#include "livekit/peer_connection_factory.h"
 
 #include <memory>
+#include <stdexcept>
+#include <string>
 
 #include "api/data_channel_interface.h"
 #include "api/peer_connection_interface.h"
@@ -26,8 +27,10 @@
 #include "livekit/data_channel.h"
 #include "livekit/jsep.h"
 #include "livekit/media_stream.h"
+#include "livekit/peer_connection_factory.h"
 #include "livekit/rtc_error.h"
 #include "livekit/rtp_transceiver.h"
+#include "livekit/video_encoder_factory.h"
 #include "rtc_base/logging.h"
 
 namespace livekit_ffi {
@@ -217,11 +220,23 @@ void PeerConnection::get_stats(
 
 std::shared_ptr<RtpTransceiver> PeerConnection::add_transceiver(
     std::shared_ptr<MediaStreamTrack> track,
-    RtpTransceiverInit init) const {
+    RtpTransceiverInit init,
+    VideoEncoderBackend video_encoder_backend) const {
+  if (video_encoder_backend != VideoEncoderBackend::Auto &&
+      !IsVideoEncoderBackendAvailable(video_encoder_backend)) {
+    throw std::runtime_error(
+        std::string("Required video encoder backend is unavailable: ") +
+        VideoEncoderBackendName(video_encoder_backend));
+  }
+
   auto result = peer_connection_->AddTransceiver(
       track->rtc_track(), to_native_rtp_transceiver_init(init));
   if (!result.ok())
     throw std::runtime_error(serialize_error(to_error(result.error())));
+
+  auto sender = std::make_shared<RtpSender>(
+      rtc_runtime_, result.value()->sender(), peer_connection_);
+  sender->initialize_video_encoder_backend(video_encoder_backend);
 
   return std::make_shared<RtpTransceiver>(rtc_runtime_, result.value(),
                                           peer_connection_);

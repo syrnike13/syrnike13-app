@@ -80,10 +80,6 @@ impl RtpSender {
             .set_parameters(parameters.into())
             .map_err(|e| unsafe { sys_err::ffi::RtcError::from(e.what()).into() })
     }
-
-    pub fn set_video_encoder_backend(&self, backend: VideoEncoderBackend) {
-        self.sys_handle.set_video_encoder_backend(backend.into());
-    }
 }
 
 impl From<VideoEncoderBackend> for sys_webrtc::ffi::VideoEncoderBackend {

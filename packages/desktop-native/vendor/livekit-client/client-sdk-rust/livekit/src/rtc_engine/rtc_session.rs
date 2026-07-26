@@ -84,6 +84,17 @@ pub const DEFAULT_MAX_MESSAGE_SIZE: u64 = 64000;
 /// before SCTP accepts them — queueing below that is bounded by OS/qdisc.
 pub const DATA_TRACK_BUFFERED_AMOUNT_LOW_THRESHOLD: u64 = 8 * 1024;
 
+fn video_encoder_backend_for_sender(
+    track_kind: TrackKind,
+    requested: VideoEncoderBackend,
+) -> VideoEncoderBackend {
+    if matches!(track_kind, TrackKind::Video) {
+        requested
+    } else {
+        VideoEncoderBackend::Auto
+    }
+}
+
 #[derive(Debug)]
 enum NegotiationState {
     Idle,
@@ -710,6 +721,7 @@ impl RtcSession {
             direction: RtpTransceiverDirection::RecvOnly,
             stream_ids: Vec::new(),
             send_encodings: Vec::new(),
+            video_encoder_backend: VideoEncoderBackend::Auto,
         };
 
         for _ in 0..audio_count {
@@ -1823,14 +1835,16 @@ impl SessionInner {
             direction: RtpTransceiverDirection::SendOnly,
             stream_ids: Default::default(),
             send_encodings: encodings,
+            video_encoder_backend: video_encoder_backend_for_sender(
+                track.kind(),
+                options.video_encoder,
+            ),
         };
 
         let transceiver =
             self.publisher_pc.peer_connection().add_transceiver(track.rtc_track(), init)?;
 
         if track.kind() == TrackKind::Video {
-            transceiver.sender().set_video_encoder_backend(options.video_encoder);
-
             let capabilities = LkRuntime::instance().pc_factory().get_rtp_sender_capabilities(
                 match track.kind() {
                     TrackKind::Video => MediaType::Video,
@@ -2439,7 +2453,33 @@ make_rtc_config!(make_rtc_config_reconnect, proto::ReconnectResponse);
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_sdp_max_message_size, DEFAULT_MAX_MESSAGE_SIZE};
+    use super::{
+        parse_sdp_max_message_size, video_encoder_backend_for_sender, DEFAULT_MAX_MESSAGE_SIZE,
+    };
+    use crate::prelude::TrackKind;
+    use libwebrtc::rtp_sender::VideoEncoderBackend;
+
+    #[test]
+    fn video_sender_keeps_required_encoder_backend_at_creation() {
+        assert_eq!(
+            video_encoder_backend_for_sender(
+                TrackKind::Video,
+                VideoEncoderBackend::WindowsD3D11Hardware,
+            ),
+            VideoEncoderBackend::WindowsD3D11Hardware,
+        );
+    }
+
+    #[test]
+    fn audio_sender_never_receives_a_video_encoder_backend() {
+        assert_eq!(
+            video_encoder_backend_for_sender(
+                TrackKind::Audio,
+                VideoEncoderBackend::WindowsD3D11Hardware,
+            ),
+            VideoEncoderBackend::Auto,
+        );
+    }
 
     #[test]
     fn parses_max_message_size_from_application_section() {

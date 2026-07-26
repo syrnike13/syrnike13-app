@@ -65,7 +65,9 @@ class RtpSender {
 
   void set_parameters(RtpParameters params) const;
 
-  void set_video_encoder_backend(VideoEncoderBackend backend) const;
+  // Establishes the sender's encoder contract before the transceiver is
+  // returned to Rust. This is initialization, not a runtime preference switch.
+  void initialize_video_encoder_backend(VideoEncoderBackend backend) const;
 
   webrtc::scoped_refptr<webrtc::RtpSenderInterface> rtc_sender() const {
     return sender_;

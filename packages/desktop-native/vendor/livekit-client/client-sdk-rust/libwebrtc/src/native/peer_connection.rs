@@ -336,7 +336,12 @@ impl PeerConnection {
         track: MediaStreamTrack,
         init: RtpTransceiverInit,
     ) -> Result<RtpTransceiver, RtcError> {
-        let res = self.sys_handle.add_transceiver(track.sys_handle(), init.into());
+        let video_encoder_backend = init.video_encoder_backend;
+        let res = self.sys_handle.add_transceiver(
+            track.sys_handle(),
+            init.into(),
+            video_encoder_backend.into(),
+        );
 
         match res {
             Ok(sys_handle) => Ok(RtpTransceiver { handle: imp_rt::RtpTransceiver { sys_handle } }),

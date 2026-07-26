@@ -122,6 +122,7 @@ pub mod ffi {
         type MediaStreamTrack = crate::media_stream::ffi::MediaStreamTrack;
         type SessionDescription = crate::jsep::ffi::SessionDescription;
         type MediaType = crate::webrtc::ffi::MediaType;
+        type VideoEncoderBackend = crate::webrtc::ffi::VideoEncoderBackend;
     }
 
     unsafe extern "C++" {
@@ -172,6 +173,7 @@ pub mod ffi {
             self: &PeerConnection,
             track: SharedPtr<MediaStreamTrack>,
             init: RtpTransceiverInit,
+            video_encoder_backend: VideoEncoderBackend,
         ) -> Result<SharedPtr<RtpTransceiver>>;
         fn add_transceiver_for_media(
             self: &PeerConnection,

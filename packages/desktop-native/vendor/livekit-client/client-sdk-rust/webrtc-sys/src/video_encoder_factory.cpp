@@ -16,6 +16,7 @@
 
 #include "livekit/video_encoder_factory.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <optional>
 #include <string_view>
@@ -263,6 +264,16 @@ void AddWindowsD3D11Factory(
 }
 
 }  // namespace
+
+const char* VideoEncoderBackendName(VideoEncoderBackend backend) {
+  return BackendName(backend);
+}
+
+bool IsVideoEncoderBackendAvailable(VideoEncoderBackend backend) {
+  const auto available = video_encoder_backend_list();
+  return std::find(available.begin(), available.end(), backend) !=
+         available.end();
+}
 
 using Factory = webrtc::VideoEncoderFactoryTemplate<
     webrtc::LibvpxVp8EncoderTemplateAdapter,

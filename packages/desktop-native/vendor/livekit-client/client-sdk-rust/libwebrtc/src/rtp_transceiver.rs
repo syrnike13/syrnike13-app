@@ -18,7 +18,7 @@ use crate::{
     imp::rtp_transceiver as imp_rt,
     rtp_parameters::{RtpCodecCapability, RtpEncodingParameters},
     rtp_receiver::RtpReceiver,
-    rtp_sender::RtpSender,
+    rtp_sender::{RtpSender, VideoEncoderBackend},
     RtcError,
 };
 
@@ -27,6 +27,9 @@ pub struct RtpTransceiverInit {
     pub direction: RtpTransceiverDirection,
     pub stream_ids: Vec<String>,
     pub send_encodings: Vec<RtpEncodingParameters>,
+    /// Encoder backend attached to the sender before the transceiver is
+    /// returned to the caller. Explicit backends are required, not hints.
+    pub video_encoder_backend: VideoEncoderBackend,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
