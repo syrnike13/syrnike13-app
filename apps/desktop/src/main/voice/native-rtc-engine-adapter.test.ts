@@ -782,20 +782,23 @@ describe('NativeRtcEngineAdapter', () => {
     {
       kind: 'microphone' as const,
       code: 'audio_input_fallback_default',
-      projectedCode: 'microphone_device_fallback',
       message: 'Selected audio input is unavailable; using system default',
+      expectedMedia: { state: 'running' },
     },
     {
       kind: 'output' as const,
       code: 'audio_output_fallback_default',
-      projectedCode: 'output_device_fallback',
       message: 'Selected audio output is unavailable; using system default',
+      expectedMedia: {
+        state: 'running',
+        error: expect.objectContaining({ code: 'output_device_fallback' }),
+      },
     },
-  ])('keeps $kind running and reports a typed fallback to default', async ({
+  ])('keeps $kind running with the expected fallback projection', async ({
     kind,
     code,
-    projectedCode,
     message,
+    expectedMedia,
   }) => {
     const runtime = new FakeRuntime()
     const adapter = new NativeRtcEngineAdapter(runtime)
@@ -840,10 +843,7 @@ describe('NativeRtcEngineAdapter', () => {
     expect(events).toContainEqual(expect.objectContaining({
       type: 'mediaState',
       kind,
-      media: {
-        state: 'running',
-        error: expect.objectContaining({ code: projectedCode }),
-      },
+      media: expectedMedia,
     }))
     adapter.dispose()
   })

@@ -915,17 +915,21 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
             ? 'audio_input_fallback_default'
             : 'audio_output_fallback_default')
       ) {
-        this.emitMedia(active, kind, {
-          state: 'running',
-          error: {
-            code:
-              kind === 'microphone'
-                ? 'microphone_device_fallback'
-                : 'output_device_fallback',
-            message: event.error.message,
-            retryable: false,
-          },
-        })
+        if (kind === 'microphone') {
+          // The native lifecycle event remains in local diagnostics, but a
+          // working default microphone is not a media failure and must not
+          // trigger an automatic diagnostic upload.
+          this.emitMedia(active, kind, { state: 'running' })
+        } else {
+          this.emitMedia(active, kind, {
+            state: 'running',
+            error: {
+              code: 'output_device_fallback',
+              message: event.error.message,
+              retryable: false,
+            },
+          })
+        }
       } else if (
         (kind === 'microphone' || kind === 'output') &&
         event.state.status === 'running' &&
