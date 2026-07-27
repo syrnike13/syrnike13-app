@@ -21,6 +21,7 @@ describe('runNativeUtilityHost', () => {
       | undefined
     const exit = vi.fn()
     const shutdown = vi.fn(async () => undefined)
+    const addExtraParameter = vi.fn()
 
     await runNativeUtilityHost('media', {
       parentPort: {
@@ -98,10 +99,23 @@ describe('runNativeUtilityHost', () => {
         },
       }),
       registerShutdownSignals: () => undefined,
+      crashReporter: { addExtraParameter },
       exit,
     })
 
     expect(emitFromRuntime).toBeTypeOf('function')
+    expect(addExtraParameter).toHaveBeenCalledWith(
+      'native_runtime_kind',
+      'media',
+    )
+    expect(addExtraParameter).toHaveBeenCalledWith(
+      'native_runtime_commit',
+      commitSha,
+    )
+    expect(addExtraParameter).toHaveBeenCalledWith(
+      'native_host_stage',
+      'ready',
+    )
     expect(postedMessages).toEqual([
       expect.objectContaining({
         type: 'ready',
@@ -110,12 +124,43 @@ describe('runNativeUtilityHost', () => {
       }),
     ])
 
+    messageListener?.({
+      data: {
+        type: 'request',
+        requestId: 'camera-1',
+        command: {
+          type: 'connectCamera',
+          sessionId: 'private-session',
+          generation: 7,
+          options: {
+            participantIdentity: 'private-participant',
+          },
+        },
+      } satisfies NativeRuntimeRequest,
+    })
+    expect(addExtraParameter).toHaveBeenCalledWith(
+      'native_last_command',
+      'connectCamera',
+    )
+    expect(addExtraParameter).toHaveBeenCalledWith(
+      'native_camera_stage',
+      'connect_dispatch',
+    )
+    expect(addExtraParameter).not.toHaveBeenCalledWith(
+      expect.any(String),
+      'private-participant',
+    )
+
     const shutdownRequest: NativeRuntimeRequest = {
       type: 'request',
       requestId: 'shutdown-1',
       command: { type: 'shutdown' },
     }
     messageListener?.({ data: shutdownRequest })
+    expect(addExtraParameter).toHaveBeenCalledWith(
+      'native_last_command',
+      'shutdown',
+    )
     await vi.waitFor(() => {
       expect(shutdown).toHaveBeenCalledOnce()
       expect(exit).toHaveBeenCalledWith(0)

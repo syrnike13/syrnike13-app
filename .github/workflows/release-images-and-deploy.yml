@@ -416,16 +416,32 @@ jobs:
       - name: Verify downloaded Windows native runtime
         if: runner.os == 'Windows'
         run: pnpm desktop-native:verify
+      - name: Download Windows native debug symbols
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: native-runtime-windows-symbols-${{ github.sha }}
+          path: packages/desktop-native
       - name: Build desktop
         if: runner.os != 'Windows'
         run: pnpm desktop:build
       - name: Build Windows desktop with verified native runtime
         if: runner.os == 'Windows'
+        env:
+          SYRNIKE_DESKTOP_SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
+          SYRNIKE_DESKTOP_SENTRY_ENVIRONMENT: production
         run: |
           pnpm --filter @syrnike13/web build
           pnpm --filter @syrnike13/desktop verify:web-dist
           pnpm --filter @syrnike13/platform build
           pnpm --filter @syrnike13/desktop exec tsup
+      - name: Upload Windows debug artifacts when configured
+        if: runner.os == 'Windows'
+        run: pnpm --filter @syrnike13/desktop upload:debug-artifacts
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.DESKTOP_SENTRY_PROJECT }}
       - name: Package Windows desktop
         if: runner.os == 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared

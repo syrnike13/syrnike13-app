@@ -933,6 +933,12 @@ class CameraActor::Implementation
     std::unique_ptr<LiveKitTrackPublication> publication;
     std::string publication_sid;
     try {
+      diagnostics::DiagnosticLog::instance().write(
+          "camera_startup_checkpoint",
+          {
+              {"generation", command.generation},
+              {"stage", "publication_context_start"},
+          });
       publication = client_->createCameraPublication(
         command.session_id, command.generation);
       if (!publication->isRoomConnected()) {
@@ -942,6 +948,12 @@ class CameraActor::Implementation
       const auto width = std::clamp(command.width, 16, 7680);
       const auto height = std::clamp(command.height, 16, 4320);
       const auto fps = std::clamp(command.fps, 1, 240);
+      diagnostics::DiagnosticLog::instance().write(
+          "camera_startup_checkpoint",
+          {
+              {"generation", command.generation},
+              {"stage", "capture_open_start"},
+          });
       auto capture = factory_->create(
           command.device_id,
           static_cast<std::uint32_t>(width),
@@ -954,6 +966,17 @@ class CameraActor::Implementation
           capture_info.format.frame_rate_denominator == 0) {
         throw std::runtime_error("camera negotiated format is invalid");
       }
+      diagnostics::DiagnosticLog::instance().write(
+          "camera_startup_checkpoint",
+          {
+              {"generation", command.generation},
+              {"stage", "capture_opened"},
+              {"gpu", capture_info.gpu},
+              {"width", static_cast<std::uint64_t>(
+                  capture_info.format.width)},
+              {"height", static_cast<std::uint64_t>(
+                  capture_info.format.height)},
+          });
       std::shared_ptr<livekit::VideoSource> source;
       std::shared_ptr<livekit::D3D11H264VideoSource> gpu_source;
       std::shared_ptr<livekit::LocalVideoTrack> track;
@@ -1018,8 +1041,22 @@ class CameraActor::Implementation
       options.simulcast = false;
       options.video_encoding = livekit::VideoEncodingOptions{
         static_cast<std::uint64_t>(command.bitrate), static_cast<double>(fps)};
+      diagnostics::DiagnosticLog::instance().write(
+          "camera_startup_checkpoint",
+          {
+              {"generation", command.generation},
+              {"stage", "publish_start"},
+              {"gpu", capture_info.gpu},
+          });
       publication_sid = publication->publishVideoTrack(track, options);
       if (publication_sid.empty()) throw std::runtime_error("LiveKit camera publication SID is empty");
+      diagnostics::DiagnosticLog::instance().write(
+          "camera_startup_checkpoint",
+          {
+              {"generation", command.generation},
+              {"stage", "publish_complete"},
+              {"gpu", capture_info.gpu},
+          });
       if (!attemptIsCurrent(attempt)) {
         throw std::runtime_error("stale camera generation");
       }
@@ -1099,6 +1136,13 @@ class CameraActor::Implementation
           attempt->operation.cancelled()) {
         throw std::runtime_error("stale camera generation");
       }
+      diagnostics::DiagnosticLog::instance().write(
+          "camera_startup_checkpoint",
+          {
+              {"generation", command.generation},
+              {"stage", "capture_worker_committed"},
+              {"gpu", capture_info.gpu},
+          });
       if (!attempt->reply_emitted.exchange(true) &&
           !command.request_id.empty()) {
         callbacks_->emit(cameraReply(command));
@@ -1176,8 +1220,30 @@ class CameraActor::Implementation
       auto cadence_started = started;
       auto cadence_next = started + std::chrono::seconds(1);
       std::uint64_t cadence_frames = 0;
+      bool first_read = true;
+      bool first_submit = true;
       while (running->load()) {
+        if (first_read) {
+          diagnostics::DiagnosticLog::instance().write(
+              "camera_first_frame_checkpoint",
+              {
+                  {"generation", command.generation},
+                  {"stage", "read_start"},
+              });
+        }
         if (!capture->read(captured, *running)) break;
+        if (first_read) {
+          diagnostics::DiagnosticLog::instance().write(
+              "camera_first_frame_checkpoint",
+              {
+                  {"generation", command.generation},
+                  {"stage", "read_complete"},
+                  {"gpu", captured.gpu},
+                  {"width", static_cast<std::uint64_t>(captured.width)},
+                  {"height", static_cast<std::uint64_t>(captured.height)},
+              });
+          first_read = false;
+        }
         if (!running->load()) continue;
         const auto timestamp = captured.timestamp_us != 0
             ? static_cast<std::int64_t>(captured.timestamp_us)
@@ -1189,17 +1255,51 @@ class CameraActor::Implementation
             throw std::runtime_error(
                 "camera produced a GPU frame for a CPU source");
           }
+          if (first_submit) {
+            diagnostics::DiagnosticLog::instance().write(
+                "camera_first_frame_checkpoint",
+                {
+                    {"generation", command.generation},
+                    {"stage", "gpu_submit_start"},
+                });
+          }
           gpu_source->capture(
               std::make_unique<CameraTextureLease>(
                   capture, std::move(captured)),
               timestamp);
+          if (first_submit) {
+            diagnostics::DiagnosticLog::instance().write(
+                "camera_first_frame_checkpoint",
+                {
+                    {"generation", command.generation},
+                    {"stage", "gpu_submit_complete"},
+                });
+            first_submit = false;
+          }
         } else if (!captured.bgra.empty()) {
           livekit::VideoFrame frame(
               static_cast<int>(captured.width),
               static_cast<int>(captured.height),
               livekit::VideoBufferType::BGRA,
               std::move(captured.bgra));
+          if (first_submit) {
+            diagnostics::DiagnosticLog::instance().write(
+                "camera_first_frame_checkpoint",
+                {
+                    {"generation", command.generation},
+                    {"stage", "cpu_submit_start"},
+                });
+          }
           source->captureFrame(frame, timestamp);
+          if (first_submit) {
+            diagnostics::DiagnosticLog::instance().write(
+                "camera_first_frame_checkpoint",
+                {
+                    {"generation", command.generation},
+                    {"stage", "cpu_submit_complete"},
+                });
+            first_submit = false;
+          }
         }
         ++cadence_frames;
         const auto now = std::chrono::steady_clock::now();

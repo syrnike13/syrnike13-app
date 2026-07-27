@@ -30,6 +30,10 @@ type ParentPort = {
   postMessage(message: unknown): void
 }
 
+type UtilityCrashReporter = {
+  addExtraParameter(key: string, value: string): void
+}
+
 const parentPort = process.parentPort as ParentPort | undefined
 
 type NativeRuntimeInstance = {
@@ -64,6 +68,7 @@ type RuntimeHostDependencies = {
     expected: NativeArtifactExpectations,
   ): NativeArtifactManifest
   loadAddon?(nativeModulePath: string): NativeRuntimeAddon
+  crashReporter?: UtilityCrashReporter
   registerShutdownSignals?(shutdown: (exitCode?: number) => void): void
   exit?(exitCode: number): void
 }
@@ -121,6 +126,25 @@ export async function runNativeUtilityHost(
     dependencies.verifyDistribution ?? verifyNativeArtifactDistribution
   const exit = dependencies.exit ?? ((exitCode: number) => process.exit(exitCode))
   const diagnosticLog = createUtilityDiagnosticLog(runtimeKind, environment)
+  const utilityCrashReporter =
+    dependencies.crashReporter ??
+    (process as NodeJS.Process & { crashReporter?: UtilityCrashReporter })
+      .crashReporter
+  const annotateCrash = (key: string, value: string | undefined) => {
+    if (!utilityCrashReporter || !value) return
+    try {
+      utilityCrashReporter.addExtraParameter(key, value.slice(0, 127))
+    } catch {
+      // Missing or disabled crash reporting must not affect the native host.
+    }
+  }
+  annotateCrash('native_runtime_kind', runtimeKind)
+  annotateCrash(
+    'native_runtime_run',
+    environment.SYRNIKE_NATIVE_DIAGNOSTIC_RUN_ID,
+  )
+  annotateCrash('native_runtime_commit', environment.SYRNIKE_NATIVE_COMMIT_SHA)
+  annotateCrash('native_host_stage', 'utility_startup')
   diagnosticLog?.log('utility_startup', {
     pid: process.pid,
     runtimeKind,
@@ -208,9 +232,11 @@ export async function runNativeUtilityHost(
   const require = createRequire(path.resolve(process.cwd(), 'syrnike-utility-host.cjs'))
   let addon: NativeRuntimeAddon
   try {
+    annotateCrash('native_host_stage', 'addon_load')
     addon = dependencies.loadAddon
       ? dependencies.loadAddon(nativeModulePath)
       : require(nativeModulePath) as NativeRuntimeAddon
+    annotateCrash('native_host_stage', 'addon_loaded')
     diagnosticLog?.log('addon_loaded', {
       nativeModuleFile: path.basename(nativeModulePath),
     })
@@ -311,6 +337,16 @@ export async function runNativeUtilityHost(
       failContractCorruption()
       return
     }
+    if (rawEvent.type === 'sessionLifecycle' && rawEvent.kind === 'camera') {
+      annotateCrash('native_camera_stage', rawEvent.state.status)
+    } else if (rawEvent.type === 'cameraTerminal') {
+      annotateCrash('native_camera_stage', 'terminal')
+    } else if (
+      rawEvent.type === 'runtimeError' &&
+      rawEvent.error.stage === 'connectCamera'
+    ) {
+      annotateCrash('native_camera_stage', `error:${rawEvent.error.code}`)
+    }
     if (rawEvent.type !== 'microphoneMetrics') {
       diagnosticLog?.log('native_event', rawEvent)
     }
@@ -388,6 +424,7 @@ export async function runNativeUtilityHost(
     await diagnosticLog?.close()
     return
   }
+  annotateCrash('native_host_stage', 'runtime_create')
   runtime = factory(emit)
   if (dependencies.registerShutdownSignals) {
     dependencies.registerShutdownSignals(shutdown)
@@ -403,6 +440,7 @@ export async function runNativeUtilityHost(
     return
   }
   if (shuttingDown) return
+  annotateCrash('native_host_stage', 'ready')
   diagnosticLog?.log('utility_ready', ready)
   hostParentPort.postMessage({
     ...ready,
@@ -411,6 +449,12 @@ export async function runNativeUtilityHost(
   hostParentPort.on('message', (messageEvent: { data: unknown }) => {
     const request = messageEvent.data
     if (!isNativeRuntimeRequest(request)) return
+    annotateCrash('native_last_command', request.command.type)
+    if (request.command.type === 'connectCamera') {
+      annotateCrash('native_camera_stage', 'connect_dispatch')
+    } else if (request.command.type === 'disconnectCamera') {
+      annotateCrash('native_camera_stage', 'disconnect_dispatch')
+    }
     diagnosticLog?.log('incoming_dispatch', request)
     try {
       if (request.command.type === 'shutdown') {
