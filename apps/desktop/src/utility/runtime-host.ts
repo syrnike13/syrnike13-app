@@ -463,10 +463,28 @@ export async function runNativeUtilityHost(
       runtime?.dispatch({
         ...request.command,
         requestId: request.requestId,
+        diagnostic: request.diagnostic,
+      })
+      diagnosticLog?.log('dispatch_forwarded', {
+        requestId: request.requestId,
+        command: request.command.type,
+        actionId: request.diagnostic?.actionId,
+        operationId: request.diagnostic?.operationId,
+        revision: request.diagnostic?.revision,
+        hostEpoch: request.diagnostic?.hostEpoch,
+        commandStage: 'utility_dispatch',
+        outcome: 'accepted',
       })
     } catch (error) {
       diagnosticLog?.log('dispatch_failed', {
         requestId: request.requestId,
+        command: request.command.type,
+        actionId: request.diagnostic?.actionId,
+        operationId: request.diagnostic?.operationId,
+        revision: request.diagnostic?.revision,
+        hostEpoch: request.diagnostic?.hostEpoch,
+        commandStage: 'utility_dispatch',
+        outcome: 'error',
         error: sanitizeDispatchError(error),
       })
       postReply(hostParentPort, request.requestId, error)

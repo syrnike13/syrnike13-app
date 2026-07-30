@@ -44,6 +44,13 @@ describe('native diagnostic log', () => {
 
     log.log('transport_post', {
       requestId: 'request-1',
+      diagnostic: {
+        actionId: 'media-action-a',
+        operationId: 'operation-a',
+        revision: 4,
+        hostEpoch: 2,
+        deviceName: 'Private microphone name',
+      },
       command: {
         type: 'connectMicrophone',
         options: {
@@ -98,6 +105,12 @@ describe('native diagnostic log', () => {
     })
     expect(lines[0].data.payload).toEqual({
       requestId: 'request-1',
+      diagnostic: {
+        actionId: 'media-action-a',
+        operationId: 'operation-a',
+        revision: 4,
+        hostEpoch: 2,
+      },
       command: {
         type: 'connectMicrophone',
         options: {

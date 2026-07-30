@@ -209,6 +209,10 @@ class MediaRuntime::Implementation
     }
     const auto type = command.type;
     const auto command_request_id = command.request_id;
+    const auto command_action_id = command.diagnostic_action_id;
+    const auto command_operation_id = command.diagnostic_operation_id;
+    const auto command_diagnostic_revision = command.diagnostic_revision;
+    const auto command_host_epoch = command.diagnostic_host_epoch;
     const auto command_session_id = command.session_id;
     const auto command_generation = command.generation;
     const auto command_warm_key = type == "warmMicrophone" ? warmKey(command) : std::string{};
@@ -271,8 +275,14 @@ class MediaRuntime::Implementation
         {
           {"command", type},
           {"requestId", command_request_id},
+          {"actionId", command_action_id},
+          {"operationId", command_operation_id},
+          {"revision", command_diagnostic_revision},
+          {"hostEpoch", command_host_epoch},
           {"sessionId", command_session_id},
-          {"generation", command_generation}
+          {"generation", command_generation},
+          {"commandStage", "native_dispatch"},
+          {"outcome", "rejected"}
         }
       );
       return true;
@@ -370,10 +380,16 @@ class MediaRuntime::Implementation
       {
         {"command", type},
         {"requestId", command_request_id},
+        {"actionId", command_action_id},
+        {"operationId", command_operation_id},
+        {"revision", command_diagnostic_revision},
+        {"hostEpoch", command_host_epoch},
         {"sessionId", command_session_id},
         {"generation", command_generation},
         {"dispatchSteadyMs", dispatch_started_at},
-        {"queueDepth", queue_depth}
+        {"queueDepth", queue_depth},
+        {"commandStage", "native_dispatch"},
+        {"outcome", accepted ? "accepted" : "rejected"}
       }
     );
     if (!accepted) {
@@ -1277,10 +1293,16 @@ class MediaRuntime::Implementation
             {"queue", queue_name},
             {"command", command->type},
             {"requestId", command->request_id},
+            {"actionId", command->diagnostic_action_id},
+            {"operationId", command->diagnostic_operation_id},
+            {"revision", command->diagnostic_revision},
+            {"hostEpoch", command->diagnostic_host_epoch},
             {"sessionId", command->session_id},
             {"generation", command->generation},
             {"enqueuedQueueDepth", static_cast<std::uint64_t>(command->internal_queue_depth)},
-            {"queueWaitMs", wait_ms}
+            {"queueWaitMs", wait_ms},
+            {"commandStage", "native_worker"},
+            {"outcome", "started"}
           }
         );
       }
@@ -1292,9 +1314,15 @@ class MediaRuntime::Implementation
             {"queue", queue_name},
             {"command", command->type},
             {"requestId", command->request_id},
+            {"actionId", command->diagnostic_action_id},
+            {"operationId", command->diagnostic_operation_id},
+            {"revision", command->diagnostic_revision},
+            {"hostEpoch", command->diagnostic_host_epoch},
             {"sessionId", command->session_id},
             {"generation", command->generation},
-            {"durationMs", steadyNowMs() - command_started_at}
+            {"durationMs", steadyNowMs() - command_started_at},
+            {"commandStage", "native_worker"},
+            {"outcome", "success"}
           }
         );
       } catch (const std::exception& error) {
@@ -1329,11 +1357,17 @@ class MediaRuntime::Implementation
             {"queue", queue_name},
             {"command", command->type},
             {"requestId", command->request_id},
+            {"actionId", command->diagnostic_action_id},
+            {"operationId", command->diagnostic_operation_id},
+            {"revision", command->diagnostic_revision},
+            {"hostEpoch", command->diagnostic_host_epoch},
             {"sessionId", command->session_id},
             {"generation", command->generation},
             {"durationMs", steadyNowMs() - command_started_at},
             {"message", message},
-            {"stale", stale_generation}
+            {"stale", stale_generation},
+            {"commandStage", "native_worker"},
+            {"outcome", "error"}
           }
         );
       } catch (...) {
@@ -1353,7 +1387,17 @@ class MediaRuntime::Implementation
           {
             {"queue", queue_name},
             {"command", command->type},
-            {"internal", isInternalCommand(*command)}
+            {"requestId", command->request_id},
+            {"actionId", command->diagnostic_action_id},
+            {"operationId", command->diagnostic_operation_id},
+            {"revision", command->diagnostic_revision},
+            {"hostEpoch", command->diagnostic_host_epoch},
+            {"sessionId", command->session_id},
+            {"generation", command->generation},
+            {"internal", isInternalCommand(*command)},
+            {"durationMs", steadyNowMs() - command_started_at},
+            {"commandStage", "native_worker"},
+            {"outcome", "error"}
           }
         );
       }

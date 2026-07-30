@@ -50,6 +50,7 @@ const FAILURE_EVENTS = new Set([
 ])
 const NON_INCIDENT_PROJECTIONS = new Set([
   'command',
+  'command_summary',
   'snapshot',
   'state_changed',
 ])
@@ -136,11 +137,18 @@ export function captureNativeDiagnosticIncident(
     cooldownMs: NATIVE_AUTOMATIC_COOLDOWN_MS,
     scope: record.scope,
     event: record.event,
+    actionId: record.actionId,
+    operationId: record.operation,
     nativeEventType: record.nativeEventType,
     runtime: record.runtime,
     kind: record.kind,
     lane: record.lane,
     stage: record.stage,
+    commandStage: record.commandStage,
+    outcome: record.outcome,
+    revision: record.revision,
+    generation: record.generation,
+    hostEpoch: record.hostEpoch,
     status: record.status,
     reason: redactedText(record.reason),
     message: redactedText(record.message),
@@ -381,7 +389,8 @@ function incidentSeverity(
 }
 
 function incidentCorrelationId(record: DiagnosticLogRecord) {
-  const source = record.requestId ?? record.sessionId ?? record.operation
+  const source =
+    record.actionId ?? record.requestId ?? record.sessionId ?? record.operation
   if (!source) return undefined
   const key = `${record.scope}:${source}`
   const existing = correlationAliases.get(key)

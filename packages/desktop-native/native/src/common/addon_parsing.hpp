@@ -124,6 +124,16 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   MediaCommand command;
   command.type = stringField(object, "type");
   command.request_id = stringField(object, "requestId");
+  const auto diagnostic_value = object.Get("diagnostic");
+  if (diagnostic_value.IsObject()) {
+    const auto diagnostic = diagnostic_value.As<Napi::Object>();
+    command.diagnostic_action_id = stringField(diagnostic, "actionId");
+    command.diagnostic_operation_id = stringField(diagnostic, "operationId");
+    command.diagnostic_host_epoch = uint64Field(diagnostic, "hostEpoch");
+    if (hasField(diagnostic, "revision")) {
+      command.diagnostic_revision = uint64Field(diagnostic, "revision");
+    }
+  }
   command.session_id = stringField(object, "sessionId");
   command.generation = uint64Field(object, "generation");
   const auto options_value = object.Get("options");
@@ -244,6 +254,12 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   if (command.type.empty()) throw std::invalid_argument("command.type is required");
   if (command.request_id.empty()) throw std::invalid_argument("command.requestId is required");
   if (command.request_id.size() > 256) throw std::invalid_argument("requestId is too long");
+  if (command.diagnostic_action_id.size() > 128) {
+    throw std::invalid_argument("diagnostic.actionId is too long");
+  }
+  if (command.diagnostic_operation_id.size() > 128) {
+    throw std::invalid_argument("diagnostic.operationId is too long");
+  }
   if (command.session_id.size() > 256) throw std::invalid_argument("sessionId is too long");
   if (command.device_id.size() > 2'048) throw std::invalid_argument("deviceId is too long");
   if (!command.device_kind.empty() && command.device_kind != "audioinput" &&

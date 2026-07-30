@@ -1,3 +1,5 @@
+import crypto from 'node:crypto'
+
 import type {
   RtcEngineAdapter,
   VoiceDisconnectCause,
@@ -11,6 +13,7 @@ import type {
 
 import type {
   NativeRuntimeCommand,
+  NativeRuntimeDiagnosticContext,
   NativeRuntimeEvent,
 } from '../native-runtime/contract'
 import type {
@@ -31,6 +34,8 @@ type NativeVoiceRuntime = Pick<
   | 'allocateGeneration'
   | 'allocateMicrophoneConfigRevision'
 >
+
+type NativeDiagnosticAction = Omit<NativeRuntimeDiagnosticContext, 'hostEpoch'>
 
 type ActiveVoiceConnection = {
   lease: VoiceLease
@@ -75,6 +80,10 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
   private availabilityRetryable = true
   private disposed = false
   private remoteAudioSettings: VoiceRemoteAudioSettings | null = null
+  private diagnosticAction: NativeDiagnosticAction = {
+    actionId: `media-action-${crypto.randomUUID()}`,
+    revision: 0,
+  }
 
   constructor(
     private readonly runtime: NativeVoiceRuntime,
@@ -95,6 +104,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     if (lease.rtcEngine !== 'windows_native') {
       throw new Error('Native RTC adapter received a non-native Voice Lease')
     }
+    this.beginDiagnosticAction(lease.operationId)
     this.desired = desired
     const generation = this.runtime.allocateGeneration('voice')
     const active: ActiveVoiceConnection = {
@@ -120,7 +130,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
 
     try {
       await raceWithAbort(
-        this.runtime.request(
+        this.request(
           {
             type: 'connectVoice',
             sessionId: lease.connectionEpoch,
@@ -151,6 +161,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     this.active = null
     this.mediaRevision += 1
     if (!active) return
+    this.beginDiagnosticAction(active.lease.operationId)
     active.selfSpeaking = false
     active.remoteSpeakingUserIds.clear()
     active.speakingUserIds.clear()
@@ -158,7 +169,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
 
     await Promise.allSettled([
       active.microphoneGeneration !== null
-        ? this.runtime.request(
+        ? this.request(
             {
               type: 'disconnectMicrophone',
               sessionId: active.lease.connectionEpoch,
@@ -167,7 +178,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
             MEDIA_CONTROL_TIMEOUT_MS,
           )
         : Promise.resolve(),
-      this.runtime.request(
+      this.request(
         {
             type: 'disconnectScreen',
             sessionId: active.lease.connectionEpoch,
@@ -176,7 +187,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         MEDIA_CONTROL_TIMEOUT_MS,
       ),
       active.cameraStarted
-        ? this.runtime.request(
+        ? this.request(
             {
               type: 'disconnectCamera',
               sessionId: active.lease.connectionEpoch,
@@ -186,7 +197,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
           )
         : Promise.resolve(),
     ])
-    await this.runtime.request(
+    await this.request(
       {
         type: 'disconnectVoice',
         sessionId: active.lease.connectionEpoch,
@@ -199,6 +210,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
   updateDesiredMedia(desired: VoiceMediaDesiredState) {
     this.desired = desired
     const active = this.active
+    this.beginDiagnosticAction(active?.lease.operationId)
     if (!active || !active.voiceReady) {
       this.scheduleMicrophoneConfiguration()
       return
@@ -213,6 +225,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     ) return
     this.remoteAudioSettings = settings
     const active = this.active
+    this.beginDiagnosticAction(active?.lease.operationId, settings.revision)
     if (active?.voiceReady) void this.replayRemoteAudioSettings(active)
   }
 
@@ -276,7 +289,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     const settings = this.remoteAudioSettings
     if (!settings) return
     try {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'configureRemoteAudio',
           sessionId: active.lease.connectionEpoch,
@@ -311,15 +324,14 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
 
       const revision = this.runtime.allocateMicrophoneConfigRevision()
       const runtimeEpoch = this.runtimeEpoch
-      const request = this.runtime
-        .request(
-          {
-            type: 'configureMicrophone',
-            revision,
-            config,
-          },
-          MICROPHONE_CONFIG_TIMEOUT_MS,
-        )
+      const request = this.request(
+        {
+          type: 'configureMicrophone',
+          revision,
+          config,
+        },
+        MICROPHONE_CONFIG_TIMEOUT_MS,
+      )
         .then(() => {
           if (runtimeEpoch === this.runtimeEpoch) {
             this.microphoneConfigKey = key
@@ -361,7 +373,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     active.microphoneGeneration = generation
     this.emitMedia(active, 'microphone', { state: 'starting' })
     try {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'connectMicrophone',
           sessionId: active.lease.connectionEpoch,
@@ -410,7 +422,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       const desired = this.desired
       if (!desired) return
       const runtimeEpoch = this.runtimeEpoch
-      await this.runtime.request(
+      await this.request(
         {
           type: 'warmMicrophone',
           generation: this.runtime.allocateGeneration('microphone'),
@@ -430,8 +442,29 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     }
   }
 
+  private beginDiagnosticAction(
+    operationId = this.active?.lease.operationId,
+    revision = this.mediaRevision,
+  ) {
+    this.diagnosticAction = {
+      actionId: `media-action-${crypto.randomUUID()}`,
+      operationId,
+      revision,
+    }
+  }
+
+  private request<T = unknown>(
+    command: NativeRuntimeCommand,
+    timeoutMs: number,
+  ) {
+    return this.runtime.request<T>(command, timeoutMs, {
+      diagnostic: this.diagnosticAction,
+    })
+  }
+
   private requestMediaReconcile() {
     this.mediaRevision += 1
+    this.beginDiagnosticAction(this.active?.lease.operationId)
     this.ensureMediaReconcile()
   }
 
@@ -493,7 +526,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       return
     }
     try {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'setMicrophoneMuted',
           sessionId: active.lease.connectionEpoch,
@@ -540,7 +573,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       active.cameraStarted = false
       active.cameraKey = null
       active.cameraGeneration = null
-      await this.runtime.request(
+      await this.request(
         {
           type: 'disconnectCamera',
           sessionId: active.lease.connectionEpoch,
@@ -553,7 +586,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     }
     if (active.cameraStarted && active.cameraKey === cameraKey) return
     if (active.cameraStarted) {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'disconnectCamera',
           sessionId: active.lease.connectionEpoch,
@@ -568,7 +601,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     active.cameraKey = cameraKey
     this.emitMedia(active, 'camera', { state: 'starting' })
     try {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'connectCamera',
           sessionId: active.lease.connectionEpoch,
@@ -609,7 +642,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     const previousOutputMedia = active.outputMedia
     active.outputKey = outputKey
     try {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'configureVoiceOutput',
           sessionId: active.lease.connectionEpoch,
@@ -674,7 +707,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       active.screenStarted = false
       active.screenGeneration = null
       active.screenSourceKey = null
-      await this.runtime.request(
+      await this.request(
         {
           type: 'disconnectScreen',
           sessionId: active.lease.connectionEpoch,
@@ -688,7 +721,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     }
     if (active.screenStarted && active.screenSourceKey === sourceKey) return
     if (active.screenStarted) {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'disconnectScreen',
           sessionId: active.lease.connectionEpoch,
@@ -704,7 +737,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     active.screenSourceKey = sourceKey
     this.emitMedia(active, 'screen', { state: 'starting' })
     try {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'connectScreen',
           sessionId: active.lease.connectionEpoch,
@@ -717,7 +750,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       )
       this.assertCurrent(active)
       if (active.screenGeneration !== generation) return
-      await this.runtime.request(
+      await this.request(
         {
           type: 'startScreenCapture',
           sessionId: active.lease.connectionEpoch,
