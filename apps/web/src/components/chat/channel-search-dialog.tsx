@@ -181,7 +181,7 @@ export function ChannelSearchDialog({
                     {name}
                   </p>
                   {message.content ? (
-                    <div className="line-clamp-2 text-sm">
+                    <div className="line-clamp-2 select-text text-sm">
                       {renderMessageContent(message.content, users, emojis, {
                         channels,
                         roles: server?.roles,

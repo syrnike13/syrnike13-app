@@ -575,7 +575,7 @@ export function MessageRow({
 
         <div className="flex flex-col gap-1 text-[15px] leading-snug text-foreground">
           {hasContent ? (
-            <div className="break-words">{renderedContent}</div>
+            <div className="select-text break-words">{renderedContent}</div>
           ) : null}
           {hasAttachments ? (
             <MessageAttachments attachments={message.attachments!} />

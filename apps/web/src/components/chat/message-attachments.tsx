@@ -5,6 +5,10 @@ import { FileIcon } from '#/components/icons'
 import { ImageLightbox } from '#/components/media/image-lightbox'
 import { FxImage } from '#/components/ui/fx-image'
 import {
+  fileMosaicRatio,
+  layoutAttachmentMosaic,
+} from '#/features/chat/attachment-mosaic-layout'
+import {
   attachmentOriginalUrl,
   attachmentPreviewUrl,
   imageFileAspectRatio,
@@ -16,13 +20,6 @@ type MessageAttachmentsProps = {
   attachments: File[]
 }
 
-const MOSAIC_MAX_VISIBLE = 4
-
-function mosaicTileClass(count: number, index: number) {
-  if (count === 3 && index === 0) return 'row-span-2'
-  return undefined
-}
-
 export function MessageAttachments({ attachments }: MessageAttachmentsProps) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const imageFiles = attachments.filter(isImageFile)
@@ -30,11 +27,10 @@ export function MessageAttachments({ attachments }: MessageAttachmentsProps) {
 
   if (!attachments.length) return null
 
-  const visibleImages =
-    imageFiles.length > MOSAIC_MAX_VISIBLE
-      ? imageFiles.slice(0, MOSAIC_MAX_VISIBLE)
-      : imageFiles
-  const hiddenCount = Math.max(0, imageFiles.length - visibleImages.length)
+  const mosaic =
+    imageFiles.length > 1
+      ? layoutAttachmentMosaic(imageFiles.map(fileMosaicRatio))
+      : null
 
   return (
     <>
@@ -44,34 +40,31 @@ export function MessageAttachments({ attachments }: MessageAttachmentsProps) {
             file={imageFiles[0]!}
             onOpen={() => setLightboxIndex(0)}
           />
-        ) : imageFiles.length > 1 ? (
+        ) : mosaic ? (
           <div
             data-attachment-mosaic={imageFiles.length}
-            className={cn(
-              'grid max-w-md overflow-hidden rounded-md border',
-              'gap-0.5 bg-border',
-              visibleImages.length === 2 && 'grid-cols-2 aspect-[5/3]',
-              visibleImages.length === 3 && 'grid-cols-2 grid-rows-2 h-72',
-              visibleImages.length >= 4 && 'grid-cols-2 grid-rows-2 h-72',
-            )}
+            className="relative w-full max-w-md overflow-hidden rounded-md border"
+            style={{ aspectRatio: mosaic.aspectRatio }}
           >
-            {visibleImages.map((file, index) => {
-              const isLastVisible = index === visibleImages.length - 1
-              const showOverflow = isLastVisible && hiddenCount > 0
+            {mosaic.tiles.map((tile) => {
+              const file = imageFiles[tile.index]
+              if (!file) return null
               return (
                 <button
                   key={file._id}
                   type="button"
-                  aria-label={
-                    showOverflow
-                      ? `${file.filename ?? 'Изображение'}, ещё ${hiddenCount}`
-                      : (file.filename ?? 'Изображение')
-                  }
+                  aria-label={file.filename ?? 'Изображение'}
                   className={cn(
-                    'relative min-h-0 min-w-0 overflow-hidden text-left focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-                    mosaicTileClass(visibleImages.length, index),
+                    'absolute overflow-hidden text-left focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                    'bg-border',
                   )}
-                  onClick={() => setLightboxIndex(index)}
+                  style={{
+                    left: `${tile.left}%`,
+                    top: `${tile.top}%`,
+                    width: `${tile.width}%`,
+                    height: `${tile.height}%`,
+                  }}
+                  onClick={() => setLightboxIndex(tile.index)}
                 >
                   <FxImage
                     src={attachmentPreviewUrl(file)}
@@ -80,11 +73,6 @@ export function MessageAttachments({ attachments }: MessageAttachmentsProps) {
                     objectFit="cover"
                     wrapperClassName="cursor-pointer"
                   />
-                  {showOverflow ? (
-                    <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-2xl font-semibold text-white">
-                      +{hiddenCount}
-                    </span>
-                  ) : null}
                 </button>
               )
             })}

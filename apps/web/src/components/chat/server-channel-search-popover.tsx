@@ -173,7 +173,7 @@ export function ServerChannelSearchPopover({
                     {hit.channelLabel} · {name}
                   </p>
                   {hit.message.content ? (
-                    <div className="line-clamp-2 text-sm">
+                    <div className="line-clamp-2 select-text text-sm">
                       {renderMessageContent(hit.message.content, users, emojis, {
                         channels,
                         roles: server?.roles,

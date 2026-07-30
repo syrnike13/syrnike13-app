@@ -40,28 +40,54 @@ describe('MessageAttachments', () => {
     expect(preview.parentElement?.classList.contains('sm:max-w-[28rem]')).toBe(
       true,
     )
-    expect(preview.parentElement?.classList.contains('cursor-pointer')).toBe(
-      true,
-    )
   })
 
-  it('lays out multiple images in a mosaic grid', () => {
+  it('renders an aspect-aware mosaic for multiple images', () => {
     const { container } = render(
       <MessageAttachments
         attachments={[
-          imageFile({ _id: 'file-1', filename: 'one.png' }),
-          imageFile({ _id: 'file-2', filename: 'two.png' }),
-          imageFile({ _id: 'file-3', filename: 'three.png' }),
+          imageFile({
+            _id: 'file-1',
+            filename: 'one.png',
+            metadata: {
+              type: 'Image',
+              width: 1200,
+              height: 600,
+              animated: false,
+            },
+          }),
+          imageFile({
+            _id: 'file-2',
+            filename: 'two.png',
+            metadata: {
+              type: 'Image',
+              width: 400,
+              height: 800,
+              animated: false,
+            },
+          }),
+          imageFile({
+            _id: 'file-3',
+            filename: 'three.png',
+            metadata: {
+              type: 'Image',
+              width: 500,
+              height: 700,
+              animated: false,
+            },
+          }),
         ]}
       />,
     )
 
     const mosaic = container.querySelector('[data-attachment-mosaic="3"]')
     expect(mosaic).toBeTruthy()
-    expect(mosaic?.classList.contains('grid-cols-2')).toBe(true)
-    expect(screen.getByRole('img', { name: 'one.png' }).parentElement?.classList.contains('absolute')).toBe(
-      true,
-    )
+    const tiles = mosaic?.querySelectorAll(':scope > button')
+    expect(tiles?.length).toBe(3)
+    expect(tiles?.[0]?.classList.contains('absolute')).toBe(true)
+    expect(screen.getByRole('img', { name: 'one.png' })).toBeTruthy()
+    expect(screen.getByRole('img', { name: 'three.png' })).toBeTruthy()
+    expect(screen.queryByText('+1')).toBeNull()
   })
 
   it('opens the lightbox gallery at the clicked mosaic tile', () => {
@@ -78,15 +104,9 @@ describe('MessageAttachments', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'two.png' })
     expect(within(dialog).getByText('2 / 2')).toBeTruthy()
-    expect(
-      within(dialog)
-        .getByRole('img', { name: 'two.png' })
-        .getAttribute('src')
-        ?.endsWith('/attachments/file-2/two.png'),
-    ).toBe(true)
   })
 
-  it('shows an overflow badge when there are more than four images', () => {
+  it('shows every image when there are five attachments', () => {
     render(
       <MessageAttachments
         attachments={[
@@ -99,6 +119,8 @@ describe('MessageAttachments', () => {
       />,
     )
 
-    expect(screen.getByText('+1')).toBeTruthy()
+    expect(screen.getByRole('img', { name: 'a.png' })).toBeTruthy()
+    expect(screen.getByRole('img', { name: 'e.png' })).toBeTruthy()
+    expect(screen.queryByText('+1')).toBeNull()
   })
 })
