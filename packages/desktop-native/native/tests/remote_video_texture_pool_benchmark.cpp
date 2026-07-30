@@ -166,7 +166,10 @@ int main() try {
     while (!leases.empty() && leases.front().release_at <= now) {
       leases.pop_front();
     }
-    pool.poll();
+    require(
+      !pool.poll().reset_required,
+      "GPU upload pool requested a reset during the benchmark"
+    );
     RemoteVideoTextureFrame uploaded;
     while (pool.take(uploaded)) {
       if (!contents_verified) {
@@ -197,7 +200,10 @@ int main() try {
     while (!leases.empty() && leases.front().release_at <= now) {
       leases.pop_front();
     }
-    pool.poll();
+    require(
+      !pool.poll().reset_required,
+      "GPU upload pool requested a reset while draining"
+    );
     RemoteVideoTextureFrame uploaded;
     while (pool.take(uploaded)) {
       completion_us.push_back(uploaded.gpu_completion_us);

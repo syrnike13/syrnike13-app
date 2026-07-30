@@ -160,6 +160,7 @@ void RemoteVideoBridge::addTrack(
       std::uint64_t frames_submitted = 0;
       std::uint64_t frames_published = 0;
       std::uint64_t frames_dropped_gpu_pool = 0;
+      std::uint64_t gpu_pool_resets = 0;
       std::uint64_t gpu_wait_total_us = 0;
       std::uint64_t gpu_wait_max_us = 0;
       auto next_pipeline_report =
@@ -225,6 +226,23 @@ void RemoteVideoBridge::addTrack(
         }
       };
 
+      const auto poll_uploader = [&] {
+        const auto result = uploader->poll();
+        if (!result.reset_required) return;
+        ++gpu_pool_resets;
+        diagnostics::DiagnosticLog::instance().write(
+          "remote_video_gpu_pool_reset",
+          {
+            {"trackId", track_id},
+            {"hresult", static_cast<std::int64_t>(result.hresult)},
+            {"count", gpu_pool_resets}
+          }
+        );
+        uploader = std::make_unique<RemoteVideoTexturePool>(
+          electron_main_pid_
+        );
+      };
+
       while (!raw->stopped.load() && raw->stream->read(frame_event)) {
         ++frames_read;
         if (!claimFirstFrame(raw->first_frame_state)) break;
@@ -233,7 +251,7 @@ void RemoteVideoBridge::addTrack(
             electron_main_pid_
           );
         }
-        uploader->poll();
+        poll_uploader();
         publish_ready_frames();
         if (uploader->submit(
           frame_event.frame,
@@ -245,7 +263,7 @@ void RemoteVideoBridge::addTrack(
         } else {
           ++frames_dropped_gpu_pool;
         }
-        uploader->poll();
+        poll_uploader();
         publish_ready_frames();
         const auto now = std::chrono::steady_clock::now();
         if (now >= next_pipeline_report) {
@@ -257,6 +275,7 @@ void RemoteVideoBridge::addTrack(
               {"framesSubmitted", frames_submitted},
               {"framesPublished", frames_published},
               {"framesDroppedGpuPool", frames_dropped_gpu_pool},
+              {"gpuPoolResets", gpu_pool_resets},
               {"gpuWaitTotalUs", gpu_wait_total_us},
               {"gpuWaitMaxUs", gpu_wait_max_us},
               {"gpuPoolSlotsAvailable",

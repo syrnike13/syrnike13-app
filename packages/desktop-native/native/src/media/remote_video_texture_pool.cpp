@@ -171,15 +171,23 @@ struct RemoteVideoTexturePool::State final
     return false;
   }
 
-  void poll() {
+  RemoteVideoTexturePollResult poll() {
     std::lock_guard lock(mutex_);
     for (auto& slot : slots_) {
       if (slot.phase != SlotPhase::Uploading) continue;
       std::uint64_t elapsed_us = 0;
       const auto result = slot.completion->poll(&elapsed_us);
       if (result == S_FALSE) continue;
+      if (result == DXGI_ERROR_WAIT_TIMEOUT) {
+        // The device is still alive, but reusing this query or texture while
+        // its previous command may still be queued is unsafe. The bridge drops
+        // the entire pool and continues the track with a fresh D3D device.
+        return {
+          true,
+          static_cast<long>(result),
+        };
+      }
       if (FAILED(result)) {
-        slot.phase = SlotPhase::Available;
         throwHResult(
           "D3D11 remote video upload did not complete",
           result
@@ -188,6 +196,7 @@ struct RemoteVideoTexturePool::State final
       slot.gpu_completion_us = elapsed_us;
       slot.phase = SlotPhase::Ready;
     }
+    return {};
   }
 
   bool take(RemoteVideoTextureFrame& frame) {
@@ -373,8 +382,8 @@ bool RemoteVideoTexturePool::submit(
   return state_->submit(frame, timestamp_us);
 }
 
-void RemoteVideoTexturePool::poll() {
-  state_->poll();
+RemoteVideoTexturePollResult RemoteVideoTexturePool::poll() {
+  return state_->poll();
 }
 
 bool RemoteVideoTexturePool::take(RemoteVideoTextureFrame& frame) {
