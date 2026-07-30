@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, crashReporter } from 'electron'
 import * as Sentry from '@sentry/electron/main'
 import { readdir, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -25,6 +25,26 @@ export function initializeDesktopObservability(
     options.nativeCrashReportsEnabled === true
 
   if (initialized || !__DESKTOP_SENTRY_DSN__) {
+    if (
+      !initialized &&
+      nativeCrashReportsEnabled &&
+      !__DESKTOP_SENTRY_DSN__
+    ) {
+      try {
+        crashReporter.start({
+          uploadToServer: false,
+          globalExtra: {
+            release_channel: __DESKTOP_RELEASE_CHANNEL__,
+            build_commit: __DESKTOP_COMMIT_SHA__,
+            native_crash_consent: 'enabled',
+          },
+        })
+        initialized = true
+        initializedNativeCrashReportsEnabled = true
+      } catch {
+        // Crash reporting is diagnostic-only and must never block app startup.
+      }
+    }
     return {
       enabled: initialized,
       nativeCrashReportsEnabled: initializedNativeCrashReportsEnabled,
@@ -100,6 +120,29 @@ async function pruneDirectory(directory: string, now: number): Promise<void> {
 const sanitizeDesktopErrorEvent: NonNullable<
   Parameters<typeof Sentry.init>[0]['beforeSend']
 > = (event) => {
+  const allowedTags = new Set([
+    'release_channel',
+    'process_type',
+    'native_runtime',
+    'runtime_state',
+    'failure_code',
+    'failure_stage',
+    'build_commit',
+    'native_crash_consent',
+    'native_runtime_kind',
+    'native_runtime_run',
+    'native_runtime_commit',
+    'native_host_stage',
+    'native_last_command',
+    'native_camera_stage',
+  ])
+  const crashAttributionTags = Object.fromEntries(
+    Object.entries(event.extra ?? {}).flatMap(([key, value]) =>
+      allowedTags.has(key) && typeof value === 'string'
+        ? [[key, redactDiagnosticText(value).slice(0, 127)]]
+        : [],
+    ),
+  )
   event.user = undefined
   event.request = undefined
   event.breadcrumbs = undefined
@@ -125,17 +168,12 @@ const sanitizeDesktopErrorEvent: NonNullable<
     if ('debug_file' in image) image.debug_file = undefined
   }
 
-  const allowedTags = new Set([
-    'release_channel',
-    'process_type',
-    'native_runtime',
-    'runtime_state',
-    'failure_code',
-    'failure_stage',
-  ])
-  event.tags = Object.fromEntries(
-    Object.entries(event.tags ?? {}).filter(([key]) => allowedTags.has(key)),
-  )
+  event.tags = {
+    ...Object.fromEntries(
+      Object.entries(event.tags ?? {}).filter(([key]) => allowedTags.has(key)),
+    ),
+    ...crashAttributionTags,
+  }
 
   return event
 }

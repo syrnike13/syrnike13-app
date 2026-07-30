@@ -99,6 +99,8 @@ jobs:
           pnpm --filter @syrnike13/desktop exec tsup
       - name: Smoke-test Electron ABI and utility handshakes
         run: pnpm --filter @syrnike13/desktop-native smoke:electron
+      - name: Verify Crashpad minidump capture
+        run: pnpm --filter @syrnike13/desktop-native smoke:crashpad
       - name: Build web assets for packaged smoke
         run: pnpm web:build
       - name: Verify packaged web assets

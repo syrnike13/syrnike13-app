@@ -4,9 +4,11 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 const sentryInit = vi.fn()
+const crashReporterStart = vi.fn()
 
 vi.mock('electron', () => ({
   app: { getVersion: () => '0.5.1' },
+  crashReporter: { start: crashReporterStart },
 }))
 vi.mock('@sentry/electron/main', () => ({
   init: sentryInit,
@@ -15,10 +17,12 @@ vi.mock('@sentry/electron/main', () => ({
 describe('desktop observability privacy defaults', () => {
   beforeEach(() => {
     sentryInit.mockClear()
+    crashReporterStart.mockClear()
     vi.resetModules()
     vi.stubGlobal('__DESKTOP_SENTRY_DSN__', 'https://public@example.invalid/1')
     vi.stubGlobal('__DESKTOP_SENTRY_ENVIRONMENT__', 'test')
     vi.stubGlobal('__DESKTOP_RELEASE_CHANNEL__', 'nightly')
+    vi.stubGlobal('__DESKTOP_COMMIT_SHA__', 'a'.repeat(40))
   })
 
   it('removes native minidumps and screenshots until explicitly enabled', async () => {
@@ -109,6 +113,70 @@ describe('desktop observability privacy defaults', () => {
       'SentryMinidump',
       'OnUncaughtException',
     ])
+  })
+
+  it('preserves only allowlisted native crash attribution', async () => {
+    const { initializeDesktopObservability } = await import(
+      './desktop-observability'
+    )
+    initializeDesktopObservability({ nativeCrashReportsEnabled: true })
+    const beforeSend = sentryInit.mock.calls[0]?.[0].beforeSend
+    const event = beforeSend({
+      tags: {
+        release_channel: 'nightly',
+        unwanted: 'drop',
+      },
+      extra: {
+        native_runtime_kind: 'media',
+        native_host_stage: 'ready',
+        native_camera_stage: 'cpu_submit_start',
+        participant_identity: 'private-user',
+      },
+    })
+
+    expect(event.tags).toEqual({
+      release_channel: 'nightly',
+      native_runtime_kind: 'media',
+      native_host_stage: 'ready',
+      native_camera_stage: 'cpu_submit_start',
+    })
+    expect(event.extra).toBeUndefined()
+  })
+
+  it('starts local-only Crashpad after opt-in when Sentry is unavailable', async () => {
+    vi.stubGlobal('__DESKTOP_SENTRY_DSN__', '')
+    const { initializeDesktopObservability } = await import(
+      './desktop-observability'
+    )
+
+    expect(
+      initializeDesktopObservability({ nativeCrashReportsEnabled: true }),
+    ).toEqual({
+      enabled: true,
+      nativeCrashReportsEnabled: true,
+    })
+    expect(crashReporterStart).toHaveBeenCalledWith({
+      uploadToServer: false,
+      globalExtra: {
+        release_channel: 'nightly',
+        build_commit: 'a'.repeat(40),
+        native_crash_consent: 'enabled',
+      },
+    })
+    expect(sentryInit).not.toHaveBeenCalled()
+  })
+
+  it('does not start Crashpad without native crash consent', async () => {
+    vi.stubGlobal('__DESKTOP_SENTRY_DSN__', '')
+    const { initializeDesktopObservability } = await import(
+      './desktop-observability'
+    )
+
+    expect(initializeDesktopObservability()).toEqual({
+      enabled: false,
+      nativeCrashReportsEnabled: false,
+    })
+    expect(crashReporterStart).not.toHaveBeenCalled()
   })
 
   it('removes only crash dump files older than seven days', async () => {
