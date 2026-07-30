@@ -166,6 +166,7 @@ class D3D11H264VideoSourceImpl final : public D3D11H264VideoSource {
     capture->set_timestamp_us(timestamp_us);
     const auto response = FfiClient::instance().sendRequest(request);
     if (!response.has_capture_d3d11_video_frame()) return false;
+    if (!response.capture_d3d11_video_frame().accepted()) return false;
     // The encoder owns keyed-mutex synchronization after submission. The
     // producer may recycle the slot only after it observes release_key.
     lease->accepted();

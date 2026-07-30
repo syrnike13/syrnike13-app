@@ -21,6 +21,7 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <numeric>
 #include <optional>
@@ -361,7 +362,6 @@ class GpuFramePool {
       std::uint32_t output_height)
       : device_(device),
         context_(context),
-        completion_(device, context),
         adapter_luid_(adapter_luid),
         output_width_(output_width),
         output_height_(output_height) {
@@ -379,10 +379,6 @@ class GpuFramePool {
         context_->QueryInterface(IID_PPV_ARGS(&video_context_)),
         ScreenGpuCaptureErrorCode::FormatUnsupported,
         "D3D11 video context is unavailable");
-    requireHr(
-        completion_.initializationResult(),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "failed to create GPU conversion completion query");
     createTextures();
   }
 
@@ -403,15 +399,18 @@ class GpuFramePool {
       syrnike::voice::ScreenCaptureFrameMetrics metrics,
       ScreenGpuFrame& frame) {
     retryPendingDiscards();
+    pollCompletions();
     if (!source || source_width == 0 || source_height == 0) {
       return result(ScreenGpuFrameStatus::FatalError, method, metrics,
                     ScreenGpuCaptureErrorCode::InteropUnavailable);
     }
     configure(source_width, source_height);
 
+    bool submitted = false;
     for (std::size_t attempt = 0; attempt < slots_.size(); ++attempt) {
       const std::size_t index = (next_slot_ + attempt) % slots_.size();
       auto& slot = slots_[index];
+      if (slot.phase != SlotPhase::Available) continue;
       const HRESULT acquire = slot.mutex->AcquireSync(kProducerKey, 0);
       if (acquire == WAIT_TIMEOUT) continue;
       if (FAILED(acquire)) {
@@ -422,10 +421,7 @@ class GpuFramePool {
       slot_state_.producerAcquired(index);
 
       const auto sequence = nextScreenFrameSequence();
-      bool released = false;
-      bool published = false;
       try {
-        const auto conversion_started_at = std::chrono::steady_clock::now();
         D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC input_description{};
         input_description.ViewDimension = D3D11_VPIV_DIMENSION_TEXTURE2D;
         input_description.Texture2D.MipSlice = 0;
@@ -488,50 +484,50 @@ class GpuFramePool {
                 processor_.Get(), slot.output_view.Get(), 0, 1, &stream),
             ScreenGpuCaptureErrorCode::DeviceLost,
             "GPU screen conversion failed");
+        slot.input_view = std::move(input_view);
         requireHr(
-            completion_.wait(kGpuCompletionTimeout),
+            slot.completion->begin(kGpuCompletionTimeout),
             ScreenGpuCaptureErrorCode::DeviceLost,
-            "GPU screen conversion did not complete");
-        // Publish the generation before exposing consumer key 1. A late
-        // discard for the previous frame can otherwise acquire the newly
-        // released key while the slot still advertises the old sequence.
-        slot_state_.publish(index, sequence);
-        published = true;
-        requireHr(
-            slot.mutex->ReleaseSync(kConsumerKey),
-            ScreenGpuCaptureErrorCode::DeviceLost,
-            "failed to release GPU frame to encoder");
-        metrics.scale_us = static_cast<int>(
-            std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now() - conversion_started_at)
-                .count());
-        released = true;
+            "failed to arm GPU screen conversion completion");
+        slot.sequence = sequence;
+        slot.timestamp_us = timestamp_us != 0 ? timestamp_us : steadyMicros();
+        metrics.output_width = output_width_;
+        metrics.output_height = output_height_;
+        slot.metrics = metrics;
+        slot.phase = SlotPhase::Converting;
       } catch (...) {
-        if (!released) {
-          if (published) slot_state_.cancelPublish(index, sequence);
-          slot.mutex->ReleaseSync(kProducerKey);
-        }
+        slot.input_view.Reset();
+        slot.mutex->ReleaseSync(kProducerKey);
         throw;
       }
 
       next_slot_ = (index + 1) % slots_.size();
-      frame.sequence = sequence;
-      frame.timestamp_us = timestamp_us != 0 ? timestamp_us : steadyMicros();
-      frame.width = output_width_;
-      frame.height = output_height_;
-      frame.slot = static_cast<std::uint32_t>(index);
-      frame.shared_texture_handle = slot.shared_handle;
-      frame.adapter_luid = adapter_luid_;
-      frame.format = DXGI_FORMAT_NV12;
-      metrics.output_width = output_width_;
-      metrics.output_height = output_height_;
-      return result(ScreenGpuFrameStatus::NewFrame, method, metrics,
+      submitted = true;
+      break;
+    }
+
+    pollCompletions();
+    if (publishReady(frame)) {
+      return result(
+          ScreenGpuFrameStatus::NewFrame,
+          method,
+          slots_[frame.slot].metrics,
+          ScreenGpuCaptureErrorCode::CaptureUnavailable);
+    }
+    if (submitted) {
+      return result(ScreenGpuFrameStatus::NoFrame, method, metrics,
+                    ScreenGpuCaptureErrorCode::CaptureUnavailable);
+    }
+    if (std::any_of(
+            slots_.begin(), slots_.end(), [](const Slot& slot) {
+              return slot.phase == SlotPhase::Converting;
+            })) {
+      return result(ScreenGpuFrameStatus::NoFrame, method, metrics,
                     ScreenGpuCaptureErrorCode::CaptureUnavailable);
     }
 
     // WGC/DXGI supplied a source texture, but every NV12 output slot is still
-    // owned by the encoder. Keep this distinct from a capture-source miss so
-    // the actor can restart the stalled MFT instead of recreating WGC.
+    // owned by the encoder.
     const auto available = availableSlots();
     if (available == 0) {
       auto& logger = diagnostics::DiagnosticLog::instance();
@@ -546,6 +542,23 @@ class GpuFramePool {
     }
     return result(ScreenGpuFrameStatus::EncoderBackpressure, method, metrics,
                   ScreenGpuCaptureErrorCode::CaptureUnavailable);
+  }
+
+  ScreenGpuFrameResult poll(const char* method, ScreenGpuFrame& frame) {
+    retryPendingDiscards();
+    pollCompletions();
+    if (publishReady(frame)) {
+      return result(
+          ScreenGpuFrameStatus::NewFrame,
+          method,
+          slots_[frame.slot].metrics,
+          ScreenGpuCaptureErrorCode::CaptureUnavailable);
+    }
+    return result(
+        ScreenGpuFrameStatus::NoFrame,
+        method,
+        {},
+        ScreenGpuCaptureErrorCode::CaptureUnavailable);
   }
 
   void discard(const ScreenGpuFrame& frame) noexcept {
@@ -566,6 +579,7 @@ class GpuFramePool {
     return countScreenGpuAvailableSlots<kOutputPoolSize>(
         [this](std::size_t index) {
       const auto& slot = slots_[index];
+      if (slot.phase != SlotPhase::Available) return false;
       if (slot.mutex->AcquireSync(kProducerKey, 0) != S_OK) return false;
       return SUCCEEDED(slot.mutex->ReleaseSync(kProducerKey));
     });
@@ -576,12 +590,74 @@ class GpuFramePool {
   }
 
  private:
+  enum class SlotPhase {
+    Available,
+    Converting,
+    Ready,
+  };
+
   struct Slot {
     ComPtr<ID3D11Texture2D> texture;
     ComPtr<IDXGIKeyedMutex> mutex;
+    ComPtr<ID3D11VideoProcessorInputView> input_view;
     ComPtr<ID3D11VideoProcessorOutputView> output_view;
+    std::unique_ptr<D3d11GpuCompletion> completion;
     HANDLE shared_handle = nullptr;
+    SlotPhase phase = SlotPhase::Available;
+    std::uint64_t sequence = 0;
+    std::uint64_t timestamp_us = 0;
+    syrnike::voice::ScreenCaptureFrameMetrics metrics;
   };
+
+  void pollCompletions() {
+    for (auto& slot : slots_) {
+      if (slot.phase != SlotPhase::Converting) continue;
+      std::uint64_t elapsed_us = 0;
+      const HRESULT completion_result = slot.completion->poll(&elapsed_us);
+      if (completion_result == S_FALSE) continue;
+      requireHr(
+          completion_result,
+          ScreenGpuCaptureErrorCode::DeviceLost,
+          "GPU screen conversion did not complete");
+      slot.metrics.scale_us = static_cast<int>(std::min<std::uint64_t>(
+          elapsed_us, static_cast<std::uint64_t>(std::numeric_limits<int>::max())));
+      slot.input_view.Reset();
+      slot.phase = SlotPhase::Ready;
+    }
+  }
+
+  bool publishReady(ScreenGpuFrame& frame) {
+    for (std::size_t attempt = 0; attempt < slots_.size(); ++attempt) {
+      const std::size_t index = (next_ready_slot_ + attempt) % slots_.size();
+      auto& slot = slots_[index];
+      if (slot.phase != SlotPhase::Ready) continue;
+
+      // Publish the generation before exposing consumer key 1. A late
+      // discard for the previous frame can otherwise acquire the newly
+      // released key while the slot still advertises the old sequence.
+      slot_state_.publish(index, slot.sequence);
+      const HRESULT release = slot.mutex->ReleaseSync(kConsumerKey);
+      if (FAILED(release)) {
+        slot_state_.cancelPublish(index, slot.sequence);
+        requireHr(
+            release,
+            ScreenGpuCaptureErrorCode::DeviceLost,
+            "failed to release completed GPU frame to encoder");
+      }
+      slot.phase = SlotPhase::Available;
+      next_ready_slot_ = (index + 1) % slots_.size();
+      frame.sequence = slot.sequence;
+      frame.timestamp_us = slot.timestamp_us;
+      frame.width = output_width_;
+      frame.height = output_height_;
+      frame.slot = static_cast<std::uint32_t>(index);
+      frame.shared_texture_handle = slot.shared_handle;
+      frame.adapter_luid = adapter_luid_;
+      frame.format = DXGI_FORMAT_NV12;
+      return true;
+    }
+    return false;
+  }
 
   void retryPendingDiscards() noexcept {
     for (std::size_t index = 0; index < slots_.size(); ++index) {
@@ -619,6 +695,12 @@ class GpuFramePool {
         D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
         D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
     for (auto& slot : slots_) {
+      slot.completion =
+          std::make_unique<D3d11GpuCompletion>(device_.Get(), context_.Get());
+      requireHr(
+          slot.completion->initializationResult(),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "failed to create GPU conversion completion query");
       requireHr(
           device_->CreateTexture2D(&description, nullptr, &slot.texture),
           ScreenGpuCaptureErrorCode::FormatUnsupported,
@@ -709,7 +791,6 @@ class GpuFramePool {
   ComPtr<ID3D11DeviceContext> context_;
   ComPtr<ID3D11VideoDevice> video_device_;
   ComPtr<ID3D11VideoContext> video_context_;
-  D3d11GpuCompletion completion_;
   ComPtr<ID3D11VideoProcessorEnumerator> enumerator_;
   ComPtr<ID3D11VideoProcessor> processor_;
   LUID adapter_luid_{};
@@ -720,6 +801,7 @@ class GpuFramePool {
   std::array<Slot, kOutputPoolSize> slots_;
   ScreenGpuSlotState<kOutputPoolSize> slot_state_;
   std::size_t next_slot_ = 0;
+  std::size_t next_ready_slot_ = 0;
 };
 
 // Independent BGRA pool for Electron preview. A slot remains occupied until
@@ -734,7 +816,6 @@ class GpuPreviewPool {
       std::uint32_t max_height)
       : device_(device),
         context_(context),
-        completion_(device, context),
         max_width_(max_width),
         max_height_(max_height) {
     requireHr(
@@ -745,10 +826,6 @@ class GpuPreviewPool {
         context_->QueryInterface(IID_PPV_ARGS(&video_context_)),
         ScreenGpuCaptureErrorCode::FormatUnsupported,
         "D3D11 preview video context is unavailable");
-    requireHr(
-        completion_.initializationResult(),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "failed to create preview completion query");
   }
 
   ~GpuPreviewPool() {
@@ -773,8 +850,17 @@ class GpuPreviewPool {
     if (!demand.demanded && pending_) {
       if (const auto slot = lease_state_.release(pending_->sequence)) {
         closeRemoteHandle(slots_[*slot]);
+        slots_[*slot].phase = SlotPhase::Available;
       }
       pending_.reset();
+    }
+    if (!demand.demanded) {
+      for (std::size_t index = 0; index < slots_.size(); ++index) {
+        auto& slot = slots_[index];
+        if (slot.phase != SlotPhase::Ready) continue;
+        static_cast<void>(lease_state_.release(slot.sequence));
+        slot.phase = SlotPhase::Available;
+      }
     }
   }
 
@@ -785,6 +871,7 @@ class GpuPreviewPool {
       std::uint32_t content_width,
       std::uint32_t content_height,
       std::uint64_t timestamp_us) {
+    poll();
     ScreenPreviewDemand demand;
     std::uint64_t demand_revision = 0;
     std::uint64_t reserved_sequence = 0;
@@ -795,7 +882,7 @@ class GpuPreviewPool {
       demand = demand_;
       demand_revision = demand_revision_;
       revokeExpiredLocked(now);
-      if (!demand.demanded || demand.electron_main_pid == 0 || pending_) return;
+      if (!demand.demanded || demand.electron_main_pid == 0) return;
       if (now < next_retry_at_) return;
       const auto interval = std::chrono::microseconds(1'000'000 / demand.fps);
       if (last_frame_at_ != std::chrono::steady_clock::time_point{} &&
@@ -859,63 +946,71 @@ class GpuPreviewPool {
               slot.processor.Get(), slot.output_view.Get(), 0, 1, &stream),
           ScreenGpuCaptureErrorCode::DeviceLost,
           "GPU preview copy failed");
+      slot.input_view = std::move(input_view);
       requireHr(
-          completion_.wait(kGpuCompletionTimeout),
-          ScreenGpuCaptureErrorCode::DeviceLost,
-          "GPU preview copy did not complete");
-
-      HANDLE main_process = OpenProcess(PROCESS_DUP_HANDLE, FALSE, demand.electron_main_pid);
-      if (!main_process) throw ScreenGpuCaptureError(
-          ScreenGpuCaptureErrorCode::InteropUnavailable,
-          "Electron main process is unavailable for preview");
-      HANDLE duplicated = nullptr;
-      const BOOL duplicated_ok = DuplicateHandle(
-          GetCurrentProcess(), slot.shared_handle, main_process, &duplicated,
-          0, FALSE, DUPLICATE_SAME_ACCESS);
-      CloseHandle(main_process);
-      if (!duplicated_ok) throw ScreenGpuCaptureError(
-          ScreenGpuCaptureErrorCode::InteropUnavailable,
-          "failed to duplicate preview texture handle");
+            slot.completion->begin(kGpuCompletionTimeout),
+            ScreenGpuCaptureErrorCode::DeviceLost,
+            "failed to arm GPU preview completion");
 
       std::lock_guard lock(mutex_);
-      slot.remote_handle = duplicated;
-      slot.remote_pid = demand.electron_main_pid;
-      if (demand_revision != demand_revision_ || !demand_.demanded) {
-        closeRemoteHandle(slot);
-        static_cast<void>(lease_state_.release(reserved_sequence));
-        return;
-      }
       last_frame_at_ = now;
       next_slot_ = (slot_index + 1) % slots_.size();
-      lease_state_.publishPending(reserved_sequence);
-      pending_ = ScreenPreviewFrame{
-          reserved_sequence,
-          timestamp_us != 0 ? timestamp_us : steadyMicros(),
-          demand.width,
-          demand.height,
-          reinterpret_cast<std::uint64_t>(duplicated),
-      };
+      slot.phase = SlotPhase::Converting;
+      slot.sequence = reserved_sequence;
+      slot.timestamp_us = timestamp_us != 0 ? timestamp_us : steadyMicros();
+      slot.demand_revision = demand_revision;
     } catch (const ScreenGpuCaptureError& error) {
       std::lock_guard lock(mutex_);
       closeRemoteHandle(slot);
+      slot.input_view.Reset();
       slot.texture.Reset();
+      slot.completion.reset();
+      slot.phase = SlotPhase::Available;
       static_cast<void>(lease_state_.release(reserved_sequence));
       recordFailureLocked(error.code(), error.hresult(), error.what(), now);
     } catch (const std::exception& error) {
       std::lock_guard lock(mutex_);
       closeRemoteHandle(slot);
+      slot.input_view.Reset();
       slot.texture.Reset();
+      slot.completion.reset();
+      slot.phase = SlotPhase::Available;
       static_cast<void>(lease_state_.release(reserved_sequence));
       recordFailureLocked(
           ScreenGpuCaptureErrorCode::InteropUnavailable, 0, error.what(), now);
     } catch (...) {
       std::lock_guard lock(mutex_);
       closeRemoteHandle(slot);
+      slot.input_view.Reset();
       slot.texture.Reset();
+      slot.completion.reset();
+      slot.phase = SlotPhase::Available;
       static_cast<void>(lease_state_.release(reserved_sequence));
       recordFailureLocked(
           ScreenGpuCaptureErrorCode::InteropUnavailable, 0,
           "unknown local screen preview failure", now);
+    }
+  }
+
+  void poll() noexcept {
+    const auto now = std::chrono::steady_clock::now();
+    try {
+      pollCompletions();
+      publishReady(now);
+    } catch (const ScreenGpuCaptureError& error) {
+      std::lock_guard lock(mutex_);
+      recordFailureLocked(error.code(), error.hresult(), error.what(), now);
+    } catch (const std::exception& error) {
+      std::lock_guard lock(mutex_);
+      recordFailureLocked(
+          ScreenGpuCaptureErrorCode::InteropUnavailable, 0, error.what(), now);
+    } catch (...) {
+      std::lock_guard lock(mutex_);
+      recordFailureLocked(
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          0,
+          "unknown asynchronous screen preview failure",
+          now);
     }
   }
 
@@ -945,6 +1040,7 @@ class GpuPreviewPool {
     std::lock_guard lock(mutex_);
     if (const auto slot = lease_state_.release(sequence)) {
       closeRemoteHandle(slots_[*slot]);
+      slots_[*slot].phase = SlotPhase::Available;
     }
   }
 
@@ -955,11 +1051,20 @@ class GpuPreviewPool {
   }
 
  private:
+  enum class SlotPhase {
+    Available,
+    Converting,
+    Ready,
+    Delivered,
+  };
+
   struct Slot {
     ComPtr<ID3D11Texture2D> texture;
     ComPtr<ID3D11VideoProcessorEnumerator> enumerator;
     ComPtr<ID3D11VideoProcessor> processor;
+    ComPtr<ID3D11VideoProcessorInputView> input_view;
     ComPtr<ID3D11VideoProcessorOutputView> output_view;
+    std::unique_ptr<D3d11GpuCompletion> completion;
     HANDLE shared_handle = nullptr;
     HANDLE remote_handle = nullptr;
     std::uint32_t remote_pid = 0;
@@ -967,7 +1072,99 @@ class GpuPreviewPool {
     std::uint32_t source_height = 0;
     std::uint32_t output_width = 0;
     std::uint32_t output_height = 0;
+    SlotPhase phase = SlotPhase::Available;
+    std::uint64_t sequence = 0;
+    std::uint64_t timestamp_us = 0;
+    std::uint64_t demand_revision = 0;
   };
+
+  void pollCompletions() {
+    for (std::size_t index = 0; index < slots_.size(); ++index) {
+      auto& slot = slots_[index];
+      {
+        std::lock_guard lock(mutex_);
+        if (slot.phase != SlotPhase::Converting) continue;
+      }
+      const HRESULT completion_result = slot.completion->poll();
+      if (completion_result == S_FALSE) continue;
+      if (FAILED(completion_result)) {
+        std::lock_guard lock(mutex_);
+        static_cast<void>(lease_state_.release(slot.sequence));
+        slot.phase = SlotPhase::Available;
+        slot.input_view.Reset();
+        slot.texture.Reset();
+        slot.completion.reset();
+        throwHr(
+            ScreenGpuCaptureErrorCode::DeviceLost,
+            "GPU preview copy did not complete",
+            completion_result);
+      }
+      std::lock_guard lock(mutex_);
+      if (slot.phase == SlotPhase::Converting) {
+        slot.input_view.Reset();
+        slot.phase = SlotPhase::Ready;
+      }
+    }
+  }
+
+  void publishReady(std::chrono::steady_clock::time_point now) {
+    std::lock_guard lock(mutex_);
+    revokeExpiredLocked(now);
+    if (pending_) return;
+
+    for (std::size_t attempt = 0; attempt < slots_.size(); ++attempt) {
+      const auto index = (next_ready_slot_ + attempt) % slots_.size();
+      auto& slot = slots_[index];
+      if (slot.phase != SlotPhase::Ready) continue;
+      if (!demand_.demanded || demand_.electron_main_pid == 0 ||
+          slot.demand_revision != demand_revision_) {
+        static_cast<void>(lease_state_.release(slot.sequence));
+        slot.phase = SlotPhase::Available;
+        continue;
+      }
+
+      HANDLE main_process =
+          OpenProcess(PROCESS_DUP_HANDLE, FALSE, demand_.electron_main_pid);
+      if (!main_process) {
+        static_cast<void>(lease_state_.release(slot.sequence));
+        slot.phase = SlotPhase::Available;
+        throw ScreenGpuCaptureError(
+            ScreenGpuCaptureErrorCode::InteropUnavailable,
+            "Electron main process is unavailable for preview");
+      }
+      HANDLE duplicated = nullptr;
+      const BOOL duplicated_ok = DuplicateHandle(
+          GetCurrentProcess(),
+          slot.shared_handle,
+          main_process,
+          &duplicated,
+          0,
+          FALSE,
+          DUPLICATE_SAME_ACCESS);
+      CloseHandle(main_process);
+      if (!duplicated_ok) {
+        static_cast<void>(lease_state_.release(slot.sequence));
+        slot.phase = SlotPhase::Available;
+        throw ScreenGpuCaptureError(
+            ScreenGpuCaptureErrorCode::InteropUnavailable,
+            "failed to duplicate preview texture handle");
+      }
+
+      slot.remote_handle = duplicated;
+      slot.remote_pid = demand_.electron_main_pid;
+      slot.phase = SlotPhase::Delivered;
+      lease_state_.publishPending(slot.sequence);
+      pending_ = ScreenPreviewFrame{
+          slot.sequence,
+          slot.timestamp_us,
+          slot.output_width,
+          slot.output_height,
+          reinterpret_cast<std::uint64_t>(duplicated),
+      };
+      next_ready_slot_ = (index + 1) % slots_.size();
+      return;
+    }
+  }
 
   void revokeExpiredLocked(
       std::chrono::steady_clock::time_point now) const noexcept {
@@ -977,6 +1174,7 @@ class GpuPreviewPool {
         lease_timeout,
         [this](std::size_t slot, std::uint64_t sequence) {
           closeRemoteHandle(slots_[slot]);
+          slots_[slot].phase = SlotPhase::Available;
           if (pending_ && pending_->sequence == sequence) pending_.reset();
         });
   }
@@ -994,12 +1192,19 @@ class GpuPreviewPool {
     slot.texture.Reset();
     slot.enumerator.Reset();
     slot.processor.Reset();
+    slot.input_view.Reset();
     slot.output_view.Reset();
     slot.shared_handle = nullptr;
     slot.source_width = 0;
     slot.source_height = 0;
     slot.output_width = 0;
     slot.output_height = 0;
+    slot.completion =
+        std::make_unique<D3d11GpuCompletion>(device_.Get(), context_.Get());
+    requireHr(
+        slot.completion->initializationResult(),
+        ScreenGpuCaptureErrorCode::InteropUnavailable,
+        "failed to create preview completion query");
 
     D3D11_TEXTURE2D_DESC description{};
     description.Width = output_width;
@@ -1102,7 +1307,6 @@ class GpuPreviewPool {
   ComPtr<ID3D11DeviceContext> context_;
   ComPtr<ID3D11VideoDevice> video_device_;
   ComPtr<ID3D11VideoContext> video_context_;
-  D3d11GpuCompletion completion_;
   const std::uint32_t max_width_;
   const std::uint32_t max_height_;
   mutable std::mutex mutex_;
@@ -1112,6 +1316,7 @@ class GpuPreviewPool {
   mutable std::optional<ScreenPreviewFrame> pending_;
   std::optional<ScreenPreviewFailure> pending_failure_;
   std::size_t next_slot_ = 0;
+  std::size_t next_ready_slot_ = 0;
   std::uint64_t demand_revision_ = 0;
   std::chrono::steady_clock::time_point last_frame_at_{};
   std::chrono::steady_clock::time_point next_retry_at_{};
@@ -1126,9 +1331,14 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
       std::uint32_t width,
       std::uint32_t height)
       : target_(target), selection_(selectAdapter(target_)), d3d_(createDevice(selection_)),
+        compositor_completion_(d3d_.device.Get(), d3d_.context.Get()),
         compositor_(d3d_.device.Get(), d3d_.context.Get()),
         pool_(d3d_.device.Get(), d3d_.context.Get(), d3d_.adapter_luid, width, height),
         preview_(d3d_.device.Get(), d3d_.context.Get(), width, height) {
+    requireHr(
+        compositor_completion_.initializationResult(),
+        ScreenGpuCaptureErrorCode::InteropUnavailable,
+        "failed to create DXGI compositor completion query");
     recreateDuplication();
   }
 
@@ -1137,7 +1347,21 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
     DXGI_OUTDUPL_FRAME_INFO frame_info{};
     ComPtr<IDXGIResource> resource;
     HRESULT hr = duplication_->AcquireNextFrame(1, &frame_info, &resource);
-    if (hr == DXGI_ERROR_WAIT_TIMEOUT) return {ScreenGpuFrameStatus::NoFrame, {}, method()};
+    if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
+      preview_.poll();
+      try {
+        return pool_.poll(method(), frame);
+      } catch (const ScreenGpuCaptureError& error) {
+        syrnike::voice::ScreenCaptureFrameMetrics metrics;
+        metrics.hresult = error.hresult();
+        return {
+            ScreenGpuFrameStatus::FatalError,
+            metrics,
+            method(),
+            error.code(),
+        };
+      }
+    }
     if (hr == DXGI_ERROR_ACCESS_LOST) {
       syrnike::voice::ScreenCaptureFrameMetrics metrics;
       metrics.hresult = static_cast<long>(hr);
@@ -1189,9 +1413,15 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
       auto* composed = compositor_.compose(
           texture.Get(), duplication_.Get(), frame_info,
           selection_.output_description.Rotation);
-      // The compositor returns an internal texture. All later GPU work is
-      // ordered after that copy on the same immediate context, so DXGI no
-      // longer needs to retain the duplication frame through NV12 conversion.
+      // The compositor draw reads the duplication-owned texture. ReleaseFrame
+      // permits DXGI to reuse that texture, so wait only for this fast copy
+      // boundary; the heavier encoder and preview conversions below remain
+      // asynchronous.
+      std::uint64_t compositor_us = 0;
+      requireHr(
+          compositor_completion_.wait(kGpuCompletionTimeout, &compositor_us),
+          ScreenGpuCaptureErrorCode::DeviceLost,
+          "DXGI compositor copy did not complete");
       const HRESULT release_result = frame_lease.release();
       if (FAILED(release_result)) {
         throwHr(
@@ -1260,6 +1490,7 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
   syrnike::voice::ScreenCaptureTarget target_;
   AdapterSelection selection_;
   D3dDevice d3d_;
+  D3d11GpuCompletion compositor_completion_;
   DxgiFrameCompositor compositor_;
   GpuFramePool pool_;
   GpuPreviewPool preview_;
@@ -1323,7 +1554,19 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
       };
     }
     if (!capture_frame) {
-      return {ScreenGpuFrameStatus::NoFrame, {}, method()};
+      preview_.poll();
+      try {
+        return pool_.poll(method(), frame);
+      } catch (const ScreenGpuCaptureError& error) {
+        syrnike::voice::ScreenCaptureFrameMetrics metrics;
+        metrics.hresult = error.hresult();
+        return {
+            ScreenGpuFrameStatus::FatalError,
+            metrics,
+            method(),
+            error.code(),
+        };
+      }
     }
     if (content_size.Width <= 0 || content_size.Height <= 0) {
       return {ScreenGpuFrameStatus::NoFrame, {}, method()};
