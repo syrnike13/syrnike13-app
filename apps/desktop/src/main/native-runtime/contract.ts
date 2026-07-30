@@ -38,6 +38,14 @@ export type NativeRuntimeRequest = {
   type: 'request'
   requestId: string
   command: NativeRuntimeCommand
+  diagnostic?: NativeRuntimeDiagnosticContext
+}
+
+export type NativeRuntimeDiagnosticContext = {
+  actionId: string
+  operationId?: string
+  revision?: number
+  hostEpoch: number
 }
 
 export type NativeRuntimeReply =
@@ -719,7 +727,33 @@ export function isNativeRuntimeRequest(value: unknown): value is NativeRuntimeRe
   return (
     value.type === 'request' &&
     isNonEmptyString(value.requestId, 256) &&
-    isNativeRuntimeCommand(value.command)
+    isNativeRuntimeCommand(value.command) &&
+    (
+      value.diagnostic === undefined ||
+      isNativeRuntimeDiagnosticContext(value.diagnostic)
+    )
+  )
+}
+
+function isNativeRuntimeDiagnosticContext(
+  value: unknown,
+): value is NativeRuntimeDiagnosticContext {
+  if (!isRecord(value)) return false
+  return (
+    isNonEmptyString(value.actionId, 128) &&
+    (
+      value.operationId === undefined ||
+      isNonEmptyString(value.operationId, 128)
+    ) &&
+    (
+      value.revision === undefined ||
+      (
+        Number.isSafeInteger(value.revision) &&
+        Number(value.revision) >= 0
+      )
+    ) &&
+    Number.isSafeInteger(value.hostEpoch) &&
+    Number(value.hostEpoch) > 0
   )
 }
 

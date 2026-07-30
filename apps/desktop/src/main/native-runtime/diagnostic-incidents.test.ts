@@ -131,6 +131,43 @@ describe('native diagnostic incident monitor', () => {
     expect(first?.identity).toContain('request_timed_out')
   })
 
+  it('keeps a compact command correlation summary on an incident', () => {
+    const incident = captureNativeDiagnosticIncident({
+      scope: 'native-runtime-supervisor',
+      event: 'request_reply_error',
+      actionId: 'media-action-a',
+      operation: 'operation-a',
+      revision: 8,
+      generation: 3,
+      hostEpoch: 2,
+      requestId: 'request-a',
+      stage: 'connectScreen',
+      commandStage: 'completed',
+      outcome: 'error',
+      errorCode: 'encoder_unavailable',
+    })
+
+    expect(incident).toMatchObject({
+      actionId: 'media-action-a',
+      operationId: 'operation-a',
+      revision: 8,
+      generation: 3,
+      hostEpoch: 2,
+      stage: 'connectScreen',
+      commandStage: 'completed',
+      outcome: 'error',
+      errorCode: 'encoder_unavailable',
+    })
+    expect(incident?.correlationId).toMatch(/^incident-/)
+    expect(JSON.stringify(incident)).not.toContain('request-a')
+    expect(captureNativeDiagnosticIncident({
+      scope: 'native-runtime-supervisor',
+      event: 'command_summary',
+      actionId: 'media-action-a',
+      outcome: 'success',
+    })).toBeNull()
+  })
+
   it('treats stale generations and projected voice snapshots as non-incidents', () => {
     expect(captureNativeDiagnosticIncident({
       scope: 'native-runtime-supervisor',

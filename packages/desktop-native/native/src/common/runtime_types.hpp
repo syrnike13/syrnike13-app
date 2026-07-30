@@ -146,6 +146,10 @@ struct MediaCommand {
 
   std::string type;
   std::string request_id;
+  std::string diagnostic_action_id;
+  std::string diagnostic_operation_id;
+  std::uint64_t diagnostic_revision = 0;
+  std::uint64_t diagnostic_host_epoch = 0;
   std::string session_id;
   std::uint64_t generation = 0;
   std::uint64_t revision = 0;

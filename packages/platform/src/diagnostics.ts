@@ -40,11 +40,18 @@ export type NativeDiagnosticIncident = {
   cooldownMs?: number
   scope: string
   event: string
+  actionId?: string
+  operationId?: string
   nativeEventType?: string
   runtime?: string
   kind?: string
   lane?: string
   stage?: string
+  commandStage?: string
+  outcome?: string
+  revision?: number
+  generation?: number
+  hostEpoch?: number
   status?: string
   reason?: string
   message?: string

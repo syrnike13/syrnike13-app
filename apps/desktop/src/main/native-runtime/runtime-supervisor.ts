@@ -5,13 +5,14 @@ import {
   nativeRuntimeError,
   redactSensitiveText,
   type NativeRuntimeCommand,
+  type NativeRuntimeDiagnosticContext,
   type NativeRuntimeError,
   type NativeRuntimeEvent,
   type NativeRuntimeKind,
   type NativeRuntimeReady,
   type NativeRuntimeRequest,
 } from './contract'
-import type { DiagnosticLogSink } from './diagnostic-log'
+import type { DiagnosticLogRecord, DiagnosticLogSink } from './diagnostic-log'
 import type {
   NativeRuntimeAdapter,
   NativeRuntimeAdapterExit,
@@ -94,6 +95,10 @@ type NativeRuntimeRequestContext = {
   lane?: NativeRuntimeLane
   sessionId?: string
   generation?: number
+  actionId?: string
+  operation?: string
+  revision?: number
+  hostEpoch?: number
 }
 
 type NativeRuntimeLane =
@@ -107,6 +112,8 @@ type NativeRuntimeLane =
 
 function requestContext(
   command: NativeRuntimeCommand,
+  diagnostic?: Omit<NativeRuntimeDiagnosticContext, 'hostEpoch'>,
+  hostEpoch?: number,
 ): NativeRuntimeRequestContext {
   return {
     stage: command.type,
@@ -119,6 +126,13 @@ function requestContext(
       'generation' in command && typeof command.generation === 'number'
         ? command.generation
         : undefined,
+    actionId: diagnostic?.actionId,
+    operation: diagnostic?.operationId,
+    revision:
+      ('revision' in command && typeof command.revision === 'number'
+        ? command.revision
+        : diagnostic?.revision),
+    hostEpoch,
   }
 }
 
@@ -133,9 +147,10 @@ export type NativeRuntimeSupervisorOptions = {
   diagnostics?: DiagnosticLogSink
 }
 
-type NativeRuntimeRequestOptions = {
+export type NativeRuntimeRequestOptions = {
   probeOnTimeout?: boolean
   allowDuringShutdown?: boolean
+  diagnostic?: Omit<NativeRuntimeDiagnosticContext, 'hostEpoch'>
 }
 
 export class NativeRuntimeSupervisor {
@@ -325,18 +340,34 @@ export class NativeRuntimeSupervisor {
     timeoutMs: number,
     options: NativeRuntimeRequestOptions = {},
   ): Promise<T> {
-    const context = requestContext(command)
+    const requestedContext = requestContext(
+      command,
+      options.diagnostic,
+      this.snapshot.hostEpoch,
+    )
     this.log('request_start', {
-      ...context,
+      ...requestedContext,
+      commandStage: 'requested',
+      outcome: 'started',
       timeoutMs,
       pendingCount: this.pending.size,
     })
     if (!options.allowDuringShutdown) await this.start()
+    const context = requestContext(
+      command,
+      options.diagnostic,
+      this.adapterEpoch,
+    )
     if (!this.adapter || this.snapshot.status !== 'ready') {
       this.log('request_rejected_not_ready', {
         ...context,
+        commandStage: 'validation',
+        outcome: 'rejected',
         pendingCount: this.pending.size,
         status: this.snapshot.status,
+      })
+      this.logCommandSummary(context, undefined, 'rejected', {
+        errorCode: 'runtime_lost',
       })
       throw new NativeRuntimeRequestError(
         nativeRuntimeError('runtime_lost', 'Native runtime is not ready', {
@@ -348,7 +379,12 @@ export class NativeRuntimeSupervisor {
     if (this.pending.size >= NATIVE_RUNTIME_MAX_PENDING_REQUESTS) {
       this.log('request_rejected_queue_full', {
         ...context,
+        commandStage: 'electron_queue',
+        outcome: 'rejected',
         pendingCount: this.pending.size,
+      })
+      this.logCommandSummary(context, undefined, 'rejected', {
+        errorCode: 'queue_full',
       })
       throw new NativeRuntimeRequestError(
         nativeRuntimeError('queue_full', 'Native runtime command queue is full', {
@@ -359,12 +395,27 @@ export class NativeRuntimeSupervisor {
     }
 
     const requestId = `${this.options.runtime}-${++this.requestSequence}-${crypto.randomUUID()}`
-    const request: NativeRuntimeRequest = { type: 'request', requestId, command }
-    const startedAt = this.now()
     const adapterEpoch = this.adapterEpoch
+    const request: NativeRuntimeRequest = {
+      type: 'request',
+      requestId,
+      command,
+      ...(options.diagnostic
+        ? {
+            diagnostic: {
+              ...options.diagnostic,
+              revision: context.revision,
+              hostEpoch: adapterEpoch,
+            },
+          }
+        : {}),
+    }
+    const startedAt = this.now()
     this.log('request_enqueued', {
       ...context,
       requestId,
+      commandStage: 'electron_queue',
+      outcome: 'accepted',
       timeoutMs,
       pendingCount: this.pending.size + 1,
     })
@@ -378,9 +429,15 @@ export class NativeRuntimeSupervisor {
         this.log('request_timed_out', {
           ...context,
           requestId,
+          commandStage: 'completed',
+          outcome: 'timeout',
           timeoutMs,
           durationMs: this.now() - (timedOut?.startedAt ?? startedAt),
           pendingCount: this.pending.size,
+        })
+        this.logCommandSummary(context, requestId, 'timeout', {
+          durationMs: this.now() - (timedOut?.startedAt ?? startedAt),
+          errorCode: 'request_timeout',
         })
         const error = new NativeRuntimeRequestError(
           nativeRuntimeError('request_timeout', timeoutMessage, {
@@ -432,6 +489,8 @@ export class NativeRuntimeSupervisor {
       this.log('request_posted', {
         ...context,
         requestId,
+        commandStage: 'electron_transport',
+        outcome: 'accepted',
         timeoutMs,
         pendingCount: this.pending.size,
       })
@@ -443,6 +502,8 @@ export class NativeRuntimeSupervisor {
       this.log('request_post_failed', {
         ...context,
         requestId,
+        commandStage: 'electron_transport',
+        outcome: 'error',
         pendingCount: this.pending.size,
         message,
       })
@@ -633,8 +694,13 @@ export class NativeRuntimeSupervisor {
         this.log(pending.kind === 'probe' ? 'probe_reply_ok' : 'request_reply_ok', {
           ...pending.context,
           requestId: message.requestId,
+          commandStage: 'completed',
+          outcome: 'success',
           durationMs: this.now() - pending.startedAt,
           pendingCount: this.pending.size,
+        })
+        this.logCommandSummary(pending.context, message.requestId, 'success', {
+          durationMs: this.now() - pending.startedAt,
         })
         pending.resolve(message.result)
         if (
@@ -661,10 +727,16 @@ export class NativeRuntimeSupervisor {
         this.log(pending.kind === 'probe' ? 'probe_reply_error' : 'request_reply_error', {
           ...pending.context,
           requestId: message.requestId,
+          commandStage: 'completed',
+          outcome: 'error',
           durationMs: this.now() - pending.startedAt,
           pendingCount: this.pending.size,
           errorCode: message.error.code,
           message: message.error.message,
+        })
+        this.logCommandSummary(pending.context, message.requestId, 'error', {
+          durationMs: this.now() - pending.startedAt,
+          errorCode: message.error.code,
         })
         const error = new NativeRuntimeRequestError(message.error)
         pending.reject(error)
@@ -873,9 +945,16 @@ export class NativeRuntimeSupervisor {
     this.log('request_rejected', {
       ...pending.context,
       requestId,
+      commandStage: 'completed',
+      outcome: 'error',
       durationMs: this.now() - pending.startedAt,
       pendingCount: this.pending.size,
       message: error.message,
+      errorCode:
+        error instanceof NativeRuntimeRequestError ? error.detail.code : undefined,
+    })
+    this.logCommandSummary(pending.context, requestId, 'error', {
+      durationMs: this.now() - pending.startedAt,
       errorCode:
         error instanceof NativeRuntimeRequestError ? error.detail.code : undefined,
     })
@@ -1108,6 +1187,7 @@ export class NativeRuntimeSupervisor {
     const context: NativeRuntimeRequestContext = {
       stage: command.type,
       lane,
+      hostEpoch: adapterEpoch,
     }
     const timeoutMs = this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
     const timeout = setTimeout(() => {
@@ -1118,9 +1198,15 @@ export class NativeRuntimeSupervisor {
       this.log('probe_timed_out', {
         ...context,
         requestId,
+        commandStage: 'completed',
+        outcome: 'timeout',
         timeoutMs,
         durationMs: this.now() - startedAt,
         pendingCount: this.pending.size,
+      })
+      this.logCommandSummary(context, requestId, 'timeout', {
+        durationMs: this.now() - startedAt,
+        errorCode: 'request_timeout',
       })
       this.recordCameraReadStall(
         lane,
@@ -1162,6 +1248,8 @@ export class NativeRuntimeSupervisor {
       this.log('probe_enqueued', {
         ...context,
         requestId,
+        commandStage: 'electron_transport',
+        outcome: 'accepted',
         timeoutMs,
         pendingCount: this.pending.size,
         message: timeoutMessage,
@@ -1307,6 +1395,21 @@ export class NativeRuntimeSupervisor {
 
   private now() {
     return (this.options.now ?? Date.now)()
+  }
+
+  private logCommandSummary(
+    context: NativeRuntimeRequestContext,
+    requestId: string | undefined,
+    outcome: 'success' | 'error' | 'timeout' | 'rejected',
+    detail: Pick<DiagnosticLogRecord, 'durationMs' | 'errorCode'> = {},
+  ) {
+    this.log('command_summary', {
+      ...context,
+      requestId,
+      commandStage: 'completed',
+      outcome,
+      ...detail,
+    })
   }
 
   private log(

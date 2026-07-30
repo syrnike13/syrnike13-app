@@ -115,6 +115,110 @@ describe('NativeRuntimeSupervisor', () => {
     })
   })
 
+  it('carries action, operation, revision, generation, host, and request correlation', async () => {
+    const adapter = new FakeAdapter()
+    const diagnostics: Array<Record<string, unknown>> = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+      diagnostics: (record) => diagnostics.push(record),
+    })
+
+    const start = supervisor.start()
+    adapter.ready(MEDIA_READY)
+    await start
+    const request = supervisor.request(
+      {
+        type: 'connectMicrophone',
+        sessionId: 'session-a',
+        generation: 7,
+        excludeProcessId: 42,
+        options: {
+          kind: 'microphone',
+          requestId: 'media-a',
+          participantIdentity: 'private-participant',
+          muted: false,
+        },
+      },
+      1_000,
+      {
+        diagnostic: {
+          actionId: 'media-action-a',
+          operationId: 'operation-a',
+          revision: 11,
+        },
+      },
+    )
+    await vi.waitFor(() => expect(adapter.requests).toHaveLength(1))
+
+    expect(adapter.requests[0]).toMatchObject({
+      diagnostic: {
+        actionId: 'media-action-a',
+        operationId: 'operation-a',
+        revision: 11,
+        hostEpoch: 1,
+      },
+    })
+    adapter.reply(0, { started: true })
+    await request
+
+    const failedRequest = supervisor.request(
+      {
+        type: 'connectMicrophone',
+        sessionId: 'session-a',
+        generation: 7,
+        excludeProcessId: 42,
+        options: {
+          kind: 'microphone',
+          requestId: 'media-a',
+          participantIdentity: 'private-participant',
+          muted: false,
+        },
+      },
+      1_000,
+      {
+        diagnostic: {
+          actionId: 'media-action-a',
+          operationId: 'operation-a',
+          revision: 11,
+        },
+      },
+    )
+    await vi.waitFor(() => expect(adapter.requests).toHaveLength(2))
+    adapter.replyError(1, 'encoder_unavailable')
+    await expect(failedRequest).rejects.toMatchObject({
+      detail: { code: 'encoder_unavailable' },
+    })
+
+    expect(
+      diagnostics.filter((record) => record.event === 'command_summary'),
+    ).toEqual([
+      expect.objectContaining({
+        actionId: 'media-action-a',
+        operation: 'operation-a',
+        revision: 11,
+        generation: 7,
+        hostEpoch: 1,
+        requestId: adapter.requests[0].requestId,
+        stage: 'connectMicrophone',
+        commandStage: 'completed',
+        outcome: 'success',
+      }),
+      expect.objectContaining({
+        actionId: 'media-action-a',
+        operation: 'operation-a',
+        revision: 11,
+        generation: 7,
+        hostEpoch: 1,
+        requestId: adapter.requests[1].requestId,
+        stage: 'connectMicrophone',
+        commandStage: 'completed',
+        outcome: 'error',
+        errorCode: 'encoder_unavailable',
+      }),
+    ])
+  })
+
   it('waits for scheduled backoff and resets its delay after the crash window', async () => {
     const adapters: FakeAdapter[] = []
     const scheduled: Array<{ callback(): void; delayMs: number }> = []

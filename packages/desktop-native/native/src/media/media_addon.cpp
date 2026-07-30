@@ -397,13 +397,41 @@ class MediaRuntimeBinding final : public Napi::ObjectWrap<MediaRuntimeBinding> {
           {
             {"command", command.type},
             {"requestId", command.request_id},
+            {"actionId", command.diagnostic_action_id},
+            {"operationId", command.diagnostic_operation_id},
+            {"revision", command.diagnostic_revision},
+            {"hostEpoch", command.diagnostic_host_epoch},
             {"sessionId", command.session_id},
-            {"generation", command.generation}
+            {"generation", command.generation},
+            {"commandStage", "native_addon"},
+            {"outcome", "received"}
           }
         );
       }
+      const auto command_type = command.type;
+      const auto request_id = command.request_id;
+      const auto action_id = command.diagnostic_action_id;
+      const auto operation_id = command.diagnostic_operation_id;
+      const auto revision = command.diagnostic_revision;
+      const auto host_epoch = command.diagnostic_host_epoch;
+      const auto generation = command.generation;
       if (!runtime_ || !runtime_->dispatch(std::move(command))) {
-        if (diagnostics.enabled()) diagnostics.write("media_addon_dispatch_queue_full");
+        if (diagnostics.enabled()) {
+          diagnostics.write(
+            "media_addon_dispatch_queue_full",
+            {
+              {"command", command_type},
+              {"requestId", request_id},
+              {"actionId", action_id},
+              {"operationId", operation_id},
+              {"revision", revision},
+              {"hostEpoch", host_epoch},
+              {"generation", generation},
+              {"commandStage", "native_addon"},
+              {"outcome", "rejected"}
+            }
+          );
+        }
         throw Napi::Error::New(info.Env(), "queue_full");
       }
     } catch (const Napi::Error&) {

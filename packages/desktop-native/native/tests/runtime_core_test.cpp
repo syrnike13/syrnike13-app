@@ -807,7 +807,15 @@ int main() try {
     "native_core_rotation_event",
     {
       {"index", std::uint64_t{3'000}},
-      {"message", rotation_payload}
+      {"message", rotation_payload},
+      {"actionId", "media-action-a"},
+      {"operationId", "operation-a"},
+      {"revision", std::uint64_t{4}},
+      {"generation", std::uint64_t{7}},
+      {"hostEpoch", std::uint64_t{2}},
+      {"requestId", "request-a"},
+      {"commandStage", "native_worker"},
+      {"outcome", "success"}
     }
   );
   diagnostic_log.shutdown();
@@ -878,6 +886,22 @@ int main() try {
   require(
     latest_diagnostic_contents.find("\"index\":3000") != std::string::npos,
     "native diagnostic rotation did not retain the newest event"
+  );
+  require(
+    latest_diagnostic_contents.find("\"actionId\":\"media-action-a\"") !=
+        std::string::npos &&
+      latest_diagnostic_contents.find("\"operationId\":\"operation-a\"") !=
+        std::string::npos &&
+      latest_diagnostic_contents.find("\"revision\":4") != std::string::npos &&
+      latest_diagnostic_contents.find("\"generation\":7") != std::string::npos &&
+      latest_diagnostic_contents.find("\"hostEpoch\":2") != std::string::npos &&
+      latest_diagnostic_contents.find("\"requestId\":\"request-a\"") !=
+        std::string::npos &&
+      latest_diagnostic_contents.find("\"commandStage\":\"native_worker\"") !=
+        std::string::npos &&
+      latest_diagnostic_contents.find("\"outcome\":\"success\"") !=
+        std::string::npos,
+    "native diagnostic logger omitted command correlation"
   );
   latest_diagnostic.close();
   std::filesystem::remove(diagnostic_path);

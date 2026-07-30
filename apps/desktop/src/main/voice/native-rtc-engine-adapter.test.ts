@@ -9,6 +9,7 @@ import type {
   NativeRuntimeEvent,
 } from '../native-runtime/contract'
 import type {
+  NativeRuntimeRequestOptions,
   NativeRuntimeGenerationLane,
   NativeRuntimeSupervisorSnapshot,
 } from '../native-runtime/runtime-supervisor'
@@ -23,6 +24,7 @@ class FakeRuntime implements NativeVoiceRuntime {
     command: NativeRuntimeCommand
     timeoutMs: number
   }> = []
+  readonly diagnostics: Array<NativeRuntimeRequestOptions['diagnostic']> = []
   private readonly eventListeners = new Set<(event: NativeRuntimeEvent) => void>()
   private readonly stateListeners = new Set<
     (snapshot: NativeRuntimeSupervisorSnapshot) => void
@@ -44,9 +46,14 @@ class FakeRuntime implements NativeVoiceRuntime {
     ) => Promise<unknown> | undefined,
   ) {}
 
-  async request<T = unknown>(command: NativeRuntimeCommand, timeoutMs: number) {
+  async request<T = unknown>(
+    command: NativeRuntimeCommand,
+    timeoutMs: number,
+    options: NativeRuntimeRequestOptions = {},
+  ) {
     this.commands.push(command)
     this.timeouts.push({ command, timeoutMs })
+    this.diagnostics.push(options.diagnostic)
     await this.onRequest?.(command)
     return undefined as T
   }
@@ -163,6 +170,22 @@ describe('NativeRtcEngineAdapter', () => {
         participantIdentity: lease.credential.participantIdentity,
         muted: true,
       },
+    })
+    const voiceIndex = runtime.commands.findIndex(
+      (command) => command.type === 'connectVoice',
+    )
+    const microphoneIndex = runtime.commands.findIndex(
+      (command) => command.type === 'connectMicrophone',
+    )
+    expect(runtime.diagnostics[voiceIndex]).toMatchObject({
+      actionId: expect.stringMatching(/^media-action-/),
+      operationId: 'op-a',
+      revision: 0,
+    })
+    expect(runtime.diagnostics[microphoneIndex]).toMatchObject({
+      actionId: expect.stringMatching(/^media-action-/),
+      operationId: 'op-a',
+      revision: 1,
     })
     adapter.dispose()
   })

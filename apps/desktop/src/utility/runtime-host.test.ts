@@ -19,6 +19,7 @@ describe('runNativeUtilityHost', () => {
     let emitFromRuntime:
       | ((event: Record<string, unknown>) => void)
       | undefined
+    const dispatchedCommands: Array<Record<string, unknown>> = []
     const exit = vi.fn()
     const shutdown = vi.fn(async () => undefined)
     const addExtraParameter = vi.fn()
@@ -87,6 +88,7 @@ describe('runNativeUtilityHost', () => {
           })
           return {
             dispatch: (command) => {
+              dispatchedCommands.push(command)
               if (command.type !== 'shutdown') return
               emit({
                 type: 'reply',
@@ -155,6 +157,12 @@ describe('runNativeUtilityHost', () => {
       type: 'request',
       requestId: 'shutdown-1',
       command: { type: 'shutdown' },
+      diagnostic: {
+        actionId: 'media-action-a',
+        operationId: 'operation-a',
+        revision: 5,
+        hostEpoch: 3,
+      },
     }
     messageListener?.({ data: shutdownRequest })
     expect(addExtraParameter).toHaveBeenCalledWith(
@@ -171,5 +179,11 @@ describe('runNativeUtilityHost', () => {
       requestId: 'shutdown-1',
       ok: true,
     })
+    expect(dispatchedCommands).toContainEqual(
+      expect.objectContaining({
+        requestId: 'shutdown-1',
+        diagnostic: shutdownRequest.diagnostic,
+      }),
+    )
   })
 })

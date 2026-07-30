@@ -42,11 +42,15 @@ export type DiagnosticLogRecord = {
   kind?: string
   lane?: string
   operation?: string
+  actionId?: string
   nativeEventType?: string
   nativeSequence?: number
   stage?: string
+  commandStage?: string
+  outcome?: string
   sessionId?: string
   requestId?: string
+  hostEpoch?: number
   generation?: number
   candidateGeneration?: number
   fenceGeneration?: number
