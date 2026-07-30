@@ -16,6 +16,7 @@ import {
   sanitizeRuntimeError,
   type NativeRuntimeEvent,
   type NativeRuntimeKind,
+  type NativeRuntimeRequest,
   type NativeRuntimeReply,
 } from '../main/native-runtime/contract'
 import {
@@ -325,7 +326,7 @@ export async function runNativeUtilityHost(
         failContractCorruption()
         return
       }
-      diagnosticLog?.log('native_reply', rawEvent)
+      if (!rawEvent.ok) diagnosticLog?.log('native_reply', rawEvent)
       const reply = rawEvent.ok
         ? rawEvent
         : { ...rawEvent, error: sanitizeRuntimeError(rawEvent.error) }
@@ -347,7 +348,7 @@ export async function runNativeUtilityHost(
     ) {
       annotateCrash('native_camera_stage', `error:${rawEvent.error.code}`)
     }
-    if (rawEvent.type !== 'microphoneMetrics') {
+    if (shouldLogNativeRuntimeEvent(rawEvent)) {
       diagnosticLog?.log('native_event', rawEvent)
     }
     hostParentPort.postMessage({ type: 'event', event: rawEvent })
@@ -455,7 +456,8 @@ export async function runNativeUtilityHost(
     } else if (request.command.type === 'disconnectCamera') {
       annotateCrash('native_camera_stage', 'disconnect_dispatch')
     }
-    diagnosticLog?.log('incoming_dispatch', request)
+    const logDispatch = !isFrameReleaseCommand(request.command)
+    if (logDispatch) diagnosticLog?.log('incoming_dispatch', request)
     try {
       if (request.command.type === 'shutdown') {
         shutdownRequestId = request.requestId
@@ -465,16 +467,18 @@ export async function runNativeUtilityHost(
         requestId: request.requestId,
         diagnostic: request.diagnostic,
       })
-      diagnosticLog?.log('dispatch_forwarded', {
-        requestId: request.requestId,
-        command: request.command.type,
-        actionId: request.diagnostic?.actionId,
-        operationId: request.diagnostic?.operationId,
-        revision: request.diagnostic?.revision,
-        hostEpoch: request.diagnostic?.hostEpoch,
-        commandStage: 'utility_dispatch',
-        outcome: 'accepted',
-      })
+      if (logDispatch) {
+        diagnosticLog?.log('dispatch_forwarded', {
+          requestId: request.requestId,
+          command: request.command.type,
+          actionId: request.diagnostic?.actionId,
+          operationId: request.diagnostic?.operationId,
+          revision: request.diagnostic?.revision,
+          hostEpoch: request.diagnostic?.hostEpoch,
+          commandStage: 'utility_dispatch',
+          outcome: 'accepted',
+        })
+      }
     } catch (error) {
       diagnosticLog?.log('dispatch_failed', {
         requestId: request.requestId,
@@ -491,6 +495,21 @@ export async function runNativeUtilityHost(
       if (request.requestId === shutdownRequestId) shutdown()
     }
   })
+}
+
+export function shouldLogNativeRuntimeEvent(
+  event: Pick<NativeRuntimeEvent, 'type'>,
+) {
+  return event.type !== 'microphoneMetrics' &&
+    event.type !== 'remoteVideoFrame' &&
+    event.type !== 'localScreenPreviewFrame' &&
+    event.type !== 'localCameraPreviewFrame'
+}
+
+function isFrameReleaseCommand(command: NativeRuntimeRequest['command']) {
+  return command.type === 'releaseRemoteVideoFrame' ||
+    command.type === 'releaseLocalScreenPreviewFrame' ||
+    command.type === 'releaseLocalCameraPreviewFrame'
 }
 
 function postIncompatibleReady(

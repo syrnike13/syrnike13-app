@@ -880,6 +880,15 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
   }
 
   SubmitResult Submit(InputJob&& job) {
+    // Input ownership and encoded output are not one-to-one: an MFT may drop
+    // an accepted input after releasing its tracked sample. Keep the metadata
+    // FIFO bounded and recreate an encoder that stops producing enough output
+    // instead of retaining one entry for every dropped frame indefinitely.
+    if (pending_outputs_.size() >= kMaxPendingOutputs) {
+      TraceEncoder("PendingOutputLimit", MF_E_NOTACCEPTING,
+                   static_cast<long long>(pending_outputs_.size()));
+      return SubmitResult::kFailed;
+    }
     if (job.keyframe &&
         !SetCodecU32(encoder_.Get(), CODECAPI_AVEncVideoForceKeyFrame, TRUE)) {
       // A PLI/FIR cannot be acknowledged as accepted when the MFT did not
@@ -1142,6 +1151,10 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
   }
 
   static constexpr size_t kMaxQueuedInputs = 6;
+  // Native screen capture is capped at 60 fps. Three seconds permits a very
+  // conservative hardware pipeline delay while still placing a hard ceiling
+  // on metadata and completed tracked-sample callbacks retained after drops.
+  static constexpr size_t kMaxPendingOutputs = 60 * 3;
   static constexpr size_t kMaxNotAcceptingRetries = 4;
   static constexpr auto kNotAcceptingRetryDelay =
       std::chrono::milliseconds(500);

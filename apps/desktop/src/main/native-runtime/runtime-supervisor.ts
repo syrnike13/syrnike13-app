@@ -1419,6 +1419,7 @@ export class NativeRuntimeSupervisor {
       'scope' | 'event' | 'runtime'
     >,
   ) {
+    if (isSuccessfulFrameReleaseDiagnostic(event, detail)) return
     this.options.diagnostics?.({
       scope: 'native-runtime-supervisor',
       event,
@@ -1426,6 +1427,24 @@ export class NativeRuntimeSupervisor {
       ...detail,
     })
   }
+}
+
+function isSuccessfulFrameReleaseDiagnostic(
+  event: string,
+  detail: Pick<DiagnosticLogRecord, 'stage' | 'outcome'>,
+) {
+  if (
+    detail.stage !== 'releaseRemoteVideoFrame' &&
+    detail.stage !== 'releaseLocalScreenPreviewFrame' &&
+    detail.stage !== 'releaseLocalCameraPreviewFrame'
+  ) {
+    return false
+  }
+  return event === 'request_start' ||
+    event === 'request_enqueued' ||
+    event === 'request_posted' ||
+    event === 'request_reply_ok' ||
+    (event === 'command_summary' && detail.outcome === 'success')
 }
 
 function failure(

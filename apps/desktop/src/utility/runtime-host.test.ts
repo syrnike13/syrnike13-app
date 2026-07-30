@@ -4,12 +4,34 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   NATIVE_RUNTIME_CONTRACT_VERSION,
+  type NativeRuntimeEvent,
   type NativeRuntimeRequest,
 } from '../main/native-runtime/contract'
 import { NATIVE_RUNTIME_LIVEKIT_VERSION } from '../main/native-runtime/native-artifacts'
-import { runNativeUtilityHost } from './runtime-host'
+import {
+  runNativeUtilityHost,
+  shouldLogNativeRuntimeEvent,
+} from './runtime-host'
 
 describe('runNativeUtilityHost', () => {
+  it('does not enqueue high-frequency video frames in diagnostic logs', () => {
+    for (const type of [
+      'remoteVideoFrame',
+      'localScreenPreviewFrame',
+      'localCameraPreviewFrame',
+      'microphoneMetrics',
+    ] satisfies NativeRuntimeEvent['type'][]) {
+      expect(shouldLogNativeRuntimeEvent({ type } as NativeRuntimeEvent)).toBe(
+        false,
+      )
+    }
+    expect(
+      shouldLogNativeRuntimeEvent({
+        type: 'runtimeError',
+      } as NativeRuntimeEvent),
+    ).toBe(true)
+  })
+
   it('ignores a requestless native reply without corrupting the host contract', async () => {
     const commitSha = 'a'.repeat(40)
     const nativeRoot = path.resolve('test-native-runtime')

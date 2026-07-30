@@ -111,6 +111,19 @@ describe('ElectronUtilityAdapter', () => {
       requestId: 'request-1',
       command: { type: 'shutdown' },
     })
+    for (const type of [
+      'remoteVideoFrame',
+      'localScreenPreviewFrame',
+      'localCameraPreviewFrame',
+      'microphoneMetrics',
+    ]) {
+      child.emit('message', { type: 'event', event: { type } })
+    }
+    child.emit('message', {
+      type: 'reply',
+      requestId: 'frame-release',
+      ok: true,
+    })
     child.emit('message', { type: 'ready', contractVersion: 4, runtime: 'media' })
     adapter.kill()
 
