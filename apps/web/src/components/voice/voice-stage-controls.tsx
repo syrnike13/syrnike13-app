@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react'
-import { PhoneXmark } from 'iconoir-react/solid'
 import {
   ChevronDownIcon,
   ExternalLinkIcon,
@@ -15,6 +14,7 @@ import {
   MonitorUpIcon,
   MonitorXIcon,
   MoreHorizontalIcon,
+  PhoneOffIcon,
   Settings2Icon,
   VideoIcon,
   VideoOffIcon,
@@ -838,7 +838,7 @@ function VoiceStageExitControl({
             data-voice-stage-exit-icon="voice"
             aria-hidden
           >
-            <PhoneXmark className="size-5" />
+            <PhoneOffIcon className="size-5" />
           </span>
         )}
       </button>
