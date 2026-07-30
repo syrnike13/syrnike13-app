@@ -218,7 +218,7 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
       drainTimer.unref?.()
     }
     child.on('message', (message) => {
-      if (!isMicrophoneMetricsTransportMessage(message)) {
+      if (!isHighFrequencyMediaTransportMessage(message)) {
         this.diagnosticLog?.log('transport_message', message)
       }
       callbacks.onMessage(message)
@@ -239,7 +239,9 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
 
   postMessage(message: NativeRuntimeRequest) {
     if (!this.child) throw new Error('Native utility process is not running')
-    this.diagnosticLog?.log('transport_post', message)
+    if (!isFrameReleaseCommand(message.command)) {
+      this.diagnosticLog?.log('transport_post', message)
+    }
     this.child.postMessage(message)
   }
 
@@ -354,9 +356,14 @@ function renameSyncIfPresent(source: string, destination: string) {
   }
 }
 
-function isMicrophoneMetricsTransportMessage(message: unknown) {
+function isHighFrequencyMediaTransportMessage(message: unknown) {
   if (!message || typeof message !== 'object') return false
-  const envelope = message as { type?: unknown; event?: unknown }
+  const envelope = message as {
+    type?: unknown
+    event?: unknown
+    ok?: unknown
+  }
+  if (envelope.type === 'reply' && envelope.ok === true) return true
   if (
     envelope.type !== 'event' ||
     !envelope.event ||
@@ -364,7 +371,17 @@ function isMicrophoneMetricsTransportMessage(message: unknown) {
   ) {
     return false
   }
-  return (envelope.event as { type?: unknown }).type === 'microphoneMetrics'
+  const type = (envelope.event as { type?: unknown }).type
+  return type === 'microphoneMetrics' ||
+    type === 'remoteVideoFrame' ||
+    type === 'localScreenPreviewFrame' ||
+    type === 'localCameraPreviewFrame'
+}
+
+function isFrameReleaseCommand(command: NativeRuntimeRequest['command']) {
+  return command.type === 'releaseRemoteVideoFrame' ||
+    command.type === 'releaseLocalScreenPreviewFrame' ||
+    command.type === 'releaseLocalCameraPreviewFrame'
 }
 
 function nativeUtilityEnvironment(

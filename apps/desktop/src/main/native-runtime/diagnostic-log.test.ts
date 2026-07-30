@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   createNativeDiagnosticLog,
@@ -149,6 +149,39 @@ describe('native diagnostic log', () => {
       .split('\n')
       .map((line) => JSON.parse(line))
     expect(lines.map((line) => line.event)).toEqual(['utility_ready'])
+  })
+
+  it('bounds queued records while diagnostic storage is stalled', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'syrnike-native-diagnostic-'))
+    directories.push(rootDir)
+    const session = createNativeDiagnosticSession({
+      runtime: 'media',
+      rootDir,
+      randomUUID: () => 'run-stalled-storage',
+    })
+    let releaseStorage!: () => void
+    const storageAvailable = new Promise<void>((resolve) => {
+      releaseStorage = resolve
+    })
+    const appendFileImpl = vi.fn(() => storageAvailable)
+    const log = createNativeDiagnosticLog({
+      runtime: 'media',
+      role: 'utility',
+      runId: session.runId,
+      directory: session.directory,
+      filePath: session.paths.utilityPath,
+      appendFileImpl: appendFileImpl as never,
+      maxPendingWrites: 2,
+    })
+
+    for (let index = 0; index < 100; index += 1) {
+      log.log('native_event', { index })
+    }
+    await vi.waitFor(() => expect(appendFileImpl).toHaveBeenCalledTimes(1))
+    releaseStorage()
+    await log.close()
+
+    expect(appendFileImpl).toHaveBeenCalledTimes(2)
   })
 
   it('rotates JSONL files before they exceed the configured bound', async () => {

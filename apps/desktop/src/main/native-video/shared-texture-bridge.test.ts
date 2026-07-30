@@ -14,7 +14,11 @@ function frame(sequence: number, trackId = 'camera'): NativeSharedVideoFrame {
   return { sessionId: 's', generation: 2, trackId, participantIdentity: 'p', source: trackId === 'screen' ? 'screen' : 'camera', local: false, sequence, width: 640, height: 360, timestampUs: sequence * 1_000, runtimeEpoch: 0, ntHandle: Buffer.alloc(8) }
 }
 
-function harness(maxInFlight = 3, onTrackStalled = vi.fn()) {
+function harness(
+  maxInFlight = 3,
+  onTrackStalled = vi.fn(),
+  maxRetainedBytes?: number,
+) {
   const callbacks: Array<() => void> = []
   const release = vi.fn()
   const imported = vi.fn(() => ({
@@ -32,6 +36,7 @@ function harness(maxInFlight = 3, onTrackStalled = vi.fn()) {
     getWindow: () => ({ isDestroyed: () => false, webContents: { isDestroyed: () => false, mainFrame: {} } }) as never,
     release,
     maxInFlight,
+    maxRetainedBytes,
     stallTimeoutMs: 1_000,
     onTrackStalled,
     importTexture,
@@ -68,7 +73,7 @@ describe('NativeSharedTextureBridge', () => {
     expect(h.sendTexture.mock.calls[1]?.[1]).toMatchObject({ rendererEpoch: 1 })
   })
 
-  it('bounds main references and waits for the Electron GPU fence', async () => {
+  it('bounds unfenced references and waits for the Electron GPU fence', async () => {
     const h = harness(2)
     await h.bridge.deliver(frame(1))
     await h.bridge.deliver(frame(2))
@@ -124,11 +129,50 @@ describe('NativeSharedTextureBridge', () => {
 
       expect(h.onTrackStalled).toHaveBeenCalledTimes(1)
       expect(h.onTrackStalled).toHaveBeenCalledWith(frame(1, 'screen'))
-      expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(true)
-      expect(h.release).not.toHaveBeenCalled()
+      expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(false)
+      expect(h.bridge.inFlightCount).toBe(2)
+      expect(h.release).toHaveBeenCalledWith(frame(3, 'screen'))
+
+      h.callbacks[0]()
+      expect(await h.bridge.deliver(frame(4, 'screen'))).toBe(true)
+      expect(h.bridge.inFlightCount).toBe(2)
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('does not multiply retained textures across repeated stalled restarts', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = harness(2)
+      await h.bridge.deliver(frame(1, 'screen'))
+      await h.bridge.deliver(frame(2, 'screen'))
+
+      await vi.advanceTimersByTimeAsync(1_000)
+      for (let sequence = 3; sequence <= 100; sequence += 1) {
+        expect(await h.bridge.deliver(frame(sequence, 'screen'))).toBe(false)
+      }
+
+      expect(h.bridge.inFlightCount).toBe(2)
+      expect(h.importTexture).toHaveBeenCalledTimes(2)
+      expect(h.onTrackStalled).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('bounds retained texture bytes across different tracks', async () => {
+    const bytesPerFrame = frame(1).width * frame(1).height * 4
+    const h = harness(3, vi.fn(), bytesPerFrame * 2)
+
+    expect(await h.bridge.deliver(frame(1, 'camera-a'))).toBe(true)
+    expect(await h.bridge.deliver(frame(1, 'camera-b'))).toBe(true)
+    expect(await h.bridge.deliver(frame(1, 'camera-c'))).toBe(false)
+    expect(h.bridge.retainedByteCount).toBe(bytesPerFrame * 2)
+
+    h.callbacks[0]()
+    expect(h.bridge.retainedByteCount).toBe(bytesPerFrame)
+    expect(await h.bridge.deliver(frame(2, 'camera-c'))).toBe(true)
   })
 
   it('restarts a track after repeated shared-texture import failures', async () => {
@@ -162,8 +206,12 @@ describe('NativeSharedTextureBridge', () => {
     h.bridge.rendererReloaded()
     expect(h.release).not.toHaveBeenCalled()
     expect(await h.bridge.deliver(frame(2))).toBe(true)
+    expect(await h.bridge.deliver(frame(3))).toBe(true)
+    expect(await h.bridge.deliver(frame(4))).toBe(false)
+    expect(h.bridge.inFlightCount).toBe(3)
     h.callbacks[0]()
-    expect(h.release).toHaveBeenCalledTimes(1)
+    expect(h.release).toHaveBeenCalledTimes(2)
+    expect(await h.bridge.deliver(frame(5))).toBe(true)
   })
 
   it('retires every retained frame for a lost native voice session', async () => {
@@ -217,7 +265,9 @@ describe('NativeSharedTextureBridge', () => {
       await vi.advanceTimersByTimeAsync(1_000)
 
       expect(h.onTrackStalled).not.toHaveBeenCalled()
-      expect(await h.bridge.deliver(frame(2, 'screen'))).toBe(true)
+      expect(await h.bridge.deliver(frame(2, 'screen'))).toBe(false)
+      h.callbacks[0]()
+      expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(true)
     } finally {
       vi.useRealTimers()
     }

@@ -112,6 +112,7 @@ type CreateNativeDiagnosticLogOptions = {
   writeFileImpl?: typeof writeFile
   maxFileBytes?: number
   maxRolledFiles?: number
+  maxPendingWrites?: number
 }
 
 export interface NativeDiagnosticLog {
@@ -142,6 +143,7 @@ const MAX_OBJECT_KEYS = 64
 const DIAGNOSTIC_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000
 export const NATIVE_DIAGNOSTIC_MAX_FILE_BYTES = 5 * 1024 * 1024
 export const NATIVE_DIAGNOSTIC_MAX_ROLLED_FILES = 2
+export const NATIVE_DIAGNOSTIC_MAX_PENDING_WRITES = 1_024
 const MAX_RETAINED_DIAGNOSTIC_SESSIONS = 20
 const MAX_RETAINED_DIAGNOSTIC_BYTES = 200 * 1024 * 1024
 
@@ -242,12 +244,17 @@ export function createNativeDiagnosticLog(
     options.maxFileBytes ?? NATIVE_DIAGNOSTIC_MAX_FILE_BYTES
   const maxRolledFiles =
     options.maxRolledFiles ?? NATIVE_DIAGNOSTIC_MAX_ROLLED_FILES
+  const maxPendingWrites = Math.max(
+    1,
+    options.maxPendingWrites ?? NATIVE_DIAGNOSTIC_MAX_PENDING_WRITES,
+  )
   const now = options.now ?? Date.now
   const monotonicNow = options.monotonicNow ?? (() => performance.now())
   const pid = options.pid ?? process.pid
   let closed = false
   let sequence = 0
   let writtenBytes = 0
+  let pendingWrites = 0
 
   let queue = mkdirImpl(options.directory, { recursive: true }).then(async () => {
     writtenBytes = await statImpl(options.filePath)
@@ -291,6 +298,7 @@ export function createNativeDiagnosticLog(
     latestPath: options.latestPath,
     log(event, data) {
       if (closed) return
+      if (pendingWrites >= maxPendingWrites) return
       try {
         const epochMs = now()
         const entry: DiagnosticEnvelope = {
@@ -314,22 +322,27 @@ export function createNativeDiagnosticLog(
         }
         const line = `${JSON.stringify(entry)}\n`
         const lineBytes = Buffer.byteLength(line)
+        pendingWrites += 1
         void enqueue(async () => {
-          if (
-            maxFileBytes > 0 &&
-            writtenBytes > 0 &&
-            writtenBytes + lineBytes > maxFileBytes
-          ) {
-            await rotateDiagnosticFile(
-              options.filePath,
-              maxRolledFiles,
-              renameImpl,
-              rmImpl,
-            )
-            writtenBytes = 0
+          try {
+            if (
+              maxFileBytes > 0 &&
+              writtenBytes > 0 &&
+              writtenBytes + lineBytes > maxFileBytes
+            ) {
+              await rotateDiagnosticFile(
+                options.filePath,
+                maxRolledFiles,
+                renameImpl,
+                rmImpl,
+              )
+              writtenBytes = 0
+            }
+            await appendFileImpl(options.filePath, line, 'utf8')
+            writtenBytes += lineBytes
+          } finally {
+            pendingWrites -= 1
           }
-          await appendFileImpl(options.filePath, line, 'utf8')
-          writtenBytes += lineBytes
         }).catch(() => undefined)
       } catch {
         // Diagnostics must never change runtime behavior.

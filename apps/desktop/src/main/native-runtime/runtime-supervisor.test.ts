@@ -219,6 +219,57 @@ describe('NativeRuntimeSupervisor', () => {
     ])
   })
 
+  it('omits successful per-frame release diagnostics but preserves failures', async () => {
+    const adapter = new FakeAdapter()
+    const diagnostics: Array<Record<string, unknown>> = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+      diagnostics: (record) => diagnostics.push(record),
+    })
+
+    const start = supervisor.start()
+    adapter.ready(MEDIA_READY)
+    await start
+    const command = {
+      type: 'releaseRemoteVideoFrame' as const,
+      sessionId: 'voice',
+      generation: 1,
+      trackId: 'camera',
+      sequence: 1,
+    }
+    const released = supervisor.request(command, 1_000)
+    await vi.waitFor(() => expect(adapter.requests).toHaveLength(1))
+    adapter.reply(0, undefined)
+    await released
+
+    expect(
+      diagnostics.filter((record) => record.stage === command.type),
+    ).toEqual([])
+
+    const failed = supervisor.request({ ...command, sequence: 2 }, 1_000)
+    await vi.waitFor(() => expect(adapter.requests).toHaveLength(2))
+    adapter.replyError(1, 'release_failed')
+    await expect(failed).rejects.toBeInstanceOf(NativeRuntimeRequestError)
+
+    expect(
+      diagnostics.filter((record) => record.stage === command.type),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'request_reply_error',
+          outcome: 'error',
+          errorCode: 'release_failed',
+        }),
+        expect.objectContaining({
+          event: 'command_summary',
+          outcome: 'error',
+          errorCode: 'release_failed',
+        }),
+      ]),
+    )
+  })
+
   it('waits for scheduled backoff and resets its delay after the crash window', async () => {
     const adapters: FakeAdapter[] = []
     const scheduled: Array<{ callback(): void; delayMs: number }> = []
