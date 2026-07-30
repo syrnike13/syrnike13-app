@@ -83,6 +83,14 @@ impl RtpSender {
     pub fn set_parameters(&self, parameters: RtpParameters) -> Result<(), RtcError> {
         self.handle.set_parameters(parameters)
     }
+
+    /// Sets the preferred video encoder backend for this sender.
+    ///
+    /// Prefer the creation-time methods on [`crate::peer_connection::PeerConnection`]
+    /// when the backend is required before negotiation starts.
+    pub fn set_video_encoder_backend(&self, backend: VideoEncoderBackend) {
+        self.handle.set_video_encoder_backend(backend)
+    }
 }
 
 impl Debug for RtpSender {

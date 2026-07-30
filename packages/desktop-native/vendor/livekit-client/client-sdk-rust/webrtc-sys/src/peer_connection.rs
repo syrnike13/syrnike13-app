@@ -162,6 +162,7 @@ pub mod ffi {
             self: &PeerConnection,
             track: SharedPtr<MediaStreamTrack>,
             stream_ids: &Vec<String>,
+            video_encoder_backend: VideoEncoderBackend,
         ) -> Result<SharedPtr<RtpSender>>;
         fn remove_track(self: &PeerConnection, sender: SharedPtr<RtpSender>) -> Result<()>;
         fn get_stats(
@@ -179,6 +180,7 @@ pub mod ffi {
             self: &PeerConnection,
             media_type: MediaType,
             init: RtpTransceiverInit,
+            video_encoder_backend: VideoEncoderBackend,
         ) -> Result<SharedPtr<RtpTransceiver>>;
         fn get_senders(self: &PeerConnection) -> Vec<RtpSenderPtr>;
         fn get_receivers(self: &PeerConnection) -> Vec<RtpReceiverPtr>;
@@ -233,5 +235,34 @@ impl Default for ffi::RtcOfferAnswerOptions {
             num_simulcast_layers: 1,
             use_obsolete_sctp_sdp: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[cxx::bridge(namespace = "livekit_ffi")]
+    mod ffi_tests {
+        unsafe extern "C++" {
+            include!("livekit/peer_connection.h");
+
+            fn throw_required_video_encoder_backend_error_for_test() -> Result<String>;
+        }
+    }
+
+    use crate::rtc_error::ffi::{RtcError, RtcErrorType};
+
+    #[test]
+    fn unavailable_video_encoder_backend_error_is_serialized() {
+        let exception = ffi_tests::throw_required_video_encoder_backend_error_for_test()
+            .expect_err("test bridge must throw the required-backend error");
+        let error =
+            RtcError::parse(exception.what()).expect("backend error must use RtcError encoding");
+
+        assert_eq!(error.error_type, RtcErrorType::InternalError);
+        assert!(
+            error.message.contains("Required video encoder backend is unavailable"),
+            "unexpected error message: {}",
+            error.message
+        );
     }
 }

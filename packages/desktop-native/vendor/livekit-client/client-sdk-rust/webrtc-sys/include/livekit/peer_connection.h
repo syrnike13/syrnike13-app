@@ -42,6 +42,10 @@ namespace livekit_ffi {
 webrtc::PeerConnectionInterface::RTCConfiguration to_native_rtc_configuration(
     RtcConfiguration config);
 
+#ifdef LIVEKIT_TEST
+rust::String throw_required_video_encoder_backend_error_for_test();
+#endif
+
 class PeerConnectionObserverWrapper;
 
 class PeerConnection : webrtc::PeerConnectionObserver {
@@ -91,7 +95,8 @@ class PeerConnection : webrtc::PeerConnectionObserver {
 
   std::shared_ptr<RtpSender> add_track(
       std::shared_ptr<MediaStreamTrack> track,
-      const rust::Vec<rust::String>& stream_ids) const;
+      const rust::Vec<rust::String>& stream_ids,
+      VideoEncoderBackend video_encoder_backend) const;
 
   void remove_track(std::shared_ptr<RtpSender> sender) const;
 
@@ -108,7 +113,8 @@ class PeerConnection : webrtc::PeerConnectionObserver {
 
   std::shared_ptr<RtpTransceiver> add_transceiver_for_media(
       MediaType media_type,
-      RtpTransceiverInit init) const;
+      RtpTransceiverInit init,
+      VideoEncoderBackend video_encoder_backend) const;
 
   rust::Vec<RtpSenderPtr> get_senders() const;
 

@@ -202,17 +202,18 @@ void RtpSender::set_parameters(RtpParameters params) const {
     throw std::runtime_error(serialize_error(to_error(error)));
 }
 
-void RtpSender::initialize_video_encoder_backend(
-    VideoEncoderBackend backend) const {
+void RtpSender::set_video_encoder_backend(VideoEncoderBackend backend) const {
   if (sender_->media_type() != webrtc::MediaType::VIDEO) {
     if (backend != VideoEncoderBackend::Auto) {
       RTC_LOG(LS_WARNING)
-          << "Ignoring video encoder backend contract on non-video sender.";
+          << "Ignoring video encoder backend preference on non-video sender.";
     }
     return;
   }
 
   if (backend == VideoEncoderBackend::Auto) {
+    sender_->SetEncoderSelector(
+        std::unique_ptr<webrtc::VideoEncoderFactory::EncoderSelectorInterface>());
     return;
   }
 

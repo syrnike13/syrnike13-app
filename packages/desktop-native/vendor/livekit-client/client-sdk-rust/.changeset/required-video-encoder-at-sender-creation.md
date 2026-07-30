@@ -4,5 +4,5 @@
 "livekit": patch
 ---
 
-Attach required video encoder backends during sender creation and fail before
-creating a transceiver when the backend is unavailable.
+Add source-compatible creation-time APIs for required video encoder backends
+across track and transceiver sender paths, with explicit unavailable errors.

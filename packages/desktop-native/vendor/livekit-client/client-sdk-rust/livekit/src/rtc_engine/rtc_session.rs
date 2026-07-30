@@ -721,7 +721,6 @@ impl RtcSession {
             direction: RtpTransceiverDirection::RecvOnly,
             stream_ids: Vec::new(),
             send_encodings: Vec::new(),
-            video_encoder_backend: VideoEncoderBackend::Auto,
         };
 
         for _ in 0..audio_count {
@@ -1835,14 +1834,14 @@ impl SessionInner {
             direction: RtpTransceiverDirection::SendOnly,
             stream_ids: Default::default(),
             send_encodings: encodings,
-            video_encoder_backend: video_encoder_backend_for_sender(
-                track.kind(),
-                options.video_encoder,
-            ),
         };
 
         let transceiver =
-            self.publisher_pc.peer_connection().add_transceiver(track.rtc_track(), init)?;
+            self.publisher_pc.peer_connection().add_transceiver_with_video_encoder_backend(
+                track.rtc_track(),
+                init,
+                video_encoder_backend_for_sender(track.kind(), options.video_encoder),
+            )?;
 
         if track.kind() == TrackKind::Video {
             let capabilities = LkRuntime::instance().pc_factory().get_rtp_sender_capabilities(

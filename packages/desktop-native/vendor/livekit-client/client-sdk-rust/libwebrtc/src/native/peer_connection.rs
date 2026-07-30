@@ -42,12 +42,29 @@ use crate::{
         ContinualGatheringPolicy, IceServer, IceTransportsType, RtcConfiguration,
     },
     rtp_receiver::RtpReceiver,
-    rtp_sender::RtpSender,
-    rtp_transceiver::{RtpTransceiver, RtpTransceiverInit},
+    rtp_sender::{RtpSender, VideoEncoderBackend},
+    rtp_transceiver::{RtpTransceiver, RtpTransceiverDirection, RtpTransceiverInit},
     session_description::SessionDescription,
     stats::RtcStats,
     MediaType, RtcError, RtcErrorType,
 };
+
+fn video_encoder_backend_for_sender(
+    media_type: MediaType,
+    direction: RtpTransceiverDirection,
+    requested: VideoEncoderBackend,
+) -> VideoEncoderBackend {
+    if media_type == MediaType::Video
+        && matches!(
+            direction,
+            RtpTransceiverDirection::SendRecv | RtpTransceiverDirection::SendOnly
+        )
+    {
+        requested
+    } else {
+        VideoEncoderBackend::Auto
+    }
+}
 
 impl From<OfferOptions> for sys_pc::ffi::RtcOfferAnswerOptions {
     fn from(options: OfferOptions) -> Self {
@@ -322,8 +339,30 @@ impl PeerConnection {
         track: MediaStreamTrack,
         stream_ids: &[T],
     ) -> Result<RtpSender, RtcError> {
+        self.add_track_with_video_encoder_backend(track, stream_ids, VideoEncoderBackend::Auto)
+    }
+
+    pub fn add_track_with_video_encoder_backend<T: AsRef<str>>(
+        &self,
+        track: MediaStreamTrack,
+        stream_ids: &[T],
+        requested_backend: VideoEncoderBackend,
+    ) -> Result<RtpSender, RtcError> {
+        let media_type = match &track {
+            MediaStreamTrack::Video(_) => MediaType::Video,
+            MediaStreamTrack::Audio(_) => MediaType::Audio,
+        };
+        let video_encoder_backend = video_encoder_backend_for_sender(
+            media_type,
+            RtpTransceiverDirection::SendOnly,
+            requested_backend,
+        );
         let stream_ids = stream_ids.iter().map(|s| s.as_ref().to_owned()).collect();
-        let res = self.sys_handle.add_track(track.sys_handle(), &stream_ids);
+        let res = self.sys_handle.add_track(
+            track.sys_handle(),
+            &stream_ids,
+            video_encoder_backend.into(),
+        );
 
         match res {
             Ok(sys_handle) => Ok(RtpSender { handle: imp_rs::RtpSender { sys_handle } }),
@@ -336,7 +375,21 @@ impl PeerConnection {
         track: MediaStreamTrack,
         init: RtpTransceiverInit,
     ) -> Result<RtpTransceiver, RtcError> {
-        let video_encoder_backend = init.video_encoder_backend;
+        self.add_transceiver_with_video_encoder_backend(track, init, VideoEncoderBackend::Auto)
+    }
+
+    pub fn add_transceiver_with_video_encoder_backend(
+        &self,
+        track: MediaStreamTrack,
+        init: RtpTransceiverInit,
+        requested_backend: VideoEncoderBackend,
+    ) -> Result<RtpTransceiver, RtcError> {
+        let media_type = match &track {
+            MediaStreamTrack::Video(_) => MediaType::Video,
+            MediaStreamTrack::Audio(_) => MediaType::Audio,
+        };
+        let video_encoder_backend =
+            video_encoder_backend_for_sender(media_type, init.direction, requested_backend);
         let res = self.sys_handle.add_transceiver(
             track.sys_handle(),
             init.into(),
@@ -354,7 +407,26 @@ impl PeerConnection {
         media_type: MediaType,
         init: RtpTransceiverInit,
     ) -> Result<RtpTransceiver, RtcError> {
-        let res = self.sys_handle.add_transceiver_for_media(media_type.into(), init.into());
+        self.add_transceiver_for_media_with_video_encoder_backend(
+            media_type,
+            init,
+            VideoEncoderBackend::Auto,
+        )
+    }
+
+    pub fn add_transceiver_for_media_with_video_encoder_backend(
+        &self,
+        media_type: MediaType,
+        init: RtpTransceiverInit,
+        requested_backend: VideoEncoderBackend,
+    ) -> Result<RtpTransceiver, RtcError> {
+        let video_encoder_backend =
+            video_encoder_backend_for_sender(media_type, init.direction, requested_backend);
+        let res = self.sys_handle.add_transceiver_for_media(
+            media_type.into(),
+            init.into(),
+            video_encoder_backend.into(),
+        );
 
         match res {
             Ok(cxx_handle) => {
@@ -621,4 +693,47 @@ impl sys_pcf::PeerConnectionObserver for PeerObserver {
     fn on_remove_track(&self, _receiver: SharedPtr<webrtc_sys::rtp_receiver::ffi::RtpReceiver>) {}
 
     fn on_interesting_usage(&self, _usage_pattern: i32) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        video_encoder_backend_for_sender, MediaType, RtpTransceiverDirection, VideoEncoderBackend,
+    };
+
+    #[test]
+    fn explicit_backend_is_kept_for_send_capable_video_sender() {
+        assert_eq!(
+            video_encoder_backend_for_sender(
+                MediaType::Video,
+                RtpTransceiverDirection::SendOnly,
+                VideoEncoderBackend::WindowsD3D11Hardware,
+            ),
+            VideoEncoderBackend::WindowsD3D11Hardware,
+        );
+    }
+
+    #[test]
+    fn audio_sender_ignores_unavailable_video_backend() {
+        assert_eq!(
+            video_encoder_backend_for_sender(
+                MediaType::Audio,
+                RtpTransceiverDirection::SendOnly,
+                VideoEncoderBackend::WindowsD3D11Hardware,
+            ),
+            VideoEncoderBackend::Auto,
+        );
+    }
+
+    #[test]
+    fn receive_only_transceiver_does_not_require_video_backend() {
+        assert_eq!(
+            video_encoder_backend_for_sender(
+                MediaType::Video,
+                RtpTransceiverDirection::RecvOnly,
+                VideoEncoderBackend::WindowsD3D11Hardware,
+            ),
+            VideoEncoderBackend::Auto,
+        );
+    }
 }
