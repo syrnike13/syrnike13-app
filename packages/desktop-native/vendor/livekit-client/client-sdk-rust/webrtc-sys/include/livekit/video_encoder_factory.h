@@ -27,6 +27,9 @@
 namespace livekit_ffi {
 enum class VideoEncoderBackend : std::int32_t;
 
+const char* VideoEncoderBackendName(VideoEncoderBackend backend);
+bool IsVideoEncoderBackendAvailable(VideoEncoderBackend backend);
+
 struct VideoEncoderBackendFactory {
   VideoEncoderBackend backend;
   std::unique_ptr<webrtc::VideoEncoderFactory> factory;

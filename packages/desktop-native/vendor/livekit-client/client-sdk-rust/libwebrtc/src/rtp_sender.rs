@@ -86,8 +86,8 @@ impl RtpSender {
 
     /// Sets the preferred video encoder backend for this sender.
     ///
-    /// Explicit backends are strict. If the requested backend is unavailable,
-    /// encoder creation fails instead of selecting a different implementation.
+    /// Prefer the creation-time methods on [`crate::peer_connection::PeerConnection`]
+    /// when the backend is required before negotiation starts.
     pub fn set_video_encoder_backend(&self, backend: VideoEncoderBackend) {
         self.handle.set_video_encoder_backend(backend)
     }
