@@ -101,6 +101,14 @@ export async function updateDesktopLocalSettings(
         ...current.observability,
         ...normalizedPatch.observability,
       },
+      ui: {
+        ...current.ui,
+        ...normalizedPatch.ui,
+        telegramPromoDismissedUntilByUser: {
+          ...current.ui.telegramPromoDismissedUntilByUser,
+          ...normalizedPatch.ui?.telegramPromoDismissedUntilByUser,
+        },
+      },
     }
     await writeDesktopLocalSettingsAtomically(filePath, result)
   })

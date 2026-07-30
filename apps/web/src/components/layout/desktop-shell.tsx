@@ -21,14 +21,12 @@ import { parseChannelSettingsTab } from '#/components/channels/channel-settings-
 import { ChannelSettingsPage } from '#/components/channels/channel-settings-page'
 import { cn } from '#/lib/utils'
 import { useAuth } from '#/features/auth/auth-context'
+import {
+  loadTelegramPromoDismissedUntil,
+  saveTelegramPromoDismissedUntil,
+} from '#/features/promotions/telegram-promo-persistence'
 
-const TELEGRAM_PROMO_DISMISSED_STORAGE_KEY =
-  'syrnike13.telegramPromoDismissed'
 const TELEGRAM_PROMO_DISMISS_DURATION_MS = 14 * 24 * 60 * 60 * 1000
-
-function telegramPromoStorageKey(userId: string) {
-  return `${TELEGRAM_PROMO_DISMISSED_STORAGE_KEY}:${userId}`
-}
 
 /**
  * Десктопная раскладка: рельс серверов + сайдбар + контент + плавающий UserPanel.
@@ -103,22 +101,22 @@ export function DesktopShell() {
       return
     }
 
-    let dismissedUntil: number | undefined
-    try {
-      const storedValue = Number(
-        window.localStorage.getItem(telegramPromoStorageKey(userId)),
-      )
-      if (Number.isFinite(storedValue) && storedValue > Date.now()) {
-        dismissedUntil = storedValue
-      }
-    } catch {
-      // localStorage может быть недоступен в приватном режиме.
-    }
-    setTelegramPromoState({
-      userId,
-      visible: dismissedUntil == null,
-      dismissedUntil,
+    let cancelled = false
+    void loadTelegramPromoDismissedUntil(userId).then((storedValue) => {
+      if (cancelled) return
+      const dismissedUntil =
+        storedValue != null && storedValue > Date.now()
+          ? storedValue
+          : undefined
+      setTelegramPromoState({
+        userId,
+        visible: dismissedUntil == null,
+        dismissedUntil,
+      })
     })
+    return () => {
+      cancelled = true
+    }
   }, [userId])
 
   useEffect(() => {
@@ -146,14 +144,9 @@ export function DesktopShell() {
     if (!userId) return
     const dismissedUntil = Date.now() + TELEGRAM_PROMO_DISMISS_DURATION_MS
     setTelegramPromoState({ userId, visible: false, dismissedUntil })
-    try {
-      window.localStorage.setItem(
-        telegramPromoStorageKey(userId),
-        String(dismissedUntil),
-      )
-    } catch {
-      // Скрываем хотя бы до следующей загрузки, если storage недоступен.
-    }
+    void saveTelegramPromoDismissedUntil(userId, dismissedUntil).catch(
+      () => undefined,
+    )
   }
 
   if (serverSettingsMatch) {
