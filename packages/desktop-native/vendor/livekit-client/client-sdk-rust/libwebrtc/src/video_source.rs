@@ -100,7 +100,7 @@ pub mod native {
             width: u32,
             height: u32,
             timestamp_us: i64,
-        ) -> bool {
+        ) -> i32 {
             self.handle.capture_d3d11_frame(
                 shared_texture_handle,
                 adapter_luid,

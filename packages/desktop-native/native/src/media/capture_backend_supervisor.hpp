@@ -121,12 +121,23 @@ class CaptureBackendSupervisor final {
     // every observation as a new failure skips the required first
     // reinitialization and switches backends immediately.
     ++consecutive_failures_;
-    scheduleBackoff(now);
 
-    if (observation.error == ScreenGpuCaptureErrorCode::DeviceLost) {
+    // DXGI_ERROR_ACCESS_LOST invalidates only IDXGIOutputDuplication. It is
+    // expected during desktop and display-mode transitions and does not mean
+    // that DXGI or the D3D device failed. Stay on DXGI and keep recreating the
+    // duplication interface with bounded backoff until a frame confirms that
+    // the new session is usable.
+    if (observation.error == ScreenGpuCaptureErrorCode::AccessLost) {
+      scheduleBackoff(now, kAccessLostMaxRetry);
       state_ = CaptureBackendState::Reinitializing;
-      return {state_, CaptureBackendAction::RecreateDevice, active_};
+      return {
+          state_,
+          CaptureBackendAction::ReinitializeActive,
+          CaptureBackend::Dxgi,
+      };
     }
+
+    scheduleBackoff(now);
 
     if (active_ == CaptureBackend::Dxgi && consecutive_failures_ >= 2) {
       state_ = CaptureBackendState::Reinitializing;
@@ -143,6 +154,11 @@ class CaptureBackendSupervisor final {
           CaptureBackendAction::SwitchBackend,
           CaptureBackend::Dxgi,
       };
+    }
+
+    if (observation.error == ScreenGpuCaptureErrorCode::DeviceLost) {
+      state_ = CaptureBackendState::Reinitializing;
+      return {state_, CaptureBackendAction::RecreateDevice, active_};
     }
 
     state_ = CaptureBackendState::Reinitializing;
@@ -197,8 +213,13 @@ class CaptureBackendSupervisor final {
       CaptureBackend backend,
       Clock::time_point now,
       bool recovered = false) noexcept {
+    const bool switched_backend = active_ != backend;
     active_ = backend;
     state_ = CaptureBackendState::Reinitializing;
+    // A newly selected backend gets its own recovery attempt budget. Preserve
+    // exponential backoff across switches so two broken backends cannot form a
+    // hot DXGI/WGC ping-pong loop.
+    if (switched_backend) consecutive_failures_ = 0;
     if (recovered) ++successful_recoveries_;
     if (last_success_at_ == Clock::time_point{}) last_success_at_ = now;
     if (backend != preferred_) {
@@ -230,13 +251,15 @@ class CaptureBackendSupervisor final {
   static constexpr auto kSecureDesktopRetry = std::chrono::milliseconds(200);
   static constexpr auto kPreferredProbeInterval = std::chrono::seconds(30);
   static constexpr auto kAcquireWatchdog = std::chrono::seconds(15);
+  static constexpr auto kAccessLostMaxRetry = std::chrono::seconds(1);
   static constexpr std::size_t kMaxPublicationRecoveryAttempts = 3;
   static constexpr auto kPublicationRecoveryWindow = std::chrono::seconds(60);
 
  private:
-  void scheduleBackoff(Clock::time_point now) noexcept {
+  void scheduleBackoff(
+      Clock::time_point now,
+      std::chrono::milliseconds maximum = std::chrono::seconds(5)) noexcept {
     constexpr auto base = std::chrono::milliseconds(250);
-    constexpr auto maximum = std::chrono::milliseconds(5000);
     const auto multiplier = std::uint32_t{1}
         << std::min<std::uint32_t>(backoff_exponent_, 4);
     next_reinitialize_at_ =

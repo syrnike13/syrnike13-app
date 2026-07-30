@@ -18,6 +18,7 @@ class CaptureBackendSupervisor;
 
 enum class ScreenGpuCaptureErrorCode {
   CaptureUnavailable,
+  AccessLost,
   DeviceUnavailable,
   InteropUnavailable,
   FormatUnsupported,

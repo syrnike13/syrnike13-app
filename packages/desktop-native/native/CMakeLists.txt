@@ -119,6 +119,7 @@ add_library(syrnike_media_core STATIC
   src/media/preview_actor.cpp
   src/media/remote_audio_output.cpp
   src/media/remote_video_bridge.cpp
+  src/media/remote_video_texture_pool.cpp
   src/media/screen_actor.cpp
   src/media/screen_publication_controller.cpp
   src/media/screen_audio_capture.cpp
@@ -415,6 +416,20 @@ target_link_libraries(syrnike-native-d3d11-gpu-completion-tests PRIVATE d3d11 dx
 add_test(
   NAME syrnike-native-d3d11-gpu-completion-tests
   COMMAND syrnike-native-d3d11-gpu-completion-tests
+)
+
+# Manual, non-gating benchmark for the exact decoded-BGRA to Electron shared
+# texture path. It verifies cross-device contents and reports 1080p throughput.
+add_executable(syrnike-native-remote-video-texture-pool-benchmark
+  tests/remote_video_texture_pool_benchmark.cpp
+)
+syrnike_native_target(syrnike-native-remote-video-texture-pool-benchmark)
+target_link_libraries(
+  syrnike-native-remote-video-texture-pool-benchmark
+  PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(
+  syrnike-native-remote-video-texture-pool-benchmark
 )
 
 add_executable(syrnike-native-screen-dxgi-compositor-tests

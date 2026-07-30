@@ -186,7 +186,7 @@ impl NativeVideoSource {
         width: u32,
         height: u32,
         timestamp_us: i64,
-    ) -> bool {
+    ) -> i32 {
         self.has_captured_frame.store(true, Ordering::Release);
         self.sys_handle.capture_d3d11_frame(
             shared_texture_handle,

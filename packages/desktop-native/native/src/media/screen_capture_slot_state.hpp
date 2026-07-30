@@ -152,7 +152,7 @@ class ScreenPreviewLeaseState final {
     for (std::size_t attempt = 0; attempt < SlotCount; ++attempt) {
       const auto slot = (first_slot + attempt) % SlotCount;
       if (slots_[slot].occupied) continue;
-      slots_[slot] = {sequence, now, true};
+      slots_[slot] = {sequence, now, true, false};
       return slot;
     }
     return std::nullopt;
@@ -160,6 +160,11 @@ class ScreenPreviewLeaseState final {
 
   void publishPending(std::uint64_t sequence) noexcept {
     pending_sequence_ = sequence;
+    for (auto& slot : slots_) {
+      if (!slot.occupied || slot.sequence != sequence) continue;
+      slot.expirable = true;
+      break;
+    }
   }
 
   [[nodiscard]] std::optional<std::uint64_t> takePending() noexcept {
@@ -203,7 +208,8 @@ class ScreenPreviewLeaseState final {
       OnExpired&& on_expired) noexcept {
     for (std::size_t slot = 0; slot < SlotCount; ++slot) {
       const auto& state = slots_[slot];
-      if (!state.occupied || state.leased_at == TimePoint{} ||
+      if (!state.occupied || !state.expirable ||
+          state.leased_at == TimePoint{} ||
           now - state.leased_at < timeout) {
         continue;
       }
@@ -218,6 +224,7 @@ class ScreenPreviewLeaseState final {
     std::uint64_t sequence = 0;
     TimePoint leased_at{};
     bool occupied = false;
+    bool expirable = false;
   };
 
   void clear(std::size_t slot) noexcept {

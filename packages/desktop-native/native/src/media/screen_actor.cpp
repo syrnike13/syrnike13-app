@@ -50,6 +50,8 @@ void logScreen(
 
 std::string_view gpuCaptureReason(ScreenGpuCaptureErrorCode code) noexcept {
   switch (code) {
+    case ScreenGpuCaptureErrorCode::AccessLost:
+      return "gpu_access_lost";
     case ScreenGpuCaptureErrorCode::DeviceLost:
       return "gpu_device_lost";
     case ScreenGpuCaptureErrorCode::InteropUnavailable:
@@ -1039,6 +1041,7 @@ class ScreenActor::Implementation final
     EncoderBackpressureStallDetector encoder_backpressure_stall;
     ScreenOutputStallDetector output_stall;
     bool rtp_stall_reported = false;
+    bool capture_loss_reported = false;
     const auto request_publication_recovery =
       [&](std::string cause, std::chrono::steady_clock::time_point now) {
         const auto decision =
@@ -1160,6 +1163,7 @@ class ScreenActor::Implementation final
           post_(std::move(failure));
         }
         if (capture.status == ScreenGpuFrameStatus::NewFrame) {
+          capture_loss_reported = false;
           auto lease = std::make_unique<ScreenTextureLease>(capturer, captured);
           const auto timestamp = captured.timestamp_us != 0
             ? static_cast<std::int64_t>(captured.timestamp_us)
@@ -1187,16 +1191,21 @@ class ScreenActor::Implementation final
             request_publication_recovery("encoder_backpressure", now);
           }
         } else if (capture.status == ScreenGpuFrameStatus::RecoverableLost) {
-          encoder_backpressure_stall.noteProgress();
-          logScreen(
-            "screen_capture_restarted_after_stall",
-            {
-              {"sessionId", session_id},
-              {"generation", generation},
-              {"frames", frames},
-              {"method", method}
-            }
-          );
+          if (!capture_loss_reported) {
+            capture_loss_reported = true;
+            logScreen(
+              "screen_capture_recoverable_loss",
+              {
+                {"sessionId", session_id},
+                {"generation", generation},
+                {"frames", frames},
+                {"method", method},
+                {"hresult",
+                 static_cast<std::int64_t>(capture.metrics.hresult)},
+                {"reason", gpuCaptureReason(capture.error_code)}
+              }
+            );
+          }
         } else if (
           capture.status == ScreenGpuFrameStatus::TargetClosed ||
           capture.status == ScreenGpuFrameStatus::FatalError

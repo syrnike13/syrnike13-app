@@ -141,20 +141,28 @@ int main() try {
   if (!first || *first != 0) {
     throw std::runtime_error("failed to reserve first preview slot");
   }
+  std::size_t expired_slot = 3;
+  preview_slots.expire(
+      started + 10s,
+      5s,
+      [&](std::size_t slot, std::uint64_t) { expired_slot = slot; });
+  if (expired_slot != 3 || preview_slots.inFlight() != 1) {
+    throw std::runtime_error(
+        "unfinished GPU preview conversion was expired and reused");
+  }
   preview_slots.publishPending(100);
   const auto delivered = preview_slots.takePending();
   if (!delivered || *delivered != 100 || preview_slots.inFlight() != 1) {
     throw std::runtime_error("preview lease was not delivered");
   }
-  std::size_t expired_slot = 3;
   preview_slots.expire(
-      started + 5s,
+      started + 10s,
       5s,
       [&](std::size_t slot, std::uint64_t) { expired_slot = slot; });
   if (expired_slot != 0 || preview_slots.inFlight() != 0) {
     throw std::runtime_error("renderer-loss lease was not revoked within 5s");
   }
-  const auto replacement = preview_slots.reserve(101, started + 5s, 0);
+  const auto replacement = preview_slots.reserve(101, started + 10s, 0);
   if (!replacement || *replacement != 0) {
     throw std::runtime_error("expired preview slot was not reusable");
   }

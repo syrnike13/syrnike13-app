@@ -96,7 +96,9 @@ message CaptureD3D11VideoFrameRequest {
   required uint32 height = 7;
   required int64 timestamp_us = 8;
 }
-message CaptureD3D11VideoFrameResponse {}
+message CaptureD3D11VideoFrameResponse {
+  required bool accepted = 1;
+}
 
 message VideoConvertRequest {
   optional bool flip_y = 1;

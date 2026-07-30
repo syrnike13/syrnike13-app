@@ -8,6 +8,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "media/d3d11_gpu_completion.hpp"
@@ -96,10 +97,37 @@ int main() {
         shared_texture.Get(), 0, nullptr, source.data(),
         width * bytes_per_pixel, 0);
     context->CopyResource(staging_texture.Get(), shared_texture.Get());
-    std::uint64_t wait_microseconds = 0;
+
+    const auto submit_started_at = std::chrono::steady_clock::now();
     require(
-        completion.wait(std::chrono::seconds(1), &wait_microseconds),
-        "GPU upload completion");
+        completion.begin(std::chrono::seconds(1)),
+        "asynchronous GPU upload submission");
+    const auto submit_microseconds =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - submit_started_at)
+            .count();
+    if (!completion.pending() || submit_microseconds >= 100'000) {
+      throw std::runtime_error(
+          "GPU completion submission blocked instead of returning asynchronously");
+    }
+    if (completion.begin(std::chrono::seconds(1)) != E_PENDING) {
+      throw std::runtime_error(
+          "GPU completion query accepted overlapping submissions");
+    }
+
+    std::uint64_t wait_microseconds = 0;
+    std::uint32_t polls = 0;
+    for (;;) {
+      const HRESULT completion_result = completion.poll(&wait_microseconds);
+      ++polls;
+      if (completion_result == S_OK) break;
+      require(completion_result, "asynchronous GPU upload completion");
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    if (completion.pending()) {
+      throw std::runtime_error(
+          "completed GPU query remained marked as pending");
+    }
 
     D3D11_MAPPED_SUBRESOURCE mapped{};
     require(
@@ -123,8 +151,9 @@ int main() {
           "GPU completion exposed a partially uploaded BGRA frame");
     }
 
-    std::cout << "D3D11 GPU completion test passed; wait_us="
-              << wait_microseconds << '\n';
+    std::cout << "D3D11 asynchronous GPU completion test passed; submit_us="
+              << submit_microseconds << "; completion_us=" << wait_microseconds
+              << "; polls=" << polls << '\n';
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

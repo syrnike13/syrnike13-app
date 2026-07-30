@@ -530,9 +530,9 @@ fn on_capture_d3d11_video_frame(
     ));
     #[cfg(target_os = "windows")]
     {
-    let source = server.retrieve_handle::<video_source::FfiVideoSource>(push.source_handle)?;
-    source.capture_d3d11_frame(push)?;
-    Ok(proto::CaptureD3d11VideoFrameResponse::default())
+        let source = server.retrieve_handle::<video_source::FfiVideoSource>(push.source_handle)?;
+        let accepted = source.capture_d3d11_frame(push)?;
+        Ok(proto::CaptureD3d11VideoFrameResponse { accepted })
     }
 }
 

@@ -1,30 +1,22 @@
 #include "remote_video_bridge.hpp"
 
-#ifdef _WIN32
-#include <d3d11.h>
-#include <dxgi1_2.h>
-#include <windows.h>
-#include <wrl/client.h>
-#endif
-
 #include <livekit/video_stream.h>
 
 #include <algorithm>
 #include <chrono>
-#include <iomanip>
+#include <future>
 #include <latch>
 #include <memory>
-#include <sstream>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
 #include "../common/diagnostic_log.hpp"
-#include "d3d11_gpu_completion.hpp"
+#include "remote_video_texture_pool.hpp"
 
 namespace syrnike::desktop_native::media {
 namespace {
 constexpr std::size_t max_in_flight = 3;
-constexpr auto gpu_completion_timeout = std::chrono::milliseconds(500);
 
 void logRemoteVideoFailure(
   const std::string& track_id,
@@ -40,138 +32,6 @@ void logRemoteVideoFailure(
     }
   );
 }
-
-#ifdef _WIN32
-using Microsoft::WRL::ComPtr;
-
-[[noreturn]] void throwHResult(const char* operation, HRESULT result) {
-  std::ostringstream message;
-  message << operation << " (HRESULT 0x"
-          << std::hex << std::uppercase << static_cast<std::uint32_t>(result) << ")";
-  throw std::runtime_error(message.str());
-}
-
-[[noreturn]] void throwWin32Error(const char* operation, DWORD error) {
-  std::ostringstream message;
-  message << operation << " (Win32 " << error << ")";
-  throw std::runtime_error(message.str());
-}
-
-struct SharedFrame {
-  ComPtr<ID3D11Texture2D> texture;
-  HANDLE remote_handle = nullptr;
-  std::uint32_t remote_pid = 0;
-
-  ~SharedFrame() {
-    if (!remote_handle || remote_pid == 0) return;
-    const HANDLE process = OpenProcess(PROCESS_DUP_HANDLE, FALSE, remote_pid);
-    if (!process) return;
-    HANDLE local = nullptr;
-    if (DuplicateHandle(
-      process, remote_handle, GetCurrentProcess(), &local, 0, FALSE,
-      DUPLICATE_CLOSE_SOURCE | DUPLICATE_SAME_ACCESS
-    )) {
-      CloseHandle(local);
-    }
-    CloseHandle(process);
-  }
-};
-
-class D3DSharedTextureUploader {
- public:
-  D3DSharedTextureUploader() {
-    D3D_FEATURE_LEVEL level{};
-    const auto result = D3D11CreateDevice(
-      nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-      nullptr, 0, D3D11_SDK_VERSION, &device_, &level, &context_
-    );
-    if (FAILED(result)) throwHResult("D3D11 device creation failed", result);
-    completion_ = std::make_unique<D3d11GpuCompletion>(device_.Get(), context_.Get());
-    if (FAILED(completion_->initializationResult())) {
-      throwHResult(
-        "D3D11 upload completion query creation failed",
-        completion_->initializationResult()
-      );
-    }
-  }
-
-  std::pair<std::uint64_t, std::shared_ptr<SharedFrame>> upload(
-    const livekit::VideoFrame& frame,
-    std::uint32_t main_pid
-  ) {
-    D3D11_TEXTURE2D_DESC description{};
-    description.Width = static_cast<UINT>(frame.width());
-    description.Height = static_cast<UINT>(frame.height());
-    description.MipLevels = 1;
-    description.ArraySize = 1;
-    description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    description.SampleDesc.Count = 1;
-    description.Usage = D3D11_USAGE_DEFAULT;
-    description.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-    // Electron imports an NT handle for a shared BGRA texture. NTHANDLE alone
-    // is not a complete shared-resource contract and CreateTexture2D rejects it.
-    description.MiscFlags =
-      D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
-      D3D11_RESOURCE_MISC_SHARED;
-    ComPtr<ID3D11Texture2D> texture;
-    const auto texture_result = device_->CreateTexture2D(&description, nullptr, &texture);
-    if (FAILED(texture_result)) {
-      throwHResult("D3D11 shared texture creation failed", texture_result);
-    }
-    context_->UpdateSubresource(
-      texture.Get(), 0, nullptr, frame.data(),
-      static_cast<UINT>(frame.width() * 4), 0
-    );
-    // Electron's BGRA import does not accept a keyed mutex or producer fence.
-    // Wait for the upload itself, not merely command submission, before the
-    // handle becomes visible to another D3D device.
-    const auto completion_result = completion_->wait(gpu_completion_timeout);
-    if (FAILED(completion_result)) {
-      throwHResult("D3D11 shared texture upload did not complete", completion_result);
-    }
-    ComPtr<IDXGIResource1> resource;
-    const auto query_result = texture.As(&resource);
-    if (FAILED(query_result)) throwHResult("DXGI resource query failed", query_result);
-    HANDLE local_handle = nullptr;
-    const auto handle_result = resource->CreateSharedHandle(
-      nullptr, DXGI_SHARED_RESOURCE_READ, nullptr, &local_handle
-    );
-    if (FAILED(handle_result)) {
-      throwHResult("DXGI shared handle creation failed", handle_result);
-    }
-    HANDLE main_process = OpenProcess(PROCESS_DUP_HANDLE, FALSE, main_pid);
-    if (!main_process) {
-      const auto open_process_error = GetLastError();
-      CloseHandle(local_handle);
-      throwWin32Error(
-        "Electron main process handle open failed",
-        open_process_error
-      );
-    }
-    HANDLE duplicated = nullptr;
-    const BOOL duplicated_ok = DuplicateHandle(
-      GetCurrentProcess(), local_handle, main_process, &duplicated,
-      0, FALSE, DUPLICATE_SAME_ACCESS
-    );
-    const auto duplicate_error = duplicated_ok ? ERROR_SUCCESS : GetLastError();
-    CloseHandle(main_process);
-    CloseHandle(local_handle);
-    if (!duplicated_ok) {
-      throwWin32Error("DXGI handle duplication failed", duplicate_error);
-    }
-    auto retained = std::make_shared<SharedFrame>();
-    retained->texture = std::move(texture);
-    retained->remote_handle = duplicated;
-    retained->remote_pid = main_pid;
-    return {reinterpret_cast<std::uint64_t>(duplicated), std::move(retained)};
-  }
-
- private:
-  ComPtr<ID3D11Device> device_;
-  ComPtr<ID3D11DeviceContext> context_;
-  std::unique_ptr<D3d11GpuCompletion> completion_;
-};
-#endif
 
 class LiveKitVideoStreamReader final : public RemoteVideoBridge::StreamReader {
  public:
@@ -207,7 +67,7 @@ struct RemoteVideoBridge::TrackWorker {
   std::atomic<FirstFrameState> first_frame_state{FirstFrameState::Pending};
   std::mutex frames_mutex;
 #ifdef _WIN32
-  std::unordered_map<std::uint64_t, std::shared_ptr<SharedFrame>> frames;
+  std::unordered_map<std::uint64_t, std::shared_ptr<void>> frames;
 #endif
 };
 
@@ -293,59 +153,209 @@ void RemoteVideoBridge::addTrack(
     raw->committed.wait();
 #ifdef _WIN32
     try {
-      std::unique_ptr<D3DSharedTextureUploader> uploader;
+      std::unique_ptr<RemoteVideoTexturePool> uploader;
       livekit::VideoFrameEvent frame_event;
       bool healthy_reported = false;
-      while (!raw->stopped.load() && raw->stream->read(frame_event)) {
-        if (!claimFirstFrame(raw->first_frame_state)) break;
-        if (!uploader) {
-          uploader = std::make_unique<D3DSharedTextureUploader>();
+      std::uint64_t frames_read = 0;
+      std::uint64_t frames_submitted = 0;
+      std::uint64_t frames_published = 0;
+      std::uint64_t frames_dropped_gpu_pool = 0;
+      std::uint64_t gpu_pool_resets = 0;
+      std::uint64_t gpu_wait_total_us = 0;
+      std::uint64_t gpu_wait_max_us = 0;
+      auto next_pipeline_report =
+        std::chrono::steady_clock::now() + std::chrono::seconds(1);
+      auto next_rtp_stats_request =
+        std::chrono::steady_clock::now() + std::chrono::seconds(1);
+      std::optional<std::future<std::vector<livekit::RtcStats>>> rtp_stats_future;
+
+      const auto publish_ready_frames = [&] {
+        for (;;) {
+          {
+            std::lock_guard frames_lock(raw->frames_mutex);
+            if (raw->frames.size() >= max_in_flight) return;
+          }
+          RemoteVideoTextureFrame uploaded;
+          if (!uploader->take(uploaded)) return;
+          gpu_wait_total_us += uploaded.gpu_completion_us;
+          gpu_wait_max_us = std::max(
+            gpu_wait_max_us,
+            uploaded.gpu_completion_us
+          );
+          std::uint64_t next = 0;
+          {
+            std::lock_guard lock(mutex_);
+            next = ++next_frame_sequence_;
+          }
+          {
+            std::lock_guard frames_lock(raw->frames_mutex);
+            raw->frames.emplace(next, std::move(uploaded.lease));
+          }
+          MediaCommand command;
+          command.type = event_types_.frame;
+          {
+            std::lock_guard lock(mutex_);
+            command.session_id = session_id_;
+            command.generation = generation_;
+          }
+          command.track_id = track_id;
+          command.participant_identity = participant_identity;
+          command.video_source = source;
+          command.frame_sequence = next;
+          command.timestamp_us = uploaded.timestamp_us;
+          command.width = static_cast<int>(uploaded.width);
+          command.height = static_cast<int>(uploaded.height);
+          command.nt_handle = uploaded.nt_handle;
+          try {
+            command.on_drop = [router = release_router_, track_id, next] {
+              router->release(track_id, next);
+            };
+          } catch (...) {
+            release(track_id, next);
+            throw;
+          }
+          if (!post_(std::move(command))) {
+            release(track_id, next);
+            continue;
+          }
+          ++frames_published;
+          if (!healthy_reported) {
+            healthy_reported = true;
+            if (on_healthy_) on_healthy_(track_id, raw->track);
+          }
         }
-        std::uint64_t next = 0;
-        {
-          std::lock_guard lock(mutex_);
-          next = ++next_frame_sequence_;
-        }
-        {
-          std::lock_guard frames_lock(raw->frames_mutex);
-          if (raw->frames.size() >= max_in_flight) continue;
-        }
-        auto [handle, retained] = uploader->upload(
-          frame_event.frame,
+      };
+
+      const auto poll_uploader = [&] {
+        const auto result = uploader->poll();
+        if (!result.reset_required) return;
+        ++gpu_pool_resets;
+        diagnostics::DiagnosticLog::instance().write(
+          "remote_video_gpu_pool_reset",
+          {
+            {"trackId", track_id},
+            {"hresult", static_cast<std::int64_t>(result.hresult)},
+            {"count", gpu_pool_resets}
+          }
+        );
+        uploader = std::make_unique<RemoteVideoTexturePool>(
           electron_main_pid_
         );
-        {
-          std::lock_guard frames_lock(raw->frames_mutex);
-          raw->frames.emplace(next, std::move(retained));
+      };
+
+      while (!raw->stopped.load() && raw->stream->read(frame_event)) {
+        ++frames_read;
+        if (!claimFirstFrame(raw->first_frame_state)) break;
+        if (!uploader) {
+          uploader = std::make_unique<RemoteVideoTexturePool>(
+            electron_main_pid_
+          );
         }
-        MediaCommand command;
-        command.type = event_types_.frame;
-        {
-          std::lock_guard lock(mutex_);
-          command.session_id = session_id_;
-          command.generation = generation_;
+        poll_uploader();
+        publish_ready_frames();
+        if (uploader->submit(
+          frame_event.frame,
+          static_cast<std::uint64_t>(
+            std::max<std::int64_t>(0, frame_event.timestamp_us)
+          )
+        )) {
+          ++frames_submitted;
+        } else {
+          ++frames_dropped_gpu_pool;
         }
-        command.track_id = track_id;
-        command.participant_identity = participant_identity;
-        command.video_source = source;
-        command.frame_sequence = next;
-        command.timestamp_us = static_cast<std::uint64_t>(std::max<std::int64_t>(0, frame_event.timestamp_us));
-        command.width = frame_event.frame.width();
-        command.height = frame_event.frame.height();
-        command.nt_handle = handle;
-        try {
-          command.on_drop = [router = release_router_, track_id, next] {
-            router->release(track_id, next);
-          };
-        } catch (...) {
-          release(track_id, next);
-          throw;
+        poll_uploader();
+        publish_ready_frames();
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= next_pipeline_report) {
+          diagnostics::DiagnosticLog::instance().write(
+            "remote_video_pipeline_stats",
+            {
+              {"trackId", track_id},
+              {"framesRead", frames_read},
+              {"framesSubmitted", frames_submitted},
+              {"framesPublished", frames_published},
+              {"framesDroppedGpuPool", frames_dropped_gpu_pool},
+              {"gpuPoolResets", gpu_pool_resets},
+              {"gpuWaitTotalUs", gpu_wait_total_us},
+              {"gpuWaitMaxUs", gpu_wait_max_us},
+              {"gpuPoolSlotsAvailable",
+                static_cast<std::uint64_t>(uploader->available())},
+              {"gpuPoolSlotsTotal",
+                static_cast<std::uint64_t>(uploader->capacity())},
+              {"width", static_cast<std::uint64_t>(frame_event.frame.width())},
+              {"height", static_cast<std::uint64_t>(frame_event.frame.height())}
+            }
+          );
+          next_pipeline_report = now + std::chrono::seconds(1);
         }
-        if (!post_(std::move(command))) {
-          release(track_id, next);
-        } else if (!healthy_reported) {
-          healthy_reported = true;
-          if (on_healthy_) on_healthy_(track_id, raw->track);
+        if (rtp_stats_future &&
+            rtp_stats_future->wait_for(std::chrono::milliseconds(0)) ==
+              std::future_status::ready) {
+          try {
+            const auto records = rtp_stats_future->get();
+            std::uint64_t frames_received = 0;
+            std::uint64_t frames_decoded = 0;
+            std::uint64_t frames_dropped = 0;
+            std::uint64_t bytes_received = 0;
+            double frames_per_second = 0;
+            double total_decode_time = 0;
+            std::uint64_t frame_width = 0;
+            std::uint64_t frame_height = 0;
+            bool power_efficient_decoder = false;
+            bool available = false;
+            std::string decoder_implementation;
+            for (const auto& record : records) {
+              const auto* inbound =
+                std::get_if<livekit::RtcInboundRtpStats>(&record.stats);
+              if (!inbound || inbound->stream.kind != "video") continue;
+              available = true;
+              frames_received += inbound->inbound.frames_received;
+              frames_decoded += inbound->inbound.frames_decoded;
+              frames_dropped += inbound->inbound.frames_dropped;
+              bytes_received += inbound->inbound.bytes_received;
+              frames_per_second += inbound->inbound.frames_per_second;
+              total_decode_time += inbound->inbound.total_decode_time;
+              frame_width = std::max<std::uint64_t>(
+                frame_width, inbound->inbound.frame_width);
+              frame_height = std::max<std::uint64_t>(
+                frame_height, inbound->inbound.frame_height);
+              power_efficient_decoder =
+                power_efficient_decoder || inbound->inbound.power_efficient_decoder;
+              if (decoder_implementation.empty()) {
+                decoder_implementation = inbound->inbound.decoder_implementation;
+              }
+            }
+            diagnostics::DiagnosticLog::instance().write(
+              "remote_video_rtp_stats",
+              {
+                {"trackId", track_id},
+                {"available", available},
+                {"framesReceived", frames_received},
+                {"framesDecoded", frames_decoded},
+                {"framesDropped", frames_dropped},
+                {"bytesReceived", bytes_received},
+                {"framesPerSecond", frames_per_second},
+                {"totalDecodeTime", total_decode_time},
+                {"decoderImplementation", std::move(decoder_implementation)},
+                {"powerEfficientDecoder", power_efficient_decoder},
+                {"frameWidth", frame_width},
+                {"frameHeight", frame_height}
+              }
+            );
+          } catch (const std::exception& error) {
+            diagnostics::DiagnosticLog::instance().write(
+              "remote_video_rtp_stats_failed",
+              {
+                {"trackId", track_id},
+                {"message", error.what()}
+              }
+            );
+          }
+          rtp_stats_future.reset();
+        }
+        if (!rtp_stats_future && now >= next_rtp_stats_request) {
+          rtp_stats_future.emplace(raw->track->getStats());
+          next_rtp_stats_request = now + std::chrono::seconds(1);
         }
       }
       if (!raw->stopped.load()) {
