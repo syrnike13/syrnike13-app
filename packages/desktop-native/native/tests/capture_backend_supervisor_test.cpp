@@ -1,3 +1,4 @@
+#include <array>
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -93,6 +94,30 @@ int main() try {
       decision.state == CaptureBackendState::Healthy,
       "TDR recovery did not return to healthy");
 
+  CaptureBackendSupervisor repeated_wgc_device_loss(CaptureBackend::Wgc);
+  decision = repeated_wgc_device_loss.observe(
+      {
+          ScreenGpuFrameStatus::FatalError,
+          ScreenGpuCaptureErrorCode::DeviceLost,
+      },
+      started);
+  require(
+      decision.action == CaptureBackendAction::RecreateDevice &&
+          decision.target == CaptureBackend::Wgc,
+      "first WGC device loss did not recreate the active device");
+  repeated_wgc_device_loss.backendActivated(
+      CaptureBackend::Wgc, started + 1ms, true);
+  decision = repeated_wgc_device_loss.observe(
+      {
+          ScreenGpuFrameStatus::FatalError,
+          ScreenGpuCaptureErrorCode::DeviceLost,
+      },
+      started + 250ms);
+  require(
+      decision.action == CaptureBackendAction::SwitchBackend &&
+          decision.target == CaptureBackend::Dxgi,
+      "repeated WGC device loss did not fall back to DXGI");
+
   CaptureBackendSupervisor secure;
   decision = secure.observe(
       {ScreenGpuFrameStatus::FatalError,
@@ -125,14 +150,77 @@ int main() try {
           decision.target == CaptureBackend::Wgc,
       "second recovery attempt did not select WGC");
 
-  fallback.backendActivated(CaptureBackend::Wgc, started + 1s);
+  fallback.backendActivated(CaptureBackend::Wgc, started + 250ms);
   decision =
-      fallback.observe({ScreenGpuFrameStatus::NewFrame}, started + 2s);
-  decision = fallback.observe({ScreenGpuFrameStatus::NewFrame}, started + 32s);
+      fallback.observe({ScreenGpuFrameStatus::NewFrame}, started + 1s);
+  decision = fallback.observe({ScreenGpuFrameStatus::NewFrame}, started + 31s);
   require(
       decision.action == CaptureBackendAction::ProbePreferredBackend &&
           decision.target == CaptureBackend::Dxgi,
       "healthy WGC fallback did not periodically probe DXGI");
+
+  CaptureBackendSupervisor access_lost;
+  const CaptureBackendObservation access_lost_observation{
+      ScreenGpuFrameStatus::RecoverableLost,
+      ScreenGpuCaptureErrorCode::AccessLost,
+  };
+  const std::array access_lost_attempts{
+      started,
+      started + 250ms,
+      started + 750ms,
+      started + 1750ms,
+      started + 2750ms,
+      started + 3750ms,
+  };
+  for (const auto attempt_at : access_lost_attempts) {
+    decision = access_lost.observe(access_lost_observation, attempt_at);
+    require(
+        decision.action == CaptureBackendAction::ReinitializeActive &&
+            decision.target == CaptureBackend::Dxgi,
+        "DXGI access loss switched away from desktop duplication");
+    require(
+        access_lost.nextRetryAt() - attempt_at <= 1s,
+        "DXGI access-loss retry backoff exceeded one second");
+    access_lost.backendActivated(CaptureBackend::Dxgi, attempt_at, true);
+  }
+  decision = access_lost.observe(
+      {ScreenGpuFrameStatus::NewFrame}, started + 4s);
+  require(
+      decision.state == CaptureBackendState::Healthy &&
+          decision.action == CaptureBackendAction::None,
+      "DXGI access-loss recovery did not return to healthy after a frame");
+
+  CaptureBackendSupervisor ping_pong;
+  decision = ping_pong.observe(
+      {ScreenGpuFrameStatus::RecoverableLost}, started);
+  decision = ping_pong.observe(
+      {ScreenGpuFrameStatus::RecoverableLost}, started + 250ms);
+  require(
+      decision.action == CaptureBackendAction::SwitchBackend &&
+          decision.target == CaptureBackend::Wgc,
+      "repeated generic DXGI failure did not switch to WGC");
+  ping_pong.backendActivated(CaptureBackend::Wgc, started + 250ms);
+  decision = ping_pong.observe(
+      {
+          ScreenGpuFrameStatus::FatalError,
+          ScreenGpuCaptureErrorCode::DeviceLost,
+      },
+      started + 750ms);
+  require(
+      decision.action == CaptureBackendAction::RecreateDevice &&
+          decision.target == CaptureBackend::Wgc,
+      "new WGC backend did not receive its own device-recreation attempt");
+  ping_pong.backendActivated(CaptureBackend::Wgc, started + 750ms, true);
+  decision = ping_pong.observe(
+      {
+          ScreenGpuFrameStatus::FatalError,
+          ScreenGpuCaptureErrorCode::DeviceLost,
+      },
+      started + 1750ms);
+  require(
+      decision.action == CaptureBackendAction::SwitchBackend &&
+          decision.target == CaptureBackend::Dxgi,
+      "repeated WGC failure did not return to DXGI");
 
   std::cout << "capture backend supervisor scenarios passed\n";
   return 0;

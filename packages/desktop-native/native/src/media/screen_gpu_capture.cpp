@@ -188,6 +188,9 @@ bool secureDesktopActive() noexcept {
 }
 
 ScreenGpuCaptureErrorCode captureErrorForHr(HRESULT hr) noexcept {
+  if (hr == DXGI_ERROR_ACCESS_LOST) {
+    return ScreenGpuCaptureErrorCode::AccessLost;
+  }
   if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET ||
       hr == DXGI_ERROR_DEVICE_HUNG) {
     return ScreenGpuCaptureErrorCode::DeviceLost;
@@ -1343,6 +1346,16 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
   }
 
   ScreenGpuFrameResult capture(ScreenGpuFrame& frame) override {
+    if (!duplication_) {
+      return {
+          ScreenGpuFrameStatus::RecoverableLost,
+          {},
+          method(),
+          duplication_access_lost_
+              ? ScreenGpuCaptureErrorCode::AccessLost
+              : ScreenGpuCaptureErrorCode::CaptureUnavailable,
+      };
+    }
     const auto capture_started_at = std::chrono::steady_clock::now();
     DXGI_OUTDUPL_FRAME_INFO frame_info{};
     ComPtr<IDXGIResource> resource;
@@ -1363,13 +1376,14 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
       }
     }
     if (hr == DXGI_ERROR_ACCESS_LOST) {
+      duplication_access_lost_ = true;
       syrnike::voice::ScreenCaptureFrameMetrics metrics;
       metrics.hresult = static_cast<long>(hr);
       return {
           ScreenGpuFrameStatus::RecoverableLost,
           metrics,
           method(),
-          ScreenGpuCaptureErrorCode::CaptureUnavailable,
+          ScreenGpuCaptureErrorCode::AccessLost,
       };
     }
     if (FAILED(hr)) {
@@ -1468,6 +1482,17 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
     return pool_.totalSlots();
   }
 
+  void reinitializeDuplication() {
+    // Desktop Duplication permits only one duplication per output in a
+    // process. Reset the lost interface before DuplicateOutput creates its
+    // replacement; constructing a second capturer first can never recover.
+    recreateDuplication();
+  }
+
+  void suspendDuplication() noexcept {
+    duplication_.Reset();
+  }
+
  private:
   void recreateDuplication() {
     duplication_.Reset();
@@ -1479,6 +1504,7 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
         selection_.output->DuplicateOutput(d3d_.device.Get(), &duplication_),
         ScreenGpuCaptureErrorCode::CaptureUnavailable,
         "failed to create DXGI output duplication");
+    duplication_access_lost_ = false;
     native_width_ = static_cast<std::uint32_t>(
         selection_.output_description.DesktopCoordinates.right -
         selection_.output_description.DesktopCoordinates.left);
@@ -1495,6 +1521,7 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
   GpuFramePool pool_;
   GpuPreviewPool preview_;
   ComPtr<IDXGIOutputDuplication> duplication_;
+  bool duplication_access_lost_ = false;
   std::uint32_t native_width_ = 0;
   std::uint32_t native_height_ = 0;
 };
@@ -1983,14 +2010,31 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
               CaptureBackendAction::ProbePreferredBackend
           ? CaptureBackend::Dxgi
           : decision.target;
-      const bool force_new =
+      bool force_new =
           decision.action == CaptureBackendAction::RecreateDevice ||
           decision.action == CaptureBackendAction::ReinitializeActive ||
+          decision.action == CaptureBackendAction::SwitchBackend ||
           decision.action == CaptureBackendAction::ProbePreferredBackend;
-      auto candidate = force_new
-          ? std::shared_ptr<ScreenGpuCapturer>{}
-          : (target == CaptureBackend::Dxgi ? dxgi_ : wgc_)
-                .load(std::memory_order_acquire);
+      auto candidate = (target == CaptureBackend::Dxgi ? dxgi_ : wgc_)
+          .load(std::memory_order_acquire);
+      if (decision.action == CaptureBackendAction::ReinitializeActive &&
+          target == CaptureBackend::Dxgi) {
+        if (const auto existing =
+                std::dynamic_pointer_cast<DxgiGpuCapturer>(candidate)) {
+          existing->reinitializeDuplication();
+          force_new = false;
+        } else {
+          candidate.reset();
+        }
+      } else if (force_new) {
+        if (target == CaptureBackend::Dxgi) {
+          if (const auto existing =
+                  std::dynamic_pointer_cast<DxgiGpuCapturer>(candidate)) {
+            existing->suspendDuplication();
+          }
+        }
+        candidate.reset();
+      }
       ScreenPreviewDemand preview_demand;
       {
         std::lock_guard lock(backend_mutex_);
@@ -2059,12 +2103,25 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
       return {std::move(transition), false};
     } catch (const ScreenGpuCaptureError& error) {
       supervisor_->activationFailed(now);
+      logScreenCaptureBackend(
+          "screen_capture_backend_recovery_failed",
+          error.what(),
+          error.hresult());
       return {
           std::nullopt,
           error.code() == ScreenGpuCaptureErrorCode::TargetClosed,
       };
+    } catch (const std::exception& error) {
+      supervisor_->activationFailed(now);
+      logScreenCaptureBackend(
+          "screen_capture_backend_recovery_failed",
+          error.what());
+      return {};
     } catch (...) {
       supervisor_->activationFailed(now);
+      logScreenCaptureBackend(
+          "screen_capture_backend_recovery_failed",
+          "unknown capture backend recovery failure");
       return {};
     }
   }
