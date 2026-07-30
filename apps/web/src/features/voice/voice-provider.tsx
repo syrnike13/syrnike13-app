@@ -268,12 +268,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const client = desktop
       ? createDesktopVoiceClient(desktop)
-      : isElectronRenderer()
-        ? createDesktopBridgeUnavailableVoiceClient()
-        : createOwnedBrowserVoiceClient(
-          auth.user?._id ?? 'signed-out',
-          () => auth.user?._id ?? null,
-        )
+      : createOwnedBrowserVoiceClient(
+        auth.user?._id ?? 'signed-out',
+        () => auth.user?._id ?? null,
+      )
     watchedScreenViewerChannelsRef.current.clear()
     pendingScreenWatchIdsRef.current.clear()
     for (const timer of screenRepublishGraceTimersRef.current.values()) {
@@ -1245,45 +1243,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       </VoiceMediaContext.Provider>
     </VoiceSessionContext.Provider>
   )
-}
-
-function isElectronRenderer(userAgent = globalThis.navigator?.userAgent ?? '') {
-  return /\bElectron\//i.test(userAgent)
-}
-
-function createDesktopBridgeUnavailableVoiceClient(): VoiceClient {
-  let snapshot = INITIAL_SNAPSHOT
-  const listeners = new Set<(value: VoiceSnapshot) => void>()
-  const publish = () => listeners.forEach((listener) => listener(snapshot))
-  return {
-    dispatch(command) {
-      if (command.type !== 'join') return
-      snapshot = {
-        ...INITIAL_SNAPSHOT,
-        intentChannelId: command.channelId,
-        connection: 'failed',
-        failure: {
-          code: 'desktop_bridge_unavailable',
-          message: 'Desktop voice bridge is unavailable',
-          retryable: false,
-          stage: 'desktop_preload',
-        },
-      }
-      publish()
-    },
-    snapshot: () => snapshot,
-    subscribe(listener) {
-      listeners.add(listener)
-      listener(snapshot)
-      return () => listeners.delete(listener)
-    },
-    room: () => null,
-    subscribeRoom(listener) {
-      listener(null)
-      return () => undefined
-    },
-    dispose() { listeners.clear() },
-  }
 }
 
 function createOwnedBrowserVoiceClient(
