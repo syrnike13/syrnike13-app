@@ -269,8 +269,10 @@ export function StageMediaTile({
           role="button"
           tabIndex={0}
           className={cn(
-            'group relative min-h-0 rounded-md outline-none ring-offset-2 ring-offset-black transition-[filter,box-shadow,opacity]',
-            'overflow-hidden',
+            'group relative min-h-0 overflow-hidden rounded-md outline-none transition-[filter,box-shadow,opacity]',
+            variant !== 'grid' &&
+              variant !== 'strip' &&
+              'ring-offset-2 ring-offset-black',
             dimmed && 'opacity-50',
             variant === 'strip'
               ? '@container aspect-video size-full shrink-0'
@@ -278,7 +280,12 @@ export function StageMediaTile({
             variant === 'grid' && 'size-full',
             variant === 'focus' && 'size-full max-h-full max-w-full',
             variant === 'fullscreen' && 'size-full max-h-full max-w-full rounded-none',
-            speaking && variant !== 'strip' && 'ring-2 ring-chart-3',
+            // Grid: border внутри бокса — не срезается overflow контейнера сетки.
+            speaking && variant === 'grid' && 'border-2 border-chart-3',
+            speaking &&
+              variant !== 'strip' &&
+              variant !== 'grid' &&
+              'ring-2 ring-chart-3',
             variant !== 'focus' && variant !== 'fullscreen' && 'hover:brightness-110',
           )}
           style={variant === 'strip' ? undefined : tileStyle}

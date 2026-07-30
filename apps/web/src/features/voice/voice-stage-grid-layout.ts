@@ -12,6 +12,13 @@
 /** Зазор между плитками, px (как у Discord). */
 export const VOICE_STAGE_GRID_GAP_PX = 8
 
+/**
+ * Отступ сетки от краёв контейнера, px.
+ * Нужен под speaking-обводку плитки (`border-2` / `ring-2`), иначе
+ * `overflow-hidden` на контейнере срезает индикатор.
+ */
+export const VOICE_STAGE_GRID_EDGE_INSET_PX = 4
+
 /** Все плитки сетки — 16:9. */
 export const VOICE_STAGE_GRID_TILE_ASPECT = 16 / 9
 
@@ -29,6 +36,8 @@ export type VoiceStageGridLayout = {
   tileHeight: number
   /** Зазор между плитками, px. */
   gap: number
+  /** Отступ сетки от краёв контейнера, px. */
+  edgeInset: number
   /** Контент не вмещается по высоте — нужен вертикальный скролл. */
   scroll: boolean
 }
@@ -39,6 +48,7 @@ export const EMPTY_VOICE_STAGE_GRID_LAYOUT: VoiceStageGridLayout = {
   tileWidth: 0,
   tileHeight: 0,
   gap: VOICE_STAGE_GRID_GAP_PX,
+  edgeInset: VOICE_STAGE_GRID_EDGE_INSET_PX,
   scroll: false,
 }
 
@@ -47,6 +57,7 @@ export type ComputeVoiceStageGridLayoutParams = {
   height: number
   count: number
   gap?: number
+  edgeInset?: number
   aspectRatio?: number
   minTileWidth?: number
 }
@@ -76,10 +87,17 @@ export function computeVoiceStageGridLayout({
   height,
   count,
   gap = VOICE_STAGE_GRID_GAP_PX,
+  edgeInset = VOICE_STAGE_GRID_EDGE_INSET_PX,
   aspectRatio = VOICE_STAGE_GRID_TILE_ASPECT,
   minTileWidth = VOICE_STAGE_GRID_MIN_TILE_WIDTH_PX,
 }: ComputeVoiceStageGridLayoutParams): VoiceStageGridLayout {
   if (count <= 0 || width <= 0 || height <= 0 || aspectRatio <= 0) {
+    return EMPTY_VOICE_STAGE_GRID_LAYOUT
+  }
+
+  const layoutWidth = Math.max(0, width - edgeInset * 2)
+  const layoutHeight = Math.max(0, height - edgeInset * 2)
+  if (layoutWidth <= 0 || layoutHeight <= 0) {
     return EMPTY_VOICE_STAGE_GRID_LAYOUT
   }
 
@@ -96,8 +114,8 @@ export function computeVoiceStageGridLayout({
 
   for (let columns = 1; columns <= count; columns++) {
     const rows = Math.ceil(count / columns)
-    const cellWidth = (width - (columns - 1) * gap) / columns
-    const cellHeight = (height - (rows - 1) * gap) / rows
+    const cellWidth = (layoutWidth - (columns - 1) * gap) / columns
+    const cellHeight = (layoutHeight - (rows - 1) * gap) / rows
     if (cellWidth <= 0 || cellHeight <= 0) continue
 
     const tile = fitTileInCell(cellWidth, cellHeight, aspectRatio)
@@ -128,10 +146,10 @@ export function computeVoiceStageGridLayout({
   if (!best || best.tileWidth < minTileWidth) {
     const columns = Math.max(
       1,
-      Math.min(count, Math.floor((width + gap) / (minTileWidth + gap))),
+      Math.min(count, Math.floor((layoutWidth + gap) / (minTileWidth + gap))),
     )
     const rows = Math.ceil(count / columns)
-    const tileWidth = (width - (columns - 1) * gap) / columns
+    const tileWidth = (layoutWidth - (columns - 1) * gap) / columns
     const tileHeight = tileWidth / aspectRatio
     const contentHeight = rows * tileHeight + (rows - 1) * gap
 
@@ -141,7 +159,8 @@ export function computeVoiceStageGridLayout({
       tileWidth: Math.max(0, Math.floor(tileWidth)),
       tileHeight: Math.max(0, Math.floor(tileHeight)),
       gap,
-      scroll: contentHeight > height + 1,
+      edgeInset,
+      scroll: contentHeight > layoutHeight + 1,
     }
   }
 
@@ -151,6 +170,7 @@ export function computeVoiceStageGridLayout({
     tileWidth: Math.max(0, Math.floor(best.tileWidth)),
     tileHeight: Math.max(0, Math.floor(best.tileHeight)),
     gap,
+    edgeInset,
     scroll: false,
   }
 }

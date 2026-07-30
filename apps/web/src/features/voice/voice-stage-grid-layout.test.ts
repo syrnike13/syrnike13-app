@@ -103,6 +103,23 @@ describe('computeVoiceStageGridLayout', () => {
       expect(layout.columns * layout.rows).toBeGreaterThanOrEqual(count)
     }
   })
+
+  it('reserves edge inset so speaking borders are not clipped', () => {
+    const withInset = computeVoiceStageGridLayout({
+      width: 1600,
+      height: 900,
+      count: 2,
+      edgeInset: 4,
+    })
+    const withoutInset = computeVoiceStageGridLayout({
+      width: 1600,
+      height: 900,
+      count: 2,
+      edgeInset: 0,
+    })
+    expect(withInset.edgeInset).toBe(4)
+    expect(withInset.tileWidth).toBeLessThan(withoutInset.tileWidth)
+  })
 })
 
 describe('chunkIntoRows', () => {
