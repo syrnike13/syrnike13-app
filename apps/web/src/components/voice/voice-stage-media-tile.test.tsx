@@ -192,6 +192,36 @@ describe('StageMediaTile', () => {
     expect(onSetSubscribed).toHaveBeenCalledWith(screenItem.id, true)
   })
 
+  it('renders a watch button on unsubscribed strip screen tiles', () => {
+    const onSetSubscribed = vi.fn()
+
+    render(
+      <StageMediaTile
+        item={{ ...screenItem, subscribed: false }}
+        displayName="test_isa"
+        variant="strip"
+        participant={{
+          id: 'remote-user',
+          joined_at: 1,
+          self_mute: false,
+          self_deaf: false,
+          version: 1,
+          server_muted: false,
+          server_deafened: false,
+          camera: false,
+          screensharing: true,
+        }}
+        onFocus={vi.fn()}
+        onSetSubscribed={onSetSubscribed}
+      />,
+    )
+
+    const watch = screen.getByRole('button', { name: 'Смотреть' })
+    expect(watch).toBeTruthy()
+    fireEvent.click(watch)
+    expect(onSetSubscribed).toHaveBeenCalledWith(screenItem.id, true)
+  })
+
   it('does not render a watch button for local screen tiles', () => {
     render(
       <StageMediaTile

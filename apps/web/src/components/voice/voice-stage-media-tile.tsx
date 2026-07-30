@@ -58,7 +58,7 @@ const DEFAULT_SCREEN_ASPECT_RATIO = 16 / 9
 const screenStreamSurfaceClass = 'absolute inset-0 bg-muted'
 
 const unsubscribedStreamButtonClass =
-  'h-auto rounded-md border border-white/20 bg-card px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-muted'
+  'h-auto rounded-md border border-white/20 bg-card font-medium text-primary-foreground shadow-sm transition-colors hover:bg-white/20'
 
 const screenStreamOwnerLabelClass =
   'absolute z-10 flex min-w-0 max-w-[calc(100%-1rem)] items-center gap-1 rounded bg-black/60 font-medium text-white'
@@ -98,28 +98,32 @@ function UnsubscribedScreenStreamTile({
   variant: StageMediaTileVariant
   onSubscribe: () => void
 }) {
-  const showWatchButton = variant !== 'strip'
-
   return (
     <>
       <div className={screenStreamSurfaceClass} aria-hidden />
 
-      {showWatchButton ? (
-        <div className="absolute inset-0 flex items-center justify-center p-3">
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            className={unsubscribedStreamButtonClass}
-            onClick={(event) => {
-              event.stopPropagation()
-              onSubscribe()
-            }}
-          >
-            Смотреть
-          </Button>
-        </div>
-      ) : null}
+      <div
+        className={cn(
+          'absolute inset-0 flex items-center justify-center',
+          variant === 'strip' ? 'p-1.5' : 'p-3',
+        )}
+      >
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className={cn(
+            unsubscribedStreamButtonClass,
+            variant === 'strip' ? 'px-2 py-1 text-xs' : 'px-4 py-2 text-sm',
+          )}
+          onClick={(event) => {
+            event.stopPropagation()
+            onSubscribe()
+          }}
+        >
+          Смотреть
+        </Button>
+      </div>
 
       <ScreenStreamOwnerLabel displayName={displayName} variant={variant} />
     </>
