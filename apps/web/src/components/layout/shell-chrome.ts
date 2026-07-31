@@ -116,8 +116,16 @@ export const FLOATING_BAR_HEIGHT_PX = 56
 export const FLOATING_BAR_HEIGHT_CLASS = 'min-h-14' as const
 export const FLOATING_BAR_FIXED_HEIGHT_CLASS = 'h-14' as const
 export const FLOATING_BAR_BOTTOM_CLASS = 'bottom-2' as const
+/** Совпадает с `bottom-2` / `FLOATING_BAR_BOTTOM_CLASS`. */
+export const FLOATING_BAR_BOTTOM_OFFSET_PX = 8
 export const FLOATING_BAR_INSET_X_CLASS = 'inset-x-2' as const
 export const FLOATING_BAR_SCROLL_PAD_CLASS = 'pb-[120px]' as const
+
+/** paddingBottom под плавающую панель: измеренная высота + bottom inset. */
+export function floatingBarReservePx(heightPx: number): number {
+  if (heightPx <= 0) return 0
+  return heightPx + FLOATING_BAR_BOTTOM_OFFSET_PX
+}
 
 /**
  * Бывший `rounded-lg` (= `--radius` / `--radius-lg` = 0.625rem ≈ 10px).

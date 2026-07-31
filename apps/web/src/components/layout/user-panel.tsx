@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { SettingsIcon, TelegramIcon } from '#/components/icons'
 import {
   VoiceCameraStrip,
@@ -44,22 +44,45 @@ const TELEGRAM_CHANNEL_URL = 'https://t.me/+oF1TAWZ2yyQwMDcy'
 type UserPanelProps = {
   telegramPromoVisible: boolean
   onDismissTelegramPromo: () => void
+  /** Фактическая высота панели (строка + voice/telegram блоки). */
+  onHeightChange?: (heightPx: number) => void
 }
 
 export function UserPanel({
   telegramPromoVisible,
   onDismissTelegramPromo,
+  onHeightChange,
 }: UserPanelProps) {
   const auth = useAuth()
   const { openSettings } = useSettingsModal()
   const voiceSession = useVoiceSession()
   const voiceStage = useVoiceStage()
+  const rootRef = useRef<HTMLDivElement>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [globalProfileOpen, setGlobalProfileOpen] = useState(false)
   const [telegramPromoOpen, setTelegramPromoOpen] = useState(false)
   const user = auth.user
-  if (!user) return null
-  if (voiceStage.stageFullscreen) return null
+  const hidden = !user || voiceStage.stageFullscreen
+
+  useEffect(() => {
+    if (!onHeightChange) return
+    if (hidden) {
+      onHeightChange(0)
+      return
+    }
+
+    const element = rootRef.current
+    if (!element) return
+
+    const update = () =>
+      onHeightChange(Math.ceil(element.getBoundingClientRect().height))
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [hidden, onHeightChange])
+
+  if (hidden || !user) return null
 
   const displayName = user.display_name ?? user.username
   const usernameLabel = `@${user.username}`
@@ -83,6 +106,7 @@ export function UserPanel({
 
   return (
     <div
+      ref={rootRef}
       className="relative"
       onPointerOver={(event) => {
         const target = event.target as Element

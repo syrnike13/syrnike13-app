@@ -10,9 +10,9 @@ import { ShellNavColumn } from '#/components/layout/shell-nav-column'
 import { ShellTitleBar } from '#/components/layout/shell-title-bar'
 import { UserPanel } from '#/components/layout/user-panel'
 import {
-  USER_PANEL_RESERVE_PX,
-  USER_PANEL_WITH_TELEGRAM_PROMO_RESERVE_PX,
-} from '#/components/layout/left-sidebar-stack'
+  FLOATING_BAR_HEIGHT_PX,
+  floatingBarReservePx,
+} from '#/components/layout/shell-chrome'
 import { IncomingVoiceCallOverlay } from '#/components/voice/incoming-voice-call-overlay'
 import { selectedServerIdForChannel } from '#/features/navigation/channel-server-context'
 import { isDmChannel } from '#/features/sync/channel-label'
@@ -42,6 +42,9 @@ export function DesktopShell() {
     visible: boolean
     dismissedUntil?: number
   }>({ visible: false })
+  const [userPanelHeightPx, setUserPanelHeightPx] = useState(
+    FLOATING_BAR_HEIGHT_PX,
+  )
   const channelMatch = useMatch({
     from: '/app/c/$channelId',
     shouldThrow: false,
@@ -136,9 +139,7 @@ export function DesktopShell() {
 
   const telegramPromoVisible =
     telegramPromoState.userId === userId && telegramPromoState.visible
-  const userPanelReservePx = telegramPromoVisible
-    ? USER_PANEL_WITH_TELEGRAM_PROMO_RESERVE_PX
-    : USER_PANEL_RESERVE_PX
+  const userPanelReservePx = floatingBarReservePx(userPanelHeightPx)
 
   const dismissTelegramPromo = () => {
     if (!userId) return
@@ -186,6 +187,7 @@ export function DesktopShell() {
               <UserPanel
                 telegramPromoVisible={telegramPromoVisible}
                 onDismissTelegramPromo={dismissTelegramPromo}
+                onHeightChange={setUserPanelHeightPx}
               />
             }
             userPanelReservePx={userPanelReservePx}
