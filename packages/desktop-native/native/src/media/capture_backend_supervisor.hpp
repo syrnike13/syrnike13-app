@@ -26,6 +26,7 @@ enum class CaptureBackendState {
 enum class CaptureBackendAction {
   None,
   ReinitializeActive,
+  RecreateActivePipeline,
   RecreateDevice,
   SwitchBackend,
   ProbePreferredBackend,
@@ -134,6 +135,19 @@ class CaptureBackendSupervisor final {
           state_,
           CaptureBackendAction::ReinitializeActive,
           CaptureBackend::Dxgi,
+      };
+    }
+
+    // A live device with an overdue event query has a stalled command queue,
+    // not a broken capture API. Rebuild only the active GPU pipeline, stay on
+    // the selected backend, and rate-limit retries to avoid resource storms.
+    if (observation.error == ScreenGpuCaptureErrorCode::GpuTimeout) {
+      scheduleBackoff(now, kGpuTimeoutMaxRetry);
+      state_ = CaptureBackendState::Reinitializing;
+      return {
+          state_,
+          CaptureBackendAction::RecreateActivePipeline,
+          active_,
       };
     }
 
@@ -252,6 +266,7 @@ class CaptureBackendSupervisor final {
   static constexpr auto kPreferredProbeInterval = std::chrono::seconds(30);
   static constexpr auto kAcquireWatchdog = std::chrono::seconds(15);
   static constexpr auto kAccessLostMaxRetry = std::chrono::seconds(1);
+  static constexpr auto kGpuTimeoutMaxRetry = std::chrono::seconds(1);
   static constexpr std::size_t kMaxPublicationRecoveryAttempts = 3;
   static constexpr auto kPublicationRecoveryWindow = std::chrono::seconds(60);
 

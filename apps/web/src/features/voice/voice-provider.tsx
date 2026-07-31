@@ -831,6 +831,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       )
       activeDemandKeys.add(demandKey)
 
+      if (publication.error) {
+        // Main has already retired the exhausted demand. Keep the renderer's
+        // mirror honest without auto-retrying; the explicit Retry action will
+        // create a fresh demand and recovery budget.
+        nativeScreenDemandRef.current.set(demandKey, false)
+        continue
+      }
+
       const mediaId = stageMediaItemId(
         baseVoiceIdentity(publication.participantIdentity),
         'screen',

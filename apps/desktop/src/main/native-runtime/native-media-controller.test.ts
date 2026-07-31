@@ -381,7 +381,7 @@ describe('NativeMediaController retained tools', () => {
         height: 720,
         ntHandle: new Uint8Array(8),
       })
-      harness.controller.markRemoteVideoFrameDelivered('voice', 3, 'screen')
+      harness.controller.markRemoteVideoFrameReceived('voice', 3, 'screen')
 
       await vi.advanceTimersByTimeAsync(1_000)
       harness.event({
@@ -398,7 +398,7 @@ describe('NativeMediaController retained tools', () => {
         height: 720,
         ntHandle: new Uint8Array(8),
       })
-      harness.controller.markRemoteVideoFrameDelivered('voice', 3, 'screen')
+      harness.controller.markRemoteVideoFrameReceived('voice', 3, 'screen')
       await vi.advanceTimersByTimeAsync(1_000)
 
       expect(harness.request).not.toHaveBeenCalled()
@@ -599,7 +599,7 @@ describe('NativeMediaController retained tools', () => {
     expect(harness.request).not.toHaveBeenCalled()
   })
 
-  it('does not count a decoded frame as recovery until GPU delivery succeeds', async () => {
+  it('resets network recovery when native decoding produces a frame', async () => {
     const harness = createHarness()
     const listener = vi.fn()
     harness.controller.subscribe(listener)
@@ -625,22 +625,21 @@ describe('NativeMediaController retained tools', () => {
 
     await expect(
       harness.controller.recoverRemoteVideoDemand('voice', 3, 'screen'),
-    ).resolves.toBe(false)
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+    ).resolves.toBe(true)
+    expect(listener).not.toHaveBeenCalledWith(expect.objectContaining({
       type: 'remoteVideoSubscriptionFailed',
-      trackId: 'screen',
     }))
     await harness.controller.dispose()
   })
 
-  it('resets the recovery budget after a frame reaches the renderer', async () => {
+  it('resets the recovery budget after a native frame is received', async () => {
     const harness = createHarness()
     await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', true)
 
     for (let attempt = 0; attempt < 10; attempt += 1) {
       await harness.controller.recoverRemoteVideoDemand('voice', 3, 'screen')
     }
-    harness.controller.markRemoteVideoFrameDelivered('voice', 3, 'screen')
+    harness.controller.markRemoteVideoFrameReceived('voice', 3, 'screen')
 
     await expect(
       harness.controller.recoverRemoteVideoDemand('voice', 3, 'screen'),

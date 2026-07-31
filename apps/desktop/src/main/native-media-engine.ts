@@ -166,14 +166,6 @@ export function registerNativeMediaRuntimeIpc(
         timestampUs: event.timestampUs,
         runtimeEpoch: supervisor.getSnapshot().restartCount,
         ntHandle: Buffer.from(event.ntHandle),
-      }).then((delivered) => {
-        if (!local && delivered) {
-          controller.markRemoteVideoFrameDelivered(
-            event.sessionId,
-            event.generation,
-            event.trackId,
-          )
-        }
       }).catch((error) => {
         diagnosticSink({
           scope: 'native-video',
@@ -267,15 +259,20 @@ function createVideoBridge(
         : { type: 'releaseRemoteVideoFrame' as const, ...identity }
       await supervisor.request(command, 2_000)
     },
-    onTrackStalled: local
-      ? undefined
-      : async (frame) => {
-          await controller.recoverRemoteVideoDemand(
-            frame.sessionId,
-            frame.generation,
-            frame.trackId,
-          )
-        },
+    onPresentationStalled: (frame, reason) => {
+      const window = getWindow()
+      diagnosticSink({
+        scope: 'native-video',
+        event: 'presentation_stalled',
+        kind: local ? 'local-preview' : 'remote-video',
+        stage: 'renderer-presentation',
+        sessionId: frame.sessionId,
+        generation: frame.generation,
+        reason,
+        windowVisible: Boolean(window?.isVisible()),
+        windowMinimized: Boolean(window?.isMinimized()),
+      })
+    },
   })
 }
 

@@ -22,6 +22,7 @@ enum class ScreenGpuCaptureErrorCode {
   DeviceUnavailable,
   InteropUnavailable,
   FormatUnsupported,
+  GpuTimeout,
   DeviceLost,
   TargetClosed,
 };

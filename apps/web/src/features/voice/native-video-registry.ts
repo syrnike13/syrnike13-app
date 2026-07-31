@@ -100,6 +100,9 @@ export class NativeVideoRegistry {
     if (this.listening || typeof window === 'undefined') return
     this.listening = true
     window.addEventListener('message', this.onMessage)
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.onVisibilityChange)
+    }
     void window.syrnikeDesktop?.media
       .replayRemoteScreenPublications()
       .catch(() => undefined)
@@ -109,6 +112,9 @@ export class NativeVideoRegistry {
     if (!this.listening || typeof window === 'undefined') return
     this.listening = false
     window.removeEventListener('message', this.onMessage)
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onVisibilityChange)
+    }
     for (const [trackId, entry] of this.tracks) {
       this.disposeTrack(trackId, entry, false)
     }
@@ -383,6 +389,11 @@ export class NativeVideoRegistry {
       entry.metadata = metadata
     }
 
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      frame.close()
+      return
+    }
+
     const consumers = this.consumersFor(entry)
     if (consumers.size === 0) {
       frame.close()
@@ -398,6 +409,18 @@ export class NativeVideoRegistry {
     } catch {
       entry.pendingFrame = null
       frame.close()
+    }
+  }
+
+  private readonly onVisibilityChange = () => {
+    if (typeof document === 'undefined' || document.visibilityState !== 'hidden') return
+    for (const entry of this.tracks.values()) {
+      entry.pendingFrame?.close()
+      entry.pendingFrame = null
+      if (entry.drawRequest !== null) {
+        window.cancelAnimationFrame(entry.drawRequest)
+        entry.drawRequest = null
+      }
     }
   }
 

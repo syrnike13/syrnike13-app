@@ -16,7 +16,7 @@ function frame(sequence: number, trackId = 'camera'): NativeSharedVideoFrame {
 
 function harness(
   maxInFlight = 3,
-  onTrackStalled = vi.fn(),
+  onPresentationStalled = vi.fn(),
   maxRetainedBytes?: number,
 ) {
   const callbacks: Array<() => void> = []
@@ -38,7 +38,7 @@ function harness(
     maxInFlight,
     maxRetainedBytes,
     stallTimeoutMs: 1_000,
-    onTrackStalled,
+    onPresentationStalled,
     importTexture,
     sendTexture,
   })
@@ -49,7 +49,7 @@ function harness(
     imported,
     importTexture,
     sendTexture,
-    onTrackStalled,
+    onPresentationStalled,
   }
 }
 
@@ -127,8 +127,11 @@ describe('NativeSharedTextureBridge', () => {
 
       await vi.advanceTimersByTimeAsync(1_000)
 
-      expect(h.onTrackStalled).toHaveBeenCalledTimes(1)
-      expect(h.onTrackStalled).toHaveBeenCalledWith(frame(1, 'screen'))
+      expect(h.onPresentationStalled).toHaveBeenCalledTimes(1)
+      expect(h.onPresentationStalled).toHaveBeenCalledWith(
+        frame(1, 'screen'),
+        'shared-texture-fence',
+      )
       expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(false)
       expect(h.bridge.inFlightCount).toBe(2)
       expect(h.release).toHaveBeenCalledWith(frame(3, 'screen'))
@@ -155,7 +158,7 @@ describe('NativeSharedTextureBridge', () => {
 
       expect(h.bridge.inFlightCount).toBe(2)
       expect(h.importTexture).toHaveBeenCalledTimes(2)
-      expect(h.onTrackStalled).toHaveBeenCalledTimes(1)
+      expect(h.onPresentationStalled).toHaveBeenCalledTimes(1)
     } finally {
       vi.useRealTimers()
     }
@@ -185,8 +188,11 @@ describe('NativeSharedTextureBridge', () => {
     expect(await h.bridge.deliver(frame(2, 'screen'))).toBe(false)
     expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(false)
 
-    expect(h.onTrackStalled).toHaveBeenCalledTimes(1)
-    expect(h.onTrackStalled).toHaveBeenCalledWith(frame(3, 'screen'))
+    expect(h.onPresentationStalled).toHaveBeenCalledTimes(1)
+    expect(h.onPresentationStalled).toHaveBeenCalledWith(
+      frame(3, 'screen'),
+      'renderer-delivery',
+    )
   })
 
   it('does not restart a track for an isolated texture delivery failure', async () => {
@@ -197,7 +203,7 @@ describe('NativeSharedTextureBridge', () => {
     expect(await h.bridge.deliver(frame(1, 'screen'))).toBe(false)
     expect(await h.bridge.deliver(frame(2, 'screen'))).toBe(true)
 
-    expect(h.onTrackStalled).not.toHaveBeenCalled()
+    expect(h.onPresentationStalled).not.toHaveBeenCalled()
   })
 
   it('releases references on renderer reload without bypassing the fence', async () => {
@@ -241,7 +247,7 @@ describe('NativeSharedTextureBridge', () => {
     h.bridge.rendererReloaded()
     expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(false)
 
-    expect(h.onTrackStalled).not.toHaveBeenCalled()
+    expect(h.onPresentationStalled).not.toHaveBeenCalled()
   })
 
   it('releases a removed local preview only after the Electron GPU fence', async () => {
@@ -264,7 +270,7 @@ describe('NativeSharedTextureBridge', () => {
 
       await vi.advanceTimersByTimeAsync(1_000)
 
-      expect(h.onTrackStalled).not.toHaveBeenCalled()
+      expect(h.onPresentationStalled).not.toHaveBeenCalled()
       expect(await h.bridge.deliver(frame(2, 'screen'))).toBe(false)
       h.callbacks[0]()
       expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(true)

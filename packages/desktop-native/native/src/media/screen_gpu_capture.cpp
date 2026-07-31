@@ -51,6 +51,7 @@ constexpr std::size_t kOutputPoolSize = 5;
 constexpr UINT64 kProducerKey = 0;
 constexpr UINT64 kConsumerKey = 1;
 constexpr auto kGpuCompletionTimeout = std::chrono::milliseconds(500);
+constexpr auto kGpuCompletionHardTimeout = std::chrono::seconds(1);
 
 std::string_view captureBackendName(CaptureBackend backend) noexcept {
   return backend == CaptureBackend::Dxgi ? "dxgi_gpu" : "wgc_gpu";
@@ -63,6 +64,8 @@ std::string_view captureBackendActionName(
       return "none";
     case CaptureBackendAction::ReinitializeActive:
       return "reinitialize_active";
+    case CaptureBackendAction::RecreateActivePipeline:
+      return "recreate_active_pipeline";
     case CaptureBackendAction::RecreateDevice:
       return "recreate_device";
     case CaptureBackendAction::SwitchBackend:
@@ -195,6 +198,9 @@ ScreenGpuCaptureErrorCode captureErrorForHr(HRESULT hr) noexcept {
       hr == DXGI_ERROR_DEVICE_HUNG) {
     return ScreenGpuCaptureErrorCode::DeviceLost;
   }
+  if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
+    return ScreenGpuCaptureErrorCode::GpuTimeout;
+  }
   if (hr == RO_E_CLOSED) return ScreenGpuCaptureErrorCode::TargetClosed;
   return ScreenGpuCaptureErrorCode::CaptureUnavailable;
 }
@@ -211,6 +217,15 @@ void requireHr(
     ScreenGpuCaptureErrorCode code,
     const char* message) {
   if (FAILED(hr)) throwHr(code, message, hr);
+}
+
+void requireGpuCompletion(HRESULT hr, const char* message) {
+  if (SUCCEEDED(hr)) return;
+  auto code = captureErrorForHr(hr);
+  if (code == ScreenGpuCaptureErrorCode::CaptureUnavailable) {
+    code = ScreenGpuCaptureErrorCode::DeviceLost;
+  }
+  throwHr(code, message, hr);
 }
 
 struct AdapterSelection {
@@ -618,10 +633,14 @@ class GpuFramePool {
       std::uint64_t elapsed_us = 0;
       const HRESULT completion_result = slot.completion->poll(&elapsed_us);
       if (completion_result == S_FALSE) continue;
-      requireHr(
-          completion_result,
-          ScreenGpuCaptureErrorCode::DeviceLost,
-          "GPU screen conversion did not complete");
+      if (completion_result == DXGI_ERROR_WAIT_TIMEOUT &&
+          elapsed_us < static_cast<std::uint64_t>(
+              std::chrono::duration_cast<std::chrono::microseconds>(
+                  kGpuCompletionHardTimeout).count())) {
+        continue;
+      }
+      requireGpuCompletion(
+          completion_result, "GPU screen conversion did not complete");
       slot.metrics.scale_us = static_cast<int>(std::min<std::uint64_t>(
           elapsed_us, static_cast<std::uint64_t>(std::numeric_limits<int>::max())));
       slot.input_view.Reset();
@@ -1088,8 +1107,15 @@ class GpuPreviewPool {
         std::lock_guard lock(mutex_);
         if (slot.phase != SlotPhase::Converting) continue;
       }
-      const HRESULT completion_result = slot.completion->poll();
+      std::uint64_t elapsed_us = 0;
+      const HRESULT completion_result = slot.completion->poll(&elapsed_us);
       if (completion_result == S_FALSE) continue;
+      if (completion_result == DXGI_ERROR_WAIT_TIMEOUT &&
+          elapsed_us < static_cast<std::uint64_t>(
+              std::chrono::duration_cast<std::chrono::microseconds>(
+                  kGpuCompletionHardTimeout).count())) {
+        continue;
+      }
       if (FAILED(completion_result)) {
         std::lock_guard lock(mutex_);
         static_cast<void>(lease_state_.release(slot.sequence));
@@ -1097,10 +1123,11 @@ class GpuPreviewPool {
         slot.input_view.Reset();
         slot.texture.Reset();
         slot.completion.reset();
-        throwHr(
-            ScreenGpuCaptureErrorCode::DeviceLost,
-            "GPU preview copy did not complete",
-            completion_result);
+        auto code = captureErrorForHr(completion_result);
+        if (code == ScreenGpuCaptureErrorCode::CaptureUnavailable) {
+          code = ScreenGpuCaptureErrorCode::DeviceLost;
+        }
+        throwHr(code, "GPU preview copy did not complete", completion_result);
       }
       std::lock_guard lock(mutex_);
       if (slot.phase == SlotPhase::Converting) {
@@ -1432,10 +1459,15 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
       // boundary; the heavier encoder and preview conversions below remain
       // asynchronous.
       std::uint64_t compositor_us = 0;
-      requireHr(
-          compositor_completion_.wait(kGpuCompletionTimeout, &compositor_us),
-          ScreenGpuCaptureErrorCode::DeviceLost,
-          "DXGI compositor copy did not complete");
+      HRESULT compositor_result =
+          compositor_completion_.wait(kGpuCompletionTimeout, &compositor_us);
+      if (compositor_result == DXGI_ERROR_WAIT_TIMEOUT) {
+        compositor_result = compositor_completion_.continueWait(
+            kGpuCompletionHardTimeout - kGpuCompletionTimeout,
+            &compositor_us);
+      }
+      requireGpuCompletion(
+          compositor_result, "DXGI compositor copy did not complete");
       const HRESULT release_result = frame_lease.release();
       if (FAILED(release_result)) {
         throwHr(
@@ -2012,6 +2044,7 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
           : decision.target;
       bool force_new =
           decision.action == CaptureBackendAction::RecreateDevice ||
+          decision.action == CaptureBackendAction::RecreateActivePipeline ||
           decision.action == CaptureBackendAction::ReinitializeActive ||
           decision.action == CaptureBackendAction::SwitchBackend ||
           decision.action == CaptureBackendAction::ProbePreferredBackend;

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NativeVideoRegistry } from './native-video-registry'
 
 let runtimeWindow: ReturnType<typeof createRuntimeWindow>
+let runtimeDocument: ReturnType<typeof createRuntimeDocument>
 
 class FakeVideoFrame {
   readonly close = vi.fn()
@@ -18,7 +19,9 @@ class FakeVideoFrame {
 describe('NativeVideoRegistry canvas lifecycle', () => {
   beforeEach(() => {
     runtimeWindow = createRuntimeWindow()
+    runtimeDocument = createRuntimeDocument()
     vi.stubGlobal('window', runtimeWindow)
+    vi.stubGlobal('document', runtimeDocument)
     vi.stubGlobal('VideoFrame', FakeVideoFrame)
     vi.stubGlobal(
       'MediaStreamTrackGenerator',
@@ -108,6 +111,27 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     runtimeWindow.flushAnimationFrames()
     expect(consumer.drawImage).toHaveBeenCalledWith(latest, 0, 0, 640, 360)
     expect(latest.close).toHaveBeenCalledOnce()
+  })
+
+  it('closes pending and incoming frames while the renderer is hidden', () => {
+    const registry = new NativeVideoRegistry()
+    registry.start()
+    deliver(registry, frameMessage(1, 1, new FakeVideoFrame()))
+    const consumer = canvasStub()
+    registry.getTrack('local-screen:session')!.attachCanvas(consumer.canvas)
+    const pending = new FakeVideoFrame()
+    deliver(registry, frameMessage(1, 2, pending))
+
+    runtimeDocument.setVisibility('hidden')
+
+    expect(pending.close).toHaveBeenCalledOnce()
+    expect(runtimeWindow.cancelAnimationFrame).toHaveBeenCalledOnce()
+    const hidden = new FakeVideoFrame()
+    deliver(registry, frameMessage(1, 3, hidden))
+    expect(hidden.close).toHaveBeenCalledOnce()
+    runtimeWindow.flushAnimationFrames()
+    expect(consumer.drawImage).not.toHaveBeenCalled()
+    registry.stop()
   })
 
   it('stops drawing after detach and makes detach idempotent', () => {
@@ -601,6 +625,26 @@ function createRuntimeWindow() {
       const pending = [...callbacks.values()]
       callbacks.clear()
       for (const callback of pending) callback(0)
+    },
+  }
+}
+
+function createRuntimeDocument() {
+  let visibilityState: DocumentVisibilityState = 'visible'
+  const listeners = new Set<() => void>()
+  return {
+    get visibilityState() {
+      return visibilityState
+    },
+    addEventListener: vi.fn((event: string, listener: () => void) => {
+      if (event === 'visibilitychange') listeners.add(listener)
+    }),
+    removeEventListener: vi.fn((event: string, listener: () => void) => {
+      if (event === 'visibilitychange') listeners.delete(listener)
+    }),
+    setVisibility(next: DocumentVisibilityState) {
+      visibilityState = next
+      for (const listener of listeners) listener()
     },
   }
 }

@@ -54,6 +54,8 @@ std::string_view gpuCaptureReason(ScreenGpuCaptureErrorCode code) noexcept {
       return "gpu_access_lost";
     case ScreenGpuCaptureErrorCode::DeviceLost:
       return "gpu_device_lost";
+    case ScreenGpuCaptureErrorCode::GpuTimeout:
+      return "gpu_pipeline_timeout";
     case ScreenGpuCaptureErrorCode::InteropUnavailable:
     case ScreenGpuCaptureErrorCode::FormatUnsupported:
       return "gpu_interop_unavailable";
