@@ -4,6 +4,7 @@ import {
 } from '@squircle-js/react'
 import {
   useEffect,
+  useLayoutEffect,
   useState,
   type ComponentPropsWithoutRef,
   type CSSProperties,
@@ -257,17 +258,25 @@ export function Squircle({
   const [measured, setMeasured] = useState({ width: 0, height: 0 })
   const [measureNode, setMeasureNode] = useState<HTMLDivElement | null>(null)
 
+  const syncMeasuredSize = (node: HTMLDivElement) => {
+    const width = node.offsetWidth
+    const height = node.offsetHeight
+    setMeasured((prev) =>
+      prev.width === width && prev.height === height ? prev : { width, height },
+    )
+  }
+
+  // Sync before paint when children grow/shrink — otherwise stale clip-path
+  // hides the bottom of fluid bars (e.g. composer input after attachments).
+  useLayoutEffect(() => {
+    if (hasFixedSize || !measureNode) return
+    syncMeasuredSize(measureNode)
+  })
+
   useEffect(() => {
     if (hasFixedSize || !measureNode) return
 
-    const update = () => {
-      setMeasured({
-        width: measureNode.offsetWidth,
-        height: measureNode.offsetHeight,
-      })
-    }
-    update()
-
+    const update = () => syncMeasuredSize(measureNode)
     const observer = new ResizeObserver(update)
     observer.observe(measureNode)
     return () => observer.disconnect()

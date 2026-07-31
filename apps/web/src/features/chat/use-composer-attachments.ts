@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { uploadAttachment } from '#/features/api/media-api'
 import {
   createPendingFiles,
+  fileForUpload,
   revokePendingFiles,
   type PendingComposerFile,
 } from '#/lib/composer-files'
@@ -48,6 +49,14 @@ export function useComposerAttachments(channelId?: string) {
     setFiles((current) => current.filter((file) => file.id !== id))
   }
 
+  function toggleSpoiler(id: string) {
+    setFiles((current) =>
+      current.map((file) =>
+        file.id === id ? { ...file, spoiler: !file.spoiler } : file,
+      ),
+    )
+  }
+
   async function runUploads(token: string) {
     const results = await Promise.allSettled(
       filesRef.current.map(async (pending) => {
@@ -64,16 +73,20 @@ export function useComposerAttachments(channelId?: string) {
         )
 
         try {
-          const attachmentId = await uploadAttachment(token, pending.file, {
-            signal: controller.signal,
-            onProgress: (progress) => {
-              setFiles((current) =>
-                current.map((file) =>
-                  file.id === pending.id ? { ...file, progress } : file,
-                ),
-              )
+          const attachmentId = await uploadAttachment(
+            token,
+            fileForUpload(pending),
+            {
+              signal: controller.signal,
+              onProgress: (progress) => {
+                setFiles((current) =>
+                  current.map((file) =>
+                    file.id === pending.id ? { ...file, progress } : file,
+                  ),
+                )
+              },
             },
-          })
+          )
           setFiles((current) =>
             current.map((file) =>
               file.id === pending.id
@@ -123,5 +136,5 @@ export function useComposerAttachments(channelId?: string) {
     return promise
   }
 
-  return { files, append, remove, reset, uploadAll }
+  return { files, append, remove, toggleSpoiler, reset, uploadAll }
 }
