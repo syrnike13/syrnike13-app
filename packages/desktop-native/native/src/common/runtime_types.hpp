@@ -116,6 +116,15 @@ struct RuntimeEvent {
   std::uint64_t video_gpu_pool_slots_available = 0;
   std::uint64_t video_gpu_pool_slots_total = 0;
   std::uint64_t video_dxgi_duplication_hold_us_max = 0;
+  std::uint64_t video_source_updates = 0;
+  std::uint64_t video_gpu_submissions = 0;
+  std::uint64_t video_idle_refreshes = 0;
+  std::uint64_t video_coalesced_source_updates = 0;
+  std::uint64_t video_encoder_backpressure_ticks = 0;
+  std::uint64_t video_superseded_ready_frames = 0;
+  std::uint64_t video_gpu_completion_p50_us = 0;
+  std::uint64_t video_gpu_completion_p95_us = 0;
+  std::uint64_t video_gpu_completion_max_us = 0;
   bool rtp_stats_available = false;
   std::uint64_t rtp_packets_sent = 0;
   std::uint64_t rtp_bytes_sent = 0;

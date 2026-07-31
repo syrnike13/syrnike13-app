@@ -71,6 +71,19 @@ struct ScreenGpuFrameResult {
   const char* method = "unknown";
   ScreenGpuCaptureErrorCode error_code = ScreenGpuCaptureErrorCode::CaptureUnavailable;
   std::optional<ScreenGpuRecoveryTransition> recovery_transition;
+  bool source_submitted = false;
+};
+
+struct ScreenFrameFlowStats {
+  std::uint64_t source_updates = 0;
+  std::uint64_t gpu_submissions = 0;
+  std::uint64_t idle_refreshes = 0;
+  std::uint64_t coalesced_source_updates = 0;
+  std::uint64_t encoder_backpressure_ticks = 0;
+  std::uint64_t superseded_ready_frames = 0;
+  std::uint64_t gpu_completion_p50_us = 0;
+  std::uint64_t gpu_completion_p95_us = 0;
+  std::uint64_t gpu_completion_max_us = 0;
 };
 
 struct ScreenPreviewDemand {
@@ -119,6 +132,7 @@ class ScreenGpuCapturer {
   [[nodiscard]] virtual LUID adapterLuid() const noexcept = 0;
   [[nodiscard]] virtual std::size_t frameSlotsAvailable() const noexcept = 0;
   [[nodiscard]] virtual std::size_t frameSlotsTotal() const noexcept = 0;
+  [[nodiscard]] virtual ScreenFrameFlowStats frameFlowStats() const noexcept = 0;
   [[nodiscard]] virtual std::uint64_t recoverableLossCount() const noexcept {
     return 0;
   }

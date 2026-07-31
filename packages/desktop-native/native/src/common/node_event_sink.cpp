@@ -244,6 +244,27 @@ Napi::Object statsToObject(Napi::Env env, const RuntimeEvent& event) {
   stats.Set(
       "videoDxgiDuplicationHoldUsMax",
       jsNumber(env, event.video_dxgi_duplication_hold_us_max));
+  stats.Set("videoSourceUpdates", jsNumber(env, event.video_source_updates));
+  stats.Set("videoGpuSubmissions", jsNumber(env, event.video_gpu_submissions));
+  stats.Set("videoIdleRefreshes", jsNumber(env, event.video_idle_refreshes));
+  stats.Set(
+      "videoCoalescedSourceUpdates",
+      jsNumber(env, event.video_coalesced_source_updates));
+  stats.Set(
+      "videoEncoderBackpressureTicks",
+      jsNumber(env, event.video_encoder_backpressure_ticks));
+  stats.Set(
+      "videoSupersededReadyFrames",
+      jsNumber(env, event.video_superseded_ready_frames));
+  stats.Set(
+      "videoGpuCompletionP50Us",
+      jsNumber(env, event.video_gpu_completion_p50_us));
+  stats.Set(
+      "videoGpuCompletionP95Us",
+      jsNumber(env, event.video_gpu_completion_p95_us));
+  stats.Set(
+      "videoGpuCompletionMaxUs",
+      jsNumber(env, event.video_gpu_completion_max_us));
   stats.Set("rtpStatsAvailable", event.rtp_stats_available);
   stats.Set("rtpPacketsSent", jsNumber(env, event.rtp_packets_sent));
   stats.Set("rtpBytesSent", jsNumber(env, event.rtp_bytes_sent));

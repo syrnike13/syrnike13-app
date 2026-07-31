@@ -800,6 +800,7 @@ class ScreenActor::Implementation final
     stats_video_gpu_pool_slots_available_ = 0;
     stats_video_gpu_pool_slots_total_ = 0;
     stats_video_dxgi_duplication_hold_us_max_ = 0;
+    stats_video_frame_flow_ = {};
     stats_audio_peak_db_ = -120.0;
     stats_audio_rms_db_ = -120.0;
     stats_capture_method_.clear();
@@ -841,6 +842,21 @@ class ScreenActor::Implementation final
       event.video_gpu_pool_slots_total = stats_video_gpu_pool_slots_total_;
       event.video_dxgi_duplication_hold_us_max =
         stats_video_dxgi_duplication_hold_us_max_;
+      event.video_source_updates = stats_video_frame_flow_.source_updates;
+      event.video_gpu_submissions = stats_video_frame_flow_.gpu_submissions;
+      event.video_idle_refreshes = stats_video_frame_flow_.idle_refreshes;
+      event.video_coalesced_source_updates =
+        stats_video_frame_flow_.coalesced_source_updates;
+      event.video_encoder_backpressure_ticks =
+        stats_video_frame_flow_.encoder_backpressure_ticks;
+      event.video_superseded_ready_frames =
+        stats_video_frame_flow_.superseded_ready_frames;
+      event.video_gpu_completion_p50_us =
+        stats_video_frame_flow_.gpu_completion_p50_us;
+      event.video_gpu_completion_p95_us =
+        stats_video_frame_flow_.gpu_completion_p95_us;
+      event.video_gpu_completion_max_us =
+        stats_video_frame_flow_.gpu_completion_max_us;
       event.rtp_stats_available = stats_rtp_available_;
       event.rtp_packets_sent = stats_rtp_packets_sent_;
       event.rtp_bytes_sent = stats_rtp_bytes_sent_;
@@ -883,6 +899,7 @@ class ScreenActor::Implementation final
     std::uint64_t recoverable_lost_count,
     std::size_t gpu_pool_slots_available,
     std::size_t gpu_pool_slots_total,
+    const ScreenFrameFlowStats& frame_flow,
     int dxgi_duplication_hold_us
   ) {
     {
@@ -895,6 +912,7 @@ class ScreenActor::Implementation final
       stats_video_recoverable_lost_count_ = recoverable_lost_count;
       stats_video_gpu_pool_slots_available_ = gpu_pool_slots_available;
       stats_video_gpu_pool_slots_total_ = gpu_pool_slots_total;
+      stats_video_frame_flow_ = frame_flow;
       if (dxgi_duplication_hold_us > 0) {
         stats_video_dxgi_duplication_hold_us_max_ = std::max<std::uint64_t>(
           stats_video_dxgi_duplication_hold_us_max_,
@@ -1283,6 +1301,7 @@ class ScreenActor::Implementation final
           capturer->recoverableLossCount(),
           capturer->frameSlotsAvailable(),
           capturer->frameSlotsTotal(),
+          capturer->frameFlowStats(),
           capture.metrics.duplication_hold_us
         );
         next_frame += interval;
@@ -1478,6 +1497,7 @@ class ScreenActor::Implementation final
   std::uint64_t stats_video_gpu_pool_slots_available_ = 0;
   std::uint64_t stats_video_gpu_pool_slots_total_ = 0;
   std::uint64_t stats_video_dxgi_duplication_hold_us_max_ = 0;
+  ScreenFrameFlowStats stats_video_frame_flow_;
   double stats_audio_peak_db_ = -120.0;
   double stats_audio_rms_db_ = -120.0;
   std::string stats_capture_method_;

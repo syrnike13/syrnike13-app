@@ -28,6 +28,15 @@ export type NativeMediaEngineDebugState = {
   videoNoFrameCount?: number
   videoRepeatedFrameCount?: number
   videoRecoverableLostCount?: number
+  videoSourceUpdates?: number
+  videoGpuSubmissions?: number
+  videoIdleRefreshes?: number
+  videoCoalescedSourceUpdates?: number
+  videoEncoderBackpressureTicks?: number
+  videoSupersededReadyFrames?: number
+  videoGpuCompletionP50Us?: number
+  videoGpuCompletionP95Us?: number
+  videoGpuCompletionMaxUs?: number
   videoAvgCaptureUs?: number
   videoAvgReadbackUs?: number
   videoAvgScaleUs?: number
@@ -95,6 +104,15 @@ export const nativeMediaEngineStatsStore = {
       videoNoFrameCount?: number
       videoRepeatedFrameCount?: number
       videoRecoverableLostCount?: number
+      videoSourceUpdates?: number
+      videoGpuSubmissions?: number
+      videoIdleRefreshes?: number
+      videoCoalescedSourceUpdates?: number
+      videoEncoderBackpressureTicks?: number
+      videoSupersededReadyFrames?: number
+      videoGpuCompletionP50Us?: number
+      videoGpuCompletionP95Us?: number
+      videoGpuCompletionMaxUs?: number
       videoAvgCaptureUs?: number
       videoAvgReadbackUs?: number
       videoAvgScaleUs?: number
@@ -129,6 +147,15 @@ export const nativeMediaEngineStatsStore = {
       videoNoFrameCount: video?.videoNoFrameCount,
       videoRepeatedFrameCount: video?.videoRepeatedFrameCount,
       videoRecoverableLostCount: video?.videoRecoverableLostCount,
+      videoSourceUpdates: video?.videoSourceUpdates,
+      videoGpuSubmissions: video?.videoGpuSubmissions,
+      videoIdleRefreshes: video?.videoIdleRefreshes,
+      videoCoalescedSourceUpdates: video?.videoCoalescedSourceUpdates,
+      videoEncoderBackpressureTicks: video?.videoEncoderBackpressureTicks,
+      videoSupersededReadyFrames: video?.videoSupersededReadyFrames,
+      videoGpuCompletionP50Us: video?.videoGpuCompletionP50Us,
+      videoGpuCompletionP95Us: video?.videoGpuCompletionP95Us,
+      videoGpuCompletionMaxUs: video?.videoGpuCompletionMaxUs,
       videoAvgCaptureUs: video?.videoAvgCaptureUs,
       videoAvgReadbackUs: video?.videoAvgReadbackUs,
       videoAvgScaleUs: video?.videoAvgScaleUs,

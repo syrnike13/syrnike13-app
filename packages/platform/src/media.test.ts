@@ -29,6 +29,15 @@ describe('native media support contracts', () => {
       videoGpuPoolSlotsAvailable?: number
       videoGpuPoolSlotsTotal?: number
       videoDxgiDuplicationHoldUsMax?: number
+      videoSourceUpdates?: number
+      videoGpuSubmissions?: number
+      videoIdleRefreshes?: number
+      videoCoalescedSourceUpdates?: number
+      videoEncoderBackpressureTicks?: number
+      videoSupersededReadyFrames?: number
+      videoGpuCompletionP50Us?: number
+      videoGpuCompletionP95Us?: number
+      videoGpuCompletionMaxUs?: number
     }>()
   })
 

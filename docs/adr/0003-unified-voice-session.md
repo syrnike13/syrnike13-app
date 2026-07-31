@@ -4,6 +4,8 @@
 - **Date:** 2026-07-11
 - **Implementation clarification:** 2026-07-21 — native Windows failure
   containment, transport lanes, and Runtime Availability ownership
+- **Implementation clarification:** 2026-07-31 — latest-wins Screen Frame
+  Pipeline and progress-based GPU recovery
 - **Supersedes:** ADR-0001 execution model and ADR-0002 media/host ownership
 
 ## Context
@@ -201,6 +203,16 @@ latest-per-voice-epoch, and meters and stats use a lossy telemetry lane. Media o
 telemetry pressure may drop data and must release its resources, but cannot
 saturate control or terminate the host. Failure to deliver already accepted
 control state remains a Runtime Loss.
+
+The Windows Screen Frame Pipeline applies the same latest-wins rule before the
+native event lane. DXGI and WGC adapters retain current visual state; the output
+clock samples that state into bounded asynchronous GPU slots. A full slot set
+or encoder ingress drops or supersedes raw frames instead of queueing latency.
+The newest completed raw frame wins, while keyframe intent remains sticky until
+an encoder input is accepted. Local preview is a lossy tap and cannot influence
+publication recovery. A missed frame deadline is telemetry, sustained lack of
+stage progress recreates only that stage, and only confirmed D3D device loss
+recreates the device.
 
 Lane classification starts at the first asynchronous actor mailbox, before a
 frame can compete with a state transition. Control is always drained before
