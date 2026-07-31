@@ -190,6 +190,30 @@ int main() try {
           decision.action == CaptureBackendAction::None,
       "DXGI access-loss recovery did not return to healthy after a frame");
 
+  CaptureBackendSupervisor gpu_timeout;
+  const CaptureBackendObservation gpu_timeout_observation{
+      ScreenGpuFrameStatus::RecoverableLost,
+      ScreenGpuCaptureErrorCode::GpuTimeout,
+  };
+  const std::array gpu_timeout_attempts{
+      started,
+      started + 250ms,
+      started + 750ms,
+      started + 1750ms,
+      started + 2750ms,
+  };
+  for (const auto attempt_at : gpu_timeout_attempts) {
+    decision = gpu_timeout.observe(gpu_timeout_observation, attempt_at);
+    require(
+        decision.action == CaptureBackendAction::RecreateActivePipeline &&
+            decision.target == CaptureBackend::Dxgi,
+        "GPU timeout switched capture backends or recreated every device");
+    require(
+        gpu_timeout.nextRetryAt() - attempt_at <= 1s,
+        "GPU timeout recovery backoff exceeded one second");
+    gpu_timeout.backendActivated(CaptureBackend::Dxgi, attempt_at, true);
+  }
+
   CaptureBackendSupervisor ping_pong;
   decision = ping_pong.observe(
       {ScreenGpuFrameStatus::RecoverableLost}, started);

@@ -15,6 +15,7 @@
 
 using Microsoft::WRL::ComPtr;
 using syrnike::desktop_native::media::D3d11GpuCompletion;
+using syrnike::desktop_native::media::decideD3d11GpuCompletionPoll;
 
 namespace {
 
@@ -29,6 +30,19 @@ void require(HRESULT result, const char* operation) {
 
 int main() {
   try {
+    const auto waiting = decideD3d11GpuCompletionPoll(S_FALSE, false);
+    if (waiting.result != S_FALSE || !waiting.pending) {
+      throw std::runtime_error("pre-deadline GPU query did not remain pending");
+    }
+    const auto overdue = decideD3d11GpuCompletionPoll(S_FALSE, true, S_OK);
+    if (overdue.result != DXGI_ERROR_WAIT_TIMEOUT || !overdue.pending) {
+      throw std::runtime_error("live overdue GPU query was classified as terminal");
+    }
+    const auto removed = decideD3d11GpuCompletionPoll(
+        S_FALSE, true, DXGI_ERROR_DEVICE_REMOVED);
+    if (removed.result != DXGI_ERROR_DEVICE_REMOVED || removed.pending) {
+      throw std::runtime_error("removed GPU device remained pending");
+    }
     ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;
     D3D_FEATURE_LEVEL feature_level{};

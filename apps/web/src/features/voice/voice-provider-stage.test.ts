@@ -129,6 +129,38 @@ describe('desktop voice stage channel scope', () => {
     )
   })
 
+  it('routes an explicit retry after terminal native subscription failure', () => {
+    const setNativeDemand = vi.fn()
+    const items = buildStageItems({
+      room: null,
+      participants: [{ id: 'remote' }],
+      currentUserId: 'local',
+      filters: {
+        showOwnStream: true,
+        showRemoteStreams: true,
+        showParticipantsWithoutMedia: true,
+      },
+      watchedRemoteScreenIds: new Set(['remote:screen']),
+      nativeTracks: [],
+      nativePublications: [{
+        ...publication('remote', 'screen'),
+        error: 'Не удалось подключиться к демонстрации после 10 попыток',
+      }],
+      localScreenPreview: null,
+      setNativeDemand,
+    })
+
+    items[0]?.publication?.setSubscribed?.(true)
+
+    expect(setNativeDemand).toHaveBeenCalledOnce()
+    expect(setNativeDemand).toHaveBeenCalledWith(
+      'voice-session',
+      2,
+      'screen',
+      true,
+    )
+  })
+
   it('exposes a browser screen subscription failure instead of loading forever', () => {
     const publication = {
       source: Track.Source.ScreenShare,

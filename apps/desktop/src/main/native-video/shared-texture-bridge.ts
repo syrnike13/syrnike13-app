@@ -33,7 +33,10 @@ export type SharedTextureBridgeDependencies = {
   stallTimeoutMs?: number
   deliveryFailureThreshold?: number
   deliveryFailureCooldownMs?: number
-  onTrackStalled?: (frame: NativeSharedVideoFrame) => void | Promise<void>
+  onPresentationStalled?: (
+    frame: NativeSharedVideoFrame,
+    reason: 'shared-texture-fence' | 'renderer-delivery',
+  ) => void | Promise<void>
 }
 
 type Entry = {
@@ -316,7 +319,10 @@ export class NativeSharedTextureBridge {
       retainedBytes: this.retainedBytes,
     })
     try {
-      void Promise.resolve(this.dependencies.onTrackStalled?.(entry.frame))
+      void Promise.resolve(this.dependencies.onPresentationStalled?.(
+        entry.frame,
+        'shared-texture-fence',
+      ))
         .catch((error) => this.reportFailure('recover', entry.frame, error))
     } catch (error) {
       this.reportFailure('recover', entry.frame, error)
@@ -344,7 +350,10 @@ export class NativeSharedTextureBridge {
     if (now - (this.lastDeliveryRecoveryAt.get(trackKey) ?? 0) < cooldown) return
     this.lastDeliveryRecoveryAt.set(trackKey, now)
     try {
-      void Promise.resolve(this.dependencies.onTrackStalled?.(frame))
+      void Promise.resolve(this.dependencies.onPresentationStalled?.(
+        frame,
+        'renderer-delivery',
+      ))
         .catch((error) => this.reportFailure('recover', frame, error))
     } catch (error) {
       this.reportFailure('recover', frame, error)

@@ -77,6 +77,15 @@ Camera and screen intent ends with an explicit leave or channel move; Voice
 Recovery within the same Voice Intent preserves it.
 _Avoid_: Media session, native participant, sidecar room
 
+**Screen Frame Pipeline**:
+The Windows-native real-time path that retains the newest captured screen
+state, samples it on the output clock, and moves it through bounded GPU and
+encoder slots. Raw screen frames are lossy and latest-wins: overload drops or
+supersedes stale frames instead of growing latency. Keyframe intent and Media
+Track control remain ordered and lossless, while local preview is an optional
+lossy projection that cannot block publication.
+_Avoid_: Reliable frame queue, capture callback chain, preview-driven stream
+
 **Microphone Pipeline**:
 The single warm capture and DSP path for the selected input device. Publication,
 meter preview, and voice activity detection consume this pipeline without

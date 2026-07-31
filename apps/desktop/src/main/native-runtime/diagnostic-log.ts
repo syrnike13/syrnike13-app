@@ -64,12 +64,15 @@ export type DiagnosticLogRecord = {
   adapterPid?: number
   bypassedQueue?: boolean
   restartCount?: number
+  recoveryAttempt?: number
   delayMs?: number
   durationMs?: number
   status?: string
   reason?: string
   message?: string
   errorCode?: string
+  windowVisible?: boolean
+  windowMinimized?: boolean
 }
 
 export type DiagnosticLogSink = (record: DiagnosticLogRecord) => void

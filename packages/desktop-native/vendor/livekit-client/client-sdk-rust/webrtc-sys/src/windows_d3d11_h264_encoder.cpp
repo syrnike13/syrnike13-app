@@ -389,16 +389,11 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
         frame_types &&
         std::find(frame_types->begin(), frame_types->end(),
                   webrtc::VideoFrameType::kVideoFrameKey) != frame_types->end();
-    // A PLI/FIR is delivered through frame_types, but the hardware input queue
-    // can be full on that exact Encode call. Keep the request sticky until a
-    // frame is actually accepted into our queue; otherwise a late subscriber
-    // may never receive an IDR while a busy screen stream keeps returning
-    // WEBRTC_VIDEO_CODEC_NO_OUTPUT.
+    // PLI/FIR intent must survive queue pressure. Raw input frames are
+    // latest-wins, but a keyframe request is transferred to the newest queued
+    // frame until an input carrying it is accepted by the MFT.
     keyframe_pending_ = keyframe_pending_ || keyframe_requested;
-    if (input_jobs_.size() >= kMaxQueuedInputs) {
-      return WEBRTC_VIDEO_CODEC_NO_OUTPUT;
-    }
-    const bool keyframe = keyframe_pending_;
+    bool keyframe = keyframe_pending_;
 
     ComPtr<ID3D11Texture2D> texture;
     ComPtr<IDXGIKeyedMutex> keyed_mutex;
@@ -459,6 +454,18 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
       }
       return WEBRTC_VIDEO_CODEC_ERROR;
     }
+    if (input_jobs_.size() >= kMaxQueuedInputs) {
+      InputJob superseded = std::move(input_jobs_.front());
+      input_jobs_.pop_front();
+      // If the stale job carried the pending IDR, move that intent to the
+      // newest visual state rather than sending an obsolete keyframe.
+      keyframe = keyframe || superseded.keyframe;
+      if (superseded.lease)
+        superseded.lease->Complete();
+      TraceEncoder(
+          "SupersedeQueuedInput", S_OK,
+          static_cast<long long>(++superseded_input_count_));
+    }
     input_jobs_.push_back(InputJob{
         sample, sample_time, frame.rtp_timestamp(), frame.render_time_ms(),
         frame.ntp_time_ms(), frame.rotation(), keyframe,
@@ -487,9 +494,9 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
     EncoderInfo info;
     info.supports_native_handle = true;
     info.is_hardware_accelerated = true;
-    // The MFT is configured for CBR and this adapter bounds its input queue.
-    // Let it own frame dropping; WebRTC's generic dropper cannot observe the
-    // asynchronous MFT queue and can otherwise suppress native frames after a
+    // The MFT is configured for CBR and this adapter bounds its input queue
+    // with latest-wins eviction. WebRTC's generic dropper cannot observe that
+    // asynchronous queue and can otherwise suppress native frames after a
     // large initial keyframe.
     info.has_trusted_rate_controller = true;
     info.requested_resolution_alignment = 2;
@@ -1150,7 +1157,10 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
     asynchronous_ = FALSE;
   }
 
-  static constexpr size_t kMaxQueuedInputs = 6;
+  // Keep the pre-MFT queue smaller than the screen capture texture pool. If
+  // queued inputs can retain every upstream lease, no fresh frame can reach
+  // Encode() and the latest-wins eviction path becomes unreachable.
+  static constexpr size_t kMaxQueuedInputs = 2;
   // Native screen capture is capped at 60 fps. Three seconds permits a very
   // conservative hardware pipeline delay while still placing a hard ceiling
   // on metadata and completed tracked-sample callbacks retained after drops.
@@ -1179,6 +1189,7 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
   bool failed_ = false;
   bool rates_dirty_ = false;
   bool keyframe_pending_ = false;
+  std::uint64_t superseded_input_count_ = 0;
   std::deque<InputJob> input_jobs_;
   std::deque<PendingOutput> pending_outputs_;
 };

@@ -122,6 +122,15 @@ describe('native screen capture telemetry validation', () => {
       videoGpuPoolSlotsAvailable: 4,
       videoGpuPoolSlotsTotal: 5,
       videoDxgiDuplicationHoldUsMax: 2_400,
+      videoSourceUpdates: 120,
+      videoGpuSubmissions: 118,
+      videoIdleRefreshes: 2,
+      videoCoalescedSourceUpdates: 2,
+      videoEncoderBackpressureTicks: 0,
+      videoSupersededReadyFrames: 1,
+      videoGpuCompletionP50Us: 850,
+      videoGpuCompletionP95Us: 2_400,
+      videoGpuCompletionMaxUs: 8_000,
     },
   } as const
 
@@ -134,7 +143,7 @@ describe('native screen capture telemetry validation', () => {
       ...statsEvent,
       stats: {
         ...statsEvent.stats,
-        videoDxgiDuplicationHoldUsMax: Number.NaN,
+        videoGpuCompletionP95Us: Number.NaN,
       },
     })).toBe(false)
   })

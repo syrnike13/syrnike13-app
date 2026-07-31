@@ -331,6 +331,15 @@ add_test(
   COMMAND syrnike-native-screen-capture-slot-state-tests
 )
 
+add_executable(syrnike-native-screen-frame-pipeline-tests
+  tests/screen_frame_pipeline_test.cpp
+)
+syrnike_native_target(syrnike-native-screen-frame-pipeline-tests)
+add_test(
+  NAME syrnike-native-screen-frame-pipeline-tests
+  COMMAND syrnike-native-screen-frame-pipeline-tests
+)
+
 add_executable(syrnike-native-display-source-window-probe-tests
   tests/display_source_window_probe_test.cpp
 )

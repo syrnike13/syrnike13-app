@@ -272,6 +272,16 @@ export class NativeMediaController {
       return false
     }
     desired.recoveryAttempt += 1
+    this.options.diagnostics?.({
+      scope: 'native-media-controller',
+      event: 'remote_video_recovery_started',
+      kind: 'remote-video',
+      stage: 'native-subscription',
+      sessionId,
+      generation,
+      recoveryAttempt: desired.recoveryAttempt,
+      reason: 'native_frame_timeout_or_track_failure',
+    })
     const recovery = this.performRemoteVideoRecovery(key, desired)
     desired.recoveryPromise = recovery
     try {
@@ -288,7 +298,7 @@ export class NativeMediaController {
     }
   }
 
-  markRemoteVideoFrameDelivered(
+  markRemoteVideoFrameReceived(
     sessionId: string,
     generation: number,
     trackId: string,
@@ -296,9 +306,20 @@ export class NativeMediaController {
     const key = remoteVideoDemandKey(sessionId, generation, trackId)
     const demand = this.remoteVideoDemands.get(key)
     if (!demand?.demanded) return
+    const recovered = demand.lastFrameAt === null || demand.recoveryAttempt > 0
     demand.lastFrameAt = Date.now()
     demand.recoveryAttempt = 0
     demand.ignoreFailureUntil = 0
+    if (recovered) {
+      this.options.diagnostics?.({
+        scope: 'native-media-controller',
+        event: 'remote_video_frame_received',
+        kind: 'remote-video',
+        stage: 'native-decode',
+        sessionId,
+        generation,
+      })
+    }
     if (!demand.recoveryTimer) this.armRemoteVideoRecovery(key, demand)
   }
 
@@ -446,15 +467,11 @@ export class NativeMediaController {
     }
     if (event.type === 'remoteVideoFrame') {
       if (!this.isCurrentVoiceSession(event.sessionId, event.generation)) return
-      const key = remoteVideoDemandKey(
+      this.markRemoteVideoFrameReceived(
         event.sessionId,
         event.generation,
         event.trackId,
       )
-      const demand = this.remoteVideoDemands.get(key)
-      if (demand?.demanded) {
-        if (!demand.recoveryTimer) this.armRemoteVideoRecovery(key, demand)
-      }
       return
     }
     if (event.type === 'remoteScreenPublicationAvailable') {
@@ -733,6 +750,15 @@ export class NativeMediaController {
     demand.demanded = false
     demand.revision = ++this.remoteVideoDemandRevision
     demand.recoveryTimer = null
+    this.options.diagnostics?.({
+      scope: 'native-media-controller',
+      event: 'remote_video_recovery_exhausted',
+      kind: 'remote-video',
+      stage: 'native-subscription',
+      sessionId: demand.sessionId,
+      generation: demand.generation,
+      recoveryAttempt: demand.recoveryAttempt,
+    })
     void this.request(
       {
         type: 'setRemoteVideoDemand',
