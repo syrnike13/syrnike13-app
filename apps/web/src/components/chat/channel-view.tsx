@@ -18,7 +18,17 @@ import { VoiceStageView } from '#/components/voice/voice-stage-view'
 import { Button } from '#/components/ui/button'
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
 import { ChannelMemberSidebar } from '#/components/chat/channel-member-sidebar'
-import { DirectMessageProfilePanel } from '#/components/chat/direct-message-profile-panel'
+import {
+  DirectMessageProfilePanel,
+  DM_PROFILE_PANEL_DEFAULT_SIZE,
+  DM_PROFILE_PANEL_MAX_SIZE,
+  DM_PROFILE_PANEL_MIN_SIZE,
+} from '#/components/chat/direct-message-profile-panel'
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from '#/components/ui/resizable'
 import { GroupManagementDialog } from '#/components/chat/group-management-dialog'
 import { VoiceCallBanner } from '#/components/voice/voice-call-banner'
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
@@ -150,8 +160,6 @@ export function ChannelView({
   const voice = useVoiceSession()
   const chat = useChannelChat({ channelId, highlightMessageId })
   const [dmProfilePanelOpen, setDmProfilePanelOpen] = useState(true)
-  const [dmProfilePanelWidth, setDmProfilePanelWidth] = useState(320)
-  const [dmProfilePanelResizing, setDmProfilePanelResizing] = useState(false)
   const [fullProfileOpen, setFullProfileOpen] = useState(false)
   const [inlineVoiceStageHeight, setInlineVoiceStageHeight] = useState(
     INLINE_VOICE_STAGE_DEFAULT_HEIGHT,
@@ -557,12 +565,248 @@ export function ChannelView({
       </header>
       ) : null}
 
-      <div className="flex min-h-0 min-w-0 flex-1">
-        <div
-          ref={channelContentRef}
-          data-channel-content
-          className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      {isDirectMessage && dmRecipient && !dmInCallLayout ? (
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="min-h-0 min-w-0 flex-1"
         >
+          <ResizablePanel
+            id="dm-channel-main"
+            defaultSize={dmProfilePanelOpen ? 75 : 100}
+            minSize={40}
+            className="min-h-0"
+          >
+            <div
+              ref={channelContentRef}
+              data-channel-content
+              className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
+            >
+
+          {showInlineVoiceStage ? (
+            <section
+              ref={inlineVoiceStageRef}
+              aria-label="Голосовой звонок"
+              className="relative flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-b border-shell-divider bg-black"
+              style={{
+                height: inlineVoiceStageHeight,
+                minHeight: INLINE_VOICE_STAGE_MIN_HEIGHT,
+              }}
+            >
+              <VoiceStageView
+                channel={channel}
+                title={title}
+                chatOpen={false}
+                onToggleChat={() => undefined}
+                showChatToggle={false}
+                voiceCall={voiceCall}
+                voiceCallIncoming={voiceCallIncoming}
+                onDeclineVoiceCall={
+                  voiceCallIncoming && voiceCall?.phase === 'ringing'
+                    ? dismissVoiceCallBanner
+                    : undefined
+                }
+                dmHeader={
+                  dmInCallLayout && dmRecipient
+                    ? {
+                        user: dmRecipient,
+                        aliases: dmAliases,
+                        onOpenProfile: () => setFullProfileOpen(true),
+                        loading: historyQuery.isFetching,
+                      }
+                    : undefined
+                }
+                headerTrailing={
+                  dmInCallLayout && token ? (
+                    <>
+                      <ChannelPinnedDialog
+                        channelId={channelId}
+                        token={token}
+                        users={users}
+                        triggerClassName={VOICE_STAGE_HEADER_ICON_CLASS}
+                      />
+                      <div className="lg:hidden">
+                        <ChannelSearchDialog
+                          channelId={channelId}
+                          token={token}
+                          users={users}
+                          variant="icon"
+                          triggerClassName={VOICE_STAGE_HEADER_ICON_CLASS}
+                        />
+                      </div>
+                      <div className="hidden w-52 lg:flex">
+                        <ChannelSearchDialog
+                          channelId={channelId}
+                          token={token}
+                          users={users}
+                          variant="strip"
+                          stripClassName={VOICE_STAGE_HEADER_SEARCH_STRIP_CLASS}
+                        />
+                      </div>
+                    </>
+                  ) : undefined
+                }
+              />
+              <div
+                aria-label="Изменить высоту звонка"
+                aria-orientation="horizontal"
+                className="absolute inset-x-0 bottom-0 z-[70] h-2 cursor-row-resize touch-none bg-transparent transition-colors hover:bg-white/20"
+                role="separator"
+                onPointerDown={startInlineVoiceStageResize}
+              />
+            </section>
+          ) : null}
+          {hasVoice && inThisVoiceCall && !showInlineVoiceStage ? (
+            <VoiceTextChannelDock channelId={channelId} />
+          ) : null}
+          {showVoiceCallBanner && voiceCall ? (
+            <VoiceCallBanner
+              title={isDirectMessage ? 'Личный звонок' : 'Групповой звонок'}
+              detail={
+                voiceCall.phase === 'ringing'
+                  ? `${voiceCallInitiatorName} звонит`
+                  : 'Звонок уже идёт'
+              }
+              actionLabel="Ответить"
+              dismissLabel={
+                isDirectMessage && voiceCall.phase === 'ringing'
+                  ? voiceCallInitiatedByCurrentUser
+                    ? 'Отменить'
+                    : 'Отклонить'
+                  : 'Скрыть'
+              }
+              onJoin={() => {
+                void voice.join(channelId)
+              }}
+              onDismiss={dismissVoiceCallBanner}
+            />
+          ) : null}
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <MessageList
+              channelId={channelId}
+              serverId={serverIdForSelection ?? undefined}
+              scrollPaddingBottom={composerHeight + 48}
+              highlightMessageId={listHighlightMessageId}
+              messages={messages}
+              users={users}
+              currentUserId={auth.user?._id}
+              hasOlder={hasOlder}
+              loadingOlder={loadingOlder}
+              onLoadOlder={loadOlder}
+              onJumpToMessage={jumpToMessage}
+              onReply={(message) =>
+                setComposerAction({ type: 'reply', message })
+              }
+              onEdit={(message) => setComposerAction({ type: 'edit', message })}
+              onDelete={(message) => void handleDelete(message)}
+              onBlock={(message) => {
+                if (!token || message.author === auth.user?._id) return
+                if (!window.confirm('Заблокировать этого пользователя?')) return
+                void blockUserRelationship(token, message.author).catch(
+                  () => undefined,
+                )
+              }}
+              onPin={(message) => void handlePin(message)}
+              onUnpin={(message) => void handleUnpin(message)}
+              onToggleReaction={async (messageId, emoji, active) => {
+                if (!token || !auth.user?._id) return
+
+                syncStore.mutateReaction(
+                  channelId,
+                  messageId,
+                  emoji,
+                  auth.user._id,
+                  !active,
+                )
+
+                try {
+                  if (active) {
+                    await unreactFromMessage(token, channelId, messageId, emoji)
+                  } else {
+                    await reactToMessage(token, channelId, messageId, emoji)
+                  }
+                } catch {
+                  syncStore.mutateReaction(
+                    channelId,
+                    messageId,
+                    emoji,
+                    auth.user._id,
+                    active,
+                  )
+                }
+              }}
+            />
+
+            <div
+              className={cn(
+                'pointer-events-none absolute z-20 flex flex-col items-stretch gap-1',
+                FLOATING_BAR_INSET_X_CLASS,
+                FLOATING_BAR_BOTTOM_CLASS,
+              )}
+            >
+              <TypingIndicator channelId={channelId} floating />
+              <MessageComposer
+                channel={channel}
+                users={users}
+                floating
+                onHeightChange={setComposerHeight}
+                disabled={
+                  !token || auth.gatewayState !== 'connected' || dmMessagesBlocked
+                }
+                disabledPlaceholder={dmDisabledPlaceholder}
+                token={token}
+                replyTo={replyTo}
+                editingMessage={editingMessage}
+                onCancelAction={() => setComposerAction(null)}
+                onTyping={notifyTyping}
+                onStopTyping={stopTyping}
+                onSend={async (input) => {
+                  if (!token) return
+                  await sendChannelMessage(token, channelId, input)
+                }}
+                onEdit={async (messageId, content) => {
+                  if (!token) return
+                  const updated = await editChannelMessage(
+                    token,
+                    channelId,
+                    messageId,
+                    content,
+                  )
+                  syncStore.patchMessage(channelId, messageId, updated)
+                }}
+              />
+            </div>
+          </div>
+            </div>
+          </ResizablePanel>
+          {dmProfilePanelOpen ? (
+            <>
+              <ResizableHandle withHandle />
+              <ResizablePanel
+                id="dm-profile"
+                defaultSize={DM_PROFILE_PANEL_DEFAULT_SIZE}
+                minSize={DM_PROFILE_PANEL_MIN_SIZE}
+                maxSize={DM_PROFILE_PANEL_MAX_SIZE}
+                className="min-h-0"
+              >
+                <DirectMessageProfilePanel
+                  user={dmRecipient}
+                  currentUserId={auth.user?._id}
+                  token={token}
+                  aliases={dmAliases}
+                  onOpenProfile={() => setFullProfileOpen(true)}
+                />
+              </ResizablePanel>
+            </>
+          ) : null}
+        </ResizablePanelGroup>
+      ) : (
+        <div className="flex min-h-0 min-w-0 flex-1">
+          <div
+            ref={channelContentRef}
+            data-channel-content
+            className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          >
+
           {showInlineVoiceStage &&
           (channel.channel_type === 'DirectMessage' ||
             channel.channel_type === 'Group') ? (
@@ -721,17 +965,10 @@ export function ChannelView({
 
             <div
               className={cn(
-                'pointer-events-none absolute z-20 flex flex-col items-stretch gap-1 transition-[right] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
+                'pointer-events-none absolute z-20 flex flex-col items-stretch gap-1',
                 FLOATING_BAR_INSET_X_CLASS,
                 FLOATING_BAR_BOTTOM_CLASS,
-                dmProfilePanelResizing && 'transition-none',
               )}
-              style={{
-                right:
-                  isDirectMessage && dmProfilePanelOpen && !dmInCallLayout
-                    ? dmProfilePanelWidth + 8
-                    : 8,
-              }}
             >
               <TypingIndicator channelId={channelId} floating />
               <MessageComposer
@@ -766,22 +1003,12 @@ export function ChannelView({
               />
             </div>
           </div>
+          </div>
+          {showMemberSidebar && channel.channel_type === 'TextChannel' ? (
+            <ChannelMemberSidebar channel={channel} />
+          ) : null}
         </div>
-        {isDirectMessage && dmRecipient && !dmInCallLayout ? (
-          <DirectMessageProfilePanel
-            user={dmRecipient}
-            currentUserId={auth.user?._id}
-            token={token}
-            aliases={dmAliases}
-            open={dmProfilePanelOpen}
-            onWidthChange={setDmProfilePanelWidth}
-            onResizingChange={setDmProfilePanelResizing}
-            onOpenProfile={() => setFullProfileOpen(true)}
-          />
-        ) : showMemberSidebar && channel.channel_type === 'TextChannel' ? (
-          <ChannelMemberSidebar channel={channel} />
-        ) : null}
-      </div>
+      )}
       {fullProfileOpen && dmRecipient ? (
         <UserGlobalProfileDialog
           user={dmRecipient}
