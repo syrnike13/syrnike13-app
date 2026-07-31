@@ -19,6 +19,10 @@ vi.mock('#/components/layout/shell-title-bar-controls', () => ({
   ShellWindowControls: () => <div data-testid="window-controls" />,
 }))
 
+vi.mock('#/features/desktop/desktop-update-banner', () => ({
+  DesktopUpdateTitleBarButton: () => <div data-testid="update-button" />,
+}))
+
 import { ShellTitleBar } from './shell-title-bar'
 
 describe('ShellTitleBar', () => {
@@ -33,6 +37,7 @@ describe('ShellTitleBar', () => {
 
     expect(screen.getByRole('banner')).not.toBeNull()
     expect(screen.getByTestId('history-nav')).not.toBeNull()
+    expect(screen.getByTestId('update-button')).not.toBeNull()
   })
 
   it('does not render a desktop title bar without custom window chrome', () => {

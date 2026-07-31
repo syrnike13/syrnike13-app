@@ -1,15 +1,28 @@
 import { useEffect, useState } from 'react'
 
-import { Button } from '#/components/ui/button'
-import { useShellTitleBarHeightPx } from '#/components/layout/shell-title-bar'
+import { DownloadIcon } from '#/components/icons'
+import { shellTitleBarNoDragClass } from '#/components/layout/shell-chrome'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '#/components/ui/tooltip'
 import { usePlatform } from '#/platform/use-platform'
 import type { DesktopUpdateState } from '@syrnike13/platform'
+import { cn } from '#/lib/utils'
 
-export function DesktopUpdateBanner() {
+/**
+ * Компактная кнопка обновления для title bar (зелёная иконка + тултип).
+ * Клик → install/restart.
+ */
+export function DesktopUpdateTitleBarButton({
+  className,
+}: {
+  className?: string
+}) {
   const { desktop } = usePlatform()
-  const titleBarHeightPx = useShellTitleBarHeightPx()
   const [state, setState] = useState<DesktopUpdateState | null>(null)
-  const [dismissed, setDismissed] = useState(false)
 
   useEffect(() => {
     if (!desktop) return
@@ -20,9 +33,7 @@ export function DesktopUpdateBanner() {
     })
 
     const unsubscribe = desktop.updates.onStateChange((nextState) => {
-      if (cancelled) return
-      setState(nextState)
-      if (nextState.status === 'ready') setDismissed(false)
+      if (!cancelled) setState(nextState)
     })
 
     return () => {
@@ -31,39 +42,40 @@ export function DesktopUpdateBanner() {
     }
   }, [desktop])
 
-  if (!desktop || !state || dismissed) return null
+  if (!desktop || !state) return null
+  if (state.status !== 'ready' && state.status !== 'downloading') return null
 
-  if (state.status === 'downloading') {
-    return (
-      <div
-        className="gradient-surface-raised fixed inset-x-0 z-50 border-b border-border/60 bg-background/95 px-4 py-2 text-sm text-muted-foreground backdrop-blur"
-        style={{ top: titleBarHeightPx }}
-      >
-        Загрузка обновления… {Math.round(state.percent)}%
-      </div>
-    )
-  }
-
-  if (state.status !== 'ready') return null
+  const ready = state.status === 'ready'
+  const tooltip = ready
+    ? `Доступно обновление v${state.version}. Нажмите, чтобы перезапустить и установить.`
+    : `Загрузка обновления… ${Math.round(state.percent)}%`
 
   return (
-    <div
-      className="gradient-surface-raised fixed inset-x-0 z-50 flex flex-wrap items-center justify-between gap-3 border-b border-primary/30 bg-background/95 px-4 py-2.5 text-sm backdrop-blur"
-      style={{ top: titleBarHeightPx }}
-    >
-      <span>
-        Доступно обновление{' '}
-        <span className="font-medium text-foreground">v{state.version}</span>.
-        Перезапустите приложение, чтобы установить.
-      </span>
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={() => desktop.updates.install()}>
-          Перезапустить
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setDismissed(true)}>
-          Позже
-        </Button>
-      </div>
-    </div>
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={tooltip}
+            disabled={!ready}
+            className={cn(
+              'inline-flex size-7 shrink-0 items-center justify-center rounded-md transition-colors',
+              'text-chart-3 hover:bg-chart-3/15 hover:text-chart-3',
+              'disabled:pointer-events-none disabled:opacity-50',
+              shellTitleBarNoDragClass,
+              className,
+            )}
+            onClick={() => {
+              if (ready) desktop.updates.install()
+            }}
+          >
+            <DownloadIcon className="size-4" aria-hidden />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={6}>
+          {tooltip}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
