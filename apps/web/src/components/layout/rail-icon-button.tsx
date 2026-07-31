@@ -44,7 +44,7 @@ export function RailUnreadIndicator({ className }: { className?: string }) {
 
 type RailActiveIndicatorProps = {
   active: boolean
-  /** Непрочитанные на неактивном пункте — полоска меньше активной (h-8). */
+  /** Непрочитанные на неактивном пункте — полоска меньше активной (h-9). */
   unread?: boolean
 }
 
@@ -65,10 +65,10 @@ export function RailActiveIndicator({
       className={cn(
         railIndicatorBaseClass,
         active
-          ? 'h-8 opacity-100 transition-[height] duration-150'
+          ? 'h-9 opacity-100 transition-[height] duration-150'
           : unread
-            ? 'h-2 opacity-100 transition-[height] duration-150 group-hover:h-5'
-            : 'h-2 opacity-0 transition-[height,opacity] duration-150 group-hover:h-5 group-hover:opacity-100',
+            ? 'h-2 opacity-100 transition-[height] duration-150 group-hover:h-5.5'
+            : 'h-2 opacity-0 transition-[height,opacity] duration-150 group-hover:h-5.5 group-hover:opacity-100',
       )}
     />
   )

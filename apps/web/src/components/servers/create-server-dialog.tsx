@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 
 import {
+  railGlyphClass,
   railIconButtonClass,
   railIconIdleClass,
   railIconSquircleProps,
@@ -151,7 +152,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
               className={cn(railIconButtonClass, railIconIdleClass)}
               title="Создать сервер"
             >
-              <PlusIcon />
+              <PlusIcon className={railGlyphClass} />
             </Button>
           </Squircle>
         )}

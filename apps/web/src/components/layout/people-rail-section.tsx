@@ -21,6 +21,7 @@ import {
   isVoiceCallRingingDismissed,
 } from '#/features/sync/voice-call-utils'
 import { RailActiveIndicator } from '#/components/layout/rail-icon-button'
+import { railAvatarClass } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
 type PeopleRailVariant = 'desktop' | 'mobile'
@@ -75,7 +76,7 @@ export function PeopleRailSection({
       ))}
       <div
         aria-hidden="true"
-        className="my-0.5 h-0.5 w-8 shrink-0 rounded-full bg-border"
+        className="my-0.5 h-0.5 w-9 shrink-0 rounded-full bg-border"
       />
     </>
   )
@@ -129,8 +130,8 @@ function PeopleRailButton({
       {dmUser ? (
         <UserAvatar
           user={dmUser}
-          className="size-10"
-          fallbackClassName="size-10 text-xs"
+          className={railAvatarClass}
+          fallbackClassName={cn(railAvatarClass, 'text-xs')}
           showPresence={false}
           notificationBadge={railNotificationBadge}
           notificationRingClassName="border-background"
@@ -138,26 +139,36 @@ function PeopleRailButton({
         />
       ) : channel.channel_type === 'Group' ? (
         <span className="relative shrink-0">
-          <span className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
-            <UsersIcon aria-hidden="true" className="size-5" />
+          <span
+            className={cn(
+              'flex items-center justify-center rounded-full bg-muted text-muted-foreground',
+              railAvatarClass,
+            )}
+          >
+            <UsersIcon aria-hidden="true" className="size-5.5" />
           </span>
           {railNotificationBadge ? (
             <AvatarNotificationBadge
               badge={railNotificationBadge}
-              className="size-10"
+              className={railAvatarClass}
               ringClassName="border-background"
             />
           ) : null}
         </span>
       ) : (
-        <span className="flex size-10 items-center justify-center rounded-full bg-muted text-xs font-semibold uppercase text-muted-foreground">
+        <span
+          className={cn(
+            'flex items-center justify-center rounded-full bg-muted text-xs font-semibold uppercase text-muted-foreground',
+            railAvatarClass,
+          )}
+        >
           {label.trim().slice(0, 2) || '??'}
         </span>
       )}
       {callTitle ? (
         <span
           title={callTitle}
-          className="absolute -bottom-0.5 -left-0.5 flex size-4 items-center justify-center rounded-full bg-chart-3 text-primary-foreground"
+          className="absolute -bottom-0.5 -left-0.5 flex size-4.5 items-center justify-center rounded-full bg-chart-3 text-primary-foreground"
         >
           <HeadphonesIcon aria-hidden="true" className="size-2.5" />
         </span>

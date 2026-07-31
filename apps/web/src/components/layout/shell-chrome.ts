@@ -69,10 +69,14 @@ export const shellTitleBarDragClass = 'shell-title-bar-drag' as const
 export const shellTitleBarNoDragClass = 'shell-title-bar-no-drag' as const
 
 /** Кнопки рельса: фиксированный квадрат; форма — Squircle, не CSS rounded. */
-export const RAIL_ICON_SIZE_PX = 40
-/** Совпадает с прежним `rounded-xl` (`--radius-xl` ≈ 14px). */
-export const RAIL_ICON_CORNER_RADIUS_PX = 14
-export const railIconButtonClass = 'size-10' as const
+export const RAIL_ICON_SIZE_PX = 44
+/** Пропорционально `RAIL_ICON_SIZE_PX` (было 14 при 40px). */
+export const RAIL_ICON_CORNER_RADIUS_PX = 15
+export const railIconButtonClass = 'size-11' as const
+/** Круглые аватары DM в рельсе — тот же визуальный размер, что и кнопки. */
+export const railAvatarClass = 'size-11' as const
+/** Glyph внутри кнопки рельса (Home, Plus, Hash). */
+export const railGlyphClass = 'size-4.5' as const
 
 /**
  * Пресет для `<Squircle {...railIconSquircleProps}>`.

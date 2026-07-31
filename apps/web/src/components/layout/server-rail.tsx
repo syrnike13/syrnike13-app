@@ -25,6 +25,7 @@ import { selectedServerIdForChannel } from '#/features/navigation/channel-server
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import {
   railColumnInsetClass,
+  railGlyphClass,
   railIconButtonClass,
   railIconIdleClass,
   railIconSquircleProps,
@@ -210,7 +211,7 @@ export function ServerRail({
     return (
         <div
           className={cn(
-            'flex h-full w-16 shrink-0 flex-col items-center',
+            'flex h-full w-18 shrink-0 flex-col items-center',
             'pt-1 pb-3',
             shellLowestSurface,
           )}
@@ -227,7 +228,7 @@ export function ServerRail({
   return (
     <div
       className={cn(
-        'flex h-full w-16 shrink-0 flex-col',
+        'flex h-full w-18 shrink-0 flex-col',
         'pt-1 pb-3',
         shellLowestSurface,
       )}
@@ -247,7 +248,7 @@ export function ServerRail({
           onClick={() => syncStore.setSelectedServerId(null)}
         >
           <span className="relative flex size-full items-center justify-center">
-            <HomeIcon />
+            <HomeIcon className={railGlyphClass} />
             <NotificationBadge
               badge={homeBadge}
               className="absolute -top-1 -right-1"
@@ -290,7 +291,7 @@ export function ServerRail({
                 )}
                 title="Нет серверов"
               >
-                <HashIcon className="size-4" />
+                <HashIcon className={railGlyphClass} />
               </Squircle>
             ) : null}
 
