@@ -120,20 +120,28 @@ function SingleImageAttachment({
   file: File
   onOpen: () => void
 }) {
-  const aspectRatio = imageFileAspectRatio(file)
+  /** Всегда резервируем box до decode: без ratio intrinsic width ≈ 0. */
+  const aspectRatio = imageFileAspectRatio(file) ?? 1
 
   return (
     <button
       type="button"
-      className="block w-fit max-w-full overflow-hidden rounded-md border text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      data-attachment-single
+      data-aspect-ratio={String(aspectRatio)}
+      className="relative block max-h-96 max-w-full overflow-hidden rounded-md border bg-border text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:max-w-[28rem]"
+      style={{
+        aspectRatio,
+        // Ширина до load: min(100%, 28rem, max-h-96 * ratio), иначе w-fit схлопывается.
+        width: `min(100%, 28rem, calc(24rem * ${aspectRatio}))`,
+      }}
       onClick={onOpen}
     >
       <FxImage
         src={attachmentPreviewUrl(file)}
         alt={file.filename ?? 'Изображение'}
-        aspectRatio={aspectRatio ?? undefined}
+        fill
         objectFit="contain"
-        wrapperClassName="max-h-96 cursor-pointer sm:max-w-[28rem]"
+        wrapperClassName="cursor-pointer"
       />
     </button>
   )

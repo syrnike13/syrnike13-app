@@ -28,18 +28,46 @@ describe('MessageAttachments', () => {
     cleanup()
   })
 
-  it('renders a single image with Discord-like preview sizing', () => {
-    render(<MessageAttachments attachments={[imageFile()]} />)
-
-    const preview = screen.getByRole('img', { name: 'poster.png' })
-
-    expect(preview.getAttribute('src')?.endsWith('/attachments/file-1')).toBe(
-      true,
+  it('reserves single-image height from metadata aspect ratio before load', () => {
+    const { container } = render(
+      <MessageAttachments attachments={[imageFile()]} />,
     )
-    expect(preview.parentElement?.classList.contains('max-h-96')).toBe(true)
-    expect(preview.parentElement?.classList.contains('sm:max-w-[28rem]')).toBe(
-      true,
+
+    const box = container.querySelector(
+      '[data-attachment-single]',
+    ) as HTMLElement | null
+    expect(box).toBeTruthy()
+    expect(box?.getAttribute('data-aspect-ratio')).toBe(String(640 / 480))
+    expect(box?.classList.contains('max-h-96')).toBe(true)
+    expect(box?.classList.contains('sm:max-w-[28rem]')).toBe(true)
+    expect(box?.classList.contains('bg-border')).toBe(true)
+    expect(
+      screen
+        .getByRole('img', { name: 'poster.png' })
+        .getAttribute('src')
+        ?.endsWith('/attachments/file-1'),
+    ).toBe(true)
+  })
+
+  it('reserves a 1:1 box when image metadata has no dimensions', () => {
+    const { container } = render(
+      <MessageAttachments
+        attachments={[
+          imageFile({
+            metadata: {
+              type: 'Image',
+              width: 0,
+              height: 0,
+              animated: false,
+            },
+          }),
+        ]}
+      />,
     )
+
+    const box = container.querySelector('[data-attachment-single]')
+    expect(box?.getAttribute('data-aspect-ratio')).toBe('1')
+    expect(box?.classList.contains('bg-border')).toBe(true)
   })
 
   it('renders an aspect-aware mosaic for multiple images', () => {
@@ -103,7 +131,10 @@ describe('MessageAttachments', () => {
     fireEvent.click(screen.getByRole('img', { name: 'two.png' }))
 
     const dialog = screen.getByRole('dialog', { name: 'two.png' })
-    expect(within(dialog).getByText('2 / 2')).toBeTruthy()
+    expect(
+      within(dialog).getByRole('img', { name: 'two.png' }),
+    ).toBeTruthy()
+    expect(screen.queryByText('2 / 2')).toBeNull()
   })
 
   it('shows every image when there are five attachments', () => {
