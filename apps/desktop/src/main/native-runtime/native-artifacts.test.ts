@@ -18,7 +18,7 @@ const binaries = [
 const expected = {
   appVersion: '0.5.1',
   commitSha: 'a'.repeat(40),
-  contractVersion: 3,
+  contractVersion: 4,
   electronVersion: '35.7.5',
   minimumNapiVersion: 10,
   liveKitVersion: '1.3.0',
@@ -45,7 +45,7 @@ async function distribution() {
     path.join(root, 'native-manifest.json'),
     JSON.stringify({
       schemaVersion: 1,
-      contractVersion: 3,
+      contractVersion: 4,
       platform: 'win32',
       arch: 'x64',
       appVersion: '0.5.1',
@@ -64,7 +64,7 @@ describe('native artifact integrity', () => {
   it('accepts only the pinned DLL distribution', async () => {
     const root = await distribution()
     expect(verifyNativeArtifactDistribution(root, expected)).toMatchObject({
-      contractVersion: 3,
+      contractVersion: 4,
       liveKitVersion: '1.3.0',
     })
   })

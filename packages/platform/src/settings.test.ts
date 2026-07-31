@@ -170,6 +170,41 @@ describe('desktop local settings contract', () => {
     })
   })
 
+  it('keeps valid per-user UI timestamps and rejects malformed entries', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        ui: {
+          telegramPromoDismissedUntilByUser: {
+            userA: 1_900_000_000_000,
+            invalid: 'tomorrow',
+            negative: -1,
+          },
+        },
+      }).ui,
+    ).toEqual({
+      telegramPromoDismissedUntilByUser: {
+        userA: 1_900_000_000_000,
+      },
+    })
+
+    expect(
+      normalizeDesktopLocalSettingsPatch({
+        ui: {
+          telegramPromoDismissedUntilByUser: {
+            userB: 1_900_000_000_001,
+            invalid: Number.NaN,
+          },
+        },
+      }),
+    ).toEqual({
+      ui: {
+        telegramPromoDismissedUntilByUser: {
+          userB: 1_900_000_000_001,
+        },
+      },
+    })
+  })
+
   it('keeps saved UI sound settings', () => {
     expect(
       normalizeDesktopLocalSettings({

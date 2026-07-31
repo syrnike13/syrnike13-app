@@ -1,11 +1,51 @@
 #include "node_event_sink.hpp"
 
+#include <chrono>
+#include <cstdlib>
 #include <cstdint>
+#include <exception>
 #include <memory>
+#include <new>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
+
+#include "coalescing_event_lane.hpp"
+#include "control_event_lane.hpp"
+#include "diagnostic_log.hpp"
 
 namespace syrnike::desktop_native {
 namespace {
+
+std::optional<std::string> environmentValue(const char* name) {
+  char* value = nullptr;
+  std::size_t length = 0;
+  if (_dupenv_s(&value, &length, name) != 0 || !value) {
+    return std::nullopt;
+  }
+  std::unique_ptr<char, decltype(&std::free)> owned(value, &std::free);
+  return std::string(owned.get());
+}
+
+std::size_t controlLaneCapacity() noexcept {
+  const auto smoke_mode =
+      environmentValue("SYRNIKE_NATIVE_SMOKE_TEST_MODE");
+  if (!smoke_mode || *smoke_mode != "1") {
+    return ControlEventLane::kCapacity;
+  }
+  const auto configured =
+      environmentValue("SYRNIKE_NATIVE_CONTROL_EVENT_CAPACITY");
+  if (!configured) return ControlEventLane::kCapacity;
+  char* end = nullptr;
+  const auto parsed = std::strtoull(configured->c_str(), &end, 10);
+  if (end == configured->c_str() || *end != '\0' ||
+      parsed == 0 || parsed > ControlEventLane::kCapacity) {
+    return ControlEventLane::kCapacity;
+  }
+  return static_cast<std::size_t>(parsed);
+}
 
 Napi::Number jsNumber(Napi::Env env, std::uint64_t value) {
   return Napi::Number::New(env, static_cast<double>(value));
@@ -24,6 +64,9 @@ Napi::Object errorToObject(Napi::Env env, const NativeError& error) {
   setIfPresent(result, "sessionId", error.session_id);
   if (error.generation) {
     result.Set("generation", jsNumber(env, *error.generation));
+  }
+  if (error.hresult) {
+    result.Set("hresult", Napi::Number::New(env, static_cast<double>(*error.hresult)));
   }
   return result;
 }
@@ -189,6 +232,18 @@ Napi::Object statsToObject(Napi::Env env, const RuntimeEvent& event) {
   stats.Set("methods", methods);
   setIfPresent(stats, "activeMethod", event.capture_method);
   stats.Set("videoFrames", jsNumber(env, event.frames));
+  stats.Set(
+      "videoRecoverableLostCount",
+      jsNumber(env, event.video_recoverable_lost_count));
+  stats.Set(
+      "videoGpuPoolSlotsAvailable",
+      jsNumber(env, event.video_gpu_pool_slots_available));
+  stats.Set(
+      "videoGpuPoolSlotsTotal",
+      jsNumber(env, event.video_gpu_pool_slots_total));
+  stats.Set(
+      "videoDxgiDuplicationHoldUsMax",
+      jsNumber(env, event.video_dxgi_duplication_hold_us_max));
   stats.Set("rtpStatsAvailable", event.rtp_stats_available);
   stats.Set("rtpPacketsSent", jsNumber(env, event.rtp_packets_sent));
   stats.Set("rtpBytesSent", jsNumber(env, event.rtp_bytes_sent));
@@ -275,8 +330,13 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
     setIfPresent(result, "reason", event.reason);
   } else if (event.type == "stats") {
     result.Set("stats", statsToObject(env, event));
+  } else if (event.type == "screenBackendRestart") {
+    result.Set("backend", event.capture_method);
+    result.Set("reason", event.reason);
+    result.Set("count", jsNumber(env, event.video_recoverable_lost_count));
   } else if (event.type == "microphoneMetrics") {
     auto metrics = Napi::Object::New(env);
+    metrics.Set("revision", static_cast<double>(event.revision.value_or(0)));
     metrics.Set("inputDb", event.input_db);
     metrics.Set("thresholdDb", event.threshold_db);
     metrics.Set("open", event.gate_open);
@@ -309,17 +369,128 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
   return result;
 }
 
+void logJsListenerFailure(
+  const RuntimeEvent& event,
+  const std::string& message
+) noexcept {
+  try {
+    diagnostics::DiagnosticLog::instance().write(
+      "native_event_listener_exception",
+      {
+        {"eventType", event.type},
+        {"message", diagnostics::redactForDiagnostics(message)}
+      }
+    );
+  } catch (...) {
+  }
+}
+
+bool deliverEventToJs(
+  Napi::Env env,
+  Napi::Function callback,
+  RuntimeEvent& event
+) {
+  if (env == nullptr || callback.IsEmpty()) {
+    discardEvent(event);
+    return false;
+  }
+  Napi::Object value;
+  try {
+    value = eventToObject(env, event);
+  } catch (const std::exception& error) {
+    discardEvent(event);
+    logJsListenerFailure(event, error.what());
+    return false;
+  } catch (...) {
+    discardEvent(event);
+    logJsListenerFailure(event, "native event serialization failed");
+    return false;
+  }
+  try {
+    callback.Call({value});
+  } catch (const Napi::Error& error) {
+    if (env.IsExceptionPending()) {
+      static_cast<void>(env.GetAndClearPendingException());
+    }
+    discardEvent(event);
+    logJsListenerFailure(event, error.Message());
+    return true;
+  } catch (const std::exception& error) {
+    if (env.IsExceptionPending()) {
+      static_cast<void>(env.GetAndClearPendingException());
+    }
+    discardEvent(event);
+    logJsListenerFailure(event, error.what());
+    return true;
+  } catch (...) {
+    if (env.IsExceptionPending()) {
+      static_cast<void>(env.GetAndClearPendingException());
+    }
+    discardEvent(event);
+    logJsListenerFailure(event, "unknown JS listener exception");
+    return true;
+  }
+  event.on_drop = {};
+  return true;
+}
+
 void callEventCallback(
   Napi::Env env,
   Napi::Function callback,
   RuntimeEvent* raw_event
 ) {
   std::unique_ptr<RuntimeEvent> event(raw_event);
-  callback.Call({eventToObject(env, *event)});
+  if (!event) return;
+  static_cast<void>(deliverEventToJs(env, callback, *event));
 }
 
-bool isMetricEvent(const RuntimeEvent& event) {
-  return event.type == "stats" || event.type == "microphoneMetrics";
+void logMediaDrop(const RuntimeEvent& event, std::uint64_t count) noexcept {
+  // A stalled renderer can drop continuously. Powers-of-two sampling preserves
+  // evidence without moving the flood into the diagnostic log.
+  if ((count & (count - 1)) != 0) return;
+  try {
+    diagnostics::DiagnosticLog::instance().write(
+      "native_event_media_dropped",
+      {
+        {"eventType", event.type},
+        {"dropped", count}
+      }
+    );
+  } catch (...) {
+    // Diagnostic field construction can allocate. Observability is lossy and
+    // must never disturb exact ownership of the accepted replacement frame.
+  }
+}
+
+void callMediaEventCallback(
+  Napi::Env env,
+  Napi::Function callback,
+  std::shared_ptr<CoalescingEventLane>* raw_lane
+) {
+  std::unique_ptr<std::shared_ptr<CoalescingEventLane>> lane_holder(raw_lane);
+  if (!lane_holder || !*lane_holder) return;
+  auto batch = (*lane_holder)->beginCallback();
+  if (!batch.active()) return;
+  if (!batch.deliver() || env == nullptr || callback.IsEmpty()) {
+    discardEventBatch(batch.events());
+    return;
+  }
+  for (auto& event : batch.events()) {
+    if (event) static_cast<void>(deliverEventToJs(env, callback, *event));
+  }
+}
+
+void callControlEventCallback(
+  Napi::Env env,
+  Napi::Function callback,
+  std::shared_ptr<ControlEventLane>* raw_lane
+) {
+  std::unique_ptr<std::shared_ptr<ControlEventLane>> lane_holder(raw_lane);
+  if (!lane_holder || !*lane_holder) return;
+  auto events = (*lane_holder)->beginCallback();
+  for (auto& event : events) {
+    if (event) static_cast<void>(deliverEventToJs(env, callback, *event));
+  }
 }
 
 }  // namespace
@@ -332,7 +503,14 @@ NodeEventSink::NodeEventSink(
       env,
       callback,
       resource_name,
-      512,
+      1,
+      1
+    )),
+    media_callback_(Napi::ThreadSafeFunction::New(
+      env,
+      callback,
+      std::string(resource_name) + "-media",
+      1,
       1
     )),
     metrics_callback_(Napi::ThreadSafeFunction::New(
@@ -341,29 +519,199 @@ NodeEventSink::NodeEventSink(
       std::string(resource_name) + "-metrics",
       1,
       1
-    )) {}
+    )),
+    control_lane_(std::make_shared<ControlEventLane>(controlLaneCapacity())),
+    media_lane_(std::make_shared<CoalescingEventLane>()) {}
 
 NodeEventSink::~NodeEventSink() {
-  close();
+  try {
+    close();
+  } catch (...) {
+  }
 }
 
 bool NodeEventSink::emit(RuntimeEvent event) {
-  if (closed_.load(std::memory_order_acquire)) return false;
-  const bool metric = isMetricEvent(event);
-  auto* payload = new RuntimeEvent(std::move(event));
-  const auto status = (metric ? metrics_callback_ : control_callback_).NonBlockingCall(
-    payload, callEventCallback
-  );
+  // close() first marks the control lane closed to wake a bounded producer,
+  // then takes this mutex before discarding accepted events or releasing the
+  // TSFNs. This keeps release ownership and the TSFN handles valid until emit
+  // reports whether it consumed the event.
+  std::lock_guard lifecycle_lock(lifecycle_mutex_);
+  if (closed_.load(std::memory_order_acquire)) {
+    if (eventLane(event) == EventLane::control) return false;
+    discardEvent(event);
+    return true;
+  }
+  const auto lane = eventLane(event);
+  if (lane == EventLane::control) {
+    const auto event_sequence = event.sequence;
+    ControlEventLane::PushResult pushed;
+    try {
+      pushed = control_lane_->push(std::move(event));
+    } catch (const std::exception& error) {
+      logJsListenerFailure(event, error.what());
+      return false;
+    } catch (...) {
+      logJsListenerFailure(event, "control event staging failed");
+      return false;
+    }
+    if (!pushed.accepted) {
+      // EventSink::emit(false) leaves release ownership with SequencedEmitter's
+      // fallback guard. Clear the lane's moved copy so it cannot release the
+      // same native handle a second time while being destroyed.
+      if (pushed.rejected) pushed.rejected->on_drop = {};
+      try {
+        diagnostics::DiagnosticLog::instance().write(
+          pushed.timed_out
+            ? "native_event_control_backpressure_timeout"
+            : "native_event_control_rejected",
+          {{"queueDepth", static_cast<std::uint64_t>(control_lane_->size())}}
+        );
+      } catch (...) {
+      }
+      return false;
+    }
+    if (!pushed.schedule_callback) return true;
+    auto* lane_payload = new (std::nothrow)
+      std::shared_ptr<ControlEventLane>(control_lane_);
+    if (!lane_payload) {
+      control_lane_->rejectScheduledCallbackAndDiscard(event_sequence);
+      try {
+        diagnostics::DiagnosticLog::instance().write(
+          "native_event_control_schedule_allocation_failed"
+        );
+      } catch (...) {
+      }
+      return false;
+    }
+    napi_status status = napi_generic_failure;
+    try {
+      status = control_callback_.NonBlockingCall(
+        lane_payload,
+        callControlEventCallback
+      );
+    } catch (...) {
+      status = napi_generic_failure;
+    }
+    if (status == napi_ok) return true;
+    delete lane_payload;
+    control_lane_->rejectScheduledCallbackAndDiscard(event_sequence);
+    try {
+      diagnostics::DiagnosticLog::instance().write(
+        "native_event_control_schedule_failed",
+        {
+          {"napiStatus", static_cast<std::int64_t>(status)},
+          {"queueFull", status == napi_queue_full}
+        }
+      );
+      // Telemetry: TSFN backpressure indicates JS thread starvation
+      if (status == napi_queue_full) {
+        diagnostics::DiagnosticLog::instance().write(
+          "tsfn_backpressure",
+          {{"lane", "control"}, {"capacity", static_cast<std::uint64_t>(512)}}
+        );
+      }
+    } catch (...) {
+    }
+    return false;
+  }
+  if (lane == EventLane::media) {
+    CoalescingEventLane::PushResult pushed;
+    try {
+      pushed = media_lane_->push(std::move(event));
+    } catch (...) {
+      // The lane guard has already released a retained media handle. Media is
+      // lossy, so allocation pressure must not surface as an actor failure.
+      return true;
+    }
+    if (pushed.discarded) {
+      discardEvent(*pushed.discarded);
+      logMediaDrop(*pushed.discarded, pushed.dropped_count);
+    }
+    if (!pushed.accepted || !pushed.schedule_callback) return true;
+    std::shared_ptr<CoalescingEventLane>* lane_payload = nullptr;
+    napi_status status = napi_generic_failure;
+    try {
+      lane_payload = new std::shared_ptr<CoalescingEventLane>(media_lane_);
+      status = media_callback_.NonBlockingCall(
+        lane_payload, callMediaEventCallback
+      );
+    } catch (...) {
+      status = napi_generic_failure;
+    }
+    if (status == napi_ok) return true;
+    delete lane_payload;
+    media_lane_->cancelScheduledCallbackAndDiscard();
+    return true;
+  }
+  RuntimeEventResourceGuard resource(event);
+  try {
+    resource.attach(event);
+  } catch (...) {
+    if (lane == EventLane::control) {
+      resource.transfer();
+      return false;
+    }
+    resource.discard();
+    return true;
+  }
+  RuntimeEvent* payload = nullptr;
+  try {
+    payload = new RuntimeEvent(std::move(event));
+  } catch (...) {
+    if (lane == EventLane::control) {
+      resource.transfer();
+      return false;
+    }
+    resource.discard();
+    return true;
+  }
+  resource.transfer();
+  napi_status status = napi_ok;
+  try {
+    switch (lane) {
+      case EventLane::control:
+        status = control_callback_.NonBlockingCall(payload, callEventCallback);
+        break;
+      case EventLane::media:
+        status = napi_generic_failure;
+        break;
+      case EventLane::telemetry:
+        status = metrics_callback_.NonBlockingCall(payload, callEventCallback);
+        break;
+    }
+  } catch (...) {
+    status = napi_generic_failure;
+  }
   if (status == napi_ok) return true;
+  if (lane == EventLane::control) {
+    // false means the sink did not consume resource ownership; the emitter's
+    // fallback remains responsible for it.
+    payload->on_drop = {};
+  } else {
+    discardEvent(*payload);
+  }
   delete payload;
-  if (metric && status == napi_queue_full) return true;
+  if (lane == EventLane::telemetry) return true;
   return false;
 }
 
 void NodeEventSink::close() {
   if (closed_.exchange(true, std::memory_order_acq_rel)) return;
-  metrics_callback_.Release();
-  control_callback_.Release();
+  control_lane_->requestClose();
+  std::lock_guard lifecycle_lock(lifecycle_mutex_);
+  control_lane_->closeAndDiscard();
+  media_lane_->closeAndDiscard();
+  if (!media_lane_->waitForInFlightCallbacks(std::chrono::seconds(5))) {
+    try {
+      diagnostics::DiagnosticLog::instance().write(
+        "native_event_media_callback_shutdown_timeout"
+      );
+    } catch (...) {
+    }
+  }
+  try { metrics_callback_.Release(); } catch (...) {}
+  try { media_callback_.Release(); } catch (...) {}
+  try { control_callback_.Release(); } catch (...) {}
 }
 
 }  // namespace syrnike::desktop_native

@@ -29,6 +29,7 @@ import {
   canManageRole,
 } from '#/features/authorization/authorization'
 import {
+  ADMINISTRATOR_PERMISSION,
   getAllowedPermissionTriStates,
   getPermissionTriState,
   overrideFieldFromRole,
@@ -115,6 +116,13 @@ export function ServerSettingsRoleEditor({
   const [removeIcon, setRemoveIcon] = useState(false)
   const [saving, setSaving] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const administratorEnabled =
+    getPermissionTriState(permissions, ADMINISTRATOR_PERMISSION.flag) ===
+    'allow'
+  const canGrantAdministrator = canGrantServerPermission(
+    server,
+    ADMINISTRATOR_PERMISSION.flag,
+  )
 
   const memberCount = useSyncStore((state) =>
     Object.values(state.members).filter(
@@ -497,6 +505,30 @@ export function ServerSettingsRoleEditor({
               Нажмите на переключатель: наследуется → разрешено → запрещено.
             </p>
           </div>
+
+          <section className="space-y-2">
+            <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+              Расширенные права
+            </h4>
+            <SettingsToggleRow
+              label={ADMINISTRATOR_PERMISSION.label}
+              hint={ADMINISTRATOR_PERMISSION.hint}
+              checked={administratorEnabled}
+              disabled={
+                !canEditPermissions ||
+                (!canGrantAdministrator && !administratorEnabled)
+              }
+              onCheckedChange={(enabled) =>
+                setPermissions((current) =>
+                  setPermissionTriState(
+                    current,
+                    ADMINISTRATOR_PERMISSION.flag,
+                    enabled ? 'allow' : 'neutral',
+                  ),
+                )
+              }
+            />
+          </section>
 
           {SERVER_PERMISSION_GROUPS.map((group) => (
             <section key={group.title} className="space-y-2">

@@ -139,7 +139,7 @@ export function ChannelPinnedDialog({
                   {name}
                 </p>
                 {message.content ? (
-                  <div>
+                  <div className="select-text">
                     {renderMessageContent(message.content, users, emojis, {
                       channels,
                       roles: server?.roles,

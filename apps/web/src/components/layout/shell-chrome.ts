@@ -69,10 +69,14 @@ export const shellTitleBarDragClass = 'shell-title-bar-drag' as const
 export const shellTitleBarNoDragClass = 'shell-title-bar-no-drag' as const
 
 /** Кнопки рельса: фиксированный квадрат; форма — Squircle, не CSS rounded. */
-export const RAIL_ICON_SIZE_PX = 40
-/** Совпадает с прежним `rounded-xl` (`--radius-xl` ≈ 14px). */
-export const RAIL_ICON_CORNER_RADIUS_PX = 14
-export const railIconButtonClass = 'size-10' as const
+export const RAIL_ICON_SIZE_PX = 44
+/** Пропорционально `RAIL_ICON_SIZE_PX` (было 14 при 40px). */
+export const RAIL_ICON_CORNER_RADIUS_PX = 15
+export const railIconButtonClass = 'size-11' as const
+/** Круглые аватары DM в рельсе — тот же визуальный размер, что и кнопки. */
+export const railAvatarClass = 'size-11' as const
+/** Glyph внутри кнопки рельса (Home, Plus, Hash). */
+export const railGlyphClass = 'size-4.5' as const
 
 /**
  * Пресет для `<Squircle {...railIconSquircleProps}>`.
@@ -116,8 +120,16 @@ export const FLOATING_BAR_HEIGHT_PX = 56
 export const FLOATING_BAR_HEIGHT_CLASS = 'min-h-14' as const
 export const FLOATING_BAR_FIXED_HEIGHT_CLASS = 'h-14' as const
 export const FLOATING_BAR_BOTTOM_CLASS = 'bottom-2' as const
+/** Совпадает с `bottom-2` / `FLOATING_BAR_BOTTOM_CLASS`. */
+export const FLOATING_BAR_BOTTOM_OFFSET_PX = 8
 export const FLOATING_BAR_INSET_X_CLASS = 'inset-x-2' as const
 export const FLOATING_BAR_SCROLL_PAD_CLASS = 'pb-[120px]' as const
+
+/** paddingBottom под плавающую панель: измеренная высота + bottom inset. */
+export function floatingBarReservePx(heightPx: number): number {
+  if (heightPx <= 0) return 0
+  return heightPx + FLOATING_BAR_BOTTOM_OFFSET_PX
+}
 
 /**
  * Бывший `rounded-lg` (= `--radius` / `--radius-lg` = 0.625rem ≈ 10px).

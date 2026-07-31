@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -15,6 +16,7 @@ struct NativeError {
   bool retryable = false;
   std::string session_id;
   std::optional<std::uint64_t> generation;
+  std::optional<std::int64_t> hresult;
 };
 
 struct DeviceInfo {
@@ -110,6 +112,10 @@ struct RuntimeEvent {
   std::string echo_cancellation = "disabled";
   std::uint64_t method_wgc_gpu = 0;
   std::uint64_t method_dxgi_gpu = 0;
+  std::uint64_t video_recoverable_lost_count = 0;
+  std::uint64_t video_gpu_pool_slots_available = 0;
+  std::uint64_t video_gpu_pool_slots_total = 0;
+  std::uint64_t video_dxgi_duplication_hold_us_max = 0;
   bool rtp_stats_available = false;
   std::uint64_t rtp_packets_sent = 0;
   std::uint64_t rtp_bytes_sent = 0;
@@ -122,11 +128,28 @@ struct RuntimeEvent {
   std::uint64_t frame_sequence = 0;
   std::uint64_t timestamp_us = 0;
   std::uint64_t nt_handle = 0;
+  // Media events may own resources in the utility process until Electron
+  // accepts the event. A lossy event sink invokes this synchronously when it
+  // drops the event before JS can release the resource.
+  std::function<void()> on_drop;
 };
 
 struct MediaCommand {
+  MediaCommand() = default;
+  MediaCommand(const MediaCommand&) = default;
+  MediaCommand& operator=(const MediaCommand&) = default;
+  // All dynamic members use standard allocators and transfer ownership on
+  // move. Declaring that transfer noexcept lets fixed-capacity native
+  // mailboxes move commands without opening an allocation/failure window.
+  MediaCommand(MediaCommand&&) noexcept = default;
+  MediaCommand& operator=(MediaCommand&&) noexcept = default;
+
   std::string type;
   std::string request_id;
+  std::string diagnostic_action_id;
+  std::string diagnostic_operation_id;
+  std::uint64_t diagnostic_revision = 0;
+  std::uint64_t diagnostic_host_epoch = 0;
   std::string session_id;
   std::uint64_t generation = 0;
   std::uint64_t revision = 0;
@@ -187,6 +210,11 @@ struct MediaCommand {
   std::uint32_t electron_main_pid = 0;
   std::int64_t diagnostic_hresult = 0;
   std::uint64_t diagnostic_suppressed = 0;
+  bool diagnostic_retryable = true;
+  // Coalesced native media owns its GPU handle until the actor consumes it.
+  // The first native mailbox seam invokes this exactly once when it displaces
+  // or discards an accepted frame. A rejected producer post retains ownership.
+  std::function<void()> on_drop;
 };
 
 struct HooksCommand {

@@ -52,11 +52,20 @@ export function registerNativeMediaIpc(
     const win = getWindow()
     if (!win || win.isDestroyed()) return
     switch (message.type) {
+      case 'runtimeState':
+        win.webContents.send(IPC.mediaRuntimeStateChanged, message.state)
+        return
       case 'microphoneMetrics':
         win.webContents.send(IPC.mediaMicrophoneMetrics, message.event)
         return
       case 'microphonePreviewState':
         win.webContents.send(IPC.mediaMicrophonePreviewState, message.event)
+        return
+      case 'remoteVideoSessionReset':
+        win.webContents.send(IPC.mediaRemoteVideoSessionReset, {
+          sessionId: message.sessionId,
+          generation: message.generation,
+        })
         return
       case 'remoteVideoSubscriptionFailed':
         win.webContents.send(
@@ -70,6 +79,16 @@ export function registerNativeMediaIpc(
         )
         return
     }
+  })
+
+  ipcMain.handle(IPC.mediaGetRuntimeState, async (event) => {
+    assertTrusted(event, getWindow, 'runtime state')
+    return controller.getRuntimeState()
+  })
+
+  ipcMain.handle(IPC.mediaRetryRuntime, async (event) => {
+    assertTrusted(event, getWindow, 'runtime retry')
+    return controller.retryRuntime()
   })
 
   ipcMain.handle(
@@ -104,6 +123,19 @@ export function registerNativeMediaIpc(
     async (event, sessionId: string, generation: number, trackId: string, demanded: boolean) => {
       assertTrusted(event, getWindow, 'remote video demand')
       return controller.setRemoteVideoDemand(sessionId, generation, trackId, demanded)
+    },
+  )
+
+  ipcMain.handle(
+    IPC.mediaReplayRemoteScreenPublications,
+    async (event) => {
+      assertTrusted(event, getWindow, 'remote screen publication replay')
+      for (const publication of controller.listRemoteScreenPublications()) {
+        event.sender.send(
+          'syrnike-desktop:media:remote-screen-publication-available',
+          publication,
+        )
+      }
     },
   )
 

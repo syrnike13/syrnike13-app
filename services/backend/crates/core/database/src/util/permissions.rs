@@ -5,6 +5,7 @@ use syrnike_permissions::{
     RelationshipStatus, DEFAULT_PERMISSION_DIRECT_MESSAGE,
 };
 
+use crate::voice::{get_current_voice_reservation, get_current_voice_session};
 use crate::{Channel, Database, Member, Server, User};
 
 /// Permissions calculator
@@ -23,6 +24,8 @@ pub struct DatabasePermissionQuery<'a> {
     cached_user_permission: Option<PermissionValue>,
     cached_mutual_connection: Option<bool>,
     cached_permission: Option<u64>,
+    forced_voice_channel_membership: bool,
+    known_voice_membership_channels: Option<[Option<String>; 2]>,
 }
 
 #[async_trait]
@@ -333,6 +336,40 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
         }
     }
 
+    async fn have_voice_channel_membership(&mut self) -> bool {
+        let Some(channel) = self.channel.as_deref() else {
+            return false;
+        };
+        if channel.voice().is_none() {
+            return false;
+        }
+        if self.forced_voice_channel_membership {
+            return true;
+        }
+
+        if let Some(known_channels) = &self.known_voice_membership_channels {
+            return known_channels
+                .iter()
+                .flatten()
+                .any(|channel_id| channel_id == channel.id());
+        }
+
+        if get_current_voice_session(&self.perspective.id)
+            .await
+            .ok()
+            .flatten()
+            .is_some_and(|session| session.channel.id == channel.id())
+        {
+            return true;
+        }
+
+        get_current_voice_reservation(&self.perspective.id)
+            .await
+            .ok()
+            .flatten()
+            .is_some_and(|reservation| reservation.channel.id == channel.id())
+    }
+
     /// Set the current user as the recipient of this channel
     /// (this will only ever be called for DirectMessage channels, use unimplemented!() for other code paths)
     async fn set_recipient_as_user(&mut self) {
@@ -403,6 +440,8 @@ impl<'a> DatabasePermissionQuery<'a> {
             cached_mutual_connection: None,
             cached_user_permission: None,
             cached_permission: None,
+            forced_voice_channel_membership: false,
+            known_voice_membership_channels: None,
         }
     }
 
@@ -495,6 +534,27 @@ impl<'a> DatabasePermissionQuery<'a> {
 
         DatabasePermissionQuery {
             member: Some(Cow::Borrowed(member)),
+            ..self
+        }
+    }
+
+    /// Treat the selected voice channel as the perspective user's active
+    /// membership while preparing a moderator-initiated move.
+    pub fn voice_channel_membership(self) -> DatabasePermissionQuery<'a> {
+        DatabasePermissionQuery {
+            forced_voice_channel_membership: true,
+            ..self
+        }
+    }
+
+    /// Reuse voice authority lookups when calculating many channel permissions
+    /// for the same perspective user.
+    pub fn known_voice_membership_channels(
+        self,
+        channels: [Option<String>; 2],
+    ) -> DatabasePermissionQuery<'a> {
+        DatabasePermissionQuery {
+            known_voice_membership_channels: Some(channels),
             ..self
         }
     }

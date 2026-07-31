@@ -26,6 +26,22 @@ class GenerationFence {
     generation_ = generation;
   }
 
+  bool setIfCurrent(
+    const std::string& current_session_id,
+    std::uint64_t current_generation,
+    const std::string& next_session_id,
+    std::uint64_t next_generation
+  ) {
+    std::lock_guard lock(mutex_);
+    if (session_id_ != current_session_id ||
+        generation_ != current_generation) {
+      return false;
+    }
+    session_id_ = next_session_id;
+    generation_ = next_generation;
+    return true;
+  }
+
   [[nodiscard]] bool isCurrent(
     const std::string& session_id,
     std::uint64_t generation

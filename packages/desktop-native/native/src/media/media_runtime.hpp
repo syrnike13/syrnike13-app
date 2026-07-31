@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 
+#include "../common/async_cleanup_dispatcher.hpp"
 #include "../common/bounded_queue.hpp"
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
@@ -14,11 +15,19 @@ namespace syrnike::desktop_native::media {
 class MediaRuntime final {
  public:
   using SteadyNow = std::function<std::chrono::steady_clock::time_point()>;
+  using BeforeMicrophoneOperation = std::function<void(const MediaCommand&)>;
+  using BeforeVoiceShutdown = std::function<void()>;
+  using AfterSubsystemCleanup = std::function<void()>;
 
   explicit MediaRuntime(
     EventSinkPtr sink,
-    std::shared_ptr<LiveKitPublicationClient> livekit_client = createRealLiveKitPublicationClient(),
-    SteadyNow screen_now = {}
+    std::shared_ptr<LiveKitPublicationClient> livekit_client = {},
+    SteadyNow screen_now = {},
+    BeforeMicrophoneOperation before_microphone_operation = {},
+    BeforeVoiceShutdown before_voice_shutdown = {},
+    std::shared_ptr<LiveKitRuntimeLifetime> livekit_lifetime = {},
+    AsyncCleanupLauncher subsystem_cleanup_launcher = {},
+    AfterSubsystemCleanup after_subsystem_cleanup = {}
   );
   ~MediaRuntime();
 
@@ -32,7 +41,7 @@ class MediaRuntime final {
 
  private:
   class Implementation;
-  std::unique_ptr<Implementation> implementation_;
+  std::shared_ptr<Implementation> implementation_;
 };
 
 }  // namespace syrnike::desktop_native::media

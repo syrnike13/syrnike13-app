@@ -1,3 +1,5 @@
+import crypto from 'node:crypto'
+
 import type {
   RtcEngineAdapter,
   VoiceDisconnectCause,
@@ -11,6 +13,7 @@ import type {
 
 import type {
   NativeRuntimeCommand,
+  NativeRuntimeDiagnosticContext,
   NativeRuntimeEvent,
 } from '../native-runtime/contract'
 import type {
@@ -20,9 +23,19 @@ import type {
 
 const VOICE_OPERATION_TIMEOUT_MS = 20_000
 const MEDIA_CONTROL_TIMEOUT_MS = 2_000
+const OUTPUT_START_TIMEOUT_MS = 5_000
 const MICROPHONE_CONFIG_TIMEOUT_MS = 5_000
 
-type NativeVoiceRuntime = Pick<NativeRuntimeSupervisor, 'request' | 'onEvent' | 'onStateChange'>
+type NativeVoiceRuntime = Pick<
+  NativeRuntimeSupervisor,
+  | 'request'
+  | 'onEvent'
+  | 'onStateChange'
+  | 'allocateGeneration'
+  | 'allocateMicrophoneConfigRevision'
+>
+
+type NativeDiagnosticAction = Omit<NativeRuntimeDiagnosticContext, 'hostEpoch'>
 
 type ActiveVoiceConnection = {
   lease: VoiceLease
@@ -34,6 +47,7 @@ type ActiveVoiceConnection = {
   cameraGeneration: number | null
   cameraKey: string | null
   outputKey: string | null
+  outputMedia: VoiceMediaSnapshot
   microphoneReady: boolean
   appliedMicrophoneMuted: boolean | null
   screenStarted: boolean
@@ -49,22 +63,27 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
   private readonly unsubscribeState: () => void
   private desired: VoiceMediaDesiredState | null = null
   private active: ActiveVoiceConnection | null = null
-  private voiceGeneration = 0
-  private microphoneGeneration = 0
-  private screenGeneration = 0
-  private cameraGeneration = 0
   private mediaRevision = 0
   private mediaHandledRevision = 0
   private mediaReconcile: Promise<void> | null = null
-  private microphoneConfigRevision = 0
+  private microphoneAppliedConfigRevision = 0
   private microphoneConfigKey: string | null = null
   private microphoneConfigPromise: Promise<void> | null = null
   private microphoneConfigScheduled = false
   private microphonePipelineWarm = false
   private microphoneWarmPromise: Promise<void> | null = null
   private runtimeEpoch = 0
+  private observedHostEpoch: number | null = null
+  private terminalRuntimeLossEpoch: number | null = null
+  private runtimeAvailable = true
+  private runtimeLost = false
+  private availabilityRetryable = true
   private disposed = false
   private remoteAudioSettings: VoiceRemoteAudioSettings | null = null
+  private diagnosticAction: NativeDiagnosticAction = {
+    actionId: `media-action-${crypto.randomUUID()}`,
+    revision: 0,
+  }
 
   constructor(
     private readonly runtime: NativeVoiceRuntime,
@@ -85,8 +104,9 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     if (lease.rtcEngine !== 'windows_native') {
       throw new Error('Native RTC adapter received a non-native Voice Lease')
     }
+    this.beginDiagnosticAction(lease.operationId)
     this.desired = desired
-    const generation = ++this.voiceGeneration
+    const generation = this.runtime.allocateGeneration('voice')
     const active: ActiveVoiceConnection = {
       lease,
       voiceGeneration: generation,
@@ -97,6 +117,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       cameraGeneration: null,
       cameraKey: null,
       outputKey: null,
+      outputMedia: { state: 'starting' },
       microphoneReady: false,
       appliedMicrophoneMuted: null,
       screenStarted: false,
@@ -107,18 +128,23 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     }
     this.active = active
 
-    await raceWithAbort(
-      this.runtime.request(
-        {
-          type: 'connectVoice',
-          sessionId: lease.connectionEpoch,
-          generation,
-          options: { livekit: lease.credential },
-        },
-        VOICE_OPERATION_TIMEOUT_MS,
-      ),
-      signal,
-    )
+    try {
+      await raceWithAbort(
+        this.request(
+          {
+            type: 'connectVoice',
+            sessionId: lease.connectionEpoch,
+            generation,
+            options: { livekit: lease.credential },
+          },
+          VOICE_OPERATION_TIMEOUT_MS,
+        ),
+        signal,
+      )
+    } catch (error) {
+      if (isAbortError(error)) throw error
+      throw voiceFailureError(error, 'native_voice_connect_failed')
+    }
     this.assertCurrent(active)
     if (signal.aborted) throw abortError()
     active.voiceReady = true
@@ -133,48 +159,49 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
   async disconnect(_cause: VoiceDisconnectCause) {
     const active = this.active
     this.active = null
-    this.voiceGeneration += 1
     this.mediaRevision += 1
     if (!active) return
+    this.beginDiagnosticAction(active.lease.operationId)
     active.selfSpeaking = false
     active.remoteSpeakingUserIds.clear()
     active.speakingUserIds.clear()
+    if (this.runtimeLost) return
 
     await Promise.allSettled([
       active.microphoneGeneration !== null
-        ? this.runtime.request(
+        ? this.request(
             {
               type: 'disconnectMicrophone',
               sessionId: active.lease.connectionEpoch,
-              generation: ++this.microphoneGeneration,
+              generation: this.runtime.allocateGeneration('microphone'),
             },
             MEDIA_CONTROL_TIMEOUT_MS,
           )
         : Promise.resolve(),
-      this.runtime.request(
+      this.request(
         {
             type: 'disconnectScreen',
             sessionId: active.lease.connectionEpoch,
-            generation: ++this.screenGeneration,
+            generation: this.runtime.allocateGeneration('screen'),
         },
         MEDIA_CONTROL_TIMEOUT_MS,
       ),
       active.cameraStarted
-        ? this.runtime.request(
+        ? this.request(
             {
               type: 'disconnectCamera',
               sessionId: active.lease.connectionEpoch,
-              generation: ++this.cameraGeneration,
+              generation: this.runtime.allocateGeneration('camera'),
             },
             MEDIA_CONTROL_TIMEOUT_MS,
           )
         : Promise.resolve(),
     ])
-    await this.runtime.request(
+    await this.request(
       {
         type: 'disconnectVoice',
         sessionId: active.lease.connectionEpoch,
-        generation: ++this.voiceGeneration,
+        generation: this.runtime.allocateGeneration('voice'),
       },
       MEDIA_CONTROL_TIMEOUT_MS,
     )
@@ -183,6 +210,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
   updateDesiredMedia(desired: VoiceMediaDesiredState) {
     this.desired = desired
     const active = this.active
+    this.beginDiagnosticAction(active?.lease.operationId)
     if (!active || !active.voiceReady) {
       this.scheduleMicrophoneConfiguration()
       return
@@ -197,6 +225,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     ) return
     this.remoteAudioSettings = settings
     const active = this.active
+    this.beginDiagnosticAction(active?.lease.operationId, settings.revision)
     if (active?.voiceReady) void this.replayRemoteAudioSettings(active)
   }
 
@@ -260,7 +289,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     const settings = this.remoteAudioSettings
     if (!settings) return
     try {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'configureRemoteAudio',
           sessionId: active.lease.connectionEpoch,
@@ -293,19 +322,21 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         continue
       }
 
-      const revision = ++this.microphoneConfigRevision
+      const revision = this.runtime.allocateMicrophoneConfigRevision()
       const runtimeEpoch = this.runtimeEpoch
-      const request = this.runtime
-        .request(
-          {
-            type: 'configureMicrophone',
-            revision,
-            config,
-          },
-          MICROPHONE_CONFIG_TIMEOUT_MS,
-        )
+      const request = this.request(
+        {
+          type: 'configureMicrophone',
+          revision,
+          config,
+        },
+        MICROPHONE_CONFIG_TIMEOUT_MS,
+      )
         .then(() => {
-          if (runtimeEpoch === this.runtimeEpoch) this.microphoneConfigKey = key
+          if (runtimeEpoch === this.runtimeEpoch) {
+            this.microphoneConfigKey = key
+            this.microphoneAppliedConfigRevision = revision
+          }
         })
         .catch((error) => {
           this.microphoneConfigKey = null
@@ -338,11 +369,11 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     if (active !== this.active || active.microphoneReady) return
     await this.ensureMicrophonePipelineWarm()
     this.assertCurrent(active)
-    const generation = ++this.microphoneGeneration
+    const generation = this.runtime.allocateGeneration('microphone')
     active.microphoneGeneration = generation
     this.emitMedia(active, 'microphone', { state: 'starting' })
     try {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'connectMicrophone',
           sessionId: active.lease.connectionEpoch,
@@ -351,13 +382,14 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
           options: {
             kind: 'microphone',
             requestId: `microphone-${active.lease.connectionEpoch}`,
-            livekit: active.lease.credential,
+            participantIdentity: active.lease.credential.participantIdentity,
             muted: desired.effectiveMuted,
           },
         },
         VOICE_OPERATION_TIMEOUT_MS,
       )
       this.assertCurrent(active)
+      if (active.microphoneGeneration !== generation) return
       active.microphoneReady = true
       active.appliedMicrophoneMuted = desired.effectiveMuted
       this.updateSelfSpeaking(active, false)
@@ -365,10 +397,11 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         state: desired.effectiveMuted ? 'muted' : 'running',
       })
     } catch (error) {
-      if (active !== this.active) return
-      active.microphoneReady = false
-      active.microphoneGeneration = null
-      active.appliedMicrophoneMuted = null
+      if (
+        active !== this.active ||
+        active.microphoneGeneration !== generation
+      ) return
+      this.retireMediaKind(active, 'microphone')
       this.emitMediaFailure(
         active,
         'microphone',
@@ -389,10 +422,10 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       const desired = this.desired
       if (!desired) return
       const runtimeEpoch = this.runtimeEpoch
-      await this.runtime.request(
+      await this.request(
         {
           type: 'warmMicrophone',
-          generation: ++this.microphoneGeneration,
+          generation: this.runtime.allocateGeneration('microphone'),
           config: microphoneConfig(desired),
         },
         VOICE_OPERATION_TIMEOUT_MS,
@@ -409,8 +442,29 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     }
   }
 
+  private beginDiagnosticAction(
+    operationId = this.active?.lease.operationId,
+    revision = this.mediaRevision,
+  ) {
+    this.diagnosticAction = {
+      actionId: `media-action-${crypto.randomUUID()}`,
+      operationId,
+      revision,
+    }
+  }
+
+  private request<T = unknown>(
+    command: NativeRuntimeCommand,
+    timeoutMs: number,
+  ) {
+    return this.runtime.request<T>(command, timeoutMs, {
+      diagnostic: this.diagnosticAction,
+    })
+  }
+
   private requestMediaReconcile() {
     this.mediaRevision += 1
+    this.beginDiagnosticAction(this.active?.lease.operationId)
     this.ensureMediaReconcile()
   }
 
@@ -462,40 +516,48 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     await this.ensureMicrophone(active, desiredBeforeStart)
     this.assertCurrent(active)
     const desired = this.desired
+    const generation = active.microphoneGeneration
     if (
       !desired ||
       !active.microphoneReady ||
-      active.microphoneGeneration === null ||
+      generation === null ||
       active.appliedMicrophoneMuted === desired.effectiveMuted
     ) {
       return
     }
     try {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'setMicrophoneMuted',
           sessionId: active.lease.connectionEpoch,
-          generation: active.microphoneGeneration,
+          generation,
           muted: desired.effectiveMuted,
         },
         MEDIA_CONTROL_TIMEOUT_MS,
       )
       this.assertCurrent(active)
+      if (
+        !active.microphoneReady ||
+        active.microphoneGeneration !== generation
+      ) return
       active.appliedMicrophoneMuted = desired.effectiveMuted
       this.updateSelfSpeaking(active, false)
       this.emitMedia(active, 'microphone', {
         state: desired.effectiveMuted ? 'muted' : 'running',
       })
     } catch (error) {
-      if (this.active === active) {
-        active.appliedMicrophoneMuted = null
-        this.emitMediaFailure(
-          active,
-          'microphone',
-          error,
-          'microphone_mute_failed',
-        )
-      }
+      if (
+        this.active !== active ||
+        !active.microphoneReady ||
+        active.microphoneGeneration !== generation
+      ) return
+      active.appliedMicrophoneMuted = null
+      this.emitMediaFailure(
+        active,
+        'microphone',
+        error,
+        'microphone_mute_failed',
+      )
     }
   }
 
@@ -511,11 +573,11 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       active.cameraStarted = false
       active.cameraKey = null
       active.cameraGeneration = null
-      await this.runtime.request(
+      await this.request(
         {
           type: 'disconnectCamera',
           sessionId: active.lease.connectionEpoch,
-          generation: ++this.cameraGeneration,
+          generation: this.runtime.allocateGeneration('camera'),
         },
         MEDIA_CONTROL_TIMEOUT_MS,
       )
@@ -524,22 +586,22 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     }
     if (active.cameraStarted && active.cameraKey === cameraKey) return
     if (active.cameraStarted) {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'disconnectCamera',
           sessionId: active.lease.connectionEpoch,
-          generation: ++this.cameraGeneration,
+          generation: this.runtime.allocateGeneration('camera'),
         },
         MEDIA_CONTROL_TIMEOUT_MS,
       )
     }
-    const generation = ++this.cameraGeneration
+    const generation = this.runtime.allocateGeneration('camera')
     active.cameraStarted = true
     active.cameraGeneration = generation
     active.cameraKey = cameraKey
     this.emitMedia(active, 'camera', { state: 'starting' })
     try {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'connectCamera',
           sessionId: active.lease.connectionEpoch,
@@ -550,18 +612,20 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
             height: 720,
             fps: 30,
             bitrate: 3_000_000,
-            livekit: active.lease.credential,
+            participantIdentity: active.lease.credential.participantIdentity,
           },
         },
         VOICE_OPERATION_TIMEOUT_MS,
       )
       this.assertCurrent(active)
+      if (active.cameraGeneration !== generation) return
       this.emitMedia(active, 'camera', { state: 'running' })
     } catch (error) {
-      if (this.active !== active) return
-      active.cameraStarted = false
-      active.cameraGeneration = null
-      active.cameraKey = null
+      if (
+        this.active !== active ||
+        active.cameraGeneration !== generation
+      ) return
+      this.retireMediaKind(active, 'camera')
       this.emitMediaFailure(active, 'camera', error, 'camera_start_failed')
     }
   }
@@ -574,8 +638,11 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     const volume = desired.outputVolume
     const outputKey = `${deafened}|${desired.outputDeviceId ?? ''}|${volume}`
     if (active.outputKey === outputKey) return
+    const previousOutputKey = active.outputKey
+    const previousOutputMedia = active.outputMedia
+    active.outputKey = outputKey
     try {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'configureVoiceOutput',
           sessionId: active.lease.connectionEpoch,
@@ -584,17 +651,38 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
           deviceId: desired.outputDeviceId,
           volume,
         },
-        MEDIA_CONTROL_TIMEOUT_MS,
+        OUTPUT_START_TIMEOUT_MS,
       )
       this.assertCurrent(active)
-      active.outputKey = outputKey
+      if (active.outputKey !== outputKey) return
       this.emitMedia(active, 'output', {
         state: deafened ? 'muted' : 'running',
       })
     } catch (error) {
-      if (this.active === active) {
-        this.emitMediaFailure(active, 'output', error, 'output_config_failed')
+      if (this.active !== active || active.outputKey !== outputKey) return
+      const detail = errorDetail(error)
+      if (
+        previousOutputKey !== null &&
+        detail?.code !== 'audio_output_rollback_failed'
+      ) {
+        active.outputKey = previousOutputKey
+        this.emitMedia(active, 'output', {
+          state: previousOutputMedia.state,
+          error: {
+            code: detail?.code ?? 'output_config_rolled_back',
+            message: detail?.message ??
+              (error instanceof Error
+                ? error.message
+                : 'Output configuration failed; previous output remains active'),
+            retryable: detail?.retryable ?? true,
+            ...(detail?.stage === undefined ? {} : { stage: detail.stage }),
+            ...(detail?.hresult === undefined ? {} : { hresult: detail.hresult }),
+          },
+        })
+        return
       }
+      this.retireMediaKind(active, 'output')
+      this.emitMediaFailure(active, 'output', error, 'output_config_failed')
     }
   }
 
@@ -615,11 +703,11 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       : null
     if (!desired.screenEnabled || !desired.screenSourceId) {
       if (!active.screenStarted) return
-      const generation = ++this.screenGeneration
+      const generation = this.runtime.allocateGeneration('screen')
       active.screenStarted = false
       active.screenGeneration = null
       active.screenSourceKey = null
-      await this.runtime.request(
+      await this.request(
         {
           type: 'disconnectScreen',
           sessionId: active.lease.connectionEpoch,
@@ -633,33 +721,36 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     }
     if (active.screenStarted && active.screenSourceKey === sourceKey) return
     if (active.screenStarted) {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'disconnectScreen',
           sessionId: active.lease.connectionEpoch,
-          generation: ++this.screenGeneration,
+          generation: this.runtime.allocateGeneration('screen'),
         },
         MEDIA_CONTROL_TIMEOUT_MS,
       )
     }
 
-    const generation = ++this.screenGeneration
+    const generation = this.runtime.allocateGeneration('screen')
     active.screenGeneration = generation
     active.screenStarted = true
     active.screenSourceKey = sourceKey
     this.emitMedia(active, 'screen', { state: 'starting' })
     try {
-      await this.runtime.request(
+      await this.request(
         {
           type: 'connectScreen',
           sessionId: active.lease.connectionEpoch,
           generation,
-          options: { livekit: active.lease.credential },
+          options: {
+            participantIdentity: active.lease.credential.participantIdentity,
+          },
         },
         VOICE_OPERATION_TIMEOUT_MS,
       )
       this.assertCurrent(active)
-      await this.runtime.request(
+      if (active.screenGeneration !== generation) return
+      await this.request(
         {
           type: 'startScreenCapture',
           sessionId: active.lease.connectionEpoch,
@@ -675,21 +766,23 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
             bitrate: desired.screenBitrate ?? 6_000_000,
             audioBitrate: desired.screenAudioBitrate ?? 128_000,
             audio: { requested: desired.screenAudioEnabled },
-            livekit: active.lease.credential,
+            participantIdentity: active.lease.credential.participantIdentity,
           },
         },
         VOICE_OPERATION_TIMEOUT_MS,
       )
       this.assertCurrent(active)
+      if (active.screenGeneration !== generation) return
       this.emitMedia(active, 'screen', { state: 'running' })
       this.emitMedia(active, 'screen_audio', {
         state: desired.screenAudioEnabled ? 'running' : 'off',
       })
     } catch (error) {
-      if (this.active !== active) return
-      active.screenStarted = false
-      active.screenGeneration = null
-      active.screenSourceKey = null
+      if (
+        this.active !== active ||
+        active.screenGeneration !== generation
+      ) return
+      this.retireMediaKind(active, 'screen')
       this.emitMediaFailure(active, 'screen', error, 'screen_start_failed')
     }
   }
@@ -715,6 +808,9 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
           message: event.error.message,
           retryable: event.error.retryable,
           stage: event.error.stage,
+          ...(event.error.hresult === undefined
+            ? {}
+            : { hresult: event.error.hresult }),
         },
       })
       return
@@ -724,9 +820,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         active.cameraGeneration === null ||
         event.generation !== active.cameraGeneration
       ) return
-      active.cameraStarted = false
-      active.cameraGeneration = null
-      active.cameraKey = null
+      this.retireMediaKind(active, 'camera')
       this.emitMedia(active, 'camera', {
         state: 'failed',
         error: {
@@ -734,6 +828,9 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
           message: event.error.message,
           retryable: event.error.retryable,
           stage: event.error.stage,
+          ...(event.error.hresult === undefined
+            ? {}
+            : { hresult: event.error.hresult }),
         },
       })
       return
@@ -743,9 +840,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         active.screenGeneration === null ||
         event.generation !== active.screenGeneration
       ) return
-      active.screenStarted = false
-      active.screenGeneration = null
-      active.screenSourceKey = null
+      this.retireMediaKind(active, 'screen')
       const targetClosed = event.reason === 'target_closed'
       const error = {
         code: targetClosed
@@ -772,6 +867,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       return
     }
     if (event.type === 'microphoneMetrics') {
+      if (event.metrics.revision !== this.microphoneAppliedConfigRevision) return
       if (!active.voiceReady || !active.microphoneReady) return
       const desired = this.desired
       this.updateSelfSpeaking(
@@ -803,59 +899,164 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
             : kind === 'camera'
               ? active.cameraGeneration
               : active.voiceGeneration
-      if (expectedGeneration === null || event.generation !== expectedGeneration) return
+      if (
+        expectedGeneration === null ||
+        event.generation !== expectedGeneration ||
+        (kind === 'output' && active.outputKey === null)
+      ) return
       if (event.state.status === 'error') {
-        this.emitMedia(active, kind, {
+        const failure = event.error
+        this.retireMediaKind(active, kind)
+        const mediaFailure = {
           state: 'failed',
           error: {
-            code: `${kind}_runtime_failed`,
-            message: event.state.message ?? `${kind} runtime failed`,
-            retryable: true,
+            code: failure?.code ?? `${kind}_runtime_failed`,
+            message: failure?.message ?? event.state.message ?? `${kind} runtime failed`,
+            retryable: failure?.retryable ?? true,
+            ...(failure?.stage === undefined ? {} : { stage: failure.stage }),
+            ...(failure?.hresult === undefined ? {} : { hresult: failure.hresult }),
+          },
+        } as const
+        this.emitMedia(active, kind, mediaFailure)
+        if (kind === 'screen' && this.desired?.screenAudioEnabled) {
+          this.emitMedia(active, 'screen_audio', mediaFailure)
+        }
+      } else if (
+        (kind === 'microphone' || kind === 'output') &&
+        event.state.status === 'starting' &&
+        event.error
+      ) {
+        if (kind === 'microphone') this.updateSelfSpeaking(active, false)
+        this.emitMedia(active, kind, {
+          state: 'starting',
+          error: {
+            code: event.error.code,
+            message: event.error.message,
+            retryable: event.error.retryable,
+            ...(event.error.stage === undefined ? {} : { stage: event.error.stage }),
+            ...(event.error.hresult === undefined
+              ? {}
+              : { hresult: event.error.hresult }),
           },
         })
       } else if (
-        kind === 'output' &&
+        (kind === 'microphone' || kind === 'output') &&
         event.state.status === 'running' &&
-        (event.state as { deviceId?: unknown }).deviceId === 'default' &&
-        'message' in event.state &&
-        typeof event.state.message === 'string'
+        event.state.deviceId === 'default' &&
+        event.error?.code ===
+          (kind === 'microphone'
+            ? 'audio_input_fallback_default'
+            : 'audio_output_fallback_default')
       ) {
-        this.emitMedia(active, 'output', {
-          state: 'running',
-          error: {
-            code: 'output_device_fallback',
-            message: event.state.message,
-            retryable: false,
-          },
+        if (kind === 'microphone') {
+          // The native lifecycle event remains in local diagnostics, but a
+          // working default microphone is not a media failure and must not
+          // trigger an automatic diagnostic upload.
+          this.emitMedia(active, kind, { state: 'running' })
+        } else {
+          this.emitMedia(active, kind, {
+            state: 'running',
+            error: {
+              code: 'output_device_fallback',
+              message: event.error.message,
+              retryable: false,
+            },
+          })
+        }
+      } else if (
+        (kind === 'microphone' || kind === 'output') &&
+        event.state.status === 'running' &&
+        event.state.message ===
+          (kind === 'microphone'
+            ? 'audio_input_default_recovered'
+            : 'audio_output_default_recovered')
+      ) {
+        this.emitMedia(active, kind, {
+          state:
+            kind === 'microphone' && this.desired?.effectiveMuted
+              ? 'muted'
+              : 'running',
         })
       }
     }
   }
 
+  private retireMediaKind(
+    active: ActiveVoiceConnection,
+    kind: 'microphone' | 'screen' | 'camera' | 'output',
+  ) {
+    if (kind === 'microphone') {
+      active.microphoneReady = false
+      active.microphoneGeneration = null
+      active.appliedMicrophoneMuted = null
+      this.updateSelfSpeaking(active, false)
+      return
+    }
+    if (kind === 'screen') {
+      active.screenStarted = false
+      active.screenGeneration = null
+      active.screenSourceKey = null
+      return
+    }
+    if (kind === 'camera') {
+      active.cameraStarted = false
+      active.cameraGeneration = null
+      active.cameraKey = null
+      return
+    }
+    active.outputKey = null
+  }
+
   private handleRuntimeState(snapshot: NativeRuntimeSupervisorSnapshot) {
-    if (
-      snapshot.status === 'recovering' ||
-      snapshot.status === 'degraded' ||
-      snapshot.status === 'stopped'
-    ) {
+    const hostEpoch = snapshot.hostEpoch
+    if (hostEpoch !== undefined && hostEpoch !== this.observedHostEpoch) {
+      this.observedHostEpoch = hostEpoch
       this.runtimeEpoch += 1
       this.microphoneConfigKey = null
       this.microphonePipelineWarm = false
+      this.microphoneAppliedConfigRevision = 0
+    }
+    const available = snapshot.status === 'ready'
+    this.runtimeLost =
+      snapshot.status === 'recovering' ||
+      snapshot.status === 'degraded' ||
+      snapshot.status === 'stopped'
+    const retryable = snapshot.failure?.retryable ?? snapshot.status !== 'degraded'
+    const runtimeFailure = available
+      ? undefined
+      : {
+          code: snapshot.status === 'degraded' ? 'runtime_degraded' : 'runtime_lost',
+          message:
+            snapshot.failure?.message ??
+            snapshot.degradedReason ??
+            snapshot.lastFailure ??
+            'Native media runtime is unavailable',
+          retryable,
+          stage: 'native_runtime',
+        }
+    if (
+      available !== this.runtimeAvailable ||
+      retryable !== this.availabilityRetryable
+    ) {
+      this.runtimeAvailable = available
+      this.availabilityRetryable = retryable
+      this.emit({
+        type: 'availabilityChanged',
+        available,
+        retryable,
+        failure: runtimeFailure,
+      })
     }
     const active = this.active
     if (!active) return
     if (snapshot.status !== 'recovering' && snapshot.status !== 'degraded') return
+    if (hostEpoch === undefined || this.terminalRuntimeLossEpoch === hostEpoch) return
+    this.terminalRuntimeLossEpoch = hostEpoch
     this.emit({
       type: 'terminalFailure',
       operationId: active.lease.operationId,
       connectionEpoch: active.lease.connectionEpoch,
-      failure: {
-        code: snapshot.status === 'degraded' ? 'runtime_degraded' : 'runtime_lost',
-        message:
-          snapshot.degradedReason ?? snapshot.lastFailure ?? 'Native media runtime lost',
-        retryable: snapshot.status !== 'degraded',
-        stage: 'native_runtime',
-      },
+      failure: runtimeFailure!,
     })
   }
 
@@ -864,6 +1065,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     kind: VoiceMediaKind,
     media: VoiceMediaSnapshot,
   ) {
+    if (kind === 'output') active.outputMedia = media
     this.emit({
       type: 'mediaState',
       kind,
@@ -879,15 +1081,8 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     error: unknown,
     code: string,
   ) {
-    const nativeCode =
-      error instanceof Error &&
-      'detail' in error &&
-      typeof error.detail === 'object' &&
-      error.detail !== null &&
-      'code' in error.detail &&
-      typeof error.detail.code === 'string'
-        ? error.detail.code
-        : undefined
+    const detail = errorDetail(error)
+    const nativeCode = detail?.code
     this.emitMedia(active, kind, {
       state: 'failed',
       error: {
@@ -900,9 +1095,11 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
           kind === 'screen' && nativeCode === 'target_closed'
             ? 'Источник демонстрации больше недоступен'
             : error instanceof Error
-              ? error.message
+              ? (detail?.message ?? error.message)
               : `${kind} failed`,
-        retryable: nativeCode !== 'target_closed',
+        retryable: detail?.retryable ?? nativeCode !== 'target_closed',
+        ...(detail?.stage === undefined ? {} : { stage: detail.stage }),
+        ...(detail?.hresult === undefined ? {} : { hresult: detail.hresult }),
       },
     })
   }
@@ -987,6 +1184,49 @@ function raceWithAbort<T>(promise: Promise<T>, signal: AbortSignal) {
 
 function abortError() {
   return new DOMException('Native RTC operation superseded', 'AbortError')
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
+
+function voiceFailureError(error: unknown, fallbackCode: string) {
+  const detail = errorDetail(error)
+  const voiceFailure = {
+    code: detail?.code ?? fallbackCode,
+    message: detail?.message ??
+      (error instanceof Error ? error.message : 'Native voice operation failed'),
+    retryable: detail?.retryable ?? true,
+    stage: detail?.stage,
+    ...(detail?.hresult === undefined ? {} : { hresult: detail.hresult }),
+  }
+  return Object.assign(new Error(voiceFailure.message), { failure: voiceFailure })
+}
+
+function errorDetail(error: unknown) {
+  if (!error || typeof error !== 'object' || !('detail' in error)) return null
+  const detail = error.detail
+  if (!detail || typeof detail !== 'object') return null
+  if (
+    !('code' in detail) || typeof detail.code !== 'string' ||
+    !('message' in detail) || typeof detail.message !== 'string' ||
+    !('retryable' in detail) || typeof detail.retryable !== 'boolean'
+  ) {
+    return null
+  }
+  return {
+    code: detail.code,
+    message: detail.message,
+    retryable: detail.retryable,
+    stage:
+      'stage' in detail && typeof detail.stage === 'string'
+        ? detail.stage
+        : undefined,
+    hresult:
+      'hresult' in detail && Number.isSafeInteger(detail.hresult)
+        ? Number(detail.hresult)
+        : undefined,
+  }
 }
 
 export type { NativeVoiceRuntime }

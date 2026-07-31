@@ -164,4 +164,33 @@ describe('DesktopVoiceGatewayTransport', () => {
     )
     transport.stop()
   })
+
+  it('treats an Error without an explicit disposition as fatal', () => {
+    const diagnostics = vi.fn()
+    const socket = new FakeSocket()
+    const transport = new DesktopVoiceGatewayTransport({
+      createSocket: () => socket,
+      diagnostics,
+    })
+    transport.configure('wss://example.invalid/ws', 'session-token')
+    socket.open()
+    socket.event({
+      type: 'Error',
+      scope: 'Session',
+      data: {
+        type: 'InvalidOperation',
+        message: 'Malformed gateway error.',
+      },
+    })
+
+    expect(diagnostics).toHaveBeenCalledWith(
+      'control_event',
+      expect.objectContaining({
+        eventType: 'Error',
+        fatal: true,
+        errorType: 'InvalidOperation',
+      }),
+    )
+    transport.stop()
+  })
 })

@@ -4,7 +4,6 @@ import { CommandPalette } from '#/components/command-palette/command-palette'
 import { SettingsModal } from '#/components/settings/settings-modal'
 import { DesktopShell } from '#/components/layout/desktop-shell'
 import { CommandPaletteProvider } from '#/features/command-palette/command-palette-context'
-import { DesktopUpdateBanner } from '#/features/desktop/desktop-update-banner'
 import { DesktopHotkeyProvider } from '#/features/hotkeys/desktop-hotkey-provider'
 import { DesktopOverlayPublisher } from '#/features/overlay/desktop-overlay-publisher'
 import { DesktopTrayVoicePublisher } from '#/features/voice/desktop-tray-voice-publisher'
@@ -17,7 +16,7 @@ import { isDesktopRuntime } from '#/platform/runtime'
  *
  * Общий auth-gate и VoiceProvider — в `AuthedGate` (shared с `/m`).
  * Здесь — только desktop-специфичная обвязка: shell, горячие клавиши,
- * command palette, overlay publisher, баннер обновления.
+ * command palette, overlay publisher.
  */
 export const Route = createFileRoute('/app')({
   beforeLoad: () => {
@@ -37,7 +36,6 @@ function DesktopLayout() {
         <DesktopHotkeyProvider>
           <DesktopOverlayPublisher />
           <DesktopTrayVoicePublisher />
-          <DesktopUpdateBanner />
           <DesktopShell />
           <CommandPalette />
           <SettingsModal />

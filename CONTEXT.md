@@ -140,6 +140,27 @@ Termination or unresponsiveness of one Windows utility host. Media, hotkey, and
 overlay runtime losses are isolated and recovered independently.
 _Avoid_: Sidecar lost, application crash, voice state update failed
 
+**Runtime Availability**:
+The readiness of one Windows utility host to accept typed work for its current
+host epoch. `NativeRuntimeSupervisor` is the single owner of host startup,
+handshake, restart backoff, crash classification, and circuit state. Waiting for
+Runtime Availability does not consume a Voice Recovery attempt.
+_Avoid_: Voice connected, RTC recovering, media ready
+
+**Native Event Lane**:
+The delivery class assigned at the first asynchronous Windows-native boundary.
+Control preserves order and cannot be displaced by frames; media is bounded and
+latest-per-resource; telemetry is lossy. A dropped media item releases its
+retained native resource exactly once, including replacement and shutdown.
+_Avoid_: Callback queue, event buffer, Node queue
+
+**Diagnostic Incident**:
+One typed causal client failure with a stable identity, correlation, occurrence
+count, and bounded sanitized evidence. Related runtime, media, and projection
+events enrich the same incident instead of creating competing automatic report
+triggers.
+_Avoid_: Error log line, upload request, console error
+
 ## Channel Activities
 
 **Channel Activity**:

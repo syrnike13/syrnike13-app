@@ -22,7 +22,7 @@ use crate::{
     media_stream_track::MediaStreamTrack,
     peer_connection_factory::RtcConfiguration,
     rtp_receiver::RtpReceiver,
-    rtp_sender::RtpSender,
+    rtp_sender::{RtpSender, VideoEncoderBackend},
     rtp_transceiver::{RtpTransceiver, RtpTransceiverInit},
     session_description::SessionDescription,
     stats::RtcStats,
@@ -157,6 +157,19 @@ impl PeerConnection {
         self.handle.add_track(track, streams_ids)
     }
 
+    /// Adds a track with an encoder backend fixed before the sender is returned.
+    ///
+    /// Explicit backends are required. Sender creation fails when the requested
+    /// backend is unavailable. Audio tracks always use [`VideoEncoderBackend::Auto`].
+    pub fn add_track_with_video_encoder_backend<T: AsRef<str>>(
+        &self,
+        track: MediaStreamTrack,
+        streams_ids: &[T],
+        video_encoder_backend: VideoEncoderBackend,
+    ) -> Result<RtpSender, RtcError> {
+        self.handle.add_track_with_video_encoder_backend(track, streams_ids, video_encoder_backend)
+    }
+
     pub fn remove_track(&self, sender: RtpSender) -> Result<(), RtcError> {
         self.handle.remove_track(sender)
     }
@@ -173,12 +186,43 @@ impl PeerConnection {
         self.handle.add_transceiver(track, init)
     }
 
+    /// Adds a transceiver with an encoder backend fixed before it is returned.
+    ///
+    /// Explicit backends are required for send-capable video transceivers.
+    /// Non-video and receive-only transceivers always use
+    /// [`VideoEncoderBackend::Auto`].
+    pub fn add_transceiver_with_video_encoder_backend(
+        &self,
+        track: MediaStreamTrack,
+        init: RtpTransceiverInit,
+        video_encoder_backend: VideoEncoderBackend,
+    ) -> Result<RtpTransceiver, RtcError> {
+        self.handle.add_transceiver_with_video_encoder_backend(track, init, video_encoder_backend)
+    }
+
     pub fn add_transceiver_for_media(
         &self,
         media_type: MediaType,
         init: RtpTransceiverInit,
     ) -> Result<RtpTransceiver, RtcError> {
         self.handle.add_transceiver_for_media(media_type, init)
+    }
+
+    /// Adds a trackless transceiver with an encoder backend fixed before return.
+    ///
+    /// The backend is retained when a track is later attached to a send-capable
+    /// video transceiver. Other transceivers use [`VideoEncoderBackend::Auto`].
+    pub fn add_transceiver_for_media_with_video_encoder_backend(
+        &self,
+        media_type: MediaType,
+        init: RtpTransceiverInit,
+        video_encoder_backend: VideoEncoderBackend,
+    ) -> Result<RtpTransceiver, RtcError> {
+        self.handle.add_transceiver_for_media_with_video_encoder_backend(
+            media_type,
+            init,
+            video_encoder_backend,
+        )
     }
 
     pub fn close(&self) {
@@ -276,7 +320,22 @@ mod tests {
     use log::trace;
     use tokio::sync::mpsc;
 
-    use crate::{peer_connection::*, peer_connection_factory::*};
+    use crate::{
+        peer_connection::*,
+        peer_connection_factory::*,
+        rtp_sender::{RtpSender, VideoEncoderBackend},
+        rtp_transceiver::{RtpTransceiverDirection, RtpTransceiverInit},
+    };
+
+    #[test]
+    fn existing_sender_backend_api_remains_source_compatible() {
+        let _init = RtpTransceiverInit {
+            direction: RtpTransceiverDirection::SendOnly,
+            stream_ids: Vec::new(),
+            send_encodings: Vec::new(),
+        };
+        let _setter: fn(&RtpSender, VideoEncoderBackend) = RtpSender::set_video_encoder_backend;
+    }
 
     #[tokio::test]
     async fn create_pc() {

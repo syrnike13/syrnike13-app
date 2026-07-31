@@ -12,6 +12,8 @@ export type VoiceStageContextValue = {
   /** Канал RTC-сессии, для которой построены stageMediaItems. */
   stageChannelId: string | null
   stageMediaItems: readonly VoiceStageMediaItem[]
+  /** Удалённые трансляции, просмотр которых явно включил пользователь. */
+  viewedRemoteScreenIds: readonly string[]
   focusedMediaId: string | null
   setFocusedMediaId: (mediaId: string | null) => void
   /** Увеличивается при запросе фокуса стрима со stage. */

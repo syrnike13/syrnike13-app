@@ -1,4 +1,5 @@
 import type { User } from '@syrnike13/api-types'
+import type { DragEvent } from 'react'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserInteractiveShell } from '#/components/user/user-interactive-shell'
@@ -11,6 +12,9 @@ import type { UserVoiceState } from '#/features/sync/voice-types'
 import { useAuth } from '#/features/auth/auth-context'
 import { useWatchParticipantScreenShare } from '#/features/voice/use-watch-participant-screen-share'
 import { useVoiceListenerStore } from '#/features/voice/voice-listener-store'
+import { useSyncStore } from '#/features/sync/sync-store'
+import { canMoveServerMember } from '#/features/authorization/authorization'
+import { writeVoiceMemberDragPayload } from '#/features/voice/voice-member-drag'
 import { cn } from '#/lib/utils'
 
 type VoiceParticipantRowProps = {
@@ -44,6 +48,17 @@ export function VoiceParticipantRow({
 }: VoiceParticipantRowProps) {
   const auth = useAuth()
   const watchScreenShare = useWatchParticipantScreenShare()
+  const server = useSyncStore((state) =>
+    serverId ? state.servers[serverId] : undefined,
+  )
+  const actorMember = useSyncStore((state) =>
+    serverId && auth.user?._id
+      ? state.members[`${serverId}:${auth.user._id}`]
+      : undefined,
+  )
+  const targetMember = useSyncStore((state) =>
+    serverId ? state.members[`${serverId}:${participant.id}`] : undefined,
+  )
   const muted = participant.server_muted || participant.self_mute
   const deafened = participant.server_deafened || participant.self_deaf
   const listenerMuted = useVoiceListenerStore((s) => {
@@ -52,6 +67,30 @@ export function VoiceParticipantRow({
   })
 
   const isSpeaking = speaking && !voiceElsewhere
+  const canDragParticipant = Boolean(
+    channelId &&
+      serverId &&
+      auth.session?.token &&
+      server &&
+      canMoveServerMember(
+        server,
+        actorMember,
+        auth.user?._id,
+        targetMember,
+      ),
+  )
+
+  function handleDragStart(event: DragEvent<HTMLButtonElement>) {
+    if (!canDragParticipant || !serverId || !channelId) {
+      event.preventDefault()
+      return
+    }
+    writeVoiceMemberDragPayload(event.dataTransfer, {
+      serverId,
+      channelId,
+      userId: participant.id,
+    })
+  }
 
   const rowClassName = cn(
     'flex min-w-0 items-center gap-2 rounded-md px-2 py-1',
@@ -132,6 +171,8 @@ export function VoiceParticipantRow({
     >
       <button
         type="button"
+        draggable={canDragParticipant}
+        onDragStart={handleDragStart}
         title={
           voiceElsewhere
             ? 'Вы в этом канале с другой вкладки или устройства'
@@ -139,7 +180,10 @@ export function VoiceParticipantRow({
         }
         className={cn(
           rowClassName,
-          'w-full cursor-pointer text-left transition-colors focus-visible:outline-none',
+          'w-full text-left transition-colors focus-visible:outline-none',
+          canDragParticipant
+            ? 'cursor-grab active:cursor-grabbing'
+            : 'cursor-pointer',
           isSpeaking
             ? 'hover:brightness-105 data-[state=open]:brightness-105'
             : 'hover:bg-accent focus-visible:bg-accent data-[state=open]:bg-accent',

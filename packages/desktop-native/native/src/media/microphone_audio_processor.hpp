@@ -43,16 +43,20 @@ public:
   MicrophoneAudioProcessorFrame processFrame(
     const std::vector<float>& raw_frame,
     const RuntimeConfig& config,
-    const std::vector<std::int16_t>* echo_reference_frame
+    const std::vector<std::int16_t>* echo_reference_frame,
+    int stream_delay_ms = 0,
+    bool echo_reference_discontinuity = false
   );
 
 private:
   bool ensureCleanupApm(const MicrophoneCleanupApmOptions& options);
   bool ensureAgcApm(bool enabled);
+  void resetEchoPath(const MicrophoneCleanupApmOptions& options);
 
   VoiceGateProcessor gate_;
   MicrophoneCleanupApmOptions active_cleanup_options_{};
   bool active_agc_enabled_ = false;
+  int active_stream_delay_ms_ = -1;
   std::unique_ptr<livekit::AudioProcessingModule> cleanup_apm_;
   std::unique_ptr<livekit::AudioProcessingModule> agc_apm_;
 };

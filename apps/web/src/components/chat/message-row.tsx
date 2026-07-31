@@ -575,10 +575,18 @@ export function MessageRow({
 
         <div className="flex flex-col gap-1 text-[15px] leading-snug text-foreground">
           {hasContent ? (
-            <div className="break-words">{renderedContent}</div>
+            <div className="select-text break-words">{renderedContent}</div>
           ) : null}
           {hasAttachments ? (
-            <MessageAttachments attachments={message.attachments!} />
+            <MessageAttachments
+              attachments={message.attachments!}
+              author={{
+                user: authorUser,
+                name,
+                nameColor,
+                createdAt,
+              }}
+            />
           ) : null}
           {!hasContent && !hasAttachments ? (
             <p className="text-xs text-muted-foreground italic">

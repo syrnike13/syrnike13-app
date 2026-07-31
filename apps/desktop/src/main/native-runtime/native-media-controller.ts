@@ -1,6 +1,7 @@
 import type {
   DesktopDisplayMediaSource,
   NativeMediaDeviceInfo,
+  NativeMediaRuntimeState,
   NativeMicrophoneMetricsEvent,
   NativeMicrophonePreviewStateEvent,
 } from '@syrnike13/platform'
@@ -15,6 +16,7 @@ import type {
   NativeRuntimeSupervisor,
   NativeRuntimeSupervisorSnapshot,
 } from './runtime-supervisor'
+import { NativeRuntimeRequestError } from './runtime-supervisor'
 
 const QUERY_TIMEOUT_MS = 5_000
 const SESSION_TIMEOUT_MS = 20_000
@@ -37,9 +39,23 @@ type LocalScreenPreviewDemand = {
   fps: number
 }
 
+export type RemoteScreenPublication = {
+  sessionId: string
+  generation: number
+  trackId: string
+  participantIdentity: string
+  source: 'screen'
+}
+
 export type NativeMediaControllerEvent =
+  | { type: 'runtimeState'; state: NativeMediaRuntimeState }
   | { type: 'microphoneMetrics'; event: NativeMicrophoneMetricsEvent }
   | { type: 'microphonePreviewState'; event: NativeMicrophonePreviewStateEvent }
+  | {
+      type: 'remoteVideoSessionReset'
+      sessionId: string
+      generation: number
+    }
   | {
       type: 'remoteVideoSubscriptionFailed'
       sessionId: string
@@ -80,6 +96,11 @@ export class NativeMediaController {
   private lastRestoredRestartCount = 0
   private disposed = false
   private activeScreen: { sessionId: string; generation: number } | null = null
+  private activeVoiceSession: { sessionId: string; generation: number } | null = null
+  private readonly remoteScreenPublications = new Map<
+    string,
+    RemoteScreenPublication
+  >()
   private readonly remoteVideoDemands = new Map<
     string,
     RemoteVideoDemandState
@@ -109,6 +130,24 @@ export class NativeMediaController {
   async start() {
     if (!this.options.runtimeAvailable()) return
     await this.options.supervisor.start()
+  }
+
+  getRuntimeState(): NativeMediaRuntimeState {
+    const snapshot = this.options.supervisor.getSnapshot()
+    return {
+      available: this.options.runtimeAvailable(),
+      status: snapshot.status,
+      restartCount: snapshot.restartCount,
+      degradedReason: snapshot.degradedReason,
+      degradedRetryAttempt: snapshot.degradedRetryAttempt,
+      nextRetryAt: snapshot.nextRetryAt,
+    }
+  }
+
+  async retryRuntime() {
+    if (!this.options.runtimeAvailable()) return this.getRuntimeState()
+    await this.options.supervisor.retry()
+    return this.getRuntimeState()
   }
 
   async supportsNativeScreenCapture() {
@@ -169,6 +208,7 @@ export class NativeMediaController {
     demanded: boolean,
   ) {
     if (!sessionId || !trackId) throw new Error('Remote video identity is required')
+    if (!this.isCurrentVoiceSession(sessionId, generation)) return
     const key = remoteVideoDemandKey(sessionId, generation, trackId)
     const previous = this.remoteVideoDemands.get(key)
     if (previous?.recoveryTimer) clearTimeout(previous.recoveryTimer)
@@ -188,10 +228,34 @@ export class NativeMediaController {
     }
     this.remoteVideoDemands.set(key, demand)
     this.armRemoteVideoRecovery(key, demand)
-    await this.request(
-      { type: 'setRemoteVideoDemand', sessionId, generation, trackId, demanded },
-      2_000,
-    )
+    try {
+      await this.request(
+        { type: 'setRemoteVideoDemand', sessionId, generation, trackId, demanded },
+        2_000,
+      )
+      if (!demanded && this.remoteVideoDemands.get(key) === demand) {
+        this.remoteVideoDemands.delete(key)
+      }
+    } catch (error) {
+      this.retireRemoteVideoDemand(key, demand)
+      if (!isSupersededRequest(error)) throw error
+      this.logSupersededDemand(demand, 'setRemoteVideoDemand')
+    }
+  }
+
+  isCurrentVoiceSession(sessionId: string, generation: number) {
+    return this.activeVoiceSession?.sessionId === sessionId &&
+      this.activeVoiceSession.generation === generation
+  }
+
+  listRemoteScreenPublications(): RemoteScreenPublication[] {
+    return [...this.remoteScreenPublications.values()].map((publication) => ({
+      ...publication,
+    }))
+  }
+
+  resetRemoteVideoDemands() {
+    this.clearRemoteVideoDemands(true)
   }
 
   async recoverRemoteVideoDemand(
@@ -212,6 +276,11 @@ export class NativeMediaController {
     desired.recoveryPromise = recovery
     try {
       return await recovery
+    } catch (error) {
+      if (!isSupersededRequest(error)) throw error
+      this.retireRemoteVideoDemand(key, desired)
+      this.logSupersededDemand(desired, 'recoverRemoteVideoDemand')
+      return false
     } finally {
       if (desired.recoveryPromise === recovery) {
         desired.recoveryPromise = null
@@ -299,9 +368,20 @@ export class NativeMediaController {
 
   async dispose() {
     if (this.disposed) return
-    await this.stopMicrophonePreview().catch(() => undefined)
     this.disposed = true
+    const hadPreview = Boolean(this.preview || this.previewStartOperation)
+    this.preview = null
+    this.previewStartOperation = null
+    ++this.previewGeneration
+    if (hadPreview) {
+      this.emit({
+        type: 'microphonePreviewState',
+        event: { status: 'stopped' },
+      })
+    }
+    this.retireVoiceSession()
     this.clearRemoteVideoDemands()
+    this.remoteScreenPublications.clear()
     this.unsubscribeRuntimeEvent()
     this.unsubscribeRuntimeState()
     this.listeners.clear()
@@ -345,7 +425,27 @@ export class NativeMediaController {
   }
 
   private handleRuntimeEvent(event: MediaRuntimeEvent) {
+    if (
+      event.type === 'voiceTerminal' &&
+      this.isCurrentVoiceSession(event.sessionId, event.generation)
+    ) {
+      this.retireVoiceSession()
+      return
+    }
+    if (event.type === 'sessionLifecycle' && event.kind === 'voice') {
+      if (event.state.status === 'starting' || event.state.status === 'running') {
+        this.activateVoiceSession(event.sessionId, event.generation)
+      } else if (
+        event.state.status === 'idle' &&
+        this.activeVoiceSession?.sessionId === event.sessionId &&
+        event.generation >= this.activeVoiceSession.generation
+      ) {
+        this.retireVoiceSession()
+      }
+      return
+    }
     if (event.type === 'remoteVideoFrame') {
+      if (!this.isCurrentVoiceSession(event.sessionId, event.generation)) return
       const key = remoteVideoDemandKey(
         event.sessionId,
         event.generation,
@@ -357,7 +457,20 @@ export class NativeMediaController {
       }
       return
     }
+    if (event.type === 'remoteScreenPublicationAvailable') {
+      if (!this.isCurrentVoiceSession(event.sessionId, event.generation)) return
+      this.remoteScreenPublications.set(event.trackId, {
+        sessionId: event.sessionId,
+        generation: event.generation,
+        trackId: event.trackId,
+        participantIdentity: event.participantIdentity,
+        source: event.source,
+      })
+      return
+    }
     if (event.type === 'remoteScreenPublicationUnavailable') {
+      if (!this.isCurrentVoiceSession(event.sessionId, event.generation)) return
+      this.remoteScreenPublications.delete(event.trackId)
       const key = remoteVideoDemandKey(
         event.sessionId,
         event.generation,
@@ -370,6 +483,7 @@ export class NativeMediaController {
     }
     if (event.type === 'remoteVideoTrackRemoved' ||
       event.type === 'remoteVideoFailed') {
+      if (!this.isCurrentVoiceSession(event.sessionId, event.generation)) return
       const key = remoteVideoDemandKey(
         event.sessionId,
         event.generation,
@@ -414,17 +528,20 @@ export class NativeMediaController {
     if (event.type === 'sessionLifecycle' && event.kind === 'screen') {
       if (event.state.status === 'starting' || event.state.status === 'running') {
         const next = { sessionId: event.sessionId, generation: event.generation }
+        if (this.activeScreen && event.generation < this.activeScreen.generation) {
+          return
+        }
         const changed = this.activeScreen?.sessionId !== next.sessionId ||
           this.activeScreen.generation !== next.generation
         this.activeScreen = next
         if (changed) void this.sendLocalScreenPreviewDemand(next).catch(() => undefined)
       } else if (this.activeScreen?.sessionId === event.sessionId &&
-        this.activeScreen.generation === event.generation) {
+        event.generation >= this.activeScreen.generation) {
         this.activeScreen = null
       }
     }
     if (event.type === 'sessionStopped' && this.activeScreen?.sessionId === event.sessionId &&
-      this.activeScreen.generation === event.generation) {
+      event.generation >= this.activeScreen.generation) {
       this.activeScreen = null
     }
     const preview = this.preview
@@ -438,9 +555,24 @@ export class NativeMediaController {
   }
 
   private handleSupervisorState(snapshot: NativeRuntimeSupervisorSnapshot) {
-    if (snapshot.status === 'degraded' || snapshot.status === 'recovering') {
+    this.emit({
+      type: 'runtimeState',
+      state: {
+        available: this.options.runtimeAvailable(),
+        status: snapshot.status,
+        restartCount: snapshot.restartCount,
+        degradedReason: snapshot.degradedReason,
+        degradedRetryAttempt: snapshot.degradedRetryAttempt,
+        nextRetryAt: snapshot.nextRetryAt,
+      },
+    })
+    if (
+      snapshot.status === 'degraded' ||
+      snapshot.status === 'recovering' ||
+      snapshot.status === 'stopped'
+    ) {
       this.activeScreen = null
-      this.clearRemoteVideoDemands()
+      this.retireVoiceSession()
     }
     if (snapshot.status === 'degraded' && (this.preview || this.previewStartOperation)) {
       this.preview = null
@@ -453,13 +585,22 @@ export class NativeMediaController {
     }
     if (snapshot.status !== 'ready' || snapshot.restartCount <= this.lastRestoredRestartCount) return
     this.lastRestoredRestartCount = snapshot.restartCount
-    const preview = this.preview
-    if (!preview || preview.status !== 'running') return
-    preview.generation = ++this.previewGeneration
+    const previousPreview = this.preview
+    if (!previousPreview || previousPreview.status !== 'running') return
+    const preview: PreviewSessionState = {
+      sessionId: crypto.randomUUID(),
+      generation: ++this.previewGeneration,
+      status: 'starting',
+    }
+    this.preview = preview
     void this.request(
       { type: 'startPreview', sessionId: preview.sessionId, generation: preview.generation },
       SESSION_TIMEOUT_MS,
     )
+      .then((result) => {
+        readPreviewResult(result, preview.sessionId)
+        if (this.preview === preview) preview.status = 'running'
+      })
       .catch((error) => {
         if (this.preview !== preview) return
         this.preview = null
@@ -476,11 +617,68 @@ export class NativeMediaController {
     }
   }
 
-  private clearRemoteVideoDemands() {
-    for (const demand of this.remoteVideoDemands.values()) {
-      if (demand.recoveryTimer) clearTimeout(demand.recoveryTimer)
-    }
+  private clearRemoteVideoDemands(unsubscribe = false) {
+    const demands = [...this.remoteVideoDemands.values()]
     this.remoteVideoDemands.clear()
+    for (const demand of demands) {
+      if (demand.recoveryTimer) clearTimeout(demand.recoveryTimer)
+      if (!unsubscribe || !demand.demanded) continue
+      void this.request(
+        {
+          type: 'setRemoteVideoDemand',
+          sessionId: demand.sessionId,
+          generation: demand.generation,
+          trackId: demand.trackId,
+          demanded: false,
+        },
+        2_000,
+      ).catch(() => undefined)
+    }
+  }
+
+  private activateVoiceSession(sessionId: string, generation: number) {
+    if (this.isCurrentVoiceSession(sessionId, generation)) return
+    if (this.activeVoiceSession && generation <= this.activeVoiceSession.generation) {
+      return
+    }
+    this.retireVoiceSession()
+    this.activeVoiceSession = { sessionId, generation }
+  }
+
+  private retireVoiceSession() {
+    const retired = this.activeVoiceSession
+    if (!retired) return
+    this.activeVoiceSession = null
+    this.clearRemoteVideoDemands()
+    this.remoteScreenPublications.clear()
+    this.emit({
+      type: 'remoteVideoSessionReset',
+      sessionId: retired.sessionId,
+      generation: retired.generation,
+    })
+  }
+
+  private retireRemoteVideoDemand(
+    key: string,
+    demand: RemoteVideoDemandState,
+  ) {
+    if (this.remoteVideoDemands.get(key) !== demand) return
+    if (demand.recoveryTimer) clearTimeout(demand.recoveryTimer)
+    this.remoteVideoDemands.delete(key)
+  }
+
+  private logSupersededDemand(
+    demand: RemoteVideoDemandState,
+    stage: string,
+  ) {
+    this.options.diagnostics?.({
+      scope: 'native-media-controller',
+      event: 'remote_video_demand_superseded',
+      kind: 'remote-video',
+      stage,
+      sessionId: demand.sessionId,
+      generation: demand.generation,
+    })
   }
 
   private armRemoteVideoRecovery(
@@ -583,6 +781,11 @@ function remoteVideoDemandKey(
   trackId: string,
 ) {
   return `${sessionId}:${generation}:${trackId}`
+}
+
+function isSupersededRequest(error: unknown) {
+  return error instanceof NativeRuntimeRequestError &&
+    error.detail.code === 'stale_generation'
 }
 
 function unwrapResult(value: unknown) {

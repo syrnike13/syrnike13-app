@@ -30,15 +30,28 @@ export type NativeDiagnosticIncidentSeverity = 'warning' | 'error' | 'fatal'
 
 export type NativeDiagnosticIncident = {
   timestampMs: number
+  firstTimestampMs?: number
+  occurrenceCount?: number
   severity: NativeDiagnosticIncidentSeverity
   triggerCode: string
+  identity?: string
+  correlationId?: string
+  area?: string
+  cooldownMs?: number
   scope: string
   event: string
+  actionId?: string
+  operationId?: string
   nativeEventType?: string
   runtime?: string
   kind?: string
   lane?: string
   stage?: string
+  commandStage?: string
+  outcome?: string
+  revision?: number
+  generation?: number
+  hostEpoch?: number
   status?: string
   reason?: string
   message?: string
@@ -48,7 +61,15 @@ export type NativeDiagnosticIncident = {
   timeoutMs?: number
 }
 
+export type RendererDiagnosticIncident = {
+  area: string
+  severity: NativeDiagnosticIncidentSeverity
+  triggerCode: string
+  cooldownMs?: number
+}
+
 export type NativeDiagnosticIncidentBatch = {
   id: string
+  accountId: string
   incidents: NativeDiagnosticIncident[]
 }

@@ -17,4 +17,21 @@ describe('native media runtime façade', () => {
     expect(runtime.startNativeMediaRuntime).toEqual(expect.any(Function))
     expect(runtime.disposeNativeMediaRuntime).toEqual(expect.any(Function))
   })
+
+  it('resets renderer-owned media only for a full main-frame navigation', async () => {
+    const { isRendererReplacementNavigation } = await import('./native-media-engine')
+
+    expect(isRendererReplacementNavigation(false, true)).toBe(true)
+    expect(isRendererReplacementNavigation(true, true)).toBe(false)
+    expect(isRendererReplacementNavigation(false, false)).toBe(false)
+  })
+
+  it('enables local native diagnostics by default with an explicit opt-out', async () => {
+    const { nativeMediaDiagnosticsEnabled } = await import('./native-media-engine')
+
+    expect(nativeMediaDiagnosticsEnabled('win32', undefined)).toBe(true)
+    expect(nativeMediaDiagnosticsEnabled('win32', '1')).toBe(true)
+    expect(nativeMediaDiagnosticsEnabled('win32', '0')).toBe(false)
+    expect(nativeMediaDiagnosticsEnabled('linux', undefined)).toBe(false)
+  })
 })

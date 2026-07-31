@@ -278,6 +278,14 @@ async fn calculate_members_permissions<'a>(
         // Get the user's server permissions
         let mut permission = calculate_server_permissions(&query.server, user, member);
 
+        if permission.has_channel_permission(ChannelPermission::Administrator) {
+            resp.insert(
+                user.id.clone(),
+                PermissionValue::from(ChannelPermission::GrantAllSafe),
+            );
+            continue;
+        }
+
         if let Some(defaults) = channel_default_permissions {
             permission.apply(defaults.into());
         }
@@ -328,6 +336,10 @@ fn calculate_server_permissions(server: &Server, user: &User, member: &Member) -
 
     for role in role_overrides {
         permissions.apply(role);
+    }
+
+    if permissions.has_channel_permission(ChannelPermission::Administrator) {
+        return ChannelPermission::GrantAllSafe.into();
     }
 
     if member.in_timeout() {

@@ -16,6 +16,12 @@ export type VoiceDisconnectCause =
 
 export type VoiceEngineEvent =
   | Readonly<{
+      type: 'availabilityChanged'
+      available: boolean
+      retryable: boolean
+      failure?: VoiceFailure
+    }>
+  | Readonly<{
       type: 'terminalFailure'
       failure: VoiceFailure
       operationId: string

@@ -58,7 +58,7 @@ const DEFAULT_SCREEN_ASPECT_RATIO = 16 / 9
 const screenStreamSurfaceClass = 'absolute inset-0 bg-muted'
 
 const unsubscribedStreamButtonClass =
-  'h-auto rounded-md border border-white/20 bg-card px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-muted'
+  'h-auto rounded-md border border-white/20 bg-card font-medium text-primary-foreground shadow-sm transition-colors hover:bg-white/20'
 
 const screenStreamOwnerLabelClass =
   'absolute z-10 flex min-w-0 max-w-[calc(100%-1rem)] items-center gap-1 rounded bg-black/60 font-medium text-white'
@@ -98,28 +98,32 @@ function UnsubscribedScreenStreamTile({
   variant: StageMediaTileVariant
   onSubscribe: () => void
 }) {
-  const showWatchButton = variant !== 'strip'
-
   return (
     <>
       <div className={screenStreamSurfaceClass} aria-hidden />
 
-      {showWatchButton ? (
-        <div className="absolute inset-0 flex items-center justify-center p-3">
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            className={unsubscribedStreamButtonClass}
-            onClick={(event) => {
-              event.stopPropagation()
-              onSubscribe()
-            }}
-          >
-            Смотреть
-          </Button>
-        </div>
-      ) : null}
+      <div
+        className={cn(
+          'absolute inset-0 flex items-center justify-center',
+          variant === 'strip' ? 'p-1.5' : 'p-3',
+        )}
+      >
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className={cn(
+            unsubscribedStreamButtonClass,
+            variant === 'strip' ? 'px-2 py-1 text-xs' : 'px-4 py-2 text-sm',
+          )}
+          onClick={(event) => {
+            event.stopPropagation()
+            onSubscribe()
+          }}
+        >
+          Смотреть
+        </Button>
+      </div>
 
       <ScreenStreamOwnerLabel displayName={displayName} variant={variant} />
     </>
@@ -269,8 +273,10 @@ export function StageMediaTile({
           role="button"
           tabIndex={0}
           className={cn(
-            'group relative min-h-0 rounded-md outline-none ring-offset-2 ring-offset-black transition-[filter,box-shadow,opacity]',
-            'overflow-hidden',
+            'group relative min-h-0 overflow-hidden rounded-md outline-none transition-[filter,box-shadow,opacity]',
+            variant !== 'grid' &&
+              variant !== 'strip' &&
+              'ring-offset-2 ring-offset-black',
             dimmed && 'opacity-50',
             variant === 'strip'
               ? '@container aspect-video size-full shrink-0'
@@ -278,7 +284,12 @@ export function StageMediaTile({
             variant === 'grid' && 'size-full',
             variant === 'focus' && 'size-full max-h-full max-w-full',
             variant === 'fullscreen' && 'size-full max-h-full max-w-full rounded-none',
-            speaking && variant !== 'strip' && 'ring-2 ring-chart-3',
+            // Grid: border внутри бокса — не срезается overflow контейнера сетки.
+            speaking && variant === 'grid' && 'border-2 border-chart-3',
+            speaking &&
+              variant !== 'strip' &&
+              variant !== 'grid' &&
+              'ring-2 ring-chart-3',
             variant !== 'focus' && variant !== 'fullscreen' && 'hover:brightness-110',
           )}
           style={variant === 'strip' ? undefined : tileStyle}

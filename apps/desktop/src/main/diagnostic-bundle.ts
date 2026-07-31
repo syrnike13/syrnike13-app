@@ -411,8 +411,10 @@ function allocateFairReadBudgets(sizes: number[], maximumBytes: number) {
 }
 
 function diagnosticSourceForFile(fileName: string): DiagnosticEnvelopeSource {
-  if (fileName === 'electron-main.jsonl') return 'electron-main'
-  if (fileName === 'utility.jsonl') return 'utility'
+  if (/^electron-main(?:\.\d+)?\.jsonl$/.test(fileName)) {
+    return 'electron-main'
+  }
+  if (/^utility(?:\.\d+)?\.jsonl$/.test(fileName)) return 'utility'
   return 'native'
 }
 

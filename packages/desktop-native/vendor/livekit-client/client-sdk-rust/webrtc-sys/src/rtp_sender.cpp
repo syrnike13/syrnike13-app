@@ -110,7 +110,12 @@ class FixedVideoEncoderSelector final
   }
 
   std::optional<webrtc::SdpVideoFormat> OnEncoderBroken() override {
-    return std::nullopt;
+    if (!current_encoder_) {
+      return std::nullopt;
+    }
+
+    requested_ = true;
+    return WithBackend(*current_encoder_, backend_);
   }
 
  private:
@@ -199,8 +204,10 @@ void RtpSender::set_parameters(RtpParameters params) const {
 
 void RtpSender::set_video_encoder_backend(VideoEncoderBackend backend) const {
   if (sender_->media_type() != webrtc::MediaType::VIDEO) {
-    RTC_LOG(LS_WARNING)
-        << "Ignoring video encoder backend preference on non-video sender.";
+    if (backend != VideoEncoderBackend::Auto) {
+      RTC_LOG(LS_WARNING)
+          << "Ignoring video encoder backend preference on non-video sender.";
+    }
     return;
   }
 

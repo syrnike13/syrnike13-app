@@ -109,6 +109,35 @@ describe('desktop local settings', () => {
     }
   })
 
+  it('merges per-user UI state without replacing other users', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'syrnike-settings-'))
+    const filePath = path.join(dir, 'local-settings.json')
+
+    try {
+      await updateDesktopLocalSettings(filePath, {
+        ui: {
+          telegramPromoDismissedUntilByUser: {
+            userA: 1_900_000_000_000,
+          },
+        },
+      })
+      const next = await updateDesktopLocalSettings(filePath, {
+        ui: {
+          telegramPromoDismissedUntilByUser: {
+            userB: 1_900_000_000_001,
+          },
+        },
+      })
+
+      expect(next.ui.telegramPromoDismissedUntilByUser).toEqual({
+        userA: 1_900_000_000_000,
+        userB: 1_900_000_000_001,
+      })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('keeps diagnostic reports enabled while persisting crash-report opt-in', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'syrnike-settings-'))
     const filePath = path.join(dir, 'local-settings.json')

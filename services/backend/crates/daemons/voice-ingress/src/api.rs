@@ -19,7 +19,7 @@ use syrnike_database::{
         commit_voice_session_join, create_voice_call_started_system_message,
         delete_channel_voice_state_for_room, delete_voice_state_for_session,
         finish_voice_call_started_system_message, get_call_notification_recipients,
-        get_user_moved_from_voice, get_voice_channel_members, publish_authoritative_voice_snapshot,
+        get_voice_channel_members, publish_authoritative_voice_snapshot,
         publish_voice_state_snapshot, reconcile_voice_channel_members_with_call_cleanup,
         remove_temporary_server_member_after_voice_disconnect,
         update_voice_state_tracks_for_session, voice_participant_claims,
@@ -539,20 +539,17 @@ pub async fn ingress(
             };
             publish_authoritative_voice_snapshot(user_id).await?;
 
-            let is_move = get_user_moved_from_voice(channel_id, user_id)
-                .await?
-                .is_some();
-
-            // Dont send leave event when a user is moved
-            if !is_move {
-                EventV1::VoiceChannelLeave {
-                    id: channel_id.clone(),
-                    user: user_id.to_string(),
-                    operation_id: Some(left_operation_id),
-                }
-                .p(channel_id.clone())
-                .await;
-            };
+            // A stale participant_left from a move cannot reach this branch:
+            // delete_voice_state_for_session only succeeds for the current
+            // channel and participant SID. Therefore every successful delete
+            // is a real leave and must be projected to the roster.
+            EventV1::VoiceChannelLeave {
+                id: channel_id.clone(),
+                user: user_id.to_string(),
+                operation_id: Some(left_operation_id),
+            }
+            .p(channel_id.clone())
+            .await;
 
             let remaining_members = get_voice_channel_members(&channel)
                 .await?
@@ -574,15 +571,13 @@ pub async fn ingress(
             )
             .await?;
 
-            if !is_move {
-                remove_temporary_server_member_after_voice_disconnect(
-                    db,
-                    &channel,
-                    user_id,
-                    finished_at,
-                )
-                .await?;
-            }
+            remove_temporary_server_member_after_voice_disconnect(
+                db,
+                &channel,
+                user_id,
+                finished_at,
+            )
+            .await?;
         }
         // Audio/video track was started/stopped/unmuted/muted
         "track_published" | "track_unpublished" | "track_unmuted" | "track_muted" => {

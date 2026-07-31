@@ -32,6 +32,13 @@ export type PermissionGroup = {
   permissions: PermissionDefinition[]
 }
 
+export const ADMINISTRATOR_PERMISSION = {
+  flag: ServerPermission.Administrator,
+  label: 'Администратор',
+  hint:
+    'Участники с этим правом получают все обычные права сервера и обходят ограничения каналов. Действия, доступные только владельцу, и иерархия ролей сохраняются.',
+} as const
+
 export const SERVER_PERMISSION_GROUPS: PermissionGroup[] = [
   {
     title: 'Общие права сервера',
@@ -92,6 +99,21 @@ export const SERVER_PERMISSION_GROUPS: PermissionGroup[] = [
       { flag: ServerPermission.MoveMembers, label: 'Перемещать участников' },
     ],
   },
+]
+
+export const CHANNEL_PERMISSION_GROUPS: PermissionGroup[] = [
+  {
+    title: 'Доступ к каналу',
+    permissions: [
+      { flag: ServerPermission.ViewChannel, label: 'Видеть этот канал' },
+    ],
+  },
+  ...SERVER_PERMISSION_GROUPS.map((group) => ({
+    ...group,
+    permissions: group.permissions.filter(
+      (permission) => permission.flag !== ServerPermission.ViewChannel,
+    ),
+  })).filter((group) => group.permissions.length > 0),
 ]
 
 export const ALL_SERVER_PERMISSION_FLAGS = SERVER_PERMISSION_GROUPS.flatMap(

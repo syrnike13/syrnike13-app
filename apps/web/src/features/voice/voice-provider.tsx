@@ -102,10 +102,8 @@ import {
 } from '#/features/voice/voice-screen-viewer-sounds'
 import { voiceSnapshotTransitionSounds } from '#/features/voice/voice-transition-sounds'
 import { getSyrnikeDesktop } from '#/platform/runtime'
-import {
-  recordDiagnosticEvent,
-  sendDiagnosticReport,
-} from '#/features/diagnostics/diagnostic-reporter'
+import { recordDiagnosticEvent } from '#/features/diagnostics/diagnostic-reporter'
+import { enqueueAutomaticDiagnosticIncident } from '#/features/diagnostics/automatic-diagnostic-incidents'
 
 type VoiceClient = {
   dispatch(command: VoiceCommand): void
@@ -270,12 +268,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const client = desktop
       ? createDesktopVoiceClient(desktop)
-      : isElectronRenderer()
-        ? createDesktopBridgeUnavailableVoiceClient()
-        : createOwnedBrowserVoiceClient(
-          auth.user?._id ?? 'signed-out',
-          () => auth.user?._id ?? null,
-        )
+      : createOwnedBrowserVoiceClient(
+        auth.user?._id ?? 'signed-out',
+        () => auth.user?._id ?? null,
+      )
     watchedScreenViewerChannelsRef.current.clear()
     pendingScreenWatchIdsRef.current.clear()
     for (const timer of screenRepublishGraceTimersRef.current.values()) {
@@ -546,15 +542,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (failureKey && failureKey !== previousFailureRef.current) {
       toast.error(snapshot.failure?.message ?? 'Не удалось подключиться к голосу')
       if (auth.session?.token && snapshot.failure) {
-        void sendDiagnosticReport({
-          token: auth.session.token,
-          desktop,
+        enqueueAutomaticDiagnosticIncident({
           area: 'voice',
           severity: 'error',
           triggerCode: snapshot.failure.code,
           context: { snapshot, rtcHistory: diagnosticRtcHistoryRef.current },
-          automatic: true,
-        }).catch(() => undefined)
+        })
       }
     }
     previousFailureRef.current = failureKey
@@ -579,15 +572,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         toast.error(error?.message ?? 'Медиа недоступно')
       }
       if (auth.session?.token && error && mediaFailure) {
-        void sendDiagnosticReport({
-          token: auth.session.token,
-          desktop,
+        enqueueAutomaticDiagnosticIncident({
           area: mediaFailure[0] === 'screen_audio' ? 'screen' : mediaFailure[0],
           severity: error.code === 'output_device_fallback' ? 'warning' : 'error',
           triggerCode: error.code,
           context: { snapshot, rtcHistory: diagnosticRtcHistoryRef.current },
-          automatic: true,
-        }).catch(() => undefined)
+        })
       }
     }
     previousMediaFailureRef.current = failureKey
@@ -611,13 +601,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const resetRemoteStageMedia = useCallback((targetChannelId: string | null) => {
     nativeVideoRegistry.clearRemote()
+    let removedWatch = false
     for (const [mediaId, watchedChannelId] of
       watchedScreenViewerChannelsRef.current) {
       if (watchedChannelId === targetChannelId) continue
       cancelScreenRepublishGrace(mediaId)
-      watchedScreenViewerChannelsRef.current.delete(mediaId)
+      removedWatch =
+        watchedScreenViewerChannelsRef.current.delete(mediaId) || removedWatch
       pendingScreenWatchIdsRef.current.delete(mediaId)
       notifiedScreenViewerIdsRef.current.delete(mediaId)
+    }
+    if (removedWatch) {
+      setRoomRevision((revision) => revision + 1)
     }
   }, [cancelScreenRepublishGrace])
 
@@ -773,12 +768,16 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [inputDevices, micIssue, videoDevices],
   )
 
-  const stageMediaItems = useMemo(() => {
-    const watchedRemoteScreenIds = new Set(
+  const viewedRemoteScreenIds = useMemo(
+    () =>
       [...watchedScreenViewerChannelsRef.current]
         .filter(([, targetChannelId]) => targetChannelId === channelId)
         .map(([mediaId]) => mediaId),
-    )
+    [channelId, roomRevision],
+  )
+
+  const stageMediaItems = useMemo(() => {
+    const watchedRemoteScreenIds = new Set(viewedRemoteScreenIds)
     const items = buildStageItems({
       room,
       participants,
@@ -813,6 +812,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     stageMediaFilters,
     status,
     setNativeScreenDemand,
+    viewedRemoteScreenIds,
   ])
   stageMediaItemsRef.current = stageMediaItems
 
@@ -894,6 +894,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
       }
     }
+    let removedWatch = false
     for (const [mediaId, targetChannelId] of watchedScreenViewerChannelsRef.current) {
       if (targetChannelId !== channelId) continue
       if (availableRemoteScreenIds.has(mediaId)) {
@@ -907,9 +908,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         continue
       }
       cancelScreenRepublishGrace(mediaId)
-      watchedScreenViewerChannelsRef.current.delete(mediaId)
+      removedWatch =
+        watchedScreenViewerChannelsRef.current.delete(mediaId) || removedWatch
       pendingScreenWatchIdsRef.current.delete(mediaId)
       notifiedScreenViewerIdsRef.current.delete(mediaId)
+    }
+    if (removedWatch) {
+      setRoomRevision((revision) => revision + 1)
     }
   }, [
     auth.user?._id,
@@ -987,29 +992,23 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           stalledLocalScreenSamplesRef.current === 3 &&
           auth.session?.token
         ) {
-          void sendDiagnosticReport({
-            token: auth.session.token,
-            desktop,
+          enqueueAutomaticDiagnosticIncident({
             area: 'screen',
             severity: 'error',
             triggerCode: 'screen_publication_stalled',
             context: next,
-            automatic: true,
-          }).catch(() => undefined)
+          })
         }
         if (
           stalledRemoteScreenSamplesRef.current === 3 &&
           auth.session?.token
         ) {
-          void sendDiagnosticReport({
-            token: auth.session.token,
-            desktop,
+          enqueueAutomaticDiagnosticIncident({
             area: 'screen',
             severity: 'error',
             triggerCode: 'screen_subscription_stalled',
             context: next,
-            automatic: true,
-          }).catch(() => undefined)
+          })
         }
         if (rtcDebugEnabled) {
           setRtcDebugSnapshot(next)
@@ -1083,6 +1082,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const setStageMediaSubscribed = useCallback(
     (mediaId: string, subscribed: boolean) => {
       const item = stageMediaItems.find((candidate) => candidate.id === mediaId)
+      const screenUserId = stageScreenMediaUserId(mediaId)
       if (item?.kind === 'screen') {
         const action = setStageScreenSubscription(item, subscribed)
         if (action === 'stop-local-screen') {
@@ -1100,6 +1100,23 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           if (room) {
             updateScreenViewerNotification(room, item.id, item.userId, subscribed)
           }
+        }
+      } else if (screenUserId) {
+        if (subscribed && channelId) {
+          watchedScreenViewerChannelsRef.current.set(mediaId, channelId)
+          pendingScreenWatchIdsRef.current.delete(mediaId)
+        } else if (!subscribed) {
+          cancelScreenRepublishGrace(mediaId)
+          watchedScreenViewerChannelsRef.current.delete(mediaId)
+          pendingScreenWatchIdsRef.current.delete(mediaId)
+        }
+        if (room) {
+          updateScreenViewerNotification(
+            room,
+            mediaId,
+            screenUserId,
+            subscribed,
+          )
         }
       } else {
         item?.publication?.setSubscribed?.(subscribed)
@@ -1173,6 +1190,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     () => ({
       stageChannelId: channelId,
       stageMediaItems,
+      viewedRemoteScreenIds,
       focusedMediaId,
       setFocusedMediaId,
       stageFocusNonce,
@@ -1196,6 +1214,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       stageFullscreen,
       stageMediaFilters,
       stageMediaItems,
+      viewedRemoteScreenIds,
       watchParticipantScreenShare,
     ],
   )
@@ -1224,45 +1243,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       </VoiceMediaContext.Provider>
     </VoiceSessionContext.Provider>
   )
-}
-
-function isElectronRenderer(userAgent = globalThis.navigator?.userAgent ?? '') {
-  return /\bElectron\//i.test(userAgent)
-}
-
-function createDesktopBridgeUnavailableVoiceClient(): VoiceClient {
-  let snapshot = INITIAL_SNAPSHOT
-  const listeners = new Set<(value: VoiceSnapshot) => void>()
-  const publish = () => listeners.forEach((listener) => listener(snapshot))
-  return {
-    dispatch(command) {
-      if (command.type !== 'join') return
-      snapshot = {
-        ...INITIAL_SNAPSHOT,
-        intentChannelId: command.channelId,
-        connection: 'failed',
-        failure: {
-          code: 'desktop_bridge_unavailable',
-          message: 'Desktop voice bridge is unavailable',
-          retryable: false,
-          stage: 'desktop_preload',
-        },
-      }
-      publish()
-    },
-    snapshot: () => snapshot,
-    subscribe(listener) {
-      listeners.add(listener)
-      listener(snapshot)
-      return () => listeners.delete(listener)
-    },
-    room: () => null,
-    subscribeRoom(listener) {
-      listener(null)
-      return () => undefined
-    },
-    dispose() { listeners.clear() },
-  }
 }
 
 function createOwnedBrowserVoiceClient(

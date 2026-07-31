@@ -123,7 +123,7 @@ impl FfiVideoSource {
     pub fn capture_d3d11_frame(
         &self,
         capture: proto::CaptureD3d11VideoFrameRequest,
-    ) -> FfiResult<()> {
+    ) -> FfiResult<bool> {
         if self.source_mode != proto::VideoSourceMode::D3d11Hardware {
             return Err(FfiError::InvalidRequest(
                 "D3D11 texture frames require a D3D11 hardware video source".into(),
@@ -132,7 +132,7 @@ impl FfiVideoSource {
 
         match self.source {
             RtcVideoSource::Native(ref source) => {
-                if !source.capture_d3d11_frame(
+                match source.capture_d3d11_frame(
                     capture.shared_texture_handle,
                     capture.adapter_luid,
                     capture.acquire_key,
@@ -141,14 +141,17 @@ impl FfiVideoSource {
                     capture.height,
                     capture.timestamp_us,
                 ) {
-                    return Err(FfiError::InvalidRequest(
-                        "D3D11 frame was rejected by the native video source".into(),
-                    ));
+                    1 => return Ok(true),
+                    0 => return Ok(false),
+                    _ => {
+                        return Err(FfiError::InvalidRequest(
+                            "D3D11 frame was rejected by the native video source".into(),
+                        ))
+                    }
                 }
             }
             _ => return Err(FfiError::InvalidRequest("unsupported video source type".into())),
         }
-        Ok(())
     }
 }
 

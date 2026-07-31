@@ -28,12 +28,14 @@ import {
 } from '#/features/authorization/authorization'
 import { roleIconUrl } from '#/lib/media'
 import {
+  CHANNEL_PERMISSION_GROUPS,
   getAllowedPermissionTriStates,
   getPermissionTriState,
   overrideFieldFromRole,
   overrideFieldToApi,
   roleColourStyle,
   SERVER_PERMISSION_GROUPS,
+  ServerPermission,
   setPermissionTriState,
   sortRolesByHierarchy,
   type PermissionOverrideField,
@@ -153,7 +155,7 @@ function ChannelPermissionEditor({
       </div>
 
       <div className="space-y-4">
-        {SERVER_PERMISSION_GROUPS.map((group) => (
+        {CHANNEL_PERMISSION_GROUPS.map((group) => (
           <section key={group.title} className="space-y-2">
             <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
               {group.title}

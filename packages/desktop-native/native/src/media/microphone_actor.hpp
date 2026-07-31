@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -13,6 +14,11 @@
 
 namespace syrnike::desktop_native::media {
 
+struct MicrophoneIdleCaptureTiming {
+  std::chrono::milliseconds grace{std::chrono::seconds(30)};
+  std::chrono::milliseconds post_retry{std::chrono::milliseconds(250)};
+};
+
 class MicrophoneActor final {
  public:
   using InternalPost = std::function<bool(MediaCommand)>;
@@ -24,7 +30,8 @@ class MicrophoneActor final {
     SequencedEmitter& emitter,
     InternalPost post,
     IsCurrent is_current,
-    std::shared_ptr<LiveKitPublicationClient> livekit_client = createRealLiveKitPublicationClient());
+    std::shared_ptr<LiveKitPublicationClient> livekit_client,
+    MicrophoneIdleCaptureTiming idle_timing = {});
   ~MicrophoneActor();
 
   MicrophoneActor(const MicrophoneActor&) = delete;
@@ -42,7 +49,9 @@ class MicrophoneActor final {
   void clearPreviewConsumer(const std::string& session_id, std::uint64_t generation);
   bool isCurrentCaptureFailure(const MediaCommand& command);
   void disconnect(const MediaCommand& command, bool emit_stopped = true);
-  void handleTerminal(const MediaCommand& command);
+  // Returns true only when a current capture failure could not be recovered,
+  // allowing the owning runtime to fail a standalone preview as well.
+  bool handleTerminal(const MediaCommand& command);
   void handleWorkerCommand(const MediaCommand& command);
   RuntimeEvent probe(const MediaCommand& command);
   void shutdown();

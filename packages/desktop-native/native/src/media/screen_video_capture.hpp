@@ -3,7 +3,9 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace syrnike::voice {
 
@@ -13,6 +15,12 @@ struct ScreenCaptureTarget {
   DWORD process_id = 0;
   RECT rect{};
   int screen_index = 0;
+  std::string monitor_device_id;
+};
+
+struct ScreenMonitorIdentity {
+  RECT rect{};
+  std::string device_id;
 };
 
 struct ScreenCaptureFrameMetrics {
@@ -25,10 +33,20 @@ struct ScreenCaptureFrameMetrics {
   int capture_us = 0;
   int readback_us = 0;
   int scale_us = 0;
+  int duplication_hold_us = 0;
+  std::uint32_t gpu_pool_slots_available = 0;
+  std::uint32_t gpu_pool_slots_total = 0;
   long hresult = 0;
 };
 
 ScreenCaptureTarget resolveScreenCaptureTarget(const std::string& source_id);
+ScreenCaptureTarget resolveScreenMonitorTarget(
+    const std::string& source_id,
+    std::span<const ScreenMonitorIdentity> monitors);
+bool screenMonitorTargetMatches(
+    const ScreenCaptureTarget& target,
+    const ScreenMonitorIdentity& monitor) noexcept;
+HMONITOR resolveScreenMonitorHandle(const ScreenCaptureTarget& target);
 void resolveScreenCaptureSize(
     const ScreenCaptureTarget& target,
     uint32_t max_width,

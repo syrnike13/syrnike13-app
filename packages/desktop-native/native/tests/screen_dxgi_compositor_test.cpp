@@ -83,24 +83,6 @@ void testCursorDecoding() {
       "color cursor with a short pitch was accepted");
 }
 
-void testDxgiFallbackPolicy() {
-  DxgiFallbackPolicy policy;
-  expect(!policy.shouldFallback(ScreenGpuFrameStatus::RecoverableLost),
-         "DXGI fallback happened after one recoverable loss");
-  expect(!policy.shouldFallback(ScreenGpuFrameStatus::NoFrame),
-         "normal DXGI state requested fallback");
-  expect(!policy.shouldFallback(ScreenGpuFrameStatus::RecoverableLost),
-         "DXGI recovery counter did not reset");
-  expect(!policy.shouldFallback(ScreenGpuFrameStatus::RecoverableLost),
-         "DXGI fallback happened before the recovery threshold");
-  expect(policy.shouldFallback(ScreenGpuFrameStatus::RecoverableLost),
-         "DXGI fallback did not happen after repeated recovery failures");
-
-  DxgiFallbackPolicy fatal_policy;
-  expect(fatal_policy.shouldFallback(ScreenGpuFrameStatus::FatalError),
-         "fatal DXGI error did not request immediate fallback");
-}
-
 void testGpuRotation() {
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11DeviceContext> context;
@@ -177,7 +159,6 @@ int main() {
   try {
     testLayouts();
     testCursorDecoding();
-    testDxgiFallbackPolicy();
     testGpuRotation();
     std::cout << "screen DXGI compositor tests passed\n";
     return 0;

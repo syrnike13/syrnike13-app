@@ -14,6 +14,8 @@ class LiveKitConnectPolicy {
   static constexpr auto kOuterRequestDeadline = std::chrono::seconds(20);
   static constexpr auto kTrackPublicationBudget = std::chrono::seconds(10);
   static constexpr auto kCleanupBudget = std::chrono::seconds(2);
+  static constexpr auto kNativeOperationDeadline =
+    kOuterRequestDeadline - kCleanupBudget;
   static constexpr auto kPostConnectSettleBudget = std::chrono::seconds(1);
   static constexpr auto kConnectBudget =
     kOuterRequestDeadline - kTrackPublicationBudget - kCleanupBudget -

@@ -50,9 +50,9 @@ export function VoiceStageGrid<TItem extends VoiceStageGridItem>({
       <div
         className={cn(
           'flex flex-col items-center',
-          layout.scroll ? 'mx-auto py-1' : 'm-auto',
+          layout.scroll ? 'mx-auto' : 'm-auto',
         )}
-        style={{ gap: layout.gap }}
+        style={{ gap: layout.gap, padding: layout.edgeInset }}
       >
         {rows.map((row, rowIndex) => (
           <VoiceStageGridRow key={rowIndex} slots={row} layout={layout} />

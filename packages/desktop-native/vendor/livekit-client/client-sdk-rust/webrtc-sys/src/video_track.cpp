@@ -313,7 +313,7 @@ bool VideoTrackSource::capture_dmabuf_frame(int dmabuf_fd,
   return source_->on_captured_frame(frame, frame_metadata);
 }
 
-bool VideoTrackSource::capture_d3d11_frame(
+int32_t VideoTrackSource::capture_d3d11_frame(
     uint64_t shared_texture_handle, uint64_t adapter_luid,
     uint64_t acquire_key, uint64_t release_key, int width, int height,
     int64_t timestamp_us) const {
@@ -321,18 +321,18 @@ bool VideoTrackSource::capture_d3d11_frame(
   auto buffer = webrtc::make_ref_counted<D3D11TextureFrameBuffer>(
       reinterpret_cast<HANDLE>(static_cast<uintptr_t>(shared_texture_handle)),
       adapter_luid, acquire_key, release_key, width, height, [] {});
-  if (!buffer->owns_shared_handle()) return false;
+  if (!buffer->owns_shared_handle()) return -1;
   auto frame = webrtc::VideoFrame::Builder()
                    .set_video_frame_buffer(std::move(buffer))
                    .set_rotation(webrtc::kVideoRotation_0)
                    .set_timestamp_us(timestamp_us)
                    .build();
-  // AdaptFrame may normally drop a frame (for example, before a sink exists).
-  // Destruction still reclaims the producer slot through the keyed mutex.
-  source_->on_captured_frame(frame, FrameMetadata{});
-  return true;
+  // Propagate the actual source decision. A rejected frame is reclaimed by
+  // D3D11TextureFrameBuffer destruction and must not be acknowledged to the
+  // producer as accepted encoder ingress.
+  return source_->on_captured_frame(frame, FrameMetadata{}) ? 1 : 0;
 #else
-  return false;
+  return -1;
 #endif
 }
 

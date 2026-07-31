@@ -2,6 +2,7 @@ import { Outlet, useMatch, useRouterState } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
 import { ConnectionStatusBanner } from '#/components/layout/connection-status-banner'
+import { NativeMediaRuntimeBanner } from '#/features/desktop/native-media-runtime-banner'
 import { HomeSidebar } from '#/components/home/home-sidebar'
 import { ChannelSidebar } from '#/components/layout/channel-sidebar'
 import { ShellContentFrame } from '#/components/layout/shell-content-frame'
@@ -9,9 +10,9 @@ import { ShellNavColumn } from '#/components/layout/shell-nav-column'
 import { ShellTitleBar } from '#/components/layout/shell-title-bar'
 import { UserPanel } from '#/components/layout/user-panel'
 import {
-  USER_PANEL_RESERVE_PX,
-  USER_PANEL_WITH_TELEGRAM_PROMO_RESERVE_PX,
-} from '#/components/layout/left-sidebar-stack'
+  FLOATING_BAR_HEIGHT_PX,
+  floatingBarReservePx,
+} from '#/components/layout/shell-chrome'
 import { IncomingVoiceCallOverlay } from '#/components/voice/incoming-voice-call-overlay'
 import { selectedServerIdForChannel } from '#/features/navigation/channel-server-context'
 import { isDmChannel } from '#/features/sync/channel-label'
@@ -20,14 +21,12 @@ import { parseChannelSettingsTab } from '#/components/channels/channel-settings-
 import { ChannelSettingsPage } from '#/components/channels/channel-settings-page'
 import { cn } from '#/lib/utils'
 import { useAuth } from '#/features/auth/auth-context'
+import {
+  loadTelegramPromoDismissedUntil,
+  saveTelegramPromoDismissedUntil,
+} from '#/features/promotions/telegram-promo-persistence'
 
-const TELEGRAM_PROMO_DISMISSED_STORAGE_KEY =
-  'syrnike13.telegramPromoDismissed'
 const TELEGRAM_PROMO_DISMISS_DURATION_MS = 14 * 24 * 60 * 60 * 1000
-
-function telegramPromoStorageKey(userId: string) {
-  return `${TELEGRAM_PROMO_DISMISSED_STORAGE_KEY}:${userId}`
-}
 
 /**
  * Десктопная раскладка: рельс серверов + сайдбар + контент + плавающий UserPanel.
@@ -43,6 +42,9 @@ export function DesktopShell() {
     visible: boolean
     dismissedUntil?: number
   }>({ visible: false })
+  const [userPanelHeightPx, setUserPanelHeightPx] = useState(
+    FLOATING_BAR_HEIGHT_PX,
+  )
   const channelMatch = useMatch({
     from: '/app/c/$channelId',
     shouldThrow: false,
@@ -102,22 +104,22 @@ export function DesktopShell() {
       return
     }
 
-    let dismissedUntil: number | undefined
-    try {
-      const storedValue = Number(
-        window.localStorage.getItem(telegramPromoStorageKey(userId)),
-      )
-      if (Number.isFinite(storedValue) && storedValue > Date.now()) {
-        dismissedUntil = storedValue
-      }
-    } catch {
-      // localStorage может быть недоступен в приватном режиме.
-    }
-    setTelegramPromoState({
-      userId,
-      visible: dismissedUntil == null,
-      dismissedUntil,
+    let cancelled = false
+    void loadTelegramPromoDismissedUntil(userId).then((storedValue) => {
+      if (cancelled) return
+      const dismissedUntil =
+        storedValue != null && storedValue > Date.now()
+          ? storedValue
+          : undefined
+      setTelegramPromoState({
+        userId,
+        visible: dismissedUntil == null,
+        dismissedUntil,
+      })
     })
+    return () => {
+      cancelled = true
+    }
   }, [userId])
 
   useEffect(() => {
@@ -137,22 +139,15 @@ export function DesktopShell() {
 
   const telegramPromoVisible =
     telegramPromoState.userId === userId && telegramPromoState.visible
-  const userPanelReservePx = telegramPromoVisible
-    ? USER_PANEL_WITH_TELEGRAM_PROMO_RESERVE_PX
-    : USER_PANEL_RESERVE_PX
+  const userPanelReservePx = floatingBarReservePx(userPanelHeightPx)
 
   const dismissTelegramPromo = () => {
     if (!userId) return
     const dismissedUntil = Date.now() + TELEGRAM_PROMO_DISMISS_DURATION_MS
     setTelegramPromoState({ userId, visible: false, dismissedUntil })
-    try {
-      window.localStorage.setItem(
-        telegramPromoStorageKey(userId),
-        String(dismissedUntil),
-      )
-    } catch {
-      // Скрываем хотя бы до следующей загрузки, если storage недоступен.
-    }
+    void saveTelegramPromoDismissedUntil(userId, dismissedUntil).catch(
+      () => undefined,
+    )
   }
 
   if (serverSettingsMatch) {
@@ -178,6 +173,7 @@ export function DesktopShell() {
   return (
     <div className="theme-surface-lowest gradient-surface-lowest flex h-svh flex-col text-foreground">
       <ConnectionStatusBanner />
+      <NativeMediaRuntimeBanner />
       <ShellTitleBar />
       <div className="relative flex min-h-0 flex-1">
         <div
@@ -191,6 +187,7 @@ export function DesktopShell() {
               <UserPanel
                 telegramPromoVisible={telegramPromoVisible}
                 onDismissTelegramPromo={dismissTelegramPromo}
+                onHeightChange={setUserPanelHeightPx}
               />
             }
             userPanelReservePx={userPanelReservePx}

@@ -15,9 +15,10 @@
  */
 
 #include "livekit/peer_connection.h"
-#include "livekit/peer_connection_factory.h"
 
 #include <memory>
+#include <stdexcept>
+#include <string>
 
 #include "api/data_channel_interface.h"
 #include "api/peer_connection_interface.h"
@@ -26,11 +27,39 @@
 #include "livekit/data_channel.h"
 #include "livekit/jsep.h"
 #include "livekit/media_stream.h"
+#include "livekit/peer_connection_factory.h"
 #include "livekit/rtc_error.h"
 #include "livekit/rtp_transceiver.h"
+#include "livekit/video_encoder_factory.h"
 #include "rtc_base/logging.h"
 
 namespace livekit_ffi {
+
+namespace {
+
+std::string SerializeRequiredVideoEncoderBackendError(
+    VideoEncoderBackend backend) {
+  return serialize_error(to_error(webrtc::RTCError(
+      webrtc::RTCErrorType::INTERNAL_ERROR,
+      std::string("Required video encoder backend is unavailable: ") +
+          VideoEncoderBackendName(backend))));
+}
+
+void ValidateRequiredVideoEncoderBackend(VideoEncoderBackend backend) {
+  if (backend != VideoEncoderBackend::Auto &&
+      !IsVideoEncoderBackendAvailable(backend)) {
+    throw std::runtime_error(SerializeRequiredVideoEncoderBackendError(backend));
+  }
+}
+
+}  // namespace
+
+#ifdef LIVEKIT_TEST
+rust::String throw_required_video_encoder_backend_error_for_test() {
+  throw std::runtime_error(SerializeRequiredVideoEncoderBackendError(
+      VideoEncoderBackend::WindowsD3D11Hardware));
+}
+#endif
 
 webrtc::PeerConnectionInterface::RTCConfiguration to_native_rtc_configuration(
     RtcConfiguration config) {
@@ -190,15 +219,20 @@ std::shared_ptr<DataChannel> PeerConnection::create_data_channel(
 
 std::shared_ptr<RtpSender> PeerConnection::add_track(
     std::shared_ptr<MediaStreamTrack> track,
-    const rust::Vec<rust::String>& stream_ids) const {
+    const rust::Vec<rust::String>& stream_ids,
+    VideoEncoderBackend video_encoder_backend) const {
+  ValidateRequiredVideoEncoderBackend(video_encoder_backend);
+
   std::vector<std::string> std_stream_ids(stream_ids.begin(), stream_ids.end());
   auto result = peer_connection_->AddTrack(track->rtc_track(), std_stream_ids);
   if (!result.ok()) {
     throw std::runtime_error(serialize_error(to_error(result.error())));
   }
 
-  return std::make_shared<RtpSender>(rtc_runtime_, result.value(),
-                                     peer_connection_);
+  auto sender =
+      std::make_shared<RtpSender>(rtc_runtime_, result.value(), peer_connection_);
+  sender->set_video_encoder_backend(video_encoder_backend);
+  return sender;
 }
 
 void PeerConnection::remove_track(std::shared_ptr<RtpSender> sender) const {
@@ -217,11 +251,18 @@ void PeerConnection::get_stats(
 
 std::shared_ptr<RtpTransceiver> PeerConnection::add_transceiver(
     std::shared_ptr<MediaStreamTrack> track,
-    RtpTransceiverInit init) const {
+    RtpTransceiverInit init,
+    VideoEncoderBackend video_encoder_backend) const {
+  ValidateRequiredVideoEncoderBackend(video_encoder_backend);
+
   auto result = peer_connection_->AddTransceiver(
       track->rtc_track(), to_native_rtp_transceiver_init(init));
   if (!result.ok())
     throw std::runtime_error(serialize_error(to_error(result.error())));
+
+  auto sender = std::make_shared<RtpSender>(
+      rtc_runtime_, result.value()->sender(), peer_connection_);
+  sender->set_video_encoder_backend(video_encoder_backend);
 
   return std::make_shared<RtpTransceiver>(rtc_runtime_, result.value(),
                                           peer_connection_);
@@ -229,13 +270,20 @@ std::shared_ptr<RtpTransceiver> PeerConnection::add_transceiver(
 
 std::shared_ptr<RtpTransceiver> PeerConnection::add_transceiver_for_media(
     MediaType media_type,
-    RtpTransceiverInit init) const {
+    RtpTransceiverInit init,
+    VideoEncoderBackend video_encoder_backend) const {
+  ValidateRequiredVideoEncoderBackend(video_encoder_backend);
+
   auto result = peer_connection_->AddTransceiver(
       static_cast<webrtc::MediaType>(media_type),
       to_native_rtp_transceiver_init(init));
 
   if (!result.ok())
     throw std::runtime_error(serialize_error(to_error(result.error())));
+
+  auto sender = std::make_shared<RtpSender>(
+      rtc_runtime_, result.value()->sender(), peer_connection_);
+  sender->set_video_encoder_backend(video_encoder_backend);
 
   return std::make_shared<RtpTransceiver>(rtc_runtime_, result.value(),
                                           peer_connection_);

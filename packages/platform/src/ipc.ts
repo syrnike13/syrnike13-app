@@ -23,6 +23,7 @@ export const IPC = {
   settingsLoad: 'syrnike-desktop:settings:load',
   settingsUpdate: 'syrnike-desktop:settings:update',
   diagnosticsCreateBundle: 'syrnike-desktop:diagnostics:create-bundle',
+  diagnosticsEnqueueIncident: 'syrnike-desktop:diagnostics:enqueue-incident',
   diagnosticsLeaseNativeIncidents:
     'syrnike-desktop:diagnostics:lease-native-incidents',
   diagnosticsAcknowledgeNativeIncidents:
@@ -46,6 +47,9 @@ export const IPC = {
   mediaSelectDisplaySource: 'syrnike-desktop:media:select-display-source',
   mediaCancelRequest: 'syrnike-desktop:media:cancel-request',
   mediaOpenDisplayPicker: 'syrnike-desktop:media:open-display-picker',
+  mediaGetRuntimeState: 'syrnike-desktop:media:get-runtime-state',
+  mediaRetryRuntime: 'syrnike-desktop:media:retry-runtime',
+  mediaRuntimeStateChanged: 'syrnike-desktop:media:runtime-state-changed',
   mediaListDevices: 'syrnike-desktop:media:list-devices',
   mediaStartMicrophonePreview: 'syrnike-desktop:media:start-microphone-preview',
   mediaStopMicrophonePreview: 'syrnike-desktop:media:stop-microphone-preview',
@@ -54,6 +58,10 @@ export const IPC = {
     'syrnike-desktop:media:microphone-preview-state',
   mediaDisplayPickerResolved: 'syrnike-desktop:media:display-picker-resolved',
   mediaSetRemoteVideoDemand: 'syrnike-desktop:media:set-remote-video-demand',
+  mediaReplayRemoteScreenPublications:
+    'syrnike-desktop:media:replay-remote-screen-publications',
+  mediaRemoteVideoSessionReset:
+    'syrnike-desktop:media:remote-video-session-reset',
   mediaSetLocalScreenPreviewDemand:
     'syrnike-desktop:media:set-local-screen-preview-demand',
   voiceDispatch: 'syrnike-desktop:voice:dispatch',

@@ -432,7 +432,7 @@ describe('UserContextMenuVoiceControls server moderation', () => {
     )
   })
 
-  it('hides move targets the actor cannot connect to', () => {
+  it('shows locked move targets to a moderator with MoveMembers', () => {
     renderControls(makeMember(TARGET_USER_ID, ['member']), [
       makeVoiceChannel('voice-1', 'Lobby'),
       makeVoiceChannel('voice-2', 'Raid Room'),
@@ -443,19 +443,17 @@ describe('UserContextMenuVoiceControls server moderation', () => {
     ])
 
     expect(screen.getByRole('button', { name: 'Raid Room' })).toBeTruthy()
-    expect(
-      screen.queryByRole('button', { name: 'Locked Room' }),
-    ).toBeNull()
+    expect(screen.getByRole('button', { name: 'Locked Room' })).toBeTruthy()
   })
 
-  it('hides legacy voice move targets the actor cannot connect to', () => {
+  it('shows legacy locked move targets to a moderator with MoveMembers', () => {
     renderControls(makeMember(TARGET_USER_ID, ['member']), [
       makeVoiceChannel('voice-1', 'Lobby'),
       makeLegacyVoiceChannel('voice-legacy-locked', 'Legacy Locked Room'),
     ])
 
     expect(
-      screen.queryByRole('button', { name: 'Legacy Locked Room' }),
-    ).toBeNull()
+      screen.getByRole('button', { name: 'Legacy Locked Room' }),
+    ).toBeTruthy()
   })
 })

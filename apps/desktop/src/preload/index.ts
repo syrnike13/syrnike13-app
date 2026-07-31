@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, sharedTexture } from 'electron'
 import {
   IPC,
+  isNativeMediaRuntimeState,
   isVoiceSnapshot,
 } from '@syrnike13/platform'
 
@@ -11,6 +12,7 @@ import type {
   DesktopLocalSettings,
   DesktopLocalSettingsPatch,
   NativeDiagnosticIncidentBatch,
+  RendererDiagnosticIncident,
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSelection,
   DesktopDisplayMediaSource,
@@ -22,6 +24,7 @@ import type {
   HotkeyAction,
   HotkeyBinding,
   NativeMediaDeviceInfo,
+  NativeMediaRuntimeState,
   NativeMicrophoneMetricsEvent,
   NativeMicrophonePreviewStateEvent,
   NativeInputEvent,
@@ -51,6 +54,13 @@ sharedTexture.setSharedTextureReceiver(async ({ importedSharedTexture }, metadat
 ipcRenderer.on('syrnike-desktop:media:remote-video-track-removed', (_event, metadata) => {
   window.postMessage(
     { type: 'syrnike-native-video-track-removed', metadata },
+    window.location.origin,
+  )
+})
+
+ipcRenderer.on(IPC.mediaRemoteVideoSessionReset, (_event, metadata) => {
+  window.postMessage(
+    { type: 'syrnike-native-video-session-reset', metadata },
     window.location.origin,
   )
 })
@@ -187,20 +197,30 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       )
       return new Uint8Array(value)
     },
-    leaseNativeIncidents() {
+    enqueueIncident(accountId: string, incident: RendererDiagnosticIncident) {
+      return ipcRenderer.invoke(
+        IPC.diagnosticsEnqueueIncident,
+        accountId,
+        incident,
+      ) as Promise<boolean>
+    },
+    leaseNativeIncidents(accountId: string) {
       return ipcRenderer.invoke(
         IPC.diagnosticsLeaseNativeIncidents,
+        accountId,
       ) as Promise<NativeDiagnosticIncidentBatch | null>
     },
-    acknowledgeNativeIncidents(batchId: string) {
+    acknowledgeNativeIncidents(accountId: string, batchId: string) {
       return ipcRenderer.invoke(
         IPC.diagnosticsAcknowledgeNativeIncidents,
+        accountId,
         batchId,
       ) as Promise<boolean>
     },
-    releaseNativeIncidents(batchId: string) {
+    releaseNativeIncidents(accountId: string, batchId: string) {
       return ipcRenderer.invoke(
         IPC.diagnosticsReleaseNativeIncidents,
+        accountId,
         batchId,
       ) as Promise<boolean>
     },
@@ -290,6 +310,20 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     },
   },
   media: {
+    async getRuntimeState() {
+      const state: unknown = await ipcRenderer.invoke(IPC.mediaGetRuntimeState)
+      if (!isNativeMediaRuntimeState(state)) {
+        throw new TypeError('Invalid native media runtime state')
+      }
+      return state
+    },
+    async retryRuntime() {
+      const state: unknown = await ipcRenderer.invoke(IPC.mediaRetryRuntime)
+      if (!isNativeMediaRuntimeState(state)) {
+        throw new TypeError('Invalid native media runtime state')
+      }
+      return state
+    },
     getDisplaySources(requestId: string) {
       return ipcRenderer.invoke(
         IPC.mediaGetDisplaySources,
@@ -338,6 +372,9 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         demanded,
       )
     },
+    replayRemoteScreenPublications() {
+      return ipcRenderer.invoke(IPC.mediaReplayRemoteScreenPublications)
+    },
     setLocalScreenPreviewDemand(demand) {
       return ipcRenderer.invoke(IPC.mediaSetLocalScreenPreviewDemand, demand)
     },
@@ -379,6 +416,15 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       ipcRenderer.on(IPC.mediaMicrophonePreviewState, listener)
       return () => {
         ipcRenderer.removeListener(IPC.mediaMicrophonePreviewState, listener)
+      }
+    },
+    onRuntimeState(handler: (state: NativeMediaRuntimeState) => void) {
+      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        if (isNativeMediaRuntimeState(payload)) handler(payload)
+      }
+      ipcRenderer.on(IPC.mediaRuntimeStateChanged, listener)
+      return () => {
+        ipcRenderer.removeListener(IPC.mediaRuntimeStateChanged, listener)
       }
     },
   },
@@ -512,6 +558,8 @@ function isNativeMicrophoneMetricsEvent(
   if (!value || typeof value !== 'object') return false
   const event = value as NativeMicrophoneMetricsEvent
   return (
+    Number.isSafeInteger(event.revision) &&
+    event.revision >= 0 &&
     typeof event.inputDb === 'number' &&
     typeof event.thresholdDb === 'number' &&
     typeof event.open === 'boolean'

@@ -103,7 +103,7 @@ pub mod ffi {
             width: i32,
             height: i32,
             timestamp_us: i64,
-        ) -> bool;
+        ) -> i32;
         fn set_packet_trailer_handler(
             self: &VideoTrackSource,
             handler: SharedPtr<PacketTrailerHandler>,

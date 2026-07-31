@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   clearDiagnosticEventsForTests,
+  configureRendererDiagnosticAccount,
   diagnosticEventCount,
   diagnosticEventsJsonForTests,
   recordDiagnosticEvent,
@@ -73,5 +74,18 @@ describe('diagnostic reporter', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('retires renderer evidence when the authenticated account changes', () => {
+    configureRendererDiagnosticAccount('account-a')
+    recordDiagnosticEvent('voice', 'account_a_failure', { code: 'failed' })
+    configureRendererDiagnosticAccount('account-b')
+
+    expect(diagnosticEventsJsonForTests()).not.toContain('account_a_failure')
+    recordDiagnosticEvent('voice', 'account_b_failure', { code: 'failed' })
+    expect(diagnosticEventsJsonForTests()).toContain('account_b_failure')
+
+    configureRendererDiagnosticAccount('account-b')
+    expect(diagnosticEventsJsonForTests()).toContain('account_b_failure')
   })
 })

@@ -132,13 +132,13 @@ class VideoTrackSource {
                             int64_t timestamp_us,
                             const FrameMetadata& frame_metadata) const;
 
-  bool capture_d3d11_frame(uint64_t shared_texture_handle,
-                           uint64_t adapter_luid,
-                           uint64_t acquire_key,
-                           uint64_t release_key,
-                           int width,
-                           int height,
-                           int64_t timestamp_us) const;
+  int32_t capture_d3d11_frame(uint64_t shared_texture_handle,
+                              uint64_t adapter_luid,
+                              uint64_t acquire_key,
+                              uint64_t release_key,
+                              int width,
+                              int height,
+                              int64_t timestamp_us) const;
 
   void set_packet_trailer_handler(
       std::shared_ptr<PacketTrailerHandler> handler) const;

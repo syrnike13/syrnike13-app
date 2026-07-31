@@ -232,7 +232,6 @@ class HotkeyActor {
         true,
       };
       emitter_.emit(std::move(event));
-      std::terminate();
     }
   }
 
@@ -439,7 +438,12 @@ class HooksRuntime::Implementation {
   explicit Implementation(EventSinkPtr sink)
     : emitter_(std::move(sink)), hotkeys_(emitter_), overlay_(emitter_), worker_([this] { run(); }) {}
 
-  ~Implementation() { shutdownAndWait(); }
+  ~Implementation() {
+    try {
+      shutdownAndWait();
+    } catch (...) {
+    }
+  }
 
   bool dispatch(HooksCommand command) {
     if (shutting_down_.load()) return false;

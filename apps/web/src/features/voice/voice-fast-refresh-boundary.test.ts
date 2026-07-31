@@ -23,4 +23,17 @@ describe('voice provider Fast Refresh boundary', () => {
 
     expect(runtimeExportNames(source)).toEqual(['VoiceProvider'])
   })
+
+  it('does not infer the Syrnike desktop runtime from the Electron user agent', () => {
+    const repoRoot = resolve(
+      fileURLToPath(new URL('../../../../..', import.meta.url)),
+    )
+    const source = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
+      'utf8',
+    )
+
+    expect(source).not.toContain('isElectronRenderer')
+    expect(source).not.toContain('desktop_bridge_unavailable')
+  })
 })

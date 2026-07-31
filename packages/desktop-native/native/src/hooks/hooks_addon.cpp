@@ -1,11 +1,14 @@
 #include <napi.h>
+#include <uv.h>
 #include <windows.h>
 
 #include <memory>
 #include <mutex>
+#include <new>
 #include <stdexcept>
 #include <thread>
 
+#include "../common/async_cleanup_dispatcher.hpp"
 #include "../common/node_event_sink.hpp"
 #include "../common/runtime_types.hpp"
 #include "hooks_runtime.hpp"
@@ -49,53 +52,155 @@ HooksCommand parseHooksCommand(const Napi::Object& object) {
   return command;
 }
 
-std::mutex runtimes_mutex;
-std::shared_ptr<HooksRuntime> active_runtime;
-Napi::FunctionReference runtime_constructor;
+struct HooksRuntimeRegistry final {
+  std::mutex runtime_mutex;
+  std::shared_ptr<HooksRuntime> active_runtime;
+};
 
-void cleanupRuntimes() {
+struct HooksAddonState final {
+  Napi::FunctionReference runtime_constructor;
+  std::shared_ptr<HooksRuntimeRegistry> registry =
+    std::make_shared<HooksRuntimeRegistry>();
+};
+
+void cleanupRuntimes(const std::shared_ptr<HooksRuntimeRegistry>& registry) {
+  if (!registry) return;
   std::shared_ptr<HooksRuntime> owned;
   {
-    std::lock_guard lock(runtimes_mutex);
-    owned = std::move(active_runtime);
+    std::lock_guard lock(registry->runtime_mutex);
+    owned = std::move(registry->active_runtime);
   }
-  if (!owned) return;
-  owned->requestShutdown();
-  owned->shutdownAndWait();
+  if (owned) {
+    try {
+      owned->requestShutdown();
+      owned->shutdownAndWait();
+    } catch (...) {
+      // Environment cleanup must always reach hook removal.
+    }
+  }
 }
 
-void releaseRuntime(const std::shared_ptr<HooksRuntime>& runtime) {
-  std::lock_guard lock(runtimes_mutex);
-  if (active_runtime == runtime) active_runtime.reset();
+void releaseRuntime(
+  const std::shared_ptr<HooksRuntimeRegistry>& registry,
+  const std::shared_ptr<HooksRuntime>& runtime
+) {
+  if (!registry) return;
+  std::lock_guard lock(registry->runtime_mutex);
+  if (registry->active_runtime == runtime) registry->active_runtime.reset();
 }
 
-void asyncCleanup(napi_async_cleanup_hook_handle handle, void*) {
-  std::thread([handle] {
-    cleanupRuntimes();
+struct AsyncCleanupRegistration final {
+  uv_loop_t* loop = nullptr;
+  std::shared_ptr<HooksRuntimeRegistry> registry;
+  std::shared_ptr<AsyncCleanupNode> cleanup_node;
+  bool fail_dispatch_after_uv_init = false;
+};
+
+struct AsyncCleanupContext final {
+  napi_async_cleanup_hook_handle hook = nullptr;
+  uv_async_t completion{};
+  std::shared_ptr<HooksRuntimeRegistry> registry;
+};
+
+void finishAsyncCleanup(uv_async_t* async) {
+  auto* context = static_cast<AsyncCleanupContext*>(async->data);
+  if (!context) return;
+  napi_remove_async_cleanup_hook(context->hook);
+  uv_close(
+    reinterpret_cast<uv_handle_t*>(&context->completion),
+    [](uv_handle_t* handle) {
+      delete static_cast<AsyncCleanupContext*>(handle->data);
+    }
+  );
+}
+
+bool injectionEnabled(const char* name) {
+  char value[2]{};
+  return GetEnvironmentVariableA(name, value, 2) == 1 && value[0] == '1';
+}
+
+void completeAsyncCleanup(AsyncCleanupContext* context) noexcept {
+  try {
+    cleanupRuntimes(context->registry);
+  } catch (...) {
+  }
+  static_cast<void>(uv_async_send(&context->completion));
+}
+
+void asyncCleanup(napi_async_cleanup_hook_handle handle, void* data) {
+  std::unique_ptr<AsyncCleanupRegistration> registration(
+    static_cast<AsyncCleanupRegistration*>(data)
+  );
+  auto* context = new (std::nothrow) AsyncCleanupContext;
+  if (!registration || !registration->loop || !context) {
+    delete context;
+    cleanupRuntimes(registration ? registration->registry : nullptr);
     napi_remove_async_cleanup_hook(handle);
-  }).detach();
+    return;
+  }
+  context->hook = handle;
+  context->registry = registration->registry;
+  context->completion.data = context;
+  if (uv_async_init(
+        registration->loop,
+        &context->completion,
+        finishAsyncCleanup
+      ) != 0) {
+    delete context;
+    cleanupRuntimes(registration->registry);
+    napi_remove_async_cleanup_hook(handle);
+    return;
+  }
+  try {
+    if (registration->fail_dispatch_after_uv_init) {
+      throw std::bad_alloc();
+    }
+    registration->cleanup_node->prepareRaw(
+      context,
+      [](void* owner) noexcept {
+        completeAsyncCleanup(
+          static_cast<AsyncCleanupContext*>(owner)
+        );
+      }
+    );
+    AsyncCleanupDispatcher::instance().submit(
+      std::move(registration->cleanup_node)
+    );
+  } catch (...) {
+    completeAsyncCleanup(context);
+  }
 }
 
 class ShutdownWorker final : public Napi::AsyncWorker {
  public:
-  ShutdownWorker(Napi::Env env, std::shared_ptr<HooksRuntime> runtime)
+  ShutdownWorker(
+    Napi::Env env,
+    std::shared_ptr<HooksRuntimeRegistry> registry,
+    std::shared_ptr<HooksRuntime> runtime
+  )
     : Napi::AsyncWorker(env), deferred_(Napi::Promise::Deferred::New(env)),
-      runtime_(std::move(runtime)) {}
+      registry_(std::move(registry)), runtime_(std::move(runtime)) {}
   Napi::Promise promise() const { return deferred_.Promise(); }
   void Execute() override {
-    runtime_->requestShutdown();
-    runtime_->shutdownAndWait();
+    try {
+      runtime_->requestShutdown();
+      runtime_->shutdownAndWait();
+    } catch (const std::exception& error) {
+      SetError(error.what());
+    } catch (...) {
+      SetError("unknown native hooks shutdown failure");
+    }
+    releaseRuntime(registry_, runtime_);
   }
   void OnOK() override {
-    releaseRuntime(runtime_);
     deferred_.Resolve(Env().Undefined());
   }
   void OnError(const Napi::Error& error) override {
-    releaseRuntime(runtime_);
     deferred_.Reject(error.Value());
   }
  private:
   Napi::Promise::Deferred deferred_;
+  std::shared_ptr<HooksRuntimeRegistry> registry_;
   std::shared_ptr<HooksRuntime> runtime_;
 };
 
@@ -106,8 +211,9 @@ class HooksRuntimeBinding final : public Napi::ObjectWrap<HooksRuntimeBinding> {
       InstanceMethod("dispatch", &HooksRuntimeBinding::dispatch),
       InstanceMethod("shutdown", &HooksRuntimeBinding::shutdown),
     });
-    runtime_constructor = Napi::Persistent(constructor);
-    runtime_constructor.SuppressDestruct();
+    auto* state = env.GetInstanceData<HooksAddonState>();
+    if (!state) throw Napi::Error::New(env, "hooks addon state is unavailable");
+    state->runtime_constructor = Napi::Persistent(constructor);
   }
 
   explicit HooksRuntimeBinding(const Napi::CallbackInfo& info)
@@ -115,17 +221,34 @@ class HooksRuntimeBinding final : public Napi::ObjectWrap<HooksRuntimeBinding> {
     if (info.Length() != 1 || !info[0].IsFunction()) {
       throw Napi::TypeError::New(info.Env(), "createHooksRuntime requires an event callback");
     }
-    std::lock_guard lock(runtimes_mutex);
-    if (active_runtime) {
+    auto* state = info.Env().GetInstanceData<HooksAddonState>();
+    if (!state || !state->registry) {
+      throw Napi::Error::New(info.Env(), "hooks addon state is unavailable");
+    }
+    registry_ = state->registry;
+    std::lock_guard lock(registry_->runtime_mutex);
+    if (registry_->active_runtime) {
       throw Napi::Error::New(
-        info.Env(), "runtime_already_created: native runtime is singleton per utility process"
+        info.Env(), "runtime_already_created: native runtime is singleton per environment"
       );
     }
     auto sink = std::make_shared<NodeEventSink>(
       info.Env(), info[0].As<Napi::Function>(), "syrnike-native-events"
     );
     runtime_ = std::make_shared<HooksRuntime>(std::move(sink));
-    active_runtime = runtime_;
+    registry_->active_runtime = runtime_;
+  }
+
+  ~HooksRuntimeBinding() {
+    auto runtime = std::move(runtime_);
+    if (!runtime) return;
+    runtime->requestShutdown();
+    try {
+      runtime->shutdownAndWait();
+    } catch (...) {
+      // Always release the per-env singleton after a collected wrapper.
+    }
+    releaseRuntime(registry_, runtime);
   }
 
  private:
@@ -153,12 +276,17 @@ class HooksRuntimeBinding final : public Napi::ObjectWrap<HooksRuntimeBinding> {
       return deferred.Promise();
     }
     auto runtime = std::move(runtime_);
-    auto* worker = new ShutdownWorker(info.Env(), std::move(runtime));
+    auto* worker = new ShutdownWorker(
+      info.Env(),
+      registry_,
+      std::move(runtime)
+    );
     const auto promise = worker->promise();
     worker->Queue();
     return promise;
   }
 
+  std::shared_ptr<HooksRuntimeRegistry> registry_;
   std::shared_ptr<HooksRuntime> runtime_;
 };
 
@@ -166,7 +294,11 @@ Napi::Value createHooksRuntime(const Napi::CallbackInfo& info) {
   if (info.Length() != 1 || !info[0].IsFunction()) {
     throw Napi::TypeError::New(info.Env(), "createHooksRuntime requires an event callback");
   }
-  return runtime_constructor.New({info[0]});
+  auto* state = info.Env().GetInstanceData<HooksAddonState>();
+  if (!state || state->runtime_constructor.IsEmpty()) {
+    throw Napi::Error::New(info.Env(), "hooks addon constructor is unavailable");
+  }
+  return state->runtime_constructor.New({info[0]});
 }
 
 Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
@@ -174,7 +306,7 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
   result.Set("platform", "win32");
   result.Set("available", true);
   result.Set("runtime", kRuntimeName);
-  result.Set("contractVersion", 3);
+  result.Set("contractVersion", 4);
   result.Set("pid", GetCurrentProcessId());
   result.Set("napi", std::to_string(NAPI_VERSION));
   result.Set("commit", SYRNIKE_NATIVE_COMMIT);
@@ -185,9 +317,36 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
 }
 
 Napi::Object initialize(Napi::Env env, Napi::Object exports) {
+  auto* state = new HooksAddonState;
+  env.SetInstanceData(state);
   HooksRuntimeBinding::initialize(env);
+  static_cast<void>(AsyncCleanupDispatcher::instance());
+  uv_loop_t* loop = nullptr;
+  if (napi_get_uv_event_loop(env, &loop) != napi_ok || !loop) {
+    throw Napi::Error::New(env, "hooks addon uv loop is unavailable");
+  }
+  auto* cleanup_registration = new AsyncCleanupRegistration{
+    loop,
+    state->registry,
+    std::make_shared<AsyncCleanupNode>(
+      failFirstAsyncCleanupLauncher(injectionEnabled(
+        "SYRNIKE_NATIVE_FAIL_ASYNC_CLEANUP_LAUNCH_ONCE"
+      ))
+    ),
+    injectionEnabled(
+      "SYRNIKE_NATIVE_FAIL_ASYNC_CLEANUP_DISPATCH_ONCE"
+    ),
+  };
   napi_async_cleanup_hook_handle cleanup_handle = nullptr;
-  napi_add_async_cleanup_hook(env, asyncCleanup, nullptr, &cleanup_handle);
+  if (napi_add_async_cleanup_hook(
+        env,
+        asyncCleanup,
+        cleanup_registration,
+        &cleanup_handle
+      ) != napi_ok) {
+    delete cleanup_registration;
+    throw Napi::Error::New(env, "hooks addon cleanup hook registration failed");
+  }
   exports.Set(kCreateRuntimeName, Napi::Function::New(env, createHooksRuntime));
   exports.Set("getRuntimeInfo", Napi::Function::New(env, getRuntimeInfo));
   return exports;

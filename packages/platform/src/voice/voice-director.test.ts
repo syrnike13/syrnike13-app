@@ -129,6 +129,19 @@ class FakeEngine implements RtcEngineAdapter {
     this.failedChannels.set(channelId, new Error(message))
   }
 
+  failTyped(channelId: string, retryable: boolean, code = 'engine_failed') {
+    const failure = {
+      code,
+      message: `failed ${channelId}`,
+      retryable,
+      stage: 'rtc_connect',
+    }
+    this.failedChannels.set(
+      channelId,
+      Object.assign(new Error(failure.message), { failure }),
+    )
+  }
+
   recover(channelId: string) {
     this.failedChannels.delete(channelId)
   }
@@ -644,6 +657,141 @@ describe('VoiceDirector', () => {
       membershipChannelId: 'A',
       operationId: recovered.operationId,
       connectionEpoch: recovered.connectionEpoch,
+    })
+  })
+
+  it('waits for engine availability without spending recovery attempts', async () => {
+    const harness = createHarness({ recoveryDelaysMs: [0, 0, 0] })
+    const original = await connect(harness, 'A')
+    harness.engine.emit({
+      type: 'availabilityChanged',
+      available: false,
+      retryable: true,
+    })
+    harness.engine.emit({
+      type: 'terminalFailure',
+      operationId: original.operationId,
+      connectionEpoch: original.connectionEpoch,
+      failure: {
+        code: 'runtime_lost',
+        message: 'Media runtime exited',
+        retryable: true,
+        stage: 'native_runtime',
+      },
+    })
+
+    await waitUntil(() => harness.engine.disconnected.includes('recovery'))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(harness.engine.connected).toHaveLength(1)
+    expect(harness.authority.reservations).toHaveLength(1)
+
+    harness.engine.emit({
+      type: 'availabilityChanged',
+      available: true,
+      retryable: true,
+    })
+    await waitUntil(() => harness.engine.connected.length === 2)
+    expect(harness.director.snapshot().retryAttempt).toBe(1)
+    harness.authority.commit(harness.engine.connected[1])
+    await harness.director.waitForIdle()
+  })
+
+  it('stops waiting when unavailable engine recovery becomes non-retryable', async () => {
+    const harness = createHarness({ recoveryDelaysMs: [0, 0, 0] })
+    const original = await connect(harness, 'A')
+    harness.engine.emit({
+      type: 'availabilityChanged',
+      available: false,
+      retryable: true,
+    })
+    harness.engine.emit({
+      type: 'terminalFailure',
+      operationId: original.operationId,
+      connectionEpoch: original.connectionEpoch,
+      failure: {
+        code: 'runtime_lost',
+        message: 'Media runtime exited',
+        retryable: true,
+        stage: 'native_runtime',
+      },
+    })
+    await waitUntil(() => harness.engine.disconnected.includes('recovery'))
+
+    harness.engine.emit({
+      type: 'availabilityChanged',
+      available: false,
+      retryable: false,
+      failure: {
+        code: 'runtime_degraded',
+        message: 'Native runtime circuit is open',
+        retryable: false,
+        stage: 'native_runtime',
+      },
+    })
+    await harness.director.waitForIdle()
+
+    expect(harness.engine.connected).toHaveLength(1)
+    expect(harness.authority.reservations).toHaveLength(1)
+    expect(harness.director.snapshot()).toMatchObject({
+      connection: 'failed',
+      failure: { code: 'runtime_degraded', retryable: false },
+    })
+  })
+
+  it('does not retry a non-retryable terminal failure', async () => {
+    const harness = createHarness({ recoveryDelaysMs: [0, 0, 0] })
+    const original = await connect(harness, 'A')
+    harness.engine.emit({
+      type: 'terminalFailure',
+      operationId: original.operationId,
+      connectionEpoch: original.connectionEpoch,
+      failure: {
+        code: 'runtime_degraded',
+        message: 'Native runtime circuit is open',
+        retryable: false,
+        stage: 'native_runtime',
+      },
+    })
+    await harness.director.waitForIdle()
+
+    expect(harness.director.snapshot()).toMatchObject({
+      connection: 'failed',
+      failure: { code: 'runtime_degraded', retryable: false },
+    })
+    expect(harness.engine.connected).toHaveLength(1)
+    expect(harness.authority.reservations).toHaveLength(1)
+    expect(harness.engine.disconnected).toContain('recovery')
+    expect(harness.authority.cancellations).toContainEqual({
+      rtcEngine: original.rtcEngine,
+      clientInstanceId: original.clientInstanceId,
+      operationId: original.operationId,
+      connectionEpoch: original.connectionEpoch,
+      reason: 'connect_failed',
+    })
+  })
+
+  it('stops recovery after the first non-retryable connect rejection', async () => {
+    const harness = createHarness({ recoveryDelaysMs: [0, 0, 0] })
+    const original = await connect(harness, 'A')
+    harness.engine.failTyped('A', false, 'runtime_degraded')
+    harness.engine.emit({
+      type: 'terminalFailure',
+      operationId: original.operationId,
+      connectionEpoch: original.connectionEpoch,
+      failure: {
+        code: 'runtime_lost',
+        message: 'Media runtime exited',
+        retryable: true,
+        stage: 'native_runtime',
+      },
+    })
+    await harness.director.waitForIdle()
+
+    expect(harness.engine.connected).toHaveLength(2)
+    expect(harness.authority.reservations).toHaveLength(2)
+    expect(harness.director.snapshot()).toMatchObject({
+      connection: 'failed',
+      failure: { code: 'runtime_degraded', retryable: false },
     })
   })
 

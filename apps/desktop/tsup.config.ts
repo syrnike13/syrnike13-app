@@ -83,6 +83,8 @@ export default defineConfig([
       'media-host': 'src/utility/media-host.ts',
       'hotkey-host': 'src/utility/hotkey-host.ts',
       'overlay-host': 'src/utility/overlay-host.ts',
+      'runtime-supervisor': 'src/main/native-runtime/runtime-supervisor.ts',
+      'shutdown-budget': 'src/main/shutdown-budget.ts',
     },
     outDir: 'out/utility',
     format: ['cjs'],

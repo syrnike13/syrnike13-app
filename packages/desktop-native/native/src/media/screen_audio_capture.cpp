@@ -30,7 +30,7 @@ namespace {
 
 constexpr std::size_t kScreenAudioSamplesPerPacket =
     static_cast<std::size_t>(kScreenAudioFramesPerPacket) * kScreenAudioChannels;
-constexpr REFERENCE_TIME kScreenAudioBufferDurationHns = 1000000; // 100 ms
+constexpr REFERENCE_TIME kScreenAudioBufferDurationHns = 400000; // 40 ms
 
 struct ScreenAudioProbeResult {
   bool ok = false;
@@ -106,8 +106,17 @@ public:
     return S_OK;
   }
 
-  ComPtr<IAudioClient> waitForAudioClient() {
-    WaitForSingleObject(done_, 10'000);
+  ComPtr<IAudioClient> waitForAudioClient(HANDLE stop_event = nullptr) {
+    const HANDLE handles[] = {done_, stop_event};
+    const DWORD result = stop_event
+        ? WaitForMultipleObjects(2, handles, FALSE, 2'000)
+        : WaitForSingleObject(done_, 2'000);
+    if (result != WAIT_OBJECT_0) {
+      throw std::runtime_error(
+          result == WAIT_OBJECT_0 + 1
+              ? "process loopback activation cancelled"
+              : "process loopback activation timed out");
+    }
     if (FAILED(result_) || FAILED(activate_hr_) || !audio_client_) {
       throw std::runtime_error("failed to activate process loopback client");
     }
@@ -153,7 +162,8 @@ ComPtr<IAudioClient> activateSystemLoopbackClient() {
 
 ComPtr<IAudioClient> activateProcessLoopbackClient(
     DWORD process_id,
-    PROCESS_LOOPBACK_MODE loopback_mode) {
+    PROCESS_LOOPBACK_MODE loopback_mode,
+    HANDLE stop_event = nullptr) {
   AUDIOCLIENT_ACTIVATION_PARAMS activation_params{};
   activation_params.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
   activation_params.ProcessLoopbackParams.TargetProcessId = process_id;
@@ -178,7 +188,13 @@ ComPtr<IAudioClient> activateProcessLoopbackClient(
     throw std::runtime_error(hresultMessage("failed to start process loopback activation", hr));
   }
 
-  ComPtr<IAudioClient> audio_client = handler->waitForAudioClient();
+  ComPtr<IAudioClient> audio_client;
+  try {
+    audio_client = handler->waitForAudioClient(stop_event);
+  } catch (...) {
+    handler->Release();
+    throw;
+  }
   handler->Release();
   return audio_client;
 }
@@ -191,6 +207,7 @@ void captureLoopbackAudio(
     const char* audio_mode,
     const char* loopback_mode_name,
     const std::shared_ptr<std::atomic_bool>& running,
+    const std::shared_ptr<ScreenAudioStopSignal>& stop_signal,
     ScreenAudioFailure on_failure,
     ScreenAudioStats on_stats) {
   (void)session_id;
@@ -205,13 +222,17 @@ void captureLoopbackAudio(
   try {
     ComPtr<IAudioClient> audio_client =
         process_id != 0
-            ? activateProcessLoopbackClient(process_id, loopback_mode)
+            ? activateProcessLoopbackClient(
+                  process_id,
+                  loopback_mode,
+                  stop_signal ? stop_signal->handle() : nullptr)
             : activateSystemLoopbackClient();
 
     WAVEFORMATEX format = desiredScreenLoopbackFormat();
     hr = audio_client->Initialize(
         AUDCLNT_SHAREMODE_SHARED,
         AUDCLNT_STREAMFLAGS_LOOPBACK |
+            AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
             AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
             AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
         kScreenAudioBufferDurationHns,
@@ -219,6 +240,21 @@ void captureLoopbackAudio(
         &format,
         nullptr);
     if (FAILED(hr)) throw std::runtime_error("failed to initialize screen loopback stream");
+
+    HANDLE audio_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (!audio_event) {
+      throw std::runtime_error("failed to create screen loopback audio event");
+    }
+    struct CloseAudioEvent {
+      HANDLE value = nullptr;
+      ~CloseAudioEvent() {
+        if (value) CloseHandle(value);
+      }
+    } close_audio_event{audio_event};
+    hr = audio_client->SetEventHandle(audio_event);
+    if (FAILED(hr)) {
+      throw std::runtime_error("failed to register screen loopback audio event");
+    }
 
     ComPtr<IAudioCaptureClient> capture_client;
     hr = audio_client->GetService(
@@ -239,13 +275,28 @@ void captureLoopbackAudio(
     auto next_stats_at = std::chrono::steady_clock::now();
 
     while (running->load()) {
+      const HANDLE wait_handles[] = {
+          audio_event,
+          stop_signal ? stop_signal->handle() : nullptr,
+      };
+      const DWORD handle_count = wait_handles[1] ? 2 : 1;
+      const DWORD wait_result = WaitForMultipleObjects(
+          handle_count,
+          wait_handles,
+          FALSE,
+          wait_handles[1] ? INFINITE : 250);
+      if (wait_result == WAIT_OBJECT_0 + 1 ||
+          !running->load(std::memory_order_acquire)) {
+        break;
+      }
+      if (wait_result == WAIT_TIMEOUT) continue;
+      if (wait_result != WAIT_OBJECT_0) {
+        throw std::runtime_error("screen loopback event wait failed");
+      }
       UINT32 packet_frames = 0;
       hr = capture_client->GetNextPacketSize(&packet_frames);
       if (FAILED(hr)) throw std::runtime_error("screen loopback packet query failed");
-      if (packet_frames == 0) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
-        continue;
-      }
+      if (packet_frames == 0) continue;
 
       BYTE* data = nullptr;
       UINT32 frames = 0;
@@ -317,10 +368,14 @@ void captureLoopbackAudio(
     audio_client->Stop();
   } catch (const std::exception& error) {
     running->store(false);
-    if (on_failure) on_failure(error.what());
+    if (!stop_signal || !stop_signal->isSignaled()) {
+      if (on_failure) on_failure(error.what());
+    }
   } catch (...) {
     running->store(false);
-    if (on_failure) on_failure("unknown screen audio capture failure");
+    if (!stop_signal || !stop_signal->isSignaled()) {
+      if (on_failure) on_failure("unknown screen audio capture failure");
+    }
   }
 
   if (avrt) AvRevertMmThreadCharacteristics(avrt);
@@ -340,6 +395,7 @@ ScreenAudioProbeResult probeLoopbackClient(
   HRESULT hr = audio_client->Initialize(
       AUDCLNT_SHAREMODE_SHARED,
       AUDCLNT_STREAMFLAGS_LOOPBACK |
+          AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
           AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
           AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
       kScreenAudioBufferDurationHns,
@@ -347,6 +403,21 @@ ScreenAudioProbeResult probeLoopbackClient(
       &format,
       nullptr);
   if (FAILED(hr)) throw std::runtime_error("failed to initialize screen loopback probe");
+
+  HANDLE audio_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  if (!audio_event) {
+    throw std::runtime_error("failed to create screen loopback probe event");
+  }
+  struct CloseProbeEvent {
+    HANDLE value = nullptr;
+    ~CloseProbeEvent() {
+      if (value) CloseHandle(value);
+    }
+  } close_probe_event{audio_event};
+  hr = audio_client->SetEventHandle(audio_event);
+  if (FAILED(hr)) {
+    throw std::runtime_error("failed to register screen loopback probe event");
+  }
 
   ComPtr<IAudioCaptureClient> capture_client;
   hr = audio_client->GetService(
@@ -366,13 +437,19 @@ ScreenAudioProbeResult probeLoopbackClient(
   const auto deadline = std::chrono::steady_clock::now() +
       std::chrono::milliseconds(std::max(1, duration_ms));
   while (std::chrono::steady_clock::now() < deadline) {
+    const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+        deadline - std::chrono::steady_clock::now());
+    const DWORD wait_result = WaitForSingleObject(
+        audio_event,
+        static_cast<DWORD>(std::max<std::int64_t>(1, remaining.count())));
+    if (wait_result == WAIT_TIMEOUT) break;
+    if (wait_result != WAIT_OBJECT_0) {
+      throw std::runtime_error("screen loopback probe event wait failed");
+    }
     UINT32 packet_frames = 0;
     hr = capture_client->GetNextPacketSize(&packet_frames);
     if (FAILED(hr)) break;
-    if (packet_frames == 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(2));
-      continue;
-    }
+    if (packet_frames == 0) continue;
 
     BYTE* data = nullptr;
     UINT32 frames = 0;
@@ -409,11 +486,27 @@ ScreenAudioProbeResult probeLoopbackClient(
 
 }  // namespace
 
+ScreenAudioStopSignal::ScreenAudioStopSignal()
+    : event_(CreateEventW(nullptr, TRUE, FALSE, nullptr)) {
+  if (!event_) {
+    throw std::runtime_error("failed to create screen audio stop event");
+  }
+}
+
+ScreenAudioStopSignal::~ScreenAudioStopSignal() {
+  if (event_) CloseHandle(event_);
+}
+
+void ScreenAudioStopSignal::signal() noexcept {
+  if (event_) SetEvent(event_);
+}
+
 void captureSystemLoopbackAudio(
     DWORD excluded_process_id,
     const std::string& session_id,
     const std::shared_ptr<livekit::AudioSource>& audio_source,
     const std::shared_ptr<std::atomic_bool>& running,
+    const std::shared_ptr<ScreenAudioStopSignal>& stop_signal,
     ScreenAudioFailure on_failure,
     ScreenAudioStats on_stats) {
   captureLoopbackAudio(
@@ -424,6 +517,7 @@ void captureSystemLoopbackAudio(
       "system_exclude",
       "exclude_target_process_tree",
       running,
+      stop_signal,
       std::move(on_failure),
       std::move(on_stats));
 }
@@ -433,6 +527,7 @@ void captureProcessLoopbackAudio(
     const std::string& session_id,
     const std::shared_ptr<livekit::AudioSource>& audio_source,
     const std::shared_ptr<std::atomic_bool>& running,
+    const std::shared_ptr<ScreenAudioStopSignal>& stop_signal,
     ScreenAudioFailure on_failure,
     ScreenAudioStats on_stats) {
   captureLoopbackAudio(
@@ -443,6 +538,7 @@ void captureProcessLoopbackAudio(
       "process",
       "include_target_process_tree",
       running,
+      stop_signal,
       std::move(on_failure),
       std::move(on_stats));
 }

@@ -9,7 +9,7 @@ import {
   Trash2Icon,
   UsersIcon,
 } from '#/components/icons'
-import { useState, type MouseEvent } from 'react'
+import { useState, type DragEvent, type MouseEvent } from 'react'
 import type { Channel } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
@@ -35,6 +35,7 @@ import {
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import { ackChannel } from '#/features/api/sync-api'
+import { editServerMember } from '#/features/api/servers-api'
 import { deleteChannel } from '#/features/api/channels-api'
 import { createChannelInvite } from '#/features/api/invites-api'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
@@ -61,8 +62,15 @@ import { useVoiceSession } from '#/features/voice/voice-session-context'
 import {
   isServerVoiceChannel,
 } from '#/lib/channel-voice'
-import { canManageChannel } from '#/features/authorization/authorization'
+import {
+  canManageChannel,
+  canMoveServerMember,
+} from '#/features/authorization/authorization'
 import { isChannelAccessRestricted } from '#/features/authorization/permission-draft'
+import {
+  readVoiceMemberDragPayload,
+  VOICE_MEMBER_DRAG_TYPE,
+} from '#/features/voice/voice-member-drag'
 import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
 import { writeClipboardText } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
@@ -98,6 +106,8 @@ export function ChannelSidebarItem({
   const navigate = useNavigate()
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingChannel, setDeletingChannel] = useState(false)
+  const [voiceDropActive, setVoiceDropActive] = useState(false)
+  const [movingVoiceMember, setMovingVoiceMember] = useState(false)
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const isMobile = pathname.startsWith('/m')
   const channelRoute = isMobile ? '/m/c/$channelId' : '/app/c/$channelId'
@@ -300,6 +310,77 @@ export function ChannelSidebarItem({
     })
   }
 
+  function handleVoiceDragOver(event: DragEvent<HTMLDivElement>) {
+    if (
+      !serverVoice ||
+      movingVoiceMember ||
+      !event.dataTransfer.types.includes(VOICE_MEMBER_DRAG_TYPE)
+    ) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = 'move'
+    setVoiceDropActive(true)
+  }
+
+  function handleVoiceDragLeave(event: DragEvent<HTMLDivElement>) {
+    const relatedTarget = event.relatedTarget
+    if (
+      relatedTarget instanceof Node &&
+      event.currentTarget.contains(relatedTarget)
+    ) {
+      return
+    }
+    setVoiceDropActive(false)
+  }
+
+  async function handleVoiceDrop(event: DragEvent<HTMLDivElement>) {
+    if (!serverVoice || !token || !server || !auth.user?._id) return
+    event.preventDefault()
+    event.stopPropagation()
+    setVoiceDropActive(false)
+
+    const payload = readVoiceMemberDragPayload(event.dataTransfer)
+    if (
+      !payload ||
+      payload.serverId !== server._id ||
+      payload.channelId === channel._id
+    ) {
+      return
+    }
+
+    const state = syncStore.getState()
+    const targetMember = state.members[`${server._id}:${payload.userId}`]
+    const actorMember = state.members[`${server._id}:${auth.user._id}`]
+    const mayMove = canMoveServerMember(
+      server,
+      actorMember,
+      auth.user._id,
+      targetMember,
+    )
+    if (!mayMove) {
+      toast.error('Недостаточно прав для перемещения участника')
+      return
+    }
+
+    setMovingVoiceMember(true)
+    try {
+      await editServerMember(token, server._id, payload.userId, {
+        voice_channel: channel._id,
+      })
+      toast.success('Участник перемещён')
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Не удалось переместить участника',
+      )
+    } finally {
+      setMovingVoiceMember(false)
+    }
+  }
+
   const channelActionButtonClassName =
     'flex size-6 shrink-0 self-center items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity group-hover/channel:opacity-100 hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
 
@@ -308,8 +389,13 @@ export function ChannelSidebarItem({
       className={cn(
         'group/channel flex flex-col',
         dragging && 'opacity-60',
+        voiceDropActive && 'rounded-md bg-chart-3/15 ring-1 ring-chart-3/70',
       )}
       data-channel-sidebar-item=""
+      data-voice-drop-pending={movingVoiceMember ? 'true' : 'false'}
+      onDragOver={handleVoiceDragOver}
+      onDragLeave={handleVoiceDragLeave}
+      onDrop={(event) => void handleVoiceDrop(event)}
     >
       <div
         className={cn(

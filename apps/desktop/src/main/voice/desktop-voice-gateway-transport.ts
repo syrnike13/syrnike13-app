@@ -310,7 +310,7 @@ function diagnosticEventFields(event: Record<string, unknown>) {
   const error = isRecord(event.data) ? event.data : null
   return {
     eventType: typeof event.type === 'string' ? event.type : 'unknown',
-    fatal: event.fatal === true,
+    fatal: event.type === 'Error' ? event.fatal !== false : undefined,
     errorScope: diagnosticString(event.scope),
     errorType: diagnosticString(error?.type),
     errorMessage: diagnosticString(error?.message),

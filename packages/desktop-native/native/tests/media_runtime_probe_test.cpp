@@ -1,4 +1,5 @@
 #include <chrono>
+#include <atomic>
 #include <condition_variable>
 #include <iostream>
 #include <memory>
@@ -47,6 +48,23 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     return false;
   }
 
+  bool waitTrackFailure(
+    const std::string& track_id,
+    std::chrono::milliseconds timeout = std::chrono::seconds(2)
+  ) {
+    std::unique_lock lock(mutex_);
+    return changed_.wait_for(lock, timeout, [&] {
+      for (const auto& event : events_) {
+        if (event.type == "runtimeError" && event.track_id == track_id &&
+            event.status.empty() && event.kind.empty() && event.error &&
+            event.error->code == "audio_output_stream_start_failed") {
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+
  private:
   std::mutex mutex_;
   std::condition_variable changed_;
@@ -68,24 +86,81 @@ int main() try {
   auto livekit = std::make_shared<DeterministicFakeLiveKitPublicationClient>();
   livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Connect, true);
 
-  MediaRuntime runtime(sink, livekit);
+  std::mutex slow_microphone_mutex;
+  std::condition_variable slow_microphone_changed;
+  bool slow_microphone_started = false;
+  bool release_slow_microphone = false;
+  MediaRuntime runtime(
+    sink,
+    livekit,
+    {},
+    [&](const MediaCommand& command) {
+      if (command.type != "configureMicrophone") return;
+      std::unique_lock lock(slow_microphone_mutex);
+      slow_microphone_started = true;
+      slow_microphone_changed.notify_all();
+      slow_microphone_changed.wait_for(
+        lock,
+        std::chrono::seconds(5),
+        [&] { return release_slow_microphone; }
+      );
+    }
+  );
+
+  MediaCommand configure;
+  configure.type = "configureMicrophone";
+  configure.request_id = "slow-microphone-configure";
+  configure.revision = 1;
+  configure.has_revision = true;
+  require(runtime.dispatch(configure), "media runtime rejected microphone configure");
+  {
+    std::unique_lock lock(slow_microphone_mutex);
+    require(
+      slow_microphone_changed.wait_for(
+        lock,
+        std::chrono::seconds(1),
+        [&] { return slow_microphone_started; }
+      ),
+      "slow microphone operation did not reach its worker"
+    );
+  }
+
+  MediaCommand microphone_probe;
+  microphone_probe.type = "probeMicrophoneActor";
+  microphone_probe.request_id = "probe-microphone";
+  const auto microphone_probe_started = std::chrono::steady_clock::now();
+  require(runtime.dispatch(microphone_probe), "media runtime rejected microphone probe");
+  require(
+    sink->waitReply("probe-microphone", std::chrono::milliseconds(500)),
+    "microphone probe waited behind the slow microphone operation"
+  );
+  require(
+    std::chrono::steady_clock::now() - microphone_probe_started <
+      std::chrono::milliseconds(500),
+    "microphone probe exceeded its independent routing deadline"
+  );
+  require(
+    !sink->hasReply("slow-microphone-configure"),
+    "slow microphone operation completed before its device delay was released"
+  );
+  {
+    std::lock_guard lock(slow_microphone_mutex);
+    release_slow_microphone = true;
+  }
+  slow_microphone_changed.notify_all();
+  require(
+    sink->waitReply("slow-microphone-configure", std::chrono::seconds(1)),
+    "microphone configure did not complete after the slow device was released"
+  );
 
   MediaCommand connect;
-  connect.type = "connectScreen";
-  connect.request_id = "screen-connect";
-  connect.session_id = "screen-session";
+  connect.type = "connectVoice";
+  connect.request_id = "voice-connect";
+  connect.session_id = "voice-session";
   connect.generation = 1;
   connect.livekit_url = "wss://livekit.example";
   connect.livekit_token = "token";
-  connect.participant_identity = "user:desktop-native:screen";
-  connect.source_id = "screen:1";
-  connect.width = 1280;
-  connect.height = 720;
-  connect.fps = 30;
-  connect.bitrate = 2'500'000;
-  connect.audio_bitrate = 128'000;
-  connect.audio_requested = false;
-  require(runtime.dispatch(connect), "media runtime rejected screen connect");
+  require(runtime.dispatch(connect), "media runtime rejected voice connect");
 
   livekit->waitUntilPending(
     DeterministicFakeLiveKitPublicationClient::Operation::Connect,
@@ -112,8 +187,8 @@ int main() try {
   );
 
   require(
-    !sink->hasReply("screen-connect"),
-    "screen connect completed before the blocked connect was released"
+    !sink->hasReply("voice-connect"),
+    "voice connect completed before the blocked connect was released"
   );
 
   livekit->releaseNext(
@@ -121,9 +196,57 @@ int main() try {
   );
 
   require(
-    sink->waitReply("screen-connect", std::chrono::seconds(2)),
-    "screen connect did not complete after connect released"
+    sink->waitReply("voice-connect", std::chrono::seconds(2)),
+    "voice connect did not complete after connect released"
   );
+
+  MediaCommand disconnect;
+  disconnect.type = "disconnectVoice";
+  disconnect.request_id = "voice-disconnect";
+  disconnect.session_id = "voice-session";
+  disconnect.generation = 2;
+  require(runtime.dispatch(disconnect), "media runtime rejected voice disconnect");
+  require(
+    sink->waitReply("voice-disconnect", std::chrono::seconds(2)),
+    "voice disconnect did not retire the previous generation"
+  );
+
+  MediaCommand track_failure;
+  track_failure.type = "__voiceRemoteAudioTrackFailed";
+  track_failure.session_id = "voice-session";
+  track_failure.generation = 2;
+  track_failure.track_id = "failed-audio-track";
+  track_failure.video_source = "audio_output_stream_start_failed";
+  track_failure.internal_message = "injected track worker failure";
+  require(runtime.dispatch(std::move(track_failure)),
+    "media runtime rejected track-scoped audio failure");
+  require(sink->waitTrackFailure("failed-audio-track"),
+    "remote audio track failure terminalized the global output lane");
+
+  std::mutex release_mutex;
+  std::condition_variable released;
+  bool stale_frame_released = false;
+  MediaCommand stale_frame;
+  stale_frame.type = "__remoteVideoFrame";
+  stale_frame.session_id = "voice-session";
+  stale_frame.generation = 1;
+  stale_frame.track_id = "stale-track";
+  stale_frame.frame_sequence = 44;
+  stale_frame.on_drop = [&] {
+    {
+      std::lock_guard lock(release_mutex);
+      stale_frame_released = true;
+    }
+    released.notify_all();
+  };
+  require(runtime.dispatch(std::move(stale_frame)), "media runtime rejected stale frame cleanup");
+  {
+    std::unique_lock lock(release_mutex);
+    require(
+      released.wait_for(lock, std::chrono::seconds(1), [&] { return stale_frame_released; }),
+      "stale-generation frame was not released by its owning actor worker"
+    );
+  }
 
   runtime.requestShutdown();
   runtime.shutdownAndWait();

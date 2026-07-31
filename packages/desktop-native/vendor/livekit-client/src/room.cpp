@@ -107,7 +107,8 @@ bool Room::connect(const std::string& url, const std::string& token, const RoomO
 
   FfiClient::ListenerId listenerId = 0;
   try {
-    listenerId = FfiClient::instance().addListener([this](const proto::FfiEvent& e) { onEvent(e); });
+    listenerId =
+        FfiClient::instance().addListener([this](const proto::FfiEvent& e) { onEvent(e); }, "room");
     {
       const std::scoped_lock<std::mutex> g(lock_);
       listener_id_ = listenerId;

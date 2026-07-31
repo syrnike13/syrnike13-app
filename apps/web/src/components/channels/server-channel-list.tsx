@@ -255,7 +255,6 @@ function ChannelDroppableList({
                     }
                   }}
                   {...dragProvided.draggableProps}
-                  {...dragProvided.dragHandleProps}
                   style={dragProvided.draggableProps.style}
                   className={cn(
                     'touch-none',
@@ -270,6 +269,7 @@ function ChannelDroppableList({
                     unreads={unreads}
                     canManage={canManage}
                     canInvite={canInvite(channel)}
+                    dragHandleProps={dragProvided.dragHandleProps ?? undefined}
                   />
                 </div>
               )}

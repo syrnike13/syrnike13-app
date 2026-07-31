@@ -10,10 +10,10 @@ import type { Message } from '@syrnike13/api-types'
 import { Loader2Icon, PlusIcon, XIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
+import { ComposerAttachmentStrip } from '#/components/chat/composer-attachment-strip'
 import { ComposerEditor, type ComposerEditorHandle } from '#/components/chat/composer-editor'
 import { ComposerEmojiPicker } from '#/components/chat/composer-emoji-picker'
 import { ComposerReplyBanner } from '#/components/chat/message-reply-preview'
-import { FxImage } from '#/components/ui/fx-image'
 import { Button } from '#/components/ui/button'
 import type { SendMessageInput } from '#/features/api/messages-api'
 import type { Channel, User } from '@syrnike13/api-types'
@@ -154,6 +154,7 @@ export function MessageComposer({
     files,
     append: appendPendingFiles,
     remove: removePendingFile,
+    toggleSpoiler: togglePendingSpoiler,
     reset: resetAttachments,
     uploadAll: uploadAttachments,
   } = useComposerAttachments(channelId)
@@ -543,7 +544,9 @@ export function MessageComposer({
           waitingForConnection,
         ))
 
-  const hasComposerHeader = showReplyBanner || isEditing
+  const hasComposerHeader =
+    showReplyBanner || isEditing || files.length > 0
+  const showComposerDivider = showReplyBanner || isEditing
 
   const composerChrome = (
     <>
@@ -574,6 +577,13 @@ export function MessageComposer({
         </div>
       ) : null}
 
+      <ComposerAttachmentStrip
+        files={files}
+        sending={sending}
+        onRemove={removeFile}
+        onToggleSpoiler={togglePendingSpoiler}
+      />
+
       <div
         ref={composerInputRowRef}
         className={cn(
@@ -581,7 +591,7 @@ export function MessageComposer({
           floating && 'min-h-14',
           !floating && hasComposerHeader && 'min-h-14',
           !floating && !hasComposerHeader && 'min-h-11',
-          hasComposerHeader && 'border-t border-foreground/10',
+          showComposerDivider && 'border-t border-foreground/10',
         )}
       >
         {!isEditing ? (
@@ -704,55 +714,6 @@ export function MessageComposer({
         <p className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md bg-card/90 text-sm font-medium text-primary">
           Отпустите файлы для вложения
         </p>
-      ) : null}
-      {files.length > 0 ? (
-        <div className="flex flex-wrap gap-2" aria-label="Вложения">
-          {files.map((pending) => (
-            <div
-              key={pending.id}
-              className="relative flex items-center gap-2 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-secondary-foreground"
-            >
-              <div className="min-w-0">
-                {pending.previewUrl ? (
-                  <FxImage
-                    src={pending.previewUrl}
-                    rounded="md"
-                    wrapperClassName="size-10 shrink-0"
-                    className="size-10"
-                  />
-                ) : (
-                  <span className="block max-w-32 truncate">
-                    {pending.file.name}
-                  </span>
-                )}
-                {pending.status === 'uploading' ? (
-                  <span className="mt-1 block h-1 w-10 overflow-hidden rounded-full bg-muted" aria-label={`Загружено ${Math.round((pending.progress ?? 0) * 100)}%`}>
-                    <span
-                      className="block h-full bg-primary transition-[width] duration-150 motion-reduce:transition-none"
-                      style={{ width: `${Math.round((pending.progress ?? 0) * 100)}%` }}
-                    />
-                  </span>
-                ) : null}
-                {pending.status === 'error' ? (
-                  <span className="block max-w-32 truncate text-destructive">
-                    {pending.error}
-                  </span>
-                ) : null}
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-6"
-                disabled={sending && pending.status !== 'uploading'}
-                onClick={() => removeFile(pending.id)}
-                aria-label={`Удалить вложение ${pending.file.name}`}
-              >
-                <XIcon className="size-3" />
-              </Button>
-            </div>
-          ))}
-        </div>
       ) : null}
 
       {floating ? (

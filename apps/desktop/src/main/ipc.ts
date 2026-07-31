@@ -55,6 +55,8 @@ import {
 import { createDesktopDiagnosticBundle } from './diagnostic-bundle'
 import {
   acknowledgeNativeDiagnosticIncidents,
+  captureRendererDiagnosticIncidentForAccount,
+  configureNativeDiagnosticIncidentAccount,
   leaseNativeDiagnosticIncidents,
   releaseNativeDiagnosticIncidents,
 } from './native-runtime/diagnostic-incidents'
@@ -77,15 +79,37 @@ export function registerDesktopIpc(
     sessionPath: string
   },
 ) {
+  let authSessionRevision = 0
+  let authPersistenceTail = Promise.resolve()
+  const applyAuthenticatedSession = (session: DesktopStoredSession | null) => {
+    configureNativeDiagnosticIncidentAccount(session?.user_id ?? null)
+    desktopVoiceService.configureSession(session)
+  }
+  const serializeAuthPersistence = <T>(operation: () => Promise<T>) => {
+    const result = authPersistenceTail.then(operation)
+    authPersistenceTail = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    return result
+  }
   initializeHotkeys(getWindow)
   registerDisplayMediaIpc(getWindow)
   registerNativeMediaRuntimeIpc(getWindow)
   const unsubscribeVoice = desktopVoiceService.subscribe((snapshot) => {
     broadcastDesktopVoiceSnapshot(getWindow, IPC.voiceSnapshotChanged, snapshot)
   })
-  void loadDesktopSession(options.sessionPath).then((session) => {
-    desktopVoiceService.configureSession(session)
-  })
+  const initialAuthSessionRevision = authSessionRevision
+  void serializeAuthPersistence(() =>
+    loadDesktopSession(options.sessionPath),
+  )
+    .then((session) => {
+      if (authSessionRevision !== initialAuthSessionRevision) return
+      applyAuthenticatedSession(session)
+    })
+    .catch((error) => {
+      console.error('[desktop] failed to load persisted session', error)
+    })
 
   ipcMain.handle(IPC.versions, () => ({
     app: app.getVersion(),
@@ -159,21 +183,38 @@ export function registerDesktopIpc(
     options.setTrayVoiceState(state)
   })
 
-  ipcMain.handle(IPC.authLoadSession, () =>
-    loadDesktopSession(options.sessionPath),
-  )
+  ipcMain.handle(IPC.authLoadSession, async () => {
+    const revision = authSessionRevision
+    const session = await serializeAuthPersistence(() =>
+      loadDesktopSession(options.sessionPath),
+    )
+    if (authSessionRevision !== revision) return null
+    applyAuthenticatedSession(session)
+    return session
+  })
 
   ipcMain.handle(
     IPC.authSaveSession,
     async (_event, session: DesktopStoredSession) => {
-      await saveDesktopSession(options.sessionPath, session)
-      desktopVoiceService.configureSession(session)
+      const revision = ++authSessionRevision
+      await serializeAuthPersistence(async () => {
+        if (authSessionRevision !== revision) return
+        await saveDesktopSession(options.sessionPath, session)
+        if (authSessionRevision === revision) applyAuthenticatedSession(session)
+      })
     },
   )
 
   ipcMain.handle(IPC.authClearSession, async () => {
-    desktopVoiceService.configureSession(null)
-    await clearDesktopSession(options.sessionPath)
+    const revision = ++authSessionRevision
+    // Logout revokes in-memory authority immediately. Disk persistence is
+    // serialized for ordering, but a slow or failed delete must never leave
+    // voice and diagnostics authenticated under the retired account.
+    applyAuthenticatedSession(null)
+    await serializeAuthPersistence(async () => {
+      if (authSessionRevision !== revision) return
+      await clearDesktopSession(options.sessionPath)
+    })
   })
 
   ipcMain.handle(IPC.voiceGetSnapshot, () => desktopVoiceService.snapshot())
@@ -203,14 +244,17 @@ export function registerDesktopIpc(
       return createDesktopDiagnosticBundle(rendererJsonl)
     },
   )
-  ipcMain.handle(IPC.diagnosticsLeaseNativeIncidents, () =>
-    leaseNativeDiagnosticIncidents(),
+  ipcMain.handle(IPC.diagnosticsLeaseNativeIncidents, (_event, accountId) =>
+    leaseNativeDiagnosticIncidents(accountId),
   )
-  ipcMain.handle(IPC.diagnosticsAcknowledgeNativeIncidents, (_event, batchId) =>
-    acknowledgeNativeDiagnosticIncidents(batchId),
+  ipcMain.handle(IPC.diagnosticsEnqueueIncident, (_event, accountId, incident) =>
+    captureRendererDiagnosticIncidentForAccount(accountId, incident),
   )
-  ipcMain.handle(IPC.diagnosticsReleaseNativeIncidents, (_event, batchId) =>
-    releaseNativeDiagnosticIncidents(batchId),
+  ipcMain.handle(IPC.diagnosticsAcknowledgeNativeIncidents, (_event, accountId, batchId) =>
+    acknowledgeNativeDiagnosticIncidents(accountId, batchId),
+  )
+  ipcMain.handle(IPC.diagnosticsReleaseNativeIncidents, (_event, accountId, batchId) =>
+    releaseNativeDiagnosticIncidents(accountId, batchId),
   )
 
   ipcMain.handle(IPC.hotkeysGetBindings, () => getHotkeyBindings())

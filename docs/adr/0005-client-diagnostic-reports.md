@@ -3,6 +3,8 @@
 - **Status:** Accepted
 - **Date:** 2026-07-18
 - **Revised:** 2026-07-19 — redacted reports are enabled by default
+- **Implementation clarification:** 2026-07-21 — typed causal incidents and a
+  single automatic trigger owner
 
 ## Context
 
@@ -21,6 +23,24 @@ and version 2 browser preference migrations enable reports once for existing
 installations; a later explicit opt-out remains durable. A user can also send a
 report manually from settings. Repeated automatic reports for the same area and
 trigger are limited by a client cooldown and a server rate limit.
+
+Automatic upload classification is based on typed Diagnostic Incidents, not
+regex matching against log text. The incident identity includes the stable
+failure family and the available runtime, media kind, lane, stage, and causal
+correlation. Low-level request, recycle, Runtime Loss, and Voice Session
+projection records attach bounded evidence and occurrence counts to the same
+incident.
+
+On desktop, Electron main owns pending incidents, deduplication, cooldown, and
+upload leases across renderer reloads. The authenticated renderer is an upload
+executor: it adds the renderer ring and acknowledges or releases the lease, but
+does not independently decide to create a second automatic report. Manual
+reports remain explicit user actions and do not consume automatic cooldown.
+This ownership is scoped to the authenticated account in memory: logout or an
+account switch retires every pending incident, lease, cooldown, retry, and
+fingerprint before a new renderer may upload, while a token refresh for the same
+account preserves the current state. The account identity is never serialized
+into the diagnostic bundle.
 
 The Windows desktop main process also treats native request errors and timeouts,
 queue exhaustion, out-of-order control events, degraded states, unexpected

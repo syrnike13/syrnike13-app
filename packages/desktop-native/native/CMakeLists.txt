@@ -102,6 +102,8 @@ endfunction()
 add_library(syrnike_media_core STATIC
   src/common/diagnostic_log.cpp
   src/media/audio_devices.cpp
+  src/media/audio_failure.cpp
+  src/media/audio_failure.hpp
   src/media/audio_processing.cpp
   src/media/camera_actor.cpp
   src/media/camera_capture.cpp
@@ -109,6 +111,7 @@ add_library(syrnike_media_core STATIC
   src/media/livekit_publication_client.cpp
   src/media/media_runtime.cpp
   src/media/media_runtime_support.cpp
+  src/media/media_operation.hpp
   src/media/microphone_actor.cpp
   src/media/microphone_audio_processor.cpp
   src/media/microphone_publication_controller.cpp
@@ -116,6 +119,7 @@ add_library(syrnike_media_core STATIC
   src/media/preview_actor.cpp
   src/media/remote_audio_output.cpp
   src/media/remote_video_bridge.cpp
+  src/media/remote_video_texture_pool.cpp
   src/media/screen_actor.cpp
   src/media/screen_publication_controller.cpp
   src/media/screen_audio_capture.cpp
@@ -131,6 +135,7 @@ syrnike_native_target(syrnike_media_core)
 target_link_libraries(syrnike_media_core PUBLIC
   LiveKit::livekit
   avrt
+  cfgmgr32
   Mmdevapi
   mf
   mfplat
@@ -176,6 +181,7 @@ endif()
 foreach(HOOK_RUNTIME hotkey overlay)
   add_library(syrnike_${HOOK_RUNTIME} MODULE
     ${CMAKE_JS_SRC}
+    src/common/diagnostic_log.cpp
     src/common/node_event_sink.cpp
     src/hooks/hooks_addon.cpp
   )
@@ -196,6 +202,15 @@ foreach(HOOK_RUNTIME hotkey overlay)
 endforeach()
 
 enable_testing()
+add_executable(syrnike-native-actor-mailbox-tests
+  tests/actor_mailbox_test.cpp
+)
+syrnike_native_target(syrnike-native-actor-mailbox-tests)
+add_test(
+  NAME syrnike-native-actor-mailbox-tests
+  COMMAND syrnike-native-actor-mailbox-tests
+)
+
 add_executable(syrnike-native-runtime-core-tests
   tests/runtime_core_test.cpp
   src/common/diagnostic_log.cpp
@@ -307,6 +322,36 @@ add_test(
   COMMAND syrnike-native-screen-capture-target-tests
 )
 
+add_executable(syrnike-native-screen-capture-slot-state-tests
+  tests/screen_capture_slot_state_test.cpp
+)
+syrnike_native_target(syrnike-native-screen-capture-slot-state-tests)
+add_test(
+  NAME syrnike-native-screen-capture-slot-state-tests
+  COMMAND syrnike-native-screen-capture-slot-state-tests
+)
+
+add_executable(syrnike-native-display-source-window-probe-tests
+  tests/display_source_window_probe_test.cpp
+)
+syrnike_native_target(syrnike-native-display-source-window-probe-tests)
+add_test(
+  NAME syrnike-native-display-source-window-probe-tests
+  COMMAND syrnike-native-display-source-window-probe-tests
+)
+
+add_executable(syrnike-native-capture-backend-supervisor-tests
+  tests/capture_backend_supervisor_test.cpp
+)
+syrnike_native_target(syrnike-native-capture-backend-supervisor-tests)
+target_link_libraries(
+  syrnike-native-capture-backend-supervisor-tests PRIVATE user32 dxgi
+)
+add_test(
+  NAME syrnike-native-capture-backend-supervisor-tests
+  COMMAND syrnike-native-capture-backend-supervisor-tests
+)
+
 add_executable(syrnike-native-camera-actor-lifecycle-tests
   tests/camera_actor_lifecycle_test.cpp
 )
@@ -340,6 +385,19 @@ add_test(
   COMMAND syrnike-native-remote-audio-output-failure-tests
 )
 
+add_executable(syrnike-native-remote-video-bridge-shutdown-tests
+  tests/remote_video_bridge_shutdown_test.cpp
+)
+syrnike_native_target(syrnike-native-remote-video-bridge-shutdown-tests)
+target_link_libraries(
+  syrnike-native-remote-video-bridge-shutdown-tests PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(syrnike-native-remote-video-bridge-shutdown-tests)
+add_test(
+  NAME syrnike-native-remote-video-bridge-shutdown-tests
+  COMMAND syrnike-native-remote-video-bridge-shutdown-tests
+)
+
 add_executable(syrnike-native-hooks-runtime-lifecycle-tests
   tests/hooks_runtime_lifecycle_test.cpp
 )
@@ -358,6 +416,20 @@ target_link_libraries(syrnike-native-d3d11-gpu-completion-tests PRIVATE d3d11 dx
 add_test(
   NAME syrnike-native-d3d11-gpu-completion-tests
   COMMAND syrnike-native-d3d11-gpu-completion-tests
+)
+
+# Manual, non-gating benchmark for the exact decoded-BGRA to Electron shared
+# texture path. It verifies cross-device contents and reports 1080p throughput.
+add_executable(syrnike-native-remote-video-texture-pool-benchmark
+  tests/remote_video_texture_pool_benchmark.cpp
+)
+syrnike_native_target(syrnike-native-remote-video-texture-pool-benchmark)
+target_link_libraries(
+  syrnike-native-remote-video-texture-pool-benchmark
+  PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(
+  syrnike-native-remote-video-texture-pool-benchmark
 )
 
 add_executable(syrnike-native-screen-dxgi-compositor-tests
@@ -383,7 +455,7 @@ add_executable(syrnike-native-screen-streaming-benchmark
   src/media/screen_capture_priority.cpp
   src/media/screen_dxgi_compositor.cpp
   src/media/screen_gpu_capture.cpp
-  src/media/screen_video_capture.cpp
+  tests/screen_video_capture_benchmark.cpp
 )
 syrnike_native_target(syrnike-native-screen-streaming-benchmark)
 target_link_libraries(syrnike-native-screen-streaming-benchmark PRIVATE

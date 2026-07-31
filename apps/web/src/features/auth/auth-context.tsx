@@ -21,6 +21,7 @@ import {
 } from '#/lib/session'
 import { eventsGateway, type GatewayState } from '#/features/events/gateway'
 import { syncStore } from '#/features/sync/sync-store'
+import { configureRendererDiagnosticAccount } from '#/features/diagnostics/diagnostic-reporter'
 import {
   completeOnboarding as completeOnboardingRequest,
   fetchOnboardHello,
@@ -88,13 +89,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileLoadError, setProfileLoadError] = useState<Error | null>(null)
   const [gatewayState, setGatewayState] = useState<GatewayState>('idle')
   const [hydrated, setHydrated] = useState(false)
+  const applySession = useCallback((next: StoredSession | null) => {
+    configureRendererDiagnosticAccount(next?.user_id ?? null)
+    setSession(next)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     void loadPersistedSession()
       .then((storedSession) => {
         if (cancelled) return
-        setSession(storedSession)
+        applySession(storedSession)
       })
       .finally(() => {
         if (!cancelled) setHydrated(true)
@@ -102,7 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [applySession])
 
   useEffect(() => {
     const unsubscribe = eventsGateway.subscribeState(setGatewayState)
@@ -149,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const invalidateSession = useCallback(
     (message?: string) => {
       void clearSession()
-      setSession(null)
+      applySession(null)
       setMfaChallenge(null)
       setProfileLoadError(null)
       eventsGateway.disableAutoReconnect()
@@ -162,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       if (message) toast.error(message)
     },
-    [queryClient],
+    [applySession, queryClient],
   )
 
   useEffect(() => {
@@ -218,13 +223,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user_id: data.user_id,
       }
       await saveSession(next)
-      setSession(next)
+      applySession(next)
       setMfaChallenge(null)
       setProfileLoadError(null)
       void queryClient.invalidateQueries({ queryKey: queryKeys.auth.session })
       return next.token
     },
-    [queryClient],
+    [applySession, queryClient],
   )
 
   const login = useCallback(

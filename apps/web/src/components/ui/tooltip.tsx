@@ -26,10 +26,45 @@ function Tooltip({
   return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
 }
 
+/**
+ * Radix opens tooltips on ANY focus event: mouse click, programmatic focus
+ * (e.g. dialog auto-focus on open/close), and window refocus after
+ * minimize/Alt-Tab. Only keyboard focus (`:focus-visible`) should open the
+ * tooltip. Radix skips its internal focus handler when the event is
+ * default-prevented (composeEventHandlers), so we preventDefault here.
+ */
+function suppressNonKeyboardFocus(event: React.FocusEvent<HTMLElement>) {
+  const target = event.target
+  if (!(target instanceof HTMLElement)) {
+    event.preventDefault()
+    return
+  }
+  try {
+    if (!target.matches(":focus-visible")) {
+      event.preventDefault()
+    }
+  } catch {
+    // Environments without :focus-visible support (older jsdom) keep the
+    // previous behavior and allow focus-opened tooltips.
+  }
+}
+
 function TooltipTrigger({
+  onFocus,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+  return (
+    <TooltipPrimitive.Trigger
+      data-slot="tooltip-trigger"
+      {...props}
+      onFocus={(event) => {
+        onFocus?.(event)
+        if (!event.defaultPrevented) {
+          suppressNonKeyboardFocus(event)
+        }
+      }}
+    />
+  )
 }
 
 function TooltipContent({

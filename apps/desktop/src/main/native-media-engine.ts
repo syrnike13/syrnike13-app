@@ -32,6 +32,7 @@ let getWindowRef: (() => BrowserWindow | null) | null = null
 let remoteVideoBridge: NativeSharedTextureBridge | null = null
 let localPreviewBridge: NativeSharedTextureBridge | null = null
 let stopVideoEvents: (() => void) | null = null
+let stopControllerEvents: (() => void) | null = null
 
 type NativeMediaDiagnostics = {
   session: NativeDiagnosticSession
@@ -107,6 +108,10 @@ export function registerNativeMediaRuntimeIpc(
   getWindowRef = getWindow
   remoteVideoBridge ??= createVideoBridge(getWindow, false)
   localPreviewBridge ??= createVideoBridge(getWindow, true)
+  stopControllerEvents ??= controller.subscribe((event) => {
+    if (event.type !== 'remoteVideoSessionReset') return
+    remoteVideoBridge?.resetSession(event.sessionId, event.generation)
+  })
   stopVideoEvents ??= supervisor.onEvent((event) => {
     if (event.type === 'localScreenPreviewFailed') {
       console.warn('[native-media] local screen preview failed', {
@@ -133,6 +138,19 @@ export function registerNativeMediaRuntimeIpc(
       event.type === 'localScreenPreviewFrame' ||
       event.type === 'localCameraPreviewFrame') {
       const local = event.type !== 'remoteVideoFrame'
+      if (!local && !controller.isCurrentVoiceSession(
+        event.sessionId,
+        event.generation,
+      )) {
+        void supervisor.request({
+          type: 'releaseRemoteVideoFrame',
+          sessionId: event.sessionId,
+          generation: event.generation,
+          trackId: event.trackId,
+          sequence: event.frameSequence,
+        }, 2_000).catch(() => undefined)
+        return
+      }
       const bridge = local ? localPreviewBridge : remoteVideoBridge
       if (!bridge) return
       void bridge.deliver({
@@ -170,6 +188,7 @@ export function registerNativeMediaRuntimeIpc(
     }
     if (event.type === 'remoteScreenPublicationAvailable' ||
       event.type === 'remoteScreenPublicationUnavailable') {
+      if (!controller.isCurrentVoiceSession(event.sessionId, event.generation)) return
       const window = getWindow()
       if (window && !window.isDestroyed()) {
         const suffix = event.type === 'remoteScreenPublicationAvailable'
@@ -197,6 +216,8 @@ export function registerNativeMediaRuntimeIpc(
         event.type === 'localCameraPreviewFailed'
         ? localPreviewBridge
         : remoteVideoBridge
+      if (bridge === remoteVideoBridge &&
+        !controller.isCurrentVoiceSession(event.sessionId, event.generation)) return
       bridge?.removeTrack(event.sessionId, event.generation, event.trackId)
       const window = getWindow()
       if (window && !window.isDestroyed()) {
@@ -209,7 +230,14 @@ export function registerNativeMediaRuntimeIpc(
     }
   })
   const window = getWindow()
-  window?.webContents.on('did-start-navigation', rendererReloaded)
+  window?.webContents.on(
+    'did-start-navigation',
+    (_event, _url, isInPlace, isMainFrame) => {
+      if (isRendererReplacementNavigation(isInPlace, isMainFrame)) {
+        rendererReloaded()
+      }
+    },
+  )
   window?.webContents.on('render-process-gone', (_event, details) => {
     console.error('[native-video] renderer process gone', details)
     rendererReloaded()
@@ -252,8 +280,16 @@ function createVideoBridge(
 }
 
 function rendererReloaded() {
+  controller.resetRemoteVideoDemands()
   remoteVideoBridge?.rendererReloaded()
   localPreviewBridge?.rendererReloaded()
+}
+
+export function isRendererReplacementNavigation(
+  isInPlace: boolean,
+  isMainFrame: boolean,
+) {
+  return isMainFrame && !isInPlace
 }
 
 export function startNativeMediaRuntime() {
@@ -279,6 +315,8 @@ export async function disposeNativeMediaRuntime() {
   try {
     stopVideoEvents?.()
     stopVideoEvents = null
+    stopControllerEvents?.()
+    stopControllerEvents = null
     remoteVideoBridge?.dispose()
     remoteVideoBridge = null
     localPreviewBridge?.dispose()
@@ -329,6 +367,11 @@ function nativeVoiceDiagnosticRecord(
     ),
     reason: diagnosticString(detail.reason),
     stage: diagnosticString(detail.stage ?? failure.stage),
+    fatal: typeof detail.fatal === 'boolean'
+      ? detail.fatal
+      : typeof failure.fatal === 'boolean'
+        ? failure.fatal
+        : undefined,
     errorCode: diagnosticString(
       detail.errorCode ?? detail.errorType ?? failure.code,
     ),
@@ -354,10 +397,7 @@ function ensureNativeMediaDiagnostics(): NativeMediaDiagnostics | null {
   // permanent diagnostics failure for the rest of the process lifetime.
   if (!app.isReady()) return null
   if (nativeMediaDiagnostics !== undefined) return nativeMediaDiagnostics
-  if (
-    process.platform !== 'win32' ||
-    process.env.SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS !== '1'
-  ) {
+  if (!nativeMediaDiagnosticsEnabled()) {
     nativeMediaDiagnostics = null
     return null
   }
@@ -392,4 +432,11 @@ function ensureNativeMediaDiagnostics(): NativeMediaDiagnostics | null {
     nativeMediaDiagnostics = null
     return null
   }
+}
+
+export function nativeMediaDiagnosticsEnabled(
+  platform = process.platform,
+  configured = process.env.SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS,
+) {
+  return platform === 'win32' && configured !== '0'
 }

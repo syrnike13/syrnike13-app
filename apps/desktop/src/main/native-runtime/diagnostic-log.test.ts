@@ -2,12 +2,13 @@ import { mkdir, mkdtemp, readFile, rm, stat, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   createNativeDiagnosticLog,
   createNativeDiagnosticSession,
   pruneNativeDiagnosticSessions,
+  rolledDiagnosticFilePath,
 } from './diagnostic-log'
 
 const directories: string[] = []
@@ -43,6 +44,13 @@ describe('native diagnostic log', () => {
 
     log.log('transport_post', {
       requestId: 'request-1',
+      diagnostic: {
+        actionId: 'media-action-a',
+        operationId: 'operation-a',
+        revision: 4,
+        hostEpoch: 2,
+        deviceName: 'Private microphone name',
+      },
       command: {
         type: 'connectMicrophone',
         options: {
@@ -97,6 +105,12 @@ describe('native diagnostic log', () => {
     })
     expect(lines[0].data.payload).toEqual({
       requestId: 'request-1',
+      diagnostic: {
+        actionId: 'media-action-a',
+        operationId: 'operation-a',
+        revision: 4,
+        hostEpoch: 2,
+      },
       command: {
         type: 'connectMicrophone',
         options: {
@@ -135,6 +149,81 @@ describe('native diagnostic log', () => {
       .split('\n')
       .map((line) => JSON.parse(line))
     expect(lines.map((line) => line.event)).toEqual(['utility_ready'])
+  })
+
+  it('bounds queued records while diagnostic storage is stalled', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'syrnike-native-diagnostic-'))
+    directories.push(rootDir)
+    const session = createNativeDiagnosticSession({
+      runtime: 'media',
+      rootDir,
+      randomUUID: () => 'run-stalled-storage',
+    })
+    let releaseStorage!: () => void
+    const storageAvailable = new Promise<void>((resolve) => {
+      releaseStorage = resolve
+    })
+    const appendFileImpl = vi.fn(() => storageAvailable)
+    const log = createNativeDiagnosticLog({
+      runtime: 'media',
+      role: 'utility',
+      runId: session.runId,
+      directory: session.directory,
+      filePath: session.paths.utilityPath,
+      appendFileImpl: appendFileImpl as never,
+      maxPendingWrites: 2,
+    })
+
+    for (let index = 0; index < 100; index += 1) {
+      log.log('native_event', { index })
+    }
+    await vi.waitFor(() => expect(appendFileImpl).toHaveBeenCalledTimes(1))
+    releaseStorage()
+    await log.close()
+
+    expect(appendFileImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('rotates JSONL files before they exceed the configured bound', async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), 'syrnike-native-diagnostic-'))
+    directories.push(rootDir)
+    const session = createNativeDiagnosticSession({
+      runtime: 'media',
+      rootDir,
+      randomUUID: () => 'run-rotation',
+    })
+    const log = createNativeDiagnosticLog({
+      runtime: 'media',
+      role: 'electron-main',
+      runId: session.runId,
+      directory: session.directory,
+      filePath: session.paths.electronMainPath,
+      maxFileBytes: 1_024,
+      maxRolledFiles: 2,
+    })
+
+    for (let index = 0; index < 12; index += 1) {
+      log.log('bounded_entry', {
+        index,
+        message: `entry-${index}-${'x'.repeat(180)}`,
+      })
+    }
+    await log.close()
+
+    const files = [
+      session.paths.electronMainPath,
+      rolledDiagnosticFilePath(session.paths.electronMainPath, 1),
+      rolledDiagnosticFilePath(session.paths.electronMainPath, 2),
+    ]
+    const sizes = await Promise.all(files.map((file) => stat(file).then((value) => value.size)))
+    expect(sizes.every((size) => size <= 1_024)).toBe(true)
+    const retained = (
+      await Promise.all(files.reverse().map((file) => readFile(file, 'utf8')))
+    )
+      .flatMap((value) => value.trim().split('\n'))
+      .map((line) => JSON.parse(line).data.payload.index)
+    expect(retained.at(-1)).toBe(11)
+    expect(retained.length).toBeLessThan(12)
   })
 
   it('removes diagnostic sessions older than seven days', async () => {

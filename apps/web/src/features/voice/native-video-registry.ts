@@ -100,6 +100,9 @@ export class NativeVideoRegistry {
     if (this.listening || typeof window === 'undefined') return
     this.listening = true
     window.addEventListener('message', this.onMessage)
+    void window.syrnikeDesktop?.media
+      .replayRemoteScreenPublications()
+      .catch(() => undefined)
   }
 
   stop() {
@@ -119,7 +122,7 @@ export class NativeVideoRegistry {
 
   clearRemote() {
     if (this.activeRemoteSession) {
-      this.retiredRemoteSessions.add(remoteSessionKey(this.activeRemoteSession))
+      this.retireRemoteSession(this.activeRemoteSession)
       this.activeRemoteSession = null
     }
     if (!this.clearRemoteEntries()) return
@@ -247,6 +250,11 @@ export class NativeVideoRegistry {
 
   private readonly onMessage = (event: MessageEvent<unknown>) => {
     if (event.source !== window || event.origin !== window.location.origin) return
+    if (isSessionResetMessage(event.data)) {
+      if (!this.isActiveRemoteSession(event.data.metadata)) return
+      this.clearRemote()
+      return
+    }
     if (isPublicationMessage(event.data)) {
       const { metadata } = event.data
       if (event.data.type === 'syrnike-native-screen-publication-unavailable') {
@@ -448,9 +456,12 @@ export class NativeVideoRegistry {
     }
     if (active.sessionId === metadata.sessionId &&
       active.generation === metadata.generation) return true
-    if (metadata.generation < active.generation) return false
+    if (
+      active.sessionId === metadata.sessionId &&
+      metadata.generation < active.generation
+    ) return false
 
-    this.retiredRemoteSessions.add(remoteSessionKey(active))
+    this.retireRemoteSession(active)
     this.clearRemoteEntries()
     this.activeRemoteSession = {
       sessionId: metadata.sessionId,
@@ -462,6 +473,17 @@ export class NativeVideoRegistry {
   private isActiveRemoteSession(metadata: { sessionId: string; generation: number }) {
     return this.activeRemoteSession?.sessionId === metadata.sessionId &&
       this.activeRemoteSession.generation === metadata.generation
+  }
+
+  private retireRemoteSession(value: { sessionId: string; generation: number }) {
+    const key = remoteSessionKey(value)
+    if (this.retiredRemoteSessions.has(key)) return
+    this.retiredRemoteSessions.add(key)
+    while (this.retiredRemoteSessions.size > 256) {
+      const oldest = this.retiredRemoteSessions.values().next().value
+      if (oldest === undefined) break
+      this.retiredRemoteSessions.delete(oldest)
+    }
   }
 
   private clearRemoteEntries() {
@@ -516,6 +538,20 @@ function isTrackRemovedMessage(value: unknown): value is {
       (candidate.metadata as { generation?: unknown }).generation,
     )
   )
+}
+
+function isSessionResetMessage(value: unknown): value is {
+  type: 'syrnike-native-video-session-reset'
+  metadata: { sessionId: string; generation: number }
+} {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as {
+    type?: unknown
+    metadata?: { sessionId?: unknown; generation?: unknown }
+  }
+  return candidate.type === 'syrnike-native-video-session-reset' &&
+    typeof candidate.metadata?.sessionId === 'string' &&
+    Number.isSafeInteger(candidate.metadata.generation)
 }
 
 function isSubscriptionFailedMessage(value: unknown): value is {

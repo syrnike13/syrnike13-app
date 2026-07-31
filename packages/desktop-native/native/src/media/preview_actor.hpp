@@ -1,6 +1,8 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <span>
 
@@ -11,7 +13,12 @@ namespace syrnike::desktop_native::media {
 
 class PreviewActor final {
  public:
-  explicit PreviewActor(SequencedEmitter& emitter);
+  using BeforeRenderOperation = std::function<void()>;
+
+  explicit PreviewActor(
+    SequencedEmitter& emitter,
+    BeforeRenderOperation before_render_operation = {}
+  );
   ~PreviewActor();
 
   RuntimeEvent start(const MediaCommand& command);
@@ -23,10 +30,11 @@ class PreviewActor final {
   );
   void stop(const MediaCommand& command, bool emit_stopped = true);
   void shutdown();
+  void shutdown(std::chrono::steady_clock::time_point deadline);
 
  private:
   class Implementation;
-  std::unique_ptr<Implementation> implementation_;
+  std::shared_ptr<Implementation> implementation_;
 };
 
 }  // namespace syrnike::desktop_native::media

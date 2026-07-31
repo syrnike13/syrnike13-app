@@ -30,6 +30,7 @@ services:
   # Redis: Event message broker & KV store
   redis:
     image: docker.io/eqalpha/keydb
+    command: ["keydb-server", "/etc/keydb/keydb.conf", "--save", ""]
     logging: *json-log-rotation
     restart: always
 

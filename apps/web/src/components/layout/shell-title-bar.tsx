@@ -9,11 +9,13 @@ import {
   SHELL_TITLEBAR_WIN32_BUTTON_WIDTH_PX,
   shellLowestSurface,
   shellTitleBarDragClass,
+  shellTitleBarNoDragClass,
 } from '#/components/layout/shell-chrome'
 import {
   ShellHistoryNavButtons,
   ShellWindowControls,
 } from '#/components/layout/shell-title-bar-controls'
+import { DesktopUpdateTitleBarButton } from '#/features/desktop/desktop-update-banner'
 import { usePlatform } from '#/platform/use-platform'
 import { cn } from '#/lib/utils'
 
@@ -39,6 +41,14 @@ function MacShellTitleBar({ heightPx }: { heightPx: number }) {
         }}
       >
         <ShellHistoryNavButtons layout="macos" />
+      </div>
+      <div
+        className={cn(
+          'absolute inset-y-0 right-2 z-10 flex items-center',
+          shellTitleBarNoDragClass,
+        )}
+      >
+        <DesktopUpdateTitleBarButton />
       </div>
     </header>
   )
@@ -68,7 +78,12 @@ function WindowsShellTitleBar({ heightPx }: { heightPx: number }) {
       <div className="absolute inset-y-0 left-0 z-10">
         <ShellHistoryNavButtons layout="windows" heightPx={heightPx} />
       </div>
-      <div className="absolute inset-y-0 right-0 z-10">
+      <div className="absolute inset-y-0 right-0 z-10 flex items-center">
+        <div
+          className={cn('flex items-center px-1', shellTitleBarNoDragClass)}
+        >
+          <DesktopUpdateTitleBarButton />
+        </div>
         <ShellWindowControls heightPx={heightPx} />
       </div>
     </header>
@@ -82,7 +97,12 @@ function LinuxShellTitleBar({ heightPx }: { heightPx: number }) {
       style={{ height: heightPx }}
     >
       <ShellTitleBarDragRegion className="absolute inset-0" />
-      <div className="absolute inset-y-0 right-0 z-10">
+      <div className="absolute inset-y-0 right-0 z-10 flex items-center">
+        <div
+          className={cn('flex items-center px-1', shellTitleBarNoDragClass)}
+        >
+          <DesktopUpdateTitleBarButton />
+        </div>
         <ShellWindowControls heightPx={heightPx} />
       </div>
     </header>
@@ -98,6 +118,14 @@ function WebShellTitleBar() {
       )}
     >
       <ShellHistoryNavButtons />
+      <div
+        className={cn(
+          'ml-auto flex items-center',
+          shellTitleBarNoDragClass,
+        )}
+      >
+        <DesktopUpdateTitleBarButton />
+      </div>
     </header>
   )
 }

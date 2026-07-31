@@ -74,6 +74,23 @@ inline std::uint64_t uint64Field(const Napi::Object& object, const char* key) {
   return 0;
 }
 
+inline std::uint64_t positiveSafeIntegerField(
+  const Napi::Object& object,
+  const char* key
+) {
+  const auto value = object.Get(key);
+  if (!value.IsNumber()) {
+    throw std::invalid_argument(std::string(key) + " must be a positive integer");
+  }
+  const auto number = value.As<Napi::Number>().DoubleValue();
+  constexpr auto kMaximumSafeInteger = 9'007'199'254'740'991.0;
+  if (!std::isfinite(number) || number < 1 ||
+      number > kMaximumSafeInteger || std::floor(number) != number) {
+    throw std::invalid_argument(std::string(key) + " must be a positive safe integer");
+  }
+  return static_cast<std::uint64_t>(number);
+}
+
 inline std::string nestedStringField(
   const Napi::Object& object,
   const char* object_key,
@@ -107,6 +124,16 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   MediaCommand command;
   command.type = stringField(object, "type");
   command.request_id = stringField(object, "requestId");
+  const auto diagnostic_value = object.Get("diagnostic");
+  if (diagnostic_value.IsObject()) {
+    const auto diagnostic = diagnostic_value.As<Napi::Object>();
+    command.diagnostic_action_id = stringField(diagnostic, "actionId");
+    command.diagnostic_operation_id = stringField(diagnostic, "operationId");
+    command.diagnostic_host_epoch = uint64Field(diagnostic, "hostEpoch");
+    if (hasField(diagnostic, "revision")) {
+      command.diagnostic_revision = uint64Field(diagnostic, "revision");
+    }
+  }
   command.session_id = stringField(object, "sessionId");
   command.generation = uint64Field(object, "generation");
   const auto options_value = object.Get("options");
@@ -125,11 +152,33 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   if (command.device_id.empty()) command.device_id = stringField(object, "deviceId");
   command.device_kind = stringField(object, "kind");
   command.source_id = stringField(settings, "sourceId");
-  command.livekit_url = nestedStringField(settings, "livekit", "url");
-  command.livekit_token = nestedStringField(settings, "livekit", "token");
-  command.participant_identity = nestedStringField(settings, "livekit", "participantIdentity");
+  if (command.type == "connectVoice") {
+    command.livekit_url = nestedStringField(settings, "livekit", "url");
+    command.livekit_token = nestedStringField(settings, "livekit", "token");
+    command.participant_identity = nestedStringField(
+      settings, "livekit", "participantIdentity"
+    );
+  } else {
+    if (!settings.Get("livekit").IsUndefined()) {
+      throw std::invalid_argument(
+        "LiveKit credentials are only accepted by connectVoice"
+      );
+    }
+    command.participant_identity = stringField(settings, "participantIdentity");
+  }
   command.track_id = stringField(object, "trackId");
-  command.frame_sequence = uint64Field(object, "sequence");
+  if (
+    command.type == "releaseRemoteVideoFrame" ||
+    command.type == "releaseLocalScreenPreviewFrame" ||
+    command.type == "releaseLocalCameraPreviewFrame"
+  ) {
+    if (command.track_id.empty()) {
+      throw std::invalid_argument("trackId is required for frame release");
+    }
+    command.frame_sequence = positiveSafeIntegerField(object, "sequence");
+  } else {
+    command.frame_sequence = uint64Field(object, "sequence");
+  }
   command.width = intField(settings, "width", command.width);
   command.height = intField(settings, "height", command.height);
   command.fps = intField(settings, "fps", command.fps);
@@ -205,6 +254,12 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   if (command.type.empty()) throw std::invalid_argument("command.type is required");
   if (command.request_id.empty()) throw std::invalid_argument("command.requestId is required");
   if (command.request_id.size() > 256) throw std::invalid_argument("requestId is too long");
+  if (command.diagnostic_action_id.size() > 128) {
+    throw std::invalid_argument("diagnostic.actionId is too long");
+  }
+  if (command.diagnostic_operation_id.size() > 128) {
+    throw std::invalid_argument("diagnostic.operationId is too long");
+  }
   if (command.session_id.size() > 256) throw std::invalid_argument("sessionId is too long");
   if (command.device_id.size() > 2'048) throw std::invalid_argument("deviceId is too long");
   if (!command.device_kind.empty() && command.device_kind != "audioinput" &&

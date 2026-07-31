@@ -176,6 +176,17 @@ preserved. Logs redact tokens, URLs, identities, device/source/window data and
 paths, remove local run directories older than seven days, and contribute a
 fairly shared maximum of 30 MiB to a report.
 
+Each native command carries an ephemeral diagnostic action ID plus its voice
+operation, local revision, native generation, utility-host epoch and transport
+request ID. The same fields cross Electron main, the utility process and the
+C++ addon only as diagnostic metadata; native execution never reads them to
+decide command behavior. Terminal `command_summary` records use a structured
+outcome (`success`, `error`, `timeout` or `rejected`), so two uploaded bundles
+can compare the failing and fixed path without reproducing a full stream.
+Automatic incident summaries retain the compact action/operation/revision/
+generation/host tuple while keeping request identity behind an opaque incident
+correlation ID.
+
 After native records are normalized, the desktop bundle is capped at 33 MiB
 decompressed and 10 MiB gzip-compressed; incompressible native tails are reduced
 until both upload limits are satisfied.

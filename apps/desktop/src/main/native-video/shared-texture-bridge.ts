@@ -29,6 +29,7 @@ export type SharedTextureBridgeDependencies = {
   importTexture?: typeof sharedTexture.importSharedTexture
   sendTexture?: typeof sharedTexture.sendSharedTexture
   maxInFlight?: number
+  maxRetainedBytes?: number
   stallTimeoutMs?: number
   deliveryFailureThreshold?: number
   deliveryFailureCooldownMs?: number
@@ -54,8 +55,10 @@ export class NativeSharedTextureBridge {
   private readonly lastDeliveryRecoveryAt = new Map<string, number>()
   private rendererEpoch = 0
   private runtimeEpoch: number | null = null
+  private retainedBytes = 0
   private disposed = false
   private lastFailureReportAt = 0
+  private lastCapacityReportAt = 0
 
   constructor(private readonly dependencies: SharedTextureBridgeDependencies) {}
 
@@ -63,11 +66,31 @@ export class NativeSharedTextureBridge {
     return this.inFlight.size
   }
 
+  get retainedByteCount() {
+    return this.retainedBytes
+  }
+
   rendererReloaded() {
     this.rendererEpoch += 1
     this.releaseMainReferences()
     this.deliveryFailures.clear()
     this.lastDeliveryRecoveryAt.clear()
+  }
+
+  resetSession(sessionId: string, generation: number) {
+    const prefix = `${sessionId}:${generation}:`
+    for (const [key, entry] of this.inFlight) {
+      if (key.startsWith(prefix)) this.retireEntry(key, entry)
+    }
+    for (const values of [
+      this.latestSequence,
+      this.deliveryFailures,
+      this.lastDeliveryRecoveryAt,
+    ]) {
+      for (const key of values.keys()) {
+        if (key.startsWith(prefix)) values.delete(key)
+      }
+    }
   }
 
   removeTrack(sessionId: string, generation: number, trackId: string) {
@@ -120,7 +143,20 @@ export class NativeSharedTextureBridge {
       return false
     }
     const maximum = Math.max(1, this.dependencies.maxInFlight ?? 3)
-    if (this.activeTrackReferences(trackKey) >= maximum) {
+    if (this.unfencedTrackReferences(frame.trackId) >= maximum) {
+      this.releaseNativeFrame(frame)
+      return false
+    }
+    const frameBytes = frame.width * frame.height * 4
+    const maximumRetainedBytes = Math.max(
+      1,
+      this.dependencies.maxRetainedBytes ?? 256 * 1024 * 1024,
+    )
+    if (
+      !Number.isSafeInteger(frameBytes) ||
+      this.retainedBytes + frameBytes > maximumRetainedBytes
+    ) {
+      this.reportCapacityLimit(frameBytes, maximumRetainedBytes)
       this.releaseNativeFrame(frame)
       return false
     }
@@ -153,6 +189,7 @@ export class NativeSharedTextureBridge {
       stallTimer: null,
     }
     this.inFlight.set(key, entry)
+    this.retainedBytes += frameBytes
     entry.stallTimer = setTimeout(
       () => this.recoverStalledTrack(key, trackKey, entry),
       Math.max(1_000, this.dependencies.stallTimeoutMs ?? 5_000),
@@ -234,6 +271,10 @@ export class NativeSharedTextureBridge {
     if (!entry) return
     if (entry.stallTimer) clearTimeout(entry.stallTimer)
     this.inFlight.delete(key)
+    this.retainedBytes = Math.max(
+      0,
+      this.retainedBytes - entry.frame.width * entry.frame.height * 4,
+    )
     this.releaseNativeFrame(entry.frame)
   }
 
@@ -252,11 +293,10 @@ export class NativeSharedTextureBridge {
     }
   }
 
-  private activeTrackReferences(trackKey: string) {
-    const prefix = `${trackKey}:`
+  private unfencedTrackReferences(trackId: string) {
     let count = 0
-    for (const [key, entry] of this.inFlight) {
-      if (entry.active && key.startsWith(prefix)) count += 1
+    for (const entry of this.inFlight.values()) {
+      if (entry.frame.trackId === trackId) count += 1
     }
     return count
   }
@@ -272,6 +312,8 @@ export class NativeSharedTextureBridge {
       local: entry.frame.local,
       source: entry.frame.source,
       trackId: entry.frame.trackId,
+      retainedFrames: this.inFlight.size,
+      retainedBytes: this.retainedBytes,
     })
     try {
       void Promise.resolve(this.dependencies.onTrackStalled?.(entry.frame))
@@ -324,6 +366,18 @@ export class NativeSharedTextureBridge {
       width: frame.width,
       height: frame.height,
       error,
+    })
+  }
+
+  private reportCapacityLimit(frameBytes: number, maximumRetainedBytes: number) {
+    const now = Date.now()
+    if (now - this.lastCapacityReportAt < 10_000) return
+    this.lastCapacityReportAt = now
+    console.warn('[native-video] retained shared texture budget exhausted', {
+      retainedFrames: this.inFlight.size,
+      retainedBytes: this.retainedBytes,
+      rejectedFrameBytes: frameBytes,
+      maximumRetainedBytes,
     })
   }
 }

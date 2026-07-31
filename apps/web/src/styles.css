@@ -102,8 +102,36 @@ html {
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    /* Нативный feel: не выделяем UI. Текст — только где явно разрешено. */
+    -webkit-user-select: none;
+    user-select: none;
+  }
   body {
     @apply bg-background font-sans text-foreground antialiased;
+  }
+
+  :where(
+    input:not(
+      [type='button'],
+      [type='submit'],
+      [type='reset'],
+      [type='checkbox'],
+      [type='radio'],
+      [type='file'],
+      [type='range'],
+      [type='color'],
+      [type='image']
+    ),
+    textarea,
+    select,
+    [contenteditable='true'],
+    [contenteditable=''],
+    [data-selectable],
+    .select-text
+  ) {
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   :is(

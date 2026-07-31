@@ -42,6 +42,10 @@ pub mod ffi {
         ) -> i32;
 
         fn set_stream_delay_ms(self: Pin<&mut AudioProcessingModule>, delay: i32) -> i32;
+        fn apply_config(
+            self: Pin<&mut AudioProcessingModule>,
+            config: &AudioProcessingConfig,
+        ) -> i32;
 
         fn create_apm(
             echo_canceller_enabled: bool,
@@ -49,6 +53,14 @@ pub mod ffi {
             high_pass_filter_enabled: bool,
             noise_suppression_enabled: bool,
         ) -> UniquePtr<AudioProcessingModule>;
+
+        type AudioProcessingConfig;
+        fn create_apm_config(
+            echo_canceller_enabled: bool,
+            gain_controller_enabled: bool,
+            high_pass_filter_enabled: bool,
+            noise_suppression_enabled: bool,
+        ) -> UniquePtr<AudioProcessingConfig>;
     }
 }
 

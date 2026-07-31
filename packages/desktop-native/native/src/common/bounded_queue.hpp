@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
@@ -22,12 +23,32 @@ class BoundedQueue {
     return true;
   }
 
+  template <typename Rep, typename Period>
+  bool tryPushFor(
+    Item item,
+    const std::chrono::duration<Rep, Period>& timeout
+  ) {
+    {
+      std::unique_lock lock(mutex_);
+      if (!space_available_.wait_for(lock, timeout, [&] {
+            return closed_ || items_.size() < Capacity;
+          })) {
+        return false;
+      }
+      if (closed_) return false;
+      items_.push_back(std::move(item));
+    }
+    ready_.notify_one();
+    return true;
+  }
+
   std::optional<Item> waitPop() {
     std::unique_lock lock(mutex_);
     ready_.wait(lock, [&] { return closed_ || !items_.empty(); });
     if (items_.empty()) return std::nullopt;
     Item item = std::move(items_.front());
     items_.pop_front();
+    space_available_.notify_one();
     return item;
   }
 
@@ -37,6 +58,7 @@ class BoundedQueue {
       closed_ = true;
     }
     ready_.notify_all();
+    space_available_.notify_all();
   }
 
   std::size_t closeAndDiscard() {
@@ -48,6 +70,7 @@ class BoundedQueue {
       items_.clear();
     }
     ready_.notify_all();
+    space_available_.notify_all();
     return discarded;
   }
 
@@ -64,6 +87,7 @@ class BoundedQueue {
  private:
   mutable std::mutex mutex_;
   std::condition_variable ready_;
+  std::condition_variable space_available_;
   std::deque<Item> items_;
   bool closed_ = false;
 };

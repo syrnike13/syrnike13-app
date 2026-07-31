@@ -3,11 +3,33 @@ import { describe, expect, it } from 'vitest'
 import {
   isNativeRuntimeCommand,
   isNativeRuntimeEvent,
+  isUncorrelatedNativeRuntimeReply,
   redactSensitiveText,
   sanitizeRuntimeError,
 } from './contract'
 
 describe('native runtime error privacy', () => {
+  it('classifies a requestless native failure reply as uncorrelated', () => {
+    expect(
+      isUncorrelatedNativeRuntimeReply({
+        type: 'reply',
+        ok: false,
+        error: {
+          code: 'capture_failed',
+          message: 'Capture failed',
+          retryable: true,
+        },
+      }),
+    ).toBe(true)
+    expect(
+      isUncorrelatedNativeRuntimeReply({
+        type: 'reply',
+        requestId: 'request-1',
+        ok: false,
+      }),
+    ).toBe(false)
+  })
+
   it('redacts tokens, bearer credentials, and room URLs', () => {
     const redacted = redactSensitiveText(
       'connect wss://voice.example/room?access_token=secret token=abc Bearer ey.secret.value',
@@ -30,6 +52,7 @@ describe('native runtime error privacy', () => {
         retryable: true,
         sessionId: 'session-1',
         generation: 7,
+        hresult: -2_147_024_895,
       }),
     ).toEqual({
       code: 'connect_failed',
@@ -38,7 +61,94 @@ describe('native runtime error privacy', () => {
       retryable: true,
       sessionId: 'session-1',
       generation: 7,
+      hresult: -2_147_024_895,
     })
+  })
+
+  it('rejects an unsafe HRESULT in a native event', () => {
+    expect(isNativeRuntimeEvent({
+      type: 'runtimeError',
+      sequence: 1,
+      error: {
+        code: 'audio_endpoint_failed',
+        message: 'Audio endpoint failed',
+        retryable: false,
+        hresult: Number.MAX_SAFE_INTEGER + 1,
+      },
+    })).toBe(false)
+  })
+
+  it('accepts a generation-fenced microphone fallback lifecycle', () => {
+    const event = {
+      type: 'sessionLifecycle',
+      sequence: 2,
+      sessionId: 'voice-session',
+      generation: 7,
+      kind: 'microphone',
+      state: {
+        status: 'running',
+        sessionId: 'voice-session',
+        deviceId: 'default',
+        message: 'Selected audio input is unavailable; using system default',
+      },
+      error: {
+        code: 'audio_input_fallback_default',
+        message: 'Selected audio input is unavailable; using system default',
+        stage: 'configureMicrophoneInput',
+        retryable: false,
+        sessionId: 'voice-session',
+        generation: 7,
+      },
+    } as const
+
+    expect(isNativeRuntimeEvent(event)).toBe(true)
+    expect(isNativeRuntimeEvent({
+      ...event,
+      state: { ...event.state, deviceId: 42 },
+    })).toBe(false)
+  })
+})
+
+describe('native screen capture telemetry validation', () => {
+  const statsEvent = {
+    type: 'stats',
+    sequence: 1,
+    sessionId: 'screen-session',
+    generation: 3,
+    stats: {
+      sessionId: 'screen-session',
+      methods: { wgc_gpu: 0, dxgi_gpu: 120 },
+      activeMethod: 'dxgi_gpu',
+      videoGpuPoolSlotsAvailable: 4,
+      videoGpuPoolSlotsTotal: 5,
+      videoDxgiDuplicationHoldUsMax: 2_400,
+    },
+  } as const
+
+  it('accepts bounded GPU-slot and DXGI hold telemetry', () => {
+    expect(isNativeRuntimeEvent(statsEvent)).toBe(true)
+  })
+
+  it('rejects non-finite GPU-slot and DXGI hold telemetry', () => {
+    expect(isNativeRuntimeEvent({
+      ...statsEvent,
+      stats: {
+        ...statsEvent.stats,
+        videoDxgiDuplicationHoldUsMax: Number.NaN,
+      },
+    })).toBe(false)
+  })
+
+  it('accepts a generation-fenced immediate screen backend restart', () => {
+    expect(isNativeRuntimeEvent({
+      type: 'screenBackendRestart',
+      sequence: 2,
+      sessionId: 'screen-session',
+      generation: 3,
+      backend: 'wgc_gpu',
+      reason: 'switch_backend',
+      count: 1,
+    })).toBe(true)
   })
 })
 
@@ -56,15 +166,34 @@ describe('native runtime command validation', () => {
       noiseSuppression: true,
       echoCancellation: true,
       inputVolume: 1,
-      livekit: {
-        url: 'wss://voice.example',
-        token: 'token',
-        participantIdentity: 'participant',
-      },
+      participantIdentity: 'participant',
     },
   }
 
-  it('accepts WebSocket LiveKit URLs and bounded Windows identifiers', () => {
+  it('accepts credentials only on connectVoice and requires a WebSocket URL', () => {
+    const connectVoice = {
+      type: 'connectVoice' as const,
+      sessionId: 'voice-session',
+      generation: 1,
+      options: {
+        livekit: {
+          url: 'wss://voice.example',
+          token: 'token',
+          participantIdentity: 'participant',
+        },
+      },
+    }
+
+    expect(isNativeRuntimeCommand(connectVoice)).toBe(true)
+    expect(isNativeRuntimeCommand({
+      ...connectVoice,
+      options: {
+        livekit: { ...connectVoice.options.livekit, url: 'https://voice.example' },
+      },
+    })).toBe(false)
+  })
+
+  it('accepts track publication identity and bounded Windows identifiers', () => {
     expect(isNativeRuntimeCommand(microphone)).toBe(true)
     expect(
       isNativeRuntimeCommand({
@@ -74,19 +203,27 @@ describe('native runtime command validation', () => {
     ).toBe(true)
   })
 
-  it('rejects HTTP LiveKit URLs and overflowing Windows identifiers', () => {
+  it('rejects missing track publication identity and overflowing Windows identifiers', () => {
     expect(
       isNativeRuntimeCommand({
         ...microphone,
-        options: {
-          ...microphone.options,
-          livekit: { ...microphone.options.livekit, url: 'https://voice.example' },
-        },
+        options: { ...microphone.options, participantIdentity: '' },
       }),
     ).toBe(false)
     expect(
       isNativeRuntimeCommand({ ...microphone, excludeProcessId: -1 }),
     ).toBe(false)
+    expect(isNativeRuntimeCommand({
+      ...microphone,
+      options: {
+        ...microphone.options,
+        livekit: {
+          url: 'wss://voice.example',
+          token: 'must-not-cross-track-interface',
+          participantIdentity: 'participant',
+        },
+      },
+    })).toBe(false)
     expect(
       isNativeRuntimeCommand({
         type: 'listDisplaySources',

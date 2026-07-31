@@ -45,12 +45,6 @@ export type NativeMediaDeviceInfo = {
   label: string
 }
 
-export type NativeMediaLiveKitCredentials = {
-  url: string
-  token: string
-  participantIdentity: string
-}
-
 export type LiveKitNativePublisherCredentials = Readonly<{
   url: string
   token: string
@@ -79,11 +73,11 @@ export type NativeMediaScreenSessionStartOptions = {
   audio?: {
     requested: boolean
   }
-  livekit: NativeMediaLiveKitCredentials
+  participantIdentity: string
 }
 
 export type NativeMediaScreenSessionPrepareOptions = {
-  livekit: NativeMediaLiveKitCredentials
+  participantIdentity: string
 }
 
 export type NativeMediaMicrophoneSessionStartOptions = {
@@ -91,7 +85,7 @@ export type NativeMediaMicrophoneSessionStartOptions = {
   requestId: string
   audioBitrate?: number
   muted?: boolean
-  livekit: NativeMediaLiveKitCredentials
+  participantIdentity: string
 }
 
 export type NativeMicrophonePipelineConfig = {
@@ -233,6 +227,9 @@ export type NativeMediaStatsEvent = {
   videoNoFrameCount?: number
   videoRepeatedFrameCount?: number
   videoRecoverableLostCount?: number
+  videoGpuPoolSlotsAvailable?: number
+  videoGpuPoolSlotsTotal?: number
+  videoDxgiDuplicationHoldUsMax?: number
   videoAvgCaptureUs?: number
   videoAvgReadbackUs?: number
   videoAvgScaleUs?: number
@@ -251,6 +248,7 @@ export type NativeMediaStatsEvent = {
 }
 
 export type NativeMicrophoneMetricsEvent = {
+  revision: number
   inputDb: number
   thresholdDb: number
   open: boolean
@@ -261,8 +259,19 @@ export type NativeMicrophonePreviewStateEvent =
   | { status: 'stopped' }
   | { status: 'error'; message: string }
 
+export type NativeMediaRuntimeState = {
+  available: boolean
+  status: 'stopped' | 'starting' | 'ready' | 'recovering' | 'degraded'
+  restartCount: number
+  degradedReason?: string
+  degradedRetryAttempt?: number
+  nextRetryAt?: number
+}
+
 export type NativeMediaStateEvent = NativeMediaSessionStatus & {
   sessionId?: string
+  deviceId?: string
+  message?: string
   audio?: {
     mode: NativeMediaAudioMode
     sampleRate?: 48_000
@@ -427,6 +436,38 @@ export function isScreenSourceSpec(value: unknown): value is ScreenSourceSpec {
   } catch {
     return false
   }
+}
+
+export function isNativeMediaRuntimeState(
+  value: unknown,
+): value is NativeMediaRuntimeState {
+  if (!isObjectRecord(value)) return false
+  if (
+    value.status !== 'stopped' &&
+    value.status !== 'starting' &&
+    value.status !== 'ready' &&
+    value.status !== 'recovering' &&
+    value.status !== 'degraded'
+  ) {
+    return false
+  }
+  return (
+    typeof value.available === 'boolean' &&
+    isIntegerInRange(value.restartCount, 0, Number.MAX_SAFE_INTEGER) &&
+    (value.degradedReason === undefined ||
+      (typeof value.degradedReason === 'string' &&
+        value.degradedReason.length <= 4_096)) &&
+    (value.degradedRetryAttempt === undefined ||
+      isIntegerInRange(
+        value.degradedRetryAttempt,
+        1,
+        Number.MAX_SAFE_INTEGER,
+      )) &&
+    (value.nextRetryAt === undefined ||
+      (typeof value.nextRetryAt === 'number' &&
+        Number.isFinite(value.nextRetryAt) &&
+        value.nextRetryAt >= 0))
+  )
 }
 
 export function parseScreenSourceSpec(value: unknown): ScreenSourceSpec {

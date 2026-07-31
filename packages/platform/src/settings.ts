@@ -73,6 +73,10 @@ export type DesktopObservabilitySettings = {
   nativeCrashReports: boolean
 }
 
+export type DesktopUiSettings = {
+  telegramPromoDismissedUntilByUser: Record<string, number>
+}
+
 export type {
   AppearanceColorMode,
   AppearanceGradientSettings,
@@ -98,6 +102,7 @@ export type DesktopLocalSettings = {
   appearance: AppearanceSettings
   sounds: DesktopSoundSettings
   observability: DesktopObservabilitySettings
+  ui: DesktopUiSettings
 }
 
 export type DesktopVoiceSettingsPatch = Partial<DesktopVoiceSettings>
@@ -107,6 +112,7 @@ export type DesktopOverlaySettingsPatch = Partial<DesktopOverlaySettings>
 export type DesktopSoundSettingsPatch = Partial<DesktopSoundSettings>
 export type DesktopObservabilitySettingsPatch =
   Partial<DesktopObservabilitySettings>
+export type DesktopUiSettingsPatch = Partial<DesktopUiSettings>
 
 export type DesktopLocalSettingsPatch = {
   voice?: DesktopVoiceSettingsPatch
@@ -115,6 +121,7 @@ export type DesktopLocalSettingsPatch = {
   appearance?: AppearanceSettingsPatch
   sounds?: DesktopSoundSettingsPatch
   observability?: DesktopObservabilitySettingsPatch
+  ui?: DesktopUiSettingsPatch
 }
 
 const VOICE_VOLUME_MAX = 3
@@ -165,6 +172,10 @@ export const DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS: DesktopObservabilitySetting
   nativeCrashReports: false,
 }
 
+export const DEFAULT_DESKTOP_UI_SETTINGS: DesktopUiSettings = {
+  telegramPromoDismissedUntilByUser: {},
+}
+
 export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
   version: 3,
   voice: DEFAULT_DESKTOP_VOICE_SETTINGS,
@@ -173,6 +184,7 @@ export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
   appearance: DEFAULT_APPEARANCE_SETTINGS,
   sounds: DEFAULT_DESKTOP_SOUND_SETTINGS,
   observability: DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
+  ui: DEFAULT_DESKTOP_UI_SETTINGS,
 }
 
 function objectRecord(value: unknown) {
@@ -268,6 +280,23 @@ function normalizeSoundVolumeRecord(value: unknown) {
     if (!nonEmptyString(key)) continue
     if (typeof entry !== 'number' || !Number.isFinite(entry)) continue
     next[key] = clampNumber(entry, 1, 0, SOUND_VOLUME_MAX)
+  }
+  return next
+}
+
+function normalizeTimestampRecord(value: unknown) {
+  const next: Record<string, number> = {}
+  for (const [key, entry] of Object.entries(objectRecord(value))) {
+    if (!nonEmptyString(key) || key.length > 512) continue
+    if (
+      typeof entry !== 'number' ||
+      !Number.isFinite(entry) ||
+      entry <= 0 ||
+      entry > 8.64e15
+    ) {
+      continue
+    }
+    next[key] = entry
   }
   return next
 }
@@ -417,6 +446,19 @@ export function normalizeDesktopObservabilitySettings(
   }
 }
 
+export function normalizeDesktopUiSettings(
+  value: unknown,
+  defaults: DesktopUiSettings = DEFAULT_DESKTOP_UI_SETTINGS,
+): DesktopUiSettings {
+  const settings = objectRecord(value)
+  return {
+    telegramPromoDismissedUntilByUser: {
+      ...defaults.telegramPromoDismissedUntilByUser,
+      ...normalizeTimestampRecord(settings.telegramPromoDismissedUntilByUser),
+    },
+  }
+}
+
 function normalizeDesktopOverlayGameSettings(
   value: unknown,
 ): DesktopOverlayGameSettings[] {
@@ -470,6 +512,7 @@ export function normalizeDesktopLocalSettings(
     appearance: normalizeAppearanceSettings(settings.appearance, defaults.appearance),
     sounds: normalizeDesktopSoundSettings(settings.sounds, defaults.sounds),
     observability,
+    ui: normalizeDesktopUiSettings(settings.ui, defaults.ui),
   }
 }
 
@@ -665,6 +708,26 @@ export function normalizeDesktopObservabilitySettingsPatch(
   return Object.keys(next).length > 0 ? next : undefined
 }
 
+export function normalizeDesktopUiSettingsPatch(
+  value: unknown,
+): DesktopUiSettingsPatch | undefined {
+  const patch = objectRecord(value)
+  const next: DesktopUiSettingsPatch = {}
+  if ('telegramPromoDismissedUntilByUser' in patch) {
+    const dismissedUntilByUser = normalizeTimestampRecord(
+      patch.telegramPromoDismissedUntilByUser,
+    )
+    if (
+      Object.keys(objectRecord(patch.telegramPromoDismissedUntilByUser)).length ===
+        0 ||
+      Object.keys(dismissedUntilByUser).length > 0
+    ) {
+      next.telegramPromoDismissedUntilByUser = dismissedUntilByUser
+    }
+  }
+  return Object.keys(next).length > 0 ? next : undefined
+}
+
 export function normalizeDesktopLocalSettingsPatch(
   value: unknown,
 ): DesktopLocalSettingsPatch {
@@ -680,11 +743,13 @@ export function normalizeDesktopLocalSettingsPatch(
   const observability = normalizeDesktopObservabilitySettingsPatch(
     patch.observability,
   )
+  const ui = normalizeDesktopUiSettingsPatch(patch.ui)
   if (voice) next.voice = voice
   if (voiceListener) next.voiceListener = voiceListener
   if (overlay) next.overlay = overlay
   if (appearance) next.appearance = appearance
   if (sounds) next.sounds = sounds
   if (observability) next.observability = observability
+  if (ui) next.ui = ui
   return next
 }

@@ -1,13 +1,42 @@
 #include "voice_actor.hpp"
 
+#include "media_operation.hpp"
+#include "voice_attempt_commit.hpp"
+
+#include <atomic>
+#include <chrono>
 #include <mutex>
-#include <optional>
 #include <stdexcept>
+#include <string_view>
 #include <thread>
 #include <utility>
 
 namespace syrnike::desktop_native::media {
 namespace {
+
+constexpr auto kAttemptCommitDeadline = std::chrono::seconds(2);
+
+class VoicePostGate final {
+ public:
+  explicit VoicePostGate(VoiceActor::InternalPost post)
+    : post_(std::move(post)) {}
+
+  bool post(MediaCommand command) {
+    std::lock_guard lock(mutex_);
+    return open_ && post_ ? post_(std::move(command)) : false;
+  }
+
+  void close() {
+    std::lock_guard lock(mutex_);
+    open_ = false;
+    post_ = {};
+  }
+
+ private:
+  std::mutex mutex_;
+  bool open_ = true;
+  VoiceActor::InternalPost post_;
+};
 
 RuntimeEvent reply(const MediaCommand& command) {
   RuntimeEvent event;
@@ -57,9 +86,20 @@ class VoiceActor::Implementation {
     SequencedEmitter& emitter,
     InternalPost post,
     IsCurrent is_current,
-    std::shared_ptr<LiveKitPublicationClient> client
-  ) : emitter_(emitter), post_(std::move(post)), is_current_(std::move(is_current)),
-      client_(std::move(client)) {}
+    std::shared_ptr<LiveKitPublicationClient> client,
+    AsyncCleanupLauncher async_cleanup_launcher,
+    AsyncCleanupEnqueueProbe async_cleanup_enqueue_probe
+  ) : emitter_(emitter),
+      post_gate_(std::make_shared<VoicePostGate>(std::move(post))),
+      is_current_(std::move(is_current)),
+      client_(std::move(client)),
+      cleanup_dispatcher_(&AsyncCleanupDispatcher::instance()),
+      cleanup_node_(std::make_shared<AsyncCleanupNode>(
+        std::move(async_cleanup_launcher)
+      )),
+      async_cleanup_enqueue_probe_(
+        std::move(async_cleanup_enqueue_probe)
+      ) {}
 
   ~Implementation() { shutdown(); }
 
@@ -73,32 +113,67 @@ class VoiceActor::Implementation {
 
     retireAttempt();
     emitter_.emit(lifecycle(command, "starting", "livekit_connecting"));
-    {
-      std::lock_guard lock(mutex_);
-      attempt_command_ = command;
-      attempt_ = std::thread([this, command] {
-        MediaCommand completion;
-        completion.type = "__voiceConnectCompleted";
-        completion.session_id = command.session_id;
-        completion.generation = command.generation;
-        try {
-          if (!client_->connectVoice(
-                command.session_id,
-                command.generation,
-                command.livekit_url,
-                command.livekit_token,
-                post_
-              )) {
-            completion.internal_message = "LiveKit voice connection failed";
-          }
-        } catch (const std::exception& error) {
-          completion.internal_message = error.what();
-        } catch (...) {
+    auto state = std::make_shared<AttemptState>();
+    state->command = command;
+    state->client = client_;
+    auto attempt = std::thread([
+      client = client_,
+      post_gate = post_gate_,
+      state
+    ] {
+      if (!state->commit.waitFor(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+              kAttemptCommitDeadline
+            )
+          )) {
+        state->finished.store(true, std::memory_order_release);
+        return;
+      }
+      const auto& command = state->command;
+      MediaCommand completion;
+      completion.type = "__voiceConnectCompleted";
+      completion.session_id = command.session_id;
+      completion.generation = command.generation;
+      auto post = [post_gate](MediaCommand command) {
+        return post_gate->post(std::move(command));
+      };
+      try {
+        if (!client->connectVoice(
+              command.session_id,
+              command.generation,
+              command.livekit_url,
+              command.livekit_token,
+              post
+            )) {
           completion.internal_message = "LiveKit voice connection failed";
         }
-        if (!post_(std::move(completion))) return;
-      });
+      } catch (const std::exception& error) {
+        completion.internal_message = error.what();
+        if (std::string_view(error.what()).starts_with("voice_connection_conflict:")) {
+          completion.video_source = "voice_connection_conflict";
+        }
+      } catch (...) {
+        completion.internal_message = "LiveKit voice connection failed";
+      }
+      if (state->operation.expired()) {
+        if (completion.internal_message.empty()) {
+          completion.internal_message = "LiveKit voice connection deadline expired";
+        }
+        completion.video_source = "native_operation_timeout";
+      }
+      state->finished.store(true, std::memory_order_release);
+      if (state->operation.cancelled()) {
+        disconnectOnce(state, client);
+        return;
+      }
+      post_gate->post(std::move(completion));
+    });
+    {
+      std::lock_guard lock(mutex_);
+      attempt_state_ = state;
+      attempt_ = std::move(attempt);
     }
+    state->commit.commit();
   }
 
   void disconnect(const MediaCommand& command, bool emit_events) {
@@ -110,19 +185,20 @@ class VoiceActor::Implementation {
 
   void handleWorkerCommand(const MediaCommand& completion) {
     std::thread attempt;
-    std::optional<MediaCommand> original;
+    std::shared_ptr<AttemptState> state;
     {
       std::lock_guard lock(mutex_);
-      if (!attempt_command_ ||
-          attempt_command_->session_id != completion.session_id ||
-          attempt_command_->generation != completion.generation) {
+      if (!attempt_state_ ||
+          attempt_state_->command.session_id != completion.session_id ||
+          attempt_state_->command.generation != completion.generation) {
         return;
       }
       attempt = std::move(attempt_);
-      original = std::move(attempt_command_);
-      attempt_command_.reset();
+      state = std::move(attempt_state_);
+      attempt_state_.reset();
     }
     if (attempt.joinable()) attempt.join();
+    const auto& original = state->command;
 
     // A disconnect or newer connect owns cancellation. A stale completion must
     // never call disconnectVoice(), because that Room may already belong to the
@@ -130,70 +206,145 @@ class VoiceActor::Implementation {
     if (!is_current_(completion.session_id, completion.generation)) return;
     if (!completion.internal_message.empty()) {
       NativeError error{
-        "native_command_failed",
+        completion.video_source.empty() ? "native_command_failed" : completion.video_source,
         completion.internal_message,
         "connectVoice",
         true,
-        original->session_id,
-        original->generation,
+        original.session_id,
+        original.generation,
       };
-      auto failed = reply(*original);
+      auto failed = reply(original);
       failed.ok = false;
       failed.error = error;
       emitter_.emit(std::move(failed));
 
       RuntimeEvent runtime_error;
       runtime_error.type = "runtimeError";
-      runtime_error.request_id = original->request_id;
-      runtime_error.session_id = original->session_id;
-      runtime_error.generation = original->generation;
+      runtime_error.request_id = original.request_id;
+      runtime_error.session_id = original.session_id;
+      runtime_error.generation = original.generation;
       runtime_error.error = std::move(error);
       emitter_.emit(std::move(runtime_error));
       return;
     }
-    emitter_.emit(reply(*original));
-    emitter_.emit(lifecycle(*original, "running"));
+    emitter_.emit(reply(original));
+    emitter_.emit(lifecycle(original, "running"));
   }
 
-  void shutdown() { retireAttempt(false); }
+  void shutdown() {
+    if (shutdown_started_.exchange(true)) return;
+    post_gate_->close();
+    retireAttempt(false, true);
+  }
 
  private:
-  void retireAttempt(bool emit_cancelled_reply = true) {
+  struct AttemptState {
+    MediaCommand command;
+    MediaOperation operation;
+    VoiceAttemptCommit commit;
+    std::atomic_bool finished{false};
+    std::atomic_bool disconnect_started{false};
+    std::shared_ptr<LiveKitPublicationClient> client;
+  };
+
+  static void disconnectOnce(
+    const std::shared_ptr<AttemptState>& state,
+    const std::shared_ptr<LiveKitPublicationClient>& client
+  ) noexcept {
+    if (state && state->disconnect_started.exchange(true)) return;
+    try { client->disconnectVoice(); } catch (...) {}
+  }
+
+  void retireAttempt(
+    bool emit_cancelled_reply = true,
+    bool bounded_shutdown = false
+  ) {
     std::thread attempt;
-    std::optional<MediaCommand> original;
+    std::shared_ptr<AttemptState> state;
     {
       std::lock_guard lock(mutex_);
-      // Real LiveKit detaches the current Room under its own mutex before
-      // disconnecting it, which makes waitConnected return cooperatively.
-      client_->disconnectVoice();
       attempt = std::move(attempt_);
-      original = std::move(attempt_command_);
-      attempt_command_.reset();
+      state = std::move(attempt_state_);
+      attempt_state_.reset();
     }
-    if (attempt.joinable() && attempt.get_id() != std::this_thread::get_id()) {
-      attempt.join();
+    if (state) {
+      state->operation.requestCancel();
+      state->commit.cancel();
     }
-    if (emit_cancelled_reply && original && !original->request_id.empty()) {
-      emitter_.emit(cancelledReply(*original));
+    if (!bounded_shutdown) {
+      if (state) {
+        disconnectOnce(state, client_);
+      } else {
+        try { client_->disconnectVoice(); } catch (...) {}
+      }
+      if (attempt.joinable() &&
+          attempt.get_id() != std::this_thread::get_id()) {
+        attempt.join();
+      }
+    } else if (attempt.joinable()) {
+      // A blocked SDK connect owns the client and runtime token. Quarantine it
+      // instead of making actor shutdown wait; the worker disconnects exactly
+      // once after a late connect returns.
+      attempt.detach();
+      if (state && state->finished.load(std::memory_order_acquire)) {
+        cleanup_node_->prepare(
+          state,
+          [](void* owner) noexcept {
+            auto* attempt = static_cast<AttemptState*>(owner);
+            if (attempt->disconnect_started.exchange(true)) return;
+            try { attempt->client->disconnectVoice(); } catch (...) {}
+          }
+        );
+        cleanup_dispatcher_->submit(
+          cleanup_node_,
+          async_cleanup_enqueue_probe_
+        );
+      }
+    } else {
+      cleanup_node_->prepare(
+        client_,
+        [](void* owner) noexcept {
+          auto* client = static_cast<LiveKitPublicationClient*>(owner);
+          try { client->disconnectVoice(); } catch (...) {}
+        }
+      );
+      cleanup_dispatcher_->submit(
+        cleanup_node_,
+        async_cleanup_enqueue_probe_
+      );
+    }
+    if (emit_cancelled_reply && state && !state->command.request_id.empty()) {
+      emitter_.emit(cancelledReply(state->command));
     }
   }
 
   SequencedEmitter& emitter_;
-  InternalPost post_;
+  std::shared_ptr<VoicePostGate> post_gate_;
   IsCurrent is_current_;
   std::shared_ptr<LiveKitPublicationClient> client_;
+  AsyncCleanupDispatcher* cleanup_dispatcher_;
+  std::shared_ptr<AsyncCleanupNode> cleanup_node_;
+  AsyncCleanupEnqueueProbe async_cleanup_enqueue_probe_;
+  std::atomic_bool shutdown_started_{false};
   std::mutex mutex_;
   std::thread attempt_;
-  std::optional<MediaCommand> attempt_command_;
+  std::shared_ptr<AttemptState> attempt_state_;
 };
 
 VoiceActor::VoiceActor(
   SequencedEmitter& emitter,
   InternalPost post,
   IsCurrent is_current,
-  std::shared_ptr<LiveKitPublicationClient> client
+  std::shared_ptr<LiveKitPublicationClient> client,
+  AsyncCleanupLauncher async_cleanup_launcher,
+  AsyncCleanupEnqueueProbe async_cleanup_enqueue_probe
 ) : implementation_(std::make_unique<Implementation>(
-      emitter, std::move(post), std::move(is_current), std::move(client)
+      emitter,
+      std::move(post),
+      std::move(is_current),
+      std::move(client),
+      std::move(async_cleanup_launcher),
+      std::move(async_cleanup_enqueue_probe)
     )) {}
 
 VoiceActor::~VoiceActor() = default;

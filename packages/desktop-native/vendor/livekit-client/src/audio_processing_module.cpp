@@ -128,4 +128,27 @@ void AudioProcessingModule::setStreamDelayMs(int delay_ms) {
   }
 }
 
+void AudioProcessingModule::applyOptions(const Options& options) {
+  if (!handle_.valid()) {
+    throw std::runtime_error("AudioProcessingModule: invalid handle");
+  }
+
+  proto::FfiRequest req;
+  auto* msg = req.mutable_apm_apply_config();
+  msg->set_apm_handle(static_cast<std::uint64_t>(handle_.get()));
+  msg->set_echo_canceller_enabled(options.echo_cancellation);
+  msg->set_gain_controller_enabled(options.auto_gain_control);
+  msg->set_high_pass_filter_enabled(options.high_pass_filter);
+  msg->set_noise_suppression_enabled(options.noise_suppression);
+
+  const proto::FfiResponse resp = FfiClient::instance().sendRequest(req);
+  if (!resp.has_apm_apply_config()) {
+    throw std::runtime_error("AudioProcessingModule::applyOptions: unexpected response");
+  }
+  const auto& result = resp.apm_apply_config();
+  if (result.has_error()) {
+    throw std::runtime_error("AudioProcessingModule::applyOptions: " + result.error());
+  }
+}
+
 } // namespace livekit

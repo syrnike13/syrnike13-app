@@ -1,17 +1,26 @@
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <iostream>
+#include <limits>
+#include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "media/audio_constants.hpp"
 #include "media/camera_capture.hpp"
 #include "media/livekit_connect_policy.hpp"
+#include "media/media_operation.hpp"
 #include "media/microphone_audio_processor.hpp"
 #include "media/microphone_echo_reference.hpp"
+#include "media/microphone_capture_accumulator.hpp"
 #include "media/microphone_metrics_cadence.hpp"
+#include "media/microphone_stream_delay_estimator.hpp"
 #include "media/remote_audio_output.hpp"
 #include "media/remote_video_bridge.hpp"
 #include "media/runtime_config.hpp"
@@ -88,6 +97,54 @@ int main() try {
       std::vector<std::uint8_t>{5, 6, 7, 8, 1, 2, 3, 4},
     "camera BGRA copy did not normalize a bottom-up frame"
   );
+  require(
+    syrnike::desktop_native::media::copyCameraBgraBuffer(
+      padded_rows.data(), padded_rows.size(), 8, 1, 2) ==
+      std::vector<std::uint8_t>{1, 2, 3, 4, 5, 6, 7, 8},
+    "camera contiguous BGRA copy retained source-row padding"
+  );
+  require(
+    syrnike::desktop_native::media::copyCameraBgraBuffer(
+      padded_rows.data(), padded_rows.size(), -8, 1, 2) ==
+      std::vector<std::uint8_t>{5, 6, 7, 8, 1, 2, 3, 4},
+    "camera contiguous BGRA copy did not normalize negative pitch"
+  );
+  bool truncated_camera_buffer_rejected = false;
+  try {
+    (void)syrnike::desktop_native::media::copyCameraBgraBuffer(
+      padded_rows.data(), 15, 8, 2, 2);
+  } catch (const std::runtime_error&) {
+    truncated_camera_buffer_rejected = true;
+  }
+  require(
+    truncated_camera_buffer_rejected,
+    "camera contiguous BGRA copy read beyond a truncated buffer"
+  );
+  bool minimum_stride_rejected = false;
+  try {
+    (void)syrnike::desktop_native::media::copyCameraBgraBuffer(
+      padded_rows.data(), padded_rows.size(), 3, 1, 2);
+  } catch (const std::invalid_argument&) {
+    minimum_stride_rejected = true;
+  }
+  require(
+    minimum_stride_rejected,
+    "camera contiguous BGRA copy accepted a stride smaller than one row"
+  );
+  bool minimum_stride_overflow_rejected = false;
+  try {
+    (void)syrnike::desktop_native::media::copyCameraBgraRows(
+      padded_rows.data(),
+      std::numeric_limits<std::ptrdiff_t>::min(),
+      1,
+      2);
+  } catch (const std::overflow_error&) {
+    minimum_stride_overflow_rejected = true;
+  }
+  require(
+    minimum_stride_overflow_rejected,
+    "camera BGRA copy overflowed while normalizing PTRDIFF_MIN"
+  );
 
   syrnike::voice::RuntimeConfig config;
   config.echo_cancellation_enabled = true;
@@ -104,6 +161,69 @@ int main() try {
   const auto without_reference =
     syrnike::voice::microphoneCleanupApmOptions(config, false);
   require(!without_reference.echo_cancellation, "echo cancellation ran without reference audio");
+  syrnike::voice::MicrophoneAudioProcessor truthful_status_processor;
+  const auto truthful_status_frame = truthful_status_processor.processFrame(
+    std::vector<float>(syrnike::voice::kSamplesPer10Ms, 0.1f),
+    config,
+    nullptr
+  );
+  require(
+    truthful_status_frame.status.echo_cancellation == "unavailable",
+    "microphone status advertised configured echo cancellation without a reference"
+  );
+  syrnike::voice::MicrophoneStreamDelayEstimator delay_estimator;
+  syrnike::voice::MicrophoneStreamTimingSample timing{
+    .capture_device_position = 48'000,
+    .capture_qpc_100ns = 1'020'000,
+    .render_device_position = 48'000,
+    .render_qpc_100ns = 1'000'000,
+    .capture_latency_ms = 20,
+    .render_latency_ms = 30,
+  };
+  require(
+    delay_estimator.update(timing) == 52,
+    "microphone delay estimator ignored measured QPC alignment"
+  );
+  timing.capture_device_position += 480;
+  timing.render_device_position += 480;
+  timing.capture_qpc_100ns += 100'000;
+  timing.render_qpc_100ns += 100'000;
+  require(
+    delay_estimator.update(timing) == 52,
+    "stable capture/render positions changed the smoothed delay"
+  );
+  timing.capture_device_position = 1;
+  timing.render_device_position = 1;
+  timing.capture_qpc_100ns += 1'000'000;
+  timing.render_qpc_100ns += 100'000;
+  require(
+    delay_estimator.update(timing) == 142,
+    "clock discontinuity did not reset the delay estimate"
+  );
+  delay_estimator.reset();
+  timing.capture_qpc_100ns = timing.render_qpc_100ns + 50'000;
+  require(
+    delay_estimator.update(timing) == 55,
+    "explicit device-change reset retained the previous delay history"
+  );
+
+  config.voice_gate_auto_margin_db = 11.0f;
+  config.voice_gate_hysteresis_db = 7.0f;
+  config.voice_gate_attack_ms = 6;
+  config.voice_gate_hold_ms = 180;
+  config.voice_gate_release_ms = 90;
+  config.voice_gate_lookahead_ms = 30;
+  const auto configurable_gate =
+    syrnike::voice::voiceGateConfigFromRuntimeConfig(config);
+  require(
+    configurable_gate.auto_margin_db == 11.0f &&
+      configurable_gate.hysteresis_db == 7.0f &&
+      configurable_gate.attack_ms == 6 &&
+      configurable_gate.hold_ms == 180 &&
+      configurable_gate.release_ms == 90 &&
+      configurable_gate.lookahead_ms == 30,
+    "runtime voice gate tuning was not projected into the processor"
+  );
 
   syrnike::voice::RuntimeConfig clipping_config;
   clipping_config.input_volume = 2.0f;
@@ -167,6 +287,63 @@ int main() try {
       connect_started_at + std::chrono::seconds(8)
     ) == std::chrono::milliseconds(0),
     "post-connect settle budget exceeded the cleanup headroom"
+  );
+  using MediaOperation = syrnike::desktop_native::media::MediaOperation;
+  const MediaOperation operation(connect_started_at);
+  require(
+    operation.deadline() == connect_started_at + std::chrono::seconds(18),
+    "native media deadline did not reserve the two-second cleanup budget"
+  );
+  require(
+    !operation.expired(connect_started_at + std::chrono::milliseconds(17'999)) &&
+      operation.expired(connect_started_at + std::chrono::seconds(18)),
+    "native media deadline boundary is not absolute"
+  );
+  MediaOperation cancelled_operation(connect_started_at);
+  cancelled_operation.requestCancel(connect_started_at + std::chrono::seconds(3));
+  require(
+    !cancelled_operation.cancellationExpired(
+      connect_started_at + std::chrono::milliseconds(4'999)
+    ) && cancelled_operation.cancellationExpired(
+      connect_started_at + std::chrono::seconds(5)
+    ),
+    "native media cancellation cleanup boundary changed"
+  );
+  MediaOperation concurrent_cancel(connect_started_at);
+  std::atomic_int cancel_winners{0};
+  std::vector<std::thread> cancellers;
+  for (int index = 0; index < 8; ++index) {
+    cancellers.emplace_back([&] {
+      if (concurrent_cancel.requestCancel(
+            connect_started_at + std::chrono::seconds(6))) {
+        cancel_winners.fetch_add(1);
+      }
+    });
+  }
+  for (auto& canceller : cancellers) canceller.join();
+  require(cancel_winners.load() == 1 && concurrent_cancel.cancelled(),
+          "media cancellation did not publish one atomic timestamp winner");
+
+  using syrnike::desktop_native::media::FirstFrameState;
+  std::atomic<FirstFrameState> received_first{FirstFrameState::Pending};
+  require(
+    syrnike::desktop_native::media::claimFirstFrame(received_first) &&
+      !syrnike::desktop_native::media::claimFirstFrameTimeout(received_first),
+    "first-frame winner was overwritten by the watchdog"
+  );
+  std::atomic<FirstFrameState> timed_out_first{FirstFrameState::Pending};
+  require(
+    syrnike::desktop_native::media::claimFirstFrameTimeout(timed_out_first) &&
+      !syrnike::desktop_native::media::claimFirstFrame(timed_out_first),
+    "watchdog winner allowed a healthy first frame"
+  );
+  require(
+    !concurrent_cancel.cancellationExpired(
+      connect_started_at + std::chrono::milliseconds(7'999)
+    ) && concurrent_cancel.cancellationExpired(
+      connect_started_at + std::chrono::seconds(8)
+    ),
+    "concurrent cancellation exposed an uninitialized timestamp"
   );
 
   using MicrophoneMetricsCadence =
@@ -294,13 +471,86 @@ int main() try {
   );
   const auto mono = reference.popFrame();
   require(mono.has_value(), "echo reference did not produce a 10ms frame");
-  require(mono->size() == syrnike::voice::kSamplesPer10Ms, "echo frame size changed");
+  require(
+    mono->pcm.size() == syrnike::voice::kSamplesPer10Ms,
+    "echo frame size changed"
+  );
   for (int index = 0; index < 3; ++index) {
     reference.pushInterleavedFloatStereo(
       stereo.data(), syrnike::voice::kSamplesPer10Ms, false
     );
   }
   require(reference.queuedFrames() == 2, "echo reference queue is unbounded");
+  require(
+    reference.discontinuities() == 1,
+    "echo reference overflow did not publish a discontinuity marker"
+  );
+  reference.popFrame();
+  reference.popFrame();
+  reference.pushInterleavedFloatStereo(
+    stereo.data(), syrnike::voice::kSamplesPer10Ms, false
+  );
+  const auto after_overflow = reference.popFrame();
+  require(
+    after_overflow.has_value() && after_overflow->discontinuity,
+    "echo reference did not carry its overflow discontinuity to the next frame"
+  );
+
+  std::mutex echo_retry_mutex;
+  std::condition_variable echo_retry_changed;
+  std::size_t echo_attempts = 0;
+  syrnike::voice::MicrophoneEchoReference retrying_reference(
+    [&](std::size_t attempt) {
+      {
+        std::lock_guard lock(echo_retry_mutex);
+        echo_attempts = attempt + 1;
+      }
+      echo_retry_changed.notify_all();
+      if (attempt == 0) {
+        throw std::runtime_error("capture_failed");
+      }
+    }
+  );
+  retrying_reference.start();
+  {
+    std::unique_lock lock(echo_retry_mutex);
+    require(
+      echo_retry_changed.wait_for(
+        lock,
+        std::chrono::seconds(1),
+        [&] { return echo_attempts >= 2; }
+      ),
+      "echo reference did not retry an injected capture failure"
+    );
+  }
+  require(
+    retrying_reference.waitForAvailable(std::chrono::seconds(1)) &&
+      retrying_reference.status().available,
+    "echo reference did not report its recovered capture status"
+  );
+  retrying_reference.stop();
+
+  syrnike::voice::MicrophoneCaptureFrameAccumulator capture_frames(4);
+  require(!capture_frames.push(1.0f), "partial microphone frame completed early");
+  require(!capture_frames.push(1.0f), "partial microphone frame completed early");
+  capture_frames.beginPacket(true);
+  require(
+    capture_frames.pendingSamples() == 0,
+    "capture discontinuity retained samples from the previous phase"
+  );
+  std::optional<std::vector<float>> resynchronized_frame;
+  for (int sample = 0; sample < 4; ++sample) {
+    resynchronized_frame = capture_frames.push(2.0f);
+  }
+  require(
+    resynchronized_frame.has_value() &&
+      std::all_of(
+        resynchronized_frame->begin(),
+        resynchronized_frame->end(),
+        [](float sample) { return sample == 2.0f; }
+      ),
+    "capture discontinuity phase-shifted the next 10ms frame"
+  );
 
   {
     syrnike::voice::VoiceGateProcessor gate(48'000);
@@ -496,6 +746,35 @@ int main() try {
         );
       }
     }
+  }
+  {
+    syrnike::voice::VoiceGateProcessor gate(48'000);
+    syrnike::voice::VoiceGateConfig gate_config;
+    gate_config.enabled = true;
+    gate_config.auto_threshold = false;
+    gate_config.manual_threshold_db = -24.0f;
+    gate_config.attack_ms = 1;
+    gate_config.lookahead_ms = 20;
+    gate.updateConfig(gate_config);
+
+    auto manual_onset = frameAtDb(-12.0f);
+    const auto onset_rms = frameRms(manual_onset);
+    require(gate.processFrame(manual_onset).open, "manual lookahead gate did not open");
+    require(isExactSilence(manual_onset), "manual gate did not apply configured lookahead");
+    auto manual_second = frameAtDb(-12.0f);
+    gate.processFrame(manual_second);
+
+    gate_config.auto_threshold = true;
+    gate.updateConfig(gate_config);
+    auto after_mode_switch = frameAtDb(-12.0f);
+    require(
+      gate.processFrame(after_mode_switch).open,
+      "voice gate mode switch changed the open envelope"
+    );
+    require(
+      frameRms(after_mode_switch) > onset_rms * 0.99f,
+      "voice gate mode switch discarded the queued lookahead onset"
+    );
   }
   {
     syrnike::voice::RuntimeConfig gate_agc_config;

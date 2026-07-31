@@ -12,12 +12,14 @@
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
 
 #include "audio_devices.hpp"
+#include "media_runtime_support.hpp"
 
 using Microsoft::WRL::ComPtr;
 
@@ -26,15 +28,69 @@ namespace {
 
 constexpr std::size_t max_queued_samples = 4'800;
 
+class PreviewEmitterGate final {
+ public:
+  explicit PreviewEmitterGate(SequencedEmitter& emitter) : emitter_(&emitter) {}
+
+  bool emit(RuntimeEvent event) {
+    SequencedEmitter* emitter = nullptr;
+    {
+      std::lock_guard lock(mutex_);
+      if (!enabled_) return false;
+      emitter = emitter_;
+      ++in_flight_;
+    }
+    try {
+      emitter->emit(std::move(event));
+    } catch (...) {
+      leave();
+      throw;
+    }
+    leave();
+    return true;
+  }
+
+  void disable() noexcept {
+    std::unique_lock lock(mutex_);
+    enabled_ = false;
+    changed_.wait(lock, [&] { return in_flight_ == 0; });
+    emitter_ = nullptr;
+  }
+
+ private:
+  void leave() noexcept {
+    {
+      std::lock_guard lock(mutex_);
+      --in_flight_;
+      if (in_flight_ == 0) changed_.notify_all();
+    }
+  }
+  std::mutex mutex_;
+  std::condition_variable changed_;
+  SequencedEmitter* emitter_ = nullptr;
+  bool enabled_ = true;
+  std::size_t in_flight_ = 0;
+};
+
 }  // namespace
 
-class PreviewActor::Implementation {
+class PreviewActor::Implementation
+    : public std::enable_shared_from_this<PreviewActor::Implementation> {
  public:
-  explicit Implementation(SequencedEmitter& emitter) : emitter_(emitter) {}
+  Implementation(
+      SequencedEmitter& emitter,
+      PreviewActor::BeforeRenderOperation before_render_operation)
+      : emitter_(std::make_shared<PreviewEmitterGate>(emitter)),
+        before_render_operation_(std::move(before_render_operation)) {}
   ~Implementation() { shutdown(); }
 
   RuntimeEvent start(const MediaCommand& command) {
-    stopInternal(false);
+    if (shutdown_.load(std::memory_order_acquire)) {
+      throw std::runtime_error("microphone preview actor is shut down");
+    }
+    if (!stopInternal(false)) {
+      throw std::runtime_error("previous microphone preview worker did not stop");
+    }
     {
       std::lock_guard lock(state_mutex_);
       session_id_ = command.session_id;
@@ -43,12 +99,14 @@ class PreviewActor::Implementation {
       terminal_emitted_ = false;
       startup_error_.clear();
       running_.store(true);
+      worker_finished_.store(false, std::memory_order_release);
     }
     {
       std::lock_guard lock(audio_mutex_);
       queued_samples_.clear();
     }
-    worker_ = std::thread([this, command] { run(command); });
+    const auto self = shared_from_this();
+    worker_ = std::thread([self, command] { self->run(command); });
 
     std::unique_lock lock(state_mutex_);
     startup_changed_.wait_for(lock, std::chrono::seconds(5), [&] {
@@ -113,7 +171,8 @@ class PreviewActor::Implementation {
       running_.store(false);
     }
     audio_ready_.notify_all();
-    if (worker_.joinable()) worker_.join();
+    waitForWorker(
+        std::chrono::steady_clock::now() + kNativeShutdownBudget);
     {
       std::lock_guard lock(audio_mutex_);
       queued_samples_.clear();
@@ -131,20 +190,29 @@ class PreviewActor::Implementation {
       session_id,
       generation,
     };
-    emitter_.emit(std::move(error));
+    emitter_->emit(std::move(error));
     RuntimeEvent stopped;
     stopped.type = "sessionStopped";
     stopped.session_id = session_id;
     stopped.generation = generation;
     stopped.reason = "runtime_error";
-    emitter_.emit(std::move(stopped));
+    emitter_->emit(std::move(stopped));
     return true;
   }
 
-  void shutdown() { stopInternal(false); }
+  void shutdown(
+      std::optional<std::chrono::steady_clock::time_point> stop_by =
+          std::nullopt) {
+    if (shutdown_.exchange(true, std::memory_order_acq_rel)) return;
+    emitter_->disable();
+    stopInternal(false, stop_by);
+  }
 
  private:
-  void stopInternal(bool emit_stopped) {
+  bool stopInternal(
+      bool emit_stopped,
+      std::optional<std::chrono::steady_clock::time_point> stop_by =
+          std::nullopt) {
     std::string session_id;
     std::uint64_t generation = 0;
     bool terminal_emitted = false;
@@ -156,7 +224,8 @@ class PreviewActor::Implementation {
       running_.store(false);
     }
     audio_ready_.notify_all();
-    if (worker_.joinable()) worker_.join();
+    const auto stopped = waitForWorker(stop_by.value_or(
+        std::chrono::steady_clock::now() + kNativeShutdownBudget));
     {
       std::lock_guard lock(audio_mutex_);
       queued_samples_.clear();
@@ -175,8 +244,26 @@ class PreviewActor::Implementation {
       event.session_id = std::move(session_id);
       event.generation = generation;
       event.reason = "preview_stopped";
-      emitter_.emit(std::move(event));
+      emitter_->emit(std::move(event));
     }
+    return stopped;
+  }
+
+  bool waitForWorker(
+      std::chrono::steady_clock::time_point deadline) noexcept {
+    if (!worker_.joinable()) return true;
+    {
+      std::unique_lock lock(worker_finished_mutex_);
+      worker_finished_changed_.wait_until(lock, deadline, [&] {
+        return worker_finished_.load(std::memory_order_acquire);
+      });
+    }
+    if (worker_finished_.load(std::memory_order_acquire)) {
+      worker_.join();
+      return true;
+    }
+    worker_.detach();
+    return false;
   }
 
   void markReady() {
@@ -216,14 +303,14 @@ class PreviewActor::Implementation {
       command.session_id,
       command.generation,
     };
-    emitter_.emit(std::move(error));
+    emitter_->emit(std::move(error));
 
     RuntimeEvent stopped;
     stopped.type = "sessionStopped";
     stopped.session_id = command.session_id;
     stopped.generation = command.generation;
     stopped.reason = "runtime_error";
-    emitter_.emit(std::move(stopped));
+    emitter_->emit(std::move(stopped));
   }
 
   void run(const MediaCommand& command) {
@@ -232,6 +319,15 @@ class PreviewActor::Implementation {
     DWORD task_index = 0;
     HANDLE avrt = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task_index);
     bool had_started = false;
+    if (before_render_operation_) {
+      markReady();
+      before_render_operation_();
+      if (avrt) AvRevertMmThreadCharacteristics(avrt);
+      if (com_initialized) CoUninitialize();
+      worker_finished_.store(true, std::memory_order_release);
+      worker_finished_changed_.notify_all();
+      return;
+    }
     try {
       auto render_device = renderDevice();
       ComPtr<IAudioClient> render_client;
@@ -298,15 +394,24 @@ class PreviewActor::Implementation {
     } catch (const std::exception& error) {
       markFailed(error.what());
       if (had_started) emitTerminalFailure(command, error.what());
+    } catch (...) {
+      markFailed("unknown microphone preview render failure");
     }
     if (avrt) AvRevertMmThreadCharacteristics(avrt);
     if (com_initialized) CoUninitialize();
+    worker_finished_.store(true, std::memory_order_release);
+    worker_finished_changed_.notify_all();
   }
 
-  SequencedEmitter& emitter_;
+  std::shared_ptr<PreviewEmitterGate> emitter_;
+  PreviewActor::BeforeRenderOperation before_render_operation_;
   std::mutex state_mutex_;
   std::condition_variable startup_changed_;
   std::thread worker_;
+  std::mutex worker_finished_mutex_;
+  std::condition_variable worker_finished_changed_;
+  std::atomic_bool worker_finished_{true};
+  std::atomic_bool shutdown_{false};
   std::atomic_bool running_{false};
   std::string session_id_;
   std::uint64_t generation_ = 0;
@@ -318,9 +423,14 @@ class PreviewActor::Implementation {
   std::deque<float> queued_samples_;
 };
 
-PreviewActor::PreviewActor(SequencedEmitter& emitter)
-  : implementation_(std::make_unique<Implementation>(emitter)) {}
-PreviewActor::~PreviewActor() = default;
+PreviewActor::PreviewActor(
+    SequencedEmitter& emitter,
+    BeforeRenderOperation before_render_operation)
+  : implementation_(std::make_shared<Implementation>(
+      emitter, std::move(before_render_operation))) {}
+PreviewActor::~PreviewActor() {
+  if (implementation_) implementation_->shutdown();
+}
 RuntimeEvent PreviewActor::start(const MediaCommand& command) {
   return implementation_->start(command);
 }
@@ -338,5 +448,8 @@ void PreviewActor::stop(const MediaCommand& command, bool emit_stopped) {
   implementation_->stop(command, emit_stopped);
 }
 void PreviewActor::shutdown() { implementation_->shutdown(); }
+void PreviewActor::shutdown(std::chrono::steady_clock::time_point deadline) {
+  implementation_->shutdown(deadline);
+}
 
 }  // namespace syrnike::desktop_native::media

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { VoiceStageControls } from './voice-stage-controls'
 
 const voiceJoinMock = vi.hoisted(() => vi.fn())
+const voiceLeaveMock = vi.hoisted(() => vi.fn())
 
 vi.mock('#/features/voice/voice-session-context', () => ({
   useVoiceSession: () => ({
@@ -14,7 +15,7 @@ vi.mock('#/features/voice/voice-session-context', () => ({
     deafened: false,
     toggleMic: vi.fn(),
     toggleDeafen: vi.fn(),
-    leave: vi.fn(),
+    leave: voiceLeaveMock,
     join: voiceJoinMock,
   }),
 }))
@@ -48,6 +49,7 @@ vi.mock('#/features/voice/voice-stage-context', () => ({
 describe('VoiceStageControls', () => {
   beforeEach(() => {
     voiceJoinMock.mockClear()
+    voiceLeaveMock.mockClear()
   })
 
   afterEach(() => {
@@ -69,5 +71,111 @@ describe('VoiceStageControls', () => {
 
     expect(voiceJoinMock).toHaveBeenCalledWith('group-1')
     expect(screen.queryByRole('button', { name: 'Подключиться к голосу' })).toBeNull()
+  })
+
+  it('exits the focused stream without disconnecting from voice', () => {
+    const exitViewSession = vi.fn()
+    const streamSession = {
+      id: 'stream:alice:screen',
+      stageItemId: 'alice:screen',
+      kind: 'stream' as const,
+      label: 'Alice',
+    }
+
+    render(
+      <VoiceStageControls
+        channelId="voice-1"
+        inCall
+        connecting={false}
+        overlay
+        viewSessions={[streamSession]}
+        focusedStageItemId="alice:screen"
+        onExitViewSession={exitViewSession}
+      />,
+    )
+
+    const focusedExitButton = screen.getByRole('button', {
+      name: 'Прекратить просмотр — Alice',
+    })
+    expect(
+      focusedExitButton.querySelector(
+        '[data-voice-stage-exit-icon="stream"]',
+      ),
+    ).not.toBeNull()
+    expect(
+      focusedExitButton.querySelector('[data-voice-stage-exit-icon="voice"]'),
+    ).toBeNull()
+
+    fireEvent.click(focusedExitButton)
+
+    expect(exitViewSession).toHaveBeenCalledWith(streamSession)
+    expect(voiceLeaveMock).not.toHaveBeenCalled()
+    expect(
+      screen.queryByRole('button', { name: 'Выбрать, что завершить' }),
+    ).toBeNull()
+  })
+
+  it('offers every active view session from the exit dropdown', async () => {
+    const exitViewSession = vi.fn()
+    const activitySession = {
+      id: 'activity:counter-1',
+      stageItemId: 'activity:counter-1',
+      kind: 'activity' as const,
+      label: 'Общий счётчик',
+      channelId: 'voice-1',
+      instanceId: 'counter-1',
+    }
+
+    render(
+      <VoiceStageControls
+        channelId="voice-1"
+        inCall
+        connecting={false}
+        overlay
+        viewSessions={[
+          {
+            id: 'stream:alice:screen',
+            stageItemId: 'alice:screen',
+            kind: 'stream',
+            label: 'Alice',
+          },
+          activitySession,
+        ]}
+        onExitViewSession={exitViewSession}
+      />,
+    )
+
+    expect(
+      screen.getByRole('button', { name: 'Отключиться от голоса' }),
+    ).toBeTruthy()
+
+    fireEvent.pointerDown(
+      screen.getByRole('button', { name: 'Выбрать, что завершить' }),
+      { button: 0, ctrlKey: false },
+    )
+
+    expect(
+      screen.queryByRole('menuitem', { name: 'Отключиться от голоса' }),
+    ).toBeNull()
+
+    expect(
+      screen
+        .getByRole('menuitem', { name: 'Прекратить просмотр — Alice' })
+        .querySelector('[data-voice-stage-exit-icon="stream"]'),
+    ).not.toBeNull()
+
+    const activityExitItem = await screen.findByRole('menuitem', {
+      name: 'Выйти из активности — Общий счётчик',
+    })
+    expect(
+      activityExitItem.querySelector(
+        '[data-voice-stage-exit-icon="activity"]',
+      ),
+    ).not.toBeNull()
+
+    fireEvent.click(activityExitItem)
+
+    expect(exitViewSession).toHaveBeenCalledWith(activitySession)
+    expect(voiceLeaveMock).not.toHaveBeenCalled()
   })
 })
