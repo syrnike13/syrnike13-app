@@ -2,7 +2,10 @@ import { useState } from 'react'
 import type { File } from '@syrnike13/api-types'
 import { FileIcon } from '#/components/icons'
 
-import { ImageLightbox } from '#/components/media/image-lightbox'
+import {
+  ImageLightbox,
+  type ImageLightboxAuthor,
+} from '#/components/media/image-lightbox'
 import { FxImage } from '#/components/ui/fx-image'
 import {
   fileMosaicRatio,
@@ -18,9 +21,13 @@ import { cn } from '#/lib/utils'
 
 type MessageAttachmentsProps = {
   attachments: File[]
+  author?: ImageLightboxAuthor
 }
 
-export function MessageAttachments({ attachments }: MessageAttachmentsProps) {
+export function MessageAttachments({
+  attachments,
+  author,
+}: MessageAttachmentsProps) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const imageFiles = attachments.filter(isImageFile)
   const otherFiles = attachments.filter((file) => !isImageFile(file))
@@ -100,6 +107,7 @@ export function MessageAttachments({ attachments }: MessageAttachmentsProps) {
         onOpenChange={(open) => {
           if (!open) setLightboxIndex(null)
         }}
+        author={author}
       />
     </>
   )

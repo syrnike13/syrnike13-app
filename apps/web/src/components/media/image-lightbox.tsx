@@ -5,7 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
 } from 'react'
-import type { File } from '@syrnike13/api-types'
+import type { File, User } from '@syrnike13/api-types'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -27,8 +27,17 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '#/components/ui/tooltip'
+import { UserAvatar } from '#/components/user/user-avatar'
 import { attachmentOriginalUrl, attachmentPreviewUrl } from '#/lib/media'
+import { formatMessageTimestamp } from '#/lib/message-time'
 import { cn } from '#/lib/utils'
+
+export type ImageLightboxAuthor = {
+  user?: User | null
+  name: string
+  nameColor?: string
+  createdAt: Date
+}
 
 type ImageLightboxProps = {
   files: readonly File[]
@@ -36,6 +45,7 @@ type ImageLightboxProps = {
   onIndexChange: (index: number) => void
   open: boolean
   onOpenChange: (open: boolean) => void
+  author?: ImageLightboxAuthor
 }
 
 type PanOffset = { x: number; y: number }
@@ -133,6 +143,7 @@ export function ImageLightbox({
   onIndexChange,
   open,
   onOpenChange,
+  author,
 }: ImageLightboxProps) {
   const [zoom, setZoom] = useState(MIN_ZOOM)
   const [offset, setOffset] = useState<PanOffset>({ x: 0, y: 0 })
@@ -230,6 +241,36 @@ export function ImageLightbox({
         <DialogTitle className="sr-only">{title}</DialogTitle>
 
         <TooltipProvider delayDuration={300}>
+          {author ? (
+            <div
+              className="absolute top-5 left-4 z-10 flex max-w-[min(20rem,calc(100vw-8rem))] items-center gap-3"
+              onClick={stopBubble}
+            >
+              <UserAvatar
+                user={author.user}
+                className="size-10 shrink-0"
+                fallbackClassName="size-10"
+                showPresence={false}
+              />
+              <div className="min-w-0">
+                <p
+                  className="truncate text-sm font-semibold text-zinc-100"
+                  style={
+                    author.nameColor ? { color: author.nameColor } : undefined
+                  }
+                >
+                  {author.name}
+                </p>
+                <time
+                  className="block truncate text-xs text-zinc-400"
+                  dateTime={formatMessageTimestamp(author.createdAt)}
+                >
+                  {formatMessageTimestamp(author.createdAt)}
+                </time>
+              </div>
+            </div>
+          ) : null}
+
           <div
             className={cn(
               'absolute top-5 right-16 z-10 flex items-center p-1',
@@ -237,14 +278,6 @@ export function ImageLightbox({
             )}
             onClick={stopBubble}
           >
-            {hasGallery ? (
-              <span
-                className="px-2 text-xs font-medium tabular-nums text-zinc-300"
-                aria-live="polite"
-              >
-                {index + 1} / {files.length}
-              </span>
-            ) : null}
             <LightboxTooltip
               label={zoomed ? 'Сбросить масштаб' : 'Приблизить'}
             >

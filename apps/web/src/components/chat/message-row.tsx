@@ -578,7 +578,15 @@ export function MessageRow({
             <div className="select-text break-words">{renderedContent}</div>
           ) : null}
           {hasAttachments ? (
-            <MessageAttachments attachments={message.attachments!} />
+            <MessageAttachments
+              attachments={message.attachments!}
+              author={{
+                user: authorUser,
+                name,
+                nameColor,
+                createdAt,
+              }}
+            />
           ) : null}
           {!hasContent && !hasAttachments ? (
             <p className="text-xs text-muted-foreground italic">

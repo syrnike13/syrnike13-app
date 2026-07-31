@@ -1,10 +1,17 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import type { File } from '@syrnike13/api-types'
+import type { File, User } from '@syrnike13/api-types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ImageLightbox } from '#/components/media/image-lightbox'
+import { formatMessageTimestamp } from '#/lib/message-time'
+
+vi.mock('#/components/user/user-avatar', () => ({
+  UserAvatar: ({ user }: { user?: User | null }) => (
+    <div data-testid="user-avatar">{user?.username ?? 'unknown'}</div>
+  ),
+}))
 
 function imageFile(overrides: Partial<File> = {}) {
   return {
@@ -21,6 +28,15 @@ function imageFile(overrides: Partial<File> = {}) {
     },
     ...overrides,
   } satisfies File
+}
+
+function authorUser(overrides: Partial<User> = {}) {
+  return {
+    _id: 'user-1',
+    username: 'alice',
+    display_name: 'Alice',
+    ...overrides,
+  } as User
 }
 
 describe('ImageLightbox', () => {
@@ -202,6 +218,34 @@ describe('ImageLightbox', () => {
     expect(onOpenChange).not.toHaveBeenCalled()
   })
 
+  it('shows the message author avatar, role-coloured name, and timestamp', () => {
+    const createdAt = new Date('2026-07-31T12:34:00')
+    const timestamp = formatMessageTimestamp(createdAt)
+
+    render(
+      <ImageLightbox
+        files={[imageFile()]}
+        index={0}
+        onIndexChange={vi.fn()}
+        open
+        onOpenChange={vi.fn()}
+        author={{
+          user: authorUser(),
+          name: 'Alice',
+          nameColor: '#ed4245',
+          createdAt,
+        }}
+      />,
+    )
+
+    expect(screen.getByTestId('user-avatar').textContent).toBe('alice')
+    const name = screen.getByText('Alice')
+    expect(name.getAttribute('style')).toContain('rgb(237, 66, 69)')
+    const time = screen.getByText(timestamp)
+    expect(time.tagName).toBe('TIME')
+    expect(time.getAttribute('dateTime')).toBe(timestamp)
+  })
+
   it('hides gallery controls for a single image', () => {
     render(
       <ImageLightbox
@@ -241,7 +285,7 @@ describe('ImageLightbox', () => {
       />,
     )
 
-    expect(screen.getByText('1 / 3')).toBeTruthy()
+    expect(screen.queryByText('1 / 3')).toBeNull()
     const thumbs = screen.getByRole('list', { name: 'Миниатюры вложений' })
     expect(within(thumbs).getAllByRole('listitem')).toHaveLength(3)
 
