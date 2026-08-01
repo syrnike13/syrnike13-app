@@ -56,12 +56,17 @@ int main() try {
   publication_decision =
       encoder_stall.observePublicationStall(started + 1750ms);
   require(
-      publication_decision.action == CaptureBackendAction::Fail,
-      "publication recovery budget did not terminate the session");
+      publication_decision.action == CaptureBackendAction::RestartPublication,
+      "publication recovery became terminal after repeated stalls");
   publication_decision = encoder_stall.observePublicationStall(started + 3s);
   require(
       publication_decision.action == CaptureBackendAction::None,
-      "exhausted publication recovery emitted more than one terminal");
+      "publication recovery bypassed its capped backoff");
+  publication_decision = encoder_stall.observePublicationStall(started + 3750ms);
+  require(
+      publication_decision.action == CaptureBackendAction::RestartPublication &&
+          encoder_stall.publicationRecoveryCount() == 5,
+      "publication recovery did not remain available with bounded retries");
   CaptureBackendSupervisor frozen_dxgi;
   frozen_dxgi.backendActivated(CaptureBackend::Dxgi, started);
   auto decision = frozen_dxgi.observe(
@@ -86,12 +91,14 @@ int main() try {
       "device removal did not recreate the D3D device");
   tdr.backendActivated(CaptureBackend::Dxgi, started + 1s, true);
   require(
-      tdr.successfulRecoveryCount() == 1,
-      "successful D3D recreation was not counted");
+      tdr.successfulRecoveryCount() == 0 &&
+          tdr.recoveryAttemptCount() == 1,
+      "unconfirmed D3D recreation was counted as successful");
   decision = tdr.observe(
       {ScreenGpuFrameStatus::NewFrame}, started + 2s);
   require(
-      decision.state == CaptureBackendState::Healthy,
+      decision.state == CaptureBackendState::Healthy &&
+          tdr.successfulRecoveryCount() == 1,
       "TDR recovery did not return to healthy");
 
   CaptureBackendSupervisor repeated_wgc_device_loss(CaptureBackend::Wgc);
@@ -187,8 +194,36 @@ int main() try {
       {ScreenGpuFrameStatus::NewFrame}, started + 4s);
   require(
       decision.state == CaptureBackendState::Healthy &&
-          decision.action == CaptureBackendAction::None,
+          decision.action == CaptureBackendAction::None &&
+          access_lost.successfulRecoveryCount() == 1,
       "DXGI access-loss recovery did not return to healthy after a frame");
+
+  CaptureBackendSupervisor failed_access_lost;
+  decision = failed_access_lost.observe(access_lost_observation, started);
+  require(
+      decision.action == CaptureBackendAction::ReinitializeActive,
+      "ACCESS_LOST did not begin with duplication recreation");
+  failed_access_lost.activationFailed(decision, started);
+  require(
+      failed_access_lost.nextRetryAt() - started <= 1s,
+      "failed ACCESS_LOST reinitialization exceeded one-second backoff");
+  decision = failed_access_lost.observe(
+      access_lost_observation, failed_access_lost.nextRetryAt());
+  require(
+      decision.action == CaptureBackendAction::RecreateDevice &&
+          decision.target == CaptureBackend::Dxgi,
+      "failed duplication recreation did not reselect DXGI device/output");
+  const auto device_failure_at = failed_access_lost.nextRetryAt();
+  failed_access_lost.activationFailed(decision, device_failure_at);
+  require(
+      failed_access_lost.nextRetryAt() - device_failure_at <= 1s,
+      "failed fresh DXGI device exceeded one-second backoff");
+  decision = failed_access_lost.observe(
+      access_lost_observation, failed_access_lost.nextRetryAt());
+  require(
+      decision.action == CaptureBackendAction::SwitchBackend &&
+          decision.target == CaptureBackend::Wgc,
+      "failed fresh DXGI device did not fall back to WGC");
 
   CaptureBackendSupervisor gpu_timeout;
   const CaptureBackendObservation gpu_timeout_observation{

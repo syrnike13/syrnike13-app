@@ -211,12 +211,29 @@ export function registerNativeMediaRuntimeIpc(
       if (bridge === remoteVideoBridge &&
         !controller.isCurrentVoiceSession(event.sessionId, event.generation)) return
       bridge?.removeTrack(event.sessionId, event.generation, event.trackId)
+      const transientRemoteRestart = bridge === remoteVideoBridge &&
+        controller.isRemoteVideoDemanded(
+          event.sessionId,
+          event.generation,
+          event.trackId,
+        )
+      if (transientRemoteRestart) {
+        diagnosticSink({
+          scope: 'native-video',
+          event: 'transient_track_removal_classified',
+          kind: 'remote-video',
+          stage: 'native-track-restart',
+          sessionId: event.sessionId,
+          generation: event.generation,
+        })
+      }
       const window = getWindow()
       if (window && !window.isDestroyed()) {
         window.webContents.send('syrnike-desktop:media:remote-video-track-removed', {
           trackId: event.trackId,
           sessionId: event.sessionId,
           generation: event.generation,
+          transient: transientRemoteRestart,
         })
       }
     }
@@ -259,7 +276,7 @@ function createVideoBridge(
         : { type: 'releaseRemoteVideoFrame' as const, ...identity }
       await supervisor.request(command, 2_000)
     },
-    onPresentationStalled: (frame, reason) => {
+    onPresentationStalled: async (frame, reason) => {
       const window = getWindow()
       diagnosticSink({
         scope: 'native-video',
@@ -271,6 +288,22 @@ function createVideoBridge(
         reason,
         windowVisible: Boolean(window?.isVisible()),
         windowMinimized: Boolean(window?.isMinimized()),
+      })
+      if (local) return
+      const requested = await controller.recoverRemoteVideoDemand(
+        frame.sessionId,
+        frame.generation,
+        frame.trackId,
+      )
+      diagnosticSink({
+        scope: 'native-video',
+        event: 'presentation_recovery_requested',
+        kind: 'remote-video',
+        stage: 'native-track-restart',
+        sessionId: frame.sessionId,
+        generation: frame.generation,
+        reason,
+        outcome: requested ? 'requested' : 'not-demanded',
       })
     },
   })

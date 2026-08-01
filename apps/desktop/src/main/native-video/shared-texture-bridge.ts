@@ -146,7 +146,12 @@ export class NativeSharedTextureBridge {
       return false
     }
     const maximum = Math.max(1, this.dependencies.maxInFlight ?? 3)
-    if (this.unfencedTrackReferences(frame.trackId) >= maximum) {
+    const references = this.unfencedTrackReferences(trackKey)
+    // Permit one replacement generation after retiring a stalled track, but
+    // keep the combined active + renderer-owned references strictly bounded.
+    // Retired fences must not block every frame from the recovery track.
+    if (references.active >= maximum || references.total >= maximum * 2) {
+      this.recordDeliveryFailure(trackKey, frame)
       this.releaseNativeFrame(frame)
       return false
     }
@@ -160,6 +165,7 @@ export class NativeSharedTextureBridge {
       this.retainedBytes + frameBytes > maximumRetainedBytes
     ) {
       this.reportCapacityLimit(frameBytes, maximumRetainedBytes)
+      this.recordDeliveryFailure(trackKey, frame)
       this.releaseNativeFrame(frame)
       return false
     }
@@ -296,12 +302,16 @@ export class NativeSharedTextureBridge {
     }
   }
 
-  private unfencedTrackReferences(trackId: string) {
-    let count = 0
-    for (const entry of this.inFlight.values()) {
-      if (entry.frame.trackId === trackId) count += 1
+  private unfencedTrackReferences(trackKey: string) {
+    let active = 0
+    let total = 0
+    const prefix = `${trackKey}:`
+    for (const [key, entry] of this.inFlight) {
+      if (!key.startsWith(prefix)) continue
+      total += 1
+      if (entry.active) active += 1
     }
-    return count
+    return { active, total }
   }
 
   private recoverStalledTrack(key: string, trackKey: string, entry: Entry) {
@@ -311,6 +321,9 @@ export class NativeSharedTextureBridge {
       if (!candidate.active || !candidateKey.startsWith(prefix)) continue
       this.retireEntry(candidateKey, candidate)
     }
+    this.rendererEpoch += 1
+    this.deliveryFailures.set(trackKey, 0)
+    if (!this.claimPresentationRecovery(trackKey)) return
     console.warn('[native-video] shared texture fence stalled; restarting track', {
       local: entry.frame.local,
       source: entry.frame.source,
@@ -342,13 +355,7 @@ export class NativeSharedTextureBridge {
     if (failures < threshold) return
 
     this.deliveryFailures.set(trackKey, 0)
-    const now = Date.now()
-    const cooldown = Math.max(
-      1_000,
-      this.dependencies.deliveryFailureCooldownMs ?? 5_000,
-    )
-    if (now - (this.lastDeliveryRecoveryAt.get(trackKey) ?? 0) < cooldown) return
-    this.lastDeliveryRecoveryAt.set(trackKey, now)
+    if (!this.claimPresentationRecovery(trackKey)) return
     try {
       void Promise.resolve(this.dependencies.onPresentationStalled?.(
         frame,
@@ -358,6 +365,20 @@ export class NativeSharedTextureBridge {
     } catch (error) {
       this.reportFailure('recover', frame, error)
     }
+  }
+
+  private claimPresentationRecovery(trackKey: string) {
+    const now = Date.now()
+    const cooldown = Math.max(
+      1_000,
+      this.dependencies.deliveryFailureCooldownMs ?? 5_000,
+    )
+    const previous = this.lastDeliveryRecoveryAt.get(trackKey)
+    if (previous !== undefined && now - previous < cooldown) {
+      return false
+    }
+    this.lastDeliveryRecoveryAt.set(trackKey, now)
+    return true
   }
 
   private reportFailure(

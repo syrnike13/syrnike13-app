@@ -289,12 +289,13 @@ export async function runNativeUtilityHost(
         () => exit(1),
       )
   }
-  const failContractCorruption = () => {
+  const failContractCorruption = (rawEvent: Record<string, unknown>) => {
     if (contractCorrupted) return
     contractCorrupted = true
     diagnosticLog?.log('native_contract_corruption', {
       runtimeKind,
       runtimeWasActive: Boolean(runtime),
+      eventType: typeof rawEvent.type === 'string' ? rawEvent.type : undefined,
     })
     hostParentPort.postMessage({
       type: 'event',
@@ -323,7 +324,7 @@ export async function runNativeUtilityHost(
     }
     if (rawEvent.type === 'reply') {
       if (!isNativeRuntimeReply(rawEvent)) {
-        failContractCorruption()
+        failContractCorruption(rawEvent)
         return
       }
       if (!rawEvent.ok) diagnosticLog?.log('native_reply', rawEvent)
@@ -335,7 +336,22 @@ export async function runNativeUtilityHost(
       return
     }
     if (!isNativeRuntimeEvent(rawEvent)) {
-      failContractCorruption()
+      if (isAdvisoryNativeRuntimeEventCandidate(rawEvent)) {
+        diagnosticLog?.log('native_advisory_event_rejected', {
+          runtimeKind,
+          eventType: rawEvent.type,
+          reason:
+            typeof rawEvent.reason === 'string'
+              ? rawEvent.reason.slice(0, 128)
+              : undefined,
+          backend:
+            typeof rawEvent.backend === 'string'
+              ? rawEvent.backend.slice(0, 32)
+              : undefined,
+        })
+        return
+      }
+      failContractCorruption(rawEvent)
       return
     }
     if (rawEvent.type === 'sessionLifecycle' && rawEvent.kind === 'camera') {
@@ -495,6 +511,15 @@ export async function runNativeUtilityHost(
       if (request.requestId === shutdownRequestId) shutdown()
     }
   })
+}
+
+export function isAdvisoryNativeRuntimeEventCandidate(
+  event: Record<string, unknown>,
+) {
+  return event.type === 'screenBackendRestart' ||
+    event.type === 'stats' ||
+    event.type === 'microphoneMetrics' ||
+    event.type === 'activeSpeakers'
 }
 
 export function shouldLogNativeRuntimeEvent(

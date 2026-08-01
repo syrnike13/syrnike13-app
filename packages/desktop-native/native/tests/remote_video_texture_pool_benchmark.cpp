@@ -150,6 +150,32 @@ int main() try {
     }
   }
 
+  {
+    RemoteVideoTexturePool freshness_pool(GetCurrentProcessId(), 5);
+    require(freshness_pool.submit(source, 10), "freshness frame 1 rejected");
+    require(freshness_pool.submit(source, 20), "freshness frame 2 rejected");
+    require(freshness_pool.submit(source, 30), "freshness frame 3 rejected");
+    const auto freshness_deadline = Clock::now() + std::chrono::seconds(1);
+    while (freshness_pool.ready() != 3 && Clock::now() < freshness_deadline) {
+      const auto result = freshness_pool.poll();
+      require(!result.reset_required, "freshness pool requested a device reset");
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    require(freshness_pool.ready() == 3, "freshness frames did not complete");
+    RemoteVideoTextureFrame freshest;
+    require(freshness_pool.take(freshest), "freshness pool returned no frame");
+    require(freshest.timestamp_us == 30, "texture pool delivered stale FIFO frame");
+    require(
+      freshness_pool.consumeSupersededReadyFrames() == 2,
+      "texture pool did not supersede both older ready frames"
+    );
+    freshest.lease.reset();
+    require(
+      freshness_pool.available() == freshness_pool.capacity(),
+      "freshness pool did not recycle superseded frames"
+    );
+  }
+
   RemoteVideoTexturePool pool(GetCurrentProcessId(), 5);
   std::deque<OutstandingLease> leases;
   std::vector<std::uint64_t> completion_us;

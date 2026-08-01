@@ -15,6 +15,7 @@
 #include "../common/addon_parsing.hpp"
 #include "../common/async_cleanup_dispatcher.hpp"
 #include "../common/diagnostic_log.hpp"
+#include "../common/native_contract_version.hpp"
 #include "../common/node_event_sink.hpp"
 #include "media_runtime.hpp"
 
@@ -481,7 +482,7 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
   result.Set("platform", "win32");
   result.Set("available", true);
   result.Set("runtime", "media");
-  result.Set("contractVersion", 4);
+  result.Set("contractVersion", kNativeRuntimeContractVersion);
   result.Set("pid", GetCurrentProcessId());
   result.Set("napi", std::to_string(NAPI_VERSION));
   result.Set("livekit", "1.3.0");

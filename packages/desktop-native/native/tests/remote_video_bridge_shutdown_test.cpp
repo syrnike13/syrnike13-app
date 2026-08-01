@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -10,6 +11,10 @@
 #include <thread>
 #include <utility>
 #include <vector>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include <livekit/ffi_handle.h>
 #include <livekit/track.h>
@@ -104,6 +109,46 @@ class BlockingStreamReader final : public RemoteVideoBridge::StreamReader {
   std::atomic_bool release_read_{false};
   std::atomic_int close_calls_{0};
   std::atomic_int read_exits_{0};
+};
+
+class SingleFrameThenBlockReader final : public RemoteVideoBridge::StreamReader {
+ public:
+  bool read(livekit::VideoFrameEvent& event) override {
+    std::unique_lock lock(mutex_);
+    if (!frame_sent_) {
+      frame_sent_ = true;
+      lock.unlock();
+      event.frame = livekit::VideoFrame::create(
+        64,
+        64,
+        livekit::VideoBufferType::BGRA
+      );
+      std::fill(
+        event.frame.data(),
+        event.frame.data() + event.frame.dataSize(),
+        std::uint8_t{0x5a}
+      );
+      event.timestamp_us = 42;
+      event.rotation = livekit::VideoRotation::VIDEO_ROTATION_0;
+      return true;
+    }
+    changed_.wait(lock, [&] { return closed_; });
+    return false;
+  }
+
+  void close() override {
+    {
+      std::lock_guard lock(mutex_);
+      closed_ = true;
+    }
+    changed_.notify_all();
+  }
+
+ private:
+  std::mutex mutex_;
+  std::condition_variable changed_;
+  bool frame_sent_ = false;
+  bool closed_ = false;
 };
 
 class PostGate final {
@@ -368,6 +413,59 @@ bool waitUntil(Predicate predicate, std::chrono::milliseconds timeout) {
 }  // namespace
 
 int main() try {
+#ifdef _WIN32
+  // The GPU pump must publish a completed upload even though the decoder does
+  // not deliver a second frame to wake the blocking read loop.
+  {
+    std::atomic_int static_track_releases{0};
+    auto static_track = std::make_shared<FakeVideoTrack>(static_track_releases);
+    auto static_reader = std::make_shared<SingleFrameThenBlockReader>();
+    std::mutex frame_mutex;
+    std::condition_variable frame_changed;
+    bool frame_delivered = false;
+    RemoteVideoBridge* bridge_pointer = nullptr;
+    RemoteVideoBridge static_bridge(
+      GetCurrentProcessId(),
+      [&](MediaCommand command) {
+        if (command.type != "__remoteVideoFrame") return true;
+        bridge_pointer->release(command.track_id, command.frame_sequence);
+        {
+          std::lock_guard lock(frame_mutex);
+          frame_delivered = command.timestamp_us == 42;
+        }
+        frame_changed.notify_all();
+        return true;
+      },
+      {},
+      {},
+      {},
+      [static_reader](const std::shared_ptr<livekit::Track>&) {
+        return static_reader;
+      }
+    );
+    bridge_pointer = &static_bridge;
+    static_bridge.updateIdentity("static-frame", 1);
+    static_bridge.addTrack(
+      static_track,
+      "participant",
+      livekit::TrackSource::SOURCE_CAMERA,
+      "static-frame-track"
+    );
+    {
+      std::unique_lock lock(frame_mutex);
+      require(
+        frame_changed.wait_for(
+          lock,
+          std::chrono::seconds(2),
+          [&] { return frame_delivered; }
+        ),
+        "remote video GPU pump did not publish a lone static frame"
+      );
+    }
+    static_bridge.removeTrack("static-frame-track", false);
+  }
+#endif
+
   std::atomic_int token_releases{0};
   std::atomic_int track_releases{0};
   std::atomic_int bridge_cleanup_launches{0};
@@ -392,6 +490,10 @@ int main() try {
     reader->waitUntilRead(std::chrono::seconds(1)),
     "remote video reader did not enter its injected blocking read"
   );
+  // The GPU pump wakes independently before a first decoded frame exists.
+  // Keep the read blocked past its idle interval to prove that an absent lazy
+  // uploader remains a valid no-work state instead of a null dereference.
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   const auto shutdown_started = std::chrono::steady_clock::now();
   owner->beginShutdown();

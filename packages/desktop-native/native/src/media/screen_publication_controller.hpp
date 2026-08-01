@@ -15,6 +15,7 @@
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
 #include "livekit_publication_client.hpp"
+#include "screen_gpu_capture.hpp"
 #include "screen_video_capture.hpp"
 #include "screen_audio_capture.hpp"
 
@@ -54,12 +55,17 @@ class ScreenPublicationController final {
   using Now = std::function<std::chrono::steady_clock::time_point()>;
   using DescribePublication =
     std::function<ScreenPublicationDescription(const MediaCommand&)>;
+  using PrepareCapture = std::function<std::shared_ptr<ScreenGpuCapturer>(
+    const MediaCommand&,
+    const ScreenPublicationDescription&
+  )>;
   using StartCaptureWorkers = std::function<void(
     const MediaCommand&,
     const ScreenPublicationDescription&,
     const std::shared_ptr<livekit::D3D11H264VideoSource>&,
     const std::shared_ptr<livekit::LocalVideoTrack>&,
     const std::shared_ptr<livekit::AudioSource>&,
+    const std::shared_ptr<ScreenGpuCapturer>&,
     const std::shared_ptr<std::atomic_bool>&,
     const std::shared_ptr<syrnike::voice::ScreenAudioStopSignal>&,
     const std::function<bool()>&,
@@ -85,6 +91,7 @@ class ScreenPublicationController final {
     CommitIfCurrent commit_if_current,
     Now now,
     DescribePublication describe_publication,
+    PrepareCapture prepare_capture,
     StartCaptureWorkers start_capture_workers,
     CapturePromoted capture_promoted,
     QueryEncoderCapability query_encoder_capability = {},

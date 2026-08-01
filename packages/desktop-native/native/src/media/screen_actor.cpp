@@ -68,6 +68,25 @@ std::string_view gpuCaptureReason(ScreenGpuCaptureErrorCode code) noexcept {
   return "gpu_capture_unavailable";
 }
 
+std::string_view gpuCaptureFailureCategory(
+    ScreenGpuCaptureErrorCode code) noexcept {
+  switch (code) {
+    case ScreenGpuCaptureErrorCode::DeviceLost:
+      return "gpu_device_lost";
+    case ScreenGpuCaptureErrorCode::InteropUnavailable:
+    case ScreenGpuCaptureErrorCode::FormatUnsupported:
+      return "gpu_interop_unavailable";
+    case ScreenGpuCaptureErrorCode::TargetClosed:
+      return "target_closed";
+    case ScreenGpuCaptureErrorCode::CaptureUnavailable:
+    case ScreenGpuCaptureErrorCode::AccessLost:
+    case ScreenGpuCaptureErrorCode::DeviceUnavailable:
+    case ScreenGpuCaptureErrorCode::GpuTimeout:
+      return "gpu_capture_unavailable";
+  }
+  return "gpu_capture_unavailable";
+}
+
 std::uint64_t packLuid(const LUID luid) noexcept {
   return static_cast<std::uint64_t>(luid.LowPart) |
     (static_cast<std::uint64_t>(static_cast<std::uint32_t>(luid.HighPart)) << 32U);
@@ -127,6 +146,10 @@ bool emitScreenBackendRestart(
   event.capture_method = transition.backend;
   event.reason = transition.action;
   event.video_recoverable_lost_count = transition.count;
+  event.error_code = std::string(gpuCaptureReason(transition.error_code));
+  if (transition.hresult != 0) {
+    event.hresult = static_cast<std::int64_t>(transition.hresult);
+  }
   return emitter.emit(std::move(event));
 }
 
@@ -444,10 +467,21 @@ class ScreenActor::Implementation final
         },
         [owner](
           const MediaCommand& command,
+          const ScreenPublicationDescription& description
+        ) {
+          const auto implementation = owner.lock();
+          if (!implementation) {
+            throw std::runtime_error("screen actor is shutting down");
+          }
+          return implementation->prepareCapture(command, description);
+        },
+        [owner](
+          const MediaCommand& command,
           const ScreenPublicationDescription& description,
           const std::shared_ptr<livekit::D3D11H264VideoSource>& video_source,
           const std::shared_ptr<livekit::LocalVideoTrack>& video_track,
           const std::shared_ptr<livekit::AudioSource>& audio_source,
+          const std::shared_ptr<ScreenGpuCapturer>& capturer,
           const std::shared_ptr<std::atomic_bool>& running,
           const std::shared_ptr<syrnike::voice::ScreenAudioStopSignal>& audio_stop,
           const std::function<bool()>& is_current,
@@ -464,6 +498,7 @@ class ScreenActor::Implementation final
             video_source,
             video_track,
             audio_source,
+            capturer,
             running,
             audio_stop,
             is_current,
@@ -647,6 +682,7 @@ class ScreenActor::Implementation final
     const std::shared_ptr<livekit::D3D11H264VideoSource>& video_source,
     const std::shared_ptr<livekit::LocalVideoTrack>& video_track,
     const std::shared_ptr<livekit::AudioSource>& audio_source,
+    const std::shared_ptr<ScreenGpuCapturer>& capturer,
     const std::shared_ptr<std::atomic_bool>& running,
     const std::shared_ptr<syrnike::voice::ScreenAudioStopSignal>& audio_stop,
     const std::function<bool()>& is_current,
@@ -654,23 +690,8 @@ class ScreenActor::Implementation final
     std::thread& audio_thread
   ) {
     const auto owner = shared_from_this();
-    std::shared_ptr<ScreenGpuCapturer> capturer;
-    try {
-      capturer = ScreenGpuCapturer::create(
-        description.target,
-        description.width,
-        description.height,
-        capture_supervisor_
-      );
-    } catch (const ScreenGpuCaptureError& error) {
-      throw std::runtime_error(std::string(gpuCaptureReason(error.code())));
-    }
-    const auto adapter_capability =
-      livekit::queryD3D11H264CapabilityForAdapter(
-        packLuid(capturer->adapterLuid()));
-    if (!adapter_capability.available) {
-      throw std::runtime_error(
-        "gpu_encoder_unavailable: " + adapter_capability.reason);
+    if (!capturer) {
+      throw std::runtime_error("gpu_capture_unavailable: missing prepared capturer");
     }
     if (!is_current()) throw std::runtime_error("stale screen capture generation");
     const auto preview_key =
@@ -719,6 +740,37 @@ class ScreenActor::Implementation final
         audio_thread
       );
     }
+  }
+
+  std::shared_ptr<ScreenGpuCapturer> prepareCapture(
+    const MediaCommand&,
+    const ScreenPublicationDescription& description
+  ) {
+    std::shared_ptr<ScreenGpuCapturer> capturer;
+    try {
+      capturer = ScreenGpuCapturer::create(
+        description.target,
+        description.width,
+        description.height,
+        capture_supervisor_
+      );
+    } catch (const ScreenGpuCaptureError& error) {
+      auto message = std::string(gpuCaptureFailureCategory(error.code())) +
+        ": " + std::string(gpuCaptureReason(error.code())) +
+        ": " + error.what();
+      if (error.hresult() != 0) {
+        message += " (HRESULT " + std::to_string(error.hresult()) + ")";
+      }
+      throw std::runtime_error(std::move(message));
+    }
+    const auto adapter_capability =
+      livekit::queryD3D11H264CapabilityForAdapter(
+        packLuid(capturer->adapterLuid()));
+    if (!adapter_capability.available) {
+      throw std::runtime_error(
+        "gpu_encoder_unavailable: " + adapter_capability.reason);
+    }
+    return capturer;
   }
 
   void startAudioCapture(
@@ -1066,22 +1118,15 @@ class ScreenActor::Implementation final
       [&](std::string cause, std::chrono::steady_clock::time_point now) {
         const auto decision =
           capture_supervisor_->observePublicationStall(now);
-        if (
-          decision.action != CaptureBackendAction::RestartPublication &&
-          decision.action != CaptureBackendAction::Fail
-        ) {
+        if (decision.action != CaptureBackendAction::RestartPublication) {
           return;
         }
         MediaCommand recovery;
-        recovery.type = decision.action == CaptureBackendAction::Fail
-          ? "__screenRecoveryFailed"
-          : "__screenExecutePublicationRestart";
+        recovery.type = "__screenExecutePublicationRestart";
         recovery.session_id = session_id;
         recovery.generation = generation;
         recovery.revision = capture_supervisor_->publicationRecoveryCount();
-        recovery.internal_message = decision.action == CaptureBackendAction::Fail
-          ? "rtp_stall_recovery_exhausted"
-          : std::move(cause);
+        recovery.internal_message = std::move(cause);
         if (post_(std::move(recovery))) {
           rtp_stall_reported = true;
           running->store(false);

@@ -14,8 +14,19 @@ import type {
 } from '@syrnike13/platform'
 import { isVoiceRemoteAudioSettings } from '@syrnike13/platform'
 
-export const NATIVE_RUNTIME_CONTRACT_VERSION = 4
+export const NATIVE_RUNTIME_CONTRACT_VERSION = 5
 export const NATIVE_RUNTIME_MAX_PENDING_REQUESTS = 256
+
+export const SCREEN_BACKEND_RESTART_REASONS = [
+  'reinitialize_active',
+  'recreate_active_pipeline',
+  'recreate_device',
+  'switch_backend',
+  'probe_preferred_backend',
+] as const
+
+export type ScreenBackendRestartReason =
+  (typeof SCREEN_BACKEND_RESTART_REASONS)[number]
 
 export type NativeRuntimeKind = 'media' | 'hotkey' | 'overlay'
 
@@ -231,12 +242,10 @@ export type MediaRuntimeEvent =
   | ({
       type: 'screenBackendRestart'
       backend: 'dxgi_gpu' | 'wgc_gpu'
-      reason:
-        | 'reinitialize_active'
-        | 'recreate_device'
-        | 'switch_backend'
-        | 'probe_preferred_backend'
+      reason: ScreenBackendRestartReason
       count: number
+      errorCode?: string
+      hresult?: number
     } & SessionEventBase)
   | ({ type: 'microphoneMetrics'; metrics: NativeMicrophoneMetricsEvent } &
       RuntimeEventBase)
@@ -947,12 +956,13 @@ export function isNativeRuntimeEvent(
     case 'screenBackendRestart':
       return (
         (value.backend === 'dxgi_gpu' || value.backend === 'wgc_gpu') &&
-        (value.reason === 'reinitialize_active' ||
-          value.reason === 'recreate_device' ||
-          value.reason === 'switch_backend' ||
-          value.reason === 'probe_preferred_backend') &&
+        SCREEN_BACKEND_RESTART_REASONS.some(
+          (reason) => value.reason === reason,
+        ) &&
         Number.isSafeInteger(value.count) &&
-        Number(value.count) > 0
+        Number(value.count) > 0 &&
+        (value.errorCode === undefined || typeof value.errorCode === 'string') &&
+        (value.hresult === undefined || Number.isSafeInteger(value.hresult))
       )
     case 'microphonePreviewStarted':
       return (

@@ -360,6 +360,7 @@ class ScreenPublicationController::Implementation
     CommitIfCurrent commit_if_current,
     Now now,
     DescribePublication describe_publication,
+    PrepareCapture prepare_capture,
     StartCaptureWorkers start_capture_workers,
     CapturePromoted capture_promoted,
     QueryEncoderCapability query_encoder_capability,
@@ -375,6 +376,7 @@ class ScreenPublicationController::Implementation
       commit_if_current_(std::move(commit_if_current)),
       now_(std::move(now)),
       describe_publication_(std::move(describe_publication)),
+      prepare_capture_(std::move(prepare_capture)),
       start_capture_workers_(std::move(start_capture_workers)),
       capture_promoted_(std::move(capture_promoted)),
       query_encoder_capability_(std::move(query_encoder_capability)),
@@ -405,6 +407,9 @@ class ScreenPublicationController::Implementation
       };
     }
     if (!now_) now_ = [] { return LiveKitConnectPolicy::Clock::now(); };
+    if (!prepare_capture_) {
+      throw std::invalid_argument("screen capture preflight callback is required");
+    }
     if (!query_encoder_capability_) {
       query_encoder_capability_ = [] {
         return livekit::queryD3D11H264Capability();
@@ -788,6 +793,7 @@ class ScreenPublicationController::Implementation
     std::thread audio_thread;
     std::shared_ptr<livekit::D3D11H264VideoSource> video_source;
     std::shared_ptr<livekit::LocalVideoTrack> video_track;
+    std::shared_ptr<ScreenGpuCapturer> capturer;
     std::string video_publication_sid;
     std::shared_ptr<livekit::AudioSource> audio_source;
     std::shared_ptr<livekit::LocalAudioTrack> audio_track;
@@ -1061,6 +1067,18 @@ class ScreenPublicationController::Implementation
         "gpu_encoder_unavailable: " + capability.reason
       );
     }
+    resources.capturer = prepare_capture_(command, description);
+    if (!resources.capturer) {
+      throw std::runtime_error(
+        "gpu_capture_unavailable: capture preflight returned no capturer");
+    }
+    logScreen(
+      "screen_capture_preflight_ready",
+      {{"sessionId", command.session_id}, {"generation", command.generation}}
+    );
+    if (!isCurrent(attempt)) {
+      throw std::runtime_error("stale screen capture generation");
+    }
     resources.video_source = create_video_source_(
       static_cast<int>(description.width),
       static_cast<int>(description.height)
@@ -1141,6 +1159,7 @@ class ScreenPublicationController::Implementation
       resources.video_source,
       resources.video_track,
       resources.audio_source,
+      resources.capturer,
       resources.capture_running,
       resources.audio_stop,
       [self = shared_from_this(), attempt] {
@@ -1321,6 +1340,7 @@ class ScreenPublicationController::Implementation
     };
     finish_thread(resources.capture_thread);
     finish_thread(resources.audio_thread);
+    resources.capturer.reset();
 
     auto publication = std::move(resources.publication);
     auto video_sid = std::move(resources.video_publication_sid);
@@ -1627,6 +1647,7 @@ class ScreenPublicationController::Implementation
   CommitIfCurrent commit_if_current_;
   Now now_;
   DescribePublication describe_publication_;
+  PrepareCapture prepare_capture_;
   StartCaptureWorkers start_capture_workers_;
   CapturePromoted capture_promoted_;
   QueryEncoderCapability query_encoder_capability_;
@@ -1657,6 +1678,7 @@ ScreenPublicationController::ScreenPublicationController(
   CommitIfCurrent commit_if_current,
   Now now,
   DescribePublication describe_publication,
+  PrepareCapture prepare_capture,
   StartCaptureWorkers start_capture_workers,
   CapturePromoted capture_promoted,
   QueryEncoderCapability query_encoder_capability,
@@ -1672,6 +1694,7 @@ ScreenPublicationController::ScreenPublicationController(
       std::move(commit_if_current),
       std::move(now),
       std::move(describe_publication),
+      std::move(prepare_capture),
       std::move(start_capture_workers),
       std::move(capture_promoted),
       std::move(query_encoder_capability),

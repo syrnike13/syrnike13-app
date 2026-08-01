@@ -159,6 +159,18 @@ describe('native screen capture telemetry validation', () => {
       count: 1,
     })).toBe(true)
   })
+
+  it('accepts a local active screen pipeline recreation', () => {
+    expect(isNativeRuntimeEvent({
+      type: 'screenBackendRestart',
+      sequence: 3,
+      sessionId: 'screen-session',
+      generation: 4,
+      backend: 'dxgi_gpu',
+      reason: 'recreate_active_pipeline',
+      count: 2,
+    })).toBe(true)
+  })
 })
 
 describe('native runtime command validation', () => {

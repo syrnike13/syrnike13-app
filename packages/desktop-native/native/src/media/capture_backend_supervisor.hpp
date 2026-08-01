@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
-#include <deque>
 #include <mutex>
 
 #include "screen_gpu_capture.hpp"
@@ -61,6 +60,7 @@ class CaptureBackendSupervisor final {
   [[nodiscard]] CaptureBackendDecision observe(
       CaptureBackendObservation observation,
       Clock::time_point now) noexcept {
+    std::lock_guard lock(decision_mutex_);
     if (observation.status == ScreenGpuFrameStatus::TargetClosed) {
       state_ = CaptureBackendState::Failed;
       return {state_, CaptureBackendAction::Fail, active_};
@@ -72,6 +72,10 @@ class CaptureBackendSupervisor final {
     }
 
     if (observation.status == ScreenGpuFrameStatus::NewFrame) {
+      if (awaiting_recovery_confirmation_) {
+        ++successful_recoveries_;
+        awaiting_recovery_confirmation_ = false;
+      }
       state_ = CaptureBackendState::Healthy;
       consecutive_failures_ = 0;
       backoff_exponent_ = 0;
@@ -116,6 +120,14 @@ class CaptureBackendSupervisor final {
     state_ = CaptureBackendState::Degraded;
     if (now < next_reinitialize_at_) {
       return {state_, CaptureBackendAction::None, active_};
+    }
+    if (forced_recovery_action_ != CaptureBackendAction::None) {
+      const auto action = forced_recovery_action_;
+      const auto target = forced_recovery_target_;
+      forced_recovery_action_ = CaptureBackendAction::None;
+      scheduleBackoff(now, kAccessLostMaxRetry);
+      state_ = CaptureBackendState::Reinitializing;
+      return {state_, action, target};
     }
     // Count recovery attempts, not capture-loop observations. A backend can
     // report the same failure many times while backoff is active; treating
@@ -181,27 +193,13 @@ class CaptureBackendSupervisor final {
 
   [[nodiscard]] CaptureBackendDecision observePublicationStall(
       Clock::time_point now) noexcept {
-    std::lock_guard lock(publication_mutex_);
-    while (!publication_recovery_attempts_.empty() &&
-           now - publication_recovery_attempts_.front() >=
-               kPublicationRecoveryWindow) {
-      publication_recovery_attempts_.pop_front();
-    }
-    if (publication_recovery_failed_) {
-      return {CaptureBackendState::Failed, CaptureBackendAction::None, active_};
-    }
+    std::lock_guard lock(decision_mutex_);
     if (now < next_publication_recovery_at_) {
       return {state_, CaptureBackendAction::None, active_};
     }
-    if (publication_recovery_attempts_.size() >=
-        kMaxPublicationRecoveryAttempts) {
-      publication_recovery_failed_ = true;
-      state_ = CaptureBackendState::Failed;
-      return {state_, CaptureBackendAction::Fail, active_};
-    }
-    publication_recovery_attempts_.push_back(now);
+    ++publication_recovery_attempts_;
     const auto exponent = std::min<std::size_t>(
-        publication_recovery_attempts_.size() - 1, 4);
+        publication_recovery_attempts_ - 1, 4);
     next_publication_recovery_at_ =
         now + std::chrono::milliseconds(250 * (std::size_t{1} << exponent));
     return {
@@ -212,21 +210,21 @@ class CaptureBackendSupervisor final {
   }
 
   void resetPublicationRecovery() noexcept {
-    std::lock_guard lock(publication_mutex_);
-    publication_recovery_attempts_.clear();
+    std::lock_guard lock(decision_mutex_);
+    publication_recovery_attempts_ = 0;
     next_publication_recovery_at_ = {};
-    publication_recovery_failed_ = false;
   }
 
   [[nodiscard]] std::size_t publicationRecoveryCount() const noexcept {
-    std::lock_guard lock(publication_mutex_);
-    return publication_recovery_attempts_.size();
+    std::lock_guard lock(decision_mutex_);
+    return publication_recovery_attempts_;
   }
 
   void backendActivated(
       CaptureBackend backend,
       Clock::time_point now,
       bool recovered = false) noexcept {
+    std::lock_guard lock(decision_mutex_);
     const bool switched_backend = active_ != backend;
     active_ = backend;
     state_ = CaptureBackendState::Reinitializing;
@@ -234,31 +232,70 @@ class CaptureBackendSupervisor final {
     // exponential backoff across switches so two broken backends cannot form a
     // hot DXGI/WGC ping-pong loop.
     if (switched_backend) consecutive_failures_ = 0;
-    if (recovered) ++successful_recoveries_;
+    if (recovered) {
+      ++recovery_attempts_;
+      awaiting_recovery_confirmation_ = true;
+    }
     if (last_success_at_ == Clock::time_point{}) last_success_at_ = now;
     if (backend != preferred_) {
       preferred_probe_at_ = now + kPreferredProbeInterval;
     }
   }
 
-  void activationFailed(Clock::time_point now) noexcept {
+  void activationFailed(
+      const CaptureBackendDecision& failed,
+      Clock::time_point now) noexcept {
+    std::lock_guard lock(decision_mutex_);
     state_ = CaptureBackendState::Degraded;
-    scheduleBackoff(now);
+    awaiting_recovery_confirmation_ = false;
+    auto maximum_backoff = std::chrono::milliseconds(
+        std::chrono::seconds(5));
+    if (failed.target == CaptureBackend::Dxgi &&
+        (failed.action == CaptureBackendAction::ReinitializeActive ||
+         failed.action == CaptureBackendAction::RecreateActivePipeline)) {
+      // ACCESS_LOST itself is routine, but failure to recreate the duplication
+      // means the old output/device pair can no longer be trusted. Reselect the
+      // output and rebuild the D3D device on the next bounded attempt.
+      forced_recovery_action_ = CaptureBackendAction::RecreateDevice;
+      forced_recovery_target_ = CaptureBackend::Dxgi;
+      maximum_backoff = kAccessLostMaxRetry;
+    } else if (failed.target == CaptureBackend::Dxgi &&
+               failed.action == CaptureBackendAction::RecreateDevice) {
+      forced_recovery_action_ = CaptureBackendAction::SwitchBackend;
+      forced_recovery_target_ = CaptureBackend::Wgc;
+      maximum_backoff = kAccessLostMaxRetry;
+    } else if (failed.target == CaptureBackend::Wgc) {
+      // A failed WGC activation leaves the previous backend active. Give a
+      // freshly selected DXGI device the next attempt without hot ping-pong.
+      forced_recovery_action_ = CaptureBackendAction::RecreateDevice;
+      forced_recovery_target_ = CaptureBackend::Dxgi;
+    }
+    scheduleBackoff(now, maximum_backoff);
     if (active_ != preferred_) {
       preferred_probe_at_ = now + kPreferredProbeInterval;
     }
   }
 
   [[nodiscard]] CaptureBackend activeBackend() const noexcept {
+    std::lock_guard lock(decision_mutex_);
     return active_;
   }
 
-  [[nodiscard]] CaptureBackendState state() const noexcept { return state_; }
+  [[nodiscard]] CaptureBackendState state() const noexcept {
+    std::lock_guard lock(decision_mutex_);
+    return state_;
+  }
   [[nodiscard]] std::uint64_t successfulRecoveryCount() const noexcept {
+    std::lock_guard lock(decision_mutex_);
     return successful_recoveries_;
+  }
+  [[nodiscard]] std::uint64_t recoveryAttemptCount() const noexcept {
+    std::lock_guard lock(decision_mutex_);
+    return recovery_attempts_;
   }
 
   [[nodiscard]] Clock::time_point nextRetryAt() const noexcept {
+    std::lock_guard lock(decision_mutex_);
     return next_reinitialize_at_;
   }
 
@@ -267,8 +304,6 @@ class CaptureBackendSupervisor final {
   static constexpr auto kAcquireWatchdog = std::chrono::seconds(15);
   static constexpr auto kAccessLostMaxRetry = std::chrono::seconds(1);
   static constexpr auto kGpuTimeoutMaxRetry = std::chrono::seconds(1);
-  static constexpr std::size_t kMaxPublicationRecoveryAttempts = 3;
-  static constexpr auto kPublicationRecoveryWindow = std::chrono::seconds(60);
 
  private:
   void scheduleBackoff(
@@ -288,13 +323,16 @@ class CaptureBackendSupervisor final {
   std::uint32_t consecutive_failures_ = 0;
   std::uint32_t backoff_exponent_ = 0;
   std::uint64_t successful_recoveries_ = 0;
+  std::uint64_t recovery_attempts_ = 0;
+  bool awaiting_recovery_confirmation_ = false;
+  CaptureBackendAction forced_recovery_action_ = CaptureBackendAction::None;
+  CaptureBackend forced_recovery_target_ = CaptureBackend::Dxgi;
   Clock::time_point last_success_at_{};
   Clock::time_point next_reinitialize_at_{};
   Clock::time_point preferred_probe_at_{};
-  std::deque<Clock::time_point> publication_recovery_attempts_;
+  std::size_t publication_recovery_attempts_ = 0;
   Clock::time_point next_publication_recovery_at_{};
-  bool publication_recovery_failed_ = false;
-  mutable std::mutex publication_mutex_;
+  mutable std::mutex decision_mutex_;
 };
 
 }  // namespace syrnike::desktop_native::media

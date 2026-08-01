@@ -105,6 +105,8 @@ struct RuntimeEvent {
   std::string native_participant_identity;
   std::string capture_method;
   std::string reason;
+  std::string error_code;
+  std::optional<std::int64_t> hresult;
   std::string audio_mode;
   std::string loopback_mode;
   std::uint32_t audio_target_process_id = 0;

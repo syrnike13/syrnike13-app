@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "d3d11_gpu_completion.hpp"
+#include "remote_video_texture_pool_policy.hpp"
 
 namespace syrnike::desktop_native::media {
 namespace {
@@ -40,12 +41,7 @@ using Microsoft::WRL::ComPtr;
 
 struct RemoteVideoTexturePool::State final
     : public std::enable_shared_from_this<RemoteVideoTexturePool::State> {
-  enum class SlotPhase {
-    Available,
-    Uploading,
-    Ready,
-    Delivered,
-  };
+  using SlotPhase = RemoteVideoTextureSlotPhase;
 
   struct Slot {
     ComPtr<ID3D11Texture2D> texture;
@@ -57,6 +53,7 @@ struct RemoteVideoTexturePool::State final
     std::uint32_t height = 0;
     std::uint64_t timestamp_us = 0;
     std::uint64_t gpu_completion_us = 0;
+    std::uint64_t submission_sequence = 0;
     std::uint64_t generation = 0;
     SlotPhase phase = SlotPhase::Available;
   };
@@ -164,6 +161,7 @@ struct RemoteVideoTexturePool::State final
       }
       slot.timestamp_us = timestamp_us;
       slot.gpu_completion_us = 0;
+      slot.submission_sequence = ++next_submission_sequence_;
       slot.phase = SlotPhase::Uploading;
       next_submit_slot_ = (index + 1) % slots_.size();
       return true;
@@ -173,69 +171,108 @@ struct RemoteVideoTexturePool::State final
 
   RemoteVideoTexturePollResult poll() {
     std::lock_guard lock(mutex_);
+    RemoteVideoTexturePollResult outcome;
     for (auto& slot : slots_) {
-      if (slot.phase != SlotPhase::Uploading) continue;
+      const bool was_quarantined = slot.phase == SlotPhase::Quarantined;
+      if (slot.phase != SlotPhase::Uploading && !was_quarantined) continue;
       std::uint64_t elapsed_us = 0;
       const auto result = slot.completion->poll(&elapsed_us);
-      if (result == S_FALSE) continue;
-      if (result == DXGI_ERROR_WAIT_TIMEOUT) {
-        // The device is still alive, but reusing this query or texture while
-        // its previous command may still be queued is unsafe. The bridge drops
-        // the entire pool and continues the track with a fresh D3D device.
-        return {
-          true,
-          static_cast<long>(result),
-        };
+      const auto poll_class = result == S_FALSE
+        ? RemoteVideoGpuPollClass::Pending
+        : result == DXGI_ERROR_WAIT_TIMEOUT
+          ? RemoteVideoGpuPollClass::TimedOut
+          : FAILED(result)
+            ? RemoteVideoGpuPollClass::Failed
+            : RemoteVideoGpuPollClass::Completed;
+      const auto transition = decideRemoteVideoSlotTransition(
+        slot.phase, poll_class);
+      slot.phase = transition.next;
+      if (transition.newly_quarantined) {
+        ++outcome.slots_quarantined;
+        if (outcome.hresult == 0) {
+          outcome.hresult = static_cast<long>(result);
+        }
       }
-      if (FAILED(result)) {
-        throwHResult(
-          "D3D11 remote video upload did not complete",
-          result
-        );
+      if (transition.device_failed) {
+        outcome.reset_required = true;
+        // A terminal device failure outranks a quarantine timeout recorded by
+        // an earlier slot in this same polling pass.
+        outcome.hresult = static_cast<long>(result);
+        // The query is terminal and the whole pool will be retired. Mark the
+        // slot reusable only so retirement cannot retain a dead device.
+        slot.completion.reset();
+        continue;
       }
+      if (result == S_FALSE || result == DXGI_ERROR_WAIT_TIMEOUT) continue;
       slot.gpu_completion_us = elapsed_us;
-      slot.phase = SlotPhase::Ready;
+      if (transition.recovered) {
+        // A frame that missed the 500 ms budget is stale for a live stream.
+        // Recover the slot, but intentionally drop that completed frame.
+        ++outcome.slots_recovered;
+      }
     }
-    return {};
+    const auto quarantined_count = countPhase(SlotPhase::Quarantined);
+    const auto upload_capable = countPhase(SlotPhase::Available) +
+      countPhase(SlotPhase::Uploading) + countPhase(SlotPhase::Ready);
+    outcome.upload_capacity_exhausted =
+      quarantined_count > 0 && upload_capable == 0;
+    return outcome;
   }
 
   bool take(RemoteVideoTextureFrame& frame) {
     std::lock_guard lock(mutex_);
-    for (std::size_t attempt = 0; attempt < slots_.size(); ++attempt) {
-      const auto index = (next_ready_slot_ + attempt) % slots_.size();
-      auto& slot = slots_[index];
-      if (slot.phase != SlotPhase::Ready) continue;
-
-      HANDLE duplicated = nullptr;
-      if (!DuplicateHandle(
-            GetCurrentProcess(),
-            slot.shared_handle,
-            main_process_,
-            &duplicated,
-            0,
-            FALSE,
-            DUPLICATE_SAME_ACCESS)) {
-        throwWin32Error(
-          "DXGI remote video handle duplication failed",
-          GetLastError()
-        );
+    std::size_t newest_index = slots_.size();
+    std::uint64_t newest_sequence = 0;
+    for (std::size_t index = 0; index < slots_.size(); ++index) {
+      const auto& slot = slots_[index];
+      if (slot.phase == SlotPhase::Ready &&
+          (newest_index == slots_.size() ||
+           slot.submission_sequence > newest_sequence)) {
+        newest_index = index;
+        newest_sequence = slot.submission_sequence;
       }
-      slot.remote_handle = duplicated;
-      slot.remote_pid = electron_main_pid_;
-      slot.phase = SlotPhase::Delivered;
-      const auto generation = ++slot.generation;
-      frame = RemoteVideoTextureFrame{
-        reinterpret_cast<std::uint64_t>(duplicated),
-        slot.timestamp_us,
-        slot.gpu_completion_us,
-        slot.width,
-        slot.height,
-        std::make_shared<Lease>(shared_from_this(), index, generation),
-      };
-      next_ready_slot_ = (index + 1) % slots_.size();
-      return true;
     }
-    return false;
+    if (newest_index == slots_.size()) return false;
+
+    // Live video has a freshness deadline, not a delivery guarantee. Once the
+    // newest completed texture is selected, older completed textures can be
+    // reused immediately instead of building latency behind the renderer.
+    for (std::size_t index = 0; index < slots_.size(); ++index) {
+      if (index == newest_index || slots_[index].phase != SlotPhase::Ready) {
+        continue;
+      }
+      slots_[index].phase = SlotPhase::Available;
+      ++superseded_ready_frames_;
+    }
+    auto& slot = slots_[newest_index];
+
+    HANDLE duplicated = nullptr;
+    if (!DuplicateHandle(
+          GetCurrentProcess(),
+          slot.shared_handle,
+          main_process_,
+          &duplicated,
+          0,
+          FALSE,
+          DUPLICATE_SAME_ACCESS)) {
+      throwWin32Error(
+        "DXGI remote video handle duplication failed",
+        GetLastError()
+      );
+    }
+    slot.remote_handle = duplicated;
+    slot.remote_pid = electron_main_pid_;
+    slot.phase = SlotPhase::Delivered;
+    const auto generation = ++slot.generation;
+    frame = RemoteVideoTextureFrame{
+      reinterpret_cast<std::uint64_t>(duplicated),
+      slot.timestamp_us,
+      slot.gpu_completion_us,
+      slot.width,
+      slot.height,
+      std::make_shared<Lease>(shared_from_this(), newest_index, generation),
+    };
+    return true;
   }
 
   std::size_t available() const {
@@ -253,13 +290,43 @@ struct RemoteVideoTexturePool::State final
     return slots_.size();
   }
 
+  std::size_t ready() const {
+    std::lock_guard lock(mutex_);
+    return countPhase(SlotPhase::Ready);
+  }
+
+  std::size_t quarantined() const {
+    std::lock_guard lock(mutex_);
+    return countPhase(SlotPhase::Quarantined);
+  }
+
+  bool retirementSafe() const {
+    std::lock_guard lock(mutex_);
+    return countPhase(SlotPhase::Uploading) == 0 &&
+      countPhase(SlotPhase::Quarantined) == 0;
+  }
+
+  std::uint64_t consumeSupersededReadyFrames() {
+    std::lock_guard lock(mutex_);
+    return std::exchange(superseded_ready_frames_, 0);
+  }
+
  private:
+  std::size_t countPhase(SlotPhase phase) const {
+    return static_cast<std::size_t>(std::count_if(
+      slots_.begin(),
+      slots_.end(),
+      [phase](const Slot& slot) { return slot.phase == phase; }
+    ));
+  }
+
   void configureSlot(
     Slot& slot,
     std::uint32_t width,
     std::uint32_t height
   ) {
-    if (slot.texture && slot.width == width && slot.height == height) return;
+    if (slot.texture && slot.completion &&
+        slot.width == width && slot.height == height) return;
     if (slot.shared_handle) CloseHandle(slot.shared_handle);
     slot.shared_handle = nullptr;
     slot.texture.Reset();
@@ -365,7 +432,8 @@ struct RemoteVideoTexturePool::State final
   std::uint32_t electron_main_pid_;
   std::vector<Slot> slots_;
   std::size_t next_submit_slot_ = 0;
-  std::size_t next_ready_slot_ = 0;
+  std::uint64_t next_submission_sequence_ = 0;
+  std::uint64_t superseded_ready_frames_ = 0;
 };
 
 RemoteVideoTexturePool::RemoteVideoTexturePool(
@@ -396,6 +464,22 @@ std::size_t RemoteVideoTexturePool::available() const {
 
 std::size_t RemoteVideoTexturePool::capacity() const {
   return state_->capacity();
+}
+
+std::size_t RemoteVideoTexturePool::ready() const {
+  return state_->ready();
+}
+
+std::size_t RemoteVideoTexturePool::quarantined() const {
+  return state_->quarantined();
+}
+
+bool RemoteVideoTexturePool::retirementSafe() const {
+  return state_->retirementSafe();
+}
+
+std::uint64_t RemoteVideoTexturePool::consumeSupersededReadyFrames() {
+  return state_->consumeSupersededReadyFrames();
 }
 
 }  // namespace syrnike::desktop_native::media
