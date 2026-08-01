@@ -63,7 +63,7 @@ async function distribution() {
 
 describe('native artifact integrity', () => {
   it('keeps TypeScript, native addon, build, and verifier contract versions aligned', async () => {
-    const repositoryRoot = path.resolve('../..')
+    const repositoryRoot = path.resolve(import.meta.dirname, '../../../../..')
     const [nativeHeader, buildScript, verifyScript] = await Promise.all([
       readFile(path.join(
         repositoryRoot,

@@ -73,6 +73,22 @@ int main() {
         failed_slot.next != RemoteVideoTextureSlotPhase::Available) {
       throw std::runtime_error("actual GPU failure did not request retirement");
     }
+    const auto ready_slot = decideRemoteVideoSlotTransition(
+        RemoteVideoTextureSlotPhase::Uploading,
+        RemoteVideoGpuPollClass::Completed);
+    if (ready_slot.next != RemoteVideoTextureSlotPhase::Ready ||
+        ready_slot.newly_quarantined || ready_slot.recovered ||
+        ready_slot.device_failed) {
+      throw std::runtime_error("completed upload did not become ready");
+    }
+    const auto delivered_slot = decideRemoteVideoSlotTransition(
+        RemoteVideoTextureSlotPhase::Delivered,
+        RemoteVideoGpuPollClass::Failed);
+    if (delivered_slot.next != RemoteVideoTextureSlotPhase::Delivered ||
+        delivered_slot.newly_quarantined || delivered_slot.recovered ||
+        delivered_slot.device_failed) {
+      throw std::runtime_error("delivered slot was mutated by GPU polling");
+    }
     ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;
     D3D_FEATURE_LEVEL feature_level{};

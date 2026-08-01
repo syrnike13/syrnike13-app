@@ -490,6 +490,10 @@ int main() try {
     reader->waitUntilRead(std::chrono::seconds(1)),
     "remote video reader did not enter its injected blocking read"
   );
+  // The GPU pump wakes independently before a first decoded frame exists.
+  // Keep the read blocked past its idle interval to prove that an absent lazy
+  // uploader remains a valid no-work state instead of a null dereference.
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   const auto shutdown_started = std::chrono::steady_clock::now();
   owner->beginShutdown();

@@ -60,6 +60,7 @@ class CaptureBackendSupervisor final {
   [[nodiscard]] CaptureBackendDecision observe(
       CaptureBackendObservation observation,
       Clock::time_point now) noexcept {
+    std::lock_guard lock(decision_mutex_);
     if (observation.status == ScreenGpuFrameStatus::TargetClosed) {
       state_ = CaptureBackendState::Failed;
       return {state_, CaptureBackendAction::Fail, active_};
@@ -192,7 +193,7 @@ class CaptureBackendSupervisor final {
 
   [[nodiscard]] CaptureBackendDecision observePublicationStall(
       Clock::time_point now) noexcept {
-    std::lock_guard lock(publication_mutex_);
+    std::lock_guard lock(decision_mutex_);
     if (now < next_publication_recovery_at_) {
       return {state_, CaptureBackendAction::None, active_};
     }
@@ -209,13 +210,13 @@ class CaptureBackendSupervisor final {
   }
 
   void resetPublicationRecovery() noexcept {
-    std::lock_guard lock(publication_mutex_);
+    std::lock_guard lock(decision_mutex_);
     publication_recovery_attempts_ = 0;
     next_publication_recovery_at_ = {};
   }
 
   [[nodiscard]] std::size_t publicationRecoveryCount() const noexcept {
-    std::lock_guard lock(publication_mutex_);
+    std::lock_guard lock(decision_mutex_);
     return publication_recovery_attempts_;
   }
 
@@ -223,6 +224,7 @@ class CaptureBackendSupervisor final {
       CaptureBackend backend,
       Clock::time_point now,
       bool recovered = false) noexcept {
+    std::lock_guard lock(decision_mutex_);
     const bool switched_backend = active_ != backend;
     active_ = backend;
     state_ = CaptureBackendState::Reinitializing;
@@ -243,6 +245,7 @@ class CaptureBackendSupervisor final {
   void activationFailed(
       const CaptureBackendDecision& failed,
       Clock::time_point now) noexcept {
+    std::lock_guard lock(decision_mutex_);
     state_ = CaptureBackendState::Degraded;
     awaiting_recovery_confirmation_ = false;
     auto maximum_backoff = std::chrono::milliseconds(
@@ -274,18 +277,25 @@ class CaptureBackendSupervisor final {
   }
 
   [[nodiscard]] CaptureBackend activeBackend() const noexcept {
+    std::lock_guard lock(decision_mutex_);
     return active_;
   }
 
-  [[nodiscard]] CaptureBackendState state() const noexcept { return state_; }
+  [[nodiscard]] CaptureBackendState state() const noexcept {
+    std::lock_guard lock(decision_mutex_);
+    return state_;
+  }
   [[nodiscard]] std::uint64_t successfulRecoveryCount() const noexcept {
+    std::lock_guard lock(decision_mutex_);
     return successful_recoveries_;
   }
   [[nodiscard]] std::uint64_t recoveryAttemptCount() const noexcept {
+    std::lock_guard lock(decision_mutex_);
     return recovery_attempts_;
   }
 
   [[nodiscard]] Clock::time_point nextRetryAt() const noexcept {
+    std::lock_guard lock(decision_mutex_);
     return next_reinitialize_at_;
   }
 
@@ -322,7 +332,7 @@ class CaptureBackendSupervisor final {
   Clock::time_point preferred_probe_at_{};
   std::size_t publication_recovery_attempts_ = 0;
   Clock::time_point next_publication_recovery_at_{};
-  mutable std::mutex publication_mutex_;
+  mutable std::mutex decision_mutex_;
 };
 
 }  // namespace syrnike::desktop_native::media

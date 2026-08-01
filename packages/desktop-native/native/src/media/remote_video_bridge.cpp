@@ -269,7 +269,9 @@ void RemoteVideoBridge::addTrack(
         std::chrono::steady_clock::now() + std::chrono::seconds(1);
       std::optional<std::future<std::vector<livekit::RtcStats>>> rtp_stats_future;
 
-      const auto publish_ready_frames = [&] {
+      const auto publish_ready_frames = [&](
+          std::unique_lock<std::mutex>& pipeline_lock) {
+        if (!uploader) return;
         for (;;) {
           {
             std::lock_guard frames_lock(raw->frames_mutex);
@@ -314,14 +316,31 @@ void RemoteVideoBridge::addTrack(
             release(track_id, next);
             throw;
           }
-          if (!post_(std::move(command))) {
+          bool posted = false;
+          pipeline_lock.unlock();
+          try {
+            posted = post_(std::move(command));
+          } catch (...) {
             release(track_id, next);
-            continue;
+            pipeline_lock.lock();
+            throw;
           }
+          if (!posted) release(track_id, next);
+          pipeline_lock.lock();
+          if (!posted) continue;
           ++frames_published;
           if (!healthy_reported) {
             healthy_reported = true;
-            if (on_healthy_) on_healthy_(track_id, raw->track);
+            if (on_healthy_) {
+              pipeline_lock.unlock();
+              try {
+                on_healthy_(track_id, raw->track);
+              } catch (...) {
+                pipeline_lock.lock();
+                throw;
+              }
+              pipeline_lock.lock();
+            }
           }
         }
       };
@@ -416,7 +435,7 @@ void RemoteVideoBridge::addTrack(
             if (stop.stop_requested()) break;
             cleanup_retired_uploaders();
             poll_uploader();
-            publish_ready_frames();
+            publish_ready_frames(pipeline_lock);
           }
         } catch (...) {
           {

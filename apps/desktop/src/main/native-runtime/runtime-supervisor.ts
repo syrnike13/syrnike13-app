@@ -1328,7 +1328,7 @@ export class NativeRuntimeSupervisor {
         : undefined,
       restartCount: count,
       message: event.type === 'screenBackendRestart'
-        ? `backend=${event.backend} action=${event.reason} error=${event.errorCode ?? 'unknown'} hresult=${event.hresult ?? 0} count=${count}`
+        ? `backend=${event.backend} action=${event.reason} error=${event.errorCode ?? 'unknown'} hresult=${event.hresult ?? 'unknown'} count=${count}`
         : `recoverable_lost_count=${count}`,
     })
   }

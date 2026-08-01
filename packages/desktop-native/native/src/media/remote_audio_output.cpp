@@ -250,8 +250,10 @@ class RemoteAudioOutput::Implementation {
               // Real-time audio is freshness-bound. Evict the oldest queued
               // sample so overload cannot turn into ever-staler playout.
               state_ptr->frames.pop_front();
-              if (dropped_samples == 0) {
+              if (state_ptr->frames.empty()) {
                 state_ptr->discontinuity_pending = true;
+              } else {
+                state_ptr->frames.front().discontinuity = true;
               }
               dropped_samples += 1;
             }

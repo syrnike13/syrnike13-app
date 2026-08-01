@@ -195,7 +195,9 @@ struct RemoteVideoTexturePool::State final
       }
       if (transition.device_failed) {
         outcome.reset_required = true;
-        if (outcome.hresult == 0) outcome.hresult = static_cast<long>(result);
+        // A terminal device failure outranks a quarantine timeout recorded by
+        // an earlier slot in this same polling pass.
+        outcome.hresult = static_cast<long>(result);
         // The query is terminal and the whole pool will be retired. Mark the
         // slot reusable only so retirement cannot retain a dead device.
         slot.completion.reset();
