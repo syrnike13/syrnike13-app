@@ -56,6 +56,8 @@ std::string_view gpuCaptureReason(ScreenGpuCaptureErrorCode code) noexcept {
       return "gpu_device_lost";
     case ScreenGpuCaptureErrorCode::GpuTimeout:
       return "gpu_pipeline_timeout";
+    case ScreenGpuCaptureErrorCode::PermissionDenied:
+      return "gpu_permission_denied";
     case ScreenGpuCaptureErrorCode::InteropUnavailable:
     case ScreenGpuCaptureErrorCode::FormatUnsupported:
       return "gpu_interop_unavailable";
@@ -73,6 +75,8 @@ std::string_view gpuCaptureFailureCategory(
   switch (code) {
     case ScreenGpuCaptureErrorCode::DeviceLost:
       return "gpu_device_lost";
+    case ScreenGpuCaptureErrorCode::PermissionDenied:
+      return "gpu_permission_denied";
     case ScreenGpuCaptureErrorCode::InteropUnavailable:
     case ScreenGpuCaptureErrorCode::FormatUnsupported:
       return "gpu_interop_unavailable";
@@ -589,6 +593,7 @@ class ScreenActor::Implementation final
       "gpu_encoder_unavailable",
       "gpu_interop_unavailable",
       "gpu_device_lost",
+      "gpu_permission_denied",
       "rtp_stall_recovery_exhausted",
       "screen_recovery_timeout",
     };
@@ -1187,6 +1192,21 @@ class ScreenActor::Implementation final
     std::uint64_t method_wgc_gpu = 0;
     std::uint64_t method_dxgi_gpu = 0;
     std::string method = capturer->method();
+    const auto observe_encoder_backpressure =
+      [&](std::chrono::steady_clock::time_point now) {
+        if (rtp_stall_reported || !encoder_backpressure_stall.observe(
+              now, std::chrono::seconds(2))) return;
+        logScreen(
+          "screen_encoder_backpressure_stall",
+          {
+            {"sessionId", session_id},
+            {"generation", generation},
+            {"frames", frames},
+            {"method", method}
+          }
+        );
+        request_publication_recovery("encoder_backpressure", now);
+      };
     ScreenGpuFrame captured;
     const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     const bool uninitialize_com = SUCCEEDED(com_result);
@@ -1290,22 +1310,11 @@ class ScreenActor::Implementation final
             ++frames;
             if (method == "wgc_gpu") ++method_wgc_gpu;
             else if (method == "dxgi_gpu") ++method_dxgi_gpu;
+          } else {
+            observe_encoder_backpressure(std::chrono::steady_clock::now());
           }
         } else if (capture.status == ScreenGpuFrameStatus::EncoderBackpressure) {
-          const auto now = std::chrono::steady_clock::now();
-          if (!rtp_stall_reported && encoder_backpressure_stall.observe(
-                now, std::chrono::seconds(2))) {
-            logScreen(
-              "screen_encoder_backpressure_stall",
-              {
-                {"sessionId", session_id},
-                {"generation", generation},
-                {"frames", frames},
-                {"method", method}
-              }
-            );
-            request_publication_recovery("encoder_backpressure", now);
-          }
+          observe_encoder_backpressure(std::chrono::steady_clock::now());
         } else if (capture.status == ScreenGpuFrameStatus::RecoverableLost) {
           if (!capture_loss_reported) {
             capture_loss_reported = true;
@@ -1370,9 +1379,11 @@ class ScreenActor::Implementation final
             if (!rtp_stall_reported &&
                 stall != ScreenOutputStall::None) {
               const std::string cause =
-                stall == ScreenOutputStall::Encoder
-                  ? "encoder_output_stalled"
-                  : "rtp_output_stalled";
+                stall == ScreenOutputStall::Capture
+                  ? "capture_output_stalled"
+                  : (stall == ScreenOutputStall::Encoder
+                      ? "encoder_output_stalled"
+                      : "rtp_output_stalled");
               logScreen(
                 "screen_rtp_stall_detected",
                 {

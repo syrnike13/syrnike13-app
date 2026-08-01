@@ -74,7 +74,7 @@ void startAudioOutputWithRollback(
 }
 
 namespace {
-constexpr std::size_t kRemoteAudioSampleRate = 48'000;
+constexpr std::size_t kRemoteAudioSampleRate = remoteAudioSampleRate();
 constexpr std::size_t kRemoteAudioChannels = remoteAudioRenderChannels();
 constexpr std::size_t kPlayoutStartFrames =
   kRemoteAudioSampleRate * remoteAudioPlayoutStartDuration().count() / 1'000;
@@ -125,6 +125,9 @@ struct TrackState {
   std::uint64_t dropped_samples_total = 0;
   std::uint64_t dropped_samples_since_report = 0;
   std::chrono::steady_clock::time_point next_overrun_report_at{};
+  std::uint64_t corrected_samples_total = 0;
+  std::uint64_t corrected_samples_since_report = 0;
+  std::chrono::steady_clock::time_point next_correction_report_at{};
 };
 
 }  // namespace
@@ -246,17 +249,6 @@ class RemoteAudioOutput::Implementation {
             const auto right = channels == 1
               ? left
               : static_cast<float>(input[index + 1]) / 32768.0F;
-            if (state_ptr->frames.size() >= kMaxQueuedFramesPerTrack) {
-              // Real-time audio is freshness-bound. Evict the oldest queued
-              // sample so overload cannot turn into ever-staler playout.
-              state_ptr->frames.pop_front();
-              if (state_ptr->frames.empty()) {
-                state_ptr->discontinuity_pending = true;
-              } else {
-                state_ptr->frames.front().discontinuity = true;
-              }
-              dropped_samples += 1;
-            }
             state_ptr->frames.push_back({
               .left = left,
               .right = right,
@@ -267,6 +259,20 @@ class RemoteAudioOutput::Implementation {
             }
             squared_sum += static_cast<double>(mono) * static_cast<double>(mono);
             ++mono_samples;
+          }
+          if (state_ptr->frames.size() > kMaxQueuedFramesPerTrack) {
+            // This is an emergency latency bound. Normal producer/device clock
+            // drift is removed smoothly by the renderer before reaching it.
+            dropped_samples =
+              state_ptr->frames.size() - kMaxQueuedFramesPerTrack;
+            for (std::size_t index = 0; index < dropped_samples; ++index) {
+              state_ptr->frames.pop_front();
+            }
+            if (state_ptr->frames.empty()) {
+              state_ptr->discontinuity_pending = true;
+            } else {
+              state_ptr->frames.front().discontinuity = true;
+            }
           }
           if (dropped_samples != 0) {
             state_ptr->dropped_samples_total += dropped_samples;
@@ -839,32 +845,73 @@ class RemoteAudioOutput::Implementation {
           bool deafened = false;
           float output_volume = 1.0F;
           std::size_t underflowed_tracks = 0;
+          std::uint64_t corrected_samples_report = 0;
+          std::uint64_t corrected_samples_total = 0;
+          std::size_t corrected_tracks = 0;
+          std::size_t maximum_queued_samples = 0;
           std::vector<StereoFrame> mixed(count);
           {
             std::lock_guard lock(mutex_);
             deafened = deafened_;
             output_volume = volume_;
-            for (UINT32 index = 0; index < count; ++index) {
-              for (auto& [_, track] : tracks_) {
-                if (!track->playout_started) {
-                  if (track->frames.size() < kPlayoutStartFrames) continue;
-                  track->playout_started = true;
+            const auto now = std::chrono::steady_clock::now();
+            for (auto& [_, track] : tracks_) {
+              if (!track->playout_started) {
+                if (track->frames.size() < kPlayoutStartFrames) continue;
+                track->playout_started = true;
+              }
+              if (track->frames.size() < count) {
+                track->playout_started = false;
+                ++underflowed_tracks;
+                continue;
+              }
+              if (track->frames.front().discontinuity) {
+                track->frames.front().discontinuity = false;
+                track->playout_started = false;
+                continue;
+              }
+              const auto queued_samples = track->frames.size();
+              const auto source_frames = remoteAudioInputFramesForRender(
+                  count, queued_samples);
+              const auto extra_frames = source_frames - count;
+              if (!deafened) {
+                for (UINT32 index = 0; index < count; ++index) {
+                  const double source_position = count == 1
+                    ? 0.0
+                    : static_cast<double>(index) *
+                        static_cast<double>(source_frames - 1) /
+                        static_cast<double>(count - 1);
+                  const auto lower_index =
+                    static_cast<std::size_t>(source_position);
+                  const auto upper_index = std::min(
+                    lower_index + 1, source_frames - 1);
+                  const auto fraction = static_cast<float>(
+                    source_position - static_cast<double>(lower_index));
+                  const auto& lower = track->frames[lower_index];
+                  const auto& upper = track->frames[upper_index];
+                  const auto left =
+                    lower.left + (upper.left - lower.left) * fraction;
+                  const auto right =
+                    lower.right + (upper.right - lower.right) * fraction;
+                  mixed[index].left += left * track->gain;
+                  mixed[index].right += right * track->gain;
                 }
-                if (track->frames.empty()) {
-                  track->playout_started = false;
-                  ++underflowed_tracks;
-                  continue;
-                }
-                if (track->frames.front().discontinuity) {
-                  track->frames.front().discontinuity = false;
-                  track->playout_started = false;
-                  continue;
-                }
-                const auto frame = track->frames.front();
+              }
+              for (std::size_t index = 0; index < source_frames; ++index) {
                 track->frames.pop_front();
-                if (deafened) continue;
-                mixed[index].left += frame.left * track->gain;
-                mixed[index].right += frame.right * track->gain;
+              }
+              if (extra_frames != 0) {
+                track->corrected_samples_total += extra_frames;
+                track->corrected_samples_since_report += extra_frames;
+                if (now >= track->next_correction_report_at) {
+                  corrected_samples_report += std::exchange(
+                    track->corrected_samples_since_report, 0);
+                  corrected_samples_total += track->corrected_samples_total;
+                  ++corrected_tracks;
+                  maximum_queued_samples = std::max(
+                    maximum_queued_samples, queued_samples);
+                  track->next_correction_report_at = now + std::chrono::seconds(1);
+                }
               }
             }
           }
@@ -872,6 +919,18 @@ class RemoteAudioOutput::Implementation {
             logRemoteAudio(
               "remote_audio_buffer_underrun",
               {{"trackCount", static_cast<std::uint64_t>(underflowed_tracks)}}
+            );
+          }
+          if (corrected_samples_report != 0) {
+            logRemoteAudio(
+              "remote_audio_clock_correction",
+              {
+                {"trackCount", static_cast<std::uint64_t>(corrected_tracks)},
+                {"correctedSamples", corrected_samples_report},
+                {"correctedSamplesTotal", corrected_samples_total},
+                {"maxQueuedSamples", static_cast<std::uint64_t>(
+                  maximum_queued_samples)},
+              }
             );
           }
 

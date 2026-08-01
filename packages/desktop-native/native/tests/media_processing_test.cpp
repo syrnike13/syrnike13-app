@@ -394,6 +394,56 @@ int main() try {
     "remote audio queue is no longer latency bounded"
   );
   require(
+    syrnike::desktop_native::media::remoteAudioTargetQueuedDuration() ==
+        std::chrono::milliseconds(60) &&
+      syrnike::desktop_native::media::remoteAudioEmergencyQueuedDuration() ==
+        std::chrono::milliseconds(120),
+    "remote audio drift correction lost its bounded latency targets"
+  );
+  require(
+    syrnike::desktop_native::media::remoteAudioInputFramesForRender(
+      480, 2'880) == 480 &&
+    syrnike::desktop_native::media::remoteAudioInputFramesForRender(
+      480, 3'840) == 489 &&
+    syrnike::desktop_native::media::remoteAudioInputFramesForRender(
+      480, 7'200) == 504 &&
+    syrnike::desktop_native::media::remoteAudioInputFramesForRender(
+      10, 3'000) == 11,
+    "remote audio drift correction does not apply its soft/emergency bounds"
+  );
+  std::size_t simulated_audio_queue = 960;
+  std::size_t maximum_simulated_audio_queue = simulated_audio_queue;
+  std::size_t simulated_corrected_samples = 0;
+  for (int tick = 0; tick < 9'400; ++tick) {
+    // Reproduce the approximately 1.25% producer/device clock mismatch seen
+    // in the diagnostic reports for 94 seconds of 10 ms render periods.
+    simulated_audio_queue += 486;
+    const auto consumed =
+      syrnike::desktop_native::media::remoteAudioInputFramesForRender(
+        480, simulated_audio_queue);
+    simulated_corrected_samples += consumed - 480;
+    simulated_audio_queue -= consumed;
+    maximum_simulated_audio_queue = std::max(
+      maximum_simulated_audio_queue, simulated_audio_queue);
+  }
+  const auto hard_audio_limit =
+    syrnike::desktop_native::media::remoteAudioSampleRate() *
+    syrnike::desktop_native::media::remoteAudioMaxQueuedDuration().count() /
+    1'000;
+  std::cout
+    << "METRIC remote_audio_clock_drift duration_s=94 producer_drift_pct=1.25"
+    << " max_queue_samples=" << maximum_simulated_audio_queue
+    << " max_queue_ms="
+    << (maximum_simulated_audio_queue * 1'000 /
+        syrnike::desktop_native::media::remoteAudioSampleRate())
+    << " final_queue_samples=" << simulated_audio_queue
+    << " corrected_samples=" << simulated_corrected_samples
+    << " hard_drop_samples=0\n";
+  require(
+    maximum_simulated_audio_queue < hard_audio_limit,
+    "remote audio clock drift still reaches the hard-drop queue boundary"
+  );
+  require(
     syrnike::voice::kScreenAudioFramesPerPacket == 480,
     "screen audio is no longer packetized into LiveKit 10 ms frames"
   );

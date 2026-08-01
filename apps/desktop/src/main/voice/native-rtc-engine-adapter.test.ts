@@ -680,6 +680,49 @@ describe('NativeRtcEngineAdapter', () => {
     adapter.dispose()
   })
 
+  it('keeps a terminal GPU permission failure non-retryable in the desktop layer', async () => {
+    const runtime = new FakeRuntime()
+    const adapter = new NativeRtcEngineAdapter(runtime)
+    const events: unknown[] = []
+    adapter.subscribe((event) => events.push(event))
+    await adapter.connect(lease, {
+      ...createInitialVoiceMediaDesiredState(),
+      screenEnabled: true,
+      screenSourceId: 'screen:1',
+    }, new AbortController().signal)
+    await waitUntil(() =>
+      runtime.commands.some((command) => command.type === 'startScreenCapture'),
+    )
+    const start = runtime.commands.find(
+      (command) => command.type === 'startScreenCapture',
+    )
+    if (!start || start.type !== 'startScreenCapture') {
+      throw new Error('screen start command was not emitted')
+    }
+
+    runtime.emitEvent({
+      type: 'screenCaptureEnded',
+      sequence: 12,
+      sessionId: lease.connectionEpoch,
+      generation: start.generation,
+      reason: 'gpu_permission_denied',
+      message: 'Screen capture permission is denied',
+    })
+
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'mediaState',
+      kind: 'screen',
+      media: {
+        state: 'failed',
+        error: expect.objectContaining({
+          code: 'screen_gpu_permission_denied',
+          retryable: false,
+        }),
+      },
+    }))
+    adapter.dispose()
+  })
+
   it('preserves a typed hardware error when native screen startup is rejected', async () => {
     const runtime = new FakeRuntime((command) => {
       if (command.type !== 'startScreenCapture') return undefined
@@ -775,6 +818,11 @@ describe('NativeRtcEngineAdapter', () => {
       createInitialVoiceMediaDesiredState(),
       new AbortController().signal,
     )
+    await waitUntil(() =>
+      runtime.commands.some((command) => command.type === 'connectMicrophone'),
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    events.length = 0
 
     runtime.emitEvent({
       type: 'voiceTerminal',
@@ -1404,6 +1452,160 @@ describe('NativeRtcEngineAdapter', () => {
     expect(types.at(-1)).toBe('disconnectVoice')
     expect(types).toContain('disconnectMicrophone')
     expect(types).toContain('disconnectScreen')
+    adapter.dispose()
+  })
+
+  it('serializes overlapping Room replacements through complete teardown', async () => {
+    let releaseFirstConnect!: () => void
+    const firstConnectPending = new Promise<void>((resolve) => {
+      releaseFirstConnect = resolve
+    })
+    let connectCount = 0
+    const runtime = new FakeRuntime((command) => {
+      if (command.type !== 'connectVoice') return undefined
+      connectCount += 1
+      return connectCount === 1 ? firstConnectPending : undefined
+    })
+    const adapter = new NativeRtcEngineAdapter(runtime)
+    const desired = createInitialVoiceMediaDesiredState()
+    const first = adapter.connect(
+      lease,
+      desired,
+      new AbortController().signal,
+    )
+    await waitUntil(() => connectCount === 1)
+
+    const replacementLease: VoiceLease = {
+      ...lease,
+      channelId: 'channel-b',
+      operationId: 'op-b',
+      connectionEpoch: 'epoch-b',
+      authorityVersion: 2,
+    }
+    const replacement = adapter.connect(
+      replacementLease,
+      desired,
+      new AbortController().signal,
+    )
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(connectCount).toBe(1)
+
+    releaseFirstConnect()
+    await first
+    await replacement
+    const voiceCommands = runtime.commands.filter((command) =>
+      command.type === 'connectVoice' || command.type === 'disconnectVoice',
+    )
+    expect(voiceCommands.map((command) => command.type)).toEqual([
+      'connectVoice',
+      'disconnectVoice',
+      'connectVoice',
+    ])
+    expect(voiceCommands.at(-1)).toMatchObject({
+      type: 'connectVoice',
+      sessionId: 'epoch-b',
+    })
+    adapter.dispose()
+  })
+
+  it('tears down an aborted Room attempt before accepting a replacement', async () => {
+    const never = new Promise<void>(() => undefined)
+    let connectCount = 0
+    const runtime = new FakeRuntime((command) => {
+      if (command.type !== 'connectVoice') return undefined
+      connectCount += 1
+      return connectCount === 1 ? never : undefined
+    })
+    const adapter = new NativeRtcEngineAdapter(runtime)
+    const controller = new AbortController()
+    const aborted = adapter.connect(
+      lease,
+      createInitialVoiceMediaDesiredState(),
+      controller.signal,
+    )
+    await waitUntil(() => connectCount === 1)
+    controller.abort()
+    await expect(aborted).rejects.toMatchObject({ name: 'AbortError' })
+
+    const replacementLease: VoiceLease = {
+      ...lease,
+      channelId: 'channel-b',
+      operationId: 'op-b',
+      connectionEpoch: 'epoch-b',
+      authorityVersion: 2,
+    }
+    await adapter.connect(
+      replacementLease,
+      createInitialVoiceMediaDesiredState(),
+      new AbortController().signal,
+    )
+    const voiceCommands = runtime.commands.filter((command) =>
+      command.type === 'connectVoice' || command.type === 'disconnectVoice',
+    )
+    expect(voiceCommands.map((command) => command.type)).toEqual([
+      'connectVoice',
+      'disconnectVoice',
+      'connectVoice',
+    ])
+    adapter.dispose()
+  })
+
+  it('tears down when abort wins immediately after native Room connect', async () => {
+    const controller = new AbortController()
+    const runtime = new FakeRuntime((command) => {
+      if (command.type === 'connectVoice') controller.abort()
+      return undefined
+    })
+    const adapter = new NativeRtcEngineAdapter(runtime)
+
+    await expect(
+      adapter.connect(
+        lease,
+        createInitialVoiceMediaDesiredState(),
+        controller.signal,
+      ),
+    ).rejects.toMatchObject({ name: 'AbortError' })
+
+    expect(
+      runtime.commands
+        .filter((command) =>
+          command.type === 'connectVoice' || command.type === 'disconnectVoice',
+        )
+        .map((command) => command.type),
+    ).toEqual(['connectVoice', 'disconnectVoice'])
+    adapter.dispose()
+  })
+
+  it('tears down when abort arrives while applying Room audio settings', async () => {
+    const controller = new AbortController()
+    const runtime = new FakeRuntime((command) => {
+      if (command.type === 'configureRemoteAudio') controller.abort()
+      return undefined
+    })
+    const adapter = new NativeRtcEngineAdapter(runtime)
+    adapter.updateRemoteAudioSettings({
+      revision: 1,
+      userVolumes: {},
+      userMutes: {},
+      streamVolumes: {},
+      streamMutes: {},
+    })
+
+    await expect(
+      adapter.connect(
+        lease,
+        createInitialVoiceMediaDesiredState(),
+        controller.signal,
+      ),
+    ).rejects.toMatchObject({ name: 'AbortError' })
+
+    expect(
+      runtime.commands
+        .filter((command) =>
+          command.type === 'connectVoice' || command.type === 'disconnectVoice',
+        )
+        .map((command) => command.type),
+    ).toEqual(['connectVoice', 'disconnectVoice'])
     adapter.dispose()
   })
 

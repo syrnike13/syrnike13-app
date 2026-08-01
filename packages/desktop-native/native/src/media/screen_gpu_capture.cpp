@@ -61,6 +61,31 @@ std::string_view captureBackendName(CaptureBackend backend) noexcept {
   return backend == CaptureBackend::Dxgi ? "dxgi_gpu" : "wgc_gpu";
 }
 
+std::string_view captureErrorCodeName(
+    ScreenGpuCaptureErrorCode code) noexcept {
+  switch (code) {
+    case ScreenGpuCaptureErrorCode::CaptureUnavailable:
+      return "capture_unavailable";
+    case ScreenGpuCaptureErrorCode::AccessLost:
+      return "access_lost";
+    case ScreenGpuCaptureErrorCode::DeviceUnavailable:
+      return "device_unavailable";
+    case ScreenGpuCaptureErrorCode::InteropUnavailable:
+      return "interop_unavailable";
+    case ScreenGpuCaptureErrorCode::FormatUnsupported:
+      return "format_unsupported";
+    case ScreenGpuCaptureErrorCode::GpuTimeout:
+      return "gpu_timeout";
+    case ScreenGpuCaptureErrorCode::DeviceLost:
+      return "device_lost";
+    case ScreenGpuCaptureErrorCode::PermissionDenied:
+      return "permission_denied";
+    case ScreenGpuCaptureErrorCode::TargetClosed:
+      return "target_closed";
+  }
+  return "capture_unavailable";
+}
+
 std::string_view captureBackendActionName(
     CaptureBackendAction action) noexcept {
   switch (action) {
@@ -99,6 +124,24 @@ void logScreenCaptureBackend(
           {"to", to},
           {"reason", reason},
           {"hresult", static_cast<std::int64_t>(hresult)},
+      });
+}
+
+void logInitialBackendFailure(
+    const ScreenGpuCaptureError& failure) noexcept {
+  auto& logger = diagnostics::DiagnosticLog::instance();
+  if (!logger.enabled()) return;
+  const auto& causes = failure.backendFailures();
+  if (causes.size() != 2) return;
+  logger.write(
+      "screen_capture_backend_initialization_failed",
+      {
+          {"dxgiReason", captureErrorCodeName(causes[0].code)},
+          {"dxgiHresult", static_cast<std::int64_t>(causes[0].hresult)},
+          {"dxgiMessage", causes[0].message},
+          {"wgcReason", captureErrorCodeName(causes[1].code)},
+          {"wgcHresult", static_cast<std::int64_t>(causes[1].hresult)},
+          {"wgcMessage", causes[1].message},
       });
 }
 
@@ -185,6 +228,9 @@ ScreenGpuCaptureErrorCode captureErrorForHr(HRESULT hr) noexcept {
   }
   if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
     return ScreenGpuCaptureErrorCode::GpuTimeout;
+  }
+  if (hr == E_ACCESSDENIED) {
+    return ScreenGpuCaptureErrorCode::PermissionDenied;
   }
   if (hr == RO_E_CLOSED) return ScreenGpuCaptureErrorCode::TargetClosed;
   return ScreenGpuCaptureErrorCode::CaptureUnavailable;
@@ -3100,6 +3146,7 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
         supervisor_(supervisor
             ? std::move(supervisor)
             : std::make_shared<CaptureBackendSupervisor>()) {
+    std::optional<ScreenGpuCaptureError> dxgi_failure;
     try {
       auto dxgi =
           std::make_shared<DxgiGpuCapturer>(target_, width_, height_);
@@ -3107,19 +3154,23 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
       active_.store(dxgi, std::memory_order_release);
       supervisor_->backendActivated(
           CaptureBackend::Dxgi, CaptureBackendSupervisor::Clock::now());
+      return;
     } catch (const ScreenGpuCaptureError& error) {
       if (error.code() == ScreenGpuCaptureErrorCode::TargetClosed) {
         throw;
       }
-      auto wgc = createWgcGpuCapturer(target_, width_, height_);
-      wgc_.store(wgc, std::memory_order_release);
-      active_.store(wgc, std::memory_order_release);
-      supervisor_->backendActivated(
-          CaptureBackend::Wgc, CaptureBackendSupervisor::Clock::now());
-      logScreenCaptureBackend(
-          "screen_capture_backend_initial_fallback", "dxgi_gpu", "wgc_gpu",
-          error.what(), error.hresult());
+      dxgi_failure = error;
     } catch (const std::exception& error) {
+      dxgi_failure.emplace(
+          ScreenGpuCaptureErrorCode::CaptureUnavailable,
+          error.what());
+    } catch (...) {
+      dxgi_failure.emplace(
+          ScreenGpuCaptureErrorCode::CaptureUnavailable,
+          "unknown DXGI initialization failure");
+    }
+
+    try {
       auto wgc = createWgcGpuCapturer(target_, width_, height_);
       wgc_.store(wgc, std::memory_order_release);
       active_.store(wgc, std::memory_order_release);
@@ -3127,7 +3178,28 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
           CaptureBackend::Wgc, CaptureBackendSupervisor::Clock::now());
       logScreenCaptureBackend(
           "screen_capture_backend_initial_fallback", "dxgi_gpu", "wgc_gpu",
+          dxgi_failure->what(), dxgi_failure->hresult());
+    } catch (const ScreenGpuCaptureError& wgc_failure) {
+      auto combined = combineInitialMonitorCaptureFailures(
+          *dxgi_failure, wgc_failure);
+      logInitialBackendFailure(combined);
+      throw combined;
+    } catch (const std::exception& error) {
+      const ScreenGpuCaptureError wgc_failure(
+          ScreenGpuCaptureErrorCode::CaptureUnavailable,
           error.what());
+      auto combined = combineInitialMonitorCaptureFailures(
+          *dxgi_failure, wgc_failure);
+      logInitialBackendFailure(combined);
+      throw combined;
+    } catch (...) {
+      const ScreenGpuCaptureError wgc_failure(
+          ScreenGpuCaptureErrorCode::CaptureUnavailable,
+          "unknown WGC initialization failure");
+      auto combined = combineInitialMonitorCaptureFailures(
+          *dxgi_failure, wgc_failure);
+      logInitialBackendFailure(combined);
+      throw combined;
     }
   }
 
@@ -3587,8 +3659,65 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
 ScreenGpuCaptureError::ScreenGpuCaptureError(
     ScreenGpuCaptureErrorCode code,
     std::string message,
-    long hresult)
-    : std::runtime_error(std::move(message)), code_(code), hresult_(hresult) {}
+    long hresult,
+    std::vector<ScreenGpuBackendFailure> backend_failures)
+    : std::runtime_error(std::move(message)),
+      code_(code),
+      hresult_(hresult),
+      backend_failures_(std::move(backend_failures)) {}
+
+ScreenGpuCaptureError combineInitialMonitorCaptureFailures(
+    const ScreenGpuCaptureError& dxgi_failure,
+    const ScreenGpuCaptureError& wgc_failure) {
+  const bool target_closed =
+      wgc_failure.code() == ScreenGpuCaptureErrorCode::TargetClosed;
+  const bool wgc_permission_denied =
+      wgc_failure.code() == ScreenGpuCaptureErrorCode::PermissionDenied ||
+      wgc_failure.hresult() == static_cast<long>(E_ACCESSDENIED);
+  const bool dxgi_permanently_unavailable =
+      dxgi_failure.code() == ScreenGpuCaptureErrorCode::InteropUnavailable;
+  // WGC permission failure is terminal only when DXGI is also permanently
+  // unusable. DXGI E_ACCESSDENIED can mean a temporary secure desktop, and
+  // unsupported formats can recover after a display-mode change, so both
+  // remain retryable even though WGC is unavailable on this machine.
+  const bool permission_denied =
+      wgc_permission_denied && dxgi_permanently_unavailable;
+  const auto code = target_closed
+      ? ScreenGpuCaptureErrorCode::TargetClosed
+      : (permission_denied
+          ? ScreenGpuCaptureErrorCode::PermissionDenied
+          : (dxgi_failure.code() == ScreenGpuCaptureErrorCode::PermissionDenied
+              ? ScreenGpuCaptureErrorCode::CaptureUnavailable
+              : dxgi_failure.code()));
+  const long hresult = target_closed || permission_denied
+      ? wgc_failure.hresult()
+      : (dxgi_failure.hresult() != 0
+          ? dxgi_failure.hresult()
+          : wgc_failure.hresult());
+  std::vector<ScreenGpuBackendFailure> causes;
+  causes.reserve(2);
+  causes.push_back({
+      "dxgi_gpu",
+      dxgi_failure.code(),
+      dxgi_failure.hresult(),
+      dxgi_failure.what(),
+  });
+  causes.push_back({
+      "wgc_gpu",
+      wgc_failure.code(),
+      wgc_failure.hresult(),
+      wgc_failure.what(),
+  });
+  return ScreenGpuCaptureError(
+      code,
+      "DXGI initialization failed: " + std::string(dxgi_failure.what()) +
+          " (HRESULT " + std::to_string(dxgi_failure.hresult()) +
+          "); WGC initialization failed: " +
+          std::string(wgc_failure.what()) + " (HRESULT " +
+          std::to_string(wgc_failure.hresult()) + ")",
+      hresult,
+      std::move(causes));
+}
 
 std::shared_ptr<ScreenGpuCapturer> ScreenGpuCapturer::create(
     const syrnike::voice::ScreenCaptureTarget& target,

@@ -51,6 +51,7 @@ std::string screenFailureCode(std::string_view message) {
     "gpu_encoder_unavailable",
     "gpu_interop_unavailable",
     "gpu_device_lost",
+    "gpu_permission_denied",
     "target_closed",
   };
   for (const auto code : typed_codes) {
@@ -63,7 +64,14 @@ std::string screenFailureCode(std::string_view message) {
   return "native_command_failed";
 }
 
+bool screenFailureRetryable(std::string_view code) noexcept {
+  return code != "target_closed" && code != "gpu_permission_denied";
+}
+
 std::string screenStallTerminalReason(std::string_view cause) {
+  if (cause == "capture_output_stalled") {
+    return "gpu_capture_unavailable";
+  }
   if (cause == "encoder_backpressure" ||
       cause == "encoder_output_stalled") {
     return "gpu_encoder_unavailable";
@@ -1207,12 +1215,16 @@ class ScreenPublicationController::Implementation
         retireResources(std::move(attempt->resources));
       }
       if (attempt->origin == AttemptOrigin::ExternalRequest) {
+        const auto failure_code = terminal_failure
+          ? std::string("screen_runtime_lost")
+          : (stale
+              ? std::string("stale_generation")
+              : (expired
+                  ? std::string("native_operation_timeout")
+                  : screenFailureCode(attempt->error)));
         emitter_.emit(failedReply(
           attempt->command,
-          terminal_failure
-            ? "screen_runtime_lost"
-            : (stale ? "stale_generation" :
-                (expired ? "native_operation_timeout" : screenFailureCode(attempt->error))),
+          failure_code,
           terminal_failure
             ? (attempt->terminal_reason.empty()
                 ? "screen runtime ended during publication"
@@ -1221,7 +1233,8 @@ class ScreenPublicationController::Implementation
                 (attempt->error.empty()
                 ? (stale ? "stale screen publication generation" : "screen publication failed")
                 : attempt->error)),
-          terminal_failure || !stale
+          terminal_failure ||
+            (!stale && screenFailureRetryable(failure_code))
         ));
       } else if (!stale && !terminal_failure &&
                  is_current_->current(attempt->command.session_id,

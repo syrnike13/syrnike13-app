@@ -9,6 +9,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "screen_video_capture.hpp"
 
@@ -24,20 +25,40 @@ enum class ScreenGpuCaptureErrorCode {
   FormatUnsupported,
   GpuTimeout,
   DeviceLost,
+  PermissionDenied,
   TargetClosed,
+};
+
+struct ScreenGpuBackendFailure {
+  std::string backend;
+  ScreenGpuCaptureErrorCode code =
+      ScreenGpuCaptureErrorCode::CaptureUnavailable;
+  long hresult = 0;
+  std::string message;
 };
 
 class ScreenGpuCaptureError final : public std::runtime_error {
  public:
-  ScreenGpuCaptureError(ScreenGpuCaptureErrorCode code, std::string message, long hresult = 0);
+  ScreenGpuCaptureError(
+      ScreenGpuCaptureErrorCode code,
+      std::string message,
+      long hresult = 0,
+      std::vector<ScreenGpuBackendFailure> backend_failures = {});
 
   [[nodiscard]] ScreenGpuCaptureErrorCode code() const noexcept { return code_; }
   [[nodiscard]] long hresult() const noexcept { return hresult_; }
+  [[nodiscard]] const std::vector<ScreenGpuBackendFailure>&
+  backendFailures() const noexcept { return backend_failures_; }
 
  private:
   ScreenGpuCaptureErrorCode code_;
   long hresult_;
+  std::vector<ScreenGpuBackendFailure> backend_failures_;
 };
+
+ScreenGpuCaptureError combineInitialMonitorCaptureFailures(
+    const ScreenGpuCaptureError& dxgi_failure,
+    const ScreenGpuCaptureError& wgc_failure);
 
 enum class ScreenGpuFrameStatus {
   NewFrame,

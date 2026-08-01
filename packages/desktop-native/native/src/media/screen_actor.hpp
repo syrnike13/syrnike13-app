@@ -82,6 +82,7 @@ class EncoderBackpressureStallDetector final {
 
 enum class ScreenOutputStall {
   None,
+  Capture,
   Encoder,
   Transport,
 };
@@ -113,6 +114,7 @@ class ScreenOutputStallDetector final {
     last_frames_sent_ = frames_sent;
 
     if (first_sample) {
+      capture_progress_at_ = now;
       if (frames_captured > 0 && frames_encoded == 0) {
         encoder_stall_started_at_ = now;
       }
@@ -121,6 +123,13 @@ class ScreenOutputStallDetector final {
       }
       return ScreenOutputStall::None;
     }
+
+    // Both native monitor backends retain the latest texture and submit an
+    // idle refresh every second. Once RTP is active, a flat capture counter is
+    // therefore a stalled local pipeline rather than legitimate static
+    // content. Detect it here so a published track cannot remain alive while
+    // producing no frames for late viewers.
+    if (capture_progress) capture_progress_at_ = now;
 
     if (frames_captured > 0 && frames_encoded == 0) {
       if (!encoder_stall_started_at_) encoder_stall_started_at_ = now;
@@ -149,6 +158,10 @@ class ScreenOutputStallDetector final {
         now - *transport_stall_started_at_ >= timeout) {
       return ScreenOutputStall::Transport;
     }
+    if (capture_progress_at_ &&
+        now - *capture_progress_at_ >= timeout) {
+      return ScreenOutputStall::Capture;
+    }
     return ScreenOutputStall::None;
   }
 
@@ -156,6 +169,7 @@ class ScreenOutputStallDetector final {
     last_frames_captured_.reset();
     last_frames_encoded_.reset();
     last_frames_sent_.reset();
+    capture_progress_at_.reset();
     encoder_stall_started_at_.reset();
     transport_stall_started_at_.reset();
   }
@@ -164,6 +178,7 @@ class ScreenOutputStallDetector final {
   std::optional<std::uint64_t> last_frames_captured_;
   std::optional<std::uint64_t> last_frames_encoded_;
   std::optional<std::uint64_t> last_frames_sent_;
+  std::optional<std::chrono::steady_clock::time_point> capture_progress_at_;
   std::optional<std::chrono::steady_clock::time_point>
     encoder_stall_started_at_;
   std::optional<std::chrono::steady_clock::time_point>

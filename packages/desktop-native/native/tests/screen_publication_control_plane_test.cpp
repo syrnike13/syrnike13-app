@@ -413,6 +413,35 @@ void verifyCapturePreflightFailsBeforePublication() {
     "failed capture preflight created a ghost LiveKit publication");
 }
 
+void verifyCapturePermissionFailureStopsAutomaticRetry() {
+  ScreenControllerHarness harness(
+    [] { return livekit::D3D11H264Capability{true, {}}; },
+    [](int width, int height) {
+      return std::make_shared<FakeD3D11H264VideoSource>(width, height);
+    },
+    ScreenControllerHarness::Controller::LaunchRetireWorker{},
+    ScreenControllerHarness::Controller::BeforeRetireEnqueue{},
+    ScreenControllerHarness::Controller::BeforeResourceCleanup{},
+    [](const syrnike::desktop_native::MediaCommand&,
+       const syrnike::desktop_native::media::ScreenPublicationDescription&)
+        -> std::shared_ptr<syrnike::desktop_native::media::ScreenGpuCapturer> {
+      throw std::runtime_error(
+        "gpu_permission_denied: DXGI and WGC initialization failed");
+    }
+  );
+
+  harness.controller->startCapture(screenCommand(
+    "startScreenCapture", "permission-failure", "screen-di", 1));
+  harness.handleNextWorkerCommand();
+  const auto reply = harness.sink->waitReply("permission-failure");
+  require(
+    !reply.ok && reply.error &&
+      reply.error->code == "gpu_permission_denied" &&
+      !reply.error->retryable,
+    "capture permission denial remained retryable or lost its typed error"
+  );
+}
+
 void verifyNullEncoderSourceFailsClosed() {
   std::atomic_int factory_calls{0};
   ScreenControllerHarness harness(
@@ -1143,6 +1172,72 @@ void verifyDetachedCaptureWorkerRetainsOwner() {
 
 int main() try {
   {
+    using syrnike::desktop_native::media::ScreenGpuCaptureError;
+    using syrnike::desktop_native::media::ScreenGpuCaptureErrorCode;
+    const ScreenGpuCaptureError dxgi(
+      ScreenGpuCaptureErrorCode::InteropUnavailable,
+      "DXGI interop is unavailable",
+      static_cast<long>(E_NOINTERFACE)
+    );
+    const ScreenGpuCaptureError wgc(
+      ScreenGpuCaptureErrorCode::PermissionDenied,
+      "WGC CreateForMonitor was denied",
+      static_cast<long>(E_ACCESSDENIED)
+    );
+    const auto combined =
+      syrnike::desktop_native::media::combineInitialMonitorCaptureFailures(
+        dxgi, wgc);
+    require(
+      combined.code() == ScreenGpuCaptureErrorCode::PermissionDenied &&
+        combined.hresult() == static_cast<long>(E_ACCESSDENIED) &&
+        combined.backendFailures().size() == 2 &&
+        combined.backendFailures()[0].hresult == dxgi.hresult() &&
+        combined.backendFailures()[1].hresult == wgc.hresult(),
+      "DXGI/WGC initialization failure did not preserve both backend causes"
+    );
+    const ScreenGpuCaptureError transient_dxgi(
+      ScreenGpuCaptureErrorCode::CaptureUnavailable,
+      "DXGI output duplication is temporarily unavailable",
+      static_cast<long>(DXGI_ERROR_NOT_CURRENTLY_AVAILABLE)
+    );
+    const auto retryable =
+      syrnike::desktop_native::media::combineInitialMonitorCaptureFailures(
+        transient_dxgi, wgc);
+    require(
+      retryable.code() == ScreenGpuCaptureErrorCode::CaptureUnavailable &&
+        retryable.hresult() == transient_dxgi.hresult(),
+      "WGC permission denial masked a retryable DXGI initialization failure"
+    );
+    const ScreenGpuCaptureError secure_desktop_dxgi(
+      ScreenGpuCaptureErrorCode::PermissionDenied,
+      "DXGI cannot access the secure desktop",
+      static_cast<long>(E_ACCESSDENIED)
+    );
+    const auto secure_desktop_retryable =
+      syrnike::desktop_native::media::combineInitialMonitorCaptureFailures(
+        secure_desktop_dxgi, wgc);
+    require(
+      secure_desktop_retryable.code() ==
+          ScreenGpuCaptureErrorCode::CaptureUnavailable &&
+        secure_desktop_retryable.hresult() == secure_desktop_dxgi.hresult(),
+      "WGC denial made a temporary DXGI secure-desktop denial terminal"
+    );
+    const ScreenGpuCaptureError mode_change_dxgi(
+      ScreenGpuCaptureErrorCode::FormatUnsupported,
+      "DXGI does not support the current display mode",
+      static_cast<long>(DXGI_ERROR_UNSUPPORTED)
+    );
+    const auto mode_change_retryable =
+      syrnike::desktop_native::media::combineInitialMonitorCaptureFailures(
+        mode_change_dxgi, wgc);
+    require(
+      mode_change_retryable.code() ==
+          ScreenGpuCaptureErrorCode::FormatUnsupported &&
+        mode_change_retryable.hresult() == mode_change_dxgi.hresult(),
+      "WGC denial made a temporary DXGI display-mode failure terminal"
+    );
+  }
+  {
     using syrnike::desktop_native::media::EncoderBackpressureStallDetector;
     EncoderBackpressureStallDetector detector;
     const auto started = std::chrono::steady_clock::now();
@@ -1202,12 +1297,17 @@ int main() try {
     require(
       detector.observe(started + 22s, true, 5, 5, 5, 5s) ==
         ScreenOutputStall::None &&
-      detector.observe(started + 28s, true, 5, 5, 5, 5s) ==
+      detector.observe(started + 23s, true, 6, 6, 6, 5s) ==
         ScreenOutputStall::None,
-      "static screen content was treated as failed output"
+      "idle refresh progress was treated as failed output"
     );
     require(
-      detector.observe(started + 29s, false, 6, 5, 5, 5s) ==
+      detector.observe(started + 29s, true, 6, 6, 6, 5s) ==
+        ScreenOutputStall::Capture,
+      "a published track with no idle refresh was not classified as capture stall"
+    );
+    require(
+      detector.observe(started + 30s, false, 6, 6, 6, 5s) ==
         ScreenOutputStall::None,
       "inactive output retained a stale watchdog"
     );
@@ -1229,6 +1329,9 @@ int main() try {
   verifyPhase(
     "capture preflight before publication",
     verifyCapturePreflightFailsBeforePublication);
+  verifyPhase(
+    "capture permission denial",
+    verifyCapturePermissionFailureStopsAutomaticRetry);
   verifyPhase("null encoder source", verifyNullEncoderSourceFailsClosed);
   verifyPhase("cancelled publish rollback", verifyCancelledPublishRollsBackExactSid);
   verifyPhase("RTP stall restart", verifyRtpStallRestartsCapture);

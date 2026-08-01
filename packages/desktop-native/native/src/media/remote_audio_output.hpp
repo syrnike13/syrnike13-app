@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -18,6 +19,8 @@ namespace livekit { class Track; }
 
 namespace syrnike::desktop_native::media {
 
+constexpr std::size_t remoteAudioSampleRate() noexcept { return 48'000; }
+
 constexpr std::chrono::milliseconds remoteAudioRenderBufferDuration() noexcept {
   return std::chrono::milliseconds(50);
 }
@@ -30,6 +33,42 @@ constexpr std::chrono::milliseconds remoteAudioPlayoutStartDuration() noexcept {
 
 constexpr std::chrono::milliseconds remoteAudioMaxQueuedDuration() noexcept {
   return std::chrono::milliseconds(200);
+}
+
+constexpr std::chrono::milliseconds remoteAudioTargetQueuedDuration() noexcept {
+  return std::chrono::milliseconds(60);
+}
+
+constexpr std::chrono::milliseconds
+remoteAudioEmergencyQueuedDuration() noexcept {
+  return std::chrono::milliseconds(120);
+}
+
+// Consume slightly more source samples than WASAPI requests when independent
+// producer and device clocks drift apart. The caller resamples this bounded
+// input window into output_frames, preventing slow queue growth without an
+// audible hard drop and without allowing latency to grow to the 200 ms cap.
+constexpr std::size_t remoteAudioInputFramesForRender(
+    std::size_t output_frames,
+    std::size_t queued_frames) noexcept {
+  if (output_frames == 0 || queued_frames <= output_frames) {
+    return queued_frames;
+  }
+  constexpr auto target_frames =
+      remoteAudioSampleRate() * remoteAudioTargetQueuedDuration().count() /
+      1'000;
+  if (queued_frames <= target_frames) return output_frames;
+  constexpr auto emergency_frames =
+      remoteAudioSampleRate() * remoteAudioEmergencyQueuedDuration().count() /
+      1'000;
+  const auto proportional_extra = queued_frames >= emergency_frames
+      ? output_frames / 20
+      : output_frames / 50;
+  const auto maximum_extra = proportional_extra == 0 ? 1 : proportional_extra;
+  const auto excess = queued_frames - target_frames;
+  const auto extra = excess < maximum_extra ? excess : maximum_extra;
+  const auto requested = output_frames + extra;
+  return requested < queued_frames ? requested : queued_frames;
 }
 
 struct RemoteAudioSettings {

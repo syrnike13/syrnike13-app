@@ -39,6 +39,16 @@ struct BlockingRetireState {
   bool retire_entered = false;
   bool release_retire = false;
   std::atomic_bool block_next_retire{true};
+  bool block_connect = false;
+  bool connect_entered = false;
+  bool release_connect = false;
+  bool connect_active = false;
+  bool disconnect_entered = false;
+  bool lifecycle_overlap = false;
+  bool block_publish = false;
+  bool publish_entered = false;
+  bool release_publish = false;
+  bool publish_active = false;
 };
 
 class NoopSink final : public syrnike::desktop_native::EventSink {
@@ -66,14 +76,33 @@ class FakeVoiceRoomOwner final
     const std::string&,
     const livekit::RoomOptions&
   ) override {
-    connected_ = true;
+    {
+      std::unique_lock lock(state_->mutex);
+      state_->connect_entered = true;
+      state_->connect_active = true;
+      state_->changed.notify_all();
+      if (state_->block_connect) {
+        state_->changed.wait(lock, [&] { return state_->release_connect; });
+      }
+      state_->connect_active = false;
+    }
+    state_->changed.notify_all();
+    connected_.store(true);
     return true;
   }
   bool isConnected() const override { return false; }
-  bool waitConnected(std::chrono::milliseconds) override { return connected_; }
+  bool waitConnected(std::chrono::milliseconds) override { return connected_.load(); }
   void markIntentionalDisconnect() override {}
   void stopAudio() override {}
-  void disconnect() override { connected_ = false; }
+  void disconnect() override {
+    std::lock_guard lock(state_->mutex);
+    state_->disconnect_entered = true;
+    state_->lifecycle_overlap =
+      state_->lifecycle_overlap || state_->connect_active ||
+      state_->publish_active;
+    connected_.store(false);
+    state_->changed.notify_all();
+  }
   void setDeafened(bool) override {}
   std::uint64_t setOutputDevice(
     std::string,
@@ -100,16 +129,31 @@ class FakeVoiceRoomOwner final
   std::string publishAudioTrack(
     const std::shared_ptr<livekit::LocalAudioTrack>&,
     const livekit::TrackPublishOptions&
-  ) override { return "fake-audio"; }
+  ) override { return publish("fake-audio"); }
   std::string publishVideoTrack(
     const std::shared_ptr<livekit::LocalVideoTrack>&,
     const livekit::TrackPublishOptions&
-  ) override { return "fake-video"; }
+  ) override { return publish("fake-video"); }
   void unpublishTrack(const std::string&) override {}
 
  private:
+  std::string publish(std::string result) {
+    {
+      std::unique_lock lock(state_->mutex);
+      state_->publish_entered = true;
+      state_->publish_active = true;
+      state_->changed.notify_all();
+      if (state_->block_publish) {
+        state_->changed.wait(lock, [&] { return state_->release_publish; });
+      }
+      state_->publish_active = false;
+    }
+    state_->changed.notify_all();
+    return result;
+  }
+
   std::shared_ptr<BlockingRetireState> state_;
-  bool connected_ = false;
+  std::atomic_bool connected_{false};
 };
 
 }  // namespace
@@ -238,6 +282,115 @@ int main() try {
   real_path_client->disconnectVoice();
   real_path_runtime.requestShutdown();
   real_path_runtime.shutdownAndWait();
+
+  auto serialized_lifetime =
+    std::make_shared<syrnike::desktop_native::media::LiveKitRuntimeLifetime>();
+  auto serialized_state = std::make_shared<BlockingRetireState>();
+  serialized_state->block_next_retire.store(false);
+  serialized_state->block_connect = true;
+  auto serialized_client =
+    syrnike::desktop_native::media::createRealLiveKitPublicationClient(
+      serialized_lifetime,
+      [serialized_state](auto, auto, auto, auto, auto) {
+        return std::make_shared<FakeVoiceRoomOwner>(serialized_state);
+      }
+    );
+  syrnike::desktop_native::media::MediaRuntime serialized_runtime(
+    std::make_shared<NoopSink>(),
+    serialized_client,
+    {},
+    {},
+    {},
+    serialized_lifetime
+  );
+  serialized_runtime.waitUntilReady();
+  auto serialized_connect = std::async(std::launch::async, [&] {
+    return serialized_client->connectVoice(
+      "serialized", 1, "wss://example.invalid", "token", noop_post);
+  });
+  {
+    std::unique_lock lock(serialized_state->mutex);
+    if (!serialized_state->changed.wait_for(
+          lock, 1s, [&] { return serialized_state->connect_entered; })) {
+      throw std::runtime_error("serialized connect did not enter owner");
+    }
+  }
+  auto serialized_disconnect = std::async(std::launch::async, [&] {
+    serialized_client->disconnectVoice();
+    return true;
+  });
+  requireNotReady(
+    serialized_disconnect,
+    "disconnect entered LiveKit while Room::connect was still active"
+  );
+  {
+    std::lock_guard lock(serialized_state->mutex);
+    serialized_state->release_connect = true;
+  }
+  serialized_state->changed.notify_all();
+  requireReady(serialized_connect, "serialized connect did not finish");
+  requireReady(serialized_disconnect, "serialized disconnect did not finish");
+  if (!serialized_connect.get() || !serialized_disconnect.get()) {
+    throw std::runtime_error("serialized voice lifecycle returned failure");
+  }
+  {
+    std::lock_guard lock(serialized_state->mutex);
+    if (!serialized_state->disconnect_entered ||
+        serialized_state->lifecycle_overlap) {
+      throw std::runtime_error(
+        "LiveKit connect/disconnect lifecycle was not serialized");
+    }
+  }
+
+  serialized_state->block_connect = false;
+  serialized_state->block_publish = true;
+  serialized_state->disconnect_entered = false;
+  if (!serialized_client->connectVoice(
+        "serialized-publish", 2, "wss://example.invalid", "token-2",
+        noop_post)) {
+    throw std::runtime_error("publication lifecycle Room did not connect");
+  }
+  auto serialized_publication =
+    serialized_client->createMicrophonePublication("serialized-publish", 2);
+  auto serialized_publish = std::async(std::launch::async, [&] {
+    return serialized_publication->publishAudioTrack(
+      {}, livekit::TrackPublishOptions{});
+  });
+  {
+    std::unique_lock lock(serialized_state->mutex);
+    if (!serialized_state->changed.wait_for(
+          lock, 1s, [&] { return serialized_state->publish_entered; })) {
+      throw std::runtime_error("serialized publication did not enter owner");
+    }
+  }
+  auto publish_disconnect = std::async(std::launch::async, [&] {
+    serialized_client->disconnectVoice();
+    return true;
+  });
+  requireNotReady(
+    publish_disconnect,
+    "disconnect entered LiveKit while track publication was active"
+  );
+  {
+    std::lock_guard lock(serialized_state->mutex);
+    serialized_state->release_publish = true;
+  }
+  serialized_state->changed.notify_all();
+  requireReady(serialized_publish, "serialized publication did not finish");
+  requireReady(publish_disconnect, "post-publication disconnect did not finish");
+  if (serialized_publish.get() != "fake-audio" ||
+      !publish_disconnect.get()) {
+    throw std::runtime_error("serialized publication lifecycle returned failure");
+  }
+  {
+    std::lock_guard lock(serialized_state->mutex);
+    if (serialized_state->lifecycle_overlap) {
+      throw std::runtime_error(
+        "LiveKit publication/disconnect lifecycle was not serialized");
+    }
+  }
+  serialized_runtime.requestShutdown();
+  serialized_runtime.shutdownAndWait();
 
   // Room connect/disconnect gates belong only to the voice owner. Creating a
   // track publication must never enter either gate.
