@@ -424,18 +424,37 @@ class ScreenActor::Implementation final
     preview_reaper_thread_ = std::thread([this] {
       while (!preview_reaper_stop_.load(std::memory_order_acquire)) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::vector<std::pair<
+          std::string,
+          std::shared_ptr<ScreenGpuCapturer>>> candidates;
+        {
+          std::lock_guard lock(preview_mutex_);
+          for (const auto& [key, state] : preview_capturers_) {
+            if (!state.active && state.capturer) {
+              candidates.emplace_back(key, state.capturer);
+            }
+          }
+        }
+        std::vector<std::pair<
+          std::string,
+          std::shared_ptr<ScreenGpuCapturer>>> completed;
+        for (auto& candidate : candidates) {
+          candidate.second->pollRetirement();
+          if (candidate.second->previewFramesInFlight() == 0) {
+            completed.push_back(std::move(candidate));
+          }
+        }
         std::vector<std::shared_ptr<ScreenGpuCapturer>> retired;
         {
           std::lock_guard lock(preview_mutex_);
-          for (auto iterator = preview_capturers_.begin();
-               iterator != preview_capturers_.end();) {
-            if (iterator->second.active || !iterator->second.capturer ||
-                iterator->second.capturer->previewFramesInFlight() != 0) {
-              ++iterator;
+          for (const auto& [key, capturer] : completed) {
+            const auto found = preview_capturers_.find(key);
+            if (found == preview_capturers_.end() || found->second.active ||
+                found->second.capturer != capturer) {
               continue;
             }
-            retired.push_back(std::move(iterator->second.capturer));
-            iterator = preview_capturers_.erase(iterator);
+            retired.push_back(std::move(found->second.capturer));
+            preview_capturers_.erase(found);
           }
         }
         // D3D/WGC teardown is allowed to block only this retire thread.
@@ -903,6 +922,38 @@ class ScreenActor::Implementation final
         stats_video_frame_flow_.encoder_backpressure_ticks;
       event.video_superseded_ready_frames =
         stats_video_frame_flow_.superseded_ready_frames;
+      event.video_gpu_slot_timeouts =
+        stats_video_frame_flow_.gpu_slot_timeouts;
+      event.video_gpu_slots_recovered =
+        stats_video_frame_flow_.gpu_slots_recovered;
+      event.video_gpu_frames_dropped_stale =
+        stats_video_frame_flow_.gpu_frames_dropped_stale;
+      event.video_gpu_pool_rollovers =
+        stats_video_frame_flow_.gpu_pool_rollovers;
+      event.video_gpu_rollovers_blocked =
+        stats_video_frame_flow_.gpu_rollovers_blocked;
+      event.video_gpu_retired_generations =
+        stats_video_frame_flow_.gpu_retired_generations;
+      event.video_gpu_slots_quarantined =
+        stats_video_frame_flow_.gpu_slots_quarantined;
+      event.video_preview_bridge_submissions =
+        stats_video_frame_flow_.preview_bridge_submissions;
+      event.video_preview_bridge_acquires =
+        stats_video_frame_flow_.preview_bridge_acquires;
+      event.video_preview_bridge_timeouts =
+        stats_video_frame_flow_.preview_bridge_timeouts;
+      event.video_preview_bridge_slots_recovered =
+        stats_video_frame_flow_.preview_bridge_slots_recovered;
+      event.video_preview_gpu_submissions =
+        stats_video_frame_flow_.preview_gpu_submissions;
+      event.video_preview_frames_completed =
+        stats_video_frame_flow_.preview_frames_completed;
+      event.video_preview_slot_timeouts =
+        stats_video_frame_flow_.preview_slot_timeouts;
+      event.video_preview_frames_dropped_stale =
+        stats_video_frame_flow_.preview_frames_dropped_stale;
+      event.video_preview_device_resets =
+        stats_video_frame_flow_.preview_device_resets;
       event.video_gpu_completion_p50_us =
         stats_video_frame_flow_.gpu_completion_p50_us;
       event.video_gpu_completion_p95_us =
@@ -1506,19 +1557,34 @@ class ScreenActor::Implementation final
     const std::shared_ptr<ScreenGpuCapturer>& capturer
   ) {
     capturer->setPreviewDemand({});
+    {
+      std::lock_guard lock(preview_mutex_);
+      const auto key = previewKey(session_id, generation);
+      const auto found = preview_capturers_.find(key);
+      if (found != preview_capturers_.end()) {
+        found->second.active = false;
+        if (found->second.capturer->previewFramesInFlight() == 0) {
+          preview_capturers_.erase(found);
+        }
+      }
+    }
     MediaCommand removed;
     removed.type = "__localScreenPreviewTrackRemoved";
     removed.session_id = session_id;
     removed.generation = generation;
     removed.track_id = localPreviewTrackId(session_id);
-    post_(std::move(removed));
-    std::lock_guard lock(preview_mutex_);
-    const auto key = previewKey(session_id, generation);
-    const auto found = preview_capturers_.find(key);
-    if (found == preview_capturers_.end()) return;
-    found->second.active = false;
-    if (found->second.capturer->previewFramesInFlight() == 0) {
-      preview_capturers_.erase(found);
+    try {
+      static_cast<void>(post_(std::move(removed)));
+    } catch (const std::exception& error) {
+      logScreen(
+        "screen_preview_track_removed_post_failed",
+        {{"message", sanitizeDiagnosticMessage(error.what())}}
+      );
+    } catch (...) {
+      logScreen(
+        "screen_preview_track_removed_post_failed",
+        {{"message", "unknown preview removal delivery failure"}}
+      );
     }
   }
 

@@ -75,6 +75,7 @@ struct ScreenGpuFrameResult {
   ScreenGpuCaptureErrorCode error_code = ScreenGpuCaptureErrorCode::CaptureUnavailable;
   std::optional<ScreenGpuRecoveryTransition> recovery_transition;
   bool source_submitted = false;
+  bool gpu_capacity_exhausted = false;
 };
 
 struct ScreenFrameFlowStats {
@@ -84,6 +85,22 @@ struct ScreenFrameFlowStats {
   std::uint64_t coalesced_source_updates = 0;
   std::uint64_t encoder_backpressure_ticks = 0;
   std::uint64_t superseded_ready_frames = 0;
+  std::uint64_t gpu_slot_timeouts = 0;
+  std::uint64_t gpu_slots_recovered = 0;
+  std::uint64_t gpu_frames_dropped_stale = 0;
+  std::uint64_t gpu_pool_rollovers = 0;
+  std::uint64_t gpu_rollovers_blocked = 0;
+  std::uint64_t gpu_retired_generations = 0;
+  std::uint64_t gpu_slots_quarantined = 0;
+  std::uint64_t preview_bridge_submissions = 0;
+  std::uint64_t preview_bridge_acquires = 0;
+  std::uint64_t preview_bridge_timeouts = 0;
+  std::uint64_t preview_bridge_slots_recovered = 0;
+  std::uint64_t preview_gpu_submissions = 0;
+  std::uint64_t preview_frames_completed = 0;
+  std::uint64_t preview_slot_timeouts = 0;
+  std::uint64_t preview_frames_dropped_stale = 0;
+  std::uint64_t preview_device_resets = 0;
   std::uint64_t gpu_completion_p50_us = 0;
   std::uint64_t gpu_completion_p95_us = 0;
   std::uint64_t gpu_completion_max_us = 0;
@@ -135,6 +152,11 @@ class ScreenGpuCapturer {
   [[nodiscard]] virtual LUID adapterLuid() const noexcept = 0;
   [[nodiscard]] virtual std::size_t frameSlotsAvailable() const noexcept = 0;
   [[nodiscard]] virtual std::size_t frameSlotsTotal() const noexcept = 0;
+  [[nodiscard]] virtual bool retirementSafe() const noexcept {
+    return previewFramesInFlight() == 0 &&
+        frameSlotsAvailable() == frameSlotsTotal();
+  }
+  virtual void pollRetirement() noexcept = 0;
   [[nodiscard]] virtual ScreenFrameFlowStats frameFlowStats() const noexcept = 0;
   [[nodiscard]] virtual std::uint64_t recoverableLossCount() const noexcept {
     return 0;

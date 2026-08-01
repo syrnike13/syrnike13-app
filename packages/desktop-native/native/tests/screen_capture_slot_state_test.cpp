@@ -135,6 +135,12 @@ int main() try {
     throw std::runtime_error("discard did not return the GPU slot");
   }
 
+  if (!gpu_slots.abandon(1, 2) || gpu_slots.available() != 2 ||
+      gpu_slots.abandon(1, 2)) {
+    throw std::runtime_error(
+        "terminal-device lease abandonment was not generation-safe");
+  }
+
   ScreenPreviewLeaseState<3> preview_slots;
   const auto started = std::chrono::steady_clock::time_point{10s};
   const auto first = preview_slots.reserve(100, started, 0);

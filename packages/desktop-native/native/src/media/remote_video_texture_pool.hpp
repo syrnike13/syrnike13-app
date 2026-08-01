@@ -5,10 +5,24 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
+#include <string>
+#include <utility>
 
 #include <livekit/video_frame.h>
 
 namespace syrnike::desktop_native::media {
+
+class RemoteVideoTexturePoolError final : public std::runtime_error {
+ public:
+  RemoteVideoTexturePoolError(std::string message, long hresult)
+      : std::runtime_error(std::move(message)), hresult_(hresult) {}
+
+  [[nodiscard]] long hresult() const noexcept { return hresult_; }
+
+ private:
+  long hresult_ = 0;
+};
 
 struct RemoteVideoTextureFrame {
   std::uint64_t nt_handle = 0;

@@ -129,7 +129,14 @@ class RemoteVideoBridge {
   struct RetiredFrame {
     std::string track_id;
     std::shared_ptr<void> resource;
+    std::chrono::steady_clock::time_point retired_at;
   };
+  void makeRetiredFrameRoomLocked(
+    std::chrono::steady_clock::time_point now
+  );
+  static constexpr std::size_t max_retired_renderer_frames_ = 64;
+  static constexpr auto retired_renderer_frame_ttl_ =
+    std::chrono::seconds(30);
   std::unordered_map<std::uint64_t, RetiredFrame> retired_frames_;
   BoundedReleaseLedger released_frame_sequences_;
 #endif

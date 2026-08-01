@@ -240,9 +240,9 @@ int main() try {
   for (const auto attempt_at : gpu_timeout_attempts) {
     decision = gpu_timeout.observe(gpu_timeout_observation, attempt_at);
     require(
-        decision.action == CaptureBackendAction::RecreateActivePipeline &&
+        decision.action == CaptureBackendAction::RecreateDevice &&
             decision.target == CaptureBackend::Dxgi,
-        "GPU timeout switched capture backends or recreated every device");
+        "exhausted GPU generations did not recreate the active device");
     require(
         gpu_timeout.nextRetryAt() - attempt_at <= 1s,
         "GPU timeout recovery backoff exceeded one second");

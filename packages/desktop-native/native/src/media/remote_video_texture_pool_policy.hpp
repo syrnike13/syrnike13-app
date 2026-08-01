@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gpu_completion_slot_policy.hpp"
+
 namespace syrnike::desktop_native::media {
 
 enum class RemoteVideoTextureSlotPhase {
@@ -31,14 +33,18 @@ inline RemoteVideoSlotTransition decideRemoteVideoSlotTransition(
       current != RemoteVideoTextureSlotPhase::Quarantined) {
     return {current};
   }
-  if (result == RemoteVideoGpuPollClass::Pending) return {current};
-  if (result == RemoteVideoGpuPollClass::TimedOut) {
-    return {
-      RemoteVideoTextureSlotPhase::Quarantined,
-      current == RemoteVideoTextureSlotPhase::Uploading,
-    };
-  }
-  if (result == RemoteVideoGpuPollClass::Failed) {
+  const auto generic = decideGpuCompletionSlotTransition(
+      current == RemoteVideoTextureSlotPhase::Quarantined
+          ? GpuCompletionSlotState::Quarantined
+          : GpuCompletionSlotState::Pending,
+      result == RemoteVideoGpuPollClass::Pending
+          ? GpuCompletionPollClass::Pending
+          : result == RemoteVideoGpuPollClass::TimedOut
+              ? GpuCompletionPollClass::TimedOut
+              : result == RemoteVideoGpuPollClass::Failed
+                  ? GpuCompletionPollClass::DeviceFailed
+                  : GpuCompletionPollClass::Completed);
+  if (generic.device_failed) {
     return {
       RemoteVideoTextureSlotPhase::Available,
       false,
@@ -46,7 +52,15 @@ inline RemoteVideoSlotTransition decideRemoteVideoSlotTransition(
       true,
     };
   }
-  if (current == RemoteVideoTextureSlotPhase::Quarantined) {
+  if (generic.keep_pending) {
+    return {
+        generic.next == GpuCompletionSlotState::Quarantined
+            ? RemoteVideoTextureSlotPhase::Quarantined
+            : RemoteVideoTextureSlotPhase::Uploading,
+        generic.newly_quarantined,
+    };
+  }
+  if (generic.recovered_stale) {
     // The completed frame is stale, but its resources are reusable again.
     return {RemoteVideoTextureSlotPhase::Available, false, true};
   }

@@ -256,6 +256,48 @@ Napi::Object statsToObject(Napi::Env env, const RuntimeEvent& event) {
   stats.Set(
       "videoSupersededReadyFrames",
       jsNumber(env, event.video_superseded_ready_frames));
+  stats.Set("videoGpuSlotTimeouts", jsNumber(env, event.video_gpu_slot_timeouts));
+  stats.Set("videoGpuSlotsRecovered", jsNumber(env, event.video_gpu_slots_recovered));
+  stats.Set(
+      "videoGpuFramesDroppedStale",
+      jsNumber(env, event.video_gpu_frames_dropped_stale));
+  stats.Set("videoGpuPoolRollovers", jsNumber(env, event.video_gpu_pool_rollovers));
+  stats.Set(
+      "videoGpuRolloversBlocked",
+      jsNumber(env, event.video_gpu_rollovers_blocked));
+  stats.Set(
+      "videoGpuRetiredGenerations",
+      jsNumber(env, event.video_gpu_retired_generations));
+  stats.Set(
+      "videoGpuSlotsQuarantined",
+      jsNumber(env, event.video_gpu_slots_quarantined));
+  stats.Set(
+      "videoPreviewBridgeSubmissions",
+      jsNumber(env, event.video_preview_bridge_submissions));
+  stats.Set(
+      "videoPreviewBridgeAcquires",
+      jsNumber(env, event.video_preview_bridge_acquires));
+  stats.Set(
+      "videoPreviewBridgeTimeouts",
+      jsNumber(env, event.video_preview_bridge_timeouts));
+  stats.Set(
+      "videoPreviewBridgeSlotsRecovered",
+      jsNumber(env, event.video_preview_bridge_slots_recovered));
+  stats.Set(
+      "videoPreviewGpuSubmissions",
+      jsNumber(env, event.video_preview_gpu_submissions));
+  stats.Set(
+      "videoPreviewFramesCompleted",
+      jsNumber(env, event.video_preview_frames_completed));
+  stats.Set(
+      "videoPreviewSlotTimeouts",
+      jsNumber(env, event.video_preview_slot_timeouts));
+  stats.Set(
+      "videoPreviewFramesDroppedStale",
+      jsNumber(env, event.video_preview_frames_dropped_stale));
+  stats.Set(
+      "videoPreviewDeviceResets",
+      jsNumber(env, event.video_preview_device_resets));
   stats.Set(
       "videoGpuCompletionP50Us",
       jsNumber(env, event.video_gpu_completion_p50_us));

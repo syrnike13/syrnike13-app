@@ -176,6 +176,53 @@ int main() try {
     );
   }
 
+  {
+    RemoteVideoTexturePool pressure_pool(GetCurrentProcessId(), 3);
+    std::vector<std::shared_ptr<void>> held_leases;
+    for (std::uint64_t timestamp = 1; timestamp <= 3; ++timestamp) {
+      require(
+        pressure_pool.submit(source, timestamp),
+        "viewer lease-pressure upload was rejected early"
+      );
+      const auto ready_deadline = Clock::now() + std::chrono::seconds(1);
+      while (pressure_pool.ready() == 0 && Clock::now() < ready_deadline) {
+        require(
+          !pressure_pool.poll().reset_required,
+          "viewer lease pressure requested a device reset"
+        );
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
+      RemoteVideoTextureFrame held;
+      require(pressure_pool.take(held), "viewer pressure frame did not complete");
+      held_leases.push_back(std::move(held.lease));
+    }
+    require(
+      !pressure_pool.submit(source, 4),
+      "viewer pool overwrote a renderer-owned texture"
+    );
+    held_leases.front().reset();
+    require(
+      pressure_pool.submit(source, 4),
+      "viewer pool did not resume after one renderer lease returned"
+    );
+    const auto resume_deadline = Clock::now() + std::chrono::seconds(1);
+    while (pressure_pool.ready() == 0 && Clock::now() < resume_deadline) {
+      require(
+        !pressure_pool.poll().reset_required,
+        "viewer lease release requested a device reset"
+      );
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    RemoteVideoTextureFrame resumed;
+    require(pressure_pool.take(resumed), "viewer pool did not publish after release");
+    resumed.lease.reset();
+    held_leases.clear();
+    require(
+      pressure_pool.available() == pressure_pool.capacity(),
+      "viewer pressure slots did not all return"
+    );
+  }
+
   RemoteVideoTexturePool pool(GetCurrentProcessId(), 5);
   std::deque<OutstandingLease> leases;
   std::vector<std::uint64_t> completion_us;

@@ -150,15 +150,17 @@ class CaptureBackendSupervisor final {
       };
     }
 
-    // A live device with an overdue event query has a stalled command queue,
-    // not a broken capture API. Rebuild only the active GPU pipeline, stay on
-    // the selected backend, and rate-limit retries to avoid resource storms.
+    // Individual overdue event queries are quarantined inside the active pool
+    // and never reach the supervisor. GpuTimeout here means three bounded pool
+    // generations have all stopped making progress. Recreate the D3D device,
+    // but keep the selected capture API; a queue-capacity failure is not a
+    // reason to start DXGI/WGC ping-pong.
     if (observation.error == ScreenGpuCaptureErrorCode::GpuTimeout) {
       scheduleBackoff(now, kGpuTimeoutMaxRetry);
       state_ = CaptureBackendState::Reinitializing;
       return {
           state_,
-          CaptureBackendAction::RecreateActivePipeline,
+          CaptureBackendAction::RecreateDevice,
           active_,
       };
     }

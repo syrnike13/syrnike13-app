@@ -189,6 +189,7 @@ class FakeScreenGpuCapturer final
   }
   void discard(
       const syrnike::desktop_native::media::ScreenGpuFrame&) noexcept override {}
+  void pollRetirement() noexcept override {}
   void setPreviewDemand(
       syrnike::desktop_native::media::ScreenPreviewDemand) override {}
   bool takePreviewFrame(
