@@ -77,10 +77,13 @@ class Capture final : public CameraCapture {
       bool block,
       bool slow_stop,
       bool gpu,
-      std::shared_ptr<std::atomic_uint64_t> stop_calls)
+      std::shared_ptr<std::atomic_uint64_t> stop_calls,
+      std::shared_ptr<std::atomic_uint64_t> read_calls)
       : fail_(fail), block_(block), slow_stop_(slow_stop), gpu_(gpu),
-        stop_calls_(std::move(stop_calls)) {}
+        stop_calls_(std::move(stop_calls)),
+        read_calls_(std::move(read_calls)) {}
   bool read(CameraFrame& frame, const std::atomic_bool& running) override {
+    read_calls_->fetch_add(1, std::memory_order_acq_rel);
     if (fail_) throw std::runtime_error("fake camera failure");
     if (block_) {
       std::unique_lock lock(mutex_);
@@ -108,6 +111,7 @@ class Capture final : public CameraCapture {
   bool slow_stop_;
   bool gpu_;
   std::shared_ptr<std::atomic_uint64_t> stop_calls_;
+  std::shared_ptr<std::atomic_uint64_t> read_calls_;
   std::mutex mutex_;
   std::condition_variable stopped_;
   bool stopped_value_ = false;
@@ -128,7 +132,8 @@ class Factory final : public CameraCaptureFactory {
     }
     const bool gpu = !force_cpu && gpu_first.exchange(false);
     auto capture = std::make_shared<Capture>(
-        fail.load(), block.load(), slow_stop.load(), gpu, stop_calls);
+        fail.load(), block.load(), slow_stop.load(), gpu, stop_calls,
+        read_calls);
     if (gpu) {
       std::lock_guard lock(mutex);
       first_gpu_capture = capture;
@@ -142,6 +147,8 @@ class Factory final : public CameraCaptureFactory {
   std::atomic_uint64_t force_cpu_calls{0};
   std::atomic_bool gpu_destroyed_before_cpu{false};
   std::shared_ptr<std::atomic_uint64_t> stop_calls =
+      std::make_shared<std::atomic_uint64_t>(0);
+  std::shared_ptr<std::atomic_uint64_t> read_calls =
       std::make_shared<std::atomic_uint64_t>(0);
   std::mutex mutex;
   std::weak_ptr<CameraCapture> first_gpu_capture;
@@ -655,6 +662,14 @@ int main() try {
   detached_actor->connect(command(1, "detached-capture-lifetime"));
   if (!waitReply(detached_sink, "detached-capture-lifetime").ok) {
     throw std::runtime_error("detached capture lifetime scenario did not start");
+  }
+  for (int i = 0; i < 1000 && detached_factory->read_calls->load() == 0;
+       ++i) {
+    std::this_thread::sleep_for(5ms);
+  }
+  if (detached_factory->read_calls->load() == 0) {
+    throw std::runtime_error(
+        "detached capture lifetime scenario did not enter the capture worker");
   }
   std::weak_ptr<LiveKitPublicationClient> detached_client_weak =
       detached_client;
