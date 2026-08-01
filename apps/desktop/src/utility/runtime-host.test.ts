@@ -9,11 +9,28 @@ import {
 } from '../main/native-runtime/contract'
 import { NATIVE_RUNTIME_LIVEKIT_VERSION } from '../main/native-runtime/native-artifacts'
 import {
+  isAdvisoryNativeRuntimeEventCandidate,
   runNativeUtilityHost,
   shouldLogNativeRuntimeEvent,
 } from './runtime-host'
 
 describe('runNativeUtilityHost', () => {
+  it('isolates malformed advisory telemetry from the control contract', () => {
+    for (const type of [
+      'screenBackendRestart',
+      'stats',
+      'microphoneMetrics',
+      'activeSpeakers',
+    ]) {
+      expect(isAdvisoryNativeRuntimeEventCandidate({ type })).toBe(true)
+    }
+
+    expect(
+      isAdvisoryNativeRuntimeEventCandidate({ type: 'sessionLifecycle' }),
+    ).toBe(false)
+    expect(isAdvisoryNativeRuntimeEventCandidate({})).toBe(false)
+  })
+
   it('does not enqueue high-frequency video frames in diagnostic logs', () => {
     for (const type of [
       'remoteVideoFrame',
@@ -147,6 +164,19 @@ describe('runNativeUtilityHost', () => {
         contractVersion: NATIVE_RUNTIME_CONTRACT_VERSION,
       }),
     ])
+
+    emitFromRuntime?.({
+      type: 'screenBackendRestart',
+      sequence: 1,
+      sessionId: 'screen',
+      generation: 1,
+      backend: 'dxgi_gpu',
+      reason: 'future_advisory_reason',
+      count: 1,
+    })
+    expect(exit).not.toHaveBeenCalled()
+    expect(shutdown).not.toHaveBeenCalled()
+    expect(postedMessages).toHaveLength(1)
 
     messageListener?.({
       data: {

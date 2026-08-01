@@ -269,6 +269,34 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     })
   })
 
+  it('accepts replacement frames after a transient native track restart', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, remoteFrameMessage(1, new FakeVideoFrame()))
+    const stableTrack = registry.getTrack('remote-screen')!
+    const consumer = canvasStub()
+    stableTrack.attachCanvas(consumer.canvas)
+    const removal = remoteRemovalMessage()
+    deliver(registry, {
+      ...removal,
+      metadata: { ...removal.metadata, transient: true },
+    })
+
+    const replacement = new FakeVideoFrame()
+    deliver(registry, remoteFrameMessage(2, replacement))
+    runtimeWindow.flushAnimationFrames()
+
+    expect(registry.getTrack('remote-screen')).toBe(stableTrack)
+    expect(consumer.drawImage).toHaveBeenCalledWith(
+      replacement,
+      0,
+      0,
+      640,
+      360,
+    )
+    expect(replacement.close).toHaveBeenCalledOnce()
+  })
+
   it('accepts re-demand frames only after the stable publication is re-announced', () => {
     const registry = new NativeVideoRegistry()
     deliver(registry, publicationMessage('available'))

@@ -9,6 +9,7 @@
 #include <thread>
 
 #include "../common/async_cleanup_dispatcher.hpp"
+#include "../common/native_contract_version.hpp"
 #include "../common/node_event_sink.hpp"
 #include "../common/runtime_types.hpp"
 #include "hooks_runtime.hpp"
@@ -306,7 +307,7 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
   result.Set("platform", "win32");
   result.Set("available", true);
   result.Set("runtime", kRuntimeName);
-  result.Set("contractVersion", 4);
+  result.Set("contractVersion", kNativeRuntimeContractVersion);
   result.Set("pid", GetCurrentProcessId());
   result.Set("napi", std::to_string(NAPI_VERSION));
   result.Set("commit", SYRNIKE_NATIVE_COMMIT);

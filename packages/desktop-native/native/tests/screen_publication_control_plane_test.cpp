@@ -180,6 +180,37 @@ class FakeD3D11H264VideoSource final : public livekit::D3D11H264VideoSource {
   }
 };
 
+class FakeScreenGpuCapturer final
+    : public syrnike::desktop_native::media::ScreenGpuCapturer {
+ public:
+  syrnike::desktop_native::media::ScreenGpuFrameResult capture(
+      syrnike::desktop_native::media::ScreenGpuFrame&) override {
+    return {};
+  }
+  void discard(
+      const syrnike::desktop_native::media::ScreenGpuFrame&) noexcept override {}
+  void setPreviewDemand(
+      syrnike::desktop_native::media::ScreenPreviewDemand) override {}
+  bool takePreviewFrame(
+      syrnike::desktop_native::media::ScreenPreviewFrame&) override {
+    return false;
+  }
+  bool takePreviewFailure(
+      syrnike::desktop_native::media::ScreenPreviewFailure&) override {
+    return false;
+  }
+  void releasePreviewFrame(std::uint64_t) noexcept override {}
+  std::size_t previewFramesInFlight() const noexcept override { return 0; }
+  const char* method() const noexcept override { return "fake_gpu"; }
+  LUID adapterLuid() const noexcept override { return {}; }
+  std::size_t frameSlotsAvailable() const noexcept override { return 1; }
+  std::size_t frameSlotsTotal() const noexcept override { return 1; }
+  syrnike::desktop_native::media::ScreenFrameFlowStats frameFlowStats()
+      const noexcept override {
+    return {};
+  }
+};
+
 class ScreenControllerHarness final {
  public:
   using Controller = syrnike::desktop_native::media::ScreenPublicationController;
@@ -191,10 +222,18 @@ class ScreenControllerHarness final {
     Controller::CreateVideoSource create_video_source,
     Controller::LaunchRetireWorker launch_retire_worker = {},
     Controller::BeforeRetireEnqueue before_retire_enqueue = {},
-    Controller::BeforeResourceCleanup before_resource_cleanup = {}
+    Controller::BeforeResourceCleanup before_resource_cleanup = {},
+    Controller::PrepareCapture prepare_capture = {}
   ) : sink(std::make_shared<CollectingSink>()),
       emitter(sink),
       livekit(std::make_shared<FakeLiveKit>()) {
+    if (!prepare_capture) {
+      prepare_capture = [](
+          const syrnike::desktop_native::MediaCommand&,
+          const syrnike::desktop_native::media::ScreenPublicationDescription&) {
+        return std::make_shared<FakeScreenGpuCapturer>();
+      };
+    }
     livekit->setVoiceSessionForTest("screen-di");
     controller = std::make_unique<Controller>(
       emitter,
@@ -230,12 +269,14 @@ class ScreenControllerHarness final {
         description.height = static_cast<std::uint32_t>(command.height);
         return description;
       },
+      std::move(prepare_capture),
       [](
         const syrnike::desktop_native::MediaCommand&,
         const syrnike::desktop_native::media::ScreenPublicationDescription&,
         const std::shared_ptr<livekit::D3D11H264VideoSource>&,
         const std::shared_ptr<livekit::LocalVideoTrack>&,
         const std::shared_ptr<livekit::AudioSource>&,
+        const std::shared_ptr<syrnike::desktop_native::media::ScreenGpuCapturer>&,
         const std::shared_ptr<std::atomic_bool>&,
         const std::shared_ptr<syrnike::voice::ScreenAudioStopSignal>&,
         const std::function<bool()>&,
@@ -329,6 +370,46 @@ void verifyUnavailableEncoderFailsClosed() {
     harness.sink->countSessionStarted("screen-di", 1) == 0,
     "unavailable encoder capability emitted sessionStarted"
   );
+}
+
+void verifyCapturePreflightFailsBeforePublication() {
+  std::atomic_int source_calls{0};
+  std::atomic_int preflight_calls{0};
+  ScreenControllerHarness harness(
+    [] { return livekit::D3D11H264Capability{true, {}}; },
+    [&](int width, int height) {
+      source_calls.fetch_add(1);
+      return std::make_shared<FakeD3D11H264VideoSource>(width, height);
+    },
+    ScreenControllerHarness::Controller::LaunchRetireWorker{},
+    ScreenControllerHarness::Controller::BeforeRetireEnqueue{},
+    ScreenControllerHarness::Controller::BeforeResourceCleanup{},
+    [&](const syrnike::desktop_native::MediaCommand&,
+        const syrnike::desktop_native::media::ScreenPublicationDescription&)
+        -> std::shared_ptr<syrnike::desktop_native::media::ScreenGpuCapturer> {
+      preflight_calls.fetch_add(1);
+      throw std::runtime_error(
+        "gpu_capture_unavailable: gpu_access_lost: injected preflight failure");
+    }
+  );
+  harness.livekit->setBlocked(
+    ScreenControllerHarness::FakeLiveKit::Operation::Publish, true);
+
+  harness.controller->startCapture(screenCommand(
+    "startScreenCapture", "preflight-failure", "screen-di", 1));
+  harness.handleNextWorkerCommand();
+  const auto reply = harness.sink->waitReply("preflight-failure");
+  require(
+    !reply.ok && reply.error &&
+      reply.error->code == "gpu_capture_unavailable",
+    "capture preflight failure lost its typed error");
+  require(
+    preflight_calls.load() == 1 && source_calls.load() == 0,
+    "capture preflight did not run before encoder source construction");
+  require(
+    harness.livekit->pending(
+      ScreenControllerHarness::FakeLiveKit::Operation::Publish) == 0,
+    "failed capture preflight created a ghost LiveKit publication");
 }
 
 void verifyNullEncoderSourceFailsClosed() {
@@ -1144,6 +1225,9 @@ int main() try {
   runtime.waitUntilReady();
 
   verifyPhase("unavailable encoder", verifyUnavailableEncoderFailsClosed);
+  verifyPhase(
+    "capture preflight before publication",
+    verifyCapturePreflightFailsBeforePublication);
   verifyPhase("null encoder source", verifyNullEncoderSourceFailsClosed);
   verifyPhase("cancelled publish rollback", verifyCancelledPublishRollsBackExactSid);
   verifyPhase("RTP stall restart", verifyRtpStallRestartsCapture);

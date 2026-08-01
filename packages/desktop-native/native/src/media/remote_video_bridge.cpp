@@ -4,12 +4,15 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
+#include <exception>
 #include <future>
 #include <latch>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 #include "../common/diagnostic_log.hpp"
 #include "remote_video_texture_pool.hpp"
@@ -17,6 +20,93 @@
 namespace syrnike::desktop_native::media {
 namespace {
 constexpr std::size_t max_in_flight = 3;
+constexpr std::size_t max_retired_gpu_generations = 2;
+constexpr std::size_t max_process_gpu_retirements = 4;
+
+#ifdef _WIN32
+class RemoteVideoGpuRetirementQueue final {
+ public:
+  static RemoteVideoGpuRetirementQueue& instance() {
+    static RemoteVideoGpuRetirementQueue queue;
+    return queue;
+  }
+
+  ~RemoteVideoGpuRetirementQueue() {
+    worker_.request_stop();
+    changed_.notify_all();
+  }
+
+  [[nodiscard]] bool acceptsNewGeneration() const {
+    std::lock_guard lock(mutex_);
+    return pools_.size() < max_process_gpu_retirements;
+  }
+
+  void retire(std::unique_ptr<RemoteVideoTexturePool> pool) noexcept {
+    try {
+      if (!pool || pool->retirementSafe()) return;
+      {
+        std::lock_guard lock(mutex_);
+        pools_.push_back(std::move(pool));
+      }
+      changed_.notify_one();
+    } catch (...) {
+      // Teardown must stay non-blocking and noexcept. In the exceptional
+      // out-of-memory path, intentionally retain the pending D3D resources
+      // until process exit instead of releasing them on the media thread.
+      static_cast<void>(pool.release());
+    }
+  }
+
+ private:
+  RemoteVideoGpuRetirementQueue()
+      : worker_([this](std::stop_token stop) { reap(stop); }) {}
+
+  void reap(std::stop_token stop) noexcept {
+    try {
+      std::unique_lock lock(mutex_);
+      while (!stop.stop_requested()) {
+        changed_.wait_for(lock, std::chrono::milliseconds(50));
+        for (auto iterator = pools_.begin(); iterator != pools_.end();) {
+          const auto result = (*iterator)->poll();
+          if (result.reset_required || (*iterator)->retirementSafe()) {
+            iterator = pools_.erase(iterator);
+          } else {
+            ++iterator;
+          }
+        }
+      }
+    } catch (...) {
+      // Retained resources remain owned by the queue. A reaper failure must
+      // never terminate the media utility or move teardown onto a track thread.
+    }
+  }
+
+  mutable std::mutex mutex_;
+  std::condition_variable changed_;
+  std::vector<std::unique_ptr<RemoteVideoTexturePool>> pools_;
+  std::jthread worker_;
+};
+
+std::unique_ptr<RemoteVideoTexturePool> createRemoteVideoTexturePool(
+    std::uint32_t electron_main_pid) {
+  if (!RemoteVideoGpuRetirementQueue::instance().acceptsNewGeneration()) {
+    throw std::runtime_error(
+      "remote video GPU retirement capacity is temporarily exhausted");
+  }
+  return std::make_unique<RemoteVideoTexturePool>(electron_main_pid);
+}
+
+struct RemoteVideoGpuPoolSet final {
+  std::unique_ptr<RemoteVideoTexturePool> active;
+  std::vector<std::unique_ptr<RemoteVideoTexturePool>> retired;
+
+  ~RemoteVideoGpuPoolSet() {
+    auto& queue = RemoteVideoGpuRetirementQueue::instance();
+    queue.retire(std::move(active));
+    for (auto& pool : retired) queue.retire(std::move(pool));
+  }
+};
+#endif
 
 void logRemoteVideoFailure(
   const std::string& track_id,
@@ -153,16 +243,26 @@ void RemoteVideoBridge::addTrack(
     raw->committed.wait();
 #ifdef _WIN32
     try {
-      std::unique_ptr<RemoteVideoTexturePool> uploader;
+      RemoteVideoGpuPoolSet gpu_pools;
+      auto& uploader = gpu_pools.active;
+      auto& retired_uploaders = gpu_pools.retired;
       livekit::VideoFrameEvent frame_event;
       bool healthy_reported = false;
       std::uint64_t frames_read = 0;
       std::uint64_t frames_submitted = 0;
       std::uint64_t frames_published = 0;
       std::uint64_t frames_dropped_gpu_pool = 0;
-      std::uint64_t gpu_pool_resets = 0;
+      std::uint64_t gpu_pool_rollovers = 0;
+      std::uint64_t gpu_slot_timeouts = 0;
+      std::uint64_t gpu_slots_recovered = 0;
+      std::uint64_t gpu_frames_superseded = 0;
+      std::uint64_t gpu_rollovers_blocked = 0;
+      bool rollover_blocked_reported = false;
       std::uint64_t gpu_wait_total_us = 0;
       std::uint64_t gpu_wait_max_us = 0;
+      std::mutex gpu_pipeline_mutex;
+      std::condition_variable gpu_pipeline_changed;
+      std::exception_ptr gpu_pipeline_failure;
       auto next_pipeline_report =
         std::chrono::steady_clock::now() + std::chrono::seconds(1);
       auto next_rtp_stats_request =
@@ -226,47 +326,136 @@ void RemoteVideoBridge::addTrack(
         }
       };
 
-      const auto poll_uploader = [&] {
-        const auto result = uploader->poll();
-        if (!result.reset_required) return;
-        ++gpu_pool_resets;
+      const auto cleanup_retired_uploaders = [&] {
+        for (auto iterator = retired_uploaders.begin();
+             iterator != retired_uploaders.end();) {
+          const auto result = (*iterator)->poll();
+          gpu_slot_timeouts += result.slots_quarantined;
+          gpu_slots_recovered += result.slots_recovered;
+          gpu_frames_superseded +=
+            (*iterator)->consumeSupersededReadyFrames();
+          if (result.reset_required || (*iterator)->retirementSafe()) {
+            iterator = retired_uploaders.erase(iterator);
+          } else {
+            ++iterator;
+          }
+        }
+        if (retired_uploaders.size() < max_retired_gpu_generations) {
+          rollover_blocked_reported = false;
+        }
+      };
+
+      const auto rollover_uploader = [&, this](
+        const char* reason,
+        long hresult
+      ) {
+        if (retired_uploaders.size() >= max_retired_gpu_generations) {
+          if (!rollover_blocked_reported) {
+            rollover_blocked_reported = true;
+            ++gpu_rollovers_blocked;
+            diagnostics::DiagnosticLog::instance().write(
+              "remote_video_gpu_rollover_blocked",
+              {
+                {"trackId", track_id},
+                {"reason", reason},
+                {"hresult", static_cast<std::int64_t>(hresult)},
+                {"retiredGenerations",
+                  static_cast<std::uint64_t>(retired_uploaders.size())}
+              }
+            );
+          }
+          return false;
+        }
+        retired_uploaders.push_back(std::move(uploader));
+        uploader = createRemoteVideoTexturePool(electron_main_pid_);
+        ++gpu_pool_rollovers;
         diagnostics::DiagnosticLog::instance().write(
-          "remote_video_gpu_pool_reset",
+          "remote_video_gpu_pool_rollover",
           {
             {"trackId", track_id},
-            {"hresult", static_cast<std::int64_t>(result.hresult)},
-            {"count", gpu_pool_resets}
+            {"reason", reason},
+            {"hresult", static_cast<std::int64_t>(hresult)},
+            {"count", gpu_pool_rollovers},
+            {"retiredGenerations",
+              static_cast<std::uint64_t>(retired_uploaders.size())}
           }
         );
-        uploader = std::make_unique<RemoteVideoTexturePool>(
-          electron_main_pid_
-        );
+        return true;
       };
+
+      const auto poll_uploader = [&] {
+        if (!uploader) return;
+        const auto result = uploader->poll();
+        gpu_slot_timeouts += result.slots_quarantined;
+        gpu_slots_recovered += result.slots_recovered;
+        gpu_frames_superseded += uploader->consumeSupersededReadyFrames();
+        if (result.reset_required) {
+          static_cast<void>(rollover_uploader(
+            "device_failure", result.hresult));
+        } else if (result.upload_capacity_exhausted) {
+          static_cast<void>(rollover_uploader(
+            "all_upload_slots_quarantined", result.hresult));
+        }
+      };
+
+      // VideoStream::read() blocks until another decoded frame arrives. GPU
+      // completion must therefore have its own pump: otherwise the last frame
+      // before a static period can finish uploading but remain unpublished
+      // indefinitely because no later frame wakes the capture loop.
+      std::jthread gpu_pump([&](std::stop_token stop) {
+        try {
+          std::unique_lock pipeline_lock(gpu_pipeline_mutex);
+          while (!stop.stop_requested()) {
+            const bool pending = uploader &&
+              (!uploader->retirementSafe() || uploader->ready() != 0);
+            gpu_pipeline_changed.wait_for(
+              pipeline_lock,
+              pending ? std::chrono::milliseconds(2)
+                      : std::chrono::milliseconds(50)
+            );
+            if (stop.stop_requested()) break;
+            cleanup_retired_uploaders();
+            poll_uploader();
+            publish_ready_frames();
+          }
+        } catch (...) {
+          {
+            std::lock_guard lock(gpu_pipeline_mutex);
+            gpu_pipeline_failure = std::current_exception();
+          }
+          // Wake the blocking decoder read so the owning track worker can
+          // propagate this local pipeline failure through normal track
+          // recovery instead of leaving a half-alive worker behind.
+          raw->stream->close();
+        }
+      });
 
       while (!raw->stopped.load() && raw->stream->read(frame_event)) {
         ++frames_read;
         if (!claimFirstFrame(raw->first_frame_state)) break;
-        if (!uploader) {
-          uploader = std::make_unique<RemoteVideoTexturePool>(
-            electron_main_pid_
-          );
+        {
+          std::lock_guard pipeline_lock(gpu_pipeline_mutex);
+          if (gpu_pipeline_failure) {
+            std::rethrow_exception(gpu_pipeline_failure);
+          }
+          if (!uploader) {
+            uploader = createRemoteVideoTexturePool(electron_main_pid_);
+          }
+          if (uploader->submit(
+            frame_event.frame,
+            static_cast<std::uint64_t>(
+              std::max<std::int64_t>(0, frame_event.timestamp_us)
+            )
+          )) {
+            ++frames_submitted;
+          } else {
+            ++frames_dropped_gpu_pool;
+          }
         }
-        poll_uploader();
-        publish_ready_frames();
-        if (uploader->submit(
-          frame_event.frame,
-          static_cast<std::uint64_t>(
-            std::max<std::int64_t>(0, frame_event.timestamp_us)
-          )
-        )) {
-          ++frames_submitted;
-        } else {
-          ++frames_dropped_gpu_pool;
-        }
-        poll_uploader();
-        publish_ready_frames();
+        gpu_pipeline_changed.notify_one();
         const auto now = std::chrono::steady_clock::now();
         if (now >= next_pipeline_report) {
+          std::lock_guard pipeline_lock(gpu_pipeline_mutex);
           diagnostics::DiagnosticLog::instance().write(
             "remote_video_pipeline_stats",
             {
@@ -275,13 +464,24 @@ void RemoteVideoBridge::addTrack(
               {"framesSubmitted", frames_submitted},
               {"framesPublished", frames_published},
               {"framesDroppedGpuPool", frames_dropped_gpu_pool},
-              {"gpuPoolResets", gpu_pool_resets},
+              {"gpuPoolRollovers", gpu_pool_rollovers},
+              {"gpuSlotTimeouts", gpu_slot_timeouts},
+              {"gpuSlotsRecovered", gpu_slots_recovered},
+              {"gpuFramesSuperseded", gpu_frames_superseded},
+              {"gpuRolloversBlocked", gpu_rollovers_blocked},
+              {"gpuRetiredGenerations",
+                static_cast<std::uint64_t>(retired_uploaders.size())},
               {"gpuWaitTotalUs", gpu_wait_total_us},
               {"gpuWaitMaxUs", gpu_wait_max_us},
               {"gpuPoolSlotsAvailable",
-                static_cast<std::uint64_t>(uploader->available())},
+                static_cast<std::uint64_t>(
+                  uploader ? uploader->available() : 0)},
               {"gpuPoolSlotsTotal",
-                static_cast<std::uint64_t>(uploader->capacity())},
+                static_cast<std::uint64_t>(
+                  uploader ? uploader->capacity() : 0)},
+              {"gpuPoolSlotsQuarantined",
+                static_cast<std::uint64_t>(
+                  uploader ? uploader->quarantined() : 0)},
               {"width", static_cast<std::uint64_t>(frame_event.frame.width())},
               {"height", static_cast<std::uint64_t>(frame_event.frame.height())}
             }
@@ -356,6 +556,15 @@ void RemoteVideoBridge::addTrack(
         if (!rtp_stats_future && now >= next_rtp_stats_request) {
           rtp_stats_future.emplace(raw->track->getStats());
           next_rtp_stats_request = now + std::chrono::seconds(1);
+        }
+      }
+      gpu_pump.request_stop();
+      gpu_pipeline_changed.notify_all();
+      if (gpu_pump.joinable()) gpu_pump.join();
+      {
+        std::lock_guard pipeline_lock(gpu_pipeline_mutex);
+        if (gpu_pipeline_failure && !raw->stopped.load()) {
+          std::rethrow_exception(gpu_pipeline_failure);
         }
       }
       if (!raw->stopped.load()) {

@@ -71,6 +71,7 @@ export type DiagnosticLogRecord = {
   reason?: string
   message?: string
   errorCode?: string
+  hresult?: number
   windowVisible?: boolean
   windowMinimized?: boolean
 }

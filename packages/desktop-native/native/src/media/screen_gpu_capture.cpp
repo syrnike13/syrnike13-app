@@ -83,6 +83,8 @@ std::string_view captureBackendActionName(
 
 void logScreenCaptureBackend(
     std::string_view event,
+    std::string_view from,
+    std::string_view to,
     std::string_view reason,
     long hresult = 0) noexcept {
   auto& logger = diagnostics::DiagnosticLog::instance();
@@ -90,8 +92,8 @@ void logScreenCaptureBackend(
   logger.write(
       event,
       {
-          {"from", "dxgi_gpu"},
-          {"to", "wgc_gpu"},
+          {"from", from},
+          {"to", to},
           {"reason", reason},
           {"hresult", static_cast<std::int64_t>(hresult)},
       });
@@ -2018,7 +2020,8 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
       supervisor_->backendActivated(
           CaptureBackend::Wgc, CaptureBackendSupervisor::Clock::now());
       logScreenCaptureBackend(
-          "screen_capture_backend_initial_fallback", error.what(), error.hresult());
+          "screen_capture_backend_initial_fallback", "dxgi_gpu", "wgc_gpu",
+          error.what(), error.hresult());
     } catch (const std::exception& error) {
       auto wgc = createWgcGpuCapturer(target_, width_, height_);
       wgc_.store(wgc, std::memory_order_release);
@@ -2026,7 +2029,8 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
       supervisor_->backendActivated(
           CaptureBackend::Wgc, CaptureBackendSupervisor::Clock::now());
       logScreenCaptureBackend(
-          "screen_capture_backend_initial_fallback", error.what());
+          "screen_capture_backend_initial_fallback", "dxgi_gpu", "wgc_gpu",
+          error.what());
     }
   }
 
@@ -2056,7 +2060,7 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
     }
     if (decision.action != CaptureBackendAction::None) {
       const auto recovery =
-          recover(decision, result.metrics.hresult, now);
+          recover(decision, result.error_code, result.metrics.hresult, now);
       result.recovery_transition = recovery.transition;
       if (recovery.target_closed) {
         result.status = ScreenGpuFrameStatus::TargetClosed;
@@ -2152,9 +2156,11 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
 
   RecoveryResult recover(
       const CaptureBackendDecision& decision,
+      ScreenGpuCaptureErrorCode error_code,
       long hresult,
       CaptureBackendSupervisor::Clock::time_point now) noexcept {
     try {
+      const auto from = supervisor_->activeBackend();
       if (!syrnike::voice::resolveScreenMonitorHandle(target_)) {
         throw ScreenGpuCaptureError(
             ScreenGpuCaptureErrorCode::TargetClosed,
@@ -2238,7 +2244,9 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
       ScreenGpuRecoveryTransition transition{
           std::string(captureBackendName(target)),
           std::string(captureBackendActionName(decision.action)),
-          supervisor_->successfulRecoveryCount(),
+          supervisor_->recoveryAttemptCount(),
+          hresult,
+          error_code,
       };
       auto& logger = diagnostics::DiagnosticLog::instance();
       if (logger.enabled()) {
@@ -2253,13 +2261,16 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
       }
       logScreenCaptureBackend(
           "screen_capture_backend_transition",
-          target == CaptureBackend::Dxgi ? "supervisor_dxgi" : "supervisor_wgc",
+          captureBackendName(from), captureBackendName(target),
+          captureBackendActionName(decision.action),
           hresult);
       return {std::move(transition), false};
     } catch (const ScreenGpuCaptureError& error) {
-      supervisor_->activationFailed(now);
+      supervisor_->activationFailed(decision, now);
       logScreenCaptureBackend(
           "screen_capture_backend_recovery_failed",
+          captureBackendName(supervisor_->activeBackend()),
+          captureBackendName(decision.target),
           error.what(),
           error.hresult());
       return {
@@ -2267,15 +2278,19 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
           error.code() == ScreenGpuCaptureErrorCode::TargetClosed,
       };
     } catch (const std::exception& error) {
-      supervisor_->activationFailed(now);
+      supervisor_->activationFailed(decision, now);
       logScreenCaptureBackend(
           "screen_capture_backend_recovery_failed",
+          captureBackendName(supervisor_->activeBackend()),
+          captureBackendName(decision.target),
           error.what());
       return {};
     } catch (...) {
-      supervisor_->activationFailed(now);
+      supervisor_->activationFailed(decision, now);
       logScreenCaptureBackend(
           "screen_capture_backend_recovery_failed",
+          captureBackendName(supervisor_->activeBackend()),
+          captureBackendName(decision.target),
           "unknown capture backend recovery failure");
       return {};
     }

@@ -476,6 +476,8 @@ describe('NativeRuntimeSupervisor', () => {
         backend: 'wgc_gpu',
         reason: 'switch_backend',
         count: 1,
+        errorCode: 'gpu_access_lost',
+        hresult: -2_007_270_521,
       },
     })
     adapter.callbacks?.onMessage({
@@ -498,6 +500,8 @@ describe('NativeRuntimeSupervisor', () => {
         generation: 4,
         kind: 'wgc_gpu',
         reason: 'switch_backend',
+        errorCode: 'gpu_access_lost',
+        hresult: -2_007_270_521,
         restartCount: 1,
       }),
     ])

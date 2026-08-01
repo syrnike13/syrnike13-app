@@ -83,6 +83,18 @@ describe('NativeSharedTextureBridge', () => {
     expect(h.release).toHaveBeenCalledTimes(2)
   })
 
+  it('does not let an old generation fence block the replacement track', async () => {
+    const h = harness(1)
+    await h.bridge.deliver(frame(1, 'screen'))
+
+    const replacement = {
+      ...frame(1, 'screen'),
+      generation: 3,
+    }
+    expect(await h.bridge.deliver(replacement)).toBe(true)
+    expect(h.importTexture).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps camera and screen sequencing independent', async () => {
     const h = harness()
     await h.bridge.deliver(frame(5, 'camera'))
@@ -132,13 +144,14 @@ describe('NativeSharedTextureBridge', () => {
         frame(1, 'screen'),
         'shared-texture-fence',
       )
-      expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(false)
-      expect(h.bridge.inFlightCount).toBe(2)
-      expect(h.release).toHaveBeenCalledWith(frame(3, 'screen'))
+      expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(true)
+      expect(await h.bridge.deliver(frame(4, 'screen'))).toBe(true)
+      expect(await h.bridge.deliver(frame(5, 'screen'))).toBe(false)
+      expect(h.bridge.inFlightCount).toBe(4)
+      expect(h.release).toHaveBeenCalledWith(frame(5, 'screen'))
 
       h.callbacks[0]()
-      expect(await h.bridge.deliver(frame(4, 'screen'))).toBe(true)
-      expect(h.bridge.inFlightCount).toBe(2)
+      expect(h.bridge.inFlightCount).toBe(3)
     } finally {
       vi.useRealTimers()
     }
@@ -153,11 +166,12 @@ describe('NativeSharedTextureBridge', () => {
 
       await vi.advanceTimersByTimeAsync(1_000)
       for (let sequence = 3; sequence <= 100; sequence += 1) {
-        expect(await h.bridge.deliver(frame(sequence, 'screen'))).toBe(false)
+        expect(await h.bridge.deliver(frame(sequence, 'screen')))
+          .toBe(sequence <= 4)
       }
 
-      expect(h.bridge.inFlightCount).toBe(2)
-      expect(h.importTexture).toHaveBeenCalledTimes(2)
+      expect(h.bridge.inFlightCount).toBe(4)
+      expect(h.importTexture).toHaveBeenCalledTimes(4)
       expect(h.onPresentationStalled).toHaveBeenCalledTimes(1)
     } finally {
       vi.useRealTimers()
@@ -213,11 +227,11 @@ describe('NativeSharedTextureBridge', () => {
     expect(h.release).not.toHaveBeenCalled()
     expect(await h.bridge.deliver(frame(2))).toBe(true)
     expect(await h.bridge.deliver(frame(3))).toBe(true)
-    expect(await h.bridge.deliver(frame(4))).toBe(false)
-    expect(h.bridge.inFlightCount).toBe(3)
+    expect(await h.bridge.deliver(frame(4))).toBe(true)
+    expect(await h.bridge.deliver(frame(5))).toBe(false)
+    expect(h.bridge.inFlightCount).toBe(4)
     h.callbacks[0]()
     expect(h.release).toHaveBeenCalledTimes(2)
-    expect(await h.bridge.deliver(frame(5))).toBe(true)
   })
 
   it('retires every retained frame for a lost native voice session', async () => {
@@ -260,7 +274,7 @@ describe('NativeSharedTextureBridge', () => {
     expect(h.release).toHaveBeenCalledWith(local)
   })
 
-  it('does not restart a track that was explicitly removed', async () => {
+  it('clears the stall timer when a track is explicitly removed', async () => {
     vi.useFakeTimers()
     try {
       const h = harness(1)
@@ -271,9 +285,8 @@ describe('NativeSharedTextureBridge', () => {
       await vi.advanceTimersByTimeAsync(1_000)
 
       expect(h.onPresentationStalled).not.toHaveBeenCalled()
-      expect(await h.bridge.deliver(frame(2, 'screen'))).toBe(false)
+      expect(await h.bridge.deliver(frame(2, 'screen'))).toBe(true)
       h.callbacks[0]()
-      expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(true)
     } finally {
       vi.useRealTimers()
     }

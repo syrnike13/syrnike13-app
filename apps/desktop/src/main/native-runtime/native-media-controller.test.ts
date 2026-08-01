@@ -41,6 +41,7 @@ function createHarness(remoteVideoFirstFrameTimeoutMs?: number) {
   })
   const retry = vi.fn(async () => snapshot.ready)
   const shutdown = vi.fn(async () => undefined)
+  const diagnostics = vi.fn()
   const supervisor = {
     onEvent(listener: (event: MediaRuntimeEvent) => void) {
       eventListener = listener
@@ -63,6 +64,7 @@ function createHarness(remoteVideoFirstFrameTimeoutMs?: number) {
     runtimeAvailable: () => true,
     getSelfWindowHwnd: () => '42',
     remoteVideoFirstFrameTimeoutMs,
+    diagnostics,
   })
   eventListener?.({
     type: 'sessionLifecycle',
@@ -77,6 +79,7 @@ function createHarness(remoteVideoFirstFrameTimeoutMs?: number) {
     request,
     retry,
     shutdown,
+    diagnostics,
     event(event: MediaRuntimeEvent) {
       eventListener?.(event)
     },
@@ -332,7 +335,7 @@ describe('NativeMediaController retained tools', () => {
     }
   })
 
-  it('stops demand and reports an error after ten recovery attempts', async () => {
+  it('keeps a demanded track recoverable after ten failed restarts', async () => {
     vi.useFakeTimers()
     try {
       const harness = createHarness(1_000)
@@ -341,20 +344,22 @@ describe('NativeMediaController retained tools', () => {
       await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', true)
       harness.request.mockClear()
 
-      await vi.runAllTimersAsync()
+      await vi.advanceTimersByTimeAsync(90_000)
 
       const recoveryCommands = harness.request.mock.calls
         .map(([command]) => command)
         .filter((command) => command.type === 'setRemoteVideoDemand')
-      expect(recoveryCommands.filter((command) => command.demanded)).toHaveLength(10)
-      expect(recoveryCommands.at(-1)).toMatchObject({ demanded: false })
-      expect(listener).toHaveBeenCalledWith({
+      expect(
+        recoveryCommands.filter((command) => command.demanded).length,
+      ).toBeGreaterThan(10)
+      expect(recoveryCommands.at(-1)).toMatchObject({ demanded: true })
+      expect(listener).not.toHaveBeenCalledWith(expect.objectContaining({
         type: 'remoteVideoSubscriptionFailed',
-        sessionId: 'voice',
-        generation: 3,
-        trackId: 'screen',
-        message: 'Не удалось подключиться к демонстрации после 10 попыток',
-      })
+      }))
+      expect(harness.diagnostics).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'remote_video_recovery_degraded',
+        recoveryAttempt: 10,
+      }))
       await harness.controller.dispose()
     } finally {
       vi.useRealTimers()
@@ -581,6 +586,8 @@ describe('NativeMediaController retained tools', () => {
   it('restarts only a remote video track that is still demanded', async () => {
     const harness = createHarness()
     await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', true)
+    expect(harness.controller.isRemoteVideoDemanded('voice', 3, 'screen'))
+      .toBe(true)
     harness.request.mockClear()
 
     await expect(
@@ -590,8 +597,15 @@ describe('NativeMediaController retained tools', () => {
       expect.objectContaining({ type: 'setRemoteVideoDemand', demanded: false }),
       expect.objectContaining({ type: 'setRemoteVideoDemand', demanded: true }),
     ])
+    expect(harness.controller.isRemoteVideoDemanded('voice', 3, 'screen'))
+      .toBe(true)
+    harness.controller.markRemoteVideoFrameReceived('voice', 3, 'screen')
+    expect(harness.controller.isRemoteVideoDemanded('voice', 3, 'screen'))
+      .toBe(true)
 
     await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', false)
+    expect(harness.controller.isRemoteVideoDemanded('voice', 3, 'screen'))
+      .toBe(false)
     harness.request.mockClear()
     await expect(
       harness.controller.recoverRemoteVideoDemand('voice', 3, 'screen'),

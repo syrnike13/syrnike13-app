@@ -63,6 +63,9 @@ struct ScreenGpuRecoveryTransition {
   std::string backend;
   std::string action;
   std::uint64_t count = 0;
+  long hresult = 0;
+  ScreenGpuCaptureErrorCode error_code =
+      ScreenGpuCaptureErrorCode::CaptureUnavailable;
 };
 
 struct ScreenGpuFrameResult {

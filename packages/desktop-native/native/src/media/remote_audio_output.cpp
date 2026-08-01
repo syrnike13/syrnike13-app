@@ -116,11 +116,15 @@ struct TrackState {
   std::jthread worker;
   std::deque<StereoFrame> frames;
   std::string user_id;
+  std::string track_id;
   bool stream_source = false;
   bool playout_started = false;
   bool discontinuity_pending = false;
   float gain = 1.0F;
   VoiceActivityDetector activity;
+  std::uint64_t dropped_samples_total = 0;
+  std::uint64_t dropped_samples_since_report = 0;
+  std::chrono::steady_clock::time_point next_overrun_report_at{};
 };
 
 }  // namespace
@@ -204,6 +208,7 @@ class RemoteAudioOutput::Implementation {
       options.capacity = kStreamFrameCapacity;
       state->stream = livekit::AudioStream::fromTrack(track, options);
       state->user_id = normalizeRemoteAudioIdentity(identity);
+      state->track_id = sid;
       state->stream_source = stream;
     } catch (const std::exception& error) {
       notifyTrackStartFailure(error, sid);
@@ -222,6 +227,9 @@ class RemoteAudioOutput::Implementation {
         std::vector<std::string> speakers;
         bool speakers_changed = false;
         std::uint64_t activity_revision = 0;
+        std::uint64_t dropped_samples_report = 0;
+        std::uint64_t dropped_samples_total = 0;
+        std::string dropped_track_id;
         {
           std::lock_guard lock(mutex_);
           if (stopping_) break;
@@ -238,27 +246,38 @@ class RemoteAudioOutput::Implementation {
             const auto right = channels == 1
               ? left
               : static_cast<float>(input[index + 1]) / 32768.0F;
-            if (state_ptr->frames.size() < kMaxQueuedFramesPerTrack) {
-              state_ptr->frames.push_back({
-                .left = left,
-                .right = right,
-              });
-              if (state_ptr->discontinuity_pending) {
-                state_ptr->frames.back().discontinuity = true;
-                state_ptr->discontinuity_pending = false;
+            if (state_ptr->frames.size() >= kMaxQueuedFramesPerTrack) {
+              // Real-time audio is freshness-bound. Evict the oldest queued
+              // sample so overload cannot turn into ever-staler playout.
+              state_ptr->frames.pop_front();
+              if (dropped_samples == 0) {
+                state_ptr->discontinuity_pending = true;
               }
-            } else {
-              state_ptr->discontinuity_pending = true;
               dropped_samples += 1;
+            }
+            state_ptr->frames.push_back({
+              .left = left,
+              .right = right,
+            });
+            if (state_ptr->discontinuity_pending) {
+              state_ptr->frames.back().discontinuity = true;
+              state_ptr->discontinuity_pending = false;
             }
             squared_sum += static_cast<double>(mono) * static_cast<double>(mono);
             ++mono_samples;
           }
           if (dropped_samples != 0) {
-            logRemoteAudio(
-              "remote_audio_buffer_overrun",
-              {{"droppedFrames", static_cast<std::uint64_t>(dropped_samples)}}
-            );
+            state_ptr->dropped_samples_total += dropped_samples;
+            state_ptr->dropped_samples_since_report += dropped_samples;
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= state_ptr->next_overrun_report_at) {
+              dropped_samples_report =
+                std::exchange(state_ptr->dropped_samples_since_report, 0);
+              dropped_samples_total = state_ptr->dropped_samples_total;
+              dropped_track_id = state_ptr->track_id;
+              state_ptr->next_overrun_report_at =
+                now + std::chrono::seconds(1);
+            }
           }
           const auto output_gain = state_ptr->gain * volume_;
           if (
@@ -281,6 +300,16 @@ class RemoteAudioOutput::Implementation {
               activity_revision = ++activity_revision_;
             }
           }
+        }
+        if (dropped_samples_report != 0) {
+          logRemoteAudio(
+            "remote_audio_buffer_overrun",
+            {
+              {"trackId", std::move(dropped_track_id)},
+              {"droppedSamples", dropped_samples_report},
+              {"droppedSamplesTotal", dropped_samples_total}
+            }
+          );
         }
         if (speakers_changed) {
           notifySpeakingActivity(std::move(speakers), activity_revision);

@@ -21,7 +21,10 @@ struct RemoteVideoTextureFrame {
 
 struct RemoteVideoTexturePollResult {
   bool reset_required = false;
+  bool upload_capacity_exhausted = false;
   long hresult = 0;
+  std::size_t slots_quarantined = 0;
+  std::size_t slots_recovered = 0;
 };
 
 // Uploads decoded BGRA frames into a bounded pool of persistent D3D11 shared
@@ -44,13 +47,18 @@ class RemoteVideoTexturePool final {
     const livekit::VideoFrame& frame,
     std::uint64_t timestamp_us
   );
-  // Returns a reset request for a recoverable GPU timeout. Other D3D failures
-  // throw; callers must rebuild the pool before submitting another frame.
+  // A late live-device query quarantines only its slot. A reset is requested
+  // only for an actual D3D device failure; capacity exhaustion lets the caller
+  // roll to a fresh generation while retaining pending resources safely.
   RemoteVideoTexturePollResult poll();
   bool take(RemoteVideoTextureFrame& frame);
 
   [[nodiscard]] std::size_t available() const;
+  [[nodiscard]] std::size_t ready() const;
   [[nodiscard]] std::size_t capacity() const;
+  [[nodiscard]] std::size_t quarantined() const;
+  [[nodiscard]] bool retirementSafe() const;
+  std::uint64_t consumeSupersededReadyFrames();
 
  private:
   struct State;

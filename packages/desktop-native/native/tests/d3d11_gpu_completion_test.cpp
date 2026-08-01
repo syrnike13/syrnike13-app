@@ -12,10 +12,14 @@
 #include <vector>
 
 #include "media/d3d11_gpu_completion.hpp"
+#include "media/remote_video_texture_pool_policy.hpp"
 
 using Microsoft::WRL::ComPtr;
 using syrnike::desktop_native::media::D3d11GpuCompletion;
 using syrnike::desktop_native::media::decideD3d11GpuCompletionPoll;
+using syrnike::desktop_native::media::decideRemoteVideoSlotTransition;
+using syrnike::desktop_native::media::RemoteVideoGpuPollClass;
+using syrnike::desktop_native::media::RemoteVideoTextureSlotPhase;
 
 namespace {
 
@@ -42,6 +46,32 @@ int main() {
         S_FALSE, true, DXGI_ERROR_DEVICE_REMOVED);
     if (removed.result != DXGI_ERROR_DEVICE_REMOVED || removed.pending) {
       throw std::runtime_error("removed GPU device remained pending");
+    }
+    const auto quarantined = decideRemoteVideoSlotTransition(
+        RemoteVideoTextureSlotPhase::Uploading,
+        RemoteVideoGpuPollClass::TimedOut);
+    if (quarantined.next != RemoteVideoTextureSlotPhase::Quarantined ||
+        !quarantined.newly_quarantined || quarantined.device_failed) {
+      throw std::runtime_error("late live-device frame reset the GPU pool");
+    }
+    const auto still_quarantined = decideRemoteVideoSlotTransition(
+        quarantined.next, RemoteVideoGpuPollClass::TimedOut);
+    if (still_quarantined.newly_quarantined ||
+        still_quarantined.next != RemoteVideoTextureSlotPhase::Quarantined) {
+      throw std::runtime_error("quarantined slot was counted repeatedly");
+    }
+    const auto recovered_slot = decideRemoteVideoSlotTransition(
+        still_quarantined.next, RemoteVideoGpuPollClass::Completed);
+    if (!recovered_slot.recovered ||
+        recovered_slot.next != RemoteVideoTextureSlotPhase::Available) {
+      throw std::runtime_error("late GPU completion did not recover its slot");
+    }
+    const auto failed_slot = decideRemoteVideoSlotTransition(
+        RemoteVideoTextureSlotPhase::Uploading,
+        RemoteVideoGpuPollClass::Failed);
+    if (!failed_slot.device_failed ||
+        failed_slot.next != RemoteVideoTextureSlotPhase::Available) {
+      throw std::runtime_error("actual GPU failure did not request retirement");
     }
     ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;

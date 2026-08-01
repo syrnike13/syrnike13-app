@@ -319,6 +319,17 @@ export class NativeVideoRegistry {
       if (track &&
         (track.metadata.sessionId !== metadata.sessionId ||
           track.metadata.generation !== metadata.generation)) return
+      if (metadata.transient) {
+        if (track) {
+          track.pendingFrame?.close()
+          track.pendingFrame = null
+          if (track.drawRequest !== null) {
+            window.cancelAnimationFrame(track.drawRequest)
+            track.drawRequest = null
+          }
+        }
+        return
+      }
       this.tombstones.set(event.data.metadata.trackId, event.data.metadata)
       this.removeTrack(event.data.metadata.trackId, event.data.metadata)
       return
@@ -548,7 +559,12 @@ function drawFrame(consumer: CanvasConsumer, frame: VideoFrame) {
 
 function isTrackRemovedMessage(value: unknown): value is {
   type: 'syrnike-native-video-track-removed'
-  metadata: { trackId: string; sessionId: string; generation: number }
+  metadata: {
+    trackId: string
+    sessionId: string
+    generation: number
+    transient?: boolean
+  }
 } {
   if (!value || typeof value !== 'object') return false
   const candidate = value as { type?: unknown; metadata?: { trackId?: unknown } }
@@ -559,7 +575,9 @@ function isTrackRemovedMessage(value: unknown): value is {
       'string' &&
     Number.isSafeInteger(
       (candidate.metadata as { generation?: unknown }).generation,
-    )
+    ) &&
+    ((candidate.metadata as { transient?: unknown }).transient === undefined ||
+      typeof (candidate.metadata as { transient?: unknown }).transient === 'boolean')
   )
 }
 

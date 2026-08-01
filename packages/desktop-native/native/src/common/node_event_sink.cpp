@@ -355,6 +355,11 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
     result.Set("backend", event.capture_method);
     result.Set("reason", event.reason);
     result.Set("count", jsNumber(env, event.video_recoverable_lost_count));
+    setIfPresent(result, "errorCode", event.error_code);
+    if (event.hresult) {
+      result.Set("hresult", Napi::Number::New(
+          env, static_cast<double>(*event.hresult)));
+    }
   } else if (event.type == "microphoneMetrics") {
     auto metrics = Napi::Object::New(env);
     metrics.Set("revision", static_cast<double>(event.revision.value_or(0)));

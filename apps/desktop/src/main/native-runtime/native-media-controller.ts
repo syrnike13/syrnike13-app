@@ -24,7 +24,7 @@ const STOP_TIMEOUT_MS = 5_000
 const REMOTE_VIDEO_FIRST_FRAME_TIMEOUT_MS = 8_000
 const REMOTE_VIDEO_RETRY_BASE_DELAY_MS = 250
 const REMOTE_VIDEO_RETRY_MAX_DELAY_MS = 8_000
-const REMOTE_VIDEO_MAX_RECOVERY_ATTEMPTS = 10
+const REMOTE_VIDEO_RECOVERY_WARNING_ATTEMPT = 10
 
 type PreviewSessionState = {
   sessionId: string
@@ -82,6 +82,7 @@ type RemoteVideoDemandState = {
   recoveryAttempt: number
   recoveryTimer: ReturnType<typeof setTimeout> | null
   recoveryPromise: Promise<boolean> | null
+  recoveryWarningEmitted: boolean
   lastFrameAt: number | null
   ignoreFailureUntil: number
 }
@@ -221,6 +222,7 @@ export class NativeMediaController {
       recoveryAttempt: 0,
       recoveryTimer: null,
       recoveryPromise: null,
+      recoveryWarningEmitted: false,
       lastFrameAt: null,
       ignoreFailureUntil: demanded
         ? Date.now() + this.remoteVideoFirstFrameTimeout()
@@ -248,6 +250,16 @@ export class NativeMediaController {
       this.activeVoiceSession.generation === generation
   }
 
+  isRemoteVideoDemanded(
+    sessionId: string,
+    generation: number,
+    trackId: string,
+  ) {
+    return this.remoteVideoDemands.get(
+      remoteVideoDemandKey(sessionId, generation, trackId),
+    )?.demanded === true
+  }
+
   listRemoteScreenPublications(): RemoteScreenPublication[] {
     return [...this.remoteScreenPublications.values()].map((publication) => ({
       ...publication,
@@ -267,16 +279,28 @@ export class NativeMediaController {
     const desired = this.remoteVideoDemands.get(key)
     if (!desired?.demanded) return false
     if (desired.recoveryPromise) return desired.recoveryPromise
-    if (desired.recoveryAttempt >= REMOTE_VIDEO_MAX_RECOVERY_ATTEMPTS) {
-      this.failRemoteVideoDemand(key, desired)
-      return false
-    }
     desired.recoveryAttempt += 1
+    if (
+      desired.recoveryAttempt >= REMOTE_VIDEO_RECOVERY_WARNING_ATTEMPT &&
+      !desired.recoveryWarningEmitted
+    ) {
+      desired.recoveryWarningEmitted = true
+      this.options.diagnostics?.({
+        scope: 'native-media-controller',
+        event: 'remote_video_recovery_degraded',
+        kind: 'remote-video',
+        stage: 'native-track-restart',
+        sessionId,
+        generation,
+        recoveryAttempt: desired.recoveryAttempt,
+        reason: 'no_frame_after_repeated_track_restarts',
+      })
+    }
     this.options.diagnostics?.({
       scope: 'native-media-controller',
       event: 'remote_video_recovery_started',
       kind: 'remote-video',
-      stage: 'native-subscription',
+      stage: 'native-track-restart',
       sessionId,
       generation,
       recoveryAttempt: desired.recoveryAttempt,
@@ -309,6 +333,7 @@ export class NativeMediaController {
     const recovered = demand.lastFrameAt === null || demand.recoveryAttempt > 0
     demand.lastFrameAt = Date.now()
     demand.recoveryAttempt = 0
+    demand.recoveryWarningEmitted = false
     demand.ignoreFailureUntil = 0
     if (recovered) {
       this.options.diagnostics?.({
@@ -707,26 +732,20 @@ export class NativeMediaController {
     demand.recoveryTimer = null
     if (this.disposed || !demand.demanded) return
     const baseTimeout = this.remoteVideoFirstFrameTimeout()
-    const retriesExhausted =
-      demand.recoveryAttempt >= REMOTE_VIDEO_MAX_RECOVERY_ATTEMPTS
     const backoff = Math.min(
       REMOTE_VIDEO_RETRY_MAX_DELAY_MS,
       REMOTE_VIDEO_RETRY_BASE_DELAY_MS *
         2 ** Math.min(demand.recoveryAttempt, 5),
     )
     const timeout = failureKnown
-      ? retriesExhausted ? 0 : backoff
-      : baseTimeout + (retriesExhausted ? 0 : backoff)
+      ? backoff
+      : baseTimeout + backoff
     demand.recoveryTimer = setTimeout(() => {
       demand.recoveryTimer = null
       if (this.remoteVideoDemands.get(key) !== demand || !demand.demanded) return
       if (!failureKnown && demand.lastFrameAt !== null &&
         Date.now() - demand.lastFrameAt < baseTimeout) {
         this.armRemoteVideoRecovery(key, demand)
-        return
-      }
-      if (demand.recoveryAttempt >= REMOTE_VIDEO_MAX_RECOVERY_ATTEMPTS) {
-        this.failRemoteVideoDemand(key, demand)
         return
       }
       void this.recoverRemoteVideoDemand(
@@ -740,42 +759,6 @@ export class NativeMediaController {
       })
     }, timeout)
     demand.recoveryTimer.unref?.()
-  }
-
-  private failRemoteVideoDemand(
-    key: string,
-    demand: RemoteVideoDemandState,
-  ) {
-    if (this.remoteVideoDemands.get(key) !== demand || !demand.demanded) return
-    demand.demanded = false
-    demand.revision = ++this.remoteVideoDemandRevision
-    demand.recoveryTimer = null
-    this.options.diagnostics?.({
-      scope: 'native-media-controller',
-      event: 'remote_video_recovery_exhausted',
-      kind: 'remote-video',
-      stage: 'native-subscription',
-      sessionId: demand.sessionId,
-      generation: demand.generation,
-      recoveryAttempt: demand.recoveryAttempt,
-    })
-    void this.request(
-      {
-        type: 'setRemoteVideoDemand',
-        sessionId: demand.sessionId,
-        generation: demand.generation,
-        trackId: demand.trackId,
-        demanded: false,
-      },
-      2_000,
-    ).catch(() => undefined)
-    this.emit({
-      type: 'remoteVideoSubscriptionFailed',
-      sessionId: demand.sessionId,
-      generation: demand.generation,
-      trackId: demand.trackId,
-      message: 'Не удалось подключиться к демонстрации после 10 попыток',
-    })
   }
 
   private remoteVideoFirstFrameTimeout() {
