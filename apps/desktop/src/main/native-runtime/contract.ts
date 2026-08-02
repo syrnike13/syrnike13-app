@@ -14,7 +14,7 @@ import type {
 } from '@syrnike13/platform'
 import { isVoiceRemoteAudioSettings } from '@syrnike13/platform'
 
-export const NATIVE_RUNTIME_CONTRACT_VERSION = 5
+export const NATIVE_RUNTIME_CONTRACT_VERSION = 6
 export const NATIVE_RUNTIME_MAX_PENDING_REQUESTS = 256
 
 export const SCREEN_BACKEND_RESTART_REASONS = [

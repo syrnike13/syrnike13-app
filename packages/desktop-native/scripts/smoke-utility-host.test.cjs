@@ -42,7 +42,7 @@ const { NativeRuntimeSupervisor } = require(
 const manifest = {
   appVersion: '0.0.0-test',
   releaseChannel: 'test',
-  contractVersion: 5,
+  contractVersion: 6,
   liveKitVersion: '1.2.3-test',
   commitSha: 'abc123',
   napiVersion: 8,

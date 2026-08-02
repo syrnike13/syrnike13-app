@@ -850,7 +850,7 @@ class PostedRoomDelegate final
   ) {
     MediaCommand command;
     const bool track_start_failure =
-      failure.code == "audio_output_stream_start_failed";
+      failure.code == "audio_output_direct_sink_attach_failed";
     command.type = track_start_failure
       ? "__voiceRemoteAudioTrackFailed"
       : "__voiceOutputFailed";

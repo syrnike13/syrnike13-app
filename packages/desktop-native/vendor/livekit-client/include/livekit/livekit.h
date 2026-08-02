@@ -17,6 +17,7 @@
 #pragma once
 
 #include "livekit/audio_frame.h"
+#include "livekit/audio_frame_sink.h"
 #include "livekit/audio_processing_module.h"
 #include "livekit/audio_source.h"
 #include "livekit/audio_stream.h"

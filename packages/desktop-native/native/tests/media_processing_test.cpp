@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -21,6 +22,7 @@
 #include "media/microphone_capture_accumulator.hpp"
 #include "media/microphone_metrics_cadence.hpp"
 #include "media/microphone_stream_delay_estimator.hpp"
+#include "media/remote_audio_ingress.hpp"
 #include "media/remote_audio_output.hpp"
 #include "media/remote_video_bridge.hpp"
 #include "media/runtime_config.hpp"
@@ -388,60 +390,104 @@ int main() try {
       std::chrono::milliseconds(20),
     "remote audio playout lost its underrun protection"
   );
-  require(
-    syrnike::desktop_native::media::remoteAudioMaxQueuedDuration() ==
-      std::chrono::milliseconds(200),
-    "remote audio queue is no longer latency bounded"
-  );
-  require(
-    syrnike::desktop_native::media::remoteAudioTargetQueuedDuration() ==
-        std::chrono::milliseconds(60) &&
-      syrnike::desktop_native::media::remoteAudioEmergencyQueuedDuration() ==
-        std::chrono::milliseconds(120),
-    "remote audio drift correction lost its bounded latency targets"
-  );
-  require(
-    syrnike::desktop_native::media::remoteAudioInputFramesForRender(
-      480, 2'880) == 480 &&
-    syrnike::desktop_native::media::remoteAudioInputFramesForRender(
-      480, 3'840) == 489 &&
-    syrnike::desktop_native::media::remoteAudioInputFramesForRender(
-      480, 7'200) == 504 &&
-    syrnike::desktop_native::media::remoteAudioInputFramesForRender(
-      10, 3'000) == 11,
-    "remote audio drift correction does not apply its soft/emergency bounds"
-  );
-  std::size_t simulated_audio_queue = 960;
-  std::size_t maximum_simulated_audio_queue = simulated_audio_queue;
-  std::size_t simulated_corrected_samples = 0;
-  for (int tick = 0; tick < 9'400; ++tick) {
-    // Reproduce the approximately 1.25% producer/device clock mismatch seen
-    // in the diagnostic reports for 94 seconds of 10 ms render periods.
-    simulated_audio_queue += 486;
-    const auto consumed =
-      syrnike::desktop_native::media::remoteAudioInputFramesForRender(
-        480, simulated_audio_queue);
-    simulated_corrected_samples += consumed - 480;
-    simulated_audio_queue -= consumed;
-    maximum_simulated_audio_queue = std::max(
-      maximum_simulated_audio_queue, simulated_audio_queue);
+  using syrnike::desktop_native::media::RemoteAudioIngress;
+  using syrnike::desktop_native::media::RemoteAudioIngressFrame;
+  using syrnike::desktop_native::media::RemoteAudioIngressReadResult;
+  using syrnike::desktop_native::media::kRemoteAudioIngressChannels;
+  using syrnike::desktop_native::media::kRemoteAudioIngressFramesPerPacket;
+  using syrnike::desktop_native::media::kRemoteAudioIngressSampleRate;
+  using syrnike::desktop_native::media::kRemoteAudioIngressSamplesPerPacket;
+  using syrnike::desktop_native::media::kRemoteAudioIngressSlotCount;
+  std::array<std::int16_t, kRemoteAudioIngressSamplesPerPacket> ingress_packet{};
+  for (std::size_t index = 0; index < ingress_packet.size(); ++index) {
+    ingress_packet[index] = static_cast<std::int16_t>(index);
   }
-  const auto hard_audio_limit =
-    syrnike::desktop_native::media::remoteAudioSampleRate() *
-    syrnike::desktop_native::media::remoteAudioMaxQueuedDuration().count() /
-    1'000;
-  std::cout
-    << "METRIC remote_audio_clock_drift duration_s=94 producer_drift_pct=1.25"
-    << " max_queue_samples=" << maximum_simulated_audio_queue
-    << " max_queue_ms="
-    << (maximum_simulated_audio_queue * 1'000 /
-        syrnike::desktop_native::media::remoteAudioSampleRate())
-    << " final_queue_samples=" << simulated_audio_queue
-    << " corrected_samples=" << simulated_corrected_samples
-    << " hard_drop_samples=0\n";
+  const livekit::DecodedAudioFrameView ingress_view{
+    .data = ingress_packet.data(),
+    .sample_count = ingress_packet.size(),
+    .sample_rate = kRemoteAudioIngressSampleRate,
+    .num_channels = kRemoteAudioIngressChannels,
+    .num_frames = kRemoteAudioIngressFramesPerPacket,
+  };
+  RemoteAudioIngress ingress;
+  ingress.onAudioFrame(ingress_view);
+  ingress.onAudioFrame(ingress_view);
+  require(ingress.queuedFrames() == 2, "direct audio ingress lost valid frames");
+  RemoteAudioIngressFrame ingress_output;
   require(
-    maximum_simulated_audio_queue < hard_audio_limit,
-    "remote audio clock drift still reaches the hard-drop queue boundary"
+    ingress.tryRead(ingress_output) == RemoteAudioIngressReadResult::Frame &&
+      ingress_output.samples == ingress_packet,
+    "direct audio ingress changed borrowed PCM"
+  );
+  auto invalid_ingress_view = ingress_view;
+  invalid_ingress_view.sample_rate = 44'100;
+  ingress.onAudioFrame(invalid_ingress_view);
+  require(
+    ingress.tryRead(ingress_output) ==
+        RemoteAudioIngressReadResult::Discontinuity &&
+      ingress.queuedFrames() == 0 &&
+      ingress.telemetry().invalid_frames == 1,
+    "invalid direct audio format did not flush stale playout"
+  );
+
+  RemoteAudioIngress overflow_ingress;
+  for (std::size_t index = 0; index < kRemoteAudioIngressSlotCount; ++index) {
+    overflow_ingress.onAudioFrame(ingress_view);
+  }
+  require(
+    overflow_ingress.telemetry().accepted_frames ==
+        kRemoteAudioIngressSlotCount - 1 &&
+      overflow_ingress.telemetry().dropped_frames == 1 &&
+      overflow_ingress.tryRead(ingress_output) ==
+        RemoteAudioIngressReadResult::Discontinuity &&
+      overflow_ingress.queuedFrames() == 0,
+    "direct audio overflow retained a catch-up backlog"
+  );
+  overflow_ingress.onAudioFrame(ingress_view);
+  require(
+    overflow_ingress.tryRead(ingress_output) ==
+      RemoteAudioIngressReadResult::Frame,
+    "direct audio ingress did not resume after a bounded discontinuity"
+  );
+
+  RemoteAudioIngress concurrent_ingress;
+  std::atomic_bool producer_finished{false};
+  std::atomic_bool corrupt_ingress_frame{false};
+  std::thread ingress_producer([&] {
+    std::array<std::int16_t, kRemoteAudioIngressSamplesPerPacket> packet{};
+    for (int sequence = 1; sequence <= 10'000; ++sequence) {
+      packet.fill(static_cast<std::int16_t>(sequence));
+      concurrent_ingress.onAudioFrame(livekit::DecodedAudioFrameView{
+        .data = packet.data(),
+        .sample_count = packet.size(),
+        .sample_rate = kRemoteAudioIngressSampleRate,
+        .num_channels = kRemoteAudioIngressChannels,
+        .num_frames = kRemoteAudioIngressFramesPerPacket,
+      });
+    }
+    producer_finished.store(true, std::memory_order_release);
+  });
+  while (!producer_finished.load(std::memory_order_acquire) ||
+         concurrent_ingress.queuedFrames() != 0) {
+    const auto result = concurrent_ingress.tryRead(ingress_output);
+    if (result == RemoteAudioIngressReadResult::Frame &&
+        !std::all_of(
+          ingress_output.samples.begin(),
+          ingress_output.samples.end(),
+          [&](std::int16_t sample) {
+            return sample == ingress_output.samples.front();
+          }
+        )) {
+      corrupt_ingress_frame.store(true);
+    }
+    if (result == RemoteAudioIngressReadResult::Empty) {
+      std::this_thread::yield();
+    }
+  }
+  ingress_producer.join();
+  require(
+    !corrupt_ingress_frame.load(),
+    "direct audio SPSC ingress exposed a partially written frame"
   );
   require(
     syrnike::voice::kScreenAudioFramesPerPacket == 480,

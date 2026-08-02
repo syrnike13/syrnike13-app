@@ -84,6 +84,7 @@ const REQUIRED_CAPABILITIES: Record<NativeRuntimeKind, readonly string[]> = {
     'remoteVideo',
     'localScreenPreview',
     'localCameraPreview',
+    'directRemoteAudio',
   ],
   hotkey: ['hotkeys'],
   overlay: ['overlay'],

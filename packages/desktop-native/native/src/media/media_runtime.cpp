@@ -791,7 +791,7 @@ class MediaRuntime::Implementation
       event.detail = command.internal_message;
       event.error = NativeError{
         command.video_source.empty()
-          ? "audio_output_stream_start_failed"
+          ? "audio_output_direct_sink_attach_failed"
           : command.video_source,
         command.internal_message,
         "remoteAudioTrack",

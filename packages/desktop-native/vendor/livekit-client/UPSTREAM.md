@@ -13,4 +13,8 @@ The upstream `LICENSE` and `NOTICE` files are retained at their original paths. 
 
 The Syrnike fork adds the strict `WindowsD3D11Hardware` encoder selection contract and a public D3D11 shared-texture lease/source seam. A custom WebRTC `VideoEncoderFactory` drives hardware-only Media Foundation H.264 transforms with exact-adapter D3D11 NV12 input; unsupported adapters and asynchronous transforms fail closed. Software fallback is deliberately forbidden for every explicit backend request.
 
+It also adds `AudioFrameSinkRegistration`, a synchronous borrowed-PCM callback
+from the Rust/WebRTC decoded-audio sink to C++. This callback is the Windows
+native receive dataplane; protobuf FFI events remain control-plane only.
+
 Windows builds require MSVC toolset 14.44 or newer because the pinned upstream WebRTC archive uses the corresponding standard-library ABI.

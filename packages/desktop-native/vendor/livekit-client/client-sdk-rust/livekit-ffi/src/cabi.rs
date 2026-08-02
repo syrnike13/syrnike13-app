@@ -14,10 +14,14 @@
 
 use prost::Message;
 use server::FfiDataBuffer;
-use std::ffi::CStr;
+use std::ffi::{c_void, CStr};
 use std::os::raw::c_char;
-use std::{panic, sync::Arc};
+use std::{panic, panic::AssertUnwindSafe, sync::Arc};
 
+use crate::server::direct_audio_sink::{
+    DirectAudioCallbackContext, DirectAudioFrameCallback, DirectAudioReleaseCallback,
+    FfiDirectAudioSink,
+};
 use crate::{
     proto,
     server::{self, FfiConfig},
@@ -26,6 +30,19 @@ use crate::{
 
 /// # SAFTEY: The "C" callback must be threadsafe and not block
 pub type FfiCallbackFn = unsafe extern "C" fn(*const u8, usize);
+
+const DIRECT_AUDIO_SINK_OK: u32 = 0;
+const DIRECT_AUDIO_SINK_INVALID_ARGUMENT: u32 = 1;
+const DIRECT_AUDIO_SINK_TRACK_ERROR: u32 = 2;
+const DIRECT_AUDIO_SINK_INTERNAL_ERROR: u32 = 3;
+
+fn set_direct_audio_status(status: *mut u32, value: u32) {
+    if status.is_null() {
+        return;
+    }
+    // SAFETY: The caller supplies writable storage for one u32 status value.
+    unsafe { *status = value };
+}
 
 /// # Safety
 ///
@@ -98,6 +115,64 @@ pub unsafe extern "C" fn livekit_ffi_request(
             FFI_SERVER.send_panic(Box::new(FfiError::InvalidRequest(
                 "panic while handling request".into(),
             )));
+            INVALID_HANDLE
+        }
+    }
+}
+
+/// Attaches a zero-copy decoded-audio observer to an FFI track handle.
+///
+/// Ownership of `context` transfers to this function whenever `on_release` is
+/// present. It is released exactly once, either before an error is returned or
+/// after the attached WebRTC sink is fully detached.
+#[no_mangle]
+pub unsafe extern "C" fn livekit_ffi_attach_direct_audio_sink(
+    track_handle: FfiHandleId,
+    sample_rate: u32,
+    num_channels: u32,
+    context: *mut c_void,
+    on_frame: Option<DirectAudioFrameCallback>,
+    on_release: Option<DirectAudioReleaseCallback>,
+    status: *mut u32,
+) -> FfiHandleId {
+    set_direct_audio_status(status, DIRECT_AUDIO_SINK_INVALID_ARGUMENT);
+    let Some(on_release) = on_release else {
+        return INVALID_HANDLE;
+    };
+    let Some(on_frame) = on_frame else {
+        // SAFETY: A release callback transfers ownership even when the frame
+        // callback is invalid.
+        unsafe { on_release(context) };
+        return INVALID_HANDLE;
+    };
+
+    let callbacks = Arc::new(DirectAudioCallbackContext::new(context, on_frame, on_release));
+    if sample_rate == 0 || !(1..=2).contains(&num_channels) {
+        return INVALID_HANDLE;
+    }
+
+    let result = panic::catch_unwind(AssertUnwindSafe(|| {
+        FfiDirectAudioSink::from_track(
+            &FFI_SERVER,
+            track_handle,
+            sample_rate,
+            num_channels,
+            callbacks,
+        )
+    }));
+    match result {
+        Ok(Ok(handle)) => {
+            set_direct_audio_status(status, DIRECT_AUDIO_SINK_OK);
+            handle
+        }
+        Ok(Err(error)) => {
+            log::error!("failed to attach direct audio sink: {error}");
+            set_direct_audio_status(status, DIRECT_AUDIO_SINK_TRACK_ERROR);
+            INVALID_HANDLE
+        }
+        Err(error) => {
+            log::error!("panic while attaching direct audio sink: {error:?}");
+            set_direct_audio_status(status, DIRECT_AUDIO_SINK_INTERNAL_ERROR);
             INVALID_HANDLE
         }
     }

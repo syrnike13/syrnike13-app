@@ -57,7 +57,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
       for (const auto& event : events_) {
         if (event.type == "runtimeError" && event.track_id == track_id &&
             event.status.empty() && event.kind.empty() && event.error &&
-            event.error->code == "audio_output_stream_start_failed") {
+            event.error->code == "audio_output_direct_sink_attach_failed") {
           return true;
         }
       }
@@ -216,8 +216,8 @@ int main() try {
   track_failure.session_id = "voice-session";
   track_failure.generation = 2;
   track_failure.track_id = "failed-audio-track";
-  track_failure.video_source = "audio_output_stream_start_failed";
-  track_failure.internal_message = "injected track worker failure";
+  track_failure.video_source = "audio_output_direct_sink_attach_failed";
+  track_failure.internal_message = "injected direct sink attach failure";
   require(runtime.dispatch(std::move(track_failure)),
     "media runtime rejected track-scoped audio failure");
   require(sink->waitTrackFailure("failed-audio-track"),

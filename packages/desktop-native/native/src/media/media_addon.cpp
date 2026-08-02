@@ -503,7 +503,7 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
       Napi::Number::New(info.Env(), static_cast<double>(completions))
     );
   }
-  auto capabilities = Napi::Array::New(info.Env(), 8);
+  auto capabilities = Napi::Array::New(info.Env(), 9);
   capabilities.Set(uint32_t{0}, "microphone");
   capabilities.Set(uint32_t{1}, "screen");
   capabilities.Set(uint32_t{2}, "screenAudio");
@@ -512,6 +512,7 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
   capabilities.Set(uint32_t{5}, "remoteVideo");
   capabilities.Set(uint32_t{6}, "localScreenPreview");
   capabilities.Set(uint32_t{7}, "localCameraPreview");
+  capabilities.Set(uint32_t{8}, "directRemoteAudio");
   result.Set("capabilities", capabilities);
   return result;
 }

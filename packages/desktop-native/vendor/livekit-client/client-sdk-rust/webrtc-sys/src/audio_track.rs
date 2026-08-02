@@ -105,7 +105,7 @@ unsafe impl ExternType for CompleteCallback {
     type Kind = cxx::kind::Trivial;
 }
 
-pub trait AudioSink: Send {
+pub trait AudioSink: Send + Sync {
     fn on_data(&self, data: &[i16], sample_rate: i32, nb_channels: usize, nb_frames: usize);
 }
 

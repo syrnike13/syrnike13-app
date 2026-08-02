@@ -7,8 +7,6 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <stop_token>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -29,46 +27,6 @@ constexpr std::uint16_t remoteAudioRenderChannels() noexcept { return 2; }
 
 constexpr std::chrono::milliseconds remoteAudioPlayoutStartDuration() noexcept {
   return std::chrono::milliseconds(20);
-}
-
-constexpr std::chrono::milliseconds remoteAudioMaxQueuedDuration() noexcept {
-  return std::chrono::milliseconds(200);
-}
-
-constexpr std::chrono::milliseconds remoteAudioTargetQueuedDuration() noexcept {
-  return std::chrono::milliseconds(60);
-}
-
-constexpr std::chrono::milliseconds
-remoteAudioEmergencyQueuedDuration() noexcept {
-  return std::chrono::milliseconds(120);
-}
-
-// Consume slightly more source samples than WASAPI requests when independent
-// producer and device clocks drift apart. The caller resamples this bounded
-// input window into output_frames, preventing slow queue growth without an
-// audible hard drop and without allowing latency to grow to the 200 ms cap.
-constexpr std::size_t remoteAudioInputFramesForRender(
-    std::size_t output_frames,
-    std::size_t queued_frames) noexcept {
-  if (output_frames == 0 || queued_frames <= output_frames) {
-    return queued_frames;
-  }
-  constexpr auto target_frames =
-      remoteAudioSampleRate() * remoteAudioTargetQueuedDuration().count() /
-      1'000;
-  if (queued_frames <= target_frames) return output_frames;
-  constexpr auto emergency_frames =
-      remoteAudioSampleRate() * remoteAudioEmergencyQueuedDuration().count() /
-      1'000;
-  const auto proportional_extra = queued_frames >= emergency_frames
-      ? output_frames / 20
-      : output_frames / 50;
-  const auto maximum_extra = proportional_extra == 0 ? 1 : proportional_extra;
-  const auto excess = queued_frames - target_frames;
-  const auto extra = excess < maximum_extra ? excess : maximum_extra;
-  const auto requested = output_frames + extra;
-  return requested < queued_frames ? requested : queued_frames;
 }
 
 struct RemoteAudioSettings {
@@ -103,7 +61,7 @@ void startAudioOutputWithRollback(
   const std::function<void()>& start_previous
 );
 
-// Owns all receive-side AudioStreams and the single WASAPI mix renderer.
+// Owns all direct decoded-audio sinks and the single WASAPI mix renderer.
 class RemoteAudioOutput final {
  public:
   using FailureHandler = std::function<void(
@@ -115,13 +73,9 @@ class RemoteAudioOutput final {
   // The callback receives normalized participant identities and is never
   // invoked while RemoteAudioOutput's internal mutex is held.
   using SpeakingActivityHandler = std::function<void(std::vector<std::string>)>;
-  using WorkerTask = std::function<void(std::stop_token)>;
-  using WorkerFactory = std::function<std::jthread(WorkerTask)>;
-
   explicit RemoteAudioOutput(
     FailureHandler on_failure = {},
     SpeakingActivityHandler on_speaking_activity = {},
-    WorkerFactory worker_factory = {},
     AsyncCleanupLauncher cleanup_launcher = {}
   );
   ~RemoteAudioOutput();

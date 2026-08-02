@@ -796,6 +796,7 @@ function requiredCapabilities(runtime) {
     'remoteVideo',
     'localScreenPreview',
     'localCameraPreview',
+    'directRemoteAudio',
   ]
   return runtime === 'hotkey' ? ['hotkeys'] : ['overlay']
 }

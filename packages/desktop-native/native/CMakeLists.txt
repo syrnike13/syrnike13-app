@@ -117,6 +117,7 @@ add_library(syrnike_media_core STATIC
   src/media/microphone_publication_controller.cpp
   src/media/microphone_echo_reference.cpp
   src/media/preview_actor.cpp
+  src/media/remote_audio_ingress.cpp
   src/media/remote_audio_output.cpp
   src/media/remote_video_bridge.cpp
   src/media/remote_video_texture_pool.cpp
