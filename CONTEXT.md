@@ -1,252 +1,46 @@
-# Voice Context
+# Domain context
 
-This context names the concepts shared by web voice, Windows native voice, the
-backend voice authority, and the LiveKit transport. The same behavioural model
-is used on every platform even when the RTC implementation differs.
+This file defines shared terms and architectural invariants. Detailed decisions belong in ADRs and implementation plans.
 
-## User intent and session
+## Voice ownership
 
-**Voice Intent**:
-The voice channel the user currently wants to occupy, or `none` after an
-explicit leave. A newer Voice Intent always supersedes unfinished older work.
-_Avoid_: Target room, desired room, local voice state
+- **Voice Intent** is the channel the user currently wants to occupy, or none after an explicit leave. Newer intent supersedes unfinished work.
+- **Voice Director** exclusively owns Voice Intent, operation recency, membership transitions, recovery policy, and the public voice snapshot. It never captures, publishes, decodes, or renders media.
+- **Voice Operation** identifies one join, move, recovery, or leave transaction and may only be created or superseded by the Voice Director.
+- **Voice Session** reconciles one Voice Intent with backend membership and independent media tracks. On desktop it survives renderer reload, but not full application restart or Windows sleep.
+- **Client Instance** identifies one owner tab or desktop main process. One account may have only one active instance in voice.
 
-**Voice Session**:
-The client-side lifetime that reconciles one Voice Intent with one authoritative
-Voice Membership and its independent Media Tracks. It survives renderer reload
-on Windows, but not full application restart or Windows sleep.
-_Avoid_: Call instance, RTC session, media session
+## Authority and transport
 
-**Voice Director**:
-The single module that owns Voice Intent, Voice Operation recency, Voice
-Membership transitions, recovery policy, and the public Voice Session snapshot.
-It never captures, renders, publishes, or decodes media itself.
-_Avoid_: Voice orchestrator, recovery runner, session manager
-
-**Voice Operation**:
-A client-generated identifier for one requested join, move, recovery, or leave
-transaction. Only the Voice Director may create or supersede it.
-_Avoid_: Request ID, session ID, generation
-
-**Client Instance**:
-A stable identifier for one running web owner-tab or one running desktop main
-process. One account may have only one active Client Instance in voice.
-_Avoid_: Device ID, window ID, participant ID
-
-## Authority and membership
-
-**Voice Authority**:
-The backend module that reserves Voice Operations and commits Voice Membership
-only after observing a matching signed LiveKit participant.
-_Avoid_: Gateway state, roster cache, client commit
-
-**Voice Reservation**:
-The provisional backend record created before RTC connection. It binds user,
-channel, RTC Engine, Voice Operation, Client Instance, and Connection Epoch to
-one signed credential lease.
-_Avoid_: Pending session, token response, candidate room
-
-**Voice Membership**:
-The backend-confirmed fact that the selected RTC Engine has a matching
-participant in a voice channel. Media Track readiness is not part of membership.
-_Avoid_: Local connected flag, microphone ready, gateway ACK
-
-**Connection Epoch**:
-A unique identifier for one physical RTC connection attempt within a Voice
-Operation. Recovery always uses a new Connection Epoch and participant identity.
-_Avoid_: Native generation, reconnect count, request ID
-
-**RTC Engine**:
-The platform-selected implementation of one LiveKit Room and participant: the
-browser adapter on web or the native adapter on Windows desktop.
-_Avoid_: Sidecar, helper, publisher kind
-
-**Authoritative Voice Snapshot**:
-A complete backend snapshot carrying a monotonically ordered authority version
-and the account's current Voice Membership. Missing data before such a snapshot
-is not evidence of leave.
-_Avoid_: Sync store contents, gateway connected event, participant delta
+- **Voice Reservation** binds a user, channel, RTC engine, Voice Operation, Client Instance, and Connection Epoch before connection.
+- **Voice Membership** is committed by the backend only after observing the matching signed LiveKit participant. Track readiness is not membership.
+- **Connection Epoch** identifies one physical RTC connection attempt. Recovery creates a new epoch.
+- **RTC Engine** is one LiveKit Room/participant, implemented by the browser adapter or Windows native adapter.
+- An **Authoritative Voice Snapshot** replaces membership state atomically by revision. Missing partial data is never evidence of leave.
 
 ## Media
 
-**Media Track**:
-An independently controlled microphone, camera, screen video, or screen-audio
-publication inside the RTC Engine's single participant. Track failure never
-changes Voice Membership.
-Camera and screen intent ends with an explicit leave or channel move; Voice
-Recovery within the same Voice Intent preserves it.
-_Avoid_: Media session, native participant, sidecar room
-
-**Screen Frame Pipeline**:
-The Windows-native real-time path that retains the newest captured screen
-state, samples it on the output clock, and moves it through bounded GPU and
-encoder slots. Raw screen frames are lossy and latest-wins: overload drops or
-supersedes stale frames instead of growing latency. Keyframe intent and Media
-Track control remain ordered and lossless, while local preview is an optional
-lossy projection that cannot block publication.
-_Avoid_: Reliable frame queue, capture callback chain, preview-driven stream
-
-**Microphone Pipeline**:
-The single warm capture and DSP path for the selected input device. Publication,
-meter preview, and voice activity detection consume this pipeline without
-opening another capture path.
-_Avoid_: Preview microphone, publication capture, room microphone
-
-**Native Media Session**:
-The Windows-native implementation behind the media utility host. It owns one
-LiveKit Room, remote audio output, the Microphone Pipeline, and independent
-Media Track actors for microphone, camera, screen video, and screen audio.
-_Avoid_: Native publisher, microphone room, screen room
-
-**User Mute**:
-The mute choice represented by the user's button. Administrative, deafen,
-push-to-talk, and lock-screen restrictions never overwrite it.
-Self-deafen is transported to the voice authority as both self-mute and
-self-deaf, while this underlying choice is restored when deafen is cleared.
-_Avoid_: Effective mute, track mute, server mute
-
-**Effective Mute**:
-The value applied to the published microphone track: User Mute, server mute,
-deafen, server deafen, lock-screen privacy mute, or inactive push-to-talk may
-each force it on. Muting keeps the Microphone Pipeline and publication alive.
-_Avoid_: User mute, microphone disabled, capture stopped
-
-**Media Demand**:
-The renderer's current request for a visible remote camera or screen track and
-its desired quality. Remote audio is always subscribed; remote video is
-subscribed and decoded only while demanded.
-_Avoid_: Video membership, renderer RTC, auto-subscribe state
-
-**Speaking Activity**:
-The set of canonical user identities whose audible microphone activity is open
-for the current RTC Engine connection. It is derived at the receiving client
-from the processed local microphone or decoded remote microphone PCM; screen
-audio and muted output never contribute.
-_Avoid_: Server active-speaker list, volume meter, transport event
-
-**Voice Activity Detector**:
-The stateful policy that turns normalized audio level frames into Speaking
-Activity with a shared threshold and release hold. Audio capture, decoding,
-gain, and platform-specific delivery remain outside the policy.
-_Avoid_: Microphone Pipeline, audio renderer, LiveKit room detector
+- Microphone, camera, screen video, and screen audio are independent **Media Tracks** inside the RTC Engine. A track failure must not change Voice Membership.
+- The **Screen Frame Pipeline** is bounded and latest-wins. Capture, GPU conversion, encoding, decode, and rendering may drop or supersede stale frames instead of growing latency.
+- Frame data is lossy; control operations, keyframe intent, publication ownership, and resource release remain ordered and lossless.
+- Local preview is an optional lossy projection and must never block or restart publication.
+- The **Microphone Pipeline** is one warm capture/DSP path shared by publication, meter preview, and voice activity detection.
+- **Media Demand** controls remote video subscription and decode. Remote audio remains subscribed.
+- **User Mute** is the stored button choice. **Effective Mute** additionally includes deafen, administrative restrictions, lock-screen privacy, and push-to-talk; muting keeps capture and publication alive.
 
 ## Failure and recovery
 
-**Voice Recovery**:
-Restoration of a previously committed Voice Membership after terminal RTC or
-media-host failure. It preserves Voice Intent but creates a new Connection
-Epoch; it is distinct from retrying an initial failed join.
-_Avoid_: Rejoin click, media retry, gateway reconciliation
+- **Media Failure** is scoped to one track, capture device, decoder, renderer, or output path and does not initiate Voice Recovery by itself.
+- Recovery acts on the smallest failed layer: presentation generation, local bridge, subscription, capture backend, track, then runtime. A frame timeout alone is never proof that a wider layer failed.
+- **Voice Recovery** restores committed membership after terminal RTC/runtime loss while preserving Voice Intent and creating a new Connection Epoch.
+- **Runtime Loss** is termination or unresponsiveness of one Windows utility host. Media, hotkey, and overlay hosts recover independently.
+- `NativeRuntimeSupervisor` exclusively owns utility startup, handshake, crash classification, restart backoff, host epoch, and circuit state.
+- The **Native Event Lane** has three classes: ordered control, bounded latest-per-resource media, and lossy telemetry. Dropped media releases retained native resources exactly once.
+- A **Diagnostic Incident** is one typed causal failure with bounded sanitized evidence; related events enrich the same incident instead of creating competing reports.
 
-**Media Failure**:
-A terminal failure of one Media Track, capture device, decoder, or output path.
-It produces a typed media-specific error and never initiates Voice Recovery by
-itself.
-_Avoid_: Native media execution failed, voice disconnected, generic failure
+## Channel activities and authorization
 
-**Runtime Loss**:
-Termination or unresponsiveness of one Windows utility host. Media, hotkey, and
-overlay runtime losses are isolated and recovered independently.
-_Avoid_: Sidecar lost, application crash, voice state update failed
-
-**Runtime Availability**:
-The readiness of one Windows utility host to accept typed work for its current
-host epoch. `NativeRuntimeSupervisor` is the single owner of host startup,
-handshake, restart backoff, crash classification, and circuit state. Waiting for
-Runtime Availability does not consume a Voice Recovery attempt.
-_Avoid_: Voice connected, RTC recovering, media ready
-
-**Native Event Lane**:
-The delivery class assigned at the first asynchronous Windows-native boundary.
-Control preserves order and cannot be displaced by frames; media is bounded and
-latest-per-resource; telemetry is lossy. A dropped media item releases its
-retained native resource exactly once, including replacement and shutdown.
-_Avoid_: Callback queue, event buffer, Node queue
-
-**Diagnostic Incident**:
-One typed causal client failure with a stable identity, correlation, occurrence
-count, and bounded sanitized evidence. Related runtime, media, and projection
-events enrich the same incident instead of creating competing automatic report
-triggers.
-_Avoid_: Error log line, upload request, console error
-
-## Channel Activities
-
-**Channel Activity**:
-A first-party interactive web application embedded in the client and scoped to
-one voice channel. Its active instance is projected into the Voice Stage as a
-focusable tile, while its launcher belongs to the voice-panel media controls.
-It can only accept commands from accounts with a current Voice Membership in
-that channel.
-_Avoid_: Voice game, LiveKit app, rich presence activity
-
-**Activity Instance**:
-The server-authoritative realtime lifetime of one Channel Activity in one voice
-channel. It owns an immutable instance ID, application ID, participant set,
-channel-scoped generation, monotonic revision, expiry, and application-defined
-state. One channel has at most one active Activity Instance in the first-party
-runtime.
-_Avoid_: Game room, Voice Session, iframe session
-
-**Activity Tombstone**:
-The durable, generation-bearing record that replaces a closed or expired
-Activity Instance. It lets reconnecting clients distinguish an authoritative
-absence from a delayed event belonging to an older channel generation.
-_Avoid_: Empty cache entry, deleted Activity, close notification
-
-**Activity Participant**:
-An account that has explicitly joined an Activity Instance and still has Voice
-Membership in the instance's channel. Voice Membership authorizes access, while
-the Activity Participant set records who is currently interacting with the
-application.
-_Avoid_: Voice participant, iframe client, player socket
-
-**Activity Host**:
-The trusted client component that embeds a Channel Activity in a sandboxed
-iframe, owns authenticated realtime transport, and exposes a bounded
-MessageChannel contract. The embedded application never receives the account's
-session token or desktop preload API.
-_Avoid_: Game container, webview bridge, Activity server
-
-**Activity Command**:
-An application-defined input sent by an Activity Participant and reduced by the
-server against the current Activity Instance revision. Clients render snapshots
-and never publish authoritative replacement state.
-_Avoid_: State patch, iframe event, gateway update
-
-## Authorization
-
-**Authorization Scope**:
-A global account context, server, channel, or user relationship for which the
-current account has one effective permission mask.
-_Avoid_: Permission context, target object
-
-**Permission Source**:
-An editable default, role, channel, user, membership, timeout, ownership, or
-privileged input from which the backend derives Effective Permissions.
-_Avoid_: Effective rights, client permission
-
-**Effective Permissions**:
-The backend-authoritative permission mask for one Authorization Scope after all
-Permission Sources and restrictions have been resolved.
-_Avoid_: Calculated client permissions, raw permissions
-
-**Authorization Snapshot**:
-The complete sync projection of Effective Permissions for the current account,
-keyed by Authorization Scope and replaced atomically by revision.
-_Avoid_: Permission cache, role snapshot
-
-**Capability**:
-A named action the interface may expose after the Authorization Module evaluates
-Effective Permissions and any target-relative facts such as member rank.
-_Avoid_: Button permission, permission flag
-
-**Authorization Module**:
-The only client module allowed to turn an Authorization Snapshot into
-Capabilities; interface modules never interpret permission masks directly.
-_Avoid_: Permission helper, UI permission check
-
-**Permission Draft**:
-A hypothetical permission result used only while editing Permission Sources; it
-never authorizes a current-account action.
-_Avoid_: Effective permissions, optimistic permission
+- A **Channel Activity** is a first-party app scoped to one voice channel. The backend owns its instance, participant set, revision, expiry, and state.
+- The embedded activity runs in a sandboxed iframe, receives no session token or desktop preload API, and sends bounded commands through the trusted host.
+- The backend produces revisioned **Effective Permissions** by authorization scope. Only the client authorization module converts them into named UI capabilities.
+- Permission editing uses hypothetical drafts; drafts never authorize current-account actions.
