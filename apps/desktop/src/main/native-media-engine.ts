@@ -289,21 +289,15 @@ function createVideoBridge(
         windowVisible: Boolean(window?.isVisible()),
         windowMinimized: Boolean(window?.isMinimized()),
       })
-      if (local) return
-      const requested = await controller.recoverRemoteVideoDemand(
-        frame.sessionId,
-        frame.generation,
-        frame.trackId,
-      )
       diagnosticSink({
         scope: 'native-video',
-        event: 'presentation_recovery_requested',
-        kind: 'remote-video',
-        stage: 'native-track-restart',
+        event: 'presentation_recovered_locally',
+        kind: local ? 'local-preview' : 'remote-video',
+        stage: 'renderer-presentation',
         sessionId: frame.sessionId,
         generation: frame.generation,
         reason,
-        outcome: requested ? 'requested' : 'not-demanded',
+        outcome: 'shared-texture-generation-retired',
       })
     },
   })

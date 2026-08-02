@@ -305,10 +305,10 @@ class MediaRuntime::Implementation
       type == "__remoteVideoFrame" ||
       type == "__remoteVideoTrackRemoved" ||
       type == "__remoteVideoFailed" ||
-      type == "__remoteVideoRetryRequested" ||
       type == "__remoteScreenPublicationAvailable" ||
       type == "__remoteScreenPublicationUnavailable" ||
       type == "releaseRemoteVideoFrame" ||
+      type == "retryRemoteVideo" ||
       type == "setRemoteVideoDemand" ||
       type == "__voiceTerminal"
     ) {
@@ -341,8 +341,6 @@ class MediaRuntime::Implementation
       type == "__screenAttemptReady" ||
       type == "__screenAttemptFailed" ||
       type == "__screenRetireDone" ||
-      type == "__screenExecutePublicationRestart" ||
-      type == "__screenRecoveryFailed" ||
       type == "connectScreen" || type == "startScreenCapture" ||
       type == "stopScreenCapture" || type == "disconnectScreen" ||
       type == "setLocalScreenPreviewDemand" ||
@@ -849,12 +847,8 @@ class MediaRuntime::Implementation
       event.generation = command.generation;
       event.track_id = command.track_id;
       event.video_source = command.video_source;
+      event.reason = command.recovery_mode;
       emitter_.emit(std::move(event));
-      return;
-    }
-    if (command.type == "__remoteVideoRetryRequested") {
-      if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
-      livekit_client_->retryRemoteVideo(command.track_id, command.internal_message);
       return;
     }
     if (command.type == "releaseRemoteVideoFrame") {
@@ -867,6 +861,23 @@ class MediaRuntime::Implementation
         throw std::runtime_error("stale remote video demand generation");
       }
       livekit_client_->setRemoteVideoDemand(command.track_id, command.demanded);
+      emitter_.emit(reply(command));
+      return;
+    }
+    if (command.type == "retryRemoteVideo") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) {
+        throw std::runtime_error("stale remote video recovery generation");
+      }
+      const auto mode = command.recovery_mode == "local"
+        ? RemoteVideoRecoveryMode::LocalBridge
+        : command.recovery_mode == "subscription"
+          ? RemoteVideoRecoveryMode::Subscription
+          : throw std::invalid_argument("invalid remote video recovery mode");
+      livekit_client_->retryRemoteVideo(
+        command.track_id,
+        mode,
+        command.internal_message
+      );
       emitter_.emit(reply(command));
       return;
     }
@@ -1069,22 +1080,10 @@ class MediaRuntime::Implementation
       screen_commands_.discardMedia(command.session_id, command.generation);
       return;
     }
-    if (command.type == "__screenRecoveryFailed") {
-      if (!desired_screen_.isCurrent(command.session_id, command.generation)) return;
-      screen_.handleWorkerCommand(command);
-      desired_screen_.setIfCurrent(
-        command.session_id,
-        command.generation,
-        "__screen_recovery_failed__",
-        command.generation);
-      screen_commands_.discardMedia(command.session_id, command.generation);
-      return;
-    }
     if (
       command.type == "__screenAttemptReady" ||
       command.type == "__screenAttemptFailed" ||
-      command.type == "__screenRetireDone" ||
-      command.type == "__screenExecutePublicationRestart"
+      command.type == "__screenRetireDone"
     ) {
       screen_.handleWorkerCommand(command);
       return;

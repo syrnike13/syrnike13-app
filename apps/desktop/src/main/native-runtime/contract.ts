@@ -117,6 +117,12 @@ export type MediaRuntimeCommand =
   | ({ type: 'setRemoteVideoDemand'; trackId: string; demanded: boolean } &
       SessionCommandBase)
   | ({
+      type: 'retryRemoteVideo'
+      trackId: string
+      mode: 'local' | 'subscription'
+      reason: string
+    } & SessionCommandBase)
+  | ({
       type: 'setLocalScreenPreviewDemand'
       demanded: boolean
       electronMainPid: number
@@ -284,8 +290,12 @@ export type MediaRuntimeEvent =
       participantIdentity: string
       source: 'screen'
     } & SessionEventBase)
-  | ({ type: 'remoteVideoFailed'; trackId: string; source?: 'camera' | 'screen' } &
-      SessionEventBase)
+  | ({
+      type: 'remoteVideoFailed'
+      trackId: string
+      source?: 'camera' | 'screen'
+      reason?: 'local' | 'subscription'
+    } & SessionEventBase)
   | ({
       type: 'localScreenPreviewFrame'
       trackId: string
@@ -658,6 +668,10 @@ export function isNativeRuntimeCommand(value: unknown): value is NativeRuntimeCo
     case 'setRemoteVideoDemand':
       return isSessionCommand(value) && isNonEmptyString(value.trackId, 512) &&
         typeof value.demanded === 'boolean'
+    case 'retryRemoteVideo':
+      return isSessionCommand(value) && isNonEmptyString(value.trackId, 512) &&
+        (value.mode === 'local' || value.mode === 'subscription') &&
+        isNonEmptyString(value.reason, 256)
     case 'setLocalScreenPreviewDemand':
       return isSessionCommand(value) && typeof value.demanded === 'boolean' &&
         isIntegerInRange(value.electronMainPid, 1, 0xffff_ffff) &&
@@ -1033,7 +1047,9 @@ export function isNativeRuntimeEvent(
         value.error.generation === value.generation
     case 'remoteVideoFailed':
       return isNonEmptyString(value.trackId, 512) &&
-        (value.source === undefined || value.source === 'camera' || value.source === 'screen')
+        (value.source === undefined || value.source === 'camera' || value.source === 'screen') &&
+        (value.reason === undefined || value.reason === 'local' ||
+          value.reason === 'subscription')
     case 'screenCaptureEnded':
       return (
         isNonEmptyString(value.reason, 256) &&

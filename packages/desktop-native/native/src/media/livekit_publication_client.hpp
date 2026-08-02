@@ -23,6 +23,11 @@ namespace syrnike::desktop_native::media {
 
 class LiveKitRuntimeLifetime;
 
+enum class RemoteVideoRecoveryMode {
+  LocalBridge,
+  Subscription,
+};
+
 // A track-scoped view into the one voice Room. It deliberately has no
 // connect/disconnect surface: credentials and Room lifetime belong exclusively
 // to LiveKitPublicationClient.
@@ -97,7 +102,11 @@ class LiveKitPublicationClient {
   virtual void configureRemoteAudio(RemoteAudioSettings settings) = 0;
   virtual void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) = 0;
   virtual void setRemoteVideoDemand(std::string track_id, bool demanded) = 0;
-  virtual void retryRemoteVideo(std::string track_id, std::string reason) = 0;
+  virtual void retryRemoteVideo(
+    std::string track_id,
+    RemoteVideoRecoveryMode mode,
+    std::string reason
+  ) = 0;
   virtual void startLocalCameraPreview(
     std::string session_id,
     std::uint64_t generation,
@@ -159,7 +168,11 @@ class LiveKitVoiceRoomOwner {
   virtual void configureRemoteAudio(RemoteAudioSettings) = 0;
   virtual void releaseRemoteVideoFrame(std::string, std::uint64_t) = 0;
   virtual void setRemoteVideoDemand(std::string, bool) = 0;
-  virtual void retryRemoteVideo(std::string, std::string) = 0;
+  virtual void retryRemoteVideo(
+    std::string,
+    RemoteVideoRecoveryMode,
+    std::string
+  ) = 0;
   virtual void startLocalCameraPreview(
     std::string, std::uint64_t, std::string, std::string,
     const std::shared_ptr<livekit::LocalVideoTrack>&
@@ -231,7 +244,11 @@ class DeterministicFakeLiveKitPublicationClient final : public LiveKitPublicatio
   void configureRemoteAudio(RemoteAudioSettings settings) override;
   void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) override;
   void setRemoteVideoDemand(std::string track_id, bool demanded) override;
-  void retryRemoteVideo(std::string track_id, std::string reason) override;
+  void retryRemoteVideo(
+    std::string track_id,
+    RemoteVideoRecoveryMode mode,
+    std::string reason
+  ) override;
   void startLocalCameraPreview(
     std::string session_id,
     std::uint64_t generation,

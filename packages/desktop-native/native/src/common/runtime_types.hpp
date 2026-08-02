@@ -220,6 +220,7 @@ struct MediaCommand {
   bool force = false;
   bool demanded = true;
   bool terminal = false;
+  std::string recovery_mode;
   std::string internal_message;
   std::vector<std::string> participant_identities;
   std::unordered_map<std::string, float> user_volumes;

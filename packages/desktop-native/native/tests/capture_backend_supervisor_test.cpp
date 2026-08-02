@@ -35,38 +35,6 @@ int main() try {
             encoder_decision.state == CaptureBackendState::Healthy,
         "downstream RTP/encoder stall triggered capture-backend recovery");
   }
-  auto publication_decision = encoder_stall.observePublicationStall(started);
-  require(
-      publication_decision.action == CaptureBackendAction::RestartPublication,
-      "unified supervisor did not command the first republish");
-  publication_decision = encoder_stall.observePublicationStall(started + 1ms);
-  require(
-      publication_decision.action == CaptureBackendAction::None,
-      "publication recovery bypassed supervisor backoff");
-  publication_decision =
-      encoder_stall.observePublicationStall(started + 250ms);
-  require(
-      publication_decision.action == CaptureBackendAction::RestartPublication,
-      "unified supervisor did not command the second republish");
-  publication_decision =
-      encoder_stall.observePublicationStall(started + 750ms);
-  require(
-      publication_decision.action == CaptureBackendAction::RestartPublication,
-      "unified supervisor did not command the third republish");
-  publication_decision =
-      encoder_stall.observePublicationStall(started + 1750ms);
-  require(
-      publication_decision.action == CaptureBackendAction::RestartPublication,
-      "publication recovery became terminal after repeated stalls");
-  publication_decision = encoder_stall.observePublicationStall(started + 3s);
-  require(
-      publication_decision.action == CaptureBackendAction::None,
-      "publication recovery bypassed its capped backoff");
-  publication_decision = encoder_stall.observePublicationStall(started + 3750ms);
-  require(
-      publication_decision.action == CaptureBackendAction::RestartPublication &&
-          encoder_stall.publicationRecoveryCount() == 5,
-      "publication recovery did not remain available with bounded retries");
   CaptureBackendSupervisor frozen_dxgi;
   frozen_dxgi.backendActivated(CaptureBackend::Dxgi, started);
   auto decision = frozen_dxgi.observe(

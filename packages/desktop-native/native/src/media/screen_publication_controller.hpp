@@ -108,7 +108,6 @@ class ScreenPublicationController final {
   void connect(const MediaCommand& command);
   void startCapture(const MediaCommand& command);
   void stopCapture(const MediaCommand& command, bool emit_stopped = true);
-  void executePublicationRestart(const MediaCommand& command);
   void disconnect(const MediaCommand& command, bool emit_stopped = true);
   [[nodiscard]] bool handleTerminal(
     const MediaCommand& command,

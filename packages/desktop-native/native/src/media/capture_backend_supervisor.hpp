@@ -29,7 +29,6 @@ enum class CaptureBackendAction {
   RecreateDevice,
   SwitchBackend,
   ProbePreferredBackend,
-  RestartPublication,
   Fail,
 };
 
@@ -96,8 +95,9 @@ class CaptureBackendSupervisor final {
 
     if (observation.status == ScreenGpuFrameStatus::NoFrame ||
         observation.status == ScreenGpuFrameStatus::EncoderBackpressure) {
-      // No output is normal for static content. Encoder backpressure is owned
-      // by the publication control plane, not by capture-backend recovery.
+      // No output is normal for static content. Encoder backpressure belongs
+      // to downstream frame flow control, where the latest frame may replace
+      // an older one; it must never recreate capture or the publication.
       if (observation.status == ScreenGpuFrameStatus::NoFrame &&
           observation.content_expected &&
           last_success_at_ != Clock::time_point{} &&
@@ -191,35 +191,6 @@ class CaptureBackendSupervisor final {
 
     state_ = CaptureBackendState::Reinitializing;
     return {state_, CaptureBackendAction::ReinitializeActive, active_};
-  }
-
-  [[nodiscard]] CaptureBackendDecision observePublicationStall(
-      Clock::time_point now) noexcept {
-    std::lock_guard lock(decision_mutex_);
-    if (now < next_publication_recovery_at_) {
-      return {state_, CaptureBackendAction::None, active_};
-    }
-    ++publication_recovery_attempts_;
-    const auto exponent = std::min<std::size_t>(
-        publication_recovery_attempts_ - 1, 4);
-    next_publication_recovery_at_ =
-        now + std::chrono::milliseconds(250 * (std::size_t{1} << exponent));
-    return {
-        CaptureBackendState::Reinitializing,
-        CaptureBackendAction::RestartPublication,
-        active_,
-    };
-  }
-
-  void resetPublicationRecovery() noexcept {
-    std::lock_guard lock(decision_mutex_);
-    publication_recovery_attempts_ = 0;
-    next_publication_recovery_at_ = {};
-  }
-
-  [[nodiscard]] std::size_t publicationRecoveryCount() const noexcept {
-    std::lock_guard lock(decision_mutex_);
-    return publication_recovery_attempts_;
   }
 
   void backendActivated(
@@ -332,8 +303,6 @@ class CaptureBackendSupervisor final {
   Clock::time_point last_success_at_{};
   Clock::time_point next_reinitialize_at_{};
   Clock::time_point preferred_probe_at_{};
-  std::size_t publication_recovery_attempts_ = 0;
-  Clock::time_point next_publication_recovery_at_{};
   mutable std::mutex decision_mutex_;
 };
 

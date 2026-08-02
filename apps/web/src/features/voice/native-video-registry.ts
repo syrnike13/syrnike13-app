@@ -40,7 +40,6 @@ type PublicationEntry = {
   participantIdentity: string
   source: 'screen'
   adapter: NativeVideoTrackAdapter
-  error?: string
 }
 
 const LOCAL_SCREEN_PREVIEW_TRACK_ID = 'local-screen-preview'
@@ -160,21 +159,6 @@ export class NativeVideoRegistry {
     return this.localScreenConsumers.size
   }
 
-  beginSubscriptionRetry(
-    sessionId: string,
-    generation: number,
-    trackId: string,
-  ) {
-    const publication = this.publications.get(trackId)
-    if (!publication?.error || publication.sessionId !== sessionId ||
-      publication.generation !== generation) return
-    delete publication.error
-    // Keep the tombstone until native re-announces the publication. This
-    // exposes a loading state immediately without accepting an old in-flight
-    // frame from the exhausted subscription.
-    this.notify()
-  }
-
   listTracks(): NativeVideoRegistryTrack[] {
     return [...this.tracks.values()].map((entry) => ({
       ...entry.metadata,
@@ -292,19 +276,6 @@ export class NativeVideoRegistry {
           ? current.adapter
           : new NativeVideoTrackAdapter(metadata.trackId, this),
       })
-      this.notify()
-      return
-    }
-    if (isSubscriptionFailedMessage(event.data)) {
-      const { metadata } = event.data
-      if (!this.isActiveRemoteSession(metadata)) return
-      const publication = this.publications.get(metadata.trackId)
-      if (!publication ||
-        publication.sessionId !== metadata.sessionId ||
-        publication.generation !== metadata.generation) return
-      publication.error = metadata.message
-      this.tombstones.set(metadata.trackId, metadata)
-      this.removeTrack(metadata.trackId, metadata)
       this.notify()
       return
     }
@@ -593,38 +564,6 @@ function isSessionResetMessage(value: unknown): value is {
   return candidate.type === 'syrnike-native-video-session-reset' &&
     typeof candidate.metadata?.sessionId === 'string' &&
     Number.isSafeInteger(candidate.metadata.generation)
-}
-
-function isSubscriptionFailedMessage(value: unknown): value is {
-  type: 'syrnike-native-video-subscription-failed'
-  metadata: {
-    trackId: string
-    sessionId: string
-    generation: number
-    message: string
-  }
-} {
-  if (!value || typeof value !== 'object') return false
-  if (
-    !('type' in value) ||
-    !('metadata' in value) ||
-    value.type !== 'syrnike-native-video-subscription-failed' ||
-    !value.metadata ||
-    typeof value.metadata !== 'object'
-  ) {
-    return false
-  }
-  const metadata = value.metadata
-  return (
-    'trackId' in metadata &&
-    typeof metadata.trackId === 'string' &&
-    'sessionId' in metadata &&
-    typeof metadata.sessionId === 'string' &&
-    'generation' in metadata &&
-    Number.isSafeInteger(metadata.generation) &&
-    'message' in metadata &&
-    typeof metadata.message === 'string'
-  )
 }
 
 function isPublicationMessage(value: unknown): value is {

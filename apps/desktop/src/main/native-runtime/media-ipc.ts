@@ -67,17 +67,6 @@ export function registerNativeMediaIpc(
           generation: message.generation,
         })
         return
-      case 'remoteVideoSubscriptionFailed':
-        win.webContents.send(
-          'syrnike-desktop:media:remote-video-subscription-failed',
-          {
-            sessionId: message.sessionId,
-            generation: message.generation,
-            trackId: message.trackId,
-            message: message.message,
-          },
-        )
-        return
     }
   })
 

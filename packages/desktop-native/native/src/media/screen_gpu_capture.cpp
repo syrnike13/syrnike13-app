@@ -101,8 +101,6 @@ std::string_view captureBackendActionName(
       return "switch_backend";
     case CaptureBackendAction::ProbePreferredBackend:
       return "probe_preferred_backend";
-    case CaptureBackendAction::RestartPublication:
-      return "restart_publication";
     case CaptureBackendAction::Fail:
       return "fail";
   }

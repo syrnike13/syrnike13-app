@@ -763,6 +763,7 @@ void RemoteVideoBridge::addTrack(
         }
         command.track_id = track_id;
         command.video_source = source;
+        command.recovery_mode = "local";
         command.internal_message = message;
         logRemoteVideoFailure(track_id, source, message);
         post_(std::move(command));
@@ -779,6 +780,7 @@ void RemoteVideoBridge::addTrack(
       }
       command.track_id = track_id;
       command.video_source = source;
+      command.recovery_mode = "local";
       command.internal_message = error.what();
       logRemoteVideoFailure(track_id, source, error.what());
       post_(std::move(command));
@@ -794,6 +796,7 @@ void RemoteVideoBridge::addTrack(
       }
       command.track_id = track_id;
       command.video_source = source;
+      command.recovery_mode = "local";
       command.internal_message = "Unknown remote video bridge failure";
       logRemoteVideoFailure(track_id, source, command.internal_message);
       const auto message = command.internal_message;

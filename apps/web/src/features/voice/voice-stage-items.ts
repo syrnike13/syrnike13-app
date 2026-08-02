@@ -100,10 +100,9 @@ export function buildStageItems(options: {
     tracks.push({
       userId,
       source: 'screen',
-      track:
-        demanded && !publication.error
-          ? (publication.track as unknown as VideoTrack)
-          : null,
+      track: demanded
+        ? (publication.track as unknown as VideoTrack)
+        : null,
       publication: {
         source: Track.Source.ScreenShare,
         isMuted: false,
@@ -119,7 +118,6 @@ export function buildStageItems(options: {
       },
       subscribed: demanded,
       live: true,
-      error: publication.error,
     })
   }
 

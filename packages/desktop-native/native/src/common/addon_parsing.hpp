@@ -225,6 +225,10 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   command.force = boolField(object, "force", false);
   command.demanded = boolField(object, "demanded", true);
   command.terminal = boolField(object, "terminal", false);
+  command.recovery_mode = stringField(object, "mode");
+  if (command.type == "retryRemoteVideo") {
+    command.internal_message = stringField(object, "reason");
+  }
   if (command.type == "configureRemoteAudio") {
     const auto remote_value = object.Get("settings");
     if (!remote_value.IsObject()) throw std::invalid_argument("settings is required");

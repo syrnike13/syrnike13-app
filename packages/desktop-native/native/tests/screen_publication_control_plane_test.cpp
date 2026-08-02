@@ -549,65 +549,6 @@ void releaseRetirement(ScreenControllerHarness& harness) {
   harness.handleNextWorkerCommand();
 }
 
-void verifyRtpStallRestartsCapture() {
-  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
-  auto harness = makeWorkingHarness();
-  startHarnessCapture(harness, "di-stall-start");
-  require(
-    harness.sink->countSessionStarted("screen-di", 1) == 1,
-    "initial screen capture did not emit sessionStarted exactly once"
-  );
-
-  harness.livekit->setBlocked(Operation::Unpublish, true);
-  harness.livekit->setBlocked(Operation::Publish, true);
-  auto stalled = screenCommand(
-    "__screenExecutePublicationRestart", {}, "screen-di", 1);
-  harness.controller->executePublicationRestart(stalled);
-
-  releaseRetirement(harness);
-  harness.livekit->waitUntilPending(Operation::Publish, 1, kTestWatchdog);
-  harness.livekit->releaseNext(Operation::Publish);
-  harness.handleNextWorkerCommand();
-
-  require(
-    harness.sink->countSessionStarted("screen-di", 1) == 1,
-    "internal RTP recovery emitted a duplicate sessionStarted event"
-  );
-  require(
-    harness.sink->countRepliesWithEmptyRequestId() == 0,
-    "RTP stall recovery emitted an invalid empty-request reply"
-  );
-}
-
-void verifyManualStopCancelsPendingStallRestart() {
-  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
-  auto harness = makeWorkingHarness();
-  startHarnessCapture(harness, "di-stop-start");
-
-  harness.livekit->setBlocked(Operation::Unpublish, true);
-  harness.livekit->setBlocked(Operation::Publish, true);
-  auto stalled = screenCommand(
-    "__screenExecutePublicationRestart", {}, "screen-di", 1);
-  harness.controller->executePublicationRestart(stalled);
-  harness.livekit->waitUntilPending(Operation::Unpublish, 1, kTestWatchdog);
-
-  const auto stop = screenCommand("stopScreenCapture", "di-stop", "screen-di", 1);
-  harness.controller->stopCapture(stop);
-  releaseRetirement(harness);
-  const auto probe = harness.controller->probe(
-    screenCommand("probeScreenActor", {}, "screen-di", 1)
-  );
-  require(
-    probe.state == "available" &&
-      harness.livekit->pending(Operation::Publish) == 0,
-    "manual stop launched the pending RTP stall restart"
-  );
-  require(
-    harness.sink->countSessionStarted("screen-di", 1) == 1,
-    "manual stop promoted an unexpected replacement screen capture"
-  );
-}
-
 void verifyRejectedRetireCompletionRetriesInternally() {
   using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
   auto harness = makeWorkingHarness();
@@ -636,34 +577,6 @@ void verifyRejectedRetireCompletionRetriesInternally() {
   );
 }
 
-void verifyControllerOnlyExecutesRecoveryPolicy() {
-  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
-  auto harness = makeWorkingHarness();
-  startHarnessCapture(harness, "di-budget-start");
-  harness.livekit->setBlocked(Operation::Unpublish, true);
-  harness.livekit->setBlocked(Operation::Publish, true);
-
-  auto stalled = screenCommand(
-    "__screenExecutePublicationRestart", {}, "screen-di", 1);
-  stalled.internal_message = "encoder_output_stalled";
-  for (int attempt = 0; attempt < 4; ++attempt) {
-    stalled.revision = static_cast<std::uint64_t>(attempt + 1);
-    harness.controller->executePublicationRestart(stalled);
-    releaseRetirement(harness);
-    harness.livekit->waitUntilPending(Operation::Publish, 1, kTestWatchdog);
-    harness.livekit->releaseNext(Operation::Publish);
-    harness.handleNextWorkerCommand();
-  }
-  require(
-    harness.sink->countSessionStarted("screen-di", 1) == 1,
-    "explicit recovery execution exposed internal restarts as new sessions"
-  );
-  require(
-    harness.sink->countRepliesWithEmptyRequestId() == 0,
-    "explicit recovery execution emitted an invalid empty-request reply"
-  );
-}
-
 void waitForAvailable(
   syrnike::desktop_native::media::MediaRuntime& runtime,
   const std::shared_ptr<CollectingSink>& sink,
@@ -683,38 +596,6 @@ void waitForAvailable(
     std::this_thread::sleep_for(1ms);
   }
   throw std::runtime_error("screen actor did not become available");
-}
-
-void verifyInternalRecoveryFailureDoesNotReply() {
-  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
-  auto harness = makeWorkingHarness();
-  startHarnessCapture(harness, "di-failure-start");
-  harness.livekit->setBlocked(Operation::Unpublish, true);
-  harness.livekit->setBlocked(Operation::Publish, true);
-
-  auto stalled = screenCommand(
-    "__screenExecutePublicationRestart", {}, "screen-di", 1);
-  stalled.internal_message = "encoder_output_stalled";
-  harness.controller->executePublicationRestart(stalled);
-  releaseRetirement(harness);
-  harness.livekit->waitUntilPending(Operation::Publish, 1, kTestWatchdog);
-  harness.livekit->releaseNext(
-    Operation::Publish,
-    {.error_message = "gpu_encoder_unavailable"}
-  );
-  harness.handleNextWorkerCommand();
-  const auto failure = harness.takeNextWorkerCommand();
-  require(
-    failure.type == "__screenRecoveryFailed" &&
-      failure.session_id == "screen-di" &&
-      failure.generation == 1 &&
-      failure.internal_message == "gpu_encoder_unavailable",
-    "internal recovery failure did not produce a typed media failure"
-  );
-  require(
-    harness.sink->countRepliesWithEmptyRequestId() == 0,
-    "internal recovery failure emitted a reply with an empty request id"
-  );
 }
 
 void verifyCombinedShutdownUsesOneDeadline() {
@@ -1303,8 +1184,8 @@ int main() try {
     );
     require(
       detector.observe(started + 29s, true, 6, 6, 6, 5s) ==
-        ScreenOutputStall::Capture,
-      "a published track with no idle refresh was not classified as capture stall"
+        ScreenOutputStall::None,
+      "a static published track was misclassified as an output failure"
     );
     require(
       detector.observe(started + 30s, false, 6, 6, 6, 5s) ==
@@ -1334,18 +1215,9 @@ int main() try {
     verifyCapturePermissionFailureStopsAutomaticRetry);
   verifyPhase("null encoder source", verifyNullEncoderSourceFailsClosed);
   verifyPhase("cancelled publish rollback", verifyCancelledPublishRollsBackExactSid);
-  verifyPhase("RTP stall restart", verifyRtpStallRestartsCapture);
   verifyPhase(
     "retire completion retry",
     verifyRejectedRetireCompletionRetriesInternally
-  );
-  verifyPhase("manual stop cancels restart", verifyManualStopCancelsPendingStallRestart);
-  verifyPhase(
-    "policy-free publication restart execution",
-    verifyControllerOnlyExecutesRecoveryPolicy);
-  verifyPhase(
-    "internal stall recovery failure",
-    verifyInternalRecoveryFailureDoesNotReply
   );
   verifyPhase(
     "combined screen shutdown deadline",
@@ -1413,41 +1285,6 @@ int main() try {
   );
   requireProbe(runtime, sink, "probe-terminal-retire");
 
-  livekit->setVoiceSessionForTest("screen-recovery");
-  const auto prepare_recovery = screenCommand(
-    "connectScreen", "prepare-recovery", "screen-recovery", 8);
-  require(
-    runtime.dispatch(prepare_recovery),
-    "runtime rejected recovery-failure prepare");
-  require(
-    sink->waitReply("prepare-recovery").ok,
-    "recovery-failure prepare failed");
-  syrnike::desktop_native::MediaCommand recovery_failed;
-  recovery_failed.type = "__screenRecoveryFailed";
-  recovery_failed.session_id = "screen-recovery";
-  recovery_failed.generation = 8;
-  recovery_failed.internal_message = "rtp_stall_recovery_exhausted";
-  require(
-    runtime.dispatch(recovery_failed),
-    "runtime rejected internal screen recovery failure");
-  const auto recovery_ended =
-    sink->waitEvent("screenCaptureEnded", "screen-recovery", 8);
-  require(
-    recovery_ended.reason == "rtp_stall_recovery_exhausted",
-    "screen recovery circuit reason was rewritten");
-  const auto stale_recovery_retry = screenCommand(
-    "connectScreen",
-    "recovery-stale",
-    "screen-recovery",
-    8);
-  require(
-    runtime.dispatch(stale_recovery_retry),
-    "runtime rejected dispatch of a fenced recovery retry");
-  const auto stale_recovery_reply = sink->waitReply("recovery-stale");
-  require(
-    stale_recovery_reply.error &&
-      stale_recovery_reply.error->code == "stale_generation",
-    "same-generation retry escaped the recovery terminal fence");
 
   waitForAvailable(runtime, sink, "recovery-available");
   livekit->setVoiceSessionForTest("screen-recovery-next");

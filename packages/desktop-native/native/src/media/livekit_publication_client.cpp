@@ -345,7 +345,8 @@ class PostedRoomDelegate final
         event.participant ? event.participant->identity() : std::string{},
         event.publication
           ? std::optional{event.publication->source()}
-          : std::nullopt
+          : std::nullopt,
+        publication_id
       );
       if (is_screen) {
         bool still_current = false;
@@ -356,7 +357,7 @@ class PostedRoomDelegate final
             found->second.demanded && found->second.current_track == event.track;
         }
         if (!still_current) {
-          remote_video_.removeTrackIfCurrent(event.track->sid(), event.track, false);
+          remote_video_.removeTrackIfCurrent(publication_id, event.track, false);
         }
       }
     }
@@ -396,7 +397,7 @@ class PostedRoomDelegate final
     // for the same publication SID. Only the event for the current track may
     // retire its decoder or initiate recovery.
     if (!current) return;
-    remote_video_.removeTrackIfCurrent(event.track->sid(), event.track);
+    remote_video_.removeTrackIfCurrent(publication_id, event.track);
   }
 
   void onTrackSubscriptionFailed(
@@ -520,10 +521,81 @@ class PostedRoomDelegate final
     }
   }
 
-  void retryRemoteVideo(const std::string& track_id, const std::string& reason) {
+  void retryRemoteVideo(
+    const std::string& track_id,
+    RemoteVideoRecoveryMode mode,
+    const std::string& reason
+  ) {
     CallbackGuard callback(*this);
     if (!callback) return;
-    postRemoteVideoSubscriptionFailure(track_id, "bridge_ended", reason);
+    std::shared_ptr<livekit::RemoteTrackPublication> publication;
+    std::shared_ptr<livekit::Track> track;
+    std::string participant_identity;
+    {
+      std::lock_guard lock(video_publications_mutex_);
+      const auto found = screen_publications_.find(track_id);
+      if (found == screen_publications_.end() || !found->second.is_video ||
+          !found->second.demanded) {
+        return;
+      }
+      publication = found->second.publication;
+      track = found->second.current_track;
+      participant_identity = found->second.participant_identity;
+    }
+
+    if (mode == RemoteVideoRecoveryMode::LocalBridge) {
+      if (!track) return;
+      remote_video_.addTrack(
+        track,
+        participant_identity,
+        livekit::TrackSource::SOURCE_SCREENSHARE,
+        track_id
+      );
+      bool still_current = false;
+      {
+        std::lock_guard lock(video_publications_mutex_);
+        const auto found = screen_publications_.find(track_id);
+        still_current = found != screen_publications_.end() &&
+          found->second.demanded && found->second.current_track == track;
+      }
+      if (!still_current) {
+        remote_video_.removeTrackIfCurrent(track_id, track, false);
+        return;
+      }
+      logDelegate(
+        kind_,
+        "remote_video_bridge_restarted",
+        {
+          {"publicationId", track_id},
+          {"participantIdentity", participant_identity},
+          {"reason", reason}
+        }
+      );
+      return;
+    }
+
+    if (!publication) return;
+    publication->setSubscribed(false);
+    {
+      std::lock_guard lock(video_publications_mutex_);
+      const auto found = screen_publications_.find(track_id);
+      if (found == screen_publications_.end() || !found->second.demanded ||
+          found->second.publication != publication) {
+        return;
+      }
+      found->second.current_track.reset();
+    }
+    remote_video_.removeTrack(track_id, false);
+    publication->setSubscribed(true);
+    logDelegate(
+      kind_,
+      "remote_video_subscription_retried",
+      {
+        {"publicationId", track_id},
+        {"participantIdentity", participant_identity},
+        {"reason", reason}
+      }
+    );
   }
 
   bool isConnected() const {
@@ -608,6 +680,7 @@ class PostedRoomDelegate final
     failed.track_id = publication_id;
     failed.participant_identity = participant_identity;
     failed.video_source = "screen";
+    failed.recovery_mode = "subscription";
     failed.internal_message = error.empty()
       ? std::string("Remote screen subscription failed")
       : error;
@@ -628,10 +701,11 @@ class PostedRoomDelegate final
     if (!callback) return;
     std::lock_guard lock(video_publications_mutex_);
     const auto found = screen_publications_.find(publication_id);
-    if (found != screen_publications_.end() && found->second.is_video &&
-        found->second.current_track == track) {
-      found->second.current_track.reset();
-    }
+    if (found == screen_publications_.end() || !found->second.is_video ||
+        found->second.current_track != track) return;
+    // The local reader ending does not detach the SDK RemoteTrack. Keep it as
+    // the source for a bridge-only retry; unsubscribe/unpublish callbacks own
+    // the current_track transition.
   }
 
   void registerScreenPublication(
@@ -974,8 +1048,12 @@ class RealLiveKitRoomOwner final : public LiveKitVoiceRoomOwner {
   void setRemoteVideoDemand(std::string track_id, bool demanded) override {
     delegate_->setRemoteVideoDemand(track_id, demanded);
   }
-  void retryRemoteVideo(std::string track_id, std::string reason) override {
-    delegate_->retryRemoteVideo(track_id, reason);
+  void retryRemoteVideo(
+    std::string track_id,
+    RemoteVideoRecoveryMode mode,
+    std::string reason
+  ) override {
+    delegate_->retryRemoteVideo(track_id, mode, reason);
   }
 
   void disconnect() override {
@@ -1185,12 +1263,22 @@ class RealLiveKitPublicationClient final
     const auto room = roomSnapshot();
     if (room) room->setRemoteVideoDemand(std::move(track_id), demanded);
   }
-  void retryRemoteVideo(std::string track_id, std::string reason) override {
+  void retryRemoteVideo(
+    std::string track_id,
+    RemoteVideoRecoveryMode mode,
+    std::string reason
+  ) override {
     std::unique_lock lifecycle_lock(
       voice_lifecycle_mutex_, std::try_to_lock);
     if (!lifecycle_lock.owns_lock()) return;
     const auto room = roomSnapshot();
-    if (room) room->retryRemoteVideo(std::move(track_id), std::move(reason));
+    if (room) {
+      room->retryRemoteVideo(
+        std::move(track_id),
+        mode,
+        std::move(reason)
+      );
+    }
   }
 
   void startLocalCameraPreview(
@@ -1593,7 +1681,11 @@ void DeterministicFakeLiveKitPublicationClient::releaseRemoteVideoFrame(
 ) {}
 
 void DeterministicFakeLiveKitPublicationClient::setRemoteVideoDemand(std::string, bool) {}
-void DeterministicFakeLiveKitPublicationClient::retryRemoteVideo(std::string, std::string) {}
+void DeterministicFakeLiveKitPublicationClient::retryRemoteVideo(
+  std::string,
+  RemoteVideoRecoveryMode,
+  std::string
+) {}
 
 void DeterministicFakeLiveKitPublicationClient::startLocalCameraPreview(
   std::string,

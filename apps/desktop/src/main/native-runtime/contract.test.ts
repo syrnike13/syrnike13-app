@@ -326,6 +326,38 @@ describe('native runtime command validation', () => {
     })).toBe(true)
   })
 
+  it('separates local bridge retries from confirmed subscription retries', () => {
+    const retry = {
+      type: 'retryRemoteVideo',
+      sessionId: 'voice-session',
+      generation: 3,
+      trackId: 'screen-publication',
+      reason: 'frame_timeout',
+    }
+
+    expect(isNativeRuntimeCommand({ ...retry, mode: 'local' })).toBe(true)
+    expect(isNativeRuntimeCommand({ ...retry, mode: 'subscription' })).toBe(true)
+    expect(isNativeRuntimeCommand({ ...retry, mode: 'publication' })).toBe(false)
+    expect(isNativeRuntimeEvent({
+      type: 'remoteVideoFailed',
+      sequence: 1,
+      sessionId: 'voice-session',
+      generation: 3,
+      trackId: 'screen-publication',
+      source: 'screen',
+      reason: 'subscription',
+    })).toBe(true)
+    expect(isNativeRuntimeEvent({
+      type: 'remoteVideoFailed',
+      sequence: 1,
+      sessionId: 'voice-session',
+      generation: 3,
+      trackId: 'screen-publication',
+      source: 'screen',
+      reason: 'publication',
+    })).toBe(false)
+  })
+
   it('accepts a retryable local preview diagnostic without failing the screen session', () => {
     expect(isNativeRuntimeEvent({
       type: 'localScreenPreviewFailed',

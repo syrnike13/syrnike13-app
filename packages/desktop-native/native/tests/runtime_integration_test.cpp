@@ -230,20 +230,6 @@ int main() try {
       throw std::runtime_error("stale remote video demand escaped generation fence");
     }
 
-    syrnike::desktop_native::MediaCommand screen_stalled;
-    screen_stalled.type = "__screenExecutePublicationRestart";
-    screen_stalled.session_id = "retired-screen-session";
-    screen_stalled.generation = 9;
-    if (!runtime.dispatch(std::move(screen_stalled))) {
-      throw std::runtime_error("internal screen stall event was rejected");
-    }
-    syrnike::desktop_native::MediaCommand screen_barrier;
-    screen_barrier.type = "probeScreenActor";
-    screen_barrier.request_id = "screen-stall-barrier";
-    if (!runtime.dispatch(std::move(screen_barrier)) ||
-        !media_sink->waitForReply("screen-stall-barrier")) {
-      throw std::runtime_error("screen queue did not process internal stall event");
-    }
     runtime.requestShutdown();
     runtime.requestShutdown();
     runtime.shutdownAndWait();

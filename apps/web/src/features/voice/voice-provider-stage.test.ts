@@ -72,7 +72,7 @@ describe('desktop voice stage channel scope', () => {
     )
   })
 
-  it('exposes an exhausted native subscription as retryable instead of loading', () => {
+  it('keeps a delayed native subscription loading without making it terminal', () => {
     const items = buildStageItems({
       room: null,
       participants: [{ id: 'remote' }],
@@ -96,7 +96,7 @@ describe('desktop voice stage channel scope', () => {
       id: 'remote:screen',
       subscribed: true,
       track: null,
-      error: 'Не удалось подключиться к демонстрации после 10 попыток',
+      error: undefined,
     }))
   })
 
@@ -142,10 +142,7 @@ describe('desktop voice stage channel scope', () => {
       },
       watchedRemoteScreenIds: new Set(['remote:screen']),
       nativeTracks: [],
-      nativePublications: [{
-        ...publication('remote', 'screen'),
-        error: 'Не удалось подключиться к демонстрации после 10 попыток',
-      }],
+      nativePublications: [publication('remote', 'screen')],
       localScreenPreview: null,
       setNativeDemand,
     })

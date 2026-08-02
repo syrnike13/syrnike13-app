@@ -384,6 +384,10 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
       event.type == "localCameraPreviewTrackRemoved") {
     result.Set("source", event.video_source);
   }
+  if (event.type == "remoteVideoFailed") {
+    result.Set("source", event.video_source);
+    setIfPresent(result, "reason", event.reason);
+  }
   if (event.error) result.Set("error", errorToObject(env, *event.error));
   if (event.type == "sessionLifecycle") {
     result.Set("state", lifecycleStateToObject(env, event));
