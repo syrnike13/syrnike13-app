@@ -9,7 +9,7 @@
 
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
-#include "livekit_publication_client.hpp"
+#include "livekit_voice_session.hpp"
 #include "screen_gpu_capture.hpp"
 #include "screen_publication_controller.hpp"
 
@@ -192,7 +192,7 @@ class ScreenActor final {
     SequencedEmitter& emitter,
     InternalPost post,
     IsCurrent is_current,
-    std::shared_ptr<LiveKitPublicationClient> livekit_client,
+    std::shared_ptr<LiveKitVoiceSession> voice_session,
     CommitIfCurrent commit_if_current = {},
     Now now = {},
     LaunchRetireWorker launch_retire_worker = {},

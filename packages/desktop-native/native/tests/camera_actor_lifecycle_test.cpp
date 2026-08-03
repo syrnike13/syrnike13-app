@@ -60,8 +60,8 @@ RuntimeEvent waitCameraTerminal(
 }
 
 void waitNoPending(
-    const std::shared_ptr<DeterministicFakeLiveKitPublicationClient>& client,
-    DeterministicFakeLiveKitPublicationClient::Operation operation) {
+    const std::shared_ptr<DeterministicFakeLiveKitVoiceSession>& client,
+    DeterministicFakeLiveKitVoiceSession::Operation operation) {
   for (int i = 0; i < 1000 && client->pending(operation) != 0; ++i) {
     std::this_thread::sleep_for(5ms);
   }
@@ -169,7 +169,7 @@ int main() try {
   main_lifetime->initialize();
   auto sink = std::make_shared<Sink>();
   SequencedEmitter emitter(sink);
-  auto client = std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+  auto client = std::make_shared<DeterministicFakeLiveKitVoiceSession>();
   client->retainRuntimeLifetime(main_lifetime);
   client->setVoiceSessionForTest("voice");
   auto factory = std::make_shared<Factory>();
@@ -199,9 +199,9 @@ int main() try {
   // A publication blocked in the worker must not occupy the camera command lane.
   // Disconnect settles the original request immediately; a newer generation can
   // start before the stale SDK call returns.
-  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, true);
+  client->setBlocked(DeterministicFakeLiveKitVoiceSession::Operation::Publish, true);
   actor->connect(command(2, "blocked"));
-  client->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Publish, 1);
+  client->waitUntilPending(DeterministicFakeLiveKitVoiceSession::Operation::Publish, 1);
   probe.request_id = "probe-busy";
   if (actor->probe(probe).state != "busy") {
     throw std::runtime_error("pending camera publication did not report busy capacity");
@@ -218,13 +218,13 @@ int main() try {
       blocked_reply.error->code != "stale_generation") {
     throw std::runtime_error("cancelled camera connect did not receive typed reply");
   }
-  client->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Publish,
+  client->releaseNext(DeterministicFakeLiveKitVoiceSession::Operation::Publish,
     {.publication_sid = {}});
   for (int i = 0; i < 200 &&
-      client->pending(DeterministicFakeLiveKitPublicationClient::Operation::Publish) != 0; ++i) {
+      client->pending(DeterministicFakeLiveKitVoiceSession::Operation::Publish) != 0; ++i) {
     std::this_thread::sleep_for(5ms);
   }
-  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, false);
+  client->setBlocked(DeterministicFakeLiveKitVoiceSession::Operation::Publish, false);
   actor->connect(command(3, "replacement"));
   const auto replacement_reply = waitReply(sink, "replacement");
   if (!replacement_reply.ok) {
@@ -256,24 +256,24 @@ int main() try {
 
   // Cleanup failures are secondary: a stale attempt still settles with its
   // original typed result even when the SDK throws while unpublishing it.
-  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, true);
-  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, true);
+  client->setBlocked(DeterministicFakeLiveKitVoiceSession::Operation::Publish, true);
+  client->setBlocked(DeterministicFakeLiveKitVoiceSession::Operation::Unpublish, true);
   current.store(5);
   actor->connect(command(5, "cleanup-throws"));
-  client->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Publish, 1);
+  client->waitUntilPending(DeterministicFakeLiveKitVoiceSession::Operation::Publish, 1);
   current.store(6);
-  client->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Publish,
+  client->releaseNext(DeterministicFakeLiveKitVoiceSession::Operation::Publish,
     {.publication_sid = "cleanup-publication"});
-  client->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, 1);
-  client->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Unpublish,
+  client->waitUntilPending(DeterministicFakeLiveKitVoiceSession::Operation::Unpublish, 1);
+  client->releaseNext(DeterministicFakeLiveKitVoiceSession::Operation::Unpublish,
     {.error_message = "injected unpublish cleanup failure"});
   const auto cleanup_reply = waitReply(sink, "cleanup-throws");
   if (cleanup_reply.ok || !cleanup_reply.error ||
       cleanup_reply.error->code != "stale_generation") {
     throw std::runtime_error("camera cleanup exception suppressed the original failure");
   }
-  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, false);
-  client->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, false);
+  client->setBlocked(DeterministicFakeLiveKitVoiceSession::Operation::Publish, false);
+  client->setBlocked(DeterministicFakeLiveKitVoiceSession::Operation::Unpublish, false);
 
   // A capture reader that never produces a sample must be interruptible by
   // CameraCapture::stop; disconnect cannot wait for an unbounded ReadSample.
@@ -351,7 +351,7 @@ int main() try {
     throw std::runtime_error("active unpublish scenario did not start");
   }
   client->setBlocked(
-      DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, true);
+      DeterministicFakeLiveKitVoiceSession::Operation::Unpublish, true);
   auto stop_active_unpublish = command(11, "stop-active-unpublish");
   stop_active_unpublish.type = "disconnectCamera";
   const auto active_unpublish_started = std::chrono::steady_clock::now();
@@ -360,7 +360,7 @@ int main() try {
     throw std::runtime_error("active camera unpublish exceeded retire deadline");
   }
   client->waitUntilPending(
-      DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, 1);
+      DeterministicFakeLiveKitVoiceSession::Operation::Unpublish, 1);
   current.store(12);
   actor->connect(command(12, "after-active-unpublish"));
   if (!waitReply(sink, "after-active-unpublish").ok) {
@@ -368,9 +368,9 @@ int main() try {
         "detached active unpublish did not release next-start capacity");
   }
   client->releaseNext(
-      DeterministicFakeLiveKitPublicationClient::Operation::Unpublish);
+      DeterministicFakeLiveKitVoiceSession::Operation::Unpublish);
   client->setBlocked(
-      DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, false);
+      DeterministicFakeLiveKitVoiceSession::Operation::Unpublish, false);
   auto stop_after_active_unpublish =
       command(12, "stop-after-active-unpublish");
   stop_after_active_unpublish.type = "disconnectCamera";
@@ -379,7 +379,7 @@ int main() try {
   // Retirement launch failures retain the shared task. The management worker
   // retries without another camera command and executes cleanup exactly once.
   auto retry_client =
-      std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+      std::make_shared<DeterministicFakeLiveKitVoiceSession>();
   retry_client->retainRuntimeLifetime(main_lifetime);
   retry_client->setVoiceSessionForTest("voice");
   auto retry_factory = std::make_shared<Factory>();
@@ -426,11 +426,11 @@ int main() try {
   retry_actor.reset();
 
   client->setBlocked(
-      DeterministicFakeLiveKitPublicationClient::Operation::Publish, true);
+      DeterministicFakeLiveKitVoiceSession::Operation::Publish, true);
   current.store(13);
   actor->connect(command(13, "shutdown-blocked-publication"));
   client->waitUntilPending(
-      DeterministicFakeLiveKitPublicationClient::Operation::Publish, 1);
+      DeterministicFakeLiveKitVoiceSession::Operation::Publish, 1);
   const auto shutdown_started = std::chrono::steady_clock::now();
   actor->shutdown();
   if (std::chrono::steady_clock::now() - shutdown_started > 1800ms) {
@@ -438,18 +438,18 @@ int main() try {
         "camera shutdown exceeded its blocked-publication deadline");
   }
   client->releaseNext(
-      DeterministicFakeLiveKitPublicationClient::Operation::Publish,
+      DeterministicFakeLiveKitVoiceSession::Operation::Publish,
       {.publication_sid = {}});
   for (int i = 0; i < 500 &&
       client->pending(
-          DeterministicFakeLiveKitPublicationClient::Operation::Publish) != 0;
+          DeterministicFakeLiveKitVoiceSession::Operation::Publish) != 0;
       ++i) {
     std::this_thread::sleep_for(5ms);
   }
   actor.reset();
 
   auto shutdown_client =
-      std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+      std::make_shared<DeterministicFakeLiveKitVoiceSession>();
   shutdown_client->retainRuntimeLifetime(main_lifetime);
   shutdown_client->setVoiceSessionForTest("voice");
   auto shutdown_factory = std::make_shared<Factory>();
@@ -467,15 +467,15 @@ int main() try {
     throw std::runtime_error("active shutdown-unpublish scenario did not start");
   }
   shutdown_client->setBlocked(
-      DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, true);
+      DeterministicFakeLiveKitVoiceSession::Operation::Unpublish, true);
   shutdown_client->setBlocked(
-      DeterministicFakeLiveKitPublicationClient::Operation::Publish, true);
+      DeterministicFakeLiveKitVoiceSession::Operation::Publish, true);
   shutdown_current.store(2);
   shutdown_actor->connect(command(2, "stale-shutdown-publication"));
   shutdown_client->waitUntilPending(
-      DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, 1);
+      DeterministicFakeLiveKitVoiceSession::Operation::Unpublish, 1);
   shutdown_client->waitUntilPending(
-      DeterministicFakeLiveKitPublicationClient::Operation::Publish, 1);
+      DeterministicFakeLiveKitVoiceSession::Operation::Publish, 1);
   const auto active_shutdown_started = std::chrono::steady_clock::now();
   shutdown_actor->shutdown();
   if (std::chrono::steady_clock::now() - active_shutdown_started > 1800ms) {
@@ -484,17 +484,17 @@ int main() try {
   }
   shutdown_actor.reset();
   shutdown_client->releaseNext(
-      DeterministicFakeLiveKitPublicationClient::Operation::Publish,
+      DeterministicFakeLiveKitVoiceSession::Operation::Publish,
       {.publication_sid = {}});
   shutdown_client->releaseNext(
-      DeterministicFakeLiveKitPublicationClient::Operation::Unpublish);
+      DeterministicFakeLiveKitVoiceSession::Operation::Unpublish);
 
   // The terminal-post gate closes the check/call race: shutdown waits for a
   // callback that has entered the gate, then clears the borrowed function.
   auto gate_sink = std::make_shared<Sink>();
   SequencedEmitter gate_emitter(gate_sink);
   auto gate_client =
-      std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+      std::make_shared<DeterministicFakeLiveKitVoiceSession>();
   gate_client->retainRuntimeLifetime(main_lifetime);
   gate_client->setVoiceSessionForTest("voice");
   auto gate_factory = std::make_shared<Factory>();
@@ -559,11 +559,11 @@ int main() try {
   // A detached SDK attempt may finish after both actor and emitter teardown.
   // Cancellation checkpoints must not touch borrowed runtime callbacks then.
   auto late_client =
-      std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+      std::make_shared<DeterministicFakeLiveKitVoiceSession>();
   late_client->retainRuntimeLifetime(main_lifetime);
   late_client->setVoiceSessionForTest("voice");
   late_client->setBlocked(
-      DeterministicFakeLiveKitPublicationClient::Operation::Publish, true);
+      DeterministicFakeLiveKitVoiceSession::Operation::Publish, true);
   auto callbacks_alive = std::make_shared<std::atomic_bool>(true);
   auto late_callback_violations =
       std::make_shared<std::atomic_uint64_t>(0);
@@ -590,7 +590,7 @@ int main() try {
         late_factory);
     late_actor->connect(command(1, "late-sdk-release"));
     late_client->waitUntilPending(
-        DeterministicFakeLiveKitPublicationClient::Operation::Publish, 1);
+        DeterministicFakeLiveKitVoiceSession::Operation::Publish, 1);
     const auto destructor_started = std::chrono::steady_clock::now();
     late_actor.reset();
     if (std::chrono::steady_clock::now() - destructor_started > 1800ms) {
@@ -600,11 +600,11 @@ int main() try {
     callbacks_alive->store(false);
   }
   late_client->releaseNext(
-      DeterministicFakeLiveKitPublicationClient::Operation::Publish,
+      DeterministicFakeLiveKitVoiceSession::Operation::Publish,
       {.publication_sid = {}});
   for (int i = 0; i < 500 &&
       late_client->pending(
-          DeterministicFakeLiveKitPublicationClient::Operation::Publish) != 0;
+          DeterministicFakeLiveKitVoiceSession::Operation::Publish) != 0;
       ++i) {
     std::this_thread::sleep_for(5ms);
   }
@@ -614,18 +614,18 @@ int main() try {
   }
 
   waitNoPending(
-      client, DeterministicFakeLiveKitPublicationClient::Operation::Publish);
+      client, DeterministicFakeLiveKitVoiceSession::Operation::Publish);
   waitNoPending(
-      client, DeterministicFakeLiveKitPublicationClient::Operation::Unpublish);
-  waitNoPending(
-      shutdown_client,
-      DeterministicFakeLiveKitPublicationClient::Operation::Publish);
+      client, DeterministicFakeLiveKitVoiceSession::Operation::Unpublish);
   waitNoPending(
       shutdown_client,
-      DeterministicFakeLiveKitPublicationClient::Operation::Unpublish);
+      DeterministicFakeLiveKitVoiceSession::Operation::Publish);
+  waitNoPending(
+      shutdown_client,
+      DeterministicFakeLiveKitVoiceSession::Operation::Unpublish);
   waitNoPending(
       late_client,
-      DeterministicFakeLiveKitPublicationClient::Operation::Publish);
+      DeterministicFakeLiveKitVoiceSession::Operation::Publish);
   client.reset();
   retry_client.reset();
   shutdown_client.reset();
@@ -643,7 +643,7 @@ int main() try {
   auto detached_lifetime = std::make_shared<LiveKitRuntimeLifetime>();
   detached_lifetime->initialize();
   auto detached_client =
-      std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+      std::make_shared<DeterministicFakeLiveKitVoiceSession>();
   detached_client->retainRuntimeLifetime(detached_lifetime);
   detached_client->setVoiceSessionForTest("voice");
   auto detached_factory = std::make_shared<Factory>();
@@ -671,7 +671,7 @@ int main() try {
     throw std::runtime_error(
         "detached capture lifetime scenario did not enter the capture worker");
   }
-  std::weak_ptr<LiveKitPublicationClient> detached_client_weak =
+  std::weak_ptr<LiveKitVoiceSession> detached_client_weak =
       detached_client;
   detached_actor->shutdown();
   detached_actor.reset();

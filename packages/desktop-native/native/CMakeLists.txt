@@ -108,7 +108,7 @@ add_library(syrnike_media_core STATIC
   src/media/camera_actor.cpp
   src/media/camera_capture.cpp
   src/media/display_sources.cpp
-  src/media/livekit_publication_client.cpp
+  src/media/livekit_voice_session.cpp
   src/media/media_runtime.cpp
   src/media/media_runtime_support.cpp
   src/media/media_operation.hpp
@@ -248,15 +248,15 @@ add_test(
   COMMAND syrnike-native-media-actor-lifecycle-tests
 )
 
-add_executable(syrnike-native-livekit-publication-client-tests
-  tests/livekit_publication_client_test.cpp
+add_executable(syrnike-native-livekit-voice-session-tests
+  tests/livekit_voice_session_test.cpp
 )
-syrnike_native_target(syrnike-native-livekit-publication-client-tests)
-target_link_libraries(syrnike-native-livekit-publication-client-tests PRIVATE syrnike_media_core)
-syrnike_copy_livekit_runtime(syrnike-native-livekit-publication-client-tests)
+syrnike_native_target(syrnike-native-livekit-voice-session-tests)
+target_link_libraries(syrnike-native-livekit-voice-session-tests PRIVATE syrnike_media_core)
+syrnike_copy_livekit_runtime(syrnike-native-livekit-voice-session-tests)
 add_test(
-  NAME syrnike-native-livekit-publication-client-tests
-  COMMAND syrnike-native-livekit-publication-client-tests
+  NAME syrnike-native-livekit-voice-session-tests
+  COMMAND syrnike-native-livekit-voice-session-tests
 )
 
 add_executable(syrnike-native-runtime-integration-tests

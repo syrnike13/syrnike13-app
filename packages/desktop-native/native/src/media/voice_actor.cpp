@@ -86,13 +86,13 @@ class VoiceActor::Implementation {
     SequencedEmitter& emitter,
     InternalPost post,
     IsCurrent is_current,
-    std::shared_ptr<LiveKitPublicationClient> client,
+    std::shared_ptr<LiveKitVoiceSession> voice_session,
     AsyncCleanupLauncher async_cleanup_launcher,
     AsyncCleanupEnqueueProbe async_cleanup_enqueue_probe
   ) : emitter_(emitter),
       post_gate_(std::make_shared<VoicePostGate>(std::move(post))),
       is_current_(std::move(is_current)),
-      client_(std::move(client)),
+      voice_session_(std::move(voice_session)),
       cleanup_dispatcher_(&AsyncCleanupDispatcher::instance()),
       cleanup_node_(std::make_shared<AsyncCleanupNode>(
         std::move(async_cleanup_launcher)
@@ -115,9 +115,9 @@ class VoiceActor::Implementation {
     emitter_.emit(lifecycle(command, "starting", "livekit_connecting"));
     auto state = std::make_shared<AttemptState>();
     state->command = command;
-    state->client = client_;
+    state->voice_session = voice_session_;
     auto attempt = std::thread([
-      client = client_,
+      voice_session = voice_session_,
       post_gate = post_gate_,
       state
     ] {
@@ -138,7 +138,7 @@ class VoiceActor::Implementation {
         return post_gate->post(std::move(command));
       };
       try {
-        if (!client->connectVoice(
+        if (!voice_session->connectVoice(
               command.session_id,
               command.generation,
               command.livekit_url,
@@ -163,7 +163,7 @@ class VoiceActor::Implementation {
       }
       state->finished.store(true, std::memory_order_release);
       if (state->operation.cancelled()) {
-        disconnectOnce(state, client);
+        disconnectOnce(state, voice_session);
         return;
       }
       post_gate->post(std::move(completion));
@@ -244,15 +244,15 @@ class VoiceActor::Implementation {
     VoiceAttemptCommit commit;
     std::atomic_bool finished{false};
     std::atomic_bool disconnect_started{false};
-    std::shared_ptr<LiveKitPublicationClient> client;
+    std::shared_ptr<LiveKitVoiceSession> voice_session;
   };
 
   static void disconnectOnce(
     const std::shared_ptr<AttemptState>& state,
-    const std::shared_ptr<LiveKitPublicationClient>& client
+    const std::shared_ptr<LiveKitVoiceSession>& voice_session
   ) noexcept {
     if (state && state->disconnect_started.exchange(true)) return;
-    try { client->disconnectVoice(); } catch (...) {}
+    try { voice_session->disconnectVoice(); } catch (...) {}
   }
 
   void retireAttempt(
@@ -273,16 +273,16 @@ class VoiceActor::Implementation {
     }
     if (!bounded_shutdown) {
       if (state) {
-        disconnectOnce(state, client_);
+        disconnectOnce(state, voice_session_);
       } else {
-        try { client_->disconnectVoice(); } catch (...) {}
+        try { voice_session_->disconnectVoice(); } catch (...) {}
       }
       if (attempt.joinable() &&
           attempt.get_id() != std::this_thread::get_id()) {
         attempt.join();
       }
     } else if (attempt.joinable()) {
-      // A blocked SDK connect owns the client and runtime token. Quarantine it
+      // A blocked SDK connect owns the session and runtime token. Quarantine it
       // instead of making actor shutdown wait; the worker disconnects exactly
       // once after a late connect returns.
       attempt.detach();
@@ -292,7 +292,7 @@ class VoiceActor::Implementation {
           [](void* owner) noexcept {
             auto* attempt = static_cast<AttemptState*>(owner);
             if (attempt->disconnect_started.exchange(true)) return;
-            try { attempt->client->disconnectVoice(); } catch (...) {}
+            try { attempt->voice_session->disconnectVoice(); } catch (...) {}
           }
         );
         cleanup_dispatcher_->submit(
@@ -302,10 +302,10 @@ class VoiceActor::Implementation {
       }
     } else {
       cleanup_node_->prepare(
-        client_,
+        voice_session_,
         [](void* owner) noexcept {
-          auto* client = static_cast<LiveKitPublicationClient*>(owner);
-          try { client->disconnectVoice(); } catch (...) {}
+          auto* voice_session = static_cast<LiveKitVoiceSession*>(owner);
+          try { voice_session->disconnectVoice(); } catch (...) {}
         }
       );
       cleanup_dispatcher_->submit(
@@ -321,7 +321,7 @@ class VoiceActor::Implementation {
   SequencedEmitter& emitter_;
   std::shared_ptr<VoicePostGate> post_gate_;
   IsCurrent is_current_;
-  std::shared_ptr<LiveKitPublicationClient> client_;
+  std::shared_ptr<LiveKitVoiceSession> voice_session_;
   AsyncCleanupDispatcher* cleanup_dispatcher_;
   std::shared_ptr<AsyncCleanupNode> cleanup_node_;
   AsyncCleanupEnqueueProbe async_cleanup_enqueue_probe_;
@@ -335,14 +335,14 @@ VoiceActor::VoiceActor(
   SequencedEmitter& emitter,
   InternalPost post,
   IsCurrent is_current,
-  std::shared_ptr<LiveKitPublicationClient> client,
+  std::shared_ptr<LiveKitVoiceSession> voice_session,
   AsyncCleanupLauncher async_cleanup_launcher,
   AsyncCleanupEnqueueProbe async_cleanup_enqueue_probe
 ) : implementation_(std::make_unique<Implementation>(
       emitter,
       std::move(post),
       std::move(is_current),
-      std::move(client),
+      std::move(voice_session),
       std::move(async_cleanup_launcher),
       std::move(async_cleanup_enqueue_probe)
     )) {}

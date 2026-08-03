@@ -6,7 +6,7 @@
 #include <thread>
 
 #include "camera_capture.hpp"
-#include "livekit_publication_client.hpp"
+#include "livekit_voice_session.hpp"
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
 
@@ -31,7 +31,7 @@ class CameraActor final {
     SequencedEmitter& emitter,
     InternalPost post,
     IsCurrent is_current,
-    std::shared_ptr<LiveKitPublicationClient> livekit_client,
+    std::shared_ptr<LiveKitVoiceSession> voice_session,
     std::shared_ptr<CameraCaptureFactory> capture_factory =
       createMediaFoundationCameraCaptureFactory(),
     CreateGpuVideoSource create_gpu_video_source = {},

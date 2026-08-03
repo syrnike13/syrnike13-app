@@ -20,7 +20,7 @@
 #include <livekit/track.h>
 
 #include "common/event_sink.hpp"
-#include "media/livekit_publication_client.hpp"
+#include "media/livekit_voice_session.hpp"
 #include "media/media_runtime.hpp"
 #include "media/media_runtime_support.hpp"
 #include "media/remote_video_bridge.hpp"
@@ -552,7 +552,7 @@ int main() try {
   runtime_state->reader = std::make_shared<BlockingStreamReader>();
   auto runtime_lifetime = std::make_shared<LiveKitRuntimeLifetime>();
   auto runtime_client =
-    syrnike::desktop_native::media::createRealLiveKitPublicationClient(
+    syrnike::desktop_native::media::createRealLiveKitVoiceSession(
       runtime_lifetime,
       [runtime_state](auto, auto, auto, auto, auto post) {
         auto owner = std::make_shared<BlockingVideoRoomOwner>(

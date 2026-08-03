@@ -469,7 +469,7 @@ class ScreenActor::Implementation final
 
   void initializePublication(
     IsCurrent is_current,
-    std::shared_ptr<LiveKitPublicationClient> livekit_client,
+    std::shared_ptr<LiveKitVoiceSession> voice_session,
     CommitIfCurrent commit_if_current,
     Now now
   ) {
@@ -478,7 +478,7 @@ class ScreenActor::Implementation final
         emitter_,
         post_,
         std::move(is_current),
-        std::move(livekit_client),
+        std::move(voice_session),
         std::move(commit_if_current),
         std::move(now),
         [owner](const MediaCommand& command) {
@@ -1605,7 +1605,7 @@ ScreenActor::ScreenActor(
   SequencedEmitter& emitter,
   InternalPost post,
   IsCurrent is_current,
-  std::shared_ptr<LiveKitPublicationClient> livekit_client,
+  std::shared_ptr<LiveKitVoiceSession> voice_session,
   CommitIfCurrent commit_if_current,
   Now now,
   LaunchRetireWorker launch_retire_worker,
@@ -1620,7 +1620,7 @@ ScreenActor::ScreenActor(
     )) {
   implementation_->initializePublication(
     std::move(is_current),
-    std::move(livekit_client),
+    std::move(voice_session),
     std::move(commit_if_current),
     std::move(now)
   );

@@ -170,8 +170,17 @@ in one host cannot restart either of the others.
 
 The Native Media Session is the only owner of the Windows audio endpoint
 lifecycle and the one LiveKit Room for a Connection Epoch. Track publication
-actors may publish and unpublish through that Room, but never connect,
-disconnect, replace, or retain credentials for it.
+actors submit epoch-scoped publish and unpublish operations and retain only
+their publication SID; they never receive Room, participant, or publication
+handles, and they never connect, disconnect, replace, or retain credentials for
+the Room.
+
+Room lifecycle and Room operations use separate serialization gates. A
+lifecycle transition detaches the current owner while holding the operation
+gate, then performs potentially slow teardown after releasing it. Concurrent
+Room operations wait for the current operation instead of reporting the Room as
+disconnected or silently dropping the command, while calls arriving during
+teardown immediately observe that no current owner exists.
 
 Microphone and output endpoint failures retain their original HRESULT category.
 Device invalidation, current-default changes, candidate health, and bounded

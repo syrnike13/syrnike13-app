@@ -48,13 +48,13 @@ void logRuntime(
   logger.write(event, fields);
 }
 
-std::shared_ptr<LiveKitPublicationClient> bindLiveKitRuntimeLifetime(
-  std::shared_ptr<LiveKitPublicationClient> client,
+std::shared_ptr<LiveKitVoiceSession> bindVoiceSessionRuntimeLifetime(
+  std::shared_ptr<LiveKitVoiceSession> voice_session,
   const std::shared_ptr<LiveKitRuntimeLifetime>& lifetime
 ) {
-  if (!client) client = createRealLiveKitPublicationClient(lifetime);
-  client->retainRuntimeLifetime(lifetime);
-  return client;
+  if (!voice_session) voice_session = createRealLiveKitVoiceSession(lifetime);
+  voice_session->retainRuntimeLifetime(lifetime);
+  return voice_session;
 }
 
 }  // namespace
@@ -74,7 +74,7 @@ class MediaRuntime::Implementation
  public:
   Implementation(
     EventSinkPtr sink,
-    std::shared_ptr<LiveKitPublicationClient> livekit_client,
+    std::shared_ptr<LiveKitVoiceSession> voice_session,
     MediaRuntime::SteadyNow screen_now,
     MediaRuntime::BeforeMicrophoneOperation before_microphone_operation,
     MediaRuntime::BeforeVoiceShutdown before_voice_shutdown,
@@ -91,8 +91,8 @@ class MediaRuntime::Implementation
           ? std::move(livekit_lifetime)
           : std::make_shared<LiveKitRuntimeLifetime>()
       ),
-      livekit_client_(bindLiveKitRuntimeLifetime(
-        std::move(livekit_client),
+      voice_session_(bindVoiceSessionRuntimeLifetime(
+        std::move(voice_session),
         livekit_lifetime_
       )),
       before_microphone_operation_(std::move(before_microphone_operation)),
@@ -103,12 +103,12 @@ class MediaRuntime::Implementation
       },
       [this](const std::string& session_id, std::uint64_t generation) {
         return desired_microphone_.isCurrent(session_id, generation);
-      }, livekit_client_),
+      }, voice_session_),
       screen_(emitter_, [this](MediaCommand command) {
         return postInternal(screen_commands_, std::move(command));
       }, [this](const std::string& session_id, std::uint64_t generation) {
         return desired_screen_.isCurrent(session_id, generation);
-      }, livekit_client_, [this](
+      }, voice_session_, [this](
         const std::string& session_id,
         std::uint64_t generation,
         std::function<void()> commit
@@ -123,7 +123,7 @@ class MediaRuntime::Implementation
         return postInternal(camera_commands_, std::move(command));
       }, [this](const std::string& session_id, std::uint64_t generation) {
         return desired_camera_.isCurrent(session_id, generation);
-      }, livekit_client_),
+      }, voice_session_),
       preview_(emitter_),
       voice_(emitter_, [this](MediaCommand command) {
         if (
@@ -136,7 +136,7 @@ class MediaRuntime::Implementation
         return postInternal(voice_commands_, std::move(command));
       }, [this](const std::string& session_id, std::uint64_t generation) {
         return desired_voice_.isCurrent(session_id, generation);
-      }, livekit_client_) {
+      }, voice_session_) {
     logRuntime("media_runtime_constructed");
   }
 
@@ -456,7 +456,7 @@ class MediaRuntime::Implementation
     requestShutdown();
     if (worker_.joinable() && worker_.get_id() != std::this_thread::get_id()) worker_.join();
     // Pending lossy media events own GPU frame handles through on_drop. Drain
-    // them while ScreenActor/CameraActor and the shared LiveKit client are
+    // them while ScreenActor/CameraActor and the shared voice session are
     // still alive; emitter_ is declared first and would otherwise be destroyed
     // after those owners.
     emitter_.close();
@@ -679,7 +679,7 @@ class MediaRuntime::Implementation
         command.video_source == "audio_output_fallback_default";
       const bool default_recovery_committed =
         command.video_source == "audio_output_default_recovered";
-      if (!livekit_client_->isVoiceOutputEpochCurrent(command.internal_epoch)) {
+      if (!voice_session_->isVoiceOutputEpochCurrent(command.internal_epoch)) {
         return;
       }
       RuntimeEvent event;
@@ -697,7 +697,7 @@ class MediaRuntime::Implementation
            !command.device_id.empty() && command.device_id != "default")) {
         if (!fallback_committed && !default_recovery_committed) {
           try {
-            livekit_client_->setVoiceOutputDevice(
+            voice_session_->setVoiceOutputDevice(
               "default",
               AudioOutputDeviceIntent::EndpointRecovery
             );
@@ -810,7 +810,7 @@ class MediaRuntime::Implementation
         if (command.on_drop) {
           dropCommandResource(command);
         } else {
-          livekit_client_->releaseRemoteVideoFrame(command.track_id, command.frame_sequence);
+          voice_session_->releaseRemoteVideoFrame(command.track_id, command.frame_sequence);
         }
         return;
       }
@@ -828,11 +828,11 @@ class MediaRuntime::Implementation
       event.height = command.height;
       event.on_drop = std::move(command.on_drop);
       if (!event.on_drop) {
-        const auto client = livekit_client_;
+        const auto voice_session = voice_session_;
         const auto track_id = command.track_id;
         const auto frame_sequence = command.frame_sequence;
-        event.on_drop = [client, track_id, frame_sequence] {
-          client->releaseRemoteVideoFrame(track_id, frame_sequence);
+        event.on_drop = [voice_session, track_id, frame_sequence] {
+          voice_session->releaseRemoteVideoFrame(track_id, frame_sequence);
         };
       }
       emitter_.emit(std::move(event));
@@ -852,7 +852,7 @@ class MediaRuntime::Implementation
       return;
     }
     if (command.type == "releaseRemoteVideoFrame") {
-      livekit_client_->releaseRemoteVideoFrame(command.track_id, command.frame_sequence);
+      voice_session_->releaseRemoteVideoFrame(command.track_id, command.frame_sequence);
       emitter_.emit(reply(command));
       return;
     }
@@ -860,7 +860,7 @@ class MediaRuntime::Implementation
       if (!desired_voice_.isCurrent(command.session_id, command.generation)) {
         throw std::runtime_error("stale remote video demand generation");
       }
-      livekit_client_->setRemoteVideoDemand(command.track_id, command.demanded);
+      voice_session_->setRemoteVideoDemand(command.track_id, command.demanded);
       emitter_.emit(reply(command));
       return;
     }
@@ -873,7 +873,7 @@ class MediaRuntime::Implementation
         : command.recovery_mode == "subscription"
           ? RemoteVideoRecoveryMode::Subscription
           : throw std::invalid_argument("invalid remote video recovery mode");
-      livekit_client_->retryRemoteVideo(
+      voice_session_->retryRemoteVideo(
         command.track_id,
         mode,
         command.internal_message
@@ -933,13 +933,13 @@ class MediaRuntime::Implementation
       // Device selection is the only fallible part of this bundled update.
       // Commit scalar controls only after it succeeds so a failed candidate
       // leaves the previous output configuration intact.
-      livekit_client_->setVoiceOutputDevice(
+      voice_session_->setVoiceOutputDevice(
         command.device_id,
         AudioOutputDeviceIntent::UserConfiguration
       );
-      livekit_client_->setVoiceDeafened(command.deafened);
+      voice_session_->setVoiceDeafened(command.deafened);
       if (command.has_output_volume) {
-        livekit_client_->setVoiceOutputVolume(command.output_volume);
+        voice_session_->setVoiceOutputVolume(command.output_volume);
       }
       emitter_.emit(reply(command));
       emitter_.emit(lifecycle(
@@ -955,7 +955,7 @@ class MediaRuntime::Implementation
         throw std::runtime_error("stale remote audio generation");
       }
       if (!command.has_revision) throw std::invalid_argument("revision is required");
-      livekit_client_->configureRemoteAudio(RemoteAudioSettings{
+      voice_session_->configureRemoteAudio(RemoteAudioSettings{
         command.revision,
         command.user_volumes,
         command.user_mutes,
@@ -1139,18 +1139,21 @@ class MediaRuntime::Implementation
       event.height = command.height;
       event.on_drop = std::move(command.on_drop);
       if (!event.on_drop) {
-        const auto client = livekit_client_;
+        const auto voice_session = voice_session_;
         const auto track_id = command.track_id;
         const auto frame_sequence = command.frame_sequence;
-        event.on_drop = [client, track_id, frame_sequence] {
-          client->releaseLocalCameraPreviewFrame(track_id, frame_sequence);
+        event.on_drop = [voice_session, track_id, frame_sequence] {
+          voice_session->releaseLocalCameraPreviewFrame(
+            track_id,
+            frame_sequence
+          );
         };
       }
       emitter_.emit(std::move(event));
       return;
     }
     if (command.type == "__localCameraPreviewFailed") {
-      livekit_client_->stopLocalCameraPreview(command.track_id);
+      voice_session_->stopLocalCameraPreview(command.track_id);
       RuntimeEvent event;
       event.type = "localCameraPreviewFailed";
       event.session_id = command.session_id;
@@ -1625,7 +1628,7 @@ class MediaRuntime::Implementation
 
   // Lifetime invariant: callback targets are declared before every actor that
   // captures them. Reverse member destruction therefore stops actors before
-  // their queues, generation fences, LiveKit client/lease, and emitter die.
+  // their queues, generation fences, LiveKit session/lease, and emitter die.
   SequencedEmitter emitter_;
   ActorMailbox<> voice_commands_;
   BoundedQueue<MediaCommand, 256> microphone_commands_;
@@ -1647,7 +1650,7 @@ class MediaRuntime::Implementation
   SubsystemShutdownState subsystem_shutdown_;
   std::atomic_bool subsystem_cleanup_submitted_{false};
   std::shared_ptr<LiveKitRuntimeLifetime> livekit_lifetime_;
-  std::shared_ptr<LiveKitPublicationClient> livekit_client_;
+  std::shared_ptr<LiveKitVoiceSession> voice_session_;
   MediaRuntime::BeforeMicrophoneOperation before_microphone_operation_;
   MediaRuntime::BeforeVoiceShutdown before_voice_shutdown_;
   MediaRuntime::AfterSubsystemCleanup after_subsystem_cleanup_;
@@ -1668,7 +1671,7 @@ class MediaRuntime::Implementation
 
 MediaRuntime::MediaRuntime(
   EventSinkPtr sink,
-  std::shared_ptr<LiveKitPublicationClient> livekit_client,
+  std::shared_ptr<LiveKitVoiceSession> voice_session,
   SteadyNow screen_now,
   BeforeMicrophoneOperation before_microphone_operation,
   BeforeVoiceShutdown before_voice_shutdown,
@@ -1677,7 +1680,7 @@ MediaRuntime::MediaRuntime(
   AfterSubsystemCleanup after_subsystem_cleanup
 ) : implementation_(std::make_shared<Implementation>(
       std::move(sink),
-      std::move(livekit_client),
+      std::move(voice_session),
       std::move(screen_now),
       std::move(before_microphone_operation),
       std::move(before_voice_shutdown),

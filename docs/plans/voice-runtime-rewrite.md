@@ -236,7 +236,7 @@ Create or replace with equivalent names:
 Rewrite:
 
 - `media_runtime.hpp/.cpp`
-- `livekit_publication_client.hpp/.cpp`
+- `livekit_voice_session.hpp/.cpp`
 - `microphone_actor.hpp/.cpp`
 - `screen_actor.hpp/.cpp`
 - `microphone_publication_controller.hpp/.cpp`

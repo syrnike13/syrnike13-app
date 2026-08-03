@@ -353,7 +353,7 @@ class ScreenPublicationController::Implementation
     SequencedEmitter& emitter,
     InternalPost post,
     IsCurrent is_current,
-    std::shared_ptr<LiveKitPublicationClient> livekit_client,
+    std::shared_ptr<LiveKitVoiceSession> voice_session,
     CommitIfCurrent commit_if_current,
     Now now,
     DescribePublication describe_publication,
@@ -369,7 +369,7 @@ class ScreenPublicationController::Implementation
       post_(std::make_shared<ScreenPostGate>(std::move(post))),
       is_current_(std::make_shared<ScreenCurrentGate>(
           std::move(is_current))),
-      livekit_client_(std::move(livekit_client)),
+      voice_session_(std::move(voice_session)),
       commit_if_current_(std::move(commit_if_current)),
       now_(std::move(now)),
       describe_publication_(std::move(describe_publication)),
@@ -456,7 +456,6 @@ class ScreenPublicationController::Implementation
         command.generation,
         [&] {
           prepared_->command = trackCommand(command);
-          prepared_->publication->updateIdentity(command.session_id, command.generation);
         }
       );
       if (!committed) throw std::runtime_error("stale screen connect generation");
@@ -728,7 +727,6 @@ class ScreenPublicationController::Implementation
   enum class AttemptKind { Prepare, Start };
   struct ScreenResources {
     MediaCommand command;
-    std::unique_ptr<LiveKitTrackPublication> publication;
     ScreenPublicationDescription description;
     std::shared_ptr<std::atomic_bool> capture_running;
     std::shared_ptr<syrnike::voice::ScreenAudioStopSignal> audio_stop;
@@ -842,8 +840,7 @@ class ScreenPublicationController::Implementation
     const ScreenResources& resources,
     const MediaCommand& command
   ) {
-    return resources.publication &&
-      resources.command.session_id == command.session_id &&
+    return resources.command.session_id == command.session_id &&
       resources.command.participant_identity == command.participant_identity;
   }
 
@@ -887,9 +884,6 @@ class ScreenPublicationController::Implementation
     } catch (...) {
       auto failed = std::move(candidate_);
       if (failed->obsolete) prepared_ = std::move(failed->obsolete);
-      else if (failed->resources && failed->resources->publication) {
-        prepared_ = std::move(failed->resources);
-      }
       throw ScreenActorUnresponsiveError("failed to start screen publication worker");
     }
   }
@@ -910,30 +904,8 @@ class ScreenPublicationController::Implementation
       if (!isCurrent(attempt)) throw std::runtime_error("stale screen connect generation");
       auto& resources = *attempt->resources;
       const auto& command = attempt->command;
-      if (!resources.publication) {
-        resources.publication = livekit_client_->createScreenPublication(
-          command.session_id,
-          command.generation
-        );
-        if (!resources.publication->isRoomConnected()) {
-          throw std::runtime_error("LiveKit voice Room is not connected");
-        }
-        logScreen(
-          "screen_connect_livekit_connected",
-          {
-            {"sessionId", command.session_id},
-            {"generation", command.generation},
-            {"elapsedMs", steadyNowMs() - started_at_ms}
-          }
-        );
-      } else {
-        logScreen(
-          "screen_connect_reuse_prepared_publication",
-          {{"sessionId", command.session_id}, {"generation", command.generation}}
-        );
-      }
+      voice_session_->requireVoiceSession(command.session_id);
       resources.command = trackCommand(command);
-      resources.publication->updateIdentity(command.session_id, command.generation);
       if (!isCurrent(attempt)) throw std::runtime_error("stale screen connect generation");
 
       if (attempt->kind == AttemptKind::Start) {
@@ -1044,7 +1016,9 @@ class ScreenPublicationController::Implementation
       "screen_publish_start",
       {{"sessionId", command.session_id}, {"generation", command.generation}}
     );
-    resources.video_publication_sid = resources.publication->publishVideoTrack(
+    resources.video_publication_sid = voice_session_->publishVideoTrack(
+      command.session_id,
+      command.generation,
       resources.video_track,
       video_options
     );
@@ -1074,7 +1048,9 @@ class ScreenPublicationController::Implementation
         "screen_audio_publish_start",
         {{"sessionId", command.session_id}, {"generation", command.generation}}
       );
-      resources.audio_publication_sid = resources.publication->publishAudioTrack(
+      resources.audio_publication_sid = voice_session_->publishAudioTrack(
+        command.session_id,
+        command.generation,
         resources.audio_track,
         audio_options
       );
@@ -1143,7 +1119,7 @@ class ScreenPublicationController::Implementation
     }
     if (terminal_failure) stale = false;
     if (!attempt->succeeded || !promoted) {
-      if (attempt->resources && attempt->resources->publication) {
+      if (attempt->resources) {
         retireResources(std::move(attempt->resources));
       }
       const auto failure_code = terminal_failure
@@ -1268,26 +1244,26 @@ class ScreenPublicationController::Implementation
     finish_thread(resources.audio_thread);
     resources.capturer.reset();
 
-    auto publication = std::move(resources.publication);
     auto video_sid = std::move(resources.video_publication_sid);
     auto audio_sid = std::move(resources.audio_publication_sid);
+    const auto session_id = resources.command.session_id;
+    const auto generation = resources.command.generation;
     try {
       if (before_resource_cleanup_) before_resource_cleanup_();
     } catch (...) {
     }
-    if (publication && !video_sid.empty()) {
+    if (!video_sid.empty()) {
       try {
-        publication->unpublishTrack(video_sid);
+        voice_session_->unpublishTrack(session_id, generation, video_sid);
       } catch (...) {
       }
     }
-    if (publication && !audio_sid.empty()) {
+    if (!audio_sid.empty()) {
       try {
-        publication->unpublishTrack(audio_sid);
+        voice_session_->unpublishTrack(session_id, generation, audio_sid);
       } catch (...) {
       }
     }
-    publication.reset();
     resources.video_track.reset();
     resources.audio_track.reset();
     resources.video_source.reset();
@@ -1538,7 +1514,7 @@ class ScreenPublicationController::Implementation
   SequencedEmitter& emitter_;
   std::shared_ptr<ScreenPostGate> post_;
   std::shared_ptr<ScreenCurrentGate> is_current_;
-  std::shared_ptr<LiveKitPublicationClient> livekit_client_;
+  std::shared_ptr<LiveKitVoiceSession> voice_session_;
   CommitIfCurrent commit_if_current_;
   Now now_;
   DescribePublication describe_publication_;
@@ -1568,7 +1544,7 @@ ScreenPublicationController::ScreenPublicationController(
   SequencedEmitter& emitter,
   InternalPost post,
   IsCurrent is_current,
-  std::shared_ptr<LiveKitPublicationClient> livekit_client,
+  std::shared_ptr<LiveKitVoiceSession> voice_session,
   CommitIfCurrent commit_if_current,
   Now now,
   DescribePublication describe_publication,
@@ -1584,7 +1560,7 @@ ScreenPublicationController::ScreenPublicationController(
       emitter,
       std::move(post),
       std::move(is_current),
-      std::move(livekit_client),
+      std::move(voice_session),
       std::move(commit_if_current),
       std::move(now),
       std::move(describe_publication),

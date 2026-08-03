@@ -17,7 +17,7 @@
 
 #include "common/event_sink.hpp"
 #include "common/sequenced_emitter.hpp"
-#include "media/livekit_publication_client.hpp"
+#include "media/livekit_voice_session.hpp"
 #include "media/media_runtime.hpp"
 #include "media/screen_actor.hpp"
 #include "media/screen_publication_controller.hpp"
@@ -216,7 +216,7 @@ class ScreenControllerHarness final {
  public:
   using Controller = syrnike::desktop_native::media::ScreenPublicationController;
   using FakeLiveKit =
-    syrnike::desktop_native::media::DeterministicFakeLiveKitPublicationClient;
+    syrnike::desktop_native::media::DeterministicFakeLiveKitVoiceSession;
 
   ScreenControllerHarness(
     Controller::QueryEncoderCapability query_encoder_capability,
@@ -1194,11 +1194,11 @@ int main() try {
     );
   }
 
-  using syrnike::desktop_native::media::DeterministicFakeLiveKitPublicationClient;
+  using syrnike::desktop_native::media::DeterministicFakeLiveKitVoiceSession;
   using syrnike::desktop_native::media::MediaRuntime;
 
   auto sink = std::make_shared<CollectingSink>();
-  auto livekit = std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+  auto livekit = std::make_shared<DeterministicFakeLiveKitVoiceSession>();
   const auto clock_origin = std::chrono::steady_clock::now();
   std::atomic<std::int64_t> clock_offset_ms{0};
   MediaRuntime runtime(sink, livekit, [&] {
@@ -1260,7 +1260,7 @@ int main() try {
     verifyDetachedCaptureWorkerRetainsOwner
   );
 
-  livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, false);
+  livekit->setBlocked(DeterministicFakeLiveKitVoiceSession::Operation::Publish, false);
   livekit->setVoiceSessionForTest("screen-c");
   const auto prepare_c = screenCommand("connectScreen", "prepare-c", "screen-c", 7);
   require(runtime.dispatch(prepare_c), "runtime rejected terminal-semantics prepare");

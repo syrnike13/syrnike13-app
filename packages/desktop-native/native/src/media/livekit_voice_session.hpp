@@ -28,44 +28,14 @@ enum class RemoteVideoRecoveryMode {
   Subscription,
 };
 
-// A track-scoped view into the one voice Room. It deliberately has no
-// connect/disconnect surface: credentials and Room lifetime belong exclusively
-// to LiveKitPublicationClient.
-class LiveKitTrackPublication {
- public:
-  virtual ~LiveKitTrackPublication() = default;
-
-  void retainRuntimeLifetime(
-    std::shared_ptr<LiveKitRuntimeLifetime> lifetime
-  ) noexcept {
-    runtime_lifetime_ = std::move(lifetime);
-  }
-  [[nodiscard]] std::shared_ptr<LiveKitRuntimeLifetime>
-  runtimeLifetimeToken() const noexcept {
-    return runtime_lifetime_;
-  }
-
-  virtual void updateIdentity(std::string session_id, std::uint64_t generation) = 0;
-  virtual bool isRoomConnected() const = 0;
-  virtual std::string publishAudioTrack(
-    const std::shared_ptr<livekit::LocalAudioTrack>& track,
-    const livekit::TrackPublishOptions& options
-  ) = 0;
-  virtual std::string publishVideoTrack(
-    const std::shared_ptr<livekit::LocalVideoTrack>& track,
-    const livekit::TrackPublishOptions& options
-  ) = 0;
-  virtual void unpublishTrack(const std::string& publication_sid) = 0;
-
- private:
-  std::shared_ptr<LiveKitRuntimeLifetime> runtime_lifetime_;
-};
-
-class LiveKitPublicationClient {
+// The sole owner of the native voice Room and its connection epoch. Media
+// actors submit scoped operations through this API; they never receive Room or
+// LocalTrackPublication handles whose lifetime could escape the session.
+class LiveKitVoiceSession {
  public:
   using InternalPost = std::function<bool(MediaCommand)>;
 
-  virtual ~LiveKitPublicationClient() = default;
+  virtual ~LiveKitVoiceSession() = default;
 
   void retainRuntimeLifetime(
     std::shared_ptr<LiveKitRuntimeLifetime> lifetime
@@ -74,7 +44,9 @@ class LiveKitPublicationClient {
       throw std::invalid_argument("LiveKit runtime lifetime is required");
     }
     if (runtime_lifetime_ && runtime_lifetime_ != lifetime) {
-      throw std::logic_error("LiveKit client cannot replace its runtime lifetime");
+      throw std::logic_error(
+        "LiveKit voice session cannot replace its runtime lifetime"
+      );
     }
     runtime_lifetime_ = std::move(lifetime);
   }
@@ -90,6 +62,7 @@ class LiveKitPublicationClient {
     const std::string& livekit_token,
     InternalPost post
   ) = 0;
+  virtual void requireVoiceSession(const std::string& session_id) const = 0;
   virtual bool isVoiceConnected() const = 0;
   virtual void setVoiceDeafened(bool deafened) = 0;
   virtual std::uint64_t setVoiceOutputDevice(
@@ -124,18 +97,22 @@ class LiveKitPublicationClient {
   virtual std::shared_ptr<livekit::LocalAudioTrack> createMicrophoneTrack(
     const std::shared_ptr<livekit::AudioSource>& source
   ) = 0;
-
-  virtual std::unique_ptr<LiveKitTrackPublication> createMicrophonePublication(
-    std::string session_id,
-    std::uint64_t generation
+  virtual std::string publishAudioTrack(
+    const std::string& session_id,
+    std::uint64_t generation,
+    const std::shared_ptr<livekit::LocalAudioTrack>& track,
+    const livekit::TrackPublishOptions& options
   ) = 0;
-  virtual std::unique_ptr<LiveKitTrackPublication> createScreenPublication(
-    std::string session_id,
-    std::uint64_t generation
+  virtual std::string publishVideoTrack(
+    const std::string& session_id,
+    std::uint64_t generation,
+    const std::shared_ptr<livekit::LocalVideoTrack>& track,
+    const livekit::TrackPublishOptions& options
   ) = 0;
-  virtual std::unique_ptr<LiveKitTrackPublication> createCameraPublication(
-    std::string session_id,
-    std::uint64_t generation
+  virtual void unpublishTrack(
+    const std::string& session_id,
+    std::uint64_t generation,
+    const std::string& publication_sid
   ) = 0;
 
  private:
@@ -199,16 +176,16 @@ using LiveKitVoiceRoomOwnerFactory = std::function<
     std::string,
     std::string,
     std::uint64_t,
-    LiveKitPublicationClient::InternalPost
+    LiveKitVoiceSession::InternalPost
   )
 >;
 
-std::shared_ptr<LiveKitPublicationClient> createRealLiveKitPublicationClient(
+std::shared_ptr<LiveKitVoiceSession> createRealLiveKitVoiceSession(
   std::shared_ptr<LiveKitRuntimeLifetime> runtime_lifetime,
   LiveKitVoiceRoomOwnerFactory voice_room_factory = {}
 );
 
-class DeterministicFakeLiveKitPublicationClient final : public LiveKitPublicationClient {
+class DeterministicFakeLiveKitVoiceSession final : public LiveKitVoiceSession {
  public:
   enum class Operation {
     Connect,
@@ -223,7 +200,7 @@ class DeterministicFakeLiveKitPublicationClient final : public LiveKitPublicatio
     std::optional<std::string> error_message;
   };
 
-  DeterministicFakeLiveKitPublicationClient() = default;
+  DeterministicFakeLiveKitVoiceSession() = default;
 
   bool connectVoice(
     std::string session_id,
@@ -232,6 +209,7 @@ class DeterministicFakeLiveKitPublicationClient final : public LiveKitPublicatio
     const std::string& livekit_token,
     InternalPost post
   ) override;
+  void requireVoiceSession(const std::string& session_id) const override;
   bool isVoiceConnected() const override;
   void setVoiceDeafened(bool deafened) override;
   std::uint64_t setVoiceOutputDevice(
@@ -267,17 +245,22 @@ class DeterministicFakeLiveKitPublicationClient final : public LiveKitPublicatio
     const std::shared_ptr<livekit::AudioSource>& source
   ) override;
 
-  std::unique_ptr<LiveKitTrackPublication> createMicrophonePublication(
-    std::string session_id,
-    std::uint64_t generation
+  std::string publishAudioTrack(
+    const std::string& session_id,
+    std::uint64_t generation,
+    const std::shared_ptr<livekit::LocalAudioTrack>& track,
+    const livekit::TrackPublishOptions& options
   ) override;
-  std::unique_ptr<LiveKitTrackPublication> createScreenPublication(
-    std::string session_id,
-    std::uint64_t generation
+  std::string publishVideoTrack(
+    const std::string& session_id,
+    std::uint64_t generation,
+    const std::shared_ptr<livekit::LocalVideoTrack>& track,
+    const livekit::TrackPublishOptions& options
   ) override;
-  std::unique_ptr<LiveKitTrackPublication> createCameraPublication(
-    std::string session_id,
-    std::uint64_t generation
+  void unpublishTrack(
+    const std::string& session_id,
+    std::uint64_t generation,
+    const std::string& publication_sid
   ) override;
 
   void setBlocked(Operation operation, bool blocked);
@@ -293,9 +276,6 @@ class DeterministicFakeLiveKitPublicationClient final : public LiveKitPublicatio
   std::size_t localCameraPreviewStartCount() const;
   std::size_t localCameraPreviewStopCount() const;
   std::size_t disconnectCallCount() const;
-  Release enterGate(Operation operation);
-  void recordUnpublishedPublicationSid(std::string publication_sid);
-  bool isVoiceSessionCurrent(const std::string& session_id) const;
   void setVoiceSessionForTest(std::string session_id);
 
  private:
@@ -307,6 +287,9 @@ class DeterministicFakeLiveKitPublicationClient final : public LiveKitPublicatio
 
   GateState& gateState(Operation operation);
   const GateState& gateState(Operation operation) const;
+  Release enterGate(Operation operation);
+  void recordUnpublishedPublicationSid(std::string publication_sid);
+  bool isVoiceSessionCurrent(const std::string& session_id) const;
 
   mutable std::mutex mutex_;
   std::condition_variable changed_;

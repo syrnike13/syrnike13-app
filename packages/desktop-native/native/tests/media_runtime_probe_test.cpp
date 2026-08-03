@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "common/event_sink.hpp"
-#include "media/livekit_publication_client.hpp"
+#include "media/livekit_voice_session.hpp"
 #include "media/media_runtime.hpp"
 
 namespace {
@@ -79,12 +79,12 @@ void require(bool condition, const char* message) {
 
 int main() try {
   using syrnike::desktop_native::MediaCommand;
-  using syrnike::desktop_native::media::DeterministicFakeLiveKitPublicationClient;
+  using syrnike::desktop_native::media::DeterministicFakeLiveKitVoiceSession;
   using syrnike::desktop_native::media::MediaRuntime;
 
   auto sink = std::make_shared<CollectingSink>();
-  auto livekit = std::make_shared<DeterministicFakeLiveKitPublicationClient>();
-  livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Connect, true);
+  auto livekit = std::make_shared<DeterministicFakeLiveKitVoiceSession>();
+  livekit->setBlocked(DeterministicFakeLiveKitVoiceSession::Operation::Connect, true);
 
   std::mutex slow_microphone_mutex;
   std::condition_variable slow_microphone_changed;
@@ -163,7 +163,7 @@ int main() try {
   require(runtime.dispatch(connect), "media runtime rejected voice connect");
 
   livekit->waitUntilPending(
-    DeterministicFakeLiveKitPublicationClient::Operation::Connect,
+    DeterministicFakeLiveKitVoiceSession::Operation::Connect,
     1
   );
 
@@ -192,7 +192,7 @@ int main() try {
   );
 
   livekit->releaseNext(
-    DeterministicFakeLiveKitPublicationClient::Operation::Connect
+    DeterministicFakeLiveKitVoiceSession::Operation::Connect
   );
 
   require(
