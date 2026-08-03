@@ -53,6 +53,9 @@ export function buildStageItems(options: {
 }): VoiceStageMediaItem[] {
   const participantIds = new Set(options.participants.map(({ id }) => id))
   const tracks: StageMediaTrackEntry<VideoTrack, VoiceStageMediaPublication>[] = []
+  const nativePublicationIds = new Set(
+    options.nativePublications.map(({ trackId }) => trackId),
+  )
 
   if (options.localScreenPreview) {
     participantIds.add(options.localScreenPreview.userId)
@@ -71,7 +74,7 @@ export function buildStageItems(options: {
   }
 
   for (const native of options.nativeTracks) {
-    if (native.source === 'screen') continue
+    if (native.source === 'screen' || nativePublicationIds.has(native.trackId)) continue
     const userId = baseVoiceIdentity(native.participantIdentity)
     if (!participantIds.has(userId)) continue
     tracks.push({
@@ -91,20 +94,25 @@ export function buildStageItems(options: {
   for (const publication of options.nativePublications) {
     const userId = baseVoiceIdentity(publication.participantIdentity)
     if (!participantIds.has(userId)) continue
-    const mediaId = stageMediaItemId(userId, 'screen')
-    const demanded = shouldSubscribeStageScreen({
-      isLocal: false,
-      mediaId,
-      watchedRemoteScreenIds: options.watchedRemoteScreenIds,
-    })
+    const source = publication.source
+    const mediaId = stageMediaItemId(userId, source)
+    const demanded = source === 'screen'
+      ? shouldSubscribeStageScreen({
+          isLocal: false,
+          mediaId,
+          watchedRemoteScreenIds: options.watchedRemoteScreenIds,
+        })
+      : options.filters.showRemoteStreams
     tracks.push({
       userId,
-      source: 'screen',
+      source,
       track: demanded
         ? (publication.track as unknown as VideoTrack)
         : null,
       publication: {
-        source: Track.Source.ScreenShare,
+        source: source === 'screen'
+          ? Track.Source.ScreenShare
+          : Track.Source.Camera,
         isMuted: false,
         isSubscribed: demanded,
         setSubscribed: (nextDemanded) => {
@@ -118,6 +126,7 @@ export function buildStageItems(options: {
       },
       subscribed: demanded,
       live: true,
+      error: demanded ? publication.error ?? undefined : undefined,
     })
   }
 

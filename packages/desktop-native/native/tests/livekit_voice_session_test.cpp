@@ -52,6 +52,7 @@ struct BlockingRetireState {
   bool block_output = false;
   bool output_entered = false;
   bool release_output = false;
+  bool connect_auto_subscribe = true;
 };
 
 class NoopSink final : public syrnike::desktop_native::EventSink {
@@ -77,12 +78,13 @@ class FakeVoiceRoomOwner final
   bool connect(
     const std::string&,
     const std::string&,
-    const livekit::RoomOptions&
+    const livekit::RoomOptions& options
   ) override {
     {
       std::unique_lock lock(state_->mutex);
       state_->connect_entered = true;
       state_->connect_active = true;
+      state_->connect_auto_subscribe = options.auto_subscribe;
       state_->changed.notify_all();
       if (state_->block_connect) {
         state_->changed.wait(lock, [&] { return state_->release_connect; });
@@ -126,10 +128,10 @@ class FakeVoiceRoomOwner final
     syrnike::desktop_native::media::RemoteAudioSettings
   ) override {}
   void releaseRemoteVideoFrame(std::string, std::uint64_t) override {}
+  void reconcileRemotePublication(std::string) override {}
   void setRemoteVideoDemand(std::string, bool) override {}
   void retryRemoteVideo(
     std::string,
-    syrnike::desktop_native::media::RemoteVideoRecoveryMode,
     std::string
   ) override {}
   void startLocalCameraPreview(
@@ -238,6 +240,14 @@ int main() try {
         noop_post
       )) {
     throw std::runtime_error("real client seam did not establish its first owner");
+  }
+  {
+    std::lock_guard lock(retire_state->mutex);
+    if (retire_state->connect_auto_subscribe) {
+      throw std::runtime_error(
+        "real voice session overrode the explicit-subscription connect policy"
+      );
+    }
   }
   auto replacing_owner = std::async(std::launch::async, [&] {
     return real_path_client->connectVoice(

@@ -14,7 +14,7 @@ import type {
 } from '@syrnike13/platform'
 import { isVoiceRemoteAudioSettings } from '@syrnike13/platform'
 
-export const NATIVE_RUNTIME_CONTRACT_VERSION = 6
+export const NATIVE_RUNTIME_CONTRACT_VERSION = 7
 export const NATIVE_RUNTIME_MAX_PENDING_REQUESTS = 256
 
 export const SCREEN_BACKEND_RESTART_REASONS = [
@@ -119,7 +119,6 @@ export type MediaRuntimeCommand =
   | ({
       type: 'retryRemoteVideo'
       trackId: string
-      mode: 'local' | 'subscription'
       reason: string
     } & SessionCommandBase)
   | ({
@@ -279,16 +278,16 @@ export type MediaRuntimeEvent =
     } & SessionEventBase)
   | ({ type: 'remoteVideoTrackRemoved'; trackId: string } & SessionEventBase)
   | ({
-      type: 'remoteScreenPublicationAvailable'
+      type: 'remoteVideoPublicationAvailable'
       trackId: string
       participantIdentity: string
-      source: 'screen'
+      source: 'camera' | 'screen'
     } & SessionEventBase)
   | ({
-      type: 'remoteScreenPublicationUnavailable'
+      type: 'remoteVideoPublicationUnavailable'
       trackId: string
       participantIdentity: string
-      source: 'screen'
+      source: 'camera' | 'screen'
     } & SessionEventBase)
   | ({
       type: 'remoteVideoFailed'
@@ -670,7 +669,6 @@ export function isNativeRuntimeCommand(value: unknown): value is NativeRuntimeCo
         typeof value.demanded === 'boolean'
     case 'retryRemoteVideo':
       return isSessionCommand(value) && isNonEmptyString(value.trackId, 512) &&
-        (value.mode === 'local' || value.mode === 'subscription') &&
         isNonEmptyString(value.reason, 256)
     case 'setLocalScreenPreviewDemand':
       return isSessionCommand(value) && typeof value.demanded === 'boolean' &&
@@ -1026,11 +1024,11 @@ export function isNativeRuntimeEvent(
       )
     case 'remoteVideoTrackRemoved':
       return isNonEmptyString(value.trackId, 512)
-    case 'remoteScreenPublicationAvailable':
-    case 'remoteScreenPublicationUnavailable':
+    case 'remoteVideoPublicationAvailable':
+    case 'remoteVideoPublicationUnavailable':
       return isNonEmptyString(value.trackId, 512) &&
         isNonEmptyString(value.participantIdentity, 512) &&
-        value.source === 'screen'
+        (value.source === 'camera' || value.source === 'screen')
     case 'localScreenPreviewTrackRemoved':
       return isNonEmptyString(value.trackId, 512) && value.source === 'screen'
     case 'localCameraPreviewTrackRemoved':

@@ -72,7 +72,7 @@ describe('desktop voice stage channel scope', () => {
     )
   })
 
-  it('keeps a delayed native subscription loading without making it terminal', () => {
+  it('exposes a terminal native subscription failure instead of loading forever', () => {
     const items = buildStageItems({
       room: null,
       participants: [{ id: 'remote' }],
@@ -96,7 +96,7 @@ describe('desktop voice stage channel scope', () => {
       id: 'remote:screen',
       subscribed: true,
       track: null,
-      error: undefined,
+      error: 'Не удалось подключиться к демонстрации после 10 попыток',
     }))
   })
 
@@ -154,6 +154,42 @@ describe('desktop voice stage channel scope', () => {
       'voice-session',
       2,
       'screen',
+      true,
+    )
+  })
+
+  it('creates demand for a visible native camera before its first frame', () => {
+    const setNativeDemand = vi.fn()
+    const items = buildStageItems({
+      room: null,
+      participants: [{ id: 'remote' }],
+      currentUserId: 'local',
+      filters: {
+        showOwnStream: true,
+        showRemoteStreams: true,
+        showParticipantsWithoutMedia: true,
+      },
+      watchedRemoteScreenIds: new Set(),
+      nativeTracks: [],
+      nativePublications: [{
+        ...publication('remote', 'camera'),
+        source: 'camera',
+      }],
+      localScreenPreview: null,
+      setNativeDemand,
+    })
+
+    expect(items).toContainEqual(expect.objectContaining({
+      id: 'remote:camera',
+      subscribed: true,
+      track: null,
+    }))
+    const camera = items.find((item) => item.id === 'remote:camera')
+    camera?.publication?.setSubscribed?.(true)
+    expect(setNativeDemand).toHaveBeenCalledWith(
+      'voice-session',
+      2,
+      'camera',
       true,
     )
   })

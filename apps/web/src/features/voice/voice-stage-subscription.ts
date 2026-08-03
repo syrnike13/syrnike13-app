@@ -37,12 +37,7 @@ export function applyStageScreenPublicationSubscription(
   subscribed: boolean,
 ) {
   if (!publication) return
-  if (
-    publication.source !== Track.Source.ScreenShare &&
-    publication.source !== Track.Source.ScreenShareAudio
-  ) {
-    return
-  }
+  if (publication.source !== Track.Source.ScreenShare) return
   if (publication.isSubscribed === subscribed) return
   publication.setSubscribed?.(subscribed)
 }

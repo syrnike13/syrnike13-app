@@ -255,6 +255,43 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     ])
   })
 
+  it('lists a camera publication before its demand can produce a frame', () => {
+    const registry = new NativeVideoRegistry()
+    const camera = publicationMessage('available')
+    camera.metadata.trackId = 'remote-camera'
+    camera.metadata.source = 'camera'
+
+    deliver(registry, camera)
+
+    expect(registry.listPublications()).toEqual([
+      expect.objectContaining({
+        trackId: 'remote-camera',
+        source: 'camera',
+        track: null,
+      }),
+    ])
+  })
+
+  it('stores a terminal publication error and clears it for an explicit retry', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, {
+      type: 'syrnike-native-video-publication-failed',
+      metadata: {
+        trackId: 'remote-screen',
+        sessionId: 'session',
+        generation: 1,
+        message: 'Не удалось подключиться к видеопотоку',
+      },
+    })
+
+    expect(registry.listPublications()[0]?.error).toBe(
+      'Не удалось подключиться к видеопотоку',
+    )
+    registry.clearPublicationError('remote-screen')
+    expect(registry.listPublications()[0]?.error).toBeNull()
+  })
+
   it('removes materialized video without removing publication availability', () => {
     const registry = new NativeVideoRegistry()
     deliver(registry, publicationMessage('available'))
@@ -463,10 +500,10 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
 
     expect(runtimeWindow.addEventListener).toHaveBeenCalledOnce()
     expect(
-      runtimeWindow.syrnikeDesktop.media.replayRemoteScreenPublications,
+      runtimeWindow.syrnikeDesktop.media.replayRemoteVideoPublications,
     ).toHaveBeenCalledOnce()
     expect(runtimeWindow.addEventListener.mock.invocationCallOrder[0]).toBeLessThan(
-      runtimeWindow.syrnikeDesktop.media.replayRemoteScreenPublications.mock
+      runtimeWindow.syrnikeDesktop.media.replayRemoteVideoPublications.mock
         .invocationCallOrder[0],
     )
   })
@@ -533,7 +570,7 @@ function removalMessage(generation: number) {
 
 function publicationMessage(state: 'available' | 'unavailable') {
   return {
-    type: `syrnike-native-screen-publication-${state}`,
+    type: `syrnike-native-video-publication-${state}`,
     metadata: {
       trackId: 'remote-screen',
       participantIdentity: 'remote-user',
@@ -601,7 +638,7 @@ function createRuntimeWindow() {
     location: { origin: 'https://app.test' },
     syrnikeDesktop: {
       media: {
-        replayRemoteScreenPublications: vi.fn(async () => undefined),
+        replayRemoteVideoPublications: vi.fn(async () => undefined),
       },
     },
     addEventListener: vi.fn(),

@@ -16,6 +16,7 @@
 #include "media/audio_constants.hpp"
 #include "media/camera_capture.hpp"
 #include "media/livekit_connect_policy.hpp"
+#include "media/livekit_voice_session.hpp"
 #include "media/media_operation.hpp"
 #include "media/microphone_audio_processor.hpp"
 #include "media/microphone_echo_reference.hpp"
@@ -261,6 +262,19 @@ int main() try {
   require(
     room_options.join_retries.has_value() && *room_options.join_retries == 0,
     "LiveKit initial join retries can exceed the host request deadline"
+  );
+  require(
+    !room_options.auto_subscribe,
+    "LiveKit voice policy must leave remote subscriptions to Media Demand"
+  );
+  require(
+    syrnike::desktop_native::media::chooseRemoteVideoRecoveryAction(true, 0) ==
+      syrnike::desktop_native::media::RemoteVideoRecoveryAction::RestartLocalBridge &&
+    syrnike::desktop_native::media::chooseRemoteVideoRecoveryAction(true, 1) ==
+      syrnike::desktop_native::media::RemoteVideoRecoveryAction::ReplaceSubscription &&
+    syrnike::desktop_native::media::chooseRemoteVideoRecoveryAction(false, 0) ==
+      syrnike::desktop_native::media::RemoteVideoRecoveryAction::ReplaceSubscription,
+    "remote video recovery no longer escalates from the smallest failed layer"
   );
   require(
     LiveKitConnectPolicy::remainingConnectTimeout(

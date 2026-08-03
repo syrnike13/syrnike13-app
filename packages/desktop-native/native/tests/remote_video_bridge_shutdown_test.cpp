@@ -367,10 +367,10 @@ class BlockingVideoRoomOwner final
   void setOutputVolume(float) override {}
   void configureRemoteAudio(RemoteAudioSettings) override {}
   void releaseRemoteVideoFrame(std::string, std::uint64_t) override {}
+  void reconcileRemotePublication(std::string) override {}
   void setRemoteVideoDemand(std::string, bool) override {}
   void retryRemoteVideo(
     std::string,
-    syrnike::desktop_native::media::RemoteVideoRecoveryMode,
     std::string
   ) override {}
   void startLocalCameraPreview(

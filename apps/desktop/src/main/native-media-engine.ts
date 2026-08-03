@@ -178,16 +178,16 @@ export function registerNativeMediaRuntimeIpc(
       })
       return
     }
-    if (event.type === 'remoteScreenPublicationAvailable' ||
-      event.type === 'remoteScreenPublicationUnavailable') {
+    if (event.type === 'remoteVideoPublicationAvailable' ||
+      event.type === 'remoteVideoPublicationUnavailable') {
       if (!controller.isCurrentVoiceSession(event.sessionId, event.generation)) return
       const window = getWindow()
       if (window && !window.isDestroyed()) {
-        const suffix = event.type === 'remoteScreenPublicationAvailable'
+        const suffix = event.type === 'remoteVideoPublicationAvailable'
           ? 'available'
           : 'unavailable'
         window.webContents.send(
-          `syrnike-desktop:media:remote-screen-publication-${suffix}`,
+          `syrnike-desktop:media:remote-video-publication-${suffix}`,
           {
             trackId: event.trackId,
             participantIdentity: event.participantIdentity,

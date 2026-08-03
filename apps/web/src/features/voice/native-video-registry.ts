@@ -38,7 +38,8 @@ type PublicationEntry = {
   generation: number
   trackId: string
   participantIdentity: string
-  source: 'screen'
+  source: NativeVideoSource
+  error: string | null
   adapter: NativeVideoTrackAdapter
 }
 
@@ -49,9 +50,10 @@ export type NativeVideoRegistryTrack = NativeVideoTrackMetadata & {
   consumerCount: number
 }
 
-export type NativeVideoRegistryPublication = Omit<PublicationEntry, 'adapter'> & {
+export type NativeVideoRegistryPublication = Omit<PublicationEntry, 'adapter' | 'error'> & {
   demandTrackId: string
   track: NativeVideoTrackAdapter | null
+  error?: string | null
 }
 
 export class NativeVideoTrackAdapter {
@@ -103,7 +105,7 @@ export class NativeVideoRegistry {
       document.addEventListener('visibilitychange', this.onVisibilityChange)
     }
     void window.syrnikeDesktop?.media
-      .replayRemoteScreenPublications()
+      .replayRemoteVideoPublications()
       .catch(() => undefined)
   }
 
@@ -181,6 +183,13 @@ export class NativeVideoRegistry {
     })
   }
 
+  clearPublicationError(trackId: string) {
+    const publication = this.publications.get(trackId)
+    if (!publication?.error) return
+    publication.error = null
+    this.notify()
+  }
+
   attachCanvas(
     trackId: string,
     canvas: HTMLCanvasElement,
@@ -245,9 +254,20 @@ export class NativeVideoRegistry {
       this.clearRemote()
       return
     }
+    if (isPublicationFailureMessage(event.data)) {
+      const { metadata } = event.data
+      if (!this.isActiveRemoteSession(metadata)) return
+      const publication = this.publications.get(metadata.trackId)
+      if (!publication || publication.sessionId !== metadata.sessionId ||
+        publication.generation !== metadata.generation) return
+      publication.error = metadata.message
+      this.removeTrack(metadata.trackId, metadata)
+      this.notify()
+      return
+    }
     if (isPublicationMessage(event.data)) {
       const { metadata } = event.data
-      if (event.data.type === 'syrnike-native-screen-publication-unavailable') {
+      if (event.data.type === 'syrnike-native-video-publication-unavailable') {
         if (!this.isActiveRemoteSession(metadata)) return
         const publication = this.publications.get(metadata.trackId)
         if (publication &&
@@ -271,6 +291,7 @@ export class NativeVideoRegistry {
       }
       this.publications.set(metadata.trackId, {
         ...metadata,
+        error: null,
         adapter: current?.sessionId === metadata.sessionId &&
             current.generation === metadata.generation
           ? current.adapter
@@ -354,7 +375,7 @@ export class NativeVideoRegistry {
     }
 
     if (!entry) {
-      const publication = metadata.source === 'screen' && !metadata.local
+      const publication = !metadata.local
         ? this.publications.get(metadata.trackId)
         : undefined
       entry = {
@@ -369,6 +390,14 @@ export class NativeVideoRegistry {
       this.notify()
     } else {
       entry.metadata = metadata
+    }
+
+    const publication = !metadata.local
+      ? this.publications.get(metadata.trackId)
+      : undefined
+    if (publication?.error) {
+      publication.error = null
+      this.notify()
     }
 
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
@@ -567,12 +596,12 @@ function isSessionResetMessage(value: unknown): value is {
 }
 
 function isPublicationMessage(value: unknown): value is {
-  type: 'syrnike-native-screen-publication-available' |
-    'syrnike-native-screen-publication-unavailable'
+  type: 'syrnike-native-video-publication-available' |
+    'syrnike-native-video-publication-unavailable'
   metadata: {
     trackId: string
     participantIdentity: string
-    source: 'screen'
+    source: NativeVideoSource
     sessionId: string
     generation: number
   }
@@ -581,14 +610,33 @@ function isPublicationMessage(value: unknown): value is {
   const candidate = value as { type?: unknown; metadata?: Record<string, unknown> }
   const metadata = candidate.metadata
   return (
-    (candidate.type === 'syrnike-native-screen-publication-available' ||
-      candidate.type === 'syrnike-native-screen-publication-unavailable') &&
+    (candidate.type === 'syrnike-native-video-publication-available' ||
+      candidate.type === 'syrnike-native-video-publication-unavailable') &&
     typeof metadata?.trackId === 'string' &&
     typeof metadata.participantIdentity === 'string' &&
-    metadata.source === 'screen' &&
+    (metadata.source === 'camera' || metadata.source === 'screen') &&
     typeof metadata.sessionId === 'string' &&
     Number.isSafeInteger(metadata.generation)
   )
+}
+
+function isPublicationFailureMessage(value: unknown): value is {
+  type: 'syrnike-native-video-publication-failed'
+  metadata: {
+    trackId: string
+    sessionId: string
+    generation: number
+    message: string
+  }
+} {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as { type?: unknown; metadata?: Record<string, unknown> }
+  const metadata = candidate.metadata
+  return candidate.type === 'syrnike-native-video-publication-failed' &&
+    typeof metadata?.trackId === 'string' &&
+    typeof metadata.sessionId === 'string' &&
+    Number.isSafeInteger(metadata.generation) &&
+    typeof metadata.message === 'string'
 }
 
 function isFrameMessage(value: unknown): value is NativeVideoFrameMessage {

@@ -23,10 +23,19 @@ namespace syrnike::desktop_native::media {
 
 class LiveKitRuntimeLifetime;
 
-enum class RemoteVideoRecoveryMode {
-  LocalBridge,
-  Subscription,
+enum class RemoteVideoRecoveryAction {
+  RestartLocalBridge,
+  ReplaceSubscription,
 };
+
+inline RemoteVideoRecoveryAction chooseRemoteVideoRecoveryAction(
+  bool has_current_track,
+  std::uint32_t local_restart_attempts
+) noexcept {
+  return has_current_track && local_restart_attempts == 0
+    ? RemoteVideoRecoveryAction::RestartLocalBridge
+    : RemoteVideoRecoveryAction::ReplaceSubscription;
+}
 
 // The sole owner of the native voice Room and its connection epoch. Media
 // actors submit scoped operations through this API; they never receive Room or
@@ -74,10 +83,10 @@ class LiveKitVoiceSession {
   virtual void setVoiceOutputVolume(float volume) = 0;
   virtual void configureRemoteAudio(RemoteAudioSettings settings) = 0;
   virtual void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) = 0;
+  virtual void reconcileRemotePublication(std::string track_id) = 0;
   virtual void setRemoteVideoDemand(std::string track_id, bool demanded) = 0;
   virtual void retryRemoteVideo(
     std::string track_id,
-    RemoteVideoRecoveryMode mode,
     std::string reason
   ) = 0;
   virtual void startLocalCameraPreview(
@@ -144,10 +153,10 @@ class LiveKitVoiceRoomOwner {
   virtual void setOutputVolume(float) = 0;
   virtual void configureRemoteAudio(RemoteAudioSettings) = 0;
   virtual void releaseRemoteVideoFrame(std::string, std::uint64_t) = 0;
+  virtual void reconcileRemotePublication(std::string) = 0;
   virtual void setRemoteVideoDemand(std::string, bool) = 0;
   virtual void retryRemoteVideo(
     std::string,
-    RemoteVideoRecoveryMode,
     std::string
   ) = 0;
   virtual void startLocalCameraPreview(
@@ -221,10 +230,10 @@ class DeterministicFakeLiveKitVoiceSession final : public LiveKitVoiceSession {
   void setVoiceOutputVolume(float volume) override;
   void configureRemoteAudio(RemoteAudioSettings settings) override;
   void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) override;
+  void reconcileRemotePublication(std::string track_id) override;
   void setRemoteVideoDemand(std::string track_id, bool demanded) override;
   void retryRemoteVideo(
     std::string track_id,
-    RemoteVideoRecoveryMode mode,
     std::string reason
   ) override;
   void startLocalCameraPreview(

@@ -67,6 +67,9 @@ export function registerNativeMediaIpc(
           generation: message.generation,
         })
         return
+      case 'remoteVideoDemandFailed':
+        win.webContents.send(IPC.mediaRemoteVideoFailed, message)
+        return
     }
   })
 
@@ -116,12 +119,12 @@ export function registerNativeMediaIpc(
   )
 
   ipcMain.handle(
-    IPC.mediaReplayRemoteScreenPublications,
+    IPC.mediaReplayRemoteVideoPublications,
     async (event) => {
-      assertTrusted(event, getWindow, 'remote screen publication replay')
-      for (const publication of controller.listRemoteScreenPublications()) {
+      assertTrusted(event, getWindow, 'remote video publication replay')
+      for (const publication of controller.listRemoteVideoPublications()) {
         event.sender.send(
-          'syrnike-desktop:media:remote-screen-publication-available',
+          'syrnike-desktop:media:remote-video-publication-available',
           publication,
         )
       }

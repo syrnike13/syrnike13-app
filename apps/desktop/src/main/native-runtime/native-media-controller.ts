@@ -24,7 +24,7 @@ const STOP_TIMEOUT_MS = 5_000
 const REMOTE_VIDEO_FIRST_FRAME_TIMEOUT_MS = 8_000
 const REMOTE_VIDEO_RETRY_BASE_DELAY_MS = 250
 const REMOTE_VIDEO_RETRY_MAX_DELAY_MS = 8_000
-const REMOTE_VIDEO_RECOVERY_WARNING_ATTEMPT = 10
+const REMOTE_VIDEO_MAX_RECOVERY_ATTEMPTS = 3
 
 type PreviewSessionState = {
   sessionId: string
@@ -39,12 +39,12 @@ type LocalScreenPreviewDemand = {
   fps: number
 }
 
-export type RemoteScreenPublication = {
+export type RemoteVideoPublication = {
   sessionId: string
   generation: number
   trackId: string
   participantIdentity: string
-  source: 'screen'
+  source: 'camera' | 'screen'
 }
 
 export type NativeMediaControllerEvent =
@@ -55,6 +55,13 @@ export type NativeMediaControllerEvent =
       type: 'remoteVideoSessionReset'
       sessionId: string
       generation: number
+    }
+  | {
+      type: 'remoteVideoDemandFailed'
+      sessionId: string
+      generation: number
+      trackId: string
+      message: string
     }
 
 export type NativeMediaControllerOptions = {
@@ -75,10 +82,7 @@ type RemoteVideoDemandState = {
   recoveryAttempt: number
   recoveryTimer: ReturnType<typeof setTimeout> | null
   recoveryPromise: Promise<boolean> | null
-  recoveryWarningEmitted: boolean
-  pendingSubscriptionRecovery: boolean
   lastFrameAt: number | null
-  ignoreFailureUntil: number
 }
 
 export class NativeMediaController {
@@ -92,9 +96,9 @@ export class NativeMediaController {
   private disposed = false
   private activeScreen: { sessionId: string; generation: number } | null = null
   private activeVoiceSession: { sessionId: string; generation: number } | null = null
-  private readonly remoteScreenPublications = new Map<
+  private readonly remoteVideoPublications = new Map<
     string,
-    RemoteScreenPublication
+    RemoteVideoPublication
   >()
   private readonly remoteVideoDemands = new Map<
     string,
@@ -216,12 +220,7 @@ export class NativeMediaController {
       recoveryAttempt: 0,
       recoveryTimer: null,
       recoveryPromise: null,
-      recoveryWarningEmitted: false,
-      pendingSubscriptionRecovery: false,
       lastFrameAt: null,
-      ignoreFailureUntil: demanded
-        ? Date.now() + this.remoteVideoFirstFrameTimeout()
-        : 0,
     }
     this.remoteVideoDemands.set(key, demand)
     this.armRemoteVideoRecovery(key, demand)
@@ -255,8 +254,8 @@ export class NativeMediaController {
     )?.demanded === true
   }
 
-  listRemoteScreenPublications(): RemoteScreenPublication[] {
-    return [...this.remoteScreenPublications.values()].map((publication) => ({
+  listRemoteVideoPublications(): RemoteVideoPublication[] {
+    return [...this.remoteVideoPublications.values()].map((publication) => ({
       ...publication,
     }))
   }
@@ -267,7 +266,6 @@ export class NativeMediaController {
       if (demand.recoveryTimer) clearTimeout(demand.recoveryTimer)
       demand.recoveryTimer = null
       demand.lastFrameAt = now
-      demand.ignoreFailureUntil = now + this.remoteVideoFirstFrameTimeout()
       this.armRemoteVideoRecovery(key, demand)
     }
   }
@@ -276,49 +274,27 @@ export class NativeMediaController {
     sessionId: string,
     generation: number,
     trackId: string,
-    mode: 'local' | 'subscription' = 'local',
   ) {
     const key = remoteVideoDemandKey(sessionId, generation, trackId)
     const desired = this.remoteVideoDemands.get(key)
     if (!desired?.demanded) return false
-    if (desired.recoveryPromise) {
-      if (mode === 'subscription') desired.pendingSubscriptionRecovery = true
-      return desired.recoveryPromise
+    if (desired.recoveryPromise) return desired.recoveryPromise
+    if (desired.recoveryAttempt >= REMOTE_VIDEO_MAX_RECOVERY_ATTEMPTS) {
+      this.exhaustRemoteVideoDemand(key, desired)
+      return false
     }
     desired.recoveryAttempt += 1
-    if (
-      desired.recoveryAttempt >= REMOTE_VIDEO_RECOVERY_WARNING_ATTEMPT &&
-      !desired.recoveryWarningEmitted
-    ) {
-      desired.recoveryWarningEmitted = true
-      this.options.diagnostics?.({
-        scope: 'native-media-controller',
-        event: 'remote_video_recovery_degraded',
-        kind: 'remote-video',
-        stage: mode === 'subscription'
-          ? 'native-subscription-retry'
-          : 'native-bridge-restart',
-        sessionId,
-        generation,
-        recoveryAttempt: desired.recoveryAttempt,
-        reason: `no_frame_after_repeated_${mode}_recoveries`,
-      })
-    }
     this.options.diagnostics?.({
       scope: 'native-media-controller',
       event: 'remote_video_recovery_started',
       kind: 'remote-video',
-      stage: mode === 'subscription'
-        ? 'native-subscription-retry'
-        : 'native-bridge-restart',
+      stage: 'native-state-aware-recovery',
       sessionId,
       generation,
       recoveryAttempt: desired.recoveryAttempt,
-      reason: mode === 'subscription'
-        ? 'livekit_subscription_failed'
-        : 'native_frame_timeout_or_local_pipeline_failure',
+      reason: 'frame_timeout_or_pipeline_failure',
     })
-    const recovery = this.performRemoteVideoRecovery(key, desired, mode)
+    const recovery = this.performRemoteVideoRecovery(key, desired)
     desired.recoveryPromise = recovery
     try {
       return await recovery
@@ -330,11 +306,6 @@ export class NativeMediaController {
     } finally {
       if (desired.recoveryPromise === recovery) {
         desired.recoveryPromise = null
-      }
-      if (desired.pendingSubscriptionRecovery &&
-        this.remoteVideoDemands.get(key) === desired && desired.demanded) {
-        desired.pendingSubscriptionRecovery = false
-        this.armRemoteVideoRecovery(key, desired, true, 'subscription')
       }
     }
   }
@@ -350,9 +321,6 @@ export class NativeMediaController {
     const recovered = demand.lastFrameAt === null || demand.recoveryAttempt > 0
     demand.lastFrameAt = Date.now()
     demand.recoveryAttempt = 0
-    demand.recoveryWarningEmitted = false
-    demand.pendingSubscriptionRecovery = false
-    demand.ignoreFailureUntil = 0
     if (recovered) {
       this.options.diagnostics?.({
         scope: 'native-media-controller',
@@ -369,18 +337,10 @@ export class NativeMediaController {
   private async performRemoteVideoRecovery(
     key: string,
     desired: RemoteVideoDemandState,
-    mode: 'local' | 'subscription',
   ) {
     if (desired.recoveryTimer) {
       clearTimeout(desired.recoveryTimer)
       desired.recoveryTimer = null
-    }
-    if (mode === 'subscription') {
-      // A confirmed LiveKit subscription failure is the only recovery allowed
-      // to detach the remote track. Fence its unsubscribe callback so it cannot
-      // start a parallel local retry.
-      desired.ignoreFailureUntil =
-        Date.now() + this.remoteVideoFirstFrameTimeout()
     }
     try {
       await this.request(
@@ -389,10 +349,7 @@ export class NativeMediaController {
           sessionId: desired.sessionId,
           generation: desired.generation,
           trackId: desired.trackId,
-          mode,
-          reason: mode === 'subscription'
-            ? 'livekit_subscription_failed'
-            : 'frame_timeout_or_local_pipeline_failure',
+          reason: 'frame_timeout_or_pipeline_failure',
         },
         2_000,
       )
@@ -402,7 +359,7 @@ export class NativeMediaController {
     } finally {
       const current = this.remoteVideoDemands.get(key)
       if (current === desired && current.demanded) {
-        this.armRemoteVideoRecovery(key, current, false, mode)
+        this.armRemoteVideoRecovery(key, current)
       }
     }
   }
@@ -439,7 +396,7 @@ export class NativeMediaController {
     }
     this.retireVoiceSession()
     this.clearRemoteVideoDemands()
-    this.remoteScreenPublications.clear()
+    this.remoteVideoPublications.clear()
     this.unsubscribeRuntimeEvent()
     this.unsubscribeRuntimeState()
     this.listeners.clear()
@@ -511,9 +468,9 @@ export class NativeMediaController {
       )
       return
     }
-    if (event.type === 'remoteScreenPublicationAvailable') {
+    if (event.type === 'remoteVideoPublicationAvailable') {
       if (!this.isCurrentVoiceSession(event.sessionId, event.generation)) return
-      this.remoteScreenPublications.set(event.trackId, {
+      this.remoteVideoPublications.set(event.trackId, {
         sessionId: event.sessionId,
         generation: event.generation,
         trackId: event.trackId,
@@ -522,9 +479,9 @@ export class NativeMediaController {
       })
       return
     }
-    if (event.type === 'remoteScreenPublicationUnavailable') {
+    if (event.type === 'remoteVideoPublicationUnavailable') {
       if (!this.isCurrentVoiceSession(event.sessionId, event.generation)) return
-      this.remoteScreenPublications.delete(event.trackId)
+      this.remoteVideoPublications.delete(event.trackId)
       const key = remoteVideoDemandKey(
         event.sessionId,
         event.generation,
@@ -544,19 +501,7 @@ export class NativeMediaController {
         event.trackId,
       )
       const demand = this.remoteVideoDemands.get(key)
-      const confirmedSubscriptionFailure = event.type === 'remoteVideoFailed' &&
-        event.reason === 'subscription'
-      if (demand?.demanded && (confirmedSubscriptionFailure ||
-        Date.now() >= demand.ignoreFailureUntil)) {
-        this.armRemoteVideoRecovery(
-          key,
-          demand,
-          true,
-          event.type === 'remoteVideoTrackRemoved' || confirmedSubscriptionFailure
-            ? 'subscription'
-            : 'local',
-        )
-      }
+      if (demand?.demanded) this.armRemoteVideoRecovery(key, demand, true)
       return
     }
     if (event.type === 'microphoneMetrics') {
@@ -703,7 +648,7 @@ export class NativeMediaController {
     if (!retired) return
     this.activeVoiceSession = null
     this.clearRemoteVideoDemands()
-    this.remoteScreenPublications.clear()
+    this.remoteVideoPublications.clear()
     this.emit({
       type: 'remoteVideoSessionReset',
       sessionId: retired.sessionId,
@@ -738,7 +683,6 @@ export class NativeMediaController {
     key: string,
     demand: RemoteVideoDemandState,
     failureKnown = false,
-    mode: 'local' | 'subscription' = 'local',
   ) {
     if (demand.recoveryTimer) clearTimeout(demand.recoveryTimer)
     demand.recoveryTimer = null
@@ -764,14 +708,47 @@ export class NativeMediaController {
         demand.sessionId,
         demand.generation,
         demand.trackId,
-        mode,
       ).catch(() => {
         if (this.remoteVideoDemands.get(key) === demand && demand.demanded) {
-          this.armRemoteVideoRecovery(key, demand, true, mode)
+          this.armRemoteVideoRecovery(key, demand, true)
         }
       })
     }, timeout)
     demand.recoveryTimer.unref?.()
+  }
+
+  private exhaustRemoteVideoDemand(
+    key: string,
+    demand: RemoteVideoDemandState,
+  ) {
+    if (this.remoteVideoDemands.get(key) !== demand) return
+    if (demand.recoveryTimer) clearTimeout(demand.recoveryTimer)
+    this.remoteVideoDemands.delete(key)
+    const message = 'Не удалось подключиться к видеопотоку'
+    this.options.diagnostics?.({
+      scope: 'native-media-controller',
+      event: 'remote_video_recovery_exhausted',
+      kind: 'remote-video',
+      stage: 'native-state-aware-recovery',
+      sessionId: demand.sessionId,
+      generation: demand.generation,
+      recoveryAttempt: demand.recoveryAttempt,
+      reason: 'recovery_budget_exhausted',
+    })
+    this.emit({
+      type: 'remoteVideoDemandFailed',
+      sessionId: demand.sessionId,
+      generation: demand.generation,
+      trackId: demand.trackId,
+      message,
+    })
+    void this.request({
+      type: 'setRemoteVideoDemand',
+      sessionId: demand.sessionId,
+      generation: demand.generation,
+      trackId: demand.trackId,
+      demanded: false,
+    }, 2_000).catch(() => undefined)
   }
 
   private remoteVideoFirstFrameTimeout() {

@@ -359,8 +359,8 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
   if (!event.session_id.empty()) result.Set("generation", jsNumber(env, event.generation));
   if (event.type == "remoteVideoFrame" || event.type == "localScreenPreviewFrame" ||
       event.type == "localCameraPreviewFrame" ||
-      event.type == "remoteScreenPublicationAvailable" ||
-      event.type == "remoteScreenPublicationUnavailable") {
+      event.type == "remoteVideoPublicationAvailable" ||
+      event.type == "remoteVideoPublicationUnavailable") {
     result.Set("participantIdentity", event.participant_identity);
     result.Set("source", event.video_source);
   }

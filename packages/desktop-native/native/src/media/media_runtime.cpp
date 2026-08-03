@@ -305,8 +305,9 @@ class MediaRuntime::Implementation
       type == "__remoteVideoFrame" ||
       type == "__remoteVideoTrackRemoved" ||
       type == "__remoteVideoFailed" ||
-      type == "__remoteScreenPublicationAvailable" ||
-      type == "__remoteScreenPublicationUnavailable" ||
+      type == "__remoteVideoPublicationAvailable" ||
+      type == "__remoteVideoPublicationUnavailable" ||
+      type == "__reconcileRemotePublication" ||
       type == "releaseRemoteVideoFrame" ||
       type == "retryRemoteVideo" ||
       type == "setRemoteVideoDemand" ||
@@ -658,18 +659,18 @@ class MediaRuntime::Implementation
       voice_.handleWorkerCommand(command);
       return;
     }
-    if (command.type == "__remoteScreenPublicationAvailable" ||
-        command.type == "__remoteScreenPublicationUnavailable") {
+    if (command.type == "__remoteVideoPublicationAvailable" ||
+        command.type == "__remoteVideoPublicationUnavailable") {
       if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
       RuntimeEvent event;
-      event.type = command.type == "__remoteScreenPublicationAvailable"
-        ? "remoteScreenPublicationAvailable"
-        : "remoteScreenPublicationUnavailable";
+      event.type = command.type == "__remoteVideoPublicationAvailable"
+        ? "remoteVideoPublicationAvailable"
+        : "remoteVideoPublicationUnavailable";
       event.session_id = command.session_id;
       event.generation = command.generation;
       event.track_id = command.track_id;
       event.participant_identity = command.participant_identity;
-      event.video_source = "screen";
+      event.video_source = command.video_source;
       emitter_.emit(std::move(event));
       return;
     }
@@ -864,18 +865,17 @@ class MediaRuntime::Implementation
       emitter_.emit(reply(command));
       return;
     }
+    if (command.type == "__reconcileRemotePublication") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
+      voice_session_->reconcileRemotePublication(command.track_id);
+      return;
+    }
     if (command.type == "retryRemoteVideo") {
       if (!desired_voice_.isCurrent(command.session_id, command.generation)) {
         throw std::runtime_error("stale remote video recovery generation");
       }
-      const auto mode = command.recovery_mode == "local"
-        ? RemoteVideoRecoveryMode::LocalBridge
-        : command.recovery_mode == "subscription"
-          ? RemoteVideoRecoveryMode::Subscription
-          : throw std::invalid_argument("invalid remote video recovery mode");
       voice_session_->retryRemoteVideo(
         command.track_id,
-        mode,
         command.internal_message
       );
       emitter_.emit(reply(command));

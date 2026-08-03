@@ -67,15 +67,22 @@ ipcRenderer.on(IPC.mediaRemoteVideoSessionReset, (_event, metadata) => {
 
 for (const state of ['available', 'unavailable'] as const) {
   ipcRenderer.on(
-    `syrnike-desktop:media:remote-screen-publication-${state}`,
+    `syrnike-desktop:media:remote-video-publication-${state}`,
     (_event, metadata) => {
       window.postMessage(
-        { type: `syrnike-native-screen-publication-${state}`, metadata },
+        { type: `syrnike-native-video-publication-${state}`, metadata },
         window.location.origin,
       )
     },
   )
 }
+
+ipcRenderer.on(IPC.mediaRemoteVideoFailed, (_event, metadata) => {
+  window.postMessage(
+    { type: 'syrnike-native-video-publication-failed', metadata },
+    window.location.origin,
+  )
+})
 
 function resolveDesktopOs(): DesktopOs {
   switch (process.platform) {
@@ -362,8 +369,8 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         demanded,
       )
     },
-    replayRemoteScreenPublications() {
-      return ipcRenderer.invoke(IPC.mediaReplayRemoteScreenPublications)
+    replayRemoteVideoPublications() {
+      return ipcRenderer.invoke(IPC.mediaReplayRemoteVideoPublications)
     },
     setLocalScreenPreviewDemand(demand) {
       return ipcRenderer.invoke(IPC.mediaSetLocalScreenPreviewDemand, demand)

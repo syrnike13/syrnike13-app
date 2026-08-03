@@ -6,6 +6,8 @@
   containment, transport lanes, and Runtime Availability ownership
 - **Implementation clarification:** 2026-07-31 — latest-wins Screen Frame
   Pipeline and progress-based GPU recovery
+- **Implementation clarification:** 2026-08-03 — explicit remote subscription
+  ownership and state-aware video recovery
 - **Supersedes:** ADR-0001 execution model and ADR-0002 media/host ownership
 
 ## Context
@@ -94,15 +96,27 @@ Media Track through it. It also subscribes to all remote audio, mixes it with
 per-user local persistent volume, and renders it through WASAPI. Remote video is
 subscribed on Media Demand and is delivered to the renderer through D3D11
 shared textures, with a CPU path reserved for tests and unsupported hardware.
+The Room connects with automatic subscription disabled. Its epoch-scoped native
+publication table keeps desired subscription, actual track, transition phase,
+and revision for every remote publication; delegate callbacks only update that
+table and queue reconciliation, while synchronous LiveKit subscription calls run
+on the Room operation path. Microphone and screen-share audio are always desired,
+while camera and screen video are desired only when Media Demand exists.
 Electron is pinned to 43.1.0 because this cutover relies on its typed
 `sharedTexture` import API; Electron 35 cannot provide the GPU bridge contract
 and is not ABI-compatible with this native distribution.
 
-Electron main retains the current remote-screen publication inventory because
+Electron main retains the current remote-video publication inventory because
 the native Voice Session outlives a renderer. A replacement renderer installs
 its message listener and then requests an atomic publication replay before it
 creates Media Demand; same-document and subframe navigation do not reset demand.
 This keeps renderer lifecycle independent from Room and publication lifecycle.
+Video recovery is requested without a caller-selected recovery mode. The native
+owner restarts the local bridge when an actual track still exists, escalates to
+subscription replacement when it does not or the local retry repeats, and resets
+the track-scoped counter only after a healthy frame. Electron bounds recovery to
+three attempts and then exposes a terminal media error with an explicit Retry;
+it never reconnects the Room for this failure.
 
 Speaking Activity is owned by the RTC Engine adapter rather than the renderer.
 The web adapter derives it from the processed local microphone and decoded

@@ -164,9 +164,10 @@ int main() try {
     }
 
     syrnike::desktop_native::MediaCommand screen_available;
-    screen_available.type = "__remoteScreenPublicationAvailable";
+    screen_available.type = "__remoteVideoPublicationAvailable";
     screen_available.track_id = "remote-screen-publication";
     screen_available.participant_identity = "remote-participant";
+    screen_available.video_source = "screen";
     if (!runtime.dispatch(std::move(screen_available))) {
       throw std::runtime_error("remote screen publication event was rejected");
     }

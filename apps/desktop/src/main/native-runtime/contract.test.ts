@@ -326,7 +326,7 @@ describe('native runtime command validation', () => {
     })).toBe(true)
   })
 
-  it('separates local bridge retries from confirmed subscription retries', () => {
+  it('delegates state-aware remote video recovery to the native owner', () => {
     const retry = {
       type: 'retryRemoteVideo',
       sessionId: 'voice-session',
@@ -335,9 +335,8 @@ describe('native runtime command validation', () => {
       reason: 'frame_timeout',
     }
 
-    expect(isNativeRuntimeCommand({ ...retry, mode: 'local' })).toBe(true)
-    expect(isNativeRuntimeCommand({ ...retry, mode: 'subscription' })).toBe(true)
-    expect(isNativeRuntimeCommand({ ...retry, mode: 'publication' })).toBe(false)
+    expect(isNativeRuntimeCommand(retry)).toBe(true)
+    expect(isNativeRuntimeCommand({ ...retry, reason: '' })).toBe(false)
     expect(isNativeRuntimeEvent({
       type: 'remoteVideoFailed',
       sequence: 1,
@@ -439,7 +438,7 @@ describe('native runtime command validation', () => {
     })).toBe(true)
   })
 
-  it('validates remote screen publication inventory events', () => {
+  it('validates generic remote video publication inventory events', () => {
     const publication = {
       sequence: 9,
       sessionId: 'voice-session',
@@ -451,16 +450,21 @@ describe('native runtime command validation', () => {
 
     expect(isNativeRuntimeEvent({
       ...publication,
-      type: 'remoteScreenPublicationAvailable',
+      type: 'remoteVideoPublicationAvailable',
     })).toBe(true)
     expect(isNativeRuntimeEvent({
       ...publication,
-      type: 'remoteScreenPublicationUnavailable',
+      type: 'remoteVideoPublicationUnavailable',
     })).toBe(true)
     expect(isNativeRuntimeEvent({
       ...publication,
-      type: 'remoteScreenPublicationAvailable',
+      type: 'remoteVideoPublicationAvailable',
       participantIdentity: '',
     })).toBe(false)
+    expect(isNativeRuntimeEvent({
+      ...publication,
+      type: 'remoteVideoPublicationAvailable',
+      source: 'camera',
+    })).toBe(true)
   })
 })
