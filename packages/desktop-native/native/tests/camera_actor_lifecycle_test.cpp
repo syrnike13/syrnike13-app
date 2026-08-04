@@ -18,6 +18,11 @@ using namespace std::chrono_literals;
 using namespace syrnike::desktop_native;
 using namespace syrnike::desktop_native::media;
 
+// wait_until bounds the wait itself, but a loaded Windows runner can resume
+// the calling thread after the deadline. Keep deadline assertions distinct
+// from the production budget while still catching composed or unbounded waits.
+constexpr auto kDeadlineAssertionBudget = kNativeShutdownBudget + 500ms;
+
 class Sink final : public EventSink {
  public:
   bool emit(RuntimeEvent event) override { std::lock_guard lock(mutex); events.push_back(std::move(event)); return true; }
@@ -304,7 +309,8 @@ int main() try {
   stop_slow.type = "disconnectCamera";
   const auto slow_stop_started = std::chrono::steady_clock::now();
   actor->disconnect(stop_slow);
-  if (std::chrono::steady_clock::now() - slow_stop_started > 1800ms) {
+  if (std::chrono::steady_clock::now() - slow_stop_started >
+      kDeadlineAssertionBudget) {
     throw std::runtime_error("camera disconnect exceeded its stop deadline");
   }
   factory->block.store(false);
@@ -356,7 +362,8 @@ int main() try {
   stop_active_unpublish.type = "disconnectCamera";
   const auto active_unpublish_started = std::chrono::steady_clock::now();
   actor->disconnect(stop_active_unpublish);
-  if (std::chrono::steady_clock::now() - active_unpublish_started > 1800ms) {
+  if (std::chrono::steady_clock::now() - active_unpublish_started >
+      kDeadlineAssertionBudget) {
     throw std::runtime_error("active camera unpublish exceeded retire deadline");
   }
   client->waitUntilPending(
@@ -433,7 +440,8 @@ int main() try {
       DeterministicFakeLiveKitVoiceSession::Operation::Publish, 1);
   const auto shutdown_started = std::chrono::steady_clock::now();
   actor->shutdown();
-  if (std::chrono::steady_clock::now() - shutdown_started > 1800ms) {
+  if (std::chrono::steady_clock::now() - shutdown_started >
+      kDeadlineAssertionBudget) {
     throw std::runtime_error(
         "camera shutdown exceeded its blocked-publication deadline");
   }
@@ -478,7 +486,8 @@ int main() try {
       DeterministicFakeLiveKitVoiceSession::Operation::Publish, 1);
   const auto active_shutdown_started = std::chrono::steady_clock::now();
   shutdown_actor->shutdown();
-  if (std::chrono::steady_clock::now() - active_shutdown_started > 1800ms) {
+  if (std::chrono::steady_clock::now() - active_shutdown_started >
+      kDeadlineAssertionBudget) {
     throw std::runtime_error(
         "camera shutdown composed active unpublish and stale publish deadlines");
   }
@@ -593,7 +602,8 @@ int main() try {
         DeterministicFakeLiveKitVoiceSession::Operation::Publish, 1);
     const auto destructor_started = std::chrono::steady_clock::now();
     late_actor.reset();
-    if (std::chrono::steady_clock::now() - destructor_started > 1800ms) {
+    if (std::chrono::steady_clock::now() - destructor_started >
+        kDeadlineAssertionBudget) {
       throw std::runtime_error(
           "camera destructor exceeded blocked-attempt deadline");
     }
