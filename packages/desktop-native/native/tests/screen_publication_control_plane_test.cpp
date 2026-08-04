@@ -17,7 +17,7 @@
 
 #include "common/event_sink.hpp"
 #include "common/sequenced_emitter.hpp"
-#include "media/livekit_publication_client.hpp"
+#include "media/livekit_voice_session.hpp"
 #include "media/media_runtime.hpp"
 #include "media/screen_actor.hpp"
 #include "media/screen_publication_controller.hpp"
@@ -189,6 +189,7 @@ class FakeScreenGpuCapturer final
   }
   void discard(
       const syrnike::desktop_native::media::ScreenGpuFrame&) noexcept override {}
+  void pollRetirement() noexcept override {}
   void setPreviewDemand(
       syrnike::desktop_native::media::ScreenPreviewDemand) override {}
   bool takePreviewFrame(
@@ -215,7 +216,7 @@ class ScreenControllerHarness final {
  public:
   using Controller = syrnike::desktop_native::media::ScreenPublicationController;
   using FakeLiveKit =
-    syrnike::desktop_native::media::DeterministicFakeLiveKitPublicationClient;
+    syrnike::desktop_native::media::DeterministicFakeLiveKitVoiceSession;
 
   ScreenControllerHarness(
     Controller::QueryEncoderCapability query_encoder_capability,
@@ -412,6 +413,35 @@ void verifyCapturePreflightFailsBeforePublication() {
     "failed capture preflight created a ghost LiveKit publication");
 }
 
+void verifyCapturePermissionFailureStopsAutomaticRetry() {
+  ScreenControllerHarness harness(
+    [] { return livekit::D3D11H264Capability{true, {}}; },
+    [](int width, int height) {
+      return std::make_shared<FakeD3D11H264VideoSource>(width, height);
+    },
+    ScreenControllerHarness::Controller::LaunchRetireWorker{},
+    ScreenControllerHarness::Controller::BeforeRetireEnqueue{},
+    ScreenControllerHarness::Controller::BeforeResourceCleanup{},
+    [](const syrnike::desktop_native::MediaCommand&,
+       const syrnike::desktop_native::media::ScreenPublicationDescription&)
+        -> std::shared_ptr<syrnike::desktop_native::media::ScreenGpuCapturer> {
+      throw std::runtime_error(
+        "gpu_permission_denied: DXGI and WGC initialization failed");
+    }
+  );
+
+  harness.controller->startCapture(screenCommand(
+    "startScreenCapture", "permission-failure", "screen-di", 1));
+  harness.handleNextWorkerCommand();
+  const auto reply = harness.sink->waitReply("permission-failure");
+  require(
+    !reply.ok && reply.error &&
+      reply.error->code == "gpu_permission_denied" &&
+      !reply.error->retryable,
+    "capture permission denial remained retryable or lost its typed error"
+  );
+}
+
 void verifyNullEncoderSourceFailsClosed() {
   std::atomic_int factory_calls{0};
   ScreenControllerHarness harness(
@@ -519,65 +549,6 @@ void releaseRetirement(ScreenControllerHarness& harness) {
   harness.handleNextWorkerCommand();
 }
 
-void verifyRtpStallRestartsCapture() {
-  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
-  auto harness = makeWorkingHarness();
-  startHarnessCapture(harness, "di-stall-start");
-  require(
-    harness.sink->countSessionStarted("screen-di", 1) == 1,
-    "initial screen capture did not emit sessionStarted exactly once"
-  );
-
-  harness.livekit->setBlocked(Operation::Unpublish, true);
-  harness.livekit->setBlocked(Operation::Publish, true);
-  auto stalled = screenCommand(
-    "__screenExecutePublicationRestart", {}, "screen-di", 1);
-  harness.controller->executePublicationRestart(stalled);
-
-  releaseRetirement(harness);
-  harness.livekit->waitUntilPending(Operation::Publish, 1, kTestWatchdog);
-  harness.livekit->releaseNext(Operation::Publish);
-  harness.handleNextWorkerCommand();
-
-  require(
-    harness.sink->countSessionStarted("screen-di", 1) == 1,
-    "internal RTP recovery emitted a duplicate sessionStarted event"
-  );
-  require(
-    harness.sink->countRepliesWithEmptyRequestId() == 0,
-    "RTP stall recovery emitted an invalid empty-request reply"
-  );
-}
-
-void verifyManualStopCancelsPendingStallRestart() {
-  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
-  auto harness = makeWorkingHarness();
-  startHarnessCapture(harness, "di-stop-start");
-
-  harness.livekit->setBlocked(Operation::Unpublish, true);
-  harness.livekit->setBlocked(Operation::Publish, true);
-  auto stalled = screenCommand(
-    "__screenExecutePublicationRestart", {}, "screen-di", 1);
-  harness.controller->executePublicationRestart(stalled);
-  harness.livekit->waitUntilPending(Operation::Unpublish, 1, kTestWatchdog);
-
-  const auto stop = screenCommand("stopScreenCapture", "di-stop", "screen-di", 1);
-  harness.controller->stopCapture(stop);
-  releaseRetirement(harness);
-  const auto probe = harness.controller->probe(
-    screenCommand("probeScreenActor", {}, "screen-di", 1)
-  );
-  require(
-    probe.state == "available" &&
-      harness.livekit->pending(Operation::Publish) == 0,
-    "manual stop launched the pending RTP stall restart"
-  );
-  require(
-    harness.sink->countSessionStarted("screen-di", 1) == 1,
-    "manual stop promoted an unexpected replacement screen capture"
-  );
-}
-
 void verifyRejectedRetireCompletionRetriesInternally() {
   using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
   auto harness = makeWorkingHarness();
@@ -606,34 +577,6 @@ void verifyRejectedRetireCompletionRetriesInternally() {
   );
 }
 
-void verifyControllerOnlyExecutesRecoveryPolicy() {
-  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
-  auto harness = makeWorkingHarness();
-  startHarnessCapture(harness, "di-budget-start");
-  harness.livekit->setBlocked(Operation::Unpublish, true);
-  harness.livekit->setBlocked(Operation::Publish, true);
-
-  auto stalled = screenCommand(
-    "__screenExecutePublicationRestart", {}, "screen-di", 1);
-  stalled.internal_message = "encoder_output_stalled";
-  for (int attempt = 0; attempt < 4; ++attempt) {
-    stalled.revision = static_cast<std::uint64_t>(attempt + 1);
-    harness.controller->executePublicationRestart(stalled);
-    releaseRetirement(harness);
-    harness.livekit->waitUntilPending(Operation::Publish, 1, kTestWatchdog);
-    harness.livekit->releaseNext(Operation::Publish);
-    harness.handleNextWorkerCommand();
-  }
-  require(
-    harness.sink->countSessionStarted("screen-di", 1) == 1,
-    "explicit recovery execution exposed internal restarts as new sessions"
-  );
-  require(
-    harness.sink->countRepliesWithEmptyRequestId() == 0,
-    "explicit recovery execution emitted an invalid empty-request reply"
-  );
-}
-
 void waitForAvailable(
   syrnike::desktop_native::media::MediaRuntime& runtime,
   const std::shared_ptr<CollectingSink>& sink,
@@ -653,38 +596,6 @@ void waitForAvailable(
     std::this_thread::sleep_for(1ms);
   }
   throw std::runtime_error("screen actor did not become available");
-}
-
-void verifyInternalRecoveryFailureDoesNotReply() {
-  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
-  auto harness = makeWorkingHarness();
-  startHarnessCapture(harness, "di-failure-start");
-  harness.livekit->setBlocked(Operation::Unpublish, true);
-  harness.livekit->setBlocked(Operation::Publish, true);
-
-  auto stalled = screenCommand(
-    "__screenExecutePublicationRestart", {}, "screen-di", 1);
-  stalled.internal_message = "encoder_output_stalled";
-  harness.controller->executePublicationRestart(stalled);
-  releaseRetirement(harness);
-  harness.livekit->waitUntilPending(Operation::Publish, 1, kTestWatchdog);
-  harness.livekit->releaseNext(
-    Operation::Publish,
-    {.error_message = "gpu_encoder_unavailable"}
-  );
-  harness.handleNextWorkerCommand();
-  const auto failure = harness.takeNextWorkerCommand();
-  require(
-    failure.type == "__screenRecoveryFailed" &&
-      failure.session_id == "screen-di" &&
-      failure.generation == 1 &&
-      failure.internal_message == "gpu_encoder_unavailable",
-    "internal recovery failure did not produce a typed media failure"
-  );
-  require(
-    harness.sink->countRepliesWithEmptyRequestId() == 0,
-    "internal recovery failure emitted a reply with an empty request id"
-  );
 }
 
 void verifyCombinedShutdownUsesOneDeadline() {
@@ -1142,6 +1053,72 @@ void verifyDetachedCaptureWorkerRetainsOwner() {
 
 int main() try {
   {
+    using syrnike::desktop_native::media::ScreenGpuCaptureError;
+    using syrnike::desktop_native::media::ScreenGpuCaptureErrorCode;
+    const ScreenGpuCaptureError dxgi(
+      ScreenGpuCaptureErrorCode::InteropUnavailable,
+      "DXGI interop is unavailable",
+      static_cast<long>(E_NOINTERFACE)
+    );
+    const ScreenGpuCaptureError wgc(
+      ScreenGpuCaptureErrorCode::PermissionDenied,
+      "WGC CreateForMonitor was denied",
+      static_cast<long>(E_ACCESSDENIED)
+    );
+    const auto combined =
+      syrnike::desktop_native::media::combineInitialMonitorCaptureFailures(
+        dxgi, wgc);
+    require(
+      combined.code() == ScreenGpuCaptureErrorCode::PermissionDenied &&
+        combined.hresult() == static_cast<long>(E_ACCESSDENIED) &&
+        combined.backendFailures().size() == 2 &&
+        combined.backendFailures()[0].hresult == dxgi.hresult() &&
+        combined.backendFailures()[1].hresult == wgc.hresult(),
+      "DXGI/WGC initialization failure did not preserve both backend causes"
+    );
+    const ScreenGpuCaptureError transient_dxgi(
+      ScreenGpuCaptureErrorCode::CaptureUnavailable,
+      "DXGI output duplication is temporarily unavailable",
+      static_cast<long>(DXGI_ERROR_NOT_CURRENTLY_AVAILABLE)
+    );
+    const auto retryable =
+      syrnike::desktop_native::media::combineInitialMonitorCaptureFailures(
+        transient_dxgi, wgc);
+    require(
+      retryable.code() == ScreenGpuCaptureErrorCode::CaptureUnavailable &&
+        retryable.hresult() == transient_dxgi.hresult(),
+      "WGC permission denial masked a retryable DXGI initialization failure"
+    );
+    const ScreenGpuCaptureError secure_desktop_dxgi(
+      ScreenGpuCaptureErrorCode::PermissionDenied,
+      "DXGI cannot access the secure desktop",
+      static_cast<long>(E_ACCESSDENIED)
+    );
+    const auto secure_desktop_retryable =
+      syrnike::desktop_native::media::combineInitialMonitorCaptureFailures(
+        secure_desktop_dxgi, wgc);
+    require(
+      secure_desktop_retryable.code() ==
+          ScreenGpuCaptureErrorCode::CaptureUnavailable &&
+        secure_desktop_retryable.hresult() == secure_desktop_dxgi.hresult(),
+      "WGC denial made a temporary DXGI secure-desktop denial terminal"
+    );
+    const ScreenGpuCaptureError mode_change_dxgi(
+      ScreenGpuCaptureErrorCode::FormatUnsupported,
+      "DXGI does not support the current display mode",
+      static_cast<long>(DXGI_ERROR_UNSUPPORTED)
+    );
+    const auto mode_change_retryable =
+      syrnike::desktop_native::media::combineInitialMonitorCaptureFailures(
+        mode_change_dxgi, wgc);
+    require(
+      mode_change_retryable.code() ==
+          ScreenGpuCaptureErrorCode::FormatUnsupported &&
+        mode_change_retryable.hresult() == mode_change_dxgi.hresult(),
+      "WGC denial made a temporary DXGI display-mode failure terminal"
+    );
+  }
+  {
     using syrnike::desktop_native::media::EncoderBackpressureStallDetector;
     EncoderBackpressureStallDetector detector;
     const auto started = std::chrono::steady_clock::now();
@@ -1201,22 +1178,27 @@ int main() try {
     require(
       detector.observe(started + 22s, true, 5, 5, 5, 5s) ==
         ScreenOutputStall::None &&
-      detector.observe(started + 28s, true, 5, 5, 5, 5s) ==
+      detector.observe(started + 23s, true, 6, 6, 6, 5s) ==
         ScreenOutputStall::None,
-      "static screen content was treated as failed output"
+      "idle refresh progress was treated as failed output"
     );
     require(
-      detector.observe(started + 29s, false, 6, 5, 5, 5s) ==
+      detector.observe(started + 29s, true, 6, 6, 6, 5s) ==
+        ScreenOutputStall::None,
+      "a static published track was misclassified as an output failure"
+    );
+    require(
+      detector.observe(started + 30s, false, 6, 6, 6, 5s) ==
         ScreenOutputStall::None,
       "inactive output retained a stale watchdog"
     );
   }
 
-  using syrnike::desktop_native::media::DeterministicFakeLiveKitPublicationClient;
+  using syrnike::desktop_native::media::DeterministicFakeLiveKitVoiceSession;
   using syrnike::desktop_native::media::MediaRuntime;
 
   auto sink = std::make_shared<CollectingSink>();
-  auto livekit = std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+  auto livekit = std::make_shared<DeterministicFakeLiveKitVoiceSession>();
   const auto clock_origin = std::chrono::steady_clock::now();
   std::atomic<std::int64_t> clock_offset_ms{0};
   MediaRuntime runtime(sink, livekit, [&] {
@@ -1228,20 +1210,14 @@ int main() try {
   verifyPhase(
     "capture preflight before publication",
     verifyCapturePreflightFailsBeforePublication);
+  verifyPhase(
+    "capture permission denial",
+    verifyCapturePermissionFailureStopsAutomaticRetry);
   verifyPhase("null encoder source", verifyNullEncoderSourceFailsClosed);
   verifyPhase("cancelled publish rollback", verifyCancelledPublishRollsBackExactSid);
-  verifyPhase("RTP stall restart", verifyRtpStallRestartsCapture);
   verifyPhase(
     "retire completion retry",
     verifyRejectedRetireCompletionRetriesInternally
-  );
-  verifyPhase("manual stop cancels restart", verifyManualStopCancelsPendingStallRestart);
-  verifyPhase(
-    "policy-free publication restart execution",
-    verifyControllerOnlyExecutesRecoveryPolicy);
-  verifyPhase(
-    "internal stall recovery failure",
-    verifyInternalRecoveryFailureDoesNotReply
   );
   verifyPhase(
     "combined screen shutdown deadline",
@@ -1284,7 +1260,7 @@ int main() try {
     verifyDetachedCaptureWorkerRetainsOwner
   );
 
-  livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, false);
+  livekit->setBlocked(DeterministicFakeLiveKitVoiceSession::Operation::Publish, false);
   livekit->setVoiceSessionForTest("screen-c");
   const auto prepare_c = screenCommand("connectScreen", "prepare-c", "screen-c", 7);
   require(runtime.dispatch(prepare_c), "runtime rejected terminal-semantics prepare");
@@ -1309,41 +1285,6 @@ int main() try {
   );
   requireProbe(runtime, sink, "probe-terminal-retire");
 
-  livekit->setVoiceSessionForTest("screen-recovery");
-  const auto prepare_recovery = screenCommand(
-    "connectScreen", "prepare-recovery", "screen-recovery", 8);
-  require(
-    runtime.dispatch(prepare_recovery),
-    "runtime rejected recovery-failure prepare");
-  require(
-    sink->waitReply("prepare-recovery").ok,
-    "recovery-failure prepare failed");
-  syrnike::desktop_native::MediaCommand recovery_failed;
-  recovery_failed.type = "__screenRecoveryFailed";
-  recovery_failed.session_id = "screen-recovery";
-  recovery_failed.generation = 8;
-  recovery_failed.internal_message = "rtp_stall_recovery_exhausted";
-  require(
-    runtime.dispatch(recovery_failed),
-    "runtime rejected internal screen recovery failure");
-  const auto recovery_ended =
-    sink->waitEvent("screenCaptureEnded", "screen-recovery", 8);
-  require(
-    recovery_ended.reason == "rtp_stall_recovery_exhausted",
-    "screen recovery circuit reason was rewritten");
-  const auto stale_recovery_retry = screenCommand(
-    "connectScreen",
-    "recovery-stale",
-    "screen-recovery",
-    8);
-  require(
-    runtime.dispatch(stale_recovery_retry),
-    "runtime rejected dispatch of a fenced recovery retry");
-  const auto stale_recovery_reply = sink->waitReply("recovery-stale");
-  require(
-    stale_recovery_reply.error &&
-      stale_recovery_reply.error->code == "stale_generation",
-    "same-generation retry escaped the recovery terminal fence");
 
   waitForAvailable(runtime, sink, "recovery-available");
   livekit->setVoiceSessionForTest("screen-recovery-next");

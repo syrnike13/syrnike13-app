@@ -178,16 +178,16 @@ export function registerNativeMediaRuntimeIpc(
       })
       return
     }
-    if (event.type === 'remoteScreenPublicationAvailable' ||
-      event.type === 'remoteScreenPublicationUnavailable') {
+    if (event.type === 'remoteVideoPublicationAvailable' ||
+      event.type === 'remoteVideoPublicationUnavailable') {
       if (!controller.isCurrentVoiceSession(event.sessionId, event.generation)) return
       const window = getWindow()
       if (window && !window.isDestroyed()) {
-        const suffix = event.type === 'remoteScreenPublicationAvailable'
+        const suffix = event.type === 'remoteVideoPublicationAvailable'
           ? 'available'
           : 'unavailable'
         window.webContents.send(
-          `syrnike-desktop:media:remote-screen-publication-${suffix}`,
+          `syrnike-desktop:media:remote-video-publication-${suffix}`,
           {
             trackId: event.trackId,
             participantIdentity: event.participantIdentity,
@@ -289,21 +289,15 @@ function createVideoBridge(
         windowVisible: Boolean(window?.isVisible()),
         windowMinimized: Boolean(window?.isMinimized()),
       })
-      if (local) return
-      const requested = await controller.recoverRemoteVideoDemand(
-        frame.sessionId,
-        frame.generation,
-        frame.trackId,
-      )
       diagnosticSink({
         scope: 'native-video',
-        event: 'presentation_recovery_requested',
-        kind: 'remote-video',
-        stage: 'native-track-restart',
+        event: 'presentation_recovered_locally',
+        kind: local ? 'local-preview' : 'remote-video',
+        stage: 'renderer-presentation',
         sessionId: frame.sessionId,
         generation: frame.generation,
         reason,
-        outcome: requested ? 'requested' : 'not-demanded',
+        outcome: 'shared-texture-generation-retired',
       })
     },
   })

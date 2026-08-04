@@ -27,6 +27,8 @@ pub mod native {
     use super::stream_imp;
     use crate::{audio_frame::AudioFrame, audio_track::RtcAudioTrack};
 
+    pub use stream_imp::NativeAudioSinkRegistration;
+
     const DEFAULT_QUEUE_SIZE_FRAMES: usize = 10;
 
     #[derive(Clone, Debug, Default)]

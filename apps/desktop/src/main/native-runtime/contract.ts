@@ -14,7 +14,7 @@ import type {
 } from '@syrnike13/platform'
 import { isVoiceRemoteAudioSettings } from '@syrnike13/platform'
 
-export const NATIVE_RUNTIME_CONTRACT_VERSION = 5
+export const NATIVE_RUNTIME_CONTRACT_VERSION = 7
 export const NATIVE_RUNTIME_MAX_PENDING_REQUESTS = 256
 
 export const SCREEN_BACKEND_RESTART_REASONS = [
@@ -116,6 +116,11 @@ export type MediaRuntimeCommand =
       SessionCommandBase)
   | ({ type: 'setRemoteVideoDemand'; trackId: string; demanded: boolean } &
       SessionCommandBase)
+  | ({
+      type: 'retryRemoteVideo'
+      trackId: string
+      reason: string
+    } & SessionCommandBase)
   | ({
       type: 'setLocalScreenPreviewDemand'
       demanded: boolean
@@ -273,19 +278,23 @@ export type MediaRuntimeEvent =
     } & SessionEventBase)
   | ({ type: 'remoteVideoTrackRemoved'; trackId: string } & SessionEventBase)
   | ({
-      type: 'remoteScreenPublicationAvailable'
+      type: 'remoteVideoPublicationAvailable'
       trackId: string
       participantIdentity: string
-      source: 'screen'
+      source: 'camera' | 'screen'
     } & SessionEventBase)
   | ({
-      type: 'remoteScreenPublicationUnavailable'
+      type: 'remoteVideoPublicationUnavailable'
       trackId: string
       participantIdentity: string
-      source: 'screen'
+      source: 'camera' | 'screen'
     } & SessionEventBase)
-  | ({ type: 'remoteVideoFailed'; trackId: string; source?: 'camera' | 'screen' } &
-      SessionEventBase)
+  | ({
+      type: 'remoteVideoFailed'
+      trackId: string
+      source?: 'camera' | 'screen'
+      reason?: 'local' | 'subscription'
+    } & SessionEventBase)
   | ({
       type: 'localScreenPreviewFrame'
       trackId: string
@@ -596,6 +605,22 @@ function isNativeMediaStats(value: unknown, sessionId: string) {
     'videoCoalescedSourceUpdates',
     'videoEncoderBackpressureTicks',
     'videoSupersededReadyFrames',
+    'videoGpuSlotTimeouts',
+    'videoGpuSlotsRecovered',
+    'videoGpuFramesDroppedStale',
+    'videoGpuPoolRollovers',
+    'videoGpuRolloversBlocked',
+    'videoGpuRetiredGenerations',
+    'videoGpuSlotsQuarantined',
+    'videoPreviewBridgeSubmissions',
+    'videoPreviewBridgeAcquires',
+    'videoPreviewBridgeTimeouts',
+    'videoPreviewBridgeSlotsRecovered',
+    'videoPreviewGpuSubmissions',
+    'videoPreviewFramesCompleted',
+    'videoPreviewSlotTimeouts',
+    'videoPreviewFramesDroppedStale',
+    'videoPreviewDeviceResets',
     'videoGpuCompletionP50Us',
     'videoGpuCompletionP95Us',
     'videoGpuCompletionMaxUs',
@@ -642,6 +667,9 @@ export function isNativeRuntimeCommand(value: unknown): value is NativeRuntimeCo
     case 'setRemoteVideoDemand':
       return isSessionCommand(value) && isNonEmptyString(value.trackId, 512) &&
         typeof value.demanded === 'boolean'
+    case 'retryRemoteVideo':
+      return isSessionCommand(value) && isNonEmptyString(value.trackId, 512) &&
+        isNonEmptyString(value.reason, 256)
     case 'setLocalScreenPreviewDemand':
       return isSessionCommand(value) && typeof value.demanded === 'boolean' &&
         isIntegerInRange(value.electronMainPid, 1, 0xffff_ffff) &&
@@ -996,11 +1024,11 @@ export function isNativeRuntimeEvent(
       )
     case 'remoteVideoTrackRemoved':
       return isNonEmptyString(value.trackId, 512)
-    case 'remoteScreenPublicationAvailable':
-    case 'remoteScreenPublicationUnavailable':
+    case 'remoteVideoPublicationAvailable':
+    case 'remoteVideoPublicationUnavailable':
       return isNonEmptyString(value.trackId, 512) &&
         isNonEmptyString(value.participantIdentity, 512) &&
-        value.source === 'screen'
+        (value.source === 'camera' || value.source === 'screen')
     case 'localScreenPreviewTrackRemoved':
       return isNonEmptyString(value.trackId, 512) && value.source === 'screen'
     case 'localCameraPreviewTrackRemoved':
@@ -1017,7 +1045,9 @@ export function isNativeRuntimeEvent(
         value.error.generation === value.generation
     case 'remoteVideoFailed':
       return isNonEmptyString(value.trackId, 512) &&
-        (value.source === undefined || value.source === 'camera' || value.source === 'screen')
+        (value.source === undefined || value.source === 'camera' || value.source === 'screen') &&
+        (value.reason === undefined || value.reason === 'local' ||
+          value.reason === 'subscription')
     case 'screenCaptureEnded':
       return (
         isNonEmptyString(value.reason, 256) &&

@@ -110,6 +110,7 @@ describe('runNativeUtilityHost', () => {
             'remoteVideo',
             'localScreenPreview',
             'localCameraPreview',
+            'directRemoteAudio',
           ],
           commit: commitSha,
           napi: process.versions.napi,

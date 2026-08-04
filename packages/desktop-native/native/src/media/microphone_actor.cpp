@@ -28,7 +28,7 @@
 #include "audio_failure.hpp"
 #include "capture_lifecycle_invariants.hpp"
 #include "livekit_disconnect_reason.hpp"
-#include "livekit_publication_client.hpp"
+#include "livekit_voice_session.hpp"
 #include "microphone_audio_processor.hpp"
 #include "microphone_capture_accumulator.hpp"
 #include "microphone_echo_reference.hpp"
@@ -69,12 +69,12 @@ class MicrophoneActor::Implementation {
     SequencedEmitter& emitter,
     InternalPost post,
     IsCurrent is_current,
-    std::shared_ptr<LiveKitPublicationClient> livekit_client,
+    std::shared_ptr<LiveKitVoiceSession> voice_session,
     MicrophoneIdleCaptureTiming idle_timing
   ) : emitter_(emitter),
       post_(std::move(post)),
       is_current_(std::move(is_current)),
-      livekit_client_(std::move(livekit_client)),
+      voice_session_(std::move(voice_session)),
       idle_timing_(idle_timing),
       publication_(
         emitter_,
@@ -85,7 +85,7 @@ class MicrophoneActor::Implementation {
         },
         [this](const auto& source) { removeSink(source); },
         [this] { return captureHealthy(); },
-        livekit_client_
+        voice_session_
       ) {
     try {
       endpoint_monitor_ = std::make_unique<AudioEndpointMonitor>(
@@ -1354,7 +1354,7 @@ class MicrophoneActor::Implementation {
       bool echo_enabled = pipelineState().config.echo_cancellation_enabled;
       std::string echo_device_id;
       if (echo_enabled) {
-        echo_device_id = livekit_client_->voiceOutputDeviceId();
+        echo_device_id = voice_session_->voiceOutputDeviceId();
         echo_reference.start(echo_device_id);
       }
       syrnike::voice::MicrophoneCaptureFrameAccumulator raw_frames(
@@ -1431,7 +1431,7 @@ class MicrophoneActor::Implementation {
             const auto active_pipeline = pipelineState();
             const auto active_config = active_pipeline.config;
             const auto desired_echo_device = active_config.echo_cancellation_enabled
-              ? livekit_client_->voiceOutputDeviceId()
+              ? voice_session_->voiceOutputDeviceId()
               : std::string{};
             if (
               active_config.echo_cancellation_enabled != echo_enabled ||
@@ -1587,7 +1587,7 @@ class MicrophoneActor::Implementation {
   SequencedEmitter& emitter_;
   InternalPost post_;
   IsCurrent is_current_;
-  std::shared_ptr<LiveKitPublicationClient> livekit_client_;
+  std::shared_ptr<LiveKitVoiceSession> voice_session_;
   MicrophoneIdleCaptureTiming idle_timing_;
   std::mutex pipeline_mutex_;
   PipelineState pipeline_;
@@ -1632,13 +1632,13 @@ MicrophoneActor::MicrophoneActor(
   SequencedEmitter& emitter,
   InternalPost post,
   IsCurrent is_current,
-  std::shared_ptr<LiveKitPublicationClient> livekit_client,
+  std::shared_ptr<LiveKitVoiceSession> voice_session,
   MicrophoneIdleCaptureTiming idle_timing
 ) : implementation_(std::make_unique<Implementation>(
       emitter,
       std::move(post),
       std::move(is_current),
-      std::move(livekit_client),
+      std::move(voice_session),
       idle_timing
     )) {}
 

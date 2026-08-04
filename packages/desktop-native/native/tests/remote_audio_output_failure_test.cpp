@@ -18,16 +18,10 @@
 
 namespace {
 
-struct BlockingOutputOwner {
-  BlockingOutputOwner(
-    syrnike::desktop_native::media::RemoteAudioOutput::WorkerFactory factory,
+struct AsyncOutputOwner {
+  explicit AsyncOutputOwner(
     syrnike::desktop_native::AsyncCleanupLauncher cleanup_launcher
-  ) : output(
-        {},
-        {},
-        std::move(factory),
-        std::move(cleanup_launcher)
-      ) {}
+  ) : output({}, {}, std::move(cleanup_launcher)) {}
 
   syrnike::desktop_native::media::RemoteAudioOutput output;
 };
@@ -202,62 +196,42 @@ int main() try {
   switcher.join();
   stopper.join();
   concurrent_output.stop();
-  bool worker_failure_delivered = false;
-  syrnike::desktop_native::media::RemoteAudioOutput worker_failure_output(
+  std::optional<syrnike::desktop_native::media::AudioFailureInfo>
+    direct_sink_failure;
+  syrnike::desktop_native::media::RemoteAudioOutput duplicate_output(
     [&](auto info, std::string, std::uint64_t) {
-      worker_failure_delivered = info.code == "audio_output_stream_start_failed";
-    },
-    {},
-    [](auto) -> std::jthread {
-      throw std::runtime_error("injected audio worker construction failure");
+      direct_sink_failure = std::move(info);
     }
   );
-  auto source = std::make_shared<livekit::AudioSource>(48'000, 1);
-  auto track = livekit::LocalAudioTrack::createLocalAudioTrack("worker-failure", source);
-  worker_failure_output.addTrack("worker-failure", "user:test", false, track);
-  worker_failure_output.stop();
-  if (!worker_failure_delivered) {
-    throw std::runtime_error("audio worker construction failure was not typed and surfaced");
-  }
-  std::atomic_int duplicate_workers{0};
-  syrnike::desktop_native::media::RemoteAudioOutput duplicate_output(
-    {},
-    {},
-    [&](auto) {
-      duplicate_workers.fetch_add(1);
-      return std::jthread([](std::stop_token token) {
-        while (!token.stop_requested()) std::this_thread::yield();
-      });
-    }
+  auto source = std::make_shared<livekit::AudioSource>(48'000, 2);
+  auto track = livekit::LocalAudioTrack::createLocalAudioTrack(
+    "direct-sink",
+    source
   );
   duplicate_output.addTrack("duplicate", "user:one", false, track);
   duplicate_output.addTrack("duplicate", "user:two", false, track);
   duplicate_output.stop();
-  if (duplicate_workers.load() != 2) {
-    throw std::runtime_error("replacement remote audio SID did not retire and restart cleanly");
+  if (direct_sink_failure) {
+    throw std::runtime_error(
+      "direct decoded-audio sink registration failed: " +
+      direct_sink_failure->message
+    );
   }
-  std::atomic_bool release_blocked_worker{false};
+
+  std::atomic_bool release_cleanup{false};
   std::atomic_int cleanup_launches{0};
-  auto blocked_owner = std::make_shared<BlockingOutputOwner>(
-    [&](auto) {
-      return std::jthread([&](std::stop_token) {
-        while (!release_blocked_worker.load()) std::this_thread::yield();
-      });
-    },
+  auto blocked_owner = std::make_shared<AsyncOutputOwner>(
     [&](syrnike::desktop_native::AsyncCleanupTask task) -> std::thread {
       if (cleanup_launches.fetch_add(1) == 0) {
         throw std::runtime_error(
           "injected remote audio quarantine launch failure"
         );
       }
-      return std::thread(std::move(task));
+      return std::thread([&, task = std::move(task)]() mutable {
+        while (!release_cleanup.load()) std::this_thread::yield();
+        task();
+      });
     }
-  );
-  blocked_owner->output.addTrack(
-    "blocked-shutdown",
-    "user:blocked",
-    false,
-    track
   );
   const auto blocked_stop_started = std::chrono::steady_clock::now();
   blocked_owner->output.stop(blocked_owner);
@@ -265,12 +239,12 @@ int main() try {
       std::chrono::milliseconds(100)) {
     throw std::runtime_error("remote audio quarantine blocked Room shutdown");
   }
-  std::weak_ptr<BlockingOutputOwner> blocked_owner_lifetime = blocked_owner;
+  std::weak_ptr<AsyncOutputOwner> blocked_owner_lifetime = blocked_owner;
   blocked_owner.reset();
   if (blocked_owner_lifetime.expired()) {
-    throw std::runtime_error("blocked remote audio worker lost its lifetime owner");
+    throw std::runtime_error("queued remote audio cleanup lost its lifetime owner");
   }
-  release_blocked_worker = true;
+  release_cleanup = true;
   const auto owner_release_deadline =
     std::chrono::steady_clock::now() + std::chrono::seconds(1);
   while (

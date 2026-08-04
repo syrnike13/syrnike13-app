@@ -35,6 +35,22 @@ describe('native media support contracts', () => {
       videoCoalescedSourceUpdates?: number
       videoEncoderBackpressureTicks?: number
       videoSupersededReadyFrames?: number
+      videoGpuSlotTimeouts?: number
+      videoGpuSlotsRecovered?: number
+      videoGpuFramesDroppedStale?: number
+      videoGpuPoolRollovers?: number
+      videoGpuRolloversBlocked?: number
+      videoGpuRetiredGenerations?: number
+      videoGpuSlotsQuarantined?: number
+      videoPreviewBridgeSubmissions?: number
+      videoPreviewBridgeAcquires?: number
+      videoPreviewBridgeTimeouts?: number
+      videoPreviewBridgeSlotsRecovered?: number
+      videoPreviewGpuSubmissions?: number
+      videoPreviewFramesCompleted?: number
+      videoPreviewSlotTimeouts?: number
+      videoPreviewFramesDroppedStale?: number
+      videoPreviewDeviceResets?: number
       videoGpuCompletionP50Us?: number
       videoGpuCompletionP95Us?: number
       videoGpuCompletionMaxUs?: number

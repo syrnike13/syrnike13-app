@@ -236,7 +236,7 @@ Create or replace with equivalent names:
 Rewrite:
 
 - `media_runtime.hpp/.cpp`
-- `livekit_publication_client.hpp/.cpp`
+- `livekit_voice_session.hpp/.cpp`
 - `microphone_actor.hpp/.cpp`
 - `screen_actor.hpp/.cpp`
 - `microphone_publication_controller.hpp/.cpp`
@@ -486,7 +486,8 @@ Repository assertions:
 
 ### Video and performance
 
-38. All remote audio is subscribed and mixed natively.
+38. Remote microphone audio is subscribed and mixed natively; screen-share
+    audio follows matching screen Media Demand.
 39. Remote video is subscribed only while demanded and quality follows demand.
 40. D3D11 shared texture handles from an old epoch are rejected.
 41. 1080p60 delivers at least 55 FPS with no freeze longer than one second.

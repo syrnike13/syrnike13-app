@@ -155,9 +155,8 @@ MediaCommand trackCommand(MediaCommand command) {
 struct MicrophonePublicationController::PublishedTrack {
   std::string session_id;
   std::uint64_t generation = 0;
-  std::string participant_identity;
   std::string publication_sid;
-  std::unique_ptr<LiveKitTrackPublication> publication;
+  std::shared_ptr<LiveKitVoiceSession> voice_session;
   std::shared_ptr<livekit::AudioSource> source;
   std::shared_ptr<livekit::LocalAudioTrack> track;
   MicrophonePipelineSnapshot pipeline;
@@ -170,7 +169,7 @@ struct MicrophonePublicationController::AttemptState {
   MicrophonePipelineSnapshot pipeline;
   std::shared_ptr<livekit::AudioSource> source;
   std::shared_ptr<livekit::LocalAudioTrack> track;
-  std::unique_ptr<LiveKitTrackPublication> publication;
+  std::shared_ptr<LiveKitVoiceSession> voice_session;
   std::thread worker;
   std::mutex mutex;
   MediaOperation operation;
@@ -213,7 +212,7 @@ class MicrophonePublicationController::Implementation {
   Implementation(SequencedEmitter &emitter, InternalPost post,
                  IsCurrent is_current, AddSink add_sink, RemoveSink remove_sink,
                  CaptureHealthy capture_healthy,
-                 std::shared_ptr<LiveKitPublicationClient> livekit_client,
+                 std::shared_ptr<LiveKitVoiceSession> voice_session,
                  ApplyMute apply_mute,
                  AsyncCleanupLauncher async_cleanup_launcher,
                  AsyncCleanupEnqueueProbe async_cleanup_enqueue_probe,
@@ -224,7 +223,7 @@ class MicrophonePublicationController::Implementation {
         add_sink_(std::move(add_sink)),
         remove_sink_(std::move(remove_sink)),
         capture_healthy_(std::move(capture_healthy)),
-        livekit_client_(std::move(livekit_client)),
+        voice_session_(std::move(voice_session)),
         apply_mute_(std::move(apply_mute)),
         cleanup_dispatcher_(&AsyncCleanupDispatcher::instance()),
         async_cleanup_launcher_(std::move(async_cleanup_launcher)),
@@ -297,6 +296,7 @@ class MicrophonePublicationController::Implementation {
       retirement_finalize_probe_;
     attempt->published_track = std::make_unique<PublishedTrack>();
     attempt->command = trackCommand(command);
+    attempt->voice_session = voice_session_;
     attempt->pipeline = pipeline;
     attempt->desired_muted = command.muted;
     attempt->source = std::make_shared<livekit::AudioSource>(
@@ -308,10 +308,10 @@ class MicrophonePublicationController::Implementation {
     try {
       attempt->worker = std::thread([
         attempt,
-        client = livekit_client_,
+        voice_session = voice_session_,
         callbacks = task_callbacks_
       ] {
-        runAttempt(attempt, client, callbacks);
+        runAttempt(attempt, voice_session, callbacks);
       });
     } catch (...) {
       removeAttemptSink(attempt);
@@ -524,20 +524,14 @@ class MicrophonePublicationController::Implementation {
  private:
   static void runAttempt(
       const std::shared_ptr<AttemptState> &attempt,
-      const std::shared_ptr<LiveKitPublicationClient>& livekit_client,
+      const std::shared_ptr<LiveKitVoiceSession>& voice_session,
       const std::shared_ptr<PublicationTaskCallbacks>& callbacks) {
-    std::unique_ptr<LiveKitTrackPublication> candidate_publication;
     std::string candidate_publication_sid;
     try {
-      candidate_publication = livekit_client->createMicrophonePublication(
-          attempt->command.session_id, attempt->command.generation);
-      if (!candidate_publication->isRoomConnected()) {
-        throw std::runtime_error("LiveKit voice Room is not connected");
-      }
       if (!isCurrentCandidate(attempt, callbacks)) {
         throw std::runtime_error("stale microphone connect generation");
       }
-      auto track = livekit_client->createMicrophoneTrack(attempt->source);
+      auto track = voice_session->createMicrophoneTrack(attempt->source);
       livekit::AudioEncodingOptions audio_encoding;
       audio_encoding.max_bitrate = attempt->command.audio_bitrate;
       livekit::TrackPublishOptions publish_options;
@@ -545,7 +539,11 @@ class MicrophonePublicationController::Implementation {
       publish_options.dtx = true;
       publish_options.source = livekit::TrackSource::SOURCE_MICROPHONE;
       candidate_publication_sid =
-          candidate_publication->publishAudioTrack(track, publish_options);
+          voice_session->publishAudioTrack(
+              attempt->command.session_id,
+              attempt->command.generation,
+              track,
+              publish_options);
       if (candidate_publication_sid.empty()) {
         throw std::runtime_error(
             "LiveKit microphone publication was not acknowledged");
@@ -563,7 +561,6 @@ class MicrophonePublicationController::Implementation {
       }
       {
         std::lock_guard lock(attempt->mutex);
-        attempt->publication = std::move(candidate_publication);
         attempt->track = std::move(track);
         attempt->publication_sid = std::move(candidate_publication_sid);
         attempt->succeeded = true;
@@ -581,9 +578,12 @@ class MicrophonePublicationController::Implementation {
         attempt->error = error.what();
         attempt->succeeded = false;
       }
-      if (candidate_publication && !candidate_publication_sid.empty()) {
+      if (!candidate_publication_sid.empty()) {
         try {
-          candidate_publication->unpublishTrack(candidate_publication_sid);
+          voice_session->unpublishTrack(
+              attempt->command.session_id,
+              attempt->command.generation,
+              candidate_publication_sid);
         } catch (...) {
         }
       }
@@ -643,10 +643,10 @@ class MicrophonePublicationController::Implementation {
                                  : "microphone publication failed")
                         : error),
           !stale);
-      if (attempt->publication && retiring_) {
+      if (!attempt->publication_sid.empty() && retiring_) {
         return;
       }
-      if (attempt->publication) {
+      if (!attempt->publication_sid.empty()) {
         auto cleanup = takePublishedTrack(attempt);
         tryStartRetiring(std::move(cleanup));
       }
@@ -662,10 +662,10 @@ class MicrophonePublicationController::Implementation {
       removeAttemptSink(attempt);
       emitAttemptFailureOnce(attempt, "stale_generation",
                              "stale microphone publish generation", false);
-      if (attempt->publication && retiring_) {
+      if (!attempt->publication_sid.empty() && retiring_) {
         return;
       }
-      if (attempt->publication) {
+      if (!attempt->publication_sid.empty()) {
         auto cleanup = takePublishedTrack(attempt);
         tryStartRetiring(std::move(cleanup));
       }
@@ -930,11 +930,10 @@ class MicrophonePublicationController::Implementation {
     std::lock_guard lock(attempt->mutex);
     room->session_id = attempt->command.session_id;
     room->generation = attempt->command.generation;
-    room->participant_identity = attempt->command.participant_identity;
     room->publication_sid = std::move(attempt->publication_sid);
+    room->voice_session = attempt->voice_session;
     room->source = std::move(attempt->source);
     room->track = std::move(attempt->track);
-    room->publication = std::move(attempt->publication);
     room->pipeline = attempt->pipeline;
     room->cleanup_node = std::move(attempt->cleanup_node);
     room->retiring_state = std::move(attempt->retiring_state);
@@ -942,30 +941,32 @@ class MicrophonePublicationController::Implementation {
   }
 
   static void unpublishTrackBlocking(PublishedTrack &room) {
-    if (room.publication) {
-      if (!room.publication_sid.empty()) {
-        try {
-          room.publication->unpublishTrack(room.publication_sid);
-          logPublication(
-              "unpublished",
-              {{"sessionId", room.session_id},
-               {"generation", room.generation}});
-        } catch (...) {
-          logPublication(
-              "unpublish_failed",
-              {{"sessionId", room.session_id},
-               {"generation", room.generation}});
-        }
+    if (room.voice_session && !room.publication_sid.empty()) {
+      try {
+        room.voice_session->unpublishTrack(
+            room.session_id, room.generation, room.publication_sid);
+        logPublication(
+            "unpublished",
+            {{"sessionId", room.session_id},
+             {"generation", room.generation}});
+      } catch (...) {
+        logPublication(
+            "unpublish_failed",
+            {{"sessionId", room.session_id},
+             {"generation", room.generation}});
       }
     }
   }
 
   static void disconnectAttemptBlocking(
       const std::shared_ptr<AttemptState> &attempt) {
-    if (!attempt || !attempt->publication) return;
+    if (!attempt || !attempt->voice_session) return;
     if (!attempt->publication_sid.empty()) {
       try {
-        attempt->publication->unpublishTrack(attempt->publication_sid);
+        attempt->voice_session->unpublishTrack(
+            attempt->command.session_id,
+            attempt->command.generation,
+            attempt->publication_sid);
       } catch (...) {
       }
     }
@@ -979,14 +980,15 @@ class MicrophonePublicationController::Implementation {
       attempt,
       [](void* owner) {
         auto* attempt = static_cast<AttemptState*>(owner);
-        if (!attempt->publication ||
+        if (!attempt->voice_session ||
             attempt->publication_sid.empty()) {
           return;
         }
         try {
-          attempt->publication->unpublishTrack(
-            attempt->publication_sid
-          );
+          attempt->voice_session->unpublishTrack(
+              attempt->command.session_id,
+              attempt->command.generation,
+              attempt->publication_sid);
         } catch (...) {
         }
       }
@@ -1032,7 +1034,7 @@ class MicrophonePublicationController::Implementation {
   AddSink add_sink_;
   RemoveSink remove_sink_;
   CaptureHealthy capture_healthy_;
-  std::shared_ptr<LiveKitPublicationClient> livekit_client_;
+  std::shared_ptr<LiveKitVoiceSession> voice_session_;
   ApplyMute apply_mute_;
   AsyncCleanupDispatcher* cleanup_dispatcher_;
   AsyncCleanupLauncher async_cleanup_launcher_;
@@ -1052,7 +1054,7 @@ class MicrophonePublicationController::Implementation {
 MicrophonePublicationController::MicrophonePublicationController(
     SequencedEmitter &emitter, InternalPost post, IsCurrent is_current,
     AddSink add_sink, RemoveSink remove_sink, CaptureHealthy capture_healthy,
-    std::shared_ptr<LiveKitPublicationClient> livekit_client,
+    std::shared_ptr<LiveKitVoiceSession> voice_session,
     ApplyMute apply_mute,
     AsyncCleanupLauncher async_cleanup_launcher,
     AsyncCleanupEnqueueProbe async_cleanup_enqueue_probe,
@@ -1060,7 +1062,7 @@ MicrophonePublicationController::MicrophonePublicationController(
     : implementation_(std::make_unique<Implementation>(
           emitter, std::move(post), std::move(is_current), std::move(add_sink),
           std::move(remove_sink), std::move(capture_healthy),
-          std::move(livekit_client), std::move(apply_mute),
+          std::move(voice_session), std::move(apply_mute),
           std::move(async_cleanup_launcher),
           std::move(async_cleanup_enqueue_probe),
           std::move(retirement_finalize_probe))) {}

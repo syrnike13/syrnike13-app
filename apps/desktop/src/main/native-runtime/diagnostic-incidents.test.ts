@@ -20,7 +20,6 @@ describe('native diagnostic incident monitor', () => {
     ['request_rejected_queue_full', 'warning'],
     ['restart_scheduled', 'warning'],
     ['runtime_event_dropped_out_of_order', 'warning'],
-    ['screen_backend_restart', 'warning'],
     ['native_contract_corruption', 'fatal'],
     ['restart_aborted_circuit_open', 'fatal'],
     ['runtime_contract_corrupt', 'fatal'],
@@ -54,6 +53,53 @@ describe('native diagnostic incident monitor', () => {
       })
     },
   )
+
+  it('reports only backend/device exhaustion recoveries', () => {
+    expect(captureNativeDiagnosticIncident({
+      scope: 'native-runtime-supervisor',
+      event: 'screen_backend_restart',
+      reason: 'reinitialize_active',
+    })).toBeNull()
+    expect(captureNativeDiagnosticIncident({
+      scope: 'native-runtime-supervisor',
+      event: 'screen_backend_restart',
+    })).toBeNull()
+    expect(captureNativeDiagnosticIncident({
+      scope: 'native-runtime-supervisor',
+      event: 'screen_backend_restart',
+      reason: 'recreate_device',
+      errorCode: 'gpu_timeout',
+    })).toMatchObject({
+      severity: 'warning',
+      reason: 'recreate_device',
+    })
+  })
+
+  it('refreshes evidence when repeated incidents are aggregated', () => {
+    const first = captureNativeDiagnosticIncident({
+      scope: 'native-runtime-supervisor',
+      event: 'screen_backend_restart',
+      reason: 'recreate_device',
+      message: 'attempt 1',
+      restartCount: 1,
+    }, 10_000)
+    const repeated = captureNativeDiagnosticIncident({
+      scope: 'native-runtime-supervisor',
+      event: 'screen_backend_restart',
+      reason: 'recreate_device',
+      message: 'attempt 2',
+      restartCount: 2,
+    }, 11_000)
+
+    expect(repeated).toBe(first)
+    expect(repeated).toMatchObject({
+      firstTimestampMs: 10_000,
+      timestampMs: 11_000,
+      occurrenceCount: 2,
+      message: 'attempt 2',
+      restartCount: 2,
+    })
+  })
 
   it('captures native failures, timeouts, and restart signals', () => {
     captureNativeDiagnosticIncident(

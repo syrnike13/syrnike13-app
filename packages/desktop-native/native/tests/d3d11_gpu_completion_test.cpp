@@ -1,4 +1,6 @@
 #include <d3d11.h>
+#include <d3d11_1.h>
+#include <dxgi1_2.h>
 #include <windows.h>
 #include <wrl/client.h>
 
@@ -12,11 +14,15 @@
 #include <vector>
 
 #include "media/d3d11_gpu_completion.hpp"
+#include "media/gpu_completion_slot_policy.hpp"
 #include "media/remote_video_texture_pool_policy.hpp"
 
 using Microsoft::WRL::ComPtr;
 using syrnike::desktop_native::media::D3d11GpuCompletion;
 using syrnike::desktop_native::media::decideD3d11GpuCompletionPoll;
+using syrnike::desktop_native::media::decideGpuCompletionSlotTransition;
+using syrnike::desktop_native::media::GpuCompletionPollClass;
+using syrnike::desktop_native::media::GpuCompletionSlotState;
 using syrnike::desktop_native::media::decideRemoteVideoSlotTransition;
 using syrnike::desktop_native::media::RemoteVideoGpuPollClass;
 using syrnike::desktop_native::media::RemoteVideoTextureSlotPhase;
@@ -46,6 +52,28 @@ int main() {
         S_FALSE, true, DXGI_ERROR_DEVICE_REMOVED);
     if (removed.result != DXGI_ERROR_DEVICE_REMOVED || removed.pending) {
       throw std::runtime_error("removed GPU device remained pending");
+    }
+    const auto sender_quarantine = decideGpuCompletionSlotTransition(
+        GpuCompletionSlotState::Pending,
+        GpuCompletionPollClass::TimedOut);
+    if (!sender_quarantine.keep_pending ||
+        !sender_quarantine.newly_quarantined ||
+        sender_quarantine.next != GpuCompletionSlotState::Quarantined) {
+      throw std::runtime_error("sender timeout did not quarantine one slot");
+    }
+    const auto sender_recovery = decideGpuCompletionSlotTransition(
+        sender_quarantine.next,
+        GpuCompletionPollClass::Completed);
+    if (!sender_recovery.recovered_stale ||
+        !sender_recovery.completed || sender_recovery.device_failed) {
+      throw std::runtime_error("sender late completion was published or fatal");
+    }
+    const auto sender_device_failure = decideGpuCompletionSlotTransition(
+        GpuCompletionSlotState::Quarantined,
+        GpuCompletionPollClass::DeviceFailed);
+    if (!sender_device_failure.device_failed ||
+        sender_device_failure.keep_pending) {
+      throw std::runtime_error("sender device failure remained quarantined");
     }
     const auto quarantined = decideRemoteVideoSlotTransition(
         RemoteVideoTextureSlotPhase::Uploading,
@@ -123,6 +151,95 @@ int main() {
         source[offset + 3] = 0xffU;
       }
     }
+
+    ComPtr<IDXGIDevice> producer_dxgi;
+    require(device.As(&producer_dxgi), "producer IDXGIDevice query");
+    ComPtr<IDXGIAdapter> adapter;
+    require(producer_dxgi->GetAdapter(&adapter), "producer adapter query");
+    ComPtr<ID3D11Device> consumer_device;
+    ComPtr<ID3D11DeviceContext> consumer_context;
+    require(
+        D3D11CreateDevice(
+            adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr,
+            D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0,
+            D3D11_SDK_VERSION, &consumer_device, &feature_level,
+            &consumer_context),
+        "consumer D3D11 device creation");
+    D3D11_TEXTURE2D_DESC bridge_description{};
+    bridge_description.Width = width;
+    bridge_description.Height = height;
+    bridge_description.MipLevels = 1;
+    bridge_description.ArraySize = 1;
+    bridge_description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    bridge_description.SampleDesc.Count = 1;
+    bridge_description.Usage = D3D11_USAGE_DEFAULT;
+    bridge_description.BindFlags =
+        D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    bridge_description.MiscFlags =
+        D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+        D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+    ComPtr<ID3D11Texture2D> producer_bridge;
+    require(
+        device->CreateTexture2D(
+            &bridge_description, nullptr, &producer_bridge),
+        "producer keyed bridge creation");
+    ComPtr<IDXGIKeyedMutex> producer_mutex;
+    require(producer_bridge.As(&producer_mutex), "producer keyed mutex query");
+    ComPtr<IDXGIResource1> bridge_resource;
+    require(producer_bridge.As(&bridge_resource), "bridge resource query");
+    HANDLE bridge_handle = nullptr;
+    require(
+        bridge_resource->CreateSharedHandle(
+            nullptr,
+            DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
+            nullptr,
+            &bridge_handle),
+        "bridge handle creation");
+    ComPtr<ID3D11Device1> consumer_device1;
+    require(consumer_device.As(&consumer_device1), "consumer device1 query");
+    ComPtr<ID3D11Texture2D> consumer_bridge;
+    require(
+        consumer_device1->OpenSharedResource1(
+            bridge_handle, IID_PPV_ARGS(&consumer_bridge)),
+        "consumer bridge open");
+    ComPtr<IDXGIKeyedMutex> consumer_mutex;
+    require(consumer_bridge.As(&consumer_mutex), "consumer keyed mutex query");
+    require(producer_mutex->AcquireSync(0, 0), "producer bridge acquire");
+    context->UpdateSubresource(
+        producer_bridge.Get(), 0, nullptr, source.data(), width * 4, 0);
+    require(producer_mutex->ReleaseSync(1), "producer bridge release");
+    context->Flush();
+    require(consumer_mutex->AcquireSync(1, 1'000), "consumer bridge acquire");
+    D3D11_TEXTURE2D_DESC bridge_staging_description = bridge_description;
+    bridge_staging_description.Usage = D3D11_USAGE_STAGING;
+    bridge_staging_description.BindFlags = 0;
+    bridge_staging_description.MiscFlags = 0;
+    bridge_staging_description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ComPtr<ID3D11Texture2D> bridge_staging;
+    require(
+        consumer_device->CreateTexture2D(
+            &bridge_staging_description, nullptr, &bridge_staging),
+        "consumer bridge staging creation");
+    consumer_context->CopyResource(bridge_staging.Get(), consumer_bridge.Get());
+    D3D11_MAPPED_SUBRESOURCE mapped_bridge{};
+    require(
+        consumer_context->Map(
+            bridge_staging.Get(), 0, D3D11_MAP_READ, 0, &mapped_bridge),
+        "consumer bridge readback");
+    for (UINT y = 0; y < height; ++y) {
+      const auto* actual = static_cast<const std::uint8_t*>(
+          mapped_bridge.pData) + static_cast<std::size_t>(y) * mapped_bridge.RowPitch;
+      const auto* expected = source.data() +
+          static_cast<std::size_t>(y) * width * bytes_per_pixel;
+      if (std::memcmp(actual, expected, width * bytes_per_pixel) != 0) {
+        consumer_context->Unmap(bridge_staging.Get(), 0);
+        throw std::runtime_error(
+            "cross-device keyed bridge changed the uploaded pixels");
+      }
+    }
+    consumer_context->Unmap(bridge_staging.Get(), 0);
+    require(consumer_mutex->ReleaseSync(0), "consumer bridge release");
+    CloseHandle(bridge_handle);
 
     D3D11_TEXTURE2D_DESC shared_description{};
     shared_description.Width = width;

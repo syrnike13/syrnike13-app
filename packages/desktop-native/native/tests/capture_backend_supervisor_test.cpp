@@ -35,38 +35,6 @@ int main() try {
             encoder_decision.state == CaptureBackendState::Healthy,
         "downstream RTP/encoder stall triggered capture-backend recovery");
   }
-  auto publication_decision = encoder_stall.observePublicationStall(started);
-  require(
-      publication_decision.action == CaptureBackendAction::RestartPublication,
-      "unified supervisor did not command the first republish");
-  publication_decision = encoder_stall.observePublicationStall(started + 1ms);
-  require(
-      publication_decision.action == CaptureBackendAction::None,
-      "publication recovery bypassed supervisor backoff");
-  publication_decision =
-      encoder_stall.observePublicationStall(started + 250ms);
-  require(
-      publication_decision.action == CaptureBackendAction::RestartPublication,
-      "unified supervisor did not command the second republish");
-  publication_decision =
-      encoder_stall.observePublicationStall(started + 750ms);
-  require(
-      publication_decision.action == CaptureBackendAction::RestartPublication,
-      "unified supervisor did not command the third republish");
-  publication_decision =
-      encoder_stall.observePublicationStall(started + 1750ms);
-  require(
-      publication_decision.action == CaptureBackendAction::RestartPublication,
-      "publication recovery became terminal after repeated stalls");
-  publication_decision = encoder_stall.observePublicationStall(started + 3s);
-  require(
-      publication_decision.action == CaptureBackendAction::None,
-      "publication recovery bypassed its capped backoff");
-  publication_decision = encoder_stall.observePublicationStall(started + 3750ms);
-  require(
-      publication_decision.action == CaptureBackendAction::RestartPublication &&
-          encoder_stall.publicationRecoveryCount() == 5,
-      "publication recovery did not remain available with bounded retries");
   CaptureBackendSupervisor frozen_dxgi;
   frozen_dxgi.backendActivated(CaptureBackend::Dxgi, started);
   auto decision = frozen_dxgi.observe(
@@ -240,9 +208,9 @@ int main() try {
   for (const auto attempt_at : gpu_timeout_attempts) {
     decision = gpu_timeout.observe(gpu_timeout_observation, attempt_at);
     require(
-        decision.action == CaptureBackendAction::RecreateActivePipeline &&
+        decision.action == CaptureBackendAction::RecreateDevice &&
             decision.target == CaptureBackend::Dxgi,
-        "GPU timeout switched capture backends or recreated every device");
+        "exhausted GPU generations did not recreate the active device");
     require(
         gpu_timeout.nextRetryAt() - attempt_at <= 1s,
         "GPU timeout recovery backoff exceeded one second");

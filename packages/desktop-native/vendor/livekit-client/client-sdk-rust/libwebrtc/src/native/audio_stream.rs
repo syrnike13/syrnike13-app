@@ -31,9 +31,57 @@ use webrtc_sys::audio_track as sys_at;
 use crate::{audio_frame::AudioFrame, audio_track::RtcAudioTrack};
 
 pub struct NativeAudioStream {
+    sink: NativeAudioSinkRegistration,
+    frame_queue: Arc<AudioFrameQueue>,
+}
+
+/// Owns a decoded-audio sink registration on a WebRTC audio track.
+pub struct NativeAudioSinkRegistration {
     native_sink: SharedPtr<sys_at::ffi::NativeAudioSink>,
     audio_track: RtcAudioTrack,
-    frame_queue: Arc<AudioFrameQueue>,
+    closed: bool,
+}
+
+impl NativeAudioSinkRegistration {
+    /// Attaches an observer receiving decoded audio in the requested format.
+    pub fn new(
+        audio_track: RtcAudioTrack,
+        sample_rate: i32,
+        num_channels: i32,
+        observer: Arc<dyn sys_at::AudioSink>,
+    ) -> Self {
+        let native_sink = sys_at::ffi::new_native_audio_sink(
+            Box::new(sys_at::AudioSinkWrapper::new(observer)),
+            sample_rate,
+            num_channels,
+        );
+
+        let audio = unsafe { sys_at::ffi::media_to_audio(audio_track.sys_handle()) };
+        audio.add_sink(&native_sink);
+
+        Self { native_sink, audio_track, closed: false }
+    }
+
+    /// Returns the track that owns this registration.
+    pub fn track(&self) -> RtcAudioTrack {
+        self.audio_track.clone()
+    }
+
+    /// Detaches the sink. Repeated calls are harmless.
+    pub fn close(&mut self) {
+        if self.closed {
+            return;
+        }
+        self.closed = true;
+        let audio = unsafe { sys_at::ffi::media_to_audio(self.audio_track.sys_handle()) };
+        audio.remove_sink(&self.native_sink);
+    }
+}
+
+impl Drop for NativeAudioSinkRegistration {
+    fn drop(&mut self) {
+        self.close();
+    }
 }
 
 impl NativeAudioStream {
@@ -45,26 +93,18 @@ impl NativeAudioStream {
     ) -> Self {
         let frame_queue = Arc::new(AudioFrameQueue::new(queue_size_frames));
         let observer = Arc::new(AudioTrackObserver { frame_queue: frame_queue.clone() });
-        let native_sink = sys_at::ffi::new_native_audio_sink(
-            Box::new(sys_at::AudioSinkWrapper::new(observer.clone())),
-            sample_rate,
-            num_channels,
-        );
+        let sink =
+            NativeAudioSinkRegistration::new(audio_track, sample_rate, num_channels, observer);
 
-        let audio = unsafe { sys_at::ffi::media_to_audio(audio_track.sys_handle()) };
-        audio.add_sink(&native_sink);
-
-        Self { native_sink, audio_track, frame_queue }
+        Self { sink, frame_queue }
     }
 
     pub fn track(&self) -> RtcAudioTrack {
-        self.audio_track.clone()
+        self.sink.track()
     }
 
     pub fn close(&mut self) {
-        let audio = unsafe { sys_at::ffi::media_to_audio(self.audio_track.sys_handle()) };
-        audio.remove_sink(&self.native_sink);
-
+        self.sink.close();
         self.frame_queue.close();
     }
 }

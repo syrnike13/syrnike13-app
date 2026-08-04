@@ -29,13 +29,15 @@ using Microsoft::WRL::ComPtr;
   message << operation << " (HRESULT 0x"
           << std::hex << std::uppercase
           << static_cast<std::uint32_t>(result) << ")";
-  throw std::runtime_error(message.str());
+  throw RemoteVideoTexturePoolError(
+      message.str(), static_cast<long>(result));
 }
 
 [[noreturn]] void throwWin32Error(const char* operation, DWORD error) {
   std::ostringstream message;
   message << operation << " (Win32 " << error << ")";
-  throw std::runtime_error(message.str());
+  throw RemoteVideoTexturePoolError(
+      message.str(), static_cast<long>(HRESULT_FROM_WIN32(error)));
 }
 }  // namespace
 
@@ -177,11 +179,12 @@ struct RemoteVideoTexturePool::State final
       if (slot.phase != SlotPhase::Uploading && !was_quarantined) continue;
       std::uint64_t elapsed_us = 0;
       const auto result = slot.completion->poll(&elapsed_us);
-      const auto poll_class = result == S_FALSE
+      const auto generic_class = classifyGpuCompletionPoll(result);
+      const auto poll_class = generic_class == GpuCompletionPollClass::Pending
         ? RemoteVideoGpuPollClass::Pending
-        : result == DXGI_ERROR_WAIT_TIMEOUT
+        : generic_class == GpuCompletionPollClass::TimedOut
           ? RemoteVideoGpuPollClass::TimedOut
-          : FAILED(result)
+          : generic_class == GpuCompletionPollClass::DeviceFailed
             ? RemoteVideoGpuPollClass::Failed
             : RemoteVideoGpuPollClass::Completed;
       const auto transition = decideRemoteVideoSlotTransition(
@@ -203,7 +206,10 @@ struct RemoteVideoTexturePool::State final
         slot.completion.reset();
         continue;
       }
-      if (result == S_FALSE || result == DXGI_ERROR_WAIT_TIMEOUT) continue;
+      if (transition.next == SlotPhase::Uploading ||
+          transition.next == SlotPhase::Quarantined) {
+        continue;
+      }
       slot.gpu_completion_us = elapsed_us;
       if (transition.recovered) {
         // A frame that missed the 500 ms budget is stale for a live stream.
@@ -255,6 +261,7 @@ struct RemoteVideoTexturePool::State final
           0,
           FALSE,
           DUPLICATE_SAME_ACCESS)) {
+      slot.phase = SlotPhase::Available;
       throwWin32Error(
         "DXGI remote video handle duplication failed",
         GetLastError()

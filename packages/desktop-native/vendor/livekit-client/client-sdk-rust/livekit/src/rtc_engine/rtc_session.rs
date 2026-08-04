@@ -1327,12 +1327,16 @@ impl SessionInner {
                 let offer_sdp =
                     SessionDescription::parse(&offer.sdp, offer.r#type.parse().unwrap()).unwrap();
 
-                let answer = self
-                    .subscriber_pc
-                    .as_ref()
-                    .unwrap()
-                    .create_anwser(offer_sdp, AnswerOptions::default())
-                    .await?;
+                let subscriber_pc = self.subscriber_pc.as_ref().unwrap();
+                let answer =
+                    subscriber_pc.create_anwser(offer_sdp, AnswerOptions::default()).await?;
+
+                // libwebrtc-native does not emit OnTrack again when the SFU
+                // reuses an existing receiver after unsubscribe/resubscribe.
+                // Diff the receiver streams after every subscriber offer so
+                // removals clear dispatched_streams and later additions emit a
+                // replacement MediaTrack event.
+                self.process_remote_track_addition(&subscriber_pc.peer_connection());
 
                 self.signal_client
                     .send(proto::signal_request::Message::Answer(proto::SessionDescription {

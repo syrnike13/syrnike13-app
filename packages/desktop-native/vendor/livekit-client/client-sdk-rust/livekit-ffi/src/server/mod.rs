@@ -39,6 +39,7 @@ pub mod audio_stream;
 pub mod colorcvt;
 pub mod data_stream;
 pub mod data_track;
+pub mod direct_audio_sink;
 pub mod logger;
 pub mod participant;
 pub mod platform_audio;

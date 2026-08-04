@@ -6,6 +6,8 @@
   containment, transport lanes, and Runtime Availability ownership
 - **Implementation clarification:** 2026-07-31 — latest-wins Screen Frame
   Pipeline and progress-based GPU recovery
+- **Implementation clarification:** 2026-08-03 — explicit remote subscription
+  ownership and state-aware video recovery
 - **Supersedes:** ADR-0001 execution model and ADR-0002 media/host ownership
 
 ## Context
@@ -90,19 +92,33 @@ states and errors. A Media Failure stops or degrades only that media path and
 never reconnects the Room.
 
 The Windows Native Media Session owns one participant and publishes every local
-Media Track through it. It also subscribes to all remote audio, mixes it with
-per-user local persistent volume, and renders it through WASAPI. Remote video is
-subscribed on Media Demand and is delivered to the renderer through D3D11
-shared textures, with a CPU path reserved for tests and unsupported hardware.
+Media Track through it. It subscribes to remote microphone audio and mixes it
+with per-user local persistent volume before rendering through WASAPI. Remote
+video and matching screen-share audio are subscribed on Media Demand; video is
+delivered to the renderer through D3D11 shared textures, with a CPU path
+reserved for tests and unsupported hardware.
+The Room connects with automatic subscription disabled. Its epoch-scoped native
+publication table keeps desired subscription, actual track, transition phase,
+and revision for every remote publication; delegate callbacks only update that
+table and queue reconciliation, while synchronous LiveKit subscription calls run
+on the Room operation path. Microphone audio is always desired, while camera,
+screen video, and matching screen-share audio are desired only when Media
+Demand exists.
 Electron is pinned to 43.1.0 because this cutover relies on its typed
 `sharedTexture` import API; Electron 35 cannot provide the GPU bridge contract
 and is not ABI-compatible with this native distribution.
 
-Electron main retains the current remote-screen publication inventory because
+Electron main retains the current remote-video publication inventory because
 the native Voice Session outlives a renderer. A replacement renderer installs
 its message listener and then requests an atomic publication replay before it
 creates Media Demand; same-document and subframe navigation do not reset demand.
 This keeps renderer lifecycle independent from Room and publication lifecycle.
+Video recovery is requested without a caller-selected recovery mode. The native
+owner restarts the local bridge when an actual track still exists, escalates to
+subscription replacement when it does not or the local retry repeats, and resets
+the track-scoped counter only after a healthy frame. Electron bounds recovery to
+three attempts and then exposes a terminal media error with an explicit Retry;
+it never reconnects the Room for this failure.
 
 Speaking Activity is owned by the RTC Engine adapter rather than the renderer.
 The web adapter derives it from the processed local microphone and decoded
@@ -170,8 +186,17 @@ in one host cannot restart either of the others.
 
 The Native Media Session is the only owner of the Windows audio endpoint
 lifecycle and the one LiveKit Room for a Connection Epoch. Track publication
-actors may publish and unpublish through that Room, but never connect,
-disconnect, replace, or retain credentials for it.
+actors submit epoch-scoped publish and unpublish operations and retain only
+their publication SID; they never receive Room, participant, or publication
+handles, and they never connect, disconnect, replace, or retain credentials for
+the Room.
+
+Room lifecycle and Room operations use separate serialization gates. A
+lifecycle transition detaches the current owner while holding the operation
+gate, then performs potentially slow teardown after releasing it. Concurrent
+Room operations wait for the current operation instead of reporting the Room as
+disconnected or silently dropping the command, while calls arriving during
+teardown immediately observe that no current owner exists.
 
 Microphone and output endpoint failures retain their original HRESULT category.
 Device invalidation, current-default changes, candidate health, and bounded

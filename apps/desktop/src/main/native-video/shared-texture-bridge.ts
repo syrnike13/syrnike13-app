@@ -324,7 +324,7 @@ export class NativeSharedTextureBridge {
     this.rendererEpoch += 1
     this.deliveryFailures.set(trackKey, 0)
     if (!this.claimPresentationRecovery(trackKey)) return
-    console.warn('[native-video] shared texture fence stalled; restarting track', {
+    console.warn('[native-video] shared texture fence stalled; retiring renderer generation', {
       local: entry.frame.local,
       source: entry.frame.source,
       trackId: entry.frame.trackId,

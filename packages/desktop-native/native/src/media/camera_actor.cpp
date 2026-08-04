@@ -204,27 +204,26 @@ class CameraBorrowedCallbackGate final {
 class CameraPublicationRetireTask final {
  public:
   CameraPublicationRetireTask(
-      std::shared_ptr<LiveKitPublicationClient> client,
-      std::unique_ptr<LiveKitTrackPublication> publication,
+      std::shared_ptr<LiveKitVoiceSession> voice_session,
+      std::string session_id,
+      std::uint64_t generation,
       std::string publication_sid)
-      : client_(std::move(client)),
-        publication_(std::move(publication)),
+      : voice_session_(std::move(voice_session)),
+        session_id_(std::move(session_id)),
+        generation_(generation),
         publication_sid_(std::move(publication_sid)) {}
 
   void run() noexcept {
     if (started_.exchange(true, std::memory_order_acq_rel)) return;
     try {
-      client_->stopLocalCameraPreview(publication_sid_);
+      voice_session_->stopLocalCameraPreview(publication_sid_);
     } catch (...) {
     }
-    if (publication_) {
-      try {
-        publication_->unpublishTrack(publication_sid_);
-      } catch (...) {
-      }
+    try {
+      voice_session_->unpublishTrack(session_id_, generation_, publication_sid_);
+    } catch (...) {
     }
-    publication_.reset();
-    client_.reset();
+    voice_session_.reset();
     {
       std::lock_guard lock(mutex_);
       finished_ = true;
@@ -251,8 +250,9 @@ class CameraPublicationRetireTask final {
   std::mutex mutex_;
   std::condition_variable changed_;
   bool finished_ = false;
-  std::shared_ptr<LiveKitPublicationClient> client_;
-  std::unique_ptr<LiveKitTrackPublication> publication_;
+  std::shared_ptr<LiveKitVoiceSession> voice_session_;
+  std::string session_id_;
+  std::uint64_t generation_ = 0;
   std::string publication_sid_;
   std::shared_ptr<CameraPublicationRetireTask> retained_next_;
 };
@@ -443,7 +443,7 @@ class CameraActor::Implementation
     SequencedEmitter& emitter,
     InternalPost post,
     IsCurrent is_current,
-    std::shared_ptr<LiveKitPublicationClient> client,
+    std::shared_ptr<LiveKitVoiceSession> voice_session,
     std::shared_ptr<CameraCaptureFactory> factory,
     CameraActor::CreateGpuVideoSource create_gpu_video_source,
     CameraActor::LaunchRetireWorker launch_retire_worker,
@@ -452,7 +452,7 @@ class CameraActor::Implementation
   ) : post_(std::move(post)),
       callbacks_(std::make_shared<CameraBorrowedCallbackGate>(
           emitter, std::move(is_current))),
-      client_(std::move(client)), factory_(std::move(factory)),
+      voice_session_(std::move(voice_session)), factory_(std::move(factory)),
       create_gpu_video_source_(std::move(create_gpu_video_source)),
       before_terminal_post_(std::move(before_terminal_post)),
       cleanup_launcher_(
@@ -563,7 +563,7 @@ class CameraActor::Implementation
   }
 
   void releasePreviewFrame(const MediaCommand& command) {
-    client_->releaseLocalCameraPreviewFrame(
+    voice_session_->releaseLocalCameraPreviewFrame(
       command.track_id,
       command.frame_sequence
     );
@@ -679,7 +679,6 @@ class CameraActor::Implementation
     std::shared_ptr<CameraCapture> capture;
     std::shared_ptr<CaptureWorkerState> capture_state;
     std::shared_ptr<CameraTerminalPostGate> post_gate;
-    std::unique_ptr<LiveKitTrackPublication> publication;
     std::string publication_sid;
     std::string session_id;
     std::uint64_t generation = 0;
@@ -690,7 +689,6 @@ class CameraActor::Implementation
       capture = std::move(active_capture_);
       capture_state = std::move(capture_worker_state_);
       post_gate = std::move(active_post_gate_);
-      publication = std::move(publication_);
       publication_sid = std::move(publication_sid_);
       session_id = session_id_;
       generation = generation_;
@@ -709,7 +707,6 @@ class CameraActor::Implementation
         generation,
         deadline);
     retireActivePublication(
-        std::move(publication),
         std::move(publication_sid),
         session_id,
         generation,
@@ -779,7 +776,6 @@ class CameraActor::Implementation
   }
 
   void retireActivePublication(
-      std::unique_ptr<LiveKitTrackPublication> publication,
       std::string publication_sid,
       const std::string& session_id,
       std::uint64_t generation,
@@ -787,7 +783,7 @@ class CameraActor::Implementation
     if (publication_sid.empty()) return;
     try {
       auto task = std::make_shared<CameraPublicationRetireTask>(
-          client_, std::move(publication), std::move(publication_sid));
+          voice_session_, session_id, generation, std::move(publication_sid));
       retire_dispatcher_->submit(task, session_id, generation);
       if (task->waitUntil(deadline)) return;
     } catch (...) {
@@ -876,18 +872,18 @@ class CameraActor::Implementation
   }
 
   void cleanupFailedAttempt(
-    LiveKitTrackPublication* publication,
+    const MediaCommand& command,
     const std::string& publication_sid
   ) noexcept {
     if (publication_sid.empty()) return;
     try {
-      client_->stopLocalCameraPreview(publication_sid);
+      voice_session_->stopLocalCameraPreview(publication_sid);
     } catch (...) {
       // Preserve the original publication failure; preview cleanup is best effort.
     }
-    if (!publication) return;
     try {
-      publication->unpublishTrack(publication_sid);
+      voice_session_->unpublishTrack(
+          command.session_id, command.generation, publication_sid);
     } catch (...) {
       // A failed unpublish must not escape the attempt thread or suppress its reply.
     }
@@ -930,20 +926,9 @@ class CameraActor::Implementation
         CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     const bool uninitialize_com = SUCCEEDED(com_result);
     const auto command = attempt->command;
-    std::unique_ptr<LiveKitTrackPublication> publication;
     std::string publication_sid;
+    bool publication_committed = false;
     try {
-      diagnostics::DiagnosticLog::instance().write(
-          "camera_startup_checkpoint",
-          {
-              {"generation", command.generation},
-              {"stage", "publication_context_start"},
-          });
-      publication = client_->createCameraPublication(
-        command.session_id, command.generation);
-      if (!publication->isRoomConnected()) {
-        throw std::runtime_error("LiveKit voice Room is not connected");
-      }
       if (!attemptIsCurrent(attempt)) throw std::runtime_error("stale camera generation");
       const auto width = std::clamp(command.width, 16, 7680);
       const auto height = std::clamp(command.height, 16, 4320);
@@ -1048,7 +1033,8 @@ class CameraActor::Implementation
               {"stage", "publish_start"},
               {"gpu", capture_info.gpu},
           });
-      publication_sid = publication->publishVideoTrack(track, options);
+      publication_sid = voice_session_->publishVideoTrack(
+          command.session_id, command.generation, track, options);
       if (publication_sid.empty()) throw std::runtime_error("LiveKit camera publication SID is empty");
       diagnostics::DiagnosticLog::instance().write(
           "camera_startup_checkpoint",
@@ -1060,7 +1046,7 @@ class CameraActor::Implementation
       if (!attemptIsCurrent(attempt)) {
         throw std::runtime_error("stale camera generation");
       }
-      client_->startLocalCameraPreview(
+      voice_session_->startLocalCameraPreview(
         command.session_id,
         command.generation,
         publication_sid,
@@ -1073,7 +1059,7 @@ class CameraActor::Implementation
       auto capture_state = std::make_shared<CaptureWorkerState>();
       auto post_gate = std::make_shared<CameraTerminalPostGate>(
           post_, before_terminal_post_);
-      auto runtime_lifetime = client_->runtimeLifetimeToken();
+      auto runtime_lifetime = voice_session_->runtimeLifetimeToken();
       auto capture_session_id = command.session_id;
       auto capture_thread = std::thread([
         command,
@@ -1108,8 +1094,8 @@ class CameraActor::Implementation
         if (!stale) {
           session_id_ = std::move(capture_session_id);
           generation_ = command.generation;
-          publication_ = std::move(publication);
           publication_sid_ = publication_sid;
+          publication_committed = true;
           source_ = source;
           track_ = std::move(track);
           running_ = running;
@@ -1162,7 +1148,7 @@ class CameraActor::Implementation
           capture_info.format.frame_rate_denominator);
       callbacks_->emit(std::move(event));
     } catch (const std::exception& error) {
-      cleanupFailedAttempt(publication.get(), publication_sid);
+      if (!publication_committed) cleanupFailedAttempt(command, publication_sid);
       if (!attempt->reply_emitted.exchange(true) &&
           !shutdown_.load(std::memory_order_acquire) &&
           !command.request_id.empty()) {
@@ -1189,7 +1175,7 @@ class CameraActor::Implementation
         callbacks_->emit(std::move(failed));
       }
     } catch (...) {
-      cleanupFailedAttempt(publication.get(), publication_sid);
+      if (!publication_committed) cleanupFailedAttempt(command, publication_sid);
       if (!attempt->reply_emitted.exchange(true) &&
           !shutdown_.load(std::memory_order_acquire) &&
           !command.request_id.empty()) {
@@ -1363,7 +1349,7 @@ class CameraActor::Implementation
 
   InternalPost post_;
   std::shared_ptr<CameraBorrowedCallbackGate> callbacks_;
-  std::shared_ptr<LiveKitPublicationClient> client_;
+  std::shared_ptr<LiveKitVoiceSession> voice_session_;
   std::shared_ptr<CameraCaptureFactory> factory_;
   CameraActor::CreateGpuVideoSource create_gpu_video_source_;
   CameraActor::BeforeTerminalPost before_terminal_post_;
@@ -1373,7 +1359,6 @@ class CameraActor::Implementation
   std::mutex mutex_;
   std::string session_id_;
   std::uint64_t generation_ = 0;
-  std::unique_ptr<LiveKitTrackPublication> publication_;
   std::string publication_sid_;
   std::shared_ptr<livekit::VideoSource> source_;
   std::shared_ptr<livekit::LocalVideoTrack> track_;
@@ -1388,14 +1373,14 @@ class CameraActor::Implementation
 };
 
 CameraActor::CameraActor(SequencedEmitter& emitter, InternalPost post, IsCurrent current,
-  std::shared_ptr<LiveKitPublicationClient> client,
+  std::shared_ptr<LiveKitVoiceSession> voice_session,
   std::shared_ptr<CameraCaptureFactory> factory,
   CreateGpuVideoSource create_gpu_video_source,
   LaunchRetireWorker launch_retire_worker,
   BeforeTerminalPost before_terminal_post,
   BeforeCleanupEnqueue before_cleanup_enqueue)
   : implementation_(std::make_shared<Implementation>(emitter, std::move(post),
-      std::move(current), std::move(client), std::move(factory),
+      std::move(current), std::move(voice_session), std::move(factory),
       std::move(create_gpu_video_source), std::move(launch_retire_worker),
       std::move(before_terminal_post), std::move(before_cleanup_enqueue))) {}
 CameraActor::~CameraActor() {

@@ -108,7 +108,7 @@ add_library(syrnike_media_core STATIC
   src/media/camera_actor.cpp
   src/media/camera_capture.cpp
   src/media/display_sources.cpp
-  src/media/livekit_publication_client.cpp
+  src/media/livekit_voice_session.cpp
   src/media/media_runtime.cpp
   src/media/media_runtime_support.cpp
   src/media/media_operation.hpp
@@ -117,7 +117,9 @@ add_library(syrnike_media_core STATIC
   src/media/microphone_publication_controller.cpp
   src/media/microphone_echo_reference.cpp
   src/media/preview_actor.cpp
+  src/media/remote_audio_ingress.cpp
   src/media/remote_audio_output.cpp
+  src/media/remote_publication_reconciler.cpp
   src/media/remote_video_bridge.cpp
   src/media/remote_video_texture_pool.cpp
   src/media/screen_actor.cpp
@@ -229,6 +231,55 @@ target_link_libraries(syrnike-native-media-processing-tests PRIVATE syrnike_medi
 syrnike_copy_livekit_runtime(syrnike-native-media-processing-tests)
 add_test(NAME syrnike-native-media-processing-tests COMMAND syrnike-native-media-processing-tests)
 
+add_executable(syrnike-native-remote-publication-reconciler-tests
+  tests/remote_publication_reconciler_test.cpp
+  src/media/remote_publication_reconciler.cpp
+)
+syrnike_native_target(syrnike-native-remote-publication-reconciler-tests)
+if(MSVC AND SYRNIKE_ENABLE_ASAN)
+  # This focused test links generated protobuf objects directly. Match the
+  # vendored LiveKit/protobuf dynamic CRT and STL annotation mode instead of
+  # mixing them with the default ASan target settings.
+  set_property(
+    TARGET syrnike-native-remote-publication-reconciler-tests
+    PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
+  )
+  target_compile_definitions(
+    syrnike-native-remote-publication-reconciler-tests
+    PRIVATE
+      _DISABLE_OPTIONAL_ANNOTATION
+      _DISABLE_STRING_ANNOTATION
+      _DISABLE_VECTOR_ANNOTATION
+  )
+endif()
+if(NOT TARGET protobuf::libprotobuf)
+  find_package(Protobuf CONFIG REQUIRED)
+endif()
+get_target_property(
+  SYRNIKE_LIVEKIT_PROTO_INCLUDE_DIRECTORIES
+  livekit_proto
+  INCLUDE_DIRECTORIES
+)
+target_link_libraries(
+  syrnike-native-remote-publication-reconciler-tests
+  PRIVATE
+    LiveKit::livekit
+    livekit_proto
+    protobuf::libprotobuf
+)
+target_include_directories(
+  syrnike-native-remote-publication-reconciler-tests
+  SYSTEM PRIVATE
+    ${SYRNIKE_LIVEKIT_PROTO_INCLUDE_DIRECTORIES}
+)
+syrnike_copy_livekit_runtime(
+  syrnike-native-remote-publication-reconciler-tests
+)
+add_test(
+  NAME syrnike-native-remote-publication-reconciler-tests
+  COMMAND syrnike-native-remote-publication-reconciler-tests
+)
+
 add_executable(syrnike-native-voice-activity-tests
   tests/voice_activity_detector_test.cpp
   src/media/voice_activity_detector.cpp
@@ -247,15 +298,15 @@ add_test(
   COMMAND syrnike-native-media-actor-lifecycle-tests
 )
 
-add_executable(syrnike-native-livekit-publication-client-tests
-  tests/livekit_publication_client_test.cpp
+add_executable(syrnike-native-livekit-voice-session-tests
+  tests/livekit_voice_session_test.cpp
 )
-syrnike_native_target(syrnike-native-livekit-publication-client-tests)
-target_link_libraries(syrnike-native-livekit-publication-client-tests PRIVATE syrnike_media_core)
-syrnike_copy_livekit_runtime(syrnike-native-livekit-publication-client-tests)
+syrnike_native_target(syrnike-native-livekit-voice-session-tests)
+target_link_libraries(syrnike-native-livekit-voice-session-tests PRIVATE syrnike_media_core)
+syrnike_copy_livekit_runtime(syrnike-native-livekit-voice-session-tests)
 add_test(
-  NAME syrnike-native-livekit-publication-client-tests
-  COMMAND syrnike-native-livekit-publication-client-tests
+  NAME syrnike-native-livekit-voice-session-tests
+  COMMAND syrnike-native-livekit-voice-session-tests
 )
 
 add_executable(syrnike-native-runtime-integration-tests

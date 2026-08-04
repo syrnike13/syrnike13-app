@@ -65,7 +65,7 @@ const expectedElectronVersion = desktopRequire('electron/package.json').version
 const expectedCommitSha = process.env.GITHUB_SHA || gitCommitSha()
 if (
   manifest.schemaVersion !== 1 ||
-  manifest.contractVersion !== 5 ||
+  manifest.contractVersion !== 7 ||
   manifest.platform !== 'win32' ||
   manifest.arch !== 'x64' ||
   manifest.appVersion !== expectedAppVersion ||

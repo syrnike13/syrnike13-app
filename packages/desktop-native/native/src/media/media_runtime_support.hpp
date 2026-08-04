@@ -28,10 +28,9 @@ class LiveKitLease final {
   [[nodiscard]] static std::uint32_t shutdownTransitionCount() noexcept;
 };
 
-// Shared by the runtime, publication client, Room owners, publications, and
-// detached SDK tasks. initialize() runs on MediaRuntime's COM-initialized
-// worker, while the inner lease remains alive until the last SDK graph owner
-// releases this token.
+// Shared by the runtime, voice session, Room owners, and detached SDK tasks.
+// initialize() runs on MediaRuntime's COM-initialized worker, while the inner
+// lease remains alive until the last SDK graph owner releases this token.
 class LiveKitRuntimeLifetime final {
  public:
   void initialize();

@@ -87,6 +87,12 @@ export function captureNativeDiagnosticIncident(
   if (activeAccountId === null) return null
   if (record.event === 'adapter_exited' && record.reason === 'expected') return null
   if (record.errorCode === 'stale_generation') return null
+  if (
+    record.event === 'screen_backend_restart' &&
+    (!record.reason ||
+      record.reason === 'reinitialize_active' ||
+      record.reason === 'probe_preferred_backend')
+  ) return null
   // Gateway control errors with fatal=false are evidence for the active voice
   // operation, not root incidents. A typed terminal projection will create
   // the incident if the operation actually ends.
@@ -117,6 +123,28 @@ export function captureNativeDiagnosticIncident(
     if (existing) {
       existing.timestampMs = timestampMs
       existing.occurrenceCount = (existing.occurrenceCount ?? 1) + 1
+      Object.assign(existing, {
+        severity: incidentSeverity(record),
+        actionId: record.actionId,
+        operationId: record.operation,
+        nativeEventType: record.nativeEventType,
+        runtime: record.runtime,
+        kind: record.kind,
+        lane: record.lane,
+        stage: record.stage,
+        commandStage: record.commandStage,
+        outcome: record.outcome,
+        revision: record.revision,
+        generation: record.generation,
+        hostEpoch: record.hostEpoch,
+        status: record.status,
+        reason: redactedText(record.reason),
+        message: redactedText(record.message),
+        errorCode: record.errorCode,
+        restartCount: record.restartCount,
+        durationMs: record.durationMs,
+        timeoutMs: record.timeoutMs,
+      })
       return existing
     }
     // IPC has already cloned an active lease into the renderer. Preserve later

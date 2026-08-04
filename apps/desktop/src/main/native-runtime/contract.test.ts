@@ -128,6 +128,22 @@ describe('native screen capture telemetry validation', () => {
       videoCoalescedSourceUpdates: 2,
       videoEncoderBackpressureTicks: 0,
       videoSupersededReadyFrames: 1,
+      videoGpuSlotTimeouts: 2,
+      videoGpuSlotsRecovered: 1,
+      videoGpuFramesDroppedStale: 1,
+      videoGpuPoolRollovers: 1,
+      videoGpuRolloversBlocked: 0,
+      videoGpuRetiredGenerations: 1,
+      videoGpuSlotsQuarantined: 2,
+      videoPreviewBridgeSubmissions: 60,
+      videoPreviewBridgeAcquires: 59,
+      videoPreviewBridgeTimeouts: 1,
+      videoPreviewBridgeSlotsRecovered: 1,
+      videoPreviewGpuSubmissions: 59,
+      videoPreviewFramesCompleted: 58,
+      videoPreviewSlotTimeouts: 1,
+      videoPreviewFramesDroppedStale: 1,
+      videoPreviewDeviceResets: 0,
       videoGpuCompletionP50Us: 850,
       videoGpuCompletionP95Us: 2_400,
       videoGpuCompletionMaxUs: 8_000,
@@ -310,6 +326,37 @@ describe('native runtime command validation', () => {
     })).toBe(true)
   })
 
+  it('delegates state-aware remote video recovery to the native owner', () => {
+    const retry = {
+      type: 'retryRemoteVideo',
+      sessionId: 'voice-session',
+      generation: 3,
+      trackId: 'screen-publication',
+      reason: 'frame_timeout',
+    }
+
+    expect(isNativeRuntimeCommand(retry)).toBe(true)
+    expect(isNativeRuntimeCommand({ ...retry, reason: '' })).toBe(false)
+    expect(isNativeRuntimeEvent({
+      type: 'remoteVideoFailed',
+      sequence: 1,
+      sessionId: 'voice-session',
+      generation: 3,
+      trackId: 'screen-publication',
+      source: 'screen',
+      reason: 'subscription',
+    })).toBe(true)
+    expect(isNativeRuntimeEvent({
+      type: 'remoteVideoFailed',
+      sequence: 1,
+      sessionId: 'voice-session',
+      generation: 3,
+      trackId: 'screen-publication',
+      source: 'screen',
+      reason: 'publication',
+    })).toBe(false)
+  })
+
   it('accepts a retryable local preview diagnostic without failing the screen session', () => {
     expect(isNativeRuntimeEvent({
       type: 'localScreenPreviewFailed',
@@ -391,7 +438,7 @@ describe('native runtime command validation', () => {
     })).toBe(true)
   })
 
-  it('validates remote screen publication inventory events', () => {
+  it('validates generic remote video publication inventory events', () => {
     const publication = {
       sequence: 9,
       sessionId: 'voice-session',
@@ -403,16 +450,21 @@ describe('native runtime command validation', () => {
 
     expect(isNativeRuntimeEvent({
       ...publication,
-      type: 'remoteScreenPublicationAvailable',
+      type: 'remoteVideoPublicationAvailable',
     })).toBe(true)
     expect(isNativeRuntimeEvent({
       ...publication,
-      type: 'remoteScreenPublicationUnavailable',
+      type: 'remoteVideoPublicationUnavailable',
     })).toBe(true)
     expect(isNativeRuntimeEvent({
       ...publication,
-      type: 'remoteScreenPublicationAvailable',
+      type: 'remoteVideoPublicationAvailable',
       participantIdentity: '',
     })).toBe(false)
+    expect(isNativeRuntimeEvent({
+      ...publication,
+      type: 'remoteVideoPublicationAvailable',
+      source: 'camera',
+    })).toBe(true)
   })
 })

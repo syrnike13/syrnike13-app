@@ -20,7 +20,7 @@
 #include <livekit/track.h>
 
 #include "common/event_sink.hpp"
-#include "media/livekit_publication_client.hpp"
+#include "media/livekit_voice_session.hpp"
 #include "media/media_runtime.hpp"
 #include "media/media_runtime_support.hpp"
 #include "media/remote_video_bridge.hpp"
@@ -367,8 +367,12 @@ class BlockingVideoRoomOwner final
   void setOutputVolume(float) override {}
   void configureRemoteAudio(RemoteAudioSettings) override {}
   void releaseRemoteVideoFrame(std::string, std::uint64_t) override {}
+  void reconcileRemotePublication(std::string) override {}
   void setRemoteVideoDemand(std::string, bool) override {}
-  void retryRemoteVideo(std::string, std::string) override {}
+  void retryRemoteVideo(
+    std::string,
+    std::string
+  ) override {}
   void startLocalCameraPreview(
     std::string,
     std::uint64_t,
@@ -466,6 +470,163 @@ int main() try {
   }
 #endif
 
+  {
+    std::atomic_int track_releases{0};
+    auto reader = std::make_shared<BlockingStreamReader>();
+    auto track = std::make_shared<FakeVideoTrack>(track_releases);
+    RemoteVideoBridge bridge(
+      0,
+      [](MediaCommand) { return true; },
+      {},
+      {},
+      {},
+      [reader](const std::shared_ptr<livekit::Track>&) {
+        return reader;
+      }
+    );
+    bridge.addTrack(
+      track,
+      "participant",
+      livekit::TrackSource::SOURCE_CAMERA,
+      "non-blocking-removal"
+    );
+    require(
+      reader->waitUntilRead(std::chrono::seconds(1)),
+      "remote video removal test did not enter its blocking read"
+    );
+
+    const auto removal_started = std::chrono::steady_clock::now();
+    bridge.removeTrack("non-blocking-removal", false);
+    require(
+      std::chrono::steady_clock::now() - removal_started <
+        std::chrono::milliseconds(100),
+      "remote video track removal waited for the decoder thread"
+    );
+    require(
+      reader->closeCalls() == 1,
+      "remote video track removal did not close the stream exactly once"
+    );
+    track.reset();
+    require(
+      track_releases.load() == 0,
+      "remote video track removal released the track before its worker exited"
+    );
+
+    reader->releaseRead();
+    require(
+      waitUntil(
+        [&] {
+          return reader->readExits() == 1 && track_releases.load() == 1;
+        },
+        std::chrono::seconds(1)
+      ),
+      "remote video track retirement did not finish after its reader exited"
+    );
+  }
+
+  {
+    std::atomic_int first_track_releases{0};
+    std::atomic_int second_track_releases{0};
+    std::atomic_int factory_calls{0};
+    auto first_reader = std::make_shared<BlockingStreamReader>();
+    auto second_reader = std::make_shared<BlockingStreamReader>();
+    auto first_track = std::make_shared<FakeVideoTrack>(first_track_releases);
+    auto second_track = std::make_shared<FakeVideoTrack>(second_track_releases);
+    RemoteVideoBridge bridge(
+      0,
+      [](MediaCommand) { return true; },
+      {},
+      {},
+      {},
+      [&, first_reader, second_reader](
+        const std::shared_ptr<livekit::Track>&
+      ) -> std::shared_ptr<RemoteVideoBridge::StreamReader> {
+        return factory_calls.fetch_add(1) == 0
+          ? first_reader
+          : second_reader;
+      }
+    );
+    bridge.addTrack(
+      first_track,
+      "participant",
+      livekit::TrackSource::SOURCE_CAMERA,
+      "replacement-track"
+    );
+    require(
+      first_reader->waitUntilRead(std::chrono::seconds(1)),
+      "remote video replacement test did not start its first reader"
+    );
+
+    const auto replacement_started = std::chrono::steady_clock::now();
+    bridge.addTrack(
+      second_track,
+      "participant",
+      livekit::TrackSource::SOURCE_CAMERA,
+      "replacement-track"
+    );
+    require(
+      std::chrono::steady_clock::now() - replacement_started <
+        std::chrono::milliseconds(100),
+      "remote video replacement waited for the previous decoder thread"
+    );
+    require(
+      second_reader->waitUntilRead(std::chrono::seconds(1)),
+      "remote video replacement did not start its new reader"
+    );
+    require(
+      first_reader->closeCalls() == 1 &&
+        second_reader->closeCalls() == 0,
+      "remote video replacement closed the wrong stream"
+    );
+
+    bridge.removeTrackIfCurrent(
+      "replacement-track",
+      first_track,
+      false
+    );
+    first_track.reset();
+    require(
+      first_track_releases.load() == 0 &&
+        second_reader->closeCalls() == 0,
+      "stale remote video retirement affected the replacement worker"
+    );
+    first_reader->releaseRead();
+    require(
+      waitUntil(
+        [&] {
+          return first_reader->readExits() == 1 &&
+            first_track_releases.load() == 1;
+        },
+        std::chrono::seconds(1)
+      ),
+      "replaced remote video worker did not retire independently"
+    );
+    require(
+      second_reader->closeCalls() == 0 &&
+        second_reader->readExits() == 0,
+      "replaced remote video worker retired the current worker"
+    );
+
+    bridge.removeTrack("replacement-track", false);
+    second_track.reset();
+    require(
+      second_reader->closeCalls() == 1 &&
+        second_track_releases.load() == 0,
+      "current remote video worker did not enter retirement"
+    );
+    second_reader->releaseRead();
+    require(
+      waitUntil(
+        [&] {
+          return second_reader->readExits() == 1 &&
+            second_track_releases.load() == 1;
+        },
+        std::chrono::seconds(1)
+      ),
+      "current remote video worker did not finish retirement"
+    );
+  }
+
   std::atomic_int token_releases{0};
   std::atomic_int track_releases{0};
   std::atomic_int bridge_cleanup_launches{0};
@@ -548,7 +709,7 @@ int main() try {
   runtime_state->reader = std::make_shared<BlockingStreamReader>();
   auto runtime_lifetime = std::make_shared<LiveKitRuntimeLifetime>();
   auto runtime_client =
-    syrnike::desktop_native::media::createRealLiveKitPublicationClient(
+    syrnike::desktop_native::media::createRealLiveKitVoiceSession(
       runtime_lifetime,
       [runtime_state](auto, auto, auto, auto, auto post) {
         auto owner = std::make_shared<BlockingVideoRoomOwner>(

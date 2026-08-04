@@ -12,7 +12,7 @@
 
 #include "common/event_sink.hpp"
 #include "common/sequenced_emitter.hpp"
-#include "media/livekit_publication_client.hpp"
+#include "media/livekit_voice_session.hpp"
 #include "media/media_runtime.hpp"
 #include "media/media_runtime_support.hpp"
 #include "media/voice_actor.hpp"
@@ -111,7 +111,7 @@ syrnike::desktop_native::MediaCommand voiceCommand(
 }  // namespace
 
 int main() try {
-  using Client = syrnike::desktop_native::media::DeterministicFakeLiveKitPublicationClient;
+  using Client = syrnike::desktop_native::media::DeterministicFakeLiveKitVoiceSession;
   using syrnike::desktop_native::media::MediaRuntime;
   using syrnike::desktop_native::media::VoiceAttemptCommit;
 

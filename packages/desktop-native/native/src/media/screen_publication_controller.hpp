@@ -14,7 +14,7 @@
 
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
-#include "livekit_publication_client.hpp"
+#include "livekit_voice_session.hpp"
 #include "screen_gpu_capture.hpp"
 #include "screen_video_capture.hpp"
 #include "screen_audio_capture.hpp"
@@ -87,7 +87,7 @@ class ScreenPublicationController final {
     SequencedEmitter& emitter,
     InternalPost post,
     IsCurrent is_current,
-    std::shared_ptr<LiveKitPublicationClient> livekit_client,
+    std::shared_ptr<LiveKitVoiceSession> voice_session,
     CommitIfCurrent commit_if_current,
     Now now,
     DescribePublication describe_publication,
@@ -108,7 +108,6 @@ class ScreenPublicationController final {
   void connect(const MediaCommand& command);
   void startCapture(const MediaCommand& command);
   void stopCapture(const MediaCommand& command, bool emit_stopped = true);
-  void executePublicationRestart(const MediaCommand& command);
   void disconnect(const MediaCommand& command, bool emit_stopped = true);
   [[nodiscard]] bool handleTerminal(
     const MediaCommand& command,

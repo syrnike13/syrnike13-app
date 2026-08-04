@@ -9,10 +9,10 @@
 #include <array>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cmath>
-#include <deque>
+#include <condition_variable>
 #include <exception>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
@@ -22,13 +22,14 @@
 #include <utility>
 #include <vector>
 
-#include <livekit/audio_stream.h>
+#include <livekit/audio_frame_sink.h>
 #include <livekit/track.h>
 
-#include "audio_devices.hpp"
 #include "../common/diagnostic_log.hpp"
-#include "wasapi_event.hpp"
+#include "audio_devices.hpp"
+#include "remote_audio_ingress.hpp"
 #include "voice_activity_detector.hpp"
+#include "wasapi_event.hpp"
 
 using Microsoft::WRL::ComPtr;
 
@@ -74,22 +75,23 @@ void startAudioOutputWithRollback(
 }
 
 namespace {
-constexpr std::size_t kRemoteAudioSampleRate = 48'000;
+
+constexpr std::size_t kRemoteAudioSampleRate = remoteAudioSampleRate();
 constexpr std::size_t kRemoteAudioChannels = remoteAudioRenderChannels();
-constexpr std::size_t kPlayoutStartFrames =
-  kRemoteAudioSampleRate * remoteAudioPlayoutStartDuration().count() / 1'000;
-constexpr std::size_t kMaxQueuedFramesPerTrack =
-  kRemoteAudioSampleRate * remoteAudioMaxQueuedDuration().count() / 1'000;
-constexpr std::size_t kStreamFrameCapacity = 20;
+constexpr std::size_t kPlayoutStartPackets =
+  remoteAudioPlayoutStartDuration().count() / 10;
+constexpr std::size_t kFadeFrames = 48;
 constexpr auto kHundredNanosecondsPerMillisecond = 10'000LL;
 constexpr float kLimiterCeiling = 0.98F;
 constexpr float kLimiterReleaseSeconds = 0.5F;
+constexpr double kClockTargetPackets = 3.0;
+constexpr double kMaximumClockCorrectionPpm = 1'000.0;
+constexpr auto kClockAdjustmentInterval = std::chrono::milliseconds(100);
 using diagnostics::DiagnosticField;
 
 struct StereoFrame {
   float left = 0.0F;
   float right = 0.0F;
-  bool discontinuity = false;
 };
 
 WAVEFORMATEX desiredRemoteAudioRenderFormat() {
@@ -112,20 +114,178 @@ void logRemoteAudio(
 }
 
 struct TrackState {
-  std::shared_ptr<livekit::AudioStream> stream;
-  std::jthread worker;
-  std::deque<StereoFrame> frames;
+  std::shared_ptr<RemoteAudioIngress> ingress;
+  std::unique_ptr<livekit::AudioFrameSinkRegistration> registration;
   std::string user_id;
   std::string track_id;
   bool stream_source = false;
+  std::atomic<float> gain{1.0F};
+  std::atomic_bool speaking{false};
+  std::atomic<std::uint64_t> reset_epoch{0};
+  std::atomic<std::uint64_t> underruns{0};
+
+  // Renderer-thread state.
+  RemoteAudioIngressFrame current_frame;
+  std::size_t current_frame_offset = kRemoteAudioIngressFramesPerPacket;
   bool playout_started = false;
-  bool discontinuity_pending = false;
-  float gain = 1.0F;
+  std::uint64_t consumed_reset_epoch = 0;
   VoiceActivityDetector activity;
-  std::uint64_t dropped_samples_total = 0;
-  std::uint64_t dropped_samples_since_report = 0;
-  std::chrono::steady_clock::time_point next_overrun_report_at{};
+  std::array<StereoFrame, kRemoteAudioIngressFramesPerPacket> scratch{};
+  float previous_left = 0.0F;
+  float previous_right = 0.0F;
+  std::size_t fade_in_remaining = 0;
+
+  // Telemetry-thread state.
+  RemoteAudioIngressTelemetry reported_ingress;
+  std::uint64_t reported_underruns = 0;
 };
+
+using RenderSnapshot = std::vector<std::shared_ptr<TrackState>>;
+
+void resetTrackRendererState(TrackState& track) noexcept {
+  track.ingress->discardQueued();
+  track.current_frame_offset = kRemoteAudioIngressFramesPerPacket;
+  track.playout_started = false;
+  track.fade_in_remaining = 0;
+  track.previous_left = 0.0F;
+  track.previous_right = 0.0F;
+  track.activity.reset();
+  track.speaking.store(false, std::memory_order_release);
+}
+
+void fadeTrackToSilence(
+  TrackState& track,
+  std::size_t produced_frames,
+  std::size_t requested_frames
+) noexcept {
+  if (produced_frames == 0) {
+    const auto fade_frames = std::min(kFadeFrames, requested_frames);
+    for (std::size_t index = 0; index < fade_frames; ++index) {
+      const auto gain = 1.0F -
+        static_cast<float>(index + 1) / static_cast<float>(fade_frames);
+      track.scratch[index] = {
+        track.previous_left * gain,
+        track.previous_right * gain,
+      };
+    }
+  } else {
+    const auto fade_frames = std::min(kFadeFrames, produced_frames);
+    const auto first = produced_frames - fade_frames;
+    for (std::size_t index = 0; index < fade_frames; ++index) {
+      const auto gain = 1.0F -
+        static_cast<float>(index + 1) / static_cast<float>(fade_frames);
+      track.scratch[first + index].left *= gain;
+      track.scratch[first + index].right *= gain;
+    }
+  }
+  track.previous_left = 0.0F;
+  track.previous_right = 0.0F;
+}
+
+bool readNextTrackFrame(TrackState& track) noexcept {
+  const auto result = track.ingress->tryRead(track.current_frame);
+  if (result == RemoteAudioIngressReadResult::Frame) {
+    track.current_frame_offset = 0;
+    return true;
+  }
+  if (result == RemoteAudioIngressReadResult::Discontinuity) {
+    resetTrackRendererState(track);
+  }
+  return false;
+}
+
+bool renderTrack(
+  TrackState& track,
+  StereoFrame* mixed,
+  std::size_t frame_count,
+  float output_volume,
+  bool deafened,
+  std::chrono::steady_clock::time_point now
+) noexcept {
+  std::fill_n(track.scratch.begin(), frame_count, StereoFrame{});
+
+  const auto reset_epoch = track.reset_epoch.load(std::memory_order_acquire);
+  if (reset_epoch != track.consumed_reset_epoch) {
+    resetTrackRendererState(track);
+    track.consumed_reset_epoch = reset_epoch;
+  }
+
+  if (!track.playout_started) {
+    if (track.ingress->queuedFrames() < kPlayoutStartPackets) {
+      if (!track.stream_source) {
+        track.activity.updateRms(0.0F, true, now);
+        track.speaking.store(track.activity.speaking(), std::memory_order_release);
+      }
+      return false;
+    }
+    track.playout_started = true;
+    track.fade_in_remaining = kFadeFrames;
+  }
+
+  std::size_t produced_frames = 0;
+  for (; produced_frames < frame_count; ++produced_frames) {
+    if (track.current_frame_offset == kRemoteAudioIngressFramesPerPacket &&
+        !readNextTrackFrame(track)) {
+      break;
+    }
+    const auto sample_index = track.current_frame_offset * kRemoteAudioChannels;
+    auto left = static_cast<float>(track.current_frame.samples[sample_index]) /
+      32768.0F;
+    auto right = static_cast<float>(track.current_frame.samples[sample_index + 1]) /
+      32768.0F;
+    ++track.current_frame_offset;
+    if (track.fade_in_remaining != 0) {
+      const auto fade_gain = 1.0F -
+        static_cast<float>(track.fade_in_remaining) /
+          static_cast<float>(kFadeFrames);
+      left *= fade_gain;
+      right *= fade_gain;
+      --track.fade_in_remaining;
+    }
+    track.scratch[produced_frames] = {left, right};
+  }
+
+  if (produced_frames != frame_count) {
+    fadeTrackToSilence(track, produced_frames, frame_count);
+    track.playout_started = false;
+    track.current_frame_offset = kRemoteAudioIngressFramesPerPacket;
+    track.underruns.fetch_add(1, std::memory_order_relaxed);
+  } else if (frame_count != 0) {
+    track.previous_left = track.scratch[frame_count - 1].left;
+    track.previous_right = track.scratch[frame_count - 1].right;
+  }
+
+  const auto track_gain = track.gain.load(std::memory_order_relaxed);
+  const auto effective_gain = track_gain * output_volume;
+  double squared_sum = 0.0;
+  for (std::size_t index = 0; index < frame_count; ++index) {
+    const auto left = track.scratch[index].left * effective_gain;
+    const auto right = track.scratch[index].right * effective_gain;
+    if (!deafened) {
+      mixed[index].left += left;
+      mixed[index].right += right;
+    }
+    const auto mono = (left + right) * 0.5F;
+    squared_sum += static_cast<double>(mono) * static_cast<double>(mono);
+  }
+
+  if (!track.stream_source) {
+    const auto activity_enabled = !deafened && effective_gain > 0.0F;
+    const auto rms = frame_count == 0
+      ? 0.0F
+      : static_cast<float>(std::sqrt(
+          squared_sum / static_cast<double>(frame_count)
+        ));
+    track.activity.updateRms(rms, activity_enabled, now);
+    track.speaking.store(track.activity.speaking(), std::memory_order_release);
+  }
+  return produced_frames != 0;
+}
+
+float remoteAudioLimiterTargetGainImpl(float peak) noexcept {
+  if (!std::isfinite(peak) || peak <= kLimiterCeiling) return 1.0F;
+  return kLimiterCeiling / peak;
+}
 
 }  // namespace
 
@@ -158,8 +318,12 @@ float resolveRemoteAudioGain(
   bool stream_source
 ) {
   const auto user_id = normalizeRemoteAudioIdentity(participant_identity);
-  const auto& volumes = stream_source ? settings.stream_volumes : settings.user_volumes;
-  const auto& mutes = stream_source ? settings.stream_mutes : settings.user_mutes;
+  const auto& volumes = stream_source
+    ? settings.stream_volumes
+    : settings.user_volumes;
+  const auto& mutes = stream_source
+    ? settings.stream_mutes
+    : settings.user_mutes;
   const auto muted = mutes.find(user_id);
   if (muted != mutes.end() && muted->second) return 0.0F;
   const auto volume = volumes.find(user_id);
@@ -169,250 +333,119 @@ float resolveRemoteAudioGain(
 }
 
 float remoteAudioLimiterTargetGain(float peak) noexcept {
-  if (!std::isfinite(peak) || peak <= kLimiterCeiling) return 1.0F;
-  return kLimiterCeiling / peak;
+  return remoteAudioLimiterTargetGainImpl(peak);
 }
 
 class RemoteAudioOutput::Implementation {
  public:
   Implementation(
     FailureHandler on_failure,
-    SpeakingActivityHandler on_speaking_activity,
-    WorkerFactory worker_factory
+    SpeakingActivityHandler on_speaking_activity
   ) : on_failure_(std::move(on_failure)),
-      on_speaking_activity_(std::move(on_speaking_activity)),
-      worker_factory_(std::move(worker_factory)) {
-    if (!worker_factory_) {
-      worker_factory_ = [](WorkerTask task) {
-        return std::jthread(std::move(task));
-      };
-    }
+      on_speaking_activity_(std::move(on_speaking_activity)) {
+    render_snapshot_owner_ = std::make_unique<const RenderSnapshot>();
+    render_snapshot_source_.store(
+      render_snapshot_owner_.get(),
+      std::memory_order_seq_cst
+    );
+    telemetry_worker_ = std::jthread([this](std::stop_token token) {
+      telemetryLoop(token);
+    });
     try {
       endpoint_monitor_ = std::make_unique<AudioEndpointMonitor>(
         eRender,
-        [this](AudioEndpointChange change) { handleEndpointChange(std::move(change)); }
+        [this](AudioEndpointChange change) {
+          handleEndpointChange(std::move(change));
+        }
       );
-  } catch (const std::exception& error) {
-      logRemoteAudio("remote_audio_endpoint_monitor_unavailable", {{"message", error.what()}});
+    } catch (const std::exception& error) {
+      logRemoteAudio(
+        "remote_audio_endpoint_monitor_unavailable",
+        {{"message", error.what()}}
+      );
     }
   }
+
   ~Implementation() { stop(); }
 
-  void addTrack(std::string sid, std::string identity, bool stream,
-                std::shared_ptr<livekit::Track> track) {
+  void addTrack(
+    std::string sid,
+    std::string identity,
+    bool stream,
+    std::shared_ptr<livekit::Track> track
+  ) {
     if (!track || track->kind() != livekit::TrackKind::KIND_AUDIO) return;
     removeTrack(sid);
-    auto state = std::make_unique<TrackState>();
+
+    auto state = std::make_shared<TrackState>();
+    state->ingress = std::make_shared<RemoteAudioIngress>();
+    state->user_id = normalizeRemoteAudioIdentity(identity);
+    state->track_id = sid;
+    state->stream_source = stream;
     try {
-      livekit::AudioStream::Options options;
-      options.capacity = kStreamFrameCapacity;
-      state->stream = livekit::AudioStream::fromTrack(track, options);
-      state->user_id = normalizeRemoteAudioIdentity(identity);
-      state->track_id = sid;
-      state->stream_source = stream;
+      state->registration = livekit::AudioFrameSinkRegistration::attach(
+        track,
+        state->ingress,
+        livekit::DirectAudioSinkOptions{
+          .sample_rate = kRemoteAudioIngressSampleRate,
+          .num_channels = kRemoteAudioIngressChannels,
+        }
+      );
     } catch (const std::exception& error) {
-      notifyTrackStartFailure(error, sid);
+      notifyTrackStartFailure(error.what(), sid);
       return;
     } catch (...) {
-      notifyTrackStartFailure("unknown remote audio stream creation failure", sid);
+      notifyTrackStartFailure("unknown direct audio sink attach failure", sid);
       return;
     }
-    auto* state_ptr = state.get();
-    WorkerTask worker_task = [this, state_ptr](std::stop_token token) {
-      livekit::AudioFrameEvent event;
-      while (!token.stop_requested() && state_ptr->stream->read(event)) {
-        const auto& frame = event.frame;
-        const auto channels = std::max(1, frame.numChannels());
-        const auto& input = frame.data();
-        std::vector<std::string> speakers;
-        bool speakers_changed = false;
-        std::uint64_t activity_revision = 0;
-        std::uint64_t dropped_samples_report = 0;
-        std::uint64_t dropped_samples_total = 0;
-        std::string dropped_track_id;
-        {
-          std::lock_guard lock(mutex_);
-          if (stopping_) break;
-          double squared_sum = 0.0;
-          std::size_t mono_samples = 0;
-          std::size_t dropped_samples = 0;
-          for (std::size_t index = 0; index + channels <= input.size(); index += channels) {
-            float mono = 0.0F;
-            for (int channel = 0; channel < channels; ++channel) {
-              mono += static_cast<float>(input[index + static_cast<std::size_t>(channel)]);
-            }
-            mono /= 32768.0F * static_cast<float>(channels);
-            const auto left = static_cast<float>(input[index]) / 32768.0F;
-            const auto right = channels == 1
-              ? left
-              : static_cast<float>(input[index + 1]) / 32768.0F;
-            if (state_ptr->frames.size() >= kMaxQueuedFramesPerTrack) {
-              // Real-time audio is freshness-bound. Evict the oldest queued
-              // sample so overload cannot turn into ever-staler playout.
-              state_ptr->frames.pop_front();
-              if (state_ptr->frames.empty()) {
-                state_ptr->discontinuity_pending = true;
-              } else {
-                state_ptr->frames.front().discontinuity = true;
-              }
-              dropped_samples += 1;
-            }
-            state_ptr->frames.push_back({
-              .left = left,
-              .right = right,
-            });
-            if (state_ptr->discontinuity_pending) {
-              state_ptr->frames.back().discontinuity = true;
-              state_ptr->discontinuity_pending = false;
-            }
-            squared_sum += static_cast<double>(mono) * static_cast<double>(mono);
-            ++mono_samples;
-          }
-          if (dropped_samples != 0) {
-            state_ptr->dropped_samples_total += dropped_samples;
-            state_ptr->dropped_samples_since_report += dropped_samples;
-            const auto now = std::chrono::steady_clock::now();
-            if (now >= state_ptr->next_overrun_report_at) {
-              dropped_samples_report =
-                std::exchange(state_ptr->dropped_samples_since_report, 0);
-              dropped_samples_total = state_ptr->dropped_samples_total;
-              dropped_track_id = state_ptr->track_id;
-              state_ptr->next_overrun_report_at =
-                now + std::chrono::seconds(1);
-            }
-          }
-          const auto output_gain = state_ptr->gain * volume_;
-          if (
-            !state_ptr->stream_source &&
-            !deafened_ &&
-            output_gain > 0.0F &&
-            mono_samples != 0
-          ) {
-            const auto rms = static_cast<float>(std::sqrt(
-              squared_sum / static_cast<double>(mono_samples)
-            )) * output_gain;
-            const auto changed = state_ptr->activity.updateRms(
-              rms,
-              true,
-              std::chrono::steady_clock::now()
-            );
-            if (changed) {
-              speakers = activeSpeakerIdentitiesLocked();
-              speakers_changed = true;
-              activity_revision = ++activity_revision_;
-            }
-          }
-        }
-        if (dropped_samples_report != 0) {
-          logRemoteAudio(
-            "remote_audio_buffer_overrun",
-            {
-              {"trackId", std::move(dropped_track_id)},
-              {"droppedSamples", dropped_samples_report},
-              {"droppedSamplesTotal", dropped_samples_total}
-            }
-          );
-        }
-        if (speakers_changed) {
-          notifySpeakingActivity(std::move(speakers), activity_revision);
-        }
-      }
-      logRemoteAudio("remote_audio_stream_ended");
-    };
+
     bool discard = false;
     std::size_t track_count = 0;
-    std::unique_ptr<TrackState> rolled_back;
-    std::exception_ptr startup_failure;
-    try {
+    {
       std::lock_guard lock(mutex_);
       if (stopping_ || tracks_.contains(sid)) {
         discard = true;
       } else {
         applyGain(*state);
-        const auto [_, inserted] = tracks_.try_emplace(sid, std::move(state));
-        if (!inserted) {
-          discard = true;
-        } else {
-          try {
-            state_ptr->worker = worker_factory_(std::move(worker_task));
-            track_count = tracks_.size();
-          } catch (...) {
-            startup_failure = std::current_exception();
-            rolled_back = std::move(tracks_.at(sid));
-            tracks_.erase(sid);
-          }
-        }
+        tracks_.emplace(sid, state);
+        publishRenderSnapshotLocked();
+        track_count = tracks_.size();
       }
-    } catch (...) {
-      startup_failure = std::current_exception();
-      if (state) rolled_back = std::move(state);
     }
     if (discard) {
-      state->worker.request_stop();
-      state->stream->close();
-      if (state->worker.joinable()) state->worker.join();
+      state->registration->close();
       return;
     }
-    if (startup_failure) {
-      if (rolled_back && rolled_back->stream) rolled_back->stream->close();
-      try {
-        std::rethrow_exception(startup_failure);
-      } catch (const std::exception& error) {
-        notifyTrackStartFailure(error, sid);
-      } catch (...) {
-        notifyTrackStartFailure("unknown audio worker construction failure", sid);
-      }
-      return;
-    }
+    telemetry_changed_.notify_all();
     logRemoteAudio(
-      "remote_audio_track_added",
+      "remote_audio_direct_track_added",
       {
         {"trackCount", static_cast<std::uint64_t>(track_count)},
-        {"streamSource", stream}
+        {"streamSource", stream},
       }
     );
   }
 
   void removeTrack(const std::string& sid) {
-    std::unique_ptr<TrackState> removed;
-    std::vector<std::string> speakers;
-    bool speakers_changed = false;
-    std::uint64_t activity_revision = 0;
+    std::shared_ptr<TrackState> removed;
     {
       std::lock_guard lock(mutex_);
-      auto found = tracks_.find(sid);
+      const auto found = tracks_.find(sid);
       if (found == tracks_.end()) return;
       removed = std::move(found->second);
       tracks_.erase(found);
-      if (removed->activity.reset()) {
-        speakers = activeSpeakerIdentitiesLocked();
-        speakers_changed = true;
-        activity_revision = ++activity_revision_;
-      }
+      publishRenderSnapshotLocked();
     }
-    removed->worker.request_stop();
-    removed->stream->close();
-    if (removed->worker.joinable()) removed->worker.join();
-    if (speakers_changed) {
-      notifySpeakingActivity(std::move(speakers), activity_revision);
-    }
-    logRemoteAudio("remote_audio_track_removed");
+    removed->registration->close();
+    removed->registration.reset();
+    telemetry_changed_.notify_all();
+    logRemoteAudio("remote_audio_direct_track_removed");
   }
 
   void setDeafened(bool value) {
-    bool speakers_changed = false;
-    std::uint64_t activity_revision = 0;
-    {
-      std::lock_guard lock(mutex_);
-      deafened_ = value;
-      if (value) for (auto& [_, track] : tracks_) {
-        track->frames.clear();
-        track->playout_started = false;
-        speakers_changed = track->activity.reset() || speakers_changed;
-      }
-      if (speakers_changed) activity_revision = ++activity_revision_;
-    }
-    if (speakers_changed) notifySpeakingActivity({}, activity_revision);
+    deafened_.store(value, std::memory_order_release);
+    if (value) requestTrackResets();
+    telemetry_changed_.notify_all();
   }
 
   std::uint64_t setOutputDevice(
@@ -470,26 +503,156 @@ class RemoteAudioOutput::Implementation {
     return epoch != 0 && renderer_epoch_ == epoch;
   }
 
+  std::string outputDeviceId() const {
+    std::lock_guard lock(mutex_);
+    return output_device_id_;
+  }
+
+  void setVolume(float value) {
+    volume_.store(std::clamp(value, 0.0F, 3.0F), std::memory_order_release);
+    telemetry_changed_.notify_all();
+  }
+
+  void configure(RemoteAudioSettings settings) {
+    {
+      std::lock_guard lock(mutex_);
+      if (settings.revision <= settings_.revision) return;
+      settings_ = std::move(settings);
+      for (auto& [_, track] : tracks_) applyGain(*track);
+    }
+    telemetry_changed_.notify_all();
+  }
+
+  void stop() {
+    std::lock_guard switch_lock(device_switch_mutex_);
+    std::vector<std::shared_ptr<TrackState>> removed;
+    {
+      std::lock_guard lock(mutex_);
+      if (stopping_) return;
+      stopping_ = true;
+      removed.reserve(tracks_.size());
+      for (auto& [_, track] : tracks_) removed.push_back(std::move(track));
+      tracks_.clear();
+      publishRenderSnapshotLocked();
+    }
+    for (auto& track : removed) {
+      if (track->registration) track->registration->close();
+      track->registration.reset();
+    }
+    stopRenderer();
+    telemetry_worker_.request_stop();
+    telemetry_changed_.notify_all();
+    if (telemetry_worker_.joinable()) telemetry_worker_.join();
+  }
+
+ private:
+  void publishRenderSnapshotLocked() {
+    auto snapshot = std::make_unique<RenderSnapshot>();
+    snapshot->reserve(tracks_.size());
+    for (const auto& [_, track] : tracks_) snapshot->push_back(track);
+    retired_render_snapshots_.reserve(retired_render_snapshots_.size() + 1);
+    const auto* published_snapshot = snapshot.get();
+    retired_render_snapshots_.push_back(std::move(render_snapshot_owner_));
+    render_snapshot_owner_ = std::move(snapshot);
+    render_snapshot_source_.store(
+      published_snapshot,
+      std::memory_order_seq_cst
+    );
+    reclaimRetiredRenderSnapshotsLocked();
+  }
+
+  const RenderSnapshot* acquireRenderSnapshot() noexcept {
+    const RenderSnapshot* snapshot = nullptr;
+    do {
+      snapshot = render_snapshot_source_.load(std::memory_order_seq_cst);
+      render_snapshot_hazard_.store(snapshot, std::memory_order_seq_cst);
+    } while (
+      snapshot != render_snapshot_source_.load(std::memory_order_seq_cst)
+    );
+    return snapshot;
+  }
+
+  void releaseRenderSnapshot() noexcept {
+    render_snapshot_hazard_.store(nullptr, std::memory_order_seq_cst);
+  }
+
+  void reclaimRetiredRenderSnapshotsLocked() noexcept {
+    const auto* hazard =
+      render_snapshot_hazard_.load(std::memory_order_seq_cst);
+    std::erase_if(retired_render_snapshots_, [hazard](const auto& snapshot) {
+      return snapshot.get() != hazard;
+    });
+  }
+
+  void requestTrackResets() {
+    std::lock_guard lock(mutex_);
+    for (const auto& [_, track] : tracks_) {
+      track->reset_epoch.fetch_add(1, std::memory_order_release);
+    }
+  }
+
+  void applyGain(TrackState& track) {
+    track.gain.store(
+      resolveRemoteAudioGain(
+        settings_,
+        track.user_id,
+        track.stream_source
+      ),
+      std::memory_order_release
+    );
+  }
+
+  void notifyTrackStartFailure(
+    std::string_view message,
+    std::string_view track_id
+  ) noexcept {
+    try {
+      if (!on_failure_) return;
+      std::uint64_t epoch = 0;
+      {
+        std::lock_guard lock(mutex_);
+        epoch = renderer_epoch_;
+      }
+      on_failure_(AudioFailureInfo{
+        AudioFailureKind::IoFailed,
+        "audio_output_direct_sink_attach_failed",
+        "Direct remote audio sink failed to attach: " + std::string(message),
+        S_OK,
+        true,
+      }, std::string(track_id), epoch);
+    } catch (...) {
+      logRemoteAudio("remote_audio_track_failure_callback_failed");
+    }
+  }
+
   std::uint64_t applyOutputDeviceLocked(std::string value, bool force) {
     {
       std::lock_guard lock(mutex_);
-      if (stopping_ || (!force && output_device_id_ == value && renderer_running_.load())) {
+      if (stopping_ ||
+          (!force && output_device_id_ == value && renderer_running_.load())) {
         return renderer_epoch_;
       }
     }
     const auto requested = value;
     try {
-      probeRenderDevice(value, desiredRemoteAudioRenderFormat(), std::chrono::milliseconds(750));
+      probeRenderDevice(
+        value,
+        desiredRemoteAudioRenderFormat(),
+        std::chrono::milliseconds(750)
+      );
     } catch (const AudioFailure& failure) {
-      if (value.empty() || value == "default") {
-        throw;
-      }
-      if (!audioFailureAllowsDefaultFallback(failure.kind())) {
+      if (value.empty() || value == "default" ||
+          !audioFailureAllowsDefaultFallback(failure.kind())) {
         throw;
       }
       value = "default";
-      probeRenderDevice(value, desiredRemoteAudioRenderFormat(), std::chrono::milliseconds(750));
+      probeRenderDevice(
+        value,
+        desiredRemoteAudioRenderFormat(),
+        std::chrono::milliseconds(750)
+      );
     }
+
     std::string previous;
     {
       std::lock_guard lock(mutex_);
@@ -509,14 +672,12 @@ class RemoteAudioOutput::Implementation {
       },
       [this] { startRenderer(); }
     );
+
     std::string active;
-    {
-      std::lock_guard lock(mutex_);
-      active = output_device_id_;
-    }
     std::uint64_t active_epoch = 0;
     {
       std::lock_guard lock(mutex_);
+      active = output_device_id_;
       active_epoch = renderer_epoch_;
     }
     if (requested != active && on_failure_) {
@@ -531,155 +692,13 @@ class RemoteAudioOutput::Implementation {
     return active_epoch;
   }
 
-  void setVolume(float value) {
-    std::vector<std::string> speakers;
-    bool speakers_changed = false;
-    std::uint64_t activity_revision = 0;
-    {
-      std::lock_guard lock(mutex_);
-      volume_ = std::clamp(value, 0.0F, 3.0F);
-      if (volume_ <= 0.0F) {
-        for (auto& [_, track] : tracks_) {
-          speakers_changed = track->activity.reset() || speakers_changed;
-        }
-      }
-      if (speakers_changed) {
-        activity_revision = ++activity_revision_;
-        speakers = activeSpeakerIdentitiesLocked();
-      }
-    }
-    if (speakers_changed) {
-      notifySpeakingActivity(std::move(speakers), activity_revision);
-    }
-  }
-
-  void configure(RemoteAudioSettings settings) {
-    std::vector<std::string> speakers;
-    bool speakers_changed = false;
-    std::uint64_t activity_revision = 0;
-    {
-      std::lock_guard lock(mutex_);
-      if (settings.revision <= settings_.revision) return;
-      settings_ = std::move(settings);
-      for (auto& [_, track] : tracks_) {
-        applyGain(*track);
-        if (track->gain <= 0.0F) {
-          speakers_changed = track->activity.reset() || speakers_changed;
-        }
-      }
-      if (speakers_changed) {
-        activity_revision = ++activity_revision_;
-        speakers = activeSpeakerIdentitiesLocked();
-      }
-    }
-    if (speakers_changed) {
-      notifySpeakingActivity(std::move(speakers), activity_revision);
-    }
-  }
-
-  std::string outputDeviceId() const {
-    std::lock_guard lock(mutex_);
-    return output_device_id_;
-  }
-
-  void stop() {
-    // Endpoint notifications run on their own COM worker. Serialize the full
-    // renderer teardown with device switching so only one thread can move,
-    // stop, or join renderer_ at a time.
-    std::lock_guard switch_lock(device_switch_mutex_);
-    std::vector<std::unique_ptr<TrackState>> removed;
-    bool speakers_changed = false;
-    std::uint64_t activity_revision = 0;
-    {
-      std::lock_guard lock(mutex_);
-      if (stopping_) return;
-      stopping_ = true;
-      for (auto& [_, track] : tracks_) {
-        speakers_changed = track->activity.reset() || speakers_changed;
-        removed.push_back(std::move(track));
-      }
-      tracks_.clear();
-      if (speakers_changed) activity_revision = ++activity_revision_;
-    }
-    for (auto& track : removed) {
-      track->worker.request_stop();
-      track->stream->close();
-    }
-    for (auto& track : removed) if (track->worker.joinable()) track->worker.join();
-    if (speakers_changed) notifySpeakingActivity({}, activity_revision);
-    stopRenderer();
-  }
-
- private:
-  void notifyTrackStartFailure(
-    const std::exception& error,
-    std::string_view track_id
-  ) noexcept {
-    notifyTrackStartFailure(error.what(), track_id);
-  }
-
-  void notifyTrackStartFailure(
-    std::string_view message,
-    std::string_view track_id
-  ) noexcept {
-    try {
-      if (!on_failure_) return;
-      std::uint64_t epoch = 0;
-      {
-        std::lock_guard lock(mutex_);
-        epoch = renderer_epoch_;
-      }
-      AudioFailureInfo failure{
-        AudioFailureKind::IoFailed,
-        "audio_output_stream_start_failed",
-        "Remote audio stream worker failed to start: " + std::string(message),
-        S_OK,
-        true,
-      };
-      on_failure_(std::move(failure), std::string(track_id), epoch);
-    } catch (...) {
-      logRemoteAudio("remote_audio_track_failure_callback_failed");
-    }
-  }
-
-  std::vector<std::string> activeSpeakerIdentitiesLocked() const {
-    std::vector<std::string> identities;
-    identities.reserve(tracks_.size());
-    for (const auto& [_, track] : tracks_) {
-      if (
-        track->activity.speaking() &&
-        !track->stream_source &&
-        !track->user_id.empty()
-      ) {
-        identities.push_back(track->user_id);
-      }
-    }
-    std::sort(identities.begin(), identities.end());
-    identities.erase(std::unique(identities.begin(), identities.end()), identities.end());
-    return identities;
-  }
-
-  void notifySpeakingActivity(
-    std::vector<std::string> identities,
-    std::uint64_t revision
-  ) {
-    if (!on_speaking_activity_) return;
-    std::lock_guard callback_lock(activity_callback_mutex_);
-    {
-      std::lock_guard state_lock(mutex_);
-      if (revision != activity_revision_) return;
-    }
-    on_speaking_activity_(std::move(identities));
-  }
-
   void startRenderer() {
     {
       std::lock_guard lock(renderer_startup_mutex_);
       renderer_ready_ = false;
       renderer_startup_failure_.reset();
     }
-    limiter_gain_ = 1.0F;
-    renderer_running_.store(true);
+    renderer_running_.store(true, std::memory_order_release);
     std::uint64_t renderer_epoch = 0;
     {
       std::lock_guard lock(mutex_);
@@ -691,13 +710,18 @@ class RemoteAudioOutput::Implementation {
         render(token, renderer_epoch);
       });
     } catch (...) {
-      renderer_running_.store(false);
+      renderer_running_.store(false, std::memory_order_release);
       throw;
     }
+
     std::unique_lock lock(renderer_startup_mutex_);
-    if (!renderer_startup_changed_.wait_for(lock, std::chrono::seconds(2), [&] {
-          return renderer_ready_ || renderer_startup_failure_.has_value();
-        })) {
+    if (!renderer_startup_changed_.wait_for(
+          lock,
+          std::chrono::seconds(2),
+          [this] {
+            return renderer_ready_ || renderer_startup_failure_.has_value();
+          }
+        )) {
       lock.unlock();
       stopRenderer();
       throw AudioFailure(
@@ -715,13 +739,73 @@ class RemoteAudioOutput::Implementation {
   }
 
   void stopRenderer() {
-    renderer_running_.store(false);
+    renderer_running_.store(false, std::memory_order_release);
     if (renderer_.joinable()) {
       renderer_.request_stop();
       renderer_.join();
     }
-    std::lock_guard lock(mutex_);
-    clearQueuedSamplesLocked();
+    clock_adjustment_ppm_.store(0.0, std::memory_order_relaxed);
+    requestTrackResets();
+  }
+
+  void updateClockAdjustment(
+    IAudioClockAdjustment& clock_adjustment,
+    const RenderSnapshot& snapshot,
+    std::chrono::steady_clock::time_point now,
+    std::chrono::steady_clock::time_point& next_update,
+    double& integral_error,
+    double& applied_ppm
+  ) {
+    if (now < next_update) return;
+    next_update = now + kClockAdjustmentInterval;
+
+    double queued_packets = 0.0;
+    std::size_t active_tracks = 0;
+    for (const auto& track : snapshot) {
+      if (!track->playout_started) continue;
+      queued_packets += static_cast<double>(track->ingress->queuedFrames());
+      if (track->current_frame_offset < kRemoteAudioIngressFramesPerPacket) {
+        queued_packets += static_cast<double>(
+          kRemoteAudioIngressFramesPerPacket - track->current_frame_offset
+        ) / static_cast<double>(kRemoteAudioIngressFramesPerPacket);
+      }
+      ++active_tracks;
+    }
+
+    double requested_ppm = 0.0;
+    if (active_tracks == 0) {
+      integral_error = 0.0;
+    } else {
+      const auto average_packets =
+        queued_packets / static_cast<double>(active_tracks);
+      const auto error = average_packets - kClockTargetPackets;
+      integral_error = std::clamp(
+        integral_error + error * 0.1,
+        -100.0,
+        100.0
+      );
+      requested_ppm = std::clamp(
+        error * 120.0 + integral_error * 4.0,
+        -kMaximumClockCorrectionPpm,
+        kMaximumClockCorrectionPpm
+      );
+    }
+    if (std::abs(requested_ppm - applied_ppm) < 1.0) return;
+
+    const auto adjusted_rate = static_cast<float>(
+      static_cast<double>(kRemoteAudioSampleRate) *
+      (1.0 + requested_ppm / 1'000'000.0)
+    );
+    const auto result = clock_adjustment.SetSampleRate(adjusted_rate);
+    if (FAILED(result)) {
+      throwAudioFailure(
+        result,
+        "adjust render clock failed",
+        AudioFailureKind::IoFailed
+      );
+    }
+    applied_ppm = requested_ppm;
+    clock_adjustment_ppm_.store(applied_ppm, std::memory_order_relaxed);
   }
 
   void render(std::stop_token token, std::uint64_t renderer_epoch) {
@@ -735,19 +819,22 @@ class RemoteAudioOutput::Implementation {
       std::stop_callback stop_callback(token, [&stream_events] {
         stream_events.requestStop();
       });
-      { std::lock_guard lock(mutex_); device_id = output_device_id_; }
+      {
+        std::lock_guard lock(mutex_);
+        device_id = output_device_id_;
+      }
       auto device = renderDevice(device_id);
-      const auto activate_audio_client = [&] {
-        ComPtr<IAudioClient> candidate;
-        const auto result = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
-            reinterpret_cast<void**>(candidate.GetAddressOf()));
-        if (FAILED(result)) {
-          throwAudioFailure(result, "activate render device failed");
-        }
-        return candidate;
-      };
-      auto client = activate_audio_client();
-      std::string category_status = "unsupported";
+      ComPtr<IAudioClient> client;
+      const auto activate_result = device->Activate(
+        __uuidof(IAudioClient),
+        CLSCTX_ALL,
+        nullptr,
+        reinterpret_cast<void**>(client.GetAddressOf())
+      );
+      if (FAILED(activate_result)) {
+        throwAudioFailure(activate_result, "activate render device failed");
+      }
+
       ComPtr<IAudioClient2> client2;
       if (SUCCEEDED(client.As(&client2))) {
         AudioClientProperties properties{};
@@ -755,42 +842,60 @@ class RemoteAudioOutput::Implementation {
         properties.bIsOffload = FALSE;
         properties.eCategory = AudioCategory_Media;
         properties.Options = AUDCLNT_STREAMOPTIONS_NONE;
-        if (SUCCEEDED(client2->SetClientProperties(&properties))) {
-          category_status = "media";
-        }
+        (void)client2->SetClientProperties(&properties);
       }
+
       auto format = desiredRemoteAudioRenderFormat();
-      constexpr auto requested_buffer_duration = remoteAudioRenderBufferDuration();
-      const auto initialize_audio_client = [&](const ComPtr<IAudioClient>& candidate) {
-        return candidate->Initialize(AUDCLNT_SHAREMODE_SHARED,
-          AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
-            AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
-            AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-          requested_buffer_duration.count() * kHundredNanosecondsPerMillisecond,
-          0, &format, nullptr);
-      };
-      auto initialize_result = initialize_audio_client(client);
+      constexpr auto requested_buffer_duration =
+        remoteAudioRenderBufferDuration();
+      const auto initialize_result = client->Initialize(
+        AUDCLNT_SHAREMODE_SHARED,
+        AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+          AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
+          AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY |
+          AUDCLNT_STREAMFLAGS_RATEADJUST,
+        requested_buffer_duration.count() *
+          kHundredNanosecondsPerMillisecond,
+        0,
+        &format,
+        nullptr
+      );
       if (FAILED(initialize_result)) {
         throwAudioFailure(initialize_result, "initialize render stream failed");
       }
-      const auto event_result = client->SetEventHandle(stream_events.audioReadyHandle());
+      const auto event_result = client->SetEventHandle(
+        stream_events.audioReadyHandle()
+      );
       if (FAILED(event_result)) {
         throwAudioFailure(event_result, "set render stream event failed");
       }
+
       ComPtr<IAudioSessionControl> session_control;
-      std::string ducking_status = "unsupported";
       if (SUCCEEDED(client->GetService(IID_PPV_ARGS(&session_control)))) {
         ComPtr<IAudioSessionControl2> session_control2;
-        if (SUCCEEDED(session_control.As(&session_control2)) &&
-            SUCCEEDED(session_control2->SetDuckingPreference(TRUE))) {
-          ducking_status = "disabled";
+        if (SUCCEEDED(session_control.As(&session_control2))) {
+          (void)session_control2->SetDuckingPreference(TRUE);
         }
       }
+
       ComPtr<IAudioRenderClient> render_client;
-      const auto service_result = client->GetService(IID_PPV_ARGS(&render_client));
-      if (FAILED(service_result)) {
-        throwAudioFailure(service_result, "open render client failed");
+      const auto render_service_result = client->GetService(
+        IID_PPV_ARGS(&render_client)
+      );
+      if (FAILED(render_service_result)) {
+        throwAudioFailure(render_service_result, "open render client failed");
       }
+      ComPtr<IAudioClockAdjustment> clock_adjustment;
+      const auto clock_service_result = client->GetService(
+        IID_PPV_ARGS(&clock_adjustment)
+      );
+      if (FAILED(clock_service_result)) {
+        throwAudioFailure(
+          clock_service_result,
+          "open render clock adjustment failed"
+        );
+      }
+
       UINT32 capacity = 0;
       const auto capacity_result = client->GetBufferSize(&capacity);
       if (FAILED(capacity_result) || capacity == 0) {
@@ -800,14 +905,24 @@ class RemoteAudioOutput::Implementation {
           AudioFailureKind::IoFailed
         );
       }
+      std::vector<StereoFrame> mixed(capacity);
+
       BYTE* initial_output = nullptr;
-      const auto prime_result = render_client->GetBuffer(capacity, &initial_output);
+      const auto prime_result = render_client->GetBuffer(
+        capacity,
+        &initial_output
+      );
       if (FAILED(prime_result)) {
-        throwAudioFailure(prime_result, "prime render buffer failed", AudioFailureKind::IoFailed);
+        throwAudioFailure(
+          prime_result,
+          "prime render buffer failed",
+          AudioFailureKind::IoFailed
+        );
       }
-      (void)initial_output;
       const auto release_prime_result = render_client->ReleaseBuffer(
-        capacity, AUDCLNT_BUFFERFLAGS_SILENT);
+        capacity,
+        AUDCLNT_BUFFERFLAGS_SILENT
+      );
       if (FAILED(release_prime_result)) {
         throwAudioFailure(
           release_prime_result,
@@ -817,200 +932,248 @@ class RemoteAudioOutput::Implementation {
       }
       const auto start_result = client->Start();
       if (FAILED(start_result)) {
-        throwAudioFailure(start_result, "start render failed", AudioFailureKind::ClientStartFailed);
+        throwAudioFailure(
+          start_result,
+          "start render failed",
+          AudioFailureKind::ClientStartFailed
+        );
       }
-      while (!token.stop_requested() && renderer_running_.load()) {
+
+      float limiter_gain = 1.0F;
+      double clock_integral_error = 0.0;
+      double applied_clock_ppm = 0.0;
+      auto next_clock_update = std::chrono::steady_clock::now();
+      while (!token.stop_requested() &&
+             renderer_running_.load(std::memory_order_acquire)) {
         const auto wait_result = stream_events.wait(1'000);
         if (wait_result == WasapiEventPair::WaitResult::StopRequested) break;
         if (wait_result == WasapiEventPair::WaitResult::TimedOut) continue;
+
         UINT32 padding = 0;
         const auto padding_result = client->GetCurrentPadding(&padding);
         if (FAILED(padding_result)) {
-          throwAudioFailure(padding_result, "query render padding failed", AudioFailureKind::IoFailed);
+          throwAudioFailure(
+            padding_result,
+            "query render padding failed",
+            AudioFailureKind::IoFailed
+          );
         }
-        const UINT32 count = std::min<UINT32>(capacity - std::min(capacity, padding), 480);
-        if (count != 0) {
-          BYTE* output = nullptr;
-          const auto buffer_result = render_client->GetBuffer(count, &output);
-          if (FAILED(buffer_result)) {
-            throwAudioFailure(buffer_result, "acquire render buffer failed", AudioFailureKind::IoFailed);
-          }
-          auto* samples = reinterpret_cast<float*>(output);
-          bool deafened = false;
-          float output_volume = 1.0F;
-          std::size_t underflowed_tracks = 0;
-          std::vector<StereoFrame> mixed(count);
-          {
-            std::lock_guard lock(mutex_);
-            deafened = deafened_;
-            output_volume = volume_;
-            for (UINT32 index = 0; index < count; ++index) {
-              for (auto& [_, track] : tracks_) {
-                if (!track->playout_started) {
-                  if (track->frames.size() < kPlayoutStartFrames) continue;
-                  track->playout_started = true;
-                }
-                if (track->frames.empty()) {
-                  track->playout_started = false;
-                  ++underflowed_tracks;
-                  continue;
-                }
-                if (track->frames.front().discontinuity) {
-                  track->frames.front().discontinuity = false;
-                  track->playout_started = false;
-                  continue;
-                }
-                const auto frame = track->frames.front();
-                track->frames.pop_front();
-                if (deafened) continue;
-                mixed[index].left += frame.left * track->gain;
-                mixed[index].right += frame.right * track->gain;
-              }
-            }
-          }
-          if (underflowed_tracks != 0) {
-            logRemoteAudio(
-              "remote_audio_buffer_underrun",
-              {{"trackCount", static_cast<std::uint64_t>(underflowed_tracks)}}
-            );
-          }
+        const auto writable = capacity - std::min(capacity, padding);
+        const UINT32 count = std::min<UINT32>(
+          writable,
+          static_cast<UINT32>(kRemoteAudioIngressFramesPerPacket)
+        );
+        if (count == 0) continue;
 
-          float peak = 0.0F;
-          for (auto& frame : mixed) {
-            frame.left *= output_volume;
-            frame.right *= output_volume;
-            peak = std::max(peak, std::abs(frame.left));
-            peak = std::max(peak, std::abs(frame.right));
-          }
-          const auto target_limiter_gain = remoteAudioLimiterTargetGain(peak);
-          if (target_limiter_gain < limiter_gain_) {
-            limiter_gain_ = target_limiter_gain;
-          } else {
-            const auto release = static_cast<float>(count) /
-              (static_cast<float>(kRemoteAudioSampleRate) * kLimiterReleaseSeconds);
-            limiter_gain_ = std::min(target_limiter_gain, limiter_gain_ + release);
-          }
-          for (UINT32 index = 0; index < count; ++index) {
-            samples[index * kRemoteAudioChannels] =
-              std::clamp(mixed[index].left * limiter_gain_, -1.0F, 1.0F);
-            samples[index * kRemoteAudioChannels + 1] =
-              std::clamp(mixed[index].right * limiter_gain_, -1.0F, 1.0F);
-          }
-          const auto release_result = render_client->ReleaseBuffer(
-                count,
-                deafened ? AUDCLNT_BUFFERFLAGS_SILENT : 0
-              );
-          if (FAILED(release_result)) {
-            throwAudioFailure(release_result, "release render buffer failed", AudioFailureKind::IoFailed);
-          }
-          bool became_ready = false;
-          {
-            std::lock_guard lock(renderer_startup_mutex_);
-            if (!renderer_ready_) {
-              renderer_ready_ = true;
-              became_ready = true;
-            }
-          }
-          if (became_ready) {
-            renderer_startup_changed_.notify_all();
-            logRemoteAudio(
-              "remote_audio_renderer_started",
-              {
-                {"capacityFrames", static_cast<std::uint64_t>(capacity)},
-                {"capacityMs", static_cast<std::uint64_t>(
-                 (static_cast<std::uint64_t>(capacity) * 1'000) / format.nSamplesPerSec
-                 )},
-                 {"requestedBufferMs", static_cast<std::uint64_t>(requested_buffer_duration.count())},
-                 {"category", category_status},
-                 {"ducking", ducking_status}
-               }
-             );
-          }
+        BYTE* output = nullptr;
+        const auto buffer_result = render_client->GetBuffer(count, &output);
+        if (FAILED(buffer_result)) {
+          throwAudioFailure(
+            buffer_result,
+            "acquire render buffer failed",
+            AudioFailureKind::IoFailed
+          );
         }
-        std::vector<std::string> speaking_identities;
-        bool speaking_changed = false;
-        std::uint64_t speaking_revision = 0;
+
+        std::fill_n(mixed.begin(), count, StereoFrame{});
+        const auto* snapshot = acquireRenderSnapshot();
+        const auto deafened = deafened_.load(std::memory_order_relaxed);
+        const auto output_volume = volume_.load(std::memory_order_relaxed);
+        const auto now = std::chrono::steady_clock::now();
+        for (const auto& track : *snapshot) {
+          renderTrack(
+            *track,
+            mixed.data(),
+            count,
+            output_volume,
+            deafened,
+            now
+          );
+        }
+        updateClockAdjustment(
+          *clock_adjustment.Get(),
+          *snapshot,
+          now,
+          next_clock_update,
+          clock_integral_error,
+          applied_clock_ppm
+        );
+        releaseRenderSnapshot();
+
+        float peak = 0.0F;
+        for (UINT32 index = 0; index < count; ++index) {
+          peak = std::max(peak, std::abs(mixed[index].left));
+          peak = std::max(peak, std::abs(mixed[index].right));
+        }
+        const auto target_limiter_gain =
+          remoteAudioLimiterTargetGainImpl(peak);
+        if (target_limiter_gain < limiter_gain) {
+          limiter_gain = target_limiter_gain;
+        } else {
+          const auto release = static_cast<float>(count) /
+            (static_cast<float>(kRemoteAudioSampleRate) *
+             kLimiterReleaseSeconds);
+          limiter_gain = std::min(
+            target_limiter_gain,
+            limiter_gain + release
+          );
+        }
+
+        auto* samples = reinterpret_cast<float*>(output);
+        for (UINT32 index = 0; index < count; ++index) {
+          samples[index * kRemoteAudioChannels] = std::clamp(
+            mixed[index].left * limiter_gain,
+            -1.0F,
+            1.0F
+          );
+          samples[index * kRemoteAudioChannels + 1] = std::clamp(
+            mixed[index].right * limiter_gain,
+            -1.0F,
+            1.0F
+          );
+        }
+        const auto release_result = render_client->ReleaseBuffer(
+          count,
+          deafened ? AUDCLNT_BUFFERFLAGS_SILENT : 0
+        );
+        if (FAILED(release_result)) {
+          throwAudioFailure(
+            release_result,
+            "release render buffer failed",
+            AudioFailureKind::IoFailed
+          );
+        }
+
+        bool became_ready = false;
         {
-          std::lock_guard lock(mutex_);
-          const auto now = std::chrono::steady_clock::now();
-          for (auto& [_, track] : tracks_) {
-            if (track->stream_source) continue;
-            const auto enabled = !deafened_ && track->gain * volume_ > 0.0F;
-            const auto changed = enabled
-              ? track->activity.updateRms(0.0F, true, now)
-              : track->activity.reset();
-            if (!changed) continue;
-            speaking_identities = activeSpeakerIdentitiesLocked();
-            speaking_changed = true;
-            speaking_revision = ++activity_revision_;
+          std::lock_guard lock(renderer_startup_mutex_);
+          if (!renderer_ready_) {
+            renderer_ready_ = true;
+            became_ready = true;
           }
         }
-        if (speaking_changed) {
-          notifySpeakingActivity(std::move(speaking_identities), speaking_revision);
-        }
+        if (became_ready) renderer_startup_changed_.notify_all();
       }
-      client->Stop();
-      logRemoteAudio("remote_audio_renderer_stopped");
+      (void)client->Stop();
     } catch (const std::exception& error) {
-      logRemoteAudio("remote_audio_renderer_failed", {{"message", error.what()}});
-      const auto failure = describeAudioFailure(error);
-      bool failed_after_readiness = false;
-      {
-        std::lock_guard lock(renderer_startup_mutex_);
-        failed_after_readiness = renderer_ready_;
-        if (!failed_after_readiness) renderer_startup_failure_ = failure;
-      }
-      renderer_startup_changed_.notify_all();
-      if (failed_after_readiness && !token.stop_requested() &&
-          renderer_running_.load() && on_failure_) {
-        on_failure_(failure, device_id, renderer_epoch);
-      }
+      handleRendererFailure(
+        describeAudioFailure(error),
+        device_id,
+        renderer_epoch,
+        token.stop_requested()
+      );
     } catch (...) {
-      logRemoteAudio("remote_audio_renderer_failed", {{"message", "unknown"}});
-      const AudioFailureInfo failure{
+      handleRendererFailure(AudioFailureInfo{
         AudioFailureKind::Unknown,
         "audio_unknown",
         "Remote audio renderer failed",
         S_OK,
         true,
-      };
-      bool failed_after_readiness = false;
-      {
-        std::lock_guard lock(renderer_startup_mutex_);
-        failed_after_readiness = renderer_ready_;
-        if (!failed_after_readiness) renderer_startup_failure_ = failure;
-      }
-      renderer_startup_changed_.notify_all();
-      if (failed_after_readiness && !token.stop_requested() &&
-          renderer_running_.load() && on_failure_) {
-        on_failure_(failure, device_id, renderer_epoch);
-      }
+      }, device_id, renderer_epoch, token.stop_requested());
     }
+    releaseRenderSnapshot();
     if (avrt) AvRevertMmThreadCharacteristics(avrt);
     if (com_initialized) CoUninitialize();
-    renderer_running_.store(false);
+    renderer_running_.store(false, std::memory_order_release);
   }
 
+  void handleRendererFailure(
+    AudioFailureInfo failure,
+    const std::string& device_id,
+    std::uint64_t renderer_epoch,
+    bool stop_requested
+  ) noexcept {
+    bool failed_after_readiness = false;
+    {
+      std::lock_guard lock(renderer_startup_mutex_);
+      failed_after_readiness = renderer_ready_;
+      if (!failed_after_readiness) renderer_startup_failure_ = failure;
+    }
+    renderer_startup_changed_.notify_all();
+    if (failed_after_readiness && !stop_requested &&
+        renderer_running_.load(std::memory_order_acquire) && on_failure_) {
+      try {
+        on_failure_(std::move(failure), device_id, renderer_epoch);
+      } catch (...) {
+        logRemoteAudio("remote_audio_renderer_failure_callback_failed");
+      }
+    }
+  }
 
-  void applyGain(TrackState& track) {
-    track.gain = resolveRemoteAudioGain(
-      settings_,
-      track.user_id,
-      track.stream_source
+  void telemetryLoop(std::stop_token token) {
+    std::stop_callback stop_callback(token, [this] {
+      telemetry_changed_.notify_all();
+    });
+    while (!token.stop_requested()) {
+      std::unique_lock lock(telemetry_mutex_);
+      telemetry_changed_.wait_for(lock, std::chrono::milliseconds(100));
+      lock.unlock();
+      if (token.stop_requested()) break;
+      collectTelemetry();
+    }
+  }
+
+  void collectTelemetry() {
+    RenderSnapshot snapshot;
+    {
+      std::lock_guard lock(mutex_);
+      snapshot.reserve(tracks_.size());
+      for (const auto& [_, track] : tracks_) snapshot.push_back(track);
+      reclaimRetiredRenderSnapshotsLocked();
+    }
+    std::vector<std::string> speakers;
+    speakers.reserve(snapshot.size());
+    for (const auto& track : snapshot) {
+      if (!track->stream_source && !track->user_id.empty() &&
+          track->speaking.load(std::memory_order_acquire)) {
+        speakers.push_back(track->user_id);
+      }
+
+      const auto ingress = track->ingress->telemetry();
+      const auto underruns = track->underruns.load(std::memory_order_relaxed);
+      if (ingress.dropped_frames != track->reported_ingress.dropped_frames ||
+          ingress.invalid_frames != track->reported_ingress.invalid_frames ||
+          ingress.discontinuities !=
+            track->reported_ingress.discontinuities ||
+          underruns != track->reported_underruns) {
+        logRemoteAudio(
+          "remote_audio_direct_dataplane",
+          {
+            {"trackId", track->track_id},
+            {"queuedFrames", static_cast<std::uint64_t>(
+              track->ingress->queuedFrames()
+            )},
+            {"acceptedFrames", ingress.accepted_frames},
+            {"droppedFrames", ingress.dropped_frames},
+            {"invalidFrames", ingress.invalid_frames},
+            {"discontinuities", ingress.discontinuities},
+            {"underruns", underruns},
+            {"clockAdjustmentPpm", clock_adjustment_ppm_.load(
+              std::memory_order_relaxed
+            )},
+          }
+        );
+      }
+      track->reported_ingress = ingress;
+      track->reported_underruns = underruns;
+    }
+
+    std::sort(speakers.begin(), speakers.end());
+    speakers.erase(
+      std::unique(speakers.begin(), speakers.end()),
+      speakers.end()
     );
-  }
-
-  void clearQueuedSamplesLocked() {
-    for (auto& [_, track] : tracks_) {
-      track->frames.clear();
-      track->playout_started = false;
+    if (speakers == reported_speakers_) return;
+    reported_speakers_ = speakers;
+    if (!on_speaking_activity_) return;
+    try {
+      on_speaking_activity_(std::move(speakers));
+    } catch (...) {
+      logRemoteAudio("remote_audio_speaking_callback_failed");
     }
   }
 
   void handleEndpointChange(AudioEndpointChange change) {
-    // Serialize the decision with the switch itself. A notification queued for
-    // device A must re-read the current intent after an explicit switch to B;
-    // otherwise the stale notification can roll B back to the default device.
     std::lock_guard switch_lock(device_switch_mutex_);
     std::string selected;
     bool fallback_pending = false;
@@ -1020,10 +1183,18 @@ class RemoteAudioOutput::Implementation {
       selected = output_device_id_;
       fallback_pending = output_fallback_pending_;
       if (!configuredAudioOutputEndpointChangeRequiresDefaultRetry(
-            output_configured_, selected, fallback_pending, change)) return;
+            output_configured_,
+            selected,
+            fallback_pending,
+            change
+          )) {
+        return;
+      }
     }
+
     const bool follows_default = selected.empty() || selected == "default";
-    const bool selected_lost = !follows_default && selected == change.device_id;
+    const bool selected_lost =
+      !follows_default && selected == change.device_id;
     try {
       applyOutputDeviceLocked("default", true);
       {
@@ -1051,21 +1222,16 @@ class RemoteAudioOutput::Implementation {
       }
     } catch (const std::exception& error) {
       const auto failure = describeAudioFailure(error);
+      std::uint64_t active_epoch = 0;
       {
         std::lock_guard lock(mutex_);
         if (!stopping_) {
           output_fallback_pending_ =
             audioFailureAllowsDefaultFallback(failure.kind);
         }
+        active_epoch = renderer_epoch_;
       }
-      if (on_failure_) {
-        std::uint64_t active_epoch = 0;
-        {
-          std::lock_guard lock(mutex_);
-          active_epoch = renderer_epoch_;
-        }
-        on_failure_(failure, "default", active_epoch);
-      }
+      if (on_failure_) on_failure_(failure, "default", active_epoch);
     }
   }
 
@@ -1073,32 +1239,36 @@ class RemoteAudioOutput::Implementation {
   std::mutex device_switch_mutex_;
   std::mutex renderer_startup_mutex_;
   std::condition_variable renderer_startup_changed_;
-  std::mutex activity_callback_mutex_;
-  std::unordered_map<std::string, std::unique_ptr<TrackState>> tracks_;
+  std::unordered_map<std::string, std::shared_ptr<TrackState>> tracks_;
+  std::unique_ptr<const RenderSnapshot> render_snapshot_owner_;
+  std::vector<std::unique_ptr<const RenderSnapshot>> retired_render_snapshots_;
+  std::atomic<const RenderSnapshot*> render_snapshot_source_{nullptr};
+  std::atomic<const RenderSnapshot*> render_snapshot_hazard_{nullptr};
   std::string output_device_id_ = "default";
   bool output_fallback_pending_ = false;
   bool output_configured_ = false;
-  bool deafened_ = false;
-  float volume_ = 1.0F;
   bool stopping_ = false;
+  std::atomic_bool deafened_{false};
+  std::atomic<float> volume_{1.0F};
   std::atomic_bool renderer_running_{false};
   std::jthread renderer_;
   std::uint64_t renderer_epoch_ = 0;
   bool renderer_ready_ = false;
   std::optional<AudioFailureInfo> renderer_startup_failure_;
-  float limiter_gain_ = 1.0F;
+  std::atomic<double> clock_adjustment_ppm_{0.0};
   RemoteAudioSettings settings_;
   FailureHandler on_failure_;
   SpeakingActivityHandler on_speaking_activity_;
-  WorkerFactory worker_factory_;
-  std::uint64_t activity_revision_ = 0;
+  std::mutex telemetry_mutex_;
+  std::condition_variable telemetry_changed_;
+  std::jthread telemetry_worker_;
+  std::vector<std::string> reported_speakers_;
   std::unique_ptr<AudioEndpointMonitor> endpoint_monitor_;
 };
 
 RemoteAudioOutput::RemoteAudioOutput(
   FailureHandler on_failure,
   SpeakingActivityHandler on_speaking_activity,
-  WorkerFactory worker_factory,
   AsyncCleanupLauncher cleanup_launcher
 ) : cleanup_dispatcher_(&AsyncCleanupDispatcher::instance()),
     cleanup_node_(std::make_shared<AsyncCleanupNode>(
@@ -1106,29 +1276,62 @@ RemoteAudioOutput::RemoteAudioOutput(
     )),
     implementation_(std::make_unique<Implementation>(
       std::move(on_failure),
-      std::move(on_speaking_activity),
-      std::move(worker_factory)
+      std::move(on_speaking_activity)
     )) {}
+
 RemoteAudioOutput::~RemoteAudioOutput() = default;
-void RemoteAudioOutput::addTrack(std::string sid, std::string identity, bool stream, std::shared_ptr<livekit::Track> track) { implementation_->addTrack(std::move(sid), std::move(identity), stream, std::move(track)); }
-void RemoteAudioOutput::removeTrack(const std::string& sid) { implementation_->removeTrack(sid); }
-void RemoteAudioOutput::setDeafened(bool value) { implementation_->setDeafened(value); }
+
+void RemoteAudioOutput::addTrack(
+  std::string sid,
+  std::string identity,
+  bool stream,
+  std::shared_ptr<livekit::Track> track
+) {
+  implementation_->addTrack(
+    std::move(sid),
+    std::move(identity),
+    stream,
+    std::move(track)
+  );
+}
+
+void RemoteAudioOutput::removeTrack(const std::string& sid) {
+  implementation_->removeTrack(sid);
+}
+
+void RemoteAudioOutput::setDeafened(bool value) {
+  implementation_->setDeafened(value);
+}
+
 std::uint64_t RemoteAudioOutput::setOutputDevice(
   std::string id,
   AudioOutputDeviceIntent intent
 ) {
   return implementation_->setOutputDevice(std::move(id), intent);
 }
-bool RemoteAudioOutput::isRendererEpochCurrent(std::uint64_t epoch) const { return implementation_->isRendererEpochCurrent(epoch); }
+
+bool RemoteAudioOutput::isRendererEpochCurrent(std::uint64_t epoch) const {
+  return implementation_->isRendererEpochCurrent(epoch);
+}
+
 std::string RemoteAudioOutput::outputDeviceId() const {
   return implementation_->outputDeviceId();
 }
-void RemoteAudioOutput::setVolume(float volume) { implementation_->setVolume(volume); }
-void RemoteAudioOutput::configure(RemoteAudioSettings settings) { implementation_->configure(std::move(settings)); }
-void RemoteAudioOutput::stop() { implementation_->stop(); }
+
+void RemoteAudioOutput::setVolume(float volume) {
+  implementation_->setVolume(volume);
+}
+
+void RemoteAudioOutput::configure(RemoteAudioSettings settings) {
+  implementation_->configure(std::move(settings));
+}
+
+void RemoteAudioOutput::stop() {
+  implementation_->stop();
+}
+
 void RemoteAudioOutput::stop(std::shared_ptr<void> lifetime_owner) {
-  if (!implementation_) return;
-  if (cleanup_submitted_.exchange(true)) return;
+  if (!implementation_ || cleanup_submitted_.exchange(true)) return;
   cleanup_node_->prepare(
     std::move(lifetime_owner),
     implementation_.get(),

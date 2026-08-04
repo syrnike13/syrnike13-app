@@ -26,6 +26,10 @@ const MEDIA_CONTROL_TIMEOUT_MS = 2_000
 const OUTPUT_START_TIMEOUT_MS = 5_000
 const MICROPHONE_CONFIG_TIMEOUT_MS = 5_000
 
+function nativeScreenFailureRetryable(code: string | undefined) {
+  return code !== 'target_closed' && code !== 'gpu_permission_denied'
+}
+
 type NativeVoiceRuntime = Pick<
   NativeRuntimeSupervisor,
   | 'request'
@@ -80,6 +84,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
   private availabilityRetryable = true
   private disposed = false
   private remoteAudioSettings: VoiceRemoteAudioSettings | null = null
+  private voiceLifecycle: Promise<void> = Promise.resolve()
   private diagnosticAction: NativeDiagnosticAction = {
     actionId: `media-action-${crypto.randomUUID()}`,
     revision: 0,
@@ -95,7 +100,17 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     )
   }
 
-  async connect(
+  connect(
+    lease: VoiceLease,
+    desired: VoiceMediaDesiredState,
+    signal: AbortSignal,
+  ) {
+    return this.enqueueVoiceLifecycle(() =>
+      this.connectSerialized(lease, desired, signal),
+    )
+  }
+
+  private async connectSerialized(
     lease: VoiceLease,
     desired: VoiceMediaDesiredState,
     signal: AbortSignal,
@@ -104,6 +119,9 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     if (lease.rtcEngine !== 'windows_native') {
       throw new Error('Native RTC adapter received a non-native Voice Lease')
     }
+    if (signal.aborted) throw abortError()
+    if (this.active) await this.disconnectSerialized('superseded')
+    if (signal.aborted) throw abortError()
     this.beginDiagnosticAction(lease.operationId)
     this.desired = desired
     const generation = this.runtime.allocateGeneration('voice')
@@ -142,21 +160,44 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         signal,
       )
     } catch (error) {
+      if (this.active === active) {
+        try {
+          await this.disconnectSerialized(
+            isAbortError(error) ? 'superseded' : 'recovery',
+          )
+        } catch {
+          // Preserve the connect failure. The native generation change still
+          // invalidates the pending attempt even if bounded teardown reports
+          // its own timeout.
+        }
+      }
       if (isAbortError(error)) throw error
       throw voiceFailureError(error, 'native_voice_connect_failed')
     }
     this.assertCurrent(active)
-    if (signal.aborted) throw abortError()
+    if (signal.aborted) {
+      await this.disconnectSerialized('superseded')
+      throw abortError()
+    }
     active.voiceReady = true
 
     await this.replayRemoteAudioSettings(active)
+    if (signal.aborted) {
+      await this.disconnectSerialized('superseded')
+      throw abortError()
+    }
+    this.assertCurrent(active)
 
     // Membership is independent from track readiness. Track actors reconcile
     // only after the one shared Room is ready and never race their own lane.
     this.requestMediaReconcile()
   }
 
-  async disconnect(_cause: VoiceDisconnectCause) {
+  disconnect(cause: VoiceDisconnectCause) {
+    return this.enqueueVoiceLifecycle(() => this.disconnectSerialized(cause))
+  }
+
+  private async disconnectSerialized(_cause: VoiceDisconnectCause) {
     const active = this.active
     this.active = null
     this.mediaRevision += 1
@@ -205,6 +246,15 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       },
       MEDIA_CONTROL_TIMEOUT_MS,
     )
+  }
+
+  private enqueueVoiceLifecycle<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.voiceLifecycle.then(operation)
+    this.voiceLifecycle = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    return result
   }
 
   updateDesiredMedia(desired: VoiceMediaDesiredState) {
@@ -849,7 +899,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         message: targetClosed
           ? 'Источник демонстрации больше недоступен'
           : (event.message ?? 'Native screen capture stopped unexpectedly'),
-        retryable: !targetClosed,
+        retryable: nativeScreenFailureRetryable(event.reason),
         stage: 'screen_capture',
       }
       this.emitMedia(active, 'screen', { state: 'failed', error })
@@ -1097,7 +1147,8 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
             : error instanceof Error
               ? (detail?.message ?? error.message)
               : `${kind} failed`,
-        retryable: detail?.retryable ?? nativeCode !== 'target_closed',
+        retryable:
+          detail?.retryable ?? nativeScreenFailureRetryable(nativeCode),
         ...(detail?.stage === undefined ? {} : { stage: detail.stage }),
         ...(detail?.hresult === undefined ? {} : { hresult: detail.hresult }),
       },

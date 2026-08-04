@@ -259,7 +259,7 @@ describe('applyStageScreenPublicationSubscription', () => {
     expect(setSubscribed).toHaveBeenCalledWith(false)
   })
 
-  it('unsubscribes remote screen audio publication', () => {
+  it('applies screen demand to remote screen audio', () => {
     const setSubscribed = vi.fn()
 
     applyStageScreenPublicationSubscription(

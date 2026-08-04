@@ -1,13 +1,12 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
-#include <stop_token>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -18,6 +17,8 @@ namespace livekit { class Track; }
 
 namespace syrnike::desktop_native::media {
 
+constexpr std::size_t remoteAudioSampleRate() noexcept { return 48'000; }
+
 constexpr std::chrono::milliseconds remoteAudioRenderBufferDuration() noexcept {
   return std::chrono::milliseconds(50);
 }
@@ -26,10 +27,6 @@ constexpr std::uint16_t remoteAudioRenderChannels() noexcept { return 2; }
 
 constexpr std::chrono::milliseconds remoteAudioPlayoutStartDuration() noexcept {
   return std::chrono::milliseconds(20);
-}
-
-constexpr std::chrono::milliseconds remoteAudioMaxQueuedDuration() noexcept {
-  return std::chrono::milliseconds(200);
 }
 
 struct RemoteAudioSettings {
@@ -64,7 +61,7 @@ void startAudioOutputWithRollback(
   const std::function<void()>& start_previous
 );
 
-// Owns all receive-side AudioStreams and the single WASAPI mix renderer.
+// Owns all direct decoded-audio sinks and the single WASAPI mix renderer.
 class RemoteAudioOutput final {
  public:
   using FailureHandler = std::function<void(
@@ -76,13 +73,9 @@ class RemoteAudioOutput final {
   // The callback receives normalized participant identities and is never
   // invoked while RemoteAudioOutput's internal mutex is held.
   using SpeakingActivityHandler = std::function<void(std::vector<std::string>)>;
-  using WorkerTask = std::function<void(std::stop_token)>;
-  using WorkerFactory = std::function<std::jthread(WorkerTask)>;
-
   explicit RemoteAudioOutput(
     FailureHandler on_failure = {},
     SpeakingActivityHandler on_speaking_activity = {},
-    WorkerFactory worker_factory = {},
     AsyncCleanupLauncher cleanup_launcher = {}
   );
   ~RemoteAudioOutput();

@@ -9,7 +9,7 @@
 
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
-#include "livekit_publication_client.hpp"
+#include "livekit_voice_session.hpp"
 #include "screen_gpu_capture.hpp"
 #include "screen_publication_controller.hpp"
 
@@ -71,13 +71,19 @@ class EncoderBackpressureStallDetector final {
       started_at_ = now;
       return false;
     }
-    return now - *started_at_ >= timeout;
+    if (reported_ || now - *started_at_ < timeout) return false;
+    reported_ = true;
+    return true;
   }
 
-  void noteProgress() noexcept { started_at_.reset(); }
+  void noteProgress() noexcept {
+    started_at_.reset();
+    reported_ = false;
+  }
 
  private:
   std::optional<std::chrono::steady_clock::time_point> started_at_;
+  bool reported_ = false;
 };
 
 enum class ScreenOutputStall {
@@ -91,7 +97,7 @@ class ScreenOutputStallDetector final {
   ScreenOutputStall observe(
     std::chrono::steady_clock::time_point now,
     bool active,
-    std::uint64_t frames_captured,
+    std::uint64_t frames_submitted,
     std::uint64_t frames_encoded,
     std::uint64_t frames_sent,
     std::chrono::steady_clock::duration timeout
@@ -101,19 +107,19 @@ class ScreenOutputStallDetector final {
       return ScreenOutputStall::None;
     }
 
-    const bool first_sample = !last_frames_captured_;
-    const bool capture_progress =
-      first_sample || frames_captured > *last_frames_captured_;
+    const bool first_sample = !last_frames_submitted_;
+    const bool source_progress =
+      first_sample || frames_submitted > *last_frames_submitted_;
     const bool encoder_progress =
       first_sample || frames_encoded > *last_frames_encoded_;
     const bool transport_progress =
       first_sample || frames_sent > *last_frames_sent_;
-    last_frames_captured_ = frames_captured;
+    last_frames_submitted_ = frames_submitted;
     last_frames_encoded_ = frames_encoded;
     last_frames_sent_ = frames_sent;
 
     if (first_sample) {
-      if (frames_captured > 0 && frames_encoded == 0) {
+      if (frames_submitted > 0 && frames_encoded == 0) {
         encoder_stall_started_at_ = now;
       }
       if (frames_encoded > frames_sent) {
@@ -122,11 +128,11 @@ class ScreenOutputStallDetector final {
       return ScreenOutputStall::None;
     }
 
-    if (frames_captured > 0 && frames_encoded == 0) {
+    if (frames_submitted > 0 && frames_encoded == 0) {
       if (!encoder_stall_started_at_) encoder_stall_started_at_ = now;
     } else if (encoder_progress) {
       encoder_stall_started_at_.reset();
-    } else if (capture_progress) {
+    } else if (source_progress) {
       if (!encoder_stall_started_at_) encoder_stall_started_at_ = now;
     } else {
       // A static screen legitimately produces no new encoder output.
@@ -153,7 +159,7 @@ class ScreenOutputStallDetector final {
   }
 
   void reset() noexcept {
-    last_frames_captured_.reset();
+    last_frames_submitted_.reset();
     last_frames_encoded_.reset();
     last_frames_sent_.reset();
     encoder_stall_started_at_.reset();
@@ -161,7 +167,7 @@ class ScreenOutputStallDetector final {
   }
 
  private:
-  std::optional<std::uint64_t> last_frames_captured_;
+  std::optional<std::uint64_t> last_frames_submitted_;
   std::optional<std::uint64_t> last_frames_encoded_;
   std::optional<std::uint64_t> last_frames_sent_;
   std::optional<std::chrono::steady_clock::time_point>
@@ -186,7 +192,7 @@ class ScreenActor final {
     SequencedEmitter& emitter,
     InternalPost post,
     IsCurrent is_current,
-    std::shared_ptr<LiveKitPublicationClient> livekit_client,
+    std::shared_ptr<LiveKitVoiceSession> voice_session,
     CommitIfCurrent commit_if_current = {},
     Now now = {},
     LaunchRetireWorker launch_retire_worker = {},

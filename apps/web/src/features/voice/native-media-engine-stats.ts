@@ -34,6 +34,22 @@ export type NativeMediaEngineDebugState = {
   videoCoalescedSourceUpdates?: number
   videoEncoderBackpressureTicks?: number
   videoSupersededReadyFrames?: number
+  videoGpuSlotTimeouts?: number
+  videoGpuSlotsRecovered?: number
+  videoGpuFramesDroppedStale?: number
+  videoGpuPoolRollovers?: number
+  videoGpuRolloversBlocked?: number
+  videoGpuRetiredGenerations?: number
+  videoGpuSlotsQuarantined?: number
+  videoPreviewBridgeSubmissions?: number
+  videoPreviewBridgeAcquires?: number
+  videoPreviewBridgeTimeouts?: number
+  videoPreviewBridgeSlotsRecovered?: number
+  videoPreviewGpuSubmissions?: number
+  videoPreviewFramesCompleted?: number
+  videoPreviewSlotTimeouts?: number
+  videoPreviewFramesDroppedStale?: number
+  videoPreviewDeviceResets?: number
   videoGpuCompletionP50Us?: number
   videoGpuCompletionP95Us?: number
   videoGpuCompletionMaxUs?: number
@@ -110,6 +126,22 @@ export const nativeMediaEngineStatsStore = {
       videoCoalescedSourceUpdates?: number
       videoEncoderBackpressureTicks?: number
       videoSupersededReadyFrames?: number
+      videoGpuSlotTimeouts?: number
+      videoGpuSlotsRecovered?: number
+      videoGpuFramesDroppedStale?: number
+      videoGpuPoolRollovers?: number
+      videoGpuRolloversBlocked?: number
+      videoGpuRetiredGenerations?: number
+      videoGpuSlotsQuarantined?: number
+      videoPreviewBridgeSubmissions?: number
+      videoPreviewBridgeAcquires?: number
+      videoPreviewBridgeTimeouts?: number
+      videoPreviewBridgeSlotsRecovered?: number
+      videoPreviewGpuSubmissions?: number
+      videoPreviewFramesCompleted?: number
+      videoPreviewSlotTimeouts?: number
+      videoPreviewFramesDroppedStale?: number
+      videoPreviewDeviceResets?: number
       videoGpuCompletionP50Us?: number
       videoGpuCompletionP95Us?: number
       videoGpuCompletionMaxUs?: number
@@ -153,6 +185,22 @@ export const nativeMediaEngineStatsStore = {
       videoCoalescedSourceUpdates: video?.videoCoalescedSourceUpdates,
       videoEncoderBackpressureTicks: video?.videoEncoderBackpressureTicks,
       videoSupersededReadyFrames: video?.videoSupersededReadyFrames,
+      videoGpuSlotTimeouts: video?.videoGpuSlotTimeouts,
+      videoGpuSlotsRecovered: video?.videoGpuSlotsRecovered,
+      videoGpuFramesDroppedStale: video?.videoGpuFramesDroppedStale,
+      videoGpuPoolRollovers: video?.videoGpuPoolRollovers,
+      videoGpuRolloversBlocked: video?.videoGpuRolloversBlocked,
+      videoGpuRetiredGenerations: video?.videoGpuRetiredGenerations,
+      videoGpuSlotsQuarantined: video?.videoGpuSlotsQuarantined,
+      videoPreviewBridgeSubmissions: video?.videoPreviewBridgeSubmissions,
+      videoPreviewBridgeAcquires: video?.videoPreviewBridgeAcquires,
+      videoPreviewBridgeTimeouts: video?.videoPreviewBridgeTimeouts,
+      videoPreviewBridgeSlotsRecovered: video?.videoPreviewBridgeSlotsRecovered,
+      videoPreviewGpuSubmissions: video?.videoPreviewGpuSubmissions,
+      videoPreviewFramesCompleted: video?.videoPreviewFramesCompleted,
+      videoPreviewSlotTimeouts: video?.videoPreviewSlotTimeouts,
+      videoPreviewFramesDroppedStale: video?.videoPreviewFramesDroppedStale,
+      videoPreviewDeviceResets: video?.videoPreviewDeviceResets,
       videoGpuCompletionP50Us: video?.videoGpuCompletionP50Us,
       videoGpuCompletionP95Us: video?.videoGpuCompletionP95Us,
       videoGpuCompletionMaxUs: video?.videoGpuCompletionMaxUs,

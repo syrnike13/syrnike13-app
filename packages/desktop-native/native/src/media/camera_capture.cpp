@@ -611,7 +611,10 @@ class CameraGpuPool final {
       const HRESULT completed =
           completion_.wait(std::chrono::milliseconds(500));
       if (FAILED(completed)) {
-        slot.mutex->ReleaseSync(kProducerKey);
+        // The event query can cross its freshness deadline while the copy is
+        // still executing. Keep the slot locked and let camera recovery retire
+        // this D3D generation; exposing or reusing the texture here would race
+        // the in-flight GPU command.
         check(completed, "camera GPU copy did not complete");
       }
       // Store the generation before handing key 1 to the encoder. A discard

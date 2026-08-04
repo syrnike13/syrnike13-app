@@ -15,6 +15,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <livekit/audio_frame_sink.h>
 #include <livekit/audio_stream.h>
 #include <livekit/data_track_stream.h>
 #include <livekit/video_frame.h>
@@ -29,6 +30,12 @@ TEST(StreamOptionsTest, AudioStreamOptionsDefaults) {
   EXPECT_EQ(options.capacity, 0u);
   EXPECT_TRUE(options.noise_cancellation_module.empty());
   EXPECT_TRUE(options.noise_cancellation_options_json.empty());
+}
+
+TEST(StreamOptionsTest, DirectAudioSinkOptionsUseWebRtcPlayoutFormat) {
+  DirectAudioSinkOptions options;
+  EXPECT_EQ(options.sample_rate, 48'000u);
+  EXPECT_EQ(options.num_channels, 2u);
 }
 
 TEST(StreamOptionsTest, VideoStreamOptionsDefaults) {

@@ -782,11 +782,23 @@ int main(int argc, char **argv) try {
     std::size_t captured = 0;
     std::uint64_t gpu_sum = 0;
     std::uint64_t preview_sum = 0;
+    std::array<std::size_t, 6> capture_status_counts{};
+    std::size_t preview_failures = 0;
     const auto external_preview = preview_target_pid != GetCurrentProcessId();
     const auto target_capture_frames = external_preview ? iterations : 1;
     const auto deadline = Clock::now() + std::chrono::seconds(15);
     while (Clock::now() < deadline && captured < target_capture_frames) {
       const auto result = capturer->capture(frame);
+      ++capture_status_counts[static_cast<std::size_t>(result.status)];
+      ScreenPreviewFailure preview_failure;
+      while (capturer->takePreviewFailure(preview_failure)) {
+        ++preview_failures;
+        std::cout << "DIAGNOSTIC preview_failure code="
+                  << static_cast<int>(preview_failure.code)
+                  << " hresult=" << preview_failure.hresult
+                  << " suppressed=" << preview_failure.suppressed
+                  << " message=\"" << preview_failure.message << "\"\n";
+      }
       if (result.status == ScreenGpuFrameStatus::NewFrame) {
         ComPtr<ID3D11Device1> device1;
         check(device.As(&device1), "ID3D11Device1 for shared GPU capture");
@@ -834,7 +846,7 @@ int main(int argc, char **argv) try {
         ScreenPreviewFrame preview;
         if (!capturer->takePreviewFrame(preview)) {
           capturer->discard(frame);
-          Sleep(1);
+          Sleep(16);
           continue;
         }
         ++captured;
@@ -917,9 +929,37 @@ int main(int argc, char **argv) try {
                  result.status == ScreenGpuFrameStatus::TargetClosed) {
         throw std::runtime_error("strict GPU screen capture failed");
       }
-      Sleep(1);
+      Sleep(16);
     }
     if (captured != target_capture_frames || gpu_sum == 0 || preview_sum == 0) {
+      const auto flow = capturer->frameFlowStats();
+      std::cout << "DIAGNOSTIC strict_gpu_capture new="
+                << capture_status_counts[static_cast<std::size_t>(
+                       ScreenGpuFrameStatus::NewFrame)]
+                << " no_frame="
+                << capture_status_counts[static_cast<std::size_t>(
+                       ScreenGpuFrameStatus::NoFrame)]
+                << " backpressure="
+                << capture_status_counts[static_cast<std::size_t>(
+                       ScreenGpuFrameStatus::EncoderBackpressure)]
+                << " recoverable="
+                << capture_status_counts[static_cast<std::size_t>(
+                       ScreenGpuFrameStatus::RecoverableLost)]
+                << " fatal="
+                << capture_status_counts[static_cast<std::size_t>(
+                       ScreenGpuFrameStatus::FatalError)]
+                << " preview_failures=" << preview_failures << '\n';
+      std::cout << "DIAGNOSTIC preview_flow bridge_submissions="
+                << flow.preview_bridge_submissions
+                << " bridge_acquires=" << flow.preview_bridge_acquires
+                << " bridge_timeouts=" << flow.preview_bridge_timeouts
+                << " bridge_slots_recovered="
+                << flow.preview_bridge_slots_recovered
+                << " gpu_submissions=" << flow.preview_gpu_submissions
+                << " completed=" << flow.preview_frames_completed
+                << " slot_timeouts=" << flow.preview_slot_timeouts
+                << " stale_drops=" << flow.preview_frames_dropped_stale
+                << " device_resets=" << flow.preview_device_resets << '\n';
       throw std::runtime_error(
           "strict GPU screen capture/preview produced no verifiable frame");
     }
@@ -974,7 +1014,7 @@ int main(int argc, char **argv) try {
             ++phase.preview_frames;
             capturer->releasePreviewFrame(phase_preview.sequence);
           }
-          Sleep(1);
+          Sleep(16);
         }
         phase.elapsed_ms =
             std::chrono::duration<double, std::milli>(
@@ -1042,6 +1082,111 @@ int main(int argc, char **argv) try {
                 << " overhead_per_capture_ms=" << overhead_per_capture_ms
                 << " overhead_per_preview_frame_ms=" << overhead_per_preview_ms
                 << " cpu_copy_bytes_per_frame=0\n";
+      const auto flow = capturer->frameFlowStats();
+      std::cout << "RESULT path=screen_gpu_flow"
+                << " submissions=" << flow.gpu_submissions
+                << " slot_timeouts=" << flow.gpu_slot_timeouts
+                << " slots_recovered=" << flow.gpu_slots_recovered
+                << " stale_drops=" << flow.gpu_frames_dropped_stale
+                << " pool_rollovers=" << flow.gpu_pool_rollovers
+                << " rollovers_blocked=" << flow.gpu_rollovers_blocked
+                << " retired_generations=" << flow.gpu_retired_generations
+                << " quarantined_slots=" << flow.gpu_slots_quarantined
+                << " preview_bridge_submissions="
+                << flow.preview_bridge_submissions
+                << " preview_bridge_acquires="
+                << flow.preview_bridge_acquires
+                << " preview_bridge_timeouts="
+                << flow.preview_bridge_timeouts
+                << " preview_bridge_slots_recovered="
+                << flow.preview_bridge_slots_recovered
+                << " preview_gpu_submissions="
+                << flow.preview_gpu_submissions
+                << " preview_frames_completed="
+                << flow.preview_frames_completed
+                << " preview_slot_timeouts="
+                << flow.preview_slot_timeouts
+                << " preview_stale_drops="
+                << flow.preview_frames_dropped_stale
+                << " preview_device_resets="
+                << flow.preview_device_resets
+                << " completion_p50_us=" << flow.gpu_completion_p50_us
+                << " completion_p95_us=" << flow.gpu_completion_p95_us
+                << " completion_max_us=" << flow.gpu_completion_max_us
+                << '\n';
+      if (flow.gpu_rollovers_blocked != 0 ||
+          flow.gpu_slots_quarantined != 0 ||
+          flow.preview_bridge_timeouts != 0 ||
+          flow.preview_slot_timeouts != 0 ||
+          flow.preview_device_resets != 0) {
+        throw std::runtime_error(
+            "healthy screen stress left the GPU pipeline capacity-blocked");
+      }
+
+      capturer->setPreviewDemand({
+          true,
+          dw,
+          dh,
+          60,
+          static_cast<std::uint32_t>(GetCurrentProcessId()),
+      });
+      std::vector<std::uint64_t> held_preview_sequences;
+      std::size_t sender_frames_while_preview_held = 0;
+      const auto hold_deadline = Clock::now() + std::chrono::seconds(2);
+      while (Clock::now() < hold_deadline) {
+        ScreenGpuFrame held_phase_frame;
+        const auto result = capturer->capture(held_phase_frame);
+        if (result.status == ScreenGpuFrameStatus::NewFrame) {
+          ++sender_frames_while_preview_held;
+          capturer->discard(held_phase_frame);
+        } else if (result.status == ScreenGpuFrameStatus::FatalError ||
+                   result.status == ScreenGpuFrameStatus::TargetClosed) {
+          throw std::runtime_error(
+              "preview lease pressure terminated sender capture");
+        }
+        ScreenPreviewFrame held_preview;
+        if (held_preview_sequences.size() < 3 &&
+            capturer->takePreviewFrame(held_preview)) {
+          held_preview_sequences.push_back(held_preview.sequence);
+        }
+        Sleep(16);
+      }
+      if (held_preview_sequences.size() != 3 ||
+          capturer->previewFramesInFlight() != 3 ||
+          sender_frames_while_preview_held == 0) {
+        throw std::runtime_error(
+            "bounded preview leases blocked or starved sender capture");
+      }
+      for (const auto sequence : held_preview_sequences) {
+        capturer->releasePreviewFrame(sequence);
+      }
+      bool preview_resumed = false;
+      const auto resume_deadline = Clock::now() + std::chrono::seconds(2);
+      while (Clock::now() < resume_deadline && !preview_resumed) {
+        ScreenGpuFrame resumed_frame;
+        const auto result = capturer->capture(resumed_frame);
+        if (result.status == ScreenGpuFrameStatus::NewFrame) {
+          capturer->discard(resumed_frame);
+        } else if (result.status == ScreenGpuFrameStatus::FatalError ||
+                   result.status == ScreenGpuFrameStatus::TargetClosed) {
+          throw std::runtime_error(
+              "sender failed while preview leases were released");
+        }
+        ScreenPreviewFrame resumed_preview;
+        if (capturer->takePreviewFrame(resumed_preview)) {
+          capturer->releasePreviewFrame(resumed_preview.sequence);
+          preview_resumed = true;
+        }
+        Sleep(16);
+      }
+      if (!preview_resumed) {
+        throw std::runtime_error(
+            "preview did not resume after all renderer leases were returned");
+      }
+      std::cout << "RESULT path=preview_lease_pressure"
+                << " held_leases=" << held_preview_sequences.size()
+                << " sender_frames=" << sender_frames_while_preview_held
+                << " preview_resumed=pass\n";
     }
   }
   D3D11_QUERY_DESC query_desc{D3D11_QUERY_EVENT, 0};

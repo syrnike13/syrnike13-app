@@ -262,7 +262,7 @@ export interface SyrnikeDesktopApi {
       trackId: string,
       demanded: boolean,
     ): Promise<void>
-    replayRemoteScreenPublications(): Promise<void>
+    replayRemoteVideoPublications(): Promise<void>
     setLocalScreenPreviewDemand(demand: {
       demanded: boolean
       width: number

@@ -128,7 +128,7 @@ int main() try {
   SequencedEmitter emitter(sink);
   auto post = [](MediaCommand) { return true; };
   auto actor_livekit =
-    std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+    std::make_shared<DeterministicFakeLiveKitVoiceSession>();
   GenerationFence microphone_intent;
   microphone_intent.advance("mic", 1);
   auto microphone_current = [&](const std::string& session_id, std::uint64_t generation) {
@@ -200,7 +200,7 @@ int main() try {
   int idle_post_attempts = 0;
   std::optional<MediaCommand> accepted_idle_expiry;
   auto idle_livekit =
-    std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+    std::make_shared<DeterministicFakeLiveKitVoiceSession>();
   MicrophoneActor idle_retry_microphone(
     emitter,
     [&](MediaCommand command) {

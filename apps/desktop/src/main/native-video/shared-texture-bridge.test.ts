@@ -130,7 +130,7 @@ describe('NativeSharedTextureBridge', () => {
     expect(h.imported).toHaveBeenCalledTimes(2)
   })
 
-  it('retires a fence-stalled epoch and requests a safe track restart', async () => {
+  it('retires a fence-stalled epoch and requests local presentation recovery', async () => {
     vi.useFakeTimers()
     try {
       const h = harness(2)
@@ -157,7 +157,7 @@ describe('NativeSharedTextureBridge', () => {
     }
   })
 
-  it('does not multiply retained textures across repeated stalled restarts', async () => {
+  it('does not multiply retained textures across repeated presentation stalls', async () => {
     vi.useFakeTimers()
     try {
       const h = harness(2)
@@ -192,7 +192,7 @@ describe('NativeSharedTextureBridge', () => {
     expect(await h.bridge.deliver(frame(2, 'camera-c'))).toBe(true)
   })
 
-  it('restarts a track after repeated shared-texture import failures', async () => {
+  it('recovers presentation after repeated shared-texture import failures', async () => {
     const h = harness()
     h.importTexture.mockImplementation(() => {
       throw new Error('device lost')
@@ -209,7 +209,7 @@ describe('NativeSharedTextureBridge', () => {
     )
   })
 
-  it('does not restart a track for an isolated texture delivery failure', async () => {
+  it('does not recover presentation for an isolated texture delivery failure', async () => {
     const h = harness()
     h.importTexture
       .mockImplementationOnce(() => { throw new Error('device busy') })

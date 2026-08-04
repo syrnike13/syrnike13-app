@@ -248,7 +248,7 @@ describe('BrowserRtcEngineAdapter', () => {
     await adapter.dispose()
   })
 
-  it('keeps newly published remote screen media unsubscribed until requested', async () => {
+  it('keeps microphone audio subscribed while screen media follows demand', async () => {
     const adapter = new BrowserRtcEngineAdapter()
     await adapter.connect(lease, desired(), new AbortController().signal)
     const room = livekit.rooms[0]

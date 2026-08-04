@@ -63,6 +63,23 @@ class ScreenGpuSlotState final {
     }
   }
 
+  // A terminal D3D device cannot participate in keyed-mutex reclamation. The
+  // consumer lease still identifies the exact generation, so retirement can
+  // forget that generation once its owner releases it without touching the
+  // dead device again.
+  bool abandon(std::size_t slot, std::uint64_t sequence) noexcept {
+    if (sequence == 0) return false;
+    auto& state = slots_[slot];
+    auto expected = sequence;
+    if (!state.sequence.compare_exchange_strong(
+            expected, 0, std::memory_order_acq_rel)) {
+      return false;
+    }
+    state.pending_discard_sequence.store(0, std::memory_order_release);
+    available_.fetch_add(1, std::memory_order_acq_rel);
+    return true;
+  }
+
   template <typename TryAcquireConsumer, typename ReleaseProducer>
   bool discard(
       std::size_t slot,
