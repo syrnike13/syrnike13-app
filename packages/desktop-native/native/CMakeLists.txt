@@ -233,8 +233,25 @@ add_test(NAME syrnike-native-media-processing-tests COMMAND syrnike-native-media
 
 add_executable(syrnike-native-remote-publication-reconciler-tests
   tests/remote_publication_reconciler_test.cpp
+  src/media/remote_publication_reconciler.cpp
 )
 syrnike_native_target(syrnike-native-remote-publication-reconciler-tests)
+if(MSVC AND SYRNIKE_ENABLE_ASAN)
+  # This focused test links generated protobuf objects directly. Match the
+  # vendored LiveKit/protobuf dynamic CRT and STL annotation mode instead of
+  # mixing them with the default ASan target settings.
+  set_property(
+    TARGET syrnike-native-remote-publication-reconciler-tests
+    PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
+  )
+  target_compile_definitions(
+    syrnike-native-remote-publication-reconciler-tests
+    PRIVATE
+      _DISABLE_OPTIONAL_ANNOTATION
+      _DISABLE_STRING_ANNOTATION
+      _DISABLE_VECTOR_ANNOTATION
+  )
+endif()
 if(NOT TARGET protobuf::libprotobuf)
   find_package(Protobuf CONFIG REQUIRED)
 endif()
@@ -246,7 +263,7 @@ get_target_property(
 target_link_libraries(
   syrnike-native-remote-publication-reconciler-tests
   PRIVATE
-    syrnike_media_core
+    LiveKit::livekit
     livekit_proto
     protobuf::libprotobuf
 )
