@@ -23,20 +23,6 @@ namespace syrnike::desktop_native::media {
 
 class LiveKitRuntimeLifetime;
 
-enum class RemoteVideoRecoveryAction {
-  RestartLocalBridge,
-  ReplaceSubscription,
-};
-
-inline RemoteVideoRecoveryAction chooseRemoteVideoRecoveryAction(
-  bool has_current_track,
-  std::uint32_t local_restart_attempts
-) noexcept {
-  return has_current_track && local_restart_attempts == 0
-    ? RemoteVideoRecoveryAction::RestartLocalBridge
-    : RemoteVideoRecoveryAction::ReplaceSubscription;
-}
-
 // The sole owner of the native voice Room and its connection epoch. Media
 // actors submit scoped operations through this API; they never receive Room or
 // LocalTrackPublication handles whose lifetime could escape the session.

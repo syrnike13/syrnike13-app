@@ -26,6 +26,10 @@ This file defines shared terms and architectural invariants. Detailed decisions 
 - Local preview is an optional lossy projection and must never block or restart publication.
 - The **Microphone Pipeline** is one warm capture/DSP path shared by publication, meter preview, and voice activity detection.
 - **Media Demand** controls remote video subscription and decode. Remote audio remains subscribed.
+- The **Remote Publication Reconciler** owns epoch-scoped desired subscription,
+  actual track, transition phase, revision, and track-local recovery escalation;
+  callbacks update it while the RTC adapter executes its plans on the Room
+  operation path.
 - **User Mute** is the stored button choice. **Effective Mute** additionally includes deafen, administrative restrictions, lock-screen privacy, and push-to-talk; muting keeps capture and publication alive.
 
 ## Failure and recovery

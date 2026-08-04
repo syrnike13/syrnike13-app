@@ -10,13 +10,13 @@
 #include <stdexcept>
 #include <string_view>
 #include <utility>
-#include <unordered_map>
 
 #include "../common/diagnostic_log.hpp"
 #include "livekit_disconnect_reason.hpp"
 #include "livekit_connect_policy.hpp"
 #include "media_runtime_support.hpp"
 #include "remote_audio_output.hpp"
+#include "remote_publication_reconciler.hpp"
 #include "remote_video_bridge.hpp"
 
 namespace syrnike::desktop_native::media {
@@ -240,23 +240,15 @@ class PostedRoomDelegate final
     CallbackGuard callback(*this);
     if (!callback || !event.publication) return;
     const auto publication_id = event.publication->sid();
-    RemotePublication removed;
-    bool found = false;
-    {
-      std::lock_guard lock(video_publications_mutex_);
-      const auto entry = remote_publications_.find(publication_id);
-      if (entry != remote_publications_.end() &&
-          entry->second.publication == event.publication) {
-        removed = entry->second;
-        remote_publications_.erase(entry);
-        found = true;
-      }
-    }
+    const auto removed = remote_publications_.removePublication(
+      publication_id,
+      event.publication
+    );
     audio_output_.removeTrack(publication_id);
-    if (found && removed.is_video) {
+    if (removed && removed->is_video) {
       remote_video_.removeTrack(publication_id);
       postRemoteVideoPublication("__remoteVideoPublicationUnavailable", publication_id,
-                                 removed.participant_identity, removed.source);
+                                 removed->participant_identity, removed->source);
     }
   }
 
@@ -275,50 +267,24 @@ class PostedRoomDelegate final
     const auto publication_id = event.publication
       ? event.publication->sid()
       : event.track->sid();
-    if (event.publication) {
-      bool known = false;
-      {
-        std::lock_guard lock(video_publications_mutex_);
-        const auto found = remote_publications_.find(publication_id);
-        known = found != remote_publications_.end() &&
-          found->second.publication == event.publication;
-      }
-      if (!known) {
-        registerRemotePublication(
-          event.publication,
-          event.participant ? event.participant->identity() : std::string{}
-        );
-      }
+    if (event.publication &&
+        !remote_publications_.matches(publication_id, event.publication)) {
+      registerRemotePublication(
+        event.publication,
+        event.participant ? event.participant->identity() : std::string{}
+      );
     }
-    bool demanded = event.track->kind() == livekit::TrackKind::KIND_AUDIO;
-    bool duplicate = false;
-    if (event.track->kind() == livekit::TrackKind::KIND_VIDEO) {
-      std::lock_guard lock(video_publications_mutex_);
-      const auto found = remote_publications_.find(publication_id);
-      demanded = found != remote_publications_.end() && found->second.demanded;
-      if (found != remote_publications_.end() && demanded) {
-        if (event.publication && found->second.publication != event.publication) return;
-        found->second.phase = SubscriptionPhase::Subscribed;
-        if (found->second.is_video) {
-          duplicate = found->second.current_track == event.track;
-          found->second.current_track = event.track;
-          found->second.local_recovery_attempts = 0;
-        }
-      }
-    }
-    if (!demanded) {
+    const auto subscribed = remote_publications_.onTrackSubscribed(
+      publication_id,
+      event.publication,
+      event.track
+    );
+    if (!subscribed.matched) return;
+    if (!subscribed.demanded) {
       requestRemotePublicationReconcile(publication_id);
       return;
     }
-    if (event.track->kind() == livekit::TrackKind::KIND_AUDIO) {
-      {
-        std::lock_guard lock(video_publications_mutex_);
-        const auto found = remote_publications_.find(publication_id);
-        if (found != remote_publications_.end() &&
-            (!event.publication || found->second.publication == event.publication)) {
-          found->second.phase = SubscriptionPhase::Subscribed;
-        }
-      }
+    if (!subscribed.is_video) {
       audio_output_.addTrack(
         publication_id,
         event.participant ? event.participant->identity() : std::string{},
@@ -327,7 +293,7 @@ class PostedRoomDelegate final
           : event.track->source() == livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO,
         event.track
       );
-    } else if (event.track->kind() == livekit::TrackKind::KIND_VIDEO && !duplicate) {
+    } else if (!subscribed.duplicate) {
       remote_video_.addTrack(
         event.track,
         event.participant ? event.participant->identity() : std::string{},
@@ -336,14 +302,10 @@ class PostedRoomDelegate final
           : std::nullopt,
         publication_id
       );
-      bool still_current = false;
-      {
-        std::lock_guard lock(video_publications_mutex_);
-        const auto found = remote_publications_.find(publication_id);
-        still_current = found != remote_publications_.end() &&
-          found->second.demanded && found->second.current_track == event.track;
-      }
-      if (!still_current) {
+      if (!remote_publications_.isCurrentDemandedTrack(
+            publication_id,
+            event.track
+          )) {
         remote_video_.removeTrackIfCurrent(publication_id, event.track, false);
       }
     }
@@ -351,42 +313,33 @@ class PostedRoomDelegate final
 
   void onTrackUnsubscribed(livekit::Room&, const livekit::TrackUnsubscribedEvent& event) override {
     CallbackGuard callback(*this);
-    if (!callback || !event.track) return;
+    if (!callback || (!event.track && !event.publication)) return;
     const auto publication_id = event.publication
       ? event.publication->sid()
       : event.track->sid();
-    if (event.track->kind() == livekit::TrackKind::KIND_AUDIO) {
-      bool resubscribe = false;
-      {
-        std::lock_guard lock(video_publications_mutex_);
-        const auto found = remote_publications_.find(publication_id);
-        if (found != remote_publications_.end() &&
-            (!event.publication || found->second.publication == event.publication)) {
-          found->second.phase = SubscriptionPhase::Unsubscribed;
-          resubscribe = found->second.demanded;
-        }
-      }
+    const auto unsubscribed = remote_publications_.onTrackUnsubscribed(
+      publication_id,
+      event.publication,
+      event.track
+    );
+    if (!unsubscribed.matched) return;
+    if (!unsubscribed.is_video) {
       audio_output_.removeTrack(publication_id);
-      if (resubscribe) requestRemotePublicationReconcile(publication_id);
-      return;
-    }
-    bool current = false;
-    {
-      std::lock_guard lock(video_publications_mutex_);
-      const auto found = remote_publications_.find(publication_id);
-      if (found != remote_publications_.end() &&
-          (!event.publication || found->second.publication == event.publication) &&
-          found->second.current_track == event.track) {
-        found->second.current_track.reset();
-        found->second.phase = SubscriptionPhase::Unsubscribed;
-        current = true;
+      if (unsubscribed.resubscribe) {
+        requestRemotePublicationReconcile(publication_id);
       }
+      return;
     }
     // LiveKit can deliver an old unsubscribe after a replacement subscribe
     // for the same publication SID. Only the event for the current track may
-    // retire its decoder or initiate recovery.
-    if (!current) return;
-    remote_video_.removeTrackIfCurrent(publication_id, event.track);
+    // retire its decoder. A matching in-flight unsubscribe still completes the
+    // phase transition even when no SDK track was ever attached.
+    if (unsubscribed.current) {
+      remote_video_.removeTrackIfCurrent(publication_id, event.track);
+    }
+    if (unsubscribed.resubscribe) {
+      requestRemotePublicationReconcile(publication_id);
+    }
   }
 
   void onTrackSubscriptionFailed(
@@ -474,74 +427,49 @@ class PostedRoomDelegate final
     local_camera_preview_.release(track_id, sequence);
   }
   void setRemoteVideoDemand(const std::string& track_id, bool demanded) {
-    std::shared_ptr<livekit::RemoteTrackPublication> publication;
-    std::string participant_identity;
-    livekit::TrackSource source = livekit::TrackSource::SOURCE_UNKNOWN;
-    {
-      std::lock_guard lock(video_publications_mutex_);
-      const auto found = remote_publications_.find(track_id);
-      if (found != remote_publications_.end() && found->second.is_video) {
-        found->second.demanded = demanded;
-        ++found->second.revision;
-        found->second.local_recovery_attempts = 0;
-        if (!demanded) found->second.current_track.reset();
-        publication = found->second.publication;
-        participant_identity = found->second.participant_identity;
-        source = found->second.source;
-      }
-    }
+    const auto publication =
+      remote_publications_.setVideoDemand(track_id, demanded);
+    if (!publication) return;
     if (!demanded) remote_video_.removeTrack(track_id);
-    if (publication) reconcileRemotePublication(track_id);
+    reconcileRemotePublication(track_id);
     // Re-announce before the asynchronous subscription can produce frames so
     // the renderer can lift its unsubscribe tombstone without losing inventory.
-    if (demanded && publication) {
+    if (demanded) {
       postRemoteVideoPublication("__remoteVideoPublicationAvailable", track_id,
-                                 participant_identity, source);
+                                 publication->participant_identity,
+                                 publication->source);
     }
   }
 
   void reconcileRemotePublication(const std::string& track_id) {
-    std::shared_ptr<livekit::RemoteTrackPublication> publication;
-    bool demanded = false;
-    std::uint64_t revision = 0;
-    {
-      std::lock_guard lock(video_publications_mutex_);
-      const auto found = remote_publications_.find(track_id);
-      if (found == remote_publications_.end()) return;
-      publication = found->second.publication;
-      demanded = found->second.demanded;
-      found->second.phase = demanded
-        ? SubscriptionPhase::Subscribing
-        : SubscriptionPhase::Unsubscribing;
-      revision = ++found->second.revision;
+    const auto plan = remote_publications_.planReconcile(track_id);
+    if (plan.command == RemotePublicationReconcileCommand::Deferred) {
+      logDelegate(
+        kind_,
+        "remote_publication_reconcile_deferred",
+        {
+          {"publicationId", track_id},
+          {"demanded", plan.demanded}
+        }
+      );
+      return;
     }
-    if (!publication) return;
+    if (plan.command == RemotePublicationReconcileCommand::None) return;
     try {
-      publication->setSubscribed(demanded);
+      plan.publication->setSubscribed(
+        plan.command == RemotePublicationReconcileCommand::Subscribe
+      );
     } catch (...) {
-      std::lock_guard lock(video_publications_mutex_);
-      const auto found = remote_publications_.find(track_id);
-      if (found != remote_publications_.end() &&
-          found->second.publication == publication &&
-          found->second.revision == revision) {
-        found->second.phase = SubscriptionPhase::Failed;
-      }
+      remote_publications_.markReconcileFailed(plan);
       throw;
     }
-    {
-      std::lock_guard lock(video_publications_mutex_);
-      const auto found = remote_publications_.find(track_id);
-      if (found == remote_publications_.end() ||
-          found->second.publication != publication ||
-          found->second.revision != revision ||
-          found->second.demanded != demanded) return;
-    }
+    if (!remote_publications_.isReconcileCurrent(plan)) return;
     logDelegate(
       kind_,
       "remote_publication_reconciled",
       {
         {"publicationId", track_id},
-        {"demanded", demanded}
+        {"demanded", plan.demanded}
       }
     );
   }
@@ -552,52 +480,24 @@ class PostedRoomDelegate final
   ) {
     CallbackGuard callback(*this);
     if (!callback) return;
-    std::shared_ptr<livekit::RemoteTrackPublication> publication;
-    std::shared_ptr<livekit::Track> track;
-    std::string participant_identity;
-    livekit::TrackSource source = livekit::TrackSource::SOURCE_UNKNOWN;
-    bool retry_local_bridge = false;
-    {
-      std::lock_guard lock(video_publications_mutex_);
-      const auto found = remote_publications_.find(track_id);
-      if (found == remote_publications_.end() || !found->second.is_video ||
-          !found->second.demanded) {
-        return;
-      }
-      publication = found->second.publication;
-      track = found->second.current_track;
-      participant_identity = found->second.participant_identity;
-      source = found->second.source;
-      retry_local_bridge = chooseRemoteVideoRecoveryAction(
-        static_cast<bool>(track),
-        found->second.local_recovery_attempts
-      ) == RemoteVideoRecoveryAction::RestartLocalBridge;
-      if (retry_local_bridge) {
-        ++found->second.local_recovery_attempts;
-      } else {
-        found->second.local_recovery_attempts = 0;
-        found->second.current_track.reset();
-        found->second.phase = SubscriptionPhase::Unsubscribing;
-        ++found->second.revision;
-      }
-    }
-
-    if (retry_local_bridge) {
+    const auto plan = remote_publications_.planVideoRecovery(track_id);
+    const auto& publication = plan.publication;
+    if (plan.action == RemotePublicationRecoveryAction::RestartLocalBridge) {
       remote_video_.addTrack(
-        track,
-        participant_identity,
-        source,
+        publication.current_track,
+        publication.participant_identity,
+        publication.source,
         track_id
       );
-      bool still_current = false;
-      {
-        std::lock_guard lock(video_publications_mutex_);
-        const auto found = remote_publications_.find(track_id);
-        still_current = found != remote_publications_.end() &&
-          found->second.demanded && found->second.current_track == track;
-      }
-      if (!still_current) {
-        remote_video_.removeTrackIfCurrent(track_id, track, false);
+      if (!remote_publications_.isCurrentDemandedTrack(
+            track_id,
+            publication.current_track
+          )) {
+        remote_video_.removeTrackIfCurrent(
+          track_id,
+          publication.current_track,
+          false
+        );
         return;
       }
       logDelegate(
@@ -605,33 +505,40 @@ class PostedRoomDelegate final
         "remote_video_bridge_restarted",
         {
           {"publicationId", track_id},
-          {"participantIdentity", participant_identity},
+          {"participantIdentity", publication.participant_identity},
           {"reason", reason}
         }
       );
       return;
     }
-
-    if (!publication) return;
-    publication->setSubscribed(false);
-    {
-      std::lock_guard lock(video_publications_mutex_);
-      const auto found = remote_publications_.find(track_id);
-      if (found == remote_publications_.end() || !found->second.demanded ||
-          found->second.publication != publication) {
-        return;
+    if (plan.action == RemotePublicationRecoveryAction::RequestUnsubscribe) {
+      try {
+        publication.publication->setSubscribed(false);
+      } catch (...) {
+        remote_publications_.markRecoveryFailed(plan);
+        throw;
       }
-      found->second.phase = SubscriptionPhase::Subscribing;
-      ++found->second.revision;
+      remote_video_.removeTrack(track_id, false);
+      logDelegate(
+        kind_,
+        "remote_video_unsubscribe_requested",
+        {
+          {"publicationId", track_id},
+          {"participantIdentity", publication.participant_identity},
+          {"reason", reason}
+        }
+      );
+      return;
     }
+    if (plan.action != RemotePublicationRecoveryAction::Reconcile) return;
     remote_video_.removeTrack(track_id, false);
-    publication->setSubscribed(true);
+    reconcileRemotePublication(track_id);
     logDelegate(
       kind_,
       "remote_video_subscription_retried",
       {
         {"publicationId", track_id},
-        {"participantIdentity", participant_identity},
+        {"participantIdentity", publication.participant_identity},
         {"reason", reason}
       }
     );
@@ -680,62 +587,36 @@ class PostedRoomDelegate final
   }
 
  private:
-  enum class SubscriptionPhase {
-    Unsubscribed,
-    Subscribing,
-    Subscribed,
-    Unsubscribing,
-    Failed,
-  };
-
-  struct RemotePublication {
-    std::shared_ptr<livekit::RemoteTrackPublication> publication;
-    std::string participant_identity;
-    livekit::TrackSource source = livekit::TrackSource::SOURCE_UNKNOWN;
-    bool is_video = false;
-    bool demanded = false;
-    std::shared_ptr<livekit::Track> current_track;
-    std::uint32_t local_recovery_attempts = 0;
-    std::uint64_t revision = 0;
-    SubscriptionPhase phase = SubscriptionPhase::Unsubscribed;
-  };
-
   void postRemoteVideoSubscriptionFailure(
     const std::string& publication_id,
     std::string_view reason,
     const std::string& error
   ) {
-    std::string participant_identity;
-    std::string video_source;
-    bool is_video = false;
-    {
-      std::lock_guard lock(video_publications_mutex_);
-      const auto found = remote_publications_.find(publication_id);
-      if (found == remote_publications_.end() || !found->second.demanded) return;
-      if (reason == "subscription_failed" && found->second.current_track) return;
-      participant_identity = found->second.participant_identity;
-      is_video = found->second.is_video;
-      found->second.phase = SubscriptionPhase::Failed;
-      video_source = found->second.source == livekit::TrackSource::SOURCE_SCREENSHARE
+    const auto publication = remote_publications_.markSubscriptionFailed(
+      publication_id,
+      reason == "subscription_failed"
+    );
+    if (!publication) return;
+    const auto video_source =
+      publication->source == livekit::TrackSource::SOURCE_SCREENSHARE
         ? "screen"
         : "camera";
-    }
     logDelegate(
       kind_,
       "remote_publication_subscription_failed",
       {
         {"publicationId", publication_id},
-        {"participantIdentity", participant_identity},
+        {"participantIdentity", publication->participant_identity},
         {"reason", std::string(reason)},
         {"error", error}
       }
     );
-    if (!is_video) return;
+    if (!publication->is_video) return;
     MediaCommand failed;
     failed.type = "__remoteVideoFailed";
     failed.track_id = publication_id;
-    failed.participant_identity = participant_identity;
-    failed.video_source = std::move(video_source);
+    failed.participant_identity = publication->participant_identity;
+    failed.video_source = video_source;
     failed.recovery_mode = "subscription";
     failed.internal_message = error.empty()
       ? std::string("Remote video subscription failed")
@@ -755,10 +636,7 @@ class PostedRoomDelegate final
   ) {
     CallbackGuard callback(*this);
     if (!callback) return;
-    std::lock_guard lock(video_publications_mutex_);
-    const auto found = remote_publications_.find(publication_id);
-    if (found == remote_publications_.end() || !found->second.is_video ||
-        found->second.current_track != track) return;
+    if (!remote_publications_.isCurrentDemandedTrack(publication_id, track)) return;
     // The local reader ending does not detach the SDK RemoteTrack. Keep it as
     // the source for a bridge-only retry; unsubscribe/unpublish callbacks own
     // the current_track transition.
@@ -770,11 +648,7 @@ class PostedRoomDelegate final
   ) {
     CallbackGuard callback(*this);
     if (!callback) return;
-    std::lock_guard lock(video_publications_mutex_);
-    const auto found = remote_publications_.find(publication_id);
-    if (found == remote_publications_.end() ||
-        found->second.current_track != track) return;
-    found->second.local_recovery_attempts = 0;
+    remote_publications_.markVideoHealthy(publication_id, track);
   }
 
   void registerRemotePublication(
@@ -782,48 +656,17 @@ class PostedRoomDelegate final
     const std::string& participant_identity
   ) {
     if (!publication) return;
-    const auto source = publication->source();
-    const bool is_video = publication->kind() == livekit::TrackKind::KIND_VIDEO;
-    const bool is_audio = publication->kind() == livekit::TrackKind::KIND_AUDIO;
-    const bool managed_video = is_video &&
-      (source == livekit::TrackSource::SOURCE_CAMERA ||
-       source == livekit::TrackSource::SOURCE_SCREENSHARE);
-    if (!managed_video && !is_audio) return;
     const auto publication_id = publication->sid();
-    bool demanded = is_audio;
-    {
-      std::lock_guard lock(video_publications_mutex_);
-      const auto existing = remote_publications_.find(publication_id);
-      std::shared_ptr<livekit::Track> current_track;
-      std::uint32_t local_recovery_attempts = 0;
-      std::uint64_t revision = 0;
-      SubscriptionPhase phase = SubscriptionPhase::Unsubscribed;
-      if (existing != remote_publications_.end() &&
-          existing->second.participant_identity == participant_identity &&
-          existing->second.source == source &&
-          existing->second.is_video == managed_video) {
-        demanded = existing->second.demanded;
-        current_track = existing->second.current_track;
-        local_recovery_attempts = existing->second.local_recovery_attempts;
-        revision = existing->second.revision;
-        phase = existing->second.phase;
-      }
-      remote_publications_[publication_id] = RemotePublication{
-        publication,
-        participant_identity,
-        source,
-        managed_video,
-        demanded,
-        std::move(current_track),
-        local_recovery_attempts,
-        revision + 1,
-        phase
-      };
-    }
+    const auto registered = remote_publications_.registerPublication(
+      publication,
+      participant_identity
+    );
+    if (!registered) return;
     requestRemotePublicationReconcile(publication_id);
-    if (managed_video) {
+    if (registered->is_video) {
       postRemoteVideoPublication("__remoteVideoPublicationAvailable", publication_id,
-                                 participant_identity, source);
+                                 registered->participant_identity,
+                                 registered->source);
     }
   }
 
@@ -840,15 +683,7 @@ class PostedRoomDelegate final
   }
 
   void requestAllRemotePublicationReconcile() {
-    std::vector<std::string> publication_ids;
-    {
-      std::lock_guard lock(video_publications_mutex_);
-      publication_ids.reserve(remote_publications_.size());
-      for (const auto& [publication_id, _] : remote_publications_) {
-        publication_ids.push_back(publication_id);
-      }
-    }
-    for (const auto& publication_id : publication_ids) {
+    for (const auto& publication_id : remote_publications_.publicationIds()) {
       requestRemotePublicationReconcile(publication_id);
     }
   }
@@ -875,71 +710,43 @@ class PostedRoomDelegate final
   }
 
   void removeRemotePublicationsForParticipant(const std::string& participant_identity) {
-    struct RemovedVideo {
-      std::string publication_id;
-      livekit::TrackSource source;
-    };
-    std::vector<RemovedVideo> removed_videos;
-    std::vector<std::string> removed_audio_ids;
-    {
-      std::lock_guard lock(video_publications_mutex_);
-      for (auto entry = remote_publications_.begin(); entry != remote_publications_.end();) {
-        if (entry->second.participant_identity != participant_identity) {
-          ++entry;
-          continue;
-        }
-        if (entry->second.is_video) {
-          removed_videos.push_back({entry->first, entry->second.source});
-        } else {
-          removed_audio_ids.push_back(entry->first);
-        }
-        entry = remote_publications_.erase(entry);
+    for (const auto& removed :
+         remote_publications_.removeParticipant(participant_identity)) {
+      const auto publication_id = removed.publication
+        ? removed.publication->sid()
+        : std::string{};
+      if (publication_id.empty()) continue;
+      if (!removed.is_video) {
+        audio_output_.removeTrack(publication_id);
+        continue;
       }
-    }
-    for (const auto& publication_id : removed_audio_ids) {
-      audio_output_.removeTrack(publication_id);
-    }
-    for (const auto& removed : removed_videos) {
-      remote_video_.removeTrack(removed.publication_id);
-      postRemoteVideoPublication("__remoteVideoPublicationUnavailable",
-                                 removed.publication_id,
-                                 participant_identity,
-                                 removed.source);
+      remote_video_.removeTrack(publication_id);
+      postRemoteVideoPublication(
+        "__remoteVideoPublicationUnavailable",
+        publication_id,
+        removed.participant_identity,
+        removed.source
+      );
     }
   }
 
   void clearRemotePublications() {
-    struct RemovedVideo {
-      std::string publication_id;
-      std::string participant_identity;
-      livekit::TrackSource source;
-    };
-    std::vector<RemovedVideo> removed_videos;
-    std::vector<std::string> removed_audio_ids;
-    {
-      std::lock_guard lock(video_publications_mutex_);
-      for (const auto& [publication_id, entry] : remote_publications_) {
-        if (entry.is_video) {
-          removed_videos.push_back({
-            publication_id,
-            entry.participant_identity,
-            entry.source
-          });
-        } else {
-          removed_audio_ids.push_back(publication_id);
-        }
+    for (const auto& removed : remote_publications_.clear()) {
+      const auto publication_id = removed.publication
+        ? removed.publication->sid()
+        : std::string{};
+      if (publication_id.empty()) continue;
+      if (!removed.is_video) {
+        audio_output_.removeTrack(publication_id);
+        continue;
       }
-      remote_publications_.clear();
-    }
-    for (const auto& publication_id : removed_audio_ids) {
-      audio_output_.removeTrack(publication_id);
-    }
-    for (const auto& removed : removed_videos) {
-      remote_video_.removeTrack(removed.publication_id);
-      postRemoteVideoPublication("__remoteVideoPublicationUnavailable",
-                                 removed.publication_id,
-                                 removed.participant_identity,
-                                 removed.source);
+      remote_video_.removeTrack(publication_id);
+      postRemoteVideoPublication(
+        "__remoteVideoPublicationUnavailable",
+        publication_id,
+        removed.participant_identity,
+        removed.source
+      );
     }
   }
 
@@ -1028,8 +835,7 @@ class PostedRoomDelegate final
   RemoteAudioOutput audio_output_;
   RemoteVideoBridge remote_video_;
   RemoteVideoBridge local_camera_preview_;
-  std::mutex video_publications_mutex_;
-  std::unordered_map<std::string, RemotePublication> remote_publications_;
+  RemotePublicationReconciler remote_publications_;
 };
 
 class RealLiveKitRoomOwner final : public LiveKitVoiceRoomOwner {

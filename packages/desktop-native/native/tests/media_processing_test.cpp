@@ -268,15 +268,6 @@ int main() try {
     "LiveKit voice policy must leave remote subscriptions to Media Demand"
   );
   require(
-    syrnike::desktop_native::media::chooseRemoteVideoRecoveryAction(true, 0) ==
-      syrnike::desktop_native::media::RemoteVideoRecoveryAction::RestartLocalBridge &&
-    syrnike::desktop_native::media::chooseRemoteVideoRecoveryAction(true, 1) ==
-      syrnike::desktop_native::media::RemoteVideoRecoveryAction::ReplaceSubscription &&
-    syrnike::desktop_native::media::chooseRemoteVideoRecoveryAction(false, 0) ==
-      syrnike::desktop_native::media::RemoteVideoRecoveryAction::ReplaceSubscription,
-    "remote video recovery no longer escalates from the smallest failed layer"
-  );
-  require(
     LiveKitConnectPolicy::remainingConnectTimeout(
       connect_started_at,
       connect_started_at + std::chrono::seconds(2)
