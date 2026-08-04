@@ -103,13 +103,21 @@ class RemoteVideoBridge {
   void stop(std::shared_ptr<void> lifetime_owner);
 
  private:
+  struct TrackRetirementState;
   struct TrackWorker;
   void removeTrackLocked(
     const std::string& track_id,
     const std::shared_ptr<livekit::Track>& expected_track,
     bool notify
   );
+  void submitTrackRetirement(
+    const std::shared_ptr<TrackWorker>& worker
+  ) noexcept;
+  void finishTrackRetirement(TrackWorker& worker) noexcept;
+  static void completeTrackRetirement(TrackWorker& worker) noexcept;
+  void waitForTrackRetirements();
   AsyncCleanupDispatcher* cleanup_dispatcher_;
+  AsyncCleanupLauncher cleanup_launcher_;
   std::shared_ptr<AsyncCleanupNode> cleanup_node_;
   std::atomic_bool cleanup_submitted_{false};
   std::uint32_t electron_main_pid_;
@@ -120,11 +128,12 @@ class RemoteVideoBridge {
   StreamFactory stream_factory_;
   std::shared_ptr<LifetimeSafeFrameRelease> release_router_;
   std::mutex lifecycle_mutex_;
+  std::shared_ptr<TrackRetirementState> retirement_state_;
   std::mutex mutex_;
   std::string session_id_;
   std::uint64_t generation_ = 0;
   std::uint64_t next_frame_sequence_ = 0;
-  std::unordered_map<std::string, std::unique_ptr<TrackWorker>> tracks_;
+  std::unordered_map<std::string, std::shared_ptr<TrackWorker>> tracks_;
 #ifdef _WIN32
   struct RetiredFrame {
     std::string track_id;

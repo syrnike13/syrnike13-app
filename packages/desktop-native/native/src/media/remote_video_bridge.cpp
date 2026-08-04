@@ -164,12 +164,24 @@ class LiveKitVideoStreamReader final : public RemoteVideoBridge::StreamReader {
 };
 }  // namespace
 
+struct RemoteVideoBridge::TrackRetirementState {
+  std::mutex mutex;
+  std::condition_variable changed;
+  std::size_t pending = 0;
+};
+
 struct RemoteVideoBridge::TrackWorker {
+  RemoteVideoBridge* bridge = nullptr;
+  std::string track_id;
   std::shared_ptr<livekit::Track> track;
   std::shared_ptr<StreamReader> stream;
+  std::shared_ptr<AsyncCleanupNode> cleanup_node;
+  std::shared_ptr<TrackRetirementState> retirement_state;
   std::thread thread;
   std::thread first_frame_watchdog;
   std::atomic_bool stopped{false};
+  std::atomic_bool retirement_submitted{false};
+  std::atomic_bool commit_latch_opened{false};
   std::latch committed{1};
   std::atomic<FirstFrameState> first_frame_state{FirstFrameState::Pending};
   std::mutex frames_mutex;
@@ -187,8 +199,9 @@ RemoteVideoBridge::RemoteVideoBridge(
   StreamFactory stream_factory,
   AsyncCleanupLauncher cleanup_launcher
 ) : cleanup_dispatcher_(&AsyncCleanupDispatcher::instance()),
+    cleanup_launcher_(std::move(cleanup_launcher)),
     cleanup_node_(std::make_shared<AsyncCleanupNode>(
-      std::move(cleanup_launcher)
+      cleanup_launcher_
     )),
     electron_main_pid_(electron_main_pid),
     post_(std::move(post)),
@@ -206,7 +219,8 @@ RemoteVideoBridge::RemoteVideoBridge(
       [this](const std::string& track_id, std::uint64_t sequence) {
         release(track_id, sequence);
       }
-    )) {}
+    )),
+    retirement_state_(std::make_shared<TrackRetirementState>()) {}
 
 RemoteVideoBridge::~RemoteVideoBridge() {
   stop();
@@ -245,8 +259,14 @@ void RemoteVideoBridge::addTrack(
   // A repeated subscribed callback replaces the decoder for the same SID. It
   // is an implementation detail, not a track removal visible to the renderer.
   removeTrackLocked(track_id, {}, false);
-  auto worker = std::make_unique<TrackWorker>();
+  auto worker = std::make_shared<TrackWorker>();
+  worker->bridge = this;
+  worker->track_id = track_id;
   worker->track = track;
+  worker->cleanup_node = std::make_shared<AsyncCleanupNode>(
+    cleanup_launcher_
+  );
+  worker->retirement_state = retirement_state_;
   worker->stream = stream_factory_(track);
   if (!worker->stream) {
     throw std::runtime_error("remote video stream factory returned no reader");
@@ -820,28 +840,18 @@ void RemoteVideoBridge::addTrack(
     }
     });
   } catch (...) {
-    raw->stopped.store(true);
-    raw->committed.count_down();
-    raw->stream->close();
-    if (raw->thread.joinable()) raw->thread.join();
-    if (raw->first_frame_watchdog.joinable()) raw->first_frame_watchdog.join();
+    submitTrackRetirement(worker);
     throw;
   }
   try {
     std::lock_guard lock(mutex_);
-    const auto [_, inserted] = tracks_.try_emplace(track_id, std::move(worker));
+    const auto [_, inserted] = tracks_.try_emplace(track_id, worker);
     if (!inserted) throw std::runtime_error("duplicate remote video track SID");
-    raw->committed.count_down();
-  } catch (...) {
-    raw->stopped.store(true);
-    raw->committed.count_down();
-    raw->stream->close();
-    if (worker) {
-      if (worker->thread.joinable()) worker->thread.join();
-      if (worker->first_frame_watchdog.joinable()) {
-        worker->first_frame_watchdog.join();
-      }
+    if (!raw->commit_latch_opened.exchange(true)) {
+      raw->committed.count_down();
     }
+  } catch (...) {
+    submitTrackRetirement(worker);
     throw;
   }
 }
@@ -866,7 +876,7 @@ void RemoteVideoBridge::removeTrackLocked(
   const std::shared_ptr<livekit::Track>& expected_track,
   bool notify
 ) {
-  std::unique_ptr<TrackWorker> worker;
+  std::shared_ptr<TrackWorker> worker;
   {
     std::lock_guard lock(mutex_);
     auto found = tracks_.find(track_id);
@@ -875,29 +885,7 @@ void RemoteVideoBridge::removeTrackLocked(
     worker = std::move(found->second);
     tracks_.erase(found);
   }
-  worker->stopped = true;
-  worker->stream->close();
-  if (worker->thread.joinable()) worker->thread.join();
-  if (worker->first_frame_watchdog.joinable()) {
-    worker->first_frame_watchdog.join();
-  }
-#ifdef _WIN32
-  {
-    std::lock_guard lock(mutex_);
-    std::lock_guard frames_lock(worker->frames_mutex);
-    const auto retired_at = std::chrono::steady_clock::now();
-    for (auto& [sequence, frame] : worker->frames) {
-      if (!released_frame_sequences_.consume(track_id, sequence)) {
-        makeRetiredFrameRoomLocked(retired_at);
-        retired_frames_.emplace(
-          sequence,
-          RetiredFrame{track_id, std::move(frame), retired_at}
-        );
-      }
-    }
-    worker->frames.clear();
-  }
-#endif
+  submitTrackRetirement(worker);
   if (!notify) return;
   MediaCommand command;
   command.type = event_types_.track_removed;
@@ -908,6 +896,78 @@ void RemoteVideoBridge::removeTrackLocked(
     command.generation = generation_;
   }
   post_(std::move(command));
+}
+
+void RemoteVideoBridge::submitTrackRetirement(
+  const std::shared_ptr<TrackWorker>& worker
+) noexcept {
+  if (!worker || worker->retirement_submitted.exchange(true)) return;
+  worker->stopped.store(true);
+  if (!worker->commit_latch_opened.exchange(true)) {
+    worker->committed.count_down();
+  }
+  try {
+    worker->stream->close();
+  } catch (...) {
+  }
+  {
+    std::lock_guard lock(worker->retirement_state->mutex);
+    ++worker->retirement_state->pending;
+  }
+  worker->cleanup_node->prepare(
+    worker,
+    worker.get(),
+    [](void* context) {
+      auto* retiring = static_cast<TrackWorker*>(context);
+      retiring->bridge->finishTrackRetirement(*retiring);
+    },
+    [](void* context) {
+      auto* retiring = static_cast<TrackWorker*>(context);
+      completeTrackRetirement(*retiring);
+    }
+  );
+  cleanup_dispatcher_->submit(worker->cleanup_node);
+}
+
+void RemoteVideoBridge::finishTrackRetirement(TrackWorker& worker) noexcept {
+  if (worker.thread.joinable()) worker.thread.join();
+  if (worker.first_frame_watchdog.joinable()) {
+    worker.first_frame_watchdog.join();
+  }
+#ifdef _WIN32
+  {
+    std::lock_guard lock(mutex_);
+    std::lock_guard frames_lock(worker.frames_mutex);
+    const auto retired_at = std::chrono::steady_clock::now();
+    for (auto& [sequence, frame] : worker.frames) {
+      if (!released_frame_sequences_.consume(worker.track_id, sequence)) {
+        makeRetiredFrameRoomLocked(retired_at);
+        retired_frames_.emplace(
+          sequence,
+          RetiredFrame{worker.track_id, std::move(frame), retired_at}
+        );
+      }
+    }
+    worker.frames.clear();
+  }
+#endif
+}
+
+void RemoteVideoBridge::completeTrackRetirement(TrackWorker& worker) noexcept {
+  const auto state = worker.retirement_state;
+  {
+    std::lock_guard lock(state->mutex);
+    if (state->pending != 0) --state->pending;
+  }
+  state->changed.notify_all();
+}
+
+void RemoteVideoBridge::waitForTrackRetirements() {
+  const auto state = retirement_state_;
+  std::unique_lock lock(state->mutex);
+  state->changed.wait(lock, [&] {
+    return state->pending == 0;
+  });
 }
 
 void RemoteVideoBridge::release(const std::string& track_id, std::uint64_t sequence) {
@@ -925,9 +985,9 @@ void RemoteVideoBridge::release(const std::string& track_id, std::uint64_t seque
     retired_frames_.erase(retired);
     released = true;
   }
-  // A release can race the short interval between removing a worker from the
-  // active map and migrating its in-flight textures. Remember it so migration
-  // never resurrects an already released handle.
+  // A release can race asynchronous worker retirement after the worker leaves
+  // the active map. Remember it so migration never resurrects an already
+  // released handle.
   if (!released) {
     static_cast<void>(released_frame_sequences_.remember(
       track_id,
@@ -973,13 +1033,15 @@ void RemoteVideoBridge::makeRetiredFrameRoomLocked(
 #endif
 
 void RemoteVideoBridge::stop() {
+  std::lock_guard lifecycle_lock(lifecycle_mutex_);
   std::vector<std::string> ids;
   {
     std::lock_guard lock(mutex_);
     ids.reserve(tracks_.size());
     for (const auto& [id, _] : tracks_) ids.push_back(id);
   }
-  for (const auto& id : ids) removeTrack(id);
+  for (const auto& id : ids) removeTrackLocked(id, {}, true);
+  waitForTrackRetirements();
 }
 
 void RemoteVideoBridge::stop(std::shared_ptr<void> lifetime_owner) {
