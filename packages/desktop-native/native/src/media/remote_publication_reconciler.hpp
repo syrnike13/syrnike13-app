@@ -91,6 +91,9 @@ class RemotePublicationReconciler final {
     const std::string& publication_id,
     bool demanded
   );
+  std::vector<std::string> syncScreenAudioDemand(
+    const std::string& participant_identity
+  );
   RemotePublicationReconcilePlan planReconcile(
     const std::string& publication_id
   );

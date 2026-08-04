@@ -249,6 +249,14 @@ class PostedRoomDelegate final
       remote_video_.removeTrack(publication_id);
       postRemoteVideoPublication("__remoteVideoPublicationUnavailable", publication_id,
                                  removed->participant_identity, removed->source);
+      if (removed->source == livekit::TrackSource::SOURCE_SCREENSHARE) {
+        for (const auto& dependent_id :
+             remote_publications_.syncScreenAudioDemand(
+               removed->participant_identity
+             )) {
+          requestRemotePublicationReconcile(dependent_id);
+        }
+      }
     }
   }
 
@@ -432,6 +440,14 @@ class PostedRoomDelegate final
     if (!publication) return;
     if (!demanded) remote_video_.removeTrack(track_id);
     reconcileRemotePublication(track_id);
+    if (publication->source == livekit::TrackSource::SOURCE_SCREENSHARE) {
+      for (const auto& dependent_id :
+           remote_publications_.syncScreenAudioDemand(
+             publication->participant_identity
+           )) {
+        reconcileRemotePublication(dependent_id);
+      }
+    }
     // Re-announce before the asynchronous subscription can produce frames so
     // the renderer can lift its unsubscribe tombstone without losing inventory.
     if (demanded) {

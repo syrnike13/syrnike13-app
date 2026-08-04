@@ -45,6 +45,19 @@ std::shared_ptr<livekit::RemoteTrackPublication> microphonePublication() {
   return std::make_shared<livekit::RemoteTrackPublication>(owned);
 }
 
+std::shared_ptr<livekit::RemoteTrackPublication> screenAudioPublication() {
+  livekit::proto::OwnedTrackPublication owned;
+  owned.mutable_handle()->set_id(0);
+  auto* info = owned.mutable_info();
+  info->set_sid("screen-audio-track");
+  info->set_name("screen-audio");
+  info->set_kind(livekit::proto::KIND_AUDIO);
+  info->set_source(livekit::proto::SOURCE_SCREENSHARE_AUDIO);
+  info->set_remote(true);
+  info->set_encryption_type(livekit::proto::NONE);
+  return std::make_shared<livekit::RemoteTrackPublication>(owned);
+}
+
 class TestTrack final : public livekit::Track {
  public:
   explicit TestTrack(std::string sid)
@@ -66,6 +79,10 @@ void publicationKindOwnsDefaultDemand() {
     microphonePublication(),
     "source"
   );
+  const auto screen_audio = reconciler.registerPublication(
+    screenAudioPublication(),
+    "source"
+  );
   const auto video = reconciler.registerPublication(
     screenPublication(),
     "source"
@@ -76,8 +93,59 @@ void publicationKindOwnsDefaultDemand() {
     "remote audio was not subscribed by default"
   );
   require(
+    screen_audio && !screen_audio->is_video && !screen_audio->demanded,
+    "screen audio ignored screen Media Demand ownership"
+  );
+  require(
     video && video->is_video && !video->demanded,
     "remote video ignored Media Demand ownership"
+  );
+}
+
+void screenAudioFollowsMatchingScreenDemand() {
+  using namespace syrnike::desktop_native::media;
+  RemotePublicationReconciler reconciler;
+  reconciler.registerPublication(screenAudioPublication(), "source");
+  reconciler.registerPublication(screenPublication(), "source");
+
+  reconciler.setVideoDemand("screen-track", true);
+  const auto enabled = reconciler.syncScreenAudioDemand("source");
+  require(
+    enabled.size() == 1 && enabled.front() == "screen-audio-track",
+    "starting screen demand did not enable matching screen audio"
+  );
+  require(
+    reconciler.planReconcile("screen-audio-track").command ==
+      RemotePublicationReconcileCommand::Subscribe,
+    "enabled screen audio did not request subscription"
+  );
+
+  reconciler.setVideoDemand("screen-track", false);
+  const auto disabled = reconciler.syncScreenAudioDemand("source");
+  require(
+    disabled.size() == 1 && disabled.front() == "screen-audio-track",
+    "stopping screen demand did not disable matching screen audio"
+  );
+  require(
+    reconciler.planReconcile("screen-audio-track").command ==
+      RemotePublicationReconcileCommand::Unsubscribe,
+    "disabled screen audio did not request unsubscribe"
+  );
+}
+
+void lateScreenAudioInheritsExistingScreenDemand() {
+  using namespace syrnike::desktop_native::media;
+  RemotePublicationReconciler reconciler;
+  reconciler.registerPublication(screenPublication(), "source");
+  reconciler.setVideoDemand("screen-track", true);
+  const auto screen_audio = reconciler.registerPublication(
+    screenAudioPublication(),
+    "source"
+  );
+
+  require(
+    screen_audio && screen_audio->demanded,
+    "late screen audio did not inherit matching screen demand"
   );
 }
 
@@ -220,6 +288,8 @@ void lateOldUnsubscribeCannotDetachReplacementTrack() {
 
 int main() try {
   publicationKindOwnsDefaultDemand();
+  screenAudioFollowsMatchingScreenDemand();
+  lateScreenAudioInheritsExistingScreenDemand();
   rapidResubscribeWaitsForActualUnsubscribe();
   recoveryAlternatesSubscriptionEdgesInsteadOfRacingThem();
   lateOldUnsubscribeCannotDetachReplacementTrack();

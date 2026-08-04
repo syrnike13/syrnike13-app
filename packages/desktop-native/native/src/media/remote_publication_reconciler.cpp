@@ -20,13 +20,27 @@ RemotePublicationReconciler::registerPublication(
     publication->kind() == livekit::TrackKind::KIND_AUDIO;
   if (!is_video && !is_audio) return std::nullopt;
   std::lock_guard lock(mutex_);
+  bool demanded =
+    is_audio &&
+    source != livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO;
+  if (source == livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO) {
+    for (const auto& [_, current] : publications_) {
+      if (current.participant_identity == participant_identity &&
+          current.is_video &&
+          current.source == livekit::TrackSource::SOURCE_SCREENSHARE &&
+          current.demanded) {
+        demanded = true;
+        break;
+      }
+    }
+  }
   const auto existing = publications_.find(publication_id);
   Publication next{
     std::move(publication),
     std::move(participant_identity),
     source,
     is_video,
-    is_audio
+    demanded
   };
   if (existing != publications_.end() &&
       existing->second.participant_identity == next.participant_identity &&
@@ -126,6 +140,37 @@ RemotePublicationReconciler::setVideoDemand(
   ++found->second.revision;
   found->second.local_recovery_attempts = 0;
   return snapshot(found->second);
+}
+
+std::vector<std::string>
+RemotePublicationReconciler::syncScreenAudioDemand(
+  const std::string& participant_identity
+) {
+  std::vector<std::string> changed;
+  std::lock_guard lock(mutex_);
+  bool demanded = false;
+  for (const auto& [_, publication] : publications_) {
+    if (publication.participant_identity == participant_identity &&
+        publication.is_video &&
+        publication.source == livekit::TrackSource::SOURCE_SCREENSHARE &&
+        publication.demanded) {
+      demanded = true;
+      break;
+    }
+  }
+  for (auto& [publication_id, publication] : publications_) {
+    if (publication.participant_identity != participant_identity ||
+        publication.source !=
+          livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO ||
+        publication.demanded == demanded) {
+      continue;
+    }
+    publication.demanded = demanded;
+    ++publication.revision;
+    publication.local_recovery_attempts = 0;
+    changed.push_back(publication_id);
+  }
+  return changed;
 }
 
 RemotePublicationReconcilePlan

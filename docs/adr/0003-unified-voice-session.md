@@ -92,16 +92,18 @@ states and errors. A Media Failure stops or degrades only that media path and
 never reconnects the Room.
 
 The Windows Native Media Session owns one participant and publishes every local
-Media Track through it. It also subscribes to all remote audio, mixes it with
-per-user local persistent volume, and renders it through WASAPI. Remote video is
-subscribed on Media Demand and is delivered to the renderer through D3D11
-shared textures, with a CPU path reserved for tests and unsupported hardware.
+Media Track through it. It subscribes to remote microphone audio and mixes it
+with per-user local persistent volume before rendering through WASAPI. Remote
+video and matching screen-share audio are subscribed on Media Demand; video is
+delivered to the renderer through D3D11 shared textures, with a CPU path
+reserved for tests and unsupported hardware.
 The Room connects with automatic subscription disabled. Its epoch-scoped native
 publication table keeps desired subscription, actual track, transition phase,
 and revision for every remote publication; delegate callbacks only update that
 table and queue reconciliation, while synchronous LiveKit subscription calls run
-on the Room operation path. Microphone and screen-share audio are always desired,
-while camera and screen video are desired only when Media Demand exists.
+on the Room operation path. Microphone audio is always desired, while camera,
+screen video, and matching screen-share audio are desired only when Media
+Demand exists.
 Electron is pinned to 43.1.0 because this cutover relies on its typed
 `sharedTexture` import API; Electron 35 cannot provide the GPU bridge contract
 and is not ABI-compatible with this native distribution.

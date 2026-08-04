@@ -248,7 +248,7 @@ describe('BrowserRtcEngineAdapter', () => {
     await adapter.dispose()
   })
 
-  it('keeps screen video demand-driven while remote audio stays subscribed', async () => {
+  it('keeps microphone audio subscribed while screen media follows demand', async () => {
     const adapter = new BrowserRtcEngineAdapter()
     await adapter.connect(lease, desired(), new AbortController().signal)
     const room = livekit.rooms[0]
@@ -273,7 +273,7 @@ describe('BrowserRtcEngineAdapter', () => {
     room.emit('trackPublished', microphone)
 
     expect(screenVideo.setSubscribed).toHaveBeenCalledWith(false)
-    expect(screenAudio.setSubscribed).not.toHaveBeenCalled()
+    expect(screenAudio.setSubscribed).toHaveBeenCalledWith(false)
     expect(microphone.setSubscribed).not.toHaveBeenCalled()
     await adapter.dispose()
   })
