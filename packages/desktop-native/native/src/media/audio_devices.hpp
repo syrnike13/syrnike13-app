@@ -20,7 +20,7 @@ Microsoft::WRL::ComPtr<IMMDevice> renderDevice();
 Microsoft::WRL::ComPtr<IMMDevice> renderDevice(const std::string& device_id);
 std::string audioEndpointId(IMMDevice* device);
 std::string resolvedRenderDeviceId(const std::string& device_id);
-std::vector<DeviceInfo> listAudioDevices();
+std::vector<DeviceInfo> listAudioDevices(EDataFlow flow);
 WAVEFORMATEX desiredCaptureFormat();
 WAVEFORMATEX desiredRenderFormat();
 

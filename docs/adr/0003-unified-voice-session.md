@@ -9,7 +9,7 @@
 - **Implementation clarification:** 2026-08-03 — explicit remote subscription
   ownership and state-aware video recovery
 - **Implementation clarification:** 2026-08-05 — playout-owned Windows output
-  recovery, endpoint identity, and renderer liveness
+  recovery, endpoint identity, renderer liveness, and WASAPI padding ownership
 - **Supersedes:** ADR-0001 execution model and ADR-0002 media/host ownership
 
 ## Context
@@ -241,6 +241,16 @@ buffer releases update render progress, and three seconds without progress
 recreates only Remote Audio Playout even when no HRESULT is delivered. Recovery
 and dataplane telemetry are cadence-bounded so a sustained outage cannot rotate
 away its causal onset.
+
+The LiveKit decoded-audio packet size is an ingress and mixer quantum, not the
+maximum number of frames Remote Audio Playout may submit per WASAPI event. On
+every renderer wake, Remote Audio Playout queries current padding, acquires all
+writable capacity in one `GetBuffer`, fills it through bounded 10 ms mixer
+chunks, and completes one matching `ReleaseBuffer`. This lets a delayed wake
+restore the target padding instead of permanently carrying buffer debt.
+Successful `ReleaseBuffer` calls alone are therefore not evidence of healthy
+playout; renderer telemetry also records minimum padding, maximum writable
+capacity, wake gaps, empty-buffer events, and catch-up writes.
 
 `NativeRuntimeSupervisor` owns Runtime Availability for one host epoch:
 startup, handshake, typed crash cause, restart backoff, and circuit state. It

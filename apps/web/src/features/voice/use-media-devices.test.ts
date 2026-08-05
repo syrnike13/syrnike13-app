@@ -1,3 +1,6 @@
+// @vitest-environment jsdom
+
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getSyrnikeDesktop } from '#/platform/runtime'
@@ -5,6 +8,7 @@ import { getSyrnikeDesktop } from '#/platform/runtime'
 import {
   ensureMediaDevicePermission,
   listMediaDevices,
+  useMediaDevices,
 } from './use-media-devices'
 
 vi.mock('#/platform/runtime', () => ({
@@ -16,6 +20,7 @@ describe('media device permissions', () => {
 
   beforeEach(() => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
+    const listeners = new Set<EventListenerOrEventListenerObject>()
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
       value: {
@@ -23,6 +28,23 @@ describe('media device permissions', () => {
           getTracks: () => [{ stop: vi.fn() }],
         })),
         enumerateDevices: vi.fn(async () => []),
+        addEventListener: vi.fn(
+          (_type: string, listener: EventListenerOrEventListenerObject) => {
+            listeners.add(listener)
+          },
+        ),
+        removeEventListener: vi.fn(
+          (_type: string, listener: EventListenerOrEventListenerObject) => {
+            listeners.delete(listener)
+          },
+        ),
+        dispatchEvent: vi.fn((event: Event) => {
+          for (const listener of listeners) {
+            if (typeof listener === 'function') listener(event)
+            else listener.handleEvent(event)
+          }
+          return true
+        }),
       },
     })
   })
@@ -73,5 +95,50 @@ describe('media device permissions', () => {
 
     expect(listDevices).toHaveBeenCalledWith('audioinput')
     expect(navigator.mediaDevices.enumerateDevices).not.toHaveBeenCalled()
+  })
+
+  it('refreshes native devices from devicechange without polling', async () => {
+    const setInterval = vi.spyOn(window, 'setInterval')
+    const listDevices = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          deviceId: 'initial',
+          kind: 'audioinput',
+          label: 'Initial microphone',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          deviceId: 'updated',
+          kind: 'audioinput',
+          label: 'Updated microphone',
+        },
+      ])
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      platform: { os: 'win32' },
+      media: { listDevices },
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
+
+    const { result, unmount } = renderHook(() => useMediaDevices('audioinput'))
+
+    await waitFor(() => expect(result.current).toHaveLength(1))
+    expect(result.current[0]?.deviceId).toBe('initial')
+    expect(setInterval).not.toHaveBeenCalledWith(expect.any(Function), 2_000)
+    expect(listDevices).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      navigator.mediaDevices.dispatchEvent(new Event('devicechange'))
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(result.current[0]?.deviceId).toBe('updated'))
+    expect(listDevices).toHaveBeenCalledTimes(2)
+
+    unmount()
+    expect(navigator.mediaDevices.removeEventListener).toHaveBeenCalledWith(
+      'devicechange',
+      expect.any(Function),
+    )
+    setInterval.mockRestore()
   })
 })

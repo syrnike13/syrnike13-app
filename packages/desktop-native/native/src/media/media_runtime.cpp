@@ -1134,17 +1134,20 @@ class MediaRuntime::Implementation
     if (command.type == "listDevices") {
       auto result = reply(command);
       result.kind = "devices";
-      result.devices = listAudioDevices();
-      auto cameras = listCameraDevices();
-      result.devices.insert(
-        result.devices.end(),
-        std::make_move_iterator(cameras.begin()),
-        std::make_move_iterator(cameras.end())
-      );
-      if (!command.device_kind.empty()) {
-        std::erase_if(result.devices, [&](const DeviceInfo& device) {
-          return device.kind != command.device_kind;
-        });
+      if (command.device_kind == "audioinput") {
+        result.devices = listAudioDevices(eCapture);
+      } else if (command.device_kind == "audiooutput") {
+        result.devices = listAudioDevices(eRender);
+      } else if (command.device_kind == "videoinput") {
+        result.devices = listCameraDevices();
+      } else {
+        emitter_.emit(failedReply(command, NativeError{
+          "invalid_device_kind",
+          "Unsupported media device kind",
+          command.type,
+          false,
+        }));
+        return;
       }
       emitter_.emit(std::move(result));
       return;

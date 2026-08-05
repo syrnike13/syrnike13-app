@@ -36,14 +36,6 @@ export function useMediaDevices(kind: MediaDeviceKind) {
     }
 
     void refresh()
-    if (usesNativeMediaDevices(kind)) {
-      const interval = window.setInterval(refresh, 2_000)
-      return () => {
-        active = false
-        window.clearInterval(interval)
-      }
-    }
-
     navigator.mediaDevices.addEventListener('devicechange', refresh)
     return () => {
       active = false
