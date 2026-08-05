@@ -435,7 +435,8 @@ html {
   width: 100%;
   max-width: none;
   gap: 0;
-  border: 1px solid var(--border);
+  border: 1px solid
+    color-mix(in oklch, var(--foreground) 18%, var(--border));
   border-radius: 1rem;
   background: var(--theme-surface-raised, var(--card));
   padding-block: 2rem;
