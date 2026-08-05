@@ -33,13 +33,27 @@ import {
 import { postLoginPath } from '#/lib/auth-post-login-path'
 import { setPendingVerifyEmail } from '#/lib/auth-verify-email'
 
-type RegisterFieldName = 'email' | 'password' | 'confirm' | 'invite'
+const REGISTER_FIELD_NAMES = [
+  'email',
+  'password',
+  'confirm',
+  'invite',
+] as const satisfies readonly string[]
 
-const REGISTER_FIELD_IDS: Record<RegisterFieldName, string> = {
+type RegisterFieldName = (typeof REGISTER_FIELD_NAMES)[number]
+
+const REGISTER_FIELD_IDS = {
   email: 'reg-email',
   password: 'reg-password',
   confirm: 'reg-password-confirm',
   invite: 'reg-invite',
+} as const satisfies Record<RegisterFieldName, string>
+
+function isRegisterFieldName(value: unknown): value is RegisterFieldName {
+  return (
+    typeof value === 'string' &&
+    REGISTER_FIELD_NAMES.some((fieldName) => fieldName === value)
+  )
 }
 
 export const Route = createFileRoute('/login/register')({
@@ -80,16 +94,10 @@ function RegisterPage() {
 
         for (const issue of parsed.error.issues) {
           const fieldName = issue.path[0]
-          if (
-            typeof fieldName !== 'string' ||
-            !(fieldName in REGISTER_FIELD_IDS)
-          ) {
-            continue
-          }
+          if (!isRegisterFieldName(fieldName)) continue
 
-          const registerField = fieldName as RegisterFieldName
-          nextErrors[registerField] ??= issue.message
-          firstInvalidField ??= registerField
+          nextErrors[fieldName] ??= issue.message
+          firstInvalidField ??= fieldName
         }
 
         setFieldErrors(nextErrors)
@@ -293,31 +301,19 @@ function RegisterPage() {
             ) : null}
           </CardContent>
           <CardFooter className="flex flex-col gap-2">
-            <form.Subscribe selector={(state) => state.values}>
-              {(values) => {
-                const canRegister =
-                  configReady &&
-                  createRegisterSchema({
-                    requireInvite: inviteOnly,
-                  }).safeParse(values).success
-
-                return (
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={submitting || !canRegister}
-                  >
-                    {submitting || configQuery.isPending ? (
-                      <Loader2Icon
-                        className="animate-spin"
-                        data-icon="inline-start"
-                      />
-                    ) : null}
-                    Зарегистрироваться
-                  </Button>
-                )
-              }}
-            </form.Subscribe>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={submitting || !configReady}
+            >
+              {submitting || configQuery.isPending ? (
+                <Loader2Icon
+                  className="animate-spin"
+                  data-icon="inline-start"
+                />
+              ) : null}
+              Зарегистрироваться
+            </Button>
             <p className="auth-secondary-action">
               Уже с нами? <Link to="/login">Войти</Link>
             </p>
