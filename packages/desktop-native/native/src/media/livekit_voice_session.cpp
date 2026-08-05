@@ -134,12 +134,7 @@ class PostedRoomDelegate final
         const std::string& message
       ) {
         handleRemoteVideoEnded(track_id, track, message);
-      }, [this](
-        const std::string& track_id,
-        const std::shared_ptr<livekit::Track>& track
-      ) {
-        handleRemoteVideoHealthy(track_id, track);
-      }),
+      }, {}),
       local_camera_preview_(
         electronMainPid(),
         post_,
@@ -667,15 +662,6 @@ class PostedRoomDelegate final
     // The local reader ending does not detach the SDK RemoteTrack. Keep it as
     // the source for a bridge-only retry; unsubscribe/unpublish callbacks own
     // the current_track transition.
-  }
-
-  void handleRemoteVideoHealthy(
-    const std::string& publication_id,
-    const std::shared_ptr<livekit::Track>& track
-  ) {
-    CallbackGuard callback(*this);
-    if (!callback) return;
-    remote_publications_.markVideoHealthy(publication_id, track);
   }
 
   void registerRemotePublication(

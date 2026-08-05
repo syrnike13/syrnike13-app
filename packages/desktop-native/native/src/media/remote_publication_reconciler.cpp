@@ -48,8 +48,6 @@ RemotePublicationReconciler::registerPublication(
       existing->second.is_video == next.is_video) {
     next.demanded = existing->second.demanded;
     next.current_track = existing->second.current_track;
-    next.local_recovery_attempts =
-      existing->second.local_recovery_attempts;
     next.revision = existing->second.revision;
     next.phase = existing->second.phase;
   }
@@ -138,7 +136,6 @@ RemotePublicationReconciler::setVideoDemand(
   }
   found->second.demanded = demanded;
   ++found->second.revision;
-  found->second.local_recovery_attempts = 0;
   return snapshot(found->second);
 }
 
@@ -167,7 +164,6 @@ RemotePublicationReconciler::syncScreenAudioDemand(
     }
     publication.demanded = demanded;
     ++publication.revision;
-    publication.local_recovery_attempts = 0;
     changed.push_back(publication_id);
   }
   return changed;
@@ -267,7 +263,6 @@ RemotePublicationReconciler::onTrackSubscribed(
   }
   state.phase = Phase::Subscribed;
   state.current_track = track;
-  if (state.demanded) state.local_recovery_attempts = 0;
   return result;
 }
 
@@ -340,14 +335,11 @@ RemotePublicationReconciler::planVideoRecovery(
   };
   const bool restart_local_bridge =
     publication.current_track &&
-    publication.phase == Phase::Subscribed &&
-    publication.local_recovery_attempts == 0;
+    publication.phase == Phase::Subscribed;
   if (restart_local_bridge) {
-    ++publication.local_recovery_attempts;
     plan.action = RemotePublicationRecoveryAction::RestartLocalBridge;
     return plan;
   }
-  publication.local_recovery_attempts = 0;
   const bool request_unsubscribe =
     publication.current_track ||
     publication.phase == Phase::Subscribing ||
@@ -387,18 +379,6 @@ bool RemotePublicationReconciler::isCurrentDemandedTrack(
   return found != publications_.end() &&
     found->second.demanded &&
     found->second.current_track == track;
-}
-
-void RemotePublicationReconciler::markVideoHealthy(
-  const std::string& publication_id,
-  const std::shared_ptr<livekit::Track>& track
-) {
-  std::lock_guard lock(mutex_);
-  const auto found = publications_.find(publication_id);
-  if (found != publications_.end() &&
-      found->second.current_track == track) {
-    found->second.local_recovery_attempts = 0;
-  }
 }
 
 RemotePublicationSnapshot RemotePublicationReconciler::snapshot(

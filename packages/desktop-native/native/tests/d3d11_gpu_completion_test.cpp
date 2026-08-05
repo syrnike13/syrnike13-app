@@ -91,8 +91,9 @@ int main() {
     const auto recovered_slot = decideRemoteVideoSlotTransition(
         still_quarantined.next, RemoteVideoGpuPollClass::Completed);
     if (!recovered_slot.recovered ||
-        recovered_slot.next != RemoteVideoTextureSlotPhase::Available) {
-      throw std::runtime_error("late GPU completion did not recover its slot");
+        recovered_slot.next != RemoteVideoTextureSlotPhase::Ready) {
+      throw std::runtime_error(
+          "late remote GPU completion was not retained for display");
     }
     const auto failed_slot = decideRemoteVideoSlotTransition(
         RemoteVideoTextureSlotPhase::Uploading,

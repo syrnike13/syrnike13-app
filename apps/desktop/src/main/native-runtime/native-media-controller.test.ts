@@ -353,7 +353,7 @@ describe('NativeMediaController retained tools', () => {
     }
   })
 
-  it('stops recovery after the bounded attempt budget', async () => {
+  it('keeps local recovery and user demand alive after the degraded threshold', async () => {
     vi.useFakeTimers()
     try {
       const harness = createHarness(1_000)
@@ -367,21 +367,20 @@ describe('NativeMediaController retained tools', () => {
       const recoveryCommands = harness.request.mock.calls
         .map(([command]) => command)
         .filter((command) => command.type === 'retryRemoteVideo')
-      expect(recoveryCommands).toHaveLength(3)
+      expect(recoveryCommands.length).toBeGreaterThan(3)
       expect(harness.request.mock.calls.some(([command]) =>
         command.type === 'setRemoteVideoDemand' && !command.demanded,
-      )).toBe(true)
+      )).toBe(false)
       expect(harness.diagnostics).toHaveBeenCalledWith(expect.objectContaining({
-        event: 'remote_video_recovery_exhausted',
+        event: 'remote_video_recovery_degraded',
         recoveryAttempt: 3,
+        reason: 'local_recovery_budget_exceeded',
       }))
-      expect(listener).toHaveBeenCalledWith({
+      expect(listener).not.toHaveBeenCalledWith(expect.objectContaining({
         type: 'remoteVideoDemandFailed',
-        sessionId: 'voice',
-        generation: 3,
-        trackId: 'screen',
-        message: 'Не удалось подключиться к видеопотоку',
-      })
+      }))
+      expect(harness.controller.isRemoteVideoDemanded('voice', 3, 'screen'))
+        .toBe(true)
       await harness.controller.dispose()
     } finally {
       vi.useRealTimers()
@@ -675,6 +674,8 @@ describe('NativeMediaController retained tools', () => {
     vi.useFakeTimers()
     try {
       const harness = createHarness(1_000)
+      const listener = vi.fn()
+      harness.controller.subscribe(listener)
       await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', true)
       harness.request.mockClear()
       harness.event({
@@ -696,6 +697,21 @@ describe('NativeMediaController retained tools', () => {
       expect(harness.request.mock.calls.some(([command]) =>
         command.type === 'setRemoteVideoDemand' && !command.demanded,
       )).toBe(false)
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(harness.diagnostics).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'remote_video_recovery_degraded',
+        reason: 'subscription_recovery_budget_exceeded',
+      }))
+      expect(harness.controller.isRemoteVideoDemanded('voice', 3, 'screen'))
+        .toBe(true)
+      expect(listener).toHaveBeenCalledTimes(1)
+      expect(listener).toHaveBeenCalledWith({
+        type: 'remoteVideoDemandFailed',
+        sessionId: 'voice',
+        generation: 3,
+        trackId: 'screen',
+        message: 'Не удалось подключиться к видеопотоку',
+      })
       await harness.controller.dispose()
     } finally {
       vi.useRealTimers()
