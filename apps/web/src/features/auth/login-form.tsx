@@ -4,9 +4,10 @@ import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
+import { AuthCard } from '#/components/auth/auth-layout'
+import { PasswordInput } from '#/components/auth/password-input'
 import { Button } from '#/components/ui/button'
 import {
-  Card,
   CardContent,
   CardDescription,
   CardFooter,
@@ -22,14 +23,11 @@ import {
   isEmailVerificationEnabled,
   useSyrnikeConfig,
 } from './use-syrnike-config'
-import { config as appConfig } from '#/lib/config'
 import { postLoginPath } from '#/lib/auth-post-login-path'
-import { usePlatform } from '#/platform/use-platform'
 
 export function LoginForm() {
   const auth = useAuth()
   const navigate = useNavigate()
-  const { isDesktop } = usePlatform()
   const configQuery = useSyrnikeConfig()
   const emailVerification = isEmailVerificationEnabled(
     configQuery.data?.features,
@@ -89,12 +87,12 @@ export function LoginForm() {
 
   if (auth.mfaChallenge) {
     return (
-      <Card className="w-full max-w-md">
+      <AuthCard>
         <CardHeader>
-          <CardTitle>Двухфакторная аутентификация</CardTitle>
+          <CardTitle>Подтвердите вход</CardTitle>
           <CardDescription>
-            Подтвердите вход паролем. Доступные методы:{' '}
-            {auth.mfaChallenge.allowedMethods.join(', ')}
+            Для этого аккаунта включена дополнительная защита. Введите пароль
+            ещё раз.
           </CardDescription>
         </CardHeader>
         <form
@@ -108,9 +106,8 @@ export function LoginForm() {
               {(field) => (
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="mfa-password">Пароль</Label>
-                  <Input
+                  <PasswordInput
                     id="mfa-password"
-                    type="password"
                     autoComplete="current-password"
                     value={field.state.value}
                     onChange={(event) =>
@@ -121,7 +118,7 @@ export function LoginForm() {
               )}
             </mfaForm.Field>
           </CardContent>
-          <CardFooter className="flex gap-2">
+          <CardFooter className="grid grid-cols-2 gap-3">
             <Button
               type="button"
               variant="outline"
@@ -138,17 +135,14 @@ export function LoginForm() {
             </Button>
           </CardFooter>
         </form>
-      </Card>
+      </AuthCard>
     )
   }
 
   return (
-    <Card className="w-full max-w-md">
+    <AuthCard>
       <CardHeader>
-        <CardTitle>Вход в syrnike13</CardTitle>
-        <CardDescription>
-          Используется API ({appConfig.apiUrl.replace(/^https?:\/\//, '')})
-        </CardDescription>
+        <CardTitle>Вход</CardTitle>
       </CardHeader>
       <form
         onSubmit={(event) => {
@@ -162,6 +156,7 @@ export function LoginForm() {
               <div className="flex flex-col gap-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
+                  className="auth-input"
                   id="email"
                   type="email"
                   autoComplete="email"
@@ -175,9 +170,8 @@ export function LoginForm() {
             {(field) => (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="password">Пароль</Label>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
                   autoComplete="current-password"
                   value={field.state.value}
                   onChange={(event) => field.handleChange(event.target.value)}
@@ -193,35 +187,30 @@ export function LoginForm() {
             ) : null}
             Войти
           </Button>
-          <div className="flex w-full flex-col gap-2 text-center text-sm">
+          <p className="auth-secondary-action">
+            Впервые здесь?
             <Link
               to="/login/register"
-              className="text-primary underline-offset-4 hover:underline"
             >
               Создать аккаунт
             </Link>
+          </p>
+          <div className="auth-support-links">
             <Link
               to="/login/reset"
-              className="text-muted-foreground underline-offset-4 hover:underline"
             >
               Забыли пароль?
             </Link>
             {emailVerification ? (
               <Link
                 to="/login/resend"
-                className="text-muted-foreground underline-offset-4 hover:underline"
               >
-                Повторить письмо подтверждения
+                Не пришло письмо
               </Link>
             ) : null}
           </div>
-          {!isDesktop ? (
-            <Button variant="ghost" className="w-full" asChild>
-              <Link to="/">На главную</Link>
-            </Button>
-          ) : null}
         </CardFooter>
       </form>
-    </Card>
+    </AuthCard>
   )
 }

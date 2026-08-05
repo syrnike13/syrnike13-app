@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
+import { AuthLayout } from '#/components/auth/auth-layout'
 import { GatewayLoadingScreen } from '#/components/layout/gateway-loading-screen'
 import { LoginForm } from '#/features/auth/login-form'
 import { useAuth } from '#/features/auth/auth-context'
@@ -51,8 +52,8 @@ function LoginPage() {
   }
 
   return (
-    <div className="gradient-surface-content flex min-h-svh flex-col items-center justify-center bg-background px-6 py-12">
+    <AuthLayout>
       <LoginForm />
-    </div>
+    </AuthLayout>
   )
 }

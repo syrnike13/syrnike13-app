@@ -9,11 +9,11 @@ import {
   HCaptchaWidget,
   useHcaptchaRef,
 } from '#/components/auth/hcaptcha-widget'
+import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
+import { PasswordInput } from '#/components/auth/password-input'
 import { Button } from '#/components/ui/button'
 import {
-  Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -33,6 +33,15 @@ import {
 import { postLoginPath } from '#/lib/auth-post-login-path'
 import { setPendingVerifyEmail } from '#/lib/auth-verify-email'
 
+type RegisterFieldName = 'email' | 'password' | 'confirm' | 'invite'
+
+const REGISTER_FIELD_IDS: Record<RegisterFieldName, string> = {
+  email: 'reg-email',
+  password: 'reg-password',
+  confirm: 'reg-password-confirm',
+  invite: 'reg-invite',
+}
+
 export const Route = createFileRoute('/login/register')({
   component: RegisterPage,
 })
@@ -48,10 +57,13 @@ function RegisterPage() {
   const emailVerification = isEmailVerificationEnabled(features)
   const captchaRef = useHcaptchaRef()
   const [submitting, setSubmitting] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<RegisterFieldName, string>>
+  >({})
   const configReady = configQuery.isSuccess || configQuery.isError
 
   const form = useForm({
-    defaultValues: { email: '', password: '', invite: '' },
+    defaultValues: { email: '', password: '', confirm: '', invite: '' },
     onSubmit: async ({ value }) => {
       if (!configReady) {
         toast.error('Подождите, загружаем настройки сервера…')
@@ -60,13 +72,36 @@ function RegisterPage() {
 
       const schema = createRegisterSchema({
         requireInvite: inviteOnly,
-        requireCaptcha: captchaRequired,
       })
       const parsed = schema.safeParse(value)
       if (!parsed.success) {
-        toast.error(parsed.error.issues[0]?.message ?? 'Проверьте поля')
+        const nextErrors: Partial<Record<RegisterFieldName, string>> = {}
+        let firstInvalidField: RegisterFieldName | undefined
+
+        for (const issue of parsed.error.issues) {
+          const fieldName = issue.path[0]
+          if (
+            typeof fieldName !== 'string' ||
+            !(fieldName in REGISTER_FIELD_IDS)
+          ) {
+            continue
+          }
+
+          const registerField = fieldName as RegisterFieldName
+          nextErrors[registerField] ??= issue.message
+          firstInvalidField ??= registerField
+        }
+
+        setFieldErrors(nextErrors)
+        if (firstInvalidField) {
+          document.getElementById(
+            REGISTER_FIELD_IDS[firstInvalidField],
+          )?.focus()
+        }
         return
       }
+
+      setFieldErrors({})
 
       let captcha: string | undefined
       if (captchaRequired) {
@@ -125,21 +160,21 @@ function RegisterPage() {
     },
   })
 
+  function clearFieldError(...fields: RegisterFieldName[]) {
+    setFieldErrors((current) => {
+      if (!fields.some((field) => current[field])) return current
+
+      const next = { ...current }
+      for (const field of fields) delete next[field]
+      return next
+    })
+  }
+
   return (
-    <div className="gradient-surface-content flex min-h-svh flex-col items-center justify-center bg-background px-6 py-12">
-      <Card className="w-full max-w-md">
+    <AuthLayout>
+      <AuthCard>
         <CardHeader>
-          <CardTitle>Регистрация</CardTitle>
-          <CardDescription>
-            Создайте аккаунт на syrnike13.ru
-            {inviteOnly ? ' — нужен код приглашения.' : null}
-            {!emailVerification && configReady ? (
-              <span className="mt-1 block text-muted-foreground">
-                Подтверждение по почте на сервере отключено — после регистрации
-                сразу выберете ник и войдёте.
-              </span>
-            ) : null}
-          </CardDescription>
+          <CardTitle>Создать аккаунт</CardTitle>
         </CardHeader>
         <form
           onSubmit={(event) => {
@@ -153,13 +188,23 @@ function RegisterPage() {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="reg-email">Email</Label>
                   <Input
+                    className="auth-input"
                     id="reg-email"
                     type="email"
                     autoComplete="email"
-                    value={field.state.value}
-                    onChange={(event) =>
-                      field.handleChange(event.target.value)
+                    aria-invalid={Boolean(fieldErrors.email)}
+                    aria-describedby={
+                      fieldErrors.email ? 'reg-email-error' : undefined
                     }
+                    value={field.state.value}
+                    onChange={(event) => {
+                      clearFieldError('email')
+                      field.handleChange(event.target.value)
+                    }}
+                  />
+                  <RegisterFieldError
+                    id="reg-email-error"
+                    message={fieldErrors.email}
                   />
                 </div>
               )}
@@ -168,58 +213,133 @@ function RegisterPage() {
               {(field) => (
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="reg-password">Пароль</Label>
-                  <Input
+                  <PasswordInput
                     id="reg-password"
-                    type="password"
                     autoComplete="new-password"
-                    value={field.state.value}
-                    onChange={(event) =>
-                      field.handleChange(event.target.value)
+                    aria-invalid={Boolean(fieldErrors.password)}
+                    aria-describedby={
+                      fieldErrors.password ? 'reg-password-error' : undefined
                     }
+                    value={field.state.value}
+                    onChange={(event) => {
+                      clearFieldError('password', 'confirm')
+                      field.handleChange(event.target.value)
+                    }}
+                  />
+                  <RegisterFieldError
+                    id="reg-password-error"
+                    message={fieldErrors.password}
                   />
                 </div>
               )}
             </form.Field>
-            <form.Field name="invite">
+            <form.Field name="confirm">
               {(field) => (
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="reg-invite">
-                    {inviteOnly
-                      ? 'Код приглашения'
-                      : 'Код приглашения (если нужен)'}
+                  <Label htmlFor="reg-password-confirm">
+                    Повторите пароль
                   </Label>
-                  <Input
-                    id="reg-invite"
-                    required={inviteOnly}
-                    value={field.state.value}
-                    onChange={(event) =>
-                      field.handleChange(event.target.value)
+                  <PasswordInput
+                    id="reg-password-confirm"
+                    autoComplete="new-password"
+                    aria-invalid={Boolean(fieldErrors.confirm)}
+                    aria-describedby={
+                      fieldErrors.confirm
+                        ? 'reg-password-confirm-error'
+                        : undefined
                     }
+                    value={field.state.value}
+                    onChange={(event) => {
+                      clearFieldError('confirm')
+                      field.handleChange(event.target.value)
+                    }}
+                  />
+                  <RegisterFieldError
+                    id="reg-password-confirm-error"
+                    message={fieldErrors.confirm}
                   />
                 </div>
               )}
             </form.Field>
+            {inviteOnly ? (
+              <form.Field name="invite">
+                {(field) => (
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="reg-invite">Код приглашения</Label>
+                    <Input
+                      className="auth-input"
+                      id="reg-invite"
+                      required
+                      aria-invalid={Boolean(fieldErrors.invite)}
+                      aria-describedby={
+                        fieldErrors.invite ? 'reg-invite-error' : undefined
+                      }
+                      value={field.state.value}
+                      onChange={(event) => {
+                        clearFieldError('invite')
+                        field.handleChange(event.target.value)
+                      }}
+                    />
+                    <RegisterFieldError
+                      id="reg-invite-error"
+                      message={fieldErrors.invite}
+                    />
+                  </div>
+                )}
+              </form.Field>
+            ) : null}
             {siteKey ? (
               <HCaptchaWidget siteKey={siteKey} captchaRef={captchaRef} />
             ) : null}
           </CardContent>
           <CardFooter className="flex flex-col gap-2">
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={submitting || !configReady}
-            >
-              {submitting || configQuery.isPending ? (
-                <Loader2Icon className="animate-spin" data-icon="inline-start" />
-              ) : null}
-              Зарегистрироваться
-            </Button>
-            <Button variant="ghost" className="w-full" asChild>
-              <Link to="/login">Уже есть аккаунт</Link>
-            </Button>
+            <form.Subscribe selector={(state) => state.values}>
+              {(values) => {
+                const canRegister =
+                  configReady &&
+                  createRegisterSchema({
+                    requireInvite: inviteOnly,
+                  }).safeParse(values).success
+
+                return (
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={submitting || !canRegister}
+                  >
+                    {submitting || configQuery.isPending ? (
+                      <Loader2Icon
+                        className="animate-spin"
+                        data-icon="inline-start"
+                      />
+                    ) : null}
+                    Зарегистрироваться
+                  </Button>
+                )
+              }}
+            </form.Subscribe>
+            <p className="auth-secondary-action">
+              Уже с нами? <Link to="/login">Войти</Link>
+            </p>
           </CardFooter>
         </form>
-      </Card>
-    </div>
+      </AuthCard>
+    </AuthLayout>
+  )
+}
+
+function RegisterFieldError({
+  id,
+  message,
+}: {
+  id: string
+  message?: string
+}) {
+  if (!message) return null
+
+  return (
+    <p id={id} role="alert" className="text-sm text-destructive">
+      {message}
+    </p>
   )
 }

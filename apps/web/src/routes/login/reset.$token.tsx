@@ -4,16 +4,16 @@ import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
+import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
+import { PasswordInput } from '#/components/auth/password-input'
 import { Button } from '#/components/ui/button'
 import {
-  Card,
   CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
 } from '#/components/ui/card'
-import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { confirmPasswordReset } from '#/features/api/account-api'
 import { resetPasswordSchema } from '#/features/auth/schemas'
@@ -56,11 +56,13 @@ function ResetConfirmPage() {
   })
 
   return (
-    <div className="gradient-surface-content flex min-h-svh flex-col items-center justify-center bg-background px-6 py-12">
-      <Card className="w-full max-w-md">
+    <AuthLayout>
+      <AuthCard>
         <CardHeader>
-          <CardTitle>Новый пароль</CardTitle>
-          <CardDescription>Введите пароль для аккаунта</CardDescription>
+          <CardTitle>Придумайте новый пароль</CardTitle>
+          <CardDescription>
+            Он заменит старый пароль для этого аккаунта.
+          </CardDescription>
         </CardHeader>
         <form
           onSubmit={(event) => {
@@ -73,9 +75,8 @@ function ResetConfirmPage() {
               {(field) => (
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="new-password">Пароль</Label>
-                  <Input
+                  <PasswordInput
                     id="new-password"
-                    type="password"
                     autoComplete="new-password"
                     value={field.state.value}
                     onChange={(event) =>
@@ -89,9 +90,8 @@ function ResetConfirmPage() {
               {(field) => (
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="new-password-confirm">Повтор пароля</Label>
-                  <Input
+                  <PasswordInput
                     id="new-password-confirm"
-                    type="password"
                     autoComplete="new-password"
                     value={field.state.value}
                     onChange={(event) =>
@@ -109,12 +109,12 @@ function ResetConfirmPage() {
               ) : null}
               Сохранить пароль
             </Button>
-            <Button variant="ghost" className="w-full" asChild>
-              <Link to="/login">Ко входу</Link>
-            </Button>
+            <p className="auth-secondary-action">
+              <Link to="/login">Вернуться ко входу</Link>
+            </p>
           </CardFooter>
         </form>
-      </Card>
-    </div>
+      </AuthCard>
+    </AuthLayout>
   )
 }
