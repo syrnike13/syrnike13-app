@@ -1,7 +1,7 @@
 import { useForm } from '@tanstack/react-form'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Loader2Icon } from '#/components/icons'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { AuthCard } from '#/components/auth/auth-layout'
@@ -32,6 +32,7 @@ export function LoginForm() {
   const emailVerification = isEmailVerificationEnabled(
     configQuery.data?.features,
   )
+  const passwordInputRef = useRef<HTMLInputElement>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const loginForm = useForm({
@@ -162,6 +163,16 @@ export function LoginForm() {
                   autoComplete="email"
                   value={field.state.value}
                   onChange={(event) => field.handleChange(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key !== 'Enter'
+                      || passwordInputRef.current?.value
+                    ) {
+                      return
+                    }
+                    event.preventDefault()
+                    passwordInputRef.current?.focus()
+                  }}
                 />
               </div>
             )}
@@ -171,6 +182,7 @@ export function LoginForm() {
               <div className="flex flex-col gap-2">
                 <Label htmlFor="password">Пароль</Label>
                 <PasswordInput
+                  ref={passwordInputRef}
                   id="password"
                   autoComplete="current-password"
                   value={field.state.value}
