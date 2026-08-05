@@ -20,7 +20,7 @@ describe('media device permissions', () => {
 
   beforeEach(() => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
-    const listeners = new Set<EventListenerOrEventListenerObject>()
+    const listeners = new Map<string, Set<EventListenerOrEventListenerObject>>()
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
       value: {
@@ -29,19 +29,28 @@ describe('media device permissions', () => {
         })),
         enumerateDevices: vi.fn(async () => []),
         addEventListener: vi.fn(
-          (_type: string, listener: EventListenerOrEventListenerObject) => {
-            listeners.add(listener)
+          (type: string, listener: EventListenerOrEventListenerObject) => {
+            if (!listeners.has(type)) {
+              listeners.set(type, new Set())
+            }
+            listeners.get(type)!.add(listener)
           },
         ),
         removeEventListener: vi.fn(
-          (_type: string, listener: EventListenerOrEventListenerObject) => {
-            listeners.delete(listener)
+          (type: string, listener: EventListenerOrEventListenerObject) => {
+            const typeListeners = listeners.get(type)
+            if (typeListeners) {
+              typeListeners.delete(listener)
+            }
           },
         ),
         dispatchEvent: vi.fn((event: Event) => {
-          for (const listener of listeners) {
-            if (typeof listener === 'function') listener(event)
-            else listener.handleEvent(event)
+          const typeListeners = listeners.get(event.type)
+          if (typeListeners) {
+            for (const listener of typeListeners) {
+              if (typeof listener === 'function') listener(event)
+              else listener.handleEvent(event)
+            }
           }
           return true
         }),
