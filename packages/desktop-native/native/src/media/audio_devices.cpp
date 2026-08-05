@@ -170,14 +170,17 @@ std::string resolvedRenderDeviceId(const std::string& device_id) {
   return resolved;
 }
 
-std::vector<DeviceInfo> listAudioDevices() {
+std::vector<DeviceInfo> listAudioDevices(EDataFlow flow) {
   std::vector<DeviceInfo> result;
-  std::string default_capture;
-  std::string default_render;
-  try { default_capture = deviceId(defaultDevice(eCapture).Get()); } catch (...) {}
-  try { default_render = deviceId(defaultDevice(eRender).Get()); } catch (...) {}
-  appendDevices(eCapture, "audioinput", default_capture, result);
-  appendDevices(eRender, "audiooutput", default_render, result);
+  if (flow != eCapture && flow != eRender) return result;
+  std::string default_id;
+  try { default_id = deviceId(defaultDevice(flow).Get()); } catch (...) {}
+  appendDevices(
+    flow,
+    flow == eCapture ? "audioinput" : "audiooutput",
+    default_id,
+    result
+  );
   return result;
 }
 

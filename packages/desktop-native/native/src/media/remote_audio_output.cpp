@@ -12,6 +12,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <exception>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -28,6 +29,7 @@
 #include "../common/diagnostic_log.hpp"
 #include "audio_devices.hpp"
 #include "remote_audio_ingress.hpp"
+#include "remote_audio_playout.hpp"
 #include "voice_activity_detector.hpp"
 #include "wasapi_event.hpp"
 
@@ -154,6 +156,49 @@ struct TrackState {
 };
 
 using RenderSnapshot = std::vector<std::shared_ptr<TrackState>>;
+
+struct RendererTelemetrySnapshot {
+  std::uint64_t capacity_frames = 0;
+  std::uint64_t last_padding_frames = 0;
+  std::uint64_t minimum_padding_frames =
+    std::numeric_limits<std::uint64_t>::max();
+  std::uint64_t maximum_writable_frames = 0;
+  std::uint64_t maximum_wake_gap_ms = 0;
+  std::uint64_t zero_padding_events = 0;
+  std::uint64_t multi_chunk_writes = 0;
+  std::uint64_t catch_up_frames = 0;
+  std::uint64_t frames_written = 0;
+};
+
+void storeMaximum(
+  std::atomic<std::uint64_t>& destination,
+  std::uint64_t value
+) noexcept {
+  auto current = destination.load(std::memory_order_relaxed);
+  while (
+    current < value &&
+    !destination.compare_exchange_weak(
+      current,
+      value,
+      std::memory_order_relaxed
+    )
+  ) {}
+}
+
+void storeMinimum(
+  std::atomic<std::uint64_t>& destination,
+  std::uint64_t value
+) noexcept {
+  auto current = destination.load(std::memory_order_relaxed);
+  while (
+    current > value &&
+    !destination.compare_exchange_weak(
+      current,
+      value,
+      std::memory_order_relaxed
+    )
+  ) {}
+}
 
 void resetTrackRendererState(TrackState& track) noexcept {
   track.ingress->discardQueued();
@@ -566,6 +611,25 @@ class RemoteAudioOutput::Implementation {
     render_snapshot_hazard_.store(nullptr, std::memory_order_seq_cst);
   }
 
+  class RenderSnapshotLease final {
+   public:
+    explicit RenderSnapshotLease(Implementation& owner) noexcept
+      : owner_(owner), snapshot_(owner.acquireRenderSnapshot()) {}
+
+    ~RenderSnapshotLease() { owner_.releaseRenderSnapshot(); }
+
+    RenderSnapshotLease(const RenderSnapshotLease&) = delete;
+    RenderSnapshotLease& operator=(const RenderSnapshotLease&) = delete;
+
+    [[nodiscard]] const RenderSnapshot& get() const noexcept {
+      return *snapshot_;
+    }
+
+   private:
+    Implementation& owner_;
+    const RenderSnapshot* snapshot_;
+  };
+
   void reclaimRetiredRenderSnapshotsLocked() noexcept {
     const auto* hazard =
       render_snapshot_hazard_.load(std::memory_order_seq_cst);
@@ -846,6 +910,7 @@ class RemoteAudioOutput::Implementation {
       std::lock_guard lock(mutex_);
       renderer_epoch = ++renderer_epoch_;
     }
+    resetRendererTelemetry();
     logRemoteAudio("remote_audio_renderer_start_requested");
     try {
       renderer_ = std::jthread([this, renderer_epoch](std::stop_token token) {
@@ -891,6 +956,75 @@ class RemoteAudioOutput::Implementation {
     }
     clock_adjustment_ppm_.store(0.0, std::memory_order_relaxed);
     requestTrackResets();
+  }
+
+  void resetRendererTelemetry() noexcept {
+    renderer_capacity_frames_.store(0, std::memory_order_relaxed);
+    renderer_last_padding_frames_.store(0, std::memory_order_relaxed);
+    renderer_minimum_padding_frames_.store(
+      std::numeric_limits<std::uint64_t>::max(),
+      std::memory_order_relaxed
+    );
+    renderer_maximum_writable_frames_.store(0, std::memory_order_relaxed);
+    renderer_maximum_wake_gap_ms_.store(0, std::memory_order_relaxed);
+    renderer_zero_padding_events_.store(0, std::memory_order_relaxed);
+    renderer_multi_chunk_writes_.store(0, std::memory_order_relaxed);
+    renderer_catch_up_frames_.store(0, std::memory_order_relaxed);
+    renderer_frames_written_.store(0, std::memory_order_relaxed);
+  }
+
+  void recordRendererCycle(
+    const detail::RemoteAudioRenderFillPlan& plan,
+    std::uint64_t wake_gap_ms
+  ) noexcept {
+    renderer_capacity_frames_.store(
+      plan.capacityFrames(),
+      std::memory_order_relaxed
+    );
+    renderer_last_padding_frames_.store(
+      plan.paddingFrames(),
+      std::memory_order_relaxed
+    );
+    storeMinimum(renderer_minimum_padding_frames_, plan.paddingFrames());
+    storeMaximum(renderer_maximum_writable_frames_, plan.totalFrames());
+    storeMaximum(renderer_maximum_wake_gap_ms_, wake_gap_ms);
+    if (plan.bufferEmpty()) {
+      renderer_zero_padding_events_.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (plan.catchUpFrames() != 0) {
+      renderer_multi_chunk_writes_.fetch_add(1, std::memory_order_relaxed);
+      renderer_catch_up_frames_.fetch_add(
+        plan.catchUpFrames(),
+        std::memory_order_relaxed
+      );
+    }
+    renderer_frames_written_.fetch_add(
+      plan.totalFrames(),
+      std::memory_order_relaxed
+    );
+  }
+
+  [[nodiscard]] RendererTelemetrySnapshot rendererTelemetry() const noexcept {
+    return {
+      .capacity_frames =
+        renderer_capacity_frames_.load(std::memory_order_relaxed),
+      .last_padding_frames =
+        renderer_last_padding_frames_.load(std::memory_order_relaxed),
+      .minimum_padding_frames =
+        renderer_minimum_padding_frames_.load(std::memory_order_relaxed),
+      .maximum_writable_frames =
+        renderer_maximum_writable_frames_.load(std::memory_order_relaxed),
+      .maximum_wake_gap_ms =
+        renderer_maximum_wake_gap_ms_.load(std::memory_order_relaxed),
+      .zero_padding_events =
+        renderer_zero_padding_events_.load(std::memory_order_relaxed),
+      .multi_chunk_writes =
+        renderer_multi_chunk_writes_.load(std::memory_order_relaxed),
+      .catch_up_frames =
+        renderer_catch_up_frames_.load(std::memory_order_relaxed),
+      .frames_written =
+        renderer_frames_written_.load(std::memory_order_relaxed),
+    };
   }
 
   void updateClockAdjustment(
@@ -1058,7 +1192,7 @@ class RemoteAudioOutput::Implementation {
           AudioFailureKind::IoFailed
         );
       }
-      std::vector<StereoFrame> mixed(capacity);
+      std::array<StereoFrame, kRemoteAudioIngressFramesPerPacket> mixed{};
 
       BYTE* initial_output = nullptr;
       const auto prime_result = render_client->GetBuffer(
@@ -1096,11 +1230,21 @@ class RemoteAudioOutput::Implementation {
       double clock_integral_error = 0.0;
       double applied_clock_ppm = 0.0;
       auto next_clock_update = std::chrono::steady_clock::now();
+      std::optional<std::chrono::steady_clock::time_point> previous_wakeup;
       while (!token.stop_requested() &&
              renderer_running_.load(std::memory_order_acquire)) {
         const auto wait_result = stream_events.wait(1'000);
         if (wait_result == WasapiEventPair::WaitResult::StopRequested) break;
         if (wait_result == WasapiEventPair::WaitResult::TimedOut) continue;
+        const auto wakeup = std::chrono::steady_clock::now();
+        const auto wake_gap_ms = previous_wakeup
+          ? static_cast<std::uint64_t>(
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                wakeup - *previous_wakeup
+              ).count()
+            )
+          : 0;
+        previous_wakeup = wakeup;
 
         UINT32 padding = 0;
         const auto padding_result = client->GetCurrentPadding(&padding);
@@ -1111,15 +1255,19 @@ class RemoteAudioOutput::Implementation {
             AudioFailureKind::IoFailed
           );
         }
-        const auto writable = capacity - std::min(capacity, padding);
-        const UINT32 count = std::min<UINT32>(
-          writable,
+        detail::RemoteAudioRenderFillPlan fill_plan(
+          capacity,
+          padding,
           static_cast<UINT32>(kRemoteAudioIngressFramesPerPacket)
         );
-        if (count == 0) continue;
+        const auto write_frames = fill_plan.totalFrames();
+        if (write_frames == 0) continue;
 
         BYTE* output = nullptr;
-        const auto buffer_result = render_client->GetBuffer(count, &output);
+        const auto buffer_result = render_client->GetBuffer(
+          write_frames,
+          &output
+        );
         if (FAILED(buffer_result)) {
           throwAudioFailure(
             buffer_result,
@@ -1128,66 +1276,64 @@ class RemoteAudioOutput::Implementation {
           );
         }
 
-        std::fill_n(mixed.begin(), count, StereoFrame{});
-        const auto* snapshot = acquireRenderSnapshot();
+        RenderSnapshotLease snapshot(*this);
         const auto deafened = deafened_.load(std::memory_order_relaxed);
         const auto output_volume = volume_.load(std::memory_order_relaxed);
-        const auto now = std::chrono::steady_clock::now();
-        for (const auto& track : *snapshot) {
-          renderTrack(
-            *track,
-            mixed.data(),
-            count,
-            output_volume,
-            deafened,
-            now,
-            renderer_epoch
-          );
-        }
-        updateClockAdjustment(
-          *clock_adjustment.Get(),
-          *snapshot,
-          now,
-          next_clock_update,
-          clock_integral_error,
-          applied_clock_ppm
-        );
-        releaseRenderSnapshot();
-
-        float peak = 0.0F;
-        for (UINT32 index = 0; index < count; ++index) {
-          peak = std::max(peak, std::abs(mixed[index].left));
-          peak = std::max(peak, std::abs(mixed[index].right));
-        }
-        const auto target_limiter_gain =
-          remoteAudioLimiterTargetGainImpl(peak);
-        if (target_limiter_gain < limiter_gain) {
-          limiter_gain = target_limiter_gain;
-        } else {
-          const auto release = static_cast<float>(count) /
-            (static_cast<float>(kRemoteAudioSampleRate) *
-             kLimiterReleaseSeconds);
-          limiter_gain = std::min(
-            target_limiter_gain,
-            limiter_gain + release
-          );
-        }
-
         auto* samples = reinterpret_cast<float*>(output);
-        for (UINT32 index = 0; index < count; ++index) {
-          samples[index * kRemoteAudioChannels] = std::clamp(
-            mixed[index].left * limiter_gain,
-            -1.0F,
-            1.0F
-          );
-          samples[index * kRemoteAudioChannels + 1] = std::clamp(
-            mixed[index].right * limiter_gain,
-            -1.0F,
-            1.0F
-          );
+        UINT32 output_offset = 0;
+        auto now = wakeup;
+        while (!fill_plan.complete()) {
+          const auto chunk_frames = fill_plan.nextChunk();
+          std::fill_n(mixed.begin(), chunk_frames, StereoFrame{});
+          now = std::chrono::steady_clock::now();
+          for (const auto& track : snapshot.get()) {
+            renderTrack(
+              *track,
+              mixed.data(),
+              chunk_frames,
+              output_volume,
+              deafened,
+              now,
+              renderer_epoch
+            );
+          }
+
+          float peak = 0.0F;
+          for (UINT32 index = 0; index < chunk_frames; ++index) {
+            peak = std::max(peak, std::abs(mixed[index].left));
+            peak = std::max(peak, std::abs(mixed[index].right));
+          }
+          const auto target_limiter_gain =
+            remoteAudioLimiterTargetGainImpl(peak);
+          if (target_limiter_gain < limiter_gain) {
+            limiter_gain = target_limiter_gain;
+          } else {
+            const auto release = static_cast<float>(chunk_frames) /
+              (static_cast<float>(kRemoteAudioSampleRate) *
+               kLimiterReleaseSeconds);
+            limiter_gain = std::min(
+              target_limiter_gain,
+              limiter_gain + release
+            );
+          }
+
+          for (UINT32 index = 0; index < chunk_frames; ++index) {
+            const auto output_index = output_offset + index;
+            samples[output_index * kRemoteAudioChannels] = std::clamp(
+              mixed[index].left * limiter_gain,
+              -1.0F,
+              1.0F
+            );
+            samples[output_index * kRemoteAudioChannels + 1] = std::clamp(
+              mixed[index].right * limiter_gain,
+              -1.0F,
+              1.0F
+            );
+          }
+          output_offset += chunk_frames;
         }
         const auto release_result = render_client->ReleaseBuffer(
-          count,
+          write_frames,
           deafened ? AUDCLNT_BUFFERFLAGS_SILENT : 0
         );
         if (FAILED(release_result)) {
@@ -1204,6 +1350,15 @@ class RemoteAudioOutput::Implementation {
             ).count()
           ),
           std::memory_order_release
+        );
+        recordRendererCycle(fill_plan, wake_gap_ms);
+        updateClockAdjustment(
+          *clock_adjustment.Get(),
+          snapshot.get(),
+          now,
+          next_clock_update,
+          clock_integral_error,
+          applied_clock_ppm
         );
 
         bool became_ready = false;
@@ -1235,7 +1390,6 @@ class RemoteAudioOutput::Implementation {
         true,
       }, device_id, renderer_epoch, token.stop_requested());
     }
-    releaseRenderSnapshot();
     if (avrt) AvRevertMmThreadCharacteristics(avrt);
     if (com_initialized) CoUninitialize();
     renderer_running_.store(false, std::memory_order_release);
@@ -1579,6 +1733,46 @@ class RemoteAudioOutput::Implementation {
     std::vector<std::string> speakers;
     speakers.reserve(snapshot.size());
     const auto now = std::chrono::steady_clock::now();
+    std::uint64_t renderer_epoch = 0;
+    {
+      std::lock_guard lock(mutex_);
+      renderer_epoch = renderer_epoch_;
+    }
+    if (reported_renderer_epoch_ != renderer_epoch) {
+      reported_renderer_epoch_ = renderer_epoch;
+      reported_renderer_ = {};
+      next_renderer_dataplane_report_ = {};
+    }
+    const auto renderer = rendererTelemetry();
+    const bool renderer_dataplane_changed =
+      renderer.zero_padding_events != reported_renderer_.zero_padding_events ||
+      renderer.multi_chunk_writes != reported_renderer_.multi_chunk_writes ||
+      renderer.catch_up_frames != reported_renderer_.catch_up_frames;
+    if (renderer_dataplane_changed &&
+        now >= next_renderer_dataplane_report_) {
+      const auto minimum_padding =
+        renderer.minimum_padding_frames ==
+          std::numeric_limits<std::uint64_t>::max()
+        ? renderer.capacity_frames
+        : renderer.minimum_padding_frames;
+      logRemoteAudio(
+        "remote_audio_renderer_dataplane",
+        {
+          {"rendererEpoch", renderer_epoch},
+          {"capacityFrames", renderer.capacity_frames},
+          {"lastPaddingFrames", renderer.last_padding_frames},
+          {"minimumPaddingFrames", minimum_padding},
+          {"maximumWritableFrames", renderer.maximum_writable_frames},
+          {"maximumWakeGapMs", renderer.maximum_wake_gap_ms},
+          {"zeroPaddingEvents", renderer.zero_padding_events},
+          {"multiChunkWrites", renderer.multi_chunk_writes},
+          {"catchUpFrames", renderer.catch_up_frames},
+          {"framesWritten", renderer.frames_written},
+        }
+      );
+      reported_renderer_ = renderer;
+      next_renderer_dataplane_report_ = now + std::chrono::seconds(5);
+    }
     for (const auto& track : snapshot) {
       if (!track->stream_source && !track->user_id.empty() &&
           track->speaking.load(std::memory_order_acquire)) {
@@ -1760,6 +1954,17 @@ class RemoteAudioOutput::Implementation {
   std::optional<AudioFailureInfo> renderer_startup_failure_;
   std::atomic<std::uint64_t> last_render_progress_ms_{0};
   std::atomic<double> clock_adjustment_ppm_{0.0};
+  std::atomic<std::uint64_t> renderer_capacity_frames_{0};
+  std::atomic<std::uint64_t> renderer_last_padding_frames_{0};
+  std::atomic<std::uint64_t> renderer_minimum_padding_frames_{
+    std::numeric_limits<std::uint64_t>::max()
+  };
+  std::atomic<std::uint64_t> renderer_maximum_writable_frames_{0};
+  std::atomic<std::uint64_t> renderer_maximum_wake_gap_ms_{0};
+  std::atomic<std::uint64_t> renderer_zero_padding_events_{0};
+  std::atomic<std::uint64_t> renderer_multi_chunk_writes_{0};
+  std::atomic<std::uint64_t> renderer_catch_up_frames_{0};
+  std::atomic<std::uint64_t> renderer_frames_written_{0};
   RemoteAudioSettings settings_;
   StateHandler on_state_;
   TrackFailureHandler on_track_failure_;
@@ -1776,6 +1981,9 @@ class RemoteAudioOutput::Implementation {
   std::condition_variable telemetry_changed_;
   std::jthread telemetry_worker_;
   std::vector<std::string> reported_speakers_;
+  std::uint64_t reported_renderer_epoch_ = 0;
+  RendererTelemetrySnapshot reported_renderer_;
+  std::chrono::steady_clock::time_point next_renderer_dataplane_report_{};
   std::unique_ptr<AudioEndpointMonitor> endpoint_monitor_;
 };
 

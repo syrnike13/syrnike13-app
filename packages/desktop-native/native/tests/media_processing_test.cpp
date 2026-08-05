@@ -7,6 +7,7 @@
 #include <iostream>
 #include <limits>
 #include <mutex>
+#include <numeric>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -25,6 +26,7 @@
 #include "media/microphone_stream_delay_estimator.hpp"
 #include "media/remote_audio_ingress.hpp"
 #include "media/remote_audio_output.hpp"
+#include "media/remote_audio_playout.hpp"
 #include "media/remote_video_bridge.hpp"
 #include "media/runtime_config.hpp"
 #include "media/screen_audio_capture.hpp"
@@ -394,6 +396,55 @@ int main() try {
     syrnike::desktop_native::media::remoteAudioPlayoutStartDuration() ==
       std::chrono::milliseconds(20),
     "remote audio playout lost its underrun protection"
+  );
+  const auto render_chunks = [](std::uint32_t capacity, std::uint32_t padding) {
+    syrnike::desktop_native::media::detail::RemoteAudioRenderFillPlan plan(
+      capacity,
+      padding,
+      480
+    );
+    std::vector<std::uint32_t> chunks;
+    while (!plan.complete()) chunks.push_back(plan.nextChunk());
+    return chunks;
+  };
+  const auto require_render_plan = [&](
+    std::uint32_t capacity,
+    std::uint32_t padding,
+    const std::vector<std::uint32_t>& expected
+  ) {
+    const auto chunks = render_chunks(capacity, padding);
+    require(chunks == expected, "remote audio render fill chunks regressed");
+    const auto written = std::accumulate(
+      chunks.begin(),
+      chunks.end(),
+      std::uint32_t{0}
+    );
+    require(
+      written == capacity - std::min(capacity, padding),
+      "remote audio render plan left WASAPI capacity unfilled"
+    );
+    require(
+      std::all_of(chunks.begin(), chunks.end(), [](std::uint32_t chunk) {
+        return chunk <= 480;
+      }),
+      "remote audio render plan exceeded the mixer scratch capacity"
+    );
+    require(
+      std::min(capacity, padding) + written == capacity,
+      "remote audio render plan retained buffer debt after catch-up"
+    );
+  };
+  require_render_plan(2'400, 1'920, {480});
+  require_render_plan(2'400, 1'440, {480, 480});
+  require_render_plan(2'400, 960, {480, 480, 480});
+  require_render_plan(2'400, 0, {480, 480, 480, 480, 480});
+  require_render_plan(2'400, 1'439, {480, 480, 1});
+  syrnike::desktop_native::media::detail::RemoteAudioRenderFillPlan
+    delayed_render_plan(2'400, 480, 480);
+  require(
+    delayed_render_plan.catchUpFrames() == 1'440 &&
+      delayed_render_plan.bufferEmpty() == false,
+    "delayed remote audio wake-up lost its catch-up debt"
   );
   using syrnike::desktop_native::media::RemoteAudioIngress;
   using syrnike::desktop_native::media::RemoteAudioIngressFrame;
