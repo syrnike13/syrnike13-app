@@ -66,6 +66,23 @@ void startAudioOutputWithRollback(
   }
 }
 
+bool remoteAudioEndpointChangeCanRearmRecovery(
+  const AudioEndpointChange& change
+) noexcept {
+  if (change.flow != eRender) return false;
+  switch (change.kind) {
+    case AudioEndpointChangeKind::DefaultChanged:
+      return change.role == eConsole;
+    case AudioEndpointChangeKind::Added:
+    case AudioEndpointChangeKind::Active:
+      return true;
+    case AudioEndpointChangeKind::Removed:
+    case AudioEndpointChangeKind::Disabled:
+      return false;
+  }
+  return false;
+}
+
 namespace {
 
 constexpr std::size_t kRemoteAudioSampleRate = remoteAudioSampleRate();
@@ -459,7 +476,7 @@ class RemoteAudioOutput::Implementation {
 
   std::uint64_t setOutputDevice(std::string value) {
     std::lock_guard switch_lock(device_switch_mutex_);
-    return configureOutputDeviceLocked(std::move(value));
+    return configureOutputDeviceUnderSwitchLock(std::move(value));
   }
 
   std::string outputDeviceId() const {
@@ -728,7 +745,7 @@ class RemoteAudioOutput::Implementation {
     recovery_accelerated_ = false;
   }
 
-  std::uint64_t configureOutputDeviceLocked(std::string value) {
+  std::uint64_t configureOutputDeviceUnderSwitchLock(std::string value) {
     value = normalizeOutputDeviceId(std::move(value));
     OutputConfiguration previous;
     {
@@ -1626,6 +1643,34 @@ class RemoteAudioOutput::Implementation {
     recovery_changed_.notify_all();
   }
 
+  void rearmRecoveryFromFailed(
+    std::string failed_device_id,
+    std::uint64_t failed_renderer_epoch
+  ) {
+    std::lock_guard switch_lock(device_switch_mutex_);
+    {
+      std::lock_guard lock(mutex_);
+      if (stopping_ || !output_configured_ ||
+          phase_ != RemoteAudioOutputPhase::Failed ||
+          renderer_epoch_ != failed_renderer_epoch) {
+        return;
+      }
+      phase_ = RemoteAudioOutputPhase::Recovering;
+    }
+    scheduleRecovery(
+      AudioFailureInfo{
+        AudioFailureKind::EndpointInvalidated,
+        "audio_endpoint_available",
+        "Audio output endpoint became available",
+        AUDCLNT_E_DEVICE_INVALIDATED,
+        true,
+      },
+      std::move(failed_device_id),
+      failed_renderer_epoch,
+      false
+    );
+  }
+
   void handleEndpointChange(AudioEndpointChange change) {
     std::string desired;
     std::string active;
@@ -1645,12 +1690,15 @@ class RemoteAudioOutput::Implementation {
       renderer_epoch = renderer_epoch_;
     }
 
+    const bool can_rearm = remoteAudioEndpointChangeCanRearmRecovery(change);
     if (phase == RemoteAudioOutputPhase::Recovering ||
         phase == RemoteAudioOutputPhase::Starting) {
-      if (change.kind == AudioEndpointChangeKind::DefaultChanged ||
-          change.kind == AudioEndpointChangeKind::Added ||
-          change.kind == AudioEndpointChangeKind::Active) {
-        accelerateRecovery();
+      if (can_rearm) accelerateRecovery();
+      return;
+    }
+    if (phase == RemoteAudioOutputPhase::Failed) {
+      if (can_rearm) {
+        rearmRecoveryFromFailed(std::move(active), renderer_epoch);
       }
       return;
     }

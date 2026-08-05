@@ -44,6 +44,7 @@ int main() try {
   using syrnike::desktop_native::media::AudioEndpointChangeKind;
   using syrnike::desktop_native::media::audioEndpointChangeRequiresDefaultRetry;
   using syrnike::desktop_native::media::RemoteAudioOutputPhase;
+  using syrnike::desktop_native::media::remoteAudioEndpointChangeCanRearmRecovery;
   using syrnike::desktop_native::media::startAudioOutputWithRollback;
   if (classifyAudioHresult(AUDCLNT_E_DEVICE_INVALIDATED) !=
       AudioFailureKind::EndpointInvalidated) {
@@ -125,6 +126,25 @@ int main() try {
         communications_default_changed
       )) {
     throw std::runtime_error("endpoint fallback policy regressed selected/stale handling");
+  }
+  const AudioEndpointChange added{
+    eRender, AudioEndpointChangeKind::Added, "available-output"
+  };
+  const AudioEndpointChange active{
+    eRender, AudioEndpointChangeKind::Active, "available-output"
+  };
+  const AudioEndpointChange capture_added{
+    eCapture, AudioEndpointChangeKind::Added, "capture-endpoint"
+  };
+  if (!remoteAudioEndpointChangeCanRearmRecovery(default_changed) ||
+      !remoteAudioEndpointChangeCanRearmRecovery(added) ||
+      !remoteAudioEndpointChangeCanRearmRecovery(active) ||
+      remoteAudioEndpointChangeCanRearmRecovery(removed_a) ||
+      remoteAudioEndpointChangeCanRearmRecovery(capture_added) ||
+      remoteAudioEndpointChangeCanRearmRecovery(
+        communications_default_changed
+      )) {
+    throw std::runtime_error("failed output recovery lost endpoint-return policy");
   }
   // LiveKit-owned tracks and streams must be destroyed before the process-wide
   // SDK shutdown. Release builds expose this ordering contract more reliably.

@@ -78,6 +78,8 @@ void RemoteAudioIngress::activate(std::uint64_t renderer_epoch) noexcept {
   while (producer_gate_.test_and_set(std::memory_order_acquire)) {
     std::this_thread::yield();
   }
+  // resetQueue() touches renderer-owned non-atomic state. It must run before
+  // the epoch store so concurrent tryRead() calls return before reading it.
   resetQueue();
   renderer_epoch_.store(renderer_epoch, std::memory_order_release);
   producer_gate_.clear(std::memory_order_release);

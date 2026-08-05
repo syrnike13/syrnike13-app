@@ -18,6 +18,8 @@ namespace livekit { class Track; }
 
 namespace syrnike::desktop_native::media {
 
+struct AudioEndpointChange;
+
 constexpr std::size_t remoteAudioSampleRate() noexcept { return 48'000; }
 
 constexpr std::chrono::milliseconds remoteAudioRenderBufferDuration() noexcept {
@@ -48,6 +50,7 @@ float remoteAudioLimiterTargetGain(float peak) noexcept;
 
 enum class RemoteAudioOutputPhase {
   Stopped,
+  // Internal renderer transition; StateHandler publishes stable phases only.
   Starting,
   Running,
   Recovering,
@@ -70,6 +73,9 @@ void startAudioOutputWithRollback(
   const std::function<void()>& restore_previous,
   const std::function<void()>& start_previous
 );
+bool remoteAudioEndpointChangeCanRearmRecovery(
+  const AudioEndpointChange& change
+) noexcept;
 
 // Owns all direct decoded-audio sinks and the single WASAPI mix renderer.
 class RemoteAudioOutput final {
