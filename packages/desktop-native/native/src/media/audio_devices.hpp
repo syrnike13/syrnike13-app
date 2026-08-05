@@ -18,11 +18,19 @@ namespace syrnike::desktop_native::media {
 Microsoft::WRL::ComPtr<IMMDevice> captureDevice(const std::string& device_id);
 Microsoft::WRL::ComPtr<IMMDevice> renderDevice();
 Microsoft::WRL::ComPtr<IMMDevice> renderDevice(const std::string& device_id);
+std::string audioEndpointId(IMMDevice* device);
+std::string resolvedRenderDeviceId(const std::string& device_id);
 std::vector<DeviceInfo> listAudioDevices();
 WAVEFORMATEX desiredCaptureFormat();
 WAVEFORMATEX desiredRenderFormat();
 
-enum class AudioEndpointChangeKind { DefaultChanged, Removed, Disabled };
+enum class AudioEndpointChangeKind {
+  DefaultChanged,
+  Added,
+  Active,
+  Removed,
+  Disabled,
+};
 
 struct AudioEndpointChange {
   EDataFlow flow = eAll;
@@ -32,13 +40,6 @@ struct AudioEndpointChange {
 };
 
 bool audioEndpointChangeRequiresDefaultRetry(
-  std::string_view selected_device_id,
-  bool fallback_pending,
-  const AudioEndpointChange& change
-) noexcept;
-
-bool configuredAudioOutputEndpointChangeRequiresDefaultRetry(
-  bool output_configured,
   std::string_view selected_device_id,
   bool fallback_pending,
   const AudioEndpointChange& change

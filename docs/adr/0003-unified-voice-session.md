@@ -8,6 +8,8 @@
   Pipeline and progress-based GPU recovery
 - **Implementation clarification:** 2026-08-03 — explicit remote subscription
   ownership and state-aware video recovery
+- **Implementation clarification:** 2026-08-05 — playout-owned Windows output
+  recovery, endpoint identity, and renderer liveness
 - **Supersedes:** ADR-0001 execution model and ADR-0002 media/host ownership
 
 ## Context
@@ -209,10 +211,36 @@ Endpoint intent is separate from the currently active capture or renderer. A
 missing explicit endpoint may fall back to the communications default only for
 device-not-found or invalidation failures; access denial and unsupported media
 configuration remain terminal for that path. If the default is also unavailable,
-the fallback stays pending so a later Windows default-change notification retries
-it. Notifications never open an idle microphone without media intent. Each
-renderer start has an internal epoch, so a late failure from a retired output
-renderer cannot replace a newer healthy device.
+the fallback stays pending. Notifications never open an idle microphone without
+media intent. Each renderer start has an internal epoch, so a late failure from
+a retired output renderer cannot replace a newer healthy device.
+
+Remote Audio Playout is the exclusive owner of output recovery. It retains the
+desired output selection separately from both the active selector and the
+concrete resolved Windows endpoint, owns the WASAPI renderer lifecycle, and
+publishes typed `Stopped`, `Starting`, `Running`, `Recovering`, and `Failed`
+states. Electron and the Native Media Session project those states but do not
+choose fallback devices or invoke renderer recovery.
+
+Renderer failure immediately suspends every decoded-audio ingress. LiveKit sink
+registrations remain attached, but PCM arriving while recovery is active is
+discarded without filling the ring or producing an overflow/discontinuity
+storm. A healthy renderer start advances the renderer epoch, resets every
+ingress, and requires a fresh playout prebuffer; retired epochs cannot consume
+new PCM.
+
+Recovery attempts immediately and then uses bounded delays of 250 ms, one
+second, and five seconds, with at most twenty attempts. Default-device changes,
+endpoint activation, and endpoint addition only accelerate that policy; they
+are not required for progress. This covers the Windows sequence where the same
+default endpoint returns to `DEVICE_STATE_ACTIVE` without a second
+default-change notification.
+
+Renderer readiness is not treated as permanent liveness. Successful WASAPI
+buffer releases update render progress, and three seconds without progress
+recreates only Remote Audio Playout even when no HRESULT is delivered. Recovery
+and dataplane telemetry are cadence-bounded so a sustained outage cannot rotate
+away its causal onset.
 
 `NativeRuntimeSupervisor` owns Runtime Availability for one host epoch:
 startup, handshake, typed crash cause, restart backoff, and circuit state. It

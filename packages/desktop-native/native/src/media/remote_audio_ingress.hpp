@@ -23,6 +23,7 @@ struct RemoteAudioIngressFrame {
 struct RemoteAudioIngressTelemetry {
   std::uint64_t accepted_frames = 0;
   std::uint64_t dropped_frames = 0;
+  std::uint64_t suspended_frames = 0;
   std::uint64_t invalid_frames = 0;
   std::uint64_t discontinuities = 0;
 };
@@ -44,15 +45,24 @@ class RemoteAudioIngress final : public livekit::DecodedAudioFrameSink {
 
   void onAudioFrame(const livekit::DecodedAudioFrameView& frame) noexcept override;
 
-  RemoteAudioIngressReadResult tryRead(RemoteAudioIngressFrame& destination) noexcept;
+  void activate(std::uint64_t renderer_epoch) noexcept;
+  void suspend() noexcept;
+  RemoteAudioIngressReadResult tryRead(
+    RemoteAudioIngressFrame& destination,
+    std::uint64_t renderer_epoch
+  ) noexcept;
   std::size_t queuedFrames() const noexcept;
   void discardQueued() noexcept;
   RemoteAudioIngressTelemetry telemetry() const noexcept;
 
  private:
+  void resetQueue() noexcept;
+
   // The frame storage separates the producer-owned write cursor from the
   // consumer-owned read cursor, avoiding false sharing without over-aligning
   // this polymorphic sink object.
+  std::atomic_flag producer_gate_ = ATOMIC_FLAG_INIT;
+  std::atomic<std::uint64_t> renderer_epoch_{0};
   std::atomic<std::uint32_t> write_index_{0};
   std::array<RemoteAudioIngressFrame, kRemoteAudioIngressSlotCount> slots_{};
   std::atomic<std::uint32_t> read_index_{0};
@@ -60,6 +70,7 @@ class RemoteAudioIngress final : public livekit::DecodedAudioFrameSink {
   std::uint64_t consumed_discontinuity_epoch_ = 0;
   std::atomic<std::uint64_t> accepted_frames_{0};
   std::atomic<std::uint64_t> dropped_frames_{0};
+  std::atomic<std::uint64_t> suspended_frames_{0};
   std::atomic<std::uint64_t> invalid_frames_{0};
 };
 

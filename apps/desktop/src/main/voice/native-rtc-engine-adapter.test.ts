@@ -1029,7 +1029,10 @@ describe('NativeRtcEngineAdapter', () => {
     adapter.dispose()
   })
 
-  it('keeps the output generation while default endpoint recovery is pending', async () => {
+  it.each([
+    'audio_output_default_recovered',
+    'audio_output_recovered',
+  ])('keeps the output generation while %s is pending', async (recoveryMessage) => {
     const runtime = new FakeRuntime()
     const adapter = new NativeRtcEngineAdapter(runtime)
     const events: unknown[] = []
@@ -1073,7 +1076,7 @@ describe('NativeRtcEngineAdapter', () => {
         status: 'running',
         sessionId: lease.connectionEpoch,
         deviceId: 'default',
-        message: 'audio_output_default_recovered',
+        message: recoveryMessage,
       },
     })
 

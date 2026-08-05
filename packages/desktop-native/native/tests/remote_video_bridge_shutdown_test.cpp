@@ -29,7 +29,6 @@ namespace {
 
 using syrnike::desktop_native::MediaCommand;
 using syrnike::desktop_native::RuntimeEvent;
-using syrnike::desktop_native::media::AudioOutputDeviceIntent;
 using syrnike::desktop_native::media::LiveKitVoiceRoomOwner;
 using syrnike::desktop_native::media::RemoteAudioSettings;
 using syrnike::desktop_native::media::RemoteVideoBridge;
@@ -356,14 +355,10 @@ class BlockingVideoRoomOwner final
   }
 
   void setDeafened(bool) override {}
-  std::uint64_t setOutputDevice(
-    std::string,
-    AudioOutputDeviceIntent
-  ) override {
+  std::uint64_t setOutputDevice(std::string) override {
     return 1;
   }
   std::string outputDeviceId() const override { return "default"; }
-  bool isOutputEpochCurrent(std::uint64_t) const override { return true; }
   void setOutputVolume(float) override {}
   void configureRemoteAudio(RemoteAudioSettings) override {}
   void releaseRemoteVideoFrame(std::string, std::uint64_t) override {}

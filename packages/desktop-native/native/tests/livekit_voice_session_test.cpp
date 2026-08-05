@@ -109,10 +109,7 @@ class FakeVoiceRoomOwner final
     state_->changed.notify_all();
   }
   void setDeafened(bool) override {}
-  std::uint64_t setOutputDevice(
-    std::string,
-    syrnike::desktop_native::media::AudioOutputDeviceIntent
-  ) override {
+  std::uint64_t setOutputDevice(std::string) override {
     std::unique_lock lock(state_->mutex);
     state_->output_entered = true;
     state_->changed.notify_all();
@@ -122,7 +119,6 @@ class FakeVoiceRoomOwner final
     return 1;
   }
   std::string outputDeviceId() const override { return "default"; }
-  bool isOutputEpochCurrent(std::uint64_t) const override { return true; }
   void setOutputVolume(float) override {}
   void configureRemoteAudio(
     syrnike::desktop_native::media::RemoteAudioSettings
@@ -376,10 +372,7 @@ int main() try {
   }
   serialized_state->block_output = true;
   auto serialized_output = std::async(std::launch::async, [&] {
-    return serialized_client->setVoiceOutputDevice(
-      "default",
-      syrnike::desktop_native::media::AudioOutputDeviceIntent::UserConfiguration
-    );
+    return serialized_client->setVoiceOutputDevice("default");
   });
   {
     std::unique_lock lock(serialized_state->mutex);
@@ -560,20 +553,11 @@ int main() try {
   // must not reconnect or retire the participant.
   shared_client->setVoiceDeafened(true);
   const auto output_epoch_a =
-    shared_client->setVoiceOutputDevice(
-      "communications-output",
-      syrnike::desktop_native::media::AudioOutputDeviceIntent::UserConfiguration
-    );
-  if (!shared_client->isVoiceOutputEpochCurrent(output_epoch_a)) {
-    throw std::runtime_error("committed output renderer epoch was not current");
-  }
-  const auto output_epoch_b = shared_client->setVoiceOutputDevice(
-    "default",
-    syrnike::desktop_native::media::AudioOutputDeviceIntent::UserConfiguration
-  );
-  if (shared_client->isVoiceOutputEpochCurrent(output_epoch_a) ||
-      !shared_client->isVoiceOutputEpochCurrent(output_epoch_b)) {
-    throw std::runtime_error("replaced output renderer epoch accepted a stale failure");
+    shared_client->setVoiceOutputDevice("communications-output");
+  const auto output_epoch_b =
+    shared_client->setVoiceOutputDevice("default");
+  if (output_epoch_a == 0 || output_epoch_b <= output_epoch_a) {
+    throw std::runtime_error("output renderer generation did not advance");
   }
   shared_client->setVoiceDeafened(false);
   if (!shared_client->isVoiceConnected()) {

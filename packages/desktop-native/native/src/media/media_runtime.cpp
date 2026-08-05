@@ -299,7 +299,7 @@ class MediaRuntime::Implementation
       type == "configureRemoteAudio" ||
       type == "configureVoiceOutput" ||
       type == "__voiceConnectCompleted" ||
-      type == "__voiceOutputFailed" ||
+      type == "__voiceOutputStateChanged" ||
       type == "__voiceRemoteAudioTrackFailed" ||
       type == "__voiceActiveSpeakers" ||
       type == "__remoteVideoFrame" ||
@@ -674,103 +674,25 @@ class MediaRuntime::Implementation
       emitter_.emit(std::move(event));
       return;
     }
-    if (command.type == "__voiceOutputFailed") {
+    if (command.type == "__voiceOutputStateChanged") {
       if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
-      const bool fallback_committed =
-        command.video_source == "audio_output_fallback_default";
-      const bool default_recovery_committed =
-        command.video_source == "audio_output_default_recovered";
-      if (!voice_session_->isVoiceOutputEpochCurrent(command.internal_epoch)) {
-        return;
-      }
       RuntimeEvent event;
       event.type = "sessionLifecycle";
       event.session_id = command.session_id;
       event.generation = command.generation;
       event.kind = "output";
-      const auto failure_code = command.video_source.empty()
-        ? std::string("audio_output_failed")
-        : command.video_source;
-      const bool endpoint_loss =
-        audioFailureCodeAllowsDefaultFallback(failure_code);
-      if (fallback_committed || default_recovery_committed ||
-          (endpoint_loss &&
-           !command.device_id.empty() && command.device_id != "default")) {
-        if (!fallback_committed && !default_recovery_committed) {
-          try {
-            voice_session_->setVoiceOutputDevice(
-              "default",
-              AudioOutputDeviceIntent::EndpointRecovery
-            );
-          } catch (const std::exception& recovery_error) {
-            const auto recovery_failure = describeAudioFailure(recovery_error);
-            event.status = audioFailureAllowsDefaultFallback(recovery_failure.kind)
-              ? "starting"
-              : "error";
-            event.detail = recovery_failure.message;
-            event.error = NativeError{
-              recovery_failure.code,
-              recovery_failure.message,
-              "recoverVoiceOutput",
-              recovery_failure.retryable,
-              command.session_id,
-              command.generation,
-              recovery_failure.hresult == S_OK
-                ? std::optional<std::int64_t>{}
-                : std::optional<std::int64_t>{
-                    static_cast<std::int64_t>(recovery_failure.hresult)
-                  },
-            };
-            emitter_.emit(std::move(event));
-            return;
-          }
-        }
-        event.status = "running";
-        event.device_id = "default";
-        event.detail = default_recovery_committed
-          ? "audio_output_default_recovered"
-          : (command.internal_message.empty()
-              ? "Selected audio output is unavailable; using system default"
-              : command.internal_message);
-        if (!default_recovery_committed) {
-          event.error = NativeError{
-            failure_code,
-            event.detail,
-            "configureVoiceOutput",
-            command.diagnostic_retryable,
-            command.session_id,
-            command.generation,
-            command.diagnostic_hresult == 0
-              ? std::optional<std::int64_t>{}
-              : std::optional<std::int64_t>{command.diagnostic_hresult},
-          };
-        }
-      } else if (endpoint_loss) {
-        event.status = "starting";
-        event.device_id = "default";
-        event.detail = command.internal_message.empty()
-          ? "Default audio output is temporarily unavailable"
-          : command.internal_message;
+      event.status = command.status == "recovering"
+        ? "starting"
+        : (command.status == "failed" ? "error" : command.status);
+      event.device_id = command.device_id;
+      event.detail = command.internal_message;
+      if (!command.video_source.empty()) {
         event.error = NativeError{
-          failure_code,
-          event.detail,
-          "recoverVoiceOutput",
-          command.diagnostic_retryable,
-          command.session_id,
-          command.generation,
-          command.diagnostic_hresult == 0
-            ? std::optional<std::int64_t>{}
-            : std::optional<std::int64_t>{command.diagnostic_hresult},
-        };
-      } else {
-        event.status = "error";
-        event.detail = command.internal_message.empty()
-          ? "Remote audio renderer failed"
-          : command.internal_message;
-        event.error = NativeError{
-          failure_code,
-          event.detail,
-          "configureVoiceOutput",
+          command.video_source,
+          event.detail.empty() ? "Remote audio output state changed" : event.detail,
+          command.status == "recovering"
+            ? "recoverVoiceOutput"
+            : "configureVoiceOutput",
           command.diagnostic_retryable,
           command.session_id,
           command.generation,
@@ -933,21 +855,12 @@ class MediaRuntime::Implementation
       // Device selection is the only fallible part of this bundled update.
       // Commit scalar controls only after it succeeds so a failed candidate
       // leaves the previous output configuration intact.
-      voice_session_->setVoiceOutputDevice(
-        command.device_id,
-        AudioOutputDeviceIntent::UserConfiguration
-      );
+      voice_session_->setVoiceOutputDevice(command.device_id);
       voice_session_->setVoiceDeafened(command.deafened);
       if (command.has_output_volume) {
         voice_session_->setVoiceOutputVolume(command.output_volume);
       }
       emitter_.emit(reply(command));
-      emitter_.emit(lifecycle(
-        command,
-        "output",
-        "running",
-        command.deafened ? "deafened" : "audible"
-      ));
       return;
     }
     if (command.type == "configureRemoteAudio") {

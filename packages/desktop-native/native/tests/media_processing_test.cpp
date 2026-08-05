@@ -415,12 +415,13 @@ int main() try {
     .num_frames = kRemoteAudioIngressFramesPerPacket,
   };
   RemoteAudioIngress ingress;
+  ingress.activate(1);
   ingress.onAudioFrame(ingress_view);
   ingress.onAudioFrame(ingress_view);
   require(ingress.queuedFrames() == 2, "direct audio ingress lost valid frames");
   RemoteAudioIngressFrame ingress_output;
   require(
-    ingress.tryRead(ingress_output) == RemoteAudioIngressReadResult::Frame &&
+    ingress.tryRead(ingress_output, 1) == RemoteAudioIngressReadResult::Frame &&
       ingress_output.samples == ingress_packet,
     "direct audio ingress changed borrowed PCM"
   );
@@ -428,7 +429,7 @@ int main() try {
   invalid_ingress_view.sample_rate = 44'100;
   ingress.onAudioFrame(invalid_ingress_view);
   require(
-    ingress.tryRead(ingress_output) ==
+    ingress.tryRead(ingress_output, 1) ==
         RemoteAudioIngressReadResult::Discontinuity &&
       ingress.queuedFrames() == 0 &&
       ingress.telemetry().invalid_frames == 1,
@@ -436,6 +437,7 @@ int main() try {
   );
 
   RemoteAudioIngress overflow_ingress;
+  overflow_ingress.activate(2);
   for (std::size_t index = 0; index < kRemoteAudioIngressSlotCount; ++index) {
     overflow_ingress.onAudioFrame(ingress_view);
   }
@@ -443,19 +445,40 @@ int main() try {
     overflow_ingress.telemetry().accepted_frames ==
         kRemoteAudioIngressSlotCount - 1 &&
       overflow_ingress.telemetry().dropped_frames == 1 &&
-      overflow_ingress.tryRead(ingress_output) ==
+      overflow_ingress.tryRead(ingress_output, 2) ==
         RemoteAudioIngressReadResult::Discontinuity &&
       overflow_ingress.queuedFrames() == 0,
     "direct audio overflow retained a catch-up backlog"
   );
   overflow_ingress.onAudioFrame(ingress_view);
   require(
-    overflow_ingress.tryRead(ingress_output) ==
+    overflow_ingress.tryRead(ingress_output, 2) ==
       RemoteAudioIngressReadResult::Frame,
     "direct audio ingress did not resume after a bounded discontinuity"
   );
+  overflow_ingress.suspend();
+  overflow_ingress.onAudioFrame(ingress_view);
+  require(
+    overflow_ingress.queuedFrames() == 0 &&
+      overflow_ingress.telemetry().suspended_frames == 1 &&
+      overflow_ingress.telemetry().dropped_frames == 1,
+    "suspended direct audio ingress filled or overflowed its queue"
+  );
+  overflow_ingress.activate(3);
+  require(
+    overflow_ingress.tryRead(ingress_output, 2) ==
+      RemoteAudioIngressReadResult::Discontinuity,
+    "retired renderer epoch consumed fresh direct audio"
+  );
+  overflow_ingress.onAudioFrame(ingress_view);
+  require(
+    overflow_ingress.tryRead(ingress_output, 3) ==
+      RemoteAudioIngressReadResult::Frame,
+    "fresh renderer epoch did not resume direct audio"
+  );
 
   RemoteAudioIngress concurrent_ingress;
+  concurrent_ingress.activate(4);
   std::atomic_bool producer_finished{false};
   std::atomic_bool corrupt_ingress_frame{false};
   std::thread ingress_producer([&] {
@@ -474,7 +497,7 @@ int main() try {
   });
   while (!producer_finished.load(std::memory_order_acquire) ||
          concurrent_ingress.queuedFrames() != 0) {
-    const auto result = concurrent_ingress.tryRead(ingress_output);
+    const auto result = concurrent_ingress.tryRead(ingress_output, 4);
     if (result == RemoteAudioIngressReadResult::Frame &&
         !std::all_of(
           ingress_output.samples.begin(),

@@ -60,12 +60,8 @@ class LiveKitVoiceSession {
   virtual void requireVoiceSession(const std::string& session_id) const = 0;
   virtual bool isVoiceConnected() const = 0;
   virtual void setVoiceDeafened(bool deafened) = 0;
-  virtual std::uint64_t setVoiceOutputDevice(
-    std::string device_id,
-    AudioOutputDeviceIntent intent
-  ) = 0;
+  virtual std::uint64_t setVoiceOutputDevice(std::string device_id) = 0;
   virtual std::string voiceOutputDeviceId() const = 0;
-  virtual bool isVoiceOutputEpochCurrent(std::uint64_t epoch) const = 0;
   virtual void setVoiceOutputVolume(float volume) = 0;
   virtual void configureRemoteAudio(RemoteAudioSettings settings) = 0;
   virtual void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) = 0;
@@ -133,9 +129,8 @@ class LiveKitVoiceRoomOwner {
   virtual void stopAudio() = 0;
   virtual void disconnect() = 0;
   virtual void setDeafened(bool) = 0;
-  virtual std::uint64_t setOutputDevice(std::string, AudioOutputDeviceIntent) = 0;
+  virtual std::uint64_t setOutputDevice(std::string) = 0;
   virtual std::string outputDeviceId() const = 0;
-  virtual bool isOutputEpochCurrent(std::uint64_t) const = 0;
   virtual void setOutputVolume(float) = 0;
   virtual void configureRemoteAudio(RemoteAudioSettings) = 0;
   virtual void releaseRemoteVideoFrame(std::string, std::uint64_t) = 0;
@@ -207,12 +202,8 @@ class DeterministicFakeLiveKitVoiceSession final : public LiveKitVoiceSession {
   void requireVoiceSession(const std::string& session_id) const override;
   bool isVoiceConnected() const override;
   void setVoiceDeafened(bool deafened) override;
-  std::uint64_t setVoiceOutputDevice(
-    std::string device_id,
-    AudioOutputDeviceIntent intent
-  ) override;
+  std::uint64_t setVoiceOutputDevice(std::string device_id) override;
   std::string voiceOutputDeviceId() const override;
-  bool isVoiceOutputEpochCurrent(std::uint64_t epoch) const override;
   void setVoiceOutputVolume(float volume) override;
   void configureRemoteAudio(RemoteAudioSettings settings) override;
   void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) override;

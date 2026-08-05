@@ -35,14 +35,6 @@ using Microsoft::WRL::ComPtr;
 
 namespace syrnike::desktop_native::media {
 
-bool retainAudioOutputEndpointRetry(
-  AudioOutputDeviceIntent intent,
-  AudioFailureKind failure
-) noexcept {
-  return intent == AudioOutputDeviceIntent::EndpointRecovery &&
-    audioFailureAllowsDefaultFallback(failure);
-}
-
 void startAudioOutputWithRollback(
   const std::function<void()>& start_candidate,
   const std::function<void()>& restore_previous,
@@ -87,6 +79,9 @@ constexpr float kLimiterReleaseSeconds = 0.5F;
 constexpr double kClockTargetPackets = 3.0;
 constexpr double kMaximumClockCorrectionPpm = 1'000.0;
 constexpr auto kClockAdjustmentInterval = std::chrono::milliseconds(100);
+constexpr auto kRenderProgressDeadline = std::chrono::seconds(3);
+constexpr auto kRecoveryWatchInterval = std::chrono::milliseconds(500);
+constexpr std::size_t kMaximumRecoveryAttempts = 20;
 using diagnostics::DiagnosticField;
 
 struct StereoFrame {
@@ -138,6 +133,7 @@ struct TrackState {
   // Telemetry-thread state.
   RemoteAudioIngressTelemetry reported_ingress;
   std::uint64_t reported_underruns = 0;
+  std::chrono::steady_clock::time_point next_dataplane_report{};
 };
 
 using RenderSnapshot = std::vector<std::shared_ptr<TrackState>>;
@@ -182,8 +178,14 @@ void fadeTrackToSilence(
   track.previous_right = 0.0F;
 }
 
-bool readNextTrackFrame(TrackState& track) noexcept {
-  const auto result = track.ingress->tryRead(track.current_frame);
+bool readNextTrackFrame(
+  TrackState& track,
+  std::uint64_t renderer_epoch
+) noexcept {
+  const auto result = track.ingress->tryRead(
+    track.current_frame,
+    renderer_epoch
+  );
   if (result == RemoteAudioIngressReadResult::Frame) {
     track.current_frame_offset = 0;
     return true;
@@ -200,7 +202,8 @@ bool renderTrack(
   std::size_t frame_count,
   float output_volume,
   bool deafened,
-  std::chrono::steady_clock::time_point now
+  std::chrono::steady_clock::time_point now,
+  std::uint64_t renderer_epoch
 ) noexcept {
   std::fill_n(track.scratch.begin(), frame_count, StereoFrame{});
 
@@ -225,7 +228,7 @@ bool renderTrack(
   std::size_t produced_frames = 0;
   for (; produced_frames < frame_count; ++produced_frames) {
     if (track.current_frame_offset == kRemoteAudioIngressFramesPerPacket &&
-        !readNextTrackFrame(track)) {
+        !readNextTrackFrame(track, renderer_epoch)) {
       break;
     }
     const auto sample_index = track.current_frame_offset * kRemoteAudioChannels;
@@ -339,9 +342,11 @@ float remoteAudioLimiterTargetGain(float peak) noexcept {
 class RemoteAudioOutput::Implementation {
  public:
   Implementation(
-    FailureHandler on_failure,
+    StateHandler on_state,
+    TrackFailureHandler on_track_failure,
     SpeakingActivityHandler on_speaking_activity
-  ) : on_failure_(std::move(on_failure)),
+  ) : on_state_(std::move(on_state)),
+      on_track_failure_(std::move(on_track_failure)),
       on_speaking_activity_(std::move(on_speaking_activity)) {
     render_snapshot_owner_ = std::make_unique<const RenderSnapshot>();
     render_snapshot_source_.store(
@@ -350,6 +355,9 @@ class RemoteAudioOutput::Implementation {
     );
     telemetry_worker_ = std::jthread([this](std::stop_token token) {
       telemetryLoop(token);
+    });
+    recovery_worker_ = std::jthread([this](std::stop_token token) {
+      recoveryLoop(token);
     });
     try {
       endpoint_monitor_ = std::make_unique<AudioEndpointMonitor>(
@@ -416,6 +424,7 @@ class RemoteAudioOutput::Implementation {
       state->registration->close();
       return;
     }
+    activateTrackIfRunning(*state);
     telemetry_changed_.notify_all();
     logRemoteAudio(
       "remote_audio_direct_track_added",
@@ -448,64 +457,15 @@ class RemoteAudioOutput::Implementation {
     telemetry_changed_.notify_all();
   }
 
-  std::uint64_t setOutputDevice(
-    std::string value,
-    AudioOutputDeviceIntent intent
-  ) {
+  std::uint64_t setOutputDevice(std::string value) {
     std::lock_guard switch_lock(device_switch_mutex_);
-    bool previous_configured = false;
-    bool previous_fallback_pending = false;
-    {
-      std::lock_guard lock(mutex_);
-      previous_configured = output_configured_;
-      previous_fallback_pending = output_fallback_pending_;
-      output_configured_ = true;
-      output_fallback_pending_ = false;
-    }
-    try {
-      return applyOutputDeviceLocked(std::move(value), false);
-    } catch (const AudioFailure& failure) {
-      std::lock_guard lock(mutex_);
-      if (!stopping_) {
-        const bool rollback_failed =
-          failure.kind() == AudioFailureKind::RollbackFailed;
-        const bool retain_recovery = retainAudioOutputEndpointRetry(
-          intent,
-          failure.kind()
-        );
-        if (rollback_failed ||
-            intent == AudioOutputDeviceIntent::EndpointRecovery) {
-          output_fallback_pending_ = retain_recovery;
-          output_configured_ = retain_recovery;
-        } else {
-          output_fallback_pending_ = previous_fallback_pending;
-          output_configured_ = previous_configured;
-        }
-      }
-      throw;
-    } catch (...) {
-      std::lock_guard lock(mutex_);
-      if (!stopping_) {
-        if (intent == AudioOutputDeviceIntent::EndpointRecovery) {
-          output_fallback_pending_ = false;
-          output_configured_ = false;
-        } else {
-          output_fallback_pending_ = previous_fallback_pending;
-          output_configured_ = previous_configured;
-        }
-      }
-      throw;
-    }
-  }
-
-  bool isRendererEpochCurrent(std::uint64_t epoch) const {
-    std::lock_guard lock(mutex_);
-    return epoch != 0 && renderer_epoch_ == epoch;
+    return configureOutputDeviceLocked(std::move(value));
   }
 
   std::string outputDeviceId() const {
     std::lock_guard lock(mutex_);
-    return output_device_id_;
+    if (!resolved_endpoint_id_.empty()) return resolved_endpoint_id_;
+    return active_device_id_;
   }
 
   void setVolume(float value) {
@@ -524,7 +484,6 @@ class RemoteAudioOutput::Implementation {
   }
 
   void stop() {
-    std::lock_guard switch_lock(device_switch_mutex_);
     std::vector<std::shared_ptr<TrackState>> removed;
     {
       std::lock_guard lock(mutex_);
@@ -535,14 +494,28 @@ class RemoteAudioOutput::Implementation {
       tracks_.clear();
       publishRenderSnapshotLocked();
     }
+    recovery_worker_.request_stop();
+    recovery_changed_.notify_all();
+    if (recovery_worker_.joinable()) recovery_worker_.join();
     for (auto& track : removed) {
+      track->ingress->suspend();
       if (track->registration) track->registration->close();
       track->registration.reset();
     }
-    stopRenderer();
+    {
+      std::lock_guard switch_lock(device_switch_mutex_);
+      stopRenderer();
+    }
     telemetry_worker_.request_stop();
     telemetry_changed_.notify_all();
     if (telemetry_worker_.joinable()) telemetry_worker_.join();
+    RemoteAudioOutputState state;
+    {
+      std::lock_guard lock(mutex_);
+      phase_ = RemoteAudioOutputPhase::Stopped;
+      state = outputStateLocked();
+    }
+    publishState(std::move(state));
   }
 
  private:
@@ -607,13 +580,13 @@ class RemoteAudioOutput::Implementation {
     std::string_view track_id
   ) noexcept {
     try {
-      if (!on_failure_) return;
+      if (!on_track_failure_) return;
       std::uint64_t epoch = 0;
       {
         std::lock_guard lock(mutex_);
         epoch = renderer_epoch_;
       }
-      on_failure_(AudioFailureInfo{
+      on_track_failure_(AudioFailureInfo{
         AudioFailureKind::IoFailed,
         "audio_output_direct_sink_attach_failed",
         "Direct remote audio sink failed to attach: " + std::string(message),
@@ -625,71 +598,222 @@ class RemoteAudioOutput::Implementation {
     }
   }
 
-  std::uint64_t applyOutputDeviceLocked(std::string value, bool force) {
-    {
-      std::lock_guard lock(mutex_);
-      if (stopping_ ||
-          (!force && output_device_id_ == value && renderer_running_.load())) {
-        return renderer_epoch_;
-      }
-    }
-    const auto requested = value;
+  struct OutputCandidate {
+    std::string selector;
+    std::string resolved_endpoint_id;
+    bool using_fallback = false;
+  };
+
+  struct OutputConfiguration {
+    std::string desired_device_id;
+    std::string active_device_id;
+    std::string resolved_endpoint_id;
+    RemoteAudioOutputPhase phase = RemoteAudioOutputPhase::Stopped;
+    bool output_configured = false;
+    bool using_fallback = false;
+  };
+
+  static std::string normalizeOutputDeviceId(std::string value) {
+    return value.empty() ? std::string{"default"} : std::move(value);
+  }
+
+  OutputCandidate resolveOutputCandidate(const std::string& desired) {
+    auto selector = desired;
+    bool using_fallback = false;
     try {
       probeRenderDevice(
-        value,
+        selector,
         desiredRemoteAudioRenderFormat(),
         std::chrono::milliseconds(750)
       );
     } catch (const AudioFailure& failure) {
-      if (value.empty() || value == "default" ||
+      if (selector == "default" ||
           !audioFailureAllowsDefaultFallback(failure.kind())) {
         throw;
       }
-      value = "default";
+      selector = "default";
+      using_fallback = true;
       probeRenderDevice(
-        value,
+        selector,
         desiredRemoteAudioRenderFormat(),
         std::chrono::milliseconds(750)
       );
     }
+    auto resolved_endpoint_id = resolvedRenderDeviceId(selector);
+    return {
+      .selector = std::move(selector),
+      .resolved_endpoint_id = std::move(resolved_endpoint_id),
+      .using_fallback = using_fallback,
+    };
+  }
 
-    std::string previous;
+  OutputConfiguration outputConfigurationLocked() const {
+    return {
+      .desired_device_id = desired_device_id_,
+      .active_device_id = active_device_id_,
+      .resolved_endpoint_id = resolved_endpoint_id_,
+      .phase = phase_,
+      .output_configured = output_configured_,
+      .using_fallback = using_fallback_,
+    };
+  }
+
+  void restoreOutputConfigurationLocked(
+    const OutputConfiguration& configuration
+  ) {
+    desired_device_id_ = configuration.desired_device_id;
+    active_device_id_ = configuration.active_device_id;
+    resolved_endpoint_id_ = configuration.resolved_endpoint_id;
+    phase_ = configuration.phase;
+    output_configured_ = configuration.output_configured;
+    using_fallback_ = configuration.using_fallback;
+  }
+
+  RemoteAudioOutputState outputStateLocked(
+    std::optional<AudioFailureInfo> failure = {},
+    std::string detail = {}
+  ) const {
+    return {
+      .phase = phase_,
+      .desired_device_id = desired_device_id_,
+      .active_device_id = active_device_id_,
+      .resolved_endpoint_id = resolved_endpoint_id_,
+      .renderer_epoch = renderer_epoch_,
+      .using_fallback = using_fallback_,
+      .failure = std::move(failure),
+      .detail = std::move(detail),
+    };
+  }
+
+  void publishState(RemoteAudioOutputState state) noexcept {
+    try {
+      if (on_state_) on_state_(std::move(state));
+    } catch (...) {
+      logRemoteAudio("remote_audio_output_state_callback_failed");
+    }
+  }
+
+  void activateTrackIfRunning(TrackState& track) {
+    std::uint64_t epoch = 0;
     {
       std::lock_guard lock(mutex_);
-      previous = output_device_id_;
+      if (!stopping_ && phase_ == RemoteAudioOutputPhase::Running) {
+        epoch = renderer_epoch_;
+      }
     }
-    stopRenderer();
+    if (epoch != 0) track.ingress->activate(epoch);
+  }
+
+  void setIngressRendererEpoch(std::uint64_t renderer_epoch) {
+    RenderSnapshot snapshot;
+    {
+      std::lock_guard lock(mutex_);
+      snapshot.reserve(tracks_.size());
+      for (const auto& [_, track] : tracks_) snapshot.push_back(track);
+    }
+    for (const auto& track : snapshot) {
+      if (renderer_epoch == 0) {
+        track->ingress->suspend();
+      } else {
+        track->ingress->activate(renderer_epoch);
+      }
+    }
+  }
+
+  void clearRecoveryRequest() {
+    std::lock_guard lock(recovery_mutex_);
+    ++recovery_generation_;
+    recovery_request_.reset();
+    recovery_attempt_ = 0;
+    recovery_accelerated_ = false;
+  }
+
+  std::uint64_t configureOutputDeviceLocked(std::string value) {
+    value = normalizeOutputDeviceId(std::move(value));
+    OutputConfiguration previous;
     {
       std::lock_guard lock(mutex_);
       if (stopping_) return renderer_epoch_;
-      output_device_id_ = std::move(value);
+      if (desired_device_id_ == value &&
+          !using_fallback_ &&
+          phase_ == RemoteAudioOutputPhase::Running &&
+          renderer_running_.load(std::memory_order_acquire)) {
+        return renderer_epoch_;
+      }
+      previous = outputConfigurationLocked();
     }
-    startAudioOutputWithRollback(
-      [this] { startRenderer(); },
-      [this, &previous] {
-        std::lock_guard lock(mutex_);
-        output_device_id_ = previous;
-      },
-      [this] { startRenderer(); }
-    );
-
-    std::string active;
-    std::uint64_t active_epoch = 0;
+    const auto candidate = resolveOutputCandidate(value);
     {
       std::lock_guard lock(mutex_);
-      active = output_device_id_;
-      active_epoch = renderer_epoch_;
+      if (stopping_) return renderer_epoch_;
+      desired_device_id_ = value;
+      active_device_id_ = candidate.selector;
+      resolved_endpoint_id_ = candidate.resolved_endpoint_id;
+      using_fallback_ = candidate.using_fallback;
+      output_configured_ = true;
+      phase_ = RemoteAudioOutputPhase::Starting;
     }
-    if (requested != active && on_failure_) {
-      on_failure_(AudioFailureInfo{
-        AudioFailureKind::EndpointInvalidated,
-        "audio_output_fallback_default",
-        "Selected audio output is unavailable; using system default",
-        AUDCLNT_E_DEVICE_INVALIDATED,
-        false,
-      }, requested, active_epoch);
+    stopRenderer();
+    try {
+      startAudioOutputWithRollback(
+        [this] { startRenderer(); },
+        [this, &previous] {
+          std::lock_guard lock(mutex_);
+          restoreOutputConfigurationLocked(previous);
+        },
+        [this, &previous] {
+          if (previous.output_configured &&
+              previous.phase == RemoteAudioOutputPhase::Running) {
+            startRenderer();
+          }
+        }
+      );
+    } catch (const AudioFailure& failure) {
+      if (failure.kind() == AudioFailureKind::RollbackFailed) {
+        RemoteAudioOutputState state;
+        {
+          std::lock_guard lock(mutex_);
+          restoreOutputConfigurationLocked(previous);
+          phase_ = RemoteAudioOutputPhase::Failed;
+          output_configured_ = false;
+          const auto info = describeAudioFailure(failure);
+          state = outputStateLocked(info, info.message);
+        }
+        publishState(std::move(state));
+      } else {
+        std::lock_guard lock(mutex_);
+        restoreOutputConfigurationLocked(previous);
+      }
+      throw;
+    } catch (...) {
+      {
+        std::lock_guard lock(mutex_);
+        restoreOutputConfigurationLocked(previous);
+      }
+      throw;
     }
-    return active_epoch;
+    clearRecoveryRequest();
+    AudioFailureInfo fallback{
+      AudioFailureKind::EndpointInvalidated,
+      "audio_output_fallback_default",
+      "Selected audio output is unavailable; using system default",
+      AUDCLNT_E_DEVICE_INVALIDATED,
+      false,
+    };
+    RemoteAudioOutputState state;
+    {
+      std::lock_guard lock(mutex_);
+      phase_ = RemoteAudioOutputPhase::Running;
+      state = outputStateLocked(
+        candidate.using_fallback
+          ? std::optional<AudioFailureInfo>{fallback}
+          : std::optional<AudioFailureInfo>{},
+        candidate.using_fallback ? fallback.message : std::string{}
+      );
+    }
+    const auto renderer_epoch = state.renderer_epoch;
+    publishState(std::move(state));
+    return renderer_epoch;
   }
 
   void startRenderer() {
@@ -699,6 +823,7 @@ class RemoteAudioOutput::Implementation {
       renderer_startup_failure_.reset();
     }
     renderer_running_.store(true, std::memory_order_release);
+    last_render_progress_ms_.store(0, std::memory_order_release);
     std::uint64_t renderer_epoch = 0;
     {
       std::lock_guard lock(mutex_);
@@ -736,9 +861,12 @@ class RemoteAudioOutput::Implementation {
       stopRenderer();
       throw AudioFailure(failure.kind, failure.message, failure.hresult);
     }
+    lock.unlock();
+    setIngressRendererEpoch(renderer_epoch);
   }
 
   void stopRenderer() {
+    setIngressRendererEpoch(0);
     renderer_running_.store(false, std::memory_order_release);
     if (renderer_.joinable()) {
       renderer_.request_stop();
@@ -821,9 +949,17 @@ class RemoteAudioOutput::Implementation {
       });
       {
         std::lock_guard lock(mutex_);
-        device_id = output_device_id_;
+        device_id = active_device_id_;
       }
       auto device = renderDevice(device_id);
+      const auto resolved_endpoint_id = audioEndpointId(device.Get());
+      {
+        std::lock_guard lock(mutex_);
+        if (renderer_epoch_ == renderer_epoch &&
+            !resolved_endpoint_id.empty()) {
+          resolved_endpoint_id_ = resolved_endpoint_id;
+        }
+      }
       ComPtr<IAudioClient> client;
       const auto activate_result = device->Activate(
         __uuidof(IAudioClient),
@@ -987,7 +1123,8 @@ class RemoteAudioOutput::Implementation {
             count,
             output_volume,
             deafened,
-            now
+            now,
+            renderer_epoch
           );
         }
         updateClockAdjustment(
@@ -1043,6 +1180,14 @@ class RemoteAudioOutput::Implementation {
             AudioFailureKind::IoFailed
           );
         }
+        last_render_progress_ms_.store(
+          static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::steady_clock::now().time_since_epoch()
+            ).count()
+          ),
+          std::memory_order_release
+        );
 
         bool became_ready = false;
         {
@@ -1056,6 +1201,7 @@ class RemoteAudioOutput::Implementation {
       }
       (void)client->Stop();
     } catch (const std::exception& error) {
+      renderer_running_.store(false, std::memory_order_release);
       handleRendererFailure(
         describeAudioFailure(error),
         device_id,
@@ -1063,6 +1209,7 @@ class RemoteAudioOutput::Implementation {
         token.stop_requested()
       );
     } catch (...) {
+      renderer_running_.store(false, std::memory_order_release);
       handleRendererFailure(AudioFailureInfo{
         AudioFailureKind::Unknown,
         "audio_unknown",
@@ -1090,12 +1237,303 @@ class RemoteAudioOutput::Implementation {
       if (!failed_after_readiness) renderer_startup_failure_ = failure;
     }
     renderer_startup_changed_.notify_all();
-    if (failed_after_readiness && !stop_requested &&
-        renderer_running_.load(std::memory_order_acquire) && on_failure_) {
-      try {
-        on_failure_(std::move(failure), device_id, renderer_epoch);
-      } catch (...) {
-        logRemoteAudio("remote_audio_renderer_failure_callback_failed");
+    if (failed_after_readiness && !stop_requested) {
+      scheduleRecovery(
+        std::move(failure),
+        device_id,
+        renderer_epoch,
+        true
+      );
+    }
+  }
+
+  struct RecoveryRequest {
+    AudioFailureInfo failure;
+    std::string failed_device_id;
+    std::uint64_t failed_renderer_epoch = 0;
+    std::uint64_t generation = 0;
+  };
+
+  static std::chrono::milliseconds recoveryDelay(std::size_t attempt) {
+    if (attempt == 0) return std::chrono::milliseconds::zero();
+    if (attempt == 1) return std::chrono::milliseconds(250);
+    if (attempt == 2) return std::chrono::seconds(1);
+    return std::chrono::seconds(5);
+  }
+
+  void scheduleRecovery(
+    AudioFailureInfo failure,
+    std::string failed_device_id,
+    std::uint64_t failed_renderer_epoch,
+    bool report_failure
+  ) noexcept {
+    RemoteAudioOutputState state;
+    bool terminal = false;
+    {
+      std::lock_guard lock(mutex_);
+      if (stopping_ || !output_configured_ ||
+          renderer_epoch_ != failed_renderer_epoch ||
+          phase_ == RemoteAudioOutputPhase::Failed) {
+        return;
+      }
+      terminal = !failure.retryable;
+      phase_ = terminal
+        ? RemoteAudioOutputPhase::Failed
+        : RemoteAudioOutputPhase::Recovering;
+      state = outputStateLocked(
+        report_failure
+          ? std::optional<AudioFailureInfo>{failure}
+          : std::optional<AudioFailureInfo>{},
+        report_failure ? failure.message : std::string{}
+      );
+    }
+    setIngressRendererEpoch(0);
+    logRemoteAudio(
+      terminal
+        ? "remote_audio_renderer_failed"
+        : "remote_audio_renderer_recovery_started",
+      {
+        {"rendererEpoch", failed_renderer_epoch},
+        {"failureCode", failure.code},
+        {"hresult", static_cast<std::int64_t>(failure.hresult)},
+      }
+    );
+    publishState(std::move(state));
+    if (terminal) return;
+
+    {
+      std::lock_guard lock(recovery_mutex_);
+      const auto generation = ++recovery_generation_;
+      recovery_request_ = RecoveryRequest{
+        .failure = std::move(failure),
+        .failed_device_id = std::move(failed_device_id),
+        .failed_renderer_epoch = failed_renderer_epoch,
+        .generation = generation,
+      };
+      recovery_attempt_ = 0;
+      recovery_next_attempt_ = std::chrono::steady_clock::now();
+      recovery_accelerated_ = true;
+    }
+    recovery_changed_.notify_all();
+  }
+
+  bool recoveryRequestCurrent(const RecoveryRequest& request) {
+    std::lock_guard lock(recovery_mutex_);
+    return recovery_request_.has_value() &&
+      recovery_request_->generation == request.generation &&
+      recovery_generation_ == request.generation;
+  }
+
+  void finishRecoveryAttempt(
+    const RecoveryRequest& request,
+    const AudioFailureInfo& failure
+  ) {
+    bool exhausted = false;
+    std::size_t attempt = 0;
+    {
+      std::lock_guard lock(recovery_mutex_);
+      if (!recovery_request_ ||
+          recovery_request_->generation != request.generation) {
+        return;
+      }
+      recovery_request_->failure = failure;
+      ++recovery_attempt_;
+      attempt = recovery_attempt_;
+      exhausted = !failure.retryable ||
+        recovery_attempt_ >= kMaximumRecoveryAttempts;
+      if (exhausted) {
+        recovery_request_.reset();
+      } else {
+        recovery_next_attempt_ =
+          std::chrono::steady_clock::now() + recoveryDelay(recovery_attempt_);
+      }
+      recovery_accelerated_ = false;
+    }
+    if (!exhausted) {
+      logRemoteAudio(
+        "remote_audio_renderer_recovery_retry",
+        {
+          {"attempt", static_cast<std::uint64_t>(attempt)},
+          {"failureCode", failure.code},
+          {"hresult", static_cast<std::int64_t>(failure.hresult)},
+        }
+      );
+      return;
+    }
+
+    RemoteAudioOutputState state;
+    {
+      std::lock_guard lock(mutex_);
+      if (stopping_) return;
+      phase_ = RemoteAudioOutputPhase::Failed;
+      state = outputStateLocked(failure, failure.message);
+    }
+    logRemoteAudio(
+      "remote_audio_renderer_recovery_exhausted",
+      {
+        {"attempts", static_cast<std::uint64_t>(attempt)},
+        {"failureCode", failure.code},
+        {"hresult", static_cast<std::int64_t>(failure.hresult)},
+      }
+    );
+    publishState(std::move(state));
+  }
+
+  void recoverOutput(const RecoveryRequest& request) {
+    std::lock_guard switch_lock(device_switch_mutex_);
+    if (!recoveryRequestCurrent(request)) return;
+    {
+      std::lock_guard lock(mutex_);
+      if (stopping_ || phase_ != RemoteAudioOutputPhase::Recovering) return;
+    }
+
+    stopRenderer();
+    try {
+      std::string desired;
+      {
+        std::lock_guard lock(mutex_);
+        desired = desired_device_id_;
+      }
+      const auto candidate = resolveOutputCandidate(desired);
+      {
+        std::lock_guard lock(mutex_);
+        if (stopping_) return;
+        active_device_id_ = candidate.selector;
+        resolved_endpoint_id_ = candidate.resolved_endpoint_id;
+        using_fallback_ = candidate.using_fallback;
+        phase_ = RemoteAudioOutputPhase::Starting;
+      }
+      startRenderer();
+      if (!recoveryRequestCurrent(request)) {
+        stopRenderer();
+        return;
+      }
+
+      RemoteAudioOutputState state;
+      AudioFailureInfo fallback{
+        AudioFailureKind::EndpointInvalidated,
+        "audio_output_fallback_default",
+        "Selected audio output is unavailable; using system default",
+        AUDCLNT_E_DEVICE_INVALIDATED,
+        false,
+      };
+      {
+        std::lock_guard lock(mutex_);
+        phase_ = RemoteAudioOutputPhase::Running;
+        state = outputStateLocked(
+          candidate.using_fallback
+            ? std::optional<AudioFailureInfo>{fallback}
+            : std::optional<AudioFailureInfo>{},
+          candidate.using_fallback
+            ? fallback.message
+            : (desired == "default"
+                ? "audio_output_default_recovered"
+                : "audio_output_recovered")
+        );
+      }
+      clearRecoveryRequest();
+      const auto recovered_epoch = state.renderer_epoch;
+      publishState(std::move(state));
+      logRemoteAudio(
+        "remote_audio_renderer_recovered",
+        {
+          {"rendererEpoch", recovered_epoch},
+          {"usingFallback", candidate.using_fallback},
+        }
+      );
+    } catch (const std::exception& error) {
+      const auto failure = describeAudioFailure(error);
+      {
+        std::lock_guard lock(mutex_);
+        if (!stopping_) phase_ = RemoteAudioOutputPhase::Recovering;
+      }
+      finishRecoveryAttempt(request, failure);
+    } catch (...) {
+      const AudioFailureInfo failure{
+        AudioFailureKind::Unknown,
+        "audio_unknown",
+        "Remote audio renderer recovery failed",
+        S_OK,
+        true,
+      };
+      {
+        std::lock_guard lock(mutex_);
+        if (!stopping_) phase_ = RemoteAudioOutputPhase::Recovering;
+      }
+      finishRecoveryAttempt(request, failure);
+    }
+  }
+
+  void checkRenderProgress() {
+    std::uint64_t renderer_epoch = 0;
+    std::string active_device_id;
+    {
+      std::lock_guard lock(mutex_);
+      if (stopping_ || phase_ != RemoteAudioOutputPhase::Running ||
+          !output_configured_ ||
+          !renderer_running_.load(std::memory_order_acquire)) {
+        return;
+      }
+      renderer_epoch = renderer_epoch_;
+      active_device_id = active_device_id_;
+    }
+    const auto last_progress = last_render_progress_ms_.load(
+      std::memory_order_acquire
+    );
+    if (last_progress == 0) return;
+    const auto now = static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()
+      ).count()
+    );
+    if (now - last_progress < static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+            kRenderProgressDeadline
+          ).count()
+        )) {
+      return;
+    }
+    scheduleRecovery(
+      AudioFailureInfo{
+        AudioFailureKind::OperationTimedOut,
+        "audio_output_progress_timeout",
+        "Audio output stopped making render progress",
+        HRESULT_FROM_WIN32(WAIT_TIMEOUT),
+        true,
+      },
+      std::move(active_device_id),
+      renderer_epoch,
+      true
+    );
+  }
+
+  void recoveryLoop(std::stop_token token) {
+    std::stop_callback stop_callback(token, [this] {
+      recovery_changed_.notify_all();
+    });
+    while (!token.stop_requested()) {
+      std::optional<RecoveryRequest> request;
+      {
+        std::unique_lock lock(recovery_mutex_);
+        recovery_changed_.wait_for(lock, kRecoveryWatchInterval, [this, &token] {
+          return token.stop_requested() || recovery_request_.has_value();
+        });
+        if (token.stop_requested()) break;
+        if (recovery_request_) {
+          const auto now = std::chrono::steady_clock::now();
+          if (!recovery_accelerated_ && now < recovery_next_attempt_) {
+            recovery_changed_.wait_until(lock, recovery_next_attempt_);
+            if (token.stop_requested()) break;
+            continue;
+          }
+          recovery_accelerated_ = false;
+          request = recovery_request_;
+        }
+      }
+      if (request) {
+        recoverOutput(*request);
+      } else {
+        checkRenderProgress();
       }
     }
   }
@@ -1123,6 +1561,7 @@ class RemoteAudioOutput::Implementation {
     }
     std::vector<std::string> speakers;
     speakers.reserve(snapshot.size());
+    const auto now = std::chrono::steady_clock::now();
     for (const auto& track : snapshot) {
       if (!track->stream_source && !track->user_id.empty() &&
           track->speaking.load(std::memory_order_acquire)) {
@@ -1131,11 +1570,13 @@ class RemoteAudioOutput::Implementation {
 
       const auto ingress = track->ingress->telemetry();
       const auto underruns = track->underruns.load(std::memory_order_relaxed);
-      if (ingress.dropped_frames != track->reported_ingress.dropped_frames ||
-          ingress.invalid_frames != track->reported_ingress.invalid_frames ||
-          ingress.discontinuities !=
-            track->reported_ingress.discontinuities ||
-          underruns != track->reported_underruns) {
+      const bool dataplane_changed =
+        ingress.dropped_frames != track->reported_ingress.dropped_frames ||
+        ingress.suspended_frames != track->reported_ingress.suspended_frames ||
+        ingress.invalid_frames != track->reported_ingress.invalid_frames ||
+        ingress.discontinuities != track->reported_ingress.discontinuities ||
+        underruns != track->reported_underruns;
+      if (dataplane_changed && now >= track->next_dataplane_report) {
         logRemoteAudio(
           "remote_audio_direct_dataplane",
           {
@@ -1145,6 +1586,7 @@ class RemoteAudioOutput::Implementation {
             )},
             {"acceptedFrames", ingress.accepted_frames},
             {"droppedFrames", ingress.dropped_frames},
+            {"suspendedFrames", ingress.suspended_frames},
             {"invalidFrames", ingress.invalid_frames},
             {"discontinuities", ingress.discontinuities},
             {"underruns", underruns},
@@ -1153,9 +1595,10 @@ class RemoteAudioOutput::Implementation {
             )},
           }
         );
+        track->reported_ingress = ingress;
+        track->reported_underruns = underruns;
+        track->next_dataplane_report = now + std::chrono::seconds(5);
       }
-      track->reported_ingress = ingress;
-      track->reported_underruns = underruns;
     }
 
     std::sort(speakers.begin(), speakers.end());
@@ -1173,66 +1616,75 @@ class RemoteAudioOutput::Implementation {
     }
   }
 
+  void accelerateRecovery() {
+    {
+      std::lock_guard lock(recovery_mutex_);
+      if (!recovery_request_) return;
+      recovery_accelerated_ = true;
+      recovery_next_attempt_ = std::chrono::steady_clock::now();
+    }
+    recovery_changed_.notify_all();
+  }
+
   void handleEndpointChange(AudioEndpointChange change) {
-    std::lock_guard switch_lock(device_switch_mutex_);
-    std::string selected;
-    bool fallback_pending = false;
+    std::string desired;
+    std::string active;
+    std::string resolved;
+    RemoteAudioOutputPhase phase = RemoteAudioOutputPhase::Stopped;
+    bool using_fallback = false;
+    std::uint64_t renderer_epoch = 0;
     {
       std::lock_guard lock(mutex_);
       if (stopping_) return;
-      selected = output_device_id_;
-      fallback_pending = output_fallback_pending_;
-      if (!configuredAudioOutputEndpointChangeRequiresDefaultRetry(
-            output_configured_,
-            selected,
-            fallback_pending,
-            change
-          )) {
-        return;
-      }
+      if (!output_configured_) return;
+      desired = desired_device_id_;
+      active = active_device_id_;
+      resolved = resolved_endpoint_id_;
+      phase = phase_;
+      using_fallback = using_fallback_;
+      renderer_epoch = renderer_epoch_;
     }
 
-    const bool follows_default = selected.empty() || selected == "default";
-    const bool selected_lost =
-      !follows_default && selected == change.device_id;
-    try {
-      applyOutputDeviceLocked("default", true);
-      {
-        std::lock_guard lock(mutex_);
-        output_fallback_pending_ = false;
+    if (phase == RemoteAudioOutputPhase::Recovering ||
+        phase == RemoteAudioOutputPhase::Starting) {
+      if (change.kind == AudioEndpointChangeKind::DefaultChanged ||
+          change.kind == AudioEndpointChangeKind::Added ||
+          change.kind == AudioEndpointChangeKind::Active) {
+        accelerateRecovery();
       }
-      if ((selected_lost || fallback_pending) && on_failure_) {
-        std::uint64_t active_epoch = 0;
-        {
-          std::lock_guard lock(mutex_);
-          active_epoch = renderer_epoch_;
-        }
-        const bool explicit_fallback = !follows_default;
-        on_failure_(AudioFailureInfo{
-          AudioFailureKind::EndpointInvalidated,
-          explicit_fallback
-            ? "audio_output_fallback_default"
-            : "audio_output_default_recovered",
-          explicit_fallback
-            ? "Selected audio output disappeared; using system default"
-            : "Default audio output recovered",
-          AUDCLNT_E_DEVICE_INVALIDATED,
-          false,
-        }, selected, active_epoch);
-      }
-    } catch (const std::exception& error) {
-      const auto failure = describeAudioFailure(error);
-      std::uint64_t active_epoch = 0;
-      {
-        std::lock_guard lock(mutex_);
-        if (!stopping_) {
-          output_fallback_pending_ =
-            audioFailureAllowsDefaultFallback(failure.kind);
-        }
-        active_epoch = renderer_epoch_;
-      }
-      if (on_failure_) on_failure_(failure, "default", active_epoch);
+      return;
     }
+    if (phase != RemoteAudioOutputPhase::Running) return;
+
+    const bool active_lost =
+      (change.kind == AudioEndpointChangeKind::Removed ||
+       change.kind == AudioEndpointChangeKind::Disabled) &&
+      (change.device_id == resolved || change.device_id == active);
+    const bool default_changed =
+      change.kind == AudioEndpointChangeKind::DefaultChanged &&
+      change.role == eConsole && active == "default";
+    const bool desired_returned =
+      using_fallback && desired != "default" &&
+      (change.kind == AudioEndpointChangeKind::Added ||
+       change.kind == AudioEndpointChangeKind::Active) &&
+      change.device_id == desired;
+    if (!active_lost && !default_changed && !desired_returned) return;
+
+    const bool report_failure = active_lost;
+    scheduleRecovery(
+      AudioFailureInfo{
+        AudioFailureKind::EndpointInvalidated,
+        "audio_endpoint_invalidated",
+        active_lost
+          ? "Audio output endpoint became unavailable"
+          : "Audio output endpoint changed",
+        AUDCLNT_E_DEVICE_INVALIDATED,
+        true,
+      },
+      std::move(active),
+      renderer_epoch,
+      report_failure
+    );
   }
 
   mutable std::mutex mutex_;
@@ -1244,9 +1696,12 @@ class RemoteAudioOutput::Implementation {
   std::vector<std::unique_ptr<const RenderSnapshot>> retired_render_snapshots_;
   std::atomic<const RenderSnapshot*> render_snapshot_source_{nullptr};
   std::atomic<const RenderSnapshot*> render_snapshot_hazard_{nullptr};
-  std::string output_device_id_ = "default";
-  bool output_fallback_pending_ = false;
+  std::string desired_device_id_ = "default";
+  std::string active_device_id_;
+  std::string resolved_endpoint_id_;
+  RemoteAudioOutputPhase phase_ = RemoteAudioOutputPhase::Stopped;
   bool output_configured_ = false;
+  bool using_fallback_ = false;
   bool stopping_ = false;
   std::atomic_bool deafened_{false};
   std::atomic<float> volume_{1.0F};
@@ -1255,10 +1710,20 @@ class RemoteAudioOutput::Implementation {
   std::uint64_t renderer_epoch_ = 0;
   bool renderer_ready_ = false;
   std::optional<AudioFailureInfo> renderer_startup_failure_;
+  std::atomic<std::uint64_t> last_render_progress_ms_{0};
   std::atomic<double> clock_adjustment_ppm_{0.0};
   RemoteAudioSettings settings_;
-  FailureHandler on_failure_;
+  StateHandler on_state_;
+  TrackFailureHandler on_track_failure_;
   SpeakingActivityHandler on_speaking_activity_;
+  std::mutex recovery_mutex_;
+  std::condition_variable recovery_changed_;
+  std::optional<RecoveryRequest> recovery_request_;
+  std::uint64_t recovery_generation_ = 0;
+  std::size_t recovery_attempt_ = 0;
+  std::chrono::steady_clock::time_point recovery_next_attempt_{};
+  bool recovery_accelerated_ = false;
+  std::jthread recovery_worker_;
   std::mutex telemetry_mutex_;
   std::condition_variable telemetry_changed_;
   std::jthread telemetry_worker_;
@@ -1267,7 +1732,8 @@ class RemoteAudioOutput::Implementation {
 };
 
 RemoteAudioOutput::RemoteAudioOutput(
-  FailureHandler on_failure,
+  StateHandler on_state,
+  TrackFailureHandler on_track_failure,
   SpeakingActivityHandler on_speaking_activity,
   AsyncCleanupLauncher cleanup_launcher
 ) : cleanup_dispatcher_(&AsyncCleanupDispatcher::instance()),
@@ -1275,7 +1741,8 @@ RemoteAudioOutput::RemoteAudioOutput(
       std::move(cleanup_launcher)
     )),
     implementation_(std::make_unique<Implementation>(
-      std::move(on_failure),
+      std::move(on_state),
+      std::move(on_track_failure),
       std::move(on_speaking_activity)
     )) {}
 
@@ -1303,15 +1770,8 @@ void RemoteAudioOutput::setDeafened(bool value) {
   implementation_->setDeafened(value);
 }
 
-std::uint64_t RemoteAudioOutput::setOutputDevice(
-  std::string id,
-  AudioOutputDeviceIntent intent
-) {
-  return implementation_->setOutputDevice(std::move(id), intent);
-}
-
-bool RemoteAudioOutput::isRendererEpochCurrent(std::uint64_t epoch) const {
-  return implementation_->isRendererEpochCurrent(epoch);
+std::uint64_t RemoteAudioOutput::setOutputDevice(std::string id) {
+  return implementation_->setOutputDevice(std::move(id));
 }
 
 std::string RemoteAudioOutput::outputDeviceId() const {

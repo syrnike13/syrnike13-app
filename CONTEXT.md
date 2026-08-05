@@ -25,6 +25,10 @@ This file defines shared terms and architectural invariants. Detailed decisions 
 - Frame data is lossy; control operations, keyframe intent, publication ownership, and resource release remain ordered and lossless.
 - Local preview is an optional lossy projection and must never block or restart publication.
 - The **Microphone Pipeline** is one warm capture/DSP path shared by publication, meter preview, and voice activity detection.
+- **Remote Audio Playout** owns decoded remote PCM ingress, mixing, the desired
+  output selection, the resolved Windows endpoint, renderer health, and
+  output-local recovery. During renderer recovery it discards incoming PCM and
+  never changes Voice Membership.
 - **Media Demand** controls remote video subscription and decode plus matching screen-share audio. Remote microphone audio remains subscribed.
 - The **Remote Publication Reconciler** owns epoch-scoped desired subscription,
   actual track, transition phase, revision, and track-local recovery escalation;
