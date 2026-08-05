@@ -3,9 +3,9 @@ import { Loader2Icon } from '#/components/icons'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
+import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import { Button } from '#/components/ui/button'
 import {
-  Card,
   CardContent,
   CardDescription,
   CardFooter,
@@ -82,12 +82,17 @@ function VerifyEmailPage() {
   }, [token])
 
   return (
-    <div className="gradient-surface-content flex min-h-svh flex-col items-center justify-center bg-background px-6 py-12">
-      <Card className="w-full max-w-md">
+    <AuthLayout>
+      <AuthCard>
         <CardHeader>
-          <CardTitle>Подтверждение email</CardTitle>
+          <CardTitle>
+            {state.status === 'loading' && 'Проверяем ссылку'}
+            {state.status === 'success' && 'Email подтверждён'}
+            {state.status === 'error' && 'Ссылка не сработала'}
+          </CardTitle>
           <CardDescription>
-            {state.status === 'loading' && 'Проверяем ссылку из письма…'}
+            {state.status === 'loading' &&
+              'Это займёт всего несколько секунд.'}
             {state.status === 'success' &&
               (state.hasTicket
                 ? 'Вход выполнен, перенаправляем…'
@@ -107,7 +112,7 @@ function VerifyEmailPage() {
             </Button>
           </CardFooter>
         ) : null}
-      </Card>
-    </div>
+      </AuthCard>
+    </AuthLayout>
   )
 }

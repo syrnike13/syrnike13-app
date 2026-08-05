@@ -150,6 +150,26 @@ ComPtr<IMMDevice> renderDevice(const std::string& device_id) {
   return device;
 }
 
+std::string audioEndpointId(IMMDevice* device) {
+  return deviceId(device);
+}
+
+std::string resolvedRenderDeviceId(const std::string& device_id) {
+  ScopedCom com;
+  if (FAILED(com.result())) {
+    throwAudioFailure(com.result(), "initialize render endpoint resolver COM failed");
+  }
+  const auto resolved = deviceId(renderDevice(device_id).Get());
+  if (resolved.empty()) {
+    throw AudioFailure(
+      AudioFailureKind::DeviceNotFound,
+      "resolved audio output has no endpoint id",
+      HRESULT_FROM_WIN32(ERROR_NOT_FOUND)
+    );
+  }
+  return resolved;
+}
+
 std::vector<DeviceInfo> listAudioDevices() {
   std::vector<DeviceInfo> result;
   std::string default_capture;
@@ -189,16 +209,6 @@ bool audioEndpointChangeRequiresDefaultRetry(
   const bool selected_lost =
     !follows_default && selected_device_id == change.device_id;
   return selected_lost || (default_changed && (follows_default || fallback_pending));
-}
-
-bool configuredAudioOutputEndpointChangeRequiresDefaultRetry(
-  bool output_configured,
-  std::string_view selected_device_id,
-  bool fallback_pending,
-  const AudioEndpointChange& change
-) noexcept {
-  return output_configured && audioEndpointChangeRequiresDefaultRetry(
-    selected_device_id, fallback_pending, change);
 }
 
 namespace {
@@ -242,7 +252,9 @@ class EndpointNotificationClient final : public IMMNotificationClient {
     return S_OK;
   }
   HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR id) override {
-    (void)belongsToMonitoredFlow(id, true);
+    if (belongsToMonitoredFlow(id, true)) {
+      notify(AudioEndpointChangeKind::Added, id);
+    }
     return S_OK;
   }
   HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR id) override {
@@ -257,7 +269,9 @@ class EndpointNotificationClient final : public IMMNotificationClient {
   }
   HRESULT STDMETHODCALLTYPE OnDeviceStateChanged(LPCWSTR id, DWORD state) override {
     if ((state & DEVICE_STATE_ACTIVE) != 0) {
-      (void)belongsToMonitoredFlow(id, true);
+      if (belongsToMonitoredFlow(id, true)) {
+        notify(AudioEndpointChangeKind::Active, id);
+      }
     } else if (belongsToMonitoredFlow(id, false)) {
       notify(AudioEndpointChangeKind::Disabled, id);
     }

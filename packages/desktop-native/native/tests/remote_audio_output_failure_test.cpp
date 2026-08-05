@@ -21,7 +21,7 @@ namespace {
 struct AsyncOutputOwner {
   explicit AsyncOutputOwner(
     syrnike::desktop_native::AsyncCleanupLauncher cleanup_launcher
-  ) : output({}, {}, std::move(cleanup_launcher)) {}
+  ) : output({}, {}, {}, std::move(cleanup_launcher)) {}
 
   syrnike::desktop_native::media::RemoteAudioOutput output;
 };
@@ -32,8 +32,9 @@ int main() try {
   if (!livekit::initialize(livekit::LogLevel::Off)) return 1;
   std::mutex mutex;
   std::condition_variable changed;
-  std::optional<syrnike::desktop_native::media::AudioFailureInfo> failure;
-  int failure_deliveries = 0;
+  std::optional<syrnike::desktop_native::media::RemoteAudioOutputState>
+    output_state;
+  int state_deliveries = 0;
   using syrnike::desktop_native::media::AudioFailureKind;
   using syrnike::desktop_native::media::audioFailureRetryable;
   using syrnike::desktop_native::media::audioFailureAllowsDefaultFallback;
@@ -41,10 +42,9 @@ int main() try {
   using syrnike::desktop_native::media::classifyAudioHresult;
   using syrnike::desktop_native::media::AudioEndpointChange;
   using syrnike::desktop_native::media::AudioEndpointChangeKind;
-  using syrnike::desktop_native::media::AudioOutputDeviceIntent;
   using syrnike::desktop_native::media::audioEndpointChangeRequiresDefaultRetry;
-  using syrnike::desktop_native::media::configuredAudioOutputEndpointChangeRequiresDefaultRetry;
-  using syrnike::desktop_native::media::retainAudioOutputEndpointRetry;
+  using syrnike::desktop_native::media::RemoteAudioOutputPhase;
+  using syrnike::desktop_native::media::remoteAudioEndpointChangeCanRearmRecovery;
   using syrnike::desktop_native::media::startAudioOutputWithRollback;
   if (classifyAudioHresult(AUDCLNT_E_DEVICE_INVALIDATED) !=
       AudioFailureKind::EndpointInvalidated) {
@@ -66,17 +66,6 @@ int main() try {
       !audioFailureCodeAllowsDefaultFallback("audio_endpoint_invalidated") ||
       audioFailureCodeAllowsDefaultFallback("audio_access_denied")) {
     throw std::runtime_error("audio default fallback escaped endpoint-loss policy");
-  }
-  if (retainAudioOutputEndpointRetry(
-        AudioOutputDeviceIntent::UserConfiguration,
-        AudioFailureKind::EndpointInvalidated) ||
-      !retainAudioOutputEndpointRetry(
-        AudioOutputDeviceIntent::EndpointRecovery,
-        AudioFailureKind::EndpointInvalidated) ||
-      retainAudioOutputEndpointRetry(
-        AudioOutputDeviceIntent::EndpointRecovery,
-        AudioFailureKind::AccessDenied)) {
-    throw std::runtime_error("output endpoint retry escaped its owning intent");
   }
   bool restored_previous = false;
   try {
@@ -138,47 +127,67 @@ int main() try {
       )) {
     throw std::runtime_error("endpoint fallback policy regressed selected/stale handling");
   }
-  if (configuredAudioOutputEndpointChangeRequiresDefaultRetry(
-        false, "default", false, default_changed)) {
-    throw std::runtime_error("cold endpoint notification started the output renderer");
+  const AudioEndpointChange added{
+    eRender, AudioEndpointChangeKind::Added, "available-output"
+  };
+  const AudioEndpointChange active{
+    eRender, AudioEndpointChangeKind::Active, "available-output"
+  };
+  const AudioEndpointChange capture_added{
+    eCapture, AudioEndpointChangeKind::Added, "capture-endpoint"
+  };
+  if (!remoteAudioEndpointChangeCanRearmRecovery(default_changed) ||
+      !remoteAudioEndpointChangeCanRearmRecovery(added) ||
+      !remoteAudioEndpointChangeCanRearmRecovery(active) ||
+      remoteAudioEndpointChangeCanRearmRecovery(removed_a) ||
+      remoteAudioEndpointChangeCanRearmRecovery(capture_added) ||
+      remoteAudioEndpointChangeCanRearmRecovery(
+        communications_default_changed
+      )) {
+    throw std::runtime_error("failed output recovery lost endpoint-return policy");
   }
   // LiveKit-owned tracks and streams must be destroyed before the process-wide
   // SDK shutdown. Release builds expose this ordering contract more reliably.
   {
   syrnike::desktop_native::media::RemoteAudioOutput output(
-    [&](syrnike::desktop_native::media::AudioFailureInfo info, std::string, std::uint64_t) {
+    [&](syrnike::desktop_native::media::RemoteAudioOutputState state) {
       {
         std::lock_guard lock(mutex);
-        failure = std::move(info);
-        failure_deliveries += 1;
+        output_state = std::move(state);
+        state_deliveries += 1;
       }
       changed.notify_all();
     }
   );
 
   try {
-    output.setOutputDevice(
-      "__syrnike_missing_audio_output__",
-      AudioOutputDeviceIntent::UserConfiguration
-    );
+    output.setOutputDevice("__syrnike_missing_audio_output__");
   } catch (const std::exception& error) {
     std::lock_guard lock(mutex);
-    failure = syrnike::desktop_native::media::describeAudioFailure(error);
-    failure_deliveries += 1;
+    output_state = syrnike::desktop_native::media::RemoteAudioOutputState{
+      .phase = RemoteAudioOutputPhase::Failed,
+      .failure = syrnike::desktop_native::media::describeAudioFailure(error),
+    };
+    state_deliveries += 1;
     changed.notify_all();
   }
   std::unique_lock lock(mutex);
   if (!changed.wait_for(lock, std::chrono::seconds(2), [&] {
-        return failure.has_value();
+        return output_state.has_value();
       })) {
-    throw std::runtime_error("renderer failure was not surfaced");
+    throw std::runtime_error("renderer state was not surfaced");
   }
-  if (failure->code.empty() || failure->hresult >= 0 ||
-      failure->message.find("unavailable") == std::string::npos) {
-    throw std::runtime_error("renderer failure lost its diagnostic message");
+  if (output_state->phase != RemoteAudioOutputPhase::Running &&
+      output_state->phase != RemoteAudioOutputPhase::Failed) {
+    throw std::runtime_error("renderer ended in an invalid output state");
   }
-  if (failure_deliveries != 1) {
-    throw std::runtime_error("renderer startup failure had more than one owner");
+  if (output_state->phase == RemoteAudioOutputPhase::Running &&
+      (!output_state->using_fallback || !output_state->failure ||
+       output_state->failure->code != "audio_output_fallback_default")) {
+    throw std::runtime_error("renderer fallback lost its typed output state");
+  }
+  if (state_deliveries != 1) {
+    throw std::runtime_error("renderer configuration had more than one state owner");
   }
   lock.unlock();
   output.stop();
@@ -186,10 +195,7 @@ int main() try {
   syrnike::desktop_native::media::RemoteAudioOutput concurrent_output;
   std::thread switcher([&] {
     try {
-      concurrent_output.setOutputDevice(
-        "default",
-        AudioOutputDeviceIntent::UserConfiguration
-      );
+      concurrent_output.setOutputDevice("default");
     } catch (...) {}
   });
   std::thread stopper([&] { concurrent_output.stop(); });
@@ -199,6 +205,7 @@ int main() try {
   std::optional<syrnike::desktop_native::media::AudioFailureInfo>
     direct_sink_failure;
   syrnike::desktop_native::media::RemoteAudioOutput duplicate_output(
+    {},
     [&](auto info, std::string, std::uint64_t) {
       direct_sink_failure = std::move(info);
     }

@@ -24,7 +24,7 @@ const STOP_TIMEOUT_MS = 5_000
 const REMOTE_VIDEO_FIRST_FRAME_TIMEOUT_MS = 8_000
 const REMOTE_VIDEO_RETRY_BASE_DELAY_MS = 250
 const REMOTE_VIDEO_RETRY_MAX_DELAY_MS = 8_000
-const REMOTE_VIDEO_MAX_RECOVERY_ATTEMPTS = 3
+const REMOTE_VIDEO_DEGRADED_RECOVERY_ATTEMPT = 3
 
 type PreviewSessionState = {
   sessionId: string
@@ -83,6 +83,8 @@ type RemoteVideoDemandState = {
   recoveryTimer: ReturnType<typeof setTimeout> | null
   recoveryPromise: Promise<boolean> | null
   lastFrameAt: number | null
+  subscriptionFailure: boolean
+  failureNotified: boolean
 }
 
 export class NativeMediaController {
@@ -221,6 +223,8 @@ export class NativeMediaController {
       recoveryTimer: null,
       recoveryPromise: null,
       lastFrameAt: null,
+      subscriptionFailure: false,
+      failureNotified: false,
     }
     this.remoteVideoDemands.set(key, demand)
     this.armRemoteVideoRecovery(key, demand)
@@ -279,11 +283,13 @@ export class NativeMediaController {
     const desired = this.remoteVideoDemands.get(key)
     if (!desired?.demanded) return false
     if (desired.recoveryPromise) return desired.recoveryPromise
-    if (desired.recoveryAttempt >= REMOTE_VIDEO_MAX_RECOVERY_ATTEMPTS) {
-      this.exhaustRemoteVideoDemand(key, desired)
-      return false
-    }
     desired.recoveryAttempt += 1
+    if (
+      desired.recoveryAttempt >= REMOTE_VIDEO_DEGRADED_RECOVERY_ATTEMPT &&
+      !desired.failureNotified
+    ) {
+      this.reportDegradedRemoteVideoDemand(desired)
+    }
     this.options.diagnostics?.({
       scope: 'native-media-controller',
       event: 'remote_video_recovery_started',
@@ -321,6 +327,8 @@ export class NativeMediaController {
     const recovered = demand.lastFrameAt === null || demand.recoveryAttempt > 0
     demand.lastFrameAt = Date.now()
     demand.recoveryAttempt = 0
+    demand.subscriptionFailure = false
+    demand.failureNotified = false
     if (recovered) {
       this.options.diagnostics?.({
         scope: 'native-media-controller',
@@ -501,7 +509,14 @@ export class NativeMediaController {
         event.trackId,
       )
       const demand = this.remoteVideoDemands.get(key)
-      if (demand?.demanded) this.armRemoteVideoRecovery(key, demand, true)
+      if (demand?.demanded) {
+        if (event.type === 'remoteVideoFailed' &&
+          event.reason === 'subscription') {
+          if (!demand.subscriptionFailure) demand.failureNotified = false
+          demand.subscriptionFailure = true
+        }
+        this.armRemoteVideoRecovery(key, demand, true)
+      }
       return
     }
     if (event.type === 'microphoneMetrics') {
@@ -717,38 +732,30 @@ export class NativeMediaController {
     demand.recoveryTimer.unref?.()
   }
 
-  private exhaustRemoteVideoDemand(
-    key: string,
+  private reportDegradedRemoteVideoDemand(
     demand: RemoteVideoDemandState,
   ) {
-    if (this.remoteVideoDemands.get(key) !== demand) return
-    if (demand.recoveryTimer) clearTimeout(demand.recoveryTimer)
-    this.remoteVideoDemands.delete(key)
-    const message = 'Не удалось подключиться к видеопотоку'
+    demand.failureNotified = true
     this.options.diagnostics?.({
       scope: 'native-media-controller',
-      event: 'remote_video_recovery_exhausted',
+      event: 'remote_video_recovery_degraded',
       kind: 'remote-video',
       stage: 'native-state-aware-recovery',
       sessionId: demand.sessionId,
       generation: demand.generation,
       recoveryAttempt: demand.recoveryAttempt,
-      reason: 'recovery_budget_exhausted',
+      reason: demand.subscriptionFailure
+        ? 'subscription_recovery_budget_exceeded'
+        : 'local_recovery_budget_exceeded',
     })
+    if (!demand.subscriptionFailure) return
     this.emit({
       type: 'remoteVideoDemandFailed',
       sessionId: demand.sessionId,
       generation: demand.generation,
       trackId: demand.trackId,
-      message,
+      message: 'Не удалось подключиться к видеопотоку',
     })
-    void this.request({
-      type: 'setRemoteVideoDemand',
-      sessionId: demand.sessionId,
-      generation: demand.generation,
-      trackId: demand.trackId,
-      demanded: false,
-    }, 2_000).catch(() => undefined)
   }
 
   private remoteVideoFirstFrameTimeout() {

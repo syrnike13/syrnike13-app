@@ -23,13 +23,15 @@ export const usernameSchema = z
 export const registerSchema = z.object({
   email: z.string().email('Введите корректный email'),
   password: z.string().min(8, 'Минимум 8 символов'),
+  confirm: z.string().min(1, 'Повторите пароль'),
   invite: z.string().optional(),
-  captcha: z.string().optional(),
+}).refine((data) => data.password === data.confirm, {
+  message: 'Пароли не совпадают',
+  path: ['confirm'],
 })
 
 export function createRegisterSchema(options: {
   requireInvite?: boolean
-  requireCaptcha?: boolean
 }) {
   return registerSchema.superRefine((data, ctx) => {
     if (options.requireInvite && !data.invite?.trim()) {
@@ -37,13 +39,6 @@ export function createRegisterSchema(options: {
         code: 'custom',
         message: 'Нужен код приглашения',
         path: ['invite'],
-      })
-    }
-    if (options.requireCaptcha && !data.captcha?.trim()) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'Подтвердите captcha',
-        path: ['captcha'],
       })
     }
   })

@@ -4,9 +4,9 @@ import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
+import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import { Button } from '#/components/ui/button'
 import {
-  Card,
   CardContent,
   CardDescription,
   CardFooter,
@@ -57,14 +57,14 @@ function ResetRequestPage() {
   })
 
   return (
-    <div className="gradient-surface-content flex min-h-svh flex-col items-center justify-center bg-background px-6 py-12">
-      <Card className="w-full max-w-md">
+    <AuthLayout>
+      <AuthCard>
         <CardHeader>
-          <CardTitle>Сброс пароля</CardTitle>
+          <CardTitle>{sent ? 'Письмо отправлено' : 'Вернуть доступ'}</CardTitle>
           <CardDescription>
             {sent
-              ? 'Проверьте почту и перейдите по ссылке из письма.'
-              : 'На email придёт ссылка для нового пароля'}
+              ? 'Если такой аккаунт существует, ссылка для нового пароля уже в почте.'
+              : 'Укажите email — отправим ссылку для нового пароля.'}
           </CardDescription>
         </CardHeader>
         {sent ? (
@@ -86,6 +86,7 @@ function ResetRequestPage() {
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="reset-email">Email</Label>
                     <Input
+                      className="auth-input"
                       id="reset-email"
                       type="email"
                       autoComplete="email"
@@ -103,15 +104,15 @@ function ResetRequestPage() {
                 {submitting ? (
                   <Loader2Icon className="animate-spin" data-icon="inline-start" />
                 ) : null}
-                Отправить
+                Отправить ссылку
               </Button>
-              <Button variant="ghost" className="w-full" asChild>
-                <Link to="/login">Назад</Link>
-              </Button>
+              <p className="auth-secondary-action">
+                Вспомнили пароль? <Link to="/login">Вернуться ко входу</Link>
+              </p>
             </CardFooter>
           </form>
         )}
-      </Card>
-    </div>
+      </AuthCard>
+    </AuthLayout>
   )
 }

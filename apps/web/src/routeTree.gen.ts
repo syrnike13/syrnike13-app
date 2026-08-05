@@ -9,47 +9,42 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as MRouteRouteImport } from './routes/m/route'
-import { Route as AppRouteRouteImport } from './routes/app/route'
-import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as MIndexRouteImport } from './routes/m/index'
-import { Route as LoginIndexRouteImport } from './routes/login/index'
+import { Route as AdminRouteRouteImport } from './routes/admin/route'
+import { Route as AppRouteRouteImport } from './routes/app/route'
+import { Route as MRouteRouteImport } from './routes/m/route'
 import { Route as AppIndexRouteImport } from './routes/app/index'
-import { Route as VerifyTokenRouteImport } from './routes/verify.$token'
-import { Route as MSettingsRouteImport } from './routes/m/settings'
-import { Route as MProfileRouteImport } from './routes/m/profile'
-import { Route as MFriendsRouteImport } from './routes/m/friends'
-import { Route as LoginResetRouteImport } from './routes/login/reset'
-import { Route as LoginResendRouteImport } from './routes/login/resend'
-import { Route as LoginRegisterRouteImport } from './routes/login/register'
-import { Route as LoginOnboardRouteImport } from './routes/login/onboard'
-import { Route as LoginCheckRouteImport } from './routes/login/check'
-import { Route as InviteCodeRouteImport } from './routes/invite/$code'
-import { Route as DesktopOverlayRouteImport } from './routes/desktop/overlay'
-import { Route as AppVoiceDebugRouteImport } from './routes/app/voice-debug'
-import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppFriendsRouteImport } from './routes/app/friends'
-import { Route as MFeedbackIndexRouteImport } from './routes/m/feedback/index'
-import { Route as AppFeedbackIndexRouteImport } from './routes/app/feedback/index'
-import { Route as MFeedbackNewRouteImport } from './routes/m/feedback/new'
-import { Route as MFeedbackFeedbackIdRouteImport } from './routes/m/feedback/$feedbackId'
-import { Route as MCChannelIdRouteImport } from './routes/m/c/$channelId'
-import { Route as LoginResetTokenRouteImport } from './routes/login/reset.$token'
-import { Route as AppFeedbackNewRouteImport } from './routes/app/feedback/new'
-import { Route as AppFeedbackFeedbackIdRouteImport } from './routes/app/feedback/$feedbackId'
+import { Route as AppSettingsRouteImport } from './routes/app/settings'
+import { Route as AppVoiceDebugRouteImport } from './routes/app/voice-debug'
+import { Route as DesktopOverlayRouteImport } from './routes/desktop/overlay'
+import { Route as InviteCodeRouteImport } from './routes/invite/$code'
+import { Route as LoginIndexRouteImport } from './routes/login/index'
+import { Route as LoginCheckRouteImport } from './routes/login/check'
+import { Route as LoginOnboardRouteImport } from './routes/login/onboard'
+import { Route as LoginRegisterRouteImport } from './routes/login/register'
+import { Route as LoginResendRouteImport } from './routes/login/resend'
+import { Route as LoginResetRouteImport } from './routes/login/reset'
+import { Route as MIndexRouteImport } from './routes/m/index'
+import { Route as MFriendsRouteImport } from './routes/m/friends'
+import { Route as MProfileRouteImport } from './routes/m/profile'
+import { Route as MSettingsRouteImport } from './routes/m/settings'
+import { Route as VerifyTokenRouteImport } from './routes/verify.$token'
 import { Route as AppCChannelIdRouteImport } from './routes/app/c/$channelId'
-import { Route as MServersServerIdSettingsRouteImport } from './routes/m/servers/$serverId/settings'
+import { Route as AppFeedbackIndexRouteImport } from './routes/app/feedback/index'
+import { Route as AppFeedbackFeedbackIdRouteImport } from './routes/app/feedback/$feedbackId'
+import { Route as AppFeedbackNewRouteImport } from './routes/app/feedback/new'
+import { Route as LoginResetTokenRouteImport } from './routes/login/reset.$token'
+import { Route as MCChannelIdRouteImport } from './routes/m/c/$channelId'
+import { Route as MFeedbackIndexRouteImport } from './routes/m/feedback/index'
+import { Route as MFeedbackFeedbackIdRouteImport } from './routes/m/feedback/$feedbackId'
+import { Route as MFeedbackNewRouteImport } from './routes/m/feedback/new'
 import { Route as AppServersServerIdSettingsRouteImport } from './routes/app/servers/$serverId/settings'
+import { Route as MServersServerIdSettingsRouteImport } from './routes/m/servers/$serverId/settings'
 
-const MRouteRoute = MRouteRouteImport.update({
-  id: '/m',
-  path: '/m',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AppRouteRoute = AppRouteRouteImport.update({
-  id: '/app',
-  path: '/app',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRouteRoute = AdminRouteRouteImport.update({
@@ -57,19 +52,14 @@ const AdminRouteRoute = AdminRouteRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AppRouteRoute = AppRouteRouteImport.update({
+  id: '/app',
+  path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MIndexRoute = MIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => MRouteRoute,
-} as any)
-const LoginIndexRoute = LoginIndexRouteImport.update({
-  id: '/login/',
-  path: '/login/',
+const MRouteRoute = MRouteRouteImport.update({
+  id: '/m',
+  path: '/m',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -77,64 +67,9 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const VerifyTokenRoute = VerifyTokenRouteImport.update({
-  id: '/verify/$token',
-  path: '/verify/$token',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MSettingsRoute = MSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => MRouteRoute,
-} as any)
-const MProfileRoute = MProfileRouteImport.update({
-  id: '/profile',
-  path: '/profile',
-  getParentRoute: () => MRouteRoute,
-} as any)
-const MFriendsRoute = MFriendsRouteImport.update({
+const AppFriendsRoute = AppFriendsRouteImport.update({
   id: '/friends',
   path: '/friends',
-  getParentRoute: () => MRouteRoute,
-} as any)
-const LoginResetRoute = LoginResetRouteImport.update({
-  id: '/login/reset',
-  path: '/login/reset',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginResendRoute = LoginResendRouteImport.update({
-  id: '/login/resend',
-  path: '/login/resend',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRegisterRoute = LoginRegisterRouteImport.update({
-  id: '/login/register',
-  path: '/login/register',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginOnboardRoute = LoginOnboardRouteImport.update({
-  id: '/login/onboard',
-  path: '/login/onboard',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginCheckRoute = LoginCheckRouteImport.update({
-  id: '/login/check',
-  path: '/login/check',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InviteCodeRoute = InviteCodeRouteImport.update({
-  id: '/invite/$code',
-  path: '/invite/$code',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DesktopOverlayRoute = DesktopOverlayRouteImport.update({
-  id: '/desktop/overlay',
-  path: '/desktop/overlay',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AppVoiceDebugRoute = AppVoiceDebugRouteImport.update({
-  id: '/voice-debug',
-  path: '/voice-debug',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -142,44 +77,84 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppFriendsRoute = AppFriendsRouteImport.update({
-  id: '/friends',
-  path: '/friends',
+const AppVoiceDebugRoute = AppVoiceDebugRouteImport.update({
+  id: '/voice-debug',
+  path: '/voice-debug',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const MFeedbackIndexRoute = MFeedbackIndexRouteImport.update({
-  id: '/feedback/',
-  path: '/feedback/',
+const DesktopOverlayRoute = DesktopOverlayRouteImport.update({
+  id: '/desktop/overlay',
+  path: '/desktop/overlay',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteCodeRoute = InviteCodeRouteImport.update({
+  id: '/invite/$code',
+  path: '/invite/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginIndexRoute = LoginIndexRouteImport.update({
+  id: '/login/',
+  path: '/login/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginCheckRoute = LoginCheckRouteImport.update({
+  id: '/login/check',
+  path: '/login/check',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginOnboardRoute = LoginOnboardRouteImport.update({
+  id: '/login/onboard',
+  path: '/login/onboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRegisterRoute = LoginRegisterRouteImport.update({
+  id: '/login/register',
+  path: '/login/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginResendRoute = LoginResendRouteImport.update({
+  id: '/login/resend',
+  path: '/login/resend',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginResetRoute = LoginResetRouteImport.update({
+  id: '/login/reset',
+  path: '/login/reset',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MIndexRoute = MIndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => MRouteRoute,
+} as any)
+const MFriendsRoute = MFriendsRouteImport.update({
+  id: '/friends',
+  path: '/friends',
+  getParentRoute: () => MRouteRoute,
+} as any)
+const MProfileRoute = MProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => MRouteRoute,
+} as any)
+const MSettingsRoute = MSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => MRouteRoute,
+} as any)
+const VerifyTokenRoute = VerifyTokenRouteImport.update({
+  id: '/verify/$token',
+  path: '/verify/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppCChannelIdRoute = AppCChannelIdRouteImport.update({
+  id: '/c/$channelId',
+  path: '/c/$channelId',
+  getParentRoute: () => AppRouteRoute,
 } as any)
 const AppFeedbackIndexRoute = AppFeedbackIndexRouteImport.update({
   id: '/feedback/',
   path: '/feedback/',
-  getParentRoute: () => AppRouteRoute,
-} as any)
-const MFeedbackNewRoute = MFeedbackNewRouteImport.update({
-  id: '/feedback/new',
-  path: '/feedback/new',
-  getParentRoute: () => MRouteRoute,
-} as any)
-const MFeedbackFeedbackIdRoute = MFeedbackFeedbackIdRouteImport.update({
-  id: '/feedback/$feedbackId',
-  path: '/feedback/$feedbackId',
-  getParentRoute: () => MRouteRoute,
-} as any)
-const MCChannelIdRoute = MCChannelIdRouteImport.update({
-  id: '/c/$channelId',
-  path: '/c/$channelId',
-  getParentRoute: () => MRouteRoute,
-} as any)
-const LoginResetTokenRoute = LoginResetTokenRouteImport.update({
-  id: '/$token',
-  path: '/$token',
-  getParentRoute: () => LoginResetRoute,
-} as any)
-const AppFeedbackNewRoute = AppFeedbackNewRouteImport.update({
-  id: '/feedback/new',
-  path: '/feedback/new',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppFeedbackFeedbackIdRoute = AppFeedbackFeedbackIdRouteImport.update({
@@ -187,22 +162,47 @@ const AppFeedbackFeedbackIdRoute = AppFeedbackFeedbackIdRouteImport.update({
   path: '/feedback/$feedbackId',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppCChannelIdRoute = AppCChannelIdRouteImport.update({
-  id: '/c/$channelId',
-  path: '/c/$channelId',
+const AppFeedbackNewRoute = AppFeedbackNewRouteImport.update({
+  id: '/feedback/new',
+  path: '/feedback/new',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const MServersServerIdSettingsRoute =
-  MServersServerIdSettingsRouteImport.update({
-    id: '/servers/$serverId/settings',
-    path: '/servers/$serverId/settings',
-    getParentRoute: () => MRouteRoute,
-  } as any)
+const LoginResetTokenRoute = LoginResetTokenRouteImport.update({
+  id: '/$token',
+  path: '/$token',
+  getParentRoute: () => LoginResetRoute,
+} as any)
+const MCChannelIdRoute = MCChannelIdRouteImport.update({
+  id: '/c/$channelId',
+  path: '/c/$channelId',
+  getParentRoute: () => MRouteRoute,
+} as any)
+const MFeedbackIndexRoute = MFeedbackIndexRouteImport.update({
+  id: '/feedback/',
+  path: '/feedback/',
+  getParentRoute: () => MRouteRoute,
+} as any)
+const MFeedbackFeedbackIdRoute = MFeedbackFeedbackIdRouteImport.update({
+  id: '/feedback/$feedbackId',
+  path: '/feedback/$feedbackId',
+  getParentRoute: () => MRouteRoute,
+} as any)
+const MFeedbackNewRoute = MFeedbackNewRouteImport.update({
+  id: '/feedback/new',
+  path: '/feedback/new',
+  getParentRoute: () => MRouteRoute,
+} as any)
 const AppServersServerIdSettingsRoute =
   AppServersServerIdSettingsRouteImport.update({
     id: '/servers/$serverId/settings',
     path: '/servers/$serverId/settings',
     getParentRoute: () => AppRouteRoute,
+  } as any)
+const MServersServerIdSettingsRoute =
+  MServersServerIdSettingsRouteImport.update({
+    id: '/servers/$serverId/settings',
+    path: '/servers/$serverId/settings',
+    getParentRoute: () => MRouteRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -427,18 +427,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/m': {
-      id: '/m'
-      path: '/m'
-      fullPath: '/m'
-      preLoaderRoute: typeof MRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/app': {
-      id: '/app'
-      path: '/app'
-      fullPath: '/app'
-      preLoaderRoute: typeof AppRouteRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -448,25 +441,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/m/': {
-      id: '/m/'
-      path: '/'
-      fullPath: '/m/'
-      preLoaderRoute: typeof MIndexRouteImport
-      parentRoute: typeof MRouteRoute
-    }
-    '/login/': {
-      id: '/login/'
-      path: '/login'
-      fullPath: '/login/'
-      preLoaderRoute: typeof LoginIndexRouteImport
+    '/m': {
+      id: '/m'
+      path: '/m'
+      fullPath: '/m'
+      preLoaderRoute: typeof MRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/': {
@@ -476,88 +462,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/verify/$token': {
-      id: '/verify/$token'
-      path: '/verify/$token'
-      fullPath: '/verify/$token'
-      preLoaderRoute: typeof VerifyTokenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/m/settings': {
-      id: '/m/settings'
-      path: '/settings'
-      fullPath: '/m/settings'
-      preLoaderRoute: typeof MSettingsRouteImport
-      parentRoute: typeof MRouteRoute
-    }
-    '/m/profile': {
-      id: '/m/profile'
-      path: '/profile'
-      fullPath: '/m/profile'
-      preLoaderRoute: typeof MProfileRouteImport
-      parentRoute: typeof MRouteRoute
-    }
-    '/m/friends': {
-      id: '/m/friends'
+    '/app/friends': {
+      id: '/app/friends'
       path: '/friends'
-      fullPath: '/m/friends'
-      preLoaderRoute: typeof MFriendsRouteImport
-      parentRoute: typeof MRouteRoute
-    }
-    '/login/reset': {
-      id: '/login/reset'
-      path: '/login/reset'
-      fullPath: '/login/reset'
-      preLoaderRoute: typeof LoginResetRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login/resend': {
-      id: '/login/resend'
-      path: '/login/resend'
-      fullPath: '/login/resend'
-      preLoaderRoute: typeof LoginResendRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login/register': {
-      id: '/login/register'
-      path: '/login/register'
-      fullPath: '/login/register'
-      preLoaderRoute: typeof LoginRegisterRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login/onboard': {
-      id: '/login/onboard'
-      path: '/login/onboard'
-      fullPath: '/login/onboard'
-      preLoaderRoute: typeof LoginOnboardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login/check': {
-      id: '/login/check'
-      path: '/login/check'
-      fullPath: '/login/check'
-      preLoaderRoute: typeof LoginCheckRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/invite/$code': {
-      id: '/invite/$code'
-      path: '/invite/$code'
-      fullPath: '/invite/$code'
-      preLoaderRoute: typeof InviteCodeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/desktop/overlay': {
-      id: '/desktop/overlay'
-      path: '/desktop/overlay'
-      fullPath: '/desktop/overlay'
-      preLoaderRoute: typeof DesktopOverlayRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/app/voice-debug': {
-      id: '/app/voice-debug'
-      path: '/voice-debug'
-      fullPath: '/app/voice-debug'
-      preLoaderRoute: typeof AppVoiceDebugRouteImport
+      fullPath: '/app/friends'
+      preLoaderRoute: typeof AppFriendsRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/settings': {
@@ -567,60 +476,116 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/friends': {
-      id: '/app/friends'
-      path: '/friends'
-      fullPath: '/app/friends'
-      preLoaderRoute: typeof AppFriendsRouteImport
+    '/app/voice-debug': {
+      id: '/app/voice-debug'
+      path: '/voice-debug'
+      fullPath: '/app/voice-debug'
+      preLoaderRoute: typeof AppVoiceDebugRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/m/feedback/': {
-      id: '/m/feedback/'
-      path: '/feedback'
-      fullPath: '/m/feedback/'
-      preLoaderRoute: typeof MFeedbackIndexRouteImport
+    '/desktop/overlay': {
+      id: '/desktop/overlay'
+      path: '/desktop/overlay'
+      fullPath: '/desktop/overlay'
+      preLoaderRoute: typeof DesktopOverlayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite/$code': {
+      id: '/invite/$code'
+      path: '/invite/$code'
+      fullPath: '/invite/$code'
+      preLoaderRoute: typeof InviteCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login/': {
+      id: '/login/'
+      path: '/login'
+      fullPath: '/login/'
+      preLoaderRoute: typeof LoginIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login/check': {
+      id: '/login/check'
+      path: '/login/check'
+      fullPath: '/login/check'
+      preLoaderRoute: typeof LoginCheckRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login/onboard': {
+      id: '/login/onboard'
+      path: '/login/onboard'
+      fullPath: '/login/onboard'
+      preLoaderRoute: typeof LoginOnboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login/register': {
+      id: '/login/register'
+      path: '/login/register'
+      fullPath: '/login/register'
+      preLoaderRoute: typeof LoginRegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login/resend': {
+      id: '/login/resend'
+      path: '/login/resend'
+      fullPath: '/login/resend'
+      preLoaderRoute: typeof LoginResendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login/reset': {
+      id: '/login/reset'
+      path: '/login/reset'
+      fullPath: '/login/reset'
+      preLoaderRoute: typeof LoginResetRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/m/': {
+      id: '/m/'
+      path: '/'
+      fullPath: '/m/'
+      preLoaderRoute: typeof MIndexRouteImport
       parentRoute: typeof MRouteRoute
+    }
+    '/m/friends': {
+      id: '/m/friends'
+      path: '/friends'
+      fullPath: '/m/friends'
+      preLoaderRoute: typeof MFriendsRouteImport
+      parentRoute: typeof MRouteRoute
+    }
+    '/m/profile': {
+      id: '/m/profile'
+      path: '/profile'
+      fullPath: '/m/profile'
+      preLoaderRoute: typeof MProfileRouteImport
+      parentRoute: typeof MRouteRoute
+    }
+    '/m/settings': {
+      id: '/m/settings'
+      path: '/settings'
+      fullPath: '/m/settings'
+      preLoaderRoute: typeof MSettingsRouteImport
+      parentRoute: typeof MRouteRoute
+    }
+    '/verify/$token': {
+      id: '/verify/$token'
+      path: '/verify/$token'
+      fullPath: '/verify/$token'
+      preLoaderRoute: typeof VerifyTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app/c/$channelId': {
+      id: '/app/c/$channelId'
+      path: '/c/$channelId'
+      fullPath: '/app/c/$channelId'
+      preLoaderRoute: typeof AppCChannelIdRouteImport
+      parentRoute: typeof AppRouteRoute
     }
     '/app/feedback/': {
       id: '/app/feedback/'
       path: '/feedback'
       fullPath: '/app/feedback/'
       preLoaderRoute: typeof AppFeedbackIndexRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
-    '/m/feedback/new': {
-      id: '/m/feedback/new'
-      path: '/feedback/new'
-      fullPath: '/m/feedback/new'
-      preLoaderRoute: typeof MFeedbackNewRouteImport
-      parentRoute: typeof MRouteRoute
-    }
-    '/m/feedback/$feedbackId': {
-      id: '/m/feedback/$feedbackId'
-      path: '/feedback/$feedbackId'
-      fullPath: '/m/feedback/$feedbackId'
-      preLoaderRoute: typeof MFeedbackFeedbackIdRouteImport
-      parentRoute: typeof MRouteRoute
-    }
-    '/m/c/$channelId': {
-      id: '/m/c/$channelId'
-      path: '/c/$channelId'
-      fullPath: '/m/c/$channelId'
-      preLoaderRoute: typeof MCChannelIdRouteImport
-      parentRoute: typeof MRouteRoute
-    }
-    '/login/reset/$token': {
-      id: '/login/reset/$token'
-      path: '/$token'
-      fullPath: '/login/reset/$token'
-      preLoaderRoute: typeof LoginResetTokenRouteImport
-      parentRoute: typeof LoginResetRoute
-    }
-    '/app/feedback/new': {
-      id: '/app/feedback/new'
-      path: '/feedback/new'
-      fullPath: '/app/feedback/new'
-      preLoaderRoute: typeof AppFeedbackNewRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/feedback/$feedbackId': {
@@ -630,18 +595,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFeedbackFeedbackIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/c/$channelId': {
-      id: '/app/c/$channelId'
-      path: '/c/$channelId'
-      fullPath: '/app/c/$channelId'
-      preLoaderRoute: typeof AppCChannelIdRouteImport
+    '/app/feedback/new': {
+      id: '/app/feedback/new'
+      path: '/feedback/new'
+      fullPath: '/app/feedback/new'
+      preLoaderRoute: typeof AppFeedbackNewRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/m/servers/$serverId/settings': {
-      id: '/m/servers/$serverId/settings'
-      path: '/servers/$serverId/settings'
-      fullPath: '/m/servers/$serverId/settings'
-      preLoaderRoute: typeof MServersServerIdSettingsRouteImport
+    '/login/reset/$token': {
+      id: '/login/reset/$token'
+      path: '/$token'
+      fullPath: '/login/reset/$token'
+      preLoaderRoute: typeof LoginResetTokenRouteImport
+      parentRoute: typeof LoginResetRoute
+    }
+    '/m/c/$channelId': {
+      id: '/m/c/$channelId'
+      path: '/c/$channelId'
+      fullPath: '/m/c/$channelId'
+      preLoaderRoute: typeof MCChannelIdRouteImport
+      parentRoute: typeof MRouteRoute
+    }
+    '/m/feedback/': {
+      id: '/m/feedback/'
+      path: '/feedback'
+      fullPath: '/m/feedback/'
+      preLoaderRoute: typeof MFeedbackIndexRouteImport
+      parentRoute: typeof MRouteRoute
+    }
+    '/m/feedback/$feedbackId': {
+      id: '/m/feedback/$feedbackId'
+      path: '/feedback/$feedbackId'
+      fullPath: '/m/feedback/$feedbackId'
+      preLoaderRoute: typeof MFeedbackFeedbackIdRouteImport
+      parentRoute: typeof MRouteRoute
+    }
+    '/m/feedback/new': {
+      id: '/m/feedback/new'
+      path: '/feedback/new'
+      fullPath: '/m/feedback/new'
+      preLoaderRoute: typeof MFeedbackNewRouteImport
       parentRoute: typeof MRouteRoute
     }
     '/app/servers/$serverId/settings': {
@@ -650,6 +643,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/servers/$serverId/settings'
       preLoaderRoute: typeof AppServersServerIdSettingsRouteImport
       parentRoute: typeof AppRouteRoute
+    }
+    '/m/servers/$serverId/settings': {
+      id: '/m/servers/$serverId/settings'
+      path: '/servers/$serverId/settings'
+      fullPath: '/m/servers/$serverId/settings'
+      preLoaderRoute: typeof MServersServerIdSettingsRouteImport
+      parentRoute: typeof MRouteRoute
     }
   }
 }

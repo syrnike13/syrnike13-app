@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -16,6 +17,8 @@
 namespace livekit { class Track; }
 
 namespace syrnike::desktop_native::media {
+
+struct AudioEndpointChange;
 
 constexpr std::size_t remoteAudioSampleRate() noexcept { return 48'000; }
 
@@ -45,26 +48,40 @@ float resolveRemoteAudioGain(
 );
 float remoteAudioLimiterTargetGain(float peak) noexcept;
 
-enum class AudioOutputDeviceIntent {
-  UserConfiguration,
-  EndpointRecovery,
+enum class RemoteAudioOutputPhase {
+  Stopped,
+  // Internal renderer transition; StateHandler publishes stable phases only.
+  Starting,
+  Running,
+  Recovering,
+  Failed,
 };
 
-bool retainAudioOutputEndpointRetry(
-  AudioOutputDeviceIntent intent,
-  AudioFailureKind failure
-) noexcept;
+struct RemoteAudioOutputState {
+  RemoteAudioOutputPhase phase = RemoteAudioOutputPhase::Stopped;
+  std::string desired_device_id = "default";
+  std::string active_device_id;
+  std::string resolved_endpoint_id;
+  std::uint64_t renderer_epoch = 0;
+  bool using_fallback = false;
+  std::optional<AudioFailureInfo> failure;
+  std::string detail;
+};
 
 void startAudioOutputWithRollback(
   const std::function<void()>& start_candidate,
   const std::function<void()>& restore_previous,
   const std::function<void()>& start_previous
 );
+bool remoteAudioEndpointChangeCanRearmRecovery(
+  const AudioEndpointChange& change
+) noexcept;
 
 // Owns all direct decoded-audio sinks and the single WASAPI mix renderer.
 class RemoteAudioOutput final {
  public:
-  using FailureHandler = std::function<void(
+  using StateHandler = std::function<void(RemoteAudioOutputState)>;
+  using TrackFailureHandler = std::function<void(
     AudioFailureInfo,
     std::string,
     std::uint64_t
@@ -74,7 +91,8 @@ class RemoteAudioOutput final {
   // invoked while RemoteAudioOutput's internal mutex is held.
   using SpeakingActivityHandler = std::function<void(std::vector<std::string>)>;
   explicit RemoteAudioOutput(
-    FailureHandler on_failure = {},
+    StateHandler on_state = {},
+    TrackFailureHandler on_track_failure = {},
     SpeakingActivityHandler on_speaking_activity = {},
     AsyncCleanupLauncher cleanup_launcher = {}
   );
@@ -86,12 +104,8 @@ class RemoteAudioOutput final {
                 std::shared_ptr<livekit::Track> track);
   void removeTrack(const std::string& track_sid);
   void setDeafened(bool deafened);
-  std::uint64_t setOutputDevice(
-    std::string device_id,
-    AudioOutputDeviceIntent intent
-  );
+  std::uint64_t setOutputDevice(std::string device_id);
   std::string outputDeviceId() const;
-  bool isRendererEpochCurrent(std::uint64_t epoch) const;
   void setVolume(float volume);
   void configure(RemoteAudioSettings settings);
   void stop();

@@ -9,9 +9,9 @@ import {
   HCaptchaWidget,
   useHcaptchaRef,
 } from '#/components/auth/hcaptcha-widget'
+import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import { Button } from '#/components/ui/button'
 import {
-  Card,
   CardContent,
   CardDescription,
   CardFooter,
@@ -96,13 +96,12 @@ function ResendVerificationPage() {
 
   if (emailDisabled) {
     return (
-      <div className="gradient-surface-content flex min-h-svh flex-col items-center justify-center bg-background px-6">
-        <Card className="w-full max-w-md">
+      <AuthLayout>
+        <AuthCard>
           <CardHeader>
             <CardTitle>Подтверждение отключено</CardTitle>
             <CardDescription>
-              На этом сервере не требуется подтверждение email. Можно сразу
-              войти или зарегистрироваться.
+              Письмо не требуется — можно сразу войти или создать аккаунт.
             </CardDescription>
           </CardHeader>
           <CardFooter className="flex flex-col gap-2">
@@ -110,18 +109,18 @@ function ResendVerificationPage() {
               <Link to="/login">Ко входу</Link>
             </Button>
           </CardFooter>
-        </Card>
-      </div>
+        </AuthCard>
+      </AuthLayout>
     )
   }
 
   return (
-    <div className="gradient-surface-content flex min-h-svh flex-col items-center justify-center bg-background px-6 py-12">
-      <Card className="w-full max-w-md">
+    <AuthLayout>
+      <AuthCard>
         <CardHeader>
-          <CardTitle>Повторная отправка</CardTitle>
+          <CardTitle>Отправить письмо снова</CardTitle>
           <CardDescription>
-            Отправим письмо с подтверждением ещё раз
+            Укажите email, который использовали при регистрации.
           </CardDescription>
         </CardHeader>
         <form
@@ -136,6 +135,7 @@ function ResendVerificationPage() {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="resend-email">Email</Label>
                   <Input
+                    className="auth-input"
                     id="resend-email"
                     type="email"
                     autoComplete="email"
@@ -156,14 +156,14 @@ function ResendVerificationPage() {
               {submitting ? (
                 <Loader2Icon className="animate-spin" data-icon="inline-start" />
               ) : null}
-              Отправить
+              Отправить письмо
             </Button>
-            <Button variant="ghost" className="w-full" asChild>
-              <Link to="/login">Назад</Link>
-            </Button>
+            <p className="auth-secondary-action">
+              <Link to="/login">Вернуться ко входу</Link>
+            </p>
           </CardFooter>
         </form>
-      </Card>
-    </div>
+      </AuthCard>
+    </AuthLayout>
   )
 }

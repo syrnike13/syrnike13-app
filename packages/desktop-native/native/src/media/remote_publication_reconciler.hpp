@@ -123,10 +123,6 @@ class RemotePublicationReconciler final {
     const std::string& publication_id,
     const std::shared_ptr<livekit::Track>& track
   ) const;
-  void markVideoHealthy(
-    const std::string& publication_id,
-    const std::shared_ptr<livekit::Track>& track
-  );
 
  private:
   enum class Phase {
@@ -144,7 +140,6 @@ class RemotePublicationReconciler final {
     bool is_video = false;
     bool demanded = false;
     std::shared_ptr<livekit::Track> current_track;
-    std::uint32_t local_recovery_attempts = 0;
     std::uint64_t revision = 0;
     Phase phase = Phase::Unsubscribed;
   };

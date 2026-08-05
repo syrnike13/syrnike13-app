@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
+import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import { Button } from '#/components/ui/button'
 import {
-  Card,
   CardDescription,
   CardFooter,
   CardHeader,
@@ -27,13 +27,12 @@ function CheckEmailPage() {
     !isEmailVerificationEnabled(configQuery.data?.features)
   ) {
     return (
-      <div className="gradient-surface-content flex min-h-svh flex-col items-center justify-center bg-background px-6">
-        <Card className="w-full max-w-md">
+      <AuthLayout>
+        <AuthCard>
           <CardHeader>
             <CardTitle>Подтверждение не требуется</CardTitle>
             <CardDescription>
-              На сервере отключено подтверждение по почте. Перейдите ко входу или
-              зарегистрируйтесь.
+              Можно сразу вернуться ко входу и продолжить.
             </CardDescription>
           </CardHeader>
           <CardFooter>
@@ -41,14 +40,14 @@ function CheckEmailPage() {
               <Link to="/login">Ко входу</Link>
             </Button>
           </CardFooter>
-        </Card>
-      </div>
+        </AuthCard>
+      </AuthLayout>
     )
   }
 
   return (
-    <div className="gradient-surface-content flex min-h-svh flex-col items-center justify-center bg-background px-6 py-12">
-      <Card className="w-full max-w-md">
+    <AuthLayout>
+      <AuthCard>
         <CardHeader>
           <CardTitle>Проверьте почту</CardTitle>
           <CardDescription className="space-y-2">
@@ -57,10 +56,12 @@ function CheckEmailPage() {
               10 минут.
             </p>
             {email ? (
-              <p className="font-mono text-sm text-foreground">{email}</p>
+              <p className="rounded-xl bg-muted px-4 py-3 font-mono text-sm text-foreground">
+                {email}
+              </p>
             ) : null}
             <p className="text-sm">
-              Ссылка в письме откроет страницу подтверждения на этом сайте.
+              Перейдите по ссылке в письме, чтобы завершить регистрацию.
             </p>
           </CardDescription>
         </CardHeader>
@@ -72,7 +73,7 @@ function CheckEmailPage() {
             <Link to="/login/resend">Отправить письмо снова</Link>
           </Button>
         </CardFooter>
-      </Card>
-    </div>
+      </AuthCard>
+    </AuthLayout>
   )
 }

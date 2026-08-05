@@ -4,9 +4,9 @@ import { Loader2Icon } from '#/components/icons'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
+import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import { Button } from '#/components/ui/button'
 import {
-  Card,
   CardContent,
   CardDescription,
   CardFooter,
@@ -80,19 +80,19 @@ function OnboardPage() {
 
   if (!auth.hydrated || !auth.session || !auth.onboardingChecked) {
     return (
-      <div className="gradient-surface-content flex min-h-svh items-center justify-center bg-background">
+      <AuthLayout>
         <Loader2Icon className="size-8 animate-spin text-muted-foreground" />
-      </div>
+      </AuthLayout>
     )
   }
 
   return (
-    <div className="gradient-surface-content flex min-h-svh flex-col items-center justify-center bg-background px-6 py-12">
-      <Card className="w-full max-w-md">
+    <AuthLayout>
+      <AuthCard>
         <CardHeader>
-          <CardTitle>Выберите ник</CardTitle>
+          <CardTitle>Как вас называть?</CardTitle>
           <CardDescription>
-            По нему вас смогут найти. Позже можно изменить в настройках профиля.
+            По этому имени вас найдут друзья. Его можно изменить позже.
           </CardDescription>
         </CardHeader>
         <form
@@ -107,6 +107,7 @@ function OnboardPage() {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="onboard-username">Имя пользователя</Label>
                   <Input
+                    className="auth-input"
                     id="onboard-username"
                     autoComplete="username"
                     autoCapitalize="none"
@@ -129,7 +130,7 @@ function OnboardPage() {
             </Button>
           </CardFooter>
         </form>
-      </Card>
-    </div>
+      </AuthCard>
+    </AuthLayout>
   )
 }

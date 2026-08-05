@@ -48,6 +48,17 @@ void logDelegate(
   logger.write(std::string(kind) + "_delegate_" + std::string(event), fields);
 }
 
+std::string_view outputPhaseName(RemoteAudioOutputPhase phase) {
+  switch (phase) {
+    case RemoteAudioOutputPhase::Stopped: return "stopped";
+    case RemoteAudioOutputPhase::Starting: return "starting";
+    case RemoteAudioOutputPhase::Running: return "running";
+    case RemoteAudioOutputPhase::Recovering: return "recovering";
+    case RemoteAudioOutputPhase::Failed: return "failed";
+  }
+  return "failed";
+}
+
 class PostedCommandGate final {
  public:
   explicit PostedCommandGate(LiveKitVoiceSession::InternalPost post)
@@ -102,12 +113,18 @@ class PostedRoomDelegate final
       post_([gate = post_gate_](MediaCommand command) {
         return gate->post(std::move(command));
       }),
-      audio_output_([this](
+      audio_output_([this](RemoteAudioOutputState state) {
+        postOutputState(std::move(state));
+      }, [this](
         AudioFailureInfo failure,
-        std::string device_id,
+        std::string track_id,
         std::uint64_t renderer_epoch
       ) {
-        postOutputFailure(std::move(failure), std::move(device_id), renderer_epoch);
+        postOutputTrackFailure(
+          std::move(failure),
+          std::move(track_id),
+          renderer_epoch
+        );
       }, [this](std::vector<std::string> identities) {
         postSpeakingActivity(std::move(identities));
       }),
@@ -117,12 +134,7 @@ class PostedRoomDelegate final
         const std::string& message
       ) {
         handleRemoteVideoEnded(track_id, track, message);
-      }, [this](
-        const std::string& track_id,
-        const std::shared_ptr<livekit::Track>& track
-      ) {
-        handleRemoteVideoHealthy(track_id, track);
-      }),
+      }, {}),
       local_camera_preview_(
         electronMainPid(),
         post_,
@@ -382,17 +394,11 @@ class PostedRoomDelegate final
   }
 
   void setDeafened(bool value) { audio_output_.setDeafened(value); }
-  std::uint64_t setOutputDevice(
-    std::string value,
-    AudioOutputDeviceIntent intent
-  ) {
-    return audio_output_.setOutputDevice(std::move(value), intent);
+  std::uint64_t setOutputDevice(std::string value) {
+    return audio_output_.setOutputDevice(std::move(value));
   }
   std::string outputDeviceId() const {
     return audio_output_.outputDeviceId();
-  }
-  bool isOutputEpochCurrent(std::uint64_t epoch) const {
-    return audio_output_.isRendererEpochCurrent(epoch);
   }
   void setOutputVolume(float value) { audio_output_.setVolume(value); }
   void configureRemoteAudio(RemoteAudioSettings settings) { audio_output_.configure(std::move(settings)); }
@@ -658,15 +664,6 @@ class PostedRoomDelegate final
     // the current_track transition.
   }
 
-  void handleRemoteVideoHealthy(
-    const std::string& publication_id,
-    const std::shared_ptr<livekit::Track>& track
-  ) {
-    CallbackGuard callback(*this);
-    if (!callback) return;
-    remote_publications_.markVideoHealthy(publication_id, track);
-  }
-
   void registerRemotePublication(
     const std::shared_ptr<livekit::RemoteTrackPublication>& publication,
     const std::string& participant_identity
@@ -802,17 +799,39 @@ class PostedRoomDelegate final
     post_(std::move(command));
   }
 
-  void postOutputFailure(
+  void postOutputState(RemoteAudioOutputState state) {
+    MediaCommand command;
+    command.type = "__voiceOutputStateChanged";
+    {
+      std::lock_guard lock(mutex_);
+      command.session_id = session_id_;
+      command.generation = generation_;
+    }
+    command.status = std::string(outputPhaseName(state.phase));
+    command.device_id = std::move(state.active_device_id);
+    command.source_id = std::move(state.resolved_endpoint_id);
+    command.recovery_mode = state.using_fallback ? "fallback" : "selected";
+    command.internal_message = std::move(state.detail);
+    command.internal_epoch = state.renderer_epoch;
+    if (state.failure) {
+      command.video_source = std::move(state.failure->code);
+      if (command.internal_message.empty()) {
+        command.internal_message = std::move(state.failure->message);
+      }
+      command.diagnostic_hresult =
+        static_cast<std::int64_t>(state.failure->hresult);
+      command.diagnostic_retryable = state.failure->retryable;
+    }
+    post_(std::move(command));
+  }
+
+  void postOutputTrackFailure(
     AudioFailureInfo failure,
-    std::string device_id,
+    std::string track_id,
     std::uint64_t renderer_epoch
   ) {
     MediaCommand command;
-    const bool track_start_failure =
-      failure.code == "audio_output_direct_sink_attach_failed";
-    command.type = track_start_failure
-      ? "__voiceRemoteAudioTrackFailed"
-      : "__voiceOutputFailed";
+    command.type = "__voiceRemoteAudioTrackFailed";
     {
       std::lock_guard lock(mutex_);
       command.session_id = session_id_;
@@ -822,11 +841,7 @@ class PostedRoomDelegate final
     command.video_source = std::move(failure.code);
     command.diagnostic_hresult = static_cast<std::int64_t>(failure.hresult);
     command.diagnostic_retryable = failure.retryable;
-    if (track_start_failure) {
-      command.track_id = std::move(device_id);
-    } else {
-      command.device_id = std::move(device_id);
-    }
+    command.track_id = std::move(track_id);
     command.internal_epoch = renderer_epoch;
     post_(std::move(command));
   }
@@ -955,17 +970,11 @@ class RealLiveKitRoomOwner final : public LiveKitVoiceRoomOwner {
   }
 
   void setDeafened(bool value) override { delegate_->setDeafened(value); }
-  std::uint64_t setOutputDevice(
-    std::string value,
-    AudioOutputDeviceIntent intent
-  ) override {
-    return delegate_->setOutputDevice(std::move(value), intent);
+  std::uint64_t setOutputDevice(std::string value) override {
+    return delegate_->setOutputDevice(std::move(value));
   }
   std::string outputDeviceId() const override {
     return delegate_->outputDeviceId();
-  }
-  bool isOutputEpochCurrent(std::uint64_t epoch) const override {
-    return delegate_->isOutputEpochCurrent(epoch);
   }
   void setOutputVolume(float value) override { delegate_->setOutputVolume(value); }
   void configureRemoteAudio(RemoteAudioSettings settings) override {
@@ -1147,13 +1156,10 @@ class RealLiveKitVoiceSession final : public LiveKitVoiceSession {
     if (room) room->setDeafened(value);
   }
 
-  std::uint64_t setVoiceOutputDevice(
-    std::string value,
-    AudioOutputDeviceIntent intent
-  ) override {
+  std::uint64_t setVoiceOutputDevice(std::string value) override {
     std::unique_lock operation_lock(voice_operation_mutex_);
     const auto room = roomSnapshot();
-    return room ? room->setOutputDevice(std::move(value), intent) : 0;
+    return room ? room->setOutputDevice(std::move(value)) : 0;
   }
   std::string voiceOutputDeviceId() const override {
     std::unique_lock operation_lock(voice_operation_mutex_);
@@ -1258,12 +1264,6 @@ class RealLiveKitVoiceSession final : public LiveKitVoiceSession {
   ) override {
     requireRuntimeReady();
     return livekit::LocalAudioTrack::createLocalAudioTrack("microphone", source);
-  }
-
-  bool isVoiceOutputEpochCurrent(std::uint64_t epoch) const override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot();
-    return room && room->isOutputEpochCurrent(epoch);
   }
 
   std::string publishAudioTrack(
@@ -1428,8 +1428,7 @@ void DeterministicFakeLiveKitVoiceSession::setVoiceDeafened(bool value) {
 }
 
 std::uint64_t DeterministicFakeLiveKitVoiceSession::setVoiceOutputDevice(
-  std::string value,
-  AudioOutputDeviceIntent
+  std::string value
 ) {
   std::lock_guard lock(mutex_);
   voice_output_device_id_ = std::move(value);
@@ -1440,13 +1439,6 @@ std::string
 DeterministicFakeLiveKitVoiceSession::voiceOutputDeviceId() const {
   std::lock_guard lock(mutex_);
   return voice_output_device_id_;
-}
-
-bool DeterministicFakeLiveKitVoiceSession::isVoiceOutputEpochCurrent(
-  std::uint64_t epoch
-) const {
-  std::lock_guard lock(mutex_);
-  return epoch != 0 && epoch == voice_output_epoch_;
 }
 
 void DeterministicFakeLiveKitVoiceSession::setVoiceOutputVolume(float) {}

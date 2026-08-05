@@ -61,8 +61,10 @@ inline RemoteVideoSlotTransition decideRemoteVideoSlotTransition(
     };
   }
   if (generic.recovered_stale) {
-    // The completed frame is stale, but its resources are reusable again.
-    return {RemoteVideoTextureSlotPhase::Available, false, true};
+    // A late remote frame is still useful when the publisher is static. Keep
+    // it eligible for latest-wins selection; take() will discard it if a newer
+    // completed frame already exists.
+    return {RemoteVideoTextureSlotPhase::Ready, false, true};
   }
   return {RemoteVideoTextureSlotPhase::Ready};
 }

@@ -208,7 +208,7 @@ void rapidResubscribeWaitsForActualUnsubscribe() {
   );
 }
 
-void recoveryAlternatesSubscriptionEdgesInsteadOfRacingThem() {
+void recoveryPreservesHealthySubscriptionDuringLocalBridgeFailures() {
   using namespace syrnike::desktop_native::media;
   RemotePublicationReconciler reconciler;
   const auto publication = screenPublication();
@@ -245,8 +245,8 @@ void recoveryAlternatesSubscriptionEdgesInsteadOfRacingThem() {
   );
   require(
     reconciler.planVideoRecovery("screen-track").action ==
-      RemotePublicationRecoveryAction::RequestUnsubscribe,
-    "repeated bridge failure did not escalate to subscription replacement"
+      RemotePublicationRecoveryAction::RestartLocalBridge,
+    "repeated local bridge failure replaced a healthy SDK subscription"
   );
 }
 
@@ -265,8 +265,8 @@ void lateOldUnsubscribeCannotDetachReplacementTrack() {
     reconciler.planVideoRecovery("screen-track").action ==
       RemotePublicationRecoveryAction::RestartLocalBridge &&
       reconciler.planVideoRecovery("screen-track").action ==
-        RemotePublicationRecoveryAction::RequestUnsubscribe,
-    "test setup did not enter replacement unsubscribe"
+        RemotePublicationRecoveryAction::RestartLocalBridge,
+    "replacement track did not remain on bridge-only recovery"
   );
   const auto stale = reconciler.onTrackUnsubscribed(
     "screen-track",
@@ -291,7 +291,7 @@ int main() try {
   screenAudioFollowsMatchingScreenDemand();
   lateScreenAudioInheritsExistingScreenDemand();
   rapidResubscribeWaitsForActualUnsubscribe();
-  recoveryAlternatesSubscriptionEdgesInsteadOfRacingThem();
+  recoveryPreservesHealthySubscriptionDuringLocalBridgeFailures();
   lateOldUnsubscribeCannotDetachReplacementTrack();
   return 0;
 } catch (...) {

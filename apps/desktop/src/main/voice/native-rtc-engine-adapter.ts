@@ -1016,10 +1016,14 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       } else if (
         (kind === 'microphone' || kind === 'output') &&
         event.state.status === 'running' &&
-        event.state.message ===
-          (kind === 'microphone'
-            ? 'audio_input_default_recovered'
-            : 'audio_output_default_recovered')
+        (
+          event.state.message ===
+            (kind === 'microphone'
+              ? 'audio_input_default_recovered'
+              : 'audio_output_default_recovered') ||
+          (kind === 'output' &&
+            event.state.message === 'audio_output_recovered')
+        )
       ) {
         this.emitMedia(active, kind, {
           state:
