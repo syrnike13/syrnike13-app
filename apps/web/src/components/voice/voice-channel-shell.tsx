@@ -9,10 +9,7 @@ import {
   consumeVoiceChannelChatOpenRequest,
   subscribeVoiceChannelChatOpen,
 } from '#/features/voice/voice-channel-chat-intent'
-import {
-  isServerVoiceChannel,
-  type RuntimeChannel,
-} from '#/lib/channel-voice'
+import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { cn } from '#/lib/utils'
 
 type VoiceChannelShellProps = {
@@ -42,8 +39,6 @@ export function VoiceChannelShell({
       setChatOpen(true)
     })
   }, [channelId])
-  const runtimeChannel = channel as RuntimeChannel | undefined
-
   if (!channel) {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
@@ -53,10 +48,9 @@ export function VoiceChannelShell({
   }
 
   if (
-    !runtimeChannel ||
-    (!isServerVoiceChannel(runtimeChannel) &&
-      channel.channel_type !== 'DirectMessage' &&
-      channel.channel_type !== 'Group')
+    !isServerVoiceChannel(channel) &&
+    channel.channel_type !== 'DirectMessage' &&
+    channel.channel_type !== 'Group'
   ) {
     return null
   }

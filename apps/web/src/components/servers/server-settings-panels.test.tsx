@@ -10,6 +10,7 @@ import {
 import type { ReactNode } from 'react'
 import type { Channel, File as ApiFile } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 import { ServerSettingsPanelContent } from '#/components/servers/server-settings-panels'
 import type { ServerSettingsTab } from '#/components/servers/server-settings-types'
@@ -53,20 +54,26 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/media-api', () => ({
-  uploadEmoji: (...args: Parameters<typeof mocks.uploadEmoji>) =>
+  uploadEmojiEffect: (...args: Parameters<typeof mocks.uploadEmoji>) =>
     mocks.uploadEmoji(...args),
-  uploadMediaFile: (...args: Parameters<typeof mocks.uploadMediaFile>) =>
+  uploadMediaFileEffect: (...args: Parameters<typeof mocks.uploadMediaFile>) =>
     mocks.uploadMediaFile(...args),
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
-  createServerEmoji: (...args: Parameters<typeof mocks.createServerEmoji>) =>
+  createServerEmojiEffect: (
+    ...args: Parameters<typeof mocks.createServerEmoji>
+  ) =>
     mocks.createServerEmoji(...args),
-  deleteServerEmoji: (...args: Parameters<typeof mocks.deleteServerEmoji>) =>
+  deleteServerEmojiEffect: (
+    ...args: Parameters<typeof mocks.deleteServerEmoji>
+  ) =>
     mocks.deleteServerEmoji(...args),
-  editServer: (...args: Parameters<typeof mocks.editServer>) =>
+  editServerEffect: (...args: Parameters<typeof mocks.editServer>) =>
     mocks.editServer(...args),
-  fetchServerEmojis: (...args: Parameters<typeof mocks.fetchServerEmojis>) =>
+  fetchServerEmojisEffect: (
+    ...args: Parameters<typeof mocks.fetchServerEmojis>
+  ) =>
     mocks.fetchServerEmojis(...args),
 }))
 
@@ -165,11 +172,15 @@ describe('ServerSettingsPanelContent', () => {
     upsertServer()
     syncStore.upsertChannel(textChannel('channel-1', 'general'))
     syncStore.upsertChannel(textChannel('channel-2', 'announcements'))
-    mocks.fetchServerEmojis.mockResolvedValue([])
-    mocks.uploadEmoji.mockResolvedValue('emoji-file')
-    mocks.uploadMediaFile.mockResolvedValue('file-id')
+    mocks.fetchServerEmojis.mockReturnValue(Effect.succeed([]))
+    mocks.uploadEmoji.mockReturnValue(Effect.succeed('emoji-file'))
+    mocks.uploadMediaFile.mockReturnValue(Effect.succeed('file-id'))
+    mocks.createServerEmoji.mockReturnValue(
+      Effect.succeed({ _id: 'emoji-created' }),
+    )
+    mocks.deleteServerEmoji.mockReturnValue(Effect.void)
     mocks.editServer.mockImplementation((_token, _serverId, patch) =>
-      Promise.resolve({
+      Effect.succeed({
         _id: 'server-1',
         name: 'Server',
         owner: 'owner-1',
@@ -191,8 +202,8 @@ describe('ServerSettingsPanelContent', () => {
     const icon = new File(['icon'], 'icon.png', { type: 'image/png' })
     const banner = new File(['banner'], 'banner.png', { type: 'image/png' })
     mocks.uploadMediaFile
-      .mockResolvedValueOnce('icon-file')
-      .mockResolvedValueOnce('banner-file')
+      .mockReturnValueOnce(Effect.succeed('icon-file'))
+      .mockReturnValueOnce(Effect.succeed('banner-file'))
 
     renderPanel('overview')
 
@@ -215,10 +226,14 @@ describe('ServerSettingsPanelContent', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     await waitFor(() => {
-      expect(mocks.editServer).toHaveBeenCalledWith('session-token', 'server-1', {
-        icon: 'icon-file',
-        banner: 'banner-file',
-      })
+      expect(mocks.editServer).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        {
+          icon: 'icon-file',
+          banner: 'banner-file',
+        },
+      )
     })
     expect(mocks.uploadMediaFile).toHaveBeenNthCalledWith(
       1,
@@ -253,9 +268,13 @@ describe('ServerSettingsPanelContent', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     await waitFor(() => {
-      expect(mocks.editServer).toHaveBeenCalledWith('session-token', 'server-1', {
-        remove: ['Icon', 'Banner'],
-      })
+      expect(mocks.editServer).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        {
+          remove: ['Icon', 'Banner'],
+        },
+      )
     })
     expect(mocks.uploadMediaFile).not.toHaveBeenCalled()
   })
@@ -267,14 +286,18 @@ describe('ServerSettingsPanelContent', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     await waitFor(() => {
-      expect(mocks.editServer).toHaveBeenCalledWith('session-token', 'server-1', {
-        system_messages: {
-          user_joined: 'channel-2',
-          user_left: 'channel-2',
-          user_kicked: 'channel-2',
-          user_banned: 'channel-2',
+      expect(mocks.editServer).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        {
+          system_messages: {
+            user_joined: 'channel-2',
+            user_left: 'channel-2',
+            user_kicked: 'channel-2',
+            user_banned: 'channel-2',
+          },
         },
-      })
+      )
     })
   })
 
@@ -289,9 +312,13 @@ describe('ServerSettingsPanelContent', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     await waitFor(() => {
-      expect(mocks.editServer).toHaveBeenCalledWith('session-token', 'server-1', {
-        remove: ['Description'],
-      })
+      expect(mocks.editServer).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        {
+          remove: ['Description'],
+        },
+      )
     })
   })
 
@@ -339,22 +366,28 @@ describe('ServerSettingsPanelContent', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     await waitFor(() => {
-      expect(mocks.editServer).toHaveBeenCalledWith('session-token', 'server-1', {
-        remove: ['SystemMessages'],
-      })
+      expect(mocks.editServer).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        {
+          remove: ['SystemMessages'],
+        },
+      )
     })
   })
 
   it('deletes a server emoji through a confirmation dialog', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    mocks.fetchServerEmojis.mockResolvedValue([
-      {
-        _id: 'emoji-1',
-        parent: { type: 'Server', id: 'server-1' },
-        creator_id: 'user-1',
-        name: 'party',
-      },
-    ])
+    mocks.fetchServerEmojis.mockReturnValue(
+      Effect.succeed([
+        {
+          _id: 'emoji-1',
+          parent: { type: 'Server', id: 'server-1' },
+          creator_id: 'user-1',
+          name: 'party',
+        },
+      ]),
+    )
 
     renderPanel('emoji')
 

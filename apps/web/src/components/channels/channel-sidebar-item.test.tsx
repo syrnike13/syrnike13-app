@@ -11,6 +11,7 @@ import {
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
 import { syncStore } from '#/features/sync/sync-store'
@@ -22,7 +23,7 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   join: vi.fn(async () => {}),
   openVoiceChannelDrawer: vi.fn(),
-  deleteChannel: vi.fn(async (_serverId: string, _channelId: string) => {}),
+  deleteChannel: vi.fn((_token: string, _channelId: string) => Effect.void),
   pathname: '/app/',
   voice: {
     channelId: 'voice-main' as string | null,
@@ -66,19 +67,20 @@ vi.mock('sonner', () => ({
 }))
 
 vi.mock('#/features/api/channels-api', () => ({
-  deleteChannel: (...args: [string, string]) => mocks.deleteChannel(...args),
+  deleteChannelEffect: (...args: [string, string]) =>
+    mocks.deleteChannel(...args),
 }))
 
 vi.mock('#/features/api/sync-api', () => ({
-  ackChannel: vi.fn(),
+  ackChannelEffect: vi.fn(() => Effect.void),
 }))
 
 vi.mock('#/features/api/invites-api', () => ({
-  createChannelInvite: vi.fn(),
+  createChannelInviteEffect: vi.fn(() => Effect.succeed({ _id: 'invite-1' })),
 }))
 
 vi.mock('#/lib/clipboard', () => ({
-  writeClipboardText: vi.fn(),
+  writeClipboardTextEffect: vi.fn(() => Effect.void),
 }))
 
 vi.mock('#/features/voice/voice-session-context', () => ({
@@ -220,7 +222,7 @@ describe('ChannelSidebarItem voice navigation', () => {
     mocks.navigate.mockClear()
     mocks.join.mockClear()
     mocks.openVoiceChannelDrawer.mockClear()
-    mocks.deleteChannel.mockResolvedValue(undefined)
+    mocks.deleteChannel.mockReturnValue(Effect.void)
     mocks.deleteChannel.mockClear()
     mocks.pathname = '/app/'
     mocks.voice.channelId = 'voice-main'

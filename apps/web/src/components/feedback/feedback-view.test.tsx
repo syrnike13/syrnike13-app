@@ -96,10 +96,14 @@ describe('FeedbackView', () => {
     expect(screen.queryByLabelText('Статус')).toBeNull()
 
     await waitFor(() => {
-      expect(mocks.fetchMyFeedbackSuggestions).toHaveBeenCalledWith('token', {
-        offset: 0,
-        limit: 20,
-      })
+      expect(mocks.fetchMyFeedbackSuggestions).toHaveBeenCalledWith(
+        'token',
+        {
+          offset: 0,
+          limit: 20,
+        },
+        expect.any(AbortSignal),
+      )
     })
   })
 })

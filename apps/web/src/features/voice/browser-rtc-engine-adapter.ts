@@ -7,6 +7,7 @@ import {
   type RemoteTrackPublication,
   type LocalTrackPublication,
 } from 'livekit-client'
+import { Effect, Exit, Fiber, Layer, ManagedRuntime } from 'effect'
 import type {
   RtcEngineAdapter,
   VoiceDisconnectCause,
@@ -24,7 +25,7 @@ import {
   voiceAudioProcessingConstraints,
   voiceMicPublishOptions,
 } from '#/features/voice/voice-capture'
-import { applyMicProcessing } from '#/features/voice/voice-mic-processing'
+import { applyMicProcessingEffect } from '#/features/voice/voice-mic-processing'
 import { baseVoiceIdentity } from '#/features/voice/native-voice-identity'
 import {
   createRemoteAudioMixer,
@@ -79,123 +80,150 @@ type ScopedVoiceEngineEvent =
 export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
   private readonly listeners = new Set<(event: VoiceEngineEvent) => void>()
   private readonly roomListeners = new Set<(room: Room | null) => void>()
+  private readonly effectRuntime = ManagedRuntime.make(Layer.empty)
   private active: ActiveBrowserVoice | null = null
   private desired: VoiceMediaDesiredState | null = null
   private mediaRevision = 0
   private mediaHandledRevision = 0
-  private mediaReconcile: Promise<void> | null = null
+  private mediaReconcile: Fiber.Fiber<void, never> | null = null
   private disposed = false
 
-  async connect(
+  connect(
     lease: VoiceLease,
     desired: VoiceMediaDesiredState,
     signal: AbortSignal,
   ) {
-    if (this.disposed) throw new Error('Browser RTC adapter is disposed')
-    if (lease.rtcEngine !== 'web') {
-      throw new Error('Browser RTC adapter received a non-web Voice Lease')
-    }
-    if (this.active) {
-      throw new Error('Browser RTC adapter already owns a Room')
-    }
-
-    this.desired = desired
-    const room = new Room(createVoiceRoomOptions())
-    let active!: ActiveBrowserVoice
-    const publishSpeaking = () => {
-      if (this.active !== active) return
-      const next = new Set(active.remoteSpeakingUserIds)
-      if (active.localSpeaking) {
-        next.add(baseVoiceIdentity(active.lease.credential.participantIdentity))
-      }
-      if (sameStringSet(active.speakingUserIds, next)) return
-      active.speakingUserIds = next
-      this.emitFor(active, {
-        type: 'speakingChanged',
-        participantIdentities: [...next],
-      })
-    }
-    const localSpeakingDetector = createLocalSpeakingDetector({
-      onSpeakingChange: (speaking) => {
-        if (this.active !== active) return
-        active.localSpeaking = speaking
-        publishSpeaking()
-      },
-    })
-    const audioMixer = createRemoteAudioMixer({
-      onOutputError: (error) => {
-        if (this.active === active) void this.handleOutputFailure(active, error)
-      },
-      onSpeakingUserIdsChange: (userIds) => {
-        if (this.active !== active) return
-        active.remoteSpeakingUserIds = new Set(userIds)
-        publishSpeaking()
-      },
-    })
-    active = {
-      lease,
-      room,
-      connected: false,
-      intentionalDisconnect: false,
-      microphonePublication: null,
-      microphoneStarting: false,
-      appliedMicrophoneKey: null,
-      appliedMicrophoneDeviceId: null,
-      appliedMicrophoneProcessingKey: null,
-      appliedCameraKey: null,
-      appliedScreenKey: null,
-      appliedOutputKey: null,
-      appliedOutputDeviceId: null,
-      outputRecovering: false,
-      audioMixer,
-      localSpeakingDetector,
-      localSpeaking: false,
-      remoteSpeakingUserIds: new Set(),
-      speakingUserIds: new Set(),
-      remoteAudioDecoderSinks: new Map(),
-      unsubscribeListenerSettings: () => undefined,
-    }
-    active.unsubscribeListenerSettings = voiceListenerStore.subscribe(() => {
-      if (this.active !== active || !this.desired) return
-      void active.audioMixer.applyVolumes(
-        this.desired.userDeafened || this.desired.serverDeafened,
-        this.desired.outputVolume,
-      ).catch(() => undefined)
-    })
-    this.active = active
-    this.attachRoomEvents(active)
-
-    try {
-      await raceWithAbort(
-        room.connect(lease.credential.url, lease.credential.token),
-        signal,
-      )
-      this.assertCurrent(active)
-      if (signal.aborted) throw abortError()
-      active.connected = true
-      this.emitRoom(room)
-      this.requestMediaReconcile()
-    } catch (error) {
-      if (this.active === active) this.active = null
-      active.intentionalDisconnect = true
-      this.clearRemoteAudio(active)
-      room.removeAllListeners()
-      await room.disconnect().catch(() => undefined)
-      this.emitRoom(null)
-      throw error
-    }
+    return this.effectRuntime.runPromise(
+      this.connectEffect(lease, desired).pipe(
+        Effect.raceFirst(abortSignal(signal)),
+      ),
+    )
   }
 
-  async disconnect(_cause: VoiceDisconnectCause) {
-    const active = this.active
-    this.active = null
-    this.mediaRevision += 1
-    if (!active) return
-    active.intentionalDisconnect = true
-    this.clearRemoteAudio(active)
-    active.room.removeAllListeners()
-    await active.room.disconnect().catch(() => undefined)
-    this.emitRoom(null)
+  private connectEffect(
+    lease: VoiceLease,
+    desired: VoiceMediaDesiredState,
+  ) {
+    return Effect.suspend(() => {
+      if (this.disposed) {
+        return Effect.fail(new Error('Browser RTC adapter is disposed'))
+      }
+      if (lease.rtcEngine !== 'web') {
+        return Effect.fail(
+          new Error('Browser RTC adapter received a non-web Voice Lease'),
+        )
+      }
+      if (this.active) {
+        return Effect.fail(new Error('Browser RTC adapter already owns a Room'))
+      }
+
+      this.desired = desired
+      const room = new Room(createVoiceRoomOptions())
+      let active: ActiveBrowserVoice | null = null
+      const publishSpeaking = () => {
+        if (!active || this.active !== active) return
+        const next = new Set(active.remoteSpeakingUserIds)
+        if (active.localSpeaking) {
+          next.add(baseVoiceIdentity(active.lease.credential.participantIdentity))
+        }
+        if (sameStringSet(active.speakingUserIds, next)) return
+        active.speakingUserIds = next
+        this.emitFor(active, {
+          type: 'speakingChanged',
+          participantIdentities: [...next],
+        })
+      }
+      const localSpeakingDetector = createLocalSpeakingDetector({
+        onSpeakingChange: (speaking) => {
+          if (!active || this.active !== active) return
+          active.localSpeaking = speaking
+          publishSpeaking()
+        },
+      })
+      const audioMixer = createRemoteAudioMixer({
+        onOutputError: (error) => {
+          if (!active || this.active !== active) return
+          this.effectRuntime.runFork(
+            this.handleOutputFailureEffect(active, error),
+          )
+        },
+        onSpeakingUserIdsChange: (userIds) => {
+          if (!active || this.active !== active) return
+          active.remoteSpeakingUserIds = new Set(userIds)
+          publishSpeaking()
+        },
+      })
+      const owned: ActiveBrowserVoice = {
+        lease,
+        room,
+        connected: false,
+        intentionalDisconnect: false,
+        microphonePublication: null,
+        microphoneStarting: false,
+        appliedMicrophoneKey: null,
+        appliedMicrophoneDeviceId: null,
+        appliedMicrophoneProcessingKey: null,
+        appliedCameraKey: null,
+        appliedScreenKey: null,
+        appliedOutputKey: null,
+        appliedOutputDeviceId: null,
+        outputRecovering: false,
+        audioMixer,
+        localSpeakingDetector,
+        localSpeaking: false,
+        remoteSpeakingUserIds: new Set(),
+        speakingUserIds: new Set(),
+        remoteAudioDecoderSinks: new Map(),
+        unsubscribeListenerSettings: () => undefined,
+      }
+      active = owned
+      owned.unsubscribeListenerSettings = voiceListenerStore.subscribe(() => {
+        if (this.active !== owned || !this.desired) return
+        this.applyRemoteAudioVolumes(owned, this.desired)
+      })
+      this.active = owned
+      this.attachRoomEvents(owned)
+
+      const cleanup = Effect.gen({ self: this }, function*() {
+        if (this.active === owned) this.active = null
+        owned.intentionalDisconnect = true
+        this.clearRemoteAudio(owned)
+        room.removeAllListeners()
+        yield* promiseEffect(() => room.disconnect()).pipe(Effect.ignore)
+        this.emitRoom(null)
+      })
+      return Effect.gen({ self: this }, function*() {
+        yield* promiseEffect(() =>
+          room.connect(lease.credential.url, lease.credential.token)
+        )
+        yield* this.assertCurrentEffect(owned)
+        owned.connected = true
+        this.emitRoom(room)
+        this.requestMediaReconcile()
+      }).pipe(
+        Effect.onExit((exit) =>
+          Exit.isFailure(exit) ? cleanup : Effect.void,
+        ),
+      )
+    })
+  }
+
+  disconnect(_cause: VoiceDisconnectCause) {
+    return this.effectRuntime.runPromise(this.disconnectEffect())
+  }
+
+  private disconnectEffect() {
+    return Effect.gen({ self: this }, function*() {
+      const active = this.active
+      this.active = null
+      this.mediaRevision += 1
+      if (!active) return
+      active.intentionalDisconnect = true
+      this.clearRemoteAudio(active)
+      active.room.removeAllListeners()
+      yield* promiseEffect(() => active.room.disconnect()).pipe(Effect.ignore)
+      this.emitRoom(null)
+    })
   }
 
   updateDesiredMedia(desired: VoiceMediaDesiredState) {
@@ -245,12 +273,24 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
     return this.active?.room ?? null
   }
 
-  async dispose() {
-    if (this.disposed) return
-    this.disposed = true
-    await this.disconnect('shutdown')
-    this.listeners.clear()
-    this.roomListeners.clear()
+  dispose() {
+    return Effect.runPromise(
+      this.disposeEffect().pipe(
+        Effect.andThen(
+          this.effectRuntime.disposeEffect,
+        ),
+      ),
+    )
+  }
+
+  disposeEffect() {
+    return Effect.gen({ self: this }, function*() {
+      if (this.disposed) return
+      this.disposed = true
+      yield* this.disconnectEffect()
+      this.listeners.clear()
+      this.roomListeners.clear()
+    })
   }
 
   private attachRoomEvents(active: ActiveBrowserVoice) {
@@ -336,10 +376,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
         }
         const desired = this.desired
         if (desired) {
-          void active.audioMixer.applyVolumes(
-            desired.userDeafened || desired.serverDeafened,
-            desired.outputVolume,
-          ).catch(() => undefined)
+          this.applyRemoteAudioVolumes(active, desired)
         }
       },
     )
@@ -374,39 +411,53 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
     ) {
       return
     }
-    this.mediaReconcile = this.reconcileMediaLoop().finally(() => {
-      this.mediaReconcile = null
-      if (
-        this.active &&
+    let fiber: Fiber.Fiber<void, never>
+    const reconcile = this.reconcileMediaLoop().pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (this.mediaReconcile === fiber) {
+            this.mediaReconcile = null
+          }
+          if (
+            this.active &&
+            this.desired &&
+            this.mediaHandledRevision !== this.mediaRevision
+          ) {
+            this.ensureMediaReconcile()
+          }
+        }),
+      ),
+    )
+    fiber = this.effectRuntime.runFork(reconcile)
+    this.mediaReconcile = fiber
+  }
+
+  private reconcileMediaLoop() {
+    return Effect.gen({ self: this }, function*() {
+      let handledRevision = -1
+      while (
+        this.active?.connected &&
         this.desired &&
-        this.mediaHandledRevision !== this.mediaRevision
+        handledRevision !== this.mediaRevision
       ) {
-        this.ensureMediaReconcile()
+        handledRevision = this.mediaRevision
+        const active = this.active
+        const desired = this.desired
+        yield* Effect.all(
+          [
+            this.applyMicrophoneEffect(active, desired),
+            this.applyCameraEffect(active, desired),
+            this.applyScreenEffect(active, desired),
+            this.applyOutputEffect(active, desired),
+          ],
+          { concurrency: 'unbounded', discard: true },
+        )
+        this.mediaHandledRevision = handledRevision
       }
     })
   }
 
-  private async reconcileMediaLoop() {
-    let handledRevision = -1
-    while (
-      this.active?.connected &&
-      this.desired &&
-      handledRevision !== this.mediaRevision
-    ) {
-      handledRevision = this.mediaRevision
-      const active = this.active
-      const desired = this.desired
-      await Promise.allSettled([
-        this.applyMicrophone(active, desired),
-        this.applyCamera(active, desired),
-        this.applyScreen(active, desired),
-        this.applyOutput(active, desired),
-      ])
-      this.mediaHandledRevision = handledRevision
-    }
-  }
-
-  private async applyMicrophone(
+  private applyMicrophoneEffect(
     active: ActiveBrowserVoice,
     desired: VoiceMediaDesiredState,
   ) {
@@ -430,24 +481,30 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
         active.appliedMicrophoneProcessingKey === processingKey
       )
     ) {
-      return
+      return Effect.void
     }
     active.microphoneStarting = true
-    try {
+    return Effect.gen({ self: this }, function*() {
       const trackStateChanged = active.appliedMicrophoneKey !== microphoneKey
       let publication = active.microphonePublication
       if (!publication) {
         this.emitMedia(active, 'microphone', { state: 'starting' })
-        const created = await active.room.localParticipant.setMicrophoneEnabled(
-          true,
-          {
-            ...voiceAudioProcessingConstraints(desired),
-            deviceId: desired.microphoneDeviceId,
-          },
-          voiceMicPublishOptions(),
+        const created = yield* promiseEffect(() =>
+          active.room.localParticipant.setMicrophoneEnabled(
+            true,
+            {
+              ...voiceAudioProcessingConstraints(desired),
+              deviceId: desired.microphoneDeviceId,
+            },
+            voiceMicPublishOptions(),
+          )
         )
-        this.assertCurrent(active)
-        if (!created) throw new Error('Microphone publication was not created')
+        yield* this.assertCurrentEffect(active)
+        if (!created) {
+          return yield* Effect.fail(
+            new Error('Microphone publication was not created'),
+          )
+        }
         publication = created
         active.microphonePublication = created
         active.appliedMicrophoneDeviceId = desired.microphoneDeviceId ?? 'default'
@@ -455,25 +512,33 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
         active.appliedMicrophoneDeviceId !==
         (desired.microphoneDeviceId ?? 'default')
       ) {
-        await active.room.switchActiveDevice(
-          'audioinput',
-          desired.microphoneDeviceId ?? 'default',
+        yield* promiseEffect(() =>
+          active.room.switchActiveDevice(
+            'audioinput',
+            desired.microphoneDeviceId ?? 'default',
+          )
         )
-        this.assertCurrent(active)
+        yield* this.assertCurrentEffect(active)
         active.appliedMicrophoneDeviceId =
           desired.microphoneDeviceId ?? 'default'
       }
 
       if (active.appliedMicrophoneProcessingKey !== processingKey) {
-        await applyMicProcessing(active.room.localParticipant, desired)
-        this.assertCurrent(active)
+        yield* applyMicProcessingEffect(
+          active.room.localParticipant,
+          desired,
+        )
+        yield* this.assertCurrentEffect(active)
         active.appliedMicrophoneProcessingKey = processingKey
       }
 
       if (trackStateChanged) {
-        if (desired.effectiveMuted) await publication.mute()
-        else await publication.unmute()
-        this.assertCurrent(active)
+        yield* promiseEffect(() =>
+          desired.effectiveMuted
+            ? publication.mute()
+            : publication.unmute()
+        )
+        yield* this.assertCurrentEffect(active)
         this.emitMedia(active, 'microphone', {
           state: desired.effectiveMuted ? 'muted' : 'running',
         })
@@ -481,16 +546,23 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       }
 
       this.syncLocalSpeaking(active, desired)
-    } catch (error) {
-      if (this.active === active) {
-        this.emitMediaFailure(active, 'microphone', error)
-      }
-    } finally {
-      active.microphoneStarting = false
-    }
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          if (this.active === active) {
+            this.emitMediaFailure(active, 'microphone', error)
+          }
+        }),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          active.microphoneStarting = false
+        }),
+      ),
+    )
   }
 
-  private async applyCamera(
+  private applyCameraEffect(
     active: ActiveBrowserVoice,
     desired: VoiceMediaDesiredState,
   ) {
@@ -498,26 +570,36 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       desired.cameraEnabled,
       desired.cameraDeviceId ?? '',
     ])
-    if (active.appliedCameraKey === cameraKey) return
-    try {
+    if (active.appliedCameraKey === cameraKey) return Effect.void
+    return Effect.gen({ self: this }, function*() {
       this.emitMedia(active, 'camera', {
         state: desired.cameraEnabled ? 'starting' : 'off',
       })
-      await active.room.localParticipant.setCameraEnabled(
-        desired.cameraEnabled,
-        desired.cameraDeviceId ? { deviceId: desired.cameraDeviceId } : undefined,
+      yield* promiseEffect(() =>
+        active.room.localParticipant.setCameraEnabled(
+          desired.cameraEnabled,
+          desired.cameraDeviceId
+            ? { deviceId: desired.cameraDeviceId }
+            : undefined,
+        )
       )
-      this.assertCurrent(active)
+      yield* this.assertCurrentEffect(active)
       this.emitMedia(active, 'camera', {
         state: desired.cameraEnabled ? 'running' : 'off',
       })
       active.appliedCameraKey = cameraKey
-    } catch (error) {
-      if (this.active === active) this.emitMediaFailure(active, 'camera', error)
-    }
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          if (this.active === active) {
+            this.emitMediaFailure(active, 'camera', error)
+          }
+        }),
+      ),
+    )
   }
 
-  private async applyScreen(
+  private applyScreenEffect(
     active: ActiveBrowserVoice,
     desired: VoiceMediaDesiredState,
   ) {
@@ -530,18 +612,20 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       desired.screenBitrate ?? 0,
       desired.screenAudioBitrate ?? 0,
     ])
-    if (active.appliedScreenKey === screenKey) return
-    try {
+    if (active.appliedScreenKey === screenKey) return Effect.void
+    return Effect.gen({ self: this }, function*() {
       this.emitMedia(active, 'screen', {
         state: desired.screenEnabled ? 'starting' : 'off',
       })
       const screenOptions = browserScreenShareOptions(desired)
-      await active.room.localParticipant.setScreenShareEnabled(
-        desired.screenEnabled,
-        screenOptions.capture,
-        screenOptions.publish,
+      yield* promiseEffect(() =>
+        active.room.localParticipant.setScreenShareEnabled(
+          desired.screenEnabled,
+          screenOptions.capture,
+          screenOptions.publish,
+        )
       )
-      this.assertCurrent(active)
+      yield* this.assertCurrentEffect(active)
       this.emitMedia(active, 'screen', {
         state: desired.screenEnabled ? 'running' : 'off',
       })
@@ -552,12 +636,18 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
             : 'off',
       })
       active.appliedScreenKey = screenKey
-    } catch (error) {
-      if (this.active === active) this.emitMediaFailure(active, 'screen', error)
-    }
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          if (this.active === active) {
+            this.emitMediaFailure(active, 'screen', error)
+          }
+        }),
+      ),
+    )
   }
 
-  private async applyOutput(
+  private applyOutputEffect(
     active: ActiveBrowserVoice,
     desired: VoiceMediaDesiredState,
   ) {
@@ -566,36 +656,43 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       desired.userDeafened || desired.serverDeafened,
       desired.outputVolume,
     ])
-    if (active.appliedOutputKey === outputKey) return
-    try {
+    if (active.appliedOutputKey === outputKey) return Effect.void
+    return Effect.gen({ self: this }, function*() {
       const outputDeviceId = desired.outputDeviceId ?? 'default'
-      await active.audioMixer.setOutputDevice(desired.outputDeviceId)
+      yield* active.audioMixer.setOutputDeviceEffect(desired.outputDeviceId)
       active.appliedOutputDeviceId = outputDeviceId
       const muted = desired.userDeafened || desired.serverDeafened
-      await active.audioMixer.applyVolumes(muted, desired.outputVolume)
-      this.assertCurrent(active)
+      yield* active.audioMixer.applyVolumesEffect(muted, desired.outputVolume)
+      yield* this.assertCurrentEffect(active)
       this.emitMedia(active, 'output', {
         state: desired.userDeafened || desired.serverDeafened ? 'muted' : 'running',
       })
       active.appliedOutputKey = outputKey
-    } catch (error) {
-      if (this.active === active) await this.handleOutputFailure(active, error)
-    }
+    }).pipe(
+      Effect.catch((error) =>
+        this.active === active
+          ? this.handleOutputFailureEffect(active, error)
+          : Effect.void,
+      ),
+    )
   }
 
-  private async handleOutputFailure(active: ActiveBrowserVoice, error: unknown) {
-    if (this.active !== active || active.outputRecovering) return
+  private handleOutputFailureEffect(
+    active: ActiveBrowserVoice,
+    error: unknown,
+  ) {
+    if (this.active !== active || active.outputRecovering) return Effect.void
     const desired = this.desired
-    if (!desired) return
+    if (!desired) return Effect.void
     active.outputRecovering = true
-    try {
+    return Effect.gen({ self: this }, function*() {
       if (desired.outputDeviceId) {
-        await active.audioMixer.setOutputDevice(undefined)
-        await active.audioMixer.applyVolumes(
+        yield* active.audioMixer.setOutputDeviceEffect(undefined)
+        yield* active.audioMixer.applyVolumesEffect(
           desired.userDeafened || desired.serverDeafened,
           desired.outputVolume,
         )
-        this.assertCurrent(active)
+        yield* this.assertCurrentEffect(active)
         active.appliedOutputDeviceId = 'default'
         active.appliedOutputKey = JSON.stringify([
           desired.outputDeviceId,
@@ -613,13 +710,20 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
         return
       }
       this.emitMediaFailure(active, 'output', error)
-    } catch (fallbackError) {
-      if (this.active === active) {
-        this.emitMediaFailure(active, 'output', fallbackError)
-      }
-    } finally {
-      active.outputRecovering = false
-    }
+    }).pipe(
+      Effect.catch((fallbackError) =>
+        Effect.sync(() => {
+          if (this.active === active) {
+            this.emitMediaFailure(active, 'output', fallbackError)
+          }
+        }),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          active.outputRecovering = false
+        }),
+      ),
+    )
   }
 
   private emitMedia(
@@ -708,7 +812,24 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
     document.body.appendChild(element)
     active.remoteAudioDecoderSinks.set(trackSid, { track, element })
 
-    void element.play().catch(() => undefined)
+    this.effectRuntime.runFork(
+      Effect.tryPromise({
+        try: () => element.play(),
+        catch: (cause) => cause,
+      }).pipe(Effect.ignore),
+    )
+  }
+
+  private applyRemoteAudioVolumes(
+    active: ActiveBrowserVoice,
+    desired: VoiceMediaDesiredState,
+  ) {
+    this.effectRuntime.runFork(
+      active.audioMixer.applyVolumesEffect(
+        desired.userDeafened || desired.serverDeafened,
+        desired.outputVolume,
+      ).pipe(Effect.ignore),
+    )
   }
 
   private removeRemoteAudioDecoderSink(
@@ -728,6 +849,13 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
 
   private assertCurrent(active: ActiveBrowserVoice) {
     if (this.active !== active) throw abortError()
+  }
+
+  private assertCurrentEffect(active: ActiveBrowserVoice) {
+    return Effect.try({
+      try: () => this.assertCurrent(active),
+      catch: (cause) => cause,
+    })
   }
 }
 
@@ -799,24 +927,25 @@ function browserDisconnectCode(reason?: DisconnectReason) {
     : 'browser_rtc_disconnected'
 }
 
-function raceWithAbort<T>(promise: Promise<T>, signal: AbortSignal) {
-  if (signal.aborted) return Promise.reject<T>(abortError())
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(abortError())
-    signal.addEventListener('abort', onAbort, { once: true })
-    promise.then(
-      (value) => {
-        signal.removeEventListener('abort', onAbort)
-        resolve(value)
-      },
-      (error) => {
-        signal.removeEventListener('abort', onAbort)
-        reject(error)
-      },
-    )
+function promiseEffect<A>(run: () => Promise<A>) {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => cause,
   })
 }
 
 function abortError() {
   return new DOMException('Browser RTC operation superseded', 'AbortError')
+}
+
+function abortSignal(signal: AbortSignal) {
+  return Effect.callback<never, DOMException>((resume) => {
+    if (signal.aborted) {
+      resume(Effect.fail(abortError()))
+      return
+    }
+    const onAbort = () => resume(Effect.fail(abortError()))
+    signal.addEventListener('abort', onAbort, { once: true })
+    return Effect.sync(() => signal.removeEventListener('abort', onAbort))
+  })
 }

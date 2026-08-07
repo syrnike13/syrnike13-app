@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Room } from 'livekit-client'
 import type { VoiceCommand, VoiceSnapshot } from '@syrnike13/platform'
+import { Effect } from 'effect'
 
 import {
   VoiceTabOwner,
@@ -126,9 +127,15 @@ class FakeOwnedClient implements OwnedBrowserVoiceClient {
     return () => undefined
   }
 
-  async dispose() {
-    this.disposed = true
-    this.listeners.clear()
+  dispose() {
+    return Effect.runPromise(this.disposeEffect())
+  }
+
+  disposeEffect() {
+    return Effect.sync(() => {
+      this.disposed = true
+      this.listeners.clear()
+    })
   }
 }
 

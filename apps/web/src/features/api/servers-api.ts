@@ -1,9 +1,8 @@
 import type {
-  Channel,
+  DataBanCreate,
   DataCreateRole,
   DataCreateServer,
   DataCreateServerChannel,
-  DataBanCreate,
   DataEditRole,
   DataEditRoleRanks,
   DataEditServer,
@@ -11,74 +10,143 @@ import type {
   DataModerationAction,
   DataPermissionsValue,
   DataSetServerRolePermission,
-  MemberResponse,
-  BanListResult,
-  Emoji,
-  Invite,
-  Member,
-  NewRoleResponse,
-  Role,
-  Server,
   ServerAuditLogAction,
-  ServerAuditLogPage,
   ServerAuditLogTarget,
-  User,
 } from '@syrnike13/api-types'
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Effect, Schema } from 'effect'
 
-import { apiRequest } from '#/lib/api/client'
+import { apiRequestEffect } from '#/lib/api/client'
 
-type CreateServerResponse = {
-  server: Server
-  member: Member
-  channels: Channel[]
-}
+export const editServerEffect = Effect.fn('web.servers.edit')(
+  function*(token: string, serverId: string, data: DataEditServer) {
+    return yield* apiRequestEffect(
+      `/servers/${serverId}`,
+      ApiSchema.ServerEditEdit200,
+      {
+        method: 'PATCH',
+        token,
+        body: data,
+      },
+    )
+  },
+)
 
-export async function editServer(
+export function editServer(
   token: string,
   serverId: string,
   data: DataEditServer,
+  signal?: AbortSignal,
 ) {
-  return apiRequest<Server>(`/servers/${serverId}`, {
-    method: 'PATCH',
-    token,
-    body: data,
-  })
-}
-
-export async function createServer(token: string, data: DataCreateServer) {
-  return apiRequest<CreateServerResponse>('/servers/create', {
-    method: 'POST',
-    token,
-    body: data,
-  })
-}
-
-export async function fetchServerMembers(token: string, serverId: string) {
-  return apiRequest<{ members: Member[]; users: User[] }>(
-    `/servers/${serverId}/members`,
-    { token },
+  return Effect.runPromise(
+    editServerEffect(token, serverId, data),
+    signal ? { signal } : undefined,
   )
 }
 
-export async function fetchServerInvites(token: string, serverId: string) {
-  return apiRequest<Invite[]>(`/servers/${serverId}/invites`, { token })
+export const createServerEffect = Effect.fn('web.servers.create')(
+  function*(token: string, data: DataCreateServer) {
+    return yield* apiRequestEffect(
+      '/servers/create',
+      ApiSchema.ServerCreateCreateServer200,
+      {
+        method: 'POST',
+        token,
+        body: data,
+      },
+    )
+  },
+)
+
+export function createServer(
+  token: string,
+  data: DataCreateServer,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    createServerEffect(token, data),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function fetchServerBans(token: string, serverId: string) {
-  return apiRequest<BanListResult>(`/servers/${serverId}/bans`, { token })
-}
+export const fetchServerMembersEffect = Effect.fn(
+  'web.servers.fetchMembers',
+)(function*(token: string, serverId: string) {
+  return yield* apiRequestEffect(
+    `/servers/${serverId}/members`,
+    ApiSchema.MemberFetchAllFetchAll200,
+    { token },
+  )
+})
 
-export async function fetchServerAuditLog(
+export function fetchServerMembers(
   token: string,
   serverId: string,
-  params: {
-    before?: string
-    actor?: string
-    action?: ServerAuditLogAction['type']
-    target_type?: ServerAuditLogTarget['type']
-    target_id?: string
-    limit?: number
-  } = {},
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    fetchServerMembersEffect(token, serverId),
+    signal ? { signal } : undefined,
+  )
+}
+
+export const fetchServerInvitesEffect = Effect.fn(
+  'web.servers.fetchInvites',
+)(function*(token: string, serverId: string) {
+  return yield* apiRequestEffect(
+    `/servers/${serverId}/invites`,
+    ApiSchema.InvitesFetchInvites200,
+    { token },
+  )
+})
+
+export function fetchServerInvites(
+  token: string,
+  serverId: string,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    fetchServerInvitesEffect(token, serverId),
+    signal ? { signal } : undefined,
+  )
+}
+
+export const fetchServerBansEffect = Effect.fn('web.servers.fetchBans')(
+  function*(token: string, serverId: string) {
+    return yield* apiRequestEffect(
+      `/servers/${serverId}/bans`,
+      ApiSchema.BanListList200,
+      { token },
+    )
+  },
+)
+
+export function fetchServerBans(
+  token: string,
+  serverId: string,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    fetchServerBansEffect(token, serverId),
+    signal ? { signal } : undefined,
+  )
+}
+
+export type FetchServerAuditLogParams = {
+  before?: string
+  actor?: string
+  action?: ServerAuditLogAction['type']
+  target_type?: ServerAuditLogTarget['type']
+  target_id?: string
+  limit?: number
+}
+
+export const fetchServerAuditLogEffect = Effect.fn(
+  'web.servers.fetchAuditLog',
+)(function*(
+  token: string,
+  serverId: string,
+  params: FetchServerAuditLogParams = {},
 ) {
   const search = new URLSearchParams()
   if (params.before) search.set('before', params.before)
@@ -89,203 +157,506 @@ export async function fetchServerAuditLog(
   if (params.limit) search.set('limit', String(params.limit))
   const suffix = search.toString() ? `?${search}` : ''
 
-  return apiRequest<ServerAuditLogPage>(
+  return yield* apiRequestEffect(
     `/servers/${serverId}/audit-log${suffix}`,
+    ApiSchema.AuditLogFetchAuditLog200,
     { token },
+  )
+})
+
+export function fetchServerAuditLog(
+  token: string,
+  serverId: string,
+  params: FetchServerAuditLogParams = {},
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    fetchServerAuditLogEffect(token, serverId, params),
+    signal ? { signal } : undefined,
   )
 }
 
-export async function createServerChannel(
+export const createServerChannelEffect = Effect.fn(
+  'web.servers.createChannel',
+)(function*(
   token: string,
   serverId: string,
   data: DataCreateServerChannel,
 ) {
-  return apiRequest<Channel>(`/servers/${serverId}/channels`, {
-    method: 'POST',
-    token,
-    body: data,
-  })
+  return yield* apiRequestEffect(
+    `/servers/${serverId}/channels`,
+    ApiSchema.ChannelCreateCreateServerChannel200,
+    {
+      method: 'POST',
+      token,
+      body: data,
+    },
+  )
+})
+
+export function createServerChannel(
+  token: string,
+  serverId: string,
+  data: DataCreateServerChannel,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    createServerChannelEffect(token, serverId, data),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function ackServer(token: string, serverId: string) {
-  return apiRequest<void>(`/servers/${serverId}/ack`, {
-    method: 'PUT',
-    token,
-  })
+export const ackServerEffect = Effect.fn('web.servers.ack')(
+  function*(token: string, serverId: string) {
+    return yield* apiRequestEffect(`/servers/${serverId}/ack`, Schema.Void, {
+      method: 'PUT',
+      token,
+    })
+  },
+)
+
+export function ackServer(token: string, serverId: string) {
+  return Effect.runPromise(ackServerEffect(token, serverId))
 }
 
-export async function deleteOrLeaveServer(token: string, serverId: string) {
+export const deleteOrLeaveServerEffect = Effect.fn(
+  'web.servers.deleteOrLeave',
+)(function*(token: string, serverId: string) {
   const search = new URLSearchParams({
     leave_silently: 'false',
   })
 
-  return apiRequest<void>(`/servers/${serverId}?${search}`, {
-    method: 'DELETE',
-    token,
-  })
+  return yield* apiRequestEffect(
+    `/servers/${serverId}?${search}`,
+    Schema.Void,
+    {
+      method: 'DELETE',
+      token,
+    },
+  )
+})
+
+export function deleteOrLeaveServer(
+  token: string,
+  serverId: string,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    deleteOrLeaveServerEffect(token, serverId),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function fetchServerEmojis(token: string, serverId: string) {
-  return apiRequest<Emoji[]>(`/servers/${serverId}/emojis`, { token })
+export const fetchServerEmojisEffect = Effect.fn(
+  'web.servers.fetchEmojis',
+)(function*(token: string, serverId: string) {
+  return yield* apiRequestEffect(
+    `/servers/${serverId}/emojis`,
+    ApiSchema.EmojiListListEmoji200,
+    { token },
+  )
+})
+
+export function fetchServerEmojis(
+  token: string,
+  serverId: string,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    fetchServerEmojisEffect(token, serverId),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function createServerEmoji(
+export const createServerEmojiEffect = Effect.fn(
+  'web.servers.createEmoji',
+)(function*(
   token: string,
   autumnId: string,
   serverId: string,
   name: string,
 ) {
-  return apiRequest<Emoji>(`/custom/emoji/${autumnId}`, {
-    method: 'PUT',
-    token,
-    body: {
-      name,
-      parent: { type: 'Server', id: serverId },
+  return yield* apiRequestEffect(
+    `/custom/emoji/${autumnId}`,
+    ApiSchema.EmojiCreateCreateEmoji200,
+    {
+      method: 'PUT',
+      token,
+      body: {
+        name,
+        parent: { type: 'Server', id: serverId },
+      },
     },
-  })
-}
+  )
+})
 
-export async function deleteServerEmoji(token: string, emojiId: string) {
-  return apiRequest<void>(`/custom/emoji/${emojiId}`, {
-    method: 'DELETE',
-    token,
-  })
-}
-
-export async function fetchServerMember(
+export function createServerEmoji(
   token: string,
+  autumnId: string,
   serverId: string,
-  userId: string,
-  options: { roles?: boolean } = {},
+  name: string,
+  signal?: AbortSignal,
 ) {
-  const query = options.roles ? '?roles=true' : ''
-  return apiRequest<MemberResponse>(
-    `/servers/${serverId}/members/${userId}${query}`,
-    { token },
+  return Effect.runPromise(
+    createServerEmojiEffect(token, autumnId, serverId, name),
+    signal ? { signal } : undefined,
   )
 }
 
-export async function editServerMember(
+export const deleteServerEmojiEffect = Effect.fn(
+  'web.servers.deleteEmoji',
+)(function*(token: string, emojiId: string) {
+  return yield* apiRequestEffect(`/custom/emoji/${emojiId}`, Schema.Void, {
+    method: 'DELETE',
+    token,
+  })
+})
+
+export function deleteServerEmoji(
+  token: string,
+  emojiId: string,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    deleteServerEmojiEffect(token, emojiId),
+    signal ? { signal } : undefined,
+  )
+}
+
+export type FetchServerMemberOptions = {
+  roles?: boolean
+  signal?: AbortSignal
+}
+
+type FetchServerMemberEffectOptions = Omit<
+  FetchServerMemberOptions,
+  'signal'
+>
+
+export const fetchServerMemberEffect = Effect.fn(
+  'web.servers.fetchMember',
+)(function*(
+  token: string,
+  serverId: string,
+  userId: string,
+  options: FetchServerMemberEffectOptions = {},
+) {
+  const query = options.roles ? '?roles=true' : ''
+  return yield* apiRequestEffect(
+    `/servers/${serverId}/members/${userId}${query}`,
+    ApiSchema.MemberFetchFetch200,
+    { token },
+  )
+})
+
+export function fetchServerMember(
+  token: string,
+  serverId: string,
+  userId: string,
+  options: FetchServerMemberOptions = {},
+) {
+  const { signal, ...effectOptions } = options
+  return Effect.runPromise(
+    fetchServerMemberEffect(token, serverId, userId, effectOptions),
+    signal ? { signal } : undefined,
+  )
+}
+
+export const editServerMemberEffect = Effect.fn('web.servers.editMember')(
+  function*(
+    token: string,
+    serverId: string,
+    userId: string,
+    data: DataMemberEdit,
+  ) {
+    return yield* apiRequestEffect(
+      `/servers/${serverId}/members/${userId}`,
+      ApiSchema.MemberEditEdit200,
+      {
+        method: 'PATCH',
+        token,
+        body: data,
+      },
+    )
+  },
+)
+
+export function editServerMember(
   token: string,
   serverId: string,
   userId: string,
   data: DataMemberEdit,
+  signal?: AbortSignal,
 ) {
-  return apiRequest<Member>(`/servers/${serverId}/members/${userId}`, {
-    method: 'PATCH',
-    token,
-    body: data,
-  })
+  return Effect.runPromise(
+    editServerMemberEffect(token, serverId, userId, data),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function kickServerMember(
+export const kickServerMemberEffect = Effect.fn('web.servers.kickMember')(
+  function*(
+    token: string,
+    serverId: string,
+    userId: string,
+    body: DataModerationAction = {},
+  ) {
+    return yield* apiRequestEffect(
+      `/servers/${serverId}/members/${userId}`,
+      Schema.Void,
+      {
+        method: 'DELETE',
+        token,
+        body,
+      },
+    )
+  },
+)
+
+export function kickServerMember(
   token: string,
   serverId: string,
   userId: string,
   body: DataModerationAction = {},
+  signal?: AbortSignal,
 ) {
-  return apiRequest<void>(`/servers/${serverId}/members/${userId}`, {
-    method: 'DELETE',
-    token,
-    body,
-  })
+  return Effect.runPromise(
+    kickServerMemberEffect(token, serverId, userId, body),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function banServerMember(
+export const banServerMemberEffect = Effect.fn('web.servers.banMember')(
+  function*(
+    token: string,
+    serverId: string,
+    userId: string,
+    body: DataBanCreate = {},
+  ) {
+    return yield* apiRequestEffect(
+      `/servers/${serverId}/bans/${userId}`,
+      ApiSchema.BanCreateBan200,
+      {
+        method: 'PUT',
+        token,
+        body,
+      },
+    )
+  },
+)
+
+export function banServerMember(
   token: string,
   serverId: string,
   userId: string,
   body: DataBanCreate = {},
+  signal?: AbortSignal,
 ) {
-  return apiRequest<void>(`/servers/${serverId}/bans/${userId}`, {
-    method: 'PUT',
-    token,
-    body,
-  })
+  return Effect.runPromise(
+    banServerMemberEffect(token, serverId, userId, body),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function unbanServerMember(
+export const unbanServerMemberEffect = Effect.fn('web.servers.unbanMember')(
+  function*(
+    token: string,
+    serverId: string,
+    userId: string,
+    body: DataModerationAction = {},
+  ) {
+    return yield* apiRequestEffect(
+      `/servers/${serverId}/bans/${userId}`,
+      Schema.Void,
+      {
+        method: 'DELETE',
+        token,
+        body,
+      },
+    )
+  },
+)
+
+export function unbanServerMember(
   token: string,
   serverId: string,
   userId: string,
   body: DataModerationAction = {},
+  signal?: AbortSignal,
 ) {
-  return apiRequest<void>(`/servers/${serverId}/bans/${userId}`, {
-    method: 'DELETE',
-    token,
-    body,
-  })
+  return Effect.runPromise(
+    unbanServerMemberEffect(token, serverId, userId, body),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function createServerRole(
+export const createServerRoleEffect = Effect.fn('web.servers.createRole')(
+  function*(token: string, serverId: string, data: DataCreateRole) {
+    return yield* apiRequestEffect(
+      `/servers/${serverId}/roles`,
+      ApiSchema.RolesCreateCreate200,
+      {
+        method: 'POST',
+        token,
+        body: data,
+      },
+    )
+  },
+)
+
+export function createServerRole(
   token: string,
   serverId: string,
   data: DataCreateRole,
+  signal?: AbortSignal,
 ) {
-  return apiRequest<NewRoleResponse>(`/servers/${serverId}/roles`, {
-    method: 'POST',
-    token,
-    body: data,
-  })
+  return Effect.runPromise(
+    createServerRoleEffect(token, serverId, data),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function editServerRole(
+export const editServerRoleEffect = Effect.fn('web.servers.editRole')(
+  function*(
+    token: string,
+    serverId: string,
+    roleId: string,
+    data: DataEditRole,
+  ) {
+    return yield* apiRequestEffect(
+      `/servers/${serverId}/roles/${roleId}`,
+      ApiSchema.RolesEditEdit200,
+      {
+        method: 'PATCH',
+        token,
+        body: data,
+      },
+    )
+  },
+)
+
+export function editServerRole(
   token: string,
   serverId: string,
   roleId: string,
   data: DataEditRole,
+  signal?: AbortSignal,
 ) {
-  return apiRequest<Role>(`/servers/${serverId}/roles/${roleId}`, {
-    method: 'PATCH',
-    token,
-    body: data,
-  })
+  return Effect.runPromise(
+    editServerRoleEffect(token, serverId, roleId, data),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function deleteServerRole(
+export const deleteServerRoleEffect = Effect.fn('web.servers.deleteRole')(
+  function*(token: string, serverId: string, roleId: string) {
+    return yield* apiRequestEffect(
+      `/servers/${serverId}/roles/${roleId}`,
+      Schema.Void,
+      {
+        method: 'DELETE',
+        token,
+      },
+    )
+  },
+)
+
+export function deleteServerRole(
   token: string,
   serverId: string,
   roleId: string,
+  signal?: AbortSignal,
 ) {
-  return apiRequest<void>(`/servers/${serverId}/roles/${roleId}`, {
-    method: 'DELETE',
-    token,
-  })
+  return Effect.runPromise(
+    deleteServerRoleEffect(token, serverId, roleId),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function setServerRolePermissions(
+export const setServerRolePermissionsEffect = Effect.fn(
+  'web.servers.setRolePermissions',
+)(function*(
   token: string,
   serverId: string,
   roleId: string,
   data: DataSetServerRolePermission,
 ) {
-  return apiRequest<Server>(`/servers/${serverId}/permissions/${roleId}`, {
-    method: 'PUT',
-    token,
-    body: data,
-  })
+  return yield* apiRequestEffect(
+    `/servers/${serverId}/permissions/${roleId}`,
+    ApiSchema.PermissionsSetSetRolePermission200,
+    {
+      method: 'PUT',
+      token,
+      body: data,
+    },
+  )
+})
+
+export function setServerRolePermissions(
+  token: string,
+  serverId: string,
+  roleId: string,
+  data: DataSetServerRolePermission,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    setServerRolePermissionsEffect(token, serverId, roleId, data),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function setDefaultServerPermissions(
+export const setDefaultServerPermissionsEffect = Effect.fn(
+  'web.servers.setDefaultPermissions',
+)(function*(
   token: string,
   serverId: string,
   data: DataPermissionsValue,
 ) {
-  return apiRequest<Server>(`/servers/${serverId}/permissions/default`, {
-    method: 'PUT',
-    token,
-    body: data,
-  })
+  return yield* apiRequestEffect(
+    `/servers/${serverId}/permissions/default`,
+    ApiSchema.PermissionsSetDefaultSetDefaultServerPermissions200,
+    {
+      method: 'PUT',
+      token,
+      body: data,
+    },
+  )
+})
+
+export function setDefaultServerPermissions(
+  token: string,
+  serverId: string,
+  data: DataPermissionsValue,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    setDefaultServerPermissionsEffect(token, serverId, data),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function editServerRoleRanks(
+export const editServerRoleRanksEffect = Effect.fn(
+  'web.servers.editRoleRanks',
+)(function*(token: string, serverId: string, data: DataEditRoleRanks) {
+  return yield* apiRequestEffect(
+    `/servers/${serverId}/roles/ranks`,
+    ApiSchema.RolesEditPositionsEditRoleRanks200,
+    {
+      method: 'PATCH',
+      token,
+      body: data,
+    },
+  )
+})
+
+export function editServerRoleRanks(
   token: string,
   serverId: string,
   data: DataEditRoleRanks,
+  signal?: AbortSignal,
 ) {
-  return apiRequest<Server>(`/servers/${serverId}/roles/ranks`, {
-    method: 'PATCH',
-    token,
-    body: data,
-  })
+  return Effect.runPromise(
+    editServerRoleRanksEffect(token, serverId, data),
+    signal ? { signal } : undefined,
+  )
 }

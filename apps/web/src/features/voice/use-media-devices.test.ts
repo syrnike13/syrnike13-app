@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 
 import { act, renderHook, waitFor } from '@testing-library/react'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 import {
-  ensureMediaDevicePermission,
-  listMediaDevices,
+  ensureMediaDevicePermissionEffect,
+  listMediaDevicesEffect,
   useMediaDevices,
 } from './use-media-devices'
 
@@ -72,14 +73,14 @@ describe('media device permissions', () => {
       media: { listDevices },
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
-    await ensureMediaDevicePermission('audio')
+    await Effect.runPromise(ensureMediaDevicePermissionEffect('audio'))
 
     expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled()
     expect(navigator.mediaDevices.enumerateDevices).not.toHaveBeenCalled()
   })
 
   it('keeps browser audio permission for web fallback', async () => {
-    await ensureMediaDevicePermission('audio')
+    await Effect.runPromise(ensureMediaDevicePermissionEffect('audio'))
 
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
       audio: true,
@@ -100,7 +101,9 @@ describe('media device permissions', () => {
       media: { listDevices },
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
-    await expect(listMediaDevices('audioinput')).resolves.toEqual(nativeDevices)
+    await expect(
+      Effect.runPromise(listMediaDevicesEffect('audioinput')),
+    ).resolves.toEqual(nativeDevices)
 
     expect(listDevices).toHaveBeenCalledWith('audioinput')
     expect(navigator.mediaDevices.enumerateDevices).not.toHaveBeenCalled()

@@ -2,6 +2,7 @@ import type {
   DesktopOverlayGameTarget,
   DesktopOverlaySettings,
 } from '@syrnike13/platform'
+import { Effect } from 'effect'
 
 import { OVERLAY_EXCLUDED_PROCESS_NAMES } from './overlay-game-exclusions'
 import { POPULAR_GAME_PROCESS_NAMES } from './overlay-game-processes'
@@ -68,13 +69,19 @@ export function startOverlayGameDetector(
     return
   }
   targetListener = onTargetChanged
-  void hooksRuntimeController.startOverlay(handleForegroundWindow).catch((error) => {
-    console.warn(
-      '[overlay-detector] native runtime failed to start',
-      error instanceof Error ? error.message : 'unknown error',
-    )
-    onTargetChanged(null)
-  })
+  Effect.runFork(
+    hooksRuntimeController.startOverlayEffect(handleForegroundWindow).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          console.warn(
+            '[overlay-detector] native runtime failed to start',
+            error instanceof Error ? error.message : 'unknown error',
+          )
+          onTargetChanged(null)
+        }),
+      ),
+    ),
+  )
 }
 
 export function disposeOverlayGameDetector() {

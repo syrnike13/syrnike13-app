@@ -55,15 +55,15 @@ vi.mock('#/components/channels/channel-settings-webhooks-panel', () => ({
   }) => <div data-testid="webhooks-panel">{channel._id}</div>,
 }))
 
-const legacyVoiceChannel = {
+const voiceChannel = {
   _id: 'voice-legacy',
-  channel_type: 'VoiceChannel',
+  channel_type: 'TextChannel',
   server: 'server-1',
   name: 'Voice Legacy',
   default_permissions: null,
   role_permissions: {},
   voice: { max_users: null },
-} as unknown as Channel
+} satisfies Extract<Channel, { channel_type: 'TextChannel' }>
 
 const textChannel = {
   _id: 'text-general',
@@ -99,7 +99,7 @@ describe('ChannelSettingsPage', () => {
         roles: [],
       } as never,
     ])
-    syncStore.upsertChannel(legacyVoiceChannel)
+    syncStore.upsertChannel(voiceChannel)
     mocks.navigate.mockResolvedValue(undefined)
     mocks.navigate.mockClear()
   })
@@ -111,7 +111,7 @@ describe('ChannelSettingsPage', () => {
     vi.clearAllMocks()
   })
 
-  it('opens the permissions tab for manageable legacy voice channels', () => {
+  it('opens the permissions tab for manageable voice channels', () => {
     render(
       <ChannelSettingsPage
         channelId="voice-legacy"

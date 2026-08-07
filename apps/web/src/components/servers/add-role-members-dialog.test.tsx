@@ -3,6 +3,7 @@
 import type { Role, Server } from '@syrnike13/api-types'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AddRoleMembersDialog } from '#/components/servers/add-role-members-dialog'
@@ -35,8 +36,10 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
-  editServerMember: vi.fn(),
-  fetchServerMembers: vi.fn().mockResolvedValue({ members: [], users: [] }),
+  editServerMemberEffect: vi.fn(() => Effect.void),
+  fetchServerMembersEffect: vi.fn(() =>
+    Effect.succeed({ members: [], users: [] }),
+  ),
 }))
 
 function role(): Role {

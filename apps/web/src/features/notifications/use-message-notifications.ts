@@ -5,7 +5,6 @@ import { useAuth } from '#/features/auth/auth-context'
 import { eventsGateway } from '#/features/events/gateway'
 import { getChannelLabel } from '#/features/sync/channel-label'
 import { syncStore } from '#/features/sync/sync-store'
-import type { GatewayServerEvent } from '#/features/sync/types'
 
 function canNotify() {
   return (
@@ -38,11 +37,10 @@ export function useMessageNotifications() {
   const auth = useAuth()
 
   useEffect(() => {
-    const unsubscribe = eventsGateway.subscribeEvents((event) => {
-      const gatewayEvent = event as GatewayServerEvent
-      if (gatewayEvent.type !== 'Message') return
+    const unsubscribe = eventsGateway.subscribeServerEvents((event) => {
+      if (event.type !== 'Message') return
 
-      const message = gatewayEvent as Message
+      const message: Message = event
       if (message.author === auth.user?._id) return
 
       const author = syncStore.getState().users[message.author]

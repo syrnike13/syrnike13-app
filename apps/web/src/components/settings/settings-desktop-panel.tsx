@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { Effect, Fiber } from 'effect'
 
 import { SettingsBlock, SettingsRow } from '#/components/settings/settings-panels'
 import { Button } from '#/components/ui/button'
@@ -42,43 +43,103 @@ export function SettingsDesktopPanel() {
 
   useEffect(() => {
     if (!desktop) return
-    let cancelled = false
-    void desktop.getVersions().then((value) => {
-      if (!cancelled) setVersions(value)
-    })
-    void desktop.window.getPreferences().then((value) => {
-      if (!cancelled) setWindowPreferences(value)
-    })
-    void desktop.updates.getState().then((value) => {
-      if (!cancelled) setUpdateState(value)
-    })
-    void desktop.settings.load().then((value) => {
-      if (!cancelled) setObservability(value.observability)
-    })
+
+    let pushedUpdateRevision = 0
     const unsubscribe = desktop.updates.onStateChange((value) => {
-      if (!cancelled) setUpdateState(value)
+      pushedUpdateRevision += 1
+      setUpdateState(value)
     })
+    const initialUpdateRevision = pushedUpdateRevision
+    const fiber = Effect.runFork(
+      Effect.all(
+        [
+          Effect.tryPromise({
+            try: () => desktop.getVersions(),
+            catch: (cause) => cause,
+          }).pipe(
+            Effect.tap((value) =>
+              Effect.sync(() => {
+                setVersions(value)
+              }),
+            ),
+            Effect.ignore,
+          ),
+          Effect.tryPromise({
+            try: () => desktop.window.getPreferences(),
+            catch: (cause) => cause,
+          }).pipe(
+            Effect.tap((value) =>
+              Effect.sync(() => {
+                setWindowPreferences(value)
+              }),
+            ),
+            Effect.ignore,
+          ),
+          Effect.tryPromise({
+            try: () => desktop.updates.getState(),
+            catch: (cause) => cause,
+          }).pipe(
+            Effect.tap((value) =>
+              Effect.sync(() => {
+                if (pushedUpdateRevision === initialUpdateRevision) {
+                  setUpdateState(value)
+                }
+              }),
+            ),
+            Effect.ignore,
+          ),
+          Effect.tryPromise({
+            try: () => desktop.settings.load(),
+            catch: (cause) => cause,
+          }).pipe(
+            Effect.tap((value) =>
+              Effect.sync(() => {
+                setObservability(value.observability)
+              }),
+            ),
+            Effect.ignore,
+          ),
+        ],
+        { concurrency: 'unbounded', discard: true },
+      ),
+    )
+
     return () => {
-      cancelled = true
       unsubscribe()
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [desktop])
 
-  async function checkForUpdates() {
+  function checkForUpdates() {
     if (!desktop) return
     setCheckingUpdates(true)
-    try {
-      setUpdateState(await desktop.updates.check())
-    } catch (error) {
-      setUpdateState(null)
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось проверить обновления',
-      )
-    } finally {
-      setCheckingUpdates(false)
-    }
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () => desktop.updates.check(),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              setUpdateState(null)
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось проверить обновления',
+              )
+            }),
+          onSuccess: (state) =>
+            Effect.sync(() => {
+              setUpdateState(state)
+            }),
+        }),
+        Effect.ensuring(
+          Effect.sync(() => {
+            setCheckingUpdates(false)
+          }),
+        ),
+      ),
+    )
   }
 
   return (
@@ -115,7 +176,7 @@ export function SettingsDesktopPanel() {
               size="sm"
               variant="outline"
               disabled={checkingUpdates || updateState?.status === 'checking'}
-              onClick={() => void checkForUpdates()}
+              onClick={checkForUpdates}
             >
               {checkingUpdates || updateState?.status === 'checking'
                 ? 'Проверка…'
@@ -141,20 +202,33 @@ export function SettingsDesktopPanel() {
                 openAtLogin: checked,
               }))
               setSavingOpenAtLogin(true)
-              void desktop.window
-                .setOpenAtLogin(checked)
-                .then(setWindowPreferences)
-                .catch((error) => {
-                  setWindowPreferences(previous)
-                  toast.error(
-                    error instanceof Error
-                      ? error.message
-                      : 'Не удалось сохранить настройку автозапуска',
-                  )
-                })
-                .finally(() => {
-                  setSavingOpenAtLogin(false)
-                })
+              Effect.runFork(
+                Effect.tryPromise({
+                  try: () => desktop.window.setOpenAtLogin(checked),
+                  catch: (cause) => cause,
+                }).pipe(
+                  Effect.matchEffect({
+                    onFailure: (error) =>
+                      Effect.sync(() => {
+                        setWindowPreferences(previous)
+                        toast.error(
+                          error instanceof Error
+                            ? error.message
+                            : 'Не удалось сохранить настройку автозапуска',
+                        )
+                      }),
+                    onSuccess: (value) =>
+                      Effect.sync(() => {
+                        setWindowPreferences(value)
+                      }),
+                  }),
+                  Effect.ensuring(
+                    Effect.sync(() => {
+                      setSavingOpenAtLogin(false)
+                    }),
+                  ),
+                ),
+              )
             }}
           />
         </SettingsRow>
@@ -173,20 +247,33 @@ export function SettingsDesktopPanel() {
                 closeToTray: checked,
               }))
               setSavingCloseToTray(true)
-              void desktop.window
-                .setCloseToTray(checked)
-                .then(setWindowPreferences)
-                .catch((error) => {
-                  setWindowPreferences(previous)
-                  toast.error(
-                    error instanceof Error
-                      ? error.message
-                      : 'Не удалось сохранить настройку окна',
-                  )
-                })
-                .finally(() => {
-                  setSavingCloseToTray(false)
-                })
+              Effect.runFork(
+                Effect.tryPromise({
+                  try: () => desktop.window.setCloseToTray(checked),
+                  catch: (cause) => cause,
+                }).pipe(
+                  Effect.matchEffect({
+                    onFailure: (error) =>
+                      Effect.sync(() => {
+                        setWindowPreferences(previous)
+                        toast.error(
+                          error instanceof Error
+                            ? error.message
+                            : 'Не удалось сохранить настройку окна',
+                        )
+                      }),
+                    onSuccess: (value) =>
+                      Effect.sync(() => {
+                        setWindowPreferences(value)
+                      }),
+                  }),
+                  Effect.ensuring(
+                    Effect.sync(() => {
+                      setSavingCloseToTray(false)
+                    }),
+                  ),
+                ),
+              )
             }}
           />
         </SettingsRow>
@@ -252,26 +339,40 @@ export function SettingsDesktopPanel() {
             disabled={!auth.session?.token || !desktop || sendingDiagnosticReport}
             onClick={() => {
               if (!auth.session?.token || !desktop) return
+              const sessionToken = auth.session.token
               setSendingDiagnosticReport(true)
-              void sendDiagnosticReport({
-                token: auth.session.token,
-                desktop,
-                area: 'client',
-                severity: 'warning',
-                triggerCode: 'manual_report',
-                description: 'Manual diagnostic report',
-              })
-                .then((report) => {
-                  if (report) toast.success(`Отчёт отправлен: ${report.id}`)
-                })
-                .catch((error) => {
-                  toast.error(
-                    error instanceof Error
-                      ? error.message
-                      : 'Не удалось отправить диагностический отчёт',
-                  )
-                })
-                .finally(() => setSendingDiagnosticReport(false))
+              Effect.runFork(
+                sendDiagnosticReport({
+                  token: sessionToken,
+                  desktop,
+                  area: 'client',
+                  severity: 'warning',
+                  triggerCode: 'manual_report',
+                  description: 'Manual diagnostic report',
+                }).pipe(
+                  Effect.matchEffect({
+                    onFailure: (error) =>
+                      Effect.sync(() => {
+                        toast.error(
+                          error instanceof Error
+                            ? error.message
+                            : 'Не удалось отправить диагностический отчёт',
+                        )
+                      }),
+                    onSuccess: (report) =>
+                      Effect.sync(() => {
+                        if (report) {
+                          toast.success(`Отчёт отправлен: ${report.id}`)
+                        }
+                      }),
+                  }),
+                  Effect.ensuring(
+                    Effect.sync(() => {
+                      setSendingDiagnosticReport(false)
+                    }),
+                  ),
+                ),
+              )
             }}
           >
             {sendingDiagnosticReport ? 'Отправка…' : 'Отправить'}
@@ -288,26 +389,40 @@ export function SettingsDesktopPanel() {
     </div>
   )
 
-  async function updateObservability(
+  function updateObservability(
     patch: Partial<DesktopObservabilitySettings>,
   ) {
     if (!desktop || !observability || savingObservability) return
     const previous = observability
     setObservability({ ...observability, ...patch })
     setSavingObservability(true)
-    try {
-      const settings = await desktop.settings.update({ observability: patch })
-      setObservability(settings.observability)
-    } catch (error) {
-      setObservability(previous)
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось сохранить настройки диагностики',
-      )
-    } finally {
-      setSavingObservability(false)
-    }
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () => desktop.settings.update({ observability: patch }),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              setObservability(previous)
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось сохранить настройки диагностики',
+              )
+            }),
+          onSuccess: (settings) =>
+            Effect.sync(() => {
+              setObservability(settings.observability)
+            }),
+        }),
+        Effect.ensuring(
+          Effect.sync(() => {
+            setSavingObservability(false)
+          }),
+        ),
+      ),
+    )
   }
 }
 

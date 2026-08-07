@@ -7,6 +7,7 @@ import type {
   SystemMessageChannels,
 } from '@syrnike13/api-types'
 import { toast } from 'sonner'
+import { Effect, Fiber } from 'effect'
 
 import { CustomEmoji } from '#/components/emoji/custom-emoji'
 import { ServerSettingsAuditPanel } from '#/components/servers/server-settings-audit-panel'
@@ -45,12 +46,15 @@ import {
 import { Textarea } from '#/components/ui/textarea'
 import { getServerDescription } from '#/lib/channel-meta'
 import { useAuth } from '#/features/auth/auth-context'
-import { uploadEmoji, uploadMediaFile } from '#/features/api/media-api'
 import {
-  createServerEmoji,
-  deleteServerEmoji,
-  editServer,
-  fetchServerEmojis,
+  uploadEmojiEffect,
+  uploadMediaFileEffect,
+} from '#/features/api/media-api'
+import {
+  createServerEmojiEffect,
+  deleteServerEmojiEffect,
+  editServerEffect,
+  fetchServerEmojisEffect,
 } from '#/features/api/servers-api'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
@@ -400,49 +404,60 @@ function ServerSettingsGeneralPanel({
     }
 
     setSaving(true)
-    try {
-      const patch: DataEditServer = {}
-      const remove: FieldsServer[] = []
+    return Effect.runPromise(
+      Effect.gen(function*() {
+        const patch: DataEditServer = {}
+        const remove: FieldsServer[] = []
 
-      if (nameChanged) patch.name = trimmedName
-      if (descriptionChanged) {
-        if (trimmedDescription) {
-          patch.description = trimmedDescription
-        } else {
-          remove.push('Description')
+        if (nameChanged) patch.name = trimmedName
+        if (descriptionChanged) {
+          if (trimmedDescription) {
+            patch.description = trimmedDescription
+          } else {
+            remove.push('Description')
+          }
         }
-      }
-      if (iconFile) {
-        patch.icon = await uploadMediaFile(token, 'icons', iconFile)
-      } else if (removeIcon) {
-        remove.push('Icon')
-      }
-      if (bannerFile) {
-        patch.banner = await uploadMediaFile(token, 'banners', bannerFile)
-      } else if (removeBanner) {
-        remove.push('Banner')
-      }
-      if (remove.length) patch.remove = remove
+        if (iconFile) {
+          patch.icon = yield* uploadMediaFileEffect(token, 'icons', iconFile)
+        } else if (removeIcon) {
+          remove.push('Icon')
+        }
+        if (bannerFile) {
+          patch.banner = yield* uploadMediaFileEffect(
+            token,
+            'banners',
+            bannerFile,
+          )
+        } else if (removeBanner) {
+          remove.push('Banner')
+        }
+        if (remove.length) patch.remove = remove
 
-      const updated = await editServer(token, serverId, patch)
-      syncStore.upsertServer(updated)
-      setIconFile(null)
-      setBannerFile(null)
-      setIconPreviewUrl(null)
-      setBannerPreviewUrl(null)
-      setRemoveIcon(false)
-      setRemoveBanner(false)
-      if (iconInputRef.current) iconInputRef.current.value = ''
-      if (bannerInputRef.current) bannerInputRef.current.value = ''
-      return true
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось сохранить',
-      )
-      return false
-    } finally {
-      setSaving(false)
-    }
+        const updated = yield* editServerEffect(token, serverId, patch)
+        yield* Effect.sync(() => {
+          syncStore.upsertServer(updated)
+          setIconFile(null)
+          setBannerFile(null)
+          setIconPreviewUrl(null)
+          setBannerPreviewUrl(null)
+          setRemoveIcon(false)
+          setRemoveBanner(false)
+          if (iconInputRef.current) iconInputRef.current.value = ''
+          if (bannerInputRef.current) bannerInputRef.current.value = ''
+        })
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось сохранить',
+            )
+            return false
+          },
+          onSuccess: () => true,
+        }),
+        Effect.ensuring(Effect.sync(() => setSaving(false))),
+      ),
+    )
   }
 
   const iconUrl = removeIcon
@@ -610,21 +625,28 @@ function ServerSettingsEngagementPanel({ serverId }: { serverId: string }) {
     }
 
     setSaving(true)
-    try {
-      const updated = await editServer(token, serverId, patch)
-      syncStore.upsertServer(updated)
-      setSystemMessagesChannelId(
-        systemMessageChannelValue(updated.system_messages),
-      )
-      return true
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось сохранить',
-      )
-      return false
-    } finally {
-      setSaving(false)
-    }
+    return Effect.runPromise(
+      editServerEffect(token, serverId, patch).pipe(
+        Effect.tap((updated) =>
+          Effect.sync(() => {
+            syncStore.upsertServer(updated)
+            setSystemMessagesChannelId(
+              systemMessageChannelValue(updated.system_messages),
+            )
+          }),
+        ),
+        Effect.match({
+          onFailure: (error) => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось сохранить',
+            )
+            return false
+          },
+          onSuccess: () => true,
+        }),
+        Effect.ensuring(Effect.sync(() => setSaving(false))),
+      ),
+    )
   }
 
   const isDirty =
@@ -715,30 +737,33 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
     const token = auth.session?.token
     if (!token) return
 
-    let cancelled = false
     setEmojiLoading(true)
-    void fetchServerEmojis(token, serverId)
-      .then((list) => {
-        if (!cancelled) {
+    const fiber = Effect.runFork(
+      fetchServerEmojisEffect(token, serverId).pipe(
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось загрузить emoji',
+              )
+              setEmojiLoading(false)
+            }),
+          onSuccess: (list) =>
+            Effect.sync(() => {
           setEmojis(list)
           for (const emoji of list) {
             syncStore.upsertEmoji(emoji)
           }
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          toast.error(
-            error instanceof Error ? error.message : 'Не удалось загрузить emoji',
-          )
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setEmojiLoading(false)
-      })
+              setEmojiLoading(false)
+            }),
+        }),
+      ),
+    )
 
     return () => {
-      cancelled = true
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [auth.session?.token, serverId])
 
@@ -757,26 +782,35 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
     }
 
     setEmojiUploading(true)
-    try {
-      const autumnId = await uploadEmoji(token, file)
-      const created = await createServerEmoji(
-        token,
-        autumnId,
-        serverId,
-        trimmedName,
-      )
-      syncStore.upsertEmoji(created)
-      setEmojis((prev) => [...prev, created])
-      setEmojiName('')
-      if (emojiFileRef.current) emojiFileRef.current.value = ''
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось создать emoji',
-      )
-      if (emojiFileRef.current) emojiFileRef.current.value = ''
-    } finally {
-      setEmojiUploading(false)
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        const autumnId = yield* uploadEmojiEffect(token, file)
+        const created = yield* createServerEmojiEffect(
+          token,
+          autumnId,
+          serverId,
+          trimmedName,
+        )
+        yield* Effect.sync(() => {
+          syncStore.upsertEmoji(created)
+          setEmojis((prev) => [...prev, created])
+          setEmojiName('')
+          if (emojiFileRef.current) emojiFileRef.current.value = ''
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось создать emoji',
+            )
+            if (emojiFileRef.current) emojiFileRef.current.value = ''
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setEmojiUploading(false))),
+      ),
+    )
   }
 
   async function handleEmojiDelete() {
@@ -785,18 +819,27 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
     if (!token || !emoji) return
 
     setEmojiDeleting(true)
-    try {
-      await deleteServerEmoji(token, emoji._id)
-      syncStore.removeEmoji(emoji._id)
-      setEmojis((prev) => prev.filter((entry) => entry._id !== emoji._id))
-      setEmojiPendingDeletion(null)
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось удалить',
-      )
-    } finally {
-      setEmojiDeleting(false)
-    }
+    await Effect.runPromise(
+      deleteServerEmojiEffect(token, emoji._id).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            syncStore.removeEmoji(emoji._id)
+            setEmojis((prev) =>
+              prev.filter((entry) => entry._id !== emoji._id),
+            )
+            setEmojiPendingDeletion(null)
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось удалить',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setEmojiDeleting(false))),
+      ),
+    )
   }
 
   return (

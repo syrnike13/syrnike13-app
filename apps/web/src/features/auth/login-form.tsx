@@ -2,6 +2,7 @@ import { useForm } from '@tanstack/react-form'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Loader2Icon } from '#/components/icons'
 import { useRef, useState } from 'react'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { AuthCard } from '#/components/auth/auth-layout'
@@ -18,7 +19,7 @@ import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 
 import { useAuth } from './auth-context'
-import { loginSchema, mfaPasswordSchema } from './schemas'
+import { loginSchema, mfaPasswordSchema, validateForm } from './schemas'
 import {
   isEmailVerificationEnabled,
   useSyrnikeConfig,
@@ -38,15 +39,15 @@ export function LoginForm() {
   const loginForm = useForm({
     defaultValues: { email: '', password: '' },
     onSubmit: async ({ value }) => {
-      const parsed = loginSchema.safeParse(value)
+      const parsed = validateForm(loginSchema, value)
       if (!parsed.success) {
-        toast.error(parsed.error.issues[0]?.message ?? 'Проверьте поля')
+        toast.error(parsed.issues[0]?.message ?? 'Проверьте поля')
         return
       }
 
       setSubmitting(true)
       try {
-        const result = await auth.login(parsed.data)
+        const result = await Effect.runPromise(auth.login(parsed.data))
         if (result && auth.session) {
           void navigate({
             to: postLoginPath(result.needsOnboarding),
@@ -67,15 +68,17 @@ export function LoginForm() {
   const mfaForm = useForm({
     defaultValues: { password: '' },
     onSubmit: async ({ value }) => {
-      const parsed = mfaPasswordSchema.safeParse(value)
+      const parsed = validateForm(mfaPasswordSchema, value)
       if (!parsed.success) {
-        toast.error(parsed.error.issues[0]?.message ?? 'Проверьте поля')
+        toast.error(parsed.issues[0]?.message ?? 'Проверьте поля')
         return
       }
 
       setSubmitting(true)
       try {
-        await auth.submitMfaPassword(parsed.data.password)
+        await Effect.runPromise(
+          auth.submitMfaPassword(parsed.data.password),
+        )
       } catch (error) {
         toast.error(
           error instanceof Error ? error.message : 'Не удалось подтвердить MFA',

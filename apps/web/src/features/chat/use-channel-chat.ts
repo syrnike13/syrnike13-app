@@ -1,18 +1,19 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Channel, Message } from '@syrnike13/api-types'
+import type { Message } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { useAuth } from '#/features/auth/auth-context'
 import {
-  deleteChannelMessage,
-  fetchChannelMessages,
+  deleteChannelMessageEffect,
+  fetchChannelMessagesEffect,
   MESSAGE_PAGE_SIZE,
-  pinChannelMessage,
-  unpinChannelMessage,
+  pinChannelMessageEffect,
+  unpinChannelMessageEffect,
 } from '#/features/api/messages-api'
-import { ackChannel } from '#/features/api/sync-api'
+import { ackChannelEffect } from '#/features/api/sync-api'
 import { useJumpToMessage } from '#/features/chat/use-jump-to-message'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useTypingIndicator } from '#/features/chat/use-typing-indicator'
@@ -57,10 +58,13 @@ export function useChannelChat({
 
   const historyQuery = useQuery({
     queryKey: queryKeys.channels.messages(channelId),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!token) return []
       const { messages: loaded, users: extraUsers } =
-        await fetchChannelMessages(token, channelId)
+        await Effect.runPromise(
+          fetchChannelMessagesEffect(token, channelId),
+          { signal },
+        )
       syncStore.setChannelMessages(channelId, loaded)
       syncStore.upsertUsers([
         ...extraUsers,
@@ -112,7 +116,9 @@ export function useChannelChat({
     lastAckedMessageIdRef.current = lastMessageId
 
     syncStore.setChannelLastRead(channelId, lastMessageId)
-    void ackChannel(token, channelId, lastMessageId).catch(() => {})
+    Effect.runFork(
+      ackChannelEffect(token, channelId, lastMessageId).pipe(Effect.ignore),
+    )
   }, [channel, channelId, enabled, lastMessageId, token])
 
   const loadOlder = useCallback(async () => {
@@ -126,38 +132,48 @@ export function useChannelChat({
 
     const requestChannelId = channelId
     setLoadingOlder(true)
-    try {
-      const { messages: older, users: extraUsers } = await fetchChannelMessages(
-        token,
-        requestChannelId,
-        { before: oldestId },
-      )
+    await Effect.runPromise(
+      fetchChannelMessagesEffect(token, requestChannelId, {
+        before: oldestId,
+      }).pipe(
+        Effect.tap(({ messages: older, users: extraUsers }) =>
+          Effect.sync(() => {
+            syncStore.upsertUsers([
+              ...extraUsers,
+              ...older
+                .map((message) => message.user)
+                .filter((user): user is NonNullable<typeof user> =>
+                  Boolean(user),
+                ),
+            ])
 
-      syncStore.upsertUsers([
-        ...extraUsers,
-        ...older
-          .map((message) => message.user)
-          .filter((user): user is NonNullable<typeof user> => Boolean(user)),
-      ])
-
-      syncStore.prependChannelMessages(requestChannelId, older)
-      // Канал мог смениться, пока запрос был в полёте, — не трогаем чужое состояние.
-      if (activeChannelIdRef.current === requestChannelId) {
-        setHasOlder(older.length >= MESSAGE_PAGE_SIZE)
-      }
-    } catch (error) {
-      if (activeChannelIdRef.current === requestChannelId) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'Не удалось загрузить сообщения',
-        )
-      }
-    } finally {
-      if (activeChannelIdRef.current === requestChannelId) {
-        setLoadingOlder(false)
-      }
-    }
+            syncStore.prependChannelMessages(requestChannelId, older)
+            // Канал мог смениться, пока запрос был в полёте, — не трогаем чужое состояние.
+            if (activeChannelIdRef.current === requestChannelId) {
+              setHasOlder(older.length >= MESSAGE_PAGE_SIZE)
+            }
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            if (activeChannelIdRef.current === requestChannelId) {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось загрузить сообщения',
+              )
+            }
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (activeChannelIdRef.current === requestChannelId) {
+              setLoadingOlder(false)
+            }
+          }),
+        ),
+      ),
+    )
   }, [channelId, enabled, loadingOlder, token])
 
   const handleDelete = useCallback(
@@ -166,20 +182,28 @@ export function useChannelChat({
       if (!window.confirm('Удалить это сообщение?')) return
 
       syncStore.removeMessage(channelId, message._id)
-      try {
-        await deleteChannelMessage(token, channelId, message._id)
-        if (
-          composerAction?.type === 'edit' &&
-          composerAction.message._id === message._id
-        ) {
-          setComposerAction(null)
-        }
-      } catch (error) {
-        syncStore.upsertMessage(message)
-        toast.error(
-          error instanceof Error ? error.message : 'Не удалось удалить',
-        )
-      }
+      await Effect.runPromise(
+        deleteChannelMessageEffect(token, channelId, message._id).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              if (
+                composerAction?.type === 'edit' &&
+                composerAction.message._id === message._id
+              ) {
+                setComposerAction(null)
+              }
+            }),
+          ),
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              syncStore.upsertMessage(message)
+              toast.error(
+                error instanceof Error ? error.message : 'Не удалось удалить',
+              )
+            }),
+          ),
+        ),
+      )
     },
     [channelId, composerAction, token],
   )
@@ -188,17 +212,25 @@ export function useChannelChat({
     async (message: Message) => {
       if (!token) return
       syncStore.patchMessage(channelId, message._id, { pinned: true })
-      try {
-        await pinChannelMessage(token, channelId, message._id)
-        toast.success('Сообщение закреплено')
-      } catch (error) {
-        syncStore.patchMessage(channelId, message._id, {
-          pinned: message.pinned,
-        })
-        toast.error(
-          error instanceof Error ? error.message : 'Не удалось закрепить',
-        )
-      }
+      await Effect.runPromise(
+        pinChannelMessageEffect(token, channelId, message._id).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => toast.success('Сообщение закреплено')),
+          ),
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              syncStore.patchMessage(channelId, message._id, {
+                pinned: message.pinned,
+              })
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось закрепить',
+              )
+            }),
+          ),
+        ),
+      )
     },
     [channelId, token],
   )
@@ -219,17 +251,25 @@ export function useChannelChat({
     async (message: Message) => {
       if (!token) return
       syncStore.patchMessage(channelId, message._id, { pinned: false })
-      try {
-        await unpinChannelMessage(token, channelId, message._id)
-        toast.success('Сообщение откреплено')
-      } catch (error) {
-        syncStore.patchMessage(channelId, message._id, {
-          pinned: message.pinned,
-        })
-        toast.error(
-          error instanceof Error ? error.message : 'Не удалось открепить',
-        )
-      }
+      await Effect.runPromise(
+        unpinChannelMessageEffect(token, channelId, message._id).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => toast.success('Сообщение откреплено')),
+          ),
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              syncStore.patchMessage(channelId, message._id, {
+                pinned: message.pinned,
+              })
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось открепить',
+              )
+            }),
+          ),
+        ),
+      )
     },
     [channelId, token],
   )
@@ -242,7 +282,7 @@ export function useChannelChat({
 
   return {
     auth,
-    channel: channel as Channel | undefined,
+    channel,
     users,
     messages,
     token,

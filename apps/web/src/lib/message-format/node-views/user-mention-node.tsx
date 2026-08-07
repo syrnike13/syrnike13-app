@@ -2,10 +2,11 @@ import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 
 import { MessageUserMention } from '#/components/chat/message-user-mention'
 import { useMessageFormatContext } from '#/lib/message-format/message-format-context'
+import { readStringNodeAttribute } from '#/lib/message-format/node-attrs'
 
 export function UserMentionNodeView({ node }: NodeViewProps) {
   const context = useMessageFormatContext()
-  const userId = node.attrs.id as string
+  const userId = readStringNodeAttribute(node.attrs, 'id') ?? ''
   const user = context.users?.[userId]
   const member =
     context.serverId && context.members

@@ -1,26 +1,22 @@
-import { apiRequest } from '#/lib/api/client'
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Effect } from 'effect'
 
-export type SyrnikeFeatures = {
-  captcha?: {
-    enabled?: boolean
-    key?: string
-  }
-  email?: boolean
-  invite_only?: boolean
-  livekit?: { enabled?: boolean; nodes?: Record<string, unknown> }
-}
+import { apiRequestEffect } from '#/lib/api/client'
 
-export type SyrnikeConfig = {
-  syrnike?: string
-  ws?: string
-  app?: string
-  vapid?: string
-  features?: SyrnikeFeatures
-  ui_sounds?: {
-    event_pack?: string | null
-  }
-}
+export type {
+  SyrnikeConfig,
+  SyrnikeFeatures,
+} from '@syrnike13/api-types'
 
-export async function fetchSyrnikeConfig() {
-  return apiRequest<SyrnikeConfig>('/')
+export const fetchSyrnikeConfigEffect = Effect.fn(
+  'web.config.fetchSyrnikeConfig',
+)(function*() {
+  return yield* apiRequestEffect('/', ApiSchema.RootRoot200)
+})
+
+export function fetchSyrnikeConfig(signal?: AbortSignal) {
+  return Effect.runPromise(
+    fetchSyrnikeConfigEffect(),
+    signal ? { signal } : undefined,
+  )
 }

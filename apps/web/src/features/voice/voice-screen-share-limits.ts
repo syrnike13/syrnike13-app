@@ -1,4 +1,6 @@
-import { fetchApiRoot } from '#/lib/api/client'
+import { Effect } from 'effect'
+
+import { fetchApiRootEffect } from '#/lib/api/client'
 
 import type { ScreenShareCaptureLimits } from './voice-capture'
 
@@ -8,9 +10,6 @@ const FALLBACK_SCREEN_SHARE_LIMITS: ScreenShareCaptureLimits = {
   maxPixels: 1920 * 1080,
   maxBitrate: 10_000_000,
 }
-
-let cachedLimits: ScreenShareCaptureLimits | null = null
-let loadPromise: Promise<ScreenShareCaptureLimits> | null = null
 
 function finitePositiveNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
@@ -64,11 +63,10 @@ function tighterLimits(
   }
 }
 
-export async function resolveScreenShareCaptureLimits() {
-  if (cachedLimits) return cachedLimits
-  if (!loadPromise) {
-    loadPromise = fetchApiRoot()
-      .then((root) => {
+export const resolveScreenShareCaptureLimitsEffect = Effect.runSync(
+  Effect.cached(
+    fetchApiRootEffect().pipe(
+      Effect.map((root) => {
         const limits = tighterLimits(
           limitsFromScreenShareConfig(
             root.features.limits.new_user.screen_share_resolution,
@@ -79,14 +77,9 @@ export async function resolveScreenShareCaptureLimits() {
             root.features.limits.default.screen_share_bitrate,
           ),
         )
-        cachedLimits = limits ?? FALLBACK_SCREEN_SHARE_LIMITS
-        return cachedLimits
-      })
-      .catch(() => {
-        cachedLimits = FALLBACK_SCREEN_SHARE_LIMITS
-        return cachedLimits
-      })
-  }
-
-  return loadPromise
-}
+        return limits ?? FALLBACK_SCREEN_SHARE_LIMITS
+      }),
+      Effect.catch(() => Effect.succeed(FALLBACK_SCREEN_SHARE_LIMITS)),
+    ),
+  ),
+)

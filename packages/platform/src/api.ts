@@ -1,3 +1,5 @@
+import { Schema } from 'effect'
+
 import type {
   NativeMediaDeviceInfo,
   NativeMediaRuntimeState,
@@ -15,6 +17,12 @@ import type {
 import type { DesktopLocalSettings, DesktopLocalSettingsPatch } from './settings'
 import type { VoiceCommand, VoiceSnapshot } from './voice/voice-types'
 
+type Mutable<Type> = Type extends ReadonlyArray<infer Item>
+  ? Array<Mutable<Item>>
+  : Type extends object
+    ? { -readonly [Key in keyof Type]: Mutable<Type[Key]> }
+    : Type
+
 /** Где выполняется UI: браузер или оболочка Electron. */
 export type SyrnikeRuntime = 'web' | 'desktop'
 
@@ -25,131 +33,240 @@ export interface DesktopPlatformInfo {
   os: DesktopOs
 }
 
-export interface DesktopVersions {
-  app: string
-  electron: string
-  chrome: string
-  node: string
-}
+export const DesktopVersionsSchema = Schema.Struct({
+  app: Schema.String,
+  electron: Schema.String,
+  chrome: Schema.String,
+  node: Schema.String,
+})
 
-export interface ActivityDetails {
-  type: 'playing' | 'listening' | 'watching'
-  name: string
-  details?: string
-  state?: string
-}
+export type DesktopVersions = Mutable<typeof DesktopVersionsSchema.Type>
 
-export interface DesktopWindowPreferences {
-  closeToTray: boolean
-  openAtLogin: boolean
-}
+export const ActivityDetailsSchema = Schema.Struct({
+  type: Schema.Literals(['playing', 'listening', 'watching']),
+  name: Schema.String,
+  details: Schema.optionalKey(Schema.String),
+  state: Schema.optionalKey(Schema.String),
+})
+
+export type ActivityDetails = Mutable<typeof ActivityDetailsSchema.Type>
+
+export const DesktopWindowPreferencesSchema = Schema.Struct({
+  closeToTray: Schema.Boolean,
+  openAtLogin: Schema.Boolean,
+})
+
+export type DesktopWindowPreferences = Mutable<
+  typeof DesktopWindowPreferencesSchema.Type
+>
+
+export const DesktopTrayVoiceStateSchema = Schema.Literals([
+  'default',
+  'voice-idle',
+  'voice-speaking',
+  'voice-muted',
+  'voice-deafened',
+])
 
 export type DesktopTrayVoiceState =
-  | 'default'
-  | 'voice-idle'
-  | 'voice-speaking'
-  | 'voice-muted'
-  | 'voice-deafened'
+  typeof DesktopTrayVoiceStateSchema.Type
 
-export interface DesktopStoredSession {
-  _id: string
-  token: string
-  user_id: string
-}
+const DesktopSessionIdentifierSchema = Schema.String.check(
+  Schema.isMinLength(1),
+)
 
-export type DesktopUpdateState =
-  | { status: 'idle' }
-  | { status: 'checking' }
-  | { status: 'available'; version: string }
-  | { status: 'downloading'; percent: number }
-  | { status: 'ready'; version: string }
-  | { status: 'installing'; version: string }
-  | { status: 'error'; message: string }
+export const DesktopStoredSessionSchema = Schema.Struct({
+  _id: DesktopSessionIdentifierSchema,
+  token: DesktopSessionIdentifierSchema,
+  user_id: DesktopSessionIdentifierSchema,
+})
 
-export type HotkeyAction =
-  | 'toggle-mic'
-  | 'toggle-deafen'
-  | 'toggle-camera'
-  | 'toggle-screen-share'
-  | 'return-to-voice'
-  | 'disconnect-voice'
-  | 'navigate-back'
-  | 'navigate-forward'
-  | 'push-to-talk'
-  | 'push-to-mute'
-  | 'priority-push-to-talk'
-  | 'toggle-vad'
+export type DesktopStoredSession = typeof DesktopStoredSessionSchema.Type
 
-export type HotkeyCombo = {
-  codes: string[]
-}
+export const DesktopUpdateStateSchema = Schema.Union([
+  Schema.Struct({ status: Schema.Literal('idle') }),
+  Schema.Struct({ status: Schema.Literal('checking') }),
+  Schema.Struct({
+    status: Schema.Literal('available'),
+    version: Schema.String,
+  }),
+  Schema.Struct({
+    status: Schema.Literal('downloading'),
+    percent: Schema.Finite,
+  }),
+  Schema.Struct({ status: Schema.Literal('ready'), version: Schema.String }),
+  Schema.Struct({
+    status: Schema.Literal('installing'),
+    version: Schema.String,
+  }),
+  Schema.Struct({ status: Schema.Literal('error'), message: Schema.String }),
+])
 
-export type HotkeyBinding = {
-  id: string
-  action: HotkeyAction
-  combo: HotkeyCombo | null
-  enabled: boolean
-}
+export type DesktopUpdateState = Mutable<typeof DesktopUpdateStateSchema.Type>
+
+export const HotkeyActionSchema = Schema.Literals([
+  'toggle-mic',
+  'toggle-deafen',
+  'toggle-camera',
+  'toggle-screen-share',
+  'return-to-voice',
+  'disconnect-voice',
+  'navigate-back',
+  'navigate-forward',
+  'push-to-talk',
+  'push-to-mute',
+  'priority-push-to-talk',
+  'toggle-vad',
+])
+
+export type HotkeyAction = typeof HotkeyActionSchema.Type
+
+export const HotkeyComboSchema = Schema.Struct({
+  codes: Schema.mutable(Schema.Array(Schema.String)),
+})
+
+export type HotkeyCombo = Mutable<typeof HotkeyComboSchema.Type>
+
+export const HotkeyBindingSchema = Schema.Struct({
+  id: Schema.String,
+  action: HotkeyActionSchema,
+  combo: Schema.Union([HotkeyComboSchema, Schema.Null]),
+  enabled: Schema.Boolean,
+})
+
+export type HotkeyBinding = Mutable<typeof HotkeyBindingSchema.Type>
+
+export const HotkeyRegistrationStatusSchema = Schema.Literals([
+  'registered',
+  'disabled',
+  'invalid',
+  'taken',
+  'unsupported',
+])
 
 export type HotkeyRegistrationStatus =
-  | 'registered'
-  | 'disabled'
-  | 'invalid'
-  | 'taken'
-  | 'unsupported'
+  typeof HotkeyRegistrationStatusSchema.Type
 
-export type NativeInputEvent =
-  {
-    type: 'inputDown' | 'inputUp'
-    source: 'keyboard' | 'mouse'
-    code: string
-    label: string
-    pressedCodes: string[]
-  }
+export const NativeInputEventSchema = Schema.Struct({
+  type: Schema.Literals(['inputDown', 'inputUp']),
+  source: Schema.Literals(['keyboard', 'mouse']),
+  code: Schema.String,
+  label: Schema.String,
+  pressedCodes: Schema.mutable(Schema.Array(Schema.String)),
+})
 
-export type HotkeyRuntimeStatus =
-  | 'running'
-  | 'not-running'
-  | 'unsupported-platform'
-  | 'permission-required'
+export type NativeInputEvent = Mutable<typeof NativeInputEventSchema.Type>
 
-export type HotkeyRegistrationResult = {
-  id: string
-  status: HotkeyRegistrationStatus
-}
+export const HotkeyRuntimeStatusSchema = Schema.Literals([
+  'running',
+  'not-running',
+  'unsupported-platform',
+  'permission-required',
+])
 
-export type HotkeyActivationEvent = {
-  action: HotkeyAction
-  phase: 'pressed' | 'released'
-}
+export type HotkeyRuntimeStatus = typeof HotkeyRuntimeStatusSchema.Type
+
+export const HotkeyRegistrationResultSchema = Schema.Struct({
+  id: Schema.String,
+  status: HotkeyRegistrationStatusSchema,
+})
+
+export type HotkeyRegistrationResult =
+  Mutable<typeof HotkeyRegistrationResultSchema.Type>
+
+export const HotkeyActivationEventSchema = Schema.Struct({
+  action: HotkeyActionSchema,
+  phase: Schema.Literals(['pressed', 'released']),
+})
+
+export type HotkeyActivationEvent = Mutable<
+  typeof HotkeyActivationEventSchema.Type
+>
 
 export type DesktopDisplayMediaSourceType = 'screen' | 'window' | 'game'
 
-export type DesktopDisplayMediaSource = {
-  id: string
-  name: string
-  type: DesktopDisplayMediaSourceType
-  thumbnailDataUrl: string | null
-  appIconDataUrl: string | null
-  processId?: number
-  processPath?: string
-  classification?: string
-  audioAvailable?: boolean
-  audioMode?: 'system_exclude' | 'process' | 'none'
-}
+export const DesktopDisplayMediaSourceSchema = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  type: Schema.Literals(['screen', 'window', 'game']),
+  thumbnailDataUrl: Schema.Union([Schema.String, Schema.Null]),
+  appIconDataUrl: Schema.Union([Schema.String, Schema.Null]),
+  processId: Schema.optional(Schema.Int),
+  processPath: Schema.optional(Schema.String),
+  classification: Schema.optional(Schema.String),
+  audioAvailable: Schema.optional(Schema.Boolean),
+  audioMode: Schema.optional(
+    Schema.Literals(['system_exclude', 'process', 'none']),
+  ),
+})
 
-export type DesktopDisplayMediaRequest = {
-  id: string
-  audioRequested: boolean
+export type DesktopDisplayMediaSource =
+  typeof DesktopDisplayMediaSourceSchema.Type
+
+export const DesktopDisplayMediaRequestSchema = Schema.Struct({
+  id: Schema.String,
+  audioRequested: Schema.Boolean,
   /** Видео идёт через native runtime, не через desktopCapturer. */
-  nativeVideo?: boolean
-}
+  nativeVideo: Schema.optionalKey(Schema.Boolean),
+})
 
-export type DesktopDisplayMediaSelection = {
-  requestId: string
-  sourceId: string
-  audioRequested: boolean
-}
+export type DesktopDisplayMediaRequest =
+  Mutable<typeof DesktopDisplayMediaRequestSchema.Type>
+
+export const DesktopDisplayMediaSelectionSchema = Schema.Struct({
+  requestId: Schema.String,
+  sourceId: Schema.String,
+  audioRequested: Schema.Boolean,
+})
+
+export type DesktopDisplayMediaSelection =
+  Mutable<typeof DesktopDisplayMediaSelectionSchema.Type>
+
+export const NativeMediaDeviceKindSchema = Schema.Literals([
+  'audioinput',
+  'audiooutput',
+  'videoinput',
+])
+
+export type NativeMediaDeviceKind = typeof NativeMediaDeviceKindSchema.Type
+
+const NativeMediaDemandIdentifierSchema = Schema.String.check(
+  Schema.isMinLength(1),
+)
+const NativeMediaGenerationSchema = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(0),
+)
+
+export const RemoteVideoDemandSchema = Schema.Struct({
+  sessionId: NativeMediaDemandIdentifierSchema,
+  generation: NativeMediaGenerationSchema,
+  trackId: NativeMediaDemandIdentifierSchema,
+  demanded: Schema.Boolean,
+})
+
+export type RemoteVideoDemand = Mutable<
+  typeof RemoteVideoDemandSchema.Type
+>
+
+export const LocalScreenPreviewDemandSchema = Schema.Struct({
+  demanded: Schema.Boolean,
+  width: Schema.Int.check(
+    Schema.isGreaterThanOrEqualTo(16),
+    Schema.isLessThanOrEqualTo(3_840),
+  ),
+  height: Schema.Int.check(
+    Schema.isGreaterThanOrEqualTo(16),
+    Schema.isLessThanOrEqualTo(2_160),
+  ),
+  fps: Schema.Int.check(
+    Schema.isGreaterThanOrEqualTo(1),
+    Schema.isLessThanOrEqualTo(60),
+  ),
+})
+
+export type LocalScreenPreviewDemand = Mutable<
+  typeof LocalScreenPreviewDemandSchema.Type
+>
 
 export type {
   NativeMediaEncoderBackend,
@@ -252,7 +369,7 @@ export interface SyrnikeDesktopApi {
     cancelRequest(requestId: string): Promise<void>
     openDisplayPicker(audioRequested: boolean): Promise<DesktopDisplayMediaRequest>
     listDevices(
-      kind: 'audioinput' | 'audiooutput' | 'videoinput',
+      kind: NativeMediaDeviceKind,
     ): Promise<NativeMediaDeviceInfo[]>
     startMicrophonePreview(): Promise<void>
     stopMicrophonePreview(): Promise<void>
@@ -263,12 +380,9 @@ export interface SyrnikeDesktopApi {
       demanded: boolean,
     ): Promise<void>
     replayRemoteVideoPublications(): Promise<void>
-    setLocalScreenPreviewDemand(demand: {
-      demanded: boolean
-      width: number
-      height: number
-      fps: number
-    }): Promise<void>
+    setLocalScreenPreviewDemand(
+      demand: LocalScreenPreviewDemand,
+    ): Promise<void>
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
     onDisplayPickerResolved(
       handler: (payload: DesktopDisplayMediaSelection) => void,

@@ -1,3 +1,5 @@
+import { Effect } from 'effect'
+
 export const APP_SHUTDOWN_TIMEOUT_MS = 4_900
 export const VOICE_SHUTDOWN_GRACE_MS = 2_500
 
@@ -11,7 +13,17 @@ type DesktopShutdownBudgetOptions = {
   voiceGraceMs?: number
 }
 
-export async function disposeWithinDesktopShutdownBudget({
+type DesktopShutdownBudgetEffectOptions = Omit<
+  DesktopShutdownBudgetOptions,
+  'disposeVoice' | 'disposeRemaining'
+> & {
+  disposeVoice: Effect.Effect<void, unknown>
+  disposeRemaining: Effect.Effect<void, unknown>
+}
+
+export const disposeWithinDesktopShutdownBudgetEffect = Effect.fn(
+  'desktop.disposeWithinShutdownBudget',
+)(function*({
   disposeVoice,
   disposeRemaining,
   onVoiceDisposeError,
@@ -19,37 +31,49 @@ export async function disposeWithinDesktopShutdownBudget({
   onDeadlineSettled,
   shutdownTimeoutMs = APP_SHUTDOWN_TIMEOUT_MS,
   voiceGraceMs = VOICE_SHUTDOWN_GRACE_MS,
-}: DesktopShutdownBudgetOptions) {
-  let shutdownTimeout: ReturnType<typeof setTimeout> | null = null
-  let voiceTimeout: ReturnType<typeof setTimeout> | null = null
+}: DesktopShutdownBudgetEffectOptions) {
+  const disposeVoiceWithinGrace = disposeVoice.pipe(
+    Effect.catchIf(
+      () => true,
+      (error) => Effect.sync(() => onVoiceDisposeError(error)),
+    ),
+    Effect.raceFirst(
+      Effect.sleep(voiceGraceMs).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => onVoiceDeadlineExceeded(voiceGraceMs)),
+        ),
+      ),
+    ),
+  )
 
-  const disposal = Promise.race([
-    Promise.resolve().then(disposeVoice).catch(onVoiceDisposeError),
-    new Promise<void>((resolve) => {
-      voiceTimeout = setTimeout(() => {
-        voiceTimeout = null
-        onVoiceDeadlineExceeded(voiceGraceMs)
-        resolve()
-      }, voiceGraceMs)
+  const disposal = disposeVoiceWithinGrace.pipe(
+    Effect.flatMap(() => disposeRemaining),
+    Effect.timeoutOrElse({
+      duration: shutdownTimeoutMs,
+      orElse: () => Effect.void,
     }),
-  ]).then(async () => {
-    if (voiceTimeout) {
-      clearTimeout(voiceTimeout)
-      voiceTimeout = null
-    }
-    await disposeRemaining()
-  })
+    Effect.ensuring(Effect.sync(onDeadlineSettled)),
+  )
 
-  try {
-    await Promise.race([
-      disposal,
-      new Promise<void>((resolve) => {
-        shutdownTimeout = setTimeout(resolve, shutdownTimeoutMs)
+  yield* disposal
+})
+
+export function disposeWithinDesktopShutdownBudget({
+  disposeVoice,
+  disposeRemaining,
+  ...options
+}: DesktopShutdownBudgetOptions) {
+  return Effect.runPromise(
+    disposeWithinDesktopShutdownBudgetEffect({
+      ...options,
+      disposeVoice: Effect.tryPromise({
+        try: disposeVoice,
+        catch: (cause) => cause,
       }),
-    ])
-  } finally {
-    if (shutdownTimeout) clearTimeout(shutdownTimeout)
-    if (voiceTimeout) clearTimeout(voiceTimeout)
-    onDeadlineSettled()
-  }
+      disposeRemaining: Effect.tryPromise({
+        try: disposeRemaining,
+        catch: (cause) => cause,
+      }),
+    }),
+  )
 }

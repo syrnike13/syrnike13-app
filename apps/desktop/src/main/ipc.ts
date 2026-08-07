@@ -1,16 +1,22 @@
 import { app, clipboard, ipcMain, type BrowserWindow } from 'electron'
 import {
+  ActivityDetailsSchema,
+  DesktopOverlaySnapshotSchema,
+  DesktopStoredSessionSchema,
+  DesktopTrayVoiceStateSchema,
+  HotkeyBindingSchema,
   IPC,
+  RendererDiagnosticIncidentSchema,
+  VoiceCommandSchema,
   type ActivityDetails,
   type DesktopLocalSettings,
-  type DesktopOverlaySnapshot,
   type DesktopLocalSettingsPatch,
   type DesktopStoredSession,
   type DesktopTrayVoiceState,
   type DesktopWindowPreferences,
-  type HotkeyBinding,
-  isVoiceCommand,
+  normalizeDesktopLocalSettingsPatch,
 } from '@syrnike13/platform'
+import { Effect, Schema, Semaphore } from 'effect'
 
 import {
   checkForDesktopUpdates,
@@ -27,16 +33,16 @@ import {
   stopHotkeyRecording,
 } from './hotkeys'
 import {
-  clearDesktopSession,
-  loadDesktopSession,
-  saveDesktopSession,
+  clearDesktopSessionEffect,
+  loadDesktopSessionEffect,
+  saveDesktopSessionEffect,
 } from './desktop-session'
 import {
   desktopLocalSettingsDefaults,
   loadDesktopLocalSettings,
 } from './desktop-local-settings'
 import {
-  flushNativeMediaDiagnostics,
+  flushNativeMediaDiagnosticsEffect,
   registerNativeMediaRuntimeIpc,
 } from './native-media-engine'
 import { registerDisplayMediaIpc } from './media-permissions'
@@ -52,7 +58,7 @@ import {
   broadcastDesktopVoiceSnapshot,
   desktopVoiceService,
 } from './voice/desktop-voice-service'
-import { createDesktopDiagnosticBundle } from './diagnostic-bundle'
+import { createDesktopDiagnosticBundleEffect } from './diagnostic-bundle'
 import {
   acknowledgeNativeDiagnosticIncidents,
   captureRendererDiagnosticIncidentForAccount,
@@ -60,8 +66,24 @@ import {
   leaseNativeDiagnosticIncidents,
   releaseNativeDiagnosticIncidents,
 } from './native-runtime/diagnostic-incidents'
+import { decodeIpcInput } from './ipc-schema'
 
 let lastActivity: ActivityDetails | null = null
+
+const ActivityInputSchema = Schema.Union([
+  ActivityDetailsSchema,
+  Schema.Null,
+])
+const SettingsPatchInputSchema = Schema.Record(
+  Schema.String,
+  Schema.Unknown,
+)
+const HotkeyBindingsInputSchema = Schema.mutable(
+  Schema.Array(HotkeyBindingSchema),
+)
+const DiagnosticIdentifierSchema = Schema.String.check(
+  Schema.isMinLength(1),
+)
 
 export function registerDesktopIpc(
   getWindow: () => BrowserWindow | null,
@@ -80,19 +102,14 @@ export function registerDesktopIpc(
   },
 ) {
   let authSessionRevision = 0
-  let authPersistenceTail = Promise.resolve()
+  const authPersistence = Semaphore.makeUnsafe(1)
   const applyAuthenticatedSession = (session: DesktopStoredSession | null) => {
     configureNativeDiagnosticIncidentAccount(session?.user_id ?? null)
     desktopVoiceService.configureSession(session)
   }
-  const serializeAuthPersistence = <T>(operation: () => Promise<T>) => {
-    const result = authPersistenceTail.then(operation)
-    authPersistenceTail = result.then(
-      () => undefined,
-      () => undefined,
-    )
-    return result
-  }
+  const serializeAuthPersistence = <A, E, R>(
+    operation: Effect.Effect<A, E, R>,
+  ) => authPersistence.withPermit(operation)
   initializeHotkeys(getWindow)
   registerDisplayMediaIpc(getWindow)
   registerNativeMediaRuntimeIpc(getWindow)
@@ -100,16 +117,23 @@ export function registerDesktopIpc(
     broadcastDesktopVoiceSnapshot(getWindow, IPC.voiceSnapshotChanged, snapshot)
   })
   const initialAuthSessionRevision = authSessionRevision
-  void serializeAuthPersistence(() =>
-    loadDesktopSession(options.sessionPath),
+  Effect.runFork(
+    serializeAuthPersistence(
+      loadDesktopSessionEffect(options.sessionPath),
+    ).pipe(
+      Effect.tap((session) =>
+        Effect.sync(() => {
+          if (authSessionRevision !== initialAuthSessionRevision) return
+          applyAuthenticatedSession(session)
+        }),
+      ),
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          console.error('[desktop] failed to load persisted session', error)
+        }),
+      ),
+    ),
   )
-    .then((session) => {
-      if (authSessionRevision !== initialAuthSessionRevision) return
-      applyAuthenticatedSession(session)
-    })
-    .catch((error) => {
-      console.error('[desktop] failed to load persisted session', error)
-    })
 
   ipcMain.handle(IPC.versions, () => ({
     app: app.getVersion(),
@@ -118,10 +142,13 @@ export function registerDesktopIpc(
     node: process.versions.node,
   }))
 
-  ipcMain.handle(IPC.clipboardWriteText, (_event, text: string) => {
-    if (typeof text !== 'string') {
-      throw new Error('Clipboard text must be a string')
-    }
+  ipcMain.handle(IPC.clipboardWriteText, (_event, input: unknown) => {
+    const text = decodeIpcInput(
+      IPC.clipboardWriteText,
+      'text',
+      Schema.String,
+      input,
+    )
     clipboard.writeText(text)
   })
 
@@ -148,13 +175,25 @@ export function registerDesktopIpc(
 
   ipcMain.handle(IPC.windowGetPreferences, () => options.getWindowPreferences())
 
-  ipcMain.handle(IPC.windowSetCloseToTray, (_event, closeToTray: boolean) =>
-    options.setCloseToTray(Boolean(closeToTray)),
-  )
+  ipcMain.handle(IPC.windowSetCloseToTray, (_event, input: unknown) => {
+    const closeToTray = decodeIpcInput(
+      IPC.windowSetCloseToTray,
+      'closeToTray',
+      Schema.Boolean,
+      input,
+    )
+    return options.setCloseToTray(closeToTray)
+  })
 
-  ipcMain.handle(IPC.windowSetOpenAtLogin, (_event, openAtLogin: boolean) =>
-    options.setOpenAtLogin(Boolean(openAtLogin)),
-  )
+  ipcMain.handle(IPC.windowSetOpenAtLogin, (_event, input: unknown) => {
+    const openAtLogin = decodeIpcInput(
+      IPC.windowSetOpenAtLogin,
+      'openAtLogin',
+      Schema.Boolean,
+      input,
+    )
+    return options.setOpenAtLogin(openAtLogin)
+  })
 
   ipcMain.handle(IPC.updatesGetState, () => getDesktopUpdateState())
 
@@ -164,7 +203,13 @@ export function registerDesktopIpc(
     quitAndInstallDesktopUpdate()
   })
 
-  ipcMain.handle(IPC.activitySet, (_event, details: ActivityDetails | null) => {
+  ipcMain.handle(IPC.activitySet, (_event, input: unknown) => {
+    const details = decodeIpcInput(
+      IPC.activitySet,
+      'details',
+      ActivityInputSchema,
+      input,
+    )
     lastActivity = details
     // TODO: Discord RPC / macOS Now Playing — подключить нативный модуль.
     if (details) {
@@ -179,14 +224,22 @@ export function registerDesktopIpc(
     console.info('[desktop] activity cleared')
   })
 
-  ipcMain.handle(IPC.traySetVoiceState, (_event, state: DesktopTrayVoiceState) => {
+  ipcMain.handle(IPC.traySetVoiceState, (_event, input: unknown) => {
+    const state: DesktopTrayVoiceState = decodeIpcInput(
+      IPC.traySetVoiceState,
+      'state',
+      DesktopTrayVoiceStateSchema,
+      input,
+    )
     options.setTrayVoiceState(state)
   })
 
   ipcMain.handle(IPC.authLoadSession, async () => {
     const revision = authSessionRevision
-    const session = await serializeAuthPersistence(() =>
-      loadDesktopSession(options.sessionPath),
+    const session = await Effect.runPromise(
+      serializeAuthPersistence(
+        loadDesktopSessionEffect(options.sessionPath),
+      ),
     )
     if (authSessionRevision !== revision) return null
     applyAuthenticatedSession(session)
@@ -195,13 +248,25 @@ export function registerDesktopIpc(
 
   ipcMain.handle(
     IPC.authSaveSession,
-    async (_event, session: DesktopStoredSession) => {
+    async (_event, input: unknown) => {
+      const session: DesktopStoredSession = decodeIpcInput(
+        IPC.authSaveSession,
+        'session',
+        DesktopStoredSessionSchema,
+        input,
+      )
       const revision = ++authSessionRevision
-      await serializeAuthPersistence(async () => {
-        if (authSessionRevision !== revision) return
-        await saveDesktopSession(options.sessionPath, session)
-        if (authSessionRevision === revision) applyAuthenticatedSession(session)
-      })
+      await Effect.runPromise(
+        serializeAuthPersistence(
+          Effect.gen(function*() {
+            if (authSessionRevision !== revision) return
+            yield* saveDesktopSessionEffect(options.sessionPath, session)
+            if (authSessionRevision === revision) {
+              yield* Effect.sync(() => applyAuthenticatedSession(session))
+            }
+          }),
+        ),
+      )
     },
   )
 
@@ -211,16 +276,25 @@ export function registerDesktopIpc(
     // serialized for ordering, but a slow or failed delete must never leave
     // voice and diagnostics authenticated under the retired account.
     applyAuthenticatedSession(null)
-    await serializeAuthPersistence(async () => {
-      if (authSessionRevision !== revision) return
-      await clearDesktopSession(options.sessionPath)
-    })
+    await Effect.runPromise(
+      serializeAuthPersistence(
+        Effect.gen(function*() {
+          if (authSessionRevision !== revision) return
+          yield* clearDesktopSessionEffect(options.sessionPath)
+        }),
+      ),
+    )
   })
 
   ipcMain.handle(IPC.voiceGetSnapshot, () => desktopVoiceService.snapshot())
 
-  ipcMain.handle(IPC.voiceDispatch, (_event, command: unknown) => {
-    if (!isVoiceCommand(command)) throw new Error('Invalid voice command')
+  ipcMain.handle(IPC.voiceDispatch, (_event, input: unknown) => {
+    const command = decodeIpcInput(
+      IPC.voiceDispatch,
+      'command',
+      VoiceCommandSchema,
+      input,
+    )
     return desktopVoiceService.dispatch(command)
   })
 
@@ -231,7 +305,15 @@ export function registerDesktopIpc(
     ),
   )
 
-  ipcMain.handle(IPC.settingsUpdate, async (_event, patch: DesktopLocalSettingsPatch) => {
+  ipcMain.handle(IPC.settingsUpdate, async (_event, input: unknown) => {
+    const patch: DesktopLocalSettingsPatch = normalizeDesktopLocalSettingsPatch(
+      decodeIpcInput(
+        IPC.settingsUpdate,
+        'patch',
+        SettingsPatchInputSchema,
+        input,
+      ),
+    )
     const settings = await options.updateLocalSettings(patch)
     setDesktopOverlaySettings(settings.overlay)
     return settings
@@ -239,32 +321,108 @@ export function registerDesktopIpc(
 
   ipcMain.handle(
     IPC.diagnosticsCreateBundle,
-    async (_event, rendererJsonl: string) => {
-      await flushNativeMediaDiagnostics()
-      return createDesktopDiagnosticBundle(rendererJsonl)
+    (_event, input: unknown) => {
+      const rendererJsonl = decodeIpcInput(
+        IPC.diagnosticsCreateBundle,
+        'rendererJsonl',
+        Schema.String,
+        input,
+      )
+      return Effect.runPromise(
+        Effect.gen(function*() {
+          yield* flushNativeMediaDiagnosticsEffect()
+          return yield* createDesktopDiagnosticBundleEffect(rendererJsonl)
+        }),
+      )
     },
   )
-  ipcMain.handle(IPC.diagnosticsLeaseNativeIncidents, (_event, accountId) =>
-    leaseNativeDiagnosticIncidents(accountId),
+  ipcMain.handle(
+    IPC.diagnosticsLeaseNativeIncidents,
+    (_event, accountInput: unknown) => {
+      const accountId = decodeIpcInput(
+        IPC.diagnosticsLeaseNativeIncidents,
+        'accountId',
+        DiagnosticIdentifierSchema,
+        accountInput,
+      )
+      return leaseNativeDiagnosticIncidents(accountId)
+    },
   )
-  ipcMain.handle(IPC.diagnosticsEnqueueIncident, (_event, accountId, incident) =>
-    captureRendererDiagnosticIncidentForAccount(accountId, incident),
+  ipcMain.handle(
+    IPC.diagnosticsEnqueueIncident,
+    (_event, accountInput: unknown, incidentInput: unknown) => {
+      const accountId = decodeIpcInput(
+        IPC.diagnosticsEnqueueIncident,
+        'accountId',
+        DiagnosticIdentifierSchema,
+        accountInput,
+      )
+      const incident = decodeIpcInput(
+        IPC.diagnosticsEnqueueIncident,
+        'incident',
+        RendererDiagnosticIncidentSchema,
+        incidentInput,
+      )
+      return captureRendererDiagnosticIncidentForAccount(accountId, incident)
+    },
   )
-  ipcMain.handle(IPC.diagnosticsAcknowledgeNativeIncidents, (_event, accountId, batchId) =>
-    acknowledgeNativeDiagnosticIncidents(accountId, batchId),
+  ipcMain.handle(
+    IPC.diagnosticsAcknowledgeNativeIncidents,
+    (_event, accountInput: unknown, batchInput: unknown) => {
+      const accountId = decodeIpcInput(
+        IPC.diagnosticsAcknowledgeNativeIncidents,
+        'accountId',
+        DiagnosticIdentifierSchema,
+        accountInput,
+      )
+      const batchId = decodeIpcInput(
+        IPC.diagnosticsAcknowledgeNativeIncidents,
+        'batchId',
+        DiagnosticIdentifierSchema,
+        batchInput,
+      )
+      return acknowledgeNativeDiagnosticIncidents(accountId, batchId)
+    },
   )
-  ipcMain.handle(IPC.diagnosticsReleaseNativeIncidents, (_event, accountId, batchId) =>
-    releaseNativeDiagnosticIncidents(accountId, batchId),
+  ipcMain.handle(
+    IPC.diagnosticsReleaseNativeIncidents,
+    (_event, accountInput: unknown, batchInput: unknown) => {
+      const accountId = decodeIpcInput(
+        IPC.diagnosticsReleaseNativeIncidents,
+        'accountId',
+        DiagnosticIdentifierSchema,
+        accountInput,
+      )
+      const batchId = decodeIpcInput(
+        IPC.diagnosticsReleaseNativeIncidents,
+        'batchId',
+        DiagnosticIdentifierSchema,
+        batchInput,
+      )
+      return releaseNativeDiagnosticIncidents(accountId, batchId)
+    },
   )
 
   ipcMain.handle(IPC.hotkeysGetBindings, () => getHotkeyBindings())
 
-  ipcMain.handle(IPC.hotkeysSetBindings, (_event, bindings: HotkeyBinding[]) =>
-    setHotkeyBindings(bindings),
-  )
+  ipcMain.handle(IPC.hotkeysSetBindings, (_event, input: unknown) => {
+    const bindings = decodeIpcInput(
+      IPC.hotkeysSetBindings,
+      'bindings',
+      HotkeyBindingsInputSchema,
+      input,
+    )
+    return setHotkeyBindings(bindings)
+  })
 
-  ipcMain.handle(IPC.hotkeysSetSuspended, (_event, suspended: boolean) => {
-    setHotkeysSuspended(Boolean(suspended))
+  ipcMain.handle(IPC.hotkeysSetSuspended, (_event, input: unknown) => {
+    const suspended = decodeIpcInput(
+      IPC.hotkeysSetSuspended,
+      'suspended',
+      Schema.Boolean,
+      input,
+    )
+    setHotkeysSuspended(suspended)
   })
 
   ipcMain.handle(IPC.hotkeysStartRecording, () => {
@@ -284,19 +442,31 @@ export function registerDesktopIpc(
     return getDesktopOverlayState()
   })
 
-  ipcMain.handle(IPC.overlaySetEnabled, (event, enabled: boolean) => {
+  ipcMain.handle(IPC.overlaySetEnabled, (event, input: unknown) => {
     if (!canSetDesktopOverlaySnapshot(event.sender)) {
       throw new Error('Untrusted overlay settings request')
     }
-    return setDesktopOverlayEnabled(Boolean(enabled))
+    const enabled = decodeIpcInput(
+      IPC.overlaySetEnabled,
+      'enabled',
+      Schema.Boolean,
+      input,
+    )
+    return setDesktopOverlayEnabled(enabled)
   })
 
   ipcMain.handle(
     IPC.overlaySetSnapshot,
-    (event, snapshot: DesktopOverlaySnapshot) => {
+    (event, input: unknown) => {
       if (!canSetDesktopOverlaySnapshot(event.sender)) {
         throw new Error('Untrusted overlay snapshot request')
       }
+      const snapshot = decodeIpcInput(
+        IPC.overlaySetSnapshot,
+        'snapshot',
+        DesktopOverlaySnapshotSchema,
+        input,
+      )
       return setDesktopOverlaySnapshot(snapshot)
     },
   )

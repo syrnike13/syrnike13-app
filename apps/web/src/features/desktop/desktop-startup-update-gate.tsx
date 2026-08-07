@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { Effect, Fiber } from 'effect'
 
 import { GatewayLoadingScreen } from '#/components/layout/gateway-loading-screen'
 import { usePlatform } from '#/platform/use-platform'
@@ -11,24 +12,41 @@ export function DesktopStartupUpdateGate({ children }: { children: ReactNode }) 
 
   useEffect(() => {
     if (!desktop) return
-    let cancelled = false
 
     const receiveState = (nextState: DesktopUpdateState) => {
-      if (cancelled) return
       setState(nextState)
       if (nextState.status === 'idle' || nextState.status === 'error') {
         setStartupSettled(true)
       }
     }
 
-    void desktop.updates.getState().then(receiveState).catch(() => {
-      if (!cancelled) setStartupSettled(true)
-    })
-    const unsubscribe = desktop.updates.onStateChange(receiveState)
+    let pushedStateRevision = 0
+    const receivePushedState = (nextState: DesktopUpdateState) => {
+      pushedStateRevision += 1
+      receiveState(nextState)
+    }
+    const unsubscribe = desktop.updates.onStateChange(receivePushedState)
+    const initialRevision = pushedStateRevision
+    const fiber = Effect.runFork(
+      Effect.tryPromise({
+        try: () => desktop.updates.getState(),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.matchEffect({
+          onFailure: () => Effect.sync(() => setStartupSettled(true)),
+          onSuccess: (nextState) =>
+            Effect.sync(() => {
+              if (pushedStateRevision === initialRevision) {
+                receiveState(nextState)
+              }
+            }),
+        }),
+      ),
+    )
 
     return () => {
-      cancelled = true
       unsubscribe()
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [desktop])
 

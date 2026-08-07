@@ -13,11 +13,13 @@ import {
   type DesktopDisplayMediaSource,
   type DesktopDisplayMediaSourceType,
 } from '@syrnike13/platform'
+import { Effect, Fiber, Schema } from 'effect'
 
+import { decodeIpcInput } from './ipc-schema'
 import {
   clearPendingNativePicker,
   getPendingNativePicker,
-  listNativeDisplaySources,
+  listNativeDisplaySourcesEffect,
   setPendingNativePicker,
 } from './native-media-engine'
 
@@ -31,7 +33,7 @@ type PendingDisplayMediaRequest = {
   audioRequested: boolean
   callback: DisplayMediaCallback
   sources: DesktopCapturerSource[]
-  timeout: ReturnType<typeof setTimeout>
+  timeout: Fiber.Fiber<void, never>
 }
 
 const DISPLAY_MEDIA_REQUEST_TIMEOUT_MS = 120_000
@@ -101,7 +103,7 @@ export function isTrustedSender(
 
 function clearPendingDisplayMediaRequest() {
   if (!pendingDisplayMediaRequest) return
-  clearTimeout(pendingDisplayMediaRequest.timeout)
+  Effect.runFork(Fiber.interrupt(pendingDisplayMediaRequest.timeout))
   pendingDisplayMediaRequest = null
 }
 
@@ -129,35 +131,49 @@ export function serializeDisplayMediaSource(
   }
 }
 
-async function loadSourcesForRequest(
+const loadSourcesForRequestEffect = Effect.fn(
+  'desktopMedia.loadDisplaySources',
+)(function*(
   requestId: string,
   sourcesRef: { sources: DesktopCapturerSource[] },
 ) {
-  const sources = await desktopCapturer.getSources({
-    types: ['screen', 'window'],
-    thumbnailSize: DISPLAY_MEDIA_THUMBNAIL_SIZE,
-    fetchWindowIcons: true,
+  const sources = yield* Effect.tryPromise({
+    try: () =>
+      desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: DISPLAY_MEDIA_THUMBNAIL_SIZE,
+        fetchWindowIcons: true,
+      }),
+    catch: (cause) => cause,
   })
-  sourcesRef.sources = sources
+  yield* Effect.sync(() => {
+    sourcesRef.sources = sources
+  })
   return sources.map(serializeDisplayMediaSource)
-}
+})
 
-async function refreshPendingDisplayMediaSources(requestId: string) {
+const refreshPendingDisplayMediaSourcesEffect = Effect.fn(
+  'desktopMedia.refreshDisplaySources',
+)(function*(requestId: string) {
   const pending = pendingDisplayMediaRequest
   if (!pending || pending.id !== requestId) return []
-  return loadSourcesForRequest(requestId, pending)
-}
+  return yield* loadSourcesForRequestEffect(requestId, pending)
+})
 
-async function refreshPendingNativePickerSources(
+const refreshPendingNativePickerSourcesEffect = Effect.fn(
+  'desktopMedia.refreshNativePickerSources',
+)(function*(
   requestId: string,
   getWindow: () => BrowserWindow | null,
 ) {
   const pending = getPendingNativePicker()
   if (!pending || pending.id !== requestId) return []
-  const sources = await listNativeDisplaySources(getWindow)
-  pending.sources = sources
+  const sources = yield* listNativeDisplaySourcesEffect(getWindow)
+  yield* Effect.sync(() => {
+    pending.sources = sources
+  })
   return sources
-}
+})
 
 function selectPendingDisplayMediaSource(
   requestId: string,
@@ -187,24 +203,52 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
   if (displayMediaIpcRegistered) return
   displayMediaIpcRegistered = true
 
-  ipcMain.handle(IPC.mediaGetDisplaySources, async (event, requestId: string) => {
+  ipcMain.handle(IPC.mediaGetDisplaySources, (event, input: unknown) => {
     if (!isTrustedSender(event, getWindow)) return []
+    const requestId = decodeIpcInput(
+      IPC.mediaGetDisplaySources,
+      'requestId',
+      Schema.String,
+      input,
+    )
     const nativePending = getPendingNativePicker()
-    if (nativePending?.id === requestId) {
-      return refreshPendingNativePickerSources(requestId, getWindow)
-    }
-    return refreshPendingDisplayMediaSources(requestId)
+    return Effect.runPromise(
+      nativePending?.id === requestId
+        ? refreshPendingNativePickerSourcesEffect(requestId, getWindow)
+        : refreshPendingDisplayMediaSourcesEffect(requestId),
+    )
   })
 
   ipcMain.handle(
     IPC.mediaSelectDisplaySource,
-    async (
+    (
       event,
-      requestId: string,
-      sourceId: string,
-      audioRequested?: boolean,
+      requestInput: unknown,
+      sourceInput: unknown,
+      audioInput?: unknown,
     ) => {
       if (!isTrustedSender(event, getWindow)) return false
+      const requestId = decodeIpcInput(
+        IPC.mediaSelectDisplaySource,
+        'requestId',
+        Schema.String,
+        requestInput,
+      )
+      const sourceId = decodeIpcInput(
+        IPC.mediaSelectDisplaySource,
+        'sourceId',
+        Schema.String,
+        sourceInput,
+      )
+      const audioRequested =
+        audioInput === undefined
+          ? undefined
+          : decodeIpcInput(
+              IPC.mediaSelectDisplaySource,
+              'audioRequested',
+              Schema.Boolean,
+              audioInput,
+            )
 
       const nativePending = getPendingNativePicker()
       if (nativePending?.id === requestId) {
@@ -236,8 +280,14 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
     },
   )
 
-  ipcMain.handle(IPC.mediaCancelRequest, async (event, requestId: string) => {
+  ipcMain.handle(IPC.mediaCancelRequest, (event, input: unknown) => {
     if (!isTrustedSender(event, getWindow)) return
+    const requestId = decodeIpcInput(
+      IPC.mediaCancelRequest,
+      'requestId',
+      Schema.String,
+      input,
+    )
 
     const nativePending = getPendingNativePicker()
     if (nativePending?.id === requestId) {
@@ -300,15 +350,24 @@ export function installMediaPermissions(
       audioRequested: Boolean(request.audioRequested),
       nativeVideo: false,
     }
+    const timeout = Effect.runFork(
+      Effect.sleep(DISPLAY_MEDIA_REQUEST_TIMEOUT_MS).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            const pending = pendingDisplayMediaRequest
+            if (!pending || pending.id !== displayRequest.id) return
+            pendingDisplayMediaRequest = null
+            pending.callback({})
+          }),
+        ),
+      ),
+    )
 
     pendingDisplayMediaRequest = {
       ...displayRequest,
       callback,
       sources: [],
-      timeout: setTimeout(
-        cancelPendingDisplayMediaRequest,
-        DISPLAY_MEDIA_REQUEST_TIMEOUT_MS,
-      ),
+      timeout,
     }
 
     win.webContents.send(IPC.mediaRequest, displayRequest)

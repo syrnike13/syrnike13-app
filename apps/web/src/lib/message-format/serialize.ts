@@ -1,6 +1,7 @@
 import type { JSONContent } from '@tiptap/core'
 
 import type { MessageDocument } from '#/lib/message-format/types'
+import { readStringNodeAttribute } from '#/lib/message-format/node-attrs'
 
 const MARK_WRAP: Record<string, { open: string; close: string }> = {
   bold: { open: '**', close: '**' },
@@ -48,12 +49,21 @@ function serializeInlineNode(node: JSONContent): string {
   }
 
   let value = ''
-  if (node.type === 'userMention') value = `<@${node.attrs?.id ?? ''}>`
-  else if (node.type === 'roleMention') value = `<%${node.attrs?.id ?? ''}>`
-  else if (node.type === 'channelMention') value = `<#${node.attrs?.id ?? ''}>`
+  if (node.type === 'userMention') {
+    value = `<@${readStringNodeAttribute(node.attrs, 'id') ?? ''}>`
+  } else if (node.type === 'roleMention') {
+    value = `<%${readStringNodeAttribute(node.attrs, 'id') ?? ''}>`
+  } else if (node.type === 'channelMention') {
+    value = `<#${readStringNodeAttribute(node.attrs, 'id') ?? ''}>`
+  }
   else if (node.type === 'massMention') {
-    value = node.attrs?.kind === 'online' ? '@online' : '@everyone'
-  } else if (node.type === 'customEmoji') value = `:${node.attrs?.id ?? ''}:`
+    value =
+      readStringNodeAttribute(node.attrs, 'kind') === 'online'
+        ? '@online'
+        : '@everyone'
+  } else if (node.type === 'customEmoji') {
+    value = `:${readStringNodeAttribute(node.attrs, 'id') ?? ''}:`
+  }
 
   return serializeMarkedText(value, node.marks)
 }
@@ -95,7 +105,7 @@ function serializeOrderedList(node: JSONContent): string {
 }
 
 function serializeCodeBlock(node: JSONContent): string {
-  const language = node.attrs?.language as string | undefined
+  const language = readStringNodeAttribute(node.attrs, 'language')
   const text = node.content?.[0]?.text ?? ''
   const fence = language ? `\`\`\`${language}` : '```'
   return `${fence}\n${text}\n\`\`\``

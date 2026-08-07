@@ -3,14 +3,47 @@ import { access, stat } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { constants } from 'node:fs'
 import { extname, normalize, resolve, sep } from 'node:path'
+import { Effect } from 'effect'
 
 export type EmbeddedWebServer = {
   url: string
   port: number
   close(): Promise<void>
+  closeEffect(): Effect.Effect<void, Error>
 }
 
 const SPA_SHELL_PATH = '/_shell.html'
+
+const listen = Effect.fn('desktop.webServer.listen')(
+  (server: Server, port: number) =>
+    Effect.callback<void, Error>((resume) => {
+      const handleError = (error: Error) => {
+        server.off('listening', handleListening)
+        resume(Effect.fail(error))
+      }
+      const handleListening = () => {
+        server.off('error', handleError)
+        resume(Effect.void)
+      }
+
+      server.once('error', handleError)
+      server.once('listening', handleListening)
+      server.listen(port, '127.0.0.1')
+
+      return Effect.sync(() => {
+        server.off('error', handleError)
+        server.off('listening', handleListening)
+      })
+    }),
+)
+
+const close = Effect.fn('desktop.webServer.close')((server: Server) =>
+  Effect.callback<void, Error>((resume) => {
+    server.close((error) =>
+      resume(error ? Effect.fail(error) : Effect.void),
+    )
+  }),
+)
 
 const contentTypes: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
@@ -60,143 +93,175 @@ function cacheControlFor(pathname: string) {
   return 'public, max-age=300'
 }
 
-async function serveFile(
+function serveFileEffect(
   req: import('node:http').IncomingMessage,
   res: import('node:http').ServerResponse,
   filePath: string,
   pathname: string,
 ) {
-  const file = await stat(filePath)
-  if (!file.isFile()) return false
+  return Effect.gen(function*() {
+    const file = yield* Effect.tryPromise({
+      try: () => stat(filePath),
+      catch: (cause) => cause,
+    })
+    if (!file.isFile()) return false
 
-  res.statusCode = 200
-  res.setHeader(
-    'Content-Type',
-    contentTypes[extname(filePath)] ?? 'application/octet-stream',
-  )
-  res.setHeader('Content-Length', file.size)
-  res.setHeader('Cache-Control', cacheControlFor(pathname))
+    res.statusCode = 200
+    res.setHeader(
+      'Content-Type',
+      contentTypes[extname(filePath)] ?? 'application/octet-stream',
+    )
+    res.setHeader('Content-Length', file.size)
+    res.setHeader('Cache-Control', cacheControlFor(pathname))
 
-  if (req.method === 'HEAD') {
-    res.end()
+    if (req.method === 'HEAD') {
+      res.end()
+      return true
+    }
+
+    createReadStream(filePath).pipe(res)
     return true
-  }
-
-  createReadStream(filePath).pipe(res)
-  return true
+  })
 }
 
-async function serveAsset(
+function serveAssetEffect(
   req: import('node:http').IncomingMessage,
   res: import('node:http').ServerResponse,
   clientDir: string,
   pathname: string,
 ) {
   const filePath = assetPath(clientDir, pathname)
-  if (!filePath) return false
+  if (!filePath) return Effect.succeed(false)
 
-  try {
-    return await serveFile(req, res, filePath, pathname)
-  } catch (error) {
-    if (
-      error &&
-      typeof error === 'object' &&
-      'code' in error &&
-      error.code === 'ENOENT'
-    ) {
-      return false
-    }
-    throw error
-  }
+  return serveFileEffect(req, res, filePath, pathname).pipe(
+    Effect.catch((error) =>
+      isErrorCode(error, 'ENOENT')
+        ? Effect.succeed(false)
+        : Effect.fail(error),
+    ),
+  )
 }
 
-async function serveSpaShell(
+function serveSpaShellEffect(
   req: import('node:http').IncomingMessage,
   res: import('node:http').ServerResponse,
   clientDir: string,
 ) {
   const shellFile = assetPath(clientDir, SPA_SHELL_PATH)
-  if (!shellFile) return false
+  if (!shellFile) return Effect.succeed(false)
 
-  try {
-    return await serveFile(req, res, shellFile, SPA_SHELL_PATH)
-  } catch (error) {
-    if (
-      error &&
-      typeof error === 'object' &&
-      'code' in error &&
-      error.code === 'ENOENT'
-    ) {
-      throw new Error(
-        `SPA shell not found at ${SPA_SHELL_PATH}. Rebuild @syrnike13/web with spa.enabled.`,
-      )
-    }
-    throw error
-  }
+  return serveFileEffect(req, res, shellFile, SPA_SHELL_PATH).pipe(
+    Effect.catch((error) =>
+      isErrorCode(error, 'ENOENT')
+        ? Effect.fail(
+            new Error(
+              `SPA shell not found at ${SPA_SHELL_PATH}. Rebuild @syrnike13/web with spa.enabled.`,
+            ),
+          )
+        : Effect.fail(error),
+    ),
+  )
 }
 
-async function ensureSpaShell(clientDir: string) {
+function ensureSpaShellEffect(clientDir: string) {
   const shellFile = resolve(clientDir, SPA_SHELL_PATH.slice(1))
-  await access(shellFile, constants.R_OK)
+  return Effect.tryPromise({
+    try: () => access(shellFile, constants.R_OK),
+    catch: (cause) => cause,
+  })
+}
+
+function isErrorCode(error: unknown, code: string) {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === code
+  )
+}
+
+function handleRequestEffect(
+  req: import('node:http').IncomingMessage,
+  res: import('node:http').ServerResponse,
+  clientDir: string,
+  listenPort: () => number,
+) {
+  return Effect.gen(function*() {
+    const url = yield* Effect.try({
+      try: () =>
+        new URL(
+          req.url ?? '/',
+          `http://${req.headers.host ?? `127.0.0.1:${listenPort()}`}`,
+        ),
+      catch: (cause) => cause,
+    })
+
+    if (yield* serveAssetEffect(req, res, clientDir, url.pathname)) return
+
+    if (
+      (req.method === 'GET' || req.method === 'HEAD') &&
+      (yield* serveSpaShellEffect(req, res, clientDir))
+    ) {
+      return
+    }
+
+    res.statusCode = 404
+    res.end('Not Found')
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.sync(() => {
+        console.error('[desktop] web server error', error)
+        if (!res.headersSent) {
+          res.statusCode = 500
+          res.setHeader('content-type', 'text/plain; charset=utf-8')
+        }
+        res.end('Internal Server Error')
+      }),
+    ),
+  )
 }
 
 /**
  * Поднимает статический HTTP-сервер для SPA-сборки `@syrnike13/web`.
  */
-export async function startEmbeddedWebServer(
-  webDistRoot: string,
-  preferredPort = 0,
-): Promise<EmbeddedWebServer> {
+export const startEmbeddedWebServerEffect = Effect.fn(
+  'desktop.webServer.start',
+)(function*(webDistRoot: string, preferredPort = 0) {
   const clientDir = resolve(webDistRoot, 'client')
-  await ensureSpaShell(clientDir)
+  yield* ensureSpaShellEffect(clientDir)
 
   let listenPort = preferredPort
-
-  const server: Server = createServer(async (req, res) => {
-    try {
-      const url = new URL(
-        req.url ?? '/',
-        `http://${req.headers.host ?? `127.0.0.1:${listenPort}`}`,
-      )
-
-      if (await serveAsset(req, res, clientDir, url.pathname)) return
-
-      if (req.method === 'GET' || req.method === 'HEAD') {
-        if (await serveSpaShell(req, res, clientDir)) return
-      }
-
-      res.statusCode = 404
-      res.end('Not Found')
-    } catch (error) {
-      console.error('[desktop] web server error', error)
-      if (!res.headersSent) {
-        res.statusCode = 500
-        res.setHeader('content-type', 'text/plain; charset=utf-8')
-      }
-      res.end('Internal Server Error')
-    }
+  const server: Server = createServer((req, res) => {
+    Effect.runFork(
+      handleRequestEffect(req, res, clientDir, () => listenPort),
+    )
   })
 
-  await new Promise<void>((resolveListen, reject) => {
-    server.once('error', reject)
-    server.listen(preferredPort, '127.0.0.1', () => resolveListen())
-  })
+  yield* listen(server, preferredPort)
 
   const address = server.address()
   if (!address || typeof address === 'string') {
-    throw new Error('Failed to bind embedded web server')
+    return yield* Effect.fail(new Error('Failed to bind embedded web server'))
   }
 
   const port = address.port
   listenPort = port
   const url = `http://127.0.0.1:${port}`
+  const closeEffect = () => close(server)
 
   return {
     url,
     port,
-    close: () =>
-      new Promise((resolveClose, reject) => {
-        server.close((error) => (error ? reject(error) : resolveClose()))
-      }),
+    close: () => Effect.runPromise(closeEffect()),
+    closeEffect,
   }
+})
+
+export function startEmbeddedWebServer(
+  webDistRoot: string,
+  preferredPort = 0,
+): Promise<EmbeddedWebServer> {
+  return Effect.runPromise(
+    startEmbeddedWebServerEffect(webDistRoot, preferredPort),
+  )
 }

@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { Effect } from 'effect'
 
 import type {
   NativeRuntimeSupervisor,
@@ -105,46 +106,71 @@ export class AnonymousNativeMetricsReporter {
     })
   }
 
-  async flush() {
-    if (!this.enabled || !this.endpoint || this.flushing || this.queue.length === 0) {
-      return
-    }
-    this.flushing = true
-    this.clearTimer()
-    const metrics = this.takeBatch()
-    const batch: AnonymousNativeMetricBatch = {
-      version: 1,
-      appVersion: this.options.appVersion ?? app.getVersion(),
-      releaseChannel:
-        this.options.releaseChannel ??
-        (__DESKTOP_RELEASE_CHANNEL__ === 'nightly' ? 'nightly' : 'stable'),
-      metrics,
-    }
-    try {
-      const response = await (this.options.fetch ?? fetch)(this.endpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(batch),
-        credentials: 'omit',
-        redirect: 'error',
-        referrerPolicy: 'no-referrer',
-        signal: AbortSignal.timeout(5_000),
+  flush() {
+    return Effect.runPromise(this.flushEffect())
+  }
+
+  flushEffect() {
+    return Effect.suspend(() => {
+      if (
+        !this.enabled ||
+        !this.endpoint ||
+        this.flushing ||
+        this.queue.length === 0
+      ) {
+        return Effect.void
+      }
+      this.flushing = true
+      this.clearTimer()
+      const metrics = this.takeBatch()
+      const batch: AnonymousNativeMetricBatch = {
+        version: 1,
+        appVersion: this.options.appVersion ?? app.getVersion(),
+        releaseChannel:
+          this.options.releaseChannel ??
+          (__DESKTOP_RELEASE_CHANNEL__ === 'nightly' ? 'nightly' : 'stable'),
+        metrics,
+      }
+      const send = Effect.gen({ self: this }, function*() {
+        const response = yield* Effect.tryPromise({
+          try: (signal) =>
+            (this.options.fetch ?? fetch)(this.endpoint, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(batch),
+              credentials: 'omit',
+              redirect: 'error',
+              referrerPolicy: 'no-referrer',
+              signal,
+            }),
+          catch: (cause) => cause,
+        }).pipe(Effect.timeout(5_000))
+        if (!response.ok) {
+          return yield* Effect.fail(
+            new Error(`Native metrics rejected (${response.status})`),
+          )
+        }
       })
-      if (!response.ok) throw new Error(`Native metrics rejected (${response.status})`)
-    } catch {
-      if (this.enabled) {
-        for (const metric of metrics) this.mergeMetric(metric)
-      }
-    } finally {
-      this.flushing = false
-      if (this.queue.length > 0) {
-        this.scheduleFlush(
-          this.queue.length >= MAX_BATCH_SIZE
-            ? FLUSH_INTERVAL_MS
-            : RETRY_INTERVAL_MS,
-        )
-      }
-    }
+      return send.pipe(
+        Effect.catch(() =>
+          Effect.sync(() => {
+            if (!this.enabled) return
+            for (const metric of metrics) this.mergeMetric(metric)
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            this.flushing = false
+            if (this.queue.length === 0) return
+            this.scheduleFlush(
+              this.queue.length >= MAX_BATCH_SIZE
+                ? FLUSH_INTERVAL_MS
+                : RETRY_INTERVAL_MS,
+            )
+          }),
+        ),
+      )
+    })
   }
 
   dispose() {
@@ -251,7 +277,7 @@ export class AnonymousNativeMetricsReporter {
     const schedule = this.options.schedule ?? setTimeout
     this.timer = schedule(() => {
       this.timer = null
-      void this.flush()
+      Effect.runFork(this.flushEffect())
     }, delayMs)
     this.timer.unref?.()
   }

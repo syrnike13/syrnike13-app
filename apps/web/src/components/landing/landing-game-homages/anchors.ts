@@ -1,4 +1,11 @@
-import type { AnchorRect, HomageKind, PlayRegion } from './types'
+import { Option, Schema } from 'effect'
+
+import {
+  HomageAnchorIdSchema,
+  type AnchorRect,
+  type HomageKind,
+  type PlayRegion,
+} from './types'
 
 const MARGIN = 10
 const OBSTACLE_PAD = 8
@@ -8,12 +15,14 @@ export function collectAnchors(root: HTMLElement): Map<AnchorRect['id'], AnchorR
   const map = new Map<AnchorRect['id'], AnchorRect>()
 
   root.ownerDocument.querySelectorAll('[data-homage-anchor]').forEach((node) => {
-    const id = node.getAttribute('data-homage-anchor') as AnchorRect['id'] | null
-    if (!id) return
+    const id = Schema.decodeUnknownOption(HomageAnchorIdSchema)(
+      node.getAttribute('data-homage-anchor'),
+    )
+    if (Option.isNone(id)) return
 
     const r = node.getBoundingClientRect()
-    map.set(id, {
-      id,
+    map.set(id.value, {
+      id: id.value,
       x: r.left - rootRect.left,
       y: r.top - rootRect.top,
       w: r.width,

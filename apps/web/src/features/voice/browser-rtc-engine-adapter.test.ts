@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 import type { VoiceLease, VoiceMediaDesiredState } from '@syrnike13/platform'
 
 const livekit = vi.hoisted(() => {
@@ -30,7 +31,9 @@ const remoteAudioMixers = vi.hoisted(() => ({
     removeTrack: ReturnType<typeof vi.fn>
     removeMediaStreamTrack: ReturnType<typeof vi.fn>
     applyVolumes: ReturnType<typeof vi.fn>
+    applyVolumesEffect: ReturnType<typeof vi.fn>
     setOutputDevice: ReturnType<typeof vi.fn>
+    setOutputDeviceEffect: ReturnType<typeof vi.fn>
     dispose: ReturnType<typeof vi.fn>
     onSpeakingUserIdsChange?: (userIds: ReadonlySet<string>) => void
   }>,
@@ -117,9 +120,17 @@ vi.mock('./voice-capture', () => ({
   voiceMicPublishOptions: () => ({}),
 }))
 
-vi.mock('./voice-mic-processing', () => ({
-  applyMicProcessing: vi.fn(async () => undefined),
-}))
+vi.mock('./voice-mic-processing', () => {
+  const applyMicProcessing = vi.fn(async () => undefined)
+  return {
+    applyMicProcessing,
+    applyMicProcessingEffect: (...args: Parameters<typeof applyMicProcessing>) =>
+      Effect.tryPromise({
+        try: () => applyMicProcessing(...args),
+        catch: (cause) => cause,
+      }),
+  }
+})
 
 vi.mock('./remote-audio-mixer', () => ({
   createRemoteAudioMixer: (options: {
@@ -131,6 +142,18 @@ vi.mock('./remote-audio-mixer', () => ({
       removeMediaStreamTrack: vi.fn(),
       applyVolumes: vi.fn(async () => undefined),
       setOutputDevice: vi.fn(async () => undefined),
+      applyVolumesEffect: vi.fn(() =>
+        Effect.tryPromise({
+          try: () => mixer.applyVolumes(),
+          catch: (cause) => cause,
+        }),
+      ),
+      setOutputDeviceEffect: vi.fn(() =>
+        Effect.tryPromise({
+          try: () => mixer.setOutputDevice(),
+          catch: (cause) => cause,
+        }),
+      ),
       dispose: vi.fn(),
       onSpeakingUserIdsChange: options.onSpeakingUserIdsChange,
     }

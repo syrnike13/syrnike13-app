@@ -15,7 +15,7 @@ export function useUserBadges(
 
   const badgesQuery = useQuery({
     queryKey: queryKeys.users.detail(userId),
-    queryFn: () => fetchUser(token!, userId),
+    queryFn: ({ signal }) => fetchUser(token!, userId, signal),
     enabled: Boolean(token) && !hasFallbackBadges,
     staleTime: 60_000,
     select: (user) => user.badges,

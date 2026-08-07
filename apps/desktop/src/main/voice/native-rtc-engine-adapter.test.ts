@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { Effect } from 'effect'
 import {
   createInitialVoiceMediaDesiredState,
   type VoiceLease,
@@ -46,16 +47,27 @@ class FakeRuntime implements NativeVoiceRuntime {
     ) => Promise<unknown> | undefined,
   ) {}
 
-  async request<T = unknown>(
+  async request(
     command: NativeRuntimeCommand,
     timeoutMs: number,
     options: NativeRuntimeRequestOptions = {},
-  ) {
+  ): Promise<unknown> {
     this.commands.push(command)
     this.timeouts.push({ command, timeoutMs })
     this.diagnostics.push(options.diagnostic)
     await this.onRequest?.(command)
-    return undefined as T
+    return undefined
+  }
+
+  requestEffect(
+    command: NativeRuntimeCommand,
+    timeoutMs: number,
+    options: NativeRuntimeRequestOptions = {},
+  ) {
+    return Effect.tryPromise({
+      try: () => this.request(command, timeoutMs, options),
+      catch: (cause) => cause,
+    })
   }
 
   allocateGeneration(lane: NativeRuntimeGenerationLane) {

@@ -2,6 +2,26 @@ import type { GatewayServerEvent } from '#/features/sync/types'
 
 import type { SoundEventId } from './sound-events'
 
+type MessageEvent = Extract<GatewayServerEvent, { type: 'Message' }>
+type VoiceMembershipEvent = Extract<
+  GatewayServerEvent,
+  {
+    type:
+      | 'VoiceChannelJoin'
+      | 'VoiceChannelLeave'
+      | 'VoiceChannelMove'
+      | 'VoiceStateUpdate'
+  }
+>
+type VoiceJoinLeaveEvent = Extract<
+  VoiceMembershipEvent,
+  { type: 'VoiceChannelJoin' | 'VoiceChannelLeave' }
+>
+type VoiceStateUpdateEvent = Extract<
+  GatewayServerEvent,
+  { type: 'VoiceStateUpdate' }
+>
+
 export type SoundVoiceMediaState = {
   screensharing: boolean
   camera: boolean
@@ -18,17 +38,19 @@ export type SoundEventContext = {
   blockedUserIds: ReadonlySet<string>
 }
 
-function eventUserId(event: GatewayServerEvent) {
-  if (typeof event.user === 'string') return event.user
-  if (typeof event.user_id === 'string') return event.user_id
-  if (typeof event.state?.id === 'string') return event.state.id
-  if (typeof event.state?.user === 'string') return event.state.user
-  if (typeof event.state?.user_id === 'string') return event.state.user_id
-  return null
+function eventUserId(event: VoiceMembershipEvent) {
+  switch (event.type) {
+    case 'VoiceChannelLeave':
+    case 'VoiceChannelMove':
+      return event.user
+    case 'VoiceChannelJoin':
+    case 'VoiceStateUpdate':
+      return event.state.id
+  }
 }
 
 function messageMentionsCurrentUser(
-  event: GatewayServerEvent,
+  event: MessageEvent,
   currentUserId: string | null | undefined,
 ) {
   if (!currentUserId || typeof event.content !== 'string') return false
@@ -40,7 +62,7 @@ function messageMentionsCurrentUser(
   )
 }
 
-function focusedActiveMessage(event: GatewayServerEvent, context: SoundEventContext) {
+function focusedActiveMessage(event: MessageEvent, context: SoundEventContext) {
   return (
     context.documentFocused &&
     typeof event.channel === 'string' &&
@@ -48,15 +70,15 @@ function focusedActiveMessage(event: GatewayServerEvent, context: SoundEventCont
   )
 }
 
-function voiceJoinLeaveChannelId(event: GatewayServerEvent) {
-  if (typeof event.channel === 'string') return event.channel
-  if (typeof event.channel_id === 'string') return event.channel_id
-  if (typeof event.id === 'string') return event.id
-  return null
+function voiceJoinLeaveChannelId(event: VoiceJoinLeaveEvent) {
+  return event.id
 }
 
 function voiceEventTouchesCurrentChannel(
-  event: GatewayServerEvent,
+  event: Extract<
+    VoiceMembershipEvent,
+    { type: 'VoiceChannelJoin' | 'VoiceChannelLeave' | 'VoiceChannelMove' }
+  >,
   context: SoundEventContext,
 ) {
   const currentVoiceChannelId = context.currentVoiceChannelId
@@ -68,40 +90,28 @@ function voiceEventTouchesCurrentChannel(
 }
 
 function voiceStateFlagChanged(
-  event: GatewayServerEvent,
+  event: VoiceStateUpdateEvent,
   flag: 'screensharing' | 'camera',
   previousVoiceState?: SoundVoiceMediaState | null,
 ) {
   if (!event.state || !(flag in event.state)) return null
   const current = Boolean(event.state?.[flag])
-  let previous: boolean
-  if (typeof event.previous_state === 'object' && event.previous_state) {
-    previous = Boolean(Reflect.get(event.previous_state, flag))
-  } else if (previousVoiceState) {
-    previous = previousVoiceState[flag]
-  } else {
-    return null
-  }
+  if (!previousVoiceState) return null
+  const previous = previousVoiceState[flag]
   if (current === previous) return null
   return current
 }
 
 function selfVoiceStateFlagChanged(
-  event: GatewayServerEvent,
+  event: VoiceStateUpdateEvent,
   flag: 'self_mute' | 'self_deaf',
   previousKey: 'selfMuted' | 'selfDeafened',
   previousVoiceState?: SoundVoiceMediaState | null,
 ) {
   if (!event.state || !(flag in event.state)) return null
   const current = Boolean(event.state[flag])
-  let previous: boolean
-  if (typeof event.previous_state === 'object' && event.previous_state) {
-    previous = Boolean(Reflect.get(event.previous_state, flag))
-  } else if (previousVoiceState?.[previousKey] != null) {
-    previous = Boolean(previousVoiceState[previousKey])
-  } else {
-    return null
-  }
+  if (previousVoiceState?.[previousKey] == null) return null
+  const previous = Boolean(previousVoiceState[previousKey])
   return current === previous ? null : current
 }
 
@@ -124,16 +134,18 @@ export function soundEventFromGatewayEvent(
     }
     case 'VoiceCallRinging': {
       if (event.initiator_id === context.currentUserId) return 'call.outgoing_ring'
-      const recipients = Array.isArray(event.recipients) ? event.recipients : []
-      return recipients.includes(context.currentUserId)
+      if (!context.currentUserId) return null
+      return event.recipients.includes(context.currentUserId)
         ? 'call.incoming_ring'
         : null
     }
     case 'VoiceCallActive': {
-      const declinedRecipients = Array.isArray(event.declined_recipients)
-        ? event.declined_recipients
-        : []
-      if (declinedRecipients.includes(context.currentUserId)) return null
+      if (
+        context.currentUserId &&
+        event.declined_recipients.includes(context.currentUserId)
+      ) {
+        return null
+      }
       return event.channel_id === context.currentVoiceChannelId
         ? 'call.connected'
         : null

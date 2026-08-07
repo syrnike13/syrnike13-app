@@ -1,4 +1,5 @@
 import type { User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { useState } from 'react'
 
 import {
@@ -46,11 +47,11 @@ export function FriendshipAction({ user, className }: FriendshipActionProps) {
 
   if (shouldHideFriendshipAction(user, auth.user?._id)) return null
 
-  async function run(action: () => Promise<unknown>) {
+  async function run(action: () => Effect.Effect<unknown, unknown>) {
     if (!token || busy) return
     setBusy(true)
     try {
-      await action()
+      await Effect.runPromise(action())
     } catch {
       // friend-actions already shows the concrete error toast.
     } finally {
@@ -178,11 +179,11 @@ export function FriendshipContextMenuItems({ user }: { user: User }) {
 
   if (shouldHideFriendshipAction(user, auth.user?._id)) return null
 
-  async function run(action: () => Promise<unknown>) {
+  async function run(action: () => Effect.Effect<unknown, unknown>) {
     if (!token || busy) return
     setBusy(true)
     try {
-      await action()
+      await Effect.runPromise(action())
     } catch {
       // friend-actions already shows the concrete error toast.
     } finally {

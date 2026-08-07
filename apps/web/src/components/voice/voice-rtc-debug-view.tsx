@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { Effect, Fiber } from 'effect'
 
 import { RtcDebugMetricChart } from '#/components/voice/voice-rtc-debug-chart'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
-import { resolveVoiceNodeName } from '#/features/voice/voice-node'
+import { resolveVoiceNodeNameEffect } from '#/features/voice/voice-node'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { useVoiceTelemetry } from '#/features/voice/voice-telemetry-context'
@@ -46,12 +47,17 @@ export function VoiceRtcDebugView() {
   }, [setRtcDebugEnabled])
 
   useEffect(() => {
-    let active = true
-    void resolveVoiceNodeName().then((name) => {
-      if (active) setNodeName(name)
-    })
+    const fiber = Effect.runFork(
+      resolveVoiceNodeNameEffect.pipe(
+        Effect.tap((name) =>
+          Effect.sync(() => {
+            setNodeName(name)
+          }),
+        ),
+      ),
+    )
     return () => {
-      active = false
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [])
 

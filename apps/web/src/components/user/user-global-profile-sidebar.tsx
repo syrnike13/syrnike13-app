@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { Effect } from 'effect'
 import {
   BanIcon,
   CopyIcon,
@@ -27,7 +28,7 @@ import {
 } from '#/components/ui/popover'
 import { FloatingMenuItem } from '#/components/ui/floating-menu'
 import { useAuth } from '#/features/auth/auth-context'
-import { editServerMember } from '#/features/api/servers-api'
+import { editServerMemberEffect } from '#/features/api/servers-api'
 import { fetchUserProfile } from '#/features/api/users-api'
 import { useUserBadges } from '#/features/users/use-user-badges'
 import {
@@ -139,7 +140,7 @@ export function UserGlobalProfileSidebar({
 
   const profileQuery = useQuery({
     queryKey: queryKeys.users.profile(user._id),
-    queryFn: () => fetchUserProfile(token!, user._id),
+    queryFn: ({ signal }) => fetchUserProfile(token!, user._id, signal),
     enabled: Boolean(token),
     staleTime: 60_000,
   })
@@ -167,24 +168,38 @@ export function UserGlobalProfileSidebar({
       return
     }
     setRemovingRoleId(roleId)
-    try {
-      const nextRoles = (member.roles ?? []).filter((id) => id !== roleId)
-      const updated = await editServerMember(token, server._id, member._id.user, { roles: nextRoles })
-      syncStore.upsertMembers([updated])
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Не удалось убрать роль')
-    } finally {
-      setRemovingRoleId(null)
-    }
+    const nextRoles = (member.roles ?? []).filter((id) => id !== roleId)
+    await Effect.runPromise(
+      editServerMemberEffect(
+        token,
+        server._id,
+        member._id.user,
+        { roles: nextRoles },
+      ).pipe(
+        Effect.tap((updated) =>
+          Effect.sync(() => syncStore.upsertMembers([updated])),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось убрать роль',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setRemovingRoleId(null))),
+      ),
+    )
   }
 
   const showServerSection = Boolean(serverId && member)
 
-  async function runFriendAction(action: () => Promise<unknown>) {
+  async function runFriendAction(
+    action: () => Effect.Effect<unknown, unknown>,
+  ) {
     if (!token || actionsDisabled) return
     setFriendBusy(true)
     try {
-      await action()
+      await Effect.runPromise(action())
     } catch {
       // friend-actions already shows the concrete error toast.
     } finally {

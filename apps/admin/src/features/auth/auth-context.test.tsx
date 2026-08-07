@@ -2,15 +2,16 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { Effect } from 'effect'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AuthProvider, useAuth } from './auth-context'
 
 vi.mock('./auth-api', () => ({
   fetchCurrentUser: vi.fn(async () => ({ _id: 'u1', privileged: true })),
-  loginWithCredentials: vi.fn(),
-  loginWithMfa: vi.fn(),
-  logoutSession: vi.fn(),
+  loginWithCredentialsEffect: vi.fn(() => Effect.void),
+  loginWithMfaEffect: vi.fn(() => Effect.void),
+  logoutSessionEffect: vi.fn(() => Effect.void),
   isLoginSuccess: (value: { result: string }) => value.result === 'Success',
   isLoginMfa: (value: { result: string }) => value.result === 'MFA',
 }))

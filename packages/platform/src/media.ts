@@ -1,3 +1,11 @@
+import { Option, Schema } from 'effect'
+
+type Mutable<Type> = Type extends ReadonlyArray<infer Item>
+  ? Array<Mutable<Item>>
+  : Type extends object
+    ? { -readonly [Key in keyof Type]: Mutable<Type[Key]> }
+    : Type
+
 /** Метод hybrid media engine (счётчики как в Discord RTC debug). */
 export type NativeMediaFrameMethod =
   | 'wgc_gpu'
@@ -39,27 +47,52 @@ export type NativeMediaTarget = {
 
 export type NativeMediaSessionKind = 'screen' | 'microphone'
 
-export type NativeMediaDeviceInfo = {
-  deviceId: string
-  kind: 'audioinput' | 'audiooutput' | 'videoinput'
-  label: string
-}
+export const NativeMediaDeviceInfoSchema = Schema.Struct({
+  deviceId: Schema.String,
+  kind: Schema.Literals(['audioinput', 'audiooutput', 'videoinput']),
+  label: Schema.String,
+})
 
-export type LiveKitNativePublisherCredentials = Readonly<{
-  url: string
-  token: string
-  participantIdentity: string
-}>
+export type NativeMediaDeviceInfo = typeof NativeMediaDeviceInfoSchema.Type
 
-export type ScreenSourceSpec = Readonly<{
-  sourceId: string
-  width: number
-  height: number
-  fps: number
-  bitrate: number
-  audioBitrate: number
-  audioRequested: boolean
-}>
+const MediaIdentifierSchema = (maximumLength: number) =>
+  Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(maximumLength),
+  )
+
+const MediaIntegerSchema = (minimum: number, maximum: number) =>
+  Schema.Int.check(Schema.isBetween({ minimum, maximum }))
+
+export const LiveKitNativePublisherCredentialsSchema = Schema.Struct({
+  url: MediaIdentifierSchema(2_048).check(
+    Schema.makeFilter((value) => {
+      try {
+        const protocol = new URL(value).protocol
+        return protocol === 'ws:' || protocol === 'wss:'
+      } catch {
+        return false
+      }
+    }, { expected: 'a WebSocket URL' }),
+  ),
+  token: MediaIdentifierSchema(32_768),
+  participantIdentity: MediaIdentifierSchema(512),
+})
+
+export const ScreenSourceSpecSchema = Schema.Struct({
+  sourceId: MediaIdentifierSchema(2_048),
+  width: MediaIntegerSchema(64, 7_680),
+  height: MediaIntegerSchema(64, 4_320),
+  fps: MediaIntegerSchema(1, 240),
+  bitrate: MediaIntegerSchema(32_000, 100_000_000),
+  audioBitrate: MediaIntegerSchema(6_000, 512_000),
+  audioRequested: Schema.Boolean,
+})
+
+export type LiveKitNativePublisherCredentials =
+  typeof LiveKitNativePublisherCredentialsSchema.Type
+
+export type ScreenSourceSpec = typeof ScreenSourceSpecSchema.Type
 
 export type NativeMediaScreenSessionStartOptions = {
   kind: 'screen'
@@ -272,26 +305,50 @@ export type NativeMediaStatsEvent = {
   encoderImplementation?: string
 }
 
-export type NativeMicrophoneMetricsEvent = {
-  revision: number
-  inputDb: number
-  thresholdDb: number
-  open: boolean
-}
+export const NativeMicrophoneMetricsEventSchema = Schema.Struct({
+  revision: Schema.Natural,
+  inputDb: Schema.Finite,
+  thresholdDb: Schema.Finite,
+  open: Schema.Boolean,
+})
+
+export type NativeMicrophoneMetricsEvent =
+  Mutable<typeof NativeMicrophoneMetricsEventSchema.Type>
+
+export const NativeMicrophonePreviewStateEventSchema = Schema.Union([
+  Schema.Struct({ status: Schema.Literal('running') }),
+  Schema.Struct({ status: Schema.Literal('stopped') }),
+  Schema.Struct({
+    status: Schema.Literal('error'),
+    message: Schema.String,
+  }),
+])
 
 export type NativeMicrophonePreviewStateEvent =
-  | { status: 'running' }
-  | { status: 'stopped' }
-  | { status: 'error'; message: string }
+  Mutable<typeof NativeMicrophonePreviewStateEventSchema.Type>
 
-export type NativeMediaRuntimeState = {
-  available: boolean
-  status: 'stopped' | 'starting' | 'ready' | 'recovering' | 'degraded'
-  restartCount: number
-  degradedReason?: string
-  degradedRetryAttempt?: number
-  nextRetryAt?: number
-}
+export const NativeMediaRuntimeStateSchema = Schema.Struct({
+  available: Schema.Boolean,
+  status: Schema.Literals([
+    'stopped',
+    'starting',
+    'ready',
+    'recovering',
+    'degraded',
+  ]),
+  restartCount: Schema.Natural,
+  degradedReason: Schema.optional(
+    Schema.String.check(Schema.isMaxLength(4_096)),
+  ),
+  degradedRetryAttempt: Schema.optional(
+    Schema.Int.check(Schema.isGreaterThan(0)),
+  ),
+  nextRetryAt: Schema.optional(
+    Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
+  ),
+})
+
+export type NativeMediaRuntimeState = typeof NativeMediaRuntimeStateSchema.Type
 
 export type NativeMediaStateEvent = NativeMediaSessionStatus & {
   sessionId?: string
@@ -315,187 +372,70 @@ export type NativeMediaRuntimeLostEvent = {
   recovering: boolean
 }
 
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isNonEmptyString(
-  value: unknown,
-  maxLength = Number.MAX_SAFE_INTEGER,
-): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length > 0 &&
-    value.length <= maxLength
-  )
-}
-
-function isBoolean(value: unknown): value is boolean {
-  return typeof value === 'boolean'
-}
-
-function isIntegerInRange(value: unknown, minimum: number, maximum: number) {
-  return (
-    typeof value === 'number' &&
-    Number.isSafeInteger(value) &&
-    value >= minimum &&
-    value <= maximum
-  )
-}
-
-function assertObjectRecord(
-  value: unknown,
-  context: string,
-): asserts value is Record<string, unknown> {
-  if (!isObjectRecord(value)) {
-    throw new TypeError(`${context} must be an object`)
-  }
-}
-
-function assertNonEmptyString(
-  value: unknown,
-  context: string,
-  maxLength = Number.MAX_SAFE_INTEGER,
-): asserts value is string {
-  if (!isNonEmptyString(value, maxLength)) {
-    throw new TypeError(
-      `${context} must be a non-empty string no longer than ${maxLength} characters`,
-    )
-  }
-}
-
-function assertIntegerInRange(
-  value: unknown,
-  context: string,
-  minimum: number,
-  maximum: number,
-): asserts value is number {
-  if (!isIntegerInRange(value, minimum, maximum)) {
-    throw new TypeError(
-      `${context} must be an integer between ${minimum} and ${maximum}`,
-    )
-  }
-}
-
-function assertBoolean(value: unknown, context: string): asserts value is boolean {
-  if (!isBoolean(value)) {
-    throw new TypeError(`${context} must be a boolean`)
-  }
-}
-
 export function assertLiveKitNativePublisherCredentials(
   value: unknown,
 ): asserts value is LiveKitNativePublisherCredentials {
-  assertObjectRecord(value, 'LiveKitNativePublisherCredentials')
-  assertNonEmptyString(value.url, 'LiveKitNativePublisherCredentials.url', 2_048)
-  try {
-    const protocol = new URL(value.url).protocol
-    if (protocol !== 'ws:' && protocol !== 'wss:') {
-      throw new TypeError(
-        'LiveKitNativePublisherCredentials.url must use ws: or wss:',
-      )
-    }
-  } catch (error) {
-    if (error instanceof TypeError && error.message.includes('must use')) {
-      throw error
-    }
-    throw new TypeError('LiveKitNativePublisherCredentials.url must be a valid URL')
+  if (
+    Option.isNone(
+      Schema.decodeUnknownOption(LiveKitNativePublisherCredentialsSchema)(
+        value,
+      ),
+    )
+  ) {
+    throw new TypeError('Invalid LiveKitNativePublisherCredentials')
   }
-  assertNonEmptyString(
-    value.token,
-    'LiveKitNativePublisherCredentials.token',
-    32_768,
-  )
-  assertNonEmptyString(
-    value.participantIdentity,
-    'LiveKitNativePublisherCredentials.participantIdentity',
-    512,
-  )
 }
 
 export function isLiveKitNativePublisherCredentials(
   value: unknown,
 ): value is LiveKitNativePublisherCredentials {
-  try {
-    assertLiveKitNativePublisherCredentials(value)
-    return true
-  } catch {
-    return false
-  }
+  return Option.isSome(
+    Schema.decodeUnknownOption(LiveKitNativePublisherCredentialsSchema)(value),
+  )
 }
 
 export function parseLiveKitNativePublisherCredentials(
   value: unknown,
 ): LiveKitNativePublisherCredentials {
-  assertLiveKitNativePublisherCredentials(value)
-  return value
+  const decoded = Schema.decodeUnknownOption(
+    LiveKitNativePublisherCredentialsSchema,
+  )(value)
+  if (Option.isNone(decoded)) {
+    throw new TypeError('Invalid LiveKitNativePublisherCredentials')
+  }
+  return decoded.value
 }
 
 export function assertScreenSourceSpec(
   value: unknown,
 ): asserts value is ScreenSourceSpec {
-  assertObjectRecord(value, 'ScreenSourceSpec')
-  assertNonEmptyString(value.sourceId, 'ScreenSourceSpec.sourceId', 2_048)
-  assertIntegerInRange(value.width, 'ScreenSourceSpec.width', 64, 7_680)
-  assertIntegerInRange(value.height, 'ScreenSourceSpec.height', 64, 4_320)
-  assertIntegerInRange(value.fps, 'ScreenSourceSpec.fps', 1, 240)
-  assertIntegerInRange(
-    value.bitrate,
-    'ScreenSourceSpec.bitrate',
-    32_000,
-    100_000_000,
-  )
-  assertIntegerInRange(
-    value.audioBitrate,
-    'ScreenSourceSpec.audioBitrate',
-    6_000,
-    512_000,
-  )
-  assertBoolean(value.audioRequested, 'ScreenSourceSpec.audioRequested')
+  if (
+    Option.isNone(
+      Schema.decodeUnknownOption(ScreenSourceSpecSchema)(value),
+    )
+  ) {
+    throw new TypeError('Invalid ScreenSourceSpec')
+  }
 }
 
 export function isScreenSourceSpec(value: unknown): value is ScreenSourceSpec {
-  try {
-    assertScreenSourceSpec(value)
-    return true
-  } catch {
-    return false
-  }
+  return Option.isSome(
+    Schema.decodeUnknownOption(ScreenSourceSpecSchema)(value),
+  )
 }
 
 export function isNativeMediaRuntimeState(
   value: unknown,
 ): value is NativeMediaRuntimeState {
-  if (!isObjectRecord(value)) return false
-  if (
-    value.status !== 'stopped' &&
-    value.status !== 'starting' &&
-    value.status !== 'ready' &&
-    value.status !== 'recovering' &&
-    value.status !== 'degraded'
-  ) {
-    return false
-  }
-  return (
-    typeof value.available === 'boolean' &&
-    isIntegerInRange(value.restartCount, 0, Number.MAX_SAFE_INTEGER) &&
-    (value.degradedReason === undefined ||
-      (typeof value.degradedReason === 'string' &&
-        value.degradedReason.length <= 4_096)) &&
-    (value.degradedRetryAttempt === undefined ||
-      isIntegerInRange(
-        value.degradedRetryAttempt,
-        1,
-        Number.MAX_SAFE_INTEGER,
-      )) &&
-    (value.nextRetryAt === undefined ||
-      (typeof value.nextRetryAt === 'number' &&
-        Number.isFinite(value.nextRetryAt) &&
-        value.nextRetryAt >= 0))
+  return Option.isSome(
+    Schema.decodeUnknownOption(NativeMediaRuntimeStateSchema)(value),
   )
 }
 
 export function parseScreenSourceSpec(value: unknown): ScreenSourceSpec {
-  assertScreenSourceSpec(value)
-  return value
+  const decoded = Schema.decodeUnknownOption(ScreenSourceSpecSchema)(value)
+  if (Option.isNone(decoded)) {
+    throw new TypeError('Invalid ScreenSourceSpec')
+  }
+  return decoded.value
 }

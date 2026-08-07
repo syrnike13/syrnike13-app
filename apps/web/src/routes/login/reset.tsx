@@ -2,6 +2,7 @@ import { createFileRoute, Link, redirect } from '@tanstack/react-router'
 import { useForm } from '@tanstack/react-form'
 import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
@@ -15,8 +16,8 @@ import {
 } from '#/components/ui/card'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
-import { sendPasswordReset } from '#/features/api/account-api'
-import { resetEmailSchema } from '#/features/auth/schemas'
+import { sendPasswordResetEffect } from '#/features/api/account-api'
+import { resetEmailSchema, validateForm } from '#/features/auth/schemas'
 import { loadSession } from '#/lib/session'
 
 export const Route = createFileRoute('/login/reset')({
@@ -35,24 +36,31 @@ function ResetRequestPage() {
   const form = useForm({
     defaultValues: { email: '' },
     onSubmit: async ({ value }) => {
-      const parsed = resetEmailSchema.safeParse(value)
+      const parsed = validateForm(resetEmailSchema, value)
       if (!parsed.success) {
-        toast.error(parsed.error.issues[0]?.message ?? 'Проверьте email')
+        toast.error(parsed.issues[0]?.message ?? 'Проверьте email')
         return
       }
 
       setSubmitting(true)
-      try {
-        await sendPasswordReset(parsed.data.email)
-        setSent(true)
-        toast.success('Если аккаунт существует, письмо отправлено')
-      } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : 'Не удалось отправить',
-        )
-      } finally {
-        setSubmitting(false)
-      }
+      await Effect.runPromise(
+        sendPasswordResetEffect(parsed.data.email).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              setSent(true)
+              toast.success('Если аккаунт существует, письмо отправлено')
+            }),
+          ),
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error ? error.message : 'Не удалось отправить',
+              )
+            }),
+          ),
+          Effect.ensuring(Effect.sync(() => setSubmitting(false))),
+        ),
+      )
     },
   })
 

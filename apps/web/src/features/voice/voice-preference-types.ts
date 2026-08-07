@@ -1,8 +1,32 @@
-export type ScreenShareQualityName = 'low' | 'high' | 'high60' | 'text'
+import {
+  DesktopScreenShareCaptureModeSchema,
+  DesktopScreenShareCodecSchema,
+  DesktopScreenShareQualitySchema,
+  type DesktopScreenShareCaptureMode,
+  type DesktopScreenShareCodec,
+  type DesktopScreenShareQualityName,
+} from '@syrnike13/platform'
 
-export type ScreenShareCodec = 'auto' | 'av1'
+export const ScreenShareQualitySchema = DesktopScreenShareQualitySchema
+export type ScreenShareQualityName = DesktopScreenShareQualityName
 
-export type ScreenShareCaptureMode = 'auto' | 'native'
+export const ScreenShareCodecSchema = DesktopScreenShareCodecSchema
+export type ScreenShareCodec = DesktopScreenShareCodec
+
+export const ScreenShareCaptureModeSchema = DesktopScreenShareCaptureModeSchema
+export type ScreenShareCaptureMode = DesktopScreenShareCaptureMode
+
+export const SCREEN_SHARE_QUALITY_NAMES = [
+  'low',
+  'high',
+  'high60',
+  'text',
+] satisfies ScreenShareQualityName[]
+
+export const SCREEN_SHARE_CAPTURE_MODES = [
+  'auto',
+  'native',
+] satisfies ScreenShareCaptureMode[]
 
 export const SCREEN_SHARE_CAPTURE_MODE_LABELS: Record<
   ScreenShareCaptureMode,

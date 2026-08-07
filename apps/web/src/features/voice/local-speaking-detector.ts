@@ -5,6 +5,7 @@ import {
 import {
   advanceSpeakingPolicy,
 } from '#/features/voice/speaking-activity-policy'
+import { Effect } from 'effect'
 
 type AudioContextConstructor = typeof AudioContext
 
@@ -75,7 +76,12 @@ export class LocalSpeakingDetector {
         speaking: false,
         quietSince: null,
       }
-      void context.resume().catch(() => {})
+      Effect.runFork(
+        Effect.tryPromise({
+          try: () => context.resume(),
+          catch: (cause) => cause,
+        }).pipe(Effect.ignore),
+      )
       this.#scheduleAnalysis()
       return true
     } catch {
@@ -103,7 +109,15 @@ export class LocalSpeakingDetector {
     if (this.#disposed) return
     this.clear()
     this.#disposed = true
-    void this.#context?.close().catch(() => {})
+    const close = this.#context?.close()
+    if (close) {
+      Effect.runFork(
+        Effect.tryPromise({
+          try: () => close,
+          catch: (cause) => cause,
+        }).pipe(Effect.ignore),
+      )
+    }
     this.#context = null
   }
 

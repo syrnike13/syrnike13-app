@@ -25,9 +25,7 @@ import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import {
   isServerChannel,
-  runtimeChannelName,
   serverChannelServerId,
-  type RuntimeChannel,
 } from '#/lib/channel-voice'
 import {
   canManageChannel,
@@ -120,7 +118,7 @@ export function ChannelSettingsPage({
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
   const channel = useSyncStore((s) => s.channels[channelId])
-  const settingsChannel = channel as RuntimeChannel | undefined
+  const settingsChannel = channel
   const serverId = serverChannelServerId(settingsChannel)
   const server = useSyncStore((s) => (serverId ? s.servers[serverId] : undefined))
   const member = useSyncStore((s) =>
@@ -251,10 +249,7 @@ export function ChannelSettingsPage({
         : 'webhooks'
   }
 
-  const channelLabel =
-    settingsChannel.channel_type === 'TextChannel'
-      ? `#${settingsChannel.name}`
-      : (runtimeChannelName(settingsChannel) ?? settingsChannel._id)
+  const channelLabel = `#${settingsChannel.name}`
 
   return (
     <div

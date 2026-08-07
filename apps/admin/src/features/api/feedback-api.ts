@@ -3,10 +3,11 @@ import type {
   DataRejectFeedbackSuggestion,
   DataUpdateFeedbackPublication,
   FeedbackSuggestion,
-  FeedbackSuggestionPage,
 } from '@syrnike13/api-types'
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Effect } from 'effect'
 
-import { apiRequest } from '#/lib/api/client'
+import { apiRequestEffect } from '#/lib/api/client'
 
 type FeedbackPageParams = {
   offset?: number
@@ -17,32 +18,59 @@ function feedbackPageQuery({ offset = 0, limit = 50 }: FeedbackPageParams) {
   return `offset=${offset}&limit=${limit}`
 }
 
-export async function fetchPendingFeedback(
-  token: string,
-  params: FeedbackPageParams = {},
-) {
-  return apiRequest<FeedbackSuggestionPage>(
+export const fetchPendingFeedbackEffect = Effect.fn(
+  'admin.feedback.fetchPending',
+)(function*(token: string, params: FeedbackPageParams = {}) {
+  return yield* apiRequestEffect(
     `/feedback/admin/pending?${feedbackPageQuery(params)}`,
+    ApiSchema.FeedbackAdminPending200,
     { token },
   )
-}
+})
 
-export async function fetchPublishedFeedback(
+export function fetchPendingFeedback(
   token: string,
   params: FeedbackPageParams = {},
+  signal?: AbortSignal,
 ) {
-  return apiRequest<FeedbackSuggestionPage>(
-    `/feedback?sort=new&${feedbackPageQuery(params)}`,
-    { token },
+  return Effect.runPromise(
+    fetchPendingFeedbackEffect(token, params),
+    signal ? { signal } : undefined,
   )
 }
 
-export async function fetchAllPublishedFeedback(token: string) {
+export const fetchPublishedFeedbackEffect = Effect.fn(
+  'admin.feedback.fetchPublished',
+)(function*(token: string, params: FeedbackPageParams = {}) {
+  return yield* apiRequestEffect(
+    `/feedback?sort=new&${feedbackPageQuery(params)}`,
+    ApiSchema.FeedbackList200,
+    { token },
+  )
+})
+
+export function fetchPublishedFeedback(
+  token: string,
+  params: FeedbackPageParams = {},
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    fetchPublishedFeedbackEffect(token, params),
+    signal ? { signal } : undefined,
+  )
+}
+
+export const fetchAllPublishedFeedback = Effect.fn(
+  'admin.feedback.fetchAllPublished',
+)(function*(token: string) {
   const suggestions = new Map<string, FeedbackSuggestion>()
   let offset = 0
 
   while (true) {
-    const page = await fetchPublishedFeedback(token, { offset, limit: 100 })
+    const page = yield* fetchPublishedFeedbackEffect(token, {
+      offset,
+      limit: 100,
+    })
     for (const suggestion of page.suggestions) {
       suggestions.set(suggestion._id, suggestion)
     }
@@ -53,65 +81,142 @@ export async function fetchAllPublishedFeedback(token: string) {
   }
 
   return [...suggestions.values()]
-}
+})
 
-export async function searchPublishedFeedback(
+export const searchPublishedFeedbackEffect = Effect.fn(
+  'admin.feedback.searchPublished',
+)(function*(
   token: string,
   search: string,
   params: FeedbackPageParams = { limit: 100 },
 ) {
-  return apiRequest<FeedbackSuggestionPage>(
+  return yield* apiRequestEffect(
     `/feedback?search=${encodeURIComponent(search)}&sort=new&${feedbackPageQuery(params)}`,
+    ApiSchema.FeedbackList200,
     { token },
+  )
+})
+
+export function searchPublishedFeedback(
+  token: string,
+  search: string,
+  params: FeedbackPageParams = { limit: 100 },
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    searchPublishedFeedbackEffect(token, search, params),
+    signal ? { signal } : undefined,
   )
 }
 
-export async function approveFeedback(token: string, id: string) {
-  return apiRequest<FeedbackSuggestion>(`/feedback/admin/${id}/approve`, {
-    method: 'POST',
-    token,
-  })
+export const approveFeedbackEffect = Effect.fn('admin.feedback.approve')(
+  function*(token: string, id: string) {
+    return yield* apiRequestEffect(
+      `/feedback/admin/${id}/approve`,
+      ApiSchema.FeedbackAdminApprove200,
+      {
+        method: 'POST',
+        token,
+      },
+    )
+  },
+)
+
+export function approveFeedback(token: string, id: string) {
+  return Effect.runPromise(approveFeedbackEffect(token, id))
 }
 
-export async function rejectFeedback(
+export const rejectFeedbackEffect = Effect.fn('admin.feedback.reject')(
+  function*(
+    token: string,
+    id: string,
+    data: DataRejectFeedbackSuggestion,
+  ) {
+    return yield* apiRequestEffect(
+      `/feedback/admin/${id}/reject`,
+      ApiSchema.FeedbackAdminReject200,
+      {
+        method: 'POST',
+        token,
+        body: data,
+      },
+    )
+  },
+)
+
+export function rejectFeedback(
   token: string,
   id: string,
   data: DataRejectFeedbackSuggestion,
 ) {
-  return apiRequest<FeedbackSuggestion>(`/feedback/admin/${id}/reject`, {
-    method: 'POST',
-    token,
-    body: data,
-  })
+  return Effect.runPromise(rejectFeedbackEffect(token, id, data))
 }
 
-export async function mergeFeedback(
+export const mergeFeedbackEffect = Effect.fn('admin.feedback.merge')(
+  function*(
+    token: string,
+    id: string,
+    data: DataMergeFeedbackSuggestion,
+  ) {
+    return yield* apiRequestEffect(
+      `/feedback/admin/${id}/merge`,
+      ApiSchema.FeedbackAdminMerge200,
+      {
+        method: 'POST',
+        token,
+        body: data,
+      },
+    )
+  },
+)
+
+export function mergeFeedback(
   token: string,
   id: string,
   data: DataMergeFeedbackSuggestion,
 ) {
-  return apiRequest<FeedbackSuggestion>(`/feedback/admin/${id}/merge`, {
-    method: 'POST',
-    token,
-    body: data,
-  })
+  return Effect.runPromise(mergeFeedbackEffect(token, id, data))
 }
 
-export async function hideFeedback(token: string, id: string) {
-  return apiRequest<FeedbackSuggestion>(`/feedback/admin/${id}/hide`, {
-    method: 'POST',
-    token,
-  })
+export const hideFeedbackEffect = Effect.fn('admin.feedback.hide')(
+  function*(token: string, id: string) {
+    return yield* apiRequestEffect(
+      `/feedback/admin/${id}/hide`,
+      ApiSchema.FeedbackAdminHide200,
+      {
+        method: 'POST',
+        token,
+      },
+    )
+  },
+)
+
+export function hideFeedback(token: string, id: string) {
+  return Effect.runPromise(hideFeedbackEffect(token, id))
 }
 
-export async function updateFeedback(
+export const updateFeedbackEffect = Effect.fn('admin.feedback.update')(
+  function*(
+    token: string,
+    id: string,
+    data: DataUpdateFeedbackPublication,
+  ) {
+    return yield* apiRequestEffect(
+      `/feedback/admin/${id}`,
+      ApiSchema.FeedbackAdminUpdatePublication200,
+      {
+        method: 'PATCH',
+        token,
+        body: data,
+      },
+    )
+  },
+)
+
+export function updateFeedback(
   token: string,
   id: string,
   data: DataUpdateFeedbackPublication,
 ) {
-  return apiRequest<FeedbackSuggestion>(`/feedback/admin/${id}`, {
-    method: 'PATCH',
-    token,
-    body: data,
-  })
+  return Effect.runPromise(updateFeedbackEffect(token, id, data))
 }

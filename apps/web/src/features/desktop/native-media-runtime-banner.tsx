@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Effect, Fiber } from 'effect'
 
 import type { NativeMediaRuntimeState } from '@syrnike13/platform'
 
@@ -14,27 +15,29 @@ export function NativeMediaRuntimeBanner() {
 
   useEffect(() => {
     if (!desktop) return
-    let cancelled = false
-    const initialRevision = pushedStateRevision.current
-    void desktop.media
-      .getRuntimeState()
-      .then((next) => {
-        if (
-          !cancelled &&
-          pushedStateRevision.current === initialRevision
-        ) {
-          setState(next)
-        }
-      })
-      .catch(() => undefined)
     const unsubscribe = desktop.media.onRuntimeState((next) => {
-      if (cancelled) return
       pushedStateRevision.current += 1
       setState(next)
     })
+    const initialRevision = pushedStateRevision.current
+    const fiber = Effect.runFork(
+      Effect.tryPromise({
+        try: () => desktop.media.getRuntimeState(),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.tap((next) =>
+          Effect.sync(() => {
+            if (pushedStateRevision.current === initialRevision) {
+              setState(next)
+            }
+          }),
+        ),
+        Effect.ignore,
+      ),
+    )
     return () => {
-      cancelled = true
       unsubscribe()
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [desktop])
 
@@ -47,24 +50,47 @@ export function NativeMediaRuntimeBanner() {
   }
 
   const recovering = state.status === 'recovering'
-  const retry = async () => {
+  const retry = () => {
     if (retrying) return
     setRetrying(true)
     const retryRevision = pushedStateRevision.current
-    try {
-      const next = await desktop.media.retryRuntime()
-      if (pushedStateRevision.current === retryRevision) setState(next)
-    } catch {
-      const next = await desktop.media.getRuntimeState().catch(() => null)
-      if (
-        next &&
-        pushedStateRevision.current === retryRevision
-      ) {
-        setState(next)
-      }
-    } finally {
-      setRetrying(false)
-    }
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () => desktop.media.retryRuntime(),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.matchEffect({
+          onFailure: () =>
+            Effect.tryPromise({
+              try: () => desktop.media.getRuntimeState(),
+              catch: (cause) => cause,
+            }).pipe(
+              Effect.catch(() => Effect.succeed(null)),
+              Effect.tap((next) =>
+                Effect.sync(() => {
+                  if (
+                    next &&
+                    pushedStateRevision.current === retryRevision
+                  ) {
+                    setState(next)
+                  }
+                }),
+              ),
+            ),
+          onSuccess: (next) =>
+            Effect.sync(() => {
+              if (pushedStateRevision.current === retryRevision) {
+                setState(next)
+              }
+            }),
+        }),
+        Effect.ensuring(
+          Effect.sync(() => {
+            setRetrying(false)
+          }),
+        ),
+      ),
+    )
   }
 
   return (
@@ -93,7 +119,7 @@ export function NativeMediaRuntimeBanner() {
           variant="outline"
           className="h-6 border-destructive/30 bg-background/50 px-2 text-xs text-foreground hover:bg-accent"
           disabled={retrying}
-          onClick={() => void retry()}
+          onClick={retry}
         >
           {retrying ? 'Перезапускаем…' : 'Перезапустить медиа'}
         </Button>

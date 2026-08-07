@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Member, User } from '@syrnike13/api-types'
+import { Option, Schema } from 'effect'
 
 import { SearchIcon } from '#/components/icons'
 import { Input } from '#/components/ui/input'
@@ -19,6 +20,7 @@ type ServerSettingsMembersPanelProps = {
 }
 
 type MemberSort = 'name' | 'joined' | 'roles'
+const MemberSortSchema = Schema.Literals(['name', 'joined', 'roles'])
 
 function memberDisplayName(user: User, member?: Member) {
   return member?.nickname?.trim() || user.display_name || user.username
@@ -111,7 +113,12 @@ export function ServerSettingsMembersPanel({
           value={sort}
           className="h-9 rounded-md border border-input bg-muted/40 px-3 text-sm outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:border-border dark:bg-secondary dark:text-secondary-foreground"
           aria-label="Сортировка участников"
-          onChange={(event) => setSort(event.target.value as MemberSort)}
+          onChange={(event) => {
+            const decoded = Schema.decodeUnknownOption(MemberSortSchema)(
+              event.target.value,
+            )
+            if (Option.isSome(decoded)) setSort(decoded.value)
+          }}
         >
           <option value="name">Сортировать по имени</option>
           <option value="joined">Сортировать по дате входа</option>

@@ -1,4 +1,8 @@
-import type { DesktopTrayVoiceState } from '@syrnike13/platform'
+import {
+  DesktopTrayVoiceStateSchema,
+  type DesktopTrayVoiceState,
+} from '@syrnike13/platform'
+import { Option, Schema } from 'effect'
 
 export const TRAY_ICON_ASSET_BY_STATE = {
   default: 'tray-default.png',
@@ -11,7 +15,8 @@ export const TRAY_ICON_ASSET_BY_STATE = {
 export function normalizeDesktopTrayVoiceState(
   value: unknown,
 ): DesktopTrayVoiceState {
-  return typeof value === 'string' && value in TRAY_ICON_ASSET_BY_STATE
-    ? (value as DesktopTrayVoiceState)
-    : 'default'
+  return Option.getOrElse(
+    Schema.decodeUnknownOption(DesktopTrayVoiceStateSchema)(value),
+    () => 'default',
+  )
 }

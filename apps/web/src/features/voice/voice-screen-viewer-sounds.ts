@@ -1,9 +1,12 @@
+import { Option, Schema } from 'effect'
+
 import type { SoundEventId } from '#/features/sounds/sound-events'
 import { baseVoiceIdentity } from '#/features/voice/native-voice-identity'
 
 export const SCREEN_VIEWER_SOUND_TOPIC = 'syrnike13.screen-viewer-sound'
 
-type ScreenViewerSoundAction = 'join' | 'leave'
+const ScreenViewerSoundActionSchema = Schema.Literals(['join', 'leave'])
+type ScreenViewerSoundAction = typeof ScreenViewerSoundActionSchema.Type
 
 export function screenViewerWatchNotification({
   isLocal,
@@ -18,11 +21,17 @@ export function screenViewerWatchNotification({
   return subscribed ? 'join' : 'leave'
 }
 
-type ScreenViewerSoundPayload = {
-  type: 'screen_viewer'
-  action: ScreenViewerSoundAction
-  screenOwnerId: string
-}
+const ScreenViewerSoundPayloadSchema = Schema.Struct({
+  type: Schema.Literal('screen_viewer'),
+  action: ScreenViewerSoundActionSchema,
+  screenOwnerId: Schema.String.check(Schema.isMinLength(1)),
+})
+
+const ScreenViewerSoundPayloadJsonSchema = Schema.fromJsonString(
+  ScreenViewerSoundPayloadSchema,
+)
+
+type ScreenViewerSoundPayload = typeof ScreenViewerSoundPayloadSchema.Type
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -39,27 +48,19 @@ export function createScreenViewerSoundPayload({
     action,
     screenOwnerId,
   }
-  return encoder.encode(JSON.stringify(payload))
+  return encoder.encode(
+    Schema.encodeSync(ScreenViewerSoundPayloadJsonSchema)(payload),
+  )
 }
 
 function parseScreenViewerSoundPayload(
   payload: Uint8Array,
 ): ScreenViewerSoundPayload | null {
-  try {
-    const parsed = JSON.parse(decoder.decode(payload)) as Partial<ScreenViewerSoundPayload>
-    if (parsed.type !== 'screen_viewer') return null
-    if (parsed.action !== 'join' && parsed.action !== 'leave') return null
-    if (typeof parsed.screenOwnerId !== 'string' || !parsed.screenOwnerId) {
-      return null
-    }
-    return {
-      type: parsed.type,
-      action: parsed.action,
-      screenOwnerId: parsed.screenOwnerId,
-    }
-  } catch {
-    return null
-  }
+  return Option.getOrNull(
+    Schema.decodeUnknownOption(ScreenViewerSoundPayloadJsonSchema)(
+      decoder.decode(payload),
+    ),
+  )
 }
 
 export function screenViewerSoundEventFromData({

@@ -1,10 +1,10 @@
 import { eventsGateway } from '#/features/events/gateway'
+import { Effect, Fiber, Schedule } from 'effect'
 
 import {
   isChannelActivityErrorCode,
   isChannelActivityInstance,
   validChannelActivityGeneration,
-  type ChannelActivityInstance,
   type ChannelActivityViewState,
 } from './channel-activity-types'
 
@@ -36,7 +36,7 @@ export class ChannelActivityClient {
   readonly #listeners = new Map<string, Set<() => void>>()
   #unsubscribeEvents: (() => void) | null = null
   #unsubscribeGatewayState: (() => void) | null = null
-  #syncTimer: ReturnType<typeof setInterval> | null = null
+  #syncTimer: Fiber.Fiber<void, never> | null = null
 
   constructor(gateway: ChannelActivityGateway) {
     this.#gateway = gateway
@@ -147,10 +147,17 @@ export class ChannelActivityClient {
         if (state === 'connected') this.sync(channelId)
       }
     })
-    this.#syncTimer = setInterval(() => {
+    const sync = Effect.sync(() => {
       if (this.#gateway.state !== 'connected') return
       for (const channelId of this.#listeners.keys()) this.sync(channelId)
-    }, PERIODIC_SYNC_MS)
+    })
+    this.#syncTimer = Effect.runFork(
+      sync.pipe(
+        Effect.schedule(Schedule.spaced(PERIODIC_SYNC_MS)),
+        Effect.delay(PERIODIC_SYNC_MS),
+        Effect.asVoid,
+      ),
+    )
   }
 
   #detachGateway() {
@@ -158,7 +165,7 @@ export class ChannelActivityClient {
     this.#unsubscribeGatewayState?.()
     this.#unsubscribeEvents = null
     this.#unsubscribeGatewayState = null
-    if (this.#syncTimer) clearInterval(this.#syncTimer)
+    if (this.#syncTimer) Effect.runFork(Fiber.interrupt(this.#syncTimer))
     this.#syncTimer = null
   }
 

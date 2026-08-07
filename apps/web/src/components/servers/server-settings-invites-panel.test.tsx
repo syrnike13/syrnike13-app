@@ -10,6 +10,7 @@ import {
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 import { ServerSettingsInvitesPanel } from '#/components/servers/server-settings-invites-panel'
 import { syncStore } from '#/features/sync/sync-store'
@@ -38,7 +39,9 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
-  fetchServerInvites: (...args: Parameters<typeof mocks.fetchServerInvites>) =>
+  fetchServerInvitesEffect: (
+    ...args: Parameters<typeof mocks.fetchServerInvites>
+  ) =>
     mocks.fetchServerInvites(...args),
 }))
 
@@ -48,13 +51,13 @@ vi.mock('#/features/api/invites-api', async (importOriginal) => {
   >()
   return {
     ...actual,
-    deleteInvite: (...args: Parameters<typeof mocks.deleteInvite>) =>
+    deleteInviteEffect: (...args: Parameters<typeof mocks.deleteInvite>) =>
       mocks.deleteInvite(...args),
   }
 })
 
 vi.mock('#/lib/clipboard', () => ({
-  writeClipboardText: (...args: Parameters<typeof mocks.writeClipboardText>) =>
+  writeClipboardTextEffect: (...args: Parameters<typeof mocks.writeClipboardText>) =>
     mocks.writeClipboardText(...args),
 }))
 
@@ -147,7 +150,7 @@ describe('ServerSettingsInvitesPanel', () => {
         bot: { owner: 'user-1' },
       } as never,
     ])
-    mocks.fetchServerInvites.mockResolvedValue([
+    mocks.fetchServerInvites.mockReturnValue(Effect.succeed([
       {
         type: 'Server',
         _id: 'invite-code',
@@ -162,9 +165,9 @@ describe('ServerSettingsInvitesPanel', () => {
         revoked_by: null,
         temporary: false,
       },
-    ])
-    mocks.deleteInvite.mockResolvedValue(undefined)
-    mocks.writeClipboardText.mockResolvedValue(undefined)
+    ]))
+    mocks.deleteInvite.mockReturnValue(Effect.void)
+    mocks.writeClipboardText.mockReturnValue(Effect.void)
   })
 
   afterEach(() => {
@@ -214,7 +217,7 @@ describe('ServerSettingsInvitesPanel', () => {
   })
 
   it('opens the shared invite dialog from a compact settings button', async () => {
-    mocks.fetchServerInvites.mockResolvedValue([])
+    mocks.fetchServerInvites.mockReturnValue(Effect.succeed([]))
 
     renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
 
@@ -268,7 +271,7 @@ describe('ServerSettingsInvitesPanel', () => {
       server: 'server-1',
       name: 'rules',
     } as never)
-    mocks.fetchServerInvites.mockResolvedValue([
+    mocks.fetchServerInvites.mockReturnValue(Effect.succeed([
       {
         type: 'Server',
         _id: 'rules-code',
@@ -283,7 +286,7 @@ describe('ServerSettingsInvitesPanel', () => {
         revoked_by: null,
         temporary: false,
       },
-    ])
+    ]))
 
     renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
 
@@ -298,7 +301,7 @@ describe('ServerSettingsInvitesPanel', () => {
       display_name: 'Alice',
       avatar: null,
     } as never)
-    mocks.fetchServerInvites.mockResolvedValue([
+    mocks.fetchServerInvites.mockReturnValue(Effect.succeed([
       {
         type: 'Server',
         _id: 'temporary-code',
@@ -313,7 +316,7 @@ describe('ServerSettingsInvitesPanel', () => {
         revoked_by: null,
         temporary: true,
       },
-    ])
+    ]))
 
     renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
 
@@ -338,7 +341,7 @@ describe('ServerSettingsInvitesPanel', () => {
         avatar: null,
       } as never,
     ])
-    mocks.fetchServerInvites.mockResolvedValue([
+    mocks.fetchServerInvites.mockReturnValue(Effect.succeed([
       {
         type: 'Server',
         _id: 'revoked-code',
@@ -353,7 +356,7 @@ describe('ServerSettingsInvitesPanel', () => {
         revoked_by: 'user-2',
         temporary: false,
       },
-    ])
+    ]))
 
     renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
 
@@ -365,7 +368,7 @@ describe('ServerSettingsInvitesPanel', () => {
 
   it('marks expired and exhausted invites as inactive', async () => {
     const now = Date.now()
-    mocks.fetchServerInvites.mockResolvedValue([
+    mocks.fetchServerInvites.mockReturnValue(Effect.succeed([
       {
         type: 'Server',
         _id: 'expired-code',
@@ -394,7 +397,7 @@ describe('ServerSettingsInvitesPanel', () => {
         revoked_by: null,
         temporary: false,
       },
-    ])
+    ]))
 
     renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
 

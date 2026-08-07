@@ -1,53 +1,91 @@
+import {
+  DesktopStoredSessionSchema,
+  type DesktopStoredSession,
+} from '@syrnike13/platform'
+import { Effect, Option, Schema } from 'effect'
+
 const SESSION_KEY = 'syrnike13:session'
 
-export type StoredSession = {
-  _id: string
-  token: string
-  user_id: string
-}
+const StoredSessionJsonSchema = Schema.fromJsonString(
+  DesktopStoredSessionSchema,
+)
+
+export type StoredSession = DesktopStoredSession
 
 export function loadSession(): StoredSession | null {
   if (typeof window === 'undefined') return null
   try {
     const raw = localStorage.getItem(SESSION_KEY)
     if (!raw) return null
-    return JSON.parse(raw) as StoredSession
+    return Option.getOrNull(
+      Schema.decodeUnknownOption(StoredSessionJsonSchema)(raw),
+    )
   } catch {
     return null
   }
 }
 
-export async function loadPersistedSession(): Promise<StoredSession | null> {
-  if (
-    typeof window !== 'undefined' &&
-    window.syrnikeDesktop?.runtime === 'desktop'
-  ) {
-    return window.syrnikeDesktop.auth.loadSession()
+export const loadPersistedSessionEffect = Effect.fn(
+  'web.session.loadPersisted',
+)(function*() {
+  const desktop =
+    typeof window === 'undefined' ? undefined : window.syrnikeDesktop
+  if (desktop?.runtime === 'desktop') {
+    return yield* Effect.tryPromise({
+      try: () => desktop.auth.loadSession(),
+      catch: (cause) => cause,
+    })
   }
 
-  return loadSession()
+  return yield* Effect.sync(loadSession)
+})
+
+export function loadPersistedSession(): Promise<StoredSession | null> {
+  return Effect.runPromise(loadPersistedSessionEffect())
 }
 
-export async function saveSession(session: StoredSession) {
-  if (
-    typeof window !== 'undefined' &&
-    window.syrnikeDesktop?.runtime === 'desktop'
-  ) {
-    await window.syrnikeDesktop.auth.saveSession(session)
-    return
-  }
+export const saveSessionEffect = Effect.fn('web.session.save')(
+  function*(session: StoredSession) {
+    const desktop =
+      typeof window === 'undefined' ? undefined : window.syrnikeDesktop
+    if (desktop?.runtime === 'desktop') {
+      return yield* Effect.tryPromise({
+        try: () => desktop.auth.saveSession(session),
+        catch: (cause) => cause,
+      })
+    }
 
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+    return yield* Effect.try({
+      try: () =>
+        localStorage.setItem(
+          SESSION_KEY,
+          Schema.encodeSync(StoredSessionJsonSchema)(session),
+        ),
+      catch: (cause) => cause,
+    })
+  },
+)
+
+export function saveSession(session: StoredSession): Promise<void> {
+  return Effect.runPromise(saveSessionEffect(session))
 }
 
-export async function clearSession() {
-  if (
-    typeof window !== 'undefined' &&
-    window.syrnikeDesktop?.runtime === 'desktop'
-  ) {
-    await window.syrnikeDesktop.auth.clearSession()
-    return
+export const clearSessionEffect = Effect.fn('web.session.clear')(function*() {
+  const desktop =
+    typeof window === 'undefined' ? undefined : window.syrnikeDesktop
+  if (desktop?.runtime === 'desktop') {
+    return yield* Effect.tryPromise({
+      try: () => desktop.auth.clearSession(),
+      catch: (cause) => cause,
+    })
   }
 
-  localStorage.removeItem(SESSION_KEY)
+  return yield* Effect.try({
+    try: () => localStorage.removeItem(SESSION_KEY),
+    catch: (cause) => cause,
+  })
+})
+
+export function clearSession(): Promise<void> {
+  return Effect.runPromise(clearSessionEffect())
 }

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useReducer, useRef } from 'react'
+import { Effect, Fiber } from 'effect'
 
 import {
   readComposerDraft,
@@ -90,8 +91,14 @@ export function useComposerState({
 
   useEffect(() => {
     if (state.editMessageId || !state.scope) return
-    const timeout = window.setTimeout(() => persistScopedDraft(state), 250)
-    return () => window.clearTimeout(timeout)
+    const fiber = Effect.runFork(
+      Effect.sleep(250).pipe(
+        Effect.andThen(Effect.sync(() => persistScopedDraft(state))),
+      ),
+    )
+    return () => {
+      Effect.runFork(Fiber.interrupt(fiber))
+    }
   }, [state.composeValue, state.editMessageId, state.scope])
 
   useEffect(() => () => persistScopedDraft(stateRef.current), [])

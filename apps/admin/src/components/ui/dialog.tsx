@@ -3,7 +3,6 @@ import { XIcon } from '#/components/icons'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 
 import { cn } from '#/lib/utils.ts'
-import { Button } from '#/components/ui/button.tsx'
 
 function Dialog({
   ...props

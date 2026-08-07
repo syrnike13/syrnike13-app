@@ -11,6 +11,8 @@ import {
 } from '#/components/icons'
 import { useState, type DragEvent, type MouseEvent } from 'react'
 import type { Channel } from '@syrnike13/api-types'
+import type { DraggableProvidedDragHandleProps } from '@hello-pangea/dnd'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { RailUnreadIndicator } from '#/components/layout/rail-icon-button'
@@ -34,10 +36,10 @@ import {
 } from '#/components/ui/dialog'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
-import { ackChannel } from '#/features/api/sync-api'
-import { editServerMember } from '#/features/api/servers-api'
-import { deleteChannel } from '#/features/api/channels-api'
-import { createChannelInvite } from '#/features/api/invites-api'
+import { ackChannelEffect } from '#/features/api/sync-api'
+import { editServerMemberEffect } from '#/features/api/servers-api'
+import { deleteChannelEffect } from '#/features/api/channels-api'
+import { createChannelInviteEffect } from '#/features/api/invites-api'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
 import type { ChannelUnreadState } from '#/features/sync/types'
 import {
@@ -72,7 +74,7 @@ import {
   VOICE_MEMBER_DRAG_TYPE,
 } from '#/features/voice/voice-member-drag'
 import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
-import { writeClipboardText } from '#/lib/clipboard'
+import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
 import { attachmentPreviewUrl } from '#/lib/media'
 import { publicAppUrl } from '#/lib/public-origin'
@@ -86,7 +88,7 @@ type ChannelSidebarItemProps = {
   unreads: Record<string, ChannelUnreadState | undefined>
   canManage?: boolean
   canInvite?: boolean
-  dragHandleProps?: Record<string, unknown>
+  dragHandleProps?: DraggableProvidedDragHandleProps
   dragging?: boolean
 }
 
@@ -151,42 +153,53 @@ export function ChannelSidebarItem({
     if (!token || !canDeleteChannel) return
 
     setDeletingChannel(true)
-    try {
-      await deleteChannel(token, channel._id)
-      syncStore.removeChannel(channel._id)
-      toast.success('Канал удалён')
-      setDeleteDialogOpen(false)
-
-      const settingsChannelId = channelRouteMatch?.search?.settingsChannel
-      const viewingDeletedChannel =
-        channelRouteMatch?.params?.channelId === channel._id ||
-        settingsChannelId === channel._id
-
-      if (!viewingDeletedChannel) return
-
-      const fallback = pickDefaultChannelId(
-        syncStore.getState(),
-        auth.user?._id,
-      )
-      if (fallback) {
-        await navigate({
-          to: channelRoute,
-          params: { channelId: fallback },
-          search: { m: undefined },
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        yield* deleteChannelEffect(token, channel._id)
+        yield* Effect.sync(() => {
+          syncStore.removeChannel(channel._id)
+          toast.success('Канал удалён')
+          setDeleteDialogOpen(false)
         })
-      } else {
-        await navigate({
-          to: isMobile ? '/m' : '/app',
-          search: { tab: 'online' },
+
+        const settingsChannelId = channelRouteMatch?.search?.settingsChannel
+        const viewingDeletedChannel =
+          channelRouteMatch?.params?.channelId === channel._id ||
+          settingsChannelId === channel._id
+
+        if (!viewingDeletedChannel) return
+
+        const fallback = pickDefaultChannelId(
+          syncStore.getState(),
+          auth.user?._id,
+        )
+        yield* Effect.tryPromise({
+          try: () =>
+            fallback
+              ? navigate({
+                  to: channelRoute,
+                  params: { channelId: fallback },
+                  search: { m: undefined },
+                })
+              : navigate({
+                  to: isMobile ? '/m' : '/app',
+                  search: { tab: 'online' },
+                }),
+          catch: (cause) => cause,
         })
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось удалить канал',
-      )
-    } finally {
-      setDeletingChannel(false)
-    }
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось удалить канал',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setDeletingChannel(false))),
+      ),
+    )
   }
 
   const label = getChannelLabel(channel, users, currentUserId)
@@ -221,38 +234,59 @@ export function ChannelSidebarItem({
     const lastId = getChannelLastMessageId(channel)
     if (!lastId) return
     syncStore.setChannelLastRead(channel._id, lastId)
-    try {
-      await ackChannel(token, channel._id, lastId)
-      toast.success('Канал отмечен прочитанным')
-    } catch {
-      toast.error('Не удалось отметить прочитанным')
-    }
+    await Effect.runPromise(
+      ackChannelEffect(token, channel._id, lastId).pipe(
+        Effect.matchEffect({
+          onFailure: () =>
+            Effect.sync(() =>
+              toast.error('Не удалось отметить прочитанным'),
+            ),
+          onSuccess: () =>
+            Effect.sync(() =>
+              toast.success('Канал отмечен прочитанным'),
+            ),
+        }),
+      ),
+    )
   }
 
   async function copyLink() {
     const url = publicAppUrl(`/app/c/${channel._id}`)
-    try {
-      await writeClipboardText(url)
-      toast.success('Ссылка скопирована')
-    } catch {
-      toast.error('Не удалось скопировать')
-    }
+    await Effect.runPromise(
+      writeClipboardTextEffect(url).pipe(
+        Effect.matchEffect({
+          onFailure: () =>
+            Effect.sync(() => toast.error('Не удалось скопировать')),
+          onSuccess: () =>
+            Effect.sync(() => toast.success('Ссылка скопирована')),
+        }),
+      ),
+    )
   }
 
   async function createInvite() {
     if (!token || channel.channel_type !== 'TextChannel') return
-    try {
-      const invite = await createChannelInvite(token, channel._id)
-      const code = '_id' in invite ? invite._id : ''
-      if (code) {
-        await writeClipboardText(inviteUrl(code))
-        toast.success('Приглашение скопировано')
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось создать',
-      )
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        const invite = yield* createChannelInviteEffect(
+          token,
+          channel._id,
+          {},
+        )
+        const code = '_id' in invite ? invite._id : ''
+        if (!code) return
+        yield* writeClipboardTextEffect(inviteUrl(code))
+        yield* Effect.sync(() => toast.success('Приглашение скопировано'))
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось создать',
+            )
+          }),
+        ),
+      ),
+    )
   }
 
   function handleVoiceChannelClick(event: MouseEvent<HTMLAnchorElement>) {
@@ -365,20 +399,28 @@ export function ChannelSidebarItem({
     }
 
     setMovingVoiceMember(true)
-    try {
-      await editServerMember(token, server._id, payload.userId, {
-        voice_channel: channel._id,
-      })
-      toast.success('Участник перемещён')
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось переместить участника',
-      )
-    } finally {
-      setMovingVoiceMember(false)
-    }
+    await Effect.runPromise(
+      editServerMemberEffect(
+        token,
+        server._id,
+        payload.userId,
+        { voice_channel: channel._id },
+      ).pipe(
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось переместить участника',
+              )
+            }),
+          onSuccess: () =>
+            Effect.sync(() => toast.success('Участник перемещён')),
+        }),
+        Effect.ensuring(Effect.sync(() => setMovingVoiceMember(false))),
+      ),
+    )
   }
 
   const channelActionButtonClassName =

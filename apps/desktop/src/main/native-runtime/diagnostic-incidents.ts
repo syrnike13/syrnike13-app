@@ -1,9 +1,12 @@
-import type {
-  NativeDiagnosticIncident,
-  NativeDiagnosticIncidentBatch,
-  NativeDiagnosticIncidentSeverity,
-  RendererDiagnosticIncident,
+import {
+  NativeDiagnosticIncidentSchema,
+  RendererDiagnosticIncidentSchema,
+  type NativeDiagnosticIncident,
+  type NativeDiagnosticIncidentBatch,
+  type NativeDiagnosticIncidentSeverity,
+  type RendererDiagnosticIncident,
 } from '@syrnike13/platform'
+import { Option, Schema } from 'effect'
 
 import type { DiagnosticLogRecord } from './diagnostic-log'
 import { redactSensitiveText } from './contract'
@@ -465,21 +468,9 @@ function safeTriggerCode(value: string) {
 function isRendererDiagnosticIncident(
   value: unknown,
 ): value is RendererDiagnosticIncident {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as Record<string, unknown>
-  return typeof candidate.area === 'string' &&
-    candidate.area.length > 0 &&
-    candidate.area.length <= 128 &&
-    typeof candidate.triggerCode === 'string' &&
-    candidate.triggerCode.length > 0 &&
-    candidate.triggerCode.length <= 128 &&
-    (candidate.severity === 'warning' ||
-      candidate.severity === 'error' ||
-      candidate.severity === 'fatal') &&
-    (candidate.cooldownMs === undefined ||
-      (typeof candidate.cooldownMs === 'number' &&
-        Number.isFinite(candidate.cooldownMs) &&
-        candidate.cooldownMs >= 0))
+  return Option.isSome(
+    Schema.decodeUnknownOption(RendererDiagnosticIncidentSchema)(value),
+  )
 }
 
 function redactedText(value: string | undefined) {
@@ -489,7 +480,11 @@ function redactedText(value: string | undefined) {
 function compactIncident(
   incident: NativeDiagnosticIncident,
 ): NativeDiagnosticIncident {
-  return Object.fromEntries(
+  const compact = Object.fromEntries(
     Object.entries(incident).filter(([, value]) => value !== undefined),
-  ) as NativeDiagnosticIncident
+  )
+  const decoded = Schema.decodeUnknownOption(NativeDiagnosticIncidentSchema)(
+    compact,
+  )
+  return Option.getOrElse(decoded, () => incident)
 }

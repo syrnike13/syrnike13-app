@@ -50,6 +50,7 @@ describe('native media runtime IPC', () => {
       ...runtimeState,
       status: 'ready' as const,
     })),
+    listDevices: vi.fn(async () => []),
   } as unknown as NativeMediaController
 
   beforeAll(() => {
@@ -76,5 +77,16 @@ describe('native media runtime IPC', () => {
       IPC.mediaRuntimeStateChanged,
       runtimeState,
     )
+  })
+
+  it('rejects invalid media request arguments at the IPC boundary', async () => {
+    const event = { sender }
+
+    await expect(
+      electron.handlers.get(IPC.mediaListDevices)?.(event, 'camera'),
+    ).rejects.toThrow(
+      `Invalid IPC input for ${IPC.mediaListDevices}: kind`,
+    )
+    expect(controller.listDevices).not.toHaveBeenCalled()
   })
 })

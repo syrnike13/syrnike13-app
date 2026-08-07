@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { Channel, User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserProfileCard } from './user-profile-card'
@@ -9,23 +10,13 @@ import { syncStore } from '#/features/sync/sync-store'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 const navigateMock = vi.hoisted(() => vi.fn())
-const openDirectMessageChannelMock = vi.hoisted(() =>
-  vi.fn(
-    async (
-      _token: string,
-      _userId: string,
-      navigateToChannel: (channelId: string) => Promise<void> | void,
-    ) => {
-      await navigateToChannel('dm-1')
-      return {
-        _id: 'dm-1',
-        channel_type: 'DirectMessage',
-        active: true,
-        recipients: ['current-user', 'target-user'],
-      } as Channel
-    },
-  ),
-)
+const openDirectMessageChannelMock = vi.hoisted(() => vi.fn())
+const directMessageChannel = {
+  _id: 'dm-1',
+  channel_type: 'DirectMessage',
+  active: true,
+  recipients: ['current-user', 'target-user'],
+} as Channel
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
@@ -59,6 +50,17 @@ const targetUser = {
 describe('UserProfileCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    openDirectMessageChannelMock.mockImplementation(
+      (
+        _token: string,
+        _userId: string,
+        navigateToChannel: (channelId: string) => Promise<void> | void,
+      ) =>
+        Effect.tryPromise({
+          try: () => Promise.resolve(navigateToChannel('dm-1')),
+          catch: (cause) => cause,
+        }).pipe(Effect.as(directMessageChannel)),
+    )
     syncStore.reset()
     grantAllAuthorizationForTest({ userIds: ['target-user'] })
   })

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Effect, Fiber, Option, Schema } from 'effect'
 import {
   AppWindowIcon,
   Gamepad2Icon,
@@ -33,6 +34,7 @@ import {
 } from '#/features/voice/voice-broadcast-source'
 
 type SourceTab = 'screen' | 'applications'
+const SourceTabSchema = Schema.Literals(['screen', 'applications'])
 
 const SOURCE_TABS: Array<{
   value: SourceTab
@@ -88,33 +90,38 @@ export function DesktopScreenSharePicker() {
   useEffect(() => {
     if (!desktop || !request) return
 
-    let cancelled = false
     setLoading(true)
-    void desktop.media
-      .getDisplaySources(request.id)
-      .then((nextSources) => {
-        if (cancelled) return
-        setSources(nextSources)
-        setActiveTab(
-          nextSources.some((source) => source.type === 'screen')
-            ? 'screen'
-            : 'applications',
-        )
-      })
-      .catch((error) => {
-        if (cancelled) return
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'Не удалось получить источники демонстрации',
-        )
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+    const fiber = Effect.runFork(
+      Effect.tryPromise({
+        try: () => desktop.media.getDisplaySources(request.id),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось получить источники демонстрации',
+              )
+              setLoading(false)
+            }),
+          onSuccess: (nextSources) =>
+            Effect.sync(() => {
+              setSources(nextSources)
+              setActiveTab(
+                nextSources.some((source) => source.type === 'screen')
+                  ? 'screen'
+                  : 'applications',
+              )
+              setLoading(false)
+            }),
+        }),
+      ),
+    )
 
     return () => {
-      cancelled = true
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [desktop, request])
 
@@ -185,7 +192,10 @@ export function DesktopScreenSharePicker() {
 
         <Tabs
           value={activeTab}
-          onValueChange={(value) => setActiveTab(value as SourceTab)}
+          onValueChange={(value) => {
+            const decoded = Schema.decodeUnknownOption(SourceTabSchema)(value)
+            if (Option.isSome(decoded)) setActiveTab(decoded.value)
+          }}
           className="min-h-0 gap-0"
         >
           <TabsList className="mt-4 ml-4 w-[calc(100%-5rem)] shrink-0">

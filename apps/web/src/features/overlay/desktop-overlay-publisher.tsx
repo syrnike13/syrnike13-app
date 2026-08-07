@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
+import { Effect } from 'effect'
 import {
   EMPTY_DESKTOP_OVERLAY_SNAPSHOT,
   desktopOverlaySnapshotsEqual,
@@ -63,16 +64,30 @@ export function createDesktopOverlaySnapshotPublisher(
     }
 
     inFlight = true
-    void send(next)
-      .then(() => {
-        delivered = next
-      })
-      .catch(onError)
-      .finally(() => {
-        inFlight = false
-        if (closing && !pending) closed = true
-        else if (pending) schedule()
-      })
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () => send(next),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            delivered = next
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => onError(error)).pipe(
+            Effect.catchCause(() => Effect.void),
+          ),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            inFlight = false
+            if (closing && !pending) closed = true
+            else if (pending) schedule()
+          }),
+        ),
+      ),
+    )
   }
 
   return {

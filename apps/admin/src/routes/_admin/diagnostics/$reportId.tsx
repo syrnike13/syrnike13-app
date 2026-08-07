@@ -1,5 +1,7 @@
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Effect, Option, Schema } from 'effect'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -13,7 +15,7 @@ import { DownloadIcon, Loader2Icon } from '#/components/icons'
 import { Button } from '#/components/ui/button'
 import { Textarea } from '#/components/ui/textarea'
 import {
-  downloadAdminDiagnosticReport,
+  downloadAdminDiagnosticReportEffect,
   fetchAdminDiagnosticReport,
   updateAdminDiagnosticReport,
   type DiagnosticReportStatus,
@@ -33,7 +35,8 @@ function DiagnosticReportPage() {
   const queryClient = useQueryClient()
   const report = useQuery({
     queryKey: queryKeys.admin.diagnostic(reportId),
-    queryFn: () => fetchAdminDiagnosticReport(token!, reportId),
+    queryFn: ({ signal }) =>
+      fetchAdminDiagnosticReport(token!, reportId, signal),
     enabled: Boolean(token),
   })
   const [status, setStatus] = useState<DiagnosticReportStatus>('new')
@@ -60,19 +63,31 @@ function DiagnosticReportPage() {
   const download = async () => {
     if (!token) return
     setDownloading(true)
-    try {
-      const blob = await downloadAdminDiagnosticReport(token, reportId)
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = `syrnike13-diagnostic-${reportId}.jsonl.gz`
-      anchor.click()
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Не удалось скачать отчёт')
-    } finally {
-      setDownloading(false)
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        const blob = yield* downloadAdminDiagnosticReportEffect(token, reportId)
+        const url = yield* Effect.sync(() => URL.createObjectURL(blob))
+        yield* Effect.sync(() => {
+          const anchor = document.createElement('a')
+          anchor.href = url
+          anchor.download = `syrnike13-diagnostic-${reportId}.jsonl.gz`
+          anchor.click()
+        }).pipe(
+          Effect.ensuring(Effect.sync(() => URL.revokeObjectURL(url))),
+        )
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось скачать отчёт',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setDownloading(false))),
+      ),
+    )
   }
 
   if (report.isLoading) {
@@ -127,7 +142,12 @@ function DiagnosticReportPage() {
           <select
             id="diagnostic-status"
             value={status}
-            onChange={(event) => setStatus(event.target.value as DiagnosticReportStatus)}
+            onChange={(event) => {
+              const decoded = Schema.decodeUnknownOption(
+                ApiSchema.DiagnosticReportStatus,
+              )(event.target.value)
+              if (Option.isSome(decoded)) setStatus(decoded.value)
+            }}
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-[13px]"
           >
             <option value="new">Новый</option>

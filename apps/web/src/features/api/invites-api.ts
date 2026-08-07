@@ -4,46 +4,108 @@ import type {
   DataModerationAction,
   Invite,
   InviteJoinResponse,
-  InviteResponse,
   Member,
   Server,
 } from '@syrnike13/api-types'
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Effect, Schema } from 'effect'
 
-import { apiRequest } from '#/lib/api/client'
+import { apiRequestEffect } from '#/lib/api/client'
 
-export async function fetchPublicInvite(code: string) {
-  return apiRequest<InviteResponse>(`/invites/${code}`)
+export const fetchPublicInviteEffect = Effect.fn('web.invites.fetchPublic')(
+  function*(code: string) {
+    return yield* apiRequestEffect(
+      `/invites/${code}`,
+      ApiSchema.InviteFetchFetch200,
+    )
+  },
+)
+
+export function fetchPublicInvite(code: string, signal?: AbortSignal) {
+  return Effect.runPromise(
+    fetchPublicInviteEffect(code),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function joinInvite(token: string, code: string) {
-  return apiRequest<InviteJoinResponse>(`/invites/${code}`, {
-    method: 'POST',
-    token,
-  })
+export const joinInviteEffect = Effect.fn('web.invites.join')(
+  function*(token: string, code: string) {
+    return yield* apiRequestEffect(
+      `/invites/${code}`,
+      ApiSchema.InviteJoinJoin200,
+      {
+        method: 'POST',
+        token,
+      },
+    )
+  },
+)
+
+export function joinInvite(
+  token: string,
+  code: string,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    joinInviteEffect(token, code),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function createChannelInvite(
+export const createChannelInviteEffect = Effect.fn('web.invites.create')(
+  function*(
+    token: string,
+    channelId: string,
+    body: DataCreateInvite = {},
+  ) {
+    return yield* apiRequestEffect(
+      `/channels/${channelId}/invites`,
+      ApiSchema.InviteCreateCreateInvite200,
+      {
+        method: 'POST',
+        token,
+        body,
+      },
+    )
+  },
+)
+
+export function createChannelInvite(
   token: string,
   channelId: string,
   body: DataCreateInvite = {},
+  signal?: AbortSignal,
 ) {
-  return apiRequest<Invite>(`/channels/${channelId}/invites`, {
-    method: 'POST',
-    token,
-    body,
-  })
+  return Effect.runPromise(
+    createChannelInviteEffect(token, channelId, body),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function deleteInvite(
+export const deleteInviteEffect = Effect.fn('web.invites.delete')(
+  function*(
+    token: string,
+    code: string,
+    body: DataModerationAction = {},
+  ) {
+    return yield* apiRequestEffect(`/invites/${code}`, Schema.Void, {
+      method: 'DELETE',
+      token,
+      body,
+    })
+  },
+)
+
+export function deleteInvite(
   token: string,
   code: string,
   body: DataModerationAction = {},
+  signal?: AbortSignal,
 ) {
-  return apiRequest<void>(`/invites/${code}`, {
-    method: 'DELETE',
-    token,
-    body,
-  })
+  return Effect.runPromise(
+    deleteInviteEffect(token, code, body),
+    signal ? { signal } : undefined,
+  )
 }
 
 export type InviteInactiveReason = 'revoked' | 'expired' | 'exhausted'

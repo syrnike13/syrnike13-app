@@ -1,12 +1,14 @@
 import { useEffect, useMemo } from 'react'
+import { Effect, Semaphore } from 'effect'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { useSyncStore } from '#/features/sync/sync-store'
-import type { UserVoiceState } from '#/features/sync/voice-types'
 import { usePlatform } from '#/platform/use-platform'
 
 import { useVoiceSession } from './voice-session-context'
 import { deriveDesktopTrayVoiceState } from './voice-tray-state'
+
+const trayVoiceStateWrite = Semaphore.makeUnsafe(1)
 
 export function DesktopTrayVoicePublisher() {
   const auth = useAuth()
@@ -17,7 +19,7 @@ export function DesktopTrayVoicePublisher() {
     const userId = auth.user?._id
     if (!voice.channelId || !userId) return null
     return state.voiceParticipants[voice.channelId]?.[userId] ?? null
-  }) as UserVoiceState | null
+  })
 
   const trayState = useMemo(
     () =>
@@ -33,20 +35,33 @@ export function DesktopTrayVoicePublisher() {
   useEffect(() => {
     if (!desktop) return
 
-    let cancelled = false
-    void desktop.tray.setVoiceState(trayState).catch((error) => {
-      if (!cancelled) console.error('[desktop-tray] voice state failed', error)
-    })
-
-    return () => {
-      cancelled = true
-    }
+    Effect.runFork(
+      trayVoiceStateWrite.withPermit(
+        Effect.tryPromise({
+          try: () => desktop.tray.setVoiceState(trayState),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              console.error('[desktop-tray] voice state failed', error)
+            }),
+          ),
+        ),
+      ),
+    )
   }, [desktop, trayState])
 
   useEffect(() => {
     if (!desktop) return
     return () => {
-      void desktop.tray.setVoiceState('default')
+      Effect.runFork(
+        trayVoiceStateWrite.withPermit(
+          Effect.tryPromise({
+            try: () => desktop.tray.setVoiceState('default'),
+            catch: (cause) => cause,
+          }).pipe(Effect.ignore),
+        ),
+      )
     }
   }, [desktop])
 

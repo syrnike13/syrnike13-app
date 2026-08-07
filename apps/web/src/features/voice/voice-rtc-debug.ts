@@ -1,7 +1,11 @@
-import type { Room } from 'livekit-client'
+import { Effect, Option, Schema } from 'effect'
 
 import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
 import { getVoicePeerConnectionEntries } from '#/features/voice/voice-ping'
+import {
+  voiceStageMediaStreamTrack,
+  type VoiceStageMediaItem,
+} from '#/features/voice/voice-context'
 
 export const RTC_DEBUG_BROWSER_UNAVAILABLE = 'N/A'
 export const RTC_DEBUG_HISTORY_LIMIT = 180
@@ -11,49 +15,10 @@ type RtcStatsLike = Record<string, unknown> & {
   type: string
 }
 
+const RtcStatsRecordSchema = Schema.Record(Schema.String, Schema.Unknown)
+
 type RtcDebugRoomLike = {
   engine?: unknown
-}
-
-type RtcDebugMediaTrack = {
-  mediaStreamTrack?: {
-    id?: string
-    contentHint?: string
-    getSettings?: () => MediaTrackSettings
-  } | null
-}
-
-type RtcDebugPublication = {
-  trackSid?: string
-  sid?: string
-  source?: string
-  options?: RtcDebugPublishOptions
-}
-
-type RtcDebugPublishOptions = {
-  videoCodec?: string
-  codec?: string
-  simulcast?: boolean
-  degradationPreference?: string
-  screenShareEncoding?: {
-    maxBitrate?: number
-    maxFramerate?: number
-  }
-  videoEncoding?: {
-    maxBitrate?: number
-    maxFramerate?: number
-  }
-}
-
-export type RtcDebugStageMediaItem = {
-  id: string
-  userId: string
-  kind: string
-  isLocal: boolean
-  subscribed?: boolean
-  live: boolean
-  track?: RtcDebugMediaTrack | null
-  publication?: RtcDebugPublication | null
 }
 
 export type RtcDebugTransportSnapshot = {
@@ -191,12 +156,14 @@ export type RtcDebugSnapshot = {
   rates?: RtcDebugRates
 }
 
-export async function collectVoiceRtcDebugSnapshot(
+export const collectVoiceRtcDebugSnapshotEffect = Effect.fn(
+  'voice.collectRtcDebugSnapshot',
+)(function*(
   room: RtcDebugRoomLike,
-  stageMediaItems: readonly RtcDebugStageMediaItem[],
+  stageMediaItems: readonly VoiceStageMediaItem[],
   timestamp = Date.now(),
   statsTimeoutMs = 1_000,
-): Promise<RtcDebugSnapshot> {
+) {
   const snapshot: RtcDebugSnapshot = {
     timestamp,
     transport: {},
@@ -205,72 +172,92 @@ export async function collectVoiceRtcDebugSnapshot(
     screenShares: [],
   }
 
-  const entries = getVoicePeerConnectionEntries(room as Room)
+  const entries = getVoicePeerConnectionEntries(room)
 
-  await Promise.allSettled(entries.map(async (entry) => {
-    const report = await promiseWithTimeout(
-      entry.pc.getStats(),
-      statsTimeoutMs,
-      `RTC stats timed out for ${entry.role}`,
-    )
-    const stats = rtcStatsMap(report)
-    const codecs = new Map<string, RtcStatsLike>()
-    const candidates = new Map<string, RtcStatsLike>()
-
-    for (const stat of stats.values()) {
-      if (stat.type === 'codec') codecs.set(stat.id, stat)
-      if (stat.type === 'local-candidate' || stat.type === 'remote-candidate') {
-        candidates.set(stat.id, stat)
-      }
-    }
-
-    const pair = selectedCandidatePair(stats)
-    if (pair) {
-      mergeTransport(snapshot.transport, pair, candidates)
-    }
-
-    for (const stat of stats.values()) {
-      if (stat.type === 'outbound-rtp') {
-        snapshot.outbound.push(
-          rtpStreamSnapshot(entry.role, stat, codecs, 'outbound'),
+  yield* Effect.all(
+    entries.map((entry) =>
+      Effect.gen(function*() {
+        if (!entry.pc.getStats) return
+        const report = yield* promiseWithTimeoutEffect(
+          entry.pc.getStats(),
+          statsTimeoutMs,
+          `RTC stats timed out for ${entry.role}`,
         )
-      }
-      if (stat.type === 'inbound-rtp') {
-        snapshot.inbound.push(
-          rtpStreamSnapshot(entry.role, stat, codecs, 'inbound'),
-        )
-      }
-    }
-  }))
+        yield* Effect.sync(() => {
+            const stats = rtcStatsMap(report)
+            const codecs = new Map<string, RtcStatsLike>()
+            const candidates = new Map<string, RtcStatsLike>()
+
+            for (const stat of stats.values()) {
+              if (stat.type === 'codec') codecs.set(stat.id, stat)
+              if (
+                stat.type === 'local-candidate' ||
+                stat.type === 'remote-candidate'
+              ) {
+                candidates.set(stat.id, stat)
+              }
+            }
+
+            const pair = selectedCandidatePair(stats)
+            if (pair) {
+              mergeTransport(snapshot.transport, pair, candidates)
+            }
+
+            for (const stat of stats.values()) {
+              if (stat.type === 'outbound-rtp') {
+                snapshot.outbound.push(
+                  rtpStreamSnapshot(entry.role, stat, codecs, 'outbound'),
+                )
+              }
+              if (stat.type === 'inbound-rtp') {
+                snapshot.inbound.push(
+                  rtpStreamSnapshot(entry.role, stat, codecs, 'inbound'),
+                )
+              }
+            }
+        })
+      }).pipe(Effect.ignore),
+    ),
+    { concurrency: 'unbounded' },
+  )
 
   snapshot.screenShares = stageMediaItems
     .filter((item) => item.kind === 'screen')
     .map((item) => screenShareSnapshot(item, snapshot.outbound, snapshot.inbound))
 
   return snapshot
+})
+
+export function collectVoiceRtcDebugSnapshot(
+  room: RtcDebugRoomLike,
+  stageMediaItems: readonly VoiceStageMediaItem[],
+  timestamp = Date.now(),
+  statsTimeoutMs = 1_000,
+) {
+  return Effect.runPromise(
+    collectVoiceRtcDebugSnapshotEffect(
+      room,
+      stageMediaItems,
+      timestamp,
+      statsTimeoutMs,
+    ),
+  )
 }
 
-function promiseWithTimeout<T>(
+function promiseWithTimeoutEffect<T>(
   promise: Promise<T>,
   timeoutMs: number,
   message: string,
 ) {
-  return new Promise<T>((resolve, reject) => {
-    const timeout = globalThis.setTimeout(
-      () => reject(new Error(message)),
-      Math.max(1, timeoutMs),
-    )
-    promise.then(
-      (value) => {
-        globalThis.clearTimeout(timeout)
-        resolve(value)
-      },
-      (error) => {
-        globalThis.clearTimeout(timeout)
-        reject(error)
-      },
-    )
-  })
+  return Effect.tryPromise({
+    try: () => promise,
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: Math.max(1, timeoutMs),
+      orElse: () => Effect.fail(new Error(message)),
+    }),
+  )
 }
 
 export function deriveRtcRates(
@@ -385,8 +372,11 @@ export function formatRtcValue(value: unknown) {
 function rtcStatsMap(report: RTCStatsReport) {
   const map = new Map<string, RtcStatsLike>()
   report.forEach((stat) => {
-    const value = stat as unknown as RtcStatsLike
-    if (value.id && value.type) map.set(value.id, value)
+    const decoded = Schema.decodeUnknownOption(RtcStatsRecordSchema)(stat)
+    if (Option.isNone(decoded)) return
+    const id = stringValue(decoded.value.id)
+    const type = stringValue(decoded.value.type)
+    if (id && type) map.set(id, { ...decoded.value, id, type })
   })
   return map
 }
@@ -491,12 +481,12 @@ function rtpStreamSnapshot(
 }
 
 function screenShareSnapshot(
-  item: RtcDebugStageMediaItem,
+  item: VoiceStageMediaItem,
   outbound: readonly RtcDebugRtpStreamSnapshot[],
   inbound: readonly RtcDebugRtpStreamSnapshot[],
 ): RtcDebugScreenShareSnapshot {
   const publication = item.publication
-  const track = item.track?.mediaStreamTrack
+  const track = voiceStageMediaStreamTrack(item.track)
   const rtpStream = screenShareRtpStream(item, outbound, inbound)
   const settings = track?.getSettings?.()
   const browserSettings = settings as
@@ -518,10 +508,10 @@ function screenShareSnapshot(
     isLocal: item.isLocal,
     subscribed: item.subscribed,
     live: item.live,
-    publicationId: publication?.trackSid ?? publication?.sid,
+    publicationId: publication?.trackSid,
     rtpStreamId: rtpStream?.id,
-    trackReady: Boolean(track),
-    codec: options?.videoCodec ?? options?.codec,
+    trackReady: Boolean(item.track),
+    codec: options?.videoCodec,
     maxBitrate: encoding?.maxBitrate,
     maxFramerate: encoding?.maxFramerate,
     simulcast: options?.simulcast,
@@ -646,7 +636,7 @@ function screenShareSnapshot(
 }
 
 function screenShareRtpStream(
-  item: RtcDebugStageMediaItem,
+  item: VoiceStageMediaItem,
   outbound: readonly RtcDebugRtpStreamSnapshot[],
   inbound: readonly RtcDebugRtpStreamSnapshot[],
 ) {
@@ -655,7 +645,7 @@ function screenShareRtpStream(
       stream.kind === 'video' &&
       stream.pcRole === (item.isLocal ? 'publisher' : 'subscriber'),
   )
-  const trackId = item.track?.mediaStreamTrack?.id
+  const trackId = voiceStageMediaStreamTrack(item.track)?.id
   if (trackId) {
     const matching = streams.find(
       (stream) => stream.trackIdentifier === trackId,
@@ -699,14 +689,10 @@ function addOptional(current: number | undefined, next: number | undefined) {
 }
 
 function numberRecord(value: unknown): Record<string, number> | undefined {
-  if (typeof value !== 'object' || value == null) return undefined
-
-  const result: Record<string, number> = {}
-  for (const [key, entry] of Object.entries(value)) {
-    if (typeof entry !== 'number' || !Number.isFinite(entry)) return undefined
-    result[key] = entry
-  }
-  return result
+  const decoded = Schema.decodeUnknownOption(
+    Schema.Record(Schema.String, Schema.Finite),
+  )(value)
+  return Option.isSome(decoded) ? { ...decoded.value } : undefined
 }
 
 type RtcDebugRateSnapshotInput = {

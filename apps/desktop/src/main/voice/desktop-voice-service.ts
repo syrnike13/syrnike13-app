@@ -1,5 +1,15 @@
 import { powerMonitor, type BrowserWindow } from 'electron'
 import {
+  Context,
+  Effect,
+  Fiber,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Schema,
+  Semaphore,
+} from 'effect'
+import {
   GatewayVoiceAuthorityAdapter,
   VoiceDirector,
   type DesktopStoredSession,
@@ -25,13 +35,26 @@ type DesktopVoiceRuntime = {
   unsubscribeDirector: () => void
 }
 
+class DesktopVoiceRuntimeResource extends Context.Service<
+  DesktopVoiceRuntimeResource,
+  DesktopVoiceRuntime
+>()('syrnike13/DesktopVoiceRuntimeResource') {}
+
+type OwnedDesktopVoiceRuntime = Readonly<{
+  value: DesktopVoiceRuntime
+  owner: ManagedRuntime.ManagedRuntime<DesktopVoiceRuntimeResource, never>
+}>
+
 export class DesktopVoiceService {
   private readonly listeners = new Set<(snapshot: VoiceSnapshot) => void>()
+  private readonly effectRuntime = ManagedRuntime.make(Layer.empty)
+  private readonly sessionLock = Semaphore.makeUnsafe(1)
   private runtime: DesktopVoiceRuntime
+  private runtimeOwner: OwnedDesktopVoiceRuntime['owner']
   private sessionToken: string | null = null
   private sessionIdentity: string | null = null
   private sessionRevision = 0
-  private sessionTransition: Promise<void> = Promise.resolve()
+  private sessionTransition: Fiber.Fiber<void, never> | null = null
   private preferences: DesktopVoiceSettings | null = null
   private lifecycleStarted = false
   private unsubscribeHotkeys: (() => void) | null = null
@@ -41,7 +64,9 @@ export class DesktopVoiceService {
   private disposed = false
 
   constructor() {
-    this.runtime = this.createRuntime()
+    const initial = this.createOwnedRuntime()
+    this.runtime = initial.value
+    this.runtimeOwner = initial.owner
   }
 
   private createRuntime(): DesktopVoiceRuntime {
@@ -83,6 +108,22 @@ export class DesktopVoiceService {
     return { transport, authority, engine, director, unsubscribeDirector }
   }
 
+  private createOwnedRuntime(): OwnedDesktopVoiceRuntime {
+    const owner = ManagedRuntime.make(
+      Layer.effect(
+        DesktopVoiceRuntimeResource,
+        Effect.acquireRelease(
+          Effect.sync(() => this.createRuntime()),
+          (runtime) => this.disposeRuntime(runtime),
+        ),
+      ),
+    )
+    return {
+      value: owner.runSync(DesktopVoiceRuntimeResource),
+      owner,
+    }
+  }
+
   configureSession(session: DesktopStoredSession | null) {
     if (this.disposed) return
     const identity = session ? `${session.user_id}:${session._id}` : null
@@ -90,7 +131,20 @@ export class DesktopVoiceService {
       if (!session || session.token === this.sessionToken) return
       this.sessionToken = session.token
       logNativeVoiceDiagnostic('session_token_refreshed')
-      this.runtime.transport.configure(desktopVoiceWebSocketUrl(), session.token)
+      this.enqueueSessionTransition(
+        Effect.sync(() => {
+          if (
+            !this.disposed &&
+            this.sessionIdentity === identity &&
+            this.sessionToken === session.token
+          ) {
+            this.runtime.transport.configure(
+              desktopVoiceWebSocketUrl(),
+              session.token,
+            )
+          }
+        }),
+      )
       return
     }
 
@@ -104,32 +158,35 @@ export class DesktopVoiceService {
         session !== null &&
         !previousIdentity.startsWith(`${session.user_id}:`),
     })
-    this.sessionTransition = this.sessionTransition
-      .catch(() => undefined)
-      .then(async () => {
-        const previous = this.runtime
-        await this.disposeRuntime(previous)
-        if (this.disposed) return
-        const replacement = this.createRuntime()
-        this.runtime = replacement
-        if (this.preferences) this.applyPreferencesTo(replacement, this.preferences)
+    this.enqueueSessionTransition(
+      Effect.gen({ self: this }, function* () {
+        const previousOwner = this.runtimeOwner
+        yield* previousOwner.disposeEffect
+        if (this.disposed || revision !== this.sessionRevision) return
+
+        const replacement = this.createOwnedRuntime()
+        this.runtime = replacement.value
+        this.runtimeOwner = replacement.owner
+        if (this.preferences) {
+          this.applyPreferencesTo(replacement.value, this.preferences)
+        }
         if (this.lifecycleStarted) {
-          void replacement.engine.prewarmMicrophone().catch(() => undefined)
+          yield* replacement.value.engine.prewarmMicrophoneEffect().pipe(
+            Effect.ignore,
+          )
         }
         if (
-          revision === this.sessionRevision &&
           this.sessionIdentity === identity &&
           this.sessionToken
         ) {
-          replacement.transport.configure(desktopVoiceWebSocketUrl(), this.sessionToken)
+          replacement.value.transport.configure(
+            desktopVoiceWebSocketUrl(),
+            this.sessionToken,
+          )
           logNativeVoiceDiagnostic('session_configured', { rotated: true })
         }
-      })
-      .catch((error) => {
-        logNativeVoiceDiagnostic('session_rotation_failed', {
-          message: error instanceof Error ? error.message : 'Unknown session rotation failure',
-        })
-      })
+      }),
+    )
   }
 
   startSystemLifecycle() {
@@ -142,7 +199,9 @@ export class DesktopVoiceService {
       this.handleHotkey(event.action, event.phase)
     })
     logNativeVoiceDiagnostic('system_lifecycle_started')
-    void this.runtime.engine.prewarmMicrophone().catch(() => undefined)
+    this.effectRuntime.runFork(
+      this.runtime.engine.prewarmMicrophoneEffect().pipe(Effect.ignore),
+    )
   }
 
   applyPreferences(settings: DesktopVoiceSettings) {
@@ -189,19 +248,35 @@ export class DesktopVoiceService {
     this.persistPreferences = persist
   }
 
-  async dispatch(command: VoiceCommand) {
-    if (this.disposed) throw new Error('Desktop voice service is disposed')
-    await this.sessionTransition
-    if (this.disposed) throw new Error('Desktop voice service is disposed')
-    if (command.type === 'join' && !this.sessionToken) {
-      throw new Error('Desktop voice requires an authenticated session')
-    }
-    logNativeVoiceDiagnostic('command', {
-      command: command.type,
-      connection: this.runtime.director.snapshot().connection,
-    })
-    this.runtime.director.dispatch(command)
-    return this.runtime.director.snapshot()
+  dispatch(command: VoiceCommand) {
+    return this.effectRuntime.runPromise(
+      Effect.gen({ self: this }, function*() {
+        if (this.disposed) {
+          return yield* Effect.fail(
+            new Error('Desktop voice service is disposed'),
+          )
+        }
+        yield* this.awaitSessionTransitionEffect()
+        if (this.disposed) {
+          return yield* Effect.fail(
+            new Error('Desktop voice service is disposed'),
+          )
+        }
+        if (command.type === 'join' && !this.sessionToken) {
+          return yield* Effect.fail(
+            new Error(
+              'Desktop voice requires an authenticated session',
+            ),
+          )
+        }
+        logNativeVoiceDiagnostic('command', {
+          command: command.type,
+          connection: this.runtime.director.snapshot().connection,
+        })
+        this.runtime.director.dispatch(command)
+        return this.runtime.director.snapshot()
+      }),
+    )
   }
 
   snapshot() {
@@ -214,35 +289,79 @@ export class DesktopVoiceService {
     return () => this.listeners.delete(listener)
   }
 
-  async dispose() {
-    if (this.disposed) return
-    this.disposed = true
-    logNativeVoiceDiagnostic('dispose_started')
-    if (this.lifecycleStarted) {
-      powerMonitor.removeListener('suspend', this.handleSuspend)
-      powerMonitor.removeListener('lock-screen', this.handleLock)
-      powerMonitor.removeListener('unlock-screen', this.handleUnlock)
-      this.unsubscribeHotkeys?.()
-      this.unsubscribeHotkeys = null
-    }
-    await this.sessionTransition.catch(() => undefined)
-    await this.disposeRuntime(this.runtime)
-    this.persistPreferences = null
-    this.listeners.clear()
-    logNativeVoiceDiagnostic('dispose_completed')
+  dispose() {
+    return Effect.runPromise(this.disposeEffect())
   }
 
-  private async disposeRuntime(runtime: DesktopVoiceRuntime) {
-    await runtime.director.dispose()
-    runtime.unsubscribeDirector()
-    runtime.engine.dispose()
-    runtime.authority.dispose()
-    runtime.transport.stop()
+  disposeEffect() {
+    return Effect.gen({ self: this }, function*() {
+      if (this.disposed) return
+      this.disposed = true
+      logNativeVoiceDiagnostic('dispose_started')
+      if (this.lifecycleStarted) {
+        powerMonitor.removeListener('suspend', this.handleSuspend)
+        powerMonitor.removeListener('lock-screen', this.handleLock)
+        powerMonitor.removeListener('unlock-screen', this.handleUnlock)
+        this.unsubscribeHotkeys?.()
+        this.unsubscribeHotkeys = null
+      }
+      yield* this.awaitSessionTransitionEffect()
+      yield* this.sessionLock.withPermit(
+        this.runtimeOwner.disposeEffect,
+      )
+      this.persistPreferences = null
+      this.listeners.clear()
+      yield* this.effectRuntime.disposeEffect
+      logNativeVoiceDiagnostic('dispose_completed')
+    })
+  }
+
+  private disposeRuntime(runtime: DesktopVoiceRuntime) {
+    return Effect.gen(function* () {
+      yield* ignoreRuntimeDisposalFailure(
+        runtime.director.disposeEffect(),
+        'director',
+      )
+      yield* ignoreRuntimeDisposalFailure(
+        Effect.sync(() => runtime.unsubscribeDirector()),
+        'director_subscription',
+      )
+      yield* ignoreRuntimeDisposalFailure(
+        Effect.sync(() => runtime.engine.dispose()),
+        'engine',
+      )
+      yield* ignoreRuntimeDisposalFailure(
+        Effect.sync(() => runtime.authority.dispose()),
+        'authority',
+      )
+      yield* ignoreRuntimeDisposalFailure(
+        Effect.sync(() => runtime.transport.stop()),
+        'transport',
+      )
+    })
+  }
+
+  private enqueueSessionTransition(effect: Effect.Effect<void>) {
+    const transition = this.sessionLock.withPermit(effect).pipe(
+      Effect.catchCause((cause) =>
+        Effect.sync(() => {
+          logNativeVoiceDiagnostic('session_rotation_failed', {
+            message: String(cause),
+          })
+        }),
+      ),
+    )
+    this.sessionTransition = this.effectRuntime.runFork(transition)
+  }
+
+  private awaitSessionTransitionEffect() {
+    const transition = this.sessionTransition
+    return transition ? Fiber.join(transition) : Effect.void
   }
 
   private readonly handleSuspend = () => {
     logNativeVoiceDiagnostic('system_suspend')
-    void this.runtime.director.shutdown('sleep')
+    Effect.runFork(this.runtime.director.shutdownEffect('sleep'))
   }
 
   private readonly handleLock = () => {
@@ -330,14 +449,18 @@ export class DesktopVoiceService {
   }
 
   private persistPreference(patch: DesktopVoiceSettingsPatch) {
-    try {
-      void Promise.resolve(this.persistPreferences?.(patch)).catch(() => {
-        logNativeVoiceDiagnostic('preference_persist_failed')
-      })
-    } catch {
-      logNativeVoiceDiagnostic('preference_persist_failed')
-      // A settings write must never break hotkey handling or the RTC session.
-    }
+    this.effectRuntime.runFork(
+      Effect.tryPromise({
+        try: async () => this.persistPreferences?.(patch),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.catch(() =>
+          Effect.sync(() => {
+            logNativeVoiceDiagnostic('preference_persist_failed')
+          }),
+        ),
+      ),
+    )
   }
 }
 
@@ -355,20 +478,43 @@ function desktopVoiceApiUrl() {
 
 let voiceNodePromise: Promise<string> | null = null
 
-async function resolveDesktopVoiceNode() {
+const VoiceNodeRootSchema = Schema.Struct({
+  features: Schema.optional(Schema.Struct({
+    livekit: Schema.optional(Schema.Struct({
+      nodes: Schema.optional(Schema.Array(Schema.Struct({
+        name: Schema.optional(Schema.String),
+      }))),
+    })),
+  })),
+})
+
+const discoverDesktopVoiceNode = Effect.fn('desktopVoice.discoverNode')(
+  function*() {
+    const response = yield* Effect.tryPromise({
+      try: () => fetch(desktopVoiceApiUrl()),
+      catch: (cause) => cause,
+    })
+    if (!response.ok) {
+      return yield* Effect.fail(new Error('Voice node discovery failed'))
+    }
+    const root = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: (cause) => cause,
+    })
+    const decoded = Schema.decodeUnknownOption(VoiceNodeRootSchema)(root)
+    if (Option.isNone(decoded)) return 'worldwide'
+    const name = decoded.value.features?.livekit?.nodes?.[0]?.name
+    return name && name.length > 0 ? name : 'worldwide'
+  },
+)
+
+function resolveDesktopVoiceNode() {
   if (!voiceNodePromise) {
-    voiceNodePromise = fetch(desktopVoiceApiUrl())
-      .then(async (response) => {
-        if (!response.ok) throw new Error('Voice node discovery failed')
-        const root = (await response.json()) as {
-          features?: { livekit?: { nodes?: Array<{ name?: unknown }> } }
-        }
-        const name = root.features?.livekit?.nodes?.[0]?.name
-        return typeof name === 'string' && name.length > 0
-          ? name
-          : 'worldwide'
-      })
-      .catch(() => 'worldwide')
+    voiceNodePromise = Effect.runPromise(
+      discoverDesktopVoiceNode().pipe(
+        Effect.catchIf(() => true, () => Effect.succeed('worldwide')),
+      ),
+    )
   }
   return voiceNodePromise
 }
@@ -384,3 +530,19 @@ export function broadcastDesktopVoiceSnapshot(
 }
 
 export const desktopVoiceService = new DesktopVoiceService()
+
+function ignoreRuntimeDisposalFailure(
+  effect: Effect.Effect<void>,
+  component: string,
+) {
+  return effect.pipe(
+    Effect.catchCause((cause) =>
+      Effect.sync(() => {
+        logNativeVoiceDiagnostic('runtime_dispose_failed', {
+          component,
+          message: String(cause),
+        })
+      }),
+    ),
+  )
+}

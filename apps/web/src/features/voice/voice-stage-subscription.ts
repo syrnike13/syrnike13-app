@@ -1,5 +1,9 @@
 import { Track } from 'livekit-client'
 
+import {
+  setVoiceStageMediaPublicationSubscribed,
+  type VoiceStageMediaItem,
+} from '#/features/voice/voice-context'
 import type { StageMediaItem } from '#/features/voice/voice-stage-media'
 
 type StageScreenPublication = {
@@ -111,7 +115,7 @@ export function pruneWatchedRemoteScreenIds(
 }
 
 export function setStageScreenSubscription(
-  item: StageMediaItem<unknown, StageScreenPublication> | null | undefined,
+  item: VoiceStageMediaItem | null | undefined,
   subscribed: boolean,
 ): StageMediaSubscriptionAction {
   if (!item || item.kind !== 'screen') return 'none'
@@ -120,6 +124,6 @@ export function setStageScreenSubscription(
     return subscribed ? 'none' : 'stop-local-screen'
   }
 
-  item.publication?.setSubscribed?.(subscribed)
+  setVoiceStageMediaPublicationSubscribed(item.publication, subscribed)
   return 'none'
 }

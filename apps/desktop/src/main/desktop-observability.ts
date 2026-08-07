@@ -2,6 +2,7 @@ import { app, crashReporter } from 'electron'
 import * as Sentry from '@sentry/electron/main'
 import { readdir, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
+import { Effect } from 'effect'
 
 export const NATIVE_CRASH_DUMP_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000
 
@@ -86,35 +87,64 @@ export function initializeDesktopObservability(
   return { enabled: true, nativeCrashReportsEnabled }
 }
 
-export async function pruneExpiredNativeCrashDumps(
+export function pruneExpiredNativeCrashDumps(
   directory = app.getPath('crashDumps'),
   now = Date.now(),
 ) {
-  await pruneDirectory(directory, now).catch((error: NodeJS.ErrnoException) => {
-    if (error.code !== 'ENOENT') throw error
-  })
+  return Effect.runPromise(pruneExpiredNativeCrashDumpsEffect(directory, now))
 }
 
-async function pruneDirectory(directory: string, now: number): Promise<void> {
-  const entries = await readdir(directory, { withFileTypes: true })
-  await Promise.all(
-    entries.map(async (entry) => {
-      const entryPath = path.join(directory, entry.name)
-      if (entry.isDirectory()) {
-        await pruneDirectory(entryPath, now)
-        return
-      }
-      if (!entry.isFile()) return
-      // Crashpad keeps database metadata beside reports. Removing arbitrary old
-      // files can corrupt the database; the privacy retention applies only to
-      // the minidump payload itself.
-      if (path.extname(entry.name).toLowerCase() !== '.dmp') return
-      const metadata = await stat(entryPath)
-      if (now - metadata.mtimeMs > NATIVE_CRASH_DUMP_RETENTION_MS) {
-        await rm(entryPath, { force: true })
-      }
-    }),
+const pruneDirectory: (
+  directory: string,
+  now: number,
+) => Effect.Effect<void, unknown> = Effect.fn('desktop.pruneNativeCrashDirectory')(
+  function*(directory: string, now: number) {
+    const entries = yield* Effect.tryPromise({
+      try: () => readdir(directory, { withFileTypes: true }),
+      catch: (cause) => cause,
+    })
+    yield* Effect.all(
+      entries.map((entry) =>
+        Effect.gen(function*() {
+          const entryPath = path.join(directory, entry.name)
+          if (entry.isDirectory()) {
+            yield* pruneDirectory(entryPath, now)
+            return
+          }
+          if (!entry.isFile()) return
+          // Crashpad keeps database metadata beside reports. Removing arbitrary old
+          // files can corrupt the database; the privacy retention applies only to
+          // the minidump payload itself.
+          if (path.extname(entry.name).toLowerCase() !== '.dmp') return
+          const metadata = yield* Effect.tryPromise({
+            try: () => stat(entryPath),
+            catch: (cause) => cause,
+          })
+          if (now - metadata.mtimeMs > NATIVE_CRASH_DUMP_RETENTION_MS) {
+            yield* Effect.tryPromise({
+              try: () => rm(entryPath, { force: true }),
+              catch: (cause) => cause,
+            })
+          }
+        }),
+      ),
+      { concurrency: 'unbounded' },
+    )
+  },
+)
+
+export const pruneExpiredNativeCrashDumpsEffect = Effect.fn(
+  'desktop.pruneExpiredNativeCrashDumps',
+)(function*(directory = app.getPath('crashDumps'), now = Date.now()) {
+  yield* pruneDirectory(directory, now).pipe(
+    Effect.catch((error) =>
+      isErrnoCode(error, 'ENOENT') ? Effect.void : Effect.fail(error)
+    ),
   )
+})
+
+function isErrnoCode(error: unknown, code: string) {
+  return error instanceof Error && 'code' in error && error.code === code
 }
 
 const sanitizeDesktopErrorEvent: NonNullable<

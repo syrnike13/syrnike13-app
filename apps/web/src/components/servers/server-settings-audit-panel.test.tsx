@@ -186,6 +186,7 @@ describe('ServerSettingsAuditPanel', () => {
         'session-token',
         'server-1',
         { limit: 50 },
+        expect.any(AbortSignal),
       )
     })
   })
@@ -204,6 +205,7 @@ describe('ServerSettingsAuditPanel', () => {
         'session-token',
         'server-1',
         { limit: 50, action: 'MemberBan' },
+        expect.any(AbortSignal),
       )
     })
   })
@@ -225,6 +227,7 @@ describe('ServerSettingsAuditPanel', () => {
         'session-token',
         'server-1',
         { limit: 50, actor: 'user-2' },
+        expect.any(AbortSignal),
       )
     })
   })
@@ -448,6 +451,7 @@ describe('ServerSettingsAuditPanel', () => {
         'session-token',
         'server-1',
         { limit: 50, actor: 'user-2', action: 'MemberBan' },
+        expect.any(AbortSignal),
       )
     })
 
@@ -463,6 +467,7 @@ describe('ServerSettingsAuditPanel', () => {
           action: 'MemberBan',
           before: 'audit-1',
         },
+        expect.any(AbortSignal),
       )
     })
   })

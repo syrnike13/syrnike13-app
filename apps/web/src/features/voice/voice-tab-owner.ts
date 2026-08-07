@@ -2,10 +2,11 @@ import type { Room } from 'livekit-client'
 import {
   computeEffectiveMuted,
   isVoiceCommand,
-  isVoiceSnapshot,
+  VoiceSnapshotSchema,
   type VoiceCommand,
   type VoiceSnapshot,
 } from '@syrnike13/platform'
+import { Effect, Option, Schema } from 'effect'
 
 export interface OwnedBrowserVoiceClient {
   dispatch(command: VoiceCommand): void
@@ -13,6 +14,7 @@ export interface OwnedBrowserVoiceClient {
   subscribe(listener: (snapshot: VoiceSnapshot) => void): () => void
   room(): Room | null
   subscribeRoom(listener: (room: Room | null) => void): () => void
+  disposeEffect(): Effect.Effect<void, unknown>
   dispose(): Promise<void> | void
 }
 
@@ -70,6 +72,44 @@ type VoiceOwnerMessage =
       snapshot: VoiceSnapshot
     }>
 
+const VoiceOwnerIdSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(512),
+)
+
+const VoiceOwnerMessageSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal('observe'),
+    requesterId: VoiceOwnerIdSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('takeover'),
+    requesterId: VoiceOwnerIdSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('owner'),
+    ownerId: VoiceOwnerIdSchema,
+    ownerEpoch: VoiceOwnerIdSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('released'),
+    ownerId: VoiceOwnerIdSchema,
+    ownerEpoch: VoiceOwnerIdSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('snapshot'),
+    ownerId: VoiceOwnerIdSchema,
+    ownerEpoch: VoiceOwnerIdSchema,
+    sequence: Schema.Natural,
+    snapshot: VoiceSnapshotSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('command'),
+    requesterId: VoiceOwnerIdSchema,
+    command: Schema.Unknown,
+  }),
+])
+
 /**
  * Holds the one browser Voice Director/Room behind a cross-tab exclusive lock.
  * Observer tabs receive snapshots and may forward controls, but they never run
@@ -94,6 +134,7 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
     RetainedCommand
   >()
   private acquirePromise: Promise<void> | null = null
+  private acquireId: symbol | null = null
   private releaseLock: (() => void) | null = null
   private ownerUnsubscribers: Array<() => void> = []
   private snapshotValue: VoiceSnapshot
@@ -159,7 +200,9 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
 
     if (this.ownedClient) {
       this.ownedClient.dispatch(command)
-      if (command.type === 'leave') void this.relinquishOwnership()
+      if (command.type === 'leave') {
+        Effect.runFork(this.relinquishOwnershipEffect())
+      }
       return
     }
 
@@ -197,14 +240,20 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
     return () => this.roomListeners.delete(listener)
   }
 
-  async dispose() {
-    if (this.disposed) return
-    this.disposed = true
-    this.channel?.removeEventListener('message', this.handleMessage)
-    await this.relinquishOwnership()
-    this.channel?.close()
-    this.snapshotListeners.clear()
-    this.roomListeners.clear()
+  dispose() {
+    return Effect.runPromise(this.disposeEffect())
+  }
+
+  disposeEffect() {
+    return Effect.gen({ self: this }, function*() {
+      if (this.disposed) return
+      this.disposed = true
+      this.channel?.removeEventListener('message', this.handleMessage)
+      yield* this.relinquishOwnershipEffect()
+      this.channel?.close()
+      this.snapshotListeners.clear()
+      this.roomListeners.clear()
+    })
   }
 
   private async acquireOwnership() {
@@ -225,59 +274,79 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
       return
     }
 
+    const holdExclusiveLock = this.holdExclusiveLock
     this.channel.postMessage({ type: 'takeover', requesterId: this.tabId })
     const lockName = `syrnike-voice-owner:v1:${this.userId}`
-    this.acquirePromise = this.holdExclusiveLock(lockName, async () => {
-      if (this.disposed || !this.pendingJoin) return
-      const ownerEpoch = crypto.randomUUID()
-      this.ownerId = this.tabId
-      this.ownerEpoch = ownerEpoch
-      this.ownerSequence = 0
-      this.observedSequence = -1
-      this.channel?.postMessage({
-        type: 'owner',
-        ownerId: this.tabId,
-        ownerEpoch,
-      })
+    const acquireId = Symbol(lockName)
+    this.acquireId = acquireId
+    this.acquirePromise = Effect.runPromise(
+      Effect.gen({ self: this }, function*() {
+        yield* Effect.yieldNow
+        yield* Effect.tryPromise({
+          try: () =>
+            holdExclusiveLock(lockName, async () => {
+              if (this.disposed || !this.pendingJoin) return
+              const ownerEpoch = crypto.randomUUID()
+              this.ownerId = this.tabId
+              this.ownerEpoch = ownerEpoch
+              this.ownerSequence = 0
+              this.observedSequence = -1
+              this.channel?.postMessage({
+                type: 'owner',
+                ownerId: this.tabId,
+                ownerEpoch,
+              })
 
-      const client = this.createOwnedClient()
-      this.ownedClient = client
-      this.attachOwnedClient(client)
-      for (const command of this.retainedCommands.values()) {
-        client.dispatch(command)
-      }
-      const join = this.pendingJoin
-      this.pendingJoin = null
-      client.dispatch(join)
+              const client = this.createOwnedClient()
+              this.ownedClient = client
+              this.attachOwnedClient(client)
+              for (const command of this.retainedCommands.values()) {
+                client.dispatch(command)
+              }
+              const join = this.pendingJoin
+              this.pendingJoin = null
+              client.dispatch(join)
 
-      await new Promise<void>((resolve) => {
-        this.releaseLock = resolve
-      })
-    })
-      .catch(() => {
-        if (this.disposed || !this.pendingJoin) return
-        const failedJoin = this.pendingJoin
-        this.pendingJoin = null
-        this.publishLocalSnapshot({
-          ...this.snapshotValue,
-          intentChannelId: failedJoin.channelId,
-          membershipChannelId: null,
-          connection: 'failed',
-          failure: {
-            code: 'voice_tab_lock_failed',
-            message: 'Could not acquire exclusive ownership of browser voice',
-            retryable: true,
-            stage: 'tab_owner',
-          },
+              await new Promise<void>((resolve) => {
+                this.releaseLock = resolve
+              })
+            }),
+          catch: (cause) => cause,
         })
-      })
-      .finally(() => {
-        this.acquirePromise = null
-        this.releaseLock = null
-        if (!this.disposed && this.pendingJoin && !this.ownedClient) {
-          void this.acquireOwnership()
-        }
-      })
+      }).pipe(
+        Effect.catch(() =>
+          Effect.sync(() => {
+            if (this.disposed || !this.pendingJoin) return
+            const failedJoin = this.pendingJoin
+            this.pendingJoin = null
+            this.publishLocalSnapshot({
+              ...this.snapshotValue,
+              intentChannelId: failedJoin.channelId,
+              membershipChannelId: null,
+              connection: 'failed',
+              failure: {
+                code: 'voice_tab_lock_failed',
+                message:
+                  'Could not acquire exclusive ownership of browser voice',
+                retryable: true,
+                stage: 'tab_owner',
+              },
+            })
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (this.acquireId !== acquireId) return
+            this.acquireId = null
+            this.acquirePromise = null
+            this.releaseLock = null
+            if (!this.disposed && this.pendingJoin && !this.ownedClient) {
+              void this.acquireOwnership()
+            }
+          }),
+        ),
+      ),
+    )
     await this.acquirePromise
   }
 
@@ -311,31 +380,33 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
     for (const listener of this.roomListeners) listener(null)
   }
 
-  private async relinquishOwnership() {
-    const client = this.ownedClient
-    const ownerEpoch = this.ownerEpoch
-    this.ownedClient = null
-    this.detachOwnedClient()
-    if (client) await client.dispose()
-    if (ownerEpoch) {
-      const disconnected = disconnectedSnapshot(this.snapshotValue)
-      this.publishLocalSnapshot(disconnected)
-      this.channel?.postMessage({
-        type: 'snapshot',
-        ownerId: this.tabId,
-        ownerEpoch,
-        sequence: ++this.ownerSequence,
-        snapshot: disconnected,
-      })
-      this.channel?.postMessage({
-        type: 'released',
-        ownerId: this.tabId,
-        ownerEpoch,
-      })
-    }
-    this.ownerId = null
-    this.ownerEpoch = null
-    this.releaseLock?.()
+  private relinquishOwnershipEffect() {
+    return Effect.gen({ self: this }, function*() {
+      const client = this.ownedClient
+      const ownerEpoch = this.ownerEpoch
+      this.ownedClient = null
+      this.detachOwnedClient()
+      if (client) yield* client.disposeEffect()
+      if (ownerEpoch) {
+        const disconnected = disconnectedSnapshot(this.snapshotValue)
+        this.publishLocalSnapshot(disconnected)
+        this.channel?.postMessage({
+          type: 'snapshot',
+          ownerId: this.tabId,
+          ownerEpoch,
+          sequence: ++this.ownerSequence,
+          snapshot: disconnected,
+        })
+        this.channel?.postMessage({
+          type: 'released',
+          ownerId: this.tabId,
+          ownerEpoch,
+        })
+      }
+      this.ownerId = null
+      this.ownerEpoch = null
+      this.releaseLock?.()
+    })
   }
 
   private readonly handleMessage = (event: MessageEvent<unknown>) => {
@@ -364,7 +435,7 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
         return
       case 'takeover':
         if (message.requesterId !== this.tabId && this.ownedClient) {
-          void this.relinquishOwnership()
+          Effect.runFork(this.relinquishOwnershipEffect())
         }
         return
       case 'owner':
@@ -390,7 +461,9 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
       case 'command':
         if (!this.ownedClient || message.requesterId === this.tabId) return
         this.ownedClient.dispatch(message.command)
-        if (message.command.type === 'leave') void this.relinquishOwnership()
+        if (message.command.type === 'leave') {
+          Effect.runFork(this.relinquishOwnershipEffect())
+        }
         return
       case 'snapshot':
         if (message.ownerId === this.tabId || this.ownedClient) return
@@ -411,7 +484,6 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
     for (const listener of this.snapshotListeners) listener(snapshot)
   }
 }
-
 type RetainedCommand = Exclude<
   VoiceCommand,
   | { type: 'join' }
@@ -444,36 +516,19 @@ function browserExclusiveLock(
 }
 
 function parseOwnerMessage(value: unknown): VoiceOwnerMessage | null {
-  if (!value || typeof value !== 'object') return null
-  const message = value as Partial<VoiceOwnerMessage>
-  if (message.type === 'observe' || message.type === 'takeover') {
-    return validId(message.requesterId) ? (message as VoiceOwnerMessage) : null
+  const decoded = Schema.decodeUnknownOption(VoiceOwnerMessageSchema)(value)
+  if (Option.isNone(decoded)) return null
+  const message = decoded.value
+  if (message.type !== 'command') return message
+  if (!isVoiceCommand(message.command) || message.command.type === 'join') {
+    return null
   }
-  if (message.type === 'owner' || message.type === 'released') {
-    return validId(message.ownerId) && validId(message.ownerEpoch)
-      ? (message as VoiceOwnerMessage)
-      : null
+  return {
+    type: 'command',
+    requesterId: message.requesterId,
+    command: message.command,
   }
-  if (message.type === 'snapshot') {
-    return validId(message.ownerId) &&
-      validId(message.ownerEpoch) &&
-      Number.isSafeInteger(message.sequence) &&
-      Number(message.sequence) >= 0 &&
-      isVoiceSnapshot(message.snapshot)
-      ? (message as VoiceOwnerMessage)
-      : null
-  }
-  if (message.type === 'command') {
-    const command = (value as { command?: unknown }).command
-    return validId(message.requesterId) &&
-      isVoiceCommand(command) &&
-      command.type !== 'join'
-      ? (message as VoiceOwnerMessage)
-      : null
-  }
-  return null
 }
-
 function disconnectedSnapshot(snapshot: VoiceSnapshot): VoiceSnapshot {
   return {
     ...snapshot,
@@ -491,8 +546,4 @@ function disconnectedSnapshot(snapshot: VoiceSnapshot): VoiceSnapshot {
     screenAudio: { state: 'off' },
     speakingUserIds: [],
   }
-}
-
-function validId(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= 512
 }

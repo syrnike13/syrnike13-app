@@ -1,3 +1,5 @@
+import { Deferred, Effect, Fiber, Layer, ManagedRuntime, Schema } from 'effect'
+
 import {
   NATIVE_RUNTIME_CONTRACT_VERSION,
   NATIVE_RUNTIME_MAX_PENDING_REQUESTS,
@@ -79,16 +81,22 @@ export class NativeRuntimeRequestError extends Error {
   }
 }
 
-type PendingRequest = {
-  resolve(value: unknown): void
-  reject(error: Error): void
-  timeout: ReturnType<typeof setTimeout>
+type PendingRequestBase = {
+  timeout: Fiber.Fiber<void, never>
   context: NativeRuntimeRequestContext
   startedAt: number
-  kind: 'command' | 'probe'
   probeKey?: string
   adapterEpoch: number
 }
+
+type PendingRequest =
+  | PendingRequestBase & {
+      kind: 'command'
+      result: Deferred.Deferred<unknown, Error>
+    }
+  | PendingRequestBase & {
+      kind: 'probe'
+    }
 
 type NativeRuntimeRequestContext = {
   stage: NativeRuntimeCommand['type']
@@ -154,6 +162,7 @@ export type NativeRuntimeRequestOptions = {
 }
 
 export class NativeRuntimeSupervisor {
+  private readonly runtime = ManagedRuntime.make(Layer.empty)
   private adapter: NativeRuntimeAdapter | null = null
   private snapshot: NativeRuntimeSupervisorSnapshot
   private readonly pending = new Map<string, PendingRequest>()
@@ -162,8 +171,7 @@ export class NativeRuntimeSupervisor {
     (snapshot: NativeRuntimeSupervisorSnapshot) => void
   >()
   private startPromise: Promise<NativeRuntimeReady> | null = null
-  private resolveStart: ((ready: NativeRuntimeReady) => void) | null = null
-  private rejectStart: ((error: Error) => void) | null = null
+  private startResult: Deferred.Deferred<NativeRuntimeReady, Error> | null = null
   private handshakeTimer: ReturnType<typeof setTimeout> | null = null
   private restartTimer: ReturnType<typeof setTimeout> | null = null
   private degradedRetryTimer: ReturnType<typeof setTimeout> | null = null
@@ -174,6 +182,7 @@ export class NativeRuntimeSupervisor {
   private startEpoch: number | null = null
   private restartScheduleEpoch = 0
   private shutdownPromise: Promise<void> | null = null
+  private shutdownResult: Deferred.Deferred<void, Error> | null = null
   private requestSequence = 0
   private adapterEpoch = 0
   // Native generation fences outlive account-scoped RTC adapters, so their
@@ -237,37 +246,70 @@ export class NativeRuntimeSupervisor {
   }
 
   start() {
-    if (this.shutdownPromise) {
-      return Promise.reject(
-        new NativeRuntimeRequestError(
-          nativeRuntimeError('runtime_stopped', 'Native runtime is stopping'),
-        ),
-      )
-    }
-    if (this.snapshot.status === 'ready' && this.snapshot.ready) {
-      return Promise.resolve(this.snapshot.ready)
-    }
     if (this.startPromise) return this.startPromise
-    if (this.restartTimer) return this.waitForScheduledStart()
-    if (this.snapshot.status === 'degraded') {
-      return Promise.reject(
-        new NativeRuntimeRequestError(
-          nativeRuntimeError(
-            'runtime_degraded',
-            this.snapshot.degradedReason ?? 'Native runtime is degraded',
-          ),
-        ),
-      )
+    if (this.startResult) {
+      const start = this.runtime.runPromise(Deferred.await(this.startResult))
+      this.startPromise = start
+      return start
+    }
+    if (
+      this.shutdownPromise ||
+      (this.snapshot.status === 'ready' && this.snapshot.ready) ||
+      this.restartTimer ||
+      this.snapshot.status === 'degraded'
+    ) {
+      return this.runtime.runPromise(this.startEffect())
     }
 
+    const startResult = this.runtime.runSync(
+      Deferred.make<NativeRuntimeReady, Error>(),
+    )
+    const start = this.runtime.runPromise(Deferred.await(startResult))
+    this.startResult = startResult
+    this.startPromise = start
+    this.beginStart()
+    return start
+  }
+
+  startEffect() {
+    return Effect.suspend(() => {
+      if (this.shutdownPromise) {
+        return Effect.fail(
+          new NativeRuntimeRequestError(
+            nativeRuntimeError('runtime_stopped', 'Native runtime is stopping'),
+          ),
+        )
+      }
+      if (this.snapshot.status === 'ready' && this.snapshot.ready) {
+        return Effect.succeed(this.snapshot.ready)
+      }
+      if (this.startResult) return Deferred.await(this.startResult)
+      if (this.restartTimer) return this.waitForScheduledStartEffect()
+      if (this.snapshot.status === 'degraded') {
+        return Effect.fail(
+          new NativeRuntimeRequestError(
+            nativeRuntimeError(
+              'runtime_degraded',
+              this.snapshot.degradedReason ?? 'Native runtime is degraded',
+            ),
+          ),
+        )
+      }
+
+      return Effect.gen({ self: this }, function*() {
+        const startResult = yield* Deferred.make<NativeRuntimeReady, Error>()
+        if (this.startResult) return yield* Deferred.await(this.startResult)
+        this.startResult = startResult
+        this.beginStart()
+        return yield* Deferred.await(startResult)
+      })
+    })
+  }
+
+  private beginStart() {
     this.expectedExitEpoch = null
     const adapterEpoch = ++this.adapterEpoch
     this.startEpoch = adapterEpoch
-    const startPromise = new Promise<NativeRuntimeReady>((resolve, reject) => {
-      this.resolveStart = resolve
-      this.rejectStart = reject
-    })
-    this.startPromise = startPromise
     this.log('start_requested', {
       status: this.snapshot.status,
       restartCount: this.snapshot.restartCount,
@@ -283,7 +325,7 @@ export class NativeRuntimeSupervisor {
       ready: undefined,
       hostEpoch: adapterEpoch,
     })
-    if (this.startEpoch !== adapterEpoch) return startPromise
+    if (this.startEpoch !== adapterEpoch) return
 
     let adapter: NativeRuntimeAdapter | null = null
     try {
@@ -307,10 +349,12 @@ export class NativeRuntimeSupervisor {
         pendingCount: this.pending.size,
       })
       createdAdapter.start({
-        onMessage: (message) => this.handleMessage(createdAdapter, adapterEpoch, message),
-        onExit: (exit) => this.handleExit(createdAdapter, adapterEpoch, exit),
+        onMessage: (message) =>
+          this.handleMessage(createdAdapter, adapterEpoch, message),
+        onExit: (exit) =>
+          this.handleExit(createdAdapter, adapterEpoch, exit),
       })
-      if (!this.isCurrentHost(createdAdapter, adapterEpoch)) return startPromise
+      if (!this.isCurrentHost(createdAdapter, adapterEpoch)) return
       this.updateSnapshot({ pid: createdAdapter.pid })
       this.log('adapter_started', {
         adapterPid: createdAdapter.pid,
@@ -332,318 +376,364 @@ export class NativeRuntimeSupervisor {
         this.failStartWithoutHost(failure('spawn_failed', message))
       }
     }
-    return startPromise
   }
 
-  async request<T = unknown>(
+  request(
     command: NativeRuntimeCommand,
     timeoutMs: number,
     options: NativeRuntimeRequestOptions = {},
-  ): Promise<T> {
-    const requestedContext = requestContext(
-      command,
-      options.diagnostic,
-      this.snapshot.hostEpoch,
+  ) {
+    return this.runtime.runPromise(
+      this.requestEffect(command, timeoutMs, options),
     )
-    this.log('request_start', {
-      ...requestedContext,
-      commandStage: 'requested',
-      outcome: 'started',
-      timeoutMs,
-      pendingCount: this.pending.size,
-    })
-    if (!options.allowDuringShutdown) await this.start()
-    const context = requestContext(
-      command,
-      options.diagnostic,
-      this.adapterEpoch,
-    )
-    if (!this.adapter || this.snapshot.status !== 'ready') {
-      this.log('request_rejected_not_ready', {
-        ...context,
-        commandStage: 'validation',
-        outcome: 'rejected',
-        pendingCount: this.pending.size,
-        status: this.snapshot.status,
-      })
-      this.logCommandSummary(context, undefined, 'rejected', {
-        errorCode: 'runtime_lost',
-      })
-      throw new NativeRuntimeRequestError(
-        nativeRuntimeError('runtime_lost', 'Native runtime is not ready', {
-          retryable: true,
-          ...context,
-        }),
-      )
-    }
-    if (this.pending.size >= NATIVE_RUNTIME_MAX_PENDING_REQUESTS) {
-      this.log('request_rejected_queue_full', {
-        ...context,
-        commandStage: 'electron_queue',
-        outcome: 'rejected',
-        pendingCount: this.pending.size,
-      })
-      this.logCommandSummary(context, undefined, 'rejected', {
-        errorCode: 'queue_full',
-      })
-      throw new NativeRuntimeRequestError(
-        nativeRuntimeError('queue_full', 'Native runtime command queue is full', {
-          retryable: true,
-          ...context,
-        }),
-      )
-    }
+  }
 
-    const requestId = `${this.options.runtime}-${++this.requestSequence}-${crypto.randomUUID()}`
-    const adapterEpoch = this.adapterEpoch
-    const request: NativeRuntimeRequest = {
-      type: 'request',
-      requestId,
-      command,
-      ...(options.diagnostic
-        ? {
-            diagnostic: {
-              ...options.diagnostic,
-              revision: context.revision,
-              hostEpoch: adapterEpoch,
-            },
-          }
-        : {}),
-    }
-    const startedAt = this.now()
-    this.log('request_enqueued', {
-      ...context,
-      requestId,
-      commandStage: 'electron_queue',
-      outcome: 'accepted',
-      timeoutMs,
-      pendingCount: this.pending.size + 1,
-    })
-    const result = new Promise<T>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        const timedOut = this.pending.get(requestId)
-        if (!timedOut) return
-        this.pending.delete(requestId)
-        const timeoutMessage = `Native runtime request timed out (${context.stage})`
-        this.releaseProbeKey(timedOut)
-        this.log('request_timed_out', {
+  requestEffect(
+    command: NativeRuntimeCommand,
+    timeoutMs: number,
+    options: NativeRuntimeRequestOptions = {},
+  ) {
+    return Effect.gen({ self: this }, function*() {
+      const requestedContext = requestContext(
+        command,
+        options.diagnostic,
+        this.snapshot.hostEpoch,
+      )
+      this.log('request_start', {
+        ...requestedContext,
+        commandStage: 'requested',
+        outcome: 'started',
+        timeoutMs,
+        pendingCount: this.pending.size,
+      })
+      if (!options.allowDuringShutdown) yield* this.startEffect()
+      const context = requestContext(
+        command,
+        options.diagnostic,
+        this.adapterEpoch,
+      )
+      if (!this.adapter || this.snapshot.status !== 'ready') {
+        this.log('request_rejected_not_ready', {
           ...context,
-          requestId,
-          commandStage: 'completed',
-          outcome: 'timeout',
-          timeoutMs,
-          durationMs: this.now() - (timedOut?.startedAt ?? startedAt),
+          commandStage: 'validation',
+          outcome: 'rejected',
+          pendingCount: this.pending.size,
+          status: this.snapshot.status,
+        })
+        this.logCommandSummary(context, undefined, 'rejected', {
+          errorCode: 'runtime_lost',
+        })
+        return yield* Effect.fail(
+          new NativeRuntimeRequestError(
+            nativeRuntimeError('runtime_lost', 'Native runtime is not ready', {
+              retryable: true,
+              ...context,
+            }),
+          ),
+        )
+      }
+      if (this.pending.size >= NATIVE_RUNTIME_MAX_PENDING_REQUESTS) {
+        this.log('request_rejected_queue_full', {
+          ...context,
+          commandStage: 'electron_queue',
+          outcome: 'rejected',
           pendingCount: this.pending.size,
         })
-        this.logCommandSummary(context, requestId, 'timeout', {
-          durationMs: this.now() - (timedOut?.startedAt ?? startedAt),
-          errorCode: 'request_timeout',
+        this.logCommandSummary(context, undefined, 'rejected', {
+          errorCode: 'queue_full',
         })
-        const error = new NativeRuntimeRequestError(
-          nativeRuntimeError('request_timeout', timeoutMessage, {
-            retryable: true,
-            ...context,
+        return yield* Effect.fail(
+          new NativeRuntimeRequestError(
+            nativeRuntimeError(
+              'queue_full',
+              'Native runtime command queue is full',
+              {
+                retryable: true,
+                ...context,
+              },
+            ),
+          ),
+        )
+      }
+
+      const requestId = `${this.options.runtime}-${++this.requestSequence}-${crypto.randomUUID()}`
+      const adapterEpoch = this.adapterEpoch
+      const request: NativeRuntimeRequest = {
+        type: 'request',
+        requestId,
+        command,
+        ...(options.diagnostic
+          ? {
+              diagnostic: {
+                ...options.diagnostic,
+                revision: context.revision,
+                hostEpoch: adapterEpoch,
+              },
+            }
+          : {}),
+      }
+      const startedAt = this.now()
+      this.log('request_enqueued', {
+        ...context,
+        requestId,
+        commandStage: 'electron_queue',
+        outcome: 'accepted',
+        timeoutMs,
+        pendingCount: this.pending.size + 1,
+      })
+      const result = yield* Deferred.make<unknown, Error>()
+      const timeout = yield* Effect.sleep(timeoutMs).pipe(
+        Effect.andThen(
+          Effect.gen({ self: this }, function*() {
+            const timedOut = this.pending.get(requestId)
+            if (!timedOut) return
+            this.pending.delete(requestId)
+            const timeoutMessage = `Native runtime request timed out (${context.stage})`
+            this.releaseProbeKey(timedOut)
+            this.log('request_timed_out', {
+              ...context,
+              requestId,
+              commandStage: 'completed',
+              outcome: 'timeout',
+              timeoutMs,
+              durationMs: this.now() - timedOut.startedAt,
+              pendingCount: this.pending.size,
+            })
+            this.logCommandSummary(context, requestId, 'timeout', {
+              durationMs: this.now() - timedOut.startedAt,
+              errorCode: 'request_timeout',
+            })
+            const error = new NativeRuntimeRequestError(
+              nativeRuntimeError('request_timeout', timeoutMessage, {
+                retryable: true,
+                ...context,
+              }),
+            )
+            yield* this.failPendingResult(timedOut, error)
+            if (hasUncertainMutationOutcome(command)) {
+              this.recycleHungAdapterIfCurrent(
+                timedOut.adapterEpoch,
+                'request_outcome_unknown',
+                timeoutMessage,
+                'Native runtime recycled after a mutating command timed out with an uncertain outcome',
+              )
+              return
+            }
+            if (timedOut.kind === 'probe') {
+              this.recycleHungAdapterIfCurrent(
+                timedOut.adapterEpoch,
+                'liveness_probe_failed',
+                `Native runtime liveness probe timed out (${context.lane ?? 'unknown'})`,
+                'Native runtime recycled after an actor liveness probe timed out',
+              )
+              return
+            }
+            if (options.probeOnTimeout === false || !context.lane) return
+            this.ensureLaneProbe(
+              timedOut.adapterEpoch,
+              context.lane,
+              timeoutMessage,
+            )
           }),
-        )
-        reject(error)
-        if (hasUncertainMutationOutcome(command)) {
-          this.recycleHungAdapterIfCurrent(
-            timedOut.adapterEpoch,
-            'request_outcome_unknown',
-            timeoutMessage,
-            'Native runtime recycled after a mutating command timed out with an uncertain outcome',
-          )
-          return
-        }
-        if (timedOut.kind === 'probe') {
-          this.recycleHungAdapterIfCurrent(
-            timedOut.adapterEpoch,
-            'liveness_probe_failed',
-            `Native runtime liveness probe timed out (${context.lane ?? 'unknown'})`,
-            'Native runtime recycled after an actor liveness probe timed out',
-          )
-          return
-        }
-        if (options.probeOnTimeout === false || !context.lane) {
-          return
-        }
-        this.ensureLaneProbe(
-          timedOut.adapterEpoch,
-          context.lane,
-          timeoutMessage,
-        )
-      }, timeoutMs)
+        ),
+        Effect.forkDetach,
+      )
       this.pending.set(requestId, {
-        resolve: (value) => resolve(value as T),
-        reject,
+        result,
         timeout,
         context,
         startedAt,
         kind: 'command',
         adapterEpoch,
       })
-    })
 
-    try {
-      this.adapter.postMessage(request)
-      this.log('request_posted', {
-        ...context,
-        requestId,
-        commandStage: 'electron_transport',
-        outcome: 'accepted',
-        timeoutMs,
-        pendingCount: this.pending.size,
-      })
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? redactSensitiveText(error.message)
-          : 'Native runtime is unavailable'
-      this.log('request_post_failed', {
-        ...context,
-        requestId,
-        commandStage: 'electron_transport',
-        outcome: 'error',
-        pendingCount: this.pending.size,
-        message,
-      })
-      this.rejectPending(
-        requestId,
-        new NativeRuntimeRequestError(
-          nativeRuntimeError('runtime_lost', message, {
-            retryable: true,
-            ...context,
-          }),
-        ),
-      )
-      // A failed structured-clone send means this transport can no longer be
-      // trusted even if Electron has not delivered its exit event yet.
-      this.recycleHungAdapterIfCurrent(
-        adapterEpoch,
-        'transport_error',
-        message,
-      )
-    }
-    return result
+      try {
+        this.adapter.postMessage(request)
+        this.log('request_posted', {
+          ...context,
+          requestId,
+          commandStage: 'electron_transport',
+          outcome: 'accepted',
+          timeoutMs,
+          pendingCount: this.pending.size,
+        })
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? redactSensitiveText(error.message)
+            : 'Native runtime is unavailable'
+        this.log('request_post_failed', {
+          ...context,
+          requestId,
+          commandStage: 'electron_transport',
+          outcome: 'error',
+          pendingCount: this.pending.size,
+          message,
+        })
+        yield* this.rejectPendingEffect(
+          requestId,
+          new NativeRuntimeRequestError(
+            nativeRuntimeError('runtime_lost', message, {
+              retryable: true,
+              ...context,
+            }),
+          ),
+        )
+        // A failed structured-clone send means this transport can no longer be
+        // trusted even if Electron has not delivered its exit event yet.
+        this.recycleHungAdapterIfCurrent(
+          adapterEpoch,
+          'transport_error',
+          message,
+        )
+      }
+      return yield* Deferred.await(result)
+    })
   }
 
   retry() {
-    return this.retryDegraded('manual')
+    return this.runtime.runPromise(this.retryEffect())
   }
 
-  private retryDegraded(source: 'manual' | 'automatic') {
-    if (this.snapshot.status !== 'degraded') return this.start()
-    this.clearDegradedRetryTimer()
-    if (source === 'manual') this.degradedRetryAttempt = 0
-    this.crashTimes = []
-    this.log(
-      source === 'manual' ? 'retry_requested' : 'degraded_auto_retry_started',
-      {
-      restartCount: this.snapshot.restartCount,
-      pendingCount: this.pending.size,
-      },
-    )
-    this.updateSnapshot({
-      status: 'stopped',
-      // Keep this epoch monotonic so controllers can distinguish a manual
-      // circuit reset from the host instance that just degraded.
-      restartCount: this.snapshot.restartCount + 1,
-      degradedReason: undefined,
-      degradedRetryAttempt: undefined,
-      nextRetryAt: undefined,
-      lastFailure: undefined,
-      failure: undefined,
+  retryEffect() {
+    return this.retryDegradedEffect('manual')
+  }
+
+  private retryDegradedEffect(source: 'manual' | 'automatic') {
+    return Effect.gen({ self: this }, function*() {
+      if (this.snapshot.status !== 'degraded') {
+        return yield* this.startEffect()
+      }
+      this.clearDegradedRetryTimer()
+      if (source === 'manual') this.degradedRetryAttempt = 0
+      this.crashTimes = []
+      this.log(
+        source === 'manual' ? 'retry_requested' : 'degraded_auto_retry_started',
+        {
+          restartCount: this.snapshot.restartCount,
+          pendingCount: this.pending.size,
+        },
+      )
+      this.updateSnapshot({
+        status: 'stopped',
+        // Keep this epoch monotonic so controllers can distinguish a manual
+        // circuit reset from the host instance that just degraded.
+        restartCount: this.snapshot.restartCount + 1,
+        degradedReason: undefined,
+        degradedRetryAttempt: undefined,
+        nextRetryAt: undefined,
+        lastFailure: undefined,
+        failure: undefined,
+      })
+      return yield* this.startEffect()
     })
-    return this.start()
   }
 
   shutdown() {
     if (this.shutdownPromise) return this.shutdownPromise
-    let resolveShutdown!: () => void
-    let rejectShutdown!: (error: unknown) => void
-    const shutdown = new Promise<void>((resolve, reject) => {
-      resolveShutdown = resolve
-      rejectShutdown = reject
-    })
-    // Publish the sentinel before shutdownAtomic can synchronously notify an
-    // observer. Reentrant shutdown calls must join this exact transition.
+    if (this.shutdownResult) {
+      const shutdown = this.runtime.runPromise(Deferred.await(this.shutdownResult))
+      this.shutdownPromise = shutdown
+      return shutdown
+    }
+    const shutdownResult = this.runtime.runSync(Deferred.make<void, Error>())
+    const shutdown = this.runtime.runPromise(Deferred.await(shutdownResult))
+    // Publish both sentinels before shutdownAtomic can synchronously notify an
+    // observer. Reentrant Promise and Effect callers must join this transition.
+    this.shutdownResult = shutdownResult
     this.shutdownPromise = shutdown
-    void this.shutdownAtomic().then(
-      () => {
-        if (this.shutdownPromise === shutdown) this.shutdownPromise = null
-        resolveShutdown()
-      },
-      (error) => {
-        if (this.shutdownPromise === shutdown) this.shutdownPromise = null
-        rejectShutdown(error)
-      },
-    )
+    this.runtime.runFork(this.completeShutdown(shutdownResult))
     return shutdown
   }
 
-  private async shutdownAtomic() {
-    const shutdownEpoch = this.adapterEpoch
-    this.expectedExitEpoch = shutdownEpoch
-    this.log('shutdown_requested', {
-      pendingCount: this.pending.size,
-      status: this.snapshot.status,
+  shutdownEffect() {
+    return Effect.suspend(() => {
+      if (this.shutdownResult) return Deferred.await(this.shutdownResult)
+      return Effect.gen({ self: this }, function*() {
+        const shutdownResult = yield* Deferred.make<void, Error>()
+        if (this.shutdownResult) return yield* Deferred.await(this.shutdownResult)
+        this.shutdownResult = shutdownResult
+        yield* this.completeShutdown(shutdownResult).pipe(Effect.forkDetach)
+        return yield* Deferred.await(shutdownResult)
+      })
     })
-    this.clearRestartTimer()
-    this.clearDegradedRetryTimer()
-    this.clearRetirementWatchdogs()
-    const adapter = this.adapter
-    if (adapter && this.snapshot.status === 'ready') {
-      let stopListening = () => {}
-      let timeout: ReturnType<typeof setTimeout> | null = null
-      const exited = new Promise<void>((resolve) => {
-        stopListening = this.onStateChange((snapshot) => {
-          if (snapshot.status !== 'stopped') return
-          stopListening()
-          resolve()
-        })
-      })
-      try {
-        await Promise.race([
-          Promise.all([
-            this.request({ type: 'shutdown' }, 2_000, {
-              probeOnTimeout: false,
-              allowDuringShutdown: true,
-            }).catch(() => undefined),
-            exited,
-          ]),
-          new Promise<void>((resolve) => {
-            timeout = setTimeout(resolve, 2_000)
-          }),
-        ])
-      } finally {
-        if (timeout) clearTimeout(timeout)
-        stopListening()
-      }
-    }
-    if (adapter && this.adapter === adapter) {
-      adapter.kill()
-      this.adapter = null
-      this.log('adapter_killed', {
-        reason: 'shutdown',
-        pendingCount: this.pending.size,
-      })
-    }
-    this.rejectAllPending('runtime_stopped', 'Native runtime stopped')
-    this.clearHandshake()
-    this.rejectStart?.(
-      new NativeRuntimeRequestError(
-        nativeRuntimeError('runtime_stopped', 'Native runtime stopped'),
+  }
+
+  private completeShutdown(shutdownResult: Deferred.Deferred<void, Error>) {
+    return Effect.exit(this.shutdownAtomic()).pipe(
+      Effect.flatMap((exit) => Deferred.done(shutdownResult, exit)),
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (this.shutdownResult !== shutdownResult) return
+          this.shutdownPromise = null
+          this.shutdownResult = null
+        }),
       ),
+      Effect.asVoid,
     )
-    this.clearStartPromise()
-    this.updateSnapshot({
-      status: 'stopped',
-      pid: undefined,
-      ready: undefined,
-      degradedReason: undefined,
-      degradedRetryAttempt: undefined,
-      nextRetryAt: undefined,
-      failure: undefined,
+  }
+
+  private shutdownAtomic() {
+    return Effect.gen({ self: this }, function*() {
+      const shutdownEpoch = this.adapterEpoch
+      this.expectedExitEpoch = shutdownEpoch
+      this.log('shutdown_requested', {
+        pendingCount: this.pending.size,
+        status: this.snapshot.status,
+      })
+      this.clearRestartTimer()
+      this.clearDegradedRetryTimer()
+      this.clearRetirementWatchdogs()
+      const adapter = this.adapter
+      if (adapter && this.snapshot.status === 'ready') {
+        const exited = Effect.callback<void>((resume) => {
+          const stopListening = this.onStateChange((snapshot) => {
+            if (snapshot.status !== 'stopped') return
+            stopListening()
+            resume(Effect.void)
+          })
+          return Effect.sync(stopListening)
+        })
+        yield* Effect.all(
+          [
+            this.requestEffect(
+              { type: 'shutdown' },
+              2_000,
+              {
+                probeOnTimeout: false,
+                allowDuringShutdown: true,
+              },
+            ).pipe(Effect.catch(() => Effect.void)),
+            exited,
+          ],
+          { concurrency: 'unbounded' },
+        ).pipe(Effect.timeoutOption(2_000))
+      }
+      if (adapter && this.adapter === adapter) {
+        adapter.kill()
+        this.adapter = null
+        this.log('adapter_killed', {
+          reason: 'shutdown',
+          pendingCount: this.pending.size,
+        })
+      }
+      this.rejectAllPending('runtime_stopped', 'Native runtime stopped')
+      this.clearHandshake()
+      this.failStart(
+        new NativeRuntimeRequestError(
+          nativeRuntimeError('runtime_stopped', 'Native runtime stopped'),
+        ),
+      )
+      this.clearStartResult()
+      this.updateSnapshot({
+        status: 'stopped',
+        pid: undefined,
+        ready: undefined,
+        degradedReason: undefined,
+        degradedRetryAttempt: undefined,
+        nextRetryAt: undefined,
+        failure: undefined,
+      })
     })
   }
 
@@ -680,15 +770,15 @@ export class NativeRuntimeSupervisor {
       })
       this.clearDegradedRetryTimer()
       this.degradedRetryAttempt = 0
-      this.resolveStart?.(message)
-      this.clearStartPromise(adapterEpoch)
+      this.succeedStart(message)
+      this.clearStartResult(adapterEpoch)
       return
     }
     if (message.type === 'reply') {
       const pending = this.pending.get(message.requestId)
       if (!pending) return
       this.pending.delete(message.requestId)
-      clearTimeout(pending.timeout)
+      this.cancelPendingTimeout(pending)
       this.releaseProbeKey(pending)
       if (message.ok) {
         this.log(pending.kind === 'probe' ? 'probe_reply_ok' : 'request_reply_ok', {
@@ -702,7 +792,6 @@ export class NativeRuntimeSupervisor {
         this.logCommandSummary(pending.context, message.requestId, 'success', {
           durationMs: this.now() - pending.startedAt,
         })
-        pending.resolve(message.result)
         if (
           pending.kind === 'probe' &&
           pending.context.lane &&
@@ -713,6 +802,7 @@ export class NativeRuntimeSupervisor {
             pending.adapterEpoch,
           )
         }
+        this.runtime.runFork(this.succeedPendingResult(pending, message.result))
         if (
           pending.kind === 'command' &&
           pending.context.lane &&
@@ -739,7 +829,6 @@ export class NativeRuntimeSupervisor {
           errorCode: message.error.code,
         })
         const error = new NativeRuntimeRequestError(message.error)
-        pending.reject(error)
         if (pending.kind === 'probe') {
           this.recycleHungAdapterIfCurrent(
             pending.adapterEpoch,
@@ -755,6 +844,7 @@ export class NativeRuntimeSupervisor {
             'Native runtime recycled after an actor became unresponsive',
           )
         }
+        this.runtime.runFork(this.failPendingResult(pending, error))
       }
       return
     }
@@ -812,12 +902,12 @@ export class NativeRuntimeSupervisor {
       message,
       reason: this.expectedExitEpoch === adapterEpoch ? 'expected' : 'unexpected',
     })
-    this.rejectStart?.(
+    this.failStart(
       new NativeRuntimeRequestError(
         nativeRuntimeError('runtime_lost', message, { retryable: true }),
       ),
     )
-    this.clearStartPromise(adapterEpoch)
+    this.clearStartResult(adapterEpoch)
     this.rejectAllPending('runtime_lost', message)
     if (this.expectedExitEpoch === adapterEpoch) {
       this.updateSnapshot({ status: 'stopped', pid: undefined, ready: undefined })
@@ -872,7 +962,7 @@ export class NativeRuntimeSupervisor {
     this.restartTimer = schedule(() => {
       if (scheduleEpoch !== this.restartScheduleEpoch || this.shutdownPromise) return
       this.restartTimer = null
-      void this.start().catch(() => {})
+      this.runtime.runFork(this.startEffect().pipe(Effect.catch(() => Effect.void)))
     }, delay)
   }
 
@@ -895,8 +985,8 @@ export class NativeRuntimeSupervisor {
         retryable: runtimeFailure.retryable,
       }),
     )
-    this.rejectStart?.(error)
-    this.clearStartPromise(adapterEpoch)
+    this.failStart(error)
+    this.clearStartResult(adapterEpoch)
     this.scheduleRestart(runtimeFailure, adapterEpoch)
   }
 
@@ -913,7 +1003,7 @@ export class NativeRuntimeSupervisor {
     this.clearRestartTimer()
     this.clearDegradedRetryTimer()
     this.clearRetirementWatchdogs()
-    this.rejectStart?.(
+    this.failStart(
       new NativeRuntimeRequestError(
         nativeRuntimeError(
           'runtime_degraded',
@@ -922,7 +1012,7 @@ export class NativeRuntimeSupervisor {
         ),
       ),
     )
-    this.clearStartPromise(hostEpoch)
+    this.clearStartResult(hostEpoch)
     this.rejectAllPending('runtime_degraded', runtimeFailure.message)
     this.updateSnapshot({
       status: 'degraded',
@@ -937,28 +1027,38 @@ export class NativeRuntimeSupervisor {
   }
 
   private rejectPending(requestId: string, error: Error) {
-    const pending = this.pending.get(requestId)
-    if (!pending) return
-    this.pending.delete(requestId)
-    clearTimeout(pending.timeout)
-    this.releaseProbeKey(pending)
-    this.log('request_rejected', {
-      ...pending.context,
-      requestId,
-      commandStage: 'completed',
-      outcome: 'error',
-      durationMs: this.now() - pending.startedAt,
-      pendingCount: this.pending.size,
-      message: error.message,
-      errorCode:
-        error instanceof NativeRuntimeRequestError ? error.detail.code : undefined,
+    this.runtime.runFork(this.rejectPendingEffect(requestId, error))
+  }
+
+  private rejectPendingEffect(requestId: string, error: Error) {
+    return Effect.gen({ self: this }, function*() {
+      const pending = this.pending.get(requestId)
+      if (!pending) return
+      this.pending.delete(requestId)
+      yield* Fiber.interrupt(pending.timeout)
+      this.releaseProbeKey(pending)
+      this.log('request_rejected', {
+        ...pending.context,
+        requestId,
+        commandStage: 'completed',
+        outcome: 'error',
+        durationMs: this.now() - pending.startedAt,
+        pendingCount: this.pending.size,
+        message: error.message,
+        errorCode:
+          error instanceof NativeRuntimeRequestError
+            ? error.detail.code
+            : undefined,
+      })
+      this.logCommandSummary(pending.context, requestId, 'error', {
+        durationMs: this.now() - pending.startedAt,
+        errorCode:
+          error instanceof NativeRuntimeRequestError
+            ? error.detail.code
+            : undefined,
+      })
+      yield* this.failPendingResult(pending, error)
     })
-    this.logCommandSummary(pending.context, requestId, 'error', {
-      durationMs: this.now() - pending.startedAt,
-      errorCode:
-        error instanceof NativeRuntimeRequestError ? error.detail.code : undefined,
-    })
-    pending.reject(error)
   }
 
   private recycleHungAdapterIfCurrent(
@@ -1057,7 +1157,9 @@ export class NativeRuntimeSupervisor {
       if (scheduleEpoch !== this.degradedRetryScheduleEpoch) return
       this.degradedRetryTimer = null
       if (this.shutdownPromise || this.snapshot.status !== 'degraded') return
-      void this.retryDegraded('automatic').catch(() => undefined)
+      this.runtime.runFork(
+        this.retryDegradedEffect('automatic').pipe(Effect.catch(() => Effect.void)),
+      )
     }, delayMs)
     this.degradedRetryTimer.unref?.()
   }
@@ -1078,52 +1180,58 @@ export class NativeRuntimeSupervisor {
     if (existing) clearTimeout(existing)
     const timer = setTimeout(() => {
       this.retirementWatchdogs.delete(lane)
-      void this.runRetirementWatchdog(lane, adapterEpoch)
+      this.runtime.runFork(this.runRetirementWatchdogEffect(lane, adapterEpoch))
     }, RETIREMENT_WATCHDOG_INTERVAL_MS)
     this.retirementWatchdogs.set(lane, timer)
   }
 
-  private async runRetirementWatchdog(
+  private runRetirementWatchdogEffect(
     lane: NativeRuntimeLane,
     adapterEpoch: number,
   ) {
-    if (
-      !this.adapter ||
-      this.adapterEpoch !== adapterEpoch ||
-      this.snapshot.status !== 'ready'
-    ) {
-      return
-    }
-    if (this.hasPendingLaneCommand(lane, adapterEpoch)) {
-      this.armRetirementWatchdog(lane, adapterEpoch)
-      return
-    }
-    const command = probeCommand(this.options.runtime, lane)
-    if (!command) return
-    try {
-      const result = await this.request<Record<string, unknown>>(
+    return Effect.gen({ self: this }, function*() {
+      if (
+        !this.adapter ||
+        this.adapterEpoch !== adapterEpoch ||
+        this.snapshot.status !== 'ready'
+      ) {
+        return
+      }
+      if (this.hasPendingLaneCommand(lane, adapterEpoch)) {
+        this.armRetirementWatchdog(lane, adapterEpoch)
+        return
+      }
+      const command = probeCommand(this.options.runtime, lane)
+      if (!command) return
+      yield* this.requestEffect(
         command,
         this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS,
         { probeOnTimeout: false },
+      ).pipe(
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              this.recordCameraReadStall(
+                lane,
+                this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS,
+                error.message,
+              )
+              this.recycleHungAdapterIfCurrent(
+                adapterEpoch,
+                'liveness_probe_failed',
+                error.message,
+                'Native runtime recycled after a retirement watchdog failed',
+              )
+            }),
+          onSuccess: (result) =>
+            Effect.sync(() => {
+              if (isBusyProbeResult(result)) {
+                this.armRetirementWatchdog(lane, adapterEpoch)
+              }
+            }),
+        }),
       )
-      if (result?.state === 'busy') {
-        this.armRetirementWatchdog(lane, adapterEpoch)
-      }
-    } catch (error) {
-      this.recordCameraReadStall(
-        lane,
-        this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS,
-        error instanceof Error ? error.message : undefined,
-      )
-      this.recycleHungAdapterIfCurrent(
-        adapterEpoch,
-        'liveness_probe_failed',
-        error instanceof Error
-          ? error.message
-          : `Native runtime retirement watchdog failed (${lane})`,
-        'Native runtime recycled after a retirement watchdog failed',
-      )
-    }
+    })
   }
 
   private clearRetirementWatchdogs() {
@@ -1131,20 +1239,19 @@ export class NativeRuntimeSupervisor {
     this.retirementWatchdogs.clear()
   }
 
-  private clearStartPromise(epoch?: number) {
+  private clearStartResult(epoch?: number) {
     if (epoch !== undefined && this.startEpoch !== epoch) return
     this.startPromise = null
-    this.resolveStart = null
-    this.rejectStart = null
+    this.startResult = null
     this.startEpoch = null
   }
 
-  private waitForScheduledStart() {
-    return new Promise<NativeRuntimeReady>((resolve, reject) => {
+  private waitForScheduledStartEffect() {
+    return Effect.callback<NativeRuntimeReady, Error>((resume) => {
       const stopListening = this.onStateChange((snapshot) => {
         if (snapshot.status === 'ready' && snapshot.ready) {
           stopListening()
-          resolve(snapshot.ready)
+          resume(Effect.succeed(snapshot.ready))
           return
         }
         if (snapshot.status !== 'degraded' && snapshot.status !== 'stopped') return
@@ -1152,16 +1259,19 @@ export class NativeRuntimeSupervisor {
         const code = snapshot.status === 'degraded'
           ? 'runtime_degraded'
           : 'runtime_stopped'
-        reject(
-          new NativeRuntimeRequestError(
-            nativeRuntimeError(
-              code,
-              snapshot.degradedReason ?? 'Native runtime stopped before recovery',
-              { retryable: snapshot.status !== 'degraded' },
+        resume(
+          Effect.fail(
+            new NativeRuntimeRequestError(
+              nativeRuntimeError(
+                code,
+                snapshot.degradedReason ?? 'Native runtime stopped before recovery',
+                { retryable: snapshot.status !== 'degraded' },
+              ),
             ),
           ),
         )
       })
+      return Effect.sync(stopListening)
     })
   }
 
@@ -1190,52 +1300,44 @@ export class NativeRuntimeSupervisor {
       hostEpoch: adapterEpoch,
     }
     const timeoutMs = this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
-    const timeout = setTimeout(() => {
-      const pending = this.pending.get(requestId)
-      if (!pending) return
-      this.pending.delete(requestId)
-      this.releaseProbeKey(pending)
-      this.log('probe_timed_out', {
-        ...context,
-        requestId,
-        commandStage: 'completed',
-        outcome: 'timeout',
-        timeoutMs,
-        durationMs: this.now() - startedAt,
-        pendingCount: this.pending.size,
-      })
-      this.logCommandSummary(context, requestId, 'timeout', {
-        durationMs: this.now() - startedAt,
-        errorCode: 'request_timeout',
-      })
-      this.recordCameraReadStall(
-        lane,
-        timeoutMs,
-        `Native runtime liveness probe timed out (${lane})`,
-      )
-      pending.reject(
-        new NativeRuntimeRequestError(
-          nativeRuntimeError(
-            'request_timeout',
-            `Native runtime liveness probe timed out (${lane})`,
-            {
-              retryable: true,
-              stage: command.type,
-            },
-          ),
+    const timeout = this.runtime.runFork(
+      Effect.sleep(timeoutMs).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            const pending = this.pending.get(requestId)
+            if (!pending) return
+            this.pending.delete(requestId)
+            this.releaseProbeKey(pending)
+            this.log('probe_timed_out', {
+              ...context,
+              requestId,
+              commandStage: 'completed',
+              outcome: 'timeout',
+              timeoutMs,
+              durationMs: this.now() - startedAt,
+              pendingCount: this.pending.size,
+            })
+            this.logCommandSummary(context, requestId, 'timeout', {
+              durationMs: this.now() - startedAt,
+              errorCode: 'request_timeout',
+            })
+            this.recordCameraReadStall(
+              lane,
+              timeoutMs,
+              `Native runtime liveness probe timed out (${lane})`,
+            )
+            this.recycleHungAdapterIfCurrent(
+              adapterEpoch,
+              'liveness_probe_failed',
+              `Native runtime liveness probe timed out (${lane})`,
+              'Native runtime recycled after an actor liveness probe timed out',
+            )
+          }),
         ),
-      )
-      this.recycleHungAdapterIfCurrent(
-        adapterEpoch,
-        'liveness_probe_failed',
-        `Native runtime liveness probe timed out (${lane})`,
-        'Native runtime recycled after an actor liveness probe timed out',
-      )
-    }, timeoutMs)
+      ),
+    )
     this.activeProbeKeys.add(probeKey)
     this.pending.set(requestId, {
-      resolve: () => undefined,
-      reject: () => undefined,
       timeout,
       context,
       startedAt,
@@ -1275,6 +1377,32 @@ export class NativeRuntimeSupervisor {
   private releaseProbeKey(pending: PendingRequest) {
     if (!pending.probeKey) return
     this.activeProbeKeys.delete(pending.probeKey)
+  }
+
+  private cancelPendingTimeout(pending: PendingRequest) {
+    this.runtime.runFork(Fiber.interrupt(pending.timeout))
+  }
+
+  private succeedPendingResult(pending: PendingRequest, value: unknown) {
+    return pending.kind === 'command'
+      ? Deferred.succeed(pending.result, value)
+      : Effect.void
+  }
+
+  private failPendingResult(pending: PendingRequest, error: Error) {
+    return pending.kind === 'command'
+      ? Deferred.fail(pending.result, error)
+      : Effect.void
+  }
+
+  private succeedStart(ready: NativeRuntimeReady) {
+    const startResult = this.startResult
+    if (startResult) this.runtime.runFork(Deferred.succeed(startResult, ready))
+  }
+
+  private failStart(error: Error) {
+    const startResult = this.startResult
+    if (startResult) this.runtime.runFork(Deferred.fail(startResult, error))
   }
 
   private updateSnapshot(patch: Partial<NativeRuntimeSupervisorSnapshot>) {
@@ -1394,8 +1522,8 @@ export class NativeRuntimeSupervisor {
         { retryable: runtimeFailure.retryable },
       ),
     )
-    this.rejectStart?.(error)
-    this.clearStartPromise()
+    this.failStart(error)
+    this.clearStartResult()
     this.scheduleRestart(runtimeFailure)
   }
 
@@ -1566,9 +1694,6 @@ function probeCommand(
   return null
 }
 
-function isBusyProbeResult(value: unknown) {
-  return Boolean(
-    value && typeof value === 'object' &&
-    'state' in value && value.state === 'busy',
-  )
-}
+const isBusyProbeResult = Schema.is(
+  Schema.Struct({ state: Schema.Literal('busy') }),
+)

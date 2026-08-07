@@ -1,7 +1,8 @@
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { Option, Schema } from 'effect'
 import type { FormEvent } from 'react'
-import { z } from 'zod'
 
 import {
   AdminEmpty,
@@ -15,13 +16,15 @@ import { fetchAdminDiagnosticReports } from '#/features/api/admin-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { queryKeys } from '#/lib/api/query-keys'
 
-const filtersSchema = z.object({
-  user_id: z.string().optional(),
-  status: z.enum(['new', 'investigating', 'resolved']).optional(),
-  area: z.string().optional(),
-  release_channel: z.string().optional(),
-  before: z.string().optional(),
-})
+const filtersSchema = Schema.toStandardSchemaV1(
+  Schema.Struct({
+    user_id: Schema.optionalKey(Schema.String),
+    status: Schema.optionalKey(ApiSchema.DiagnosticReportStatus),
+    area: Schema.optionalKey(Schema.String),
+    release_channel: Schema.optionalKey(Schema.String),
+    before: Schema.optionalKey(Schema.String),
+  }),
+)
 
 export const Route = createFileRoute('/_admin/diagnostics/')({
   validateSearch: filtersSchema,
@@ -32,12 +35,15 @@ function DiagnosticsPage() {
   const auth = useAuth()
   const token = auth.session?.token
   const filters = Route.useSearch()
-  const navigate = useNavigate({ from: '/diagnostics' })
+  const navigate = useNavigate({ from: '/diagnostics/' })
   const reports = useQuery({
     queryKey: queryKeys.admin.diagnostics(filters),
-    queryFn: () => fetchAdminDiagnosticReports(token!, { ...filters, limit: '100' }),
+    queryFn: ({ signal }) =>
+      fetchAdminDiagnosticReports(token!, { ...filters, limit: '100' }, signal),
     enabled: Boolean(token),
   })
+  const nextBefore =
+    reports.data?.length === 100 ? reports.data.at(-1)?.id : undefined
 
   return (
     <AdminPage title="Диагностика">
@@ -48,11 +54,14 @@ function DiagnosticsPage() {
           event.preventDefault()
           const data = new FormData(event.currentTarget)
           const value = (key: string) => String(data.get(key) ?? '').trim() || undefined
+          const status = Schema.decodeUnknownOption(
+            ApiSchema.DiagnosticReportStatus,
+          )(value('status'))
           void navigate({
             search: {
               user_id: value('user_id'),
               area: value('area'),
-              status: value('status') as 'new' | 'investigating' | 'resolved' | undefined,
+              status: Option.getOrUndefined(status),
               release_channel: value('release_channel'),
               before: undefined,
             },
@@ -148,7 +157,7 @@ function DiagnosticsPage() {
           <AdminEmpty>Диагностических отчётов пока нет</AdminEmpty>
         )}
       </AdminSection>
-      {reports.data?.length === 100 ? (
+      {nextBefore ? (
         <div className="mt-4 flex justify-center">
           <Button
             type="button"
@@ -156,7 +165,7 @@ function DiagnosticsPage() {
             variant="outline"
             onClick={() =>
               void navigate({
-                search: { ...filters, before: reports.data.at(-1)?.id },
+                search: { ...filters, before: nextBefore },
               })
             }
           >

@@ -1,42 +1,64 @@
-export type DesktopOverlayParticipant = {
-  userId: string
-  displayName: string
-  avatarUrl: string | null
-  speaking: boolean
-  muted: boolean
-  deafened: boolean
-  screensharing: boolean
-}
+import { Option, Schema } from 'effect'
 
-export type DesktopOverlaySnapshot = {
-  active: boolean
-  channelId: string | null
-  channelLabel: string | null
-  participants: DesktopOverlayParticipant[]
-}
+type Mutable<Type> = Type extends ReadonlyArray<infer Item>
+  ? Array<Mutable<Item>>
+  : Type extends object
+    ? { -readonly [Key in keyof Type]: Mutable<Type[Key]> }
+    : Type
 
-export type DesktopOverlayBounds = {
-  x: number
-  y: number
-  width: number
-  height: number
-}
+export const DesktopOverlayParticipantSchema = Schema.Struct({
+  userId: Schema.String,
+  displayName: Schema.String,
+  avatarUrl: Schema.Union([Schema.String, Schema.Null]),
+  speaking: Schema.Boolean,
+  muted: Schema.Boolean,
+  deafened: Schema.Boolean,
+  screensharing: Schema.Boolean,
+})
 
-export type DesktopOverlayGameTarget = {
-  gameId: string
-  processName: string
-  processPath: string | null
-  title: string
-  bounds: DesktopOverlayBounds
-}
+export type DesktopOverlayParticipant =
+  Mutable<typeof DesktopOverlayParticipantSchema.Type>
 
-export type DesktopOverlayState = {
-  available: boolean
-  enabled: boolean
-  visible: boolean
-  target: DesktopOverlayGameTarget | null
-  snapshot: DesktopOverlaySnapshot
-}
+export const DesktopOverlaySnapshotSchema = Schema.Struct({
+  active: Schema.Boolean,
+  channelId: Schema.Union([Schema.String, Schema.Null]),
+  channelLabel: Schema.Union([Schema.String, Schema.Null]),
+  participants: Schema.mutable(Schema.Array(DesktopOverlayParticipantSchema)),
+})
+
+export type DesktopOverlaySnapshot = Mutable<
+  typeof DesktopOverlaySnapshotSchema.Type
+>
+
+export const DesktopOverlayBoundsSchema = Schema.Struct({
+  x: Schema.Finite,
+  y: Schema.Finite,
+  width: Schema.Finite,
+  height: Schema.Finite,
+})
+
+export type DesktopOverlayBounds = Mutable<typeof DesktopOverlayBoundsSchema.Type>
+
+export const DesktopOverlayGameTargetSchema = Schema.Struct({
+  gameId: Schema.String,
+  processName: Schema.String,
+  processPath: Schema.Union([Schema.String, Schema.Null]),
+  title: Schema.String,
+  bounds: DesktopOverlayBoundsSchema,
+})
+
+export type DesktopOverlayGameTarget =
+  Mutable<typeof DesktopOverlayGameTargetSchema.Type>
+
+export const DesktopOverlayStateSchema = Schema.Struct({
+  available: Schema.Boolean,
+  enabled: Schema.Boolean,
+  visible: Schema.Boolean,
+  target: Schema.Union([DesktopOverlayGameTargetSchema, Schema.Null]),
+  snapshot: DesktopOverlaySnapshotSchema,
+})
+
+export type DesktopOverlayState = Mutable<typeof DesktopOverlayStateSchema.Type>
 
 export const DESKTOP_OVERLAY_MAX_PARTICIPANTS = 8
 export const DESKTOP_OVERLAY_MAX_CHANNEL_ID_LENGTH = 128
@@ -44,6 +66,10 @@ export const DESKTOP_OVERLAY_MAX_CHANNEL_LABEL_LENGTH = 120
 export const DESKTOP_OVERLAY_MAX_USER_ID_LENGTH = 128
 export const DESKTOP_OVERLAY_MAX_DISPLAY_NAME_LENGTH = 80
 export const DESKTOP_OVERLAY_MAX_AVATAR_URL_LENGTH = 2_048
+const UnknownOverlayRecordSchema = Schema.Record(
+  Schema.String,
+  Schema.Unknown,
+)
 
 export const EMPTY_DESKTOP_OVERLAY_SNAPSHOT: DesktopOverlaySnapshot = {
   active: false,
@@ -55,11 +81,12 @@ export const EMPTY_DESKTOP_OVERLAY_SNAPSHOT: DesktopOverlaySnapshot = {
 export function normalizeDesktopOverlaySnapshot(
   value: unknown,
 ): DesktopOverlaySnapshot {
-  if (!value || typeof value !== 'object') {
+  const decoded = Schema.decodeUnknownOption(UnknownOverlayRecordSchema)(value)
+  if (Option.isNone(decoded)) {
     return EMPTY_DESKTOP_OVERLAY_SNAPSHOT
   }
 
-  const snapshot = value as Partial<DesktopOverlaySnapshot>
+  const snapshot = decoded.value
   const active = snapshot.active === true
   const channelId = cappedStringOrNull(
     snapshot.channelId,
@@ -93,9 +120,9 @@ export function normalizeDesktopOverlaySnapshot(
 function normalizeDesktopOverlayParticipant(
   value: unknown,
 ): DesktopOverlayParticipant[] {
-  if (!value || typeof value !== 'object') return []
-
-  const participant = value as Partial<DesktopOverlayParticipant>
+  const decoded = Schema.decodeUnknownOption(UnknownOverlayRecordSchema)(value)
+  if (Option.isNone(decoded)) return []
+  const participant = decoded.value
   if (
     !nonEmptyString(participant.userId) ||
     !nonEmptyString(participant.displayName) ||

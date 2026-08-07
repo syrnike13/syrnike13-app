@@ -1,4 +1,5 @@
 import { Track } from 'livekit-client'
+import { Effect } from 'effect'
 
 import { voiceAudioProcessingConstraints } from '#/features/voice/voice-capture'
 import {
@@ -16,7 +17,7 @@ import {
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 import {
-  applyNativeMicrophonePipeline,
+  applyNativeMicrophonePipelineEffect,
   configureNativeMicrophonePipeline,
 } from './native-microphone-pipeline-config'
 import { nativeMicrophonePipelineConfig } from './native-microphone-publish'
@@ -53,50 +54,58 @@ export function meterLevelsFromRms(rms: number, barCount: number) {
   })
 }
 
-async function applyPlaybackSink(context: AudioContext, deviceId?: string) {
+function applyPlaybackSinkEffect(context: AudioContext, deviceId?: string) {
   const sink = context as AudioContext & {
     setSinkId?: (sinkId: string) => Promise<void>
   }
-  if (!deviceId || !sink.setSinkId) return
-  try {
-    await sink.setSinkId(deviceId)
-  } catch {
+  if (!deviceId || !sink.setSinkId) return Effect.void
+  return Effect.tryPromise({
+    try: () => sink.setSinkId?.(deviceId) ?? Promise.resolve(),
+    catch: (cause) => cause,
+  }).pipe(
     // Browser rejected the sink; keep the default output device.
-  }
+    Effect.catch(() => Effect.void),
+  )
 }
 
-async function attachProcessor(
+function attachProcessorEffect(
   context: AudioContext,
   rawTrack: MediaStreamTrack,
   prefs: MicPreviewPreferences,
   existing: SyrnikeMicProcessor | null,
   onGateMetrics?: (metrics: VoiceGateMetrics) => void,
 ) {
-  if (existing) {
-    await existing.destroy()
-  }
+  return Effect.gen(function*() {
+    if (existing) {
+      yield* existing.destroyEffect()
+    }
 
-  const config = createMicProcessorConfigFromPrefs(prefs)
-  if (!micProcessingNeeded(config)) {
-    return { processor: null, playbackTrack: rawTrack }
-  }
+    const config = createMicProcessorConfigFromPrefs(prefs)
+    if (!micProcessingNeeded(config)) {
+      return { processor: null, playbackTrack: rawTrack }
+    }
 
-  const processor = new SyrnikeMicProcessor({
-    ...config,
-    gateOnMetrics: onGateMetrics,
+    const processor = new SyrnikeMicProcessor({
+      ...config,
+      gateOnMetrics: onGateMetrics,
+    })
+    yield* processor.initEffect({
+      audioContext: context,
+      kind: Track.Kind.Audio,
+      track: rawTrack,
+    })
+    return {
+      processor,
+      playbackTrack: processor.processedTrack ?? rawTrack,
+    }
   })
-  await processor.init({
-    audioContext: context,
-    kind: Track.Kind.Audio,
-    track: rawTrack,
-  })
-  return {
-    processor,
-    playbackTrack: processor.processedTrack ?? rawTrack,
-  }
 }
 
-export async function startMicPreview({
+export function startMicPreview(options: MicPreviewOptions) {
+  return Effect.runPromise(startMicPreviewEffect(options))
+}
+
+export function startMicPreviewEffect({
   inputDeviceId,
   outputDeviceId,
   prefs,
@@ -104,206 +113,248 @@ export async function startMicPreview({
   onGateMetrics,
   onEnded,
 }: MicPreviewOptions) {
-  const desktop = getSyrnikeDesktop()
-  if (desktop?.platform.os === 'win32') {
-    const configureNative = async (nextPrefs: MicPreviewPreferences) => {
-      await applyNativeMicrophonePipeline(
-        nativeMicrophonePipelineConfig(
-          nextPrefs,
-          inputDeviceId,
-        ),
-      )
-    }
+  return Effect.gen(function*() {
+    const desktop = getSyrnikeDesktop()
+    if (desktop?.platform.os === 'win32') {
+      const configureNativeEffect = (nextPrefs: MicPreviewPreferences) =>
+        applyNativeMicrophonePipelineEffect(
+          nativeMicrophonePipelineConfig(nextPrefs, inputDeviceId),
+        )
 
-    let stopped = false
-    let running = false
-    let unsubscribeMetrics = () => {}
-    let unsubscribeState = () => {}
-    const finishFromRuntime = (message?: string) => {
-      if (stopped || !running) return
-      stopped = true
-      running = false
-      unsubscribeMetrics()
-      unsubscribeState()
-      onLevels(Array.from({ length: MIC_PREVIEW_METER_BAR_COUNT }, () => 0))
-      onEnded?.(message)
-    }
-
-    unsubscribeState = desktop.media.onMicrophonePreviewState((event) => {
-      if (event.status === 'running') {
-        running = true
-        return
-      }
-      finishFromRuntime(event.status === 'error' ? event.message : undefined)
-    })
-    unsubscribeMetrics = desktop.media.onMicrophoneMetrics((event) => {
-      if (stopped) return
-      onLevels(meterLevelsFromRms(dbToRms(event.inputDb), MIC_PREVIEW_METER_BAR_COUNT))
-      onGateMetrics?.({
-        inputDb: event.inputDb,
-        thresholdDb: event.thresholdDb,
-        open: event.open,
-      })
-    })
-
-    try {
-      await configureNative(prefs)
-      await desktop.media.startMicrophonePreview()
-      running = true
-    } catch (error) {
-      stopped = true
-      unsubscribeMetrics()
-      unsubscribeState()
-      throw error
-    }
-
-    const queueNative = (nextPrefs: MicPreviewPreferences) => {
-      if (stopped) return
-      configureNativeMicrophonePipeline(
-        nativeMicrophonePipelineConfig(
-          nextPrefs,
-          inputDeviceId,
-        ),
-      )
-    }
-
-    return {
-      setOutputVolume(_volume: number) {},
-      async setOutputDevice(_deviceId?: string) {},
-      updateGatePreferences(nextPrefs: MicPreviewPreferences) {
-        queueNative(nextPrefs)
-      },
-      async restartProcessing(nextPrefs: MicPreviewPreferences) {
-        queueNative(nextPrefs)
-      },
-      stop() {
-        if (stopped) return
+      let stopped = false
+      let running = false
+      let unsubscribeMetrics = () => {}
+      let unsubscribeState = () => {}
+      const finishFromRuntime = (message?: string) => {
+        if (stopped || !running) return
         stopped = true
         running = false
         unsubscribeMetrics()
         unsubscribeState()
-        void desktop.media.stopMicrophonePreview()
+        onLevels(Array.from({ length: MIC_PREVIEW_METER_BAR_COUNT }, () => 0))
+        onEnded?.(message)
+      }
+
+      unsubscribeState = desktop.media.onMicrophonePreviewState((event) => {
+        if (event.status === 'running') {
+          running = true
+          return
+        }
+        finishFromRuntime(event.status === 'error' ? event.message : undefined)
+      })
+      unsubscribeMetrics = desktop.media.onMicrophoneMetrics((event) => {
+        if (stopped) return
+        onLevels(
+          meterLevelsFromRms(
+            dbToRms(event.inputDb),
+            MIC_PREVIEW_METER_BAR_COUNT,
+          ),
+        )
+        onGateMetrics?.({
+          inputDb: event.inputDb,
+          thresholdDb: event.thresholdDb,
+          open: event.open,
+        })
+      })
+
+      yield* Effect.gen(function*() {
+        yield* configureNativeEffect(prefs)
+        yield* Effect.tryPromise({
+          try: () => desktop.media.startMicrophonePreview(),
+          catch: (cause) => cause,
+        })
+        running = true
+      }).pipe(
+        Effect.tapError(() =>
+          Effect.sync(() => {
+            stopped = true
+            unsubscribeMetrics()
+            unsubscribeState()
+          }),
+        ),
+      )
+
+      const queueNative = (nextPrefs: MicPreviewPreferences) => {
+        if (stopped) return
+        configureNativeMicrophonePipeline(
+          nativeMicrophonePipelineConfig(nextPrefs, inputDeviceId),
+        )
+      }
+      const setOutputDeviceEffect = (_deviceId?: string) => Effect.void
+      const restartProcessingEffect = (nextPrefs: MicPreviewPreferences) =>
+        Effect.sync(() => queueNative(nextPrefs))
+
+      return {
+        setOutputVolume(_volume: number) {},
+        setOutputDevice(_deviceId?: string) {
+          return Effect.runPromise(setOutputDeviceEffect(_deviceId))
+        },
+        setOutputDeviceEffect,
+        updateGatePreferences(nextPrefs: MicPreviewPreferences) {
+          queueNative(nextPrefs)
+        },
+        restartProcessing(nextPrefs: MicPreviewPreferences) {
+          return Effect.runPromise(restartProcessingEffect(nextPrefs))
+        },
+        restartProcessingEffect,
+        stop() {
+          if (stopped) return
+          stopped = true
+          running = false
+          unsubscribeMetrics()
+          unsubscribeState()
+          Effect.runFork(
+            Effect.tryPromise({
+              try: () => desktop.media.stopMicrophonePreview(),
+              catch: (cause) => cause,
+            }).pipe(Effect.ignore),
+          )
+        },
+      }
+    }
+
+    const captureConstraints = voiceAudioProcessingConstraints(prefs)
+    const stream = yield* Effect.tryPromise({
+      try: () =>
+        navigator.mediaDevices.getUserMedia({
+          audio: {
+            ...captureConstraints,
+            deviceId: inputDeviceId ? { exact: inputDeviceId } : undefined,
+          },
+        }),
+      catch: (cause) => cause,
+    })
+
+    const rawTrack = stream.getAudioTracks()[0]
+    if (!rawTrack) {
+      stream.getTracks().forEach((track) => track.stop())
+      return yield* Effect.fail(new Error('Microphone track is unavailable'))
+    }
+
+    const processContext = new AudioContext({ sampleRate: 48_000 })
+    const playbackContext = new AudioContext({ sampleRate: 48_000 })
+    let processor: SyrnikeMicProcessor | null = null
+    let playbackTrack: MediaStreamTrack = rawTrack
+
+    const initial = yield* attachProcessorEffect(
+      processContext,
+      rawTrack,
+      prefs,
+      null,
+      onGateMetrics,
+    )
+    processor = initial.processor
+    playbackTrack = initial.playbackTrack
+
+    const monitorGain = playbackContext.createGain()
+    const analyser = playbackContext.createAnalyser()
+
+    analyser.fftSize = 512
+    monitorGain.gain.value = prefs.outputVolume
+
+    let sourceNode = playbackContext.createMediaStreamSource(
+      new MediaStream([playbackTrack]),
+    )
+    sourceNode.connect(monitorGain)
+    monitorGain.connect(analyser)
+    monitorGain.connect(playbackContext.destination)
+
+    yield* applyPlaybackSinkEffect(playbackContext, outputDeviceId)
+    yield* Effect.tryPromise({
+      try: () => playbackContext.resume(),
+      catch: (cause) => cause,
+    })
+
+    const samples = new Uint8Array(analyser.fftSize)
+    let frame = 0
+    let stopped = false
+    let previousLevels = Array.from(
+      { length: MIC_PREVIEW_METER_BAR_COUNT },
+      () => 0,
+    )
+
+    const tick = () => {
+      if (stopped) return
+      analyser.getByteTimeDomainData(samples)
+      const targets = meterLevelsFromRms(
+        rmsFromByteTimeDomain(samples),
+        MIC_PREVIEW_METER_BAR_COUNT,
+      )
+      previousLevels = previousLevels.map((previous, index) => {
+        const target = targets[index] ?? 0
+        return previous * 0.45 + target * 0.55
+      })
+      onLevels(previousLevels)
+      frame = requestAnimationFrame(tick)
+    }
+
+    frame = requestAnimationFrame(tick)
+    const setOutputDeviceEffect = (deviceId?: string) =>
+      applyPlaybackSinkEffect(playbackContext, deviceId)
+    const restartProcessingEffect = (nextPrefs: MicPreviewPreferences) =>
+      Effect.gen(function*() {
+        sourceNode.disconnect()
+        const next = yield* attachProcessorEffect(
+          processContext,
+          rawTrack,
+          nextPrefs,
+          processor,
+          onGateMetrics,
+        )
+        processor = next.processor
+        playbackTrack = next.playbackTrack
+        sourceNode = playbackContext.createMediaStreamSource(
+          new MediaStream([playbackTrack]),
+        )
+        sourceNode.connect(monitorGain)
+      })
+
+    return {
+      setOutputVolume(volume: number) {
+        monitorGain.gain.value = volume
+      },
+      setOutputDevice(deviceId?: string) {
+        return Effect.runPromise(setOutputDeviceEffect(deviceId))
+      },
+      setOutputDeviceEffect,
+      updateGatePreferences(nextPrefs: MicPreviewPreferences) {
+        processor?.updateGatePreferences({
+          gateThresholdDb: nextPrefs.voiceGateThresholdDb,
+          gateAutoThreshold: nextPrefs.voiceGateAutoThreshold,
+          gateStageOptions: resolveVoiceGateStageOptions(nextPrefs),
+        })
+      },
+      restartProcessing(nextPrefs: MicPreviewPreferences) {
+        return Effect.runPromise(restartProcessingEffect(nextPrefs))
+      },
+      restartProcessingEffect,
+      stop() {
+        if (stopped) return
+        stopped = true
+        cancelAnimationFrame(frame)
+        sourceNode.disconnect()
+        monitorGain.disconnect()
+        analyser.disconnect()
+        stream.getTracks().forEach((track) => track.stop())
+        Effect.runFork(
+          Effect.all(
+            [
+              processor ? processor.destroyEffect() : Effect.void,
+              Effect.tryPromise({
+                try: () => processContext.close(),
+                catch: (cause) => cause,
+              }).pipe(Effect.ignore),
+              Effect.tryPromise({
+                try: () => playbackContext.close(),
+                catch: (cause) => cause,
+              }).pipe(Effect.ignore),
+            ],
+            { concurrency: 'unbounded', discard: true },
+          ),
+        )
       },
     }
-  }
-
-  const captureConstraints = voiceAudioProcessingConstraints(prefs)
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      ...captureConstraints,
-      deviceId: inputDeviceId ? { exact: inputDeviceId } : undefined,
-    },
   })
-
-  const rawTrack = stream.getAudioTracks()[0]
-  if (!rawTrack) {
-    stream.getTracks().forEach((track) => track.stop())
-    throw new Error('Microphone track is unavailable')
-  }
-
-  const processContext = new AudioContext({ sampleRate: 48_000 })
-  const playbackContext = new AudioContext({ sampleRate: 48_000 })
-  let processor: SyrnikeMicProcessor | null = null
-  let playbackTrack: MediaStreamTrack = rawTrack
-
-  const initial = await attachProcessor(
-    processContext,
-    rawTrack,
-    prefs,
-    null,
-    onGateMetrics,
-  )
-  processor = initial.processor
-  playbackTrack = initial.playbackTrack
-  await processor?.whenGateCalibrated()
-
-  const monitorGain = playbackContext.createGain()
-  const analyser = playbackContext.createAnalyser()
-
-  analyser.fftSize = 512
-  monitorGain.gain.value = prefs.outputVolume
-
-  let sourceNode = playbackContext.createMediaStreamSource(
-    new MediaStream([playbackTrack]),
-  )
-  sourceNode.connect(monitorGain)
-  monitorGain.connect(analyser)
-  monitorGain.connect(playbackContext.destination)
-
-  await applyPlaybackSink(playbackContext, outputDeviceId)
-  await playbackContext.resume()
-
-  const samples = new Uint8Array(analyser.fftSize)
-  let frame = 0
-  let stopped = false
-  let previousLevels = Array.from(
-    { length: MIC_PREVIEW_METER_BAR_COUNT },
-    () => 0,
-  )
-
-  const tick = () => {
-    if (stopped) return
-    analyser.getByteTimeDomainData(samples)
-    const targets = meterLevelsFromRms(
-      rmsFromByteTimeDomain(samples),
-      MIC_PREVIEW_METER_BAR_COUNT,
-    )
-    previousLevels = previousLevels.map((previous, index) => {
-      const target = targets[index] ?? 0
-      return previous * 0.45 + target * 0.55
-    })
-    onLevels(previousLevels)
-    frame = requestAnimationFrame(tick)
-  }
-
-  frame = requestAnimationFrame(tick)
-
-  return {
-    setOutputVolume(volume: number) {
-      monitorGain.gain.value = volume
-    },
-    async setOutputDevice(deviceId?: string) {
-      await applyPlaybackSink(playbackContext, deviceId)
-    },
-    updateGatePreferences(nextPrefs: MicPreviewPreferences) {
-      processor?.updateGatePreferences({
-        gateThresholdDb: nextPrefs.voiceGateThresholdDb,
-        gateAutoThreshold: nextPrefs.voiceGateAutoThreshold,
-        gateStageOptions: resolveVoiceGateStageOptions(nextPrefs),
-      })
-    },
-    async restartProcessing(nextPrefs: MicPreviewPreferences) {
-      sourceNode.disconnect()
-
-      const next = await attachProcessor(
-        processContext,
-        rawTrack,
-        nextPrefs,
-        processor,
-        onGateMetrics,
-      )
-      processor = next.processor
-      playbackTrack = next.playbackTrack
-      await processor?.whenGateCalibrated()
-
-      sourceNode = playbackContext.createMediaStreamSource(
-        new MediaStream([playbackTrack]),
-      )
-      sourceNode.connect(monitorGain)
-    },
-    stop() {
-      if (stopped) return
-      stopped = true
-      cancelAnimationFrame(frame)
-      sourceNode.disconnect()
-      monitorGain.disconnect()
-      analyser.disconnect()
-      void processor?.destroy()
-      stream.getTracks().forEach((track) => track.stop())
-      void processContext.close()
-      void playbackContext.close()
-    },
-  }
 }
 
 export type MicPreviewSession = Awaited<ReturnType<typeof startMicPreview>>

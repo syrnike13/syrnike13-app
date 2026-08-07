@@ -3,6 +3,7 @@ import type {
   NativeDiagnosticIncident,
   NativeDiagnosticIncidentSeverity,
 } from '@syrnike13/platform'
+import { Effect, Fiber, Queue, Schedule } from 'effect'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { usePlatform } from '#/platform/use-platform'
@@ -11,6 +12,7 @@ import {
   sendDiagnosticReport,
 } from './diagnostic-reporter'
 import {
+  type AutomaticDiagnosticIncident,
   enqueueAutomaticDiagnosticIncident,
   subscribeAutomaticDiagnosticIncidents,
 } from './automatic-diagnostic-incidents'
@@ -51,37 +53,59 @@ export function DiagnosticErrorReporter() {
     const token = auth.session?.token
     const accountId = auth.session?.user_id
     if (!token || !accountId) return
-    let operation = Promise.resolve()
-    let active = true
-    const unsubscribe = subscribeAutomaticDiagnosticIncidents((incident) => {
-      operation = operation
-        .catch(() => undefined)
-        .then(async () => {
-          if (!active) return
-          if (desktop) {
-            await desktop.diagnostics.enqueueIncident(accountId, {
-              area: incident.area,
-              severity: incident.severity,
-              triggerCode: incident.triggerCode,
-              cooldownMs: incident.cooldownMs,
-            })
-            return
-          }
-          await sendDiagnosticReport({
-            token,
-            desktop,
-            area: incident.area,
-            severity: incident.severity,
-            triggerCode: incident.triggerCode,
-            context: incident.context,
-            automatic: true,
-            automaticCooldownMs: incident.cooldownMs,
+
+    const reportIncident = Effect.fn('diagnostics.reportAutomaticIncident')(
+      function*(incident: AutomaticDiagnosticIncident) {
+        if (desktop) {
+          yield* Effect.tryPromise({
+            try: () =>
+              desktop.diagnostics.enqueueIncident(accountId, {
+                area: incident.area,
+                severity: incident.severity,
+                triggerCode: incident.triggerCode,
+                cooldownMs: incident.cooldownMs,
+              }),
+            catch: (cause) => cause,
           })
+          return
+        }
+        yield* sendDiagnosticReport({
+          token,
+          desktop,
+          area: incident.area,
+          severity: incident.severity,
+          triggerCode: incident.triggerCode,
+          context: incident.context,
+          automatic: true,
+          automaticCooldownMs: incident.cooldownMs,
         })
-    })
+      },
+    )
+
+    const fiber = Effect.runFork(
+      Effect.scoped(
+        Effect.gen(function*() {
+          const incidents = yield* Queue.unbounded<AutomaticDiagnosticIncident>()
+          yield* Effect.acquireRelease(
+            Effect.sync(() =>
+              subscribeAutomaticDiagnosticIncidents((incident) => {
+                Queue.offerUnsafe(incidents, incident)
+              }),
+            ),
+            (unsubscribe) => Effect.sync(unsubscribe),
+          )
+          yield* Effect.forever(
+            Queue.take(incidents).pipe(
+              Effect.flatMap(reportIncident),
+              Effect.ignore,
+            ),
+          )
+        }),
+      ),
+    )
+
     return () => {
-      active = false
-      unsubscribe()
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [auth.session?.token, auth.session?.user_id, desktop])
 
@@ -89,67 +113,122 @@ export function DiagnosticErrorReporter() {
     const token = auth.session?.token
     const accountId = auth.session?.user_id
     if (!desktop || !token || !accountId) return
-    let active = true
-    let draining = false
 
-    const drainNativeIncidents = async () => {
-      if (draining) return
-      draining = true
-      let batchId: string | null = null
-      try {
-        const batch = await desktop.diagnostics.leaseNativeIncidents(accountId)
-        if (!batch) return
-        batchId = batch.id
-        if (!active || batch.accountId !== accountId) {
-          if (batch.accountId === accountId) {
-            await desktop.diagnostics.releaseNativeIncidents(accountId, batch.id)
+    type NativeIncidentBatch = Awaited<
+      ReturnType<typeof desktop.diagnostics.leaseNativeIncidents>
+    >
+    const leaseNativeIncidents = Effect.callback<
+      NativeIncidentBatch,
+      unknown
+    >((resume) => {
+      let cancelled = false
+      void desktop.diagnostics.leaseNativeIncidents(accountId).then(
+        (batch) => {
+          if (!cancelled) {
+            resume(Effect.succeed(batch))
+            return
           }
-          batchId = null
-          return
-        }
-        const incidents = batch.incidents
-        for (const incident of incidents) {
-          recordDiagnosticEvent(
-            'native-runtime',
-            'instability_detected',
-            incident,
-            {
-              dedupeKey: `native-runtime:${incident.identity ?? `${incident.scope}:${incident.triggerCode}`}`,
-              heartbeatMs: 60_000,
-            },
+          if (batch?.accountId !== accountId) return
+          Effect.runFork(
+            Effect.tryPromise({
+              try: () =>
+                desktop.diagnostics.releaseNativeIncidents(
+                  accountId,
+                  batch.id,
+                ),
+              catch: (cause) => cause,
+            }).pipe(Effect.ignore),
           )
-        }
-        const severity = highestIncidentSeverity(incidents)
-        const report = await sendDiagnosticReport({
-          token,
-          desktop,
-          area: incidents[0]?.area ?? 'native-runtime',
-          severity,
-          triggerCode: incidents[0]?.triggerCode ?? 'native_instability',
-          context: { incidents },
-          automatic: true,
-          automaticLease: true,
-        })
-        if (report) {
-          await desktop.diagnostics.acknowledgeNativeIncidents(accountId, batch.id)
-        } else {
-          await desktop.diagnostics.releaseNativeIncidents(accountId, batch.id)
-        }
-        batchId = null
-      } catch {
-        if (batchId) {
-          await desktop.diagnostics.releaseNativeIncidents(accountId, batchId).catch(() => false)
-        }
-      } finally {
-        draining = false
-      }
-    }
+        },
+        (cause) => {
+          if (!cancelled) resume(Effect.fail(cause))
+        },
+      )
+      return Effect.sync(() => {
+        cancelled = true
+      })
+    })
 
-    void drainNativeIncidents()
-    const interval = window.setInterval(() => void drainNativeIncidents(), 2_000)
+    const drainNativeIncidents = Effect.gen(function*() {
+      let settled = false
+      const batch = yield* leaseNativeIncidents
+      if (!batch) return
+
+      yield* Effect.acquireUseRelease(
+        Effect.succeed(batch),
+        (leasedBatch) =>
+          Effect.gen(function*() {
+            if (leasedBatch.accountId !== accountId) {
+              settled = true
+              return
+            }
+
+            const incidents = leasedBatch.incidents
+            yield* Effect.sync(() => {
+              for (const incident of incidents) {
+                recordDiagnosticEvent(
+                  'native-runtime',
+                  'instability_detected',
+                  incident,
+                  {
+                    dedupeKey: `native-runtime:${incident.identity ?? `${incident.scope}:${incident.triggerCode}`}`,
+                    heartbeatMs: 60_000,
+                  },
+                )
+              }
+            })
+            const severity = highestIncidentSeverity(incidents)
+            const report = yield* sendDiagnosticReport({
+              token,
+              desktop,
+              area: incidents[0]?.area ?? 'native-runtime',
+              severity,
+              triggerCode:
+                incidents[0]?.triggerCode ?? 'native_instability',
+              context: { incidents },
+              automatic: true,
+              automaticLease: true,
+            })
+            yield* Effect.uninterruptible(
+              Effect.tryPromise({
+                try: () =>
+                  report
+                    ? desktop.diagnostics.acknowledgeNativeIncidents(
+                        accountId,
+                        leasedBatch.id,
+                      )
+                    : desktop.diagnostics.releaseNativeIncidents(
+                        accountId,
+                        leasedBatch.id,
+                      ),
+                catch: (cause) => cause,
+              }),
+            )
+            settled = true
+          }),
+        (leasedBatch) =>
+          settled || leasedBatch.accountId !== accountId
+            ? Effect.void
+            : Effect.tryPromise({
+                try: () =>
+                  desktop.diagnostics.releaseNativeIncidents(
+                    accountId,
+                    leasedBatch.id,
+                  ),
+                catch: (cause) => cause,
+              }).pipe(Effect.ignore),
+      )
+    }).pipe(Effect.catch(() => Effect.void))
+
+    const fiber = Effect.runFork(
+      drainNativeIncidents.pipe(
+        Effect.repeat(Schedule.spaced(2_000)),
+        Effect.asVoid,
+      ),
+    )
+
     return () => {
-      active = false
-      window.clearInterval(interval)
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [auth.session?.token, auth.session?.user_id, desktop])
 

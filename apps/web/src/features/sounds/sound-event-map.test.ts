@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { UserVoiceState } from '@syrnike13/api-types/gateway-schema'
 
 import { soundEventFromGatewayEvent } from './sound-event-map'
 
@@ -8,6 +9,24 @@ const baseContext = {
   currentVoiceChannelId: 'voice-open',
   documentFocused: false,
   blockedUserIds: new Set<string>(),
+}
+
+function voiceState(
+  id: string,
+  overrides: Partial<UserVoiceState> = {},
+): UserVoiceState {
+  return {
+    id,
+    joined_at: 1,
+    self_mute: false,
+    self_deaf: false,
+    server_muted: false,
+    server_deafened: false,
+    screensharing: false,
+    camera: false,
+    version: 1,
+    ...overrides,
+  }
 }
 
 describe('gateway sound event mapping', () => {
@@ -44,6 +63,7 @@ describe('gateway sound event mapping', () => {
       soundEventFromGatewayEvent(
         {
           type: 'Message',
+          _id: 'message-self',
           channel: 'channel-other',
           author: 'user-self',
         },
@@ -55,6 +75,7 @@ describe('gateway sound event mapping', () => {
       soundEventFromGatewayEvent(
         {
           type: 'Message',
+          _id: 'message-blocked',
           channel: 'channel-other',
           author: 'blocked-user',
         },
@@ -66,6 +87,7 @@ describe('gateway sound event mapping', () => {
       soundEventFromGatewayEvent(
         {
           type: 'Message',
+          _id: 'message-focused',
           channel: 'channel-open',
           author: 'user-other',
         },
@@ -79,8 +101,12 @@ describe('gateway sound event mapping', () => {
       soundEventFromGatewayEvent(
         {
           type: 'VoiceCallRinging',
+          channel_id: 'voice-open',
           initiator_id: 'user-other',
+          started_at: 1,
+          expires_at: 2,
           recipients: ['user-self'],
+          declined_recipients: [],
         },
         baseContext,
       ),
@@ -90,7 +116,12 @@ describe('gateway sound event mapping', () => {
       soundEventFromGatewayEvent(
         {
           type: 'VoiceCallRinging',
+          channel_id: 'voice-open',
           initiator_id: 'user-self',
+          started_at: 1,
+          expires_at: 2,
+          recipients: [],
+          declined_recipients: [],
         },
         baseContext,
       ),
@@ -102,6 +133,8 @@ describe('gateway sound event mapping', () => {
           type: 'VoiceCallActive',
           channel_id: 'voice-open',
           initiator_id: 'user-other',
+          started_at: 1,
+          declined_recipients: [],
         },
         baseContext,
       ),
@@ -122,7 +155,7 @@ describe('gateway sound event mapping', () => {
         {
           type: 'VoiceChannelJoin',
           id: 'voice-open',
-          state: { id: 'user-other' },
+          state: voiceState('user-other'),
         },
         baseContext,
       ),
@@ -132,7 +165,10 @@ describe('gateway sound event mapping', () => {
       soundEventFromGatewayEvent(
         {
           type: 'MessageReact',
+          id: 'message-1',
+          channel_id: 'channel-1',
           user_id: 'user-other',
+          emoji_id: 'emoji-1',
         },
         baseContext,
       ),
@@ -143,10 +179,12 @@ describe('gateway sound event mapping', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: 'voice-open',
-          state: { id: 'user-other', screensharing: true },
-          previous_state: { screensharing: false },
+          state: voiceState('user-other', { screensharing: true }),
         },
-        baseContext,
+        {
+          ...baseContext,
+          previousVoiceState: { screensharing: false, camera: false },
+        },
       ),
     ).toBe('screen_share.started')
   })
@@ -157,10 +195,12 @@ describe('gateway sound event mapping', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: 'voice-other',
-          state: { id: 'user-other', screensharing: true },
-          previous_state: { screensharing: false },
+          state: voiceState('user-other', { screensharing: true }),
         },
-        baseContext,
+        {
+          ...baseContext,
+          previousVoiceState: { screensharing: false, camera: false },
+        },
       ),
     ).toBeNull()
 
@@ -169,8 +209,7 @@ describe('gateway sound event mapping', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: 'voice-open',
-          state: { id: 'user-other', screensharing: true },
-          previous_state: { screensharing: false },
+          state: voiceState('user-other', { screensharing: true }),
         },
         { ...baseContext, currentVoiceChannelId: null },
       ),
@@ -183,7 +222,7 @@ describe('gateway sound event mapping', () => {
         {
           type: 'VoiceChannelJoin',
           id: 'voice-other',
-          state: { id: 'user-other' },
+          state: voiceState('user-other'),
         },
         baseContext,
       ),
@@ -207,6 +246,7 @@ describe('gateway sound event mapping', () => {
           user: 'user-other',
           from: 'voice-other',
           to: 'voice-open',
+          state: voiceState('user-other'),
         },
         baseContext,
       ),
@@ -219,6 +259,7 @@ describe('gateway sound event mapping', () => {
           user: 'user-other',
           from: 'voice-away',
           to: 'voice-other',
+          state: voiceState('user-other'),
         },
         baseContext,
       ),
@@ -232,6 +273,8 @@ describe('gateway sound event mapping', () => {
           type: 'VoiceCallActive',
           channel_id: 'voice-other',
           initiator_id: 'user-other',
+          started_at: 1,
+          declined_recipients: [],
         },
         baseContext,
       ),
@@ -243,6 +286,7 @@ describe('gateway sound event mapping', () => {
           type: 'VoiceCallActive',
           channel_id: 'voice-open',
           initiator_id: 'user-other',
+          started_at: 1,
           declined_recipients: ['user-self'],
         },
         baseContext,
@@ -266,7 +310,7 @@ describe('gateway sound event mapping', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: 'voice-open',
-          state: { id: 'user-other', screensharing: true },
+          state: voiceState('user-other', { screensharing: true }),
         },
         {
           ...baseContext,
@@ -280,7 +324,7 @@ describe('gateway sound event mapping', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: 'voice-open',
-          state: { id: 'user-other', screensharing: true },
+          state: voiceState('user-other', { screensharing: true }),
         },
         {
           ...baseContext,
@@ -294,7 +338,7 @@ describe('gateway sound event mapping', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: 'voice-open',
-          state: { id: 'user-other', camera: true },
+          state: voiceState('user-other', { camera: true }),
         },
         baseContext,
       ),
@@ -307,10 +351,16 @@ describe('gateway sound event mapping', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: 'voice-open',
-          state: { id: 'user-other', self_mute: true },
-          previous_state: { self_mute: false },
+          state: voiceState('user-other', { self_mute: true }),
         },
-        baseContext,
+        {
+          ...baseContext,
+          previousVoiceState: {
+            screensharing: false,
+            camera: false,
+            selfMuted: false,
+          },
+        },
       ),
     ).toBeNull()
 
@@ -319,10 +369,16 @@ describe('gateway sound event mapping', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: 'voice-open',
-          state: { id: 'user-other', self_deaf: true },
-          previous_state: { self_deaf: false },
+          state: voiceState('user-other', { self_deaf: true }),
         },
-        baseContext,
+        {
+          ...baseContext,
+          previousVoiceState: {
+            screensharing: false,
+            camera: false,
+            selfDeafened: false,
+          },
+        },
       ),
     ).toBeNull()
   })
@@ -333,10 +389,16 @@ describe('gateway sound event mapping', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: 'voice-open',
-          state: { id: 'user-self', self_mute: true },
-          previous_state: { self_mute: false },
+          state: voiceState('user-self', { self_mute: true }),
         },
-        baseContext,
+        {
+          ...baseContext,
+          previousVoiceState: {
+            screensharing: false,
+            camera: false,
+            selfMuted: false,
+          },
+        },
       ),
     ).toBe('voice.mute')
 
@@ -345,10 +407,16 @@ describe('gateway sound event mapping', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: 'voice-open',
-          state: { id: 'user-self', self_deaf: false },
-          previous_state: { self_deaf: true },
+          state: voiceState('user-self', { self_deaf: false }),
         },
-        baseContext,
+        {
+          ...baseContext,
+          previousVoiceState: {
+            screensharing: false,
+            camera: false,
+            selfDeafened: true,
+          },
+        },
       ),
     ).toBe('voice.undeafen')
 
@@ -357,8 +425,7 @@ describe('gateway sound event mapping', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: 'voice-other',
-          state: { id: 'user-self', self_mute: true },
-          previous_state: { self_mute: false },
+          state: voiceState('user-self', { self_mute: true }),
         },
         baseContext,
       ),

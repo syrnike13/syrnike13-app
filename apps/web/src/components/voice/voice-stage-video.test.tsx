@@ -20,6 +20,13 @@ function videoTrackStub(trackSid = 'TR_screen') {
   return { track }
 }
 
+function liveKitStageTrack(track: ReturnType<typeof videoTrackStub>['track']) {
+  return {
+    backend: 'livekit' as const,
+    track: track as never,
+  }
+}
+
 function nativeTrackStub(trackSid = 'local-screen:session') {
   const detach = vi.fn()
   const attachCanvas = vi.fn(
@@ -62,7 +69,7 @@ describe('VoiceStageVideo', () => {
     const first = render(
       <VoiceStageVideo
         mediaId="remote-user:screen"
-        track={track as unknown as Parameters<typeof VoiceStageVideo>[0]['track']}
+        track={liveKitStageTrack(track)}
       />,
     )
 
@@ -85,7 +92,7 @@ describe('VoiceStageVideo', () => {
     const view = render(
       <VoiceStageVideo
         mediaId="remote-user:screen"
-        track={track as unknown as Parameters<typeof VoiceStageVideo>[0]['track']}
+        track={liveKitStageTrack(track)}
       />,
       { container: host },
     )
@@ -108,7 +115,7 @@ describe('VoiceStageVideo', () => {
     const view = render(
       <VoiceStageVideo
         mediaId="local-user:screen"
-        track={track as unknown as Parameters<typeof VoiceStageVideo>[0]['track']}
+        track={{ backend: 'native', track }}
         onVideoSizeChange={onVideoSizeChange}
       />,
     )
@@ -134,14 +141,14 @@ describe('VoiceStageVideo', () => {
     const view = render(
       <VoiceStageVideo
         mediaId="local-user:screen"
-        track={first.track as unknown as Parameters<typeof VoiceStageVideo>[0]['track']}
+        track={{ backend: 'native', track: first.track }}
       />,
     )
 
     view.rerender(
       <VoiceStageVideo
         mediaId="local-user:screen"
-        track={second.track as unknown as Parameters<typeof VoiceStageVideo>[0]['track']}
+        track={{ backend: 'native', track: second.track }}
       />,
     )
 

@@ -2,6 +2,7 @@ import { createFileRoute, Link, redirect } from '@tanstack/react-router'
 import { useForm } from '@tanstack/react-form'
 import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
@@ -15,8 +16,8 @@ import {
   CardTitle,
 } from '#/components/ui/card'
 import { Label } from '#/components/ui/label'
-import { confirmPasswordReset } from '#/features/api/account-api'
-import { resetPasswordSchema } from '#/features/auth/schemas'
+import { confirmPasswordResetEffect } from '#/features/api/account-api'
+import { resetPasswordSchema, validateForm } from '#/features/auth/schemas'
 import { loadSession } from '#/lib/session'
 
 export const Route = createFileRoute('/login/reset/$token')({
@@ -35,23 +36,30 @@ function ResetConfirmPage() {
   const form = useForm({
     defaultValues: { password: '', confirm: '' },
     onSubmit: async ({ value }) => {
-      const parsed = resetPasswordSchema.safeParse(value)
+      const parsed = validateForm(resetPasswordSchema, value)
       if (!parsed.success) {
-        toast.error(parsed.error.issues[0]?.message ?? 'Проверьте поля')
+        toast.error(parsed.issues[0]?.message ?? 'Проверьте поля')
         return
       }
 
       setSubmitting(true)
-      try {
-        await confirmPasswordReset(token, parsed.data.password)
-        toast.success('Пароль обновлён')
-      } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : 'Не удалось сменить пароль',
-        )
-      } finally {
-        setSubmitting(false)
-      }
+      await Effect.runPromise(
+        confirmPasswordResetEffect(token, parsed.data.password, true).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => toast.success('Пароль обновлён')),
+          ),
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось сменить пароль',
+              )
+            }),
+          ),
+          Effect.ensuring(Effect.sync(() => setSubmitting(false))),
+        ),
+      )
     },
   })
 

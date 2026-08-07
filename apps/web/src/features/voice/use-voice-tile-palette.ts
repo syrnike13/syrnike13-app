@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { User } from '@syrnike13/api-types'
+import { Effect, Fiber } from 'effect'
 
 import {
   fallbackTilePalette,
   getCachedTilePalette,
-  loadAvatarTilePalette,
+  loadAvatarTilePaletteEffect,
   type TilePalette,
 } from '#/lib/avatar-tile-palette'
 import { userAvatarUrl } from '#/lib/media'
@@ -37,14 +38,19 @@ export function useVoiceTilePalette(
       return
     }
 
-    let active = true
-    void loadAvatarTilePalette(avatarId, avatarUrl).then((extracted) => {
-      if (!active) return
-      setPalette(extracted ?? fallbackTilePalette(seed))
-    })
+    const fiber = Effect.runFork(
+      loadAvatarTilePaletteEffect(avatarId, avatarUrl).pipe(
+        Effect.tap((extracted) =>
+          Effect.sync(() => {
+            setPalette(extracted ?? fallbackTilePalette(seed))
+          }),
+        ),
+        Effect.ignore,
+      ),
+    )
 
     return () => {
-      active = false
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [avatarId, avatarUrl, seed])
 

@@ -1,4 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
+import { Effect } from 'effect'
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
@@ -22,7 +23,7 @@ import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { listMutualServers, listServerChannels } from '#/features/sync/selectors'
 import { useMutualServerMembersSync } from '#/features/sync/mutual-server-members-sync'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { writeClipboardText } from '#/lib/clipboard'
+import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { canMessageUser } from '#/features/authorization/authorization'
 
 type UserGlobalProfileDialogProps = {
@@ -68,14 +69,16 @@ export function UserGlobalProfileDialog({
     if (!token || !canDirectMessage) return
     setBusy(true)
     try {
-      await openDirectMessageChannel(token, user._id, (channelId) => {
-        close()
-        return navigate({
-          to: `${prefix}/c/$channelId`,
-          params: { channelId },
-          search: { m: undefined },
-        })
-      })
+      await Effect.runPromise(
+        openDirectMessageChannel(token, user._id, (channelId) => {
+          close()
+          return navigate({
+            to: `${prefix}/c/$channelId`,
+            params: { channelId },
+            search: { m: undefined },
+          })
+        }),
+      )
     } catch {
       // dm-actions already shows the concrete error toast.
     } finally {
@@ -89,7 +92,7 @@ export function UserGlobalProfileDialog({
     if (!window.confirm(`Заблокировать @${user.username}?`)) return
     setBusy(true)
     try {
-      await blockUserRelationship(token, user._id)
+      await Effect.runPromise(blockUserRelationship(token, user._id))
       close()
     } catch {
       // friend-actions already shows the concrete error toast.
@@ -103,7 +106,7 @@ export function UserGlobalProfileDialog({
     if (!token || isSelf) return
     setBusy(true)
     try {
-      await unblockBlockedUser(token, user._id)
+      await Effect.runPromise(unblockBlockedUser(token, user._id))
     } catch {
       // friend-actions already shows the concrete error toast.
     } finally {
@@ -113,7 +116,7 @@ export function UserGlobalProfileDialog({
 
   async function copyUserId() {
     try {
-      await writeClipboardText(user._id)
+      await Effect.runPromise(writeClipboardTextEffect(user._id))
       toast.success('ID скопирован')
     } catch {
       toast.error('Не удалось скопировать')

@@ -11,6 +11,7 @@ import {
   Track,
   type Room,
   type RemoteParticipant,
+  type RemoteTrack,
   type RemoteTrackPublication,
 } from 'livekit-client'
 import {
@@ -19,6 +20,7 @@ import {
   type VoiceCommand,
   type VoiceSnapshot,
 } from '@syrnike13/platform'
+import { Effect, Fiber, Schedule } from 'effect'
 import { toast } from 'sonner'
 
 import { useAuth } from '#/features/auth/auth-context'
@@ -80,18 +82,21 @@ import {
   VoiceTelemetryContext,
   type VoiceTelemetryContextValue,
 } from '#/features/voice/voice-telemetry-context'
-import type {
-  VoiceStageMediaItem,
+import {
+  setVoiceStageMediaPublicationSubscribed,
+  type VoiceStageMediaItem,
 } from '#/features/voice/voice-context'
-import { buildStageItems } from '#/features/voice/voice-stage-items'
+import {
+  buildStageItems,
+  createStageRoomFromLiveKit,
+} from '#/features/voice/voice-stage-items'
 import { withConnectingLocalAvatarItem } from '#/features/voice/voice-connecting-preview'
 import {
   attachRtcRatesToScreenShares,
   appendRtcDebugSample,
-  collectVoiceRtcDebugSnapshot,
+  collectVoiceRtcDebugSnapshotEffect,
   deriveRtcRates,
   type RtcDebugSnapshot,
-  type RtcDebugStageMediaItem,
 } from '#/features/voice/voice-rtc-debug'
 import { playUiSound } from '#/features/sounds/sound-player'
 import {
@@ -111,6 +116,7 @@ type VoiceClient = {
   subscribe(listener: (snapshot: VoiceSnapshot) => void): () => void
   room(): Room | null
   subscribeRoom(listener: (room: Room | null) => void): () => void
+  disposeEffect(): Effect.Effect<void, unknown>
   dispose(): Promise<void> | void
 }
 
@@ -191,6 +197,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
   const nativeVideoDemandRef = useRef(new Map<string, boolean>())
   const nativeDemandRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const browserSubscriptionErrorsRef = useRef(new Map<string, string>())
   const setNativeVideoDemand = useCallback((
     sessionId: string,
     generation: number,
@@ -201,22 +208,32 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const demandKey = nativeVideoDemandKey(sessionId, generation, trackId)
     nativeVideoDemandRef.current.set(demandKey, demanded)
     if (demanded) nativeVideoRegistry.clearPublicationError(trackId)
-    void desktop.media.setRemoteVideoDemand(
-      sessionId,
-      generation,
-      trackId,
-      demanded,
-    ).catch(() => {
-      if (nativeVideoDemandRef.current.get(demandKey) === demanded) {
-        nativeVideoDemandRef.current.delete(demandKey)
-      }
-      if (nativeDemandRetryTimerRef.current == null) {
-        nativeDemandRetryTimerRef.current = setTimeout(() => {
-          nativeDemandRetryTimerRef.current = null
-          setNativeDemandRetryRevision((revision) => revision + 1)
-        }, 250)
-      }
-    })
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () =>
+          desktop.media.setRemoteVideoDemand(
+            sessionId,
+            generation,
+            trackId,
+            demanded,
+          ),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.catch(() =>
+          Effect.sync(() => {
+            if (nativeVideoDemandRef.current.get(demandKey) === demanded) {
+              nativeVideoDemandRef.current.delete(demandKey)
+            }
+            if (nativeDemandRetryTimerRef.current == null) {
+              nativeDemandRetryTimerRef.current = setTimeout(() => {
+                nativeDemandRetryTimerRef.current = null
+                setNativeDemandRetryRevision((revision) => revision + 1)
+              }, 250)
+            }
+          }),
+        ),
+      ),
+    )
   }, [desktop])
   const notifiedScreenViewerIdsRef = useRef(new Set<string>())
   const previousFailureRef = useRef<string | null>(null)
@@ -232,12 +249,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (!desktop) return
     const fullscreen = stageFullscreen && focusedMediaId ===
       stageMediaItemId(auth.user?._id ?? '', 'screen')
-    void desktop.media.setLocalScreenPreviewDemand({
-      demanded: localScreenPreviewActive && localScreenPreviewConsumerCount > 0,
-      width: fullscreen ? 1920 : 1280,
-      height: fullscreen ? 1080 : 720,
-      fps: localScreenPreviewFps,
-    }).catch(() => undefined)
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () =>
+          desktop.media.setLocalScreenPreviewDemand({
+            demanded:
+              localScreenPreviewActive && localScreenPreviewConsumerCount > 0,
+            width: fullscreen ? 1920 : 1280,
+            height: fullscreen ? 1080 : 720,
+            fps: localScreenPreviewFps,
+          }),
+        catch: (cause) => cause,
+      }).pipe(Effect.ignore),
+    )
   }, [
     desktop,
     auth.user?._id,
@@ -251,12 +275,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!desktop) return
     return () => {
-      void desktop.media.setLocalScreenPreviewDemand({
-        demanded: false,
-        width: 1280,
-        height: 720,
-        fps: localScreenPreviewFps,
-      }).catch(() => undefined)
+      Effect.runFork(
+        Effect.tryPromise({
+          try: () =>
+            desktop.media.setLocalScreenPreviewDemand({
+              demanded: false,
+              width: 1280,
+              height: 720,
+              fps: localScreenPreviewFps,
+            }),
+          catch: (cause) => cause,
+        }).pipe(Effect.ignore),
+      )
     }
   }, [desktop, localScreenPreviewFps])
 
@@ -297,7 +327,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       unsubscribeSnapshot()
       unsubscribeRoom()
       if (clientRef.current === client) clientRef.current = null
-      void client.dispose()
+      Effect.runFork(client.disposeEffect())
     }
   }, [auth.user?._id, desktop])
 
@@ -368,11 +398,31 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!room) return
+    browserSubscriptionErrorsRef.current.clear()
     const refresh = () => setRoomRevision((revision) => revision + 1)
+    const onTrackSubscribed = (
+      _track: RemoteTrack,
+      publication: RemoteTrackPublication,
+    ) => {
+      browserSubscriptionErrorsRef.current.delete(publication.trackSid)
+      refresh()
+    }
+    const onTrackSubscriptionFailed = (
+      trackSid: string,
+      _participant: RemoteParticipant,
+      reason?: unknown,
+    ) => {
+      browserSubscriptionErrorsRef.current.set(
+        trackSid,
+        subscriptionFailureDetail(reason),
+      )
+      refresh()
+    }
     const onTrackPublished = (
       publication: RemoteTrackPublication,
       participant: RemoteParticipant,
     ) => {
+      browserSubscriptionErrorsRef.current.delete(publication.trackSid)
       if (publication.source === Track.Source.ScreenShare) {
         const mediaId = stageMediaItemId(
           baseVoiceIdentity(participant.identity),
@@ -387,6 +437,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       publication: RemoteTrackPublication,
       participant: RemoteParticipant,
     ) => {
+      browserSubscriptionErrorsRef.current.delete(publication.trackSid)
       if (publication.source === Track.Source.ScreenShare) {
         const mediaId = stageMediaItemId(
           baseVoiceIdentity(participant.identity),
@@ -398,9 +449,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
     room.on(RoomEvent.ParticipantConnected, refresh)
     room.on(RoomEvent.ParticipantDisconnected, refresh)
-    room.on(RoomEvent.TrackSubscribed, refresh)
+    room.on(RoomEvent.TrackSubscribed, onTrackSubscribed)
     room.on(RoomEvent.TrackUnsubscribed, refresh)
-    room.on(RoomEvent.TrackSubscriptionFailed, refresh)
+    room.on(RoomEvent.TrackSubscriptionFailed, onTrackSubscriptionFailed)
     room.on(RoomEvent.TrackPublished, onTrackPublished)
     room.on(RoomEvent.TrackUnpublished, onTrackUnpublished)
     room.on(RoomEvent.TrackMuted, refresh)
@@ -408,9 +459,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     return () => {
       room.off(RoomEvent.ParticipantConnected, refresh)
       room.off(RoomEvent.ParticipantDisconnected, refresh)
-      room.off(RoomEvent.TrackSubscribed, refresh)
+      room.off(RoomEvent.TrackSubscribed, onTrackSubscribed)
       room.off(RoomEvent.TrackUnsubscribed, refresh)
-      room.off(RoomEvent.TrackSubscriptionFailed, refresh)
+      room.off(RoomEvent.TrackSubscriptionFailed, onTrackSubscriptionFailed)
       room.off(RoomEvent.TrackPublished, onTrackPublished)
       room.off(RoomEvent.TrackUnpublished, onTrackUnpublished)
       room.off(RoomEvent.TrackMuted, refresh)
@@ -420,6 +471,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
       screenRepublishGraceTimersRef.current.clear()
       pendingScreenWatchIdsRef.current.clear()
+      browserSubscriptionErrorsRef.current.clear()
     }
   }, [cancelScreenRepublishGrace, preserveScreenWatchDuringRepublish, room])
 
@@ -429,17 +481,31 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         (participant) => baseVoiceIdentity(participant.identity) === screenOwnerId,
       )
       if (!owner) return false
-      void activeRoom.localParticipant
-        .publishData(createScreenViewerSoundPayload({ action, screenOwnerId }), {
-          reliable: true,
-          destinationIdentities: [owner.identity],
-          topic: SCREEN_VIEWER_SOUND_TOPIC,
-        })
-        .catch((error) => {
-          if (import.meta.env.DEV) {
-            console.warn('Failed to publish screen viewer sound intent', error)
-          }
-        })
+      Effect.runFork(
+        Effect.tryPromise({
+          try: () =>
+            activeRoom.localParticipant.publishData(
+              createScreenViewerSoundPayload({ action, screenOwnerId }),
+              {
+                reliable: true,
+                destinationIdentities: [owner.identity],
+                topic: SCREEN_VIEWER_SOUND_TOPIC,
+              },
+            ),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              if (import.meta.env.DEV) {
+                console.warn(
+                  'Failed to publish screen viewer sound intent',
+                  error,
+                )
+              }
+            }),
+          ),
+        ),
+      )
       return true
     },
     [],
@@ -681,15 +747,25 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       return
     }
     if (desktop) {
-      void desktop.media
-        .openDisplayPicker(readVoicePreferences().screenShareAudio)
-        .catch((error) => {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : 'Не удалось открыть выбор демонстрации',
-          )
-        })
+      Effect.runFork(
+        Effect.tryPromise({
+          try: () =>
+            desktop.media.openDisplayPicker(
+              readVoicePreferences().screenShareAudio,
+            ),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось открыть выбор демонстрации',
+              )
+            }),
+          ),
+        ),
+      )
       return
     }
     const prefs = readVoicePreferences()
@@ -777,7 +853,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const stageMediaItems = useMemo(() => {
     const watchedRemoteScreenIds = new Set(viewedRemoteScreenIds)
     const items = buildStageItems({
-      room,
+      room: room
+        ? createStageRoomFromLiveKit(
+            room,
+            browserSubscriptionErrorsRef.current,
+          )
+        : null,
       participants,
       currentUserId: auth.user?._id ?? null,
       filters: stageMediaFilters,
@@ -940,18 +1021,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setRtcDebugHistory([])
       return
     }
-    let active = true
-    let sampling = false
-
-    const sample = async () => {
-      if (sampling) return
-      sampling = true
-      try {
-        const current = await collectVoiceRtcDebugSnapshot(
-          room,
-          stageMediaItemsRef.current as RtcDebugStageMediaItem[],
-        )
-        if (!active) return
+    const sample = collectVoiceRtcDebugSnapshotEffect(
+      room,
+      stageMediaItemsRef.current,
+    ).pipe(
+      Effect.tap((current) =>
+        Effect.sync(() => {
         const previous = rtcDebugSnapshotRef.current
         const next = attachRtcRatesToScreenShares(
           previous
@@ -1017,19 +1092,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           setRtcDebugSnapshot(next)
           setRtcDebugHistory((history) => appendRtcDebugSample(history, next))
         }
-      } finally {
-        sampling = false
-      }
-    }
-
-    void sample()
-    const interval = window.setInterval(
-      () => void sample(),
-      rtcDebugEnabled ? 1_000 : 5_000,
+        }),
+      ),
+      Effect.catch(() => Effect.void),
+    )
+    const fiber = Effect.runFork(
+      sample.pipe(
+        Effect.repeat(
+          Schedule.spaced(rtcDebugEnabled ? 1_000 : 5_000),
+        ),
+      ),
     )
     return () => {
-      active = false
-      window.clearInterval(interval)
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [auth.session?.token, desktop, room, rtcDebugEnabled, snapshot.connection])
 
@@ -1122,7 +1197,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           )
         }
       } else {
-        item?.publication?.setSubscribed?.(subscribed)
+        setVoiceStageMediaPublicationSubscribed(
+          item?.publication,
+          subscribed,
+        )
       }
       setRoomRevision((revision) => revision + 1)
     },
@@ -1266,17 +1344,23 @@ function createBrowserVoiceClient(getCurrentUserId: () => string | null): VoiceC
     rtcEngine: 'web',
     clientInstanceId: `web-${crypto.randomUUID()}`,
   })
+  const disposeEffect = Effect.fn('voice.disposeBrowserVoiceClient')(
+    function*() {
+      yield* director.disposeEffect()
+      yield* engine.disposeEffect()
+      authority.dispose()
+    },
+  )
   return {
     dispatch: (command) => director.dispatch(command),
     snapshot: () => director.snapshot(),
     subscribe: (listener) => director.subscribe(listener),
     room: () => engine.room(),
     subscribeRoom: (listener) => engine.subscribeRoom(listener),
-    async dispose() {
-      await director.dispose()
-      await engine.dispose()
-      authority.dispose()
+    dispose() {
+      return Effect.runPromise(disposeEffect())
     },
+    disposeEffect,
   }
 }
 
@@ -1285,21 +1369,52 @@ function createDesktopVoiceClient(
 ): VoiceClient {
   let snapshot = INITIAL_SNAPSHOT
   const listeners = new Set<(value: VoiceSnapshot) => void>()
+  let pushedSnapshotRevision = 0
   const unsubscribe = desktop.voice.onSnapshot((next) => {
+    pushedSnapshotRevision += 1
     snapshot = next
     for (const listener of listeners) listener(next)
   })
-  void desktop.voice.getSnapshot().then((next) => {
-    snapshot = next
-    for (const listener of listeners) listener(next)
-  })
+  const initialSnapshotRevision = pushedSnapshotRevision
+  const initialSnapshotFiber = Effect.runFork(
+    Effect.tryPromise({
+      try: () => desktop.voice.getSnapshot(),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.tap((next) =>
+        Effect.sync(() => {
+          if (pushedSnapshotRevision !== initialSnapshotRevision) return
+          snapshot = next
+          for (const listener of listeners) listener(next)
+        }),
+      ),
+      Effect.ignore,
+    ),
+  )
+  const disposeEffect = () =>
+    Effect.sync(() => {
+      unsubscribe()
+      Effect.runFork(Fiber.interrupt(initialSnapshotFiber))
+      listeners.clear()
+    })
   return {
     dispatch(command) {
-      void desktop.voice.dispatch(command).catch((error) => {
-        toast.error(
-          error instanceof Error ? error.message : 'Native voice command failed',
-        )
-      })
+      Effect.runFork(
+        Effect.tryPromise({
+          try: () => desktop.voice.dispatch(command),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Native voice command failed',
+              )
+            }),
+          ),
+        ),
+      )
     },
     snapshot: () => snapshot,
     subscribe(listener) {
@@ -1313,9 +1428,9 @@ function createDesktopVoiceClient(
       return () => undefined
     },
     dispose() {
-      unsubscribe()
-      listeners.clear()
+      Effect.runSync(disposeEffect())
     },
+    disposeEffect,
   }
 }
 
@@ -1421,4 +1536,9 @@ function screenQuality(quality: string) {
         audioBitrate: 128_000,
       }
   }
+}
+
+function subscriptionFailureDetail(reason: unknown) {
+  if (reason == null) return ''
+  return reason instanceof Error ? reason.message : String(reason)
 }

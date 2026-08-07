@@ -1,11 +1,16 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import {
   IPC,
+  LocalScreenPreviewDemandSchema,
+  NativeMediaDeviceKindSchema,
+  RemoteVideoDemandSchema,
   type DesktopDisplayMediaRequest,
   type DesktopDisplayMediaSource,
 } from '@syrnike13/platform'
+import { Effect, Fiber, Schema } from 'effect'
 
 import type { NativeMediaController } from './native-media-controller'
+import { decodeIpcInput } from '../ipc-schema'
 
 const NATIVE_PICKER_TIMEOUT_MS = 120_000
 
@@ -13,7 +18,7 @@ export type PendingNativePicker = {
   id: string
   audioRequested: boolean
   sources: DesktopDisplayMediaSource[]
-  timeout: ReturnType<typeof setTimeout>
+  timeout: Fiber.Fiber<void, never>
 }
 
 let registered = false
@@ -37,7 +42,7 @@ export function setPendingNativePicker(next: PendingNativePicker | null) {
 
 export function clearPendingNativePicker() {
   if (!pendingPicker) return
-  clearTimeout(pendingPicker.timeout)
+  Effect.runFork(Fiber.interrupt(pendingPicker.timeout))
   pendingPicker = null
 }
 
@@ -85,12 +90,15 @@ export function registerNativeMediaIpc(
 
   ipcMain.handle(
     IPC.mediaListDevices,
-    async (
-      event,
-      kind: 'audioinput' | 'audiooutput' | 'videoinput',
-    ) => {
-    if (!isTrustedSender(event, getWindow)) return []
-    return controller.listDevices(kind)
+    async (event, input: unknown) => {
+      if (!isTrustedSender(event, getWindow)) return []
+      const kind = decodeIpcInput(
+        IPC.mediaListDevices,
+        'kind',
+        NativeMediaDeviceKindSchema,
+        input,
+      )
+      return controller.listDevices(kind)
     },
   )
 
@@ -112,9 +120,31 @@ export function registerNativeMediaIpc(
 
   ipcMain.handle(
     IPC.mediaSetRemoteVideoDemand,
-    async (event, sessionId: string, generation: number, trackId: string, demanded: boolean) => {
+    async (
+      event,
+      sessionInput: unknown,
+      generationInput: unknown,
+      trackInput: unknown,
+      demandedInput: unknown,
+    ) => {
       assertTrusted(event, getWindow, 'remote video demand')
-      return controller.setRemoteVideoDemand(sessionId, generation, trackId, demanded)
+      const demand = decodeIpcInput(
+        IPC.mediaSetRemoteVideoDemand,
+        'demand',
+        RemoteVideoDemandSchema,
+        {
+          sessionId: sessionInput,
+          generation: generationInput,
+          trackId: trackInput,
+          demanded: demandedInput,
+        },
+      )
+      return controller.setRemoteVideoDemand(
+        demand.sessionId,
+        demand.generation,
+        demand.trackId,
+        demand.demanded,
+      )
     },
   )
 
@@ -133,19 +163,28 @@ export function registerNativeMediaIpc(
 
   ipcMain.handle(
     IPC.mediaSetLocalScreenPreviewDemand,
-    async (event, demand: { demanded: boolean; width: number; height: number; fps: number }) => {
+    async (event, input: unknown) => {
       assertTrusted(event, getWindow, 'local screen preview demand')
-      if (!demand || typeof demand !== 'object') {
-        throw new Error('Local screen preview demand is required')
-      }
+      const demand = decodeIpcInput(
+        IPC.mediaSetLocalScreenPreviewDemand,
+        'demand',
+        LocalScreenPreviewDemandSchema,
+        input,
+      )
       return controller.setLocalScreenPreviewDemand(demand)
     },
   )
 
   ipcMain.handle(
     IPC.mediaOpenDisplayPicker,
-    async (event, audioRequested: boolean) => {
+    async (event, input: unknown) => {
       assertTrusted(event, getWindow, 'picker')
+      const audioRequested = decodeIpcInput(
+        IPC.mediaOpenDisplayPicker,
+        'audioRequested',
+        Schema.Boolean,
+        input,
+      )
       const win = getWindow()
       if (!win || win.isDestroyed()) {
         throw new Error('Desktop window is not available')
@@ -157,14 +196,23 @@ export function registerNativeMediaIpc(
       clearPendingNativePicker()
       const request: DesktopDisplayMediaRequest = {
         id: crypto.randomUUID(),
-        audioRequested: Boolean(audioRequested),
+        audioRequested,
         nativeVideo: true,
       }
+      const timeout = Effect.runFork(
+        Effect.sleep(NATIVE_PICKER_TIMEOUT_MS).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              if (pendingPicker?.id === request.id) pendingPicker = null
+            }),
+          ),
+        ),
+      )
       pendingPicker = {
         id: request.id,
         audioRequested: request.audioRequested,
         sources: [],
-        timeout: setTimeout(clearPendingNativePicker, NATIVE_PICKER_TIMEOUT_MS),
+        timeout,
       }
       win.webContents.send(IPC.mediaRequest, request)
       return request

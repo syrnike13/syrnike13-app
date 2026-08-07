@@ -45,8 +45,6 @@ export class VoiceGateStage {
   #lastGateChangeAt = 0
   #outputTrack: MediaStreamTrack | null = null
   #onMetrics: ((metrics: VoiceGateMetrics) => void) | null = null
-  #resolveCalibrated: (() => void) | null = null
-  #calibratedPromise: Promise<void> | null = null
 
   constructor(thresholdDb: number) {
     this.#manualThresholdDb = normalizeVoiceGateThresholdDb(thresholdDb)
@@ -82,9 +80,6 @@ export class VoiceGateStage {
     this.#autoDynamic = options?.autoDynamic ?? false
     this.#onMetrics = options?.onMetrics ?? null
     this.#quietLevelHistory = []
-    this.#calibratedPromise = new Promise((resolve) => {
-      this.#resolveCalibrated = resolve
-    })
 
     if (options?.manualThresholdDb != null) {
       this.#manualThresholdDb = normalizeVoiceGateThresholdDb(
@@ -96,14 +91,9 @@ export class VoiceGateStage {
     }
 
     gain.gain.value = 1
-    this.#finishCalibrationReady()
     this.#scheduleTick()
 
     return this.#outputTrack
-  }
-
-  whenCalibrated() {
-    return this.#calibratedPromise ?? Promise.resolve()
   }
 
   updateOptions(options: VoiceGateStageOptions) {
@@ -145,13 +135,6 @@ export class VoiceGateStage {
     this.#lastGateChangeAt = 0
     this.#quietLevelHistory = []
     this.#onMetrics = null
-    this.#resolveCalibrated = null
-    this.#calibratedPromise = null
-  }
-
-  #finishCalibrationReady() {
-    this.#resolveCalibrated?.()
-    this.#resolveCalibrated = null
   }
 
   #scheduleTick() {

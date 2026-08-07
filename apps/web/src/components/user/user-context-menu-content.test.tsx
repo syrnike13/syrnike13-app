@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import type { Channel, User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserContextMenuContent } from './user-context-menu-content'
@@ -19,23 +20,13 @@ const serverApiMocks = vi.hoisted(() => ({
   editServerMember: vi.fn(),
   kickServerMember: vi.fn(),
 }))
-const openDirectMessageChannelMock = vi.hoisted(() =>
-  vi.fn(
-    async (
-      _token: string,
-      _userId: string,
-      navigateToChannel: (channelId: string) => Promise<void> | void,
-    ) => {
-      await navigateToChannel('dm-1')
-      return {
-        _id: 'dm-1',
-        channel_type: 'DirectMessage',
-        active: true,
-        recipients: ['current-user', '01JVOICETARGET0000001'],
-      } as Channel
-    },
-  ),
-)
+const openDirectMessageChannelMock = vi.hoisted(() => vi.fn())
+const directMessageChannel = {
+  _id: 'dm-1',
+  channel_type: 'DirectMessage',
+  active: true,
+  recipients: ['current-user', '01JVOICETARGET0000001'],
+} as Channel
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
@@ -61,12 +52,15 @@ vi.mock('#/features/dm/dm-actions', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
-  banServerMember: (...args: Parameters<typeof serverApiMocks.banServerMember>) =>
-    serverApiMocks.banServerMember(...args),
-  editServerMember: (...args: Parameters<typeof serverApiMocks.editServerMember>) =>
-    serverApiMocks.editServerMember(...args),
-  kickServerMember: (...args: Parameters<typeof serverApiMocks.kickServerMember>) =>
-    serverApiMocks.kickServerMember(...args),
+  banServerMemberEffect: (
+    ...args: Parameters<typeof serverApiMocks.banServerMember>
+  ) => serverApiMocks.banServerMember(...args),
+  editServerMemberEffect: (
+    ...args: Parameters<typeof serverApiMocks.editServerMember>
+  ) => serverApiMocks.editServerMember(...args),
+  kickServerMemberEffect: (
+    ...args: Parameters<typeof serverApiMocks.kickServerMember>
+  ) => serverApiMocks.kickServerMember(...args),
 }))
 
 vi.mock('#/features/settings/settings-modal-context', () => ({
@@ -195,15 +189,28 @@ function seedRoleToggleServer() {
 describe('UserContextMenuContent', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    openDirectMessageChannelMock.mockImplementation(
+      (
+        _token: string,
+        _userId: string,
+        navigateToChannel: (channelId: string) => Promise<void> | void,
+      ) =>
+        Effect.tryPromise({
+          try: () => Promise.resolve(navigateToChannel('dm-1')),
+          catch: (cause) => cause,
+        }).pipe(Effect.as(directMessageChannel)),
+    )
     contextMenuPreventDefaultMock.mockClear()
     voiceJoinMock.mockResolvedValue(true)
-    serverApiMocks.banServerMember.mockResolvedValue(undefined)
-    serverApiMocks.editServerMember.mockResolvedValue({
-      _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
-      joined_at: '2024-01-01T00:00:00Z',
-      roles: [],
-    })
-    serverApiMocks.kickServerMember.mockResolvedValue(undefined)
+    serverApiMocks.banServerMember.mockReturnValue(Effect.void)
+    serverApiMocks.editServerMember.mockReturnValue(
+      Effect.succeed({
+        _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles: [],
+      }),
+    )
+    serverApiMocks.kickServerMember.mockReturnValue(Effect.void)
     syncStore.reset()
     grantAllAuthorizationForTest({
       serverIds: ['server-1'],
@@ -384,11 +391,10 @@ describe('UserContextMenuContent', () => {
 
   it('deduplicates a pending role edit after the context menu is reopened', () => {
     let resolveEdit: ((member: unknown) => void) | undefined
-    serverApiMocks.editServerMember.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveEdit = resolve
-        }),
+    serverApiMocks.editServerMember.mockReturnValue(
+      Effect.callback<unknown>((resume) => {
+        resolveEdit = (member) => resume(Effect.succeed(member))
+      }),
     )
     seedRoleToggleServer()
 
@@ -411,11 +417,10 @@ describe('UserContextMenuContent', () => {
 
   it('disables every role while a member role edit is pending', async () => {
     let resolveEdit: ((member: unknown) => void) | undefined
-    serverApiMocks.editServerMember.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveEdit = resolve
-        }),
+    serverApiMocks.editServerMember.mockReturnValue(
+      Effect.callback<unknown>((resume) => {
+        resolveEdit = (member) => resume(Effect.succeed(member))
+      }),
     )
     seedRoleToggleServer()
 

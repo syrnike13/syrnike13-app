@@ -5,6 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { Effect } from 'effect'
 import {
   ChevronLeftIcon,
   HeadphonesIcon,
@@ -57,14 +58,14 @@ import { canMessageUser } from '#/features/authorization/authorization'
 import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { closeVoiceCallNotification } from '#/features/notifications/voice-call-notifications'
 import {
-  reactToMessage,
-  sendChannelMessage,
-  editChannelMessage,
-  unreactFromMessage,
+  editChannelMessageEffect,
+  reactToMessageEffect,
+  sendChannelMessageEffect,
+  unreactFromMessageEffect,
 } from '#/features/api/messages-api'
 import {
-  cancelDirectMessageCall,
-  declineDirectMessageCall,
+  cancelDirectMessageCallEffect,
+  declineDirectMessageCallEffect,
 } from '#/features/api/channels-api'
 import { listUserMutualServerNicknames } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
@@ -336,25 +337,30 @@ export function ChannelView({
     if (isDirectMessage && voiceCall.phase === 'ringing') {
       if (!token || !currentUserId) return
 
-      const updateCall = voiceCallInitiatedByCurrentUser
-        ? cancelDirectMessageCall(token, channelId)
-        : declineDirectMessageCall(token, channelId)
-
-      void updateCall
-        .then(() => {
-          if (voiceCallInitiatedByCurrentUser) {
-            syncStore.removeVoiceCall(channelId)
-          } else {
-            syncStore.markVoiceCallDeclined(channelId, currentUserId)
-          }
-          void closeVoiceCallNotification(channelId)
-        })
-        .catch(() => undefined)
+      Effect.runFork(
+        (
+          voiceCallInitiatedByCurrentUser
+            ? cancelDirectMessageCallEffect(token, channelId)
+            : declineDirectMessageCallEffect(token, channelId)
+        ).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              if (voiceCallInitiatedByCurrentUser) {
+                syncStore.removeVoiceCall(channelId)
+              } else {
+                syncStore.markVoiceCallDeclined(channelId, currentUserId)
+              }
+            }),
+          ),
+          Effect.andThen(closeVoiceCallNotification(channelId)),
+          Effect.ignore,
+        ),
+      )
       return
     }
 
     syncStore.dismissVoiceCall(voiceCall)
-    void closeVoiceCallNotification(channelId)
+    Effect.runFork(closeVoiceCallNotification(channelId))
   }
 
   function startInlineVoiceStageResize(
@@ -701,38 +707,55 @@ export function ChannelView({
               onBlock={(message) => {
                 if (!token || message.author === auth.user?._id) return
                 if (!window.confirm('Заблокировать этого пользователя?')) return
-                void blockUserRelationship(token, message.author).catch(
-                  () => undefined,
+                Effect.runFork(
+                  blockUserRelationship(token, message.author).pipe(
+                    Effect.ignore,
+                  ),
                 )
               }}
               onPin={(message) => void handlePin(message)}
               onUnpin={(message) => void handleUnpin(message)}
               onToggleReaction={async (messageId, emoji, active) => {
                 if (!token || !auth.user?._id) return
+                const userId = auth.user._id
 
                 syncStore.mutateReaction(
                   channelId,
                   messageId,
                   emoji,
-                  auth.user._id,
+                  userId,
                   !active,
                 )
 
-                try {
-                  if (active) {
-                    await unreactFromMessage(token, channelId, messageId, emoji)
-                  } else {
-                    await reactToMessage(token, channelId, messageId, emoji)
-                  }
-                } catch {
-                  syncStore.mutateReaction(
-                    channelId,
-                    messageId,
-                    emoji,
-                    auth.user._id,
-                    active,
-                  )
-                }
+                await Effect.runPromise(
+                  (
+                    active
+                      ? unreactFromMessageEffect(
+                          token,
+                          channelId,
+                          messageId,
+                          emoji,
+                        )
+                      : reactToMessageEffect(
+                          token,
+                          channelId,
+                          messageId,
+                          emoji,
+                        )
+                  ).pipe(
+                    Effect.catch(() =>
+                      Effect.sync(() => {
+                        syncStore.mutateReaction(
+                          channelId,
+                          messageId,
+                          emoji,
+                          userId,
+                          active,
+                        )
+                      }),
+                    ),
+                  ),
+                )
               }}
             />
 
@@ -761,17 +784,26 @@ export function ChannelView({
                 onStopTyping={stopTyping}
                 onSend={async (input) => {
                   if (!token) return
-                  await sendChannelMessage(token, channelId, input)
+                  await Effect.runPromise(
+                    sendChannelMessageEffect(token, channelId, input),
+                  )
                 }}
                 onEdit={async (messageId, content) => {
                   if (!token) return
-                  const updated = await editChannelMessage(
-                    token,
-                    channelId,
-                    messageId,
-                    content,
+                  await Effect.runPromise(
+                    editChannelMessageEffect(
+                      token,
+                      channelId,
+                      messageId,
+                      content,
+                    ).pipe(
+                      Effect.tap((updated) =>
+                        Effect.sync(() =>
+                          syncStore.patchMessage(channelId, messageId, updated),
+                        ),
+                      ),
+                    ),
                   )
-                  syncStore.patchMessage(channelId, messageId, updated)
                 }}
               />
             </div>
@@ -928,38 +960,55 @@ export function ChannelView({
               onBlock={(message) => {
                 if (!token || message.author === auth.user?._id) return
                 if (!window.confirm('Заблокировать этого пользователя?')) return
-                void blockUserRelationship(token, message.author).catch(
-                  () => undefined,
+                Effect.runFork(
+                  blockUserRelationship(token, message.author).pipe(
+                    Effect.ignore,
+                  ),
                 )
               }}
               onPin={(message) => void handlePin(message)}
               onUnpin={(message) => void handleUnpin(message)}
               onToggleReaction={async (messageId, emoji, active) => {
                 if (!token || !auth.user?._id) return
+                const userId = auth.user._id
 
                 syncStore.mutateReaction(
                   channelId,
                   messageId,
                   emoji,
-                  auth.user._id,
+                  userId,
                   !active,
                 )
 
-                try {
-                  if (active) {
-                    await unreactFromMessage(token, channelId, messageId, emoji)
-                  } else {
-                    await reactToMessage(token, channelId, messageId, emoji)
-                  }
-                } catch {
-                  syncStore.mutateReaction(
-                    channelId,
-                    messageId,
-                    emoji,
-                    auth.user._id,
-                    active,
-                  )
-                }
+                await Effect.runPromise(
+                  (
+                    active
+                      ? unreactFromMessageEffect(
+                          token,
+                          channelId,
+                          messageId,
+                          emoji,
+                        )
+                      : reactToMessageEffect(
+                          token,
+                          channelId,
+                          messageId,
+                          emoji,
+                        )
+                  ).pipe(
+                    Effect.catch(() =>
+                      Effect.sync(() => {
+                        syncStore.mutateReaction(
+                          channelId,
+                          messageId,
+                          emoji,
+                          userId,
+                          active,
+                        )
+                      }),
+                    ),
+                  ),
+                )
               }}
             />
 
@@ -988,17 +1037,26 @@ export function ChannelView({
                 onStopTyping={stopTyping}
                 onSend={async (input) => {
                   if (!token) return
-                  await sendChannelMessage(token, channelId, input)
+                  await Effect.runPromise(
+                    sendChannelMessageEffect(token, channelId, input),
+                  )
                 }}
                 onEdit={async (messageId, content) => {
                   if (!token) return
-                  const updated = await editChannelMessage(
-                    token,
-                    channelId,
-                    messageId,
-                    content,
+                  await Effect.runPromise(
+                    editChannelMessageEffect(
+                      token,
+                      channelId,
+                      messageId,
+                      content,
+                    ).pipe(
+                      Effect.tap((updated) =>
+                        Effect.sync(() =>
+                          syncStore.patchMessage(channelId, messageId, updated),
+                        ),
+                      ),
+                    ),
                   )
-                  syncStore.patchMessage(channelId, messageId, updated)
                 }}
               />
             </div>

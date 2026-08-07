@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { render, waitFor } from '@testing-library/react'
+import { Effect } from 'effect'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const testState = vi.hoisted(() => ({
@@ -59,7 +60,7 @@ describe('DiagnosticErrorReporter', () => {
         },
       ],
     })
-    testState.send.mockResolvedValue(null)
+    testState.send.mockReturnValue(Effect.succeed(null))
     testState.enqueue.mockResolvedValue(true)
     testState.release.mockResolvedValue(true)
   })
@@ -84,7 +85,9 @@ describe('DiagnosticErrorReporter', () => {
 
   it('is the single automatic upload owner for renderer producers', async () => {
     testState.lease.mockResolvedValue(null)
-    testState.send.mockResolvedValue({ id: 'report', created_at: 1 })
+    testState.send.mockReturnValue(
+      Effect.succeed({ id: 'report', created_at: 1 }),
+    )
     const view = render(<DiagnosticErrorReporter />)
 
     enqueueAutomaticDiagnosticIncident({

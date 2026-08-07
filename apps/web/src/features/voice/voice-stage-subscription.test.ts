@@ -10,11 +10,11 @@ import {
   setRemoteScreenWatchIntent,
   shouldSubscribeStageScreen,
 } from '#/features/voice/voice-stage-subscription'
-import type { StageMediaItem } from '#/features/voice/voice-stage-media'
+import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
 
 function screenItem(
-  fields: Partial<StageMediaItem<unknown, { setSubscribed: (value: boolean) => void }>>,
-): StageMediaItem<unknown, { setSubscribed: (value: boolean) => void }> {
+  fields: Partial<VoiceStageMediaItem>,
+): VoiceStageMediaItem {
   return {
     id: 'user:screen',
     userId: 'user',
@@ -32,7 +32,15 @@ describe('setStageScreenSubscription', () => {
     const setSubscribed = vi.fn()
 
     const action = setStageScreenSubscription(
-      screenItem({ publication: { setSubscribed } }),
+      screenItem({
+        publication: {
+          backend: 'livekit',
+          source: 'screen',
+          isMuted: false,
+          isSubscribed: true,
+          setSubscribed,
+        },
+      }),
       false,
     )
 

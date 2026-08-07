@@ -187,6 +187,6 @@ function labelForCode(code: string) {
   return code
 }
 
-function normalizeCodes(codes: string[]) {
+function normalizeCodes(codes: ReadonlyArray<string>) {
   return Array.from(new Set(codes.filter((code) => code.length > 0))).sort()
 }

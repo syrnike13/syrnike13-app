@@ -1,20 +1,28 @@
 import { useSyncExternalStore } from 'react'
 import {
   DEFAULT_DESKTOP_SOUND_SETTINGS,
+  DesktopSoundSettingsSchema,
   normalizeDesktopSoundSettings,
   normalizeDesktopSoundSettingsPatch,
   type DesktopSoundSettings,
   type DesktopSoundSettingsPatch,
 } from '@syrnike13/platform'
+import { Effect, Option, Schema, SchemaTransformation } from 'effect'
 
 import {
-  loadDesktopLocalSettings,
-  updateDesktopLocalSettings,
+  loadDesktopLocalSettingsEffect,
+  updateDesktopLocalSettingsEffect,
 } from '#/features/settings/desktop-local-settings-client'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 export const SOUND_PREFERENCES_STORAGE_KEY = 'syrnike13-sound-preferences'
 export const DEFAULT_SOUND_PREFERENCES = DEFAULT_DESKTOP_SOUND_SETTINGS
+const UnknownSoundPreferencesJsonSchema = Schema.String.pipe(
+  Schema.decodeTo(Schema.Unknown, SchemaTransformation.fromJsonString()),
+)
+const SoundPreferencesJsonSchema = Schema.fromJsonString(
+  DesktopSoundSettingsSchema,
+)
 
 export function normalizeSoundPreferences(value: unknown) {
   return normalizeDesktopSoundSettings(value)
@@ -30,7 +38,13 @@ function loadState(): DesktopSoundSettings {
   }
   try {
     const raw = localStorage.getItem(SOUND_PREFERENCES_STORAGE_KEY)
-    return normalizeSoundPreferences(raw ? JSON.parse(raw) : null)
+    return normalizeSoundPreferences(
+      raw
+        ? Option.getOrUndefined(
+            Schema.decodeUnknownOption(UnknownSoundPreferencesJsonSchema)(raw),
+          )
+        : null,
+    )
   } catch {
     return normalizeSoundPreferences(null)
   }
@@ -47,11 +61,16 @@ function emit() {
 function persist() {
   if (typeof window === 'undefined') return
   if (getSyrnikeDesktop()) {
-    void updateDesktopLocalSettings({ sounds: state })
+    Effect.runFork(
+      updateDesktopLocalSettingsEffect({ sounds: state }).pipe(Effect.ignore),
+    )
     return
   }
   try {
-    localStorage.setItem(SOUND_PREFERENCES_STORAGE_KEY, JSON.stringify(state))
+    localStorage.setItem(
+      SOUND_PREFERENCES_STORAGE_KEY,
+      Schema.encodeSync(SoundPreferencesJsonSchema)(state),
+    )
   } catch {
     // localStorage may be unavailable in private/browser-restricted contexts.
   }
@@ -70,12 +89,20 @@ function patch(partial: DesktopSoundSettingsPatch) {
   emit()
 }
 
-export async function hydrateSoundPreferencesFromDesktop() {
+export const hydrateSoundPreferencesFromDesktopEffect = Effect.fn(
+  'soundPreferences.hydrateFromDesktop',
+)(function*() {
   const revision = stateRevision
-  const settings = await loadDesktopLocalSettings()
+  const settings = yield* loadDesktopLocalSettingsEffect()
   if (!settings || revision !== stateRevision) return
-  state = normalizeSoundPreferences(settings.sounds)
-  emit()
+  yield* Effect.sync(() => {
+    state = normalizeSoundPreferences(settings.sounds)
+    emit()
+  })
+})
+
+export function hydrateSoundPreferencesFromDesktop() {
+  return Effect.runPromise(hydrateSoundPreferencesFromDesktopEffect())
 }
 
 export const soundPreferenceStore = {
@@ -127,5 +154,5 @@ export function useSoundPreferences() {
 }
 
 if (typeof window !== 'undefined') {
-  void hydrateSoundPreferencesFromDesktop()
+  Effect.runFork(hydrateSoundPreferencesFromDesktopEffect())
 }

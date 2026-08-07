@@ -9,6 +9,7 @@ import {
 } from '#/components/icons'
 import { useState, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'
@@ -104,13 +105,15 @@ export function FriendsView() {
 
   async function openDm(userId: string) {
     if (!token) return
-    await openDirectMessageChannel(token, userId, (channelId) =>
-      navigate({
-        to: `${prefix}/c/$channelId`,
-        params: { channelId },
-        search: { m: undefined },
-      })
-    ).catch(() => undefined)
+    await Effect.runPromise(
+      openDirectMessageChannel(token, userId, (channelId) =>
+        navigate({
+          to: `${prefix}/c/$channelId`,
+          params: { channelId },
+          search: { m: undefined },
+        }),
+      ).pipe(Effect.ignore),
+    )
   }
 
   async function handleSendRequest() {
@@ -120,7 +123,7 @@ export function FriendsView() {
 
     setSending(true)
     try {
-      await sendFriendRequestByUsername(token, trimmed)
+      await Effect.runPromise(sendFriendRequestByUsername(token, trimmed))
       setUsername('')
     } catch {
       // friend-actions already shows the concrete error toast.
@@ -183,8 +186,10 @@ export function FriendsView() {
                   title="Заблокировать"
                   onClick={() => {
                     if (!token) return
-                    void blockUserRelationship(token, user._id).catch(
-                      () => undefined,
+                    Effect.runFork(
+                      blockUserRelationship(token, user._id).pipe(
+                        Effect.ignore,
+                      ),
                     )
                   }}
                 >
@@ -197,7 +202,9 @@ export function FriendsView() {
                   title="Удалить из друзей"
                   onClick={() => {
                     if (!token) return
-                    void removeFriend(token, user._id).catch(() => undefined)
+                    Effect.runFork(
+                      removeFriend(token, user._id).pipe(Effect.ignore),
+                    )
                   }}
                 >
                   <UserMinusIcon className="size-4" />
@@ -219,8 +226,10 @@ export function FriendsView() {
                   title="Принять"
                   onClick={() => {
                     if (!token) return
-                    void acceptIncomingFriendRequest(token, user._id).catch(
-                      () => undefined,
+                    Effect.runFork(
+                      acceptIncomingFriendRequest(token, user._id).pipe(
+                        Effect.ignore,
+                      ),
                     )
                   }}
                 >
@@ -233,8 +242,10 @@ export function FriendsView() {
                   title="Отклонить"
                   onClick={() => {
                     if (!token) return
-                    void declineIncomingFriendRequest(token, user._id).catch(
-                      () => undefined,
+                    Effect.runFork(
+                      declineIncomingFriendRequest(token, user._id).pipe(
+                        Effect.ignore,
+                      ),
                     )
                   }}
                 >
@@ -247,8 +258,10 @@ export function FriendsView() {
                   title="Заблокировать"
                   onClick={() => {
                     if (!token) return
-                    void blockIncomingFriendRequest(token, user._id).catch(
-                      () => undefined,
+                    Effect.runFork(
+                      blockIncomingFriendRequest(token, user._id).pipe(
+                        Effect.ignore,
+                      ),
                     )
                   }}
                 >
@@ -270,8 +283,10 @@ export function FriendsView() {
                   variant="outline"
                   onClick={() => {
                     if (!token) return
-                    void cancelOutgoingFriendRequest(token, user._id).catch(
-                      () => undefined,
+                    Effect.runFork(
+                      cancelOutgoingFriendRequest(token, user._id).pipe(
+                        Effect.ignore,
+                      ),
                     )
                   }}
                 >
@@ -290,8 +305,8 @@ export function FriendsView() {
                   variant="outline"
                   onClick={() => {
                     if (!token) return
-                    void unblockBlockedUser(token, user._id).catch(
-                      () => undefined,
+                    Effect.runFork(
+                      unblockBlockedUser(token, user._id).pipe(Effect.ignore),
                     )
                   }}
                 >

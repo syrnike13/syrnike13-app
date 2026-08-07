@@ -1,6 +1,10 @@
+import { Option, Schema } from 'effect'
+
 const STORAGE_KEY = 'syrnike13:chat-drafts:v1'
 
 type StoredDrafts = Record<string, string>
+const StoredDraftsSchema = Schema.Record(Schema.String, Schema.String)
+const StoredDraftsJsonSchema = Schema.fromJsonString(StoredDraftsSchema)
 
 function draftKey(userId: string, channelId: string) {
   return `${userId}:${channelId}`
@@ -12,14 +16,8 @@ function readDrafts(): StoredDrafts {
   try {
     const value = window.localStorage.getItem(STORAGE_KEY)
     if (!value) return {}
-    const parsed: unknown = JSON.parse(value)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-
-    return Object.fromEntries(
-      Object.entries(parsed).filter((entry): entry is [string, string] =>
-        typeof entry[1] === 'string',
-      ),
-    )
+    const decoded = Schema.decodeUnknownOption(StoredDraftsJsonSchema)(value)
+    return Option.isSome(decoded) ? { ...decoded.value } : {}
   } catch {
     return {}
   }
@@ -33,7 +31,10 @@ function writeDrafts(drafts: StoredDrafts) {
       window.localStorage.removeItem(STORAGE_KEY)
       return
     }
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(drafts))
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      Schema.encodeSync(StoredDraftsJsonSchema)(drafts),
+    )
   } catch {
     // Draft persistence is best-effort when storage is restricted or full.
   }

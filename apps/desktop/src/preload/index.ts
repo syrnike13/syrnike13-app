@@ -1,17 +1,34 @@
 import { contextBridge, ipcRenderer, sharedTexture } from 'electron'
 import {
+  DesktopDisplayMediaRequestSchema,
+  DesktopDisplayMediaSelectionSchema,
+  DesktopDisplayMediaSourceSchema,
+  DesktopOverlayStateSchema,
+  DesktopStoredSessionSchema,
+  DesktopUpdateStateSchema,
+  DesktopVersionsSchema,
+  DesktopWindowPreferencesSchema,
+  HotkeyActivationEventSchema,
+  HotkeyBindingSchema,
+  HotkeyRegistrationResultSchema,
+  HotkeyRuntimeStatusSchema,
   IPC,
-  isNativeMediaRuntimeState,
-  isVoiceSnapshot,
+  NativeDiagnosticIncidentBatchSchema,
+  NativeInputEventSchema,
+  NativeMediaDeviceInfoSchema,
+  NativeMediaRuntimeStateSchema,
+  NativeMicrophoneMetricsEventSchema,
+  NativeMicrophonePreviewStateEventSchema,
+  VoiceSnapshotSchema,
+  normalizeDesktopLocalSettings,
 } from '@syrnike13/platform'
+import { Effect, Schema } from 'effect'
 
 import type {
   DesktopOverlaySnapshot,
   DesktopOverlayState,
   DesktopOs,
-  DesktopLocalSettings,
   DesktopLocalSettingsPatch,
-  NativeDiagnosticIncidentBatch,
   RendererDiagnosticIncident,
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSelection,
@@ -21,7 +38,6 @@ import type {
   DesktopUpdateState,
   DesktopTrayVoiceState,
   HotkeyActivationEvent,
-  HotkeyAction,
   HotkeyBinding,
   NativeMediaDeviceInfo,
   NativeMediaRuntimeState,
@@ -34,6 +50,115 @@ import type {
 } from '@syrnike13/platform'
 
 const NATIVE_VIDEO_FRAME_MESSAGE = 'syrnike-native-video-frame'
+
+type MutableResponse<T> = T extends Uint8Array
+  ? T
+  : T extends ReadonlyArray<infer Item>
+    ? Array<MutableResponse<Item>>
+    : T extends object
+      ? { -readonly [Key in keyof T]: MutableResponse<T[Key]> }
+      : T
+
+function mutableResponseSchema<
+  ResponseSchema extends Schema.ConstraintDecoder<unknown, never>,
+>(responseSchema: ResponseSchema) {
+  const isResponse = Schema.is(responseSchema)
+  return Schema.declare<MutableResponse<ResponseSchema['Type']>>(
+    (input): input is MutableResponse<ResponseSchema['Type']> =>
+      isResponse(input),
+  )
+}
+
+const invokeDecodedEffect = Effect.fn('desktopPreload.invokeDecoded')(
+  function*<
+    ResponseSchema extends Schema.ConstraintDecoder<unknown, never>,
+  >(
+    channel: string,
+    responseSchema: ResponseSchema,
+    ...args: unknown[]
+  ) {
+    const response: unknown = yield* Effect.tryPromise({
+      try: () => ipcRenderer.invoke(channel, ...args),
+      catch: (cause) => cause,
+    })
+    return yield* Schema.decodeUnknownEffect(
+      mutableResponseSchema(responseSchema),
+    )(response).pipe(
+      Effect.mapError(
+        () => new TypeError(`Invalid IPC response for ${channel}`),
+      ),
+    )
+  },
+)
+
+function invokeDecoded<
+  ResponseSchema extends Schema.ConstraintDecoder<unknown, never>,
+>(
+  channel: string,
+  responseSchema: ResponseSchema,
+  ...args: unknown[]
+): Promise<MutableResponse<ResponseSchema['Type']>> {
+  return Effect.runPromise(
+    invokeDecodedEffect(channel, responseSchema, ...args),
+  )
+}
+
+const invokeNativeMediaRuntimeStateEffect = Effect.fn(
+  'desktopPreload.invokeNativeMediaRuntimeState',
+)(function*(channel: string) {
+  return yield* invokeDecodedEffect(
+    channel,
+    NativeMediaRuntimeStateSchema,
+  ).pipe(
+    Effect.mapError(
+      () => new TypeError('Invalid native media runtime state'),
+    ),
+  )
+})
+
+function invokeNativeMediaRuntimeState(channel: string) {
+  return Effect.runPromise(invokeNativeMediaRuntimeStateEffect(channel))
+}
+
+const HotkeyBindingsSchema = Schema.mutable(
+  Schema.Array(HotkeyBindingSchema),
+)
+const HotkeyRegistrationResultsSchema = Schema.mutable(
+  Schema.Array(HotkeyRegistrationResultSchema),
+)
+const DesktopDisplayMediaSourcesSchema = Schema.mutable(
+  Schema.Array(DesktopDisplayMediaSourceSchema),
+)
+const NativeMediaDevicesSchema = Schema.mutable(
+  Schema.Array(NativeMediaDeviceInfoSchema),
+)
+const StoredSessionResultSchema = Schema.Union([
+  DesktopStoredSessionSchema,
+  Schema.Null,
+])
+const NativeIncidentLeaseSchema = Schema.Union([
+  NativeDiagnosticIncidentBatchSchema,
+  Schema.Null,
+])
+
+const isDesktopUpdateState = Schema.is(DesktopUpdateStateSchema)
+const isHotkeyActivationEvent = Schema.is(HotkeyActivationEventSchema)
+const isDesktopDisplayMediaRequest = Schema.is(
+  DesktopDisplayMediaRequestSchema,
+)
+const isNativePickerResolved = Schema.is(
+  DesktopDisplayMediaSelectionSchema,
+)
+const isDesktopOverlayState = Schema.is(DesktopOverlayStateSchema)
+const isNativeMicrophoneMetricsEvent = Schema.is(
+  NativeMicrophoneMetricsEventSchema,
+)
+const isNativeMicrophonePreviewStateEvent = Schema.is(
+  NativeMicrophonePreviewStateEventSchema,
+)
+const isNativeMediaRuntimeState = Schema.is(NativeMediaRuntimeStateSchema)
+const isNativeInputEvent = Schema.is(NativeInputEventSchema)
+const isVoiceSnapshot = Schema.is(VoiceSnapshotSchema)
 
 sharedTexture.setSharedTextureReceiver(async ({ importedSharedTexture }, metadata) => {
   let frame: VideoFrame | null = null
@@ -103,11 +228,11 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
   runtime: 'desktop',
   platform,
   getVersions() {
-    return ipcRenderer.invoke(IPC.versions)
+    return invokeDecoded(IPC.versions, DesktopVersionsSchema)
   },
   clipboard: {
     writeText(text: string) {
-      return ipcRenderer.invoke(IPC.clipboardWriteText, text)
+      return invokeDecoded(IPC.clipboardWriteText, Schema.Void, text)
     },
   },
   window: {
@@ -124,37 +249,48 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       ipcRenderer.send(IPC.windowShow)
     },
     isMaximized() {
-      return ipcRenderer.invoke(IPC.windowIsMaximized)
+      return invokeDecoded(IPC.windowIsMaximized, Schema.Boolean)
     },
     getPreferences() {
-      return ipcRenderer.invoke(IPC.windowGetPreferences)
+      return invokeDecoded(
+        IPC.windowGetPreferences,
+        DesktopWindowPreferencesSchema,
+      )
     },
     setCloseToTray(closeToTray: boolean) {
-      return ipcRenderer.invoke(IPC.windowSetCloseToTray, closeToTray)
+      return invokeDecoded(
+        IPC.windowSetCloseToTray,
+        DesktopWindowPreferencesSchema,
+        closeToTray,
+      )
     },
     setOpenAtLogin(openAtLogin: boolean) {
-      return ipcRenderer.invoke(IPC.windowSetOpenAtLogin, openAtLogin)
+      return invokeDecoded(
+        IPC.windowSetOpenAtLogin,
+        DesktopWindowPreferencesSchema,
+        openAtLogin,
+      )
     },
   },
   activity: {
     set(details) {
-      return ipcRenderer.invoke(IPC.activitySet, details)
+      return invokeDecoded(IPC.activitySet, Schema.Void, details)
     },
     clear() {
-      return ipcRenderer.invoke(IPC.activityClear)
+      return invokeDecoded(IPC.activityClear, Schema.Void)
     },
   },
   tray: {
     setVoiceState(state: DesktopTrayVoiceState) {
-      return ipcRenderer.invoke(IPC.traySetVoiceState, state)
+      return invokeDecoded(IPC.traySetVoiceState, Schema.Void, state)
     },
   },
   voice: {
     dispatch(command: VoiceCommand) {
-      return ipcRenderer.invoke(IPC.voiceDispatch, command) as Promise<VoiceSnapshot>
+      return invokeDecoded(IPC.voiceDispatch, VoiceSnapshotSchema, command)
     },
     getSnapshot() {
-      return ipcRenderer.invoke(IPC.voiceGetSnapshot) as Promise<VoiceSnapshot>
+      return invokeDecoded(IPC.voiceGetSnapshot, VoiceSnapshotSchema)
     },
     onSnapshot(handler: (snapshot: VoiceSnapshot) => void) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
@@ -166,68 +302,79 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
   },
   auth: {
     loadSession() {
-      return ipcRenderer.invoke(IPC.authLoadSession)
+      return invokeDecoded(IPC.authLoadSession, StoredSessionResultSchema)
     },
     saveSession(session: DesktopStoredSession) {
-      return ipcRenderer.invoke(IPC.authSaveSession, session)
+      return invokeDecoded(IPC.authSaveSession, Schema.Void, session)
     },
     clearSession() {
-      return ipcRenderer.invoke(IPC.authClearSession)
+      return invokeDecoded(IPC.authClearSession, Schema.Void)
     },
   },
   settings: {
     load() {
-      return ipcRenderer.invoke(IPC.settingsLoad) as Promise<DesktopLocalSettings>
+      return Effect.runPromise(
+        Effect.tryPromise({
+          try: () => ipcRenderer.invoke(IPC.settingsLoad),
+          catch: (cause) => cause,
+        }).pipe(Effect.map(normalizeDesktopLocalSettings)),
+      )
     },
     update(patch: DesktopLocalSettingsPatch) {
-      return ipcRenderer.invoke(
-        IPC.settingsUpdate,
-        patch,
-      ) as Promise<DesktopLocalSettings>
+      return Effect.runPromise(
+        Effect.tryPromise({
+          try: () => ipcRenderer.invoke(IPC.settingsUpdate, patch),
+          catch: (cause) => cause,
+        }).pipe(Effect.map(normalizeDesktopLocalSettings)),
+      )
     },
   },
   diagnostics: {
-    async createBundle(rendererJsonl: string) {
-      const value = await ipcRenderer.invoke(
+    createBundle(rendererJsonl: string) {
+      return invokeDecoded(
         IPC.diagnosticsCreateBundle,
+        Schema.Uint8Array,
         rendererJsonl,
       )
-      return new Uint8Array(value)
     },
     enqueueIncident(accountId: string, incident: RendererDiagnosticIncident) {
-      return ipcRenderer.invoke(
+      return invokeDecoded(
         IPC.diagnosticsEnqueueIncident,
+        Schema.Boolean,
         accountId,
         incident,
-      ) as Promise<boolean>
+      )
     },
     leaseNativeIncidents(accountId: string) {
-      return ipcRenderer.invoke(
+      return invokeDecoded(
         IPC.diagnosticsLeaseNativeIncidents,
+        NativeIncidentLeaseSchema,
         accountId,
-      ) as Promise<NativeDiagnosticIncidentBatch | null>
+      )
     },
     acknowledgeNativeIncidents(accountId: string, batchId: string) {
-      return ipcRenderer.invoke(
+      return invokeDecoded(
         IPC.diagnosticsAcknowledgeNativeIncidents,
+        Schema.Boolean,
         accountId,
         batchId,
-      ) as Promise<boolean>
+      )
     },
     releaseNativeIncidents(accountId: string, batchId: string) {
-      return ipcRenderer.invoke(
+      return invokeDecoded(
         IPC.diagnosticsReleaseNativeIncidents,
+        Schema.Boolean,
         accountId,
         batchId,
-      ) as Promise<boolean>
+      )
     },
   },
   updates: {
     getState() {
-      return ipcRenderer.invoke(IPC.updatesGetState)
+      return invokeDecoded(IPC.updatesGetState, DesktopUpdateStateSchema)
     },
     check() {
-      return ipcRenderer.invoke(IPC.updatesCheck)
+      return invokeDecoded(IPC.updatesCheck, DesktopUpdateStateSchema)
     },
     install() {
       ipcRenderer.send(IPC.updatesInstall)
@@ -244,26 +391,33 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
   },
   hotkeys: {
     getBindings() {
-      return ipcRenderer.invoke(IPC.hotkeysGetBindings)
+      return invokeDecoded(IPC.hotkeysGetBindings, HotkeyBindingsSchema)
     },
     setBindings(bindings: HotkeyBinding[]) {
-      return ipcRenderer.invoke(IPC.hotkeysSetBindings, bindings)
+      return invokeDecoded(
+        IPC.hotkeysSetBindings,
+        HotkeyRegistrationResultsSchema,
+        bindings,
+      )
     },
     setSuspended(suspended: boolean) {
-      return ipcRenderer.invoke(IPC.hotkeysSetSuspended, suspended)
+      return invokeDecoded(IPC.hotkeysSetSuspended, Schema.Void, suspended)
     },
     startRecording() {
-      return ipcRenderer.invoke(IPC.hotkeysStartRecording)
+      return invokeDecoded(IPC.hotkeysStartRecording, Schema.Void)
     },
     stopRecording() {
-      return ipcRenderer.invoke(IPC.hotkeysStopRecording)
+      return invokeDecoded(IPC.hotkeysStopRecording, Schema.Void)
     },
     getRuntimeStatus() {
-      return ipcRenderer.invoke(IPC.hotkeysGetRuntimeStatus)
+      return invokeDecoded(
+        IPC.hotkeysGetRuntimeStatus,
+        HotkeyRuntimeStatusSchema,
+      )
     },
     onRecordedInput(handler: (event: NativeInputEvent) => void) {
       const listener = (_event: Electron.IpcRendererEvent, input: unknown) => {
-        if (input && typeof input === 'object') handler(input as NativeInputEvent)
+        if (isNativeInputEvent(input)) handler(input)
       }
       ipcRenderer.on(IPC.hotkeysRecordedInput, listener)
       return () => {
@@ -282,19 +436,21 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
   },
   overlay: {
     getState() {
-      return ipcRenderer.invoke(IPC.overlayGetState) as Promise<DesktopOverlayState>
+      return invokeDecoded(IPC.overlayGetState, DesktopOverlayStateSchema)
     },
     setEnabled(enabled: boolean) {
-      return ipcRenderer.invoke(
+      return invokeDecoded(
         IPC.overlaySetEnabled,
+        DesktopOverlayStateSchema,
         enabled,
-      ) as Promise<DesktopOverlayState>
+      )
     },
     setSnapshot(snapshot: DesktopOverlaySnapshot) {
-      return ipcRenderer.invoke(
+      return invokeDecoded(
         IPC.overlaySetSnapshot,
+        DesktopOverlayStateSchema,
         snapshot,
-      ) as Promise<DesktopOverlayState>
+      )
     },
     onStateChange(handler: (state: DesktopOverlayState) => void) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
@@ -307,62 +463,59 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     },
   },
   media: {
-    async getRuntimeState() {
-      const state: unknown = await ipcRenderer.invoke(IPC.mediaGetRuntimeState)
-      if (!isNativeMediaRuntimeState(state)) {
-        throw new TypeError('Invalid native media runtime state')
-      }
-      return state
+    getRuntimeState() {
+      return invokeNativeMediaRuntimeState(IPC.mediaGetRuntimeState)
     },
-    async retryRuntime() {
-      const state: unknown = await ipcRenderer.invoke(IPC.mediaRetryRuntime)
-      if (!isNativeMediaRuntimeState(state)) {
-        throw new TypeError('Invalid native media runtime state')
-      }
-      return state
+    retryRuntime() {
+      return invokeNativeMediaRuntimeState(IPC.mediaRetryRuntime)
     },
     getDisplaySources(requestId: string) {
-      return ipcRenderer.invoke(
+      return invokeDecoded(
         IPC.mediaGetDisplaySources,
+        DesktopDisplayMediaSourcesSchema,
         requestId,
-      ) as Promise<DesktopDisplayMediaSource[]>
+      )
     },
     selectDisplaySource(
       requestId: string,
       sourceId: string,
       audioRequested?: boolean,
     ) {
-      return ipcRenderer.invoke(
+      return invokeDecoded(
         IPC.mediaSelectDisplaySource,
+        Schema.Boolean,
         requestId,
         sourceId,
         audioRequested,
-      ) as Promise<boolean>
+      )
     },
     cancelRequest(requestId: string) {
-      return ipcRenderer.invoke(IPC.mediaCancelRequest, requestId)
+      return invokeDecoded(IPC.mediaCancelRequest, Schema.Void, requestId)
     },
     openDisplayPicker(audioRequested: boolean) {
-      return ipcRenderer.invoke(
+      return invokeDecoded(
         IPC.mediaOpenDisplayPicker,
+        DesktopDisplayMediaRequestSchema,
         audioRequested,
-      ) as Promise<DesktopDisplayMediaRequest>
+      )
     },
     listDevices(kind: 'audioinput' | 'audiooutput' | 'videoinput') {
-      return ipcRenderer.invoke(
+      return invokeDecoded(
         IPC.mediaListDevices,
+        NativeMediaDevicesSchema,
         kind,
-      ) as Promise<NativeMediaDeviceInfo[]>
+      )
     },
     startMicrophonePreview() {
-      return ipcRenderer.invoke(IPC.mediaStartMicrophonePreview) as Promise<void>
+      return invokeDecoded(IPC.mediaStartMicrophonePreview, Schema.Void)
     },
     stopMicrophonePreview() {
-      return ipcRenderer.invoke(IPC.mediaStopMicrophonePreview)
+      return invokeDecoded(IPC.mediaStopMicrophonePreview, Schema.Void)
     },
     setRemoteVideoDemand(sessionId, generation, trackId, demanded) {
-      return ipcRenderer.invoke(
+      return invokeDecoded(
         IPC.mediaSetRemoteVideoDemand,
+        Schema.Void,
         sessionId,
         generation,
         trackId,
@@ -370,10 +523,17 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       )
     },
     replayRemoteVideoPublications() {
-      return ipcRenderer.invoke(IPC.mediaReplayRemoteVideoPublications)
+      return invokeDecoded(
+        IPC.mediaReplayRemoteVideoPublications,
+        Schema.Void,
+      )
     },
     setLocalScreenPreviewDemand(demand) {
-      return ipcRenderer.invoke(IPC.mediaSetLocalScreenPreviewDemand, demand)
+      return invokeDecoded(
+        IPC.mediaSetLocalScreenPreviewDemand,
+        Schema.Void,
+        demand,
+      )
     },
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void) {
       const listener = (_event: Electron.IpcRendererEvent, request: unknown) => {
@@ -428,148 +588,3 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
 }
 
 contextBridge.exposeInMainWorld('syrnikeDesktop', syrnikeDesktop)
-
-function isDesktopUpdateState(value: unknown): value is DesktopUpdateState {
-  if (!value || typeof value !== 'object') return false
-  const state = value as DesktopUpdateState
-  switch (state.status) {
-    case 'idle':
-    case 'checking':
-      return true
-    case 'available':
-    case 'ready':
-    case 'installing':
-      return typeof state.version === 'string'
-    case 'downloading':
-      return typeof state.percent === 'number'
-    case 'error':
-      return typeof state.message === 'string'
-    default:
-      return false
-  }
-}
-
-function isHotkeyActivationEvent(value: unknown): value is HotkeyActivationEvent {
-  if (!value || typeof value !== 'object') return false
-  const event = value as HotkeyActivationEvent
-  return (
-    typeof event.action === 'string' &&
-    (event.phase === 'pressed' || event.phase === 'released')
-  )
-}
-
-function isDesktopDisplayMediaRequest(
-  value: unknown,
-): value is DesktopDisplayMediaRequest {
-  if (!value || typeof value !== 'object') return false
-  const request = value as DesktopDisplayMediaRequest
-  return (
-    typeof request.id === 'string' &&
-    typeof request.audioRequested === 'boolean'
-  )
-}
-
-function isNativePickerResolved(
-  value: unknown,
-): value is DesktopDisplayMediaSelection {
-  if (!value || typeof value !== 'object') return false
-  const payload = value as {
-    requestId?: unknown
-    sourceId?: unknown
-    audioRequested?: unknown
-  }
-  return (
-    typeof payload.requestId === 'string' &&
-    typeof payload.sourceId === 'string' &&
-    typeof payload.audioRequested === 'boolean'
-  )
-}
-
-function isDesktopOverlayState(value: unknown): value is DesktopOverlayState {
-  if (!value || typeof value !== 'object') return false
-  const state = value as DesktopOverlayState
-  return (
-    typeof state.available === 'boolean' &&
-    typeof state.enabled === 'boolean' &&
-    typeof state.visible === 'boolean' &&
-    (state.target === null ||
-      (typeof state.target === 'object' &&
-        typeof state.target.gameId === 'string' &&
-        typeof state.target.processName === 'string' &&
-        (typeof state.target.processPath === 'string' ||
-          state.target.processPath === null) &&
-        typeof state.target.title === 'string' &&
-        isDesktopOverlayBounds(state.target.bounds))) &&
-    isDesktopOverlaySnapshot(state.snapshot)
-  )
-}
-
-function isDesktopOverlayBounds(value: unknown) {
-  if (!value || typeof value !== 'object') return false
-  const bounds = value as {
-    x?: unknown
-    y?: unknown
-    width?: unknown
-    height?: unknown
-  }
-  return (
-    typeof bounds.x === 'number' &&
-    Number.isFinite(bounds.x) &&
-    typeof bounds.y === 'number' &&
-    Number.isFinite(bounds.y) &&
-    typeof bounds.width === 'number' &&
-    Number.isFinite(bounds.width) &&
-    typeof bounds.height === 'number' &&
-    Number.isFinite(bounds.height)
-  )
-}
-
-function isDesktopOverlaySnapshot(
-  value: unknown,
-): value is DesktopOverlaySnapshot {
-  if (!value || typeof value !== 'object') return false
-  const snapshot = value as DesktopOverlaySnapshot
-  return (
-    typeof snapshot.active === 'boolean' &&
-    (typeof snapshot.channelId === 'string' || snapshot.channelId === null) &&
-    (typeof snapshot.channelLabel === 'string' || snapshot.channelLabel === null) &&
-    Array.isArray(snapshot.participants) &&
-    snapshot.participants.every((participant) => {
-      if (!participant || typeof participant !== 'object') return false
-      const item = participant as DesktopOverlaySnapshot['participants'][number]
-      return (
-        typeof item.userId === 'string' &&
-        typeof item.displayName === 'string' &&
-        (typeof item.avatarUrl === 'string' || item.avatarUrl === null) &&
-        typeof item.speaking === 'boolean' &&
-        typeof item.muted === 'boolean' &&
-        typeof item.deafened === 'boolean'
-      )
-    })
-  )
-}
-
-function isNativeMicrophoneMetricsEvent(
-  value: unknown,
-): value is NativeMicrophoneMetricsEvent {
-  if (!value || typeof value !== 'object') return false
-  const event = value as NativeMicrophoneMetricsEvent
-  return (
-    Number.isSafeInteger(event.revision) &&
-    event.revision >= 0 &&
-    typeof event.inputDb === 'number' &&
-    typeof event.thresholdDb === 'number' &&
-    typeof event.open === 'boolean'
-  )
-}
-
-function isNativeMicrophonePreviewStateEvent(
-  value: unknown,
-): value is NativeMicrophonePreviewStateEvent {
-  if (!value || typeof value !== 'object') return false
-  const event = value as { status?: unknown; message?: unknown }
-  if (event.status === 'running' || event.status === 'stopped') {
-    return event.message === undefined
-  }
-  return event.status === 'error' && typeof event.message === 'string'
-}

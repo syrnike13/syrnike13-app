@@ -1,10 +1,20 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-export type DesktopPreferences = {
-  closeToTray: boolean
-  openAtLogin: boolean
-}
+import { Effect, Option, Schema } from 'effect'
+
+const DesktopPreferencesSchema = Schema.Struct({
+  closeToTray: Schema.Boolean,
+  openAtLogin: Schema.Boolean,
+})
+
+const UnknownRecordSchema = Schema.Record(Schema.String, Schema.Unknown)
+const UnknownJsonSchema = Schema.fromJsonString(Schema.Unknown)
+const DesktopPreferencesJsonSchema = Schema.fromJsonString(
+  DesktopPreferencesSchema,
+)
+
+export type DesktopPreferences = typeof DesktopPreferencesSchema.Type
 
 export const DEFAULT_DESKTOP_PREFERENCES: DesktopPreferences = {
   closeToTray: true,
@@ -12,37 +22,74 @@ export const DEFAULT_DESKTOP_PREFERENCES: DesktopPreferences = {
 }
 
 export function normalizeDesktopPreferences(value: unknown): DesktopPreferences {
-  if (!value || typeof value !== 'object') {
-    return { ...DEFAULT_DESKTOP_PREFERENCES }
-  }
-
-  const preferences = value as Partial<DesktopPreferences>
+  const decoded = Schema.decodeUnknownOption(UnknownRecordSchema)(value)
+  const preferences = Option.isSome(decoded) ? decoded.value : {}
+  const closeToTray = Schema.decodeUnknownOption(Schema.Boolean)(
+    preferences.closeToTray,
+  )
+  const openAtLogin = Schema.decodeUnknownOption(Schema.Boolean)(
+    preferences.openAtLogin,
+  )
   return {
-    closeToTray:
-      typeof preferences.closeToTray === 'boolean'
-        ? preferences.closeToTray
-        : DEFAULT_DESKTOP_PREFERENCES.closeToTray,
-    openAtLogin:
-      typeof preferences.openAtLogin === 'boolean'
-        ? preferences.openAtLogin
-        : DEFAULT_DESKTOP_PREFERENCES.openAtLogin,
+    closeToTray: Option.getOrElse(
+      closeToTray,
+      () => DEFAULT_DESKTOP_PREFERENCES.closeToTray,
+    ),
+    openAtLogin: Option.getOrElse(
+      openAtLogin,
+      () => DEFAULT_DESKTOP_PREFERENCES.openAtLogin,
+    ),
   }
 }
 
-export async function loadDesktopPreferences(filePath: string) {
-  try {
-    return normalizeDesktopPreferences(
-      JSON.parse(await readFile(filePath, 'utf8')),
-    )
-  } catch {
-    return { ...DEFAULT_DESKTOP_PREFERENCES }
-  }
+const readDesktopPreferencesEffect = Effect.fn('desktopPreferences.read')(
+  function*(filePath: string) {
+    const raw = yield* Effect.tryPromise({
+      try: () => readFile(filePath, 'utf8'),
+      catch: (cause) => cause,
+    })
+    const parsed = yield* Schema.decodeUnknownEffect(UnknownJsonSchema)(raw)
+    return normalizeDesktopPreferences(parsed)
+  },
+)
+
+export const saveDesktopPreferencesEffect = Effect.fn(
+  'desktopPreferences.save',
+)(
+  function*(filePath: string, preferences: DesktopPreferences) {
+    yield* Effect.tryPromise({
+      try: () => mkdir(path.dirname(filePath), { recursive: true }),
+      catch: (cause) => cause,
+    })
+    yield* Effect.tryPromise({
+      try: () =>
+        writeFile(
+          filePath,
+          `${Schema.encodeSync(DesktopPreferencesJsonSchema)(preferences)}\n`,
+          'utf8',
+        ),
+      catch: (cause) => cause,
+    })
+  },
+)
+
+export const loadDesktopPreferencesEffect = Effect.fn(
+  'desktopPreferences.load',
+)(function*(filePath: string) {
+  return yield* readDesktopPreferencesEffect(filePath).pipe(
+    Effect.catchIf(() => true, () =>
+      Effect.succeed({ ...DEFAULT_DESKTOP_PREFERENCES }),
+    ),
+  )
+})
+
+export function loadDesktopPreferences(filePath: string) {
+  return Effect.runPromise(loadDesktopPreferencesEffect(filePath))
 }
 
-export async function saveDesktopPreferences(
+export function saveDesktopPreferences(
   filePath: string,
   preferences: DesktopPreferences,
 ) {
-  await mkdir(path.dirname(filePath), { recursive: true })
-  await writeFile(filePath, `${JSON.stringify(preferences, null, 2)}\n`, 'utf8')
+  return Effect.runPromise(saveDesktopPreferencesEffect(filePath, preferences))
 }

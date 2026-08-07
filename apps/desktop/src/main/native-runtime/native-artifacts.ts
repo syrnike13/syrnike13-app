@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
+import { Option, Schema } from 'effect'
+
 const NATIVE_BINARY_NAMES = [
   'livekit.dll',
   'livekit_ffi.dll',
@@ -17,19 +19,29 @@ const NATIVE_DISTRIBUTION_NAMES = [
   'native-manifest.json',
 ].sort()
 
-export type NativeArtifactManifest = {
-  schemaVersion: 1
-  contractVersion: number
-  platform: 'win32'
-  arch: 'x64'
-  appVersion: string
-  releaseChannel: 'stable' | 'nightly'
-  commitSha: string
-  electronVersion: string
-  napiVersion: number
-  liveKitVersion: string
-  files: Array<{ name: string; sha256: string }>
-}
+const Sha256Schema = Schema.String.check(
+  Schema.isPattern(/^[0-9a-f]{64}$/i),
+)
+
+export const NativeArtifactManifestSchema = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  contractVersion: Schema.Int,
+  platform: Schema.Literal('win32'),
+  arch: Schema.Literal('x64'),
+  appVersion: Schema.String,
+  releaseChannel: Schema.Literals(['stable', 'nightly']),
+  commitSha: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/i)),
+  electronVersion: Schema.String,
+  napiVersion: Schema.Int.check(Schema.isGreaterThan(0)),
+  liveKitVersion: Schema.String,
+  files: Schema.Array(Schema.Struct({
+    name: Schema.String,
+    sha256: Sha256Schema,
+  })),
+})
+const UnknownJsonSchema = Schema.fromJsonString(Schema.Unknown)
+
+export type NativeArtifactManifest = typeof NativeArtifactManifestSchema.Type
 
 export type NativeArtifactExpectations = {
   appVersion: string
@@ -104,41 +116,15 @@ export function verifyNativeArtifactDistribution(
 }
 
 function parseManifest(value: string): NativeArtifactManifest {
-  let manifest: unknown
-  try {
-    manifest = JSON.parse(value)
-  } catch {
+  const parsed = Schema.decodeUnknownOption(UnknownJsonSchema)(value)
+  if (Option.isNone(parsed)) {
     throw new Error('Native artifact manifest is not valid JSON')
   }
-  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+  const decoded = Schema.decodeUnknownOption(NativeArtifactManifestSchema)(
+    parsed.value,
+  )
+  if (Option.isNone(decoded)) {
     throw new Error('Native artifact manifest has an invalid shape')
   }
-  const candidate = manifest as Partial<NativeArtifactManifest>
-  if (
-    candidate.schemaVersion !== 1 ||
-    !Number.isSafeInteger(candidate.contractVersion) ||
-    candidate.platform !== 'win32' ||
-    candidate.arch !== 'x64' ||
-    typeof candidate.appVersion !== 'string' ||
-    (candidate.releaseChannel !== 'stable' &&
-      candidate.releaseChannel !== 'nightly') ||
-    typeof candidate.commitSha !== 'string' ||
-    !/^[0-9a-f]{40}$/i.test(candidate.commitSha) ||
-    typeof candidate.electronVersion !== 'string' ||
-    !Number.isSafeInteger(candidate.napiVersion) ||
-    Number(candidate.napiVersion) < 1 ||
-    typeof candidate.liveKitVersion !== 'string' ||
-    !Array.isArray(candidate.files) ||
-    candidate.files.some(
-      (file) =>
-        !file ||
-        typeof file !== 'object' ||
-        typeof file.name !== 'string' ||
-        typeof file.sha256 !== 'string' ||
-        !/^[0-9a-f]{64}$/i.test(file.sha256),
-    )
-  ) {
-    throw new Error('Native artifact manifest has an invalid shape')
-  }
-  return candidate as NativeArtifactManifest
+  return decoded.value
 }

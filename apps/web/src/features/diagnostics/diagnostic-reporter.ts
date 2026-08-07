@@ -1,3 +1,5 @@
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Effect } from 'effect'
 import {
   DIAGNOSTIC_SCHEMA,
   DIAGNOSTIC_SCHEMA_VERSION,
@@ -6,9 +8,9 @@ import {
   type SyrnikeDesktopApi,
 } from '@syrnike13/platform'
 
-import { apiRequest } from '#/lib/api/client'
+import { apiRequestEffect } from '#/lib/api/client'
 import { config } from '#/lib/config'
-import { loadDesktopLocalSettings } from '#/features/settings/desktop-local-settings-client'
+import { loadDesktopLocalSettingsEffect } from '#/features/settings/desktop-local-settings-client'
 import { readBrowserDiagnosticReportsEnabled } from './diagnostic-preferences'
 import { clearPendingAutomaticDiagnosticIncidents } from './automatic-diagnostic-incidents'
 
@@ -26,8 +28,6 @@ export type SendDiagnosticReportOptions = {
   automaticLease?: boolean
   automaticCooldownMs?: number
 }
-
-type DiagnosticReportCreated = { id: string; created_at: number }
 
 type RecordDiagnosticEventOptions = {
   /** Collapse identical sanitized payloads while retaining periodic heartbeats. */
@@ -131,87 +131,108 @@ export function recordDiagnosticEvent(
   }
 }
 
-export async function sendDiagnosticReport(
-  options: SendDiagnosticReportOptions,
-): Promise<DiagnosticReportCreated | null> {
-  const accountRevision = diagnosticAccountRevision
-  const automaticKey = options.automatic && !options.automaticLease
-    ? `${options.area}:${options.triggerCode}`
-    : null
-  if (options.automatic) {
-    if (options.desktop) {
-      const settings = await loadDesktopLocalSettings()
-      if (!settings?.observability.diagnosticReports) return null
-    } else if (!readBrowserDiagnosticReportsEnabled()) {
-      return null
+export const sendDiagnosticReport = Effect.fn('diagnostics.sendReport')(
+  function*(options: SendDiagnosticReportOptions) {
+    const accountRevision = diagnosticAccountRevision
+    const automaticKey = options.automatic && !options.automaticLease
+      ? `${options.area}:${options.triggerCode}`
+      : null
+    if (options.automatic) {
+      if (options.desktop) {
+        const settings = yield* loadDesktopLocalSettingsEffect()
+        if (!settings?.observability.diagnosticReports) return null
+      } else if (!readBrowserDiagnosticReportsEnabled()) {
+        return null
+      }
+      if (accountRevision !== diagnosticAccountRevision) return null
+      if (automaticKey) {
+        const previous = automaticReports.get(automaticKey) ?? 0
+        const cooldownMs = Math.max(
+          5_000,
+          options.automaticCooldownMs ?? AUTOMATIC_COOLDOWN_MS,
+        )
+        if (Date.now() - previous < cooldownMs) return null
+        automaticReports.set(automaticKey, Date.now())
+      }
     }
-    if (accountRevision !== diagnosticAccountRevision) return null
-    if (automaticKey) {
-      const previous = automaticReports.get(automaticKey) ?? 0
-      const cooldownMs = Math.max(
-        5_000,
-        options.automaticCooldownMs ?? AUTOMATIC_COOLDOWN_MS,
+
+    const send = Effect.gen(function*() {
+      yield* Effect.try({
+        try: () => {
+          recordDiagnosticEvent(options.area, 'report_triggered', {
+            severity: options.severity,
+            triggerCode: options.triggerCode,
+            context: options.context,
+          })
+        },
+        catch: (cause) => cause,
+      })
+      const reportSource = options.desktop ? 'desktop' : 'web'
+      const platform = options.desktop?.platform.os ?? browserPlatform()
+      const area = safeIdentifier(options.area, 'client')
+      const triggerCode = safeIdentifier(options.triggerCode, 'unknown_error')
+      const releaseChannel = normalizedReleaseChannel(config.releaseChannel)
+      const appVersion = safeIdentifier(config.appVersion, 'unknown')
+      const manifest: DiagnosticEnvelope = {
+        schema: DIAGNOSTIC_SCHEMA,
+        version: DIAGNOSTIC_SCHEMA_VERSION,
+        record_type: 'manifest',
+        timestamp_ms: Date.now(),
+        source: options.desktop ? 'renderer' : 'web',
+        event: 'report_manifest',
+        data: {
+          source: reportSource,
+          release_channel: releaseChannel,
+          app_version: appVersion,
+          platform: safeIdentifier(platform, 'unknown'),
+          area,
+          severity: options.severity,
+          trigger_code: triggerCode,
+        },
+      }
+      const jsonl = [JSON.stringify(manifest), ...events].join('\n')
+      const desktop = options.desktop
+      const compressed = yield* desktop
+        ? Effect.tryPromise({
+            try: () => desktop.diagnostics.createBundle(jsonl),
+            catch: (cause) => cause,
+          })
+        : gzipTextEffect(jsonl)
+
+      return yield* apiRequestEffect(
+        '/diagnostics/reports',
+        ApiSchema.DiagnosticsCreateReport200,
+        {
+          method: 'POST',
+          token: options.token,
+          body: {
+            version: 1,
+            source: reportSource,
+            release_channel: releaseChannel,
+            app_version: appVersion,
+            platform: safeIdentifier(platform, 'unknown'),
+            area,
+            severity: options.severity,
+            trigger_code: triggerCode,
+            description: sanitizeText(options.description ?? '').slice(
+              0,
+              1_000,
+            ),
+            payload: bytesToBase64(compressed),
+          },
+        },
       )
-      if (Date.now() - previous < cooldownMs) return null
-      automaticReports.set(automaticKey, Date.now())
-    }
-  }
-
-  try {
-    recordDiagnosticEvent(options.area, 'report_triggered', {
-      severity: options.severity,
-      triggerCode: options.triggerCode,
-      context: options.context,
     })
-    const reportSource = options.desktop ? 'desktop' : 'web'
-    const platform = options.desktop?.platform.os ?? browserPlatform()
-    const area = safeIdentifier(options.area, 'client')
-    const triggerCode = safeIdentifier(options.triggerCode, 'unknown_error')
-    const releaseChannel = normalizedReleaseChannel(config.releaseChannel)
-    const appVersion = safeIdentifier(config.appVersion, 'unknown')
-    const manifest: DiagnosticEnvelope = {
-      schema: DIAGNOSTIC_SCHEMA,
-      version: DIAGNOSTIC_SCHEMA_VERSION,
-      record_type: 'manifest',
-      timestamp_ms: Date.now(),
-      source: options.desktop ? 'renderer' : 'web',
-      event: 'report_manifest',
-      data: {
-        source: reportSource,
-        release_channel: releaseChannel,
-        app_version: appVersion,
-        platform: safeIdentifier(platform, 'unknown'),
-        area,
-        severity: options.severity,
-        trigger_code: triggerCode,
-      },
-    }
-    const jsonl = [JSON.stringify(manifest), ...events].join('\n')
-    const compressed = options.desktop
-      ? await options.desktop.diagnostics.createBundle(jsonl)
-      : await gzipText(jsonl)
 
-    return await apiRequest<DiagnosticReportCreated>('/diagnostics/reports', {
-      method: 'POST',
-      token: options.token,
-      body: {
-        version: 1,
-        source: reportSource,
-        release_channel: releaseChannel,
-        app_version: appVersion,
-        platform: safeIdentifier(platform, 'unknown'),
-        area,
-        severity: options.severity,
-        trigger_code: triggerCode,
-        description: sanitizeText(options.description ?? '').slice(0, 1_000),
-        payload: bytesToBase64(compressed),
-      },
-    })
-  } catch (error) {
-    if (automaticKey) automaticReports.delete(automaticKey)
-    throw error
-  }
-}
+    return yield* send.pipe(
+      Effect.tapError(() =>
+        Effect.sync(() => {
+          if (automaticKey) automaticReports.delete(automaticKey)
+        }),
+      ),
+    )
+  },
+)
 
 export function diagnosticEventCount() {
   return events.length
@@ -291,10 +312,16 @@ function browserPlatform() {
       : 'browser'
 }
 
-async function gzipText(value: string) {
-  const stream = new Blob([value]).stream().pipeThrough(new CompressionStream('gzip'))
-  return new Uint8Array(await new Response(stream).arrayBuffer())
-}
+const gzipTextEffect = Effect.fn('diagnostics.gzipText')(function*(value: string) {
+  const stream = new Blob([value])
+    .stream()
+    .pipeThrough(new CompressionStream('gzip'))
+  const buffer = yield* Effect.tryPromise({
+    try: () => new Response(stream).arrayBuffer(),
+    catch: (cause) => cause,
+  })
+  return new Uint8Array(buffer)
+})
 
 function bytesToBase64(bytes: Uint8Array) {
   let binary = ''

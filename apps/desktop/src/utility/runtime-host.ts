@@ -2,6 +2,8 @@ import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 
+import { Effect, Exit, Schema } from 'effect'
+
 import {
   createNativeDiagnosticLog,
   type NativeDiagnosticLog,
@@ -35,29 +37,23 @@ type UtilityCrashReporter = {
   addExtraParameter(key: string, value: string): void
 }
 
-const parentPort = process.parentPort as ParentPort | undefined
-
 type NativeRuntimeInstance = {
-  ready?(): Promise<void>
-  dispatch(command: Record<string, unknown>): void
-  shutdown(): void | Promise<void>
+  ready?(): unknown
+  dispatch(command: Record<string, unknown>): unknown
+  shutdown(): unknown
 }
+
+type NativeRuntimeFactory = (
+  emit: (event: Record<string, unknown>) => void,
+) => unknown
 
 type NativeRuntimeAddon = {
   createMediaRuntime?: (
     emit: (event: Record<string, unknown>) => void,
-  ) => NativeRuntimeInstance
-  createHotkeyRuntime?: (emit: (event: Record<string, unknown>) => void) => NativeRuntimeInstance
-  createOverlayRuntime?: (emit: (event: Record<string, unknown>) => void) => NativeRuntimeInstance
-  getRuntimeInfo?: () => {
-    runtime?: string
-    contractVersion?: number
-    capabilities?: string[]
-    commit?: string
-    napi?: string
-    livekit?: string
-    diagnosticsEnabled?: boolean
-  }
+  ) => unknown
+  createHotkeyRuntime?: NativeRuntimeFactory
+  createOverlayRuntime?: NativeRuntimeFactory
+  getRuntimeInfo?: () => unknown
 }
 
 type RuntimeHostDependencies = {
@@ -68,11 +64,69 @@ type RuntimeHostDependencies = {
     nativeRoot: string,
     expected: NativeArtifactExpectations,
   ): NativeArtifactManifest
-  loadAddon?(nativeModulePath: string): NativeRuntimeAddon
+  loadAddon?(nativeModulePath: string): unknown
   crashReporter?: UtilityCrashReporter
   registerShutdownSignals?(shutdown: (exitCode?: number) => void): void
   exit?(exitCode: number): void
 }
+
+const ParentPortSchema = Schema.declare<ParentPort>(
+  (input): input is ParentPort =>
+    typeof input === 'object' &&
+    input !== null &&
+    typeof Reflect.get(input, 'on') === 'function' &&
+    typeof Reflect.get(input, 'postMessage') === 'function',
+)
+
+const UtilityCrashReporterSchema = Schema.declare<UtilityCrashReporter>(
+  (input): input is UtilityCrashReporter =>
+    typeof input === 'object' &&
+    input !== null &&
+    typeof Reflect.get(input, 'addExtraParameter') === 'function',
+)
+
+const NativeRuntimeFactorySchema = Schema.declare<NativeRuntimeFactory>(
+  (input): input is NativeRuntimeFactory => typeof input === 'function',
+)
+
+const RuntimeInfoFactorySchema = Schema.declare<() => unknown>(
+  (input): input is () => unknown => typeof input === 'function',
+)
+
+const RuntimeDispatchSchema = Schema.declare<
+  (command: Record<string, unknown>) => unknown
+>(
+  (input): input is (command: Record<string, unknown>) => unknown =>
+    typeof input === 'function',
+)
+
+const NativeRuntimeAddonSchema = Schema.Struct({
+  createMediaRuntime: Schema.optionalKey(NativeRuntimeFactorySchema),
+  createHotkeyRuntime: Schema.optionalKey(NativeRuntimeFactorySchema),
+  createOverlayRuntime: Schema.optionalKey(NativeRuntimeFactorySchema),
+  getRuntimeInfo: Schema.optionalKey(RuntimeInfoFactorySchema),
+})
+
+const NativeRuntimeInfoSchema = Schema.Struct({
+  runtime: Schema.optionalKey(Schema.String),
+  contractVersion: Schema.optionalKey(Schema.Number),
+  capabilities: Schema.optionalKey(Schema.Array(Schema.String)),
+  commit: Schema.optionalKey(Schema.String),
+  napi: Schema.optionalKey(Schema.String),
+  livekit: Schema.optionalKey(Schema.String),
+  diagnosticsEnabled: Schema.optionalKey(Schema.Boolean),
+})
+
+const NativeRuntimeInstanceSchema = Schema.Struct({
+  ready: Schema.optionalKey(RuntimeInfoFactorySchema),
+  dispatch: RuntimeDispatchSchema,
+  shutdown: RuntimeInfoFactorySchema,
+})
+
+const processParentPort: unknown = Reflect.get(process, 'parentPort')
+const parentPort = Schema.is(ParentPortSchema)(processParentPort)
+  ? processParentPort
+  : undefined
 
 const REQUIRED_CAPABILITIES: Record<NativeRuntimeKind, readonly string[]> = {
   media: [
@@ -114,13 +168,30 @@ function sanitizeDispatchError(error: unknown) {
   return sanitizeRuntimeError(error)
 }
 
-export async function runNativeUtilityHost(
+function closeDiagnosticLogEffect(diagnosticLog: NativeDiagnosticLog | null) {
+  return diagnosticLog?.closeEffect() ?? Effect.void
+}
+
+export function runNativeUtilityHost(
+  runtimeKind: NativeRuntimeKind,
+  dependencies: RuntimeHostDependencies = {},
+) {
+  return Effect.runPromise(
+    runNativeUtilityHostEffect(runtimeKind, dependencies),
+  )
+}
+
+export const runNativeUtilityHostEffect = Effect.fn(
+  'desktop.runNativeUtilityHost',
+)(function*(
   runtimeKind: NativeRuntimeKind,
   dependencies: RuntimeHostDependencies = {},
 ) {
   const hostParentPort = dependencies.parentPort ?? parentPort
   if (!hostParentPort) {
-    throw new Error('Native utility host has no Electron parent port')
+    return yield* Effect.fail(
+      new Error('Native utility host has no Electron parent port'),
+    )
   }
   const environment = dependencies.environment ?? process.env
   const nativeModuleExists = dependencies.nativeModuleExists ?? existsSync
@@ -128,10 +199,12 @@ export async function runNativeUtilityHost(
     dependencies.verifyDistribution ?? verifyNativeArtifactDistribution
   const exit = dependencies.exit ?? ((exitCode: number) => process.exit(exitCode))
   const diagnosticLog = createUtilityDiagnosticLog(runtimeKind, environment)
+  const processCrashReporter: unknown = Reflect.get(process, 'crashReporter')
   const utilityCrashReporter =
     dependencies.crashReporter ??
-    (process as NodeJS.Process & { crashReporter?: UtilityCrashReporter })
-      .crashReporter
+    (Schema.is(UtilityCrashReporterSchema)(processCrashReporter)
+      ? processCrashReporter
+      : undefined)
   const annotateCrash = (key: string, value: string | undefined) => {
     if (!utilityCrashReporter || !value) return
     try {
@@ -181,7 +254,7 @@ export async function runNativeUtilityHost(
         typeof nativeModulePath === 'string' ? path.basename(nativeModulePath) : undefined,
     })
     postIncompatibleReady(hostParentPort, runtimeKind)
-    await diagnosticLog?.close()
+    yield* closeDiagnosticLogEffect(diagnosticLog)
     return
   }
 
@@ -205,63 +278,91 @@ export async function runNativeUtilityHost(
       runtimeKind,
     })
     postIncompatibleReady(hostParentPort, runtimeKind)
-    await diagnosticLog?.close()
+    yield* closeDiagnosticLogEffect(diagnosticLog)
     return
   }
 
-  let manifest: ReturnType<typeof verifyNativeArtifactDistribution>
-  try {
-    manifest = verifyDistribution(nativeRoot, {
-      appVersion,
-      commitSha: expectedCommitSha,
-      contractVersion: NATIVE_RUNTIME_CONTRACT_VERSION,
-      electronVersion: process.versions.electron,
-      minimumNapiVersion: Number(process.versions.napi ?? 0),
-      liveKitVersion: NATIVE_RUNTIME_LIVEKIT_VERSION,
-      releaseChannel,
-    })
-  } catch (error) {
-    diagnosticLog?.log('startup_validation_failed', {
-      reason: 'artifact_distribution_verification_failed',
-      runtimeKind,
-      error: error instanceof Error ? error.message : String(error),
-    })
-    postIncompatibleReady(hostParentPort, runtimeKind)
-    await diagnosticLog?.close()
-    return
-  }
+  const manifest = yield* Effect.try({
+    try: () =>
+      verifyDistribution(nativeRoot, {
+        appVersion,
+        commitSha: expectedCommitSha,
+        contractVersion: NATIVE_RUNTIME_CONTRACT_VERSION,
+        electronVersion: process.versions.electron,
+        minimumNapiVersion: Number(process.versions.napi ?? 0),
+        liveKitVersion: NATIVE_RUNTIME_LIVEKIT_VERSION,
+        releaseChannel,
+      }),
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.gen(function*() {
+        diagnosticLog?.log('startup_validation_failed', {
+          reason: 'artifact_distribution_verification_failed',
+          runtimeKind,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        postIncompatibleReady(hostParentPort, runtimeKind)
+        yield* closeDiagnosticLogEffect(diagnosticLog)
+        return null
+      }),
+    ),
+  )
+  if (!manifest) return
 
   const require = createRequire(path.resolve(process.cwd(), 'syrnike-utility-host.cjs'))
-  let addon: NativeRuntimeAddon
-  try {
-    annotateCrash('native_host_stage', 'addon_load')
-    addon = dependencies.loadAddon
-      ? dependencies.loadAddon(nativeModulePath)
-      : require(nativeModulePath) as NativeRuntimeAddon
-    annotateCrash('native_host_stage', 'addon_loaded')
-    diagnosticLog?.log('addon_loaded', {
-      nativeModuleFile: path.basename(nativeModulePath),
-    })
-  } catch {
-    diagnosticLog?.log('addon_load_failed', {
-      nativeModuleFile: path.basename(nativeModulePath),
-    })
-    postIncompatibleReady(hostParentPort, runtimeKind)
-    await diagnosticLog?.close()
-    return
-  }
-  let info: ReturnType<NonNullable<NativeRuntimeAddon['getRuntimeInfo']>> = {}
-  try {
-    info = addon.getRuntimeInfo?.() ?? {}
-    diagnosticLog?.log('addon_runtime_info', {
-      nativeDiagnosticsEnabled: info.diagnosticsEnabled === true,
-    })
-  } catch {
-    diagnosticLog?.log('addon_info_failed')
-    postIncompatibleReady(hostParentPort, runtimeKind)
-    await diagnosticLog?.close()
-    return
-  }
+  const addon = yield* Effect.try({
+    try: () => {
+      annotateCrash('native_host_stage', 'addon_load')
+      const loadedAddon: unknown = dependencies.loadAddon
+        ? dependencies.loadAddon(nativeModulePath)
+        : require(nativeModulePath)
+      if (!Schema.is(NativeRuntimeAddonSchema)(loadedAddon)) {
+        throw new TypeError('Native runtime addon has an invalid contract')
+      }
+      return loadedAddon
+    },
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.catch(() =>
+      Effect.gen(function*() {
+        diagnosticLog?.log('addon_load_failed', {
+          nativeModuleFile: path.basename(nativeModulePath),
+        })
+        postIncompatibleReady(hostParentPort, runtimeKind)
+        yield* closeDiagnosticLogEffect(diagnosticLog)
+        return null
+      }),
+    ),
+  )
+  if (!addon) return
+  annotateCrash('native_host_stage', 'addon_loaded')
+  diagnosticLog?.log('addon_loaded', {
+    nativeModuleFile: path.basename(nativeModulePath),
+  })
+  const info = yield* Effect.try({
+    try: () => {
+      const runtimeInfo: unknown = addon.getRuntimeInfo?.() ?? {}
+      if (!Schema.is(NativeRuntimeInfoSchema)(runtimeInfo)) {
+        throw new TypeError('Native runtime info has an invalid contract')
+      }
+      return runtimeInfo
+    },
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.catch(() =>
+      Effect.gen(function*() {
+        diagnosticLog?.log('addon_info_failed')
+        postIncompatibleReady(hostParentPort, runtimeKind)
+        yield* closeDiagnosticLogEffect(diagnosticLog)
+        return null
+      }),
+    ),
+  )
+  if (!info) return
+  diagnosticLog?.log('addon_runtime_info', {
+    nativeDiagnosticsEnabled: info.diagnosticsEnabled === true,
+  })
   const factory = runtimeKind === 'media'
     ? addon.createMediaRuntime
     : runtimeKind === 'hotkey'
@@ -282,13 +383,24 @@ export async function runNativeUtilityHost(
     })
     const current = runtime
     runtime = null
-    void Promise.resolve()
-      .then(() => current?.shutdown())
-      .then(() => diagnosticLog?.close())
-      .then(
-        () => exit(exitCode),
-        () => exit(1),
-      )
+    Effect.runFork(
+      Effect.gen(function*() {
+        const shutdownResult = yield* Effect.exit(
+          Effect.tryPromise({
+            try: () => Promise.resolve(current?.shutdown()),
+            catch: (cause) => cause,
+          }),
+        )
+        const closeResult = yield* Effect.exit(
+          closeDiagnosticLogEffect(diagnosticLog),
+        )
+        exit(
+          Exit.isSuccess(shutdownResult) && Exit.isSuccess(closeResult)
+            ? exitCode
+            : 1,
+        )
+      }),
+    )
   }
   const failContractCorruption = (rawEvent: Record<string, unknown>) => {
     if (contractCorrupted) return
@@ -429,7 +541,7 @@ export async function runNativeUtilityHost(
   ) {
     diagnosticLog?.log('utility_ready_incompatible', ready)
     hostParentPort.postMessage(ready)
-    await diagnosticLog?.close()
+    yield* closeDiagnosticLogEffect(diagnosticLog)
     return
   }
 
@@ -439,20 +551,40 @@ export async function runNativeUtilityHost(
       runtimeKind,
     })
     postIncompatibleReady(hostParentPort, runtimeKind)
-    await diagnosticLog?.close()
+    yield* closeDiagnosticLogEffect(diagnosticLog)
     return
   }
   annotateCrash('native_host_stage', 'runtime_create')
-  runtime = factory(emit)
+  const createdRuntime: unknown = yield* Effect.try({
+    try: () => factory(emit),
+    catch: (cause) => cause,
+  })
+  if (!Schema.is(NativeRuntimeInstanceSchema)(createdRuntime)) {
+    diagnosticLog?.log('startup_validation_failed', {
+      reason: 'invalid_runtime_instance',
+      runtimeKind,
+    })
+    postIncompatibleReady(hostParentPort, runtimeKind)
+    yield* closeDiagnosticLogEffect(diagnosticLog)
+    return
+  }
+  runtime = createdRuntime
   if (dependencies.registerShutdownSignals) {
     dependencies.registerShutdownSignals(shutdown)
   } else {
     process.once('disconnect', shutdown)
     process.once('SIGTERM', shutdown)
   }
-  try {
-    await runtime.ready?.()
-  } catch {
+  const runtimeReady = yield* Effect.tryPromise({
+    try: () => Promise.resolve(runtime?.ready?.()),
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.match({
+      onFailure: () => false,
+      onSuccess: () => true,
+    }),
+  )
+  if (!runtimeReady) {
     diagnosticLog?.log('runtime_ready_failed')
     shutdown(1)
     return
@@ -464,9 +596,9 @@ export async function runNativeUtilityHost(
     ...ready,
   })
 
-  hostParentPort.on('message', (messageEvent: { data: unknown }) => {
-    const request = messageEvent.data
-    if (!isNativeRuntimeRequest(request)) return
+  const dispatchRequestEffect = Effect.fn(
+    'desktop.dispatchNativeUtilityRequest',
+  )(function*(request: NativeRuntimeRequest) {
     annotateCrash('native_last_command', request.command.type)
     if (request.command.type === 'connectCamera') {
       annotateCrash('native_camera_stage', 'connect_dispatch')
@@ -475,44 +607,60 @@ export async function runNativeUtilityHost(
     }
     const logDispatch = !isFrameReleaseCommand(request.command)
     if (logDispatch) diagnosticLog?.log('incoming_dispatch', request)
-    try {
-      if (request.command.type === 'shutdown') {
-        shutdownRequestId = request.requestId
-      }
-      runtime?.dispatch({
-        ...request.command,
-        requestId: request.requestId,
-        diagnostic: request.diagnostic,
-      })
-      if (logDispatch) {
-        diagnosticLog?.log('dispatch_forwarded', {
-          requestId: request.requestId,
-          command: request.command.type,
-          actionId: request.diagnostic?.actionId,
-          operationId: request.diagnostic?.operationId,
-          revision: request.diagnostic?.revision,
-          hostEpoch: request.diagnostic?.hostEpoch,
-          commandStage: 'utility_dispatch',
-          outcome: 'accepted',
-        })
-      }
-    } catch (error) {
-      diagnosticLog?.log('dispatch_failed', {
-        requestId: request.requestId,
-        command: request.command.type,
-        actionId: request.diagnostic?.actionId,
-        operationId: request.diagnostic?.operationId,
-        revision: request.diagnostic?.revision,
-        hostEpoch: request.diagnostic?.hostEpoch,
-        commandStage: 'utility_dispatch',
-        outcome: 'error',
-        error: sanitizeDispatchError(error),
-      })
-      postReply(hostParentPort, request.requestId, error)
-      if (request.requestId === shutdownRequestId) shutdown()
+    if (request.command.type === 'shutdown') {
+      shutdownRequestId = request.requestId
     }
+    yield* Effect.try({
+      try: () =>
+        runtime?.dispatch({
+          ...request.command,
+          requestId: request.requestId,
+          diagnostic: request.diagnostic,
+        }),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          if (!logDispatch) return
+          diagnosticLog?.log('dispatch_forwarded', {
+            requestId: request.requestId,
+            command: request.command.type,
+            actionId: request.diagnostic?.actionId,
+            operationId: request.diagnostic?.operationId,
+            revision: request.diagnostic?.revision,
+            hostEpoch: request.diagnostic?.hostEpoch,
+            commandStage: 'utility_dispatch',
+            outcome: 'accepted',
+          })
+        }),
+      ),
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          diagnosticLog?.log('dispatch_failed', {
+            requestId: request.requestId,
+            command: request.command.type,
+            actionId: request.diagnostic?.actionId,
+            operationId: request.diagnostic?.operationId,
+            revision: request.diagnostic?.revision,
+            hostEpoch: request.diagnostic?.hostEpoch,
+            commandStage: 'utility_dispatch',
+            outcome: 'error',
+            error: sanitizeDispatchError(error),
+          })
+          postReply(hostParentPort, request.requestId, error)
+          if (request.requestId === shutdownRequestId) shutdown()
+        }),
+      ),
+      Effect.asVoid,
+    )
   })
-}
+
+  hostParentPort.on('message', (messageEvent: { data: unknown }) => {
+    const request = messageEvent.data
+    if (!isNativeRuntimeRequest(request)) return
+    Effect.runSync(dispatchRequestEffect(request))
+  })
+})
 
 export function isAdvisoryNativeRuntimeEventCandidate(
   event: Record<string, unknown>,

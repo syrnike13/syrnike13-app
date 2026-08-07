@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { VoiceRtcDebugView } from '#/components/voice/voice-rtc-debug-view'
@@ -17,6 +18,7 @@ vi.mock('#/features/auth/auth-context', () => ({
 
 vi.mock('#/features/voice/voice-node', () => ({
   resolveVoiceNodeName: () => Promise.resolve('worldwide'),
+  resolveVoiceNodeNameEffect: Effect.succeed('worldwide'),
 }))
 
 vi.mock('#/features/voice/voice-session-context', () => ({
@@ -81,6 +83,7 @@ const snapshot: RtcDebugSnapshot = {
       isLocal: false,
       subscribed: true,
       live: true,
+      trackReady: true,
       publicationId: 'TR_screen',
       codec: 'vp8',
       maxBitrate: 8_000_000,

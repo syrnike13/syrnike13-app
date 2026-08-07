@@ -10,14 +10,29 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./effect-schema": {
+      "types": "./dist/effect-schema.d.ts",
+      "import": "./dist/effect-schema.js",
+      "default": "./dist/effect-schema.js"
+    },
+    "./gateway-schema": {
+      "types": "./dist/gateway-schema.d.ts",
+      "import": "./dist/gateway-schema.js",
+      "default": "./dist/gateway-schema.js"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --sourcemap --clean",
-    "generate": "openapi-typescript OpenAPI.json -o src/schema.ts && node scripts/write-type-aliases.mjs",
+    "build": "tsup src/index.ts src/effect-schema.ts src/gateway-schema.ts --format esm --dts --sourcemap --clean",
+    "generate": "openapi-typescript OpenAPI.json -o src/schema.ts && node scripts/write-type-aliases.mjs && node scripts/write-effect-schema.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
+  "dependencies": {
+    "effect": "4.0.0-beta.103"
+  },
   "devDependencies": {
+    "@effect/openapi-generator": "4.0.0-beta.103",
+    "@effect/platform-node": "4.0.0-beta.103",
     "openapi-typescript": "^5.4.2",
     "tsup": "^8.5.0",
     "typescript": "^5.8.3"

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { app, utilityProcess, type UtilityProcess } from 'electron'
+import { Effect, Option, Schema } from 'effect'
 
 import { DESKTOP_RELEASE_CHANNEL } from '../desktop-app-identity'
 import {
@@ -30,6 +31,24 @@ const UTILITY_ENV_ALLOWLIST = [
   'USERPROFILE',
   'WINDIR',
 ] as const
+
+const HighFrequencyMediaTransportMessageSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal('reply'),
+    ok: Schema.Literal(true),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('event'),
+    event: Schema.Struct({
+      type: Schema.Literals([
+        'microphoneMetrics',
+        'remoteVideoFrame',
+        'localScreenPreviewFrame',
+        'localCameraPreviewFrame',
+      ]),
+    }),
+  }),
+])
 
 export type NativeRuntimeAdapterExit = {
   code: number | null
@@ -258,7 +277,9 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
   }
 
   private releaseDiagnosticLog() {
-    if (this.ownsDiagnosticLog) void this.diagnosticLog?.close()
+    if (this.ownsDiagnosticLog && this.diagnosticLog) {
+      Effect.runFork(this.diagnosticLog.closeEffect())
+    }
     this.diagnosticLog = null
     this.ownsDiagnosticLog = false
   }
@@ -317,12 +338,21 @@ function diagnosticTextChunks(value: Buffer) {
   return chunks
 }
 
+const ErrnoErrorSchema = Schema.Struct({
+  code: Schema.String,
+})
+
+function isErrnoError(error: unknown, code: string) {
+  const decoded = Schema.decodeUnknownOption(ErrnoErrorSchema)(error)
+  return Option.isSome(decoded) && decoded.value.code === code
+}
+
 function rotateOversizedDiagnosticFileSync(filePath: string) {
   let size = 0
   try {
     size = fs.statSync(filePath).size
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    if (isErrnoError(error, 'ENOENT')) return
     throw error
   }
   if (size < NATIVE_DIAGNOSTIC_MAX_FILE_BYTES) return
@@ -333,7 +363,7 @@ function rotateOversizedDiagnosticFileSync(filePath: string) {
   try {
     fs.unlinkSync(last)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    if (!isErrnoError(error, 'ENOENT')) throw error
   }
   for (
     let index = NATIVE_DIAGNOSTIC_MAX_ROLLED_FILES - 1;
@@ -352,30 +382,16 @@ function renameSyncIfPresent(source: string, destination: string) {
   try {
     fs.renameSync(source, destination)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    if (!isErrnoError(error, 'ENOENT')) throw error
   }
 }
 
 function isHighFrequencyMediaTransportMessage(message: unknown) {
-  if (!message || typeof message !== 'object') return false
-  const envelope = message as {
-    type?: unknown
-    event?: unknown
-    ok?: unknown
-  }
-  if (envelope.type === 'reply' && envelope.ok === true) return true
-  if (
-    envelope.type !== 'event' ||
-    !envelope.event ||
-    typeof envelope.event !== 'object'
-  ) {
-    return false
-  }
-  const type = (envelope.event as { type?: unknown }).type
-  return type === 'microphoneMetrics' ||
-    type === 'remoteVideoFrame' ||
-    type === 'localScreenPreviewFrame' ||
-    type === 'localCameraPreviewFrame'
+  return Option.isSome(
+    Schema.decodeUnknownOption(HighFrequencyMediaTransportMessageSchema)(
+      message,
+    ),
+  )
 }
 
 function isFrameReleaseCommand(command: NativeRuntimeRequest['command']) {

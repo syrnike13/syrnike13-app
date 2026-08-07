@@ -1,9 +1,9 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Badge, User } from '@syrnike13/api-types'
+import { Effect, Schema } from 'effect'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { z } from 'zod'
 
 import { BadgeIcon } from '#/components/badge-icon'
 import {
@@ -16,16 +16,18 @@ import { Loader2Icon, PlusIcon, XIcon } from '#/components/icons'
 import { SearchField } from '#/components/search-field'
 import { Button } from '#/components/ui/button'
 import {
-  assignAdminUserBadge,
+  assignAdminUserBadgeEffect,
   fetchAdminBadges,
-  fetchAdminUser,
+  fetchAdminUserEffect,
   fetchAdminUserBadges,
-  removeAdminUserBadge,
+  removeAdminUserBadgeEffect,
 } from '#/features/api/admin-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { queryKeys } from '#/lib/api/query-keys'
 
-const usersSearchSchema = z.object({ u: z.string().optional() })
+const usersSearchSchema = Schema.toStandardSchemaV1(
+  Schema.Struct({ u: Schema.optionalKey(Schema.String) }),
+)
 
 export const Route = createFileRoute('/_admin/users/')({
   validateSearch: usersSearchSchema,
@@ -35,7 +37,7 @@ export const Route = createFileRoute('/_admin/users/')({
 function UsersPage() {
   const auth = useAuth()
   const token = auth.session?.token
-  const navigate = useNavigate({ from: '/users' })
+  const navigate = useNavigate({ from: '/users/' })
   const search = Route.useSearch()
   const queryClient = useQueryClient()
 
@@ -44,7 +46,7 @@ function UsersPage() {
 
   const badgesQuery = useQuery({
     queryKey: queryKeys.admin.badges,
-    queryFn: () => fetchAdminBadges(token!),
+    queryFn: ({ signal }) => fetchAdminBadges(token!, signal),
     enabled: Boolean(token),
   })
 
@@ -52,15 +54,18 @@ function UsersPage() {
     queryKey: selectedUser
       ? queryKeys.admin.userBadges(selectedUser._id)
       : queryKeys.admin.userBadges(''),
-    queryFn: () => fetchAdminUserBadges(token!, selectedUser!._id),
+    queryFn: ({ signal }) =>
+      fetchAdminUserBadges(token!, selectedUser!._id, signal),
     enabled: Boolean(token && selectedUser),
   })
 
   const findUserMutation = useMutation({
-    mutationFn: async (lookup: string) => {
-      if (!token) throw new Error('Нет сессии')
-      return fetchAdminUser(token, lookup)
-    },
+    mutationFn: (lookup: string) =>
+      Effect.runPromise(
+        token
+          ? fetchAdminUserEffect(token, lookup)
+          : Effect.fail(new Error('Нет сессии')),
+      ),
     onSuccess: (user) => {
       setSelectedUser(user)
       void navigate({ search: { u: user._id }, replace: true })
@@ -79,10 +84,12 @@ function UsersPage() {
   }, [search.u, token])
 
   const assignMutation = useMutation({
-    mutationFn: async (badge: Badge) => {
-      if (!token || !selectedUser) throw new Error('Нет пользователя')
-      return assignAdminUserBadge(token, selectedUser._id, badge._id)
-    },
+    mutationFn: (badge: Badge) =>
+      Effect.runPromise(
+        token && selectedUser
+          ? assignAdminUserBadgeEffect(token, selectedUser._id, badge._id)
+          : Effect.fail(new Error('Нет пользователя')),
+      ),
     onSuccess: (assigned) => {
       if (!selectedUser) return
       queryClient.setQueryData(queryKeys.admin.userBadges(selectedUser._id), assigned)
@@ -93,10 +100,12 @@ function UsersPage() {
   })
 
   const removeMutation = useMutation({
-    mutationFn: async (badge: Badge) => {
-      if (!token || !selectedUser) throw new Error('Нет пользователя')
-      return removeAdminUserBadge(token, selectedUser._id, badge._id)
-    },
+    mutationFn: (badge: Badge) =>
+      Effect.runPromise(
+        token && selectedUser
+          ? removeAdminUserBadgeEffect(token, selectedUser._id, badge._id)
+          : Effect.fail(new Error('Нет пользователя')),
+      ),
     onSuccess: (assigned) => {
       if (!selectedUser) return
       queryClient.setQueryData(queryKeys.admin.userBadges(selectedUser._id), assigned)

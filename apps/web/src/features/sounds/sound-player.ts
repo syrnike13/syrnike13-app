@@ -1,4 +1,5 @@
 import type { DesktopSoundSettings } from '@syrnike13/platform'
+import { Effect } from 'effect'
 
 import type { SoundEventId } from './sound-events'
 import { resolveSoundClip, type SoundEventPackId } from './sound-packs'
@@ -46,12 +47,12 @@ export function createSoundPlayer({
         Math.min(1, preferences.volume * eventVolume * (clip.volume ?? 1)),
       )
 
-      try {
-        void Promise.resolve(audio.play()).catch(() => {})
-      } catch {
-        // audio.play() can throw synchronously or reject asynchronously.
-        // Autoplay policy or missing assets must not break the UI.
-      }
+      Effect.runFork(
+        Effect.tryPromise({
+          try: async () => audio.play(),
+          catch: (cause) => cause,
+        }).pipe(Effect.ignore),
+      )
     },
   }
 }

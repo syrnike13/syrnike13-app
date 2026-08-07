@@ -1,10 +1,13 @@
-import type {
-  DesktopDisplayMediaSource,
-  NativeMediaDeviceInfo,
-  NativeMediaRuntimeState,
-  NativeMicrophoneMetricsEvent,
-  NativeMicrophonePreviewStateEvent,
+import {
+  DesktopDisplayMediaSourceSchema,
+  NativeMediaDeviceInfoSchema,
+  type DesktopDisplayMediaSource,
+  type NativeMediaDeviceInfo,
+  type NativeMediaRuntimeState,
+  type NativeMicrophoneMetricsEvent,
+  type NativeMicrophonePreviewStateEvent,
 } from '@syrnike13/platform'
+import { Effect, Fiber, Layer, ManagedRuntime, Option, Schema } from 'effect'
 
 import type { DiagnosticLogSink } from './diagnostic-log'
 import {
@@ -80,20 +83,26 @@ type RemoteVideoDemandState = {
   demanded: boolean
   revision: number
   recoveryAttempt: number
-  recoveryTimer: ReturnType<typeof setTimeout> | null
-  recoveryPromise: Promise<boolean> | null
+  recoveryTimer: Fiber.Fiber<void, never> | null
+  recoveryOperation: {
+    fiber: Fiber.Fiber<boolean, unknown>
+  } | null
   lastFrameAt: number | null
   subscriptionFailure: boolean
   failureNotified: boolean
 }
 
 export class NativeMediaController {
+  private readonly effectRuntime = ManagedRuntime.make(Layer.empty)
   private readonly listeners = new Set<(event: NativeMediaControllerEvent) => void>()
   private readonly unsubscribeRuntimeEvent: () => void
   private readonly unsubscribeRuntimeState: () => void
   private previewGeneration = 0
   private preview: PreviewSessionState | null = null
-  private previewStartOperation: Promise<void> | null = null
+  private previewStartOperation: {
+    fiber: Fiber.Fiber<void, unknown>
+    promise: Promise<void>
+  } | null = null
   private lastRestoredRestartCount = 0
   private disposed = false
   private activeScreen: { sessionId: string; generation: number } | null = null
@@ -116,7 +125,9 @@ export class NativeMediaController {
 
   constructor(private readonly options: NativeMediaControllerOptions) {
     this.unsubscribeRuntimeEvent = options.supervisor.onEvent((event) =>
-      this.handleRuntimeEvent(event as MediaRuntimeEvent),
+      event.type === 'input' || event.type === 'foregroundWindow'
+        ? undefined
+        : this.handleRuntimeEvent(event),
     )
     this.unsubscribeRuntimeState = options.supervisor.onStateChange((snapshot) =>
       this.handleSupervisorState(snapshot),
@@ -128,9 +139,8 @@ export class NativeMediaController {
     return () => this.listeners.delete(listener)
   }
 
-  async start() {
-    if (!this.options.runtimeAvailable()) return
-    await this.options.supervisor.start()
+  start() {
+    return this.effectRuntime.runPromise(this.startEffect())
   }
 
   getRuntimeState(): NativeMediaRuntimeState {
@@ -145,102 +155,130 @@ export class NativeMediaController {
     }
   }
 
-  async retryRuntime() {
-    if (!this.options.runtimeAvailable()) return this.getRuntimeState()
-    await this.options.supervisor.retry()
-    return this.getRuntimeState()
+  retryRuntime() {
+    return this.effectRuntime.runPromise(
+      Effect.gen({ self: this }, function*() {
+        if (!this.options.runtimeAvailable()) return this.getRuntimeState()
+        yield* this.options.supervisor.retryEffect()
+        return this.getRuntimeState()
+      }),
+    )
   }
 
-  async supportsNativeScreenCapture() {
-    if (!this.options.runtimeAvailable()) return false
-    await this.start()
-    const snapshot = this.options.supervisor.getSnapshot()
-    return snapshot.status === 'ready' && Boolean(snapshot.ready?.capabilities.includes('screen'))
+  supportsNativeScreenCapture() {
+    return this.effectRuntime.runPromise(
+      Effect.gen({ self: this }, function*() {
+        if (!this.options.runtimeAvailable()) return false
+        yield* this.startEffect()
+        const snapshot = this.options.supervisor.getSnapshot()
+        return snapshot.status === 'ready' &&
+          Boolean(snapshot.ready?.capabilities.includes('screen'))
+      }),
+    )
   }
 
-  async listDevices(
+  listDevices(
     kind: 'audioinput' | 'audiooutput' | 'videoinput',
   ): Promise<NativeMediaDeviceInfo[]> {
-    if (!this.options.runtimeAvailable()) return []
-    const result = await this.request<unknown>({ type: 'listDevices', kind }, QUERY_TIMEOUT_MS)
-    return Array.isArray(result) ? result.filter(isNativeMediaDeviceInfo) : []
+    return this.effectRuntime.runPromise(
+      Effect.gen({ self: this }, function*() {
+        if (!this.options.runtimeAvailable()) return []
+        const result = yield* this.requestEffect(
+          { type: 'listDevices', kind },
+          QUERY_TIMEOUT_MS,
+        )
+        return Array.isArray(result)
+          ? result.filter(isNativeMediaDeviceInfo)
+          : []
+      }),
+    )
   }
 
-  async listDisplaySources(): Promise<DesktopDisplayMediaSource[]> {
-    if (!this.options.runtimeAvailable()) return []
-    const result = await this.request<unknown>(
-      { type: 'listDisplaySources', selfWindowHwnd: this.options.getSelfWindowHwnd() },
-      QUERY_TIMEOUT_MS,
-    )
-    return Array.isArray(result) ? result.filter(isDesktopDisplayMediaSource) : []
+  listDisplaySources(): Promise<DesktopDisplayMediaSource[]> {
+    return this.effectRuntime.runPromise(this.listDisplaySourcesEffect())
+  }
+
+  listDisplaySourcesEffect() {
+    return Effect.gen({ self: this }, function*() {
+      if (!this.options.runtimeAvailable()) return []
+      const result = yield* this.requestEffect(
+        {
+          type: 'listDisplaySources',
+          selfWindowHwnd: this.options.getSelfWindowHwnd(),
+        },
+        QUERY_TIMEOUT_MS,
+      )
+      return Array.isArray(result)
+        ? result.filter(isDesktopDisplayMediaSource)
+        : []
+    })
   }
 
   startMicrophonePreview(): Promise<void> {
     if (this.preview?.status === 'running') return Promise.resolve()
-    if (this.previewStartOperation) return this.previewStartOperation
+    if (this.previewStartOperation) return this.previewStartOperation.promise
     const generation = ++this.previewGeneration
-    const operation = this.startMicrophonePreviewNow(generation)
-    this.previewStartOperation = operation
-    void operation.finally(() => {
-      if (this.previewStartOperation === operation) this.previewStartOperation = null
-    }).catch(() => undefined)
-    return operation
-  }
-
-  async stopMicrophonePreview() {
-    const preview = this.preview
-    const hadPreview = Boolean(preview || this.previewStartOperation)
-    this.preview = null
-    this.previewStartOperation = null
-    ++this.previewGeneration
-    if (preview) {
-      await this.request(
-        { type: 'stopPreview', sessionId: preview.sessionId, generation: preview.generation },
-        STOP_TIMEOUT_MS,
-      ).catch(() => undefined)
+    let fiber: Fiber.Fiber<void, unknown>
+    const effect = this.startMicrophonePreviewNowEffect(generation).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (this.previewStartOperation?.fiber === fiber) {
+            this.previewStartOperation = null
+          }
+        }),
+      ),
+    )
+    fiber = this.effectRuntime.runFork(effect)
+    const operation = {
+      fiber,
+      promise: this.effectRuntime.runPromise(Fiber.join(fiber)),
     }
-    if (hadPreview) this.emit({ type: 'microphonePreviewState', event: { status: 'stopped' } })
+    this.previewStartOperation = operation
+    return operation.promise
   }
 
-  async setRemoteVideoDemand(
+  stopMicrophonePreview() {
+    return this.effectRuntime.runPromise(
+      Effect.gen({ self: this }, function*() {
+        const preview = this.preview
+        const hadPreview = Boolean(preview || this.previewStartOperation)
+        this.preview = null
+        this.previewStartOperation = null
+        ++this.previewGeneration
+        if (preview) {
+          yield* this.requestEffect(
+            {
+              type: 'stopPreview',
+              sessionId: preview.sessionId,
+              generation: preview.generation,
+            },
+            STOP_TIMEOUT_MS,
+          ).pipe(Effect.catch(() => Effect.void), Effect.asVoid)
+        }
+        if (hadPreview) {
+          this.emit({
+            type: 'microphonePreviewState',
+            event: { status: 'stopped' },
+          })
+        }
+      }),
+    )
+  }
+
+  setRemoteVideoDemand(
     sessionId: string,
     generation: number,
     trackId: string,
     demanded: boolean,
   ) {
-    if (!sessionId || !trackId) throw new Error('Remote video identity is required')
-    if (!this.isCurrentVoiceSession(sessionId, generation)) return
-    const key = remoteVideoDemandKey(sessionId, generation, trackId)
-    const previous = this.remoteVideoDemands.get(key)
-    if (previous?.recoveryTimer) clearTimeout(previous.recoveryTimer)
-    const demand: RemoteVideoDemandState = {
-      sessionId,
-      generation,
-      trackId,
-      demanded,
-      revision: ++this.remoteVideoDemandRevision,
-      recoveryAttempt: 0,
-      recoveryTimer: null,
-      recoveryPromise: null,
-      lastFrameAt: null,
-      subscriptionFailure: false,
-      failureNotified: false,
-    }
-    this.remoteVideoDemands.set(key, demand)
-    this.armRemoteVideoRecovery(key, demand)
-    try {
-      await this.request(
-        { type: 'setRemoteVideoDemand', sessionId, generation, trackId, demanded },
-        2_000,
-      )
-      if (!demanded && this.remoteVideoDemands.get(key) === demand) {
-        this.remoteVideoDemands.delete(key)
-      }
-    } catch (error) {
-      this.retireRemoteVideoDemand(key, demand)
-      if (!isSupersededRequest(error)) throw error
-      this.logSupersededDemand(demand, 'setRemoteVideoDemand')
-    }
+    return this.effectRuntime.runPromise(
+      this.setRemoteVideoDemandEffect(
+        sessionId,
+        generation,
+        trackId,
+        demanded,
+      ),
+    )
   }
 
   isCurrentVoiceSession(sessionId: string, generation: number) {
@@ -267,53 +305,136 @@ export class NativeMediaController {
   resetRemoteVideoDemands() {
     const now = Date.now()
     for (const [key, demand] of this.remoteVideoDemands) {
-      if (demand.recoveryTimer) clearTimeout(demand.recoveryTimer)
-      demand.recoveryTimer = null
+      this.cancelRemoteVideoRecoveryTimer(demand)
       demand.lastFrameAt = now
       this.armRemoteVideoRecovery(key, demand)
     }
   }
 
-  async recoverRemoteVideoDemand(
+  recoverRemoteVideoDemand(
     sessionId: string,
     generation: number,
     trackId: string,
   ) {
-    const key = remoteVideoDemandKey(sessionId, generation, trackId)
-    const desired = this.remoteVideoDemands.get(key)
-    if (!desired?.demanded) return false
-    if (desired.recoveryPromise) return desired.recoveryPromise
-    desired.recoveryAttempt += 1
-    if (
-      desired.recoveryAttempt >= REMOTE_VIDEO_DEGRADED_RECOVERY_ATTEMPT &&
-      !desired.failureNotified
-    ) {
-      this.reportDegradedRemoteVideoDemand(desired)
-    }
-    this.options.diagnostics?.({
-      scope: 'native-media-controller',
-      event: 'remote_video_recovery_started',
-      kind: 'remote-video',
-      stage: 'native-state-aware-recovery',
-      sessionId,
-      generation,
-      recoveryAttempt: desired.recoveryAttempt,
-      reason: 'frame_timeout_or_pipeline_failure',
-    })
-    const recovery = this.performRemoteVideoRecovery(key, desired)
-    desired.recoveryPromise = recovery
-    try {
-      return await recovery
-    } catch (error) {
-      if (!isSupersededRequest(error)) throw error
-      this.retireRemoteVideoDemand(key, desired)
-      this.logSupersededDemand(desired, 'recoverRemoteVideoDemand')
-      return false
-    } finally {
-      if (desired.recoveryPromise === recovery) {
-        desired.recoveryPromise = null
+    return this.effectRuntime.runPromise(
+      this.recoverRemoteVideoDemandEffect(
+        sessionId,
+        generation,
+        trackId,
+      ),
+    )
+  }
+
+  private recoverRemoteVideoDemandEffect(
+    sessionId: string,
+    generation: number,
+    trackId: string,
+  ) {
+    return Effect.gen({ self: this }, function*() {
+      const key = remoteVideoDemandKey(sessionId, generation, trackId)
+      const desired = this.remoteVideoDemands.get(key)
+      if (!desired?.demanded) return false
+      if (desired.recoveryOperation) {
+        return yield* Fiber.join(desired.recoveryOperation.fiber)
       }
-    }
+      desired.recoveryAttempt += 1
+      if (
+        desired.recoveryAttempt >= REMOTE_VIDEO_DEGRADED_RECOVERY_ATTEMPT &&
+        !desired.failureNotified
+      ) {
+        this.reportDegradedRemoteVideoDemand(desired)
+      }
+      this.options.diagnostics?.({
+        scope: 'native-media-controller',
+        event: 'remote_video_recovery_started',
+        kind: 'remote-video',
+        stage: 'native-state-aware-recovery',
+        sessionId,
+        generation,
+        recoveryAttempt: desired.recoveryAttempt,
+        reason: 'frame_timeout_or_pipeline_failure',
+      })
+      let fiber: Fiber.Fiber<boolean, unknown>
+      const effect = this.performRemoteVideoRecoveryEffect(key, desired).pipe(
+        Effect.catch((error) => {
+          if (!isSupersededRequest(error)) return Effect.fail(error)
+          return Effect.sync(() => {
+            this.retireRemoteVideoDemand(key, desired)
+            this.logSupersededDemand(desired, 'recoverRemoteVideoDemand')
+            return false
+          })
+        }),
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (desired.recoveryOperation?.fiber === fiber) {
+              desired.recoveryOperation = null
+            }
+          }),
+        ),
+      )
+      fiber = this.effectRuntime.runFork(effect)
+      desired.recoveryOperation = { fiber }
+      return yield* Fiber.join(fiber)
+    })
+  }
+
+  private setRemoteVideoDemandEffect(
+    sessionId: string,
+    generation: number,
+    trackId: string,
+    demanded: boolean,
+  ) {
+    return Effect.gen({ self: this }, function*() {
+      if (!sessionId || !trackId) {
+        return yield* Effect.fail(
+          new Error('Remote video identity is required'),
+        )
+      }
+      if (!this.isCurrentVoiceSession(sessionId, generation)) return
+      const key = remoteVideoDemandKey(sessionId, generation, trackId)
+      const previous = this.remoteVideoDemands.get(key)
+      if (previous) this.cancelRemoteVideoRecoveryTimer(previous)
+      const demand: RemoteVideoDemandState = {
+        sessionId,
+        generation,
+        trackId,
+        demanded,
+        revision: ++this.remoteVideoDemandRevision,
+        recoveryAttempt: 0,
+        recoveryTimer: null,
+        recoveryOperation: null,
+        lastFrameAt: null,
+        subscriptionFailure: false,
+        failureNotified: false,
+      }
+      this.remoteVideoDemands.set(key, demand)
+      this.armRemoteVideoRecovery(key, demand)
+      yield* this.requestEffect(
+        {
+          type: 'setRemoteVideoDemand',
+          sessionId,
+          generation,
+          trackId,
+          demanded,
+        },
+        2_000,
+      ).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            if (!demanded && this.remoteVideoDemands.get(key) === demand) {
+              this.remoteVideoDemands.delete(key)
+            }
+          }),
+        ),
+        Effect.catch((error) => {
+          this.retireRemoteVideoDemand(key, demand)
+          if (!isSupersededRequest(error)) return Effect.fail(error)
+          return Effect.sync(() => {
+            this.logSupersededDemand(demand, 'setRemoteVideoDemand')
+          })
+        }),
+      )
+    })
   }
 
   markRemoteVideoFrameReceived(
@@ -342,109 +463,188 @@ export class NativeMediaController {
     if (!demand.recoveryTimer) this.armRemoteVideoRecovery(key, demand)
   }
 
-  private async performRemoteVideoRecovery(
+  private performRemoteVideoRecoveryEffect(
     key: string,
     desired: RemoteVideoDemandState,
   ) {
-    if (desired.recoveryTimer) {
-      clearTimeout(desired.recoveryTimer)
-      desired.recoveryTimer = null
-    }
-    try {
-      await this.request(
-        {
-          type: 'retryRemoteVideo',
-          sessionId: desired.sessionId,
-          generation: desired.generation,
-          trackId: desired.trackId,
-          reason: 'frame_timeout_or_pipeline_failure',
-        },
-        2_000,
-      )
-      const current = this.remoteVideoDemands.get(key)
-      if (!current?.demanded || current.revision !== desired.revision) return false
-      return true
-    } finally {
-      const current = this.remoteVideoDemands.get(key)
-      if (current === desired && current.demanded) {
-        this.armRemoteVideoRecovery(key, current)
+    return Effect.sync(() =>
+      this.cancelRemoteVideoRecoveryTimer(desired)
+    ).pipe(
+      Effect.andThen(
+        this.requestEffect(
+          {
+            type: 'retryRemoteVideo',
+            sessionId: desired.sessionId,
+            generation: desired.generation,
+            trackId: desired.trackId,
+            reason: 'frame_timeout_or_pipeline_failure',
+          },
+          2_000,
+        ),
+      ),
+      Effect.map(() => {
+        const current = this.remoteVideoDemands.get(key)
+        return Boolean(
+          current?.demanded &&
+          current.revision === desired.revision,
+        )
+      }),
+      Effect.ensuring(
+        Effect.sync(() => {
+          const current = this.remoteVideoDemands.get(key)
+          if (current === desired && current.demanded) {
+            this.armRemoteVideoRecovery(key, current)
+          }
+        }),
+      ),
+    )
+  }
+
+  setLocalScreenPreviewDemand(demand: LocalScreenPreviewDemand) {
+    return this.effectRuntime.runPromise(
+      Effect.gen({ self: this }, function*() {
+        if (
+          !demand ||
+          typeof demand.demanded !== 'boolean' ||
+          !Number.isFinite(demand.width) ||
+          !Number.isFinite(demand.height) ||
+          !Number.isFinite(demand.fps)
+        ) {
+          return yield* Effect.fail(
+            new Error('Invalid local screen preview demand'),
+          )
+        }
+        this.localScreenPreviewDemand = {
+          demanded: Boolean(demand.demanded),
+          width: Math.max(16, Math.min(3840, Math.trunc(demand.width))),
+          height: Math.max(16, Math.min(2160, Math.trunc(demand.height))),
+          fps: Math.max(1, Math.min(60, Math.trunc(demand.fps))),
+        }
+        const screen = this.activeScreen
+        if (screen) yield* this.sendLocalScreenPreviewDemandEffect(screen)
+      }),
+    )
+  }
+
+  dispose() {
+    return Effect.runPromise(this.disposeEffect())
+  }
+
+  disposeEffect() {
+    return Effect.gen({ self: this }, function*() {
+      if (this.disposed) return
+      this.disposed = true
+      const hadPreview = Boolean(this.preview || this.previewStartOperation)
+      this.preview = null
+      this.previewStartOperation = null
+      ++this.previewGeneration
+      if (hadPreview) {
+        this.emit({
+          type: 'microphonePreviewState',
+          event: { status: 'stopped' },
+        })
       }
-    }
+      this.retireVoiceSession()
+      this.clearRemoteVideoDemands()
+      this.remoteVideoPublications.clear()
+      this.unsubscribeRuntimeEvent()
+      this.unsubscribeRuntimeState()
+      this.listeners.clear()
+      yield* this.options.supervisor.shutdownEffect().pipe(
+        Effect.catch(() => Effect.void),
+      )
+      yield* this.effectRuntime.disposeEffect
+    })
   }
 
-  async setLocalScreenPreviewDemand(demand: LocalScreenPreviewDemand) {
-    if (!demand || typeof demand.demanded !== 'boolean' ||
-      !Number.isFinite(demand.width) || !Number.isFinite(demand.height) ||
-      !Number.isFinite(demand.fps)) {
-      throw new Error('Invalid local screen preview demand')
-    }
-    this.localScreenPreviewDemand = {
-      demanded: Boolean(demand.demanded),
-      width: Math.max(16, Math.min(3840, Math.trunc(demand.width))),
-      height: Math.max(16, Math.min(2160, Math.trunc(demand.height))),
-      fps: Math.max(1, Math.min(60, Math.trunc(demand.fps))),
-    }
-    const screen = this.activeScreen
-    if (!screen) return
-    await this.sendLocalScreenPreviewDemand(screen)
+  startEffect() {
+    return Effect.suspend(() => {
+      if (!this.options.runtimeAvailable()) return Effect.void
+      return this.options.supervisor.startEffect().pipe(Effect.asVoid)
+    })
   }
 
-  async dispose() {
-    if (this.disposed) return
-    this.disposed = true
-    const hadPreview = Boolean(this.preview || this.previewStartOperation)
-    this.preview = null
-    this.previewStartOperation = null
-    ++this.previewGeneration
-    if (hadPreview) {
-      this.emit({
-        type: 'microphonePreviewState',
-        event: { status: 'stopped' },
-      })
-    }
-    this.retireVoiceSession()
-    this.clearRemoteVideoDemands()
-    this.remoteVideoPublications.clear()
-    this.unsubscribeRuntimeEvent()
-    this.unsubscribeRuntimeState()
-    this.listeners.clear()
-    await this.options.supervisor.shutdown().catch(() => undefined)
-  }
-
-  private async startMicrophonePreviewNow(generation: number) {
-    await this.start()
-    if (generation !== this.previewGeneration) throw new Error('Native microphone preview start cancelled')
-    const preview: PreviewSessionState = {
-      sessionId: crypto.randomUUID(),
-      generation,
-      status: 'starting',
-    }
-    this.preview = preview
-    try {
-      const result = await this.request<unknown>(
+  private startMicrophonePreviewNowEffect(generation: number) {
+    return Effect.gen({ self: this }, function*() {
+      yield* this.startEffect()
+      if (generation !== this.previewGeneration) {
+        return yield* Effect.fail(
+          new Error('Native microphone preview start cancelled'),
+        )
+      }
+      const preview: PreviewSessionState = {
+        sessionId: crypto.randomUUID(),
+        generation,
+        status: 'starting',
+      }
+      this.preview = preview
+      return yield* this.requestEffect(
         { type: 'startPreview', sessionId: preview.sessionId, generation },
         SESSION_TIMEOUT_MS,
+      ).pipe(
+        Effect.flatMap((result) =>
+          Effect.gen({ self: this }, function*() {
+            if (
+              this.preview !== preview ||
+              generation !== this.previewGeneration
+            ) {
+              yield* this.requestEffect(
+                {
+                  type: 'stopPreview',
+                  sessionId: preview.sessionId,
+                  generation,
+                },
+                STOP_TIMEOUT_MS,
+              ).pipe(Effect.catch(() => Effect.void))
+              return yield* Effect.fail(
+                new Error('Native microphone preview start cancelled'),
+              )
+            }
+            yield* Effect.sync(() => {
+              readPreviewResult(result, preview.sessionId)
+              preview.status = 'running'
+              this.emit({
+                type: 'microphonePreviewState',
+                event: { status: 'running' },
+              })
+            })
+          }),
+        ),
+        Effect.tapError(() =>
+          Effect.sync(() => {
+            if (this.preview === preview) this.preview = null
+          }),
+        ),
       )
-      if (this.preview !== preview || generation !== this.previewGeneration) {
-        await this.request(
-          { type: 'stopPreview', sessionId: preview.sessionId, generation },
-          STOP_TIMEOUT_MS,
-        ).catch(() => undefined)
-        throw new Error('Native microphone preview start cancelled')
-      }
-      readPreviewResult(result, preview.sessionId)
-      preview.status = 'running'
-      this.emit({ type: 'microphonePreviewState', event: { status: 'running' } })
-    } catch (error) {
-      if (this.preview === preview) this.preview = null
-      throw error
-    }
+    })
   }
 
-  private request<T = unknown>(command: MediaRuntimeCommand, timeoutMs: number) {
-    if (this.disposed) return Promise.reject(new Error('Native media controller is disposed'))
-    if (!isNativeRuntimeCommand(command)) return Promise.reject(new Error('Invalid native runtime command'))
-    return this.options.supervisor.request<T>(command, timeoutMs)
+  private requestEffect(command: MediaRuntimeCommand, timeoutMs: number) {
+    return Effect.suspend(() => {
+      if (this.disposed) {
+        return Effect.fail(new Error('Native media controller is disposed'))
+      }
+      if (!isNativeRuntimeCommand(command)) {
+        return Effect.fail(new Error('Invalid native runtime command'))
+      }
+      return this.options.supervisor.requestEffect(command, timeoutMs)
+    })
+  }
+
+  private sendLocalScreenPreviewDemandEffect(
+    screen: { sessionId: string; generation: number },
+  ) {
+    const demand = this.localScreenPreviewDemand
+    return this.requestEffect(
+      {
+        type: 'setLocalScreenPreviewDemand',
+        ...screen,
+        demanded: demand.demanded,
+        electronMainPid: this.options.processId ?? process.pid,
+        options: { width: demand.width, height: demand.height, fps: demand.fps },
+      },
+      2_000,
+    )
   }
 
   private handleRuntimeEvent(event: MediaRuntimeEvent) {
@@ -496,7 +696,7 @@ export class NativeMediaController {
         event.trackId,
       )
       const demand = this.remoteVideoDemands.get(key)
-      if (demand?.recoveryTimer) clearTimeout(demand.recoveryTimer)
+      if (demand) this.cancelRemoteVideoRecoveryTimer(demand)
       this.remoteVideoDemands.delete(key)
       return
     }
@@ -558,7 +758,14 @@ export class NativeMediaController {
         const changed = this.activeScreen?.sessionId !== next.sessionId ||
           this.activeScreen.generation !== next.generation
         this.activeScreen = next
-        if (changed) void this.sendLocalScreenPreviewDemand(next).catch(() => undefined)
+        if (changed) {
+          this.effectRuntime.runFork(
+            this.sendLocalScreenPreviewDemandEffect(next).pipe(
+              Effect.catch(() => Effect.void),
+              Effect.asVoid,
+            ),
+          )
+        }
       } else if (this.activeScreen?.sessionId === event.sessionId &&
         event.generation >= this.activeScreen.generation) {
         this.activeScreen = null
@@ -617,22 +824,40 @@ export class NativeMediaController {
       status: 'starting',
     }
     this.preview = preview
-    void this.request(
-      { type: 'startPreview', sessionId: preview.sessionId, generation: preview.generation },
-      SESSION_TIMEOUT_MS,
+    this.effectRuntime.runFork(
+      this.requestEffect(
+        {
+          type: 'startPreview',
+          sessionId: preview.sessionId,
+          generation: preview.generation,
+        },
+        SESSION_TIMEOUT_MS,
+      ).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            readPreviewResult(result, preview.sessionId)
+            if (this.preview === preview) preview.status = 'running'
+          })
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            if (this.preview !== preview) return
+            this.preview = null
+            this.emit({
+              type: 'microphonePreviewState',
+              event: {
+                status: 'error',
+                message:
+                  error instanceof Error
+                    ? error.message
+                    : 'Native microphone preview recovery failed',
+              },
+            })
+          })
+        ),
+        Effect.asVoid,
+      ),
     )
-      .then((result) => {
-        readPreviewResult(result, preview.sessionId)
-        if (this.preview === preview) preview.status = 'running'
-      })
-      .catch((error) => {
-        if (this.preview !== preview) return
-        this.preview = null
-        this.emit({
-          type: 'microphonePreviewState',
-          event: { status: 'error', message: error instanceof Error ? error.message : 'Native microphone preview recovery failed' },
-        })
-      })
   }
 
   private emit(event: NativeMediaControllerEvent) {
@@ -645,7 +870,7 @@ export class NativeMediaController {
     const demands = [...this.remoteVideoDemands.values()]
     this.remoteVideoDemands.clear()
     for (const demand of demands) {
-      if (demand.recoveryTimer) clearTimeout(demand.recoveryTimer)
+      this.cancelRemoteVideoRecoveryTimer(demand)
     }
   }
 
@@ -676,7 +901,7 @@ export class NativeMediaController {
     demand: RemoteVideoDemandState,
   ) {
     if (this.remoteVideoDemands.get(key) !== demand) return
-    if (demand.recoveryTimer) clearTimeout(demand.recoveryTimer)
+    this.cancelRemoteVideoRecoveryTimer(demand)
     this.remoteVideoDemands.delete(key)
   }
 
@@ -699,8 +924,7 @@ export class NativeMediaController {
     demand: RemoteVideoDemandState,
     failureKnown = false,
   ) {
-    if (demand.recoveryTimer) clearTimeout(demand.recoveryTimer)
-    demand.recoveryTimer = null
+    this.cancelRemoteVideoRecoveryTimer(demand)
     if (this.disposed || !demand.demanded) return
     const baseTimeout = this.remoteVideoFirstFrameTimeout()
     const backoff = Math.min(
@@ -711,25 +935,54 @@ export class NativeMediaController {
     const timeout = failureKnown
       ? backoff
       : baseTimeout + backoff
-    demand.recoveryTimer = setTimeout(() => {
-      demand.recoveryTimer = null
-      if (this.remoteVideoDemands.get(key) !== demand || !demand.demanded) return
-      if (!failureKnown && demand.lastFrameAt !== null &&
-        Date.now() - demand.lastFrameAt < baseTimeout) {
-        this.armRemoteVideoRecovery(key, demand)
-        return
-      }
-      void this.recoverRemoteVideoDemand(
-        demand.sessionId,
-        demand.generation,
-        demand.trackId,
-      ).catch(() => {
-        if (this.remoteVideoDemands.get(key) === demand && demand.demanded) {
-          this.armRemoteVideoRecovery(key, demand, true)
-        }
-      })
-    }, timeout)
-    demand.recoveryTimer.unref?.()
+    let fiber: Fiber.Fiber<void, never>
+    const effect = Effect.sleep(timeout).pipe(
+      Effect.andThen(
+        Effect.gen({ self: this }, function*() {
+          if (demand.recoveryTimer === fiber) demand.recoveryTimer = null
+          if (
+            this.remoteVideoDemands.get(key) !== demand ||
+            !demand.demanded
+          ) {
+            return
+          }
+          if (
+            !failureKnown &&
+            demand.lastFrameAt !== null &&
+            Date.now() - demand.lastFrameAt < baseTimeout
+          ) {
+            this.armRemoteVideoRecovery(key, demand)
+            return
+          }
+          yield* this.recoverRemoteVideoDemandEffect(
+            demand.sessionId,
+            demand.generation,
+            demand.trackId,
+          ).pipe(
+            Effect.catch(() =>
+              Effect.sync(() => {
+                if (
+                  this.remoteVideoDemands.get(key) === demand &&
+                  demand.demanded
+                ) {
+                  this.armRemoteVideoRecovery(key, demand, true)
+                }
+              })
+            ),
+            Effect.asVoid,
+          )
+        }),
+      ),
+    )
+    fiber = this.effectRuntime.runFork(effect)
+    demand.recoveryTimer = fiber
+  }
+
+  private cancelRemoteVideoRecoveryTimer(demand: RemoteVideoDemandState) {
+    const timer = demand.recoveryTimer
+    if (!timer) return
+    demand.recoveryTimer = null
+    this.effectRuntime.runFork(Fiber.interrupt(timer))
   }
 
   private reportDegradedRemoteVideoDemand(
@@ -766,19 +1019,6 @@ export class NativeMediaController {
     )
   }
 
-  private sendLocalScreenPreviewDemand(screen: { sessionId: string; generation: number }) {
-    const demand = this.localScreenPreviewDemand
-    return this.request(
-      {
-        type: 'setLocalScreenPreviewDemand',
-        ...screen,
-        demanded: demand.demanded,
-        electronMainPid: this.options.processId ?? process.pid,
-        options: { width: demand.width, height: demand.height, fps: demand.fps },
-      },
-      2_000,
-    )
-  }
 }
 
 function remoteVideoDemandKey(
@@ -794,30 +1034,34 @@ function isSupersededRequest(error: unknown) {
     error.detail.code === 'stale_generation'
 }
 
-function unwrapResult(value: unknown) {
-  return value && typeof value === 'object' && 'session' in value
-    ? (value as { session: unknown }).session
-    : value
-}
+const PreviewResultSchema = Schema.Union([
+  Schema.Struct({ sessionId: Schema.String }),
+  Schema.Struct({
+    session: Schema.Struct({ sessionId: Schema.String }),
+  }),
+])
 
 function readPreviewResult(value: unknown, sessionId: string) {
-  const result = unwrapResult(value)
-  if (!result || typeof result !== 'object' || (result as { sessionId?: unknown }).sessionId !== sessionId) {
+  const decoded = Schema.decodeUnknownOption(PreviewResultSchema)(value)
+  if (Option.isNone(decoded)) {
+    throw new Error('Native runtime returned invalid preview metadata')
+  }
+  const decodedSessionId = 'session' in decoded.value
+    ? decoded.value.session.sessionId
+    : decoded.value.sessionId
+  if (decodedSessionId !== sessionId) {
     throw new Error('Native runtime returned invalid preview metadata')
   }
 }
 
 function isNativeMediaDeviceInfo(value: unknown): value is NativeMediaDeviceInfo {
-  if (!value || typeof value !== 'object') return false
-  const device = value as Partial<NativeMediaDeviceInfo>
-  return typeof device.deviceId === 'string' &&
-    (device.kind === 'audioinput' || device.kind === 'audiooutput' || device.kind === 'videoinput') &&
-    typeof device.label === 'string'
+  return Option.isSome(
+    Schema.decodeUnknownOption(NativeMediaDeviceInfoSchema)(value),
+  )
 }
 
 function isDesktopDisplayMediaSource(value: unknown): value is DesktopDisplayMediaSource {
-  if (!value || typeof value !== 'object') return false
-  const source = value as Partial<DesktopDisplayMediaSource>
-  return typeof source.id === 'string' && typeof source.name === 'string' &&
-    (source.type === 'screen' || source.type === 'window' || source.type === 'game')
+  return Option.isSome(
+    Schema.decodeUnknownOption(DesktopDisplayMediaSourceSchema)(value),
+  )
 }

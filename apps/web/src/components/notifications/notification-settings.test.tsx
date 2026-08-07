@@ -2,6 +2,7 @@
 
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 import { NotificationSettings } from './notification-settings'
 
@@ -11,7 +12,11 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('#/features/api/config-api', () => ({
-  fetchSyrnikeConfig: mocks.fetchSyrnikeConfig,
+  fetchSyrnikeConfigEffect: () =>
+    Effect.tryPromise({
+      try: () => mocks.fetchSyrnikeConfig(),
+      catch: (cause) => cause,
+    }),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({

@@ -1,21 +1,67 @@
-import type {
-  DesktopDisplayMediaSource,
-  NativeInputEvent,
-  NativeMediaDeviceInfo,
-  NativeMediaMicrophoneSessionStartOptions,
-  NativeMediaScreenSessionPrepareOptions,
-  NativeMediaSession,
-  NativeMediaSessionStartOptions,
-  NativeMediaStateEvent,
-  NativeMediaStatsEvent,
-  NativeMicrophonePipelineConfig,
-  NativeMicrophoneMetricsEvent,
-  VoiceRemoteAudioSettings,
+import {
+  LiveKitNativePublisherCredentialsSchema,
+  NativeInputEventSchema,
+  VoiceRemoteAudioSettingsSchema,
 } from '@syrnike13/platform'
-import { isVoiceRemoteAudioSettings } from '@syrnike13/platform'
+import type { NativeMediaSession } from '@syrnike13/platform'
+import { Option, Schema } from 'effect'
 
 export const NATIVE_RUNTIME_CONTRACT_VERSION = 7
 export const NATIVE_RUNTIME_MAX_PENDING_REQUESTS = 256
+
+const nonEmptyString = (maximumLength = 4_096) =>
+  Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(maximumLength),
+  )
+
+const nonNegativeInteger = Schema.Natural
+
+export const NativeRuntimeErrorSchema = Schema.Struct({
+  code: nonEmptyString(128),
+  message: nonEmptyString(),
+  stage: Schema.optional(nonEmptyString(128)),
+  retryable: Schema.Boolean,
+  sessionId: Schema.optional(nonEmptyString(256)),
+  generation: Schema.optional(nonNegativeInteger),
+  hresult: Schema.optional(Schema.Int),
+})
+
+const NativeRuntimeBuildSchema = Schema.Record(
+  Schema.String,
+  Schema.String,
+)
+
+const NativeRuntimeReadySchema = Schema.Struct({
+  type: Schema.Literal('ready'),
+  contractVersion: Schema.Int,
+  runtime: Schema.Literals(['media', 'hotkey', 'overlay', 'invalid']),
+  capabilities: Schema.UniqueArray(nonEmptyString(128)).check(
+    Schema.isMaxLength(32),
+  ),
+  build: NativeRuntimeBuildSchema,
+})
+
+const NativeRuntimeReplySchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal('reply'),
+    requestId: nonEmptyString(256),
+    ok: Schema.Literal(true),
+    result: Schema.optional(Schema.Unknown),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('reply'),
+    requestId: nonEmptyString(256),
+    ok: Schema.Literal(false),
+    error: NativeRuntimeErrorSchema,
+  }),
+])
+
+const UncorrelatedNativeRuntimeReplySchema = Schema.Struct({
+  type: Schema.Literal('reply'),
+  requestId: Schema.optional(Schema.Never),
+  ok: Schema.Boolean,
+})
 
 export const SCREEN_BACKEND_RESTART_REASONS = [
   'reinitialize_active',
@@ -30,812 +76,776 @@ export type ScreenBackendRestartReason =
 
 export type NativeRuntimeKind = 'media' | 'hotkey' | 'overlay'
 
-export type NativeRuntimeBuild = {
-  commit?: string
-  electron?: string
-  napi?: string
-  livekit?: string
-}
+export type NativeRuntimeBuild = typeof NativeRuntimeBuildSchema.Type
 
-export type NativeRuntimeReady = {
-  type: 'ready'
-  contractVersion: number
-  runtime: NativeRuntimeKind | 'invalid'
-  capabilities: string[]
-  build: NativeRuntimeBuild
-}
+export type NativeRuntimeReady = typeof NativeRuntimeReadySchema.Type
 
-export type NativeRuntimeRequest = {
-  type: 'request'
-  requestId: string
-  command: NativeRuntimeCommand
-  diagnostic?: NativeRuntimeDiagnosticContext
-}
+export type NativeRuntimeReply = typeof NativeRuntimeReplySchema.Type
 
-export type NativeRuntimeDiagnosticContext = {
-  actionId: string
-  operationId?: string
-  revision?: number
-  hostEpoch: number
-}
+export type NativeRuntimeMessage = typeof NativeRuntimeMessageSchema.Type
+export type NativeRuntimeEventMessage = Extract<
+  NativeRuntimeMessage,
+  { readonly type: 'event' }
+>
 
-export type NativeRuntimeReply =
-  | {
-      type: 'reply'
-      requestId: string
-      ok: true
-      result?: unknown
+export type NativeRuntimeError = typeof NativeRuntimeErrorSchema.Type
+
+const integerInRange = (minimum: number, maximum: number) =>
+  Schema.Int.check(Schema.isBetween({ minimum, maximum }))
+
+const finiteNumberInRange = (minimum: number, maximum: number) =>
+  Schema.Finite.check(Schema.isBetween({ minimum, maximum }))
+
+const Uint32Schema = integerInRange(0, 0xffff_ffff)
+const PositiveUint32Schema = integerInRange(1, 0xffff_ffff)
+
+const UnsignedIntegerStringSchema = Schema.String.check(
+  Schema.makeFilter((value) => {
+    if (!/^(?:0|[1-9]\d{0,19})$/.test(value)) return false
+    try {
+      return BigInt(value) <= 0xffff_ffff_ffff_ffffn
+    } catch {
+      return false
     }
-  | {
-      type: 'reply'
-      requestId: string
-      ok: false
-      error: NativeRuntimeError
-    }
+  }, { expected: 'an unsigned 64-bit integer string' }),
+)
 
-export type NativeRuntimeEventMessage = {
-  type: 'event'
-  event: NativeRuntimeEvent
+const MicrophonePipelineConfigSchema = Schema.Struct({
+  deviceId: Schema.Union([Schema.Null, nonEmptyString(2_048)]),
+  bypassSystemAudioInputProcessing: Schema.Boolean,
+  automaticGainControl: Schema.Boolean,
+  noiseSuppression: Schema.Boolean,
+  echoCancellation: Schema.Boolean,
+  inputVolume: finiteNumberInRange(0, 4),
+  voiceGateEnabled: Schema.Boolean,
+  voiceGateThresholdDb: finiteNumberInRange(-100, 0),
+  voiceGateAutoThreshold: Schema.Boolean,
+})
+
+const MicrophoneStartOptionsSchema = Schema.Struct({
+  kind: Schema.Literal('microphone'),
+  requestId: nonEmptyString(256),
+  audioBitrate: Schema.optional(integerInRange(6_000, 512_000)),
+  muted: Schema.optional(Schema.Boolean),
+  participantIdentity: nonEmptyString(512),
+  livekit: Schema.optional(Schema.Never),
+})
+
+const ScreenStartOptionsSchema = Schema.Struct({
+  kind: Schema.Literal('screen'),
+  requestId: nonEmptyString(256),
+  sourceId: nonEmptyString(2_048),
+  width: integerInRange(64, 7_680),
+  height: integerInRange(64, 4_320),
+  fps: integerInRange(1, 240),
+  bitrate: integerInRange(32_000, 100_000_000),
+  audioBitrate: Schema.optional(integerInRange(6_000, 512_000)),
+  audio: Schema.optional(Schema.Struct({
+    requested: Schema.Boolean,
+  })),
+  participantIdentity: nonEmptyString(512),
+  livekit: Schema.optional(Schema.Never),
+})
+
+const CameraStartOptionsSchema = Schema.Struct({
+  deviceId: Schema.optional(nonEmptyString(2_048)),
+  width: Schema.optional(integerInRange(16, 7_680)),
+  height: Schema.optional(integerInRange(16, 4_320)),
+  fps: Schema.optional(integerInRange(1, 240)),
+  bitrate: Schema.optional(integerInRange(32_000, 100_000_000)),
+  participantIdentity: nonEmptyString(512),
+  livekit: Schema.optional(Schema.Never),
+})
+
+const sessionCommandFields = {
+  sessionId: nonEmptyString(256),
+  generation: nonNegativeInteger,
 }
 
-export type NativeRuntimeMessage =
-  | NativeRuntimeReady
-  | NativeRuntimeReply
-  | NativeRuntimeEventMessage
+const MediaRuntimeCommandSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal('connectVoice'),
+    ...sessionCommandFields,
+    options: Schema.Struct({
+      livekit: LiveKitNativePublisherCredentialsSchema,
+    }),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('disconnectVoice'),
+    ...sessionCommandFields,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('configureRemoteAudio'),
+    ...sessionCommandFields,
+    settings: VoiceRemoteAudioSettingsSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('releaseRemoteVideoFrame'),
+    ...sessionCommandFields,
+    trackId: nonEmptyString(512),
+    sequence: nonNegativeInteger,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('setRemoteVideoDemand'),
+    ...sessionCommandFields,
+    trackId: nonEmptyString(512),
+    demanded: Schema.Boolean,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('retryRemoteVideo'),
+    ...sessionCommandFields,
+    trackId: nonEmptyString(512),
+    reason: nonEmptyString(256),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('setLocalScreenPreviewDemand'),
+    ...sessionCommandFields,
+    demanded: Schema.Boolean,
+    electronMainPid: PositiveUint32Schema,
+    options: Schema.Struct({
+      width: integerInRange(16, 3_840),
+      height: integerInRange(16, 2_160),
+      fps: integerInRange(1, 60),
+    }),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('releaseLocalScreenPreviewFrame'),
+    ...sessionCommandFields,
+    trackId: nonEmptyString(512),
+    sequence: nonNegativeInteger,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('releaseLocalCameraPreviewFrame'),
+    ...sessionCommandFields,
+    trackId: nonEmptyString(512),
+    sequence: nonNegativeInteger,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('configureVoiceOutput'),
+    ...sessionCommandFields,
+    deafened: Schema.Boolean,
+    deviceId: Schema.optional(nonEmptyString(2_048)),
+    volume: Schema.optional(finiteNumberInRange(0, 3)),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('warmMicrophone'),
+    generation: nonNegativeInteger,
+    config: MicrophonePipelineConfigSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('listDevices'),
+    kind: Schema.Literals(['audioinput', 'audiooutput', 'videoinput']),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('listDisplaySources'),
+    selfWindowHwnd: Schema.optional(UnsignedIntegerStringSchema),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('startPreview'),
+    ...sessionCommandFields,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('stopPreview'),
+    sessionId: Schema.optional(nonEmptyString(256)),
+    generation: Schema.optional(nonNegativeInteger),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('connectScreen'),
+    ...sessionCommandFields,
+    options: Schema.Struct({
+      participantIdentity: nonEmptyString(512),
+      livekit: Schema.optional(Schema.Never),
+    }),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('disconnectScreen'),
+    generation: nonNegativeInteger,
+    sessionId: Schema.optional(nonEmptyString(256)),
+    terminal: Schema.optional(Schema.Boolean),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('connectMicrophone'),
+    ...sessionCommandFields,
+    options: MicrophoneStartOptionsSchema,
+    excludeProcessId: Uint32Schema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('startScreenCapture'),
+    ...sessionCommandFields,
+    options: ScreenStartOptionsSchema,
+    selfWindowHwnd: Schema.optional(UnsignedIntegerStringSchema),
+    excludeProcessId: Uint32Schema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('disconnectMicrophone'),
+    ...sessionCommandFields,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('connectCamera'),
+    ...sessionCommandFields,
+    options: CameraStartOptionsSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('disconnectCamera'),
+    ...sessionCommandFields,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('invalidateMicrophone'),
+    ...sessionCommandFields,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('stopScreenCapture'),
+    ...sessionCommandFields,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('configureMicrophone'),
+    revision: nonNegativeInteger,
+    config: MicrophonePipelineConfigSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('setMicrophoneMuted'),
+    ...sessionCommandFields,
+    muted: Schema.Boolean,
+  }),
+  Schema.Struct({ type: Schema.Literal('probeMicrophoneActor') }),
+  Schema.Struct({ type: Schema.Literal('probeScreenActor') }),
+  Schema.Struct({ type: Schema.Literal('probeCameraActor') }),
+  Schema.Struct({ type: Schema.Literal('probeQueryWorker') }),
+  Schema.Struct({ type: Schema.Literal('shutdown') }),
+])
 
-export type NativeRuntimeError = {
-  code: string
-  message: string
-  stage?: string
-  retryable: boolean
-  sessionId?: string
-  generation?: number
-  hresult?: number
+const HooksRuntimeCommandSchema = Schema.Union([
+  Schema.Struct({ type: Schema.Literal('startHotkeys') }),
+  Schema.Struct({ type: Schema.Literal('stopHotkeys') }),
+  Schema.Struct({ type: Schema.Literal('startOverlay') }),
+  Schema.Struct({ type: Schema.Literal('stopOverlay') }),
+  Schema.Struct({ type: Schema.Literal('probeHooksRuntime') }),
+  Schema.Struct({ type: Schema.Literal('shutdown') }),
+])
+
+export const NativeRuntimeCommandSchema = Schema.Union([
+  MediaRuntimeCommandSchema,
+  HooksRuntimeCommandSchema,
+])
+
+const NativeRuntimeDiagnosticContextSchema = Schema.Struct({
+  actionId: nonEmptyString(128),
+  operationId: Schema.optional(nonEmptyString(128)),
+  revision: Schema.optional(nonNegativeInteger),
+  hostEpoch: Schema.Int.check(Schema.isGreaterThan(0)),
+})
+
+export const NativeRuntimeRequestSchema = Schema.Struct({
+  type: Schema.Literal('request'),
+  requestId: nonEmptyString(256),
+  command: NativeRuntimeCommandSchema,
+  diagnostic: Schema.optional(NativeRuntimeDiagnosticContextSchema),
+})
+
+export type MediaRuntimeCommand = typeof MediaRuntimeCommandSchema.Type
+export type HooksRuntimeCommand = typeof HooksRuntimeCommandSchema.Type
+export type NativeRuntimeCommand = typeof NativeRuntimeCommandSchema.Type
+export type NativeRuntimeDiagnosticContext =
+  typeof NativeRuntimeDiagnosticContextSchema.Type
+export type NativeRuntimeRequest = typeof NativeRuntimeRequestSchema.Type
+
+const screenAudioModeSchema = Schema.Literals([
+  'process',
+  'system_exclude',
+  'none',
+])
+
+const mediaAudioSchema = Schema.Struct({
+  mode: Schema.Literals(['microphone', 'process', 'system_exclude', 'none']),
+})
+
+const nativeMediaStateFields = {
+  sessionId: Schema.optional(nonEmptyString(256)),
+  deviceId: Schema.optional(nonEmptyString(512)),
+  message: Schema.optional(nonEmptyString()),
+  width: Schema.optional(integerInRange(16, 7_680)),
+  height: Schema.optional(integerInRange(16, 4_320)),
+  fps: Schema.optional(integerInRange(1, 240)),
+  bitrate: Schema.optional(integerInRange(32_000, 100_000_000)),
+  audio: Schema.optional(mediaAudioSchema),
 }
 
-type SessionCommandBase = {
-  sessionId: string
-  generation: number
+const NativeMediaStateEventSchema = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal('idle'),
+    ...nativeMediaStateFields,
+  }),
+  Schema.Struct({
+    status: Schema.Literal('starting'),
+    ...nativeMediaStateFields,
+  }),
+  Schema.Struct({
+    status: Schema.Literal('running'),
+    ...nativeMediaStateFields,
+    sessionId: nonEmptyString(256),
+  }),
+  Schema.Struct({
+    status: Schema.Literal('error'),
+    ...nativeMediaStateFields,
+    message: nonEmptyString(),
+  }),
+])
+
+const NativeMediaSessionSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal('microphone'),
+    sessionId: nonEmptyString(256),
+    audio: Schema.Struct({
+      mode: Schema.Literal('microphone'),
+      sampleRate: Schema.Literal(48_000),
+      channels: Schema.Literal(1),
+      noiseSuppression: Schema.Literals([
+        'disabled',
+        'software',
+        'unavailable',
+      ]),
+      echoCancellation: Schema.Literals([
+        'disabled',
+        'software',
+        'unavailable',
+      ]),
+    }),
+    nativeParticipantIdentity: nonEmptyString(512),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal('screen'),
+    sessionId: nonEmptyString(256),
+    encoder: Schema.Literal('mf_h264_d3d11'),
+    width: Schema.optional(integerInRange(16, 7_680)),
+    height: Schema.optional(integerInRange(16, 4_320)),
+    fps: Schema.optional(integerInRange(1, 240)),
+    bitrate: Schema.optional(integerInRange(32_000, 100_000_000)),
+    audio: Schema.optional(Schema.Struct({
+      mode: screenAudioModeSchema,
+      targetProcessId: Schema.optional(Uint32Schema),
+      loopbackMode: Schema.optional(Schema.Literals([
+        'include_target_process_tree',
+        'exclude_target_process_tree',
+      ])),
+    })),
+    nativeParticipantIdentity: Schema.optional(nonEmptyString(512)),
+  }),
+])
+
+const NativeMediaStatsSchema = Schema.Struct({
+  sessionId: nonEmptyString(256),
+  methods: Schema.Struct({
+    wgc_gpu: finiteNumberInRange(0, Number.MAX_SAFE_INTEGER),
+    dxgi_gpu: finiteNumberInRange(0, Number.MAX_SAFE_INTEGER),
+  }),
+  activeMethod: Schema.optional(Schema.Literals(['wgc_gpu', 'dxgi_gpu'])),
+  audioFrames: Schema.optional(Schema.Finite),
+  audioPackets: Schema.optional(Schema.Finite),
+  audioPeakDb: Schema.optional(Schema.Finite),
+  audioRmsDb: Schema.optional(Schema.Finite),
+  videoFrames: Schema.optional(Schema.Finite),
+  videoIntervalFrames: Schema.optional(Schema.Finite),
+  videoLateFrames: Schema.optional(Schema.Finite),
+  videoNoFrameCount: Schema.optional(Schema.Finite),
+  videoRepeatedFrameCount: Schema.optional(Schema.Finite),
+  videoRecoverableLostCount: Schema.optional(Schema.Finite),
+  videoGpuPoolSlotsAvailable: Schema.optional(Schema.Finite),
+  videoGpuPoolSlotsTotal: Schema.optional(Schema.Finite),
+  videoDxgiDuplicationHoldUsMax: Schema.optional(Schema.Finite),
+  videoSourceUpdates: Schema.optional(Schema.Finite),
+  videoGpuSubmissions: Schema.optional(Schema.Finite),
+  videoIdleRefreshes: Schema.optional(Schema.Finite),
+  videoCoalescedSourceUpdates: Schema.optional(Schema.Finite),
+  videoEncoderBackpressureTicks: Schema.optional(Schema.Finite),
+  videoSupersededReadyFrames: Schema.optional(Schema.Finite),
+  videoGpuSlotTimeouts: Schema.optional(Schema.Finite),
+  videoGpuSlotsRecovered: Schema.optional(Schema.Finite),
+  videoGpuFramesDroppedStale: Schema.optional(Schema.Finite),
+  videoGpuPoolRollovers: Schema.optional(Schema.Finite),
+  videoGpuRolloversBlocked: Schema.optional(Schema.Finite),
+  videoGpuRetiredGenerations: Schema.optional(Schema.Finite),
+  videoGpuSlotsQuarantined: Schema.optional(Schema.Finite),
+  videoPreviewBridgeSubmissions: Schema.optional(Schema.Finite),
+  videoPreviewBridgeAcquires: Schema.optional(Schema.Finite),
+  videoPreviewBridgeTimeouts: Schema.optional(Schema.Finite),
+  videoPreviewBridgeSlotsRecovered: Schema.optional(Schema.Finite),
+  videoPreviewGpuSubmissions: Schema.optional(Schema.Finite),
+  videoPreviewFramesCompleted: Schema.optional(Schema.Finite),
+  videoPreviewSlotTimeouts: Schema.optional(Schema.Finite),
+  videoPreviewFramesDroppedStale: Schema.optional(Schema.Finite),
+  videoPreviewDeviceResets: Schema.optional(Schema.Finite),
+  videoGpuCompletionP50Us: Schema.optional(Schema.Finite),
+  videoGpuCompletionP95Us: Schema.optional(Schema.Finite),
+  videoGpuCompletionMaxUs: Schema.optional(Schema.Finite),
+  videoAvgCaptureUs: Schema.optional(Schema.Finite),
+  videoAvgReadbackUs: Schema.optional(Schema.Finite),
+  videoAvgScaleUs: Schema.optional(Schema.Finite),
+  videoAvgPublishUs: Schema.optional(Schema.Finite),
+  videoSourceWidth: Schema.optional(Schema.Finite),
+  videoSourceHeight: Schema.optional(Schema.Finite),
+  videoContentWidth: Schema.optional(Schema.Finite),
+  videoContentHeight: Schema.optional(Schema.Finite),
+  publishedVideo: Schema.optional(Schema.Boolean),
+  publishedAudio: Schema.optional(Schema.Boolean),
+  captureThreadMmcss: Schema.optional(Schema.Boolean),
+})
+
+const runtimeEventFields = {
+  sequence: nonNegativeInteger,
 }
 
-export type MediaRuntimeCommand =
-  | ({
-      type: 'connectVoice'
-      options: {
-        livekit: {
-          url: string
-          token: string
-          participantIdentity: string
-        }
-      }
-    } & SessionCommandBase)
-  | ({ type: 'disconnectVoice' } & SessionCommandBase)
-  | ({ type: 'configureRemoteAudio'; settings: VoiceRemoteAudioSettings } &
-      SessionCommandBase)
-  | ({ type: 'releaseRemoteVideoFrame'; trackId: string; sequence: number } &
-      SessionCommandBase)
-  | ({ type: 'setRemoteVideoDemand'; trackId: string; demanded: boolean } &
-      SessionCommandBase)
-  | ({
-      type: 'retryRemoteVideo'
-      trackId: string
-      reason: string
-    } & SessionCommandBase)
-  | ({
-      type: 'setLocalScreenPreviewDemand'
-      demanded: boolean
-      electronMainPid: number
-      options: { width: number; height: number; fps: number }
-    } & SessionCommandBase)
-  | ({ type: 'releaseLocalScreenPreviewFrame'; trackId: string; sequence: number } &
-      SessionCommandBase)
-  | ({ type: 'releaseLocalCameraPreviewFrame'; trackId: string; sequence: number } &
-      SessionCommandBase)
-  | ({
-      type: 'configureVoiceOutput'
-      deafened: boolean
-      deviceId?: string
-      volume?: number
-    } & SessionCommandBase)
-  | {
-      type: 'warmMicrophone'
-      generation: number
-      config: NativeMicrophonePipelineConfig
-    }
-  | {
-      type: 'listDevices'
-      kind: 'audioinput' | 'audiooutput' | 'videoinput'
-    }
-  | {
-      type: 'listDisplaySources'
-      selfWindowHwnd?: string
-    }
-  | ({ type: 'startPreview' } & SessionCommandBase)
-  | ({ type: 'stopPreview' } & Partial<SessionCommandBase>)
-  | ({ type: 'connectScreen'; options: NativeMediaScreenSessionPrepareOptions } &
-      SessionCommandBase)
-  | {
-      type: 'disconnectScreen'
-      generation: number
-      sessionId?: string
-      terminal?: boolean
-    }
-  | ({
-      type: 'connectMicrophone'
-      options: NativeMediaMicrophoneSessionStartOptions
-      excludeProcessId: number
-    } & SessionCommandBase)
-  | ({
-      type: 'startScreenCapture'
-      options: Extract<NativeMediaSessionStartOptions, { kind: 'screen' }>
-      selfWindowHwnd?: string
-      excludeProcessId: number
-    } & SessionCommandBase)
-  | ({ type: 'disconnectMicrophone' } & SessionCommandBase)
-  | ({
-      type: 'connectCamera'
-      options: {
-        deviceId?: string
-        width?: number
-        height?: number
-        fps?: number
-        bitrate?: number
-        participantIdentity: string
-      }
-    } & SessionCommandBase)
-  | ({ type: 'disconnectCamera' } & SessionCommandBase)
-  | ({ type: 'invalidateMicrophone' } & SessionCommandBase)
-  | ({ type: 'stopScreenCapture' } & SessionCommandBase)
-  | {
-      type: 'configureMicrophone'
-      revision: number
-      config: NativeMicrophonePipelineConfig
-    }
-  | ({ type: 'setMicrophoneMuted'; muted: boolean } & SessionCommandBase)
-  | { type: 'probeMicrophoneActor' }
-  | { type: 'probeScreenActor' }
-  | { type: 'probeCameraActor' }
-  | { type: 'probeQueryWorker' }
-  | { type: 'shutdown' }
-
-export type HooksRuntimeCommand =
-  | { type: 'startHotkeys' }
-  | { type: 'stopHotkeys' }
-  | { type: 'startOverlay' }
-  | { type: 'stopOverlay' }
-  | { type: 'probeHooksRuntime' }
-  | { type: 'shutdown' }
-
-export type NativeRuntimeCommand = MediaRuntimeCommand | HooksRuntimeCommand
-
-type RuntimeEventBase = {
-  sequence: number
+const sessionEventFields = {
+  ...runtimeEventFields,
+  sessionId: nonEmptyString(256),
+  generation: nonNegativeInteger,
+  requestId: Schema.optional(nonEmptyString(256)),
 }
 
-type SessionEventBase = RuntimeEventBase & {
-  sessionId: string
-  generation: number
-  requestId?: string
+const RuntimeErrorEventSchema = Schema.Struct({
+  type: Schema.Literal('runtimeError'),
+  ...runtimeEventFields,
+  sessionId: Schema.optional(nonEmptyString(256)),
+  generation: Schema.optional(nonNegativeInteger),
+  error: NativeRuntimeErrorSchema,
+}).check(
+  Schema.makeFilter(
+    (event) =>
+      (event.sessionId === undefined ||
+        event.sessionId === event.error.sessionId) &&
+      (event.generation === undefined ||
+        event.generation === event.error.generation),
+    { expected: 'runtime error fences matching the event' },
+  ),
+)
+
+const InputEventSchema = Schema.Struct({
+  type: Schema.Literal('input'),
+  ...runtimeEventFields,
+  input: NativeInputEventSchema,
+})
+
+const ForegroundWindowEventSchema = Schema.Struct({
+  type: Schema.Literal('foregroundWindow'),
+  ...runtimeEventFields,
+  window: Schema.Struct({
+    pid: Schema.Int,
+    processName: Schema.String.check(Schema.isMaxLength(4_096)),
+    processPath: Schema.Union([
+      Schema.Null,
+      Schema.String.check(Schema.isMaxLength(32_768)),
+    ]),
+    title: Schema.String.check(Schema.isMaxLength(32_768)),
+    className: Schema.String.check(Schema.isMaxLength(4_096)),
+    visible: Schema.Boolean,
+    fullscreenLike: Schema.Boolean,
+    bounds: Schema.Struct({
+      x: Schema.Finite,
+      y: Schema.Finite,
+      width: Schema.Finite,
+      height: Schema.Finite,
+    }),
+  }),
+})
+
+const SessionLifecycleEventSchema = Schema.Struct({
+  type: Schema.Literal('sessionLifecycle'),
+  ...sessionEventFields,
+  kind: Schema.optional(Schema.Literals([
+    'voice',
+    'microphone',
+    'screen',
+    'camera',
+    'output',
+  ])),
+  state: NativeMediaStateEventSchema,
+  error: Schema.optional(NativeRuntimeErrorSchema),
+}).check(
+  Schema.makeFilter(
+    (event) =>
+      (event.state.sessionId === undefined ||
+        event.state.sessionId === event.sessionId) &&
+      (event.error === undefined ||
+        ((event.error.sessionId === undefined ||
+          event.error.sessionId === event.sessionId) &&
+          (event.error.generation === undefined ||
+            event.error.generation === event.generation))),
+    { expected: 'media state and error fences matching the session event' },
+  ),
+)
+
+const SessionStartedEventSchema = Schema.Struct({
+  type: Schema.Literal('sessionStarted'),
+  ...sessionEventFields,
+  session: NativeMediaSessionSchema,
+}).check(
+  Schema.makeFilter(
+    (event) => event.session.sessionId === event.sessionId,
+    { expected: 'a media session matching the event session' },
+  ),
+)
+
+const StatsEventSchema = Schema.Struct({
+  type: Schema.Literal('stats'),
+  ...sessionEventFields,
+  stats: NativeMediaStatsSchema,
+}).check(
+  Schema.makeFilter(
+    (event) => event.stats.sessionId === event.sessionId,
+    { expected: 'media stats matching the event session' },
+  ),
+)
+
+const TerminalEventSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal('voiceTerminal'),
+    ...sessionEventFields,
+    error: NativeRuntimeErrorSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('cameraTerminal'),
+    ...sessionEventFields,
+    error: NativeRuntimeErrorSchema,
+  }),
+]).check(
+  Schema.makeFilter(
+    (event) =>
+      event.error.sessionId === event.sessionId &&
+      event.error.generation === event.generation,
+    { expected: 'terminal error fences matching the session event' },
+  ),
+)
+
+const videoFrameFields = {
+  ...sessionEventFields,
+  trackId: nonEmptyString(512),
+  participantIdentity: Schema.String.check(Schema.isMaxLength(512)),
+  frameSequence: nonNegativeInteger,
+  timestampUs: nonNegativeInteger,
+  width: integerInRange(1, 7_680),
+  height: integerInRange(1, 4_320),
+  ntHandle: Schema.Uint8Array.check(
+    Schema.makeFilter(
+      (handle) => handle.byteLength === 8,
+      { expected: 'an 8-byte NT handle' },
+    ),
+  ),
 }
 
-export type OverlayForegroundWindow = {
-  pid: number
-  processName: string
-  processPath: string | null
-  title: string
-  className: string
-  visible: boolean
-  fullscreenLike: boolean
-  bounds: {
-    x: number
-    y: number
-    width: number
-    height: number
-  }
-}
+const LocalScreenPreviewFailureSchema = Schema.Struct({
+  type: Schema.Literal('localScreenPreviewFailed'),
+  ...sessionEventFields,
+  trackId: nonEmptyString(512),
+  error: NativeRuntimeErrorSchema,
+}).check(
+  Schema.makeFilter(
+    (event) =>
+      event.error.code === 'LOCAL_SCREEN_PREVIEW_FAILED' &&
+      event.error.sessionId === event.sessionId &&
+      event.error.generation === event.generation,
+    { expected: 'a local screen preview error matching the session event' },
+  ),
+)
 
-export type MediaRuntimeEvent =
-  | ({
-      type: 'sessionLifecycle'
-      kind?: 'voice' | 'microphone' | 'screen' | 'camera' | 'output'
-      state: NativeMediaStateEvent
-      error?: NativeRuntimeError
-    } & SessionEventBase)
-  | ({ type: 'sessionStarted'; session: NativeMediaSession } & SessionEventBase)
-  | ({ type: 'sessionStopped'; reason?: string } & SessionEventBase)
-  | ({ type: 'stats'; stats: NativeMediaStatsEvent } & SessionEventBase)
-  | ({
-      type: 'screenBackendRestart'
-      backend: 'dxgi_gpu' | 'wgc_gpu'
-      reason: ScreenBackendRestartReason
-      count: number
-      errorCode?: string
-      hresult?: number
-    } & SessionEventBase)
-  | ({ type: 'microphoneMetrics'; metrics: NativeMicrophoneMetricsEvent } &
-      RuntimeEventBase)
-  | ({ type: 'microphonePreviewStarted'; preview: { sessionId: string } } &
-      SessionEventBase)
-  | ({ type: 'deviceList'; devices: NativeMediaDeviceInfo[] } & RuntimeEventBase)
-  | ({ type: 'displaySourceList'; sources: DesktopDisplayMediaSource[] } &
-      RuntimeEventBase)
-  | ({ type: 'screenCaptureEnded'; reason: string; message?: string } &
-      SessionEventBase)
-  | ({ type: 'voiceTerminal'; error: NativeRuntimeError } & SessionEventBase)
-  | ({ type: 'cameraTerminal'; error: NativeRuntimeError } & SessionEventBase)
-  | ({ type: 'activeSpeakers'; participantIdentities: string[] } &
-      SessionEventBase)
-  | ({
-      type: 'remoteVideoFrame'
-      trackId: string
-      participantIdentity: string
-      source: 'camera' | 'screen'
-      frameSequence: number
-      timestampUs: number
-      width: number
-      height: number
-      ntHandle: Uint8Array
-    } & SessionEventBase)
-  | ({ type: 'remoteVideoTrackRemoved'; trackId: string } & SessionEventBase)
-  | ({
-      type: 'remoteVideoPublicationAvailable'
-      trackId: string
-      participantIdentity: string
-      source: 'camera' | 'screen'
-    } & SessionEventBase)
-  | ({
-      type: 'remoteVideoPublicationUnavailable'
-      trackId: string
-      participantIdentity: string
-      source: 'camera' | 'screen'
-    } & SessionEventBase)
-  | ({
-      type: 'remoteVideoFailed'
-      trackId: string
-      source?: 'camera' | 'screen'
-      reason?: 'local' | 'subscription'
-    } & SessionEventBase)
-  | ({
-      type: 'localScreenPreviewFrame'
-      trackId: string
-      participantIdentity: string
-      source: 'screen'
-      frameSequence: number
-      timestampUs: number
-      width: number
-      height: number
-      ntHandle: Uint8Array
-    } & SessionEventBase)
-  | ({ type: 'localScreenPreviewTrackRemoved'; trackId: string; source: 'screen' } &
-      SessionEventBase)
-  | ({ type: 'localScreenPreviewFailed'; trackId: string; error: NativeRuntimeError } &
-      SessionEventBase)
-  | ({
-      type: 'localCameraPreviewFrame'
-      trackId: string
-      participantIdentity: string
-      source: 'camera'
-      frameSequence: number
-      timestampUs: number
-      width: number
-      height: number
-      ntHandle: Uint8Array
-    } & SessionEventBase)
-  | ({ type: 'localCameraPreviewTrackRemoved'; trackId: string; source: 'camera' } &
-      SessionEventBase)
-  | ({ type: 'localCameraPreviewFailed'; trackId: string; error: NativeRuntimeError } &
-      SessionEventBase)
-  | ({ type: 'runtimeError'; error: NativeRuntimeError } & RuntimeEventBase)
+const LocalCameraPreviewFailureSchema = Schema.Struct({
+  type: Schema.Literal('localCameraPreviewFailed'),
+  ...sessionEventFields,
+  trackId: nonEmptyString(512),
+  error: NativeRuntimeErrorSchema,
+}).check(
+  Schema.makeFilter(
+    (event) =>
+      event.error.code === 'LOCAL_CAMERA_PREVIEW_FAILED' &&
+      event.error.sessionId === event.sessionId &&
+      event.error.generation === event.generation,
+    { expected: 'a local camera preview error matching the session event' },
+  ),
+)
 
-export type HooksRuntimeEvent =
-  | ({ type: 'input'; input: NativeInputEvent } & RuntimeEventBase)
-  | ({ type: 'foregroundWindow'; window: OverlayForegroundWindow } &
-      RuntimeEventBase)
-  | ({ type: 'runtimeError'; error: NativeRuntimeError } & RuntimeEventBase)
+export const NativeRuntimeEventSchema = Schema.Union([
+  InputEventSchema,
+  ForegroundWindowEventSchema,
+  RuntimeErrorEventSchema,
+  SessionLifecycleEventSchema,
+  SessionStartedEventSchema,
+  Schema.Struct({
+    type: Schema.Literal('sessionStopped'),
+    ...sessionEventFields,
+    reason: Schema.optional(Schema.String),
+  }),
+  StatsEventSchema,
+  Schema.Struct({
+    type: Schema.Literal('screenBackendRestart'),
+    ...sessionEventFields,
+    backend: Schema.Literals(['dxgi_gpu', 'wgc_gpu']),
+    reason: Schema.Literals(SCREEN_BACKEND_RESTART_REASONS),
+    count: Schema.Int.check(Schema.isGreaterThan(0)),
+    errorCode: Schema.optional(Schema.String),
+    hresult: Schema.optional(Schema.Int),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('microphoneMetrics'),
+    ...runtimeEventFields,
+    metrics: Schema.Struct({
+      revision: nonNegativeInteger,
+      inputDb: Schema.Finite,
+      thresholdDb: Schema.Finite,
+      open: Schema.Boolean,
+    }),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('microphonePreviewStarted'),
+    ...sessionEventFields,
+    preview: Schema.Struct({
+      sessionId: nonEmptyString(256),
+    }),
+  }).check(
+    Schema.makeFilter(
+      (event) => event.preview.sessionId === event.sessionId,
+      { expected: 'a microphone preview matching the event session' },
+    ),
+  ),
+  Schema.Struct({
+    type: Schema.Literal('deviceList'),
+    ...runtimeEventFields,
+    devices: Schema.Array(Schema.Struct({
+      deviceId: nonEmptyString(2_048),
+      kind: Schema.Literals(['audioinput', 'audiooutput', 'videoinput']),
+      label: Schema.String.check(Schema.isMaxLength(4_096)),
+    })),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('displaySourceList'),
+    ...runtimeEventFields,
+    sources: Schema.Array(Schema.Struct({
+      id: nonEmptyString(2_048),
+      name: Schema.String.check(Schema.isMaxLength(32_768)),
+      type: Schema.Literals(['screen', 'window', 'game']),
+    })),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('screenCaptureEnded'),
+    ...sessionEventFields,
+    reason: nonEmptyString(256),
+    message: Schema.optional(
+      Schema.String.check(Schema.isMaxLength(4_096)),
+    ),
+  }),
+  TerminalEventSchema,
+  Schema.Struct({
+    type: Schema.Literal('activeSpeakers'),
+    ...sessionEventFields,
+    participantIdentities: Schema.Array(nonEmptyString(512)).check(
+      Schema.isMaxLength(512),
+    ),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('remoteVideoFrame'),
+    ...videoFrameFields,
+    source: Schema.Literals(['camera', 'screen']),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('localScreenPreviewFrame'),
+    ...videoFrameFields,
+    source: Schema.Literal('screen'),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('localCameraPreviewFrame'),
+    ...videoFrameFields,
+    source: Schema.Literal('camera'),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('remoteVideoTrackRemoved'),
+    ...sessionEventFields,
+    trackId: nonEmptyString(512),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('remoteVideoPublicationAvailable'),
+    ...sessionEventFields,
+    trackId: nonEmptyString(512),
+    participantIdentity: nonEmptyString(512),
+    source: Schema.Literals(['camera', 'screen']),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('remoteVideoPublicationUnavailable'),
+    ...sessionEventFields,
+    trackId: nonEmptyString(512),
+    participantIdentity: nonEmptyString(512),
+    source: Schema.Literals(['camera', 'screen']),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('localScreenPreviewTrackRemoved'),
+    ...sessionEventFields,
+    trackId: nonEmptyString(512),
+    source: Schema.Literal('screen'),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('localCameraPreviewTrackRemoved'),
+    ...sessionEventFields,
+    trackId: nonEmptyString(512),
+    source: Schema.Literal('camera'),
+  }),
+  LocalScreenPreviewFailureSchema,
+  LocalCameraPreviewFailureSchema,
+  Schema.Struct({
+    type: Schema.Literal('remoteVideoFailed'),
+    ...sessionEventFields,
+    trackId: nonEmptyString(512),
+    source: Schema.optional(Schema.Literals(['camera', 'screen'])),
+    reason: Schema.optional(Schema.Literals(['local', 'subscription'])),
+  }),
+])
 
-export type NativeRuntimeEvent = MediaRuntimeEvent | HooksRuntimeEvent
+export type NativeRuntimeEvent = typeof NativeRuntimeEventSchema.Type
+export type MediaRuntimeEvent = Exclude<
+  NativeRuntimeEvent,
+  { readonly type: 'input' | 'foregroundWindow' }
+>
+export type HooksRuntimeEvent = Extract<
+  NativeRuntimeEvent,
+  { readonly type: 'input' | 'foregroundWindow' | 'runtimeError' }
+>
+export type OverlayForegroundWindow = Extract<
+  NativeRuntimeEvent,
+  { readonly type: 'foregroundWindow' }
+>['window']
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
-}
-
-function isNonEmptyString(value: unknown, maxLength = 4_096): value is string {
-  return (
-    typeof value === 'string' && value.length > 0 && value.length <= maxLength
-  )
-}
-
-function isRuntimeError(value: unknown): value is NativeRuntimeError {
-  if (!isRecord(value)) return false
-  return (
-    isNonEmptyString(value.code, 128) &&
-    isNonEmptyString(value.message) &&
-    typeof value.retryable === 'boolean' &&
-    (value.stage === undefined || isNonEmptyString(value.stage, 128)) &&
-    (value.sessionId === undefined || isNonEmptyString(value.sessionId, 256)) &&
-    (value.generation === undefined ||
-      (Number.isSafeInteger(value.generation) && Number(value.generation) >= 0)) &&
-    (value.hresult === undefined || Number.isSafeInteger(value.hresult))
-  )
-}
-
-function isSequence(value: unknown) {
-  return Number.isSafeInteger(value) && Number(value) >= 0
-}
-
-function isFiniteNumber(value: unknown, min: number, max: number) {
-  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
-}
-
-function isIntegerInRange(value: unknown, min: number, max: number) {
-  return Number.isSafeInteger(value) && Number(value) >= min && Number(value) <= max
-}
-
-function isUnsignedIntegerString(value: unknown) {
-  if (typeof value !== 'string' || !/^(?:0|[1-9]\d{0,19})$/.test(value)) {
-    return false
-  }
-  try {
-    return BigInt(value) <= 0xffff_ffff_ffff_ffffn
-  } catch {
-    return false
-  }
-}
-
-function isSessionCommand(value: Record<string, unknown>) {
-  return (
-    isNonEmptyString(value.sessionId, 256) &&
-    Number.isSafeInteger(value.generation) &&
-    Number(value.generation) >= 0
-  )
-}
-
-function isLiveKitCredentials(value: unknown) {
-  if (!isRecord(value)) return false
-  if (
-    !isNonEmptyString(value.url, 2_048) ||
-    !isNonEmptyString(value.token, 32_768) ||
-    !isNonEmptyString(value.participantIdentity, 512)
-  ) {
-    return false
-  }
-  try {
-    const protocol = new URL(value.url).protocol
-    return protocol === 'ws:' || protocol === 'wss:'
-  } catch {
-    return false
-  }
-}
-
-function isMicrophonePipelineConfig(
-  value: unknown,
-): value is NativeMicrophonePipelineConfig {
-  if (!isRecord(value)) return false
-  return (
-    (value.deviceId === null || isNonEmptyString(value.deviceId, 2_048)) &&
-    typeof value.bypassSystemAudioInputProcessing === 'boolean' &&
-    typeof value.automaticGainControl === 'boolean' &&
-    typeof value.noiseSuppression === 'boolean' &&
-    typeof value.echoCancellation === 'boolean' &&
-    isFiniteNumber(value.inputVolume, 0, 4) &&
-    typeof value.voiceGateEnabled === 'boolean' &&
-    isFiniteNumber(value.voiceGateThresholdDb, -100, 0) &&
-    typeof value.voiceGateAutoThreshold === 'boolean'
-  )
-}
-
-function isMicrophoneStartOptions(
-  value: unknown,
-): value is NativeMediaMicrophoneSessionStartOptions {
-  if (!isRecord(value) || value.kind !== 'microphone') return false
-  return (
-    isNonEmptyString(value.requestId, 256) &&
-    (value.audioBitrate === undefined || isIntegerInRange(value.audioBitrate, 6_000, 512_000)) &&
-    (value.muted === undefined || typeof value.muted === 'boolean') &&
-    isNonEmptyString(value.participantIdentity, 512) &&
-    value.livekit === undefined
-  )
-}
-
-function isCameraStartOptions(value: unknown) {
-  if (
-    !isRecord(value) ||
-    !isNonEmptyString(value.participantIdentity, 512) ||
-    value.livekit !== undefined
-  ) return false
-  return (
-    (value.deviceId === undefined || isNonEmptyString(value.deviceId, 2_048)) &&
-    (value.width === undefined || isIntegerInRange(value.width, 16, 7_680)) &&
-    (value.height === undefined || isIntegerInRange(value.height, 16, 4_320)) &&
-    (value.fps === undefined || isIntegerInRange(value.fps, 1, 240)) &&
-    (value.bitrate === undefined ||
-      isIntegerInRange(value.bitrate, 32_000, 100_000_000))
-  )
-}
-
-function isScreenStartOptions(value: unknown) {
-  if (!isRecord(value) || value.kind !== 'screen') return false
-  return (
-    isNonEmptyString(value.requestId, 256) &&
-    isNonEmptyString(value.sourceId, 2_048) &&
-    isIntegerInRange(value.width, 64, 7_680) &&
-    isIntegerInRange(value.height, 64, 4_320) &&
-    isIntegerInRange(value.fps, 1, 240) &&
-    isIntegerInRange(value.bitrate, 32_000, 100_000_000) &&
-    (value.audioBitrate === undefined || isIntegerInRange(value.audioBitrate, 6_000, 512_000)) &&
-    (value.audio === undefined ||
-      (isRecord(value.audio) && typeof value.audio.requested === 'boolean')) &&
-    isNonEmptyString(value.participantIdentity, 512) &&
-    value.livekit === undefined
-  )
-}
-
-function isNoiseSuppressionMode(value: unknown) {
-  return value === 'disabled' || value === 'software' || value === 'unavailable'
-}
-
-function isEchoCancellationMode(value: unknown) {
-  return value === 'disabled' || value === 'software' || value === 'unavailable'
-}
-
-function isScreenAudioMode(value: unknown) {
-  return value === 'process' || value === 'system_exclude' || value === 'none'
-}
-
-function isOptionalInteger(
-  value: unknown,
-  min: number,
-  max: number,
-) {
-  return value === undefined || isIntegerInRange(value, min, max)
-}
+export const NativeRuntimeMessageSchema = Schema.Union([
+  NativeRuntimeReadySchema,
+  NativeRuntimeReplySchema,
+  Schema.Struct({
+    type: Schema.Literal('event'),
+    event: NativeRuntimeEventSchema,
+  }),
+])
 
 export function isNativeMediaSession(value: unknown): value is NativeMediaSession {
-  if (
-    !isRecord(value) ||
-    !isNonEmptyString(value.sessionId, 256) ||
-    (value.kind !== 'microphone' && value.kind !== 'screen')
-  ) {
-    return false
-  }
-  if (value.kind === 'microphone') {
-    return (
-      isRecord(value.audio) &&
-      value.audio.mode === 'microphone' &&
-      value.audio.sampleRate === 48_000 &&
-      value.audio.channels === 1 &&
-      isNoiseSuppressionMode(value.audio.noiseSuppression) &&
-      isEchoCancellationMode(value.audio.echoCancellation) &&
-      isNonEmptyString(value.nativeParticipantIdentity, 512)
-    )
-  }
-  if (value.encoder !== 'mf_h264_d3d11') return false
-  if (
-    !isOptionalInteger(value.width, 16, 7_680) ||
-    !isOptionalInteger(value.height, 16, 4_320) ||
-    !isOptionalInteger(value.fps, 1, 240) ||
-    !isOptionalInteger(value.bitrate, 32_000, 100_000_000)
-  ) {
-    return false
-  }
-  if (value.audio !== undefined) {
-    if (!isRecord(value.audio) || !isScreenAudioMode(value.audio.mode)) return false
-    if (
-      !isOptionalInteger(value.audio.targetProcessId, 0, 0xffff_ffff) ||
-      (value.audio.loopbackMode !== undefined &&
-        value.audio.loopbackMode !== 'include_target_process_tree' &&
-        value.audio.loopbackMode !== 'exclude_target_process_tree')
-    ) {
-      return false
-    }
-  }
-  return (
-    value.nativeParticipantIdentity === undefined ||
-    isNonEmptyString(value.nativeParticipantIdentity, 512)
-  )
-}
-
-function isNativeMediaStateEvent(value: unknown, sessionId: string) {
-  if (!isRecord(value)) return false
-  if (value.sessionId !== undefined && value.sessionId !== sessionId) return false
-  if (value.message !== undefined && !isNonEmptyString(value.message, 4_096)) {
-    return false
-  }
-  if (value.deviceId !== undefined && !isNonEmptyString(value.deviceId, 512)) {
-    return false
-  }
-  if (
-    !isOptionalInteger(value.width, 16, 7_680) ||
-    !isOptionalInteger(value.height, 16, 4_320) ||
-    !isOptionalInteger(value.fps, 1, 240) ||
-    !isOptionalInteger(value.bitrate, 32_000, 100_000_000)
-  ) {
-    return false
-  }
-  if (value.audio !== undefined) {
-    if (!isRecord(value.audio)) return false
-    const audioMode = value.audio.mode
-    if (audioMode !== 'microphone' && !isScreenAudioMode(audioMode)) return false
-  }
-  switch (value.status) {
-    case 'idle':
-    case 'starting':
-      return true
-    case 'running':
-      return value.sessionId === sessionId
-    case 'error':
-      return isNonEmptyString(value.message)
-    default:
-      return false
-  }
-}
-
-function isNativeMediaStats(value: unknown, sessionId: string) {
-  if (!isRecord(value) || value.sessionId !== sessionId || !isRecord(value.methods)) {
-    return false
-  }
-  const methods = value.methods
-  if (
-    !(['wgc_gpu', 'dxgi_gpu'] as const).every(
-      (method) => isFiniteNumber(methods[method], 0, Number.MAX_SAFE_INTEGER),
-    ) ||
-    (value.activeMethod !== undefined &&
-      value.activeMethod !== 'wgc_gpu' &&
-      value.activeMethod !== 'dxgi_gpu')
-  ) {
-    return false
-  }
-  const numericFields = [
-    'audioFrames',
-    'audioPackets',
-    'audioPeakDb',
-    'audioRmsDb',
-    'videoFrames',
-    'videoIntervalFrames',
-    'videoLateFrames',
-    'videoNoFrameCount',
-    'videoRepeatedFrameCount',
-    'videoRecoverableLostCount',
-    'videoGpuPoolSlotsAvailable',
-    'videoGpuPoolSlotsTotal',
-    'videoDxgiDuplicationHoldUsMax',
-    'videoSourceUpdates',
-    'videoGpuSubmissions',
-    'videoIdleRefreshes',
-    'videoCoalescedSourceUpdates',
-    'videoEncoderBackpressureTicks',
-    'videoSupersededReadyFrames',
-    'videoGpuSlotTimeouts',
-    'videoGpuSlotsRecovered',
-    'videoGpuFramesDroppedStale',
-    'videoGpuPoolRollovers',
-    'videoGpuRolloversBlocked',
-    'videoGpuRetiredGenerations',
-    'videoGpuSlotsQuarantined',
-    'videoPreviewBridgeSubmissions',
-    'videoPreviewBridgeAcquires',
-    'videoPreviewBridgeTimeouts',
-    'videoPreviewBridgeSlotsRecovered',
-    'videoPreviewGpuSubmissions',
-    'videoPreviewFramesCompleted',
-    'videoPreviewSlotTimeouts',
-    'videoPreviewFramesDroppedStale',
-    'videoPreviewDeviceResets',
-    'videoGpuCompletionP50Us',
-    'videoGpuCompletionP95Us',
-    'videoGpuCompletionMaxUs',
-    'videoAvgCaptureUs',
-    'videoAvgReadbackUs',
-    'videoAvgScaleUs',
-    'videoAvgPublishUs',
-    'videoSourceWidth',
-    'videoSourceHeight',
-    'videoContentWidth',
-    'videoContentHeight',
-  ] as const
-  if (
-    numericFields.some(
-      (field) => value[field] !== undefined && !Number.isFinite(value[field]),
-    )
-  ) {
-    return false
-  }
-  return (
-    (value.publishedVideo === undefined || typeof value.publishedVideo === 'boolean') &&
-    (value.publishedAudio === undefined || typeof value.publishedAudio === 'boolean') &&
-    (value.captureThreadMmcss === undefined ||
-      typeof value.captureThreadMmcss === 'boolean')
+  return Option.isSome(
+    Schema.decodeUnknownOption(NativeMediaSessionSchema)(value),
   )
 }
 
 export function isNativeRuntimeCommand(value: unknown): value is NativeRuntimeCommand {
-  if (!isRecord(value) || !isNonEmptyString(value.type, 128)) return false
-  switch (value.type) {
-    case 'connectVoice':
-      return (
-        isSessionCommand(value) &&
-        isRecord(value.options) &&
-        isLiveKitCredentials(value.options.livekit)
-      )
-    case 'disconnectVoice':
-      return isSessionCommand(value)
-    case 'configureRemoteAudio':
-      return isSessionCommand(value) && isVoiceRemoteAudioSettings(value.settings)
-    case 'releaseRemoteVideoFrame':
-      return isSessionCommand(value) && isNonEmptyString(value.trackId, 512) &&
-        isSequence(value.sequence)
-    case 'setRemoteVideoDemand':
-      return isSessionCommand(value) && isNonEmptyString(value.trackId, 512) &&
-        typeof value.demanded === 'boolean'
-    case 'retryRemoteVideo':
-      return isSessionCommand(value) && isNonEmptyString(value.trackId, 512) &&
-        isNonEmptyString(value.reason, 256)
-    case 'setLocalScreenPreviewDemand':
-      return isSessionCommand(value) && typeof value.demanded === 'boolean' &&
-        isIntegerInRange(value.electronMainPid, 1, 0xffff_ffff) &&
-        isRecord(value.options) && isIntegerInRange(value.options.width, 16, 3840) &&
-        isIntegerInRange(value.options.height, 16, 2160) &&
-        isIntegerInRange(value.options.fps, 1, 60)
-    case 'releaseLocalScreenPreviewFrame':
-    case 'releaseLocalCameraPreviewFrame':
-      return isSessionCommand(value) && isNonEmptyString(value.trackId, 512) &&
-        isSequence(value.sequence)
-    case 'configureVoiceOutput':
-      return (
-        isSessionCommand(value) &&
-        typeof value.deafened === 'boolean' &&
-        (value.volume === undefined || isFiniteNumber(value.volume, 0, 3)) &&
-        (value.deviceId === undefined || isNonEmptyString(value.deviceId, 2_048))
-      )
-    case 'warmMicrophone':
-      return (
-        Number.isSafeInteger(value.generation) &&
-        Number(value.generation) >= 0 &&
-        isMicrophonePipelineConfig(value.config)
-      )
-    case 'listDevices':
-      return (
-        value.kind === 'audioinput' ||
-        value.kind === 'audiooutput' ||
-        value.kind === 'videoinput'
-      )
-    case 'listDisplaySources':
-      return value.selfWindowHwnd === undefined || isUnsignedIntegerString(value.selfWindowHwnd)
-    case 'startPreview':
-      return isSessionCommand(value)
-    case 'stopPreview':
-      return (
-        (value.sessionId === undefined || isNonEmptyString(value.sessionId, 256)) &&
-        (value.generation === undefined ||
-          (Number.isSafeInteger(value.generation) && Number(value.generation) >= 0))
-      )
-    case 'connectScreen':
-      return (
-        isSessionCommand(value) &&
-        isRecord(value.options) &&
-        isNonEmptyString(value.options.participantIdentity, 512) &&
-        value.options.livekit === undefined
-      )
-    case 'disconnectScreen':
-      return (
-        Number.isSafeInteger(value.generation) &&
-        Number(value.generation) >= 0 &&
-        (value.sessionId === undefined || isNonEmptyString(value.sessionId, 256)) &&
-        (value.terminal === undefined || typeof value.terminal === 'boolean')
-      )
-    case 'connectMicrophone':
-      return (
-        isSessionCommand(value) &&
-        isMicrophoneStartOptions(value.options) &&
-        isIntegerInRange(value.excludeProcessId, 0, 0xffff_ffff)
-      )
-    case 'startScreenCapture':
-      return (
-        isSessionCommand(value) &&
-        isScreenStartOptions(value.options) &&
-        isIntegerInRange(value.excludeProcessId, 0, 0xffff_ffff) &&
-        (value.selfWindowHwnd === undefined || isUnsignedIntegerString(value.selfWindowHwnd))
-      )
-    case 'disconnectMicrophone':
-    case 'invalidateMicrophone':
-    case 'stopScreenCapture':
-      return isSessionCommand(value)
-    case 'connectCamera':
-      return isSessionCommand(value) && isCameraStartOptions(value.options)
-    case 'disconnectCamera':
-      return isSessionCommand(value)
-    case 'configureMicrophone':
-      return (
-        Number.isSafeInteger(value.revision) &&
-        Number(value.revision) >= 0 &&
-        isMicrophonePipelineConfig(value.config)
-      )
-    case 'setMicrophoneMuted':
-      return isSessionCommand(value) && typeof value.muted === 'boolean'
-    case 'probeMicrophoneActor':
-    case 'probeScreenActor':
-    case 'probeCameraActor':
-    case 'probeQueryWorker':
-    case 'startHotkeys':
-    case 'stopHotkeys':
-    case 'startOverlay':
-    case 'stopOverlay':
-    case 'probeHooksRuntime':
-    case 'shutdown':
-      return true
-    default:
-      return false
-  }
-}
-
-export function isNativeRuntimeRequest(value: unknown): value is NativeRuntimeRequest {
-  if (!isRecord(value)) return false
-  return (
-    value.type === 'request' &&
-    isNonEmptyString(value.requestId, 256) &&
-    isNativeRuntimeCommand(value.command) &&
-    (
-      value.diagnostic === undefined ||
-      isNativeRuntimeDiagnosticContext(value.diagnostic)
-    )
+  return Option.isSome(
+    Schema.decodeUnknownOption(NativeRuntimeCommandSchema)(value),
   )
 }
 
-function isNativeRuntimeDiagnosticContext(
-  value: unknown,
-): value is NativeRuntimeDiagnosticContext {
-  if (!isRecord(value)) return false
-  return (
-    isNonEmptyString(value.actionId, 128) &&
-    (
-      value.operationId === undefined ||
-      isNonEmptyString(value.operationId, 128)
-    ) &&
-    (
-      value.revision === undefined ||
-      (
-        Number.isSafeInteger(value.revision) &&
-        Number(value.revision) >= 0
-      )
-    ) &&
-    Number.isSafeInteger(value.hostEpoch) &&
-    Number(value.hostEpoch) > 0
+export function isNativeRuntimeRequest(value: unknown): value is NativeRuntimeRequest {
+  return Option.isSome(
+    Schema.decodeUnknownOption(NativeRuntimeRequestSchema)(value),
   )
 }
 
 export function isNativeRuntimeReady(value: unknown): value is NativeRuntimeReady {
-  if (!isRecord(value) || value.type !== 'ready') return false
-  if (
-    value.runtime !== 'media' &&
-    value.runtime !== 'hotkey' &&
-    value.runtime !== 'overlay' &&
-    value.runtime !== 'invalid'
-  ) {
-    return false
-  }
-  return (
-    Number.isSafeInteger(value.contractVersion) &&
-    Array.isArray(value.capabilities) &&
-    value.capabilities.length <= 32 &&
-    value.capabilities.every((capability) => isNonEmptyString(capability, 128)) &&
-    new Set(value.capabilities).size === value.capabilities.length &&
-    isRecord(value.build) &&
-    Object.values(value.build).every(
-      (item) => item === undefined || typeof item === 'string',
-    )
+  return Option.isSome(
+    Schema.decodeUnknownOption(NativeRuntimeReadySchema)(value),
   )
 }
 
 export function isNativeRuntimeReply(value: unknown): value is NativeRuntimeReply {
-  if (
-    !isRecord(value) ||
-    value.type !== 'reply' ||
-    !isNonEmptyString(value.requestId, 256) ||
-    typeof value.ok !== 'boolean'
-  ) {
-    return false
-  }
-  return value.ok || isRuntimeError(value.error)
+  return Option.isSome(
+    Schema.decodeUnknownOption(NativeRuntimeReplySchema)(value),
+  )
 }
 
 export function isUncorrelatedNativeRuntimeReply(
@@ -845,228 +855,24 @@ export function isUncorrelatedNativeRuntimeReply(
   requestId?: undefined
   ok: boolean
 } {
-  return (
-    isRecord(value) &&
-    value.type === 'reply' &&
-    value.requestId === undefined &&
-    typeof value.ok === 'boolean'
+  return Option.isSome(
+    Schema.decodeUnknownOption(UncorrelatedNativeRuntimeReplySchema)(value),
   )
 }
 
 export function isNativeRuntimeEvent(
   value: unknown,
 ): value is NativeRuntimeEvent {
-  if (!isRecord(value) || !isNonEmptyString(value.type, 128)) return false
-  if (!isSequence(value.sequence)) return false
-
-  if (value.type === 'input') {
-    if (!isRecord(value.input)) return false
-    return (
-      (value.input.type === 'inputDown' || value.input.type === 'inputUp') &&
-      (value.input.source === 'keyboard' || value.input.source === 'mouse') &&
-      isNonEmptyString(value.input.code, 128) &&
-      typeof value.input.label === 'string' &&
-      value.input.label.length <= 512 &&
-      Array.isArray(value.input.pressedCodes) &&
-      value.input.pressedCodes.length <= 64 &&
-      value.input.pressedCodes.every((code) => isNonEmptyString(code, 128))
-    )
-  }
-  if (value.type === 'foregroundWindow') {
-    if (!isRecord(value.window) || !isRecord(value.window.bounds)) return false
-    const window = value.window
-    const bounds = window.bounds as Record<string, unknown>
-    return (
-      Number.isSafeInteger(window.pid) &&
-      typeof window.processName === 'string' && window.processName.length <= 4_096 &&
-      (window.processPath === null ||
-        (typeof window.processPath === 'string' && window.processPath.length <= 32_768)) &&
-      typeof window.title === 'string' && window.title.length <= 32_768 &&
-      typeof window.className === 'string' && window.className.length <= 4_096 &&
-      typeof window.visible === 'boolean' &&
-      typeof window.fullscreenLike === 'boolean' &&
-      (['x', 'y', 'width', 'height'] as const).every((key) =>
-        Number.isFinite(bounds[key]),
-      )
-    )
-  }
-  if (value.type === 'runtimeError') {
-    if (!isRuntimeError(value.error)) return false
-    return (
-      (value.sessionId === undefined || value.sessionId === value.error.sessionId) &&
-      (value.generation === undefined || value.generation === value.error.generation)
-    )
-  }
-  if (value.type === 'voiceTerminal' || value.type === 'cameraTerminal') {
-    return (
-      isRuntimeError(value.error) &&
-      isNonEmptyString(value.sessionId, 256) &&
-      Number.isSafeInteger(value.generation) &&
-      Number(value.generation) >= 0 &&
-      value.error.sessionId === value.sessionId &&
-      value.error.generation === value.generation
-    )
-  }
-  if (value.type === 'deviceList') {
-    return (
-      Array.isArray(value.devices) &&
-      value.devices.every(
-        (device) =>
-          isRecord(device) &&
-          isNonEmptyString(device.deviceId, 2_048) &&
-          (device.kind === 'audioinput' ||
-            device.kind === 'audiooutput' ||
-            device.kind === 'videoinput') &&
-          typeof device.label === 'string' &&
-          device.label.length <= 4_096,
-      )
-    )
-  }
-  if (value.type === 'displaySourceList') {
-    return (
-      Array.isArray(value.sources) &&
-      value.sources.every(
-        (source) =>
-          isRecord(source) &&
-          isNonEmptyString(source.id, 2_048) &&
-          typeof source.name === 'string' &&
-          source.name.length <= 32_768 &&
-          (source.type === 'screen' || source.type === 'window' || source.type === 'game'),
-      )
-    )
-  }
-  if (value.type === 'microphoneMetrics') {
-    return (
-      isRecord(value.metrics) &&
-      Number.isSafeInteger(value.metrics.revision) &&
-      Number(value.metrics.revision) >= 0 &&
-      Number.isFinite(value.metrics.inputDb) &&
-      Number.isFinite(value.metrics.thresholdDb) &&
-      typeof value.metrics.open === 'boolean'
-    )
-  }
-
-  if (
-    !isNonEmptyString(value.sessionId, 256) ||
-    !Number.isSafeInteger(value.generation) ||
-    Number(value.generation) < 0
-  ) {
-    return false
-  }
-  if (value.requestId !== undefined && !isNonEmptyString(value.requestId, 256)) {
-    return false
-  }
-
-  switch (value.type) {
-    case 'sessionLifecycle':
-      return (
-        (value.kind === undefined ||
-          value.kind === 'voice' ||
-          value.kind === 'microphone' ||
-          value.kind === 'screen' ||
-          value.kind === 'camera' ||
-          value.kind === 'output') &&
-        isNativeMediaStateEvent(value.state, value.sessionId) &&
-        (value.error === undefined ||
-          (isRuntimeError(value.error) &&
-            (value.error.sessionId === undefined || value.error.sessionId === value.sessionId) &&
-            (value.error.generation === undefined || value.error.generation === value.generation)))
-      )
-    case 'sessionStarted':
-      return (
-        isNativeMediaSession(value.session) &&
-        value.session.sessionId === value.sessionId
-      )
-    case 'sessionStopped':
-      return value.reason === undefined || typeof value.reason === 'string'
-    case 'stats':
-      return isNativeMediaStats(value.stats, value.sessionId)
-    case 'screenBackendRestart':
-      return (
-        (value.backend === 'dxgi_gpu' || value.backend === 'wgc_gpu') &&
-        SCREEN_BACKEND_RESTART_REASONS.some(
-          (reason) => value.reason === reason,
-        ) &&
-        Number.isSafeInteger(value.count) &&
-        Number(value.count) > 0 &&
-        (value.errorCode === undefined || typeof value.errorCode === 'string') &&
-        (value.hresult === undefined || Number.isSafeInteger(value.hresult))
-      )
-    case 'microphonePreviewStarted':
-      return (
-        isRecord(value.preview) &&
-        value.preview.sessionId === value.sessionId &&
-        isNonEmptyString(value.preview.sessionId, 256)
-      )
-    case 'activeSpeakers':
-      return (
-        Array.isArray(value.participantIdentities) &&
-        value.participantIdentities.length <= 512 &&
-        value.participantIdentities.every((identity) =>
-          isNonEmptyString(identity, 512),
-        )
-      )
-    case 'remoteVideoFrame':
-    case 'localScreenPreviewFrame':
-    case 'localCameraPreviewFrame':
-      return (
-        isNonEmptyString(value.trackId, 512) &&
-        typeof value.participantIdentity === 'string' && value.participantIdentity.length <= 512 &&
-        (value.type === 'localScreenPreviewFrame'
-          ? value.source === 'screen'
-          : value.type === 'localCameraPreviewFrame'
-            ? value.source === 'camera'
-            : value.source === 'camera' || value.source === 'screen') &&
-        isSequence(value.frameSequence) && isSequence(value.timestampUs) &&
-        isIntegerInRange(value.width, 1, 7680) &&
-        isIntegerInRange(value.height, 1, 4320) &&
-        value.ntHandle instanceof Uint8Array && value.ntHandle.byteLength === 8
-      )
-    case 'remoteVideoTrackRemoved':
-      return isNonEmptyString(value.trackId, 512)
-    case 'remoteVideoPublicationAvailable':
-    case 'remoteVideoPublicationUnavailable':
-      return isNonEmptyString(value.trackId, 512) &&
-        isNonEmptyString(value.participantIdentity, 512) &&
-        (value.source === 'camera' || value.source === 'screen')
-    case 'localScreenPreviewTrackRemoved':
-      return isNonEmptyString(value.trackId, 512) && value.source === 'screen'
-    case 'localCameraPreviewTrackRemoved':
-      return isNonEmptyString(value.trackId, 512) && value.source === 'camera'
-    case 'localScreenPreviewFailed':
-      return isNonEmptyString(value.trackId, 512) && isRuntimeError(value.error) &&
-        value.error.code === 'LOCAL_SCREEN_PREVIEW_FAILED' &&
-        value.error.sessionId === value.sessionId &&
-        value.error.generation === value.generation
-    case 'localCameraPreviewFailed':
-      return isNonEmptyString(value.trackId, 512) && isRuntimeError(value.error) &&
-        value.error.code === 'LOCAL_CAMERA_PREVIEW_FAILED' &&
-        value.error.sessionId === value.sessionId &&
-        value.error.generation === value.generation
-    case 'remoteVideoFailed':
-      return isNonEmptyString(value.trackId, 512) &&
-        (value.source === undefined || value.source === 'camera' || value.source === 'screen') &&
-        (value.reason === undefined || value.reason === 'local' ||
-          value.reason === 'subscription')
-    case 'screenCaptureEnded':
-      return (
-        isNonEmptyString(value.reason, 256) &&
-        (value.message === undefined ||
-          (typeof value.message === 'string' && value.message.length <= 4_096))
-      )
-    default:
-      return false
-  }
+  return Option.isSome(
+    Schema.decodeUnknownOption(NativeRuntimeEventSchema)(value),
+  )
 }
 
 export function isNativeRuntimeMessage(
   value: unknown,
 ): value is NativeRuntimeMessage {
-  if (isNativeRuntimeReady(value) || isNativeRuntimeReply(value)) return true
-  return (
-    isRecord(value) &&
-    value.type === 'event' &&
-    isNativeRuntimeEvent(value.event)
+  return Option.isSome(
+    Schema.decodeUnknownOption(NativeRuntimeMessageSchema)(value),
   )
 }
 
@@ -1087,11 +893,14 @@ export function nativeRuntimeError(
 }
 
 export function sanitizeRuntimeError(error: unknown): NativeRuntimeError {
-  if (isRuntimeError(error)) {
+  const decoded = Schema.decodeUnknownOption(NativeRuntimeErrorSchema)(error)
+  if (Option.isSome(decoded)) {
     return {
-      ...error,
-      message: redactSensitiveText(error.message),
-      stage: error.stage ? redactSensitiveText(error.stage).slice(0, 128) : undefined,
+      ...decoded.value,
+      message: redactSensitiveText(decoded.value.message),
+      stage: decoded.value.stage
+        ? redactSensitiveText(decoded.value.stage).slice(0, 128)
+        : undefined,
     }
   }
   const message = error instanceof Error ? error.message : 'Native runtime failed'

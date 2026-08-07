@@ -82,12 +82,14 @@ describe('desktop media permissions', () => {
       'utf8',
     )
     const nativeRefreshBody = source.match(
-      /async function refreshPendingNativePickerSources[\s\S]*?\r?\n}\r?\n\r?\nfunction selectPendingDisplayMediaSource/,
+      /const refreshPendingNativePickerSourcesEffect[\s\S]*?\r?\n}\)\r?\n\r?\nfunction selectPendingDisplayMediaSource/,
     )?.[0]
 
     expect(nativeRefreshBody).toBeDefined()
-    expect(nativeRefreshBody).toContain('listNativeDisplaySources(getWindow)')
-    expect(nativeRefreshBody).not.toContain('loadSourcesForRequest')
+    expect(nativeRefreshBody).toContain(
+      'listNativeDisplaySourcesEffect(getWindow)',
+    )
+    expect(nativeRefreshBody).not.toContain('loadSourcesForRequestEffect')
   })
 
   it('returns selected native picker audio preference to the renderer', () => {

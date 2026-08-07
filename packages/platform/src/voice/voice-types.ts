@@ -1,3 +1,30 @@
+import { Option, Schema } from 'effect'
+
+const VoiceIdentifierSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(512),
+)
+
+const RemoteAudioVolumeSchema = Schema.Finite.check(
+  Schema.isBetween({ minimum: 0, maximum: 3 }),
+)
+
+const remoteAudioSettingsMap = <Value extends Schema.Top>(value: Value) =>
+  Schema.Record(VoiceIdentifierSchema, value).check(
+    Schema.makeFilter(
+      (settings) => Object.keys(settings).length <= 512,
+      { expected: 'a settings map with at most 512 entries' },
+    ),
+  )
+
+export const VoiceRemoteAudioSettingsSchema = Schema.Struct({
+  revision: Schema.Natural,
+  userVolumes: remoteAudioSettingsMap(RemoteAudioVolumeSchema),
+  userMutes: remoteAudioSettingsMap(Schema.Boolean),
+  streamVolumes: remoteAudioSettingsMap(RemoteAudioVolumeSchema),
+  streamMutes: remoteAudioSettingsMap(Schema.Boolean),
+})
+
 export type VoiceRtcEngine = 'web' | 'windows_native'
 
 export type VoiceConnectionState =
@@ -134,13 +161,8 @@ export type VoiceSnapshot = Readonly<{
   speakingUserIds: readonly string[]
 }>
 
-export type VoiceRemoteAudioSettings = Readonly<{
-  revision: number
-  userVolumes: Readonly<Record<string, number>>
-  userMutes: Readonly<Record<string, boolean>>
-  streamVolumes: Readonly<Record<string, number>>
-  streamMutes: Readonly<Record<string, boolean>>
-}>
+export type VoiceRemoteAudioSettings =
+  typeof VoiceRemoteAudioSettingsSchema.Type
 
 export type VoiceCommand =
   | Readonly<{
@@ -195,169 +217,156 @@ export type VoiceCommand =
       settings: VoiceRemoteAudioSettings
     }>
 
+const voiceFiniteNumber = (minimum: number, maximum: number) =>
+  Schema.Finite.check(Schema.isBetween({ minimum, maximum }))
+
+const voiceInteger = (minimum: number, maximum: number) =>
+  Schema.Int.check(Schema.isBetween({ minimum, maximum }))
+
+const VoiceFailureSchema = Schema.Struct({
+  code: Schema.String,
+  message: Schema.String,
+  retryable: Schema.Boolean,
+  stage: Schema.optional(Schema.String),
+  hresult: Schema.optional(Schema.Int),
+})
+
+const VoiceMediaSnapshotSchema = Schema.Struct({
+  state: Schema.Literals(['off', 'starting', 'running', 'muted', 'failed']),
+  error: Schema.optional(VoiceFailureSchema),
+})
+
+export const VoiceCommandSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal('join'),
+    channelId: VoiceIdentifierSchema,
+    recipients: Schema.optional(
+      Schema.Array(VoiceIdentifierSchema).check(Schema.isMaxLength(512)),
+    ),
+  }),
+  Schema.Struct({ type: Schema.Literal('leave') }),
+  Schema.Struct({
+    type: Schema.Literal('setUserMuted'),
+    muted: Schema.Boolean,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('setUserDeafened'),
+    deafened: Schema.Boolean,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('setInputMode'),
+    mode: Schema.Literals(['voice_activity', 'push_to_talk']),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('setPushToTalkHeld'),
+    held: Schema.Boolean,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('setSystemPrivacyMuted'),
+    muted: Schema.Boolean,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('setSelfMonitoringActive'),
+    active: Schema.Boolean,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('configureMicrophone'),
+    deviceId: Schema.optional(VoiceIdentifierSchema),
+    bypassSystemAudioInputProcessing: Schema.Boolean,
+    automaticGainControl: Schema.Boolean,
+    noiseSuppression: Schema.Boolean,
+    echoCancellation: Schema.Boolean,
+    inputVolume: voiceFiniteNumber(0, 4),
+    voiceGateEnabled: Schema.Boolean,
+    voiceGateThresholdDb: voiceFiniteNumber(-100, 0),
+    voiceGateAutoThreshold: Schema.Boolean,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('configureOutput'),
+    deviceId: Schema.optional(VoiceIdentifierSchema),
+    volume: voiceFiniteNumber(0, 3),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('configureRemoteAudio'),
+    settings: VoiceRemoteAudioSettingsSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('setCamera'),
+    enabled: Schema.Boolean,
+    deviceId: Schema.optional(VoiceIdentifierSchema),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('setScreen'),
+    enabled: Schema.Boolean,
+    sourceId: Schema.optional(VoiceIdentifierSchema),
+    audioEnabled: Schema.optional(Schema.Boolean),
+    width: Schema.optional(voiceInteger(64, 7_680)),
+    height: Schema.optional(voiceInteger(64, 4_320)),
+    fps: Schema.optional(voiceInteger(1, 240)),
+    bitrate: Schema.optional(voiceInteger(32_000, 100_000_000)),
+    audioBitrate: Schema.optional(voiceInteger(6_000, 512_000)),
+  }),
+  Schema.Struct({ type: Schema.Literal('retryVoice') }),
+  Schema.Struct({
+    type: Schema.Literal('retryMedia'),
+    kind: Schema.Literals([
+      'microphone',
+      'output',
+      'camera',
+      'screen',
+      'screen_audio',
+    ]),
+  }),
+])
+
+export const VoiceSnapshotSchema = Schema.Struct({
+  intentChannelId: Schema.Union([Schema.Null, VoiceIdentifierSchema]),
+  membershipChannelId: Schema.Union([Schema.Null, VoiceIdentifierSchema]),
+  connection: Schema.Literals([
+    'disconnected',
+    'connecting',
+    'connected',
+    'recovering',
+    'failed',
+  ]),
+  operationId: Schema.optional(VoiceIdentifierSchema),
+  connectionEpoch: Schema.optional(VoiceIdentifierSchema),
+  retryAttempt: Schema.optional(Schema.Natural),
+  failure: Schema.optional(VoiceFailureSchema),
+  microphone: VoiceMediaSnapshotSchema,
+  output: VoiceMediaSnapshotSchema,
+  camera: VoiceMediaSnapshotSchema,
+  screen: VoiceMediaSnapshotSchema,
+  screenAudio: VoiceMediaSnapshotSchema,
+  userMuted: Schema.Boolean,
+  userDeafened: Schema.Boolean,
+  serverMuted: Schema.Boolean,
+  serverDeafened: Schema.Boolean,
+  systemPrivacyMuted: Schema.Boolean,
+  monitoringMuted: Schema.Boolean,
+  inputMode: Schema.Literals(['voice_activity', 'push_to_talk']),
+  pushToTalkHeld: Schema.Boolean,
+  effectiveMuted: Schema.Boolean,
+  speakingUserIds: Schema.Array(VoiceIdentifierSchema),
+})
+
 export function isVoiceCommand(value: unknown): value is VoiceCommand {
-  if (!value || typeof value !== 'object') return false
-  const command = value as Record<string, unknown>
-  switch (command.type) {
-    case 'join':
-      return (
-        validIdentifier(command.channelId) &&
-        (command.recipients === undefined ||
-          (Array.isArray(command.recipients) &&
-            command.recipients.length <= 512 &&
-            command.recipients.every(validIdentifier)))
-      )
-    case 'leave':
-    case 'retryVoice':
-      return true
-    case 'setUserMuted':
-      return typeof command.muted === 'boolean'
-    case 'setUserDeafened':
-      return typeof command.deafened === 'boolean'
-    case 'setInputMode':
-      return command.mode === 'voice_activity' || command.mode === 'push_to_talk'
-    case 'setPushToTalkHeld':
-      return typeof command.held === 'boolean'
-    case 'setSystemPrivacyMuted':
-      return typeof command.muted === 'boolean'
-    case 'setSelfMonitoringActive':
-      return typeof command.active === 'boolean'
-    case 'configureMicrophone':
-      return (
-        (command.deviceId === undefined || validIdentifier(command.deviceId)) &&
-        typeof command.bypassSystemAudioInputProcessing === 'boolean' &&
-        typeof command.automaticGainControl === 'boolean' &&
-        typeof command.noiseSuppression === 'boolean' &&
-        typeof command.echoCancellation === 'boolean' &&
-        finiteInRange(command.inputVolume, 0, 4) &&
-        typeof command.voiceGateEnabled === 'boolean' &&
-        finiteInRange(command.voiceGateThresholdDb, -100, 0) &&
-        typeof command.voiceGateAutoThreshold === 'boolean'
-      )
-    case 'configureOutput':
-      return (
-        (command.deviceId === undefined || validIdentifier(command.deviceId)) &&
-        finiteInRange(command.volume, 0, 3)
-      )
-    case 'configureRemoteAudio':
-      return isVoiceRemoteAudioSettings(command.settings)
-    case 'setCamera':
-      return (
-        typeof command.enabled === 'boolean' &&
-        (command.deviceId === undefined || validIdentifier(command.deviceId))
-      )
-    case 'setScreen':
-      return (
-        typeof command.enabled === 'boolean' &&
-        (command.sourceId === undefined || validIdentifier(command.sourceId)) &&
-        (command.audioEnabled === undefined ||
-          typeof command.audioEnabled === 'boolean') &&
-        optionalInteger(command.width, 64, 7_680) &&
-        optionalInteger(command.height, 64, 4_320) &&
-        optionalInteger(command.fps, 1, 240) &&
-        optionalInteger(command.bitrate, 32_000, 100_000_000) &&
-        optionalInteger(command.audioBitrate, 6_000, 512_000)
-      )
-    case 'retryMedia':
-      return (
-        command.kind === 'microphone' ||
-        command.kind === 'output' ||
-        command.kind === 'camera' ||
-        command.kind === 'screen' ||
-        command.kind === 'screen_audio'
-      )
-    default:
-      return false
-  }
+  return Option.isSome(
+    Schema.decodeUnknownOption(VoiceCommandSchema)(value),
+  )
 }
 
 export function isVoiceRemoteAudioSettings(
   value: unknown,
 ): value is VoiceRemoteAudioSettings {
-  if (!value || typeof value !== 'object') return false
-  const settings = value as Record<string, unknown>
-  return (
-    Number.isSafeInteger(settings.revision) &&
-    Number(settings.revision) >= 0 &&
-    validSettingsMap(settings.userVolumes, (item) => finiteInRange(item, 0, 3)) &&
-    validSettingsMap(settings.userMutes, (item) => typeof item === 'boolean') &&
-    validSettingsMap(settings.streamVolumes, (item) => finiteInRange(item, 0, 3)) &&
-    validSettingsMap(settings.streamMutes, (item) => typeof item === 'boolean')
-  )
-}
-
-function validSettingsMap(
-  value: unknown,
-  validValue: (value: unknown) => boolean,
-) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const entries = Object.entries(value)
-  return (
-    entries.length <= 512 &&
-    entries.every(([key, item]) => validIdentifier(key) && validValue(item))
+  return Option.isSome(
+    Schema.decodeUnknownOption(VoiceRemoteAudioSettingsSchema)(value),
   )
 }
 
 export function isVoiceSnapshot(value: unknown): value is VoiceSnapshot {
-  if (!value || typeof value !== 'object') return false
-  const snapshot = value as Partial<VoiceSnapshot>
-  return (
-    (snapshot.intentChannelId === null ||
-      validIdentifier(snapshot.intentChannelId)) &&
-    (snapshot.membershipChannelId === null ||
-      validIdentifier(snapshot.membershipChannelId)) &&
-    (snapshot.connection === 'disconnected' ||
-      snapshot.connection === 'connecting' ||
-      snapshot.connection === 'connected' ||
-      snapshot.connection === 'recovering' ||
-      snapshot.connection === 'failed') &&
-    typeof snapshot.userMuted === 'boolean' &&
-    typeof snapshot.userDeafened === 'boolean' &&
-    typeof snapshot.serverMuted === 'boolean' &&
-    typeof snapshot.serverDeafened === 'boolean' &&
-    typeof snapshot.systemPrivacyMuted === 'boolean' &&
-    typeof snapshot.monitoringMuted === 'boolean' &&
-    typeof snapshot.pushToTalkHeld === 'boolean' &&
-    typeof snapshot.effectiveMuted === 'boolean' &&
-    Array.isArray(snapshot.speakingUserIds) &&
-    snapshot.speakingUserIds.every(validIdentifier) &&
-    isMediaSnapshot(snapshot.microphone) &&
-    isMediaSnapshot(snapshot.output) &&
-    isMediaSnapshot(snapshot.camera) &&
-    isMediaSnapshot(snapshot.screen) &&
-    isMediaSnapshot(snapshot.screenAudio)
-  )
-}
-
-function validIdentifier(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= 512
-}
-
-function isMediaSnapshot(value: unknown): value is VoiceMediaSnapshot {
-  if (!value || typeof value !== 'object') return false
-  const media = value as Partial<VoiceMediaSnapshot>
-  return (
-    media.state === 'off' ||
-    media.state === 'starting' ||
-    media.state === 'running' ||
-    media.state === 'muted' ||
-    media.state === 'failed'
-  )
-}
-
-function optionalInteger(value: unknown, min: number, max: number) {
-  return (
-    value === undefined ||
-    (Number.isSafeInteger(value) && Number(value) >= min && Number(value) <= max)
-  )
-}
-
-function finiteInRange(value: unknown, min: number, max: number) {
-  return (
-    typeof value === 'number' &&
-    Number.isFinite(value) &&
-    value >= min &&
-    value <= max
+  return Option.isSome(
+    Schema.decodeUnknownOption(VoiceSnapshotSchema)(value),
   )
 }
 

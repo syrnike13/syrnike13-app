@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { BannedUser, ServerBan } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { SearchIcon } from '#/components/icons'
@@ -17,8 +18,8 @@ import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { useAuth } from '#/features/auth/auth-context'
 import {
-  fetchServerBans,
-  unbanServerMember,
+  fetchServerBansEffect,
+  unbanServerMemberEffect,
 } from '#/features/api/servers-api'
 
 type ServerSettingsBansPanelProps = {
@@ -81,7 +82,13 @@ export function ServerSettingsBansPanel({
   const bansQuery = useQuery({
     queryKey: ['server-bans', serverId],
     enabled: Boolean(token),
-    queryFn: () => fetchServerBans(token!, serverId),
+    queryFn: ({ signal }) =>
+      Effect.runPromise(
+        token
+          ? fetchServerBansEffect(token, serverId)
+          : Effect.fail(new Error('Нет сессии')),
+        { signal },
+      ),
   })
 
   const usersById = useMemo(() => {
@@ -105,15 +112,30 @@ export function ServerSettingsBansPanel({
     const body = unbanReason.trim() ? { reason: unbanReason.trim() } : {}
 
     setRemovingUserId(unbanTarget.userId)
-    try {
-      await unbanServerMember(token, serverId, unbanTarget.userId, body)
-      await bansQuery.refetch()
-      closeUnbanDialog()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Не удалось снять бан')
-    } finally {
-      setRemovingUserId(null)
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        yield* unbanServerMemberEffect(
+          token,
+          serverId,
+          unbanTarget.userId,
+          body,
+        )
+        yield* Effect.tryPromise({
+          try: () => bansQuery.refetch(),
+          catch: (cause) => cause,
+        })
+        yield* Effect.sync(closeUnbanDialog)
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось снять бан',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setRemovingUserId(null))),
+      ),
+    )
   }
 
   const bans = bansQuery.data?.bans ?? []

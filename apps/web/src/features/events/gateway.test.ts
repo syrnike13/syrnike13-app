@@ -80,6 +80,71 @@ describe('EventsGateway', () => {
     expect(gateway.state).toBe('connected')
   })
 
+  it('emits only schema-valid server events to typed subscribers', () => {
+    const events: Array<{ type: string }> = []
+    gateway.subscribeServerEvents((event) => events.push(event))
+    gateway.connect('wss://example.test/ws', 'token-1')
+
+    const socket = mock.sockets.at(-1)
+    socket?.onmessage?.({
+      data: JSON.stringify({
+        type: 'UserPresence',
+        id: 'user-1',
+        online: 'yes',
+      }),
+    })
+    socket?.onmessage?.({
+      data: JSON.stringify({
+        type: 'UserPresence',
+        id: 'user-1',
+        online: true,
+      }),
+    })
+
+    expect(events).toEqual([
+      { type: 'UserPresence', id: 'user-1', online: true },
+    ])
+  })
+
+  it('validates nested gateway payloads and Bulk members', () => {
+    const events: Array<{ type: string }> = []
+    gateway.subscribeServerEvents((event) => events.push(event))
+    gateway.connect('wss://example.test/ws', 'token-1')
+
+    const socket = mock.sockets.at(-1)
+    socket?.onmessage?.({
+      data: JSON.stringify({
+        type: 'Ready',
+        users: [{ _id: 'user-1', username: 'alice' }],
+      }),
+    })
+    socket?.onmessage?.({
+      data: JSON.stringify({
+        type: 'Bulk',
+        v: [
+          {
+            type: 'UserPresence',
+            id: 'user-1',
+            online: true,
+          },
+        ],
+      }),
+    })
+
+    expect(events).toEqual([
+      {
+        type: 'Bulk',
+        v: [
+          {
+            type: 'UserPresence',
+            id: 'user-1',
+            online: true,
+          },
+        ],
+      },
+    ])
+  })
+
   it('adds the web client kind to gateway URLs by default', () => {
     gateway.connect('wss://example.test/ws', 'token-1')
 

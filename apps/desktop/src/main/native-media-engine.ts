@@ -1,6 +1,7 @@
 import path from 'node:path'
 
 import { app, type BrowserWindow } from 'electron'
+import { Effect } from 'effect'
 
 import { NativeMediaController } from './native-runtime/native-media-controller'
 import {
@@ -18,7 +19,7 @@ import {
 import {
   createNativeDiagnosticLog,
   createNativeDiagnosticSession,
-  pruneNativeDiagnosticSessions,
+  pruneNativeDiagnosticSessionsEffect,
   type DiagnosticLogSink,
   type NativeDiagnosticLog,
   type NativeDiagnosticSession,
@@ -98,8 +99,15 @@ export function logNativeVoiceDiagnostic(event: string, data?: unknown) {
   }
 }
 
-export async function flushNativeMediaDiagnostics() {
-  await ensureNativeMediaDiagnostics()?.log.flush()
+export const flushNativeMediaDiagnosticsEffect = Effect.fn(
+  'nativeMedia.flushDiagnostics',
+)(function*() {
+  const diagnostics = ensureNativeMediaDiagnostics()
+  if (diagnostics) yield* diagnostics.log.flushEffect()
+})
+
+export function flushNativeMediaDiagnostics() {
+  return Effect.runPromise(flushNativeMediaDiagnosticsEffect())
 }
 
 export function registerNativeMediaRuntimeIpc(
@@ -142,40 +150,52 @@ export function registerNativeMediaRuntimeIpc(
         event.sessionId,
         event.generation,
       )) {
-        void supervisor.request({
-          type: 'releaseRemoteVideoFrame',
-          sessionId: event.sessionId,
-          generation: event.generation,
-          trackId: event.trackId,
-          sequence: event.frameSequence,
-        }, 2_000).catch(() => undefined)
+        Effect.runFork(
+          supervisor.requestEffect(
+            {
+              type: 'releaseRemoteVideoFrame',
+              sessionId: event.sessionId,
+              generation: event.generation,
+              trackId: event.trackId,
+              sequence: event.frameSequence,
+            },
+            2_000,
+          ).pipe(Effect.ignore),
+        )
         return
       }
       const bridge = local ? localPreviewBridge : remoteVideoBridge
       if (!bridge) return
-      void bridge.deliver({
-        sessionId: event.sessionId,
-        generation: event.generation,
-        trackId: event.trackId,
-        participantIdentity: event.participantIdentity,
-        source: event.source,
-        local,
-        sequence: event.frameSequence,
-        width: event.width,
-        height: event.height,
-        timestampUs: event.timestampUs,
-        runtimeEpoch: supervisor.getSnapshot().restartCount,
-        ntHandle: Buffer.from(event.ntHandle),
-      }).catch((error) => {
-        diagnosticSink({
-          scope: 'native-video',
-          event: 'frame_delivery_rejected',
-          kind: local ? 'local-preview' : 'remote-video',
-          stage: 'renderer-delivery',
+      Effect.runFork(
+        bridge.deliverEffect({
+          sessionId: event.sessionId,
           generation: event.generation,
-          message: safeErrorMessage(error),
-        })
-      })
+          trackId: event.trackId,
+          participantIdentity: event.participantIdentity,
+          source: event.source,
+          local,
+          sequence: event.frameSequence,
+          width: event.width,
+          height: event.height,
+          timestampUs: event.timestampUs,
+          runtimeEpoch: supervisor.getSnapshot().restartCount,
+          ntHandle: Buffer.from(event.ntHandle),
+        }).pipe(
+          Effect.tapError((error) =>
+            Effect.sync(() => {
+              diagnosticSink({
+                scope: 'native-video',
+                event: 'frame_delivery_rejected',
+                kind: local ? 'local-preview' : 'remote-video',
+                stage: 'renderer-delivery',
+                generation: event.generation,
+                message: safeErrorMessage(error),
+              })
+            }),
+          ),
+          Effect.ignore,
+        ),
+      )
       return
     }
     if (event.type === 'remoteVideoPublicationAvailable' ||
@@ -260,7 +280,7 @@ function createVideoBridge(
 ) {
   return new NativeSharedTextureBridge({
     getWindow,
-    release: async (frame) => {
+    release: (frame) => {
       const runtime = supervisor.getSnapshot()
       if (runtime.status !== 'ready' || runtime.restartCount !== frame.runtimeEpoch) return
       const identity = {
@@ -274,9 +294,11 @@ function createVideoBridge(
           ? { type: 'releaseLocalCameraPreviewFrame' as const, ...identity }
           : { type: 'releaseLocalScreenPreviewFrame' as const, ...identity }
         : { type: 'releaseRemoteVideoFrame' as const, ...identity }
-      await supervisor.request(command, 2_000)
+      return Effect.runPromise(
+        supervisor.requestEffect(command, 2_000).pipe(Effect.asVoid),
+      )
     },
-    onPresentationStalled: async (frame, reason) => {
+    onPresentationStalled: (frame, reason) => {
       const window = getWindow()
       diagnosticSink({
         scope: 'native-video',
@@ -322,21 +344,27 @@ export function startNativeMediaRuntime() {
     packaged: app.isPackaged,
     appVersion: app.getVersion(),
   })
-  void controller
-    .start()
-    .catch((error) => {
-      diagnosticSink({
-        scope: 'native-media-controller',
-        event: 'bootstrap_failed',
-        message: safeErrorMessage(error),
-      })
-    })
+  Effect.runFork(
+    controller.startEffect().pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          diagnosticSink({
+            scope: 'native-media-controller',
+            event: 'bootstrap_failed',
+            message: safeErrorMessage(error),
+          })
+        }),
+      ),
+    ),
+  )
 }
 
-export async function disposeNativeMediaRuntime() {
+export const disposeNativeMediaRuntimeEffect = Effect.fn(
+  'desktop.disposeNativeMediaRuntime',
+)(function*() {
   const diagnostics = nativeMediaDiagnostics ?? null
   diagnostics?.log.log('native_media_dispose_requested')
-  try {
+  yield* Effect.sync(() => {
     stopVideoEvents?.()
     stopVideoEvents = null
     stopControllerEvents?.()
@@ -345,24 +373,50 @@ export async function disposeNativeMediaRuntime() {
     remoteVideoBridge = null
     localPreviewBridge?.dispose()
     localPreviewBridge = null
-    await controller.dispose()
-    diagnostics?.log.log('native_media_dispose_completed')
-  } catch (error) {
-    diagnosticSink({
-      scope: 'native-media-controller',
-      event: 'dispose_failed',
-      message: safeErrorMessage(error),
-    })
-  } finally {
-    await diagnostics?.log.close()
-  }
+  })
+  yield* controller.disposeEffect().pipe(
+    Effect.tap(() =>
+      Effect.sync(() => {
+        diagnostics?.log.log('native_media_dispose_completed')
+      }),
+    ),
+    Effect.catch((error) =>
+      Effect.sync(() => {
+        diagnosticSink({
+          scope: 'native-media-controller',
+          event: 'dispose_failed',
+          message: safeErrorMessage(error),
+        })
+      }),
+    ),
+    Effect.ensuring(
+      diagnostics
+        ? Effect.tryPromise({
+            try: () => diagnostics.log.close(),
+            catch: (cause) => cause,
+          }).pipe(Effect.ignore)
+        : Effect.void,
+    ),
+  )
+})
+
+export function disposeNativeMediaRuntime() {
+  return Effect.runPromise(disposeNativeMediaRuntimeEffect())
 }
 
-export async function listNativeDisplaySources(
+export const listNativeDisplaySourcesEffect = Effect.fn(
+  'nativeMedia.listDisplaySources',
+)(function*(
   getWindow?: () => BrowserWindow | null,
 ) {
   if (getWindow) getWindowRef = getWindow
-  return controller.listDisplaySources()
+  return yield* controller.listDisplaySourcesEffect()
+})
+
+export function listNativeDisplaySources(
+  getWindow?: () => BrowserWindow | null,
+) {
+  return Effect.runPromise(listNativeDisplaySourcesEffect(getWindow))
 }
 
 function readWindowHwnd(win: BrowserWindow | null) {
@@ -432,7 +486,12 @@ function ensureNativeMediaDiagnostics(): NativeMediaDiagnostics | null {
       'logs',
       'native-media-diagnostics',
     )
-    void pruneNativeDiagnosticSessions(diagnosticRoot).catch(() => undefined)
+    Effect.runFork(
+      pruneNativeDiagnosticSessionsEffect(
+        diagnosticRoot,
+        Date.now(),
+      ).pipe(Effect.ignore),
+    )
     const session = createNativeDiagnosticSession({
       runtime: 'media',
       rootDir: diagnosticRoot,

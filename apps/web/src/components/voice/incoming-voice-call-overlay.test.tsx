@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { Channel, User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { IncomingVoiceCallOverlay } from './incoming-voice-call-overlay'
@@ -15,10 +16,14 @@ const GROUP_CHANNEL_ID = 'group-1'
 const voiceJoinMock = vi.hoisted(() => vi.fn())
 const navigateMock = vi.hoisted(() => vi.fn())
 const cancelDirectMessageCallMock = vi.hoisted(() =>
-  vi.fn().mockResolvedValue(undefined),
+  vi.fn<
+    (token: string, channelId: string) => Effect.Effect<void, unknown>
+  >(() => Effect.void),
 )
 const declineDirectMessageCallMock = vi.hoisted(() =>
-  vi.fn().mockResolvedValue(undefined),
+  vi.fn<
+    (token: string, channelId: string) => Effect.Effect<void, unknown>
+  >(() => Effect.void),
 )
 
 const currentUser = {
@@ -88,8 +93,8 @@ vi.mock('#/features/voice/voice-session-context', () => ({
 }))
 
 vi.mock('#/features/api/channels-api', () => ({
-  cancelDirectMessageCall: cancelDirectMessageCallMock,
-  declineDirectMessageCall: declineDirectMessageCallMock,
+  cancelDirectMessageCallEffect: cancelDirectMessageCallMock,
+  declineDirectMessageCallEffect: declineDirectMessageCallMock,
 }))
 
 vi.mock('#/components/icons', () => ({
@@ -196,7 +201,9 @@ describe('IncomingVoiceCallOverlay', () => {
   })
 
   it('keeps one-to-one calls visible when decline fails', async () => {
-    declineDirectMessageCallMock.mockRejectedValueOnce(new Error('boom'))
+    declineDirectMessageCallMock.mockReturnValueOnce(
+      Effect.fail(new Error('boom')),
+    )
 
     render(<IncomingVoiceCallOverlay />)
 

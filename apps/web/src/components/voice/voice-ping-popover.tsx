@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import { Effect, Fiber } from 'effect'
 
 import { Button } from '#/components/ui/button'
 import { VoicePingChart } from '#/components/voice/voice-ping-chart'
@@ -9,7 +10,7 @@ import {
   PopoverTitle,
 } from '#/components/ui/popover'
 import { summarizeVoicePingHistory } from '#/features/voice/voice-ping-history'
-import { resolveVoiceNodeName } from '#/features/voice/voice-node'
+import { resolveVoiceNodeNameEffect } from '#/features/voice/voice-node'
 import { useVoiceTelemetry } from '#/features/voice/voice-telemetry-context'
 import { cn } from '#/lib/utils'
 
@@ -24,12 +25,17 @@ export function VoicePingPopoverContent({
   const [nodeName, setNodeName] = useState<string | null>(null)
 
   useEffect(() => {
-    let active = true
-    void resolveVoiceNodeName().then((name) => {
-      if (active) setNodeName(name)
-    })
+    const fiber = Effect.runFork(
+      resolveVoiceNodeNameEffect.pipe(
+        Effect.tap((name) =>
+          Effect.sync(() => {
+            setNodeName(name)
+          }),
+        ),
+      ),
+    )
     return () => {
-      active = false
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [])
 

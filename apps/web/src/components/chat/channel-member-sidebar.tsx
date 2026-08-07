@@ -19,7 +19,7 @@ import { canViewChannelDraft } from '#/features/authorization/permission-draft'
 import { cn } from '#/lib/utils'
 
 type ChannelMemberSidebarProps = {
-  channel: Extract<Channel, { channel_type: 'TextChannel' | 'VoiceChannel' }>
+  channel: Extract<Channel, { channel_type: 'TextChannel' }>
 }
 
 function MemberListSectionHeader({

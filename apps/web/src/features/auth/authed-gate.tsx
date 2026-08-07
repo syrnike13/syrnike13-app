@@ -1,5 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 import { RiRefreshLine } from '@remixicon/react'
+import { Effect } from 'effect'
 import { type ReactNode, useEffect } from 'react'
 
 import { GatewayLoadingScreen } from '#/components/layout/gateway-loading-screen'
@@ -105,7 +106,7 @@ function ProfileLoadErrorScreen({
   retry,
 }: {
   message: string
-  retry: () => Promise<void>
+  retry: () => Effect.Effect<void, unknown>
 }) {
   return (
     <div className="gradient-surface-content fixed inset-0 z-[200] flex items-center justify-center bg-background px-6 text-foreground">
@@ -120,7 +121,7 @@ function ProfileLoadErrorScreen({
           type="button"
           className="mt-6"
           onClick={() => {
-            void retry()
+            void Effect.runPromise(retry())
           }}
         >
           <RiRefreshLine aria-hidden="true" />

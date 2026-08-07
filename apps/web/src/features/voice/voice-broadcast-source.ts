@@ -15,10 +15,6 @@ export type ScreenShareBroadcastSource = {
   appIconDataUrl?: string
 }
 
-type DisplaySurfaceSettings = MediaTrackSettings & {
-  displaySurface?: string
-}
-
 let desktopScreenShareSource: ScreenShareBroadcastSource | null = null
 
 export function parseScreenShareSurface(
@@ -44,8 +40,13 @@ export function screenShareSurfaceFallbackLabel(surface: ScreenShareSurface) {
 export function readScreenShareBroadcastSource(
   track: MediaStreamTrack | null | undefined,
 ): ScreenShareBroadcastSource {
-  const settings = track?.getSettings?.() as DisplaySurfaceSettings | undefined
-  const surface = parseScreenShareSurface(settings?.displaySurface)
+  const settings = track?.getSettings?.()
+  const displaySurface: unknown = settings
+    ? Reflect.get(settings, 'displaySurface')
+    : undefined
+  const surface = parseScreenShareSurface(
+    typeof displaySurface === 'string' ? displaySurface : undefined,
+  )
   const label = friendlyScreenShareLabel(track?.label, surface)
   return { label, surface }
 }

@@ -1,16 +1,26 @@
-export async function closeVoiceCallNotification(channelId: string) {
+import { Effect } from 'effect'
+
+export const closeVoiceCallNotification = Effect.fn(
+  'notifications.closeVoiceCall',
+)(function*(channelId: string) {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
     return
   }
 
-  try {
-    const registration = await navigator.serviceWorker.ready
-    const notifications = await registration.getNotifications({
-      tag: `voice-call:${channelId}`,
+  yield* Effect.gen(function*() {
+    const registration = yield* Effect.tryPromise({
+      try: () => navigator.serviceWorker.ready,
+      catch: (cause) => cause,
     })
-
-    notifications.forEach((notification) => notification.close())
-  } catch {
-    // Notification cleanup is best effort; call UI state is still handled locally.
-  }
-}
+    const notifications = yield* Effect.tryPromise({
+      try: () =>
+        registration.getNotifications({
+          tag: `voice-call:${channelId}`,
+        }),
+      catch: (cause) => cause,
+    })
+    yield* Effect.sync(() => {
+      notifications.forEach((notification) => notification.close())
+    })
+  }).pipe(Effect.catch(() => Effect.void))
+})

@@ -1,9 +1,15 @@
 import { useRef, useSyncExternalStore } from 'react'
-import type { VoiceRemoteAudioSettings } from '@syrnike13/platform'
+import {
+  DesktopVoiceListenerSettingsSchema,
+  normalizeDesktopVoiceListenerSettings,
+  type DesktopVoiceListenerSettings,
+  type VoiceRemoteAudioSettings,
+} from '@syrnike13/platform'
+import { Effect, Option, Schema, SchemaTransformation } from 'effect'
 
 import {
-  loadDesktopLocalSettings,
-  updateDesktopLocalSettings,
+  loadDesktopLocalSettingsEffect,
+  updateDesktopLocalSettingsEffect,
 } from '#/features/settings/desktop-local-settings-client'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
@@ -11,46 +17,34 @@ const STORAGE_KEY = 'syrnike13-voice-listener'
 const DEFAULT_USER_VOLUME = 1
 /** 0–3 (до 300% в UI, в браузере cap 100%). */
 export const VOICE_USER_VOLUME_MAX = 3
+const UnknownVoiceListenerJsonSchema = Schema.String.pipe(
+  Schema.decodeTo(Schema.Unknown, SchemaTransformation.fromJsonString()),
+)
+const VoiceListenerSettingsJsonSchema = Schema.fromJsonString(
+  DesktopVoiceListenerSettingsSchema,
+)
 
-type VoiceListenerState = {
-  userVolumes: Record<string, number>
-  userMutes: Record<string, boolean>
-  streamVolumes: Record<string, number>
-  streamMutes: Record<string, boolean>
-}
+type VoiceListenerState = DesktopVoiceListenerSettings
 
 function emptyState(): VoiceListenerState {
   return { userVolumes: {}, userMutes: {}, streamVolumes: {}, streamMutes: {} }
 }
 
 function normalizeVoiceListenerState(value: unknown): VoiceListenerState {
-  if (!value || typeof value !== 'object') return emptyState()
-  const parsed = value as Partial<VoiceListenerState>
-  return {
-    userVolumes:
-      parsed.userVolumes && typeof parsed.userVolumes === 'object'
-        ? parsed.userVolumes
-        : {},
-    userMutes:
-      parsed.userMutes && typeof parsed.userMutes === 'object'
-        ? parsed.userMutes
-        : {},
-    streamVolumes:
-      parsed.streamVolumes && typeof parsed.streamVolumes === 'object'
-        ? parsed.streamVolumes
-        : {},
-    streamMutes:
-      parsed.streamMutes && typeof parsed.streamMutes === 'object'
-        ? parsed.streamMutes
-        : {},
-  }
+  return normalizeDesktopVoiceListenerSettings(value)
 }
 
 function loadState(): VoiceListenerState {
   if (typeof window === 'undefined' || getSyrnikeDesktop()) return emptyState()
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return normalizeVoiceListenerState(raw ? JSON.parse(raw) : null)
+    return normalizeVoiceListenerState(
+      raw
+        ? Option.getOrUndefined(
+            Schema.decodeUnknownOption(UnknownVoiceListenerJsonSchema)(raw),
+          )
+        : null,
+    )
   } catch {
     return emptyState()
   }
@@ -67,11 +61,18 @@ function emit() {
 function persist() {
   if (typeof window === 'undefined') return
   if (getSyrnikeDesktop()) {
-    void updateDesktopLocalSettings({ voiceListener: state })
+    Effect.runFork(
+      updateDesktopLocalSettingsEffect({ voiceListener: state }).pipe(
+        Effect.ignore,
+      ),
+    )
     return
   }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    localStorage.setItem(
+      STORAGE_KEY,
+      Schema.encodeSync(VoiceListenerSettingsJsonSchema)(state),
+    )
   } catch {
     // quota / private mode
   }
@@ -84,13 +85,21 @@ function replaceState(next: VoiceListenerState) {
   emit()
 }
 
-export async function hydrateVoiceListenerSettingsFromDesktop() {
+export const hydrateVoiceListenerSettingsFromDesktopEffect = Effect.fn(
+  'voiceListenerSettings.hydrateFromDesktop',
+)(function*() {
   const revision = stateRevision
-  const settings = await loadDesktopLocalSettings()
+  const settings = yield* loadDesktopLocalSettingsEffect()
   if (!settings || revision !== stateRevision) return
-  state = normalizeVoiceListenerState(settings.voiceListener)
-  stateRevision += 1
-  emit()
+  yield* Effect.sync(() => {
+    state = normalizeVoiceListenerState(settings.voiceListener)
+    stateRevision += 1
+    emit()
+  })
+})
+
+export function hydrateVoiceListenerSettingsFromDesktop() {
+  return Effect.runPromise(hydrateVoiceListenerSettingsFromDesktopEffect())
 }
 
 export function formatUserVolumeLabel(userVolume: number) {
@@ -219,4 +228,4 @@ export function useVoiceListenerStore<T>(
   )
 }
 
-void hydrateVoiceListenerSettingsFromDesktop()
+Effect.runFork(hydrateVoiceListenerSettingsFromDesktopEffect())

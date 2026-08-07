@@ -1,3 +1,5 @@
+import { Effect, Option, Schema } from 'effect'
+
 export type NativeVideoSource = 'camera' | 'screen'
 
 export type NativeVideoTrackMetadata = {
@@ -16,6 +18,69 @@ type NativeVideoFrameMessage = {
   metadata: NativeVideoTrackMetadata
   frame: VideoFrame
 }
+
+const NativeVideoSessionMetadataSchema = Schema.Struct({
+  sessionId: Schema.String,
+  generation: Schema.Int,
+})
+
+const NativeVideoPublicationMetadataSchema = Schema.Struct({
+  trackId: Schema.String,
+  participantIdentity: Schema.String,
+  source: Schema.Literals(['camera', 'screen']),
+  sessionId: Schema.String,
+  generation: Schema.Int,
+})
+
+const NativeVideoTrackMetadataSchema = Schema.Struct({
+  ...NativeVideoPublicationMetadataSchema.fields,
+  local: Schema.Boolean,
+  sequence: Schema.Int,
+  rendererEpoch: Schema.Int,
+})
+
+const TrackRemovedMessageSchema = Schema.Struct({
+  type: Schema.Literal('syrnike-native-video-track-removed'),
+  metadata: Schema.Struct({
+    ...NativeVideoSessionMetadataSchema.fields,
+    trackId: Schema.String,
+    transient: Schema.optional(Schema.Boolean),
+  }),
+})
+
+const SessionResetMessageSchema = Schema.Struct({
+  type: Schema.Literal('syrnike-native-video-session-reset'),
+  metadata: NativeVideoSessionMetadataSchema,
+})
+
+const PublicationMessageSchema = Schema.Struct({
+  type: Schema.Literals([
+    'syrnike-native-video-publication-available',
+    'syrnike-native-video-publication-unavailable',
+  ]),
+  metadata: NativeVideoPublicationMetadataSchema,
+})
+
+const PublicationFailureMessageSchema = Schema.Struct({
+  type: Schema.Literal('syrnike-native-video-publication-failed'),
+  metadata: Schema.Struct({
+    ...NativeVideoSessionMetadataSchema.fields,
+    trackId: Schema.String,
+    message: Schema.String,
+  }),
+})
+
+const FrameMessageSchema = Schema.Struct({
+  type: Schema.Literal('syrnike-native-video-frame'),
+  metadata: NativeVideoTrackMetadataSchema,
+  frame: Schema.Unknown.check(
+    Schema.makeFilter(
+      (frame) =>
+        typeof VideoFrame !== 'undefined' && frame instanceof VideoFrame,
+      { expected: 'a VideoFrame' },
+    ),
+  ),
+})
 
 type CanvasConsumer = {
   canvas: HTMLCanvasElement
@@ -104,9 +169,15 @@ export class NativeVideoRegistry {
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', this.onVisibilityChange)
     }
-    void window.syrnikeDesktop?.media
-      .replayRemoteVideoPublications()
-      .catch(() => undefined)
+    const replay = window.syrnikeDesktop?.media.replayRemoteVideoPublications()
+    if (replay) {
+      Effect.runFork(
+        Effect.tryPromise({
+          try: () => replay,
+          catch: (cause) => cause,
+        }).pipe(Effect.ignore),
+      )
+    }
   }
 
   stop() {
@@ -566,18 +637,8 @@ function isTrackRemovedMessage(value: unknown): value is {
     transient?: boolean
   }
 } {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as { type?: unknown; metadata?: { trackId?: unknown } }
-  return (
-    candidate.type === 'syrnike-native-video-track-removed' &&
-    typeof candidate.metadata?.trackId === 'string' &&
-    typeof (candidate.metadata as { sessionId?: unknown }).sessionId ===
-      'string' &&
-    Number.isSafeInteger(
-      (candidate.metadata as { generation?: unknown }).generation,
-    ) &&
-    ((candidate.metadata as { transient?: unknown }).transient === undefined ||
-      typeof (candidate.metadata as { transient?: unknown }).transient === 'boolean')
+  return Option.isSome(
+    Schema.decodeUnknownOption(TrackRemovedMessageSchema)(value),
   )
 }
 
@@ -585,14 +646,9 @@ function isSessionResetMessage(value: unknown): value is {
   type: 'syrnike-native-video-session-reset'
   metadata: { sessionId: string; generation: number }
 } {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as {
-    type?: unknown
-    metadata?: { sessionId?: unknown; generation?: unknown }
-  }
-  return candidate.type === 'syrnike-native-video-session-reset' &&
-    typeof candidate.metadata?.sessionId === 'string' &&
-    Number.isSafeInteger(candidate.metadata.generation)
+  return Option.isSome(
+    Schema.decodeUnknownOption(SessionResetMessageSchema)(value),
+  )
 }
 
 function isPublicationMessage(value: unknown): value is {
@@ -606,17 +662,8 @@ function isPublicationMessage(value: unknown): value is {
     generation: number
   }
 } {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as { type?: unknown; metadata?: Record<string, unknown> }
-  const metadata = candidate.metadata
-  return (
-    (candidate.type === 'syrnike-native-video-publication-available' ||
-      candidate.type === 'syrnike-native-video-publication-unavailable') &&
-    typeof metadata?.trackId === 'string' &&
-    typeof metadata.participantIdentity === 'string' &&
-    (metadata.source === 'camera' || metadata.source === 'screen') &&
-    typeof metadata.sessionId === 'string' &&
-    Number.isSafeInteger(metadata.generation)
+  return Option.isSome(
+    Schema.decodeUnknownOption(PublicationMessageSchema)(value),
   )
 }
 
@@ -629,34 +676,14 @@ function isPublicationFailureMessage(value: unknown): value is {
     message: string
   }
 } {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as { type?: unknown; metadata?: Record<string, unknown> }
-  const metadata = candidate.metadata
-  return candidate.type === 'syrnike-native-video-publication-failed' &&
-    typeof metadata?.trackId === 'string' &&
-    typeof metadata.sessionId === 'string' &&
-    Number.isSafeInteger(metadata.generation) &&
-    typeof metadata.message === 'string'
+  return Option.isSome(
+    Schema.decodeUnknownOption(PublicationFailureMessageSchema)(value),
+  )
 }
 
 function isFrameMessage(value: unknown): value is NativeVideoFrameMessage {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as Partial<NativeVideoFrameMessage>
-  const metadata = candidate.metadata as
-    | Partial<NativeVideoTrackMetadata>
-    | undefined
-  return (
-    candidate.type === 'syrnike-native-video-frame' &&
-    candidate.frame instanceof VideoFrame &&
-    Boolean(metadata) &&
-    typeof metadata?.trackId === 'string' &&
-    typeof metadata.sessionId === 'string' &&
-    typeof metadata.participantIdentity === 'string' &&
-    (metadata.source === 'camera' || metadata.source === 'screen') &&
-    typeof metadata.local === 'boolean' &&
-    Number.isSafeInteger(metadata.generation) &&
-    Number.isSafeInteger(metadata.sequence) &&
-    Number.isSafeInteger(metadata.rendererEpoch)
+  return Option.isSome(
+    Schema.decodeUnknownOption(FrameMessageSchema)(value),
   )
 }
 

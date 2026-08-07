@@ -1,3 +1,5 @@
+import { Effect } from 'effect'
+
 import { Button } from '#/components/ui/button'
 import { useAuth } from '#/features/auth/auth-context'
 
@@ -12,7 +14,12 @@ export function AccessDenied() {
           Нужен привилегированный аккаунт.
         </p>
         {auth.session ? (
-          <Button variant="outline" size="sm" className="mt-4" onClick={() => void auth.logout()}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={() => Effect.runFork(auth.logout())}
+          >
             Выйти
           </Button>
         ) : null}

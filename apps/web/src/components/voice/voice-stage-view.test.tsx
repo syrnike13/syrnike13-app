@@ -47,6 +47,7 @@ const testState = vi.hoisted(() => ({
   activity: {
     instance: null as null | {
       id: string
+      generation: number
       application_id: string
       channel_id: string
       owner_id: string
@@ -193,10 +194,11 @@ vi.mock('#/components/voice/voice-stage-media-tile', () => ({
 function voiceChannel(id: string, name: string): Channel {
   return {
     _id: id,
-    channel_type: 'VoiceChannel',
+    channel_type: 'TextChannel',
     server: 'server',
     name,
-  } as unknown as Channel
+    voice: { max_users: null },
+  }
 }
 
 function renderStage(channel: Channel) {
@@ -238,6 +240,7 @@ describe('VoiceStageView channel media scope', () => {
     testState.stage.stageMediaItems = [
       {
         id: 'alice:camera',
+        generation: 1,
         userId: 'alice',
         kind: 'camera',
         isLocal: false,
@@ -329,6 +332,7 @@ describe('VoiceStageView channel media scope', () => {
     testState.stage.stageMediaItems = [
       {
         id: 'local:avatar',
+        generation: 1,
         userId: 'local',
         kind: 'avatar',
         isLocal: true,

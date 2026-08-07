@@ -114,7 +114,7 @@ function comboCodesArePressed(comboCodes: string[], pressedCodeSet: Set<string>)
   return comboCodes.every((code) => pressedCodeSet.has(code))
 }
 
-function normalizeCodes(codes: string[]) {
+function normalizeCodes(codes: ReadonlyArray<string>) {
   return Array.from(new Set(codes.filter((code) => code.length > 0))).sort()
 }
 

@@ -1,3 +1,5 @@
+import { Effect, Fiber, Layer, ManagedRuntime, Option, Schema } from 'effect'
+
 import type {
   VoiceAuthorityAdapter,
   VoiceAuthorityEvent,
@@ -42,8 +44,29 @@ type CommitWaiter = {
   resolve: () => void
 }
 
+const VoiceFailureSchema = Schema.Struct({
+  code: Schema.String,
+  message: Schema.String,
+  retryable: Schema.Boolean,
+  stage: Schema.optional(Schema.String),
+  hresult: Schema.optional(Schema.Number),
+})
+
+const FailureCarrierSchema = Schema.Struct({
+  failure: VoiceFailureSchema,
+})
+
+class VoiceDirectorOperationError extends Schema.ErrorClass<VoiceDirectorOperationError>(
+  'syrnike13/VoiceDirectorOperationError',
+)({
+  _tag: Schema.tag('VoiceDirectorOperationError'),
+  message: Schema.String,
+  failure: VoiceFailureSchema,
+}) {}
+
 export class VoiceDirector {
   private readonly listeners = new Set<(snapshot: VoiceSnapshot) => void>()
+  private readonly runtime = ManagedRuntime.make(Layer.empty)
   private readonly authority: VoiceAuthorityAdapter
   private readonly engine: RtcEngineAdapter
   private readonly rtcEngine: VoiceRtcEngine
@@ -52,7 +75,9 @@ export class VoiceDirector {
   private readonly createConnectionEpoch: () => string
   private readonly commitTimeoutMs: number
   private readonly recoveryDelaysMs: readonly number[]
-  private readonly delay: (milliseconds: number, signal: AbortSignal) => Promise<void>
+  private readonly delay:
+    | ((milliseconds: number, signal: AbortSignal) => Promise<void>)
+    | null
   private readonly commitWaiters = new Set<CommitWaiter>()
 
   private desiredMedia = createInitialVoiceMediaDesiredState()
@@ -66,7 +91,7 @@ export class VoiceDirector {
   private transitionInProgress = false
   private recoveryRequested = false
   private reconcileRequested = false
-  private reconcilePromise: Promise<void> | null = null
+  private reconcileFiber: Fiber.Fiber<void, never> | null = null
   private operationAbort: AbortController | null = null
   private engineAvailable = true
   private engineAvailabilityFailure: VoiceFailure | undefined
@@ -74,7 +99,7 @@ export class VoiceDirector {
   private terminalCleanupRequested = false
   private selfStateRevision = 0
   private selfStateHandledRevision = 0
-  private selfStateSync: Promise<void> | null = null
+  private selfStateSync: Fiber.Fiber<void, never> | null = null
   private disposed = false
   private idCounter = 0
 
@@ -118,7 +143,7 @@ export class VoiceDirector {
       options.commitTimeoutMs ?? DEFAULT_COMMIT_TIMEOUT_MS
     this.recoveryDelaysMs =
       options.recoveryDelaysMs ?? DEFAULT_RECOVERY_DELAYS_MS
-    this.delay = options.delay ?? abortableDelay
+    this.delay = options.delay ?? null
     this.unsubscribeAuthority = this.authority.subscribe((event) =>
       this.handleAuthorityEvent(event),
     )
@@ -220,32 +245,57 @@ export class VoiceDirector {
     return () => this.listeners.delete(listener)
   }
 
-  async waitForIdle() {
-    while (this.reconcilePromise) await this.reconcilePromise
+  waitForIdleEffect() {
+    const self = this
+    return Effect.gen(function*() {
+      while (self.reconcileFiber) {
+        const fiber = self.reconcileFiber
+        yield* Fiber.join(fiber)
+      }
+    })
   }
 
-  async shutdown(reason: 'app_exit' | 'sleep' | 'logout') {
-    if (this.disposed) return
-    this.terminalCleanupRequested = false
-    this.resetCameraAndScreenForIntentChange(null)
-    this.desiredChannelId = null
-    this.desiredRevision += 1
-    this.recoveryRequested = false
-    this.operationAbort?.abort(reason)
-    this.updateSnapshot({ intentChannelId: null })
-    this.requestReconcile()
-    await this.waitForIdle()
+  waitForIdle() {
+    return this.runtime.runPromise(this.waitForIdleEffect())
   }
 
-  async dispose() {
-    if (this.disposed) return
-    await this.shutdown('app_exit')
-    this.disposed = true
-    this.unsubscribeAuthority()
-    this.unsubscribeEngine()
-    this.listeners.clear()
-    this.commitWaiters.clear()
-    this.engineAvailabilityWaiters.clear()
+  shutdownEffect(reason: 'app_exit' | 'sleep' | 'logout') {
+    const self = this
+    return Effect.gen(function*() {
+      if (self.disposed) return
+      self.terminalCleanupRequested = false
+      self.resetCameraAndScreenForIntentChange(null)
+      self.desiredChannelId = null
+      self.desiredRevision += 1
+      self.recoveryRequested = false
+      self.operationAbort?.abort(reason)
+      self.updateSnapshot({ intentChannelId: null })
+      self.requestReconcile()
+      yield* self.waitForIdleEffect()
+    })
+  }
+
+  shutdown(reason: 'app_exit' | 'sleep' | 'logout') {
+    return this.runtime.runPromise(this.shutdownEffect(reason))
+  }
+
+  disposeEffect() {
+    const self = this
+    return Effect.gen(function*() {
+      if (self.disposed) return
+      yield* self.shutdownEffect('app_exit')
+      self.disposed = true
+      self.unsubscribeAuthority()
+      self.unsubscribeEngine()
+      self.listeners.clear()
+      self.commitWaiters.clear()
+      self.engineAvailabilityWaiters.clear()
+      yield* self.runtime.disposeEffect
+    })
+  }
+
+  dispose() {
+    return this.runtime.runPromise(this.disposeEffect())
   }
 
   private join(channelId: string, recipients?: readonly string[]) {
@@ -283,117 +333,158 @@ export class VoiceDirector {
 
   private requestReconcile() {
     this.reconcileRequested = true
-    if (this.reconcilePromise) return
-    this.reconcilePromise = this.runReconcileLoop().finally(() => {
-      this.reconcilePromise = null
+    if (this.reconcileFiber) return
+
+    let fiber: Fiber.Fiber<void, never> | null = null
+    const effect = this.runReconcileLoopEffect().pipe(
+      Effect.ignore,
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (fiber && this.reconcileFiber === fiber) {
+            this.reconcileFiber = null
+          }
+          if (this.reconcileRequested && !this.disposed) this.requestReconcile()
+        }),
+      ),
+    )
+    const startedFiber = this.runtime.runFork(effect)
+    fiber = startedFiber
+    if (startedFiber.pollUnsafe()) {
       if (this.reconcileRequested && !this.disposed) this.requestReconcile()
+      return
+    }
+    this.reconcileFiber = startedFiber
+  }
+
+  private runReconcileLoopEffect() {
+    const self = this
+    return Effect.gen(function*() {
+      while (self.reconcileRequested && !self.disposed) {
+        self.reconcileRequested = false
+        const revision = self.desiredRevision
+        yield* self.reconcileOnceEffect(revision)
+      }
     })
   }
 
-  private async runReconcileLoop() {
-    while (this.reconcileRequested && !this.disposed) {
-      this.reconcileRequested = false
-      const revision = this.desiredRevision
-      await this.reconcileOnce(revision)
-    }
-  }
-
-  private async reconcileOnce(revision: number) {
-    const target = this.desiredChannelId
-    if (this.terminalCleanupRequested) {
-      const terminalFailure = this.snapshotValue.failure
-      this.terminalCleanupRequested = false
-      await this.cleanupFailedAttempt('connect_failed')
-      if (revision !== this.desiredRevision) return
-      this.updateSnapshot({
-        connection: 'failed',
-        membershipChannelId: null,
-        speakingUserIds: [],
-        retryAttempt: undefined,
-        failure: terminalFailure,
-      })
-      return
-    }
-    if (!target) {
-      await this.disconnectCurrent('leave')
-      if (revision !== this.desiredRevision) return
-      this.updateSnapshot({
-        connection: 'disconnected',
-        membershipChannelId: null,
-        speakingUserIds: [],
-        operationId: undefined,
-        connectionEpoch: undefined,
-        retryAttempt: undefined,
-        failure: undefined,
-      })
-      return
-    }
-
-    if (
-      this.activeLease?.channelId === target &&
-      this.activeCommitted &&
-      this.snapshotValue.connection === 'connected'
-    ) {
-      return
-    }
-
-    if (this.activeLease) {
-      await this.disconnectCurrent(
-        this.activeLease.channelId === target ? 'recovery' : 'move',
-      )
-      if (revision !== this.desiredRevision) return
-    }
-
-    const recovery = this.recoveryRequested
-    const delays = recovery ? this.recoveryDelaysMs : [0]
-    let lastFailure: VoiceFailure | undefined
-
-    let index = 0
-    while (index < delays.length) {
-      if (revision !== this.desiredRevision || target !== this.desiredChannelId) {
+  private reconcileOnceEffect(revision: number) {
+    const self = this
+    return Effect.gen(function*() {
+      const target = self.desiredChannelId
+      if (self.terminalCleanupRequested) {
+        const terminalFailure = self.snapshotValue.failure
+        self.terminalCleanupRequested = false
+        yield* self.cleanupFailedAttemptEffect('connect_failed')
+        if (revision !== self.desiredRevision) return
+        self.updateSnapshot({
+          connection: 'failed',
+          membershipChannelId: null,
+          speakingUserIds: [],
+          retryAttempt: undefined,
+          failure: terminalFailure,
+        })
+        return
+      }
+      if (!target) {
+        yield* self.disconnectCurrentEffect('leave')
+        if (revision !== self.desiredRevision) return
+        self.updateSnapshot({
+          connection: 'disconnected',
+          membershipChannelId: null,
+          speakingUserIds: [],
+          operationId: undefined,
+          connectionEpoch: undefined,
+          retryAttempt: undefined,
+          failure: undefined,
+        })
         return
       }
 
-      const abort = new AbortController()
-      this.operationAbort = abort
-      const attempt = index + 1
-      try {
-        if (recovery && !this.engineAvailable) {
-          this.updateSnapshot({
-            connection: 'recovering',
-            retryAttempt: attempt,
-            failure: lastFailure,
-          })
-          await this.waitForEngineAvailability(abort.signal)
-        }
-        if (delays[index] > 0) {
-          this.updateSnapshot({
-            connection: 'recovering',
-            retryAttempt: attempt,
-            failure: lastFailure,
-          })
-          await this.delay(delays[index], abort.signal)
-        }
-        await this.connectTarget(target, revision, recovery, attempt, abort)
-        this.recoveryRequested = false
+      if (
+        self.activeLease?.channelId === target &&
+        self.activeCommitted &&
+        self.snapshotValue.connection === 'connected'
+      ) {
         return
-      } catch (error) {
+      }
+
+      if (self.activeLease) {
+        yield* self.disconnectCurrentEffect(
+          self.activeLease.channelId === target ? 'recovery' : 'move',
+        )
+        if (revision !== self.desiredRevision) return
+      }
+
+      const recovery = self.recoveryRequested
+      const delays = recovery ? self.recoveryDelaysMs : [0]
+      let lastFailure: VoiceFailure | undefined
+
+      let index = 0
+      while (index < delays.length) {
+        if (
+          revision !== self.desiredRevision ||
+          target !== self.desiredChannelId
+        ) {
+          return
+        }
+
+        const abort = new AbortController()
+        self.operationAbort = abort
+        const attempt = index + 1
+        const result = yield* Effect.gen(function*() {
+          if (recovery && !self.engineAvailable) {
+            self.updateSnapshot({
+              connection: 'recovering',
+              retryAttempt: attempt,
+              failure: lastFailure,
+            })
+            yield* self.waitForEngineAvailabilityEffect(abort.signal)
+          }
+          if (delays[index] > 0) {
+            self.updateSnapshot({
+              connection: 'recovering',
+              retryAttempt: attempt,
+              failure: lastFailure,
+            })
+            yield* self.delayEffect(delays[index], abort.signal)
+          }
+          yield* self.connectTargetEffect(
+            target,
+            revision,
+            recovery,
+            attempt,
+            abort,
+          )
+        }).pipe(
+          Effect.match({
+            onFailure: (error) => ({ success: false, error }),
+            onSuccess: () => ({ success: true, error: undefined }),
+          }),
+        )
+
+        if (self.operationAbort === abort) self.operationAbort = null
+        if (result.success) {
+          self.recoveryRequested = false
+          return
+        }
+
+        const error = result.error
         if (
           isAbortError(error) ||
-          revision !== this.desiredRevision ||
-          target !== this.desiredChannelId
+          revision !== self.desiredRevision ||
+          target !== self.desiredChannelId
         ) {
-          await this.cleanupFailedAttempt('superseded')
+          yield* self.cleanupFailedAttemptEffect('superseded')
           return
         }
         lastFailure = normalizeFailure(error, 'voice_connect_failed')
-        await this.cleanupFailedAttempt('connect_failed')
+        yield* self.cleanupFailedAttemptEffect('connect_failed')
         if (
           !lastFailure.retryable ||
           !recovery ||
           index === delays.length - 1
         ) {
-          this.updateSnapshot({
+          self.updateSnapshot({
             connection: 'failed',
             membershipChannelId: null,
             retryAttempt: recovery ? attempt : undefined,
@@ -403,72 +494,91 @@ export class VoiceDirector {
         }
         // Runtime recovery owns host restart/backoff. Do not consume Voice
         // Recovery attempts while that runtime is unavailable.
-        if (this.engineAvailable) index += 1
-      } finally {
-        if (this.operationAbort === abort) this.operationAbort = null
+        if (self.engineAvailable) index += 1
       }
-    }
+    })
   }
 
-  private async connectTarget(
+  private connectTargetEffect(
     channelId: string,
     revision: number,
     recovery: boolean,
     attempt: number,
     abort: AbortController,
   ) {
-    const suppliedLease =
-      this.forcedLease?.channelId === channelId ? this.forcedLease : null
-    if (suppliedLease) this.forcedLease = null
-    const operationId = suppliedLease
-      ? suppliedLease.operationId
-      : requireIdentifier(this.createOperationId(), 'operationId')
-    const connectionEpoch = suppliedLease
-      ? suppliedLease.connectionEpoch
-      : requireIdentifier(this.createConnectionEpoch(), 'connectionEpoch')
-    this.transitionInProgress = true
-    this.activeCommitted = false
-    this.updateSnapshot({
-      connection: recovery ? 'recovering' : 'connecting',
-      speakingUserIds: [],
-      operationId,
-      connectionEpoch,
-      retryAttempt: recovery ? attempt : undefined,
-      failure: undefined,
-      membershipChannelId: null,
-    })
-
-    try {
-      const lease = suppliedLease ??
-        (await this.authority.reserve(
-          {
-            channelId,
-            rtcEngine: this.rtcEngine,
-            clientInstanceId: this.clientInstanceId,
-            operationId,
-            connectionEpoch,
-            media: this.desiredMedia,
-            recipients: this.desiredRecipients,
-            suppressCallNotifications: recovery,
-          },
-          abort.signal,
-        ))
-      assertLeaseMatches(lease, {
-        channelId,
-        rtcEngine: this.rtcEngine,
-        clientInstanceId: this.clientInstanceId,
+    const self = this
+    return Effect.gen(function*() {
+      const suppliedLease =
+        self.forcedLease?.channelId === channelId ? self.forcedLease : null
+      if (suppliedLease) self.forcedLease = null
+      const { operationId, connectionEpoch } = yield* Effect.try({
+        try: () => ({
+          operationId: suppliedLease
+            ? suppliedLease.operationId
+            : requireIdentifier(self.createOperationId(), 'operationId'),
+          connectionEpoch: suppliedLease
+            ? suppliedLease.connectionEpoch
+            : requireIdentifier(
+                self.createConnectionEpoch(),
+                'connectionEpoch',
+              ),
+        }),
+        catch: (error) => error,
+      })
+      self.transitionInProgress = true
+      self.activeCommitted = false
+      self.updateSnapshot({
+        connection: recovery ? 'recovering' : 'connecting',
+        speakingUserIds: [],
         operationId,
         connectionEpoch,
+        retryAttempt: recovery ? attempt : undefined,
+        failure: undefined,
+        membershipChannelId: null,
       })
-      if (revision !== this.desiredRevision) throw abortError()
-      this.activeLease = lease
-      await this.engine.connect(lease, this.desiredMedia, abort.signal)
-      if (revision !== this.desiredRevision) throw abortError()
-      await this.waitForMembershipCommit(lease, abort.signal)
-      if (revision !== this.desiredRevision) throw abortError()
-      this.activeCommitted = true
-      this.requestSelfStateSync()
-      this.updateSnapshot({
+
+      const lease =
+        suppliedLease ??
+        (yield* Effect.tryPromise({
+          try: () =>
+            self.authority.reserve(
+              {
+                channelId,
+                rtcEngine: self.rtcEngine,
+                clientInstanceId: self.clientInstanceId,
+                operationId,
+                connectionEpoch,
+                media: self.desiredMedia,
+                recipients: self.desiredRecipients,
+                suppressCallNotifications: recovery,
+              },
+              abort.signal,
+            ),
+          catch: (error) => error,
+        }))
+      yield* Effect.try({
+        try: () =>
+          assertLeaseMatches(lease, {
+            channelId,
+            rtcEngine: self.rtcEngine,
+            clientInstanceId: self.clientInstanceId,
+            operationId,
+            connectionEpoch,
+          }),
+        catch: (error) => error,
+      })
+      if (revision !== self.desiredRevision) yield* Effect.fail(abortError())
+      self.activeLease = lease
+      yield* Effect.tryPromise({
+        try: () => self.engine.connect(lease, self.desiredMedia, abort.signal),
+        catch: (error) => error,
+      })
+      if (revision !== self.desiredRevision) yield* Effect.fail(abortError())
+      yield* self.waitForMembershipCommitEffect(lease, abort.signal)
+      if (revision !== self.desiredRevision) yield* Effect.fail(abortError())
+      self.activeCommitted = true
+      self.requestSelfStateSync()
+      self.updateSnapshot({
         connection: 'connected',
         membershipChannelId: channelId,
         operationId,
@@ -476,134 +586,144 @@ export class VoiceDirector {
         retryAttempt: undefined,
         failure: undefined,
       })
-    } finally {
-      this.transitionInProgress = false
-    }
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          self.transitionInProgress = false
+        }),
+      ),
+    )
   }
 
-  private waitForEngineAvailability(signal: AbortSignal) {
-    if (this.engineAvailable) return Promise.resolve()
-    if (this.engineAvailabilityFailure?.retryable === false) {
-      return Promise.reject(failureError(this.engineAvailabilityFailure))
-    }
-    return new Promise<void>((resolve, reject) => {
-      let settled = false
-      const finish = (callback: () => void) => {
-        if (settled) return
-        settled = true
-        this.engineAvailabilityWaiters.delete(onAvailable)
-        signal.removeEventListener('abort', onAbort)
-        callback()
-      }
+  private waitForEngineAvailabilityEffect(signal: AbortSignal) {
+    return Effect.callback<
+      void,
+      VoiceDirectorOperationError | DOMException
+    >((resume) => {
       const onAvailable = () => {
         if (this.engineAvailable) {
-          finish(resolve)
+          resume(Effect.void)
         } else if (this.engineAvailabilityFailure?.retryable === false) {
-          finish(() => reject(failureError(this.engineAvailabilityFailure!)))
+          resume(Effect.fail(failureError(this.engineAvailabilityFailure)))
         }
       }
-      const onAbort = () => finish(() => reject(abortError()))
       this.engineAvailabilityWaiters.add(onAvailable)
-      signal.addEventListener('abort', onAbort, { once: true })
-      if (this.engineAvailable) onAvailable()
+      onAvailable()
+      return Effect.sync(() =>
+        this.engineAvailabilityWaiters.delete(onAvailable),
+      )
+    }).pipe(Effect.raceFirst(abortSignal(signal)))
+  }
+
+  private delayEffect(milliseconds: number, signal: AbortSignal) {
+    const delay = this.delay
+    if (!delay) return abortableDelay(milliseconds, signal)
+    return Effect.tryPromise({
+      try: () => delay(milliseconds, signal),
+      catch: (error) => error,
     })
   }
 
-  private async disconnectCurrent(cause: VoiceDisconnectCause) {
-    const lease = this.activeLease
-    if (!lease) {
-      if (cause === 'leave' || cause === 'move') {
-        this.clearCameraAndScreenIntent()
+  private disconnectCurrentEffect(cause: VoiceDisconnectCause) {
+    const self = this
+    return Effect.gen(function*() {
+      const lease = self.activeLease
+      if (!lease) {
+        if (cause === 'leave' || cause === 'move') {
+          self.clearCameraAndScreenIntent()
+        }
+        return
       }
-      return
-    }
-    this.transitionInProgress = true
-    this.activeLease = null
-    this.activeCommitted = false
-    if (cause === 'leave' || cause === 'move') {
-      // The adapter owns physical teardown. Clearing desired state here keeps
-      // the next Voice Session from replaying camera or screen while avoiding
-      // a competing media reconcile against the Room being disconnected.
-      this.clearCameraAndScreenIntent()
-    }
-    try {
-      await this.engine.disconnect(cause)
-    } catch {
-      // The adapter owns its two-second forced host-recycle deadline.
-    } finally {
-      await this.cancelLease(lease, cause === 'leave' ? 'leave' : 'superseded')
-      this.transitionInProgress = false
-    }
+      self.transitionInProgress = true
+      self.activeLease = null
+      self.activeCommitted = false
+      if (cause === 'leave' || cause === 'move') {
+        // The adapter owns physical teardown. Clearing desired state here keeps
+        // the next Voice Session from replaying camera or screen while avoiding
+        // a competing media reconcile against the Room being disconnected.
+        self.clearCameraAndScreenIntent()
+      }
+      yield* Effect.tryPromise({
+        try: () => self.engine.disconnect(cause),
+        catch: (error) => error,
+      }).pipe(Effect.ignore)
+      yield* self.cancelLeaseEffect(
+        lease,
+        cause === 'leave' ? 'leave' : 'superseded',
+      )
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          self.transitionInProgress = false
+        }),
+      ),
+    )
   }
 
-  private async cleanupFailedAttempt(reason: VoiceCancellation['reason']) {
-    const lease = this.activeLease
-    this.activeLease = null
-    this.activeCommitted = false
-    try {
-      await this.engine.disconnect('recovery')
-    } catch {
-      // A native adapter recycles an unresponsive media host here.
-    }
-    if (lease) await this.cancelLease(lease, reason)
+  private cleanupFailedAttemptEffect(reason: VoiceCancellation['reason']) {
+    const self = this
+    return Effect.gen(function*() {
+      const lease = self.activeLease
+      self.activeLease = null
+      self.activeCommitted = false
+      yield* Effect.tryPromise({
+        try: () => self.engine.disconnect('recovery'),
+        catch: (error) => error,
+      }).pipe(Effect.ignore)
+      if (lease) yield* self.cancelLeaseEffect(lease, reason)
+    })
   }
 
-  private async cancelLease(
+  private cancelLeaseEffect(
     lease: VoiceLease,
     reason: VoiceCancellation['reason'],
   ) {
-    try {
-      await this.authority.cancel({
-        rtcEngine: lease.rtcEngine,
-        clientInstanceId: lease.clientInstanceId,
-        operationId: lease.operationId,
-        connectionEpoch: lease.connectionEpoch,
-        reason,
-      })
-    } catch {
-      // Exact-operation cleanup is durable on the backend and safe to retry.
-    }
+    return Effect.tryPromise({
+      try: () =>
+        this.authority.cancel({
+          rtcEngine: lease.rtcEngine,
+          clientInstanceId: lease.clientInstanceId,
+          operationId: lease.operationId,
+          connectionEpoch: lease.connectionEpoch,
+          reason,
+        }),
+      catch: (error) => error,
+    }).pipe(Effect.ignore)
   }
 
-  private waitForMembershipCommit(lease: VoiceLease, signal: AbortSignal) {
+  private waitForMembershipCommitEffect(
+    lease: VoiceLease,
+    signal: AbortSignal,
+  ) {
     if (membershipMatchesLease(this.latestAuthoritySnapshot?.membership, lease)) {
-      return Promise.resolve()
+      return Effect.void
     }
-    return new Promise<void>((resolve, reject) => {
-      let settled = false
+
+    return Effect.callback<void, VoiceDirectorOperationError>((resume) => {
       const waiter: CommitWaiter = {
         lease,
-        resolve: () => finish(resolve),
+        resolve: () => resume(Effect.void),
       }
-      const finish = (callback: () => void) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timeout)
-        signal.removeEventListener('abort', onAbort)
-        this.commitWaiters.delete(waiter)
-        callback()
-      }
-      const onAbort = () => finish(() => reject(abortError()))
-      const timeout = setTimeout(
-        () =>
-          finish(() =>
-            reject(
-              failureError({
-                code: 'voice_commit_timeout',
-                message: 'Voice membership commit timed out',
-                retryable: true,
-                stage: 'authority_commit',
-              }),
-            ),
-          ),
-        this.commitTimeoutMs,
-      )
-      signal.addEventListener('abort', onAbort, { once: true })
       this.commitWaiters.add(waiter)
       if (membershipMatchesLease(this.latestAuthoritySnapshot?.membership, lease)) {
         waiter.resolve()
       }
-    })
+      return Effect.sync(() => this.commitWaiters.delete(waiter))
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: this.commitTimeoutMs,
+        orElse: () =>
+          Effect.fail(
+            failureError({
+              code: 'voice_commit_timeout',
+              message: 'Voice membership commit timed out',
+              retryable: true,
+              stage: 'authority_commit',
+            }),
+          ),
+      }),
+      Effect.raceFirst(abortSignal(signal)),
+    )
   }
 
   private handleAuthorityEvent(event: VoiceAuthorityEvent) {
@@ -668,7 +788,7 @@ export class VoiceDirector {
       lease.authorityVersion > current.authorityVersion
 
     if (!acceptsMove) {
-      void this.cancelLease(lease, 'superseded')
+      this.runtime.runFork(this.cancelLeaseEffect(lease, 'superseded'))
       return
     }
 
@@ -816,39 +936,66 @@ export class VoiceDirector {
 
   private ensureSelfStateSync() {
     if (this.selfStateSync || !this.activeLease) return
-    this.selfStateSync = this.runSelfStateSync().finally(() => {
-      this.selfStateSync = null
+    let fiber: Fiber.Fiber<void, never> | null = null
+    const effect = this.runSelfStateSyncEffect().pipe(
+      Effect.ignore,
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (fiber && this.selfStateSync === fiber) {
+            this.selfStateSync = null
+          }
+          if (
+            this.activeLease &&
+            this.selfStateHandledRevision !== this.selfStateRevision
+          ) {
+            this.ensureSelfStateSync()
+          }
+        }),
+      ),
+    )
+    const startedFiber = this.runtime.runFork(effect)
+    fiber = startedFiber
+    if (startedFiber.pollUnsafe()) {
       if (
         this.activeLease &&
         this.selfStateHandledRevision !== this.selfStateRevision
       ) {
         this.ensureSelfStateSync()
       }
-    })
+      return
+    }
+    this.selfStateSync = startedFiber
   }
 
-  private async runSelfStateSync() {
-    let handledRevision = -1
-    while (this.activeLease && handledRevision !== this.selfStateRevision) {
-      handledRevision = this.selfStateRevision
-      const lease = this.activeLease
-      const desired = this.desiredMedia
-      try {
-        await this.authority.updateSelfState({
-          channelId: lease.channelId,
-          rtcEngine: lease.rtcEngine,
-          clientInstanceId: lease.clientInstanceId,
-          operationId: lease.operationId,
-          connectionEpoch: lease.connectionEpoch,
-          userMuted: desired.userMuted,
-          userDeafened: desired.userDeafened,
-        })
-      } catch {
+  private runSelfStateSyncEffect() {
+    const self = this
+    return Effect.gen(function*() {
+      let handledRevision = -1
+      while (
+        self.activeLease &&
+        handledRevision !== self.selfStateRevision
+      ) {
+        handledRevision = self.selfStateRevision
+        const lease = self.activeLease
+        const desired = self.desiredMedia
+        yield* Effect.tryPromise({
+          try: () =>
+            self.authority.updateSelfState({
+              channelId: lease.channelId,
+              rtcEngine: lease.rtcEngine,
+              clientInstanceId: lease.clientInstanceId,
+              operationId: lease.operationId,
+              connectionEpoch: lease.connectionEpoch,
+              userMuted: desired.userMuted,
+              userDeafened: desired.userDeafened,
+            }),
+          catch: (error) => error,
+        }).pipe(Effect.ignore)
         // The next full authority snapshot remains canonical. A reconnect or
         // later user change retries without touching the healthy RTC Room.
+        self.selfStateHandledRevision = handledRevision
       }
-      this.selfStateHandledRevision = handledRevision
-    }
+    })
   }
 
   private updateMediaSnapshot(
@@ -925,19 +1072,24 @@ function membershipMatchesLease(
 }
 
 function failureError(failure: VoiceFailure) {
-  return Object.assign(new Error(failure.message), { failure })
+  return operationError(failure)
 }
 
 function normalizeFailure(error: unknown, fallbackCode: string): VoiceFailure {
-  if (error && typeof error === 'object' && 'failure' in error) {
-    const failure = (error as { failure?: VoiceFailure }).failure
-    if (failure) return failure
-  }
+  const decoded = Schema.decodeUnknownOption(FailureCarrierSchema)(error)
+  if (Option.isSome(decoded)) return decoded.value.failure
   return {
     code: fallbackCode,
     message: error instanceof Error ? error.message : 'Voice operation failed',
     retryable: true,
   }
+}
+
+function operationError(failure: VoiceFailure) {
+  return new VoiceDirectorOperationError({
+    message: failure.message,
+    failure,
+  })
 }
 
 function abortError() {
@@ -948,16 +1100,18 @@ function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
-function abortableDelay(milliseconds: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    const onAbort = () => {
-      clearTimeout(timeout)
-      reject(abortError())
+function abortSignal(signal: AbortSignal) {
+  return Effect.callback<never, DOMException>((resume) => {
+    if (signal.aborted) {
+      resume(Effect.fail(abortError()))
+      return
     }
-    const timeout = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort)
-      resolve()
-    }, milliseconds)
+    const onAbort = () => resume(Effect.fail(abortError()))
     signal.addEventListener('abort', onAbort, { once: true })
+    return Effect.sync(() => signal.removeEventListener('abort', onAbort))
   })
+}
+
+function abortableDelay(milliseconds: number, signal: AbortSignal) {
+  return Effect.sleep(milliseconds).pipe(Effect.raceFirst(abortSignal(signal)))
 }

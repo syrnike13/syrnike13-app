@@ -10,6 +10,7 @@ import {
   within,
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CategorySettingsDialog } from '#/components/channels/category-settings-dialog'
@@ -58,7 +59,8 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
-  editServer: (...args: [string, string, unknown]) => mocks.editServer(...args),
+  editServerEffect: (...args: [string, string, unknown]) =>
+    mocks.editServer(...args),
 }))
 
 const category = {
@@ -88,10 +90,12 @@ describe('CategorySettingsDialog', () => {
   beforeEach(() => {
     syncStore.reset()
     upsertServer()
-    mocks.editServer.mockImplementation(async (_token, serverId, patch) => ({
-      ...syncStore.getState().servers[serverId],
-      ...(patch as object),
-    }))
+    mocks.editServer.mockImplementation((_token, serverId, patch) =>
+      Effect.succeed({
+        ...syncStore.getState().servers[serverId],
+        ...(patch as object),
+      }),
+    )
     mocks.onOpenChange.mockClear()
   })
 

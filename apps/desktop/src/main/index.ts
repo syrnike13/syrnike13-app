@@ -15,6 +15,7 @@ import type {
   DesktopOverlaySettings,
 } from '@syrnike13/platform'
 import type { DesktopTrayVoiceState } from '@syrnike13/platform'
+import { Effect, Semaphore } from 'effect'
 
 import { installStdioPipeErrorHandlers } from './stdio-pipe-errors'
 import {
@@ -29,24 +30,27 @@ import {
   disposeDesktopOverlay,
 } from './overlay-manager'
 import {
-  disposeNativeMediaRuntime,
+  disposeNativeMediaRuntimeEffect,
   logNativeVoiceDiagnostic,
   startNativeMediaRuntime,
 } from './native-media-engine'
 import { resolveWebDistRoot } from './paths'
 import { createMainWindow } from './window'
-import { startEmbeddedWebServer, type EmbeddedWebServer } from './web-server'
+import {
+  startEmbeddedWebServerEffect,
+  type EmbeddedWebServer,
+} from './web-server'
 import { resolveDesktopAsset } from './paths'
 import {
   DEFAULT_DESKTOP_PREFERENCES,
-  loadDesktopPreferences,
-  saveDesktopPreferences,
+  loadDesktopPreferencesEffect,
+  saveDesktopPreferencesEffect,
   type DesktopPreferences,
 } from './desktop-preferences'
 import {
   desktopLocalSettingsDefaults,
-  loadDesktopLocalSettings,
-  updateDesktopLocalSettings,
+  loadDesktopLocalSettingsEffect,
+  updateDesktopLocalSettingsEffect,
 } from './desktop-local-settings'
 import { desktopSessionPath } from './desktop-session'
 import { routeFromDeepLink } from './deep-links'
@@ -61,12 +65,12 @@ import {
 } from './desktop-app-identity'
 import {
   initializeDesktopObservability,
-  pruneExpiredNativeCrashDumps,
+  pruneExpiredNativeCrashDumpsEffect,
 } from './desktop-observability'
 import { anonymousNativeMetricsReporter } from './native-runtime/anonymous-metrics'
 import { desktopVoiceService } from './voice/desktop-voice-service'
 import {
-  disposeWithinDesktopShutdownBudget,
+  disposeWithinDesktopShutdownBudgetEffect,
   VOICE_SHUTDOWN_GRACE_MS,
 } from './shutdown-budget'
 
@@ -79,8 +83,8 @@ let quitting = false
 let desktopIpcRegistered = false
 let desktopPreferences: DesktopPreferences = { ...DEFAULT_DESKTOP_PREFERENCES }
 let desktopLocalSettings: DesktopLocalSettings = desktopLocalSettingsDefaults()
-let desktopLocalSettingsWrite: Promise<void> = Promise.resolve()
-let creatingApp: Promise<void> | null = null
+const desktopLocalSettingsWrite = Semaphore.makeUnsafe(1)
+const appCreation = Semaphore.makeUnsafe(1)
 let trayVoiceState: DesktopTrayVoiceState = 'default'
 let shutdownPromise: Promise<void> | null = null
 let shutdownComplete = false
@@ -117,7 +121,7 @@ function configureChromium() {
   }
 }
 
-async function resolveAppUrl() {
+const resolveAppUrlEffect = Effect.fn('desktop.resolveAppUrl')(function*() {
   if (isDev) {
     return __WEB_DEV_URL__
   }
@@ -125,9 +129,9 @@ async function resolveAppUrl() {
   if (embeddedServer) return embeddedServer.url
 
   const webDistRoot = resolveWebDistRoot()
-  embeddedServer = await startEmbeddedWebServer(webDistRoot)
+  embeddedServer = yield* startEmbeddedWebServerEffect(webDistRoot)
   return embeddedServer.url
-}
+})
 
 function desktopPreferencesPath() {
   return path.join(app.getPath('userData'), 'desktop-preferences.json')
@@ -145,24 +149,48 @@ function getDesktopPreferences() {
   return desktopPreferences
 }
 
-async function setCloseToTray(closeToTray: boolean) {
-  const nextPreferences = { ...desktopPreferences, closeToTray }
-  await saveDesktopPreferences(desktopPreferencesPath(), nextPreferences)
-  desktopPreferences = nextPreferences
-  updateTrayMenu()
-  return desktopPreferences
+const setCloseToTrayEffect = Effect.fn('desktop.setCloseToTray')(
+  function*(closeToTray: boolean) {
+    const nextPreferences = { ...desktopPreferences, closeToTray }
+    yield* saveDesktopPreferencesEffect(
+      desktopPreferencesPath(),
+      nextPreferences,
+    )
+    return yield* Effect.sync(() => {
+      desktopPreferences = nextPreferences
+      updateTrayMenu()
+      return desktopPreferences
+    })
+  },
+)
+
+function setCloseToTray(closeToTray: boolean) {
+  return Effect.runPromise(setCloseToTrayEffect(closeToTray))
 }
 
-async function setOpenAtLogin(openAtLogin: boolean) {
-  const nextPreferences = { ...desktopPreferences, openAtLogin }
-  await saveDesktopPreferences(desktopPreferencesPath(), nextPreferences)
-  desktopPreferences = nextPreferences
-  applyLoginItemSettings(openAtLogin)
-  return desktopPreferences
+const setOpenAtLoginEffect = Effect.fn('desktop.setOpenAtLogin')(
+  function*(openAtLogin: boolean) {
+    const nextPreferences = { ...desktopPreferences, openAtLogin }
+    yield* saveDesktopPreferencesEffect(
+      desktopPreferencesPath(),
+      nextPreferences,
+    )
+    return yield* Effect.sync(() => {
+      desktopPreferences = nextPreferences
+      applyLoginItemSettings(openAtLogin)
+      return desktopPreferences
+    })
+  },
+)
+
+function setOpenAtLogin(openAtLogin: boolean) {
+  return Effect.runPromise(setOpenAtLoginEffect(openAtLogin))
 }
 
-async function saveOverlaySettings(overlay: DesktopOverlaySettings) {
-  await patchDesktopLocalSettings({ overlay })
+function saveOverlaySettings(overlay: DesktopOverlaySettings) {
+  return Effect.runPromise(
+    patchDesktopLocalSettingsEffect({ overlay }).pipe(Effect.asVoid),
+  )
 }
 
 function applyDesktopLocalSettings(settings: DesktopLocalSettings) {
@@ -185,37 +213,33 @@ function applyDesktopLocalSettings(settings: DesktopLocalSettings) {
   })
 }
 
-function patchDesktopLocalSettings(patch: DesktopLocalSettingsPatch) {
-  const operation = desktopLocalSettingsWrite.then(async () => {
-    const settings = await updateDesktopLocalSettings(
-      desktopLocalSettingsPath(),
-      patch,
-      desktopLocalSettingsDefaults(),
-    )
-    applyDesktopLocalSettings(settings)
-    return settings
-  })
-  desktopLocalSettingsWrite = operation.then(
-    () => undefined,
-    () => undefined,
+const patchDesktopLocalSettingsEffect = Effect.fn(
+  'desktop.patchLocalSettings',
+)(function*(patch: DesktopLocalSettingsPatch) {
+  return yield* desktopLocalSettingsWrite.withPermit(
+    Effect.gen(function*() {
+      const settings = yield* updateDesktopLocalSettingsEffect(
+        desktopLocalSettingsPath(),
+        patch,
+        desktopLocalSettingsDefaults(),
+      )
+      yield* Effect.sync(() => applyDesktopLocalSettings(settings))
+      return settings
+    }),
   )
-  return operation
+})
+
+function patchDesktopLocalSettings(patch: DesktopLocalSettingsPatch) {
+  return Effect.runPromise(patchDesktopLocalSettingsEffect(patch))
 }
 
-async function ensureAppCreated() {
-  if (mainWindow && !mainWindow.isDestroyed()) return
-  if (creatingApp) {
-    await creatingApp
-    return
-  }
-
-  creatingApp = createApp()
-  try {
-    await creatingApp
-  } finally {
-    creatingApp = null
-  }
-}
+const ensureAppCreated = Effect.fn('desktop.ensureAppCreated')(function*() {
+  yield* appCreation.withPermit(
+    Effect.suspend(() =>
+      mainWindow && !mainWindow.isDestroyed() ? Effect.void : createApp(),
+    ),
+  )
+})
 
 function reportStartupFailure(error: unknown) {
   console.error('[desktop] failed to start', error)
@@ -228,30 +252,50 @@ function reportStartupFailure(error: unknown) {
   app.quit()
 }
 
-function showMainWindow() {
-  if (!mainWindow) {
-    void ensureAppCreated()
-      .then(() => {
-        if (!mainWindow) return
-        if (mainWindow.isMinimized()) mainWindow.restore()
-        mainWindow.show()
-        mainWindow.focus()
-      })
-      .catch(reportStartupFailure)
-    return
-  }
+function runStartupEffect(effect: Effect.Effect<unknown, unknown>) {
+  Effect.runFork(
+    effect.pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          reportStartupFailure(error)
+        }),
+      ),
+    ),
+  )
+}
+
+function focusMainWindow() {
+  if (!mainWindow) return
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
   mainWindow.focus()
 }
 
-async function navigateToDeepLink(route: string) {
-  await ensureAppCreated()
-  showMainWindow()
-  if (!mainWindow) return
-  const appUrl = await resolveAppUrl()
-  await mainWindow.loadURL(new URL(route, appUrl).toString())
+function showMainWindow() {
+  if (!mainWindow) {
+    runStartupEffect(
+      ensureAppCreated().pipe(
+        Effect.andThen(Effect.sync(focusMainWindow)),
+      ),
+    )
+    return
+  }
+  focusMainWindow()
 }
+
+const navigateToDeepLink = Effect.fn('desktop.navigateToDeepLink')(
+  function*(route: string) {
+    yield* ensureAppCreated()
+    yield* Effect.sync(focusMainWindow)
+    const targetWindow = mainWindow
+    if (!targetWindow) return
+    const appUrl = yield* resolveAppUrlEffect()
+    yield* Effect.tryPromise({
+      try: () => targetWindow.loadURL(new URL(route, appUrl).toString()),
+      catch: (cause) => cause,
+    })
+  },
+)
 
 function quitApp() {
   quitting = true
@@ -291,10 +335,19 @@ function updateTrayMenu() {
       type: 'checkbox',
       checked: desktopPreferences.closeToTray,
       click: (item) => {
-        void setCloseToTray(item.checked).catch((error) => {
-          console.error('[desktop] failed to save tray preference', error)
-          updateTrayMenu()
-        })
+        Effect.runFork(
+          setCloseToTrayEffect(item.checked).pipe(
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                console.error(
+                  '[desktop] failed to save tray preference',
+                  error,
+                )
+                updateTrayMenu()
+              }),
+            ),
+          ),
+        )
       },
     },
     { type: 'separator' },
@@ -315,51 +368,56 @@ function setupTray() {
   updateTrayMenu()
 }
 
-async function createApp() {
-  const loadUrl = await resolveAppUrl()
-  initializeDesktopAutoUpdate(
-    () => mainWindow,
-    () => {
-      quitting = true
+const createApp = Effect.fn('desktop.createApp')(function*() {
+  const loadUrl = yield* resolveAppUrlEffect()
+  yield* Effect.try({
+    try: () => {
+      initializeDesktopAutoUpdate(
+        () => mainWindow,
+        () => {
+          quitting = true
+        },
+      )
+      configureDesktopOverlay(loadUrl, () => mainWindow, {
+        settings: desktopLocalSettings.overlay,
+        persistSettings: saveOverlaySettings,
+      })
+      if (!desktopIpcRegistered) {
+        desktopIpcRegistered = true
+        registerDesktopIpc(() => mainWindow, {
+          getWindowPreferences: getDesktopPreferences,
+          setCloseToTray,
+          setOpenAtLogin,
+          setTrayVoiceState,
+          updateLocalSettings: patchDesktopLocalSettings,
+          showWindow: showMainWindow,
+          localSettingsPath: desktopLocalSettingsPath(),
+          localSettingsDefaults: desktopLocalSettingsDefaults(),
+          sessionPath: currentDesktopSessionPath(),
+        })
+      }
+      mainWindow = createMainWindow(loadUrl)
+      mainWindow.on('close', (event) => {
+        if (quitting || !desktopPreferences.closeToTray) return
+        event.preventDefault()
+        mainWindow?.hide()
+        updateTrayMenu()
+      })
+      mainWindow.on('closed', () => {
+        mainWindow = null
+        updateTrayMenu()
+      })
+      mainWindow.on('show', updateTrayMenu)
+      mainWindow.on('hide', updateTrayMenu)
+      mainWindow.on('minimize', updateTrayMenu)
+      mainWindow.on('restore', updateTrayMenu)
+      mainWindow.once('ready-to-show', () => {
+        setupTray()
+      })
     },
-  )
-  configureDesktopOverlay(loadUrl, () => mainWindow, {
-    settings: desktopLocalSettings.overlay,
-    persistSettings: saveOverlaySettings,
+    catch: (cause) => cause,
   })
-  if (!desktopIpcRegistered) {
-    desktopIpcRegistered = true
-    registerDesktopIpc(() => mainWindow, {
-      getWindowPreferences: getDesktopPreferences,
-      setCloseToTray,
-      setOpenAtLogin,
-      setTrayVoiceState,
-      updateLocalSettings: patchDesktopLocalSettings,
-      showWindow: showMainWindow,
-      localSettingsPath: desktopLocalSettingsPath(),
-      localSettingsDefaults: desktopLocalSettingsDefaults(),
-      sessionPath: currentDesktopSessionPath(),
-    })
-  }
-  mainWindow = createMainWindow(loadUrl)
-  mainWindow.on('close', (event) => {
-    if (quitting || !desktopPreferences.closeToTray) return
-    event.preventDefault()
-    mainWindow?.hide()
-    updateTrayMenu()
-  })
-  mainWindow.on('closed', () => {
-    mainWindow = null
-    updateTrayMenu()
-  })
-  mainWindow.on('show', updateTrayMenu)
-  mainWindow.on('hide', updateTrayMenu)
-  mainWindow.on('minimize', updateTrayMenu)
-  mainWindow.on('restore', updateTrayMenu)
-  mainWindow.once('ready-to-show', () => {
-    setupTray()
-  })
-}
+})
 
 function setupSingleInstance() {
   // Dev Electron shares the packaged app's single-instance mutex on Windows
@@ -374,56 +432,72 @@ function setupSingleInstance() {
 
   app.on('second-instance', (_event, argv) => {
     const route = argv.map(routeFromDeepLink).find((value) => value !== null)
-    if (route) void navigateToDeepLink(route).catch(reportStartupFailure)
+    if (route) runStartupEffect(navigateToDeepLink(route))
     else showMainWindow()
   })
 
   return true
 }
 
-async function disposeAppResources() {
-  const server = embeddedServer
-  embeddedServer = null
-  await disposeWithinDesktopShutdownBudget({
-    disposeVoice: () => desktopVoiceService.dispose(),
-    onVoiceDisposeError: (error) => {
-      logNativeVoiceDiagnostic('dispose_failed', {
-        stage: 'voice_shutdown',
-        message: error instanceof Error ? error.message : 'Voice shutdown failed',
-      })
-    },
-    onVoiceDeadlineExceeded: (timeoutMs) => {
-      logNativeVoiceDiagnostic('dispose_deadline_exceeded', {
-        stage: 'voice_shutdown',
-        timeoutMs,
-      })
-    },
-    disposeRemaining: async () => {
-      await Promise.allSettled([
-        Promise.resolve().then(() => disposeDesktopAutoUpdate()),
-        Promise.resolve().then(async () => {
-          disposeHotkeys()
-          disposeDesktopOverlay()
-          await hooksRuntimeController.dispose()
-        }),
-        Promise.resolve().then(() => disposeNativeMediaRuntime()),
-        Promise.resolve().then(() => server?.close()),
-        Promise.resolve().then(() =>
-          anonymousNativeMetricsReporter.flush().finally(() => {
-            anonymousNativeMetricsReporter.dispose()
-          }),
-        ),
-        Promise.resolve().then(() => {
-          tray?.destroy()
-          tray = null
-        }),
-      ])
-    },
-    onDeadlineSettled: () => {
-      anonymousNativeMetricsReporter.dispose()
-    },
-  })
-}
+const disposeAppResourcesEffect = Effect.fn('desktop.disposeResources')(
+  function*() {
+    const server = yield* Effect.sync(() => {
+      const current = embeddedServer
+      embeddedServer = null
+      return current
+    })
+    yield* disposeWithinDesktopShutdownBudgetEffect({
+      disposeVoice: desktopVoiceService.disposeEffect(),
+      onVoiceDisposeError: (error) => {
+        logNativeVoiceDiagnostic('dispose_failed', {
+          stage: 'voice_shutdown',
+          message:
+            error instanceof Error ? error.message : 'Voice shutdown failed',
+        })
+      },
+      onVoiceDeadlineExceeded: (timeoutMs) => {
+        logNativeVoiceDiagnostic('dispose_deadline_exceeded', {
+          stage: 'voice_shutdown',
+          timeoutMs,
+        })
+      },
+      disposeRemaining: Effect.all(
+        [
+          Effect.try({
+            try: () => disposeDesktopAutoUpdate(),
+            catch: (cause) => cause,
+          }).pipe(Effect.ignore),
+          Effect.gen(function*() {
+            yield* Effect.sync(() => {
+              disposeHotkeys()
+              disposeDesktopOverlay()
+            })
+            yield* hooksRuntimeController.disposeEffect()
+          }).pipe(Effect.ignore),
+          disposeNativeMediaRuntimeEffect().pipe(Effect.ignore),
+          (server ? server.closeEffect() : Effect.void).pipe(Effect.ignore),
+          anonymousNativeMetricsReporter.flushEffect().pipe(
+            Effect.ensuring(
+              Effect.sync(() => anonymousNativeMetricsReporter.dispose()),
+            ),
+            Effect.ignore,
+          ),
+          Effect.try({
+            try: () => {
+              tray?.destroy()
+              tray = null
+            },
+            catch: (cause) => cause,
+          }).pipe(Effect.ignore),
+        ],
+        { concurrency: 'unbounded', discard: true },
+      ),
+      onDeadlineSettled: () => {
+        anonymousNativeMetricsReporter.dispose()
+      },
+    })
+  },
+)
 
 configureChromium()
 
@@ -440,35 +514,56 @@ if (setupSingleInstance()) {
     event.preventDefault()
     const route = routeFromDeepLink(url)
     if (!route) return
-    void navigateToDeepLink(route).catch(reportStartupFailure)
+    runStartupEffect(navigateToDeepLink(route))
   })
 
-  app.whenReady().then(async () => {
-    desktopPreferences = await loadDesktopPreferences(desktopPreferencesPath())
-    desktopLocalSettings = await loadDesktopLocalSettings(
-      desktopLocalSettingsPath(),
-      desktopLocalSettingsDefaults(),
+  const startDesktop = Effect.fn('desktop.start')(function*() {
+    yield* Effect.tryPromise({
+      try: () => app.whenReady(),
+      catch: (cause) => cause,
+    })
+    const [loadedPreferences, loadedLocalSettings] = yield* Effect.all(
+      [
+        loadDesktopPreferencesEffect(desktopPreferencesPath()),
+        loadDesktopLocalSettingsEffect(
+          desktopLocalSettingsPath(),
+          desktopLocalSettingsDefaults(),
+        ),
+      ],
+      { concurrency: 'unbounded' },
     )
-    desktopVoiceService.setPreferencePersistence(async (voice) => {
-      await patchDesktopLocalSettings({ voice })
+    yield* Effect.sync(() => {
+      desktopPreferences = loadedPreferences
+      desktopLocalSettings = loadedLocalSettings
+      desktopVoiceService.setPreferencePersistence((voice) =>
+        Effect.runPromise(
+          patchDesktopLocalSettingsEffect({ voice }).pipe(Effect.asVoid),
+        ),
+      )
+      applyDesktopLocalSettings(desktopLocalSettings)
+      initializeDesktopObservability({
+        nativeCrashReportsEnabled:
+          desktopLocalSettings.observability.nativeCrashReports,
+      })
+      applyLoginItemSettings(desktopPreferences.openAtLogin)
+      startNativeMediaRuntime()
+      desktopVoiceService.startSystemLifecycle()
     })
-    applyDesktopLocalSettings(desktopLocalSettings)
-    initializeDesktopObservability({
-      nativeCrashReportsEnabled:
-        desktopLocalSettings.observability.nativeCrashReports,
-    })
-    void pruneExpiredNativeCrashDumps().catch(() => {
-      console.warn('[desktop] failed to prune expired native crash dumps')
-    })
-    applyLoginItemSettings(desktopPreferences.openAtLogin)
-    startNativeMediaRuntime()
-    desktopVoiceService.startSystemLifecycle()
+    yield* pruneExpiredNativeCrashDumpsEffect().pipe(
+      Effect.catch(() =>
+        Effect.sync(() => {
+          console.warn('[desktop] failed to prune expired native crash dumps')
+        }),
+      ),
+      Effect.forkDetach,
+    )
     if (initialDeepLinkRoute) {
-      void navigateToDeepLink(initialDeepLinkRoute).catch(reportStartupFailure)
+      yield* navigateToDeepLink(initialDeepLinkRoute)
     } else {
-      void ensureAppCreated().catch(reportStartupFailure)
+      yield* ensureAppCreated()
     }
   })
+  runStartupEffect(startDesktop())
 
   app.on('window-all-closed', () => {
     if (desktopPreferences.closeToTray && !quitting) return
@@ -479,7 +574,7 @@ if (setupSingleInstance()) {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      void ensureAppCreated().catch(reportStartupFailure)
+      runStartupEffect(ensureAppCreated())
     }
   })
 
@@ -488,10 +583,20 @@ if (setupSingleInstance()) {
     if (shutdownComplete) return
     event.preventDefault()
     if (shutdownPromise) return
-    shutdownPromise = disposeAppResources()
-    void shutdownPromise.finally(() => {
-      shutdownComplete = true
-      app.quit()
-    })
+    shutdownPromise = Effect.runPromise(
+      disposeAppResourcesEffect().pipe(
+        Effect.catchCause((cause) =>
+          Effect.sync(() => {
+            console.error('[desktop] shutdown failed', cause)
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            shutdownComplete = true
+            app.quit()
+          }),
+        ),
+      ),
+    )
   })
 }

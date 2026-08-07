@@ -26,9 +26,12 @@ vi.mock('#/features/voice/voice-stage-context', () => ({
         kind: 'screen',
         isLocal: true,
         track: {
-          mediaStreamTrack: {
-            label: 'screen:0',
-            getSettings: () => ({ displaySurface: 'monitor' }),
+          backend: 'livekit',
+          track: {
+            mediaStreamTrack: {
+              label: 'screen:0',
+              getSettings: () => ({ displaySurface: 'monitor' }),
+            },
           },
         },
       },

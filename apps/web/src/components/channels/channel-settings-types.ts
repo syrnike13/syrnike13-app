@@ -1,4 +1,11 @@
-export type ChannelSettingsTab = 'overview' | 'permissions' | 'webhooks'
+import { Option, Schema } from 'effect'
+
+export const ChannelSettingsTabSchema = Schema.Literals([
+  'overview',
+  'permissions',
+  'webhooks',
+])
+export type ChannelSettingsTab = typeof ChannelSettingsTabSchema.Type
 
 export const CHANNEL_SETTINGS_TABS: ChannelSettingsTab[] = [
   'overview',
@@ -7,13 +14,10 @@ export const CHANNEL_SETTINGS_TABS: ChannelSettingsTab[] = [
 ]
 
 export function parseChannelSettingsTab(value: unknown): ChannelSettingsTab {
-  if (
-    typeof value === 'string' &&
-    CHANNEL_SETTINGS_TABS.includes(value as ChannelSettingsTab)
-  ) {
-    return value as ChannelSettingsTab
-  }
-  return 'overview'
+  return Option.getOrElse(
+    Schema.decodeUnknownOption(ChannelSettingsTabSchema)(value),
+    () => 'overview',
+  )
 }
 
 export const CHANNEL_SETTINGS_TAB_LABELS: Record<ChannelSettingsTab, string> = {

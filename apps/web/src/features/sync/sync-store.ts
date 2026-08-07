@@ -11,13 +11,13 @@ import type {
   Server,
   User,
 } from '@syrnike13/api-types'
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Effect, Fiber, Option, Schema } from 'effect'
 
 import type {
-  AuthorizationSnapshot,
   GatewayServerEvent,
   GroupJoinBundle,
   ReadyPayload,
-  ServerCreateEvent,
   ServerJoinBundle,
   ServerMemberUpdateEvent,
   ServerRoleUpdateEvent,
@@ -34,6 +34,16 @@ import {
 import { voiceCallUiKey } from './voice-call-utils'
 import { isValidVoiceUserId } from './voice-participant-resolve'
 import { serverChannelServerId } from '#/lib/channel-voice'
+
+const ChannelSchema = Schema.declare<Channel>(
+  (input): input is Channel => Schema.is(ApiSchema.Channel)(input),
+)
+const RoleSchema = Schema.declare<Role>(
+  (input): input is Role => Schema.is(ApiSchema.Role)(input),
+)
+const MemberSchema = Schema.declare<Member>(
+  (input): input is Member => Schema.is(ApiSchema.Member)(input),
+)
 
 function emptyState(): SyncState {
   return {
@@ -63,7 +73,7 @@ function emptyState(): SyncState {
 let state = emptyState()
 let currentUserId: string | undefined
 const listeners = new Set<() => void>()
-const voiceCallExpiryTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+const voiceCallExpiryTimers: Record<string, Fiber.Fiber<void, never>> = {}
 const GROUP_UNANSWERED_ACTIVE_MS = 10 * 60 * 1000
 let batchDepth = 0
 let batchHasChanges = false
@@ -106,8 +116,8 @@ function setState(patch: Partial<SyncState>) {
 function clearVoiceCallExpiryTimer(channelId: string) {
   const timer = voiceCallExpiryTimers[channelId]
   if (timer === undefined) return
-  clearTimeout(timer)
   delete voiceCallExpiryTimers[channelId]
+  Effect.runFork(Fiber.interrupt(timer))
 }
 
 function clearVoiceCallExpiryTimers() {
@@ -134,24 +144,34 @@ function scheduleVoiceCallExpiry(call: VoiceCallState) {
 
   const callKey = voiceCallUiKey(call)
   const delayMs = Math.max(0, expiresAtMs - Date.now())
-  voiceCallExpiryTimers[call.channelId] = setTimeout(() => {
-    const currentCall = state.voiceCalls[call.channelId]
-    if (!currentCall || voiceCallUiKey(currentCall) !== callKey) return
-    if (currentCall.expiresAt !== call.expiresAt) return
+  voiceCallExpiryTimers[call.channelId] = Effect.runFork(
+    Effect.sleep(delayMs).pipe(
+      Effect.andThen(
+        Effect.sync(() => {
+          delete voiceCallExpiryTimers[call.channelId]
+          const currentCall = state.voiceCalls[call.channelId]
+          if (!currentCall || voiceCallUiKey(currentCall) !== callKey) return
+          if (currentCall.expiresAt !== call.expiresAt) return
 
-    const channel = state.channels[call.channelId]
-    if (currentCall.phase === 'ringing' && channel?.channel_type === 'Group') {
-      syncStore.setVoiceCall({
-        ...currentCall,
-        phase: 'active',
-        expiresAt: expiresAtMs + GROUP_UNANSWERED_ACTIVE_MS,
-        recipients: [],
-      })
-      return
-    }
+          const channel = state.channels[call.channelId]
+          if (
+            currentCall.phase === 'ringing' &&
+            channel?.channel_type === 'Group'
+          ) {
+            syncStore.setVoiceCall({
+              ...currentCall,
+              phase: 'active',
+              expiresAt: expiresAtMs + GROUP_UNANSWERED_ACTIVE_MS,
+              recipients: [],
+            })
+            return
+          }
 
-    syncStore.removeVoiceCall(call.channelId)
-  }, delayMs)
+          syncStore.removeVoiceCall(call.channelId)
+        }),
+      ),
+    ),
+  )
 }
 
 function syncVoiceCallExpiryTimers(voiceCalls: Record<string, VoiceCallState>) {
@@ -178,9 +198,18 @@ function upsertRecord<T extends { _id: string }>(
   return next
 }
 
-function mergeChannel(existing: Channel | undefined, patch: Partial<Channel>) {
-  if (!existing) return patch as Channel
-  return { ...existing, ...patch } as Channel
+function mergeChannel(
+  existing: Readonly<Record<string, unknown>>,
+  patch: Readonly<Record<string, unknown>>,
+) {
+  const decoded = Schema.decodeUnknownOption(ChannelSchema)({
+    ...existing,
+    ...patch,
+  })
+  if (Option.isNone(decoded)) {
+    throw new TypeError('Invalid channel state mutation')
+  }
+  return decoded.value
 }
 
 function clearServerFields(server: Server, clear: ServerUpdateEvent['clear']) {
@@ -270,7 +299,7 @@ function clearChannelFields(channel: Channel, clear: FieldsChannel[] | undefined
         break
     }
   }
-  return next as Channel
+  return next
 }
 
 function memberKey(member: Member) {
@@ -278,7 +307,7 @@ function memberKey(member: Member) {
 }
 
 function cloneReactions(reactions: Message['reactions']) {
-  if (!reactions) return {} as Record<string, string[]>
+  if (!reactions) return {}
   return Object.fromEntries(
     Object.entries(reactions).map(([emoji, userIds]) => [emoji, [...userIds]]),
   )
@@ -426,11 +455,13 @@ export const syncStore = {
       Object.values(voiceCalls).map(voiceCallUiKey),
     )
     const dismissedVoiceCallKeys = hasVoiceCallSnapshot
-      ? (Object.fromEntries(
-          Object.entries(state.dismissedVoiceCallKeys).filter(([key]) =>
-            currentVoiceCallKeys.has(key),
-          ),
-        ) as Record<string, true>)
+      ? Object.entries(state.dismissedVoiceCallKeys).reduce<Record<string, true>>(
+          (next, [key]) => {
+            if (currentVoiceCallKeys.has(key)) next[key] = true
+            return next
+          },
+          {},
+        )
       : state.dismissedVoiceCallKeys
 
     if (hasVoiceCallSnapshot) {
@@ -474,9 +505,14 @@ export const syncStore = {
         emojis: upsertRecord(state.emojis, emojis),
       })
       for (const voiceState of voiceStates) {
+        const participants: UserVoiceState[] = []
+        for (const participant of voiceState.participants) {
+          const normalized = normalizeUserVoiceState(participant)
+          if (normalized) participants.push(normalized)
+        }
         this.setChannelVoiceParticipants(
           voiceState.id,
-          voiceState.participants,
+          participants,
         )
       }
     })
@@ -968,7 +1004,10 @@ export const syncStore = {
     })
   },
 
-  patchChannel(channelId: string, data: Partial<Channel>) {
+  patchChannel(
+    channelId: string,
+    data: Readonly<Record<string, unknown>>,
+  ) {
     const existing = state.channels[channelId]
     if (!existing) return
     setState({
@@ -1134,10 +1173,9 @@ export const syncStore = {
   handleGatewayEvent(event: GatewayServerEvent) {
     switch (event.type) {
       case 'Bulk': {
-        const items = event.v as GatewayServerEvent[] | undefined
-        if (items?.length) {
+        if (event.v.length) {
           batchUpdates(() => {
-            items.forEach((item) => this.handleGatewayEvent(item))
+            event.v.forEach((item) => this.handleGatewayEvent(item))
           })
         }
         break
@@ -1153,7 +1191,7 @@ export const syncStore = {
           voice_states,
           voice_calls,
           authorization,
-        } = event as ReadyPayload & { type: string }
+        } = event
         this.applyReady({
           users,
           servers,
@@ -1168,58 +1206,32 @@ export const syncStore = {
         break
       }
       case 'AuthorizationSnapshot': {
-        const snapshot = event.snapshot as AuthorizationSnapshot | undefined
-        if (snapshot && snapshot.revision > state.authorization.revision) {
+        const snapshot = event.snapshot
+        if (snapshot.revision > state.authorization.revision) {
           setState({ authorization: snapshot })
         }
         break
       }
       case 'VoiceChannelJoin': {
         /** Voice state v1: `id` — канал, `state` — UserVoiceState (state.id — user). */
-        const payload = event as {
-          id: string
-          channel?: string
-          channel_id?: string
-          state?: UserVoiceState & { user?: string; user_id?: string }
-        }
-        const channelId =
-          payload.channel ?? payload.channel_id ?? payload.id
-        const voiceState = normalizeUserVoiceState(payload.state ?? {})
-        if (channelId && voiceState) {
-          this.addVoiceParticipant(channelId, voiceState)
+        const voiceState = normalizeUserVoiceState(event.state)
+        if (voiceState) {
+          this.addVoiceParticipant(event.id, voiceState)
         }
         break
       }
       case 'VoiceChannelLeave': {
         /** Voice state v1: `id` — канал, `user` — кто вышел. */
-        const payload = event as {
-          id: string
-          user: string
-          channel?: string
-          channel_id?: string
-          user_id?: string
-        }
-        const channelId =
-          payload.channel ?? payload.channel_id ?? payload.id
-        const userId = payload.user ?? payload.user_id
-        if (channelId && userId) {
-          this.removeVoiceParticipant(channelId, userId)
-        }
+        this.removeVoiceParticipant(event.id, event.user)
         break
       }
       case 'VoiceChannelMove': {
-        const payload = event as {
-          user: string
-          from: string
-          to: string
-          state: UserVoiceState & { user?: string; user_id?: string }
-        }
-        const voiceState = normalizeUserVoiceState(payload.state)
+        const voiceState = normalizeUserVoiceState(event.state)
         if (voiceState) {
           this.moveVoiceParticipant(
-            payload.user,
-            payload.from,
-            payload.to,
+            event.user,
+            event.from,
+            event.to,
             voiceState,
           )
         }
@@ -1234,75 +1246,45 @@ export const syncStore = {
         break
       }
       case 'VoiceCallRinging': {
-        const payload = event as {
-          channel_id: string
-          initiator_id: string
-          started_at: number
-          expires_at?: number | string
-          recipients?: string[]
-          declined_recipients?: string[]
-        }
         this.setVoiceCall({
-          channelId: payload.channel_id,
-          initiatorId: payload.initiator_id,
+          channelId: event.channel_id,
+          initiatorId: event.initiator_id,
           phase: 'ringing',
-          startedAt: payload.started_at,
-          expiresAt: payload.expires_at as number | string | undefined,
-          recipients: payload.recipients ?? [],
-          declinedRecipients: payload.declined_recipients ?? [],
+          startedAt: event.started_at,
+          expiresAt: event.expires_at,
+          recipients: event.recipients,
+          declinedRecipients: event.declined_recipients,
         })
         break
       }
       case 'VoiceCallActive': {
-        const payload = event as {
-          channel_id: string
-          initiator_id: string
-          started_at: number
-          expires_at?: number | string
-          declined_recipients?: string[]
-        }
         this.setVoiceCall({
-          channelId: payload.channel_id,
-          initiatorId: payload.initiator_id,
+          channelId: event.channel_id,
+          initiatorId: event.initiator_id,
           phase: 'active',
-          startedAt: payload.started_at,
-          expiresAt: payload.expires_at,
+          startedAt: event.started_at,
+          expiresAt: event.expires_at,
           recipients: [],
-          declinedRecipients: payload.declined_recipients ?? [],
+          declinedRecipients: event.declined_recipients,
         })
         break
       }
       case 'VoiceCallEnd': {
-        const payload = event as { channel_id: string }
-        this.removeVoiceCall(payload.channel_id)
+        this.removeVoiceCall(event.channel_id)
         break
       }
       case 'MessageReact': {
-        const { id, channel_id, user_id, emoji_id } = event as {
-          id: string
-          channel_id: string
-          user_id: string
-          emoji_id: string
-        }
+        const { id, channel_id, user_id, emoji_id } = event
         this.mutateReaction(channel_id, id, emoji_id, user_id, true)
         break
       }
       case 'MessageUnreact': {
-        const { id, channel_id, user_id, emoji_id } = event as {
-          id: string
-          channel_id: string
-          user_id: string
-          emoji_id: string
-        }
+        const { id, channel_id, user_id, emoji_id } = event
         this.mutateReaction(channel_id, id, emoji_id, user_id, false)
         break
       }
       case 'MessageRemoveReaction': {
-        const { id, channel_id, emoji_id } = event as {
-          id: string
-          channel_id: string
-          emoji_id: string
-        }
+        const { id, channel_id, emoji_id } = event
         const existing = state.messages[channel_id]?.[id]
         if (!existing) break
         const reactions = cloneReactions(existing.reactions)
@@ -1311,56 +1293,45 @@ export const syncStore = {
         break
       }
       case 'ChannelStartTyping': {
-        const { id, user } = event as { id: string; user: string }
+        const { id, user } = event
         this.setUserTyping(id, user, true)
         break
       }
       case 'ChannelStopTyping': {
-        const { id, user } = event as { id: string; user: string }
+        const { id, user } = event
         this.setUserTyping(id, user, false)
         break
       }
       case 'ChannelAck': {
-        const { id, message_id } = event as {
-          id: string
-          message_id: string
-        }
+        const { id, message_id } = event
         this.setChannelLastRead(id, message_id)
         break
       }
       case 'Message':
-        this.upsertMessage(event as Message)
+        this.upsertMessage(event)
         break
       case 'MessageUpdate': {
-        const { channel, id, data } = event as {
-          channel: string
-          id: string
-          data: Partial<Message>
-        }
+        const { channel, id, data } = event
         this.patchMessage(channel, id, data)
         break
       }
       case 'MessageDelete': {
-        const { channel, id } = event as { channel: string; id: string }
+        const { channel, id } = event
         this.removeMessage(channel, id)
         break
       }
       case 'BulkMessageDelete': {
-        const { channel, ids } = event as { channel: string; ids: string[] }
+        const { channel, ids } = event
         batchUpdates(() => {
           for (const id of ids) this.removeMessage(channel, id)
         })
         break
       }
       case 'ChannelCreate':
-        this.upsertChannel(event as Channel)
+        this.upsertChannel(event)
         break
       case 'ChannelUpdate': {
-        const { id, data, clear } = event as {
-          id: string
-          data: Partial<Channel>
-          clear?: FieldsChannel[]
-        }
+        const { id, data, clear } = event
         const existing = state.channels[id]
         if (existing) {
           this.upsertChannel(
@@ -1370,12 +1341,12 @@ export const syncStore = {
         break
       }
       case 'ChannelDelete': {
-        const { id } = event as { id: string }
+        const { id } = event
         this.removeChannel(id)
         break
       }
       case 'ChannelGroupJoin': {
-        const { id, user } = event as { id: string; user: string }
+        const { id, user } = event
         const channel = state.channels[id]
         if (
           channel?.channel_type === 'Group' &&
@@ -1383,12 +1354,12 @@ export const syncStore = {
         ) {
           this.patchChannel(id, {
             recipients: [...channel.recipients, user],
-          } as Partial<Channel>)
+          })
         }
         break
       }
       case 'ChannelGroupLeave': {
-        const { id, user } = event as { id: string; user: string }
+        const { id, user } = event
         const channel = state.channels[id]
         if (
           channel?.channel_type === 'Group' &&
@@ -1398,7 +1369,7 @@ export const syncStore = {
             recipients: channel.recipients.filter(
               (recipientId) => recipientId !== user,
             ),
-          } as Partial<Channel>)
+          })
         }
         this.removeVoiceParticipant(id, user)
         const call = state.voiceCalls[id]
@@ -1413,8 +1384,7 @@ export const syncStore = {
         break
       }
       case 'ServerCreate': {
-        const { server, member, channels, emojis, voice_states } =
-          event as ServerCreateEvent
+        const { server, member, channels, emojis, voice_states } = event
         this.applyServerJoinBundle({
           server,
           member,
@@ -1425,7 +1395,7 @@ export const syncStore = {
         break
       }
       case 'ServerUpdate': {
-        const { id, data, clear } = event as ServerUpdateEvent
+        const { id, data, clear } = event
         const existing = state.servers[id]
         if (existing) {
           this.upsertServer({ ...clearServerFields(existing, clear), ...data })
@@ -1433,29 +1403,30 @@ export const syncStore = {
         break
       }
       case 'ServerDelete': {
-        const { id } = event as { id: string }
+        const { id } = event
         this.removeServer(id)
         break
       }
       case 'ServerRoleUpdate': {
-        const { id, role_id, data, clear } = event as ServerRoleUpdateEvent
+        const { id, role_id, data, clear } = event
         const server = state.servers[id]
         if (!server) break
-        const existing =
-          server.roles?.[role_id] ?? ({ _id: role_id } as Role)
+        const existing = server.roles?.[role_id]
+        const decodedRole = Schema.decodeUnknownOption(RoleSchema)({
+          ...(existing ? clearRoleFields(existing, clear) : {}),
+          ...data,
+          _id: role_id,
+        })
+        if (Option.isNone(decodedRole)) break
         const roles = {
           ...server.roles,
-          [role_id]: {
-            ...clearRoleFields(existing, clear),
-            ...data,
-            _id: role_id,
-          },
+          [role_id]: decodedRole.value,
         }
         this.upsertServer({ ...server, roles })
         break
       }
       case 'ServerRoleRanksUpdate': {
-        const { id, ranks } = event as { id: string; ranks: string[] }
+        const { id, ranks } = event
         const server = state.servers[id]
         if (!server?.roles) break
         const roles = { ...server.roles }
@@ -1468,7 +1439,7 @@ export const syncStore = {
         break
       }
       case 'ServerRoleDelete': {
-        const { id, role_id } = event as { id: string; role_id: string }
+        const { id, role_id } = event
         const server = state.servers[id]
         if (!server) break
 
@@ -1513,7 +1484,7 @@ export const syncStore = {
         break
       }
       case 'UserUpdate': {
-        const { id, data } = event as { id: string; data: Partial<User> }
+        const { id, data } = event
         const existing = state.users[id]
         if (existing) {
           this.upsertUser({ ...existing, ...data })
@@ -1521,12 +1492,12 @@ export const syncStore = {
         break
       }
       case 'UserRelationship': {
-        const { user } = event as { user: User }
+        const { user } = event
         this.upsertUser(user)
         break
       }
       case 'UserPresence': {
-        const { id, online } = event as { id: string; online: boolean }
+        const { id, online } = event
         const existing = state.users[id]
         if (existing) {
           this.upsertUser({ ...existing, online })
@@ -1534,48 +1505,33 @@ export const syncStore = {
         break
       }
       case 'EmojiCreate':
-        this.upsertEmoji(event as Emoji)
+        this.upsertEmoji(event)
         break
       case 'EmojiDelete': {
-        const { id } = event as { id: string }
+        const { id } = event
         this.removeEmoji(id)
         break
       }
       case 'ServerMemberUpdate': {
-        const { id, data, clear } = event as ServerMemberUpdateEvent
+        const { id, data, clear } = event
         const key = `${id.server}:${id.user}`
-        const existing =
-          state.members[key] ??
-          ({
-            _id: { server: id.server, user: id.user },
-          } as Member)
-        const member: Member = {
-          ...clearMemberFields(existing, clear),
+        const existing = state.members[key]
+        const decodedMember = Schema.decodeUnknownOption(MemberSchema)({
+          ...(existing ? clearMemberFields(existing, clear) : {}),
           ...data,
-          _id: existing._id,
-        }
+          _id: existing?._id ?? id,
+        })
+        if (Option.isNone(decodedMember)) break
 
-        this.upsertMembers([member])
+        this.upsertMembers([decodedMember.value])
         break
       }
       case 'ServerMemberJoin': {
-        const { id: serverId, user: userId, member } = event as {
-          id: string
-          user: string
-          member?: Member
-        }
-        const joinedMember =
-          member ?? ({ _id: { server: serverId, user: userId } } as Member)
-        const key = memberKey(joinedMember)
-        if (!member && state.members[key]) break
-        this.upsertMembers([joinedMember])
+        this.upsertMembers([event.member])
         break
       }
       case 'ServerMemberLeave': {
-        const { id: serverId, user: userId } = event as {
-          id: string
-          user: string
-        }
+        const { id: serverId, user: userId } = event
         if (userId === currentUserId) {
           this.removeServer(serverId)
           if (state.selectedServerId === serverId) {

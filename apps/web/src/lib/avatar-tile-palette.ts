@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react'
+import { Effect } from 'effect'
 
 export type TilePalette = {
   from: string
@@ -33,49 +34,56 @@ export function tilePaletteStyle(palette: TilePalette): CSSProperties {
   }
 }
 
-export async function loadAvatarTilePalette(
+export const loadAvatarTilePaletteEffect = Effect.fn(
+  'avatarTilePalette.load',
+)(function*(
   avatarId: string,
   url: string,
-): Promise<TilePalette | null> {
+) {
   const cached = paletteCache.get(avatarId)
   if (cached) return cached
 
-  const extracted = await extractPaletteFromImageUrl(url)
-  if (extracted) paletteCache.set(avatarId, extracted)
-  return extracted
-}
-
-async function extractPaletteFromImageUrl(
-  url: string,
-): Promise<TilePalette | null> {
-  try {
-    const image = await loadImage(url)
-    return extractPaletteFromImage(image)
-  } catch {
-    return null
+  const extracted = yield* loadImageEffect(url).pipe(
+    Effect.map(extractPaletteFromImage),
+    Effect.catch(() => Effect.succeed(null)),
+  )
+  if (extracted) {
+    yield* Effect.sync(() => paletteCache.set(avatarId, extracted))
   }
-}
+  return extracted
+})
 
-function loadImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
+const loadImageEffect = Effect.fn('avatarTilePalette.loadImage')((url: string) =>
+  Effect.callback<HTMLImageElement, Error>((resume) => {
     const image = new Image()
     image.crossOrigin = 'anonymous'
     image.decoding = 'async'
 
-    const timer = window.setTimeout(() => {
-      reject(new Error('avatar palette load timeout'))
-    }, LOAD_TIMEOUT_MS)
-
     image.onload = () => {
-      window.clearTimeout(timer)
-      resolve(image)
+      resume(Effect.succeed(image))
     }
     image.onerror = () => {
-      window.clearTimeout(timer)
-      reject(new Error('avatar palette load failed'))
+      resume(Effect.fail(new Error('avatar palette load failed')))
     }
     image.src = url
-  })
+
+    return Effect.sync(() => {
+      image.onload = null
+      image.onerror = null
+    })
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: LOAD_TIMEOUT_MS,
+      orElse: () => Effect.fail(new Error('avatar palette load timeout')),
+    }),
+  ),
+)
+
+export function loadAvatarTilePalette(
+  avatarId: string,
+  url: string,
+) {
+  return Effect.runPromise(loadAvatarTilePaletteEffect(avatarId, url))
 }
 
 function extractPaletteFromImage(image: HTMLImageElement): TilePalette | null {

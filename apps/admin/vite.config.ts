@@ -11,6 +11,10 @@ const apiTypesEntry = path.resolve(
   adminRoot,
   '../../packages/api-types/src/index.ts',
 )
+const apiTypesEffectSchemaEntry = path.resolve(
+  adminRoot,
+  '../../packages/api-types/src/effect-schema.ts',
+)
 
 const config = defineConfig({
   envDir: path.resolve(adminRoot, 'env'),
@@ -29,6 +33,7 @@ const config = defineConfig({
   },
   resolve: {
     alias: {
+      '@syrnike13/api-types/effect-schema': apiTypesEffectSchemaEntry,
       '@syrnike13/api-types': apiTypesEntry,
     },
     tsconfigPaths: true,

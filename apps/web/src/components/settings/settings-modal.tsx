@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
+import { Effect } from 'effect'
 import {
   AppWindowIcon,
   Gamepad2Icon,
@@ -44,20 +45,28 @@ function settingsNavItemClass(active: boolean) {
   )
 }
 
-const DESKTOP_NAV_ITEM = {
-  id: 'desktop' as const,
+const DESKTOP_NAV_ITEM: {
+  id: SettingsSection
+  label: string
+  icon: typeof AppWindowIcon
+} = {
+  id: 'desktop',
   label: 'Приложение',
   icon: AppWindowIcon,
 }
 
-const DESKTOP_ONLY_NAV_ITEMS = [
+const DESKTOP_ONLY_NAV_ITEMS: {
+  id: SettingsSection
+  label: string
+  icon: typeof AppWindowIcon
+}[] = [
   {
-    id: 'hotkeys' as const,
+    id: 'hotkeys',
     label: 'Горячие клавиши',
     icon: KeyboardIcon,
   },
   {
-    id: 'overlay' as const,
+    id: 'overlay',
     label: 'Оверлей',
     icon: Gamepad2Icon,
   },
@@ -90,16 +99,26 @@ function SettingsDesktopModal() {
     : GENERAL_SETTINGS_NAV
   const [loggingOut, setLoggingOut] = useState(false)
 
-  async function handleLogout() {
+  function handleLogout() {
     if (loggingOut) return
     setLoggingOut(true)
     setOpen(false)
-    try {
-      await auth.logout()
-      await navigate({ to: '/login', replace: true })
-    } finally {
-      setLoggingOut(false)
-    }
+    Effect.runFork(
+      auth.logout().pipe(
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () => navigate({ to: '/login', replace: true }),
+            catch: (cause) => cause,
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            setLoggingOut(false)
+          }),
+        ),
+        Effect.ignore,
+      ),
+    )
   }
 
   return (
@@ -165,7 +184,7 @@ function SettingsDesktopModal() {
                     key={item.id}
                     type="button"
                     className={cn(settingsNavItemClass(active), 'h-9 px-2')}
-                    onClick={() => setSection(item.id as SettingsSection)}
+                    onClick={() => setSection(item.id)}
                   >
                     <Icon className="size-4 shrink-0" />
                     {item.label}

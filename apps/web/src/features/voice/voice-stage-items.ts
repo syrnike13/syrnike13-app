@@ -1,13 +1,21 @@
-import { Track, type VideoTrack } from 'livekit-client'
+import {
+  Track,
+  type LocalTrackPublication,
+  type RemoteTrackPublication,
+  type Room,
+} from 'livekit-client'
 
 import { baseVoiceIdentity } from '#/features/voice/native-voice-identity'
 import type {
   NativeVideoRegistryPublication,
   NativeVideoRegistryTrack,
 } from '#/features/voice/native-video-registry'
-import type {
-  VoiceStageMediaItem,
-  VoiceStageMediaPublication,
+import {
+  liveKitVoiceStageMediaTrack,
+  nativeVoiceStageMediaTrack,
+  type VoiceStageMediaTrack,
+  type VoiceStageMediaItem,
+  type VoiceStageMediaPublication,
 } from '#/features/voice/voice-context'
 import {
   buildStageMediaItems,
@@ -17,19 +25,43 @@ import {
 } from '#/features/voice/voice-stage-media'
 import { shouldSubscribeStageScreen } from '#/features/voice/voice-stage-subscription'
 
-type StageRoomPublication = VoiceStageMediaPublication & {
-  videoTrack?: VideoTrack | null
-  subscriptionError?: unknown
-}
+type StageRoomTrack = Omit<
+  StageMediaTrackEntry<VoiceStageMediaTrack, VoiceStageMediaPublication>,
+  'userId'
+>
 
 type StageRoomParticipant = {
   identity: string
-  trackPublications: ReadonlyMap<string, StageRoomPublication>
+  tracks: readonly StageRoomTrack[]
 }
 
 export type StageRoom = {
   localParticipant: StageRoomParticipant
-  remoteParticipants: ReadonlyMap<string, StageRoomParticipant>
+  remoteParticipants: readonly StageRoomParticipant[]
+}
+
+export function createStageRoomFromLiveKit(
+  room: Room,
+  subscriptionErrors: ReadonlyMap<string, string>,
+): StageRoom {
+  return {
+    localParticipant: {
+      identity: room.localParticipant.identity,
+      tracks: [...room.localParticipant.trackPublications.values()]
+        .map(localStageRoomTrack)
+        .filter((track) => track !== null),
+    },
+    remoteParticipants: [...room.remoteParticipants.values()].map(
+      (participant) => ({
+        identity: participant.identity,
+        tracks: [...participant.trackPublications.values()]
+          .map((publication) =>
+            remoteStageRoomTrack(publication, subscriptionErrors),
+          )
+          .filter((track) => track !== null),
+      }),
+    ),
+  }
 }
 
 export function buildStageItems(options: {
@@ -52,7 +84,10 @@ export function buildStageItems(options: {
   ) => unknown
 }): VoiceStageMediaItem[] {
   const participantIds = new Set(options.participants.map(({ id }) => id))
-  const tracks: StageMediaTrackEntry<VideoTrack, VoiceStageMediaPublication>[] = []
+  const tracks: StageMediaTrackEntry<
+    VoiceStageMediaTrack,
+    VoiceStageMediaPublication
+  >[] = []
   const nativePublicationIds = new Set(
     options.nativePublications.map(({ trackId }) => trackId),
   )
@@ -62,9 +97,10 @@ export function buildStageItems(options: {
     tracks.push({
       userId: options.localScreenPreview.userId,
       source: 'screen',
-      track: options.localScreenPreview.track as unknown as VideoTrack,
+      track: nativeVoiceStageMediaTrack(options.localScreenPreview.track),
       publication: {
-        source: Track.Source.ScreenShare,
+        backend: 'native',
+        source: 'screen',
         isMuted: false,
         isSubscribed: true,
       },
@@ -80,9 +116,10 @@ export function buildStageItems(options: {
     tracks.push({
       userId,
       source: 'camera',
-      track: native.track as unknown as VideoTrack,
+      track: nativeVoiceStageMediaTrack(native.track),
       publication: {
-        source: Track.Source.Camera,
+        backend: 'native',
+        source: 'camera',
         isMuted: false,
         isSubscribed: true,
       },
@@ -107,12 +144,13 @@ export function buildStageItems(options: {
       userId,
       source,
       track: demanded
-        ? (publication.track as unknown as VideoTrack)
+        ? publication.track
+          ? nativeVoiceStageMediaTrack(publication.track)
+          : null
         : null,
       publication: {
-        source: source === 'screen'
-          ? Track.Source.ScreenShare
-          : Track.Source.Camera,
+        backend: 'native',
+        source,
         isMuted: false,
         isSubscribed: demanded,
         setSubscribed: (nextDemanded) => {
@@ -134,21 +172,15 @@ export function buildStageItems(options: {
     participantIds.add(baseVoiceIdentity(options.room.localParticipant.identity))
     const roomParticipants = [
       options.room.localParticipant,
-      ...options.room.remoteParticipants.values(),
+      ...options.room.remoteParticipants,
     ]
     for (const participant of roomParticipants) {
       const userId = baseVoiceIdentity(participant.identity)
       const isLocal = participant === options.room.localParticipant
       if (!isLocal && !participantIds.has(userId)) continue
       if (isLocal) participantIds.add(userId)
-      for (const publication of participant.trackPublications.values()) {
-        const source =
-          publication.source === Track.Source.ScreenShare
-            ? 'screen'
-            : publication.source === Track.Source.Camera
-              ? 'camera'
-              : null
-        if (!source) continue
+      for (const roomTrack of participant.tracks) {
+        const source = roomTrack.source
         const subscribed =
           source === 'screen'
             ? shouldSubscribeStageScreen({
@@ -156,17 +188,17 @@ export function buildStageItems(options: {
                 mediaId: stageMediaItemId(userId, 'screen'),
                 watchedRemoteScreenIds: options.watchedRemoteScreenIds,
               })
-            : publication.isSubscribed
+            : roomTrack.subscribed
         tracks.push({
           userId,
           source,
-          track: subscribed ? publication.videoTrack ?? null : null,
-          publication,
+          track: subscribed ? roomTrack.track ?? null : null,
+          publication: roomTrack.publication,
           subscribed,
-          live: !publication.isMuted,
+          live: roomTrack.live,
           error:
             source === 'screen' && subscribed
-              ? browserScreenSubscriptionError(publication)
+              ? roomTrack.error
               : undefined,
         })
       }
@@ -181,10 +213,96 @@ export function buildStageItems(options: {
   })
 }
 
-function browserScreenSubscriptionError(publication: StageRoomPublication) {
-  const error = publication.subscriptionError
-  if (error == null) return undefined
-  const detail = error instanceof Error ? error.message : String(error)
+function localStageRoomTrack(
+  publication: LocalTrackPublication,
+): StageRoomTrack | null {
+  const source = stageTrackSource(publication.source)
+  if (!source) return null
+  return {
+    source,
+    track: publication.videoTrack
+      ? liveKitVoiceStageMediaTrack(publication.videoTrack)
+      : null,
+    publication: {
+      backend: 'livekit',
+      source,
+      trackSid: publication.trackSid,
+      isMuted: publication.isMuted,
+      isSubscribed: publication.isSubscribed,
+      options: liveKitPublicationOptions(publication),
+    },
+    subscribed: publication.isSubscribed,
+    live: !publication.isMuted,
+  }
+}
+
+function remoteStageRoomTrack(
+  publication: RemoteTrackPublication,
+  subscriptionErrors: ReadonlyMap<string, string>,
+): StageRoomTrack | null {
+  const source = stageTrackSource(publication.source)
+  if (!source) return null
+  return {
+    source,
+    track: publication.videoTrack
+      ? liveKitVoiceStageMediaTrack(publication.videoTrack)
+      : null,
+    publication: {
+      backend: 'livekit',
+      source,
+      trackSid: publication.trackSid,
+      isMuted: publication.isMuted,
+      isSubscribed: publication.isSubscribed,
+      setSubscribed: (subscribed) => publication.setSubscribed(subscribed),
+    },
+    subscribed: publication.isSubscribed,
+    live: !publication.isMuted,
+    error:
+      source === 'screen'
+        ? browserScreenSubscriptionError(
+            publication.trackSid,
+            subscriptionErrors,
+          )
+        : undefined,
+  }
+}
+
+function stageTrackSource(source: Track.Source) {
+  if (source === Track.Source.ScreenShare) return 'screen' as const
+  if (source === Track.Source.Camera) return 'camera' as const
+  return null
+}
+
+function liveKitPublicationOptions(
+  publication: LocalTrackPublication,
+): VoiceStageMediaPublication['options'] {
+  const options = publication.options
+  if (!options) return undefined
+  return {
+    videoCodec: options.videoCodec,
+    simulcast: options.simulcast,
+    degradationPreference: options.degradationPreference,
+    screenShareEncoding: options.screenShareEncoding
+      ? {
+          maxBitrate: options.screenShareEncoding.maxBitrate,
+          maxFramerate: options.screenShareEncoding.maxFramerate,
+        }
+      : undefined,
+    videoEncoding: options.videoEncoding
+      ? {
+          maxBitrate: options.videoEncoding.maxBitrate,
+          maxFramerate: options.videoEncoding.maxFramerate,
+        }
+      : undefined,
+  }
+}
+
+function browserScreenSubscriptionError(
+  trackSid: string,
+  subscriptionErrors: ReadonlyMap<string, string>,
+) {
+  if (!subscriptionErrors.has(trackSid)) return undefined
+  const detail = subscriptionErrors.get(trackSid) ?? ''
   return detail
     ? `Не удалось подключиться к демонстрации: ${detail}`
     : 'Не удалось подключиться к демонстрации'

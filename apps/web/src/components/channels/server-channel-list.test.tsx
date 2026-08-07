@@ -2,6 +2,7 @@
 
 import { act, cleanup, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerChannelList } from '#/components/channels/server-channel-list'
@@ -10,7 +11,7 @@ import { grantAllAuthorizationForTest } from '#/features/authorization/authoriza
 import { UNCATEGORIZED_SECTION_ID } from '#/lib/channel-sidebar-layout'
 
 const mocks = vi.hoisted(() => ({
-  editServer: vi.fn(() => new Promise(() => {})),
+  editServer: vi.fn(() => Effect.never),
   onDragEnd: null as null | ((result: unknown) => void),
 }))
 
@@ -64,7 +65,7 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
-  editServer: (...args: Parameters<typeof mocks.editServer>) =>
+  editServerEffect: (...args: Parameters<typeof mocks.editServer>) =>
     mocks.editServer(...args),
 }))
 

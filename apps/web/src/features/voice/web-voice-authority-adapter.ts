@@ -2,10 +2,11 @@ import {
   GatewayVoiceAuthorityAdapter,
   type VoiceGatewayTransport,
 } from '@syrnike13/platform'
+import { Effect } from 'effect'
 
 import { eventsGateway } from '#/features/events/gateway'
 import { syncStore } from '#/features/sync/sync-store'
-import { resolveVoiceNodeName } from '#/features/voice/voice-node'
+import { resolveVoiceNodeNameEffect } from '#/features/voice/voice-node'
 
 const webVoiceGatewayTransport: VoiceGatewayTransport = {
   sendReliable(message, key) {
@@ -35,7 +36,7 @@ export function createWebVoiceAuthorityAdapter(getCurrentUserId: () => string | 
           ? channel.recipients.filter((userId) => userId !== currentUserId)
           : undefined
       return {
-        node: await resolveVoiceNodeName(),
+        node: await Effect.runPromise(resolveVoiceNodeNameEffect),
         recipients,
       }
     },

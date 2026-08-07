@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useForm } from '@tanstack/react-form'
 import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import {
@@ -20,8 +21,8 @@ import {
 } from '#/components/ui/card'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
-import { resendVerification } from '#/features/api/account-api'
-import { resetEmailSchema } from '#/features/auth/schemas'
+import { resendVerificationEffect } from '#/features/api/account-api'
+import { resetEmailSchema, validateForm } from '#/features/auth/schemas'
 import {
   isCaptchaRequired,
   isEmailVerificationEnabled,
@@ -54,43 +55,57 @@ function ResendVerificationPage() {
   const form = useForm({
     defaultValues: { email: '' },
     onSubmit: async ({ value }) => {
-      const parsed = resetEmailSchema.safeParse(value)
+      const parsed = validateForm(resetEmailSchema, value)
       if (!parsed.success) {
-        toast.error(parsed.error.issues[0]?.message ?? 'Проверьте email')
+        toast.error(parsed.issues[0]?.message ?? 'Проверьте email')
         return
       }
 
-      let captcha: string | undefined
-      if (captchaRequired) {
-        if (!siteKey) {
-          toast.error('Captcha не настроена на сервере')
-          return
-        }
-        captcha = (await executeHcaptcha(captchaRef)) ?? undefined
-        if (!captcha) {
-          toast.error('Не удалось пройти captcha')
-          return
-        }
+      if (captchaRequired && !siteKey) {
+        toast.error('Captcha не настроена на сервере')
+        return
       }
 
       setSubmitting(true)
-      try {
-        await resendVerification({
-          email: parsed.data.email,
-          captcha,
-        })
-        setPendingVerifyEmail(parsed.data.email)
-        toast.success('Письмо отправлено повторно')
-        void navigate({ to: '/login/check', replace: true })
-      } catch (error) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'Не удалось отправить письмо',
-        )
-      } finally {
-        setSubmitting(false)
-      }
+      await Effect.runPromise(
+        Effect.gen(function*() {
+          const captcha = captchaRequired
+            ? yield* Effect.tryPromise({
+                try: () => executeHcaptcha(captchaRef),
+                catch: (cause) => cause,
+              })
+            : undefined
+          if (captchaRequired && !captcha) {
+            return yield* Effect.fail(
+              new Error('Не удалось пройти captcha'),
+            )
+          }
+
+          yield* resendVerificationEffect({
+            email: parsed.data.email,
+            captcha: captcha ?? undefined,
+          })
+          yield* Effect.sync(() => {
+            setPendingVerifyEmail(parsed.data.email)
+            toast.success('Письмо отправлено повторно')
+          })
+          yield* Effect.tryPromise({
+            try: () => navigate({ to: '/login/check', replace: true }),
+            catch: (cause) => cause,
+          })
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось отправить письмо',
+              )
+            }),
+          ),
+          Effect.ensuring(Effect.sync(() => setSubmitting(false))),
+        ),
+      )
     },
   })
 

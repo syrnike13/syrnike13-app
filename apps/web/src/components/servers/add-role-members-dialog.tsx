@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Member, Role, Server, User } from '@syrnike13/api-types'
 import { CheckIcon, SearchIcon } from '#/components/icons'
+import { Effect, Exit } from 'effect'
 import { toast } from 'sonner'
 
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -16,7 +17,7 @@ import {
 import { Input } from '#/components/ui/input'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
-import { editServerMember } from '#/features/api/servers-api'
+import { editServerMemberEffect } from '#/features/api/servers-api'
 import { useServerMembersSync } from '#/features/sync/server-members-sync'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { canToggleMemberRole } from '#/lib/member-roles'
@@ -143,28 +144,34 @@ export function AddRoleMembersDialog({
 
     setSaving(true)
     try {
-      const results = await Promise.allSettled(
-        Array.from(selectedIds).map(async (userId) => {
-          const targetMember = serverMembers.find(
-            (member) => member._id.user === userId,
-          )
-          if (!targetMember) return null
+      const results = await Effect.runPromise(
+        Effect.all(
+          Array.from(selectedIds).map((userId) => {
+            const targetMember = serverMembers.find(
+              (member) => member._id.user === userId,
+            )
+            if (!targetMember) return Effect.succeed(null).pipe(Effect.exit)
 
-          const nextRoles = [
-            ...new Set([...(targetMember.roles ?? []), role._id]),
-          ]
-          return editServerMember(token, server._id, userId, {
-            roles: nextRoles,
-          })
-        }),
+            const nextRoles = [
+              ...new Set([...(targetMember.roles ?? []), role._id]),
+            ]
+            return editServerMemberEffect(
+              token,
+              server._id,
+              userId,
+              {
+                roles: nextRoles,
+              },
+            ).pipe(Effect.exit)
+          }),
+          { concurrency: 'unbounded' },
+        ),
       )
 
       const applied = results.flatMap((result) =>
-        result.status === 'fulfilled' && result.value ? [result.value] : [],
+        Exit.isSuccess(result) && result.value ? [result.value] : [],
       )
-      const hasFailures = results.some(
-        (result) => result.status === 'rejected',
-      )
+      const hasFailures = results.some(Exit.isFailure)
 
       if (applied.length > 0) {
         syncStore.upsertMembers(applied)

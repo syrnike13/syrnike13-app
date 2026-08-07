@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import type { Member, Server } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { FxImage } from '#/components/ui/fx-image'
 import { Switch } from '#/components/ui/switch'
 import { useAuth } from '#/features/auth/auth-context'
-import { editServerMember } from '#/features/api/servers-api'
+import { editServerMemberEffect } from '#/features/api/servers-api'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import {
   canEditAnyMemberRole,
@@ -119,21 +120,26 @@ export function MemberRolesEditor({
       : (targetMember.roles ?? []).filter((id) => id !== roleId)
 
     setSavingRoleId(roleId)
-    try {
-      const updated = await editServerMember(
+    await Effect.runPromise(
+      editServerMemberEffect(
         token,
         server._id,
         targetMember._id.user,
         { roles: nextRoles },
-      )
-      syncStore.upsertMembers([updated])
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось обновить роли',
-      )
-    } finally {
-      setSavingRoleId(null)
-    }
+      ).pipe(
+        Effect.tap((updated) =>
+          Effect.sync(() => syncStore.upsertMembers([updated])),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось обновить роли',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setSavingRoleId(null))),
+      ),
+    )
   }
 
   if (!canManage) {

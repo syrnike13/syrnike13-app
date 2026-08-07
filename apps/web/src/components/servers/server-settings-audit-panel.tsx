@@ -1,5 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
+import { Option, Schema } from 'effect'
 import type {
   Channel,
   Server,
@@ -247,13 +248,21 @@ const CHANGE_FIELD_LABELS: Record<string, string> = {
   voice_channel: 'Голосовой канал',
 }
 
+const UnknownRecordSchema = Schema.Record(Schema.String, Schema.Unknown)
+
+function recordFromUnknown(value: unknown) {
+  return Option.getOrUndefined(
+    Schema.decodeUnknownOption(UnknownRecordSchema)(value),
+  )
+}
+
 function userLabel(user: User | undefined, fallback: string) {
   return user?.display_name || user?.username || fallback
 }
 
 function roleNameFromValue(value: unknown) {
-  if (!value || typeof value !== 'object') return undefined
-  const record = value as Record<string, unknown>
+  const record = recordFromUnknown(value)
+  if (!record) return undefined
   return typeof record.name === 'string' && record.name.trim()
     ? record.name
     : undefined
@@ -426,8 +435,8 @@ function formatAuditChangeValue(
       .join(', ')
   }
 
-  if (typeof value === 'object' && value) {
-    const record = value as Record<string, unknown>
+  const record = recordFromUnknown(value)
+  if (record) {
     if (typeof record.name === 'string') return record.name
     if (typeof record.id === 'string') return record.id
     if (typeof record._id === 'string') return record._id
@@ -798,12 +807,17 @@ export function ServerSettingsAuditPanel({
     queryKey: ['server-audit-log', serverId, filters.actor, filters.action],
     enabled: Boolean(token),
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) =>
-      fetchServerAuditLog(token!, serverId, {
-        limit: 50,
-        ...filters,
-        ...(pageParam ? { before: pageParam } : {}),
-      }),
+    queryFn: ({ pageParam, signal }) =>
+      fetchServerAuditLog(
+        token!,
+        serverId,
+        {
+          limit: 50,
+          ...filters,
+          ...(pageParam ? { before: pageParam } : {}),
+        },
+        signal,
+      ),
     getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
   })
 

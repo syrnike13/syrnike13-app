@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { SettingsDesktopPanel } from '#/components/settings/settings-desktop-panel'
@@ -21,7 +22,7 @@ import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { Switch } from '#/components/ui/switch'
 import type { SettingsSection } from '#/features/settings/settings-modal-context'
-import { changeAccountPassword } from '#/features/api/account-api'
+import { changeAccountPasswordEffect } from '#/features/api/account-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { cn } from '#/lib/utils'
 import { usePlatform } from '#/platform/use-platform'
@@ -188,20 +189,35 @@ export function SettingsAccountPanel() {
               return
             }
             setPasswordSaving(true)
-            void changeAccountPassword(token, newPassword, currentPassword)
-              .then(() => {
-                setCurrentPassword('')
-                setNewPassword('')
-                toast.success('Пароль изменён')
-              })
-              .catch((error) => {
-                toast.error(
-                  error instanceof Error
-                    ? error.message
-                    : 'Не удалось сменить пароль',
-                )
-              })
-              .finally(() => setPasswordSaving(false))
+            Effect.runFork(
+              changeAccountPasswordEffect(
+                token,
+                newPassword,
+                currentPassword,
+              ).pipe(
+                Effect.matchEffect({
+                  onFailure: (error) =>
+                    Effect.sync(() => {
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : 'Не удалось сменить пароль',
+                      )
+                    }),
+                  onSuccess: () =>
+                    Effect.sync(() => {
+                      setCurrentPassword('')
+                      setNewPassword('')
+                      toast.success('Пароль изменён')
+                    }),
+                }),
+                Effect.ensuring(
+                  Effect.sync(() => {
+                    setPasswordSaving(false)
+                  }),
+                ),
+              ),
+            )
           }}
         >
           <div className="space-y-2">
@@ -272,25 +288,38 @@ export function SettingsAccountPanel() {
               onClick={() => {
                 if (!auth.session?.token) return
                 setSendingDiagnosticReport(true)
-                void sendDiagnosticReport({
-                  token: auth.session.token,
-                  desktop: null,
-                  area: 'client',
-                  severity: 'warning',
-                  triggerCode: 'manual_report',
-                  description: 'Manual diagnostic report',
-                })
-                  .then((report) => {
-                    if (report) toast.success(`Отчёт отправлен: ${report.id}`)
-                  })
-                  .catch((error) => {
-                    toast.error(
-                      error instanceof Error
-                        ? error.message
-                        : 'Не удалось отправить диагностический отчёт',
-                    )
-                  })
-                  .finally(() => setSendingDiagnosticReport(false))
+                Effect.runFork(
+                  sendDiagnosticReport({
+                    token: auth.session.token,
+                    desktop: null,
+                    area: 'client',
+                    severity: 'warning',
+                    triggerCode: 'manual_report',
+                    description: 'Manual diagnostic report',
+                  }).pipe(
+                    Effect.matchEffect({
+                      onFailure: (error) =>
+                        Effect.sync(() => {
+                          toast.error(
+                            error instanceof Error
+                              ? error.message
+                              : 'Не удалось отправить диагностический отчёт',
+                          )
+                        }),
+                      onSuccess: (report) =>
+                        Effect.sync(() => {
+                          if (report) {
+                            toast.success(`Отчёт отправлен: ${report.id}`)
+                          }
+                        }),
+                    }),
+                    Effect.ensuring(
+                      Effect.sync(() => {
+                        setSendingDiagnosticReport(false)
+                      }),
+                    ),
+                  ),
+                )
               }}
             >
               {sendingDiagnosticReport ? 'Отправка…' : 'Отправить'}

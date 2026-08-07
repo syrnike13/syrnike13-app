@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { Effect, Fiber } from 'effect'
 
 import {
   SettingsBlock,
@@ -15,8 +16,11 @@ import {
 } from '#/components/ui/card'
 import { SoundSettings } from '#/components/sounds/sound-settings'
 import { useAuth } from '#/features/auth/auth-context'
-import { fetchSyrnikeConfig } from '#/features/api/config-api'
-import { subscribePush, unsubscribePush } from '#/features/api/push-api'
+import { fetchSyrnikeConfigEffect } from '#/features/api/config-api'
+import {
+  subscribePushEffect,
+  unsubscribePushEffect,
+} from '#/features/api/push-api'
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -44,103 +48,164 @@ export function NotificationSettings({
   const [vapidKey, setVapidKey] = useState<string | null>(null)
 
   useEffect(() => {
-    void fetchSyrnikeConfig()
-      .then((config) => setVapidKey(config.vapid ?? null))
-      .catch(() => {
-        // optional
-      })
+    const fiber = Effect.runFork(
+      fetchSyrnikeConfigEffect().pipe(
+        Effect.tap((config) =>
+          Effect.sync(() => {
+            setVapidKey(config.vapid ?? null)
+          }),
+        ),
+        Effect.ignore,
+      ),
+    )
 
     setPushReady(
       typeof window !== 'undefined' &&
         'serviceWorker' in navigator &&
         'PushManager' in window,
     )
+
+    return () => {
+      Effect.runFork(Fiber.interrupt(fiber))
+    }
   }, [])
 
-  async function enableDesktop() {
+  function enableDesktop() {
     if (!('Notification' in window)) {
       toast.error('Браузер не поддерживает уведомления')
       return
     }
 
-    const result = await Notification.requestPermission()
-    setPermission(result)
-
-    if (result === 'granted') {
-      toast.success('Уведомления включены для открытых вкладок')
-    } else if (result === 'denied') {
-      toast.error('Доступ к уведомлениям запрещён')
-    }
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () => Notification.requestPermission(),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            setPermission(result)
+            if (result === 'granted') {
+              toast.success('Уведомления включены для открытых вкладок')
+            } else if (result === 'denied') {
+              toast.error('Доступ к уведомлениям запрещён')
+            }
+          }),
+        ),
+        Effect.ignore,
+      ),
+    )
   }
 
-  async function enablePush() {
+  function enablePush() {
     const token = auth.session?.token
     if (!token || !vapidKey) {
       toast.error('Push недоступен на этом узле')
       return
     }
 
-    if (Notification.permission !== 'granted') {
-      const result = await Notification.requestPermission()
-      setPermission(result)
-      if (result !== 'granted') return
-    }
+    Effect.runFork(
+      Effect.gen(function*() {
+        if (Notification.permission !== 'granted') {
+          const result = yield* Effect.tryPromise({
+            try: () => Notification.requestPermission(),
+            catch: (cause) => cause,
+          })
+          yield* Effect.sync(() => {
+            setPermission(result)
+          })
+          if (result !== 'granted') return
+        }
 
-    try {
-      const registration = await navigator.serviceWorker.register('/sw.js', {
-        scope: '/',
-      })
-
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidKey),
-      })
-
-      const json = subscription.toJSON()
-      if (!json.keys?.auth || !json.keys?.p256dh || !json.endpoint) {
-        throw new Error('Некорректная подписка')
-      }
-
-      await subscribePush(token, {
-        endpoint: json.endpoint,
-        auth: json.keys.auth,
-        p256dh: json.keys.p256dh,
-      })
-
-      toast.success('Push-уведомления включены')
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось включить push (нужен service worker)',
-      )
-    }
+        const registration = yield* Effect.tryPromise({
+          try: () =>
+            navigator.serviceWorker.register('/sw.js', {
+              scope: '/',
+            }),
+          catch: (cause) => cause,
+        })
+        const subscription = yield* Effect.tryPromise({
+          try: () =>
+            registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(vapidKey),
+            }),
+          catch: (cause) => cause,
+        })
+        const json = subscription.toJSON()
+        const endpoint = json.endpoint
+        const auth = json.keys?.auth
+        const p256dh = json.keys?.p256dh
+        if (!endpoint || !auth || !p256dh) {
+          return yield* Effect.fail(new Error('Некорректная подписка'))
+        }
+        yield* subscribePushEffect(token, {
+          endpoint,
+          auth,
+          p256dh,
+        })
+        yield* Effect.sync(() => {
+          toast.success('Push-уведомления включены')
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось включить push (нужен service worker)',
+            )
+          }),
+        ),
+      ),
+    )
   }
 
-  async function disablePush() {
+  function disablePush() {
     const token = auth.session?.token
     if (!token) return
 
-    try {
-      const registration = await navigator.serviceWorker.getRegistration()
-      const subscription = await registration?.pushManager.getSubscription()
-      if (subscription) {
-        const json = subscription.toJSON()
-        if (json.endpoint && json.keys?.auth && json.keys?.p256dh) {
-          await unsubscribePush(token, {
-            endpoint: json.endpoint,
-            auth: json.keys.auth,
-            p256dh: json.keys.p256dh,
+    Effect.runFork(
+      Effect.gen(function*() {
+        const registration = yield* Effect.tryPromise({
+          try: () => navigator.serviceWorker.getRegistration(),
+          catch: (cause) => cause,
+        })
+        const subscription = registration
+          ? yield* Effect.tryPromise({
+              try: () => registration.pushManager.getSubscription(),
+              catch: (cause) => cause,
+            })
+          : null
+        if (subscription) {
+          const json = subscription.toJSON()
+          const endpoint = json.endpoint
+          const auth = json.keys?.auth
+          const p256dh = json.keys?.p256dh
+          if (endpoint && auth && p256dh) {
+            yield* unsubscribePushEffect(token, {
+              endpoint,
+              auth,
+              p256dh,
+            })
+          }
+          yield* Effect.tryPromise({
+            try: () => subscription.unsubscribe(),
+            catch: (cause) => cause,
           })
         }
-        await subscription.unsubscribe()
-      }
-      toast.success('Push отключён')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось отключить',
-      )
-    }
+        yield* Effect.sync(() => {
+          toast.success('Push отключён')
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось отключить',
+            )
+          }),
+        ),
+      ),
+    )
   }
 
   if (layout === 'settings') {
@@ -157,7 +222,7 @@ export function NotificationSettings({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void enableDesktop()}
+              onClick={enableDesktop}
             >
               Разрешить
             </Button>
@@ -171,14 +236,14 @@ export function NotificationSettings({
               hint="Работают, когда вкладка закрыта, через service worker."
             >
               <div className="flex items-center gap-2">
-                <Button type="button" size="sm" onClick={() => void enablePush()}>
+                <Button type="button" size="sm" onClick={enablePush}>
                   Включить
                 </Button>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => void disablePush()}
+                  onClick={disablePush}
                 >
                   Отключить
                 </Button>
@@ -192,18 +257,18 @@ export function NotificationSettings({
 
   const actions = (
     <div className="flex flex-col gap-2">
-      <Button type="button" variant="outline" onClick={() => void enableDesktop()}>
+      <Button type="button" variant="outline" onClick={enableDesktop}>
         Разрешить уведомления в браузере
       </Button>
       {pushReady && vapidKey ? (
         <>
-          <Button type="button" onClick={() => void enablePush()}>
+          <Button type="button" onClick={enablePush}>
             Включить push (фон)
           </Button>
           <Button
             type="button"
             variant="ghost"
-            onClick={() => void disablePush()}
+            onClick={disablePush}
           >
             Отключить push
           </Button>

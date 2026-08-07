@@ -1,4 +1,5 @@
 import type { Room } from 'livekit-client'
+import { Effect, Schedule, Schema } from 'effect'
 
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
 import {
@@ -16,7 +17,14 @@ function screenShareBitrateFloor(maxBitrate: number) {
   return maxBitrate
 }
 
-export async function clampScreenShareCaptureResolution(
+class ScreenShareSenderUnavailable extends Schema.TaggedErrorClass<ScreenShareSenderUnavailable>()(
+  'ScreenShareSenderUnavailable',
+  {},
+) {}
+
+const clampScreenShareCaptureResolutionEffect = Effect.fn(
+  'screenShare.clampCaptureResolution',
+)(function*(
   track: MediaStreamTrack,
   limits: {
     maxWidth: number
@@ -44,14 +52,28 @@ export async function clampScreenShareCaptureResolution(
 
   if (Object.keys(constraints).length === 0) return
 
-  try {
-    await track.applyConstraints(constraints)
-  } catch {
-    // Best effort: Chromium may ignore downscale on some capture paths.
-  }
+  yield* Effect.tryPromise({
+    try: () => track.applyConstraints(constraints),
+    catch: (cause) => cause,
+  }).pipe(Effect.catch(() => Effect.void))
+})
+
+export function clampScreenShareCaptureResolution(
+  track: MediaStreamTrack,
+  limits: {
+    maxWidth: number
+    maxHeight: number
+    frameRate?: number
+  },
+) {
+  return Effect.runPromise(
+    clampScreenShareCaptureResolutionEffect(track, limits),
+  )
 }
 
-async function applyScreenShareSenderBitrate(
+const applyScreenShareSenderBitrate = Effect.fn(
+  'screenShare.applySenderBitrate',
+)(function*(
   room: Room,
   mediaStreamTrack: MediaStreamTrack,
   encoding: ScreenShareEncoding,
@@ -62,11 +84,12 @@ async function applyScreenShareSenderBitrate(
   const publisher = getVoicePeerConnectionEntries(room).find(
     (entry) => entry.role === 'publisher',
   )
-  if (!publisher) return
+  const senders = publisher?.pc.getSenders?.()
+  if (!senders) return
 
-  const sender = publisher.pc
-    .getSenders()
-    .find((candidate) => candidate.track?.id === mediaStreamTrack.id)
+  const sender = senders.find(
+    (candidate) => candidate.track?.id === mediaStreamTrack.id,
+  )
   if (!sender) return
 
   const params = sender.getParameters()
@@ -76,44 +99,55 @@ async function applyScreenShareSenderBitrate(
 
   const nextEncoding = params.encodings[0]
   nextEncoding.maxBitrate = maxBitrate
-  ;(nextEncoding as RTCRtpEncodingParameters & { minBitrate?: number }).minBitrate =
-    screenShareBitrateFloor(maxBitrate)
+  Reflect.set(
+    nextEncoding,
+    'minBitrate',
+    screenShareBitrateFloor(maxBitrate),
+  )
   if (encoding.maxFramerate != null) {
     nextEncoding.maxFramerate = encoding.maxFramerate
   }
 
-  try {
-    await sender.setParameters(params)
-  } catch {
-    // Sender may not be negotiated yet; caller can retry briefly.
-  }
-}
+  yield* Effect.tryPromise({
+    try: () => sender.setParameters(params),
+    catch: (cause) => cause,
+  }).pipe(Effect.catch(() => Effect.void))
+})
 
-async function waitForScreenShareSender(
+const waitForScreenShareSender = Effect.fn(
+  'screenShare.waitForSender',
+)(function*(
   room: Room,
   mediaStreamTrack: MediaStreamTrack,
   encoding: ScreenShareEncoding,
 ) {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  const findAndApply = Effect.gen(function*() {
     const publisher = getVoicePeerConnectionEntries(room).find(
       (entry) => entry.role === 'publisher',
     )
     const sender = publisher?.pc
-      .getSenders()
+      .getSenders?.()
       .find((candidate) => candidate.track?.id === mediaStreamTrack.id)
 
-    if (sender) {
-      await applyScreenShareSenderBitrate(room, mediaStreamTrack, encoding)
-      return
+    if (!sender) {
+      return yield* Effect.fail(new ScreenShareSenderUnavailable())
     }
 
-    await new Promise<void>((resolve) => {
-      window.setTimeout(resolve, 50)
-    })
-  }
-}
+    yield* applyScreenShareSenderBitrate(room, mediaStreamTrack, encoding)
+  })
 
-export async function tuneScreenShareAfterPublish(
+  yield* findAndApply.pipe(
+    Effect.retry({
+      times: 4,
+      schedule: Schedule.spaced(50),
+    }),
+    Effect.catch(() => Effect.void),
+  )
+})
+
+const tuneScreenShareAfterPublishEffect = Effect.fn(
+  'screenShare.tuneAfterPublish',
+)(function*(
   room: Room,
   mediaStreamTrack: MediaStreamTrack,
   quality: ScreenShareQualityName,
@@ -122,12 +156,28 @@ export async function tuneScreenShareAfterPublish(
   const capture = screenShareCaptureOptions(quality, limits)
   const resolution = capture.capture.resolution
 
-  await clampScreenShareCaptureResolution(mediaStreamTrack, {
+  yield* clampScreenShareCaptureResolutionEffect(mediaStreamTrack, {
     maxWidth: resolution.width,
     maxHeight: resolution.height,
     frameRate: resolution.frameRate,
   })
 
   const encoding = capture.publish.screenShareEncoding ?? {}
-  await waitForScreenShareSender(room, mediaStreamTrack, encoding)
+  yield* waitForScreenShareSender(room, mediaStreamTrack, encoding)
+})
+
+export function tuneScreenShareAfterPublish(
+  room: Room,
+  mediaStreamTrack: MediaStreamTrack,
+  quality: ScreenShareQualityName,
+  limits?: ScreenShareCaptureLimits,
+) {
+  return Effect.runPromise(
+    tuneScreenShareAfterPublishEffect(
+      room,
+      mediaStreamTrack,
+      quality,
+      limits,
+    ),
+  )
 }

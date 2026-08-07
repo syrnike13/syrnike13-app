@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import type { User } from '@syrnike13/api-types'
+import { Effect, Fiber } from 'effect'
 import { SearchIcon } from '#/components/icons'
 
 import { Input } from '#/components/ui/input'
@@ -65,29 +66,33 @@ export function ServerChannelSearchPopover({
       return
     }
 
-    let cancelled = false
-    const timer = window.setTimeout(() => {
-      setSearching(true)
-      void searchServerMessages(
-        token,
-        syncStore.getState(),
-        serverId,
-        trimmed,
-        auth.user?._id,
-      )
-        .then(({ hits: nextHits, users: foundUsers }) => {
-          if (cancelled) return
-          syncStore.upsertUsers(foundUsers)
-          setHits(nextHits)
-        })
-        .finally(() => {
-          if (!cancelled) setSearching(false)
-        })
-    }, 250)
+    const fiber = Effect.runFork(
+      Effect.sleep(250).pipe(
+        Effect.andThen(Effect.sync(() => setSearching(true))),
+        Effect.andThen(
+          searchServerMessages(
+            token,
+            syncStore.getState(),
+            serverId,
+            trimmed,
+            auth.user?._id,
+            {},
+          ),
+        ),
+        Effect.matchEffect({
+          onFailure: () => Effect.sync(() => setSearching(false)),
+          onSuccess: ({ hits: nextHits, users: foundUsers }) =>
+            Effect.sync(() => {
+              syncStore.upsertUsers(foundUsers)
+              setHits(nextHits)
+              setSearching(false)
+            }),
+        }),
+      ),
+    )
 
     return () => {
-      cancelled = true
-      window.clearTimeout(timer)
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [auth.user?._id, open, query, serverId, token])
 

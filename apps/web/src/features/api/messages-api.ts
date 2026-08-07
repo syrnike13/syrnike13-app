@@ -1,17 +1,25 @@
 import type {
-  BulkMessageResponse,
   DataEditMessage,
   DataMessageSearch,
   DataMessageSend,
   Message,
   User,
 } from '@syrnike13/api-types'
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Effect, Schema } from 'effect'
 
 import { encodeReactionId } from '#/lib/reactions'
 
-import { apiRequest } from '#/lib/api/client'
+import { apiRequestEffect } from '#/lib/api/client'
 
-export function normalizeMessagesResponse(response: BulkMessageResponse): {
+type MessagesResponse =
+  | Message[]
+  | {
+      messages: Message[]
+      users: User[]
+    }
+
+export function normalizeMessagesResponse(response: MessagesResponse): {
   messages: Message[]
   users: User[]
 } {
@@ -23,10 +31,9 @@ export function normalizeMessagesResponse(response: BulkMessageResponse): {
       users: [],
     }
   }
-  const payload = response as { messages?: Message[]; users?: User[] }
   return {
-    messages: payload.messages ?? [],
-    users: payload.users ?? [],
+    messages: [...response.messages],
+    users: [...response.users],
   }
 }
 
@@ -38,12 +45,20 @@ export type FetchChannelMessagesOptions = {
   before?: string
   /** Только закреплённые сообщения */
   pinned?: boolean
+  signal?: AbortSignal
 }
 
-export async function fetchChannelMessages(
+type FetchChannelMessagesEffectOptions = Omit<
+  FetchChannelMessagesOptions,
+  'signal'
+>
+
+export const fetchChannelMessagesEffect = Effect.fn(
+  'web.messages.fetchChannel',
+)(function*(
   token: string,
   channelId: string,
-  options: FetchChannelMessagesOptions = {},
+  options: FetchChannelMessagesEffectOptions = {},
 ) {
   const limit = options.limit ?? MESSAGE_PAGE_SIZE
   const query = new URLSearchParams({
@@ -60,8 +75,9 @@ export async function fetchChannelMessages(
     query.set('pinned', 'true')
   }
 
-  const response = await apiRequest<BulkMessageResponse>(
+  const response = yield* apiRequestEffect(
     `/channels/${channelId}/messages?${query}`,
+    ApiSchema.MessageQueryQuery200,
     { token },
   )
 
@@ -70,6 +86,18 @@ export async function fetchChannelMessages(
     messages: [...messages].sort((a, b) => a._id.localeCompare(b._id)),
     users,
   }
+})
+
+export function fetchChannelMessages(
+  token: string,
+  channelId: string,
+  options: FetchChannelMessagesOptions = {},
+) {
+  const { signal, ...effectOptions } = options
+  return Effect.runPromise(
+    fetchChannelMessagesEffect(token, channelId, effectOptions),
+    signal ? { signal } : undefined,
+  )
 }
 
 export type SendMessageInput = {
@@ -79,117 +107,199 @@ export type SendMessageInput = {
   replies?: Array<{ id: string; mention: boolean }>
 }
 
-export async function sendChannelMessage(
+export const sendChannelMessageEffect = Effect.fn('web.messages.send')(
+  function*(token: string, channelId: string, input: SendMessageInput) {
+    const body: DataMessageSend = {}
+
+    if (input.nonce) {
+      body.nonce = input.nonce
+    }
+
+    if (input.content?.trim()) {
+      body.content = input.content.trim()
+    }
+
+    if (input.attachments?.length) {
+      body.attachments = input.attachments
+    }
+
+    if (input.replies?.length) {
+      body.replies = input.replies
+    }
+
+    if (!body.content && !body.attachments?.length) {
+      return yield* Effect.fail(new Error('Пустое сообщение'))
+    }
+
+    return yield* apiRequestEffect(
+      `/channels/${channelId}/messages`,
+      ApiSchema.MessageSendMessageSend200,
+      {
+        method: 'POST',
+        token,
+        body,
+      },
+    )
+  },
+)
+
+export function sendChannelMessage(
   token: string,
   channelId: string,
   input: SendMessageInput,
+  signal?: AbortSignal,
 ) {
-  const body: DataMessageSend = {}
-
-  if (input.nonce) {
-    body.nonce = input.nonce
-  }
-
-  if (input.content?.trim()) {
-    body.content = input.content.trim()
-  }
-
-  if (input.attachments?.length) {
-    body.attachments = input.attachments
-  }
-
-  if (input.replies?.length) {
-    body.replies = input.replies
-  }
-
-  if (!body.content && !body.attachments?.length) {
-    throw new Error('Пустое сообщение')
-  }
-
-  return apiRequest<Message>(`/channels/${channelId}/messages`, {
-    method: 'POST',
-    token,
-    body,
-  })
+  return Effect.runPromise(
+    sendChannelMessageEffect(token, channelId, input),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function searchChannelMessages(
+export const searchChannelMessagesEffect = Effect.fn('web.messages.search')(
+  function*(
+    token: string,
+    channelId: string,
+    query: string,
+    limit = 25,
+  ) {
+    const body: DataMessageSearch = {
+      query,
+      limit,
+      include_users: true,
+    }
+
+    const response = yield* apiRequestEffect(
+      `/channels/${channelId}/search`,
+      ApiSchema.MessageSearchSearch200,
+      {
+        method: 'POST',
+        token,
+        body,
+      },
+    )
+
+    return normalizeMessagesResponse(response)
+  },
+)
+
+export function searchChannelMessages(
   token: string,
   channelId: string,
   query: string,
   limit = 25,
+  signal?: AbortSignal,
 ) {
-  const body: DataMessageSearch = {
-    query,
-    limit,
-    include_users: true,
-  }
-
-  const response = await apiRequest<BulkMessageResponse>(
-    `/channels/${channelId}/search`,
-    {
-      method: 'POST',
-      token,
-      body,
-    },
+  return Effect.runPromise(
+    searchChannelMessagesEffect(token, channelId, query, limit),
+    signal ? { signal } : undefined,
   )
-
-  return normalizeMessagesResponse(response)
 }
 
-export async function editChannelMessage(
+export const editChannelMessageEffect = Effect.fn('web.messages.edit')(
+  function*(
+    token: string,
+    channelId: string,
+    messageId: string,
+    content: string,
+  ) {
+    const body: DataEditMessage = { content: content.trim() }
+
+    return yield* apiRequestEffect(
+      `/channels/${channelId}/messages/${messageId}`,
+      ApiSchema.MessageEditEdit200,
+      { method: 'PATCH', token, body },
+    )
+  },
+)
+
+export function editChannelMessage(
   token: string,
   channelId: string,
   messageId: string,
   content: string,
+  signal?: AbortSignal,
 ) {
-  const body: DataEditMessage = { content: content.trim() }
-
-  return apiRequest<Message>(
-    `/channels/${channelId}/messages/${messageId}`,
-    { method: 'PATCH', token, body },
+  return Effect.runPromise(
+    editChannelMessageEffect(token, channelId, messageId, content),
+    signal ? { signal } : undefined,
   )
 }
 
-export async function deleteChannelMessage(
+export const deleteChannelMessageEffect = Effect.fn('web.messages.delete')(
+  function*(token: string, channelId: string, messageId: string) {
+    return yield* apiRequestEffect(
+      `/channels/${channelId}/messages/${messageId}`,
+      Schema.Void,
+      { method: 'DELETE', token },
+    )
+  },
+)
+
+export function deleteChannelMessage(
   token: string,
   channelId: string,
   messageId: string,
+  signal?: AbortSignal,
 ) {
-  return apiRequest<void>(
-    `/channels/${channelId}/messages/${messageId}`,
-    { method: 'DELETE', token },
+  return Effect.runPromise(
+    deleteChannelMessageEffect(token, channelId, messageId),
+    signal ? { signal } : undefined,
   )
 }
 
-export async function reactToMessage(
+export const reactToMessageEffect = Effect.fn('web.messages.react')(
+  function*(
+    token: string,
+    channelId: string,
+    messageId: string,
+    emoji: string,
+  ) {
+    return yield* apiRequestEffect(
+      `/channels/${channelId}/messages/${messageId}/reactions/${encodeReactionId(emoji)}`,
+      Schema.Void,
+      { method: 'PUT', token },
+    )
+  },
+)
+
+export function reactToMessage(
   token: string,
   channelId: string,
   messageId: string,
   emoji: string,
+  signal?: AbortSignal,
 ) {
-  return apiRequest(
-    `/channels/${channelId}/messages/${messageId}/reactions/${encodeReactionId(emoji)}`,
-    { method: 'PUT', token },
+  return Effect.runPromise(
+    reactToMessageEffect(token, channelId, messageId, emoji),
+    signal ? { signal } : undefined,
   )
 }
 
-export async function fetchChannelMessage(
+export const fetchChannelMessageEffect = Effect.fn('web.messages.fetchOne')(
+  function*(token: string, channelId: string, messageId: string) {
+    return yield* apiRequestEffect(
+      `/channels/${channelId}/messages/${messageId}`,
+      ApiSchema.MessageFetchFetch200,
+      { token },
+    )
+  },
+)
+
+export function fetchChannelMessage(
   token: string,
   channelId: string,
   messageId: string,
+  signal?: AbortSignal,
 ) {
-  return apiRequest<Message>(
-    `/channels/${channelId}/messages/${messageId}`,
-    { token },
+  return Effect.runPromise(
+    fetchChannelMessageEffect(token, channelId, messageId),
+    signal ? { signal } : undefined,
   )
 }
 
-export async function fetchPinnedMessages(
-  token: string,
-  channelId: string,
-  limit = 50,
-) {
+export const fetchPinnedMessagesEffect = Effect.fn(
+  'web.messages.fetchPinned',
+)(function*(token: string, channelId: string, limit = 50) {
   const body: DataMessageSearch = {
     pinned: true,
     limit,
@@ -197,8 +307,9 @@ export async function fetchPinnedMessages(
     include_users: true,
   }
 
-  const response = await apiRequest<BulkMessageResponse>(
+  const response = yield* apiRequestEffect(
     `/channels/${channelId}/search`,
+    ApiSchema.MessageSearchSearch200,
     {
       method: 'POST',
       token,
@@ -213,38 +324,88 @@ export async function fetchPinnedMessages(
     ),
     users,
   }
-}
+})
 
-export async function pinChannelMessage(
+export function fetchPinnedMessages(
   token: string,
   channelId: string,
-  messageId: string,
+  limit = 50,
+  signal?: AbortSignal,
 ) {
-  return apiRequest<void>(
-    `/channels/${channelId}/messages/${messageId}/pin`,
-    { method: 'POST', token },
+  return Effect.runPromise(
+    fetchPinnedMessagesEffect(token, channelId, limit),
+    signal ? { signal } : undefined,
   )
 }
 
-export async function unpinChannelMessage(
+export const pinChannelMessageEffect = Effect.fn('web.messages.pin')(
+  function*(token: string, channelId: string, messageId: string) {
+    return yield* apiRequestEffect(
+      `/channels/${channelId}/messages/${messageId}/pin`,
+      Schema.Void,
+      { method: 'POST', token },
+    )
+  },
+)
+
+export function pinChannelMessage(
   token: string,
   channelId: string,
   messageId: string,
+  signal?: AbortSignal,
 ) {
-  return apiRequest<void>(
-    `/channels/${channelId}/messages/${messageId}/pin`,
-    { method: 'DELETE', token },
+  return Effect.runPromise(
+    pinChannelMessageEffect(token, channelId, messageId),
+    signal ? { signal } : undefined,
   )
 }
 
-export async function unreactFromMessage(
+export const unpinChannelMessageEffect = Effect.fn('web.messages.unpin')(
+  function*(token: string, channelId: string, messageId: string) {
+    return yield* apiRequestEffect(
+      `/channels/${channelId}/messages/${messageId}/pin`,
+      Schema.Void,
+      { method: 'DELETE', token },
+    )
+  },
+)
+
+export function unpinChannelMessage(
+  token: string,
+  channelId: string,
+  messageId: string,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    unpinChannelMessageEffect(token, channelId, messageId),
+    signal ? { signal } : undefined,
+  )
+}
+
+export const unreactFromMessageEffect = Effect.fn('web.messages.unreact')(
+  function*(
+    token: string,
+    channelId: string,
+    messageId: string,
+    emoji: string,
+  ) {
+    return yield* apiRequestEffect(
+      `/channels/${channelId}/messages/${messageId}/reactions/${encodeReactionId(emoji)}`,
+      Schema.Void,
+      { method: 'DELETE', token },
+    )
+  },
+)
+
+export function unreactFromMessage(
   token: string,
   channelId: string,
   messageId: string,
   emoji: string,
+  signal?: AbortSignal,
 ) {
-  return apiRequest(
-    `/channels/${channelId}/messages/${messageId}/reactions/${encodeReactionId(emoji)}`,
-    { method: 'DELETE', token },
+  return Effect.runPromise(
+    unreactFromMessageEffect(token, channelId, messageId, emoji),
+    signal ? { signal } : undefined,
   )
 }

@@ -1,32 +1,60 @@
 import { useEffect } from 'react'
-import type { Member, MemberResponse } from '@syrnike13/api-types'
+import type { Member, Role } from '@syrnike13/api-types'
+import { Effect, Fiber } from 'effect'
 
-import { fetchServerMember } from '#/features/api/servers-api'
+import { fetchServerMemberEffect } from '#/features/api/servers-api'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 
-const inFlight = new Map<string, Promise<Member | undefined>>()
+const inFlight = new Map<
+  string,
+  {
+    readonly id: symbol
+    readonly fiber: Fiber.Fiber<Member | undefined, never>
+  }
+>()
 
-function responseMember(response: MemberResponse): Member | undefined {
-  if (response.member) return response.member
-  if (response._id && response.joined_at) return response as Member
-  return undefined
+type ServerMemberResponse =
+  | Member
+  | {
+      member: Member
+      roles: Record<string, Role>
+    }
+
+function responseMember(response: ServerMemberResponse): Member {
+  return 'member' in response ? response.member : response
 }
 
-function loadServerMember(token: string, serverId: string, userId: string) {
-  const key = `${token}:${serverId}:${userId}`
-  const existing = inFlight.get(key)
-  if (existing) return existing
+const loadServerMember = Effect.fn('sync.loadServerMember')(
+  function*(token: string, serverId: string, userId: string) {
+    const key = `${token}:${serverId}:${userId}`
+    const existing = inFlight.get(key)
+    if (existing) return yield* Fiber.join(existing.fiber)
 
-  const promise = fetchServerMember(token, serverId, userId)
-    .then(responseMember)
-    .catch(() => undefined)
-    .finally(() => {
-      inFlight.delete(key)
-    })
+    const id = Symbol(key)
+    const fiber = Effect.runFork(
+      Effect.gen(function*() {
+        yield* Effect.yieldNow
+        return yield* fetchServerMemberEffect(
+          token,
+          serverId,
+          userId,
+        ).pipe(
+          Effect.map(responseMember),
+          Effect.catch(() => Effect.succeed(undefined)),
+        )
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (inFlight.get(key)?.id === id) inFlight.delete(key)
+          }),
+        ),
+      ),
+    )
 
-  inFlight.set(key, promise)
-  return promise
-}
+    inFlight.set(key, { id, fiber })
+    return yield* Fiber.join(fiber)
+  },
+)
 
 export function useMutualServerMembersSync(
   userId: string,
@@ -39,20 +67,28 @@ export function useMutualServerMembersSync(
   useEffect(() => {
     if (!enabled || !token || !currentUserId || userId === currentUserId) return
 
-    let cancelled = false
     const state = syncStore.getState()
-
-    for (const serverId of Object.keys(servers)) {
-      if (state.members[`${serverId}:${userId}`]) continue
-
-      void loadServerMember(token, serverId, userId).then((member) => {
-        if (cancelled || !member) return
-        syncStore.upsertMembers([member])
-      })
-    }
+    const fiber = Effect.runFork(
+      Effect.all(
+        Object.keys(servers).flatMap((serverId) => {
+          if (state.members[`${serverId}:${userId}`]) return []
+          return [
+            loadServerMember(token, serverId, userId).pipe(
+              Effect.flatMap((member) =>
+                member
+                  ? Effect.sync(() => syncStore.upsertMembers([member]))
+                  : Effect.void,
+              ),
+              Effect.catch(() => Effect.void),
+            ),
+          ]
+        }),
+        { concurrency: 'unbounded' },
+      ),
+    )
 
     return () => {
-      cancelled = true
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [currentUserId, enabled, servers, token, userId])
 }

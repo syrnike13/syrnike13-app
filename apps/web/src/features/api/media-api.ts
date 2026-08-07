@@ -1,4 +1,5 @@
 import { config } from '#/lib/config'
+import { Cause, Effect, Option, Schema } from 'effect'
 
 export type UploadProgressHandler = (progress: number) => void
 
@@ -7,71 +8,159 @@ export type UploadAttachmentOptions = {
   signal?: AbortSignal
 }
 
+const UploadResponseSchema = Schema.Struct({
+  id: Schema.String.check(Schema.isMinLength(1)),
+})
+
+type UploadRequestOptions = {
+  token: string
+  file: File
+  endpoint: string
+  failureMessage: string
+  networkFailureMessage?: string
+  onProgress?: UploadProgressHandler
+  clampProgress?: boolean
+}
+
+const uploadFile = Effect.fn('media.uploadFile')(
+  function*(options: UploadRequestOptions) {
+    return yield* Effect.callback<string, Error>((resume) => {
+      const body = new FormData()
+      body.set('file', options.file)
+
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${config.mediaUrl}/${options.endpoint}`, true)
+      xhr.setRequestHeader('X-Session-Token', options.token)
+      xhr.responseType = 'json'
+
+      let settled = false
+      const settle = (result: Effect.Effect<string, Error>) => {
+        if (settled) return
+        settled = true
+        resume(result)
+      }
+      const rejectAbort = () =>
+        settle(
+          Effect.fail(new DOMException('Загрузка отменена', 'AbortError')),
+        )
+      const handleProgress = (event: ProgressEvent) => {
+        if (!event.lengthComputable || event.total <= 0) return
+        const progress = event.loaded / event.total
+        options.onProgress?.(
+          options.clampProgress
+            ? Math.min(1, Math.max(0, progress))
+            : progress,
+        )
+      }
+      const handleLoadEnd = () => {
+        if (xhr.readyState === 4 && xhr.status >= 200 && xhr.status < 300) {
+          const decoded = Schema.decodeUnknownOption(UploadResponseSchema)(
+            xhr.response,
+          )
+          if (Option.isSome(decoded)) {
+            settle(Effect.succeed(decoded.value.id))
+            return
+          }
+        }
+        settle(Effect.fail(new Error(options.failureMessage)))
+      }
+      const handleNetworkError = () =>
+        settle(
+          Effect.fail(
+            new Error(
+              options.networkFailureMessage ?? 'Ошибка сети при загрузке',
+            ),
+          ),
+        )
+
+      xhr.upload.addEventListener('progress', handleProgress)
+      xhr.addEventListener('loadend', handleLoadEnd)
+      xhr.addEventListener('error', handleNetworkError)
+      xhr.addEventListener('abort', rejectAbort)
+
+      xhr.send(body)
+
+      return Effect.sync(() => {
+        if (!settled) {
+          settled = true
+          xhr.abort()
+        }
+      })
+    })
+  },
+)
+
+function abortUpload(signal: AbortSignal) {
+  return Effect.callback<never, DOMException>((resume) => {
+    const onAbort = () =>
+      resume(Effect.fail(new DOMException('Загрузка отменена', 'AbortError')))
+    if (signal.aborted) {
+      onAbort()
+      return
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    return Effect.sync(() => signal.removeEventListener('abort', onAbort))
+  })
+}
+
+function interruptibleUpload(
+  effect: Effect.Effect<string, Error>,
+  signal?: AbortSignal,
+) {
+  return signal ? effect.pipe(Effect.raceFirst(abortUpload(signal))) : effect
+}
+
+function runUpload(
+  effect: Effect.Effect<string, Error>,
+  signal?: AbortSignal,
+) {
+  const interruptAsAbort = Effect.uninterruptibleMask((restore) =>
+    restore(effect).pipe(
+      Effect.catchCause((cause) =>
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.fail(new DOMException('Загрузка отменена', 'AbortError'))
+          : Effect.fail(Cause.squash(cause)),
+      ),
+    ),
+  )
+  return Effect.runPromise(
+    interruptAsAbort,
+    signal ? { signal } : undefined,
+  )
+}
+
+export const uploadAttachmentEffect = Effect.fn('media.uploadAttachment')(
+  function*(
+    token: string,
+    file: File,
+    options: UploadAttachmentOptions = {},
+  ) {
+    return yield* interruptibleUpload(
+      uploadFile({
+        token,
+        file,
+        endpoint: 'attachments',
+        failureMessage: 'Не удалось загрузить файл',
+        onProgress: options.onProgress,
+        clampProgress: true,
+      }),
+      options.signal,
+    )
+  },
+)
+
 export function uploadAttachment(
   token: string,
   file: File,
   options: UploadAttachmentOptions = {},
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const body = new FormData()
-    body.set('file', file)
-
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', `${config.mediaUrl}/attachments`, true)
-    xhr.setRequestHeader('X-Session-Token', token)
-    xhr.responseType = 'json'
-
-    let settled = false
-    const settle = (result: { id: string } | { error: Error }) => {
-      if (settled) return
-      settled = true
-      options.signal?.removeEventListener('abort', handleSignalAbort)
-
-      if ('id' in result) {
-        resolve(result.id)
-      } else {
-        reject(result.error)
-      }
-    }
-    const rejectAbort = () =>
-      settle({ error: new DOMException('Загрузка отменена', 'AbortError') })
-    const handleSignalAbort = () => {
-      xhr.abort()
-      rejectAbort()
-    }
-
-    xhr.upload.addEventListener('progress', (event) => {
-      if (event.lengthComputable && event.total > 0) {
-        options.onProgress?.(
-          Math.min(1, Math.max(0, event.loaded / event.total)),
-        )
-      }
-    })
-
-    xhr.addEventListener('load', () => {
-      if (xhr.readyState === 4 && xhr.status >= 200 && xhr.status < 300) {
-        const response = xhr.response as { id?: string }
-        if (response?.id) {
-          settle({ id: response.id })
-          return
-        }
-      }
-      settle({ error: new Error('Не удалось загрузить файл') })
-    })
-
-    xhr.addEventListener('error', () => {
-      settle({ error: new Error('Ошибка сети при загрузке') })
-    })
-    xhr.addEventListener('abort', rejectAbort)
-
-    if (options.signal?.aborted) {
-      rejectAbort()
-      return
-    }
-
-    options.signal?.addEventListener('abort', handleSignalAbort, { once: true })
-    xhr.send(body)
+  const effect = uploadAttachmentEffect(token, file, {
+    onProgress: options.onProgress,
   })
+  return runUpload(
+    effect,
+    options.signal,
+  )
 }
 
 export type MediaUploadTag =
@@ -81,71 +170,51 @@ export type MediaUploadTag =
   | 'banners'
   | 'badges'
 
+export const uploadMediaFileEffect = Effect.fn('media.uploadMediaFile')(
+  function*(
+    token: string,
+    tag: MediaUploadTag,
+    file: File,
+    onProgress?: UploadProgressHandler,
+  ) {
+    return yield* uploadFile({
+      token,
+      file,
+      endpoint: tag,
+      failureMessage: 'Не удалось загрузить файл',
+      onProgress,
+    })
+  },
+)
+
 export function uploadMediaFile(
   token: string,
   tag: MediaUploadTag,
   file: File,
   onProgress?: UploadProgressHandler,
+  signal?: AbortSignal,
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const body = new FormData()
-    body.set('file', file)
-
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', `${config.mediaUrl}/${tag}`, true)
-    xhr.setRequestHeader('X-Session-Token', token)
-    xhr.responseType = 'json'
-
-    xhr.upload.addEventListener('progress', (event) => {
-      if (event.lengthComputable && onProgress) {
-        onProgress(event.loaded / event.total)
-      }
-    })
-
-    xhr.addEventListener('loadend', () => {
-      if (xhr.readyState === 4 && xhr.status >= 200 && xhr.status < 300) {
-        const response = xhr.response as { id?: string }
-        if (response?.id) {
-          resolve(response.id)
-          return
-        }
-      }
-      reject(new Error('Не удалось загрузить файл'))
-    })
-
-    xhr.addEventListener('error', () => {
-      reject(new Error('Ошибка сети при загрузке'))
-    })
-
-    xhr.send(body)
-  })
+  return runUpload(
+    uploadMediaFileEffect(token, tag, file, onProgress),
+    signal,
+  )
 }
 
-export function uploadEmoji(token: string, file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const body = new FormData()
-    body.set('file', file)
-
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', `${config.mediaUrl}/emojis`, true)
-    xhr.setRequestHeader('X-Session-Token', token)
-    xhr.responseType = 'json'
-
-    xhr.addEventListener('loadend', () => {
-      if (xhr.readyState === 4 && xhr.status >= 200 && xhr.status < 300) {
-        const response = xhr.response as { id?: string }
-        if (response?.id) {
-          resolve(response.id)
-          return
-        }
-      }
-      reject(new Error('Не удалось загрузить emoji'))
+export const uploadEmojiEffect = Effect.fn('media.uploadEmoji')(
+  function*(token: string, file: File) {
+    return yield* uploadFile({
+      token,
+      file,
+      endpoint: 'emojis',
+      failureMessage: 'Не удалось загрузить emoji',
     })
+  },
+)
 
-    xhr.addEventListener('error', () => {
-      reject(new Error('Ошибка сети при загрузке'))
-    })
-
-    xhr.send(body)
-  })
+export function uploadEmoji(
+  token: string,
+  file: File,
+  signal?: AbortSignal,
+): Promise<string> {
+  return runUpload(uploadEmojiEffect(token, file), signal)
 }

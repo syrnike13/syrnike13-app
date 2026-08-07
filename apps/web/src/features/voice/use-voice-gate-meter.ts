@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { Effect, Fiber } from 'effect'
 
 import { voiceAudioProcessingConstraints } from '#/features/voice/voice-capture'
 import { resolveVoiceGateStageOptions } from '#/features/voice/voice-gate-session'
@@ -100,57 +101,105 @@ export function useVoiceGateMeter(
       })
     }
 
-    let cancelled = false
-    let context: AudioContext | null = null
-    let stream: MediaStream | null = null
-
-    const startGateOnTrack = async (
-      track: MediaStreamTrack,
-    ) => {
-      context = new AudioContext()
-      const gate = new VoiceGateStage(prefsRef.current.voiceGateThresholdDb)
-      gateRef.current = gate
-      gate.start(context, track, {
-        ...resolveVoiceGateStageOptions(prefsRef.current),
-        onMetrics: (next) => {
-          if (!cancelled) {
-            outputRef.current = next
-          }
-        },
-      })
-      await context.resume()
-    }
-
-    void (async () => {
-      try {
-        const captureConstraints = voiceAudioProcessingConstraints(prefsRef.current)
-        stream = await navigator.mediaDevices.getUserMedia({
+    let acceptUpdates = true
+    const captureConstraints = voiceAudioProcessingConstraints(prefsRef.current)
+    const acquireStream = Effect.callback<MediaStream, unknown>((resume) => {
+      let interrupted = false
+      void navigator.mediaDevices
+        .getUserMedia({
           audio: {
             ...captureConstraints,
             deviceId: inputDeviceId ? { exact: inputDeviceId } : undefined,
           },
         })
-
-        const track = stream.getAudioTracks()[0]
-        if (!track) {
-          throw new Error('Microphone track is unavailable')
-        }
-
-        await startGateOnTrack(track)
-      } catch (error) {
-        if (!cancelled) {
-          outputRef.current = DEFAULT_METRICS
-        }
-      }
-    })()
+        .then(
+          (stream) => {
+            if (interrupted) {
+              stream.getTracks().forEach((track) => track.stop())
+              return
+            }
+            resume(Effect.succeed(stream))
+          },
+          (cause) => {
+            if (!interrupted) resume(Effect.fail(cause))
+          },
+        )
+      return Effect.sync(() => {
+        interrupted = true
+      })
+    })
+    const fiber = Effect.runFork(
+      Effect.scoped(
+        Effect.gen(function*() {
+          const stream = yield* Effect.acquireRelease(
+            acquireStream,
+            (acquiredStream) =>
+              Effect.sync(() => {
+                acquiredStream.getTracks().forEach((track) => track.stop())
+              }),
+          )
+          const track = stream.getAudioTracks()[0]
+          if (!track) {
+            return yield* Effect.fail(
+              new Error('Microphone track is unavailable'),
+            )
+          }
+          const context = yield* Effect.acquireRelease(
+            Effect.try({
+              try: () => new AudioContext(),
+              catch: (cause) => cause,
+            }),
+            (acquiredContext) =>
+              Effect.tryPromise({
+                try: () => acquiredContext.close(),
+                catch: (cause) => cause,
+              }).pipe(Effect.ignore),
+          )
+          yield* Effect.acquireRelease(
+            Effect.try({
+              try: () => {
+                const gate = new VoiceGateStage(
+                  prefsRef.current.voiceGateThresholdDb,
+                )
+                gate.start(context, track, {
+                  ...resolveVoiceGateStageOptions(prefsRef.current),
+                  onMetrics: (next) => {
+                    if (acceptUpdates) {
+                      outputRef.current = next
+                    }
+                  },
+                })
+                gateRef.current = gate
+                return gate
+              },
+              catch: (cause) => cause,
+            }),
+            (gate) =>
+              Effect.sync(() => {
+                gate.destroy()
+                if (gateRef.current === gate) gateRef.current = null
+              }),
+          )
+          yield* Effect.tryPromise({
+            try: () => context.resume(),
+            catch: (cause) => cause,
+          })
+          yield* Effect.never
+        }),
+      ).pipe(
+        Effect.catch(() =>
+          Effect.sync(() => {
+            if (acceptUpdates) outputRef.current = DEFAULT_METRICS
+          }),
+        ),
+      ),
+    )
 
     return () => {
-      cancelled = true
-      gateRef.current?.destroy()
+      acceptUpdates = false
       gateRef.current = null
-      stream?.getTracks().forEach((track) => track.stop())
-      void context?.close()
       outputRef.current = DEFAULT_METRICS
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [
     active,

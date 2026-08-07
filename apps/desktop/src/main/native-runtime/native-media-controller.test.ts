@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 import type { MediaRuntimeCommand, MediaRuntimeEvent } from './contract'
 import { NativeMediaController } from './native-media-controller'
@@ -41,6 +42,7 @@ function createHarness(remoteVideoFirstFrameTimeoutMs?: number) {
   })
   const retry = vi.fn(async () => snapshot.ready)
   const shutdown = vi.fn(async () => undefined)
+  const start = vi.fn(async () => snapshot.ready)
   const diagnostics = vi.fn()
   const supervisor = {
     onEvent(listener: (event: MediaRuntimeEvent) => void) {
@@ -54,10 +56,30 @@ function createHarness(remoteVideoFirstFrameTimeoutMs?: number) {
       return () => undefined
     },
     getSnapshot: () => snapshot,
-    start: vi.fn(async () => snapshot.ready),
+    start,
+    startEffect: () =>
+      Effect.tryPromise({
+        try: start,
+        catch: (cause) => cause,
+      }),
     retry,
+    retryEffect: () =>
+      Effect.tryPromise({
+        try: retry,
+        catch: (cause) => cause,
+      }),
     request,
+    requestEffect: (command: MediaRuntimeCommand, timeoutMs: number) =>
+      Effect.tryPromise({
+        try: () => request(command, timeoutMs),
+        catch: (cause) => cause,
+      }),
     shutdown,
+    shutdownEffect: () =>
+      Effect.tryPromise({
+        try: shutdown,
+        catch: (cause) => cause,
+      }),
   } as unknown as NativeRuntimeSupervisor
   const controller = new NativeMediaController({
     supervisor,

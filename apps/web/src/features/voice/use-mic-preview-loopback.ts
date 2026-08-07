@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
+import { Deferred, Effect, Fiber } from 'effect'
 
 import {
   MIC_PREVIEW_METER_BAR_COUNT,
-  startMicPreview,
+  startMicPreviewEffect,
   type MicPreviewPreferences,
   type MicPreviewSession,
 } from '#/features/voice/voice-mic-preview'
@@ -69,57 +70,76 @@ export function useMicPreviewLoopback(
       return
     }
 
-    let cancelled = false
-    let runtimeEnded = false
-
-    void (async () => {
-      try {
-        const session = await startMicPreview({
-          inputDeviceId,
-          outputDeviceId,
-          prefs: previewPrefs,
-          onLevels: (nextLevels) => {
-            if (!cancelled) {
-              setLevels([...nextLevels])
-            }
-          },
-          onGateMetrics: gateMetricsRef
-            ? (metrics) => {
-                gateMetricsRef.current = metrics
-              }
-            : undefined,
-          onEnded: () => {
-            runtimeEnded = true
-            if (!cancelled) {
-              sessionRef.current = null
-              processingPrefsRef.current = null
-              setLevels(
-                Array.from(
-                  { length: MIC_PREVIEW_METER_BAR_COUNT },
-                  () => 0,
-                ),
-              )
-            }
-          },
-        })
-        if (cancelled || runtimeEnded) {
-          session.stop()
-          return
+    let acceptUpdates = true
+    const ended = Deferred.makeUnsafe<void>()
+    const acquireSession = startMicPreviewEffect({
+      inputDeviceId,
+      outputDeviceId,
+      prefs: previewPrefs,
+      onLevels: (nextLevels) => {
+        if (acceptUpdates) {
+          setLevels([...nextLevels])
         }
-        sessionRef.current = session
-        processingPrefsRef.current = previewPrefs
-      } catch {
-        if (!cancelled) {
-          setLevels(Array.from({ length: MIC_PREVIEW_METER_BAR_COUNT }, () => 0))
-        }
-      }
-    })()
+      },
+      onGateMetrics: gateMetricsRef
+        ? (metrics) => {
+            gateMetricsRef.current = metrics
+          }
+        : undefined,
+      onEnded: () => {
+        Effect.runFork(Deferred.succeed(ended, undefined))
+      },
+    })
+    const fiber = Effect.runFork(
+      Effect.scoped(
+        Effect.gen(function*() {
+          const session = yield* Effect.acquireRelease(
+            acquireSession,
+            (acquiredSession) =>
+              Effect.sync(() => {
+                acquiredSession.stop()
+              }),
+          )
+          if (!acceptUpdates) return
+          yield* Effect.sync(() => {
+            sessionRef.current = session
+            processingPrefsRef.current = previewPrefs
+          })
+          yield* Deferred.await(ended)
+          yield* Effect.sync(() => {
+            if (!acceptUpdates || sessionRef.current !== session) return
+            sessionRef.current = null
+            processingPrefsRef.current = null
+            setLevels(
+              Array.from(
+                { length: MIC_PREVIEW_METER_BAR_COUNT },
+                () => 0,
+              ),
+            )
+          })
+        }),
+      ).pipe(
+        Effect.catch(() =>
+          Effect.sync(() => {
+            if (!acceptUpdates) return
+            sessionRef.current = null
+            processingPrefsRef.current = null
+            setLevels(
+              Array.from(
+                { length: MIC_PREVIEW_METER_BAR_COUNT },
+                () => 0,
+              ),
+            )
+          }),
+        ),
+      ),
+    )
 
     return () => {
-      cancelled = true
-      sessionRef.current?.stop()
+      acceptUpdates = false
       sessionRef.current = null
       processingPrefsRef.current = null
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [active, gateMetricsRef, inputDeviceId, outputDeviceId])
 
@@ -128,7 +148,7 @@ export function useMicPreviewLoopback(
     if (!active || !session) return
 
     session.setOutputVolume(prefs.outputVolume)
-    void session.setOutputDevice(outputDeviceId)
+    Effect.runFork(session.setOutputDeviceEffect(outputDeviceId))
   }, [active, outputDeviceId, prefs.outputVolume])
 
   useEffect(() => {
@@ -150,11 +170,22 @@ export function useMicPreviewLoopback(
       return
     }
 
-    void session.restartProcessing(previewPrefs).catch(() => {
-      session.stop()
-      sessionRef.current = null
-      setLevels(Array.from({ length: MIC_PREVIEW_METER_BAR_COUNT }, () => 0))
-    })
+    Effect.runFork(
+      session.restartProcessingEffect(previewPrefs).pipe(
+        Effect.catch(() =>
+          Effect.sync(() => {
+            session.stop()
+            sessionRef.current = null
+            setLevels(
+              Array.from(
+                { length: MIC_PREVIEW_METER_BAR_COUNT },
+                () => 0,
+              ),
+            )
+          }),
+        ),
+      ),
+    )
   }, [
     active,
     previewPrefs.bypassSystemAudioInputProcessing,

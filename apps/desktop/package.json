@@ -27,6 +27,7 @@
   "dependencies": {
     "@syrnike13/platform": "workspace:*",
     "@sentry/electron": "^7.15.0",
+    "effect": "4.0.0-beta.103",
     "electron-updater": "^6.6.2"
   },
   "devDependencies": {

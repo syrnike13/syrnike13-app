@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import type { Channel, Member, Server } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserContextMenuVoiceControls } from '#/components/user/user-context-menu-voice-controls'
@@ -34,7 +35,9 @@ vi.mock('#/components/icons', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
-  editServerMember: (...args: Parameters<typeof mocks.editServerMember>) =>
+  editServerMemberEffect: (
+    ...args: Parameters<typeof mocks.editServerMember>
+  ) =>
     mocks.editServerMember(...args),
 }))
 
@@ -165,20 +168,6 @@ function makeVoiceChannel(
   } as Channel
 }
 
-function makeLegacyVoiceChannel(id: string, name: string): Channel {
-  return {
-    _id: id,
-    channel_type: 'VoiceChannel',
-    server: 'server-1',
-    name,
-    default_permissions: {
-      a: ChannelPermission.ViewChannel,
-      d: ChannelPermission.Connect,
-    },
-    role_permissions: {},
-  } as unknown as Channel
-}
-
 const ACTOR_USER_ID = '01JVOICEACTOR00000001'
 const TARGET_USER_ID = '01JVOICETARGET0000001'
 const server = makeServer()
@@ -231,10 +220,12 @@ describe('UserContextMenuVoiceControls server moderation', () => {
   })
 
   it('server-mutes a voice participant through member edit', async () => {
-    mocks.editServerMember.mockResolvedValue({
-      ...makeMember(TARGET_USER_ID, ['member']),
-      can_publish: false,
-    })
+    mocks.editServerMember.mockReturnValue(
+      Effect.succeed({
+        ...makeMember(TARGET_USER_ID, ['member']),
+        can_publish: false,
+      }),
+    )
 
     renderControls()
 
@@ -254,10 +245,12 @@ describe('UserContextMenuVoiceControls server moderation', () => {
   })
 
   it('server-deafens a voice participant through member edit', async () => {
-    mocks.editServerMember.mockResolvedValue({
-      ...makeMember(TARGET_USER_ID, ['member']),
-      can_receive: false,
-    })
+    mocks.editServerMember.mockReturnValue(
+      Effect.succeed({
+        ...makeMember(TARGET_USER_ID, ['member']),
+        can_receive: false,
+      }),
+    )
 
     renderControls()
 
@@ -303,7 +296,9 @@ describe('UserContextMenuVoiceControls server moderation', () => {
   })
 
   it('disconnects a voice participant from the current voice channel', async () => {
-    mocks.editServerMember.mockResolvedValue(makeMember(TARGET_USER_ID, ['member']))
+    mocks.editServerMember.mockReturnValue(
+      Effect.succeed(makeMember(TARGET_USER_ID, ['member'])),
+    )
 
     renderControls()
 
@@ -330,10 +325,12 @@ describe('UserContextMenuVoiceControls server moderation', () => {
       temporary: true,
     }
     syncStore.upsertMembers([temporaryMember])
-    mocks.editServerMember.mockImplementation(async () => {
-      syncStore.removeServerMember('server-1', TARGET_USER_ID)
-      return temporaryMember
-    })
+    mocks.editServerMember.mockReturnValue(
+      Effect.sync(() => {
+        syncStore.removeServerMember('server-1', TARGET_USER_ID)
+        return temporaryMember
+      }),
+    )
 
     renderControls(temporaryMember)
 
@@ -361,10 +358,12 @@ describe('UserContextMenuVoiceControls server moderation', () => {
     }
     const updatedMember = { ...temporaryMember, can_publish: false }
     syncStore.upsertMembers([temporaryMember])
-    mocks.editServerMember.mockImplementation(async () => {
-      syncStore.removeServerMember('server-1', TARGET_USER_ID)
-      return updatedMember
-    })
+    mocks.editServerMember.mockReturnValue(
+      Effect.sync(() => {
+        syncStore.removeServerMember('server-1', TARGET_USER_ID)
+        return updatedMember
+      }),
+    )
 
     renderControls(temporaryMember)
 
@@ -390,7 +389,7 @@ describe('UserContextMenuVoiceControls server moderation', () => {
     }
     const updatedMember = { ...temporaryMember, can_publish: false }
     syncStore.upsertMembers([temporaryMember])
-    mocks.editServerMember.mockResolvedValue(updatedMember)
+    mocks.editServerMember.mockReturnValue(Effect.succeed(updatedMember))
 
     renderControls(temporaryMember)
 
@@ -404,8 +403,8 @@ describe('UserContextMenuVoiceControls server moderation', () => {
   })
 
   it('moves a voice participant to another voice channel', async () => {
-    mocks.editServerMember.mockResolvedValue(
-      makeMember(TARGET_USER_ID, ['member']),
+    mocks.editServerMember.mockReturnValue(
+      Effect.succeed(makeMember(TARGET_USER_ID, ['member'])),
     )
 
     renderControls()
@@ -444,16 +443,5 @@ describe('UserContextMenuVoiceControls server moderation', () => {
 
     expect(screen.getByRole('button', { name: 'Raid Room' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Locked Room' })).toBeTruthy()
-  })
-
-  it('shows legacy locked move targets to a moderator with MoveMembers', () => {
-    renderControls(makeMember(TARGET_USER_ID, ['member']), [
-      makeVoiceChannel('voice-1', 'Lobby'),
-      makeLegacyVoiceChannel('voice-legacy-locked', 'Legacy Locked Room'),
-    ])
-
-    expect(
-      screen.getByRole('button', { name: 'Legacy Locked Room' }),
-    ).toBeTruthy()
   })
 })

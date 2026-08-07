@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type { Channel, Webhook } from '@syrnike13/api-types'
+import { Effect, Fiber } from 'effect'
 import {
   CheckIcon,
   CopyIcon,
@@ -30,12 +31,12 @@ import {
 } from '#/components/ui/tooltip'
 import { useAuth } from '#/features/auth/auth-context'
 import {
-  createChannelWebhook,
-  deleteWebhook,
-  editWebhook,
-  fetchChannelWebhooks,
+  createChannelWebhookEffect,
+  deleteWebhookEffect,
+  editWebhookEffect,
+  fetchChannelWebhooksEffect,
 } from '#/features/api/channels-api'
-import { writeClipboardText } from '#/lib/clipboard'
+import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { config } from '#/lib/config'
 
 type TextChannel = Extract<Channel, { channel_type: 'TextChannel' }>
@@ -66,30 +67,31 @@ export function ChannelSettingsWebhooksPanel({
   useEffect(() => {
     if (!token) return
     const sessionToken = token
-    let active = true
 
-    async function loadWebhooks() {
-      setLoading(true)
-      try {
-        const nextWebhooks = await fetchChannelWebhooks(sessionToken, channel._id)
-        if (active) setWebhooks(nextWebhooks)
-      } catch (error) {
-        if (active) {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : 'Не удалось загрузить вебхуки',
-          )
-        }
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-
-    void loadWebhooks()
+    setLoading(true)
+    const fiber = Effect.runFork(
+      fetchChannelWebhooksEffect(sessionToken, channel._id).pipe(
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось загрузить вебхуки',
+              )
+              setLoading(false)
+            }),
+          onSuccess: (nextWebhooks) =>
+            Effect.sync(() => {
+              setWebhooks(nextWebhooks)
+              setLoading(false)
+            }),
+        }),
+      ),
+    )
 
     return () => {
-      active = false
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [channel._id, token])
 
@@ -108,20 +110,27 @@ export function ChannelSettingsWebhooksPanel({
     }
 
     setCreating(true)
-    try {
-      const webhook = await createChannelWebhook(token, channel._id, {
+    await Effect.runPromise(
+      createChannelWebhookEffect(token, channel._id, {
         name: trimmedName,
-      })
-      setWebhooks((current) => [webhook, ...current])
-      setName('')
-      toast.success('Вебхук создан')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось создать вебхук',
-      )
-    } finally {
-      setCreating(false)
-    }
+      }).pipe(
+        Effect.tap((webhook) =>
+          Effect.sync(() => {
+            setWebhooks((current) => [webhook, ...current])
+            setName('')
+            toast.success('Вебхук создан')
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось создать вебхук',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setCreating(false))),
+      ),
+    )
   }
 
   async function deleteSelectedWebhook() {
@@ -129,20 +138,29 @@ export function ChannelSettingsWebhooksPanel({
     if (!token || !webhook) return
 
     setDeletingId(webhook.id)
-    try {
-      await deleteWebhook(token, webhook.id)
-      setWebhooks((current) =>
-        current.filter((currentWebhook) => currentWebhook.id !== webhook.id),
-      )
-      setWebhookPendingDeletion(null)
-      toast.success('Вебхук удалён')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось удалить вебхук',
-      )
-    } finally {
-      setDeletingId(null)
-    }
+    await Effect.runPromise(
+      deleteWebhookEffect(token, webhook.id).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            setWebhooks((current) =>
+              current.filter(
+                (currentWebhook) => currentWebhook.id !== webhook.id,
+              ),
+            )
+            setWebhookPendingDeletion(null)
+            toast.success('Вебхук удалён')
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось удалить вебхук',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setDeletingId(null))),
+      ),
+    )
   }
 
   function beginRename(webhook: Webhook) {
@@ -173,44 +191,59 @@ export function ChannelSettingsWebhooksPanel({
     }
 
     setSavingId(webhook.id)
-    try {
-      const updatedWebhook = await editWebhook(token, webhook.id, {
-        name: trimmedName,
-      })
-      setWebhooks((current) =>
-        current.map((currentWebhook) =>
-          currentWebhook.id === webhook.id
-            ? {
-                ...currentWebhook,
-                ...updatedWebhook,
-                token: updatedWebhook.token ?? currentWebhook.token,
-              }
-            : currentWebhook,
+    await Effect.runPromise(
+      editWebhookEffect(token, webhook.id, { name: trimmedName }).pipe(
+        Effect.tap((updatedWebhook) =>
+          Effect.sync(() => {
+            setWebhooks((current) =>
+              current.map((currentWebhook) =>
+                currentWebhook.id === webhook.id
+                  ? {
+                      ...currentWebhook,
+                      ...updatedWebhook,
+                      token: updatedWebhook.token ?? currentWebhook.token,
+                    }
+                  : currentWebhook,
+              ),
+            )
+            cancelRename()
+            toast.success('Вебхук обновлён')
+          }),
         ),
-      )
-      cancelRename()
-      toast.success('Вебхук обновлён')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось обновить вебхук',
-      )
-    } finally {
-      setSavingId(null)
-    }
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось обновить вебхук',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setSavingId(null))),
+      ),
+    )
   }
 
   async function copyWebhookUrl(webhook: Webhook) {
     const url = buildWebhookUrl(webhook)
     if (!url) return
 
-    try {
-      await writeClipboardText(url)
-      toast.success('URL вебхука скопирован')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось скопировать URL',
-      )
-    }
+    await Effect.runPromise(
+      writeClipboardTextEffect(url).pipe(
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось скопировать URL',
+              )
+            }),
+          onSuccess: () =>
+            Effect.sync(() => toast.success('URL вебхука скопирован')),
+        }),
+      ),
+    )
   }
 
   return (

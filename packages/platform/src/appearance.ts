@@ -1,4 +1,12 @@
-export type AppearanceColorMode = 'light' | 'dark' | 'system'
+import { Option, Schema } from 'effect'
+
+export const AppearanceColorModeSchema = Schema.Literals([
+  'light',
+  'dark',
+  'system',
+])
+
+export type AppearanceColorMode = typeof AppearanceColorModeSchema.Type
 
 export const APPEARANCE_GRADIENT_MIN_COLORS = 1
 export const APPEARANCE_GRADIENT_MAX_COLORS = 5
@@ -9,12 +17,24 @@ export type AppearanceGradientSettings = {
   saturation: number
 }
 
+export const AppearanceGradientSettingsSchema = Schema.Struct({
+  colors: Schema.mutable(Schema.Array(Schema.String)),
+  angle: Schema.Finite,
+  saturation: Schema.Finite,
+})
+
 export type AppearanceSettings = {
   themeId: string
   colorMode: AppearanceColorMode
   /** `null` использует градиент выбранной палитры. */
   gradient: AppearanceGradientSettings | null
 }
+
+export const AppearanceSettingsSchema = Schema.Struct({
+  themeId: Schema.String,
+  colorMode: AppearanceColorModeSchema,
+  gradient: Schema.Union([AppearanceGradientSettingsSchema, Schema.Null]),
+})
 
 export const DEFAULT_THEME_ID = 'syrnike'
 
@@ -24,8 +44,11 @@ export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
   gradient: null,
 }
 
-const COLOR_MODES = new Set<AppearanceColorMode>(['light', 'dark', 'system'])
 const HEX_COLOR_PATTERN = /^#[0-9a-f]{6}$/i
+const UnknownAppearanceRecordSchema = Schema.Record(
+  Schema.String,
+  Schema.Unknown,
+)
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
@@ -46,9 +69,9 @@ function cloneGradient(
 export function normalizeAppearanceGradientSettings(
   value: unknown,
 ): AppearanceGradientSettings | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-
-  const gradient = value as Record<string, unknown>
+  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(value)
+  if (Option.isNone(decoded)) return null
+  const gradient = decoded.value
   if (!Array.isArray(gradient.colors)) return null
   const colors = gradient.colors
     .map(normalizeGradientColor)
@@ -71,19 +94,21 @@ export function normalizeAppearanceColorMode(
   value: unknown,
   fallback: AppearanceColorMode = DEFAULT_APPEARANCE_SETTINGS.colorMode,
 ): AppearanceColorMode {
-  return typeof value === 'string' && COLOR_MODES.has(value as AppearanceColorMode)
-    ? (value as AppearanceColorMode)
-    : fallback
+  return Option.getOrElse(
+    Schema.decodeUnknownOption(AppearanceColorModeSchema)(value),
+    () => fallback,
+  )
 }
 
 export function normalizeAppearanceSettings(
   value: unknown,
   defaults: AppearanceSettings = DEFAULT_APPEARANCE_SETTINGS,
 ): AppearanceSettings {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(value)
+  if (Option.isNone(decoded)) {
     return { ...defaults, gradient: cloneGradient(defaults.gradient) }
   }
-  const settings = value as Record<string, unknown>
+  const settings = decoded.value
   const themeId =
     typeof settings.themeId === 'string' && settings.themeId.trim().length > 0
       ? settings.themeId.trim()
@@ -104,10 +129,9 @@ export type AppearanceSettingsPatch = Partial<AppearanceSettings>
 export function normalizeAppearanceSettingsPatch(
   value: unknown,
 ): AppearanceSettingsPatch | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return undefined
-  }
-  const patch = value as Record<string, unknown>
+  const decoded = Schema.decodeUnknownOption(UnknownAppearanceRecordSchema)(value)
+  if (Option.isNone(decoded)) return undefined
+  const patch = decoded.value
   const next: AppearanceSettingsPatch = {}
   if (
     'themeId' in patch &&

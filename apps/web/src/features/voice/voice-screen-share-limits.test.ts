@@ -1,43 +1,46 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
-const { fetchApiRoot } = vi.hoisted(() => ({
-  fetchApiRoot: vi.fn(),
+const { fetchApiRootEffect } = vi.hoisted(() => ({
+  fetchApiRootEffect: vi.fn(),
 }))
 
 vi.mock('#/lib/api/client', () => ({
-  fetchApiRoot,
+  fetchApiRootEffect,
 }))
 
 async function resolveFreshLimits() {
   vi.resetModules()
-  const { resolveScreenShareCaptureLimits } = await import(
+  const { resolveScreenShareCaptureLimitsEffect } = await import(
     './voice-screen-share-limits'
   )
-  return resolveScreenShareCaptureLimits()
+  return Effect.runPromise(resolveScreenShareCaptureLimitsEffect)
 }
 
 describe('resolveScreenShareCaptureLimits', () => {
   beforeEach(() => {
-    fetchApiRoot.mockReset()
+    fetchApiRootEffect.mockReset()
   })
 
   it('uses dedicated screen-share limits instead of camera video limits', async () => {
-    fetchApiRoot.mockResolvedValue({
-      features: {
-        limits: {
-          new_user: {
-            video_resolution: [1280, 720],
-            screen_share_resolution: [1920, 1080],
-            screen_share_bitrate: 10_000_000,
-          },
-          default: {
-            video_resolution: [1280, 720],
-            screen_share_resolution: [1920, 1080],
-            screen_share_bitrate: 10_000_000,
+    fetchApiRootEffect.mockReturnValue(
+      Effect.succeed({
+        features: {
+          limits: {
+            new_user: {
+              video_resolution: [1280, 720],
+              screen_share_resolution: [1920, 1080],
+              screen_share_bitrate: 10_000_000,
+            },
+            default: {
+              video_resolution: [1280, 720],
+              screen_share_resolution: [1920, 1080],
+              screen_share_bitrate: 10_000_000,
+            },
           },
         },
-      },
-    })
+      }),
+    )
 
     await expect(resolveFreshLimits()).resolves.toEqual({
       maxWidth: 1920,
@@ -48,7 +51,7 @@ describe('resolveScreenShareCaptureLimits', () => {
   })
 
   it('falls back to the LiveKit screen-share ceiling when API limits are unavailable', async () => {
-    fetchApiRoot.mockRejectedValue(new Error('offline'))
+    fetchApiRootEffect.mockReturnValue(Effect.fail(new Error('offline')))
 
     await expect(resolveFreshLimits()).resolves.toEqual({
       maxWidth: 1920,
@@ -59,18 +62,20 @@ describe('resolveScreenShareCaptureLimits', () => {
   })
 
   it('preserves bitrate limits when resolution limits are absent', async () => {
-    fetchApiRoot.mockResolvedValue({
-      features: {
-        limits: {
-          new_user: {
-            screen_share_bitrate: 3_000_000,
-          },
-          default: {
-            screen_share_bitrate: 5_000_000,
+    fetchApiRootEffect.mockReturnValue(
+      Effect.succeed({
+        features: {
+          limits: {
+            new_user: {
+              screen_share_bitrate: 3_000_000,
+            },
+            default: {
+              screen_share_bitrate: 5_000_000,
+            },
           },
         },
-      },
-    })
+      }),
+    )
 
     await expect(resolveFreshLimits()).resolves.toEqual({
       maxWidth: undefined,

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 import { HooksRuntimeController } from './hooks-runtime-controller'
 import { NativeRuntimeRequestError } from './runtime-supervisor'
@@ -7,6 +8,7 @@ function supervisorStub() {
   let eventListener: ((event: unknown) => void) | null = null
   let stateListener: ((state: any) => void) | null = null
   const request = vi.fn(async () => undefined)
+  const shutdown = vi.fn(async () => undefined)
   return {
     supervisor: {
       onEvent(listener: (event: unknown) => void) {
@@ -19,7 +21,17 @@ function supervisorStub() {
       },
       getSnapshot: () => ({ status: 'ready' }),
       request,
-      shutdown: vi.fn(async () => undefined),
+      requestEffect: (command: unknown, timeoutMs: number) =>
+        Effect.tryPromise({
+          try: () => request(command, timeoutMs),
+          catch: (cause) => cause,
+        }),
+      shutdown,
+      shutdownEffect: () =>
+        Effect.tryPromise({
+          try: shutdown,
+          catch: (cause) => cause,
+        }),
     } as any,
     request,
     event: (event: unknown) => eventListener?.(event),

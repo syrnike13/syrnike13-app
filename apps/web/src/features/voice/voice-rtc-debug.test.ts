@@ -146,20 +146,26 @@ describe('voice rtc debug', () => {
           subscribed: true,
           live: true,
           track: {
-            mediaStreamTrack: {
-              id: 'screen-media-track',
-              contentHint: 'motion',
-              getSettings: () => ({
-                width: 1920,
-                height: 1080,
-                frameRate: 60,
-                displaySurface: 'monitor',
-              }),
-            },
+            backend: 'livekit',
+            track: {
+              mediaStreamTrack: {
+                id: 'screen-media-track',
+                contentHint: 'motion',
+                getSettings: () => ({
+                  width: 1920,
+                  height: 1080,
+                  frameRate: 60,
+                  displaySurface: 'monitor',
+                }),
+              },
+            } as never,
           },
           publication: {
+            backend: 'livekit',
             trackSid: 'TR_screen',
-            source: 'screen_share',
+            source: 'screen',
+            isMuted: false,
+            isSubscribed: true,
             options: {
               videoCodec: 'vp8',
               screenShareEncoding: {
@@ -250,13 +256,8 @@ describe('voice rtc debug', () => {
           subscribed: true,
           live: true,
           track: {
-            mediaStreamTrack: {
-              getSettings: () => ({
-                width: 1920,
-                height: 1080,
-                frameRate: 30,
-              }),
-            },
+            backend: 'native',
+            track: {},
           },
         },
       ] as never,

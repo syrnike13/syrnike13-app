@@ -23,10 +23,13 @@ const screenItem: VoiceStageMediaItem = {
 const screenItemWithTrack: VoiceStageMediaItem = {
   ...screenItem,
   track: {
-    mediaStreamTrack: {},
-    attach: vi.fn((element: HTMLVideoElement) => element),
-    detach: vi.fn(),
-  } as unknown as VoiceStageMediaItem['track'],
+    backend: 'livekit',
+    track: {
+      mediaStreamTrack: {},
+      attach: vi.fn((element: HTMLVideoElement) => element),
+      detach: vi.fn(),
+    } as never,
+  },
 }
 
 describe('StageMediaTile', () => {

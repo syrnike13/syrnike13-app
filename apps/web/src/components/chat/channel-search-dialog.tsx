@@ -1,6 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import type { Message, User } from '@syrnike13/api-types'
+import { Effect, Fiber } from 'effect'
 import { SearchIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
@@ -11,7 +12,7 @@ import {
   PopoverTrigger,
 } from '#/components/ui/popover'
 import { ScrollArea } from '#/components/ui/scroll-area'
-import { searchChannelMessages } from '#/features/api/messages-api'
+import { searchChannelMessagesEffect } from '#/features/api/messages-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
@@ -69,31 +70,32 @@ export function ChannelSearchDialog({
       return
     }
 
-    let cancelled = false
-    const timer = window.setTimeout(() => {
-      setSearching(true)
-      void searchChannelMessages(token, channelId, trimmed)
-        .then(({ messages, users: foundUsers }) => {
-          if (cancelled) return
-          for (const user of foundUsers) {
-            syncStore.upsertUser(user)
-          }
-          setResults(messages)
-        })
-        .catch((error) => {
-          if (cancelled) return
-          toast.error(
-            error instanceof Error ? error.message : 'Поиск не удался',
-          )
-        })
-        .finally(() => {
-          if (!cancelled) setSearching(false)
-        })
-    }, 250)
+    const fiber = Effect.runFork(
+      Effect.sleep(250).pipe(
+        Effect.andThen(Effect.sync(() => setSearching(true))),
+        Effect.andThen(
+          searchChannelMessagesEffect(token, channelId, trimmed, 25),
+        ),
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error ? error.message : 'Поиск не удался',
+              )
+              setSearching(false)
+            }),
+          onSuccess: ({ messages, users: foundUsers }) =>
+            Effect.sync(() => {
+              syncStore.upsertUsers(foundUsers)
+              setResults(messages)
+              setSearching(false)
+            }),
+        }),
+      ),
+    )
 
     return () => {
-      cancelled = true
-      window.clearTimeout(timer)
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [channelId, open, query, token])
 

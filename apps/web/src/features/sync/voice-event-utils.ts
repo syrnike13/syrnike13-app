@@ -1,5 +1,4 @@
 import type {
-  ChannelVoiceState,
   UserVoiceState,
   VoiceParticipantsByChannel,
 } from './voice-types'
@@ -8,22 +7,34 @@ import { isValidVoiceUserId } from './voice-participant-resolve'
 type RawUserVoiceState = Partial<
   Omit<
     UserVoiceState,
+    | 'joined_at'
     | 'self_mute'
     | 'self_deaf'
     | 'server_muted'
     | 'server_deafened'
     | 'screensharing'
     | 'camera'
+    | 'version'
   >
 > & {
+  joined_at?: unknown
   self_mute?: unknown
   self_deaf?: unknown
   server_muted?: unknown
   server_deafened?: unknown
   screensharing?: unknown
   camera?: unknown
+  version?: unknown
   user?: string
   user_id?: string
+}
+
+type RawChannelVoiceState = {
+  id?: string
+  channel_id?: string
+  channel?: string
+  participants?: Array<RawUserVoiceState | string>
+  users?: Array<RawUserVoiceState | string>
 }
 
 function parseJoinedAt(value: unknown) {
@@ -77,7 +88,7 @@ export function normalizeUserVoiceState(
 }
 
 export function channelIdFromVoiceStateEntry(
-  entry: ChannelVoiceState & { channel_id?: string; channel?: string },
+  entry: RawChannelVoiceState,
 ) {
   return entry.id ?? entry.channel_id ?? entry.channel
 }
@@ -85,34 +96,29 @@ export function channelIdFromVoiceStateEntry(
 /** `Ready.voice_states` — авторитетный снимок всех голосовых каналов. */
 export function mergeVoiceStatesFromReady(
   existing: VoiceParticipantsByChannel,
-  voiceStates:
-    | Array<ChannelVoiceState & { channel_id?: string; channel?: string }>
-    | undefined,
+  voiceStates: RawChannelVoiceState[] | undefined,
 ): VoiceParticipantsByChannel {
   if (voiceStates === undefined) return existing
   return voiceMapFromChannelStates(voiceStates)
 }
 
 export function voiceMapFromChannelStates(
-  voiceStates: Array<ChannelVoiceState & { channel_id?: string }> | undefined,
+  voiceStates: RawChannelVoiceState[] | undefined,
 ) {
-  if (!voiceStates?.length) return {} as Record<string, Record<string, UserVoiceState>>
-
   const map: Record<string, Record<string, UserVoiceState>> = {}
+  if (!voiceStates?.length) return map
+
   for (const entry of voiceStates) {
     const channelId = channelIdFromVoiceStateEntry(entry)
     if (!channelId) continue
 
     const channelMap: Record<string, UserVoiceState> = {}
-    const rawParticipants =
-      entry.participants ??
-      (entry as ChannelVoiceState & { users?: unknown[] }).users ??
-      []
+    const rawParticipants = entry.participants ?? entry.users ?? []
     for (const participant of rawParticipants) {
       const normalized =
         typeof participant === 'string'
           ? normalizeUserVoiceState({ id: participant })
-          : normalizeUserVoiceState(participant as RawUserVoiceState)
+          : normalizeUserVoiceState(participant)
       if (normalized) channelMap[normalized.id] = normalized
     }
     map[channelId] = channelMap

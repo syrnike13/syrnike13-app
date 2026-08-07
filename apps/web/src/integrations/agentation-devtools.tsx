@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback } from 'react'
+import { Effect } from 'effect'
 
-import { writeClipboardText } from '#/lib/clipboard'
+import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { getSyrnikeRuntime, isDesktopRuntime } from '#/platform/runtime'
 
 const Agentation = import.meta.env.DEV
@@ -31,7 +32,7 @@ function AgentationWithAppClipboard() {
     let writeError: string | null = null
 
     try {
-      await writeClipboardText(markdown)
+      await Effect.runPromise(writeClipboardTextEffect(markdown))
       writeOk = true
     } catch (error) {
       writeError = error instanceof Error ? error.message : String(error)

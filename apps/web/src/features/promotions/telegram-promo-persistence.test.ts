@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 import {
   DEFAULT_DESKTOP_LOCAL_SETTINGS,
@@ -47,12 +48,14 @@ describe('Telegram promo persistence', () => {
       saveTelegramPromoDismissedUntil,
     } = await import('./telegram-promo-persistence')
 
-    await expect(loadTelegramPromoDismissedUntil('userA')).resolves.toBe(
-      dismissedUntil,
-    )
+    await expect(
+      Effect.runPromise(loadTelegramPromoDismissedUntil('userA')),
+    ).resolves.toBe(dismissedUntil)
 
     const nextDismissedUntil = dismissedUntil + 1_000
-    await saveTelegramPromoDismissedUntil('userB', nextDismissedUntil)
+    await Effect.runPromise(
+      saveTelegramPromoDismissedUntil('userB', nextDismissedUntil),
+    )
     expect(update).toHaveBeenCalledWith({
       ui: {
         telegramPromoDismissedUntilByUser: {
@@ -71,15 +74,17 @@ describe('Telegram promo persistence', () => {
       TELEGRAM_PROMO_DISMISSED_STORAGE_KEY,
     } = await import('./telegram-promo-persistence')
 
-    await saveTelegramPromoDismissedUntil('userA', dismissedUntil)
+    await Effect.runPromise(
+      saveTelegramPromoDismissedUntil('userA', dismissedUntil),
+    )
 
     expect(
       localStorage.getItem(
         `${TELEGRAM_PROMO_DISMISSED_STORAGE_KEY}:userA`,
       ),
     ).toBe(String(dismissedUntil))
-    await expect(loadTelegramPromoDismissedUntil('userA')).resolves.toBe(
-      dismissedUntil,
-    )
+    await expect(
+      Effect.runPromise(loadTelegramPromoDismissedUntil('userA')),
+    ).resolves.toBe(dismissedUntil)
   })
 })

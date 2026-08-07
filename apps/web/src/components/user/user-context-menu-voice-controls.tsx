@@ -5,6 +5,7 @@ import type {
   Member,
   Server,
 } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import {
@@ -23,7 +24,7 @@ import {
   ContextMenuSubTrigger,
 } from '#/components/ui/context-menu'
 import { Slider } from '#/components/ui/slider'
-import { editServerMember } from '#/features/api/servers-api'
+import { editServerMemberEffect } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
 import {
   formatUserVolumeLabel,
@@ -56,8 +57,7 @@ const voiceActionClassName =
 const destructiveVoiceActionClassName = `${voiceActionClassName} text-destructive focus:bg-destructive/10 focus:text-destructive dark:focus:bg-destructive/20 [&_svg]:text-destructive`
 
 function isServerVoiceMoveTarget(channel: Channel): boolean {
-  const channelType = (channel as { channel_type?: string }).channel_type
-  return channelType === 'TextChannel' || channelType === 'VoiceChannel'
+  return channel.channel_type === 'TextChannel' && channel.voice != null
 }
 
 function canUseVoiceMoveTarget(channel: Channel) {
@@ -132,46 +132,62 @@ export function UserContextMenuVoiceControls({
     if (!token || !server || !targetMember || pendingAction) return
 
     setPendingAction(action)
-    try {
-      const updated = await editServerMember(
+    await Effect.runPromise(
+      editServerMemberEffect(
         token,
         server._id,
         targetMember._id.user,
         data,
-      )
-      const mayBeRemovedTemporaryMember =
-        updated.temporary === true && (updated.roles?.length ?? 0) === 0
-      const memberStillPresent =
-        syncStore.getState().members[`${server._id}:${targetMember._id.user}`] !==
-        undefined
-      if (!mayBeRemovedTemporaryMember || memberStillPresent) {
-        syncStore.upsertMembers([updated])
-      }
-      if (data.remove?.includes('VoiceChannel') && voiceChannelId) {
-        syncStore.removeVoiceParticipant(voiceChannelId, targetMember._id.user)
-      }
-      if (data.voice_channel && voiceChannelId) {
-        const participant =
-          syncStore.getState().voiceParticipants[voiceChannelId]?.[
-            targetMember._id.user
-          ]
-        if (participant) {
-          syncStore.removeVoiceParticipant(voiceChannelId, targetMember._id.user)
-          syncStore.patchVoiceParticipant(
-            data.voice_channel,
-            targetMember._id.user,
-            participant,
-          )
-        }
-      }
-      toast.success(successMessage)
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось изменить голос',
-      )
-    } finally {
-      setPendingAction(null)
-    }
+      ).pipe(
+        Effect.tap((updated) =>
+          Effect.sync(() => {
+            const mayBeRemovedTemporaryMember =
+              updated.temporary === true && (updated.roles?.length ?? 0) === 0
+            const memberStillPresent =
+              syncStore.getState().members[
+                `${server._id}:${targetMember._id.user}`
+              ] !== undefined
+            if (!mayBeRemovedTemporaryMember || memberStillPresent) {
+              syncStore.upsertMembers([updated])
+            }
+            if (data.remove?.includes('VoiceChannel') && voiceChannelId) {
+              syncStore.removeVoiceParticipant(
+                voiceChannelId,
+                targetMember._id.user,
+              )
+            }
+            if (data.voice_channel && voiceChannelId) {
+              const participant =
+                syncStore.getState().voiceParticipants[voiceChannelId]?.[
+                  targetMember._id.user
+                ]
+              if (participant) {
+                syncStore.removeVoiceParticipant(
+                  voiceChannelId,
+                  targetMember._id.user,
+                )
+                syncStore.patchVoiceParticipant(
+                  data.voice_channel,
+                  targetMember._id.user,
+                  participant,
+                )
+              }
+            }
+            toast.success(successMessage)
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось изменить голос',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setPendingAction(null))),
+      ),
+    )
   }
 
   return (

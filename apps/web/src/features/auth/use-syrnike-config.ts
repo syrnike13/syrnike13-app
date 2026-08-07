@@ -10,7 +10,7 @@ import { queryKeys } from '#/lib/api/query-keys'
 export function useSyrnikeConfig() {
   return useQuery({
     queryKey: queryKeys.api.root,
-    queryFn: fetchSyrnikeConfig,
+    queryFn: ({ signal }) => fetchSyrnikeConfig(signal),
     staleTime: 60_000,
   })
 }

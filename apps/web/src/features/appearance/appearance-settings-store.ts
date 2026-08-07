@@ -1,22 +1,30 @@
 import {
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_THEME_ID,
+  AppearanceSettingsSchema,
   normalizeAppearanceColorMode,
   normalizeAppearanceSettings,
   type AppearanceColorMode,
   type AppearanceGradientSettings,
   type AppearanceSettings,
 } from '@syrnike13/platform'
+import { Effect, Option, Schema, SchemaTransformation } from 'effect'
 
 import { applyThemeToDocument } from '#/features/appearance/apply-theme'
 import {
-  loadDesktopLocalSettings,
-  updateDesktopLocalSettings,
+  loadDesktopLocalSettingsEffect,
+  updateDesktopLocalSettingsEffect,
 } from '#/features/settings/desktop-local-settings-client'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 export const APPEARANCE_STORAGE_KEY = 'syrnike13-appearance'
 const LEGACY_THEME_STORAGE_KEY = 'theme'
+const UnknownAppearanceJsonSchema = Schema.String.pipe(
+  Schema.decodeTo(Schema.Unknown, SchemaTransformation.fromJsonString()),
+)
+const AppearanceSettingsJsonSchema = Schema.fromJsonString(
+  AppearanceSettingsSchema,
+)
 
 function migrateLegacyTheme(): AppearanceSettings | null {
   if (typeof window === 'undefined') return null
@@ -47,11 +55,18 @@ export function readStoredAppearanceSettings(): AppearanceSettings {
   try {
     const raw = localStorage.getItem(APPEARANCE_STORAGE_KEY)
     if (raw) {
-      return normalizeAppearanceSettings(JSON.parse(raw) as unknown)
+      return normalizeAppearanceSettings(
+        Option.getOrUndefined(
+          Schema.decodeUnknownOption(UnknownAppearanceJsonSchema)(raw),
+        ),
+      )
     }
     const migrated = migrateLegacyTheme()
     if (migrated) {
-      localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify(migrated))
+      localStorage.setItem(
+        APPEARANCE_STORAGE_KEY,
+        Schema.encodeSync(AppearanceSettingsJsonSchema)(migrated),
+      )
       return migrated
     }
   } catch {
@@ -85,11 +100,18 @@ function cloneSettings(settings: AppearanceSettings): AppearanceSettings {
 function persist() {
   if (typeof window === 'undefined') return
   if (getSyrnikeDesktop()) {
-    void updateDesktopLocalSettings({ appearance: state })
+    Effect.runFork(
+      updateDesktopLocalSettingsEffect({ appearance: state }).pipe(
+        Effect.ignore,
+      ),
+    )
     return
   }
   try {
-    localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify(state))
+    localStorage.setItem(
+      APPEARANCE_STORAGE_KEY,
+      Schema.encodeSync(AppearanceSettingsJsonSchema)(state),
+    )
   } catch {
     // quota / private mode
   }
@@ -106,13 +128,21 @@ function patch(
   emit()
 }
 
-export async function hydrateAppearanceSettingsFromDesktop() {
+export const hydrateAppearanceSettingsFromDesktopEffect = Effect.fn(
+  'appearanceSettings.hydrateFromDesktop',
+)(function*() {
   const revision = stateRevision
-  const settings = await loadDesktopLocalSettings()
+  const settings = yield* loadDesktopLocalSettingsEffect()
   if (!settings || revision !== stateRevision) return
-  state = normalizeAppearanceSettings(settings.appearance)
-  applyThemeToDocument(state)
-  emit()
+  yield* Effect.sync(() => {
+    state = normalizeAppearanceSettings(settings.appearance)
+    applyThemeToDocument(state)
+    emit()
+  })
+})
+
+export function hydrateAppearanceSettingsFromDesktop() {
+  return Effect.runPromise(hydrateAppearanceSettingsFromDesktopEffect())
 }
 
 export const appearanceSettingsStore = {
@@ -152,4 +182,4 @@ export function useAppearanceSettingsSnapshot() {
   return appearanceSettingsStore.getState()
 }
 
-void hydrateAppearanceSettingsFromDesktop()
+Effect.runFork(hydrateAppearanceSettingsFromDesktopEffect())

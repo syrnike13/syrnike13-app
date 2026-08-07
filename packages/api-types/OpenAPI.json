@@ -76,6 +76,52 @@
         }
       }
     },
+    "/diagnostics/reports": {
+      "post": {
+        "tags": [
+          "Core"
+        ],
+        "summary": "Create Diagnostic Report",
+        "operationId": "diagnostics_create_report",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagnosticReportUpload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticReportCreated"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Session Token": []
+          }
+        ]
+      }
+    },
     "/users/@me": {
       "get": {
         "tags": [
@@ -3823,6 +3869,235 @@
         }
       }
     },
+    "/admin/diagnostics": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "admin_diagnostics_list",
+        "parameters": [
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "release_channel",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "area",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trigger_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DiagnosticReportStatus"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "uint64"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "An error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DiagnosticReportResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/diagnostics/{id}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "admin_diagnostics_fetch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "An error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticReportResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "admin_diagnostics_update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDiagnosticReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "An error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticReportResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/diagnostics/{id}/download": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "operationId": "admin_diagnostics_download",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "An error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Encrypted diagnostic bundle, decrypted for an authorized administrator",
+            "content": {
+              "application/gzip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/badges": {
       "get": {
         "tags": [
@@ -7405,6 +7680,178 @@
                 "$ref": "#/components/schemas/BuildInformation"
               }
             ]
+          },
+          "ui_sounds": {
+            "description": "Optional client event sound configuration",
+            "type": "object",
+            "properties": {
+              "event_pack": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          }
+        }
+      },
+      "DiagnosticReportUpload": {
+        "type": "object",
+        "required": [
+          "version",
+          "source",
+          "release_channel",
+          "app_version",
+          "platform",
+          "area",
+          "severity",
+          "trigger_code",
+          "payload"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "uint8"
+          },
+          "source": {
+            "type": "string"
+          },
+          "release_channel": {
+            "type": "string"
+          },
+          "app_version": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "area": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "trigger_code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "default": ""
+          },
+          "payload": {
+            "description": "A gzip-compressed JSONL diagnostic bundle encoded as base64.",
+            "type": "string"
+          }
+        }
+      },
+      "DiagnosticReportCreated": {
+        "type": "object",
+        "required": [
+          "id",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "uint64"
+          }
+        }
+      },
+      "DiagnosticReportStatus": {
+        "type": "string",
+        "enum": [
+          "new",
+          "investigating",
+          "resolved"
+        ]
+      },
+      "DiagnosticReportResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "created_at",
+          "expires_at",
+          "source",
+          "release_channel",
+          "app_version",
+          "platform",
+          "area",
+          "severity",
+          "trigger_code",
+          "description",
+          "size_bytes",
+          "sha256",
+          "status",
+          "notes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "uint64"
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "uint64"
+          },
+          "source": {
+            "type": "string"
+          },
+          "release_channel": {
+            "type": "string"
+          },
+          "app_version": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "area": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "trigger_code": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "uint64"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DiagnosticReportStatus"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      },
+      "UpdateDiagnosticReport": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/DiagnosticReportStatus"
+          },
+          "notes": {
+            "type": "string",
+            "default": ""
           }
         }
       },

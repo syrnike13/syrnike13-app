@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Effect, Fiber, Option, Schema } from 'effect'
 
 import {
   SettingsBlock,
@@ -17,14 +18,16 @@ import {
 } from '#/components/ui/select'
 import { Slider } from '#/components/ui/slider'
 import {
-  ensureMediaDevicePermission,
+  ensureMediaDevicePermissionEffect,
   useMediaDevices,
 } from '#/features/voice/use-media-devices'
 import {
+  SCREEN_SHARE_CAPTURE_MODES,
   SCREEN_SHARE_CAPTURE_MODE_LABELS,
+  SCREEN_SHARE_QUALITY_NAMES,
   SCREEN_SHARE_QUALITY_LABELS,
-  type ScreenShareCaptureMode,
-  type ScreenShareQualityName,
+  ScreenShareCaptureModeSchema,
+  ScreenShareQualitySchema,
 } from '#/features/voice/voice-preference-types'
 import { usePlatform } from '#/platform/use-platform'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
@@ -153,7 +156,12 @@ export function SettingsVoicePanel() {
   const av1Supported = isAv1ScreenShareSupported()
 
   useEffect(() => {
-    void ensureMediaDevicePermission('audio')
+    const fiber = Effect.runFork(
+      ensureMediaDevicePermissionEffect('audio').pipe(Effect.ignore),
+    )
+    return () => {
+      Effect.runFork(Fiber.interrupt(fiber))
+    }
   }, [])
 
   useEffect(() => {
@@ -329,23 +337,24 @@ export function SettingsVoicePanel() {
         <SettingsRow label="Качество по умолчанию">
           <Select
             value={prefs.screenShareQuality}
-            onValueChange={(value) =>
-              voicePreferenceStore.setScreenShareQuality(
-                value as ScreenShareQualityName,
-              )
-            }
+            onValueChange={(value) => {
+              const quality = Schema.decodeUnknownOption(
+                ScreenShareQualitySchema,
+              )(value)
+              if (Option.isSome(quality)) {
+                voicePreferenceStore.setScreenShareQuality(quality.value)
+              }
+            }}
           >
             <SelectTrigger className="w-[220px] max-w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {(Object.keys(SCREEN_SHARE_QUALITY_LABELS) as ScreenShareQualityName[]).map(
-                (name) => (
+              {SCREEN_SHARE_QUALITY_NAMES.map((name) => (
                   <SelectItem key={name} value={name}>
                     {SCREEN_SHARE_QUALITY_LABELS[name]}
                   </SelectItem>
-                ),
-              )}
+                ))}
             </SelectContent>
           </Select>
         </SettingsRow>
@@ -354,21 +363,22 @@ export function SettingsVoicePanel() {
           <SettingsRow label="Захват экрана">
             <Select
               value={prefs.screenShareCaptureMode}
-              onValueChange={(value) =>
-                voicePreferenceStore.setScreenShareCaptureMode(
-                  value as ScreenShareCaptureMode,
-                )
-              }
+              onValueChange={(value) => {
+                const captureMode = Schema.decodeUnknownOption(
+                  ScreenShareCaptureModeSchema,
+                )(value)
+                if (Option.isSome(captureMode)) {
+                  voicePreferenceStore.setScreenShareCaptureMode(
+                    captureMode.value,
+                  )
+                }
+              }}
             >
               <SelectTrigger className="w-[220px] max-w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {(
-                  Object.keys(
-                    SCREEN_SHARE_CAPTURE_MODE_LABELS,
-                  ) as ScreenShareCaptureMode[]
-                ).map((name) => (
+                {SCREEN_SHARE_CAPTURE_MODES.map((name) => (
                   <SelectItem key={name} value={name}>
                     {SCREEN_SHARE_CAPTURE_MODE_LABELS[name]}
                   </SelectItem>

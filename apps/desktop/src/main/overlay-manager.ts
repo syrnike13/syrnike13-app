@@ -1,4 +1,5 @@
 import { BrowserWindow, screen, type WebContents } from 'electron'
+import { Effect, Fiber } from 'effect'
 import {
   DEFAULT_DESKTOP_OVERLAY_SETTINGS,
   EMPTY_DESKTOP_OVERLAY_SNAPSHOT,
@@ -47,7 +48,7 @@ let persistOverlaySettings:
   | ((settings: DesktopOverlaySettings) => Promise<void>)
   | null = null
 let detectorRunning = false
-let overlayRecoveryTimer: ReturnType<typeof setTimeout> | null = null
+let overlayRecoveryTimer: Fiber.Fiber<void, never> | null = null
 let overlayRecoveryFailures: number[] = []
 let overlayState = createDesktopOverlayState(process.platform)
 let overlaySettings: DesktopOverlaySettings = {
@@ -321,9 +322,24 @@ function handleOverlayGameTarget(target: DesktopOverlayGameTarget | null) {
     )
     if (nextSettings !== overlaySettings) {
       overlaySettings = nextSettings
-      void persistOverlaySettings?.(nextSettings).catch((error) => {
-        console.error('[desktop-overlay] failed to save detected game', error)
-      })
+      if (persistOverlaySettings) {
+        const persistSettings = persistOverlaySettings
+        Effect.runFork(
+          Effect.tryPromise({
+            try: () => persistSettings(nextSettings),
+            catch: (cause) => cause,
+          }).pipe(
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                console.error(
+                  '[desktop-overlay] failed to save detected game',
+                  error,
+                )
+              }),
+            ),
+          ),
+        )
+      }
     }
   }
 
@@ -383,6 +399,7 @@ function applyDesktopOverlayVisibility() {
 
 function ensureOverlayWindow() {
   if (!overlayState.available || !overlayLoadUrl) return null
+  const loadUrl = overlayLoadUrl
   if (overlayRecoveryTimer) return null
   if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow
 
@@ -433,12 +450,20 @@ function ensureOverlayWindow() {
     scheduleOverlayWindowRecovery(win)
   })
   win.webContents.on('did-finish-load', () => emitDesktopOverlayState())
-  void win
-    .loadURL(new URL('/desktop/overlay', overlayLoadUrl).toString())
-    .catch((error) => {
-      console.warn('[desktop-overlay] renderer load rejected', error)
-      scheduleOverlayWindowRecovery(win)
-    })
+  Effect.runFork(
+    Effect.tryPromise({
+      try: () =>
+        win.loadURL(new URL('/desktop/overlay', loadUrl).toString()),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          console.warn('[desktop-overlay] renderer load rejected', error)
+          scheduleOverlayWindowRecovery(win)
+        }),
+      ),
+    ),
+  )
 
   return win
 }
@@ -465,14 +490,23 @@ function scheduleOverlayWindowRecovery(win: BrowserWindow) {
 }
 
 function scheduleOverlayWindowRecoveryAttempt(delayMs: number) {
-  overlayRecoveryTimer = setTimeout(() => {
-    overlayRecoveryTimer = null
-    if (overlayState.visible) applyDesktopOverlayVisibility()
-  }, delayMs)
+  let fiber: Fiber.Fiber<void, never>
+  fiber = Effect.runFork(
+    Effect.sleep(delayMs).pipe(
+      Effect.andThen(
+        Effect.sync(() => {
+          if (overlayRecoveryTimer !== fiber) return
+          overlayRecoveryTimer = null
+          if (overlayState.visible) applyDesktopOverlayVisibility()
+        }),
+      ),
+    ),
+  )
+  overlayRecoveryTimer = fiber
 }
 
 function destroyOverlayWindow() {
-  if (overlayRecoveryTimer) clearTimeout(overlayRecoveryTimer)
+  if (overlayRecoveryTimer) Effect.runFork(Fiber.interrupt(overlayRecoveryTimer))
   overlayRecoveryTimer = null
   overlayRecoveryFailures = []
   const win = overlayWindow
