@@ -573,6 +573,17 @@ describe('VoiceDirector', () => {
     })
   })
 
+  it('does not reconcile media for newer authority snapshots with unchanged flags', () => {
+    const harness = createHarness()
+    const initialUpdates = harness.engine.desired.length
+
+    harness.authority.emitSnapshot(null, { muted: true })
+    expect(harness.engine.desired).toHaveLength(initialUpdates + 1)
+
+    harness.authority.emitSnapshot(null, { muted: true })
+    expect(harness.engine.desired).toHaveLength(initialUpdates + 1)
+  })
+
   it('updates authoritative user flags without reconnecting RTC', async () => {
     const harness = createHarness()
     const lease = await connect(harness, 'A')

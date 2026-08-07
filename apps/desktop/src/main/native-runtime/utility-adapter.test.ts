@@ -76,13 +76,17 @@ describe('ElectronUtilityAdapter', () => {
     expect(child.kill).toHaveBeenCalledTimes(1)
     await vi.waitFor(() => {
       expect(onExit).toHaveBeenCalledTimes(1)
-      expect(onExit).toHaveBeenCalledWith({
+      expect(onExit).toHaveBeenCalledWith(expect.objectContaining({
         code: null,
+        terminationSource: 'error',
+        killRequested: false,
+        stderrDrainTimedOut: false,
+        uptimeMs: expect.any(Number),
         error: expect.objectContaining({ message: 'Error: host transport failed' }),
         stderrBytesCaptured: 33,
         stderrBytesSeen: 33,
         stderrTruncated: false,
-      })
+      }))
     })
   })
 

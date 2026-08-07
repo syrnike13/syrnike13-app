@@ -573,6 +573,12 @@ const SessionLifecycleEventSchema = Schema.Struct({
   ),
 )
 
+const VoiceConnectionStateEventSchema = Schema.Struct({
+  type: Schema.Literal('voiceConnectionState'),
+  ...sessionEventFields,
+  state: Schema.Literals(['connected', 'reconnecting']),
+})
+
 const SessionStartedEventSchema = Schema.Struct({
   type: Schema.Literal('sessionStarted'),
   ...sessionEventFields,
@@ -666,6 +672,7 @@ export const NativeRuntimeEventSchema = Schema.Union([
   ForegroundWindowEventSchema,
   RuntimeErrorEventSchema,
   SessionLifecycleEventSchema,
+  VoiceConnectionStateEventSchema,
   SessionStartedEventSchema,
   Schema.Struct({
     type: Schema.Literal('sessionStopped'),

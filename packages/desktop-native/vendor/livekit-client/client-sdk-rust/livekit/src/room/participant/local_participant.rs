@@ -421,15 +421,30 @@ impl LocalParticipant {
                 });
             }
         }
-        let track_info = self.inner.rtc_engine.add_track(req).await?;
+        // Build and validate the actual WebRTC sender path before creating the
+        // server-side track. This prevents an orphan TrackInfo when hardware
+        // encoder/transceiver setup fails.
+        let transceiver =
+            self.inner.rtc_engine.create_sender(track.clone(), options.clone(), encodings).await?;
+        let track_info = match self.inner.rtc_engine.add_track(req).await {
+            Ok(track_info) => track_info,
+            Err(error) => {
+                if let Err(rollback_error) =
+                    self.inner.rtc_engine.remove_track(transceiver.sender())
+                {
+                    log::warn!(
+                        "failed to roll back sender after AddTrack failure: {}",
+                        rollback_error
+                    );
+                }
+                return Err(error.into());
+            }
+        };
         let publication = LocalTrackPublication::new(track_info.clone(), track.clone());
         track.update_info(track_info); // Update sid + source
 
         // set track for publication to listen mute/unmute events
         publication.set_track(Some(track.clone().into()));
-
-        let transceiver =
-            self.inner.rtc_engine.create_sender(track.clone(), options.clone(), encodings).await?;
 
         track.set_transceiver(Some(transceiver));
 

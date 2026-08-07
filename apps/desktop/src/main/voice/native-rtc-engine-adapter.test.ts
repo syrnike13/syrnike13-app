@@ -346,6 +346,143 @@ describe('NativeRtcEngineAdapter', () => {
     secondAdapter.dispose()
   })
 
+  it('does not reconcile an identical desired media snapshot twice', async () => {
+    const runtime = new FakeRuntime()
+    const adapter = new NativeRtcEngineAdapter(runtime)
+    const desired = {
+      ...createInitialVoiceMediaDesiredState(),
+      screenEnabled: true,
+      screenSourceId: 'screen-a',
+    }
+
+    await adapter.connect(lease, desired, new AbortController().signal)
+    await waitUntil(() =>
+      runtime.commands.some((command) => command.type === 'startScreenCapture'),
+    )
+    const startsBefore = runtime.commands.filter(
+      (command) => command.type === 'startScreenCapture',
+    ).length
+
+    adapter.updateDesiredMedia({ ...desired })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(runtime.commands.filter(
+      (command) => command.type === 'startScreenCapture',
+    )).toHaveLength(startsBefore)
+    adapter.dispose()
+  })
+
+  it('waits for RTC reconnection before starting a requested screen share', async () => {
+    const runtime = new FakeRuntime()
+    const adapter = new NativeRtcEngineAdapter(runtime)
+    const events: unknown[] = []
+    adapter.subscribe((event) => events.push(event))
+    const desired = createInitialVoiceMediaDesiredState()
+    await adapter.connect(lease, desired, new AbortController().signal)
+
+    runtime.emitEvent({
+      type: 'voiceConnectionState',
+      sequence: 1,
+      sessionId: lease.connectionEpoch,
+      generation: 1,
+      state: 'reconnecting',
+    })
+    adapter.updateDesiredMedia({
+      ...desired,
+      screenEnabled: true,
+      screenSourceId: 'screen-a',
+    })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(runtime.commands.some(
+      (command) => command.type === 'connectScreen',
+    )).toBe(false)
+
+    runtime.emitEvent({
+      type: 'voiceConnectionState',
+      sequence: 2,
+      sessionId: lease.connectionEpoch,
+      generation: 1,
+      state: 'connected',
+    })
+    await waitUntil(() =>
+      runtime.commands.some((command) => command.type === 'connectScreen'),
+    )
+
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'transientReconnectStarted',
+    }))
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'transientReconnectSucceeded',
+    }))
+    adapter.dispose()
+  })
+
+  it('retries a transient screen startup failure only after its backoff', async () => {
+    let screenStarts = 0
+    const runtime = new FakeRuntime(async (command) => {
+      if (command.type !== 'startScreenCapture') return
+      screenStarts += 1
+      if (screenStarts === 1) throw new Error('transient GPU startup failure')
+    })
+    const adapter = new NativeRtcEngineAdapter(
+      runtime,
+      () => 42,
+      { screenRetryDelaysMs: [30], screenRuntimeSettleDelayMs: 0 },
+    )
+    const desired = {
+      ...createInitialVoiceMediaDesiredState(),
+      screenEnabled: true,
+      screenSourceId: 'screen-a',
+    }
+
+    await adapter.connect(lease, desired, new AbortController().signal)
+    await waitUntil(() => screenStarts === 1)
+    adapter.updateDesiredMedia({ ...desired })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(screenStarts).toBe(1)
+
+    await waitUntil(() => screenStarts === 2)
+    adapter.dispose()
+  })
+
+  it('lets the capture stack settle after a utility runtime restart', async () => {
+    const runtime = new FakeRuntime()
+    const adapter = new NativeRtcEngineAdapter(
+      runtime,
+      () => 42,
+      { screenRuntimeSettleDelayMs: 30 },
+    )
+    const desired = createInitialVoiceMediaDesiredState()
+    await adapter.connect(lease, desired, new AbortController().signal)
+
+    runtime.emitState({
+      runtime: 'media',
+      status: 'recovering',
+      restartCount: 1,
+      hostEpoch: 2,
+    })
+    runtime.emitState({
+      runtime: 'media',
+      status: 'ready',
+      restartCount: 1,
+      hostEpoch: 2,
+    })
+    adapter.updateDesiredMedia({
+      ...desired,
+      screenEnabled: true,
+      screenSourceId: 'screen-a',
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(runtime.commands.some(
+      (command) => command.type === 'connectScreen',
+    )).toBe(false)
+    await waitUntil(() =>
+      runtime.commands.some((command) => command.type === 'connectScreen'),
+    )
+    adapter.dispose()
+  })
+
   it('does not enqueue mute behind an unfinished microphone publication', async () => {
     let releasePublication!: () => void
     const publicationPending = new Promise<void>((resolve) => {

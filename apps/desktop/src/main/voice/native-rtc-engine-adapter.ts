@@ -19,6 +19,7 @@ import type {
   VoiceMediaSnapshot,
   VoiceRemoteAudioSettings,
 } from '@syrnike13/platform'
+import { areVoiceMediaDesiredStatesEqual } from '@syrnike13/platform'
 
 import {
   NativeRuntimeErrorSchema,
@@ -36,6 +37,8 @@ const VOICE_OPERATION_TIMEOUT_MS = 20_000
 const MEDIA_CONTROL_TIMEOUT_MS = 2_000
 const OUTPUT_START_TIMEOUT_MS = 5_000
 const MICROPHONE_CONFIG_TIMEOUT_MS = 5_000
+const SCREEN_RETRY_DELAYS_MS = [750, 1_500, 3_000] as const
+const SCREEN_RUNTIME_SETTLE_DELAY_MS = 1_500
 
 const NativeRuntimeErrorCarrierSchema = Schema.Struct({
   detail: NativeRuntimeErrorSchema,
@@ -77,6 +80,7 @@ type ActiveVoiceConnection = {
   lease: VoiceLease
   voiceGeneration: number
   voiceReady: boolean
+  voiceReconnecting: boolean
   microphoneGeneration: number | null
   screenGeneration: number | null
   screenSourceKey: string | null
@@ -87,11 +91,18 @@ type ActiveVoiceConnection = {
   microphoneReady: boolean
   appliedMicrophoneMuted: boolean | null
   screenStarted: boolean
+  screenRetryAttempt: number
+  screenRetryKey: string | null
   cameraStarted: boolean
   selfSpeaking: boolean
   remoteSpeakingUserIds: Set<string>
   speakingUserIds: Set<string>
 }
+
+type NativeRtcEngineAdapterOptions = Readonly<{
+  screenRetryDelaysMs?: readonly number[]
+  screenRuntimeSettleDelayMs?: number
+}>
 
 export class NativeRtcEngineAdapter implements RtcEngineAdapter {
   private readonly listeners = new Set<(event: VoiceEngineEvent) => void>()
@@ -115,7 +126,11 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
   private terminalRuntimeLossEpoch: number | null = null
   private runtimeAvailable = true
   private runtimeLost = false
+  private runtimeRestartObserved = false
   private availabilityRetryable = true
+  private screenRetryWakeToken = 0
+  private screenRuntimeWakeToken = 0
+  private screenRuntimeSettleUntil = 0
   private disposed = false
   private remoteAudioSettings: VoiceRemoteAudioSettings | null = null
   private diagnosticAction: NativeDiagnosticAction = {
@@ -126,6 +141,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
   constructor(
     private readonly runtime: NativeVoiceRuntime,
     private readonly excludeProcessId: () => number = () => process.pid,
+    private readonly options: NativeRtcEngineAdapterOptions = {},
   ) {
     this.unsubscribeEvent = runtime.onEvent((event) => this.handleRuntimeEvent(event))
     this.unsubscribeState = runtime.onStateChange((snapshot) =>
@@ -175,6 +191,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         lease,
         voiceGeneration: generation,
         voiceReady: false,
+        voiceReconnecting: false,
         microphoneGeneration: null,
         screenGeneration: null,
         screenSourceKey: null,
@@ -185,6 +202,8 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         microphoneReady: false,
         appliedMicrophoneMuted: null,
         screenStarted: false,
+        screenRetryAttempt: 0,
+        screenRetryKey: null,
         cameraStarted: false,
         selfSpeaking: false,
         remoteSpeakingUserIds: new Set(),
@@ -255,6 +274,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     return Effect.gen({ self: this }, function*() {
       const active = this.active
       this.active = null
+      this.screenRetryWakeToken += 1
       this.mediaRevision += 1
       if (!active) return
       this.beginDiagnosticAction(active.lease.operationId)
@@ -308,8 +328,15 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
   }
 
   updateDesiredMedia(desired: VoiceMediaDesiredState) {
+    if (this.desired && areVoiceMediaDesiredStatesEqual(this.desired, desired)) return
+    const previousScreenKey = this.desired
+      ? screenSourceKey(this.desired)
+      : null
     this.desired = desired
     const active = this.active
+    if (active && previousScreenKey !== screenSourceKey(desired)) {
+      this.resetScreenRetry(active)
+    }
     this.beginDiagnosticAction(active?.lease.operationId)
     if (!active || !active.voiceReady) {
       this.scheduleMicrophoneConfiguration()
@@ -345,6 +372,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     if (kind === 'screen' || kind === 'screen_audio') {
       active.screenStarted = false
       active.screenSourceKey = null
+      this.resetScreenRetry(active)
       this.requestMediaReconcile()
       return
     }
@@ -614,6 +642,58 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     this.mediaRevision += 1
     this.beginDiagnosticAction(this.active?.lease.operationId)
     this.ensureMediaReconcile()
+  }
+
+  private resetScreenRetry(active: ActiveVoiceConnection) {
+    this.screenRetryWakeToken += 1
+    active.screenRetryAttempt = 0
+    active.screenRetryKey = null
+  }
+
+  private scheduleScreenRetry(
+    active: ActiveVoiceConnection,
+    sourceKey: string,
+    retryable: boolean,
+  ) {
+    if (!retryable || this.active !== active) return
+    const delays = this.options.screenRetryDelaysMs ?? SCREEN_RETRY_DELAYS_MS
+    const delayMs = delays[active.screenRetryAttempt]
+    active.screenRetryKey = sourceKey
+    if (delayMs === undefined) return
+    active.screenRetryAttempt += 1
+    const token = ++this.screenRetryWakeToken
+    this.effectRuntime.runFork(
+      Effect.sleep(delayMs).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            if (
+              token !== this.screenRetryWakeToken ||
+              this.active !== active ||
+              active.screenRetryKey !== sourceKey ||
+              screenSourceKey(this.desired) !== sourceKey
+            ) {
+              return
+            }
+            active.screenRetryKey = null
+            this.requestMediaReconcile()
+          }),
+        ),
+      ),
+    )
+  }
+
+  private scheduleScreenRuntimeWake(delayMs: number) {
+    const token = ++this.screenRuntimeWakeToken
+    this.effectRuntime.runFork(
+      Effect.sleep(delayMs).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            if (token !== this.screenRuntimeWakeToken) return
+            this.requestMediaReconcile()
+          }),
+        ),
+      ),
+    )
   }
 
   private ensureMediaReconcile() {
@@ -895,18 +975,9 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     desired: VoiceMediaDesiredState,
   ) {
     return Effect.gen({ self: this }, function*() {
-      const sourceKey = desired.screenEnabled
-        ? [
-            desired.screenSourceId,
-            desired.screenAudioEnabled,
-            desired.screenWidth,
-            desired.screenHeight,
-            desired.screenFps,
-            desired.screenBitrate,
-            desired.screenAudioBitrate,
-          ].join('|')
-        : null
+      const sourceKey = screenSourceKey(desired)
       if (!desired.screenEnabled || !desired.screenSourceId) {
+        this.resetScreenRetry(active)
         if (!active.screenStarted) return
         const generation = this.runtime.allocateGeneration('screen')
         active.screenStarted = false
@@ -928,6 +999,13 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       if (active.screenStarted && active.screenSourceKey === sourceKey) {
         return
       }
+      if (active.voiceReconnecting || sourceKey === null) return
+      const runtimeSettleDelay = this.screenRuntimeSettleUntil - Date.now()
+      if (runtimeSettleDelay > 0) {
+        this.scheduleScreenRuntimeWake(runtimeSettleDelay)
+        return
+      }
+      if (active.screenRetryKey === sourceKey) return
       if (active.screenStarted) {
         yield* this.requestEffect(
           {
@@ -983,6 +1061,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         )
         yield* this.assertCurrentEffect(active)
         if (active.screenGeneration !== generation) return
+        this.resetScreenRetry(active)
         this.emitMedia(active, 'screen', { state: 'running' })
         this.emitMedia(active, 'screen_audio', {
           state: desired.screenAudioEnabled ? 'running' : 'off',
@@ -994,7 +1073,12 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
               this.active !== active ||
               active.screenGeneration !== generation
             ) return
+            const detail = errorDetail(error)
+            const retryable =
+              detail?.retryable ??
+              nativeScreenFailureRetryable(detail?.code)
             this.retireMediaKind(active, 'screen')
+            this.scheduleScreenRetry(active, sourceKey, retryable)
             this.emitMediaFailure(
               active,
               'screen',
@@ -1015,6 +1099,29 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       event.sessionId !== undefined &&
       event.sessionId !== active.lease.connectionEpoch
     ) {
+      return
+    }
+    if (event.type === 'voiceConnectionState') {
+      if (event.generation !== active.voiceGeneration) return
+      if (event.state === 'reconnecting') {
+        if (active.voiceReconnecting) return
+        active.voiceReconnecting = true
+        this.emit({
+          type: 'transientReconnectStarted',
+          operationId: active.lease.operationId,
+          connectionEpoch: active.lease.connectionEpoch,
+        })
+        return
+      }
+      const recovered = active.voiceReconnecting
+      active.voiceReconnecting = false
+      if (!recovered) return
+      this.emit({
+        type: 'transientReconnectSucceeded',
+        operationId: active.lease.operationId,
+        connectionEpoch: active.lease.connectionEpoch,
+      })
+      this.requestMediaReconcile()
       return
     }
     if (event.type === 'voiceTerminal') {
@@ -1075,6 +1182,10 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       this.emitMedia(active, 'screen', { state: 'failed', error })
       if (this.desired?.screenAudioEnabled) {
         this.emitMedia(active, 'screen_audio', { state: 'failed', error })
+      }
+      const sourceKey = screenSourceKey(this.desired)
+      if (sourceKey) {
+        this.scheduleScreenRetry(active, sourceKey, error.retryable)
       }
       return
     }
@@ -1140,6 +1251,16 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         this.emitMedia(active, kind, mediaFailure)
         if (kind === 'screen' && this.desired?.screenAudioEnabled) {
           this.emitMedia(active, 'screen_audio', mediaFailure)
+        }
+        const sourceKey = kind === 'screen'
+          ? screenSourceKey(this.desired)
+          : null
+        if (sourceKey) {
+          this.scheduleScreenRetry(
+            active,
+            sourceKey,
+            mediaFailure.error.retryable,
+          )
         }
       } else if (
         (kind === 'microphone' || kind === 'output') &&
@@ -1232,6 +1353,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
   }
 
   private handleRuntimeState(snapshot: NativeRuntimeSupervisorSnapshot) {
+    const wasRuntimeLost = this.runtimeLost
     const hostEpoch = snapshot.hostEpoch
     if (hostEpoch !== undefined && hostEpoch !== this.observedHostEpoch) {
       this.observedHostEpoch = hostEpoch
@@ -1245,6 +1367,15 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       snapshot.status === 'recovering' ||
       snapshot.status === 'degraded' ||
       snapshot.status === 'stopped'
+    if (this.runtimeLost) this.runtimeRestartObserved = true
+    if (available && (wasRuntimeLost || this.runtimeRestartObserved)) {
+      const settleDelay =
+        this.options.screenRuntimeSettleDelayMs ??
+        SCREEN_RUNTIME_SETTLE_DELAY_MS
+      this.runtimeRestartObserved = false
+      this.screenRuntimeSettleUntil = Date.now() + settleDelay
+      if (settleDelay > 0) this.scheduleScreenRuntimeWake(settleDelay)
+    }
     const retryable = snapshot.failure?.retryable ?? snapshot.status !== 'degraded'
     const runtimeFailure = available
       ? undefined
@@ -1379,6 +1510,19 @@ function microphoneConfig(desired: VoiceMediaDesiredState) {
     voiceGateThresholdDb: desired.voiceGateThresholdDb,
     voiceGateAutoThreshold: desired.voiceGateAutoThreshold,
   }
+}
+
+function screenSourceKey(desired: VoiceMediaDesiredState | null) {
+  if (!desired?.screenEnabled) return null
+  return [
+    desired.screenSourceId,
+    desired.screenAudioEnabled,
+    desired.screenWidth,
+    desired.screenHeight,
+    desired.screenFps,
+    desired.screenBitrate,
+    desired.screenAudioBitrate,
+  ].join('|')
 }
 
 function normalizeSpeakingIdentity(identity: string) {

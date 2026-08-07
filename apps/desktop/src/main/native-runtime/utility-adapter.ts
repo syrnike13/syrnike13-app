@@ -52,6 +52,10 @@ const HighFrequencyMediaTransportMessageSchema = Schema.Union([
 
 export type NativeRuntimeAdapterExit = {
   code: number | null
+  terminationSource?: 'error' | 'exit'
+  uptimeMs?: number
+  killRequested?: boolean
+  stderrDrainTimedOut?: boolean
   signal?: string
   error?: Error
   stderrBytesSeen?: number
@@ -96,6 +100,7 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
   private child: UtilityProcessLike | null = null
   private diagnosticLog: NativeDiagnosticLog | null = null
   private ownsDiagnosticLog = false
+  private killRequested = false
 
   constructor(private readonly options: ElectronUtilityAdapterOptions) {}
 
@@ -106,6 +111,8 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
   start(callbacks: NativeRuntimeAdapterCallbacks) {
     if (this.child) throw new Error('Native utility process is already running')
     const fork = this.options.fork ?? utilityProcess.fork
+    this.killRequested = false
+    const startedAt = Date.now()
     const diagnosticSession =
       this.options.runtime === 'media'
         ? this.options.diagnosticSession ??
@@ -189,7 +196,11 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
       adapterPid: child.pid,
     })
     let terminal = false
-    const finish = (exit: NativeRuntimeAdapterExit, terminate = false) => {
+    const finish = (
+      exit: NativeRuntimeAdapterExit,
+      terminationSource: 'error' | 'exit',
+      terminate = false,
+    ) => {
       if (terminal) return
       terminal = true
       if (this.child === child) this.child = null
@@ -202,7 +213,7 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
       }
       let finalized = false
       let drainTimer: ReturnType<typeof setTimeout> | null = null
-      const finalize = () => {
+      const finalize = (stderrDrainTimedOut = false) => {
         if (finalized) return
         finalized = true
         if (drainTimer) clearTimeout(drainTimer)
@@ -210,6 +221,10 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
         const stderrSnapshot = stderr.snapshot()
         const exitWithDiagnostics = {
           ...exit,
+          terminationSource,
+          uptimeMs: Math.max(0, Date.now() - startedAt),
+          killRequested: this.killRequested,
+          stderrDrainTimedOut,
           stderrBytesSeen: stderrSnapshot.bytesSeen,
           stderrBytesCaptured: stderrSnapshot.value.byteLength,
           stderrTruncated: stderrSnapshot.truncated,
@@ -220,6 +235,10 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
           signal: exitWithDiagnostics.signal,
           error: exitWithDiagnostics.error?.message,
           terminate,
+          terminationSource: exitWithDiagnostics.terminationSource,
+          uptimeMs: exitWithDiagnostics.uptimeMs,
+          killRequested: exitWithDiagnostics.killRequested,
+          stderrDrainTimedOut: exitWithDiagnostics.stderrDrainTimedOut,
           stderrBytesSeen: exitWithDiagnostics.stderrBytesSeen,
           stderrBytesCaptured: exitWithDiagnostics.stderrBytesCaptured,
           stderrTruncated: exitWithDiagnostics.stderrTruncated,
@@ -233,7 +252,7 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
         return
       }
       stderrStream.once('end', finalize)
-      drainTimer = setTimeout(finalize, STDERR_DRAIN_GRACE_MS)
+      drainTimer = setTimeout(() => finalize(true), STDERR_DRAIN_GRACE_MS)
       drainTimer.unref?.()
     }
     child.on('message', (message) => {
@@ -248,11 +267,12 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
           code: null,
           error: new Error(String(error)),
         },
+        'error',
         true,
       )
     })
     child.on('exit', (code) => {
-      finish({ code })
+      finish({ code }, 'exit')
     })
   }
 
@@ -265,6 +285,7 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
   }
 
   kill() {
+    this.killRequested = true
     try {
       this.diagnosticLog?.log('transport_kill')
       this.child?.kill()

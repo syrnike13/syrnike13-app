@@ -420,6 +420,45 @@ export function createInitialVoiceMediaDesiredState(): VoiceMediaDesiredState {
   return { ...state, effectiveMuted: computeEffectiveMuted(state) }
 }
 
+export function areVoiceMediaDesiredStatesEqual(
+  left: VoiceMediaDesiredState,
+  right: VoiceMediaDesiredState,
+) {
+  return (
+    left.userMuted === right.userMuted &&
+    left.userDeafened === right.userDeafened &&
+    left.serverMuted === right.serverMuted &&
+    left.serverDeafened === right.serverDeafened &&
+    left.systemPrivacyMuted === right.systemPrivacyMuted &&
+    left.monitoringMuted === right.monitoringMuted &&
+    left.inputMode === right.inputMode &&
+    left.pushToTalkHeld === right.pushToTalkHeld &&
+    left.effectiveMuted === right.effectiveMuted &&
+    left.microphoneDeviceId === right.microphoneDeviceId &&
+    left.bypassSystemAudioInputProcessing ===
+      right.bypassSystemAudioInputProcessing &&
+    left.automaticGainControl === right.automaticGainControl &&
+    left.noiseSuppression === right.noiseSuppression &&
+    left.echoCancellation === right.echoCancellation &&
+    left.inputVolume === right.inputVolume &&
+    left.voiceGateEnabled === right.voiceGateEnabled &&
+    left.voiceGateThresholdDb === right.voiceGateThresholdDb &&
+    left.voiceGateAutoThreshold === right.voiceGateAutoThreshold &&
+    left.outputDeviceId === right.outputDeviceId &&
+    left.outputVolume === right.outputVolume &&
+    left.cameraEnabled === right.cameraEnabled &&
+    left.cameraDeviceId === right.cameraDeviceId &&
+    left.screenEnabled === right.screenEnabled &&
+    left.screenSourceId === right.screenSourceId &&
+    left.screenAudioEnabled === right.screenAudioEnabled &&
+    left.screenWidth === right.screenWidth &&
+    left.screenHeight === right.screenHeight &&
+    left.screenFps === right.screenFps &&
+    left.screenBitrate === right.screenBitrate &&
+    left.screenAudioBitrate === right.screenAudioBitrate
+  )
+}
+
 export function createInactiveMediaSnapshot(): VoiceMediaSnapshot {
   return { state: 'off' }
 }

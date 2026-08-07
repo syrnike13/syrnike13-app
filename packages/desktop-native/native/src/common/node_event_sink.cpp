@@ -391,6 +391,8 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
   if (event.error) result.Set("error", errorToObject(env, *event.error));
   if (event.type == "sessionLifecycle") {
     result.Set("state", lifecycleStateToObject(env, event));
+  } else if (event.type == "voiceConnectionState") {
+    result.Set("state", event.state);
   } else if (event.type == "sessionStarted") {
     result.Set("session", sessionToObject(env, event));
   } else if (event.type == "sessionStopped") {

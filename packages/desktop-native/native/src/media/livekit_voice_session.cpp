@@ -169,6 +169,17 @@ class PostedRoomDelegate final
     if (event.state == livekit::ConnectionState::Connected) {
       requestAllRemotePublicationReconcile();
     }
+    if (event.state == livekit::ConnectionState::Connected ||
+        event.state == livekit::ConnectionState::Reconnecting) {
+      MediaCommand command;
+      command.type = "__voiceConnectionStateChanged";
+      command.session_id = session_id;
+      command.generation = generation;
+      command.status = event.state == livekit::ConnectionState::Connected
+                         ? "connected"
+                         : "reconnecting";
+      post_(std::move(command));
+    }
     if (event.state == livekit::ConnectionState::Disconnected) {
       clearRemotePublications();
     }

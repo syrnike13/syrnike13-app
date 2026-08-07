@@ -311,6 +311,7 @@ class MediaRuntime::Implementation
       type == "releaseRemoteVideoFrame" ||
       type == "retryRemoteVideo" ||
       type == "setRemoteVideoDemand" ||
+      type == "__voiceConnectionStateChanged" ||
       type == "__voiceTerminal"
     ) {
       command.internal_enqueued_steady_ms = enqueue_started_at;
@@ -657,6 +658,17 @@ class MediaRuntime::Implementation
   void handleVoice(MediaCommand& command) {
     if (command.type == "__voiceConnectCompleted") {
       voice_.handleWorkerCommand(command);
+      return;
+    }
+    if (command.type == "__voiceConnectionStateChanged") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation))
+        return;
+      RuntimeEvent event;
+      event.type = "voiceConnectionState";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.state = command.status;
+      emitter_.emit(std::move(event));
       return;
     }
     if (command.type == "__remoteVideoPublicationAvailable" ||

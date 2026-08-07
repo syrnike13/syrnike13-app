@@ -11,6 +11,7 @@ import type {
   VoiceEngineEvent,
 } from './voice-engine'
 import {
+  areVoiceMediaDesiredStatesEqual,
   computeEffectiveMuted,
   createInactiveMediaSnapshot,
   createInitialVoiceMediaDesiredState,
@@ -905,10 +906,12 @@ export class VoiceDirector {
     const previousUserMuted = this.desiredMedia.userMuted
     const previousUserDeafened = this.desiredMedia.userDeafened
     const nextBase = { ...this.desiredMedia, ...patch }
-    this.desiredMedia = {
+    const nextDesired = {
       ...nextBase,
       effectiveMuted: computeEffectiveMuted(nextBase),
     }
+    if (areVoiceMediaDesiredStatesEqual(this.desiredMedia, nextDesired)) return
+    this.desiredMedia = nextDesired
     this.engine.updateDesiredMedia(this.desiredMedia)
     this.updateSnapshot({
       userMuted: this.desiredMedia.userMuted,

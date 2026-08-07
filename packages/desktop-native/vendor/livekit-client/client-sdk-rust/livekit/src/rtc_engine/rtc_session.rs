@@ -1840,14 +1840,7 @@ impl SessionInner {
             send_encodings: encodings,
         };
 
-        let transceiver =
-            self.publisher_pc.peer_connection().add_transceiver_with_video_encoder_backend(
-                track.rtc_track(),
-                init,
-                video_encoder_backend_for_sender(track.kind(), options.video_encoder),
-            )?;
-
-        if track.kind() == TrackKind::Video {
+        let codec_preferences = if track.kind() == TrackKind::Video {
             let capabilities = LkRuntime::instance().pc_factory().get_rtp_sender_capabilities(
                 match track.kind() {
                     TrackKind::Video => MediaType::Video,
@@ -1877,8 +1870,46 @@ impl SessionInner {
             }
 
             matched.append(&mut partial_matched);
+            if matched.is_empty() {
+                return Err(EngineError::Internal(
+                    format!(
+                        "webrtc sender codec capability unavailable for video/{}",
+                        options.video_codec.as_str()
+                    )
+                    .into(),
+                ));
+            }
+            Some(matched)
+        } else {
+            None
+        };
 
-            transceiver.set_codec_preferences(matched)?;
+        let transceiver = self
+            .publisher_pc
+            .peer_connection()
+            .add_transceiver_with_video_encoder_backend(
+                track.rtc_track(),
+                init,
+                video_encoder_backend_for_sender(track.kind(), options.video_encoder),
+            )
+            .map_err(|source| EngineError::RtcStage {
+                stage: "add_transceiver_with_video_encoder_backend",
+                source,
+            })?;
+
+        if let Some(codec_preferences) = codec_preferences {
+            if let Err(source) = transceiver.set_codec_preferences(codec_preferences) {
+                let sender = transceiver.sender();
+                if let Err(rollback_error) =
+                    self.publisher_pc.peer_connection().remove_track(sender)
+                {
+                    log::warn!(
+                        "failed to roll back transceiver after codec preference failure: {}",
+                        rollback_error
+                    );
+                }
+                return Err(EngineError::RtcStage { stage: "set_codec_preferences", source });
+            }
         }
 
         Ok(transceiver)

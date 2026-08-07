@@ -92,8 +92,11 @@ pub enum SimulateScenario {
 pub enum EngineError {
     #[error("signal failure: {0}")]
     Signal(#[from] SignalError),
-    #[error("internal webrtc failure")]
+    #[error("internal webrtc failure: {0}")]
     Rtc(#[from] RtcError),
+    /// WebRTC failure annotated with the sender setup substage.
+    #[error("internal webrtc failure during {stage}: {source}")]
+    RtcStage { stage: &'static str, source: RtcError },
     #[error("connection error: {0}")]
     Connection(Cow<'static, str>), // Connectivity issues (Failed to connect/reconnect)
     #[error("internal error: {0}")]

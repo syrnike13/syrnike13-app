@@ -3362,6 +3362,25 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
       ScreenGpuCaptureErrorCode error_code,
       long hresult,
       CaptureBackendSupervisor::Clock::time_point now) noexcept {
+    const auto recovery_started = CaptureBackendSupervisor::Clock::now();
+    const char* phase = "resolve_target";
+    auto recoveryDurationMs = [&] {
+      return static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              CaptureBackendSupervisor::Clock::now() - recovery_started)
+              .count());
+    };
+    auto& recovery_logger = diagnostics::DiagnosticLog::instance();
+    if (recovery_logger.enabled()) {
+      recovery_logger.write(
+          "screen_backend_recovery_started",
+          {
+              {"target", captureBackendName(decision.target)},
+              {"action", captureBackendActionName(decision.action)},
+              {"hresult", static_cast<std::int64_t>(hresult)},
+              {"count", supervisor_->recoveryAttemptCount()},
+          });
+    }
     try {
       const auto from = supervisor_->activeBackend();
       if (!syrnike::voice::resolveScreenMonitorHandle(target_)) {
@@ -3385,7 +3404,26 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
           target == CaptureBackend::Dxgi) {
         if (const auto existing =
                 std::dynamic_pointer_cast<DxgiGpuCapturer>(candidate)) {
+          phase = "reinitialize_dxgi_duplication";
+          if (recovery_logger.enabled()) {
+            recovery_logger.write(
+                "screen_backend_recovery_stage",
+                {
+                    {"phase", phase},
+                    {"status", "started"},
+                    {"durationMs", recoveryDurationMs()},
+                });
+          }
           existing->reinitializeDuplication();
+          if (recovery_logger.enabled()) {
+            recovery_logger.write(
+                "screen_backend_recovery_stage",
+                {
+                    {"phase", phase},
+                    {"status", "completed"},
+                    {"durationMs", recoveryDurationMs()},
+                });
+          }
           force_new = false;
         } else {
           candidate.reset();
@@ -3468,6 +3506,7 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
           hresult,
           error_code,
       };
+      phase = "completed";
       auto& logger = diagnostics::DiagnosticLog::instance();
       if (logger.enabled()) {
         logger.write(
@@ -3477,6 +3516,16 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
                 {"action", captureBackendActionName(decision.action)},
                 {"hresult", static_cast<std::int64_t>(hresult)},
                 {"count", transition.count},
+                {"durationMs", recoveryDurationMs()},
+            });
+        logger.write(
+            "screen_backend_recovery_finished",
+            {
+                {"phase", phase},
+                {"status", "completed"},
+                {"target", captureBackendName(target)},
+                {"action", captureBackendActionName(decision.action)},
+                {"durationMs", recoveryDurationMs()},
             });
       }
       logScreenCaptureBackend(
@@ -3486,6 +3535,17 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
           hresult);
       return {std::move(transition), false};
     } catch (const ScreenGpuCaptureError& error) {
+      if (recovery_logger.enabled()) {
+        recovery_logger.write(
+            "screen_backend_recovery_finished",
+            {
+                {"phase", phase},
+                {"status", "failed"},
+                {"errorCode", static_cast<std::uint64_t>(error.code())},
+                {"hresult", static_cast<std::int64_t>(error.hresult())},
+                {"durationMs", recoveryDurationMs()},
+            });
+      }
       if (error.code() == ScreenGpuCaptureErrorCode::GpuTimeout) {
         // The replacement was intentionally deferred because an older frame
         // lease is still alive. This is local backpressure, not an activation
@@ -3510,6 +3570,16 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
           error.code() == ScreenGpuCaptureErrorCode::TargetClosed,
       };
     } catch (const std::exception& error) {
+      if (recovery_logger.enabled()) {
+        recovery_logger.write(
+            "screen_backend_recovery_finished",
+            {
+                {"phase", phase},
+                {"status", "failed"},
+                {"message", error.what()},
+                {"durationMs", recoveryDurationMs()},
+            });
+      }
       supervisor_->activationFailed(decision, now);
       logScreenCaptureBackend(
           "screen_capture_backend_recovery_failed",
@@ -3518,6 +3588,16 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
           error.what());
       return {};
     } catch (...) {
+      if (recovery_logger.enabled()) {
+        recovery_logger.write(
+            "screen_backend_recovery_finished",
+            {
+                {"phase", phase},
+                {"status", "failed"},
+                {"message", "unknown capture backend recovery failure"},
+                {"durationMs", recoveryDurationMs()},
+            });
+      }
       supervisor_->activationFailed(decision, now);
       logScreenCaptureBackend(
           "screen_capture_backend_recovery_failed",

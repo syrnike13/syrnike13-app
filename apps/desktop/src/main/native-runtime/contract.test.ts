@@ -107,6 +107,19 @@ describe('native runtime error privacy', () => {
       state: { ...event.state, deviceId: 42 },
     })).toBe(false)
   })
+
+  it('accepts only fenced RTC reconnect states', () => {
+    const event = {
+      type: 'voiceConnectionState',
+      sequence: 3,
+      sessionId: 'voice-session',
+      generation: 8,
+      state: 'reconnecting',
+    } as const
+
+    expect(isNativeRuntimeEvent(event)).toBe(true)
+    expect(isNativeRuntimeEvent({ ...event, state: 'connecting' })).toBe(false)
+  })
 })
 
 describe('native screen capture telemetry validation', () => {

@@ -245,6 +245,7 @@ export type {
   VoiceSnapshot,
 } from './voice/voice-types'
 export {
+  areVoiceMediaDesiredStatesEqual,
   computeEffectiveMuted,
   createInactiveMediaSnapshot,
   createInitialVoiceMediaDesiredState,
