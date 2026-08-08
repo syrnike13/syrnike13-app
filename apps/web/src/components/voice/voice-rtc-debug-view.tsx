@@ -15,7 +15,10 @@ import {
   formatRtcFps,
   formatRtcInteger,
   formatRtcMs,
+  formatRtcPercent,
   formatRtcValue,
+  rtcConnectionQuality,
+  type RtcConnectionQuality,
   type RtcDebugRtpStreamSnapshot,
   type RtcDebugSnapshot,
 } from '#/features/voice/voice-rtc-debug'
@@ -64,26 +67,26 @@ export function VoiceRtcDebugView() {
   const snapshot = voiceTelemetry.rtcDebugSnapshot
 
   return (
-    <div className="gradient-surface-content flex min-h-0 flex-1 bg-background text-foreground">
-      <aside className="gradient-surface-navigation w-72 shrink-0 border-r border-border bg-sidebar px-8 py-10 text-sidebar-foreground">
-        <div className="mb-6">
-          <h1 className="text-xl font-bold leading-none">General</h1>
-          <p className="mt-3 text-base text-sidebar-foreground">
-            {voiceSession.status === 'connected' ? 'Connected' : 'Disconnected'}
+    <div className="gradient-surface-content flex min-h-0 flex-1 flex-col bg-background text-foreground lg:flex-row">
+      <aside className="gradient-surface-navigation shrink-0 border-b border-border bg-sidebar px-4 py-4 text-sidebar-foreground lg:w-60 lg:border-r lg:border-b-0 lg:px-5 lg:py-8">
+        <div className="mb-4 lg:mb-6">
+          <h1 className="text-lg font-bold leading-none">RTC диагностика</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {voiceSession.status === 'connected' ? 'Подключено' : 'Отключено'}
           </p>
         </div>
 
-        <p className="mb-2 text-xs font-bold uppercase text-muted-foreground">
-          Отладка RTC: DEFAULT
+        <p className="mb-2 hidden text-xs font-bold uppercase text-muted-foreground lg:block">
+          Разделы
         </p>
-        <nav className="space-y-1">
+        <nav className="flex gap-1 overflow-x-auto pb-1 lg:block lg:space-y-1 lg:overflow-visible lg:pb-0">
           {sections.map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setSection(item.id)}
               className={cn(
-                'flex h-9 w-full items-center rounded px-3 text-left text-sm font-semibold text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                'flex h-9 shrink-0 items-center rounded px-3 text-left text-sm font-semibold text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground lg:w-full',
                 section === item.id &&
                   'bg-sidebar-accent text-sidebar-accent-foreground',
               )}
@@ -96,7 +99,7 @@ export function VoiceRtcDebugView() {
 
       <main className="min-w-0 flex-1">
         <ScrollArea className="h-full">
-          <div className="mx-auto w-full max-w-5xl px-10 py-10">
+          <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             {voiceSession.status !== 'connected' ? (
               <DebugEmptyState />
             ) : (
@@ -150,23 +153,15 @@ function DebugSectionBody({
 
   if (section === 'general') {
     return (
-      <MetricGrid title="General">
-        <MetricRow label="Connected" value="Yes" />
-        <MetricRow label="Voice Node" value={nodeName ?? '—'} />
-        <MetricRow label="Channel" value={channelId ?? '—'} />
-        <MetricRow label="Local Identity" value={localIdentity ?? '—'} />
-        <MetricRow label="Participant Count" value={participantCount} />
-        <MetricRow label="Stage Media Items" value={stageMediaCount} />
-        <MetricRow
-          label="Selected ICE Candidate"
-          value={snapshot.transport.selectedCandidatePairId ?? '—'}
-        />
-        <MetricRow
-          label="Ping"
-          value={formatRtcMs(snapshot.transport.pingMs)}
-          chart={<RtcDebugMetricChart history={history} value={(sample) => sample.transport.pingMs} />}
-        />
-      </MetricGrid>
+      <GeneralSection
+        snapshot={snapshot}
+        history={history}
+        nodeName={nodeName}
+        localIdentity={localIdentity}
+        channelId={channelId}
+        participantCount={participantCount}
+        stageMediaCount={stageMediaCount}
+      />
     )
   }
 
@@ -197,6 +192,109 @@ function DebugSectionBody({
   }
 
   return <ScreenShareSection snapshot={snapshot} history={history} />
+}
+
+function GeneralSection({
+  snapshot,
+  history,
+  nodeName,
+  localIdentity,
+  channelId,
+  participantCount,
+  stageMediaCount,
+}: {
+  snapshot: RtcDebugSnapshot
+  history: readonly RtcDebugSnapshot[]
+  nodeName: string | null
+  localIdentity: string | null
+  channelId: string | null
+  participantCount: number
+  stageMediaCount: number
+}) {
+  const quality = rtcConnectionQuality(snapshot)
+  const rates = snapshot.rates
+
+  return (
+    <div>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-foreground">Состояние соединения</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {snapshot.source === 'windows_native'
+              ? 'Windows native LiveKit runtime'
+              : 'Browser WebRTC getStats()'}
+          </p>
+        </div>
+        <QualityBadge quality={quality} />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <OverviewCard
+          label="Пинг"
+          value={formatRtcMs(snapshot.transport.pingMs)}
+          history={history}
+          metric={(sample) => sample.transport.pingMs}
+        />
+        <OverviewCard
+          label="Потери пакетов"
+          value={formatRtcPercent(rates?.quality.packetLossPercent)}
+          history={history}
+          metric={(sample) => sample.rates?.quality.packetLossPercent}
+        />
+        <OverviewCard
+          label="Джиттер"
+          value={formatRtcMs(rates?.quality.jitterMs)}
+          history={history}
+          metric={(sample) => sample.rates?.quality.jitterMs}
+        />
+        <OverviewCard
+          label="Дроп кадров"
+          value={formatRtcPercent(rates?.quality.framesDroppedPercent)}
+          detail={
+            rates?.quality.framesDroppedPerSecond == null
+              ? undefined
+              : `${rates.quality.framesDroppedPerSecond.toFixed(1)} кадр/с`
+          }
+          history={history}
+          metric={(sample) => sample.rates?.quality.framesDroppedPercent}
+        />
+        <OverviewCard
+          label="Входящий поток"
+          value={formatRtcBitrate(rates?.transport.inboundBitrate)}
+          history={history}
+          metric={(sample) => sample.rates?.transport.inboundBitrate}
+        />
+        <OverviewCard
+          label="Исходящий поток"
+          value={formatRtcBitrate(rates?.transport.outboundBitrate)}
+          history={history}
+          metric={(sample) => sample.rates?.transport.outboundBitrate}
+        />
+      </div>
+
+      <div className="mt-8">
+        <MetricGrid title="Сессия">
+          <MetricRow label="Voice Node" value={nodeName ?? '—'} />
+          <MetricRow label="Channel" value={channelId ?? '—'} />
+          <MetricRow label="Local Identity" value={localIdentity ?? '—'} />
+          <MetricRow label="Participant Count" value={participantCount} />
+          <MetricRow label="Stage Media Items" value={stageMediaCount} />
+          <MetricRow
+            label="Selected ICE Candidate"
+            value={snapshot.transport.selectedCandidatePairId ?? '—'}
+          />
+          <MetricRow
+            label="Скрытые аудиосэмплы"
+            value={formatRtcPercent(rates?.quality.concealedAudioPercent)}
+          />
+          <MetricRow
+            label="Источник статистики"
+            value={snapshot.source ?? 'web'}
+          />
+        </MetricGrid>
+      </div>
+    </div>
+  )
 }
 
 function TransportSection({
@@ -329,26 +427,70 @@ function RtpStreamCard({
       <MetricRow label="Packets Sent" value={formatRtcInteger(stream.packetsSent)} />
       <MetricRow label="Packets Received" value={formatRtcInteger(stream.packetsReceived)} />
       <MetricRow label="Packets Lost" value={formatRtcInteger(stream.packetsLost)} />
+      <MetricRow
+        label="Packet Loss"
+        value={formatRtcPercent(stream.packetLossPercent)}
+      />
+      <MetricRow
+        label="Round Trip Time"
+        value={formatRtcMs(stream.roundTripTimeMs)}
+      />
       <MetricRow label="Bytes Sent" value={formatRtcBytes(stream.bytesSent)} />
       <MetricRow label="Bytes Received" value={formatRtcBytes(stream.bytesReceived)} />
-      <MetricRow label="Retransmitted Bytes" value={formatRtcBytes(stream.retransmittedBytesSent)} />
+      <MetricRow
+        label="Retransmitted Packets"
+        value={formatRtcInteger(
+          stream.retransmittedPacketsSent ??
+            stream.retransmittedPacketsReceived,
+        )}
+      />
+      <MetricRow
+        label="Retransmitted Bytes"
+        value={formatRtcBytes(
+          stream.retransmittedBytesSent ?? stream.retransmittedBytesReceived,
+        )}
+      />
+      <MetricRow
+        label="Discarded Packets"
+        value={formatRtcInteger(stream.packetsDiscarded)}
+      />
       <MetricRow label="NACK" value={formatRtcInteger(stream.nackCount)} />
+      <MetricRow label="FIR" value={formatRtcInteger(stream.firCount)} />
       <MetricRow label="PLI" value={formatRtcInteger(stream.pliCount)} />
       <MetricRow label="Encode FPS" value={formatRtcFps(stream.framesPerSecond)} />
       <MetricRow label="Frame Size" value={formatFrameSize(stream.frameWidth, stream.frameHeight)} />
+      <MetricRow label="Frames Sent" value={formatRtcInteger(stream.framesSent)} />
+      <MetricRow label="Frames Received" value={formatRtcInteger(stream.framesReceived)} />
+      <MetricRow label="Frames Rendered" value={formatRtcInteger(stream.framesRendered)} />
       <MetricRow label="Frames Encoded" value={formatRtcInteger(stream.framesEncoded)} />
       <MetricRow label="Frames Decoded" value={formatRtcInteger(stream.framesDecoded)} />
       <MetricRow label="Frames Dropped" value={formatRtcInteger(stream.framesDropped)} />
       <MetricRow label="Freeze Count" value={formatRtcInteger(stream.freezeCount)} />
       <MetricRow label="Freeze Duration" value={formatRtcValue(stream.totalFreezesDuration)} />
-      <MetricRow label="Jitter" value={formatRtcValue(stream.jitter)} />
+      <MetricRow
+        label="Jitter"
+        value={formatRtcMs(
+          stream.jitter == null ? undefined : stream.jitter * 1000,
+        )}
+      />
       <MetricRow label="Quality Limitation Reason" value={stream.qualityLimitationReason ?? '—'} />
+      <MetricRow
+        label="Encoder"
+        value={stream.encoderImplementation ?? '—'}
+      />
+      <MetricRow
+        label="Decoder"
+        value={stream.decoderImplementation ?? '—'}
+      />
       <MetricRow label="Audio Level" value={formatRtcValue(stream.audioLevel)} />
       <MetricRow label="Total Audio Energy" value={formatRtcValue(stream.totalAudioEnergy)} />
       <MetricRow label="Samples Duration" value={formatRtcValue(stream.totalSamplesDuration)} />
       <MetricRow label="Samples Received" value={formatRtcInteger(stream.totalSamplesReceived)} />
       <MetricRow label="Concealed Samples" value={formatRtcInteger(stream.concealedSamples)} />
       <MetricRow label="Silent Concealed Samples" value={formatRtcInteger(stream.silentConcealedSamples)} />
+      <MetricRow label="Concealment Events" value={formatRtcInteger(stream.concealmentEvents)} />
+      <MetricRow label="Jitter Buffer Delay" value={formatRtcValue(stream.jitterBufferDelay)} />
+      <MetricRow label="Jitter Buffer Target" value={formatRtcValue(stream.jitterBufferTargetDelay)} />
       <MetricRow label="Jitter Buffer Emitted" value={formatRtcInteger(stream.jitterBufferEmittedCount)} />
     </MetricGroup>
   )
@@ -514,6 +656,76 @@ function ScreenShareBitrateRows({
         />
       ) : null}
     </>
+  )
+}
+
+function OverviewCard({
+  label,
+  value,
+  detail,
+  history,
+  metric,
+}: {
+  label: string
+  value: string
+  detail?: string
+  history: readonly RtcDebugSnapshot[]
+  metric: (sample: RtcDebugSnapshot) => number | null | undefined
+}) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-card">
+      <div className="px-4 pt-3">
+        <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+        <div className="mt-1 flex items-baseline justify-between gap-3">
+          <p className="text-xl font-bold tabular-nums text-card-foreground">
+            {value}
+          </p>
+          {detail ? (
+            <p className="text-xs tabular-nums text-muted-foreground">{detail}</p>
+          ) : null}
+        </div>
+      </div>
+      <RtcDebugMetricChart
+        history={history}
+        value={metric}
+        className="mt-2 h-16"
+      />
+    </section>
+  )
+}
+
+function QualityBadge({ quality }: { quality: RtcConnectionQuality }) {
+  return (
+    <div
+      className={cn(
+        'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold',
+        quality === 'good' && 'border-primary/30 bg-primary/10 text-primary',
+        quality === 'fair' &&
+          'border-chart-4/30 bg-chart-4/10 text-chart-4',
+        quality === 'poor' &&
+          'border-destructive/30 bg-destructive/10 text-destructive',
+        quality === 'unknown' &&
+          'border-border bg-muted text-muted-foreground',
+      )}
+    >
+      <span
+        className={cn(
+          'size-2 rounded-full',
+          quality === 'good' && 'bg-primary',
+          quality === 'fair' && 'bg-chart-4',
+          quality === 'poor' && 'bg-destructive',
+          quality === 'unknown' && 'bg-muted-foreground',
+        )}
+        aria-hidden
+      />
+      {quality === 'good'
+        ? 'Хорошее соединение'
+        : quality === 'fair'
+          ? 'Нестабильное соединение'
+          : quality === 'poor'
+            ? 'Плохое соединение'
+            : 'Собираем данные'}
+    </div>
   )
 }
 

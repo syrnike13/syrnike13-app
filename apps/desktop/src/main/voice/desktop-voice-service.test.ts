@@ -4,6 +4,7 @@ const runtimeMocks = vi.hoisted(() => ({
   engines: [] as Array<{
     dispose: ReturnType<typeof vi.fn>
     prewarmMicrophone: ReturnType<typeof vi.fn>
+    telemetry: ReturnType<typeof vi.fn>
   }>,
   transports: [] as Array<{
     configured: Array<{ url: string; token: string }>
@@ -37,6 +38,7 @@ vi.mock('../native-media-engine', () => ({
       retryMedia: vi.fn(),
       subscribe: vi.fn(() => () => undefined),
       prewarmMicrophone: vi.fn(async () => undefined),
+      telemetry: vi.fn(() => null),
       dispose: vi.fn(),
     }
     runtimeMocks.engines.push(engine)
@@ -99,6 +101,20 @@ describe('DesktopVoiceService session scope', () => {
     expect(runtimeMocks.transports[1].stop).toHaveBeenCalledTimes(1)
     expect(runtimeMocks.transports[2].configured.at(-1)?.token).toBe('token-b')
 
+    await service.dispose()
+  })
+
+  it('forwards the current native RTC telemetry snapshot', async () => {
+    const service = new DesktopVoiceService()
+    const telemetry = {
+      timestamp: 1_000,
+      transport: { pingMs: 42 },
+      outbound: [],
+      inbound: [],
+    }
+    runtimeMocks.engines[0]!.telemetry.mockReturnValue(telemetry)
+
+    expect(service.telemetry()).toBe(telemetry)
     await service.dispose()
   })
 })

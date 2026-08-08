@@ -25,7 +25,11 @@ inline EventLane eventLane(const RuntimeEvent& event) noexcept {
   ) {
     return EventLane::media;
   }
-  if (event.type == "stats" || event.type == "microphoneMetrics") {
+  if (
+    event.type == "stats" ||
+    event.type == "voiceStats" ||
+    event.type == "microphoneMetrics"
+  ) {
     return EventLane::telemetry;
   }
   return EventLane::control;

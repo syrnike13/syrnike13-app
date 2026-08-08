@@ -283,6 +283,10 @@ export class DesktopVoiceService {
     return this.runtime.director.snapshot()
   }
 
+  telemetry() {
+    return this.runtime.engine.telemetry()
+  }
+
   subscribe(listener: (snapshot: VoiceSnapshot) => void) {
     this.listeners.add(listener)
     listener(this.runtime.director.snapshot())

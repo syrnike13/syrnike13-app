@@ -67,6 +67,7 @@ export const IPC = {
     'syrnike-desktop:media:set-local-screen-preview-demand',
   voiceDispatch: 'syrnike-desktop:voice:dispatch',
   voiceGetSnapshot: 'syrnike-desktop:voice:get-snapshot',
+  voiceGetTelemetry: 'syrnike-desktop:voice:get-telemetry',
   voiceSnapshotChanged: 'syrnike-desktop:voice:snapshot-changed',
 } as const
 

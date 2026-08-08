@@ -16,6 +16,7 @@ import type {
 } from './diagnostics'
 import type { DesktopLocalSettings, DesktopLocalSettingsPatch } from './settings'
 import type { VoiceCommand, VoiceSnapshot } from './voice/voice-types'
+import type { VoiceRtcTelemetrySnapshot } from './voice/voice-telemetry'
 
 type Mutable<Type> = Type extends ReadonlyArray<infer Item>
   ? Array<Mutable<Item>>
@@ -312,6 +313,7 @@ export interface SyrnikeDesktopApi {
   voice: {
     dispatch(command: VoiceCommand): Promise<VoiceSnapshot>
     getSnapshot(): Promise<VoiceSnapshot>
+    getTelemetry(): Promise<VoiceRtcTelemetrySnapshot | null>
     onSnapshot(handler: (snapshot: VoiceSnapshot) => void): () => void
   }
   auth: {

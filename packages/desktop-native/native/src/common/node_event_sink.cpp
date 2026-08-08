@@ -322,6 +322,187 @@ Napi::Object statsToObject(Napi::Env env, const RuntimeEvent& event) {
   return stats;
 }
 
+Napi::Object voiceRtcStreamToObject(
+  Napi::Env env,
+  const VoiceRtcStreamTelemetry& stream,
+  bool outbound
+) {
+  auto result = Napi::Object::New(env);
+  result.Set("id", stream.id);
+  result.Set("pcRole", stream.pc_role);
+  result.Set("kind", stream.kind);
+  if (stream.ssrc > 0) result.Set("ssrc", stream.ssrc);
+  setIfPresent(result, "mid", stream.mid);
+  setIfPresent(result, "trackIdentifier", stream.track_identifier);
+  setIfPresent(result, "codec", stream.codec);
+  if (stream.target_bitrate > 0.0) {
+    result.Set("targetBitrate", stream.target_bitrate);
+  }
+  result.Set("nackCount", stream.nack_count);
+  result.Set("firCount", stream.fir_count);
+  result.Set("pliCount", stream.pli_count);
+  if (outbound) {
+    result.Set("bytesSent", jsNumber(env, stream.bytes_sent));
+    result.Set("packetsSent", jsNumber(env, stream.packets_sent));
+    result.Set(
+      "retransmittedPacketsSent",
+      jsNumber(env, stream.retransmitted_packets_sent)
+    );
+    result.Set(
+      "retransmittedBytesSent",
+      jsNumber(env, stream.retransmitted_bytes_sent)
+    );
+    if (stream.has_remote_inbound) {
+      result.Set("packetLossPercent", stream.packet_loss_percent);
+      result.Set("roundTripTimeMs", stream.round_trip_time_ms);
+    }
+    if (stream.kind == "video") {
+      result.Set("framesSent", stream.frames_sent);
+      result.Set("framesEncoded", stream.frames_encoded);
+      result.Set("framesPerSecond", stream.frames_per_second);
+      result.Set("frameWidth", stream.frame_width);
+      result.Set("frameHeight", stream.frame_height);
+      setIfPresent(
+        result,
+        "qualityLimitationReason",
+        stream.quality_limitation_reason
+      );
+      setIfPresent(
+        result,
+        "encoderImplementation",
+        stream.encoder_implementation
+      );
+    }
+    return result;
+  }
+
+  result.Set("bytesReceived", jsNumber(env, stream.bytes_received));
+  result.Set("packetsReceived", jsNumber(env, stream.packets_received));
+  result.Set("packetsLost", static_cast<double>(stream.packets_lost));
+  result.Set("jitter", stream.jitter);
+  result.Set(
+    "retransmittedPacketsReceived",
+    jsNumber(env, stream.retransmitted_packets_received)
+  );
+  result.Set(
+    "retransmittedBytesReceived",
+    jsNumber(env, stream.retransmitted_bytes_received)
+  );
+  result.Set("packetsDiscarded", jsNumber(env, stream.packets_discarded));
+  if (stream.kind == "video") {
+    result.Set("framesReceived", jsNumber(env, stream.frames_received));
+    result.Set("framesRendered", stream.frames_rendered);
+    result.Set("framesDecoded", stream.frames_decoded);
+    result.Set("framesDropped", stream.frames_dropped);
+    result.Set("framesPerSecond", stream.frames_per_second);
+    result.Set("frameWidth", stream.frame_width);
+    result.Set("frameHeight", stream.frame_height);
+    result.Set("freezeCount", stream.freeze_count);
+    result.Set("totalFreezesDuration", stream.total_freeze_duration);
+    result.Set("pauseCount", stream.pause_count);
+    result.Set("totalPauseDuration", stream.total_pause_duration);
+    setIfPresent(
+      result,
+      "decoderImplementation",
+      stream.decoder_implementation
+    );
+  } else {
+    result.Set("audioLevel", stream.audio_level);
+    result.Set("totalAudioEnergy", stream.total_audio_energy);
+    result.Set("totalSamplesDuration", stream.total_samples_duration);
+    result.Set(
+      "totalSamplesReceived",
+      jsNumber(env, stream.total_samples_received)
+    );
+    result.Set("concealedSamples", jsNumber(env, stream.concealed_samples));
+    result.Set(
+      "silentConcealedSamples",
+      jsNumber(env, stream.silent_concealed_samples)
+    );
+    result.Set(
+      "concealmentEvents",
+      jsNumber(env, stream.concealment_events)
+    );
+    result.Set("jitterBufferDelay", stream.jitter_buffer_delay);
+    result.Set(
+      "jitterBufferTargetDelay",
+      stream.jitter_buffer_target_delay
+    );
+    result.Set(
+      "jitterBufferEmittedCount",
+      jsNumber(env, stream.jitter_buffer_emitted_count)
+    );
+  }
+  return result;
+}
+
+Napi::Object voiceRtcStatsToObject(Napi::Env env, const RuntimeEvent& event) {
+  auto stats = Napi::Object::New(env);
+  auto transport = Napi::Object::New(env);
+  if (event.voice_rtc_transport.available) {
+    transport.Set(
+      "availableOutgoingBitrate",
+      event.voice_rtc_transport.available_outgoing_bitrate
+    );
+    transport.Set(
+      "availableIncomingBitrate",
+      event.voice_rtc_transport.available_incoming_bitrate
+    );
+    transport.Set("pingMs", event.voice_rtc_transport.ping_ms);
+    transport.Set(
+      "bytesSent",
+      jsNumber(env, event.voice_rtc_transport.bytes_sent)
+    );
+    transport.Set(
+      "bytesReceived",
+      jsNumber(env, event.voice_rtc_transport.bytes_received)
+    );
+    transport.Set(
+      "packetsSent",
+      jsNumber(env, event.voice_rtc_transport.packets_sent)
+    );
+    transport.Set(
+      "packetsReceived",
+      jsNumber(env, event.voice_rtc_transport.packets_received)
+    );
+    setIfPresent(
+      transport,
+      "localAddress",
+      event.voice_rtc_transport.local_address
+    );
+    setIfPresent(
+      transport,
+      "remoteAddress",
+      event.voice_rtc_transport.remote_address
+    );
+    setIfPresent(
+      transport,
+      "selectedCandidatePairId",
+      event.voice_rtc_transport.selected_candidate_pair_id
+    );
+  }
+  stats.Set("transport", transport);
+
+  auto outbound = Napi::Array::New(env, event.voice_rtc_outbound.size());
+  for (std::size_t index = 0; index < event.voice_rtc_outbound.size(); ++index) {
+    outbound.Set(
+      static_cast<std::uint32_t>(index),
+      voiceRtcStreamToObject(env, event.voice_rtc_outbound[index], true)
+    );
+  }
+  stats.Set("outbound", outbound);
+
+  auto inbound = Napi::Array::New(env, event.voice_rtc_inbound.size());
+  for (std::size_t index = 0; index < event.voice_rtc_inbound.size(); ++index) {
+    inbound.Set(
+      static_cast<std::uint32_t>(index),
+      voiceRtcStreamToObject(env, event.voice_rtc_inbound[index], false)
+    );
+  }
+  stats.Set("inbound", inbound);
+  return stats;
+}
+
 Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
   auto result = Napi::Object::New(env);
   result.Set("type", event.type);
@@ -399,6 +580,8 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
     setIfPresent(result, "reason", event.reason);
   } else if (event.type == "stats") {
     result.Set("stats", statsToObject(env, event));
+  } else if (event.type == "voiceStats") {
+    result.Set("stats", voiceRtcStatsToObject(env, event));
   } else if (event.type == "screenBackendRestart") {
     result.Set("backend", event.capture_method);
     result.Set("reason", event.reason);

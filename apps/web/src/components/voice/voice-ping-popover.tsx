@@ -11,6 +11,13 @@ import {
 } from '#/components/ui/popover'
 import { summarizeVoicePingHistory } from '#/features/voice/voice-ping-history'
 import { resolveVoiceNodeNameEffect } from '#/features/voice/voice-node'
+import {
+  formatRtcBitrate,
+  formatRtcMs,
+  formatRtcPercent,
+  rtcConnectionQuality,
+  type RtcConnectionQuality,
+} from '#/features/voice/voice-rtc-debug'
 import { useVoiceTelemetry } from '#/features/voice/voice-telemetry-context'
 import { cn } from '#/lib/utils'
 
@@ -43,6 +50,9 @@ export function VoicePingPopoverContent({
     voiceTelemetry.voicePingHistory,
   )
   const lastDisplay = voiceTelemetry.voicePingMs ?? lastMs
+  const snapshot = voiceTelemetry.rtcDebugSnapshot
+  const quality = rtcConnectionQuality(snapshot)
+  const rates = snapshot?.rates
 
   return (
     <PopoverContent
@@ -71,7 +81,26 @@ export function VoicePingPopoverContent({
           </p>
         ) : null}
 
-        <dl className="space-y-1.5 text-sm">
+        <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2">
+          <div>
+            <p className="text-xs text-muted-foreground">Качество соединения</p>
+            <p className="mt-0.5 text-sm font-semibold text-foreground">
+              {qualityLabel(quality)}
+            </p>
+          </div>
+          <span
+            className={cn(
+              'size-2.5 rounded-full',
+              quality === 'good' && 'bg-primary',
+              quality === 'fair' && 'bg-chart-4',
+              quality === 'poor' && 'bg-destructive',
+              quality === 'unknown' && 'bg-muted-foreground',
+            )}
+            aria-hidden
+          />
+        </div>
+
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <PingStatRow
             label="Средний пинг"
             value={formatPingMs(averageMs)}
@@ -80,10 +109,27 @@ export function VoicePingPopoverContent({
             label="Последний пинг"
             value={formatPingMs(lastDisplay)}
           />
+          <PingStatRow
+            label="Потери пакетов"
+            value={formatRtcPercent(rates?.quality.packetLossPercent)}
+          />
+          <PingStatRow
+            label="Джиттер"
+            value={formatRtcMs(rates?.quality.jitterMs)}
+          />
+          <PingStatRow
+            label="Входящий поток"
+            value={formatRtcBitrate(rates?.transport.inboundBitrate)}
+          />
+          <PingStatRow
+            label="Исходящий поток"
+            value={formatRtcBitrate(rates?.transport.outboundBitrate)}
+          />
         </dl>
 
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Задержка звука может быть заметна при пинге от 250 мс и выше.
+          Потери, джиттер и скрытые аудиосэмплы рассчитываются по изменению
+          WebRTC-счётчиков между замерами.
         </p>
 
         <Button asChild variant="secondary" size="sm" className="w-full">
@@ -96,9 +142,11 @@ export function VoicePingPopoverContent({
 
 function PingStatRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-semibold tabular-nums text-foreground">{value}</dd>
+    <div className="min-w-0">
+      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 truncate font-semibold tabular-nums text-foreground">
+        {value}
+      </dd>
     </div>
   )
 }
@@ -106,4 +154,11 @@ function PingStatRow({ label, value }: { label: string; value: string }) {
 function formatPingMs(ms: number | null) {
   if (ms == null) return '—'
   return `${ms} мс`
+}
+
+function qualityLabel(quality: RtcConnectionQuality) {
+  if (quality === 'good') return 'Хорошее'
+  if (quality === 'fair') return 'Нестабильное'
+  if (quality === 'poor') return 'Плохое'
+  return 'Собираем данные'
 }

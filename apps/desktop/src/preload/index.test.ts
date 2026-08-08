@@ -80,6 +80,32 @@ describe('desktop preload media runtime bridge', () => {
     )
   })
 
+  it('validates voice RTC telemetry returned by main IPC', async () => {
+    const telemetry = {
+      timestamp: 1_000,
+      transport: { pingMs: 42 },
+      outbound: [{
+        id: 'publisher:audio-out',
+        pcRole: 'publisher' as const,
+        kind: 'audio' as const,
+        packetsSent: 100,
+      }],
+      inbound: [],
+    }
+    electron.ipcRenderer.invoke.mockResolvedValueOnce(telemetry)
+
+    await expect(desktop.voice.getTelemetry()).resolves.toEqual(telemetry)
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(
+      IPC.voiceGetTelemetry,
+    )
+
+    electron.ipcRenderer.invoke.mockResolvedValueOnce({
+      ...telemetry,
+      transport: { pingMs: -1 },
+    })
+    await expect(desktop.voice.getTelemetry()).rejects.toThrow()
+  })
+
   it('rejects malformed runtime state returned by main IPC', async () => {
     electron.ipcRenderer.invoke.mockResolvedValueOnce({
       available: true,

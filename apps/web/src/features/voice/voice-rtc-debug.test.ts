@@ -5,6 +5,7 @@ import {
   attachRtcRatesToScreenShares,
   collectVoiceRtcDebugSnapshot,
   deriveRtcRates,
+  rtcDebugSnapshotFromTelemetry,
   RTC_DEBUG_BROWSER_UNAVAILABLE,
 } from './voice-rtc-debug'
 import { nativeMediaEngineStatsStore } from './native-media-engine-stats'
@@ -120,6 +121,13 @@ describe('voice rtc debug', () => {
           },
         },
         {
+          id: 'remote-in-video',
+          type: 'remote-inbound-rtp',
+          localId: 'out-video',
+          fractionLost: 0.025,
+          roundTripTime: 0.071,
+        },
+        {
           id: 'in-video',
           type: 'inbound-rtp',
           kind: 'video',
@@ -195,7 +203,10 @@ describe('voice rtc debug', () => {
         none: 12,
         cpu: 0,
       },
+      packetLossPercent: 2.5,
+      roundTripTimeMs: 71,
     })
+    expect(snapshot.outbound).toHaveLength(1)
     expect(snapshot.inbound[0]).toMatchObject({
       id: 'publisher:in-video',
       kind: 'video',
@@ -286,6 +297,25 @@ describe('voice rtc debug', () => {
       captureAudioRmsDb: -18.25,
       hybridGraphicsCaptureFrames: 60,
     })
+  })
+
+  it('clears stale native capture diagnostics when telemetry no longer includes capture stats', () => {
+    nativeMediaEngineStatsStore.setNative(
+      { wgc_gpu: 60, dxgi_gpu: 0 },
+      'wgc_gpu',
+    )
+
+    rtcDebugSnapshotFromTelemetry(
+      {
+        timestamp: 1_000,
+        transport: {},
+        outbound: [],
+        inbound: [],
+      },
+      [],
+    )
+
+    expect(nativeMediaEngineStatsStore.getState().backend).toBe('chromium')
   })
 
   it('preserves audio receive and concealment counters needed to diagnose silence', async () => {
@@ -457,7 +487,86 @@ describe('voice rtc debug', () => {
       },
       outbound: { out: 8_000 },
       inbound: { in: 16_000 },
+      quality: {},
     })
+  })
+
+  it('derives packet loss, frame drops, jitter, and concealed audio from deltas', () => {
+    const previous = {
+      timestamp: 1_000,
+      transport: {},
+      outbound: [{ id: 'out', packetLossPercent: 1.5 }],
+      inbound: [{
+        id: 'in',
+        packetsReceived: 100,
+        packetsLost: 5,
+        framesDecoded: 100,
+        framesDropped: 2,
+        totalSamplesReceived: 48_000,
+        concealedSamples: 480,
+        jitter: 0.012,
+      }],
+    }
+    const current = {
+      timestamp: 3_000,
+      transport: {},
+      outbound: [{ id: 'out', packetLossPercent: 3 }],
+      inbound: [{
+        id: 'in',
+        packetsReceived: 290,
+        packetsLost: 15,
+        framesDecoded: 190,
+        framesDropped: 12,
+        totalSamplesReceived: 144_000,
+        concealedSamples: 1_440,
+        jitter: 0.02,
+      }],
+    }
+
+    expect(deriveRtcRates(previous, current).quality).toEqual({
+      inboundPacketLossPercent: 5,
+      outboundPacketLossPercent: 3,
+      packetLossPercent: 5,
+      framesDroppedPercent: 10,
+      framesDroppedPerSecond: 5,
+      jitterMs: 20,
+      concealedAudioPercent: 1,
+    })
+  })
+
+  it('ignores reset counters instead of reporting negative quality rates', () => {
+    const quality = deriveRtcRates(
+      {
+        timestamp: 1_000,
+        transport: {},
+        outbound: [],
+        inbound: [{
+          id: 'in',
+          packetsReceived: 100,
+          packetsLost: 10,
+          framesDecoded: 100,
+          framesDropped: 10,
+          totalSamplesReceived: 48_000,
+          concealedSamples: 480,
+        }],
+      },
+      {
+        timestamp: 2_000,
+        transport: {},
+        outbound: [],
+        inbound: [{
+          id: 'in',
+          packetsReceived: 5,
+          packetsLost: 0,
+          framesDecoded: 5,
+          framesDropped: 0,
+          totalSamplesReceived: 2_400,
+          concealedSamples: 0,
+        }],
+      },
+    ).quality
+
+    expect(quality).toEqual({})
   })
 
   it('attaches a remote screen bitrate to its matching inbound RTP stream', () => {
@@ -484,6 +593,7 @@ describe('voice rtc debug', () => {
         transport: {},
         outbound: {},
         inbound: { 'subscriber:in-screen': 2_500_000 },
+        quality: {},
       },
     })
 

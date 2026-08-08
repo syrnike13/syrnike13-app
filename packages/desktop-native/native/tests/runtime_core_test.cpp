@@ -374,6 +374,12 @@ int main() try {
       syrnike::desktop_native::EventLane::telemetry,
     "microphone metrics did not use the telemetry lane"
   );
+  telemetry_event.type = "voiceStats";
+  require(
+    syrnike::desktop_native::eventLane(telemetry_event) ==
+      syrnike::desktop_native::EventLane::telemetry,
+    "voice RTC stats did not use the telemetry lane"
+  );
 
   syrnike::desktop_native::ControlEventLane control_lane(
     2,

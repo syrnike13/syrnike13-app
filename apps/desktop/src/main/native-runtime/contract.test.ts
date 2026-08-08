@@ -202,6 +202,64 @@ describe('native screen capture telemetry validation', () => {
   })
 })
 
+describe('native voice RTC telemetry validation', () => {
+  const event = {
+    type: 'voiceStats',
+    sequence: 4,
+    sessionId: 'voice-session',
+    generation: 8,
+    stats: {
+      transport: {
+        pingMs: 42,
+        bytesSent: 1_000,
+        bytesReceived: 2_000,
+        selectedCandidatePairId: 'pair-1',
+      },
+      outbound: [{
+        id: 'publisher:audio-out',
+        pcRole: 'publisher',
+        kind: 'audio',
+        packetsSent: 100,
+        bytesSent: 12_000,
+        packetLossPercent: 1.5,
+        roundTripTimeMs: 44,
+      }],
+      inbound: [{
+        id: 'subscriber:audio-in',
+        pcRole: 'subscriber',
+        kind: 'audio',
+        packetsReceived: 98,
+        packetsLost: 2,
+        bytesReceived: 11_000,
+        jitter: 0.012,
+        totalSamplesReceived: 48_000,
+        concealedSamples: 480,
+      }],
+    },
+  } as const
+
+  it('accepts generation-fenced transport and RTP stream telemetry', () => {
+    expect(isNativeRuntimeEvent(event)).toBe(true)
+  })
+
+  it('rejects invalid roles and non-finite quality metrics', () => {
+    expect(isNativeRuntimeEvent({
+      ...event,
+      stats: {
+        ...event.stats,
+        outbound: [{ ...event.stats.outbound[0], pcRole: 'receiver' }],
+      },
+    })).toBe(false)
+    expect(isNativeRuntimeEvent({
+      ...event,
+      stats: {
+        ...event.stats,
+        inbound: [{ ...event.stats.inbound[0], jitter: Number.NaN }],
+      },
+    })).toBe(false)
+  })
+})
+
 describe('native runtime command validation', () => {
   const microphone = {
     type: 'connectMicrophone' as const,

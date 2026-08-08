@@ -256,3 +256,16 @@ export {
   VoiceRemoteAudioSettingsSchema,
   VoiceSnapshotSchema,
 } from './voice/voice-types'
+export type {
+  VoiceNativeCaptureTelemetry,
+  VoiceRtcStreamTelemetry,
+  VoiceRtcTelemetrySnapshot,
+  VoiceRtcTransportTelemetry,
+} from './voice/voice-telemetry'
+export {
+  isVoiceRtcTelemetrySnapshot,
+  VoiceNativeCaptureTelemetrySchema,
+  VoiceRtcStreamTelemetrySchema,
+  VoiceRtcTelemetrySnapshotSchema,
+  VoiceRtcTransportTelemetrySchema,
+} from './voice/voice-telemetry'

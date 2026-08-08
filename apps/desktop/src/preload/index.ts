@@ -20,6 +20,7 @@ import {
   NativeMicrophoneMetricsEventSchema,
   NativeMicrophonePreviewStateEventSchema,
   VoiceSnapshotSchema,
+  VoiceRtcTelemetrySnapshotSchema,
   normalizeDesktopLocalSettings,
 } from '@syrnike13/platform'
 import { Effect, Schema } from 'effect'
@@ -47,6 +48,7 @@ import type {
   SyrnikeDesktopApi,
   VoiceCommand,
   VoiceSnapshot,
+  VoiceRtcTelemetrySnapshot,
 } from '@syrnike13/platform'
 
 const NATIVE_VIDEO_FRAME_MESSAGE = 'syrnike-native-video-frame'
@@ -291,6 +293,12 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     },
     getSnapshot() {
       return invokeDecoded(IPC.voiceGetSnapshot, VoiceSnapshotSchema)
+    },
+    getTelemetry(): Promise<VoiceRtcTelemetrySnapshot | null> {
+      return invokeDecoded(
+        IPC.voiceGetTelemetry,
+        Schema.Union([Schema.Null, VoiceRtcTelemetrySnapshotSchema]),
+      )
     },
     onSnapshot(handler: (snapshot: VoiceSnapshot) => void) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {

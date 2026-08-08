@@ -4,11 +4,16 @@
 #include <livekit/remote_track_publication.h>
 #include <livekit/room_delegate.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdlib>
+#include <future>
 #include <optional>
 #include <stdexcept>
 #include <string_view>
+#include <thread>
+#include <type_traits>
+#include <unordered_map>
 #include <utility>
 
 #include "../common/diagnostic_log.hpp"
@@ -57,6 +62,220 @@ std::string_view outputPhaseName(RemoteAudioOutputPhase phase) {
     case RemoteAudioOutputPhase::Failed: return "failed";
   }
   return "failed";
+}
+
+std::string qualityLimitationReason(
+  livekit::QualityLimitationReason reason
+) {
+  switch (reason) {
+    case livekit::QualityLimitationReason::None: return "none";
+    case livekit::QualityLimitationReason::Cpu: return "cpu";
+    case livekit::QualityLimitationReason::Bandwidth: return "bandwidth";
+    case livekit::QualityLimitationReason::Other: return "other";
+  }
+  return "unknown";
+}
+
+std::string codecLabel(const livekit::RtcCodecStats& codec) {
+  if (codec.codec.mime_type.empty()) return {};
+  if (codec.codec.payload_type == 0) return codec.codec.mime_type;
+  return codec.codec.mime_type + " (" +
+    std::to_string(codec.codec.payload_type) + ")";
+}
+
+std::string candidateAddress(const livekit::RtcStats* stat) {
+  if (!stat) return {};
+  if (const auto* local = std::get_if<livekit::RtcLocalCandidateStats>(
+        &stat->stats
+      )) {
+    return local->candidate.address.empty()
+      ? std::string{}
+      : local->candidate.address + ":" +
+          std::to_string(local->candidate.port);
+  }
+  if (const auto* remote = std::get_if<livekit::RtcRemoteCandidateStats>(
+        &stat->stats
+      )) {
+    return remote->candidate.address.empty()
+      ? std::string{}
+      : remote->candidate.address + ":" +
+          std::to_string(remote->candidate.port);
+  }
+  return {};
+}
+
+void appendVoiceRtcStats(
+  const std::vector<livekit::RtcStats>& records,
+  const std::string& role,
+  VoiceRtcTransportTelemetry& transport,
+  std::vector<VoiceRtcStreamTelemetry>& outbound,
+  std::vector<VoiceRtcStreamTelemetry>& inbound
+) {
+  std::unordered_map<std::string, const livekit::RtcStats*> by_id;
+  std::unordered_map<std::string, std::string> codecs;
+  std::unordered_map<std::string, livekit::RemoteInboundRtpStreamStats>
+    remote_inbound;
+  const livekit::CandidatePairStats* selected_pair = nullptr;
+  std::string selected_pair_id;
+
+  for (const auto& record : records) {
+    std::visit([&](const auto& typed) {
+      by_id.emplace(typed.rtc.id, &record);
+      using Typed = std::decay_t<decltype(typed)>;
+      if constexpr (std::is_same_v<Typed, livekit::RtcCodecStats>) {
+        codecs.emplace(typed.rtc.id, codecLabel(typed));
+      } else if constexpr (
+        std::is_same_v<Typed, livekit::RtcRemoteInboundRtpStats>
+      ) {
+        remote_inbound.emplace(
+          typed.remote_inbound.local_id,
+          typed.remote_inbound
+        );
+      } else if constexpr (
+        std::is_same_v<Typed, livekit::RtcCandidatePairStats>
+      ) {
+        const bool succeeded =
+          typed.candidate_pair.state ==
+          livekit::IceCandidatePairState::Succeeded;
+        if (
+          typed.candidate_pair.nominated ||
+          (!selected_pair && succeeded)
+        ) {
+          selected_pair = &typed.candidate_pair;
+          selected_pair_id = typed.rtc.id;
+        }
+      }
+    }, record.stats);
+  }
+
+  if (selected_pair) {
+    transport.available = true;
+    transport.bytes_sent += selected_pair->bytes_sent;
+    transport.bytes_received += selected_pair->bytes_received;
+    transport.packets_sent += selected_pair->packets_sent;
+    transport.packets_received += selected_pair->packets_received;
+    transport.available_outgoing_bitrate = std::max(
+      transport.available_outgoing_bitrate,
+      selected_pair->available_outgoing_bitrate
+    );
+    transport.available_incoming_bitrate = std::max(
+      transport.available_incoming_bitrate,
+      selected_pair->available_incoming_bitrate
+    );
+    const auto ping_ms = selected_pair->current_round_trip_time * 1000.0;
+    if (ping_ms > 0.0) {
+      transport.ping_ms = std::max(transport.ping_ms, ping_ms);
+    }
+    if (transport.selected_candidate_pair_id.empty()) {
+      transport.selected_candidate_pair_id = selected_pair_id;
+      const auto local = by_id.find(selected_pair->local_candidate_id);
+      const auto remote = by_id.find(selected_pair->remote_candidate_id);
+      transport.local_address = candidateAddress(
+        local == by_id.end() ? nullptr : local->second
+      );
+      transport.remote_address = candidateAddress(
+        remote == by_id.end() ? nullptr : remote->second
+      );
+    }
+  }
+
+  for (const auto& record : records) {
+    if (const auto* typed = std::get_if<livekit::RtcOutboundRtpStats>(
+          &record.stats
+        )) {
+      VoiceRtcStreamTelemetry stream;
+      stream.id = role + ":" + typed->rtc.id;
+      stream.pc_role = role;
+      stream.kind = typed->stream.kind;
+      stream.ssrc = typed->stream.ssrc;
+      stream.mid = typed->outbound.mid;
+      stream.codec = codecs[typed->stream.codec_id];
+      stream.target_bitrate = typed->outbound.target_bitrate;
+      stream.bytes_sent = typed->sent.bytes_sent;
+      stream.packets_sent = typed->sent.packets_sent;
+      stream.retransmitted_packets_sent =
+        typed->outbound.retransmitted_packets_sent;
+      stream.retransmitted_bytes_sent =
+        typed->outbound.retransmitted_bytes_sent;
+      stream.nack_count = typed->outbound.nack_count;
+      stream.fir_count = typed->outbound.fir_count;
+      stream.pli_count = typed->outbound.pli_count;
+      stream.frames_sent = typed->outbound.frames_sent;
+      stream.frames_encoded = typed->outbound.frames_encoded;
+      stream.frames_per_second = typed->outbound.frames_per_second;
+      stream.frame_width = typed->outbound.frame_width;
+      stream.frame_height = typed->outbound.frame_height;
+      stream.quality_limitation_reason = qualityLimitationReason(
+        typed->outbound.quality_limitation_reason
+      );
+      stream.encoder_implementation = typed->outbound.encoder_implementation;
+      const auto remote = remote_inbound.find(typed->rtc.id);
+      if (remote != remote_inbound.end()) {
+        stream.has_remote_inbound = true;
+        stream.packet_loss_percent = std::max(
+          0.0,
+          remote->second.fraction_lost * 100.0
+        );
+        stream.round_trip_time_ms = std::max(
+          0.0,
+          remote->second.round_trip_time * 1000.0
+        );
+      }
+      outbound.push_back(std::move(stream));
+      continue;
+    }
+
+    if (const auto* typed = std::get_if<livekit::RtcInboundRtpStats>(
+          &record.stats
+        )) {
+      VoiceRtcStreamTelemetry stream;
+      stream.id = role + ":" + typed->rtc.id;
+      stream.pc_role = role;
+      stream.kind = typed->stream.kind;
+      stream.ssrc = typed->stream.ssrc;
+      stream.mid = typed->inbound.mid;
+      stream.track_identifier = typed->inbound.track_identifier;
+      stream.codec = codecs[typed->stream.codec_id];
+      stream.bytes_received = typed->inbound.bytes_received;
+      stream.packets_received = typed->received.packets_received;
+      stream.packets_lost = typed->received.packets_lost;
+      stream.jitter = typed->received.jitter;
+      stream.retransmitted_packets_received =
+        typed->inbound.retransmitted_packets_received;
+      stream.retransmitted_bytes_received =
+        typed->inbound.retransmitted_bytes_received;
+      stream.packets_discarded = typed->inbound.packets_discarded;
+      stream.nack_count = typed->inbound.nack_count;
+      stream.fir_count = typed->inbound.fir_count;
+      stream.pli_count = typed->inbound.pli_count;
+      stream.frames_received = typed->inbound.frames_received;
+      stream.frames_rendered = typed->inbound.frames_rendered;
+      stream.frames_decoded = typed->inbound.frames_decoded;
+      stream.frames_dropped = typed->inbound.frames_dropped;
+      stream.frames_per_second = typed->inbound.frames_per_second;
+      stream.frame_width = typed->inbound.frame_width;
+      stream.frame_height = typed->inbound.frame_height;
+      stream.audio_level = typed->inbound.audio_level;
+      stream.total_audio_energy = typed->inbound.total_audio_energy;
+      stream.total_samples_duration = typed->inbound.total_samples_duration;
+      stream.total_samples_received = typed->inbound.total_samples_received;
+      stream.concealed_samples = typed->inbound.concealed_samples;
+      stream.silent_concealed_samples =
+        typed->inbound.silent_concealed_samples;
+      stream.concealment_events = typed->inbound.concealment_events;
+      stream.jitter_buffer_delay = typed->inbound.jitter_buffer_delay;
+      stream.jitter_buffer_target_delay =
+        typed->inbound.jitter_buffer_target_delay;
+      stream.jitter_buffer_emitted_count =
+        typed->inbound.jitter_buffer_emitted_count;
+      stream.freeze_count = typed->inbound.freeze_count;
+      stream.total_freeze_duration = typed->inbound.total_freeze_duration;
+      stream.pause_count = typed->inbound.pause_count;
+      stream.total_pause_duration = typed->inbound.total_pause_duration;
+      stream.decoder_implementation = typed->inbound.decoder_implementation;
+      inbound.push_back(std::move(stream));
+    }
+  }
 }
 
 class PostedCommandGate final {
@@ -405,6 +624,30 @@ class PostedRoomDelegate final
   }
 
   void setDeafened(bool value) { audio_output_.setDeafened(value); }
+  void postStats(livekit::SessionStats stats) {
+    MediaCommand command;
+    command.type = "__voiceStats";
+    {
+      std::lock_guard lock(mutex_);
+      command.session_id = session_id_;
+      command.generation = generation_;
+    }
+    appendVoiceRtcStats(
+      stats.publisher_stats,
+      "publisher",
+      command.voice_rtc_transport,
+      command.voice_rtc_outbound,
+      command.voice_rtc_inbound
+    );
+    appendVoiceRtcStats(
+      stats.subscriber_stats,
+      "subscriber",
+      command.voice_rtc_transport,
+      command.voice_rtc_outbound,
+      command.voice_rtc_inbound
+    );
+    post_(std::move(command));
+  }
   std::uint64_t setOutputDevice(std::string value) {
     return audio_output_.setOutputDevice(std::move(value));
   }
@@ -903,6 +1146,7 @@ class RealLiveKitRoomOwner final : public LiveKitVoiceRoomOwner {
     // requesting it races its signalling/subscription callbacks during rapid
     // make-before-break moves. Keep the delegate alive until the terminal
     // callback is observed, then detach it before Room teardown.
+    stopStats();
     delegate_->markIntentionalDisconnect();
     delegate_->retainSdkRuntimeLifetime(runtimeLifetimeToken());
     delegate_->beginShutdown();
@@ -944,7 +1188,10 @@ class RealLiveKitRoomOwner final : public LiveKitVoiceRoomOwner {
 
   bool waitConnected(std::chrono::milliseconds timeout) override {
     const bool connected = delegate_->waitConnected(timeout);
-    if (connected) delegate_->registerInitialRemotePublications(room_);
+    if (connected) {
+      delegate_->registerInitialRemotePublications(room_);
+      startStats();
+    }
     return connected;
   }
 
@@ -1033,10 +1280,49 @@ class RealLiveKitRoomOwner final : public LiveKitVoiceRoomOwner {
   }
 
   void disconnect() override {
+    stopStats();
     close();
   }
 
  private:
+  void startStats() {
+    if (stats_thread_.joinable()) return;
+    stats_thread_ = std::jthread([this](std::stop_token stop) {
+      std::optional<std::future<livekit::SessionStats>> pending;
+      auto next_request = std::chrono::steady_clock::now();
+      while (!stop.stop_requested()) {
+        const auto now = std::chrono::steady_clock::now();
+        if (
+          pending &&
+          pending->wait_for(std::chrono::milliseconds(0)) ==
+            std::future_status::ready
+        ) {
+          try {
+            delegate_->postStats(pending->get());
+          } catch (...) {
+          }
+          pending.reset();
+        }
+        if (!pending && now >= next_request) {
+          next_request = now + std::chrono::seconds(1);
+          try {
+            pending.emplace(room_.getStats());
+          } catch (...) {
+          }
+        }
+        for (int tick = 0; tick < 2 && !stop.stop_requested(); ++tick) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+      }
+    });
+  }
+
+  void stopStats() {
+    if (!stats_thread_.joinable()) return;
+    stats_thread_.request_stop();
+    stats_thread_.join();
+  }
+
   void close() {
     closeUntil(
       std::chrono::steady_clock::now() + std::chrono::seconds(2)
@@ -1057,6 +1343,7 @@ class RealLiveKitRoomOwner final : public LiveKitVoiceRoomOwner {
 
   std::shared_ptr<PostedRoomDelegate> delegate_;
   livekit::Room room_;
+  std::jthread stats_thread_;
   std::atomic_bool disconnect_requested_{false};
 };
 

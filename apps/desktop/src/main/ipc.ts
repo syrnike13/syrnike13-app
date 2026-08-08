@@ -287,6 +287,7 @@ export function registerDesktopIpc(
   })
 
   ipcMain.handle(IPC.voiceGetSnapshot, () => desktopVoiceService.snapshot())
+  ipcMain.handle(IPC.voiceGetTelemetry, () => desktopVoiceService.telemetry())
 
   ipcMain.handle(IPC.voiceDispatch, (_event, input: unknown) => {
     const command = decodeIpcInput(

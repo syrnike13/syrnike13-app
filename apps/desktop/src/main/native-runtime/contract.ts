@@ -1,12 +1,14 @@
 import {
   LiveKitNativePublisherCredentialsSchema,
   NativeInputEventSchema,
+  VoiceRtcStreamTelemetrySchema,
+  VoiceRtcTransportTelemetrySchema,
   VoiceRemoteAudioSettingsSchema,
 } from '@syrnike13/platform'
 import type { NativeMediaSession } from '@syrnike13/platform'
 import { Option, Schema } from 'effect'
 
-export const NATIVE_RUNTIME_CONTRACT_VERSION = 7
+export const NATIVE_RUNTIME_CONTRACT_VERSION = 8
 export const NATIVE_RUNTIME_MAX_PENDING_REQUESTS = 256
 
 const nonEmptyString = (maximumLength = 4_096) =>
@@ -601,6 +603,16 @@ const StatsEventSchema = Schema.Struct({
   ),
 )
 
+const VoiceStatsEventSchema = Schema.Struct({
+  type: Schema.Literal('voiceStats'),
+  ...sessionEventFields,
+  stats: Schema.Struct({
+    transport: VoiceRtcTransportTelemetrySchema,
+    outbound: Schema.Array(VoiceRtcStreamTelemetrySchema),
+    inbound: Schema.Array(VoiceRtcStreamTelemetrySchema),
+  }),
+})
+
 const TerminalEventSchema = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('voiceTerminal'),
@@ -680,6 +692,7 @@ export const NativeRuntimeEventSchema = Schema.Union([
     reason: Schema.optional(Schema.String),
   }),
   StatsEventSchema,
+  VoiceStatsEventSchema,
   Schema.Struct({
     type: Schema.Literal('screenBackendRestart'),
     ...sessionEventFields,

@@ -17,7 +17,9 @@ import type {
   VoiceMediaDesiredState,
   VoiceMediaKind,
   VoiceMediaSnapshot,
+  VoiceNativeCaptureTelemetry,
   VoiceRemoteAudioSettings,
+  VoiceRtcTelemetrySnapshot,
 } from '@syrnike13/platform'
 import { areVoiceMediaDesiredStatesEqual } from '@syrnike13/platform'
 
@@ -133,6 +135,8 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
   private screenRuntimeSettleUntil = 0
   private disposed = false
   private remoteAudioSettings: VoiceRemoteAudioSettings | null = null
+  private telemetrySnapshot: VoiceRtcTelemetrySnapshot | null = null
+  private nativeCaptureTelemetry: VoiceNativeCaptureTelemetry | undefined
   private diagnosticAction: NativeDiagnosticAction = {
     actionId: `media-action-${crypto.randomUUID()}`,
     revision: 0,
@@ -210,6 +214,8 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         speakingUserIds: new Set(),
       }
       this.active = active
+      this.telemetrySnapshot = null
+      this.nativeCaptureTelemetry = undefined
 
       yield* this.requestEffect(
         {
@@ -274,6 +280,8 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     return Effect.gen({ self: this }, function*() {
       const active = this.active
       this.active = null
+      this.telemetrySnapshot = null
+      this.nativeCaptureTelemetry = undefined
       this.screenRetryWakeToken += 1
       this.mediaRevision += 1
       if (!active) return
@@ -372,6 +380,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     if (kind === 'screen' || kind === 'screen_audio') {
       active.screenStarted = false
       active.screenSourceKey = null
+      this.clearNativeCaptureTelemetry()
       this.resetScreenRetry(active)
       this.requestMediaReconcile()
       return
@@ -396,6 +405,10 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
   subscribe(listener: (event: VoiceEngineEvent) => void) {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
+  }
+
+  telemetry() {
+    return this.telemetrySnapshot
   }
 
   prewarmMicrophone() {
@@ -983,6 +996,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         active.screenStarted = false
         active.screenGeneration = null
         active.screenSourceKey = null
+        this.clearNativeCaptureTelemetry()
         yield* this.requestEffect(
           {
             type: 'disconnectScreen',
@@ -1099,6 +1113,65 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       event.sessionId !== undefined &&
       event.sessionId !== active.lease.connectionEpoch
     ) {
+      return
+    }
+    if (event.type === 'voiceStats') {
+      if (event.generation !== active.voiceGeneration) return
+      this.telemetrySnapshot = {
+        timestamp: Date.now(),
+        transport: event.stats.transport,
+        outbound: event.stats.outbound,
+        inbound: event.stats.inbound,
+        nativeCapture: this.nativeCaptureTelemetry,
+      }
+      return
+    }
+    if (event.type === 'stats') {
+      if (
+        active.screenGeneration === null ||
+        event.generation !== active.screenGeneration
+      ) return
+      this.nativeCaptureTelemetry = {
+        methods: event.stats.methods,
+        activeMethod: event.stats.activeMethod,
+        width: this.desired?.screenWidth,
+        height: this.desired?.screenHeight,
+        fps: this.desired?.screenFps,
+        bitrate: this.desired?.screenBitrate,
+        publishedVideo: event.stats.publishedVideo,
+        publishedAudio: event.stats.publishedAudio,
+        audioFrames: event.stats.audioFrames,
+        audioPackets: event.stats.audioPackets,
+        audioPeakDb: event.stats.audioPeakDb,
+        audioRmsDb: event.stats.audioRmsDb,
+        videoFrames: event.stats.videoFrames,
+        videoIntervalFrames: event.stats.videoIntervalFrames,
+        videoLateFrames: event.stats.videoLateFrames,
+        videoNoFrameCount: event.stats.videoNoFrameCount,
+        videoRepeatedFrameCount: event.stats.videoRepeatedFrameCount,
+        videoRecoverableLostCount: event.stats.videoRecoverableLostCount,
+        videoEncoderBackpressureTicks:
+          event.stats.videoEncoderBackpressureTicks,
+        videoGpuFramesDroppedStale:
+          event.stats.videoGpuFramesDroppedStale,
+        videoPreviewFramesDroppedStale:
+          event.stats.videoPreviewFramesDroppedStale,
+        videoAvgCaptureUs: event.stats.videoAvgCaptureUs,
+        videoAvgReadbackUs: event.stats.videoAvgReadbackUs,
+        videoAvgScaleUs: event.stats.videoAvgScaleUs,
+        videoAvgPublishUs: event.stats.videoAvgPublishUs,
+        videoSourceWidth: event.stats.videoSourceWidth,
+        videoSourceHeight: event.stats.videoSourceHeight,
+        videoContentWidth: event.stats.videoContentWidth,
+        videoContentHeight: event.stats.videoContentHeight,
+        captureThreadMmcss: event.stats.captureThreadMmcss,
+      }
+      if (this.telemetrySnapshot) {
+        this.telemetrySnapshot = {
+          ...this.telemetrySnapshot,
+          nativeCapture: this.nativeCaptureTelemetry,
+        }
+      }
       return
     }
     if (event.type === 'voiceConnectionState') {
@@ -1341,6 +1414,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       active.screenStarted = false
       active.screenGeneration = null
       active.screenSourceKey = null
+      this.clearNativeCaptureTelemetry()
       return
     }
     if (kind === 'camera') {
@@ -1350,6 +1424,14 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       return
     }
     active.outputKey = null
+  }
+
+  private clearNativeCaptureTelemetry() {
+    this.nativeCaptureTelemetry = undefined
+    if (!this.telemetrySnapshot) return
+    const { nativeCapture: _nativeCapture, ...telemetry } =
+      this.telemetrySnapshot
+    this.telemetrySnapshot = telemetry
   }
 
   private handleRuntimeState(snapshot: NativeRuntimeSupervisorSnapshot) {

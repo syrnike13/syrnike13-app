@@ -70,6 +70,74 @@ struct ForegroundWindow {
   bool operator==(const ForegroundWindow&) const = default;
 };
 
+struct VoiceRtcTransportTelemetry {
+  bool available = false;
+  double available_outgoing_bitrate = 0.0;
+  double available_incoming_bitrate = 0.0;
+  double ping_ms = 0.0;
+  std::string local_address;
+  std::string remote_address;
+  std::uint64_t bytes_sent = 0;
+  std::uint64_t bytes_received = 0;
+  std::uint64_t packets_sent = 0;
+  std::uint64_t packets_received = 0;
+  std::string selected_candidate_pair_id;
+};
+
+struct VoiceRtcStreamTelemetry {
+  std::string id;
+  std::string pc_role;
+  std::string kind;
+  std::uint32_t ssrc = 0;
+  std::string mid;
+  std::string track_identifier;
+  std::string codec;
+  double target_bitrate = 0.0;
+  std::uint64_t bytes_sent = 0;
+  std::uint64_t bytes_received = 0;
+  std::uint64_t packets_sent = 0;
+  std::uint64_t packets_received = 0;
+  std::int64_t packets_lost = 0;
+  double packet_loss_percent = 0.0;
+  double round_trip_time_ms = 0.0;
+  bool has_remote_inbound = false;
+  std::uint64_t retransmitted_packets_sent = 0;
+  std::uint64_t retransmitted_bytes_sent = 0;
+  std::uint64_t retransmitted_packets_received = 0;
+  std::uint64_t retransmitted_bytes_received = 0;
+  std::uint64_t packets_discarded = 0;
+  std::uint32_t nack_count = 0;
+  std::uint32_t fir_count = 0;
+  std::uint32_t pli_count = 0;
+  std::uint32_t frames_sent = 0;
+  std::uint64_t frames_received = 0;
+  std::uint32_t frames_rendered = 0;
+  std::uint32_t frames_encoded = 0;
+  std::uint32_t frames_decoded = 0;
+  std::uint32_t frames_dropped = 0;
+  double frames_per_second = 0.0;
+  std::uint32_t frame_width = 0;
+  std::uint32_t frame_height = 0;
+  std::string quality_limitation_reason;
+  double audio_level = 0.0;
+  double total_audio_energy = 0.0;
+  double total_samples_duration = 0.0;
+  std::uint64_t total_samples_received = 0;
+  std::uint64_t concealed_samples = 0;
+  std::uint64_t silent_concealed_samples = 0;
+  std::uint64_t concealment_events = 0;
+  double jitter_buffer_delay = 0.0;
+  double jitter_buffer_target_delay = 0.0;
+  std::uint64_t jitter_buffer_emitted_count = 0;
+  double jitter = 0.0;
+  std::uint32_t freeze_count = 0;
+  double total_freeze_duration = 0.0;
+  std::uint32_t pause_count = 0;
+  double total_pause_duration = 0.0;
+  std::string encoder_implementation;
+  std::string decoder_implementation;
+};
+
 struct RuntimeEvent {
   std::string type;
   std::uint64_t sequence = 0;
@@ -86,6 +154,9 @@ struct RuntimeEvent {
   std::vector<DeviceInfo> devices;
   std::vector<DisplaySourceInfo> sources;
   std::vector<std::string> participant_identities;
+  VoiceRtcTransportTelemetry voice_rtc_transport;
+  std::vector<VoiceRtcStreamTelemetry> voice_rtc_outbound;
+  std::vector<VoiceRtcStreamTelemetry> voice_rtc_inbound;
   std::optional<InputEvent> input;
   std::optional<ForegroundWindow> foreground_window;
   double input_db = -120.0;
@@ -224,6 +295,9 @@ struct MediaCommand {
   std::string status;
   std::string internal_message;
   std::vector<std::string> participant_identities;
+  VoiceRtcTransportTelemetry voice_rtc_transport;
+  std::vector<VoiceRtcStreamTelemetry> voice_rtc_outbound;
+  std::vector<VoiceRtcStreamTelemetry> voice_rtc_inbound;
   std::unordered_map<std::string, float> user_volumes;
   std::unordered_map<std::string, bool> user_mutes;
   std::unordered_map<std::string, float> stream_volumes;

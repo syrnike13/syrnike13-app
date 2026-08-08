@@ -1825,6 +1825,106 @@ describe('NativeRtcEngineAdapter', () => {
     adapter.dispose()
   })
 
+  it('exposes the latest generation-fenced native RTC telemetry', async () => {
+    const runtime = new FakeRuntime()
+    const adapter = new NativeRtcEngineAdapter(runtime)
+    await adapter.connect(
+      lease,
+      {
+        ...createInitialVoiceMediaDesiredState(),
+        screenEnabled: true,
+        screenSourceId: 'screen:telemetry',
+      },
+      new AbortController().signal,
+    )
+    await waitUntil(() =>
+      runtime.commands.some((command) => command.type === 'startScreenCapture'),
+    )
+    const screenStart = runtime.commands.find(
+      (command) => command.type === 'startScreenCapture',
+    )
+    if (!screenStart || screenStart.type !== 'startScreenCapture') {
+      throw new Error('screen start command was not emitted')
+    }
+
+    runtime.emitEvent({
+      type: 'voiceStats',
+      sequence: 2,
+      sessionId: lease.connectionEpoch,
+      generation: 99,
+      stats: {
+        transport: { pingMs: 999 },
+        outbound: [],
+        inbound: [],
+      },
+    })
+    expect(adapter.telemetry()).toBeNull()
+
+    runtime.emitEvent({
+      type: 'voiceStats',
+      sequence: 3,
+      sessionId: lease.connectionEpoch,
+      generation: 1,
+      stats: {
+        transport: {
+          pingMs: 42,
+          bytesSent: 1_000,
+          bytesReceived: 2_000,
+        },
+        outbound: [{
+          id: 'publisher:audio-out',
+          pcRole: 'publisher',
+          kind: 'audio',
+          packetsSent: 100,
+          bytesSent: 12_000,
+          packetLossPercent: 1.5,
+        }],
+        inbound: [{
+          id: 'subscriber:audio-in',
+          pcRole: 'subscriber',
+          kind: 'audio',
+          packetsReceived: 98,
+          packetsLost: 2,
+          bytesReceived: 11_000,
+          jitter: 0.012,
+        }],
+      },
+    })
+
+    expect(adapter.telemetry()).toMatchObject({
+      transport: { pingMs: 42 },
+      outbound: [{ id: 'publisher:audio-out', packetLossPercent: 1.5 }],
+      inbound: [{ id: 'subscriber:audio-in', jitter: 0.012 }],
+    })
+    const rtcTimestamp = adapter.telemetry()?.timestamp
+
+    runtime.emitEvent({
+      type: 'stats',
+      sequence: 4,
+      sessionId: lease.connectionEpoch,
+      generation: screenStart.generation,
+      stats: {
+        sessionId: lease.connectionEpoch,
+        methods: { wgc_gpu: 60, dxgi_gpu: 0 },
+        activeMethod: 'wgc_gpu',
+        videoFrames: 120,
+      },
+    })
+
+    expect(adapter.telemetry()).toMatchObject({
+      timestamp: rtcTimestamp,
+      nativeCapture: {
+        methods: { wgc_gpu: 60, dxgi_gpu: 0 },
+        activeMethod: 'wgc_gpu',
+        videoFrames: 120,
+      },
+    })
+
+    await adapter.disconnect('test')
+    expect(adapter.telemetry()).toBeNull()
+    adapter.dispose()
+  })
+
   it('combines native microphone gate activity with remote activity', async () => {
     const runtime = new FakeRuntime()
     const adapter = new NativeRtcEngineAdapter(runtime)

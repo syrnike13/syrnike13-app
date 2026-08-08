@@ -1603,6 +1603,7 @@ function isLossyMediaEvent(event: NativeRuntimeEvent) {
   return (
     event.type === 'microphoneMetrics' ||
     event.type === 'stats' ||
+    event.type === 'voiceStats' ||
     event.type === 'remoteVideoFrame' ||
     event.type === 'localScreenPreviewFrame' ||
     event.type === 'localCameraPreviewFrame' ||

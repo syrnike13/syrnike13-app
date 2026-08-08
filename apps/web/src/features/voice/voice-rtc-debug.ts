@@ -1,4 +1,5 @@
 import { Effect, Option, Schema } from 'effect'
+import type { VoiceRtcTelemetrySnapshot } from '@syrnike13/platform'
 
 import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
 import { getVoicePeerConnectionEntries } from '#/features/voice/voice-ping'
@@ -52,9 +53,19 @@ export type RtcDebugRtpStreamSnapshot = {
   packetsSent?: number
   packetsReceived?: number
   packetsLost?: number
+  packetLossPercent?: number
+  roundTripTimeMs?: number
+  retransmittedPacketsSent?: number
   retransmittedBytesSent?: number
+  retransmittedPacketsReceived?: number
+  retransmittedBytesReceived?: number
+  packetsDiscarded?: number
   nackCount?: number
+  firCount?: number
   pliCount?: number
+  framesSent?: number
+  framesReceived?: number
+  framesRendered?: number
   framesEncoded?: number
   framesDecoded?: number
   framesDropped?: number
@@ -69,10 +80,17 @@ export type RtcDebugRtpStreamSnapshot = {
   totalSamplesReceived?: number
   concealedSamples?: number
   silentConcealedSamples?: number
+  concealmentEvents?: number
+  jitterBufferDelay?: number
+  jitterBufferTargetDelay?: number
   jitterBufferEmittedCount?: number
   jitter?: number
   freezeCount?: number
   totalFreezesDuration?: number
+  pauseCount?: number
+  totalPauseDuration?: number
+  encoderImplementation?: string
+  decoderImplementation?: string
 }
 
 export type RtcDebugScreenShareSnapshot = {
@@ -145,10 +163,20 @@ export type RtcDebugRates = {
   }
   outbound: Record<string, number>
   inbound: Record<string, number>
+  quality: {
+    packetLossPercent?: number
+    inboundPacketLossPercent?: number
+    outboundPacketLossPercent?: number
+    framesDroppedPercent?: number
+    framesDroppedPerSecond?: number
+    jitterMs?: number
+    concealedAudioPercent?: number
+  }
 }
 
 export type RtcDebugSnapshot = {
   timestamp: number
+  source?: 'web' | 'windows_native'
   transport: RtcDebugTransportSnapshot
   outbound: RtcDebugRtpStreamSnapshot[]
   inbound: RtcDebugRtpStreamSnapshot[]
@@ -170,6 +198,7 @@ export const collectVoiceRtcDebugSnapshotEffect = Effect.fn(
     outbound: [],
     inbound: [],
     screenShares: [],
+    source: 'web',
   }
 
   const entries = getVoicePeerConnectionEntries(room)
@@ -187,6 +216,7 @@ export const collectVoiceRtcDebugSnapshotEffect = Effect.fn(
             const stats = rtcStatsMap(report)
             const codecs = new Map<string, RtcStatsLike>()
             const candidates = new Map<string, RtcStatsLike>()
+            const remoteInbound = new Map<string, RtcStatsLike>()
 
             for (const stat of stats.values()) {
               if (stat.type === 'codec') codecs.set(stat.id, stat)
@@ -195,6 +225,10 @@ export const collectVoiceRtcDebugSnapshotEffect = Effect.fn(
                 stat.type === 'remote-candidate'
               ) {
                 candidates.set(stat.id, stat)
+              }
+              if (stat.type === 'remote-inbound-rtp') {
+                const localId = stringValue(stat.localId)
+                if (localId) remoteInbound.set(localId, stat)
               }
             }
 
@@ -206,7 +240,13 @@ export const collectVoiceRtcDebugSnapshotEffect = Effect.fn(
             for (const stat of stats.values()) {
               if (stat.type === 'outbound-rtp') {
                 snapshot.outbound.push(
-                  rtpStreamSnapshot(entry.role, stat, codecs, 'outbound'),
+                  rtpStreamSnapshot(
+                    entry.role,
+                    stat,
+                    codecs,
+                    'outbound',
+                    remoteInbound.get(stat.id),
+                  ),
                 )
               }
               if (stat.type === 'inbound-rtp') {
@@ -227,6 +267,66 @@ export const collectVoiceRtcDebugSnapshotEffect = Effect.fn(
 
   return snapshot
 })
+
+export function rtcDebugSnapshotFromTelemetry(
+  telemetry: VoiceRtcTelemetrySnapshot,
+  stageMediaItems: readonly VoiceStageMediaItem[],
+): RtcDebugSnapshot {
+  const capture = telemetry.nativeCapture
+  if (capture) {
+    nativeMediaEngineStatsStore.setNative(
+      { ...capture.methods },
+      capture.activeMethod,
+      undefined,
+      {
+        width: capture.width,
+        height: capture.height,
+        fps: capture.fps,
+        bitrate: capture.bitrate,
+        publishedVideo: capture.publishedVideo,
+        publishedAudio: capture.publishedAudio,
+        audioFrames: capture.audioFrames,
+        audioPackets: capture.audioPackets,
+        audioPeakDb: capture.audioPeakDb,
+        audioRmsDb: capture.audioRmsDb,
+        videoFrames: capture.videoFrames,
+        videoIntervalFrames: capture.videoIntervalFrames,
+        videoLateFrames: capture.videoLateFrames,
+        videoNoFrameCount: capture.videoNoFrameCount,
+        videoRepeatedFrameCount: capture.videoRepeatedFrameCount,
+        videoRecoverableLostCount: capture.videoRecoverableLostCount,
+        videoEncoderBackpressureTicks: capture.videoEncoderBackpressureTicks,
+        videoGpuFramesDroppedStale: capture.videoGpuFramesDroppedStale,
+        videoPreviewFramesDroppedStale:
+          capture.videoPreviewFramesDroppedStale,
+        videoAvgCaptureUs: capture.videoAvgCaptureUs,
+        videoAvgReadbackUs: capture.videoAvgReadbackUs,
+        videoAvgScaleUs: capture.videoAvgScaleUs,
+        videoAvgPublishUs: capture.videoAvgPublishUs,
+        videoSourceWidth: capture.videoSourceWidth,
+        videoSourceHeight: capture.videoSourceHeight,
+        videoContentWidth: capture.videoContentWidth,
+        videoContentHeight: capture.videoContentHeight,
+        captureThreadMmcss: capture.captureThreadMmcss,
+      },
+    )
+  } else if (nativeMediaEngineStatsStore.getState().backend === 'native') {
+    nativeMediaEngineStatsStore.reset()
+  }
+
+  const snapshot: RtcDebugSnapshot = {
+    timestamp: telemetry.timestamp,
+    source: 'windows_native',
+    transport: { ...telemetry.transport },
+    outbound: telemetry.outbound.map((stream) => ({ ...stream })),
+    inbound: telemetry.inbound.map((stream) => ({ ...stream })),
+    screenShares: [],
+  }
+  snapshot.screenShares = stageMediaItems
+    .filter((item) => item.kind === 'screen')
+    .map((item) => screenShareSnapshot(item, snapshot.outbound, snapshot.inbound))
+  return snapshot
+}
 
 export function collectVoiceRtcDebugSnapshot(
   room: RtcDebugRoomLike,
@@ -269,6 +369,7 @@ export function deriveRtcRates(
     transport: {},
     outbound: {},
     inbound: {},
+    quality: {},
   }
   if (seconds <= 0) return rates
 
@@ -302,6 +403,40 @@ export function deriveRtcRates(
     )
     if (rate != null) rates.inbound[stream.id] = rate
   }
+
+  const inboundLoss = inboundPacketLossPercent(previous.inbound, current.inbound)
+  const outboundLossValues = current.outbound
+    .map((stream) => stream.packetLossPercent)
+    .filter((value): value is number => value != null && Number.isFinite(value))
+  const outboundLoss =
+    outboundLossValues.length > 0 ? Math.max(...outboundLossValues) : undefined
+  const frameQuality = droppedFrameQuality(
+    previous.inbound,
+    current.inbound,
+    seconds,
+  )
+  const jitterValues = current.inbound
+    .map((stream) => stream.jitter)
+    .filter((value): value is number => value != null && Number.isFinite(value))
+  const concealedAudioPercent = audioConcealmentPercent(
+    previous.inbound,
+    current.inbound,
+  )
+  setDefined(rates.quality, 'inboundPacketLossPercent', inboundLoss)
+  setDefined(rates.quality, 'outboundPacketLossPercent', outboundLoss)
+  setDefined(
+    rates.quality,
+    'packetLossPercent',
+    maximumDefined(inboundLoss, outboundLoss),
+  )
+  setDefined(rates.quality, 'framesDroppedPercent', frameQuality.percent)
+  setDefined(rates.quality, 'framesDroppedPerSecond', frameQuality.perSecond)
+  setDefined(
+    rates.quality,
+    'jitterMs',
+    jitterValues.length > 0 ? Math.max(...jitterValues) * 1000 : undefined,
+  )
+  setDefined(rates.quality, 'concealedAudioPercent', concealedAudioPercent)
 
   return rates
 }
@@ -350,6 +485,11 @@ export function formatRtcBytes(value?: number | null) {
 export function formatRtcMs(value?: number | null) {
   if (value == null || !Number.isFinite(value)) return '—'
   return `${Math.round(value)} ms`
+}
+
+export function formatRtcPercent(value?: number | null) {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)}%`
 }
 
 export function formatRtcFps(value?: number | null) {
@@ -418,8 +558,11 @@ function mergeTransport(
   )
 
   const rtt = numberValue(pair.currentRoundTripTime)
-  if (transport.pingMs == null && rtt != null) {
-    transport.pingMs = Math.round(rtt * 1000)
+  if (rtt != null) {
+    transport.pingMs = Math.max(
+      transport.pingMs ?? 0,
+      Math.round(rtt * 1000),
+    )
   }
 
   const local = candidates.get(String(pair.localCandidateId))
@@ -433,9 +576,12 @@ function rtpStreamSnapshot(
   stat: RtcStatsLike,
   codecs: Map<string, RtcStatsLike>,
   direction: 'outbound' | 'inbound',
+  remoteInbound?: RtcStatsLike,
 ): RtcDebugRtpStreamSnapshot {
   const codec = codecs.get(String(stat.codecId))
   const kind = mediaKind(stat)
+  const remotePacketLossFraction = numberValue(remoteInbound?.fractionLost)
+  const remoteRoundTripTime = numberValue(remoteInbound?.roundTripTime)
   const stream: RtcDebugRtpStreamSnapshot = {
     id: `${role}:${stat.id}`,
     pcRole: role,
@@ -446,8 +592,21 @@ function rtpStreamSnapshot(
     codec: formatCodec(codec),
     targetBitrate: numberValue(stat.targetBitrate),
     packetsLost: numberValue(stat.packetsLost),
+    packetLossPercent:
+      remotePacketLossFraction == null
+        ? undefined
+        : Math.max(0, remotePacketLossFraction * 100),
+    roundTripTimeMs:
+      remoteRoundTripTime == null
+        ? undefined
+        : Math.max(0, remoteRoundTripTime * 1000),
+    retransmittedPacketsSent: numberValue(stat.retransmittedPacketsSent),
     nackCount: numberValue(stat.nackCount),
+    firCount: numberValue(stat.firCount),
     pliCount: numberValue(stat.pliCount),
+    framesSent: numberValue(stat.framesSent),
+    framesReceived: numberValue(stat.framesReceived),
+    framesRendered: numberValue(stat.framesRendered),
     framesEncoded: numberValue(stat.framesEncoded),
     framesDecoded: numberValue(stat.framesDecoded),
     framesDropped: numberValue(stat.framesDropped),
@@ -462,10 +621,17 @@ function rtpStreamSnapshot(
     totalSamplesReceived: numberValue(stat.totalSamplesReceived),
     concealedSamples: numberValue(stat.concealedSamples),
     silentConcealedSamples: numberValue(stat.silentConcealedSamples),
+    concealmentEvents: numberValue(stat.concealmentEvents),
+    jitterBufferDelay: numberValue(stat.jitterBufferDelay),
+    jitterBufferTargetDelay: numberValue(stat.jitterBufferTargetDelay),
     jitterBufferEmittedCount: numberValue(stat.jitterBufferEmittedCount),
     jitter: numberValue(stat.jitter),
     freezeCount: numberValue(stat.freezeCount),
     totalFreezesDuration: numberValue(stat.totalFreezesDuration),
+    pauseCount: numberValue(stat.pauseCount),
+    totalPauseDuration: numberValue(stat.totalPauseDuration),
+    encoderImplementation: stringValue(stat.encoderImplementation),
+    decoderImplementation: stringValue(stat.decoderImplementation),
   }
 
   if (direction === 'outbound') {
@@ -475,6 +641,13 @@ function rtpStreamSnapshot(
   } else {
     stream.bytesReceived = numberValue(stat.bytesReceived)
     stream.packetsReceived = numberValue(stat.packetsReceived)
+    stream.retransmittedPacketsReceived = numberValue(
+      stat.retransmittedPacketsReceived,
+    )
+    stream.retransmittedBytesReceived = numberValue(
+      stat.retransmittedBytesReceived,
+    )
+    stream.packetsDiscarded = numberValue(stat.packetsDiscarded)
   }
 
   return stream
@@ -701,8 +874,59 @@ type RtcDebugRateSnapshotInput = {
     bytesSent?: number
     bytesReceived?: number
   }
-  outbound: ReadonlyArray<{ id: string; bytesSent?: number }>
-  inbound: ReadonlyArray<{ id: string; bytesReceived?: number }>
+  outbound: ReadonlyArray<{
+    id: string
+    bytesSent?: number
+    packetLossPercent?: number
+  }>
+  inbound: ReadonlyArray<{
+    id: string
+    bytesReceived?: number
+    packetsReceived?: number
+    packetsLost?: number
+    framesDecoded?: number
+    framesDropped?: number
+    totalSamplesReceived?: number
+    concealedSamples?: number
+    jitter?: number
+  }>
+}
+
+export type RtcConnectionQuality = 'good' | 'fair' | 'poor' | 'unknown'
+
+export function rtcConnectionQuality(
+  snapshot: RtcDebugSnapshot | null,
+): RtcConnectionQuality {
+  if (!snapshot) return 'unknown'
+  const ping = snapshot.transport.pingMs
+  const quality = snapshot.rates?.quality
+  const values = [
+    ping,
+    quality?.packetLossPercent,
+    quality?.jitterMs,
+    quality?.framesDroppedPercent,
+    quality?.concealedAudioPercent,
+  ]
+  if (values.every((value) => value == null)) return 'unknown'
+  if (
+    (ping ?? 0) >= 250 ||
+    (quality?.packetLossPercent ?? 0) >= 5 ||
+    (quality?.jitterMs ?? 0) >= 60 ||
+    (quality?.framesDroppedPercent ?? 0) >= 10 ||
+    (quality?.concealedAudioPercent ?? 0) >= 10
+  ) {
+    return 'poor'
+  }
+  if (
+    (ping ?? 0) >= 120 ||
+    (quality?.packetLossPercent ?? 0) >= 2 ||
+    (quality?.jitterMs ?? 0) >= 30 ||
+    (quality?.framesDroppedPercent ?? 0) >= 3 ||
+    (quality?.concealedAudioPercent ?? 0) >= 3
+  ) {
+    return 'fair'
+  }
+  return 'good'
 }
 
 function byId<T extends { id: string }>(streams: readonly T[]) {
@@ -718,6 +942,116 @@ function bitrateDelta(
   const delta = current - previous
   if (delta < 0) return undefined
   return Math.round((delta * 8) / seconds)
+}
+
+function inboundPacketLossPercent(
+  previous: RtcDebugRateSnapshotInput['inbound'],
+  current: RtcDebugRateSnapshotInput['inbound'],
+) {
+  const previousById = byId(previous)
+  let receivedDelta = 0
+  let lostDelta = 0
+  let hasCounters = false
+
+  for (const stream of current) {
+    const prior = previousById.get(stream.id)
+    const received = counterDelta(prior?.packetsReceived, stream.packetsReceived)
+    const lost = counterDelta(prior?.packetsLost, stream.packetsLost)
+    if (received == null && lost == null) continue
+    hasCounters = true
+    receivedDelta += received ?? 0
+    lostDelta += lost ?? 0
+  }
+
+  const total = receivedDelta + lostDelta
+  return hasCounters && total > 0 ? (lostDelta / total) * 100 : undefined
+}
+
+function droppedFrameQuality(
+  previous: RtcDebugRateSnapshotInput['inbound'],
+  current: RtcDebugRateSnapshotInput['inbound'],
+  seconds: number,
+) {
+  const previousById = byId(previous)
+  let decodedDelta = 0
+  let droppedDelta = 0
+  let hasCounters = false
+
+  for (const stream of current) {
+    if (stream.framesDecoded == null && stream.framesDropped == null) continue
+    const prior = previousById.get(stream.id)
+    const decoded = counterDelta(prior?.framesDecoded, stream.framesDecoded)
+    const dropped = counterDelta(prior?.framesDropped, stream.framesDropped)
+    if (decoded == null && dropped == null) continue
+    hasCounters = true
+    decodedDelta += decoded ?? 0
+    droppedDelta += dropped ?? 0
+  }
+
+  const total = decodedDelta + droppedDelta
+  return {
+    percent:
+      hasCounters && total > 0 ? (droppedDelta / total) * 100 : undefined,
+    perSecond:
+      hasCounters && seconds > 0 ? droppedDelta / seconds : undefined,
+  }
+}
+
+function audioConcealmentPercent(
+  previous: RtcDebugRateSnapshotInput['inbound'],
+  current: RtcDebugRateSnapshotInput['inbound'],
+) {
+  const previousById = byId(previous)
+  let samplesDelta = 0
+  let concealedDelta = 0
+  let hasCounters = false
+
+  for (const stream of current) {
+    if (
+      stream.totalSamplesReceived == null &&
+      stream.concealedSamples == null
+    ) {
+      continue
+    }
+    const prior = previousById.get(stream.id)
+    const samples = counterDelta(
+      prior?.totalSamplesReceived,
+      stream.totalSamplesReceived,
+    )
+    const concealed = counterDelta(
+      prior?.concealedSamples,
+      stream.concealedSamples,
+    )
+    if (samples == null && concealed == null) continue
+    hasCounters = true
+    samplesDelta += samples ?? 0
+    concealedDelta += concealed ?? 0
+  }
+
+  return hasCounters && samplesDelta > 0
+    ? (concealedDelta / samplesDelta) * 100
+    : undefined
+}
+
+function counterDelta(previous?: number, current?: number) {
+  if (previous == null || current == null) return undefined
+  const delta = current - previous
+  return delta >= 0 ? delta : undefined
+}
+
+function maximumDefined(...values: Array<number | undefined>) {
+  const defined = values.filter(
+    (value): value is number => value != null && Number.isFinite(value),
+  )
+  return defined.length > 0 ? Math.max(...defined) : undefined
+}
+
+function setDefined<T extends object, K extends keyof T>(
+  target: T,
+  key: K,
+  value: T[K] | undefined,
+) {
+  if (value != null) target[key] = value
 }
 
 function numberValue(value: unknown) {

@@ -302,6 +302,7 @@ class MediaRuntime::Implementation
       type == "__voiceOutputStateChanged" ||
       type == "__voiceRemoteAudioTrackFailed" ||
       type == "__voiceActiveSpeakers" ||
+      type == "__voiceStats" ||
       type == "__remoteVideoFrame" ||
       type == "__remoteVideoTrackRemoved" ||
       type == "__remoteVideoFailed" ||
@@ -846,6 +847,19 @@ class MediaRuntime::Implementation
       event.generation = command.generation;
       event.kind = "voice";
       event.participant_identities = command.participant_identities;
+      emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "__voiceStats") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
+      RuntimeEvent event;
+      event.type = "voiceStats";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.kind = "voice";
+      event.voice_rtc_transport = std::move(command.voice_rtc_transport);
+      event.voice_rtc_outbound = std::move(command.voice_rtc_outbound);
+      event.voice_rtc_inbound = std::move(command.voice_rtc_inbound);
       emitter_.emit(std::move(event));
       return;
     }

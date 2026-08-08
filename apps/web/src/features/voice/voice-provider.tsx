@@ -96,8 +96,13 @@ import {
   appendRtcDebugSample,
   collectVoiceRtcDebugSnapshotEffect,
   deriveRtcRates,
+  rtcDebugSnapshotFromTelemetry,
   type RtcDebugSnapshot,
 } from '#/features/voice/voice-rtc-debug'
+import {
+  appendVoicePingSample,
+  type VoicePingSample,
+} from '#/features/voice/voice-ping-history'
 import { playUiSound } from '#/features/sounds/sound-player'
 import {
   SCREEN_VIEWER_SOUND_TOPIC,
@@ -185,6 +190,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [rtcDebugSnapshot, setRtcDebugSnapshot] =
     useState<RtcDebugSnapshot | null>(null)
   const [rtcDebugHistory, setRtcDebugHistory] = useState<RtcDebugSnapshot[]>([])
+  const [voicePingMs, setVoicePingMs] = useState<number | null>(null)
+  const [voicePingHistory, setVoicePingHistory] = useState<VoicePingSample[]>([])
   const rtcDebugSnapshotRef = useRef<RtcDebugSnapshot | null>(null)
   const diagnosticRtcHistoryRef = useRef<RtcDebugSnapshot[]>([])
   const stalledLocalScreenSamplesRef = useRef(0)
@@ -1012,86 +1019,118 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   ])
 
   useEffect(() => {
-    if (snapshot.connection !== 'connected' || !room) {
+    if (
+      snapshot.connection !== 'connected' ||
+      (!desktop && !room)
+    ) {
       rtcDebugSnapshotRef.current = null
       diagnosticRtcHistoryRef.current = []
       stalledLocalScreenSamplesRef.current = 0
       stalledRemoteScreenSamplesRef.current = 0
+      setVoicePingMs(null)
+      setVoicePingHistory([])
       setRtcDebugSnapshot(null)
       setRtcDebugHistory([])
       return
     }
-    const sample = collectVoiceRtcDebugSnapshotEffect(
-      room,
-      stageMediaItemsRef.current,
-    ).pipe(
+    const collectSample = desktop
+      ? Effect.tryPromise({
+          try: () => desktop.voice.getTelemetry(),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.map((telemetry) =>
+            telemetry
+              ? rtcDebugSnapshotFromTelemetry(
+                  telemetry,
+                  stageMediaItemsRef.current,
+                )
+              : null,
+          ),
+        )
+      : collectVoiceRtcDebugSnapshotEffect(
+          room!,
+          stageMediaItemsRef.current,
+        ).pipe(Effect.map((current) => current as RtcDebugSnapshot | null))
+    const sample = collectSample.pipe(
       Effect.tap((current) =>
         Effect.sync(() => {
-        const previous = rtcDebugSnapshotRef.current
-        const next = attachRtcRatesToScreenShares(
-          previous
-            ? { ...current, rates: deriveRtcRates(previous, current) }
-            : current,
-        )
-        rtcDebugSnapshotRef.current = next
-        diagnosticRtcHistoryRef.current = appendRtcDebugSample(
-          diagnosticRtcHistoryRef.current,
-          next,
-        )
-        recordDiagnosticEvent('rtc', 'sample', next)
-        const stalledLocalScreen = next.screenShares.some(
-          (screen) =>
-            screen.isLocal &&
-            screen.live &&
-            ((screen.captureVideoPublished === true &&
-              screen.captureVideoFrames === 0) ||
-              (screen.captureVideoNoFrameCount ?? 0) >= 3 ||
-              (screen.sentBitrate != null &&
-                screen.sentBitrate <= 1_000 &&
-                screen.fps === 0)),
-        )
-        const stalledRemoteScreen = next.screenShares.some(
-          (screen) =>
-            !screen.isLocal &&
-            screen.live &&
-            screen.subscribed === true &&
-            (!screen.trackReady ||
-              (screen.receivedBitrate != null &&
-                screen.receivedBitrate <= 1_000 &&
-                (screen.fps ?? 0) === 0)),
-        )
-        stalledLocalScreenSamplesRef.current = stalledLocalScreen
-          ? stalledLocalScreenSamplesRef.current + 1
-          : 0
-        stalledRemoteScreenSamplesRef.current = stalledRemoteScreen
-          ? stalledRemoteScreenSamplesRef.current + 1
-          : 0
-        if (
-          stalledLocalScreenSamplesRef.current === 3 &&
-          auth.session?.token
-        ) {
-          enqueueAutomaticDiagnosticIncident({
-            area: 'screen',
-            severity: 'error',
-            triggerCode: 'screen_publication_stalled',
-            context: next,
-          })
-        }
-        if (
-          stalledRemoteScreenSamplesRef.current === 3 &&
-          auth.session?.token
-        ) {
-          enqueueAutomaticDiagnosticIncident({
-            area: 'screen',
-            severity: 'error',
-            triggerCode: 'screen_subscription_stalled',
-            context: next,
-          })
-        }
-        if (rtcDebugEnabled) {
+          if (!current) return
+          const previous = rtcDebugSnapshotRef.current
+          if (previous && current.timestamp <= previous.timestamp) return
+          const next = attachRtcRatesToScreenShares(
+            previous
+              ? { ...current, rates: deriveRtcRates(previous, current) }
+              : current,
+          )
+          rtcDebugSnapshotRef.current = next
+          const pingMs = next.transport.pingMs ?? null
+          setVoicePingMs(pingMs)
+          if (pingMs != null) {
+            setVoicePingHistory((history) =>
+              appendVoicePingSample(history, {
+                timestamp: next.timestamp,
+                ms: pingMs,
+              }),
+            )
+          }
+          diagnosticRtcHistoryRef.current = appendRtcDebugSample(
+            diagnosticRtcHistoryRef.current,
+            next,
+          )
+          recordDiagnosticEvent('rtc', 'sample', next)
+          const stalledLocalScreen = next.screenShares.some(
+            (screen) =>
+              screen.isLocal &&
+              screen.live &&
+              ((screen.captureVideoPublished === true &&
+                screen.captureVideoFrames === 0) ||
+                (screen.captureVideoNoFrameCount ?? 0) >= 3 ||
+                (screen.sentBitrate != null &&
+                  screen.sentBitrate <= 1_000 &&
+                  screen.fps === 0)),
+          )
+          const stalledRemoteScreen = next.screenShares.some(
+            (screen) =>
+              !screen.isLocal &&
+              screen.live &&
+              screen.subscribed === true &&
+              (!screen.trackReady ||
+                (screen.receivedBitrate != null &&
+                  screen.receivedBitrate <= 1_000 &&
+                  (screen.fps ?? 0) === 0)),
+          )
+          stalledLocalScreenSamplesRef.current = stalledLocalScreen
+            ? stalledLocalScreenSamplesRef.current + 1
+            : 0
+          stalledRemoteScreenSamplesRef.current = stalledRemoteScreen
+            ? stalledRemoteScreenSamplesRef.current + 1
+            : 0
+          if (
+            stalledLocalScreenSamplesRef.current === 3 &&
+            auth.session?.token
+          ) {
+            enqueueAutomaticDiagnosticIncident({
+              area: 'screen',
+              severity: 'error',
+              triggerCode: 'screen_publication_stalled',
+              context: next,
+            })
+          }
+          if (
+            stalledRemoteScreenSamplesRef.current === 3 &&
+            auth.session?.token
+          ) {
+            enqueueAutomaticDiagnosticIncident({
+              area: 'screen',
+              severity: 'error',
+              triggerCode: 'screen_subscription_stalled',
+              context: next,
+            })
+          }
           setRtcDebugSnapshot(next)
-          setRtcDebugHistory((history) => appendRtcDebugSample(history, next))
-        }
+          if (rtcDebugEnabled) {
+            setRtcDebugHistory((history) => appendRtcDebugSample(history, next))
+          }
         }),
       ),
       Effect.catch(() => Effect.void),
@@ -1099,7 +1138,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const fiber = Effect.runFork(
       sample.pipe(
         Effect.repeat(
-          Schedule.spaced(rtcDebugEnabled ? 1_000 : 5_000),
+          Schedule.spaced(rtcDebugEnabled ? 1_000 : 2_000),
         ),
       ),
     )
@@ -1302,14 +1341,20 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const telemetryValue = useMemo<VoiceTelemetryContextValue>(
     () => ({
-      voicePingMs: null,
-      voicePingHistory: [],
+      voicePingMs,
+      voicePingHistory,
       rtcDebugEnabled,
       setRtcDebugEnabled,
       rtcDebugSnapshot,
       rtcDebugHistory,
     }),
-    [rtcDebugEnabled, rtcDebugHistory, rtcDebugSnapshot],
+    [
+      rtcDebugEnabled,
+      rtcDebugHistory,
+      rtcDebugSnapshot,
+      voicePingHistory,
+      voicePingMs,
+    ],
   )
 
   return (
