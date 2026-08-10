@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   NATIVE_RUNTIME_CONTRACT_VERSION,
+  isNativeRuntimeMessage,
   type NativeRuntimeEvent,
   type NativeRuntimeRequest,
 } from '../main/native-runtime/contract'
@@ -49,6 +50,75 @@ describe('runNativeUtilityHost', () => {
     ).toBe(true)
   })
 
+  it('emits a valid handshake when a non-media addon has no LiveKit metadata', async () => {
+    const commitSha = 'b'.repeat(40)
+    const nativeRoot = path.resolve('test-native-runtime')
+    const nativeModulePath = path.join(nativeRoot, 'syrnike_hotkey.node')
+    const postedMessages: unknown[] = []
+
+    class PrototypeBackedHotkeyRuntime {
+      dispatch() {}
+      shutdown() {}
+    }
+
+    await runNativeUtilityHost('hotkey', {
+      parentPort: {
+        on: () => undefined,
+        postMessage: (message) => {
+          postedMessages.push(message)
+        },
+      },
+      environment: {
+        SYRNIKE_NATIVE_MODULE_PATH: nativeModulePath,
+        SYRNIKE_NATIVE_ROOT: nativeRoot,
+        SYRNIKE_NATIVE_APP_VERSION: '0.6.3',
+        SYRNIKE_NATIVE_RELEASE_CHANNEL: 'stable',
+        SYRNIKE_NATIVE_CONTRACT_VERSION: String(
+          NATIVE_RUNTIME_CONTRACT_VERSION,
+        ),
+        SYRNIKE_NATIVE_LIVEKIT_VERSION: NATIVE_RUNTIME_LIVEKIT_VERSION,
+        SYRNIKE_NATIVE_COMMIT_SHA: commitSha,
+      },
+      nativeModuleExists: () => true,
+      verifyDistribution: (_root, expected) => ({
+        schemaVersion: 1,
+        contractVersion: expected.contractVersion,
+        platform: 'win32',
+        arch: 'x64',
+        appVersion: expected.appVersion,
+        releaseChannel: expected.releaseChannel,
+        commitSha: expected.commitSha,
+        electronVersion: expected.electronVersion,
+        napiVersion: expected.minimumNapiVersion,
+        liveKitVersion: expected.liveKitVersion,
+        files: [],
+      }),
+      loadAddon: () => ({
+        getRuntimeInfo: () => ({
+          runtime: 'hotkey',
+          contractVersion: NATIVE_RUNTIME_CONTRACT_VERSION,
+          capabilities: ['hotkeys'],
+          commit: commitSha,
+          napi: process.versions.napi,
+        }),
+        createHotkeyRuntime: () => new PrototypeBackedHotkeyRuntime(),
+      }),
+      registerShutdownSignals: () => undefined,
+    })
+
+    expect(postedMessages).toHaveLength(1)
+    const ready = postedMessages[0]
+    expect(isNativeRuntimeMessage(ready)).toBe(true)
+    if (!isNativeRuntimeMessage(ready) || ready.type !== 'ready') {
+      throw new Error('hotkey handshake was invalid')
+    }
+    expect(ready).toMatchObject({
+      runtime: 'hotkey',
+      contractVersion: NATIVE_RUNTIME_CONTRACT_VERSION,
+    })
+    expect(ready.build).not.toHaveProperty('livekit')
+  })
+
   it('ignores a requestless native reply without corrupting the host contract', async () => {
     const commitSha = 'a'.repeat(40)
     const nativeRoot = path.resolve('test-native-runtime')
@@ -62,6 +132,23 @@ describe('runNativeUtilityHost', () => {
     const exit = vi.fn()
     const shutdown = vi.fn(async () => undefined)
     const addExtraParameter = vi.fn()
+    let runtimeInstance: object | undefined
+
+    class PrototypeBackedMediaRuntime {
+      dispatch(command: Record<string, unknown>) {
+        dispatchedCommands.push(command)
+        if (command.type !== 'shutdown') return
+        emitFromRuntime?.({
+          type: 'reply',
+          requestId: command.requestId,
+          ok: true,
+        })
+      }
+
+      shutdown() {
+        return shutdown()
+      }
+    }
 
     await runNativeUtilityHost('media', {
       parentPort: {
@@ -126,18 +213,8 @@ describe('runNativeUtilityHost', () => {
               message: 'legacy requestless reply',
             },
           })
-          return {
-            dispatch: (command) => {
-              dispatchedCommands.push(command)
-              if (command.type !== 'shutdown') return
-              emit({
-                type: 'reply',
-                requestId: command.requestId,
-                ok: true,
-              })
-            },
-            shutdown,
-          }
+          runtimeInstance = new PrototypeBackedMediaRuntime()
+          return runtimeInstance
         },
       }),
       registerShutdownSignals: () => undefined,
@@ -145,6 +222,10 @@ describe('runNativeUtilityHost', () => {
       exit,
     })
 
+    expect(runtimeInstance).toBeDefined()
+    if (!runtimeInstance) throw new Error('runtime instance was not created')
+    expect(Object.hasOwn(runtimeInstance, 'dispatch')).toBe(false)
+    expect(Object.hasOwn(runtimeInstance, 'shutdown')).toBe(false)
     expect(emitFromRuntime).toBeTypeOf('function')
     expect(addExtraParameter).toHaveBeenCalledWith(
       'native_runtime_kind',

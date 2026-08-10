@@ -77,6 +77,27 @@ jobs:
         with:
           path: ${{ runner.temp }}\syrnike13-livekit-rust-target
           key: livekit-rust-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/desktop-native/vendor/livekit-client/client-sdk-rust/Cargo.lock', 'packages/desktop-native/scripts/build.mjs') }}
+      - name: Install pinned LiveKit Rust toolchain
+        shell: pwsh
+        run: |
+          $toolchainFile = 'packages/desktop-native/vendor/livekit-client/client-sdk-rust/rust-toolchain.toml'
+          $channel = Select-String -LiteralPath $toolchainFile -Pattern '^\s*channel\s*=\s*"([^"]+)"\s*$' | Select-Object -First 1
+          if ($null -eq $channel) {
+            throw "Rust channel is missing from $toolchainFile"
+          }
+          $toolchain = $channel.Matches[0].Groups[1].Value
+          rustup set auto-self-update disable
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            rustup toolchain install $toolchain --profile minimal
+            if ($LASTEXITCODE -eq 0) {
+              rustup run $toolchain rustc --version
+              exit $LASTEXITCODE
+            }
+            if ($attempt -eq 3) {
+              throw "Failed to install Rust $toolchain after $attempt attempts"
+            }
+            Start-Sleep -Seconds (15 * $attempt)
+          }
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
       - name: Build Debug DLL runtime
@@ -153,6 +174,27 @@ jobs:
           New-Item -ItemType Directory -Force -Path $cacheRoot | Out-Null
           "VCPKG_DEFAULT_BINARY_CACHE=$cacheRoot" >> $env:GITHUB_ENV
           "VCPKG_BINARY_SOURCES=clear;files,$cacheRoot,readwrite" >> $env:GITHUB_ENV
+      - name: Install pinned LiveKit Rust toolchain
+        shell: pwsh
+        run: |
+          $toolchainFile = 'packages/desktop-native/vendor/livekit-client/client-sdk-rust/rust-toolchain.toml'
+          $channel = Select-String -LiteralPath $toolchainFile -Pattern '^\s*channel\s*=\s*"([^"]+)"\s*$' | Select-Object -First 1
+          if ($null -eq $channel) {
+            throw "Rust channel is missing from $toolchainFile"
+          }
+          $toolchain = $channel.Matches[0].Groups[1].Value
+          rustup set auto-self-update disable
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            rustup toolchain install $toolchain --profile minimal
+            if ($LASTEXITCODE -eq 0) {
+              rustup run $toolchain rustc --version
+              exit $LASTEXITCODE
+            }
+            if ($attempt -eq 3) {
+              throw "Failed to install Rust $toolchain after $attempt attempts"
+            }
+            Start-Sleep -Seconds (15 * $attempt)
+          }
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
       - name: Build Debug native core with AddressSanitizer

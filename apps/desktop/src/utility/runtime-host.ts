@@ -93,13 +93,6 @@ const RuntimeInfoFactorySchema = Schema.declare<() => unknown>(
   (input): input is () => unknown => typeof input === 'function',
 )
 
-const RuntimeDispatchSchema = Schema.declare<
-  (command: Record<string, unknown>) => unknown
->(
-  (input): input is (command: Record<string, unknown>) => unknown =>
-    typeof input === 'function',
-)
-
 const NativeRuntimeAddonSchema = Schema.Struct({
   createMediaRuntime: Schema.optionalKey(NativeRuntimeFactorySchema),
   createHotkeyRuntime: Schema.optionalKey(NativeRuntimeFactorySchema),
@@ -117,11 +110,17 @@ const NativeRuntimeInfoSchema = Schema.Struct({
   diagnosticsEnabled: Schema.optionalKey(Schema.Boolean),
 })
 
-const NativeRuntimeInstanceSchema = Schema.Struct({
-  ready: Schema.optionalKey(RuntimeInfoFactorySchema),
-  dispatch: RuntimeDispatchSchema,
-  shutdown: RuntimeInfoFactorySchema,
-})
+const NativeRuntimeInstanceSchema = Schema.declare<NativeRuntimeInstance>(
+  (input): input is NativeRuntimeInstance => {
+    if (typeof input !== 'object' || input === null) return false
+    const ready = Reflect.get(input, 'ready')
+    return (
+      (ready === undefined || typeof ready === 'function') &&
+      typeof Reflect.get(input, 'dispatch') === 'function' &&
+      typeof Reflect.get(input, 'shutdown') === 'function'
+    )
+  },
+)
 
 const processParentPort: unknown = Reflect.get(process, 'parentPort')
 const parentPort = Schema.is(ParentPortSchema)(processParentPort)
@@ -526,10 +525,12 @@ export const runNativeUtilityHostEffect = Effect.fn(
     runtime: actualRuntime,
     capabilities: capabilitiesValid ? info.capabilities! : [],
     build: {
-      commit: reportedCommit,
-      electron: process.versions.electron,
-      napi: reportedNapi,
-      livekit: reportedLiveKit,
+      ...(process.versions.electron === undefined
+        ? {}
+        : { electron: process.versions.electron }),
+      ...(reportedCommit === undefined ? {} : { commit: reportedCommit }),
+      ...(reportedNapi === undefined ? {} : { napi: reportedNapi }),
+      ...(reportedLiveKit === undefined ? {} : { livekit: reportedLiveKit }),
     },
   } as const
 
