@@ -34,6 +34,7 @@ function nativeTrackStub(trackSid = 'local-screen:session') {
       _trackId: string,
       _canvas: HTMLCanvasElement,
       _onSizeChange?: (size: { width: number; height: number }) => void,
+      _options?: { fit?: 'contain' | 'cover' },
     ) => detach,
   )
   const registry = { attachCanvas } as unknown as NativeVideoRegistry
@@ -121,11 +122,14 @@ describe('VoiceStageVideo', () => {
     )
 
     const canvas = document.querySelector('canvas')!
+    canvas.width = 1920
+    canvas.height = 1080
     expect(document.querySelector('video')).toBeNull()
     expect(attachCanvas).toHaveBeenCalledWith(
       'local-screen:session',
       canvas,
       expect.any(Function),
+      { fit: 'cover' },
     )
     const sizeListener = attachCanvas.mock.calls[0][2]
     sizeListener?.({ width: 1920, height: 1080 })
@@ -133,6 +137,8 @@ describe('VoiceStageVideo', () => {
 
     view.unmount()
     expect(detach).toHaveBeenCalledOnce()
+    expect(canvas.width).toBe(0)
+    expect(canvas.height).toBe(0)
   })
 
   it('detaches the old native consumer before attaching a replacement track', () => {

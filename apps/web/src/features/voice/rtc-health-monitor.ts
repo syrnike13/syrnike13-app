@@ -9,6 +9,11 @@ const THRESHOLDS = {
   packetLossPercent: 10,
   jitterMs: 100,
   pingMs: 400,
+  rendererFramesDroppedPercent: 20,
+  rendererFramesDroppedPerSecond: 5,
+  rendererConsumerChurnPerSecond: 4,
+  rendererDrawFailuresPerSecond: 1,
+  rendererStallMs: 5_000,
 } as const
 
 export type RtcHealthIncident = {
@@ -18,6 +23,9 @@ export type RtcHealthIncident = {
     | 'screen_publication_stalled'
     | 'screen_subscription_stalled'
     | 'screen_frames_dropped_critical'
+    | 'screen_renderer_stalled'
+    | 'screen_renderer_frames_dropped_critical'
+    | 'voice_stage_consumer_churn_critical'
     | 'rtc_audio_concealment_critical'
     | 'rtc_packet_loss_critical'
     | 'rtc_jitter_critical'
@@ -40,12 +48,34 @@ type RtcHealthIncidentContext = {
     packetLossPercent?: number
     jitterMs?: number
     pingMs?: number
+    rendererFramesDroppedPercent?: number
+    rendererFramesDroppedPerSecond?: number
+    rendererConsumerChurnPerSecond?: number
+    rendererDrawFailuresPerSecond?: number
   }
   screens: {
     localLive: number
     remoteLive: number
     localStalled: number
     remoteStalled: number
+    rendererStalled: number
+  }
+  renderer?: {
+    framesReceived: number
+    framesDrawn: number
+    framesSuperseded: number
+    framesDroppedNoConsumer: number
+    framesDroppedHidden: number
+    framesDroppedStale: number
+    drawFailures: number
+    canvasAttachCount: number
+    canvasDetachCount: number
+    activeConsumers: number
+    canvasPixels: number
+    maxFrameWidth?: number
+    maxFrameHeight?: number
+    maxLastFrameAgeMs?: number
+    maxLastDrawAgeMs?: number
   }
   nativeCapture?: {
     videoFrames?: number
@@ -146,6 +176,21 @@ function healthConditions(snapshot: RtcDebugSnapshot): Condition[] {
       THRESHOLDS.framesDroppedPercent &&
     (quality?.framesDroppedPerSecond ?? 0) >=
       THRESHOLDS.framesDroppedPerSecond
+  const rendererStalled = remoteScreens.some(isRendererStalled)
+  const rendererDropsCritical =
+    remoteScreens.length > 0 &&
+    (quality?.rendererFramesDroppedPercent ?? 0) >=
+      THRESHOLDS.rendererFramesDroppedPercent &&
+    (quality?.rendererFramesDroppedPerSecond ?? 0) >=
+      THRESHOLDS.rendererFramesDroppedPerSecond
+  const rendererConsumerChurnCritical =
+    remoteScreens.length > 0 &&
+    (quality?.rendererConsumerChurnPerSecond ?? 0) >=
+      THRESHOLDS.rendererConsumerChurnPerSecond
+  const rendererDrawFailed =
+    remoteScreens.length > 0 &&
+    (quality?.rendererDrawFailuresPerSecond ?? 0) >=
+      THRESHOLDS.rendererDrawFailuresPerSecond
 
   return [
     {
@@ -162,6 +207,21 @@ function healthConditions(snapshot: RtcDebugSnapshot): Condition[] {
       area: 'screen',
       code: 'screen_frames_dropped_critical',
       active: screenDropsCritical,
+    },
+    {
+      area: 'screen',
+      code: 'screen_renderer_stalled',
+      active: rendererStalled || rendererDrawFailed,
+    },
+    {
+      area: 'screen',
+      code: 'screen_renderer_frames_dropped_critical',
+      active: rendererDropsCritical,
+    },
+    {
+      area: 'screen',
+      code: 'voice_stage_consumer_churn_critical',
+      active: rendererConsumerChurnCritical,
     },
     {
       area: 'voice',
@@ -213,6 +273,10 @@ function healthContext(snapshot: RtcDebugSnapshot): RtcHealthIncidentContext {
         screen.receivedBitrate <= 1_000 &&
         (screen.fps ?? 0) === 0),
   )
+  const rendererStalled = remoteScreens.filter(isRendererStalled)
+  const rendererScreens = remoteScreens.filter(
+    (screen) => screen.rendererFramesReceived != null,
+  )
   const native = localScreens.find(
     (screen) => screen.captureBackend === 'native',
   )
@@ -226,13 +290,86 @@ function healthContext(snapshot: RtcDebugSnapshot): RtcHealthIncidentContext {
       packetLossPercent: quality?.packetLossPercent,
       jitterMs: quality?.jitterMs,
       pingMs: snapshot.transport.pingMs,
+      rendererFramesDroppedPercent:
+        quality?.rendererFramesDroppedPercent,
+      rendererFramesDroppedPerSecond:
+        quality?.rendererFramesDroppedPerSecond,
+      rendererConsumerChurnPerSecond:
+        quality?.rendererConsumerChurnPerSecond,
+      rendererDrawFailuresPerSecond:
+        quality?.rendererDrawFailuresPerSecond,
     }),
     screens: {
       localLive: localScreens.length,
       remoteLive: remoteScreens.length,
       localStalled: localStalled.length,
       remoteStalled: remoteStalled.length,
+      rendererStalled: rendererStalled.length,
     },
+    renderer: rendererScreens.length > 0
+      ? {
+          framesReceived: sumRendererMetric(
+            rendererScreens,
+            'rendererFramesReceived',
+          ),
+          framesDrawn: sumRendererMetric(
+            rendererScreens,
+            'rendererFramesDrawn',
+          ),
+          framesSuperseded: sumRendererMetric(
+            rendererScreens,
+            'rendererFramesSuperseded',
+          ),
+          framesDroppedNoConsumer: sumRendererMetric(
+            rendererScreens,
+            'rendererFramesDroppedNoConsumer',
+          ),
+          framesDroppedHidden: sumRendererMetric(
+            rendererScreens,
+            'rendererFramesDroppedHidden',
+          ),
+          framesDroppedStale: sumRendererMetric(
+            rendererScreens,
+            'rendererFramesDroppedStale',
+          ),
+          drawFailures: sumRendererMetric(
+            rendererScreens,
+            'rendererDrawFailures',
+          ),
+          canvasAttachCount: sumRendererMetric(
+            rendererScreens,
+            'rendererCanvasAttachCount',
+          ),
+          canvasDetachCount: sumRendererMetric(
+            rendererScreens,
+            'rendererCanvasDetachCount',
+          ),
+          activeConsumers: sumRendererMetric(
+            rendererScreens,
+            'rendererActiveConsumers',
+          ),
+          canvasPixels: sumRendererMetric(
+            rendererScreens,
+            'rendererCanvasPixels',
+          ),
+          maxFrameWidth: maximumScreenMetric(
+            rendererScreens,
+            'rendererFrameWidth',
+          ),
+          maxFrameHeight: maximumScreenMetric(
+            rendererScreens,
+            'rendererFrameHeight',
+          ),
+          maxLastFrameAgeMs: maximumScreenMetric(
+            rendererScreens,
+            'rendererLastFrameAgeMs',
+          ),
+          maxLastDrawAgeMs: maximumScreenMetric(
+            rendererScreens,
+            'rendererLastDrawAgeMs',
+          ),
+        }
+      : undefined,
     nativeCapture: native
       ? compactNumbers({
           videoFrames: native.captureVideoFrames,
@@ -252,6 +389,44 @@ function healthContext(snapshot: RtcDebugSnapshot): RtcHealthIncidentContext {
         })
       : undefined,
   }
+}
+
+function isRendererStalled(
+  screen: RtcDebugSnapshot['screenShares'][number],
+) {
+  if (
+    (screen.rendererActiveConsumers ?? 0) <= 0 ||
+    (screen.rendererFramesReceived ?? 0) <= 0
+  ) {
+    return false
+  }
+  const receivingFreshFrames =
+    (screen.rendererLastFrameAgeMs ?? Number.POSITIVE_INFINITY) <
+    THRESHOLDS.rendererStallMs
+  if (!receivingFreshFrames) return false
+  if ((screen.rendererFramesDrawn ?? 0) === 0) return true
+  return (screen.rendererLastDrawAgeMs ?? 0) >= THRESHOLDS.rendererStallMs
+}
+
+function sumRendererMetric(
+  screens: RtcDebugSnapshot['screenShares'],
+  key: keyof RtcDebugSnapshot['screenShares'][number],
+) {
+  return screens.reduce((total, screen) => {
+    const value = screen[key]
+    return total + (typeof value === 'number' && Number.isFinite(value) ? value : 0)
+  }, 0)
+}
+
+function maximumScreenMetric(
+  screens: RtcDebugSnapshot['screenShares'],
+  key: keyof RtcDebugSnapshot['screenShares'][number],
+) {
+  const values = screens.flatMap((screen) => {
+    const value = screen[key]
+    return typeof value === 'number' && Number.isFinite(value) ? [value] : []
+  })
+  return values.length > 0 ? Math.max(...values) : undefined
 }
 
 function compactNumbers<T extends Record<string, number | undefined>>(

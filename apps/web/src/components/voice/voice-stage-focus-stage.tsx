@@ -24,6 +24,7 @@ const voiceStageStripToggleButtonClass =
 const FOCUS_STRIP_GAP_PX = 8
 const STRIP_TOGGLE_SIZE_PX = 28
 const STRIP_TOGGLE_INSET_PX = 8
+const STRIP_EXIT_DURATION_MS = 200
 
 function stripToggleTopPx(focusHeight: number, stripCollapsed: boolean) {
   if (focusHeight <= 0) return undefined
@@ -60,6 +61,7 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
   )
   const stripItems = mediaItems.filter((item) => item.id !== focusedItem.id)
   const [stripCollapsed, setStripCollapsed] = useState(false)
+  const [stripMounted, setStripMounted] = useState(true)
   const { layout, stripMetrics } = useVoiceStageFocusSizing(
     layoutRef,
     streamAspectRatio,
@@ -70,7 +72,22 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
   useEffect(() => {
     setStreamAspectRatio(DEFAULT_STREAM_ASPECT_RATIO)
     setStripCollapsed(false)
+    setStripMounted(true)
   }, [focusedItem.id])
+
+  useEffect(() => {
+    if (!stripCollapsed) return
+    const timer = setTimeout(
+      () => setStripMounted(false),
+      STRIP_EXIT_DURATION_MS,
+    )
+    return () => clearTimeout(timer)
+  }, [stripCollapsed])
+
+  const toggleStrip = () => {
+    if (stripCollapsed) setStripMounted(true)
+    setStripCollapsed((value) => !value)
+  }
 
   const stripToggleTop = stripToggleTopPx(layout.focus.height, stripCollapsed)
 
@@ -116,14 +133,16 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
                   )}
                   aria-hidden={stripCollapsed}
                 >
-                  <VoiceStageFilmstrip
-                    items={mediaItems}
-                    focusedMediaId={focusedItem.id}
-                    tightTop
-                    tileWidth={stripMetrics.width}
-                    tileHeight={stripMetrics.height}
-                    renderTile={renderTile}
-                  />
+                  {stripMounted ? (
+                    <VoiceStageFilmstrip
+                      items={mediaItems}
+                      focusedMediaId={focusedItem.id}
+                      tightTop
+                      tileWidth={stripMetrics.width}
+                      tileHeight={stripMetrics.height}
+                      renderTile={renderTile}
+                    />
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -152,7 +171,7 @@ export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
                             ? 'Показать участников'
                             : 'Убрать участников'
                         }
-                        onClick={() => setStripCollapsed((value) => !value)}
+                        onClick={toggleStrip}
                       >
                         {stripCollapsed ? (
                           <ChevronUpIcon className="size-3.5 shrink-0" />

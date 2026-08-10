@@ -274,7 +274,11 @@ function sanitizeDiagnosticValue(
   const result: Record<string, DiagnosticJsonValue> = {}
   for (const [key, nested] of Object.entries(value).slice(0, 80)) {
     if (SENSITIVE_KEY.test(key) || key === '__proto__' || key === 'constructor') continue
-    const sanitized = sanitizeDiagnosticValue(nested, depth + 1)
+    const sanitized =
+      (key === 'triggerCode' || key === 'errorCode') &&
+      typeof nested === 'string'
+        ? safeIdentifier(nested, 'unknown')
+        : sanitizeDiagnosticValue(nested, depth + 1)
     if (sanitized !== undefined) result[safeIdentifier(key, 'field')] = sanitized
   }
   return result

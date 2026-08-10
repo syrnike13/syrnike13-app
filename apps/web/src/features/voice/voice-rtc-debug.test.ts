@@ -268,7 +268,27 @@ describe('voice rtc debug', () => {
           live: true,
           track: {
             backend: 'native',
-            track: {},
+            track: {
+              getPresentationMetrics: () => ({
+                framesReceived: 120,
+                framesDrawn: 100,
+                framesSuperseded: 18,
+                framesDroppedNoConsumer: 2,
+                framesDroppedHidden: 0,
+                framesDroppedStale: 0,
+                drawFailures: 0,
+                canvasAttachCount: 3,
+                canvasDetachCount: 2,
+                presentationResets: 1,
+                rendererEpochChanges: 0,
+                activeConsumers: 1,
+                canvasPixels: 1920 * 1038,
+                lastFrameAgeMs: 16,
+                lastDrawAgeMs: 20,
+                sourceWidth: 1920,
+                sourceHeight: 1038,
+              }),
+            },
           },
         },
       ] as never,
@@ -296,6 +316,14 @@ describe('voice rtc debug', () => {
       captureAudioPeakDb: -6.5,
       captureAudioRmsDb: -18.25,
       hybridGraphicsCaptureFrames: 60,
+      rendererFramesReceived: 120,
+      rendererFramesDrawn: 100,
+      rendererFramesSuperseded: 18,
+      rendererActiveConsumers: 1,
+      rendererCanvasPixels: 1920 * 1038,
+      rendererLastDrawAgeMs: 20,
+      rendererFrameWidth: 1920,
+      rendererFrameHeight: 1038,
     })
   })
 
@@ -531,6 +559,46 @@ describe('voice rtc debug', () => {
       framesDroppedPerSecond: 5,
       jitterMs: 20,
       concealedAudioPercent: 1,
+    })
+  })
+
+  it('separates renderer supersession and consumer churn from WebRTC drops', () => {
+    const previous = {
+      timestamp: 1_000,
+      transport: {},
+      outbound: [],
+      inbound: [],
+      screenShares: [{
+        id: 'remote:screen',
+        isLocal: false,
+        rendererFramesReceived: 100,
+        rendererFramesSuperseded: 10,
+        rendererDrawFailures: 1,
+        rendererCanvasAttachCount: 2,
+        rendererCanvasDetachCount: 1,
+      }],
+    }
+    const current = {
+      timestamp: 3_000,
+      transport: {},
+      outbound: [],
+      inbound: [],
+      screenShares: [{
+        id: 'remote:screen',
+        isLocal: false,
+        rendererFramesReceived: 160,
+        rendererFramesSuperseded: 25,
+        rendererDrawFailures: 3,
+        rendererCanvasAttachCount: 7,
+        rendererCanvasDetachCount: 6,
+      }],
+    }
+
+    expect(deriveRtcRates(previous, current).quality).toEqual({
+      rendererFramesDroppedPercent: 25,
+      rendererFramesDroppedPerSecond: 7.5,
+      rendererConsumerChurnPerSecond: 5,
+      rendererDrawFailuresPerSecond: 1,
     })
   })
 

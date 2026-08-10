@@ -114,6 +114,40 @@ describe('RtcHealthMonitor', () => {
     expect(monitor.observe(snapshot({ packetLossPercent: 50 })).incidents)
       .toEqual([])
   })
+
+  it('reports sustained renderer lag with renderer counters in context', () => {
+    const monitor = new RtcHealthMonitor()
+    const degraded = snapshot({
+      rendererFramesDroppedPercent: 40,
+      rendererFramesDroppedPerSecond: 12,
+      rendererConsumerChurnPerSecond: 8,
+    }, {
+      rendererStalled: true,
+    })
+
+    monitor.observe(degraded)
+    monitor.observe(degraded)
+    expect(monitor.observe(degraded).incidents).toEqual([
+      expect.objectContaining({
+        triggerCode: 'screen_renderer_stalled',
+        context: expect.objectContaining({
+          screens: expect.objectContaining({ rendererStalled: 1 }),
+          renderer: expect.objectContaining({
+            framesReceived: 300,
+            framesDrawn: 120,
+            framesSuperseded: 90,
+            activeConsumers: 1,
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        triggerCode: 'screen_renderer_frames_dropped_critical',
+      }),
+      expect.objectContaining({
+        triggerCode: 'voice_stage_consumer_churn_critical',
+      }),
+    ])
+  })
 })
 
 function codes(observation: { incidents: RtcHealthIncident[] }) {
@@ -125,6 +159,7 @@ function snapshot(
   options: {
     localStalled?: boolean
     remoteStalled?: boolean
+    rendererStalled?: boolean
     pingMs?: number
   } = {},
 ): RtcDebugSnapshot {
@@ -161,6 +196,21 @@ function snapshot(
         live: true,
         subscribed: true,
         trackReady: !options.remoteStalled,
+        rendererFramesReceived: options.rendererStalled ? 300 : undefined,
+        rendererFramesDrawn: options.rendererStalled ? 120 : undefined,
+        rendererFramesSuperseded: options.rendererStalled ? 90 : undefined,
+        rendererFramesDroppedNoConsumer: options.rendererStalled ? 10 : undefined,
+        rendererFramesDroppedHidden: options.rendererStalled ? 2 : undefined,
+        rendererFramesDroppedStale: options.rendererStalled ? 4 : undefined,
+        rendererDrawFailures: options.rendererStalled ? 3 : undefined,
+        rendererCanvasAttachCount: options.rendererStalled ? 20 : undefined,
+        rendererCanvasDetachCount: options.rendererStalled ? 19 : undefined,
+        rendererActiveConsumers: options.rendererStalled ? 1 : undefined,
+        rendererCanvasPixels: options.rendererStalled ? 1920 * 1080 : undefined,
+        rendererFrameWidth: options.rendererStalled ? 1920 : undefined,
+        rendererFrameHeight: options.rendererStalled ? 1080 : undefined,
+        rendererLastFrameAgeMs: options.rendererStalled ? 100 : undefined,
+        rendererLastDrawAgeMs: options.rendererStalled ? 6_000 : undefined,
         hybridDxgiFrames: 'N/A',
         hybridGdiBitBltFrames: 'N/A',
         hybridGdiPrintWindowFrames: 'N/A',

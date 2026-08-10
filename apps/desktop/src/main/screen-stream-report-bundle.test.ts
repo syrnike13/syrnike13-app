@@ -87,8 +87,19 @@ describe('screen stream report bundle', () => {
           event: 'rtc.health_incident',
           data: {
             payload: {
-              triggerCode: 'rtc_audio_concealment_critical',
-              quality: { concealedAudioPercent: 35 },
+              triggerCode: 'screen_renderer_frames_dropped_critical',
+              quality: {
+                rendererFramesDroppedPercent: 35,
+                rendererFramesDroppedPerSecond: 12,
+              },
+              renderer: {
+                framesReceived: 12_000,
+                framesDrawn: 8_400,
+                framesSuperseded: 3_500,
+                canvasAttachCount: 180,
+                canvasDetachCount: 179,
+                canvasPixels: 8_294_400,
+              },
             },
           },
         }),
@@ -120,6 +131,14 @@ describe('screen stream report bundle', () => {
       }),
       expect.objectContaining({
         event: 'rtc.health_incident',
+        data: expect.objectContaining({
+          payload: expect.objectContaining({
+            renderer: expect.objectContaining({
+              framesSuperseded: 3_500,
+              canvasPixels: 8_294_400,
+            }),
+          }),
+        }),
       }),
     ]))
   })

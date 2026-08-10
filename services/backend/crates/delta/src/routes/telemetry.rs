@@ -90,6 +90,9 @@ enum NativeCounterName {
     ScreenPublicationStalled,
     ScreenSubscriptionStalled,
     ScreenFramesDroppedCritical,
+    ScreenRendererStalled,
+    ScreenRendererFramesDroppedCritical,
+    VoiceStageConsumerChurnCritical,
     RtcAudioConcealmentCritical,
     RtcPacketLossCritical,
     RtcJitterCritical,
@@ -117,6 +120,9 @@ impl NativeCounterName {
             Self::ScreenPublicationStalled => "screen_publication_stalled",
             Self::ScreenSubscriptionStalled => "screen_subscription_stalled",
             Self::ScreenFramesDroppedCritical => "screen_frames_dropped_critical",
+            Self::ScreenRendererStalled => "screen_renderer_stalled",
+            Self::ScreenRendererFramesDroppedCritical => "screen_renderer_frames_dropped_critical",
+            Self::VoiceStageConsumerChurnCritical => "voice_stage_consumer_churn_critical",
             Self::RtcAudioConcealmentCritical => "rtc_audio_concealment_critical",
             Self::RtcPacketLossCritical => "rtc_packet_loss_critical",
             Self::RtcJitterCritical => "rtc_jitter_critical",
@@ -141,6 +147,9 @@ impl NativeCounterName {
                 | Self::ScreenPublicationStalled
                 | Self::ScreenSubscriptionStalled
                 | Self::ScreenFramesDroppedCritical
+                | Self::ScreenRendererStalled
+                | Self::ScreenRendererFramesDroppedCritical
+                | Self::VoiceStageConsumerChurnCritical
         )
     }
 }
@@ -401,6 +410,9 @@ mod tests {
             NativeCounterName::ScreenPublicationStalled,
             NativeCounterName::ScreenSubscriptionStalled,
             NativeCounterName::ScreenFramesDroppedCritical,
+            NativeCounterName::ScreenRendererStalled,
+            NativeCounterName::ScreenRendererFramesDroppedCritical,
+            NativeCounterName::VoiceStageConsumerChurnCritical,
         ] {
             metrics.push(AnonymousNativeMetric::Counter {
                 name,

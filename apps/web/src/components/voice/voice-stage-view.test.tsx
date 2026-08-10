@@ -107,6 +107,7 @@ vi.mock('#/features/sync/sync-store', () => ({
 vi.mock('#/features/sync/voice-selectors', () => ({
   getChannelVoiceParticipants: (_state: unknown, channelId: string) =>
     testState.participants[channelId] ?? [],
+  sameVoiceParticipantList: () => true,
   useChannelVoiceParticipantsWithLocalOverride: (
     _channelId: string,
     participants: Array<{ id: string }>,

@@ -118,6 +118,9 @@ describe('screen stream anonymous observability', () => {
       'screen_publication_stalled',
       'screen_subscription_stalled',
       'screen_frames_dropped_critical',
+      'screen_renderer_stalled',
+      'screen_renderer_frames_dropped_critical',
+      'voice_stage_consumer_churn_critical',
     ] as const
     const voiceCodes = [
       'rtc_audio_concealment_critical',
@@ -142,7 +145,7 @@ describe('screen stream anonymous observability', () => {
     await reporter.flush()
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
-    expect(body.metrics).toHaveLength(7)
+    expect(body.metrics).toHaveLength(10)
     for (const name of screenCodes) {
       expect(body.metrics).toContainEqual(expect.objectContaining({
         name,

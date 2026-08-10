@@ -39,6 +39,9 @@ export type NativeMetricCounterName =
   | 'screen_publication_stalled'
   | 'screen_subscription_stalled'
   | 'screen_frames_dropped_critical'
+  | 'screen_renderer_stalled'
+  | 'screen_renderer_frames_dropped_critical'
+  | 'voice_stage_consumer_churn_critical'
   | 'rtc_audio_concealment_critical'
   | 'rtc_packet_loss_critical'
   | 'rtc_jitter_critical'
@@ -443,6 +446,9 @@ export function recordRendererDiagnosticMetrics(
     case 'screen_publication_stalled':
     case 'screen_subscription_stalled':
     case 'screen_frames_dropped_critical':
+    case 'screen_renderer_stalled':
+    case 'screen_renderer_frames_dropped_critical':
+    case 'voice_stage_consumer_churn_critical':
       reporter.increment(incident.triggerCode, 'media', 'screen')
       return
     case 'rtc_audio_concealment_critical':

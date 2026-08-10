@@ -24,6 +24,18 @@ function ChannelIds({ label }: { label: string }) {
   return <p>{`${label}:${ids.join(',')}`}</p>
 }
 
+function StableChannelIds({ onRender }: { onRender: () => void }) {
+  onRender()
+  const ids = useSyncStore(
+    (state) => Object.keys(state.channels).filter((id) => id !== 'unrelated'),
+    (previous, next) =>
+      previous.length === next.length &&
+      previous.every((id, index) => id === next[index]),
+  )
+
+  return <p>{ids.join(',')}</p>
+}
+
 describe('useSyncStore', () => {
   beforeEach(() => {
     syncStore.reset()
@@ -69,5 +81,21 @@ describe('useSyncStore', () => {
 
     expect(screen.getByText(`second:${FIRST_CHANNEL_ID},${SECOND_CHANNEL_ID}`)).toBeTruthy()
     expect(errorSpy).not.toHaveBeenCalled()
+  })
+
+  it('does not rerender when a selector rebuilds an equal array', () => {
+    const onRender = vi.fn()
+    render(<StableChannelIds onRender={onRender} />)
+    const rendersBeforeUnrelatedUpdate = onRender.mock.calls.length
+
+    syncStore.handleGatewayEvent({
+      type: 'ChannelCreate',
+      _id: 'unrelated',
+      name: 'unrelated',
+      channel_type: 'TextChannel',
+      server: SERVER_ID,
+    })
+
+    expect(onRender).toHaveBeenCalledTimes(rendersBeforeUnrelatedUpdate)
   })
 })

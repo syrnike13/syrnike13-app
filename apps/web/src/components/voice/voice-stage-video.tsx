@@ -172,11 +172,13 @@ function NativeVoiceStageCanvas({
     host.replaceChildren(canvas)
     const detach = track.attachCanvas(canvas, (size) => {
       onVideoSizeChangeRef.current?.(size)
-    })
+    }, { fit })
 
     return () => {
       detach()
       if (canvas.parentElement === host) host.replaceChildren()
+      canvas.width = 0
+      canvas.height = 0
       canvasRef.current = null
     }
   }, [mediaId, track])

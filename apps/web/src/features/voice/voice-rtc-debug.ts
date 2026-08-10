@@ -188,6 +188,23 @@ export type RtcDebugScreenShareSnapshot = {
   hybridGdiPrintWindowFrames: number | typeof RTC_DEBUG_BROWSER_UNAVAILABLE
   hybridGraphicsCaptureFrames: number | typeof RTC_DEBUG_BROWSER_UNAVAILABLE
   hybridVideohookFrames: typeof RTC_DEBUG_BROWSER_UNAVAILABLE
+  rendererFramesReceived?: number
+  rendererFramesDrawn?: number
+  rendererFramesSuperseded?: number
+  rendererFramesDroppedNoConsumer?: number
+  rendererFramesDroppedHidden?: number
+  rendererFramesDroppedStale?: number
+  rendererDrawFailures?: number
+  rendererCanvasAttachCount?: number
+  rendererCanvasDetachCount?: number
+  rendererPresentationResets?: number
+  rendererEpochChanges?: number
+  rendererActiveConsumers?: number
+  rendererCanvasPixels?: number
+  rendererLastFrameAgeMs?: number
+  rendererLastDrawAgeMs?: number
+  rendererFrameWidth?: number
+  rendererFrameHeight?: number
 }
 
 export type RtcDebugRates = {
@@ -205,6 +222,10 @@ export type RtcDebugRates = {
     framesDroppedPerSecond?: number
     jitterMs?: number
     concealedAudioPercent?: number
+    rendererFramesDroppedPercent?: number
+    rendererFramesDroppedPerSecond?: number
+    rendererConsumerChurnPerSecond?: number
+    rendererDrawFailuresPerSecond?: number
   }
 }
 
@@ -491,6 +512,11 @@ export function deriveRtcRates(
     previous.inbound,
     current.inbound,
   )
+  const rendererQuality = rendererPresentationQuality(
+    previous.screenShares ?? [],
+    current.screenShares ?? [],
+    seconds,
+  )
   setDefined(rates.quality, 'inboundPacketLossPercent', inboundLoss)
   setDefined(rates.quality, 'outboundPacketLossPercent', outboundLoss)
   setDefined(
@@ -506,6 +532,26 @@ export function deriveRtcRates(
     jitterValues.length > 0 ? Math.max(...jitterValues) * 1000 : undefined,
   )
   setDefined(rates.quality, 'concealedAudioPercent', concealedAudioPercent)
+  setDefined(
+    rates.quality,
+    'rendererFramesDroppedPercent',
+    rendererQuality.percent,
+  )
+  setDefined(
+    rates.quality,
+    'rendererFramesDroppedPerSecond',
+    rendererQuality.perSecond,
+  )
+  setDefined(
+    rates.quality,
+    'rendererConsumerChurnPerSecond',
+    rendererQuality.consumerChurnPerSecond,
+  )
+  setDefined(
+    rates.quality,
+    'rendererDrawFailuresPerSecond',
+    rendererQuality.drawFailuresPerSecond,
+  )
 
   return rates
 }
@@ -740,6 +786,11 @@ function screenShareSnapshot(
     | undefined
   const options = publication?.options
   const encoding = options?.screenShareEncoding ?? options?.videoEncoding
+  const renderer =
+    item.track?.backend === 'native' &&
+    typeof item.track.track.getPresentationMetrics === 'function'
+      ? item.track.track.getPresentationMetrics()
+      : null
 
   const nativeStats = item.isLocal ? nativeMediaEngineStatsStore.getState() : null
   const hybridUnavailable = RTC_DEBUG_BROWSER_UNAVAILABLE
@@ -1010,6 +1061,23 @@ function screenShareSnapshot(
     hybridGraphicsCaptureFrames:
       nativeStats?.backend === 'native' ? nativeStats.methods.wgc_gpu : hybridUnavailable,
     hybridVideohookFrames: hybridUnavailable,
+    rendererFramesReceived: renderer?.framesReceived,
+    rendererFramesDrawn: renderer?.framesDrawn,
+    rendererFramesSuperseded: renderer?.framesSuperseded,
+    rendererFramesDroppedNoConsumer: renderer?.framesDroppedNoConsumer,
+    rendererFramesDroppedHidden: renderer?.framesDroppedHidden,
+    rendererFramesDroppedStale: renderer?.framesDroppedStale,
+    rendererDrawFailures: renderer?.drawFailures,
+    rendererCanvasAttachCount: renderer?.canvasAttachCount,
+    rendererCanvasDetachCount: renderer?.canvasDetachCount,
+    rendererPresentationResets: renderer?.presentationResets,
+    rendererEpochChanges: renderer?.rendererEpochChanges,
+    rendererActiveConsumers: renderer?.activeConsumers,
+    rendererCanvasPixels: renderer?.canvasPixels,
+    rendererLastFrameAgeMs: renderer?.lastFrameAgeMs,
+    rendererLastDrawAgeMs: renderer?.lastDrawAgeMs,
+    rendererFrameWidth: renderer?.sourceWidth,
+    rendererFrameHeight: renderer?.sourceHeight,
   }
 }
 
@@ -1094,6 +1162,15 @@ type RtcDebugRateSnapshotInput = {
     totalSamplesReceived?: number
     concealedSamples?: number
     jitter?: number
+  }>
+  screenShares?: ReadonlyArray<{
+    id: string
+    isLocal: boolean
+    rendererFramesReceived?: number
+    rendererFramesSuperseded?: number
+    rendererDrawFailures?: number
+    rendererCanvasAttachCount?: number
+    rendererCanvasDetachCount?: number
   }>
 }
 
@@ -1236,6 +1313,71 @@ function audioConcealmentPercent(
   return hasCounters && samplesDelta > 0
     ? (concealedDelta / samplesDelta) * 100
     : undefined
+}
+
+function rendererPresentationQuality(
+  previous: NonNullable<RtcDebugRateSnapshotInput['screenShares']>,
+  current: NonNullable<RtcDebugRateSnapshotInput['screenShares']>,
+  seconds: number,
+) {
+  const previousById = byId(previous)
+  let receivedDelta = 0
+  let supersededDelta = 0
+  let drawFailureDelta = 0
+  let consumerChurnDelta = 0
+  let hasCounters = false
+
+  for (const screen of current) {
+    if (screen.isLocal) continue
+    const prior = previousById.get(screen.id)
+    const received = counterDelta(
+      prior?.rendererFramesReceived,
+      screen.rendererFramesReceived,
+    )
+    const superseded = counterDelta(
+      prior?.rendererFramesSuperseded,
+      screen.rendererFramesSuperseded,
+    )
+    const drawFailures = counterDelta(
+      prior?.rendererDrawFailures,
+      screen.rendererDrawFailures,
+    )
+    const attaches = counterDelta(
+      prior?.rendererCanvasAttachCount,
+      screen.rendererCanvasAttachCount,
+    )
+    const detaches = counterDelta(
+      prior?.rendererCanvasDetachCount,
+      screen.rendererCanvasDetachCount,
+    )
+    if (
+      received == null &&
+      superseded == null &&
+      drawFailures == null &&
+      attaches == null &&
+      detaches == null
+    ) {
+      continue
+    }
+    hasCounters = true
+    receivedDelta += received ?? 0
+    supersededDelta += superseded ?? 0
+    drawFailureDelta += drawFailures ?? 0
+    consumerChurnDelta += (attaches ?? 0) + (detaches ?? 0)
+  }
+
+  return {
+    percent:
+      hasCounters && receivedDelta > 0
+        ? (supersededDelta / receivedDelta) * 100
+        : undefined,
+    perSecond:
+      hasCounters && seconds > 0 ? supersededDelta / seconds : undefined,
+    consumerChurnPerSecond:
+      hasCounters && seconds > 0 ? consumerChurnDelta / seconds : undefined,
+    drawFailuresPerSecond:
+      hasCounters && seconds > 0 ? drawFailureDelta / seconds : undefined,
+  }
 }
 
 function counterDelta(previous?: number, current?: number) {

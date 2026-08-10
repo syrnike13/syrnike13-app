@@ -1548,7 +1548,10 @@ export const syncStore = {
   },
 }
 
-export function useSyncStore<T>(selector: (state: SyncState) => T): T {
+export function useSyncStore<T>(
+  selector: (state: SyncState) => T,
+  isEqual: (previous: T, next: T) => boolean = Object.is,
+): T {
   const cacheRef = useRef<{
     store: SyncState
     selector: (state: SyncState) => T
@@ -1563,7 +1566,11 @@ export function useSyncStore<T>(selector: (state: SyncState) => T): T {
     ) {
       return cacheRef.current.value
     }
-    const value = selector(store)
+    const selected = selector(store)
+    const value =
+      cacheRef.current && isEqual(cacheRef.current.value, selected)
+        ? cacheRef.current.value
+        : selected
     cacheRef.current = { store, selector, value }
     return value
   }

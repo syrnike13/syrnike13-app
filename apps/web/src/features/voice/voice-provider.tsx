@@ -25,7 +25,10 @@ import { toast } from 'sonner'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { getChannelVoiceParticipants } from '#/features/sync/voice-selectors'
+import {
+  getChannelVoiceParticipants,
+  sameVoiceParticipantList,
+} from '#/features/sync/voice-selectors'
 import { canJoinVoiceChannel } from '#/features/voice/voice-api-capability'
 import { BrowserRtcEngineAdapter } from '#/features/voice/browser-rtc-engine-adapter'
 import { voiceListenerStore } from '#/features/voice/voice-listener-store'
@@ -833,10 +836,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const status = connectionStatus(snapshot)
   const connectionPhase = connectionPhaseFromSnapshot(snapshot)
-  const participants = useSyncStore((state) =>
-    channelId
-      ? getChannelVoiceParticipants(state, channelId, auth.user?._id)
-      : [],
+  const participants = useSyncStore(
+    (state) =>
+      channelId
+        ? getChannelVoiceParticipants(state, channelId, auth.user?._id)
+        : [],
+    sameVoiceParticipantList,
   )
   const micIssue = mediaIssue(snapshot)
   const mediaAvailability = useMemo<VoiceMediaAvailabilityState>(

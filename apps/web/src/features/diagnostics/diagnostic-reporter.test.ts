@@ -54,6 +54,32 @@ describe('diagnostic reporter', () => {
     expect(serialized).not.toContain('ownerUserId')
   })
 
+  it('keeps VoiceStage renderer evidence for near-critical reports', () => {
+    recordDiagnosticEvent('rtc', 'health_incident', {
+      triggerCode: 'screen_renderer_frames_dropped_critical',
+      renderer: {
+        framesReceived: 12_000,
+        framesDrawn: 8_400,
+        framesSuperseded: 3_500,
+        framesDroppedNoConsumer: 75,
+        drawFailures: 25,
+        canvasAttachCount: 180,
+        canvasDetachCount: 179,
+        activeConsumers: 1,
+        canvasPixels: 8_294_400,
+        maxLastDrawAgeMs: 6_500,
+      },
+    })
+
+    const serialized = diagnosticEventsJsonForTests()
+    expect(serialized).toContain(
+      'screen_renderer_frames_dropped_critical',
+    )
+    expect(serialized).toContain('"framesSuperseded":3500')
+    expect(serialized).toContain('"canvasPixels":8294400')
+    expect(serialized).toContain('"maxLastDrawAgeMs":6500')
+  })
+
   it('redacts POSIX paths and file URLs from uploaded event text', () => {
     recordDiagnosticEvent('renderer', 'renderer_error', {
       message: 'failed at /Users/alice/private.txt',

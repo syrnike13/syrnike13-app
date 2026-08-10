@@ -93,6 +93,31 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     expect(registry.listTracks()[0]).toMatchObject({ consumerCount: 2 })
   })
 
+  it('sizes thumbnail backing stores to the rendered tile instead of source 4K', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, frameMessage(1, 1, new FakeVideoFrame()))
+    const consumer = sizedCanvasStub(320, 180)
+    registry.getTrack('local-screen:session')!.attachCanvas(
+      consumer.canvas,
+      undefined,
+      { fit: 'contain' },
+    )
+    const frame = new FakeVideoFrame(3840, 2160)
+
+    deliver(registry, frameMessage(1, 2, frame))
+    runtimeWindow.flushAnimationFrames()
+
+    expect(consumer.canvas).toMatchObject({ width: 320, height: 180 })
+    expect(consumer.drawImage).toHaveBeenCalledWith(frame, 0, 0, 320, 180)
+    expect(
+      registry.getLocalScreenPreviewTrack().getPresentationMetrics(),
+    ).toMatchObject({
+      canvasPixels: 320 * 180,
+      sourceWidth: 3840,
+      sourceHeight: 2160,
+    })
+  })
+
   it('keeps only the latest frame while a canvas paint is pending', () => {
     const registry = new NativeVideoRegistry()
     deliver(registry, frameMessage(1, 1, new FakeVideoFrame()))
@@ -111,6 +136,65 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     runtimeWindow.flushAnimationFrames()
     expect(consumer.drawImage).toHaveBeenCalledWith(latest, 0, 0, 640, 360)
     expect(latest.close).toHaveBeenCalledOnce()
+  })
+
+  it('reports renderer-owned drops separately from intentional no-consumer drops', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, remoteFrameMessage(1, new FakeVideoFrame()))
+    const consumer = canvasStub()
+    const track = registry.getTrack('remote-screen')!
+    const detach = track.attachCanvas(consumer.canvas)
+    const superseded = new FakeVideoFrame()
+    const drawn = new FakeVideoFrame()
+
+    deliver(registry, remoteFrameMessage(2, superseded))
+    deliver(registry, remoteFrameMessage(3, drawn))
+    runtimeWindow.flushAnimationFrames()
+
+    expect(track.getPresentationMetrics()).toMatchObject({
+      framesReceived: 3,
+      framesDrawn: 1,
+      framesSuperseded: 1,
+      framesDroppedNoConsumer: 1,
+      framesDroppedHidden: 0,
+      framesDroppedStale: 0,
+      drawFailures: 0,
+      canvasAttachCount: 1,
+      canvasDetachCount: 0,
+      activeConsumers: 1,
+      canvasPixels: 640 * 360,
+      sourceWidth: 640,
+      sourceHeight: 360,
+    })
+
+    detach()
+    expect(track.getPresentationMetrics()).toMatchObject({
+      canvasAttachCount: 1,
+      canvasDetachCount: 1,
+      activeConsumers: 0,
+      canvasPixels: 0,
+    })
+  })
+
+  it('does not rebuild provider snapshots for remote canvas lifecycle churn', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, remoteFrameMessage(1, new FakeVideoFrame()))
+    const listener = vi.fn()
+    registry.subscribe(listener)
+    const track = registry.getTrack('remote-screen')!
+
+    for (let index = 0; index < 10_000; index += 1) {
+      track.attachCanvas(canvasStub().canvas)()
+    }
+
+    expect(listener).not.toHaveBeenCalled()
+    expect(track.getPresentationMetrics()).toMatchObject({
+      canvasAttachCount: 10_000,
+      canvasDetachCount: 10_000,
+      activeConsumers: 0,
+    })
   })
 
   it('resets presentation without detaching the track or mounted canvas', () => {
@@ -660,6 +744,15 @@ function canvasStub() {
     getContext: vi.fn(() => ({ drawImage })),
   } as unknown as HTMLCanvasElement
   return { canvas, drawImage }
+}
+
+function sizedCanvasStub(clientWidth: number, clientHeight: number) {
+  const stub = canvasStub()
+  Object.defineProperties(stub.canvas, {
+    clientWidth: { value: clientWidth },
+    clientHeight: { value: clientHeight },
+  })
+  return stub
 }
 
 function resettableCanvasStub() {

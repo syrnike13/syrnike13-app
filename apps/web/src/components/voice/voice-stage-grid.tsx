@@ -1,9 +1,5 @@
 import { useRef, type ReactNode } from 'react'
 
-import {
-  chunkIntoRows,
-  type VoiceStageGridLayout,
-} from '#/features/voice/voice-stage-grid-layout'
 import { useVoiceStageGridLayout } from '#/features/voice/use-voice-stage-grid-layout'
 import { cn } from '#/lib/utils'
 
@@ -35,7 +31,11 @@ export function VoiceStageGrid<TItem extends VoiceStageGridItem>({
   }
 
   const layout = useVoiceStageGridLayout(containerRef, slots.length)
-  const rows = chunkIntoRows(slots, layout.columns)
+  const contentWidth =
+    layout.columns > 0
+      ? layout.columns * layout.tileWidth +
+        Math.max(0, layout.columns - 1) * layout.gap
+      : 0
 
   return (
     <div
@@ -49,40 +49,27 @@ export function VoiceStageGrid<TItem extends VoiceStageGridItem>({
     >
       <div
         className={cn(
-          'flex flex-col items-center',
+          'flex flex-wrap items-center justify-center',
           layout.scroll ? 'mx-auto' : 'm-auto',
         )}
-        style={{ gap: layout.gap, padding: layout.edgeInset }}
+        style={{
+          width: contentWidth > 0
+            ? contentWidth + layout.edgeInset * 2
+            : undefined,
+          gap: layout.gap,
+          padding: layout.edgeInset,
+        }}
       >
-        {rows.map((row, rowIndex) => (
-          <VoiceStageGridRow key={rowIndex} slots={row} layout={layout} />
+        {slots.map((slot) => (
+          <div
+            key={slot.key}
+            className="shrink-0"
+            style={{ width: layout.tileWidth, height: layout.tileHeight }}
+          >
+            {slot.node}
+          </div>
         ))}
       </div>
-    </div>
-  )
-}
-
-function VoiceStageGridRow({
-  slots,
-  layout,
-}: {
-  slots: GridSlot[]
-  layout: VoiceStageGridLayout
-}) {
-  return (
-    <div
-      className="flex shrink-0 items-center justify-center"
-      style={{ gap: layout.gap }}
-    >
-      {slots.map((slot) => (
-        <div
-          key={slot.key}
-          className="shrink-0"
-          style={{ width: layout.tileWidth, height: layout.tileHeight }}
-        >
-          {slot.node}
-        </div>
-      ))}
     </div>
   )
 }
