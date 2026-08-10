@@ -132,6 +132,34 @@ export type RtcDebugScreenShareSnapshot = {
   captureVideoNoFrameCount?: number
   captureVideoRepeatedFrameCount?: number
   captureVideoRecoverableLostCount?: number
+  captureVideoGpuPoolSlotsAvailable?: number
+  captureVideoGpuPoolSlotsTotal?: number
+  captureVideoDxgiDuplicationHoldUsMax?: number
+  captureVideoSourceUpdates?: number
+  captureVideoGpuSubmissions?: number
+  captureVideoIdleRefreshes?: number
+  captureVideoCoalescedSourceUpdates?: number
+  captureVideoEncoderBackpressureTicks?: number
+  captureVideoSupersededReadyFrames?: number
+  captureVideoGpuSlotTimeouts?: number
+  captureVideoGpuSlotsRecovered?: number
+  captureVideoGpuFramesDroppedStale?: number
+  captureVideoGpuPoolRollovers?: number
+  captureVideoGpuRolloversBlocked?: number
+  captureVideoGpuRetiredGenerations?: number
+  captureVideoGpuSlotsQuarantined?: number
+  captureVideoPreviewBridgeSubmissions?: number
+  captureVideoPreviewBridgeAcquires?: number
+  captureVideoPreviewBridgeTimeouts?: number
+  captureVideoPreviewBridgeSlotsRecovered?: number
+  captureVideoPreviewGpuSubmissions?: number
+  captureVideoPreviewFramesCompleted?: number
+  captureVideoPreviewSlotTimeouts?: number
+  captureVideoPreviewFramesDroppedStale?: number
+  captureVideoPreviewDeviceResets?: number
+  captureVideoGpuCompletionP50Us?: number
+  captureVideoGpuCompletionP95Us?: number
+  captureVideoGpuCompletionMaxUs?: number
   captureVideoAvgCaptureUs?: number
   captureVideoAvgReadbackUs?: number
   captureVideoAvgScaleUs?: number
@@ -140,6 +168,12 @@ export type RtcDebugScreenShareSnapshot = {
   captureVideoSourceHeight?: number
   captureVideoContentWidth?: number
   captureVideoContentHeight?: number
+  captureRtpStatsAvailable?: boolean
+  captureRtpPacketsSent?: number
+  captureRtpBytesSent?: number
+  captureRtpFramesSent?: number
+  captureRtpFramesEncoded?: number
+  captureEncoderImplementation?: string
   captureThreadMmcss?: boolean
   captureAudioPublished?: boolean
   captureAudioMode?: string
@@ -295,10 +329,39 @@ export function rtcDebugSnapshotFromTelemetry(
         videoNoFrameCount: capture.videoNoFrameCount,
         videoRepeatedFrameCount: capture.videoRepeatedFrameCount,
         videoRecoverableLostCount: capture.videoRecoverableLostCount,
+        videoGpuPoolSlotsAvailable: capture.videoGpuPoolSlotsAvailable,
+        videoGpuPoolSlotsTotal: capture.videoGpuPoolSlotsTotal,
+        videoDxgiDuplicationHoldUsMax:
+          capture.videoDxgiDuplicationHoldUsMax,
+        videoSourceUpdates: capture.videoSourceUpdates,
+        videoGpuSubmissions: capture.videoGpuSubmissions,
+        videoIdleRefreshes: capture.videoIdleRefreshes,
+        videoCoalescedSourceUpdates:
+          capture.videoCoalescedSourceUpdates,
         videoEncoderBackpressureTicks: capture.videoEncoderBackpressureTicks,
+        videoSupersededReadyFrames: capture.videoSupersededReadyFrames,
+        videoGpuSlotTimeouts: capture.videoGpuSlotTimeouts,
+        videoGpuSlotsRecovered: capture.videoGpuSlotsRecovered,
         videoGpuFramesDroppedStale: capture.videoGpuFramesDroppedStale,
+        videoGpuPoolRollovers: capture.videoGpuPoolRollovers,
+        videoGpuRolloversBlocked: capture.videoGpuRolloversBlocked,
+        videoGpuRetiredGenerations: capture.videoGpuRetiredGenerations,
+        videoGpuSlotsQuarantined: capture.videoGpuSlotsQuarantined,
+        videoPreviewBridgeSubmissions:
+          capture.videoPreviewBridgeSubmissions,
+        videoPreviewBridgeAcquires: capture.videoPreviewBridgeAcquires,
+        videoPreviewBridgeTimeouts: capture.videoPreviewBridgeTimeouts,
+        videoPreviewBridgeSlotsRecovered:
+          capture.videoPreviewBridgeSlotsRecovered,
+        videoPreviewGpuSubmissions: capture.videoPreviewGpuSubmissions,
+        videoPreviewFramesCompleted: capture.videoPreviewFramesCompleted,
+        videoPreviewSlotTimeouts: capture.videoPreviewSlotTimeouts,
         videoPreviewFramesDroppedStale:
           capture.videoPreviewFramesDroppedStale,
+        videoPreviewDeviceResets: capture.videoPreviewDeviceResets,
+        videoGpuCompletionP50Us: capture.videoGpuCompletionP50Us,
+        videoGpuCompletionP95Us: capture.videoGpuCompletionP95Us,
+        videoGpuCompletionMaxUs: capture.videoGpuCompletionMaxUs,
         videoAvgCaptureUs: capture.videoAvgCaptureUs,
         videoAvgReadbackUs: capture.videoAvgReadbackUs,
         videoAvgScaleUs: capture.videoAvgScaleUs,
@@ -307,6 +370,12 @@ export function rtcDebugSnapshotFromTelemetry(
         videoSourceHeight: capture.videoSourceHeight,
         videoContentWidth: capture.videoContentWidth,
         videoContentHeight: capture.videoContentHeight,
+        rtpStatsAvailable: capture.rtpStatsAvailable,
+        rtpPacketsSent: capture.rtpPacketsSent,
+        rtpBytesSent: capture.rtpBytesSent,
+        rtpFramesSent: capture.rtpFramesSent,
+        rtpFramesEncoded: capture.rtpFramesEncoded,
+        encoderImplementation: capture.encoderImplementation,
         captureThreadMmcss: capture.captureThreadMmcss,
       },
     )
@@ -738,6 +807,118 @@ function screenShareSnapshot(
       nativeStats?.backend === 'native'
         ? nativeStats.videoRecoverableLostCount
         : undefined,
+    captureVideoGpuPoolSlotsAvailable:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuPoolSlotsAvailable
+        : undefined,
+    captureVideoGpuPoolSlotsTotal:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuPoolSlotsTotal
+        : undefined,
+    captureVideoDxgiDuplicationHoldUsMax:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoDxgiDuplicationHoldUsMax
+        : undefined,
+    captureVideoSourceUpdates:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoSourceUpdates
+        : undefined,
+    captureVideoGpuSubmissions:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuSubmissions
+        : undefined,
+    captureVideoIdleRefreshes:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoIdleRefreshes
+        : undefined,
+    captureVideoCoalescedSourceUpdates:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoCoalescedSourceUpdates
+        : undefined,
+    captureVideoEncoderBackpressureTicks:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoEncoderBackpressureTicks
+        : undefined,
+    captureVideoSupersededReadyFrames:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoSupersededReadyFrames
+        : undefined,
+    captureVideoGpuSlotTimeouts:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuSlotTimeouts
+        : undefined,
+    captureVideoGpuSlotsRecovered:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuSlotsRecovered
+        : undefined,
+    captureVideoGpuFramesDroppedStale:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuFramesDroppedStale
+        : undefined,
+    captureVideoGpuPoolRollovers:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuPoolRollovers
+        : undefined,
+    captureVideoGpuRolloversBlocked:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuRolloversBlocked
+        : undefined,
+    captureVideoGpuRetiredGenerations:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuRetiredGenerations
+        : undefined,
+    captureVideoGpuSlotsQuarantined:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuSlotsQuarantined
+        : undefined,
+    captureVideoPreviewBridgeSubmissions:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewBridgeSubmissions
+        : undefined,
+    captureVideoPreviewBridgeAcquires:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewBridgeAcquires
+        : undefined,
+    captureVideoPreviewBridgeTimeouts:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewBridgeTimeouts
+        : undefined,
+    captureVideoPreviewBridgeSlotsRecovered:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewBridgeSlotsRecovered
+        : undefined,
+    captureVideoPreviewGpuSubmissions:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewGpuSubmissions
+        : undefined,
+    captureVideoPreviewFramesCompleted:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewFramesCompleted
+        : undefined,
+    captureVideoPreviewSlotTimeouts:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewSlotTimeouts
+        : undefined,
+    captureVideoPreviewFramesDroppedStale:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewFramesDroppedStale
+        : undefined,
+    captureVideoPreviewDeviceResets:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewDeviceResets
+        : undefined,
+    captureVideoGpuCompletionP50Us:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuCompletionP50Us
+        : undefined,
+    captureVideoGpuCompletionP95Us:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuCompletionP95Us
+        : undefined,
+    captureVideoGpuCompletionMaxUs:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuCompletionMaxUs
+        : undefined,
     captureVideoAvgCaptureUs:
       nativeStats?.backend === 'native'
         ? nativeStats.videoAvgCaptureUs
@@ -769,6 +950,30 @@ function screenShareSnapshot(
     captureVideoContentHeight:
       nativeStats?.backend === 'native'
         ? nativeStats.videoContentHeight
+        : undefined,
+    captureRtpStatsAvailable:
+      nativeStats?.backend === 'native'
+        ? nativeStats.rtpStatsAvailable
+        : undefined,
+    captureRtpPacketsSent:
+      nativeStats?.backend === 'native'
+        ? nativeStats.rtpPacketsSent
+        : undefined,
+    captureRtpBytesSent:
+      nativeStats?.backend === 'native'
+        ? nativeStats.rtpBytesSent
+        : undefined,
+    captureRtpFramesSent:
+      nativeStats?.backend === 'native'
+        ? nativeStats.rtpFramesSent
+        : undefined,
+    captureRtpFramesEncoded:
+      nativeStats?.backend === 'native'
+        ? nativeStats.rtpFramesEncoded
+        : undefined,
+    captureEncoderImplementation:
+      nativeStats?.backend === 'native'
+        ? nativeStats.encoderImplementation
         : undefined,
     captureThreadMmcss:
       nativeStats?.backend === 'native'

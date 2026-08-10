@@ -23,6 +23,7 @@ const WARNING_EVENTS = new Set([
   'restart_scheduled',
   'runtime_event_dropped_out_of_order',
   'screen_backend_restart',
+  'presentation_stalled',
 ])
 const FATAL_EVENTS = new Set([
   'native_contract_corruption',
@@ -48,8 +49,11 @@ const FAILURE_EVENTS = new Set([
   'request_timed_out',
   'runtime_degraded',
   'camera_read_stall',
+  'remote_video_recovery_degraded',
+  'screen_pipeline_stalled',
   'screen_publication_failed',
   'session_rotation_failed',
+  'shared_texture_operation_failed',
 ])
 const NON_INCIDENT_PROJECTIONS = new Set([
   'command',
@@ -147,6 +151,7 @@ export function captureNativeDiagnosticIncident(
         restartCount: record.restartCount,
         durationMs: record.durationMs,
         timeoutMs: record.timeoutMs,
+        metrics: sanitizeMetrics(record.metrics),
       })
       return existing
     }
@@ -187,6 +192,7 @@ export function captureNativeDiagnosticIncident(
     restartCount: record.restartCount,
     durationMs: record.durationMs,
     timeoutMs: record.timeoutMs,
+    metrics: sanitizeMetrics(record.metrics),
   })
   pending.push(incident)
   if (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
@@ -413,10 +419,22 @@ function hasLeasedIncident(identity: string, correlationId?: string) {
 function incidentSeverity(
   record: DiagnosticLogRecord,
 ): NativeDiagnosticIncidentSeverity {
+  if (record.incidentSeverity) return record.incidentSeverity
   if (FATAL_EVENTS.has(record.event)) return 'fatal'
   if (record.fatal === true) return 'fatal'
   if (WARNING_EVENTS.has(record.event)) return 'warning'
   return 'error'
+}
+
+function sanitizeMetrics(metrics: Record<string, number> | undefined) {
+  if (!metrics) return undefined
+  const sanitized: Record<string, number> = {}
+  for (const [key, value] of Object.entries(metrics).slice(0, 48)) {
+    if (!Number.isFinite(value)) continue
+    const safeKey = safeTriggerCode(key)
+    if (safeKey) sanitized[safeKey] = value
+  }
+  return Object.keys(sanitized).length > 0 ? sanitized : undefined
 }
 
 function incidentCorrelationId(record: DiagnosticLogRecord) {

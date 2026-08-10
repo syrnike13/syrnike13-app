@@ -13,6 +13,7 @@ import { performance } from 'node:perf_hooks'
 import { Deferred, Effect, Fiber, Queue } from 'effect'
 
 import type { DiagnosticEnvelope } from '@syrnike13/platform'
+import type { NativeDiagnosticIncidentSeverity } from '@syrnike13/platform'
 
 import { redactSensitiveText, type NativeRuntimeKind } from './contract'
 
@@ -58,6 +59,7 @@ export type DiagnosticLogRecord = {
   revision?: number
   muted?: boolean
   fatal?: boolean
+  incidentSeverity?: NativeDiagnosticIncidentSeverity
   pendingCount?: number
   queueDepth?: number
   queueWaitMs?: number
@@ -75,6 +77,7 @@ export type DiagnosticLogRecord = {
   hresult?: number
   windowVisible?: boolean
   windowMinimized?: boolean
+  metrics?: Record<string, number>
 }
 
 export type DiagnosticLogSink = (record: DiagnosticLogRecord) => void

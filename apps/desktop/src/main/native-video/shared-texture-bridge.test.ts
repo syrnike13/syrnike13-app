@@ -143,6 +143,11 @@ describe('NativeSharedTextureBridge', () => {
       expect(h.onPresentationStalled).toHaveBeenCalledWith(
         frame(1, 'screen'),
         'shared-texture-fence',
+        expect.objectContaining({
+          retainedFrames: 2,
+          trackRetainedReferences: 2,
+          oldestRetainedAgeMs: 1_000,
+        }),
       )
       expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(true)
       expect(await h.bridge.deliver(frame(4, 'screen'))).toBe(true)
@@ -178,6 +183,32 @@ describe('NativeSharedTextureBridge', () => {
     }
   })
 
+  it('escalates to renderer replacement when retained fences hit the hard cap', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = harness(1)
+      await h.bridge.deliver(frame(1, 'screen'))
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(await h.bridge.deliver(frame(2, 'screen'))).toBe(true)
+
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(false)
+
+      expect(h.onPresentationStalled).toHaveBeenLastCalledWith(
+        frame(3, 'screen'),
+        'retained-budget-exhausted',
+        expect.objectContaining({
+          retainedFrames: 2,
+          capacityRejectedFrames: 1,
+          rejectedFrames: 1,
+        }),
+      )
+      expect(h.bridge.inFlightCount).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('bounds retained texture bytes across different tracks', async () => {
     const bytesPerFrame = frame(1).width * frame(1).height * 4
     const h = harness(3, vi.fn(), bytesPerFrame * 2)
@@ -206,6 +237,11 @@ describe('NativeSharedTextureBridge', () => {
     expect(h.onPresentationStalled).toHaveBeenCalledWith(
       frame(3, 'screen'),
       'renderer-delivery',
+      expect.objectContaining({
+        operationFailures: 3,
+        deliveryFailures: 3,
+        rejectedFrames: 3,
+      }),
     )
   })
 

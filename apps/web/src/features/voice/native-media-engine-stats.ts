@@ -61,6 +61,12 @@ export type NativeMediaEngineDebugState = {
   videoSourceHeight?: number
   videoContentWidth?: number
   videoContentHeight?: number
+  rtpStatsAvailable?: boolean
+  rtpPacketsSent?: number
+  rtpBytesSent?: number
+  rtpFramesSent?: number
+  rtpFramesEncoded?: number
+  encoderImplementation?: string
   captureThreadMmcss?: boolean
 }
 
@@ -153,6 +159,12 @@ export const nativeMediaEngineStatsStore = {
       videoSourceHeight?: number
       videoContentWidth?: number
       videoContentHeight?: number
+      rtpStatsAvailable?: boolean
+      rtpPacketsSent?: number
+      rtpBytesSent?: number
+      rtpFramesSent?: number
+      rtpFramesEncoded?: number
+      encoderImplementation?: string
       captureThreadMmcss?: boolean
     },
   ) {
@@ -212,6 +224,12 @@ export const nativeMediaEngineStatsStore = {
       videoSourceHeight: video?.videoSourceHeight,
       videoContentWidth: video?.videoContentWidth,
       videoContentHeight: video?.videoContentHeight,
+      rtpStatsAvailable: video?.rtpStatsAvailable,
+      rtpPacketsSent: video?.rtpPacketsSent,
+      rtpBytesSent: video?.rtpBytesSent,
+      rtpFramesSent: video?.rtpFramesSent,
+      rtpFramesEncoded: video?.rtpFramesEncoded,
+      encoderImplementation: video?.encoderImplementation,
       captureThreadMmcss: video?.captureThreadMmcss,
     })
     emit()

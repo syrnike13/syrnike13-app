@@ -151,4 +151,29 @@ describe('desktop preload media runtime bridge', () => {
     })
     expect(listener).toHaveBeenCalledTimes(1)
   })
+
+  it('forwards native presentation resets to the renderer window', () => {
+    const postMessage = vi.fn()
+    const rendererWindow = {
+      location: { origin: 'https://app.test' },
+      postMessage,
+    }
+    vi.stubGlobal('window', rendererWindow)
+    const metadata = {
+      sessionId: 'voice',
+      generation: 3,
+      trackId: 'screen',
+    }
+
+    electron.emit(IPC.mediaNativeVideoPresentationReset, metadata)
+
+    expect(postMessage).toHaveBeenCalledWith(
+      {
+        type: 'syrnike-native-video-presentation-reset',
+        metadata,
+      },
+      rendererWindow.location.origin,
+    )
+    vi.unstubAllGlobals()
+  })
 })

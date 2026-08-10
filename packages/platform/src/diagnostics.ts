@@ -43,6 +43,9 @@ export const NativeDiagnosticIncidentSeveritySchema = Schema.Literals([
 
 const optionalString = Schema.optional(Schema.String)
 const optionalFiniteNumber = Schema.optional(Schema.Finite)
+const optionalFiniteMetrics = Schema.optional(
+  Schema.Record(Schema.String, Schema.Finite),
+)
 
 export const NativeDiagnosticIncidentSchema = Schema.Struct({
   timestampMs: Schema.Finite,
@@ -75,6 +78,7 @@ export const NativeDiagnosticIncidentSchema = Schema.Struct({
   restartCount: optionalFiniteNumber,
   durationMs: optionalFiniteNumber,
   timeoutMs: optionalFiniteNumber,
+  metrics: optionalFiniteMetrics,
 })
 
 export const RendererDiagnosticIncidentSchema = Schema.Struct({

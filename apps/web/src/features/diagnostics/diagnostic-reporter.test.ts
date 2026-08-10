@@ -30,6 +30,30 @@ describe('diagnostic reporter', () => {
     expect(serialized).not.toContain('private.example')
   })
 
+  it('keeps bounded screen degradation metrics while removing identities', () => {
+    recordDiagnosticEvent('rtc', 'health_incident', {
+      triggerCode: 'screen_frames_dropped_critical',
+      ownerUserId: 'private-user',
+      quality: {
+        framesDroppedPercent: 42,
+        framesDroppedPerSecond: 18,
+        concealedAudioPercent: 25,
+      },
+      nativeCapture: {
+        gpuFramesDroppedStale: 7,
+        rtpFramesEncoded: 12_000,
+        rtpFramesSent: 11_998,
+      },
+    })
+
+    const serialized = diagnosticEventsJsonForTests()
+    expect(serialized).toContain('screen_frames_dropped_critical')
+    expect(serialized).toContain('"framesDroppedPercent":42')
+    expect(serialized).toContain('"gpuFramesDroppedStale":7')
+    expect(serialized).not.toContain('private-user')
+    expect(serialized).not.toContain('ownerUserId')
+  })
+
   it('redacts POSIX paths and file URLs from uploaded event text', () => {
     recordDiagnosticEvent('renderer', 'renderer_error', {
       message: 'failed at /Users/alice/private.txt',

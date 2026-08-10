@@ -18,9 +18,9 @@
 #include <sstream>
 #include <thread>
 #include <utility>
-#include <vector>
 
 #include "audio_devices.hpp"
+#include "screen_audio_packetizer.hpp"
 #include "screen_video_capture.hpp"
 
 using Microsoft::WRL::ComPtr;
@@ -30,6 +30,7 @@ namespace {
 
 constexpr std::size_t kScreenAudioSamplesPerPacket =
     static_cast<std::size_t>(kScreenAudioFramesPerPacket) * kScreenAudioChannels;
+constexpr std::size_t kScreenAudioPendingPacketCapacity = 8;
 constexpr REFERENCE_TIME kScreenAudioBufferDurationHns = 400000; // 40 ms
 
 struct ScreenAudioProbeResult {
@@ -270,8 +271,15 @@ void captureLoopbackAudio(
     float interval_peak = 0.0f;
     double interval_square_sum = 0.0;
     std::uint64_t interval_sample_count = 0;
-    std::vector<int16_t> pending_pcm;
-    pending_pcm.reserve(kScreenAudioSamplesPerPacket * 2);
+    livekit::AudioFrame audio_frame = livekit::AudioFrame::create(
+      kScreenAudioSampleRate,
+      kScreenAudioChannels,
+      kScreenAudioFramesPerPacket
+    );
+    FixedAudioPacketQueue<
+      kScreenAudioSamplesPerPacket,
+      kScreenAudioPendingPacketCapacity
+    > packet_queue;
     auto next_stats_at = std::chrono::steady_clock::now();
 
     while (running->load()) {
@@ -305,43 +313,49 @@ void captureLoopbackAudio(
       if (FAILED(hr)) throw std::runtime_error("screen loopback buffer read failed");
 
       if ((flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) != 0) {
-        pending_pcm.clear();
+        packet_queue.discardPartial();
       }
 
       const auto packet_sample_count =
           static_cast<std::size_t>(frames) * kScreenAudioChannels;
-      const auto pending_offset = pending_pcm.size();
-      pending_pcm.resize(pending_offset + packet_sample_count, 0);
-      if ((flags & AUDCLNT_BUFFERFLAGS_SILENT) == 0 && data) {
-        const auto* samples = reinterpret_cast<const float*>(data);
-        for (std::size_t index = 0; index < packet_sample_count; ++index) {
-          const float clamped = std::clamp(samples[index], -1.0f, 1.0f);
+      const auto* samples = reinterpret_cast<const float*>(data);
+      const bool silent =
+        (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0 || data == nullptr;
+      for (std::size_t index = 0; index < packet_sample_count; ++index) {
+        const float clamped = silent
+          ? 0.0f
+          : std::clamp(samples[index], -1.0f, 1.0f);
+        if (!silent) {
           const float magnitude = std::abs(clamped);
           interval_peak = std::max(interval_peak, magnitude);
           interval_square_sum += static_cast<double>(clamped) * clamped;
           interval_sample_count += 1;
-          pending_pcm[pending_offset + index] = floatToPcm16(clamped);
+        }
+        if (
+          packet_queue.push(floatToPcm16(clamped)) ==
+          AudioPacketPushResult::Full
+        ) {
+          capture_client->ReleaseBuffer(frames);
+          throw std::runtime_error(
+            "screen loopback packet queue exceeded the WASAPI buffer bound"
+          );
         }
       }
 
       capture_client->ReleaseBuffer(frames);
 
-      while (pending_pcm.size() >= kScreenAudioSamplesPerPacket) {
-        std::vector<int16_t> pcm(
-            pending_pcm.begin(),
-            pending_pcm.begin() + static_cast<std::ptrdiff_t>(kScreenAudioSamplesPerPacket));
-        pending_pcm.erase(
-            pending_pcm.begin(),
-            pending_pcm.begin() + static_cast<std::ptrdiff_t>(kScreenAudioSamplesPerPacket));
-        livekit::AudioFrame frame(
-            std::move(pcm),
-            kScreenAudioSampleRate,
-            kScreenAudioChannels,
-            kScreenAudioFramesPerPacket);
+      while (packet_queue.queuedPackets() > 0) {
+        std::copy(
+          packet_queue.front().begin(),
+          packet_queue.front().end(),
+          audio_frame.data().begin()
+        );
+        packet_queue.pop();
         // queue_size_ms=0 is LiveKit's real-time path. It requires exact 10 ms
         // frames and only remains ordered when each async acknowledgement is
-        // observed before the next frame is submitted.
-        audio_source->captureFrame(frame, 0);
+        // observed before the next frame is submitted. The WASAPI buffer has
+        // already been released before this potentially blocking call.
+        audio_source->captureFrame(audio_frame, 0);
         captured_frames_total += kScreenAudioFramesPerPacket;
         packets_total += 1;
       }

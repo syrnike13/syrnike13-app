@@ -113,6 +113,7 @@ const snapshot: RtcDebugSnapshot = {
     inbound: {
       'subscriber:video': 16_000,
     },
+    quality: {},
   },
 }
 

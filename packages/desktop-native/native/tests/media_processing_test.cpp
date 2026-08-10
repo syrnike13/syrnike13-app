@@ -498,14 +498,20 @@ int main() try {
       overflow_ingress.telemetry().dropped_frames == 1 &&
       overflow_ingress.tryRead(ingress_output, 2) ==
         RemoteAudioIngressReadResult::Discontinuity &&
-      overflow_ingress.queuedFrames() == 0,
-    "direct audio overflow retained a catch-up backlog"
+      overflow_ingress.queuedFrames() ==
+        syrnike::desktop_native::media::kRemoteAudioIngressRecoveryPackets,
+    "direct audio overflow did not retain a bounded recovery prebuffer"
   );
-  overflow_ingress.onAudioFrame(ingress_view);
   require(
     overflow_ingress.tryRead(ingress_output, 2) ==
       RemoteAudioIngressReadResult::Frame,
     "direct audio ingress did not resume after a bounded discontinuity"
+  );
+  require(
+    overflow_ingress.tryRead(ingress_output, 2) ==
+      RemoteAudioIngressReadResult::Frame &&
+      overflow_ingress.queuedFrames() == 0,
+    "direct audio ingress did not drain its recovery prebuffer"
   );
   overflow_ingress.suspend();
   overflow_ingress.onAudioFrame(ingress_view);

@@ -3,7 +3,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
-#include <optional>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -11,6 +11,7 @@
 #include "../common/sequenced_emitter.hpp"
 #include "livekit_voice_session.hpp"
 #include "screen_gpu_capture.hpp"
+#include "screen_pipeline_stall.hpp"
 #include "screen_publication_controller.hpp"
 
 namespace syrnike::desktop_native::media {
@@ -60,121 +61,6 @@ bool emitScreenBackendRestart(
   std::uint64_t generation,
   const ScreenGpuRecoveryTransition& transition
 );
-
-class EncoderBackpressureStallDetector final {
- public:
-  bool observe(
-    std::chrono::steady_clock::time_point now,
-    std::chrono::steady_clock::duration timeout
-  ) {
-    if (!started_at_) {
-      started_at_ = now;
-      return false;
-    }
-    if (reported_ || now - *started_at_ < timeout) return false;
-    reported_ = true;
-    return true;
-  }
-
-  void noteProgress() noexcept {
-    started_at_.reset();
-    reported_ = false;
-  }
-
- private:
-  std::optional<std::chrono::steady_clock::time_point> started_at_;
-  bool reported_ = false;
-};
-
-enum class ScreenOutputStall {
-  None,
-  Encoder,
-  Transport,
-};
-
-class ScreenOutputStallDetector final {
- public:
-  ScreenOutputStall observe(
-    std::chrono::steady_clock::time_point now,
-    bool active,
-    std::uint64_t frames_submitted,
-    std::uint64_t frames_encoded,
-    std::uint64_t frames_sent,
-    std::chrono::steady_clock::duration timeout
-  ) {
-    if (!active) {
-      reset();
-      return ScreenOutputStall::None;
-    }
-
-    const bool first_sample = !last_frames_submitted_;
-    const bool source_progress =
-      first_sample || frames_submitted > *last_frames_submitted_;
-    const bool encoder_progress =
-      first_sample || frames_encoded > *last_frames_encoded_;
-    const bool transport_progress =
-      first_sample || frames_sent > *last_frames_sent_;
-    last_frames_submitted_ = frames_submitted;
-    last_frames_encoded_ = frames_encoded;
-    last_frames_sent_ = frames_sent;
-
-    if (first_sample) {
-      if (frames_submitted > 0 && frames_encoded == 0) {
-        encoder_stall_started_at_ = now;
-      }
-      if (frames_encoded > frames_sent) {
-        transport_stall_started_at_ = now;
-      }
-      return ScreenOutputStall::None;
-    }
-
-    if (frames_submitted > 0 && frames_encoded == 0) {
-      if (!encoder_stall_started_at_) encoder_stall_started_at_ = now;
-    } else if (encoder_progress) {
-      encoder_stall_started_at_.reset();
-    } else if (source_progress) {
-      if (!encoder_stall_started_at_) encoder_stall_started_at_ = now;
-    } else {
-      // A static screen legitimately produces no new encoder output.
-      encoder_stall_started_at_.reset();
-    }
-
-    if (transport_progress) {
-      transport_stall_started_at_.reset();
-    } else if (frames_encoded > frames_sent) {
-      if (!transport_stall_started_at_) transport_stall_started_at_ = now;
-    } else {
-      transport_stall_started_at_.reset();
-    }
-
-    if (encoder_stall_started_at_ &&
-        now - *encoder_stall_started_at_ >= timeout) {
-      return ScreenOutputStall::Encoder;
-    }
-    if (transport_stall_started_at_ &&
-        now - *transport_stall_started_at_ >= timeout) {
-      return ScreenOutputStall::Transport;
-    }
-    return ScreenOutputStall::None;
-  }
-
-  void reset() noexcept {
-    last_frames_submitted_.reset();
-    last_frames_encoded_.reset();
-    last_frames_sent_.reset();
-    encoder_stall_started_at_.reset();
-    transport_stall_started_at_.reset();
-  }
-
- private:
-  std::optional<std::uint64_t> last_frames_submitted_;
-  std::optional<std::uint64_t> last_frames_encoded_;
-  std::optional<std::uint64_t> last_frames_sent_;
-  std::optional<std::chrono::steady_clock::time_point>
-    encoder_stall_started_at_;
-  std::optional<std::chrono::steady_clock::time_point>
-    transport_stall_started_at_;
-};
 
 class ScreenActor final {
  public:

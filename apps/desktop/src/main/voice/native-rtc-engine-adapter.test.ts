@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Effect } from 'effect'
 import {
   createInitialVoiceMediaDesiredState,
@@ -826,6 +826,86 @@ describe('NativeRtcEngineAdapter', () => {
           event.media.state === 'failed',
       ),
     ).toHaveLength(1)
+    adapter.dispose()
+  })
+
+  it('republishes screen capture after a typed pipeline stall', async () => {
+    const runtime = new FakeRuntime()
+    const diagnostics = vi.fn()
+    const adapter = new NativeRtcEngineAdapter(
+      runtime,
+      () => 42,
+      {
+        screenRetryDelaysMs: [10],
+        screenRuntimeSettleDelayMs: 0,
+        diagnostics,
+      },
+    )
+    const events: unknown[] = []
+    adapter.subscribe((event) => events.push(event))
+    await adapter.connect(lease, {
+      ...createInitialVoiceMediaDesiredState(),
+      screenEnabled: true,
+      screenSourceId: 'screen:1',
+    }, new AbortController().signal)
+    await waitUntil(() =>
+      runtime.commands.filter(
+        (command) => command.type === 'startScreenCapture',
+      ).length === 1,
+    )
+    const firstStart = runtime.commands.find(
+      (command) => command.type === 'startScreenCapture',
+    )
+    if (!firstStart || firstStart.type !== 'startScreenCapture') {
+      throw new Error('screen start command was not emitted')
+    }
+
+    runtime.emitEvent({
+      type: 'screenCaptureEnded',
+      sequence: 10,
+      sessionId: lease.connectionEpoch,
+      generation: firstStart.generation,
+      reason: 'encoder_output_stalled',
+      message: 'Screen encoder stopped producing output',
+    })
+
+    await waitUntil(() =>
+      runtime.commands.filter(
+        (command) => command.type === 'startScreenCapture',
+      ).length === 2,
+    )
+    const starts = runtime.commands.filter(
+      (command) => command.type === 'startScreenCapture',
+    )
+    expect(starts[1]).toMatchObject({
+      type: 'startScreenCapture',
+      sessionId: lease.connectionEpoch,
+      options: { sourceId: 'screen:1' },
+    })
+    expect(starts[1]?.generation).not.toBe(firstStart.generation)
+    expect(diagnostics).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'screen_pipeline_stalled',
+      reason: 'encoder_output_stalled',
+      errorCode: 'screen_encoder_output_stalled',
+      generation: firstStart.generation,
+    }))
+    expect(diagnostics).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'screen_republished',
+      outcome: 'success',
+      generation: starts[1]?.generation,
+      recoveryAttempt: 1,
+    }))
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'mediaState',
+      kind: 'screen',
+      media: {
+        state: 'failed',
+        error: expect.objectContaining({
+          code: 'screen_encoder_output_stalled',
+          retryable: true,
+        }),
+      },
+    }))
     adapter.dispose()
   })
 
@@ -1908,6 +1988,17 @@ describe('NativeRtcEngineAdapter', () => {
         methods: { wgc_gpu: 60, dxgi_gpu: 0 },
         activeMethod: 'wgc_gpu',
         videoFrames: 120,
+        videoGpuPoolSlotsAvailable: 2,
+        videoGpuPoolSlotsTotal: 3,
+        videoGpuSlotTimeouts: 4,
+        videoGpuFramesDroppedStale: 5,
+        videoPreviewFramesDroppedStale: 6,
+        rtpStatsAvailable: true,
+        rtpPacketsSent: 1_000,
+        rtpBytesSent: 2_000_000,
+        rtpFramesSent: 118,
+        rtpFramesEncoded: 119,
+        encoderImplementation: 'hardware-encoder',
       },
     })
 
@@ -1917,6 +2008,17 @@ describe('NativeRtcEngineAdapter', () => {
         methods: { wgc_gpu: 60, dxgi_gpu: 0 },
         activeMethod: 'wgc_gpu',
         videoFrames: 120,
+        videoGpuPoolSlotsAvailable: 2,
+        videoGpuPoolSlotsTotal: 3,
+        videoGpuSlotTimeouts: 4,
+        videoGpuFramesDroppedStale: 5,
+        videoPreviewFramesDroppedStale: 6,
+        rtpStatsAvailable: true,
+        rtpPacketsSent: 1_000,
+        rtpBytesSent: 2_000_000,
+        rtpFramesSent: 118,
+        rtpFramesEncoded: 119,
+        encoderImplementation: 'hardware-encoder',
       },
     })
 

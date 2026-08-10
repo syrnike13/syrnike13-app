@@ -66,6 +66,7 @@ import {
   leaseNativeDiagnosticIncidents,
   releaseNativeDiagnosticIncidents,
 } from './native-runtime/diagnostic-incidents'
+import { recordRendererDiagnosticMetrics } from './native-runtime/anonymous-metrics'
 import { decodeIpcInput } from './ipc-schema'
 
 let lastActivity: ActivityDetails | null = null
@@ -364,7 +365,12 @@ export function registerDesktopIpc(
         RendererDiagnosticIncidentSchema,
         incidentInput,
       )
-      return captureRendererDiagnosticIncidentForAccount(accountId, incident)
+      const captured = captureRendererDiagnosticIncidentForAccount(
+        accountId,
+        incident,
+      )
+      if (captured) recordRendererDiagnosticMetrics(incident)
+      return captured
     },
   )
   ipcMain.handle(

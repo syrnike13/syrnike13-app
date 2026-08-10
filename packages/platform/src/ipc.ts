@@ -63,6 +63,8 @@ export const IPC = {
   mediaRemoteVideoFailed: 'syrnike-desktop:media:remote-video-failed',
   mediaRemoteVideoSessionReset:
     'syrnike-desktop:media:remote-video-session-reset',
+  mediaNativeVideoPresentationReset:
+    'syrnike-desktop:media:native-video-presentation-reset',
   mediaSetLocalScreenPreviewDemand:
     'syrnike-desktop:media:set-local-screen-preview-demand',
   voiceDispatch: 'syrnike-desktop:voice:dispatch',

@@ -602,6 +602,7 @@ class ScreenActor::Implementation final
         break;
       }
     }
+    if (isScreenPipelineStallReason(reason)) ended.reason = reason;
     ended.detail = reason;
     emitter_.emit(std::move(ended));
     RuntimeEvent stopped;
@@ -1164,6 +1165,9 @@ class ScreenActor::Implementation final
             {"method", method}
           }
         );
+        throw ScreenPipelineStallError(
+          ScreenPipelineStall::EncoderBackpressure
+        );
       };
     ScreenGpuFrame captured;
     const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -1353,6 +1357,11 @@ class ScreenActor::Implementation final
                   {"framesSent", stats->frames_sent}
                 }
               );
+              throw ScreenPipelineStallError(
+                stall == ScreenOutputStall::Encoder
+                  ? ScreenPipelineStall::EncoderOutput
+                  : ScreenPipelineStall::RtpOutput
+              );
             }
           }
         }
@@ -1388,10 +1397,14 @@ class ScreenActor::Implementation final
         terminal.type = "__screenTerminal";
         terminal.session_id = session_id;
         terminal.generation = generation;
+        const auto* stall_error =
+          dynamic_cast<const ScreenPipelineStallError*>(&error);
         const auto* gpu_error = dynamic_cast<const ScreenGpuCaptureError*>(&error);
-        terminal.internal_message = gpu_error
-          ? std::string(gpuCaptureReason(gpu_error->code()))
-          : "gpu_capture_unavailable";
+        terminal.internal_message = stall_error
+          ? std::string(screenPipelineStallReason(stall_error->stall()))
+          : gpu_error
+            ? std::string(gpuCaptureReason(gpu_error->code()))
+            : "gpu_capture_unavailable";
         post_(std::move(terminal));
       }
     } catch (...) {

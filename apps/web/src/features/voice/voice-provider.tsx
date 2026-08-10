@@ -99,6 +99,7 @@ import {
   rtcDebugSnapshotFromTelemetry,
   type RtcDebugSnapshot,
 } from '#/features/voice/voice-rtc-debug'
+import { RtcHealthMonitor } from '#/features/voice/rtc-health-monitor'
 import {
   appendVoicePingSample,
   type VoicePingSample,
@@ -194,8 +195,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [voicePingHistory, setVoicePingHistory] = useState<VoicePingSample[]>([])
   const rtcDebugSnapshotRef = useRef<RtcDebugSnapshot | null>(null)
   const diagnosticRtcHistoryRef = useRef<RtcDebugSnapshot[]>([])
-  const stalledLocalScreenSamplesRef = useRef(0)
-  const stalledRemoteScreenSamplesRef = useRef(0)
+  const rtcHealthMonitorRef = useRef(new RtcHealthMonitor())
   const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
   const watchedScreenViewerChannelsRef = useRef(new Map<string, string>())
   const pendingScreenWatchIdsRef = useRef(new Set<string>())
@@ -1025,8 +1025,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     ) {
       rtcDebugSnapshotRef.current = null
       diagnosticRtcHistoryRef.current = []
-      stalledLocalScreenSamplesRef.current = 0
-      stalledRemoteScreenSamplesRef.current = 0
+      rtcHealthMonitorRef.current.reset()
       setVoicePingMs(null)
       setVoicePingHistory([])
       setRtcDebugSnapshot(null)
@@ -1078,54 +1077,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             next,
           )
           recordDiagnosticEvent('rtc', 'sample', next)
-          const stalledLocalScreen = next.screenShares.some(
-            (screen) =>
-              screen.isLocal &&
-              screen.live &&
-              ((screen.captureVideoPublished === true &&
-                screen.captureVideoFrames === 0) ||
-                (screen.captureVideoNoFrameCount ?? 0) >= 3 ||
-                (screen.sentBitrate != null &&
-                  screen.sentBitrate <= 1_000 &&
-                  screen.fps === 0)),
-          )
-          const stalledRemoteScreen = next.screenShares.some(
-            (screen) =>
-              !screen.isLocal &&
-              screen.live &&
-              screen.subscribed === true &&
-              (!screen.trackReady ||
-                (screen.receivedBitrate != null &&
-                  screen.receivedBitrate <= 1_000 &&
-                  (screen.fps ?? 0) === 0)),
-          )
-          stalledLocalScreenSamplesRef.current = stalledLocalScreen
-            ? stalledLocalScreenSamplesRef.current + 1
-            : 0
-          stalledRemoteScreenSamplesRef.current = stalledRemoteScreen
-            ? stalledRemoteScreenSamplesRef.current + 1
-            : 0
-          if (
-            stalledLocalScreenSamplesRef.current === 3 &&
-            auth.session?.token
-          ) {
-            enqueueAutomaticDiagnosticIncident({
-              area: 'screen',
-              severity: 'error',
-              triggerCode: 'screen_publication_stalled',
-              context: next,
+          const health = rtcHealthMonitorRef.current.observe(next)
+          for (const incident of health.incidents) {
+            recordDiagnosticEvent('rtc', 'health_incident', {
+              triggerCode: incident.triggerCode,
+              ...incident.context,
             })
+            if (auth.session?.token) {
+              enqueueAutomaticDiagnosticIncident(incident)
+            }
           }
-          if (
-            stalledRemoteScreenSamplesRef.current === 3 &&
-            auth.session?.token
-          ) {
-            enqueueAutomaticDiagnosticIncident({
-              area: 'screen',
-              severity: 'error',
-              triggerCode: 'screen_subscription_stalled',
-              context: next,
-            })
+          for (const triggerCode of health.recovered) {
+            recordDiagnosticEvent('rtc', 'health_recovered', { triggerCode })
           }
           setRtcDebugSnapshot(next)
           if (rtcDebugEnabled) {

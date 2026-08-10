@@ -53,7 +53,12 @@ void RemoteAudioIngress::onAudioFrame(
     frame.sample_count != kRemoteAudioIngressSamplesPerPacket
   ) {
     invalid_frames_.fetch_add(1, std::memory_order_relaxed);
-    discontinuity_epoch_.fetch_add(1, std::memory_order_release);
+    const auto discontinuity =
+      discontinuity_epoch_.fetch_add(1, std::memory_order_acq_rel) + 1;
+    flush_discontinuity_epoch_.store(
+      discontinuity,
+      std::memory_order_release
+    );
     return;
   }
 
@@ -104,11 +109,7 @@ RemoteAudioIngressReadResult RemoteAudioIngress::tryRead(
   const auto discontinuity_epoch =
     discontinuity_epoch_.load(std::memory_order_acquire);
   if (discontinuity_epoch != consumed_discontinuity_epoch_) {
-    read_index_.store(
-      write_index_.load(std::memory_order_acquire),
-      std::memory_order_release
-    );
-    consumed_discontinuity_epoch_ = discontinuity_epoch;
+    recoverFromDiscontinuity(discontinuity_epoch);
     return RemoteAudioIngressReadResult::Discontinuity;
   }
 
@@ -120,11 +121,7 @@ RemoteAudioIngressReadResult RemoteAudioIngress::tryRead(
   const auto completed_discontinuity_epoch =
     discontinuity_epoch_.load(std::memory_order_acquire);
   if (completed_discontinuity_epoch != consumed_discontinuity_epoch_) {
-    read_index_.store(
-      write_index_.load(std::memory_order_acquire),
-      std::memory_order_release
-    );
-    consumed_discontinuity_epoch_ = completed_discontinuity_epoch;
+    recoverFromDiscontinuity(completed_discontinuity_epoch);
     return RemoteAudioIngressReadResult::Discontinuity;
   }
   read_index_.store(nextIndex(read_index), std::memory_order_release);
@@ -141,6 +138,34 @@ void RemoteAudioIngress::discardQueued() noexcept {
   resetQueue();
 }
 
+void RemoteAudioIngress::recoverFromDiscontinuity(
+  std::uint64_t discontinuity_epoch
+) noexcept {
+  const auto write_index = write_index_.load(std::memory_order_acquire);
+  const auto flush_epoch =
+    flush_discontinuity_epoch_.load(std::memory_order_acquire);
+  if (flush_epoch != consumed_flush_discontinuity_epoch_) {
+    read_index_.store(write_index, std::memory_order_release);
+    consumed_flush_discontinuity_epoch_ = flush_epoch;
+  } else {
+    const auto read_index = read_index_.load(std::memory_order_relaxed);
+    const auto queued = queuedFrameCount(write_index, read_index);
+    const auto retained = std::min(
+      queued,
+      kRemoteAudioIngressRecoveryPackets
+    );
+    const auto recovery_index = static_cast<std::uint32_t>(
+      (
+        write_index +
+        static_cast<std::uint32_t>(kRemoteAudioIngressSlotCount) -
+        static_cast<std::uint32_t>(retained)
+      ) % static_cast<std::uint32_t>(kRemoteAudioIngressSlotCount)
+    );
+    read_index_.store(recovery_index, std::memory_order_release);
+  }
+  consumed_discontinuity_epoch_ = discontinuity_epoch;
+}
+
 void RemoteAudioIngress::resetQueue() noexcept {
   read_index_.store(
     write_index_.load(std::memory_order_acquire),
@@ -148,6 +173,8 @@ void RemoteAudioIngress::resetQueue() noexcept {
   );
   consumed_discontinuity_epoch_ =
     discontinuity_epoch_.load(std::memory_order_acquire);
+  consumed_flush_discontinuity_epoch_ =
+    flush_discontinuity_epoch_.load(std::memory_order_acquire);
 }
 
 RemoteAudioIngressTelemetry RemoteAudioIngress::telemetry() const noexcept {

@@ -25,8 +25,12 @@ import {
   type NativeDiagnosticSession,
 } from './native-runtime/diagnostic-log'
 import { captureNativeDiagnosticIncident } from './native-runtime/diagnostic-incidents'
-import { attachNativeRuntimeMetrics } from './native-runtime/anonymous-metrics'
+import {
+  attachNativeRuntimeMetrics,
+  recordNativeDiagnosticMetrics,
+} from './native-runtime/anonymous-metrics'
 import { NativeRtcEngineAdapter } from './voice/native-rtc-engine-adapter'
+import { recoverNativeVideoPresentation } from './native-video/presentation-recovery'
 import { NativeSharedTextureBridge } from './native-video/shared-texture-bridge'
 
 let getWindowRef: (() => BrowserWindow | null) | null = null
@@ -44,7 +48,9 @@ let nativeMediaDiagnostics: NativeMediaDiagnostics | null | undefined
 
 const diagnosticSink: DiagnosticLogSink = ({ scope, event, ...detail }) => {
   try {
-    captureNativeDiagnosticIncident({ scope, event, ...detail })
+    const record = { scope, event, ...detail }
+    recordNativeDiagnosticMetrics(record)
+    captureNativeDiagnosticIncident(record)
     ensureNativeMediaDiagnostics()?.log.log(`${scope}.${event}`, {
       scope,
       ...detail,
@@ -87,7 +93,11 @@ export function getNativeMediaController() {
 }
 
 export function createNativeRtcEngineAdapter() {
-  return new NativeRtcEngineAdapter(supervisor)
+  return new NativeRtcEngineAdapter(
+    supervisor,
+    () => process.pid,
+    { diagnostics: diagnosticSink },
+  )
 }
 
 export function logNativeVoiceDiagnostic(event: string, data?: unknown) {
@@ -181,6 +191,17 @@ export function registerNativeMediaRuntimeIpc(
           runtimeEpoch: supervisor.getSnapshot().restartCount,
           ntHandle: Buffer.from(event.ntHandle),
         }).pipe(
+          Effect.tap((delivered) =>
+            Effect.sync(() => {
+              if (delivered && !local) {
+                controller.markRemoteVideoFramePresented(
+                  event.sessionId,
+                  event.generation,
+                  event.trackId,
+                )
+              }
+            })
+          ),
           Effect.tapError((error) =>
             Effect.sync(() => {
               diagnosticSink({
@@ -298,28 +319,63 @@ function createVideoBridge(
         supervisor.requestEffect(command, 2_000).pipe(Effect.asVoid),
       )
     },
-    onPresentationStalled: (frame, reason) => {
+    onPresentationStalled: async (frame, reason, metrics) => {
       const window = getWindow()
+      const startedAt = Date.now()
       diagnosticSink({
         scope: 'native-video',
         event: 'presentation_stalled',
-        kind: local ? 'local-preview' : 'remote-video',
+        kind: nativeVideoDiagnosticKind(frame),
         stage: 'renderer-presentation',
         sessionId: frame.sessionId,
         generation: frame.generation,
         reason,
+        errorCode: presentationStallErrorCode(reason),
+        incidentSeverity:
+          reason === 'renderer-delivery' ? 'warning' : 'error',
         windowVisible: Boolean(window?.isVisible()),
         windowMinimized: Boolean(window?.isMinimized()),
+        metrics,
       })
+      const outcome = await recoverNativeVideoPresentation(
+        {
+          getWindow,
+          recoverRemoteVideoDemand: (sessionId, generation, trackId) =>
+            controller.recoverRemoteVideoDemand(
+              sessionId,
+              generation,
+              trackId,
+            ),
+          recoverLocalScreenPreview: () =>
+            controller.recoverLocalScreenPreview(),
+        },
+        frame,
+        reason,
+      )
       diagnosticSink({
         scope: 'native-video',
-        event: 'presentation_recovered_locally',
-        kind: local ? 'local-preview' : 'remote-video',
+        event: 'presentation_recovery_requested',
+        kind: nativeVideoDiagnosticKind(frame),
         stage: 'renderer-presentation',
         sessionId: frame.sessionId,
         generation: frame.generation,
         reason,
-        outcome: 'shared-texture-generation-retired',
+        outcome,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        metrics,
+      })
+    },
+    onOperationFailed: (stage, frame, error, metrics) => {
+      diagnosticSink({
+        scope: 'native-video',
+        event: 'shared_texture_operation_failed',
+        kind: nativeVideoDiagnosticKind(frame),
+        stage,
+        sessionId: frame.sessionId,
+        generation: frame.generation,
+        errorCode: `shared_texture_${stage}_failed`,
+        message: safeErrorMessage(error),
+        metrics,
       })
     },
   })
@@ -429,6 +485,32 @@ function readWindowHwnd(win: BrowserWindow | null) {
 
 function safeErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Native media runtime failed'
+}
+
+function nativeVideoDiagnosticKind(
+  frame: Pick<
+    import('./native-video/shared-texture-bridge').NativeSharedVideoRelease,
+    'source' | 'local'
+  >,
+) {
+  return frame.local
+    ? `local-${frame.source}-preview`
+    : `remote-${frame.source}`
+}
+
+function presentationStallErrorCode(
+  reason: import(
+    './native-video/shared-texture-bridge'
+  ).NativeVideoPresentationStallReason,
+) {
+  switch (reason) {
+    case 'shared-texture-fence':
+      return 'shared_texture_fence_stalled'
+    case 'renderer-delivery':
+      return 'renderer_delivery_stalled'
+    case 'retained-budget-exhausted':
+      return 'retained_texture_budget_exhausted'
+  }
 }
 
 function nativeVoiceDiagnosticRecord(

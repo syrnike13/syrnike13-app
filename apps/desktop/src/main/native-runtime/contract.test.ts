@@ -160,6 +160,12 @@ describe('native screen capture telemetry validation', () => {
       videoGpuCompletionP50Us: 850,
       videoGpuCompletionP95Us: 2_400,
       videoGpuCompletionMaxUs: 8_000,
+      rtpStatsAvailable: true,
+      rtpPacketsSent: 1_200,
+      rtpBytesSent: 3_000_000,
+      rtpFramesSent: 118,
+      rtpFramesEncoded: 119,
+      encoderImplementation: 'hardware-encoder',
     },
   } as const
 

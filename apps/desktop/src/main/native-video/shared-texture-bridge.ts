@@ -1,5 +1,5 @@
 import { sharedTexture, type BrowserWindow } from 'electron'
-import { Effect, Fiber } from 'effect'
+import { Duration, Effect, Fiber, Schedule } from 'effect'
 
 export type NativeVideoSource = 'camera' | 'screen'
 
@@ -24,6 +24,34 @@ export type NativeSharedVideoRelease = Pick<
   'sessionId' | 'generation' | 'trackId' | 'source' | 'sequence'
 > & { runtimeEpoch: number; local: boolean }
 
+export type NativeVideoPresentationStallReason =
+  | 'shared-texture-fence'
+  | 'renderer-delivery'
+  | 'retained-budget-exhausted'
+
+export type NativeVideoPresentationMetrics = {
+  retainedFrames: number
+  retainedBytes: number
+  trackActiveReferences: number
+  trackRetainedReferences: number
+  oldestRetainedAgeMs: number
+  deliveredFrames: number
+  rejectedFrames: number
+  staleRejectedFrames: number
+  capacityRejectedFrames: number
+  operationFailures: number
+  deliveryFailures: number
+  maximumActiveReferences: number
+  maximumTrackReferences: number
+  maximumRetainedBytes: number
+}
+
+export type NativeSharedTextureOperationStage =
+  | 'import'
+  | 'send'
+  | 'recover'
+  | 'release'
+
 export type SharedTextureBridgeDependencies = {
   getWindow(): BrowserWindow | null
   release(frame: NativeSharedVideoRelease): void | Promise<void>
@@ -34,10 +62,19 @@ export type SharedTextureBridgeDependencies = {
   stallTimeoutMs?: number
   deliveryFailureThreshold?: number
   deliveryFailureCooldownMs?: number
+  releaseAttempts?: number
   onPresentationStalled?: (
     frame: NativeSharedVideoFrame,
-    reason: 'shared-texture-fence' | 'renderer-delivery',
+    reason: NativeVideoPresentationStallReason,
+    metrics: NativeVideoPresentationMetrics,
   ) => void | Promise<void>
+  onOperationFailed?: (
+    stage: NativeSharedTextureOperationStage,
+    frame: NativeSharedVideoFrame | NativeSharedVideoRelease,
+    error: unknown,
+    metrics: NativeVideoPresentationMetrics,
+  ) => void
+  now?: () => number
 }
 
 type Entry = {
@@ -45,7 +82,13 @@ type Entry = {
   imported: Electron.SharedTextureImported
   released: boolean
   active: boolean
+  importedAtMs: number
   stallTimer: Fiber.Fiber<void, never> | null
+}
+
+type ReleaseOperation = {
+  frame: NativeSharedVideoRelease
+  fiber: Fiber.Fiber<void, never>
 }
 
 /**
@@ -57,9 +100,15 @@ export class NativeSharedTextureBridge {
   private readonly latestSequence = new Map<string, number>()
   private readonly deliveryFailures = new Map<string, number>()
   private readonly lastDeliveryRecoveryAt = new Map<string, number>()
+  private readonly releaseOperations = new Map<string, ReleaseOperation>()
   private rendererEpoch = 0
   private runtimeEpoch: number | null = null
   private retainedBytes = 0
+  private deliveredFrames = 0
+  private rejectedFrames = 0
+  private staleRejectedFrames = 0
+  private capacityRejectedFrames = 0
+  private operationFailures = 0
   private disposed = false
   private lastFailureReportAt = 0
   private lastCapacityReportAt = 0
@@ -120,6 +169,7 @@ export class NativeSharedTextureBridge {
   deliverEffect(frame: NativeSharedVideoFrame) {
     return Effect.gen({ self: this }, function*() {
       if (this.disposed || !this.isValid(frame)) {
+        this.rejectedFrames += 1
         this.releaseNativeFrame(frame)
         return false
       }
@@ -127,6 +177,9 @@ export class NativeSharedTextureBridge {
         this.runtimeEpoch = frame.runtimeEpoch
       } else if (this.runtimeEpoch !== frame.runtimeEpoch) {
         this.runtimeEpoch = frame.runtimeEpoch
+        this.cancelReleaseOperations((operation) =>
+          operation.frame.runtimeEpoch !== frame.runtimeEpoch
+        )
         this.rendererEpoch += 1
         this.releaseMainReferences()
         this.latestSequence.clear()
@@ -141,6 +194,8 @@ export class NativeSharedTextureBridge {
       ].join(':')
       const previous = this.latestSequence.get(trackKey) ?? -1
       if (frame.sequence <= previous) {
+        this.rejectedFrames += 1
+        this.staleRejectedFrames += 1
         this.releaseNativeFrame(frame)
         return false
       }
@@ -148,6 +203,7 @@ export class NativeSharedTextureBridge {
 
       const window = this.dependencies.getWindow()
       if (!window || window.isDestroyed() || window.webContents.isDestroyed()) {
+        this.rejectedFrames += 1
         this.releaseNativeFrame(frame)
         return false
       }
@@ -156,7 +212,16 @@ export class NativeSharedTextureBridge {
       // Permit one replacement generation after retiring a stalled track, but
       // keep the combined active + renderer-owned references strictly bounded.
       // Retired fences must not block every frame from the recovery track.
-      if (references.active >= maximum || references.total >= maximum * 2) {
+      if (references.total >= maximum * 2) {
+        this.rejectedFrames += 1
+        this.capacityRejectedFrames += 1
+        this.recordRetainedBudgetExhaustion(trackKey, frame)
+        this.releaseNativeFrame(frame)
+        return false
+      }
+      if (references.active >= maximum) {
+        this.rejectedFrames += 1
+        this.capacityRejectedFrames += 1
         this.recordDeliveryFailure(trackKey, frame)
         this.releaseNativeFrame(frame)
         return false
@@ -170,6 +235,8 @@ export class NativeSharedTextureBridge {
         !Number.isSafeInteger(frameBytes) ||
         this.retainedBytes + frameBytes > maximumRetainedBytes
       ) {
+        this.rejectedFrames += 1
+        this.capacityRejectedFrames += 1
         this.reportCapacityLimit(frameBytes, maximumRetainedBytes)
         this.recordDeliveryFailure(trackKey, frame)
         this.releaseNativeFrame(frame)
@@ -199,6 +266,8 @@ export class NativeSharedTextureBridge {
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
+            this.rejectedFrames += 1
+            this.operationFailures += 1
             this.reportFailure('import', frame, error)
             this.recordDeliveryFailure(trackKey, frame)
             this.releaseNativeFrame(frame)
@@ -213,6 +282,7 @@ export class NativeSharedTextureBridge {
         imported,
         released: false,
         active: true,
+        importedAtMs: this.now(),
         stallTimer: null,
       }
       this.inFlight.set(key, entry)
@@ -248,9 +318,16 @@ export class NativeSharedTextureBridge {
           ),
         catch: (error) => error,
       }).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            this.deliveredFrames += 1
+          })
+        ),
         Effect.as(true),
         Effect.catch((error) =>
           Effect.sync(() => {
+            this.rejectedFrames += 1
+            this.operationFailures += 1
             this.reportFailure('send', frame, error)
             if (rendererEpoch === this.rendererEpoch) {
               this.recordDeliveryFailure(trackKey, frame)
@@ -272,6 +349,7 @@ export class NativeSharedTextureBridge {
     this.latestSequence.clear()
     this.deliveryFailures.clear()
     this.lastDeliveryRecoveryAt.clear()
+    this.cancelReleaseOperations()
     this.runtimeEpoch = null
   }
 
@@ -319,24 +397,52 @@ export class NativeSharedTextureBridge {
     this.releaseNativeFrame(entry.frame)
   }
 
-  private releaseNativeFrame(frame: NativeSharedVideoRelease, attempt = 0) {
-    const retry = () => {
-      const timer = setTimeout(
-        () => this.releaseNativeFrame(frame, attempt + 1),
-        Math.min(1_000, 100 * 2 ** Math.min(attempt, 4)),
-      )
-      timer.unref?.()
-    }
-    Effect.runFork(
-      Effect.tryPromise({
+  private releaseNativeFrame(frame: NativeSharedVideoRelease) {
+    const key = releaseKey(frame)
+    if (this.releaseOperations.has(key)) return
+    const attempts = Math.max(1, this.dependencies.releaseAttempts ?? 6)
+    const retrySchedule = Schedule.exponential(100).pipe(
+      Schedule.modifyDelay(({ duration }) =>
+        Effect.succeed(Duration.min(duration, Duration.millis(1_000)))
+      ),
+    )
+    let fiber: Fiber.Fiber<void, never>
+    const release = Effect.tryPromise({
         try: async () => {
           await this.dependencies.release(frame)
         },
         catch: (cause) => cause,
       }).pipe(
-        Effect.catch(() => Effect.sync(retry)),
+      Effect.retry({
+        times: attempts - 1,
+        schedule: retrySchedule,
+      }),
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          this.operationFailures += 1
+          this.reportFailure('release', frame, error)
+        })
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (this.releaseOperations.get(key)?.fiber === fiber) {
+            this.releaseOperations.delete(key)
+          }
+        }),
       ),
     )
+    fiber = Effect.runFork(release)
+    this.releaseOperations.set(key, { frame, fiber })
+  }
+
+  private cancelReleaseOperations(
+    predicate: (operation: ReleaseOperation) => boolean = () => true,
+  ) {
+    for (const [key, operation] of this.releaseOperations) {
+      if (!predicate(operation)) continue
+      this.releaseOperations.delete(key)
+      Effect.runFork(Fiber.interrupt(operation.fiber))
+    }
   }
 
   private unfencedTrackReferences(trackKey: string) {
@@ -353,6 +459,7 @@ export class NativeSharedTextureBridge {
 
   private recoverStalledTrack(key: string, trackKey: string, entry: Entry) {
     if (this.disposed || this.inFlight.get(key) !== entry || !entry.active) return
+    const metrics = this.presentationMetrics(trackKey)
     const prefix = `${trackKey}:`
     for (const [candidateKey, candidate] of this.inFlight) {
       if (!candidate.active || !candidateKey.startsWith(prefix)) continue
@@ -368,7 +475,11 @@ export class NativeSharedTextureBridge {
       retainedFrames: this.inFlight.size,
       retainedBytes: this.retainedBytes,
     })
-    this.notifyPresentationStalled(entry.frame, 'shared-texture-fence')
+    this.notifyPresentationStalled(
+      entry.frame,
+      'shared-texture-fence',
+      metrics,
+    )
   }
 
   private recordDeliveryFailure(
@@ -383,31 +494,52 @@ export class NativeSharedTextureBridge {
     )
     if (failures < threshold) return
 
+    const metrics = this.presentationMetrics(trackKey, failures)
     this.deliveryFailures.set(trackKey, 0)
     if (!this.claimPresentationRecovery(trackKey)) return
-    this.notifyPresentationStalled(frame, 'renderer-delivery')
+    this.notifyPresentationStalled(frame, 'renderer-delivery', metrics)
+  }
+
+  private recordRetainedBudgetExhaustion(
+    trackKey: string,
+    frame: NativeSharedVideoFrame,
+  ) {
+    if (!this.claimPresentationRecovery(trackKey)) return
+    this.notifyPresentationStalled(
+      frame,
+      'retained-budget-exhausted',
+      this.presentationMetrics(trackKey),
+    )
   }
 
   private notifyPresentationStalled(
     frame: NativeSharedVideoFrame,
-    reason: 'shared-texture-fence' | 'renderer-delivery',
+    reason: NativeVideoPresentationStallReason,
+    metrics: NativeVideoPresentationMetrics,
   ) {
     Effect.runFork(
       Effect.tryPromise({
         try: async () => {
-          await this.dependencies.onPresentationStalled?.(frame, reason)
+          await this.dependencies.onPresentationStalled?.(
+            frame,
+            reason,
+            metrics,
+          )
         },
         catch: (cause) => cause,
       }).pipe(
         Effect.catch((error) =>
-          Effect.sync(() => this.reportFailure('recover', frame, error))
+          Effect.sync(() => {
+            this.operationFailures += 1
+            this.reportFailure('recover', frame, error)
+          })
         ),
       ),
     )
   }
 
   private claimPresentationRecovery(trackKey: string) {
-    const now = Date.now()
+    const now = this.now()
     const cooldown = Math.max(
       1_000,
       this.dependencies.deliveryFailureCooldownMs ?? 5_000,
@@ -421,25 +553,33 @@ export class NativeSharedTextureBridge {
   }
 
   private reportFailure(
-    stage: 'import' | 'send' | 'recover',
-    frame: NativeSharedVideoFrame,
+    stage: NativeSharedTextureOperationStage,
+    frame: NativeSharedVideoFrame | NativeSharedVideoRelease,
     error: unknown,
   ) {
-    const now = Date.now()
+    const now = this.now()
     if (now - this.lastFailureReportAt < 10_000) return
     this.lastFailureReportAt = now
+    const dimensions = 'width' in frame
+      ? { width: frame.width, height: frame.height }
+      : {}
     console.warn(`[native-video] shared texture ${stage} failed`, {
       local: frame.local,
       source: frame.source,
       trackId: frame.trackId,
-      width: frame.width,
-      height: frame.height,
+      ...dimensions,
       error,
     })
+    this.dependencies.onOperationFailed?.(
+      stage,
+      frame,
+      error,
+      this.presentationMetrics(trackKeyFor(frame)),
+    )
   }
 
   private reportCapacityLimit(frameBytes: number, maximumRetainedBytes: number) {
-    const now = Date.now()
+    const now = this.now()
     if (now - this.lastCapacityReportAt < 10_000) return
     this.lastCapacityReportAt = now
     console.warn('[native-video] retained shared texture budget exhausted', {
@@ -449,6 +589,71 @@ export class NativeSharedTextureBridge {
       maximumRetainedBytes,
     })
   }
+
+  private presentationMetrics(
+    trackKey: string,
+    deliveryFailures = this.deliveryFailures.get(trackKey) ?? 0,
+  ): NativeVideoPresentationMetrics {
+    const references = this.unfencedTrackReferences(trackKey)
+    const prefix = `${trackKey}:`
+    let oldestImportedAtMs = this.now()
+    let hasRetainedTrackFrame = false
+    for (const [key, entry] of this.inFlight) {
+      if (!key.startsWith(prefix)) continue
+      hasRetainedTrackFrame = true
+      oldestImportedAtMs = Math.min(oldestImportedAtMs, entry.importedAtMs)
+    }
+    const maximumActiveReferences = Math.max(
+      1,
+      this.dependencies.maxInFlight ?? 3,
+    )
+    return {
+      retainedFrames: this.inFlight.size,
+      retainedBytes: this.retainedBytes,
+      trackActiveReferences: references.active,
+      trackRetainedReferences: references.total,
+      oldestRetainedAgeMs: hasRetainedTrackFrame
+        ? Math.max(0, this.now() - oldestImportedAtMs)
+        : 0,
+      deliveredFrames: this.deliveredFrames,
+      rejectedFrames: this.rejectedFrames,
+      staleRejectedFrames: this.staleRejectedFrames,
+      capacityRejectedFrames: this.capacityRejectedFrames,
+      operationFailures: this.operationFailures,
+      deliveryFailures,
+      maximumActiveReferences,
+      maximumTrackReferences: maximumActiveReferences * 2,
+      maximumRetainedBytes: Math.max(
+        1,
+        this.dependencies.maxRetainedBytes ?? 256 * 1024 * 1024,
+      ),
+    }
+  }
+
+  private now() {
+    return this.dependencies.now?.() ?? Date.now()
+  }
+}
+
+function releaseKey(frame: NativeSharedVideoRelease) {
+  return [
+    frame.sessionId,
+    frame.generation,
+    frame.trackId,
+    frame.source,
+    frame.local ? 'local' : 'remote',
+    frame.runtimeEpoch,
+    frame.sequence,
+  ].join(':')
+}
+
+function trackKeyFor(frame: NativeSharedVideoRelease) {
+  return [
+    frame.sessionId,
+    frame.generation,
+    frame.trackId,
+    frame.runtimeEpoch,
+  ].join(':')
 }
 
 function unrefSleep(delayMs: number) {

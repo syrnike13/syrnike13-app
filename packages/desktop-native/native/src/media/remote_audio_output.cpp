@@ -200,8 +200,11 @@ void storeMinimum(
   ) {}
 }
 
-void resetTrackRendererState(TrackState& track) noexcept {
-  track.ingress->discardQueued();
+void resetTrackRendererState(
+  TrackState& track,
+  bool discard_queued = true
+) noexcept {
+  if (discard_queued) track.ingress->discardQueued();
   track.current_frame_offset = kRemoteAudioIngressFramesPerPacket;
   track.playout_started = false;
   track.fade_in_remaining = 0;
@@ -253,7 +256,7 @@ bool readNextTrackFrame(
     return true;
   }
   if (result == RemoteAudioIngressReadResult::Discontinuity) {
-    resetTrackRendererState(track);
+    resetTrackRendererState(track, false);
   }
   return false;
 }

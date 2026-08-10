@@ -392,6 +392,41 @@ add_test(
   COMMAND syrnike-native-screen-frame-pipeline-tests
 )
 
+add_executable(syrnike-native-screen-stream-publisher-policy-soak-tests
+  tests/screen_stream_publisher_policy_soak_test.cpp
+)
+syrnike_native_target(
+  syrnike-native-screen-stream-publisher-policy-soak-tests
+)
+add_test(
+  NAME syrnike-native-screen-stream-publisher-policy-soak-tests
+  COMMAND syrnike-native-screen-stream-publisher-policy-soak-tests
+)
+
+add_executable(syrnike-native-remote-audio-ingress-soak-tests
+  tests/remote_audio_ingress_soak_test.cpp
+)
+syrnike_native_target(syrnike-native-remote-audio-ingress-soak-tests)
+target_link_libraries(
+  syrnike-native-remote-audio-ingress-soak-tests PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(
+  syrnike-native-remote-audio-ingress-soak-tests
+)
+add_test(
+  NAME syrnike-native-remote-audio-ingress-soak-tests
+  COMMAND syrnike-native-remote-audio-ingress-soak-tests
+)
+
+add_executable(syrnike-native-screen-audio-packetizer-soak-tests
+  tests/screen_audio_packetizer_soak_test.cpp
+)
+syrnike_native_target(syrnike-native-screen-audio-packetizer-soak-tests)
+add_test(
+  NAME syrnike-native-screen-audio-packetizer-soak-tests
+  COMMAND syrnike-native-screen-audio-packetizer-soak-tests
+)
+
 add_executable(syrnike-native-display-source-window-probe-tests
   tests/display_source_window_probe_test.cpp
 )

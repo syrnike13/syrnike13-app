@@ -15,6 +15,7 @@ inline constexpr std::size_t kRemoteAudioIngressFramesPerPacket = 480;
 inline constexpr std::size_t kRemoteAudioIngressSamplesPerPacket =
   kRemoteAudioIngressFramesPerPacket * kRemoteAudioIngressChannels;
 inline constexpr std::size_t kRemoteAudioIngressSlotCount = 16;
+inline constexpr std::size_t kRemoteAudioIngressRecoveryPackets = 2;
 
 struct RemoteAudioIngressFrame {
   std::array<std::int16_t, kRemoteAudioIngressSamplesPerPacket> samples{};
@@ -56,6 +57,7 @@ class RemoteAudioIngress final : public livekit::DecodedAudioFrameSink {
   RemoteAudioIngressTelemetry telemetry() const noexcept;
 
  private:
+  void recoverFromDiscontinuity(std::uint64_t discontinuity_epoch) noexcept;
   void resetQueue() noexcept;
 
   // The frame storage separates the producer-owned write cursor from the
@@ -67,7 +69,9 @@ class RemoteAudioIngress final : public livekit::DecodedAudioFrameSink {
   std::array<RemoteAudioIngressFrame, kRemoteAudioIngressSlotCount> slots_{};
   std::atomic<std::uint32_t> read_index_{0};
   std::atomic<std::uint64_t> discontinuity_epoch_{0};
+  std::atomic<std::uint64_t> flush_discontinuity_epoch_{0};
   std::uint64_t consumed_discontinuity_epoch_ = 0;
+  std::uint64_t consumed_flush_discontinuity_epoch_ = 0;
   std::atomic<std::uint64_t> accepted_frames_{0};
   std::atomic<std::uint64_t> dropped_frames_{0};
   std::atomic<std::uint64_t> suspended_frames_{0};

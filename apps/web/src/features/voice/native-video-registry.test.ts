@@ -113,6 +113,38 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     expect(latest.close).toHaveBeenCalledOnce()
   })
 
+  it('resets presentation without detaching the track or mounted canvas', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, frameMessage(1, 1, new FakeVideoFrame()))
+    const consumer = resettableCanvasStub()
+    const track = registry.getTrack('local-screen:session')!
+    track.attachCanvas(consumer.canvas)
+    const pending = new FakeVideoFrame()
+    deliver(registry, frameMessage(1, 2, pending))
+
+    deliver(registry, presentationResetMessage(1))
+
+    expect(pending.close).toHaveBeenCalledOnce()
+    expect(runtimeWindow.cancelAnimationFrame).toHaveBeenCalledOnce()
+    expect(consumer.setWidth).toHaveBeenCalledWith(0)
+    expect(consumer.setHeight).toHaveBeenCalledWith(0)
+    expect(registry.getTrack('local-screen:session')).toBe(track)
+    expect(registry.listTracks()[0]).toMatchObject({ consumerCount: 1 })
+
+    const replacement = new FakeVideoFrame()
+    deliver(registry, frameMessage(1, 3, replacement))
+    runtimeWindow.flushAnimationFrames()
+
+    expect(consumer.drawImage).toHaveBeenCalledWith(
+      replacement,
+      0,
+      0,
+      640,
+      360,
+    )
+    expect(replacement.close).toHaveBeenCalledOnce()
+  })
+
   it('closes pending and incoming frames while the renderer is hidden', () => {
     const registry = new NativeVideoRegistry()
     registry.start()
@@ -568,6 +600,17 @@ function removalMessage(generation: number) {
   }
 }
 
+function presentationResetMessage(generation: number) {
+  return {
+    type: 'syrnike-native-video-presentation-reset',
+    metadata: {
+      trackId: 'local-screen:session',
+      sessionId: 'session',
+      generation,
+    },
+  }
+}
+
 function publicationMessage(state: 'available' | 'unavailable') {
   return {
     type: `syrnike-native-video-publication-${state}`,
@@ -617,6 +660,34 @@ function canvasStub() {
     getContext: vi.fn(() => ({ drawImage })),
   } as unknown as HTMLCanvasElement
   return { canvas, drawImage }
+}
+
+function resettableCanvasStub() {
+  let width = 0
+  let height = 0
+  const drawImage = vi.fn()
+  const setWidth = vi.fn((value: number) => {
+    width = value
+  })
+  const setHeight = vi.fn((value: number) => {
+    height = value
+  })
+  const canvas = {
+    get width() {
+      return width
+    },
+    set width(value: number) {
+      setWidth(value)
+    },
+    get height() {
+      return height
+    },
+    set height(value: number) {
+      setHeight(value)
+    },
+    getContext: vi.fn(() => ({ drawImage })),
+  } as unknown as HTMLCanvasElement
+  return { canvas, drawImage, setWidth, setHeight }
 }
 
 function deliver(registry: NativeVideoRegistry, data: unknown) {

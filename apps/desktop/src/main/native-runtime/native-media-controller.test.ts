@@ -429,7 +429,7 @@ describe('NativeMediaController retained tools', () => {
         height: 720,
         ntHandle: new Uint8Array(8),
       })
-      harness.controller.markRemoteVideoFrameReceived('voice', 3, 'screen')
+      harness.controller.markRemoteVideoFramePresented('voice', 3, 'screen')
 
       await vi.advanceTimersByTimeAsync(1_000)
       harness.event({
@@ -446,7 +446,7 @@ describe('NativeMediaController retained tools', () => {
         height: 720,
         ntHandle: new Uint8Array(8),
       })
-      harness.controller.markRemoteVideoFrameReceived('voice', 3, 'screen')
+      harness.controller.markRemoteVideoFramePresented('voice', 3, 'screen')
       await vi.advanceTimersByTimeAsync(1_000)
 
       expect(harness.request).not.toHaveBeenCalled()
@@ -510,6 +510,7 @@ describe('NativeMediaController retained tools', () => {
         height: 720,
         ntHandle: new Uint8Array(8),
       })
+      harness.controller.markRemoteVideoFramePresented('voice', 3, 'screen')
       harness.request.mockClear()
 
       await vi.advanceTimersByTimeAsync(1_250)
@@ -635,7 +636,7 @@ describe('NativeMediaController retained tools', () => {
     ])
     expect(harness.controller.isRemoteVideoDemanded('voice', 3, 'screen'))
       .toBe(true)
-    harness.controller.markRemoteVideoFrameReceived('voice', 3, 'screen')
+    harness.controller.markRemoteVideoFramePresented('voice', 3, 'screen')
     expect(harness.controller.isRemoteVideoDemanded('voice', 3, 'screen'))
       .toBe(true)
 
@@ -684,7 +685,7 @@ describe('NativeMediaController retained tools', () => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       await harness.controller.recoverRemoteVideoDemand('voice', 3, 'screen')
     }
-    harness.controller.markRemoteVideoFrameReceived('voice', 3, 'screen')
+    harness.controller.markRemoteVideoFramePresented('voice', 3, 'screen')
 
     await expect(
       harness.controller.recoverRemoteVideoDemand('voice', 3, 'screen'),

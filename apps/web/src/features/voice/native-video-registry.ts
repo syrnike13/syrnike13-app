@@ -53,6 +53,14 @@ const SessionResetMessageSchema = Schema.Struct({
   metadata: NativeVideoSessionMetadataSchema,
 })
 
+const PresentationResetMessageSchema = Schema.Struct({
+  type: Schema.Literal('syrnike-native-video-presentation-reset'),
+  metadata: Schema.Struct({
+    ...NativeVideoSessionMetadataSchema.fields,
+    trackId: Schema.String,
+  }),
+})
+
 const PublicationMessageSchema = Schema.Struct({
   type: Schema.Literals([
     'syrnike-native-video-publication-available',
@@ -325,6 +333,15 @@ export class NativeVideoRegistry {
       this.clearRemote()
       return
     }
+    if (isPresentationResetMessage(event.data)) {
+      const { metadata } = event.data
+      const entry = this.tracks.get(metadata.trackId)
+      if (!entry ||
+        entry.metadata.sessionId !== metadata.sessionId ||
+        entry.metadata.generation !== metadata.generation) return
+      this.resetTrackPresentation(entry)
+      return
+    }
     if (isPublicationFailureMessage(event.data)) {
       const { metadata } = event.data
       if (!this.isActiveRemoteSession(metadata)) return
@@ -497,12 +514,28 @@ export class NativeVideoRegistry {
   private readonly onVisibilityChange = () => {
     if (typeof document === 'undefined' || document.visibilityState !== 'hidden') return
     for (const entry of this.tracks.values()) {
-      entry.pendingFrame?.close()
-      entry.pendingFrame = null
-      if (entry.drawRequest !== null) {
-        window.cancelAnimationFrame(entry.drawRequest)
-        entry.drawRequest = null
-      }
+      this.releasePendingFrame(entry)
+    }
+  }
+
+  private resetTrackPresentation(entry: TrackEntry) {
+    this.releasePendingFrame(entry)
+    for (const consumer of this.consumersFor(entry).values()) {
+      const width = consumer.canvas.width
+      const height = consumer.canvas.height
+      consumer.canvas.width = width
+      consumer.canvas.height = height
+      consumer.width = 0
+      consumer.height = 0
+    }
+  }
+
+  private releasePendingFrame(entry: TrackEntry) {
+    entry.pendingFrame?.close()
+    entry.pendingFrame = null
+    if (entry.drawRequest !== null) {
+      window.cancelAnimationFrame(entry.drawRequest)
+      entry.drawRequest = null
     }
   }
 
@@ -648,6 +681,15 @@ function isSessionResetMessage(value: unknown): value is {
 } {
   return Option.isSome(
     Schema.decodeUnknownOption(SessionResetMessageSchema)(value),
+  )
+}
+
+function isPresentationResetMessage(value: unknown): value is {
+  type: 'syrnike-native-video-presentation-reset'
+  metadata: { sessionId: string; generation: number; trackId: string }
+} {
+  return Option.isSome(
+    Schema.decodeUnknownOption(PresentationResetMessageSchema)(value),
   )
 }
 

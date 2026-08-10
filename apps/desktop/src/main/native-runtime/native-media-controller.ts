@@ -80,6 +80,7 @@ type RemoteVideoDemandState = {
   sessionId: string
   generation: number
   trackId: string
+  source?: 'camera' | 'screen'
   demanded: boolean
   revision: number
   recoveryAttempt: number
@@ -88,6 +89,7 @@ type RemoteVideoDemandState = {
     fiber: Fiber.Fiber<boolean, unknown>
   } | null
   lastFrameAt: number | null
+  recoveryStartedAt: number | null
   subscriptionFailure: boolean
   failureNotified: boolean
 }
@@ -338,6 +340,7 @@ export class NativeMediaController {
         return yield* Fiber.join(desired.recoveryOperation.fiber)
       }
       desired.recoveryAttempt += 1
+      desired.recoveryStartedAt ??= Date.now()
       if (
         desired.recoveryAttempt >= REMOTE_VIDEO_DEGRADED_RECOVERY_ATTEMPT &&
         !desired.failureNotified
@@ -347,7 +350,7 @@ export class NativeMediaController {
       this.options.diagnostics?.({
         scope: 'native-media-controller',
         event: 'remote_video_recovery_started',
-        kind: 'remote-video',
+        kind: desired.source ? `remote-${desired.source}` : 'remote-video',
         stage: 'native-state-aware-recovery',
         sessionId,
         generation,
@@ -398,12 +401,14 @@ export class NativeMediaController {
         sessionId,
         generation,
         trackId,
+        source: this.remoteVideoPublications.get(trackId)?.source,
         demanded,
         revision: ++this.remoteVideoDemandRevision,
         recoveryAttempt: 0,
         recoveryTimer: null,
         recoveryOperation: null,
         lastFrameAt: null,
+        recoveryStartedAt: null,
         subscriptionFailure: false,
         failureNotified: false,
       }
@@ -437,7 +442,7 @@ export class NativeMediaController {
     })
   }
 
-  markRemoteVideoFrameReceived(
+  markRemoteVideoFramePresented(
     sessionId: string,
     generation: number,
     trackId: string,
@@ -445,22 +450,58 @@ export class NativeMediaController {
     const key = remoteVideoDemandKey(sessionId, generation, trackId)
     const demand = this.remoteVideoDemands.get(key)
     if (!demand?.demanded) return
-    const recovered = demand.lastFrameAt === null || demand.recoveryAttempt > 0
-    demand.lastFrameAt = Date.now()
+    const now = Date.now()
+    const firstFrame = demand.lastFrameAt === null
+    const recoveryAttempt = demand.recoveryAttempt
+    const recovered = recoveryAttempt > 0
+    const durationMs = demand.recoveryStartedAt === null
+      ? undefined
+      : Math.max(0, now - demand.recoveryStartedAt)
+    demand.lastFrameAt = now
     demand.recoveryAttempt = 0
+    demand.recoveryStartedAt = null
     demand.subscriptionFailure = false
     demand.failureNotified = false
-    if (recovered) {
+    if (firstFrame || recovered) {
       this.options.diagnostics?.({
         scope: 'native-media-controller',
-        event: 'remote_video_frame_received',
-        kind: 'remote-video',
-        stage: 'native-decode',
+        event: 'remote_video_frame_presented',
+        kind: demand.source ? `remote-${demand.source}` : 'remote-video',
+        stage: 'renderer-delivery',
         sessionId,
         generation,
+        recoveryAttempt,
+        outcome: recovered ? 'recovered' : 'first-frame',
+        durationMs,
       })
     }
     if (!demand.recoveryTimer) this.armRemoteVideoRecovery(key, demand)
+  }
+
+  recoverLocalScreenPreview() {
+    return this.effectRuntime.runPromise(
+      Effect.gen({ self: this }, function*() {
+        const screen = this.activeScreen
+        const demand = this.localScreenPreviewDemand
+        if (!screen || !demand.demanded) return false
+        yield* this.requestEffect(
+          {
+            type: 'setLocalScreenPreviewDemand',
+            ...screen,
+            demanded: false,
+            electronMainPid: this.options.processId ?? process.pid,
+            options: {
+              width: demand.width,
+              height: demand.height,
+              fps: demand.fps,
+            },
+          },
+          2_000,
+        )
+        yield* this.sendLocalScreenPreviewDemandEffect(screen)
+        return true
+      }),
+    )
   }
 
   private performRemoteVideoRecoveryEffect(
@@ -669,11 +710,6 @@ export class NativeMediaController {
     }
     if (event.type === 'remoteVideoFrame') {
       if (!this.isCurrentVoiceSession(event.sessionId, event.generation)) return
-      this.markRemoteVideoFrameReceived(
-        event.sessionId,
-        event.generation,
-        event.trackId,
-      )
       return
     }
     if (event.type === 'remoteVideoPublicationAvailable') {
@@ -992,11 +1028,14 @@ export class NativeMediaController {
     this.options.diagnostics?.({
       scope: 'native-media-controller',
       event: 'remote_video_recovery_degraded',
-      kind: 'remote-video',
+      kind: demand.source ? `remote-${demand.source}` : 'remote-video',
       stage: 'native-state-aware-recovery',
       sessionId: demand.sessionId,
       generation: demand.generation,
       recoveryAttempt: demand.recoveryAttempt,
+      durationMs: demand.recoveryStartedAt === null
+        ? undefined
+        : Math.max(0, Date.now() - demand.recoveryStartedAt),
       reason: demand.subscriptionFailure
         ? 'subscription_recovery_budget_exceeded'
         : 'local_recovery_budget_exceeded',

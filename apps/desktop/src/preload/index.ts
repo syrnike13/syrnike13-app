@@ -192,6 +192,13 @@ ipcRenderer.on(IPC.mediaRemoteVideoSessionReset, (_event, metadata) => {
   )
 })
 
+ipcRenderer.on(IPC.mediaNativeVideoPresentationReset, (_event, metadata) => {
+  window.postMessage(
+    { type: 'syrnike-native-video-presentation-reset', metadata },
+    window.location.origin,
+  )
+})
+
 for (const state of ['available', 'unavailable'] as const) {
   ipcRenderer.on(
     `syrnike-desktop:media:remote-video-publication-${state}`,

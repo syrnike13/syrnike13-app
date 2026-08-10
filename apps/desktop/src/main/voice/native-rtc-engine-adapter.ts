@@ -34,6 +34,7 @@ import type {
   NativeRuntimeSupervisor,
   NativeRuntimeSupervisorSnapshot,
 } from '../native-runtime/runtime-supervisor'
+import type { DiagnosticLogSink } from '../native-runtime/diagnostic-log'
 
 const VOICE_OPERATION_TIMEOUT_MS = 20_000
 const MEDIA_CONTROL_TIMEOUT_MS = 2_000
@@ -95,6 +96,7 @@ type ActiveVoiceConnection = {
   screenStarted: boolean
   screenRetryAttempt: number
   screenRetryKey: string | null
+  screenRecoveryStartedAt: number | null
   cameraStarted: boolean
   selfSpeaking: boolean
   remoteSpeakingUserIds: Set<string>
@@ -104,6 +106,7 @@ type ActiveVoiceConnection = {
 type NativeRtcEngineAdapterOptions = Readonly<{
   screenRetryDelaysMs?: readonly number[]
   screenRuntimeSettleDelayMs?: number
+  diagnostics?: DiagnosticLogSink
 }>
 
 export class NativeRtcEngineAdapter implements RtcEngineAdapter {
@@ -208,6 +211,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         screenStarted: false,
         screenRetryAttempt: 0,
         screenRetryKey: null,
+        screenRecoveryStartedAt: null,
         cameraStarted: false,
         selfSpeaking: false,
         remoteSpeakingUserIds: new Set(),
@@ -1075,7 +1079,24 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         )
         yield* this.assertCurrentEffect(active)
         if (active.screenGeneration !== generation) return
+        const recoveryStartedAt = active.screenRecoveryStartedAt
+        const recoveryAttempt = active.screenRetryAttempt
         this.resetScreenRetry(active)
+        active.screenRecoveryStartedAt = null
+        if (recoveryStartedAt !== null) {
+          this.options.diagnostics?.({
+            scope: 'desktop-voice',
+            event: 'screen_republished',
+            kind: 'screen',
+            stage: 'screen-publication',
+            sessionId: active.lease.connectionEpoch,
+            generation,
+            recoveryAttempt,
+            outcome: 'success',
+            durationMs: Math.max(0, Date.now() - recoveryStartedAt),
+            metrics: screenDiagnosticMetrics(this.nativeCaptureTelemetry),
+          })
+        }
         this.emitMedia(active, 'screen', { state: 'running' })
         this.emitMedia(active, 'screen_audio', {
           state: desired.screenAudioEnabled ? 'running' : 'off',
@@ -1150,12 +1171,51 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         videoNoFrameCount: event.stats.videoNoFrameCount,
         videoRepeatedFrameCount: event.stats.videoRepeatedFrameCount,
         videoRecoverableLostCount: event.stats.videoRecoverableLostCount,
+        videoGpuPoolSlotsAvailable:
+          event.stats.videoGpuPoolSlotsAvailable,
+        videoGpuPoolSlotsTotal: event.stats.videoGpuPoolSlotsTotal,
+        videoDxgiDuplicationHoldUsMax:
+          event.stats.videoDxgiDuplicationHoldUsMax,
+        videoSourceUpdates: event.stats.videoSourceUpdates,
+        videoGpuSubmissions: event.stats.videoGpuSubmissions,
+        videoIdleRefreshes: event.stats.videoIdleRefreshes,
+        videoCoalescedSourceUpdates:
+          event.stats.videoCoalescedSourceUpdates,
         videoEncoderBackpressureTicks:
           event.stats.videoEncoderBackpressureTicks,
+        videoSupersededReadyFrames:
+          event.stats.videoSupersededReadyFrames,
+        videoGpuSlotTimeouts: event.stats.videoGpuSlotTimeouts,
+        videoGpuSlotsRecovered: event.stats.videoGpuSlotsRecovered,
         videoGpuFramesDroppedStale:
           event.stats.videoGpuFramesDroppedStale,
+        videoGpuPoolRollovers: event.stats.videoGpuPoolRollovers,
+        videoGpuRolloversBlocked: event.stats.videoGpuRolloversBlocked,
+        videoGpuRetiredGenerations:
+          event.stats.videoGpuRetiredGenerations,
+        videoGpuSlotsQuarantined:
+          event.stats.videoGpuSlotsQuarantined,
+        videoPreviewBridgeSubmissions:
+          event.stats.videoPreviewBridgeSubmissions,
+        videoPreviewBridgeAcquires:
+          event.stats.videoPreviewBridgeAcquires,
+        videoPreviewBridgeTimeouts:
+          event.stats.videoPreviewBridgeTimeouts,
+        videoPreviewBridgeSlotsRecovered:
+          event.stats.videoPreviewBridgeSlotsRecovered,
+        videoPreviewGpuSubmissions:
+          event.stats.videoPreviewGpuSubmissions,
+        videoPreviewFramesCompleted:
+          event.stats.videoPreviewFramesCompleted,
+        videoPreviewSlotTimeouts:
+          event.stats.videoPreviewSlotTimeouts,
         videoPreviewFramesDroppedStale:
           event.stats.videoPreviewFramesDroppedStale,
+        videoPreviewDeviceResets:
+          event.stats.videoPreviewDeviceResets,
+        videoGpuCompletionP50Us: event.stats.videoGpuCompletionP50Us,
+        videoGpuCompletionP95Us: event.stats.videoGpuCompletionP95Us,
+        videoGpuCompletionMaxUs: event.stats.videoGpuCompletionMaxUs,
         videoAvgCaptureUs: event.stats.videoAvgCaptureUs,
         videoAvgReadbackUs: event.stats.videoAvgReadbackUs,
         videoAvgScaleUs: event.stats.videoAvgScaleUs,
@@ -1164,6 +1224,12 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         videoSourceHeight: event.stats.videoSourceHeight,
         videoContentWidth: event.stats.videoContentWidth,
         videoContentHeight: event.stats.videoContentHeight,
+        rtpStatsAvailable: event.stats.rtpStatsAvailable,
+        rtpPacketsSent: event.stats.rtpPacketsSent,
+        rtpBytesSent: event.stats.rtpBytesSent,
+        rtpFramesSent: event.stats.rtpFramesSent,
+        rtpFramesEncoded: event.stats.rtpFramesEncoded,
+        encoderImplementation: event.stats.encoderImplementation,
         captureThreadMmcss: event.stats.captureThreadMmcss,
       }
       if (this.telemetrySnapshot) {
@@ -1240,6 +1306,24 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         active.screenGeneration === null ||
         event.generation !== active.screenGeneration
       ) return
+      const pipelineStalled = isScreenPipelineStallReason(event.reason)
+      if (pipelineStalled) {
+        active.screenRecoveryStartedAt ??= Date.now()
+        this.options.diagnostics?.({
+          scope: 'desktop-voice',
+          event: 'screen_pipeline_stalled',
+          kind: 'screen',
+          stage: 'screen-publication',
+          sessionId: active.lease.connectionEpoch,
+          generation: event.generation,
+          reason: event.reason,
+          errorCode: `screen_${event.reason}`,
+          incidentSeverity: 'error',
+          recoveryAttempt: active.screenRetryAttempt,
+          message: event.message,
+          metrics: screenDiagnosticMetrics(this.nativeCaptureTelemetry),
+        })
+      }
       this.retireMediaKind(active, 'screen')
       const targetClosed = event.reason === 'target_closed'
       const error = {
@@ -1663,6 +1747,64 @@ function errorDetail(error: unknown): NativeRuntimeError | null {
     error,
   )
   return Option.isSome(decoded) ? decoded.value.detail : null
+}
+
+function isScreenPipelineStallReason(reason: string) {
+  return reason === 'encoder_backpressure_stalled' ||
+    reason === 'encoder_output_stalled' ||
+    reason === 'rtp_output_stalled'
+}
+
+function screenDiagnosticMetrics(
+  telemetry: VoiceNativeCaptureTelemetry | undefined,
+) {
+  if (!telemetry) return undefined
+  const metrics: Record<string, number> = {}
+  setMetric(metrics, 'videoFrames', telemetry.videoFrames)
+  setMetric(metrics, 'videoIntervalFrames', telemetry.videoIntervalFrames)
+  setMetric(metrics, 'videoLateFrames', telemetry.videoLateFrames)
+  setMetric(metrics, 'videoNoFrameCount', telemetry.videoNoFrameCount)
+  setMetric(
+    metrics,
+    'videoRepeatedFrameCount',
+    telemetry.videoRepeatedFrameCount,
+  )
+  setMetric(
+    metrics,
+    'videoEncoderBackpressureTicks',
+    telemetry.videoEncoderBackpressureTicks,
+  )
+  setMetric(
+    metrics,
+    'videoGpuFramesDroppedStale',
+    telemetry.videoGpuFramesDroppedStale,
+  )
+  setMetric(
+    metrics,
+    'videoPreviewFramesDroppedStale',
+    telemetry.videoPreviewFramesDroppedStale,
+  )
+  setMetric(metrics, 'videoGpuSlotTimeouts', telemetry.videoGpuSlotTimeouts)
+  setMetric(
+    metrics,
+    'videoPreviewSlotTimeouts',
+    telemetry.videoPreviewSlotTimeouts,
+  )
+  setMetric(metrics, 'rtpPacketsSent', telemetry.rtpPacketsSent)
+  setMetric(metrics, 'rtpBytesSent', telemetry.rtpBytesSent)
+  setMetric(metrics, 'rtpFramesSent', telemetry.rtpFramesSent)
+  setMetric(metrics, 'rtpFramesEncoded', telemetry.rtpFramesEncoded)
+  setMetric(metrics, 'audioFrames', telemetry.audioFrames)
+  setMetric(metrics, 'audioPackets', telemetry.audioPackets)
+  return Object.keys(metrics).length > 0 ? metrics : undefined
+}
+
+function setMetric(
+  metrics: Record<string, number>,
+  name: string,
+  value: number | undefined,
+) {
+  if (value !== undefined && Number.isFinite(value)) metrics[name] = value
 }
 
 export type { NativeVoiceRuntime }

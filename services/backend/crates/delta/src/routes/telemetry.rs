@@ -14,7 +14,7 @@ static NATIVE_EVENTS: Lazy<IntCounterVec> = Lazy::new(|| {
     IntCounterVec::new(
         Opts::new(
             "desktop_native_events_total",
-            "Allowlisted anonymous Windows native runtime lifecycle events",
+            "Allowlisted anonymous Windows runtime and media SLO events",
         ),
         &["event", "runtime", "session_kind", "release_channel"],
     )
@@ -25,7 +25,7 @@ static NATIVE_OPERATION_DURATION: Lazy<HistogramVec> = Lazy::new(|| {
     HistogramVec::new(
         HistogramOpts::new(
             "desktop_native_operation_duration_seconds",
-            "Allowlisted anonymous Windows native runtime operation durations",
+            "Allowlisted anonymous Windows runtime and media recovery durations",
         )
         .buckets(vec![
             0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 20.0, 60.0,
@@ -79,6 +79,21 @@ enum NativeCounterName {
     SessionStartSucceeded,
     SessionStartFailed,
     SessionStartCancelled,
+    ScreenPresentationStalled,
+    ScreenPresentationRecoveryRequested,
+    ScreenPresentationRecovered,
+    ScreenPresentationRecoveryFailed,
+    ScreenRendererReloaded,
+    ScreenSharedTextureOperationFailed,
+    ScreenPublisherStalled,
+    ScreenPublisherRepublished,
+    ScreenPublicationStalled,
+    ScreenSubscriptionStalled,
+    ScreenFramesDroppedCritical,
+    RtcAudioConcealmentCritical,
+    RtcPacketLossCritical,
+    RtcJitterCritical,
+    RtcLatencyCritical,
 }
 
 impl NativeCounterName {
@@ -91,13 +106,41 @@ impl NativeCounterName {
             Self::SessionStartSucceeded => "session_start_succeeded",
             Self::SessionStartFailed => "session_start_failed",
             Self::SessionStartCancelled => "session_start_cancelled",
+            Self::ScreenPresentationStalled => "screen_presentation_stalled",
+            Self::ScreenPresentationRecoveryRequested => "screen_presentation_recovery_requested",
+            Self::ScreenPresentationRecovered => "screen_presentation_recovered",
+            Self::ScreenPresentationRecoveryFailed => "screen_presentation_recovery_failed",
+            Self::ScreenRendererReloaded => "screen_renderer_reloaded",
+            Self::ScreenSharedTextureOperationFailed => "screen_shared_texture_operation_failed",
+            Self::ScreenPublisherStalled => "screen_publisher_stalled",
+            Self::ScreenPublisherRepublished => "screen_publisher_republished",
+            Self::ScreenPublicationStalled => "screen_publication_stalled",
+            Self::ScreenSubscriptionStalled => "screen_subscription_stalled",
+            Self::ScreenFramesDroppedCritical => "screen_frames_dropped_critical",
+            Self::RtcAudioConcealmentCritical => "rtc_audio_concealment_critical",
+            Self::RtcPacketLossCritical => "rtc_packet_loss_critical",
+            Self::RtcJitterCritical => "rtc_jitter_critical",
+            Self::RtcLatencyCritical => "rtc_latency_critical",
         }
     }
 
     const fn is_session(self) -> bool {
         matches!(
             self,
-            Self::SessionStartSucceeded | Self::SessionStartFailed | Self::SessionStartCancelled
+            Self::SessionStartSucceeded
+                | Self::SessionStartFailed
+                | Self::SessionStartCancelled
+                | Self::ScreenPresentationStalled
+                | Self::ScreenPresentationRecoveryRequested
+                | Self::ScreenPresentationRecovered
+                | Self::ScreenPresentationRecoveryFailed
+                | Self::ScreenRendererReloaded
+                | Self::ScreenSharedTextureOperationFailed
+                | Self::ScreenPublisherStalled
+                | Self::ScreenPublisherRepublished
+                | Self::ScreenPublicationStalled
+                | Self::ScreenSubscriptionStalled
+                | Self::ScreenFramesDroppedCritical
         )
     }
 }
@@ -107,6 +150,9 @@ impl NativeCounterName {
 enum NativeHistogramName {
     RuntimeHandshakeMs,
     SessionStartMs,
+    ScreenPresentationRecoveryMs,
+    ScreenRetainedTextureAgeMs,
+    ScreenPublisherRepublishMs,
 }
 
 impl NativeHistogramName {
@@ -114,11 +160,20 @@ impl NativeHistogramName {
         match self {
             Self::RuntimeHandshakeMs => "runtime_handshake",
             Self::SessionStartMs => "session_start",
+            Self::ScreenPresentationRecoveryMs => "screen_presentation_recovery",
+            Self::ScreenRetainedTextureAgeMs => "screen_retained_texture_age",
+            Self::ScreenPublisherRepublishMs => "screen_publisher_republish",
         }
     }
 
     const fn is_session(self) -> bool {
-        matches!(self, Self::SessionStartMs)
+        matches!(
+            self,
+            Self::SessionStartMs
+                | Self::ScreenPresentationRecoveryMs
+                | Self::ScreenRetainedTextureAgeMs
+                | Self::ScreenPublisherRepublishMs
+        )
     }
 }
 
@@ -329,6 +384,67 @@ mod tests {
             value: 3,
         });
         assert!(validate_batch(&value).is_ok());
+    }
+
+    #[test]
+    fn accepts_screen_degradation_counters_and_durations() {
+        let mut metrics = Vec::new();
+        for name in [
+            NativeCounterName::ScreenPresentationStalled,
+            NativeCounterName::ScreenPresentationRecoveryRequested,
+            NativeCounterName::ScreenPresentationRecovered,
+            NativeCounterName::ScreenPresentationRecoveryFailed,
+            NativeCounterName::ScreenRendererReloaded,
+            NativeCounterName::ScreenSharedTextureOperationFailed,
+            NativeCounterName::ScreenPublisherStalled,
+            NativeCounterName::ScreenPublisherRepublished,
+            NativeCounterName::ScreenPublicationStalled,
+            NativeCounterName::ScreenSubscriptionStalled,
+            NativeCounterName::ScreenFramesDroppedCritical,
+        ] {
+            metrics.push(AnonymousNativeMetric::Counter {
+                name,
+                runtime: NativeRuntime::Media,
+                session_kind: NativeSessionKind::Screen,
+                value: 1,
+            });
+        }
+        for name in [
+            NativeCounterName::RtcAudioConcealmentCritical,
+            NativeCounterName::RtcPacketLossCritical,
+            NativeCounterName::RtcJitterCritical,
+            NativeCounterName::RtcLatencyCritical,
+        ] {
+            metrics.push(AnonymousNativeMetric::Counter {
+                name,
+                runtime: NativeRuntime::Media,
+                session_kind: NativeSessionKind::None,
+                value: 1,
+            });
+        }
+        for name in [
+            NativeHistogramName::ScreenPresentationRecoveryMs,
+            NativeHistogramName::ScreenRetainedTextureAgeMs,
+            NativeHistogramName::ScreenPublisherRepublishMs,
+        ] {
+            metrics.push(AnonymousNativeMetric::Histogram {
+                name,
+                runtime: NativeRuntime::Media,
+                session_kind: NativeSessionKind::Screen,
+                value_ms: 5_000.0,
+                count: 1,
+            });
+        }
+        let batch = AnonymousNativeMetricBatch {
+            metrics,
+            ..batch(AnonymousNativeMetric::Counter {
+                name: NativeCounterName::RuntimeLost,
+                runtime: NativeRuntime::Media,
+                session_kind: NativeSessionKind::None,
+                value: 1,
+            })
+        };
+        assert!(validate_batch(&batch).is_ok());
     }
 
     #[test]
