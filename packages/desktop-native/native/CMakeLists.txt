@@ -494,6 +494,23 @@ add_test(
   COMMAND syrnike-native-remote-video-bridge-shutdown-tests
 )
 
+add_executable(syrnike-native-remote-video-static-frame-tests
+  tests/remote_video_static_frame_test.cpp
+)
+syrnike_native_target(syrnike-native-remote-video-static-frame-tests)
+target_link_libraries(
+  syrnike-native-remote-video-static-frame-tests PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(syrnike-native-remote-video-static-frame-tests)
+add_test(
+  NAME syrnike-native-remote-video-static-frame-tests
+  COMMAND syrnike-native-remote-video-static-frame-tests
+)
+set_tests_properties(
+  syrnike-native-remote-video-static-frame-tests
+  PROPERTIES TIMEOUT 15
+)
+
 add_executable(syrnike-native-hooks-runtime-lifecycle-tests
   tests/hooks_runtime_lifecycle_test.cpp
 )
