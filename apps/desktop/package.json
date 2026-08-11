@@ -6,7 +6,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "build:native-runtime": "pnpm --filter @syrnike13/desktop-native build",
-    "build:shell": "pnpm --filter @syrnike13/platform build && pnpm run build:native-runtime && tsup",
+    "build:shell": "pnpm --filter @syrnike13/platform build && pnpm run build:native-runtime && tsup && pnpm run verify:preload-bundle",
     "postinstall": "node scripts/ensure-electron-path.mjs",
     "predev": "node scripts/ensure-electron-path.mjs",
     "prestart": "node scripts/ensure-electron-path.mjs",
@@ -14,6 +14,7 @@
     "dev:nightly": "node scripts/run-dev-channel.mjs nightly",
     "dev:prod": "node scripts/run-dev-channel.mjs prod",
     "dev:local": "node scripts/run-dev-channel.mjs local",
+    "verify:preload-bundle": "node scripts/verify-preload-bundle.mjs",
     "verify:web-dist": "node scripts/verify-web-dist-production.mjs",
     "build": "pnpm --filter @syrnike13/web build && pnpm run verify:web-dist && pnpm run build:shell",
     "start": "pnpm exec electron .",

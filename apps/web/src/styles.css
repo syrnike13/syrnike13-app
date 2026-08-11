@@ -330,14 +330,17 @@ html {
 }
 
 .auth-shell {
+  display: flex;
   min-height: 100svh;
+  flex-direction: column;
   color: var(--foreground);
   background: var(--theme-surface-content, var(--background));
 }
 
 .auth-stage {
   display: grid;
-  min-height: 100svh;
+  min-height: 0;
+  flex: 1;
   grid-template-rows: auto 1fr auto;
   padding:
     max(1rem, env(safe-area-inset-top))

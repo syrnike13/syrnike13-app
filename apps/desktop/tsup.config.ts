@@ -76,7 +76,9 @@ export default defineConfig([
     sourcemap: true,
     splitting: false,
     external: ['electron', 'electron-updater'],
-    noExternal: ['@syrnike13/platform'],
+    // Sandboxed Electron preloads cannot resolve arbitrary package imports.
+    // Keep the preload self-contained apart from Electron's built-in module.
+    noExternal: ['@syrnike13/platform', 'effect'],
   },
   {
     entry: {
