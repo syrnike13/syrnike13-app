@@ -287,6 +287,16 @@ class MicrophoneActor::Implementation {
     );
   }
 
+  std::optional<RuntimeEvent> handlePublicationUnpublished(
+      const MediaCommand& command) {
+    auto event = publication_.handlePublicationUnpublished(command);
+    if (!event) return std::nullopt;
+    publication_demanded_.store(false, std::memory_order_release);
+    publication_muted_.store(false, std::memory_order_release);
+    if (!captureDemanded()) scheduleIdleCaptureStop();
+    return event;
+  }
+
   void setPreviewConsumer(
     const std::string& session_id,
     std::uint64_t generation,
@@ -1649,6 +1659,10 @@ RuntimeEvent MicrophoneActor::configure(const MediaCommand& command) {
   return implementation_->configure(command);
 }
 void MicrophoneActor::setMuted(const MediaCommand& command) { implementation_->setMuted(command); }
+std::optional<RuntimeEvent> MicrophoneActor::handlePublicationUnpublished(
+    const MediaCommand& command) {
+  return implementation_->handlePublicationUnpublished(command);
+}
 void MicrophoneActor::setPreviewConsumer(
   const std::string& session_id,
   std::uint64_t generation,

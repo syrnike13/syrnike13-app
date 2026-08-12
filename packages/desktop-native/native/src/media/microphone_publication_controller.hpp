@@ -67,6 +67,8 @@ class MicrophonePublicationController final {
   void start(const MediaCommand &command,
              const MicrophonePipelineSnapshot &pipeline);
   void setMuted(const MediaCommand &command);
+  std::optional<RuntimeEvent> handlePublicationUnpublished(
+      const MediaCommand& command);
   void disconnect(const MediaCommand &command, bool emit_stopped = true);
   void handleTerminal(const MediaCommand &command);
   void handleWorkerCommand(const MediaCommand &command);

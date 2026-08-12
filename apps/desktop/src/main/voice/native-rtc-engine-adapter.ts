@@ -772,6 +772,10 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       yield* this.assertCurrentEffect(active)
       const desiredBeforeStart = this.desired
       if (!desiredBeforeStart) return
+      if (!active.microphoneReady && desiredBeforeStart.serverMuted) {
+        this.emitMedia(active, 'microphone', { state: 'muted' })
+        return
+      }
       yield* this.ensureMicrophoneEffect(active, desiredBeforeStart)
       yield* this.assertCurrentEffect(active)
       const desired = this.desired
@@ -1367,6 +1371,15 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
           active.appliedMicrophoneMuted === false,
         ),
       )
+      return
+    }
+    if (event.type === 'localMicrophoneUnpublished') {
+      if (
+        !active.microphoneReady ||
+        active.microphoneGeneration !== event.generation
+      ) return
+      this.retireMediaKind(active, 'microphone')
+      if (!this.desired?.serverMuted) this.requestMediaReconcile()
       return
     }
     if (event.type === 'sessionLifecycle') {

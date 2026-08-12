@@ -342,6 +342,25 @@ class MicrophonePublicationController::Implementation {
     }
   }
 
+  std::optional<RuntimeEvent> handlePublicationUnpublished(
+      const MediaCommand& command) {
+    if (
+      !committed_ ||
+      committed_->publication_sid != command.track_id
+    ) {
+      return std::nullopt;
+    }
+    RuntimeEvent event;
+    event.type = "localMicrophoneUnpublished";
+    event.session_id = committed_->session_id;
+    event.generation = committed_->generation;
+    event.track_id = command.track_id;
+    remove_sink_(committed_->source);
+    committed_.reset();
+    muted_ = false;
+    return event;
+  }
+
   void disconnect(const MediaCommand &command, bool emit_stopped) {
     reapFinishedRetiring();
     reapFinishedCandidate();
@@ -1074,6 +1093,11 @@ void MicrophonePublicationController::start(
 }
 void MicrophonePublicationController::setMuted(const MediaCommand &command) {
   implementation_->setMuted(command);
+}
+std::optional<RuntimeEvent>
+MicrophonePublicationController::handlePublicationUnpublished(
+    const MediaCommand& command) {
+  return implementation_->handlePublicationUnpublished(command);
 }
 void MicrophonePublicationController::disconnect(const MediaCommand &command,
                                                  bool emit_stopped) {

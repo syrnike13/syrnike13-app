@@ -829,6 +829,75 @@ describe('NativeRtcEngineAdapter', () => {
     adapter.dispose()
   })
 
+  it('republishes the microphone after server mute removes its track', async () => {
+    const runtime = new FakeRuntime()
+    const adapter = new NativeRtcEngineAdapter(runtime)
+    const desired = {
+      ...createInitialVoiceMediaDesiredState(),
+      userMuted: false,
+      effectiveMuted: false,
+    }
+    await adapter.connect(lease, desired, new AbortController().signal)
+    await waitUntil(() =>
+      runtime.commands.some((command) => command.type === 'connectMicrophone'),
+    )
+    const firstMicrophone = runtime.commands.find(
+      (command) => command.type === 'connectMicrophone',
+    )
+    if (!firstMicrophone || firstMicrophone.type !== 'connectMicrophone') {
+      throw new Error('Initial microphone command was not recorded')
+    }
+
+    adapter.updateDesiredMedia({
+      ...desired,
+      serverMuted: true,
+      effectiveMuted: true,
+    })
+    await waitUntil(() =>
+      runtime.commands.some(
+        (command) =>
+          command.type === 'setMicrophoneMuted' && command.muted === true,
+      ),
+    )
+
+    runtime.emitEvent({
+      type: 'localMicrophoneUnpublished',
+      sessionId: lease.connectionEpoch,
+      generation: firstMicrophone.generation,
+      trackId: 'TR_MIC_1',
+    })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(
+      runtime.commands.filter(
+        (command) => command.type === 'connectMicrophone',
+      ),
+    ).toHaveLength(1)
+    adapter.updateDesiredMedia({
+      ...desired,
+      serverMuted: false,
+      effectiveMuted: false,
+    })
+
+    await waitUntil(
+      () =>
+        runtime.commands.filter(
+          (command) => command.type === 'connectMicrophone',
+        ).length === 2,
+    )
+    const republished = runtime.commands.filter(
+      (command) => command.type === 'connectMicrophone',
+    )[1]
+    expect(republished).toMatchObject({
+      sessionId: lease.connectionEpoch,
+      options: { muted: false },
+    })
+    expect(republished?.generation).toBeGreaterThan(firstMicrophone.generation)
+    expect(
+      runtime.commands.filter((command) => command.type === 'connectVoice'),
+    ).toHaveLength(1)
+    adapter.dispose()
+  })
+
   it('republishes screen capture after a typed pipeline stall', async () => {
     const runtime = new FakeRuntime()
     const diagnostics = vi.fn()

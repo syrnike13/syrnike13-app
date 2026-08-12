@@ -59,7 +59,7 @@ describe('ElectronUtilityAdapter', () => {
     })
     expect(fork.mock.calls[0]?.[2]?.env).toMatchObject({
       SYRNIKE_NATIVE_APP_VERSION: '0.5.1',
-      SYRNIKE_NATIVE_CONTRACT_VERSION: '8',
+      SYRNIKE_NATIVE_CONTRACT_VERSION: '9',
       SYRNIKE_NATIVE_LIVEKIT_VERSION: '1.3.0',
       SYRNIKE_NATIVE_COMMIT_SHA: 'a'.repeat(40),
       SYRNIKE_NATIVE_RELEASE_CHANNEL: DESKTOP_RELEASE_CHANNEL,
@@ -128,7 +128,7 @@ describe('ElectronUtilityAdapter', () => {
       requestId: 'frame-release',
       ok: true,
     })
-    child.emit('message', { type: 'ready', contractVersion: 8, runtime: 'media' })
+    child.emit('message', { type: 'ready', contractVersion: 9, runtime: 'media' })
     adapter.kill()
 
     expect(fork.mock.calls[0]?.[2]?.env).toMatchObject({

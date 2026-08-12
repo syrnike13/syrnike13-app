@@ -296,6 +296,25 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
   private attachRoomEvents(active: ActiveBrowserVoice) {
     const { room } = active
     room.on(
+      RoomEvent.LocalTrackUnpublished,
+      (publication: LocalTrackPublication) => {
+        if (
+          this.active !== active ||
+          publication.source !== Track.Source.Microphone ||
+          active.microphonePublication?.trackSid !== publication.trackSid
+        ) {
+          return
+        }
+        active.microphonePublication = null
+        active.appliedMicrophoneKey = null
+        active.appliedMicrophoneDeviceId = null
+        active.appliedMicrophoneProcessingKey = null
+        active.localSpeakingDetector.clear()
+        active.localSpeaking = false
+        if (!this.desired?.serverMuted) this.requestMediaReconcile()
+      },
+    )
+    room.on(
       RoomEvent.TrackPublished,
       (publication: RemoteTrackPublication) => {
         if (this.active !== active) return
@@ -488,6 +507,11 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       const trackStateChanged = active.appliedMicrophoneKey !== microphoneKey
       let publication = active.microphonePublication
       if (!publication) {
+        if (desired.serverMuted) {
+          this.emitMedia(active, 'microphone', { state: 'muted' })
+          this.syncLocalSpeaking(active, desired)
+          return
+        }
         this.emitMedia(active, 'microphone', { state: 'starting' })
         const created = yield* promiseEffect(() =>
           active.room.localParticipant.setMicrophoneEnabled(

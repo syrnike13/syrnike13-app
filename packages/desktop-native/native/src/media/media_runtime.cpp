@@ -309,6 +309,7 @@ class MediaRuntime::Implementation
       type == "__remoteVideoPublicationAvailable" ||
       type == "__remoteVideoPublicationUnavailable" ||
       type == "__reconcileRemotePublication" ||
+      type == "__localMicrophoneUnpublished" ||
       type == "releaseRemoteVideoFrame" ||
       type == "retryRemoteVideo" ||
       type == "setRemoteVideoDemand" ||
@@ -328,6 +329,7 @@ class MediaRuntime::Implementation
       type == "__microphoneEndpointChanged" ||
       type == "__microphoneProcessingStatus" ||
       type == "__microphoneIdleExpired" ||
+      type == "__microphonePublicationUnpublished" ||
       type == "warmMicrophone" || type == "connectMicrophone" ||
       type == "configureMicrophone" || type == "setMicrophoneMuted" ||
       type == "disconnectMicrophone" || type == "startPreview" ||
@@ -548,6 +550,12 @@ class MediaRuntime::Implementation
         );
         preview_session_id_.clear();
         preview_generation_ = 0;
+      }
+      return;
+    }
+    if (command.type == "__microphonePublicationUnpublished") {
+      if (auto event = microphone_.handlePublicationUnpublished(command)) {
+        emitter_.emit(std::move(*event));
       }
       return;
     }
@@ -861,6 +869,16 @@ class MediaRuntime::Implementation
       event.voice_rtc_outbound = std::move(command.voice_rtc_outbound);
       event.voice_rtc_inbound = std::move(command.voice_rtc_inbound);
       emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "__localMicrophoneUnpublished") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
+      command.type = "__microphonePublicationUnpublished";
+      if (!postInternal(microphone_commands_, command)) {
+        throw std::runtime_error(
+          "failed to route local microphone publication loss"
+        );
+      }
       return;
     }
     if (command.type == "connectVoice") {

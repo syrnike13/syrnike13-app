@@ -455,6 +455,29 @@ class PostedRoomDelegate final
     );
   }
 
+  void onLocalTrackUnpublished(
+    livekit::Room&,
+    const livekit::LocalTrackUnpublishedEvent& event
+  ) override {
+    CallbackGuard callback(*this);
+    if (
+      !callback ||
+      !event.publication ||
+      event.publication->source() != livekit::TrackSource::SOURCE_MICROPHONE
+    ) {
+      return;
+    }
+    MediaCommand command;
+    command.type = "__localMicrophoneUnpublished";
+    {
+      std::lock_guard lock(mutex_);
+      command.session_id = session_id_;
+      command.generation = generation_;
+    }
+    command.track_id = event.publication->sid();
+    post_(std::move(command));
+  }
+
   void onParticipantConnected(
     livekit::Room&,
     const livekit::ParticipantConnectedEvent& event

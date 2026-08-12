@@ -339,6 +339,82 @@ int main() try {
   }
 
   {
+    auto sink = std::make_shared<CollectingSink>();
+    SequencedEmitter emitter(sink);
+    DeferredCommands deferred("server mute publication recovery");
+    GenerationFence desired;
+    auto livekit =
+        std::make_shared<DeterministicFakeLiveKitVoiceSession>();
+    std::size_t attached_sources = 0;
+    MicrophonePublicationController controller(
+        emitter,
+        [&](MediaCommand command) { return deferred.post(std::move(command)); },
+        [&](const std::string &session_id, std::uint64_t generation) {
+          return desired.isCurrent(session_id, generation);
+        },
+        [&](const auto &, const auto &, auto) { attached_sources += 1; },
+        [&](const auto &) { attached_sources -= 1; },
+        [] { return true; }, livekit);
+
+    require(desired.advance("mic-recovery", 1),
+            "initial recovery generation was rejected");
+    livekit->setVoiceSessionForTest("mic-recovery");
+    controller.start(
+        connectCommand("recovery-initial", "mic-recovery", 1),
+        MicrophonePipelineSnapshot{});
+    controller.handleWorkerCommand(
+        deferred.waitTake("__microphoneAttemptReady"));
+    require(sink->waitReply("recovery-initial").ok,
+            "initial recovery microphone did not publish");
+    require(attached_sources == 1,
+            "initial recovery microphone source was not attached");
+
+    MediaCommand stale_unpublished;
+    stale_unpublished.track_id = "stale-publication";
+    require(
+        !controller.handlePublicationUnpublished(stale_unpublished),
+        "stale publication loss invalidated the active microphone");
+    require(
+        controller.activeSessionId() == "mic-recovery",
+        "stale publication loss cleared the active microphone");
+    require(attached_sources == 1,
+            "stale publication loss detached the active microphone source");
+
+    MediaCommand active_unpublished;
+    active_unpublished.track_id = "fake-publication";
+    const auto unpublished =
+        controller.handlePublicationUnpublished(active_unpublished);
+    require(
+        unpublished &&
+            unpublished->type == "localMicrophoneUnpublished" &&
+            unpublished->session_id == "mic-recovery" &&
+            unpublished->generation == 1 &&
+            unpublished->track_id == "fake-publication",
+        "active publication loss did not preserve microphone fencing");
+    require(
+        controller.activeSessionId().empty(),
+        "server-removed microphone publication retained native ownership");
+    require(attached_sources == 0,
+            "server-removed microphone publication retained its PCM sink");
+
+    require(desired.advance("mic-recovery", 2),
+            "restored microphone generation was rejected");
+    controller.start(
+        connectCommand("recovery-restored", "mic-recovery", 2),
+        MicrophonePipelineSnapshot{});
+    controller.handleWorkerCommand(
+        deferred.waitTake("__microphoneAttemptReady"));
+    require(sink->waitReply("recovery-restored").ok,
+            "microphone did not republish after server unmute");
+    require(
+        controller.activeSessionId() == "mic-recovery",
+        "restored microphone publication did not become active");
+    require(attached_sources == 1,
+            "restored microphone publication did not attach its PCM sink");
+    controller.shutdown();
+  }
+
+  {
       {
         auto terminal_sink = std::make_shared<CollectingSink>();
         SequencedEmitter terminal_emitter(terminal_sink);

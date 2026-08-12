@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <utility>
 
@@ -41,6 +42,9 @@ class MicrophoneActor final {
   void connect(const MediaCommand& command);
   RuntimeEvent configure(const MediaCommand& command);
   void setMuted(const MediaCommand& command);
+  std::optional<RuntimeEvent> handlePublicationUnpublished(
+    const MediaCommand& command
+  );
   void setPreviewConsumer(
     const std::string& session_id,
     std::uint64_t generation,

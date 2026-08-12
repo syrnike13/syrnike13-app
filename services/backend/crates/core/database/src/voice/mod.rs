@@ -391,21 +391,59 @@ pub async fn get_user_voice_channel_in_server(
         .map(|session| session.channel.id))
 }
 
+fn get_allowed_track_sources(
+    limits: &FeaturesLimits,
+    permissions: PermissionValue,
+) -> Vec<TrackSource> {
+    let mut allowed_sources = Vec::new();
+
+    if permissions.has(ChannelPermission::Speak as u64) {
+        allowed_sources.push(TrackSource::Microphone)
+    };
+
+    if permissions.has(ChannelPermission::Video as u64) && limits.video {
+        allowed_sources.extend([
+            TrackSource::Camera,
+            TrackSource::ScreenShare,
+            TrackSource::ScreenShareAudio,
+        ]);
+    };
+
+    allowed_sources
+}
+
 pub fn get_allowed_sources(
     limits: &FeaturesLimits,
     permissions: PermissionValue,
 ) -> Vec<&'static str> {
-    let mut allowed_sources = Vec::new();
+    get_allowed_track_sources(limits, permissions)
+        .into_iter()
+        .map(|source| match source {
+            TrackSource::Microphone => "microphone",
+            TrackSource::Camera => "camera",
+            TrackSource::ScreenShare => "screen_share",
+            TrackSource::ScreenShareAudio => "screen_share_audio",
+            TrackSource::Unknown => "unknown",
+        })
+        .collect()
+}
 
-    if permissions.has(ChannelPermission::Speak as u64) {
-        allowed_sources.push("microphone")
-    };
+fn livekit_participant_permission(
+    limits: &FeaturesLimits,
+    permissions: PermissionValue,
+) -> ParticipantPermission {
+    let allowed_sources = get_allowed_track_sources(limits, permissions)
+        .into_iter()
+        .map(|source| source as i32)
+        .collect::<Vec<_>>();
 
-    if permissions.has(ChannelPermission::Video as u64) && limits.video {
-        allowed_sources.extend(["camera", "screen_share", "screen_share_audio"]);
-    };
-
-    allowed_sources
+    ParticipantPermission {
+        can_subscribe: permissions.has_channel_permission(ChannelPermission::Listen),
+        can_publish: !allowed_sources.is_empty(),
+        can_publish_data: false,
+        can_publish_sources: allowed_sources,
+        ..Default::default()
+    }
 }
 
 pub async fn delete_voice_state(
@@ -1146,13 +1184,20 @@ pub async fn sync_user_voice_permissions(
 
         let before = update_event.clone();
 
-        let can_video =
-            limits.video && permissions.has_channel_permission(ChannelPermission::Video);
         let can_speak = permissions.has_channel_permission(ChannelPermission::Speak);
         let can_listen = permissions.has_channel_permission(ChannelPermission::Listen);
+        let participant_permission = livekit_participant_permission(&limits, permissions);
 
-        update_event.camera = voice_state.camera.then_some(can_video);
-        update_event.screensharing = voice_state.screensharing.then_some(can_video);
+        update_event.camera = voice_state.camera.then_some(
+            participant_permission
+                .can_publish_sources
+                .contains(&(TrackSource::Camera as i32)),
+        );
+        update_event.screensharing = voice_state.screensharing.then_some(
+            participant_permission
+                .can_publish_sources
+                .contains(&(TrackSource::ScreenShare as i32)),
+        );
         update_event.server_muted = (voice_state.server_muted != !can_speak).then_some(!can_speak);
         update_event.server_deafened =
             (voice_state.server_deafened != !can_listen).then_some(!can_listen);
@@ -1170,12 +1215,7 @@ pub async fn sync_user_voice_permissions(
                     &active_session.connection_epoch,
                 ),
                 channel_id,
-                ParticipantPermission {
-                    can_subscribe: can_listen,
-                    can_publish: can_speak,
-                    can_publish_data: can_speak,
-                    ..Default::default()
-                },
+                participant_permission,
             )
             .await?;
 
@@ -1622,11 +1662,14 @@ impl FromRedisValue for UserVoiceChannel {
 
 #[cfg(test)]
 mod tests {
-    use super::partial_voice_state_for_track;
+    use super::{livekit_participant_permission, partial_voice_state_for_track};
     use crate::{SystemMessage, VoiceCallEndReason};
     use iso8601_timestamp::{Duration, Timestamp};
+    use livekit_protocol::TrackSource;
     use std::collections::HashMap;
+    use syrnike_config::FeaturesLimits;
     use syrnike_models::v0::PartialUserVoiceState;
+    use syrnike_permissions::{ChannelPermission, PermissionValue};
 
     #[test]
     fn consistent_voice_node_requires_one_shared_node() {
@@ -1679,6 +1722,40 @@ mod tests {
         let partial = partial_voice_state_for_track(true, 2);
 
         assert_eq!(partial, PartialUserVoiceState::default());
+    }
+
+    #[test]
+    fn server_mute_revokes_only_microphone_publication() {
+        let limits = FeaturesLimits {
+            outgoing_friend_requests: 0,
+            bots: 0,
+            message_length: 0,
+            message_attachments: 0,
+            servers: 0,
+            voice_quality: 0,
+            video: true,
+            video_resolution: [1280, 720],
+            video_aspect_ratio: [0.3, 2.5],
+            screen_share_resolution: [1920, 1080],
+            screen_share_bitrate: 10_000_000,
+            file_upload_size_limit: HashMap::new(),
+        };
+        let permissions = PermissionValue::from(
+            ChannelPermission::Listen as u64 | ChannelPermission::Video as u64,
+        );
+
+        let permission = livekit_participant_permission(&limits, permissions);
+
+        assert!(permission.can_publish);
+        assert!(!permission.can_publish_data);
+        assert_eq!(
+            permission.can_publish_sources,
+            vec![
+                TrackSource::Camera as i32,
+                TrackSource::ScreenShare as i32,
+                TrackSource::ScreenShareAudio as i32,
+            ]
+        );
     }
 
     #[test]

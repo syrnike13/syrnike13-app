@@ -8,7 +8,7 @@ import {
 import type { NativeMediaSession } from '@syrnike13/platform'
 import { Option, Schema } from 'effect'
 
-export const NATIVE_RUNTIME_CONTRACT_VERSION = 8
+export const NATIVE_RUNTIME_CONTRACT_VERSION = 9
 export const NATIVE_RUNTIME_MAX_PENDING_REQUESTS = 256
 
 const nonEmptyString = (maximumLength = 4_096) =>
@@ -717,6 +717,11 @@ export const NativeRuntimeEventSchema = Schema.Union([
       thresholdDb: Schema.Finite,
       open: Schema.Boolean,
     }),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('localMicrophoneUnpublished'),
+    ...sessionEventFields,
+    trackId: nonEmptyString(512),
   }),
   Schema.Struct({
     type: Schema.Literal('microphonePreviewStarted'),
