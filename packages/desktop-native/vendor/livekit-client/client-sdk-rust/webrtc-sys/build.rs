@@ -96,6 +96,7 @@ fn main() {
         "src/audio_mixer.cpp",
         "src/packet_trailer.cpp",
         "src/packet_trailer_av1.cpp",
+        "src/packet_trailer_h264.cpp",
     ]);
 
     if is_desktop {

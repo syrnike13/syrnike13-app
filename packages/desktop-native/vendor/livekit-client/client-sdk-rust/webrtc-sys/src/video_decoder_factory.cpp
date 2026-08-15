@@ -16,16 +16,26 @@
 
 #include "livekit/video_decoder_factory.h"
 
+#include <algorithm>
+#include <atomic>
+#include <cstdio>
+
 #include <modules/video_coding/codecs/av1/av1_svc_config.h>
 #include "api/environment/environment.h"
 #include "api/video_codecs/av1_profile.h"
 #include "api/video_codecs/sdp_video_format.h"
 #include "livekit/objc_video_factory.h"
+#include "livekit/packet_trailer_h264.h"
 #include "media/base/media_constants.h"
 #include "modules/video_coding/codecs/h264/include/h264.h"
+#include "modules/video_coding/include/video_error_codes.h"
 #include "modules/video_coding/codecs/vp8/include/vp8.h"
 #include "modules/video_coding/codecs/vp9/include/vp9.h"
 #include "rtc_base/logging.h"
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #if defined(RTC_DAV1D_IN_INTERNAL_DECODER_FACTORY)
 #include "modules/video_coding/codecs/av1/dav1d_decoder.h"  // nogncheck
@@ -40,6 +50,176 @@
 #endif
 
 namespace livekit_ffi {
+
+namespace {
+
+std::atomic_uint64_t g_h264_pre_keyframe_decode_inputs{0};
+std::atomic_uint64_t g_h264_complete_keyframe_decode_inputs{0};
+std::atomic_uint64_t g_h264_decoded_outputs{0};
+
+void TraceH264DecoderStartup(const char* operation,
+                             uint64_t count,
+                             uint32_t rtp_timestamp) {
+#ifdef _WIN32
+  wchar_t log_path[32768]{};
+  const DWORD path_length = GetEnvironmentVariableW(
+      L"SYRNIKE_NATIVE_MEDIA_LOG_PATH", log_path,
+      static_cast<DWORD>(_countof(log_path)));
+  if (path_length == 0 || path_length >= _countof(log_path)) return;
+  HANDLE output = CreateFileW(log_path, FILE_APPEND_DATA,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE |
+                                  FILE_SHARE_DELETE,
+                              nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL,
+                              nullptr);
+  if (output == INVALID_HANDLE_VALUE) return;
+  char line[256]{};
+  const int length = std::snprintf(
+      line, _countof(line),
+      "{\"event\":\"h264_decoder_startup\",\"operation\":\"%s\","
+      "\"count\":%llu,\"rtpTimestamp\":%u}\n",
+      operation, static_cast<unsigned long long>(count), rtp_timestamp);
+  if (length > 0) {
+    DWORD written = 0;
+    WriteFile(output, line,
+              static_cast<DWORD>(std::min<int>(
+                  length, static_cast<int>(_countof(line) - 1))),
+              &written, nullptr);
+  }
+  CloseHandle(output);
+#else
+  (void)operation;
+  (void)count;
+  (void)rtp_timestamp;
+#endif
+}
+
+class H264StartupObservingDecoder final : public webrtc::VideoDecoder {
+ public:
+  explicit H264StartupObservingDecoder(
+      std::unique_ptr<webrtc::VideoDecoder> decoder)
+      : decoder_(std::move(decoder)), callback_(this) {}
+
+  bool Configure(const Settings& settings) override {
+    first_complete_keyframe_seen_ = false;
+    counted_first_complete_keyframe_ = false;
+    return decoder_->Configure(settings);
+  }
+
+  int32_t Decode(const webrtc::EncodedImage& input,
+                 int64_t render_time_ms) override {
+    if (!ShouldForwardToInnerDecoder(input)) {
+      return WEBRTC_VIDEO_CODEC_OK;
+    }
+    ObserveForwardedInput(input);
+    return decoder_->Decode(input, render_time_ms);
+  }
+
+  int32_t Decode(const webrtc::EncodedImage& input,
+                 bool missing_frames,
+                 int64_t render_time_ms) override {
+    if (!ShouldForwardToInnerDecoder(input)) {
+      return WEBRTC_VIDEO_CODEC_OK;
+    }
+    ObserveForwardedInput(input);
+    return decoder_->Decode(input, missing_frames, render_time_ms);
+  }
+
+  int32_t RegisterDecodeCompleteCallback(
+      webrtc::DecodedImageCallback* callback) override {
+    callback_.delegate = callback;
+    return decoder_->RegisterDecodeCompleteCallback(&callback_);
+  }
+
+  int32_t Release() override { return decoder_->Release(); }
+
+  DecoderInfo GetDecoderInfo() const override {
+    return decoder_->GetDecoderInfo();
+  }
+
+ private:
+  class Callback final : public webrtc::DecodedImageCallback {
+   public:
+    explicit Callback(H264StartupObservingDecoder* owner) : owner(owner) {}
+
+    int32_t Decoded(webrtc::VideoFrame& frame) override {
+      owner->ObserveOutput();
+      return delegate ? delegate->Decoded(frame) : 0;
+    }
+
+    int32_t Decoded(webrtc::VideoFrame& frame,
+                    int64_t decode_time_ms) override {
+      owner->ObserveOutput();
+      return delegate ? delegate->Decoded(frame, decode_time_ms) : 0;
+    }
+
+    void Decoded(webrtc::VideoFrame& frame,
+                 std::optional<int32_t> decode_time_ms,
+                 std::optional<uint8_t> qp) override {
+      owner->ObserveOutput();
+      if (delegate) delegate->Decoded(frame, decode_time_ms, qp);
+    }
+
+    H264StartupObservingDecoder* owner;
+    webrtc::DecodedImageCallback* delegate = nullptr;
+  };
+
+  bool ShouldForwardToInnerDecoder(const webrtc::EncodedImage& input) {
+    return h264::ShouldForwardAccessUnitToDecoder(
+        webrtc::ArrayView<const uint8_t>(input.data(), input.size()),
+        input.FrameType() == webrtc::VideoFrameType::kVideoFrameKey,
+        first_complete_keyframe_seen_);
+  }
+
+  void ObserveForwardedInput(const webrtc::EncodedImage& input) {
+    if (counted_first_complete_keyframe_) return;
+    counted_first_complete_keyframe_ = true;
+    const auto count = ++g_h264_complete_keyframe_decode_inputs;
+    TraceH264DecoderStartup("complete_keyframe_input", count,
+                            input.RtpTimestamp());
+  }
+
+  void ObserveOutput() {
+    const auto count = ++g_h264_decoded_outputs;
+    if (count <= 3 || count % 300 == 0) {
+      TraceH264DecoderStartup("decoded_output", count, 0);
+    }
+  }
+
+  std::unique_ptr<webrtc::VideoDecoder> decoder_;
+  Callback callback_;
+  bool first_complete_keyframe_seen_ = false;
+  bool counted_first_complete_keyframe_ = false;
+};
+
+std::unique_ptr<webrtc::VideoDecoder> ObserveH264Startup(
+    const webrtc::SdpVideoFormat& format,
+    std::unique_ptr<webrtc::VideoDecoder> decoder) {
+  if (!decoder ||
+      !absl::EqualsIgnoreCase(format.name, webrtc::kH264CodecName)) {
+    return decoder;
+  }
+  return std::make_unique<H264StartupObservingDecoder>(std::move(decoder));
+}
+
+}  // namespace
+
+void reset_h264_decode_startup_observations() {
+  g_h264_pre_keyframe_decode_inputs.store(0);
+  g_h264_complete_keyframe_decode_inputs.store(0);
+  g_h264_decoded_outputs.store(0);
+}
+
+uint64_t h264_pre_keyframe_decode_inputs() {
+  return g_h264_pre_keyframe_decode_inputs.load();
+}
+
+uint64_t h264_complete_keyframe_decode_inputs() {
+  return g_h264_complete_keyframe_decode_inputs.load();
+}
+
+uint64_t h264_decoded_outputs() {
+  return g_h264_decoded_outputs.load();
+}
 
 VideoDecoderFactory::VideoDecoderFactory() {
 #ifdef __APPLE__
@@ -102,7 +282,7 @@ std::unique_ptr<webrtc::VideoDecoder> VideoDecoderFactory::Create(
   for (const auto& factory : factories_) {
     for (const auto& supported_format : factory->GetSupportedFormats()) {
       if (supported_format.IsSameCodec(format))
-        return factory->Create(env, format);
+        return ObserveH264Startup(format, factory->Create(env, format));
     }
   }
 
@@ -122,7 +302,8 @@ std::unique_ptr<webrtc::VideoDecoder> VideoDecoderFactory::Create(
         else
           adjusted.parameters.erase("packetization-mode");
         if (sf.IsSameCodec(adjusted))
-          return factory->Create(env, adjusted);
+          return ObserveH264Startup(adjusted,
+                                    factory->Create(env, adjusted));
       }
     }
   }
@@ -132,7 +313,7 @@ std::unique_ptr<webrtc::VideoDecoder> VideoDecoderFactory::Create(
   if (absl::EqualsIgnoreCase(format.name, webrtc::kVp9CodecName))
     return webrtc::VP9Decoder::Create();
   if (absl::EqualsIgnoreCase(format.name, webrtc::kH264CodecName))
-    return webrtc::H264Decoder::Create();
+    return ObserveH264Startup(format, webrtc::H264Decoder::Create());
 
 
 #if defined(RTC_DAV1D_IN_INTERNAL_DECODER_FACTORY)

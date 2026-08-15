@@ -56,6 +56,7 @@ pub mod ffi {
 
     unsafe extern "C++" {
         include!("livekit/packet_trailer.h");
+        include!("livekit/packet_trailer_h264.h");
         include!("livekit/rtp_sender.h");
         include!("livekit/rtp_receiver.h");
         include!("livekit/peer_connection_factory.h");
@@ -132,6 +133,16 @@ pub mod ffi {
             peer_factory: SharedPtr<PeerConnectionFactory>,
             receiver: SharedPtr<RtpReceiver>,
         ) -> SharedPtr<PacketTrailerHandler>;
+
+        fn h264_insert_trailer_for_test(access_unit: &[u8], trailer: &[u8]) -> Vec<u8>;
+        fn h264_extract_trailer_for_test(access_unit: &[u8]) -> Vec<u8>;
+        fn h264_strip_trailer_for_test(access_unit: &[u8]) -> Vec<u8>;
+        fn h264_is_decodable_keyframe_for_test(access_unit: &[u8]) -> bool;
+        fn h264_should_forward_access_unit_to_decoder_for_test(
+            access_unit: &[u8],
+            is_keyframe: bool,
+            first_complete_keyframe_seen: bool,
+        ) -> bool;
     }
 
     extern "Rust" {
@@ -177,5 +188,119 @@ impl VideoSubscribeTimingObserverWrapper {
 
     fn on_subscribe_timing(&self, event: ffi::VideoSubscribeTimingEvent) {
         (self.observer)(event);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ffi;
+
+    fn annex_b_nal_types(access_unit: &[u8]) -> Vec<u8> {
+        let mut types = Vec::new();
+        let mut offset = 0;
+        while offset + 3 <= access_unit.len() {
+            let start_code_len = if access_unit[offset..].starts_with(&[0, 0, 1]) {
+                3
+            } else if access_unit[offset..].starts_with(&[0, 0, 0, 1]) {
+                4
+            } else {
+                offset += 1;
+                continue;
+            };
+            let payload = offset + start_code_len;
+            if payload < access_unit.len() {
+                types.push(access_unit[payload] & 0x1f);
+            }
+            offset = payload + 1;
+        }
+        types
+    }
+
+    #[test]
+    fn h264_sei_packet_trailer_round_trips_without_corrupting_access_unit() {
+        let access_unit = vec![
+            0, 0, 0, 1, 0x67, 0x42, 0x00, 0x1f, 0, 0, 0, 1, 0x68, 0xce, 0x06, 0xe2, 0, 0, 0, 1,
+            0x65, 0x88, 0, 0, 1, 0x02,
+        ];
+        let trailer = vec![1, 8, 0, 0, 0, 0, 0, 0, 0x2a, 2, 4, 0, 0, 0, 7, 16, 0xef, 0xbe];
+
+        let encoded = ffi::h264_insert_trailer_for_test(&access_unit, &trailer);
+
+        assert_ne!(encoded, access_unit);
+        assert_eq!(ffi::h264_extract_trailer_for_test(&encoded), trailer);
+        assert_eq!(ffi::h264_strip_trailer_for_test(&encoded), access_unit);
+    }
+
+    #[test]
+    fn h264_metadata_sei_precedes_all_vcl_nalus_in_multi_slice_access_unit() {
+        let access_unit = vec![
+            0, 0, 0, 1, 0x09, 0xf0, // AUD
+            0, 0, 1, 0x67, 0x42, 0x00, 0x1f, // SPS, 3-byte start code
+            0, 0, 0, 1, 0x68, 0xce, 0x06, 0xe2, // PPS
+            0, 0, 1, 0x06, 0x01, 0x01, 0x80, // Existing SEI
+            0, 0, 0, 1, 0x65, 0x88, 0x84, // First IDR slice
+            0, 0, 1, 0x65, 0x99, 0x84, // Second IDR slice
+        ];
+        let trailer = vec![0x10, 0x20, 0x30];
+
+        let encoded = ffi::h264_insert_trailer_for_test(&access_unit, &trailer);
+
+        assert_eq!(annex_b_nal_types(&encoded), [9, 7, 8, 6, 6, 5, 5]);
+        assert_eq!(ffi::h264_extract_trailer_for_test(&encoded), trailer);
+        assert_eq!(ffi::h264_strip_trailer_for_test(&encoded), access_unit);
+    }
+
+    #[test]
+    fn h264_metadata_sei_precedes_vcl_when_parameter_sets_are_absent() {
+        let access_unit = vec![
+            0, 0, 1, 0x41, 0xaa, 0xbb, // First non-IDR slice
+            0, 0, 0, 1, 0x41, 0xcc, 0xdd, // Second non-IDR slice
+        ];
+        let trailer = vec![0x44, 0x55];
+
+        let encoded = ffi::h264_insert_trailer_for_test(&access_unit, &trailer);
+
+        assert_eq!(annex_b_nal_types(&encoded), [6, 1, 1]);
+        assert_eq!(ffi::h264_extract_trailer_for_test(&encoded), trailer);
+        assert_eq!(ffi::h264_strip_trailer_for_test(&encoded), access_unit);
+    }
+
+    #[test]
+    fn late_subscriber_holds_h264_until_complete_sps_pps_idr() {
+        let delta = vec![0, 0, 0, 1, 0x41, 0xaa, 0xbb];
+        let incomplete_key = vec![0, 0, 0, 1, 0x65, 0xb8];
+        let complete_key = vec![
+            0, 0, 0, 1, 0x67, 0x42, 0x00, 0x1f, 0, 0, 0, 1, 0x68, 0xce, 0x06, 0xe2, 0, 0, 0, 1,
+            0x65, 0xb8,
+        ];
+        let later_delta = vec![0, 0, 0, 1, 0x41, 0xcc, 0xdd];
+
+        assert!(!ffi::h264_is_decodable_keyframe_for_test(&delta));
+        assert!(!ffi::h264_is_decodable_keyframe_for_test(&incomplete_key));
+        assert!(ffi::h264_is_decodable_keyframe_for_test(&complete_key));
+
+        assert!(!ffi::h264_should_forward_access_unit_to_decoder_for_test(
+            &delta, false, false
+        ));
+        assert!(!ffi::h264_should_forward_access_unit_to_decoder_for_test(
+            &incomplete_key,
+            true,
+            false,
+        ));
+        assert!(ffi::h264_should_forward_access_unit_to_decoder_for_test(
+            &complete_key,
+            true,
+            false,
+        ));
+        assert!(ffi::h264_should_forward_access_unit_to_decoder_for_test(
+            &later_delta,
+            false,
+            true,
+        ));
+        assert!(!ffi::h264_should_forward_access_unit_to_decoder_for_test(
+            &later_delta,
+            false,
+            false,
+        ));
     }
 }

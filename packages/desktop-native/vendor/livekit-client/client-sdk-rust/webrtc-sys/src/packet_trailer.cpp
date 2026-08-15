@@ -16,12 +16,14 @@
 
 #include "livekit/packet_trailer.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <optional>
 
 #include "api/make_ref_counted.h"
 #include "livekit/packet_trailer_av1.h"
+#include "livekit/packet_trailer_h264.h"
 #include "livekit/peer_connection_factory.h"
 #include "livekit/rtp_receiver.h"
 #include "livekit/rtp_sender.h"
@@ -232,6 +234,7 @@ void PacketTrailerTransformer::TransformSend(
 
   auto data = frame->GetData();
   const bool is_av1 = av1::IsAv1Frame(*frame);
+  const bool is_h264 = h264::IsH264Frame(*frame);
   PacketTrailerMetadata meta_to_embed =
       LookupSendMetadata(*frame, ssrc, rtp_timestamp);
   emit_publish_timing(VideoPublishTimingStage::EncoderOutput,
@@ -244,7 +247,7 @@ void PacketTrailerTransformer::TransformSend(
   if (enabled_.load()) {
     new_data = AppendTrailer(data, meta_to_embed.user_timestamp,
                              meta_to_embed.frame_id, meta_to_embed.user_data,
-                             is_av1);
+                             is_av1, is_h264);
     frame->SetData(webrtc::ArrayView<const uint8_t>(new_data));
   }
 
@@ -306,9 +309,10 @@ void PacketTrailerTransformer::TransformReceive(
   uint32_t rtp_timestamp = frame->GetTimestamp();
   auto data = frame->GetData();
   const bool is_av1 = av1::IsAv1Frame(*frame);
+  const bool is_h264 = h264::IsH264Frame(*frame);
   std::vector<uint8_t> stripped_data;
 
-  auto meta = ExtractTrailer(data, stripped_data, is_av1);
+  auto meta = ExtractTrailer(data, stripped_data, is_av1, is_h264);
   PacketTrailerMetadata timing_meta{0, 0, ssrc};
 
   if (meta.has_value()) {
@@ -388,7 +392,8 @@ std::vector<uint8_t> PacketTrailerTransformer::AppendTrailer(
     uint64_t user_timestamp,
     uint32_t frame_id,
     const std::vector<uint8_t>& user_data,
-    bool is_av1) {
+    bool is_av1,
+    bool is_h264) {
   std::vector<uint8_t> trailer =
       BuildTrailerPayload(user_timestamp, frame_id, user_data);
 
@@ -401,6 +406,9 @@ std::vector<uint8_t> PacketTrailerTransformer::AppendTrailer(
   if (is_av1) {
     return av1::InsertTrailerObu(data, trailer);
   }
+  if (is_h264) {
+    return h264::InsertTrailerSei(data, trailer);
+  }
 
   std::vector<uint8_t> result;
   result.reserve(data.size() + trailer.size());
@@ -412,9 +420,13 @@ std::vector<uint8_t> PacketTrailerTransformer::AppendTrailer(
 std::optional<PacketTrailerMetadata> PacketTrailerTransformer::ExtractTrailer(
     webrtc::ArrayView<const uint8_t> data,
     std::vector<uint8_t>& out_data,
-    bool is_av1) {
+    bool is_av1,
+    bool is_h264) {
   if (is_av1) {
     return av1::ExtractTrailer(data, out_data);
+  }
+  if (is_h264) {
+    return h264::ExtractTrailer(data, out_data);
   }
 
   if (data.size() < kTrailerEnvelopeSize) {
