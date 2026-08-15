@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "common/event_sink.hpp"
+#include "common/cleanup_supervisor.hpp"
 #include "common/sequenced_emitter.hpp"
 #include "media/generation_fence.hpp"
 #include "media/livekit_voice_session.hpp"
@@ -41,7 +42,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     std::unique_lock lock(mutex_);
     const bool found = changed_.wait_for(lock, timeout, [&] {
       for (const auto &event : events_) {
-        if (event.type == "reply" && event.request_id == request_id)
+        if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id)
           return true;
       }
       return false;
@@ -51,7 +52,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
           "timed out waiting for runtime reply: " + request_id);
     }
     for (const auto &event : events_) {
-      if (event.type == "reply" && event.request_id == request_id) return event;
+      if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id) return event;
     }
     throw std::runtime_error("runtime reply disappeared");
   }
@@ -60,7 +61,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     std::lock_guard lock(mutex_);
     std::size_t count = 0;
     for (const auto &event : events_) {
-      if (event.type == "reply" && event.request_id == request_id) count += 1;
+      if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id) count += 1;
     }
     return count;
   }
@@ -70,7 +71,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     std::lock_guard lock(mutex_);
     std::size_t count = 0;
     for (const auto &event : events_) {
-      if (event.type == "sessionStarted" && event.session_id == session_id &&
+      if (event.type == syrnike::desktop_native::NativeEventType::SessionStarted && event.session_id == session_id &&
           event.generation == generation) {
         count += 1;
       }
@@ -86,7 +87,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     std::lock_guard lock(mutex_);
     std::size_t count = 0;
     for (const auto& event : events_) {
-      if (event.type == "sessionLifecycle" && event.session_id == session_id &&
+      if (event.type == syrnike::desktop_native::NativeEventType::SessionLifecycle && event.session_id == session_id &&
           event.status == "error" && event.error &&
           event.error->code == code && event.error->stage == stage &&
           event.error->retryable == retryable && event.error->hresult &&
@@ -111,7 +112,7 @@ syrnike::desktop_native::MediaCommand connectCommand(std::string request_id,
                                                      std::string session_id,
                                                      std::uint64_t generation) {
   syrnike::desktop_native::MediaCommand command;
-  command.type = "connectMicrophone";
+  command.type = syrnike::desktop_native::NativeCommandType::ConnectMicrophone;
   command.request_id = std::move(request_id);
   command.session_id = std::move(session_id);
   command.generation = generation;
@@ -135,7 +136,7 @@ class DeferredCommands {
   }
 
   syrnike::desktop_native::MediaCommand waitTake(
-      const std::string &type,
+      syrnike::desktop_native::NativeCommandType type,
       std::string context = {},
       std::chrono::milliseconds timeout = kTestWatchdog) {
     std::unique_lock lock(mutex_);
@@ -148,7 +149,8 @@ class DeferredCommands {
     if (!found) {
       throw std::runtime_error(
           phase_ + (context.empty() ? "" : " / " + context) +
-          ": timed out waiting for deferred native command: " + type);
+          ": timed out waiting for deferred native command: " +
+          std::string(syrnike::desktop_native::nativeCommandName(type)));
     }
     for (auto it = commands_.begin(); it != commands_.end(); ++it) {
       if (it->type != type) continue;
@@ -188,6 +190,8 @@ int main() try {
     GenerationFence desired;
     auto livekit =
         std::make_shared<DeterministicFakeLiveKitVoiceSession>();
+    MicrophonePublicationController* committed_owner = nullptr;
+    std::vector<std::string> sink_commit_owners;
     MicrophonePublicationController controller(
         emitter,
         [&](MediaCommand command) { return deferred.post(std::move(command)); },
@@ -195,8 +199,15 @@ int main() try {
           return desired.isCurrent(session_id, generation);
         },
         [](const auto &, const auto &, auto) {}, [](const auto &) {},
-        [] { return true; }, livekit);
-    const auto handle_worker = [&](const std::string &type) {
+        [] { return true; }, livekit, {}, {}, {}, {},
+        [&](const auto&) {
+          if (!committed_owner) {
+            throw std::runtime_error("sink committed before controller binding");
+          }
+          sink_commit_owners.push_back(committed_owner->activeSessionId());
+        });
+    committed_owner = &controller;
+    const auto handle_worker = [&](syrnike::desktop_native::NativeCommandType type) {
       controller.handleWorkerCommand(deferred.waitTake(type));
     };
 
@@ -208,9 +219,12 @@ int main() try {
       .noise_suppression = "software",
       .echo_cancellation = "unavailable",
     });
-    handle_worker("__microphoneAttemptReady");
+    handle_worker(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady);
     const auto connect_a_reply = sink->waitReply("connect-a");
     require(connect_a_reply.ok, "initial microphone connect failed");
+    require(
+        sink_commit_owners == std::vector<std::string>{"mic-a"},
+        "microphone sink fence published before the authoritative owner swap");
     require(
         connect_a_reply.noise_suppression == "software" &&
             connect_a_reply.echo_cancellation == "unavailable",
@@ -254,7 +268,7 @@ int main() try {
 
     livekit->releaseNext(
         DeterministicFakeLiveKitVoiceSession::Operation::Publish);
-    handle_worker("__microphoneAttemptFailed");
+    handle_worker(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptFailed);
     const auto reply_b = sink->waitReply("connect-b");
     require(!reply_b.ok, "superseded blocked connect resolved as success");
     require(reply_b.error && reply_b.error->code == "stale_generation",
@@ -276,7 +290,7 @@ int main() try {
         kTestWatchdog);
 
     MediaCommand mute_a;
-    mute_a.type = "setMicrophoneMuted";
+    mute_a.type = syrnike::desktop_native::NativeCommandType::SetMicrophoneMuted;
     mute_a.request_id = "mute-a";
     mute_a.session_id = "mic-a";
     mute_a.generation = 1;
@@ -288,7 +302,7 @@ int main() try {
     livekit->setVoiceSessionForTest("mic-c");
     livekit->releaseNext(
         DeterministicFakeLiveKitVoiceSession::Operation::Publish);
-    handle_worker("__microphoneAttemptFailed");
+    handle_worker(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptFailed);
     const auto reply_c = sink->waitReply("connect-c");
     require(!reply_c.ok && reply_c.error &&
                 reply_c.error->code == "stale_generation",
@@ -299,7 +313,7 @@ int main() try {
     livekit->setBlocked(
         DeterministicFakeLiveKitVoiceSession::Operation::Unpublish, true);
     MediaCommand disconnect_a;
-    disconnect_a.type = "disconnectMicrophone";
+    disconnect_a.type = syrnike::desktop_native::NativeCommandType::DisconnectMicrophone;
     disconnect_a.request_id = "disconnect-a";
     disconnect_a.session_id = "mic-a";
     disconnect_a.generation = 6;
@@ -332,7 +346,7 @@ int main() try {
 
     livekit->releaseNext(
         DeterministicFakeLiveKitVoiceSession::Operation::Unpublish);
-    handle_worker("__microphoneRetireDone");
+    handle_worker(syrnike::desktop_native::NativeCommandType::MicrophoneRetireDone);
     livekit->setBlocked(
         DeterministicFakeLiveKitVoiceSession::Operation::Publish, false);
     controller.shutdown();
@@ -363,7 +377,7 @@ int main() try {
         connectCommand("recovery-initial", "mic-recovery", 1),
         MicrophonePipelineSnapshot{});
     controller.handleWorkerCommand(
-        deferred.waitTake("__microphoneAttemptReady"));
+        deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady));
     require(sink->waitReply("recovery-initial").ok,
             "initial recovery microphone did not publish");
     require(attached_sources == 1,
@@ -386,7 +400,7 @@ int main() try {
         controller.handlePublicationUnpublished(active_unpublished);
     require(
         unpublished &&
-            unpublished->type == "localMicrophoneUnpublished" &&
+            unpublished->type == syrnike::desktop_native::NativeEventType::LocalMicrophoneUnpublished &&
             unpublished->session_id == "mic-recovery" &&
             unpublished->generation == 1 &&
             unpublished->track_id == "fake-publication",
@@ -403,7 +417,7 @@ int main() try {
         connectCommand("recovery-restored", "mic-recovery", 2),
         MicrophonePipelineSnapshot{});
     controller.handleWorkerCommand(
-        deferred.waitTake("__microphoneAttemptReady"));
+        deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady));
     require(sink->waitReply("recovery-restored").ok,
             "microphone did not republish after server unmute");
     require(
@@ -449,7 +463,7 @@ int main() try {
             kTestWatchdog);
 
         MediaCommand terminal;
-        terminal.type = "__microphoneTerminal";
+        terminal.type = syrnike::desktop_native::NativeCommandType::MicrophoneTerminal;
         terminal.session_id = "mic-terminal";
         terminal.generation = 1;
         terminal.internal_message =
@@ -477,7 +491,7 @@ int main() try {
         terminal_livekit->releaseNext(
             DeterministicFakeLiveKitVoiceSession::Operation::Publish);
         terminal_controller.handleWorkerCommand(
-            terminal_deferred.waitTake("__microphoneAttemptFailed"));
+            terminal_deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptFailed));
         require(terminal_sink->countReplies("connect-terminal-candidate") == 1,
                 "late terminal candidate completion emitted a duplicate reply");
         require(terminal_sink->countSessionStarted("mic-terminal", 1) == 0,
@@ -496,7 +510,7 @@ int main() try {
         terminal_controller.start(ready_before_newer,
                                   MicrophonePipelineSnapshot{});
         auto stale_ready =
-            terminal_deferred.waitTake("__microphoneAttemptReady");
+            terminal_deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady);
         terminal_desired.advance("mic-newer-intent", 3);
         terminal_livekit->setVoiceSessionForTest("mic-newer-intent");
         terminal_controller.handleWorkerCommand(stale_ready);
@@ -510,18 +524,18 @@ int main() try {
                     "mic-ready-before-newer-intent", 2) == 0,
                 "stale ready completion emitted sessionStarted");
         terminal_controller.handleWorkerCommand(
-            terminal_deferred.waitTake("__microphoneRetireDone"));
+            terminal_deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneRetireDone));
         terminal_desired.advance("mic-sink-visible", 4);
         terminal_livekit->setVoiceSessionForTest("mic-sink-visible");
         auto sink_visible = connectCommand(
             "connect-sink-visible", "mic-sink-visible", 4);
         terminal_controller.start(sink_visible, MicrophonePipelineSnapshot{});
         terminal_controller.handleWorkerCommand(
-            terminal_deferred.waitTake("__microphoneAttemptReady"));
+            terminal_deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady));
         require(terminal_sink->waitReply("connect-sink-visible").ok,
                 "sink visibility fixture did not publish");
         MediaCommand sink_failure;
-        sink_failure.type = "__microphoneTerminal";
+        sink_failure.type = syrnike::desktop_native::NativeCommandType::MicrophoneTerminal;
         sink_failure.session_id = "mic-sink-visible";
         sink_failure.generation = 4;
         sink_failure.internal_message = "fake captureFrame failure";
@@ -577,8 +591,7 @@ int main() try {
             kTestWatchdog);
         tracking_livekit->releaseNext(
             DeterministicFakeLiveKitVoiceSession::Operation::Publish);
-        auto ready = tracking_deferred.waitTake(
-            "__microphoneAttemptReady", "initial candidate");
+        auto ready = tracking_deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady, "initial candidate");
         require(tracking_controller.hasBlockedCapacity(),
                 "candidate slot was not reported as occupied");
         require(tracking_controller.capacityStatus() ==
@@ -591,7 +604,7 @@ int main() try {
             "expired candidate was not reported as actor_unresponsive");
 
         MediaCommand mute_candidate;
-        mute_candidate.type = "setMicrophoneMuted";
+        mute_candidate.type = syrnike::desktop_native::NativeCommandType::SetMicrophoneMuted;
         mute_candidate.session_id = "mic-mute-race";
         mute_candidate.generation = 1;
         mute_candidate.muted = true;
@@ -607,14 +620,14 @@ int main() try {
         tracking_desired.advance("mic-mute-race", 2);
         tracking_livekit->setVoiceSessionForTest("mic-mute-race");
         MediaCommand disconnect_muted;
-        disconnect_muted.type = "disconnectMicrophone";
+        disconnect_muted.type = syrnike::desktop_native::NativeCommandType::DisconnectMicrophone;
         disconnect_muted.session_id = "mic-mute-race";
         disconnect_muted.generation = 2;
         tracking_controller.disconnect(disconnect_muted, false);
         require(tracking_controller.hasBlockedCapacity(),
                 "retirement slot was not reported as occupied");
         auto finished_retire =
-            tracking_deferred.waitTake("__microphoneRetireDone");
+            tracking_deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneRetireDone);
 
         tracking_livekit->setBlocked(
             DeterministicFakeLiveKitVoiceSession::Operation::Publish,
@@ -624,8 +637,7 @@ int main() try {
         auto after_retire = connectCommand("connect-after-finished-retire",
                                            "mic-after-finished-retire", 3);
         tracking_controller.start(after_retire, MicrophonePipelineSnapshot{});
-        auto next_ready = tracking_deferred.waitTake(
-            "__microphoneAttemptReady", "candidate after finished retirement");
+        auto next_ready = tracking_deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady, "candidate after finished retirement");
         tracking_controller.handleWorkerCommand(next_ready);
         require(
             tracking_sink->waitReply("connect-after-finished-retire").ok,
@@ -635,12 +647,12 @@ int main() try {
         tracking_desired.advance("mic-after-finished-retire", 4);
         tracking_livekit->setVoiceSessionForTest("mic-after-finished-retire");
         MediaCommand disconnect_next;
-        disconnect_next.type = "disconnectMicrophone";
+        disconnect_next.type = syrnike::desktop_native::NativeCommandType::DisconnectMicrophone;
         disconnect_next.session_id = "mic-after-finished-retire";
         disconnect_next.generation = 4;
         tracking_controller.disconnect(disconnect_next, false);
         tracking_controller.handleWorkerCommand(
-            tracking_deferred.waitTake("__microphoneRetireDone"));
+            tracking_deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneRetireDone));
         require(!tracking_controller.hasBlockedCapacity(),
                 "finished controller retained blocked capacity");
         tracking_controller.shutdown();
@@ -677,7 +689,7 @@ int main() try {
         auto initial = connectCommand("privacy-initial", "mic-privacy", 1);
         privacy_controller.start(initial, MicrophonePipelineSnapshot{});
         auto initial_ready =
-            privacy_deferred.waitTake("__microphoneAttemptReady");
+            privacy_deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady);
         require(attached_sources == 0,
                 "candidate received PCM before publication acknowledgement");
         privacy_controller.handleWorkerCommand(initial_ready);
@@ -703,7 +715,7 @@ int main() try {
                 "make-before-break candidate received PCM before commit");
 
         MediaCommand stale_privacy_disconnect;
-        stale_privacy_disconnect.type = "disconnectMicrophone";
+        stale_privacy_disconnect.type = syrnike::desktop_native::NativeCommandType::DisconnectMicrophone;
         stale_privacy_disconnect.session_id = "mic-privacy";
         stale_privacy_disconnect.generation = 1;
         bool stale_disconnect_rejected = false;
@@ -716,7 +728,7 @@ int main() try {
                 "stale disconnect was allowed to cancel the newer candidate");
 
         MediaCommand mute_during_move;
-        mute_during_move.type = "setMicrophoneMuted";
+        mute_during_move.type = syrnike::desktop_native::NativeCommandType::SetMicrophoneMuted;
         mute_during_move.session_id = "mic-privacy";
         mute_during_move.generation = 1;
         mute_during_move.muted = true;
@@ -725,7 +737,7 @@ int main() try {
         privacy_livekit->releaseNext(
             DeterministicFakeLiveKitVoiceSession::Operation::Publish);
         auto candidate_ready =
-            privacy_deferred.waitTake("__microphoneAttemptReady");
+            privacy_deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady);
         privacy_controller.handleWorkerCommand(candidate_ready);
         require(privacy_sink->waitReply("privacy-candidate").ok,
                 "candidate did not promote after old-generation mute");
@@ -737,16 +749,16 @@ int main() try {
                 "promotion left more than one PCM sink attached");
 
         privacy_controller.handleWorkerCommand(
-            privacy_deferred.waitTake("__microphoneRetireDone"));
+            privacy_deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneRetireDone));
         privacy_desired.advance("mic-privacy", 3);
         privacy_livekit->setVoiceSessionForTest("mic-privacy");
         MediaCommand privacy_disconnect;
-        privacy_disconnect.type = "disconnectMicrophone";
+        privacy_disconnect.type = syrnike::desktop_native::NativeCommandType::DisconnectMicrophone;
         privacy_disconnect.session_id = "mic-privacy";
         privacy_disconnect.generation = 3;
         privacy_controller.disconnect(privacy_disconnect, false);
         privacy_controller.handleWorkerCommand(
-            privacy_deferred.waitTake("__microphoneRetireDone"));
+            privacy_deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneRetireDone));
         require(privacy_livekit->unpublishedPublicationSids().size() == 2,
                 "shared Room retained a microphone publication after retirement");
         privacy_controller.shutdown();
@@ -794,12 +806,21 @@ int main() try {
       1,
       kTestWatchdog
     );
+    const auto cleanup_before =
+      syrnike::desktop_native::CleanupSupervisor::instance().snapshot();
     const auto shutdown_started = std::chrono::steady_clock::now();
     controller.shutdown();
     require(
       std::chrono::steady_clock::now() - shutdown_started <
         std::chrono::milliseconds(100),
       "blocked microphone publish exceeded the native shutdown budget"
+    );
+    const auto cleanup_after_shutdown =
+      syrnike::desktop_native::CleanupSupervisor::instance().snapshot();
+    require(
+      cleanup_after_shutdown.accepted_jobs == cleanup_before.accepted_jobs + 1 &&
+        cleanup_after_shutdown.owned_jobs == cleanup_before.owned_jobs + 1,
+      "blocked microphone publish escaped cleanup-supervisor ownership"
     );
     blocked_livekit->releaseNext(
       DeterministicFakeLiveKitVoiceSession::Operation::Publish
@@ -824,6 +845,22 @@ int main() try {
       blocked_livekit->unpublishedPublicationSids().size() == 1,
       "late microphone publication was not retired exactly once"
     );
+    const auto join_deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (
+      syrnike::desktop_native::CleanupSupervisor::instance()
+          .snapshot().completed_jobs < cleanup_before.completed_jobs + 1 &&
+      std::chrono::steady_clock::now() < join_deadline
+    ) {
+      std::this_thread::yield();
+    }
+    const auto cleanup_after_release =
+      syrnike::desktop_native::CleanupSupervisor::instance().snapshot();
+    require(
+      cleanup_after_release.completed_jobs >= cleanup_before.completed_jobs + 1 &&
+        cleanup_after_release.owned_jobs == cleanup_before.owned_jobs,
+      "released microphone publish worker did not return cleanup capacity"
+    );
   }
 
   {
@@ -847,13 +884,12 @@ int main() try {
       [] { return true; },
       client,
       {},
-      [&](syrnike::desktop_native::AsyncCleanupTask task) -> std::thread {
+      [&] {
         if (launch_attempts.fetch_add(1) == 0) {
           throw std::runtime_error(
             "injected candidate cleanup launch failure"
           );
         }
-        return std::thread(std::move(task));
       }
     );
     controller.start(
@@ -865,7 +901,7 @@ int main() try {
       MicrophonePipelineSnapshot{}
     );
     static_cast<void>(
-      deferred.waitTake("__microphoneAttemptReady")
+      deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady)
     );
     controller.shutdown();
     const auto cleanup_deadline =
@@ -904,13 +940,12 @@ int main() try {
       [] { return true; },
       client,
       {},
-      [&](syrnike::desktop_native::AsyncCleanupTask task) -> std::thread {
+      [&] {
         if (launch_attempts.fetch_add(1) == 0) {
           throw std::runtime_error(
             "injected committed cleanup launch failure"
           );
         }
-        return std::thread(std::move(task));
       }
     );
     controller.start(
@@ -922,7 +957,7 @@ int main() try {
       MicrophonePipelineSnapshot{}
     );
     controller.handleWorkerCommand(
-      deferred.waitTake("__microphoneAttemptReady")
+      deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady)
     );
     require(
       sink->waitReply("mic-launch-committed").ok,
@@ -967,13 +1002,12 @@ int main() try {
       [] { return true; },
       client,
       {},
-      [&](syrnike::desktop_native::AsyncCleanupTask task) -> std::thread {
+      [&] {
         if (launch_attempts.fetch_add(1) == 0) {
           throw std::runtime_error(
             "injected retiring worker launch failure"
           );
         }
-        return std::thread(std::move(task));
       },
       [&] {
         if (enqueue_attempts.fetch_add(1) == 0) {
@@ -996,14 +1030,14 @@ int main() try {
       MicrophonePipelineSnapshot{}
     );
     controller.handleWorkerCommand(
-      deferred.waitTake("__microphoneAttemptReady")
+      deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady)
     );
     require(
       sink->waitReply("mic-launch-retiring-connect").ok,
       "retiring launcher test microphone did not commit"
     );
     MediaCommand disconnect;
-    disconnect.type = "disconnectMicrophone";
+    disconnect.type = syrnike::desktop_native::NativeCommandType::DisconnectMicrophone;
     disconnect.session_id = "mic-launch-retiring";
     disconnect.generation = 1;
     const auto disconnect_started = std::chrono::steady_clock::now();
@@ -1014,7 +1048,7 @@ int main() try {
       "microphone cleanup allocation/enqueue failure blocked disconnect"
     );
     controller.handleWorkerCommand(
-      deferred.waitTake("__microphoneRetireDone")
+      deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneRetireDone)
     );
     require(
       finalize_attempts.load() == 1 &&
@@ -1024,6 +1058,301 @@ int main() try {
         controller.capacityStatus() ==
           MicrophonePublicationCapacityStatus::Available,
       "failed retirement finalization leaked publication capacity"
+    );
+    controller.shutdown();
+  }
+
+  {
+    auto sink = std::make_shared<CollectingSink>();
+    SequencedEmitter emitter(sink);
+    DeferredCommands deferred("post-ack health rollback");
+    GenerationFence desired;
+    auto client =
+      std::make_shared<DeterministicFakeLiveKitVoiceSession>();
+    desired.advance("mic-post-ack-unhealthy", 1);
+    client->setVoiceSessionForTest("mic-post-ack-unhealthy");
+    std::atomic_int health_checks{0};
+    MicrophonePublicationController controller(
+      emitter,
+      [&](MediaCommand command) { return deferred.post(std::move(command)); },
+      [&](const std::string& session_id, std::uint64_t generation) {
+        return desired.isCurrent(session_id, generation);
+      },
+      [](const auto&, const auto&, auto) {},
+      [](const auto&) {},
+      [&] { return health_checks.fetch_add(1) == 0; },
+      client
+    );
+    controller.start(
+      connectCommand(
+        "mic-post-ack-unhealthy-connect",
+        "mic-post-ack-unhealthy",
+        1
+      ),
+      MicrophonePipelineSnapshot{}
+    );
+    controller.handleWorkerCommand(
+      deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptFailed)
+    );
+    const auto reply = sink->waitReply("mic-post-ack-unhealthy-connect");
+    require(
+      !reply.ok && health_checks.load() == 2 &&
+        client->unpublishedPublicationSids().size() == 1,
+      "post-ack capture health failure did not roll back exactly once"
+    );
+    controller.shutdown();
+    require(
+      client->unpublishedPublicationSids().size() == 1,
+      "post-ack health failure was unpublished twice"
+    );
+  }
+
+  {
+    auto sink = std::make_shared<CollectingSink>();
+    SequencedEmitter emitter(sink);
+    DeferredCommands deferred("mute commit rollback");
+    GenerationFence desired;
+    auto client =
+      std::make_shared<DeterministicFakeLiveKitVoiceSession>();
+    desired.advance("mic-mute-commit-failure", 1);
+    client->setVoiceSessionForTest("mic-mute-commit-failure");
+    MicrophonePublicationController controller(
+      emitter,
+      [&](MediaCommand command) { return deferred.post(std::move(command)); },
+      [&](const std::string& session_id, std::uint64_t generation) {
+        return desired.isCurrent(session_id, generation);
+      },
+      [](const auto&, const auto&, auto) {},
+      [](const auto&) {},
+      [] { return true; },
+      client,
+      [](const auto&, bool) {
+        throw std::runtime_error("injected mute commit failure");
+      }
+    );
+    controller.start(
+      connectCommand(
+        "mic-mute-commit-failure-connect",
+        "mic-mute-commit-failure",
+        1
+      ),
+      MicrophonePipelineSnapshot{}
+    );
+    controller.handleWorkerCommand(
+      deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady)
+    );
+    const auto reply = sink->waitReply("mic-mute-commit-failure-connect");
+    require(
+      !reply.ok && reply.error &&
+        reply.error->code == "native_command_failed",
+      "throwing mute commit did not fail the publication attempt"
+    );
+    controller.handleWorkerCommand(
+      deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneRetireDone)
+    );
+    require(
+      client->unpublishedPublicationSids().size() == 1 &&
+        controller.activeSessionId().empty(),
+      "throwing mute commit did not roll back its publication exactly once"
+    );
+    controller.shutdown();
+  }
+
+  {
+    auto sink = std::make_shared<CollectingSink>();
+    SequencedEmitter emitter(sink);
+    GenerationFence desired;
+    auto client =
+      std::make_shared<DeterministicFakeLiveKitVoiceSession>();
+    desired.advance("mic-rejected-ready", 1);
+    client->setVoiceSessionForTest("mic-rejected-ready");
+    MicrophonePublicationController controller(
+      emitter,
+      [](MediaCommand) { return false; },
+      [&](const std::string& session_id, std::uint64_t generation) {
+        return desired.isCurrent(session_id, generation);
+      },
+      [](const auto&, const auto&, auto) {},
+      [](const auto&) {},
+      [] { return true; },
+      client
+    );
+    controller.start(
+      connectCommand(
+        "mic-rejected-ready-connect",
+        "mic-rejected-ready",
+        1
+      ),
+      MicrophonePipelineSnapshot{}
+    );
+    const auto rollback_deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (
+      client->unpublishedPublicationSids().size() != 1 &&
+      std::chrono::steady_clock::now() < rollback_deadline
+    ) {
+      std::this_thread::yield();
+    }
+    require(
+      client->unpublishedPublicationSids().size() == 1,
+      "rejected ready post left an acknowledged microphone publication"
+    );
+    controller.shutdown();
+    require(
+      client->unpublishedPublicationSids().size() == 1,
+      "rejected ready post rolled back its microphone publication twice"
+    );
+  }
+
+  {
+    auto sink = std::make_shared<CollectingSink>();
+    SequencedEmitter emitter(sink);
+    GenerationFence desired;
+    auto client =
+      std::make_shared<DeterministicFakeLiveKitVoiceSession>();
+    desired.advance("mic-throwing-ready", 1);
+    client->setVoiceSessionForTest("mic-throwing-ready");
+    MicrophonePublicationController controller(
+      emitter,
+      [](MediaCommand) -> bool {
+        throw std::bad_alloc();
+      },
+      [&](const std::string& session_id, std::uint64_t generation) {
+        return desired.isCurrent(session_id, generation);
+      },
+      [](const auto&, const auto&, auto) {},
+      [](const auto&) {},
+      [] { return true; },
+      client
+    );
+    controller.start(
+      connectCommand(
+        "mic-throwing-ready-connect",
+        "mic-throwing-ready",
+        1
+      ),
+      MicrophonePipelineSnapshot{}
+    );
+    const auto rollback_deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (
+      client->unpublishedPublicationSids().size() != 1 &&
+      std::chrono::steady_clock::now() < rollback_deadline
+    ) {
+      std::this_thread::yield();
+    }
+    require(
+      client->unpublishedPublicationSids().size() == 1,
+      "throwing ready post lost its acknowledged publication owner"
+    );
+    controller.shutdown();
+    require(
+      client->unpublishedPublicationSids().size() == 1,
+      "throwing ready post rolled back its publication twice"
+    );
+  }
+
+  {
+    auto sink = std::make_shared<CollectingSink>();
+    SequencedEmitter emitter(sink);
+    DeferredCommands deferred("sink commit rollback");
+    GenerationFence desired;
+    auto client =
+      std::make_shared<DeterministicFakeLiveKitVoiceSession>();
+    desired.advance("mic-sink-commit-failure", 1);
+    client->setVoiceSessionForTest("mic-sink-commit-failure");
+    std::atomic_int sink_removals{0};
+    std::atomic_int sink_commits{0};
+    MicrophonePublicationController controller(
+      emitter,
+      [&](MediaCommand command) { return deferred.post(std::move(command)); },
+      [&](const std::string& session_id, std::uint64_t generation) {
+        return desired.isCurrent(session_id, generation);
+      },
+      [](const auto&, const auto&, auto) {
+        throw std::runtime_error("injected sink commit failure");
+      },
+      [&](const auto&) { sink_removals.fetch_add(1); },
+      [] { return true; },
+      client, {}, {}, {}, {},
+      [&](const auto&) { sink_commits.fetch_add(1); }
+    );
+    controller.start(
+      connectCommand(
+        "mic-sink-commit-failure-connect",
+        "mic-sink-commit-failure",
+        1
+      ),
+      MicrophonePipelineSnapshot{}
+    );
+    controller.handleWorkerCommand(
+      deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady)
+    );
+    const auto reply = sink->waitReply("mic-sink-commit-failure-connect");
+    require(
+      !reply.ok && reply.error &&
+        reply.error->code == "native_command_failed",
+      "throwing sink commit did not fail the publication attempt"
+    );
+    controller.handleWorkerCommand(
+      deferred.waitTake(syrnike::desktop_native::NativeCommandType::MicrophoneRetireDone)
+    );
+    require(
+      client->unpublishedPublicationSids().size() == 1 &&
+        sink_removals.load() == 1 &&
+        sink_commits.load() == 0 &&
+        controller.activeSessionId().empty(),
+      "throwing sink commit did not roll back publication and sink exactly once"
+    );
+    controller.shutdown();
+  }
+
+  {
+    auto sink = std::make_shared<CollectingSink>();
+    SequencedEmitter emitter(sink);
+    DeferredCommands deferred("sink post-attach rollback");
+    GenerationFence desired;
+    auto client =
+      std::make_shared<DeterministicFakeLiveKitVoiceSession>();
+    desired.advance("mic-post-attach-stale", 1);
+    client->setVoiceSessionForTest("mic-post-attach-stale");
+    std::atomic_int sink_removals{0};
+    std::atomic_int sink_commits{0};
+    MicrophonePublicationController controller(
+      emitter,
+      [&](MediaCommand command) { return deferred.post(std::move(command)); },
+      [&](const std::string& session_id, std::uint64_t generation) {
+        return desired.isCurrent(session_id, generation);
+      },
+      [&](const auto&, const auto&, auto) {
+        desired.advance("mic-replacement", 2);
+      },
+      [&](const auto&) { sink_removals.fetch_add(1); },
+      [] { return true; },
+      client, {}, {}, {}, {},
+      [&](const auto&) { sink_commits.fetch_add(1); }
+    );
+    controller.start(
+      connectCommand(
+        "mic-post-attach-stale-connect", "mic-post-attach-stale", 1
+      ),
+      MicrophonePipelineSnapshot{}
+    );
+    controller.handleWorkerCommand(
+      deferred.waitTake(
+        syrnike::desktop_native::NativeCommandType::MicrophoneAttemptReady
+      )
+    );
+    const auto reply = sink->waitReply("mic-post-attach-stale-connect");
+    require(
+      !reply.ok && sink_removals.load() == 1 && sink_commits.load() == 0 &&
+        controller.activeSessionId().empty(),
+      "post-attach rollback published a candidate sink fence"
+    );
+    controller.handleWorkerCommand(
+      deferred.waitTake(
+        syrnike::desktop_native::NativeCommandType::MicrophoneRetireDone
+      )
     );
     controller.shutdown();
   }

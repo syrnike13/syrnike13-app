@@ -1,5 +1,6 @@
 #include "remote_publication_reconciler.hpp"
 
+#include <array>
 #include <utility>
 
 namespace syrnike::desktop_native::media {
@@ -43,13 +44,18 @@ RemotePublicationReconciler::registerPublication(
     demanded
   };
   if (existing != publications_.end() &&
+      existing->second.publication != next.publication) {
+    next.requires_publication_identity = true;
+  }
+  if (existing != publications_.end() &&
       existing->second.participant_identity == next.participant_identity &&
       existing->second.source == next.source &&
       existing->second.is_video == next.is_video) {
+    if (existing->second.publication == next.publication) {
+      return snapshot(existing->second);
+    }
     next.demanded = existing->second.demanded;
-    next.current_track = existing->second.current_track;
     next.revision = existing->second.revision;
-    next.phase = existing->second.phase;
   }
   ++next.revision;
   const auto result = publications_.insert_or_assign(
@@ -134,6 +140,9 @@ RemotePublicationReconciler::setVideoDemand(
   if (found == publications_.end() || !found->second.is_video) {
     return std::nullopt;
   }
+  if (found->second.demanded == demanded) {
+    return snapshot(found->second);
+  }
   found->second.demanded = demanded;
   ++found->second.revision;
   return snapshot(found->second);
@@ -163,6 +172,7 @@ RemotePublicationReconciler::syncScreenAudioDemand(
       continue;
     }
     publication.demanded = demanded;
+    resetAudioRetry(publication);
     ++publication.revision;
     changed.push_back(publication_id);
   }
@@ -171,12 +181,18 @@ RemotePublicationReconciler::syncScreenAudioDemand(
 
 RemotePublicationReconcilePlan
 RemotePublicationReconciler::planReconcile(
-  const std::string& publication_id
+  const std::string& publication_id,
+  std::uint64_t expected_revision
 ) {
   std::lock_guard lock(mutex_);
   const auto found = publications_.find(publication_id);
   if (found == publications_.end() || !found->second.publication) return {};
   auto& publication = found->second;
+  if (expected_revision != 0 &&
+      publication.revision != expected_revision) {
+    return {};
+  }
+  publication.audio_retry_dispatched = false;
   RemotePublicationReconcilePlan plan{
     RemotePublicationReconcileCommand::None,
     publication.publication,
@@ -212,17 +228,26 @@ RemotePublicationReconciler::planReconcile(
   return plan;
 }
 
-void RemotePublicationReconciler::markReconcileFailed(
-  const RemotePublicationReconcilePlan& plan
+std::optional<RemotePublicationAudioRetry>
+RemotePublicationReconciler::markReconcileFailed(
+  const RemotePublicationReconcilePlan& plan,
+  std::chrono::steady_clock::time_point now
 ) {
-  if (!plan.publication) return;
+  if (!plan.publication) return std::nullopt;
   std::lock_guard lock(mutex_);
   const auto found = publications_.find(plan.publication->sid());
   if (found != publications_.end() &&
       found->second.publication == plan.publication &&
       found->second.revision == plan.revision) {
     found->second.phase = Phase::Failed;
+    ++found->second.revision;
+    return scheduleAudioRetry(
+      plan.publication->sid(),
+      found->second,
+      now
+    );
   }
+  return std::nullopt;
 }
 
 bool RemotePublicationReconciler::isReconcileCurrent(
@@ -246,23 +271,42 @@ RemotePublicationReconciler::onTrackSubscribed(
   if (!track) return {};
   std::lock_guard lock(mutex_);
   const auto found = publications_.find(publication_id);
-  if (found == publications_.end() ||
-      !publicationMatches(found->second, publication)) {
+  if (found == publications_.end()) return {};
+  auto& state = found->second;
+  if (!publicationMatches(state, publication)) {
+    const bool compatible_source = publication &&
+      publication->source() == state.source;
+    const bool compatible_kind = publication &&
+      ((state.is_video &&
+        publication->kind() == livekit::TrackKind::KIND_VIDEO) ||
+       (!state.is_video &&
+        publication->kind() == livekit::TrackKind::KIND_AUDIO));
+    if (!compatible_source || !compatible_kind || state.current_track ||
+        state.phase != Phase::Subscribing || !state.demanded) {
+      return {};
+    }
+    // TrackSubscribed is the SDK's actual-state commit. It may surface the
+    // participant map's canonical publication object after reconnect; adopt it
+    // only while this SID has no healthy track and a subscribe edge is active.
+    state.publication = publication;
+    state.requires_publication_identity = false;
+  }
+  if (!publication &&
+      (state.requires_publication_identity ||
+       (state.current_track && state.current_track != track))) {
     return {};
   }
-  auto& state = found->second;
   RemotePublicationSubscribedResult result{
     true,
     state.demanded,
     state.current_track == track,
     state.is_video
   };
-  if (!state.is_video) {
-    state.phase = Phase::Subscribed;
-    return result;
-  }
   state.phase = Phase::Subscribed;
   state.current_track = track;
+  state.requires_publication_identity = false;
+  resetAudioRetry(state);
+  ++state.revision;
   return result;
 }
 
@@ -285,11 +329,6 @@ RemotePublicationReconciler::onTrackUnsubscribed(
     false,
     state.is_video
   };
-  if (!state.is_video) {
-    state.phase = Phase::Unsubscribed;
-    result.resubscribe = state.demanded;
-    return result;
-  }
   if (state.current_track) {
     result.current = track && state.current_track == track;
     if (!result.current) return result;
@@ -298,14 +337,36 @@ RemotePublicationReconciler::onTrackUnsubscribed(
     return result;
   }
   state.phase = Phase::Unsubscribed;
+  resetAudioRetry(state);
+  ++state.revision;
   result.resubscribe = state.demanded;
   return result;
 }
 
-std::optional<RemotePublicationSnapshot>
+bool RemotePublicationReconciler::contains(
+  const std::string& publication_id
+) const {
+  std::lock_guard lock(mutex_);
+  return publications_.contains(publication_id);
+}
+
+void RemotePublicationReconciler::resetAudioRetriesForReconnect() {
+  std::lock_guard lock(mutex_);
+  for (auto& [_, publication] : publications_) {
+    if (!isRetryableAudio(publication)) continue;
+    resetAudioRetry(publication);
+    publication.phase = publication.current_track
+      ? Phase::Subscribed
+      : Phase::Unsubscribed;
+    ++publication.revision;
+  }
+}
+
+std::optional<RemotePublicationSubscriptionFailure>
 RemotePublicationReconciler::markSubscriptionFailed(
   const std::string& publication_id,
-  bool ignore_when_track_exists
+  bool ignore_when_track_exists,
+  std::chrono::steady_clock::time_point now
 ) {
   std::lock_guard lock(mutex_);
   const auto found = publications_.find(publication_id);
@@ -313,8 +374,110 @@ RemotePublicationReconciler::markSubscriptionFailed(
       (ignore_when_track_exists && found->second.current_track)) {
     return std::nullopt;
   }
-  found->second.phase = Phase::Failed;
-  return snapshot(found->second);
+  auto& publication = found->second;
+  if (isRetryableAudio(publication) && publication.phase == Phase::Failed &&
+      (publication.audio_retry_pending ||
+       publication.audio_retry_dispatched ||
+       publication.audio_retry_attempt >= 3)) {
+    RemotePublicationSubscriptionFailure coalesced{
+      snapshot(publication),
+      std::nullopt,
+      publication.audio_retry_attempt >= 3 &&
+        !publication.audio_retry_pending &&
+        !publication.audio_retry_dispatched
+    };
+    if (publication.audio_retry_pending) {
+      coalesced.retry = RemotePublicationAudioRetry{
+        publication_id,
+        publication.revision,
+        publication.audio_retry_attempt,
+        publication.audio_retry_due
+      };
+    }
+    return coalesced;
+  }
+  publication.phase = Phase::Failed;
+  ++publication.revision;
+  auto retry = scheduleAudioRetry(publication_id, publication, now);
+  RemotePublicationSubscriptionFailure result{
+    snapshot(publication),
+    std::move(retry),
+    isRetryableAudio(publication) &&
+      publication.audio_retry_attempt >= 3 &&
+      !publication.audio_retry_pending &&
+      !publication.audio_retry_dispatched
+  };
+  if (!result.retry && publication.audio_retry_pending) {
+    result.retry = RemotePublicationAudioRetry{
+      publication_id,
+      publication.revision,
+      publication.audio_retry_attempt,
+      publication.audio_retry_due
+    };
+  }
+  return result;
+}
+
+std::optional<std::chrono::steady_clock::time_point>
+RemotePublicationReconciler::nextAudioRetryDeadline() const {
+  std::optional<std::chrono::steady_clock::time_point> next;
+  std::lock_guard lock(mutex_);
+  for (const auto& [_, publication] : publications_) {
+    if (!publication.audio_retry_pending) continue;
+    if (!next || publication.audio_retry_due < *next) {
+      next = publication.audio_retry_due;
+    }
+  }
+  return next;
+}
+
+bool RemotePublicationReconciler::audioFailureOwnsReconcile(
+  const std::string& publication_id
+) const {
+  std::lock_guard lock(mutex_);
+  const auto found = publications_.find(publication_id);
+  return found != publications_.end() &&
+    isRetryableAudio(found->second) &&
+    found->second.demanded &&
+    found->second.phase == Phase::Failed;
+}
+
+std::vector<RemotePublicationAudioRetry>
+RemotePublicationReconciler::takeDueAudioRetries(
+  std::chrono::steady_clock::time_point now
+) {
+  std::vector<RemotePublicationAudioRetry> due;
+  std::lock_guard lock(mutex_);
+  for (auto& [publication_id, publication] : publications_) {
+    if (!publication.audio_retry_pending || publication.audio_retry_due > now) {
+      continue;
+    }
+    publication.audio_retry_pending = false;
+    publication.audio_retry_dispatched = true;
+    due.push_back(RemotePublicationAudioRetry{
+      publication_id,
+      publication.revision,
+      publication.audio_retry_attempt,
+      publication.audio_retry_due
+    });
+  }
+  return due;
+}
+
+std::optional<RemotePublicationAudioRetry>
+RemotePublicationReconciler::markAudioRetryDispatchFailed(
+  const RemotePublicationAudioRetry& retry,
+  std::chrono::steady_clock::time_point now
+) {
+  std::lock_guard lock(mutex_);
+  const auto found = publications_.find(retry.publication_id);
+  if (found == publications_.end() ||
+      found->second.revision != retry.revision ||
+      !found->second.audio_retry_dispatched) {
+    return std::nullopt;
+  }
+  found->second.audio_retry_dispatched = false;
+  return scheduleAudioRetry(retry.publication_id, found->second, now);
 }
 
 RemotePublicationRecoveryPlan
@@ -390,7 +553,8 @@ RemotePublicationSnapshot RemotePublicationReconciler::snapshot(
     publication.source,
     publication.is_video,
     publication.demanded,
-    publication.current_track
+    publication.current_track,
+    publication.revision
   };
 }
 
@@ -399,6 +563,52 @@ bool RemotePublicationReconciler::publicationMatches(
   const std::shared_ptr<livekit::RemoteTrackPublication>& expected
 ) {
   return !expected || current.publication == expected;
+}
+
+bool RemotePublicationReconciler::isRetryableAudio(
+  const Publication& publication
+) {
+  return !publication.is_video &&
+    (publication.source == livekit::TrackSource::SOURCE_MICROPHONE ||
+     publication.source == livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO);
+}
+
+void RemotePublicationReconciler::resetAudioRetry(Publication& publication) {
+  publication.audio_retry_attempt = 0;
+  publication.audio_retry_pending = false;
+  publication.audio_retry_dispatched = false;
+  publication.audio_retry_due = {};
+}
+
+std::optional<RemotePublicationAudioRetry>
+RemotePublicationReconciler::scheduleAudioRetry(
+  const std::string& publication_id,
+  Publication& publication,
+  std::chrono::steady_clock::time_point now
+) {
+  using namespace std::chrono_literals;
+  static constexpr std::array<std::chrono::milliseconds, 3> delays{
+    250ms,
+    1s,
+    5s
+  };
+  if (!publication.demanded || !isRetryableAudio(publication) ||
+      publication.current_track || publication.audio_retry_pending ||
+      publication.audio_retry_dispatched ||
+      publication.audio_retry_attempt >= delays.size()) {
+    return std::nullopt;
+  }
+  const auto delay = delays[publication.audio_retry_attempt];
+  ++publication.audio_retry_attempt;
+  publication.audio_retry_pending = true;
+  publication.audio_retry_due = now + delay;
+  ++publication.revision;
+  return RemotePublicationAudioRetry{
+    publication_id,
+    publication.revision,
+    publication.audio_retry_attempt,
+    publication.audio_retry_due
+  };
 }
 
 }  // namespace syrnike::desktop_native::media

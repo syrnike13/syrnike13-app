@@ -204,6 +204,17 @@ export const DesktopDisplayMediaSourceSchema = Schema.Struct({
 export type DesktopDisplayMediaSource =
   typeof DesktopDisplayMediaSourceSchema.Type
 
+export const DesktopDisplayMediaSourcePageSchema = Schema.Struct({
+  sources: Schema.Array(DesktopDisplayMediaSourceSchema),
+  page: Schema.Natural,
+  hasPrevious: Schema.Boolean,
+  hasNext: Schema.Boolean,
+})
+
+export type DesktopDisplayMediaSourcePage = Mutable<
+  typeof DesktopDisplayMediaSourcePageSchema.Type
+>
+
 export const DesktopDisplayMediaRequestSchema = Schema.Struct({
   id: Schema.String,
   audioRequested: Schema.Boolean,
@@ -362,7 +373,14 @@ export interface SyrnikeDesktopApi {
   media: {
     getRuntimeState(): Promise<NativeMediaRuntimeState>
     retryRuntime(): Promise<NativeMediaRuntimeState>
-    getDisplaySources(requestId: string): Promise<DesktopDisplayMediaSource[]>
+    getDisplaySources(
+      requestId: string,
+      page: number,
+    ): Promise<DesktopDisplayMediaSourcePage>
+    getDisplaySourceVisual(
+      requestId: string,
+      sourceId: string,
+    ): Promise<DesktopDisplayMediaSource | null>
     selectDisplaySource(
       requestId: string,
       sourceId: string,

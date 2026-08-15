@@ -445,6 +445,11 @@ set_target_properties(livekit PROPERTIES
   VISIBILITY_INLINES_HIDDEN ON
 )
 target_compile_definitions(livekit PRIVATE LIVEKIT_BUILDING_SDK=1)
+if(LIVEKIT_BUILD_TESTS)
+  # Keep the request-transport injection seam out of production builds while
+  # compiling the SDK and its unit tests against the same private class layout.
+  target_compile_definitions(livekit PRIVATE LIVEKIT_TEST_ACCESS)
+endif()
 
 # Linker-level safe guard for Linux: even if a static-archive object
 # slipped through with default visibility, --exclude-libs,ALL strips it from

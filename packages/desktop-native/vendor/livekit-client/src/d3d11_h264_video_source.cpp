@@ -15,6 +15,7 @@
 
 #include "ffi.pb.h"
 #include "ffi_client.h"
+#include "video_utils.h"
 
 namespace livekit {
 
@@ -152,28 +153,47 @@ class D3D11H264VideoSourceImpl final : public D3D11H264VideoSource {
 
   bool capture(std::unique_ptr<D3D11TextureLease> lease,
                std::int64_t timestamp_us) override {
-    if (!lease || !ffiHandleId()) return false;
-    const auto& texture = lease->texture();
-    proto::FfiRequest request;
-    auto* capture = request.mutable_capture_d3d11_video_frame();
-    capture->set_source_handle(ffiHandleId());
-    capture->set_shared_texture_handle(texture.shared_handle);
-    capture->set_adapter_luid(texture.adapter_luid);
-    capture->set_acquire_key(texture.acquire_key);
-    capture->set_release_key(texture.release_key);
-    capture->set_width(texture.width);
-    capture->set_height(texture.height);
-    capture->set_timestamp_us(timestamp_us);
-    const auto response = FfiClient::instance().sendRequest(request);
-    if (!response.has_capture_d3d11_video_frame()) return false;
-    if (!response.capture_d3d11_video_frame().accepted()) return false;
-    // The encoder owns keyed-mutex synchronization after submission. The
-    // producer may recycle the slot only after it observes release_key.
-    lease->accepted();
-    return true;
+    return D3D11H264VideoSource::capture(
+        std::move(lease),
+        VideoCaptureOptions{timestamp_us, VideoRotation::VIDEO_ROTATION_0, {}});
   }
 };
 }  // namespace
+
+bool D3D11H264VideoSource::capture(
+    std::unique_ptr<D3D11TextureLease> lease,
+    const VideoCaptureOptions& options) {
+  if (!lease || !ffiHandleId() ||
+      options.rotation != VideoRotation::VIDEO_ROTATION_0) {
+    return false;
+  }
+
+  const auto& texture = lease->texture();
+  proto::FfiRequest request;
+  auto* capture = request.mutable_capture_d3d11_video_frame();
+  capture->set_source_handle(ffiHandleId());
+  capture->set_shared_texture_handle(texture.shared_handle);
+  capture->set_adapter_luid(texture.adapter_luid);
+  capture->set_acquire_key(texture.acquire_key);
+  capture->set_release_key(texture.release_key);
+  capture->set_width(texture.width);
+  capture->set_height(texture.height);
+  capture->set_timestamp_us(options.timestamp_us);
+  if (auto metadata = toProto(options.metadata)) {
+    capture->mutable_metadata()->CopyFrom(*metadata);
+  }
+
+  const auto response = FfiClient::instance().sendRequest(request);
+  if (!response.has_capture_d3d11_video_frame() ||
+      !response.capture_d3d11_video_frame().accepted()) {
+    return false;
+  }
+
+  // The encoder owns keyed-mutex synchronization after submission. The
+  // producer may recycle the slot only after it observes release_key.
+  lease->accepted();
+  return true;
+}
 
 D3D11H264Capability queryD3D11H264Capability() {
 #ifdef _WIN32

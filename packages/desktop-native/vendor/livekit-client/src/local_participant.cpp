@@ -37,6 +37,18 @@
 
 namespace {
 
+livekit::TrackPublicationOperationError trackPublicationError(
+    const livekit::FfiOperationError& error) {
+  auto code = livekit::TrackPublicationOperationErrorCode::Failed;
+  if (error.code == livekit::FfiOperationErrorCode::Timeout) {
+    code = livekit::TrackPublicationOperationErrorCode::Timeout;
+  } else if (error.code == livekit::FfiOperationErrorCode::Cancelled ||
+             error.code == livekit::FfiOperationErrorCode::Shutdown) {
+    code = livekit::TrackPublicationOperationErrorCode::Cancelled;
+  }
+  return {code, error.message};
+}
+
 std::shared_ptr<livekit::LocalTrackPublication> localTrackPublication(const std::shared_ptr<livekit::Track>& t) {
   if (!t) {
     return nullptr;
@@ -177,21 +189,49 @@ void LocalParticipant::publishTrack(const std::shared_ptr<Track>& track, const T
   if (!track) {
     throw std::invalid_argument("LocalParticipant::publishTrack: track is null");
   }
+  const auto result = publishTrackImpl(track, options, std::nullopt, nullptr);
+  if (result.hasError()) {
+    throw std::runtime_error("LocalParticipant::publishTrack FFI operation failed: " + result.error().message);
+  }
+}
+
+TrackPublicationOperationResult LocalParticipant::publishTrackUntil(
+    const std::shared_ptr<Track>& track, const TrackPublishOptions& options,
+    std::chrono::steady_clock::time_point deadline,
+    const OperationCancellation& cancellation) {
+  return publishTrackImpl(track, options, deadline, &cancellation);
+}
+
+TrackPublicationOperationResult LocalParticipant::publishTrackImpl(
+    const std::shared_ptr<Track>& track, const TrackPublishOptions& options,
+    std::optional<std::chrono::steady_clock::time_point> deadline,
+    const OperationCancellation* cancellation) {
+  if (!track) {
+    return TrackPublicationOperationResult::failure(
+        {TrackPublicationOperationErrorCode::Failed, "track is null"});
+  }
 
   auto participant_handle = ffiHandleId();
   if (participant_handle == 0) {
-    throw std::runtime_error("LocalParticipant::publishTrack: invalid participant FFI handle");
+    return TrackPublicationOperationResult::failure(
+        {TrackPublicationOperationErrorCode::Failed, "invalid participant FFI handle"});
   }
 
   auto track_handle = track->ffiHandleId();
   if (track_handle == 0) {
-    throw std::runtime_error("LocalParticipant::publishTrack: invalid track FFI handle");
+    return TrackPublicationOperationResult::failure(
+        {TrackPublicationOperationErrorCode::Failed, "invalid track FFI handle"});
   }
-  auto fut = FfiClient::instance().publishTrackAsync(static_cast<std::uint64_t>(participant_handle),
-                                                     static_cast<std::uint64_t>(track_handle), options);
-
-  // Will throw if the async op fails (error in callback).
-  const proto::OwnedTrackPublication owned_pub = fut.get();
+  auto operation = FfiClient::instance().publishTrackAsync(static_cast<std::uint64_t>(participant_handle),
+                                                           static_cast<std::uint64_t>(track_handle), options);
+  auto publish_result = deadline
+      ? operation.waitUntil(*deadline, *cancellation)
+      : operation.wait();
+  if (publish_result.hasError()) {
+    return TrackPublicationOperationResult::failure(
+        trackPublicationError(publish_result.error()));
+  }
+  proto::OwnedTrackPublication owned_pub = std::move(publish_result).value();
 
   // Construct a LocalTrackPublication from the proto publication.
   auto publication = std::make_shared<LocalTrackPublication>(owned_pub);
@@ -203,6 +243,7 @@ void LocalParticipant::publishTrack(const std::shared_ptr<Track>& track, const T
     publication_sid_aliases_.erase(sid);
     track->setPublication(publication);
   }
+  return TrackPublicationOperationResult::success();
 }
 
 std::shared_ptr<LocalVideoTrack> LocalParticipant::publishVideoTrack(const std::string& name,
@@ -226,13 +267,31 @@ std::shared_ptr<LocalAudioTrack> LocalParticipant::publishAudioTrack(const std::
 }
 
 void LocalParticipant::unpublishTrack(const std::string& track_sid) {
+  const auto result = unpublishTrackImpl(track_sid, std::nullopt, nullptr);
+  if (result.hasError()) {
+    throw std::runtime_error("LocalParticipant::unpublishTrack FFI operation failed: " + result.error().message);
+  }
+}
+
+TrackPublicationOperationResult LocalParticipant::unpublishTrackUntil(
+    const std::string& track_sid,
+    std::chrono::steady_clock::time_point deadline,
+    const OperationCancellation& cancellation) {
+  return unpublishTrackImpl(track_sid, deadline, &cancellation);
+}
+
+TrackPublicationOperationResult LocalParticipant::unpublishTrackImpl(
+    const std::string& track_sid,
+    std::optional<std::chrono::steady_clock::time_point> deadline,
+    const OperationCancellation* cancellation) {
   if (track_sid.empty()) {
-    return;
+    return TrackPublicationOperationResult::success();
   }
 
   auto handle_id = ffiHandleId();
   if (handle_id == 0) {
-    throw std::runtime_error("LocalParticipant::unpublishTrack: invalid FFI handle");
+    return TrackPublicationOperationResult::failure(
+        {TrackPublicationOperationErrorCode::Failed, "invalid participant FFI handle"});
   }
 
   std::string current_sid = track_sid;
@@ -247,10 +306,15 @@ void LocalParticipant::unpublishTrack(const std::string& track_sid) {
     }
   }
 
-  auto fut = FfiClient::instance().unpublishTrackAsync(static_cast<std::uint64_t>(handle_id), current_sid,
-                                                       /*stop_on_unpublish=*/true);
-
-  fut.get();
+  auto operation = FfiClient::instance().unpublishTrackAsync(static_cast<std::uint64_t>(handle_id), current_sid,
+                                                             /*stop_on_unpublish=*/true);
+  const auto unpublish_result = deadline
+      ? operation.waitUntil(*deadline, *cancellation)
+      : operation.wait();
+  if (unpublish_result.hasError()) {
+    return TrackPublicationOperationResult::failure(
+        trackPublicationError(unpublish_result.error()));
+  }
 
   const std::scoped_lock<std::mutex> guard(published_tracks_mutex_);
   if (auto it = published_tracks_by_sid_.find(current_sid); it != published_tracks_by_sid_.end()) {
@@ -266,6 +330,7 @@ void LocalParticipant::unpublishTrack(const std::string& track_sid) {
       ++it;
     }
   }
+  return TrackPublicationOperationResult::success();
 }
 
 LocalParticipant::PublicationMap LocalParticipant::trackPublications() const {

@@ -14,16 +14,36 @@
 #include <livekit/track.h>
 #include <livekit/video_stream.h>
 
-#include "../common/async_cleanup_dispatcher.hpp"
+#include "../common/cleanup_supervisor.hpp"
 #include "../common/runtime_types.hpp"
-#include "../common/bounded_release_ledger.hpp"
 #include "lifetime_safe_frame_release.hpp"
+#include "remote_video_texture_pool.hpp"
 
 namespace syrnike::desktop_native::media {
+
+class VideoResourceAdmissionBudget;
 
 inline constexpr auto kRemoteVideoFirstFrameTimeout = std::chrono::seconds(5);
 
 enum class FirstFrameState : std::uint8_t { Pending, Received, TimedOut };
+
+enum class RemoteVideoRendererFlowState : std::uint8_t {
+  Flowing,
+  FenceBlocked,
+  Retiring,
+};
+
+struct RemoteVideoTrackSnapshot {
+  RemoteVideoRendererFlowState renderer_flow =
+      RemoteVideoRendererFlowState::Flowing;
+  bool gpu_pump_quiescent = false;
+  std::uint64_t frames_read = 0;
+  std::uint64_t frames_submitted = 0;
+  std::uint64_t frames_published = 0;
+  std::uint64_t gpu_pool_rollovers = 0;
+  std::uint64_t gpu_pump_wakeups = 0;
+  std::uint64_t stream_generations = 0;
+};
 
 inline bool claimFirstFrame(std::atomic<FirstFrameState>& state) noexcept {
   auto expected = FirstFrameState::Pending;
@@ -42,9 +62,9 @@ std::string remoteVideoSourceLabel(
 );
 
 struct VideoBridgeEventTypes {
-  std::string frame = "__remoteVideoFrame";
-  std::string track_removed = "__remoteVideoTrackRemoved";
-  std::string failed = "__remoteVideoFailed";
+  NativeCommandType frame = NativeCommandType::RemoteVideoFrame;
+  NativeCommandType track_removed = NativeCommandType::RemoteVideoTrackRemoved;
+  NativeCommandType failed = NativeCommandType::RemoteVideoFailed;
   std::string stream_label = "Remote video";
 };
 
@@ -78,7 +98,9 @@ class RemoteVideoBridge {
     OnHealthy on_healthy = {},
     VideoBridgeEventTypes event_types = {},
     StreamFactory stream_factory = {},
-    AsyncCleanupLauncher cleanup_launcher = {}
+    CleanupStartProbe cleanup_start_probe = {},
+    VideoResourceAdmissionBudget* resource_budget = nullptr,
+    RemoteVideoTextureCompletionPollControl completion_poll_control = {}
   );
   ~RemoteVideoBridge();
 
@@ -99,6 +121,9 @@ class RemoteVideoBridge {
     bool notify = true
   );
   void release(const std::string& track_id, std::uint64_t sequence);
+  [[nodiscard]] std::optional<RemoteVideoTrackSnapshot> trackSnapshot(
+    const std::string& track_id
+  ) const;
   void stop();
   void stop(std::shared_ptr<void> lifetime_owner);
 
@@ -116,9 +141,11 @@ class RemoteVideoBridge {
   void finishTrackRetirement(TrackWorker& worker) noexcept;
   static void completeTrackRetirement(TrackWorker& worker) noexcept;
   void waitForTrackRetirements();
-  AsyncCleanupDispatcher* cleanup_dispatcher_;
-  AsyncCleanupLauncher cleanup_launcher_;
-  std::shared_ptr<AsyncCleanupNode> cleanup_node_;
+  void stageTracksForCleanup() noexcept;
+  void finishStagedCleanup() noexcept;
+  CleanupSupervisor* cleanup_supervisor_;
+  CleanupStartProbe cleanup_start_probe_;
+  std::shared_ptr<CleanupJob> cleanup_job_;
   std::atomic_bool cleanup_submitted_{false};
   std::uint32_t electron_main_pid_;
   Post post_;
@@ -126,29 +153,17 @@ class RemoteVideoBridge {
   OnHealthy on_healthy_;
   VideoBridgeEventTypes event_types_;
   StreamFactory stream_factory_;
+  VideoResourceAdmissionBudget* resource_budget_ = nullptr;
+  RemoteVideoTextureCompletionPollControl completion_poll_control_;
   std::shared_ptr<LifetimeSafeFrameRelease> release_router_;
   std::mutex lifecycle_mutex_;
   std::shared_ptr<TrackRetirementState> retirement_state_;
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
   std::string session_id_;
   std::uint64_t generation_ = 0;
-  std::uint64_t next_frame_sequence_ = 0;
   std::unordered_map<std::string, std::shared_ptr<TrackWorker>> tracks_;
-#ifdef _WIN32
-  struct RetiredFrame {
-    std::string track_id;
-    std::shared_ptr<void> resource;
-    std::chrono::steady_clock::time_point retired_at;
-  };
-  void makeRetiredFrameRoomLocked(
-    std::chrono::steady_clock::time_point now
-  );
-  static constexpr std::size_t max_retired_renderer_frames_ = 64;
-  static constexpr auto retired_renderer_frame_ttl_ =
-    std::chrono::seconds(30);
-  std::unordered_map<std::uint64_t, RetiredFrame> retired_frames_;
-  BoundedReleaseLedger released_frame_sequences_;
-#endif
+  std::unordered_map<std::string, std::shared_ptr<TrackWorker>>
+    staged_cleanup_tracks_;
 };
 
 }  // namespace syrnike::desktop_native::media

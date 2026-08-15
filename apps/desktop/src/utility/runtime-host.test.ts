@@ -119,7 +119,7 @@ describe('runNativeUtilityHost', () => {
     expect(ready.build).not.toHaveProperty('livekit')
   })
 
-  it('ignores a requestless native reply without corrupting the host contract', async () => {
+  it('ignores a requestless reply and fences the bound utility host epoch', async () => {
     const commitSha = 'a'.repeat(40)
     const nativeRoot = path.resolve('test-native-runtime')
     const nativeModulePath = path.join(nativeRoot, 'syrnike_media.node')
@@ -133,6 +133,7 @@ describe('runNativeUtilityHost', () => {
     const shutdown = vi.fn(async () => undefined)
     const addExtraParameter = vi.fn()
     let runtimeInstance: object | undefined
+    let observedRuntime: object | undefined
 
     class PrototypeBackedMediaRuntime {
       dispatch(command: Record<string, unknown>) {
@@ -198,6 +199,7 @@ describe('runNativeUtilityHost', () => {
             'localScreenPreview',
             'localCameraPreview',
             'directRemoteAudio',
+            'voiceControl',
           ],
           commit: commitSha,
           napi: process.versions.napi,
@@ -218,12 +220,16 @@ describe('runNativeUtilityHost', () => {
         },
       }),
       registerShutdownSignals: () => undefined,
+      onRuntimeCreated: (createdRuntime) => {
+        observedRuntime = createdRuntime
+      },
       crashReporter: { addExtraParameter },
       exit,
     })
 
     expect(runtimeInstance).toBeDefined()
     if (!runtimeInstance) throw new Error('runtime instance was not created')
+    expect(observedRuntime).toBe(runtimeInstance)
     expect(Object.hasOwn(runtimeInstance, 'dispatch')).toBe(false)
     expect(Object.hasOwn(runtimeInstance, 'shutdown')).toBe(false)
     expect(emitFromRuntime).toBeTypeOf('function')
@@ -264,6 +270,8 @@ describe('runNativeUtilityHost', () => {
       data: {
         type: 'request',
         requestId: 'camera-1',
+        lane: 'camera',
+        hostEpoch: 3,
         command: {
           type: 'connectCamera',
           sessionId: 'private-session',
@@ -287,9 +295,37 @@ describe('runNativeUtilityHost', () => {
       'private-participant',
     )
 
+    const dispatchCountAtBoundEpoch = dispatchedCommands.length
+    messageListener?.({
+      data: {
+        type: 'request',
+        requestId: 'retired-host-mute',
+        lane: 'microphone',
+        hostEpoch: 2,
+        command: {
+          type: 'setMicrophoneMuted',
+          sessionId: 'microphone-resilience-soak',
+          generation: 7,
+          muted: true,
+        },
+      } satisfies NativeRuntimeRequest,
+    })
+    expect(dispatchedCommands).toHaveLength(dispatchCountAtBoundEpoch)
+    expect(postedMessages.at(-1)).toEqual({
+      type: 'reply',
+      requestId: 'retired-host-mute',
+      ok: false,
+      error: expect.objectContaining({
+        code: 'stale_host_epoch',
+        retryable: false,
+      }),
+    })
+
     const shutdownRequest: NativeRuntimeRequest = {
       type: 'request',
       requestId: 'shutdown-1',
+      lane: 'runtime',
+      hostEpoch: 3,
       command: { type: 'shutdown' },
       diagnostic: {
         actionId: 'media-action-a',
@@ -307,8 +343,8 @@ describe('runNativeUtilityHost', () => {
       expect(shutdown).toHaveBeenCalledOnce()
       expect(exit).toHaveBeenCalledWith(0)
     })
-    expect(postedMessages).toHaveLength(2)
-    expect(postedMessages[1]).toEqual({
+    expect(postedMessages).toHaveLength(3)
+    expect(postedMessages[2]).toEqual({
       type: 'reply',
       requestId: 'shutdown-1',
       ok: true,
@@ -316,6 +352,8 @@ describe('runNativeUtilityHost', () => {
     expect(dispatchedCommands).toContainEqual(
       expect.objectContaining({
         requestId: 'shutdown-1',
+        lane: 'runtime',
+        hostEpoch: 3,
         diagnostic: shutdownRequest.diagnostic,
       }),
     )

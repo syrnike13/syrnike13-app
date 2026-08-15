@@ -15,7 +15,7 @@
 
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
-#include "../common/async_cleanup_dispatcher.hpp"
+#include "../common/cleanup_supervisor.hpp"
 #include "livekit_voice_session.hpp"
 
 namespace syrnike::desktop_native::media {
@@ -44,6 +44,8 @@ class MicrophonePublicationController final {
                          const std::string &, std::uint64_t)>;
   using RemoveSink =
       std::function<void(const std::shared_ptr<livekit::AudioSource> &)>;
+  using CommitSink =
+      std::function<void(const std::shared_ptr<livekit::AudioSource> &)>;
   using CaptureHealthy = std::function<bool()>;
   using ApplyMute = std::function<void(
       const std::shared_ptr<livekit::LocalAudioTrack> &, bool)>;
@@ -54,9 +56,10 @@ class MicrophonePublicationController final {
       AddSink add_sink, RemoveSink remove_sink, CaptureHealthy capture_healthy,
       std::shared_ptr<LiveKitVoiceSession> voice_session,
       ApplyMute apply_mute = {},
-      AsyncCleanupLauncher async_cleanup_launcher = {},
-      AsyncCleanupEnqueueProbe async_cleanup_enqueue_probe = {},
-      RetirementFinalizeProbe retirement_finalize_probe = {});
+      CleanupStartProbe cleanup_start_probe = {},
+      CleanupEnqueueProbe cleanup_enqueue_probe = {},
+      RetirementFinalizeProbe retirement_finalize_probe = {},
+      CommitSink commit_sink = {});
   ~MicrophonePublicationController();
 
   MicrophonePublicationController(const MicrophonePublicationController &) =

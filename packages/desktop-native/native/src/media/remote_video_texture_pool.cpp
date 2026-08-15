@@ -3,11 +3,13 @@
 #ifdef _WIN32
 
 #include <d3d11.h>
+#include <d3d10.h>
 #include <dxgi1_2.h>
 #include <windows.h>
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <mutex>
 #include <sstream>
@@ -17,6 +19,7 @@
 
 #include "d3d11_gpu_completion.hpp"
 #include "remote_video_texture_pool_policy.hpp"
+#include "video_resource_admission.hpp"
 
 namespace syrnike::desktop_native::media {
 namespace {
@@ -41,21 +44,249 @@ using Microsoft::WRL::ComPtr;
 }
 }  // namespace
 
+struct RemoteVideoD3dDeviceOwner::State final {
+  struct Completion final {
+    explicit Completion(
+      ID3D11Device* device,
+      ID3D11DeviceContext* context
+    ) : completion(device, context) {}
+
+    D3d11GpuCompletion completion;
+  };
+
+  State(
+    VideoResourceAdmissionBudget& resource_budget,
+    std::string owner_id,
+    std::uint32_t electron_main_pid,
+    RemoteVideoD3dDeviceOperationProbe operation_probe
+  ) : resource_lease(requireVideoResourceAdmission(
+          resource_budget,
+          VideoResourceRequest{
+              .owner = VideoResourceOwner::RemoteVideo,
+              .owner_id = std::move(owner_id),
+              .d3d_devices = 1,
+          })),
+      electron_main_pid(electron_main_pid),
+      operation_probe(std::move(operation_probe)),
+      identity(next_identity.fetch_add(1, std::memory_order_relaxed)) {
+    if (electron_main_pid == 0) {
+      throw std::invalid_argument("Electron main process ID is required");
+    }
+    D3D_FEATURE_LEVEL level{};
+    const auto result = D3D11CreateDevice(
+      nullptr,
+      D3D_DRIVER_TYPE_HARDWARE,
+      nullptr,
+      D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+      nullptr,
+      0,
+      D3D11_SDK_VERSION,
+      &device,
+      &level,
+      &context
+    );
+    if (FAILED(result)) {
+      throwHResult("D3D11 remote video device creation failed", result);
+    }
+    ComPtr<ID3D10Multithread> multithread;
+    const auto multithread_result = context.As(&multithread);
+    if (FAILED(multithread_result)) {
+      throwHResult(
+        "D3D11 remote video multithread protection query failed",
+        multithread_result
+      );
+    }
+    multithread->SetMultithreadProtected(TRUE);
+    multithread_protected = multithread->GetMultithreadProtected() != FALSE;
+    if (!multithread_protected) {
+      throw RemoteVideoTexturePoolError(
+        "D3D11 remote video multithread protection was not enabled",
+        static_cast<long>(E_FAIL)
+      );
+    }
+    main_process = OpenProcess(PROCESS_DUP_HANDLE, FALSE, electron_main_pid);
+    if (!main_process) {
+      throwWin32Error(
+        "Electron main process handle open failed", GetLastError());
+    }
+  }
+
+  ~State() {
+    if (main_process) CloseHandle(main_process);
+  }
+
+  void configure(
+    std::uint32_t width,
+    std::uint32_t height,
+    ComPtr<ID3D11Texture2D>& texture,
+    std::unique_ptr<Completion>& completion,
+    HANDLE& shared_handle
+  ) {
+    std::lock_guard lock(context_mutex);
+    if (shared_handle) CloseHandle(shared_handle);
+    shared_handle = nullptr;
+    texture.Reset();
+    completion = std::make_unique<Completion>(device.Get(), context.Get());
+    if (FAILED(completion->completion.initializationResult())) {
+      throwHResult(
+        "D3D11 remote video completion query creation failed",
+        completion->completion.initializationResult()
+      );
+    }
+    D3D11_TEXTURE2D_DESC description{};
+    description.Width = width;
+    description.Height = height;
+    description.MipLevels = 1;
+    description.ArraySize = 1;
+    description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    description.SampleDesc.Count = 1;
+    description.Usage = D3D11_USAGE_DEFAULT;
+    description.BindFlags =
+      D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    description.MiscFlags =
+      D3D11_RESOURCE_MISC_SHARED_NTHANDLE | D3D11_RESOURCE_MISC_SHARED;
+    const auto texture_result =
+      device->CreateTexture2D(&description, nullptr, &texture);
+    if (FAILED(texture_result)) {
+      throwHResult(
+        "D3D11 remote video shared texture creation failed", texture_result);
+    }
+    ComPtr<IDXGIResource1> resource;
+    const auto resource_result = texture.As(&resource);
+    if (FAILED(resource_result)) {
+      throwHResult(
+        "DXGI remote video resource query failed", resource_result);
+    }
+    const auto handle_result = resource->CreateSharedHandle(
+      nullptr, DXGI_SHARED_RESOURCE_READ, nullptr, &shared_handle);
+    if (FAILED(handle_result)) {
+      throwHResult(
+        "DXGI remote video shared handle creation failed", handle_result);
+    }
+  }
+
+  HRESULT submit(
+    ID3D11Texture2D* texture,
+    Completion& completion,
+    const void* data,
+    UINT row_pitch,
+    std::chrono::milliseconds timeout
+  ) {
+    std::lock_guard lock(context_mutex);
+    if (operation_probe) operation_probe(RemoteVideoD3dDeviceOperation::Submit);
+    context->UpdateSubresource(texture, 0, nullptr, data, row_pitch, 0);
+    return completion.completion.begin(timeout);
+  }
+
+  HRESULT poll(Completion& completion, std::uint64_t* elapsed_us) {
+    std::lock_guard lock(context_mutex);
+    if (operation_probe) operation_probe(RemoteVideoD3dDeviceOperation::Poll);
+    return completion.completion.poll(elapsed_us);
+  }
+
+  HANDLE duplicateForElectron(HANDLE shared_handle) {
+    std::lock_guard lock(context_mutex);
+    HANDLE duplicated = nullptr;
+    if (!DuplicateHandle(
+          GetCurrentProcess(), shared_handle, main_process, &duplicated,
+          0, FALSE, DUPLICATE_SAME_ACCESS)) {
+      throwWin32Error(
+        "DXGI remote video handle duplication failed", GetLastError());
+    }
+    return duplicated;
+  }
+
+  void closeElectronHandle(HANDLE remote_handle) noexcept {
+    if (!remote_handle) return;
+    std::lock_guard lock(context_mutex);
+    HANDLE local = nullptr;
+    if (DuplicateHandle(
+          main_process, remote_handle, GetCurrentProcess(), &local,
+          0, FALSE, DUPLICATE_CLOSE_SOURCE | DUPLICATE_SAME_ACCESS)) {
+      CloseHandle(local);
+    }
+  }
+
+  inline static std::atomic_uint64_t next_identity{1};
+  std::shared_ptr<VideoResourceLease> resource_lease;
+  mutable std::mutex context_mutex;
+  ComPtr<ID3D11Device> device;
+  ComPtr<ID3D11DeviceContext> context;
+  HANDLE main_process = nullptr;
+  std::uint32_t electron_main_pid = 0;
+  RemoteVideoD3dDeviceOperationProbe operation_probe;
+  std::uint64_t identity = 0;
+  bool multithread_protected = false;
+};
+
+RemoteVideoD3dDeviceOwner::RemoteVideoD3dDeviceOwner(
+  std::shared_ptr<State> state
+) : state_(std::move(state)) {}
+
+std::shared_ptr<RemoteVideoD3dDeviceOwner>
+RemoteVideoD3dDeviceOwner::create(
+  VideoResourceAdmissionBudget& resource_budget,
+  std::string owner_id,
+  std::uint32_t electron_main_pid,
+  RemoteVideoD3dDeviceOperationProbe operation_probe
+) {
+  return std::shared_ptr<RemoteVideoD3dDeviceOwner>(
+    new RemoteVideoD3dDeviceOwner(std::make_shared<State>(
+      resource_budget,
+      std::move(owner_id),
+      electron_main_pid,
+      std::move(operation_probe)
+    )));
+}
+
+RemoteVideoD3dDeviceOwner::~RemoteVideoD3dDeviceOwner() = default;
+
+std::uint64_t RemoteVideoD3dDeviceOwner::identity() const noexcept {
+  return state_->identity;
+}
+
+std::uint64_t RemoteVideoD3dDeviceOwner::deviceReservationId() const noexcept {
+  return state_->resource_lease->reservationId();
+}
+
+bool RemoteVideoD3dDeviceOwner::multithreadProtected() const noexcept {
+  return state_->multithread_protected;
+}
+
+std::shared_ptr<RemoteVideoD3dDeviceOwner>
+selectRemoteVideoD3dDeviceOwnerForRollover(
+  const std::shared_ptr<RemoteVideoD3dDeviceOwner>& current,
+  RemoteVideoGpuRolloverCause cause,
+  VideoResourceAdmissionBudget& resource_budget,
+  std::string owner_id,
+  std::uint32_t electron_main_pid
+) {
+  if (cause != RemoteVideoGpuRolloverCause::DeviceFailure) {
+    if (!current) throw std::invalid_argument("current D3D owner is required");
+    return current;
+  }
+  return RemoteVideoD3dDeviceOwner::create(
+    resource_budget, std::move(owner_id), electron_main_pid);
+}
+
 struct RemoteVideoTexturePool::State final
     : public std::enable_shared_from_this<RemoteVideoTexturePool::State> {
   using SlotPhase = RemoteVideoTextureSlotPhase;
 
   struct Slot {
     ComPtr<ID3D11Texture2D> texture;
-    std::unique_ptr<D3d11GpuCompletion> completion;
+    std::unique_ptr<RemoteVideoD3dDeviceOwner::State::Completion> completion;
     HANDLE shared_handle = nullptr;
     HANDLE remote_handle = nullptr;
     std::uint32_t remote_pid = 0;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
     std::uint64_t timestamp_us = 0;
+    std::uint64_t source_timestamp_us = 0;
+    std::uint32_t source_frame_id = 0;
     std::uint64_t gpu_completion_us = 0;
     std::uint64_t submission_sequence = 0;
+    std::chrono::steady_clock::time_point submitted_at{};
     std::uint64_t generation = 0;
     SlotPhase phase = SlotPhase::Available;
   };
@@ -80,60 +311,70 @@ struct RemoteVideoTexturePool::State final
     std::uint64_t generation_;
   };
 
-  State(std::uint32_t electron_main_pid, std::size_t capacity)
-      : electron_main_pid_(electron_main_pid),
-        slots_(std::max<std::size_t>(1, capacity)) {
-    if (electron_main_pid_ == 0) {
-      throw std::invalid_argument("Electron main process ID is required");
+  State(
+      std::shared_ptr<RemoteVideoD3dDeviceOwner> device_owner,
+      VideoResourceAdmissionBudget& resource_budget,
+      std::string owner_id,
+      std::uint32_t width,
+      std::uint32_t height,
+      std::size_t capacity,
+      RemoteVideoTextureCompletionPollControl completion_poll_control)
+      : resource_lease_(requireVideoResourceAdmission(
+            resource_budget,
+            VideoResourceRequest{
+                .owner = VideoResourceOwner::RemoteVideo,
+                .owner_id = std::move(owner_id),
+                .gpu_generations = 1,
+                .textures = {{
+                    .width = width,
+                    .height = height,
+                    .count = std::max<std::size_t>(1, capacity),
+                    .format = VideoTextureFormat::Bgra8,
+                }},
+            })),
+        device_owner_(std::move(device_owner)),
+        width_(width),
+        height_(height),
+        slots_(std::max<std::size_t>(1, capacity)),
+        completion_poll_control_(std::move(completion_poll_control)) {
+    if (!device_owner_) {
+      throw std::invalid_argument("remote video D3D device owner is required");
     }
-    D3D_FEATURE_LEVEL level{};
-    const auto device_result = D3D11CreateDevice(
-      nullptr,
-      D3D_DRIVER_TYPE_HARDWARE,
-      nullptr,
-      D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-      nullptr,
-      0,
-      D3D11_SDK_VERSION,
-      &device_,
-      &level,
-      &context_
-    );
-    if (FAILED(device_result)) {
-      throwHResult("D3D11 remote video device creation failed", device_result);
-    }
-    main_process_ = OpenProcess(
-      PROCESS_DUP_HANDLE,
-      FALSE,
-      electron_main_pid_
-    );
-    if (!main_process_) {
-      throwWin32Error(
-        "Electron main process handle open failed",
-        GetLastError()
-      );
+    if (width_ == 0 || height_ == 0) {
+      throw std::invalid_argument("remote video pool dimensions are required");
     }
   }
 
   ~State() {
     std::lock_guard lock(mutex_);
     for (auto& slot : slots_) {
-      closeRemoteHandle(slot);
+      // DuplicateHandle put this value in Electron's handle table. Closing it
+      // here recycles that NT number while the renderer may still hold the
+      // import (injected fence, probe-epoch churn). Electron owns the
+      // duplicate; native only closes it when the slot texture itself changes.
+      slot.remote_handle = nullptr;
+      slot.remote_pid = 0;
       if (slot.shared_handle) CloseHandle(slot.shared_handle);
     }
-    if (main_process_) CloseHandle(main_process_);
   }
 
   bool submit(
     const livekit::VideoFrame& frame,
-    std::uint64_t timestamp_us
+    std::uint64_t timestamp_us,
+    std::uint64_t source_timestamp_us,
+    std::uint32_t source_frame_id
   ) {
     if (frame.type() != livekit::VideoBufferType::BGRA ||
         frame.width() <= 0 ||
         frame.height() <= 0) {
       throw std::invalid_argument(
-        "Remote video texture upload requires a non-empty BGRA frame"
+          "Remote video texture upload requires a non-empty BGRA frame"
       );
+    }
+    if (static_cast<std::uint32_t>(frame.width()) != width_ ||
+        static_cast<std::uint32_t>(frame.height()) != height_) {
+      throw std::invalid_argument(
+          "Remote video texture upload dimensions do not match its admitted generation");
     }
     std::lock_guard lock(mutex_);
     for (std::size_t attempt = 0; attempt < slots_.size(); ++attempt) {
@@ -145,16 +386,14 @@ struct RemoteVideoTexturePool::State final
         static_cast<std::uint32_t>(frame.width()),
         static_cast<std::uint32_t>(frame.height())
       );
-      context_->UpdateSubresource(
-        slot.texture.Get(),
-        0,
-        nullptr,
-        frame.data(),
-        static_cast<UINT>(frame.width() * 4),
-        0
-      );
       const auto completion_result =
-        slot.completion->begin(gpu_completion_timeout);
+        device_owner_->state_->submit(
+          slot.texture.Get(),
+          *slot.completion,
+          frame.data(),
+          static_cast<UINT>(frame.width() * 4),
+          gpu_completion_timeout
+        );
       if (FAILED(completion_result)) {
         throwHResult(
           "D3D11 remote video upload submission failed",
@@ -162,8 +401,13 @@ struct RemoteVideoTexturePool::State final
         );
       }
       slot.timestamp_us = timestamp_us;
+      slot.source_timestamp_us = source_timestamp_us;
+      slot.source_frame_id = source_frame_id;
       slot.gpu_completion_us = 0;
       slot.submission_sequence = ++next_submission_sequence_;
+      if (completion_poll_control_) {
+        slot.submitted_at = std::chrono::steady_clock::now();
+      }
       slot.phase = SlotPhase::Uploading;
       next_submit_slot_ = (index + 1) % slots_.size();
       return true;
@@ -178,15 +422,44 @@ struct RemoteVideoTexturePool::State final
       const bool was_quarantined = slot.phase == SlotPhase::Quarantined;
       if (slot.phase != SlotPhase::Uploading && !was_quarantined) continue;
       std::uint64_t elapsed_us = 0;
-      const auto result = slot.completion->poll(&elapsed_us);
-      const auto generic_class = classifyGpuCompletionPoll(result);
-      const auto poll_class = generic_class == GpuCompletionPollClass::Pending
-        ? RemoteVideoGpuPollClass::Pending
-        : generic_class == GpuCompletionPollClass::TimedOut
-          ? RemoteVideoGpuPollClass::TimedOut
-          : generic_class == GpuCompletionPollClass::DeviceFailed
-            ? RemoteVideoGpuPollClass::Failed
-            : RemoteVideoGpuPollClass::Completed;
+      bool withhold_real_poll = false;
+      if (completion_poll_control_) {
+        elapsed_us = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - slot.submitted_at)
+                .count());
+        withhold_real_poll = completion_poll_control_({
+              .pool_reservation_id = resource_lease_->reservationId(),
+              .submission_sequence = slot.submission_sequence,
+              .elapsed_us = elapsed_us,
+              .timeout_us = static_cast<std::uint64_t>(
+                  std::chrono::duration_cast<std::chrono::microseconds>(
+                      gpu_completion_timeout)
+                      .count()),
+              .quarantined = was_quarantined,
+          });
+      }
+      HRESULT result = S_FALSE;
+      RemoteVideoGpuPollClass poll_class = RemoteVideoGpuPollClass::Pending;
+      if (withhold_real_poll) {
+        if (elapsed_us >= static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    gpu_completion_timeout)
+                    .count())) {
+          result = DXGI_ERROR_WAIT_TIMEOUT;
+          poll_class = RemoteVideoGpuPollClass::TimedOut;
+        }
+      } else {
+        result = device_owner_->state_->poll(*slot.completion, &elapsed_us);
+        const auto generic_class = classifyGpuCompletionPoll(result);
+        poll_class = generic_class == GpuCompletionPollClass::Pending
+          ? RemoteVideoGpuPollClass::Pending
+          : generic_class == GpuCompletionPollClass::TimedOut
+            ? RemoteVideoGpuPollClass::TimedOut
+            : generic_class == GpuCompletionPollClass::DeviceFailed
+              ? RemoteVideoGpuPollClass::Failed
+              : RemoteVideoGpuPollClass::Completed;
+      }
       const auto transition = decideRemoteVideoSlotTransition(
         slot.phase, poll_class);
       slot.phase = transition.next;
@@ -212,8 +485,8 @@ struct RemoteVideoTexturePool::State final
       }
       slot.gpu_completion_us = elapsed_us;
       if (transition.recovered) {
-        // A frame that missed the 500 ms budget is stale for a live stream.
-        // Recover the slot, but intentionally drop that completed frame.
+        // The policy keeps a late static frame eligible for latest-wins
+        // selection; take() discards it only when a newer frame is ready.
         ++outcome.slots_recovered;
       }
     }
@@ -252,34 +525,41 @@ struct RemoteVideoTexturePool::State final
     }
     auto& slot = slots_[newest_index];
 
-    HANDLE duplicated = nullptr;
-    if (!DuplicateHandle(
-          GetCurrentProcess(),
-          slot.shared_handle,
-          main_process_,
-          &duplicated,
-          0,
-          FALSE,
-          DUPLICATE_SAME_ACCESS)) {
-      slot.phase = SlotPhase::Available;
-      throwWin32Error(
-        "DXGI remote video handle duplication failed",
-        GetLastError()
-      );
+    // One stable Electron HANDLE per slot. A fresh DuplicateHandle on every
+    // take() plus DUPLICATE_CLOSE_SOURCE on release lets Windows reuse the
+    // number while Electron still holds the previous import.
+    HANDLE duplicated = slot.remote_handle;
+    if (!duplicated) {
+      duplicated =
+        device_owner_->state_->duplicateForElectron(slot.shared_handle);
+      slot.remote_handle = duplicated;
+      slot.remote_pid = device_owner_->state_->electron_main_pid;
     }
-    slot.remote_handle = duplicated;
-    slot.remote_pid = electron_main_pid_;
     slot.phase = SlotPhase::Delivered;
     const auto generation = ++slot.generation;
     frame = RemoteVideoTextureFrame{
       reinterpret_cast<std::uint64_t>(duplicated),
       slot.timestamp_us,
+      slot.source_timestamp_us,
+      slot.source_frame_id,
       slot.gpu_completion_us,
       slot.width,
       slot.height,
       std::make_shared<Lease>(shared_from_this(), newest_index, generation),
     };
     return true;
+  }
+
+  std::uint64_t discardReady() {
+    std::lock_guard lock(mutex_);
+    std::uint64_t discarded = 0;
+    for (auto& slot : slots_) {
+      if (slot.phase != SlotPhase::Ready) continue;
+      slot.phase = SlotPhase::Available;
+      ++discarded;
+    }
+    superseded_ready_frames_ += discarded;
+    return discarded;
   }
 
   std::size_t available() const {
@@ -318,6 +598,21 @@ struct RemoteVideoTexturePool::State final
     return std::exchange(superseded_ready_frames_, 0);
   }
 
+  std::uint32_t width() const noexcept { return width_; }
+  std::uint32_t height() const noexcept { return height_; }
+  std::uint64_t deviceOwnerIdentity() const noexcept {
+    return device_owner_->identity();
+  }
+  std::uint64_t deviceReservationId() const noexcept {
+    return device_owner_->deviceReservationId();
+  }
+  std::uint64_t generationReservationId() const noexcept {
+    return resource_lease_->reservationId();
+  }
+  std::shared_ptr<RemoteVideoD3dDeviceOwner> deviceOwner() const {
+    return device_owner_;
+  }
+
  private:
   std::size_t countPhase(SlotPhase phase) const {
     return static_cast<std::size_t>(std::count_if(
@@ -334,59 +629,9 @@ struct RemoteVideoTexturePool::State final
   ) {
     if (slot.texture && slot.completion &&
         slot.width == width && slot.height == height) return;
-    if (slot.shared_handle) CloseHandle(slot.shared_handle);
-    slot.shared_handle = nullptr;
-    slot.texture.Reset();
-    slot.completion =
-      std::make_unique<D3d11GpuCompletion>(device_.Get(), context_.Get());
-    if (FAILED(slot.completion->initializationResult())) {
-      throwHResult(
-        "D3D11 remote video completion query creation failed",
-        slot.completion->initializationResult()
-      );
-    }
-
-    D3D11_TEXTURE2D_DESC description{};
-    description.Width = width;
-    description.Height = height;
-    description.MipLevels = 1;
-    description.ArraySize = 1;
-    description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    description.SampleDesc.Count = 1;
-    description.Usage = D3D11_USAGE_DEFAULT;
-    description.BindFlags =
-      D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-    description.MiscFlags =
-      D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
-      D3D11_RESOURCE_MISC_SHARED;
-    const auto texture_result =
-      device_->CreateTexture2D(&description, nullptr, &slot.texture);
-    if (FAILED(texture_result)) {
-      throwHResult(
-        "D3D11 remote video shared texture creation failed",
-        texture_result
-      );
-    }
-    ComPtr<IDXGIResource1> resource;
-    const auto resource_result = slot.texture.As(&resource);
-    if (FAILED(resource_result)) {
-      throwHResult(
-        "DXGI remote video resource query failed",
-        resource_result
-      );
-    }
-    const auto handle_result = resource->CreateSharedHandle(
-      nullptr,
-      DXGI_SHARED_RESOURCE_READ,
-      nullptr,
-      &slot.shared_handle
-    );
-    if (FAILED(handle_result)) {
-      throwHResult(
-        "DXGI remote video shared handle creation failed",
-        handle_result
-      );
-    }
+    closeRemoteHandle(slot);
+    device_owner_->state_->configure(
+      width, height, slot.texture, slot.completion, slot.shared_handle);
     slot.width = width;
     slot.height = height;
   }
@@ -399,62 +644,80 @@ struct RemoteVideoTexturePool::State final
         slot.generation != generation) {
       return;
     }
-    closeRemoteHandle(slot);
     slot.phase = SlotPhase::Available;
   }
 
-  static void closeRemoteHandle(Slot& slot) noexcept {
+  void closeRemoteHandle(Slot& slot) noexcept {
     if (!slot.remote_handle || slot.remote_pid == 0) {
       slot.remote_handle = nullptr;
       slot.remote_pid = 0;
       return;
     }
-    const HANDLE process = OpenProcess(
-      PROCESS_DUP_HANDLE,
-      FALSE,
-      slot.remote_pid
-    );
-    if (process) {
-      HANDLE local = nullptr;
-      if (DuplicateHandle(
-            process,
-            slot.remote_handle,
-            GetCurrentProcess(),
-            &local,
-            0,
-            FALSE,
-            DUPLICATE_CLOSE_SOURCE | DUPLICATE_SAME_ACCESS)) {
-        CloseHandle(local);
-      }
-      CloseHandle(process);
-    }
+    device_owner_->state_->closeElectronHandle(slot.remote_handle);
     slot.remote_handle = nullptr;
     slot.remote_pid = 0;
   }
 
+  std::shared_ptr<VideoResourceLease> resource_lease_;
   mutable std::mutex mutex_;
-  ComPtr<ID3D11Device> device_;
-  ComPtr<ID3D11DeviceContext> context_;
-  HANDLE main_process_ = nullptr;
-  std::uint32_t electron_main_pid_;
+  std::shared_ptr<RemoteVideoD3dDeviceOwner> device_owner_;
+  std::uint32_t width_ = 0;
+  std::uint32_t height_ = 0;
   std::vector<Slot> slots_;
+  RemoteVideoTextureCompletionPollControl completion_poll_control_;
   std::size_t next_submit_slot_ = 0;
   std::uint64_t next_submission_sequence_ = 0;
   std::uint64_t superseded_ready_frames_ = 0;
 };
 
 RemoteVideoTexturePool::RemoteVideoTexturePool(
+  VideoResourceAdmissionBudget& resource_budget,
+  std::string owner_id,
   std::uint32_t electron_main_pid,
-  std::size_t capacity
-) : state_(std::make_shared<State>(electron_main_pid, capacity)) {}
+  std::uint32_t width,
+  std::uint32_t height,
+  std::size_t capacity,
+  RemoteVideoTextureCompletionPollControl completion_poll_control
+) : state_([&] {
+      auto device_owner = RemoteVideoD3dDeviceOwner::create(
+        resource_budget, owner_id, electron_main_pid);
+      return std::make_shared<State>(
+        std::move(device_owner),
+        resource_budget,
+        std::move(owner_id),
+        width,
+        height,
+        capacity,
+        std::move(completion_poll_control));
+    }()) {}
+
+RemoteVideoTexturePool::RemoteVideoTexturePool(
+  std::shared_ptr<RemoteVideoD3dDeviceOwner> device_owner,
+  VideoResourceAdmissionBudget& resource_budget,
+  std::string owner_id,
+  std::uint32_t width,
+  std::uint32_t height,
+  std::size_t capacity,
+  RemoteVideoTextureCompletionPollControl completion_poll_control
+) : state_(std::make_shared<State>(
+      std::move(device_owner),
+      resource_budget,
+      std::move(owner_id),
+      width,
+      height,
+      capacity,
+      std::move(completion_poll_control))) {}
 
 RemoteVideoTexturePool::~RemoteVideoTexturePool() = default;
 
 bool RemoteVideoTexturePool::submit(
   const livekit::VideoFrame& frame,
-  std::uint64_t timestamp_us
+  std::uint64_t timestamp_us,
+  std::uint64_t source_timestamp_us,
+  std::uint32_t source_frame_id
 ) {
-  return state_->submit(frame, timestamp_us);
+  return state_->submit(
+    frame, timestamp_us, source_timestamp_us, source_frame_id);
 }
 
 RemoteVideoTexturePollResult RemoteVideoTexturePool::poll() {
@@ -463,6 +726,10 @@ RemoteVideoTexturePollResult RemoteVideoTexturePool::poll() {
 
 bool RemoteVideoTexturePool::take(RemoteVideoTextureFrame& frame) {
   return state_->take(frame);
+}
+
+std::uint64_t RemoteVideoTexturePool::discardReady() {
+  return state_->discardReady();
 }
 
 std::size_t RemoteVideoTexturePool::available() const {
@@ -481,12 +748,37 @@ std::size_t RemoteVideoTexturePool::quarantined() const {
   return state_->quarantined();
 }
 
+std::uint32_t RemoteVideoTexturePool::width() const noexcept {
+  return state_->width();
+}
+
+std::uint32_t RemoteVideoTexturePool::height() const noexcept {
+  return state_->height();
+}
+
 bool RemoteVideoTexturePool::retirementSafe() const {
   return state_->retirementSafe();
 }
 
 std::uint64_t RemoteVideoTexturePool::consumeSupersededReadyFrames() {
   return state_->consumeSupersededReadyFrames();
+}
+
+std::uint64_t RemoteVideoTexturePool::deviceOwnerIdentity() const noexcept {
+  return state_->deviceOwnerIdentity();
+}
+
+std::uint64_t RemoteVideoTexturePool::deviceReservationId() const noexcept {
+  return state_->deviceReservationId();
+}
+
+std::uint64_t RemoteVideoTexturePool::generationReservationId() const noexcept {
+  return state_->generationReservationId();
+}
+
+std::shared_ptr<RemoteVideoD3dDeviceOwner>
+RemoteVideoTexturePool::deviceOwner() const {
+  return state_->deviceOwner();
 }
 
 }  // namespace syrnike::desktop_native::media

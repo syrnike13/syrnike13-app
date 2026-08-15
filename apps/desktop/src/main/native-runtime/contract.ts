@@ -8,7 +8,7 @@ import {
 import type { NativeMediaSession } from '@syrnike13/platform'
 import { Option, Schema } from 'effect'
 
-export const NATIVE_RUNTIME_CONTRACT_VERSION = 9
+export const NATIVE_RUNTIME_CONTRACT_VERSION = 10
 export const NATIVE_RUNTIME_MAX_PENDING_REQUESTS = 256
 
 const nonEmptyString = (maximumLength = 4_096) =>
@@ -44,7 +44,7 @@ const NativeRuntimeReadySchema = Schema.Struct({
   build: NativeRuntimeBuildSchema,
 })
 
-const NativeRuntimeReplySchema = Schema.Union([
+export const NativeRuntimeReplySchema = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('reply'),
     requestId: nonEmptyString(256),
@@ -57,7 +57,7 @@ const NativeRuntimeReplySchema = Schema.Union([
     ok: Schema.Literal(false),
     error: NativeRuntimeErrorSchema,
   }),
-])
+]).annotate({ identifier: 'EventReply' })
 
 const UncorrelatedNativeRuntimeReplySchema = Schema.Struct({
   type: Schema.Literal('reply'),
@@ -164,6 +164,28 @@ const sessionCommandFields = {
   generation: nonNegativeInteger,
 }
 
+const DisplaySourceCommandSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal('listDisplaySources'),
+    action: Schema.Literal('metadata'),
+    enumerationId: nonEmptyString(256),
+    page: integerInRange(0, 1_000_000),
+    selfWindowHwnd: Schema.optional(UnsignedIntegerStringSchema),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('listDisplaySources'),
+    action: Schema.Literal('thumbnail'),
+    enumerationId: nonEmptyString(256),
+    sourceId: nonEmptyString(2_048),
+    selfWindowHwnd: Schema.optional(UnsignedIntegerStringSchema),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('listDisplaySources'),
+    action: Schema.Literal('cancel'),
+    enumerationId: nonEmptyString(256),
+  }),
+]).annotate({ identifier: 'CommandListDisplaySources' })
+
 const MediaRuntimeCommandSchema = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('connectVoice'),
@@ -171,34 +193,34 @@ const MediaRuntimeCommandSchema = Schema.Union([
     options: Schema.Struct({
       livekit: LiveKitNativePublisherCredentialsSchema,
     }),
-  }),
+  }).annotate({ identifier: 'CommandConnectVoice' }),
   Schema.Struct({
     type: Schema.Literal('disconnectVoice'),
     ...sessionCommandFields,
-  }),
+  }).annotate({ identifier: 'CommandDisconnectVoice' }),
   Schema.Struct({
     type: Schema.Literal('configureRemoteAudio'),
     ...sessionCommandFields,
     settings: VoiceRemoteAudioSettingsSchema,
-  }),
+  }).annotate({ identifier: 'CommandConfigureRemoteAudio' }),
   Schema.Struct({
     type: Schema.Literal('releaseRemoteVideoFrame'),
     ...sessionCommandFields,
     trackId: nonEmptyString(512),
     sequence: nonNegativeInteger,
-  }),
+  }).annotate({ identifier: 'CommandReleaseRemoteVideoFrame' }),
   Schema.Struct({
     type: Schema.Literal('setRemoteVideoDemand'),
     ...sessionCommandFields,
     trackId: nonEmptyString(512),
     demanded: Schema.Boolean,
-  }),
+  }).annotate({ identifier: 'CommandSetRemoteVideoDemand' }),
   Schema.Struct({
     type: Schema.Literal('retryRemoteVideo'),
     ...sessionCommandFields,
     trackId: nonEmptyString(512),
     reason: nonEmptyString(256),
-  }),
+  }).annotate({ identifier: 'CommandRetryRemoteVideo' }),
   Schema.Struct({
     type: Schema.Literal('setLocalScreenPreviewDemand'),
     ...sessionCommandFields,
@@ -209,48 +231,55 @@ const MediaRuntimeCommandSchema = Schema.Union([
       height: integerInRange(16, 2_160),
       fps: integerInRange(1, 60),
     }),
-  }),
+  }).annotate({ identifier: 'CommandSetLocalScreenPreviewDemand' }),
   Schema.Struct({
     type: Schema.Literal('releaseLocalScreenPreviewFrame'),
     ...sessionCommandFields,
     trackId: nonEmptyString(512),
     sequence: nonNegativeInteger,
-  }),
+  }).annotate({ identifier: 'CommandReleaseLocalScreenPreviewFrame' }),
   Schema.Struct({
     type: Schema.Literal('releaseLocalCameraPreviewFrame'),
     ...sessionCommandFields,
     trackId: nonEmptyString(512),
     sequence: nonNegativeInteger,
-  }),
+  }).annotate({ identifier: 'CommandReleaseLocalCameraPreviewFrame' }),
+  Schema.Struct({
+    type: Schema.Literal('setLocalCameraPreviewDemand'),
+    ...sessionCommandFields,
+    demanded: Schema.Boolean,
+  }).annotate({ identifier: 'CommandSetLocalCameraPreviewDemand' }),
+  Schema.Struct({
+    type: Schema.Literal('retryLocalCameraPreview'),
+    ...sessionCommandFields,
+    reason: nonEmptyString(256),
+  }).annotate({ identifier: 'CommandRetryLocalCameraPreview' }),
   Schema.Struct({
     type: Schema.Literal('configureVoiceOutput'),
     ...sessionCommandFields,
     deafened: Schema.Boolean,
     deviceId: Schema.optional(nonEmptyString(2_048)),
     volume: Schema.optional(finiteNumberInRange(0, 3)),
-  }),
+  }).annotate({ identifier: 'CommandConfigureVoiceOutput' }),
   Schema.Struct({
     type: Schema.Literal('warmMicrophone'),
     generation: nonNegativeInteger,
     config: MicrophonePipelineConfigSchema,
-  }),
+  }).annotate({ identifier: 'CommandWarmMicrophone' }),
   Schema.Struct({
     type: Schema.Literal('listDevices'),
     kind: Schema.Literals(['audioinput', 'audiooutput', 'videoinput']),
-  }),
-  Schema.Struct({
-    type: Schema.Literal('listDisplaySources'),
-    selfWindowHwnd: Schema.optional(UnsignedIntegerStringSchema),
-  }),
+  }).annotate({ identifier: 'CommandListDevices' }),
+  DisplaySourceCommandSchema,
   Schema.Struct({
     type: Schema.Literal('startPreview'),
     ...sessionCommandFields,
-  }),
+  }).annotate({ identifier: 'CommandStartPreview' }),
   Schema.Struct({
     type: Schema.Literal('stopPreview'),
     sessionId: Schema.optional(nonEmptyString(256)),
     generation: Schema.optional(nonNegativeInteger),
-  }),
+  }).annotate({ identifier: 'CommandStopPreview' }),
   Schema.Struct({
     type: Schema.Literal('connectScreen'),
     ...sessionCommandFields,
@@ -258,77 +287,162 @@ const MediaRuntimeCommandSchema = Schema.Union([
       participantIdentity: nonEmptyString(512),
       livekit: Schema.optional(Schema.Never),
     }),
-  }),
+  }).annotate({ identifier: 'CommandConnectScreen' }),
   Schema.Struct({
     type: Schema.Literal('disconnectScreen'),
     generation: nonNegativeInteger,
     sessionId: Schema.optional(nonEmptyString(256)),
     terminal: Schema.optional(Schema.Boolean),
-  }),
+  }).annotate({ identifier: 'CommandDisconnectScreen' }),
   Schema.Struct({
     type: Schema.Literal('connectMicrophone'),
     ...sessionCommandFields,
     options: MicrophoneStartOptionsSchema,
     excludeProcessId: Uint32Schema,
-  }),
+  }).annotate({ identifier: 'CommandConnectMicrophone' }),
   Schema.Struct({
     type: Schema.Literal('startScreenCapture'),
     ...sessionCommandFields,
     options: ScreenStartOptionsSchema,
     selfWindowHwnd: Schema.optional(UnsignedIntegerStringSchema),
     excludeProcessId: Uint32Schema,
-  }),
+  }).annotate({ identifier: 'CommandStartScreenCapture' }),
   Schema.Struct({
     type: Schema.Literal('disconnectMicrophone'),
     ...sessionCommandFields,
-  }),
+  }).annotate({ identifier: 'CommandDisconnectMicrophone' }),
   Schema.Struct({
     type: Schema.Literal('connectCamera'),
     ...sessionCommandFields,
     options: CameraStartOptionsSchema,
-  }),
+  }).annotate({ identifier: 'CommandConnectCamera' }),
   Schema.Struct({
     type: Schema.Literal('disconnectCamera'),
     ...sessionCommandFields,
-  }),
+  }).annotate({ identifier: 'CommandDisconnectCamera' }),
   Schema.Struct({
     type: Schema.Literal('invalidateMicrophone'),
     ...sessionCommandFields,
-  }),
+  }).annotate({ identifier: 'CommandInvalidateMicrophone' }),
   Schema.Struct({
     type: Schema.Literal('stopScreenCapture'),
     ...sessionCommandFields,
-  }),
+  }).annotate({ identifier: 'CommandStopScreenCapture' }),
   Schema.Struct({
     type: Schema.Literal('configureMicrophone'),
     revision: nonNegativeInteger,
     config: MicrophonePipelineConfigSchema,
-  }),
+  }).annotate({ identifier: 'CommandConfigureMicrophone' }),
   Schema.Struct({
     type: Schema.Literal('setMicrophoneMuted'),
     ...sessionCommandFields,
     muted: Schema.Boolean,
-  }),
-  Schema.Struct({ type: Schema.Literal('probeMicrophoneActor') }),
-  Schema.Struct({ type: Schema.Literal('probeScreenActor') }),
-  Schema.Struct({ type: Schema.Literal('probeCameraActor') }),
-  Schema.Struct({ type: Schema.Literal('probeQueryWorker') }),
-  Schema.Struct({ type: Schema.Literal('shutdown') }),
+  }).annotate({ identifier: 'CommandSetMicrophoneMuted' }),
+  Schema.Struct({ type: Schema.Literal('probeMicrophoneActor') })
+    .annotate({ identifier: 'CommandProbeMicrophoneActor' }),
+  Schema.Struct({ type: Schema.Literal('probeScreenActor') })
+    .annotate({ identifier: 'CommandProbeScreenActor' }),
+  Schema.Struct({ type: Schema.Literal('probeCameraActor') })
+    .annotate({ identifier: 'CommandProbeCameraActor' }),
+  Schema.Struct({ type: Schema.Literal('probeVoiceControl') })
+    .annotate({ identifier: 'CommandProbeVoiceControl' }),
+  Schema.Struct({ type: Schema.Literal('probeQueryWorker') })
+    .annotate({ identifier: 'CommandProbeQueryWorker' }),
+  Schema.Struct({ type: Schema.Literal('shutdown') })
+    .annotate({ identifier: 'CommandShutdown' }),
 ])
 
 const HooksRuntimeCommandSchema = Schema.Union([
-  Schema.Struct({ type: Schema.Literal('startHotkeys') }),
-  Schema.Struct({ type: Schema.Literal('stopHotkeys') }),
-  Schema.Struct({ type: Schema.Literal('startOverlay') }),
-  Schema.Struct({ type: Schema.Literal('stopOverlay') }),
-  Schema.Struct({ type: Schema.Literal('probeHooksRuntime') }),
-  Schema.Struct({ type: Schema.Literal('shutdown') }),
+  Schema.Struct({ type: Schema.Literal('startHotkeys') })
+    .annotate({ identifier: 'CommandStartHotkeys' }),
+  Schema.Struct({ type: Schema.Literal('stopHotkeys') })
+    .annotate({ identifier: 'CommandStopHotkeys' }),
+  Schema.Struct({ type: Schema.Literal('startOverlay') })
+    .annotate({ identifier: 'CommandStartOverlay' }),
+  Schema.Struct({ type: Schema.Literal('stopOverlay') })
+    .annotate({ identifier: 'CommandStopOverlay' }),
+  Schema.Struct({ type: Schema.Literal('probeHooksRuntime') })
+    .annotate({ identifier: 'CommandProbeHooksRuntime' }),
+  Schema.Struct({ type: Schema.Literal('shutdown') })
+    .annotate({ identifier: 'CommandShutdown' }),
 ])
 
 export const NativeRuntimeCommandSchema = Schema.Union([
   MediaRuntimeCommandSchema,
   HooksRuntimeCommandSchema,
 ])
+
+export const NativeRuntimeLaneSchema = Schema.Literals([
+  'runtime',
+  'voice',
+  'voice-control',
+  'microphone',
+  'screen',
+  'camera',
+  'query',
+  'hotkey',
+  'overlay',
+])
+
+export type MediaRuntimeCommand = typeof MediaRuntimeCommandSchema.Type
+export type HooksRuntimeCommand = typeof HooksRuntimeCommandSchema.Type
+export type NativeRuntimeCommand = typeof NativeRuntimeCommandSchema.Type
+export type NativeRuntimeLane = typeof NativeRuntimeLaneSchema.Type
+
+export function nativeRuntimeCommandLane(
+  command: NativeRuntimeCommand,
+): NativeRuntimeLane {
+  switch (command.type) {
+    case 'shutdown':
+      return 'runtime'
+    case 'connectVoice':
+    case 'disconnectVoice':
+      return 'voice'
+    case 'configureRemoteAudio':
+    case 'configureVoiceOutput':
+    case 'releaseRemoteVideoFrame':
+    case 'setRemoteVideoDemand':
+    case 'retryRemoteVideo':
+    case 'setLocalScreenPreviewDemand':
+    case 'releaseLocalScreenPreviewFrame':
+    case 'releaseLocalCameraPreviewFrame':
+    case 'setLocalCameraPreviewDemand':
+    case 'retryLocalCameraPreview':
+    case 'probeVoiceControl':
+      return 'voice-control'
+    case 'warmMicrophone':
+    case 'startPreview':
+    case 'stopPreview':
+    case 'connectMicrophone':
+    case 'disconnectMicrophone':
+    case 'invalidateMicrophone':
+    case 'configureMicrophone':
+    case 'setMicrophoneMuted':
+    case 'probeMicrophoneActor':
+      return 'microphone'
+    case 'connectScreen':
+    case 'startScreenCapture':
+    case 'stopScreenCapture':
+    case 'disconnectScreen':
+    case 'probeScreenActor':
+      return 'screen'
+    case 'connectCamera':
+    case 'disconnectCamera':
+    case 'probeCameraActor':
+      return 'camera'
+    case 'listDevices':
+    case 'listDisplaySources':
+    case 'probeQueryWorker':
+      return 'query'
+    case 'startHotkeys':
+    case 'stopHotkeys':
+      return 'hotkey'
+    case 'startOverlay':
+    case 'stopOverlay':
+    case 'probeHooksRuntime':
+      return 'overlay'
+  }
+}
 
 const NativeRuntimeDiagnosticContextSchema = Schema.Struct({
   actionId: nonEmptyString(128),
@@ -340,13 +454,20 @@ const NativeRuntimeDiagnosticContextSchema = Schema.Struct({
 export const NativeRuntimeRequestSchema = Schema.Struct({
   type: Schema.Literal('request'),
   requestId: nonEmptyString(256),
+  lane: NativeRuntimeLaneSchema,
+  hostEpoch: Schema.Int.check(Schema.isGreaterThan(0)),
   command: NativeRuntimeCommandSchema,
   diagnostic: Schema.optional(NativeRuntimeDiagnosticContextSchema),
-})
+}).check(
+  Schema.makeFilter(
+    (request) =>
+      request.lane === nativeRuntimeCommandLane(request.command) ||
+      (request.command.type === 'probeHooksRuntime' &&
+        request.lane === 'hotkey'),
+    { expected: 'a supervision lane matching the native command' },
+  ),
+)
 
-export type MediaRuntimeCommand = typeof MediaRuntimeCommandSchema.Type
-export type HooksRuntimeCommand = typeof HooksRuntimeCommandSchema.Type
-export type NativeRuntimeCommand = typeof NativeRuntimeCommandSchema.Type
 export type NativeRuntimeDiagnosticContext =
   typeof NativeRuntimeDiagnosticContextSchema.Type
 export type NativeRuntimeRequest = typeof NativeRuntimeRequestSchema.Type
@@ -443,6 +564,8 @@ const NativeMediaStatsSchema = Schema.Struct({
   activeMethod: Schema.optional(Schema.Literals(['wgc_gpu', 'dxgi_gpu'])),
   audioFrames: Schema.optional(Schema.Finite),
   audioPackets: Schema.optional(Schema.Finite),
+  audioBacklogPackets: Schema.optional(Schema.Finite),
+  audioDiscontinuities: Schema.optional(Schema.Finite),
   audioPeakDb: Schema.optional(Schema.Finite),
   audioRmsDb: Schema.optional(Schema.Finite),
   videoFrames: Schema.optional(Schema.Finite),
@@ -524,13 +647,13 @@ const RuntimeErrorEventSchema = Schema.Struct({
         event.generation === event.error.generation),
     { expected: 'runtime error fences matching the event' },
   ),
-)
+).annotate({ identifier: 'EventRuntimeError' })
 
 const InputEventSchema = Schema.Struct({
   type: Schema.Literal('input'),
   ...runtimeEventFields,
   input: NativeInputEventSchema,
-})
+}).annotate({ identifier: 'EventInput' })
 
 const ForegroundWindowEventSchema = Schema.Struct({
   type: Schema.Literal('foregroundWindow'),
@@ -553,7 +676,7 @@ const ForegroundWindowEventSchema = Schema.Struct({
       height: Schema.Finite,
     }),
   }),
-})
+}).annotate({ identifier: 'EventForegroundWindow' })
 
 const SessionLifecycleEventSchema = Schema.Struct({
   type: Schema.Literal('sessionLifecycle'),
@@ -562,6 +685,7 @@ const SessionLifecycleEventSchema = Schema.Struct({
     'voice',
     'microphone',
     'screen',
+    'screen_audio',
     'camera',
     'output',
   ])),
@@ -579,13 +703,13 @@ const SessionLifecycleEventSchema = Schema.Struct({
             event.error.generation === event.generation))),
     { expected: 'media state and error fences matching the session event' },
   ),
-)
+).annotate({ identifier: 'EventSessionLifecycle' })
 
 const VoiceConnectionStateEventSchema = Schema.Struct({
   type: Schema.Literal('voiceConnectionState'),
   ...sessionEventFields,
   state: Schema.Literals(['connected', 'reconnecting']),
-})
+}).annotate({ identifier: 'EventVoiceConnectionState' })
 
 const SessionStartedEventSchema = Schema.Struct({
   type: Schema.Literal('sessionStarted'),
@@ -596,7 +720,7 @@ const SessionStartedEventSchema = Schema.Struct({
     (event) => event.session.sessionId === event.sessionId,
     { expected: 'a media session matching the event session' },
   ),
-)
+).annotate({ identifier: 'EventSessionStarted' })
 
 const StatsEventSchema = Schema.Struct({
   type: Schema.Literal('stats'),
@@ -607,7 +731,7 @@ const StatsEventSchema = Schema.Struct({
     (event) => event.stats.sessionId === event.sessionId,
     { expected: 'media stats matching the event session' },
   ),
-)
+).annotate({ identifier: 'EventStats' })
 
 const VoiceStatsEventSchema = Schema.Struct({
   type: Schema.Literal('voiceStats'),
@@ -617,19 +741,19 @@ const VoiceStatsEventSchema = Schema.Struct({
     outbound: Schema.Array(VoiceRtcStreamTelemetrySchema),
     inbound: Schema.Array(VoiceRtcStreamTelemetrySchema),
   }),
-})
+}).annotate({ identifier: 'EventVoiceStats' })
 
 const TerminalEventSchema = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('voiceTerminal'),
     ...sessionEventFields,
     error: NativeRuntimeErrorSchema,
-  }),
+  }).annotate({ identifier: 'EventVoiceTerminal' }),
   Schema.Struct({
     type: Schema.Literal('cameraTerminal'),
     ...sessionEventFields,
     error: NativeRuntimeErrorSchema,
-  }),
+  }).annotate({ identifier: 'EventCameraTerminal' }),
 ]).check(
   Schema.makeFilter(
     (event) =>
@@ -668,7 +792,7 @@ const LocalScreenPreviewFailureSchema = Schema.Struct({
       event.error.generation === event.generation,
     { expected: 'a local screen preview error matching the session event' },
   ),
-)
+).annotate({ identifier: 'EventLocalScreenPreviewFailed' })
 
 const LocalCameraPreviewFailureSchema = Schema.Struct({
   type: Schema.Literal('localCameraPreviewFailed'),
@@ -683,7 +807,7 @@ const LocalCameraPreviewFailureSchema = Schema.Struct({
       event.error.generation === event.generation,
     { expected: 'a local camera preview error matching the session event' },
   ),
-)
+).annotate({ identifier: 'EventLocalCameraPreviewFailed' })
 
 export const NativeRuntimeEventSchema = Schema.Union([
   InputEventSchema,
@@ -696,7 +820,7 @@ export const NativeRuntimeEventSchema = Schema.Union([
     type: Schema.Literal('sessionStopped'),
     ...sessionEventFields,
     reason: Schema.optional(Schema.String),
-  }),
+  }).annotate({ identifier: 'EventSessionStopped' }),
   StatsEventSchema,
   VoiceStatsEventSchema,
   Schema.Struct({
@@ -707,7 +831,7 @@ export const NativeRuntimeEventSchema = Schema.Union([
     count: Schema.Int.check(Schema.isGreaterThan(0)),
     errorCode: Schema.optional(Schema.String),
     hresult: Schema.optional(Schema.Int),
-  }),
+  }).annotate({ identifier: 'EventScreenBackendRestart' }),
   Schema.Struct({
     type: Schema.Literal('microphoneMetrics'),
     ...runtimeEventFields,
@@ -717,12 +841,12 @@ export const NativeRuntimeEventSchema = Schema.Union([
       thresholdDb: Schema.Finite,
       open: Schema.Boolean,
     }),
-  }),
+  }).annotate({ identifier: 'EventMicrophoneMetrics' }),
   Schema.Struct({
     type: Schema.Literal('localMicrophoneUnpublished'),
     ...sessionEventFields,
     trackId: nonEmptyString(512),
-  }),
+  }).annotate({ identifier: 'EventLocalMicrophoneUnpublished' }),
   Schema.Struct({
     type: Schema.Literal('microphonePreviewStarted'),
     ...sessionEventFields,
@@ -734,7 +858,7 @@ export const NativeRuntimeEventSchema = Schema.Union([
       (event) => event.preview.sessionId === event.sessionId,
       { expected: 'a microphone preview matching the event session' },
     ),
-  ),
+  ).annotate({ identifier: 'EventMicrophonePreviewStarted' }),
   Schema.Struct({
     type: Schema.Literal('deviceList'),
     ...runtimeEventFields,
@@ -743,7 +867,7 @@ export const NativeRuntimeEventSchema = Schema.Union([
       kind: Schema.Literals(['audioinput', 'audiooutput', 'videoinput']),
       label: Schema.String.check(Schema.isMaxLength(4_096)),
     })),
-  }),
+  }).annotate({ identifier: 'EventDeviceList' }),
   Schema.Struct({
     type: Schema.Literal('displaySourceList'),
     ...runtimeEventFields,
@@ -752,7 +876,7 @@ export const NativeRuntimeEventSchema = Schema.Union([
       name: Schema.String.check(Schema.isMaxLength(32_768)),
       type: Schema.Literals(['screen', 'window', 'game']),
     })),
-  }),
+  }).annotate({ identifier: 'EventDisplaySourceList' }),
   Schema.Struct({
     type: Schema.Literal('screenCaptureEnded'),
     ...sessionEventFields,
@@ -760,7 +884,7 @@ export const NativeRuntimeEventSchema = Schema.Union([
     message: Schema.optional(
       Schema.String.check(Schema.isMaxLength(4_096)),
     ),
-  }),
+  }).annotate({ identifier: 'EventScreenCaptureEnded' }),
   TerminalEventSchema,
   Schema.Struct({
     type: Schema.Literal('activeSpeakers'),
@@ -768,53 +892,53 @@ export const NativeRuntimeEventSchema = Schema.Union([
     participantIdentities: Schema.Array(nonEmptyString(512)).check(
       Schema.isMaxLength(512),
     ),
-  }),
+  }).annotate({ identifier: 'EventActiveSpeakers' }),
   Schema.Struct({
     type: Schema.Literal('remoteVideoFrame'),
     ...videoFrameFields,
     source: Schema.Literals(['camera', 'screen']),
-  }),
+  }).annotate({ identifier: 'EventRemoteVideoFrame' }),
   Schema.Struct({
     type: Schema.Literal('localScreenPreviewFrame'),
     ...videoFrameFields,
     source: Schema.Literal('screen'),
-  }),
+  }).annotate({ identifier: 'EventLocalScreenPreviewFrame' }),
   Schema.Struct({
     type: Schema.Literal('localCameraPreviewFrame'),
     ...videoFrameFields,
     source: Schema.Literal('camera'),
-  }),
+  }).annotate({ identifier: 'EventLocalCameraPreviewFrame' }),
   Schema.Struct({
     type: Schema.Literal('remoteVideoTrackRemoved'),
     ...sessionEventFields,
     trackId: nonEmptyString(512),
-  }),
+  }).annotate({ identifier: 'EventRemoteVideoTrackRemoved' }),
   Schema.Struct({
     type: Schema.Literal('remoteVideoPublicationAvailable'),
     ...sessionEventFields,
     trackId: nonEmptyString(512),
     participantIdentity: nonEmptyString(512),
     source: Schema.Literals(['camera', 'screen']),
-  }),
+  }).annotate({ identifier: 'EventRemoteVideoPublicationAvailable' }),
   Schema.Struct({
     type: Schema.Literal('remoteVideoPublicationUnavailable'),
     ...sessionEventFields,
     trackId: nonEmptyString(512),
     participantIdentity: nonEmptyString(512),
     source: Schema.Literals(['camera', 'screen']),
-  }),
+  }).annotate({ identifier: 'EventRemoteVideoPublicationUnavailable' }),
   Schema.Struct({
     type: Schema.Literal('localScreenPreviewTrackRemoved'),
     ...sessionEventFields,
     trackId: nonEmptyString(512),
     source: Schema.Literal('screen'),
-  }),
+  }).annotate({ identifier: 'EventLocalScreenPreviewTrackRemoved' }),
   Schema.Struct({
     type: Schema.Literal('localCameraPreviewTrackRemoved'),
     ...sessionEventFields,
     trackId: nonEmptyString(512),
     source: Schema.Literal('camera'),
-  }),
+  }).annotate({ identifier: 'EventLocalCameraPreviewTrackRemoved' }),
   LocalScreenPreviewFailureSchema,
   LocalCameraPreviewFailureSchema,
   Schema.Struct({
@@ -823,7 +947,7 @@ export const NativeRuntimeEventSchema = Schema.Union([
     trackId: nonEmptyString(512),
     source: Schema.optional(Schema.Literals(['camera', 'screen'])),
     reason: Schema.optional(Schema.Literals(['local', 'subscription'])),
-  }),
+  }).annotate({ identifier: 'EventRemoteVideoFailed' }),
 ])
 
 export type NativeRuntimeEvent = typeof NativeRuntimeEventSchema.Type

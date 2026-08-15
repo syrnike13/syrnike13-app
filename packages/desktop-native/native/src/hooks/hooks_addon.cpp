@@ -8,8 +8,9 @@
 #include <stdexcept>
 #include <thread>
 
-#include "../common/async_cleanup_dispatcher.hpp"
+#include "../common/cleanup_supervisor.hpp"
 #include "../common/native_contract_version.hpp"
+#include "../common/native_message_bindings.hpp"
 #include "../common/node_event_sink.hpp"
 #include "../common/runtime_types.hpp"
 #include "hooks_runtime.hpp"
@@ -34,19 +35,39 @@ HooksCommand parseHooksCommand(const Napi::Object& object) {
   if (!type.IsString() || !request_id.IsString()) {
     throw std::invalid_argument("command.type and command.requestId are required");
   }
-  command.type = type.As<Napi::String>().Utf8Value();
+  const auto wire_type = type.As<Napi::String>().Utf8Value();
+  const auto parsed_type = parseNativeCommandType(wire_type);
+  if (!parsed_type) {
+    throw std::invalid_argument("command is absent from the typed hooks policy");
+  }
+  command.type = *parsed_type;
   command.request_id = request_id.As<Napi::String>().Utf8Value();
-  if (command.type.empty() || command.request_id.empty()) {
+  if (command.request_id.empty()) {
     throw std::invalid_argument("command.type and command.requestId are required");
   }
+  const auto native_type = command.type;
+  const auto& policy = nativeCommandPolicy(native_type);
+  if (nativeCommandTypeForSchema(policy.schema) != native_type ||
+      nativeCommandTypeForAction(policy.action) != native_type) {
+    throw std::invalid_argument(
+      "command has no generated schema or dispatch handler"
+    );
+  }
+  if (policy.visibility !=
+        NativeMessageVisibility::External ||
+      (policy.destination !=
+         NativeMessageDestination::Hooks &&
+       native_type != NativeCommandType::Shutdown)) {
+    throw std::invalid_argument("command is absent from the typed hooks policy");
+  }
 #if defined(SYRNIKE_HOOK_RUNTIME_hotkey)
-  if (command.type != "startHotkeys" && command.type != "stopHotkeys" &&
-      command.type != "probeHooksRuntime" && command.type != "shutdown") {
+  if (command.type != NativeCommandType::StartHotkeys && command.type != NativeCommandType::StopHotkeys &&
+      command.type != NativeCommandType::ProbeHooksRuntime && command.type != NativeCommandType::Shutdown) {
     throw std::invalid_argument("command is not supported by the hotkey runtime");
   }
 #else
-  if (command.type != "startOverlay" && command.type != "stopOverlay" &&
-      command.type != "probeHooksRuntime" && command.type != "shutdown") {
+  if (command.type != NativeCommandType::StartOverlay && command.type != NativeCommandType::StopOverlay &&
+      command.type != NativeCommandType::ProbeHooksRuntime && command.type != NativeCommandType::Shutdown) {
     throw std::invalid_argument("command is not supported by the overlay runtime");
   }
 #endif
@@ -93,7 +114,7 @@ void releaseRuntime(
 struct AsyncCleanupRegistration final {
   uv_loop_t* loop = nullptr;
   std::shared_ptr<HooksRuntimeRegistry> registry;
-  std::shared_ptr<AsyncCleanupNode> cleanup_node;
+  std::shared_ptr<CleanupJob> cleanup_job;
   bool fail_dispatch_after_uv_init = false;
 };
 
@@ -156,16 +177,17 @@ void asyncCleanup(napi_async_cleanup_hook_handle handle, void* data) {
     if (registration->fail_dispatch_after_uv_init) {
       throw std::bad_alloc();
     }
-    registration->cleanup_node->prepareRaw(
+    registration->cleanup_job->prepareRaw(
       context,
+      reinterpret_cast<CleanupResourceKey>(context),
       [](void* owner) noexcept {
         completeAsyncCleanup(
           static_cast<AsyncCleanupContext*>(owner)
         );
       }
     );
-    AsyncCleanupDispatcher::instance().submit(
-      std::move(registration->cleanup_node)
+    CleanupSupervisor::instance().submitOrEscalate(
+      std::move(registration->cleanup_job), "hooks_addon"
     );
   } catch (...) {
     completeAsyncCleanup(context);
@@ -321,7 +343,7 @@ Napi::Object initialize(Napi::Env env, Napi::Object exports) {
   auto* state = new HooksAddonState;
   env.SetInstanceData(state);
   HooksRuntimeBinding::initialize(env);
-  static_cast<void>(AsyncCleanupDispatcher::instance());
+  static_cast<void>(CleanupSupervisor::instance());
   uv_loop_t* loop = nullptr;
   if (napi_get_uv_event_loop(env, &loop) != napi_ok || !loop) {
     throw Napi::Error::New(env, "hooks addon uv loop is unavailable");
@@ -329,8 +351,8 @@ Napi::Object initialize(Napi::Env env, Napi::Object exports) {
   auto* cleanup_registration = new AsyncCleanupRegistration{
     loop,
     state->registry,
-    std::make_shared<AsyncCleanupNode>(
-      failFirstAsyncCleanupLauncher(injectionEnabled(
+    std::make_shared<CleanupJob>(
+      failFirstCleanupStartProbe(injectionEnabled(
         "SYRNIKE_NATIVE_FAIL_ASYNC_CLEANUP_LAUNCH_ONCE"
       ))
     ),

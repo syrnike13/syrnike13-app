@@ -2,6 +2,7 @@
 
 #include "media_operation.hpp"
 #include "media_runtime_support.hpp"
+#include "video_resource_admission.hpp"
 #include "../common/diagnostic_log.hpp"
 
 #include <mfapi.h>
@@ -25,7 +26,7 @@ namespace {
 
 RuntimeEvent cameraReply(const MediaCommand& command) {
   RuntimeEvent event;
-  event.type = "reply";
+  event.type = NativeEventType::Reply;
   event.request_id = command.request_id;
   event.session_id = command.session_id;
   event.generation = command.generation;
@@ -86,12 +87,24 @@ class CameraTextureLease final : public livekit::D3D11TextureLease {
   bool released_ = false;
 };
 
+struct BudgetedCameraGpuSource {
+  std::shared_ptr<VideoResourceLease> resource_lease;
+  std::shared_ptr<livekit::D3D11H264VideoSource> source;
+};
+
 class CameraTerminalPostGate final {
  public:
   CameraTerminalPostGate(
       CameraActor::InternalPost post,
       CameraActor::BeforeTerminalPost before_post)
-      : post_(std::move(post)), before_post_(std::move(before_post)) {}
+      : terminal_incarnation_(nextTerminalIncarnation()),
+        post_(std::move(post)), before_post_(std::move(before_post)) {}
+
+  void publishTerminalIncarnation() noexcept {
+    terminalIncarnationFence().registerCurrent(
+      NativeTerminalProducer::CameraCapture, terminal_incarnation_
+    );
+  }
 
   bool post(MediaCommand command) {
     CameraActor::InternalPost post;
@@ -99,6 +112,8 @@ class CameraTerminalPostGate final {
     {
       std::lock_guard lock(mutex_);
       if (!enabled_) return false;
+      command.terminal_producer = NativeTerminalProducer::CameraCapture;
+      command.terminal_incarnation = terminal_incarnation_;
       post = post_;
       before_post = before_post_;
       ++in_flight_;
@@ -130,6 +145,7 @@ class CameraTerminalPostGate final {
   std::condition_variable changed_;
   bool enabled_ = true;
   std::size_t in_flight_ = 0;
+  const std::uint64_t terminal_incarnation_;
   CameraActor::InternalPost post_;
   CameraActor::BeforeTerminalPost before_post_;
 };
@@ -205,22 +221,24 @@ class CameraPublicationRetireTask final {
  public:
   CameraPublicationRetireTask(
       std::shared_ptr<LiveKitVoiceSession> voice_session,
-      std::string session_id,
-      std::uint64_t generation,
+      SessionEpoch owner_epoch,
       std::string publication_sid)
       : voice_session_(std::move(voice_session)),
-        session_id_(std::move(session_id)),
-        generation_(generation),
+        owner_epoch_(std::move(owner_epoch)),
         publication_sid_(std::move(publication_sid)) {}
 
   void run() noexcept {
     if (started_.exchange(true, std::memory_order_acq_rel)) return;
     try {
-      voice_session_->stopLocalCameraPreview(publication_sid_);
+      static_cast<void>(voice_session_->cameraPreview().stop(
+        SessionPortCall::forOwner(owner_epoch_), publication_sid_
+      ));
     } catch (...) {
     }
     try {
-      voice_session_->unpublishTrack(session_id_, generation_, publication_sid_);
+      static_cast<void>(voice_session_->publication().unpublishTrack(
+        SessionPortCall::forOwner(owner_epoch_), publication_sid_
+      ));
     } catch (...) {
     }
     voice_session_.reset();
@@ -237,24 +255,14 @@ class CameraPublicationRetireTask final {
     return finished_;
   }
 
-  void retainAfter(std::shared_ptr<CameraPublicationRetireTask> next) noexcept {
-    retained_next_ = std::move(next);
-  }
-
-  std::shared_ptr<CameraPublicationRetireTask> takeRetainedNext() noexcept {
-    return std::move(retained_next_);
-  }
-
  private:
   std::atomic_bool started_{false};
   std::mutex mutex_;
   std::condition_variable changed_;
   bool finished_ = false;
   std::shared_ptr<LiveKitVoiceSession> voice_session_;
-  std::string session_id_;
-  std::uint64_t generation_ = 0;
+  SessionEpoch owner_epoch_;
   std::string publication_sid_;
-  std::shared_ptr<CameraPublicationRetireTask> retained_next_;
 };
 
 class CameraCaptureStopTask final {
@@ -282,157 +290,29 @@ class CameraCaptureStopTask final {
     return finished_;
   }
 
-  void retainAfter(std::shared_ptr<CameraCaptureStopTask> next) noexcept {
-    retained_next_ = std::move(next);
-  }
-
-  std::shared_ptr<CameraCaptureStopTask> takeRetainedNext() noexcept {
-    return std::move(retained_next_);
-  }
-
  private:
   std::atomic_bool started_{false};
   std::mutex mutex_;
   std::condition_variable changed_;
   bool finished_ = false;
   std::shared_ptr<CameraCapture> capture_;
-  std::shared_ptr<CameraCaptureStopTask> retained_next_;
 };
 
-template <typename TaskType>
-class CameraCleanupDispatcher final {
+class CameraThreadJoinTask final {
  public:
-  using Task = std::shared_ptr<TaskType>;
+  explicit CameraThreadJoinTask(std::thread worker)
+      : worker_(std::move(worker)) {}
 
-  explicit CameraCleanupDispatcher(
-      CameraActor::LaunchRetireWorker launcher,
-      CameraActor::BeforeCleanupEnqueue before_enqueue = {}) {
-    if (!launcher) {
-      launcher = [](std::function<void()> work) {
-        return std::thread(std::move(work));
-      };
-    }
-    state_ = std::make_shared<State>();
-    state_->launcher = std::move(launcher);
-    state_->before_enqueue = std::move(before_enqueue);
-    try {
-      management_thread_ = std::thread([state = state_] {
-        runManagement(std::move(state));
-      });
-    } catch (...) {
-      throw CameraCaptureError(
-          "camera_retire_dispatcher_init_failed",
-          "Camera publication retirement dispatcher could not start");
-    }
-  }
-
-  ~CameraCleanupDispatcher() {
-    close(std::chrono::steady_clock::now() + kNativeShutdownBudget);
-  }
-
-  void submit(
-      Task task,
-      const std::string& session_id,
-      std::uint64_t generation) {
-    try {
-      if (state_->before_enqueue) state_->before_enqueue();
-    } catch (...) {
-      diagnostics::DiagnosticLog::instance().write(
-          "camera_cleanup_enqueue_injected_failure",
-          {{"sessionId", session_id}, {"generation", generation}});
-    }
-    {
-      std::lock_guard lock(state_->mutex);
-      if (state_->tail) {
-        state_->tail->retainAfter(task);
-      } else {
-        state_->head = task;
-      }
-      state_->tail = std::move(task);
-    }
-    state_->changed.notify_all();
-  }
-
-  void close(std::chrono::steady_clock::time_point deadline) noexcept {
-    if (!management_thread_.joinable()) return;
-    {
-      std::lock_guard lock(state_->mutex);
-      state_->closing = true;
-    }
-    state_->changed.notify_all();
-    bool finished = false;
-    {
-      std::unique_lock lock(state_->mutex);
-      state_->finished_changed.wait_until(
-          lock, deadline, [&] { return state_->finished; });
-      finished = state_->finished;
-    }
-    if (finished) {
-      management_thread_.join();
-    } else {
-      management_thread_.detach();
-      diagnostics::DiagnosticLog::instance().write(
-          "camera_publication_retire_dispatcher_detached",
-          {{"reason", "shutdown_deadline"}});
+  void run() noexcept {
+    if (worker_.joinable() &&
+        worker_.get_id() != std::this_thread::get_id()) {
+      worker_.join();
     }
   }
 
  private:
-  struct State {
-    std::mutex mutex;
-    std::condition_variable changed;
-    std::condition_variable finished_changed;
-    Task head;
-    Task tail;
-    CameraActor::LaunchRetireWorker launcher;
-    CameraActor::BeforeCleanupEnqueue before_enqueue;
-    bool closing = false;
-    bool finished = false;
-  };
-
-  static void runManagement(std::shared_ptr<State> state) noexcept {
-    for (;;) {
-      Task task;
-      {
-        std::unique_lock lock(state->mutex);
-        state->changed.wait(lock, [&] {
-          return state->closing || state->head != nullptr;
-        });
-        if (!state->head) {
-          if (!state->closing) continue;
-          state->finished = true;
-          state->finished_changed.notify_all();
-          return;
-        }
-        task = state->head;
-      }
-
-      try {
-        auto worker = state->launcher([task] { task->run(); });
-        worker.detach();
-        std::lock_guard lock(state->mutex);
-        if (state->head == task) {
-          state->head = task->takeRetainedNext();
-          if (!state->head) state->tail.reset();
-        }
-      } catch (...) {
-        diagnostics::DiagnosticLog::instance().write(
-            "camera_publication_retire_worker_failed",
-            {{"reason", "worker_launch_failed"}});
-        std::unique_lock lock(state->mutex);
-        state->changed.wait_for(lock, std::chrono::milliseconds(25));
-      }
-    }
-  }
-
-  std::shared_ptr<State> state_;
-  std::thread management_thread_;
+  std::thread worker_;
 };
-
-using CameraPublicationRetireDispatcher =
-    CameraCleanupDispatcher<CameraPublicationRetireTask>;
-using CameraCaptureStopDispatcher =
-    CameraCleanupDispatcher<CameraCaptureStopTask>;
 
 }  // namespace
 
@@ -446,26 +326,22 @@ class CameraActor::Implementation
     std::shared_ptr<LiveKitVoiceSession> voice_session,
     std::shared_ptr<CameraCaptureFactory> factory,
     CameraActor::CreateGpuVideoSource create_gpu_video_source,
-    CameraActor::LaunchRetireWorker launch_retire_worker,
+    CleanupStartProbe cleanup_start_probe,
     CameraActor::BeforeTerminalPost before_terminal_post,
-    CameraActor::BeforeCleanupEnqueue before_cleanup_enqueue
+    CleanupEnqueueProbe cleanup_enqueue_probe,
+    VideoResourceAdmissionBudget* resource_budget
   ) : post_(std::move(post)),
       callbacks_(std::make_shared<CameraBorrowedCallbackGate>(
           emitter, std::move(is_current))),
       voice_session_(std::move(voice_session)), factory_(std::move(factory)),
       create_gpu_video_source_(std::move(create_gpu_video_source)),
       before_terminal_post_(std::move(before_terminal_post)),
-      cleanup_launcher_(
-          launch_retire_worker
-            ? std::move(launch_retire_worker)
-            : CameraActor::LaunchRetireWorker(
-                [](std::function<void()> work) {
-                  return std::thread(std::move(work));
-                })),
-      retire_dispatcher_(std::make_shared<CameraPublicationRetireDispatcher>(
-          cleanup_launcher_, before_cleanup_enqueue)),
-      stop_dispatcher_(std::make_shared<CameraCaptureStopDispatcher>(
-          cleanup_launcher_, std::move(before_cleanup_enqueue))) {
+      cleanup_supervisor_(&CleanupSupervisor::instance()),
+      cleanup_start_probe_(std::move(cleanup_start_probe)),
+      cleanup_enqueue_probe_(std::move(cleanup_enqueue_probe)),
+      resource_budget_(resource_budget
+          ? resource_budget
+          : &processVideoResourceAdmissionBudget()) {
     if (!create_gpu_video_source_) {
       create_gpu_video_source_ = [](int width, int height) {
         return std::shared_ptr<livekit::D3D11H264VideoSource>(
@@ -496,6 +372,16 @@ class CameraActor::Implementation
     }
     cancelAttempts(true);
     stopActive();
+    {
+      std::lock_guard lock(mutex_);
+      if (preview_intent_session_id_ != command.session_id ||
+          preview_intent_generation_ != command.generation) {
+        preview_intent_session_id_ = command.session_id;
+        preview_intent_generation_ = command.generation;
+        preview_demanded_ = true;
+        ++preview_revision_;
+      }
+    }
     if (unfinishedAttemptCount() >= 2) {
       throw std::runtime_error("camera publication capacity is still occupied");
     }
@@ -530,7 +416,7 @@ class CameraActor::Implementation
     if (!emit_event) return;
     callbacks_->emit(cameraReply(command));
     RuntimeEvent event;
-    event.type = "sessionLifecycle";
+    event.type = NativeEventType::SessionLifecycle;
     event.session_id = command.session_id;
     event.generation = command.generation;
     event.kind = "camera";
@@ -563,10 +449,20 @@ class CameraActor::Implementation
   }
 
   void releasePreviewFrame(const MediaCommand& command) {
-    voice_session_->releaseLocalCameraPreviewFrame(
+    SessionEpoch owner_epoch;
+    {
+      std::lock_guard lock(mutex_);
+      if (command.session_id != session_id_ ||
+          command.generation != generation_ || owner_epoch_.owner_token == 0) {
+        throw std::runtime_error("stale camera preview owner");
+      }
+      owner_epoch = owner_epoch_;
+    }
+    requireSessionPortSuccess(voice_session_->cameraPreview().releasePreviewFrame(
+      SessionPortCall::forOwner(owner_epoch),
       command.track_id,
       command.frame_sequence
-    );
+    ));
   }
 
   void handleTerminal(const MediaCommand& command) {
@@ -577,7 +473,7 @@ class CameraActor::Implementation
     }
     stopActive();
     RuntimeEvent event;
-    event.type = "cameraTerminal";
+    event.type = NativeEventType::CameraTerminal;
     event.session_id = command.session_id;
     event.generation = command.generation;
     event.kind = "camera";
@@ -620,7 +516,13 @@ class CameraActor::Implementation
         continue;
       }
       if (attempt->thread.get_id() == std::this_thread::get_id()) {
-        attempt->thread.detach();
+        superviseThreadJoin(
+            std::move(attempt->thread),
+            reinterpret_cast<CleanupResourceKey>(attempt->state.get()),
+            "camera_publication_worker",
+            attempt->state->command.session_id,
+            attempt->state->command.generation,
+            "shutdown_on_worker");
         continue;
       }
       {
@@ -635,20 +537,95 @@ class CameraActor::Implementation
         attempt->thread.join();
       } else {
         diagnostics::DiagnosticLog::instance().write(
-            "camera_publication_worker_detached",
+            "camera_publication_worker_join_supervised",
             {
                 {"sessionId", attempt->state->command.session_id},
                 {"generation", attempt->state->command.generation},
                 {"reason", "shutdown_deadline"},
             });
-        attempt->thread.detach();
+        superviseThreadJoin(
+            std::move(attempt->thread),
+            reinterpret_cast<CleanupResourceKey>(attempt->state.get()),
+            "camera_publication_worker",
+            attempt->state->command.session_id,
+            attempt->state->command.generation,
+            "shutdown_deadline");
       }
     }
-    retire_dispatcher_->close(deadline);
-    stop_dispatcher_->close(deadline);
+  }
+
+  void setPreviewDemand(const MediaCommand& command) {
+    requireCurrentPreviewOwner(command);
+    std::optional<PreviewStartRequest> start;
+    std::optional<PreviewStopRequest> stop;
+    {
+      std::lock_guard lock(mutex_);
+      const bool same_intent =
+          preview_intent_session_id_ == command.session_id &&
+          preview_intent_generation_ == command.generation;
+      if (same_intent && preview_demanded_ == command.demanded) return;
+      preview_intent_session_id_ = command.session_id;
+      preview_intent_generation_ = command.generation;
+      preview_demanded_ = command.demanded;
+      const auto revision = ++preview_revision_;
+      if (session_id_ != command.session_id ||
+          generation_ != command.generation || publication_sid_.empty()) {
+        return;
+      }
+      if (!command.demanded && preview_active_) {
+        preview_active_ = false;
+        stop = PreviewStopRequest{
+            owner_epoch_, publication_sid_};
+      } else if (command.demanded && !preview_active_ && track_) {
+        start = previewStartRequestLocked(revision);
+      }
+    }
+    if (stop) stopPreview(*stop);
+    if (start) startPreview(*start);
+  }
+
+  void retryPreview(const MediaCommand& command) {
+    requireCurrentPreviewOwner(command);
+    std::optional<PreviewStartRequest> start;
+    std::optional<PreviewStopRequest> stop;
+    {
+      std::lock_guard lock(mutex_);
+      if (preview_intent_session_id_ != command.session_id ||
+          preview_intent_generation_ != command.generation ||
+          !preview_demanded_) {
+        return;
+      }
+      if (session_id_ != command.session_id ||
+          generation_ != command.generation || publication_sid_.empty() ||
+          !track_) {
+        return;
+      }
+      const auto revision = ++preview_revision_;
+      if (preview_active_) {
+        preview_active_ = false;
+        stop = PreviewStopRequest{
+            owner_epoch_, publication_sid_};
+      }
+      start = previewStartRequestLocked(revision);
+    }
+    if (stop) stopPreview(*stop);
+    if (start) startPreview(*start);
   }
 
  private:
+  static constexpr auto kPreviewControlBudget = std::chrono::seconds(1);
+
+  struct PreviewStopRequest {
+    SessionEpoch owner_epoch;
+    std::string publication_sid;
+  };
+
+  struct PreviewStartRequest : PreviewStopRequest {
+    std::string participant_identity;
+    std::shared_ptr<livekit::LocalVideoTrack> track;
+    std::uint64_t revision = 0;
+  };
+
   struct AttemptState {
     MediaCommand command;
     MediaOperation operation;
@@ -670,6 +647,131 @@ class CameraActor::Implementation
     std::condition_variable changed;
   };
 
+  void requireCurrentPreviewOwner(const MediaCommand& command) {
+    if (shutdown_.load(std::memory_order_acquire)) {
+      throw std::runtime_error("camera actor is shut down");
+    }
+    if (!callbacks_->isCurrent(command.session_id, command.generation)) {
+      throw std::runtime_error("stale camera preview generation");
+    }
+  }
+
+  PreviewStartRequest previewStartRequestLocked(
+      std::uint64_t revision) const {
+    return PreviewStartRequest{
+        {owner_epoch_, publication_sid_},
+        participant_identity_,
+        track_,
+        revision};
+  }
+
+  bool previewStartStillWanted(const PreviewStartRequest& request) {
+    std::lock_guard lock(mutex_);
+    return !shutdown_.load(std::memory_order_acquire) &&
+        preview_demanded_ && preview_revision_ == request.revision &&
+        preview_intent_session_id_ == request.owner_epoch.session_id &&
+        preview_intent_generation_ == request.owner_epoch.generation &&
+        session_id_ == request.owner_epoch.session_id &&
+        generation_ == request.owner_epoch.generation &&
+        publication_sid_ == request.publication_sid && track_ == request.track;
+  }
+
+  std::unique_lock<std::timed_mutex> lockPreviewOperation(
+      std::chrono::steady_clock::time_point deadline) {
+    std::unique_lock lock(preview_operation_mutex_, std::defer_lock);
+    if (!lock.try_lock_until(deadline)) {
+      throw std::runtime_error(
+          "camera preview control acquisition deadline expired");
+    }
+    return lock;
+  }
+
+  void stopPreview(const PreviewStopRequest& request) {
+    const auto deadline =
+        std::chrono::steady_clock::now() + kPreviewControlBudget;
+    auto operation = lockPreviewOperation(deadline);
+    (void)operation;
+    requireSessionPortSuccess(voice_session_->cameraPreview().stop(
+        SessionPortCall{
+            request.owner_epoch, deadline, {}},
+        request.publication_sid));
+  }
+
+  void startPreview(const PreviewStartRequest& request) {
+    const auto deadline =
+        std::chrono::steady_clock::now() + kPreviewControlBudget;
+    auto operation = lockPreviewOperation(deadline);
+    (void)operation;
+    if (!previewStartStillWanted(request)) return;
+    requireSessionPortSuccess(voice_session_->cameraPreview().start(
+        SessionPortCall{
+            request.owner_epoch, deadline, {}},
+        request.publication_sid,
+        request.participant_identity,
+        request.track));
+    bool retained = false;
+    {
+      std::lock_guard lock(mutex_);
+      retained = !shutdown_.load(std::memory_order_acquire) &&
+          preview_demanded_ && preview_revision_ == request.revision &&
+          preview_intent_session_id_ == request.owner_epoch.session_id &&
+          preview_intent_generation_ == request.owner_epoch.generation &&
+          session_id_ == request.owner_epoch.session_id &&
+          generation_ == request.owner_epoch.generation &&
+          publication_sid_ == request.publication_sid &&
+          track_ == request.track;
+      if (retained) preview_active_ = true;
+    }
+    if (retained) return;
+    static_cast<void>(voice_session_->cameraPreview().stop(
+        SessionPortCall{
+            request.owner_epoch, deadline, {}},
+        request.publication_sid));
+  }
+
+  void superviseThreadJoin(
+      std::thread worker,
+      CleanupResourceKey resource_key,
+      std::string_view owner,
+      const std::string& session_id,
+      std::uint64_t generation,
+      std::string_view reason) noexcept {
+    if (!worker.joinable()) return;
+    try {
+      auto cleanup_job = std::make_shared<CleanupJob>(cleanup_start_probe_);
+      auto join_task =
+          std::make_shared<CameraThreadJoinTask>(std::move(worker));
+      if (!cleanup_job->prepare(
+            join_task,
+            resource_key,
+            [](void* context) {
+              static_cast<CameraThreadJoinTask*>(context)->run();
+            })) {
+        std::terminate();
+      }
+      runCleanupEnqueueProbe(cleanup_enqueue_probe_);
+      cleanup_supervisor_->submitOrEscalate(cleanup_job, owner);
+      diagnostics::DiagnosticLog::instance().write(
+          "camera_worker_join_supervised",
+          {
+              {"owner", owner},
+              {"sessionId", session_id},
+              {"generation", generation},
+              {"reason", reason},
+          });
+    } catch (...) {
+      diagnostics::DiagnosticLog::instance().write(
+          "camera_worker_join_submit_failed",
+          {
+              {"owner", owner},
+              {"sessionId", session_id},
+              {"generation", generation},
+              {"reason", reason},
+          });
+      std::terminate();
+    }
+  }
+
   void stopActive(
       std::optional<std::chrono::steady_clock::time_point> stop_by =
           std::nullopt) {
@@ -682,6 +784,7 @@ class CameraActor::Implementation
     std::string publication_sid;
     std::string session_id;
     std::uint64_t generation = 0;
+    SessionEpoch owner_epoch;
     {
       std::lock_guard lock(mutex_);
       if (running_) running_->store(false);
@@ -692,11 +795,16 @@ class CameraActor::Implementation
       publication_sid = std::move(publication_sid_);
       session_id = session_id_;
       generation = generation_;
+      owner_epoch = owner_epoch_;
+      ++preview_revision_;
+      preview_active_ = false;
       running_.reset();
       source_.reset();
       track_.reset();
+      participant_identity_.clear();
       session_id_.clear();
       generation_ = 0;
+      owner_epoch_ = {};
     }
     stopCaptureWorker(
         std::move(capture),
@@ -708,8 +816,7 @@ class CameraActor::Implementation
         deadline);
     retireActivePublication(
         std::move(publication_sid),
-        session_id,
-        generation,
+        std::move(owner_epoch),
         deadline);
   }
 
@@ -724,15 +831,29 @@ class CameraActor::Implementation
           std::nullopt) noexcept {
     const auto deadline = stop_by.value_or(
         std::chrono::steady_clock::now() + kNativeShutdownBudget);
+    const auto capture_resource_key = capture
+        ? reinterpret_cast<CleanupResourceKey>(capture.get())
+        : capture_state
+            ? reinterpret_cast<CleanupResourceKey>(capture_state.get())
+            : reinterpret_cast<CleanupResourceKey>(&capture_thread);
     if (post_gate) post_gate->disable();
     if (capture) {
       try {
+        auto cleanup_job = std::make_shared<CleanupJob>(cleanup_start_probe_);
         auto stop_task =
             std::make_shared<CameraCaptureStopTask>(std::move(capture));
-        stop_dispatcher_->submit(stop_task, session_id, generation);
-        if (!stop_task->waitUntil(deadline)) {
+        cleanup_job->prepare(
+            stop_task,
+            capture_resource_key,
+            [](void* context) {
+              static_cast<CameraCaptureStopTask*>(context)->run();
+            });
+        runCleanupEnqueueProbe(cleanup_enqueue_probe_);
+        cleanup_supervisor_->submitOrEscalate(
+            cleanup_job, "camera_capture");
+        if (!cleanup_job->waitUntil(deadline)) {
           diagnostics::DiagnosticLog::instance().write(
-              "camera_capture_stop_detached",
+              "camera_capture_stop_unfinished",
               {
                   {"sessionId", session_id},
                   {"generation", generation},
@@ -746,14 +867,11 @@ class CameraActor::Implementation
                 {"sessionId", session_id},
                 {"generation", generation},
             });
+        std::terminate();
       }
     }
 
     if (!capture_thread.joinable()) return;
-    if (capture_thread.get_id() == std::this_thread::get_id()) {
-      capture_thread.detach();
-      return;
-    }
     if (capture_state) {
       std::unique_lock lock(capture_state->mutex);
       capture_state->changed.wait_until(lock, deadline, [&] {
@@ -765,41 +883,60 @@ class CameraActor::Implementation
       capture_thread.join();
       return;
     }
-    capture_thread.detach();
+    const bool joining_from_worker =
+        capture_thread.get_id() == std::this_thread::get_id();
+    const std::string_view join_reason = joining_from_worker
+        ? "stop_on_worker"
+        : "stop_deadline";
     diagnostics::DiagnosticLog::instance().write(
-        "camera_capture_worker_detached",
+        "camera_capture_worker_join_supervised",
         {
             {"sessionId", session_id},
             {"generation", generation},
-            {"reason", "stop_deadline"},
+            {"reason", join_reason},
         });
+    superviseThreadJoin(
+        std::move(capture_thread),
+        capture_resource_key,
+        "camera_capture_worker",
+        session_id,
+        generation,
+        join_reason);
   }
 
   void retireActivePublication(
       std::string publication_sid,
-      const std::string& session_id,
-      std::uint64_t generation,
+      SessionEpoch owner_epoch,
       std::chrono::steady_clock::time_point deadline) noexcept {
     if (publication_sid.empty()) return;
     try {
+      auto cleanup_job = std::make_shared<CleanupJob>(cleanup_start_probe_);
       auto task = std::make_shared<CameraPublicationRetireTask>(
-          voice_session_, session_id, generation, std::move(publication_sid));
-      retire_dispatcher_->submit(task, session_id, generation);
-      if (task->waitUntil(deadline)) return;
+          voice_session_, owner_epoch, std::move(publication_sid));
+      cleanup_job->prepare(
+          task,
+          reinterpret_cast<CleanupResourceKey>(voice_session_.get()),
+          [](void* context) {
+            static_cast<CameraPublicationRetireTask*>(context)->run();
+          });
+      runCleanupEnqueueProbe(cleanup_enqueue_probe_);
+      cleanup_supervisor_->submitOrEscalate(
+          cleanup_job, "camera_publication");
+      if (cleanup_job->waitUntil(deadline)) return;
     } catch (...) {
       diagnostics::DiagnosticLog::instance().write(
           "camera_active_publication_retire_submit_failed",
           {
-              {"sessionId", session_id},
-              {"generation", generation},
+              {"sessionId", owner_epoch.session_id},
+              {"generation", owner_epoch.generation},
           });
-      return;
+      std::terminate();
     }
     diagnostics::DiagnosticLog::instance().write(
-        "camera_active_publication_retire_detached",
+        "camera_active_publication_retire_unfinished",
         {
-            {"sessionId", session_id},
-            {"generation", generation},
+        {"sessionId", owner_epoch.session_id},
+        {"generation", owner_epoch.generation},
             {"reason", "stop_deadline"},
         });
   }
@@ -872,18 +1009,23 @@ class CameraActor::Implementation
   }
 
   void cleanupFailedAttempt(
-    const MediaCommand& command,
-    const std::string& publication_sid
+    const std::string& publication_sid,
+    const std::optional<SessionEpoch>& owner_epoch
   ) noexcept {
-    if (publication_sid.empty()) return;
+    if (publication_sid.empty() || !owner_epoch) return;
     try {
-      voice_session_->stopLocalCameraPreview(publication_sid);
+      static_cast<void>(voice_session_->cameraPreview().stop(
+        SessionPortCall::forOwner(*owner_epoch),
+        publication_sid
+      ));
     } catch (...) {
       // Preserve the original publication failure; preview cleanup is best effort.
     }
     try {
-      voice_session_->unpublishTrack(
-          command.session_id, command.generation, publication_sid);
+      static_cast<void>(voice_session_->publication().unpublishTrack(
+        SessionPortCall::forOwner(*owner_epoch),
+        publication_sid
+      ));
     } catch (...) {
       // A failed unpublish must not escape the attempt thread or suppress its reply.
     }
@@ -894,11 +1036,21 @@ class CameraActor::Implementation
       const MediaCommand& command,
       std::chrono::steady_clock::time_point deadline) noexcept {
     try {
+      const auto resource_key =
+          reinterpret_cast<CleanupResourceKey>(capture.get());
+      auto cleanup_job = std::make_shared<CleanupJob>(cleanup_start_probe_);
       auto stop_task =
           std::make_shared<CameraCaptureStopTask>(std::move(capture));
-      stop_dispatcher_->submit(
-          stop_task, command.session_id, command.generation);
-      const bool finished = stop_task->waitUntil(deadline);
+      cleanup_job->prepare(
+          stop_task,
+          resource_key,
+          [](void* context) {
+            static_cast<CameraCaptureStopTask*>(context)->run();
+          });
+      runCleanupEnqueueProbe(cleanup_enqueue_probe_);
+      cleanup_supervisor_->submitOrEscalate(
+          cleanup_job, "camera_capture_reopen");
+      const bool finished = cleanup_job->waitUntil(deadline);
       capture.reset();
       if (finished) return true;
       diagnostics::DiagnosticLog::instance().write(
@@ -917,7 +1069,7 @@ class CameraActor::Implementation
               {"generation", command.generation},
               {"reason", "worker_launch_failed"},
           });
-      return false;
+      std::terminate();
     }
   }
 
@@ -927,6 +1079,7 @@ class CameraActor::Implementation
     const bool uninitialize_com = SUCCEEDED(com_result);
     const auto command = attempt->command;
     std::string publication_sid;
+    std::optional<SessionEpoch> owner_epoch;
     bool publication_committed = false;
     try {
       if (!attemptIsCurrent(attempt)) throw std::runtime_error("stale camera generation");
@@ -965,16 +1118,54 @@ class CameraActor::Implementation
       std::shared_ptr<livekit::VideoSource> source;
       std::shared_ptr<livekit::D3D11H264VideoSource> gpu_source;
       std::shared_ptr<livekit::LocalVideoTrack> track;
+      std::string gpu_fallback_reason =
+          "D3D11 H264 video source is unavailable";
       if (capture_info.gpu) {
-        gpu_source = create_gpu_video_source_(
-            static_cast<int>(capture_info.format.width),
-            static_cast<int>(capture_info.format.height));
+        auto encoder_admission = resource_budget_->tryAcquire(
+            VideoResourceRequest{
+                .owner = VideoResourceOwner::CameraEncoder,
+                .owner_id = "camera:encoder:" + command.session_id + ":" +
+                    std::to_string(command.generation),
+                .hardware_encoder_sessions = 1,
+            });
+        if (encoder_admission.lease) {
+          auto candidate_source = create_gpu_video_source_(
+              static_cast<int>(capture_info.format.width),
+              static_cast<int>(capture_info.format.height));
+          if (candidate_source) {
+            auto source_owner = std::make_shared<BudgetedCameraGpuSource>(
+                BudgetedCameraGpuSource{
+                    std::move(encoder_admission.lease),
+                    std::move(candidate_source),
+                });
+            gpu_source = std::shared_ptr<livekit::D3D11H264VideoSource>(
+                source_owner, source_owner->source.get());
+          }
+        } else if (encoder_admission.saturation) {
+          const auto& saturation = *encoder_admission.saturation;
+          gpu_fallback_reason = saturation.code();
+          diagnostics::DiagnosticLog::instance().write(
+              "camera_video_resource_saturated",
+              {
+                  {"owner", videoResourceOwnerName(saturation.owner)},
+                  {"ownerId", saturation.owner_id},
+                  {"resourceClass",
+                   videoResourceClassName(saturation.resource_class)},
+                  {"current", saturation.current},
+                  {"requested", saturation.requested},
+                  {"limit", saturation.limit},
+                  {"fallback", "cpu_capture"},
+              });
+        } else {
+          throw std::logic_error(
+              "camera encoder admission returned no outcome");
+        }
         if (!gpu_source) {
           diagnostics::DiagnosticLog::instance().write(
               "camera_gpu_fallback",
               {
                   {"stage", "encoder_source"},
-                  {"reason", "D3D11 H264 video source is unavailable"},
+                  {"reason", gpu_fallback_reason},
               });
           const auto fallback_stop_deadline =
               std::chrono::steady_clock::now() +
@@ -1033,8 +1224,24 @@ class CameraActor::Implementation
               {"stage", "publish_start"},
               {"gpu", capture_info.gpu},
           });
-      publication_sid = voice_session_->publishVideoTrack(
-          command.session_id, command.generation, track, options);
+      auto publication_call = requireSessionPortValue(
+        voice_session_->bindCurrentOwner(
+          command.session_id,
+          command.generation,
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+            attempt->operation.deadline() - SessionPortCall::Clock::now()
+          )
+        )
+      );
+      publication_call.deadline = attempt->operation.deadline();
+      owner_epoch = publication_call.expected_epoch;
+      publication_sid = requireSessionPortValue(
+        voice_session_->publication().publishVideoTrack(
+          publication_call,
+          track,
+          options
+        )
+      );
       if (publication_sid.empty()) throw std::runtime_error("LiveKit camera publication SID is empty");
       diagnostics::DiagnosticLog::instance().write(
           "camera_startup_checkpoint",
@@ -1046,14 +1253,6 @@ class CameraActor::Implementation
       if (!attemptIsCurrent(attempt)) {
         throw std::runtime_error("stale camera generation");
       }
-      voice_session_->startLocalCameraPreview(
-        command.session_id,
-        command.generation,
-        publication_sid,
-        command.participant_identity,
-        track
-      );
-
       auto running = std::make_shared<std::atomic_bool>(true);
       auto capture_committed = std::make_shared<std::latch>(1);
       auto capture_state = std::make_shared<CaptureWorkerState>();
@@ -1082,6 +1281,7 @@ class CameraActor::Implementation
         capture_state->changed.notify_all();
       });
       bool stale = false;
+      std::optional<PreviewStartRequest> preview_start;
       {
         std::lock_guard lock(mutex_);
         stale = shutdown_.load(std::memory_order_acquire) ||
@@ -1094,16 +1294,25 @@ class CameraActor::Implementation
         if (!stale) {
           session_id_ = std::move(capture_session_id);
           generation_ = command.generation;
+          owner_epoch_ = *owner_epoch;
           publication_sid_ = publication_sid;
           publication_committed = true;
           source_ = source;
-          track_ = std::move(track);
+          track_ = track;
+          participant_identity_ = command.participant_identity;
+          preview_active_ = false;
           running_ = running;
           active_capture_ = capture;
           capture_worker_state_ = capture_state;
           active_post_gate_ = post_gate;
           capture_thread_ = std::move(capture_thread);
           current_attempt_.reset();
+          if (preview_intent_session_id_ == command.session_id &&
+              preview_intent_generation_ == command.generation &&
+              preview_demanded_) {
+            preview_start = previewStartRequestLocked(preview_revision_);
+          }
+          post_gate->publishTerminalIncarnation();
         }
         capture_committed->count_down();
       }
@@ -1122,6 +1331,19 @@ class CameraActor::Implementation
           attempt->operation.cancelled()) {
         throw std::runtime_error("stale camera generation");
       }
+      if (preview_start) {
+        try {
+          startPreview(*preview_start);
+        } catch (const std::exception& error) {
+          diagnostics::DiagnosticLog::instance().write(
+              "camera_preview_start_failed",
+              {
+                  {"sessionId", command.session_id},
+                  {"generation", command.generation},
+                  {"reason", error.what()},
+              });
+        }
+      }
       diagnostics::DiagnosticLog::instance().write(
           "camera_startup_checkpoint",
           {
@@ -1138,7 +1360,7 @@ class CameraActor::Implementation
         throw std::runtime_error("stale camera generation");
       }
       RuntimeEvent event;
-      event.type = "sessionLifecycle"; event.session_id = command.session_id;
+      event.type = NativeEventType::SessionLifecycle; event.session_id = command.session_id;
       event.generation = command.generation; event.kind = "camera"; event.status = "running";
       event.device_id = command.device_id;
       event.width = static_cast<int>(capture_info.format.width);
@@ -1148,7 +1370,9 @@ class CameraActor::Implementation
           capture_info.format.frame_rate_denominator);
       callbacks_->emit(std::move(event));
     } catch (const std::exception& error) {
-      if (!publication_committed) cleanupFailedAttempt(command, publication_sid);
+      if (!publication_committed) {
+        cleanupFailedAttempt(publication_sid, owner_epoch);
+      }
       if (!attempt->reply_emitted.exchange(true) &&
           !shutdown_.load(std::memory_order_acquire) &&
           !command.request_id.empty()) {
@@ -1175,7 +1399,9 @@ class CameraActor::Implementation
         callbacks_->emit(std::move(failed));
       }
     } catch (...) {
-      if (!publication_committed) cleanupFailedAttempt(command, publication_sid);
+      if (!publication_committed) {
+        cleanupFailedAttempt(publication_sid, owner_epoch);
+      }
       if (!attempt->reply_emitted.exchange(true) &&
           !shutdown_.load(std::memory_order_acquire) &&
           !command.request_id.empty()) {
@@ -1319,7 +1545,7 @@ class CameraActor::Implementation
       }
       if (running->exchange(false)) {
         MediaCommand terminal;
-        terminal.type = "__cameraTerminal";
+        terminal.type = NativeCommandType::CameraTerminal;
         terminal.session_id = command.session_id;
         terminal.generation = command.generation;
         terminal.internal_message = error.code();
@@ -1328,7 +1554,7 @@ class CameraActor::Implementation
     } catch (const std::exception& error) {
       if (running->exchange(false)) {
         MediaCommand terminal;
-        terminal.type = "__cameraTerminal";
+        terminal.type = NativeCommandType::CameraTerminal;
         terminal.session_id = command.session_id;
         terminal.generation = command.generation;
         terminal.internal_message = error.what();
@@ -1337,7 +1563,7 @@ class CameraActor::Implementation
     } catch (...) {
       if (running->exchange(false)) {
         MediaCommand terminal;
-        terminal.type = "__cameraTerminal";
+        terminal.type = NativeCommandType::CameraTerminal;
         terminal.session_id = command.session_id;
         terminal.generation = command.generation;
         terminal.internal_message = "unknown camera capture failure";
@@ -1353,15 +1579,24 @@ class CameraActor::Implementation
   std::shared_ptr<CameraCaptureFactory> factory_;
   CameraActor::CreateGpuVideoSource create_gpu_video_source_;
   CameraActor::BeforeTerminalPost before_terminal_post_;
-  CameraActor::LaunchRetireWorker cleanup_launcher_;
-  std::shared_ptr<CameraPublicationRetireDispatcher> retire_dispatcher_;
-  std::shared_ptr<CameraCaptureStopDispatcher> stop_dispatcher_;
+  CleanupSupervisor* cleanup_supervisor_;
+  CleanupStartProbe cleanup_start_probe_;
+  CleanupEnqueueProbe cleanup_enqueue_probe_;
+  VideoResourceAdmissionBudget* resource_budget_ = nullptr;
   std::mutex mutex_;
   std::string session_id_;
   std::uint64_t generation_ = 0;
+  SessionEpoch owner_epoch_;
   std::string publication_sid_;
+  std::string participant_identity_;
   std::shared_ptr<livekit::VideoSource> source_;
   std::shared_ptr<livekit::LocalVideoTrack> track_;
+  std::string preview_intent_session_id_;
+  std::uint64_t preview_intent_generation_ = 0;
+  std::uint64_t preview_revision_ = 0;
+  bool preview_demanded_ = true;
+  bool preview_active_ = false;
+  std::timed_mutex preview_operation_mutex_;
   std::shared_ptr<std::atomic_bool> running_;
   std::shared_ptr<CameraCapture> active_capture_;
   std::shared_ptr<CaptureWorkerState> capture_worker_state_;
@@ -1376,13 +1611,15 @@ CameraActor::CameraActor(SequencedEmitter& emitter, InternalPost post, IsCurrent
   std::shared_ptr<LiveKitVoiceSession> voice_session,
   std::shared_ptr<CameraCaptureFactory> factory,
   CreateGpuVideoSource create_gpu_video_source,
-  LaunchRetireWorker launch_retire_worker,
+  CleanupStartProbe cleanup_start_probe,
   BeforeTerminalPost before_terminal_post,
-  BeforeCleanupEnqueue before_cleanup_enqueue)
+  CleanupEnqueueProbe cleanup_enqueue_probe,
+  VideoResourceAdmissionBudget* resource_budget)
   : implementation_(std::make_shared<Implementation>(emitter, std::move(post),
       std::move(current), std::move(voice_session), std::move(factory),
-      std::move(create_gpu_video_source), std::move(launch_retire_worker),
-      std::move(before_terminal_post), std::move(before_cleanup_enqueue))) {}
+      std::move(create_gpu_video_source), std::move(cleanup_start_probe),
+      std::move(before_terminal_post), std::move(cleanup_enqueue_probe),
+      resource_budget)) {}
 CameraActor::~CameraActor() {
   if (implementation_) implementation_->shutdown();
 }
@@ -1395,6 +1632,12 @@ void CameraActor::disconnect(const MediaCommand& command, bool emit) {
 }
 void CameraActor::releasePreviewFrame(const MediaCommand& command) {
   implementation_->releasePreviewFrame(command);
+}
+void CameraActor::setPreviewDemand(const MediaCommand& command) {
+  implementation_->setPreviewDemand(command);
+}
+void CameraActor::retryPreview(const MediaCommand& command) {
+  implementation_->retryPreview(command);
 }
 void CameraActor::handleTerminal(const MediaCommand& command) {
   implementation_->handleTerminal(command);

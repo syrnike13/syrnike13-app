@@ -19,6 +19,7 @@ export type PendingNativePicker = {
   audioRequested: boolean
   sources: DesktopDisplayMediaSource[]
   timeout: Fiber.Fiber<void, never>
+  cancelEnumeration: () => void
 }
 
 let registered = false
@@ -42,8 +43,10 @@ export function setPendingNativePicker(next: PendingNativePicker | null) {
 
 export function clearPendingNativePicker() {
   if (!pendingPicker) return
-  Effect.runFork(Fiber.interrupt(pendingPicker.timeout))
+  const pending = pendingPicker
   pendingPicker = null
+  Effect.runFork(Fiber.interrupt(pending.timeout))
+  pending.cancelEnumeration()
 }
 
 export function registerNativeMediaIpc(
@@ -203,7 +206,10 @@ export function registerNativeMediaIpc(
         Effect.sleep(NATIVE_PICKER_TIMEOUT_MS).pipe(
           Effect.andThen(
             Effect.sync(() => {
-              if (pendingPicker?.id === request.id) pendingPicker = null
+              if (pendingPicker?.id !== request.id) return
+              const expired = pendingPicker
+              pendingPicker = null
+              expired.cancelEnumeration()
             }),
           ),
         ),
@@ -213,6 +219,13 @@ export function registerNativeMediaIpc(
         audioRequested: request.audioRequested,
         sources: [],
         timeout,
+        cancelEnumeration: () => {
+          Effect.runFork(
+            controller.cancelDisplaySourceEnumerationEffect(request.id).pipe(
+              Effect.ignore,
+            ),
+          )
+        },
       }
       win.webContents.send(IPC.mediaRequest, request)
       return request

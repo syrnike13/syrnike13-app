@@ -103,12 +103,14 @@ class ScreenOutputStallDetector final {
       first_sample || frames_encoded > *last_frames_encoded_;
     const bool transport_progress =
       first_sample || frames_sent > *last_frames_sent_;
+    if (frames_submitted > 0) has_seen_source_frame_ = true;
     last_frames_submitted_ = frames_submitted;
     last_frames_encoded_ = frames_encoded;
     last_frames_sent_ = frames_sent;
 
     if (first_sample) {
-      if (frames_submitted > 0 && frames_encoded == 0) {
+      if (!has_seen_source_frame_ ||
+          (frames_submitted > 0 && frames_encoded == 0)) {
         encoder_stall_started_at_ = now;
       }
       if (frames_encoded > frames_sent) {
@@ -117,7 +119,9 @@ class ScreenOutputStallDetector final {
       return ScreenOutputStall::None;
     }
 
-    if (frames_submitted > 0 && frames_encoded == 0) {
+    if (!has_seen_source_frame_) {
+      if (!encoder_stall_started_at_) encoder_stall_started_at_ = now;
+    } else if (frames_submitted > 0 && frames_encoded == 0) {
       if (!encoder_stall_started_at_) encoder_stall_started_at_ = now;
     } else if (encoder_progress) {
       encoder_stall_started_at_.reset();
@@ -153,6 +157,7 @@ class ScreenOutputStallDetector final {
     last_frames_sent_.reset();
     encoder_stall_started_at_.reset();
     transport_stall_started_at_.reset();
+    has_seen_source_frame_ = false;
   }
 
  private:
@@ -163,6 +168,7 @@ class ScreenOutputStallDetector final {
     encoder_stall_started_at_;
   std::optional<std::chrono::steady_clock::time_point>
     transport_stall_started_at_;
+  bool has_seen_source_frame_ = false;
 };
 
 }  // namespace syrnike::desktop_native::media

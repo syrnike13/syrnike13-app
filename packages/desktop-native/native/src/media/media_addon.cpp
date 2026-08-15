@@ -13,7 +13,7 @@
 #include <thread>
 
 #include "../common/addon_parsing.hpp"
-#include "../common/async_cleanup_dispatcher.hpp"
+#include "../common/cleanup_supervisor.hpp"
 #include "../common/diagnostic_log.hpp"
 #include "../common/native_contract_version.hpp"
 #include "../common/node_event_sink.hpp"
@@ -102,7 +102,7 @@ void releaseRuntime(
 struct AsyncCleanupRegistration final {
   uv_loop_t* loop = nullptr;
   std::shared_ptr<MediaRuntimeRegistry> registry;
-  std::shared_ptr<AsyncCleanupNode> cleanup_node;
+  std::shared_ptr<CleanupJob> cleanup_job;
   bool fail_dispatch_after_uv_init = false;
 };
 
@@ -171,16 +171,17 @@ void asyncCleanup(napi_async_cleanup_hook_handle handle, void* data) {
     if (registration->fail_dispatch_after_uv_init) {
       throw std::bad_alloc();
     }
-    registration->cleanup_node->prepareRaw(
+    registration->cleanup_job->prepareRaw(
       context,
+      reinterpret_cast<CleanupResourceKey>(context),
       [](void* owner) noexcept {
         completeAsyncCleanup(
           static_cast<AsyncCleanupContext*>(owner)
         );
       }
     );
-    AsyncCleanupDispatcher::instance().submit(
-      std::move(registration->cleanup_node)
+    CleanupSupervisor::instance().submitOrEscalate(
+      std::move(registration->cleanup_job), "media_addon"
     );
   } catch (...) {
     completeAsyncCleanup(context);
@@ -317,11 +318,11 @@ class MediaRuntimeBinding final : public Napi::ObjectWrap<MediaRuntimeBinding> {
           injection_sink = std::move(injection_sink)
         ](const MediaCommand& command) {
           if (
-            command.type == "configureMicrophone" &&
+            command.type == NativeCommandType::ConfigureMicrophone &&
             !blocked_once->exchange(true)
           ) {
             RuntimeEvent event;
-            event.type = "nativeSmokeQuarantineBlockEntered";
+            event.type = NativeEventType::NativeSmokeQuarantineBlockEntered;
             static_cast<void>(injection_sink->emit(std::move(event)));
             std::this_thread::sleep_for(std::chrono::seconds(3));
           }
@@ -342,7 +343,7 @@ class MediaRuntimeBinding final : public Napi::ObjectWrap<MediaRuntimeBinding> {
         std::move(before_microphone_operation),
         MediaRuntime::BeforeVoiceShutdown{},
         nullptr,
-        failFirstAsyncCleanupLauncher(injectionEnabled(
+        failFirstCleanupStartProbe(injectionEnabled(
           "SYRNIKE_NATIVE_FAIL_MEDIA_QUARANTINE_LAUNCH_ONCE"
         )),
         std::move(after_subsystem_cleanup)
@@ -396,7 +397,7 @@ class MediaRuntimeBinding final : public Napi::ObjectWrap<MediaRuntimeBinding> {
         diagnostics.write(
           "media_addon_dispatch_received",
           {
-            {"command", command.type},
+            {"command", std::string(nativeCommandName(command.type))},
             {"requestId", command.request_id},
             {"actionId", command.diagnostic_action_id},
             {"operationId", command.diagnostic_operation_id},
@@ -421,7 +422,7 @@ class MediaRuntimeBinding final : public Napi::ObjectWrap<MediaRuntimeBinding> {
           diagnostics.write(
             "media_addon_dispatch_queue_full",
             {
-              {"command", command_type},
+              {"command", nativeCommandName(command_type)},
               {"requestId", request_id},
               {"actionId", action_id},
               {"operationId", operation_id},
@@ -503,7 +504,7 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
       Napi::Number::New(info.Env(), static_cast<double>(completions))
     );
   }
-  auto capabilities = Napi::Array::New(info.Env(), 9);
+  auto capabilities = Napi::Array::New(info.Env(), 10);
   capabilities.Set(uint32_t{0}, "microphone");
   capabilities.Set(uint32_t{1}, "screen");
   capabilities.Set(uint32_t{2}, "screenAudio");
@@ -513,6 +514,7 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
   capabilities.Set(uint32_t{6}, "localScreenPreview");
   capabilities.Set(uint32_t{7}, "localCameraPreview");
   capabilities.Set(uint32_t{8}, "directRemoteAudio");
+  capabilities.Set(uint32_t{9}, "voiceControl");
   result.Set("capabilities", capabilities);
   return result;
 }
@@ -540,7 +542,7 @@ Napi::Object initialize(Napi::Env env, Napi::Object exports) {
     throw;
   }
   MediaRuntimeBinding::initialize(env);
-  static_cast<void>(AsyncCleanupDispatcher::instance());
+  static_cast<void>(CleanupSupervisor::instance());
   uv_loop_t* loop = nullptr;
   if (napi_get_uv_event_loop(env, &loop) != napi_ok || !loop) {
     throw Napi::Error::New(env, "media addon uv loop is unavailable");
@@ -548,8 +550,8 @@ Napi::Object initialize(Napi::Env env, Napi::Object exports) {
   auto* cleanup_registration = new AsyncCleanupRegistration{
     loop,
     state->registry,
-    std::make_shared<AsyncCleanupNode>(
-      failFirstAsyncCleanupLauncher(injectionEnabled(
+    std::make_shared<CleanupJob>(
+      failFirstCleanupStartProbe(injectionEnabled(
         "SYRNIKE_NATIVE_FAIL_ASYNC_CLEANUP_LAUNCH_ONCE"
       ))
     ),

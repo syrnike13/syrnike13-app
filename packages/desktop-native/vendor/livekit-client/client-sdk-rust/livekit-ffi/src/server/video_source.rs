@@ -132,7 +132,7 @@ impl FfiVideoSource {
 
         match self.source {
             RtcVideoSource::Native(ref source) => {
-                match source.capture_d3d11_frame(
+                match source.capture_d3d11_frame_with_metadata(
                     capture.shared_texture_handle,
                     capture.adapter_luid,
                     capture.acquire_key,
@@ -140,6 +140,7 @@ impl FfiVideoSource {
                     capture.width,
                     capture.height,
                     capture.timestamp_us,
+                    frame_metadata_from_proto(capture.metadata),
                 ) {
                     1 => return Ok(true),
                     0 => return Ok(false),
@@ -177,5 +178,29 @@ mod tests {
         assert_eq!(metadata.user_timestamp, Some(123));
         assert_eq!(metadata.frame_id, Some(456));
         assert_eq!(metadata.user_data, Some(vec![7, 8, 9]));
+    }
+
+    #[test]
+    fn d3d11_request_carries_exact_frame_identity_separate_from_webrtc_timestamp() {
+        let request = proto::CaptureD3d11VideoFrameRequest {
+            source_handle: 1,
+            shared_texture_handle: 2,
+            adapter_luid: 3,
+            acquire_key: 4,
+            release_key: 5,
+            width: 1280,
+            height: 720,
+            timestamp_us: 111_111,
+            metadata: Some(proto::FrameMetadata {
+                user_timestamp: Some(9_999_999),
+                frame_id: Some(73),
+                user_data: None,
+            }),
+        };
+
+        let metadata = request.metadata.expect("D3D11 frame identity metadata must be present");
+        assert_eq!(metadata.user_timestamp, Some(9_999_999));
+        assert_eq!(metadata.frame_id, Some(73));
+        assert_ne!(request.timestamp_us as u64, metadata.user_timestamp.unwrap());
     }
 }

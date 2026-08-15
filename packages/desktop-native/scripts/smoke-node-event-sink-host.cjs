@@ -33,6 +33,8 @@ async function run() {
     runtime.dispatch({
       type: 'probeQueryWorker',
       requestId: `node-event-smoke-${index}`,
+      lane: 'query',
+      hostEpoch: 1,
     })
   }
 

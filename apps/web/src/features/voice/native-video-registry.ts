@@ -1,5 +1,7 @@
 import { Effect, Option, Schema } from 'effect'
 
+import { recordDiagnosticEvent } from '#/features/diagnostics/diagnostic-reporter'
+
 export type NativeVideoSource = 'camera' | 'screen'
 
 export type NativeVideoTrackMetadata = {
@@ -11,6 +13,11 @@ export type NativeVideoTrackMetadata = {
   local: boolean
   sequence: number
   rendererEpoch: number
+  nativeCaptureTimestampUs?: number
+  runtimeEpoch?: number
+  peerAlias?: string
+  timelineSampled?: boolean
+  electronImportedAtMs?: number
 }
 
 type NativeVideoFrameMessage = {
@@ -32,11 +39,23 @@ const NativeVideoPublicationMetadataSchema = Schema.Struct({
   generation: Schema.Int,
 })
 
+const OptionalNonNegativeInteger = Schema.optional(
+  Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+)
+const OptionalNonNegative = Schema.optional(
+  Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
+)
+
 const NativeVideoTrackMetadataSchema = Schema.Struct({
   ...NativeVideoPublicationMetadataSchema.fields,
   local: Schema.Boolean,
   sequence: Schema.Int,
   rendererEpoch: Schema.Int,
+  nativeCaptureTimestampUs: OptionalNonNegativeInteger,
+  runtimeEpoch: OptionalNonNegativeInteger,
+  peerAlias: Schema.optional(Schema.String),
+  timelineSampled: Schema.optional(Schema.Boolean),
+  electronImportedAtMs: OptionalNonNegative,
 })
 
 const TrackRemovedMessageSchema = Schema.Struct({
@@ -535,9 +554,15 @@ export class NativeVideoRegistry {
       this.removeTrack(metadata.trackId)
       entry = undefined
     }
-    const rendererEpochChanged = Boolean(
-      entry && metadata.rendererEpoch !== entry.metadata.rendererEpoch,
-    )
+    const presentationEpochOrder = entry
+      ? comparePresentationEpoch(metadata, entry.metadata)
+      : 0
+    if (entry && presentationEpochOrder < 0) {
+      entry.presentation.framesDroppedStale += 1
+      frame.close()
+      return
+    }
+    const rendererEpochChanged = Boolean(entry && presentationEpochOrder > 0)
     if (entry && rendererEpochChanged) {
       entry.presentation.rendererEpochChanges += 1
       entry.pendingFrame?.close()
@@ -552,7 +577,8 @@ export class NativeVideoRegistry {
       // adapter identity did not change.
       entry.metadata = metadata
     }
-    if (entry && !rendererEpochChanged && metadata.sequence <= entry.metadata.sequence) {
+    if (entry && presentationEpochOrder === 0 &&
+      metadata.sequence <= entry.metadata.sequence) {
       entry.presentation.framesDroppedStale += 1
       frame.close()
       return
@@ -679,6 +705,7 @@ export class NativeVideoRegistry {
       if (drawn) {
         entry.presentation.framesDrawn += 1
         entry.presentation.lastDrawAt = Date.now()
+        recordRendererPresentation(entry.metadata, entry.presentation)
       }
     } finally {
       frame.close()
@@ -767,6 +794,54 @@ export class NativeVideoRegistry {
     this.version += 1
     for (const listener of this.listeners) listener()
   }
+}
+
+function comparePresentationEpoch(
+  candidate: Pick<NativeVideoTrackMetadata, 'runtimeEpoch' | 'rendererEpoch'>,
+  current: Pick<NativeVideoTrackMetadata, 'runtimeEpoch' | 'rendererEpoch'>,
+) {
+  const candidateRuntime = candidate.runtimeEpoch ?? 0
+  const currentRuntime = current.runtimeEpoch ?? 0
+  if (candidateRuntime !== currentRuntime) {
+    return candidateRuntime < currentRuntime ? -1 : 1
+  }
+  if (candidate.rendererEpoch === current.rendererEpoch) return 0
+  return candidate.rendererEpoch < current.rendererEpoch ? -1 : 1
+}
+
+function recordRendererPresentation(
+  metadata: NativeVideoTrackMetadata,
+  presentation: NativeVideoPresentationCounters,
+) {
+  if (
+    !metadata.timelineSampled ||
+    metadata.nativeCaptureTimestampUs === undefined ||
+    metadata.runtimeEpoch === undefined
+  ) return
+  recordDiagnosticEvent('native-video', 'media_timeline', {
+    stage: 'renderer_presented',
+    sessionId: metadata.sessionId,
+    generation: metadata.generation,
+    trackId: metadata.trackId,
+    frameSequence: metadata.sequence,
+    nativeCaptureTimestampUs: metadata.nativeCaptureTimestampUs,
+    runtimeEpoch: metadata.runtimeEpoch,
+    rendererEpoch: metadata.rendererEpoch,
+    ...(metadata.peerAlias ? { peerAlias: metadata.peerAlias } : {}),
+    ...(metadata.electronImportedAtMs === undefined
+      ? {}
+      : {
+        durationMs: Math.max(0, Date.now() - metadata.electronImportedAtMs),
+      }),
+    metrics: {
+      framesReceived: presentation.framesReceived,
+      framesDrawn: presentation.framesDrawn,
+      framesSuperseded: presentation.framesSuperseded,
+      framesDroppedHidden: presentation.framesDroppedHidden,
+      framesDroppedStale: presentation.framesDroppedStale,
+      drawFailures: presentation.drawFailures,
+    },
+  })
 }
 
 function createNativeVideoPresentationCounters(): NativeVideoPresentationCounters {

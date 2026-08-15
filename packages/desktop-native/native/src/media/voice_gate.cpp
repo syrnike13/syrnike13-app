@@ -10,8 +10,8 @@ constexpr float kMinDb = -60.0f;
 constexpr float kMaxDb = 0.0f;
 constexpr float kAutoThresholdMinDb = -50.0f;
 constexpr float kAutoThresholdMaxDb = -18.0f;
-constexpr std::size_t kQuietHistoryMaxFrames = 200;
 constexpr std::size_t kQuietHistoryMinFrames = 20;
+constexpr std::size_t kQuietPercentileCadenceFrames = 5;
 constexpr float kQuietFloorPercentile = 0.2f;
 constexpr float kNoiseFloorUpAlpha = 0.02f;
 constexpr float kNoiseFloorDownAlpha = 0.15f;
@@ -41,15 +41,6 @@ float frameDb(std::span<float> samples) {
   }
 
   return rmsToDbLocal(std::sqrt(square_sum / static_cast<float>(samples.size())));
-}
-
-float percentile(std::vector<float> values, float fraction) {
-  if (values.empty()) return kMinDb;
-  std::sort(values.begin(), values.end());
-  const auto index = static_cast<std::size_t>(
-    std::floor(static_cast<float>(values.size() - 1) * fraction)
-  );
-  return values[std::min(index, values.size() - 1)];
 }
 
 }  // namespace
@@ -149,7 +140,8 @@ void VoiceGateProcessor::resetGateState(bool open) {
   transition_target_ = gain_;
   transition_samples_total_ = 0;
   transition_samples_remaining_ = 0;
-  lookahead_frames_.clear();
+  lookahead_write_ = 0;
+  lookahead_queued_ = 0;
 }
 
 int VoiceGateProcessor::lookaheadFrameCount(std::span<float> samples) const {
@@ -161,7 +153,9 @@ int VoiceGateProcessor::lookaheadFrameCount(std::span<float> samples) const {
 }
 
 void VoiceGateProcessor::resetAdaptiveState() {
-  quiet_history_.clear();
+  quiet_history_size_ = 0;
+  quiet_history_next_ = 0;
+  quiet_percentile_countdown_ = 0;
   noise_floor_db_ = clampDb(config_.manual_threshold_db - config_.auto_margin_db);
 }
 
@@ -172,42 +166,84 @@ void VoiceGateProcessor::updateNoiseFloor(float input_db, bool quiet) {
     input_db <= noise_floor_db_ + kNoiseLearningWindowDb;
   if (!quiet && !plausible_background) return;
 
-  quiet_history_.push_back(clampDb(input_db));
-  if (quiet_history_.size() > kQuietHistoryMaxFrames) {
-    quiet_history_.erase(quiet_history_.begin());
+  quiet_history_[quiet_history_next_] = clampDb(input_db);
+  quiet_history_next_ = (quiet_history_next_ + 1) % quiet_history_.size();
+  quiet_history_size_ = std::min(
+    quiet_history_size_ + 1,
+    quiet_history_.size()
+  );
+  if (quiet_history_size_ < kQuietHistoryMinFrames) return;
+  if (quiet_percentile_countdown_ > 0) {
+    --quiet_percentile_countdown_;
+    return;
   }
-
-  if (quiet_history_.size() < kQuietHistoryMinFrames) return;
-
-  const float estimated_floor = percentile(quiet_history_, kQuietFloorPercentile);
+  quiet_percentile_countdown_ = kQuietPercentileCadenceFrames - 1;
+  std::copy_n(
+    quiet_history_.begin(),
+    quiet_history_size_,
+    quiet_percentile_scratch_.begin()
+  );
+  std::sort(
+    quiet_percentile_scratch_.begin(),
+    quiet_percentile_scratch_.begin() + quiet_history_size_
+  );
+  const auto percentile_index = static_cast<std::size_t>(std::floor(
+    static_cast<float>(quiet_history_size_ - 1) * kQuietFloorPercentile
+  ));
+  const float estimated_floor =
+    quiet_percentile_scratch_[std::min(
+      percentile_index,
+      quiet_history_size_ - 1
+    )];
   const float alpha =
     estimated_floor > noise_floor_db_ ? kNoiseFloorUpAlpha : kNoiseFloorDownAlpha;
   noise_floor_db_ += (estimated_floor - noise_floor_db_) * alpha;
   noise_floor_db_ = clampDb(noise_floor_db_);
 }
 
-std::vector<float> VoiceGateProcessor::delayedOutputFrame(std::span<float> samples) {
+void VoiceGateProcessor::applyDelayedGate(std::span<float> samples) {
   const int max_delay_frames = lookaheadFrameCount(samples);
   if (max_delay_frames <= 0) {
-    lookahead_frames_.clear();
-    return std::vector<float>(samples.begin(), samples.end());
+    lookahead_write_ = 0;
+    lookahead_queued_ = 0;
+    for (auto& sample : samples) sample *= nextGain();
+    return;
   }
 
-  lookahead_frames_.push_back(std::vector<float>(samples.begin(), samples.end()));
-  if (static_cast<int>(lookahead_frames_.size()) <= max_delay_frames) {
-    return std::vector<float>(samples.size(), 0.0f);
+  const auto delay_frames = static_cast<std::size_t>(max_delay_frames);
+  if (lookahead_storage_.size() != delay_frames ||
+      lookahead_frame_samples_ != samples.size()) {
+    lookahead_storage_.assign(
+      delay_frames,
+      std::vector<float>(samples.size(), 0.0f)
+    );
+    lookahead_frame_samples_ = samples.size();
+    lookahead_write_ = 0;
+    lookahead_queued_ = 0;
   }
-
-  std::vector<float> output = std::move(lookahead_frames_.front());
-  lookahead_frames_.pop_front();
-  return output;
+  auto& delayed = lookahead_storage_[lookahead_write_];
+  if (lookahead_queued_ < delay_frames) {
+    std::copy(samples.begin(), samples.end(), delayed.begin());
+    ++lookahead_queued_;
+    for (auto& sample : samples) {
+      static_cast<void>(nextGain());
+      sample = 0.0f;
+    }
+  } else {
+    for (std::size_t index = 0; index < samples.size(); ++index) {
+      const float output = delayed[index];
+      delayed[index] = samples[index];
+      samples[index] = output * nextGain();
+    }
+  }
+  lookahead_write_ = (lookahead_write_ + 1) % delay_frames;
 }
 
 VoiceGateFrameMetrics VoiceGateProcessor::processFrame(std::span<float> samples) {
   const float input_db = frameDb(samples);
 
   if (!config_.enabled) {
-    if (!open_ || gain_ != 1.0f || !lookahead_frames_.empty()) {
+    if (!open_ || gain_ != 1.0f || lookahead_queued_ != 0) {
       resetGateState(true);
     }
     return VoiceGateFrameMetrics{
@@ -244,14 +280,7 @@ VoiceGateFrameMetrics VoiceGateProcessor::processFrame(std::span<float> samples)
     beginGainTransition(1.0f, config_.attack_ms);
   }
 
-  std::vector<float> output = delayedOutputFrame(samples);
-  const std::size_t count = std::min(samples.size(), output.size());
-  for (std::size_t index = 0; index < count; ++index) {
-    samples[index] = output[index] * nextGain();
-  }
-  for (std::size_t index = count; index < samples.size(); ++index) {
-    samples[index] = 0.0f;
-  }
+  applyDelayedGate(samples);
 
   return VoiceGateFrameMetrics{
     .input_db = input_db,

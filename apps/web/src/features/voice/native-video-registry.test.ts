@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const diagnostics = vi.hoisted(() => ({ record: vi.fn() }))
+
+vi.mock('#/features/diagnostics/diagnostic-reporter', () => ({
+  recordDiagnosticEvent: diagnostics.record,
+}))
+
 import { NativeVideoRegistry } from './native-video-registry'
 
 let runtimeWindow: ReturnType<typeof createRuntimeWindow>
@@ -18,6 +24,7 @@ class FakeVideoFrame {
 
 describe('NativeVideoRegistry canvas lifecycle', () => {
   beforeEach(() => {
+    diagnostics.record.mockReset()
     runtimeWindow = createRuntimeWindow()
     runtimeDocument = createRuntimeDocument()
     vi.stubGlobal('window', runtimeWindow)
@@ -91,6 +98,42 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     expect(onSizeChange).toHaveBeenCalledWith({ width: 1280, height: 720 })
     expect(frame.close).toHaveBeenCalledOnce()
     expect(registry.listTracks()[0]).toMatchObject({ consumerCount: 2 })
+  })
+
+  it('records sampled renderer presentation only after a successful canvas draw', () => {
+    const registry = new NativeVideoRegistry()
+    const dropped = new FakeVideoFrame()
+    deliver(registry, timelineFrameMessage(1, dropped))
+    expect(diagnostics.record).not.toHaveBeenCalled()
+
+    const consumer = canvasStub()
+    registry.getTrack('local-screen:session')!.attachCanvas(consumer.canvas)
+    const drawn = new FakeVideoFrame()
+    deliver(registry, timelineFrameMessage(2, drawn))
+
+    expect(diagnostics.record).not.toHaveBeenCalled()
+    runtimeWindow.flushAnimationFrames()
+    expect(diagnostics.record).toHaveBeenCalledWith(
+      'native-video',
+      'media_timeline',
+      expect.objectContaining({
+        stage: 'renderer_presented',
+        sessionId: 'session',
+        generation: 1,
+        trackId: 'local-screen:session',
+        frameSequence: 2,
+        nativeCaptureTimestampUs: 8_000,
+        runtimeEpoch: 4,
+        peerAlias: 'peer-7',
+        rendererEpoch: 2,
+      }),
+    )
+
+    const stale = new FakeVideoFrame()
+    deliver(registry, timelineFrameMessage(1, stale))
+    runtimeWindow.flushAnimationFrames()
+    expect(stale.close).toHaveBeenCalledOnce()
+    expect(diagnostics.record).toHaveBeenCalledTimes(1)
   })
 
   it('sizes thumbnail backing stores to the rendered tile instead of source 4K', () => {
@@ -528,6 +571,28 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     expect(afterReload.close).toHaveBeenCalledOnce()
   })
 
+  it('rejects a backward runtime epoch even when its renderer epoch is higher', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, publicationMessage('available'))
+    const current = remoteFrameMessage(10, new FakeVideoFrame())
+    current.metadata.runtimeEpoch = 8
+    current.metadata.rendererEpoch = 4
+    deliver(registry, current)
+
+    const lateFrame = new FakeVideoFrame()
+    const late = remoteFrameMessage(99, lateFrame)
+    late.metadata.runtimeEpoch = 7
+    late.metadata.rendererEpoch = 99
+    deliver(registry, late)
+
+    expect(lateFrame.close).toHaveBeenCalledOnce()
+    expect(registry.listTracks()[0]).toMatchObject({
+      runtimeEpoch: 8,
+      rendererEpoch: 4,
+      sequence: 10,
+    })
+  })
+
   it('ignores a removed event from the previous session', () => {
     const registry = new NativeVideoRegistry()
     const publication = publicationMessage('available')
@@ -691,6 +756,21 @@ function presentationResetMessage(generation: number) {
       trackId: 'local-screen:session',
       sessionId: 'session',
       generation,
+    },
+  }
+}
+
+function timelineFrameMessage(sequence: number, frame: FakeVideoFrame) {
+  return {
+    ...frameMessage(1, sequence, frame),
+    metadata: {
+      ...metadata(1, sequence),
+      rendererEpoch: 2,
+      nativeCaptureTimestampUs: 8_000,
+      runtimeEpoch: 4,
+      peerAlias: 'peer-7',
+      timelineSampled: true,
+      electronImportedAtMs: 1,
     },
   }
 }

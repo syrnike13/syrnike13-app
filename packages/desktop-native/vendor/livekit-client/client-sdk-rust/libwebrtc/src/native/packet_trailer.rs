@@ -148,6 +148,11 @@ pub struct PacketTrailerHandler {
 }
 
 impl PacketTrailerHandler {
+    #[cfg(test)]
+    pub(crate) fn null_for_test() -> Self {
+        Self { sys_handle: SharedPtr::null() }
+    }
+
     /// Enable or disable timestamp embedding/extraction.
     pub fn set_enabled(&self, enabled: bool) {
         self.sys_handle.set_enabled(enabled);
@@ -277,5 +282,29 @@ pub fn create_receiver_handler(
             peer_factory.handle.sys_handle.clone(),
             receiver.handle.sys_handle.clone(),
         ),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct H264DecodeStartupObservations {
+    pub pre_keyframe_inputs: u64,
+    pub complete_keyframe_inputs: u64,
+    pub decoded_outputs: u64,
+}
+
+/// Reset process-wide H264 decoder startup observations for a focused test or
+/// diagnostic interval.
+pub fn reset_h264_decode_startup_observations() {
+    webrtc_sys::video_decoder_factory::ffi::reset_h264_decode_startup_observations();
+}
+
+/// Return ordered H264 decoder startup counters collected since the last reset.
+pub fn h264_decode_startup_observations() -> H264DecodeStartupObservations {
+    H264DecodeStartupObservations {
+        pre_keyframe_inputs:
+            webrtc_sys::video_decoder_factory::ffi::h264_pre_keyframe_decode_inputs(),
+        complete_keyframe_inputs:
+            webrtc_sys::video_decoder_factory::ffi::h264_complete_keyframe_decode_inputs(),
+        decoded_outputs: webrtc_sys::video_decoder_factory::ffi::h264_decoded_outputs(),
     }
 }

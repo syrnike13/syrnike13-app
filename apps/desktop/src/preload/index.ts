@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, sharedTexture } from 'electron'
 import {
   DesktopDisplayMediaRequestSchema,
   DesktopDisplayMediaSelectionSchema,
+  DesktopDisplayMediaSourcePageSchema,
   DesktopDisplayMediaSourceSchema,
   DesktopOverlayStateSchema,
   DesktopStoredSessionSchema,
@@ -128,9 +129,10 @@ const HotkeyBindingsSchema = Schema.mutable(
 const HotkeyRegistrationResultsSchema = Schema.mutable(
   Schema.Array(HotkeyRegistrationResultSchema),
 )
-const DesktopDisplayMediaSourcesSchema = Schema.mutable(
-  Schema.Array(DesktopDisplayMediaSourceSchema),
-)
+const DesktopDisplayMediaSourceVisualSchema = Schema.Union([
+  DesktopDisplayMediaSourceSchema,
+  Schema.Null,
+])
 const NativeMediaDevicesSchema = Schema.mutable(
   Schema.Array(NativeMediaDeviceInfoSchema),
 )
@@ -484,11 +486,20 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     retryRuntime() {
       return invokeNativeMediaRuntimeState(IPC.mediaRetryRuntime)
     },
-    getDisplaySources(requestId: string) {
+    getDisplaySources(requestId: string, page: number) {
       return invokeDecoded(
         IPC.mediaGetDisplaySources,
-        DesktopDisplayMediaSourcesSchema,
+        DesktopDisplayMediaSourcePageSchema,
         requestId,
+        page,
+      )
+    },
+    getDisplaySourceVisual(requestId: string, sourceId: string) {
+      return invokeDecoded(
+        IPC.mediaGetDisplaySourceVisual,
+        DesktopDisplayMediaSourceVisualSchema,
+        requestId,
+        sourceId,
       )
     },
     selectDisplaySource(

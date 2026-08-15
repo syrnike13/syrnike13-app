@@ -169,7 +169,7 @@ class ScreenPreviewLeaseState final {
     for (std::size_t attempt = 0; attempt < SlotCount; ++attempt) {
       const auto slot = (first_slot + attempt) % SlotCount;
       if (slots_[slot].occupied) continue;
-      slots_[slot] = {sequence, now, true, false};
+      slots_[slot] = {sequence, now, true, false, false};
       return slot;
     }
     return std::nullopt;
@@ -224,15 +224,18 @@ class ScreenPreviewLeaseState final {
       std::chrono::steady_clock::duration timeout,
       OnExpired&& on_expired) noexcept {
     for (std::size_t slot = 0; slot < SlotCount; ++slot) {
-      const auto& state = slots_[slot];
+      auto& state = slots_[slot];
       if (!state.occupied || !state.expirable ||
+          state.timeout_reported ||
           state.leased_at == TimePoint{} ||
           now - state.leased_at < timeout) {
         continue;
       }
-      const auto sequence = state.sequence;
-      clear(slot);
-      on_expired(slot, sequence);
+      state.timeout_reported = true;
+      // A renderer timeout is liveness evidence, never a GPU ownership fence.
+      // Keep the allocation occupied until release(sequence) acknowledges the
+      // exact Electron allReferencesReleased callback.
+      on_expired(slot, state.sequence);
     }
   }
 
@@ -242,6 +245,7 @@ class ScreenPreviewLeaseState final {
     TimePoint leased_at{};
     bool occupied = false;
     bool expirable = false;
+    bool timeout_reported = false;
   };
 
   void clear(std::size_t slot) noexcept {

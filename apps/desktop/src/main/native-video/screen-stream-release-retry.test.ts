@@ -26,7 +26,7 @@ const frame: NativeSharedVideoFrame = {
 }
 
 describe('shared texture native release retry', () => {
-  it('stops after the configured release attempt budget', async () => {
+  it('does not duplicate the supervisor-owned release obligation', async () => {
     vi.useFakeTimers()
     try {
       let fenceReleased!: () => void
@@ -52,22 +52,21 @@ describe('shared texture native release retry', () => {
           } as never
         },
         sendTexture: vi.fn(async () => undefined),
-        releaseAttempts: 4,
       })
 
       expect(await bridge.deliver(frame)).toBe(true)
       fenceReleased()
       await vi.advanceTimersByTimeAsync(10_000)
 
-      expect(release).toHaveBeenCalledTimes(4)
+      expect(release).toHaveBeenCalledTimes(1)
       await vi.advanceTimersByTimeAsync(30_000)
-      expect(release).toHaveBeenCalledTimes(4)
+      expect(release).toHaveBeenCalledTimes(1)
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('cancels a pending release retry when the bridge is disposed', async () => {
+  it('does not reissue a failed release after the bridge is disposed', async () => {
     vi.useFakeTimers()
     try {
       let fenceReleased!: () => void
@@ -90,7 +89,7 @@ describe('shared texture native release retry', () => {
     }
   })
 
-  it('cancels retries owned by an older native runtime epoch', async () => {
+  it('does not reissue a failed release for an older native runtime epoch', async () => {
     vi.useFakeTimers()
     try {
       let fenceReleased!: () => void

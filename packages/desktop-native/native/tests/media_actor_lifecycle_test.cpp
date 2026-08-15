@@ -2,9 +2,11 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -12,8 +14,11 @@
 #include <thread>
 #include <vector>
 
+#include <mmdeviceapi.h>
+
 #include "common/event_sink.hpp"
 #include "common/sequenced_emitter.hpp"
+#include "media/audio_constants.hpp"
 #include "media/microphone_actor.hpp"
 #include "media/generation_fence.hpp"
 #include "media/livekit_disconnect_reason.hpp"
@@ -21,6 +26,11 @@
 #include "media/screen_actor.hpp"
 
 namespace {
+
+thread_local bool count_capture_memory = false;
+thread_local bool inside_capture_submission = false;
+std::atomic_size_t capture_allocations{0};
+std::atomic_size_t capture_deallocations{0};
 
 class CollectingSink final : public syrnike::desktop_native::EventSink {
  public:
@@ -42,6 +52,11 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     return events_;
   }
 
+  void clear() {
+    std::lock_guard lock(mutex_);
+    events_.clear();
+  }
+
  private:
   mutable std::mutex mutex_;
   std::vector<syrnike::desktop_native::RuntimeEvent> events_;
@@ -59,6 +74,33 @@ void requireThrows(Action action, const char* message) {
 
 }  // namespace
 
+void* operator new(std::size_t size) {
+  if (count_capture_memory) capture_allocations.fetch_add(1);
+  if (void* allocation = std::malloc(size)) return allocation;
+  throw std::bad_alloc();
+}
+void* operator new[](std::size_t size) {
+  if (count_capture_memory) capture_allocations.fetch_add(1);
+  if (void* allocation = std::malloc(size)) return allocation;
+  throw std::bad_alloc();
+}
+void operator delete(void* allocation) noexcept {
+  if (count_capture_memory) capture_deallocations.fetch_add(1);
+  std::free(allocation);
+}
+void operator delete[](void* allocation) noexcept {
+  if (count_capture_memory) capture_deallocations.fetch_add(1);
+  std::free(allocation);
+}
+void operator delete(void* allocation, std::size_t) noexcept {
+  if (count_capture_memory) capture_deallocations.fetch_add(1);
+  std::free(allocation);
+}
+void operator delete[](void* allocation, std::size_t) noexcept {
+  if (count_capture_memory) capture_deallocations.fetch_add(1);
+  std::free(allocation);
+}
+
 int main() try {
   using namespace syrnike::desktop_native;
   using namespace syrnike::desktop_native::media;
@@ -74,7 +116,7 @@ int main() try {
       throw std::runtime_error("screen backend restart event was rejected");
     }
     RuntimeEvent terminal;
-    terminal.type = "screenCaptureEnded";
+    terminal.type = syrnike::desktop_native::NativeEventType::ScreenCaptureEnded;
     terminal.session_id = "screen-transition";
     terminal.generation = 7;
     incident_emitter.emit(std::move(terminal));
@@ -84,14 +126,14 @@ int main() try {
       events.begin(),
       events.end(),
       [](const RuntimeEvent& event) {
-        return event.type == "screenBackendRestart";
+        return event.type == syrnike::desktop_native::NativeEventType::ScreenBackendRestart;
       }
     );
     if (
       events.size() != 2 ||
-      events[0].type != "screenBackendRestart" ||
+      events[0].type != syrnike::desktop_native::NativeEventType::ScreenBackendRestart ||
       events[0].video_recoverable_lost_count != 1 ||
-      events[1].type != "screenCaptureEnded" ||
+      events[1].type != syrnike::desktop_native::NativeEventType::ScreenCaptureEnded ||
       incidents != 1
     ) {
       throw std::runtime_error(
@@ -141,7 +183,7 @@ int main() try {
     actor_livekit
   );
   MediaCommand invalid_microphone;
-  invalid_microphone.type = "connectMicrophone";
+  invalid_microphone.type = syrnike::desktop_native::NativeCommandType::ConnectMicrophone;
   invalid_microphone.session_id = "mic";
   invalid_microphone.generation = 1;
   requireThrows(
@@ -151,7 +193,7 @@ int main() try {
 
   microphone_intent.advance("mic", 2);
   MediaCommand stale_disconnect;
-  stale_disconnect.type = "disconnectMicrophone";
+  stale_disconnect.type = syrnike::desktop_native::NativeCommandType::DisconnectMicrophone;
   stale_disconnect.session_id = "mic";
   stale_disconnect.generation = 1;
   requireThrows(
@@ -160,7 +202,7 @@ int main() try {
   );
 
   MediaCommand partial;
-  partial.type = "configureMicrophone";
+  partial.type = syrnike::desktop_native::NativeCommandType::ConfigureMicrophone;
   partial.input_volume = 0.5f;
   partial.has_input_volume = true;
   microphone.configure(partial);
@@ -195,6 +237,319 @@ int main() try {
   microphone.shutdown();
   microphone.shutdown();
 
+  std::mutex policy_mutex;
+  std::vector<WindowsAudioAttemptPhase> microphone_policy_phases;
+  auto microphone_policy = std::make_shared<WindowsAudioSessionAttemptPolicy>(
+    WindowsAudioSessionAttemptOperations{
+      .category = [](IAudioClient*, WindowsAudioSessionUse use,
+                     AUDCLNT_STREAMOPTIONS) {
+        return applyWindowsAudioCategoryPolicy(
+          use,
+          [](AUDIO_STREAM_CATEGORY) { return S_OK; }
+        );
+      },
+      .ducking = [](IAudioClient*, WindowsAudioSessionUse use) {
+        return applyWindowsAudioDuckingPolicy(
+          use,
+          [](bool) { return S_OK; }
+        );
+      },
+    },
+    [&](const WindowsAudioAttemptStep& step) {
+      std::lock_guard lock(policy_mutex);
+      microphone_policy_phases.push_back(step.phase);
+    }
+  );
+  std::atomic_int microphone_attempts{0};
+  std::vector<std::string> microphone_candidate_devices;
+  std::vector<std::string> microphone_attempt_devices;
+  std::vector<std::uint64_t> microphone_attempt_epochs;
+  std::vector<std::function<bool(std::span<const float>, bool)>>
+    microphone_attempt_submitters;
+  std::mutex echo_lifecycle_mutex;
+  std::vector<std::thread::id> echo_lifecycle_threads;
+  std::vector<std::optional<std::string>> echo_lifecycle_targets;
+  std::atomic_bool block_echo_start{false};
+  std::atomic_bool echo_start_entered{false};
+  std::atomic_bool release_echo_start{false};
+  std::atomic_size_t echo_polls{0};
+  std::atomic_size_t echo_lifecycle_on_capture{0};
+  MicrophoneActor policy_microphone(
+    emitter,
+    post,
+    microphone_current,
+    std::make_shared<DeterministicFakeLiveKitVoiceSession>(),
+    {},
+    microphone_policy,
+    MicrophoneCaptureAdapter{
+      .probe_candidate = [&](MicrophoneCaptureCandidateRequest request) {
+        std::lock_guard lock(policy_mutex);
+        microphone_candidate_devices.push_back(std::move(request.device_id));
+      },
+      .run = [&](MicrophoneCaptureAttemptRequest request) {
+        {
+          std::lock_guard lock(policy_mutex);
+          microphone_attempt_devices.push_back(request.device_id);
+          microphone_attempt_epochs.push_back(request.epoch);
+          microphone_attempt_submitters.push_back(request.submit_pcm);
+        }
+        const auto attempt = request.audio_attempt_policy->run(
+          nullptr,
+          WindowsAudioSessionUse::MicrophoneCapture,
+          request.bypass_system_audio_input_processing
+            ? AUDCLNT_STREAMOPTIONS_RAW
+            : AUDCLNT_STREAMOPTIONS_NONE,
+          [] { return S_OK; }
+        );
+        if (attempt.initialize.status != WindowsAudioPolicyStatus::Applied) {
+          throw std::runtime_error("deterministic microphone attempt failed");
+        }
+        microphone_attempts.fetch_add(1, std::memory_order_release);
+        request.mark_ready();
+        while (request.keep_running()) std::this_thread::yield();
+      },
+    },
+    MicrophoneEchoReferenceAdapter{
+      .configure = [&](std::optional<std::string> target) {
+        if (inside_capture_submission) {
+          echo_lifecycle_on_capture.fetch_add(1, std::memory_order_relaxed);
+        }
+        {
+          std::lock_guard lock(echo_lifecycle_mutex);
+          echo_lifecycle_threads.push_back(std::this_thread::get_id());
+          echo_lifecycle_targets.push_back(target);
+        }
+        if (target && block_echo_start.load(std::memory_order_acquire)) {
+          echo_start_entered.store(true, std::memory_order_release);
+          while (!release_echo_start.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+          }
+        }
+      },
+      .poll = [&] {
+        echo_polls.fetch_add(1, std::memory_order_relaxed);
+        return syrnike::voice::MicrophoneEchoReferenceRealtimeFrame{};
+      },
+    }
+  );
+  policy_microphone.setPreviewConsumer(
+    "mic",
+    2,
+    [](std::span<const std::int16_t>) {}
+  );
+  MediaCommand warm_microphone;
+  warm_microphone.type = NativeCommandType::WarmMicrophone;
+  warm_microphone.generation = 1;
+  // Keep this slice focused on routing-snapshot ownership. The WebRTC APM
+  // path has its own hot-path coverage and may allocate inside the SDK.
+  warm_microphone.has_noise_suppression = true;
+  warm_microphone.noise_suppression = false;
+  warm_microphone.has_automatic_gain_control = true;
+  warm_microphone.automatic_gain_control = false;
+  policy_microphone.warm(warm_microphone);
+  MediaCommand microphone_recreate;
+  microphone_recreate.type = NativeCommandType::MicrophoneEndpointChanged;
+  microphone_recreate.internal_message = "default_changed";
+  microphone_recreate.internal_epoch = static_cast<std::uint64_t>(eConsole);
+  policy_microphone.handleWorkerCommand(microphone_recreate);
+  MediaCommand select_microphone;
+  select_microphone.type = NativeCommandType::ConfigureMicrophone;
+  select_microphone.request_id = "select-capture-device";
+  select_microphone.device_id = "capture-device";
+  select_microphone.revision = 1;
+  select_microphone.has_revision = true;
+  const auto selected_microphone = policy_microphone.configure(select_microphone);
+  if (!selected_microphone.ok || selected_microphone.device_id != "capture-device") {
+    throw std::runtime_error("MicrophoneActor rejected selected capture device");
+  }
+  std::vector<std::function<bool(std::span<const float>, bool)>>
+    retained_submitters;
+  {
+    std::lock_guard lock(policy_mutex);
+    if (
+      microphone_attempt_devices !=
+        std::vector<std::string>{"", "", "capture-device"} ||
+      microphone_candidate_devices !=
+        std::vector<std::string>{"", "capture-device"} ||
+      microphone_attempt_epochs.size() != 3 ||
+      !(microphone_attempt_epochs[0] < microphone_attempt_epochs[1] &&
+        microphone_attempt_epochs[1] < microphone_attempt_epochs[2])
+    ) {
+      throw std::runtime_error(
+        "MicrophoneActor selected endpoint did not replace the default capture owner"
+      );
+    }
+    retained_submitters = microphone_attempt_submitters;
+  }
+  const std::vector<float> retired_pcm(
+    syrnike::voice::kSamplesPer10Ms,
+    0.1f
+  );
+  if (
+    retained_submitters.size() != 3 ||
+    retained_submitters[0](std::span<const float>(retired_pcm), true) ||
+    retained_submitters[1](std::span<const float>(retired_pcm), true)
+  ) {
+    throw std::runtime_error(
+      "MicrophoneActor retired capture epoch accepted submitted PCM"
+    );
+  }
+  if (!retained_submitters.back()(retired_pcm, false)) {
+    throw std::runtime_error("MicrophoneActor realtime snapshot warmup failed");
+  }
+  std::atomic_bool routing_writer_ready{false};
+  std::atomic_bool stop_routing_writer{false};
+  std::atomic_size_t routing_swaps{0};
+  std::thread routing_writer([&] {
+    std::uint64_t generation = 3;
+    routing_writer_ready.store(true, std::memory_order_release);
+    while (!stop_routing_writer.load(std::memory_order_acquire)) {
+      policy_microphone.setPreviewConsumer(
+        "mic", generation, [](std::span<const std::int16_t>) {}
+      );
+      policy_microphone.clearPreviewConsumer("mic", generation);
+      ++generation;
+      routing_swaps.fetch_add(1, std::memory_order_relaxed);
+    }
+  });
+  while (!routing_writer_ready.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+  capture_allocations.store(0, std::memory_order_relaxed);
+  capture_deallocations.store(0, std::memory_order_relaxed);
+  count_capture_memory = true;
+  std::size_t submitted_during_swaps = 0;
+  constexpr std::size_t kConcurrentRoutingFrames = 32;
+  while (submitted_during_swaps < kConcurrentRoutingFrames) {
+    if (!retained_submitters.back()(retired_pcm, false)) {
+      count_capture_memory = false;
+      stop_routing_writer.store(true, std::memory_order_release);
+      routing_writer.join();
+      throw std::runtime_error(
+        "MicrophoneActor rejected current PCM during routing swaps"
+      );
+    }
+    ++submitted_during_swaps;
+  }
+  count_capture_memory = false;
+  stop_routing_writer.store(true, std::memory_order_release);
+  routing_writer.join();
+  if (routing_swaps.load(std::memory_order_acquire) == 0 ||
+      capture_allocations.load(std::memory_order_acquire) != 0 ||
+      capture_deallocations.load(std::memory_order_acquire) != 0) {
+    std::cerr << "routing swap realtime memory: submitted="
+              << submitted_during_swaps << " allocations="
+              << capture_allocations.load() << " deallocations="
+              << capture_deallocations.load() << " swaps="
+              << routing_swaps.load() << '\n';
+    throw std::runtime_error(
+      "MicrophoneActor routing swap allocated or reclaimed on capture thread"
+    );
+  }
+
+  MediaCommand enable_echo;
+  enable_echo.type = NativeCommandType::ConfigureMicrophone;
+  enable_echo.request_id = "enable-echo-reference";
+  enable_echo.device_id = "capture-device";
+  enable_echo.revision = 2;
+  enable_echo.has_revision = true;
+  enable_echo.has_echo_cancellation = true;
+  enable_echo.echo_cancellation = true;
+  block_echo_start.store(true, std::memory_order_release);
+  std::thread echo_control([&] {
+    static_cast<void>(policy_microphone.configure(enable_echo));
+  });
+  while (!echo_start_entered.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+  std::atomic_bool capture_returned{false};
+  std::atomic_bool capture_accepted{false};
+  std::thread capture_during_echo_start([&] {
+    inside_capture_submission = true;
+    capture_accepted.store(
+      retained_submitters.back()(retired_pcm, false),
+      std::memory_order_release
+    );
+    inside_capture_submission = false;
+    capture_returned.store(true, std::memory_order_release);
+  });
+  const auto capture_deadline =
+    std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
+  while (!capture_returned.load(std::memory_order_acquire) &&
+         std::chrono::steady_clock::now() < capture_deadline) {
+    std::this_thread::yield();
+  }
+  if (!capture_returned.load(std::memory_order_acquire)) {
+    release_echo_start.store(true, std::memory_order_release);
+    echo_control.join();
+    capture_during_echo_start.join();
+    throw std::runtime_error(
+      "microphone capture waited behind echo-reference lifecycle"
+    );
+  }
+  capture_during_echo_start.join();
+  release_echo_start.store(true, std::memory_order_release);
+  echo_control.join();
+  inside_capture_submission = true;
+  const bool accepted_with_echo =
+    retained_submitters.back()(retired_pcm, false);
+  inside_capture_submission = false;
+  if (!capture_accepted.load(std::memory_order_acquire) ||
+      !accepted_with_echo ||
+      echo_polls.load(std::memory_order_acquire) == 0) {
+    throw std::runtime_error(
+      "microphone capture did not consume the prestarted echo SPSC endpoint"
+    );
+  }
+  MediaCommand disable_echo = enable_echo;
+  disable_echo.request_id = "disable-echo-reference";
+  disable_echo.revision = 3;
+  disable_echo.echo_cancellation = false;
+  static_cast<void>(policy_microphone.configure(disable_echo));
+  {
+    std::lock_guard lock(echo_lifecycle_mutex);
+    if (echo_lifecycle_targets !=
+        std::vector<std::optional<std::string>>{
+          std::optional<std::string>{"default"}, std::nullopt
+        }) {
+      throw std::runtime_error(
+        "echo-reference lifecycle did not remain control-owned and exact"
+      );
+    }
+  }
+  if (echo_lifecycle_on_capture.load(std::memory_order_acquire) != 0) {
+    throw std::runtime_error(
+      "echo-reference lifecycle ran on the capture submission lane"
+    );
+  }
+  for (const auto& event : sink->events()) {
+    if (event.type != NativeEventType::MicrophoneMetrics) {
+      throw std::runtime_error(
+        "echo-reference control test emitted a non-telemetry event"
+      );
+    }
+  }
+  sink->clear();
+  policy_microphone.shutdown();
+  {
+    std::lock_guard lock(policy_mutex);
+    if (
+      microphone_attempts.load(std::memory_order_acquire) != 3 ||
+      microphone_policy_phases != std::vector<WindowsAudioAttemptPhase>{
+        WindowsAudioAttemptPhase::BeforeInitialize,
+        WindowsAudioAttemptPhase::Initialize,
+        WindowsAudioAttemptPhase::BeforeInitialize,
+        WindowsAudioAttemptPhase::Initialize,
+        WindowsAudioAttemptPhase::BeforeInitialize,
+        WindowsAudioAttemptPhase::Initialize,
+      }
+    ) {
+      throw std::runtime_error(
+        "MicrophoneActor warm/recreate did not reapply ordered policy exactly once per attempt"
+      );
+    }
+  }
+
   std::mutex idle_post_mutex;
   std::condition_variable idle_post_changed;
   int idle_post_attempts = 0;
@@ -204,7 +559,7 @@ int main() try {
   MicrophoneActor idle_retry_microphone(
     emitter,
     [&](MediaCommand command) {
-      if (command.type != "__microphoneIdleExpired") return true;
+      if (command.type != syrnike::desktop_native::NativeCommandType::MicrophoneIdleExpired) return true;
       std::lock_guard lock(idle_post_mutex);
       ++idle_post_attempts;
       if (idle_post_attempts > 1) accepted_idle_expiry = command;
@@ -249,7 +604,7 @@ int main() try {
   };
   ScreenActor screen(emitter, post, screen_current, actor_livekit);
   MediaCommand invalid_screen;
-  invalid_screen.type = "connectScreen";
+  invalid_screen.type = syrnike::desktop_native::NativeCommandType::ConnectScreen;
   invalid_screen.session_id = "screen";
   invalid_screen.generation = 1;
   requireThrows(
@@ -258,7 +613,7 @@ int main() try {
   );
   screen_intent.advance("screen", 2);
   MediaCommand stale_screen_stop;
-  stale_screen_stop.type = "stopScreenCapture";
+  stale_screen_stop.type = syrnike::desktop_native::NativeCommandType::StopScreenCapture;
   stale_screen_stop.session_id = "screen";
   stale_screen_stop.generation = 1;
   requireThrows(
@@ -266,7 +621,7 @@ int main() try {
     "stale screen stop reached actor state"
   );
   MediaCommand idle_screen;
-  idle_screen.type = "stopScreenCapture";
+  idle_screen.type = syrnike::desktop_native::NativeCommandType::StopScreenCapture;
   idle_screen.session_id = "screen";
   idle_screen.generation = 2;
   screen.stopCapture(idle_screen);
@@ -296,7 +651,7 @@ int main() try {
         preview_gate_changed.wait(lock, [&] { return preview_gate_release; });
       });
   MediaCommand start_preview;
-  start_preview.type = "startMicrophonePreview";
+  start_preview.type = syrnike::desktop_native::NativeCommandType::StartMicrophonePreview;
   start_preview.request_id = "blocked-preview";
   start_preview.session_id = "preview";
   start_preview.generation = 1;

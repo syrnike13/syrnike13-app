@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <exception>
 #include <mutex>
@@ -14,16 +15,16 @@ class SequencedEmitter {
   explicit SequencedEmitter(EventSinkPtr sink) : sink_(std::move(sink)) {}
 
   bool emit(RuntimeEvent event) {
-    // Keep producer delivery serialized so sequence assignment and sink
-    // observation have the same order. close() deliberately does not take
-    // this mutex: a sink may be blocked on its bounded queue and close must be
-    // able to wake it.
-    std::lock_guard emit_lock(emit_mutex_);
+    // Ordering is a lane-local contract. A lossless control producer may wait
+    // for bounded capacity, but that wait must never stall capture, media, or
+    // Windows hook ingress on an unrelated lane.
+    const auto lane = eventLane(event);
+    std::lock_guard emit_lock(laneMutex(lane));
     EventSinkPtr sink;
     {
       std::lock_guard lock(mutex_);
       if (sink_) {
-        event.sequence = next_sequence_++;
+        event.sequence = next_sequence_.fetch_add(1, std::memory_order_relaxed);
         sink = sink_;
       }
     }
@@ -64,10 +65,27 @@ class SequencedEmitter {
   }
 
  private:
-  std::mutex emit_mutex_;
+  std::mutex& laneMutex(EventLane lane) noexcept {
+    switch (lane) {
+      case EventLane::control:
+        return control_emit_mutex_;
+      case EventLane::media:
+        return media_emit_mutex_;
+      case EventLane::telemetry:
+        return telemetry_emit_mutex_;
+      case EventLane::realtime:
+        return realtime_emit_mutex_;
+    }
+    return control_emit_mutex_;
+  }
+
+  std::mutex control_emit_mutex_;
+  std::mutex media_emit_mutex_;
+  std::mutex telemetry_emit_mutex_;
+  std::mutex realtime_emit_mutex_;
   std::mutex mutex_;
   EventSinkPtr sink_;
-  std::uint64_t next_sequence_ = 1;
+  std::atomic_uint64_t next_sequence_{1};
 };
 
 }  // namespace syrnike::desktop_native

@@ -87,6 +87,8 @@ export const VoiceNativeCaptureTelemetrySchema = Schema.Struct({
   publishedAudio: Schema.optional(Schema.Boolean),
   audioFrames: optionalNonNegative,
   audioPackets: optionalNonNegative,
+  audioBacklogPackets: optionalNonNegative,
+  audioDiscontinuities: optionalNonNegative,
   audioPeakDb: optionalFinite,
   audioRmsDb: optionalFinite,
   videoFrames: optionalNonNegative,

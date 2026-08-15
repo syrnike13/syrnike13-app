@@ -44,6 +44,8 @@ export const IPC = {
   overlayStateChanged: 'syrnike-desktop:overlay:state-changed',
   mediaRequest: 'syrnike-desktop:media:request',
   mediaGetDisplaySources: 'syrnike-desktop:media:get-display-sources',
+  mediaGetDisplaySourceVisual:
+    'syrnike-desktop:media:get-display-source-visual',
   mediaSelectDisplaySource: 'syrnike-desktop:media:select-display-source',
   mediaCancelRequest: 'syrnike-desktop:media:cancel-request',
   mediaOpenDisplayPicker: 'syrnike-desktop:media:open-display-picker',

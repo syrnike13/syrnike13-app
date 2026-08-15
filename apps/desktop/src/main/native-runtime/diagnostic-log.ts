@@ -51,9 +51,14 @@ export type DiagnosticLogRecord = {
   commandStage?: string
   outcome?: string
   sessionId?: string
+  trackId?: string
+  peerAlias?: string
   requestId?: string
   hostEpoch?: number
+  runtimeEpoch?: number
   generation?: number
+  frameSequence?: number
+  nativeCaptureTimestampUs?: number
   candidateGeneration?: number
   fenceGeneration?: number
   revision?: number

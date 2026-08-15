@@ -161,7 +161,7 @@ impl RemoteVideoTrack {
             }
         };
 
-        let handler = self.ensure_subscribe_timing_handler();
+        let handler = self.ensure_packet_trailer_handler();
         if let Some(handler) = handler {
             self.apply_subscribe_timing_observer(&handler);
         }
@@ -179,7 +179,7 @@ impl RemoteVideoTrack {
         self.rtc_track().set_packet_trailer_handler(handler);
     }
 
-    fn ensure_subscribe_timing_handler(&self) -> Option<PacketTrailerHandler> {
+    pub(crate) fn ensure_packet_trailer_handler(&self) -> Option<PacketTrailerHandler> {
         if let Some(handler) = self.packet_trailer_handler() {
             return Some(handler);
         }

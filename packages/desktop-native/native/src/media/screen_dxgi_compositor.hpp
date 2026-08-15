@@ -5,10 +5,15 @@
 #include <wrl/client.h>
 
 #include <cstdint>
+#include <memory>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace syrnike::desktop_native::media {
+
+class VideoResourceAdmissionBudget;
+class VideoResourceLease;
 
 enum class DxgiDesktopRotation : std::uint32_t {
   Identity = 0,
@@ -55,7 +60,11 @@ DxgiCursorPixels decodeDxgiCursorShape(
 // unrotated surface. This compositor keeps both corrections on the D3D11 GPU.
 class DxgiFrameCompositor final {
  public:
-  DxgiFrameCompositor(ID3D11Device* device, ID3D11DeviceContext* context);
+  DxgiFrameCompositor(
+      ID3D11Device* device,
+      ID3D11DeviceContext* context,
+      VideoResourceAdmissionBudget& resource_budget,
+      std::string owner_id);
 
   ID3D11Texture2D* compose(
       ID3D11Texture2D* source,
@@ -85,6 +94,10 @@ class DxgiFrameCompositor final {
   void uploadCursorTexture();
   void ensureOutput(std::uint32_t width, std::uint32_t height);
 
+  VideoResourceAdmissionBudget* resource_budget_ = nullptr;
+  std::string owner_id_;
+  std::shared_ptr<VideoResourceLease> output_lease_;
+  std::shared_ptr<VideoResourceLease> cursor_lease_;
   Microsoft::WRL::ComPtr<ID3D11Device> device_;
   Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
   Microsoft::WRL::ComPtr<ID3D11VertexShader> vertex_shader_;
@@ -94,6 +107,8 @@ class DxgiFrameCompositor final {
   Microsoft::WRL::ComPtr<ID3D11RenderTargetView> output_view_;
   Microsoft::WRL::ComPtr<ID3D11Texture2D> cursor_texture_;
   Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> cursor_view_;
+  std::uint64_t output_generation_ = 0;
+  std::uint64_t cursor_generation_ = 0;
   std::vector<std::uint8_t> cursor_shape_;
   std::vector<std::uint8_t> cursor_pixels_;
   DXGI_OUTDUPL_POINTER_SHAPE_INFO cursor_info_{};

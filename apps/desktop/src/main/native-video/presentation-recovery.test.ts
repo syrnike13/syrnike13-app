@@ -24,6 +24,7 @@ function harness() {
   const reload = vi.fn()
   const recoverRemoteVideoDemand = vi.fn(async () => true)
   const recoverLocalScreenPreview = vi.fn(async () => true)
+  const recoverLocalCameraPreview = vi.fn(async () => true)
   return {
     dependencies: {
       getWindow: () => ({
@@ -36,11 +37,13 @@ function harness() {
       }) as never,
       recoverRemoteVideoDemand,
       recoverLocalScreenPreview,
+      recoverLocalCameraPreview,
     },
     send,
     reload,
     recoverRemoteVideoDemand,
     recoverLocalScreenPreview,
+    recoverLocalCameraPreview,
   }
 }
 
@@ -84,6 +87,20 @@ describe('native video presentation recovery', () => {
     expect(h.reload).not.toHaveBeenCalled()
   })
 
+  it('retries a demanded local camera preview through its native owner', async () => {
+    const h = harness()
+
+    await expect(recoverNativeVideoPresentation(
+      h.dependencies,
+      { ...frame, local: true, source: 'camera', trackId: 'local-camera' },
+      'shared-texture-fence',
+    )).resolves.toBe('local-preview-restarted')
+
+    expect(h.recoverLocalCameraPreview).toHaveBeenCalledOnce()
+    expect(h.recoverLocalScreenPreview).not.toHaveBeenCalled()
+    expect(h.recoverRemoteVideoDemand).not.toHaveBeenCalled()
+  })
+
   it('reloads the renderer when retained GPU references exhaust the hard budget', async () => {
     const h = harness()
 
@@ -97,5 +114,19 @@ describe('native video presentation recovery', () => {
     expect(h.reload).toHaveBeenCalledOnce()
     expect(h.recoverRemoteVideoDemand).not.toHaveBeenCalled()
     expect(h.recoverLocalScreenPreview).not.toHaveBeenCalled()
+    expect(h.recoverLocalCameraPreview).not.toHaveBeenCalled()
+  })
+
+  it('reloads the renderer when retired fences miss their independent deadline', async () => {
+    const h = harness()
+
+    await expect(recoverNativeVideoPresentation(
+      h.dependencies,
+      frame,
+      'retired-fence-deadline',
+    )).resolves.toBe('renderer-reloaded')
+
+    expect(h.reload).toHaveBeenCalledOnce()
+    expect(h.recoverRemoteVideoDemand).not.toHaveBeenCalled()
   })
 })

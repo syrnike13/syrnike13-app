@@ -20,8 +20,8 @@ namespace {
 
 struct AsyncOutputOwner {
   explicit AsyncOutputOwner(
-    syrnike::desktop_native::AsyncCleanupLauncher cleanup_launcher
-  ) : output({}, {}, {}, std::move(cleanup_launcher)) {}
+    syrnike::desktop_native::CleanupStartProbe cleanup_start_probe
+  ) : output({}, {}, {}, std::move(cleanup_start_probe)) {}
 
   syrnike::desktop_native::media::RemoteAudioOutput output;
 };
@@ -228,16 +228,13 @@ int main() try {
   std::atomic_bool release_cleanup{false};
   std::atomic_int cleanup_launches{0};
   auto blocked_owner = std::make_shared<AsyncOutputOwner>(
-    [&](syrnike::desktop_native::AsyncCleanupTask task) -> std::thread {
+    [&] {
       if (cleanup_launches.fetch_add(1) == 0) {
         throw std::runtime_error(
           "injected remote audio quarantine launch failure"
         );
       }
-      return std::thread([&, task = std::move(task)]() mutable {
-        while (!release_cleanup.load()) std::this_thread::yield();
-        task();
-      });
+      while (!release_cleanup.load()) std::this_thread::yield();
     }
   );
   const auto blocked_stop_started = std::chrono::steady_clock::now();

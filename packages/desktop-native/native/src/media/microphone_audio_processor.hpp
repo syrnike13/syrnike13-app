@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <vector>
 
 #include "audio_processing.hpp"
@@ -23,7 +24,8 @@ struct MicrophoneCleanupApmOptions {
 };
 
 struct MicrophoneAudioProcessorFrame {
-  std::vector<std::int16_t> pcm;
+  // Valid until the next processFrame call on the same processor.
+  std::span<const std::int16_t> pcm;
   VoiceGateFrameMetrics gate_metrics;
   std::uint32_t clipped_samples = 0;
   float output_peak = 0.0f;
@@ -41,9 +43,9 @@ public:
   ~MicrophoneAudioProcessor();
 
   MicrophoneAudioProcessorFrame processFrame(
-    const std::vector<float>& raw_frame,
+    std::span<const float> raw_frame,
     const RuntimeConfig& config,
-    const std::vector<std::int16_t>* echo_reference_frame,
+    std::span<const std::int16_t> echo_reference_frame,
     int stream_delay_ms = 0,
     bool echo_reference_discontinuity = false
   );
@@ -59,6 +61,11 @@ private:
   int active_stream_delay_ms_ = -1;
   std::unique_ptr<livekit::AudioProcessingModule> cleanup_apm_;
   std::unique_ptr<livekit::AudioProcessingModule> agc_apm_;
+  std::vector<std::int16_t> mic_pcm_;
+  std::vector<std::int16_t> reverse_pcm_;
+  std::vector<float> processed_;
+  std::vector<std::int16_t> agc_input_;
+  std::vector<std::int16_t> output_pcm_;
 };
 
 }  // namespace syrnike::voice

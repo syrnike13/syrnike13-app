@@ -217,6 +217,72 @@ int main() try {
     gpu_timeout.backendActivated(CaptureBackend::Dxgi, attempt_at, true);
   }
 
+  CaptureBackendSupervisor saturated_recovery;
+  decision = saturated_recovery.observe(
+      {
+          ScreenGpuFrameStatus::FatalError,
+          ScreenGpuCaptureErrorCode::DeviceLost,
+      },
+      started);
+  require(
+      decision.action == CaptureBackendAction::RecreateDevice &&
+          decision.target == CaptureBackend::Dxgi,
+      "device loss did not begin on the active GPU backend");
+  saturated_recovery.recoveryDeferred(
+      decision,
+      ScreenGpuCaptureErrorCode::ResourceSaturated,
+      started);
+  auto capacity_retry = saturated_recovery.nextRetryAt();
+  require(
+      capacity_retry > started && capacity_retry - started <= 1s,
+      "process-budget saturation did not schedule bounded retry");
+  for (auto now = started + 1ms; now < capacity_retry; now += 1ms) {
+    decision = saturated_recovery.observe(
+        {
+            ScreenGpuFrameStatus::FatalError,
+            ScreenGpuCaptureErrorCode::ResourceSaturated,
+        },
+        now);
+    require(
+        decision.action == CaptureBackendAction::None &&
+            decision.target == CaptureBackend::Dxgi,
+        "budget saturation armed backend fallback during backoff");
+  }
+  for (int attempt = 0; attempt < 600; ++attempt) {
+    decision = saturated_recovery.observe(
+        {
+            ScreenGpuFrameStatus::FatalError,
+            ScreenGpuCaptureErrorCode::DeviceLost,
+        },
+        capacity_retry);
+    require(
+        decision.action == CaptureBackendAction::RecreateDevice &&
+            decision.target == CaptureBackend::Dxgi,
+        "ten-minute saturation loop changed GPU backend or recovery layer");
+    saturated_recovery.recoveryDeferred(
+        decision,
+        ScreenGpuCaptureErrorCode::ResourceSaturated,
+        capacity_retry);
+    const auto next_retry = saturated_recovery.nextRetryAt();
+    require(
+        next_retry > capacity_retry && next_retry - capacity_retry <= 1s,
+        "ten-minute saturation retry exceeded one-second cap");
+    capacity_retry = next_retry;
+  }
+  require(
+      saturated_recovery.recoveryAttemptCount() == 0 &&
+          saturated_recovery.recoveryDeferralCount() == 601 &&
+          saturated_recovery.lastRecoveryDeferral() ==
+              ScreenGpuCaptureErrorCode::ResourceSaturated,
+      "deferred candidates changed attempt counts or lost typed cause");
+  decision = saturated_recovery.observe(
+      {ScreenGpuFrameStatus::NewFrame}, capacity_retry + 1ms);
+  require(
+      decision.state == CaptureBackendState::Healthy &&
+          saturated_recovery.activeBackend() == CaptureBackend::Dxgi &&
+          saturated_recovery.successfulRecoveryCount() == 0,
+      "fresh frame after saturation did not restore the active backend");
+
   CaptureBackendSupervisor ping_pong;
   decision = ping_pong.observe(
       {ScreenGpuFrameStatus::RecoverableLost}, started);

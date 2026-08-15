@@ -68,10 +68,20 @@ function createSmokeContext(overrides = {}) {
     clearTimeoutFn: overrides.clearTimeoutFn ?? clearTimeout,
     observe: overrides.observe ?? null,
     NativeRuntimeSupervisor: overrides.NativeRuntimeSupervisor ?? null,
+    audioPolicySmokeEnabled:
+      overrides.audioPolicySmokeEnabled ??
+      (processEnv.SYRNIKE_WINDOWS_AUDIO_POLICY_SMOKE === '1' ||
+        process.argv.includes('--audio-policy')),
   }
 }
 
 async function runSmokeSuite(context) {
+  if (context.audioPolicySmokeEnabled) {
+    const report = await smokeWindowsAudioPolicyRuntime(context)
+    console.info(
+      `[desktop-native] windows audio policy smoke ${JSON.stringify(report)}`,
+    )
+  }
   await smokeMediaEventSerialization(context)
   await smokeNodeEventSink(context)
   await smokeActiveCallShutdown(context)
@@ -467,6 +477,143 @@ async function smokeDroppedObjectWrap(context) {
   })
 }
 
+async function smokeWindowsAudioPolicyRuntime(context) {
+  // warmMicrophone is the only production audio command that can create a
+  // session without external LiveKit credentials or a real display source.
+  // Remote render and screen loopback therefore use the native production
+  // attempt seam tests; this child smoke proves real addon dispatch, concrete
+  // device selection, and host-epoch recreation without inventing credentials.
+  const observationLog = []
+  let phase = 'handshake'
+  let activeAdapter = null
+  const Supervisor =
+    context.NativeRuntimeSupervisor ??
+    require(
+      context.path.resolve(context.utilityRoot, 'runtime-supervisor.cjs'),
+    ).NativeRuntimeSupervisor
+  const supervisor = new Supervisor({
+    runtime: 'media',
+    handshakeTimeoutMs: context.timeoutMs,
+    schedule: context.setTimeoutFn,
+    createAdapter: () => {
+      const adapter = createSmokeAdapter(
+        context,
+        observationLog,
+        'media',
+        'media-host.cjs',
+        'syrnike_media.node',
+        () => phase,
+      )
+      activeAdapter = adapter
+      return adapter
+    },
+  })
+  const report = {
+    status: 'passed',
+    reasonCode: 'audio_policy_utility_epoch_passed',
+    defaultAttempted: false,
+    explicitAttempted: false,
+    restartCount: 0,
+    bluetooth: 'present',
+    blockers: [],
+  }
+  try {
+    validateReady(context, 'media', await supervisor.start())
+    phase = 'list_default_epoch'
+    const devices = await supervisor.request(
+      { type: 'listDevices', kind: 'audioinput' },
+      context.timeoutMs,
+      { probeOnTimeout: false },
+    )
+    const concreteDevices = Array.isArray(devices)
+      ? devices.filter(
+          (device) =>
+            device &&
+            typeof device.deviceId === 'string' &&
+            device.deviceId !== 'default',
+        )
+      : []
+    report.bluetooth = concreteDevices.some((device) =>
+      /bluetooth|hands[- ]?free|headset/i.test(String(device.label)),
+    )
+      ? 'present'
+      : 'blocked_absent'
+    if (report.bluetooth === 'blocked_absent') {
+      report.blockers.push('bluetooth_communications_endpoint_absent')
+    }
+
+    phase = 'warm_default'
+    report.defaultAttempted = true
+    await supervisor.request(
+      microphoneWarmCommand(null, 1),
+      context.timeoutMs,
+      { probeOnTimeout: false },
+    )
+
+    phase = 'restart'
+    const recovered = waitForSupervisorState(
+      supervisor,
+      (snapshot) => snapshot.status === 'ready' && snapshot.restartCount > 0,
+    )
+    activeAdapter?.kill()
+    await recovered
+    report.restartCount = supervisor.getSnapshot().restartCount
+
+    if (concreteDevices.length === 0) {
+      report.status = 'unsupported'
+      report.reasonCode = 'audio_input_explicit_device_absent'
+      report.blockers.push(report.reasonCode)
+      return report
+    }
+    phase = 'warm_explicit'
+    report.explicitAttempted = true
+    await supervisor.request(
+      microphoneWarmCommand(concreteDevices[0].deviceId, 2),
+      context.timeoutMs,
+      { probeOnTimeout: false },
+    )
+    return report
+  } catch (error) {
+    report.status = 'failed'
+    report.reasonCode = nativeSmokeFailureCode(error)
+    throw attachObservation(
+      new Error(
+        `Windows audio policy utility smoke failed (${report.reasonCode})`,
+      ),
+      observationLog,
+    )
+  } finally {
+    phase = 'shutdown'
+    await supervisor.shutdown().catch(() => {})
+  }
+}
+
+function microphoneWarmCommand(deviceId, generation) {
+  return {
+    type: 'warmMicrophone',
+    generation,
+    config: {
+      deviceId,
+      bypassSystemAudioInputProcessing: true,
+      automaticGainControl: true,
+      noiseSuppression: true,
+      echoCancellation: true,
+      inputVolume: 1,
+      voiceGateEnabled: false,
+      voiceGateThresholdDb: -45,
+      voiceGateAutoThreshold: false,
+    },
+  }
+}
+
+function nativeSmokeFailureCode(error) {
+  if (error && typeof error === 'object') {
+    if (typeof error.detail?.code === 'string') return error.detail.code
+    if (typeof error.code === 'string') return error.code
+  }
+  return 'audio_policy_utility_unknown_failure'
+}
+
 function smokeRuntime(context, runtime, hostName, addonName, injectCrash = false) {
   const observationLog = []
   let phase = 'handshake'
@@ -797,6 +944,7 @@ function requiredCapabilities(runtime) {
     'localScreenPreview',
     'localCameraPreview',
     'directRemoteAudio',
+    'voiceControl',
   ]
   return runtime === 'hotkey' ? ['hotkeys'] : ['overlay']
 }
@@ -835,5 +983,6 @@ module.exports = {
   smokeAsyncCleanupDispatchFailure,
   smokeNodeEventSink,
   smokeRuntime,
+  smokeWindowsAudioPolicyRuntime,
   verifyDiagnostics,
 }

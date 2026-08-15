@@ -28,10 +28,14 @@
 mod common;
 
 use anyhow::{anyhow, Result};
-use common::test_rooms_with_options;
+use common::{test_rooms_with_options, TestRoomOptions};
 use futures_util::StreamExt;
 use libwebrtc::{
     prelude::{I420Buffer, RtcVideoSource, VideoFrame, VideoResolution, VideoRotation},
+    native::packet_trailer::{
+        h264_decode_startup_observations, reset_h264_decode_startup_observations,
+    },
+    rtp_sender::VideoEncoderBackend,
     video_source::native::NativeVideoSource,
     video_stream::native::NativeVideoStream,
 };
@@ -193,6 +197,120 @@ async fn test_timestamp_and_frame_id_av1() -> Result<()> {
 }
 
 #[test_log::test(tokio::test)]
+async fn test_timestamp_and_frame_id_h264() -> Result<()> {
+    run_packet_trailer_test(PacketTrailerTestParams {
+        attach_timestamp: true,
+        attach_frame_id: true,
+        user_data: None,
+        expect_user_data: None,
+        e2ee: false,
+        codec: VideoCodec::H264,
+    })
+    .await
+}
+
+#[test_log::test(tokio::test)]
+async fn test_late_subscriber_h264_starts_decoder_at_complete_keyframe() -> Result<()> {
+    let mut subscriber_options = RoomOptions::default();
+    subscriber_options.auto_subscribe = false;
+    let mut rooms = test_rooms_with_options([
+        TestRoomOptions::default(),
+        TestRoomOptions { room: subscriber_options, ..Default::default() },
+    ])
+    .await?;
+    let (pub_room, _) = rooms.remove(0);
+    let (sub_room, mut sub_events) = rooms.remove(0);
+    let pub_room = Arc::new(pub_room);
+
+    let rtc_source =
+        NativeVideoSource::new(VideoResolution { width: TEST_WIDTH, height: TEST_HEIGHT }, false);
+    let track = LocalVideoTrack::create_video_track(
+        "late-h264-track",
+        RtcVideoSource::Native(rtc_source.clone()),
+    );
+    pub_room
+        .local_participant()
+        .publish_track(
+            LocalTrack::Video(track),
+            TrackPublishOptions {
+                video_codec: VideoCodec::H264,
+                video_encoder: VideoEncoderBackend::Software,
+                simulcast: false,
+                frame_metadata_features: FrameMetadataFeatures {
+                    user_timestamp: true,
+                    frame_id: true,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    let (stop_tx, stop_rx) = oneshot::channel::<()>();
+    let publish_task = tokio::spawn(publish_frames(
+        stop_rx,
+        rtc_source,
+        true,
+        true,
+        None,
+    ));
+
+    let publication = timeout(Duration::from_secs(15), async {
+        loop {
+            let Some(event) = sub_events.recv().await else {
+                return Err(anyhow!("Event channel closed before TrackPublished"));
+            };
+            if let RoomEvent::TrackPublished { publication, .. } = event {
+                return Ok(publication);
+            }
+        }
+    })
+    .await??;
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    reset_h264_decode_startup_observations();
+    publication.set_subscribed(true);
+
+    let remote_track: RemoteVideoTrack = timeout(Duration::from_secs(15), async {
+        loop {
+            let Some(event) = sub_events.recv().await else {
+                return Err(anyhow!("Event channel closed before TrackSubscribed"));
+            };
+            if let RoomEvent::TrackSubscribed { track, .. } = event {
+                if let RemoteTrack::Video(video_track) = track.into() {
+                    return Ok(video_track);
+                }
+            }
+        }
+    })
+    .await??;
+
+    let mut stream = NativeVideoStream::new(remote_track.rtc_track());
+    timeout(Duration::from_secs(15), stream.next())
+        .await?
+        .ok_or_else(|| anyhow!("Video stream ended before first decoded frame"))?;
+
+    let observations = h264_decode_startup_observations();
+    assert_eq!(
+        observations.pre_keyframe_inputs, 0,
+        "decoder received delta/partial H264 access units before its first complete keyframe: {:?}",
+        observations
+    );
+    assert!(
+        observations.complete_keyframe_inputs >= 1,
+        "decoder never received a complete SPS/PPS/IDR keyframe: {:?}",
+        observations
+    );
+    assert!(observations.decoded_outputs >= 1, "decoder produced no output: {:?}", observations);
+
+    stop_tx.send(()).ok();
+    publish_task.await?;
+    pub_room.close().await.ok();
+    sub_room.close().await.ok();
+    Ok(())
+}
+
+#[test_log::test(tokio::test)]
 async fn test_user_data_with_timestamp_and_frame_id_av1() -> Result<()> {
     let payload = b"all-three-features".to_vec();
     run_packet_trailer_test(PacketTrailerTestParams {
@@ -253,12 +371,22 @@ async fn run_packet_trailer_test(params: PacketTrailerTestParams) -> Result<()> 
         RtcVideoSource::Native(rtc_source.clone()),
     );
 
+    // The access-unit control uses CPU-backed I420 frames. Auto is
+    // hardware-first on Windows and can select the D3D11-only H264 encoder,
+    // whose input contract intentionally requires a D3D11 texture.
+    let video_encoder = if matches!(params.codec, VideoCodec::H264) {
+        VideoEncoderBackend::Software
+    } else {
+        VideoEncoderBackend::Auto
+    };
+
     pub_room
         .local_participant()
         .publish_track(
             LocalTrack::Video(track.clone()),
             TrackPublishOptions {
                 video_codec: params.codec,
+                video_encoder,
                 simulcast: false,
                 frame_metadata_features,
                 ..Default::default()

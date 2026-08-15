@@ -4,9 +4,11 @@
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
 #include <mutex>
+#include <new>
 #include <numeric>
 #include <optional>
 #include <stdexcept>
@@ -33,6 +35,10 @@
 #include "media/voice_gate.hpp"
 
 namespace {
+
+thread_local bool count_realtime_memory = false;
+std::atomic_size_t realtime_allocations{0};
+std::atomic_size_t realtime_deallocations{0};
 
 void require(bool condition, const char* message) {
   if (!condition) throw std::runtime_error(message);
@@ -67,6 +73,36 @@ bool isExactSilence(const std::vector<float>& frame) {
 }
 
 }  // namespace
+
+void* operator new(std::size_t size) {
+  if (count_realtime_memory) realtime_allocations.fetch_add(1);
+  if (void* allocation = std::malloc(size)) return allocation;
+  throw std::bad_alloc();
+}
+
+void* operator new[](std::size_t size) {
+  if (count_realtime_memory) realtime_allocations.fetch_add(1);
+  if (void* allocation = std::malloc(size)) return allocation;
+  throw std::bad_alloc();
+}
+
+void operator delete(void* allocation) noexcept {
+  if (count_realtime_memory) realtime_deallocations.fetch_add(1);
+  std::free(allocation);
+}
+void operator delete[](void* allocation) noexcept {
+  if (count_realtime_memory) realtime_deallocations.fetch_add(1);
+  std::free(allocation);
+}
+void operator delete(void* allocation, std::size_t) noexcept {
+  if (count_realtime_memory) realtime_deallocations.fetch_add(1);
+  std::free(allocation);
+}
+void operator delete[](void* allocation, std::size_t) noexcept {
+  if (count_realtime_memory) realtime_deallocations.fetch_add(1);
+  std::free(allocation);
+}
+
 
 int main() try {
   using syrnike::desktop_native::media::CameraFormat;
@@ -170,7 +206,7 @@ int main() try {
   const auto truthful_status_frame = truthful_status_processor.processFrame(
     std::vector<float>(syrnike::voice::kSamplesPer10Ms, 0.1f),
     config,
-    nullptr
+    {}
   );
   require(
     truthful_status_frame.status.echo_cancellation == "unavailable",
@@ -240,7 +276,7 @@ int main() try {
   const auto clipping_frame = clipping_processor.processFrame(
     std::vector<float>(syrnike::voice::kSamplesPer10Ms, 0.75f),
     clipping_config,
-    nullptr
+    {}
   );
   require(
     clipping_frame.clipped_samples == syrnike::voice::kSamplesPer10Ms,
@@ -656,7 +692,9 @@ int main() try {
     mono->pcm.size() == syrnike::voice::kSamplesPer10Ms,
     "echo frame size changed"
   );
+  const auto first_sequence = mono->sequence;
   for (int index = 0; index < 3; ++index) {
+    std::fill(stereo.begin(), stereo.end(), 0.1f * static_cast<float>(index + 1));
     reference.pushInterleavedFloatStereo(
       stereo.data(), syrnike::voice::kSamplesPer10Ms, false
     );
@@ -666,15 +704,134 @@ int main() try {
     reference.discontinuities() == 1,
     "echo reference overflow did not publish a discontinuity marker"
   );
-  reference.popFrame();
-  reference.popFrame();
-  reference.pushInterleavedFloatStereo(
-    stereo.data(), syrnike::voice::kSamplesPer10Ms, false
+  require(
+    reference.droppedFrames() == 1,
+    "echo reference overflow did not count the evicted oldest frame"
   );
   const auto after_overflow = reference.popFrame();
   require(
-    after_overflow.has_value() && after_overflow->discontinuity,
-    "echo reference did not carry its overflow discontinuity to the next frame"
+    after_overflow.has_value() && after_overflow->discontinuity &&
+      after_overflow->sequence == first_sequence + 2,
+    "echo reference overflow did not snap to a marked one-frame-old window"
+  );
+  const auto newest_after_overflow = reference.popFrame();
+  require(
+    newest_after_overflow.has_value() &&
+      newest_after_overflow->sequence == first_sequence + 3,
+    "echo reference overflow did not retain the newest frame"
+  );
+
+  std::uint64_t last_sequence = newest_after_overflow->sequence;
+  for (int index = 0; index < 100; ++index) {
+    reference.pushInterleavedFloatStereo(
+      stereo.data(), syrnike::voice::kSamplesPer10Ms, false
+    );
+    reference.pushInterleavedFloatStereo(
+      stereo.data(), syrnike::voice::kSamplesPer10Ms, false
+    );
+    const auto current = reference.popFrame();
+    require(
+      current.has_value() && current->sequence > last_sequence,
+      "echo reference timestamps stopped advancing under alternating load"
+    );
+    last_sequence = current->sequence;
+  }
+  require(
+    reference.queuedFrames() <= 2,
+    "alternating echo-reference load preserved a stale full-capacity backlog"
+  );
+
+  while (reference.popFrame()) {}
+  realtime_allocations.store(0, std::memory_order_relaxed);
+  realtime_deallocations.store(0, std::memory_order_relaxed);
+  count_realtime_memory = true;
+  for (std::size_t frame_index = 0; frame_index < 20'000; ++frame_index) {
+    reference.pushInterleavedFloatStereo(
+      stereo.data(), syrnike::voice::kSamplesPer10Ms, false
+    );
+    const auto realtime_frame = reference.popFrame();
+    if (!realtime_frame) {
+      count_realtime_memory = false;
+      throw std::runtime_error("lock-free echo reference lost nominal cadence");
+    }
+  }
+  count_realtime_memory = false;
+  require(
+    realtime_allocations.load(std::memory_order_acquire) == 0 &&
+      realtime_deallocations.load(std::memory_order_acquire) == 0,
+    "echo reference allocated or reclaimed memory on its realtime lanes"
+  );
+
+  syrnike::voice::MicrophoneEchoReferenceBuffer concurrent_reference(8);
+  std::atomic_bool echo_producer_finished{false};
+  std::atomic_bool echo_pressure_ready{false};
+  std::atomic_bool release_echo_producer{false};
+  std::atomic_bool corrupt_echo_frame{false};
+  std::thread echo_producer([&] {
+    std::array<float, syrnike::voice::kSamplesPer10Ms * 2> input{};
+    for (std::size_t sequence = 1; sequence <= 20'000; ++sequence) {
+      input.fill(static_cast<float>((sequence % 31) + 1) / 64.0f);
+      concurrent_reference.pushInterleavedFloatStereo(
+        input.data(), syrnike::voice::kSamplesPer10Ms, false
+      );
+      if (sequence == 1'000) {
+        echo_pressure_ready.store(true, std::memory_order_release);
+        while (!release_echo_producer.load(std::memory_order_acquire)) {
+          std::this_thread::yield();
+        }
+      }
+    }
+    echo_producer_finished.store(true, std::memory_order_release);
+  });
+  while (!echo_pressure_ready.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+  release_echo_producer.store(true, std::memory_order_release);
+  std::uint64_t concurrent_last_sequence = 0;
+  std::size_t concurrent_consumed = 0;
+  while (!echo_producer_finished.load(std::memory_order_acquire) ||
+         concurrent_reference.queuedFrames() != 0) {
+    const auto frame = concurrent_reference.popFrame();
+    if (!frame) {
+      std::this_thread::yield();
+      continue;
+    }
+    if (frame->sequence <= concurrent_last_sequence ||
+        !std::all_of(
+          frame->pcm.begin(), frame->pcm.end(),
+          [&](std::int16_t sample) { return sample == frame->pcm.front(); }
+        )) {
+      corrupt_echo_frame.store(true, std::memory_order_release);
+    }
+    concurrent_last_sequence = frame->sequence;
+    ++concurrent_consumed;
+  }
+  echo_producer.join();
+  require(
+    concurrent_consumed != 0 &&
+      !corrupt_echo_frame.load(std::memory_order_acquire),
+    "echo-reference SPSC handoff exposed a stale or partially written frame"
+  );
+  require(
+    concurrent_reference.queuedFrames() == 0 &&
+      concurrent_reference.droppedFrames() != 0,
+    "echo-reference pressure did not remain bounded and observable"
+  );
+
+  const auto dropped_before_reset = reference.droppedFrames();
+  reference.markDiscontinuity();
+  reference.pushInterleavedFloatStereo(
+    stereo.data(), syrnike::voice::kSamplesPer10Ms, false
+  );
+  const auto after_device_reset = reference.popFrame();
+  require(
+    after_device_reset.has_value() && after_device_reset->discontinuity &&
+      after_device_reset->sequence > last_sequence,
+    "echo reference device reset did not resume at the newest marked frame"
+  );
+  require(
+    reference.droppedFrames() >= dropped_before_reset,
+    "echo reference device reset regressed its exact dropped-frame counter"
   );
 
   std::mutex echo_retry_mutex;
@@ -719,7 +876,7 @@ int main() try {
     capture_frames.pendingSamples() == 0,
     "capture discontinuity retained samples from the previous phase"
   );
-  std::optional<std::vector<float>> resynchronized_frame;
+  std::optional<std::span<const float>> resynchronized_frame;
   for (int sample = 0; sample < 4; ++sample) {
     resynchronized_frame = capture_frames.push(2.0f);
   }
@@ -967,11 +1124,11 @@ int main() try {
     gate_agc_config.automatic_gain_control_enabled = true;
 
     syrnike::voice::MicrophoneAudioProcessor processor;
-    auto processed = processor.processFrame(frameAtDb(-10.0f), gate_agc_config, nullptr);
+    auto processed = processor.processFrame(frameAtDb(-10.0f), gate_agc_config, {});
     require(processed.gate_metrics.open, "gate did not open before the AGC silence test");
 
     for (int index = 0; index < 60; ++index) {
-      processed = processor.processFrame(frameAtDb(-50.0f), gate_agc_config, nullptr);
+      processed = processor.processFrame(frameAtDb(-50.0f), gate_agc_config, {});
     }
     require(!processed.gate_metrics.open, "gate stayed open below the manual threshold");
     require(processed.gate_metrics.gain == 0.0f, "gate did not finish its release");

@@ -4,6 +4,7 @@ import {
   NATIVE_RUNTIME_CONTRACT_VERSION,
   NATIVE_RUNTIME_MAX_PENDING_REQUESTS,
   isNativeRuntimeMessage,
+  nativeRuntimeCommandLane,
   nativeRuntimeError,
   redactSensitiveText,
   type NativeRuntimeCommand,
@@ -11,6 +12,7 @@ import {
   type NativeRuntimeError,
   type NativeRuntimeEvent,
   type NativeRuntimeKind,
+  type NativeRuntimeLane,
   type NativeRuntimeReady,
   type NativeRuntimeRequest,
 } from './contract'
@@ -23,6 +25,8 @@ import type {
 
 const DEFAULT_HANDSHAKE_TIMEOUT_MS = 5_000
 const DEFAULT_PROBE_TIMEOUT_MS = 2_500
+const VOICE_CONTROL_RELEASE_ATTEMPT_TIMEOUT_MS = 2_000
+export const VOICE_CONTROL_RELEASE_DEADLINE_MS = 6_500
 const RETIREMENT_WATCHDOG_INTERVAL_MS = 1_000
 const RESTART_DELAYS_MS = [250, 1_000, 5_000] as const
 const DEGRADED_RETRY_DELAYS_MS = [30_000, 60_000, 5 * 60_000] as const
@@ -44,6 +48,7 @@ export type NativeRuntimeFailureCause =
   | 'transport_error'
   | 'request_outcome_unknown'
   | 'actor_unresponsive'
+  | 'control_delivery_lost'
   | 'liveness_probe_failed'
   | 'circuit_open'
 
@@ -100,7 +105,7 @@ type PendingRequest =
 
 type NativeRuntimeRequestContext = {
   stage: NativeRuntimeCommand['type']
-  lane?: NativeRuntimeLane
+  lane: NativeRuntimeLane
   sessionId?: string
   generation?: number
   actionId?: string
@@ -109,15 +114,6 @@ type NativeRuntimeRequestContext = {
   hostEpoch?: number
 }
 
-type NativeRuntimeLane =
-  | 'voice'
-  | 'microphone'
-  | 'screen'
-  | 'camera'
-  | 'query'
-  | 'hotkey'
-  | 'overlay'
-
 function requestContext(
   command: NativeRuntimeCommand,
   diagnostic?: Omit<NativeRuntimeDiagnosticContext, 'hostEpoch'>,
@@ -125,7 +121,7 @@ function requestContext(
 ): NativeRuntimeRequestContext {
   return {
     stage: command.type,
-    lane: requestLane(command),
+    lane: nativeRuntimeCommandLane(command),
     sessionId:
       'sessionId' in command && typeof command.sessionId === 'string'
         ? command.sessionId
@@ -160,6 +156,16 @@ export type NativeRuntimeRequestOptions = {
   allowDuringShutdown?: boolean
   diagnostic?: Omit<NativeRuntimeDiagnosticContext, 'hostEpoch'>
 }
+
+export type RendererLeaseReleaseCommand = Extract<
+  NativeRuntimeCommand,
+  {
+    readonly type:
+      | 'releaseRemoteVideoFrame'
+      | 'releaseLocalScreenPreviewFrame'
+      | 'releaseLocalCameraPreviewFrame'
+  }
+>
 
 export class NativeRuntimeSupervisor {
   private readonly runtime = ManagedRuntime.make(Layer.empty)
@@ -198,6 +204,7 @@ export class NativeRuntimeSupervisor {
   }
   private microphoneConfigRevision = 0
   private lastControlEventSequence = -1
+  private lastRealtimeEventSequence = -1
   private readonly activeProbeKeys = new Set<string>()
   private readonly retirementWatchdogs = new Map<
     NativeRuntimeLane,
@@ -333,6 +340,7 @@ export class NativeRuntimeSupervisor {
       adapter = createdAdapter
       this.adapter = createdAdapter
       this.lastControlEventSequence = -1
+      this.lastRealtimeEventSequence = -1
       this.screenRecoverableLostCounts.clear()
       this.log('adapter_created', {
         pendingCount: this.pending.size,
@@ -461,6 +469,8 @@ export class NativeRuntimeSupervisor {
       const request: NativeRuntimeRequest = {
         type: 'request',
         requestId,
+        lane: context.lane,
+        hostEpoch: adapterEpoch,
         command,
         ...(options.diagnostic
           ? {
@@ -589,6 +599,98 @@ export class NativeRuntimeSupervisor {
       }
       return yield* Deferred.await(result)
     })
+  }
+
+  /**
+   * Owns one renderer-to-native release obligation. Its monotonic 6.5 second
+   * deadline consists of one 2 second attempt, a probe bounded by 2.5 seconds,
+   * and one 2 second idempotent retry. Missing that bound recycles the exact
+   * utility-host epoch, which retires the old native lease owner.
+   */
+  releaseRendererLeaseEffect(command: RendererLeaseReleaseCommand) {
+    return Effect.gen({ self: this }, function*() {
+      yield* this.startEffect()
+      const ownerEpoch = this.adapterEpoch
+      const deadlineAt = this.now() + VOICE_CONTROL_RELEASE_DEADLINE_MS
+      const remaining = (maximumMs: number) =>
+        Math.max(1, Math.min(maximumMs, deadlineAt - this.now()))
+      const attempt = (timeoutMs: number) =>
+        this.requestEffect(command, timeoutMs, {
+          probeOnTimeout: false,
+        }).pipe(
+          Effect.map((value) => ({ ok: true as const, value })),
+          Effect.catch((error) =>
+            Effect.succeed({ ok: false as const, error })
+          ),
+        )
+
+      const first = yield* attempt(
+        remaining(VOICE_CONTROL_RELEASE_ATTEMPT_TIMEOUT_MS),
+      )
+      if (first.ok) return first.value
+      if (this.adapterEpoch !== ownerEpoch || !this.adapter) return undefined
+      if (!isRetriableRendererReleaseFailure(first.error)) {
+        return yield* Effect.fail(first.error)
+      }
+
+      const probe = yield* this.requestEffect(
+        { type: 'probeVoiceControl' },
+        remaining(this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS),
+        { probeOnTimeout: false },
+      ).pipe(
+        Effect.map((value) => ({ ok: true as const, value })),
+        Effect.catch((error) =>
+          Effect.succeed({ ok: false as const, error })
+        ),
+      )
+      if (this.adapterEpoch !== ownerEpoch || !this.adapter) return undefined
+      if (!probe.ok || !isVoiceControlProbeForHost(probe.value, ownerEpoch)) {
+        const error = probe.ok
+          ? new NativeRuntimeRequestError(nativeRuntimeError(
+            'liveness_probe_failed',
+            `Native voice-control probe returned an invalid host epoch (${ownerEpoch})`,
+            { retryable: true, stage: command.type },
+          ))
+          : probe.error
+        this.recycleHungAdapterIfCurrent(
+          ownerEpoch,
+          'liveness_probe_failed',
+          error.message,
+          'Native runtime recycled after a voice-control release probe failed',
+        )
+        return yield* Effect.fail(error)
+      }
+
+      const retried = yield* attempt(
+        remaining(VOICE_CONTROL_RELEASE_ATTEMPT_TIMEOUT_MS),
+      )
+      if (retried.ok) return retried.value
+      if (this.adapterEpoch !== ownerEpoch || !this.adapter) return undefined
+      this.recycleHungAdapterIfCurrent(
+        ownerEpoch,
+        'liveness_probe_failed',
+        retried.error.message,
+        'Native runtime recycled after a renderer release missed its bounded retry',
+      )
+      return yield* Effect.fail(retried.error)
+    })
+  }
+
+  /**
+   * Fails closed when Electron still owns renderer fences after its reload
+   * deadline. The host epoch is the authority: a late reaper from an older
+   * renderer/runtime pair can never recycle the replacement utility host.
+   */
+  recycleRendererFenceOwner(hostEpoch: number) {
+    if (!Number.isSafeInteger(hostEpoch) || hostEpoch <= 0 ||
+      this.adapterEpoch !== hostEpoch || !this.adapter) return false
+    this.recycleHungAdapterIfCurrent(
+      hostEpoch,
+      'liveness_probe_failed',
+      'Renderer fences remained retained after the bounded reload deadline',
+      'Native runtime recycled after its renderer fences missed the hard deadline',
+    )
+    return this.adapter === null
   }
 
   retry() {
@@ -843,14 +945,50 @@ export class NativeRuntimeSupervisor {
             `Native runtime actor reported lost capacity (${pending.context.lane ?? 'unknown'})`,
             'Native runtime recycled after an actor became unresponsive',
           )
+        } else if (
+          message.error.code === 'queue_full' &&
+          pending.context.lane === 'voice-control'
+        ) {
+          this.ensureLaneProbe(
+            pending.adapterEpoch,
+            pending.context.lane,
+            message.error.message,
+          )
         }
         this.runtime.runFork(this.failPendingResult(pending, error))
       }
       return
     }
     const event = message.event
+    // This signal bypasses the ordinary control TSFN after that lane has
+    // already failed. A later normal control callback may therefore arrive
+    // first; never let its sequence fence suppress the fail-closed recycle.
+    if (
+      event.type === 'runtimeError' &&
+      event.error.code === 'native_control_delivery_lost'
+    ) {
+      this.recycleHungAdapterIfCurrent(
+        adapterEpoch,
+        'control_delivery_lost',
+        event.error.message,
+        'Native runtime recycled after lossless control delivery failed',
+      )
+      return
+    }
     const isLossyMedia = isLossyMediaEvent(event)
-    if (!isLossyMedia && event.sequence <= this.lastControlEventSequence) {
+    const isRealtime = isRealtimeEvent(event)
+    if (isRealtime && event.sequence <= this.lastRealtimeEventSequence) {
+      this.log('runtime_event_dropped_out_of_order', {
+        nativeEventType: event.type,
+        nativeSequence: event.sequence,
+        pendingCount: this.pending.size,
+        message: `last=${this.lastRealtimeEventSequence}; lane=realtime`,
+      })
+      return
+    }
+    if (isRealtime) this.lastRealtimeEventSequence = event.sequence
+    if (!isLossyMedia && !isRealtime &&
+        event.sequence <= this.lastControlEventSequence) {
       this.log('runtime_event_dropped_out_of_order', {
         nativeEventType: event.type,
         nativeSequence: event.sequence,
@@ -859,7 +997,7 @@ export class NativeRuntimeSupervisor {
       })
       return
     }
-    if (!isLossyMedia) {
+    if (!isLossyMedia && !isRealtime) {
       this.lastControlEventSequence = event.sequence
       this.recordCameraReadStallEvent(event)
       this.log('runtime_event_received', {
@@ -1292,7 +1430,13 @@ export class NativeRuntimeSupervisor {
     const command = probeCommand(this.options.runtime, lane)
     if (!command) return
     const requestId = `${this.options.runtime}-probe-${++this.requestSequence}-${crypto.randomUUID()}`
-    const request: NativeRuntimeRequest = { type: 'request', requestId, command }
+    const request: NativeRuntimeRequest = {
+      type: 'request',
+      requestId,
+      lane,
+      hostEpoch: adapterEpoch,
+      command,
+    }
     const startedAt = this.now()
     const context: NativeRuntimeRequestContext = {
       stage: command.type,
@@ -1611,46 +1755,8 @@ function isLossyMediaEvent(event: NativeRuntimeEvent) {
   )
 }
 
-function requestLane(command: NativeRuntimeCommand): NativeRuntimeLane | undefined {
-  switch (command.type) {
-    case 'connectVoice':
-    case 'disconnectVoice':
-    case 'configureRemoteAudio':
-    case 'configureVoiceOutput':
-      return 'voice'
-    case 'warmMicrophone':
-    case 'startPreview':
-    case 'stopPreview':
-    case 'connectMicrophone':
-    case 'disconnectMicrophone':
-    case 'invalidateMicrophone':
-    case 'configureMicrophone':
-    case 'setMicrophoneMuted':
-    case 'probeMicrophoneActor':
-      return 'microphone'
-    case 'connectScreen':
-    case 'startScreenCapture':
-    case 'stopScreenCapture':
-    case 'disconnectScreen':
-    case 'probeScreenActor':
-      return 'screen'
-    case 'connectCamera':
-    case 'disconnectCamera':
-    case 'probeCameraActor':
-      return 'camera'
-    case 'listDevices':
-    case 'listDisplaySources':
-    case 'probeQueryWorker':
-      return 'query'
-    case 'startHotkeys':
-    case 'stopHotkeys':
-    case 'startOverlay':
-    case 'stopOverlay':
-    case 'probeHooksRuntime':
-      return command.type === 'startHotkeys' || command.type === 'stopHotkeys' ? 'hotkey' : 'overlay'
-    case 'shutdown':
-      return undefined
-  }
+function isRealtimeEvent(event: NativeRuntimeEvent) {
+  return event.type === 'input' || event.type === 'foregroundWindow'
 }
 
 function hasUncertainMutationOutcome(command: NativeRuntimeCommand) {
@@ -1683,6 +1789,7 @@ function probeCommand(
   lane: NativeRuntimeLane,
 ): NativeRuntimeCommand | null {
   if (runtime === 'media') {
+    if (lane === 'voice-control') return { type: 'probeVoiceControl' }
     if (lane === 'microphone') return { type: 'probeMicrophoneActor' }
     if (lane === 'screen') return { type: 'probeScreenActor' }
     if (lane === 'camera') return { type: 'probeCameraActor' }
@@ -1698,3 +1805,19 @@ function probeCommand(
 const isBusyProbeResult = Schema.is(
   Schema.Struct({ state: Schema.Literal('busy') }),
 )
+
+const isVoiceControlProbeResult = Schema.is(Schema.Struct({
+  hostEpoch: Schema.Int.check(Schema.isGreaterThan(0)),
+  queueDepth: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  queueCapacity: Schema.Int.check(Schema.isGreaterThan(0)),
+}))
+
+function isVoiceControlProbeForHost(value: unknown, hostEpoch: number) {
+  return isVoiceControlProbeResult(value) && value.hostEpoch === hostEpoch
+}
+
+function isRetriableRendererReleaseFailure(error: Error) {
+  return error instanceof NativeRuntimeRequestError &&
+    (error.detail.code === 'request_timeout' ||
+      error.detail.code === 'queue_full')
+}

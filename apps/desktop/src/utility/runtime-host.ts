@@ -68,6 +68,7 @@ type RuntimeHostDependencies = {
   crashReporter?: UtilityCrashReporter
   registerShutdownSignals?(shutdown: (exitCode?: number) => void): void
   exit?(exitCode: number): void
+  onRuntimeCreated?(runtime: NativeRuntimeInstance): void
 }
 
 const ParentPortSchema = Schema.declare<ParentPort>(
@@ -138,6 +139,7 @@ const REQUIRED_CAPABILITIES: Record<NativeRuntimeKind, readonly string[]> = {
     'localScreenPreview',
     'localCameraPreview',
     'directRemoteAudio',
+    'voiceControl',
   ],
   hotkey: ['hotkeys'],
   overlay: ['overlay'],
@@ -372,6 +374,7 @@ export const runNativeUtilityHostEffect = Effect.fn(
   let shutdownRequestId: string | null = null
   let shuttingDown = false
   let contractCorrupted = false
+  let boundHostEpoch: number | undefined
   const shutdown = (exitCode = 0) => {
     if (shuttingDown) return
     shuttingDown = true
@@ -570,6 +573,7 @@ export const runNativeUtilityHostEffect = Effect.fn(
     return
   }
   runtime = createdRuntime
+  dependencies.onRuntimeCreated?.(runtime)
   if (dependencies.registerShutdownSignals) {
     dependencies.registerShutdownSignals(shutdown)
   } else {
@@ -600,7 +604,31 @@ export const runNativeUtilityHostEffect = Effect.fn(
   const dispatchRequestEffect = Effect.fn(
     'desktop.dispatchNativeUtilityRequest',
   )(function*(request: NativeRuntimeRequest) {
+    if (boundHostEpoch === undefined) {
+      boundHostEpoch = request.hostEpoch
+    } else if (request.hostEpoch !== boundHostEpoch) {
+      diagnosticLog?.log('stale_host_epoch_rejected', {
+        requestId: request.requestId,
+        command: request.command.type,
+        hostEpoch: request.hostEpoch,
+        boundHostEpoch,
+        commandStage: 'utility_dispatch',
+        outcome: 'rejected',
+      })
+      hostParentPort.postMessage({
+        type: 'reply',
+        requestId: request.requestId,
+        ok: false,
+        error: nativeRuntimeError(
+          'stale_host_epoch',
+          'Native request belongs to a retired utility host epoch',
+          { retryable: false },
+        ),
+      } satisfies NativeRuntimeReply)
+      return
+    }
     annotateCrash('native_last_command', request.command.type)
+    annotateCrash('native_last_lane', request.lane)
     if (request.command.type === 'connectCamera') {
       annotateCrash('native_camera_stage', 'connect_dispatch')
     } else if (request.command.type === 'disconnectCamera') {
@@ -616,6 +644,8 @@ export const runNativeUtilityHostEffect = Effect.fn(
         runtime?.dispatch({
           ...request.command,
           requestId: request.requestId,
+          lane: request.lane,
+          hostEpoch: request.hostEpoch,
           diagnostic: request.diagnostic,
         }),
       catch: (cause) => cause,
@@ -626,10 +656,11 @@ export const runNativeUtilityHostEffect = Effect.fn(
           diagnosticLog?.log('dispatch_forwarded', {
             requestId: request.requestId,
             command: request.command.type,
+            lane: request.lane,
             actionId: request.diagnostic?.actionId,
             operationId: request.diagnostic?.operationId,
             revision: request.diagnostic?.revision,
-            hostEpoch: request.diagnostic?.hostEpoch,
+            hostEpoch: request.hostEpoch,
             commandStage: 'utility_dispatch',
             outcome: 'accepted',
           })
@@ -640,10 +671,11 @@ export const runNativeUtilityHostEffect = Effect.fn(
           diagnosticLog?.log('dispatch_failed', {
             requestId: request.requestId,
             command: request.command.type,
+            lane: request.lane,
             actionId: request.diagnostic?.actionId,
             operationId: request.diagnostic?.operationId,
             revision: request.diagnostic?.revision,
-            hostEpoch: request.diagnostic?.hostEpoch,
+            hostEpoch: request.hostEpoch,
             commandStage: 'utility_dispatch',
             outcome: 'error',
             error: sanitizeDispatchError(error),

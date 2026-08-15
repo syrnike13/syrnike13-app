@@ -1,11 +1,9 @@
 #include "camera_capture.hpp"
 
 #include <windows.h>
-#include <cfgmgr32.h>
 #include <d3d10_1.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
-#include <ks.h>
 #include <mfapi.h>
 #include <mferror.h>
 #include <mfidl.h>
@@ -21,7 +19,6 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstring>
-#include <cwctype>
 #include <iomanip>
 #include <limits>
 #include <mutex>
@@ -30,7 +27,9 @@
 #include <utility>
 
 #include "../common/diagnostic_log.hpp"
+#include "camera_device_notification.hpp"
 #include "d3d11_gpu_completion.hpp"
+#include "video_resource_admission.hpp"
 
 namespace syrnike::desktop_native::media {
 namespace {
@@ -48,6 +47,28 @@ constexpr std::size_t kGpuPoolSize = 5;
 constexpr auto kReadPoll = std::chrono::milliseconds(100);
 constexpr auto kFrameWatchdog = std::chrono::seconds(2);
 constexpr auto kFlushDeadline = std::chrono::milliseconds(750);
+
+std::shared_ptr<VideoResourceLease> acquireCameraResource(
+    VideoResourceAdmissionBudget& budget,
+    const VideoResourceRequest& request) {
+  try {
+    return requireVideoResourceAdmission(budget, request);
+  } catch (const VideoResourceSaturationError& error) {
+    const auto& saturation = error.saturation();
+    diagnostics::DiagnosticLog::instance().write(
+        "camera_video_resource_saturated",
+        {
+            {"owner", videoResourceOwnerName(saturation.owner)},
+            {"ownerId", saturation.owner_id},
+            {"resourceClass",
+             videoResourceClassName(saturation.resource_class)},
+            {"current", saturation.current},
+            {"requested", saturation.requested},
+            {"limit", saturation.limit},
+        });
+    throw;
+  }
+}
 
 void check(HRESULT result, const char* message) {
   if (SUCCEEDED(result)) return;
@@ -398,14 +419,6 @@ std::string utf8(const WCHAR* value, UINT32 length) {
   return result;
 }
 
-std::wstring lowercase(std::wstring value) {
-  std::transform(
-      value.begin(), value.end(), value.begin(), [](wchar_t character) {
-        return static_cast<wchar_t>(std::towlower(character));
-      });
-  return value;
-}
-
 struct AsyncReaderState {
   std::mutex mutex;
   std::condition_variable changed;
@@ -476,34 +489,6 @@ class SourceReaderCallback final
   std::shared_ptr<AsyncReaderState> state_;
 };
 
-DWORD CALLBACK deviceNotification(
-    HCMNOTIFICATION,
-    PVOID context,
-    CM_NOTIFY_ACTION action,
-    PCM_NOTIFY_EVENT_DATA event,
-    DWORD) {
-  try {
-    if (action != CM_NOTIFY_ACTION_DEVICEINTERFACEREMOVAL ||
-        !context || !event ||
-        !event->u.DeviceInterface.SymbolicLink) {
-      return ERROR_SUCCESS;
-    }
-    auto* state =
-        static_cast<std::shared_ptr<AsyncReaderState>*>(context);
-    const auto removed =
-        lowercase(event->u.DeviceInterface.SymbolicLink);
-    const auto wanted = lowercase((*state)->device_id);
-    if (!wanted.empty() &&
-        (removed.find(wanted) != std::wstring::npos ||
-         wanted.find(removed) != std::wstring::npos)) {
-      markDeviceRemoved(*state);
-    }
-  } catch (...) {
-    // Never unwind C++ exceptions through the Configuration Manager callback.
-  }
-  return ERROR_SUCCESS;
-}
-
 class CameraGpuPool final {
  public:
   CameraGpuPool(
@@ -511,8 +496,10 @@ class CameraGpuPool final {
       ID3D11DeviceContext* context,
       std::uint64_t adapter_luid,
       std::uint32_t width,
-      std::uint32_t height)
-      : device_(device),
+      std::uint32_t height,
+      std::shared_ptr<VideoResourceLease> resource_lease)
+      : resource_lease_(std::move(resource_lease)),
+        device_(device),
         context_(context),
         completion_(device, context),
         adapter_luid_(adapter_luid),
@@ -687,6 +674,7 @@ class CameraGpuPool final {
     }
   }
 
+  std::shared_ptr<VideoResourceLease> resource_lease_;
   ComPtr<ID3D11Device> device_;
   ComPtr<ID3D11DeviceContext> context_;
   D3d11GpuCompletion completion_;
@@ -705,9 +693,10 @@ class MfCameraCapture final : public CameraCapture {
       std::uint32_t width,
       std::uint32_t height,
       int fps,
-      bool force_cpu)
+      bool force_cpu,
+      VideoResourceAdmissionBudget& resource_budget)
       : state_(std::make_shared<AsyncReaderState>()),
-        notification_state_(state_) {
+        resource_budget_(&resource_budget) {
     ActivateArray devices;
     ComPtr<IMFAttributes> attributes;
     check(MFCreateAttributes(&attributes, 1), "camera attributes creation failed");
@@ -758,6 +747,7 @@ class MfCameraCapture final : public CameraCapture {
       dxgi_manager_.Reset();
       d3d_context_.Reset();
       d3d_device_.Reset();
+      d3d_device_lease_.reset();
       diagnostics::DiagnosticLog::instance().write(
           "camera_gpu_fallback",
           {
@@ -807,12 +797,26 @@ class MfCameraCapture final : public CameraCapture {
     if (info_.gpu) {
       try {
         selected = negotiateFormat(reader_.Get(), requested, true);
+        auto pool_lease = acquireCameraResource(
+            *resource_budget_,
+            VideoResourceRequest{
+                .owner = VideoResourceOwner::CameraCapture,
+                .owner_id = "camera:capture_pool",
+                .gpu_generations = 1,
+                .textures = {{
+                    .width = selected.format.width,
+                    .height = selected.format.height,
+                    .count = kGpuPoolSize,
+                    .format = VideoTextureFormat::Nv12,
+                }},
+            });
         gpu_pool_ = std::make_unique<CameraGpuPool>(
             d3d_device_.Get(),
             d3d_context_.Get(),
             adapter_luid_,
             selected.format.width,
-            selected.format.height);
+            selected.format.height,
+            std::move(pool_lease));
       } catch (const std::exception& error) {
         diagnostics::DiagnosticLog::instance().write(
             "camera_gpu_fallback",
@@ -928,9 +932,35 @@ class MfCameraCapture final : public CameraCapture {
 
   void stop() noexcept override {
     if (stopped_.exchange(true, std::memory_order_acq_rel)) return;
-    if (notification_) {
-      CM_Unregister_Notification(notification_);
-      notification_ = nullptr;
+    if (device_notification_) {
+      const auto outcome = device_notification_->stop(
+          std::chrono::steady_clock::now() + kFlushDeadline);
+      const auto global = CameraDeviceNotification::globalSnapshot();
+      const char* status = "not_registered";
+      if (outcome.status ==
+          CameraDeviceNotificationStopStatus::Unregistered) {
+        status = "unregistered";
+      } else if (outcome.status ==
+          CameraDeviceNotificationStopStatus::
+              UnregisterFailedQuarantined) {
+        status = "unregister_failed_quarantined";
+      } else if (outcome.status ==
+          CameraDeviceNotificationStopStatus::DrainTimedOutQuarantined) {
+        status = "drain_timed_out_quarantined";
+      }
+      diagnostics::DiagnosticLog::instance().write(
+          "camera_device_notification_stop",
+          {
+              {"status", status},
+              {"nativeCode", static_cast<std::uint64_t>(outcome.native_code)},
+              {"unfinishedCallbacks",
+               static_cast<std::uint64_t>(outcome.unfinished_callbacks)},
+              {"ownedContexts",
+               static_cast<std::uint64_t>(global.owned_contexts)},
+              {"quarantinedContexts",
+               static_cast<std::uint64_t>(global.quarantined_contexts)},
+          });
+      device_notification_.reset();
     }
     {
       std::lock_guard lock(state_->mutex);
@@ -962,6 +992,14 @@ class MfCameraCapture final : public CameraCapture {
 
  private:
   void createD3dDevice() {
+    d3d_device_lease_ = acquireCameraResource(
+        *resource_budget_,
+        VideoResourceRequest{
+            .owner = VideoResourceOwner::CameraCapture,
+            .owner_id = "camera:capture_device",
+            .d3d_devices = 1,
+            .gpu_generations = 1,
+        });
     UINT flags =
         D3D11_CREATE_DEVICE_BGRA_SUPPORT |
         D3D11_CREATE_DEVICE_VIDEO_SUPPORT;
@@ -1027,21 +1065,44 @@ class MfCameraCapture final : public CameraCapture {
   }
 
   void registerDeviceNotification() {
-    CM_NOTIFY_FILTER filter{};
-    filter.cbSize = sizeof(filter);
-    filter.FilterType = CM_NOTIFY_FILTER_TYPE_DEVICEINTERFACE;
-    filter.u.DeviceInterface.ClassGuid = KSCATEGORY_VIDEO_CAMERA;
-    if (CM_Register_Notification(
-            &filter,
-            &notification_state_,
-            deviceNotification,
-            &notification_) != CR_SUCCESS) {
-      notification_ = nullptr;
+    device_notification_ = std::make_unique<CameraDeviceNotification>(
+        createWindowsCameraDeviceNotificationAdapter(),
+        state_->device_id,
+        [state = state_](CameraDeviceNotificationAction action) {
+          if (action == CameraDeviceNotificationAction::Removal) {
+            markDeviceRemoved(state);
+          }
+        });
+    const auto outcome = device_notification_->start();
+    if (outcome.status == CameraDeviceNotificationStartStatus::Registered) {
+      return;
     }
+    const auto global = CameraDeviceNotification::globalSnapshot();
+    const char* status = outcome.status ==
+            CameraDeviceNotificationStartStatus::OwnershipUnavailable
+        ? "ownership_unavailable"
+        : (outcome.status ==
+                   CameraDeviceNotificationStartStatus::AlreadyStarted
+               ? "already_started"
+               : "registration_failed");
+    diagnostics::DiagnosticLog::instance().write(
+        "camera_device_notification_start_failed",
+        {
+            {"status", status},
+            {"nativeCode", static_cast<std::uint64_t>(outcome.native_code)},
+            {"ownedContexts",
+             static_cast<std::uint64_t>(global.owned_contexts)},
+            {"quarantinedContexts",
+             static_cast<std::uint64_t>(global.quarantined_contexts)},
+            {"ownershipRejections", global.ownership_rejections},
+        });
+    device_notification_.reset();
   }
 
   std::shared_ptr<AsyncReaderState> state_;
-  std::shared_ptr<AsyncReaderState> notification_state_;
+  VideoResourceAdmissionBudget* resource_budget_ = nullptr;
+  std::shared_ptr<VideoResourceLease> d3d_device_lease_;
+  std::unique_ptr<CameraDeviceNotification> device_notification_;
   ComPtr<IMFMediaSource> source_;
   ComPtr<IMFSourceReader> reader_;
   ComPtr<SourceReaderCallback> callback_;
@@ -1051,12 +1112,15 @@ class MfCameraCapture final : public CameraCapture {
   std::unique_ptr<CameraGpuPool> gpu_pool_;
   CameraCaptureInfo info_;
   std::uint64_t adapter_luid_ = 0;
-  HCMNOTIFICATION notification_ = nullptr;
   std::atomic_bool stopped_{false};
 };
 
 class MfCameraCaptureFactory final : public CameraCaptureFactory {
  public:
+  explicit MfCameraCaptureFactory(
+      VideoResourceAdmissionBudget& resource_budget)
+      : resource_budget_(&resource_budget) {}
+
   std::shared_ptr<CameraCapture> create(
       const std::string& id,
       std::uint32_t width,
@@ -1066,7 +1130,8 @@ class MfCameraCaptureFactory final : public CameraCaptureFactory {
     check(MFStartup(MF_VERSION, MFSTARTUP_LITE), "Media Foundation startup failed");
     try {
       return std::shared_ptr<CameraCapture>(
-          new MfCameraCapture(id, width, height, fps, force_cpu),
+          new MfCameraCapture(
+              id, width, height, fps, force_cpu, *resource_budget_),
           [](CameraCapture* capture) {
             delete capture;
             MFShutdown();
@@ -1076,6 +1141,9 @@ class MfCameraCaptureFactory final : public CameraCaptureFactory {
       throw;
     }
   }
+
+ private:
+  VideoResourceAdmissionBudget* resource_budget_ = nullptr;
 };
 
 }  // namespace
@@ -1155,8 +1223,12 @@ std::vector<std::uint8_t> copyCameraBgraBuffer(
 }
 
 std::shared_ptr<CameraCaptureFactory>
-createMediaFoundationCameraCaptureFactory() {
-  return std::make_shared<MfCameraCaptureFactory>();
+createMediaFoundationCameraCaptureFactory(
+    VideoResourceAdmissionBudget* resource_budget) {
+  auto& budget = resource_budget
+      ? *resource_budget
+      : processVideoResourceAdmissionBudget();
+  return std::make_shared<MfCameraCaptureFactory>(budget);
 }
 
 std::vector<DeviceInfo> listCameraDevices() {

@@ -24,7 +24,7 @@ void require(bool condition, const char* message) {
 }
 
 MediaCommand frame(
-  std::string type,
+  syrnike::desktop_native::NativeCommandType type,
   std::string session,
   std::uint64_t generation,
   std::string track,
@@ -32,7 +32,7 @@ MediaCommand frame(
   std::function<void()> on_drop
 ) {
   MediaCommand command;
-  command.type = std::move(type);
+  command.type = type;
   command.session_id = std::move(session);
   command.generation = generation;
   command.track_id = std::move(track);
@@ -48,22 +48,22 @@ int main() {
     ActorMailbox<4, 2> mailbox;
     int released = 0;
     require(mailbox.tryPush(frame(
-      "__remoteVideoFrame", "voice", 7, "track-a", 1, [&] { ++released; }
+      syrnike::desktop_native::NativeCommandType::RemoteVideoFrame, "voice", 7, "track-a", 1, [&] { ++released; }
     )), "first remote frame should be accepted");
     require(mailbox.tryPush(frame(
-      "__remoteVideoFrame", "voice", 7, "track-a", 2, [&] { ++released; }
+      syrnike::desktop_native::NativeCommandType::RemoteVideoFrame, "voice", 7, "track-a", 2, [&] { ++released; }
     )), "replacement remote frame should be accepted");
     require(released == 1, "displaced frame must be released exactly once");
 
     require(mailbox.tryPush(frame(
-      "__remoteVideoFrame", "voice", 7, "track-b", 3, [&] { ++released; }
+      syrnike::desktop_native::NativeCommandType::RemoteVideoFrame, "voice", 7, "track-b", 3, [&] { ++released; }
     )), "second media key should be accepted");
     MediaCommand terminal;
-    terminal.type = "__voiceTerminal";
+    terminal.type = syrnike::desktop_native::NativeCommandType::VoiceTerminal;
     require(mailbox.tryPush(std::move(terminal)), "terminal must not compete with media capacity");
 
     auto first = mailbox.waitPop();
-    require(first && first->type == "__voiceTerminal", "control must have priority over saturated media");
+    require(first && first->type == syrnike::desktop_native::NativeCommandType::VoiceTerminal, "control must have priority over saturated media");
     auto second = mailbox.waitPop();
     auto third = mailbox.waitPop();
     require(second && third, "latest frame for every media key must remain queued");
@@ -82,17 +82,17 @@ int main() {
     ActorMailbox<2, 2> mailbox;
     int released = 0;
     require(mailbox.tryPush(frame(
-      "__localScreenPreviewFrame", "screen-a", 1, {}, 1, [&] { ++released; }
+      syrnike::desktop_native::NativeCommandType::LocalScreenPreviewFrame, "screen-a", 1, {}, 1, [&] { ++released; }
     )), "first screen preview should be accepted");
     require(mailbox.tryPush(frame(
-      "__localScreenPreviewFrame", "screen-b", 1, {}, 2, [&] { ++released; }
+      syrnike::desktop_native::NativeCommandType::LocalScreenPreviewFrame, "screen-b", 1, {}, 2, [&] { ++released; }
     )), "second screen preview should be accepted");
     require(mailbox.tryPush(frame(
-      "__localCameraPreviewFrame", "camera", 3, "old-track", 3, [&] { ++released; }
+      syrnike::desktop_native::NativeCommandType::LocalCameraPreviewFrame, "camera", 3, "old-track", 3, [&] { ++released; }
     )), "new preview key should evict the oldest media key");
     require(released == 1, "media-key eviction must release its frame once");
     require(mailbox.tryPush(frame(
-      "__localCameraPreviewFrame", "camera", 3, "new-track", 4, [&] { ++released; }
+      syrnike::desktop_native::NativeCommandType::LocalCameraPreviewFrame, "camera", 3, "new-track", 4, [&] { ++released; }
     )), "camera preview should coalesce by session and generation");
     require(released == 2, "replaced camera preview must release the prior handle");
     require(mailbox.closeAndDiscard() == 2, "close must discard the remaining media slots");
@@ -102,21 +102,21 @@ int main() {
   {
     ActorMailbox<1, 1> mailbox;
     MediaCommand control;
-    control.type = "connectVoice";
+    control.type = syrnike::desktop_native::NativeCommandType::ConnectVoice;
     require(mailbox.tryPush(control), "control capacity should accept its first command");
     MediaCommand terminal;
-    terminal.type = "__voiceTerminal";
+    terminal.type = syrnike::desktop_native::NativeCommandType::VoiceTerminal;
     require(!mailbox.tryPush(terminal), "control overflow must be visible to fail-closed caller");
 
     int released = 0;
     require(mailbox.tryPush(frame(
-      "__remoteVideoFrame", "voice", 1, "track", 1, [&] { ++released; }
+      syrnike::desktop_native::NativeCommandType::RemoteVideoFrame, "voice", 1, "track", 1, [&] { ++released; }
     )), "media lane must remain independent from full control lane");
     require(mailbox.closeAndDiscard() == 2, "close should discard queued control and media");
     require(released == 1, "close must release accepted media with full control lane");
 
     auto rejected = frame(
-      "__remoteVideoFrame", "voice", 1, "track", 2, [&] { ++released; }
+      syrnike::desktop_native::NativeCommandType::RemoteVideoFrame, "voice", 1, "track", 2, [&] { ++released; }
     );
     require(!mailbox.tryPush(std::move(rejected)), "closed mailbox must reject new media");
     require(released == 1, "rejected post must leave ownership with producer");
@@ -134,7 +134,7 @@ int main() {
       for (std::uint64_t sequence = 1; sequence <= frame_count; ++sequence) {
         const auto track = sequence % 2 == 0 ? "track-a" : "track-b";
         require(mailbox.tryPush(frame(
-          "__remoteVideoFrame",
+          syrnike::desktop_native::NativeCommandType::RemoteVideoFrame,
           "voice",
           9,
           track,
@@ -146,10 +146,10 @@ int main() {
     std::thread control_producer([&] {
       start.arrive_and_wait();
       MediaCommand terminal;
-      terminal.type = "__voiceTerminal";
+      terminal.type = syrnike::desktop_native::NativeCommandType::VoiceTerminal;
       require(mailbox.tryPush(std::move(terminal)), "terminal must survive concurrent frame flood");
       MediaCommand disconnect;
-      disconnect.type = "disconnectVoice";
+      disconnect.type = syrnike::desktop_native::NativeCommandType::DisconnectVoice;
       require(mailbox.tryPush(std::move(disconnect)), "disconnect must survive concurrent frame flood");
     });
     start.arrive_and_wait();
@@ -169,9 +169,9 @@ int main() {
           !max_handler_concurrency.compare_exchange_weak(observed, current)
         ) {}
         if (index == 0) {
-          require(command->type == "__voiceTerminal", "terminal must run before coalesced frames");
+          require(command->type == syrnike::desktop_native::NativeCommandType::VoiceTerminal, "terminal must run before coalesced frames");
         } else if (index == 1) {
-          require(command->type == "disconnectVoice", "control FIFO must remain ordered");
+          require(command->type == syrnike::desktop_native::NativeCommandType::DisconnectVoice, "control FIFO must remain ordered");
         } else {
           require(command->on_drop != nullptr, "only latest media frames should remain after controls");
           command->on_drop();
@@ -192,7 +192,7 @@ int main() {
     ActorMailbox<2, 1> mailbox;
     int released = 0;
     require(mailbox.tryPush(frame(
-      "__remoteVideoFrame", "voice", 2, "track", 1, [&] { ++released; }
+      syrnike::desktop_native::NativeCommandType::RemoteVideoFrame, "voice", 2, "track", 1, [&] { ++released; }
     )), "throw-path frame should be accepted");
     auto throwing = mailbox.waitPop();
     try {
@@ -202,7 +202,7 @@ int main() {
     require(released == 1, "handler exception must release the popped frame once");
 
     require(mailbox.tryPush(frame(
-      "__remoteVideoFrame", "voice", 2, "track", 2, [&] { ++released; }
+      syrnike::desktop_native::NativeCommandType::RemoteVideoFrame, "voice", 2, "track", 2, [&] { ++released; }
     )), "success-path frame should be accepted");
     auto successful = mailbox.waitPop();
     RuntimeEvent event;
@@ -221,21 +221,21 @@ int main() {
     ActorMailbox<4, 4> mailbox;
     int released = 0;
     require(mailbox.tryPush(frame(
-      "__remoteVideoFrame", "voice", 11, "track", 1, [&] { ++released; }
+      syrnike::desktop_native::NativeCommandType::RemoteVideoFrame, "voice", 11, "track", 1, [&] { ++released; }
     )), "pre-terminal frame should be accepted");
     MediaCommand speakers;
-    speakers.type = "__voiceActiveSpeakers";
+    speakers.type = syrnike::desktop_native::NativeCommandType::VoiceActiveSpeakers;
     speakers.session_id = "voice";
     speakers.generation = 11;
     require(mailbox.tryPush(std::move(speakers)), "pre-terminal telemetry should be accepted");
     MediaCommand terminal;
-    terminal.type = "__voiceTerminal";
+    terminal.type = syrnike::desktop_native::NativeCommandType::VoiceTerminal;
     terminal.session_id = "voice";
     terminal.generation = 11;
     require(mailbox.tryPush(std::move(terminal)), "terminal should be accepted");
     auto observed_terminal = mailbox.waitPop();
     require(
-      observed_terminal && observed_terminal->type == "__voiceTerminal",
+      observed_terminal && observed_terminal->type == syrnike::desktop_native::NativeCommandType::VoiceTerminal,
       "terminal must be observed before media from its epoch"
     );
     require(
@@ -245,6 +245,33 @@ int main() {
     require(released == 1, "terminal purge must release the queued frame exactly once");
     require(mailbox.size() == 0, "no media from a terminal epoch may remain observable");
     mailbox.closeAndDiscard();
+  }
+
+  {
+    ActorMailbox<2, 64> mailbox;
+    std::atomic_int released{0};
+    for (std::uint64_t index = 0; index < 64; ++index) {
+      require(mailbox.tryPush(frame(
+        syrnike::desktop_native::NativeCommandType::RemoteVideoFrame,
+        "full-mailbox",
+        12,
+        "track-" + std::to_string(index),
+        index + 1,
+        [&] { released.fetch_add(1); }
+      )), "full media-key mailbox rejected an admitted key");
+    }
+    require(
+      mailbox.closeAndDiscard() == 64,
+      "full media-key close did not report every discarded frame"
+    );
+    require(
+      released.load() == 64,
+      "full media-key close did not release every frame exactly once"
+    );
+    require(
+      !mailbox.waitPop().has_value(),
+      "closed mailbox exposed a frame while its ownership was being discarded"
+    );
   }
 
   {

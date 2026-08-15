@@ -18,7 +18,15 @@ function harness(
   maxInFlight = 3,
   onPresentationStalled = vi.fn(),
   maxRetainedBytes?: number,
+  retiredFenceReloadMs?: number,
+  retiredFenceRecycleMs?: number,
 ) {
+  let ownerDestroyed = false
+  let ownerDetached = false
+  const ownerFrame = {
+    isDestroyed: () => ownerDestroyed,
+    get detached() { return ownerDetached },
+  } as unknown as Electron.WebFrameMain
   const callbacks: Array<() => void> = []
   const release = vi.fn()
   const imported = vi.fn(() => ({
@@ -33,11 +41,16 @@ function harness(
     return imported() as never
   })
   const bridge = new NativeSharedTextureBridge({
-    getWindow: () => ({ isDestroyed: () => false, webContents: { isDestroyed: () => false, mainFrame: {} } }) as never,
+    getWindow: () => ({
+      isDestroyed: () => false,
+      webContents: { isDestroyed: () => false, mainFrame: ownerFrame },
+    }) as never,
     release,
     maxInFlight,
     maxRetainedBytes,
     stallTimeoutMs: 1_000,
+    retiredFenceReloadMs,
+    retiredFenceRecycleMs,
     onPresentationStalled,
     importTexture,
     sendTexture,
@@ -50,10 +63,165 @@ function harness(
     importTexture,
     sendTexture,
     onPresentationStalled,
+    ownerFrame,
+    destroyOwner: () => { ownerDestroyed = true },
+    detachOwner: () => { ownerDetached = true },
   }
 }
 
 describe('NativeSharedTextureBridge', () => {
+  it('keeps a never-settling send owned while its exact renderer frame is alive', async () => {
+    const h = harness()
+    h.sendTexture.mockImplementationOnce(() => new Promise<void>(() => {}))
+
+    let deliverySettled = false
+    void h.bridge.deliver(frame(1)).then(() => { deliverySettled = true })
+    await vi.waitFor(() => expect(h.imported).toHaveBeenCalledTimes(1))
+    h.bridge.rendererReloaded()
+    await Promise.resolve()
+
+    expect(deliverySettled).toBe(false)
+    expect(h.imported.mock.results[0]!.value.release).not.toHaveBeenCalled()
+    expect(h.bridge.inFlightCount).toBe(1)
+    expect(h.bridge.retainedByteCount).toBe(640 * 360 * 4)
+  })
+
+  it.each(['detached', 'destroyed'] as const)(
+    'settles an unresolved delivery only after its exact renderer owner is %s',
+    async (termination) => {
+      const h = harness()
+      h.sendTexture.mockImplementationOnce(() => new Promise<void>(() => {}))
+      const delivery = h.bridge.deliver(frame(1))
+      await vi.waitFor(() => expect(h.imported).toHaveBeenCalledTimes(1))
+      const imported = h.imported.mock.results[0]!.value
+
+      h.bridge.rendererReloaded()
+      expect(imported.release).not.toHaveBeenCalled()
+      if (termination === 'detached') h.detachOwner()
+      else h.destroyOwner()
+      if (termination === 'detached') h.bridge.rendererReloaded()
+      else h.bridge.rendererOwnerTerminated()
+
+      expect(await delivery).toBe(false)
+      expect(imported.release).toHaveBeenCalledTimes(1)
+      h.callbacks[0]!()
+      expect(h.release).toHaveBeenCalledTimes(1)
+      expect(h.bridge.inFlightCount).toBe(0)
+      expect(h.bridge.retainedByteCount).toBe(0)
+    },
+  )
+
+  it('keeps a replaced-runtime unresolved send in bounded retired-fence recovery', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = harness(3, vi.fn(), undefined, 10, 20)
+      h.sendTexture.mockImplementationOnce(() => new Promise<void>(() => {}))
+      const delivery = h.bridge.deliver(frame(1))
+      await vi.waitFor(() => expect(h.imported).toHaveBeenCalledTimes(1))
+
+      h.bridge.runtimeReplaced(1)
+      await vi.advanceTimersByTimeAsync(21)
+
+      expect(h.onPresentationStalled).toHaveBeenCalledWith(
+        frame(1),
+        'retired-fence-recycle',
+        expect.any(Object),
+      )
+      expect(h.bridge.inFlightCount).toBe(1)
+      expect(h.imported.mock.results[0]!.value.release).not.toHaveBeenCalled()
+
+      h.detachOwner()
+      await vi.advanceTimersByTimeAsync(21)
+      expect(await delivery).toBe(false)
+      expect(h.imported.mock.results[0]!.value.release).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not double-release when the raw send promise settles after owner termination', async () => {
+    let settleRawSend: (() => void) | undefined
+    const rawSend = new Promise<void>((resolve) => { settleRawSend = resolve })
+    const h = harness()
+    h.sendTexture.mockImplementationOnce(() => rawSend)
+    const delivery = h.bridge.deliver(frame(1))
+    await vi.waitFor(() => expect(h.imported).toHaveBeenCalledTimes(1))
+    const imported = h.imported.mock.results[0]!.value
+
+    h.detachOwner()
+    h.bridge.rendererOwnerTerminated()
+    expect(await delivery).toBe(false)
+    expect(imported.release).toHaveBeenCalledTimes(1)
+    h.callbacks[0]!()
+    settleRawSend?.()
+    await Promise.resolve()
+
+    expect(imported.release).toHaveBeenCalledTimes(1)
+    expect(h.release).toHaveBeenCalledTimes(1)
+    expect(h.bridge.inFlightCount).toBe(0)
+  })
+
+  it.each([
+    {
+      label: 'renderer reload',
+      retire: (bridge: NativeSharedTextureBridge) => bridge.rendererReloaded(),
+      expectedNativeReleases: 1,
+    },
+    {
+      label: 'runtime replacement',
+      retire: (bridge: NativeSharedTextureBridge) => bridge.runtimeReplaced(1),
+      expectedNativeReleases: 0,
+    },
+  ])('defers main-reference release until an unresolved send settles on $label', async ({ retire, expectedNativeReleases }) => {
+    let settleSend: (() => void) | undefined
+    const sendPending = new Promise<void>((resolve) => { settleSend = resolve })
+    const h = harness()
+    h.sendTexture.mockImplementationOnce(() => sendPending)
+
+    const delivery = h.bridge.deliver(frame(1))
+    await vi.waitFor(() => expect(h.imported).toHaveBeenCalledTimes(1))
+    const imported = h.imported.mock.results[0]!.value
+
+    retire(h.bridge)
+    const releasedBeforeSendSettled = imported.release.mock.calls.length
+    const inFlightBeforeSendSettled = h.bridge.inFlightCount
+
+    settleSend?.()
+    expect(await delivery).toBe(true)
+    expect(releasedBeforeSendSettled).toBe(0)
+    expect(inFlightBeforeSendSettled).toBe(1)
+    expect(imported.release).toHaveBeenCalledTimes(1)
+    h.callbacks[0]!()
+    expect(h.release).toHaveBeenCalledTimes(expectedNativeReleases)
+    expect(h.bridge.inFlightCount).toBe(0)
+    expect(h.bridge.retainedByteCount).toBe(0)
+  })
+
+  it('performs a deferred release exactly once when an unresolved send rejects', async () => {
+    let rejectSend: ((error: Error) => void) | undefined
+    const sendPending = new Promise<void>((_resolve, reject) => {
+      rejectSend = reject
+    })
+    const h = harness()
+    h.sendTexture.mockImplementationOnce(() => sendPending)
+
+    const delivery = h.bridge.deliver(frame(1))
+    await vi.waitFor(() => expect(h.imported).toHaveBeenCalledTimes(1))
+    const imported = h.imported.mock.results[0]!.value
+
+    h.bridge.rendererReloaded()
+    const releasedBeforeSendSettled = imported.release.mock.calls.length
+    rejectSend?.(new Error('renderer retired during send'))
+    expect(await delivery).toBe(false)
+    expect(releasedBeforeSendSettled).toBe(0)
+    expect(imported.release).toHaveBeenCalledTimes(1)
+    h.callbacks[0]!()
+    h.callbacks[0]!()
+    expect(h.release).toHaveBeenCalledTimes(1)
+    expect(h.bridge.inFlightCount).toBe(0)
+    expect(h.bridge.retainedByteCount).toBe(0)
+  })
+
   it('drops stale sequences without importing them', async () => {
     const h = harness()
     await h.bridge.deliver(frame(4))
@@ -83,6 +251,53 @@ describe('NativeSharedTextureBridge', () => {
     expect(h.release).toHaveBeenCalledTimes(2)
   })
 
+  it.each([
+    { label: 'remote video', source: 'camera' as const, local: false },
+    { label: 'local screen preview', source: 'screen' as const, local: true },
+    { label: 'local camera preview', source: 'camera' as const, local: true },
+  ])('keeps $label allocations fenced across delayed and missing releases', async ({
+    label,
+    source,
+    local,
+  }) => {
+    vi.useFakeTimers()
+    try {
+      const h = harness(1)
+      const original = {
+        ...frame(1, `${label}-track`),
+        source,
+        local,
+      }
+      const replacement = { ...original, sequence: 2, timestampUs: 2_000 }
+      const excess = { ...original, sequence: 3, timestampUs: 3_000 }
+
+      expect(await h.bridge.deliver(original)).toBe(true)
+      await vi.advanceTimersByTimeAsync(6_000)
+      expect(h.release).not.toHaveBeenCalledWith(original)
+
+      expect(await h.bridge.deliver(replacement)).toBe(true)
+      await vi.advanceTimersByTimeAsync(6_000)
+      expect(await h.bridge.deliver(excess)).toBe(false)
+      expect(h.release).toHaveBeenCalledWith(excess)
+      expect(h.release).not.toHaveBeenCalledWith(original)
+      expect(h.release).not.toHaveBeenCalledWith(replacement)
+
+      h.callbacks[0]()
+      h.callbacks[0]()
+      expect(h.release).toHaveBeenCalledTimes(2)
+      expect(h.release).toHaveBeenCalledWith(original)
+      expect(h.bridge.inFlightCount).toBe(1)
+
+      h.callbacks[1]()
+      expect(h.release).toHaveBeenCalledTimes(3)
+      expect(h.release).toHaveBeenCalledWith(replacement)
+      expect(h.bridge.inFlightCount).toBe(0)
+      expect(h.bridge.retainedByteCount).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('does not let an old generation fence block the replacement track', async () => {
     const h = harness(1)
     await h.bridge.deliver(frame(1, 'screen'))
@@ -102,25 +317,43 @@ describe('NativeSharedTextureBridge', () => {
     expect(h.imported).toHaveBeenCalledTimes(2)
   })
 
-  it('retries a lost native release acknowledgement until it succeeds', async () => {
+  it('delegates one release obligation to the supervised voice-control lane', async () => {
     vi.useFakeTimers()
     try {
       const h = harness()
-      h.release
-        .mockRejectedValueOnce(new Error('runtime busy'))
-        .mockRejectedValueOnce(new Error('reply lost'))
-        .mockResolvedValueOnce(undefined)
+      h.release.mockRejectedValueOnce(new Error('supervisor recycled runtime'))
       await h.bridge.deliver(frame(1))
 
       h.callbacks[0]()
-      await vi.advanceTimersByTimeAsync(100)
-      await vi.advanceTimersByTimeAsync(200)
+      await vi.advanceTimersByTimeAsync(30_000)
 
-      expect(h.release).toHaveBeenCalledTimes(3)
-      expect(h.release).toHaveBeenNthCalledWith(3, frame(1))
+      expect(h.release).toHaveBeenCalledTimes(1)
+      expect(h.release).toHaveBeenCalledWith(frame(1))
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('retires every old-runtime reference exactly once before a replacement frame arrives', async () => {
+    const h = harness()
+    const first = frame(1, 'camera')
+    const second = frame(1, 'screen')
+    await h.bridge.deliver(first)
+    await h.bridge.deliver(second)
+
+    h.bridge.runtimeReplaced(1)
+    h.bridge.runtimeReplaced(1)
+
+    const firstImported = h.imported.mock.results[0]!.value
+    const secondImported = h.imported.mock.results[1]!.value
+    expect(firstImported.release).toHaveBeenCalledTimes(1)
+    expect(secondImported.release).toHaveBeenCalledTimes(1)
+
+    h.callbacks[0]()
+    h.callbacks[1]()
+    expect(h.release).not.toHaveBeenCalled()
+    expect(h.bridge.inFlightCount).toBe(0)
+    expect(h.bridge.retainedByteCount).toBe(0)
   })
 
   it('bounds references per track so a stalled camera cannot starve a screen', async () => {
@@ -178,6 +411,76 @@ describe('NativeSharedTextureBridge', () => {
       expect(h.bridge.inFlightCount).toBe(4)
       expect(h.importTexture).toHaveBeenCalledTimes(4)
       expect(h.onPresentationStalled).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('independently reloads then recycles one retired renderer generation', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = harness(2, vi.fn(), undefined, 2_000, 4_000)
+      await h.bridge.deliver(frame(1, 'screen'))
+      await h.bridge.deliver(frame(2, 'screen'))
+
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(h.onPresentationStalled).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(h.onPresentationStalled).toHaveBeenLastCalledWith(
+        frame(1, 'screen'),
+        'retired-fence-deadline',
+        expect.objectContaining({ trackRetiredReferences: 2 }),
+      )
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(h.onPresentationStalled).toHaveBeenLastCalledWith(
+        frame(1, 'screen'),
+        'retired-fence-recycle',
+        expect.objectContaining({ trackRetiredReferences: 2 }),
+      )
+      expect(h.onPresentationStalled).toHaveBeenCalledTimes(3)
+      expect(h.release).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('prunes the independent retired deadline after the authoritative fence', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = harness(1, vi.fn(), undefined, 2_000, 4_000)
+      await h.bridge.deliver(frame(1, 'screen'))
+      await vi.advanceTimersByTimeAsync(1_000)
+      h.callbacks[0]()
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      expect(h.onPresentationStalled).toHaveBeenCalledTimes(1)
+      expect(h.release).toHaveBeenCalledTimes(1)
+      expect(h.bridge.inFlightCount).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps old-runtime renderer fences in bounded recovery without targeting the replacement', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = harness(1, vi.fn(), undefined, 2_000, 4_000)
+      await h.bridge.deliver(frame(1, 'screen'))
+      await vi.advanceTimersByTimeAsync(1_000)
+      h.bridge.runtimeReplaced(1)
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      expect(h.onPresentationStalled).toHaveBeenCalledTimes(4)
+      expect(h.onPresentationStalled.mock.calls.map((call) => call[1])).toEqual([
+        'shared-texture-fence',
+        'retired-fence-deadline',
+        'retired-fence-recycle',
+        'retired-fence-recycle',
+      ])
+      expect(h.onPresentationStalled.mock.calls.every(
+        (call) => call[0].runtimeEpoch === 0,
+      )).toBe(true)
+      expect(h.release).not.toHaveBeenCalled()
     } finally {
       vi.useRealTimers()
     }
@@ -268,6 +571,12 @@ describe('NativeSharedTextureBridge', () => {
     expect(h.bridge.inFlightCount).toBe(4)
     h.callbacks[0]()
     expect(h.release).toHaveBeenCalledTimes(2)
+    h.callbacks[1]()
+    h.callbacks[2]()
+    h.callbacks[3]()
+    expect(h.release).toHaveBeenCalledTimes(5)
+    expect(h.bridge.inFlightCount).toBe(0)
+    expect(h.bridge.retainedByteCount).toBe(0)
   })
 
   it('retires every retained frame for a lost native voice session', async () => {

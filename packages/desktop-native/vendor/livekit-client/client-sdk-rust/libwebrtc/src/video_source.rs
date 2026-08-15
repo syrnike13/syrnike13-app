@@ -49,7 +49,7 @@ pub mod native {
 
     use super::*;
     use crate::native::packet_trailer::PacketTrailerHandler;
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     use crate::video_frame::FrameMetadata;
     use crate::video_frame::{VideoBuffer, VideoFrame};
 
@@ -101,7 +101,7 @@ pub mod native {
             height: u32,
             timestamp_us: i64,
         ) -> i32 {
-            self.handle.capture_d3d11_frame(
+            self.capture_d3d11_frame_with_metadata(
                 shared_texture_handle,
                 adapter_luid,
                 acquire_key,
@@ -109,6 +109,32 @@ pub mod native {
                 width,
                 height,
                 timestamp_us,
+                None,
+            )
+        }
+
+        /// Captures a D3D11 texture with packet-trailer frame metadata.
+        #[cfg(target_os = "windows")]
+        pub fn capture_d3d11_frame_with_metadata(
+            &self,
+            shared_texture_handle: u64,
+            adapter_luid: u64,
+            acquire_key: u64,
+            release_key: u64,
+            width: u32,
+            height: u32,
+            timestamp_us: i64,
+            frame_metadata: Option<FrameMetadata>,
+        ) -> i32 {
+            self.handle.capture_d3d11_frame_with_metadata(
+                shared_texture_handle,
+                adapter_luid,
+                acquire_key,
+                release_key,
+                width,
+                height,
+                timestamp_us,
+                frame_metadata,
             )
         }
 

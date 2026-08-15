@@ -252,6 +252,8 @@ export type NativeMediaStatsEvent = {
   publishedAudio?: boolean
   audioFrames?: number
   audioPackets?: number
+  audioBacklogPackets?: number
+  audioDiscontinuities?: number
   audioPeakDb?: number
   audioRmsDb?: number
   videoFrames?: number

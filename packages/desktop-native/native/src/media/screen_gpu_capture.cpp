@@ -40,6 +40,8 @@
 #include "screen_capture_priority.hpp"
 #include "screen_dxgi_compositor.hpp"
 #include "screen_frame_pipeline.hpp"
+#include "screen_gpu_retirement.hpp"
+#include "video_resource_admission.hpp"
 
 using Microsoft::WRL::ComPtr;
 namespace capture = winrt::Windows::Graphics::Capture;
@@ -49,6 +51,34 @@ namespace metadata = winrt::Windows::Foundation::Metadata;
 namespace appcap = winrt::Windows::Security::Authorization::AppCapabilityAccess;
 
 namespace syrnike::desktop_native::media {
+
+std::shared_ptr<VideoResourceLease> requireScreenVideoResourceAdmission(
+    VideoResourceAdmissionBudget& budget,
+    const VideoResourceRequest& request) {
+  try {
+    return requireVideoResourceAdmission(budget, request);
+  } catch (const VideoResourceSaturationError& error) {
+    const auto& saturation = error.saturation();
+    auto& logger = diagnostics::DiagnosticLog::instance();
+    if (logger.enabled()) {
+      logger.write(
+          "screen_video_resource_saturated",
+          {
+              {"owner", videoResourceOwnerName(saturation.owner)},
+              {"ownerId", saturation.owner_id},
+              {"resourceClass",
+               videoResourceClassName(saturation.resource_class)},
+              {"current", saturation.current},
+              {"requested", saturation.requested},
+              {"limit", saturation.limit},
+          });
+    }
+    throw ScreenGpuCaptureError(
+        ScreenGpuCaptureErrorCode::ResourceSaturated,
+        error.what());
+  }
+}
+
 namespace {
 
 constexpr std::size_t kOutputPoolSize = 5;
@@ -56,6 +86,15 @@ constexpr UINT64 kProducerKey = 0;
 constexpr UINT64 kConsumerKey = 1;
 constexpr auto kGpuCompletionTimeout = std::chrono::milliseconds(500);
 constexpr std::size_t kMaxRetiredGpuPoolGenerations = 2;
+
+std::string screenResourceOwnerId(
+    const syrnike::voice::ScreenCaptureTarget& target) {
+  if (target.window) {
+    return "screen:window:" + std::to_string(
+        reinterpret_cast<std::uintptr_t>(target.hwnd));
+  }
+  return "screen:monitor:" + std::to_string(target.screen_index);
+}
 
 std::string_view captureBackendName(CaptureBackend backend) noexcept {
   return backend == CaptureBackend::Dxgi ? "dxgi_gpu" : "wgc_gpu";
@@ -74,6 +113,8 @@ std::string_view captureErrorCodeName(
       return "interop_unavailable";
     case ScreenGpuCaptureErrorCode::FormatUnsupported:
       return "format_unsupported";
+    case ScreenGpuCaptureErrorCode::ResourceSaturated:
+      return "resource_saturated";
     case ScreenGpuCaptureErrorCode::GpuTimeout:
       return "gpu_timeout";
     case ScreenGpuCaptureErrorCode::DeviceLost:
@@ -340,15 +381,27 @@ AdapterSelection selectAdapter(const syrnike::voice::ScreenCaptureTarget& target
 }
 
 struct D3dDevice {
+  std::shared_ptr<VideoResourceLease> resource_lease;
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11DeviceContext> context;
   LUID adapter_luid{};
 };
 
-D3dDevice createDevice(const AdapterSelection& selection) {
+D3dDevice createDevice(
+    const AdapterSelection& selection,
+    VideoResourceAdmissionBudget& resource_budget,
+    std::string owner_id) {
   UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT;
   D3D_FEATURE_LEVEL feature_level{};
   D3dDevice result;
+  result.resource_lease = requireScreenVideoResourceAdmission(
+      resource_budget,
+      VideoResourceRequest{
+          .owner = VideoResourceOwner::ScreenCapture,
+          .owner_id = std::move(owner_id),
+          .d3d_devices = 1,
+          .gpu_generations = 1,
+      });
   requireHr(
       D3D11CreateDevice(
           selection.adapter.Get(),
@@ -373,7 +426,12 @@ D3dDevice createDevice(const AdapterSelection& selection) {
       result.device.As(&dxgi_device),
       ScreenGpuCaptureErrorCode::DeviceUnavailable,
       "failed to query capture DXGI device");
-  syrnike::voice::setD3dGpuThreadPriority(dxgi_device.Get(), 3);
+  const auto& priority =
+      syrnike::voice::configuredScreenMediaPriorityPolicy();
+  static_cast<void>(syrnike::voice::setD3dGpuThreadPriority(
+      dxgi_device.Get(),
+      priority.publication_gpu_priority,
+      syrnike::voice::ScreenD3dPriorityRole::Publication));
   DXGI_ADAPTER_DESC adapter_description{};
   requireHr(
       selection.adapter->GetDesc(&adapter_description),
@@ -383,7 +441,10 @@ D3dDevice createDevice(const AdapterSelection& selection) {
   return result;
 }
 
-D3dDevice createSiblingDevice(ID3D11Device* source) {
+D3dDevice createSiblingDevice(
+    ID3D11Device* source,
+    VideoResourceAdmissionBudget& resource_budget,
+    std::string owner_id) {
   ComPtr<IDXGIDevice> dxgi_device;
   requireHr(
       source->QueryInterface(IID_PPV_ARGS(&dxgi_device)),
@@ -401,6 +462,14 @@ D3dDevice createSiblingDevice(ID3D11Device* source) {
       "failed to describe preview adapter");
 
   D3dDevice result;
+  result.resource_lease = requireScreenVideoResourceAdmission(
+      resource_budget,
+      VideoResourceRequest{
+          .owner = VideoResourceOwner::ScreenPreview,
+          .owner_id = std::move(owner_id),
+          .d3d_devices = 1,
+          .gpu_generations = 1,
+      });
   D3D_FEATURE_LEVEL feature_level{};
   requireHr(
       D3D11CreateDevice(
@@ -418,11 +487,12 @@ D3dDevice createSiblingDevice(ID3D11Device* source) {
   }
   ComPtr<IDXGIDevice> preview_dxgi_device;
   if (SUCCEEDED(result.device.As(&preview_dxgi_device))) {
-    // Publication uses priority 3. Preview stays one level below it: normal
-    // priority can be starved indefinitely by NVIDIA while a priority-3
-    // encoder queue submits continuously, but priority 2 still guarantees
-    // that publication wins scheduling contention.
-    syrnike::voice::setD3dGpuThreadPriority(preview_dxgi_device.Get(), 2);
+    const auto& priority =
+        syrnike::voice::configuredScreenMediaPriorityPolicy();
+    static_cast<void>(syrnike::voice::setD3dGpuThreadPriority(
+        preview_dxgi_device.Get(),
+        priority.preview_gpu_priority,
+        syrnike::voice::ScreenD3dPriorityRole::Preview));
   }
   result.adapter_luid = description.AdapterLuid;
   return result;
@@ -451,8 +521,10 @@ class GpuFramePool {
       ID3D11DeviceContext* context,
       LUID adapter_luid,
       std::uint32_t output_width,
-      std::uint32_t output_height)
-      : device_(device),
+      std::uint32_t output_height,
+      std::shared_ptr<VideoResourceLease> resource_lease)
+      : resource_lease_(std::move(resource_lease)),
+        device_(device),
         context_(context),
         adapter_luid_(adapter_luid),
         output_width_(output_width),
@@ -648,18 +720,15 @@ class GpuFramePool {
 
     // WGC/DXGI supplied a source texture, but every NV12 output slot is still
     // owned by the encoder.
-    const auto available = availableSlots();
-    if (available == 0) {
-      ++encoder_backpressure_ticks_;
-      auto& logger = diagnostics::DiagnosticLog::instance();
-      if (logger.enabled()) {
-        logger.write(
-            "gpu_frame_pool_exhausted",
-            {
-                {"total", static_cast<std::uint64_t>(kOutputPoolSize)},
-                {"available", static_cast<std::uint64_t>(0)},
-            });
-      }
+    ++encoder_backpressure_ticks_;
+    auto& logger = diagnostics::DiagnosticLog::instance();
+    if (logger.enabled()) {
+      logger.write(
+          "gpu_frame_pool_exhausted",
+          {
+              {"total", static_cast<std::uint64_t>(kOutputPoolSize)},
+              {"available", static_cast<std::uint64_t>(0)},
+          });
     }
     return result(ScreenGpuFrameStatus::EncoderBackpressure, method, metrics,
                   ScreenGpuCaptureErrorCode::CaptureUnavailable);
@@ -715,7 +784,6 @@ class GpuFramePool {
     return countScreenGpuAvailableSlots<kOutputPoolSize>(
         [this](std::size_t index) {
       const auto& slot = slots_[index];
-      if (slot.phase != SlotPhase::Available) return false;
       if (slot.mutex->AcquireSync(kProducerKey, 0) != S_OK) return false;
       return SUCCEEDED(slot.mutex->ReleaseSync(kProducerKey));
     });
@@ -728,12 +796,17 @@ class GpuFramePool {
   [[nodiscard]] ScreenFrameFlowStats flowStats() const noexcept {
     const auto latency = completion_latency_.snapshot();
     ScreenFrameFlowStats stats;
-    stats.gpu_submissions = gpu_submissions_;
-    stats.encoder_backpressure_ticks = encoder_backpressure_ticks_;
-    stats.superseded_ready_frames = superseded_ready_frames_;
-    stats.gpu_slot_timeouts = gpu_slot_timeouts_;
-    stats.gpu_slots_recovered = gpu_slots_recovered_;
-    stats.gpu_frames_dropped_stale = gpu_frames_dropped_stale_;
+    stats.gpu_submissions = gpu_submissions_.load(std::memory_order_relaxed);
+    stats.encoder_backpressure_ticks =
+        encoder_backpressure_ticks_.load(std::memory_order_relaxed);
+    stats.superseded_ready_frames =
+        superseded_ready_frames_.load(std::memory_order_relaxed);
+    stats.gpu_slot_timeouts =
+        gpu_slot_timeouts_.load(std::memory_order_relaxed);
+    stats.gpu_slots_recovered =
+        gpu_slots_recovered_.load(std::memory_order_relaxed);
+    stats.gpu_frames_dropped_stale =
+        gpu_frames_dropped_stale_.load(std::memory_order_relaxed);
     stats.gpu_slots_quarantined = quarantinedSlots();
     stats.gpu_completion_p50_us = latency.p50_us;
     stats.gpu_completion_p95_us = latency.p95_us;
@@ -778,6 +851,7 @@ class GpuFramePool {
       if (transition.newly_quarantined) {
         slot.phase = SlotPhase::Quarantined;
         ++gpu_slot_timeouts_;
+        quarantined_slots_.fetch_add(1, std::memory_order_relaxed);
       }
       if (transition.keep_pending) {
         continue;
@@ -800,6 +874,7 @@ class GpuFramePool {
         slot.metrics = {};
         ++gpu_slots_recovered_;
         ++gpu_frames_dropped_stale_;
+        quarantined_slots_.fetch_sub(1, std::memory_order_relaxed);
         continue;
       }
       requireGpuCompletion(
@@ -813,10 +888,7 @@ class GpuFramePool {
   }
 
   [[nodiscard]] std::size_t quarantinedSlots() const noexcept {
-    return static_cast<std::size_t>(std::count_if(
-        slots_.begin(), slots_.end(), [](const Slot& slot) {
-          return slot.phase == SlotPhase::Quarantined;
-        }));
+    return quarantined_slots_.load(std::memory_order_relaxed);
   }
 
  public:
@@ -828,11 +900,16 @@ class GpuFramePool {
     if (device_failed_.load(std::memory_order_acquire)) {
       return slot_state_.available() == slot_state_.total();
     }
+    // The keyed mutex is the ownership authority. Exact discard bookkeeping
+    // can lag after the consumer has already returned producer key 0; using
+    // that counter here would retain an otherwise idle D3D generation forever.
+    // Retirement is off the capture hot path, so an exact non-blocking probe is
+    // both safe and preferable to a stale logical count.
     return quarantinedSlots() == 0 &&
         std::none_of(slots_.begin(), slots_.end(), [](const Slot& slot) {
           return slot.phase == SlotPhase::Converting;
         }) &&
-        slot_state_.available() == slot_state_.total();
+        availableSlots() == totalSlots();
   }
 
  private:
@@ -914,6 +991,7 @@ class GpuFramePool {
       slot.timestamp_us = 0;
       slot.metrics = {};
     }
+    quarantined_slots_.store(0, std::memory_order_relaxed);
   }
 
   ScreenGpuFrameResult result(
@@ -923,8 +1001,10 @@ class GpuFramePool {
       ScreenGpuCaptureErrorCode error_code,
       bool source_submitted = false,
       bool gpu_capacity_exhausted = false) const {
+    // Ownership state is exact and lock-free. Keyed-mutex probes are reserved
+    // for the one-second telemetry/control sample exposed by availableSlots().
     metrics.gpu_pool_slots_available =
-        static_cast<std::uint32_t>(availableSlots());
+        static_cast<std::uint32_t>(slot_state_.available());
     metrics.gpu_pool_slots_total =
         static_cast<std::uint32_t>(slot_state_.total());
     return {
@@ -1044,6 +1124,9 @@ class GpuFramePool {
     source_height_ = source_height;
   }
 
+  // Declared first so admission remains held until this generation's D3D
+  // objects have all been released.
+  std::shared_ptr<VideoResourceLease> resource_lease_;
   ComPtr<ID3D11Device> device_;
   ComPtr<ID3D11DeviceContext> context_;
   ComPtr<ID3D11VideoDevice> video_device_;
@@ -1059,12 +1142,13 @@ class GpuFramePool {
   ScreenGpuSlotState<kOutputPoolSize> slot_state_;
   ScreenLatencyWindow<256> completion_latency_;
   std::size_t next_slot_ = 0;
-  std::uint64_t gpu_submissions_ = 0;
-  std::uint64_t encoder_backpressure_ticks_ = 0;
-  std::uint64_t superseded_ready_frames_ = 0;
-  std::uint64_t gpu_slot_timeouts_ = 0;
-  std::uint64_t gpu_slots_recovered_ = 0;
-  std::uint64_t gpu_frames_dropped_stale_ = 0;
+  std::atomic<std::uint64_t> gpu_submissions_{0};
+  std::atomic<std::uint64_t> encoder_backpressure_ticks_{0};
+  std::atomic<std::uint64_t> superseded_ready_frames_{0};
+  std::atomic<std::uint64_t> gpu_slot_timeouts_{0};
+  std::atomic<std::uint64_t> gpu_slots_recovered_{0};
+  std::atomic<std::uint64_t> gpu_frames_dropped_stale_{0};
+  std::atomic<std::size_t> quarantined_slots_{0};
   std::atomic_bool device_failed_{false};
 };
 
@@ -1105,13 +1189,17 @@ class GpuFramePipeline {
       ID3D11DeviceContext* context,
       LUID adapter_luid,
       std::uint32_t output_width,
-      std::uint32_t output_height)
-      : device_(device),
+      std::uint32_t output_height,
+      VideoResourceAdmissionBudget& resource_budget,
+      std::string owner_id)
+      : resource_budget_(&resource_budget),
+        owner_id_(std::move(owner_id)),
+        device_(device),
         context_(context),
         adapter_luid_(adapter_luid),
         output_width_(output_width),
-        output_height_(output_height),
-        active_(createPool()) {
+        output_height_(output_height) {
+    active_ = createPool();
     retired_.reserve(kMaxRetiredGpuPoolGenerations);
   }
 
@@ -1126,7 +1214,8 @@ class GpuFramePipeline {
       syrnike::voice::ScreenCaptureFrameMetrics metrics,
       ScreenGpuFrame& frame) {
     cleanupRetired(method);
-    auto result = active_->process(
+    auto active = activeSnapshot();
+    auto result = active->process(
         source,
         source_width,
         source_height,
@@ -1142,7 +1231,8 @@ class GpuFramePipeline {
       result.error_code = ScreenGpuCaptureErrorCode::GpuTimeout;
       return result;
     }
-    return active_->process(
+    active = activeSnapshot();
+    return active->process(
         source,
         source_width,
         source_height,
@@ -1156,28 +1246,33 @@ class GpuFramePipeline {
 
   ScreenGpuFrameResult poll(const char* method, ScreenGpuFrame& frame) {
     cleanupRetired(method);
-    auto result = active_->poll(method, frame);
+    auto active = activeSnapshot();
+    auto result = active->poll(method, frame);
     if (!result.gpu_capacity_exhausted) return result;
     if (!rollover(method, result.metrics.hresult)) {
       result.status = ScreenGpuFrameStatus::FatalError;
       result.error_code = ScreenGpuCaptureErrorCode::GpuTimeout;
       return result;
     }
-    return active_->poll(method, frame);
+    return activeSnapshot()->poll(method, frame);
   }
 
   void discard(const ScreenGpuFrame& frame) noexcept {
-    active_->discard(frame);
-    for (const auto& retired : retired_) retired->discard(frame);
+    const auto pools = poolSnapshot();
+    pools.active->discard(frame);
+    for (std::size_t index = 0; index < pools.retired_count; ++index) {
+      pools.retired[index]->discard(frame);
+    }
   }
 
   void pollRetirement(const char* method) noexcept {
     cleanupRetired(method);
     ScreenGpuFrame ignored;
     try {
-      const auto result = active_->poll(method, ignored);
+      const auto active = activeSnapshot();
+      const auto result = active->poll(method, ignored);
       if (result.status == ScreenGpuFrameStatus::NewFrame) {
-        active_->discard(ignored);
+        active->discard(ignored);
       }
     } catch (...) {
       // GpuFramePool marks a terminal device before throwing. The backend is
@@ -1186,68 +1281,135 @@ class GpuFramePipeline {
   }
 
   [[nodiscard]] std::size_t availableSlots() const noexcept {
-    return active_->availableSlots();
+    return activeSnapshot()->availableSlots();
   }
 
   [[nodiscard]] std::size_t totalSlots() const noexcept {
-    return active_->totalSlots();
+    return activeSnapshot()->totalSlots();
   }
 
   [[nodiscard]] bool retirementSafe() const noexcept {
-    return retired_.empty() && active_->retirementSafe();
+    const auto pools = poolSnapshot();
+    return pools.retired_count == 0 && pools.active->retirementSafe();
   }
 
   [[nodiscard]] ScreenFrameFlowStats flowStats() const noexcept {
-    auto result = completed_stats_;
-    const auto active = active_->flowStats();
+    ScreenFrameFlowStats result;
+    PoolSnapshot pools;
+    std::uint64_t gpu_pool_rollovers = 0;
+    std::uint64_t gpu_rollovers_blocked = 0;
+    {
+      std::lock_guard lock(state_mutex_);
+      result = completed_stats_;
+      pools.active = active_;
+      pools.retired_count = retired_.size();
+      for (std::size_t index = 0; index < pools.retired_count; ++index) {
+        pools.retired[index] = retired_[index];
+      }
+      gpu_pool_rollovers = gpu_pool_rollovers_;
+      gpu_rollovers_blocked = gpu_rollovers_blocked_;
+    }
+    const auto active = pools.active->flowStats();
     addScreenFrameFlowCounters(result, active);
     result.gpu_completion_p50_us = active.gpu_completion_p50_us;
     result.gpu_completion_p95_us = active.gpu_completion_p95_us;
     result.gpu_completion_max_us = std::max(
         result.gpu_completion_max_us, active.gpu_completion_max_us);
     result.gpu_slots_quarantined = active.gpu_slots_quarantined;
-    for (const auto& retired : retired_) {
-      const auto stats = retired->flowStats();
+    for (std::size_t index = 0; index < pools.retired_count; ++index) {
+      const auto stats = pools.retired[index]->flowStats();
       addScreenFrameFlowCounters(result, stats);
       result.gpu_slots_quarantined += stats.gpu_slots_quarantined;
     }
-    result.gpu_pool_rollovers += gpu_pool_rollovers_;
-    result.gpu_rollovers_blocked += gpu_rollovers_blocked_;
-    result.gpu_retired_generations = retired_.size();
+    result.gpu_pool_rollovers += gpu_pool_rollovers;
+    result.gpu_rollovers_blocked += gpu_rollovers_blocked;
+    result.gpu_retired_generations = pools.retired_count;
     return result;
   }
 
  private:
-  std::unique_ptr<GpuFramePool> createPool() const {
-    return std::make_unique<GpuFramePool>(
+  struct PoolSnapshot {
+    std::shared_ptr<GpuFramePool> active;
+    std::array<
+        std::shared_ptr<GpuFramePool>,
+        kMaxRetiredGpuPoolGenerations> retired;
+    std::size_t retired_count = 0;
+  };
+
+  [[nodiscard]] std::shared_ptr<GpuFramePool> activeSnapshot() const noexcept {
+    std::lock_guard lock(state_mutex_);
+    return active_;
+  }
+
+  [[nodiscard]] PoolSnapshot poolSnapshot() const noexcept {
+    std::lock_guard lock(state_mutex_);
+    PoolSnapshot snapshot;
+    snapshot.active = active_;
+    snapshot.retired_count = retired_.size();
+    for (std::size_t index = 0; index < snapshot.retired_count; ++index) {
+      snapshot.retired[index] = retired_[index];
+    }
+    return snapshot;
+  }
+
+  std::shared_ptr<GpuFramePool> createPool() {
+    const auto generation = ++next_generation_;
+    auto resource_lease = requireScreenVideoResourceAdmission(
+        *resource_budget_,
+        VideoResourceRequest{
+            .owner = VideoResourceOwner::ScreenCapture,
+            .owner_id = owner_id_ + ":encoder_pool:" +
+                std::to_string(generation),
+            .gpu_generations = 1,
+            .textures = {{
+                .width = output_width_,
+                .height = output_height_,
+                .count = kOutputPoolSize,
+                .format = VideoTextureFormat::Nv12,
+            }},
+        });
+    return std::make_shared<GpuFramePool>(
         device_.Get(),
         context_.Get(),
         adapter_luid_,
         output_width_,
-        output_height_);
+        output_height_,
+        std::move(resource_lease));
   }
 
   bool rollover(const char* method, long hresult) {
     cleanupRetired(method);
-    if (retired_.size() >= kMaxRetiredGpuPoolGenerations) {
+    std::size_t retired_count = 0;
+    {
+      std::lock_guard lock(state_mutex_);
+      retired_count = retired_.size();
+    }
+    if (retired_count >= kMaxRetiredGpuPoolGenerations) {
       if (!rollover_blocked_reported_) {
         rollover_blocked_reported_ = true;
-        ++gpu_rollovers_blocked_;
+        {
+          std::lock_guard lock(state_mutex_);
+          ++gpu_rollovers_blocked_;
+        }
         diagnostics::DiagnosticLog::instance().write(
             "screen_gpu_pool_rollover_blocked",
             {
                 {"method", method},
                 {"hresult", static_cast<std::int64_t>(hresult)},
                 {"retiredGenerations",
-                 static_cast<std::uint64_t>(retired_.size())},
+                 static_cast<std::uint64_t>(retired_count)},
             });
       }
       return false;
     }
     auto replacement = createPool();
-    retired_.push_back(std::move(active_));
-    active_ = std::move(replacement);
-    ++gpu_pool_rollovers_;
+    {
+      std::lock_guard lock(state_mutex_);
+      retired_.push_back(std::move(active_));
+      active_ = std::move(replacement);
+      ++gpu_pool_rollovers_;
+      retired_count = retired_.size();
+    }
     rollover_blocked_reported_ = false;
     diagnostics::DiagnosticLog::instance().write(
         "screen_gpu_pool_rollover",
@@ -1256,13 +1418,14 @@ class GpuFramePipeline {
             {"hresult", static_cast<std::int64_t>(hresult)},
             {"count", gpu_pool_rollovers_},
             {"retiredGenerations",
-             static_cast<std::uint64_t>(retired_.size())},
+             static_cast<std::uint64_t>(retired_count)},
         });
     return true;
   }
 
   void cleanupRetired(const char* method) {
     ScreenGpuFrame ignored;
+    std::lock_guard lock(state_mutex_);
     for (auto iterator = retired_.begin(); iterator != retired_.end();) {
       try {
         const auto result = (*iterator)->poll(method, ignored);
@@ -1285,13 +1448,17 @@ class GpuFramePipeline {
     }
   }
 
+  VideoResourceAdmissionBudget* resource_budget_ = nullptr;
+  std::string owner_id_;
+  std::uint64_t next_generation_ = 0;
   ComPtr<ID3D11Device> device_;
   ComPtr<ID3D11DeviceContext> context_;
   LUID adapter_luid_{};
   std::uint32_t output_width_ = 0;
   std::uint32_t output_height_ = 0;
-  std::unique_ptr<GpuFramePool> active_;
-  std::vector<std::unique_ptr<GpuFramePool>> retired_;
+  mutable std::mutex state_mutex_;
+  std::shared_ptr<GpuFramePool> active_;
+  std::vector<std::shared_ptr<GpuFramePool>> retired_;
   ScreenFrameFlowStats completed_stats_;
   std::uint64_t gpu_pool_rollovers_ = 0;
   std::uint64_t gpu_rollovers_blocked_ = 0;
@@ -1465,14 +1632,22 @@ class GpuPreviewPool {
       ID3D11Device* device,
       ID3D11DeviceContext* context,
       std::uint32_t max_width,
-      std::uint32_t max_height)
-      : capture_device_(device),
+      std::uint32_t max_height,
+      VideoResourceAdmissionBudget& resource_budget,
+      std::string owner_id)
+      : resource_budget_(&resource_budget),
+        owner_id_(std::move(owner_id)),
+        capture_device_(device),
         capture_context_(context),
         max_width_(max_width),
         max_height_(max_height) {
-    const auto preview = createSiblingDevice(capture_device_.Get());
+    const auto preview = createSiblingDevice(
+        capture_device_.Get(),
+        *resource_budget_,
+        owner_id_ + ":device:1");
     preview_device_ = preview.device;
     preview_context_ = preview.context;
+    preview_device_lease_ = preview.resource_lease;
     renderer_ = std::make_unique<GpuPreviewRenderer>(
         preview_device_.Get(), preview_context_.Get());
   }
@@ -1497,14 +1672,23 @@ class GpuPreviewPool {
     std::lock_guard lock(mutex_);
     demand_ = demand;
     ++demand_revision_;
-    if (!demand.demanded && pending_) {
+    const bool has_demand = demand.demanded && demand.electron_main_pid != 0;
+    if (!has_demand) {
+      desired_configuration_.reset();
+      for (auto& slot : slots_) {
+        if (slot.phase == SlotPhase::Configuring) {
+          slot.phase = SlotPhase::Available;
+        }
+      }
+    }
+    if (!has_demand && pending_) {
       if (const auto slot = lease_state_.release(pending_->sequence)) {
         closeRemoteHandle(slots_[*slot]);
         slots_[*slot].phase = SlotPhase::Available;
       }
       pending_.reset();
     }
-    if (!demand.demanded) {
+    if (!has_demand) {
       for (std::size_t index = 0; index < slots_.size(); ++index) {
         auto& slot = slots_[index];
         if (slot.phase != SlotPhase::Ready) continue;
@@ -1514,62 +1698,59 @@ class GpuPreviewPool {
     }
   }
 
-  void process(
+  [[nodiscard]] bool tryEnqueue(
       ID3D11Texture2D* source,
       std::uint32_t source_width,
       std::uint32_t source_height,
       std::uint32_t content_width,
       std::uint32_t content_height,
-      std::uint64_t timestamp_us) {
-    poll();
+      std::uint64_t timestamp_us) noexcept {
     ScreenPreviewDemand demand;
     std::uint64_t demand_revision = 0;
     std::uint64_t reserved_sequence = 0;
     std::size_t slot_index = slots_.size();
+    ComPtr<ID3D11Texture2D> capture_bridge;
+    ComPtr<IDXGIKeyedMutex> capture_bridge_mutex;
     const auto now = std::chrono::steady_clock::now();
     {
-      std::lock_guard lock(mutex_);
+      std::unique_lock lock(mutex_, std::try_to_lock);
+      if (!lock.owns_lock()) {
+        ++enqueue_lock_drops_;
+        return true;
+      }
       demand = demand_;
       demand_revision = demand_revision_;
       revokeExpiredLocked(now);
-      if (!demand.demanded || demand.electron_main_pid == 0) return;
-      if (now < next_retry_at_) return;
+      if (!demand.demanded || demand.electron_main_pid == 0) return false;
+      desired_configuration_ = PreviewConfiguration{
+          source_width,
+          source_height,
+          demand.width,
+          demand.height,
+      };
+      if (now < next_retry_at_) return true;
       const auto interval = std::chrono::microseconds(1'000'000 / demand.fps);
       if (last_frame_at_ != std::chrono::steady_clock::time_point{} &&
-          now - last_frame_at_ < interval) return;
+          now - last_frame_at_ < interval) return true;
       reserved_sequence = nextScreenFrameSequence();
-      if (const auto reserved =
-              lease_state_.reserve(reserved_sequence, now, next_slot_)) {
-        slot_index = *reserved;
+      for (std::size_t attempt = 0; attempt < slots_.size(); ++attempt) {
+        const auto candidate = (next_slot_ + attempt) % slots_.size();
+        const auto& slot = slots_[candidate];
+        if (slot.phase != SlotPhase::Available ||
+            !matches(slot, *desired_configuration_)) {
+          continue;
+        }
+        if (const auto reserved = lease_state_.reserve(
+                reserved_sequence, now, candidate)) {
+          slot_index = *reserved;
+          break;
+        }
       }
-    }
-    if (slot_index == slots_.size()) return;
-
-    auto& slot = slots_[slot_index];
-    bool bridge_acquired = false;
-    try {
-      configureSlot(slot, source_width, source_height, demand.width, demand.height);
-      const HRESULT acquire =
-          slot.capture_bridge_mutex->AcquireSync(kProducerKey, 0);
-      if (acquire == WAIT_TIMEOUT || acquire == DXGI_ERROR_WAIT_TIMEOUT) {
-        std::lock_guard lock(mutex_);
-        slot.phase = SlotPhase::Available;
-        static_cast<void>(lease_state_.release(reserved_sequence));
-        return;
+      if (slot_index == slots_.size()) {
+        ++enqueue_coalesced_drops_;
+        return true;
       }
-      requireHr(
-          acquire,
-          ScreenGpuCaptureErrorCode::InteropUnavailable,
-          "failed to acquire isolated preview bridge");
-      bridge_acquired = true;
-      capture_context_->CopyResource(slot.capture_bridge.Get(), source);
-      requireHr(
-          slot.capture_bridge_mutex->ReleaseSync(kConsumerKey),
-          ScreenGpuCaptureErrorCode::DeviceLost,
-          "failed to submit isolated preview bridge copy");
-      bridge_acquired = false;
-
-      std::lock_guard lock(mutex_);
+      auto& slot = slots_[slot_index];
       ++bridge_submissions_;
       last_frame_at_ = now;
       next_slot_ = (slot_index + 1) % slots_.size();
@@ -1580,59 +1761,86 @@ class GpuPreviewPool {
       slot.demand_revision = demand_revision;
       slot.content_width = std::min(source_width, content_width);
       slot.content_height = std::min(source_height, content_height);
+      capture_bridge = slot.capture_bridge;
+      capture_bridge_mutex = slot.capture_bridge_mutex;
+    }
+
+    bool bridge_acquired = false;
+    try {
+      const HRESULT acquire =
+          capture_bridge_mutex->AcquireSync(kProducerKey, 0);
+      if (acquire == WAIT_TIMEOUT || acquire == DXGI_ERROR_WAIT_TIMEOUT) {
+        std::unique_lock lock(mutex_, std::try_to_lock);
+        auto& slot = slots_[slot_index];
+        if (lock.owns_lock() && slot.sequence == reserved_sequence) {
+          slot.phase = SlotPhase::Available;
+          static_cast<void>(lease_state_.release(reserved_sequence));
+        }
+        return true;
+      }
+      requireHr(
+          acquire,
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "failed to acquire isolated preview bridge");
+      bridge_acquired = true;
+      capture_context_->CopyResource(capture_bridge.Get(), source);
+      requireHr(
+          capture_bridge_mutex->ReleaseSync(kConsumerKey),
+          ScreenGpuCaptureErrorCode::DeviceLost,
+          "failed to submit isolated preview bridge copy");
+      bridge_acquired = false;
     } catch (const ScreenGpuCaptureError& error) {
       if (bridge_acquired) {
         static_cast<void>(
-            slot.capture_bridge_mutex->ReleaseSync(kProducerKey));
+            capture_bridge_mutex->ReleaseSync(kProducerKey));
       }
-      std::lock_guard lock(mutex_);
+      std::unique_lock lock(mutex_, std::try_to_lock);
+      if (!lock.owns_lock()) return true;
+      auto& slot = slots_[slot_index];
+      if (slot.sequence != reserved_sequence) return true;
       if (error.code() == ScreenGpuCaptureErrorCode::DeviceLost ||
           error.code() == ScreenGpuCaptureErrorCode::DeviceUnavailable) {
         preview_device_reset_required_ = true;
       }
-      closeRemoteHandle(slot);
-      slot.source_view.Reset();
-      slot.texture.Reset();
-      slot.completion.reset();
-      slot.phase = SlotPhase::Available;
+      resetSlotResources(slot);
       static_cast<void>(lease_state_.release(reserved_sequence));
       recordFailureLocked(error.code(), error.hresult(), error.what(), now);
     } catch (const std::exception& error) {
       if (bridge_acquired) {
         static_cast<void>(
-            slot.capture_bridge_mutex->ReleaseSync(kProducerKey));
+            capture_bridge_mutex->ReleaseSync(kProducerKey));
       }
-      std::lock_guard lock(mutex_);
-      closeRemoteHandle(slot);
-      slot.source_view.Reset();
-      slot.texture.Reset();
-      slot.completion.reset();
-      slot.phase = SlotPhase::Available;
+      std::unique_lock lock(mutex_, std::try_to_lock);
+      if (!lock.owns_lock()) return true;
+      auto& slot = slots_[slot_index];
+      if (slot.sequence != reserved_sequence) return true;
+      resetSlotResources(slot);
       static_cast<void>(lease_state_.release(reserved_sequence));
       recordFailureLocked(
           ScreenGpuCaptureErrorCode::InteropUnavailable, 0, error.what(), now);
     } catch (...) {
       if (bridge_acquired) {
         static_cast<void>(
-            slot.capture_bridge_mutex->ReleaseSync(kProducerKey));
+            capture_bridge_mutex->ReleaseSync(kProducerKey));
       }
-      std::lock_guard lock(mutex_);
-      closeRemoteHandle(slot);
-      slot.source_view.Reset();
-      slot.texture.Reset();
-      slot.completion.reset();
-      slot.phase = SlotPhase::Available;
+      std::unique_lock lock(mutex_, std::try_to_lock);
+      if (!lock.owns_lock()) return true;
+      auto& slot = slots_[slot_index];
+      if (slot.sequence != reserved_sequence) return true;
+      resetSlotResources(slot);
       static_cast<void>(lease_state_.release(reserved_sequence));
       recordFailureLocked(
           ScreenGpuCaptureErrorCode::InteropUnavailable, 0,
           "unknown local screen preview failure", now);
     }
+    return true;
   }
 
   void poll() noexcept {
     const auto now = std::chrono::steady_clock::now();
     tryResetPreviewDevice(now);
     try {
+      configureAvailableSlot();
       pollCompletions();
       publishReady(now);
     } catch (const ScreenGpuCaptureError& error) {
@@ -1656,7 +1864,35 @@ class GpuPreviewPool {
     }
   }
 
+  [[nodiscard]] bool pendingWork() const noexcept {
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard lock(mutex_);
+    if (preview_device_reset_required_ && now >= next_retry_at_) return true;
+    for (const auto& slot : slots_) {
+      switch (slot.phase) {
+        case SlotPhase::Configuring:
+        case SlotPhase::BridgePending:
+        case SlotPhase::BridgeQuarantined:
+        case SlotPhase::Converting:
+        case SlotPhase::Quarantined:
+        case SlotPhase::Ready:
+          return true;
+        case SlotPhase::Available:
+          if (demand_.demanded && demand_.electron_main_pid != 0 &&
+              desired_configuration_ && now >= next_retry_at_ &&
+              !matches(slot, *desired_configuration_)) {
+            return true;
+          }
+          break;
+        case SlotPhase::Delivered:
+          break;
+      }
+    }
+    return false;
+  }
+
   bool take(ScreenPreviewFrame& frame) {
+    poll();
     std::lock_guard lock(mutex_);
     revokeExpiredLocked(std::chrono::steady_clock::now());
     if (!pending_) return false;
@@ -1710,6 +1946,7 @@ class GpuPreviewPool {
  private:
   enum class SlotPhase {
     Available,
+    Configuring,
     BridgePending,
     BridgeQuarantined,
     Converting,
@@ -1719,6 +1956,8 @@ class GpuPreviewPool {
   };
 
   struct Slot {
+    std::shared_ptr<VideoResourceLease> device_lease;
+    std::shared_ptr<VideoResourceLease> texture_lease;
     ComPtr<ID3D11Texture2D> capture_bridge;
     ComPtr<IDXGIKeyedMutex> capture_bridge_mutex;
     ComPtr<ID3D11Texture2D> preview_bridge;
@@ -1744,6 +1983,96 @@ class GpuPreviewPool {
     std::uint32_t content_height = 0;
     std::uint64_t device_generation = 0;
   };
+
+  struct PreviewConfiguration {
+    std::uint32_t source_width = 0;
+    std::uint32_t source_height = 0;
+    std::uint32_t output_width = 0;
+    std::uint32_t output_height = 0;
+  };
+
+  bool matches(
+      const Slot& slot,
+      const PreviewConfiguration& configuration) const noexcept {
+    return slot.texture && slot.source_width == configuration.source_width &&
+        slot.source_height == configuration.source_height &&
+        slot.output_width == configuration.output_width &&
+        slot.output_height == configuration.output_height &&
+        slot.device_generation == device_generation_;
+  }
+
+  void configureAvailableSlot() {
+    PreviewConfiguration configuration;
+    std::uint64_t demand_revision = 0;
+    std::size_t slot_index = slots_.size();
+    {
+      std::lock_guard lock(mutex_);
+      if (!demand_.demanded || demand_.electron_main_pid == 0 ||
+          !desired_configuration_ ||
+          std::chrono::steady_clock::now() < next_retry_at_) {
+        return;
+      }
+      configuration = *desired_configuration_;
+      demand_revision = demand_revision_;
+      for (std::size_t attempt = 0; attempt < slots_.size(); ++attempt) {
+        const auto candidate = (next_configure_slot_ + attempt) % slots_.size();
+        auto& slot = slots_[candidate];
+        if (slot.phase != SlotPhase::Available ||
+            matches(slot, configuration)) {
+          continue;
+        }
+        slot.phase = SlotPhase::Configuring;
+        slot_index = candidate;
+        break;
+      }
+    }
+    if (slot_index == slots_.size()) return;
+
+    try {
+      auto candidate = createConfiguredSlot(configuration);
+      std::lock_guard lock(mutex_);
+      auto& slot = slots_[slot_index];
+      const bool configuration_is_current =
+          demand_.demanded && demand_.electron_main_pid != 0 &&
+          demand_revision_ == demand_revision && desired_configuration_ &&
+          desired_configuration_->source_width == configuration.source_width &&
+          desired_configuration_->source_height == configuration.source_height &&
+          desired_configuration_->output_width == configuration.output_width &&
+          desired_configuration_->output_height == configuration.output_height;
+      if (slot.phase != SlotPhase::Configuring || !configuration_is_current) {
+        if (slot.phase == SlotPhase::Configuring) {
+          slot.phase = SlotPhase::Available;
+        }
+        resetSlotResources(candidate);
+        return;
+      }
+      resetSlotResources(slot);
+      slot = std::move(candidate);
+      next_configure_slot_ = (slot_index + 1) % slots_.size();
+    } catch (const ScreenGpuCaptureError& error) {
+      std::lock_guard lock(mutex_);
+      if (slots_[slot_index].phase == SlotPhase::Configuring) {
+        slots_[slot_index].phase = SlotPhase::Available;
+      }
+      if (error.code() == ScreenGpuCaptureErrorCode::DeviceLost ||
+          error.code() == ScreenGpuCaptureErrorCode::DeviceUnavailable) {
+        preview_device_reset_required_ = true;
+      }
+      recordFailureLocked(
+          error.code(), error.hresult(), error.what(),
+          std::chrono::steady_clock::now());
+    } catch (const std::exception& error) {
+      std::lock_guard lock(mutex_);
+      if (slots_[slot_index].phase == SlotPhase::Configuring) {
+        slots_[slot_index].phase = SlotPhase::Available;
+      }
+      recordFailureLocked(
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          0,
+          error.what(),
+          std::chrono::steady_clock::now());
+    }
+  }
 
   void pollCompletions() {
     const auto now = std::chrono::steady_clock::now();
@@ -1879,60 +2208,77 @@ class GpuPreviewPool {
   void publishReady(std::chrono::steady_clock::time_point now) {
     std::lock_guard lock(mutex_);
     revokeExpiredLocked(now);
-    if (pending_) return;
-
-    for (std::size_t attempt = 0; attempt < slots_.size(); ++attempt) {
-      const auto index = (next_ready_slot_ + attempt) % slots_.size();
+    const auto discard_ready = [this](Slot& slot) {
+      static_cast<void>(lease_state_.release(slot.sequence));
+      slot.phase = SlotPhase::Available;
+      slot.sequence = 0;
+      slot.timestamp_us = 0;
+      ++frames_dropped_stale_;
+    };
+    std::optional<std::size_t> newest;
+    for (std::size_t index = 0; index < slots_.size(); ++index) {
       auto& slot = slots_[index];
       if (slot.phase != SlotPhase::Ready) continue;
       if (!demand_.demanded || demand_.electron_main_pid == 0 ||
-          slot.demand_revision != demand_revision_) {
-        static_cast<void>(lease_state_.release(slot.sequence));
-        slot.phase = SlotPhase::Available;
+          slot.demand_revision != demand_revision_ ||
+          slot.sequence <= last_published_sequence_) {
+        discard_ready(slot);
         continue;
       }
-
-      HANDLE main_process =
-          OpenProcess(PROCESS_DUP_HANDLE, FALSE, demand_.electron_main_pid);
-      if (!main_process) {
-        static_cast<void>(lease_state_.release(slot.sequence));
-        slot.phase = SlotPhase::Available;
-        throw ScreenGpuCaptureError(
-            ScreenGpuCaptureErrorCode::InteropUnavailable,
-            "Electron main process is unavailable for preview");
+      if (!newest || slot.sequence > slots_[*newest].sequence) {
+        newest = index;
       }
-      HANDLE duplicated = nullptr;
-      const BOOL duplicated_ok = DuplicateHandle(
-          GetCurrentProcess(),
-          slot.shared_handle,
-          main_process,
-          &duplicated,
-          0,
-          FALSE,
-          DUPLICATE_SAME_ACCESS);
-      CloseHandle(main_process);
-      if (!duplicated_ok) {
-        static_cast<void>(lease_state_.release(slot.sequence));
-        slot.phase = SlotPhase::Available;
-        throw ScreenGpuCaptureError(
-            ScreenGpuCaptureErrorCode::InteropUnavailable,
-            "failed to duplicate preview texture handle");
-      }
-
-      slot.remote_handle = duplicated;
-      slot.remote_pid = demand_.electron_main_pid;
-      slot.phase = SlotPhase::Delivered;
-      lease_state_.publishPending(slot.sequence);
-      pending_ = ScreenPreviewFrame{
-          slot.sequence,
-          slot.timestamp_us,
-          slot.output_width,
-          slot.output_height,
-          reinterpret_cast<std::uint64_t>(duplicated),
-      };
-      next_ready_slot_ = (index + 1) % slots_.size();
-      return;
     }
+    if (!newest) return;
+    for (std::size_t index = 0; index < slots_.size(); ++index) {
+      auto& slot = slots_[index];
+      if (index == *newest || slot.phase != SlotPhase::Ready) continue;
+      discard_ready(slot);
+    }
+    if (pending_) return;
+
+    const auto index = *newest;
+    auto& slot = slots_[index];
+
+    HANDLE main_process =
+        OpenProcess(PROCESS_DUP_HANDLE, FALSE, demand_.electron_main_pid);
+    if (!main_process) {
+      static_cast<void>(lease_state_.release(slot.sequence));
+      slot.phase = SlotPhase::Available;
+      throw ScreenGpuCaptureError(
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "Electron main process is unavailable for preview");
+    }
+    HANDLE duplicated = nullptr;
+    const BOOL duplicated_ok = DuplicateHandle(
+        GetCurrentProcess(),
+        slot.shared_handle,
+        main_process,
+        &duplicated,
+        0,
+        FALSE,
+        DUPLICATE_SAME_ACCESS);
+    CloseHandle(main_process);
+    if (!duplicated_ok) {
+      static_cast<void>(lease_state_.release(slot.sequence));
+      slot.phase = SlotPhase::Available;
+      throw ScreenGpuCaptureError(
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "failed to duplicate preview texture handle");
+    }
+
+    slot.remote_handle = duplicated;
+    slot.remote_pid = demand_.electron_main_pid;
+    slot.phase = SlotPhase::Delivered;
+    lease_state_.publishPending(slot.sequence);
+    last_published_sequence_ = slot.sequence;
+    pending_ = ScreenPreviewFrame{
+        slot.sequence,
+        slot.timestamp_us,
+        slot.output_width,
+        slot.output_height,
+        reinterpret_cast<std::uint64_t>(duplicated),
+    };
   }
 
   void revokeExpiredLocked(
@@ -1941,143 +2287,177 @@ class GpuPreviewPool {
     lease_state_.expire(
         now,
         lease_timeout,
-        [this](std::size_t slot, std::uint64_t sequence) {
-          closeRemoteHandle(slots_[slot]);
-          slots_[slot].phase = SlotPhase::Available;
-          if (pending_ && pending_->sequence == sequence) pending_.reset();
+        [](std::size_t, std::uint64_t) {
+          // Electron owns the delivered allocation until its renderer fence.
+          // The main-process bridge handles timeout recovery and bounded
+          // replacement admission without making this native slot writable.
         });
   }
 
-  void configureSlot(
-      Slot& slot,
-      std::uint32_t source_width,
-      std::uint32_t source_height,
-      std::uint32_t output_width,
-      std::uint32_t output_height) {
-    if (slot.texture && slot.device_generation == device_generation_ &&
-        slot.source_width == source_width &&
-        slot.source_height == source_height && slot.output_width == output_width &&
-        slot.output_height == output_height) return;
+  Slot createConfiguredSlot(const PreviewConfiguration& configuration) {
+    const auto source_width = configuration.source_width;
+    const auto source_height = configuration.source_height;
+    const auto output_width = configuration.output_width;
+    const auto output_height = configuration.output_height;
+    Slot candidate;
+    candidate.device_lease = preview_device_lease_;
+    candidate.texture_lease = requireScreenVideoResourceAdmission(
+        *resource_budget_,
+        VideoResourceRequest{
+            .owner = VideoResourceOwner::ScreenPreview,
+            .owner_id = owner_id_ + ":slot:" +
+                std::to_string(++slot_generation_),
+            .gpu_generations = 1,
+            .textures = {
+                {
+                    .width = source_width,
+                    .height = source_height,
+                    .count = 1,
+                    .format = VideoTextureFormat::Bgra8,
+                },
+                {
+                    .width = output_width,
+                    .height = output_height,
+                    .count = 1,
+                    .format = VideoTextureFormat::Bgra8,
+                },
+            },
+        });
+    try {
+      candidate.completion = std::make_unique<D3d11GpuCompletion>(
+          preview_device_.Get(), preview_context_.Get());
+      requireHr(
+          candidate.completion->initializationResult(),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "failed to create preview completion query");
+
+      D3D11_TEXTURE2D_DESC bridge_description{};
+      bridge_description.Width = source_width;
+      bridge_description.Height = source_height;
+      bridge_description.MipLevels = 1;
+      bridge_description.ArraySize = 1;
+      bridge_description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+      bridge_description.SampleDesc.Count = 1;
+      bridge_description.Usage = D3D11_USAGE_DEFAULT;
+      bridge_description.BindFlags =
+          D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+      bridge_description.MiscFlags =
+          D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+          D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+      requireHr(
+          capture_device_->CreateTexture2D(
+              &bridge_description, nullptr, &candidate.capture_bridge),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "failed to create isolated preview bridge texture");
+      requireHr(
+          candidate.capture_bridge.As(&candidate.capture_bridge_mutex),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "capture preview bridge does not expose keyed mutex");
+      ComPtr<IDXGIResource1> bridge_resource;
+      requireHr(
+          candidate.capture_bridge.As(&bridge_resource),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "capture preview bridge does not expose IDXGIResource1");
+      requireHr(
+          bridge_resource->CreateSharedHandle(
+              nullptr,
+              DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
+              nullptr,
+              &candidate.bridge_handle),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "failed to export isolated preview bridge");
+      ComPtr<ID3D11Device1> preview_device1;
+      requireHr(
+          preview_device_.As(&preview_device1),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "isolated preview device does not expose ID3D11Device1");
+      requireHr(
+          preview_device1->OpenSharedResource1(
+              candidate.bridge_handle,
+              IID_PPV_ARGS(&candidate.preview_bridge)),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "failed to open isolated preview bridge");
+      requireHr(
+          candidate.preview_bridge.As(&candidate.preview_bridge_mutex),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "consumer preview bridge does not expose keyed mutex");
+
+      D3D11_TEXTURE2D_DESC description{};
+      description.Width = output_width;
+      description.Height = output_height;
+      description.MipLevels = 1;
+      description.ArraySize = 1;
+      description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+      description.SampleDesc.Count = 1;
+      description.Usage = D3D11_USAGE_DEFAULT;
+      description.BindFlags =
+          D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+      // Electron's BGRA shared-texture contract requires an NT shared handle
+      // without IDXGIKeyedMutex. The render pass writes directly into this
+      // texture, and the slot remains immutable while Electron owns the frame.
+      description.MiscFlags =
+          D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+          D3D11_RESOURCE_MISC_SHARED;
+      requireHr(
+          preview_device_->CreateTexture2D(
+              &description, nullptr, &candidate.texture),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "failed to create shared BGRA preview texture");
+      ComPtr<IDXGIResource1> resource;
+      requireHr(
+          candidate.texture.As(&resource),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "preview texture does not expose IDXGIResource1");
+      requireHr(
+          resource->CreateSharedHandle(
+              nullptr,
+              DXGI_SHARED_RESOURCE_READ,
+              nullptr,
+              &candidate.shared_handle),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "failed to export preview texture handle");
+      requireHr(
+          preview_device_->CreateShaderResourceView(
+              candidate.preview_bridge.Get(),
+              nullptr,
+              &candidate.source_view),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "failed to create isolated preview source view");
+      requireHr(
+          preview_device_->CreateRenderTargetView(
+              candidate.texture.Get(), nullptr, &candidate.output_view),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "failed to create preview render target");
+    } catch (...) {
+      resetSlotResources(candidate);
+      throw;
+    }
+    candidate.source_width = source_width;
+    candidate.source_height = source_height;
+    candidate.output_width = output_width;
+    candidate.output_height = output_height;
+    candidate.device_generation = device_generation_;
+
+    return candidate;
+  }
+
+  static void resetSlotResources(Slot& slot) noexcept {
+    closeRemoteHandle(slot);
     if (slot.bridge_handle) CloseHandle(slot.bridge_handle);
     if (slot.shared_handle) CloseHandle(slot.shared_handle);
-    slot.capture_bridge.Reset();
-    slot.capture_bridge_mutex.Reset();
-    slot.preview_bridge.Reset();
-    slot.preview_bridge_mutex.Reset();
-    slot.texture.Reset();
-    slot.source_view.Reset();
-    slot.output_view.Reset();
     slot.bridge_handle = nullptr;
     slot.shared_handle = nullptr;
-    slot.source_width = 0;
-    slot.source_height = 0;
-    slot.output_width = 0;
-    slot.output_height = 0;
-    slot.completion =
-        std::make_unique<D3d11GpuCompletion>(
-            preview_device_.Get(), preview_context_.Get());
-    requireHr(
-        slot.completion->initializationResult(),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "failed to create preview completion query");
-
-    D3D11_TEXTURE2D_DESC bridge_description{};
-    bridge_description.Width = source_width;
-    bridge_description.Height = source_height;
-    bridge_description.MipLevels = 1;
-    bridge_description.ArraySize = 1;
-    bridge_description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    bridge_description.SampleDesc.Count = 1;
-    bridge_description.Usage = D3D11_USAGE_DEFAULT;
-    bridge_description.BindFlags =
-        D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-    bridge_description.MiscFlags =
-        D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
-        D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
-    requireHr(
-        capture_device_->CreateTexture2D(
-            &bridge_description, nullptr, &slot.capture_bridge),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "failed to create isolated preview bridge texture");
-    requireHr(
-        slot.capture_bridge.As(&slot.capture_bridge_mutex),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "capture preview bridge does not expose keyed mutex");
-    ComPtr<IDXGIResource1> bridge_resource;
-    requireHr(
-        slot.capture_bridge.As(&bridge_resource),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "capture preview bridge does not expose IDXGIResource1");
-    requireHr(
-        bridge_resource->CreateSharedHandle(
-            nullptr,
-            DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
-            nullptr,
-            &slot.bridge_handle),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "failed to export isolated preview bridge");
-    ComPtr<ID3D11Device1> preview_device1;
-    requireHr(
-        preview_device_.As(&preview_device1),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "isolated preview device does not expose ID3D11Device1");
-    requireHr(
-        preview_device1->OpenSharedResource1(
-            slot.bridge_handle, IID_PPV_ARGS(&slot.preview_bridge)),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "failed to open isolated preview bridge");
-    requireHr(
-        slot.preview_bridge.As(&slot.preview_bridge_mutex),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "consumer preview bridge does not expose keyed mutex");
-
-    D3D11_TEXTURE2D_DESC description{};
-    description.Width = output_width;
-    description.Height = output_height;
-    description.MipLevels = 1;
-    description.ArraySize = 1;
-    description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    description.SampleDesc.Count = 1;
-    description.Usage = D3D11_USAGE_DEFAULT;
-    description.BindFlags =
-        D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-    // Electron's BGRA shared-texture contract requires an NT shared handle
-    // without IDXGIKeyedMutex. The render pass writes directly into this
-    // texture, and the slot remains immutable while Electron owns the frame.
-    description.MiscFlags =
-        D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
-        D3D11_RESOURCE_MISC_SHARED;
-    requireHr(
-        preview_device_->CreateTexture2D(
-            &description, nullptr, &slot.texture),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "failed to create shared BGRA preview texture");
-    ComPtr<IDXGIResource1> resource;
-    requireHr(
-        slot.texture.As(&resource),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "preview texture does not expose IDXGIResource1");
-    requireHr(
-        resource->CreateSharedHandle(
-            nullptr, DXGI_SHARED_RESOURCE_READ, nullptr, &slot.shared_handle),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "failed to export preview texture handle");
-
-    requireHr(
-        preview_device_->CreateShaderResourceView(
-            slot.preview_bridge.Get(), nullptr, &slot.source_view),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "failed to create isolated preview source view");
-    requireHr(
-        preview_device_->CreateRenderTargetView(
-            slot.texture.Get(), nullptr, &slot.output_view),
-        ScreenGpuCaptureErrorCode::InteropUnavailable,
-        "failed to create preview render target");
-    slot.source_width = source_width;
-    slot.source_height = source_height;
-    slot.output_width = output_width;
-    slot.output_height = output_height;
-    slot.device_generation = device_generation_;
+    slot.capture_bridge_mutex.Reset();
+    slot.capture_bridge.Reset();
+    slot.preview_bridge_mutex.Reset();
+    slot.preview_bridge.Reset();
+    slot.source_view.Reset();
+    slot.output_view.Reset();
+    slot.texture.Reset();
+    slot.completion.reset();
+    slot.texture_lease.reset();
+    slot.device_lease.reset();
+    slot = Slot{};
   }
 
   static void closeRemoteHandle(Slot& slot) noexcept {
@@ -2125,13 +2505,18 @@ class GpuPreviewPool {
     }
 
     try {
-      auto replacement = createSiblingDevice(capture_device_.Get());
+      auto replacement = createSiblingDevice(
+          capture_device_.Get(),
+          *resource_budget_,
+          owner_id_ + ":device:" +
+              std::to_string(device_generation_ + 1));
       auto replacement_renderer = std::make_unique<GpuPreviewRenderer>(
           replacement.device.Get(), replacement.context.Get());
 
       std::lock_guard lock(mutex_);
       preview_device_ = std::move(replacement.device);
       preview_context_ = std::move(replacement.context);
+      preview_device_lease_ = std::move(replacement.resource_lease);
       renderer_ = std::move(replacement_renderer);
       ++device_generation_;
       ++device_resets_;
@@ -2167,6 +2552,9 @@ class GpuPreviewPool {
     }
   }
 
+  VideoResourceAdmissionBudget* resource_budget_ = nullptr;
+  std::string owner_id_;
+  std::shared_ptr<VideoResourceLease> preview_device_lease_;
   ComPtr<ID3D11Device> capture_device_;
   ComPtr<ID3D11DeviceContext> capture_context_;
   ComPtr<ID3D11Device> preview_device_;
@@ -2180,10 +2568,13 @@ class GpuPreviewPool {
   mutable ScreenPreviewLeaseState<3> lease_state_;
   mutable std::optional<ScreenPreviewFrame> pending_;
   std::optional<ScreenPreviewFailure> pending_failure_;
+  std::optional<PreviewConfiguration> desired_configuration_;
   std::size_t next_slot_ = 0;
-  std::size_t next_ready_slot_ = 0;
+  std::size_t next_configure_slot_ = 0;
+  std::uint64_t last_published_sequence_ = 0;
   std::uint64_t demand_revision_ = 0;
   std::uint64_t device_generation_ = 1;
+  std::uint64_t slot_generation_ = 0;
   bool preview_device_reset_required_ = false;
   std::chrono::steady_clock::time_point last_frame_at_{};
   std::chrono::steady_clock::time_point next_retry_at_{};
@@ -2198,6 +2589,8 @@ class GpuPreviewPool {
   std::uint64_t slot_timeouts_ = 0;
   std::uint64_t frames_dropped_stale_ = 0;
   std::uint64_t device_resets_ = 0;
+  std::uint64_t enqueue_lock_drops_ = 0;
+  std::uint64_t enqueue_coalesced_drops_ = 0;
 };
 
 class DxgiGpuCapturer final : public ScreenGpuCapturer {
@@ -2205,11 +2598,23 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
   DxgiGpuCapturer(
       const syrnike::voice::ScreenCaptureTarget& target,
       std::uint32_t width,
-      std::uint32_t height)
-      : target_(target), selection_(selectAdapter(target_)), d3d_(createDevice(selection_)),
-        compositor_(d3d_.device.Get(), d3d_.context.Get()),
-        pipeline_(d3d_.device.Get(), d3d_.context.Get(), d3d_.adapter_luid, width, height),
-        preview_(d3d_.device.Get(), d3d_.context.Get(), width, height) {
+      std::uint32_t height,
+      VideoResourceAdmissionBudget& resource_budget,
+      std::string owner_id)
+      : target_(target),
+        resource_budget_(&resource_budget),
+        owner_id_(std::move(owner_id)),
+        selection_(selectAdapter(target_)),
+        d3d_(createDevice(
+            selection_, *resource_budget_, owner_id_ + ":dxgi_device")),
+        compositor_(
+            d3d_.device.Get(), d3d_.context.Get(), *resource_budget_, owner_id_),
+        pipeline_(
+            d3d_.device.Get(), d3d_.context.Get(), d3d_.adapter_luid, width,
+            height, *resource_budget_, owner_id_),
+        preview_(
+            d3d_.device.Get(), d3d_.context.Get(), width, height,
+            *resource_budget_, owner_id_ + ":preview") {
     recreateDuplication();
   }
 
@@ -2320,6 +2725,18 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
   void discard(const ScreenGpuFrame& frame) noexcept override {
     pipeline_.discard(frame);
   }
+  bool requestPreviewFrame() noexcept override {
+    if (!latest_texture_) return false;
+    return preview_.tryEnqueue(
+        latest_texture_.Get(), native_width_, native_height_, native_width_,
+        native_height_, steadyMicros());
+  }
+  void pollOptionalWork() noexcept override {
+    preview_.poll();
+  }
+  bool optionalWorkPending() const noexcept override {
+    return preview_.pendingWork();
+  }
   void pollRetirement() noexcept override {
     preview_.poll();
     pipeline_.pollRetirement(method());
@@ -2380,21 +2797,18 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
 
   void suspendDuplication() noexcept {
     duplication_.Reset();
+    duplication_lease_.reset();
   }
 
  private:
   ScreenGpuFrameResult sampleLatest(ScreenGpuFrame& frame) {
     if (!latest_texture_) {
-      preview_.poll();
       return pipeline_.poll(method(), frame);
     }
 
     const auto now = std::chrono::steady_clock::now();
     const auto reason = cadence_.decision(now);
     const auto timestamp_us = steadyMicros();
-    preview_.process(
-        latest_texture_.Get(), native_width_, native_height_, native_width_,
-        native_height_, timestamp_us);
     if (reason == ScreenFrameSubmitReason::None) {
       return pipeline_.poll(method(), frame);
     }
@@ -2412,15 +2826,40 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
   }
 
   void recreateDuplication() {
-    duplication_.Reset();
     requireHr(
         selection_.output->GetDesc(&selection_.output_description),
         ScreenGpuCaptureErrorCode::CaptureUnavailable,
         "failed to refresh selected DXGI output");
+    const auto candidate_width = static_cast<std::uint32_t>(
+        selection_.output_description.DesktopCoordinates.right -
+        selection_.output_description.DesktopCoordinates.left);
+    const auto candidate_height = static_cast<std::uint32_t>(
+        selection_.output_description.DesktopCoordinates.bottom -
+        selection_.output_description.DesktopCoordinates.top);
+    auto candidate_lease = requireScreenVideoResourceAdmission(
+        *resource_budget_,
+        VideoResourceRequest{
+            .owner = VideoResourceOwner::ScreenCapture,
+            .owner_id = owner_id_ + ":dxgi_duplication:" +
+                std::to_string(++duplication_generation_),
+            .gpu_generations = 1,
+            .textures = {{
+                .width = candidate_width,
+                .height = candidate_height,
+                .count = 1,
+                .format = VideoTextureFormat::Bgra8,
+            }},
+        });
+    duplication_.Reset();
+    duplication_lease_.reset();
+    ComPtr<IDXGIOutputDuplication> candidate_duplication;
     requireHr(
-        selection_.output->DuplicateOutput(d3d_.device.Get(), &duplication_),
+        selection_.output->DuplicateOutput(
+            d3d_.device.Get(), &candidate_duplication),
         ScreenGpuCaptureErrorCode::CaptureUnavailable,
         "failed to create DXGI output duplication");
+    duplication_ = std::move(candidate_duplication);
+    duplication_lease_ = std::move(candidate_lease);
     // A duplication session boundary can also change the desktop dimensions.
     // Never sample the previous session's texture using the refreshed output
     // description; wait for the first frame from the replacement duplication.
@@ -2428,15 +2867,13 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
     latest_metrics_ = {};
     cadence_.reset();
     duplication_access_lost_ = false;
-    native_width_ = static_cast<std::uint32_t>(
-        selection_.output_description.DesktopCoordinates.right -
-        selection_.output_description.DesktopCoordinates.left);
-    native_height_ = static_cast<std::uint32_t>(
-        selection_.output_description.DesktopCoordinates.bottom -
-        selection_.output_description.DesktopCoordinates.top);
+    native_width_ = candidate_width;
+    native_height_ = candidate_height;
   }
 
   syrnike::voice::ScreenCaptureTarget target_;
+  VideoResourceAdmissionBudget* resource_budget_ = nullptr;
+  std::string owner_id_;
   AdapterSelection selection_;
   D3dDevice d3d_;
   DxgiFrameCompositor compositor_;
@@ -2445,7 +2882,9 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
   ScreenFrameCadence cadence_;
   ComPtr<ID3D11Texture2D> latest_texture_;
   syrnike::voice::ScreenCaptureFrameMetrics latest_metrics_;
+  std::shared_ptr<VideoResourceLease> duplication_lease_;
   ComPtr<IDXGIOutputDuplication> duplication_;
+  std::uint64_t duplication_generation_ = 0;
   bool duplication_access_lost_ = false;
   std::uint32_t native_width_ = 0;
   std::uint32_t native_height_ = 0;
@@ -2456,10 +2895,21 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
   WgcGpuCapturer(
       const syrnike::voice::ScreenCaptureTarget& target,
       std::uint32_t width,
-      std::uint32_t height)
-      : target_(target), selection_(selectAdapter(target_)), d3d_(createDevice(selection_)),
-        pipeline_(d3d_.device.Get(), d3d_.context.Get(), d3d_.adapter_luid, width, height),
-        preview_(d3d_.device.Get(), d3d_.context.Get(), width, height) {
+      std::uint32_t height,
+      VideoResourceAdmissionBudget& resource_budget,
+      std::string owner_id)
+      : target_(target),
+        resource_budget_(&resource_budget),
+        owner_id_(std::move(owner_id)),
+        selection_(selectAdapter(target_)),
+        d3d_(createDevice(
+            selection_, *resource_budget_, owner_id_ + ":wgc_device")),
+        pipeline_(
+            d3d_.device.Get(), d3d_.context.Get(), d3d_.adapter_luid, width,
+            height, *resource_budget_, owner_id_),
+        preview_(
+            d3d_.device.Get(), d3d_.context.Get(), width, height,
+            *resource_budget_, owner_id_ + ":preview") {
     initialize();
   }
 
@@ -2608,6 +3058,18 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
   void discard(const ScreenGpuFrame& frame) noexcept override {
     pipeline_.discard(frame);
   }
+  bool requestPreviewFrame() noexcept override {
+    if (!latest_texture_) return false;
+    return preview_.tryEnqueue(
+        latest_texture_.Get(), latest_width_, latest_height_,
+        latest_content_width_, latest_content_height_, steadyMicros());
+  }
+  void pollOptionalWork() noexcept override {
+    preview_.poll();
+  }
+  bool optionalWorkPending() const noexcept override {
+    return preview_.pendingWork();
+  }
   void pollRetirement() noexcept override {
     preview_.poll();
     pipeline_.pollRetirement(method());
@@ -2664,6 +3126,19 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
     if (latest_texture_ && latest_width_ == width && latest_height_ == height) {
       return;
     }
+    auto candidate_lease = requireScreenVideoResourceAdmission(
+        *resource_budget_,
+        VideoResourceRequest{
+            .owner = VideoResourceOwner::ScreenCapture,
+            .owner_id = owner_id_ + ":wgc_latest:" +
+                std::to_string(++latest_texture_generation_),
+            .textures = {{
+                .width = width,
+                .height = height,
+                .count = 1,
+                .format = VideoTextureFormat::Bgra8,
+            }},
+        });
     D3D11_TEXTURE2D_DESC description{};
     description.Width = width;
     description.Height = height;
@@ -2673,11 +3148,14 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
     description.SampleDesc.Count = 1;
     description.Usage = D3D11_USAGE_DEFAULT;
     description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    ComPtr<ID3D11Texture2D> candidate_texture;
     requireHr(
         d3d_.device->CreateTexture2D(
-            &description, nullptr, latest_texture_.ReleaseAndGetAddressOf()),
+            &description, nullptr, &candidate_texture),
         ScreenGpuCaptureErrorCode::DeviceLost,
         "failed to create WGC latest-frame texture");
+    latest_texture_ = std::move(candidate_texture);
+    latest_texture_lease_ = std::move(candidate_lease);
     latest_width_ = width;
     latest_height_ = height;
     cadence_.reset();
@@ -2685,16 +3163,12 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
 
   ScreenGpuFrameResult sampleLatest(ScreenGpuFrame& frame) {
     if (!latest_texture_) {
-      preview_.poll();
       return pipeline_.poll(method(), frame);
     }
 
     const auto now = std::chrono::steady_clock::now();
     const auto reason = cadence_.decision(now);
     const auto timestamp_us = steadyMicros();
-    preview_.process(
-        latest_texture_.Get(), latest_width_, latest_height_,
-        latest_content_width_, latest_content_height_, timestamp_us);
     if (reason == ScreenFrameSubmitReason::None) {
       return pipeline_.poll(method(), frame);
     }
@@ -2725,7 +3199,10 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
     }
     session_ = nullptr;
     frame_pool_ = nullptr;
+    frame_pool_lease_.reset();
     item_ = nullptr;
+    latest_texture_.Reset();
+    latest_texture_lease_.reset();
   }
 
   void initialize() {
@@ -2792,11 +3269,15 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
           ScreenGpuCaptureErrorCode::CaptureUnavailable,
           "selected WGC window has invalid dimensions");
     }
+    auto candidate_pool_lease = acquireWgcFramePoolLease(
+        static_cast<std::uint32_t>(pool_size_.Width),
+        static_cast<std::uint32_t>(pool_size_.Height));
     frame_pool_ = capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
         winrt_device_,
         directx::DirectXPixelFormat::B8G8R8A8UIntNormalized,
         3,
         pool_size_);
+    frame_pool_lease_ = std::move(candidate_pool_lease);
     session_ = frame_pool_.CreateCaptureSession(item_);
     session_.IsCursorCaptureEnabled(true);
     disableCaptureBorderIfAllowed(session_);
@@ -2805,49 +3286,82 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
 
   void recreateFramePool(winrt::Windows::Graphics::SizeInt32 size) {
     if (size.Width <= 0 || size.Height <= 0) return;
+    auto candidate_pool_lease = acquireWgcFramePoolLease(
+        static_cast<std::uint32_t>(size.Width),
+        static_cast<std::uint32_t>(size.Height));
+    frame_pool_.Recreate(
+        winrt_device_,
+        directx::DirectXPixelFormat::B8G8R8A8UIntNormalized,
+        3,
+        size);
     pool_size_ = size;
+    frame_pool_lease_ = std::move(candidate_pool_lease);
     latest_texture_.Reset();
+    latest_texture_lease_.reset();
     latest_width_ = 0;
     latest_height_ = 0;
     latest_content_width_ = 0;
     latest_content_height_ = 0;
     latest_metrics_ = {};
     cadence_.reset();
-    frame_pool_.Recreate(
-        winrt_device_,
-        directx::DirectXPixelFormat::B8G8R8A8UIntNormalized,
-        3,
-        pool_size_);
+  }
+
+  std::shared_ptr<VideoResourceLease> acquireWgcFramePoolLease(
+      std::uint32_t width,
+      std::uint32_t height) {
+    return requireScreenVideoResourceAdmission(
+        *resource_budget_,
+        VideoResourceRequest{
+            .owner = VideoResourceOwner::ScreenCapture,
+            .owner_id = owner_id_ + ":wgc_frame_pool:" +
+                std::to_string(++frame_pool_generation_),
+            .gpu_generations = 1,
+            .textures = {{
+                .width = width,
+                .height = height,
+                .count = 3,
+                .format = VideoTextureFormat::Bgra8,
+            }},
+        });
   }
 
   syrnike::voice::ScreenCaptureTarget target_;
+  VideoResourceAdmissionBudget* resource_budget_ = nullptr;
+  std::string owner_id_;
   AdapterSelection selection_;
   D3dDevice d3d_;
   GpuFramePipeline pipeline_;
   GpuPreviewPool preview_;
   ScreenFrameCadence cadence_;
+  std::shared_ptr<VideoResourceLease> latest_texture_lease_;
   ComPtr<ID3D11Texture2D> latest_texture_;
   syrnike::voice::ScreenCaptureFrameMetrics latest_metrics_;
   std::uint32_t latest_width_ = 0;
   std::uint32_t latest_height_ = 0;
   std::uint32_t latest_content_width_ = 0;
   std::uint32_t latest_content_height_ = 0;
+  std::uint64_t latest_texture_generation_ = 0;
   d3dwinrt::IDirect3DDevice winrt_device_{nullptr};
   capture::GraphicsCaptureItem item_{nullptr};
+  std::shared_ptr<VideoResourceLease> frame_pool_lease_;
   capture::Direct3D11CaptureFramePool frame_pool_{nullptr};
   capture::GraphicsCaptureSession session_{nullptr};
   winrt::Windows::Graphics::SizeInt32 pool_size_{};
   winrt::event_token closed_token_{};
   bool closed_subscribed_ = false;
   std::atomic_bool target_closed_{false};
+  std::uint64_t frame_pool_generation_ = 0;
 };
 
 std::shared_ptr<ScreenGpuCapturer> createWgcGpuCapturer(
     const syrnike::voice::ScreenCaptureTarget& target,
     std::uint32_t width,
-    std::uint32_t height) {
+    std::uint32_t height,
+    VideoResourceAdmissionBudget& resource_budget,
+    const std::string& owner_id) {
   try {
-    return std::make_shared<WgcGpuCapturer>(target, width, height);
+    return std::make_shared<WgcGpuCapturer>(
+        target, width, height, resource_budget, owner_id);
   } catch (const ScreenGpuCaptureError&) {
     throw;
   } catch (const winrt::hresult_error& error) {
@@ -2866,17 +3380,22 @@ class WindowGpuCapturer final : public ScreenGpuCapturer {
   WindowGpuCapturer(
       syrnike::voice::ScreenCaptureTarget target,
       std::uint32_t width,
-      std::uint32_t height)
-      : target_(std::move(target)), width_(width), height_(height) {
+      std::uint32_t height,
+      VideoResourceAdmissionBudget& resource_budget,
+      std::string owner_id)
+      : target_(std::move(target)),
+        width_(width),
+        height_(height),
+        resource_budget_(&resource_budget),
+        owner_id_(std::move(owner_id)) {
     active_.store(
-        createWgcGpuCapturer(target_, width_, height_),
+        createWgcGpuCapturer(
+            target_, width_, height_, *resource_budget_, owner_id_),
         std::memory_order_release);
-    retired_.reserve(kMaxRetiredBackends);
   }
 
   ScreenGpuFrameResult capture(ScreenGpuFrame& frame) override {
     const auto now = std::chrono::steady_clock::now();
-    pruneRetired();
     const auto active = active_.load(std::memory_order_acquire);
     if (!active) {
       return {
@@ -2891,6 +3410,16 @@ class WindowGpuCapturer final : public ScreenGpuCapturer {
       if (awaiting_recovery_confirmation_) {
         ++successful_recoveries_;
         awaiting_recovery_confirmation_ = false;
+        diagnostics::DiagnosticLog::instance().write(
+            "screen_window_gpu_recovery_fresh_frame",
+            {
+                {"backend", "wgc_gpu"},
+                {"attempt", recovery_attempts_},
+                {"durationMs", static_cast<std::uint64_t>(
+                     std::chrono::duration_cast<std::chrono::milliseconds>(
+                         now - recovery_started_at_)
+                         .count())},
+            });
       }
       backoff_exponent_ = 0;
       next_retry_at_ = {};
@@ -2912,13 +3441,39 @@ class WindowGpuCapturer final : public ScreenGpuCapturer {
   }
 
   void discard(const ScreenGpuFrame& frame) noexcept override {
-    for (const auto& capturer : snapshot()) capturer->discard(frame);
+    const auto active = active_.load(std::memory_order_acquire);
+    if (active) active->discard(frame);
+    const auto retired = retirement_.snapshot();
+    for (std::size_t index = 0; index < retired.size; ++index) {
+      if (retired.capturers[index] != active) {
+        retired.capturers[index]->discard(frame);
+      }
+    }
+  }
+  bool requestPreviewFrame() noexcept override {
+    const auto active = active_.load(std::memory_order_acquire);
+    return active && active->requestPreviewFrame();
+  }
+  void pollOptionalWork() noexcept override {
+    if (const auto active = active_.load(std::memory_order_acquire)) {
+      active->pollOptionalWork();
+    }
+    retirement_.poll();
+  }
+  bool optionalWorkPending() const noexcept override {
+    const auto active = active_.load(std::memory_order_acquire);
+    return (active && active->optionalWorkPending()) ||
+        retirement_.pollPending();
   }
   void pollRetirement() noexcept override {
-    for (const auto& capturer : snapshot()) capturer->pollRetirement();
+    if (const auto active = active_.load(std::memory_order_acquire)) {
+      active->pollRetirement();
+    }
+    retirement_.poll();
   }
 
   void setPreviewDemand(ScreenPreviewDemand demand) override {
+    std::lock_guard transition_lock(preview_transition_mutex_);
     {
       std::lock_guard lock(mutex_);
       preview_demand_ = demand;
@@ -2939,18 +3494,26 @@ class WindowGpuCapturer final : public ScreenGpuCapturer {
   }
 
   void releasePreviewFrame(std::uint64_t sequence) noexcept override {
-    for (const auto& capturer : snapshot()) {
-      capturer->releasePreviewFrame(sequence);
+    const auto active = active_.load(std::memory_order_acquire);
+    if (active) active->releasePreviewFrame(sequence);
+    const auto retired = retirement_.snapshot();
+    for (std::size_t index = 0; index < retired.size; ++index) {
+      if (retired.capturers[index] != active) {
+        retired.capturers[index]->releasePreviewFrame(sequence);
+      }
     }
   }
 
   std::size_t previewFramesInFlight() const noexcept override {
-    const auto capturers = snapshot();
-    return std::accumulate(
-        capturers.begin(), capturers.end(), std::size_t{0},
-        [](std::size_t total, const auto& capturer) {
-          return total + capturer->previewFramesInFlight();
-        });
+    const auto active = active_.load(std::memory_order_acquire);
+    std::size_t total = active ? active->previewFramesInFlight() : 0;
+    const auto retired = retirement_.snapshot();
+    for (std::size_t index = 0; index < retired.size; ++index) {
+      if (retired.capturers[index] != active) {
+        total += retired.capturers[index]->previewFramesInFlight();
+      }
+    }
+    return total;
   }
 
   const char* method() const noexcept override { return "wgc_gpu"; }
@@ -2972,15 +3535,11 @@ class WindowGpuCapturer final : public ScreenGpuCapturer {
 
   bool retirementSafe() const noexcept override {
     const auto active = active_.load(std::memory_order_acquire);
-    return active && active->retirementSafe() && snapshot().size() == 1;
+    return active && active->retirementSafe() && retirement_.size() == 0;
   }
 
   ScreenFrameFlowStats frameFlowStats() const noexcept override {
-    ScreenFrameFlowStats result;
-    {
-      std::lock_guard lock(mutex_);
-      result = completed_stats_;
-    }
+    auto result = retirement_.completedStats();
     if (const auto active = active_.load(std::memory_order_acquire)) {
       const auto active_stats = active->frameFlowStats();
       addScreenFrameFlowCounters(result, active_stats);
@@ -2991,60 +3550,77 @@ class WindowGpuCapturer final : public ScreenGpuCapturer {
       result.gpu_completion_p50_us = active_stats.gpu_completion_p50_us;
       result.gpu_completion_p95_us = active_stats.gpu_completion_p95_us;
       result.gpu_retired_generations =
-          active_stats.gpu_retired_generations;
+          active_stats.gpu_retired_generations + retirement_.size();
       result.gpu_slots_quarantined = active_stats.gpu_slots_quarantined;
     }
     return result;
   }
 
   std::uint64_t recoverableLossCount() const noexcept override {
-    return successful_recoveries_;
+    return successful_recoveries_.load(std::memory_order_relaxed);
   }
 
  private:
-  struct RetiredCapturer {
-    std::shared_ptr<ScreenGpuCapturer> capturer;
-  };
-  static constexpr std::size_t kMaxRetiredBackends = 4;
-
   void recover(
       ScreenGpuFrameResult& result,
       std::chrono::steady_clock::time_point now) noexcept {
     scheduleBackoff(now);
     try {
-      auto candidate = createWgcGpuCapturer(target_, width_, height_);
       ScreenPreviewDemand demand;
+      const auto previous = active_.load(std::memory_order_acquire);
       {
         std::lock_guard lock(mutex_);
         demand = preview_demand_;
       }
-      candidate->setPreviewDemand(demand);
-      const auto previous = active_.load(std::memory_order_acquire);
+      const std::vector<std::shared_ptr<ScreenGpuCapturer>> retiring{
+          previous};
+      // Candidate construction allocates a WGC frame pool, D3D device,
+      // encoder pool, and preview device. Refuse it before any of those
+      // allocations when the old generation cannot yet be retained.
+      if (!retirement_.canRetire(retiring)) {
+        result.gpu_capacity_exhausted = true;
+        diagnostics::DiagnosticLog::instance().write(
+            "screen_window_gpu_recovery_deferred",
+            {
+                {"reason", "retired_capacity"},
+                {"backend", "wgc_gpu"},
+                {"retiredBackends",
+                 static_cast<std::uint64_t>(retirement_.size())},
+                {"limit", static_cast<std::uint64_t>(
+                     ScreenGpuRetirementLane::kCapacity)},
+                {"retryMs", static_cast<std::uint64_t>(
+                     std::chrono::duration_cast<std::chrono::milliseconds>(
+                         next_retry_at_ - now)
+                         .count())},
+            });
+        return;
+      }
+      auto candidate = createWgcGpuCapturer(
+          target_, width_, height_, *resource_budget_, owner_id_);
       {
-        std::lock_guard lock(mutex_);
-        if (previous) {
-          if (!previous->retirementSafe()) {
-            if (retired_.size() >= kMaxRetiredBackends) {
-              diagnostics::DiagnosticLog::instance().write(
-                  "screen_window_retired_capacity_exhausted",
-                  {
-                      {"retiredBackends",
-                       static_cast<std::uint64_t>(retired_.size())},
-                      {"limit",
-                       static_cast<std::uint64_t>(kMaxRetiredBackends)},
-                  });
-              return;
-            }
-            retired_.push_back({previous});
-          } else {
-            completed_stats_ = mergeCompleted(
-                completed_stats_, previous->frameFlowStats());
-          }
+        // Demand changes and the recovery swap share this narrow transition
+        // gate. Backend callbacks stay outside mutex_, while a concurrent UI
+        // demand update cannot re-enable the generation being detached.
+        std::lock_guard transition_lock(preview_transition_mutex_);
+        {
+          std::lock_guard lock(mutex_);
+          demand = preview_demand_;
         }
-        active_.store(candidate, std::memory_order_release);
+        candidate->setPreviewDemand(demand);
+        auto retirement_plan = retirement_.prepare(retiring, demand);
+        {
+          std::lock_guard lock(mutex_);
+          if (!retirement_.commit(retirement_plan)) {
+            throw ScreenGpuCaptureError(
+                ScreenGpuCaptureErrorCode::ResourceSaturated,
+                "screen window recovery retirement lane is full");
+          }
+          active_.store(candidate, std::memory_order_release);
+        }
       }
       ++recovery_attempts_;
       awaiting_recovery_confirmation_ = true;
+      recovery_started_at_ = now;
       result.recovery_transition = ScreenGpuRecoveryTransition{
           "wgc_gpu",
           "recreate_device",
@@ -3052,6 +3628,24 @@ class WindowGpuCapturer final : public ScreenGpuCapturer {
           result.metrics.hresult,
           result.error_code,
       };
+    } catch (const ScreenGpuCaptureError& error) {
+      const bool saturated =
+          error.code() == ScreenGpuCaptureErrorCode::ResourceSaturated;
+      result.gpu_capacity_exhausted = saturated;
+      diagnostics::DiagnosticLog::instance().write(
+          saturated
+              ? "screen_window_gpu_recovery_deferred"
+              : "screen_window_gpu_recovery_failed",
+          {
+              {"reason", captureErrorCodeName(error.code())},
+              {"backend", "wgc_gpu"},
+              {"message", std::string(error.what())},
+              {"hresult", static_cast<std::int64_t>(error.hresult())},
+              {"retryMs", static_cast<std::uint64_t>(
+                   std::chrono::duration_cast<std::chrono::milliseconds>(
+                       next_retry_at_ - now)
+                       .count())},
+          });
     } catch (const std::exception& error) {
       diagnostics::DiagnosticLog::instance().write(
           "screen_window_gpu_recovery_failed",
@@ -3079,56 +3673,22 @@ class WindowGpuCapturer final : public ScreenGpuCapturer {
     backoff_exponent_ = std::min(backoff_exponent_ + 1, 3U);
   }
 
-  static ScreenFrameFlowStats mergeCompleted(
-      ScreenFrameFlowStats destination,
-      const ScreenFrameFlowStats& source) noexcept {
-    addScreenFrameFlowCounters(destination, source);
-    return destination;
-  }
-
-  void pruneRetired() noexcept {
-    std::lock_guard lock(mutex_);
-    for (auto iterator = retired_.begin(); iterator != retired_.end();) {
-      iterator->capturer->pollRetirement();
-      if (iterator->capturer->retirementSafe()) {
-        completed_stats_ = mergeCompleted(
-            completed_stats_, iterator->capturer->frameFlowStats());
-        iterator = retired_.erase(iterator);
-      } else {
-        ++iterator;
-      }
-    }
-  }
-
-  std::vector<std::shared_ptr<ScreenGpuCapturer>> snapshot() const noexcept {
-    try {
-      std::vector<std::shared_ptr<ScreenGpuCapturer>> result;
-      if (const auto active = active_.load(std::memory_order_acquire)) {
-        result.push_back(active);
-      }
-      std::lock_guard lock(mutex_);
-      for (const auto& retired : retired_) {
-        if (retired.capturer) result.push_back(retired.capturer);
-      }
-      return result;
-    } catch (...) {
-      return {};
-    }
-  }
-
   syrnike::voice::ScreenCaptureTarget target_;
   std::uint32_t width_ = 0;
   std::uint32_t height_ = 0;
+  VideoResourceAdmissionBudget* resource_budget_ = nullptr;
+  std::string owner_id_;
   ScreenPreviewDemand preview_demand_;
   std::atomic<std::shared_ptr<ScreenGpuCapturer>> active_;
   mutable std::mutex mutex_;
-  std::vector<RetiredCapturer> retired_;
-  ScreenFrameFlowStats completed_stats_;
+  std::mutex preview_transition_mutex_;
+  ScreenGpuRetirementLane retirement_;
   std::chrono::steady_clock::time_point next_retry_at_{};
   std::uint32_t backoff_exponent_ = 0;
   std::uint64_t recovery_attempts_ = 0;
-  std::uint64_t successful_recoveries_ = 0;
+  std::atomic<std::uint64_t> successful_recoveries_{0};
   bool awaiting_recovery_confirmation_ = false;
+  std::chrono::steady_clock::time_point recovery_started_at_{};
 };
 
 class MonitorGpuCapturer final : public ScreenGpuCapturer {
@@ -3137,17 +3697,22 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
       const syrnike::voice::ScreenCaptureTarget& target,
       std::uint32_t width,
       std::uint32_t height,
-      std::shared_ptr<CaptureBackendSupervisor> supervisor)
+      std::shared_ptr<CaptureBackendSupervisor> supervisor,
+      VideoResourceAdmissionBudget& resource_budget,
+      std::string owner_id)
       : target_(target),
         width_(width),
         height_(height),
+        resource_budget_(&resource_budget),
+        owner_id_(std::move(owner_id)),
         supervisor_(supervisor
             ? std::move(supervisor)
             : std::make_shared<CaptureBackendSupervisor>()) {
     std::optional<ScreenGpuCaptureError> dxgi_failure;
     try {
       auto dxgi =
-          std::make_shared<DxgiGpuCapturer>(target_, width_, height_);
+          std::make_shared<DxgiGpuCapturer>(
+              target_, width_, height_, *resource_budget_, owner_id_);
       dxgi_.store(dxgi, std::memory_order_release);
       active_.store(dxgi, std::memory_order_release);
       supervisor_->backendActivated(
@@ -3155,6 +3720,11 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
       return;
     } catch (const ScreenGpuCaptureError& error) {
       if (error.code() == ScreenGpuCaptureErrorCode::TargetClosed) {
+        throw;
+      }
+      if (error.code() == ScreenGpuCaptureErrorCode::ResourceSaturated) {
+        // Admission denied before DXGI construction. Trying WGC on the same
+        // physical adapter would consume the same exhausted process budget.
         throw;
       }
       dxgi_failure = error;
@@ -3169,7 +3739,8 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
     }
 
     try {
-      auto wgc = createWgcGpuCapturer(target_, width_, height_);
+      auto wgc = createWgcGpuCapturer(
+          target_, width_, height_, *resource_budget_, owner_id_);
       wgc_.store(wgc, std::memory_order_release);
       active_.store(wgc, std::memory_order_release);
       supervisor_->backendActivated(
@@ -3178,6 +3749,10 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
           "screen_capture_backend_initial_fallback", "dxgi_gpu", "wgc_gpu",
           dxgi_failure->what(), dxgi_failure->hresult());
     } catch (const ScreenGpuCaptureError& wgc_failure) {
+      if (wgc_failure.code() ==
+          ScreenGpuCaptureErrorCode::ResourceSaturated) {
+        throw;
+      }
       auto combined = combineInitialMonitorCaptureFailures(
           *dxgi_failure, wgc_failure);
       logInitialBackendFailure(combined);
@@ -3203,7 +3778,6 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
 
   ScreenGpuFrameResult capture(ScreenGpuFrame& frame) override {
     const auto now = CaptureBackendSupervisor::Clock::now();
-    pruneRetired();
     const auto active = active_.load(std::memory_order_acquire);
     if (!active) {
       return {
@@ -3214,6 +3788,8 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
       };
     }
     auto result = active->capture(frame);
+    const auto successful_recoveries_before =
+        supervisor_->successfulRecoveryCount();
     const auto decision = supervisor_->observe(
         {
             result.status,
@@ -3222,6 +3798,17 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
             desktopInputChanged(),
         },
         now);
+    if (result.status == ScreenGpuFrameStatus::NewFrame &&
+        supervisor_->successfulRecoveryCount() >
+            successful_recoveries_before) {
+      diagnostics::DiagnosticLog::instance().write(
+          "screen_backend_recovery_fresh_frame",
+          {
+              {"backend", captureBackendName(supervisor_->activeBackend())},
+              {"attempt", supervisor_->recoveryAttemptCount()},
+              {"deferrals", supervisor_->recoveryDeferralCount()},
+          });
+    }
     if (decision.action == CaptureBackendAction::Fail) {
       return result;
     }
@@ -3229,6 +3816,7 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
       const auto recovery =
           recover(decision, result.error_code, result.metrics.hresult, now);
       result.recovery_transition = recovery.transition;
+      result.gpu_capacity_exhausted = recovery.capacity_exhausted;
       if (recovery.target_closed) {
         result.status = ScreenGpuFrameStatus::TargetClosed;
         result.error_code = ScreenGpuCaptureErrorCode::TargetClosed;
@@ -3246,24 +3834,45 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
   }
 
   void discard(const ScreenGpuFrame& frame) noexcept override {
-    for (const auto& backend : backendSnapshot()) {
-      backend->discard(frame);
+    const auto active = active_.load(std::memory_order_acquire);
+    if (active) active->discard(frame);
+    const auto retired = retirement_.snapshot();
+    for (std::size_t index = 0; index < retired.size; ++index) {
+      if (retired.capturers[index] != active) {
+        retired.capturers[index]->discard(frame);
+      }
     }
   }
+  bool requestPreviewFrame() noexcept override {
+    const auto active = active_.load(std::memory_order_acquire);
+    return active && active->requestPreviewFrame();
+  }
+  void pollOptionalWork() noexcept override {
+    if (const auto active = active_.load(std::memory_order_acquire)) {
+      active->pollOptionalWork();
+    }
+    retirement_.poll();
+  }
+  bool optionalWorkPending() const noexcept override {
+    const auto active = active_.load(std::memory_order_acquire);
+    return (active && active->optionalWorkPending()) ||
+        retirement_.pollPending();
+  }
   void pollRetirement() noexcept override {
-    for (const auto& backend : backendSnapshot()) backend->pollRetirement();
+    if (const auto active = active_.load(std::memory_order_acquire)) {
+      active->pollRetirement();
+    }
+    retirement_.poll();
   }
 
   void setPreviewDemand(ScreenPreviewDemand demand) override {
+    std::lock_guard transition_lock(preview_transition_mutex_);
     {
       std::lock_guard lock(backend_mutex_);
       preview_demand_ = demand;
     }
-    if (const auto dxgi = dxgi_.load(std::memory_order_acquire)) {
-      dxgi->setPreviewDemand(demand);
-    }
-    if (const auto wgc = wgc_.load(std::memory_order_acquire)) {
-      wgc->setPreviewDemand(demand);
+    if (const auto active = active_.load(std::memory_order_acquire)) {
+      active->setPreviewDemand(demand);
     }
   }
 
@@ -3278,20 +3887,26 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
   }
 
   void releasePreviewFrame(std::uint64_t sequence) noexcept override {
-    for (const auto& backend : backendSnapshot()) {
-      backend->releasePreviewFrame(sequence);
+    const auto active = active_.load(std::memory_order_acquire);
+    if (active) active->releasePreviewFrame(sequence);
+    const auto retired = retirement_.snapshot();
+    for (std::size_t index = 0; index < retired.size; ++index) {
+      if (retired.capturers[index] != active) {
+        retired.capturers[index]->releasePreviewFrame(sequence);
+      }
     }
   }
 
   std::size_t previewFramesInFlight() const noexcept override {
-    const auto backends = backendSnapshot();
-    return std::accumulate(
-        backends.begin(),
-        backends.end(),
-        std::size_t{0},
-        [](std::size_t total, const auto& backend) {
-          return total + backend->previewFramesInFlight();
-        });
+    const auto active = active_.load(std::memory_order_acquire);
+    std::size_t total = active ? active->previewFramesInFlight() : 0;
+    const auto retired = retirement_.snapshot();
+    for (std::size_t index = 0; index < retired.size; ++index) {
+      if (retired.capturers[index] != active) {
+        total += retired.capturers[index]->previewFramesInFlight();
+      }
+    }
+    return total;
   }
 
   const char* method() const noexcept override {
@@ -3310,29 +3925,17 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
     const auto active = active_.load(std::memory_order_acquire);
     return active ? active->frameSlotsTotal() : 0;
   }
-  ScreenFrameFlowStats frameFlowStats() const noexcept override {
-    ScreenFrameFlowStats result;
-    std::vector<std::shared_ptr<ScreenGpuCapturer>> backends;
+  bool retirementSafe() const noexcept override {
     const auto active = active_.load(std::memory_order_acquire);
-    try {
-      const auto append = [&backends](
-                              std::shared_ptr<ScreenGpuCapturer> backend) {
-        if (!backend) return;
-        if (std::find(backends.begin(), backends.end(), backend) ==
-            backends.end()) {
-          backends.push_back(std::move(backend));
-        }
-      };
-      std::lock_guard lock(backend_mutex_);
-      result = completed_stats_;
-      append(dxgi_.load(std::memory_order_acquire));
-      append(wgc_.load(std::memory_order_acquire));
-      for (const auto& retired : retired_) append(retired.capturer);
-    } catch (...) {
-      return active ? active->frameFlowStats() : result;
-    }
-    for (const auto& backend : backends) {
-      const auto stats = backend->frameFlowStats();
+    return active && active->retirementSafe() && retirement_.size() == 0;
+  }
+  ScreenFrameFlowStats frameFlowStats() const noexcept override {
+    auto result = retirement_.completedStats();
+    const auto active = active_.load(std::memory_order_acquire);
+    const auto retired = retirement_.snapshot();
+    for (std::size_t index = 0; index < retired.size; ++index) {
+      if (retired.capturers[index] == active) continue;
+      const auto stats = retired.capturers[index]->frameFlowStats();
       addScreenFrameFlowCounters(result, stats);
       result.gpu_slots_quarantined += stats.gpu_slots_quarantined;
     }
@@ -3341,7 +3944,8 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
       result.source_updates = stats.source_updates;
       result.idle_refreshes = stats.idle_refreshes;
       result.coalesced_source_updates = stats.coalesced_source_updates;
-      result.gpu_retired_generations = stats.gpu_retired_generations;
+      result.gpu_retired_generations =
+          stats.gpu_retired_generations + retirement_.size();
       result.gpu_completion_p50_us = stats.gpu_completion_p50_us;
       result.gpu_completion_p95_us = stats.gpu_completion_p95_us;
     }
@@ -3355,6 +3959,7 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
   struct RecoveryResult {
     std::optional<ScreenGpuRecoveryTransition> transition;
     bool target_closed = false;
+    bool capacity_exhausted = false;
   };
 
   RecoveryResult recover(
@@ -3428,25 +4033,45 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
         } else {
           candidate.reset();
         }
-      } else if (force_new) {
-        std::lock_guard lock(backend_mutex_);
-        std::vector<std::shared_ptr<ScreenGpuCapturer>> retiring;
-        if (decision.action == CaptureBackendAction::RecreateDevice) {
-          retiring.push_back(dxgi_.load(std::memory_order_relaxed));
-          retiring.push_back(wgc_.load(std::memory_order_relaxed));
-        } else {
-          retiring.push_back(candidate);
+      }
+
+      std::vector<std::shared_ptr<ScreenGpuCapturer>> retiring;
+      if (force_new) {
+        const auto append_retiring = [&retiring](
+                                         std::shared_ptr<ScreenGpuCapturer>
+                                             backend) {
+          if (!backend ||
+              std::find(retiring.begin(), retiring.end(), backend) !=
+                  retiring.end()) {
+            return;
+          }
+          retiring.push_back(std::move(backend));
+        };
+        {
+          std::lock_guard lock(backend_mutex_);
+          const auto active = active_.load(std::memory_order_relaxed);
+          // Switching also retires the backend being left behind. Keeping it
+          // in an inactive slot would let its preview demand create a frame
+          // that the active-only delivery path can never route.
+          append_retiring(active);
+          if (decision.action == CaptureBackendAction::RecreateDevice) {
+            append_retiring(dxgi_.load(std::memory_order_relaxed));
+            append_retiring(wgc_.load(std::memory_order_relaxed));
+          } else {
+            append_retiring(candidate);
+          }
         }
-        if (!hasRetirementCapacityLocked(retiring)) {
+        if (!retirement_.canRetire(retiring)) {
           diagnostics::DiagnosticLog::instance().write(
               "screen_retired_backend_capacity_exhausted",
               {
                   {"retiredBackends",
-                   static_cast<std::uint64_t>(retired_.size())},
-                  {"limit", static_cast<std::uint64_t>(kMaxRetiredBackends)},
+                   static_cast<std::uint64_t>(retirement_.size())},
+                  {"limit", static_cast<std::uint64_t>(
+                       ScreenGpuRetirementLane::kCapacity)},
               });
           throw ScreenGpuCaptureError(
-              ScreenGpuCaptureErrorCode::GpuTimeout,
+              ScreenGpuCaptureErrorCode::ResourceSaturated,
               "screen GPU recovery is waiting for retired frame leases");
         }
         if (target == CaptureBackend::Dxgi) {
@@ -3458,41 +4083,48 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
         candidate.reset();
       }
       ScreenPreviewDemand preview_demand;
-      {
-        std::lock_guard lock(backend_mutex_);
-        preview_demand = preview_demand_;
-      }
       if (target == CaptureBackend::Dxgi) {
         if (!candidate) {
           candidate = std::make_shared<DxgiGpuCapturer>(
-              target_, width_, height_);
-          candidate->setPreviewDemand(preview_demand);
+              target_, width_, height_, *resource_budget_, owner_id_);
         }
-      } else {
-        if (!candidate) {
-          candidate = createWgcGpuCapturer(target_, width_, height_);
-          candidate->setPreviewDemand(preview_demand);
-        }
+      } else if (!candidate) {
+        candidate = createWgcGpuCapturer(
+            target_, width_, height_, *resource_budget_, owner_id_);
       }
 
       {
+        // Serialize only preview-demand transitions. Encoder release routing
+        // uses retirement_.snapshot() and never waits for this gate.
+        std::lock_guard transition_lock(preview_transition_mutex_);
+        {
+          std::lock_guard lock(backend_mutex_);
+          preview_demand = preview_demand_;
+        }
+        candidate->setPreviewDemand(preview_demand);
+        auto retirement_plan = retirement_.prepare(
+            retiring, preview_demand);
         std::lock_guard lock(backend_mutex_);
+        if (!retirement_.commit(retirement_plan)) {
+          throw ScreenGpuCaptureError(
+              ScreenGpuCaptureErrorCode::ResourceSaturated,
+              "screen GPU recovery retirement lane is full");
+        }
+        for (const auto& backend : retiring) {
+          if (dxgi_.load(std::memory_order_relaxed) == backend) {
+            dxgi_.store({}, std::memory_order_release);
+          }
+          if (wgc_.load(std::memory_order_relaxed) == backend) {
+            wgc_.store({}, std::memory_order_release);
+          }
+        }
         if (decision.action == CaptureBackendAction::RecreateDevice) {
-          retireBackendLocked(
-              dxgi_.load(std::memory_order_relaxed));
-          retireBackendLocked(
-              wgc_.load(std::memory_order_relaxed));
           dxgi_.store(
               std::shared_ptr<ScreenGpuCapturer>{},
               std::memory_order_release);
           wgc_.store(
               std::shared_ptr<ScreenGpuCapturer>{},
               std::memory_order_release);
-        } else if (force_new) {
-          auto* slot =
-              target == CaptureBackend::Dxgi ? &dxgi_ : &wgc_;
-          retireBackendLocked(
-              slot->load(std::memory_order_relaxed));
         }
         auto* slot = target == CaptureBackend::Dxgi ? &dxgi_ : &wgc_;
         slot->store(candidate, std::memory_order_release);
@@ -3546,17 +4178,38 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
                 {"durationMs", recoveryDurationMs()},
             });
       }
-      if (error.code() == ScreenGpuCaptureErrorCode::GpuTimeout) {
+      if (error.code() == ScreenGpuCaptureErrorCode::GpuTimeout ||
+          error.code() == ScreenGpuCaptureErrorCode::ResourceSaturated) {
         // The replacement was intentionally deferred because an older frame
-        // lease is still alive. This is local backpressure, not an activation
-        // failure, so it must not arm a DXGI/WGC fallback.
+        // lease or process-budget reservation is still alive. This is
+        // capacity backpressure, not an activation failure, so it must not arm
+        // a DXGI/WGC fallback.
+        supervisor_->recoveryDeferred(decision, error.code(), now);
+        const auto retry_at = supervisor_->nextRetryAt();
+        if (recovery_logger.enabled()) {
+          recovery_logger.write(
+              "screen_backend_recovery_deferred",
+              {
+                  {"phase", phase},
+                  {"reason", captureErrorCodeName(error.code())},
+                  {"backend",
+                   captureBackendName(supervisor_->activeBackend())},
+                  {"target", captureBackendName(decision.target)},
+                  {"action", captureBackendActionName(decision.action)},
+                  {"retryMs", static_cast<std::uint64_t>(
+                       std::chrono::duration_cast<std::chrono::milliseconds>(
+                           retry_at - now)
+                           .count())},
+                  {"deferrals", supervisor_->recoveryDeferralCount()},
+              });
+        }
         logScreenCaptureBackend(
             "screen_capture_backend_recovery_deferred",
             captureBackendName(supervisor_->activeBackend()),
             captureBackendName(decision.target),
             error.what(),
             error.hresult());
-        return {};
+        return {std::nullopt, false, true};
       }
       supervisor_->activationFailed(decision, now);
       logScreenCaptureBackend(
@@ -3611,115 +4264,17 @@ class MonitorGpuCapturer final : public ScreenGpuCapturer {
   syrnike::voice::ScreenCaptureTarget target_;
   std::uint32_t width_ = 0;
   std::uint32_t height_ = 0;
+  VideoResourceAdmissionBudget* resource_budget_ = nullptr;
+  std::string owner_id_;
   ScreenPreviewDemand preview_demand_;
   std::atomic<std::shared_ptr<ScreenGpuCapturer>> dxgi_;
   std::atomic<std::shared_ptr<ScreenGpuCapturer>> wgc_;
   std::atomic<std::shared_ptr<ScreenGpuCapturer>> active_;
   std::shared_ptr<CaptureBackendSupervisor> supervisor_;
   DWORD last_input_tick_ = 0;
-  struct RetiredBackend {
-    std::shared_ptr<ScreenGpuCapturer> capturer;
-  };
   mutable std::mutex backend_mutex_;
-  std::vector<RetiredBackend> retired_;
-  static constexpr std::size_t kMaxRetiredBackends = 4;
-  ScreenFrameFlowStats completed_stats_;
-
-  bool hasRetirementCapacityLocked(
-      const std::vector<std::shared_ptr<ScreenGpuCapturer>>& backends) const {
-    std::size_t required = 0;
-    std::vector<std::shared_ptr<ScreenGpuCapturer>> unique;
-    for (const auto& backend : backends) {
-      if (!backend || backend->retirementSafe()) continue;
-      if (std::find(unique.begin(), unique.end(), backend) != unique.end()) {
-        continue;
-      }
-      unique.push_back(backend);
-      const bool already_retired = std::any_of(
-          retired_.begin(), retired_.end(),
-          [&backend](const RetiredBackend& retired) {
-            return retired.capturer == backend;
-          });
-      if (!already_retired) ++required;
-    }
-    return required <= kMaxRetiredBackends -
-        std::min(retired_.size(), kMaxRetiredBackends);
-  }
-
-  void retireBackendLocked(
-      const std::shared_ptr<ScreenGpuCapturer>& backend) {
-    if (!backend) return;
-    if (backend->retirementSafe()) {
-      addScreenFrameFlowCounters(completed_stats_, backend->frameFlowStats());
-      return;
-    }
-    if (std::any_of(
-            retired_.begin(), retired_.end(),
-            [&backend](const RetiredBackend& retired) {
-              return retired.capturer == backend;
-            })) {
-      return;
-    }
-    retired_.push_back({backend});
-  }
-
-  void pruneRetired() {
-    std::vector<std::shared_ptr<ScreenGpuCapturer>> release_outside_lock;
-    {
-      std::lock_guard lock(backend_mutex_);
-      const auto active = active_.load(std::memory_order_acquire);
-      const auto prune_inactive = [&, this](
-                                      std::atomic<std::shared_ptr<
-                                          ScreenGpuCapturer>>& slot) {
-        auto backend = slot.load(std::memory_order_acquire);
-        if (!backend || backend == active) return;
-        backend->pollRetirement();
-        if (!backend->retirementSafe()) return;
-        addScreenFrameFlowCounters(
-            completed_stats_, backend->frameFlowStats());
-        slot.store({}, std::memory_order_release);
-        release_outside_lock.push_back(std::move(backend));
-      };
-      prune_inactive(dxgi_);
-      prune_inactive(wgc_);
-      for (auto& retired : retired_) {
-        if (retired.capturer) retired.capturer->pollRetirement();
-        if (retired.capturer && retired.capturer->retirementSafe()) {
-          addScreenFrameFlowCounters(
-              completed_stats_, retired.capturer->frameFlowStats());
-          release_outside_lock.push_back(std::move(retired.capturer));
-        }
-      }
-      retired_.erase(
-          std::remove_if(
-              retired_.begin(),
-              retired_.end(),
-              [](const RetiredBackend& retired) {
-                return !retired.capturer;
-              }),
-          retired_.end());
-    }
-  }
-
-  std::vector<std::shared_ptr<ScreenGpuCapturer>>
-  backendSnapshot() const noexcept {
-    try {
-      std::vector<std::shared_ptr<ScreenGpuCapturer>> result;
-      const auto append = [&](std::shared_ptr<ScreenGpuCapturer> backend) {
-        if (!backend) return;
-        if (std::find(result.begin(), result.end(), backend) == result.end()) {
-          result.push_back(std::move(backend));
-        }
-      };
-      append(dxgi_.load(std::memory_order_acquire));
-      append(wgc_.load(std::memory_order_acquire));
-      std::lock_guard lock(backend_mutex_);
-      for (const auto& retired : retired_) append(retired.capturer);
-      return result;
-    } catch (...) {
-      return {};
-    }
-  }
+  std::mutex preview_transition_mutex_;
+  ScreenGpuRetirementLane retirement_;
 
   bool desktopInputChanged() noexcept {
     LASTINPUTINFO input{};
@@ -3801,17 +4356,24 @@ std::shared_ptr<ScreenGpuCapturer> ScreenGpuCapturer::create(
     const syrnike::voice::ScreenCaptureTarget& target,
     std::uint32_t width,
     std::uint32_t height,
-    std::shared_ptr<CaptureBackendSupervisor> supervisor) {
+    std::shared_ptr<CaptureBackendSupervisor> supervisor,
+    VideoResourceAdmissionBudget* resource_budget) {
   if (target.window && (!target.hwnd || !IsWindow(target.hwnd))) {
     throw ScreenGpuCaptureError(
         ScreenGpuCaptureErrorCode::TargetClosed,
         "selected window is no longer available");
   }
+  auto& budget = resource_budget
+      ? *resource_budget
+      : processVideoResourceAdmissionBudget();
+  auto owner_id = screenResourceOwnerId(target);
   if (target.window) {
-    return std::make_shared<WindowGpuCapturer>(target, width, height);
+    return std::make_shared<WindowGpuCapturer>(
+        target, width, height, budget, std::move(owner_id));
   }
   return std::make_shared<MonitorGpuCapturer>(
-      target, width, height, std::move(supervisor));
+      target, width, height, std::move(supervisor), budget,
+      std::move(owner_id));
 }
 
 }  // namespace syrnike::desktop_native::media

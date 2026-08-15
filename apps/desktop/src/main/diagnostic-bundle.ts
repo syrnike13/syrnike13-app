@@ -13,6 +13,8 @@ import {
 } from '@syrnike13/platform'
 import { Effect, Option, Schema, SchemaTransformation } from 'effect'
 
+import { sanitizeDiagnosticValue } from './native-runtime/diagnostic-log'
+
 const MAX_RENDERER_BYTES = 2 * 1024 * 1024
 const MAX_NATIVE_BYTES = 30 * 1024 * 1024
 const MAX_COMPRESSED_BUNDLE_BYTES = 10 * 1024 * 1024
@@ -227,7 +229,7 @@ function normalizeRecord(
   if (Option.isSome(decodedEnvelope)) {
     return {
       ...decodedEnvelope.value,
-      data: { ...decodedEnvelope.value.data },
+      data: sanitizeBundleData(decodedEnvelope.value.data),
     }
   }
 
@@ -283,7 +285,21 @@ function normalizeRecord(
     ),
   )
   if (Option.isNone(data)) return null
-  return envelope('event', timestampMs, source, event, data.value)
+  return envelope(
+    'event',
+    timestampMs,
+    source,
+    event,
+    sanitizeBundleData(data.value),
+  )
+}
+
+function sanitizeBundleData(value: unknown): Record<string, DiagnosticJsonValue> {
+  const sanitized = sanitizeDiagnosticValue(value)
+  const decoded = Schema.decodeUnknownOption(DiagnosticDataSchema)(sanitized)
+  return Option.isSome(decoded)
+    ? decoded.value
+    : { omitted: 'invalid_diagnostic_data' }
 }
 
 function envelope(

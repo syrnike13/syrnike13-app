@@ -47,6 +47,8 @@ async function run() {
   runtime.dispatch({
     type: 'configureMicrophone',
     requestId: 'native-quarantine-blocker',
+    lane: 'microphone',
+    hostEpoch: 1,
     sessionId: 'native-quarantine',
     generation: 1,
   })
