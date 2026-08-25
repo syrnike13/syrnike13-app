@@ -694,6 +694,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
   const releaseRequests = new Map()
   const inFlight = new Map()
   const activeRemoteDeliveries = new Set()
+  const activeRendererLeaseReleases = new Set()
   const activeHandles = new Map()
   const mainLoopSamples = new BoundedSampleWindow(20_000)
   let mainLoopMaximumMs = 0
@@ -1209,7 +1210,8 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
       )
       maximumMainPending = Math.max(
         maximumMainPending,
-        inFlight.size + releaseRequests.size + activeRemoteDeliveries.size,
+        inFlight.size + releaseRequests.size + activeRemoteDeliveries.size +
+          activeRendererLeaseReleases.size,
       )
       void delivery
       return
@@ -1221,7 +1223,8 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
       )
       maximumMainPending = Math.max(
         maximumMainPending,
-        inFlight.size + releaseRequests.size + activeRemoteDeliveries.size,
+        inFlight.size + releaseRequests.size + activeRemoteDeliveries.size +
+          activeRendererLeaseReleases.size,
       )
       void delivery
       return
@@ -1762,7 +1765,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     })
   }
 
-  const releaseRemoteFrame = async (frame) => {
+  const releaseRemoteFrameOwned = async (frame) => {
     const startedAt = Date.now()
     recordTimeline({
       ...frameCorrelation(frame),
@@ -1830,6 +1833,19 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
         reason: 'voice-control-timeout',
       })
     }
+  }
+
+  const releaseRemoteFrame = (frame) => {
+    const owned = trackPendingOperation(
+      activeRendererLeaseReleases,
+      releaseRemoteFrameOwned(frame),
+    )
+    maximumMainPending = Math.max(
+      maximumMainPending,
+      inFlight.size + releaseRequests.size + activeRemoteDeliveries.size +
+        activeRendererLeaseReleases.size,
+    )
+    return owned
   }
 
   const deliverRemoteFrame = async (adapter, value) => {
@@ -2051,7 +2067,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     })
   }
 
-  const releaseCameraPreviewFrame = async (frame) => {
+  const releaseCameraPreviewFrameOwned = async (frame) => {
     const startedAt = Date.now()
     try {
       await utilityRuntime.runRendererLeaseRelease(remoteSupervisor, {
@@ -2079,6 +2095,19 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
         fail(`camera preview native release: ${String(error)}`)
       }
     }
+  }
+
+  const releaseCameraPreviewFrame = (frame) => {
+    const owned = trackPendingOperation(
+      activeRendererLeaseReleases,
+      releaseCameraPreviewFrameOwned(frame),
+    )
+    maximumMainPending = Math.max(
+      maximumMainPending,
+      inFlight.size + releaseRequests.size + activeRemoteDeliveries.size +
+        activeRendererLeaseReleases.size,
+    )
+    return owned
   }
 
   const deliverCameraPreviewFrame = async (adapter, value) => {
@@ -2389,6 +2418,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
       pendingStartup: lifecycle.pendingStartup,
       pendingMainOperations:
         inFlight.size + releaseRequests.size + activeRemoteDeliveries.size +
+        activeRendererLeaseReleases.size +
         (Number(lifecycle.pendingReleaseOperations) || 0),
       remoteRendererLeases: lifecycle.rendererLeases,
       remoteGpuGenerations: lifecycle.remoteGpuGenerations,
@@ -2411,9 +2441,13 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
   remoteBridge.dispose()
   cameraBridge.dispose()
   await waitUntil(
-    () => remoteBridge.inFlightCount === 0 && cameraBridge.inFlightCount === 0,
+    () => remoteBridge.inFlightCount === 0 && cameraBridge.inFlightCount === 0 &&
+      activeRendererLeaseReleases.size === 0,
     2_000,
   )
+  if (activeRendererLeaseReleases.size !== 0) {
+    fail('renderer lease release operations did not drain before native shutdown')
+  }
   finalElectronInFlightTextures =
     remoteBridge.inFlightCount + cameraBridge.inFlightCount
   finalElectronRetainedTextureBytes =
@@ -2572,6 +2606,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     ),
     finalPendingOperations:
       inFlight.size + releaseRequests.size + activeRemoteDeliveries.size +
+      activeRendererLeaseReleases.size +
       (Number(native.finalPendingOperations) || 0),
     maximumActiveGenerations: Math.max(
       1,
