@@ -46,6 +46,7 @@ const {
   selectResourceBaselineSummaries,
   resourceBaselinesComplete,
   shutdownChildren,
+  shouldInjectRemoteRendererFence,
   shouldAwaitResourceBaseline,
 } = require('./media-contention-runner.cjs')
 
@@ -79,6 +80,14 @@ test('frames arriving between protocol ready and supervisor ready wait for epoch
   assert.equal(classifyRuntimeFrameEpoch(1, 1), 'current')
   assert.equal(classifyRuntimeFrameEpoch(1, 2), 'retired')
   assert.equal(classifyRuntimeFrameEpoch(0, 0), 'invalid')
+})
+
+test('renderer fault keeps one delivery slot open until native pool rollover', () => {
+  assert.equal(shouldInjectRemoteRendererFence(0, 0), true)
+  assert.equal(shouldInjectRemoteRendererFence(1, 0), true)
+  assert.equal(shouldInjectRemoteRendererFence(2, 0), false)
+  assert.equal(shouldInjectRemoteRendererFence(2, 1), true)
+  assert.equal(shouldInjectRemoteRendererFence(3, 1), false)
 })
 
 test('camera preview frames and acknowledgements cross the child protocol parser', () => {

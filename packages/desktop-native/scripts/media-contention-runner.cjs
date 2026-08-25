@@ -1743,8 +1743,10 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     const injectFence = frame.runtimeEpoch === fenceOwnerEpoch &&
       !faultInjectionClosed &&
       contentionStartedAtMs !== null &&
-      heldRemoteFrames < 3 &&
-      (heldRemoteFrames === 0 || rolloverWhileHeldProofs > 0) &&
+      shouldInjectRemoteRendererFence(
+        heldRemoteFrames,
+        rolloverWhileHeldProofs,
+      ) &&
       Date.now() - contentionStartedAtMs >=
         profile.faultSchedule.electronFenceDelay[0].atMs
     if (injectFence) {
@@ -3003,6 +3005,18 @@ function delay(durationMs) {
   return new Promise((resolve) => setTimeout(resolve, durationMs))
 }
 
+function shouldInjectRemoteRendererFence(
+  heldRemoteFrames,
+  rolloverWhileHeldProofs,
+) {
+  if (heldRemoteFrames >= 3) return false
+  // Keep one of the three renderer delivery slots free while the native GPU
+  // completion fault quarantines the five-slot upload pool. Two retained
+  // leases preserve the cross-generation proof without starving submissions
+  // before capacity exhaustion can be observed.
+  return heldRemoteFrames < 2 || rolloverWhileHeldProofs > 0
+}
+
 if (process.versions.electron) {
   const electron = require('electron')
   runElectronContention(electron).catch(async (error) => {
@@ -3051,5 +3065,6 @@ module.exports = {
   selectResourceBaselineSummaries,
   resourceBaselinesComplete,
   shutdownChildren,
+  shouldInjectRemoteRendererFence,
   shouldAwaitResourceBaseline,
 }
