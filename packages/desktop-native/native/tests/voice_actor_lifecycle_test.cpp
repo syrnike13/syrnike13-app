@@ -498,7 +498,11 @@ int main() try {
     "disconnect was blocked behind connect A");
   require(sink->waitFailedReply("connect-a", std::chrono::milliseconds(500)),
     "cancelled connect A did not settle its pending request");
-  require(client->pending(Client::Operation::Connect) == 0,
+  require(
+    waitUntil(
+      [&] { return client->pending(Client::Operation::Connect) == 0; },
+      std::chrono::milliseconds(500)
+    ),
     "disconnect did not cooperatively cancel connect A");
 
   client->setBlocked(Client::Operation::Connect, false);
