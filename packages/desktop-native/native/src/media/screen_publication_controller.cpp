@@ -637,6 +637,10 @@ class ScreenPublicationController::Implementation
       attempt->operation.requestCancel();
       const auto retirement = quarantineAttempt(std::move(attempt));
       if (retirement && retirement->cleanup_job &&
+          !retirement->cleanup_job->waitUntil(cleanupCancellationAt(deadline))) {
+        cleanup_cancellation_.requestCancel();
+      }
+      if (retirement && retirement->cleanup_job &&
           !retirement->cleanup_job->waitUntil(deadline)) {
         const auto cleanup = cleanup_supervisor_->snapshot();
         logScreen(
@@ -1555,9 +1559,10 @@ class ScreenPublicationController::Implementation
     auto publication_sid = std::move(resources.publication_sid);
     if (!publication_sid.empty()) {
       try {
+        auto call = SessionPortCall::forOwner(resources.owner_epoch);
+        call.cancellation = cleanup_cancellation_;
         requireSessionPortSuccess(voice_session_->publication().unpublishTrack(
-          SessionPortCall::forOwner(resources.owner_epoch),
-          publication_sid
+          std::move(call), publication_sid
         ));
       } catch (...) {
       }
@@ -1737,6 +1742,15 @@ class ScreenPublicationController::Implementation
   void drainAudioRetirements(
     std::chrono::steady_clock::time_point deadline
   ) noexcept {
+    const auto cancellation_at = cleanupCancellationAt(deadline);
+    for (const auto& retirement : audio_retiring_) {
+      if (!retirement || !retirement->cleanup_job ||
+          retirement->cleanup_job->waitUntil(cancellation_at)) {
+        continue;
+      }
+      cleanup_cancellation_.requestCancel();
+      break;
+    }
     for (const auto& retirement : audio_retiring_) {
       if (!retirement || !retirement->cleanup_job ||
           retirement->cleanup_job->waitUntil(deadline)) {
@@ -1770,8 +1784,10 @@ class ScreenPublicationController::Implementation
     }
     if (!video_sid.empty()) {
       try {
+        auto call = SessionPortCall::forOwner(resources.owner_epoch);
+        call.cancellation = cleanup_cancellation_;
         requireSessionPortSuccess(voice_session_->publication().unpublishTrack(
-          SessionPortCall::forOwner(resources.owner_epoch), video_sid
+          std::move(call), video_sid
         ));
       } catch (...) {
       }
@@ -1992,6 +2008,24 @@ class ScreenPublicationController::Implementation
           std::move(shutdown_cleanup_job_));
     }
 
+    const auto cancellation_at = cleanupCancellationAt(deadline);
+    auto finished_by = [](const std::shared_ptr<RetiringState>& state,
+                          std::chrono::steady_clock::time_point wait_until) {
+      return !state || !state->cleanup_job ||
+        state->cleanup_job->waitUntil(wait_until);
+    };
+    bool cancellation_requested = false;
+    auto cancel_if_unfinished = [&](const std::shared_ptr<RetiringState>& state) {
+      if (cancellation_requested || finished_by(state, cancellation_at)) return;
+      cleanup_cancellation_.requestCancel();
+      cancellation_requested = true;
+    };
+    cancel_if_unfinished(retiring_);
+    for (const auto& overflow : overflow_retiring_) {
+      cancel_if_unfinished(overflow);
+    }
+    cancel_if_unfinished(shutdown_retiring_in_flight_);
+
     auto wait_state = [&](const std::shared_ptr<RetiringState>& state) {
       if (!state || !state->cleanup_job ||
           state->cleanup_job->waitUntil(deadline)) {
@@ -2019,6 +2053,14 @@ class ScreenPublicationController::Implementation
     shutdown_retiring_in_flight_.reset();
   }
 
+  static std::chrono::steady_clock::time_point cleanupCancellationAt(
+      std::chrono::steady_clock::time_point deadline) noexcept {
+    return (std::min)(
+      deadline,
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(250)
+    );
+  }
+
   SequencedEmitter& emitter_;
   std::shared_ptr<ScreenPostGate> post_;
   std::shared_ptr<ScreenCurrentGate> is_current_;
@@ -2038,6 +2080,7 @@ class ScreenPublicationController::Implementation
   CleanupSupervisor* cleanup_supervisor_;
   CleanupStartProbe cleanup_start_probe_;
   CleanupEnqueueProbe cleanup_enqueue_probe_;
+  livekit::OperationCancellation cleanup_cancellation_;
   VideoResourceAdmissionBudget* resource_budget_ = nullptr;
   std::shared_ptr<ScreenRetireCleanupTask> shutdown_cleanup_task_;
   std::shared_ptr<CleanupJob> shutdown_cleanup_job_;

@@ -360,6 +360,7 @@ class DeterministicFakeLiveKitVoiceSession final
   ) override;
 
   void setBlocked(Operation operation, bool blocked);
+  void setCancellationAware(Operation operation, bool aware);
   void setCancelPendingConnectOnDisconnect(bool cancel);
   void releaseNext(Operation operation, Release release = {});
   void waitUntilPending(
@@ -388,13 +389,17 @@ class DeterministicFakeLiveKitVoiceSession final
  private:
   struct GateState {
     bool blocked = false;
+    bool cancellation_aware = false;
     std::size_t pending = 0;
     std::deque<Release> releases;
   };
 
   GateState& gateState(Operation operation);
   const GateState& gateState(Operation operation) const;
-  Release enterGate(Operation operation);
+  Release enterGate(
+    Operation operation,
+    const SessionPortCall* call = nullptr
+  );
   void recordUnpublishedPublicationSid(std::string publication_sid);
   bool isVoiceSessionCurrent(const std::string& session_id) const;
 

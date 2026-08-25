@@ -1158,6 +1158,35 @@ void verifyStatsLauncherFailureIsOptional() {
   );
 }
 
+void verifyShutdownCancelsInFlightUnpublish() {
+  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
+  auto harness = makeWorkingHarness();
+  startHarnessCapture(harness, "shutdown-cancel-active-unpublish");
+  harness.livekit->setBlocked(Operation::Unpublish, true);
+  harness.livekit->setCancellationAware(Operation::Unpublish, true);
+  harness.controller->stopCapture(
+    screenCommand(
+      syrnike::desktop_native::NativeCommandType::StopScreenCapture,
+      "shutdown-cancel-stop",
+      "screen-di",
+      1),
+    false
+  );
+  harness.livekit->waitUntilPending(Operation::Unpublish, 1, kTestWatchdog);
+
+  const auto started = std::chrono::steady_clock::now();
+  harness.controller->shutdown(started + std::chrono::milliseconds(1750));
+  require(
+    std::chrono::steady_clock::now() - started <
+        std::chrono::milliseconds(500),
+    "screen shutdown left an in-flight unpublish on its ordinary deadline"
+  );
+  require(
+    harness.livekit->pending(Operation::Unpublish) == 0,
+    "screen shutdown did not cancel its in-flight unpublish"
+  );
+}
+
 void verifyCaptureRollbackFaultPreservesLaunchFailure() {
   bool preserved_launch_error = false;
   try {
@@ -1573,6 +1602,10 @@ int main() try {
   verifyPhase(
     "combined screen shutdown deadline",
     verifyCombinedShutdownUsesOneDeadline
+  );
+  verifyPhase(
+    "screen shutdown cancels in-flight unpublish",
+    verifyShutdownCancelsInFlightUnpublish
   );
   verifyPhase(
     "retire launcher failure retry",

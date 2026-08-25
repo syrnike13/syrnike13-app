@@ -3390,7 +3390,7 @@ SessionPortStatus DeterministicFakeLiveKitVoiceSession::unpublishTrack(
       "fake Room owner is stale"
     );
   }
-  const auto release = enterGate(Operation::Unpublish);
+  const auto release = enterGate(Operation::Unpublish, &call);
   if (release.error_message) {
     return portFailure(
       call.expected_epoch,
@@ -3491,6 +3491,16 @@ void DeterministicFakeLiveKitVoiceSession::setMicrophoneFrameSubmissionBlocked(
   changed_.notify_all();
 }
 
+void DeterministicFakeLiveKitVoiceSession::setCancellationAware(
+    Operation operation,
+    bool aware) {
+  {
+    std::lock_guard lock(mutex_);
+    gateState(operation).cancellation_aware = aware;
+  }
+  changed_.notify_all();
+}
+
 void DeterministicFakeLiveKitVoiceSession::
 waitUntilMicrophoneFrameSubmissionPending(
   std::size_t count,
@@ -3544,12 +3554,25 @@ void DeterministicFakeLiveKitVoiceSession::recordUnpublishedPublicationSid(
 }
 
 DeterministicFakeLiveKitVoiceSession::Release
-DeterministicFakeLiveKitVoiceSession::enterGate(Operation operation) {
+DeterministicFakeLiveKitVoiceSession::enterGate(
+    Operation operation,
+    const SessionPortCall* call) {
   std::unique_lock lock(mutex_);
   auto& gate = gateState(operation);
   gate.pending += 1;
   changed_.notify_all();
-  changed_.wait(lock, [&] { return !gate.blocked || !gate.releases.empty(); });
+  while (gate.blocked && gate.releases.empty()) {
+    if (gate.cancellation_aware && call &&
+        (call->cancellation.isCancellationRequested() ||
+         SessionPortCall::Clock::now() >= call->deadline)) {
+      gate.pending -= 1;
+      changed_.notify_all();
+      return Release{
+        .error_message = "fake operation cancelled by its call deadline"
+      };
+    }
+    changed_.wait_for(lock, std::chrono::milliseconds(1));
+  }
   Release release;
   if (!gate.releases.empty()) {
     release = std::move(gate.releases.front());
