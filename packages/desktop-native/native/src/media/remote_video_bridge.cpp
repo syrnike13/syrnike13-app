@@ -819,11 +819,22 @@ void RemoteVideoBridge::addTrack(
               renderer_fence_close_deadline;
           while (!stop.stop_requested()) {
             cleanup_retired_uploaders();
-            const auto observed_flow =
+            auto observed_flow =
                 raw->renderer_flow.load(std::memory_order_acquire);
             if (observed_flow ==
                 RemoteVideoRendererFlowState::FenceBlocked) {
-              if (!renderer_fence_close_deadline) {
+              if (rendererTextureLeaseRegistry().generationHasCapacity(
+                    raw->renderer_lease_owner)) {
+                // A GPU query can remain pending after the authoritative
+                // renderer fence restores capacity. Resume submission before
+                // servicing that query so one quarantined slot cannot keep
+                // the renderer flow blocked and prevent pool exhaustion.
+                raw->renderer_flow.store(
+                    RemoteVideoRendererFlowState::Flowing,
+                    std::memory_order_release);
+                observed_flow = RemoteVideoRendererFlowState::Flowing;
+                renderer_fence_close_deadline.reset();
+              } else if (!renderer_fence_close_deadline) {
                 renderer_fence_close_deadline =
                     std::chrono::steady_clock::now() +
                     renderer_fence_decode_grace;

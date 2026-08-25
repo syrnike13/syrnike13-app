@@ -28,6 +28,7 @@ using syrnike::desktop_native::MediaCommand;
 using syrnike::desktop_native::NativeCommandType;
 using syrnike::desktop_native::media::RemoteVideoBridge;
 using syrnike::desktop_native::media::RemoteVideoRendererFlowState;
+using syrnike::desktop_native::media::RemoteVideoTextureCompletionPoll;
 using syrnike::desktop_native::media::RendererTextureLeaseFence;
 using syrnike::desktop_native::media::releaseRendererTextureLease;
 using syrnike::desktop_native::media::rendererTextureLeaseStats;
@@ -175,6 +176,109 @@ int main() try {
           },
           2s),
       "flowing renderer generation did not return to baseline");
+
+  {
+    auto pending_gpu_counters = std::make_shared<ReaderCounters>();
+    auto pending_gpu_track = std::make_shared<FakeVideoTrack>();
+    std::mutex pending_gpu_frames_mutex;
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> pending_gpu_frames;
+    std::atomic_bool hold_third_gpu_completion{true};
+    const RendererTextureLeaseFence pending_gpu_fence{
+        NativeCommandType::RemoteVideoFrame,
+        "renderer-pending-gpu",
+        5,
+        "renderer-pending-gpu-track"};
+    RemoteVideoBridge pending_gpu_bridge(
+        GetCurrentProcessId(),
+        [&](MediaCommand command) {
+          if (command.type == NativeCommandType::RemoteVideoFrame) {
+            std::lock_guard lock(pending_gpu_frames_mutex);
+            pending_gpu_frames.emplace_back(
+                command.frame_sequence, command.timestamp_us);
+          }
+          return true;
+        },
+        {},
+        {},
+        {},
+        [pending_gpu_counters](const std::shared_ptr<livekit::Track>&) {
+          pending_gpu_counters->factories.fetch_add(1);
+          return std::make_shared<CadencedReader>(pending_gpu_counters);
+        },
+        {},
+        nullptr,
+        [&](const RemoteVideoTextureCompletionPoll& observation) noexcept {
+          return hold_third_gpu_completion.load(std::memory_order_acquire) &&
+              observation.submission_sequence == 3;
+        });
+    pending_gpu_bridge.updateIdentity("renderer-pending-gpu", 5);
+    pending_gpu_bridge.addTrack(
+        pending_gpu_track,
+        "participant",
+        livekit::TrackSource::SOURCE_CAMERA,
+        "renderer-pending-gpu-track");
+    require(
+        waitUntil(
+            [&] {
+              const auto snapshot = pending_gpu_bridge.trackSnapshot(
+                  "renderer-pending-gpu-track");
+              std::lock_guard lock(pending_gpu_frames_mutex);
+              return snapshot && pending_gpu_frames.size() == 3 &&
+                  snapshot->renderer_flow ==
+                      RemoteVideoRendererFlowState::FenceBlocked &&
+                  !snapshot->gpu_pump_quiescent;
+            },
+            5s),
+        "pending GPU completion did not overlap a full renderer generation");
+    std::uint64_t released_pending_gpu_sequence = 0;
+    std::uint64_t pending_gpu_stalled_timestamp = 0;
+    {
+      std::lock_guard lock(pending_gpu_frames_mutex);
+      released_pending_gpu_sequence = pending_gpu_frames.front().first;
+      pending_gpu_stalled_timestamp = pending_gpu_frames.back().second;
+    }
+    require(
+        releaseRendererTextureLease(
+            pending_gpu_fence, released_pending_gpu_sequence),
+        "renderer fence did not release capacity beside pending GPU work");
+    require(
+        waitUntil(
+            [&] {
+              std::lock_guard lock(pending_gpu_frames_mutex);
+              return pending_gpu_frames.size() >= 4 &&
+                  pending_gpu_frames.back().second >
+                      pending_gpu_stalled_timestamp;
+            },
+            2s),
+        "pending GPU work prevented released renderer capacity from resuming");
+
+    hold_third_gpu_completion.store(false, std::memory_order_release);
+    pending_gpu_bridge.removeTrack("renderer-pending-gpu-track", false);
+    std::vector<std::uint64_t> pending_gpu_sequences;
+    {
+      std::lock_guard lock(pending_gpu_frames_mutex);
+      for (const auto& [sequence, _] : pending_gpu_frames) {
+        if (sequence != released_pending_gpu_sequence) {
+          pending_gpu_sequences.push_back(sequence);
+        }
+      }
+    }
+    for (const auto sequence : pending_gpu_sequences) {
+      require(
+          releaseRendererTextureLease(pending_gpu_fence, sequence),
+          "pending GPU regression lease did not release exactly once");
+    }
+  }
+  require(
+      waitUntil(
+          [&] {
+            const auto stats = rendererTextureLeaseStats();
+            return stats.outstanding_leases == baseline.outstanding_leases &&
+                stats.outstanding_generations ==
+                    baseline.outstanding_generations;
+          },
+          2s),
+      "pending GPU regression generation did not return to baseline");
 
   auto counters = std::make_shared<ReaderCounters>();
   auto track = std::make_shared<FakeVideoTrack>();
