@@ -31,6 +31,11 @@ constexpr std::size_t max_process_gpu_retirements = 4;
 constexpr std::uint64_t max_remote_video_gpu_generations = 2;
 constexpr auto remote_video_gpu_retirement_deadline =
     std::chrono::seconds(1);
+// Three in-flight renderer leases are ordinary backpressure for a live video
+// stream. Give Electron a brief presentation interval to return a fence before
+// closing and recreating the LiveKit VideoStream; a sustained stall still stops
+// decode without turning normal presentation into decoder/driver churn.
+constexpr auto renderer_fence_decode_grace = std::chrono::milliseconds(100);
 
 #ifdef _WIN32
 class RemoteVideoGpuRetirementQueue final {
@@ -487,10 +492,6 @@ void RemoteVideoBridge::addTrack(
             raw->renderer_flow.store(
                 RemoteVideoRendererFlowState::FenceBlocked,
                 std::memory_order_release);
-            // Closing the current VideoStream is the stop-decode seam. The
-            // owning worker reopens only after an exact renderer fence frees
-            // capacity in this same renderer generation.
-            raw->closeCurrentStream();
           }
           MediaCommand command;
           try {
@@ -814,16 +815,63 @@ void RemoteVideoBridge::addTrack(
       std::jthread gpu_pump([&](std::stop_token stop) {
         try {
           std::unique_lock pipeline_lock(gpu_pipeline_mutex);
+          std::optional<std::chrono::steady_clock::time_point>
+              renderer_fence_close_deadline;
           while (!stop.stop_requested()) {
             cleanup_retired_uploaders();
             const auto observed_flow =
                 raw->renderer_flow.load(std::memory_order_acquire);
+            if (observed_flow ==
+                RemoteVideoRendererFlowState::FenceBlocked) {
+              if (!renderer_fence_close_deadline) {
+                renderer_fence_close_deadline =
+                    std::chrono::steady_clock::now() +
+                    renderer_fence_decode_grace;
+              }
+            } else {
+              renderer_fence_close_deadline.reset();
+            }
             if (gpu_work_pending()) {
               raw->gpu_pump_quiescent.store(
                   false, std::memory_order_release);
               gpu_pipeline_changed.wait_for(
                   pipeline_lock, std::chrono::milliseconds(2));
+            } else if (
+                observed_flow ==
+                    RemoteVideoRendererFlowState::FenceBlocked &&
+                renderer_fence_close_deadline &&
+                std::chrono::steady_clock::now() <
+                    *renderer_fence_close_deadline) {
+              gpu_pipeline_changed.wait_until(
+                  pipeline_lock,
+                  *renderer_fence_close_deadline,
+                  [&] {
+                    return stop.stop_requested() ||
+                        raw->renderer_flow.load(std::memory_order_acquire) !=
+                            observed_flow ||
+                        gpu_work_pending();
+                  });
+            } else if (
+                observed_flow ==
+                    RemoteVideoRendererFlowState::FenceBlocked &&
+                rendererTextureLeaseRegistry().generationHasCapacity(
+                    raw->renderer_lease_owner)) {
+              // The authoritative Electron fence arrived inside the grace
+              // window, so the existing VideoStream can resume in place.
+              raw->renderer_flow.store(
+                  RemoteVideoRendererFlowState::Flowing,
+                  std::memory_order_release);
+              renderer_fence_close_deadline.reset();
             } else {
+              if (observed_flow ==
+                  RemoteVideoRendererFlowState::FenceBlocked) {
+                // The fence stayed full for the complete grace window. Close
+                // the blocking read now; the owning worker reopens only after
+                // an exact renderer release restores generation capacity.
+                pipeline_lock.unlock();
+                raw->closeCurrentStream();
+                pipeline_lock.lock();
+              }
               raw->gpu_pump_quiescent.store(
                   observed_flow ==
                       RemoteVideoRendererFlowState::FenceBlocked,

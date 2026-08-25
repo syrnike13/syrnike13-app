@@ -124,6 +124,58 @@ class CadencedReader final : public RemoteVideoBridge::StreamReader {
 int main() try {
 #ifdef _WIN32
   const auto baseline = rendererTextureLeaseStats();
+  {
+    auto timely_counters = std::make_shared<ReaderCounters>();
+    auto timely_track = std::make_shared<FakeVideoTrack>();
+    std::atomic_uint64_t timely_frames{0};
+    const RendererTextureLeaseFence timely_fence{
+        NativeCommandType::RemoteVideoFrame,
+        "renderer-flowing",
+        4,
+        "renderer-flowing-track"};
+    RemoteVideoBridge timely_bridge(
+        GetCurrentProcessId(),
+        [&](MediaCommand command) {
+          if (command.type != NativeCommandType::RemoteVideoFrame) return true;
+          timely_frames.fetch_add(1, std::memory_order_relaxed);
+          return releaseRendererTextureLease(
+              timely_fence, command.frame_sequence);
+        },
+        {},
+        {},
+        {},
+        [timely_counters](const std::shared_ptr<livekit::Track>&) {
+          timely_counters->factories.fetch_add(1, std::memory_order_relaxed);
+          return std::make_shared<CadencedReader>(timely_counters);
+        });
+    timely_bridge.updateIdentity("renderer-flowing", 4);
+    timely_bridge.addTrack(
+        timely_track,
+        "participant",
+        livekit::TrackSource::SOURCE_CAMERA,
+        "renderer-flowing-track");
+    require(
+        waitUntil(
+            [&] { return timely_frames.load(std::memory_order_relaxed) >= 100; },
+            10s),
+        "timely renderer fences did not sustain ordinary presentation");
+    require(
+        timely_counters->factories.load(std::memory_order_relaxed) == 1 &&
+            timely_counters->closes.load(std::memory_order_relaxed) == 0,
+        "timely renderer fences churned the LiveKit video stream");
+    timely_bridge.removeTrack("renderer-flowing-track", false);
+  }
+  require(
+      waitUntil(
+          [&] {
+            const auto stats = rendererTextureLeaseStats();
+            return stats.outstanding_leases == baseline.outstanding_leases &&
+                stats.outstanding_generations ==
+                    baseline.outstanding_generations;
+          },
+          2s),
+      "flowing renderer generation did not return to baseline");
+
   auto counters = std::make_shared<ReaderCounters>();
   auto track = std::make_shared<FakeVideoTrack>();
   std::mutex frames_mutex;
