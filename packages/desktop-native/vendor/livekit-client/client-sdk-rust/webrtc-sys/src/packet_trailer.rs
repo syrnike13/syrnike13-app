@@ -301,4 +301,22 @@ mod tests {
             false,
         ));
     }
+
+    #[test]
+    fn h264_decoder_gate_rejects_parameter_set_changes_between_slices() {
+        let mixed_picture = vec![
+            0, 0, 0, 1, 0x67, 0x42, 0x00, 0x1f, // SPS
+            0, 0, 0, 1, 0x68, 0xce, 0x06, 0xe2, // PPS
+            0, 0, 0, 1, 0x65, 0xb8, // First IDR slice
+            0, 0, 0, 1, 0x68, 0xce, 0x06, 0xe3, // Changed PPS
+            0, 0, 0, 1, 0x65, 0xb8, // Second IDR slice
+        ];
+
+        assert!(!ffi::h264_is_decodable_keyframe_for_test(&mixed_picture));
+        assert!(!ffi::h264_should_forward_access_unit_to_decoder_for_test(
+            &mixed_picture,
+            true,
+            true,
+        ));
+    }
 }

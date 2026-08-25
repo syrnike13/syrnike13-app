@@ -435,47 +435,16 @@ test('native stderr policy admits only bounded reset and callback-hold warnings'
   ].map((line) => ({ hostEpoch: 2, line, beforeFirstPresentation: true }))
   assert.deepEqual(
     classifyNativeProbeStderr(lateJoinBurst, healthyContext),
-    [],
-  )
-  const firstJoinBurst = lateJoinBurst.map((record) => ({
-    ...record,
-    hostEpoch: 1,
-  }))
-  assert.deepEqual(
-    classifyNativeProbeStderr(firstJoinBurst, {
-      ...healthyContext,
-      linkedVideoPresentationEpochs: new Set([1, 2]),
-    }),
-    [],
-  )
-  assert.deepEqual(
-    classifyNativeProbeStderr(lateJoinBurst.slice(0, 2), {
-      ...healthyContext,
-      linkedVideoPresentationEpochs: new Set([2, 3]),
-    }),
-    [],
-  )
-  assert.deepEqual(
-    classifyNativeProbeStderr([
-      ...firstJoinBurst,
-      ...lateJoinBurst.slice(0, 2).map((record) => ({
-        ...record,
-        hostEpoch: 3,
-      })),
-    ], {
-      ...healthyContext,
-      linkedVideoPresentationEpochs: new Set([1, 2, 3]),
-    }),
-    [],
+    lateJoinBurst,
   )
   assert.equal(classifyNativeProbeStderr([
     ...lateJoinBurst,
     ...lateJoinBurst,
   ], healthyContext).length, 10)
-  assert.deepEqual(classifyNativeProbeStderr(lateJoinBurst.map((record, index) => ({
+  assert.equal(classifyNativeProbeStderr(lateJoinBurst.map((record, index) => ({
     ...record,
     beforeFirstPresentation: index === 4 ? false : true,
-  })), healthyContext), [])
+  })), healthyContext).length, 5)
   assert.deepEqual(classifyNativeProbeStderr([
     { hostEpoch: 2, line: 'native video stream queue overflow; stream_instance=11 dropped 1 queued frames' },
     { hostEpoch: 2, line: 'native video stream queue overflow; stream_instance=12 dropped 1 queued frames' },
@@ -787,12 +756,14 @@ test('screen cadence and backend churn evidence are mandatory', () => {
   delete evidence.metrics.screenOrdinaryCadenceFps
   delete evidence.metrics.screenBackendChurnRecoveryMaxMs
   delete evidence.metrics.screenBackendChurnCount
+  delete evidence.metrics.screenResourceBaselineCaptured
 
   const result = evaluateContentionRun(evidence)
 
   assert.equal(result.status, 'failed')
   assert.match(result.failures.join('\n'), /screen capture cadence/)
   assert.match(result.failures.join('\n'), /screen backend churn/)
+  assert.match(result.failures.join('\n'), /screen capture resource baseline/)
 })
 
 test('screen cadence excludes only the exact bounded backend churn interval', () => {
@@ -1376,6 +1347,7 @@ function healthyEvidence() {
       screenGpuSlotTimeouts: 0,
       screenGpuPoolRollovers: 0,
       screenCaptureResetCount: 0,
+      screenResourceBaselineCaptured: 1,
       screenThreadDeltaMax: 4,
       screenHandleDeltaMax: 12,
       competingWorkloadFps: 58,

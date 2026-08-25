@@ -56,6 +56,7 @@ namespace {
 std::atomic_uint64_t g_h264_pre_keyframe_decode_inputs{0};
 std::atomic_uint64_t g_h264_complete_keyframe_decode_inputs{0};
 std::atomic_uint64_t g_h264_decoded_outputs{0};
+std::atomic_uint64_t g_h264_decoder_gate_resets{0};
 
 void TraceH264DecoderStartup(const char* operation,
                              uint64_t count,
@@ -107,9 +108,9 @@ class H264StartupObservingDecoder final : public webrtc::VideoDecoder {
 
   int32_t Decode(const webrtc::EncodedImage& input,
                  int64_t render_time_ms) override {
-    if (!ShouldForwardToInnerDecoder(input)) {
-      return WEBRTC_VIDEO_CODEC_OK;
-    }
+    const auto gate_result = EvaluateForInnerDecoder(input);
+    if (gate_result != WEBRTC_VIDEO_CODEC_OK) return gate_result;
+    if (!first_complete_keyframe_seen_) return WEBRTC_VIDEO_CODEC_OK;
     ObserveForwardedInput(input);
     return decoder_->Decode(input, render_time_ms);
   }
@@ -117,9 +118,9 @@ class H264StartupObservingDecoder final : public webrtc::VideoDecoder {
   int32_t Decode(const webrtc::EncodedImage& input,
                  bool missing_frames,
                  int64_t render_time_ms) override {
-    if (!ShouldForwardToInnerDecoder(input)) {
-      return WEBRTC_VIDEO_CODEC_OK;
-    }
+    const auto gate_result = EvaluateForInnerDecoder(input);
+    if (gate_result != WEBRTC_VIDEO_CODEC_OK) return gate_result;
+    if (!first_complete_keyframe_seen_) return WEBRTC_VIDEO_CODEC_OK;
     ObserveForwardedInput(input);
     return decoder_->Decode(input, missing_frames, render_time_ms);
   }
@@ -163,11 +164,31 @@ class H264StartupObservingDecoder final : public webrtc::VideoDecoder {
     webrtc::DecodedImageCallback* delegate = nullptr;
   };
 
-  bool ShouldForwardToInnerDecoder(const webrtc::EncodedImage& input) {
-    return h264::ShouldForwardAccessUnitToDecoder(
+  int32_t EvaluateForInnerDecoder(const webrtc::EncodedImage& input) {
+    const auto decision = h264::EvaluateAccessUnitForDecoder(
         webrtc::ArrayView<const uint8_t>(input.data(), input.size()),
         input.FrameType() == webrtc::VideoFrameType::kVideoFrameKey,
         first_complete_keyframe_seen_);
+    if (decision == h264::DecoderGateDecision::Forward) {
+      return WEBRTC_VIDEO_CODEC_OK;
+    }
+    if (decision == h264::DecoderGateDecision::AwaitCompleteKeyframe) {
+      return WEBRTC_VIDEO_CODEC_OK;
+    }
+    counted_first_complete_keyframe_ = false;
+    const auto count = ++g_h264_decoder_gate_resets;
+    const char* operation = "gate_reset_invalid_slice_header";
+    if (decision == h264::DecoderGateDecision::ResetParameterSetAfterSlice) {
+      operation = "gate_reset_parameter_set_after_slice";
+    } else if (decision ==
+               h264::DecoderGateDecision::ResetMixedPictureParameterSet) {
+      operation = "gate_reset_mixed_picture_parameter_set";
+    }
+    TraceH264DecoderStartup(operation, count, input.RtpTimestamp());
+    // A successful return suppresses WebRTC's keyframe request. Signal a
+    // decode error after a post-startup gate reset so the receiver asks the
+    // sender for a fresh SPS/PPS/IDR access unit.
+    return WEBRTC_VIDEO_CODEC_ERROR;
   }
 
   void ObserveForwardedInput(const webrtc::EncodedImage& input) {
@@ -207,6 +228,7 @@ void reset_h264_decode_startup_observations() {
   g_h264_pre_keyframe_decode_inputs.store(0);
   g_h264_complete_keyframe_decode_inputs.store(0);
   g_h264_decoded_outputs.store(0);
+  g_h264_decoder_gate_resets.store(0);
 }
 
 uint64_t h264_pre_keyframe_decode_inputs() {

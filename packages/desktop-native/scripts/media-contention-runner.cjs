@@ -577,44 +577,9 @@ function classifyNativeProbeStderr(records, context = {}) {
       count <= Number(
         context.videoStreamGenerationsByEpoch?.get(hostEpoch) ?? 0,
       ))
-  const lateJoinRecords = records.filter(({ line }) =>
-    /^\[h264 @ [0-9a-fA-F]+\] /.test(line) && !resetPattern.test(line))
-  const knownLateJoinTail = (index, tail) => {
-    if (index === 0) {
-      return /^(?:Invalid level prefix|negative number of zero coeffs at \d+ \d+|corrupted macroblock \d+ \d+ \(total_coeff=-?\d+\))$/
-        .test(tail)
-    }
-    if (index === 1) return /^error while decoding MB \d+ \d+$/.test(tail)
-    if (index === 2) return tail === 'Broken frame packetizing'
-    if (index === 3) return tail === 'PPS changed between slices'
-    if (index === 4) return tail === 'no frame!'
-    return false
-  }
-  const allowedLateJoinBurst = new Set()
-  // Incomplete access units produce this FFmpeg packetizing burst at subscribe
-  // and again when an injected renderer fence starves the decoder. Allow a
-  // bounded known sequence only on epochs that still presented video.
-  if (linkedRecoveryComplete) {
-    const lateJoinByEpoch = new Map()
-    for (const record of lateJoinRecords) {
-      const epochRecords = lateJoinByEpoch.get(record.hostEpoch) ?? []
-      epochRecords.push(record)
-      lateJoinByEpoch.set(record.hostEpoch, epochRecords)
-    }
-    for (const [hostEpoch, epochRecords] of lateJoinByEpoch) {
-      if (!context.linkedVideoPresentationEpochs?.has(hostEpoch)) continue
-      if (epochRecords.length === 0 || epochRecords.length > 5) continue
-      const tails = epochRecords.map(({ line }) =>
-        line.replace(/^\[h264 @ [0-9a-fA-F]+\] /, ''))
-      if (!tails.every((tail, index) => knownLateJoinTail(index, tail))) continue
-      for (const record of epochRecords) allowedLateJoinBurst.add(record)
-    }
-  }
-
   return records.filter((record) => {
     if (resetPattern.test(record.line)) return !allowReset
     if (queuePattern.test(record.line)) return !allowQueue
-    if (allowedLateJoinBurst.has(record)) return false
     return true
   })
 }
@@ -1421,6 +1386,8 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
         event: 'media_timeline',
         stage: 'resource_attribution',
         runtimeEpoch: adapter.hostEpoch,
+        anomaly: true,
+        reason: 'resource-threshold-crossed',
         ...value,
       })
       return
@@ -1613,6 +1580,8 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
       '100',
       '--livekit-fault-enabled',
       hostEpoch > 1 && aggregateLiveKitFaultHits === 0 ? '1' : '0',
+      '--camera-preview-enabled',
+      options.probeCameraPreviewEnabled === false ? '0' : '1',
     ]
     const remainingGaps = profile.faultSchedule.audioSchedulingGap.slice(
       aggregateAudioGapHits,
@@ -2579,8 +2548,12 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     screenGpuSlotTimeouts: Number(capture.gpuSlotTimeouts) || 0,
     screenGpuPoolRollovers: Number(capture.gpuPoolRollovers) || 0,
     screenCaptureResetCount: Number(capture.captureResetCount) || 0,
+    screenResourceBaselineCaptured:
+      Number(capture.resourceBaselineCaptured) || 0,
     screenThreadDeltaMax: Number(capture.threadDeltaMax) || 0,
     screenHandleDeltaMax: Number(capture.handleDeltaMax) || 0,
+    screenHandleTypes:
+      Array.isArray(capture.handleTypes) ? capture.handleTypes : [],
     competingWorkloadFps: Number(competitor.cadenceFps) || 0,
     competingWorkloadP95Ms: Number(competitor.cadenceP95Ms) || 0,
     competingWorkloadP99Ms: Number(competitor.cadenceP99Ms) || 0,
@@ -2698,7 +2671,9 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     profile.name,
     artifact,
   )
-  await rm(diagnosticDirectory, { recursive: true, force: true })
+  if (process.env.SYRNIKE_KEEP_MEDIA_DIAGNOSTICS !== '1') {
+    await rm(diagnosticDirectory, { recursive: true, force: true })
+  }
   console.log(JSON.stringify({
     status: artifact.result.status,
     artifactPath,
@@ -2864,6 +2839,12 @@ function parseRunnerOptions(argv) {
         throw new Error(`unknown media priority policy: ${value}`)
       }
       result.priorityPolicy = value
+    }
+    else if (option === '--probe-camera-preview-enabled') {
+      if (!['0', '1'].includes(value)) {
+        throw new Error('--probe-camera-preview-enabled must be 0 or 1')
+      }
+      result.probeCameraPreviewEnabled = value === '1'
     }
     else throw new Error(`unknown media contention option: ${option}`)
   }

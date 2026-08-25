@@ -35,9 +35,25 @@ bool IsH264Frame(const webrtc::TransformableFrameInterface& frame);
 /// IDR picture, with no delta slices mixed into that picture.
 bool IsDecodableKeyframeAccessUnit(webrtc::ArrayView<const uint8_t> data);
 
+enum class DecoderGateDecision : std::uint8_t {
+  Forward,
+  AwaitCompleteKeyframe,
+  ResetParameterSetAfterSlice,
+  ResetInvalidSliceHeader,
+  ResetMixedPictureParameterSet,
+};
+
+/// Classifies an access unit and updates the decoder gate. A reset decision
+/// means the caller must request decoder recovery before accepting deltas.
+DecoderGateDecision EvaluateAccessUnitForDecoder(
+    webrtc::ArrayView<const uint8_t> data,
+    bool is_keyframe,
+    bool& first_complete_keyframe_seen);
+
 /// Returns true when this access unit may be passed to the inner H264 decoder.
 /// Delta or incomplete units are held until the first complete SPS/PPS/IDR
-/// keyframe has been observed, then every later unit is forwarded.
+/// keyframe has been observed. Later units remain gated against mixed slice
+/// parameter sets; rejecting one resets the gate until a complete keyframe.
 bool ShouldForwardAccessUnitToDecoder(
     webrtc::ArrayView<const uint8_t> data,
     bool is_keyframe,

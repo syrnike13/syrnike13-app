@@ -399,11 +399,16 @@ void CleanupSupervisor::submitOrEscalate(
     std::shared_ptr<CleanupJob> job,
     std::string_view owner) noexcept {
   const auto result = submit(job);
+  const char* outcome = "invalid";
+  if (result == CleanupSubmitResult::Accepted) outcome = "accepted";
+  if (result == CleanupSubmitResult::Saturated) outcome = "saturated";
+  if (result == CleanupSubmitResult::Closed) outcome = "closed";
+  diagnostics::DiagnosticLog::instance().write(
+      "native_cleanup_submission",
+      {{"owner", owner}, {"outcome", outcome}});
   if (result == CleanupSubmitResult::Accepted) return;
   const auto state = snapshot();
-  const char* reason = "invalid";
-  if (result == CleanupSubmitResult::Saturated) reason = "saturated";
-  if (result == CleanupSubmitResult::Closed) reason = "closed";
+  const char* reason = outcome;
   diagnostics::DiagnosticLog::instance().write(
       "native_cleanup_admission_failed",
       {

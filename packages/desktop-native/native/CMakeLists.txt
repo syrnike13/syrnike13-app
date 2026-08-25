@@ -1044,6 +1044,7 @@ add_test(
 # report SKIP rather than silently falling back when the adapter lacks support.
 add_executable(syrnike-native-screen-streaming-benchmark
   tests/screen_streaming_benchmark.cpp
+  tests/windows_process_resource_snapshot.cpp
   src/common/diagnostic_log.cpp
   src/media/screen_capture_target.cpp
   src/media/screen_capture_priority.cpp

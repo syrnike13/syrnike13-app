@@ -411,6 +411,12 @@ function evaluateContentionRun(evidence) {
     metrics.screenCaptureResetCount,
     LIMITS.screenCaptureResetCount,
   )
+  requireExact(
+    failures,
+    'screen capture resource baseline captured',
+    metrics.screenResourceBaselineCaptured,
+    1,
+  )
   requireMaximum(
     failures,
     'screen capture thread-count delta',

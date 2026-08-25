@@ -32,9 +32,14 @@
 #include "media/screen_gpu_capture.hpp"
 #include "media/screen_video_capture_benchmark.hpp"
 #include "media_contention_screen_cadence.hpp"
+#include "windows_process_resource_snapshot.hpp"
 
 using Microsoft::WRL::ComPtr;
 using Clock = std::chrono::steady_clock;
+using syrnike::desktop_native::tests::captureWindowsProcessResourceTypes;
+using syrnike::desktop_native::tests::ResourceTypeCounts;
+using syrnike::desktop_native::tests::resourceTypeDelta;
+using syrnike::desktop_native::tests::WindowsProcessResourceTypes;
 
 namespace {
 class DiagnosticLogLifetime final {
@@ -1071,11 +1076,29 @@ int main(int argc, char **argv) try {
     std::uint64_t total_gpu_slot_timeouts = 0;
     std::uint64_t total_gpu_pool_rollovers = 0;
     std::uint64_t total_preview_device_resets = 0;
-    const auto baseline_threads = process_thread_count();
-    const auto baseline_handles = process_handle_count();
+    auto baseline_threads = process_thread_count();
+    auto baseline_handles = process_handle_count();
+    WindowsProcessResourceTypes resource_type_baseline;
     auto maximum_threads = baseline_threads;
     auto maximum_handles = baseline_handles;
+    ResourceTypeCounts maximum_handle_type_delta;
+    bool resource_baseline_captured = false;
+    const auto resource_baseline_ready_at =
+        capture_started_at + std::chrono::seconds(1);
     auto next_resource_sample_at = capture_started_at;
+    const auto sample_resources = [&] {
+      if (!resource_baseline_captured) return;
+      maximum_threads = std::max(maximum_threads, process_thread_count());
+      const auto sampled_handles = process_handle_count();
+      if (sampled_handles <= maximum_handles) return;
+      maximum_handles = sampled_handles;
+      if (maximum_handles >= baseline_handles + 64) {
+        maximum_handle_type_delta = resourceTypeDelta(
+            resource_type_baseline.handles,
+            captureWindowsProcessResourceTypes().handles,
+            64);
+      }
+    };
     const auto accumulate_flow = [&](const ScreenFrameFlowStats& flow) {
       total_gpu_slot_timeouts += flow.gpu_slot_timeouts;
       total_gpu_pool_rollovers += flow.gpu_pool_rollovers;
@@ -1085,6 +1108,16 @@ int main(int argc, char **argv) try {
            (fixed_duration_capture_phase ||
             captured < target_capture_frames)) {
       const auto loop_now = Clock::now();
+      if (!resource_baseline_captured &&
+          loop_now >= resource_baseline_ready_at && captured > 0) {
+        baseline_threads = process_thread_count();
+        baseline_handles = process_handle_count();
+        resource_type_baseline = captureWindowsProcessResourceTypes();
+        maximum_threads = baseline_threads;
+        maximum_handles = baseline_handles;
+        maximum_handle_type_delta.clear();
+        resource_baseline_captured = true;
+      }
       if (loop_now >= next_backend_churn_at) {
         const auto backend_churn_started_at = Clock::now();
         capturer->setPreviewDemand({});
@@ -1132,8 +1165,7 @@ int main(int argc, char **argv) try {
         next_backend_churn_at += capture_backend_churn_interval;
       }
       if (loop_now >= next_resource_sample_at) {
-        maximum_threads = std::max(maximum_threads, process_thread_count());
-        maximum_handles = std::max(maximum_handles, process_handle_count());
+        sample_resources();
         next_resource_sample_at += std::chrono::milliseconds(100);
       }
       const auto result = capturer->capture(frame);
@@ -1332,6 +1364,10 @@ int main(int argc, char **argv) try {
                  "bgra_preview_shared_texture=pass "
                  "cpu_readback_in_timed_path=absent\n";
     if (external_preview && capture_soak) {
+      if (!resource_baseline_captured) {
+        throw std::runtime_error(
+            "screen contention resource baseline was not established");
+      }
       accumulate_flow(capturer->frameFlowStats());
       const auto elapsed_ms = std::chrono::duration<double, std::milli>(
           Clock::now() - capture_started_at)
@@ -1339,8 +1375,7 @@ int main(int argc, char **argv) try {
       const auto cadence =
           syrnike::desktop_native::tests::contentionScreenCadence(
               captured, elapsed_ms, backend_churn_intervals.totalMs());
-      maximum_threads = std::max(maximum_threads, process_thread_count());
-      maximum_handles = std::max(maximum_handles, process_handle_count());
+      sample_resources();
       std::cout << "ASSERT contention_screen_capture frames=" << captured
                 << " clean_release=pass\n";
       std::cout << "CONTENTION_CAPTURE_SUMMARY {\"frames\":" << captured
@@ -1361,6 +1396,7 @@ int main(int argc, char **argv) try {
                 << ",\"gpuPoolRollovers\":" << total_gpu_pool_rollovers
                 << ",\"captureResetCount\":"
                 << total_preview_device_resets
+                << ",\"resourceBaselineCaptured\":1"
                 << ",\"threadDeltaMax\":"
                 << (maximum_threads >= baseline_threads
                         ? maximum_threads - baseline_threads
@@ -1369,6 +1405,16 @@ int main(int argc, char **argv) try {
                 << (maximum_handles >= baseline_handles
                         ? maximum_handles - baseline_handles
                         : 0)
+                << ",\"handleTypes\":[";
+      for (std::size_t index = 0;
+           index < maximum_handle_type_delta.size(); ++index) {
+        if (index != 0) std::cout << ',';
+        std::cout << "{\"category\":\""
+                  << maximum_handle_type_delta[index].category
+                  << "\",\"count\":"
+                  << maximum_handle_type_delta[index].count << '}';
+      }
+      std::cout << ']'
                 << "}\n";
       CoUninitialize();
       return 0;

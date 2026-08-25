@@ -3,6 +3,7 @@
 #ifdef _WIN32
 
 #include <d3d11.h>
+#include <d3d11sdklayers.h>
 #include <d3d10.h>
 #include <dxgi1_2.h>
 #include <windows.h>
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <iostream>
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
@@ -26,6 +28,13 @@ namespace {
 constexpr auto gpu_completion_timeout = std::chrono::milliseconds(500);
 
 using Microsoft::WRL::ComPtr;
+
+bool d3dDebugLayerRequested() noexcept {
+  char value[2]{};
+  return GetEnvironmentVariableA(
+      "SYRNIKE_MEDIA_D3D11_DEBUG", value, static_cast<DWORD>(std::size(value))) ==
+    1 && value[0] == '1';
+}
 
 [[noreturn]] void throwHResult(const char* operation, HRESULT result) {
   std::ostringstream message;
@@ -73,11 +82,13 @@ struct RemoteVideoD3dDeviceOwner::State final {
       throw std::invalid_argument("Electron main process ID is required");
     }
     D3D_FEATURE_LEVEL level{};
+    debug_layer_enabled = d3dDebugLayerRequested();
     const auto result = D3D11CreateDevice(
       nullptr,
       D3D_DRIVER_TYPE_HARDWARE,
       nullptr,
-      D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+      D3D11_CREATE_DEVICE_BGRA_SUPPORT |
+        (debug_layer_enabled ? D3D11_CREATE_DEVICE_DEBUG : 0),
       nullptr,
       0,
       D3D11_SDK_VERSION,
@@ -87,6 +98,13 @@ struct RemoteVideoD3dDeviceOwner::State final {
     );
     if (FAILED(result)) {
       throwHResult("D3D11 remote video device creation failed", result);
+    }
+    if (debug_layer_enabled) {
+      const auto queue_result = device.As(&debug_queue);
+      if (FAILED(queue_result)) {
+        throwHResult(
+          "D3D11 remote video debug queue query failed", queue_result);
+      }
     }
     ComPtr<ID3D10Multithread> multithread;
     const auto multithread_result = context.As(&multithread);
@@ -109,6 +127,7 @@ struct RemoteVideoD3dDeviceOwner::State final {
       throwWin32Error(
         "Electron main process handle open failed", GetLastError());
     }
+    drainDebugMessages("device-created");
   }
 
   ~State() {
@@ -163,6 +182,7 @@ struct RemoteVideoD3dDeviceOwner::State final {
       throwHResult(
         "DXGI remote video shared handle creation failed", handle_result);
     }
+    drainDebugMessages("texture-configured");
   }
 
   HRESULT submit(
@@ -175,13 +195,17 @@ struct RemoteVideoD3dDeviceOwner::State final {
     std::lock_guard lock(context_mutex);
     if (operation_probe) operation_probe(RemoteVideoD3dDeviceOperation::Submit);
     context->UpdateSubresource(texture, 0, nullptr, data, row_pitch, 0);
-    return completion.completion.begin(timeout);
+    const auto result = completion.completion.begin(timeout);
+    drainDebugMessages("frame-submitted");
+    return result;
   }
 
   HRESULT poll(Completion& completion, std::uint64_t* elapsed_us) {
     std::lock_guard lock(context_mutex);
     if (operation_probe) operation_probe(RemoteVideoD3dDeviceOperation::Poll);
-    return completion.completion.poll(elapsed_us);
+    const auto result = completion.completion.poll(elapsed_us);
+    drainDebugMessages("completion-polled");
+    return result;
   }
 
   HANDLE duplicateForElectron(HANDLE shared_handle) {
@@ -193,6 +217,7 @@ struct RemoteVideoD3dDeviceOwner::State final {
       throwWin32Error(
         "DXGI remote video handle duplication failed", GetLastError());
     }
+    drainDebugMessages("handle-duplicated");
     return duplicated;
   }
 
@@ -205,6 +230,39 @@ struct RemoteVideoD3dDeviceOwner::State final {
           0, FALSE, DUPLICATE_CLOSE_SOURCE | DUPLICATE_SAME_ACCESS)) {
       CloseHandle(local);
     }
+    drainDebugMessages("electron-handle-closed");
+  }
+
+  void drainDebugMessages(const char* stage) noexcept {
+    if (!debug_queue) return;
+    const auto count = debug_queue->GetNumStoredMessagesAllowedByRetrievalFilter();
+    for (UINT64 index = 0; index < count; ++index) {
+      SIZE_T bytes = 0;
+      if (FAILED(debug_queue->GetMessage(index, nullptr, &bytes)) || bytes == 0) {
+        continue;
+      }
+      std::vector<char> storage(bytes);
+      auto* message = reinterpret_cast<D3D11_MESSAGE*>(storage.data());
+      if (FAILED(debug_queue->GetMessage(index, message, &bytes)) ||
+          message->Severity > D3D11_MESSAGE_SEVERITY_WARNING) {
+        continue;
+      }
+      auto description_bytes = message->DescriptionByteLength;
+      if (description_bytes > 0 &&
+          message->pDescription[description_bytes - 1] == '\0') {
+        --description_bytes;
+      }
+      std::cerr << "D3D11_DEBUG stage=" << stage
+                << " severity=" << static_cast<unsigned>(message->Severity)
+                << " category=" << static_cast<unsigned>(message->Category)
+                << " id=" << static_cast<unsigned>(message->ID)
+                << " description="
+                << std::string_view(
+                     message->pDescription,
+                     description_bytes)
+                << '\n';
+    }
+    debug_queue->ClearStoredMessages();
   }
 
   inline static std::atomic_uint64_t next_identity{1};
@@ -212,11 +270,13 @@ struct RemoteVideoD3dDeviceOwner::State final {
   mutable std::mutex context_mutex;
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11DeviceContext> context;
+  ComPtr<ID3D11InfoQueue> debug_queue;
   HANDLE main_process = nullptr;
   std::uint32_t electron_main_pid = 0;
   RemoteVideoD3dDeviceOperationProbe operation_probe;
   std::uint64_t identity = 0;
   bool multithread_protected = false;
+  bool debug_layer_enabled = false;
 };
 
 RemoteVideoD3dDeviceOwner::RemoteVideoD3dDeviceOwner(

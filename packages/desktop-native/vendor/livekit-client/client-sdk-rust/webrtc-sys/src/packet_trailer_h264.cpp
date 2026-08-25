@@ -215,6 +215,7 @@ bool IsDecodableKeyframeAccessUnit(webrtc::ArrayView<const uint8_t> data) {
   while (const auto nalu = nalus.Next()) {
     if (nalu->payload >= nalu->end) continue;
     const uint8_t type = data[nalu->payload] & 0x1f;
+    if (has_idr && (type == 7 || type == 8)) return false;
     if (!has_idr && type == 7) has_sps_before_idr = true;
     if (!has_idr && type == 8) has_pps_before_idr = true;
     if (type >= 1 && type <= 5 && type != 5) return false;
@@ -229,16 +230,51 @@ bool IsDecodableKeyframeAccessUnit(webrtc::ArrayView<const uint8_t> data) {
   return has_sps_before_idr && has_pps_before_idr && has_idr;
 }
 
+DecoderGateDecision EvaluateAccessUnitForDecoder(
+    webrtc::ArrayView<const uint8_t> data,
+    bool is_keyframe,
+    bool& first_complete_keyframe_seen) {
+  if (first_complete_keyframe_seen) {
+    bool has_vcl = false;
+    std::optional<uint32_t> picture_pps_id;
+    AnnexBNaluIterator nalus(data.data(), data.size());
+    while (const auto nalu = nalus.Next()) {
+      if (nalu->payload >= nalu->end) continue;
+      const uint8_t type = data[nalu->payload] & 0x1f;
+      if (has_vcl && (type == 7 || type == 8)) {
+        first_complete_keyframe_seen = false;
+        return DecoderGateDecision::ResetParameterSetAfterSlice;
+      }
+      if (type < 1 || type > 5) continue;
+      has_vcl = true;
+      const auto pps_id = SlicePpsId(
+          data.subview(nalu->payload + 1, nalu->end - nalu->payload - 1));
+      if (!pps_id.has_value()) {
+        first_complete_keyframe_seen = false;
+        return DecoderGateDecision::ResetInvalidSliceHeader;
+      }
+      if (picture_pps_id.has_value() && picture_pps_id != pps_id) {
+        first_complete_keyframe_seen = false;
+        return DecoderGateDecision::ResetMixedPictureParameterSet;
+      }
+      picture_pps_id = pps_id;
+    }
+    return DecoderGateDecision::Forward;
+  }
+  if (is_keyframe && IsDecodableKeyframeAccessUnit(data)) {
+    first_complete_keyframe_seen = true;
+    return DecoderGateDecision::Forward;
+  }
+  return DecoderGateDecision::AwaitCompleteKeyframe;
+}
+
 bool ShouldForwardAccessUnitToDecoder(
     webrtc::ArrayView<const uint8_t> data,
     bool is_keyframe,
     bool& first_complete_keyframe_seen) {
-  if (first_complete_keyframe_seen) return true;
-  if (is_keyframe && IsDecodableKeyframeAccessUnit(data)) {
-    first_complete_keyframe_seen = true;
-    return true;
-  }
-  return false;
+  return EvaluateAccessUnitForDecoder(
+             data, is_keyframe, first_complete_keyframe_seen) ==
+      DecoderGateDecision::Forward;
 }
 
 std::vector<uint8_t> InsertTrailerSei(

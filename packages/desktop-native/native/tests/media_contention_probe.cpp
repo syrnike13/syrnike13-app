@@ -364,6 +364,7 @@ struct Config {
   TimedFault livekit{1'500, 300};
   std::uint64_t screen_start_ms = 0;
   bool livekit_fault_enabled = true;
+  bool camera_preview_enabled = true;
   std::vector<TimedFault> audio{
       {750, 100}, {3'000, 100}, {6'000, 100}, {9'000, 100}};
   std::size_t audio_index_base = 0;
@@ -803,6 +804,12 @@ Config parseConfig(int argc, char** argv) {
             "--livekit-fault-enabled must be 0 or 1");
       }
       config.livekit_fault_enabled = value == "1";
+    } else if (option == "--camera-preview-enabled") {
+      if (value != "0" && value != "1") {
+        throw std::invalid_argument(
+            "--camera-preview-enabled must be 0 or 1");
+      }
+      config.camera_preview_enabled = value == "1";
     } else if (option == "--audio-gap") {
       if (!custom_audio) {
         config.audio.clear();
@@ -1550,35 +1557,37 @@ int main(int argc, char** argv) try {
             publisher_identity,
             livekit::TrackSource::SOURCE_SCREENSHARE,
             std::string(kRemoteTrackId));
-        camera_preview_bridge = std::make_unique<RemoteVideoBridge>(
-            config.electron_pid,
-            [posted_commands](MediaCommand command) {
-              return posted_commands->push(std::move(command));
-            },
-            RemoteVideoBridge::OnEnded{},
-            RemoteVideoBridge::OnHealthy{},
-            syrnike::desktop_native::media::VideoBridgeEventTypes{
-                .frame = NativeCommandType::LocalCameraPreviewFrame,
-                .track_removed =
-                    NativeCommandType::LocalCameraPreviewTrackRemoved,
-                .failed = NativeCommandType::LocalCameraPreviewFailed,
-                .stream_label = "Contention camera preview",
-            },
-            [camera_preview_reader_state](
-                const std::shared_ptr<livekit::Track>&) {
-              camera_preview_reader_state->factories.fetch_add(
-                  1, std::memory_order_relaxed);
-              return std::make_shared<ScriptedVideoReader>(
-                  camera_preview_reader_state);
-            },
-            syrnike::desktop_native::CleanupStartProbe{},
-            &processVideoResourceAdmissionBudget());
-        camera_preview_bridge->updateIdentity("contention-session", 7);
-        camera_preview_bridge->addTrack(
-            subscribed_track,
-            publisher_identity,
-            livekit::TrackSource::SOURCE_CAMERA,
-            std::string(kCameraPreviewTrackId));
+        if (config.camera_preview_enabled) {
+          camera_preview_bridge = std::make_unique<RemoteVideoBridge>(
+              config.electron_pid,
+              [posted_commands](MediaCommand command) {
+                return posted_commands->push(std::move(command));
+              },
+              RemoteVideoBridge::OnEnded{},
+              RemoteVideoBridge::OnHealthy{},
+              syrnike::desktop_native::media::VideoBridgeEventTypes{
+                  .frame = NativeCommandType::LocalCameraPreviewFrame,
+                  .track_removed =
+                      NativeCommandType::LocalCameraPreviewTrackRemoved,
+                  .failed = NativeCommandType::LocalCameraPreviewFailed,
+                  .stream_label = "Contention camera preview",
+              },
+              [camera_preview_reader_state](
+                  const std::shared_ptr<livekit::Track>&) {
+                camera_preview_reader_state->factories.fetch_add(
+                    1, std::memory_order_relaxed);
+                return std::make_shared<ScriptedVideoReader>(
+                    camera_preview_reader_state);
+              },
+              syrnike::desktop_native::CleanupStartProbe{},
+              &processVideoResourceAdmissionBudget());
+          camera_preview_bridge->updateIdentity("contention-session", 7);
+          camera_preview_bridge->addTrack(
+              subscribed_track,
+              publisher_identity,
+              livekit::TrackSource::SOURCE_CAMERA,
+              std::string(kCameraPreviewTrackId));
+        }
         EMIT_CONTROL_STREAM(
             "LIVEKIT_PIPELINE {\"protocolVersion\":" << kProtocolVersion
             << ",\"roomName\":\"" << jsonEscape(config.room_name)
