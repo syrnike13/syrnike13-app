@@ -51,6 +51,21 @@ test('routes a versioned exact renderer-fence release and acknowledgement', () =
   assert.equal(h.messages.at(-1).requestId, 'media-7-uuid')
 })
 
+test('routes camera preview fences through their distinct native command', () => {
+  const h = harness()
+  h.adapter.postMessage({
+    requestId: 'camera-7-uuid',
+    command: { type: 'releaseLocalCameraPreviewFrame', sequence: 23 },
+  })
+  assert.deepEqual(h.writes, ['V1 RELEASE_CAMERA 23 1'])
+  assert.equal(h.adapter.handleProtocol('CAMERA_RELEASE_ACK', {
+    protocolVersion: CONTENTION_PROTOCOL_VERSION,
+    requestId: 1,
+    released: true,
+  }), true)
+  assert.equal(h.messages.at(-1).requestId, 'camera-7-uuid')
+})
+
 test('arms the next GPU query only through a bounded first-held handshake', async () => {
   const h = harness()
   const armed = h.adapter.armGpuAfterHeld()
@@ -209,12 +224,16 @@ test('does not start a replacement host before the retired probe exits', async (
     },
   )
 
-  assert.equal(scheduled[0].delayMs, 100)
+  assert.equal(scheduled[0].delayMs, 0)
   scheduled[0].callback()
   await Promise.resolve()
   assert.equal(replacementStarts, 0)
+  assert.equal(scheduled.length, 1)
   releaseRetirement()
   await Promise.resolve()
+  assert.equal(scheduled[1].delayMs, 100)
+  assert.equal(replacementStarts, 0)
+  scheduled[1].callback()
   assert.equal(replacementStarts, 1)
 })
 

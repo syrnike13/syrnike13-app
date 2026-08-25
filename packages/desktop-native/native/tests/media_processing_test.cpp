@@ -425,6 +425,16 @@ int main() try {
     "remote audio renderer no longer requests its low-latency shared buffer"
   );
   require(
+    syrnike::desktop_native::media::remoteAudioRenderTargetPadding() ==
+      std::chrono::milliseconds(30),
+    "remote audio renderer no longer keeps 30 ms of endpoint padding"
+  );
+  require(
+    syrnike::desktop_native::media::remoteAudioRenderTargetPaddingFrames() ==
+      1'440,
+    "remote audio renderer target padding no longer matches 48 kHz"
+  );
+  require(
     syrnike::desktop_native::media::remoteAudioRenderChannels() == 2,
     "remote audio renderer no longer preserves stereo"
   );
@@ -433,11 +443,16 @@ int main() try {
       std::chrono::milliseconds(20),
     "remote audio playout lost its underrun protection"
   );
-  const auto render_chunks = [](std::uint32_t capacity, std::uint32_t padding) {
+  const auto render_chunks = [](
+    std::uint32_t capacity,
+    std::uint32_t padding,
+    std::uint32_t target_padding
+  ) {
     syrnike::desktop_native::media::detail::RemoteAudioRenderFillPlan plan(
       capacity,
       padding,
-      480
+      480,
+      target_padding
     );
     std::vector<std::uint32_t> chunks;
     while (!plan.complete()) chunks.push_back(plan.nextChunk());
@@ -446,9 +461,10 @@ int main() try {
   const auto require_render_plan = [&](
     std::uint32_t capacity,
     std::uint32_t padding,
+    std::uint32_t target_padding,
     const std::vector<std::uint32_t>& expected
   ) {
-    const auto chunks = render_chunks(capacity, padding);
+    const auto chunks = render_chunks(capacity, padding, target_padding);
     require(chunks == expected, "remote audio render fill chunks regressed");
     const auto written = std::accumulate(
       chunks.begin(),
@@ -470,13 +486,26 @@ int main() try {
       "remote audio render plan retained buffer debt after catch-up"
     );
   };
-  require_render_plan(2'400, 1'920, {480});
-  require_render_plan(2'400, 1'440, {480, 480});
-  require_render_plan(2'400, 960, {480, 480, 480});
-  require_render_plan(2'400, 0, {480, 480, 480, 480, 480});
-  require_render_plan(2'400, 1'439, {480, 480, 1});
+  require_render_plan(2'400, 1'920, 2'400, {480});
+  require_render_plan(2'400, 1'440, 2'400, {480, 480});
+  require_render_plan(2'400, 960, 2'400, {480, 480, 480});
+  require_render_plan(2'400, 0, 2'400, {480, 480, 480, 480, 480});
+  require_render_plan(2'400, 1'439, 2'400, {480, 480, 1});
+  require(
+    render_chunks(2'400, 1'440, 1'440).empty(),
+    "remote audio renderer refilled past its 30 ms padding target"
+  );
+  require(
+    render_chunks(2'400, 960, 1'440) == std::vector<std::uint32_t>{480},
+    "remote audio renderer did not restore 30 ms of padding after a 10 ms wake"
+  );
+  require(
+    render_chunks(2'400, 0, 1'440) ==
+      std::vector<std::uint32_t>({480, 480, 480, 480, 480}),
+    "an underrun no longer restores the full WASAPI jitter buffer"
+  );
   syrnike::desktop_native::media::detail::RemoteAudioRenderFillPlan
-    delayed_render_plan(2'400, 480, 480);
+    delayed_render_plan(2'400, 480, 480, 2'400);
   require(
     delayed_render_plan.catchUpFrames() == 1'440 &&
       delayed_render_plan.bufferEmpty() == false,

@@ -1,4 +1,4 @@
-const { spawn } = require('node:child_process')
+const { execFileSync, spawn } = require('node:child_process')
 const dgram = require('node:dgram')
 const { existsSync } = require('node:fs')
 const http = require('node:http')
@@ -18,13 +18,45 @@ const { gzipSync } = require('node:zlib')
 
 const {
   buildContentionArtifact,
+  contentionProbeRestartDelayMs,
+  linkedVideoReadyDeadlineMs,
   resolveContentionProfile,
 } = require('./media-contention-profile.cjs')
+const {
+  loadLiveKitSession,
+  mintLocalLiveKitSession,
+  parseLiveKitJoinToken,
+} = require('./media-contention-livekit.cjs')
 const {
   extractPriorityOutcome,
 } = require('./media-priority-experiment.cjs')
 
 const activeRunnerChildren = new Set()
+
+function readSourceProvenance() {
+  const repositoryRoot = path.resolve(__dirname, '..', '..', '..')
+  const commitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: repositoryRoot,
+    encoding: 'utf8',
+  }).trim()
+  const relevantChanges = execFileSync(
+    'git',
+    [
+      'status',
+      '--porcelain',
+      '--untracked-files=all',
+      '--',
+      'apps/desktop',
+      'packages/desktop-native',
+      'packages/platform',
+    ],
+    { cwd: repositoryRoot, encoding: 'utf8' },
+  ).trim()
+  return {
+    commitSha,
+    relevantWorkingTreeDirty: relevantChanges.length > 0,
+  }
+}
 
 function buildLocalLiveKitServerArguments({ httpPort, tcpPort, udpPort }) {
   for (const [name, value] of Object.entries({ httpPort, tcpPort, udpPort })) {
@@ -39,12 +71,6 @@ function buildLocalLiveKitServerArguments({ httpPort, tcpPort, udpPort }) {
     '--udp-port', String(udpPort),
     '--rtc.tcp_port', String(tcpPort),
   ]
-}
-
-function parseLiveKitJoinToken(output) {
-  const match = String(output).match(/(?:^|\r?\n)Token:\s+(\S+)/)
-  if (!match) throw new Error('local LiveKit join token was not emitted')
-  return match[1]
 }
 
 function canonicalizeAudioPipeline(value) {
@@ -342,7 +368,7 @@ async function shutdownChildren(children, options = {}) {
 }
 
 async function waitUntil(predicate, timeoutMs) {
-  if (predicate() || timeoutMs <= 0) return
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || predicate()) return
   const deadline = performance.now() + timeoutMs
   while (!predicate()) {
     const remaining = deadline - performance.now()
@@ -445,6 +471,17 @@ function isBridgeSkippedRetiredRelease(frameEpoch, latestRuntimeEpoch) {
     latestRuntimeEpoch > frameEpoch
 }
 
+function classifyRuntimeFrameEpoch(frameEpoch, latestRuntimeEpoch) {
+  if (!Number.isSafeInteger(frameEpoch) || frameEpoch <= 0 ||
+      !Number.isSafeInteger(latestRuntimeEpoch) || latestRuntimeEpoch < 0) {
+    return 'invalid'
+  }
+  if (frameEpoch === latestRuntimeEpoch && latestRuntimeEpoch > 0) {
+    return 'current'
+  }
+  return frameEpoch > latestRuntimeEpoch ? 'pending' : 'retired'
+}
+
 function isCorrelatedInjectedRetirement(frameEpoch, state) {
   return (frameEpoch === state.fenceOwnerEpoch &&
       state.rendererFenceRecycleCompleted) ||
@@ -479,10 +516,16 @@ function assignContentionRecoveryEpochs(state, previousEpoch, nextEpoch) {
     previousEpoch === state.voiceTimeoutEpoch &&
     !state.voiceTimeoutRecycleCompleted
   ) {
+    if (state.voiceTimeoutArmed) {
+      return {
+        ...state,
+        voiceControlTimeoutRecycles: state.voiceControlTimeoutRecycles + 1,
+        voiceTimeoutRecycleCompleted: true,
+      }
+    }
     return {
       ...state,
-      voiceControlTimeoutRecycles: state.voiceControlTimeoutRecycles + 1,
-      voiceTimeoutRecycleCompleted: true,
+      voiceTimeoutEpoch: nextEpoch,
     }
   }
   return state
@@ -536,28 +579,37 @@ function classifyNativeProbeStderr(records, context = {}) {
       ))
   const lateJoinRecords = records.filter(({ line }) =>
     /^\[h264 @ [0-9a-fA-F]+\] /.test(line) && !resetPattern.test(line))
-  const lateJoinEpochs = new Set(lateJoinRecords.map(({ hostEpoch }) => hostEpoch))
-  const lateJoinTails = lateJoinRecords.map(({ line }) =>
-    line.replace(/^\[h264 @ [0-9a-fA-F]+\] /, ''))
-  const allowedLateJoinBurst = new Set(
-    linkedRecoveryComplete &&
-    lateJoinEpochs.size === 1 &&
-    lateJoinRecords.length === 5 &&
-    Number(lateJoinRecords[0]?.hostEpoch) > 1 &&
-    context.linkedVideoPresentationEpochs?.has(
-      lateJoinRecords[0]?.hostEpoch,
-    ) &&
-    lateJoinRecords.every((record) => record.beforeFirstPresentation === true) &&
-    /^(?:Invalid level prefix|negative number of zero coeffs at \d+ \d+|corrupted macroblock \d+ \d+ \(total_coeff=-?\d+\))$/.test(
-      lateJoinTails[0] ?? '',
-    ) &&
-    /^error while decoding MB \d+ \d+$/.test(lateJoinTails[1] ?? '') &&
-    lateJoinTails[2] === 'Broken frame packetizing' &&
-    lateJoinTails[3] === 'PPS changed between slices' &&
-    lateJoinTails[4] === 'no frame!'
-      ? lateJoinRecords
-      : [],
-  )
+  const knownLateJoinTail = (index, tail) => {
+    if (index === 0) {
+      return /^(?:Invalid level prefix|negative number of zero coeffs at \d+ \d+|corrupted macroblock \d+ \d+ \(total_coeff=-?\d+\))$/
+        .test(tail)
+    }
+    if (index === 1) return /^error while decoding MB \d+ \d+$/.test(tail)
+    if (index === 2) return tail === 'Broken frame packetizing'
+    if (index === 3) return tail === 'PPS changed between slices'
+    if (index === 4) return tail === 'no frame!'
+    return false
+  }
+  const allowedLateJoinBurst = new Set()
+  // Incomplete access units produce this FFmpeg packetizing burst at subscribe
+  // and again when an injected renderer fence starves the decoder. Allow a
+  // bounded known sequence only on epochs that still presented video.
+  if (linkedRecoveryComplete) {
+    const lateJoinByEpoch = new Map()
+    for (const record of lateJoinRecords) {
+      const epochRecords = lateJoinByEpoch.get(record.hostEpoch) ?? []
+      epochRecords.push(record)
+      lateJoinByEpoch.set(record.hostEpoch, epochRecords)
+    }
+    for (const [hostEpoch, epochRecords] of lateJoinByEpoch) {
+      if (!context.linkedVideoPresentationEpochs?.has(hostEpoch)) continue
+      if (epochRecords.length === 0 || epochRecords.length > 5) continue
+      const tails = epochRecords.map(({ line }) =>
+        line.replace(/^\[h264 @ [0-9a-fA-F]+\] /, ''))
+      if (!tails.every((tail, index) => knownLateJoinTail(index, tail))) continue
+      for (const record of epochRecords) allowedLateJoinBurst.add(record)
+    }
+  }
 
   return records.filter((record) => {
     if (resetPattern.test(record.line)) return !allowReset
@@ -605,6 +657,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
   if (!existsSync(liveKitServerExecutable)) {
     throw new Error(`local LiveKit server executable missing: ${liveKitServerExecutable}`)
   }
+  process.env.SYRNIKE_MEDIA_PRIORITY_POLICY = options.priorityPolicy
   const diagnosticRunId =
     `contention-${options.priorityPolicy}-${Date.now()}-${process.pid}`
   const diagnosticDirectory = path.join(
@@ -652,6 +705,15 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     path.join(__dirname, 'media-contention-preload.cjs'),
   ))
   await window.loadURL(contentionPageDataUrl())
+  const cameraWindowOptions = {
+    ...buildContentionWindowOptions(
+      path.join(__dirname, 'media-contention-preload.cjs'),
+    ),
+    show: false,
+    alwaysOnTop: false,
+  }
+  let cameraWindow = new electron.BrowserWindow(cameraWindowOptions)
+  let cameraWindowReady = cameraWindow.loadURL(contentionPageDataUrl())
   const windowMotionTimer = startContentionWindowMotion(
     window,
     electron.screen.getPrimaryDisplay().workArea,
@@ -662,6 +724,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
   let contentionStartedAtMs = null
   const children = []
   const childExits = []
+  const deferredUnexpectedExits = []
   const probeDiagnosticPaths = []
   const releaseRequests = new Map()
   const inFlight = new Map()
@@ -696,11 +759,24 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
   let probeChild = null
   let hardwareH264Observed = false
   let remoteBridge = null
+  let cameraBridge = null
   let remoteSupervisor = null
   let currentProbeAdapter = null
   let probeRetirement = Promise.resolve()
   let nextProbeHostEpoch = 0
   let remoteHandleImports = 0
+  let cameraPreviewHandleImports = 0
+  let cameraPreviewDelayedFenceHits = 0
+  let cameraPreviewRendererLosses = 0
+  let cameraPreviewFreshFramesAfterLoss = 0
+  let cameraPreviewFenceAcks = 0
+  let cameraPreviewReleaseFailures = 0
+  let finalCameraPreviewFrames = 0
+  let finalCameraPreviewUsageBytes = 0
+  let finalCameraPreviewUsageGenerations = 0
+  let cameraRendererLossScheduled = false
+  let cameraRendererLossCompleted = false
+  let cameraReplacementReady = false
   let remoteFenceAcks = 0
   let remoteFenceReleaseFailures = 0
   let rendererFenceBlockedTransitions = 0
@@ -748,6 +824,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
   const audioRecoverySamples = Array(4).fill(null)
   const audioRecoverySettledIndexes = new Set()
   const remoteFrames = new Map()
+  const cameraPreviewFrames = new Map()
   const linkedVideoCandidates = new Map()
   const linkedStartupEpochs = new Set()
   const linkedVideoPresentationEpochs = new Set()
@@ -816,6 +893,8 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     if (!observation || !Number.isSafeInteger(observation.sequence)) return
     const key = observation.kind === 'remote'
       ? `remote:${observation.runtimeEpoch}:${observation.sequence}`
+      : observation.kind === 'camera'
+        ? `camera:${observation.runtimeEpoch}:${observation.sequence}`
       : `${observation.kind}:${observation.sequence}`
     const entry = inFlight.get(key)
     if (!entry) return
@@ -830,6 +909,14 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     }
     if (observation.kind === 'local') {
       evidence.environment.capabilities.screenCapture = { available: true }
+    } else if (observation.kind === 'camera') {
+      evidence.environment.capabilities.cameraPreview = { available: true }
+      if (cameraReplacementReady) {
+        cameraPreviewFreshFramesAfterLoss = Math.max(
+          cameraPreviewFreshFramesAfterLoss,
+          1,
+        )
+      }
     } else {
       evidence.environment.capabilities.remoteViewer = { available: true }
     }
@@ -1070,7 +1157,15 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
       })
       child.once('exit', (code, signal) => {
         if (code !== 0 && signal === null) {
-          fail(`${name} exited with ${String(code)}`)
+          if (spawnOptions.deferUnexpectedExit) {
+            deferredUnexpectedExits.push({
+              name,
+              code,
+              hostEpoch: spawnOptions.hostEpoch,
+            })
+          } else {
+            fail(`${name} exited with ${String(code)}`)
+          }
         }
         resolve({ code, signal })
       })
@@ -1081,29 +1176,21 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
   }
 
   const localLiveKitPorts = await allocateLocalLiveKitPorts()
-  const localLiveKitRoom =
-    `issue83-${process.pid}-${Date.now()}`
   const localLiveKitUrl =
     `ws://127.0.0.1:${localLiveKitPorts.httpPort}`
-  const localLiveKitParticipants = []
-  for (let epoch = 1; epoch <= 16; epoch += 1) {
-    const publisherIdentity = `contention-publisher-${epoch}`
-    const viewerIdentity = `contention-viewer-${epoch}`
-    const mint = async (identity) => parseLiveKitJoinToken((
-      await runBoundedChild(liveKitServerExecutable, [
-        '--dev',
-        'create-join-token',
-        '--room', localLiveKitRoom,
-        '--identity', identity,
-      ])
-    ).stdout)
-    localLiveKitParticipants.push({
-      publisherIdentity,
-      publisherToken: await mint(publisherIdentity),
-      viewerIdentity,
-      viewerToken: await mint(viewerIdentity),
+  const liveKitSession = options.liveKitParticipantsFile
+    ? loadLiveKitSession(
+      await readFile(path.resolve(options.liveKitParticipantsFile), 'utf8'),
+    )
+    : await mintLocalLiveKitSession(liveKitServerExecutable, {
+      runChild: runBoundedChild,
+      roomName: options.liveKitRoom,
     })
+  if (options.liveKitRoom && options.liveKitRoom !== liveKitSession.roomName) {
+    throw new Error('livekit room does not match participants file')
   }
+  const localLiveKitRoom = liveKitSession.roomName
+  const localLiveKitParticipants = liveKitSession.participants
   const localLiveKitServer = spawnOwned(
     'local-livekit-server',
     liveKitServerExecutable,
@@ -1122,6 +1209,8 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
 
   const remoteFrameKey = (runtimeEpoch, sequence) =>
     `remote:${runtimeEpoch}:${sequence}`
+  const cameraPreviewFrameKey = (runtimeEpoch, sequence) =>
+    `camera:${runtimeEpoch}:${sequence}`
   const frameCorrelation = (frame) => ({
     sessionId: frame.sessionId,
     generation: frame.generation,
@@ -1152,6 +1241,18 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
       const delivery = trackPendingOperation(
         activeRemoteDeliveries,
         deliverRemoteFrame(adapter, value),
+      )
+      maximumMainPending = Math.max(
+        maximumMainPending,
+        inFlight.size + releaseRequests.size + activeRemoteDeliveries.size,
+      )
+      void delivery
+      return
+    }
+    if (prefix === 'CAMERA_FRAME') {
+      const delivery = trackPendingOperation(
+        activeRemoteDeliveries,
+        deliverCameraPreviewFrame(adapter, value),
       )
       maximumMainPending = Math.max(
         maximumMainPending,
@@ -1455,6 +1556,12 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
         Number(value.finalRemoteUsageGenerations) || 0
       finalRemoteRendererLeases =
         Number(value.finalRemoteRendererLeases) || 0
+      finalCameraPreviewFrames =
+        Number(value.finalCameraPreviewFrames) || 0
+      finalCameraPreviewUsageBytes =
+        Number(value.finalCameraPreviewUsageBytes) || 0
+      finalCameraPreviewUsageGenerations =
+        Number(value.finalCameraPreviewUsageGenerations) || 0
       return
     }
     if (prefix === 'FINISH_ACK') {
@@ -1540,6 +1647,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
         if (adapter) handleProbeProtocol(adapter, line)
       },
       {
+        ...mediaPriorityPolicyEnvironment(options.priorityPolicy),
         SYRNIKE_NATIVE_DIAGNOSTIC_RUN_ID: `${diagnosticRunId}-${hostEpoch}`,
         SYRNIKE_NATIVE_MEDIA_LOG_PATH: diagnosticPath,
         SYRNIKE_CONTENTION_PUBLISHER_TOKEN:
@@ -1549,6 +1657,8 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
       },
       {
         allowStderr: true,
+        deferUnexpectedExit: true,
+        hostEpoch,
         onStderr: (line) => nativeProbeStderr.push({
           hostEpoch,
           line,
@@ -1754,7 +1864,22 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
   }
 
   const deliverRemoteFrame = async (adapter, value) => {
-    if (!remoteBridge || adapter.hostEpoch !== latestRuntimeEpoch) return
+    if (!remoteBridge) return
+    if (classifyRuntimeFrameEpoch(
+      adapter.hostEpoch,
+      latestRuntimeEpoch,
+    ) === 'pending' && adapter === currentProbeAdapter) {
+      await waitUntil(
+        () => adapter.hostEpoch === latestRuntimeEpoch ||
+          adapter !== currentProbeAdapter,
+        5_000,
+      )
+    }
+    if (adapter !== currentProbeAdapter ||
+        classifyRuntimeFrameEpoch(
+          adapter.hostEpoch,
+          latestRuntimeEpoch,
+        ) !== 'current') return
     const ntHandle = Buffer.alloc(8)
     ntHandle.writeBigUInt64LE(BigInt(value.ntHandle))
     const frame = {
@@ -1867,6 +1992,193 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     }
   }
 
+  const importCameraPreviewTexture = ({ textureInfo, allReferencesReleased }) => {
+    const frame = cameraPreviewFrames.get(Number(textureInfo.timestamp))
+    if (!frame) {
+      throw new Error('camera preview identity was not staged for import')
+    }
+    const key = cameraPreviewFrameKey(frame.runtimeEpoch, frame.sequence)
+    const entry = inFlight.get(key)
+    if (!entry) throw new Error('camera preview retention entry is missing')
+    const handleKey = String(frame.rawNtHandle)
+    if (activeHandles.has(handleKey)) prematureTextureReuse += 1
+    activeHandles.set(handleKey, key)
+    cameraPreviewHandleImports += 1
+    return electron.sharedTexture.importSharedTexture({
+      textureInfo,
+      allReferencesReleased: () => {
+        const current = inFlight.get(key)
+        if (current) {
+          const latencyMs = Math.max(0, Date.now() - current.importedAtMs)
+          if (current.injected) {
+            cameraPreviewDelayedFenceHits += latencyMs >= 5_000 ? 1 : 0
+            recordTimeline({
+              ...current.correlation,
+              event: 'media_timeline',
+              stage: 'camera_renderer_fenced_after_loss',
+              durationMs: latencyMs,
+              anomaly: true,
+              reason: 'camera-preview-renderer-loss',
+            })
+          }
+          activeHandles.delete(handleKey)
+          inFlight.delete(key)
+        }
+        allReferencesReleased()
+      },
+    })
+  }
+
+  const replaceCameraRenderer = async () => {
+    if (cameraRendererLossCompleted) return
+    cameraRendererLossCompleted = true
+    cameraReplacementReady = false
+    cameraPreviewRendererLosses += 1
+    if (!cameraWindow.isDestroyed()) cameraWindow.destroy()
+    cameraBridge?.rendererReloaded()
+    cameraWindow = new electron.BrowserWindow(cameraWindowOptions)
+    cameraWindowReady = cameraWindow.loadURL(contentionPageDataUrl())
+    await cameraWindowReady
+    cameraReplacementReady = true
+    recordTimeline({
+      event: 'media_timeline',
+      stage: 'camera_renderer_replacement_ready',
+      elapsedMs: Date.now() - startedAtMs,
+    })
+  }
+
+  const sendCameraPreviewTexture = async (target, metadata) => {
+    const frame = cameraPreviewFrames.get(
+      Number(metadata.nativeCaptureTimestampUs),
+    )
+    if (!frame) throw new Error('camera preview metadata was not staged for send')
+    await cameraWindowReady
+    const key = cameraPreviewFrameKey(frame.runtimeEpoch, frame.sequence)
+    const entry = inFlight.get(key)
+    const injectRendererLoss = !cameraRendererLossScheduled &&
+      contentionStartedAtMs !== null &&
+      Date.now() - contentionStartedAtMs >=
+        profile.faultSchedule.electronFenceDelay[0].atMs
+    if (injectRendererLoss) {
+      cameraRendererLossScheduled = true
+      entry.injected = true
+      const timer = setTimeout(() => {
+        void replaceCameraRenderer().catch((error) => {
+          fail(`camera renderer replacement: ${String(error)}`)
+        })
+      }, 5_500)
+      timer.unref?.()
+    }
+    return electron.sharedTexture.sendSharedTexture(target, {
+      ...metadata,
+      kind: 'camera',
+      width: frame.width,
+      height: frame.height,
+      nativeTimestampUs: frame.timestampUs,
+      mainSentAtMs: Date.now(),
+      holdMs: injectRendererLoss
+        ? Math.max(profile.rendererFenceRecovery.retainedFenceMs, 6_000)
+        : 0,
+    })
+  }
+
+  const releaseCameraPreviewFrame = async (frame) => {
+    const startedAt = Date.now()
+    try {
+      await utilityRuntime.runRendererLeaseRelease(remoteSupervisor, {
+        type: 'releaseLocalCameraPreviewFrame',
+        sessionId: frame.sessionId,
+        generation: frame.generation,
+        trackId: frame.trackId,
+        sequence: frame.sequence,
+      })
+      if (!isRetiredRendererRelease(frame.runtimeEpoch, remoteSupervisor.getSnapshot())) {
+        cameraPreviewFenceAcks += 1
+      }
+      recordTimeline({
+        ...frameCorrelation(frame),
+        event: 'media_timeline',
+        stage: 'camera_native_released',
+        durationMs: Math.max(0, Date.now() - startedAt),
+      })
+    } catch (error) {
+      if (!isRetiredRendererRelease(
+        frame.runtimeEpoch,
+        remoteSupervisor.getSnapshot(),
+      )) {
+        cameraPreviewReleaseFailures += 1
+        fail(`camera preview native release: ${String(error)}`)
+      }
+    }
+  }
+
+  const deliverCameraPreviewFrame = async (adapter, value) => {
+    if (!cameraBridge) return
+    if (classifyRuntimeFrameEpoch(
+      adapter.hostEpoch,
+      latestRuntimeEpoch,
+    ) === 'pending' && adapter === currentProbeAdapter) {
+      await waitUntil(
+        () => adapter.hostEpoch === latestRuntimeEpoch ||
+          adapter !== currentProbeAdapter,
+        5_000,
+      )
+    }
+    if (adapter !== currentProbeAdapter ||
+        classifyRuntimeFrameEpoch(
+          adapter.hostEpoch,
+          latestRuntimeEpoch,
+        ) !== 'current') return
+    const ntHandle = Buffer.alloc(8)
+    ntHandle.writeBigUInt64LE(BigInt(value.ntHandle))
+    const frame = {
+      sessionId: value.sessionId,
+      generation: value.generation,
+      trackId: value.trackId,
+      participantIdentity: value.participantIdentity,
+      source: value.source,
+      local: true,
+      sequence: value.sequence,
+      width: value.width,
+      height: value.height,
+      timestampUs: value.timestampUs,
+      sourceTimestampUs: Number(value.sourceTimestampUs) || 0,
+      runtimeEpoch: adapter.hostEpoch,
+      ntHandle,
+      rawNtHandle: value.ntHandle,
+      pipelineFrameId: '',
+    }
+    const key = cameraPreviewFrameKey(frame.runtimeEpoch, frame.sequence)
+    inFlight.set(key, {
+      correlation: frameCorrelation(frame),
+      receivedAtMs: Date.now(),
+      importedAtMs: Date.now(),
+      handleKey: String(value.ntHandle),
+      retainedBytes: frame.width * frame.height * 4,
+      injected: false,
+    })
+    maximumMainPending = Math.max(maximumMainPending, inFlight.size)
+    maximumRetainedBytes = Math.max(
+      maximumRetainedBytes,
+      [...inFlight.values()].reduce(
+        (sum, retained) => sum + retained.retainedBytes,
+        0,
+      ),
+    )
+    cameraPreviewFrames.set(frame.timestampUs, frame)
+    try {
+      const delivered = await cameraBridge.deliver(frame)
+      if (!delivered && !activeHandles.has(String(value.ntHandle))) {
+        inFlight.delete(key)
+      }
+    } catch (error) {
+      inFlight.delete(key)
+      fail(`camera preview bridge delivery: ${String(error)}`)
+    } finally {
+      cameraPreviewFrames.delete(frame.timestampUs)
+    }
+  }
+
   remoteSupervisor = new utilityRuntime.NativeRuntimeSupervisor({
     runtime: 'media',
     createAdapter: createProbeAdapter,
@@ -1874,7 +2186,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     probeTimeoutMs: 2_500,
     schedule: (callback, delayMs) => scheduleAfterProbeRetirement(
       callback,
-      Math.min(delayMs, 100),
+      contentionProbeRestartDelayMs(delayMs, profile),
       probeRetirement,
     ),
   })
@@ -1921,6 +2233,32 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
         `(epoch ${frame.runtimeEpoch})`)
     },
   })
+  cameraBridge = new utilityRuntime.NativeSharedTextureBridge({
+    getWindow: () => cameraWindow,
+    release: releaseCameraPreviewFrame,
+    importTexture: importCameraPreviewTexture,
+    sendTexture: sendCameraPreviewTexture,
+    maxInFlight: 3,
+    maxRetainedBytes: 256 * 1024 * 1024,
+    stallTimeoutMs: profile.rendererFenceRecovery.retainedFenceMs + 2_000,
+    retiredFenceReloadMs: profile.rendererFenceRecovery.retainedFenceMs + 2_000,
+    retiredFenceRecycleMs: profile.rendererFenceRecovery.retainedFenceMs + 4_000,
+    onPresentationStalled: async (frame, reason, metrics) => {
+      recordTimeline({
+        ...frameCorrelation(frame),
+        event: 'media_timeline',
+        stage: 'camera_renderer_recovery',
+        anomaly: true,
+        reason,
+        metrics,
+      })
+    },
+    onOperationFailed: (stage, frame, error) => {
+      if (cameraRendererLossCompleted && stage === 'send') return
+      fail(`camera shared texture ${stage}: ${String(error)} ` +
+        `(epoch ${frame.runtimeEpoch})`)
+    },
+  })
   remoteSupervisor.onStateChange((snapshot) => {
     if (snapshot.status !== 'ready' || !snapshot.hostEpoch ||
       snapshot.hostEpoch <= latestRuntimeEpoch) return
@@ -1933,10 +2271,12 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
       elapsedMs: Date.now() - startedAtMs,
     })
     remoteBridge.runtimeReplaced(snapshot.hostEpoch)
+    cameraBridge.runtimeReplaced(snapshot.hostEpoch)
     const assigned = assignContentionRecoveryEpochs(
       {
         fenceOwnerEpoch,
         voiceTimeoutEpoch,
+        voiceTimeoutArmed,
         rendererFenceRecycleCompleted,
         rendererFenceHostRecycles,
         voiceTimeoutRecycleCompleted,
@@ -1953,14 +2293,19 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     voiceControlTimeoutRecycles = assigned.voiceControlTimeoutRecycles
   })
   await remoteSupervisor.start()
+  const linkedVideoDeadlineMs = linkedVideoReadyDeadlineMs(profile)
   await waitUntil(
     () => hasLinkedVideoPresentation(linkedVideoCandidates),
-    5_000,
+    linkedVideoDeadlineMs,
   )
   if (!hasLinkedVideoPresentation(linkedVideoCandidates)) {
     throw new Error(
       'linked Room video did not reach exact Electron presentation before contention',
     )
+  }
+  if (options.contentionStartedFile) {
+    await mkdir(path.dirname(options.contentionStartedFile), { recursive: true })
+    await writeFile(options.contentionStartedFile, `${Date.now()}\n`)
   }
   contentionStartedAtMs = Date.now()
 
@@ -2003,7 +2348,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
       }
     },
     {
-      SYRNIKE_MEDIA_PRIORITY_POLICY: options.priorityPolicy,
+      ...mediaPriorityPolicyEnvironment(options.priorityPolicy),
       SYRNIKE_NATIVE_DIAGNOSTIC_RUN_ID: diagnosticRunId,
       SYRNIKE_NATIVE_MEDIA_LOG_PATH: captureDiagnosticPath,
     },
@@ -2092,12 +2437,18 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
   }
   await waitUntil(() => activeRemoteDeliveries.size === 0, 2_000)
   if (activeRemoteDeliveries.size !== 0) {
-    fail('remote delivery operations did not drain before bridge disposal')
+    fail('video delivery operations did not drain before bridge disposal')
   }
   remoteBridge.dispose()
-  await waitUntil(() => remoteBridge.inFlightCount === 0, 2_000)
-  finalElectronInFlightTextures = remoteBridge.inFlightCount
-  finalElectronRetainedTextureBytes = remoteBridge.retainedByteCount
+  cameraBridge.dispose()
+  await waitUntil(
+    () => remoteBridge.inFlightCount === 0 && cameraBridge.inFlightCount === 0,
+    2_000,
+  )
+  finalElectronInFlightTextures =
+    remoteBridge.inFlightCount + cameraBridge.inFlightCount
+  finalElectronRetainedTextureBytes =
+    remoteBridge.retainedByteCount + cameraBridge.retainedByteCount
   try {
     await remoteSupervisor.shutdown()
   } catch (error) {
@@ -2113,6 +2464,9 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
       fail('final native probe did not exit after bounded graceful shutdown')
       probeChild.kill()
     }
+  }
+  for (const exit of deferredUnexpectedExits) {
+    fail(`${exit.name} exited with ${String(exit.code)}`)
   }
   if (localLiveKitServer.exitCode === null &&
       localLiveKitServer.signalCode === null) {
@@ -2288,6 +2642,15 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     remoteHandleImports,
     remoteFenceAcks,
     remoteFenceReleaseFailures,
+    cameraPreviewHandleImports,
+    cameraPreviewDelayedFenceHits,
+    cameraPreviewRendererLosses,
+    cameraPreviewFreshFramesAfterLoss,
+    cameraPreviewFenceAcks,
+    cameraPreviewReleaseFailures,
+    finalCameraPreviewFrames,
+    finalCameraPreviewUsageBytes,
+    finalCameraPreviewUsageGenerations,
     freshFramesAfterRecovery,
     rendererReloadCount,
     rendererFenceHostRecycles,
@@ -2342,6 +2705,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     blockers: artifact.result.blockers,
     failures: artifact.result.failures,
   }))
+  if (!cameraWindow.isDestroyed()) cameraWindow.destroy()
   window.destroy()
   electron.app.exit(
     artifact.result.status === 'pass'
@@ -2359,11 +2723,15 @@ function createEvidence(profile) {
     profile,
     environment: {
       platform: process.platform,
+      source: readSourceProvenance(),
       capabilities: {
         screenCapture: unavailable('real screen capture was not presented'),
         hardwareH264: unavailable('hardware H.264 was not completed'),
         electronSharedTexture: unavailable('Electron shared texture was not imported'),
         remoteViewer: unavailable('remote shared texture was not presented'),
+        cameraPreview: unavailable(
+          'camera preview shared texture was not presented cross-process',
+        ),
         audioOutput: unavailable('Windows audio output was not started'),
         audioPolicyMatrix: unavailable(
           'no --audio-policy-result hook evidence was provided',
@@ -2418,7 +2786,9 @@ function parsePrefixedJson(line) {
     'AUDIO_PLAYOUT',
     'AUDIO_PIPELINE',
     'REMOTE_FRAME',
+    'CAMERA_FRAME',
     'RELEASE_ACK',
+    'CAMERA_RELEASE_ACK',
     'DEMAND_REMOVED',
     'FINISH_ACK',
     'GPU_FAULT_ARMED',
@@ -2466,8 +2836,12 @@ async function readDiagnosticRecords(paths) {
   return records
 }
 
+function mediaPriorityPolicyEnvironment(priorityPolicy) {
+  return { SYRNIKE_MEDIA_PRIORITY_POLICY: priorityPolicy }
+}
+
 function parseRunnerOptions(argv) {
-  const result = { profile: 'ci', priorityPolicy: 'legacy-high' }
+  const result = { profile: 'ci', priorityPolicy: 'normal' }
   for (let index = 0; index < argv.length; index += 1) {
     const option = argv[index]
     const value = argv[++index]
@@ -2478,6 +2852,13 @@ function parseRunnerOptions(argv) {
     else if (option === '--output-dir') result.outputDirectory = value
     else if (option === '--audio-policy-result') result.audioPolicyResult = value
     else if (option === '--livekit-server') result.liveKitServer = value
+    else if (option === '--livekit-room') result.liveKitRoom = value
+    else if (option === '--livekit-participants-file') {
+      result.liveKitParticipantsFile = value
+    }
+    else if (option === '--contention-started-file') {
+      result.contentionStartedFile = value
+    }
     else if (option === '--priority-policy') {
       if (!['normal', 'capture', 'legacy-high'].includes(value)) {
         throw new Error(`unknown media priority policy: ${value}`)
@@ -2630,6 +3011,7 @@ module.exports = {
   canonicalizeAudioPipeline,
   canonicalizeVideoPipeline,
   classifyNativeProbeStderr,
+  classifyRuntimeFrameEpoch,
   contentionCompletionBlockers,
   contentionCompletionDeadlineMs,
   contentionProbeDurationMs,
@@ -2644,7 +3026,9 @@ module.exports = {
   contentionPageDataUrl,
   hasLinkedVideoPresentation,
   startContentionWindowMotion,
+  mediaPriorityPolicyEnvironment,
   parseRunnerOptions,
+  parsePrefixedJson,
   parseLiveKitJoinToken,
   runElectronContention,
   selectLatestAudioEvidence,

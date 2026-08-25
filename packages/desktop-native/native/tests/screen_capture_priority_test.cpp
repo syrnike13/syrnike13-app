@@ -11,6 +11,7 @@ namespace {
 using syrnike::voice::ScreenCapturePriorityScope;
 using syrnike::voice::ScreenD3dPriorityRole;
 using syrnike::voice::ScreenPriorityPlatformAdapter;
+using syrnike::voice::configuredScreenMediaPriorityPolicy;
 using syrnike::voice::screenMediaPriorityPolicy;
 using syrnike::voice::setD3dGpuThreadPriority;
 
@@ -67,6 +68,25 @@ class FakePriorityPlatform final : public ScreenPriorityPlatformAdapter {
   int mmcss_register_calls = 0;
   int gpu_set_calls = 0;
 };
+
+void unsetPolicyEnvironment() {
+  SetEnvironmentVariableA("SYRNIKE_MEDIA_PRIORITY_POLICY", nullptr);
+}
+
+void fallbackIsNormalWhenEnvironmentIsUnset() {
+  unsetPolicyEnvironment();
+  const auto& fallback = configuredScreenMediaPriorityPolicy();
+  require(fallback.name == "normal",
+          "native media priority fallback is not normal");
+  require(fallback.capture_thread_priority == THREAD_PRIORITY_NORMAL,
+          "normal fallback changed capture thread priority");
+  require(!fallback.capture_mmcss,
+          "normal fallback unexpectedly enabled MMCSS");
+  require(fallback.publication_gpu_priority == 0,
+          "normal fallback changed publication GPU priority");
+  require(fallback.preview_gpu_priority == 0,
+          "normal fallback changed preview GPU priority");
+}
 
 void policyTableKeepsCurrentAndLowerCandidatesExplicit() {
   const auto& normal = screenMediaPriorityPolicy("normal");
@@ -153,6 +173,7 @@ void settingFailuresRemainOneShotCapabilityOutcomes() {
 }  // namespace
 
 int main() try {
+  fallbackIsNormalWhenEnvironmentIsUnset();
   policyTableKeepsCurrentAndLowerCandidatesExplicit();
   successfulApplicationIsObservableAndRestored();
   settingFailuresRemainOneShotCapabilityOutcomes();

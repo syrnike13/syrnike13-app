@@ -101,7 +101,11 @@ constexpr std::uint64_t kAudioIntervalUs = 10'000;
 constexpr std::size_t kMaximumPostedCommands = 64;
 constexpr std::uint32_t kProtocolVersion = 1;
 constexpr std::string_view kRemoteTrackId = "contention-remote";
+constexpr std::string_view kCameraPreviewTrackId =
+    "contention-camera-preview";
 constexpr std::string_view kRemoteResourceOwner = "remote:contention-remote";
+constexpr std::string_view kCameraPreviewResourceOwner =
+    "remote:contention-camera-preview";
 
 class CollectingEventSink final : public syrnike::desktop_native::EventSink {
  public:
@@ -150,6 +154,9 @@ struct ViewerTrackState {
   std::string publisher_identity;
   std::string audio_publication_sid;
   std::string audio_remote_track_sid;
+  std::uint64_t rejected_tracks = 0;
+  std::uint64_t snapshot_adoptions = 0;
+  std::uint64_t subscribe_requests = 0;
 };
 
 class ViewerRoomDelegate final : public livekit::RoomDelegate {
@@ -160,11 +167,13 @@ class ViewerRoomDelegate final : public livekit::RoomDelegate {
   void onTrackSubscribed(
       livekit::Room&,
       const livekit::TrackSubscribedEvent& event) override {
-    if (!event.track || !event.participant || !event.publication ||
-        !publisher_filter_.accepts(
+    if (!event.track || !event.participant || !event.publication) return;
+    if (!publisher_filter_.accepts(
             event.participant->identity(),
             event.publication->sid(),
             event.track->sid())) {
+      std::lock_guard lock(state_.mutex);
+      ++state_.rejected_tracks;
       return;
     }
     {
@@ -194,6 +203,135 @@ class ViewerRoomDelegate final : public livekit::RoomDelegate {
  private:
   ViewerTrackState& state_;
   ExpectedPublisherTrackFilter publisher_filter_;
+};
+
+struct RemoteVideoSubscribeWatch {
+  bool publisher_present = false;
+  std::uint64_t video_publications = 0;
+  std::uint64_t subscribed_publications = 0;
+  bool video_track_present = false;
+  std::uint64_t rejected_tracks = 0;
+  std::uint64_t snapshot_adoptions = 0;
+  std::uint64_t subscribe_requests = 0;
+};
+
+void adoptRemoteVideoFromRoom(
+    livekit::Room& room,
+    ViewerTrackState& tracks,
+    const ExpectedPublisherTrackFilter& filter,
+    const std::string& publisher_identity) {
+  const auto participant = room.remoteParticipant(publisher_identity).lock();
+  if (!participant) return;
+  for (const auto& [sid, publication] : participant->trackPublications()) {
+    if (!publication ||
+        publication->kind() != livekit::TrackKind::KIND_VIDEO) {
+      continue;
+    }
+    auto track = publication->track();
+    if (!track) {
+      bool request_subscribe = false;
+      {
+        std::lock_guard lock(tracks.mutex);
+        request_subscribe =
+            tracks.subscribe_requests == 0 && !publication->subscribed();
+        if (request_subscribe) ++tracks.subscribe_requests;
+      }
+      if (request_subscribe) publication->setSubscribed(true);
+      continue;
+    }
+    if (!filter.accepts(
+            publisher_identity, publication->sid(), track->sid())) {
+      std::lock_guard lock(tracks.mutex);
+      ++tracks.rejected_tracks;
+      continue;
+    }
+    std::lock_guard lock(tracks.mutex);
+    if (tracks.video_track) return;
+    tracks.video_track = std::move(track);
+    tracks.publication_sid = publication->sid();
+    tracks.publication_name = publication->name();
+    tracks.publisher_identity = publisher_identity;
+    ++tracks.snapshot_adoptions;
+    tracks.changed.notify_all();
+    return;
+  }
+}
+
+RemoteVideoSubscribeWatch inspectRemoteVideoSubscribe(
+    livekit::Room* room,
+    ViewerTrackState& tracks,
+    const std::string& publisher_identity) {
+  RemoteVideoSubscribeWatch watch;
+  {
+    std::lock_guard lock(tracks.mutex);
+    watch.video_track_present = tracks.video_track != nullptr;
+    watch.rejected_tracks = tracks.rejected_tracks;
+    watch.snapshot_adoptions = tracks.snapshot_adoptions;
+    watch.subscribe_requests = tracks.subscribe_requests;
+  }
+  if (!room) return watch;
+  const auto participant = room->remoteParticipant(publisher_identity).lock();
+  if (!participant) return watch;
+  watch.publisher_present = true;
+  for (const auto& [sid, publication] : participant->trackPublications()) {
+    if (!publication ||
+        publication->kind() != livekit::TrackKind::KIND_VIDEO) {
+      continue;
+    }
+    ++watch.video_publications;
+    if (publication->subscribed() || publication->track()) {
+      ++watch.subscribed_publications;
+    }
+  }
+  return watch;
+}
+
+class DisconnectViewerBeforeRuntime final {
+ public:
+  DisconnectViewerBeforeRuntime(
+      std::unique_ptr<livekit::Room>& room,
+      ViewerTrackState& tracks)
+      : room_(&room), tracks_(&tracks) {}
+
+  ~DisconnectViewerBeforeRuntime() { disconnect(); }
+
+  DisconnectViewerBeforeRuntime(const DisconnectViewerBeforeRuntime&) = delete;
+  DisconnectViewerBeforeRuntime& operator=(
+      const DisconnectViewerBeforeRuntime&) = delete;
+
+  void disconnect() {
+    auto* room = room_;
+    room_ = nullptr;
+    if (room && *room) {
+      auto& diagnostic_log =
+          syrnike::desktop_native::diagnostics::DiagnosticLog::instance();
+      if (diagnostic_log.enabled()) {
+        diagnostic_log.write("viewer_room_disconnect_start");
+      }
+      try {
+        (*room)->setDelegate(nullptr);
+        static_cast<void>(
+            (*room)->disconnectUntil(Clock::now() + std::chrono::seconds(2)));
+      } catch (...) {
+      }
+      room->reset();
+      if (diagnostic_log.enabled()) {
+        diagnostic_log.write("viewer_room_disconnect_ok");
+      }
+    }
+    if (!tracks_) return;
+    try {
+      std::lock_guard lock(tracks_->mutex);
+      tracks_->video_track.reset();
+      tracks_->audio_track.reset();
+    } catch (...) {
+    }
+    tracks_ = nullptr;
+  }
+
+ private:
+  std::unique_ptr<livekit::Room>* room_ = nullptr;
+  ViewerTrackState* tracks_ = nullptr;
 };
 
 class DiagnosticLogLifetime final {
@@ -562,11 +700,14 @@ bool writeStdoutRecord(std::string_view record) noexcept {
 }
 
 void emitControl(BoundedProtocolWriter& writer, std::string record) {
-  if (writer.enqueue(std::move(record), ProtocolRecordPriority::Control) !=
-      ProtocolRecordAdmission::Accepted) {
-    throw std::runtime_error(
-        "contention protocol control/anomaly queue saturated");
+  const auto admission =
+      writer.enqueue(std::move(record), ProtocolRecordPriority::Control);
+  if (admission == ProtocolRecordAdmission::Accepted ||
+      admission == ProtocolRecordAdmission::Closed) {
+    return;
   }
+  throw std::runtime_error(
+      "contention protocol control/anomaly queue saturated");
 }
 
 void emitCapability(
@@ -739,6 +880,9 @@ int main(int argc, char** argv) try {
   const auto renderer_baseline = rendererTextureLeaseStats();
   const auto admission_baseline = processVideoResourceAdmissionBudget().usageFor(
       VideoResourceOwner::RemoteVideo, kRemoteResourceOwner);
+  const auto camera_admission_baseline =
+      processVideoResourceAdmissionBudget().usageFor(
+          VideoResourceOwner::RemoteVideo, kCameraPreviewResourceOwner);
   const auto configured_four_k_pool_bytes = configuredVideoTextureBytes({
       .width = kWidth,
       .height = kHeight,
@@ -747,20 +891,36 @@ int main(int argc, char** argv) try {
   });
   const auto completion_fault = std::make_shared<CompletionFaultState>();
   const auto reader_state = std::make_shared<ScriptedReaderState>();
+  const auto camera_preview_reader_state =
+      std::make_shared<ScriptedReaderState>();
   const auto posted_commands = std::make_shared<BoundedPostedCommands>();
   ViewerTrackState viewer_track_state;
   ViewerRoomDelegate viewer_delegate(
       viewer_track_state, config.publisher_identity);
   auto viewer_room = std::make_unique<livekit::Room>();
   std::unique_ptr<RemoteVideoBridge> video_bridge;
+  std::unique_ptr<RemoteVideoBridge> camera_preview_bridge;
   try {
     viewer_room->setDelegate(&viewer_delegate);
     livekit::RoomOptions options;
     options.auto_subscribe = true;
     options.single_peer_connection = true;
+    auto& diagnostic_log =
+        syrnike::desktop_native::diagnostics::DiagnosticLog::instance();
+    if (diagnostic_log.enabled()) {
+      diagnostic_log.write("viewer_room_connect_start");
+    }
     if (!viewer_room->connect(
             config.livekit_url, config.viewer_token, options)) {
+      if (diagnostic_log.enabled()) {
+        diagnostic_log.write(
+            "viewer_room_connect_failed",
+            {{"reason", "connect returned false"}});
+      }
       throw std::runtime_error("viewer Room connect returned false");
+    }
+    if (diagnostic_log.enabled()) {
+      diagnostic_log.write("viewer_room_connect_ok");
     }
     emitCapability(protocol_writer, "remoteViewer", true);
     EMIT_CONTROL_STREAM(
@@ -837,34 +997,24 @@ int main(int argc, char** argv) try {
       [&protocol_writer,
        &config,
        &livekit_fault_hits,
-       &video_publication_acknowledged,
-       &publication_teardown_gate](
+       &video_publication_acknowledged](
           const MediaCommand&,
           const std::string& publication_sid) {
-        const auto finish_callback = [&] {
-          publication_teardown_gate.finishCallback();
-        };
-        try {
         video_publication_acknowledged.store(true, std::memory_order_release);
-          if (config.livekit_fault_enabled) {
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(config.livekit.at_ms));
-            EMIT_CONTROL_STREAM(
-                "FAULT {\"name\":\"liveKitCallbackHold\",\"phase\":\"entered\""
-                << ",\"publicationSid\":\""
-                << jsonEscape(publication_sid) << "\"}");
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(config.livekit.duration_ms));
-            livekit_fault_hits.fetch_add(1, std::memory_order_relaxed);
-            EMIT_CONTROL_STREAM(
-                "FAULT {\"name\":\"liveKitCallbackHold\",\"phase\":\"released\",\"durationMs\":"
-                << config.livekit.duration_ms << '}');
-          }
-        } catch (...) {
-          finish_callback();
-          throw;
-        }
-        finish_callback();
+        if (!config.livekit_fault_enabled) return;
+        // Hold only the configured duration. Sleeping livekit.at_ms here made
+        // the attempt exceed kNativeOperationDeadline (18s) on production
+        // epoch-2, so isCurrent() failed after the hold and teardown aborted.
+        EMIT_CONTROL_STREAM(
+            "FAULT {\"name\":\"liveKitCallbackHold\",\"phase\":\"entered\""
+            << ",\"publicationSid\":\""
+            << jsonEscape(publication_sid) << "\"}");
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(config.livekit.duration_ms));
+        livekit_fault_hits.fetch_add(1, std::memory_order_relaxed);
+        EMIT_CONTROL_STREAM(
+            "FAULT {\"name\":\"liveKitCallbackHold\",\"phase\":\"released\",\"durationMs\":"
+            << config.livekit.duration_ms << '}');
       },
       [&protocol_writer, &publication_teardown_gate](
           const MediaCommand& command,
@@ -873,8 +1023,6 @@ int main(int argc, char** argv) try {
             syrnike::desktop_native::media::ScreenVideoPublicationPhase;
         if (phase == Phase::Started) {
           publication_teardown_gate.beginPublication();
-        } else if (phase == Phase::Published) {
-          publication_teardown_gate.handoffPublicationToCallback();
         } else {
           publication_teardown_gate.finishPublication();
         }
@@ -888,6 +1036,8 @@ int main(int argc, char** argv) try {
             << "\",\"generation\":" << command.generation << '}');
       });
   screen_runtime->waitUntilReady();
+  DisconnectViewerBeforeRuntime disconnect_viewer_before_runtime(
+      viewer_room, viewer_track_state);
 
   MediaCommand connect_voice;
   connect_voice.type = NativeCommandType::ConnectVoice;
@@ -990,12 +1140,15 @@ int main(int argc, char** argv) try {
 
   PipeCommandReader commands;
   std::unordered_map<std::uint64_t, std::uint64_t> outstanding_sequences;
+  std::unordered_map<std::uint64_t, std::uint64_t>
+      camera_preview_outstanding_sequences;
   std::unordered_map<std::uint64_t, std::uint64_t> outstanding_timestamps;
   std::unordered_map<std::uint64_t, std::uint64_t> outstanding_handles;
   std::uint64_t submitted_frames = 0;
   std::uint64_t published_frames = 0;
   std::uint64_t dropped_frames = 0;
   std::uint64_t release_acks = 0;
+  std::uint64_t camera_preview_release_acks = 0;
   std::uint64_t premature_reuse = 0;
   std::uint64_t reset_count = 0;
   std::uint64_t maximum_quarantined = 0;
@@ -1055,6 +1208,14 @@ int main(int argc, char** argv) try {
   const auto started_at = Clock::now();
   const auto deadline = started_at +
       std::chrono::milliseconds(config.duration_ms);
+  auto publicationFinishDrain = [&] {
+    auto drain = 2000ms;
+    if (!config.livekit_fault_enabled) return drain;
+    const auto hold_until = Clock::now() +
+        std::chrono::milliseconds(config.livekit.duration_ms + 2'000);
+    return std::max(drain, std::chrono::duration_cast<
+        std::chrono::milliseconds>(hold_until - Clock::now()));
+  };
   auto next_audio_at = started_at;
   auto next_resource_sample_at = started_at;
   auto next_audio_evidence_at = started_at + 250ms;
@@ -1117,7 +1278,7 @@ int main(int argc, char** argv) try {
             "FINISH_ACK {\"protocolVersion\":" << kProtocolVersion
             << ",\"requestId\":" << request_id << '}');
         finish_requested = true;
-        finish_drain_deadline = Clock::now() + 2s;
+        finish_drain_deadline = Clock::now() + publicationFinishDrain();
         continue;
       }
       if (type == "REMOVE_DEMAND") {
@@ -1148,26 +1309,40 @@ int main(int argc, char** argv) try {
         continue;
       }
       input >> sequence >> request_id;
-      if (type != "RELEASE_REMOTE") continue;
+      if (type != "RELEASE_REMOTE" && type != "RELEASE_CAMERA") continue;
+      const bool camera_preview = type == "RELEASE_CAMERA";
       const bool released = releaseRendererTextureLease(
           RendererTextureLeaseFence{
-              NativeCommandType::RemoteVideoFrame,
+              camera_preview
+                  ? NativeCommandType::LocalCameraPreviewFrame
+                  : NativeCommandType::RemoteVideoFrame,
               "contention-session",
               7,
-              std::string(kRemoteTrackId),
+              std::string(camera_preview
+                      ? kCameraPreviewTrackId
+                      : kRemoteTrackId),
           },
           sequence);
       if (released) {
-        const auto found = outstanding_sequences.find(sequence);
-        if (found != outstanding_sequences.end()) {
+        auto& sequences = camera_preview
+            ? camera_preview_outstanding_sequences
+            : outstanding_sequences;
+        const auto found = sequences.find(sequence);
+        if (found != sequences.end()) {
           outstanding_handles.erase(found->second);
-          outstanding_sequences.erase(found);
+          sequences.erase(found);
         }
-        outstanding_timestamps.erase(sequence);
-        ++release_acks;
+        if (camera_preview) {
+          ++camera_preview_release_acks;
+        } else {
+          outstanding_timestamps.erase(sequence);
+          ++release_acks;
+        }
       }
       EMIT_CONTROL_STREAM(
-          "RELEASE_ACK {\"protocolVersion\":" << kProtocolVersion
+          (camera_preview ? "CAMERA_RELEASE_ACK {\"protocolVersion\":"
+                          : "RELEASE_ACK {\"protocolVersion\":")
+          << kProtocolVersion
           << ",\"sequence\":" << sequence
           << ",\"requestId\":" << request_id
           << ",\"released\":" << (released ? "true" : "false") << '}');
@@ -1176,18 +1351,26 @@ int main(int argc, char** argv) try {
 
   auto handlePostedCommands = [&] {
     for (auto& command : posted_commands->drain()) {
-      if (command.type != NativeCommandType::RemoteVideoFrame) {
+      if (command.type != NativeCommandType::RemoteVideoFrame &&
+          command.type != NativeCommandType::LocalCameraPreviewFrame) {
         if (command.on_drop) command.on_drop();
         continue;
       }
+      const bool camera_preview =
+          command.type == NativeCommandType::LocalCameraPreviewFrame;
       if (outstanding_handles.contains(command.nt_handle)) {
         ++premature_reuse;
       }
       outstanding_handles[command.nt_handle] = command.frame_sequence;
-      outstanding_sequences[command.frame_sequence] = command.nt_handle;
-      outstanding_timestamps[command.frame_sequence] = command.timestamp_us;
-      ++published_frames;
-      if (observed_video_handoffs.claim(
+      auto& sequences = camera_preview
+          ? camera_preview_outstanding_sequences
+          : outstanding_sequences;
+      sequences[command.frame_sequence] = command.nt_handle;
+      if (!camera_preview) {
+        outstanding_timestamps[command.frame_sequence] = command.timestamp_us;
+        ++published_frames;
+      }
+      if (!camera_preview && observed_video_handoffs.claim(
               command.source_frame_id, command.source_timestamp_us)) {
         reader_state->linked_frame_sequence.store(
             command.source_frame_id, std::memory_order_release);
@@ -1204,7 +1387,9 @@ int main(int argc, char** argv) try {
             << ",\"source\":\"ScreenActor/D3D11H264VideoSource\"}");
       }
       std::ostringstream frame_record;
-      frame_record << "REMOTE_FRAME {\"protocolVersion\":"
+      frame_record << (camera_preview
+                           ? "CAMERA_FRAME {\"protocolVersion\":"
+                           : "REMOTE_FRAME {\"protocolVersion\":")
                    << kProtocolVersion
                    << ",\"ntHandle\":" << command.nt_handle
                    << ",\"sequence\":" << command.frame_sequence
@@ -1213,15 +1398,20 @@ int main(int argc, char** argv) try {
                    << ",\"height\":" << command.height
                    << ",\"sessionId\":\"contention-session\""
                    << ",\"generation\":7"
-                   << ",\"trackId\":\"" << kRemoteTrackId << "\""
+                   << ",\"trackId\":\""
+                   << (camera_preview
+                           ? kCameraPreviewTrackId
+                           : kRemoteTrackId)
+                   << "\""
                    << ",\"participantIdentity\":\""
                    << jsonEscape(config.publisher_identity) << "\""
-                   << ",\"source\":\"screen\"";
+                   << ",\"source\":\""
+                   << (camera_preview ? "camera" : "screen") << "\"";
       const auto linked_timestamp =
           reader_state->linked_timestamp_us.load(std::memory_order_acquire);
       const auto linked_sequence = reader_state->linked_frame_sequence.load(
           std::memory_order_acquire);
-      if (linked_timestamp != 0 && linked_sequence != 0 &&
+      if (!camera_preview && linked_timestamp != 0 && linked_sequence != 0 &&
           command.source_timestamp_us == linked_timestamp &&
           command.source_frame_id == linked_sequence) {
         frame_record << ",\"pipelineFrameId\":\"" << linked_sequence
@@ -1234,15 +1424,17 @@ int main(int argc, char** argv) try {
       if (admission != ProtocolRecordAdmission::Accepted) {
         const bool released = releaseRendererTextureLease(
             RendererTextureLeaseFence{
-                NativeCommandType::RemoteVideoFrame,
+                command.type,
                 command.session_id,
                 command.generation,
                 command.track_id,
             },
             command.frame_sequence);
         outstanding_handles.erase(command.nt_handle);
-        outstanding_sequences.erase(command.frame_sequence);
-        outstanding_timestamps.erase(command.frame_sequence);
+        sequences.erase(command.frame_sequence);
+        if (!camera_preview) {
+          outstanding_timestamps.erase(command.frame_sequence);
+        }
         ++dropped_frames;
         if (!released ||
             admission == ProtocolRecordAdmission::ControlSaturated) {
@@ -1255,16 +1447,28 @@ int main(int argc, char** argv) try {
   };
 
   auto releaseOutstandingRendererLeases = [&] {
-    const RendererTextureLeaseFence fence{
-        NativeCommandType::RemoteVideoFrame,
-        "contention-session",
-        7,
-        std::string(kRemoteTrackId),
+    const auto release_all = [&](NativeCommandType type,
+                                 std::string_view track_id,
+                                 auto& sequences) {
+      const RendererTextureLeaseFence fence{
+          type,
+          "contention-session",
+          7,
+          std::string(track_id),
+      };
+      for (const auto& [sequence, _] : sequences) {
+        static_cast<void>(releaseRendererTextureLease(fence, sequence));
+      }
+      sequences.clear();
     };
-    for (const auto& [sequence, _] : outstanding_sequences) {
-      static_cast<void>(releaseRendererTextureLease(fence, sequence));
-    }
-    outstanding_sequences.clear();
+    release_all(
+        NativeCommandType::RemoteVideoFrame,
+        kRemoteTrackId,
+        outstanding_sequences);
+    release_all(
+        NativeCommandType::LocalCameraPreviewFrame,
+        kCameraPreviewTrackId,
+        camera_preview_outstanding_sequences);
     outstanding_timestamps.clear();
     outstanding_handles.clear();
   };
@@ -1306,6 +1510,13 @@ int main(int argc, char** argv) try {
       }
     }
     if (!video_bridge && viewer_room) {
+      if (video_publication_acknowledged.load(std::memory_order_acquire)) {
+        adoptRemoteVideoFromRoom(
+            *viewer_room,
+            viewer_track_state,
+            ExpectedPublisherTrackFilter(config.publisher_identity),
+            config.publisher_identity);
+      }
       std::shared_ptr<livekit::Track> subscribed_track;
       std::string publication_sid;
       std::string publication_name;
@@ -1339,6 +1550,35 @@ int main(int argc, char** argv) try {
             publisher_identity,
             livekit::TrackSource::SOURCE_SCREENSHARE,
             std::string(kRemoteTrackId));
+        camera_preview_bridge = std::make_unique<RemoteVideoBridge>(
+            config.electron_pid,
+            [posted_commands](MediaCommand command) {
+              return posted_commands->push(std::move(command));
+            },
+            RemoteVideoBridge::OnEnded{},
+            RemoteVideoBridge::OnHealthy{},
+            syrnike::desktop_native::media::VideoBridgeEventTypes{
+                .frame = NativeCommandType::LocalCameraPreviewFrame,
+                .track_removed =
+                    NativeCommandType::LocalCameraPreviewTrackRemoved,
+                .failed = NativeCommandType::LocalCameraPreviewFailed,
+                .stream_label = "Contention camera preview",
+            },
+            [camera_preview_reader_state](
+                const std::shared_ptr<livekit::Track>&) {
+              camera_preview_reader_state->factories.fetch_add(
+                  1, std::memory_order_relaxed);
+              return std::make_shared<ScriptedVideoReader>(
+                  camera_preview_reader_state);
+            },
+            syrnike::desktop_native::CleanupStartProbe{},
+            &processVideoResourceAdmissionBudget());
+        camera_preview_bridge->updateIdentity("contention-session", 7);
+        camera_preview_bridge->addTrack(
+            subscribed_track,
+            publisher_identity,
+            livekit::TrackSource::SOURCE_CAMERA,
+            std::string(kCameraPreviewTrackId));
         EMIT_CONTROL_STREAM(
             "LIVEKIT_PIPELINE {\"protocolVersion\":" << kProtocolVersion
             << ",\"roomName\":\"" << jsonEscape(config.room_name)
@@ -1358,8 +1598,18 @@ int main(int argc, char** argv) try {
       }
     }
     if (protocol_writer.snapshot().write_failed) {
-      releaseOutstandingRendererLeases();
-      throw std::runtime_error("contention protocol stdout write failed");
+      auto& diagnostic_log =
+          syrnike::desktop_native::diagnostics::DiagnosticLog::instance();
+      if (diagnostic_log.enabled()) {
+        diagnostic_log.write("probe_protocol_write_failed");
+      }
+      // A closed parent pipe is the recycle/shutdown signal. Throwing here
+      // destroys MediaRuntime while a LiveKit FFI callback may still be on
+      // the stack and abort the process with 0xC0000409.
+      if (!finish_requested) {
+        finish_requested = true;
+        finish_drain_deadline = Clock::now() + publicationFinishDrain();
+      }
     }
 
     if (gpu_arm_request_id && !outstanding_sequences.empty() && video_bridge) {
@@ -1657,7 +1907,9 @@ int main(int argc, char** argv) try {
 
     maximum_pending = std::max<std::uint64_t>(
         maximum_pending,
-        outstanding_sequences.size() + posted_commands->size());
+        outstanding_sequences.size() +
+            camera_preview_outstanding_sequences.size() +
+            posted_commands->size());
     if (now >= next_resource_sample_at) {
       const auto renderer_stats = rendererTextureLeaseStats();
       maximum_renderer_leases = std::max<std::uint64_t>(
@@ -1700,6 +1952,10 @@ int main(int argc, char** argv) try {
         else if (pending_startup_operations != 0) {
           reset_reason = "pending-startup";
         }
+        const auto video_watch = inspectRemoteVideoSubscribe(
+            viewer_room.get(),
+            viewer_track_state,
+            config.publisher_identity);
         EMIT_CONTROL_STREAM(
             "RESOURCE_BASELINE_SAMPLE {\"protocolVersion\":"
             << kProtocolVersion
@@ -1710,7 +1966,19 @@ int main(int argc, char** argv) try {
             << ",\"pendingStartup\":" << pending_startup_operations
             << ",\"stableSamples\":"
             << resource_baseline_gate.stableSamples()
-            << ",\"resetReason\":\"" << reset_reason << "\"}");
+            << ",\"resetReason\":\"" << reset_reason << "\""
+            << ",\"videoTrackPresent\":"
+            << (video_watch.video_track_present ? 1 : 0)
+            << ",\"remotePublisherPresent\":"
+            << (video_watch.publisher_present ? 1 : 0)
+            << ",\"remoteVideoPublications\":"
+            << video_watch.video_publications
+            << ",\"remoteVideoSubscribed\":"
+            << video_watch.subscribed_publications
+            << ",\"rejectedTracks\":" << video_watch.rejected_tracks
+            << ",\"snapshotAdoptions\":" << video_watch.snapshot_adoptions
+            << ",\"subscribeRequests\":"
+            << video_watch.subscribe_requests << '}');
       }
       if (baseline_ready) {
         baseline_threads = processThreadCount();
@@ -1793,7 +2061,9 @@ int main(int argc, char** argv) try {
                   : 0)
           << ",\"pendingStartup\":" << pending_startup_operations
           << ",\"pendingReleaseOperations\":"
-          << (outstanding_sequences.size() + posted_commands->size())
+          << (outstanding_sequences.size() +
+              camera_preview_outstanding_sequences.size() +
+              posted_commands->size())
           << ",\"rendererLeases\":" << current_renderer_leases
           << ",\"remoteGpuGenerations\":" << current_gpu_generations
           << ",\"resourceBaselineCaptured\":"
@@ -1808,8 +2078,15 @@ int main(int argc, char** argv) try {
     video_bridge->removeTrack(std::string(kRemoteTrackId), false);
     ++demand_removals;
   }
+  if (camera_preview_bridge && camera_preview_bridge->trackSnapshot(
+          std::string(kCameraPreviewTrackId))) {
+    camera_preview_bridge->removeTrack(
+        std::string(kCameraPreviewTrackId), false);
+  }
   const auto drain_deadline = Clock::now() + 2s;
-  while (!outstanding_sequences.empty() && Clock::now() < drain_deadline) {
+  while ((!outstanding_sequences.empty() ||
+          !camera_preview_outstanding_sequences.empty()) &&
+         Clock::now() < drain_deadline) {
     handleCommands();
     handlePostedCommands();
     std::this_thread::sleep_for(1ms);
@@ -1817,6 +2094,10 @@ int main(int argc, char** argv) try {
   if (video_bridge) {
     video_bridge->stop();
     video_bridge.reset();
+  }
+  if (camera_preview_bridge) {
+    camera_preview_bridge->stop();
+    camera_preview_bridge.reset();
   }
   handlePostedCommands();
   // Electron skips RELEASE_REMOTE for frames from a retired probe epoch, and
@@ -1829,9 +2110,15 @@ int main(int argc, char** argv) try {
     const auto renderer = rendererTextureLeaseStats();
     const auto usage = processVideoResourceAdmissionBudget().usageFor(
         VideoResourceOwner::RemoteVideo, kRemoteResourceOwner);
+    const auto camera_usage = processVideoResourceAdmissionBudget().usageFor(
+        VideoResourceOwner::RemoteVideo, kCameraPreviewResourceOwner);
     if (renderer.outstanding_leases <= renderer_baseline.outstanding_leases &&
         usage.texture_backing_bytes <= admission_baseline.texture_backing_bytes &&
-        usage.gpu_generations <= admission_baseline.gpu_generations) {
+        usage.gpu_generations <= admission_baseline.gpu_generations &&
+        camera_usage.texture_backing_bytes <=
+            camera_admission_baseline.texture_backing_bytes &&
+        camera_usage.gpu_generations <=
+            camera_admission_baseline.gpu_generations) {
       break;
     }
     handlePostedCommands();
@@ -1842,6 +2129,7 @@ int main(int argc, char** argv) try {
       ? audio_output->playoutSnapshot("contention-audio")
       : std::nullopt;
   emitAudioEvidence();
+  disconnect_viewer_before_runtime.disconnect();
   if (audio_output) {
     audio_output->stop();
     audio_output.reset();
@@ -1849,15 +2137,6 @@ int main(int argc, char** argv) try {
   screen_runtime->requestShutdown();
   screen_runtime->shutdownAndWait();
   screen_runtime.reset();
-  if (viewer_room) {
-    static_cast<void>(viewer_room->disconnectUntil(Clock::now() + 2s));
-    viewer_room.reset();
-  }
-  {
-    std::lock_guard lock(viewer_track_state.mutex);
-    viewer_track_state.video_track.reset();
-    viewer_track_state.audio_track.reset();
-  }
   audio_track.reset();
   audio_source.reset();
   real_livekit.reset();
@@ -1870,17 +2149,16 @@ int main(int argc, char** argv) try {
     handleCommands();
     handlePostedCommands();
 
-    auto cleanup =
-        syrnike::desktop_native::CleanupSupervisor::instance().snapshot();
-    if (cleanup.owned_jobs == 0 && cleanup.active_jobs == 0 &&
-        cleanup.backlog_jobs == 0 && livekit_lifetime &&
-        livekit_lifetime.use_count() == 1) {
+    if (livekit_lifetime && livekit_lifetime.use_count() == 1) {
       livekit_lifetime.reset();
     }
-    cleanup = syrnike::desktop_native::CleanupSupervisor::instance().snapshot();
+    const auto cleanup =
+        syrnike::desktop_native::CleanupSupervisor::instance().snapshot();
     const auto renderer = rendererTextureLeaseStats();
     const auto usage = processVideoResourceAdmissionBudget().usageFor(
         VideoResourceOwner::RemoteVideo, kRemoteResourceOwner);
+    const auto camera_usage = processVideoResourceAdmissionBudget().usageFor(
+        VideoResourceOwner::RemoteVideo, kCameraPreviewResourceOwner);
     const auto livekit_shutdown_complete =
         !livekit_lifetime &&
         syrnike::desktop_native::media::LiveKitLease::activeCount() == 0 &&
@@ -1888,18 +2166,25 @@ int main(int argc, char** argv) try {
             livekit_shutdown_transition_before + 1;
     terminal_resource_state = {
         .native_pending = outstanding_sequences.size() +
+            camera_preview_outstanding_sequences.size() +
             posted_commands->size() +
             publication_teardown_gate.pending(screen_start_acknowledged),
-        .held_leases = outstanding_sequences.size(),
+        .held_leases = outstanding_sequences.size() +
+            camera_preview_outstanding_sequences.size(),
         .renderer_leases = renderer.outstanding_leases >=
                 renderer_baseline.outstanding_leases
             ? renderer.outstanding_leases -
                   renderer_baseline.outstanding_leases
             : 0,
-        .gpu_generations = usage.gpu_generations >=
-                admission_baseline.gpu_generations
-            ? usage.gpu_generations - admission_baseline.gpu_generations
-            : 0,
+        .gpu_generations =
+            (usage.gpu_generations >= admission_baseline.gpu_generations
+                 ? usage.gpu_generations - admission_baseline.gpu_generations
+                 : 0) +
+            (camera_usage.gpu_generations >=
+                     camera_admission_baseline.gpu_generations
+                 ? camera_usage.gpu_generations -
+                       camera_admission_baseline.gpu_generations
+                 : 0),
         .cleanup_owned = cleanup.owned_jobs,
         .cleanup_active = cleanup.active_jobs,
         .cleanup_backlog = cleanup.backlog_jobs,
@@ -1924,6 +2209,10 @@ int main(int argc, char** argv) try {
           std::to_string(terminal_resource_state.cleanup_owned) + "/" +
           std::to_string(terminal_resource_state.cleanup_active) + "/" +
           std::to_string(terminal_resource_state.cleanup_backlog) +
+          " accepted=" + std::to_string(cleanup.accepted_jobs) +
+          " completed=" + std::to_string(cleanup.completed_jobs) +
+          " livekitLifetime=" +
+          std::to_string(livekit_lifetime.use_count()) +
           " livekit=" +
           (terminal_resource_state.livekit_shutdown_complete ? "1" : "0"));
     }
@@ -1950,12 +2239,16 @@ int main(int argc, char** argv) try {
   const auto final_remote_usage =
       processVideoResourceAdmissionBudget().usageFor(
           VideoResourceOwner::RemoteVideo, kRemoteResourceOwner);
+  const auto final_camera_preview_usage =
+      processVideoResourceAdmissionBudget().usageFor(
+          VideoResourceOwner::RemoteVideo, kCameraPreviewResourceOwner);
   const auto final_renderer_leases =
       final_renderer.outstanding_leases >= renderer_baseline.outstanding_leases
           ? final_renderer.outstanding_leases -
                 renderer_baseline.outstanding_leases
           : 0;
-  const auto final_pending = outstanding_sequences.size();
+  const auto final_pending = outstanding_sequences.size() +
+      camera_preview_outstanding_sequences.size();
   const auto final_thread_delta = final_threads >= baseline_threads
       ? final_threads - baseline_threads
       : 0;
@@ -2088,6 +2381,18 @@ int main(int argc, char** argv) try {
                     ? final_remote_usage.gpu_generations -
                           admission_baseline.gpu_generations
                     : 0)
+            << ",\"finalCameraPreviewUsageBytes\":"
+            << (final_camera_preview_usage.texture_backing_bytes >=
+                    camera_admission_baseline.texture_backing_bytes
+                    ? final_camera_preview_usage.texture_backing_bytes -
+                          camera_admission_baseline.texture_backing_bytes
+                    : 0)
+            << ",\"finalCameraPreviewUsageGenerations\":"
+            << (final_camera_preview_usage.gpu_generations >=
+                    camera_admission_baseline.gpu_generations
+                    ? final_camera_preview_usage.gpu_generations -
+                          camera_admission_baseline.gpu_generations
+                    : 0)
             << ",\"finalCleanupOwned\":"
             << terminal_resource_state.cleanup_owned
             << ",\"finalCleanupActive\":"
@@ -2097,14 +2402,21 @@ int main(int argc, char** argv) try {
             << ",\"liveKitShutdownComplete\":"
             << (terminal_resource_state.livekit_shutdown_complete ? 1 : 0)
             << ",\"prematureTextureReuse\":" << premature_reuse
+            << ",\"cameraPreviewReleaseAcks\":"
+            << camera_preview_release_acks
+            << ",\"finalCameraPreviewFrames\":"
+            << camera_preview_outstanding_sequences.size()
             << ",\"resetCount\":" << reset_count
             << ",\"republishCount\":"
             << (livekit_finished.load(std::memory_order_acquire) ? 1 : 0)
-            << ",\"finalHeldLeases\":" << outstanding_sequences.size()
+            << ",\"finalHeldLeases\":"
+            << (outstanding_sequences.size() +
+                camera_preview_outstanding_sequences.size())
             << '}';
   emitControl(protocol_writer, summary_record.str());
   if (!protocol_writer.closeUntil(Clock::now() + 1s)) {
-    std::terminate();
+    std::cerr << "contention protocol writer could not be cancelled" << std::endl;
+    std::quick_exit(EXIT_FAILURE);
   }
 
 #undef EMIT_CONTROL_STREAM

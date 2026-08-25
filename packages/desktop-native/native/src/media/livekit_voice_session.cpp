@@ -462,7 +462,7 @@ class PostedRoomDelegate final
       }
     );
     if (!notify_terminal) return;
-    postTerminal(std::move(terminal_message));
+    postTerminal(terminal_message);
   }
 
   void onTrackPublished(livekit::Room&, const livekit::TrackPublishedEvent& event) override {
@@ -2879,7 +2879,9 @@ SessionPortResult<SessionPortCall> LiveKitVoiceSession::bindCurrentOwner(
   std::chrono::milliseconds budget
 ) {
   const auto deadline = SessionPortCall::Clock::now() + budget;
-  const auto desired_epoch = SessionEpoch{std::move(session_id), generation, 0};
+  SessionEpoch desired_epoch;
+  desired_epoch.session_id = std::move(session_id);
+  desired_epoch.generation = generation;
   auto status_call = SessionPortCall{{}, deadline, {}};
   auto status = lifecycle().status(std::move(status_call));
   if (status.hasError()) {

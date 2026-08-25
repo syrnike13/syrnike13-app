@@ -68,15 +68,28 @@ struct AudioEndpointChange;
 
 constexpr std::size_t remoteAudioSampleRate() noexcept { return 48'000; }
 
+constexpr std::chrono::milliseconds remoteAudioPlayoutStartDuration() noexcept {
+  return std::chrono::milliseconds(20);
+}
+
 constexpr std::chrono::milliseconds remoteAudioRenderBufferDuration() noexcept {
   return std::chrono::milliseconds(50);
 }
 
-constexpr std::uint16_t remoteAudioRenderChannels() noexcept { return 2; }
-
-constexpr std::chrono::milliseconds remoteAudioPlayoutStartDuration() noexcept {
-  return std::chrono::milliseconds(20);
+// Keep the 50 ms WASAPI buffer as jitter absorption, but only maintain 30 ms
+// of endpoint padding in steady state. Filling to capacity made scheduled
+// playout age ~67 ms and left almost no room inside the 80 ms freshness budget.
+constexpr std::chrono::milliseconds remoteAudioRenderTargetPadding() noexcept {
+  return std::chrono::milliseconds(30);
 }
+
+constexpr std::uint32_t remoteAudioRenderTargetPaddingFrames() noexcept {
+  return static_cast<std::uint32_t>(
+    remoteAudioSampleRate() * remoteAudioRenderTargetPadding().count() / 1'000
+  );
+}
+
+constexpr std::uint16_t remoteAudioRenderChannels() noexcept { return 2; }
 
 constexpr std::chrono::milliseconds remoteAudioRendererStartupDeadline()
     noexcept {

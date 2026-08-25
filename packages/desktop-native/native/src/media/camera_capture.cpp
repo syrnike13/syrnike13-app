@@ -70,12 +70,15 @@ std::shared_ptr<VideoResourceLease> acquireCameraResource(
   }
 }
 
-void check(HRESULT result, const char* message) {
-  if (SUCCEEDED(result)) return;
+[[noreturn]] void fail(HRESULT result, const char* message) {
   std::ostringstream output;
   output << message << " (HRESULT=0x" << std::hex << std::setw(8)
          << std::setfill('0') << static_cast<std::uint32_t>(result) << ')';
   throw std::runtime_error(output.str());
+}
+
+void check(HRESULT result, const char* message) {
+  if (FAILED(result)) fail(result, message);
 }
 
 struct ActivateArray {
@@ -1267,7 +1270,7 @@ std::vector<DeviceInfo> listCameraDevices() {
     if (FAILED(id_result) || FAILED(name_result)) {
       CoTaskMemFree(id);
       CoTaskMemFree(name);
-      check(
+      fail(
           FAILED(id_result) ? id_result : name_result,
           "camera device metadata unavailable");
     }

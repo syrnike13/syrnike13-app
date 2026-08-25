@@ -53,6 +53,30 @@ void logRuntime(
   logger.write(event, fields);
 }
 
+std::string_view mediaRuntimeShutdownStepName(MediaRuntimeShutdownStep step) {
+  switch (step) {
+    case MediaRuntimeShutdownStep::JoinVoiceWorkers:
+      return "join_voice_workers";
+    case MediaRuntimeShutdownStep::JoinScreenWorker:
+      return "join_screen_worker";
+    case MediaRuntimeShutdownStep::JoinCameraWorker:
+      return "join_camera_worker";
+    case MediaRuntimeShutdownStep::JoinQueryWorker:
+      return "join_query_worker";
+    case MediaRuntimeShutdownStep::JoinMicrophoneWorkers:
+      return "join_microphone_workers";
+    case MediaRuntimeShutdownStep::ShutdownScreen:
+      return "shutdown_screen";
+    case MediaRuntimeShutdownStep::ShutdownCamera:
+      return "shutdown_camera";
+    case MediaRuntimeShutdownStep::ShutdownPreviewAndMicrophone:
+      return "shutdown_preview_and_microphone";
+    case MediaRuntimeShutdownStep::ShutdownVoice:
+      return "shutdown_voice";
+  }
+  return "unknown";
+}
+
 std::shared_ptr<LiveKitVoiceSession> bindVoiceSessionRuntimeLifetime(
   std::shared_ptr<LiveKitVoiceSession> voice_session,
   const std::shared_ptr<LiveKitRuntimeLifetime>& lifetime
@@ -534,6 +558,19 @@ class MediaRuntime::Implementation
 
   void requestShutdown() {
     logRuntime("media_runtime_request_shutdown");
+    const auto cleanup = cleanup_supervisor_->snapshot();
+    logRuntime(
+      "media_runtime_cleanup_snapshot",
+      {
+        {"ownedJobs", static_cast<std::uint64_t>(cleanup.owned_jobs)},
+        {"activeJobs", static_cast<std::uint64_t>(cleanup.active_jobs)},
+        {"backlogJobs", static_cast<std::uint64_t>(cleanup.backlog_jobs)},
+        {"acceptedJobs", cleanup.accepted_jobs},
+        {"completedJobs", cleanup.completed_jobs},
+        {"saturatedSubmissions", cleanup.saturated_submissions},
+        {"closedSubmissions", cleanup.closed_submissions}
+      }
+    );
     shutting_down_.store(true);
     display_sources_.shutdown();
     accepted_control_post_.close();
@@ -596,8 +633,9 @@ class MediaRuntime::Implementation
   bool postInternal(Queue& queue, MediaCommand command) {
     if (requiresAcceptedControlPost(command)) {
       try {
+        const auto key = acceptedControlKey(command);
         return accepted_control_post_.postOnce(
-          acceptedControlKey(command),
+          key,
           std::move(command)
         );
       } catch (...) {
@@ -1025,6 +1063,10 @@ class MediaRuntime::Implementation
   }
 
   void handleVoice(MediaCommand& command) {
+    // A single event storage slot keeps the actor worker stack bounded. Every
+    // branch that populates it returns immediately after transferring it to the
+    // sink, so no moved-from event is reused.
+    RuntimeEvent event;
     if (command.type == NativeCommandType::VoiceConnectCompleted) {
       voice_.handleWorkerCommand(command);
       return;
@@ -1032,7 +1074,6 @@ class MediaRuntime::Implementation
     if (command.type == NativeCommandType::VoiceConnectionStateChanged) {
       if (!desired_voice_.isCurrent(command.session_id, command.generation))
         return;
-      RuntimeEvent event;
       event.type = NativeEventType::VoiceConnectionState;
       event.session_id = command.session_id;
       event.generation = command.generation;
@@ -1043,7 +1084,6 @@ class MediaRuntime::Implementation
     if (command.type == NativeCommandType::RemoteVideoPublicationAvailable ||
         command.type == NativeCommandType::RemoteVideoPublicationUnavailable) {
       if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
-      RuntimeEvent event;
       event.type = command.type == NativeCommandType::RemoteVideoPublicationAvailable
         ? NativeEventType::RemoteVideoPublicationAvailable
         : NativeEventType::RemoteVideoPublicationUnavailable;
@@ -1057,7 +1097,6 @@ class MediaRuntime::Implementation
     }
     if (command.type == NativeCommandType::VoiceOutputStateChanged) {
       if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
-      RuntimeEvent event;
       event.type = NativeEventType::SessionLifecycle;
       event.session_id = command.session_id;
       event.generation = command.generation;
@@ -1087,7 +1126,6 @@ class MediaRuntime::Implementation
     }
     if (command.type == NativeCommandType::VoiceRemoteAudioTrackFailed) {
       if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
-      RuntimeEvent event;
       event.type = NativeEventType::RuntimeError;
       event.session_id = command.session_id;
       event.generation = command.generation;
@@ -1125,7 +1163,6 @@ class MediaRuntime::Implementation
         }
         return;
       }
-      RuntimeEvent event;
       event.type = NativeEventType::RemoteVideoFrame;
       event.session_id = command.session_id;
       event.generation = command.generation;
@@ -1158,7 +1195,6 @@ class MediaRuntime::Implementation
     }
     if (command.type == NativeCommandType::RemoteVideoTrackRemoved || command.type == NativeCommandType::RemoteVideoFailed) {
       if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
-      RuntimeEvent event;
       event.type = command.type == NativeCommandType::RemoteVideoFailed
         ? NativeEventType::RemoteVideoFailed
         : NativeEventType::RemoteVideoTrackRemoved;
@@ -1179,7 +1215,6 @@ class MediaRuntime::Implementation
       if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
       desired_voice_.set("__voice_terminal__", command.generation);
       voice_commands_.discardMedia(command.session_id, command.generation);
-      RuntimeEvent event;
       event.type = NativeEventType::VoiceTerminal;
       event.session_id = command.session_id;
       event.generation = command.generation;
@@ -1200,7 +1235,6 @@ class MediaRuntime::Implementation
     }
     if (command.type == NativeCommandType::VoiceActiveSpeakers) {
       if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
-      RuntimeEvent event;
       event.type = NativeEventType::ActiveSpeakers;
       event.session_id = command.session_id;
       event.generation = command.generation;
@@ -1211,7 +1245,6 @@ class MediaRuntime::Implementation
     }
     if (command.type == NativeCommandType::VoiceStats) {
       if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
-      RuntimeEvent event;
       event.type = NativeEventType::VoiceStats;
       event.session_id = command.session_id;
       event.generation = command.generation;
@@ -1776,6 +1809,10 @@ class MediaRuntime::Implementation
     auto& owner = *static_cast<Implementation*>(context);
     auto& state = owner.subsystem_shutdown_;
     forEachMediaRuntimeShutdownStep([&](MediaRuntimeShutdownStep step) {
+      logRuntime(
+        "media_runtime_subsystem_shutdown_step",
+        {{"step", mediaRuntimeShutdownStepName(step)}}
+      );
       switch (step) {
         case MediaRuntimeShutdownStep::JoinVoiceWorkers:
           joinIfRunning(state.voice_worker);
@@ -1847,13 +1884,26 @@ class MediaRuntime::Implementation
     subsystem_shutdown_.screen_worker = std::move(screen_worker);
     subsystem_shutdown_.camera_worker = std::move(camera_worker);
     subsystem_shutdown_.query_worker = std::move(query_worker);
-    subsystem_cleanup_job_->prepare(
+    if (!subsystem_cleanup_job_->prepare(
       std::move(owner),
       this,
       reinterpret_cast<CleanupResourceKey>(this),
       finishQuarantinedSubsystemShutdown,
       notifyQuarantinedSubsystemShutdownComplete
-    );
+    )) {
+      logRuntime("media_runtime_subsystem_cleanup_prepare_recreate");
+      subsystem_cleanup_job_ = std::make_shared<CleanupJob>();
+      if (!subsystem_cleanup_job_->prepare(
+        weak_from_this().lock(),
+        this,
+        reinterpret_cast<CleanupResourceKey>(this),
+        finishQuarantinedSubsystemShutdown,
+        notifyQuarantinedSubsystemShutdownComplete
+      )) {
+        logRuntime("media_runtime_subsystem_cleanup_prepare_failed");
+        return false;
+      }
+    }
     cleanup_supervisor_->submitOrEscalate(
       subsystem_cleanup_job_, "media_runtime"
     );

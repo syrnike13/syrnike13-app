@@ -31,10 +31,10 @@ use anyhow::{anyhow, Result};
 use common::{test_rooms_with_options, TestRoomOptions};
 use futures_util::StreamExt;
 use libwebrtc::{
-    prelude::{I420Buffer, RtcVideoSource, VideoFrame, VideoResolution, VideoRotation},
     native::packet_trailer::{
         h264_decode_startup_observations, reset_h264_decode_startup_observations,
     },
+    prelude::{I420Buffer, RtcVideoSource, VideoFrame, VideoResolution, VideoRotation},
     rtp_sender::VideoEncoderBackend,
     video_source::native::NativeVideoSource,
     video_stream::native::NativeVideoStream,
@@ -228,6 +228,9 @@ async fn test_late_subscriber_h264_starts_decoder_at_complete_keyframe() -> Resu
         "late-h264-track",
         RtcVideoSource::Native(rtc_source.clone()),
     );
+    let mut frame_metadata_features = FrameMetadataFeatures::default();
+    frame_metadata_features.user_timestamp = true;
+    frame_metadata_features.frame_id = true;
     pub_room
         .local_participant()
         .publish_track(
@@ -236,24 +239,14 @@ async fn test_late_subscriber_h264_starts_decoder_at_complete_keyframe() -> Resu
                 video_codec: VideoCodec::H264,
                 video_encoder: VideoEncoderBackend::Software,
                 simulcast: false,
-                frame_metadata_features: FrameMetadataFeatures {
-                    user_timestamp: true,
-                    frame_id: true,
-                    ..Default::default()
-                },
+                frame_metadata_features,
                 ..Default::default()
             },
         )
         .await?;
 
     let (stop_tx, stop_rx) = oneshot::channel::<()>();
-    let publish_task = tokio::spawn(publish_frames(
-        stop_rx,
-        rtc_source,
-        true,
-        true,
-        None,
-    ));
+    let publish_task = tokio::spawn(publish_frames(stop_rx, rtc_source, true, true, None));
 
     let publication = timeout(Duration::from_secs(15), async {
         loop {

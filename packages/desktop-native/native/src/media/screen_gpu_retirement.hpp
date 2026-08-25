@@ -223,6 +223,7 @@ class ScreenGpuRetirementLane final {
             continue;
           }
           mergeCounters(completed_stats_, final_stats[work_index]);
+          if (release_count >= release_outside_lock.size()) std::terminate();
           release_outside_lock[release_count++] =
               std::move(entry.capturer);
           entry = {};

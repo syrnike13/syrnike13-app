@@ -8,8 +8,10 @@ function scheduleAfterProbeRetirement(
   scheduleTimeout = setTimeout,
 ) {
   return scheduleTimeout(() => {
-    void retirement.then(callback)
-  }, delayMs)
+    void Promise.resolve(retirement).then(() => {
+      scheduleTimeout(callback, delayMs)
+    })
+  }, 0)
 }
 
 class ContentionNativeRuntimeAdapter {
@@ -83,7 +85,9 @@ class ContentionNativeRuntimeAdapter {
       })
       return
     }
-    const isRelease = command.type === 'releaseRemoteVideoFrame'
+    const isRemoteRelease = command.type === 'releaseRemoteVideoFrame'
+    const isCameraRelease = command.type === 'releaseLocalCameraPreviewFrame'
+    const isRelease = isRemoteRelease || isCameraRelease
     const isDemandRemoval = command.type === 'setRemoteVideoDemand' &&
       command.demanded === false
     const isShutdown = command.type === 'shutdown'
@@ -100,11 +104,11 @@ class ContentionNativeRuntimeAdapter {
       })
       return
     }
-    if (isRelease && this.releaseTimeoutStage === 'armed') {
+    if (isRemoteRelease && this.releaseTimeoutStage === 'armed') {
       this.releaseTimeoutStage = 'first-withheld'
       return
     }
-    if (isRelease && this.releaseTimeoutStage === 'probe-replied') {
+    if (isRemoteRelease && this.releaseTimeoutStage === 'probe-replied') {
       this.releaseTimeoutStage = 'retry-withheld'
       return
     }
@@ -124,17 +128,22 @@ class ContentionNativeRuntimeAdapter {
     const protocolRequestId = ++this.nextProtocolRequest
     this.protocolRequests.set(protocolRequestId, {
       requestId,
-      kind: isRelease
-        ? 'release'
+      kind: isRemoteRelease
+        ? 'remote-release'
+        : isCameraRelease
+          ? 'camera-release'
         : isDemandRemoval
           ? 'demand-removal'
           : 'shutdown',
     })
     this.write(
       this.child,
-      isRelease
+      isRemoteRelease
         ? `V${CONTENTION_PROTOCOL_VERSION} RELEASE_REMOTE ` +
           `${command.sequence} ${protocolRequestId}`
+        : isCameraRelease
+          ? `V${CONTENTION_PROTOCOL_VERSION} RELEASE_CAMERA ` +
+            `${command.sequence} ${protocolRequestId}`
         : isDemandRemoval
           ? `V${CONTENTION_PROTOCOL_VERSION} REMOVE_DEMAND ${protocolRequestId}`
           : `V${CONTENTION_PROTOCOL_VERSION} FINISH ${protocolRequestId}`,
@@ -222,7 +231,8 @@ class ContentionNativeRuntimeAdapter {
       })
       return true
     }
-    if ((prefix !== 'RELEASE_ACK' && prefix !== 'DEMAND_REMOVED' &&
+    if ((prefix !== 'RELEASE_ACK' && prefix !== 'CAMERA_RELEASE_ACK' &&
+      prefix !== 'DEMAND_REMOVED' &&
       prefix !== 'FINISH_ACK' && prefix !== 'GPU_FAULT_ARMED' &&
       prefix !== 'AUDIO_RECOVERY_ARMED') ||
       !Number.isSafeInteger(value.requestId)) {
@@ -230,7 +240,9 @@ class ContentionNativeRuntimeAdapter {
     }
     const pending = this.protocolRequests.get(value.requestId)
     if (pending === undefined) return false
-    if ((prefix === 'RELEASE_ACK' && pending.kind !== 'release') ||
+    if ((prefix === 'RELEASE_ACK' && pending.kind !== 'remote-release') ||
+      (prefix === 'CAMERA_RELEASE_ACK' &&
+        pending.kind !== 'camera-release') ||
       (prefix === 'DEMAND_REMOVED' && pending.kind !== 'demand-removal') ||
       (prefix === 'FINISH_ACK' && pending.kind !== 'shutdown') ||
       (prefix === 'GPU_FAULT_ARMED' && pending.kind !== 'gpu-arm') ||
@@ -253,7 +265,7 @@ class ContentionNativeRuntimeAdapter {
       type: 'reply',
       requestId: pending.requestId,
       ok: true,
-      result: prefix === 'RELEASE_ACK'
+      result: prefix === 'RELEASE_ACK' || prefix === 'CAMERA_RELEASE_ACK'
         ? { released: value.released !== false }
         : prefix === 'DEMAND_REMOVED'
           ? { demanded: false }

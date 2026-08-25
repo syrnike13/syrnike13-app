@@ -125,6 +125,8 @@ namespace {
 
 constexpr std::size_t kRemoteAudioSampleRate = remoteAudioSampleRate();
 constexpr std::size_t kRemoteAudioChannels = remoteAudioRenderChannels();
+constexpr std::uint32_t kRemoteAudioTargetPaddingFrames =
+  remoteAudioRenderTargetPaddingFrames();
 constexpr std::size_t kPlayoutStartPackets =
   remoteAudioPlayoutStartDuration().count() / 10;
 constexpr std::size_t kFadeFrames = 48;
@@ -138,6 +140,18 @@ constexpr auto kRenderProgressDeadline = std::chrono::seconds(3);
 constexpr auto kRecoveryWatchInterval = std::chrono::milliseconds(500);
 constexpr std::size_t kMaximumRecoveryAttempts = 20;
 using diagnostics::DiagnosticField;
+
+detail::RemoteAudioRenderFillPlan rendererFillPlan(
+  std::uint32_t capacity_frames,
+  std::uint32_t padding_frames
+) noexcept {
+  return detail::RemoteAudioRenderFillPlan(
+    capacity_frames,
+    padding_frames,
+    static_cast<std::uint32_t>(kRemoteAudioIngressFramesPerPacket),
+    kRemoteAudioTargetPaddingFrames
+  );
+}
 
 struct StereoFrame {
   float left = 0.0F;
@@ -303,6 +317,13 @@ class RendererThreadEnvironment final {
     com_initialized_ = true;
     avrt_ = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task_index_);
     avrt_error_ = avrt_ ? ERROR_SUCCESS : GetLastError();
+    if (avrt_) {
+      if (AvSetMmThreadPriority(avrt_, AVRT_PRIORITY_HIGH)) {
+        priority_boosted_ = true;
+      } else {
+        priority_error_ = GetLastError();
+      }
+    }
   }
 
   ~RendererThreadEnvironment() {
@@ -322,11 +343,21 @@ class RendererThreadEnvironment final {
     return static_cast<std::uint32_t>(avrt_error_);
   }
 
+  [[nodiscard]] bool mmcssPriorityBoosted() const noexcept {
+    return priority_boosted_;
+  }
+
+  [[nodiscard]] std::uint32_t mmcssPriorityError() const noexcept {
+    return static_cast<std::uint32_t>(priority_error_);
+  }
+
  private:
   bool com_initialized_ = false;
   DWORD task_index_ = 0;
   HANDLE avrt_ = nullptr;
   DWORD avrt_error_ = ERROR_SUCCESS;
+  bool priority_boosted_ = false;
+  DWORD priority_error_ = ERROR_SUCCESS;
 };
 
 class WindowsRemoteAudioEndpointSubscription final
@@ -367,6 +398,10 @@ class WindowsRemoteAudioRendererPlatformAdapter final
         {"registered", thread_environment.mmcssRegistered()},
         {"win32Error", static_cast<std::uint64_t>(
           thread_environment.mmcssError()
+        )},
+        {"priorityBoosted", thread_environment.mmcssPriorityBoosted()},
+        {"priorityWin32Error", static_cast<std::uint64_t>(
+          thread_environment.mmcssPriorityError()
         )},
       }
     );
@@ -469,8 +504,9 @@ class WindowsRemoteAudioRendererPlatformAdapter final
       );
     }
     BYTE* initial_output = nullptr;
+    const auto prime_frames = (std::min)(capacity, kRemoteAudioTargetPaddingFrames);
     const auto prime_result = render_client->GetBuffer(
-      capacity,
+      prime_frames,
       &initial_output
     );
     if (FAILED(prime_result)) {
@@ -481,7 +517,7 @@ class WindowsRemoteAudioRendererPlatformAdapter final
       );
     }
     const auto release_prime_result = render_client->ReleaseBuffer(
-      capacity,
+      prime_frames,
       AUDCLNT_BUFFERFLAGS_SILENT
     );
     if (FAILED(release_prime_result)) {
@@ -530,10 +566,9 @@ class WindowsRemoteAudioRendererPlatformAdapter final
             AudioFailureKind::IoFailed
           );
         }
-        detail::RemoteAudioRenderFillPlan fill_plan(
+        detail::RemoteAudioRenderFillPlan fill_plan = rendererFillPlan(
           capacity,
-          padding,
-          static_cast<UINT32>(kRemoteAudioIngressFramesPerPacket)
+          padding
         );
         const auto write_frames = fill_plan.totalFrames();
         if (write_frames == 0) continue;
@@ -777,6 +812,10 @@ bool renderTrack(
     }
     const auto sample_index =
       renderer.current_frame_offset * kRemoteAudioChannels;
+    if (sample_index + 1 >= renderer.current_frame.samples.size()) {
+      resetTrackRendererState(track, renderer, renderer_epoch, false);
+      break;
+    }
     auto left = static_cast<float>(renderer.current_frame.samples[sample_index]) /
       32768.0F;
     auto right = static_cast<float>(
@@ -1780,10 +1819,9 @@ class RemoteAudioOutput::Implementation final
       return {.silent = true};
     }
 
-    detail::RemoteAudioRenderFillPlan fill_plan(
+    detail::RemoteAudioRenderFillPlan fill_plan = rendererFillPlan(
       buffer.capacity_frames,
-      buffer.padding_frames,
-      static_cast<std::uint32_t>(kRemoteAudioIngressFramesPerPacket)
+      buffer.padding_frames
     );
     if (fill_plan.totalFrames() != buffer.writable_frames) {
       throw std::logic_error("remote audio render fill plan changed in flight");
@@ -1872,10 +1910,9 @@ class RemoteAudioOutput::Implementation final
       ),
       std::memory_order_release
     );
-    detail::RemoteAudioRenderFillPlan fill_plan(
+    detail::RemoteAudioRenderFillPlan fill_plan = rendererFillPlan(
       progress.capacity_frames,
-      progress.padding_frames,
-      static_cast<std::uint32_t>(kRemoteAudioIngressFramesPerPacket)
+      progress.padding_frames
     );
     if (fill_plan.totalFrames() == progress.writable_frames) {
       recordRendererCycle(fill_plan, progress.wake_gap_ms);

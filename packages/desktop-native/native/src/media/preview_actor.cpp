@@ -509,6 +509,10 @@ class PreviewActor::Implementation {
                   }
                   pending_offset = 0;
                 }
+                if (pending_offset >= pending_frame.size()) {
+                  throw std::runtime_error(
+                      "preview PCM frame offset exceeded fixed capacity");
+                }
                 samples[index] =
                   static_cast<float>(pending_frame[pending_offset++]) /
                   32768.0f;

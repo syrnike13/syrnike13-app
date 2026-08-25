@@ -3,6 +3,7 @@ const REQUIRED_CAPABILITIES = [
   'hardwareH264',
   'electronSharedTexture',
   'remoteViewer',
+  'cameraPreview',
   'audioOutput',
 ]
 
@@ -27,9 +28,12 @@ const PROFILE_DEFINITIONS = {
     durationMs: 12_000,
     minimumAudioAgeSamples: 600,
     measurementWarmupMs: 2_000,
+    linkedVideoReadyMs: 7_000,
     screenBackendChurnIntervalMs: 6_000,
     maximumArtifactBytes: 512 * 1024,
     maximumTimelineRecords: 2_048,
+    probeRestartMinDelayMs: 0,
+    probeRestartDelayCapMs: 100,
     rendererFenceRecovery: {
       reloadDeadlineMs: 1_000,
       recycleDeadlineMs: 3_000,
@@ -56,7 +60,10 @@ const PROFILE_DEFINITIONS = {
     durationMs: 600_000,
     minimumAudioAgeSamples: 30_000,
     measurementWarmupMs: 10_000,
-    screenBackendChurnIntervalMs: 120_000,
+    linkedVideoReadyMs: 45_000,
+    screenBackendChurnIntervalMs: 240_000,
+    probeRestartMinDelayMs: 2_000,
+    probeRestartDelayCapMs: null,
     maximumArtifactBytes: 2 * 1024 * 1024,
     maximumTimelineRecords: 8_192,
     rendererFenceRecovery: {
@@ -120,6 +127,35 @@ const LIMITS = {
   republishCount: 3,
 }
 
+function contentionProbeRestartDelayMs(delayMs, profile) {
+  const requested = Number(delayMs)
+  if (!Number.isFinite(requested) || requested < 0) {
+    throw new Error('probe restart delay must be a non-negative number')
+  }
+  const minMs = Number(profile?.probeRestartMinDelayMs)
+  const floor = Number.isFinite(minMs) && minMs > 0 ? minMs : 0
+  const raised = Math.max(requested, floor)
+  const capMs = profile?.probeRestartDelayCapMs
+  if (capMs == null) return raised
+  const parsedCap = Number(capMs)
+  if (Number.isFinite(parsedCap) && parsedCap >= 0) {
+    return Math.min(raised, parsedCap)
+  }
+  return raised
+}
+
+function linkedVideoReadyDeadlineMs(profile) {
+  const warmupMs = Number(profile?.measurementWarmupMs)
+  const configured = Number(profile?.linkedVideoReadyMs)
+  const fromWarmup = Number.isFinite(warmupMs)
+    ? Math.max(5_000, warmupMs + 5_000)
+    : 5_000
+  if (Number.isFinite(configured) && configured > 0) {
+    return Math.max(fromWarmup, configured)
+  }
+  return fromWarmup
+}
+
 function resolveContentionProfile(name, overrides = {}) {
   const definition = PROFILE_DEFINITIONS[name]
   if (!definition) {
@@ -174,6 +210,13 @@ function evaluateContentionRun(evidence) {
   }
 
   const failures = []
+  const source = evidence.environment?.source
+  if (!/^[0-9a-f]{40}$/i.test(source?.commitSha ?? '')) {
+    failures.push('source commit SHA is missing from contention evidence')
+  }
+  if (profile.name === 'production' && source?.relevantWorkingTreeDirty !== false) {
+    failures.push('production contention evidence was captured from a dirty media tree')
+  }
   for (const failure of evidence.operationalFailures ?? []) {
     failures.push(`runner operation failed: ${String(failure)}`)
   }
@@ -542,6 +585,60 @@ function evaluateContentionRun(evidence) {
     'remote authoritative fence acknowledgements',
     metrics.remoteFenceAcks,
     1,
+  )
+  requireMinimum(
+    failures,
+    'camera preview shared-handle imports',
+    metrics.cameraPreviewHandleImports,
+    2,
+  )
+  requireMinimum(
+    failures,
+    'camera preview delayed fence',
+    metrics.cameraPreviewDelayedFenceHits,
+    1,
+  )
+  requireExact(
+    failures,
+    'camera preview renderer loss',
+    metrics.cameraPreviewRendererLosses,
+    1,
+  )
+  requireMinimum(
+    failures,
+    'fresh camera preview frame after renderer loss',
+    metrics.cameraPreviewFreshFramesAfterLoss,
+    1,
+  )
+  requireMinimum(
+    failures,
+    'camera preview fence acknowledgements',
+    metrics.cameraPreviewFenceAcks,
+    2,
+  )
+  requireExact(
+    failures,
+    'camera preview release failures',
+    metrics.cameraPreviewReleaseFailures,
+    0,
+  )
+  requireExact(
+    failures,
+    'final camera preview frames',
+    metrics.finalCameraPreviewFrames,
+    0,
+  )
+  requireExact(
+    failures,
+    'final camera preview usage bytes',
+    metrics.finalCameraPreviewUsageBytes,
+    0,
+  )
+  requireExact(
+    failures,
+    'final camera preview usage generations',
+    metrics.finalCameraPreviewUsageGenerations,
+    0,
   )
   requireMinimum(
     failures,
@@ -1052,6 +1149,8 @@ module.exports = {
   PRIORITY_COMPETING_LIMITS,
   REQUIRED_FAULT_HITS,
   buildContentionArtifact,
+  contentionProbeRestartDelayMs,
   evaluateContentionRun,
+  linkedVideoReadyDeadlineMs,
   resolveContentionProfile,
 }

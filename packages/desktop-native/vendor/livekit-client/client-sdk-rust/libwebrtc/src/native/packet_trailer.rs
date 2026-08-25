@@ -285,20 +285,26 @@ pub fn create_receiver_handler(
     }
 }
 
+#[doc(hidden)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct H264DecodeStartupObservations {
+    /// Access units rejected before the first complete keyframe.
     pub pre_keyframe_inputs: u64,
+    /// Complete keyframes accepted while establishing decoder state.
     pub complete_keyframe_inputs: u64,
+    /// Frames emitted by the decoder after startup gating.
     pub decoded_outputs: u64,
 }
 
 /// Reset process-wide H264 decoder startup observations for a focused test or
 /// diagnostic interval.
+#[doc(hidden)]
 pub fn reset_h264_decode_startup_observations() {
     webrtc_sys::video_decoder_factory::ffi::reset_h264_decode_startup_observations();
 }
 
 /// Return ordered H264 decoder startup counters collected since the last reset.
+#[doc(hidden)]
 pub fn h264_decode_startup_observations() -> H264DecodeStartupObservations {
     H264DecodeStartupObservations {
         pre_keyframe_inputs:

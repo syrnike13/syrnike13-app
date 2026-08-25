@@ -13,6 +13,7 @@ import { Effect, Fiber, Layer, ManagedRuntime, Option, Schema } from 'effect'
 import type { DiagnosticLogSink } from './diagnostic-log'
 import {
   isNativeRuntimeCommand,
+  nativeRuntimeError,
   type MediaRuntimeCommand,
   type MediaRuntimeEvent,
 } from './contract'
@@ -30,6 +31,51 @@ const REMOTE_VIDEO_RETRY_BASE_DELAY_MS = 250
 const REMOTE_VIDEO_RETRY_MAX_DELAY_MS = 8_000
 const REMOTE_VIDEO_DEGRADED_RECOVERY_ATTEMPT = 3
 const DISPLAY_SOURCE_PAGE_SIZE = 24
+
+const normalizeLocalScreenPreviewDemandEffect = Effect.fn(
+  'nativeMedia.normalizeLocalScreenPreviewDemand',
+)(function* (demand: LocalScreenPreviewDemand) {
+  if (
+    !demand ||
+    typeof demand.demanded !== 'boolean' ||
+    !Number.isFinite(demand.width) ||
+    !Number.isFinite(demand.height) ||
+    !Number.isFinite(demand.fps)
+  ) {
+    return yield* Effect.fail(
+      new NativeRuntimeRequestError(
+        nativeRuntimeError(
+          'invalid_preview_demand',
+          'Invalid local screen preview demand',
+          { stage: 'screen_preview_demand' },
+        ),
+      ),
+    )
+  }
+  return {
+    demanded: demand.demanded,
+    width: Math.max(16, Math.min(3840, Math.trunc(demand.width))),
+    height: Math.max(16, Math.min(2160, Math.trunc(demand.height))),
+    fps: Math.max(1, Math.min(60, Math.trunc(demand.fps))),
+  }
+})
+
+const validateLocalCameraPreviewDemandEffect = Effect.fn(
+  'nativeMedia.validateLocalCameraPreviewDemand',
+)(function* (demanded: boolean) {
+  if (typeof demanded !== 'boolean') {
+    return yield* Effect.fail(
+      new NativeRuntimeRequestError(
+        nativeRuntimeError(
+          'invalid_preview_demand',
+          'Invalid local camera preview demand',
+          { stage: 'camera_preview_demand' },
+        ),
+      ),
+    )
+  }
+  return demanded
+})
 
 type PreviewSessionState = {
   sessionId: string
@@ -629,23 +675,8 @@ export class NativeMediaController {
   setLocalScreenPreviewDemand(demand: LocalScreenPreviewDemand) {
     return this.effectRuntime.runPromise(
       Effect.gen({ self: this }, function*() {
-        if (
-          !demand ||
-          typeof demand.demanded !== 'boolean' ||
-          !Number.isFinite(demand.width) ||
-          !Number.isFinite(demand.height) ||
-          !Number.isFinite(demand.fps)
-        ) {
-          return yield* Effect.fail(
-            new Error('Invalid local screen preview demand'),
-          )
-        }
-        this.localScreenPreviewDemand = {
-          demanded: Boolean(demand.demanded),
-          width: Math.max(16, Math.min(3840, Math.trunc(demand.width))),
-          height: Math.max(16, Math.min(2160, Math.trunc(demand.height))),
-          fps: Math.max(1, Math.min(60, Math.trunc(demand.fps))),
-        }
+        this.localScreenPreviewDemand =
+          yield* normalizeLocalScreenPreviewDemandEffect(demand)
         const screen = this.activeScreen
         if (screen) yield* this.sendLocalScreenPreviewDemandEffect(screen)
       }),
@@ -655,12 +686,8 @@ export class NativeMediaController {
   setLocalCameraPreviewDemand(demanded: boolean) {
     return this.effectRuntime.runPromise(
       Effect.gen({ self: this }, function*() {
-        if (typeof demanded !== 'boolean') {
-          return yield* Effect.fail(
-            new Error('Invalid local camera preview demand'),
-          )
-        }
-        this.localCameraPreviewDemanded = demanded
+        this.localCameraPreviewDemanded =
+          yield* validateLocalCameraPreviewDemandEffect(demanded)
         const camera = this.activeCamera
         if (camera) yield* this.sendLocalCameraPreviewDemandEffect(camera)
       }),

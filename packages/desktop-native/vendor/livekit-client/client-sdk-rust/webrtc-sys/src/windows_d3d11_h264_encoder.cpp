@@ -37,6 +37,7 @@
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "modules/video_coding/include/video_error_codes.h"
 #include "livekit/video_frame_buffer.h"
+#include "h264_annex_b.h"
 
 namespace livekit_ffi {
 using Microsoft::WRL::ComPtr;
@@ -45,64 +46,34 @@ namespace {
 
 constexpr uint64_t kScreenShareBitrateHeadroomPercent = 30;
 
-struct H264NaluSpan {
-  size_t start;
-  size_t payload;
-  size_t end;
-};
-
 struct H264ParameterSetCache {
   std::vector<uint8_t> sps;
   std::vector<uint8_t> pps;
 };
 
-std::optional<std::pair<size_t, size_t>> FindH264StartCode(
-    const uint8_t* data,
-    size_t size,
-    size_t from) {
-  for (size_t i = from; i + 3 <= size; ++i) {
-    if (data[i] != 0 || data[i + 1] != 0) continue;
-    if (data[i + 2] == 1) return std::pair{i, size_t{3}};
-    if (i + 4 <= size && data[i + 2] == 0 && data[i + 3] == 1) {
-      return std::pair{i, size_t{4}};
-    }
-  }
-  return std::nullopt;
-}
-
-std::vector<H264NaluSpan> FindH264Nalus(const uint8_t* data, size_t size) {
-  std::vector<H264NaluSpan> nalus;
-  auto current = FindH264StartCode(data, size, 0);
-  while (current.has_value()) {
-    const size_t start = current->first;
-    const size_t payload = start + current->second;
-    auto next = FindH264StartCode(data, size, payload);
-    nalus.push_back(
-        {start, payload, next.has_value() ? next->first : size});
-    current = next;
-  }
-  return nalus;
-}
-
 bool EnsureH264KeyframeParameterSets(const uint8_t* data,
                                      size_t size,
                                      H264ParameterSetCache& cache,
                                      std::vector<uint8_t>& repaired) {
+  repaired.clear();
   bool has_sps_before_idr = false;
   bool has_pps_before_idr = false;
   bool has_idr = false;
   size_t first_vcl = size;
-  for (const auto& nalu : FindH264Nalus(data, size)) {
-    if (nalu.payload >= nalu.end) continue;
-    const uint8_t type = data[nalu.payload] & 0x1f;
-    if (type >= 1 && type <= 5 && first_vcl == size) first_vcl = nalu.start;
+  h264::AnnexBNaluIterator nalus(data, size);
+  while (const auto nalu = nalus.Next()) {
+    if (nalu->payload >= nalu->end) continue;
+    const uint8_t type = data[nalu->payload] & 0x1f;
+    if (type >= 1 && type <= 5 && first_vcl == size) {
+      first_vcl = nalu->start;
+    }
     if (type == 5) has_idr = true;
     if (type == 7) {
       if (!has_idr) has_sps_before_idr = true;
-      cache.sps.assign(data + nalu.start, data + nalu.end);
+      cache.sps.assign(data + nalu->start, data + nalu->end);
     } else if (type == 8) {
       if (!has_idr) has_pps_before_idr = true;
-      cache.pps.assign(data + nalu.start, data + nalu.end);
+      cache.pps.assign(data + nalu->start, data + nalu->end);
     }
   }
   if (!has_idr) return false;
@@ -398,6 +369,10 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
     std::lock_guard lock(mutex_);
     width_ = codec->width;
     height_ = codec->height;
+    parameter_set_cache_.sps.reserve(256);
+    parameter_set_cache_.pps.reserve(256);
+    repaired_keyframe_.reserve(
+        static_cast<size_t>(width_) * static_cast<size_t>(height_) * 3 / 2);
     fps_ = std::max<UINT32>(1, codec->maxFramerate);
     max_bitrate_bps_ = codec->maxBitrate > 0
                            ? static_cast<uint64_t>(codec->maxBitrate) * 1000
@@ -912,21 +887,20 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
       }
       UINT32 clean = FALSE;
       actual->GetUINT32(MFSampleExtension_CleanPoint, &clean);
-      std::vector<uint8_t> repaired_keyframe;
       if (clean && !EnsureH264KeyframeParameterSets(
                        bytes, length, parameter_set_cache_,
-                       repaired_keyframe)) {
+                       repaired_keyframe_)) {
         TraceEncoder("KeyframeMissingParameterSets", E_FAIL, length);
         contiguous->Unlock();
         ReleaseOutputBuffer(output, sample.Get());
         return E_FAIL;
       }
       webrtc::EncodedImage image;
-      if (repaired_keyframe.empty()) {
+      if (repaired_keyframe_.empty()) {
         image.SetEncodedData(webrtc::EncodedImageBuffer::Create(bytes, length));
       } else {
         image.SetEncodedData(webrtc::EncodedImageBuffer::Create(
-            repaired_keyframe.data(), repaired_keyframe.size()));
+            repaired_keyframe_.data(), repaired_keyframe_.size()));
       }
       contiguous->Unlock();
       image.SetRtpTimestamp(rtp_timestamp);
@@ -1268,6 +1242,7 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
     mf_started_ = false;
     asynchronous_ = FALSE;
     parameter_set_cache_ = {};
+    repaired_keyframe_ = {};
   }
 
   // Keep the pre-MFT queue smaller than the screen capture texture pool. If
@@ -1303,6 +1278,7 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
   bool rates_dirty_ = false;
   bool keyframe_pending_ = false;
   H264ParameterSetCache parameter_set_cache_;
+  std::vector<uint8_t> repaired_keyframe_;
   std::uint64_t superseded_input_count_ = 0;
   std::deque<InputJob> input_jobs_;
   std::deque<PendingOutput> pending_outputs_;

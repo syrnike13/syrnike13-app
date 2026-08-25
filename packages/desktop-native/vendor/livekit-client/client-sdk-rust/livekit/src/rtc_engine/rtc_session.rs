@@ -1425,7 +1425,12 @@ impl SessionInner {
             proto::signal_response::Message::TrackPublished(publish_res) => {
                 let mut pending_tracks = self.pending_tracks.lock();
                 if let Some(tx) = pending_tracks.remove(&publish_res.cid) {
-                    let _ = tx.send(Ok(publish_res.track.unwrap()));
+                    let result = publish_res.track.ok_or_else(|| {
+                        EngineError::Internal(
+                            "track publication response did not include track info".into(),
+                        )
+                    });
+                    let _ = tx.send(result);
                 }
             }
             proto::signal_response::Message::RoomUpdate(room_update) => {

@@ -907,6 +907,42 @@ void serverMuteRecoveryPreservesTwoViewerMediaState() {
   RemotePublicationReconciler viewer_b;
   auto media_a = seed_viewer(viewer_a);
   auto media_b = seed_viewer(viewer_b);
+  const auto initial_microphone_sid = media_a.microphone_publication->sid();
+  const auto viewer_a_microphone_revision =
+    viewer_a.planReconcile(initial_microphone_sid).revision;
+  const auto viewer_b_microphone_revision =
+    viewer_b.planReconcile(initial_microphone_sid).revision;
+  const auto viewer_a_publication_ids = viewer_a.publicationIds();
+  const auto viewer_b_publication_ids = viewer_b.publicationIds();
+
+  for (std::uint32_t cycle = 1; cycle <= 3; ++cycle) {
+    const auto viewer_a_microphone =
+      viewer_a.planReconcile(initial_microphone_sid);
+    const auto viewer_b_microphone =
+      viewer_b.planReconcile(initial_microphone_sid);
+    require(
+      viewer_a.publicationIds() == viewer_a_publication_ids &&
+        viewer_b.publicationIds() == viewer_b_publication_ids &&
+        viewer_a.isCurrentDemandedTrack(
+          initial_microphone_sid,
+          media_a.microphone_track
+        ) &&
+        viewer_b.isCurrentDemandedTrack(
+          initial_microphone_sid,
+          media_b.microphone_track
+        ) &&
+        viewer_a_microphone.command ==
+          RemotePublicationReconcileCommand::None &&
+        viewer_b_microphone.command ==
+          RemotePublicationReconcileCommand::None &&
+        viewer_a_microphone.revision == viewer_a_microphone_revision &&
+        viewer_b_microphone.revision == viewer_b_microphone_revision,
+      "server mute cycle changed microphone identity, demand, or revision"
+    );
+    require_unrelated_media_stable(viewer_a, media_a);
+    require_unrelated_media_stable(viewer_b, media_b);
+  }
+
   const auto retry_started = std::chrono::steady_clock::time_point{80s};
 
   for (std::uint32_t cycle = 1; cycle <= 3; ++cycle) {
@@ -919,7 +955,7 @@ void serverMuteRecoveryPreservesTwoViewerMediaState() {
           media_b.microphone_publication->sid(),
           media_b.microphone_publication
         ).has_value(),
-      "server mute did not remove the current microphone publication"
+      "publication replacement did not remove the current microphone"
     );
     require_unrelated_media_stable(viewer_a, media_a);
     require_unrelated_media_stable(viewer_b, media_b);
@@ -997,7 +1033,7 @@ void serverMuteRecoveryPreservesTwoViewerMediaState() {
         viewer_b.publicationIds().size() == 4 &&
         viewer_a.contains(microphone_sid) &&
         viewer_b.contains(microphone_sid),
-      "viewer recovery duplicated a publication or coupled retry state"
+      "publication replacement duplicated a publication or coupled retry state"
     );
     require_unrelated_media_stable(viewer_a, media_a);
     require_unrelated_media_stable(viewer_b, media_b);

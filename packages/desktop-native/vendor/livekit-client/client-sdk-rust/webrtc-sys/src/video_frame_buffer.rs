@@ -220,10 +220,16 @@ mod tests {
     #[test]
     fn d3d11_h264_encoder_rejects_i420_without_rtti_cast() {
         let i420 = ffi::new_i420_buffer(2, 2, 2, 1, 1);
+        // SAFETY: `i420` owns a non-null I420 buffer for the duration of all
+        // borrowed base-interface conversions below.
         let yuv8 = unsafe { ffi::i420_to_yuv8(&*i420) };
+        // SAFETY: `yuv8` is the base subobject returned from the live `i420`.
         let yuv = unsafe { ffi::yuv8_to_yuv(yuv8) };
+        // SAFETY: `yuv` is the base subobject returned from the live `i420`.
         let buffer = unsafe { ffi::yuv_to_vfb(yuv) };
 
+        // SAFETY: `buffer` points into `i420`, which remains alive through the
+        // call and therefore provides a valid shared reference.
         assert!(!ffi::windows_d3d11_h264_accepts_buffer_for_test(unsafe { &*buffer }));
     }
 

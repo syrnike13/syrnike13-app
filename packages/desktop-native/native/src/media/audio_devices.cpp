@@ -549,13 +549,12 @@ void probeCaptureDevice(
   );
   if (FAILED(result)) throwAudioFailure(result, "activate microphone candidate failed");
   WasapiEventPair stream_events;
-  auto mutable_format = format;
   result = client->Initialize(
     AUDCLNT_SHAREMODE_SHARED,
     AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
       AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
       AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-    400'000, 0, &mutable_format, nullptr
+    400'000, 0, &format, nullptr
   );
   if (FAILED(result)) {
     throwAudioFailure(result, "initialize microphone candidate failed");
@@ -619,11 +618,10 @@ void probeRenderDevice(
     reinterpret_cast<void**>(client.GetAddressOf())
   );
   if (FAILED(result)) throwAudioFailure(result, "activate output candidate failed");
-  auto mutable_format = format;
   result = client->Initialize(
     AUDCLNT_SHAREMODE_SHARED,
     AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-    500'000, 0, &mutable_format, nullptr
+    500'000, 0, &format, nullptr
   );
   if (FAILED(result)) throwAudioFailure(result, "initialize output candidate failed");
   ComPtr<IAudioRenderClient> render;

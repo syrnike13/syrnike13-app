@@ -1054,9 +1054,10 @@ class MicrophoneActor::Implementation {
         }
         auto realtime_lease = owner->realtime_frames_.acquire(realtime_reader_);
         const auto& realtime = realtime_lease.get();
-        const auto echo = realtime.pipeline->config.echo_cancellation_enabled
-          ? owner->pollEchoReference()
-          : syrnike::voice::MicrophoneEchoReferenceRealtimeFrame{};
+        syrnike::voice::MicrophoneEchoReferenceRealtimeFrame echo{};
+        if (realtime.pipeline->config.echo_cancellation_enabled) {
+          echo = owner->pollEchoReference();
+        }
         const auto& reference = echo.frame;
         const std::span<const std::int16_t> reference_pcm =
           echo.available && reference
@@ -1969,9 +1970,10 @@ class MicrophoneActor::Implementation {
             }
             const bool echo_enabled =
               active_config.echo_cancellation_enabled;
-            const auto echo = echo_enabled
-              ? pollEchoReference()
-              : syrnike::voice::MicrophoneEchoReferenceRealtimeFrame{};
+            syrnike::voice::MicrophoneEchoReferenceRealtimeFrame echo{};
+            if (echo_enabled) {
+              echo = pollEchoReference();
+            }
             const auto& reference = echo.frame;
             std::span<const std::int16_t> reference_pcm;
             if (echo_enabled && echo.available && reference) {

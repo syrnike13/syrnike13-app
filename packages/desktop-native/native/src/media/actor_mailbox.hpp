@@ -144,6 +144,7 @@ class ActorMailbox {
       if (target == MediaKeyCapacity) {
         target = empty != MediaKeyCapacity ? empty : oldest;
       }
+      if (target >= MediaKeyCapacity) std::terminate();
       auto& slot = media_[target];
       if (slot.command) {
         dropped.emplace(std::move(*slot.command));
@@ -185,6 +186,7 @@ class ActorMailbox {
           oldest_order = media_[index].order;
         }
       }
+      if (oldest >= MediaKeyCapacity) std::terminate();
       auto command = std::move(*media_[oldest].command);
       media_[oldest].command.reset();
       media_[oldest].order = 0;

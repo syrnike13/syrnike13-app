@@ -923,7 +923,7 @@ describe('NativeRtcEngineAdapter', () => {
     adapter.dispose()
   })
 
-  it('republishes only the microphone across repeated server mute cycles', async () => {
+  it('preserves the microphone publication across repeated server mute cycles', async () => {
     const runtime = new FakeRuntime()
     const adapter = new NativeRtcEngineAdapter(runtime)
     const desired = {
@@ -971,12 +971,6 @@ describe('NativeRtcEngineAdapter', () => {
     expect(firstScreen.options.audio).toEqual({ requested: true })
 
     for (let cycle = 0; cycle < 3; cycle += 1) {
-      const microphone = runtime.commands.filter(
-        (command) => command.type === 'connectMicrophone',
-      ).at(-1)
-      if (!microphone || microphone.type !== 'connectMicrophone') {
-        throw new Error(`Microphone publication ${cycle} was not recorded`)
-      }
       adapter.updateDesiredMedia({
         ...desired,
         serverMuted: true,
@@ -990,19 +984,6 @@ describe('NativeRtcEngineAdapter', () => {
           ).length === cycle + 1,
       )
 
-      runtime.emitEvent({
-        type: 'localMicrophoneUnpublished',
-        sessionId: lease.connectionEpoch,
-        generation: microphone.generation,
-        trackId: `TR_MIC_${cycle + 1}`,
-      })
-      await new Promise((resolve) => setTimeout(resolve, 10))
-      expect(
-        runtime.commands.filter(
-          (command) => command.type === 'connectMicrophone',
-        ),
-      ).toHaveLength(cycle + 1)
-
       adapter.updateDesiredMedia({
         ...desired,
         serverMuted: false,
@@ -1011,24 +992,23 @@ describe('NativeRtcEngineAdapter', () => {
       await waitUntil(
         () =>
           runtime.commands.filter(
-            (command) => command.type === 'connectMicrophone',
-          ).length === cycle + 2,
+            (command) =>
+              command.type === 'setMicrophoneMuted' && !command.muted,
+          ).length === cycle + 1,
       )
     }
 
     const microphonePublications = runtime.commands.filter(
       (command) => command.type === 'connectMicrophone',
     )
-    expect(microphonePublications).toHaveLength(4)
-    for (let index = 1; index < microphonePublications.length; index += 1) {
-      expect(microphonePublications[index]).toMatchObject({
-        sessionId: lease.connectionEpoch,
-        options: { muted: false },
-      })
-      expect(microphonePublications[index]?.generation).toBeGreaterThan(
-        microphonePublications[index - 1]?.generation ?? 0,
-      )
-    }
+    expect(microphonePublications).toEqual([firstMicrophone])
+    expect(
+      runtime.commands.filter(
+        (command) =>
+          command.type === 'setMicrophoneMuted' &&
+          command.generation === firstMicrophone.generation,
+      ),
+    ).toHaveLength(6)
     expect(
       runtime.commands.filter((command) => command.type === 'connectVoice'),
     ).toHaveLength(1)
@@ -1085,6 +1065,68 @@ describe('NativeRtcEngineAdapter', () => {
     expect(
       runtime.commands.filter((command) => command.type === 'disconnectScreen'),
     ).toHaveLength(0)
+    adapter.dispose()
+  })
+
+  it('recreates only a microphone publication that is actually lost while server-muted', async () => {
+    const runtime = new FakeRuntime()
+    const adapter = new NativeRtcEngineAdapter(runtime)
+    const desired = {
+      ...createInitialVoiceMediaDesiredState(),
+      userMuted: false,
+      effectiveMuted: false,
+    }
+    await adapter.connect(lease, desired, new AbortController().signal)
+    await waitUntil(() =>
+      runtime.commands.some((command) => command.type === 'connectMicrophone'),
+    )
+    const firstMicrophone = runtime.commands.find(
+      (command) => command.type === 'connectMicrophone',
+    )
+    if (!firstMicrophone || firstMicrophone.type !== 'connectMicrophone') {
+      throw new Error('Initial microphone command was not recorded')
+    }
+
+    adapter.updateDesiredMedia({
+      ...desired,
+      serverMuted: true,
+      effectiveMuted: true,
+    })
+    await waitUntil(() =>
+      runtime.commands.some(
+        (command) => command.type === 'setMicrophoneMuted' && command.muted,
+      ),
+    )
+    runtime.emitEvent({
+      type: 'localMicrophoneUnpublished',
+      sessionId: lease.connectionEpoch,
+      generation: firstMicrophone.generation,
+      trackId: 'TR_MIC_LOST',
+    })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(
+      runtime.commands.filter((command) => command.type === 'connectMicrophone'),
+    ).toHaveLength(1)
+
+    adapter.updateDesiredMedia({
+      ...desired,
+      serverMuted: false,
+      effectiveMuted: false,
+    })
+    await waitUntil(
+      () =>
+        runtime.commands.filter(
+          (command) => command.type === 'connectMicrophone',
+        ).length === 2,
+    )
+    const replacement = runtime.commands.filter(
+      (command) => command.type === 'connectMicrophone',
+    )[1]
+    expect(replacement).toMatchObject({
+      sessionId: lease.connectionEpoch,
+      options: { muted: false },
+    })
+    expect(replacement?.generation).toBeGreaterThan(firstMicrophone.generation)
     adapter.dispose()
   })
 

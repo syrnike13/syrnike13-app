@@ -23,6 +23,8 @@
 #include <string>
 #include <utility>
 
+#include "h264_annex_b.h"
+
 namespace livekit_ffi {
 namespace h264 {
 
@@ -34,40 +36,7 @@ constexpr std::array<uint8_t, 16> kPacketTrailerUuid = {
     0x6c, 0x69, 0x76, 0x65, 0x6b, 0x69, 0x74, 0x2d,
     0x70, 0x6b, 0x74, 0x2d, 0x74, 0x72, 0x6c, 0x72};
 
-struct NaluSpan {
-  size_t start;
-  size_t payload;
-  size_t end;
-};
-
 std::vector<uint8_t> UnescapeRbsp(webrtc::ArrayView<const uint8_t> escaped);
-
-std::optional<std::pair<size_t, size_t>> FindStartCode(
-    webrtc::ArrayView<const uint8_t> data,
-    size_t from) {
-  for (size_t i = from; i + 3 <= data.size(); ++i) {
-    if (data[i] != 0 || data[i + 1] != 0) continue;
-    if (data[i + 2] == 1) return std::pair{i, size_t{3}};
-    if (i + 4 <= data.size() && data[i + 2] == 0 && data[i + 3] == 1) {
-      return std::pair{i, size_t{4}};
-    }
-  }
-  return std::nullopt;
-}
-
-std::vector<NaluSpan> FindNalus(webrtc::ArrayView<const uint8_t> data) {
-  std::vector<NaluSpan> nalus;
-  auto current = FindStartCode(data, 0);
-  while (current.has_value()) {
-    const size_t start = current->first;
-    const size_t payload = start + current->second;
-    auto next = FindStartCode(data, payload);
-    nalus.push_back(NaluSpan{start, payload,
-                             next.has_value() ? next->first : data.size()});
-    current = next;
-  }
-  return nalus;
-}
 
 void WriteSeiValue(size_t value, std::vector<uint8_t>& out) {
   while (value >= 0xff) {
@@ -90,38 +59,63 @@ bool ReadSeiValue(webrtc::ArrayView<const uint8_t> data,
   return true;
 }
 
-bool ReadUnsignedExpGolomb(webrtc::ArrayView<const uint8_t> data,
-                           size_t& bit_offset,
-                           uint32_t& value) {
+class RbspBitReader final {
+ public:
+  explicit RbspBitReader(webrtc::ArrayView<const uint8_t> escaped)
+      : escaped_(escaped) {}
+
+  bool ReadBit(bool& value) {
+    SkipEmulationPreventionByte();
+    if (byte_offset_ >= escaped_.size()) return false;
+    const uint8_t byte = escaped_[byte_offset_];
+    value = ((byte >> (7 - bit_offset_)) & 1) != 0;
+    if (++bit_offset_ == 8) {
+      bit_offset_ = 0;
+      ++byte_offset_;
+      zero_count_ = byte == 0 ? zero_count_ + 1 : 0;
+    }
+    return true;
+  }
+
+ private:
+  void SkipEmulationPreventionByte() {
+    if (bit_offset_ == 0 && zero_count_ >= 2 &&
+        byte_offset_ < escaped_.size() && escaped_[byte_offset_] == 3) {
+      ++byte_offset_;
+      zero_count_ = 0;
+    }
+  }
+
+  webrtc::ArrayView<const uint8_t> escaped_;
+  size_t byte_offset_ = 0;
+  uint8_t bit_offset_ = 0;
+  uint8_t zero_count_ = 0;
+};
+
+bool ReadUnsignedExpGolomb(RbspBitReader& reader, uint32_t& value) {
   size_t leading_zero_bits = 0;
-  while (bit_offset < data.size() * 8) {
-    const bool bit = (data[bit_offset / 8] >> (7 - bit_offset % 8)) & 1;
-    ++bit_offset;
+  bool bit = false;
+  for (;;) {
+    if (!reader.ReadBit(bit)) return false;
     if (bit) break;
     if (++leading_zero_bits > 31) return false;
   }
-  if (bit_offset > data.size() * 8 ||
-      leading_zero_bits > data.size() * 8 - bit_offset) {
-    return false;
-  }
   uint32_t suffix = 0;
   for (size_t i = 0; i < leading_zero_bits; ++i) {
-    suffix = (suffix << 1) |
-             ((data[bit_offset / 8] >> (7 - bit_offset % 8)) & 1);
-    ++bit_offset;
+    if (!reader.ReadBit(bit)) return false;
+    suffix = (suffix << 1) | static_cast<uint32_t>(bit);
   }
   value = ((uint32_t{1} << leading_zero_bits) - 1) + suffix;
   return true;
 }
 
 std::optional<uint32_t> SlicePpsId(webrtc::ArrayView<const uint8_t> payload) {
-  auto rbsp = UnescapeRbsp(payload);
-  size_t bit_offset = 0;
+  RbspBitReader reader(payload);
   uint32_t ignored = 0;
   uint32_t pps_id = 0;
-  if (!ReadUnsignedExpGolomb(rbsp, bit_offset, ignored) ||
-      !ReadUnsignedExpGolomb(rbsp, bit_offset, ignored) ||
-      !ReadUnsignedExpGolomb(rbsp, bit_offset, pps_id)) {
+  if (!ReadUnsignedExpGolomb(reader, ignored) ||
+      !ReadUnsignedExpGolomb(reader, ignored) ||
+      !ReadUnsignedExpGolomb(reader, pps_id)) {
     return std::nullopt;
   }
   return pps_id;
@@ -160,14 +154,15 @@ std::vector<uint8_t> UnescapeRbsp(webrtc::ArrayView<const uint8_t> escaped) {
 std::optional<std::vector<uint8_t>> ExtractTrailerPayload(
     webrtc::ArrayView<const uint8_t> data,
     std::vector<uint8_t>& out_data) {
-  const auto nalus = FindNalus(data);
-  for (const auto& nalu : nalus) {
-    if (nalu.payload >= nalu.end || (data[nalu.payload] & 0x1f) != kSeiNalType) {
+  AnnexBNaluIterator nalus(data.data(), data.size());
+  while (const auto nalu = nalus.Next()) {
+    if (nalu->payload >= nalu->end ||
+        (data[nalu->payload] & 0x1f) != kSeiNalType) {
       continue;
     }
 
-    auto rbsp = UnescapeRbsp(data.subview(nalu.payload + 1,
-                                          nalu.end - nalu.payload - 1));
+    auto rbsp = UnescapeRbsp(data.subview(nalu->payload + 1,
+                                          nalu->end - nalu->payload - 1));
     size_t pos = 0;
     while (pos < rbsp.size() && rbsp[pos] != 0x80) {
       size_t payload_type = 0;
@@ -186,9 +181,10 @@ std::optional<std::vector<uint8_t>> ExtractTrailerPayload(
         std::vector<uint8_t> trailer(
             rbsp.begin() + pos + kPacketTrailerUuid.size(),
             rbsp.begin() + payload_end);
-        out_data.reserve(data.size() - (nalu.end - nalu.start));
-        out_data.insert(out_data.end(), data.begin(), data.begin() + nalu.start);
-        out_data.insert(out_data.end(), data.begin() + nalu.end, data.end());
+        out_data.reserve(data.size() - (nalu->end - nalu->start));
+        out_data.insert(out_data.end(), data.begin(),
+                        data.begin() + nalu->start);
+        out_data.insert(out_data.end(), data.begin() + nalu->end, data.end());
         return trailer;
       }
       pos = payload_end;
@@ -215,16 +211,17 @@ bool IsDecodableKeyframeAccessUnit(webrtc::ArrayView<const uint8_t> data) {
   bool has_pps_before_idr = false;
   bool has_idr = false;
   std::optional<uint32_t> picture_pps_id;
-  for (const auto& nalu : FindNalus(data)) {
-    if (nalu.payload >= nalu.end) continue;
-    const uint8_t type = data[nalu.payload] & 0x1f;
+  AnnexBNaluIterator nalus(data.data(), data.size());
+  while (const auto nalu = nalus.Next()) {
+    if (nalu->payload >= nalu->end) continue;
+    const uint8_t type = data[nalu->payload] & 0x1f;
     if (!has_idr && type == 7) has_sps_before_idr = true;
     if (!has_idr && type == 8) has_pps_before_idr = true;
     if (type >= 1 && type <= 5 && type != 5) return false;
     if (type != 5) continue;
     has_idr = true;
     const auto pps_id = SlicePpsId(
-        data.subview(nalu.payload + 1, nalu.end - nalu.payload - 1));
+        data.subview(nalu->payload + 1, nalu->end - nalu->payload - 1));
     if (!pps_id.has_value()) return false;
     if (picture_pps_id.has_value() && picture_pps_id != pps_id) return false;
     picture_pps_id = pps_id;
@@ -256,11 +253,12 @@ std::vector<uint8_t> InsertTrailerSei(
   auto escaped_rbsp = EscapeRbsp(rbsp);
 
   size_t insert_at = data.size();
-  for (const auto& nalu : FindNalus(data)) {
-    if (nalu.payload >= nalu.end) continue;
-    const uint8_t nal_type = data[nalu.payload] & 0x1f;
+  AnnexBNaluIterator nalus(data.data(), data.size());
+  while (const auto nalu = nalus.Next()) {
+    if (nalu->payload >= nalu->end) continue;
+    const uint8_t nal_type = data[nalu->payload] & 0x1f;
     if (nal_type >= 1 && nal_type <= 5) {
-      insert_at = nalu.start;
+      insert_at = nalu->start;
       break;
     }
   }

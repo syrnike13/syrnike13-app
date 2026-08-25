@@ -279,9 +279,7 @@ mod tests {
         assert!(!ffi::h264_is_decodable_keyframe_for_test(&incomplete_key));
         assert!(ffi::h264_is_decodable_keyframe_for_test(&complete_key));
 
-        assert!(!ffi::h264_should_forward_access_unit_to_decoder_for_test(
-            &delta, false, false
-        ));
+        assert!(!ffi::h264_should_forward_access_unit_to_decoder_for_test(&delta, false, false));
         assert!(!ffi::h264_should_forward_access_unit_to_decoder_for_test(
             &incomplete_key,
             true,

@@ -9,6 +9,7 @@
 #include <deque>
 #include <exception>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -46,24 +47,29 @@ class BoundedProtocolWriter final {
   using Write = std::function<bool(std::string_view)>;
   using Cancel = std::function<void(std::thread::native_handle_type)>;
 
+ private:
+  struct State;
+  static std::shared_ptr<State> makeState(
+      Write write,
+      std::size_t capacity,
+      std::size_t control_reserve);
+
+ public:
+
   BoundedProtocolWriter(
       Write write,
       std::size_t capacity = 512,
       std::size_t control_reserve = 32,
       Cancel cancel = {})
-      : write_(std::move(write)),
+      : state_(makeState(std::move(write), capacity, control_reserve)),
         cancel_(std::move(cancel)),
-        capacity_((std::max)(std::size_t{2}, capacity)),
-        control_reserve_((std::min)(
-            (std::max)(std::size_t{1}, control_reserve), capacity_ - 1)),
-        worker_([this] { run(); }) {}
+        worker_([state = state_] { run(*state); }) {}
 
   ~BoundedProtocolWriter() {
-    if (closeUntil(std::chrono::steady_clock::now() +
-                   std::chrono::milliseconds(500))) {
-      return;
+    if (!closeUntil(std::chrono::steady_clock::now() +
+                    std::chrono::milliseconds(500))) {
+      std::terminate();
     }
-    std::terminate();
   }
 
   BoundedProtocolWriter(const BoundedProtocolWriter&) = delete;
@@ -72,40 +78,42 @@ class BoundedProtocolWriter final {
   ProtocolRecordAdmission enqueue(
       std::string line,
       ProtocolRecordPriority priority) {
-    std::lock_guard lock(mutex_);
-    if (closed_) return ProtocolRecordAdmission::Closed;
-    const auto frame_capacity = capacity_ - control_reserve_;
+    auto& state = *state_;
+    std::lock_guard lock(state.mutex);
+    if (state.closed) return ProtocolRecordAdmission::Closed;
+    const auto frame_capacity = state.capacity - state.control_reserve;
     if (priority == ProtocolRecordPriority::Frame &&
-        records_.size() >= frame_capacity) {
-      ++frame_drops_;
+        state.records.size() >= frame_capacity) {
+      ++state.frame_drops;
       return ProtocolRecordAdmission::FrameDropped;
     }
-    if (records_.size() >= capacity_) {
-      ++control_saturations_;
+    if (state.records.size() >= state.capacity) {
+      ++state.control_saturations;
       return ProtocolRecordAdmission::ControlSaturated;
     }
-    records_.push_back(std::move(line));
-    changed_.notify_one();
+    state.records.push_back(std::move(line));
+    state.changed.notify_one();
     return ProtocolRecordAdmission::Accepted;
   }
 
   ProtocolWriterSnapshot snapshot() const {
-    std::lock_guard lock(mutex_);
+    const auto& state = *state_;
+    std::lock_guard lock(state.mutex);
     return {
-        .queued = records_.size(),
-        .frame_drops = frame_drops_,
-        .control_saturations = control_saturations_,
-        .write_failed = write_failed_,
+        .queued = state.records.size(),
+        .frame_drops = state.frame_drops,
+        .control_saturations = state.control_saturations,
+        .write_failed = state.write_failed,
     };
   }
 
   bool closeUntil(std::chrono::steady_clock::time_point deadline) noexcept {
     {
-      std::lock_guard lock(mutex_);
-      closed_ = true;
+      std::lock_guard lock(state_->mutex);
+      state_->closed = true;
     }
-    changed_.notify_all();
-    if (!waitFinishedUntil(deadline)) {
+    state_->changed.notify_all();
+    if (!waitFinishedUntil(*state_, deadline)) {
       try {
         if (cancel_) {
           cancel_(worker_.native_handle());
@@ -114,7 +122,8 @@ class BoundedProtocolWriter final {
         }
       } catch (...) {
       }
-      if (!waitFinishedUntil(deadline + std::chrono::milliseconds(250))) {
+      if (!waitFinishedUntil(
+              *state_, deadline + std::chrono::milliseconds(250))) {
         return false;
       }
     }
@@ -123,59 +132,80 @@ class BoundedProtocolWriter final {
   }
 
  private:
-  bool waitFinishedUntil(std::chrono::steady_clock::time_point deadline) const {
-    std::unique_lock lock(mutex_);
-    finished_changed_.wait_until(lock, deadline, [&] { return finished_; });
-    return finished_;
+  struct State {
+    Write write;
+    std::size_t capacity = 2;
+    std::size_t control_reserve = 1;
+    mutable std::mutex mutex;
+    std::condition_variable changed;
+    mutable std::condition_variable finished_changed;
+    std::deque<std::string> records;
+    std::size_t frame_drops = 0;
+    std::size_t control_saturations = 0;
+    bool closed = false;
+    bool finished = false;
+    bool write_failed = false;
+  };
+
+  static bool waitFinishedUntil(
+      const State& state,
+      std::chrono::steady_clock::time_point deadline) {
+    std::unique_lock lock(state.mutex);
+    state.finished_changed.wait_until(
+        lock, deadline, [&] { return state.finished; });
+    return state.finished;
   }
 
-  void run() noexcept {
+  static void run(State& state) noexcept {
     for (;;) {
       std::string record;
       {
-        std::unique_lock lock(mutex_);
-        changed_.wait(lock, [&] { return closed_ || !records_.empty(); });
-        if (records_.empty()) {
-          if (closed_) break;
+        std::unique_lock lock(state.mutex);
+        state.changed.wait(
+            lock, [&] { return state.closed || !state.records.empty(); });
+        if (state.records.empty()) {
+          if (state.closed) break;
           continue;
         }
-        record = std::move(records_.front());
-        records_.pop_front();
+        record = std::move(state.records.front());
+        state.records.pop_front();
       }
       bool written = false;
       try {
-        written = write_(record);
+        written = state.write ? state.write(record) : false;
       } catch (...) {
       }
       if (!written) {
-        std::lock_guard lock(mutex_);
-        write_failed_ = true;
-        records_.clear();
-        closed_ = true;
+        std::lock_guard lock(state.mutex);
+        state.write_failed = true;
+        state.records.clear();
+        state.closed = true;
         break;
       }
     }
     {
-      std::lock_guard lock(mutex_);
-      finished_ = true;
+      std::lock_guard lock(state.mutex);
+      state.finished = true;
     }
-    finished_changed_.notify_all();
+    state.finished_changed.notify_all();
   }
 
-  Write write_;
+  std::shared_ptr<State> state_;
   Cancel cancel_;
-  const std::size_t capacity_;
-  const std::size_t control_reserve_;
-  mutable std::mutex mutex_;
-  std::condition_variable changed_;
-  mutable std::condition_variable finished_changed_;
-  std::deque<std::string> records_;
-  std::size_t frame_drops_ = 0;
-  std::size_t control_saturations_ = 0;
-  bool closed_ = false;
-  bool finished_ = false;
-  bool write_failed_ = false;
   std::thread worker_;
 };
+
+inline std::shared_ptr<BoundedProtocolWriter::State>
+BoundedProtocolWriter::makeState(
+    Write write,
+    std::size_t capacity,
+    std::size_t control_reserve) {
+  auto state = std::make_shared<State>();
+  state->write = std::move(write);
+  state->capacity = (std::max)(std::size_t{2}, capacity);
+  state->control_reserve = (std::min)(
+      (std::max)(std::size_t{1}, control_reserve), state->capacity - 1);
+  return state;
+}
 
 }  // namespace syrnike::desktop_native::tests

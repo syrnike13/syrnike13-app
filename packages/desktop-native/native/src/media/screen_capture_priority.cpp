@@ -134,7 +134,7 @@ const ScreenMediaPriorityPolicy& configuredScreenMediaPriorityPolicy() {
         "SYRNIKE_MEDIA_PRIORITY_POLICY",
         buffer.data(),
         static_cast<DWORD>(buffer.size()));
-    if (size == 0) return &screenMediaPriorityPolicy("legacy-high");
+    if (size == 0) return &screenMediaPriorityPolicy("normal");
     if (size >= buffer.size()) {
       throw std::invalid_argument("screen media priority policy is too long");
     }

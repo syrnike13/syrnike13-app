@@ -1,4 +1,5 @@
-const { spawn } = require('node:child_process')
+const { execFileSync, spawn } = require('node:child_process')
+const { appendFileSync, createWriteStream, existsSync } = require('node:fs')
 const {
   mkdir,
   readFile,
@@ -21,13 +22,62 @@ const REQUIRED_ETW_COVERAGE = [
   ['audioWakeups', 'audio wakeups'],
 ]
 const MAXIMUM_TRACE_BYTES = 512 * 1024 * 1024
+const ETW_RECORDING_BUDGET_MS = 22_000
+const ETW_REQUIRED_WINDOW_MS = 12_000
+const CLOUD_SYNC_PATH =
+  /(?:^|[\\/])(?:Nextcloud|OneDrive|Dropbox)(?:[\\/]|$)/i
+const LOCAL_TRACE_CACHE = 'G:\\syrnike13-build-cache\\media-priority-etw'
+const WPR_BUILTIN_PROFILES = [
+  'CPU.light',
+  'GPU.light',
+  'DesktopComposition.light',
+  'Audio.light',
+  'Video.light',
+]
+
+function readSourceProvenance() {
+  const repositoryRoot = path.resolve(__dirname, '..', '..', '..')
+  const commitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: repositoryRoot,
+    encoding: 'utf8',
+  }).trim()
+  const relevantChanges = execFileSync(
+    'git',
+    [
+      'status',
+      '--porcelain',
+      '--untracked-files=all',
+      '--',
+      'apps/desktop',
+      'packages/desktop-native',
+      'packages/platform',
+    ],
+    { cwd: repositoryRoot, encoding: 'utf8' },
+  ).trim()
+  return {
+    commitSha,
+    relevantWorkingTreeDirty: relevantChanges.length > 0,
+  }
+}
 
 const {
   PRIORITY_COMPETING_LIMITS: COMPETING_LIMITS,
+  linkedVideoReadyDeadlineMs,
   resolveContentionProfile,
 } = require('./media-contention-profile.cjs')
+const {
+  mintLocalLiveKitSession,
+} = require('./media-contention-livekit.cjs')
 
 function extractPriorityOutcome(records, policy) {
+  const conflicting = records.some(
+    (record) =>
+      (record?.event === 'screen_capture_priority' ||
+        record?.event === 'screen_d3d_priority') &&
+      record?.policy &&
+      record.policy !== policy,
+  )
+  if (conflicting) return null
   const latest = (event, role) =>
     records
       .filter(
@@ -87,9 +137,14 @@ function analyzeEtwProviderCoverage(providerDetails) {
       capture: counted(/Microsoft-Windows-Win32k/i),
       encoder: counted(
         /MediaFoundation|DXVA2/i,
-        /Encod|\bMFT\b|Transform/i,
+        /Encod|\bMFT\b|Transform|Process(?:Input|Output)|HaveOutput|NeedInput|op_mfperf_(?:Input|Output)/i,
       ),
-      audioWakeups: counted(/\bAudioEngine\b/i),
+      audioWakeups:
+        counted(/\bAudioEngine\b/i) ||
+        counted(
+          /Microsoft\.Windows\.Audio\.(?:Service|Client)\b/i,
+          /StreamStarted|RenderWakeup|FirstPacket|AudioClientStart|IAudioClient::Start|AudioSrvStreamState/i,
+        ),
     },
     traceDurationMs,
   }
@@ -109,11 +164,12 @@ function extractCountedEtwRecords(lines) {
   }
 
   for (const line of lines) {
-    if (isEtwProviderSummaryRow(line)) {
+    const summary = parseEtwProviderSummaryRow(line)
+    if (summary) {
       flush()
       table = null
-      currentProvider = ''
-      awaitingProviderName = true
+      currentProvider = summary.name
+      awaitingProviderName = summary.name === ''
       continue
     }
 
@@ -142,6 +198,19 @@ function extractCountedEtwRecords(lines) {
       continue
     }
 
+    const namedRow = extractInlineNamedCountRow(line)
+    if (namedRow) {
+      flush()
+      current = {
+        count: namedRow.count,
+        lines: currentProvider
+          ? [currentProvider, namedRow.name, line]
+          : [namedRow.name, line],
+      }
+      flush()
+      continue
+    }
+
     const explicit = line.match(/\b(?:Count|Events?)\s*[=:]\s*(\d+)\b/i)
     const tableCount = table ? extractEtwTableCount(line, table) : Number.NaN
     const count = explicit ? Number(explicit[1]) : tableCount
@@ -162,9 +231,21 @@ function extractCountedEtwRecords(lines) {
   return records
 }
 
-function isEtwProviderSummaryRow(line) {
-  return /^\s*\{[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\}\s+\d+(?:\s+\d+)*\s*$/i
-    .test(String(line))
+function parseEtwProviderSummaryRow(line) {
+  const match = String(line).match(
+    /^\s*\{[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\}\s+\d+(?:\s+\d+)*(?:\s+(\S.*\S))?\s*$/i,
+  )
+  if (!match) return null
+  return { name: match[1] ? match[1].trim() : '' }
+}
+
+function extractInlineNamedCountRow(line) {
+  const match = String(line).match(
+    /^\s*(?:0x[0-9a-f]+\s+)+\s*(\d+)\s+(\d+)\s+(\S.*\S)\s*$/i,
+  )
+  if (!match) return null
+  if (/^[-=.|]+$/.test(match[3])) return null
+  return { count: Number(match[1]), name: match[3].trim() }
 }
 
 function isEtwFriendlyNameRow(line) {
@@ -290,12 +371,27 @@ function parseTraceTimestamp(lines, label) {
   return Number.isFinite(timestamp) ? timestamp : Number.NaN
 }
 
-function selectLowestPassingPriority(observations) {
+function requiredEtwDurationMs(observation) {
+  const soakMs = observation?.contention?.profile?.durationMs
+  if (!Number.isFinite(soakMs) || soakMs <= 0) return Number.POSITIVE_INFINITY
+  return Math.min(soakMs, ETW_RECORDING_BUDGET_MS, ETW_REQUIRED_WINDOW_MS) * 0.9
+}
+
+function matrixPolicies(options = {}) {
+  if (!options.onlyPolicy) return [...PRIORITY_POLICY_ORDER]
+  if (!PRIORITY_POLICY_ORDER.includes(options.onlyPolicy)) {
+    throw new Error(`unknown media priority policy: ${options.onlyPolicy}`)
+  }
+  return [options.onlyPolicy]
+}
+
+function selectLowestPassingPriority(observations, options = {}) {
+  const policies = options.policies ?? PRIORITY_POLICY_ORDER
   const byPolicy = new Map(
     observations.map((observation) => [observation.policy, observation]),
   )
   const blockers = []
-  for (const policy of PRIORITY_POLICY_ORDER) {
+  for (const policy of policies) {
     const observation = byPolicy.get(policy)
     if (!observation) {
       blockers.push(`${policy}: no priority observation was recorded`)
@@ -313,10 +409,7 @@ function selectLowestPassingPriority(observations) {
       if (observation.etw?.coverage?.[field] === true) continue
       blockers.push(`${policy}: ETW ${label} evidence is missing`)
     }
-    const expectedDurationMs = observation.contention?.profile?.durationMs
-    const minimumDurationMs = Number.isFinite(expectedDurationMs)
-      ? expectedDurationMs * 0.9
-      : Number.POSITIVE_INFINITY
+    const minimumDurationMs = requiredEtwDurationMs(observation)
     if (!Number.isFinite(observation.etw?.traceDurationMs) ||
         observation.etw.traceDurationMs < minimumDurationMs) {
       blockers.push(`${policy}: ETW trace duration is incomplete`)
@@ -326,7 +419,7 @@ function selectLowestPassingPriority(observations) {
     return { status: 'blocked', selectedPolicy: null, blockers }
   }
 
-  for (const policy of PRIORITY_POLICY_ORDER) {
+  for (const policy of policies) {
     const observation = byPolicy.get(policy)
     if (!priorityObservationPasses(observation)) continue
     return { status: 'pass', selectedPolicy: policy, blockers: [] }
@@ -370,20 +463,35 @@ async function runPriorityMatrix(options = {}, dependencies = {}) {
   const captureEtw = dependencies.captureEtw ?? defaultCaptureEtw
 
   const observations = []
-  for (const policy of PRIORITY_POLICY_ORDER) {
-    const observation = await captureEtw(
-      policy,
-      () => runContention(policy, options),
-      options,
-    )
-    observations.push({ policy, ...observation })
+  const policies = matrixPolicies(options)
+  for (const policy of policies) {
+    try {
+      const observation = await captureEtw(
+        policy,
+        (overrides = {}) => runContention(policy, { ...options, ...overrides }),
+        options,
+      )
+      observations.push({ policy, ...observation })
+    } catch (error) {
+      observations.push({
+        policy,
+        etw: {
+          captured: false,
+          reason: error instanceof Error ? error.message : String(error),
+        },
+        contention: contentionFailure(
+          error,
+          resolveContentionProfile(options.profile ?? 'ci'),
+        ),
+      })
+    }
   }
   return {
     schema: 'syrnike.native-media-priority-matrix',
     version: 1,
     profile: options.profile ?? 'ci',
     observations,
-    selection: selectLowestPassingPriority(observations),
+    selection: selectLowestPassingPriority(observations, { policies }),
   }
 }
 
@@ -417,6 +525,21 @@ function buildContentionRunnerArguments(policy, options) {
   if (liveKitServer) {
     arguments.push('--livekit-server', path.resolve(liveKitServer))
   }
+  if (options.liveKitRoom) {
+    arguments.push('--livekit-room', options.liveKitRoom)
+  }
+  if (options.liveKitParticipantsFile) {
+    arguments.push(
+      '--livekit-participants-file',
+      path.resolve(options.liveKitParticipantsFile),
+    )
+  }
+  if (options.contentionStartedFile) {
+    arguments.push(
+      '--contention-started-file',
+      path.resolve(options.contentionStartedFile),
+    )
+  }
   return arguments
 }
 
@@ -426,7 +549,7 @@ async function defaultRunContention(policy, options) {
   const profile = resolveContentionProfile(options.profile ?? 'ci')
   const arguments = buildContentionRunnerArguments(policy, options)
   const result = await runBoundedProcess(electronExecutable, arguments, {
-    timeoutMs: profile.durationMs + 90_000,
+    timeoutMs: profile.durationMs + linkedVideoReadyDeadlineMs(profile) + 90_000,
   })
   const summary = result.stdout
     .split(/\r?\n/)
@@ -508,100 +631,284 @@ function createWprRecordingGuard(options = {}) {
   return { cancel, dispose, markStarted, markStopped, trackStart }
 }
 
-async function defaultCaptureEtw(policy, runContention, options) {
+function wprStopArguments(tracePath, policy) {
+  return [
+    '-stop',
+    tracePath,
+    `Syrnike media priority ${policy}`,
+    '-compress',
+    '-skipPdbGen',
+  ]
+}
+
+function scheduleIndependentWprStop(wpr, tracePath, policy, delayMs, options = {}) {
+  const traceDirectory = path.dirname(tracePath)
+  const logPath = path.join(traceDirectory, `wpr-stop-${policy}.log`)
+  const maxBytes = Number.isSafeInteger(options.maxBytes)
+    ? options.maxBytes
+    : 400 * 1024 * 1024
+  const child = spawn(
+    process.execPath,
+    [
+      path.join(__dirname, 'media-priority-wpr-stop.cjs'),
+      String(delayMs),
+      String(maxBytes),
+      traceDirectory,
+      logPath,
+      wpr,
+      ...wprStopArguments(tracePath, policy),
+    ],
+    {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  )
+  const forward = (chunk) => {
+    try {
+      appendFileSync(logPath, chunk)
+    } catch {
+      // The stopper also writes this log; losing a fragment is non-fatal.
+    }
+  }
+  child.stdout.on('data', forward)
+  child.stderr.on('data', forward)
+  child.on('error', (error) => {
+    forward(String(error instanceof Error ? error.stack : error))
+  })
+  return child
+}
+
+async function waitForPath(filePath, timeoutMs, options = {}) {
+  const pollMs = Number.isFinite(options.pollMs) && options.pollMs > 0
+    ? options.pollMs
+    : 50
+  if (existsSync(filePath)) return true
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return false
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, pollMs))
+    if (existsSync(filePath)) return true
+  }
+  return existsSync(filePath)
+}
+
+function waitForChildExit(child, timeoutMs) {
+  return new Promise((resolve) => {
+    if (!child) {
+      resolve({ alreadyGone: true })
+      return
+    }
+    if (Number.isInteger(child.exitCode) || child.signalCode) {
+      resolve({ code: child.exitCode, signal: child.signalCode })
+      return
+    }
+    const onExit = (code, signal) => {
+      clearTimeout(timer)
+      resolve({ code, signal })
+    }
+    const timer = setTimeout(() => {
+      child.off('exit', onExit)
+      try {
+        child.kill('SIGKILL')
+      } catch {
+        // The stopper may have exited between the timeout and kill.
+      }
+      resolve({ timedOut: true })
+    }, timeoutMs)
+    child.once('exit', onExit)
+  })
+}
+
+async function wprIsRecording(wpr, runProcess = runBoundedProcess) {
+  const status = await runProcess(wpr, ['-status'], { timeoutMs: 15_000 })
+  const text = `${status.stdout}\n${status.stderr}`
+  if (/not recording/i.test(text)) return false
+  return /recording|already running|0xc5583001/i.test(text)
+}
+
+async function finalizeWprStop(wpr, tracePath, policy, recording) {
+  if (!await wprIsRecording(wpr)) {
+    recording.markStopped()
+    return {
+      code: existsSync(tracePath) ? 0 : 1,
+      stdout: '',
+      stderr: existsSync(tracePath) ? '' : 'WPR stop produced no ETL',
+    }
+  }
+  const stop = await runBoundedProcess(
+    wpr,
+    wprStopArguments(tracePath, policy),
+    { timeoutMs: 120_000 },
+  )
+  if (stop.code === 0) recording.markStopped()
+  return stop
+}
+
+async function forceWprIdle(wpr, runProcess = runBoundedProcess) {
+  return runProcess(wpr, ['-cancel'], { timeoutMs: 15_000 })
+}
+
+async function settleWpr(settleMs) {
+  if (!Number.isFinite(settleMs) || settleMs <= 0) return
+  await new Promise((resolve) => setTimeout(resolve, settleMs))
+}
+
+async function startWprRecording(wpr, traceDirectory, options = {}) {
+  const runProcess = options.runProcess ?? runBoundedProcess
+  const settleMs = Number.isFinite(options.settleMs) ? options.settleMs : 1_000
+  // `wpr -status` can report "not recording" while `-start` still returns
+  // 0xc5583001 / "already running". Always cancel before starting.
+  await forceWprIdle(wpr, runProcess)
+  await settleWpr(settleMs)
+  let recording = createWprRecordingGuard({ wprExecutable: wpr, runProcess })
+  const startOnce = () => runProcess(
+    wpr,
+    buildWprStartArguments(traceDirectory),
+    { timeoutMs: 30_000 },
+  )
+  let startPromise = startOnce()
+  recording.trackStart(startPromise)
+  let start = await startPromise
+  const details = `${start.stderr || ''}\n${start.stdout || ''}`
+  if (start.code !== 0 && /already running|0xc5583001/i.test(details)) {
+    recording.dispose()
+    await forceWprIdle(wpr, runProcess)
+    await settleWpr(settleMs)
+    recording = createWprRecordingGuard({ wprExecutable: wpr, runProcess })
+    startPromise = startOnce()
+    recording.trackStart(startPromise)
+    start = await startPromise
+  }
+  return { start, recording }
+}
+
+async function preparePriorityLiveKitOptions(policy, options, dependencies = {}) {
+  if (!options.liveKitServer) return options
+  const mint = dependencies.mintLocalLiveKitSession ?? mintLocalLiveKitSession
+  const runChild = dependencies.runChild ?? ((executable, args, timeoutMs) =>
+    runBoundedProcess(executable, args, { timeoutMs }))
+  const session = await mint(path.resolve(options.liveKitServer), { runChild })
   const outputDirectory = path.resolve(
     options.outputDirectory ?? defaultExperimentDirectory(),
   )
   await mkdir(outputDirectory, { recursive: true })
+  const liveKitParticipantsFile = path.join(
+    outputDirectory,
+    `livekit-participants-${policy}.json`,
+  )
+  await writeFile(liveKitParticipantsFile, `${JSON.stringify(session)}\n`)
+  return {
+    ...options,
+    liveKitRoom: session.roomName,
+    liveKitParticipantsFile,
+  }
+}
+
+async function defaultCaptureEtw(policy, runContention, options) {
+  const outputDirectory = path.resolve(
+    options.outputDirectory ?? defaultExperimentDirectory(),
+  )
+  const traceDirectory = resolveTraceDirectory(options)
+  const contentionProfile = resolveContentionProfile(options.profile ?? 'ci')
+  const contentionOptions = await preparePriorityLiveKitOptions(policy, options)
+  await mkdir(outputDirectory, { recursive: true })
+  await mkdir(traceDirectory, { recursive: true })
+  const startedFile = path.join(
+    traceDirectory,
+    `contention-started-${policy}.flag`,
+  )
+  await rm(startedFile, { force: true })
+  const contentionPromise = Promise.resolve(runContention({
+    liveKitRoom: contentionOptions.liveKitRoom,
+    liveKitParticipantsFile: contentionOptions.liveKitParticipantsFile,
+    contentionStartedFile: startedFile,
+  })).then(
+    (value) => ({ ok: true, value }),
+    (error) => ({ ok: false, error }),
+  )
+  const readyMs = linkedVideoReadyDeadlineMs(contentionProfile) + 15_000
+  const started = await waitForPath(startedFile, readyMs)
+  if (!started) {
+    const settled = await contentionPromise
+    return {
+      etw: {
+        captured: false,
+        reason: 'contention did not reach the observation window before ETW arming',
+      },
+      contention: settled.ok
+        ? settled.value
+        : contentionFailure(settled.error, contentionProfile),
+    }
+  }
+
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
   const tracePath = path.join(
-    outputDirectory,
+    traceDirectory,
     `media-priority-${policy}-${timestamp}.etl`,
   )
-  const wpr = options.wprExecutable ?? 'C:\\Windows\\System32\\wpr.exe'
-  const recording = createWprRecordingGuard({ wprExecutable: wpr })
-  const startPromise = runBoundedProcess(
-    wpr,
-    [
-      '-start',
-      'CPU.light',
-      '-start',
-      'GPU.light',
-      '-start',
-      'DesktopComposition.light',
-      '-start',
-      'Audio.light',
-      '-start',
-      'Video.light',
-      '-filemode',
-    ],
-    { timeoutMs: 30_000 },
+  const statsPath = path.join(
+    traceDirectory,
+    `media-priority-${policy}-${timestamp}.tracestats.txt`,
   )
-  recording.trackStart(startPromise)
+  const wpr = options.wprExecutable ?? 'C:\\Windows\\System32\\wpr.exe'
+  let recording
   let start
   try {
-    start = await startPromise
+    ({ start, recording } = await startWprRecording(wpr, traceDirectory))
   } catch (error) {
-    recording.dispose()
+    recording?.dispose()
+    await contentionPromise
     throw error
   }
   if (start.code !== 0) {
     recording.dispose()
+    const settled = await contentionPromise
     return {
       etw: {
         captured: false,
-        profiles: [
-          'CPU.light',
-          'GPU.light',
-          'DesktopComposition.light',
-          'Audio.light',
-          'Video.light',
-        ],
+        profiles: recordedWprProfiles(),
         reason: `WPR start failed (${start.code}): ${boundedText(
           start.stderr || start.stdout,
         )}`,
       },
-      contention: await runContention(),
+      contention: settled.ok
+        ? settled.value
+        : contentionFailure(settled.error, contentionProfile),
     }
   }
 
-  let contention
-  let contentionError
+  const watchdog = scheduleIndependentWprStop(
+    wpr,
+    tracePath,
+    policy,
+    ETW_RECORDING_BUDGET_MS,
+  )
+  const settled = await contentionPromise
+  await waitForChildExit(watchdog, 120_000)
   let stop
   try {
-    try {
-      contention = await runContention()
-    } catch (error) {
-      contentionError = error
-    }
-    stop = await runBoundedProcess(
-      wpr,
-      [
-        '-stop',
-        tracePath,
-        `Syrnike media priority ${policy}`,
-        '-compress',
-        '-skipPdbGen',
-      ],
-      { timeoutMs: 120_000 },
-    )
-    if (stop.code === 0) recording.markStopped()
+    stop = await finalizeWprStop(wpr, tracePath, policy, recording)
   } finally {
+    try {
+      watchdog.kill('SIGKILL')
+    } catch {
+      // The independent stopper may already have exited after -stop.
+    }
     await recording.cancel()
     recording.dispose()
   }
-  if (contentionError) throw contentionError
+  const contention = settled.ok
+    ? settled.value
+    : withRecordedContention(
+      undefined,
+      settled.error,
+      contentionProfile,
+    )
   if (stop.code !== 0) {
     return {
       etw: {
         captured: false,
-        profiles: [
-          'CPU.light',
-          'GPU.light',
-          'DesktopComposition.light',
-          'Audio.light',
-          'Video.light',
-        ],
+        profiles: recordedWprProfiles(),
         reason: `WPR stop failed (${stop.code}): ${boundedText(
           stop.stderr || stop.stdout,
         )}`,
@@ -636,28 +943,38 @@ async function defaultCaptureEtw(policy, runContention, options) {
       'actual',
       '-detail',
     ],
-    { timeoutMs: 120_000, maximumOutputBytes: 4 * 1024 * 1024 },
+    {
+      timeoutMs: 120_000,
+      maximumOutputBytes: 4 * 1024 * 1024,
+      stdoutPath: statsPath,
+    },
+  )
+  const stats = existsSync(statsPath)
+    ? await readFile(statsPath, 'utf8')
+    : decoded.stdout
+  await rotateGeneratedFiles(
+    traceDirectory,
+    (entry) =>
+      entry.startsWith(`media-priority-${policy}-`) && entry.endsWith('.etl'),
+    3,
   )
   await rotateGeneratedFiles(
-    outputDirectory,
-    (entry) => entry.startsWith('media-priority-') && entry.endsWith('.etl'),
+    traceDirectory,
+    (entry) =>
+      entry.startsWith(`media-priority-${policy}-`) &&
+      entry.endsWith('.tracestats.txt'),
     3,
   )
   return {
     etw: {
       captured: decoded.code === 0,
-      profiles: [
-        'CPU.light',
-        'GPU.light',
-        'DesktopComposition.light',
-        'Audio.light',
-        'Video.light',
-      ],
+      profiles: recordedWprProfiles(),
       traceBytes: trace.size,
       tracePath,
+      statsPath,
       decoder: 'xperf tracestats -timespan actual -detail',
-      ...analyzeEtwProviderCoverage(decoded.stdout),
-      providerStats: boundedText(decoded.stdout, 32 * 1024),
+      ...analyzeEtwProviderCoverage(stats),
+      providerStats: boundedText(stats, 32 * 1024),
       ...(decoded.code === 0
         ? {}
         : {
@@ -685,8 +1002,72 @@ function resolveElectronExecutable() {
   return require(electronModule)
 }
 
+function contentionFailure(error, profile) {
+  const message = error instanceof Error ? error.message : String(error)
+  return {
+    ...(profile
+      ? { profile: { name: profile.name, durationMs: profile.durationMs } }
+      : {}),
+    result: {
+      status: 'failed',
+      blockers: [],
+      failures: [message],
+      metrics: {},
+    },
+  }
+}
+
+function withRecordedContention(contention, contentionError, profile) {
+  return contention ?? (contentionError ? contentionFailure(contentionError, profile) : null)
+}
+
 function defaultExperimentDirectory() {
   return path.resolve(__dirname, '..', 'build', 'media-priority-artifacts')
+}
+
+function isCloudSyncedPath(value) {
+  return CLOUD_SYNC_PATH.test(String(value).replace(/\//g, '\\'))
+}
+
+function resolveTraceDirectory(options = {}) {
+  if (options.traceDirectory) return path.resolve(options.traceDirectory)
+  if (process.env.SYRNIKE_ETW_TRACE_DIR) {
+    return path.resolve(process.env.SYRNIKE_ETW_TRACE_DIR)
+  }
+  const outputDirectory = options.outputDirectory
+    ? path.resolve(options.outputDirectory)
+    : ''
+  if (outputDirectory && !isCloudSyncedPath(outputDirectory)) {
+    return outputDirectory
+  }
+  if (existsSync('G:\\syrnike13-build-cache')) {
+    return path.resolve(LOCAL_TRACE_CACHE)
+  }
+  return path.join(
+    process.env.LOCALAPPDATA || process.env.TEMP || '.',
+    'Syrnike',
+    'media-priority-etw',
+  )
+}
+
+function mediaFoundationProfileStart() {
+  return `${path.join(__dirname, 'media-priority-mf.wprp')}!MF.light`
+}
+
+function recordedWprProfiles() {
+  return [...WPR_BUILTIN_PROFILES, 'MF.light']
+}
+
+function buildWprStartArguments(traceDirectory) {
+  const arguments = []
+  for (const profile of WPR_BUILTIN_PROFILES) {
+    arguments.push('-start', profile)
+  }
+  arguments.push('-start', mediaFoundationProfileStart(), '-filemode')
+  if (traceDirectory) {
+    arguments.push('-recordtempto', path.resolve(traceDirectory))
+  }
+  return arguments
 }
 
 async function runBoundedProcess(executable, arguments, options = {}) {
@@ -702,25 +1083,46 @@ async function runBoundedProcess(executable, arguments, options = {}) {
     let stdout = ''
     let stderr = ''
     let timedOut = false
+    let stdoutFileError
     const maximumOutputBytes = Number.isSafeInteger(options.maximumOutputBytes)
       ? options.maximumOutputBytes
       : 128 * 1024
     const append = (current, chunk) =>
       boundedText(current + chunk, maximumOutputBytes)
+    const stdoutFile = options.stdoutPath
+      ? createWriteStream(options.stdoutPath)
+      : null
+    if (stdoutFile) {
+      stdoutFile.on('error', (error) => {
+        stdoutFileError = error
+      })
+    }
     child.stdout.on('data', (chunk) => {
+      if (stdoutFile) stdoutFile.write(chunk)
       stdout = append(stdout, chunk.toString())
     })
     child.stderr.on('data', (chunk) => {
       stderr = append(stderr, chunk.toString())
     })
-    child.once('error', reject)
+    child.once('error', (error) => {
+      if (stdoutFile) stdoutFile.destroy()
+      reject(error)
+    })
     const timer = setTimeout(() => {
       timedOut = true
       child.kill('SIGKILL')
     }, timeoutMs)
     child.once('exit', (code, signal) => {
       clearTimeout(timer)
-      resolve({ code, signal, stdout, stderr, timedOut })
+      const finish = () => {
+        if (stdoutFileError) {
+          reject(stdoutFileError)
+          return
+        }
+        resolve({ code, signal, stdout, stderr, timedOut })
+      }
+      if (stdoutFile) stdoutFile.end(finish)
+      else finish()
     })
   })
 }
@@ -754,14 +1156,21 @@ function parseExperimentOptions(argv) {
     if (option === '--profile') result.profile = value
     else if (option === '--build-dir') result.buildDirectory = value
     else if (option === '--output-dir') result.outputDirectory = value
+    else if (option === '--trace-dir') result.traceDirectory = value
     else if (option === '--contention-output-dir') {
       result.contentionOutputDirectory = value
-    }     else if (option === '--audio-policy-result') {
+    } else if (option === '--audio-policy-result') {
       result.audioPolicyResult = value
     } else if (option === '--livekit-server') result.liveKitServer = value
     else if (option === '--electron-exe') result.electronExecutable = value
     else if (option === '--wpr-exe') result.wprExecutable = value
     else if (option === '--xperf-exe') result.xperfExecutable = value
+    else if (option === '--only-policy') {
+      if (!PRIORITY_POLICY_ORDER.includes(value)) {
+        throw new Error(`unknown media priority policy: ${value}`)
+      }
+      result.onlyPolicy = value
+    }
     else throw new Error(`unknown media priority experiment option: ${option}`)
   }
   resolveContentionProfile(result.profile)
@@ -771,6 +1180,7 @@ function parseExperimentOptions(argv) {
 async function runCli() {
   const options = parseExperimentOptions(process.argv.slice(2))
   const result = await runPriorityMatrix(options)
+  result.source = readSourceProvenance()
   const outputDirectory = path.resolve(
     options.outputDirectory ?? defaultExperimentDirectory(),
   )
@@ -800,12 +1210,20 @@ if (require.main === module) {
 
 module.exports = {
   COMPETING_LIMITS,
+  ETW_RECORDING_BUDGET_MS,
+  ETW_REQUIRED_WINDOW_MS,
   PRIORITY_POLICY_ORDER,
   analyzeEtwProviderCoverage,
   buildContentionRunnerArguments,
+  buildWprStartArguments,
   createWprRecordingGuard,
   extractPriorityOutcome,
   parseExperimentOptions,
+  preparePriorityLiveKitOptions,
+  requiredEtwDurationMs,
+  resolveTraceDirectory,
   runPriorityMatrix,
   selectLowestPassingPriority,
+  startWprRecording,
+  waitForPath,
 }

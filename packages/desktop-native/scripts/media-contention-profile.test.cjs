@@ -8,9 +8,14 @@ const {
 
 const {
   buildContentionArtifact,
+  contentionProbeRestartDelayMs,
   evaluateContentionRun,
+  linkedVideoReadyDeadlineMs,
   resolveContentionProfile,
 } = require('./media-contention-profile.cjs')
+const {
+  mintLocalLiveKitSession,
+} = require('./media-contention-livekit.cjs')
 const {
   BoundedSampleWindow,
   buildContentionWindowOptions,
@@ -20,6 +25,7 @@ const {
   buildDistributionMetrics,
   canonicalizeVideoPipeline,
   classifyNativeProbeStderr,
+  classifyRuntimeFrameEpoch,
   contentionCompletionBlockers,
   contentionCompletionDeadlineMs,
   contentionProbeDurationMs,
@@ -31,7 +37,9 @@ const {
   trackPendingOperation,
   contentionPageDataUrl,
   hasLinkedVideoPresentation,
+  mediaPriorityPolicyEnvironment,
   parseRunnerOptions,
+  parsePrefixedJson,
   parseLiveKitJoinToken,
   startContentionWindowMotion,
   selectLatestAudioEvidence,
@@ -64,6 +72,28 @@ test('competing workload waits for exact linked video presentation', () => {
   assert.equal(hasLinkedVideoPresentation(candidates), true)
   candidates.get('1').remoteCaptureTimestampUs = 124
   assert.equal(hasLinkedVideoPresentation(candidates), false)
+})
+
+test('frames arriving between protocol ready and supervisor ready wait for epoch activation', () => {
+  assert.equal(classifyRuntimeFrameEpoch(1, 0), 'pending')
+  assert.equal(classifyRuntimeFrameEpoch(1, 1), 'current')
+  assert.equal(classifyRuntimeFrameEpoch(1, 2), 'retired')
+  assert.equal(classifyRuntimeFrameEpoch(0, 0), 'invalid')
+})
+
+test('camera preview frames and acknowledgements cross the child protocol parser', () => {
+  assert.deepEqual(parsePrefixedJson(
+    'CAMERA_FRAME {"protocolVersion":1,"sequence":7}',
+  ), {
+    prefix: 'CAMERA_FRAME',
+    value: { protocolVersion: 1, sequence: 7 },
+  })
+  assert.deepEqual(parsePrefixedJson(
+    'CAMERA_RELEASE_ACK {"protocolVersion":1,"requestId":8}',
+  ), {
+    prefix: 'CAMERA_RELEASE_ACK',
+    value: { protocolVersion: 1, requestId: 8 },
+  })
 })
 
 test('linked screen pipeline stays within the server screenshare preset', () => {
@@ -161,6 +191,52 @@ test('runner defines an owned loopback LiveKit server with isolated random ports
     () => parseLiveKitJoinToken('token missing'),
     /join token/i,
   )
+})
+
+test('LiveKit session minting requests a join token for every publisher and viewer epoch', async () => {
+  const commands = []
+  const session = await mintLocalLiveKitSession('livekit-server.exe', {
+    roomName: 'room-a',
+    runChild: async (executable, args) => {
+      commands.push([executable, ...args])
+      return { stdout: `Token: token-${args.at(-1)}\n` }
+    },
+  })
+
+  assert.equal(session.roomName, 'room-a')
+  assert.equal(session.participants.length, 16)
+  assert.equal(commands.length, 32)
+  assert.deepEqual(commands[0], [
+    'livekit-server.exe',
+    '--dev',
+    'create-join-token',
+    '--room',
+    'room-a',
+    '--identity',
+    'contention-publisher-1',
+  ])
+  assert.equal(
+    session.participants[0].publisherToken,
+    'token-contention-publisher-1',
+  )
+  assert.equal(
+    session.participants[15].viewerToken,
+    'token-contention-viewer-16',
+  )
+})
+
+test('contention runner accepts a pre-minted LiveKit participants file', () => {
+  const parsed = parseRunnerOptions([
+    '--livekit-room',
+    'issue83-test',
+    '--livekit-participants-file',
+    'participants.json',
+    '--contention-started-file',
+    'started.flag',
+  ])
+  assert.equal(parsed.liveKitRoom, 'issue83-test')
+  assert.equal(parsed.liveKitParticipantsFile, 'participants.json')
+  assert.equal(parsed.contentionStartedFile, 'started.flag')
 })
 
 test('runner retains the latest real audio evidence from every recycled probe epoch', () => {
@@ -361,14 +437,45 @@ test('native stderr policy admits only bounded reset and callback-hold warnings'
     classifyNativeProbeStderr(lateJoinBurst, healthyContext),
     [],
   )
+  const firstJoinBurst = lateJoinBurst.map((record) => ({
+    ...record,
+    hostEpoch: 1,
+  }))
+  assert.deepEqual(
+    classifyNativeProbeStderr(firstJoinBurst, {
+      ...healthyContext,
+      linkedVideoPresentationEpochs: new Set([1, 2]),
+    }),
+    [],
+  )
+  assert.deepEqual(
+    classifyNativeProbeStderr(lateJoinBurst.slice(0, 2), {
+      ...healthyContext,
+      linkedVideoPresentationEpochs: new Set([2, 3]),
+    }),
+    [],
+  )
+  assert.deepEqual(
+    classifyNativeProbeStderr([
+      ...firstJoinBurst,
+      ...lateJoinBurst.slice(0, 2).map((record) => ({
+        ...record,
+        hostEpoch: 3,
+      })),
+    ], {
+      ...healthyContext,
+      linkedVideoPresentationEpochs: new Set([1, 2, 3]),
+    }),
+    [],
+  )
   assert.equal(classifyNativeProbeStderr([
     ...lateJoinBurst,
     ...lateJoinBurst,
   ], healthyContext).length, 10)
-  assert.equal(classifyNativeProbeStderr(lateJoinBurst.map((record, index) => ({
+  assert.deepEqual(classifyNativeProbeStderr(lateJoinBurst.map((record, index) => ({
     ...record,
     beforeFirstPresentation: index === 4 ? false : true,
-  })), healthyContext).length, 5)
+  })), healthyContext), [])
   assert.deepEqual(classifyNativeProbeStderr([
     { hostEpoch: 2, line: 'native video stream queue overflow; stream_instance=11 dropped 1 queued frames' },
     { hostEpoch: 2, line: 'native video stream queue overflow; stream_instance=12 dropped 1 queued frames' },
@@ -448,9 +555,33 @@ test('production profile enforces a real ten-minute observation window', () => {
   assert.equal(resolveContentionProfile('production').durationMs, 600_000)
   assert.equal(
     resolveContentionProfile('production').screenBackendChurnIntervalMs,
-    120_000,
+    240_000,
+  )
+  assert.equal(resolveContentionProfile('production').probeRestartMinDelayMs, 2_000)
+  assert.equal(resolveContentionProfile('production').probeRestartDelayCapMs, null)
+  assert.equal(resolveContentionProfile('ci').probeRestartDelayCapMs, 100)
+  assert.equal(
+    contentionProbeRestartDelayMs(250, resolveContentionProfile('ci')),
+    100,
+  )
+  assert.equal(
+    contentionProbeRestartDelayMs(250, resolveContentionProfile('production')),
+    2_000,
+  )
+  assert.equal(
+    contentionProbeRestartDelayMs(5_000, resolveContentionProfile('production')),
+    5_000,
   )
   assert.equal(resolveContentionProfile('production').measurementWarmupMs, 10_000)
+  assert.equal(resolveContentionProfile('production').linkedVideoReadyMs, 45_000)
+  assert.equal(
+    linkedVideoReadyDeadlineMs(resolveContentionProfile('ci')),
+    7_000,
+  )
+  assert.equal(
+    linkedVideoReadyDeadlineMs(resolveContentionProfile('production')),
+    45_000,
+  )
   const production = resolveContentionProfile('production')
   const [gpuFault] = production.faultSchedule.gpuCompletionDelay
   assert.equal(gpuFault.trigger, 'after-first-held-renderer-frame')
@@ -478,6 +609,23 @@ test('healthy deterministic contention evidence passes every required boundary',
     liveKitCallbackHold: 1,
     audioSchedulingGap: 4,
   })
+})
+
+test('production contention evidence is tied to a clean media source commit', () => {
+  const missingCommit = healthyEvidence()
+  delete missingCommit.environment.source.commitSha
+  assert.match(
+    evaluateContentionRun(missingCommit).failures.join('\n'),
+    /source commit SHA/i,
+  )
+
+  const dirtyProduction = healthyEvidence()
+  dirtyProduction.profile = resolveContentionProfile('production')
+  dirtyProduction.environment.source.relevantWorkingTreeDirty = true
+  assert.match(
+    evaluateContentionRun(dirtyProduction).failures.join('\n'),
+    /dirty media tree/i,
+  )
 })
 
 test('contention evidence requires one linked capture-to-viewer frame identity', () => {
@@ -572,6 +720,7 @@ test('audio policy matrix hook is explicit and missing evidence blocks the run',
 })
 
 test('contention runner accepts only named priority policies', () => {
+  assert.equal(parseRunnerOptions(['--profile', 'ci']).priorityPolicy, 'normal')
   assert.equal(
     parseRunnerOptions(['--priority-policy', 'capture']).priorityPolicy,
     'capture',
@@ -580,6 +729,9 @@ test('contention runner accepts only named priority policies', () => {
     () => parseRunnerOptions(['--priority-policy', 'made-up']),
     /unknown media priority policy/i,
   )
+  assert.deepEqual(mediaPriorityPolicyEnvironment('normal'), {
+    SYRNIKE_MEDIA_PRIORITY_POLICY: 'normal',
+  })
 })
 
 test('audio policy matrix validates category, ducking, restart, and Bluetooth outcomes', () => {
@@ -709,6 +861,34 @@ test('remote renderer-fence recovery evidence is mandatory and production-shaped
   assert.match(result.failures.join('\n'), /final remote renderer leases/i)
   assert.match(result.failures.join('\n'), /final remote usage/i)
   assert.match(result.failures.join('\n'), /audio recovery samples/i)
+})
+
+test('camera preview requires a real delayed fence and renderer-loss recovery', () => {
+  const evidence = healthyEvidence()
+  delete evidence.environment.capabilities.cameraPreview
+  delete evidence.metrics.cameraPreviewHandleImports
+  delete evidence.metrics.cameraPreviewDelayedFenceHits
+  delete evidence.metrics.cameraPreviewRendererLosses
+  delete evidence.metrics.cameraPreviewFreshFramesAfterLoss
+  delete evidence.metrics.cameraPreviewFenceAcks
+  delete evidence.metrics.cameraPreviewReleaseFailures
+  delete evidence.metrics.finalCameraPreviewFrames
+  delete evidence.metrics.finalCameraPreviewUsageBytes
+  delete evidence.metrics.finalCameraPreviewUsageGenerations
+
+  const result = evaluateContentionRun(evidence)
+
+  assert.equal(result.status, 'blocked')
+  assert.match(result.blockers.join('\n'), /cameraPreview/i)
+  assert.match(result.failures.join('\n'), /camera preview shared-handle imports/i)
+  assert.match(result.failures.join('\n'), /camera preview delayed fence/i)
+  assert.match(result.failures.join('\n'), /camera preview renderer loss/i)
+  assert.match(result.failures.join('\n'), /fresh camera preview frame after renderer loss/i)
+  assert.match(result.failures.join('\n'), /camera preview fence acknowledgements/i)
+  assert.match(result.failures.join('\n'), /camera preview release failures/i)
+  assert.match(result.failures.join('\n'), /final camera preview frames/i)
+  assert.match(result.failures.join('\n'), /final camera preview usage bytes/i)
+  assert.match(result.failures.join('\n'), /final camera preview usage generations/i)
 })
 
 test('remote GPU backing follows the linked publication instead of the 4K control', () => {
@@ -881,6 +1061,7 @@ test('probe churn of the fence-owner epoch counts as renderer-fence recycle', ()
   const empty = {
     fenceOwnerEpoch: null,
     voiceTimeoutEpoch: null,
+    voiceTimeoutArmed: false,
     rendererFenceRecycleCompleted: false,
     rendererFenceHostRecycles: 0,
     voiceTimeoutRecycleCompleted: false,
@@ -892,9 +1073,38 @@ test('probe churn of the fence-owner epoch counts as renderer-fence recycle', ()
   assert.equal(churned.rendererFenceRecycleCompleted, true)
   assert.equal(churned.rendererFenceHostRecycles, 1)
   assert.equal(churned.voiceTimeoutEpoch, 2)
-  const voiceRecycled = assignContentionRecoveryEpochs(churned, 2, 3)
+  const voiceRecycled = assignContentionRecoveryEpochs({
+    ...churned,
+    voiceTimeoutArmed: true,
+  }, 2, 3)
   assert.equal(voiceRecycled.voiceTimeoutRecycleCompleted, true)
   assert.equal(voiceRecycled.voiceControlTimeoutRecycles, 1)
+})
+
+test('unarmed recovery host crash follows to the next epoch', () => {
+  const afterFence = assignContentionRecoveryEpochs({
+    fenceOwnerEpoch: 1,
+    voiceTimeoutEpoch: 2,
+    voiceTimeoutArmed: false,
+    rendererFenceRecycleCompleted: true,
+    rendererFenceHostRecycles: 1,
+    voiceTimeoutRecycleCompleted: false,
+    voiceControlTimeoutRecycles: 0,
+  }, 2, 3)
+  assert.equal(afterFence.voiceTimeoutEpoch, 3)
+  assert.equal(afterFence.voiceTimeoutRecycleCompleted, false)
+  assert.equal(afterFence.voiceControlTimeoutRecycles, 0)
+})
+
+test('replaced probe crash remains an operational failure', () => {
+  const evidence = healthyEvidence()
+  evidence.operationalFailures = [
+    'native-probe-epoch-2 exited with 3221226505',
+  ]
+
+  const result = evaluateContentionRun(evidence)
+  assert.equal(result.status, 'failed')
+  assert.match(result.failures.join('\n'), /native-probe-epoch-2 exited/)
 })
 
 test('injected release retirement remains bounded and fault-correlated', () => {
@@ -1093,11 +1303,16 @@ function healthyEvidence() {
     profile: resolveContentionProfile('ci'),
     environment: {
       platform: 'win32',
+      source: {
+        commitSha: '0123456789abcdef0123456789abcdef01234567',
+        relevantWorkingTreeDirty: false,
+      },
       capabilities: {
         screenCapture: { available: true },
         hardwareH264: { available: true },
         electronSharedTexture: { available: true },
         remoteViewer: { available: true },
+        cameraPreview: { available: true },
         audioOutput: { available: true },
       },
     },
@@ -1188,6 +1403,15 @@ function healthyEvidence() {
       maximumRemoteGpuGenerations: 2,
       remoteHandleImports: 6,
       remoteFenceAcks: 3,
+      cameraPreviewHandleImports: 3,
+      cameraPreviewDelayedFenceHits: 1,
+      cameraPreviewRendererLosses: 1,
+      cameraPreviewFreshFramesAfterLoss: 1,
+      cameraPreviewFenceAcks: 3,
+      cameraPreviewReleaseFailures: 0,
+      finalCameraPreviewFrames: 0,
+      finalCameraPreviewUsageBytes: 0,
+      finalCameraPreviewUsageGenerations: 0,
       freshFramesAfterRecovery: 1,
       rendererReloadCount: 1,
       rendererFenceHostRecycles: 1,

@@ -2,6 +2,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -127,11 +128,70 @@ void frameTelemetryCannotConsumeReservedControlCapacity() {
       "saturated writer did not drain at shutdown");
 }
 
+void failedPipeDoesNotTerminateTheProcess() {
+  BoundedProtocolWriter writer(
+      [&](std::string_view) { return false; },
+      8,
+      2);
+  require(
+      writer.enqueue("RUNTIME_READY {}", ProtocolRecordPriority::Control) ==
+          ProtocolRecordAdmission::Accepted,
+      "control record was not admitted");
+  for (int attempt = 0; attempt < 50 && !writer.snapshot().write_failed;
+       ++attempt) {
+    std::this_thread::sleep_for(10ms);
+  }
+  require(
+      writer.snapshot().write_failed,
+      "failed write was not recorded");
+}
+
+void failedCancellationIsReportedBeforeTheWriterIsJoined() {
+  std::mutex mutex;
+  std::condition_variable changed;
+  bool entered = false;
+  bool release_write = false;
+  auto writer = std::make_unique<BoundedProtocolWriter>(
+      [&](std::string_view) {
+        std::unique_lock lock(mutex);
+        entered = true;
+        changed.notify_all();
+        changed.wait(lock, [&] { return release_write; });
+        return false;
+      },
+      8,
+      2,
+      [](std::thread::native_handle_type) {});
+  require(
+      writer->enqueue("RUNTIME_READY {}", ProtocolRecordPriority::Control) ==
+          ProtocolRecordAdmission::Accepted,
+      "control record was not admitted");
+  {
+    std::unique_lock lock(mutex);
+    require(
+        changed.wait_for(lock, 1s, [&] { return entered; }),
+        "writer did not enter the injected blocking pipe");
+  }
+  require(
+      !writer->closeUntil(std::chrono::steady_clock::now() + 25ms),
+      "ineffective cancellation was not reported to the caller");
+  {
+    std::lock_guard lock(mutex);
+    release_write = true;
+  }
+  changed.notify_all();
+  require(
+      writer->closeUntil(std::chrono::steady_clock::now() + 1s),
+      "released writer was not joined after failed cancellation");
+}
+
 }  // namespace
 
 int main() try {
   blockedPipeIsCancelledWithinTheShutdownDeadline();
   frameTelemetryCannotConsumeReservedControlCapacity();
+  failedPipeDoesNotTerminateTheProcess();
+  failedCancellationIsReportedBeforeTheWriterIsJoined();
   std::cout << "media contention protocol writer tests passed\n";
   return 0;
 } catch (const std::exception& error) {

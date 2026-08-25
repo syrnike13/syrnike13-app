@@ -40,8 +40,8 @@ struct VideoFrameEvent {
   /// This may be translated onto WebRTC's internal capture-time timeline and
   /// should not be expected to match application-provided metadata such as
   /// VideoFrameMetadata::user_timestamp_us exactly.
-  std::int64_t timestamp_us;
-  VideoRotation rotation;
+  std::int64_t timestamp_us = 0;
+  VideoRotation rotation = VideoRotation::VIDEO_ROTATION_0;
   std::optional<VideoFrameMetadata> metadata;
 };
 

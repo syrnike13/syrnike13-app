@@ -1110,7 +1110,6 @@ class ScreenPublicationController::Implementation
     if (resources.video_publication_sid.empty()) {
       throw std::runtime_error("LiveKit screen publication SID is empty");
     }
-    finishVideoPublication(attempt, ScreenVideoPublicationPhase::Published);
     if (after_video_published_) {
       after_video_published_(command, resources.video_publication_sid);
     }
@@ -1135,6 +1134,8 @@ class ScreenPublicationController::Implementation
       },
       resources.video_thread
     );
+    // Published is terminal for teardown only after capture has started.
+    finishVideoPublication(attempt, ScreenVideoPublicationPhase::Published);
   }
 
   void observeVideoPublication(

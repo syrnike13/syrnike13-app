@@ -23,6 +23,10 @@ float4 main(uint vertex_id : SV_VertexID) : SV_Position {
 }
 )";
 
+bool isMonochromeCursorShape(UINT type) noexcept {
+  return (type & DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME) != 0;
+}
+
 constexpr char kPixelShader[] = R"(
 cbuffer FrameConstants : register(b0) {
   uint source_width;
@@ -190,17 +194,17 @@ DxgiCursorPixels decodeDxgiCursorShape(
     std::span<const std::uint8_t> shape) {
   DxgiCursorPixels result;
   result.width = info.Width;
-  result.height = info.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME
+  result.height = isMonochromeCursorShape(info.Type)
       ? info.Height / 2U
       : info.Height;
   result.type = info.Type;
   if (result.width == 0 || result.height == 0) return result;
 
-  const std::size_t required_rows = info.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME
+  const std::size_t required_rows = isMonochromeCursorShape(info.Type)
       ? static_cast<std::size_t>(result.height) * 2U
       : result.height;
   const std::size_t minimum_pitch =
-      info.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME
+      isMonochromeCursorShape(info.Type)
           ? (static_cast<std::size_t>(result.width) + 7U) / 8U
           : static_cast<std::size_t>(result.width) * 4U;
   const std::size_t required_size = required_rows * info.Pitch;
@@ -216,7 +220,7 @@ DxgiCursorPixels decodeDxgiCursorShape(
     for (std::uint32_t x = 0; x < result.width; ++x) {
       auto* output = result.rgba.data() +
           (static_cast<std::size_t>(y) * result.width + x) * 4U;
-      if (info.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME) {
+      if (isMonochromeCursorShape(info.Type)) {
         const std::size_t byte = static_cast<std::size_t>(y) * info.Pitch + x / 8U;
         const std::size_t xor_byte =
             static_cast<std::size_t>(y + result.height) * info.Pitch + x / 8U;
@@ -411,7 +415,7 @@ ID3D11Texture2D* DxgiFrameCompositor::compose(
       cursor_position_.x,
       cursor_position_.y,
       cursor_info_.Width,
-      cursor_info_.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME
+      isMonochromeCursorShape(cursor_info_.Type)
           ? cursor_info_.Height / 2U
           : cursor_info_.Height,
       static_cast<std::uint32_t>(layout.rotation),
