@@ -1084,6 +1084,12 @@ int main() try {
             "microphone preflight failed to warm its runtime resources");
     warm_host.shutdown();
   }
+  if (profile.realtime) {
+    // MSVC initializes the calling thread's waitable timer on its first timed
+    // sleep. Warm it before the process and active-runtime handle baselines so
+    // the production scheduler cannot look like a one-handle actor leak.
+    std::this_thread::sleep_until(std::chrono::steady_clock::now() + 1ms);
+  }
   const auto cleanup_before = CleanupSupervisor::instance().snapshot();
   require(cleanup_before.owned_jobs == 0,
           "microphone preflight retained cleanup ownership");
