@@ -177,7 +177,11 @@ class LiveKitVideoStreamReader final : public RemoteVideoBridge::StreamReader {
     const std::shared_ptr<livekit::Track>& track
   ) {
     livekit::VideoStream::Options options;
-    options.capacity = 1;
+    // Match the decoded jitter buffer to one authoritative renderer
+    // generation. This absorbs short decoder/GPU scheduling bursts without
+    // allowing stale video to grow beyond the three-lease delivery bound.
+    options.capacity =
+      RendererTextureLeaseRegistry::kMaximumLeasesPerGeneration;
     options.format = livekit::VideoBufferType::BGRA;
     stream_ = livekit::VideoStream::fromTrack(track, options);
   }
