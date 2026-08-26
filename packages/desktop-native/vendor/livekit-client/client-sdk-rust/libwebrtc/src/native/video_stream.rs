@@ -237,8 +237,10 @@ impl VideoFrameQueue {
         }
     }
 
-    fn close(&self) {
-        self.closed.store(true, Ordering::Release);
+    fn close(&self) -> Option<(u64, u64)> {
+        if self.closed.swap(true, Ordering::AcqRel) {
+            return None;
+        }
         self.wake_receiver();
 
         match &self.kind {
@@ -253,6 +255,17 @@ impl VideoFrameQueue {
                 queue.frames.lock().clear();
             }
         }
+
+        let dropped_frames = self.dropped_frames.load(Ordering::Acquire);
+        if dropped_frames == 0 {
+            return None;
+        }
+        log::warn!(
+            "native video stream queue summary; stream_instance={} dropped {} queued frames",
+            self.instance_id,
+            dropped_frames,
+        );
+        Some((self.instance_id, dropped_frames))
     }
 
     fn poll_recv(&self, cx: &mut Context<'_>) -> Poll<Option<BoxVideoFrame>> {
@@ -383,6 +396,18 @@ mod tests {
         assert_eq!(queue.dropped_frames.load(Ordering::Relaxed), 2);
         assert_eq!(pop_timestamp(&queue), Some(3));
         assert_eq!(pop_timestamp(&queue), None);
+    }
+
+    #[test]
+    fn close_reports_the_exact_drop_total_once() {
+        let queue = VideoFrameQueue::new(Some(1));
+
+        queue.push(test_frame(1));
+        queue.push(test_frame(2));
+        queue.push(test_frame(3));
+
+        assert_eq!(queue.close(), Some((queue.instance_id, 2)));
+        assert_eq!(queue.close(), None);
     }
 
     #[test]

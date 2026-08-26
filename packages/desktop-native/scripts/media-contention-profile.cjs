@@ -96,6 +96,7 @@ const LIMITS = {
   normalVideoFrameAgeP95Ms: 250,
   normalVideoFrameAgeP99Ms: 500,
   normalVideoFrameAgeMaxMs: 1_500,
+  decodedVideoQueueDropRatioMax: 0.1,
   localPlayoutScheduledAgeP95Ms: 80,
   localPlayoutScheduledAgeP99Ms: 80,
   localPlayoutScheduledAgeMaxMs: 80,
@@ -268,6 +269,18 @@ function evaluateContentionRun(evidence) {
     'normal video frame age',
     metrics.normalVideoFrameAgeMaxMs,
     LIMITS.normalVideoFrameAgeMaxMs,
+  )
+  requireExact(
+    failures,
+    'decoded video queue evidence complete',
+    metrics.decodedVideoQueueEvidenceComplete,
+    1,
+  )
+  requireMaximum(
+    failures,
+    'decoded video queue drop ratio',
+    metrics.decodedVideoQueueDropRatio,
+    LIMITS.decodedVideoQueueDropRatioMax,
   )
   requireMaximum(
     failures,

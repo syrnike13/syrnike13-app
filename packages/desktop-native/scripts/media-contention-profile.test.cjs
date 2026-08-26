@@ -46,6 +46,7 @@ const {
   selectResourceBaselineSummaries,
   resourceBaselinesComplete,
   shutdownChildren,
+  summarizeNativeVideoQueue,
   shouldInjectRemoteRendererFence,
   shouldAwaitResourceBaseline,
 } = require('./media-contention-runner.cjs')
@@ -410,6 +411,51 @@ test('runner rejects audio percentiles without a native sample count', () => {
   assert.equal(Number.isNaN(metrics.localPlayoutScheduledAgeP99Ms), true)
 })
 
+test('decoded video queue evidence requires one exact close summary per stream', () => {
+  const records = [
+    {
+      hostEpoch: 1,
+      line: 'native video stream queue overflow; stream_instance=7 dropped 100 queued frames',
+    },
+    {
+      hostEpoch: 1,
+      line: 'native video stream queue summary; stream_instance=7 dropped 137 queued frames',
+    },
+    {
+      hostEpoch: 2,
+      line: 'native video stream queue overflow; stream_instance=3 dropped 1 queued frames',
+    },
+    {
+      hostEpoch: 2,
+      line: 'native video stream queue summary; stream_instance=3 dropped 4 queued frames',
+    },
+  ]
+  const evidence = summarizeNativeVideoQueue(records, {
+    deliveredFrames: 1_859,
+    videoStreamGenerationsByEpoch: new Map([[1, 1], [2, 1]]),
+  })
+
+  assert.deepEqual({
+    complete: evidence.complete,
+    droppedFrames: evidence.droppedFrames,
+    streamsWithDrops: evidence.streamsWithDrops,
+    maximumDroppedFrames: evidence.maximumDroppedFrames,
+    dropRatio: evidence.dropRatio,
+    rejectedRecords: evidence.rejectedRecords,
+  }, {
+    complete: true,
+    droppedFrames: 141,
+    streamsWithDrops: 2,
+    maximumDroppedFrames: 137,
+    dropRatio: 0.0705,
+    rejectedRecords: [],
+  })
+  assert.equal(summarizeNativeVideoQueue(records.slice(0, 1), {
+    deliveredFrames: 1_000,
+    videoStreamGenerationsByEpoch: new Map([[1, 1]]),
+  }).complete, false)
+})
+
 test('native stderr policy admits only bounded reset and callback-hold warnings', () => {
   const healthyContext = {
     linkedVideoPresented: true,
@@ -426,6 +472,10 @@ test('native stderr policy admits only bounded reset and callback-hold warnings'
     {
       hostEpoch: 2,
       line: 'native video stream queue overflow; stream_instance=11 dropped 1 queued frames',
+    },
+    {
+      hostEpoch: 2,
+      line: 'native video stream queue summary; stream_instance=11 dropped 1 queued frames',
     },
   ], healthyContext), [])
   assert.equal(classifyNativeProbeStderr([
@@ -456,15 +506,19 @@ test('native stderr policy admits only bounded reset and callback-hold warnings'
   })), healthyContext).length, 5)
   assert.deepEqual(classifyNativeProbeStderr([
     { hostEpoch: 2, line: 'native video stream queue overflow; stream_instance=11 dropped 1 queued frames' },
+    { hostEpoch: 2, line: 'native video stream queue summary; stream_instance=11 dropped 1 queued frames' },
     { hostEpoch: 2, line: 'native video stream queue overflow; stream_instance=12 dropped 1 queued frames' },
+    { hostEpoch: 2, line: 'native video stream queue summary; stream_instance=12 dropped 1 queued frames' },
   ], healthyContext), [])
   assert.equal(classifyNativeProbeStderr([
     { hostEpoch: 2, line: 'native video stream queue overflow; stream_instance=11 dropped 1 queued frames' },
+    { hostEpoch: 2, line: 'native video stream queue summary; stream_instance=11 dropped 1 queued frames' },
     { hostEpoch: 2, line: 'native video stream queue overflow; stream_instance=12 dropped 1 queued frames' },
+    { hostEpoch: 2, line: 'native video stream queue summary; stream_instance=12 dropped 1 queued frames' },
   ], {
     ...healthyContext,
     videoStreamGenerationsByEpoch: new Map([[2, 1]]),
-  }).length, 2)
+  }).length, 4)
   assert.equal(classifyNativeProbeStderr([
     { hostEpoch: 2, line: 'native video stream queue overflow; stream_instance=11 dropped 100 queued frames' },
   ], healthyContext).length, 1)
@@ -1097,6 +1151,17 @@ test('injected release retirement remains bounded and fault-correlated', () => {
   assert.match(result.failures.join('\n'), /uncorrelated release retirement/i)
 })
 
+test('decoded video queue supersession stays exact and below ten percent', () => {
+  const evidence = healthyEvidence()
+  evidence.metrics.decodedVideoQueueEvidenceComplete = 0
+  evidence.metrics.decodedVideoQueueDropRatio = 0.100_001
+
+  const result = evaluateContentionRun(evidence)
+
+  assert.match(result.failures.join('\n'), /decoded video queue evidence/i)
+  assert.match(result.failures.join('\n'), /decoded video queue drop ratio/i)
+})
+
 test('audio recovery evidence retains four exact post-reopen samples', () => {
   const evidence = healthyEvidence()
   evidence.metrics.audioRecoverySamples = evidence.metrics.audioRecoverySamples
@@ -1335,6 +1400,11 @@ function healthyEvidence() {
       normalVideoFrameAgeP95Ms: 80,
       normalVideoFrameAgeP99Ms: 120,
       normalVideoFrameAgeMaxMs: 180,
+      decodedVideoQueueEvidenceComplete: 1,
+      decodedVideoQueueDroppedFrames: 0,
+      decodedVideoQueueStreamsWithDrops: 0,
+      decodedVideoQueueMaximumDroppedFrames: 0,
+      decodedVideoQueueDropRatio: 0,
       localPlayoutScheduledAgeP95Ms: 24,
       localPlayoutScheduledAgeP99Ms: 32,
       localPlayoutScheduledAgeSampleCount: 1_000,

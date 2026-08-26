@@ -542,13 +542,93 @@ function trackPendingOperation(pending, operation) {
   return owned
 }
 
+const nativeVideoQueueOverflowPattern =
+  /^(?:\[[^\]]+ WARN  libwebrtc::imp::video_stream\] )?native video stream queue overflow; stream_instance=([1-9]\d*) dropped ([1-9]\d*) queued frames$/
+const nativeVideoQueueSummaryPattern =
+  /^(?:\[[^\]]+ WARN  libwebrtc::imp::video_stream\] )?native video stream queue summary; stream_instance=([1-9]\d*) dropped ([1-9]\d*) queued frames$/
+
+function summarizeNativeVideoQueue(records, context = {}) {
+  const streams = new Map()
+  const recognizedRecords = []
+  const rejectedRecords = new Set()
+  const stream = (hostEpoch, instance) => {
+    const key = `${hostEpoch}:${instance}`
+    let value = streams.get(key)
+    if (!value) {
+      value = { hostEpoch, records: [], overflowMaximum: 0, summary: null }
+      streams.set(key, value)
+    }
+    return value
+  }
+  for (const record of records) {
+    const overflow = nativeVideoQueueOverflowPattern.exec(record.line)
+    const summary = nativeVideoQueueSummaryPattern.exec(record.line)
+    const parsed = overflow ?? summary
+    if (!parsed) continue
+    recognizedRecords.push(record)
+    const value = stream(Number(record.hostEpoch), parsed[1])
+    value.records.push(record)
+    const dropped = Number(parsed[2])
+    if (!Number.isSafeInteger(value.hostEpoch) || value.hostEpoch <= 0 ||
+        !Number.isSafeInteger(dropped) || dropped <= 0) {
+      rejectedRecords.add(record)
+      continue
+    }
+    if (overflow) {
+      value.overflowMaximum = Math.max(value.overflowMaximum, dropped)
+    } else if (value.summary !== null) {
+      for (const candidate of value.records) rejectedRecords.add(candidate)
+    } else {
+      value.summary = dropped
+    }
+  }
+
+  const streamsByEpoch = new Map()
+  let droppedFrames = 0
+  let maximumDroppedFrames = 0
+  for (const value of streams.values()) {
+    streamsByEpoch.set(
+      value.hostEpoch,
+      (streamsByEpoch.get(value.hostEpoch) ?? 0) + 1,
+    )
+    if (value.summary === null || value.overflowMaximum <= 0 ||
+        value.overflowMaximum > value.summary) {
+      for (const record of value.records) rejectedRecords.add(record)
+      continue
+    }
+    droppedFrames += value.summary
+    maximumDroppedFrames = Math.max(maximumDroppedFrames, value.summary)
+  }
+  for (const [hostEpoch, count] of streamsByEpoch) {
+    const maximum = Number(
+      context.videoStreamGenerationsByEpoch?.get(hostEpoch) ?? 0,
+    )
+    if (count <= maximum) continue
+    for (const value of streams.values()) {
+      if (value.hostEpoch !== hostEpoch) continue
+      for (const record of value.records) rejectedRecords.add(record)
+    }
+  }
+
+  const deliveredFrames = Number(context.deliveredFrames) || 0
+  const denominator = droppedFrames + Math.max(0, deliveredFrames)
+  return {
+    complete: rejectedRecords.size === 0,
+    droppedFrames,
+    streamsWithDrops: streams.size,
+    maximumDroppedFrames,
+    dropRatio: denominator > 0 ? droppedFrames / denominator : 0,
+    acceptedRecords: new Set(recognizedRecords.filter(
+      (record) => !rejectedRecords.has(record),
+    )),
+    rejectedRecords: [...rejectedRecords],
+  }
+}
+
 function classifyNativeProbeStderr(records, context = {}) {
   const resetPattern =
     /^\[h264 @ [0-9a-fA-F]+\] Frame num change from \d+ to 0$/
-  const queuePattern =
-    /^(?:\[[^\]]+ WARN  libwebrtc::imp::video_stream\] )?native video stream queue overflow; stream_instance=([1-9]\d*) dropped 1 queued frames$/
   const resetRecords = records.filter(({ line }) => resetPattern.test(line))
-  const queueRecords = records.filter(({ line }) => queuePattern.test(line))
   const linkedRecoveryComplete =
     context.linkedVideoPresented === true &&
     Number(context.freshFramesAfterRecovery) >= 1
@@ -556,30 +636,15 @@ function classifyNativeProbeStderr(records, context = {}) {
     linkedRecoveryComplete &&
     resetRecords.length === 1 &&
     Number(resetRecords[0].hostEpoch) > 1
-  const queueCountsByEpoch = new Map()
-  const queueInstances = new Set()
-  let uniqueQueueInstances = true
-  for (const { hostEpoch, line } of queueRecords) {
-    const instance = queuePattern.exec(line)?.[1]
-    const instanceKey = `${hostEpoch}:${instance}`
-    if (!instance || queueInstances.has(instanceKey)) {
-      uniqueQueueInstances = false
-    } else {
-      queueInstances.add(instanceKey)
-    }
-    queueCountsByEpoch.set(
-      hostEpoch,
-      (queueCountsByEpoch.get(hostEpoch) ?? 0) + 1,
-    )
-  }
-  const allowQueue = linkedRecoveryComplete && uniqueQueueInstances &&
-    [...queueCountsByEpoch].every(([hostEpoch, count]) =>
-      count <= Number(
-        context.videoStreamGenerationsByEpoch?.get(hostEpoch) ?? 0,
-      ))
+  const queueEvidence = context.nativeVideoQueueEvidence ??
+    summarizeNativeVideoQueue(records, context)
+  const allowQueue = linkedRecoveryComplete && queueEvidence.complete
   return records.filter((record) => {
     if (resetPattern.test(record.line)) return !allowReset
-    if (queuePattern.test(record.line)) return !allowQueue
+    if (nativeVideoQueueOverflowPattern.test(record.line) ||
+        nativeVideoQueueSummaryPattern.test(record.line)) {
+      return !allowQueue || !queueEvidence.acceptedRecords.has(record)
+    }
     return true
   })
 }
@@ -2544,6 +2609,14 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
       Number(native.audioGapHits) || 0,
     ),
   }
+  const videoStreamGenerationsByEpoch = new Map(nativeSummaries.map((summary) => [
+    summary.hostEpoch,
+    Number(summary.videoStreamGenerations) || 0,
+  ]))
+  const nativeVideoQueueEvidence = summarizeNativeVideoQueue(
+    nativeProbeStderr,
+    { deliveredFrames: remoteHandleImports, videoStreamGenerationsByEpoch },
+  )
   evidence.metrics = {
     elapsedMs,
     uiEventLoopP95Ms: Math.max(mainP95Ms, rendererLoopP95Ms),
@@ -2649,6 +2722,15 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     maximumRemoteRendererLeases,
     maximumRemoteRendererGenerations,
     videoStreamGenerationsMax: nativeMaximum('videoStreamGenerations'),
+    decodedVideoQueueEvidenceComplete:
+      nativeVideoQueueEvidence.complete ? 1 : 0,
+    decodedVideoQueueDroppedFrames:
+      nativeVideoQueueEvidence.droppedFrames,
+    decodedVideoQueueStreamsWithDrops:
+      nativeVideoQueueEvidence.streamsWithDrops,
+    decodedVideoQueueMaximumDroppedFrames:
+      nativeVideoQueueEvidence.maximumDroppedFrames,
+    decodedVideoQueueDropRatio: nativeVideoQueueEvidence.dropRatio,
     remoteHandleImports,
     remoteFenceAcks,
     remoteFenceReleaseFailures,
@@ -2686,10 +2768,8 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     linkedVideoPresented: Boolean(evidence.metrics.linkedVideoPipeline),
     freshFramesAfterRecovery: evidence.metrics.freshFramesAfterRecovery,
     liveKitCallbackHoldHits: evidence.faultHits.liveKitCallbackHold,
-    videoStreamGenerationsByEpoch: new Map(nativeSummaries.map((summary) => [
-      summary.hostEpoch,
-      Number(summary.videoStreamGenerations) || 0,
-    ])),
+    videoStreamGenerationsByEpoch,
+    nativeVideoQueueEvidence,
     linkedVideoPresentationEpochs,
   })
   for (const record of rejectedNativeStderr) {
@@ -3065,6 +3145,7 @@ module.exports = {
   selectResourceBaselineSummaries,
   resourceBaselinesComplete,
   shutdownChildren,
+  summarizeNativeVideoQueue,
   shouldInjectRemoteRendererFence,
   shouldAwaitResourceBaseline,
 }
