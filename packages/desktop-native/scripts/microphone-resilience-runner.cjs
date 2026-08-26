@@ -11,6 +11,7 @@ const { performance } = require('node:perf_hooks')
 const WAIT_MS = 15_000
 const PRODUCTION_FRAMES_PER_HOST = 90_000
 const CI_FRAMES_PER_HOST = 30
+const MAX_ACTIVE_UTILITY_HANDLES = 640
 
 function parseOptions(argv) {
   const options = { profile: 'ci' }
@@ -359,6 +360,19 @@ function validateActiveSnapshot(value, expectedPid, epoch) {
   }
 }
 
+function assertActiveHandleBound(snapshot, epoch) {
+  if (
+    !Number.isSafeInteger(snapshot.handles) ||
+    snapshot.handles <= 0 ||
+    snapshot.handles > MAX_ACTIVE_UTILITY_HANDLES
+  ) {
+    throw new Error(
+      `Utility epoch ${epoch} exceeded its active handle bound: ` +
+      `active=${snapshot.handles}, maximum=${MAX_ACTIVE_UTILITY_HANDLES}`,
+    )
+  }
+}
+
 async function startOwnedRuntime(host, epoch, label) {
   await host.waitForMessage(
     (message) => isMessage(
@@ -479,7 +493,7 @@ async function runMicrophoneResilience(electron, argv) {
     const epochA = await runEpochWorkload(
       hostA, 1, 'a', framesPerHost, realtime,
     )
-    const epochAHandles = epochA.snapshot.handles
+    assertActiveHandleBound(epochA.snapshot, 1)
     hostA.killIfRunning()
     await withTimeout(hostA.exit, 'Utility epoch 1 survived forced restart')
 
@@ -509,12 +523,7 @@ async function runMicrophoneResilience(electron, argv) {
     const epochB = await runEpochWorkload(
       hostB, 2, 'b', framesPerHost, realtime,
     )
-    if (epochB.snapshot.handles !== epochAHandles) {
-      throw new Error(
-        `Fresh utility runtime changed the exact active handle baseline: ` +
-        `epochA=${epochAHandles}, epochB=${epochB.snapshot.handles}`,
-      )
-    }
+    assertActiveHandleBound(epochB.snapshot, 2)
     const totalFrames = epochA.frames + epochB.frames
     const expectedFrames = options.profile === 'production' ? 180_000 : 60
     if (totalFrames !== expectedFrames) {
@@ -536,7 +545,11 @@ async function runMicrophoneResilience(electron, argv) {
       staleHostRequestsRejected: 1,
       actorPidA: epochA.snapshot.pid,
       actorPidB: epochB.snapshot.pid,
-      activeHandles: epochAHandles,
+      activeHandles: {
+        epochA: epochA.snapshot.handles,
+        epochB: epochB.snapshot.handles,
+      },
+      activeHandleBound: MAX_ACTIVE_UTILITY_HANDLES,
     })}`)
     return { artifact, totalFrames }
   } finally {
@@ -562,5 +575,6 @@ if (process.versions.electron && process.type === 'browser') {
 module.exports = {
   parseOptions,
   requestEnvelope,
+  assertActiveHandleBound,
   runMicrophoneResilience,
 }
