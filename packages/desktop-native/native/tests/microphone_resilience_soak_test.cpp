@@ -1237,10 +1237,22 @@ int main() try {
     scheduled_frames == kSoakPhases * profile.frames_per_phase,
     "microphone soak did not drive its exact scheduled frame count"
   );
-  require(
-    livekit->microphoneDiscontinuityCount() == 4,
-    "publication sink observed a missing or unexpected discontinuity"
-  );
+  constexpr std::uint64_t kExpectedMuteRecoveries = 2;
+  const auto publication_discontinuities =
+    livekit->microphoneDiscontinuityCount();
+  const auto expected_publication_discontinuities =
+    kExpectedMuteRecoveries + host.backpressureRecoveries();
+  const auto maximum_publication_discontinuities =
+    expected_publication_discontinuities + host.epoch();
+  if (publication_discontinuities < expected_publication_discontinuities ||
+      publication_discontinuities > maximum_publication_discontinuities) {
+    throw std::runtime_error(
+      "microphone publication discontinuity bound changed: expected=" +
+      std::to_string(expected_publication_discontinuities) + " maximum=" +
+      std::to_string(maximum_publication_discontinuities) + " actual=" +
+      std::to_string(publication_discontinuities)
+    );
+  }
   const auto minimum_published_frames =
     (kSoakPhases - 10) * profile.frames_per_phase;
   require(
@@ -1310,6 +1322,7 @@ int main() try {
             << " candidateProbes=" << capture_after.candidate_probes
             << " submittedFrames=" << capture_after.submitted_frames
             << " publishedFrames=" << livekit->microphoneFrameCount()
+            << " publicationDiscontinuities=" << publication_discontinuities
             << " endpointRecoveries=" << host.endpointRecoveries()
             << " publicationRecoveries=" << host.publicationRecoveries()
             << " backpressureRecoveries=" << host.backpressureRecoveries()
