@@ -608,21 +608,30 @@ export class NativeRuntimeSupervisor {
    * utility-host epoch, which retires the old native lease owner.
    */
   releaseRendererLeaseEffect(command: RendererLeaseReleaseCommand) {
+    const ownerAdapter = this.snapshot.status === 'ready' ? this.adapter : null
+    const ownerEpoch = ownerAdapter ? this.adapterEpoch : null
+    const deadlineAt = this.now() + VOICE_CONTROL_RELEASE_DEADLINE_MS
     return Effect.gen({ self: this }, function*() {
-      yield* this.startEffect()
-      const ownerEpoch = this.adapterEpoch
-      const deadlineAt = this.now() + VOICE_CONTROL_RELEASE_DEADLINE_MS
+      if (!ownerAdapter || ownerEpoch === null ||
+        this.adapter !== ownerAdapter || this.adapterEpoch !== ownerEpoch) {
+        return undefined
+      }
       const remaining = (maximumMs: number) =>
         Math.max(1, Math.min(maximumMs, deadlineAt - this.now()))
-      const attempt = (timeoutMs: number) =>
-        this.requestEffect(command, timeoutMs, {
+      const attempt = (timeoutMs: number) => Effect.gen({ self: this }, function*() {
+        if (this.adapter !== ownerAdapter || this.adapterEpoch !== ownerEpoch) {
+          return { ok: true as const, value: undefined }
+        }
+        return yield* this.requestEffect(command, timeoutMs, {
           probeOnTimeout: false,
+          allowDuringShutdown: true,
         }).pipe(
           Effect.map((value) => ({ ok: true as const, value })),
           Effect.catch((error) =>
             Effect.succeed({ ok: false as const, error })
           ),
         )
+      })
 
       const first = yield* attempt(
         remaining(VOICE_CONTROL_RELEASE_ATTEMPT_TIMEOUT_MS),
@@ -636,7 +645,7 @@ export class NativeRuntimeSupervisor {
       const probe = yield* this.requestEffect(
         { type: 'probeVoiceControl' },
         remaining(this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS),
-        { probeOnTimeout: false },
+        { probeOnTimeout: false, allowDuringShutdown: true },
       ).pipe(
         Effect.map((value) => ({ ok: true as const, value })),
         Effect.catch((error) =>

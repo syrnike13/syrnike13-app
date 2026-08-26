@@ -1316,6 +1316,44 @@ describe('NativeRuntimeSupervisor', () => {
     await expect(replacementRelease).resolves.toEqual({ released: 'new' })
   })
 
+  it('does not route a retired renderer release through a replacement host', async () => {
+    const adapters: FakeAdapter[] = []
+    const restarts: Array<() => void> = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => {
+        const adapter = new FakeAdapter()
+        adapters.push(adapter)
+        return adapter
+      },
+      schedule: (callback) => {
+        restarts.push(callback)
+        return restarts.length as unknown as ReturnType<typeof setTimeout>
+      },
+    })
+    const firstStart = supervisor.start()
+    adapters[0]!.ready(MEDIA_READY)
+    await firstStart
+
+    adapters[0]!.exit()
+    await vi.waitFor(() => expect(restarts).toHaveLength(1))
+    const retiredRelease = Effect.runPromise(
+      supervisor.releaseRendererLeaseEffect({
+        type: 'releaseRemoteVideoFrame',
+        sessionId: 'voice-old',
+        generation: 1,
+        trackId: 'camera-old',
+        sequence: 23,
+      }),
+    )
+
+    restarts[0]!()
+    await vi.waitFor(() => expect(adapters).toHaveLength(2))
+    adapters[1]!.ready(MEDIA_READY)
+    await expect(retiredRelease).resolves.toBeUndefined()
+    expect(adapters[1]!.requests).toEqual([])
+  })
+
   it('rejects the v9 media runtime before it can receive a monolithic display request', async () => {
     const adapter = new FakeAdapter()
     const supervisor = new NativeRuntimeSupervisor({
