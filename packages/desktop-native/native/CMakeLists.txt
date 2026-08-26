@@ -770,6 +770,9 @@ add_executable(syrnike-native-display-source-window-probe-tests
   tests/display_source_window_probe_test.cpp
 )
 syrnike_native_target(syrnike-native-display-source-window-probe-tests)
+target_link_libraries(
+  syrnike-native-display-source-window-probe-tests PRIVATE syrnike_media_core
+)
 add_test(
   NAME syrnike-native-display-source-window-probe-tests
   COMMAND syrnike-native-display-source-window-probe-tests

@@ -287,6 +287,7 @@ pub fn create_receiver_handler(
 
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Process-wide counters used by focused H264 decoder startup diagnostics.
 pub struct H264DecodeStartupObservations {
     /// Access units rejected before the first complete keyframe.
     pub pre_keyframe_inputs: u64,

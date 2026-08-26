@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "display_source_visual_probe.hpp"
 #include "display_source_window_probe.hpp"
 
 namespace syrnike::desktop_native::media {
@@ -55,6 +56,7 @@ struct MonitorVisualContext {
   std::string_view source_id;
   int monitor_index = 0;
   std::optional<ScreenSource> source;
+  const std::atomic_bool* cancelled = nullptr;
 };
 
 DisplaySourceInfo toDisplaySourceInfo(ScreenSource source) {
@@ -141,7 +143,11 @@ std::string bmpDataUrl(const std::vector<std::uint8_t>& bgra, int width, int hei
   return "data:image/bmp;base64," + base64Encode(bmp);
 }
 
-std::string captureThumbnailDataUrl(HWND hwnd, const RECT& rect) {
+std::string captureThumbnailDataUrl(
+    HWND hwnd,
+    const RECT& rect,
+    const std::atomic_bool* cancelled = nullptr) {
+  if (cancelled && cancelled->load(std::memory_order_acquire)) return {};
   constexpr int thumb_width = 320;
   constexpr int thumb_height = 180;
   const int source_width = rect.right - rect.left;
@@ -199,6 +205,7 @@ std::string captureThumbnailDataUrl(HWND hwnd, const RECT& rect) {
   DeleteObject(bitmap);
   DeleteDC(memory_dc);
   ReleaseDC(hwnd, source_dc);
+  if (cancelled && cancelled->load(std::memory_order_acquire)) return {};
   return data_url;
 }
 
@@ -272,7 +279,11 @@ std::string iconDataUrl(HICON icon) {
   return data_url;
 }
 
-std::string appIconDataUrl(HWND hwnd, DWORD process_id) {
+std::string appIconDataUrl(
+    HWND hwnd,
+    DWORD process_id,
+    const std::atomic_bool& cancelled) {
+  if (cancelled.load(std::memory_order_acquire)) return {};
   const auto message_icon = queryWindowMessageIcon(
       [hwnd](std::uintptr_t icon_kind, std::chrono::milliseconds timeout) {
         DWORD_PTR result = 0;
@@ -288,13 +299,16 @@ std::string appIconDataUrl(HWND hwnd, DWORD process_id) {
             sent != 0, static_cast<std::uintptr_t>(result)};
       });
   HICON icon = reinterpret_cast<HICON>(message_icon);
+  if (cancelled.load(std::memory_order_acquire)) return {};
   if (!icon) icon = reinterpret_cast<HICON>(GetClassLongPtrW(hwnd, GCLP_HICONSM));
   if (!icon) icon = reinterpret_cast<HICON>(GetClassLongPtrW(hwnd, GCLP_HICON));
   if (icon) return iconDataUrl(icon);
 
+  if (cancelled.load(std::memory_order_acquire)) return {};
   const std::wstring path = processImagePath(process_id);
   if (path.empty()) return {};
 
+  if (cancelled.load(std::memory_order_acquire)) return {};
   HICON small_icon = nullptr;
   HICON large_icon = nullptr;
   const UINT extracted = ExtractIconExW(path.c_str(), 0, &large_icon, &small_icon, 1);
@@ -305,6 +319,7 @@ std::string appIconDataUrl(HWND hwnd, DWORD process_id) {
   }
   if (small_icon) DestroyIcon(small_icon);
   if (large_icon) DestroyIcon(large_icon);
+  if (cancelled.load(std::memory_order_acquire)) return {};
   return data_url;
 }
 
@@ -432,7 +447,7 @@ std::optional<WindowDescriptor> describeWindow(HWND hwnd, HWND excluded_window) 
   return WindowDescriptor{hwnd, rect, std::wstring(title, title_length)};
 }
 
-ScreenSource makeWindowSource(const WindowDescriptor& descriptor, bool include_visual) {
+ScreenSource makeWindowSource(const WindowDescriptor& descriptor) {
   DWORD process_id = 0;
   GetWindowThreadProcessId(descriptor.window, &process_id);
   const std::wstring image_path = processImagePath(process_id);
@@ -445,10 +460,8 @@ ScreenSource makeWindowSource(const WindowDescriptor& descriptor, bool include_v
           std::to_string(reinterpret_cast<std::uintptr_t>(descriptor.window)),
       toUtf8(descriptor.title),
       game ? "game" : "window",
-      include_visual
-          ? captureThumbnailDataUrl(descriptor.window, descriptor.bounds)
-          : std::string{},
-      include_visual ? appIconDataUrl(descriptor.window, process_id) : std::string{},
+      {},
+      {},
       process_id,
       toUtf8(image_path),
       classification,
@@ -510,13 +523,16 @@ BOOL CALLBACK enumWindowMetadataProc(HWND hwnd, LPARAM data) {
   const auto descriptor = describeWindow(hwnd, context->excluded_window);
   if (!descriptor) return TRUE;
   return context->page->visit([&] {
-    return makeWindowSource(*descriptor, false);
+    return makeWindowSource(*descriptor);
   }) ? TRUE : FALSE;
 }
 
 BOOL CALLBACK enumMonitorVisualProc(HMONITOR monitor, HDC, LPRECT, LPARAM data) {
   auto* context = reinterpret_cast<MonitorVisualContext*>(data);
-  if (!context) return FALSE;
+  if (!context || (context->cancelled &&
+                   context->cancelled->load(std::memory_order_acquire))) {
+    return FALSE;
+  }
 
   MONITORINFOEXW info{};
   info.cbSize = sizeof(info);
@@ -524,9 +540,61 @@ BOOL CALLBACK enumMonitorVisualProc(HMONITOR monitor, HDC, LPRECT, LPARAM data) 
   ++context->monitor_index;
   auto source = makeMonitorSource(info, context->monitor_index);
   if (source.id != context->source_id) return TRUE;
-  source.thumbnail_data_url = captureThumbnailDataUrl(nullptr, info.rcMonitor);
+  source.thumbnail_data_url =
+      captureThumbnailDataUrl(nullptr, info.rcMonitor, context->cancelled);
   context->source = std::move(source);
   return FALSE;
+}
+
+std::optional<ScreenSource> probeVisualSource(
+    std::string_view source_id,
+    std::uint64_t excluded_window_handle,
+    const std::atomic_bool& cancelled) {
+  if (cancelled.load(std::memory_order_acquire)) return std::nullopt;
+  if (source_id.starts_with("screen:")) {
+    MonitorVisualContext context{source_id, 0, std::nullopt, &cancelled};
+    EnumDisplayMonitors(
+        nullptr,
+        nullptr,
+        enumMonitorVisualProc,
+        reinterpret_cast<LPARAM>(&context));
+    if (cancelled.load(std::memory_order_acquire)) return std::nullopt;
+    return std::move(context.source);
+  }
+
+  const auto parsed = parseWindowSourceId(source_id);
+  if (!parsed) return std::nullopt;
+  const auto descriptor = describeWindow(
+      parsed->window,
+      reinterpret_cast<HWND>(static_cast<std::uintptr_t>(excluded_window_handle)));
+  if (!descriptor || cancelled.load(std::memory_order_acquire)) {
+    return std::nullopt;
+  }
+  auto candidate = makeWindowSource(*descriptor);
+  if (candidate.type != parsed->source_type || candidate.id != source_id) {
+    return std::nullopt;
+  }
+  candidate.thumbnail_data_url = captureThumbnailDataUrl(
+      descriptor->window, descriptor->bounds, &cancelled);
+  if (cancelled.load(std::memory_order_acquire)) return std::nullopt;
+  candidate.app_icon_data_url =
+      appIconDataUrl(descriptor->window, candidate.process_id, cancelled);
+  if (cancelled.load(std::memory_order_acquire)) return std::nullopt;
+  return candidate;
+}
+
+CleanupSupervisor& displaySourceVisualProbeSupervisor() {
+  static auto* supervisor = new CleanupSupervisor({
+      kDisplaySourceVisualProbeConcurrency,
+      kDisplaySourceVisualProbeOwnershipCapacity,
+  });
+  return *supervisor;
+}
+
+DisplaySourceVisualProbeAdmission& displaySourceVisualProbeAdmission() {
+  static auto* admission = new DisplaySourceVisualProbeAdmission(
+      kDisplaySourceVisualProbeConcurrency);
+  return *admission;
 }
 
 }  // namespace
@@ -581,28 +649,21 @@ std::vector<DisplaySourceInfo> DisplaySourceService::visual(
     std::uint64_t excluded_window_handle) {
   if (!fence_.isCurrent(enumeration_id) || source_id.empty()) return {};
 
-  std::optional<ScreenSource> source;
-  if (source_id.starts_with("screen:")) {
-    MonitorVisualContext context{source_id};
-    EnumDisplayMonitors(
-        nullptr,
-        nullptr,
-        enumMonitorVisualProc,
-        reinterpret_cast<LPARAM>(&context));
-    source = std::move(context.source);
-  } else if (const auto parsed = parseWindowSourceId(source_id)) {
-    const auto descriptor = describeWindow(
-        parsed->window,
-        reinterpret_cast<HWND>(static_cast<std::uintptr_t>(excluded_window_handle)));
-    if (descriptor) {
-      auto candidate = makeWindowSource(*descriptor, true);
-      if (candidate.type == parsed->source_type && candidate.id == source_id) {
-        source = std::move(candidate);
-      }
-    }
-  }
-
-  if (!source || !fence_.isCurrent(enumeration_id)) return {};
+  const auto owned_enumeration_id = std::string(enumeration_id);
+  const auto owned_source_id = std::string(source_id);
+  auto attempt = DisplaySourceVisualProbeAttempt<ScreenSource>::start(
+      displaySourceVisualProbeSupervisor(),
+      displaySourceVisualProbeAdmission(),
+      [owned_source_id,
+       excluded_window_handle](const std::atomic_bool& cancelled) {
+        return probeVisualSource(
+            owned_source_id, excluded_window_handle, cancelled);
+      });
+  if (!attempt) return {};
+  auto source = attempt->waitUntil(
+      std::chrono::steady_clock::now() + kDisplaySourceVisualProbeDeadline,
+      [&] { return fence_.isCurrent(owned_enumeration_id); });
+  if (!source) return {};
   std::vector<DisplaySourceInfo> result;
   result.reserve(1);
   result.push_back(toDisplaySourceInfo(std::move(*source)));

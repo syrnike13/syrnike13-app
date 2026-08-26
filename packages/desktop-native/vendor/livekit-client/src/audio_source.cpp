@@ -113,14 +113,14 @@ void AudioSource::captureFrame(const AudioFrame& frame, int timeout_ms) {
 
 void AudioSource::captureFrame(
     const AudioFrame& frame,
-    int timeout_ms,
+    std::int32_t timeout_ms,
     const OperationCancellation& cancellation) {
   captureFrameImpl(frame, timeout_ms, &cancellation);
 }
 
 void AudioSource::captureFrameImpl(
     const AudioFrame& frame,
-    int timeout_ms,
+    std::int32_t timeout_ms,
     const OperationCancellation* cancellation) {
   using namespace std::chrono_literals;
   if (!handle_) {

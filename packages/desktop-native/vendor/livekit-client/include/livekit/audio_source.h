@@ -147,12 +147,12 @@ public:
   /// or cancellation is requested.
   /// @throws std::bad_alloc If operation or cancellation state cannot be allocated.
   void captureFrame(const AudioFrame& frame,
-                    int timeout_ms,
+                    std::int32_t timeout_ms,
                     const OperationCancellation& cancellation);
 
 private:
   void captureFrameImpl(const AudioFrame& frame,
-                        int timeout_ms,
+                        std::int32_t timeout_ms,
                         const OperationCancellation* cancellation);
 
   // Internal helper to reset the local queue tracking (like _release_waiter).
