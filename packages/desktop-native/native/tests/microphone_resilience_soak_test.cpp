@@ -3,6 +3,7 @@
 #endif
 
 #include <audioclient.h>
+#include <avrt.h>
 #include <mmdeviceapi.h>
 #include <windows.h>
 
@@ -123,6 +124,31 @@ SoakProfile configuredProfile() {
     "SYRNIKE_MICROPHONE_SOAK_PROFILE must be ci or production"
   );
 }
+
+class RealtimeAudioTask final {
+ public:
+  explicit RealtimeAudioTask(bool enabled) {
+    if (!enabled) return;
+    DWORD task_index = 0;
+    handle_ = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task_index);
+    require(handle_ != nullptr,
+            "production microphone soak failed to enter Pro Audio MMCSS");
+  }
+
+  ~RealtimeAudioTask() { reset(); }
+
+  RealtimeAudioTask(const RealtimeAudioTask&) = delete;
+  RealtimeAudioTask& operator=(const RealtimeAudioTask&) = delete;
+
+  void reset() noexcept {
+    if (!handle_) return;
+    AvRevertMmThreadCharacteristics(handle_);
+    handle_ = nullptr;
+  }
+
+ private:
+  HANDLE handle_ = nullptr;
+};
 
 void awaitUtilityHostEpochExercise() {
   char* value = nullptr;
@@ -1100,6 +1126,10 @@ int main() try {
   auto capture = std::make_shared<ScriptedCapture>();
   MicrophoneActorRuntimeHarness host(sink, livekit, capture);
   host.connect();
+  // The production WASAPI capture loop runs under this same MMCSS task. The
+  // soak's 100 Hz injector represents that callback cadence, so measure its
+  // wake-up deadline under the production scheduler class as well.
+  RealtimeAudioTask realtime_audio_task(profile.realtime);
   const DWORD handles_active_baseline = stableProcessHandleCount();
   awaitUtilityHostEpochExercise();
   DWORD handles_after_first_restart = 0;
@@ -1163,11 +1193,21 @@ int main() try {
     !profile.realtime || schedule_elapsed >= 30min,
     "production microphone soak did not sustain the 100 Hz schedule for 30 minutes"
   );
-  require(
-    !profile.realtime ||
-      (schedule_elapsed <= 31min && maximum_schedule_lag <= 250ms),
-    "production microphone soak exceeded its bounded 100 Hz deadline lag"
-  );
+  if (profile.realtime && schedule_elapsed > 31min) {
+    throw std::runtime_error(
+      "production microphone soak exceeded its bounded wall duration: " +
+      std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+        schedule_elapsed).count()) + "ms"
+    );
+  }
+  if (profile.realtime && maximum_schedule_lag > 250ms) {
+    throw std::runtime_error(
+      "production microphone soak exceeded its bounded 100 Hz deadline lag: " +
+      std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+        maximum_schedule_lag).count()) + "ms"
+    );
+  }
+  realtime_audio_task.reset();
   host.shutdown();
   require(!capture->submitRetained(final_submit),
           "shutdown MicrophoneActor accepted retained capture PCM");
