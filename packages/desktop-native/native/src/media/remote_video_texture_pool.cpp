@@ -407,6 +407,13 @@ struct RemoteVideoTexturePool::State final
 
   ~State() {
     std::lock_guard lock(mutex_);
+    // Resolution rollovers keep the healthy device/context and retire the old
+    // pool on a background worker. COM release enters the user-mode driver too,
+    // so serialize it with submit/poll/configure on that shared context. The
+    // D3D11 multithread flag does not protect an application from releasing a
+    // query or texture while another thread is inside a driver call for the
+    // same immediate context.
+    std::lock_guard context_lock(device_owner_->state_->context_mutex);
     for (auto& slot : slots_) {
       // DuplicateHandle put this value in Electron's handle table. Closing it
       // here recycles that NT number while the renderer may still hold the
@@ -415,6 +422,9 @@ struct RemoteVideoTexturePool::State final
       slot.remote_handle = nullptr;
       slot.remote_pid = 0;
       if (slot.shared_handle) CloseHandle(slot.shared_handle);
+      slot.shared_handle = nullptr;
+      slot.completion.reset();
+      slot.texture.Reset();
     }
   }
 

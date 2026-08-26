@@ -104,6 +104,53 @@ int main() try {
   require(poll_entries.load() == 1,
       "serialized retired-generation poll never reached the owner");
 
+  const auto drain_upload = [](RemoteVideoTexturePool& pool) {
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while (!pool.retirementSafe() &&
+           std::chrono::steady_clock::now() < deadline) {
+      (void)pool.poll();
+      std::this_thread::sleep_for(1ms);
+    }
+    (void)pool.discardReady();
+  };
+  drain_upload(*first);
+  drain_upload(*second);
+  require(first->retirementSafe() && second->retirementSafe(),
+      "shared-owner uploads did not become retirement-safe");
+
+  first_submit_entered = false;
+  release_first_submit = false;
+  block_next_submit.store(true);
+  std::thread active_submit([&] { require(first->submit(frame, 3),
+      "active shared-owner submit failed"); });
+  {
+    std::unique_lock lock(probe_mutex);
+    require(
+        probe_changed.wait_for(
+            lock, 2s, [&] { return first_submit_entered; }),
+        "active context operation did not enter");
+  }
+  std::atomic_bool retired_release_done{false};
+  std::thread retired_release([&] {
+    second.reset();
+    retired_release_done.store(true, std::memory_order_release);
+  });
+  std::this_thread::sleep_for(50ms);
+  require(!retired_release_done.load(std::memory_order_acquire),
+      "retired generation released driver resources during an active submit");
+  {
+    std::lock_guard lock(probe_mutex);
+    release_first_submit = true;
+  }
+  probe_changed.notify_all();
+  active_submit.join();
+  retired_release.join();
+  require(retired_release_done.load(std::memory_order_acquire),
+      "serialized retired-generation release never completed");
+
+  second = std::make_unique<RemoteVideoTexturePool>(
+      owner, budget, "remote:shared-owner-test", 64, 64, 1);
+
   auto capacity_owner = selectRemoteVideoD3dDeviceOwnerForRollover(
       owner, RemoteVideoGpuRolloverCause::CapacityExhausted,
       budget, "remote:shared-owner-test", GetCurrentProcessId());
