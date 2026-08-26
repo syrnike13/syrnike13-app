@@ -23,6 +23,9 @@ if (!Schema.is(ParentPortSchema)(processParentPort)) {
   throw new Error('Microphone resilience utility has no Electron parent port')
 }
 const parentPort = processParentPort
+// The dedicated addon is compiled with the repository's N-API 8 ABI. Keep the
+// synthetic manifest exact so the production handshake still checks the addon.
+const RESILIENCE_ADDON_NAPI_VERSION = 8
 let runtime: object | undefined
 let segmentRunning = false
 
@@ -156,7 +159,7 @@ void runNativeUtilityHost('media', {
     releaseChannel: expected.releaseChannel,
     commitSha: expected.commitSha,
     electronVersion: expected.electronVersion,
-    napiVersion: expected.minimumNapiVersion,
+    napiVersion: RESILIENCE_ADDON_NAPI_VERSION,
     liveKitVersion: NATIVE_RUNTIME_LIVEKIT_VERSION,
     files: [],
   }),
