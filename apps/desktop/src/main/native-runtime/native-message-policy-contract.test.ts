@@ -219,7 +219,7 @@ describe('native message policy contract', () => {
       /\/\/ BEGIN GENERATED EXTERNAL MESSAGE FIELD SHAPES[\s\S]*?\/\/ END GENERATED EXTERNAL MESSAGE FIELD SHAPES/,
     )?.[0]
 
-    expect(generatedBlock).toBe(expected)
+    expect(generatedBlock?.replace(/\r\n?/g, '\n')).toBe(expected)
 
     for (const { schema, field } of [
       { schema: 'CommandReleaseRemoteVideoFrame', field: 'sequence' },

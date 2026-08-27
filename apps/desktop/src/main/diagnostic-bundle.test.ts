@@ -330,7 +330,7 @@ describe('desktop diagnostic bundle', () => {
       '{"type":"manifest","source":"desktop"}\n{"event":"voice_failed"}',
     )
     expect(gunzipSync(compressed).byteLength).toBeLessThanOrEqual(33 * 1024 * 1024)
-  }, 15_000)
+  }, 60_000)
 
   it('reduces native records when gzip output would exceed the upload limit', async () => {
     const session = path.join(

@@ -99,7 +99,9 @@ describe('desktop media permissions', () => {
 
     expect(nativeRefreshBody).toBeDefined()
     expect(nativeRefreshBody).toContain('listNativeDisplaySourcePageEffect(')
-    expect(nativeRefreshBody).toContain('requestId,\n    page,\n    getWindow,')
+    expect(nativeRefreshBody).toMatch(
+      /listNativeDisplaySourcePageEffect\(\s*requestId,\s*page,\s*getWindow,\s*\)/,
+    )
     expect(nativeRefreshBody).not.toContain('loadSourcesForRequestEffect')
   })
 
