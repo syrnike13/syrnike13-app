@@ -131,10 +131,31 @@ describe.runIf(addonPath !== undefined)('native message actual boundary corpus',
       }),
     ]))
 
+    expect(decodedEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'localScreenPreviewTrackRemoved',
+        source: 'screen',
+      }),
+      expect.objectContaining({
+        type: 'localCameraPreviewTrackRemoved',
+        source: 'camera',
+      }),
+    ]))
+
     const replyVariants = Schema.decodeUnknownSync(
       Schema.Array(NativeRuntimeReplySchema),
     )(addon.serializeReplyVariants())
     expect(replyVariants.map(({ ok }) => ok)).toEqual([false, true])
+  })
+
+  it('rejects internal preview lifecycle commands at the addon boundary', () => {
+    const { addon } = boundaryHarness()
+    expect(() => addon.parseCommand({
+      type: '__localScreenPreviewTrackRemoved',
+    })).toThrow(/not supported by the media runtime/)
+    expect(() => addon.parseCommand({
+      type: '__localCameraPreviewTrackRemoved',
+    })).toThrow(/not supported by the media runtime/)
   })
 
   it('rejects omit, rename, type, optionality, and nested-union mutations', () => {

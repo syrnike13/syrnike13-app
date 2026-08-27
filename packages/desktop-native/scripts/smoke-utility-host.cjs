@@ -82,7 +82,6 @@ async function runSmokeSuite(context) {
       `[desktop-native] windows audio policy smoke ${JSON.stringify(report)}`,
     )
   }
-  await smokeMediaEventSerialization(context)
   await smokeNodeEventSink(context)
   await smokeActiveCallShutdown(context)
   await smokeNativeQuarantineShutdown(context)
@@ -272,6 +271,10 @@ async function smokeNodeEventSink(context) {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: {
           ...process.env,
+          NODE_OPTIONS: [
+            process.env.NODE_OPTIONS,
+            '--force-node-api-uncaught-exceptions-policy=true',
+          ].filter(Boolean).join(' '),
           SYRNIKE_NATIVE_SMOKE_TEST_MODE: '1',
           SYRNIKE_NATIVE_CONTROL_EVENT_CAPACITY: '64',
           ...(context.diagnosticPaths
@@ -381,48 +384,6 @@ async function smokeNativeQuarantineShutdown(context) {
           `Native quarantine smoke closed with code ${code}: ${stderr.trim()}`,
         ))
       }
-    })
-  })
-}
-
-async function smokeMediaEventSerialization(context) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      [context.path.resolve(__dirname, 'smoke-media-event-host.cjs')],
-      {
-        stdio: ['ignore', 'pipe', 'ignore'],
-        env: {
-          ...process.env,
-          SYRNIKE_NATIVE_MODULE_PATH: context.path.resolve(
-            context.nativeRoot,
-            'syrnike_media.node',
-          ),
-        },
-      },
-    )
-    let settled = false
-    const finish = (error) => {
-      if (settled) return
-      settled = true
-      context.clearTimeoutFn(timeout)
-      child.kill()
-      if (error) {
-        reject(error)
-      } else {
-        resolve()
-      }
-    }
-    const timeout = context.setTimeoutFn(
-      () => finish(new Error('Timed out waiting for local preview removal event')),
-      context.timeoutMs,
-    )
-    child.once('error', finish)
-    child.once('exit', (code) => {
-      finish(new Error(`Media event serialization smoke exited with code ${code}`))
-    })
-    child.stdout.on('data', (chunk) => {
-      if (chunk.toString().includes('local-preview-removal-source-ok')) finish()
     })
   })
 }

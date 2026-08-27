@@ -49,8 +49,18 @@ async function run() {
     requestId: 'native-quarantine-blocker',
     lane: 'microphone',
     hostEpoch: 1,
-    sessionId: 'native-quarantine',
-    generation: 1,
+    revision: 1,
+    config: {
+      deviceId: null,
+      bypassSystemAudioInputProcessing: true,
+      automaticGainControl: true,
+      noiseSuppression: true,
+      echoCancellation: true,
+      inputVolume: 1,
+      voiceGateEnabled: false,
+      voiceGateThresholdDb: -50,
+      voiceGateAutoThreshold: true,
+    },
   })
 
   await Promise.race([
