@@ -41,6 +41,8 @@ sharedTexture.setSharedTextureReceiver(({ importedSharedTexture }, metadata) => 
   }
 })
 
+ipcRenderer.send('syrnike-contention-renderer-ready')
+
 let expectedTick = performance.now() + 10
 let samples = []
 let maximumMs = 0

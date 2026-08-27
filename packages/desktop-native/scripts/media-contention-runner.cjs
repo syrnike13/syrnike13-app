@@ -284,6 +284,42 @@ function buildContentionWindowOptions(preload) {
   }
 }
 
+async function loadContentionRenderer(
+  electron,
+  window,
+  url = contentionPageDataUrl(),
+  timeoutMs = 5_000,
+) {
+  const senderId = window.webContents.id
+  let resolveReady
+  let rejectReady
+  const ready = new Promise((resolve, reject) => {
+    resolveReady = resolve
+    rejectReady = reject
+  })
+  const onReady = (event) => {
+    if (event.sender.id === senderId) resolveReady()
+  }
+  const onClosed = () => {
+    rejectReady(new Error('contention renderer closed before receiver readiness'))
+  }
+  electron.ipcMain.on('syrnike-contention-renderer-ready', onReady)
+  window.once('closed', onClosed)
+  const timeout = setTimeout(() => {
+    rejectReady(new Error(
+      `contention renderer receiver readiness timed out after ${timeoutMs}ms`,
+    ))
+  }, timeoutMs)
+  timeout.unref?.()
+  try {
+    await Promise.all([window.loadURL(url), ready])
+  } finally {
+    clearTimeout(timeout)
+    electron.ipcMain.removeListener('syrnike-contention-renderer-ready', onReady)
+    window.removeListener('closed', onClosed)
+  }
+}
+
 function startContentionWindowMotion(
   window,
   workArea,
@@ -737,7 +773,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
   const window = new electron.BrowserWindow(buildContentionWindowOptions(
     path.join(__dirname, 'media-contention-preload.cjs'),
   ))
-  await window.loadURL(contentionPageDataUrl())
+  await loadContentionRenderer(electron, window)
   const cameraWindowOptions = {
     ...buildContentionWindowOptions(
       path.join(__dirname, 'media-contention-preload.cjs'),
@@ -746,7 +782,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     alwaysOnTop: false,
   }
   let cameraWindow = new electron.BrowserWindow(cameraWindowOptions)
-  let cameraWindowReady = cameraWindow.loadURL(contentionPageDataUrl())
+  let cameraWindowReady = loadContentionRenderer(electron, cameraWindow)
   const windowMotionTimer = startContentionWindowMotion(
     window,
     electron.screen.getPrimaryDisplay().workArea,
@@ -2092,7 +2128,7 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
     if (!cameraWindow.isDestroyed()) cameraWindow.destroy()
     cameraBridge?.rendererReloaded()
     cameraWindow = new electron.BrowserWindow(cameraWindowOptions)
-    cameraWindowReady = cameraWindow.loadURL(contentionPageDataUrl())
+    cameraWindowReady = loadContentionRenderer(electron, cameraWindow)
     await cameraWindowReady
     cameraReplacementReady = true
     recordTimeline({
@@ -3129,6 +3165,7 @@ module.exports = {
   buildDistributionMetrics,
   buildRemoteAudioPlayoutMetrics,
   contentionPageDataUrl,
+  loadContentionRenderer,
   hasLinkedVideoPresentation,
   startContentionWindowMotion,
   mediaPriorityPolicyEnvironment,
