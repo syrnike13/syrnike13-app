@@ -23,6 +23,10 @@ using namespace syrnike::desktop_native::media;
 // the calling thread after the deadline. Keep deadline assertions distinct
 // from the production budget while still catching composed or unbounded waits.
 constexpr auto kDeadlineAssertionBudget = kNativeShutdownBudget + 500ms;
+// Keep prompt-path assertions below the production shutdown deadline, but
+// leave enough headroom for ASan and a loaded Windows scheduler to resume the
+// test thread. A composed wait still takes at least kNativeShutdownBudget.
+constexpr auto kPromptLaneAssertionBudget = 1s;
 
 class Sink final : public EventSink {
  public:
@@ -278,7 +282,8 @@ int main() try {
   auto cancel = command(2, "cancel"); cancel.type = syrnike::desktop_native::NativeCommandType::DisconnectCamera;
   const auto started = std::chrono::steady_clock::now();
   actor->disconnect(cancel);
-  if (std::chrono::steady_clock::now() - started > 250ms) {
+  if (std::chrono::steady_clock::now() - started >
+      kPromptLaneAssertionBudget) {
     throw std::runtime_error("disconnect blocked behind camera publication");
   }
   const auto blocked_reply = waitReply(sink, "blocked");
@@ -396,16 +401,36 @@ int main() try {
   // CameraCapture::stop; disconnect cannot wait for an unbounded ReadSample.
   factory->block.store(true);
   current.store(7);
+  const auto reads_before_block = factory->read_calls->load(
+      std::memory_order_acquire);
   actor->connect(command(7, "blocked-capture"));
   if (!waitReply(sink, "blocked-capture").ok) {
     throw std::runtime_error("blocked capture did not finish publication");
   }
+  for (int i = 0;
+       i < 1000 && factory->read_calls->load(std::memory_order_acquire) ==
+           reads_before_block;
+       ++i) {
+    std::this_thread::sleep_for(5ms);
+  }
+  if (factory->read_calls->load(std::memory_order_acquire) ==
+      reads_before_block) {
+    throw std::runtime_error("blocked capture did not enter its reader");
+  }
   auto stop_blocked = command(7, "stop-blocked-capture");
   stop_blocked.type = syrnike::desktop_native::NativeCommandType::DisconnectCamera;
+  const auto stops_before_block = factory->stop_calls->load(
+      std::memory_order_acquire);
   const auto stop_started = std::chrono::steady_clock::now();
   actor->disconnect(stop_blocked);
-  if (std::chrono::steady_clock::now() - stop_started > 250ms) {
+  if (std::chrono::steady_clock::now() - stop_started >
+      kPromptLaneAssertionBudget) {
     throw std::runtime_error("camera disconnect waited for a blocked reader");
+  }
+  if (factory->stop_calls->load(std::memory_order_acquire) !=
+      stops_before_block + 1) {
+    throw std::runtime_error(
+        "camera disconnect did not stop the blocked capture exactly once");
   }
 
   // A broken driver can also hang its stop/flush path. The actor must bound

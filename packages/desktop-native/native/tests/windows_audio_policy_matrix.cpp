@@ -51,6 +51,7 @@ constexpr float kMinimumRetainedSignalRatio = 0.85F;
 constexpr std::uint32_t kSampleRate = 48'000;
 constexpr std::uint16_t kChannelCount = 2;
 constexpr float kToneAmplitude = 0.08F;
+constexpr int kHardwareUnavailableExitCode = 77;
 
 void requireHr(HRESULT result, const char *message);
 
@@ -1398,8 +1399,8 @@ int wmain(int argc, wchar_t **argv) try {
   const auto render_endpoints = catalog.endpoints(eRender);
   const auto capture_endpoints = catalog.endpoints(eCapture);
   if (render_endpoints.empty() || capture_endpoints.empty()) {
-    throw std::runtime_error(
-        "active render and capture endpoints are required");
+    std::cerr << "active render and capture endpoints are unavailable\n";
+    return kHardwareUnavailableExitCode;
   }
   const auto explicit_render =
       firstExplicit(render_endpoints, catalog.defaultId(eRender));

@@ -1453,6 +1453,9 @@ class RemoteAudioOutput::Implementation final
       } else {
         std::lock_guard lock(mutex_);
         restoreOutputConfigurationLocked(previous);
+        if (!previous.output_configured) {
+          phase_ = RemoteAudioOutputPhase::Failed;
+        }
         state = outputStateLocked(info, info.message);
       }
       publishState(std::move(state));
@@ -1463,6 +1466,9 @@ class RemoteAudioOutput::Implementation final
       {
         std::lock_guard lock(mutex_);
         restoreOutputConfigurationLocked(previous);
+        if (!previous.output_configured) {
+          phase_ = RemoteAudioOutputPhase::Failed;
+        }
         state = outputStateLocked(info, info.message);
       }
       publishState(std::move(state));

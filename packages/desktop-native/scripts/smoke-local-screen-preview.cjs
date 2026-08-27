@@ -6,6 +6,9 @@ const {
   ipcMain,
   sharedTexture,
 } = require('electron')
+const {
+  parseExternalPreviewRecords,
+} = require('./screen-preview-protocol.cjs')
 
 const expectedWidth = 1280
 const expectedHeight = 720
@@ -96,21 +99,17 @@ app.whenReady().then(async () => {
   child.stdout.on('data', async (chunk) => {
     stdout += chunk
     process.stdout.write(chunk)
-    const matches = [...stdout.matchAll(
-      /EXTERNAL_PREVIEW nt_handle=(\d+) sequence=(\d+) width=(\d+) height=(\d+)/g,
-    )]
-    const match = matches.find((candidate) => !importedFrames.has(Number(candidate[2])))
-    if (!match) return
+    const frame = parseExternalPreviewRecords(stdout)
+      .find(({ sequence }) => !importedFrames.has(sequence))
+    if (!frame) return
     try {
-      const sequence = Number(match[2])
+      const { ntHandle: rawNtHandle, sequence, width, height } = frame
       importedFrames.add(sequence)
-      const width = Number(match[3])
-      const height = Number(match[4])
       if (width !== expectedWidth || height !== expectedHeight) {
         throw new Error(`native preview dimensions mismatch: ${width}x${height}`)
       }
       const ntHandle = Buffer.alloc(8)
-      ntHandle.writeBigUInt64LE(BigInt(match[1]))
+      ntHandle.writeBigUInt64LE(BigInt(rawNtHandle))
       const texture = sharedTexture.importSharedTexture({
         textureInfo: {
           pixelFormat: 'bgra',

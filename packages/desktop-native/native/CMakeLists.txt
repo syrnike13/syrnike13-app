@@ -430,6 +430,10 @@ add_test(
   NAME syrnike-native-windows-audio-policy-matrix
   COMMAND syrnike-native-windows-audio-policy-matrix
 )
+set_tests_properties(
+  syrnike-native-windows-audio-policy-matrix PROPERTIES
+  SKIP_RETURN_CODE 77
+)
 
 add_executable(syrnike-native-remote-audio-operation-supervisor-tests
   tests/remote_audio_operation_supervisor_test.cpp

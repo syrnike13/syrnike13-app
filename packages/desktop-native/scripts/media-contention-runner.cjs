@@ -30,6 +30,9 @@ const {
 const {
   extractPriorityOutcome,
 } = require('./media-priority-experiment.cjs')
+const {
+  parseExternalPreviewLine,
+} = require('./screen-preview-protocol.cjs')
 
 const activeRunnerChildren = new Set()
 
@@ -2392,17 +2395,9 @@ async function runElectronContention(electron, argv = process.argv.slice(2)) {
       String(profile.screenBackendChurnIntervalMs),
     ],
     (line) => {
-      const match = line.match(
-        /^EXTERNAL_PREVIEW nt_handle=(\d+) sequence=(\d+) timestamp_us=(\d+) width=(\d+) height=(\d+)/,
-      )
-      if (match) {
-        void deliverTexture('local', captureChild, {
-          ntHandle: match[1],
-          sequence: Number(match[2]),
-          timestampUs: Number(match[3]),
-          width: Number(match[4]),
-          height: Number(match[5]),
-        })
+      const frame = parseExternalPreviewLine(line)
+      if (frame) {
+        void deliverTexture('local', captureChild, frame)
         return
       }
       const ack = line.match(/^RELEASE_ACK sequence=(\d+)/)

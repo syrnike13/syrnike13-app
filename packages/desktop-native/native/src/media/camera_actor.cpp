@@ -24,6 +24,8 @@
 namespace syrnike::desktop_native::media {
 namespace {
 
+constexpr auto kCaptureWorkerCleanupGrace = std::chrono::milliseconds(100);
+
 RuntimeEvent cameraReply(const MediaCommand& command) {
   RuntimeEvent event;
   event.type = NativeEventType::Reply;
@@ -851,13 +853,20 @@ class CameraActor::Implementation
         runCleanupEnqueueProbe(cleanup_enqueue_probe_);
         cleanup_supervisor_->submitOrEscalate(
             cleanup_job, "camera_capture");
-        if (!cleanup_job->waitUntil(deadline)) {
+        const auto stop_wait_deadline = (std::min)(
+            deadline,
+            std::chrono::steady_clock::now() + kCaptureWorkerCleanupGrace);
+        if (!cleanup_job->waitUntil(stop_wait_deadline)) {
+          const bool deadline_elapsed =
+              std::chrono::steady_clock::now() >= deadline;
           diagnostics::DiagnosticLog::instance().write(
               "camera_capture_stop_unfinished",
               {
                   {"sessionId", session_id},
                   {"generation", generation},
-                  {"reason", "stop_deadline"},
+                  {"reason", deadline_elapsed
+                       ? "stop_deadline"
+                       : "stop_grace_elapsed"},
               });
         }
       } catch (...) {
@@ -873,8 +882,11 @@ class CameraActor::Implementation
 
     if (!capture_thread.joinable()) return;
     if (capture_state) {
+      const auto join_deadline = (std::min)(
+          deadline,
+          std::chrono::steady_clock::now() + kCaptureWorkerCleanupGrace);
       std::unique_lock lock(capture_state->mutex);
-      capture_state->changed.wait_until(lock, deadline, [&] {
+      capture_state->changed.wait_until(lock, join_deadline, [&] {
         return capture_state->finished.load(std::memory_order_acquire);
       });
     }
@@ -887,7 +899,7 @@ class CameraActor::Implementation
         capture_thread.get_id() == std::this_thread::get_id();
     const std::string_view join_reason = joining_from_worker
         ? "stop_on_worker"
-        : "stop_deadline";
+        : "stop_grace_elapsed";
     diagnostics::DiagnosticLog::instance().write(
         "camera_capture_worker_join_supervised",
         {

@@ -797,6 +797,10 @@ void expectTimedOutStage(
   );
   const auto state = states.last();
   require(
+    state.phase == RemoteAudioOutputPhase::Failed,
+    "initial renderer failure did not publish a failed output phase"
+  );
+  require(
     state.external_stage == expected_stage,
     "hung platform call lost its exact diagnostic stage"
   );

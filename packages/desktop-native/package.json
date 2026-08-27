@@ -17,7 +17,7 @@
     "soak:microphone:production": "pnpm --filter @syrnike13/platform build && pnpm --filter @syrnike13/desktop exec tsup && pnpm --filter @syrnike13/desktop exec electron ../../packages/desktop-native/scripts/microphone-resilience-runner.cjs --profile production",
     "profile:media-priority:ci": "node scripts/media-priority-experiment.cjs --profile ci",
     "profile:media-priority:production": "node scripts/media-priority-experiment.cjs --profile production",
-    "test:media-contention": "node --test scripts/media-contention-profile.test.cjs scripts/media-contention-runtime-adapter.test.cjs scripts/media-priority-experiment.test.cjs",
+    "test:media-contention": "node --test scripts/media-contention-profile.test.cjs scripts/media-contention-runtime-adapter.test.cjs scripts/media-priority-experiment.test.cjs scripts/screen-preview-protocol.test.cjs",
     "test:smoke-harness": "pnpm --filter @syrnike13/platform build && pnpm --filter @syrnike13/desktop exec tsup && node --test scripts/smoke-utility-host.test.cjs",
     "test:native": "ctest --test-dir build -C Release --output-on-failure && pnpm run test:smoke-harness",
     "test:native:debug": "ctest --test-dir build -C Debug --output-on-failure && pnpm run test:smoke-harness",

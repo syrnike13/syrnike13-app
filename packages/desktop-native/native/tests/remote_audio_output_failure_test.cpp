@@ -162,15 +162,7 @@ int main() try {
 
   try {
     output.setOutputDevice("__syrnike_missing_audio_output__");
-  } catch (const std::exception& error) {
-    std::lock_guard lock(mutex);
-    output_state = syrnike::desktop_native::media::RemoteAudioOutputState{
-      .phase = RemoteAudioOutputPhase::Failed,
-      .failure = syrnike::desktop_native::media::describeAudioFailure(error),
-    };
-    state_deliveries += 1;
-    changed.notify_all();
-  }
+  } catch (const std::exception&) {}
   std::unique_lock lock(mutex);
   if (!changed.wait_for(lock, std::chrono::seconds(2), [&] {
         return output_state.has_value();
