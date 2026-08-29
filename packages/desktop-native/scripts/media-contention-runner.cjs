@@ -3031,6 +3031,9 @@ function buildDistributionMetrics(videoFrameAgeSamples, nativeSummaries) {
   const sampledAudioSummaries = nativeSummaries.filter(
     (summary) => Number(summary?.normalAudioAgeSampleCount) > 0,
   )
+  const scheduledAudioSummaries = nativeSummaries.filter(
+    (summary) => Number(summary?.scheduledAudioAgeSampleCount) > 0,
+  )
   const maximumSummaryMetric = (name) => {
     const values = sampledAudioSummaries
       .map((summary) => Number(summary?.[name]))
@@ -3044,8 +3047,9 @@ function buildDistributionMetrics(videoFrameAgeSamples, nativeSummaries) {
     normalVideoFrameAgeP99Ms: videoFrameAgeSamples.length > 0
       ? percentile(videoFrameAgeSamples, 0.99)
       : Number.NaN,
-    localPlayoutScheduledAgeSampleCount: sampledAudioSummaries.reduce(
-      (total, summary) => total + Number(summary.normalAudioAgeSampleCount),
+    localPlayoutScheduledAgeSampleCount: scheduledAudioSummaries.reduce(
+      (total, summary) =>
+        total + Number(summary.scheduledAudioAgeSampleCount),
       0,
     ),
     localPlayoutScheduledAgeP95Ms:

@@ -277,6 +277,7 @@ test('runner retains the latest real audio evidence from every recycled probe ep
       audioInjectedWakeGaps: 2,
       audioRecoveredWakeGaps: 2,
       audioTrackFailures: 0,
+      scheduledAudioAgeSampleCount: 200,
       normalAudioAgeSampleCount: 200,
       normalAudioAgeP95Us: 22_000,
       normalAudioAgeP99Us: 32_000,
@@ -292,6 +293,7 @@ test('runner retains the latest real audio evidence from every recycled probe ep
       audioInjectedWakeGaps: 2,
       audioRecoveredWakeGaps: 2,
       audioTrackFailures: 0,
+      scheduledAudioAgeSampleCount: 300,
       normalAudioAgeSampleCount: 300,
       normalAudioAgeP95Us: 23_000,
       normalAudioAgeP99Us: 33_000,
@@ -318,6 +320,19 @@ test('runner retains the latest real audio evidence from every recycled probe ep
     trackFailures: 0,
     linkedRoomEpochs: 0,
   })
+})
+
+test('scheduled age coverage comes from renderer playout rather than probe polling', () => {
+  const metrics = buildDistributionMetrics([], [{
+    hostEpoch: 1,
+    evidenceSequence: 1,
+    scheduledAudioAgeSampleCount: 59_663,
+    normalAudioAgeSampleCount: 26_771,
+    normalAudioAgeP95Us: 75_000,
+    normalAudioAgeP99Us: 76_000,
+  }])
+
+  assert.equal(metrics.localPlayoutScheduledAgeSampleCount, 59_663)
 })
 
 test('probe summaries retain versioned track-to-renderer audio evidence', () => {
@@ -380,11 +395,13 @@ test('runner derives frame and audio p95/p99 from bounded native samples', () =>
     [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
     [
       {
+        scheduledAudioAgeSampleCount: 100,
         normalAudioAgeSampleCount: 100,
         normalAudioAgeP95Us: 21_000,
         normalAudioAgeP99Us: 31_000,
       },
       {
+        scheduledAudioAgeSampleCount: 100,
         normalAudioAgeSampleCount: 100,
         normalAudioAgeP95Us: 24_000,
         normalAudioAgeP99Us: 36_000,

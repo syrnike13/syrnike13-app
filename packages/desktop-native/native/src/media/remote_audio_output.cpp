@@ -1110,6 +1110,8 @@ class RemoteAudioOutput::Implementation final
       .renderer_frames_written = renderer.frames_written,
       .maximum_wake_gap_ms = renderer.maximum_wake_gap_ms,
       .freshness_recoveries = ingress.freshness_recoveries,
+      .scheduled_playout_age_samples =
+        ingress.scheduled_playout_age_samples,
       .last_scheduled_playout_age_us =
         ingress.last_scheduled_playout_age_us,
       .maximum_scheduled_playout_age_us =

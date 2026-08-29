@@ -228,6 +228,10 @@ RemoteAudioIngressFreshness RemoteAudioIngress::enforceFreshness(
     ? 0
     : resident_age_us + scheduled_delay_us;
 
+  if (oldest_timestamp != 0) {
+    scheduled_playout_age_samples_.fetch_add(1, std::memory_order_relaxed);
+  }
+
   last_scheduled_playout_age_us_.store(
     scheduled_playout_age_us,
     std::memory_order_relaxed
@@ -345,6 +349,8 @@ RemoteAudioIngressTelemetry RemoteAudioIngress::telemetry() const noexcept {
     .stale_frames_discarded = stale_frames_discarded_.load(
       std::memory_order_relaxed
     ),
+    .scheduled_playout_age_samples =
+      scheduled_playout_age_samples_.load(std::memory_order_relaxed),
     .last_scheduled_playout_age_us = last_scheduled_playout_age_us_.load(
       std::memory_order_relaxed
     ),

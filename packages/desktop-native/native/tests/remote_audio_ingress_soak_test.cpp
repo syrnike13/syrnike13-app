@@ -164,6 +164,7 @@ int main() try {
       freshness_telemetry.freshness_recoveries == 2'001 &&
           freshness_telemetry.discontinuities == 2'001 &&
           freshness_telemetry.stale_frames_discarded == 10'006 &&
+          freshness_telemetry.scheduled_playout_age_samples == 2'001 &&
           freshness_telemetry.last_scheduled_playout_age_us >
               syrnike::desktop_native::media::
                   kRemoteAudioLocalPlayoutAgeBudgetUs &&

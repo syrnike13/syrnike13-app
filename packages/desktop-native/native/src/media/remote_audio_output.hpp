@@ -212,6 +212,7 @@ struct RemoteAudioPlayoutSnapshot {
   std::uint64_t renderer_frames_written = 0;
   std::uint64_t maximum_wake_gap_ms = 0;
   std::uint64_t freshness_recoveries = 0;
+  std::uint64_t scheduled_playout_age_samples = 0;
   std::uint64_t last_scheduled_playout_age_us = 0;
   std::uint64_t maximum_scheduled_playout_age_us = 0;
 };

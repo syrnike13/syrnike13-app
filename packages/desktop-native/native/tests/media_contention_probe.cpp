@@ -1256,6 +1256,8 @@ int main(int argc, char** argv) try {
         << (audio_recovery_window.recoveryPending() ? 1 : 0)
         << ",\"audioTrackFailures\":"
         << audio_track_failures.load(std::memory_order_relaxed)
+        << ",\"scheduledAudioAgeSampleCount\":"
+        << (snapshot ? snapshot->scheduled_playout_age_samples : 0)
         << ",\"normalAudioAgeSampleCount\":"
         << sorted_audio_age_samples.size()
         << ",\"normalAudioAgeP95Us\":"
@@ -2291,6 +2293,10 @@ int main(int argc, char** argv) try {
             << audio_recovery_window.settledRecoveries()
             << ",\"audioRecoveryPending\":"
             << (audio_recovery_window.recoveryPending() ? 1 : 0)
+            << ",\"scheduledAudioAgeSampleCount\":"
+            << (audio_playout
+                    ? audio_playout->scheduled_playout_age_samples
+                    : 0)
             << ",\"normalAudioAgeSampleCount\":"
             << normal_audio_age_samples.size()
             << ",\"normalAudioAgeP95Us\":" << normal_audio_age_p95_us

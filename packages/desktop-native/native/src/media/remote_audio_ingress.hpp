@@ -47,6 +47,7 @@ struct RemoteAudioIngressTelemetry {
   std::uint64_t discontinuities = 0;
   std::uint64_t freshness_recoveries = 0;
   std::uint64_t stale_frames_discarded = 0;
+  std::uint64_t scheduled_playout_age_samples = 0;
   std::uint64_t last_scheduled_playout_age_us = 0;
   std::uint64_t maximum_scheduled_playout_age_us = 0;
   std::uint64_t last_oldest_queued_age_us = 0;
@@ -113,6 +114,7 @@ class RemoteAudioIngress final : public livekit::DecodedAudioFrameSink {
   std::atomic<std::uint64_t> invalid_frames_{0};
   std::atomic<std::uint64_t> freshness_recoveries_{0};
   std::atomic<std::uint64_t> stale_frames_discarded_{0};
+  std::atomic<std::uint64_t> scheduled_playout_age_samples_{0};
   std::atomic<std::uint64_t> last_scheduled_playout_age_us_{0};
   std::atomic<std::uint64_t> maximum_scheduled_playout_age_us_{0};
   std::atomic<std::uint64_t> last_oldest_queued_age_us_{0};
