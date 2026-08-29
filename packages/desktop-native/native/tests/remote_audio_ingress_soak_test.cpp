@@ -17,6 +17,12 @@ using syrnike::desktop_native::media::kRemoteAudioIngressFramesPerPacket;
 using syrnike::desktop_native::media::kRemoteAudioIngressSampleRate;
 using syrnike::desktop_native::media::kRemoteAudioIngressSamplesPerPacket;
 
+std::uint64_t fake_now_us = 1'000'000;
+
+std::uint64_t fakeSteadyNowUs() noexcept {
+  return fake_now_us;
+}
+
 livekit::DecodedAudioFrameView view(
     const std::array<
         std::int16_t,
@@ -111,6 +117,115 @@ int main() try {
         output.samples.front() ==
           static_cast<std::int16_t>(kRemoteAudioIngressSlotCount - 1),
       "overflow recovery did not preserve the newest packet");
+
+  RemoteAudioIngress freshness(&fakeSteadyNowUs);
+  freshness.activate(3);
+  for (std::size_t index = 0; index < 8; ++index) {
+    packet.fill(static_cast<std::int16_t>(100 + index));
+    freshness.onAudioFrame(view(packet));
+    fake_now_us += 10'000;
+  }
+  const auto recovered = freshness.enforceFreshness(
+      fake_now_us,
+      kRemoteAudioIngressFramesPerPacket * 2);
+  require(
+      recovered.recovered && recovered.scheduled_playout_age_us >
+          syrnike::desktop_native::media::
+              kRemoteAudioLocalPlayoutAgeBudgetUs &&
+          freshness.queuedFrames() ==
+              syrnike::desktop_native::media::
+                  kRemoteAudioIngressRecoveryPackets &&
+          recovered.discarded_packets == 6,
+      "sub-overflow wake gaps did not snap stale playout to 20 ms");
+  require(
+      freshness.tryRead(output, 3) == RemoteAudioIngressReadResult::Frame &&
+          output.samples.front() == 106,
+      "freshness recovery did not resume at the first newest packet");
+
+  for (std::size_t cycle = 0; cycle < 2'000; ++cycle) {
+    while (freshness.tryRead(output, 3) ==
+           RemoteAudioIngressReadResult::Frame) {
+    }
+    for (std::size_t index = 0; index < 7; ++index) {
+      packet.fill(static_cast<std::int16_t>(200 + index));
+      freshness.onAudioFrame(view(packet));
+      fake_now_us += 10'000;
+    }
+    fake_now_us += 20'000;
+    const auto cycle_recovery = freshness.enforceFreshness(
+        fake_now_us,
+        kRemoteAudioIngressFramesPerPacket * 2);
+    require(
+        cycle_recovery.recovered && freshness.queuedFrames() <= 2,
+        "repeated sub-overflow gaps preserved stale local playout");
+  }
+  const auto freshness_telemetry = freshness.telemetry();
+  require(
+      freshness_telemetry.freshness_recoveries == 2'001 &&
+          freshness_telemetry.discontinuities == 2'001 &&
+          freshness_telemetry.stale_frames_discarded == 10'006 &&
+          freshness_telemetry.scheduled_playout_age_samples == 2'001 &&
+          freshness_telemetry.last_scheduled_playout_age_us >
+              syrnike::desktop_native::media::
+                  kRemoteAudioLocalPlayoutAgeBudgetUs &&
+          freshness_telemetry.last_oldest_queued_age_us > 0,
+      "freshness recovery counters or age metrics were not exact");
+
+  freshness.activate(4);
+  require(
+      freshness.queuedFrames() == 0 &&
+          !freshness.enforceFreshness(fake_now_us, 0).recovered,
+      "device-generation reset retained stale local playout state");
+
+  RemoteAudioIngress partial(&fakeSteadyNowUs);
+  partial.activate(5);
+  packet.fill(777);
+  partial.onAudioFrame(view(packet));
+  require(
+      partial.tryRead(output, 5) == RemoteAudioIngressReadResult::Frame,
+      "partial-frame freshness fixture did not read its packet");
+  fake_now_us += 100'000;
+  const auto partial_recovery = partial.enforceFreshness(
+      fake_now_us,
+      kRemoteAudioIngressFramesPerPacket,
+      output.ingress_steady_us,
+      kRemoteAudioIngressFramesPerPacket / 2);
+  require(
+      partial_recovery.recovered &&
+          partial_recovery.discarded_packets == 1 &&
+          partial.queuedFrames() == 0,
+      "a stale partially consumed packet survived the local age budget");
+
+  RemoteAudioIngress mixed_voice(&fakeSteadyNowUs);
+  RemoteAudioIngress mixed_stream(&fakeSteadyNowUs);
+  mixed_voice.activate(6);
+  mixed_stream.activate(6);
+  for (std::size_t sequence = 0; sequence < 35'000; ++sequence) {
+    packet.fill(static_cast<std::int16_t>(sequence % 20'000));
+    mixed_voice.onAudioFrame(view(packet));
+    mixed_stream.onAudioFrame(view(packet));
+    fake_now_us += 10'000;
+    require(
+        mixed_voice.tryRead(output, 6) == RemoteAudioIngressReadResult::Frame,
+        "mixed-participant nominal track lost cadence");
+    if (sequence % 7 == 6) {
+      fake_now_us += 20'000;
+      require(
+          mixed_stream.enforceFreshness(
+              fake_now_us,
+              kRemoteAudioIngressFramesPerPacket * 2).recovered,
+          "mixed-participant stalled track missed freshness recovery");
+      while (mixed_stream.tryRead(output, 6) ==
+             RemoteAudioIngressReadResult::Frame) {
+      }
+    }
+  }
+  require(
+      mixed_voice.telemetry().freshness_recoveries == 0 &&
+          mixed_voice.telemetry().dropped_frames == 0 &&
+          mixed_stream.telemetry().freshness_recoveries == 5'000 &&
+          mixed_stream.telemetry().dropped_frames == 0,
+      "mixed participants coupled nominal cadence to stalled recovery");
 
   std::cout
       << "remote audio ingress soak and bounded recovery tests passed\n";

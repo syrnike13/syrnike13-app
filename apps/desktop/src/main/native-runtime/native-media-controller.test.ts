@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Effect } from 'effect'
+import type { DesktopDisplayMediaSource } from '@syrnike13/platform'
 
 import type { MediaRuntimeCommand, MediaRuntimeEvent } from './contract'
 import { NativeMediaController } from './native-media-controller'
@@ -121,6 +122,70 @@ async function waitUntil(predicate: () => boolean) {
 }
 
 describe('NativeMediaController retained tools', () => {
+  it('pages metadata, loads one visual, and cancels by enumeration identity', async () => {
+    const harness = createHarness()
+    const sources: DesktopDisplayMediaSource[] = Array.from(
+      { length: 25 },
+      (_, index) => ({
+        id: `window:${index + 1}`,
+        name: `Window ${index + 1}`,
+        type: 'window',
+        thumbnailDataUrl: null,
+        appIconDataUrl: null,
+      }),
+    )
+    harness.request.mockResolvedValueOnce(sources)
+
+    const page = await harness.controller.listDisplaySourcePage('picker-1', 0)
+
+    expect(page).toEqual({
+      page: 0,
+      hasPrevious: false,
+      hasNext: true,
+      sources: sources.slice(0, 24),
+    })
+    expect(harness.request).toHaveBeenLastCalledWith(
+      {
+        type: 'listDisplaySources',
+        action: 'metadata',
+        enumerationId: 'picker-1',
+        page: 0,
+        selfWindowHwnd: '42',
+      },
+      5_000,
+    )
+
+    const visual = {
+      ...sources[0],
+      thumbnailDataUrl: 'data:image/bmp;base64,preview',
+    }
+    harness.request.mockResolvedValueOnce([visual])
+    await expect(
+      harness.controller.loadDisplaySourceVisual('picker-1', sources[0].id),
+    ).resolves.toEqual(visual)
+    expect(harness.request).toHaveBeenLastCalledWith(
+      {
+        type: 'listDisplaySources',
+        action: 'thumbnail',
+        enumerationId: 'picker-1',
+        sourceId: sources[0].id,
+        selfWindowHwnd: '42',
+      },
+      5_000,
+    )
+
+    harness.request.mockResolvedValueOnce(undefined)
+    await harness.controller.cancelDisplaySourceEnumeration('picker-1')
+    expect(harness.request).toHaveBeenLastCalledWith(
+      {
+        type: 'listDisplaySources',
+        action: 'cancel',
+        enumerationId: 'picker-1',
+      },
+      5_000,
+    )
+  })
+
   it('projects degraded state and delegates retry to the supervisor', async () => {
     const harness = createHarness()
     harness.state({
@@ -907,6 +972,66 @@ describe('NativeMediaController retained tools', () => {
       demanded: false,
       options: { width: 1920, height: 1080, fps: 30 },
     }), expect.any(Number))
+  })
+
+  it('binds camera preview demand and retry to the current camera generation', async () => {
+    const harness = createHarness()
+    harness.event({
+      type: 'sessionLifecycle',
+      sequence: 1,
+      sessionId: 'camera-a',
+      generation: 4,
+      kind: 'camera',
+      state: { status: 'running', sessionId: 'camera-a' },
+    })
+    await waitUntil(() => harness.request.mock.calls.some(
+      ([command]) => command.type === 'setLocalCameraPreviewDemand',
+    ))
+    expect(harness.request).toHaveBeenCalledWith({
+      type: 'setLocalCameraPreviewDemand',
+      sessionId: 'camera-a',
+      generation: 4,
+      demanded: true,
+    }, 2_000)
+
+    harness.request.mockClear()
+    await expect(harness.controller.recoverLocalCameraPreview()).resolves.toBe(true)
+    expect(harness.request).toHaveBeenCalledWith({
+      type: 'retryLocalCameraPreview',
+      sessionId: 'camera-a',
+      generation: 4,
+      reason: 'renderer_presentation_stall',
+    }, 2_000)
+
+    await harness.controller.setLocalCameraPreviewDemand(false)
+    harness.request.mockClear()
+    await expect(harness.controller.recoverLocalCameraPreview()).resolves.toBe(false)
+    expect(harness.request).not.toHaveBeenCalled()
+
+    harness.event({
+      type: 'sessionLifecycle',
+      sequence: 2,
+      sessionId: 'camera-a',
+      generation: 3,
+      kind: 'camera',
+      state: { status: 'idle' },
+    })
+    await harness.controller.setLocalCameraPreviewDemand(true)
+    expect(harness.request).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'camera-a',
+      generation: 4,
+      demanded: true,
+    }), 2_000)
+
+    harness.event({
+      type: 'sessionStopped',
+      sequence: 3,
+      sessionId: 'camera-a',
+      generation: 4,
+    })
+    harness.request.mockClear()
+    await expect(harness.controller.recoverLocalCameraPreview()).resolves.toBe(false)
+    expect(harness.request).not.toHaveBeenCalled()
   })
 
   it('rejects non-finite local screen preview demand before persisting it', async () => {

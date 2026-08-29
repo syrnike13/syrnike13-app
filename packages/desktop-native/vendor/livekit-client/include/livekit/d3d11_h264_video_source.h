@@ -61,6 +61,24 @@ LIVEKIT_API D3D11H264Capability queryD3D11H264CapabilityForAdapter(
 class LIVEKIT_API D3D11H264VideoSource : public VideoSource {
 public:
   virtual ~D3D11H264VideoSource() = default;
+
+  /// @brief Captures a GPU texture with packet-trailer frame identity.
+  ///
+  /// The application-supplied metadata is transported independently from the
+  /// WebRTC capture timestamp in @p options.
+  ///
+  /// @param lease Texture lease transferred to the encoder on success.
+  /// @param options Capture timestamp and optional packet-trailer metadata.
+  /// @return `true` when the encoder accepted the texture lease.
+  /// @throws std::bad_alloc If request metadata allocation fails.
+  /// @throws std::runtime_error If the FFI request cannot be sent.
+  /// @note A rotation other than `VIDEO_ROTATION_0` is rejected with `false`.
+  bool capture(std::unique_ptr<D3D11TextureLease> lease, const VideoCaptureOptions& options);
+
+  /// @brief Captures a GPU texture without packet-trailer metadata.
+  /// @param lease Texture lease transferred to the encoder on success.
+  /// @param timestamp_us WebRTC capture timestamp in microseconds.
+  /// @return `true` when the encoder accepted the texture lease.
   virtual bool capture(std::unique_ptr<D3D11TextureLease> lease, std::int64_t timestamp_us) = 0;
 
 protected:

@@ -26,6 +26,9 @@ using syrnike::desktop_native::media::GpuCompletionSlotState;
 using syrnike::desktop_native::media::decideRemoteVideoSlotTransition;
 using syrnike::desktop_native::media::RemoteVideoGpuPollClass;
 using syrnike::desktop_native::media::RemoteVideoTextureSlotPhase;
+using syrnike::desktop_native::media::RemoteVideoGpuRolloverCause;
+using syrnike::desktop_native::media::RemoteVideoGpuDeviceDisposition;
+using syrnike::desktop_native::media::decideRemoteVideoGpuDeviceRollover;
 
 namespace {
 
@@ -117,6 +120,25 @@ int main() {
         delivered_slot.newly_quarantined || delivered_slot.recovered ||
         delivered_slot.device_failed) {
       throw std::runtime_error("delivered slot was mutated by GPU polling");
+    }
+    const auto capacity_rollover = decideRemoteVideoGpuDeviceRollover(
+        RemoteVideoGpuRolloverCause::CapacityExhausted);
+    if (capacity_rollover.device !=
+            RemoteVideoGpuDeviceDisposition::ReuseCurrent ||
+        capacity_rollover.overlapping_devices != 1 ||
+        capacity_rollover.overlapping_generations != 2 ||
+        !capacity_rollover.requires_multithread_protection) {
+      throw std::runtime_error(
+          "capacity rollover allocated another driver device owner");
+    }
+    const auto device_failure_rollover = decideRemoteVideoGpuDeviceRollover(
+        RemoteVideoGpuRolloverCause::DeviceFailure);
+    if (device_failure_rollover.device !=
+            RemoteVideoGpuDeviceDisposition::CreateFresh ||
+        device_failure_rollover.overlapping_devices != 2 ||
+        device_failure_rollover.overlapping_generations != 2) {
+      throw std::runtime_error(
+          "actual device failure reused the failed D3D owner");
     }
     ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;

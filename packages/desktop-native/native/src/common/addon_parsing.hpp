@@ -8,8 +8,10 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 #include "runtime_types.hpp"
+#include "native_message_bindings.hpp"
 
 namespace syrnike::desktop_native {
 
@@ -120,16 +122,274 @@ inline std::unordered_map<std::string, T> settingsMap(
   return result;
 }
 
+inline std::string_view mediaRuntimeTransportLane(
+  const NativeMessagePolicy<NativeCommandType>& policy
+) {
+  if (policy.lane == NativeMessageLane::VoiceControl) {
+    return "voice-control";
+  }
+  switch (policy.destination) {
+    case NativeMessageDestination::Runtime:
+      return "runtime";
+    case NativeMessageDestination::Voice:
+      return "voice";
+    case NativeMessageDestination::Microphone:
+      return "microphone";
+    case NativeMessageDestination::Screen:
+      return "screen";
+    case NativeMessageDestination::Camera:
+      return "camera";
+    case NativeMessageDestination::Query:
+      return "query";
+    case NativeMessageDestination::Hooks:
+    case NativeMessageDestination::Node:
+      break;
+  }
+  throw std::invalid_argument("command has no media runtime transport lane");
+}
+
+inline std::string_view trimContractShape(std::string_view value) noexcept {
+  while (!value.empty() && value.front() == ' ') value.remove_prefix(1);
+  while (!value.empty() && value.back() == ' ') value.remove_suffix(1);
+  return value;
+}
+
+inline std::vector<std::string_view> splitContractShape(
+  std::string_view value,
+  char delimiter
+) {
+  std::vector<std::string_view> parts;
+  std::size_t start = 0;
+  int braces = 0;
+  int brackets = 0;
+  int parentheses = 0;
+  bool quoted = false;
+  bool escaped = false;
+  for (std::size_t index = 0; index < value.size(); ++index) {
+    const char current = value[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (current == '\\') escaped = true;
+      else if (current == '"') quoted = false;
+      continue;
+    }
+    if (current == '"') quoted = true;
+    else if (current == '{') ++braces;
+    else if (current == '}') --braces;
+    else if (current == '[') ++brackets;
+    else if (current == ']') --brackets;
+    else if (current == '(') ++parentheses;
+    else if (current == ')') --parentheses;
+    else if (current == delimiter && braces == 0 && brackets == 0 &&
+             parentheses == 0) {
+      parts.push_back(trimContractShape(value.substr(start, index - start)));
+      start = index + 1;
+    }
+  }
+  parts.push_back(trimContractShape(value.substr(start)));
+  return parts;
+}
+
+inline std::size_t contractShapeColon(std::string_view value) noexcept {
+  int braces = 0;
+  int brackets = 0;
+  int parentheses = 0;
+  for (std::size_t index = 0; index < value.size(); ++index) {
+    const char current = value[index];
+    if (current == '{') ++braces;
+    else if (current == '}') --braces;
+    else if (current == '[') ++brackets;
+    else if (current == ']') --brackets;
+    else if (current == '(') ++parentheses;
+    else if (current == ')') --parentheses;
+    else if (current == ':' && braces == 0 && brackets == 0 &&
+             parentheses == 0) return index;
+  }
+  return std::string_view::npos;
+}
+
+inline bool validateNativeContractValue(
+  const Napi::Value& value,
+  std::string_view shape,
+  bool allow_command_envelope = false
+);
+
+inline bool validateNativeContractObject(
+  const Napi::Object& object,
+  std::string_view shape,
+  bool allow_command_envelope
+) {
+  if (shape.size() < 2 || shape.front() != '{' || shape.back() != '}') {
+    return false;
+  }
+  const auto fields = splitContractShape(shape.substr(1, shape.size() - 2), ',');
+  std::vector<std::string_view> declared;
+  std::optional<std::string_view> string_index;
+  for (const auto field : fields) {
+    if (field.empty()) continue;
+    const auto colon = contractShapeColon(field);
+    if (colon == std::string_view::npos) return false;
+    auto name = field.substr(0, colon);
+    const auto field_shape = field.substr(colon + 1);
+    if (name == "[string]") {
+      string_index = field_shape;
+      continue;
+    }
+    const bool optional = name.ends_with('?');
+    if (optional) name.remove_suffix(1);
+    declared.push_back(name);
+    const auto property = object.Get(std::string(name));
+    if (property.IsUndefined()) {
+      if (!optional) return false;
+      continue;
+    }
+    if (!validateNativeContractValue(property, field_shape)) return false;
+  }
+  const auto names = object.GetPropertyNames();
+  for (std::uint32_t index = 0; index < names.Length(); ++index) {
+    const auto key_value = names.Get(index);
+    if (!key_value.IsString()) return false;
+    const auto key = key_value.As<Napi::String>().Utf8Value();
+    const bool envelope = allow_command_envelope &&
+      (key == "requestId" || key == "lane" || key == "hostEpoch" ||
+       key == "diagnostic");
+    if (envelope) continue;
+    const bool known = std::find(declared.begin(), declared.end(), key) !=
+      declared.end();
+    if (known) continue;
+    if (!string_index ||
+        !validateNativeContractValue(object.Get(key), *string_index)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+inline bool validateNativeContractValue(
+  const Napi::Value& value,
+  std::string_view shape,
+  bool allow_command_envelope
+) {
+  shape = trimContractShape(shape);
+  for (const auto alternative : splitContractShape(shape, '|')) {
+    if (alternative != shape &&
+        validateNativeContractValue(value, alternative, allow_command_envelope)) {
+      return true;
+    }
+  }
+  if (splitContractShape(shape, '|').size() > 1) return false;
+  if (shape.starts_with('{')) {
+    return value.IsObject() && !value.IsArray() &&
+      validateNativeContractObject(
+        value.As<Napi::Object>(), shape, allow_command_envelope
+      );
+  }
+  if (shape.starts_with('[') && shape.ends_with(']')) {
+    if (!value.IsArray()) return false;
+    const auto array = value.As<Napi::Array>();
+    auto element_shape = trimContractShape(
+      shape.substr(1, shape.size() - 2)
+    );
+    if (element_shape.starts_with("...")) element_shape.remove_prefix(3);
+    for (std::uint32_t index = 0; index < array.Length(); ++index) {
+      if (!validateNativeContractValue(array.Get(index), element_shape)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (shape.starts_with("literal(") && shape.ends_with(')')) {
+    auto literal = shape.substr(8, shape.size() - 9);
+    if (literal == "true") return value.IsBoolean() &&
+      value.As<Napi::Boolean>().Value();
+    if (literal == "false") return value.IsBoolean() &&
+      !value.As<Napi::Boolean>().Value();
+    if (literal.size() >= 2 && literal.front() == '"' &&
+        literal.back() == '"') {
+      literal.remove_prefix(1);
+      literal.remove_suffix(1);
+      return value.IsString() &&
+        value.As<Napi::String>().Utf8Value() == literal;
+    }
+    if (!value.IsNumber()) return false;
+    try {
+      return value.As<Napi::Number>().DoubleValue() == std::stod(std::string(literal));
+    } catch (...) {
+      return false;
+    }
+  }
+  if (shape == "string" || shape == "template") return value.IsString();
+  if (shape == "number") return value.IsNumber();
+  if (shape == "boolean") return value.IsBoolean();
+  if (shape == "bigint") return value.IsBigInt();
+  if (shape == "null") return value.IsNull();
+  if (shape == "undefined") return value.IsUndefined();
+  if (shape == "object") return value.IsObject() && !value.IsNull();
+  if (shape.starts_with("declaration(")) return value.IsObject();
+  if (shape == "unknown" || shape == "any" || shape == "enum") return true;
+  if (shape == "never") return false;
+  return false;
+}
+
+inline void requireNativeContractShape(
+  const Napi::Object& object,
+  NativeMessageSchema schema,
+  bool allow_command_envelope
+) {
+  const auto* contract = nativeExternalFieldShape(schema);
+  if (!contract || !validateNativeContractValue(
+        object, contract->shape, allow_command_envelope
+      )) {
+    throw std::invalid_argument("native message does not match its Effect Schema shape");
+  }
+}
+
 inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   MediaCommand command;
-  command.type = stringField(object, "type");
+  const auto wire_type = stringField(object, "type");
+  const auto parsed_type = parseNativeCommandType(wire_type);
+  if (!parsed_type) {
+    throw std::invalid_argument(
+      "command.type is absent from the typed native policy"
+    );
+  }
+  command.type = *parsed_type;
+  const auto native_type = command.type;
+  const auto& policy = nativeCommandPolicy(native_type);
+  if (nativeCommandTypeForSchema(policy.schema) != native_type ||
+      nativeCommandTypeForAction(policy.action) != native_type) {
+    throw std::invalid_argument(
+      "command.type has no concrete schema or dispatch binding"
+    );
+  }
+  if (policy.visibility !=
+        NativeMessageVisibility::External ||
+      policy.destination ==
+        NativeMessageDestination::Hooks) {
+    throw std::invalid_argument("command.type is not supported by the media runtime");
+  }
+  requireNativeContractShape(object, policy.schema, true);
   command.request_id = stringField(object, "requestId");
+  command.transport_lane = stringField(object, "lane");
+  const auto expected_lane = mediaRuntimeTransportLane(policy);
+  if (command.transport_lane != expected_lane) {
+    throw std::invalid_argument("command lane does not match the typed native policy");
+  }
+  command.diagnostic_host_epoch = uint64Field(object, "hostEpoch");
+  if (command.diagnostic_host_epoch == 0) {
+    throw std::invalid_argument("hostEpoch is required");
+  }
   const auto diagnostic_value = object.Get("diagnostic");
   if (diagnostic_value.IsObject()) {
     const auto diagnostic = diagnostic_value.As<Napi::Object>();
     command.diagnostic_action_id = stringField(diagnostic, "actionId");
     command.diagnostic_operation_id = stringField(diagnostic, "operationId");
-    command.diagnostic_host_epoch = uint64Field(diagnostic, "hostEpoch");
+    const auto diagnostic_host_epoch = uint64Field(diagnostic, "hostEpoch");
+    if (diagnostic_host_epoch != command.diagnostic_host_epoch) {
+      throw std::invalid_argument(
+        "diagnostic hostEpoch does not match the utility host epoch"
+      );
+    }
     if (hasField(diagnostic, "revision")) {
       command.diagnostic_revision = uint64Field(diagnostic, "revision");
     }
@@ -152,7 +412,11 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   if (command.device_id.empty()) command.device_id = stringField(object, "deviceId");
   command.device_kind = stringField(object, "kind");
   command.source_id = stringField(settings, "sourceId");
-  if (command.type == "connectVoice") {
+  if (command.source_id.empty()) command.source_id = stringField(object, "sourceId");
+  command.display_source_action = stringField(object, "action");
+  command.display_enumeration_id = stringField(object, "enumerationId");
+  command.display_page = uint64Field(object, "page");
+  if (command.type == NativeCommandType::ConnectVoice) {
     command.livekit_url = nestedStringField(settings, "livekit", "url");
     command.livekit_token = nestedStringField(settings, "livekit", "token");
     command.participant_identity = nestedStringField(
@@ -168,9 +432,9 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   }
   command.track_id = stringField(object, "trackId");
   if (
-    command.type == "releaseRemoteVideoFrame" ||
-    command.type == "releaseLocalScreenPreviewFrame" ||
-    command.type == "releaseLocalCameraPreviewFrame"
+    command.type == NativeCommandType::ReleaseRemoteVideoFrame ||
+    command.type == NativeCommandType::ReleaseLocalScreenPreviewFrame ||
+    command.type == NativeCommandType::ReleaseLocalCameraPreviewFrame
   ) {
     if (command.track_id.empty()) {
       throw std::invalid_argument("trackId is required for frame release");
@@ -225,10 +489,11 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   command.force = boolField(object, "force", false);
   command.demanded = boolField(object, "demanded", true);
   command.terminal = boolField(object, "terminal", false);
-  if (command.type == "retryRemoteVideo") {
+  if (command.type == NativeCommandType::RetryRemoteVideo ||
+      command.type == NativeCommandType::RetryLocalCameraPreview) {
     command.internal_message = stringField(object, "reason");
   }
-  if (command.type == "configureRemoteAudio") {
+  if (command.type == NativeCommandType::ConfigureRemoteAudio) {
     const auto remote_value = object.Get("settings");
     if (!remote_value.IsObject()) throw std::invalid_argument("settings is required");
     const auto remote = remote_value.As<Napi::Object>();
@@ -254,7 +519,6 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
     command.has_muted = command.has_muted || hasField(settings, "muted");
   }
 
-  if (command.type.empty()) throw std::invalid_argument("command.type is required");
   if (command.request_id.empty()) throw std::invalid_argument("command.requestId is required");
   if (command.request_id.size() > 256) throw std::invalid_argument("requestId is too long");
   if (command.diagnostic_action_id.size() > 128) {
@@ -305,10 +569,32 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
 
 inline HooksCommand parseHooksCommand(const Napi::Object& object) {
   HooksCommand command;
-  command.type = stringField(object, "type");
+  const auto wire_type = stringField(object, "type");
+  const auto parsed_type = parseNativeCommandType(wire_type);
+  if (!parsed_type) {
+    throw std::invalid_argument(
+      "command.type is absent from the typed native policy"
+    );
+  }
+  command.type = *parsed_type;
   command.request_id = stringField(object, "requestId");
-  if (command.type.empty()) throw std::invalid_argument("command.type is required");
   if (command.request_id.empty()) throw std::invalid_argument("command.requestId is required");
+  const auto native_type = command.type;
+  const auto& policy = nativeCommandPolicy(native_type);
+  if (nativeCommandTypeForSchema(policy.schema) != native_type ||
+      nativeCommandTypeForAction(policy.action) != native_type) {
+    throw std::invalid_argument(
+      "command.type has no concrete schema or dispatch binding"
+    );
+  }
+  if (policy.visibility !=
+        NativeMessageVisibility::External ||
+      (policy.destination !=
+         NativeMessageDestination::Hooks &&
+       native_type != NativeCommandType::Shutdown)) {
+    throw std::invalid_argument("command.type is not supported by the hooks runtime");
+  }
+  requireNativeContractShape(object, policy.schema, true);
   return command;
 }
 

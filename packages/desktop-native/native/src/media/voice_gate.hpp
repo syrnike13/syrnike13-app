@@ -1,6 +1,7 @@
 #pragma once
 
-#include <deque>
+#include <array>
+#include <cstddef>
 #include <span>
 #include <vector>
 
@@ -47,8 +48,16 @@ private:
   int transition_samples_remaining_ = 0;
   int below_close_ms_ = 0;
   float noise_floor_db_ = -36.0f;
-  std::vector<float> quiet_history_;
-  std::deque<std::vector<float>> lookahead_frames_;
+  static constexpr std::size_t kQuietHistoryCapacity = 200;
+  std::array<float, kQuietHistoryCapacity> quiet_history_{};
+  std::array<float, kQuietHistoryCapacity> quiet_percentile_scratch_{};
+  std::size_t quiet_history_size_ = 0;
+  std::size_t quiet_history_next_ = 0;
+  std::size_t quiet_percentile_countdown_ = 0;
+  std::vector<std::vector<float>> lookahead_storage_;
+  std::size_t lookahead_write_ = 0;
+  std::size_t lookahead_queued_ = 0;
+  std::size_t lookahead_frame_samples_ = 0;
 
   float effectiveThresholdDb() const;
   int frameDurationMs(std::span<float> samples) const;
@@ -58,7 +67,7 @@ private:
   void resetGateState(bool open);
   void resetAdaptiveState();
   void updateNoiseFloor(float input_db, bool quiet);
-  std::vector<float> delayedOutputFrame(std::span<float> samples);
+  void applyDelayedGate(std::span<float> samples);
 };
 
 }  // namespace syrnike::voice

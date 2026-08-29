@@ -3,12 +3,45 @@ import { describe, expect, it } from 'vitest'
 import {
   isNativeRuntimeCommand,
   isNativeRuntimeEvent,
+  isNativeRuntimeRequest,
   isUncorrelatedNativeRuntimeReply,
+  nativeRuntimeCommandLane,
   redactSensitiveText,
   sanitizeRuntimeError,
 } from './contract'
 
 describe('native runtime error privacy', () => {
+  it('requires a command-derived supervision lane and exact host epoch', () => {
+    const command = {
+      type: 'releaseRemoteVideoFrame' as const,
+      sessionId: 'voice',
+      generation: 3,
+      trackId: 'remote-camera',
+      sequence: 7,
+    }
+    expect(nativeRuntimeCommandLane(command)).toBe('voice-control')
+    expect(isNativeRuntimeRequest({
+      type: 'request',
+      requestId: 'release-1',
+      lane: 'voice-control',
+      hostEpoch: 4,
+      command,
+    })).toBe(true)
+    expect(isNativeRuntimeRequest({
+      type: 'request',
+      requestId: 'release-1',
+      lane: 'voice',
+      hostEpoch: 4,
+      command,
+    })).toBe(false)
+    expect(isNativeRuntimeRequest({
+      type: 'request',
+      requestId: 'release-1',
+      lane: 'voice-control',
+      command,
+    })).toBe(false)
+  })
+
   it('classifies a requestless native failure reply as uncorrelated', () => {
     expect(
       isUncorrelatedNativeRuntimeReply({
@@ -132,6 +165,8 @@ describe('native screen capture telemetry validation', () => {
       sessionId: 'screen-session',
       methods: { wgc_gpu: 0, dxgi_gpu: 120 },
       activeMethod: 'dxgi_gpu',
+      audioBacklogPackets: 7,
+      audioDiscontinuities: 2,
       videoGpuPoolSlotsAvailable: 4,
       videoGpuPoolSlotsTotal: 5,
       videoDxgiDuplicationHoldUsMax: 2_400,
@@ -264,6 +299,28 @@ describe('native voice RTC telemetry validation', () => {
       },
     })).toBe(false)
   })
+
+  it('accepts a generation-fenced screen audio lifecycle', () => {
+    expect(isNativeRuntimeEvent({
+      type: 'sessionLifecycle',
+      sequence: 3,
+      sessionId: 'screen-session',
+      generation: 9,
+      kind: 'screen_audio',
+      state: {
+        status: 'error',
+        sessionId: 'screen-session',
+        message: 'The loopback endpoint was removed',
+      },
+      error: {
+        code: 'audio_device_lost',
+        message: 'The loopback endpoint was removed',
+        retryable: true,
+        sessionId: 'screen-session',
+        generation: 9,
+      },
+    })).toBe(true)
+  })
 })
 
 describe('native runtime command validation', () => {
@@ -312,9 +369,24 @@ describe('native runtime command validation', () => {
     expect(
       isNativeRuntimeCommand({
         type: 'listDisplaySources',
+        action: 'metadata',
+        enumerationId: 'picker-1',
+        page: 0,
         selfWindowHwnd: '18446744073709551615',
       }),
     ).toBe(true)
+    expect(isNativeRuntimeCommand({
+      type: 'listDisplaySources',
+      action: 'thumbnail',
+      enumerationId: 'picker-1',
+      sourceId: 'window:42',
+      selfWindowHwnd: '42',
+    })).toBe(true)
+    expect(isNativeRuntimeCommand({
+      type: 'listDisplaySources',
+      action: 'cancel',
+      enumerationId: 'picker-1',
+    })).toBe(true)
   })
 
   it('rejects missing track publication identity and overflowing Windows identifiers', () => {
@@ -341,9 +413,21 @@ describe('native runtime command validation', () => {
     expect(
       isNativeRuntimeCommand({
         type: 'listDisplaySources',
+        action: 'metadata',
+        enumerationId: 'picker-1',
+        page: 0,
         selfWindowHwnd: '18446744073709551616',
       }),
     ).toBe(false)
+    expect(isNativeRuntimeCommand({
+      type: 'listDisplaySources',
+      selfWindowHwnd: '42',
+    })).toBe(false)
+    expect(isNativeRuntimeCommand({
+      type: 'listDisplaySources',
+      action: 'thumbnail',
+      enumerationId: 'picker-1',
+    })).toBe(false)
   })
 
   it('requires RAW bypass and AGC flags in microphone pipeline commands', () => {
@@ -466,6 +550,24 @@ describe('native runtime command validation', () => {
   })
 
   it('validates local camera preview frames, releases, failures, and removal', () => {
+    expect(isNativeRuntimeCommand({
+      type: 'setLocalCameraPreviewDemand',
+      sessionId: 'voice-session',
+      generation: 5,
+      demanded: true,
+    })).toBe(true)
+    expect(isNativeRuntimeCommand({
+      type: 'retryLocalCameraPreview',
+      sessionId: 'voice-session',
+      generation: 5,
+      reason: 'renderer_presentation_stall',
+    })).toBe(true)
+    expect(isNativeRuntimeCommand({
+      type: 'retryLocalCameraPreview',
+      sessionId: 'voice-session',
+      generation: 5,
+      reason: '',
+    })).toBe(false)
     expect(isNativeRuntimeCommand({
       type: 'releaseLocalCameraPreviewFrame',
       sessionId: 'voice-session',

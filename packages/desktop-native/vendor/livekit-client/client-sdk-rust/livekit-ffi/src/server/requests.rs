@@ -1059,9 +1059,7 @@ fn on_apm_apply_config(
         request.high_pass_filter_enabled,
         request.noise_suppression_enabled,
     ) {
-        return Ok(proto::ApmApplyConfigResponse {
-            error: Some(error.to_string()),
-        });
+        return Ok(proto::ApmApplyConfigResponse { error: Some(error.to_string()) });
     }
     Ok(proto::ApmApplyConfigResponse { error: None })
 }

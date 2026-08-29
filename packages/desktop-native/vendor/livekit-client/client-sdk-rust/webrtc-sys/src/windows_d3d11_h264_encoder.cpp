@@ -36,6 +36,8 @@
 #include "media/base/codec.h"
 #include "modules/video_coding/include/video_codec_interface.h"
 #include "modules/video_coding/include/video_error_codes.h"
+#include "livekit/video_frame_buffer.h"
+#include "h264_annex_b.h"
 
 namespace livekit_ffi {
 using Microsoft::WRL::ComPtr;
@@ -43,6 +45,65 @@ using Microsoft::WRL::ComPtr;
 namespace {
 
 constexpr uint64_t kScreenShareBitrateHeadroomPercent = 30;
+
+struct H264ParameterSetCache {
+  std::vector<uint8_t> sps;
+  std::vector<uint8_t> pps;
+};
+
+bool EnsureH264KeyframeParameterSets(const uint8_t* data,
+                                     size_t size,
+                                     H264ParameterSetCache& cache,
+                                     std::vector<uint8_t>& repaired) {
+  repaired.clear();
+  bool has_sps_before_idr = false;
+  bool has_pps_before_idr = false;
+  bool has_idr = false;
+  size_t first_vcl = size;
+  h264::AnnexBNaluIterator nalus(data, size);
+  while (const auto nalu = nalus.Next()) {
+    if (nalu->payload >= nalu->end) continue;
+    const uint8_t type = data[nalu->payload] & 0x1f;
+    if (type >= 1 && type <= 5 && first_vcl == size) {
+      first_vcl = nalu->start;
+    }
+    if (type == 5) has_idr = true;
+    if (type == 7) {
+      if (!has_idr) has_sps_before_idr = true;
+      cache.sps.assign(data + nalu->start, data + nalu->end);
+    } else if (type == 8) {
+      if (!has_idr) has_pps_before_idr = true;
+      cache.pps.assign(data + nalu->start, data + nalu->end);
+    }
+  }
+  if (!has_idr) return false;
+  if (has_sps_before_idr && has_pps_before_idr) return true;
+  if ((!has_sps_before_idr && cache.sps.empty()) ||
+      (!has_pps_before_idr && cache.pps.empty())) {
+    return false;
+  }
+
+  repaired.reserve(size + (has_sps_before_idr ? 0 : cache.sps.size()) +
+                   (has_pps_before_idr ? 0 : cache.pps.size()));
+  repaired.insert(repaired.end(), data, data + first_vcl);
+  if (!has_sps_before_idr) {
+    repaired.insert(repaired.end(), cache.sps.begin(), cache.sps.end());
+  }
+  if (!has_pps_before_idr) {
+    repaired.insert(repaired.end(), cache.pps.begin(), cache.pps.end());
+  }
+  repaired.insert(repaired.end(), data + first_vcl, data + size);
+  return true;
+}
+
+bool MergeKeyframeIntent(bool pending, bool requested, bool superseded) {
+  return pending || requested || superseded;
+}
+
+bool IsD3D11EncoderInput(
+    const webrtc::scoped_refptr<webrtc::VideoFrameBuffer>& buffer) {
+  return buffer && buffer->type() == webrtc::VideoFrameBuffer::Type::kNative;
+}
 
 UINT32 ScreenShareEncoderBitrate(uint64_t target_bitrate_bps,
                                  uint64_t max_bitrate_bps) {
@@ -308,6 +369,10 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
     std::lock_guard lock(mutex_);
     width_ = codec->width;
     height_ = codec->height;
+    parameter_set_cache_.sps.reserve(256);
+    parameter_set_cache_.pps.reserve(256);
+    repaired_keyframe_.reserve(
+        static_cast<size_t>(width_) * static_cast<size_t>(height_) * 3 / 2);
     fps_ = std::max<UINT32>(1, codec->maxFramerate);
     max_bitrate_bps_ = codec->maxBitrate > 0
                            ? static_cast<uint64_t>(codec->maxBitrate) * 1000
@@ -363,8 +428,15 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
   int32_t Encode(
       const webrtc::VideoFrame& frame,
       const std::vector<webrtc::VideoFrameType>* frame_types) override {
-    auto* native = dynamic_cast<D3D11TextureFrameBuffer*>(
-        frame.video_frame_buffer().get());
+    const auto& buffer = frame.video_frame_buffer();
+    if (!IsD3D11EncoderInput(buffer))
+      return WEBRTC_VIDEO_CODEC_ERR_PARAMETER;
+
+    // This backend is created only for NativeVideoSource::D3D11Hardware,
+    // whose native buffer contract is D3D11TextureFrameBuffer. Avoid RTTI here:
+    // some WebRTC buffer implementations are built without compatible RTTI,
+    // and dynamic_cast can fail-fast instead of returning nullptr.
+    auto* native = static_cast<D3D11TextureFrameBuffer*>(buffer.get());
     std::unique_lock lock(mutex_);
     if (!callback_)
       return WEBRTC_VIDEO_CODEC_UNINITIALIZED;
@@ -392,7 +464,8 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
     // PLI/FIR intent must survive queue pressure. Raw input frames are
     // latest-wins, but a keyframe request is transferred to the newest queued
     // frame until an input carrying it is accepted by the MFT.
-    keyframe_pending_ = keyframe_pending_ || keyframe_requested;
+    keyframe_pending_ =
+        MergeKeyframeIntent(keyframe_pending_, keyframe_requested, false);
     bool keyframe = keyframe_pending_;
 
     ComPtr<ID3D11Texture2D> texture;
@@ -459,7 +532,7 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
       input_jobs_.pop_front();
       // If the stale job carried the pending IDR, move that intent to the
       // newest visual state rather than sending an obsolete keyframe.
-      keyframe = keyframe || superseded.keyframe;
+      keyframe = MergeKeyframeIntent(false, keyframe, superseded.keyframe);
       if (superseded.lease)
         superseded.lease->Complete();
       TraceEncoder(
@@ -812,8 +885,23 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
         ReleaseOutputBuffer(output, sample.Get());
         return E_FAIL;
       }
+      UINT32 clean = FALSE;
+      actual->GetUINT32(MFSampleExtension_CleanPoint, &clean);
+      if (clean && !EnsureH264KeyframeParameterSets(
+                       bytes, length, parameter_set_cache_,
+                       repaired_keyframe_)) {
+        TraceEncoder("KeyframeMissingParameterSets", E_FAIL, length);
+        contiguous->Unlock();
+        ReleaseOutputBuffer(output, sample.Get());
+        return E_FAIL;
+      }
       webrtc::EncodedImage image;
-      image.SetEncodedData(webrtc::EncodedImageBuffer::Create(bytes, length));
+      if (repaired_keyframe_.empty()) {
+        image.SetEncodedData(webrtc::EncodedImageBuffer::Create(bytes, length));
+      } else {
+        image.SetEncodedData(webrtc::EncodedImageBuffer::Create(
+            repaired_keyframe_.data(), repaired_keyframe_.size()));
+      }
       contiguous->Unlock();
       image.SetRtpTimestamp(rtp_timestamp);
       image.SetSimulcastIndex(0);
@@ -824,8 +912,6 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
       image.timing_.flags = webrtc::VideoSendTiming::kInvalid;
       image._encodedWidth = width_;
       image._encodedHeight = height_;
-      UINT32 clean = FALSE;
-      actual->GetUINT32(MFSampleExtension_CleanPoint, &clean);
       image.SetFrameType(clean ? webrtc::VideoFrameType::kVideoFrameKey
                                : webrtc::VideoFrameType::kVideoFrameDelta);
       webrtc::CodecSpecificInfo codec_info;
@@ -1155,6 +1241,8 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
       MFShutdown();
     mf_started_ = false;
     asynchronous_ = FALSE;
+    parameter_set_cache_ = {};
+    repaired_keyframe_ = {};
   }
 
   // Keep the pre-MFT queue smaller than the screen capture texture pool. If
@@ -1189,6 +1277,8 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
   bool failed_ = false;
   bool rates_dirty_ = false;
   bool keyframe_pending_ = false;
+  H264ParameterSetCache parameter_set_cache_;
+  std::vector<uint8_t> repaired_keyframe_;
   std::uint64_t superseded_input_count_ = 0;
   std::deque<InputJob> input_jobs_;
   std::deque<PendingOutput> pending_outputs_;
@@ -1362,6 +1452,38 @@ bool IsWindowsD3D11HardwareH264Supported() {
     return found;
   }();
   return supported;
+}
+
+bool windows_d3d11_h264_accepts_buffer_for_test(
+    const VideoFrameBuffer& buffer) {
+  return IsD3D11EncoderInput(buffer.get());
+}
+
+rust::Vec<uint8_t> windows_d3d11_h264_repair_keyframe_for_test(
+    rust::Slice<const uint8_t> initial_keyframe,
+    rust::Slice<const uint8_t> forced_keyframe) {
+  H264ParameterSetCache cache;
+  std::vector<uint8_t> ignored;
+  EnsureH264KeyframeParameterSets(initial_keyframe.data(),
+                                  initial_keyframe.size(), cache, ignored);
+  std::vector<uint8_t> repaired;
+  EnsureH264KeyframeParameterSets(forced_keyframe.data(),
+                                  forced_keyframe.size(), cache, repaired);
+  const uint8_t* output = repaired.empty() ? forced_keyframe.data()
+                                           : repaired.data();
+  const size_t output_size =
+      repaired.empty() ? forced_keyframe.size() : repaired.size();
+  rust::Vec<uint8_t> result;
+  result.reserve(output_size);
+  for (size_t i = 0; i < output_size; ++i) result.push_back(output[i]);
+  return result;
+}
+
+bool windows_d3d11_h264_merge_keyframe_intent_for_test(
+    bool pending,
+    bool requested,
+    bool superseded) {
+  return MergeKeyframeIntent(pending, requested, superseded);
 }
 
 std::unique_ptr<webrtc::VideoEncoderFactory>

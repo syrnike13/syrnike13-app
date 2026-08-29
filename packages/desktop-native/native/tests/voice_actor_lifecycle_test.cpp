@@ -2,14 +2,17 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <deque>
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "common/cleanup_supervisor.hpp"
 #include "common/event_sink.hpp"
 #include "common/sequenced_emitter.hpp"
 #include "media/livekit_voice_session.hpp"
@@ -40,7 +43,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     std::unique_lock lock(mutex_);
     return changed_.wait_for(lock, timeout, [&] {
       for (const auto& event : events_) {
-        if (event.type == "reply" && event.request_id == request_id && event.ok) return true;
+        if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id && event.ok) return true;
       }
       return false;
     });
@@ -50,7 +53,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     std::unique_lock lock(mutex_);
     return changed_.wait_for(lock, timeout, [&] {
       for (const auto& event : events_) {
-        if (event.type == "reply" && event.request_id == request_id && !event.ok) return true;
+        if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id && !event.ok) return true;
       }
       return false;
     });
@@ -62,7 +65,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
       events_.begin(),
       events_.end(),
       [&](const auto& event) {
-        return event.type == "reply" && event.request_id == request_id;
+        return event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id;
       }
     ));
   }
@@ -94,12 +97,12 @@ bool waitUntil(Predicate predicate, std::chrono::milliseconds timeout) {
 }
 
 syrnike::desktop_native::MediaCommand voiceCommand(
-  std::string type,
+  syrnike::desktop_native::NativeCommandType type,
   std::string request_id,
   std::uint64_t generation
 ) {
   syrnike::desktop_native::MediaCommand command;
-  command.type = std::move(type);
+  command.type = type;
   command.request_id = std::move(request_id);
   command.session_id = "voice-session";
   command.generation = generation;
@@ -152,29 +155,28 @@ int main() try {
   auto launcher_sink = std::make_shared<CollectingSink>();
   syrnike::desktop_native::SequencedEmitter launcher_emitter(launcher_sink);
   auto launcher_client = std::make_shared<Client>();
-  require(
-    launcher_client->connectVoice(
-      "launcher-failure",
-      1,
-      "wss://livekit.example",
-      "token",
-      {}
-    ),
-    "voice launcher test did not establish its Room"
-  );
   std::atomic_int voice_launch_attempts{0};
   std::atomic_int voice_enqueue_attempts{0};
+  std::mutex launcher_post_mutex;
+  std::condition_variable launcher_post_changed;
+  std::optional<syrnike::desktop_native::MediaCommand> launcher_completion;
   {
     syrnike::desktop_native::media::VoiceActor launcher_actor(
       launcher_emitter,
-      [](syrnike::desktop_native::MediaCommand) { return true; },
+      [&](syrnike::desktop_native::MediaCommand command) {
+        {
+          std::lock_guard lock(launcher_post_mutex);
+          launcher_completion = std::move(command);
+        }
+        launcher_post_changed.notify_all();
+        return true;
+      },
       [](const std::string&, std::uint64_t) { return true; },
       launcher_client,
-      [&](syrnike::desktop_native::AsyncCleanupTask task) -> std::thread {
+      [&] {
         if (voice_launch_attempts.fetch_add(1) == 0) {
           throw std::runtime_error("injected voice cleanup launch failure");
         }
-        return std::thread(std::move(task));
       },
       [&] {
         if (voice_enqueue_attempts.fetch_add(1) == 0) {
@@ -182,6 +184,28 @@ int main() try {
         }
       }
     );
+    auto launcher_connect = voiceCommand(
+      syrnike::desktop_native::NativeCommandType::ConnectVoice,
+      "launcher-connect",
+      1
+    );
+    launcher_connect.session_id = "launcher-failure";
+    launcher_actor.connect(launcher_connect);
+    {
+      std::unique_lock lock(launcher_post_mutex);
+      require(
+        launcher_post_changed.wait_for(
+          lock,
+          std::chrono::seconds(1),
+          [&] { return launcher_completion.has_value(); }
+        ),
+        "voice launcher test did not finish its owned Room connection"
+      );
+      auto completion = std::move(*launcher_completion);
+      launcher_completion.reset();
+      lock.unlock();
+      launcher_actor.handleWorkerCommand(completion);
+    }
     const auto launcher_shutdown_started = std::chrono::steady_clock::now();
     launcher_actor.shutdown();
     require(
@@ -193,7 +217,11 @@ int main() try {
       waitUntil(
         [&] {
           return launcher_client->disconnectCallCount() == 1 &&
-            !launcher_client->isVoiceConnected();
+            !syrnike::desktop_native::media::requireSessionPortValue(
+              launcher_client->lifecycle().status(
+                syrnike::desktop_native::media::SessionPortCall::current()
+              )
+            );
         },
         std::chrono::seconds(1)
       ),
@@ -207,119 +235,285 @@ int main() try {
     "voice cleanup enqueue/launcher failure lost or duplicated disconnect"
   );
 
-  struct BlockedCleanupOwner {
-    std::atomic_int* started;
-    std::atomic_int* exited;
-    std::atomic_bool* release;
-  };
-  constexpr int hung_cleanup_count = 65;
-  std::atomic_int hung_cleanup_started{0};
-  std::atomic_int hung_cleanup_exited{0};
-  std::atomic_bool release_hung_cleanup{false};
-  std::vector<std::shared_ptr<syrnike::desktop_native::AsyncCleanupNode>>
-    hung_cleanup_nodes;
-  std::vector<std::shared_ptr<BlockedCleanupOwner>> hung_cleanup_owners;
-  hung_cleanup_nodes.reserve(hung_cleanup_count);
-  hung_cleanup_owners.reserve(hung_cleanup_count);
-  for (int index = 0; index < hung_cleanup_count; ++index) {
-    auto node =
-      std::make_shared<syrnike::desktop_native::AsyncCleanupNode>();
-    auto owner = std::make_shared<BlockedCleanupOwner>(
-      BlockedCleanupOwner{
-        &hung_cleanup_started,
-        &hung_cleanup_exited,
-        &release_hung_cleanup,
-      }
+  {
+    const auto cleanup_before_exact =
+      syrnike::desktop_native::CleanupSupervisor::instance().snapshot();
+    auto exact_sink = std::make_shared<CollectingSink>();
+    syrnike::desktop_native::SequencedEmitter exact_emitter(exact_sink);
+    auto exact_client = std::make_shared<Client>();
+    std::mutex completion_mutex;
+    std::condition_variable completion_changed;
+    std::deque<syrnike::desktop_native::MediaCommand> completions;
+    syrnike::desktop_native::media::VoiceActor exact_actor(
+      exact_emitter,
+      [&](syrnike::desktop_native::MediaCommand command) {
+        {
+          std::lock_guard lock(completion_mutex);
+          completions.push_back(std::move(command));
+        }
+        completion_changed.notify_all();
+        return true;
+      },
+      [](const std::string&, std::uint64_t) { return true; },
+      exact_client
     );
-    node->prepare(
-      owner,
-      [](void* value) noexcept {
-        auto* blocked = static_cast<BlockedCleanupOwner*>(value);
-        blocked->started->fetch_add(1);
-        while (!blocked->release->load()) std::this_thread::yield();
-        blocked->exited->fetch_add(1);
-      }
+    const auto take_completion = [&] {
+      std::unique_lock lock(completion_mutex);
+      require(
+        completion_changed.wait_for(
+          lock, std::chrono::seconds(1), [&] { return !completions.empty(); }
+        ),
+        "exact-owner voice completion was not posted"
+      );
+      auto command = std::move(completions.front());
+      completions.pop_front();
+      return command;
+    };
+
+    exact_client->setBlocked(Client::Operation::Connect, true);
+    auto equal_a = voiceCommand(
+      syrnike::desktop_native::NativeCommandType::ConnectVoice,
+      "equal-owner-a",
+      70
     );
-    hung_cleanup_nodes.push_back(node);
-    hung_cleanup_owners.push_back(std::move(owner));
+    exact_actor.connect(equal_a);
+    exact_client->waitUntilPending(Client::Operation::Connect, 1);
+    Client::Release failed_a;
+    failed_a.error_message = "injected old equal-generation failure";
+    exact_client->releaseNext(Client::Operation::Connect, std::move(failed_a));
+    auto completion_a = take_completion();
+
+    exact_client->setBlocked(Client::Operation::Connect, false);
+    auto equal_b = equal_a;
+    equal_b.request_id = "equal-owner-b";
+    exact_actor.connect(equal_b);
+    auto completion_b = take_completion();
+    require(
+      completion_a.internal_epoch != 0 &&
+        completion_b.internal_epoch != 0 &&
+        completion_a.internal_epoch != completion_b.internal_epoch,
+      "equal-generation voice completions did not carry exact owner tokens"
+    );
+    exact_actor.handleWorkerCommand(completion_a);
+    exact_actor.handleWorkerCommand(completion_b);
+    require(
+      exact_sink->waitReply("equal-owner-b", std::chrono::seconds(1)),
+      "old equal-generation failure consumed the replacement completion"
+    );
+
+    auto transferred = equal_b;
+    transferred.request_id = "equal-owner-transfer";
+    exact_actor.connect(transferred);
+    auto transferred_completion = take_completion();
+    require(
+      transferred_completion.internal_epoch != completion_b.internal_epoch,
+      "same-generation reconnect reused its previous exact owner token"
+    );
+    exact_actor.handleWorkerCommand(transferred_completion);
+    require(
+      waitUntil(
+        [&] {
+          const auto status = exact_client->lifecycle().status(
+            syrnike::desktop_native::media::SessionPortCall::current()
+          );
+          return !status.hasError() && status.value().value &&
+            status.value().epoch.owner_token ==
+              transferred_completion.internal_epoch;
+        },
+        std::chrono::seconds(1)
+      ),
+      "old cleanup retired the atomically transferred Room owner"
+    );
+
+    auto deadline_edge = transferred;
+    deadline_edge.request_id = "deadline-edge-owner";
+    exact_actor.connect(deadline_edge);
+    auto deadline_completion = take_completion();
+    deadline_completion.internal_message =
+      "LiveKit voice connection deadline expired";
+    deadline_completion.video_source = "native_operation_timeout";
+    exact_actor.handleWorkerCommand(deadline_completion);
+    require(
+      waitUntil(
+        [&] {
+          return !syrnike::desktop_native::media::requireSessionPortValue(
+            exact_client->lifecycle().status(
+              syrnike::desktop_native::media::SessionPortCall::current()
+            )
+          );
+        },
+        std::chrono::seconds(1)
+      ),
+      "deadline-edge failure left its committed exact Room owner connected"
+    );
+    exact_actor.shutdown();
+    require(
+      waitUntil(
+        [&] {
+          return syrnike::desktop_native::CleanupSupervisor::instance()
+            .snapshot().owned_jobs == cleanup_before_exact.owned_jobs;
+        },
+        std::chrono::seconds(1)
+      ),
+      "exact-owner completion cleanup retained a supervised job"
+    );
   }
-  const auto saturation_submit_started = std::chrono::steady_clock::now();
-  for (const auto& node : hung_cleanup_nodes) {
-    syrnike::desktop_native::AsyncCleanupDispatcher::instance().submit(node);
+
+  {
+    const auto cleanup_before_noncooperative =
+      syrnike::desktop_native::CleanupSupervisor::instance().snapshot();
+    auto blocked_lane_sink = std::make_shared<CollectingSink>();
+    syrnike::desktop_native::SequencedEmitter blocked_lane_emitter(
+      blocked_lane_sink
+    );
+    auto blocked_lane_client = std::make_shared<Client>();
+    blocked_lane_client->setBlocked(Client::Operation::Connect, true);
+    blocked_lane_client->setCancelPendingConnectOnDisconnect(false);
+    syrnike::desktop_native::media::VoiceActor blocked_lane_actor(
+      blocked_lane_emitter,
+      [](syrnike::desktop_native::MediaCommand) { return true; },
+      [](const std::string&, std::uint64_t) { return true; },
+      blocked_lane_client
+    );
+    auto blocked_a = voiceCommand(
+      syrnike::desktop_native::NativeCommandType::ConnectVoice,
+      "noncooperative-a",
+      80
+    );
+    blocked_lane_actor.connect(blocked_a);
+    blocked_lane_client->waitUntilPending(Client::Operation::Connect, 1);
+
+    auto blocked_b = blocked_a;
+    blocked_b.request_id = "noncooperative-b";
+    blocked_b.generation = 81;
+    const auto supersede_started = std::chrono::steady_clock::now();
+    blocked_lane_actor.connect(blocked_b);
+    require(
+      std::chrono::steady_clock::now() - supersede_started <
+        std::chrono::milliseconds(250),
+      "non-cooperative connect blocked superseding voice control"
+    );
+    blocked_lane_client->waitUntilPending(Client::Operation::Connect, 2);
+
+    auto blocked_disconnect = blocked_b;
+    blocked_disconnect.type =
+      syrnike::desktop_native::NativeCommandType::DisconnectVoice;
+    blocked_disconnect.request_id = "noncooperative-disconnect";
+    const auto disconnect_started = std::chrono::steady_clock::now();
+    blocked_lane_actor.disconnect(blocked_disconnect, true);
+    require(
+      std::chrono::steady_clock::now() - disconnect_started <
+          std::chrono::milliseconds(250) &&
+        blocked_lane_sink->waitReply(
+          "noncooperative-disconnect", std::chrono::milliseconds(250)
+        ),
+      "non-cooperative connect blocked disconnect on the voice lane"
+    );
+
+    Client::Release cancelled_connect;
+    cancelled_connect.bool_result = false;
+    blocked_lane_client->releaseNext(
+      Client::Operation::Connect, cancelled_connect
+    );
+    blocked_lane_client->releaseNext(
+      Client::Operation::Connect, std::move(cancelled_connect)
+    );
+    require(
+      waitUntil(
+        [&] {
+          return blocked_lane_client->pending(Client::Operation::Connect) == 0 &&
+            syrnike::desktop_native::CleanupSupervisor::instance()
+              .snapshot().owned_jobs ==
+                cleanup_before_noncooperative.owned_jobs;
+        },
+        std::chrono::seconds(2)
+      ),
+      "supervised non-cooperative voice attempts retained worker handles"
+    );
+    blocked_lane_actor.shutdown();
   }
-  require(
-    std::chrono::steady_clock::now() - saturation_submit_started <
-      std::chrono::milliseconds(100),
-    "65 preallocated cleanup submissions blocked their caller"
-  );
-  require(
-    waitUntil(
-      [&] { return hung_cleanup_started.load() == hung_cleanup_count; },
-      std::chrono::seconds(2)
-    ),
-    "hung SDK cleanup saturated the launcher-only dispatcher"
-  );
-  release_hung_cleanup.store(true);
-  require(
-    waitUntil(
-      [&] { return hung_cleanup_exited.load() == hung_cleanup_count; },
-      std::chrono::seconds(2)
-    ),
-    "released SDK cleanup workers did not exit"
-  );
-  require(
-    waitUntil(
-      [&] { return hung_cleanup_nodes.front()->finished(); },
-      std::chrono::seconds(1)
-    ),
-    "cleanup node did not become reusable after completion"
-  );
-  std::atomic_int reuse_count{0};
-  auto reuse_owner = std::shared_ptr<void>(
-    &reuse_count,
-    [](void*) {}
-  );
-  hung_cleanup_nodes.front()->prepare(
-    std::move(reuse_owner),
-    [](void* value) noexcept {
-      static_cast<std::atomic_int*>(value)->fetch_add(1);
-    }
-  );
-  syrnike::desktop_native::AsyncCleanupDispatcher::instance().submit(
-    hung_cleanup_nodes.front()
-  );
-  require(
-    waitUntil(
-      [&] { return reuse_count.load() == 1; },
-      std::chrono::seconds(1)
-    ),
-    "completed cleanup node was not reusable exactly once"
-  );
+
+  {
+    const auto cleanup_before_rejected_completion =
+      syrnike::desktop_native::CleanupSupervisor::instance().snapshot();
+    auto rejected_sink = std::make_shared<CollectingSink>();
+    syrnike::desktop_native::SequencedEmitter rejected_emitter(rejected_sink);
+    auto rejected_client = std::make_shared<Client>();
+    syrnike::desktop_native::media::VoiceActor rejected_actor(
+      rejected_emitter,
+      [](syrnike::desktop_native::MediaCommand) { return false; },
+      [](const std::string&, std::uint64_t) { return true; },
+      rejected_client
+    );
+    auto rejected_connect = voiceCommand(
+      syrnike::desktop_native::NativeCommandType::ConnectVoice,
+      "rejected-completion",
+      90
+    );
+    rejected_actor.connect(rejected_connect);
+    require(
+      waitUntil(
+        [&] {
+          return rejected_client->disconnectCallCount() == 1 &&
+            !syrnike::desktop_native::media::requireSessionPortValue(
+              rejected_client->lifecycle().status(
+                syrnike::desktop_native::media::SessionPortCall::current()
+              )
+            );
+        },
+        std::chrono::seconds(1)
+      ),
+      "rejected voice completion retained its committed Room owner"
+    );
+    rejected_actor.shutdown();
+    require(
+      waitUntil(
+        [&] {
+          return syrnike::desktop_native::CleanupSupervisor::instance()
+            .snapshot().owned_jobs ==
+              cleanup_before_rejected_completion.owned_jobs;
+        },
+        std::chrono::seconds(1)
+      ),
+      "rejected voice completion retained supervised cleanup ownership"
+    );
+    require(
+      rejected_client->disconnectCallCount() == 1,
+      "rejected voice completion disconnected its exact owner more than once"
+    );
+  }
 
   auto sink = std::make_shared<CollectingSink>();
   auto client = std::make_shared<Client>();
   client->setBlocked(Client::Operation::Connect, true);
   auto runtime = std::make_unique<MediaRuntime>(sink, client);
 
-  require(runtime->dispatch(voiceCommand("connectVoice", "connect-a", 1)),
+  require(runtime->dispatch(voiceCommand(syrnike::desktop_native::NativeCommandType::ConnectVoice, "connect-a", 1)),
     "runtime rejected connect A");
   client->waitUntilPending(Client::Operation::Connect, 1);
 
-  require(runtime->dispatch(voiceCommand("disconnectVoice", "disconnect-a", 2)),
+  require(runtime->dispatch(voiceCommand(syrnike::desktop_native::NativeCommandType::DisconnectVoice, "disconnect-a", 2)),
     "runtime rejected disconnect A");
   require(sink->waitReply("disconnect-a", std::chrono::milliseconds(500)),
     "disconnect was blocked behind connect A");
   require(sink->waitFailedReply("connect-a", std::chrono::milliseconds(500)),
     "cancelled connect A did not settle its pending request");
-  require(client->pending(Client::Operation::Connect) == 0,
+  require(
+    waitUntil(
+      [&] { return client->pending(Client::Operation::Connect) == 0; },
+      std::chrono::milliseconds(500)
+    ),
     "disconnect did not cooperatively cancel connect A");
 
   client->setBlocked(Client::Operation::Connect, false);
-  require(runtime->dispatch(voiceCommand("connectVoice", "connect-b", 3)),
+  require(runtime->dispatch(voiceCommand(syrnike::desktop_native::NativeCommandType::ConnectVoice, "connect-b", 3)),
     "runtime rejected connect B");
   require(sink->waitReply("connect-b", std::chrono::seconds(2)),
     "connect B did not complete after stale A completion");
-  require(client->isVoiceConnected(),
+  require(syrnike::desktop_native::media::requireSessionPortValue(
+      client->lifecycle().status(
+        syrnike::desktop_native::media::SessionPortCall::current()
+      )),
     "stale connect A completion disconnected or replaced Room B");
 
   std::chrono::steady_clock::duration longest_dispatch{};
@@ -327,7 +521,7 @@ int main() try {
     const auto started = std::chrono::steady_clock::now();
     require(
       runtime->dispatch(voiceCommand(
-        "connectVoice",
+        syrnike::desktop_native::NativeCommandType::ConnectVoice,
         "reconnect-" + std::to_string(reconnect),
         4 + reconnect
       )),
@@ -363,6 +557,9 @@ int main() try {
 
   const auto leases_before_blocked_runtime =
     syrnike::desktop_native::media::LiveKitLease::activeCount();
+  auto& cleanup_supervisor =
+    syrnike::desktop_native::CleanupSupervisor::instance();
+  const auto cleanup_before_blocked_runtime = cleanup_supervisor.snapshot();
   const auto initializes_before_blocked_runtime =
     syrnike::desktop_native::media::LiveKitLease::initializeTransitionCount();
   const auto shutdowns_before_blocked_runtime =
@@ -396,13 +593,12 @@ int main() try {
     std::shared_ptr<
       syrnike::desktop_native::media::LiveKitRuntimeLifetime
     >{},
-    [&](syrnike::desktop_native::AsyncCleanupTask task) -> std::thread {
+    [&] {
       if (subsystem_cleanup_launches.fetch_add(1) == 0) {
         throw std::runtime_error(
           "injected media runtime quarantine launch failure"
         );
       }
-      return std::thread(std::move(task));
     },
     [&] {
       subsystem_cleanup_completions.fetch_add(1);
@@ -410,7 +606,7 @@ int main() try {
   );
   blocked_runtime->waitUntilReady();
   syrnike::desktop_native::MediaCommand configure_microphone;
-  configure_microphone.type = "configureMicrophone";
+  configure_microphone.type = syrnike::desktop_native::NativeCommandType::ConfigureMicrophone;
   configure_microphone.request_id = "blocked-microphone-operation";
   configure_microphone.session_id = "blocked-microphone";
   configure_microphone.generation = 1;
@@ -431,14 +627,14 @@ int main() try {
   }
   require(
     blocked_runtime->dispatch(
-      voiceCommand("connectVoice", "blocked-voice-connect", 1)
+      voiceCommand(syrnike::desktop_native::NativeCommandType::ConnectVoice, "blocked-voice-connect", 1)
     ),
     "runtime rejected blocked voice connect"
   );
   blocked_client->waitUntilPending(Client::Operation::Connect, 1);
 
   syrnike::desktop_native::MediaCommand shutdown_command;
-  shutdown_command.type = "shutdown";
+  shutdown_command.type = syrnike::desktop_native::NativeCommandType::Shutdown;
   shutdown_command.request_id = "blocked-runtime-shutdown";
   const auto blocked_shutdown_started = std::chrono::steady_clock::now();
   require(
@@ -476,6 +672,11 @@ int main() try {
   require(
     subsystem_cleanup_completions.load() == 0,
     "media runtime reported quarantine completion before blocked work exited"
+  );
+  require(
+    cleanup_supervisor.snapshot().owned_jobs >
+      cleanup_before_blocked_runtime.owned_jobs,
+    "blocked voice connect escaped CleanupSupervisor ownership"
   );
   blocked_runtime.reset();
 
@@ -538,6 +739,16 @@ int main() try {
   require(
     subsystem_cleanup_completions.load() == 1,
     "media runtime quarantine completion hook was lost or duplicated"
+  );
+  require(
+    waitUntil(
+      [&] {
+        return cleanup_supervisor.snapshot().owned_jobs ==
+          cleanup_before_blocked_runtime.owned_jobs;
+      },
+      std::chrono::seconds(2)
+    ),
+    "voice connect cleanup retained a supervised thread handle"
   );
 
   bool shutdown_injection_observed_active_lease = false;

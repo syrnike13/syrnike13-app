@@ -56,6 +56,7 @@ fn main() {
         "src/apm.rs",
         "src/audio_mixer.rs",
         "src/packet_trailer.rs",
+        "src/video_decoder_factory.rs",
     ];
 
     if is_desktop {
@@ -96,6 +97,7 @@ fn main() {
         "src/audio_mixer.cpp",
         "src/packet_trailer.cpp",
         "src/packet_trailer_av1.cpp",
+        "src/packet_trailer_h264.cpp",
     ]);
 
     if is_desktop {

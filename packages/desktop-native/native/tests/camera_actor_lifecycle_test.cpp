@@ -12,6 +12,7 @@
 #include "common/event_sink.hpp"
 #include "media/camera_actor.hpp"
 #include "media/media_runtime_support.hpp"
+#include "media/video_resource_admission.hpp"
 
 namespace {
 using namespace std::chrono_literals;
@@ -22,6 +23,10 @@ using namespace syrnike::desktop_native::media;
 // the calling thread after the deadline. Keep deadline assertions distinct
 // from the production budget while still catching composed or unbounded waits.
 constexpr auto kDeadlineAssertionBudget = kNativeShutdownBudget + 500ms;
+// Keep prompt-path assertions below the production shutdown deadline, but
+// leave enough headroom for ASan and a loaded Windows scheduler to resume the
+// test thread. A composed wait still takes at least kNativeShutdownBudget.
+constexpr auto kPromptLaneAssertionBudget = 1s;
 
 class Sink final : public EventSink {
  public:
@@ -36,7 +41,7 @@ RuntimeEvent waitReply(const std::shared_ptr<Sink>& sink, const std::string& req
     {
       std::lock_guard lock(sink->mutex);
       for (const auto& event : sink->events) {
-        if (event.type == "reply" && event.request_id == request_id) return event;
+        if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id) return event;
       }
     }
     std::this_thread::sleep_for(5ms);
@@ -52,7 +57,7 @@ RuntimeEvent waitCameraTerminal(
     {
       std::lock_guard lock(sink->mutex);
       for (const auto& event : sink->events) {
-        if (event.type == "cameraTerminal" &&
+        if (event.type == syrnike::desktop_native::NativeEventType::CameraTerminal &&
             event.session_id == session_id &&
             event.generation == generation) {
           return event;
@@ -161,17 +166,79 @@ class Factory final : public CameraCaptureFactory {
 
 MediaCommand command(std::uint64_t generation, std::string request_id = "request") {
   MediaCommand result;
-  result.type = "connectCamera"; result.request_id = std::move(request_id);
+  result.type = syrnike::desktop_native::NativeCommandType::ConnectCamera; result.request_id = std::move(request_id);
   result.session_id = "voice"; result.generation = generation;
   result.participant_identity = "user:native-camera";
   result.width = 16; result.height = 16; result.fps = 30;
   return result;
+}
+
+void verifyCameraEncoderSaturationFallsBackToCpu(
+    const std::shared_ptr<LiveKitRuntimeLifetime>& runtime_lifetime) {
+  auto limits = productionVideoResourceLimits();
+  limits.maximum_hardware_encoder_sessions = 1;
+  VideoResourceAdmissionBudget budget(limits);
+  auto screen_encoder = requireVideoResourceAdmission(
+      budget,
+      VideoResourceRequest{
+          .owner = VideoResourceOwner::ScreenEncoder,
+          .owner_id = "screen:test-held",
+          .hardware_encoder_sessions = 1,
+      });
+  auto sink = std::make_shared<Sink>();
+  SequencedEmitter emitter(sink);
+  auto client = std::make_shared<DeterministicFakeLiveKitVoiceSession>();
+  client->retainRuntimeLifetime(runtime_lifetime);
+  client->setVoiceSessionForTest("voice");
+  auto factory = std::make_shared<Factory>();
+  factory->gpu_first.store(true);
+  std::atomic_uint64_t source_calls{0};
+  auto actor = std::make_unique<CameraActor>(
+      emitter,
+      [](MediaCommand) { return true; },
+      [](const std::string&, std::uint64_t generation) {
+        return generation == 1;
+      },
+      client,
+      factory,
+      [&](int, int) {
+        source_calls.fetch_add(1, std::memory_order_acq_rel);
+        return std::shared_ptr<livekit::D3D11H264VideoSource>{};
+      },
+      CleanupStartProbe{},
+      CameraActor::BeforeTerminalPost{},
+      CleanupEnqueueProbe{},
+      &budget);
+
+  actor->connect(command(1, "encoder-budget-fallback"));
+  const auto reply = waitReply(sink, "encoder-budget-fallback");
+  if (!reply.ok || source_calls.load(std::memory_order_acquire) != 0 ||
+      factory->force_cpu_calls.load(std::memory_order_acquire) != 1 ||
+      !factory->gpu_destroyed_before_cpu.load(std::memory_order_acquire)) {
+    throw std::runtime_error(
+        "camera encoder saturation did not use the typed CPU reopen path");
+  }
+  auto disconnect = command(1, "encoder-budget-disconnect");
+  disconnect.type = syrnike::desktop_native::NativeCommandType::DisconnectCamera;
+  actor->disconnect(disconnect);
+  actor->shutdown();
+  actor.reset();
+  if (budget.snapshot().current.hardware_encoder_sessions != 1) {
+    throw std::runtime_error(
+        "camera fallback changed the held screen encoder reservation");
+  }
+  screen_encoder.reset();
+  if (budget.snapshot().current.hardware_encoder_sessions != 0) {
+    throw std::runtime_error(
+        "camera fallback test did not return encoder capacity exactly once");
+  }
 }
 }
 
 int main() try {
   auto main_lifetime = std::make_shared<LiveKitRuntimeLifetime>();
   main_lifetime->initialize();
+  verifyCameraEncoderSaturationFallsBackToCpu(main_lifetime);
   auto sink = std::make_shared<Sink>();
   SequencedEmitter emitter(sink);
   auto client = std::make_shared<DeterministicFakeLiveKitVoiceSession>();
@@ -195,7 +262,7 @@ int main() try {
   if (!stale) throw std::runtime_error("stale camera generation was accepted");
 
   MediaCommand probe;
-  probe.type = "probeCameraActor";
+  probe.type = syrnike::desktop_native::NativeCommandType::ProbeCameraActor;
   probe.request_id = "probe-available";
   if (actor->probe(probe).state != "available") {
     throw std::runtime_error("idle camera actor did not report available capacity");
@@ -212,10 +279,11 @@ int main() try {
     throw std::runtime_error("pending camera publication did not report busy capacity");
   }
   current.store(3);
-  auto cancel = command(2, "cancel"); cancel.type = "disconnectCamera";
+  auto cancel = command(2, "cancel"); cancel.type = syrnike::desktop_native::NativeCommandType::DisconnectCamera;
   const auto started = std::chrono::steady_clock::now();
   actor->disconnect(cancel);
-  if (std::chrono::steady_clock::now() - started > 250ms) {
+  if (std::chrono::steady_clock::now() - started >
+      kPromptLaneAssertionBudget) {
     throw std::runtime_error("disconnect blocked behind camera publication");
   }
   const auto blocked_reply = waitReply(sink, "blocked");
@@ -242,8 +310,57 @@ int main() try {
   if (!preview_reply.ok || client->localCameraPreviewStartCount() != 2) {
     throw std::runtime_error("camera publication did not start its local preview");
   }
+  auto preview_off = command(4, "preview-off");
+  preview_off.type =
+      syrnike::desktop_native::NativeCommandType::SetLocalCameraPreviewDemand;
+  preview_off.demanded = false;
+  actor->setPreviewDemand(preview_off);
+  actor->setPreviewDemand(preview_off);
+  if (client->localCameraPreviewStopCount() != 2) {
+    throw std::runtime_error(
+        "duplicate camera preview demand stopped the listener twice");
+  }
+  auto preview_retry = command(4, "preview-retry");
+  preview_retry.type =
+      syrnike::desktop_native::NativeCommandType::RetryLocalCameraPreview;
+  preview_retry.internal_message = "renderer_presentation_stall";
+  actor->retryPreview(preview_retry);
+  if (client->localCameraPreviewStartCount() != 2 ||
+      client->localCameraPreviewStopCount() != 2) {
+    throw std::runtime_error(
+        "camera preview retry bypassed a removed demand");
+  }
+  auto preview_on = preview_off;
+  preview_on.request_id = "preview-on";
+  preview_on.demanded = true;
+  actor->setPreviewDemand(preview_on);
+  actor->setPreviewDemand(preview_on);
+  if (client->localCameraPreviewStartCount() != 3) {
+    throw std::runtime_error(
+        "camera preview demand did not restart exactly once");
+  }
+  actor->retryPreview(preview_retry);
+  if (client->localCameraPreviewStartCount() != 4 ||
+      client->localCameraPreviewStopCount() != 3) {
+    throw std::runtime_error(
+        "camera preview retry did not perform one bounded restart");
+  }
+  auto stale_preview_off = preview_off;
+  stale_preview_off.generation = 3;
+  bool stale_preview_rejected = false;
+  try {
+    actor->setPreviewDemand(stale_preview_off);
+  } catch (const std::exception&) {
+    stale_preview_rejected = true;
+  }
+  if (!stale_preview_rejected ||
+      client->localCameraPreviewStartCount() != 4 ||
+      client->localCameraPreviewStopCount() != 3) {
+    throw std::runtime_error(
+        "stale camera preview demand mutated the current generation");
+  }
   auto read_stall = command(4);
-  read_stall.type = "__cameraTerminal";
+  read_stall.type = syrnike::desktop_native::NativeCommandType::CameraTerminal;
   read_stall.internal_message = "camera_capture_timeout";
   actor->handleTerminal(read_stall);
   const auto read_stall_event = waitCameraTerminal(sink, "voice", 4);
@@ -253,9 +370,9 @@ int main() try {
         "camera async read timeout lost its typed terminal code");
   }
   auto disconnect = command(4, "disconnect-preview");
-  disconnect.type = "disconnectCamera";
+  disconnect.type = syrnike::desktop_native::NativeCommandType::DisconnectCamera;
   actor->disconnect(disconnect);
-  if (client->localCameraPreviewStopCount() != 2) {
+  if (client->localCameraPreviewStopCount() != 4) {
     throw std::runtime_error("camera disconnect did not stop its local preview");
   }
 
@@ -284,16 +401,36 @@ int main() try {
   // CameraCapture::stop; disconnect cannot wait for an unbounded ReadSample.
   factory->block.store(true);
   current.store(7);
+  const auto reads_before_block = factory->read_calls->load(
+      std::memory_order_acquire);
   actor->connect(command(7, "blocked-capture"));
   if (!waitReply(sink, "blocked-capture").ok) {
     throw std::runtime_error("blocked capture did not finish publication");
   }
+  for (int i = 0;
+       i < 1000 && factory->read_calls->load(std::memory_order_acquire) ==
+           reads_before_block;
+       ++i) {
+    std::this_thread::sleep_for(5ms);
+  }
+  if (factory->read_calls->load(std::memory_order_acquire) ==
+      reads_before_block) {
+    throw std::runtime_error("blocked capture did not enter its reader");
+  }
   auto stop_blocked = command(7, "stop-blocked-capture");
-  stop_blocked.type = "disconnectCamera";
+  stop_blocked.type = syrnike::desktop_native::NativeCommandType::DisconnectCamera;
+  const auto stops_before_block = factory->stop_calls->load(
+      std::memory_order_acquire);
   const auto stop_started = std::chrono::steady_clock::now();
   actor->disconnect(stop_blocked);
-  if (std::chrono::steady_clock::now() - stop_started > 250ms) {
+  if (std::chrono::steady_clock::now() - stop_started >
+      kPromptLaneAssertionBudget) {
     throw std::runtime_error("camera disconnect waited for a blocked reader");
+  }
+  if (factory->stop_calls->load(std::memory_order_acquire) !=
+      stops_before_block + 1) {
+    throw std::runtime_error(
+        "camera disconnect did not stop the blocked capture exactly once");
   }
 
   // A broken driver can also hang its stop/flush path. The actor must bound
@@ -306,7 +443,7 @@ int main() try {
     throw std::runtime_error("slow-stop capture did not finish publication");
   }
   auto stop_slow = command(8, "stop-slow-capture");
-  stop_slow.type = "disconnectCamera";
+  stop_slow.type = syrnike::desktop_native::NativeCommandType::DisconnectCamera;
   const auto slow_stop_started = std::chrono::steady_clock::now();
   actor->disconnect(stop_slow);
   if (std::chrono::steady_clock::now() - slow_stop_started >
@@ -329,7 +466,7 @@ int main() try {
         "null GPU encoder source did not reopen camera capture in CPU mode");
   }
   auto stop_cpu_fallback = command(9, "stop-gpu-source-fallback");
-  stop_cpu_fallback.type = "disconnectCamera";
+  stop_cpu_fallback.type = syrnike::desktop_native::NativeCommandType::DisconnectCamera;
   actor->disconnect(stop_cpu_fallback);
 
   // CPU fallback must not reopen the same device while a broken GPU capture
@@ -350,7 +487,7 @@ int main() try {
 
   // Active unpublish belongs to a bounded retire worker. A blocked SDK call
   // must release actor capacity at the deadline so the next generation can
-  // publish while the detached retirement still owns the old resources.
+  // publish while supervised retirement still owns the old resources.
   current.store(11);
   actor->connect(command(11, "active-unpublish"));
   if (!waitReply(sink, "active-unpublish").ok) {
@@ -359,7 +496,7 @@ int main() try {
   client->setBlocked(
       DeterministicFakeLiveKitVoiceSession::Operation::Unpublish, true);
   auto stop_active_unpublish = command(11, "stop-active-unpublish");
-  stop_active_unpublish.type = "disconnectCamera";
+  stop_active_unpublish.type = syrnike::desktop_native::NativeCommandType::DisconnectCamera;
   const auto active_unpublish_started = std::chrono::steady_clock::now();
   actor->disconnect(stop_active_unpublish);
   if (std::chrono::steady_clock::now() - active_unpublish_started >
@@ -372,7 +509,7 @@ int main() try {
   actor->connect(command(12, "after-active-unpublish"));
   if (!waitReply(sink, "after-active-unpublish").ok) {
     throw std::runtime_error(
-        "detached active unpublish did not release next-start capacity");
+        "supervised active unpublish did not release next-start capacity");
   }
   client->releaseNext(
       DeterministicFakeLiveKitVoiceSession::Operation::Unpublish);
@@ -380,7 +517,7 @@ int main() try {
       DeterministicFakeLiveKitVoiceSession::Operation::Unpublish, false);
   auto stop_after_active_unpublish =
       command(12, "stop-after-active-unpublish");
-  stop_after_active_unpublish.type = "disconnectCamera";
+  stop_after_active_unpublish.type = syrnike::desktop_native::NativeCommandType::DisconnectCamera;
   actor->disconnect(stop_after_active_unpublish);
 
   // Retirement launch failures retain the shared task. The management worker
@@ -402,11 +539,10 @@ int main() try {
       retry_client,
       retry_factory,
       CameraActor::CreateGpuVideoSource{},
-      [&](std::function<void()> work) {
+      [&] {
         if (retire_launches.fetch_add(1) == 0) {
           throw std::runtime_error("injected retirement launch failure");
         }
-        return std::thread(std::move(work));
       },
       CameraActor::BeforeTerminalPost{},
       [&] {
@@ -419,7 +555,7 @@ int main() try {
     throw std::runtime_error("retire launch retry scenario did not start");
   }
   auto retry_disconnect = command(1, "retire-launch-retry-disconnect");
-  retry_disconnect.type = "disconnectCamera";
+  retry_disconnect.type = syrnike::desktop_native::NativeCommandType::DisconnectCamera;
   retry_actor->disconnect(retry_disconnect);
   if (retire_launches.load() < 2 ||
       enqueue_failures.load(std::memory_order_acquire) < 1 ||
@@ -526,7 +662,7 @@ int main() try {
       gate_client,
       gate_factory,
       CameraActor::CreateGpuVideoSource{},
-      CameraActor::LaunchRetireWorker{},
+      syrnike::desktop_native::CleanupStartProbe{},
       [&] {
         std::unique_lock lock(gate_mutex);
         gate_entered = true;
@@ -565,8 +701,9 @@ int main() try {
     throw std::runtime_error("terminal post gate lost or duplicated callback");
   }
 
-  // A detached SDK attempt may finish after both actor and emitter teardown.
-  // Cancellation checkpoints must not touch borrowed runtime callbacks then.
+  // A blocked SDK attempt may finish after both actor and emitter teardown.
+  // CleanupSupervisor must own its joinable handle while cancellation
+  // checkpoints avoid borrowed runtime callbacks.
   auto late_client =
       std::make_shared<DeterministicFakeLiveKitVoiceSession>();
   late_client->retainRuntimeLifetime(main_lifetime);
@@ -600,12 +737,22 @@ int main() try {
     late_actor->connect(command(1, "late-sdk-release"));
     late_client->waitUntilPending(
         DeterministicFakeLiveKitVoiceSession::Operation::Publish, 1);
+    const auto late_cleanup_before = CleanupSupervisor::instance().snapshot();
     const auto destructor_started = std::chrono::steady_clock::now();
     late_actor.reset();
     if (std::chrono::steady_clock::now() - destructor_started >
         kDeadlineAssertionBudget) {
       throw std::runtime_error(
           "camera destructor exceeded blocked-attempt deadline");
+    }
+    const auto late_cleanup_after = CleanupSupervisor::instance().snapshot();
+    if (late_cleanup_after.accepted_jobs <
+            late_cleanup_before.accepted_jobs + 1 ||
+        late_cleanup_after.owned_jobs == 0 ||
+        late_cleanup_after.worker_threads > late_cleanup_after.worker_limit ||
+        late_cleanup_after.worker_handles > late_cleanup_after.worker_limit) {
+      throw std::runtime_error(
+          "blocked camera attempt escaped cleanup-supervisor ownership");
     }
     callbacks_alive->store(false);
   }
@@ -620,7 +767,7 @@ int main() try {
   }
   if (late_callback_violations->load() != 0) {
     throw std::runtime_error(
-        "detached camera attempt called runtime callbacks after teardown");
+        "late camera attempt called runtime callbacks after teardown");
   }
 
   waitNoPending(
@@ -650,60 +797,74 @@ int main() try {
         "camera lifecycle left SDK work alive before lifetime rollover");
   }
 
-  auto detached_lifetime = std::make_shared<LiveKitRuntimeLifetime>();
-  detached_lifetime->initialize();
-  auto detached_client =
+  auto supervised_lifetime = std::make_shared<LiveKitRuntimeLifetime>();
+  supervised_lifetime->initialize();
+  auto supervised_client =
       std::make_shared<DeterministicFakeLiveKitVoiceSession>();
-  detached_client->retainRuntimeLifetime(detached_lifetime);
-  detached_client->setVoiceSessionForTest("voice");
-  auto detached_factory = std::make_shared<Factory>();
-  detached_factory->block.store(true);
-  detached_factory->slow_stop.store(true);
-  auto detached_sink = std::make_shared<Sink>();
-  SequencedEmitter detached_emitter(detached_sink);
-  auto detached_actor = std::make_unique<CameraActor>(
-      detached_emitter,
+  supervised_client->retainRuntimeLifetime(supervised_lifetime);
+  supervised_client->setVoiceSessionForTest("voice");
+  auto supervised_factory = std::make_shared<Factory>();
+  supervised_factory->block.store(true);
+  supervised_factory->slow_stop.store(true);
+  auto supervised_sink = std::make_shared<Sink>();
+  SequencedEmitter supervised_emitter(supervised_sink);
+  auto supervised_actor = std::make_unique<CameraActor>(
+      supervised_emitter,
       [](MediaCommand) { return true; },
       [](const std::string&, std::uint64_t generation) {
         return generation == 1;
       },
-      detached_client,
-      detached_factory);
-  detached_actor->connect(command(1, "detached-capture-lifetime"));
-  if (!waitReply(detached_sink, "detached-capture-lifetime").ok) {
-    throw std::runtime_error("detached capture lifetime scenario did not start");
+      supervised_client,
+      supervised_factory);
+  supervised_actor->connect(command(1, "supervised-capture-lifetime"));
+  if (!waitReply(supervised_sink, "supervised-capture-lifetime").ok) {
+    throw std::runtime_error("supervised capture lifetime scenario did not start");
   }
-  for (int i = 0; i < 1000 && detached_factory->read_calls->load() == 0;
+  for (int i = 0; i < 1000 && supervised_factory->read_calls->load() == 0;
        ++i) {
     std::this_thread::sleep_for(5ms);
   }
-  if (detached_factory->read_calls->load() == 0) {
+  if (supervised_factory->read_calls->load() == 0) {
     throw std::runtime_error(
-        "detached capture lifetime scenario did not enter the capture worker");
+        "supervised capture lifetime scenario did not enter the capture worker");
   }
-  std::weak_ptr<LiveKitVoiceSession> detached_client_weak =
-      detached_client;
-  detached_actor->shutdown();
-  detached_actor.reset();
-  detached_client.reset();
-  detached_lifetime.reset();
-  for (int i = 0; i < 200 && !detached_client_weak.expired(); ++i) {
+  std::weak_ptr<LiveKitVoiceSession> supervised_client_weak =
+      supervised_client;
+  const auto capture_cleanup_before = CleanupSupervisor::instance().snapshot();
+  supervised_actor->shutdown();
+  const auto capture_cleanup_after = CleanupSupervisor::instance().snapshot();
+  if (capture_cleanup_after.accepted_jobs <
+          capture_cleanup_before.accepted_jobs + 3 ||
+      capture_cleanup_after.owned_jobs < 2 ||
+      capture_cleanup_after.peak_owned_jobs >
+          capture_cleanup_after.admission_capacity ||
+      capture_cleanup_after.worker_threads >
+          capture_cleanup_after.worker_limit ||
+      capture_cleanup_after.worker_handles >
+          capture_cleanup_after.worker_limit) {
+    throw std::runtime_error(
+        "blocked camera capture escaped bounded cleanup ownership");
+  }
+  supervised_actor.reset();
+  supervised_client.reset();
+  supervised_lifetime.reset();
+  for (int i = 0; i < 200 && !supervised_client_weak.expired(); ++i) {
     std::this_thread::sleep_for(5ms);
   }
-  if (!detached_client_weak.expired()) {
+  if (!supervised_client_weak.expired()) {
     throw std::runtime_error(
-        "detached capture worker retained the camera actor LiveKit client");
+        "supervised capture worker retained the camera actor LiveKit client");
   }
   if (LiveKitLease::activeCount() != 1) {
     throw std::runtime_error(
-        "detached capture worker released LiveKit before its sources");
+        "supervised capture worker released LiveKit before its sources");
   }
   for (int i = 0; i < 1000 && LiveKitLease::active(); ++i) {
     std::this_thread::sleep_for(5ms);
   }
   if (LiveKitLease::active()) {
     throw std::runtime_error(
-        "detached capture worker did not release LiveKit lifetime");
+        "supervised capture worker did not release LiveKit lifetime");
   }
   return 0;
 } catch (const std::exception& error) {

@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "native_message_policy.hpp"
 #include "runtime_types.hpp"
 
 namespace syrnike::desktop_native {
@@ -14,23 +15,20 @@ enum class EventLane {
   control,
   media,
   telemetry,
+  realtime,
 };
 
 inline EventLane eventLane(const RuntimeEvent& event) noexcept {
-  if (
-    event.type == "remoteVideoFrame" ||
-    event.type == "localScreenPreviewFrame" ||
-    event.type == "localCameraPreviewFrame" ||
-    event.type == "activeSpeakers"
-  ) {
-    return EventLane::media;
-  }
-  if (
-    event.type == "stats" ||
-    event.type == "voiceStats" ||
-    event.type == "microphoneMetrics"
-  ) {
-    return EventLane::telemetry;
+  if (!isValidNativeEventType(event.type)) return EventLane::control;
+  switch (nativeEventPolicy(event.type).lane) {
+    case NativeMessageLane::Media: return EventLane::media;
+    case NativeMessageLane::Telemetry: return EventLane::telemetry;
+    case NativeMessageLane::Realtime: return EventLane::realtime;
+    case NativeMessageLane::Control:
+    case NativeMessageLane::VoiceControl:
+    case NativeMessageLane::Query:
+    case NativeMessageLane::Hooks:
+      return EventLane::control;
   }
   return EventLane::control;
 }
@@ -82,8 +80,9 @@ class RuntimeEventResourceGuard final {
   std::function<void()> on_drop_;
 };
 
+template <typename Events>
 inline void discardEventBatch(
-  std::vector<std::unique_ptr<RuntimeEvent>>& events,
+  Events& events,
   std::size_t first = 0
 ) noexcept {
   for (auto index = first; index < events.size(); ++index) {

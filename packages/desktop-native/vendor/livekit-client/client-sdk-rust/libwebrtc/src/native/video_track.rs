@@ -42,9 +42,9 @@ impl RtcVideoTrack {
 
     /// Set the packet trailer handler for this track.
     ///
-    /// When set, any `NativeVideoStream` created from this track will
-    /// automatically use this handler to populate `user_timestamp`
-    /// on each decoded frame.
+    /// When set, existing and future `NativeVideoStream`s created from this
+    /// track automatically use this handler to populate frame metadata on each
+    /// decoded frame.
     pub fn set_packet_trailer_handler(&self, handler: PacketTrailerHandler) {
         self.packet_trailer_handler.lock().replace(handler);
     }
@@ -52,5 +52,9 @@ impl RtcVideoTrack {
     /// Get the packet trailer handler, if one has been set.
     pub fn packet_trailer_handler(&self) -> Option<PacketTrailerHandler> {
         self.packet_trailer_handler.lock().clone()
+    }
+
+    pub(crate) fn packet_trailer_handler_slot(&self) -> Arc<Mutex<Option<PacketTrailerHandler>>> {
+        self.packet_trailer_handler.clone()
     }
 }

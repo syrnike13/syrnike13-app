@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -21,6 +22,8 @@
 #include "media/media_runtime.hpp"
 #include "media/screen_actor.hpp"
 #include "media/screen_publication_controller.hpp"
+#include "media/video_resource_admission.hpp"
+#include "media_contention_publication_teardown.hpp"
 
 namespace {
 
@@ -49,19 +52,27 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     std::unique_lock lock(mutex_);
     const bool found = changed_.wait_for(lock, timeout, [&] {
       for (const auto& event : events_) {
-        if (event.type == "reply" && event.request_id == request_id) return true;
+        if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id) return true;
       }
       return false;
     });
     if (!found) throw std::runtime_error("timed out waiting for runtime reply: " + request_id);
     for (const auto& event : events_) {
-      if (event.type == "reply" && event.request_id == request_id) return event;
+      if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id) return event;
     }
     throw std::runtime_error("runtime reply disappeared");
   }
 
+  [[nodiscard]] bool hasReply(const std::string& request_id) const {
+    std::lock_guard lock(mutex_);
+    return std::any_of(events_.begin(), events_.end(), [&](const auto& event) {
+      return event.type == syrnike::desktop_native::NativeEventType::Reply &&
+        event.request_id == request_id;
+    });
+  }
+
   syrnike::desktop_native::RuntimeEvent waitEvent(
-    const std::string& type,
+    syrnike::desktop_native::NativeEventType type,
     const std::string& session_id,
     std::uint64_t generation,
     std::chrono::milliseconds timeout = kTestWatchdog
@@ -76,7 +87,12 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
       }
       return false;
     });
-    if (!found) throw std::runtime_error("timed out waiting for runtime event: " + type);
+    if (!found) {
+      throw std::runtime_error(
+        "timed out waiting for runtime event: " +
+        std::string(syrnike::desktop_native::nativeEventName(type))
+      );
+    }
     for (const auto& event : events_) {
       if (event.type == type && event.session_id == session_id &&
           event.generation == generation) {
@@ -93,7 +109,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     std::lock_guard lock(mutex_);
     std::size_t count = 0;
     for (const auto& event : events_) {
-      if (event.type == "sessionStarted" && event.session_id == session_id &&
+      if (event.type == syrnike::desktop_native::NativeEventType::SessionStarted && event.session_id == session_id &&
           event.generation == generation) {
         ++count;
       }
@@ -105,9 +121,37 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     std::lock_guard lock(mutex_);
     std::size_t count = 0;
     for (const auto& event : events_) {
-      if (event.type == "reply" && event.request_id.empty()) ++count;
+      if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id.empty()) ++count;
     }
     return count;
+  }
+
+  syrnike::desktop_native::RuntimeEvent waitLifecycleCount(
+    const std::string& session_id,
+    std::uint64_t generation,
+    const std::string& kind,
+    const std::string& status,
+    std::size_t minimum_count,
+    std::chrono::milliseconds timeout = kTestWatchdog
+  ) {
+    const auto matches = [&](const auto& event) {
+      return event.type == syrnike::desktop_native::NativeEventType::SessionLifecycle &&
+        event.session_id == session_id && event.generation == generation &&
+        event.kind == kind && event.status == status;
+    };
+    std::unique_lock lock(mutex_);
+    const bool found = changed_.wait_for(lock, timeout, [&] {
+      return static_cast<std::size_t>(std::count_if(
+        events_.begin(), events_.end(), matches)) >= minimum_count;
+    });
+    if (!found) {
+      throw std::runtime_error(
+        "timed out waiting for session lifecycle: " + kind + "/" + status);
+    }
+    for (auto iterator = events_.rbegin(); iterator != events_.rend(); ++iterator) {
+      if (matches(*iterator)) return *iterator;
+    }
+    throw std::runtime_error("session lifecycle event disappeared");
   }
 
  private:
@@ -130,13 +174,13 @@ void verifyPhase(const char* name, Verify verify) {
 }
 
 syrnike::desktop_native::MediaCommand screenCommand(
-  std::string type,
+  syrnike::desktop_native::NativeCommandType type,
   std::string request_id,
   std::string session_id,
   std::uint64_t generation
 ) {
   syrnike::desktop_native::MediaCommand command;
-  command.type = std::move(type);
+  command.type = type;
   command.request_id = std::move(request_id);
   command.session_id = std::move(session_id);
   command.generation = generation;
@@ -157,7 +201,7 @@ void requireProbe(
   const std::string& request_id
 ) {
   syrnike::desktop_native::MediaCommand probe;
-  probe.type = "probeScreenActor";
+  probe.type = syrnike::desktop_native::NativeCommandType::ProbeScreenActor;
   probe.request_id = request_id;
   require(runtime.dispatch(probe), "runtime rejected screen actor probe");
   require(
@@ -213,21 +257,35 @@ class FakeScreenGpuCapturer final
 };
 
 class ScreenControllerHarness final {
+  std::unique_ptr<
+    syrnike::desktop_native::media::VideoResourceAdmissionBudget>
+      owned_resource_budget_;
+
  public:
   using Controller = syrnike::desktop_native::media::ScreenPublicationController;
   using FakeLiveKit =
     syrnike::desktop_native::media::DeterministicFakeLiveKitVoiceSession;
+  using PublicationPhase =
+    syrnike::desktop_native::media::ScreenVideoPublicationPhase;
 
   ScreenControllerHarness(
     Controller::QueryEncoderCapability query_encoder_capability,
     Controller::CreateVideoSource create_video_source,
-    Controller::LaunchRetireWorker launch_retire_worker = {},
-    Controller::BeforeRetireEnqueue before_retire_enqueue = {},
+    syrnike::desktop_native::CleanupStartProbe cleanup_start_probe = {},
+    syrnike::desktop_native::CleanupEnqueueProbe cleanup_enqueue_probe = {},
     Controller::BeforeResourceCleanup before_resource_cleanup = {},
-    Controller::PrepareCapture prepare_capture = {}
+    Controller::PrepareCapture prepare_capture = {},
+    syrnike::desktop_native::media::VideoResourceAdmissionBudget*
+      resource_budget = nullptr
   ) : sink(std::make_shared<CollectingSink>()),
       emitter(sink),
       livekit(std::make_shared<FakeLiveKit>()) {
+    if (!resource_budget) {
+      owned_resource_budget_ = std::make_unique<
+        syrnike::desktop_native::media::VideoResourceAdmissionBudget>(
+          syrnike::desktop_native::media::productionVideoResourceLimits());
+      resource_budget = owned_resource_budget_.get();
+    }
     if (!prepare_capture) {
       prepare_capture = [](
           const syrnike::desktop_native::MediaCommand&,
@@ -239,7 +297,7 @@ class ScreenControllerHarness final {
     controller = std::make_unique<Controller>(
       emitter,
       [this](syrnike::desktop_native::MediaCommand command) {
-        if (command.type == "__screenRetireDone") {
+        if (command.type == syrnike::desktop_native::NativeCommandType::ScreenRetireDone) {
           auto remaining =
             reject_retire_completions_.load(std::memory_order_acquire);
           while (remaining > 0) {
@@ -268,40 +326,113 @@ class ScreenControllerHarness final {
         syrnike::desktop_native::media::ScreenPublicationDescription description;
         description.width = static_cast<std::uint32_t>(command.width);
         description.height = static_cast<std::uint32_t>(command.height);
+        description.publish_audio = command.audio_requested;
+        description.audio_mode = command.audio_requested ? "system" : "none";
         return description;
       },
       std::move(prepare_capture),
-      [](
+      [this](
         const syrnike::desktop_native::MediaCommand&,
         const syrnike::desktop_native::media::ScreenPublicationDescription&,
-        const std::shared_ptr<livekit::D3D11H264VideoSource>&,
+        const std::shared_ptr<livekit::D3D11H264VideoSource>& source,
         const std::shared_ptr<livekit::LocalVideoTrack>&,
-        const std::shared_ptr<livekit::AudioSource>&,
-        const std::shared_ptr<syrnike::desktop_native::media::ScreenGpuCapturer>&,
-        const std::shared_ptr<std::atomic_bool>&,
-        const std::shared_ptr<syrnike::voice::ScreenAudioStopSignal>&,
+        const std::shared_ptr<syrnike::desktop_native::media::ScreenGpuCapturer>& capturer,
+        const std::shared_ptr<std::atomic_bool>& running,
         const std::function<bool()>&,
-        std::thread&,
-        std::thread&
-      ) {},
+        std::thread& worker
+      ) {
+        video_worker_starts.fetch_add(1, std::memory_order_relaxed);
+        last_video_source = source;
+        last_video_capturer = capturer;
+        if (block_video_worker_.exchange(false, std::memory_order_acq_rel)) {
+          worker = std::thread([this, running] {
+            while (running->load(std::memory_order_acquire)) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            video_worker_exits.fetch_add(1, std::memory_order_release);
+          });
+        }
+      },
+      [this](
+        const syrnike::desktop_native::MediaCommand& command,
+        const syrnike::desktop_native::media::ScreenPublicationDescription&,
+        const std::shared_ptr<livekit::AudioSource>&,
+        const std::shared_ptr<std::atomic_bool>& running,
+        const std::shared_ptr<syrnike::voice::ScreenAudioStopSignal>& stop,
+        std::thread& worker
+      ) {
+        audio_worker_starts.fetch_add(1, std::memory_order_relaxed);
+        previous_audio_epoch.store(
+          current_audio_epoch.exchange(
+            command.internal_epoch,
+            std::memory_order_acq_rel),
+          std::memory_order_release
+        );
+        auto failures = audio_worker_failures_.load(std::memory_order_acquire);
+        while (failures > 0) {
+          if (audio_worker_failures_.compare_exchange_weak(
+                failures,
+                failures - 1,
+                std::memory_order_acq_rel)) {
+            throw std::runtime_error("audio_device_lost");
+          }
+        }
+        if (block_audio_worker_.exchange(false, std::memory_order_acq_rel)) {
+          worker = std::thread([running, stop] {
+            WaitForSingleObject(stop->handle(), INFINITE);
+            running->store(false, std::memory_order_release);
+          });
+        }
+      },
       [](const std::string&, std::uint64_t) {},
       std::move(query_encoder_capability),
       std::move(create_video_source),
-      std::move(launch_retire_worker),
-      std::move(before_retire_enqueue),
-      std::move(before_resource_cleanup)
+      std::move(cleanup_start_probe),
+      std::move(cleanup_enqueue_probe),
+      std::move(before_resource_cleanup),
+      resource_budget,
+      [this](const syrnike::desktop_native::MediaCommand&, const std::string&) {
+        after_video_published.fetch_add(1, std::memory_order_release);
+      },
+      [this](
+          const syrnike::desktop_native::MediaCommand&,
+          PublicationPhase phase) {
+        if (phase == PublicationPhase::Started) {
+          publication_gate.beginPublication();
+          publication_starts.fetch_add(1, std::memory_order_release);
+          return;
+        }
+        publication_gate.finishPublication();
+        if (phase == PublicationPhase::Published) {
+          publication_acks.fetch_add(1, std::memory_order_release);
+        } else {
+          publication_failures.fetch_add(1, std::memory_order_release);
+        }
+      }
     );
   }
 
   ~ScreenControllerHarness() {
     livekit->setBlocked(FakeLiveKit::Operation::Publish, false);
     livekit->setBlocked(FakeLiveKit::Operation::Unpublish, false);
-    if (controller) controller->shutdown();
+    if (controller) {
+      controller->shutdown();
+      controller.reset();
+    }
   }
 
   void setCurrent(std::uint64_t generation) { generation_.store(generation); }
   void rejectNextRetireCompletion() {
     reject_retire_completions_.fetch_add(1, std::memory_order_release);
+  }
+  void failNextAudioWorkerStart() {
+    audio_worker_failures_.fetch_add(1, std::memory_order_release);
+  }
+  void blockNextAudioWorkerUntilStop() {
+    block_audio_worker_.store(true, std::memory_order_release);
+  }
+  void blockNextVideoWorkerUntilStop() {
+    block_video_worker_.store(true, std::memory_order_release);
   }
 
   void handleNextWorkerCommand(std::chrono::milliseconds timeout = kTestWatchdog) {
@@ -327,11 +458,28 @@ class ScreenControllerHarness final {
   syrnike::desktop_native::SequencedEmitter emitter;
   std::shared_ptr<FakeLiveKit> livekit;
   std::unique_ptr<Controller> controller;
+  std::atomic_uint32_t video_worker_starts{0};
+  std::atomic_uint32_t video_worker_exits{0};
+  std::atomic_uint32_t after_video_published{0};
+  syrnike::desktop_native::tests::ContentionPublicationTeardownGate
+      publication_gate;
+  std::atomic_uint32_t publication_starts{0};
+  std::atomic_uint32_t publication_acks{0};
+  std::atomic_uint32_t publication_failures{0};
+  std::weak_ptr<livekit::D3D11H264VideoSource> last_video_source;
+  std::weak_ptr<syrnike::desktop_native::media::ScreenGpuCapturer>
+      last_video_capturer;
+  std::atomic_uint32_t audio_worker_starts{0};
+  std::atomic<std::uint64_t> previous_audio_epoch{0};
+  std::atomic<std::uint64_t> current_audio_epoch{0};
 
  private:
   const std::string session_id_ = "screen-di";
   std::atomic<std::uint64_t> generation_{1};
   std::atomic_uint32_t reject_retire_completions_{0};
+  std::atomic_uint32_t audio_worker_failures_{0};
+  std::atomic_bool block_audio_worker_{false};
+  std::atomic_bool block_video_worker_{false};
   std::mutex commands_mutex_;
   std::condition_variable commands_changed_;
   std::deque<syrnike::desktop_native::MediaCommand> commands_;
@@ -352,7 +500,7 @@ void verifyUnavailableEncoderFailsClosed() {
   );
   harness.livekit->setBlocked(ScreenControllerHarness::FakeLiveKit::Operation::Publish, true);
 
-  const auto start = screenCommand("startScreenCapture", "di-unavailable", "screen-di", 1);
+  const auto start = screenCommand(syrnike::desktop_native::NativeCommandType::StartScreenCapture, "di-unavailable", "screen-di", 1);
   harness.controller->startCapture(start);
   harness.handleNextWorkerCommand();
   const auto reply = harness.sink->waitReply("di-unavailable");
@@ -374,6 +522,10 @@ void verifyUnavailableEncoderFailsClosed() {
 }
 
 void verifyCapturePreflightFailsBeforePublication() {
+  namespace media = syrnike::desktop_native::media;
+  auto limits = media::productionVideoResourceLimits();
+  limits.maximum_hardware_encoder_sessions = 1;
+  media::VideoResourceAdmissionBudget budget(limits);
   std::atomic_int source_calls{0};
   std::atomic_int preflight_calls{0};
   ScreenControllerHarness harness(
@@ -382,8 +534,8 @@ void verifyCapturePreflightFailsBeforePublication() {
       source_calls.fetch_add(1);
       return std::make_shared<FakeD3D11H264VideoSource>(width, height);
     },
-    ScreenControllerHarness::Controller::LaunchRetireWorker{},
-    ScreenControllerHarness::Controller::BeforeRetireEnqueue{},
+    syrnike::desktop_native::CleanupStartProbe{},
+    syrnike::desktop_native::CleanupEnqueueProbe{},
     ScreenControllerHarness::Controller::BeforeResourceCleanup{},
     [&](const syrnike::desktop_native::MediaCommand&,
         const syrnike::desktop_native::media::ScreenPublicationDescription&)
@@ -391,13 +543,14 @@ void verifyCapturePreflightFailsBeforePublication() {
       preflight_calls.fetch_add(1);
       throw std::runtime_error(
         "gpu_capture_unavailable: gpu_access_lost: injected preflight failure");
-    }
+    },
+    &budget
   );
   harness.livekit->setBlocked(
     ScreenControllerHarness::FakeLiveKit::Operation::Publish, true);
 
   harness.controller->startCapture(screenCommand(
-    "startScreenCapture", "preflight-failure", "screen-di", 1));
+      syrnike::desktop_native::NativeCommandType::StartScreenCapture, "preflight-failure", "screen-di", 1));
   harness.handleNextWorkerCommand();
   const auto reply = harness.sink->waitReply("preflight-failure");
   require(
@@ -411,6 +564,68 @@ void verifyCapturePreflightFailsBeforePublication() {
     harness.livekit->pending(
       ScreenControllerHarness::FakeLiveKit::Operation::Publish) == 0,
     "failed capture preflight created a ghost LiveKit publication");
+  require(
+    budget.snapshot().current.hardware_encoder_sessions == 0,
+    "capture preflight failure did not return encoder capacity exactly once");
+}
+
+void verifyEncoderAdmissionFailsBeforeSourceConstruction() {
+  namespace media = syrnike::desktop_native::media;
+  auto limits = media::productionVideoResourceLimits();
+  limits.maximum_hardware_encoder_sessions = 1;
+  media::VideoResourceAdmissionBudget budget(limits);
+  auto camera_encoder = media::requireVideoResourceAdmission(
+      budget,
+      media::VideoResourceRequest{
+          .owner = media::VideoResourceOwner::CameraEncoder,
+          .owner_id = "camera:test-held",
+          .hardware_encoder_sessions = 1,
+      });
+  std::atomic_int source_calls{0};
+  std::atomic_int preflight_calls{0};
+  ScreenControllerHarness harness(
+    [] { return livekit::D3D11H264Capability{true, {}}; },
+    [&](int width, int height) {
+      source_calls.fetch_add(1);
+      return std::make_shared<FakeD3D11H264VideoSource>(width, height);
+    },
+    syrnike::desktop_native::CleanupStartProbe{},
+    syrnike::desktop_native::CleanupEnqueueProbe{},
+    ScreenControllerHarness::Controller::BeforeResourceCleanup{},
+    [&](const syrnike::desktop_native::MediaCommand&,
+        const media::ScreenPublicationDescription&) {
+      preflight_calls.fetch_add(1);
+      return std::make_shared<FakeScreenGpuCapturer>();
+    },
+    &budget
+  );
+  harness.livekit->setBlocked(
+    ScreenControllerHarness::FakeLiveKit::Operation::Publish, true);
+
+  harness.controller->startCapture(screenCommand(
+      syrnike::desktop_native::NativeCommandType::StartScreenCapture, "encoder-saturated", "screen-di", 1));
+  harness.handleNextWorkerCommand();
+  const auto reply = harness.sink->waitReply("encoder-saturated");
+  require(
+    !reply.ok && reply.error &&
+      reply.error->code == "gpu_encoder_session_saturated",
+    "screen encoder saturation lost its typed fail-closed error"
+  );
+  require(
+    preflight_calls.load() == 0 && source_calls.load() == 0 &&
+      harness.livekit->pending(
+        ScreenControllerHarness::FakeLiveKit::Operation::Publish) == 0,
+    "screen encoder saturation constructed a capture backend, source, or publication"
+  );
+  require(
+    budget.snapshot().current.hardware_encoder_sessions == 1,
+    "rejected screen attempt changed the held encoder reservation"
+  );
+  camera_encoder.reset();
+  require(
+    budget.snapshot().current.hardware_encoder_sessions == 0,
+    "held encoder capacity did not return exactly once"
+  );
 }
 
 void verifyCapturePermissionFailureStopsAutomaticRetry() {
@@ -419,8 +634,8 @@ void verifyCapturePermissionFailureStopsAutomaticRetry() {
     [](int width, int height) {
       return std::make_shared<FakeD3D11H264VideoSource>(width, height);
     },
-    ScreenControllerHarness::Controller::LaunchRetireWorker{},
-    ScreenControllerHarness::Controller::BeforeRetireEnqueue{},
+    syrnike::desktop_native::CleanupStartProbe{},
+    syrnike::desktop_native::CleanupEnqueueProbe{},
     ScreenControllerHarness::Controller::BeforeResourceCleanup{},
     [](const syrnike::desktop_native::MediaCommand&,
        const syrnike::desktop_native::media::ScreenPublicationDescription&)
@@ -431,7 +646,7 @@ void verifyCapturePermissionFailureStopsAutomaticRetry() {
   );
 
   harness.controller->startCapture(screenCommand(
-    "startScreenCapture", "permission-failure", "screen-di", 1));
+      syrnike::desktop_native::NativeCommandType::StartScreenCapture, "permission-failure", "screen-di", 1));
   harness.handleNextWorkerCommand();
   const auto reply = harness.sink->waitReply("permission-failure");
   require(
@@ -453,7 +668,7 @@ void verifyNullEncoderSourceFailsClosed() {
   );
   harness.livekit->setBlocked(ScreenControllerHarness::FakeLiveKit::Operation::Publish, true);
 
-  const auto start = screenCommand("startScreenCapture", "di-null-source", "screen-di", 1);
+  const auto start = screenCommand(syrnike::desktop_native::NativeCommandType::StartScreenCapture, "di-null-source", "screen-di", 1);
   harness.controller->startCapture(start);
   harness.handleNextWorkerCommand();
   const auto reply = harness.sink->waitReply("di-null-source");
@@ -473,6 +688,79 @@ void verifyNullEncoderSourceFailsClosed() {
   );
 }
 
+void verifyCaptureStartsOnlyAfterPublishAck() {
+  ScreenControllerHarness harness(
+    [] { return livekit::D3D11H264Capability{true, {}}; },
+    [](int width, int height) {
+      return std::make_shared<FakeD3D11H264VideoSource>(width, height);
+    }
+  );
+  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
+  harness.livekit->setBlocked(Operation::Publish, true);
+
+  const auto start = screenCommand(
+      syrnike::desktop_native::NativeCommandType::StartScreenCapture,
+      "capture-before-publish-ack", "screen-di", 1);
+  harness.controller->startCapture(start);
+  harness.livekit->waitUntilPending(Operation::Publish, 1, kTestWatchdog);
+  require(
+    harness.publication_starts.load(std::memory_order_acquire) == 1 &&
+      harness.publication_acks.load(std::memory_order_acquire) == 0 &&
+      harness.publication_gate.pending(true) == 1,
+    "held LiveKit publish was absent from the teardown gate"
+  );
+  require(
+    harness.video_worker_starts.load(std::memory_order_acquire) == 0,
+    "D3D11 capture started before LiveKit installed the sender transformer"
+  );
+  require(
+    harness.after_video_published.load(std::memory_order_acquire) == 0 &&
+      !harness.sink->hasReply("capture-before-publish-ack") &&
+      harness.sink->countSessionStarted("screen-di", 1) == 0,
+    "screen capture committed or ran its post-publish callback before ACK"
+  );
+
+  ScreenControllerHarness::FakeLiveKit::Release published;
+  published.publication_sid = "screen-video-ack";
+  harness.livekit->releaseNext(Operation::Publish, std::move(published));
+  harness.handleNextWorkerCommand();
+  require(
+    harness.sink->waitReply("capture-before-publish-ack").ok &&
+      harness.video_worker_starts.load(std::memory_order_acquire) == 1 &&
+      harness.after_video_published.load(std::memory_order_acquire) == 1 &&
+      harness.publication_acks.load(std::memory_order_acquire) == 1 &&
+      harness.publication_gate.readyToShutdown(true) &&
+      harness.sink->countSessionStarted("screen-di", 1) == 1,
+    "screen capture did not commit exactly once after publication ACK"
+  );
+}
+
+void verifyPublicationFailureClosesLifecycle() {
+  ScreenControllerHarness harness(
+    [] { return livekit::D3D11H264Capability{true, {}}; },
+    [](int width, int height) {
+      return std::make_shared<FakeD3D11H264VideoSource>(width, height);
+    }
+  );
+  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
+  harness.livekit->setBlocked(Operation::Publish, true);
+  harness.controller->startCapture(screenCommand(
+      syrnike::desktop_native::NativeCommandType::StartScreenCapture,
+      "publish-failure-lifecycle", "screen-di", 1));
+  harness.livekit->waitUntilPending(Operation::Publish, 1, kTestWatchdog);
+  require(
+      harness.publication_gate.pending(true) == 1,
+      "failed publish was not owned while in flight");
+  harness.livekit->releaseNext(Operation::Publish, {.publication_sid = {}});
+  harness.handleNextWorkerCommand();
+  const auto reply = harness.sink->waitReply("publish-failure-lifecycle");
+  require(
+      !reply.ok &&
+        harness.publication_failures.load(std::memory_order_acquire) == 1 &&
+        harness.publication_gate.readyToShutdown(true),
+      "failed publish did not close its exact lifecycle counter");
+}
+
 void verifyCancelledPublishRollsBackExactSid() {
   ScreenControllerHarness harness(
     [] { return livekit::D3D11H264Capability{true, {}}; },
@@ -481,17 +769,20 @@ void verifyCancelledPublishRollsBackExactSid() {
     }
   );
   harness.livekit->setBlocked(ScreenControllerHarness::FakeLiveKit::Operation::Publish, true);
-
-  const auto start = screenCommand("startScreenCapture", "di-stale", "screen-di", 1);
+  const auto start = screenCommand(syrnike::desktop_native::NativeCommandType::StartScreenCapture, "di-stale", "screen-di", 1);
   harness.controller->startCapture(start);
   harness.livekit->waitUntilPending(
     ScreenControllerHarness::FakeLiveKit::Operation::Publish,
     1,
     kTestWatchdog
   );
+  require(
+    harness.video_worker_starts.load(std::memory_order_acquire) == 0,
+    "cancelled publish started D3D11 capture before publication ACK"
+  );
 
   harness.setCurrent(2);
-  const auto cancel = screenCommand("disconnectScreen", "di-cancel", "screen-di", 2);
+  const auto cancel = screenCommand(syrnike::desktop_native::NativeCommandType::DisconnectScreen, "di-cancel", "screen-di", 2);
   harness.controller->disconnect(cancel, false);
 
   harness.livekit->setBlocked(ScreenControllerHarness::FakeLiveKit::Operation::Unpublish, true);
@@ -524,6 +815,13 @@ void verifyCancelledPublishRollsBackExactSid() {
     unpublished_sids.size() == 1 && unpublished_sids.front() == "screen-video-exact",
     "cancelled screen publish did not roll back the exact publication SID"
   );
+  require(
+    harness.video_worker_starts.load(std::memory_order_acquire) == 0 &&
+      harness.video_worker_exits.load(std::memory_order_acquire) == 0 &&
+      harness.last_video_source.expired() &&
+      harness.last_video_capturer.expired(),
+    "cancelled screen publish leaked preflight resources or started capture"
+  );
 }
 
 ScreenControllerHarness makeWorkingHarness() {
@@ -536,10 +834,20 @@ ScreenControllerHarness makeWorkingHarness() {
 }
 
 void startHarnessCapture(ScreenControllerHarness& harness, const std::string& request_id) {
-  const auto start = screenCommand("startScreenCapture", request_id, "screen-di", 1);
+  const auto start = screenCommand(syrnike::desktop_native::NativeCommandType::StartScreenCapture, request_id, "screen-di", 1);
   harness.controller->startCapture(start);
-  harness.handleNextWorkerCommand();
-  require(harness.sink->waitReply(request_id).ok, "screen harness capture did not start");
+  const auto deadline = std::chrono::steady_clock::now() + kTestWatchdog;
+  while (!harness.sink->hasReply(request_id)) {
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline) {
+      throw std::runtime_error(
+        "timed out draining screen controller worker commands");
+    }
+    harness.handleNextWorkerCommand(
+      std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now));
+  }
+  const auto reply = harness.sink->waitReply(request_id);
+  require(reply.ok, "screen harness capture did not start");
 }
 
 void releaseRetirement(ScreenControllerHarness& harness) {
@@ -557,19 +865,19 @@ void verifyRejectedRetireCompletionRetriesInternally() {
   harness.rejectNextRetireCompletion();
 
   const auto stop =
-    screenCommand("stopScreenCapture", "di-retire-retry-stop", "screen-di", 1);
+    screenCommand(syrnike::desktop_native::NativeCommandType::StopScreenCapture, "di-retire-retry-stop", "screen-di", 1);
   harness.controller->stopCapture(stop);
   harness.livekit->waitUntilPending(Operation::Unpublish, 1, kTestWatchdog);
   harness.livekit->releaseNext(Operation::Unpublish);
 
   const auto completion = harness.takeNextWorkerCommand();
   require(
-    completion.type == "__screenRetireDone",
+    completion.type == syrnike::desktop_native::NativeCommandType::ScreenRetireDone,
     "rejected retirement completion was not retried internally"
   );
   harness.controller->handleWorkerCommand(completion);
   const auto probe = harness.controller->probe(
-    screenCommand("probeScreenActor", {}, "screen-di", 1)
+    screenCommand(syrnike::desktop_native::NativeCommandType::ProbeScreenActor, {}, "screen-di", 1)
   );
   require(
     probe.state == "available",
@@ -588,7 +896,7 @@ void waitForAvailable(
        ++attempt) {
     const auto request_id = request_prefix + "-" + std::to_string(attempt);
     syrnike::desktop_native::MediaCommand probe;
-    probe.type = "probeScreenActor";
+    probe.type = syrnike::desktop_native::NativeCommandType::ProbeScreenActor;
     probe.request_id = request_id;
     require(runtime.dispatch(probe), "runtime rejected availability probe");
     const auto reply = sink->waitReply(request_id);
@@ -607,7 +915,7 @@ void verifyCombinedShutdownUsesOneDeadline() {
   harness.setCurrent(2);
   harness.controller->startCapture(
       screenCommand(
-          "startScreenCapture", "shutdown-budget-candidate", "screen-di", 2));
+      syrnike::desktop_native::NativeCommandType::StartScreenCapture, "shutdown-budget-candidate", "screen-di", 2));
   harness.livekit->waitUntilPending(Operation::Unpublish, 1, kTestWatchdog);
   harness.livekit->waitUntilPending(Operation::Publish, 1, kTestWatchdog);
 
@@ -645,13 +953,12 @@ void verifyRetireLauncherFailureRetriesWithoutNextOperation() {
     [](int width, int height) {
       return std::make_shared<FakeD3D11H264VideoSource>(width, height);
     },
-    [&](std::function<void()> work) {
+    [&] {
       if (launches.fetch_add(1, std::memory_order_acq_rel) < 2) {
         throw std::system_error(
           std::make_error_code(std::errc::resource_unavailable_try_again)
         );
       }
-      return std::thread(std::move(work));
     },
     [&] {
       if (enqueue_failures.fetch_add(1, std::memory_order_acq_rel) == 0) {
@@ -666,7 +973,7 @@ void verifyRetireLauncherFailureRetriesWithoutNextOperation() {
   startHarnessCapture(harness, "retire-launch-failure");
 
   const auto stop = screenCommand(
-    "stopScreenCapture", "retire-launch-failure-stop", "screen-di", 1);
+      syrnike::desktop_native::NativeCommandType::StopScreenCapture, "retire-launch-failure-stop", "screen-di", 1);
   harness.controller->stopCapture(stop, false);
   harness.controller->shutdown(
     std::chrono::steady_clock::now() + std::chrono::milliseconds(1750)
@@ -705,27 +1012,15 @@ void verifyRetireLauncherFailureDoesNotRunBlockedCleanupInline() {
     [](int width, int height) {
       return std::make_shared<FakeD3D11H264VideoSource>(width, height);
     },
-    [&](std::function<void()> work) {
+    [&] {
       const auto launch = launches.fetch_add(1, std::memory_order_acq_rel);
-      if (launch == 0) {
+      if (launch < 2) {
         throw std::system_error(
           std::make_error_code(std::errc::resource_unavailable_try_again)
         );
       }
-      if (launch == 1) {
-        std::thread(std::move(work)).detach();
-        for (int attempt = 0; attempt < 1000 &&
-             !cleanup_entered.load(std::memory_order_acquire);
-             ++attempt) {
-          std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        throw std::system_error(
-          std::make_error_code(std::errc::resource_unavailable_try_again)
-        );
-      }
-      return std::thread(std::move(work));
     },
-    ScreenControllerHarness::Controller::BeforeRetireEnqueue{},
+    syrnike::desktop_native::CleanupEnqueueProbe{},
     [&] { cleanup_entered.store(true, std::memory_order_release); }
   );
   startHarnessCapture(harness, "retire-launch-blocked");
@@ -734,7 +1029,7 @@ void verifyRetireLauncherFailureDoesNotRunBlockedCleanupInline() {
   const auto stop_started = std::chrono::steady_clock::now();
   harness.controller->stopCapture(
     screenCommand(
-      "stopScreenCapture",
+      syrnike::desktop_native::NativeCommandType::StopScreenCapture,
       "retire-launch-blocked-stop",
       "screen-di",
       1),
@@ -783,8 +1078,8 @@ void verifyRegularRetireFinalizesAfterCleanupFault() {
     [](int width, int height) {
       return std::make_shared<FakeD3D11H264VideoSource>(width, height);
     },
-    ScreenControllerHarness::Controller::LaunchRetireWorker{},
-    ScreenControllerHarness::Controller::BeforeRetireEnqueue{},
+    syrnike::desktop_native::CleanupStartProbe{},
+    syrnike::desktop_native::CleanupEnqueueProbe{},
     [&] {
       cleanup_faults.fetch_add(1, std::memory_order_acq_rel);
       throw std::bad_alloc();
@@ -793,7 +1088,7 @@ void verifyRegularRetireFinalizesAfterCleanupFault() {
   startHarnessCapture(harness, "cleanup-fault-regular");
   harness.controller->stopCapture(
     screenCommand(
-      "stopScreenCapture",
+      syrnike::desktop_native::NativeCommandType::StopScreenCapture,
       "cleanup-fault-regular-stop",
       "screen-di",
       1),
@@ -807,7 +1102,7 @@ void verifyRegularRetireFinalizesAfterCleanupFault() {
   );
   harness.controller->startCapture(
     screenCommand(
-      "startScreenCapture",
+      syrnike::desktop_native::NativeCommandType::StartScreenCapture,
       "cleanup-fault-capacity",
       "screen-di",
       1)
@@ -816,61 +1111,6 @@ void verifyRegularRetireFinalizesAfterCleanupFault() {
   require(
     harness.sink->waitReply("cleanup-fault-capacity").ok,
     "regular cleanup fault did not release screen capacity"
-  );
-}
-
-void verifyCapturerRetireLauncherFailureRetries() {
-  using Dispatcher =
-    syrnike::desktop_native::media::ScreenCapturerRetireDispatcher;
-  std::atomic_uint64_t launches{0};
-  std::atomic_uint64_t destroyed{0};
-  Dispatcher dispatcher([&](std::function<void()> work) {
-    if (launches.fetch_add(1, std::memory_order_acq_rel) == 0) {
-      throw std::system_error(
-        std::make_error_code(std::errc::resource_unavailable_try_again)
-      );
-    }
-    return std::thread(std::move(work));
-  });
-  std::vector<std::shared_ptr<
-      syrnike::desktop_native::media::ScreenGpuCapturer>> capturers;
-  capturers.emplace_back(
-    reinterpret_cast<syrnike::desktop_native::media::ScreenGpuCapturer*>(
-      static_cast<std::uintptr_t>(1)),
-    [&](syrnike::desktop_native::media::ScreenGpuCapturer*) {
-      destroyed.fetch_add(1, std::memory_order_acq_rel);
-    }
-  );
-  bool launch_failed = false;
-  try {
-    auto worker =
-      syrnike::desktop_native::media::launchScreenCaptureWorker(
-        [](std::function<void()>) -> std::thread {
-          throw std::system_error(
-            std::make_error_code(std::errc::resource_unavailable_try_again)
-          );
-        },
-        {},
-        [] {},
-        [&] { dispatcher.submit(std::move(capturers)); }
-      );
-    if (worker.joinable()) worker.join();
-  } catch (const std::system_error&) {
-    launch_failed = true;
-  }
-  dispatcher.close(
-    std::chrono::steady_clock::now() + std::chrono::milliseconds(1750)
-  );
-  for (int attempt = 0; attempt < 1000 &&
-       destroyed.load(std::memory_order_acquire) != 1;
-       ++attempt) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-  }
-  require(
-    launch_failed &&
-      launches.load(std::memory_order_acquire) >= 2 &&
-      destroyed.load(std::memory_order_acquire) == 1,
-    "capturer retirement was lost after launcher failure"
   );
 }
 
@@ -893,46 +1133,57 @@ void verifyStatsLauncherFailureIsOptional() {
       capture_iterations.load(std::memory_order_acquire) == 1,
     "optional stats launcher failure interrupted screen capture work"
   );
-}
 
-void verifyCapturerShutdownSlotSurvivesRuntimeSaturation() {
-  using Capturer = syrnike::desktop_native::media::ScreenGpuCapturer;
-  using Dispatcher =
-    syrnike::desktop_native::media::ScreenCapturerRetireDispatcher;
-  std::atomic_bool allow_launch{false};
-  std::atomic_uint64_t destroyed{0};
-  Dispatcher dispatcher([&](std::function<void()> work) {
-    if (!allow_launch.load(std::memory_order_acquire)) {
-      throw std::system_error(
-        std::make_error_code(std::errc::resource_unavailable_try_again)
-      );
-    }
-    return std::thread(std::move(work));
-  });
-  auto fake = [&](std::uintptr_t identity) {
-    return std::shared_ptr<Capturer>(
-      reinterpret_cast<Capturer*>(identity),
-      [&](Capturer*) { destroyed.fetch_add(1, std::memory_order_acq_rel); }
-    );
-  };
-  for (std::uintptr_t identity = 1; identity <= 8; ++identity) {
-    dispatcher.submit(fake(identity));
-  }
-  std::vector<std::shared_ptr<Capturer>> shutdown_capturers;
-  shutdown_capturers.push_back(fake(9));
-  dispatcher.submitShutdown(std::move(shutdown_capturers));
-  allow_launch.store(true, std::memory_order_release);
-  dispatcher.close(
-    std::chrono::steady_clock::now() + std::chrono::milliseconds(1750)
+  std::function<void()> guarded_stats_work;
+  worker = syrnike::desktop_native::media::launchOptionalScreenStatsWorker(
+    [&](std::function<void()> work) -> std::thread {
+      guarded_stats_work = std::move(work);
+      return {};
+    },
+    [] { throw std::bad_alloc(); }
   );
-  for (int attempt = 0; attempt < 1000 &&
-       destroyed.load(std::memory_order_acquire) != 9;
-       ++attempt) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  require(
+    !worker.joinable() && static_cast<bool>(guarded_stats_work),
+    "optional stats worker did not expose its guarded task to the launcher"
+  );
+  bool stats_failure_escaped = false;
+  try {
+    guarded_stats_work();
+  } catch (...) {
+    stats_failure_escaped = true;
   }
   require(
-    destroyed.load(std::memory_order_acquire) == 9,
-    "dedicated shutdown capturer slot lost saturated retirement ownership"
+    !stats_failure_escaped,
+    "optional stats work failure escaped and could terminate screen capture"
+  );
+}
+
+void verifyShutdownCancelsInFlightUnpublish() {
+  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
+  auto harness = makeWorkingHarness();
+  startHarnessCapture(harness, "shutdown-cancel-active-unpublish");
+  harness.livekit->setBlocked(Operation::Unpublish, true);
+  harness.livekit->setCancellationAware(Operation::Unpublish, true);
+  harness.controller->stopCapture(
+    screenCommand(
+      syrnike::desktop_native::NativeCommandType::StopScreenCapture,
+      "shutdown-cancel-stop",
+      "screen-di",
+      1),
+    false
+  );
+  harness.livekit->waitUntilPending(Operation::Unpublish, 1, kTestWatchdog);
+
+  const auto started = std::chrono::steady_clock::now();
+  harness.controller->shutdown(started + std::chrono::milliseconds(1750));
+  require(
+    std::chrono::steady_clock::now() - started <
+        std::chrono::milliseconds(500),
+    "screen shutdown left an in-flight unpublish on its ordinary deadline"
+  );
+  require(
+    harness.livekit->pending(Operation::Unpublish) == 0,
+    "screen shutdown did not cancel its in-flight unpublish"
   );
 }
 
@@ -994,7 +1245,7 @@ void verifyCapturePackagingFailureRollsBack() {
   );
 }
 
-void verifyDetachedCaptureWorkerRetainsOwner() {
+void verifyCaptureWorkerRetainsOwnerUntilJoin() {
   struct LifetimeProbe {
     explicit LifetimeProbe(std::atomic_bool& destroyed)
         : destroyed(destroyed) {}
@@ -1027,26 +1278,137 @@ void verifyDetachedCaptureWorkerRetainsOwner() {
       "capture worker did not start"
     );
   }
-  worker.detach();
   owner.reset();
   require(
     !destroyed.load(std::memory_order_acquire),
-    "detached capture worker released its actor owner while still running"
+    "capture worker released its actor owner while still running"
   );
   {
     std::lock_guard lock(mutex);
     release = true;
   }
   changed.notify_all();
-  for (int attempt = 0; attempt < 1000 &&
-       !destroyed.load(std::memory_order_acquire);
-       ++attempt) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-  }
+  worker.join();
   require(
     destroyed.load(std::memory_order_acquire),
-    "detached capture worker did not release its actor owner after exit"
+    "joined capture worker did not release its actor owner after exit"
   );
+}
+
+void verifyAudioFailureRetryAndRetirementAreIndependentFromVideo() {
+  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
+  using Release = ScreenControllerHarness::FakeLiveKit::Release;
+  ScreenControllerHarness harness(
+    [] { return livekit::D3D11H264Capability{true, {}}; },
+    [](int width, int height) {
+      return std::make_shared<FakeD3D11H264VideoSource>(width, height);
+    }
+  );
+  harness.livekit->releaseNext(Operation::Publish, Release{.publication_sid = "video-1"});
+  harness.livekit->releaseNext(Operation::Publish, Release{.publication_sid = "audio-failed"});
+  harness.failNextAudioWorkerStart();
+
+  auto start = screenCommand(syrnike::desktop_native::NativeCommandType::StartScreenCapture, "screen-start", "screen-di", 1);
+  start.audio_requested = true;
+  harness.controller->startCapture(start);
+  harness.handleNextWorkerCommand();
+  require(harness.sink->waitReply("screen-start").ok, "healthy screen video failed to start");
+  harness.handleNextWorkerCommand();
+  const auto first_failure = harness.sink->waitLifecycleCount(
+    "screen-di", 1, "screen_audio", "error", 1);
+  require(
+    first_failure.error && first_failure.error->code == "audio_device_lost",
+    "screen audio failure lost its typed audio-only error"
+  );
+  require(
+    harness.video_worker_starts.load() == 1 &&
+      harness.audio_worker_starts.load() == 1,
+    "screen audio failure restarted or skipped the healthy video lane"
+  );
+
+  for (int attempt = 0; attempt < 1000; ++attempt) {
+    const auto unpublished = harness.livekit->unpublishedPublicationSids();
+    if (std::find(unpublished.begin(), unpublished.end(), "audio-failed") != unpublished.end()) {
+      break;
+    }
+    std::this_thread::sleep_for(1ms);
+  }
+  const auto after_failure = harness.livekit->unpublishedPublicationSids();
+  require(
+    std::find(after_failure.begin(), after_failure.end(), "audio-failed") !=
+      after_failure.end() &&
+      std::find(after_failure.begin(), after_failure.end(), "video-1") ==
+        after_failure.end(),
+    "audio-only failure retired the wrong publication"
+  );
+
+  harness.livekit->releaseNext(Operation::Publish, Release{.publication_sid = "audio-retry"});
+  auto retry = start;
+  retry.request_id = "audio-retry";
+  harness.controller->startCapture(retry);
+  require(harness.sink->waitReply("audio-retry").ok, "audio-only retry rejected healthy video");
+  harness.handleNextWorkerCommand();
+  harness.sink->waitLifecycleCount("screen-di", 1, "screen_audio", "running", 1);
+  require(
+    harness.video_worker_starts.load() == 1 &&
+      harness.audio_worker_starts.load() == 2,
+    "audio-only retry republished the healthy video lane"
+  );
+
+  syrnike::desktop_native::MediaCommand terminal;
+  terminal.type = syrnike::desktop_native::NativeCommandType::ScreenAudioTerminal;
+  terminal.session_id = "screen-di";
+  terminal.generation = 1;
+  terminal.internal_epoch = harness.current_audio_epoch.load();
+  terminal.internal_message = "audio_device_lost";
+  harness.controller->handleWorkerCommand(terminal);
+  harness.sink->waitLifecycleCount("screen-di", 1, "screen_audio", "error", 2);
+
+  harness.livekit->releaseNext(
+    Operation::Publish, Release{.publication_sid = "audio-reconnect"});
+  harness.blockNextAudioWorkerUntilStop();
+  auto reconnect = start;
+  reconnect.request_id = "audio-reconnect";
+  harness.controller->startCapture(reconnect);
+  require(
+    harness.sink->waitReply("audio-reconnect").ok,
+    "screen audio reconnect rejected the current screen session"
+  );
+  harness.handleNextWorkerCommand();
+  harness.sink->waitLifecycleCount("screen-di", 1, "screen_audio", "running", 2);
+  require(
+    harness.video_worker_starts.load() == 1 &&
+      harness.audio_worker_starts.load() == 3,
+    "screen audio reconnect recreated healthy video"
+  );
+
+  auto late_terminal = terminal;
+  late_terminal.internal_epoch = harness.previous_audio_epoch.load();
+  late_terminal.internal_message = "late_old_audio_device_lost";
+  harness.controller->handleWorkerCommand(late_terminal);
+  std::this_thread::sleep_for(10ms);
+  const auto before_stop = harness.livekit->unpublishedPublicationSids();
+  require(
+    std::find(before_stop.begin(), before_stop.end(), "audio-reconnect") ==
+      before_stop.end(),
+    "a late old audio terminal retired the reconnected audio lane"
+  );
+
+  const auto stopped_at = std::chrono::steady_clock::now();
+  auto stop = screenCommand(syrnike::desktop_native::NativeCommandType::StopScreenCapture, "screen-stop", "screen-di", 1);
+  harness.controller->stopCapture(stop);
+  harness.controller->shutdown(stopped_at + 2s);
+  require(
+    std::chrono::steady_clock::now() - stopped_at < 2s,
+    "screen audio shutdown exceeded its two-second cleanup budget"
+  );
+  const auto unpublished = harness.livekit->unpublishedPublicationSids();
+  for (const auto* sid : {"video-1", "audio-failed", "audio-retry", "audio-reconnect"}) {
+    require(
+      std::count(unpublished.begin(), unpublished.end(), sid) == 1,
+      "screen publication was not released exactly once"
+    );
+  }
 }
 
 }  // namespace
@@ -1192,10 +1554,19 @@ int main() try {
         ScreenOutputStall::None,
       "inactive output retained a stale watchdog"
     );
+    detector.reset();
+    require(
+      detector.observe(started + 31s, true, 0, 0, 0, 5s) ==
+          ScreenOutputStall::None &&
+        detector.observe(started + 37s, true, 0, 0, 0, 5s) ==
+          ScreenOutputStall::Encoder,
+      "a published screen source without its first handoff was treated as static"
+    );
   }
 
   using syrnike::desktop_native::media::DeterministicFakeLiveKitVoiceSession;
   using syrnike::desktop_native::media::MediaRuntime;
+
 
   auto sink = std::make_shared<CollectingSink>();
   auto livekit = std::make_shared<DeterministicFakeLiveKitVoiceSession>();
@@ -1208,12 +1579,21 @@ int main() try {
 
   verifyPhase("unavailable encoder", verifyUnavailableEncoderFailsClosed);
   verifyPhase(
+    "process encoder admission",
+    verifyEncoderAdmissionFailsBeforeSourceConstruction);
+  verifyPhase(
     "capture preflight before publication",
     verifyCapturePreflightFailsBeforePublication);
   verifyPhase(
     "capture permission denial",
     verifyCapturePermissionFailureStopsAutomaticRetry);
   verifyPhase("null encoder source", verifyNullEncoderSourceFailsClosed);
+  verifyPhase(
+    "capture after publish ACK",
+    verifyCaptureStartsOnlyAfterPublishAck);
+  verifyPhase(
+    "publication failure lifecycle",
+    verifyPublicationFailureClosesLifecycle);
   verifyPhase("cancelled publish rollback", verifyCancelledPublishRollsBackExactSid);
   verifyPhase(
     "retire completion retry",
@@ -1222,6 +1602,10 @@ int main() try {
   verifyPhase(
     "combined screen shutdown deadline",
     verifyCombinedShutdownUsesOneDeadline
+  );
+  verifyPhase(
+    "screen shutdown cancels in-flight unpublish",
+    verifyShutdownCancelsInFlightUnpublish
   );
   verifyPhase(
     "retire launcher failure retry",
@@ -1236,16 +1620,8 @@ int main() try {
     verifyRegularRetireFinalizesAfterCleanupFault
   );
   verifyPhase(
-    "capturer retire launcher failure retry",
-    verifyCapturerRetireLauncherFailureRetries
-  );
-  verifyPhase(
     "optional stats launcher failure",
     verifyStatsLauncherFailureIsOptional
-  );
-  verifyPhase(
-    "capturer shutdown saturation",
-    verifyCapturerShutdownSlotSurvivesRuntimeSaturation
   );
   verifyPhase(
     "capture rollback fault",
@@ -1256,29 +1632,42 @@ int main() try {
     verifyCapturePackagingFailureRollsBack
   );
   verifyPhase(
-    "detached capture worker ownership",
-    verifyDetachedCaptureWorkerRetainsOwner
+    "capture worker ownership until join",
+    verifyCaptureWorkerRetainsOwnerUntilJoin
+  );
+  verifyPhase(
+    "independent screen audio lane",
+    verifyAudioFailureRetryAndRetirementAreIndependentFromVideo
   );
 
   livekit->setBlocked(DeterministicFakeLiveKitVoiceSession::Operation::Publish, false);
   livekit->setVoiceSessionForTest("screen-c");
-  const auto prepare_c = screenCommand("connectScreen", "prepare-c", "screen-c", 7);
+  const auto prepare_c = screenCommand(syrnike::desktop_native::NativeCommandType::ConnectScreen, "prepare-c", "screen-c", 7);
   require(runtime.dispatch(prepare_c), "runtime rejected terminal-semantics prepare");
   require(sink->waitReply("prepare-c").ok, "terminal-semantics prepare failed");
 
   syrnike::desktop_native::MediaCommand terminal;
-  terminal.type = "__screenTerminal";
+  terminal.type = syrnike::desktop_native::NativeCommandType::ScreenTerminal;
   terminal.session_id = "screen-c";
   terminal.generation = 7;
   terminal.internal_message = "livekit_disconnected:network";
+  terminal.terminal_producer =
+    syrnike::desktop_native::NativeTerminalProducer::ScreenCapture;
+  terminal.terminal_incarnation =
+    syrnike::desktop_native::nextTerminalIncarnation();
+  require(
+    syrnike::desktop_native::terminalIncarnationFence().registerCurrent(
+      terminal.terminal_producer, terminal.terminal_incarnation),
+    "terminal-semantics fixture failed to register its screen incarnation"
+  );
   require(runtime.dispatch(terminal), "runtime rejected screen terminal event");
-  const auto ended = sink->waitEvent("screenCaptureEnded", "screen-c", 7);
+  const auto ended = sink->waitEvent(syrnike::desktop_native::NativeEventType::ScreenCaptureEnded, "screen-c", 7);
   require(ended.reason == "runtime_error", "terminal disconnect lost screen ended semantics");
   require(
     ended.detail == "livekit_disconnected:network",
     "terminal disconnect lost its typed detail"
   );
-  const auto stopped = sink->waitEvent("sessionStopped", "screen-c", 7);
+  const auto stopped = sink->waitEvent(syrnike::desktop_native::NativeEventType::SessionStopped, "screen-c", 7);
   require(
     stopped.reason == "livekit_disconnected:network",
     "terminal disconnect lost sessionStopped semantics"
@@ -1289,7 +1678,7 @@ int main() try {
   waitForAvailable(runtime, sink, "recovery-available");
   livekit->setVoiceSessionForTest("screen-recovery-next");
   const auto next_recovery_retry = screenCommand(
-    "connectScreen",
+      syrnike::desktop_native::NativeCommandType::ConnectScreen,
     "recovery-next",
     "screen-recovery-next",
     9);

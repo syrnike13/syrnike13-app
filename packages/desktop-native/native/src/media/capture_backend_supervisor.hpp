@@ -165,6 +165,17 @@ class CaptureBackendSupervisor final {
       };
     }
 
+    // Admission saturation means an older active, retired, or renderer-held
+    // generation still owns the process budget. Replacing the capture backend
+    // would consume more capacity, so keep the current backend and retry after
+    // bounded backoff when an exact lease release has restored capacity.
+    if (observation.error ==
+        ScreenGpuCaptureErrorCode::ResourceSaturated) {
+      scheduleBackoff(now, kGpuTimeoutMaxRetry);
+      state_ = CaptureBackendState::Degraded;
+      return {state_, CaptureBackendAction::None, active_};
+    }
+
     scheduleBackoff(now);
 
     if (active_ == CaptureBackend::Dxgi && consecutive_failures_ >= 2) {
@@ -249,6 +260,23 @@ class CaptureBackendSupervisor final {
     }
   }
 
+  // A candidate that could not be admitted was never activated and must not
+  // consume the backend failure budget. Keep the current backend selected and
+  // retry the same recovery action after bounded capacity backoff.
+  void recoveryDeferred(
+      const CaptureBackendDecision& deferred,
+      ScreenGpuCaptureErrorCode cause,
+      Clock::time_point now) noexcept {
+    std::lock_guard lock(decision_mutex_);
+    state_ = CaptureBackendState::Degraded;
+    awaiting_recovery_confirmation_ = false;
+    forced_recovery_action_ = deferred.action;
+    forced_recovery_target_ = deferred.target;
+    last_deferral_ = cause;
+    ++recovery_deferrals_;
+    scheduleBackoff(now, kGpuTimeoutMaxRetry);
+  }
+
   [[nodiscard]] CaptureBackend activeBackend() const noexcept {
     std::lock_guard lock(decision_mutex_);
     return active_;
@@ -265,6 +293,16 @@ class CaptureBackendSupervisor final {
   [[nodiscard]] std::uint64_t recoveryAttemptCount() const noexcept {
     std::lock_guard lock(decision_mutex_);
     return recovery_attempts_;
+  }
+  [[nodiscard]] std::uint64_t recoveryDeferralCount() const noexcept {
+    std::lock_guard lock(decision_mutex_);
+    return recovery_deferrals_;
+  }
+
+  [[nodiscard]] ScreenGpuCaptureErrorCode lastRecoveryDeferral()
+      const noexcept {
+    std::lock_guard lock(decision_mutex_);
+    return last_deferral_;
   }
 
   [[nodiscard]] Clock::time_point nextRetryAt() const noexcept {
@@ -297,6 +335,9 @@ class CaptureBackendSupervisor final {
   std::uint32_t backoff_exponent_ = 0;
   std::uint64_t successful_recoveries_ = 0;
   std::uint64_t recovery_attempts_ = 0;
+  std::uint64_t recovery_deferrals_ = 0;
+  ScreenGpuCaptureErrorCode last_deferral_ =
+      ScreenGpuCaptureErrorCode::CaptureUnavailable;
   bool awaiting_recovery_confirmation_ = false;
   CaptureBackendAction forced_recovery_action_ = CaptureBackendAction::None;
   CaptureBackend forced_recovery_target_ = CaptureBackend::Dxgi;

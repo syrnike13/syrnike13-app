@@ -13,6 +13,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "../common/native_message_policy.hpp"
 #include "../common/runtime_types.hpp"
 
 namespace syrnike::desktop_native::media {
@@ -23,12 +24,9 @@ enum class ActorCommandTraffic {
 };
 
 inline ActorCommandTraffic classifyActorCommand(const MediaCommand& command) {
-  if (
-    command.type == "__remoteVideoFrame" ||
-    command.type == "__localScreenPreviewFrame" ||
-    command.type == "__localCameraPreviewFrame" ||
-    command.type == "__voiceActiveSpeakers"
-  ) {
+  if (isValidNativeCommandType(command.type) &&
+      nativeCommandPolicy(command.type).loss ==
+        NativeMessageLoss::CoalescedLatest) {
     return ActorCommandTraffic::CoalescedMedia;
   }
   return ActorCommandTraffic::Control;
@@ -42,7 +40,8 @@ inline bool sameActorMediaKey(const MediaCommand& left, const MediaCommand& righ
   ) {
     return false;
   }
-  return left.type != "__remoteVideoFrame" || left.track_id == right.track_id;
+  return left.type != NativeCommandType::RemoteVideoFrame ||
+         left.track_id == right.track_id;
 }
 
 class ActorCommandResourceGuard final {
@@ -145,6 +144,7 @@ class ActorMailbox {
       if (target == MediaKeyCapacity) {
         target = empty != MediaKeyCapacity ? empty : oldest;
       }
+      if (target >= MediaKeyCapacity) std::terminate();
       auto& slot = media_[target];
       if (slot.command) {
         dropped.emplace(std::move(*slot.command));
@@ -165,6 +165,10 @@ class ActorMailbox {
     ready_.wait(lock, [&] {
       return closed_ || control_size_ != 0 || media_size_ != 0;
     });
+    // closeAndDiscard marks the mailbox closed before it drains ownership in
+    // small batches. Once that transition starts, no worker may race the
+    // out-of-lock resource release and consume an item counted as discarded.
+    if (closed_) return std::nullopt;
     if (control_size_ != 0) {
       auto command = std::move(*control_[control_head_]);
       control_[control_head_].reset();
@@ -182,6 +186,7 @@ class ActorMailbox {
           oldest_order = media_[index].order;
         }
       }
+      if (oldest >= MediaKeyCapacity) std::terminate();
       auto command = std::move(*media_[oldest].command);
       media_[oldest].command.reset();
       media_[oldest].order = 0;
@@ -192,26 +197,40 @@ class ActorMailbox {
   }
 
   std::size_t closeAndDiscard() {
-    std::array<std::optional<MediaCommand>, MediaKeyCapacity> dropped;
     std::size_t discarded = 0;
     {
       std::lock_guard lock(mutex_);
       if (closed_) return 0;
       closed_ = true;
       discarded = control_size_ + media_size_;
-      for (auto& command : control_) command.reset();
-      control_head_ = 0;
-      control_size_ = 0;
-      for (std::size_t index = 0; index < MediaKeyCapacity; ++index) {
-        if (media_[index].command) {
-          dropped[index].emplace(std::move(*media_[index].command));
-          media_[index].command.reset();
-          media_[index].order = 0;
+    }
+    while (true) {
+      std::optional<MediaCommand> dropped;
+      {
+        std::lock_guard lock(mutex_);
+        if (control_size_ != 0) {
+          dropped.emplace(std::move(*control_[control_head_]));
+          control_[control_head_].reset();
+          control_head_ = (control_head_ + 1) % ControlCapacity;
+          --control_size_;
+        } else {
+          for (auto& slot : media_) {
+            if (!slot.command) continue;
+            dropped.emplace(std::move(*slot.command));
+            slot.command.reset();
+            slot.order = 0;
+            --media_size_;
+            break;
+          }
         }
       }
-      media_size_ = 0;
+      if (!dropped) break;
+      drop(std::move(dropped));
     }
-    for (auto& command : dropped) drop(std::move(command));
+    {
+      std::lock_guard lock(mutex_);
+      control_head_ = 0;
+    }
     ready_.notify_all();
     space_available_.notify_all();
     return discarded;
@@ -221,27 +240,30 @@ class ActorMailbox {
     const std::string& session_id,
     std::uint64_t generation
   ) {
-    std::array<std::optional<MediaCommand>, MediaKeyCapacity> dropped;
     std::size_t dropped_count = 0;
-    {
-      std::lock_guard lock(mutex_);
-      for (std::size_t index = 0; index < MediaKeyCapacity; ++index) {
-        auto& slot = media_[index];
-        if (
-          !slot.command ||
-          slot.command->session_id != session_id ||
-          slot.command->generation != generation
-        ) {
-          continue;
+    while (true) {
+      std::optional<MediaCommand> dropped;
+      {
+        std::lock_guard lock(mutex_);
+        for (auto& slot : media_) {
+          if (
+            !slot.command ||
+            slot.command->session_id != session_id ||
+            slot.command->generation != generation
+          ) {
+            continue;
+          }
+          dropped.emplace(std::move(*slot.command));
+          slot.command.reset();
+          slot.order = 0;
+          ++dropped_count;
+          --media_size_;
+          break;
         }
-        dropped[index].emplace(std::move(*slot.command));
-        slot.command.reset();
-        slot.order = 0;
-        ++dropped_count;
-        --media_size_;
       }
+      if (!dropped) break;
+      drop(std::move(dropped));
     }
-    for (auto& command : dropped) drop(std::move(command));
     return dropped_count;
   }
 

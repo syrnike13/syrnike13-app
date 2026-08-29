@@ -100,6 +100,8 @@ jobs:
           }
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
+      - name: Build shared platform contract
+        run: pnpm --filter @syrnike13/platform build
       - name: Build Debug DLL runtime
         run: pnpm desktop-native:build:debug
       - name: Test Debug native core
@@ -197,6 +199,8 @@ jobs:
           }
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
+      - name: Build shared platform contract
+        run: pnpm --filter @syrnike13/platform build
       - name: Build Debug native core with AddressSanitizer
         run: pnpm desktop-native:build:asan
       - name: Test AddressSanitizer native core

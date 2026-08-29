@@ -148,10 +148,14 @@ int main() try {
     throw std::runtime_error("failed to reserve first preview slot");
   }
   std::size_t expired_slot = 3;
+  std::size_t expired_count = 0;
   preview_slots.expire(
       started + 10s,
       5s,
-      [&](std::size_t slot, std::uint64_t) { expired_slot = slot; });
+      [&](std::size_t slot, std::uint64_t) {
+        expired_slot = slot;
+        ++expired_count;
+      });
   if (expired_slot != 3 || preview_slots.inFlight() != 1) {
     throw std::runtime_error(
         "unfinished GPU preview conversion was expired and reused");
@@ -164,13 +168,34 @@ int main() try {
   preview_slots.expire(
       started + 10s,
       5s,
-      [&](std::size_t slot, std::uint64_t) { expired_slot = slot; });
-  if (expired_slot != 0 || preview_slots.inFlight() != 0) {
-    throw std::runtime_error("renderer-loss lease was not revoked within 5s");
+      [&](std::size_t slot, std::uint64_t) {
+        expired_slot = slot;
+        ++expired_count;
+      });
+  preview_slots.expire(
+      started + 20s,
+      5s,
+      [&](std::size_t, std::uint64_t) { ++expired_count; });
+  if (expired_slot != 0 || expired_count != 1 ||
+      preview_slots.inFlight() != 1) {
+    throw std::runtime_error(
+        "renderer fence timeout made a delivered preview slot reusable");
   }
   const auto replacement = preview_slots.reserve(101, started + 10s, 0);
-  if (!replacement || *replacement != 0) {
-    throw std::runtime_error("expired preview slot was not reusable");
+  if (!replacement || *replacement != 1) {
+    throw std::runtime_error(
+        "replacement preview reused the renderer-owned allocation");
+  }
+  if (preview_slots.release(100) != first ||
+      preview_slots.release(100).has_value()) {
+    throw std::runtime_error(
+        "delayed preview fence was not exact and idempotent");
+  }
+  const auto released_replacement =
+      preview_slots.reserve(102, started + 10s, 0);
+  if (!released_replacement || *released_replacement != 0) {
+    throw std::runtime_error(
+        "preview slot did not return after its renderer fence");
   }
 
   auto now = started;

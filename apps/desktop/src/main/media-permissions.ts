@@ -11,6 +11,7 @@ import {
   IPC,
   type DesktopDisplayMediaRequest,
   type DesktopDisplayMediaSource,
+  type DesktopDisplayMediaSourcePage,
   type DesktopDisplayMediaSourceType,
 } from '@syrnike13/platform'
 import { Effect, Fiber, Schema } from 'effect'
@@ -19,7 +20,8 @@ import { decodeIpcInput } from './ipc-schema'
 import {
   clearPendingNativePicker,
   getPendingNativePicker,
-  listNativeDisplaySourcesEffect,
+  listNativeDisplaySourcePageEffect,
+  loadNativeDisplaySourceVisualEffect,
   setPendingNativePicker,
 } from './native-media-engine'
 
@@ -38,6 +40,7 @@ type PendingDisplayMediaRequest = {
 
 const DISPLAY_MEDIA_REQUEST_TIMEOUT_MS = 120_000
 const DISPLAY_MEDIA_THUMBNAIL_SIZE = { width: 320, height: 180 }
+const DISPLAY_SOURCE_PAGE_SIZE = 24
 
 let mediaPermissionsInstalledForOrigin: string | null = null
 let displayMediaIpcRegistered = false
@@ -84,6 +87,24 @@ export function shouldAllowBrowserDisplayMediaFallback(
   platform: NodeJS.Platform,
 ) {
   return platform !== 'win32'
+}
+
+export function displayMediaSourcePage<Source>(
+  sources: readonly Source[],
+  page: number,
+): {
+  sources: Source[]
+  page: number
+  hasPrevious: boolean
+  hasNext: boolean
+} {
+  const start = page * DISPLAY_SOURCE_PAGE_SIZE
+  return {
+    sources: sources.slice(start, start + DISPLAY_SOURCE_PAGE_SIZE),
+    page,
+    hasPrevious: page > 0,
+    hasNext: sources.length > start + DISPLAY_SOURCE_PAGE_SIZE,
+  }
 }
 
 function requestOrigin(details: {
@@ -135,6 +156,7 @@ const loadSourcesForRequestEffect = Effect.fn(
   'desktopMedia.loadDisplaySources',
 )(function*(
   requestId: string,
+  page: number,
   sourcesRef: { sources: DesktopCapturerSource[] },
 ) {
   const sources = yield* Effect.tryPromise({
@@ -149,31 +171,85 @@ const loadSourcesForRequestEffect = Effect.fn(
   yield* Effect.sync(() => {
     sourcesRef.sources = sources
   })
-  return sources.map(serializeDisplayMediaSource)
+  return displayMediaSourcePage(
+    sources.map(serializeDisplayMediaSource),
+    page,
+  )
 })
 
 const refreshPendingDisplayMediaSourcesEffect = Effect.fn(
   'desktopMedia.refreshDisplaySources',
-)(function*(requestId: string) {
+)(function*(requestId: string, page: number) {
   const pending = pendingDisplayMediaRequest
-  if (!pending || pending.id !== requestId) return []
-  return yield* loadSourcesForRequestEffect(requestId, pending)
+  if (!pending || pending.id !== requestId) {
+    return displayMediaSourcePage<DesktopDisplayMediaSource>([], page)
+  }
+  const result = yield* loadSourcesForRequestEffect(requestId, page, pending)
+  return pendingDisplayMediaRequest === pending
+    ? result
+    : displayMediaSourcePage<DesktopDisplayMediaSource>([], page)
 })
 
 const refreshPendingNativePickerSourcesEffect = Effect.fn(
   'desktopMedia.refreshNativePickerSources',
 )(function*(
   requestId: string,
+  page: number,
   getWindow: () => BrowserWindow | null,
 ) {
   const pending = getPendingNativePicker()
-  if (!pending || pending.id !== requestId) return []
-  const sources = yield* listNativeDisplaySourcesEffect(getWindow)
+  if (!pending || pending.id !== requestId) {
+    return displayMediaSourcePage<DesktopDisplayMediaSource>([], page)
+  }
+  const result = yield* listNativeDisplaySourcePageEffect(
+    requestId,
+    page,
+    getWindow,
+  )
+  if (getPendingNativePicker() !== pending) {
+    return displayMediaSourcePage<DesktopDisplayMediaSource>([], page)
+  }
   yield* Effect.sync(() => {
-    pending.sources = sources
+    pending.sources = result.sources
   })
-  return sources
+  return result
 })
+
+const refreshPendingNativePickerVisualEffect = Effect.fn(
+  'desktopMedia.refreshNativePickerVisual',
+)(function*(
+  requestId: string,
+  sourceId: string,
+  getWindow: () => BrowserWindow | null,
+) {
+  const pending = getPendingNativePicker()
+  if (
+    !pending ||
+    pending.id !== requestId ||
+    !pending.sources.some((source) => source.id === sourceId)
+  ) {
+    return null
+  }
+  const visual = yield* loadNativeDisplaySourceVisualEffect(
+    requestId,
+    sourceId,
+    getWindow,
+  )
+  if (!visual || getPendingNativePicker() !== pending) return null
+  yield* Effect.sync(() => {
+    pending.sources = pending.sources.map((source) =>
+      source.id === sourceId ? visual : source,
+    )
+  })
+  return visual
+})
+
+function pendingDisplayMediaSourceVisual(requestId: string, sourceId: string) {
+  const pending = pendingDisplayMediaRequest
+  if (!pending || pending.id !== requestId) return null
+  const source = pending.sources.find((candidate) => candidate.id === sourceId)
+  return source ? serializeDisplayMediaSource(source) : null
+}
 
 function selectPendingDisplayMediaSource(
   requestId: string,
@@ -203,20 +279,57 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
   if (displayMediaIpcRegistered) return
   displayMediaIpcRegistered = true
 
-  ipcMain.handle(IPC.mediaGetDisplaySources, (event, input: unknown) => {
-    if (!isTrustedSender(event, getWindow)) return []
+  ipcMain.handle(IPC.mediaGetDisplaySources, (
+    event,
+    requestInput: unknown,
+    pageInput: unknown,
+  ): Promise<DesktopDisplayMediaSourcePage> | DesktopDisplayMediaSourcePage => {
+    if (!isTrustedSender(event, getWindow)) {
+      return displayMediaSourcePage<DesktopDisplayMediaSource>([], 0)
+    }
     const requestId = decodeIpcInput(
       IPC.mediaGetDisplaySources,
       'requestId',
       Schema.String,
-      input,
+      requestInput,
+    )
+    const page = decodeIpcInput(
+      IPC.mediaGetDisplaySources,
+      'page',
+      Schema.Natural,
+      pageInput,
     )
     const nativePending = getPendingNativePicker()
     return Effect.runPromise(
       nativePending?.id === requestId
-        ? refreshPendingNativePickerSourcesEffect(requestId, getWindow)
-        : refreshPendingDisplayMediaSourcesEffect(requestId),
+        ? refreshPendingNativePickerSourcesEffect(requestId, page, getWindow)
+        : refreshPendingDisplayMediaSourcesEffect(requestId, page),
     )
+  })
+
+  ipcMain.handle(IPC.mediaGetDisplaySourceVisual, (
+    event,
+    requestInput: unknown,
+    sourceInput: unknown,
+  ) => {
+    if (!isTrustedSender(event, getWindow)) return null
+    const requestId = decodeIpcInput(
+      IPC.mediaGetDisplaySourceVisual,
+      'requestId',
+      Schema.String,
+      requestInput,
+    )
+    const sourceId = decodeIpcInput(
+      IPC.mediaGetDisplaySourceVisual,
+      'sourceId',
+      Schema.String,
+      sourceInput,
+    )
+    return getPendingNativePicker()?.id === requestId
+      ? Effect.runPromise(
+          refreshPendingNativePickerVisualEffect(requestId, sourceId, getWindow),
+        )
+      : pendingDisplayMediaSourceVisual(requestId, sourceId)
   })
 
   ipcMain.handle(

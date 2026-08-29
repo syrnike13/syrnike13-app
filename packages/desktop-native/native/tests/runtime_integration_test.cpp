@@ -7,8 +7,10 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
+#include "common/cleanup_supervisor.hpp"
 #include "common/event_sink.hpp"
 #include "hooks/hooks_runtime.hpp"
 #include "media/media_runtime.hpp"
@@ -31,7 +33,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
   bool hasRuntimeError() const {
     std::lock_guard lock(mutex_);
     for (const auto& event : events_) {
-      if (event.type == "runtimeError" &&
+      if (event.type == syrnike::desktop_native::NativeEventType::RuntimeError &&
           event.request_id != "stale-remote-video-demand") {
         return true;
       }
@@ -46,7 +48,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     std::unique_lock lock(mutex_);
     return changed_.wait_for(lock, timeout, [&] {
       for (const auto& event : events_) {
-        if (event.type == "reply" && event.request_id == request_id) return true;
+        if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id) return true;
       }
       return false;
     });
@@ -57,7 +59,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
   ) const {
     std::lock_guard lock(mutex_);
     for (const auto& event : events_) {
-      if (event.type == "reply" && event.request_id == request_id) return event;
+      if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id) return event;
     }
     return std::nullopt;
   }
@@ -66,7 +68,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     std::unique_lock lock(mutex_);
     const auto found = [this] {
       for (const auto& event : events_) {
-        if (event.type != "localScreenPreviewFailed") continue;
+        if (event.type != syrnike::desktop_native::NativeEventType::LocalScreenPreviewFailed) continue;
         return event.error &&
           event.error->code == "LOCAL_SCREEN_PREVIEW_FAILED" &&
           event.error->retryable && event.session_id == "screen-test" &&
@@ -82,7 +84,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     return changed_.wait_for(lock, std::chrono::seconds(2), [&] {
       for (const auto& event : events_) {
         if (
-          event.type == "runtimeError" &&
+          event.type == syrnike::desktop_native::NativeEventType::RuntimeError &&
           event.error &&
           event.error->stage == stage
         ) {
@@ -96,7 +98,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
   bool consumeRuntimeErrorStage(const std::string& stage) {
     std::lock_guard lock(mutex_);
     const auto found = std::find_if(events_.begin(), events_.end(), [&](const auto& event) {
-      return event.type == "runtimeError" && event.error &&
+      return event.type == syrnike::desktop_native::NativeEventType::RuntimeError && event.error &&
         event.error->stage == stage;
     });
     if (found == events_.end()) return false;
@@ -107,12 +109,14 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
   bool hasReplyFor(const std::string& request_id) const {
     std::lock_guard lock(mutex_);
     for (const auto& event : events_) {
-      if (event.type == "reply" && event.request_id == request_id) return true;
+      if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id) return true;
     }
     return false;
   }
 
-  std::size_t count(const std::string& type) const {
+  std::size_t count(
+    syrnike::desktop_native::NativeEventType type
+  ) const {
     std::lock_guard lock(mutex_);
     std::size_t result = 0;
     for (const auto& event : events_) {
@@ -131,10 +135,13 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
 
 int main() try {
   auto media_sink = std::make_shared<CollectingSink>();
+  bool unsupported_internal_rejected = false;
+  const auto cleanup_before =
+    syrnike::desktop_native::CleanupSupervisor::instance().snapshot();
   {
     syrnike::desktop_native::media::MediaRuntime runtime(media_sink);
     syrnike::desktop_native::MediaCommand preview_failure;
-    preview_failure.type = "__localScreenPreviewFailed";
+    preview_failure.type = syrnike::desktop_native::NativeCommandType::LocalScreenPreviewFailed;
     preview_failure.session_id = "screen-test";
     preview_failure.generation = 4;
     preview_failure.track_id = "local-screen:screen-test";
@@ -147,24 +154,26 @@ int main() try {
     }
 
     syrnike::desktop_native::MediaCommand unsupported_internal;
-    unsupported_internal.type = "__unsupportedInternalCommand";
-    if (
-      !runtime.dispatch(std::move(unsupported_internal)) ||
-      !media_sink->waitForRuntimeErrorStage("__unsupportedInternalCommand") ||
-      !media_sink->consumeRuntimeErrorStage("__unsupportedInternalCommand")
-    ) {
-      throw std::runtime_error(
-        "internal command failure without request id emitted no runtime error"
-      );
-    }
-    if (media_sink->hasReplyFor("")) {
-      throw std::runtime_error(
-        "internal command failure without request id emitted an empty reply"
-      );
-    }
+    unsupported_internal.type =
+      syrnike::desktop_native::NativeCommandType::Count;
+    unsupported_internal.request_id = "unsupported-internal-command";
+    const auto unsupported_dispatched =
+      runtime.dispatch(std::move(unsupported_internal));
+    const auto unsupported_replied = media_sink->waitForReply(
+      "unsupported-internal-command"
+    );
+    const auto unsupported_reply = media_sink->replyFor(
+      "unsupported-internal-command"
+    );
+    unsupported_internal_rejected = unsupported_dispatched &&
+      unsupported_replied && unsupported_reply && !unsupported_reply->ok &&
+      unsupported_reply->error &&
+      unsupported_reply->error->code == "unsupported_command";
 
     syrnike::desktop_native::MediaCommand screen_available;
-    screen_available.type = "__remoteVideoPublicationAvailable";
+    screen_available.type = syrnike::desktop_native::NativeCommandType::RemoteVideoPublicationAvailable;
+    screen_available.session_id = "voice-barrier-session";
+    screen_available.generation = 1;
     screen_available.track_id = "remote-screen-publication";
     screen_available.participant_identity = "remote-participant";
     screen_available.video_source = "screen";
@@ -173,17 +182,26 @@ int main() try {
     }
 
     syrnike::desktop_native::MediaCommand voice_barrier;
-    voice_barrier.type = "configureRemoteAudio";
+    voice_barrier.type = syrnike::desktop_native::NativeCommandType::DisconnectVoice;
     voice_barrier.request_id = "remote-screen-voice-barrier";
-    voice_barrier.has_revision = true;
-    voice_barrier.revision = 1;
+    voice_barrier.session_id = "voice-barrier-session";
+    voice_barrier.generation = 1;
     if (!runtime.dispatch(std::move(voice_barrier)) ||
         !media_sink->waitForReply("remote-screen-voice-barrier")) {
       throw std::runtime_error("voice queue did not process remote screen publication event");
     }
+    const auto voice_barrier_reply = media_sink->replyFor(
+      "remote-screen-voice-barrier"
+    );
+    if (!voice_barrier_reply || !voice_barrier_reply->ok ||
+        voice_barrier_reply->error) {
+      throw std::runtime_error(
+        "voice queue barrier did not complete successfully"
+      );
+    }
 
     syrnike::desktop_native::MediaCommand stale_removed;
-    stale_removed.type = "__remoteVideoTrackRemoved";
+    stale_removed.type = syrnike::desktop_native::NativeCommandType::RemoteVideoTrackRemoved;
     stale_removed.session_id = "retired-voice-session";
     stale_removed.generation = 9;
     stale_removed.track_id = "stale-screen-track";
@@ -192,7 +210,7 @@ int main() try {
       throw std::runtime_error("stale remote video removal was rejected");
     }
     syrnike::desktop_native::MediaCommand stale_failed;
-    stale_failed.type = "__remoteVideoFailed";
+    stale_failed.type = syrnike::desktop_native::NativeCommandType::RemoteVideoFailed;
     stale_failed.session_id = "retired-voice-session";
     stale_failed.generation = 9;
     stale_failed.track_id = "stale-screen-track";
@@ -201,21 +219,32 @@ int main() try {
       throw std::runtime_error("stale remote video failure was rejected");
     }
     syrnike::desktop_native::MediaCommand stale_barrier;
-    stale_barrier.type = "configureRemoteAudio";
+    stale_barrier.type = syrnike::desktop_native::NativeCommandType::DisconnectVoice;
     stale_barrier.request_id = "stale-remote-video-barrier";
-    stale_barrier.has_revision = true;
-    stale_barrier.revision = 2;
+    stale_barrier.session_id = "retired-voice-session";
+    stale_barrier.generation = 10;
     if (!runtime.dispatch(std::move(stale_barrier)) ||
         !media_sink->waitForReply("stale-remote-video-barrier")) {
       throw std::runtime_error("voice queue did not process stale video lifecycle events");
     }
-    if (media_sink->count("remoteVideoTrackRemoved") != 0 ||
-        media_sink->count("remoteVideoFailed") != 0) {
+    const auto stale_barrier_reply = media_sink->replyFor(
+      "stale-remote-video-barrier"
+    );
+    if (!stale_barrier_reply || !stale_barrier_reply->ok ||
+        stale_barrier_reply->error) {
+      throw std::runtime_error(
+        "stale video lifecycle barrier did not complete successfully"
+      );
+    }
+    if (media_sink->count(
+          syrnike::desktop_native::NativeEventType::RemoteVideoTrackRemoved) != 0 ||
+        media_sink->count(
+          syrnike::desktop_native::NativeEventType::RemoteVideoFailed) != 0) {
       throw std::runtime_error("stale remote video lifecycle event escaped generation fence");
     }
 
     syrnike::desktop_native::MediaCommand stale_demand;
-    stale_demand.type = "setRemoteVideoDemand";
+    stale_demand.type = syrnike::desktop_native::NativeCommandType::SetRemoteVideoDemand;
     stale_demand.request_id = "stale-remote-video-demand";
     stale_demand.session_id = "retired-voice-session";
     stale_demand.generation = 9;
@@ -235,6 +264,30 @@ int main() try {
     runtime.requestShutdown();
     runtime.shutdownAndWait();
     runtime.shutdownAndWait();
+  }
+  auto cleanup_after =
+    syrnike::desktop_native::CleanupSupervisor::instance().snapshot();
+  const auto cleanup_deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while ((cleanup_after.owned_jobs != cleanup_before.owned_jobs ||
+          cleanup_after.active_jobs != cleanup_before.active_jobs ||
+          cleanup_after.backlog_jobs != cleanup_before.backlog_jobs) &&
+         std::chrono::steady_clock::now() < cleanup_deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    cleanup_after =
+      syrnike::desktop_native::CleanupSupervisor::instance().snapshot();
+  }
+  if (cleanup_after.owned_jobs != cleanup_before.owned_jobs ||
+      cleanup_after.active_jobs != cleanup_before.active_jobs ||
+      cleanup_after.backlog_jobs != cleanup_before.backlog_jobs) {
+    throw std::runtime_error(
+      "media runtime cleanup did not drain after orderly shutdown"
+    );
+  }
+  if (!unsupported_internal_rejected) {
+    throw std::runtime_error(
+      "typed dispatch did not reject an undeclared internal command"
+    );
   }
   if (media_sink->hasRuntimeError()) {
     throw std::runtime_error("media runtime failed initialization or teardown");

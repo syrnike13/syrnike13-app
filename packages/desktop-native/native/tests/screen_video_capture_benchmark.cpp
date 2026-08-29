@@ -303,7 +303,11 @@ private:
     ComPtr<IDXGIDevice> dxgi_device;
     hr = device_.As(&dxgi_device);
     if (FAILED(hr)) throw std::runtime_error("failed to open dxgi device");
-    setD3dGpuThreadPriority(dxgi_device.Get(), 3);
+    const auto& priority = configuredScreenMediaPriorityPolicy();
+    setD3dGpuThreadPriority(
+        dxgi_device.Get(),
+        priority.publication_gpu_priority,
+        ScreenD3dPriorityRole::Publication);
 
     hr = dxgi_device->GetAdapter(&adapter_);
     if (FAILED(hr)) throw std::runtime_error("failed to open dxgi adapter");
@@ -462,7 +466,11 @@ private:
     ComPtr<IDXGIDevice> dxgi_device;
     hr = device_.As(&dxgi_device);
     if (FAILED(hr)) throw std::runtime_error("failed to open wgc dxgi device");
-    setD3dGpuThreadPriority(dxgi_device.Get(), 3);
+    const auto& priority = configuredScreenMediaPriorityPolicy();
+    setD3dGpuThreadPriority(
+        dxgi_device.Get(),
+        priority.publication_gpu_priority,
+        ScreenD3dPriorityRole::Publication);
 
     IInspectable* raw_device = nullptr;
     hr = CreateDirect3D11DeviceFromDXGIDevice(dxgi_device.Get(), &raw_device);

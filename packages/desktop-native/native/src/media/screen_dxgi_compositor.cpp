@@ -7,6 +7,7 @@
 #include <string>
 
 #include "screen_gpu_capture.hpp"
+#include "video_resource_admission.hpp"
 
 using Microsoft::WRL::ComPtr;
 
@@ -21,6 +22,10 @@ float4 main(uint vertex_id : SV_VertexID) : SV_Position {
   return float4(position, 0.0, 1.0);
 }
 )";
+
+bool isMonochromeCursorShape(UINT type) noexcept {
+  return (type & DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME) != 0;
+}
 
 constexpr char kPixelShader[] = R"(
 cbuffer FrameConstants : register(b0) {
@@ -87,6 +92,25 @@ float4 main(float4 pixel_position : SV_Position) : SV_Target {
 
 void requireCompositor(HRESULT result, const char* message) {
   if (FAILED(result)) compositorError(message, result);
+}
+
+std::shared_ptr<VideoResourceLease> acquireCompositorTexture(
+    VideoResourceAdmissionBudget& budget,
+    std::string owner_id,
+    std::uint32_t width,
+    std::uint32_t height) {
+  return requireScreenVideoResourceAdmission(
+      budget,
+      VideoResourceRequest{
+          .owner = VideoResourceOwner::ScreenCapture,
+          .owner_id = std::move(owner_id),
+          .textures = {{
+              .width = width,
+              .height = height,
+              .count = 1,
+              .format = VideoTextureFormat::Bgra8,
+          }},
+      });
 }
 
 ComPtr<ID3DBlob> compileShader(
@@ -170,17 +194,17 @@ DxgiCursorPixels decodeDxgiCursorShape(
     std::span<const std::uint8_t> shape) {
   DxgiCursorPixels result;
   result.width = info.Width;
-  result.height = info.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME
+  result.height = isMonochromeCursorShape(info.Type)
       ? info.Height / 2U
       : info.Height;
   result.type = info.Type;
   if (result.width == 0 || result.height == 0) return result;
 
-  const std::size_t required_rows = info.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME
+  const std::size_t required_rows = isMonochromeCursorShape(info.Type)
       ? static_cast<std::size_t>(result.height) * 2U
       : result.height;
   const std::size_t minimum_pitch =
-      info.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME
+      isMonochromeCursorShape(info.Type)
           ? (static_cast<std::size_t>(result.width) + 7U) / 8U
           : static_cast<std::size_t>(result.width) * 4U;
   const std::size_t required_size = required_rows * info.Pitch;
@@ -196,7 +220,7 @@ DxgiCursorPixels decodeDxgiCursorShape(
     for (std::uint32_t x = 0; x < result.width; ++x) {
       auto* output = result.rgba.data() +
           (static_cast<std::size_t>(y) * result.width + x) * 4U;
-      if (info.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME) {
+      if (isMonochromeCursorShape(info.Type)) {
         const std::size_t byte = static_cast<std::size_t>(y) * info.Pitch + x / 8U;
         const std::size_t xor_byte =
             static_cast<std::size_t>(y + result.height) * info.Pitch + x / 8U;
@@ -218,8 +242,13 @@ DxgiCursorPixels decodeDxgiCursorShape(
 
 DxgiFrameCompositor::DxgiFrameCompositor(
     ID3D11Device* device,
-    ID3D11DeviceContext* context)
-    : device_(device), context_(context) {
+    ID3D11DeviceContext* context,
+    VideoResourceAdmissionBudget& resource_budget,
+    std::string owner_id)
+    : resource_budget_(&resource_budget),
+      owner_id_(std::move(owner_id)),
+      device_(device),
+      context_(context) {
   if (!device_ || !context_) compositorError("invalid DXGI compositor device", E_INVALIDARG);
 
   const auto vertex = compileShader(
@@ -249,10 +278,13 @@ void DxgiFrameCompositor::ensureOutput(
     std::uint32_t width,
     std::uint32_t height) {
   if (output_ && output_width_ == width && output_height_ == height) return;
-  output_view_.Reset();
-  output_.Reset();
-  output_width_ = 0;
-  output_height_ = 0;
+
+  auto candidate_lease = acquireCompositorTexture(
+      *resource_budget_,
+      owner_id_ + ":dxgi_compositor_output:" +
+          std::to_string(++output_generation_),
+      width,
+      height);
 
   D3D11_TEXTURE2D_DESC description{};
   description.Width = width;
@@ -263,12 +295,18 @@ void DxgiFrameCompositor::ensureOutput(
   description.SampleDesc.Count = 1;
   description.Usage = D3D11_USAGE_DEFAULT;
   description.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+  ComPtr<ID3D11Texture2D> candidate_output;
   requireCompositor(
-      device_->CreateTexture2D(&description, nullptr, &output_),
+      device_->CreateTexture2D(&description, nullptr, &candidate_output),
       "failed to create DXGI compositor output texture");
+  ComPtr<ID3D11RenderTargetView> candidate_view;
   requireCompositor(
-      device_->CreateRenderTargetView(output_.Get(), nullptr, &output_view_),
+      device_->CreateRenderTargetView(
+          candidate_output.Get(), nullptr, &candidate_view),
       "failed to create DXGI compositor output view");
+  output_ = std::move(candidate_output);
+  output_view_ = std::move(candidate_view);
+  output_lease_ = std::move(candidate_lease);
   output_width_ = width;
   output_height_ = height;
 }
@@ -306,11 +344,18 @@ void DxgiFrameCompositor::uploadCursorTexture() {
   if (width == 0 || height == 0) {
     cursor_texture_.Reset();
     cursor_view_.Reset();
+    cursor_lease_.reset();
     cursor_pixels_.clear();
     return;
   }
 
   cursor_pixels_ = decoded.rgba;
+  auto candidate_lease = acquireCompositorTexture(
+      *resource_budget_,
+      owner_id_ + ":dxgi_cursor:" +
+          std::to_string(++cursor_generation_),
+      width,
+      height);
 
   D3D11_TEXTURE2D_DESC description{};
   description.Width = width;
@@ -324,14 +369,19 @@ void DxgiFrameCompositor::uploadCursorTexture() {
   D3D11_SUBRESOURCE_DATA initial{};
   initial.pSysMem = cursor_pixels_.data();
   initial.SysMemPitch = width * 4U;
-  cursor_view_.Reset();
-  cursor_texture_.Reset();
+  ComPtr<ID3D11Texture2D> candidate_texture;
   requireCompositor(
-      device_->CreateTexture2D(&description, &initial, &cursor_texture_),
+      device_->CreateTexture2D(
+          &description, &initial, &candidate_texture),
       "failed to create DXGI cursor texture");
+  ComPtr<ID3D11ShaderResourceView> candidate_view;
   requireCompositor(
-      device_->CreateShaderResourceView(cursor_texture_.Get(), nullptr, &cursor_view_),
+      device_->CreateShaderResourceView(
+          candidate_texture.Get(), nullptr, &candidate_view),
       "failed to create DXGI cursor view");
+  cursor_texture_ = std::move(candidate_texture);
+  cursor_view_ = std::move(candidate_view);
+  cursor_lease_ = std::move(candidate_lease);
 }
 
 ID3D11Texture2D* DxgiFrameCompositor::compose(
@@ -365,7 +415,7 @@ ID3D11Texture2D* DxgiFrameCompositor::compose(
       cursor_position_.x,
       cursor_position_.y,
       cursor_info_.Width,
-      cursor_info_.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_MONOCHROME
+      isMonochromeCursorShape(cursor_info_.Type)
           ? cursor_info_.Height / 2U
           : cursor_info_.Height,
       static_cast<std::uint32_t>(layout.rotation),

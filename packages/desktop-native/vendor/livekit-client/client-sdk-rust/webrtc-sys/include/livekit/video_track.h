@@ -138,7 +138,8 @@ class VideoTrackSource {
                               uint64_t release_key,
                               int width,
                               int height,
-                              int64_t timestamp_us) const;
+                              int64_t timestamp_us,
+                              const FrameMetadata& frame_metadata) const;
 
   void set_packet_trailer_handler(
       std::shared_ptr<PacketTrailerHandler> handler) const;

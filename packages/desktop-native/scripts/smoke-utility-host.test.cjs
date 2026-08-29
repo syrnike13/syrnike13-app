@@ -42,7 +42,7 @@ const { NativeRuntimeSupervisor } = require(
 const manifest = {
   appVersion: '0.0.0-test',
   releaseChannel: 'test',
-  contractVersion: 8,
+  contractVersion: 10,
   liveKitVersion: '1.2.3-test',
   commitSha: 'abc123',
   napiVersion: 8,
@@ -218,6 +218,80 @@ test('requires a replacement host handshake after the injected crash', async () 
         entry.detail === 'ready,restart=1,epoch=2',
     ),
   )
+})
+
+test('audio policy smoke dispatches default and explicit warm commands across a child epoch', async () => {
+  const scheduler = createManualScheduler()
+  const events = []
+  const commands = []
+  const reply = (child, message, result) => {
+    child.emit('message', {
+      type: 'reply',
+      requestId: message.requestId,
+      ok: true,
+      ...(result === undefined ? {} : { result }),
+    })
+  }
+  const first = new FakeUtilityChild((message) => {
+    commands.push({ epoch: 1, command: message.command })
+    if (message.command?.type === 'listDevices') {
+      reply(first, message, [
+        { deviceId: 'default', kind: 'audioinput', label: 'Default' },
+        { deviceId: 'mic-explicit', kind: 'audioinput', label: 'USB mic' },
+      ])
+    } else if (message.command?.type === 'warmMicrophone') {
+      reply(first, message)
+    }
+  })
+  first.kill = function kill() {
+    this.killCalls += 1
+    queueMicrotask(() => this.emit('exit', 1))
+  }
+  const second = new FakeUtilityChild((message) => {
+    commands.push({ epoch: 2, command: message.command })
+    if (message.command?.type === 'warmMicrophone') {
+      reply(second, message)
+    } else if (message.command?.type === 'shutdown') {
+      reply(second, message)
+      queueMicrotask(() => second.emit('exit', 0))
+    }
+  })
+  const children = [first, second]
+  const context = smokeHost.createSmokeContext({
+    manifest,
+    utilityRoot: path.join('C:', 'utility'),
+    nativeRoot: path.join('C:', 'native'),
+    utilityProcess: { fork: () => children.shift() },
+    utilityEnvironment: {},
+    diagnosticRoot: null,
+    timeoutMs: 1_000,
+    setTimeoutFn: scheduler.setTimeout,
+    clearTimeoutFn: scheduler.clearTimeout,
+    NativeRuntimeSupervisor,
+    observe(entry) {
+      events.push(entry)
+    },
+  })
+
+  const pending = smokeHost.smokeWindowsAudioPolicyRuntime(context)
+  first.emit('message', createReadyMessage('media'))
+  await new Promise(setImmediate)
+  scheduler.flushNext()
+  second.emit('message', createReadyMessage('media'))
+  const report = await pending
+
+  assert.deepEqual(
+    commands
+      .filter(({ command }) => command?.type === 'warmMicrophone')
+      .map(({ epoch, command }) => ({ epoch, deviceId: command.config.deviceId })),
+    [
+      { epoch: 1, deviceId: null },
+      { epoch: 2, deviceId: 'mic-explicit' },
+    ],
+  )
+  assert.equal(report.status, 'passed')
+  assert.equal(report.restartCount, 1)
+  assert.deepEqual(report.blockers, ['bluetooth_communications_endpoint_absent'])
 })
 
 function createTestContext({ child, events, scheduler }) {

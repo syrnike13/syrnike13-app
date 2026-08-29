@@ -16,6 +16,9 @@
 
 #include "livekit/room.h"
 
+#include <algorithm>
+#include <chrono>
+
 #include "ffi.pb.h"
 #include "ffi_client.h"
 #include "livekit/audio_stream.h"
@@ -45,6 +48,26 @@ using proto::FfiRequest;
 using proto::FfiResponse;
 
 namespace {
+
+using namespace std::chrono_literals;
+
+constexpr auto kDefaultConnectAttemptTimeout = 5s;
+constexpr std::uint32_t kDefaultConnectRetryCount = 3;
+constexpr auto kMaximumConnectOperationTimeout = 2min;
+
+std::chrono::milliseconds connectOperationTimeout(const RoomOptions& options) {
+  const auto maximum = std::chrono::duration_cast<std::chrono::milliseconds>(kMaximumConnectOperationTimeout);
+  const auto per_attempt = std::clamp(options.connect_timeout.value_or(kDefaultConnectAttemptTimeout), 1ms, maximum);
+  const auto requested_attempts =
+      static_cast<std::uint64_t>(options.join_retries.value_or(kDefaultConnectRetryCount)) + 1U;
+  const auto maximum_attempts = static_cast<std::uint64_t>(maximum.count() / per_attempt.count());
+  const auto attempts = std::min(requested_attempts, maximum_attempts);
+  return per_attempt * static_cast<std::int64_t>(attempts);
+}
+
+[[noreturn]] void throwOperationError(const char* operation, const FfiOperationError& error) {
+  throw std::runtime_error(std::string(operation) + ": " + error.message);
+}
 
 std::shared_ptr<livekit::RemoteParticipant> createRemoteParticipant(const proto::OwnedParticipant& owned) {
   const auto& pinfo = owned.info();
@@ -90,12 +113,50 @@ void Room::setDelegate(RoomDelegate* delegate) {
 }
 
 bool Room::connect(const std::string& url, const std::string& token, const RoomOptions& options) {
+  return connectImpl(url, token, options, nullptr, std::nullopt);
+}
+
+bool Room::connect(const std::string& url, const std::string& token, const RoomOptions& options,
+                   const OperationCancellation& cancellation) {
+  return connectImpl(
+      url, token, options, &cancellation,
+      std::chrono::steady_clock::now() + connectOperationTimeout(options));
+}
+
+bool Room::connectImpl(const std::string& url, const std::string& token, const RoomOptions& options,
+                       const OperationCancellation* cancellation,
+                       std::optional<std::chrono::steady_clock::time_point> deadline) {
   TRACE_EVENT0("livekit", "Room::connect");
 
   if (!FfiClient::instance().isInitialized()) {
     LK_LOG_ERROR("Room::connect failed: LiveKit is not initialized");
     return false;
   }
+  if (cancellation && cancellation->isCancellationRequested()) {
+    LK_LOG_DEBUG("Room::connect cancelled before starting");
+    return false;
+  }
+
+  struct CancellationCommitGate {
+    std::mutex mutex;
+    bool cancellation_requested = false;
+  };
+  std::shared_ptr<CancellationCommitGate> cancellation_gate;
+  OperationCancellation::Subscription cancellation_subscription;
+  if (cancellation) {
+    cancellation_gate = std::make_shared<CancellationCommitGate>();
+    cancellation_subscription = cancellation->subscribe([cancellation_gate] {
+      const std::scoped_lock<std::mutex> guard(cancellation_gate->mutex);
+      cancellation_gate->cancellation_requested = true;
+    });
+  }
+  const auto throw_if_cancelled = [&] {
+    if (!cancellation_gate) return;
+    const std::scoped_lock<std::mutex> guard(cancellation_gate->mutex);
+    if (cancellation_gate->cancellation_requested) {
+      throw std::runtime_error("Room::connect cancelled");
+    }
+  };
 
   {
     const std::scoped_lock<std::mutex> g(lock_);
@@ -107,15 +168,21 @@ bool Room::connect(const std::string& url, const std::string& token, const RoomO
 
   FfiClient::ListenerId listenerId = 0;
   try {
-    listenerId =
-        FfiClient::instance().addListener([this](const proto::FfiEvent& e) { onEvent(e); }, "room");
+    listenerId = FfiClient::instance().addListener([this](const proto::FfiEvent& e) { onEvent(e); }, "room");
     {
       const std::scoped_lock<std::mutex> g(lock_);
       listener_id_ = listenerId;
     }
 
-    auto fut = FfiClient::instance().connectAsync(url, token, options);
-    auto connectCb = fut.get(); // fut will throw if it fails to connect to the room
+    auto operation = FfiClient::instance().connectAsync(url, token, options);
+    auto connect_result = deadline
+        ? operation.waitUntil(*deadline, *cancellation)
+        : operation.wait();
+    if (connect_result.hasError()) {
+      throwOperationError("Room::connect FFI operation failed", connect_result.error());
+    }
+    auto connectCb = std::move(connect_result).value();
+    throw_if_cancelled();
 
     const auto& owned_room = connectCb.result().room();
     auto new_room_handle = std::make_shared<FfiHandle>(owned_room.handle().id());
@@ -170,18 +237,31 @@ bool Room::connect(const std::string& url, const std::string& token, const RoomO
           std::shared_ptr<E2EEManager>(new E2EEManager(new_room_handle->get(), options.encryption.value()));
     }
 
-    // Publish all state atomically under lock
-    {
-      const std::scoped_lock<std::mutex> g(lock_);
-      room_handle_ = std::move(new_room_handle);
-      room_info_ = std::move(new_room_info);
-      local_participant_ = std::move(new_local_participant);
-      remote_participants_ = std::move(new_remote_participants);
-      e2ee_manager_ = std::move(new_e2ee_manager);
-      connection_state_ = ConnectionState::Connected;
+    // Cancellation and publication share a commit gate. If cancellation wins,
+    // no participant state or ready-for-room notification becomes visible. If
+    // publication wins, the caller's generation fence still owns promotion of
+    // this candidate Room into the application session.
+    const auto commit_room_state = [&] {
+      {
+        const std::scoped_lock<std::mutex> g(lock_);
+        room_handle_ = std::move(new_room_handle);
+        room_info_ = std::move(new_room_info);
+        local_participant_ = std::move(new_local_participant);
+        remote_participants_ = std::move(new_remote_participants);
+        e2ee_manager_ = std::move(new_e2ee_manager);
+        connection_state_ = ConnectionState::Connected;
+      }
+      readyForRoomEvent(room_handle_id);
+    };
+    if (cancellation_gate) {
+      const std::scoped_lock<std::mutex> cancellation_guard(cancellation_gate->mutex);
+      if (cancellation_gate->cancellation_requested) {
+        throw std::runtime_error("Room::connect cancelled before commit");
+      }
+      commit_room_state();
+    } else {
+      commit_room_state();
     }
-
-    readyForRoomEvent(room_handle_id);
     return true;
   } catch (const std::exception& e) {
     int listener_to_remove = 0;
@@ -212,6 +292,18 @@ bool Room::connect(const std::string& url, const std::string& token, const RoomO
 }
 
 bool Room::disconnect(DisconnectReason reason) {
+  return disconnectImpl(reason, std::nullopt);
+}
+
+bool Room::disconnectUntil(
+    std::chrono::steady_clock::time_point deadline,
+    DisconnectReason reason) {
+  return disconnectImpl(reason, deadline);
+}
+
+bool Room::disconnectImpl(
+    DisconnectReason reason,
+    std::optional<std::chrono::steady_clock::time_point> deadline) {
   TRACE_EVENT0("livekit", "Room::disconnect");
 
   std::shared_ptr<FfiHandle> handle;
@@ -259,7 +351,13 @@ bool Room::disconnect(DisconnectReason reason) {
   bool ffi_ok = true;
   if (handle) {
     try {
-      FfiClient::instance().disconnectAsync(handle->get(), reason).get();
+      auto operation = FfiClient::instance().disconnectAsync(handle->get(), reason);
+      const auto disconnect_result = deadline
+          ? operation.waitUntil(*deadline)
+          : operation.wait();
+      if (disconnect_result.hasError()) {
+        throwOperationError("Room::disconnect FFI operation failed", disconnect_result.error());
+      }
     } catch (const std::exception& e) {
       LK_LOG_ERROR("Room::disconnect: FFI disconnect failed (continuing local teardown): {}", e.what());
       ffi_ok = false;

@@ -1,5 +1,6 @@
 #include "media/screen_dxgi_compositor.hpp"
 #include "media/screen_gpu_capture.hpp"
+#include "media/video_resource_admission.hpp"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -121,7 +122,12 @@ void testGpuRotation() {
   expect(SUCCEEDED(device->CreateTexture2D(&source_description, &initial, &source)),
          "failed to create rotation source texture");
 
-  DxgiFrameCompositor compositor(device.Get(), context.Get());
+  VideoResourceAdmissionBudget resource_budget(productionVideoResourceLimits());
+  DxgiFrameCompositor compositor(
+      device.Get(),
+      context.Get(),
+      resource_budget,
+      "screen:dxgi-compositor-test");
   DXGI_OUTDUPL_FRAME_INFO frame_info{};
   auto* rotated = compositor.compose(
       source.Get(), nullptr, frame_info, DXGI_MODE_ROTATION_ROTATE90);

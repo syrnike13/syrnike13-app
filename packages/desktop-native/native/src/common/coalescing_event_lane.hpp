@@ -22,8 +22,16 @@ namespace syrnike::desktop_native {
 // released immediately.
 class CoalescingEventLane final {
  public:
+  static constexpr std::size_t kCapacity = 64;
+
   explicit CoalescingEventLane(std::function<void()> before_store = {})
-    : before_store_(std::move(before_store)) {}
+    : CoalescingEventLane(kCapacity, std::move(before_store)) {}
+
+  explicit CoalescingEventLane(
+    std::size_t capacity,
+    std::function<void()> before_store = {}
+  ) : capacity_(std::max<std::size_t>(1, capacity)),
+      before_store_(std::move(before_store)) {}
 
   struct PushResult {
     bool accepted = false;
@@ -101,6 +109,18 @@ class CoalescingEventLane final {
       result.dropped_count = ++dropped_count_;
     } else {
       pending_.emplace(key, std::move(payload));
+      if (pending_.size() > capacity_) {
+        const auto oldest = std::min_element(
+          pending_.begin(),
+          pending_.end(),
+          [](const auto& left, const auto& right) {
+            return left.second->sequence < right.second->sequence;
+          }
+        );
+        result.discarded = std::move(oldest->second);
+        pending_.erase(oldest);
+        result.dropped_count = ++dropped_count_;
+      }
     }
     if (!callback_scheduled_) {
       callback_scheduled_ = true;
@@ -191,7 +211,7 @@ class CoalescingEventLane final {
   }
 
   static std::string eventKey(const RuntimeEvent& event) {
-    return event.type + '\n' + event.session_id + '\n' +
+    return std::string(nativeEventName(event.type)) + '\n' + event.session_id + '\n' +
       std::to_string(event.generation) + '\n' + event.track_id;
   }
 
@@ -202,6 +222,7 @@ class CoalescingEventLane final {
   bool closed_ = false;
   std::size_t callbacks_in_flight_ = 0;
   std::uint64_t dropped_count_ = 0;
+  std::size_t capacity_;
   std::function<void()> before_store_;
 };
 

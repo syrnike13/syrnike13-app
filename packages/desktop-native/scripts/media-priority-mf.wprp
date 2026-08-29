@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WindowsPerformanceRecorder Version="1.0" Author="Syrnike" Company="Syrnike">
+  <Profiles>
+    <EventCollector Id="SyrnikeMfCollector" Name="Syrnike Media Foundation">
+      <BufferSize Value="256" />
+      <Buffers Value="32" />
+    </EventCollector>
+    <EventProvider
+      Id="MfPerformance"
+      Name="Microsoft-Windows-MediaFoundation-Performance"
+      NonPagedMemory="true"
+    />
+    <EventProvider
+      Id="MfPerformanceCore"
+      Name="Microsoft-Windows-MediaFoundation-Performance-Core"
+      NonPagedMemory="true"
+    />
+    <EventProvider
+      Id="MfPlatform"
+      Name="Microsoft-Windows-MediaFoundation-Platform"
+      NonPagedMemory="true"
+    />
+    <Profile
+      Id="MF.Light.File"
+      Name="MF"
+      Description="Media Foundation hardware encoder evidence"
+      LoggingMode="File"
+      DetailLevel="Light"
+    >
+      <Collectors>
+        <EventCollectorId Value="SyrnikeMfCollector">
+          <EventProviders>
+            <EventProviderId Value="MfPerformance" />
+            <EventProviderId Value="MfPerformanceCore" />
+            <EventProviderId Value="MfPlatform" />
+          </EventProviders>
+        </EventCollectorId>
+      </Collectors>
+    </Profile>
+    <Profile
+      Id="MF.Light.Memory"
+      Name="MF"
+      Description="Media Foundation hardware encoder evidence"
+      LoggingMode="Memory"
+      DetailLevel="Light"
+    >
+      <Collectors>
+        <EventCollectorId Value="SyrnikeMfCollector">
+          <EventProviders>
+            <EventProviderId Value="MfPerformance" />
+            <EventProviderId Value="MfPerformanceCore" />
+            <EventProviderId Value="MfPlatform" />
+          </EventProviders>
+        </EventCollectorId>
+      </Collectors>
+    </Profile>
+  </Profiles>
+</WindowsPerformanceRecorder>

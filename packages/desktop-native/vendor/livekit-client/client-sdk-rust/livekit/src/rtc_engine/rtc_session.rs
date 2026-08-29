@@ -76,6 +76,32 @@ pub const INITIAL_BUFFERED_AMOUNT_LOW_THRESHOLD: u64 = 2 * 1024 * 1024;
 /// answer does not advertise an `a=max-message-size` attribute (RFC 8841).
 pub const DEFAULT_MAX_MESSAGE_SIZE: u64 = 64000;
 
+type PendingTrackSender = oneshot::Sender<EngineResult<proto::TrackInfo>>;
+
+fn reject_pending_track_request(
+    pending_tracks: &Mutex<HashMap<String, PendingTrackSender>>,
+    response: &proto::RequestResponse,
+) -> bool {
+    use proto::request_response::{Reason, Request};
+
+    let Some(Request::AddTrack(request)) = response.request.as_ref() else {
+        return false;
+    };
+    let reason = response.reason();
+    if matches!(reason, Reason::Ok | Reason::Queued) {
+        return false;
+    }
+
+    let Some(tx) = pending_tracks.lock().remove(&request.cid) else {
+        return false;
+    };
+    let error = EngineError::Internal(
+        format!("track publication rejected: {reason:?} - {}", response.message).into(),
+    );
+    let _ = tx.send(Err(error));
+    true
+}
+
 /// Buffered-amount low threshold for the `_data_track` DC.
 ///
 /// Kept small (vs. the 2 MiB default for reliable/lossy) so we hand at most
@@ -389,7 +415,7 @@ struct SessionInner {
     /// `track` events for newly-added streams.
     dispatched_streams: Mutex<HashSet<(String, String)>>,
 
-    pending_tracks: Mutex<HashMap<String, oneshot::Sender<proto::TrackInfo>>>,
+    pending_tracks: Mutex<HashMap<String, PendingTrackSender>>,
 
     // Publisher data channels
     // used to send data to other participants (The SFU forwards the messages)
@@ -1399,7 +1425,12 @@ impl SessionInner {
             proto::signal_response::Message::TrackPublished(publish_res) => {
                 let mut pending_tracks = self.pending_tracks.lock();
                 if let Some(tx) = pending_tracks.remove(&publish_res.cid) {
-                    let _ = tx.send(publish_res.track.unwrap());
+                    let result = publish_res.track.ok_or_else(|| {
+                        EngineError::Internal(
+                            "track publication response did not include track info".into(),
+                        )
+                    });
+                    let _ = tx.send(result);
                 }
             }
             proto::signal_response::Message::RoomUpdate(room_update) => {
@@ -1415,6 +1446,7 @@ impl SessionInner {
                 });
             }
             proto::signal_response::Message::RequestResponse(request_response) => {
+                reject_pending_track_request(&self.pending_tracks, &request_response);
                 if let Some(event) =
                     dt::local::publish_result_from_request_response(&request_response)
                 {
@@ -1790,14 +1822,14 @@ impl SessionInner {
 
         // Wait the result from the server (TrackInfo)
         tokio::select! {
-            Ok(info) = rx => Ok(info),
+            result = rx => match result {
+                Ok(result) => result,
+                Err(_) => Err(EngineError::Internal("track publication cancelled".into())),
+            },
             _ = sleep(TRACK_PUBLISH_TIMEOUT) => {
                 self.pending_tracks.lock().remove(&cid);
                 Err(EngineError::Internal("track publication timed out, no response received from the server".into()))
             },
-            else => {
-                Err(EngineError::Internal("track publication cancelled".into()))
-            }
         }
     }
 
@@ -2488,10 +2520,79 @@ make_rtc_config!(make_rtc_config_reconnect, proto::ReconnectResponse);
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_sdp_max_message_size, video_encoder_backend_for_sender, DEFAULT_MAX_MESSAGE_SIZE,
+        parse_sdp_max_message_size, reject_pending_track_request, video_encoder_backend_for_sender,
+        DEFAULT_MAX_MESSAGE_SIZE,
     };
-    use crate::prelude::TrackKind;
+    use crate::{prelude::TrackKind, rtc_engine::EngineError};
     use libwebrtc::rtp_sender::VideoEncoderBackend;
+    use livekit_protocol as proto;
+    use parking_lot::Mutex;
+    use std::collections::HashMap;
+    use tokio::sync::oneshot;
+
+    #[tokio::test]
+    async fn add_track_rejection_completes_pending_publish_without_waiting_for_timeout() {
+        let pending = Mutex::new(HashMap::new());
+        let (tx, rx) = oneshot::channel();
+        pending.lock().insert("screen-cid".to_owned(), tx);
+
+        let handled = reject_pending_track_request(
+            &pending,
+            &proto::RequestResponse {
+                reason: proto::request_response::Reason::NotAllowed as i32,
+                message: "screen share resolution exceeds policy".to_owned(),
+                request: Some(proto::request_response::Request::AddTrack(proto::AddTrackRequest {
+                    cid: "screen-cid".to_owned(),
+                    ..Default::default()
+                })),
+                ..Default::default()
+            },
+        );
+
+        assert!(handled);
+        assert!(pending.lock().is_empty());
+        let error = rx.await.expect("pending publish sender must complete").unwrap_err();
+        assert!(matches!(
+            error,
+            EngineError::Internal(message)
+                if message.contains("NotAllowed")
+                    && message.contains("screen share resolution exceeds policy")
+        ));
+    }
+
+    #[test]
+    fn unrelated_request_response_does_not_complete_pending_media_publish() {
+        let pending = Mutex::new(HashMap::new());
+        let (tx, mut rx) = oneshot::channel();
+        pending.lock().insert("screen-cid".to_owned(), tx);
+
+        let wrong_cid_handled = reject_pending_track_request(
+            &pending,
+            &proto::RequestResponse {
+                reason: proto::request_response::Reason::NotAllowed as i32,
+                request: Some(proto::request_response::Request::AddTrack(proto::AddTrackRequest {
+                    cid: "other-cid".to_owned(),
+                    ..Default::default()
+                })),
+                ..Default::default()
+            },
+        );
+        let handled = reject_pending_track_request(
+            &pending,
+            &proto::RequestResponse {
+                reason: proto::request_response::Reason::NotAllowed as i32,
+                request: Some(proto::request_response::Request::PublishDataTrack(
+                    proto::PublishDataTrackRequest::default(),
+                )),
+                ..Default::default()
+            },
+        );
+
+        assert!(!wrong_cid_handled);
+        assert!(!handled);
+        assert_eq!(pending.lock().len(), 1);
+        assert!(matches!(rx.try_recv(), Err(oneshot::error::TryRecvError::Empty)));
+    }
 
     #[test]
     fn video_sender_keeps_required_encoder_backend_at_creation() {

@@ -8,6 +8,7 @@
 #include <mfidl.h>
 #include <mftransform.h>
 #include <windows.h>
+#include <tlhelp32.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -19,22 +20,65 @@
 #include <iomanip>
 #include <iostream>
 #include <iterator>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
+#include "common/diagnostic_log.hpp"
+#include "media/screen_capture_priority.hpp"
 #include "media/screen_gpu_capture.hpp"
 #include "media/screen_video_capture_benchmark.hpp"
+#include "media_contention_screen_cadence.hpp"
+#include "windows_process_resource_snapshot.hpp"
 
 using Microsoft::WRL::ComPtr;
 using Clock = std::chrono::steady_clock;
+using syrnike::desktop_native::tests::captureWindowsProcessResourceTypes;
+using syrnike::desktop_native::tests::ResourceTypeCounts;
+using syrnike::desktop_native::tests::resourceTypeDelta;
+using syrnike::desktop_native::tests::WindowsProcessResourceTypes;
 
 namespace {
+class DiagnosticLogLifetime final {
+ public:
+  DiagnosticLogLifetime() {
+    syrnike::desktop_native::diagnostics::DiagnosticLog::instance()
+        .initializeForMediaProcess();
+  }
+  ~DiagnosticLogLifetime() {
+    syrnike::desktop_native::diagnostics::DiagnosticLog::instance().shutdown();
+  }
+};
+
 void check(HRESULT hr, const char *operation) {
   if (FAILED(hr))
     throw std::runtime_error(std::string(operation) + " failed (HRESULT " +
                              std::to_string(hr) + ")");
+}
+
+std::size_t process_thread_count() {
+  const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+  if (snapshot == INVALID_HANDLE_VALUE) return 0;
+  THREADENTRY32 entry{};
+  entry.dwSize = sizeof(entry);
+  std::size_t count = 0;
+  if (Thread32First(snapshot, &entry)) {
+    do {
+      if (entry.th32OwnerProcessID == GetCurrentProcessId()) ++count;
+    } while (Thread32Next(snapshot, &entry));
+  }
+  CloseHandle(snapshot);
+  return count;
+}
+
+std::size_t process_handle_count() {
+  DWORD count = 0;
+  return GetProcessHandleCount(GetCurrentProcess(), &count)
+      ? static_cast<std::size_t>(count)
+      : 0;
 }
 
 uint64_t checksum(const uint8_t *data, size_t size) {
@@ -158,6 +202,181 @@ void wait_for_gpu(ID3D11DeviceContext *context, ID3D11Query *query) {
     SwitchToThread();
 }
 
+double percentile(std::vector<double> samples, double quantile) {
+  if (samples.empty()) return 0;
+  std::sort(samples.begin(), samples.end());
+  const auto index = static_cast<std::size_t>(
+      (samples.size() - 1) * quantile);
+  return samples[index];
+}
+
+void run_competing_load(
+    std::chrono::milliseconds duration,
+    bool inject_gpu_timeout = false) {
+  struct GpuWorkload {
+    ComPtr<ID3D11Device> device;
+    ComPtr<ID3D11DeviceContext> context;
+    ComPtr<ID3D11Texture2D> texture_a;
+    ComPtr<ID3D11Texture2D> texture_b;
+    ComPtr<ID3D11RenderTargetView> render_target;
+    ComPtr<ID3D11Query> query;
+  };
+  const auto create_workload = [] {
+    GpuWorkload workload;
+    D3D_FEATURE_LEVEL level{};
+    check(D3D11CreateDevice(
+              nullptr,
+              D3D_DRIVER_TYPE_HARDWARE,
+              nullptr,
+              D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+              nullptr,
+              0,
+              D3D11_SDK_VERSION,
+              &workload.device,
+              &level,
+              &workload.context),
+          "Create competing-load D3D device");
+
+    D3D11_TEXTURE2D_DESC texture_desc{};
+    texture_desc.Width = 1920;
+    texture_desc.Height = 1080;
+    texture_desc.MipLevels = 1;
+    texture_desc.ArraySize = 1;
+    texture_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    texture_desc.SampleDesc.Count = 1;
+    texture_desc.Usage = D3D11_USAGE_DEFAULT;
+    texture_desc.BindFlags =
+        D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    check(workload.device->CreateTexture2D(
+              &texture_desc, nullptr, &workload.texture_a),
+          "Create competing-load texture A");
+    check(workload.device->CreateTexture2D(
+              &texture_desc, nullptr, &workload.texture_b),
+          "Create competing-load texture B");
+    check(workload.device->CreateRenderTargetView(
+              workload.texture_a.Get(), nullptr, &workload.render_target),
+          "Create competing-load render target");
+    D3D11_QUERY_DESC query_desc{D3D11_QUERY_EVENT, 0};
+    check(workload.device->CreateQuery(&query_desc, &workload.query),
+          "Create competing-load completion query");
+    return workload;
+  };
+  auto workload = create_workload();
+
+  constexpr auto cadence = std::chrono::microseconds(16'667);
+  const auto started_at = Clock::now();
+  const auto deadline = started_at + duration;
+  auto next_frame_at = started_at;
+  std::optional<Clock::time_point> previous_frame_at;
+  std::vector<double> cadence_samples;
+  cadence_samples.reserve(static_cast<std::size_t>(duration.count() / 10 + 1));
+  std::uint64_t frames = 0;
+  std::uint64_t gpu_submissions = 0;
+  std::uint64_t cpu_iterations = 0;
+  std::uint64_t cpu_state = 0x9e3779b97f4a7c15ULL;
+  std::uint64_t gpu_completion_timeouts = 0;
+  std::uint64_t gpu_recoveries = 0;
+  std::uint64_t gpu_recovery_max_ms = 0;
+  constexpr std::uint64_t maximum_gpu_recoveries = 4;
+
+  while (Clock::now() < deadline) {
+    const auto frame_at = Clock::now();
+    if (previous_frame_at) {
+      cadence_samples.push_back(
+          std::chrono::duration<double, std::milli>(
+              frame_at - *previous_frame_at)
+              .count());
+    }
+    previous_frame_at = frame_at;
+
+    for (std::uint32_t iteration = 0; iteration < 75'000; ++iteration) {
+      cpu_state ^= cpu_state << 13;
+      cpu_state ^= cpu_state >> 7;
+      cpu_state ^= cpu_state << 17;
+      ++cpu_iterations;
+    }
+    const float color[] = {
+        static_cast<float>((frames * 17) & 255) / 255.0f,
+        static_cast<float>((frames * 31) & 255) / 255.0f,
+        static_cast<float>((frames * 47) & 255) / 255.0f,
+        1.0f,
+    };
+    workload.context->ClearRenderTargetView(
+        workload.render_target.Get(), color);
+    for (int copy = 0; copy < 4; ++copy) {
+      workload.context->CopyResource(
+          workload.texture_b.Get(), workload.texture_a.Get());
+      workload.context->CopyResource(
+          workload.texture_a.Get(), workload.texture_b.Get());
+      gpu_submissions += 2;
+    }
+    workload.context->End(workload.query.Get());
+    const auto completion_deadline = Clock::now() + std::chrono::milliseconds(500);
+    HRESULT completion = S_FALSE;
+    bool completion_timed_out = false;
+    if (inject_gpu_timeout && gpu_recoveries == 0 && frames > 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(550));
+      completion_timed_out = true;
+    } else {
+      while ((completion = workload.context->GetData(
+                  workload.query.Get(), nullptr, 0, 0)) == S_FALSE) {
+        if (Clock::now() >= completion_deadline) {
+          completion_timed_out = true;
+          break;
+        }
+        SwitchToThread();
+      }
+    }
+    if (completion_timed_out || FAILED(completion)) {
+      if (++gpu_recoveries > maximum_gpu_recoveries) {
+        throw std::runtime_error(
+            "competing-load GPU recovery cap exceeded");
+      }
+      if (completion_timed_out) ++gpu_completion_timeouts;
+      const auto recovery_started = Clock::now();
+      const auto removed_reason = workload.device->GetDeviceRemovedReason();
+      auto replacement = create_workload();
+      workload = std::move(replacement);
+      const auto recovery_ms = static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              Clock::now() - recovery_started)
+              .count());
+      gpu_recovery_max_ms = std::max(gpu_recovery_max_ms, recovery_ms);
+      std::cout << "CONTENTION_COMPETITOR_RECOVERY {\"reason\":\""
+                << (completion_timed_out ? "gpu_completion_timeout"
+                                         : "gpu_device_failure")
+                << "\",\"hresult\":"
+                << static_cast<std::int64_t>(
+                       completion_timed_out ? removed_reason : completion)
+                << ",\"count\":" << gpu_recoveries
+                << ",\"durationMs\":" << recovery_ms << "}\n";
+      next_frame_at = Clock::now() + cadence;
+      continue;
+    }
+    ++frames;
+    next_frame_at += cadence;
+    if (const auto now = Clock::now(); now < next_frame_at) {
+      std::this_thread::sleep_until(next_frame_at);
+    }
+  }
+
+  const auto elapsed_ms = std::chrono::duration<double, std::milli>(
+      Clock::now() - started_at)
+                              .count();
+  std::cout << "CONTENTION_COMPETITOR_SUMMARY {\"frames\":" << frames
+            << ",\"elapsedMs\":" << elapsed_ms
+            << ",\"cadenceFps\":"
+            << (elapsed_ms > 0 ? frames * 1'000.0 / elapsed_ms : 0)
+            << ",\"cadenceP95Ms\":" << percentile(cadence_samples, 0.95)
+            << ",\"cadenceP99Ms\":" << percentile(cadence_samples, 0.99)
+            << ",\"gpuSubmissions\":" << gpu_submissions
+            << ",\"cpuIterations\":" << cpu_iterations
+            << ",\"gpuCompletionTimeouts\":" << gpu_completion_timeouts
+            << ",\"gpuRecoveries\":" << gpu_recoveries
+            << ",\"gpuRecoveryMaxMs\":" << gpu_recovery_max_ms
+            << ",\"checksum\":" << cpu_state << "}\n";
+}
+
 HRESULT set_codec_uint32(IMFTransform *encoder, const GUID &key,
                          uint32_t value) {
   ComPtr<ICodecAPI> api;
@@ -224,7 +443,8 @@ void benchmark_hardware_encoder(
     ID3D11VideoContext *video_context,
     ID3D11VideoProcessorEnumerator *enumerator, ID3D11VideoProcessor *processor,
     ID3D11VideoProcessorInputView *input_view, ID3D11Query *query,
-    uint32_t width, uint32_t height, size_t frames) {
+    uint32_t width, uint32_t height, size_t frames,
+    std::chrono::milliseconds minimum_duration = std::chrono::milliseconds(0)) {
   MFT_REGISTER_TYPE_INFO output_registration{MFMediaType_Video, subtype};
   IMFActivate **activations = nullptr;
   UINT32 activation_count = 0;
@@ -514,9 +734,16 @@ void benchmark_hardware_encoder(
     return false;
   };
   const auto total_begin = Clock::now();
+  const auto encode_deadline = total_begin + minimum_duration;
   size_t submitted = 0;
   bool forced_late_join_keyframe = false;
-  for (size_t frame = 0; frame < frames; ++frame) {
+  for (size_t frame = 0;
+       minimum_duration.count() > 0 || frame < frames;
+       ++frame) {
+    if (minimum_duration.count() > 0 && frame > 0 &&
+        Clock::now() >= encode_deadline) {
+      break;
+    }
     if (asynchronous && !wait_for_async_input()) {
       throw std::runtime_error(std::string(codec) +
                                " async encoder timed out waiting for input");
@@ -551,7 +778,11 @@ void benchmark_hardware_encoder(
     lease.Attach(new TrackedBenchmarkInput(&slot_available[slot]));
     check(tracked_sample->SetAllocator(lease.Get(), nullptr),
           "Track encoder input sample");
-    if (frames > 1 && frame == frames / 2) {
+    if (!forced_late_join_keyframe &&
+        ((minimum_duration.count() > 0 &&
+          Clock::now() - total_begin >= minimum_duration / 2) ||
+         (minimum_duration.count() == 0 && frames > 1 &&
+          frame == frames / 2))) {
       check(set_codec_uint32(encoder.Get(), CODECAPI_AVEncVideoForceKeyFrame,
                              TRUE),
             "Force late-join keyframe");
@@ -641,6 +872,15 @@ void benchmark_hardware_encoder(
 
 int main(int argc, char **argv) try {
   std::cout << std::unitbuf;
+  DiagnosticLogLifetime diagnostic_log_lifetime;
+  const bool capture_mode =
+      argc > 6 &&
+      (std::string_view(argv[6]) == "--capture" ||
+       std::string_view(argv[6]) == "--capture-soak");
+  const bool capture_soak =
+      argc > 6 && std::string_view(argv[6]) == "--capture-soak";
+  const bool competing_load =
+      argc > 6 && std::string_view(argv[6]) == "--competing-load";
   const uint32_t sw =
       argc > 1 ? static_cast<uint32_t>(std::stoul(argv[1])) : 1920;
   const uint32_t sh =
@@ -659,12 +899,40 @@ int main(int argc, char **argv) try {
       ? std::chrono::seconds(std::stoul(argv[9]))
       : std::chrono::seconds(5);
   const bool fixed_duration_capture_phase = argc > 9;
+  const auto capture_backend_churn_interval =
+      capture_soak && argc > 10
+      ? std::chrono::milliseconds(std::stoull(argv[10]))
+      : std::chrono::milliseconds(0);
+  const bool h264_soak =
+      argc > 6 && std::string_view(argv[6]) == "--h264-soak";
+  const auto h264_soak_duration = h264_soak && argc > 7
+      ? std::chrono::milliseconds(std::stoull(argv[7]))
+      : std::chrono::milliseconds(0);
+  const auto benchmark_iterations = capture_soak
+      ? std::min<std::size_t>(iterations, 30)
+      : iterations;
+  std::optional<syrnike::voice::ScreenCapturePriorityScope> capture_priority;
+  if (capture_mode) capture_priority.emplace();
   if (!sw || !sh || !dw || !dh || !iterations || (dw & 1) || (dh & 1))
     throw std::runtime_error("dimensions/iterations must be non-zero and NV12 "
                              "output dimensions even");
   check(CoInitializeEx(nullptr, COINIT_MULTITHREADED), "CoInitializeEx");
   std::cout << "CONTEXT input=" << sw << 'x' << sh << " output=" << dw << 'x'
             << dh << " iterations=" << iterations << '\n';
+
+  if (competing_load) {
+    const auto duration = argc > 7
+        ? std::chrono::milliseconds(std::stoull(argv[7]))
+        : std::chrono::seconds(12);
+    if (duration.count() <= 0) {
+      throw std::runtime_error("competing-load duration must be positive");
+    }
+    const bool inject_gpu_timeout = argc > 10 &&
+        std::string_view(argv[10]) == "--inject-gpu-timeout";
+    run_competing_load(duration, inject_gpu_timeout);
+    CoUninitialize();
+    return 0;
+  }
 
   std::vector<uint8_t> source(static_cast<size_t>(sw) * sh * 4),
       copy(source.size()), scaled(static_cast<size_t>(dw) * dh * 4);
@@ -680,12 +948,13 @@ int main(int argc, char **argv) try {
                    const uint8_t *output, size_t output_size) {
     action();
     const auto begin = Clock::now();
-    for (size_t i = 0; i < iterations; ++i)
+    for (size_t i = 0; i < benchmark_iterations; ++i)
       action();
     const auto end = Clock::now();
     print_result(
         {name, std::chrono::duration<double, std::milli>(end - begin).count(),
-         iterations, bytes * iterations, checksum(output, output_size)});
+         benchmark_iterations, bytes * benchmark_iterations,
+         checksum(output, output_size)});
   };
   timed(
       "cpu_bgra_copy", source.size(),
@@ -708,7 +977,7 @@ int main(int argc, char **argv) try {
   std::cout << "ASSERT cpu_output_dimensions=" << dw << 'x' << dh
             << " copy_equal=pass checksum_nonzero=pass\n";
 
-  if (argc > 6 && std::string(argv[6]) == "--capture") {
+  if (!capture_soak && argc > 6 && std::string(argv[6]) == "--capture") {
     using namespace syrnike::voice;
     const auto target = resolveScreenCaptureTarget(capture_source);
     auto capturer = ScreenVideoCapturer::create(target, dw, dh);
@@ -766,18 +1035,22 @@ int main(int argc, char **argv) try {
             << "\" vendor_id=0x" << std::hex << desc.VendorId << std::dec
             << " feature_level=0x" << std::hex << level << std::dec << '\n';
 
-  if (argc > 6 && std::string(argv[6]) == "--capture") {
+  if (capture_mode) {
     using namespace syrnike::desktop_native::media;
     const auto target =
         syrnike::voice::resolveScreenCaptureTarget(capture_source);
-    auto capturer = ScreenGpuCapturer::create(target, dw, dh);
-    capturer->setPreviewDemand({
-        true,
-        sw,
-        sh,
-        60,
-        preview_target_pid,
-    });
+    auto create_capturer = [&] {
+      auto next = ScreenGpuCapturer::create(target, dw, dh);
+      next->setPreviewDemand({
+          true,
+          sw,
+          sh,
+          60,
+          preview_target_pid,
+      });
+      return next;
+    };
+    auto capturer = create_capturer();
     ScreenGpuFrame frame;
     std::size_t captured = 0;
     std::uint64_t gpu_sum = 0;
@@ -786,9 +1059,117 @@ int main(int argc, char **argv) try {
     std::size_t preview_failures = 0;
     const auto external_preview = preview_target_pid != GetCurrentProcessId();
     const auto target_capture_frames = external_preview ? iterations : 1;
-    const auto deadline = Clock::now() + std::chrono::seconds(15);
-    while (Clock::now() < deadline && captured < target_capture_frames) {
+    const auto capture_started_at = Clock::now();
+    const auto deadline = Clock::now() +
+        (external_preview && fixed_duration_capture_phase
+             ? capture_phase_seconds
+             : std::chrono::seconds(15));
+    auto next_backend_churn_at = capture_backend_churn_interval.count() > 0
+        ? capture_started_at + capture_backend_churn_interval
+        : Clock::time_point::max();
+    std::optional<Clock::time_point> previous_frame_at;
+    double maximum_cadence_gap_ms = 0;
+    std::uint64_t backend_churn_count = 0;
+    syrnike::desktop_native::tests::ContentionRecoveryIntervals
+        backend_churn_intervals;
+    std::uint64_t recoverable_transitions = 0;
+    std::uint64_t total_gpu_slot_timeouts = 0;
+    std::uint64_t total_gpu_pool_rollovers = 0;
+    std::uint64_t total_preview_device_resets = 0;
+    auto baseline_threads = process_thread_count();
+    auto baseline_handles = process_handle_count();
+    WindowsProcessResourceTypes resource_type_baseline;
+    auto maximum_threads = baseline_threads;
+    auto maximum_handles = baseline_handles;
+    ResourceTypeCounts maximum_handle_type_delta;
+    bool resource_baseline_captured = false;
+    const auto resource_baseline_ready_at =
+        capture_started_at + std::chrono::seconds(1);
+    auto next_resource_sample_at = capture_started_at;
+    const auto sample_resources = [&] {
+      if (!resource_baseline_captured) return;
+      maximum_threads = std::max(maximum_threads, process_thread_count());
+      const auto sampled_handles = process_handle_count();
+      if (sampled_handles <= maximum_handles) return;
+      maximum_handles = sampled_handles;
+      if (maximum_handles >= baseline_handles + 64) {
+        maximum_handle_type_delta = resourceTypeDelta(
+            resource_type_baseline.handles,
+            captureWindowsProcessResourceTypes().handles,
+            64);
+      }
+    };
+    const auto accumulate_flow = [&](const ScreenFrameFlowStats& flow) {
+      total_gpu_slot_timeouts += flow.gpu_slot_timeouts;
+      total_gpu_pool_rollovers += flow.gpu_pool_rollovers;
+      total_preview_device_resets += flow.preview_device_resets;
+    };
+    while (Clock::now() < deadline &&
+           (fixed_duration_capture_phase ||
+            captured < target_capture_frames)) {
+      const auto loop_now = Clock::now();
+      if (!resource_baseline_captured &&
+          loop_now >= resource_baseline_ready_at && captured > 0) {
+        baseline_threads = process_thread_count();
+        baseline_handles = process_handle_count();
+        resource_type_baseline = captureWindowsProcessResourceTypes();
+        maximum_threads = baseline_threads;
+        maximum_handles = baseline_handles;
+        maximum_handle_type_delta.clear();
+        resource_baseline_captured = true;
+      }
+      if (loop_now >= next_backend_churn_at) {
+        const auto backend_churn_started_at = Clock::now();
+        capturer->setPreviewDemand({});
+        const auto churn_drain_deadline = loop_now + std::chrono::seconds(2);
+        while (!capturer->retirementSafe() &&
+               Clock::now() < churn_drain_deadline) {
+          capturer->pollRetirement();
+          Sleep(1);
+        }
+        if (!capturer->retirementSafe()) {
+          const auto blocked_flow = capturer->frameFlowStats();
+          throw std::runtime_error(
+              "screen backend churn lease drain exceeded two seconds"
+              " preview_in_flight=" +
+              std::to_string(capturer->previewFramesInFlight()) +
+              " encoder_slots=" +
+              std::to_string(capturer->frameSlotsAvailable()) + "/" +
+              std::to_string(capturer->frameSlotsTotal()) +
+              " retired_generations=" +
+              std::to_string(blocked_flow.gpu_retired_generations) +
+              " quarantined_slots=" +
+              std::to_string(blocked_flow.gpu_slots_quarantined) +
+              " preview_timeouts=" +
+              std::to_string(blocked_flow.preview_slot_timeouts));
+        }
+        accumulate_flow(capturer->frameFlowStats());
+        capturer.reset();
+        capturer = create_capturer();
+        const auto backend_churn_completed_at = Clock::now();
+        const auto churn_origin = capture_started_at.time_since_epoch();
+        const auto churn_started_ms =
+            std::chrono::duration<double, std::milli>(
+                backend_churn_started_at.time_since_epoch() - churn_origin)
+                .count();
+        const auto churn_completed_ms =
+            std::chrono::duration<double, std::milli>(
+                backend_churn_completed_at.time_since_epoch() - churn_origin)
+                .count();
+        if (!backend_churn_intervals.record(
+                churn_started_ms, churn_completed_ms)) {
+          throw std::runtime_error(
+              "screen backend churn emitted an inverted lifecycle interval");
+        }
+        ++backend_churn_count;
+        next_backend_churn_at += capture_backend_churn_interval;
+      }
+      if (loop_now >= next_resource_sample_at) {
+        sample_resources();
+        next_resource_sample_at += std::chrono::milliseconds(100);
+      }
       const auto result = capturer->capture(frame);
+      if (result.recovery_transition) ++recoverable_transitions;
       ++capture_status_counts[static_cast<std::size_t>(result.status)];
       ScreenPreviewFailure preview_failure;
       while (capturer->takePreviewFailure(preview_failure)) {
@@ -800,6 +1181,15 @@ int main(int argc, char **argv) try {
                   << " message=\"" << preview_failure.message << "\"\n";
       }
       if (result.status == ScreenGpuFrameStatus::NewFrame) {
+        const auto frame_at = Clock::now();
+        if (previous_frame_at) {
+          maximum_cadence_gap_ms = std::max(
+              maximum_cadence_gap_ms,
+              std::chrono::duration<double, std::milli>(
+                  frame_at - *previous_frame_at)
+                  .count());
+        }
+        previous_frame_at = frame_at;
         ComPtr<ID3D11Device1> device1;
         check(device.As(&device1), "ID3D11Device1 for shared GPU capture");
         ComPtr<ID3D11Texture2D> shared;
@@ -842,6 +1232,8 @@ int main(int argc, char **argv) try {
         context->Unmap(readback.Get(), 0);
         check(keyed->ReleaseSync(0), "Release GPU capture producer key");
         gpu_sum = checksum(bytes.data(), bytes.size());
+        static_cast<void>(capturer->requestPreviewFrame());
+        capturer->pollOptionalWork();
 
         ScreenPreviewFrame preview;
         if (!capturer->takePreviewFrame(preview)) {
@@ -859,6 +1251,7 @@ int main(int argc, char **argv) try {
         if (external_preview) {
           std::cout << "EXTERNAL_PREVIEW nt_handle=" << preview.nt_handle
                     << " sequence=" << preview.sequence
+                    << " timestamp_us=" << preview.timestamp_us
                     << " width=" << preview.width
                     << " height=" << preview.height << std::endl;
           capturer->discard(frame);
@@ -870,6 +1263,7 @@ int main(int argc, char **argv) try {
                 "Electron did not acknowledge the preview release fence");
           }
           capturer->releasePreviewFrame(preview.sequence);
+          std::cout << "RELEASE_ACK sequence=" << preview.sequence << '\n';
           preview_sum = 1;
           continue;
         }
@@ -931,7 +1325,10 @@ int main(int argc, char **argv) try {
       }
       Sleep(16);
     }
-    if (captured != target_capture_frames || gpu_sum == 0 || preview_sum == 0) {
+    const bool capture_count_satisfied = fixed_duration_capture_phase
+        ? captured > 0
+        : captured == target_capture_frames;
+    if (!capture_count_satisfied || gpu_sum == 0 || preview_sum == 0) {
       const auto flow = capturer->frameFlowStats();
       std::cout << "DIAGNOSTIC strict_gpu_capture new="
                 << capture_status_counts[static_cast<std::size_t>(
@@ -966,6 +1363,62 @@ int main(int argc, char **argv) try {
     std::cout << "ASSERT real_screen_gpu_capture nv12_shared_texture=pass "
                  "bgra_preview_shared_texture=pass "
                  "cpu_readback_in_timed_path=absent\n";
+    if (external_preview && capture_soak) {
+      if (!resource_baseline_captured) {
+        throw std::runtime_error(
+            "screen contention resource baseline was not established");
+      }
+      accumulate_flow(capturer->frameFlowStats());
+      const auto elapsed_ms = std::chrono::duration<double, std::milli>(
+          Clock::now() - capture_started_at)
+                                  .count();
+      const auto cadence =
+          syrnike::desktop_native::tests::contentionScreenCadence(
+              captured, elapsed_ms, backend_churn_intervals.totalMs());
+      sample_resources();
+      std::cout << "ASSERT contention_screen_capture frames=" << captured
+                << " clean_release=pass\n";
+      std::cout << "CONTENTION_CAPTURE_SUMMARY {\"frames\":" << captured
+                << ",\"elapsedMs\":" << elapsed_ms
+                << ",\"cadenceFps\":"
+                << cadence.total_fps
+                << ",\"ordinaryCadenceFps\":"
+                << cadence.ordinary_fps
+                << ",\"cadenceGapMaxMs\":" << maximum_cadence_gap_ms
+                << ",\"backendChurnCount\":" << backend_churn_count
+                << ",\"backendChurnDurationTotalMs\":"
+                << backend_churn_intervals.totalMs()
+                << ",\"backendChurnDurationMaxMs\":"
+                << backend_churn_intervals.maximumMs()
+                << ",\"recoverableTransitions\":"
+                << recoverable_transitions
+                << ",\"gpuSlotTimeouts\":" << total_gpu_slot_timeouts
+                << ",\"gpuPoolRollovers\":" << total_gpu_pool_rollovers
+                << ",\"captureResetCount\":"
+                << total_preview_device_resets
+                << ",\"resourceBaselineCaptured\":1"
+                << ",\"threadDeltaMax\":"
+                << (maximum_threads >= baseline_threads
+                        ? maximum_threads - baseline_threads
+                        : 0)
+                << ",\"handleDeltaMax\":"
+                << (maximum_handles >= baseline_handles
+                        ? maximum_handles - baseline_handles
+                        : 0)
+                << ",\"handleTypes\":[";
+      for (std::size_t index = 0;
+           index < maximum_handle_type_delta.size(); ++index) {
+        if (index != 0) std::cout << ',';
+        std::cout << "{\"category\":\""
+                  << maximum_handle_type_delta[index].category
+                  << "\",\"count\":"
+                  << maximum_handle_type_delta[index].count << '}';
+      }
+      std::cout << ']'
+                << "}\n";
+      CoUninitialize();
+      return 0;
+    }
     if (preview_target_pid == GetCurrentProcessId()) {
       struct CapturePhase {
         std::size_t capture_calls = 0;
@@ -1005,6 +1458,8 @@ int main(int argc, char **argv) try {
                   result.metrics.duplication_hold_us);
             }
             capturer->discard(phase_frame);
+            static_cast<void>(capturer->requestPreviewFrame());
+            capturer->pollOptionalWork();
           } else if (result.status == ScreenGpuFrameStatus::FatalError ||
                      result.status == ScreenGpuFrameStatus::TargetClosed) {
             throw std::runtime_error("GPU preview steady-state capture failed");
@@ -1139,6 +1594,8 @@ int main(int argc, char **argv) try {
         if (result.status == ScreenGpuFrameStatus::NewFrame) {
           ++sender_frames_while_preview_held;
           capturer->discard(held_phase_frame);
+          static_cast<void>(capturer->requestPreviewFrame());
+          capturer->pollOptionalWork();
         } else if (result.status == ScreenGpuFrameStatus::FatalError ||
                    result.status == ScreenGpuFrameStatus::TargetClosed) {
           throw std::runtime_error(
@@ -1167,6 +1624,8 @@ int main(int argc, char **argv) try {
         const auto result = capturer->capture(resumed_frame);
         if (result.status == ScreenGpuFrameStatus::NewFrame) {
           capturer->discard(resumed_frame);
+          static_cast<void>(capturer->requestPreviewFrame());
+          capturer->pollOptionalWork();
         } else if (result.status == ScreenGpuFrameStatus::FatalError ||
                    result.status == ScreenGpuFrameStatus::TargetClosed) {
           throw std::runtime_error(
@@ -1326,7 +1785,8 @@ int main(int argc, char **argv) try {
       benchmark_hardware_encoder(
           MFVideoFormat_H264, "H264", device.Get(), context.Get(),
           video_device.Get(), video_context.Get(), enumerator.Get(),
-          processor.Get(), input_view.Get(), query.Get(), dw, dh, iterations);
+          processor.Get(), input_view.Get(), query.Get(), dw, dh, iterations,
+          h264_soak_duration);
       MFShutdown();
     }
   }

@@ -225,13 +225,18 @@ results from promotion, while mute, stop, terminal callbacks and probes remain
 processable. A controller owns only its committed publication, one candidate
 and bounded retirement capacity.
 
-The LiveKit SDK calls themselves are still synchronous and cannot be
-cooperatively interrupted. Cancellation marks an attempt stale but cannot force
-the blocked SDK stack to unwind. If it exceeds the outer deadline, containment
-is `actor_unresponsive` followed by forced utility-host termination and
-supervisor restart. This bounds application damage, but graceful in-process SDK
-cancellation and teardown remain an explicit limitation to qualify in fault and
-soak testing.
+LiveKit connect, publish, unpublish, audio-capture acknowledgement, and
+disconnect waits own a client-generated asynchronous ID, a finite deadline, and
+an `OperationCancellation` handle. Deadline, explicit cancellation, or SDK
+shutdown removes that pending ID and completes its typed result exactly once;
+a later callback is ignored and cannot satisfy a newer operation. The native
+workers remain bounded so cancellation never has to wait behind the operation
+it is cancelling.
+
+This cancellation controls pending LiveKit FFI acknowledgements; it cannot
+interrupt an unrelated hung COM, WASAPI, or renderer call. Those boundaries use
+their own deadline-bound adapters and quarantine or utility-host recycle when
+the platform cannot confirm teardown.
 
 ## Browser Boundary
 

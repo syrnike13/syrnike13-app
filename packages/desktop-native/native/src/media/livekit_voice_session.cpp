@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <future>
 #include <optional>
+#include <shared_mutex>
 #include <stdexcept>
 #include <string_view>
 #include <thread>
@@ -320,7 +321,7 @@ class PostedRoomDelegate final
 
   PostedRoomDelegate(
     std::string kind,
-    std::string terminal_type,
+    NativeCommandType terminal_type,
     std::string session_id,
     std::uint64_t generation,
     LiveKitVoiceSession::InternalPost post
@@ -332,6 +333,7 @@ class PostedRoomDelegate final
       post_([gate = post_gate_](MediaCommand command) {
         return gate->post(std::move(command));
       }),
+      terminal_post_(terminal_type_, session_id_, generation_, post_),
       audio_output_([this](RemoteAudioOutputState state) {
         postOutputState(std::move(state));
       }, [this](
@@ -360,13 +362,22 @@ class PostedRoomDelegate final
         {},
         {},
         VideoBridgeEventTypes{
-          "__localCameraPreviewFrame",
-          "__localCameraPreviewTrackRemoved",
-          "__localCameraPreviewFailed",
+          NativeCommandType::LocalCameraPreviewFrame,
+          NativeCommandType::LocalCameraPreviewTrackRemoved,
+          NativeCommandType::LocalCameraPreviewFailed,
           "Local camera preview"
         }
       ) {
     remote_video_.updateIdentity(session_id_, generation_);
+  }
+
+  ~PostedRoomDelegate() override {
+    terminal_post_.cancel();
+    stopAudioRetryScheduler();
+  }
+
+  void publishTerminalIncarnation() {
+    terminal_post_.publish();
   }
 
   void onConnectionStateChanged(
@@ -377,8 +388,12 @@ class PostedRoomDelegate final
     if (!callback) return;
     std::string session_id;
     std::uint64_t generation = 0;
+    bool resumed_from_reconnect = false;
     {
       std::lock_guard lock(mutex_);
+      resumed_from_reconnect =
+        state_ == livekit::ConnectionState::Reconnecting &&
+        event.state == livekit::ConnectionState::Connected;
       state_ = event.state;
       if (state_ == livekit::ConnectionState::Disconnected) disconnected_ = true;
       session_id = session_id_;
@@ -386,12 +401,16 @@ class PostedRoomDelegate final
     }
     changed_.notify_all();
     if (event.state == livekit::ConnectionState::Connected) {
+      if (resumed_from_reconnect) {
+        remote_publications_.resetAudioRetriesForReconnect();
+        notifyAudioRetryScheduler();
+      }
       requestAllRemotePublicationReconcile();
     }
     if (event.state == livekit::ConnectionState::Connected ||
         event.state == livekit::ConnectionState::Reconnecting) {
       MediaCommand command;
-      command.type = "__voiceConnectionStateChanged";
+      command.type = NativeCommandType::VoiceConnectionStateChanged;
       command.session_id = session_id;
       command.generation = generation;
       command.status = event.state == livekit::ConnectionState::Connected
@@ -443,7 +462,7 @@ class PostedRoomDelegate final
       }
     );
     if (!notify_terminal) return;
-    postTerminal(std::move(session_id), generation, std::move(terminal_message));
+    postTerminal(terminal_message);
   }
 
   void onTrackPublished(livekit::Room&, const livekit::TrackPublishedEvent& event) override {
@@ -468,7 +487,7 @@ class PostedRoomDelegate final
       return;
     }
     MediaCommand command;
-    command.type = "__localMicrophoneUnpublished";
+    command.type = NativeCommandType::LocalMicrophoneUnpublished;
     {
       std::lock_guard lock(mutex_);
       command.session_id = session_id_;
@@ -509,19 +528,25 @@ class PostedRoomDelegate final
       publication_id,
       event.publication
     );
-    audio_output_.removeTrack(publication_id);
-    if (removed && removed->is_video) {
-      remote_video_.removeTrack(publication_id);
-      postRemoteVideoPublication("__remoteVideoPublicationUnavailable", publication_id,
-                                 removed->participant_identity, removed->source);
-      if (removed->source == livekit::TrackSource::SOURCE_SCREENSHARE) {
-        for (const auto& dependent_id :
-             remote_publications_.syncScreenAudioDemand(
-               removed->participant_identity
-             )) {
-          requestRemotePublicationReconcile(dependent_id);
-        }
+    if (!removed) return;
+    notifyAudioRetryScheduler();
+    if (!removed->is_video) {
+      audio_output_.removeTrack(publication_id);
+      return;
+    }
+    remote_video_.removeTrack(publication_id);
+    postRemoteVideoPublication(
+                               NativeCommandType::RemoteVideoPublicationUnavailable,
+                               publication_id,
+                               removed->participant_identity, removed->source);
+    if (removed->source == livekit::TrackSource::SOURCE_SCREENSHARE) {
+      for (const auto& dependent_id :
+           remote_publications_.syncScreenAudioDemand(
+             removed->participant_identity
+           )) {
+        requestRemotePublicationReconcile(dependent_id);
       }
+      notifyAudioRetryScheduler();
     }
   }
 
@@ -542,10 +567,12 @@ class PostedRoomDelegate final
       : event.track->sid();
     if (event.publication &&
         !remote_publications_.matches(publication_id, event.publication)) {
-      registerRemotePublication(
-        event.publication,
-        event.participant ? event.participant->identity() : std::string{}
-      );
+      if (!remote_publications_.contains(publication_id)) {
+        registerRemotePublication(
+          event.publication,
+          event.participant ? event.participant->identity() : std::string{}
+        );
+      }
     }
     const auto subscribed = remote_publications_.onTrackSubscribed(
       publication_id,
@@ -553,11 +580,12 @@ class PostedRoomDelegate final
       event.track
     );
     if (!subscribed.matched) return;
+    notifyAudioRetryScheduler();
     if (!subscribed.demanded) {
       requestRemotePublicationReconcile(publication_id);
       return;
     }
-    if (!subscribed.is_video) {
+    if (!subscribed.is_video && !subscribed.duplicate) {
       audio_output_.addTrack(
         publication_id,
         event.participant ? event.participant->identity() : std::string{},
@@ -596,8 +624,11 @@ class PostedRoomDelegate final
       event.track
     );
     if (!unsubscribed.matched) return;
+    notifyAudioRetryScheduler();
     if (!unsubscribed.is_video) {
-      audio_output_.removeTrack(publication_id);
+      if (unsubscribed.current) {
+        audio_output_.removeTrack(publication_id);
+      }
       if (unsubscribed.resubscribe) {
         requestRemotePublicationReconcile(publication_id);
       }
@@ -621,7 +652,7 @@ class PostedRoomDelegate final
   ) override {
     CallbackGuard callback(*this);
     if (!callback) return;
-    postRemoteVideoSubscriptionFailure(
+    handleRemotePublicationSubscriptionFailure(
       event.track_sid,
       "subscription_failed",
       event.error
@@ -636,7 +667,7 @@ class PostedRoomDelegate final
     // hold CallbackGuard.
     if (kind_ != "voice") return;
     MediaCommand command;
-    command.type = "__voiceActiveSpeakers";
+    command.type = NativeCommandType::VoiceActiveSpeakers;
     {
       std::lock_guard lock(mutex_);
       command.session_id = session_id_;
@@ -649,7 +680,7 @@ class PostedRoomDelegate final
   void setDeafened(bool value) { audio_output_.setDeafened(value); }
   void postStats(livekit::SessionStats stats) {
     MediaCommand command;
-    command.type = "__voiceStats";
+    command.type = NativeCommandType::VoiceStats;
     {
       std::lock_guard lock(mutex_);
       command.session_id = session_id_;
@@ -721,6 +752,7 @@ class PostedRoomDelegate final
     const auto publication =
       remote_publications_.setVideoDemand(track_id, demanded);
     if (!publication) return;
+    notifyAudioRetryScheduler();
     if (!demanded) remote_video_.removeTrack(track_id);
     reconcileRemotePublication(track_id);
     if (publication->source == livekit::TrackSource::SOURCE_SCREENSHARE) {
@@ -730,18 +762,56 @@ class PostedRoomDelegate final
            )) {
         reconcileRemotePublication(dependent_id);
       }
+      notifyAudioRetryScheduler();
     }
     // Re-announce before the asynchronous subscription can produce frames so
     // the renderer can lift its unsubscribe tombstone without losing inventory.
     if (demanded) {
-      postRemoteVideoPublication("__remoteVideoPublicationAvailable", track_id,
+      postRemoteVideoPublication(
+                                 NativeCommandType::RemoteVideoPublicationAvailable,
+                                 track_id,
                                  publication->participant_identity,
                                  publication->source);
     }
   }
 
-  void reconcileRemotePublication(const std::string& track_id) {
-    const auto plan = remote_publications_.planReconcile(track_id);
+  void reconcileRegisteredRemotePublications() {
+    for (const auto& publication_id : remote_publications_.publicationIds()) {
+      try {
+        reconcileRemotePublication(publication_id);
+      } catch (const std::exception& error) {
+        logDelegate(
+          kind_,
+          "remote_publication_commit_reconcile_failed",
+          {
+            {"publicationId", publication_id},
+            {"error", error.what()}
+          }
+        );
+        if (!remote_publications_.audioFailureOwnsReconcile(publication_id)) {
+          requestRemotePublicationReconcile(publication_id);
+        }
+      } catch (...) {
+        logDelegate(
+          kind_,
+          "remote_publication_commit_reconcile_failed",
+          {{"publicationId", publication_id}}
+        );
+        if (!remote_publications_.audioFailureOwnsReconcile(publication_id)) {
+          requestRemotePublicationReconcile(publication_id);
+        }
+      }
+    }
+  }
+
+  void reconcileRemotePublication(
+    const std::string& track_id,
+    std::uint64_t expected_revision = 0
+  ) {
+    const auto plan = remote_publications_.planReconcile(
+      track_id,
+      expected_revision
+    );
     if (plan.command == RemotePublicationReconcileCommand::Deferred) {
       logDelegate(
         kind_,
@@ -759,7 +829,8 @@ class PostedRoomDelegate final
         plan.command == RemotePublicationReconcileCommand::Subscribe
       );
     } catch (...) {
-      remote_publications_.markReconcileFailed(plan);
+      const auto retry = remote_publications_.markReconcileFailed(plan);
+      if (retry) notifyAudioRetryScheduler();
       throw;
     }
     if (!remote_publications_.isReconcileCurrent(plan)) return;
@@ -855,6 +926,20 @@ class PostedRoomDelegate final
     }) && state_ == livekit::ConnectionState::Connected;
   }
 
+  bool waitConnected(
+    std::chrono::milliseconds timeout,
+    const livekit::OperationCancellation& cancellation
+  ) {
+    std::unique_lock lock(mutex_);
+    return changed_.wait_for(lock, timeout, [&] {
+      return cancellation.isCancellationRequested() ||
+        state_ == livekit::ConnectionState::Connected || disconnected_;
+    }) && !cancellation.isCancellationRequested() &&
+      state_ == livekit::ConnectionState::Connected;
+  }
+
+  void notifyConnectionWaiters() { changed_.notify_all(); }
+
   bool waitDisconnected(std::chrono::milliseconds timeout) {
     std::unique_lock lock(mutex_);
     return changed_.wait_for(lock, timeout, [&] { return disconnected_; });
@@ -870,6 +955,7 @@ class PostedRoomDelegate final
       std::lock_guard lock(callback_mutex_);
       shutting_down_ = true;
     }
+    stopAudioRetryScheduler();
     // A callback that exceeds the teardown deadline may retain the delegate,
     // but it must not retain or invoke MediaRuntime's queue closures after the
     // runtime has begun member destruction.
@@ -886,35 +972,51 @@ class PostedRoomDelegate final
   }
 
  private:
-  void postRemoteVideoSubscriptionFailure(
+  void handleRemotePublicationSubscriptionFailure(
     const std::string& publication_id,
     std::string_view reason,
     const std::string& error
   ) {
-    const auto publication = remote_publications_.markSubscriptionFailed(
+    const auto failure = remote_publications_.markSubscriptionFailed(
       publication_id,
       reason == "subscription_failed"
     );
-    if (!publication) return;
-    const auto video_source =
-      publication->source == livekit::TrackSource::SOURCE_SCREENSHARE
-        ? "screen"
-        : "camera";
+    if (!failure) return;
+    notifyAudioRetryScheduler();
+    const auto& publication = failure->publication;
     logDelegate(
       kind_,
       "remote_publication_subscription_failed",
       {
         {"publicationId", publication_id},
-        {"participantIdentity", publication->participant_identity},
+        {"participantIdentity", publication.participant_identity},
         {"reason", std::string(reason)},
         {"error", error}
       }
     );
-    if (!publication->is_video) return;
+    if (!publication.is_video) {
+      logDelegate(
+        kind_,
+        "remote_audio_subscription_retry_planned",
+        {
+          {"publicationId", publication_id},
+          {"source", static_cast<std::uint64_t>(publication.source)},
+          {"retryAttempt", failure->retry
+             ? static_cast<std::uint64_t>(failure->retry->attempt)
+             : 0},
+          {"retryExhausted", failure->retry_exhausted}
+        }
+      );
+      return;
+    }
+    const auto video_source =
+      publication.source == livekit::TrackSource::SOURCE_SCREENSHARE
+        ? "screen"
+        : "camera";
     MediaCommand failed;
-    failed.type = "__remoteVideoFailed";
+    failed.type = NativeCommandType::RemoteVideoFailed;
     failed.track_id = publication_id;
-    failed.participant_identity = publication->participant_identity;
+    failed.participant_identity = publication.participant_identity;
     failed.video_source = video_source;
     failed.recovery_mode = "subscription";
     failed.internal_message = error.empty()
@@ -947,45 +1049,142 @@ class PostedRoomDelegate final
   ) {
     if (!publication) return;
     const auto publication_id = publication->sid();
+    const bool replacing_publication =
+      remote_publications_.contains(publication_id) &&
+      !remote_publications_.matches(publication_id, publication);
     const auto registered = remote_publications_.registerPublication(
       publication,
       participant_identity
     );
     if (!registered) return;
-    requestRemotePublicationReconcile(publication_id);
+    if (replacing_publication && !registered->is_video) {
+      audio_output_.removeTrack(publication_id);
+    }
+    notifyAudioRetryScheduler();
+    if (!remote_publications_.audioFailureOwnsReconcile(publication_id)) {
+      requestRemotePublicationReconcile(publication_id);
+    }
     if (registered->is_video) {
-      postRemoteVideoPublication("__remoteVideoPublicationAvailable", publication_id,
+      postRemoteVideoPublication(
+                                 NativeCommandType::RemoteVideoPublicationAvailable,
+                                 publication_id,
                                  registered->participant_identity,
                                  registered->source);
     }
   }
 
-  void requestRemotePublicationReconcile(const std::string& publication_id) {
+  bool requestRemotePublicationReconcile(
+    const std::string& publication_id,
+    std::uint64_t expected_revision = 0
+  ) {
     MediaCommand command;
-    command.type = "__reconcileRemotePublication";
+    command.type = NativeCommandType::ReconcileRemotePublication;
     command.track_id = publication_id;
-    {
-      std::lock_guard lock(mutex_);
-      command.session_id = session_id_;
-      command.generation = generation_;
-    }
-    post_(std::move(command));
+    // Delegate identity is immutable, so the deadline scheduler doesn't take
+    // Room/session/voice operation locks to publish its actor command.
+    command.session_id = session_id_;
+    command.generation = generation_;
+    command.internal_epoch = expected_revision;
+    return post_(std::move(command));
   }
 
   void requestAllRemotePublicationReconcile() {
     for (const auto& publication_id : remote_publications_.publicationIds()) {
-      requestRemotePublicationReconcile(publication_id);
+      if (!remote_publications_.audioFailureOwnsReconcile(publication_id)) {
+        requestRemotePublicationReconcile(publication_id);
+      }
+    }
+  }
+
+  void notifyAudioRetryScheduler() {
+    {
+      std::lock_guard lock(audio_retry_mutex_);
+      if (audio_retry_stopping_) return;
+      if (!audio_retry_thread_.joinable() &&
+          remote_publications_.nextAudioRetryDeadline()) {
+        audio_retry_thread_ = std::jthread([this](std::stop_token stop) {
+          audioRetryLoop(stop);
+        });
+      }
+      ++audio_retry_wake_revision_;
+    }
+    audio_retry_changed_.notify_one();
+  }
+
+  void stopAudioRetryScheduler() {
+    bool join = false;
+    {
+      std::lock_guard lock(audio_retry_mutex_);
+      if (audio_retry_stopping_) return;
+      audio_retry_stopping_ = true;
+      join = audio_retry_thread_.joinable();
+      if (join) audio_retry_thread_.request_stop();
+      ++audio_retry_wake_revision_;
+    }
+    audio_retry_changed_.notify_all();
+    if (join) audio_retry_thread_.join();
+  }
+
+  void audioRetryLoop(std::stop_token stop) noexcept {
+    std::unique_lock lock(audio_retry_mutex_);
+    while (!stop.stop_requested()) {
+      const auto observed_revision = audio_retry_wake_revision_;
+      const auto deadline = remote_publications_.nextAudioRetryDeadline();
+      if (!deadline) {
+        audio_retry_changed_.wait(lock, [&] {
+          return stop.stop_requested() ||
+            audio_retry_wake_revision_ != observed_revision;
+        });
+        continue;
+      }
+      if (audio_retry_changed_.wait_until(lock, *deadline, [&] {
+            return stop.stop_requested() ||
+              audio_retry_wake_revision_ != observed_revision;
+          })) {
+        continue;
+      }
+
+      lock.unlock();
+      const auto now = std::chrono::steady_clock::now();
+      for (const auto& retry : remote_publications_.takeDueAudioRetries(now)) {
+        if (stop.stop_requested()) break;
+        bool accepted = false;
+        try {
+          accepted = requestRemotePublicationReconcile(
+            retry.publication_id,
+            retry.revision
+          );
+        } catch (...) {
+          accepted = false;
+        }
+        if (accepted) continue;
+        const auto rescheduled =
+          remote_publications_.markAudioRetryDispatchFailed(
+            retry,
+            std::chrono::steady_clock::now()
+          );
+        logDelegate(
+          kind_,
+          "remote_audio_retry_post_rejected",
+          {
+            {"publicationId", retry.publication_id},
+            {"attempt", static_cast<std::uint64_t>(retry.attempt)},
+            {"rescheduled", rescheduled.has_value()}
+          }
+        );
+      }
+      lock.lock();
     }
   }
 
   void postRemoteVideoPublication(
-    std::string type,
+    NativeCommandType type,
     std::string publication_id,
     std::string participant_identity,
     livekit::TrackSource source
   ) {
     MediaCommand command;
-    command.type = std::move(type);
+    command.type = type;
     command.track_id = std::move(publication_id);
     command.participant_identity = std::move(participant_identity);
     command.video_source = source == livekit::TrackSource::SOURCE_SCREENSHARE
@@ -1012,12 +1211,13 @@ class PostedRoomDelegate final
       }
       remote_video_.removeTrack(publication_id);
       postRemoteVideoPublication(
-        "__remoteVideoPublicationUnavailable",
+        NativeCommandType::RemoteVideoPublicationUnavailable,
         publication_id,
         removed.participant_identity,
         removed.source
       );
     }
+    notifyAudioRetryScheduler();
   }
 
   void clearRemotePublications() {
@@ -1032,12 +1232,13 @@ class PostedRoomDelegate final
       }
       remote_video_.removeTrack(publication_id);
       postRemoteVideoPublication(
-        "__remoteVideoPublicationUnavailable",
+        NativeCommandType::RemoteVideoPublicationUnavailable,
         publication_id,
         removed.participant_identity,
         removed.source
       );
     }
+    notifyAudioRetryScheduler();
   }
 
   bool beginCallback() {
@@ -1053,32 +1254,21 @@ class PostedRoomDelegate final
     if (active_callbacks_ == 0) callbacks_changed_.notify_all();
   }
 
-  void postTerminal(
-    std::string session_id,
-    std::uint64_t generation,
-    std::string message
-  ) {
-    if (terminal_posted_.exchange(true)) return;
+  void postTerminal(std::string message) {
     logDelegate(
       kind_,
-      "post_terminal",
+      "post_or_buffer_terminal",
       {
-        {"sessionId", session_id},
-        {"generation", generation},
-        {"message", message}
+        {"sessionId", session_id_},
+        {"generation", generation_}
       }
     );
-    MediaCommand command;
-    command.type = terminal_type_;
-    command.session_id = std::move(session_id);
-    command.generation = generation;
-    command.internal_message = std::move(message);
-    post_(std::move(command));
+    terminal_post_.post(std::move(message));
   }
 
   void postOutputState(RemoteAudioOutputState state) {
     MediaCommand command;
-    command.type = "__voiceOutputStateChanged";
+    command.type = NativeCommandType::VoiceOutputStateChanged;
     {
       std::lock_guard lock(mutex_);
       command.session_id = session_id_;
@@ -1108,7 +1298,7 @@ class PostedRoomDelegate final
     std::uint64_t renderer_epoch
   ) {
     MediaCommand command;
-    command.type = "__voiceRemoteAudioTrackFailed";
+    command.type = NativeCommandType::VoiceRemoteAudioTrackFailed;
     {
       std::lock_guard lock(mutex_);
       command.session_id = session_id_;
@@ -1123,12 +1313,12 @@ class PostedRoomDelegate final
     post_(std::move(command));
   }
 
-  std::string kind_;
-  std::string terminal_type_;
+  const std::string kind_;
+  const NativeCommandType terminal_type_;
   mutable std::mutex mutex_;
   std::condition_variable changed_;
-  std::string session_id_;
-  std::uint64_t generation_ = 0;
+  const std::string session_id_;
+  const std::uint64_t generation_;
   livekit::ConnectionState state_ = livekit::ConnectionState::Disconnected;
   bool disconnected_ = false;
   bool intentional_ = false;
@@ -1136,21 +1326,26 @@ class PostedRoomDelegate final
   std::condition_variable callbacks_changed_;
   std::size_t active_callbacks_ = 0;
   bool shutting_down_ = false;
-  std::atomic_bool terminal_posted_{false};
   std::shared_ptr<PostedCommandGate> post_gate_;
   LiveKitVoiceSession::InternalPost post_;
+  VoiceTerminalPostGate terminal_post_;
   std::shared_ptr<LiveKitRuntimeLifetime> sdk_runtime_lifetime_;
   RemoteAudioOutput audio_output_;
   RemoteVideoBridge remote_video_;
   RemoteVideoBridge local_camera_preview_;
   RemotePublicationReconciler remote_publications_;
+  std::mutex audio_retry_mutex_;
+  std::condition_variable audio_retry_changed_;
+  std::uint64_t audio_retry_wake_revision_ = 0;
+  bool audio_retry_stopping_ = false;
+  std::jthread audio_retry_thread_;
 };
 
 class RealLiveKitRoomOwner final : public LiveKitVoiceRoomOwner {
  public:
   RealLiveKitRoomOwner(
     std::string kind,
-    std::string terminal_type,
+    NativeCommandType terminal_type,
     std::string session_id,
     std::uint64_t generation,
     LiveKitVoiceSession::InternalPost post
@@ -1205,12 +1400,43 @@ class RealLiveKitRoomOwner final : public LiveKitVoiceRoomOwner {
     return room_.connect(livekit_url, livekit_token, options);
   }
 
+  bool connectCancellable(
+    const std::string& livekit_url,
+    const std::string& livekit_token,
+    const livekit::RoomOptions& options,
+    const livekit::OperationCancellation& cancellation
+  ) override {
+    return room_.connect(
+      livekit_url, livekit_token, options, cancellation
+    );
+  }
+
   bool isConnected() const override {
     return delegate_->isConnected();
   }
 
+  void publishTerminalIncarnation() override {
+    delegate_->publishTerminalIncarnation();
+  }
+
   bool waitConnected(std::chrono::milliseconds timeout) override {
     const bool connected = delegate_->waitConnected(timeout);
+    if (connected) {
+      delegate_->registerInitialRemotePublications(room_);
+      startStats();
+    }
+    return connected;
+  }
+
+  bool waitConnectedCancellable(
+    std::chrono::milliseconds timeout,
+    const livekit::OperationCancellation& cancellation
+  ) override {
+    [[maybe_unused]] const auto cancellation_subscription =
+      cancellation.subscribe([delegate = delegate_] {
+        delegate->notifyConnectionWaiters();
+      });
+    const bool connected = delegate_->waitConnected(timeout, cancellation);
     if (connected) {
       delegate_->registerInitialRemotePublications(room_);
       startStats();
@@ -1244,6 +1470,83 @@ class RealLiveKitRoomOwner final : public LiveKitVoiceRoomOwner {
     auto participant = room_.localParticipant().lock();
     if (!participant) throw std::runtime_error("LiveKit local participant is unavailable");
     participant->unpublishTrack(publication_sid);
+  }
+
+  LiveKitVoiceRoomOperationResult<std::string> publishAudioTrackUntil(
+    const std::shared_ptr<livekit::LocalAudioTrack>& track,
+    const livekit::TrackPublishOptions& options,
+    std::chrono::steady_clock::time_point deadline,
+    const livekit::OperationCancellation& cancellation
+  ) override {
+    auto participant = room_.localParticipant().lock();
+    if (!participant) {
+      return LiveKitVoiceRoomOperationResult<std::string>::failure({
+        LiveKitVoiceRoomOperationErrorCode::Failed,
+        "LiveKit local participant is unavailable"
+      });
+    }
+    const auto result = participant->publishTrackUntil(
+      track, options, deadline, cancellation
+    );
+    if (result.hasError()) {
+      return LiveKitVoiceRoomOperationResult<std::string>::failure(
+        mapPublicationError(result.error())
+      );
+    }
+    const auto publication = track ? track->publication() : nullptr;
+    return LiveKitVoiceRoomOperationResult<std::string>::success(
+      publication ? publication->sid() : std::string{}
+    );
+  }
+
+  LiveKitVoiceRoomOperationResult<std::string> publishVideoTrackUntil(
+    const std::shared_ptr<livekit::LocalVideoTrack>& track,
+    const livekit::TrackPublishOptions& options,
+    std::chrono::steady_clock::time_point deadline,
+    const livekit::OperationCancellation& cancellation
+  ) override {
+    auto participant = room_.localParticipant().lock();
+    if (!participant) {
+      return LiveKitVoiceRoomOperationResult<std::string>::failure({
+        LiveKitVoiceRoomOperationErrorCode::Failed,
+        "LiveKit local participant is unavailable"
+      });
+    }
+    const auto result = participant->publishTrackUntil(
+      track, options, deadline, cancellation
+    );
+    if (result.hasError()) {
+      return LiveKitVoiceRoomOperationResult<std::string>::failure(
+        mapPublicationError(result.error())
+      );
+    }
+    const auto publication = track ? track->publication() : nullptr;
+    return LiveKitVoiceRoomOperationResult<std::string>::success(
+      publication ? publication->sid() : std::string{}
+    );
+  }
+
+  LiveKitVoiceRoomOperationResult<void> unpublishTrackUntil(
+    const std::string& publication_sid,
+    std::chrono::steady_clock::time_point deadline,
+    const livekit::OperationCancellation& cancellation
+  ) override {
+    auto participant = room_.localParticipant().lock();
+    if (!participant) {
+      return LiveKitVoiceRoomOperationResult<void>::failure({
+        LiveKitVoiceRoomOperationErrorCode::Failed,
+        "LiveKit local participant is unavailable"
+      });
+    }
+    const auto result = participant->unpublishTrackUntil(
+      publication_sid, deadline, cancellation
+    );
+    if (result.hasError()) {
+      return LiveKitVoiceRoomOperationResult<void>::failure(
+        mapPublicationError(result.error())
+      );
+    }
+    return LiveKitVoiceRoomOperationResult<void>::success();
   }
 
   void markIntentionalDisconnect() override {
@@ -1292,8 +1595,14 @@ class RealLiveKitRoomOwner final : public LiveKitVoiceRoomOwner {
   void setRemoteVideoDemand(std::string track_id, bool demanded) override {
     delegate_->setRemoteVideoDemand(track_id, demanded);
   }
-  void reconcileRemotePublication(std::string track_id) override {
-    delegate_->reconcileRemotePublication(track_id);
+  void reconcileRemotePublication(
+    std::string track_id,
+    std::uint64_t expected_revision
+  ) override {
+    delegate_->reconcileRemotePublication(track_id, expected_revision);
+  }
+  void reconcileRegisteredRemotePublications() override {
+    delegate_->reconcileRegisteredRemotePublications();
   }
   void retryRemoteVideo(
     std::string track_id,
@@ -1308,6 +1617,20 @@ class RealLiveKitRoomOwner final : public LiveKitVoiceRoomOwner {
   }
 
  private:
+  static LiveKitVoiceRoomOperationError mapPublicationError(
+    const livekit::TrackPublicationOperationError& error
+  ) {
+    auto code = LiveKitVoiceRoomOperationErrorCode::Failed;
+    if (error.code == livekit::TrackPublicationOperationErrorCode::Timeout) {
+      code = LiveKitVoiceRoomOperationErrorCode::Timeout;
+    } else if (
+      error.code == livekit::TrackPublicationOperationErrorCode::Cancelled
+    ) {
+      code = LiveKitVoiceRoomOperationErrorCode::Cancelled;
+    }
+    return {code, error.message};
+  }
+
   void startStats() {
     if (stats_thread_.joinable()) return;
     stats_thread_ = std::jthread([this](std::stop_token stop) {
@@ -1353,8 +1676,12 @@ class RealLiveKitRoomOwner final : public LiveKitVoiceRoomOwner {
   }
 
   void closeUntil(std::chrono::steady_clock::time_point deadline) {
+    if (disconnect_finished_.load(std::memory_order_acquire)) return;
     if (!disconnect_requested_.exchange(true)) {
-      room_.disconnect();
+      if (!room_.disconnectUntil(deadline)) {
+        disconnect_finished_.store(true, std::memory_order_release);
+        return;
+      }
     }
     const auto now = std::chrono::steady_clock::now();
     delegate_->waitDisconnected(
@@ -1362,15 +1689,92 @@ class RealLiveKitRoomOwner final : public LiveKitVoiceRoomOwner {
         ? std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now)
         : std::chrono::milliseconds::zero()
     );
+    disconnect_finished_.store(true, std::memory_order_release);
   }
 
   std::shared_ptr<PostedRoomDelegate> delegate_;
   livekit::Room room_;
   std::jthread stats_thread_;
   std::atomic_bool disconnect_requested_{false};
+  std::atomic_bool disconnect_finished_{false};
 };
 
-class RealLiveKitVoiceSession final : public LiveKitVoiceSession {
+struct VoiceConnectAttempt {
+  std::uint64_t attempt_id = 0;
+  std::string session_id;
+  std::uint64_t generation = 0;
+  std::uint64_t owner_token = 0;
+  std::uint64_t room_instance_token = 0;
+  std::string livekit_url;
+  std::string livekit_token;
+  std::shared_ptr<LiveKitVoiceRoomOwner> room;
+  livekit::OperationCancellation cancellation;
+};
+
+SessionPortReceipt portReceipt(
+  SessionEpoch epoch,
+  SessionPortStage stage
+) {
+  return SessionPortReceipt{std::move(epoch), stage};
+}
+
+SessionPortStatus portSuccess(SessionEpoch epoch, SessionPortStage stage) {
+  return SessionPortStatus::success(portReceipt(std::move(epoch), stage));
+}
+
+template <typename T>
+SessionPortResult<T> portSuccess(
+  SessionEpoch epoch,
+  SessionPortStage stage,
+  T value
+) {
+  return SessionPortResult<T>::success(
+    SessionPortValue<T>{portReceipt(std::move(epoch), stage), std::move(value)}
+  );
+}
+
+SessionPortError portError(
+  SessionEpoch epoch,
+  SessionPortStage stage,
+  SessionPortErrorCode code,
+  std::string message
+) {
+  return SessionPortError{
+    portReceipt(std::move(epoch), stage), code, std::move(message)
+  };
+}
+
+SessionPortStatus portFailure(
+  SessionEpoch epoch,
+  SessionPortStage stage,
+  SessionPortErrorCode code,
+  std::string message
+) {
+  return SessionPortStatus::failure(portError(
+    std::move(epoch), stage, code, std::move(message)
+  ));
+}
+
+template <typename T>
+SessionPortResult<T> portFailure(
+  SessionEpoch epoch,
+  SessionPortStage stage,
+  SessionPortErrorCode code,
+  std::string message
+) {
+  return SessionPortResult<T>::failure(portError(
+    std::move(epoch), stage, code, std::move(message)
+  ));
+}
+
+class RealLiveKitVoiceSession final
+  : public LiveKitVoiceSession,
+    private LiveKitVoiceLifecyclePort,
+    private LiveKitVoicePublicationPort,
+    private LiveKitVoiceOutputPort,
+    private LiveKitRemoteFrameReleasePort,
+    private LiveKitCameraPreviewPort,
+    private LiveKitRemoteDemandPort {
  public:
   explicit RealLiveKitVoiceSession(
     LiveKitVoiceRoomOwnerFactory voice_room_factory
@@ -1386,260 +1790,1056 @@ class RealLiveKitVoiceSession final : public LiveKitVoiceSession {
     }
   }
 
-  bool connectVoice(
-    std::string session_id,
-    std::uint64_t generation,
+  LiveKitVoiceLifecyclePort& lifecycle() noexcept override { return *this; }
+  const LiveKitVoiceLifecyclePort& lifecycle() const noexcept override {
+    return *this;
+  }
+  LiveKitVoicePublicationPort& publication() noexcept override { return *this; }
+  LiveKitVoiceOutputPort& output() noexcept override { return *this; }
+  const LiveKitVoiceOutputPort& output() const noexcept override { return *this; }
+  LiveKitRemoteFrameReleasePort& remoteFrameRelease() noexcept override {
+    return *this;
+  }
+  LiveKitCameraPreviewPort& cameraPreview() noexcept override { return *this; }
+  LiveKitRemoteDemandPort& remoteDemand() noexcept override { return *this; }
+
+  SessionPortResult<bool> connect(
+    SessionPortCall call,
     const std::string& livekit_url,
     const std::string& livekit_token,
-    InternalPost post
+    LiveKitVoiceSession::InternalPost post
   ) override {
+    auto session_id = call.expected_epoch.session_id;
+    const auto generation = call.expected_epoch.generation;
+    const auto requested_epoch = call.expected_epoch;
     requireRuntimeReady();
-    std::unique_lock lifecycle_lock(voice_lifecycle_mutex_);
-    std::shared_ptr<LiveKitVoiceRoomOwner> room;
-    std::shared_ptr<LiveKitVoiceRoomOwner> retired_room;
+    if (requested_epoch.owner_token == 0) {
+      return portFailure<bool>(
+        requested_epoch,
+        SessionPortStage::LifecycleConnect,
+        SessionPortErrorCode::Failed,
+        "connection owner token is required"
+      );
+    }
+    if (call.cancellation.isCancellationRequested()) {
+      return portFailure<bool>(
+        requested_epoch,
+        SessionPortStage::LifecycleConnect,
+        SessionPortErrorCode::Cancelled,
+        "connection was cancelled before it started"
+      );
+    }
+    std::shared_ptr<LiveKitVoiceRoomOwner> reusable_room;
     {
-      std::unique_lock operation_lock(voice_operation_mutex_);
       std::lock_guard lock(mutex_);
-      if (voice_room_ && voice_room_->isConnected()) {
-        if (session_id != voice_session_id_ || generation != voice_generation_ ||
-            livekit_url != livekit_url_ || livekit_token != livekit_token_) {
-          throw std::runtime_error(
-            "voice_connection_conflict: LiveKit voice Room already owns another epoch or credential lease"
+      if (voice_room_) {
+        if (session_id == voice_session_id_ &&
+            generation == voice_generation_) {
+          reusable_room = voice_room_;
+        }
+        if (session_id == voice_session_id_ &&
+            generation < voice_generation_) {
+          return portFailure<bool>(
+            requested_epoch,
+            SessionPortStage::LifecycleConnect,
+            SessionPortErrorCode::StaleOwner,
+            "connection generation is stale"
           );
         }
-        return true;
       }
-      retired_room = std::move(voice_room_);
-      voice_session_id_.clear();
-      voice_generation_ = 0;
-      livekit_url_.clear();
-      livekit_token_.clear();
+      if (
+        connect_attempt_ && session_id == connect_attempt_->session_id &&
+        generation == connect_attempt_->generation &&
+        (livekit_url != connect_attempt_->livekit_url ||
+         livekit_token != connect_attempt_->livekit_token)
+      ) {
+        return portFailure<bool>(
+          requested_epoch,
+          SessionPortStage::LifecycleConnect,
+          SessionPortErrorCode::Failed,
+          "pending connection owns different credentials"
+        );
+      }
     }
-    // Room teardown waits for signalling and delegate callbacks. Never run it
-    // while mutex_ is held because JS-facing snapshots also take that lock.
-    retired_room.reset();
-    room = voice_room_factory_(
+    if (reusable_room && reusable_room->isConnected()) {
+      std::unique_lock<std::shared_timed_mutex> transfer_gate(
+        owner_operation_mutex_, std::defer_lock
+      );
+      if (!transfer_gate.try_lock_until(call.deadline)) {
+        return portFailure<bool>(
+          requested_epoch,
+          SessionPortStage::LifecycleConnect,
+          SessionPortErrorCode::Timeout,
+          "Room ownership transfer deadline expired"
+        );
+      }
+      std::lock_guard lock(mutex_);
+      if (voice_room_ == reusable_room &&
+          session_id == voice_session_id_ &&
+          generation == voice_generation_) {
+        if (call.cancellation.isCancellationRequested()) {
+          return portFailure<bool>(
+            requested_epoch,
+            SessionPortStage::LifecycleConnect,
+            SessionPortErrorCode::Cancelled,
+            "connection was cancelled before ownership transfer"
+          );
+        }
+        if (livekit_url != livekit_url_ || livekit_token != livekit_token_) {
+          return portFailure<bool>(
+            requested_epoch,
+            SessionPortStage::LifecycleConnect,
+            SessionPortErrorCode::Failed,
+            "connected Room owns different credentials"
+          );
+        }
+        // A same-generation retry may transfer ownership only while the
+        // retained Room is still connected. SDK terminal disconnects retain
+        // the owner briefly, so reusing a non-null pointer alone can report a
+        // false running state and fence its replacement cleanup.
+        voice_owner_token_ = requested_epoch.owner_token;
+        auto transferred_epoch = requested_epoch;
+        transferred_epoch.room_instance_token = voice_room_instance_token_;
+        return portSuccess<bool>(
+          std::move(transferred_epoch),
+          SessionPortStage::LifecycleConnect,
+          true
+        );
+      }
+    }
+
+    std::shared_ptr<VoiceConnectAttempt> superseded_attempt;
+    std::uint64_t attempt_id = 0;
+    {
+      std::lock_guard lock(mutex_);
+      attempt_id = next_connect_attempt_id_++;
+      latest_connect_attempt_id_ = attempt_id;
+      superseded_attempt = std::exchange(connect_attempt_, {});
+    }
+    if (superseded_attempt) {
+      superseded_attempt->cancellation.requestCancel();
+    }
+
+    auto room = voice_room_factory_(
       "voice",
-      "__voiceTerminal",
+      NativeCommandType::VoiceTerminal,
       session_id,
       generation,
       std::move(post)
     );
     room->retainRuntimeLifetime(runtimeLifetimeToken());
+    auto attempt = std::make_shared<VoiceConnectAttempt>();
+    attempt->attempt_id = attempt_id;
+    attempt->session_id = session_id;
+    attempt->generation = generation;
+    attempt->owner_token = requested_epoch.owner_token;
+    attempt->room_instance_token = attempt_id;
+    attempt->livekit_url = livekit_url;
+    attempt->livekit_token = livekit_token;
+    attempt->room = room;
+    [[maybe_unused]] const auto external_cancellation_subscription =
+      call.cancellation.subscribe([
+        attempt_cancellation = attempt->cancellation
+      ] {
+        attempt_cancellation.requestCancel();
+      });
+
+    std::shared_ptr<LiveKitVoiceRoomOwner> retired_room;
+    livekit::OperationCancellation retired_cancellation;
+    bool registered = false;
+    bool existing_connection = false;
+    bool cancelled_before_registration = false;
+    SessionEpoch existing_epoch;
+    std::shared_ptr<LiveKitVoiceRoomOwner> registration_room;
+    {
+      std::lock_guard lock(mutex_);
+      if (latest_connect_attempt_id_ == attempt_id && voice_room_ &&
+          session_id == voice_session_id_ &&
+          generation == voice_generation_ &&
+          livekit_url == livekit_url_ && livekit_token == livekit_token_) {
+        registration_room = voice_room_;
+      }
+    }
+    const bool registration_room_connected =
+      registration_room && registration_room->isConnected();
+    std::unique_lock<std::shared_timed_mutex> registration_transfer_gate(
+      owner_operation_mutex_, std::defer_lock
+    );
+    if (registration_room_connected &&
+        !registration_transfer_gate.try_lock_until(call.deadline)) {
+      retireRoom(std::move(room));
+      return portFailure<bool>(
+        requested_epoch,
+        SessionPortStage::LifecycleConnect,
+        SessionPortErrorCode::Timeout,
+        "Room ownership transfer deadline expired"
+      );
+    }
+    {
+      std::lock_guard lock(mutex_);
+      if (latest_connect_attempt_id_ != attempt_id) {
+        registered = false;
+      } else if (attempt->cancellation.isCancellationRequested()) {
+        cancelled_before_registration = true;
+      } else if (registration_room_connected &&
+          voice_room_ == registration_room &&
+          session_id == voice_session_id_ &&
+          generation == voice_generation_ &&
+          livekit_url == livekit_url_ && livekit_token == livekit_token_) {
+        existing_connection = true;
+        voice_owner_token_ = requested_epoch.owner_token;
+        existing_epoch = requested_epoch;
+        existing_epoch.room_instance_token = voice_room_instance_token_;
+      } else {
+        connect_attempt_ = attempt;
+        retired_cancellation = voice_room_cancellation_;
+        voice_room_cancellation_ = livekit::OperationCancellation{};
+        retired_room = std::move(voice_room_);
+        clearVoiceLeaseLocked();
+        registered = true;
+      }
+    }
+    if (cancelled_before_registration) {
+      retireRoom(std::move(room));
+      return portFailure<bool>(
+        requested_epoch,
+        SessionPortStage::LifecycleConnect,
+        SessionPortErrorCode::Cancelled,
+        "connection was cancelled before Room registration"
+      );
+    }
+    if (existing_connection) {
+      return portSuccess<bool>(
+        std::move(existing_epoch), SessionPortStage::LifecycleConnect, true
+      );
+    }
+    if (!registered) {
+      retireRoom(std::move(room));
+      return portFailure<bool>(
+        requested_epoch,
+        SessionPortStage::LifecycleConnect,
+        SessionPortErrorCode::Cancelled,
+        "connection was superseded before registration"
+      );
+    }
+    retired_cancellation.requestCancel();
+    retireRoom(std::move(retired_room));
+
+    std::jthread deadline_thread([
+      deadline = call.deadline,
+      attempt_cancellation = attempt->cancellation
+    ](std::stop_token stop) {
+      std::mutex deadline_mutex;
+      std::condition_variable_any deadline_changed;
+      std::unique_lock lock(deadline_mutex);
+      deadline_changed.wait_until(
+        lock, stop, deadline, [] { return false; }
+      );
+      if (!stop.stop_requested()) attempt_cancellation.requestCancel();
+    });
+
     const auto started_at = LiveKitConnectPolicy::Clock::now();
     auto options = LiveKitConnectPolicy::roomOptions(
       LiveKitConnectPolicy::remainingConnectTimeout(started_at, started_at)
     );
-    const bool connected =
-      room->connect(livekit_url, livekit_token, options) &&
-      room->waitConnected(LiveKitConnectPolicy::remainingPostConnectWait(
-        started_at, LiveKitConnectPolicy::Clock::now()
-      ));
+    bool connected = false;
+    try {
+      connected =
+        room->connectCancellable(
+          livekit_url,
+          livekit_token,
+          options,
+          attempt->cancellation
+        ) &&
+        room->waitConnectedCancellable(
+          LiveKitConnectPolicy::remainingPostConnectWait(
+            started_at, LiveKitConnectPolicy::Clock::now()
+          ),
+          attempt->cancellation
+        );
+    } catch (const std::exception& error) {
+      finishConnectAttempt(attempt);
+      retireRoom(std::move(room));
+      return portFailure<bool>(
+        requested_epoch,
+        SessionPortStage::LifecycleConnect,
+        SessionPortErrorCode::Failed,
+        error.what()
+      );
+    }
     if (!connected) {
-      room->markIntentionalDisconnect();
-      room->stopAudio();
-      room->disconnect();
-      return false;
+      finishConnectAttempt(attempt);
+      retireRoom(std::move(room));
+      const auto timed_out = SessionPortCall::Clock::now() >= call.deadline;
+      return portFailure<bool>(
+        requested_epoch,
+        SessionPortStage::LifecycleConnect,
+        timed_out ? SessionPortErrorCode::Timeout
+                  : SessionPortErrorCode::Cancelled,
+        timed_out ? "connection deadline expired" : "connection was cancelled"
+      );
     }
-    // Publish the owner only after its SDK connection has committed. Track
-    // actors can never acquire a half-connected Room, and disconnectVoice()
-    // cannot race Room::connect()/waitConnected() because both operations own
-    // voice_lifecycle_mutex_.
-    {
-      std::unique_lock operation_lock(voice_operation_mutex_);
-      std::lock_guard lock(mutex_);
-      voice_room_ = room;
-      voice_session_id_ = session_id;
-      voice_generation_ = generation;
-      livekit_url_ = livekit_url;
-      livekit_token_ = livekit_token;
+    if (!commitConnectAttempt(attempt)) {
+      retireRoom(std::move(room));
+      return portFailure<bool>(
+        requested_epoch,
+        SessionPortStage::LifecycleConnect,
+        SessionPortErrorCode::StaleOwner,
+        "connection completed after its owner was retired"
+      );
     }
-    return true;
+    return portSuccess<bool>(
+      roomSnapshot().epoch, SessionPortStage::LifecycleConnect, true
+    );
   }
 
-  void requireVoiceSession(const std::string& session_id) const override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot(session_id, 0);
-    if (!room || !room->isConnected()) {
-      throw std::runtime_error("LiveKit voice Room is not connected");
+  SessionPortStatus require(SessionPortCall call) const override {
+    const auto stage = SessionPortStage::LifecycleStatus;
+    const auto snapshot = roomSnapshot();
+    if (!matchesLifecycleExpected(snapshot.epoch, call.expected_epoch) || !snapshot.room) {
+      return portFailure(
+        call.expected_epoch, stage, SessionPortErrorCode::StaleOwner,
+        "the requested Room owner is not current"
+      );
     }
-  }
-
-  bool isVoiceConnected() const override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot();
-    return room && room->isConnected();
-  }
-
-  void setVoiceDeafened(bool value) override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot();
-    if (room) room->setDeafened(value);
-  }
-
-  std::uint64_t setVoiceOutputDevice(std::string value) override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot();
-    return room ? room->setOutputDevice(std::move(value)) : 0;
-  }
-  std::string voiceOutputDeviceId() const override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot();
-    return room ? room->outputDeviceId() : std::string{"default"};
-  }
-  void setVoiceOutputVolume(float value) override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot();
-    if (room) room->setOutputVolume(value);
-  }
-  void configureRemoteAudio(RemoteAudioSettings settings) override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot();
-    if (room) room->configureRemoteAudio(std::move(settings));
-  }
-
-  void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot();
-    if (room) room->releaseRemoteVideoFrame(std::move(track_id), sequence);
-  }
-  void setRemoteVideoDemand(std::string track_id, bool demanded) override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot();
-    if (room) room->setRemoteVideoDemand(std::move(track_id), demanded);
-  }
-  void reconcileRemotePublication(std::string track_id) override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot();
-    if (room) room->reconcileRemotePublication(std::move(track_id));
-  }
-  void retryRemoteVideo(
-    std::string track_id,
-    std::string reason
-  ) override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot();
-    if (room) {
-      room->retryRemoteVideo(
-        std::move(track_id),
-        std::move(reason)
+    try {
+      if (!snapshot.room->isConnected()) {
+        return portFailure(
+          snapshot.epoch, stage, SessionPortErrorCode::Failed,
+          "the current Room is not connected"
+        );
+      }
+      return portSuccess(snapshot.epoch, stage);
+    } catch (const std::exception& error) {
+      return portFailure(
+        snapshot.epoch, stage, SessionPortErrorCode::Failed, error.what()
       );
     }
   }
 
-  void startLocalCameraPreview(
-    std::string session_id,
-    std::uint64_t generation,
+  SessionPortResult<bool> status(SessionPortCall call) const override {
+    const auto stage = SessionPortStage::LifecycleStatus;
+    const auto snapshot = roomSnapshot();
+    if (!matchesLifecycleExpected(snapshot.epoch, call.expected_epoch)) {
+      return portFailure<bool>(
+        call.expected_epoch, stage, SessionPortErrorCode::StaleOwner,
+        "the requested Room owner is not current"
+      );
+    }
+    try {
+      return portSuccess<bool>(
+        snapshot.epoch, stage, snapshot.room && snapshot.room->isConnected()
+      );
+    } catch (const std::exception& error) {
+      return portFailure<bool>(
+        snapshot.epoch, stage, SessionPortErrorCode::Failed, error.what()
+      );
+    }
+  }
+
+  SessionPortStatus setDeafened(SessionPortCall call, bool value) override {
+    return invokeOptionalRoom(
+      std::move(call), SessionPortStage::OutputDeafen,
+      [value](LiveKitVoiceRoomOwner& room) { room.setDeafened(value); }
+    );
+  }
+
+  SessionPortResult<std::uint64_t> setDevice(
+    SessionPortCall call,
+    std::string value
+  ) override {
+    return invokeOptionalRoom<std::uint64_t>(
+      std::move(call), SessionPortStage::OutputDevice, 0,
+      [value = std::move(value)](LiveKitVoiceRoomOwner& room) mutable {
+        return room.setOutputDevice(std::move(value));
+      }
+    );
+  }
+
+  SessionPortResult<std::string> deviceId(SessionPortCall call) const override {
+    return invokeOptionalRoom<std::string>(
+      std::move(call), SessionPortStage::OutputDeviceQuery, "default",
+      [](LiveKitVoiceRoomOwner& room) { return room.outputDeviceId(); }
+    );
+  }
+
+  SessionPortStatus setVolume(SessionPortCall call, float value) override {
+    return invokeOptionalRoom(
+      std::move(call), SessionPortStage::OutputVolume,
+      [value](LiveKitVoiceRoomOwner& room) { room.setOutputVolume(value); }
+    );
+  }
+
+  SessionPortStatus configureRemoteAudio(
+    SessionPortCall call,
+    RemoteAudioSettings settings
+  ) override {
+    return invokeOptionalRoom(
+      std::move(call), SessionPortStage::OutputConfigureRemoteAudio,
+      [settings = std::move(settings)](LiveKitVoiceRoomOwner& room) mutable {
+        room.configureRemoteAudio(std::move(settings));
+      }
+    );
+  }
+
+  SessionPortStatus releaseRemoteFrame(
+    SessionPortCall call,
+    std::string track_id,
+    std::uint64_t sequence
+  ) override {
+    return invokeOptionalRoom(
+      std::move(call), SessionPortStage::RemoteFrameRelease,
+      [track_id = std::move(track_id), sequence](LiveKitVoiceRoomOwner& room) mutable {
+        room.releaseRemoteVideoFrame(std::move(track_id), sequence);
+      },
+      RoomCallAuthority::RoomCleanup
+    );
+  }
+
+  SessionPortStatus set(
+    SessionPortCall call,
+    std::string track_id,
+    bool demanded
+  ) override {
+    return invokeOptionalRoom(
+      std::move(call), SessionPortStage::DemandSet,
+      [track_id = std::move(track_id), demanded](LiveKitVoiceRoomOwner& room) mutable {
+        room.setRemoteVideoDemand(std::move(track_id), demanded);
+      }
+    );
+  }
+
+  SessionPortStatus reconcile(
+    SessionPortCall call,
+    std::string track_id,
+    std::uint64_t expected_revision
+  ) override {
+    return invokeOptionalRoom(
+      std::move(call), SessionPortStage::DemandReconcile,
+      [track_id = std::move(track_id), expected_revision](LiveKitVoiceRoomOwner& room) mutable {
+        room.reconcileRemotePublication(std::move(track_id), expected_revision);
+      }
+    );
+  }
+
+  SessionPortStatus retry(
+    SessionPortCall call,
+    std::string track_id,
+    std::string reason
+  ) override {
+    return invokeOptionalRoom(
+      std::move(call), SessionPortStage::DemandRetry,
+      [track_id = std::move(track_id), reason = std::move(reason)](
+        LiveKitVoiceRoomOwner& room
+      ) mutable {
+        room.retryRemoteVideo(std::move(track_id), std::move(reason));
+      }
+    );
+  }
+
+  SessionPortStatus start(
+    SessionPortCall call,
     std::string track_id,
     std::string participant_identity,
     std::shared_ptr<livekit::LocalVideoTrack> track
   ) override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot(session_id, generation);
-    if (!room) throw std::runtime_error("stale LiveKit voice connection epoch");
-    room->startLocalCameraPreview(
-      std::move(session_id),
-      generation,
-      std::move(track_id),
-      std::move(participant_identity),
-      track
+    auto owner_lease = acquireOwnerOperation(call, SessionPortStage::CameraPreviewStart);
+    if (owner_lease.hasError()) {
+      return SessionPortStatus::failure(owner_lease.error());
+    }
+    const auto snapshot = roomSnapshot();
+    if (!matchesExpectedOwner(snapshot.epoch, call.expected_epoch) || !snapshot.room) {
+      return portFailure(
+        call.expected_epoch, SessionPortStage::CameraPreviewStart,
+        SessionPortErrorCode::StaleOwner,
+        "the requested Room owner is not current"
+      );
+    }
+    try {
+      snapshot.room->startLocalCameraPreview(
+        snapshot.epoch.session_id,
+        call.expected_epoch.generation,
+        std::move(track_id),
+        std::move(participant_identity),
+        track
+      );
+      if (!isCurrent(snapshot)) {
+        return portFailure(
+          snapshot.epoch, SessionPortStage::CameraPreviewStart,
+          SessionPortErrorCode::StaleOwner,
+          "camera preview start completed after ownership transfer"
+        );
+      }
+      return portSuccess(snapshot.epoch, SessionPortStage::CameraPreviewStart);
+    } catch (const std::exception& error) {
+      return portFailure(
+        snapshot.epoch, SessionPortStage::CameraPreviewStart,
+        SessionPortErrorCode::Failed, error.what()
+      );
+    }
+  }
+
+  SessionPortStatus stop(SessionPortCall call, std::string track_id) override {
+    return invokeOptionalRoom(
+      std::move(call), SessionPortStage::CameraPreviewStop,
+      [track_id = std::move(track_id)](LiveKitVoiceRoomOwner& room) {
+        room.stopLocalCameraPreview(track_id);
+      },
+      RoomCallAuthority::RoomCleanup
     );
   }
 
-  void stopLocalCameraPreview(std::string track_id) override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot();
-    if (room) room->stopLocalCameraPreview(track_id);
-  }
-
-  void releaseLocalCameraPreviewFrame(
+  SessionPortStatus releasePreviewFrame(
+    SessionPortCall call,
     std::string track_id,
     std::uint64_t sequence
   ) override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot();
-    if (room) room->releaseLocalCameraPreviewFrame(std::move(track_id), sequence);
+    return invokeOptionalRoom(
+      std::move(call), SessionPortStage::CameraPreviewRelease,
+      [track_id = std::move(track_id), sequence](LiveKitVoiceRoomOwner& room) mutable {
+        room.releaseLocalCameraPreviewFrame(std::move(track_id), sequence);
+      },
+      RoomCallAuthority::RoomCleanup
+    );
   }
 
-  void disconnectVoice() override {
+  SessionPortStatus disconnect(SessionPortCall call) override {
     requireRuntimeReady();
-    std::unique_lock lifecycle_lock(voice_lifecycle_mutex_);
-    std::shared_ptr<LiveKitVoiceRoomOwner> room;
+    std::shared_ptr<VoiceConnectAttempt> attempt;
+    RoomSnapshot retired;
+    SessionEpoch retired_epoch;
+    livekit::OperationCancellation retired_cancellation;
     {
-      std::unique_lock operation_lock(voice_operation_mutex_);
       std::lock_guard lock(mutex_);
-      room = std::move(voice_room_);
-      voice_session_id_.clear();
-      voice_generation_ = 0;
-      livekit_url_.clear();
-      livekit_token_.clear();
+      const auto current = roomSnapshotLocked();
+      const auto pending_epoch = connect_attempt_
+        ? SessionEpoch{
+            connect_attempt_->session_id,
+            connect_attempt_->generation,
+            connect_attempt_->owner_token
+          }
+        : SessionEpoch{};
+      const bool owns_pending = connect_attempt_ &&
+        matchesExactOwner(pending_epoch, call.expected_epoch);
+      const bool owns_room = current.room &&
+        matchesExactOwner(current.epoch, call.expected_epoch);
+      if (!owns_pending && !owns_room) {
+        return portFailure(
+          call.expected_epoch,
+          SessionPortStage::LifecycleDisconnect,
+          SessionPortErrorCode::StaleOwner,
+          "disconnect cannot retire a replacement Room owner"
+        );
+      }
+      if (owns_pending) {
+        latest_connect_attempt_id_ = next_connect_attempt_id_++;
+        retired_epoch = pending_epoch;
+        attempt = std::exchange(connect_attempt_, {});
+      }
+      if (owns_room) {
+        retired = current;
+        retired_epoch = current.epoch;
+        retired_cancellation = voice_room_cancellation_;
+        voice_room_cancellation_ = livekit::OperationCancellation{};
+        voice_room_.reset();
+        clearVoiceLeaseLocked();
+      }
     }
-    if (!room) return;
-    room->markIntentionalDisconnect();
-    room->stopAudio();
-    room->disconnect();
+    if (attempt) attempt->cancellation.requestCancel();
+    retired_cancellation.requestCancel();
+    std::unique_lock<std::timed_mutex> publication_drain(
+      publication_mutex_, std::defer_lock
+    );
+    const bool publication_drained = publication_drain.try_lock_until(
+      call.deadline
+    );
+    retireRoom(std::move(retired.room));
+    if (!publication_drained) {
+      return portFailure(
+        retired_epoch,
+        SessionPortStage::LifecycleDisconnect,
+        SessionPortErrorCode::Timeout,
+        "publication cancellation did not drain before disconnect deadline"
+      );
+    }
+    return portSuccess(
+      std::move(retired_epoch), SessionPortStage::LifecycleDisconnect
+    );
   }
 
-  std::shared_ptr<livekit::LocalAudioTrack> createMicrophoneTrack(
+  SessionPortResult<std::shared_ptr<livekit::LocalAudioTrack>>
+  createMicrophoneTrack(
+    SessionPortCall call,
     const std::shared_ptr<livekit::AudioSource>& source
   ) override {
-    requireRuntimeReady();
-    return livekit::LocalAudioTrack::createLocalAudioTrack("microphone", source);
+    const auto stage = SessionPortStage::PublicationCreateMicrophone;
+    if (call.cancellation.isCancellationRequested()) {
+      return portFailure<std::shared_ptr<livekit::LocalAudioTrack>>(
+        call.expected_epoch, stage, SessionPortErrorCode::Cancelled,
+        "track creation was cancelled"
+      );
+    }
+    try {
+      return portSuccess<std::shared_ptr<livekit::LocalAudioTrack>>(
+        call.expected_epoch,
+        stage,
+        livekit::LocalAudioTrack::createLocalAudioTrack("microphone", source)
+      );
+    } catch (const std::exception& error) {
+      return portFailure<std::shared_ptr<livekit::LocalAudioTrack>>(
+        call.expected_epoch, stage, SessionPortErrorCode::Failed, error.what()
+      );
+    }
   }
 
-  std::string publishAudioTrack(
-    const std::string& session_id,
-    std::uint64_t generation,
+  void captureMicrophoneFrame(
+    const std::shared_ptr<livekit::AudioSource>& source,
+    const livekit::AudioFrame& frame,
+    bool discontinuity
+  ) override {
+    if (!source) {
+      throw std::invalid_argument("microphone audio source is required");
+    }
+    if (discontinuity) source->clearQueue();
+    source->captureFrame(frame);
+  }
+
+  SessionPortResult<std::string> publishAudioTrack(
+    SessionPortCall call,
     const std::shared_ptr<livekit::LocalAudioTrack>& track,
     const livekit::TrackPublishOptions& options
   ) override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot(session_id, generation);
-    if (!room) throw std::runtime_error("stale LiveKit voice connection epoch");
-    return room->publishAudioTrack(track, options);
+    return publishTrack(
+      std::move(call), SessionPortStage::PublicationPublishAudio,
+      [&](LiveKitVoiceRoomOwner& room, const auto& cancellation, auto deadline) {
+        return room.publishAudioTrackUntil(track, options, deadline, cancellation);
+      }
+    );
   }
 
-  std::string publishVideoTrack(
-    const std::string& session_id,
-    std::uint64_t generation,
+  SessionPortResult<std::string> publishVideoTrack(
+    SessionPortCall call,
     const std::shared_ptr<livekit::LocalVideoTrack>& track,
     const livekit::TrackPublishOptions& options
   ) override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot(session_id, generation);
-    if (!room) throw std::runtime_error("stale LiveKit voice connection epoch");
-    return room->publishVideoTrack(track, options);
+    return publishTrack(
+      std::move(call), SessionPortStage::PublicationPublishVideo,
+      [&](LiveKitVoiceRoomOwner& room, const auto& cancellation, auto deadline) {
+        return room.publishVideoTrackUntil(track, options, deadline, cancellation);
+      }
+    );
   }
 
-  void unpublishTrack(
-    const std::string& session_id,
-    std::uint64_t generation,
+  SessionPortStatus unpublishTrack(
+    SessionPortCall call,
     const std::string& publication_sid
   ) override {
-    std::unique_lock operation_lock(voice_operation_mutex_);
-    const auto room = roomSnapshot(session_id, generation);
-    if (room) room->unpublishTrack(publication_sid);
-  }
-
-  std::shared_ptr<LiveKitVoiceRoomOwner> roomSnapshot(
-    const std::string& session_id,
-    std::uint64_t
-  ) const {
-    requireRuntimeReady();
-    std::lock_guard lock(mutex_);
-    // session_id is the Room connection epoch. Media generations are
-    // actor-local stale-work fences and may advance without reconnecting it.
-    if (voice_session_id_ != session_id) return {};
-    return voice_room_;
-  }
-
-  std::shared_ptr<LiveKitVoiceRoomOwner> roomSnapshot() const {
-    requireRuntimeReady();
-    std::lock_guard lock(mutex_);
-    return voice_room_;
+    const auto stage = SessionPortStage::PublicationUnpublish;
+    auto gate = acquirePublicationGate(call, stage);
+    if (gate.hasError()) return SessionPortStatus::failure(gate.error());
+    const auto snapshot = roomSnapshot();
+    if (!matchesCleanupRoom(snapshot.epoch, call.expected_epoch) || !snapshot.room) {
+      return portFailure(
+        call.expected_epoch, stage, SessionPortErrorCode::StaleOwner,
+        "the requested Room owner is not current"
+      );
+    }
+    auto cancellation = livekit::OperationCancellation{};
+    [[maybe_unused]] auto caller_cancel = call.cancellation.subscribe(
+      [cancellation] { cancellation.requestCancel(); }
+    );
+    [[maybe_unused]] auto owner_cancel = snapshot.cancellation.subscribe(
+      [cancellation] { cancellation.requestCancel(); }
+    );
+    const auto result = snapshot.room->unpublishTrackUntil(
+      publication_sid, call.deadline, cancellation
+    );
+    if (result.hasError()) {
+      return mapRoomFailure(snapshot.epoch, stage, result.error());
+    }
+    if (!isCurrent(snapshot, RoomCallAuthority::RoomCleanup)) {
+      return portFailure(
+        snapshot.epoch, stage, SessionPortErrorCode::StaleOwner,
+        "unpublish completed after its Room owner was retired"
+      );
+    }
+    return portSuccess(snapshot.epoch, stage);
   }
 
  private:
+  enum class RoomCallAuthority {
+    OwnerMutation,
+    RoomCleanup,
+  };
+
+  struct RoomSnapshot {
+    std::shared_ptr<LiveKitVoiceRoomOwner> room;
+    SessionEpoch epoch;
+    livekit::OperationCancellation cancellation;
+  };
+
+  [[nodiscard]] RoomSnapshot roomSnapshotLocked() const {
+    return RoomSnapshot{
+      voice_room_,
+      SessionEpoch{
+        voice_session_id_, voice_generation_, voice_owner_token_,
+        voice_room_instance_token_
+      },
+      voice_room_cancellation_
+    };
+  }
+
+  [[nodiscard]] RoomSnapshot roomSnapshot() const {
+    requireRuntimeReady();
+    std::lock_guard lock(mutex_);
+    return roomSnapshotLocked();
+  }
+
+  static bool matchesExpectedOwner(
+    const SessionEpoch& actual,
+    const SessionEpoch& expected
+  ) noexcept {
+    // Media generations are actor-local stale-work fences and can advance
+    // without reconnecting the Room. The exact token is the Room-owner epoch;
+    // both generations remain attached to the result for incident correlation.
+    return expected.owner_token != 0 &&
+      actual.session_id == expected.session_id &&
+      actual.owner_token == expected.owner_token;
+  }
+
+  static bool matchesCleanupRoom(
+    const SessionEpoch& actual,
+    const SessionEpoch& expected
+  ) noexcept {
+    return expected.room_instance_token != 0 &&
+      actual.session_id == expected.session_id &&
+      actual.room_instance_token == expected.room_instance_token;
+  }
+
+  static bool matchesLifecycleExpected(
+    const SessionEpoch& actual,
+    const SessionEpoch& expected
+  ) noexcept {
+    return expected.session_id.empty() ||
+      matchesExpectedOwner(actual, expected);
+  }
+
+  static bool matchesExactOwner(
+    const SessionEpoch& actual,
+    const SessionEpoch& expected
+  ) noexcept {
+    return expected.owner_token != 0 &&
+      actual.session_id == expected.session_id &&
+      actual.generation == expected.generation &&
+      actual.owner_token == expected.owner_token;
+  }
+
+  static bool matchesAuthority(
+    const SessionEpoch& actual,
+    const SessionEpoch& expected,
+    RoomCallAuthority authority
+  ) noexcept {
+    return authority == RoomCallAuthority::RoomCleanup
+      ? matchesCleanupRoom(actual, expected)
+      : matchesExpectedOwner(actual, expected);
+  }
+
+  [[nodiscard]] bool isCurrent(
+    const RoomSnapshot& snapshot,
+    RoomCallAuthority authority = RoomCallAuthority::OwnerMutation
+  ) const {
+    std::lock_guard lock(mutex_);
+    return voice_room_ == snapshot.room &&
+      matchesAuthority(roomSnapshotLocked().epoch, snapshot.epoch, authority) &&
+      !snapshot.cancellation.isCancellationRequested();
+  }
+
+  template <typename Function>
+  SessionPortStatus invokeOptionalRoom(
+    SessionPortCall call,
+    SessionPortStage stage,
+    Function&& function,
+    RoomCallAuthority authority = RoomCallAuthority::OwnerMutation
+  ) const {
+    auto owner_lease = acquireOwnerOperation(call, stage, authority);
+    if (owner_lease.hasError()) {
+      return SessionPortStatus::failure(owner_lease.error());
+    }
+    const auto snapshot = roomSnapshot();
+    if (!matchesAuthority(snapshot.epoch, call.expected_epoch, authority)) {
+      return portFailure(
+        call.expected_epoch, stage, SessionPortErrorCode::StaleOwner,
+        "the requested Room owner is not current"
+      );
+    }
+    if (call.cancellation.isCancellationRequested()) {
+      return portFailure(
+        snapshot.epoch, stage, SessionPortErrorCode::Cancelled,
+        "the port call was cancelled"
+      );
+    }
+    if (SessionPortCall::Clock::now() >= call.deadline) {
+      return portFailure(
+        snapshot.epoch, stage, SessionPortErrorCode::Timeout,
+        "the port deadline expired before dispatch"
+      );
+    }
+    if (!snapshot.room) return portSuccess(snapshot.epoch, stage);
+    try {
+      std::forward<Function>(function)(*snapshot.room);
+      if (!isCurrent(snapshot, authority)) {
+        return portFailure(
+          snapshot.epoch, stage, SessionPortErrorCode::StaleOwner,
+          "the port call completed after its Room owner was retired"
+        );
+      }
+      return portSuccess(snapshot.epoch, stage);
+    } catch (const std::exception& error) {
+      return portFailure(
+        snapshot.epoch, stage, SessionPortErrorCode::Failed, error.what()
+      );
+    }
+  }
+
+  template <typename T, typename Function>
+  SessionPortResult<T> invokeOptionalRoom(
+    SessionPortCall call,
+    SessionPortStage stage,
+    T disconnected_value,
+    Function&& function,
+    RoomCallAuthority authority = RoomCallAuthority::OwnerMutation
+  ) const {
+    auto owner_lease = acquireOwnerOperation(call, stage, authority);
+    if (owner_lease.hasError()) {
+      return SessionPortResult<T>::failure(owner_lease.error());
+    }
+    const auto snapshot = roomSnapshot();
+    if (!matchesAuthority(snapshot.epoch, call.expected_epoch, authority)) {
+      return portFailure<T>(
+        call.expected_epoch, stage, SessionPortErrorCode::StaleOwner,
+        "the requested Room owner is not current"
+      );
+    }
+    if (call.cancellation.isCancellationRequested()) {
+      return portFailure<T>(
+        snapshot.epoch, stage, SessionPortErrorCode::Cancelled,
+        "the port call was cancelled"
+      );
+    }
+    if (SessionPortCall::Clock::now() >= call.deadline) {
+      return portFailure<T>(
+        snapshot.epoch, stage, SessionPortErrorCode::Timeout,
+        "the port deadline expired before dispatch"
+      );
+    }
+    if (!snapshot.room) {
+      return portSuccess<T>(snapshot.epoch, stage, std::move(disconnected_value));
+    }
+    try {
+      auto value = std::forward<Function>(function)(*snapshot.room);
+      if (!isCurrent(snapshot, authority)) {
+        return portFailure<T>(
+          snapshot.epoch, stage, SessionPortErrorCode::StaleOwner,
+          "the port call completed after its Room owner was retired"
+        );
+      }
+      return portSuccess<T>(snapshot.epoch, stage, std::move(value));
+    } catch (const std::exception& error) {
+      return portFailure<T>(
+        snapshot.epoch, stage, SessionPortErrorCode::Failed, error.what()
+      );
+    }
+  }
+
+  SessionPortResult<std::unique_lock<std::timed_mutex>> acquirePublicationGate(
+    const SessionPortCall& call,
+    SessionPortStage stage
+  ) {
+    const auto snapshot = roomSnapshot();
+    if (call.cancellation.isCancellationRequested()) {
+      return portFailure<std::unique_lock<std::timed_mutex>>(
+        snapshot.epoch, stage, SessionPortErrorCode::Cancelled,
+        "publication was cancelled before ordering-gate acquisition"
+      );
+    }
+    std::unique_lock<std::timed_mutex> gate(publication_mutex_, std::defer_lock);
+    if (!gate.try_lock_until(call.deadline)) {
+      return portFailure<std::unique_lock<std::timed_mutex>>(
+        snapshot.epoch,
+        SessionPortStage::PublicationAcquire,
+        SessionPortErrorCode::Timeout,
+        "publication ordering-gate deadline expired"
+      );
+    }
+    if (call.cancellation.isCancellationRequested()) {
+      return portFailure<std::unique_lock<std::timed_mutex>>(
+        snapshot.epoch, stage, SessionPortErrorCode::Cancelled,
+        "publication was cancelled during ordering-gate acquisition"
+      );
+    }
+    return portSuccess<std::unique_lock<std::timed_mutex>>(
+      snapshot.epoch, stage, std::move(gate)
+    );
+  }
+
+  SessionPortResult<std::shared_lock<std::shared_timed_mutex>>
+  acquireOwnerOperation(
+    const SessionPortCall& call,
+    SessionPortStage stage,
+    RoomCallAuthority authority = RoomCallAuthority::OwnerMutation
+  ) const {
+    std::shared_lock<std::shared_timed_mutex> lease(
+      owner_operation_mutex_, std::defer_lock
+    );
+    if (authority == RoomCallAuthority::RoomCleanup) {
+      return portSuccess<std::shared_lock<std::shared_timed_mutex>>(
+        call.expected_epoch, stage, std::move(lease)
+      );
+    }
+    if (!lease.try_lock_until(call.deadline)) {
+      return portFailure<std::shared_lock<std::shared_timed_mutex>>(
+        call.expected_epoch, stage, SessionPortErrorCode::Timeout,
+        "Room owner operation deadline expired"
+      );
+    }
+    if (call.cancellation.isCancellationRequested()) {
+      return portFailure<std::shared_lock<std::shared_timed_mutex>>(
+        call.expected_epoch, stage, SessionPortErrorCode::Cancelled,
+        "Room owner operation was cancelled"
+      );
+    }
+    return portSuccess<std::shared_lock<std::shared_timed_mutex>>(
+      call.expected_epoch, stage, std::move(lease)
+    );
+  }
+
+  static SessionPortError mapRoomError(
+    SessionEpoch epoch,
+    SessionPortStage stage,
+    const LiveKitVoiceRoomOperationError& error
+  ) {
+    auto code = SessionPortErrorCode::Failed;
+    if (error.code == LiveKitVoiceRoomOperationErrorCode::Timeout) {
+      code = SessionPortErrorCode::Timeout;
+    } else if (error.code == LiveKitVoiceRoomOperationErrorCode::Cancelled) {
+      code = SessionPortErrorCode::Cancelled;
+    }
+    return portError(std::move(epoch), stage, code, error.message);
+  }
+
+  static SessionPortStatus mapRoomFailure(
+    SessionEpoch epoch,
+    SessionPortStage stage,
+    const LiveKitVoiceRoomOperationError& error
+  ) {
+    return SessionPortStatus::failure(mapRoomError(
+      std::move(epoch), stage, error
+    ));
+  }
+
+  template <typename Function>
+  SessionPortResult<std::string> publishTrack(
+    SessionPortCall call,
+    SessionPortStage stage,
+    Function&& function
+  ) {
+    auto gate = acquirePublicationGate(call, stage);
+    if (gate.hasError()) {
+      return SessionPortResult<std::string>::failure(gate.error());
+    }
+    auto owner_lease = acquireOwnerOperation(call, stage);
+    if (owner_lease.hasError()) {
+      return SessionPortResult<std::string>::failure(owner_lease.error());
+    }
+    const auto snapshot = roomSnapshot();
+    if (!matchesExpectedOwner(snapshot.epoch, call.expected_epoch) || !snapshot.room) {
+      return portFailure<std::string>(
+        call.expected_epoch, stage, SessionPortErrorCode::StaleOwner,
+        "the requested Room owner is not current"
+      );
+    }
+    auto cancellation = livekit::OperationCancellation{};
+    [[maybe_unused]] auto caller_cancel = call.cancellation.subscribe(
+      [cancellation] { cancellation.requestCancel(); }
+    );
+    [[maybe_unused]] auto owner_cancel = snapshot.cancellation.subscribe(
+      [cancellation] { cancellation.requestCancel(); }
+    );
+    const auto result = std::forward<Function>(function)(
+      *snapshot.room, cancellation, call.deadline
+    );
+    if (result.hasError()) {
+      return SessionPortResult<std::string>::failure(
+        mapRoomError(snapshot.epoch, stage, result.error())
+      );
+    }
+    if (!isCurrent(snapshot)) {
+      return portFailure<std::string>(
+        snapshot.epoch, stage, SessionPortErrorCode::StaleOwner,
+        "publication completed after its Room owner was retired"
+      );
+    }
+    return portSuccess<std::string>(
+      snapshot.epoch, stage, result.value()
+    );
+  }
+
+  bool commitConnectAttempt(
+    const std::shared_ptr<VoiceConnectAttempt>& attempt
+  ) {
+    {
+      std::lock_guard lock(mutex_);
+      if (
+        connect_attempt_ != attempt ||
+        latest_connect_attempt_id_ != attempt->attempt_id ||
+        attempt->cancellation.isCancellationRequested()
+      ) {
+        return false;
+      }
+      connect_attempt_.reset();
+      voice_room_cancellation_ = livekit::OperationCancellation{};
+      voice_room_ = attempt->room;
+      voice_session_id_ = attempt->session_id;
+      voice_generation_ = attempt->generation;
+      voice_owner_token_ = attempt->owner_token;
+      voice_room_instance_token_ = attempt->room_instance_token;
+      livekit_url_ = attempt->livekit_url;
+      livekit_token_ = attempt->livekit_token;
+      voice_room_->publishTerminalIncarnation();
+    }
+    // LiveKit can publish initial remote tracks from its callback threads
+    // before this connected owner becomes visible to the voice actor. Those
+    // early mailbox reconciles observe no current Room, so replay the complete
+    // inventory after the attempt wins the commit seam.
+    attempt->room->reconcileRegisteredRemotePublications();
+    return true;
+  }
+
+  void finishConnectAttempt(
+    const std::shared_ptr<VoiceConnectAttempt>& attempt
+  ) {
+    std::lock_guard lock(mutex_);
+    if (connect_attempt_ == attempt) connect_attempt_.reset();
+  }
+
+  static void retireRoom(
+    std::shared_ptr<LiveKitVoiceRoomOwner> room
+  ) noexcept {
+    if (!room) return;
+    try { room->markIntentionalDisconnect(); } catch (...) {}
+    try { room->stopAudio(); } catch (...) {}
+    try { room->disconnect(); } catch (...) {}
+  }
+
+  void clearVoiceLeaseLocked() {
+    voice_session_id_.clear();
+    voice_generation_ = 0;
+    voice_owner_token_ = 0;
+    voice_room_instance_token_ = 0;
+    livekit_url_.clear();
+    livekit_token_.clear();
+  }
+
   void requireRuntimeReady() const {
     const auto lifetime = runtimeLifetimeToken();
     if (!lifetime || !lifetime->initialized()) {
@@ -1650,21 +2850,151 @@ class RealLiveKitVoiceSession final : public LiveKitVoiceSession {
   }
 
   mutable std::mutex mutex_;
-  // Connect/disconnect own the lifecycle gate. Room operations use a separate
-  // serialized gate, so contention waits instead of masquerading as a lost
-  // connection, while teardown of an already-detached owner does not stall
-  // JS-facing snapshots and controls.
-  mutable std::mutex voice_lifecycle_mutex_;
-  mutable std::mutex voice_operation_mutex_;
+  // The pending attempt is an implementation-local generation owner. Slow SDK
+  // waits never hold either mutex; disconnect and a newer connect can cancel it
+  // under a short state transition, and only the latest attempt may commit.
+  std::shared_ptr<VoiceConnectAttempt> connect_attempt_;
+  std::uint64_t next_connect_attempt_id_ = 1;
+  std::uint64_t latest_connect_attempt_id_ = 0;
+  // Only publication is ordered. Its finite gate and per-owner cancellation
+  // cannot delay output, release, demand/recovery, preview, or liveness ports.
+  std::timed_mutex publication_mutex_;
+  mutable std::shared_timed_mutex owner_operation_mutex_;
   std::shared_ptr<LiveKitVoiceRoomOwner> voice_room_;
+  livekit::OperationCancellation voice_room_cancellation_;
   std::string voice_session_id_;
   std::uint64_t voice_generation_ = 0;
+  std::uint64_t voice_owner_token_ = 0;
+  std::uint64_t voice_room_instance_token_ = 0;
   std::string livekit_url_;
   std::string livekit_token_;
   LiveKitVoiceRoomOwnerFactory voice_room_factory_;
 };
 
 }  // namespace
+
+SessionPortResult<SessionPortCall> LiveKitVoiceSession::bindCurrentOwner(
+  std::string session_id,
+  std::uint64_t generation,
+  std::chrono::milliseconds budget
+) {
+  const auto deadline = SessionPortCall::Clock::now() + budget;
+  SessionEpoch desired_epoch;
+  desired_epoch.session_id = std::move(session_id);
+  desired_epoch.generation = generation;
+  auto status_call = SessionPortCall{{}, deadline, {}};
+  auto status = lifecycle().status(std::move(status_call));
+  if (status.hasError()) {
+    return SessionPortResult<SessionPortCall>::failure(status.error());
+  }
+  const auto& current = status.value();
+  if (!current.value || current.epoch.owner_token == 0 ||
+      current.epoch.session_id != desired_epoch.session_id) {
+    return portFailure<SessionPortCall>(
+      desired_epoch,
+      SessionPortStage::LifecycleStatus,
+      SessionPortErrorCode::StaleOwner,
+      "the requested session has no current connected Room owner"
+    );
+  }
+  auto bound_epoch = SessionEpoch{
+    desired_epoch.session_id, generation, current.epoch.owner_token,
+    current.epoch.room_instance_token
+  };
+  auto bound_call = SessionPortCall{bound_epoch, deadline, {}};
+  return portSuccess<SessionPortCall>(
+    std::move(bound_epoch),
+    SessionPortStage::LifecycleStatus,
+    std::move(bound_call)
+  );
+}
+
+LiveKitVoiceRoomOperationResult<std::string>
+LiveKitVoiceRoomOwner::publishAudioTrackUntil(
+  const std::shared_ptr<livekit::LocalAudioTrack>& track,
+  const livekit::TrackPublishOptions& options,
+  std::chrono::steady_clock::time_point deadline,
+  const livekit::OperationCancellation& cancellation
+) {
+  if (cancellation.isCancellationRequested()) {
+    return LiveKitVoiceRoomOperationResult<std::string>::failure({
+      LiveKitVoiceRoomOperationErrorCode::Cancelled,
+      "audio publication was cancelled"
+    });
+  }
+  if (std::chrono::steady_clock::now() >= deadline) {
+    return LiveKitVoiceRoomOperationResult<std::string>::failure({
+      LiveKitVoiceRoomOperationErrorCode::Timeout,
+      "audio publication deadline expired"
+    });
+  }
+  try {
+    return LiveKitVoiceRoomOperationResult<std::string>::success(
+      publishAudioTrack(track, options)
+    );
+  } catch (const std::exception& error) {
+    return LiveKitVoiceRoomOperationResult<std::string>::failure({
+      LiveKitVoiceRoomOperationErrorCode::Failed, error.what()
+    });
+  }
+}
+
+LiveKitVoiceRoomOperationResult<std::string>
+LiveKitVoiceRoomOwner::publishVideoTrackUntil(
+  const std::shared_ptr<livekit::LocalVideoTrack>& track,
+  const livekit::TrackPublishOptions& options,
+  std::chrono::steady_clock::time_point deadline,
+  const livekit::OperationCancellation& cancellation
+) {
+  if (cancellation.isCancellationRequested()) {
+    return LiveKitVoiceRoomOperationResult<std::string>::failure({
+      LiveKitVoiceRoomOperationErrorCode::Cancelled,
+      "video publication was cancelled"
+    });
+  }
+  if (std::chrono::steady_clock::now() >= deadline) {
+    return LiveKitVoiceRoomOperationResult<std::string>::failure({
+      LiveKitVoiceRoomOperationErrorCode::Timeout,
+      "video publication deadline expired"
+    });
+  }
+  try {
+    return LiveKitVoiceRoomOperationResult<std::string>::success(
+      publishVideoTrack(track, options)
+    );
+  } catch (const std::exception& error) {
+    return LiveKitVoiceRoomOperationResult<std::string>::failure({
+      LiveKitVoiceRoomOperationErrorCode::Failed, error.what()
+    });
+  }
+}
+
+LiveKitVoiceRoomOperationResult<void> LiveKitVoiceRoomOwner::unpublishTrackUntil(
+  const std::string& publication_sid,
+  std::chrono::steady_clock::time_point deadline,
+  const livekit::OperationCancellation& cancellation
+) {
+  if (cancellation.isCancellationRequested()) {
+    return LiveKitVoiceRoomOperationResult<void>::failure({
+      LiveKitVoiceRoomOperationErrorCode::Cancelled,
+      "unpublication was cancelled"
+    });
+  }
+  if (std::chrono::steady_clock::now() >= deadline) {
+    return LiveKitVoiceRoomOperationResult<void>::failure({
+      LiveKitVoiceRoomOperationErrorCode::Timeout,
+      "unpublication deadline expired"
+    });
+  }
+  try {
+    unpublishTrack(publication_sid);
+    return LiveKitVoiceRoomOperationResult<void>::success();
+  } catch (const std::exception& error) {
+    return LiveKitVoiceRoomOperationResult<void>::failure({
+      LiveKitVoiceRoomOperationErrorCode::Failed, error.what()
+    });
+  }
+}
 
 std::shared_ptr<LiveKitVoiceSession> createRealLiveKitVoiceSession(
   std::shared_ptr<LiveKitRuntimeLifetime> runtime_lifetime,
@@ -1682,21 +3012,42 @@ std::shared_ptr<LiveKitVoiceSession> createRealLiveKitVoiceSession(
   return voice_session;
 }
 
-bool DeterministicFakeLiveKitVoiceSession::connectVoice(
-  std::string session_id,
-  std::uint64_t generation,
+SessionPortResult<bool> DeterministicFakeLiveKitVoiceSession::connect(
+  SessionPortCall call,
   const std::string& livekit_url,
   const std::string& livekit_token,
-  InternalPost
+  LiveKitVoiceSession::InternalPost
 ) {
+  auto session_id = call.expected_epoch.session_id;
+  const auto generation = call.expected_epoch.generation;
+  if (call.expected_epoch.owner_token == 0) {
+    return portFailure<bool>(
+      call.expected_epoch,
+      SessionPortStage::LifecycleConnect,
+      SessionPortErrorCode::Failed,
+      "fake connection owner token is required"
+    );
+  }
   {
     std::lock_guard lock(mutex_);
     if (voice_connected_) {
       if (voice_session_id_ != session_id || voice_generation_ != generation ||
           voice_livekit_url_ != livekit_url || voice_livekit_token_ != livekit_token) {
-        throw std::runtime_error("voice_connection_conflict: fake voice Room owns another lease");
+        return portFailure<bool>(
+          call.expected_epoch,
+          SessionPortStage::LifecycleConnect,
+          SessionPortErrorCode::StaleOwner,
+          "fake Room owns another lease"
+        );
       }
-      return true;
+      voice_owner_token_ = call.expected_epoch.owner_token;
+      auto transferred_epoch = call.expected_epoch;
+      transferred_epoch.room_instance_token = voice_room_instance_token_;
+      return portSuccess<bool>(
+        std::move(transferred_epoch),
+        SessionPortStage::LifecycleConnect,
+        true
+      );
     }
   }
   Release release;
@@ -1704,6 +3055,7 @@ bool DeterministicFakeLiveKitVoiceSession::connectVoice(
     std::unique_lock lock(mutex_);
     connect_.pending += 1;
     voice_connect_pending_ += 1;
+    pending_connect_epochs_.push_back(call.expected_epoch);
     changed_.notify_all();
     changed_.wait(lock, [&] {
       return !connect_.blocked || !connect_.releases.empty();
@@ -1714,152 +3066,341 @@ bool DeterministicFakeLiveKitVoiceSession::connectVoice(
     }
     connect_.pending -= 1;
     voice_connect_pending_ -= 1;
+    const auto pending = std::find_if(
+      pending_connect_epochs_.begin(), pending_connect_epochs_.end(),
+      [&](const SessionEpoch& epoch) {
+        return epoch.owner_token == call.expected_epoch.owner_token;
+      }
+    );
+    if (pending != pending_connect_epochs_.end()) {
+      pending_connect_epochs_.erase(pending);
+    }
     changed_.notify_all();
   }
-  if (release.error_message) throw std::runtime_error(*release.error_message);
+  if (release.error_message) {
+    return portFailure<bool>(
+      call.expected_epoch,
+      SessionPortStage::LifecycleConnect,
+      SessionPortErrorCode::Failed,
+      *release.error_message
+    );
+  }
   {
     std::lock_guard lock(mutex_);
     voice_connected_ = release.bool_result;
     if (voice_connected_) {
       voice_session_id_ = std::move(session_id);
       voice_generation_ = generation;
+      voice_owner_token_ = call.expected_epoch.owner_token;
+      voice_room_instance_token_ = next_voice_room_instance_token_++;
       voice_livekit_url_ = livekit_url;
       voice_livekit_token_ = livekit_token;
     }
   }
-  return release.bool_result;
-}
-
-void DeterministicFakeLiveKitVoiceSession::requireVoiceSession(
-  const std::string& session_id
-) const {
-  if (!isVoiceSessionCurrent(session_id)) {
-    throw std::runtime_error("LiveKit voice Room is not connected");
+  if (!release.bool_result) {
+    return portFailure<bool>(
+      call.expected_epoch,
+      SessionPortStage::LifecycleConnect,
+      SessionPortErrorCode::Cancelled,
+      "fake connection was cancelled"
+    );
   }
+  auto connected_epoch = call.expected_epoch;
+  {
+    std::lock_guard lock(mutex_);
+    connected_epoch.room_instance_token = voice_room_instance_token_;
+  }
+  return portSuccess<bool>(
+    std::move(connected_epoch), SessionPortStage::LifecycleConnect, true
+  );
 }
 
-bool DeterministicFakeLiveKitVoiceSession::isVoiceConnected() const {
+SessionPortStatus DeterministicFakeLiveKitVoiceSession::require(
+  SessionPortCall call
+) const {
+  if (!isVoiceSessionCurrent(call.expected_epoch.session_id)) {
+    return portFailure(
+      call.expected_epoch,
+      SessionPortStage::LifecycleStatus,
+      SessionPortErrorCode::StaleOwner,
+      "fake Room is not connected"
+    );
+  }
+  return portSuccess(call.expected_epoch, SessionPortStage::LifecycleStatus);
+}
+
+SessionPortResult<bool> DeterministicFakeLiveKitVoiceSession::status(
+  SessionPortCall
+) const {
   std::lock_guard lock(mutex_);
-  return voice_connected_;
+  const SessionEpoch epoch{
+    voice_session_id_, voice_generation_, voice_owner_token_,
+    voice_room_instance_token_
+  };
+  return portSuccess<bool>(epoch, SessionPortStage::LifecycleStatus, voice_connected_);
 }
 
-void DeterministicFakeLiveKitVoiceSession::setVoiceDeafened(bool value) {
+SessionPortStatus DeterministicFakeLiveKitVoiceSession::setDeafened(
+  SessionPortCall,
+  bool value
+) {
   std::lock_guard lock(mutex_);
   voice_deafened_ = value;
+  return portSuccess(
+    {voice_session_id_, voice_generation_}, SessionPortStage::OutputDeafen
+  );
 }
 
-std::uint64_t DeterministicFakeLiveKitVoiceSession::setVoiceOutputDevice(
+SessionPortResult<std::uint64_t> DeterministicFakeLiveKitVoiceSession::setDevice(
+  SessionPortCall,
   std::string value
 ) {
   std::lock_guard lock(mutex_);
   voice_output_device_id_ = std::move(value);
-  return ++voice_output_epoch_;
+  return portSuccess<std::uint64_t>(
+    {voice_session_id_, voice_generation_},
+    SessionPortStage::OutputDevice,
+    ++voice_output_epoch_
+  );
 }
 
-std::string
-DeterministicFakeLiveKitVoiceSession::voiceOutputDeviceId() const {
+SessionPortResult<std::string>
+DeterministicFakeLiveKitVoiceSession::deviceId(SessionPortCall) const {
   std::lock_guard lock(mutex_);
-  return voice_output_device_id_;
+  return portSuccess<std::string>(
+    {voice_session_id_, voice_generation_},
+    SessionPortStage::OutputDeviceQuery,
+    voice_output_device_id_
+  );
 }
 
-void DeterministicFakeLiveKitVoiceSession::setVoiceOutputVolume(float) {}
-void DeterministicFakeLiveKitVoiceSession::configureRemoteAudio(RemoteAudioSettings) {}
+SessionPortStatus DeterministicFakeLiveKitVoiceSession::setVolume(
+  SessionPortCall call,
+  float
+) {
+  return portSuccess(call.expected_epoch, SessionPortStage::OutputVolume);
+}
+SessionPortStatus DeterministicFakeLiveKitVoiceSession::configureRemoteAudio(
+  SessionPortCall call,
+  RemoteAudioSettings
+) {
+  return portSuccess(
+    call.expected_epoch, SessionPortStage::OutputConfigureRemoteAudio
+  );
+}
 
-void DeterministicFakeLiveKitVoiceSession::releaseRemoteVideoFrame(
+SessionPortStatus DeterministicFakeLiveKitVoiceSession::releaseRemoteFrame(
+  SessionPortCall call,
   std::string,
   std::uint64_t
-) {}
+) {
+  return portSuccess(call.expected_epoch, SessionPortStage::RemoteFrameRelease);
+}
 
-void DeterministicFakeLiveKitVoiceSession::setRemoteVideoDemand(std::string, bool) {}
-void DeterministicFakeLiveKitVoiceSession::reconcileRemotePublication(std::string) {}
-void DeterministicFakeLiveKitVoiceSession::retryRemoteVideo(
+SessionPortStatus DeterministicFakeLiveKitVoiceSession::set(
+  SessionPortCall call,
+  std::string,
+  bool
+) {
+  return portSuccess(call.expected_epoch, SessionPortStage::DemandSet);
+}
+SessionPortStatus DeterministicFakeLiveKitVoiceSession::reconcile(
+  SessionPortCall call,
+  std::string,
+  std::uint64_t
+) {
+  return portSuccess(call.expected_epoch, SessionPortStage::DemandReconcile);
+}
+SessionPortStatus DeterministicFakeLiveKitVoiceSession::retry(
+  SessionPortCall call,
   std::string,
   std::string
-) {}
+) {
+  return portSuccess(call.expected_epoch, SessionPortStage::DemandRetry);
+}
 
-void DeterministicFakeLiveKitVoiceSession::startLocalCameraPreview(
-  std::string,
-  std::uint64_t,
+SessionPortStatus DeterministicFakeLiveKitVoiceSession::start(
+  SessionPortCall call,
   std::string,
   std::string,
   std::shared_ptr<livekit::LocalVideoTrack>
 ) {
   std::lock_guard lock(mutex_);
   local_camera_preview_start_count_ += 1;
+  return portSuccess(call.expected_epoch, SessionPortStage::CameraPreviewStart);
 }
 
-void DeterministicFakeLiveKitVoiceSession::stopLocalCameraPreview(std::string) {
+SessionPortStatus DeterministicFakeLiveKitVoiceSession::stop(
+  SessionPortCall call,
+  std::string
+) {
   std::lock_guard lock(mutex_);
   local_camera_preview_stop_count_ += 1;
+  return portSuccess(call.expected_epoch, SessionPortStage::CameraPreviewStop);
 }
 
-void DeterministicFakeLiveKitVoiceSession::releaseLocalCameraPreviewFrame(
+SessionPortStatus DeterministicFakeLiveKitVoiceSession::releasePreviewFrame(
+  SessionPortCall call,
   std::string,
   std::uint64_t
-) {}
+) {
+  return portSuccess(call.expected_epoch, SessionPortStage::CameraPreviewRelease);
+}
 
-void DeterministicFakeLiveKitVoiceSession::disconnectVoice() {
+SessionPortStatus DeterministicFakeLiveKitVoiceSession::disconnect(
+  SessionPortCall call
+) {
   {
     std::lock_guard lock(mutex_);
     disconnect_call_count_ += 1;
-    if (voice_connect_pending_ > 0 && cancel_pending_connect_on_disconnect_) {
+    const auto pending = std::find_if(
+      pending_connect_epochs_.begin(), pending_connect_epochs_.end(),
+      [&](const SessionEpoch& epoch) {
+        return epoch.session_id == call.expected_epoch.session_id &&
+          epoch.generation == call.expected_epoch.generation &&
+          epoch.owner_token != 0 &&
+          epoch.owner_token == call.expected_epoch.owner_token;
+      }
+    );
+    if (pending != pending_connect_epochs_.end() &&
+        cancel_pending_connect_on_disconnect_) {
       Release cancelled;
       cancelled.bool_result = false;
       connect_.releases.push_back(std::move(cancelled));
       changed_.notify_all();
-      return;
+      return portSuccess(
+        call.expected_epoch, SessionPortStage::LifecycleDisconnect
+      );
     }
-    if (!voice_connected_) return;
+    if (!voice_connected_ ||
+        voice_session_id_ != call.expected_epoch.session_id ||
+        voice_generation_ != call.expected_epoch.generation ||
+        voice_owner_token_ == 0 ||
+        voice_owner_token_ != call.expected_epoch.owner_token) {
+      return portFailure(
+        call.expected_epoch,
+        SessionPortStage::LifecycleDisconnect,
+        SessionPortErrorCode::StaleOwner,
+        "fake disconnect cannot retire a replacement Room owner"
+      );
+    }
   }
   const auto release = enterGate(Operation::Disconnect);
-  if (release.error_message) throw std::runtime_error(*release.error_message);
+  if (release.error_message) {
+    return portFailure(
+      call.expected_epoch,
+      SessionPortStage::LifecycleDisconnect,
+      SessionPortErrorCode::Failed,
+      *release.error_message
+    );
+  }
   std::lock_guard lock(mutex_);
   voice_connected_ = false;
   voice_session_id_.clear();
   voice_generation_ = 0;
+  voice_owner_token_ = 0;
+  voice_room_instance_token_ = 0;
   voice_livekit_url_.clear();
   voice_livekit_token_.clear();
+  return portSuccess(
+    call.expected_epoch, SessionPortStage::LifecycleDisconnect
+  );
 }
 
-std::shared_ptr<livekit::LocalAudioTrack>
+SessionPortResult<std::shared_ptr<livekit::LocalAudioTrack>>
 DeterministicFakeLiveKitVoiceSession::createMicrophoneTrack(
+  SessionPortCall call,
   const std::shared_ptr<livekit::AudioSource>&
 ) {
-  return {};
+  return portSuccess<std::shared_ptr<livekit::LocalAudioTrack>>(
+    call.expected_epoch, SessionPortStage::PublicationCreateMicrophone, {}
+  );
 }
 
-std::string DeterministicFakeLiveKitVoiceSession::publishAudioTrack(
-  const std::string& session_id,
-  std::uint64_t,
+void DeterministicFakeLiveKitVoiceSession::captureMicrophoneFrame(
+  const std::shared_ptr<livekit::AudioSource>&,
+  const livekit::AudioFrame&,
+  bool discontinuity
+) {
+  std::unique_lock lock(mutex_);
+  ++microphone_frame_submission_pending_;
+  changed_.notify_all();
+  changed_.wait(lock, [&] {
+    return !microphone_frame_submission_blocked_;
+  });
+  --microphone_frame_submission_pending_;
+  ++microphone_frame_count_;
+  if (discontinuity) ++microphone_discontinuity_count_;
+  lock.unlock();
+  changed_.notify_all();
+}
+
+SessionPortResult<std::string>
+DeterministicFakeLiveKitVoiceSession::publishAudioTrack(
+  SessionPortCall call,
   const std::shared_ptr<livekit::LocalAudioTrack>&,
   const livekit::TrackPublishOptions&
 ) {
-  if (!isVoiceSessionCurrent(session_id)) {
-    throw std::runtime_error("stale LiveKit voice connection epoch");
+  if (!isVoiceSessionCurrent(call.expected_epoch.session_id)) {
+    return portFailure<std::string>(
+      call.expected_epoch,
+      SessionPortStage::PublicationPublishAudio,
+      SessionPortErrorCode::StaleOwner,
+      "fake Room owner is stale"
+    );
   }
   const auto release = enterGate(Operation::Publish);
-  if (release.error_message) throw std::runtime_error(*release.error_message);
-  return release.publication_sid;
+  if (release.error_message) {
+    return portFailure<std::string>(
+      call.expected_epoch,
+      SessionPortStage::PublicationPublishAudio,
+      SessionPortErrorCode::Failed,
+      *release.error_message
+    );
+  }
+  return portSuccess<std::string>(
+    call.expected_epoch,
+    SessionPortStage::PublicationPublishAudio,
+    release.publication_sid
+  );
 }
 
-std::string DeterministicFakeLiveKitVoiceSession::publishVideoTrack(
-  const std::string& session_id,
-  std::uint64_t generation,
+SessionPortResult<std::string>
+DeterministicFakeLiveKitVoiceSession::publishVideoTrack(
+  SessionPortCall call,
   const std::shared_ptr<livekit::LocalVideoTrack>&,
   const livekit::TrackPublishOptions& options
 ) {
-  return publishAudioTrack(session_id, generation, {}, options);
+  auto result = publishAudioTrack(std::move(call), {}, options);
+  if (result.hasError()) return result;
+  auto value = std::move(result).value();
+  value.stage = SessionPortStage::PublicationPublishVideo;
+  return SessionPortResult<std::string>::success(std::move(value));
 }
 
-void DeterministicFakeLiveKitVoiceSession::unpublishTrack(
-  const std::string& session_id,
-  std::uint64_t,
+SessionPortStatus DeterministicFakeLiveKitVoiceSession::unpublishTrack(
+  SessionPortCall call,
   const std::string& publication_sid
 ) {
-  if (!isVoiceSessionCurrent(session_id)) return;
-  const auto release = enterGate(Operation::Unpublish);
-  if (release.error_message) throw std::runtime_error(*release.error_message);
+  if (!isVoiceSessionCurrent(call.expected_epoch.session_id)) {
+    return portFailure(
+      call.expected_epoch,
+      SessionPortStage::PublicationUnpublish,
+      SessionPortErrorCode::StaleOwner,
+      "fake Room owner is stale"
+    );
+  }
+  const auto release = enterGate(Operation::Unpublish, &call);
+  if (release.error_message) {
+    return portFailure(
+      call.expected_epoch,
+      SessionPortStage::PublicationUnpublish,
+      SessionPortErrorCode::Failed,
+      *release.error_message
+    );
+  }
   recordUnpublishedPublicationSid(publication_sid);
+  return portSuccess(call.expected_epoch, SessionPortStage::PublicationUnpublish);
 }
 
 void DeterministicFakeLiveKitVoiceSession::setBlocked(Operation operation, bool blocked) {
@@ -1929,6 +3470,66 @@ std::size_t DeterministicFakeLiveKitVoiceSession::disconnectCallCount() const {
   return disconnect_call_count_;
 }
 
+std::size_t DeterministicFakeLiveKitVoiceSession::microphoneFrameCount() const {
+  std::lock_guard lock(mutex_);
+  return microphone_frame_count_;
+}
+
+std::size_t
+DeterministicFakeLiveKitVoiceSession::microphoneDiscontinuityCount() const {
+  std::lock_guard lock(mutex_);
+  return microphone_discontinuity_count_;
+}
+
+void DeterministicFakeLiveKitVoiceSession::setMicrophoneFrameSubmissionBlocked(
+  bool blocked
+) {
+  {
+    std::lock_guard lock(mutex_);
+    microphone_frame_submission_blocked_ = blocked;
+  }
+  changed_.notify_all();
+}
+
+void DeterministicFakeLiveKitVoiceSession::setCancellationAware(
+    Operation operation,
+    bool aware) {
+  {
+    std::lock_guard lock(mutex_);
+    gateState(operation).cancellation_aware = aware;
+  }
+  changed_.notify_all();
+}
+
+void DeterministicFakeLiveKitVoiceSession::
+waitUntilMicrophoneFrameSubmissionPending(
+  std::size_t count,
+  std::chrono::milliseconds timeout
+) {
+  std::unique_lock lock(mutex_);
+  if (!changed_.wait_for(lock, timeout, [&] {
+        return microphone_frame_submission_pending_ >= count;
+      })) {
+    throw std::runtime_error(
+      "timed out waiting for fake microphone frame submission"
+    );
+  }
+}
+
+void DeterministicFakeLiveKitVoiceSession::waitUntilMicrophoneFrameCount(
+  std::size_t count,
+  std::chrono::milliseconds timeout
+) {
+  std::unique_lock lock(mutex_);
+  if (!changed_.wait_for(lock, timeout, [&] {
+        return microphone_frame_count_ >= count;
+      })) {
+    throw std::runtime_error(
+      "timed out waiting for fake microphone publication frames"
+    );
+  }
+}
+
 bool DeterministicFakeLiveKitVoiceSession::isVoiceSessionCurrent(
   const std::string& session_id
 ) const {
@@ -1942,6 +3543,7 @@ void DeterministicFakeLiveKitVoiceSession::setVoiceSessionForTest(
   std::lock_guard lock(mutex_);
   voice_connected_ = true;
   voice_session_id_ = std::move(session_id);
+  voice_owner_token_ = 1;
 }
 
 void DeterministicFakeLiveKitVoiceSession::recordUnpublishedPublicationSid(
@@ -1952,12 +3554,25 @@ void DeterministicFakeLiveKitVoiceSession::recordUnpublishedPublicationSid(
 }
 
 DeterministicFakeLiveKitVoiceSession::Release
-DeterministicFakeLiveKitVoiceSession::enterGate(Operation operation) {
+DeterministicFakeLiveKitVoiceSession::enterGate(
+    Operation operation,
+    const SessionPortCall* call) {
   std::unique_lock lock(mutex_);
   auto& gate = gateState(operation);
   gate.pending += 1;
   changed_.notify_all();
-  changed_.wait(lock, [&] { return !gate.blocked || !gate.releases.empty(); });
+  while (gate.blocked && gate.releases.empty()) {
+    if (gate.cancellation_aware && call &&
+        (call->cancellation.isCancellationRequested() ||
+         SessionPortCall::Clock::now() >= call->deadline)) {
+      gate.pending -= 1;
+      changed_.notify_all();
+      return Release{
+        .error_message = "fake operation cancelled by its call deadline"
+      };
+    }
+    changed_.wait_for(lock, std::chrono::milliseconds(1));
+  }
   Release release;
   if (!gate.releases.empty()) {
     release = std::move(gate.releases.front());

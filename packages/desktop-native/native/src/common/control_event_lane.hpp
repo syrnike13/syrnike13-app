@@ -4,10 +4,10 @@
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <utility>
-#include <vector>
 
 #include "event_sink.hpp"
 
@@ -32,12 +32,16 @@ class ControlEventLane final {
   explicit ControlEventLane(
     std::size_t capacity = kCapacity,
     std::chrono::milliseconds producer_wait =
-      std::chrono::duration_cast<std::chrono::milliseconds>(kProducerWait)
-  ) : capacity_(capacity), producer_wait_(producer_wait) {}
+      std::chrono::duration_cast<std::chrono::milliseconds>(kProducerWait),
+    std::function<void()> before_store = {}
+  ) : capacity_(capacity),
+      producer_wait_(producer_wait),
+      before_store_(std::move(before_store)) {}
 
   PushResult push(RuntimeEvent event) {
     RuntimeEventResourceGuard resource(event);
     resource.attach(event);
+    if (before_store_) before_store_();
     auto payload = std::make_unique<RuntimeEvent>(std::move(event));
     std::unique_lock lock(mutex_);
     const bool ready = space_available_.wait_for(lock, producer_wait_, [&] {
@@ -54,29 +58,15 @@ class ControlEventLane final {
     return PushResult{true, schedule, false, {}};
   }
 
-  std::vector<std::unique_ptr<RuntimeEvent>> beginCallback() noexcept {
-    std::vector<std::unique_ptr<RuntimeEvent>> events;
-    std::deque<std::unique_ptr<RuntimeEvent>> allocation_failure;
+  std::deque<std::unique_ptr<RuntimeEvent>> beginCallback() noexcept {
+    std::deque<std::unique_ptr<RuntimeEvent>> events;
     {
       std::lock_guard lock(mutex_);
       if (!callback_scheduled_) return events;
       callback_scheduled_ = false;
-      try {
-        events.reserve(pending_.size());
-      } catch (...) {
-        allocation_failure.swap(pending_);
-      }
-      if (allocation_failure.empty()) {
-        while (!pending_.empty()) {
-          events.push_back(std::move(pending_.front()));
-          pending_.pop_front();
-        }
-      }
+      events.swap(pending_);
     }
     space_available_.notify_all();
-    for (auto& event : allocation_failure) {
-      if (event) discardEvent(*event);
-    }
     return events;
   }
 
@@ -151,6 +141,7 @@ class ControlEventLane final {
   std::deque<std::unique_ptr<RuntimeEvent>> pending_;
   std::size_t capacity_;
   std::chrono::milliseconds producer_wait_;
+  std::function<void()> before_store_;
   bool callback_scheduled_ = false;
   bool closed_ = false;
 };

@@ -17,11 +17,13 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -30,7 +32,9 @@
 #include "livekit/local_audio_track.h"
 #include "livekit/local_data_track.h"
 #include "livekit/local_video_track.h"
+#include "livekit/operation_cancellation.h"
 #include "livekit/participant.h"
+#include "livekit/result.h"
 #include "livekit/room_event_types.h"
 #include "livekit/rpc_error.h"
 #include "livekit/visibility.h"
@@ -42,6 +46,30 @@ class TrackPublicationInfo;
 }
 
 struct ParticipantTrackPermission;
+
+/// @brief Classifies a bounded local track publication operation failure.
+enum class TrackPublicationOperationErrorCode : std::uint8_t {
+  Timeout,   ///< The absolute operation deadline expired.
+  Cancelled, ///< The caller requested cooperative cancellation.
+  Failed,    ///< The FFI operation completed with another failure.
+};
+
+/// @brief Describes a failed bounded local track publication operation.
+///
+/// The value owns its diagnostic message and may be moved across application
+/// threads after the corresponding FFI callback has completed or retired.
+struct TrackPublicationOperationError {
+  /// @brief Machine-readable failure category.
+  TrackPublicationOperationErrorCode code =
+    TrackPublicationOperationErrorCode::Failed;
+
+  /// @brief Human-readable diagnostic message owned by this value.
+  std::string message;
+};
+
+/// @brief Result returned by bounded local track publication operations.
+using TrackPublicationOperationResult =
+  Result<void, TrackPublicationOperationError>;
 
 class FfiClient;
 class Track;
@@ -140,6 +168,24 @@ public:
   /// @throws std::runtime_error on error (e.g. publish failure).
   void publishTrack(const std::shared_ptr<Track>& track, const TrackPublishOptions& options);
 
+  /// @brief Publishes a local track with a deadline and cancellation.
+  ///
+  /// A timeout or cancellation removes the pending FFI registration, so a
+  /// late callback cannot publish into retired C++ state.
+  ///
+  /// @param track Track to publish. Must be non-null with a valid FFI handle.
+  /// @param options Publication options forwarded to the LiveKit FFI.
+  /// @param deadline Absolute deadline for completing the FFI operation.
+  /// @param cancellation Cooperative cancellation handle for the operation.
+  /// @return Success after the publication is committed locally, or a typed
+  /// error describing cancellation, timeout, or another FFI failure.
+  /// @throws std::bad_alloc If operation or publication state cannot be allocated.
+  TrackPublicationOperationResult publishTrackUntil(
+      const std::shared_ptr<Track>& track,
+      const TrackPublishOptions& options,
+      std::chrono::steady_clock::time_point deadline,
+      const OperationCancellation& cancellation);
+
   /// Create a @ref LocalVideoTrack backed by the given @ref VideoSource,
   /// publish it, and return the track.
   ///
@@ -162,6 +208,22 @@ public:
   ///
   /// If the publication exists in the local map, it is removed.
   void unpublishTrack(const std::string& track_sid);
+
+  /// @brief Unpublishes a local track with a deadline and cancellation.
+  ///
+  /// The local publication map changes only after FFI success.
+  ///
+  /// @param track_sid SID of the local track publication to remove. An empty
+  /// SID succeeds without sending an FFI request.
+  /// @param deadline Absolute deadline for completing the FFI operation.
+  /// @param cancellation Cooperative cancellation handle for the operation.
+  /// @return Success after the publication is removed locally, or a typed error
+  /// describing cancellation, timeout, or another FFI failure.
+  /// @throws std::bad_alloc If operation state cannot be allocated.
+  TrackPublicationOperationResult unpublishTrackUntil(
+      const std::string& track_sid,
+      std::chrono::steady_clock::time_point deadline,
+      const OperationCancellation& cancellation);
 
   /// Publish a data track to the room.
   ///
@@ -246,6 +308,16 @@ protected:
   friend class Room;
 
 private:
+  TrackPublicationOperationResult publishTrackImpl(
+      const std::shared_ptr<Track>& track,
+      const TrackPublishOptions& options,
+      std::optional<std::chrono::steady_clock::time_point> deadline,
+      const OperationCancellation* cancellation);
+  TrackPublicationOperationResult unpublishTrackImpl(
+      const std::string& track_sid,
+      std::optional<std::chrono::steady_clock::time_point> deadline,
+      const OperationCancellation* cancellation);
+
   /// Publication SID → local track (@ref unpublishTrack clears the track’s
   /// cached publication). @c mutable so @ref trackPublications() const can
   /// prune expired @c weak_ptr entries.

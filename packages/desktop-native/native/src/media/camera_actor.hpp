@@ -7,6 +7,7 @@
 
 #include "camera_capture.hpp"
 #include "livekit_voice_session.hpp"
+#include "../common/cleanup_supervisor.hpp"
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
 
@@ -22,10 +23,7 @@ class CameraActor final {
   using IsCurrent = std::function<bool(const std::string&, std::uint64_t)>;
   using CreateGpuVideoSource = std::function<
     std::shared_ptr<livekit::D3D11H264VideoSource>(int, int)>;
-  using LaunchRetireWorker =
-    std::function<std::thread(std::function<void()>)>;
   using BeforeTerminalPost = std::function<void()>;
-  using BeforeCleanupEnqueue = std::function<void()>;
 
   CameraActor(
     SequencedEmitter& emitter,
@@ -35,9 +33,10 @@ class CameraActor final {
     std::shared_ptr<CameraCaptureFactory> capture_factory =
       createMediaFoundationCameraCaptureFactory(),
     CreateGpuVideoSource create_gpu_video_source = {},
-    LaunchRetireWorker launch_retire_worker = {},
+    CleanupStartProbe cleanup_start_probe = {},
     BeforeTerminalPost before_terminal_post = {},
-    BeforeCleanupEnqueue before_cleanup_enqueue = {}
+    CleanupEnqueueProbe cleanup_enqueue_probe = {},
+    VideoResourceAdmissionBudget* resource_budget = nullptr
   );
   ~CameraActor();
 
@@ -45,6 +44,8 @@ class CameraActor final {
   RuntimeEvent probe(const MediaCommand& command);
   void disconnect(const MediaCommand& command, bool emit_event = true);
   void releasePreviewFrame(const MediaCommand& command);
+  void setPreviewDemand(const MediaCommand& command);
+  void retryPreview(const MediaCommand& command);
   void handleTerminal(const MediaCommand& command);
   void shutdown();
   void shutdown(std::chrono::steady_clock::time_point deadline);

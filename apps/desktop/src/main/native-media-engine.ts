@@ -32,12 +32,14 @@ import {
 import { NativeRtcEngineAdapter } from './voice/native-rtc-engine-adapter'
 import { recoverNativeVideoPresentation } from './native-video/presentation-recovery'
 import { NativeSharedTextureBridge } from './native-video/shared-texture-bridge'
+import { createMediaIncidentTimeline } from './native-video/media-incident-timeline'
 
 let getWindowRef: (() => BrowserWindow | null) | null = null
 let remoteVideoBridge: NativeSharedTextureBridge | null = null
 let localPreviewBridge: NativeSharedTextureBridge | null = null
 let stopVideoEvents: (() => void) | null = null
 let stopControllerEvents: (() => void) | null = null
+let stopRuntimeState: (() => void) | null = null
 
 type NativeMediaDiagnostics = {
   session: NativeDiagnosticSession
@@ -96,7 +98,7 @@ export function createNativeRtcEngineAdapter() {
   return new NativeRtcEngineAdapter(
     supervisor,
     () => process.pid,
-    { diagnostics: diagnosticSink },
+    { diagnostics: diagnosticSink, mediaTimeline: mediaIncidentTimeline },
   )
 }
 
@@ -130,6 +132,11 @@ export function registerNativeMediaRuntimeIpc(
     if (event.type !== 'remoteVideoSessionReset') return
     remoteVideoBridge?.resetSession(event.sessionId, event.generation)
   })
+  stopRuntimeState ??= supervisor.onStateChange((snapshot) => {
+    if (snapshot.hostEpoch === undefined) return
+    remoteVideoBridge?.runtimeReplaced(snapshot.hostEpoch)
+    localPreviewBridge?.runtimeReplaced(snapshot.hostEpoch)
+  })
   stopVideoEvents ??= supervisor.onEvent((event) => {
     if (event.type === 'localScreenPreviewFailed') {
       console.warn('[native-media] local screen preview failed', {
@@ -161,7 +168,7 @@ export function registerNativeMediaRuntimeIpc(
         event.generation,
       )) {
         Effect.runFork(
-          supervisor.requestEffect(
+          supervisor.releaseRendererLeaseEffect(
             {
               type: 'releaseRemoteVideoFrame',
               sessionId: event.sessionId,
@@ -169,13 +176,14 @@ export function registerNativeMediaRuntimeIpc(
               trackId: event.trackId,
               sequence: event.frameSequence,
             },
-            2_000,
           ).pipe(Effect.ignore),
         )
         return
       }
       const bridge = local ? localPreviewBridge : remoteVideoBridge
       if (!bridge) return
+      const runtimeEpoch = supervisor.getSnapshot().hostEpoch
+      if (runtimeEpoch === undefined) return
       Effect.runFork(
         bridge.deliverEffect({
           sessionId: event.sessionId,
@@ -188,7 +196,7 @@ export function registerNativeMediaRuntimeIpc(
           width: event.width,
           height: event.height,
           timestampUs: event.timestampUs,
-          runtimeEpoch: supervisor.getSnapshot().restartCount,
+          runtimeEpoch,
           ntHandle: Buffer.from(event.ntHandle),
         }).pipe(
           Effect.tap((delivered) =>
@@ -290,6 +298,7 @@ export function registerNativeMediaRuntimeIpc(
   )
   window?.webContents.on('render-process-gone', (_event, details) => {
     console.error('[native-video] renderer process gone', details)
+    rendererOwnerTerminated()
     rendererReloaded()
   })
   registerNativeMediaIpc(getWindow, controller)
@@ -301,9 +310,10 @@ function createVideoBridge(
 ) {
   return new NativeSharedTextureBridge({
     getWindow,
+    timeline: mediaIncidentTimeline,
     release: (frame) => {
       const runtime = supervisor.getSnapshot()
-      if (runtime.status !== 'ready' || runtime.restartCount !== frame.runtimeEpoch) return
+      if (runtime.status !== 'ready' || runtime.hostEpoch !== frame.runtimeEpoch) return
       const identity = {
         sessionId: frame.sessionId,
         generation: frame.generation,
@@ -316,7 +326,7 @@ function createVideoBridge(
           : { type: 'releaseLocalScreenPreviewFrame' as const, ...identity }
         : { type: 'releaseRemoteVideoFrame' as const, ...identity }
       return Effect.runPromise(
-        supervisor.requestEffect(command, 2_000).pipe(Effect.asVoid),
+        supervisor.releaseRendererLeaseEffect(command).pipe(Effect.asVoid),
       )
     },
     onPresentationStalled: async (frame, reason, metrics) => {
@@ -337,21 +347,27 @@ function createVideoBridge(
         windowMinimized: Boolean(window?.isMinimized()),
         metrics,
       })
-      const outcome = await recoverNativeVideoPresentation(
-        {
-          getWindow,
-          recoverRemoteVideoDemand: (sessionId, generation, trackId) =>
-            controller.recoverRemoteVideoDemand(
-              sessionId,
-              generation,
-              trackId,
-            ),
-          recoverLocalScreenPreview: () =>
-            controller.recoverLocalScreenPreview(),
-        },
-        frame,
-        reason,
-      )
+      const outcome = reason === 'retired-fence-recycle'
+        ? supervisor.recycleRendererFenceOwner(frame.runtimeEpoch)
+          ? 'runtime-recycled'
+          : 'stale-runtime-ignored'
+        : await recoverNativeVideoPresentation(
+          {
+            getWindow,
+            recoverRemoteVideoDemand: (sessionId, generation, trackId) =>
+              controller.recoverRemoteVideoDemand(
+                sessionId,
+                generation,
+                trackId,
+              ),
+            recoverLocalScreenPreview: () =>
+              controller.recoverLocalScreenPreview(),
+            recoverLocalCameraPreview: () =>
+              controller.recoverLocalCameraPreview(),
+          },
+          frame,
+          reason,
+        )
       diagnosticSink({
         scope: 'native-video',
         event: 'presentation_recovery_requested',
@@ -385,6 +401,11 @@ function rendererReloaded() {
   controller.resetRemoteVideoDemands()
   remoteVideoBridge?.rendererReloaded()
   localPreviewBridge?.rendererReloaded()
+}
+
+function rendererOwnerTerminated() {
+  remoteVideoBridge?.rendererOwnerTerminated()
+  localPreviewBridge?.rendererOwnerTerminated()
 }
 
 export function isRendererReplacementNavigation(
@@ -425,6 +446,8 @@ export const disposeNativeMediaRuntimeEffect = Effect.fn(
     stopVideoEvents = null
     stopControllerEvents?.()
     stopControllerEvents = null
+    stopRuntimeState?.()
+    stopRuntimeState = null
     remoteVideoBridge?.dispose()
     remoteVideoBridge = null
     localPreviewBridge?.dispose()
@@ -460,20 +483,33 @@ export function disposeNativeMediaRuntime() {
   return Effect.runPromise(disposeNativeMediaRuntimeEffect())
 }
 
-export const listNativeDisplaySourcesEffect = Effect.fn(
-  'nativeMedia.listDisplaySources',
+export const listNativeDisplaySourcePageEffect = Effect.fn(
+  'nativeMedia.listDisplaySourcePage',
 )(function*(
+  enumerationId: string,
+  page: number,
   getWindow?: () => BrowserWindow | null,
 ) {
   if (getWindow) getWindowRef = getWindow
-  return yield* controller.listDisplaySourcesEffect()
+  return yield* controller.listDisplaySourcePageEffect(enumerationId, page)
 })
 
-export function listNativeDisplaySources(
+export const loadNativeDisplaySourceVisualEffect = Effect.fn(
+  'nativeMedia.loadDisplaySourceVisual',
+)(function*(
+  enumerationId: string,
+  sourceId: string,
   getWindow?: () => BrowserWindow | null,
 ) {
-  return Effect.runPromise(listNativeDisplaySourcesEffect(getWindow))
-}
+  if (getWindow) getWindowRef = getWindow
+  return yield* controller.loadDisplaySourceVisualEffect(enumerationId, sourceId)
+})
+
+export const cancelNativeDisplaySourceEnumerationEffect = Effect.fn(
+  'nativeMedia.cancelDisplaySourceEnumeration',
+)(function*(enumerationId: string) {
+  yield* controller.cancelDisplaySourceEnumerationEffect(enumerationId)
+})
 
 function readWindowHwnd(win: BrowserWindow | null) {
   if (!win || win.isDestroyed()) return undefined
@@ -510,8 +546,16 @@ function presentationStallErrorCode(
       return 'renderer_delivery_stalled'
     case 'retained-budget-exhausted':
       return 'retained_texture_budget_exhausted'
+    case 'retired-fence-deadline':
+      return 'retired_texture_fence_deadline'
+    case 'retired-fence-recycle':
+      return 'retired_texture_fence_recycle'
   }
 }
+
+const mediaIncidentTimeline = createMediaIncidentTimeline({
+  record: diagnosticSink,
+})
 
 function nativeVoiceDiagnosticRecord(
   event: string,

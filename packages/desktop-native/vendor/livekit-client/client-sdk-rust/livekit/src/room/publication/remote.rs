@@ -20,6 +20,14 @@ use parking_lot::{Mutex, RwLock};
 use super::{PermissionStatus, SubscriptionStatus, TrackPublication, TrackPublicationInner};
 use crate::{e2ee::EncryptionType, prelude::*, track::VideoQuality};
 
+fn should_attach_late_packet_trailer_handler(
+    previous: &[PacketTrailerFeature],
+    current: &[PacketTrailerFeature],
+    has_subscribed_video_track: bool,
+) -> bool {
+    has_subscribed_video_track && previous.is_empty() && !current.is_empty()
+}
+
 type SubscribedHandler = Box<dyn Fn(RemoteTrackPublication, RemoteTrack) + Send>;
 type UnsubscribedHandler = Box<dyn Fn(RemoteTrackPublication, RemoteTrack) + Send>;
 type SubscriptionStatusChangedHandler =
@@ -149,7 +157,28 @@ impl RemoteTrackPublication {
     }
 
     pub(crate) fn update_info(&self, new_info: proto::TrackInfo) {
+        let previous_frame_metadata_features = self.frame_metadata_features();
         super::update_info(&self.inner, &TrackPublication::Remote(self.clone()), new_info.clone());
+
+        let frame_metadata_features = self.frame_metadata_features();
+        let subscribed_video_track = match self.track() {
+            Some(RemoteTrack::Video(video_track)) => Some(video_track),
+            _ => None,
+        };
+        if should_attach_late_packet_trailer_handler(
+            &previous_frame_metadata_features,
+            &frame_metadata_features,
+            subscribed_video_track.is_some(),
+        ) {
+            if let Some(video_track) = subscribed_video_track {
+                log::warn!(
+                    "attaching packet_trailer handler after TrackInfo feature update for track {}: {:?}",
+                    self.sid(),
+                    frame_metadata_features,
+                );
+                let _ = video_track.ensure_packet_trailer_handler();
+            }
+        }
 
         let mut info = self.inner.info.write();
         let muted = info.muted;
@@ -402,5 +431,21 @@ impl RemoteTrackPublication {
 
     pub fn frame_metadata_features(&self) -> Vec<PacketTrailerFeature> {
         self.inner.info.read().frame_metadata_features.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn packet_trailer_features_attach_after_late_track_info_update() {
+        let previous = Vec::new();
+        let current = vec![PacketTrailerFeature::PtfUserTimestamp];
+
+        assert!(should_attach_late_packet_trailer_handler(&previous, &current, true));
+        assert!(!should_attach_late_packet_trailer_handler(&previous, &current, false));
+        assert!(!should_attach_late_packet_trailer_handler(&current, &current, true));
+        assert!(!should_attach_late_packet_trailer_handler(&current, &previous, true));
     }
 }

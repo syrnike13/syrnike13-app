@@ -13,6 +13,8 @@
 
 namespace syrnike::desktop_native::media {
 
+class VideoResourceAdmissionBudget;
+
 struct CameraFormat {
   std::uint32_t width = 0;
   std::uint32_t height = 0;
@@ -94,7 +96,8 @@ class CameraCaptureFactory {
 };
 
 std::shared_ptr<CameraCaptureFactory>
-createMediaFoundationCameraCaptureFactory();
+createMediaFoundationCameraCaptureFactory(
+    VideoResourceAdmissionBudget* resource_budget = nullptr);
 std::vector<DeviceInfo> listCameraDevices();
 
 }  // namespace syrnike::desktop_native::media

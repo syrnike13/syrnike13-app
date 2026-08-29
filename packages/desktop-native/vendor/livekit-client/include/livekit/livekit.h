@@ -28,6 +28,7 @@
 #include "livekit/local_track_publication.h"
 #include "livekit/local_video_track.h"
 #include "livekit/logging.h"
+#include "livekit/operation_cancellation.h"
 #include "livekit/participant.h"
 #include "livekit/platform_audio.h"
 #include "livekit/remote_participant.h"

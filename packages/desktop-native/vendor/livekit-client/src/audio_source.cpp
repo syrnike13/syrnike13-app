@@ -15,7 +15,9 @@
  */
 
 #include "livekit/audio_source.h"
+#include "livekit/operation_cancellation.h"
 
+#include <algorithm>
 #include <chrono>
 #include <stdexcept>
 #include <thread>
@@ -29,6 +31,23 @@
 namespace livekit {
 
 using Clock = std::chrono::steady_clock;
+
+namespace {
+
+using namespace std::chrono_literals;
+constexpr auto kCaptureOperationSafetyMargin = 100ms;
+constexpr auto kMaximumCaptureOperationTimeout = 2min;
+
+std::chrono::milliseconds captureOperationTimeout(int timeout_ms, int queue_size_ms) {
+  if (timeout_ms > 0) {
+    return std::chrono::milliseconds(timeout_ms);
+  }
+  const auto queue_budget = std::chrono::milliseconds(std::max(queue_size_ms, 0));
+  return std::min(queue_budget + kCaptureOperationSafetyMargin,
+                  std::chrono::duration_cast<std::chrono::milliseconds>(kMaximumCaptureOperationTimeout));
+}
+
+} // namespace
 
 // Helper to get monotonic time in seconds (similar to time.monotonic()).
 static double now_seconds() {
@@ -89,6 +108,20 @@ void AudioSource::clearQueue() {
 }
 
 void AudioSource::captureFrame(const AudioFrame& frame, int timeout_ms) {
+  captureFrameImpl(frame, timeout_ms, nullptr);
+}
+
+void AudioSource::captureFrame(
+    const AudioFrame& frame,
+    std::int32_t timeout_ms,
+    const OperationCancellation& cancellation) {
+  captureFrameImpl(frame, timeout_ms, &cancellation);
+}
+
+void AudioSource::captureFrameImpl(
+    const AudioFrame& frame,
+    std::int32_t timeout_ms,
+    const OperationCancellation* cancellation) {
   using namespace std::chrono_literals;
   if (!handle_) {
     return;
@@ -110,18 +143,25 @@ void AudioSource::captureFrame(const AudioFrame& frame, int timeout_ms) {
 
   // Build AudioFrameBufferInfo from the wrapper
   const proto::AudioFrameBufferInfo buf = frame.toProto();
-  // Use async FFI API and block until the callback completes
-  auto fut = FfiClient::instance().captureAudioFrameAsync(handle_.get(), buf);
-  if (timeout_ms == 0) {
-    fut.get(); // may throw std::runtime_error from async layer
+  auto operation = FfiClient::instance().captureAudioFrameAsync(handle_.get(), buf);
+  if (!cancellation) {
+    const auto result = timeout_ms == 0
+        ? operation.wait()
+        : operation.waitFor(std::chrono::milliseconds(timeout_ms));
+    if (result.hasError() && result.error().code == FfiOperationErrorCode::Timeout) {
+      LK_LOG_WARN("captureAudioFrameAsync timed out after {} ms", timeout_ms);
+      return;
+    }
+    if (result.hasError()) {
+      throw std::runtime_error("AudioSource::captureFrame FFI operation failed: " + result.error().message);
+    }
     return;
   }
-  // This will throw std::runtime_error if the callback reported an error
-  auto status = fut.wait_for(std::chrono::milliseconds(timeout_ms));
-  if (status == std::future_status::ready || status == std::future_status::deferred) {
-    fut.get();
-  } else { // std::future_status::timeout
-    LK_LOG_WARN("captureAudioFrameAsync timed out after {} ms", timeout_ms);
+
+  const auto timeout = captureOperationTimeout(timeout_ms, queue_size_ms_);
+  const auto result = operation.waitFor(timeout, *cancellation);
+  if (result.hasError()) {
+    throw std::runtime_error("AudioSource::captureFrame FFI operation failed: " + result.error().message);
   }
 }
 

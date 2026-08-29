@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 const electron = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
@@ -21,7 +22,11 @@ import type {
   NativeMediaController,
   NativeMediaControllerEvent,
 } from './native-media-controller'
-import { registerNativeMediaIpc } from './media-ipc'
+import {
+  clearPendingNativePicker,
+  registerNativeMediaIpc,
+  setPendingNativePicker,
+} from './media-ipc'
 
 describe('native media runtime IPC', () => {
   const sender = { send: vi.fn() }
@@ -88,5 +93,21 @@ describe('native media runtime IPC', () => {
       `Invalid IPC input for ${IPC.mediaListDevices}: kind`,
     )
     expect(controller.listDevices).not.toHaveBeenCalled()
+  })
+
+  it('cancels a picker enumeration exactly once when pending state clears', () => {
+    const cancelEnumeration = vi.fn()
+    setPendingNativePicker({
+      id: 'picker-1',
+      audioRequested: true,
+      sources: [],
+      timeout: Effect.runFork(Effect.never),
+      cancelEnumeration,
+    })
+
+    clearPendingNativePicker()
+    clearPendingNativePicker()
+
+    expect(cancelEnumeration).toHaveBeenCalledTimes(1)
   })
 })

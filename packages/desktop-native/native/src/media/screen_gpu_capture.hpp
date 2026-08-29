@@ -16,6 +16,9 @@
 namespace syrnike::desktop_native::media {
 
 class CaptureBackendSupervisor;
+class VideoResourceAdmissionBudget;
+class VideoResourceLease;
+struct VideoResourceRequest;
 
 enum class ScreenGpuCaptureErrorCode {
   CaptureUnavailable,
@@ -23,6 +26,7 @@ enum class ScreenGpuCaptureErrorCode {
   DeviceUnavailable,
   InteropUnavailable,
   FormatUnsupported,
+  ResourceSaturated,
   GpuTimeout,
   DeviceLost,
   PermissionDenied,
@@ -55,6 +59,14 @@ class ScreenGpuCaptureError final : public std::runtime_error {
   long hresult_;
   std::vector<ScreenGpuBackendFailure> backend_failures_;
 };
+
+// Screen capture and its compositor share this adapter so every saturation
+// reports the same resource identity/counts before becoming a typed capture
+// failure.
+[[nodiscard]] std::shared_ptr<VideoResourceLease>
+requireScreenVideoResourceAdmission(
+    VideoResourceAdmissionBudget& budget,
+    const VideoResourceRequest& request);
 
 ScreenGpuCaptureError combineInitialMonitorCaptureFailures(
     const ScreenGpuCaptureError& dxgi_failure,
@@ -159,11 +171,22 @@ class ScreenGpuCapturer {
       const syrnike::voice::ScreenCaptureTarget& target,
       std::uint32_t width,
       std::uint32_t height,
-      std::shared_ptr<CaptureBackendSupervisor> supervisor = {});
+      std::shared_ptr<CaptureBackendSupervisor> supervisor = {},
+      VideoResourceAdmissionBudget* resource_budget = nullptr);
 
   virtual ~ScreenGpuCapturer() = default;
   virtual ScreenGpuFrameResult capture(ScreenGpuFrame& frame) = 0;
   virtual void discard(const ScreenGpuFrame& frame) noexcept = 0;
+  // Called only after the outbound encoder has received the current frame.
+  // Implementations may enqueue an optional preview copy, but must never wait
+  // for preview resize/import/delivery work.
+  virtual bool requestPreviewFrame() noexcept { return false; }
+  // Runs preview/recovery retirement work on the actor's optional-work lane.
+  // Active encoder capture must never call this method inline.
+  virtual void pollOptionalWork() noexcept {}
+  [[nodiscard]] virtual bool optionalWorkPending() const noexcept {
+    return false;
+  }
   virtual void setPreviewDemand(ScreenPreviewDemand demand) = 0;
   virtual bool takePreviewFrame(ScreenPreviewFrame& frame) = 0;
   virtual bool takePreviewFailure(ScreenPreviewFailure& failure) = 0;

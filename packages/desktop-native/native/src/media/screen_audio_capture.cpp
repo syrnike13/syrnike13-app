@@ -16,12 +16,15 @@
 #include <cmath>
 #include <stdexcept>
 #include <sstream>
+#include <string_view>
 #include <thread>
 #include <utility>
 
+#include "../common/diagnostic_log.hpp"
 #include "audio_devices.hpp"
 #include "screen_audio_packetizer.hpp"
 #include "screen_video_capture.hpp"
+#include "windows_audio_session_policy.hpp"
 
 using Microsoft::WRL::ComPtr;
 
@@ -32,6 +35,24 @@ constexpr std::size_t kScreenAudioSamplesPerPacket =
     static_cast<std::size_t>(kScreenAudioFramesPerPacket) * kScreenAudioChannels;
 constexpr std::size_t kScreenAudioPendingPacketCapacity = 8;
 constexpr REFERENCE_TIME kScreenAudioBufferDurationHns = 400000; // 40 ms
+
+void logWindowsAudioPolicy(
+    const desktop_native::media::WindowsAudioPolicyOutcome& policy,
+    std::string_view operation) {
+  auto& logger = desktop_native::diagnostics::DiagnosticLog::instance();
+  if (!logger.enabled()) return;
+  logger.write(
+      "windows_audio_session_policy",
+      {
+          {"use", desktop_native::media::windowsAudioSessionUseName(policy.use)},
+          {"stage", desktop_native::media::windowsAudioPolicyStageName(policy.stage)},
+          {"status", desktop_native::media::windowsAudioPolicyStatusName(policy.status)},
+          {"reason", desktop_native::media::windowsAudioPolicyReasonCode(policy)},
+          {"category", desktop_native::media::windowsAudioCategoryName(policy.category)},
+          {"hresult", static_cast<std::int64_t>(policy.hresult)},
+          {"operation", operation},
+      });
+}
 
 struct ScreenAudioProbeResult {
   bool ok = false;
@@ -230,16 +251,22 @@ void captureLoopbackAudio(
             : activateSystemLoopbackClient();
 
     WAVEFORMATEX format = desiredScreenLoopbackFormat();
-    hr = audio_client->Initialize(
-        AUDCLNT_SHAREMODE_SHARED,
-        AUDCLNT_STREAMFLAGS_LOOPBACK |
-            AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
-            AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
-            AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-        kScreenAudioBufferDurationHns,
-        0,
-        &format,
-        nullptr);
+    const auto policy_attempt = initializeScreenAudioCaptureAttempt(
+        audio_client.Get(),
+        [&] {
+          return audio_client->Initialize(
+              AUDCLNT_SHAREMODE_SHARED,
+              AUDCLNT_STREAMFLAGS_LOOPBACK |
+                  AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+                  AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
+                  AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+              kScreenAudioBufferDurationHns,
+              0,
+              &format,
+              nullptr);
+        });
+    logWindowsAudioPolicy(policy_attempt.category, "capture");
+    hr = policy_attempt.initialize.hresult;
     if (FAILED(hr)) throw std::runtime_error("failed to initialize screen loopback stream");
 
     HANDLE audio_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
@@ -268,6 +295,8 @@ void captureLoopbackAudio(
 
     std::uint64_t captured_frames_total = 0;
     std::uint64_t packets_total = 0;
+    std::uint64_t backlog_packets_total = 0;
+    std::uint64_t discontinuities_total = 0;
     float interval_peak = 0.0f;
     double interval_square_sum = 0.0;
     std::uint64_t interval_sample_count = 0;
@@ -301,48 +330,65 @@ void captureLoopbackAudio(
       if (wait_result != WAIT_OBJECT_0) {
         throw std::runtime_error("screen loopback event wait failed");
       }
-      UINT32 packet_frames = 0;
-      hr = capture_client->GetNextPacketSize(&packet_frames);
-      if (FAILED(hr)) throw std::runtime_error("screen loopback packet query failed");
-      if (packet_frames == 0) continue;
+      const auto drained = drainScreenAudioWake(
+          [&](const ScreenAudioPacketConsumer& consume) {
+            UINT32 packet_frames = 0;
+            hr = capture_client->GetNextPacketSize(&packet_frames);
+            if (FAILED(hr)) {
+              throw std::runtime_error("screen loopback packet query failed");
+            }
+            if (packet_frames == 0) return false;
 
-      BYTE* data = nullptr;
-      UINT32 frames = 0;
-      DWORD flags = 0;
-      hr = capture_client->GetBuffer(&data, &frames, &flags, nullptr, nullptr);
-      if (FAILED(hr)) throw std::runtime_error("screen loopback buffer read failed");
-
-      if ((flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) != 0) {
-        packet_queue.discardPartial();
-      }
-
-      const auto packet_sample_count =
-          static_cast<std::size_t>(frames) * kScreenAudioChannels;
-      const auto* samples = reinterpret_cast<const float*>(data);
-      const bool silent =
-        (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0 || data == nullptr;
-      for (std::size_t index = 0; index < packet_sample_count; ++index) {
-        const float clamped = silent
-          ? 0.0f
-          : std::clamp(samples[index], -1.0f, 1.0f);
-        if (!silent) {
-          const float magnitude = std::abs(clamped);
-          interval_peak = std::max(interval_peak, magnitude);
-          interval_square_sum += static_cast<double>(clamped) * clamped;
-          interval_sample_count += 1;
-        }
-        if (
-          packet_queue.push(floatToPcm16(clamped)) ==
-          AudioPacketPushResult::Full
-        ) {
-          capture_client->ReleaseBuffer(frames);
-          throw std::runtime_error(
-            "screen loopback packet queue exceeded the WASAPI buffer bound"
-          );
-        }
-      }
-
-      capture_client->ReleaseBuffer(frames);
+            BYTE* data = nullptr;
+            UINT32 frames = 0;
+            DWORD flags = 0;
+            hr = capture_client->GetBuffer(
+                &data, &frames, &flags, nullptr, nullptr);
+            if (FAILED(hr)) {
+              throw std::runtime_error("screen loopback buffer read failed");
+            }
+            struct BufferRelease final {
+              IAudioCaptureClient* client = nullptr;
+              UINT32 frames = 0;
+              ~BufferRelease() {
+                if (client) static_cast<void>(client->ReleaseBuffer(frames));
+              }
+            } release{capture_client.Get(), frames};
+            consume(ScreenAudioPacketView{
+                .data = data,
+                .frames = frames,
+                .silent =
+                    (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0 || data == nullptr,
+                .discontinuity =
+                    (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) != 0,
+            });
+            return true;
+          },
+          [&](const ScreenAudioPacketView& packet) {
+            if (packet.discontinuity) packet_queue.discardPartial();
+            const auto packet_sample_count =
+                static_cast<std::size_t>(packet.frames) * kScreenAudioChannels;
+            const auto* samples =
+                reinterpret_cast<const float*>(packet.data);
+            for (std::size_t index = 0; index < packet_sample_count; ++index) {
+              const float clamped = packet.silent
+                  ? 0.0f
+                  : std::clamp(samples[index], -1.0f, 1.0f);
+              if (!packet.silent) {
+                const float magnitude = std::abs(clamped);
+                interval_peak = std::max(interval_peak, magnitude);
+                interval_square_sum += static_cast<double>(clamped) * clamped;
+                interval_sample_count += 1;
+              }
+              if (packet_queue.push(floatToPcm16(clamped)) ==
+                  AudioPacketPushResult::Full) {
+                throw std::runtime_error(
+                    "screen loopback packet queue exceeded the WASAPI buffer bound");
+              }
+            }
+          });
+      backlog_packets_total += drained.backlog_packets;
+      discontinuities_total += drained.discontinuities;
 
       while (packet_queue.queuedPackets() > 0) {
         std::copy(
@@ -355,7 +401,12 @@ void captureLoopbackAudio(
         // frames and only remains ordered when each async acknowledgement is
         // observed before the next frame is submitted. The WASAPI buffer has
         // already been released before this potentially blocking call.
-        audio_source->captureFrame(audio_frame, 0);
+        if (stop_signal) {
+          audio_source->captureFrame(
+              audio_frame, 0, stop_signal->cancellation());
+        } else {
+          audio_source->captureFrame(audio_frame, 0);
+        }
         captured_frames_total += kScreenAudioFramesPerPacket;
         packets_total += 1;
       }
@@ -371,7 +422,15 @@ void captureLoopbackAudio(
         const auto rms_db = rms > 0.0
             ? 20.0 * std::log10(rms)
             : -120.0;
-        if (on_stats) on_stats(captured_frames_total, packets_total, peak_db, rms_db);
+        if (on_stats) {
+          on_stats(
+              captured_frames_total,
+              packets_total,
+              backlog_packets_total,
+              discontinuities_total,
+              peak_db,
+              rms_db);
+        }
         interval_peak = 0.0f;
         interval_square_sum = 0.0;
         interval_sample_count = 0;
@@ -406,16 +465,22 @@ ScreenAudioProbeResult probeLoopbackClient(
           : activateSystemLoopbackClient();
 
   WAVEFORMATEX format = desiredScreenLoopbackFormat();
-  HRESULT hr = audio_client->Initialize(
-      AUDCLNT_SHAREMODE_SHARED,
-      AUDCLNT_STREAMFLAGS_LOOPBACK |
-          AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
-          AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
-          AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-      kScreenAudioBufferDurationHns,
-      0,
-      &format,
-      nullptr);
+  const auto policy_attempt = initializeScreenAudioCaptureAttempt(
+      audio_client.Get(),
+      [&] {
+        return audio_client->Initialize(
+            AUDCLNT_SHAREMODE_SHARED,
+            AUDCLNT_STREAMFLAGS_LOOPBACK |
+                AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+                AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
+                AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+            kScreenAudioBufferDurationHns,
+            0,
+            &format,
+            nullptr);
+      });
+  logWindowsAudioPolicy(policy_attempt.category, "probe");
+  HRESULT hr = policy_attempt.initialize.hresult;
   if (FAILED(hr)) throw std::runtime_error("failed to initialize screen loopback probe");
 
   HANDLE audio_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
@@ -500,6 +565,41 @@ ScreenAudioProbeResult probeLoopbackClient(
 
 }  // namespace
 
+ScreenAudioWakeDrain drainScreenAudioWake(
+    const ScreenAudioPacketReader& read_packet,
+    const ScreenAudioPacketConsumer& consume_packet) {
+  if (!read_packet || !consume_packet) {
+    throw std::invalid_argument("screen audio packet drain callbacks are required");
+  }
+  ScreenAudioWakeDrain result;
+  while (read_packet([&](const ScreenAudioPacketView& packet) {
+    consume_packet(packet);
+    result.frames += packet.frames;
+    result.packets += 1;
+    if (packet.discontinuity) result.discontinuities += 1;
+  })) {
+  }
+  if (result.packets > 1) result.backlog_packets = result.packets - 1;
+  return result;
+}
+
+syrnike::desktop_native::media::WindowsAudioSessionAttemptResult
+initializeScreenAudioCaptureAttempt(
+    IAudioClient *audio_client,
+    const std::function<HRESULT()> &initialize,
+    const std::shared_ptr<
+        syrnike::desktop_native::media::WindowsAudioSessionAttemptPolicy>
+        &policy) {
+  const auto effective_policy = policy
+      ? policy
+      : syrnike::desktop_native::media::defaultWindowsAudioSessionAttemptPolicy();
+  return effective_policy->run(
+      audio_client,
+      syrnike::desktop_native::media::WindowsAudioSessionUse::ScreenLoopbackCapture,
+      AUDCLNT_STREAMOPTIONS_NONE,
+      initialize);
+}
+
 ScreenAudioStopSignal::ScreenAudioStopSignal()
     : event_(CreateEventW(nullptr, TRUE, FALSE, nullptr)) {
   if (!event_) {
@@ -512,6 +612,7 @@ ScreenAudioStopSignal::~ScreenAudioStopSignal() {
 }
 
 void ScreenAudioStopSignal::signal() noexcept {
+  static_cast<void>(cancellation_.requestCancel());
   if (event_) SetEvent(event_);
 }
 

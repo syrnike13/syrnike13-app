@@ -1,5 +1,7 @@
 #include "node_event_sink.hpp"
 
+#include "addon_parsing.hpp"
+
 #include <chrono>
 #include <cstdlib>
 #include <cstdint>
@@ -158,7 +160,7 @@ Napi::Object eventResultToObject(Napi::Env env, const RuntimeEvent& event) {
   setIfPresent(result, "captureMethod", event.capture_method);
   if (!event.devices.empty()) result.Set("devices", devicesToArray(env, event.devices));
   if (!event.sources.empty()) result.Set("sources", sourcesToArray(env, event.sources));
-  if (event.type == "activeSpeakers" || !event.participant_identities.empty()) {
+  if (event.type == NativeEventType::ActiveSpeakers || !event.participant_identities.empty()) {
     auto participants = Napi::Array::New(env, event.participant_identities.size());
     for (std::size_t index = 0; index < event.participant_identities.size(); ++index) {
       participants.Set(
@@ -316,6 +318,12 @@ Napi::Object statsToObject(Napi::Env env, const RuntimeEvent& event) {
   if (event.audio_frames > 0 || event.audio_packets > 0) {
     stats.Set("audioFrames", jsNumber(env, event.audio_frames));
     stats.Set("audioPackets", jsNumber(env, event.audio_packets));
+    stats.Set(
+        "audioBacklogPackets",
+        jsNumber(env, event.audio_backlog_packets));
+    stats.Set(
+        "audioDiscontinuities",
+        jsNumber(env, event.audio_discontinuities));
     stats.Set("audioPeakDb", event.audio_peak_db);
     stats.Set("audioRmsDb", event.audio_rms_db);
   }
@@ -436,6 +444,38 @@ Napi::Object voiceRtcStreamToObject(
   return result;
 }
 
+Napi::Array deviceEventsToArray(
+  Napi::Env env,
+  const std::vector<DeviceInfo>& devices
+) {
+  auto result = Napi::Array::New(env, devices.size());
+  for (std::size_t index = 0; index < devices.size(); ++index) {
+    const auto& device = devices[index];
+    auto value = Napi::Object::New(env);
+    value.Set("deviceId", device.device_id);
+    value.Set("label", device.label);
+    value.Set("kind", device.kind);
+    result.Set(static_cast<std::uint32_t>(index), value);
+  }
+  return result;
+}
+
+Napi::Array displaySourceEventsToArray(
+  Napi::Env env,
+  const std::vector<DisplaySourceInfo>& sources
+) {
+  auto result = Napi::Array::New(env, sources.size());
+  for (std::size_t index = 0; index < sources.size(); ++index) {
+    const auto& source = sources[index];
+    auto value = Napi::Object::New(env);
+    value.Set("id", source.id);
+    value.Set("name", source.name);
+    value.Set("type", source.source_type);
+    result.Set(static_cast<std::uint32_t>(index), value);
+  }
+  return result;
+}
+
 Napi::Object voiceRtcStatsToObject(Napi::Env env, const RuntimeEvent& event) {
   auto stats = Napi::Object::New(env);
   auto transport = Napi::Object::New(env);
@@ -504,14 +544,44 @@ Napi::Object voiceRtcStatsToObject(Napi::Env env, const RuntimeEvent& event) {
 }
 
 Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
+  if (!isValidNativeEventType(event.type)) {
+    throw std::invalid_argument(
+      "runtime event is absent from the typed serialization policy"
+    );
+  }
+  const auto& policy = nativeEventPolicy(event.type);
+  const auto* codec = nativeEventCodecBinding(event.type);
+  if (!codec || codec->schema != policy.schema ||
+      codec->action != policy.action || codec->payload != policy.payload) {
+    throw std::invalid_argument(
+      "runtime event has no concrete schema or codec binding"
+    );
+  }
+  const auto serialization_profile = codec->payload;
   auto result = Napi::Object::New(env);
-  result.Set("type", event.type);
-  result.Set("sequence", jsNumber(env, event.sequence));
-  setIfPresent(result, "requestId", event.request_id);
-  setIfPresent(result, "kind", event.kind);
-  setIfPresent(result, "trackId", event.track_id);
+  result.Set("type", std::string(policy.wire_name));
+  if (nativeExternalHasTopLevelField(
+        policy.schema, NativeExternalTopLevelField::Sequence
+      )) {
+    result.Set("sequence", jsNumber(env, event.sequence));
+  }
+  if (nativeExternalHasTopLevelField(
+        policy.schema, NativeExternalTopLevelField::RequestId
+      )) {
+    setIfPresent(result, "requestId", event.request_id);
+  }
+  if (nativeExternalHasTopLevelField(
+        policy.schema, NativeExternalTopLevelField::Kind
+      )) {
+    setIfPresent(result, "kind", event.kind);
+  }
+  if (nativeExternalHasTopLevelField(
+        policy.schema, NativeExternalTopLevelField::TrackId
+      )) {
+    setIfPresent(result, "trackId", event.track_id);
+  }
 
-  if (event.type == "reply") {
+  if (serialization_profile == NativePayloadProfile::Reply) {
     result.Set("ok", event.ok);
     if (event.ok) {
       if (event.kind == "devices") {
@@ -529,102 +599,212 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
         auto preview = Napi::Object::New(env);
         preview.Set("sessionId", event.session_id);
         result.Set("result", preview);
+      } else if (event.kind == "voiceControlProbe") {
+        auto probe = Napi::Object::New(env);
+        probe.Set("state", event.voice_control_worker_state);
+        probe.Set("hostEpoch", jsNumber(env, event.voice_control_host_epoch));
+        probe.Set(
+          "queueDepth",
+          jsNumber(env, event.voice_control_queue_depth)
+        );
+        probe.Set(
+          "queueCapacity",
+          jsNumber(env, event.voice_control_queue_capacity)
+        );
+        probe.Set(
+          "oldestQueueWaitMs",
+          jsNumber(env, event.voice_control_oldest_queue_wait_ms)
+        );
+        probe.Set(
+          "lastQueueWaitMs",
+          jsNumber(env, event.voice_control_last_queue_wait_ms)
+        );
+        if (event.voice_control_current_operation.empty()) {
+          probe.Set("currentOperation", env.Null());
+        } else {
+          probe.Set(
+            "currentOperation",
+            event.voice_control_current_operation
+          );
+        }
+        probe.Set(
+          "currentOperationAgeMs",
+          jsNumber(env, event.voice_control_current_operation_age_ms)
+        );
+        probe.Set("retirementState", event.voice_control_retirement_state);
+        probe.Set(
+          "outstandingRendererLeases",
+          jsNumber(env, event.voice_control_outstanding_renderer_leases)
+        );
+        probe.Set(
+          "outstandingRendererGenerations",
+          jsNumber(env, event.voice_control_outstanding_renderer_generations)
+        );
+        probe.Set(
+          "duplicateCommands",
+          jsNumber(env, event.voice_control_duplicate_commands)
+        );
+        probe.Set(
+          "rejectedCommands",
+          jsNumber(env, event.voice_control_rejected_commands)
+        );
+        probe.Set("workerOwner", event.voice_control_worker_owner);
+        probe.Set("retirementOwner", event.voice_control_retirement_owner);
+        result.Set("result", probe);
       }
     } else if (event.error) {
       result.Set("error", errorToObject(env, *event.error));
     }
+#if defined(SYRNIKE_NATIVE_CONTRACT_RUNTIME_VALIDATION)
+    requireNativeContractShape(result, policy.schema, false);
+#endif
     return result;
   }
 
-  setIfPresent(result, "sessionId", event.session_id);
-  if (!event.session_id.empty()) result.Set("generation", jsNumber(env, event.generation));
-  if (event.type == "remoteVideoFrame" || event.type == "localScreenPreviewFrame" ||
-      event.type == "localCameraPreviewFrame" ||
-      event.type == "remoteVideoPublicationAvailable" ||
-      event.type == "remoteVideoPublicationUnavailable") {
-    result.Set("participantIdentity", event.participant_identity);
-    result.Set("source", event.video_source);
+  if (nativeExternalHasTopLevelField(
+        policy.schema, NativeExternalTopLevelField::SessionId
+      )) {
+    setIfPresent(result, "sessionId", event.session_id);
   }
-  if (event.type == "remoteVideoFrame" || event.type == "localScreenPreviewFrame" ||
-      event.type == "localCameraPreviewFrame") {
-    result.Set("frameSequence", jsNumber(env, event.frame_sequence));
-    result.Set("timestampUs", jsNumber(env, event.timestamp_us));
-    result.Set("width", event.width);
-    result.Set("height", event.height);
-    const auto handle = event.nt_handle;
-    result.Set(
-      "ntHandle",
-      Napi::Buffer<std::uint8_t>::Copy(
-        env,
-        reinterpret_cast<const std::uint8_t*>(&handle),
-        sizeof(handle)
-      )
-    );
+  if (nativeExternalHasTopLevelField(
+        policy.schema, NativeExternalTopLevelField::Generation
+      ) &&
+      !event.session_id.empty()) {
+    result.Set("generation", jsNumber(env, event.generation));
   }
-  if (event.type == "localScreenPreviewTrackRemoved" ||
-      event.type == "localCameraPreviewTrackRemoved") {
-    result.Set("source", event.video_source);
+  if (nativeExternalHasTopLevelField(
+        policy.schema, NativeExternalTopLevelField::Error
+      ) && event.error) {
+    result.Set("error", errorToObject(env, *event.error));
   }
-  if (event.type == "remoteVideoFailed") {
-    result.Set("source", event.video_source);
-    setIfPresent(result, "reason", event.reason);
-  }
-  if (event.error) result.Set("error", errorToObject(env, *event.error));
-  if (event.type == "sessionLifecycle") {
-    result.Set("state", lifecycleStateToObject(env, event));
-  } else if (event.type == "voiceConnectionState") {
-    result.Set("state", event.state);
-  } else if (event.type == "sessionStarted") {
-    result.Set("session", sessionToObject(env, event));
-  } else if (event.type == "sessionStopped") {
-    setIfPresent(result, "reason", event.reason);
-  } else if (event.type == "stats") {
-    result.Set("stats", statsToObject(env, event));
-  } else if (event.type == "voiceStats") {
-    result.Set("stats", voiceRtcStatsToObject(env, event));
-  } else if (event.type == "screenBackendRestart") {
-    result.Set("backend", event.capture_method);
-    result.Set("reason", event.reason);
-    result.Set("count", jsNumber(env, event.video_recoverable_lost_count));
-    setIfPresent(result, "errorCode", event.error_code);
-    if (event.hresult) {
-      result.Set("hresult", Napi::Number::New(
-          env, static_cast<double>(*event.hresult)));
+  switch (serialization_profile) {
+    case NativePayloadProfile::SessionLifecycle:
+      result.Set("state", lifecycleStateToObject(env, event));
+      break;
+    case NativePayloadProfile::SessionStarted:
+      result.Set("session", sessionToObject(env, event));
+      break;
+    case NativePayloadProfile::SessionStopped:
+      setIfPresent(result, "reason", event.reason);
+      break;
+    case NativePayloadProfile::VoiceConnectionState:
+      result.Set("state", event.state);
+      break;
+    case NativePayloadProfile::ScreenStatistics:
+      result.Set("stats", statsToObject(env, event));
+      break;
+    case NativePayloadProfile::VoiceStatistics:
+      result.Set("stats", voiceRtcStatsToObject(env, event));
+      break;
+    case NativePayloadProfile::ScreenBackendRestart:
+      result.Set("backend", event.capture_method);
+      result.Set("reason", event.reason);
+      result.Set("count", jsNumber(env, event.video_recoverable_lost_count));
+      setIfPresent(result, "errorCode", event.error_code);
+      if (event.hresult) {
+        result.Set("hresult", Napi::Number::New(
+            env, static_cast<double>(*event.hresult)));
+      }
+      break;
+    case NativePayloadProfile::MicrophoneMetrics: {
+      auto metrics = Napi::Object::New(env);
+      metrics.Set("revision", static_cast<double>(event.revision.value_or(0)));
+      metrics.Set("inputDb", event.input_db);
+      metrics.Set("thresholdDb", event.threshold_db);
+      metrics.Set("open", event.gate_open);
+      result.Set("metrics", metrics);
+      break;
     }
-  } else if (event.type == "microphoneMetrics") {
-    auto metrics = Napi::Object::New(env);
-    metrics.Set("revision", static_cast<double>(event.revision.value_or(0)));
-    metrics.Set("inputDb", event.input_db);
-    metrics.Set("thresholdDb", event.threshold_db);
-    metrics.Set("open", event.gate_open);
-    result.Set("metrics", metrics);
-  } else if (event.type == "microphonePreviewStarted") {
-    auto preview = Napi::Object::New(env);
-    preview.Set("sessionId", event.session_id);
-    result.Set("preview", preview);
-  } else if (event.input) {
-    result.Set("input", inputToObject(env, *event.input));
-  } else if (event.foreground_window) {
-    result.Set("window", foregroundWindowToObject(env, *event.foreground_window));
-  }
-  if (!event.devices.empty()) result.Set("devices", devicesToArray(env, event.devices));
-  if (!event.sources.empty()) result.Set("sources", sourcesToArray(env, event.sources));
-  if (event.type == "activeSpeakers" || !event.participant_identities.empty()) {
-    auto participants = Napi::Array::New(env, event.participant_identities.size());
-    for (std::size_t index = 0; index < event.participant_identities.size(); ++index) {
-      participants.Set(
-        static_cast<std::uint32_t>(index),
-        event.participant_identities[index]
+    case NativePayloadProfile::MicrophonePreviewStarted: {
+      auto preview = Napi::Object::New(env);
+      preview.Set("sessionId", event.session_id);
+      result.Set("preview", preview);
+      break;
+    }
+    case NativePayloadProfile::Input:
+      if (event.input) result.Set("input", inputToObject(env, *event.input));
+      break;
+    case NativePayloadProfile::ForegroundWindow:
+      if (event.foreground_window) {
+        result.Set("window", foregroundWindowToObject(env, *event.foreground_window));
+      }
+      break;
+    case NativePayloadProfile::VideoFrame: {
+      result.Set("participantIdentity", event.participant_identity);
+      result.Set("source", event.video_source);
+      result.Set("frameSequence", jsNumber(env, event.frame_sequence));
+      result.Set("timestampUs", jsNumber(env, event.timestamp_us));
+      result.Set("width", event.width);
+      result.Set("height", event.height);
+      const auto handle = event.nt_handle;
+      result.Set(
+        "ntHandle",
+        Napi::Buffer<std::uint8_t>::Copy(
+          env,
+          reinterpret_cast<const std::uint8_t*>(&handle),
+          sizeof(handle)
+        )
       );
+      break;
     }
-    result.Set("participantIdentities", participants);
+    case NativePayloadProfile::RemoteVideoPublication:
+      result.Set("participantIdentity", event.participant_identity);
+      result.Set("source", event.video_source);
+      break;
+    case NativePayloadProfile::LocalVideoTrackRemoved:
+      result.Set("source", event.video_source);
+      break;
+    case NativePayloadProfile::RemoteVideoFailed:
+      result.Set("source", event.video_source);
+      setIfPresent(result, "reason", event.reason);
+      break;
+    case NativePayloadProfile::ActiveSpeakers: {
+      auto participants = Napi::Array::New(env, event.participant_identities.size());
+      for (std::size_t index = 0; index < event.participant_identities.size(); ++index) {
+        participants.Set(
+          static_cast<std::uint32_t>(index),
+          event.participant_identities[index]
+        );
+      }
+      result.Set("participantIdentities", participants);
+      break;
+    }
+    case NativePayloadProfile::ScreenCaptureEnded:
+      result.Set("reason", event.reason);
+      setIfPresent(result, "message", event.detail);
+      break;
+    case NativePayloadProfile::Devices:
+      result.Set("devices", deviceEventsToArray(env, event.devices));
+      break;
+    case NativePayloadProfile::DisplaySources:
+      result.Set("sources", displaySourceEventsToArray(env, event.sources));
+      break;
+    case NativePayloadProfile::Generic:
+    case NativePayloadProfile::Lifecycle:
+    case NativePayloadProfile::Session:
+    case NativePayloadProfile::VideoPublication:
+    case NativePayloadProfile::Statistics:
+    case NativePayloadProfile::Configuration:
+    case NativePayloadProfile::RemoteVideoTrackRemoved:
+    case NativePayloadProfile::Reply:
+      break;
   }
-  if (event.type == "screenCaptureEnded") {
-    result.Set("reason", event.reason);
-    setIfPresent(result, "message", event.detail);
-  }
+#if defined(SYRNIKE_NATIVE_CONTRACT_RUNTIME_VALIDATION)
+  requireNativeContractShape(result, policy.schema, false);
+#endif
   return result;
 }
+
+}  // namespace
+
+Napi::Object serializeRuntimeEventForContractTest(
+  Napi::Env env,
+  const RuntimeEvent& event
+) {
+  return eventToObject(env, event);
+}
+
+namespace {
 
 void logJsListenerFailure(
   const RuntimeEvent& event,
@@ -634,11 +814,35 @@ void logJsListenerFailure(
     diagnostics::DiagnosticLog::instance().write(
       "native_event_listener_exception",
       {
-        {"eventType", event.type},
+        {"eventType", std::string(nativeEventName(event.type))},
         {"message", diagnostics::redactForDiagnostics(message)}
       }
     );
   } catch (...) {
+  }
+}
+
+void raiseLosslessDeliveryFailure(
+  Napi::Env env,
+  const RuntimeEvent& event,
+  const std::string& message
+) noexcept {
+  if (env == nullptr) return;
+  try {
+    if (env.IsExceptionPending()) {
+      static_cast<void>(env.GetAndClearPendingException());
+    }
+    auto error = Napi::Error::New(
+      env,
+      "Native lossless event delivery failed: " +
+        std::string(nativeEventName(event.type)) + ": " + message
+    );
+    error.Value().Set("code", "native_control_delivery_lost");
+    error.Value().Set("stage", "nativeEventDelivery");
+    error.ThrowAsJavaScriptException();
+  } catch (...) {
+    // Leaving the utility host without a replacement exception is still
+    // observable through diagnostics and its liveness watchdog.
   }
 }
 
@@ -647,8 +851,17 @@ bool deliverEventToJs(
   Napi::Function callback,
   RuntimeEvent& event
 ) {
+  const bool lossless = eventLane(event) == EventLane::control;
   if (env == nullptr || callback.IsEmpty()) {
     discardEvent(event);
+    logJsListenerFailure(event, "native event callback is unavailable");
+    if (lossless) {
+      raiseLosslessDeliveryFailure(
+        env,
+        event,
+        "native event callback is unavailable"
+      );
+    }
     return false;
   }
   Napi::Object value;
@@ -657,34 +870,58 @@ bool deliverEventToJs(
   } catch (const std::exception& error) {
     discardEvent(event);
     logJsListenerFailure(event, error.what());
+    if (lossless) raiseLosslessDeliveryFailure(env, event, error.what());
     return false;
   } catch (...) {
     discardEvent(event);
     logJsListenerFailure(event, "native event serialization failed");
+    if (lossless) {
+      raiseLosslessDeliveryFailure(
+        env,
+        event,
+        "native event serialization failed"
+      );
+    }
     return false;
   }
   try {
     callback.Call({value});
   } catch (const Napi::Error& error) {
-    if (env.IsExceptionPending()) {
-      static_cast<void>(env.GetAndClearPendingException());
-    }
     discardEvent(event);
     logJsListenerFailure(event, error.Message());
+    if (lossless) {
+      raiseLosslessDeliveryFailure(env, event, error.Message());
+      return false;
+    }
+    if (env.IsExceptionPending()) {
+      static_cast<void>(env.GetAndClearPendingException());
+    }
     return true;
   } catch (const std::exception& error) {
-    if (env.IsExceptionPending()) {
-      static_cast<void>(env.GetAndClearPendingException());
-    }
     discardEvent(event);
     logJsListenerFailure(event, error.what());
-    return true;
-  } catch (...) {
+    if (lossless) {
+      raiseLosslessDeliveryFailure(env, event, error.what());
+      return false;
+    }
     if (env.IsExceptionPending()) {
       static_cast<void>(env.GetAndClearPendingException());
     }
+    return true;
+  } catch (...) {
     discardEvent(event);
     logJsListenerFailure(event, "unknown JS listener exception");
+    if (lossless) {
+      raiseLosslessDeliveryFailure(
+        env,
+        event,
+        "unknown JS listener exception"
+      );
+      return false;
+    }
+    if (env.IsExceptionPending()) {
+      static_cast<void>(env.GetAndClearPendingException());
+    }
     return true;
   }
   event.on_drop = {};
@@ -709,7 +946,7 @@ void logMediaDrop(const RuntimeEvent& event, std::uint64_t count) noexcept {
     diagnostics::DiagnosticLog::instance().write(
       "native_event_media_dropped",
       {
-        {"eventType", event.type},
+        {"eventType", std::string(nativeEventName(event.type))},
         {"dropped", count}
       }
     );
@@ -745,8 +982,12 @@ void callControlEventCallback(
   std::unique_ptr<std::shared_ptr<ControlEventLane>> lane_holder(raw_lane);
   if (!lane_holder || !*lane_holder) return;
   auto events = (*lane_holder)->beginCallback();
-  for (auto& event : events) {
-    if (event) static_cast<void>(deliverEventToJs(env, callback, *event));
+  for (std::size_t index = 0; index < events.size(); ++index) {
+    auto& event = events[index];
+    if (!event) continue;
+    if (deliverEventToJs(env, callback, *event)) continue;
+    discardEventBatch(events, index + 1);
+    break;
   }
 }
 
@@ -756,7 +997,8 @@ NodeEventSink::NodeEventSink(
   Napi::Env env,
   Napi::Function callback,
   const char* resource_name
-) : control_callback_(Napi::ThreadSafeFunction::New(
+) : fatal_payload_(std::make_unique<RuntimeEvent>()),
+    control_callback_(Napi::ThreadSafeFunction::New(
       env,
       callback,
       resource_name,
@@ -777,8 +1019,34 @@ NodeEventSink::NodeEventSink(
       1,
       1
     )),
+    realtime_callback_(Napi::ThreadSafeFunction::New(
+      env,
+      callback,
+      std::string(resource_name) + "-realtime",
+      1,
+      1
+    )),
+    fatal_callback_(Napi::ThreadSafeFunction::New(
+      env,
+      callback,
+      std::string(resource_name) + "-fatal",
+      1,
+      1
+    )),
     control_lane_(std::make_shared<ControlEventLane>(controlLaneCapacity())),
-    media_lane_(std::make_shared<CoalescingEventLane>()) {}
+    media_lane_(std::make_shared<CoalescingEventLane>()),
+    realtime_lane_(std::make_shared<CoalescingEventLane>()) {
+  // Runtime-loss escalation is the last line of defence after a control event
+  // has already been accepted. Allocate its payload while the sink is being
+  // constructed so memory pressure cannot silently suppress that escalation.
+  fatal_payload_->type = NativeEventType::RuntimeError;
+  fatal_payload_->error = NativeError{
+    "native_control_delivery_lost",
+    "A lossless native control event could not be delivered",
+    "nativeEventDelivery",
+    true,
+  };
+}
 
 NodeEventSink::~NodeEventSink() {
   try {
@@ -787,12 +1055,58 @@ NodeEventSink::~NodeEventSink() {
   }
 }
 
+void NodeEventSink::scheduleRuntimeLoss(
+  std::uint64_t sequence,
+  const char* reason
+) noexcept {
+  RuntimeEvent* payload = nullptr;
+  try {
+    std::lock_guard lock(fatal_mutex_);
+    if (fatal_scheduled_ || !fatal_payload_) return;
+    fatal_scheduled_ = true;
+    fatal_payload_->sequence = sequence;
+    payload = fatal_payload_.release();
+  } catch (...) {
+    // The payload and its strings are preallocated. Reaching this branch means
+    // even the non-allocating escalation path is unusable, so the utility host
+    // must fail closed instead of continuing with a lost control transition.
+  }
+  if (!payload) {
+    if (!closed_.load(std::memory_order_acquire)) {
+      napi_fatal_error(
+        "NodeEventSink::scheduleRuntimeLoss",
+        NAPI_AUTO_LENGTH,
+        "Native lossless event escalation failed",
+        NAPI_AUTO_LENGTH
+      );
+    }
+    return;
+  }
+  try {
+    diagnostics::DiagnosticLog::instance().write(
+      "native_event_runtime_loss_scheduled",
+      {{"reason", reason ? reason : "unknown"}, {"sequence", sequence}}
+    );
+  } catch (...) {
+  }
+  napi_status status = napi_generic_failure;
+  try {
+    status = fatal_callback_.NonBlockingCall(payload, callEventCallback);
+  } catch (...) {
+  }
+  if (status == napi_ok) return;
+  delete payload;
+  if (!closed_.load(std::memory_order_acquire)) {
+    napi_fatal_error(
+      "NodeEventSink::scheduleRuntimeLoss",
+      NAPI_AUTO_LENGTH,
+      "Native lossless event escalation could not reach JavaScript",
+      NAPI_AUTO_LENGTH
+    );
+  }
+}
+
 bool NodeEventSink::emit(RuntimeEvent event) {
-  // close() first marks the control lane closed to wake a bounded producer,
-  // then takes this mutex before discarding accepted events or releasing the
-  // TSFNs. This keeps release ownership and the TSFN handles valid until emit
-  // reports whether it consumed the event.
-  std::lock_guard lifecycle_lock(lifecycle_mutex_);
   if (closed_.load(std::memory_order_acquire)) {
     if (eventLane(event) == EventLane::control) return false;
     discardEvent(event);
@@ -806,9 +1120,21 @@ bool NodeEventSink::emit(RuntimeEvent event) {
       pushed = control_lane_->push(std::move(event));
     } catch (const std::exception& error) {
       logJsListenerFailure(event, error.what());
+      if (!closed_.load(std::memory_order_acquire)) {
+        scheduleRuntimeLoss(
+          event_sequence,
+          "Lossless native event staging allocation failed"
+        );
+      }
       return false;
     } catch (...) {
       logJsListenerFailure(event, "control event staging failed");
+      if (!closed_.load(std::memory_order_acquire)) {
+        scheduleRuntimeLoss(
+          event_sequence,
+          "Lossless native event staging failed"
+        );
+      }
       return false;
     }
     if (!pushed.accepted) {
@@ -825,13 +1151,31 @@ bool NodeEventSink::emit(RuntimeEvent event) {
         );
       } catch (...) {
       }
+      if (pushed.timed_out) {
+        std::lock_guard lifecycle_lock(lifecycle_mutex_);
+        if (!closed_.load(std::memory_order_acquire)) {
+          scheduleRuntimeLoss(
+            event_sequence,
+            "Lossless native event exceeded its bounded staging deadline"
+          );
+        }
+      }
       return false;
     }
     if (!pushed.schedule_callback) return true;
+    std::lock_guard lifecycle_lock(lifecycle_mutex_);
+    if (closed_.load(std::memory_order_acquire)) {
+      control_lane_->rejectScheduledCallbackAndDiscard(event_sequence);
+      return false;
+    }
     auto* lane_payload = new (std::nothrow)
       std::shared_ptr<ControlEventLane>(control_lane_);
     if (!lane_payload) {
       control_lane_->rejectScheduledCallbackAndDiscard(event_sequence);
+      scheduleRuntimeLoss(
+        event_sequence,
+        "Lossless native event callback allocation failed"
+      );
       try {
         diagnostics::DiagnosticLog::instance().write(
           "native_event_control_schedule_allocation_failed"
@@ -852,6 +1196,10 @@ bool NodeEventSink::emit(RuntimeEvent event) {
     if (status == napi_ok) return true;
     delete lane_payload;
     control_lane_->rejectScheduledCallbackAndDiscard(event_sequence);
+    scheduleRuntimeLoss(
+      event_sequence,
+      "Lossless native event callback could not be scheduled"
+    );
     try {
       diagnostics::DiagnosticLog::instance().write(
         "native_event_control_schedule_failed",
@@ -871,10 +1219,14 @@ bool NodeEventSink::emit(RuntimeEvent event) {
     }
     return false;
   }
-  if (lane == EventLane::media) {
+  if (lane == EventLane::media || lane == EventLane::realtime) {
+    auto event_lane = lane == EventLane::media ? media_lane_ : realtime_lane_;
+    auto* callback = lane == EventLane::media
+      ? &media_callback_
+      : &realtime_callback_;
     CoalescingEventLane::PushResult pushed;
     try {
-      pushed = media_lane_->push(std::move(event));
+      pushed = event_lane->push(std::move(event));
     } catch (...) {
       // The lane guard has already released a retained media handle. Media is
       // lossy, so allocation pressure must not surface as an actor failure.
@@ -885,11 +1237,16 @@ bool NodeEventSink::emit(RuntimeEvent event) {
       logMediaDrop(*pushed.discarded, pushed.dropped_count);
     }
     if (!pushed.accepted || !pushed.schedule_callback) return true;
+    std::lock_guard lifecycle_lock(lifecycle_mutex_);
+    if (closed_.load(std::memory_order_acquire)) {
+      event_lane->cancelScheduledCallbackAndDiscard();
+      return true;
+    }
     std::shared_ptr<CoalescingEventLane>* lane_payload = nullptr;
     napi_status status = napi_generic_failure;
     try {
-      lane_payload = new std::shared_ptr<CoalescingEventLane>(media_lane_);
-      status = media_callback_.NonBlockingCall(
+      lane_payload = new std::shared_ptr<CoalescingEventLane>(event_lane);
+      status = callback->NonBlockingCall(
         lane_payload, callMediaEventCallback
       );
     } catch (...) {
@@ -897,7 +1254,7 @@ bool NodeEventSink::emit(RuntimeEvent event) {
     }
     if (status == napi_ok) return true;
     delete lane_payload;
-    media_lane_->cancelScheduledCallbackAndDiscard();
+    event_lane->cancelScheduledCallbackAndDiscard();
     return true;
   }
   RuntimeEventResourceGuard resource(event);
@@ -924,6 +1281,12 @@ bool NodeEventSink::emit(RuntimeEvent event) {
   }
   resource.transfer();
   napi_status status = napi_ok;
+  std::lock_guard lifecycle_lock(lifecycle_mutex_);
+  if (closed_.load(std::memory_order_acquire)) {
+    discardEvent(*payload);
+    delete payload;
+    return true;
+  }
   try {
     switch (lane) {
       case EventLane::control:
@@ -934,6 +1297,9 @@ bool NodeEventSink::emit(RuntimeEvent event) {
         break;
       case EventLane::telemetry:
         status = metrics_callback_.NonBlockingCall(payload, callEventCallback);
+        break;
+      case EventLane::realtime:
+        status = napi_generic_failure;
         break;
     }
   } catch (...) {
@@ -958,6 +1324,7 @@ void NodeEventSink::close() {
   std::lock_guard lifecycle_lock(lifecycle_mutex_);
   control_lane_->closeAndDiscard();
   media_lane_->closeAndDiscard();
+  realtime_lane_->closeAndDiscard();
   if (!media_lane_->waitForInFlightCallbacks(std::chrono::seconds(5))) {
     try {
       diagnostics::DiagnosticLog::instance().write(
@@ -966,6 +1333,16 @@ void NodeEventSink::close() {
     } catch (...) {
     }
   }
+  if (!realtime_lane_->waitForInFlightCallbacks(std::chrono::seconds(5))) {
+    try {
+      diagnostics::DiagnosticLog::instance().write(
+        "native_event_realtime_callback_shutdown_timeout"
+      );
+    } catch (...) {
+    }
+  }
+  try { realtime_callback_.Release(); } catch (...) {}
+  try { fatal_callback_.Release(); } catch (...) {}
   try { metrics_callback_.Release(); } catch (...) {}
   try { media_callback_.Release(); } catch (...) {}
   try { control_callback_.Release(); } catch (...) {}

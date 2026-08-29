@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 import {
   NATIVE_RUNTIME_CONTRACT_VERSION,
+  nativeRuntimeCommandLane,
   type NativeRuntimeReady,
   type NativeRuntimeRequest,
 } from './contract'
@@ -946,6 +948,431 @@ describe('NativeRuntimeSupervisor', () => {
     })
   })
 
+  it('carries the explicit voice-control lane and exact host epoch to the utility host', async () => {
+    const adapter = new FakeAdapter()
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+    })
+    const start = supervisor.start()
+    adapter.ready(MEDIA_READY)
+    await start
+
+    const commands = [
+      {
+        type: 'releaseRemoteVideoFrame' as const,
+        sessionId: 'voice',
+        generation: 3,
+        trackId: 'remote-camera',
+        sequence: 7,
+      },
+      {
+        type: 'releaseLocalScreenPreviewFrame' as const,
+        sessionId: 'screen',
+        generation: 4,
+        trackId: 'local-screen',
+        sequence: 8,
+      },
+      {
+        type: 'releaseLocalCameraPreviewFrame' as const,
+        sessionId: 'camera',
+        generation: 5,
+        trackId: 'local-camera',
+        sequence: 9,
+      },
+      {
+        type: 'setRemoteVideoDemand' as const,
+        sessionId: 'voice',
+        generation: 3,
+        trackId: 'remote-camera',
+        demanded: true,
+      },
+      {
+        type: 'retryRemoteVideo' as const,
+        sessionId: 'voice',
+        generation: 3,
+        trackId: 'remote-camera',
+        reason: 'subscription',
+      },
+      {
+        type: 'configureVoiceOutput' as const,
+        sessionId: 'voice',
+        generation: 3,
+        deafened: false,
+      },
+      {
+        type: 'setLocalCameraPreviewDemand' as const,
+        sessionId: 'camera',
+        generation: 5,
+        demanded: true,
+      },
+      {
+        type: 'retryLocalCameraPreview' as const,
+        sessionId: 'camera',
+        generation: 5,
+        reason: 'renderer_presentation_stall',
+      },
+      { type: 'probeVoiceControl' as const },
+    ]
+
+    expect(commands.map(nativeRuntimeCommandLane)).toEqual(
+      commands.map(() => 'voice-control'),
+    )
+    for (const command of commands) {
+      const pending = supervisor.request(command, 1_000)
+      await vi.waitFor(() => expect(adapter.requests).toHaveLength(
+        commands.indexOf(command) + 1,
+      ))
+      const request = adapter.requests.at(-1)
+      expect(request).toMatchObject({
+        lane: 'voice-control',
+        hostEpoch: 1,
+      })
+      adapter.reply(adapter.requests.length - 1, undefined)
+      await pending
+    }
+  })
+
+  it('bounds camera preview retry and probes the independent voice-control lane', async () => {
+    vi.useFakeTimers()
+    try {
+      const adapter = new FakeAdapter()
+      const supervisor = new NativeRuntimeSupervisor({
+        runtime: 'media',
+        createAdapter: () => adapter,
+        probeTimeoutMs: 2_500,
+      })
+      const start = supervisor.start()
+      adapter.ready(MEDIA_READY)
+      await start
+
+      const retry = supervisor.request({
+        type: 'retryLocalCameraPreview',
+        sessionId: 'camera',
+        generation: 5,
+        reason: 'renderer_presentation_stall',
+      }, 2_000)
+      const expectation = expect(retry).rejects.toMatchObject({
+        detail: { code: 'request_timeout' },
+      })
+      await vi.advanceTimersByTimeAsync(2_000)
+      await vi.runAllTicks()
+      expect(adapter.requests.map(({ command }) => command.type)).toEqual([
+        'retryLocalCameraPreview',
+        'probeVoiceControl',
+      ])
+      adapter.reply(1, {
+        state: 'available',
+        hostEpoch: 1,
+        queueDepth: 0,
+        queueCapacity: 64,
+      })
+
+      await expectation
+      expect(adapter.killed).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('probes then retries a delayed renderer release within one bounded deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      const adapter = new FakeAdapter()
+      const supervisor = new NativeRuntimeSupervisor({
+        runtime: 'media',
+        createAdapter: () => adapter,
+        probeTimeoutMs: 2_500,
+      })
+      const start = supervisor.start()
+      adapter.ready(MEDIA_READY)
+      await start
+
+      const released = Effect.runPromise(
+        supervisor.releaseRendererLeaseEffect({
+          type: 'releaseRemoteVideoFrame',
+          sessionId: 'voice',
+          generation: 3,
+          trackId: 'camera',
+          sequence: 11,
+        }),
+      )
+      await vi.runAllTicks()
+      expect(adapter.requests.map(({ command }) => command.type)).toEqual([
+        'releaseRemoteVideoFrame',
+      ])
+
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(adapter.requests.map(({ command }) => command.type)).toEqual([
+        'releaseRemoteVideoFrame',
+        'probeVoiceControl',
+      ])
+      adapter.reply(1, {
+        state: 'busy',
+        hostEpoch: 1,
+        queueDepth: 1,
+        queueCapacity: 64,
+      })
+      await vi.runAllTicks()
+      expect(adapter.requests.map(({ command }) => command.type)).toEqual([
+        'releaseRemoteVideoFrame',
+        'probeVoiceControl',
+        'releaseRemoteVideoFrame',
+      ])
+
+      adapter.reply(2, { released: true })
+      await expect(released).resolves.toEqual({ released: true })
+      expect(adapter.killed).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('recycles the exact host epoch when the bounded renderer release retry never replies', async () => {
+    vi.useFakeTimers()
+    try {
+      const adapter = new FakeAdapter()
+      const supervisor = new NativeRuntimeSupervisor({
+        runtime: 'media',
+        createAdapter: () => adapter,
+        probeTimeoutMs: 2_500,
+        schedule: () => setTimeout(() => undefined, 86_400_000),
+      })
+      const start = supervisor.start()
+      adapter.ready(MEDIA_READY)
+      await start
+
+      const released = Effect.runPromise(
+        supervisor.releaseRendererLeaseEffect({
+          type: 'releaseLocalCameraPreviewFrame',
+          sessionId: 'camera',
+          generation: 4,
+          trackId: 'preview',
+          sequence: 12,
+        }),
+      )
+      const expectation = expect(released).rejects.toMatchObject({
+        detail: { code: 'request_timeout' },
+      })
+      await vi.advanceTimersByTimeAsync(2_000)
+      await vi.waitFor(() => expect(adapter.requests).toHaveLength(2))
+      adapter.replyByType('probeVoiceControl', {
+        state: 'busy',
+        hostEpoch: 1,
+        queueDepth: 1,
+        queueCapacity: 64,
+      })
+      await vi.waitFor(() => expect(adapter.requests).toHaveLength(3))
+      await vi.advanceTimersByTimeAsync(2_000)
+
+      await expectation
+      expect(adapter.killed).toBe(true)
+      expect(supervisor.getSnapshot()).toMatchObject({
+        status: 'recovering',
+        restartCount: 1,
+        failure: { cause: 'liveness_probe_failed' },
+      })
+      expect(adapter.requests.map(({ command }) => command.type)).toEqual([
+        'releaseLocalCameraPreviewFrame',
+        'probeVoiceControl',
+        'releaseLocalCameraPreviewFrame',
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('recycles only the exact renderer-fence owner epoch and only once', async () => {
+    const adapter = new FakeAdapter()
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+      schedule: () => setTimeout(() => undefined, 86_400_000),
+    })
+    const start = supervisor.start()
+    adapter.ready(MEDIA_READY)
+    await start
+    const hostEpoch = supervisor.getSnapshot().hostEpoch
+    expect(hostEpoch).toBe(1)
+
+    expect(supervisor.recycleRendererFenceOwner(0)).toBe(false)
+    expect(adapter.killed).toBe(false)
+    expect(supervisor.recycleRendererFenceOwner(hostEpoch!)).toBe(true)
+    expect(adapter.killed).toBe(true)
+    expect(supervisor.recycleRendererFenceOwner(hostEpoch!)).toBe(false)
+    expect(supervisor.getSnapshot()).toMatchObject({
+      status: 'recovering',
+      failure: { cause: 'liveness_probe_failed' },
+    })
+  })
+
+  it('recycles when the independent voice-control probe also times out', async () => {
+    vi.useFakeTimers()
+    try {
+      const adapter = new FakeAdapter()
+      const supervisor = new NativeRuntimeSupervisor({
+        runtime: 'media',
+        createAdapter: () => adapter,
+        probeTimeoutMs: 2_500,
+        schedule: () => setTimeout(() => undefined, 86_400_000),
+      })
+      const start = supervisor.start()
+      adapter.ready(MEDIA_READY)
+      await start
+
+      const released = Effect.runPromise(
+        supervisor.releaseRendererLeaseEffect({
+          type: 'releaseLocalScreenPreviewFrame',
+          sessionId: 'screen',
+          generation: 4,
+          trackId: 'preview',
+          sequence: 13,
+        }),
+      )
+      const expectation = expect(released).rejects.toMatchObject({
+        detail: { code: 'request_timeout' },
+      })
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(adapter.requests.map(({ command }) => command.type)).toEqual([
+        'releaseLocalScreenPreviewFrame',
+        'probeVoiceControl',
+      ])
+      await vi.advanceTimersByTimeAsync(2_501)
+      await vi.runAllTicks()
+
+      expect(supervisor.getPendingRequestCount()).toBe(0)
+      expect(adapter.killed).toBe(true)
+      await expectation
+      expect(supervisor.getSnapshot()).toMatchObject({
+        status: 'recovering',
+        restartCount: 1,
+        failure: { cause: 'liveness_probe_failed' },
+      })
+      expect(adapter.requests).toHaveLength(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not let a late old-runtime release reply settle replacement work', async () => {
+    const adapters: FakeAdapter[] = []
+    const restarts: Array<() => void> = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => {
+        const adapter = new FakeAdapter()
+        adapters.push(adapter)
+        return adapter
+      },
+      schedule: (callback) => {
+        restarts.push(callback)
+        return restarts.length as unknown as ReturnType<typeof setTimeout>
+      },
+    })
+    const firstStart = supervisor.start()
+    adapters[0]!.ready(MEDIA_READY)
+    await firstStart
+
+    const oldRelease = Effect.runPromise(
+      supervisor.releaseRendererLeaseEffect({
+        type: 'releaseRemoteVideoFrame',
+        sessionId: 'voice-old',
+        generation: 1,
+        trackId: 'camera-old',
+        sequence: 21,
+      }),
+    )
+    await vi.waitFor(() => expect(adapters[0]!.requests).toHaveLength(1))
+    adapters[0]!.exit()
+    await expect(oldRelease).resolves.toBeUndefined()
+    expect(restarts).toHaveLength(1)
+
+    restarts[0]!()
+    await vi.waitFor(() => expect(adapters).toHaveLength(2))
+    adapters[1]!.ready(MEDIA_READY)
+    await vi.waitFor(() => expect(supervisor.getSnapshot().status).toBe('ready'))
+
+    let replacementSettled = false
+    const replacementRelease = Effect.runPromise(
+      supervisor.releaseRendererLeaseEffect({
+        type: 'releaseRemoteVideoFrame',
+        sessionId: 'voice-new',
+        generation: 2,
+        trackId: 'camera-new',
+        sequence: 22,
+      }),
+    )
+    void replacementRelease.then(
+      () => { replacementSettled = true },
+      () => { replacementSettled = true },
+    )
+    await vi.waitFor(() => expect(adapters[1]!.requests).toHaveLength(1))
+
+    adapters[0]!.reply(0, { released: 'old' })
+    await Promise.resolve()
+    expect(replacementSettled).toBe(false)
+
+    adapters[1]!.reply(0, { released: 'new' })
+    await expect(replacementRelease).resolves.toEqual({ released: 'new' })
+  })
+
+  it('does not route a retired renderer release through a replacement host', async () => {
+    const adapters: FakeAdapter[] = []
+    const restarts: Array<() => void> = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => {
+        const adapter = new FakeAdapter()
+        adapters.push(adapter)
+        return adapter
+      },
+      schedule: (callback) => {
+        restarts.push(callback)
+        return restarts.length as unknown as ReturnType<typeof setTimeout>
+      },
+    })
+    const firstStart = supervisor.start()
+    adapters[0]!.ready(MEDIA_READY)
+    await firstStart
+
+    adapters[0]!.exit()
+    await vi.waitFor(() => expect(restarts).toHaveLength(1))
+    const retiredRelease = Effect.runPromise(
+      supervisor.releaseRendererLeaseEffect({
+        type: 'releaseRemoteVideoFrame',
+        sessionId: 'voice-old',
+        generation: 1,
+        trackId: 'camera-old',
+        sequence: 23,
+      }),
+    )
+
+    restarts[0]!()
+    await vi.waitFor(() => expect(adapters).toHaveLength(2))
+    adapters[1]!.ready(MEDIA_READY)
+    await expect(retiredRelease).resolves.toBeUndefined()
+    expect(adapters[1]!.requests).toEqual([])
+  })
+
+  it('rejects the v9 media runtime before it can receive a monolithic display request', async () => {
+    const adapter = new FakeAdapter()
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+    })
+    const start = supervisor.start()
+
+    adapter.callbacks?.onMessage({ ...MEDIA_READY, contractVersion: 9 })
+
+    await expect(start).rejects.toBeInstanceOf(NativeRuntimeRequestError)
+    expect(adapter.requests).toEqual([])
+    expect(adapter.killed).toBe(true)
+    expect(supervisor.getSnapshot()).toMatchObject({
+      status: 'degraded',
+      failure: { cause: 'handshake_incompatible', retryable: false },
+    })
+  })
+
   it('rejects an addon with missing runtime identity without starting workers', async () => {
     const adapters: FakeAdapter[] = []
     const supervisor = new NativeRuntimeSupervisor({
@@ -1227,6 +1654,105 @@ describe('NativeRuntimeSupervisor', () => {
     expect(supervisor.getSnapshot().status).toBe('recovering')
     expect(supervisor.getSnapshot().failure).toMatchObject({
       cause: 'actor_unresponsive',
+    })
+  })
+
+  it('keeps realtime and lossless-control sequence fences independent', async () => {
+    const adapter = new FakeAdapter()
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+    })
+    const eventListener = vi.fn()
+    supervisor.onEvent(eventListener)
+
+    const start = supervisor.start()
+    adapter.ready(MEDIA_READY)
+    await start
+
+    adapter.callbacks?.onMessage({
+      type: 'event',
+      event: {
+        type: 'foregroundWindow',
+        sequence: 10,
+        window: {
+          pid: 42,
+          processName: 'game.exe',
+          processPath: null,
+          title: 'Game',
+          className: 'GameWindow',
+          visible: true,
+          fullscreenLike: true,
+          bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+        },
+      },
+    })
+    adapter.callbacks?.onMessage({
+      type: 'event',
+      event: {
+        type: 'runtimeError',
+        sequence: 9,
+        error: {
+          code: 'control_after_realtime',
+          message: 'control lane stayed independent',
+          retryable: false,
+          stage: 'test',
+        },
+      },
+    })
+
+    expect(eventListener.mock.calls.map(([event]) => event.type)).toEqual([
+      'foregroundWindow',
+      'runtimeError',
+    ])
+  })
+
+  it('recycles when native lossless control delivery is no longer trustworthy', async () => {
+    const adapter = new FakeAdapter()
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+      schedule: () => 1 as unknown as ReturnType<typeof setTimeout>,
+    })
+    const start = supervisor.start()
+    adapter.ready(MEDIA_READY)
+    await start
+
+    const pending = supervisor.request({ type: 'probeScreenActor' }, 1_000)
+    adapter.callbacks?.onMessage({
+      type: 'event',
+      event: {
+        type: 'runtimeError',
+        sequence: 10,
+        error: {
+          code: 'newer_normal_control',
+          message: 'normal control callback raced ahead',
+          retryable: false,
+          stage: 'test',
+        },
+      },
+    })
+    adapter.callbacks?.onMessage({
+      type: 'event',
+      event: {
+        type: 'runtimeError',
+        sequence: 9,
+        error: {
+          code: 'native_control_delivery_lost',
+          message: 'Lossless native event exceeded its staging deadline',
+          retryable: true,
+          stage: 'nativeEventDelivery',
+        },
+      },
+    })
+
+    await expect(pending).rejects.toMatchObject({
+      detail: { code: 'runtime_lost' },
+    })
+    expect(adapter.killed).toBe(true)
+    expect(supervisor.getSnapshot()).toMatchObject({
+      status: 'recovering',
+      failure: { cause: 'control_delivery_lost' },
     })
   })
 
@@ -1591,5 +2117,108 @@ describe('NativeRuntimeSupervisor', () => {
     expect(reentrantShutdown).toBe(shutdown)
     expect(stoppedNotifications).toBe(1)
     expect(supervisor.getSnapshot().status).toBe('stopped')
+  })
+
+  it('keeps microphone control bounded through a 30-minute logical soak and utility restart', async () => {
+    const adapters: FakeAdapter[] = []
+    const scheduled: Array<{ callback(): void; delayMs: number }> = []
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => {
+        const adapter = new FakeAdapter()
+        adapters.push(adapter)
+        return adapter
+      },
+      schedule: (callback, delayMs) => {
+        scheduled.push({ callback, delayMs })
+        return scheduled.length as unknown as ReturnType<typeof setTimeout>
+      },
+    })
+    const config = {
+      deviceId: null,
+      bypassSystemAudioInputProcessing: true,
+      automaticGainControl: true,
+      noiseSuppression: true,
+      echoCancellation: true,
+      inputVolume: 1,
+      voiceGateEnabled: true,
+      voiceGateThresholdDb: -28,
+      voiceGateAutoThreshold: true,
+    } as const
+    const sessionId = 'microphone-resilience-soak'
+    let generation = supervisor.allocateGeneration('microphone')
+    let muted = false
+
+    const start = supervisor.start()
+    adapters[0].ready(MEDIA_READY)
+    await start
+
+    const requestAndReply = async (
+      command: Parameters<NativeRuntimeSupervisor['request']>[0],
+    ) => {
+      const adapter = adapters.at(-1)
+      if (!adapter) throw new Error('missing utility adapter')
+      const index = adapter.requests.length
+      const result = supervisor.request(command, 1_000)
+      await vi.waitFor(() => expect(adapter.requests).toHaveLength(index + 1))
+      adapter.reply(index, undefined)
+      await result
+      expect(supervisor.getPendingRequestCount()).toBe(0)
+      expect(supervisor.getSnapshot().status).toBe('ready')
+    }
+
+    await requestAndReply({ type: 'warmMicrophone', generation, config })
+    for (let minute = 1; minute <= 30; minute += 1) {
+      muted = !muted
+      await requestAndReply({
+        type: 'setMicrophoneMuted',
+        sessionId,
+        generation,
+        muted,
+      })
+
+      if (minute % 5 === 0) {
+        await requestAndReply({
+          type: 'configureMicrophone',
+          revision: supervisor.allocateMicrophoneConfigRevision(),
+          config: {
+            ...config,
+            deviceId: minute % 10 === 0 ? 'returned-device' : null,
+          },
+        })
+      }
+
+      if (minute === 15) {
+        adapters.at(-1)?.exit()
+        const restart = scheduled.shift()
+        expect(restart?.delayMs).toBe(250)
+        restart?.callback()
+        const replacement = adapters.at(-1)
+        replacement?.ready(MEDIA_READY)
+        await vi.waitFor(() =>
+          expect(supervisor.getSnapshot().status).toBe('ready'),
+        )
+        generation = supervisor.allocateGeneration('microphone')
+        await requestAndReply({ type: 'warmMicrophone', generation, config })
+      }
+    }
+
+    expect(adapters).toHaveLength(2)
+    expect(supervisor.getSnapshot()).toMatchObject({
+      status: 'ready',
+      restartCount: 1,
+      hostEpoch: 2,
+    })
+    expect(supervisor.getPendingRequestCount()).toBe(0)
+
+    const shutdown = supervisor.shutdown()
+    const adapter = adapters.at(-1)
+    await vi.waitFor(() =>
+      expect(adapter?.requests.at(-1)?.command.type).toBe('shutdown'),
+    )
+    const shutdownIndex = (adapter?.requests.length ?? 1) - 1
+    adapter?.reply(shutdownIndex, undefined)
+    adapter?.exit(0)
+    await shutdown
   })
 })

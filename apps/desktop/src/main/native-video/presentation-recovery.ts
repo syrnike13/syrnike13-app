@@ -14,6 +14,7 @@ type PresentationRecoveryDependencies = {
     trackId: string,
   ): Promise<boolean>
   recoverLocalScreenPreview(): Promise<boolean>
+  recoverLocalCameraPreview(): Promise<boolean>
 }
 
 export type NativeVideoPresentationRecoveryOutcome =
@@ -39,13 +40,18 @@ export async function recoverNativeVideoPresentation(
     trackId: frame.trackId,
   })
 
-  if (reason === 'retained-budget-exhausted') {
+  if (reason === 'retained-budget-exhausted' ||
+    reason === 'retired-fence-deadline') {
     window.webContents.reload()
     return 'renderer-reloaded'
   }
   if (frame.local) {
-    if (frame.source !== 'screen') return 'local-preview-not-demanded'
-    return await dependencies.recoverLocalScreenPreview()
+    const recovered = frame.source === 'screen'
+      ? await dependencies.recoverLocalScreenPreview()
+      : frame.source === 'camera'
+        ? await dependencies.recoverLocalCameraPreview()
+        : false
+    return recovered
       ? 'local-preview-restarted'
       : 'local-preview-not-demanded'
   }

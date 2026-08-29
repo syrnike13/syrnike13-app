@@ -314,9 +314,14 @@ bool VideoTrackSource::capture_dmabuf_frame(int dmabuf_fd,
 }
 
 int32_t VideoTrackSource::capture_d3d11_frame(
-    uint64_t shared_texture_handle, uint64_t adapter_luid,
-    uint64_t acquire_key, uint64_t release_key, int width, int height,
-    int64_t timestamp_us) const {
+    uint64_t shared_texture_handle,
+    uint64_t adapter_luid,
+    uint64_t acquire_key,
+    uint64_t release_key,
+    int width,
+    int height,
+    int64_t timestamp_us,
+    const FrameMetadata& frame_metadata) const {
 #ifdef _WIN32
   auto buffer = webrtc::make_ref_counted<D3D11TextureFrameBuffer>(
       reinterpret_cast<HANDLE>(static_cast<uintptr_t>(shared_texture_handle)),
@@ -330,7 +335,7 @@ int32_t VideoTrackSource::capture_d3d11_frame(
   // Propagate the actual source decision. A rejected frame is reclaimed by
   // D3D11TextureFrameBuffer destruction and must not be acknowledged to the
   // producer as accepted encoder ingress.
-  return source_->on_captured_frame(frame, FrameMetadata{}) ? 1 : 0;
+  return source_->on_captured_frame(frame, frame_metadata) ? 1 : 0;
 #else
   return -1;
 #endif

@@ -155,7 +155,7 @@ class BlockingBridgeOwner final
     std::shared_ptr<BlockingStreamReader> reader,
     std::shared_ptr<PostGate> post_gate,
     std::atomic_int& token_releases,
-    syrnike::desktop_native::AsyncCleanupLauncher cleanup_launcher
+    syrnike::desktop_native::CleanupStartProbe cleanup_start_probe
   ) : token_(std::make_shared<ReleaseToken>(token_releases)),
       post_gate_(std::move(post_gate)),
       bridge_(
@@ -169,7 +169,7 @@ class BlockingBridgeOwner final
         [reader = std::move(reader)](const std::shared_ptr<livekit::Track>&) {
           return reader;
         },
-        std::move(cleanup_launcher)
+        std::move(cleanup_start_probe)
       ) {}
 
   void add(const std::shared_ptr<livekit::Track>& track) {
@@ -210,7 +210,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     std::unique_lock lock(mutex_);
     return changed_.wait_for(lock, timeout, [&] {
       for (const auto& event : events_) {
-        if (event.type == "reply" && event.request_id == request_id && event.ok) {
+        if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id && event.ok) {
           return true;
         }
       }
@@ -222,7 +222,7 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     std::lock_guard lock(mutex_);
     std::size_t count = 0;
     for (const auto& event : events_) {
-      if (event.type == "reply" && event.request_id == request_id) count += 1;
+      if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id) count += 1;
     }
     return count;
   }
@@ -317,7 +317,8 @@ class BlockingVideoRoomOwner final
   void setOutputVolume(float) override {}
   void configureRemoteAudio(RemoteAudioSettings) override {}
   void releaseRemoteVideoFrame(std::string, std::uint64_t) override {}
-  void reconcileRemotePublication(std::string) override {}
+  void reconcileRemotePublication(std::string, std::uint64_t) override {}
+  void reconcileRegisteredRemotePublications() override {}
   void setRemoteVideoDemand(std::string, bool) override {}
   void retryRemoteVideo(
     std::string,
@@ -533,13 +534,12 @@ int main() try {
     reader,
     post_gate,
     token_releases,
-    [&](syrnike::desktop_native::AsyncCleanupTask task) -> std::thread {
+    [&] {
       if (bridge_cleanup_launches.fetch_add(1) == 0) {
         throw std::runtime_error(
           "injected remote video quarantine launch failure"
         );
       }
-      return std::thread(std::move(task));
     }
   );
   auto track = std::make_shared<FakeVideoTrack>(track_releases);
@@ -641,7 +641,7 @@ int main() try {
   runtime->waitUntilReady();
 
   MediaCommand connect;
-  connect.type = "connectVoice";
+  connect.type = syrnike::desktop_native::NativeCommandType::ConnectVoice;
   connect.request_id = "remote-video-connect";
   connect.session_id = "remote-video-room";
   connect.generation = 1;
@@ -658,7 +658,7 @@ int main() try {
   );
 
   MediaCommand configure;
-  configure.type = "configureMicrophone";
+  configure.type = syrnike::desktop_native::NativeCommandType::ConfigureMicrophone;
   configure.request_id = "remote-video-blocked-microphone";
   configure.session_id = "remote-video-microphone";
   configure.generation = 1;
@@ -679,7 +679,7 @@ int main() try {
   }
 
   MediaCommand shutdown;
-  shutdown.type = "shutdown";
+  shutdown.type = syrnike::desktop_native::NativeCommandType::Shutdown;
   shutdown.request_id = "remote-video-runtime-shutdown";
   const auto runtime_shutdown_started = std::chrono::steady_clock::now();
   require(runtime->dispatch(std::move(shutdown)), "runtime rejected shutdown");

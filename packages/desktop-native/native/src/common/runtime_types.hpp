@@ -1,11 +1,19 @@
 #pragma once
 
+#include <array>
+#include <atomic>
 #include <cstdint>
 #include <functional>
+#include <limits>
+#include <memory>
+#include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 #include <unordered_map>
+
+#include "native_message_policy.hpp"
 
 namespace syrnike::desktop_native {
 
@@ -139,7 +147,7 @@ struct VoiceRtcStreamTelemetry {
 };
 
 struct RuntimeEvent {
-  std::string type;
+  NativeEventType type = NativeEventType::Count;
   std::uint64_t sequence = 0;
   std::string request_id;
   std::string session_id;
@@ -166,6 +174,8 @@ struct RuntimeEvent {
   std::uint64_t packets = 0;
   std::uint64_t audio_frames = 0;
   std::uint64_t audio_packets = 0;
+  std::uint64_t audio_backlog_packets = 0;
+  std::uint64_t audio_discontinuities = 0;
   double audio_peak_db = -120.0;
   double audio_rms_db = -120.0;
   std::string device_id;
@@ -178,6 +188,21 @@ struct RuntimeEvent {
   std::string reason;
   std::string error_code;
   std::optional<std::int64_t> hresult;
+  std::uint64_t voice_control_host_epoch = 0;
+  std::uint64_t voice_control_queue_depth = 0;
+  std::uint64_t voice_control_queue_capacity = 0;
+  std::uint64_t voice_control_oldest_queue_wait_ms = 0;
+  std::uint64_t voice_control_last_queue_wait_ms = 0;
+  std::string voice_control_current_operation;
+  std::uint64_t voice_control_current_operation_age_ms = 0;
+  std::uint64_t voice_control_duplicate_commands = 0;
+  std::uint64_t voice_control_rejected_commands = 0;
+  std::string voice_control_worker_state;
+  std::string voice_control_retirement_state;
+  std::uint64_t voice_control_outstanding_renderer_leases = 0;
+  std::uint64_t voice_control_outstanding_renderer_generations = 0;
+  std::string voice_control_worker_owner;
+  std::string voice_control_retirement_owner;
   std::string audio_mode;
   std::string loopback_mode;
   std::uint32_t audio_target_process_id = 0;
@@ -225,12 +250,123 @@ struct RuntimeEvent {
   std::string video_source;
   std::uint64_t frame_sequence = 0;
   std::uint64_t timestamp_us = 0;
+  std::uint64_t source_timestamp_us = 0;
+  std::uint32_t source_frame_id = 0;
   std::uint64_t nt_handle = 0;
   // Media events may own resources in the utility process until Electron
   // accepts the event. A lossy event sink invokes this synchronously when it
   // drops the event before JS can release the resource.
   std::function<void()> on_drop;
 };
+
+enum class NativeTerminalProducer : std::uint8_t {
+  VoiceRoom,
+  MicrophoneCapture,
+  MicrophonePublication,
+  ScreenCapture,
+  ScreenAudio,
+  CameraCapture,
+  Count,
+};
+
+class NativeTerminalIncarnationFence final {
+ public:
+  bool registerCurrent(
+    NativeTerminalProducer producer,
+    std::uint64_t incarnation
+  ) noexcept {
+    if (producer == NativeTerminalProducer::Count || incarnation == 0) {
+      return false;
+    }
+    auto& current = current_[static_cast<std::size_t>(producer)];
+    auto observed = current.load(std::memory_order_acquire);
+    while (observed < incarnation) {
+      if (current.compare_exchange_weak(
+            observed,
+            incarnation,
+            std::memory_order_release,
+            std::memory_order_acquire
+          )) {
+        return true;
+      }
+    }
+    return observed == incarnation;
+  }
+
+  bool isCurrent(
+    NativeTerminalProducer producer,
+    std::uint64_t incarnation
+  ) const noexcept {
+    if (producer == NativeTerminalProducer::Count || incarnation == 0) {
+      return false;
+    }
+    return current_[static_cast<std::size_t>(producer)].load(
+      std::memory_order_acquire
+    ) == incarnation;
+  }
+
+ private:
+  std::array<
+    std::atomic<std::uint64_t>,
+    static_cast<std::size_t>(NativeTerminalProducer::Count)>
+    current_{};
+};
+
+class NativeTerminalIncarnationCandidate final {
+ public:
+  NativeTerminalIncarnationCandidate(
+    NativeTerminalIncarnationFence& fence,
+    NativeTerminalProducer producer,
+    std::uint64_t incarnation
+  ) noexcept
+    : fence_(&fence), producer_(producer), incarnation_(incarnation) {}
+
+  [[nodiscard]] std::uint64_t incarnation() const noexcept {
+    return incarnation_;
+  }
+
+  bool publish() noexcept {
+    return fence_ && fence_->registerCurrent(producer_, incarnation_);
+  }
+
+ private:
+  NativeTerminalIncarnationFence* fence_;
+  NativeTerminalProducer producer_;
+  std::uint64_t incarnation_;
+};
+
+inline NativeTerminalIncarnationFence& terminalIncarnationFence() noexcept {
+  static NativeTerminalIncarnationFence fence;
+  return fence;
+}
+
+// Returns zero after exhaustion instead of wrapping into an incarnation that
+// every existing watermark would classify as stale.
+inline std::uint64_t claimNextTerminalIncarnation(
+  std::atomic<std::uint64_t>& counter
+) noexcept {
+  auto current = counter.load(std::memory_order_relaxed);
+  while (current != (std::numeric_limits<std::uint64_t>::max)()) {
+    if (counter.compare_exchange_weak(
+          current,
+          current + 1,
+          std::memory_order_relaxed,
+          std::memory_order_relaxed
+        )) {
+      return current + 1;
+    }
+  }
+  return 0;
+}
+
+// Terminal-producing workers receive a process-wide incarnation when they are
+// created. Unlike a session generation, this never resets during a runtime and
+// lets the accepted-control adapter reject arbitrarily late retired callbacks
+// with bounded state.
+inline std::uint64_t nextTerminalIncarnation() noexcept {
+  static std::atomic<std::uint64_t> counter{0};
+  return claimNextTerminalIncarnation(counter);
+}
 
 struct MediaCommand {
   MediaCommand() = default;
@@ -242,8 +378,9 @@ struct MediaCommand {
   MediaCommand(MediaCommand&&) noexcept = default;
   MediaCommand& operator=(MediaCommand&&) noexcept = default;
 
-  std::string type;
+  NativeCommandType type = NativeCommandType::Count;
   std::string request_id;
+  std::string transport_lane;
   std::string diagnostic_action_id;
   std::string diagnostic_operation_id;
   std::uint64_t diagnostic_revision = 0;
@@ -254,6 +391,9 @@ struct MediaCommand {
   std::string device_id;
   std::string device_kind;
   std::string source_id;
+  std::string display_source_action;
+  std::string display_enumeration_id;
+  std::uint64_t display_page = 0;
   std::string livekit_url;
   std::string livekit_token;
   std::string participant_identity;
@@ -303,12 +443,16 @@ struct MediaCommand {
   std::unordered_map<std::string, float> stream_volumes;
   std::unordered_map<std::string, bool> stream_mutes;
   std::uint64_t internal_epoch = 0;
+  NativeTerminalProducer terminal_producer = NativeTerminalProducer::Count;
+  std::uint64_t terminal_incarnation = 0;
   std::uint64_t internal_enqueued_steady_ms = 0;
   std::uint32_t internal_queue_depth = 0;
   std::string track_id;
   std::string video_source;
   std::uint64_t frame_sequence = 0;
   std::uint64_t timestamp_us = 0;
+  std::uint64_t source_timestamp_us = 0;
+  std::uint32_t source_frame_id = 0;
   std::uint64_t nt_handle = 0;
   std::uint32_t electron_main_pid = 0;
   std::int64_t diagnostic_hresult = 0;
@@ -320,9 +464,128 @@ struct MediaCommand {
   std::function<void()> on_drop;
 };
 
+// Terminal-producing workers may start before their actor-owned candidate is
+// committed. This bounded one-shot gate buffers an early terminal until the
+// authoritative owner swap publishes its incarnation, or drops it on rollback.
+class NativeTerminalCommitGate final {
+ public:
+  NativeTerminalCommitGate(
+    NativeTerminalIncarnationFence& fence,
+    NativeTerminalProducer producer,
+    std::uint64_t incarnation
+  ) noexcept
+    : fence_(&fence), producer_(producer), incarnation_(incarnation) {}
+
+  [[nodiscard]] std::optional<MediaCommand> submit(MediaCommand command) {
+    std::lock_guard lock(mutex_);
+    if (seen_ || cancelled_) return std::nullopt;
+    seen_ = true;
+    if (committed_) return std::move(command);
+    pending_.emplace(std::move(command));
+    return std::nullopt;
+  }
+
+  [[nodiscard]] std::optional<MediaCommand> publish() noexcept {
+    std::lock_guard lock(mutex_);
+    if (cancelled_ || committed_) return std::nullopt;
+    fence_->registerCurrent(producer_, incarnation_);
+    committed_ = true;
+    return std::move(pending_);
+  }
+
+  void cancel() noexcept {
+    std::lock_guard lock(mutex_);
+    cancelled_ = true;
+    pending_.reset();
+  }
+
+ private:
+  NativeTerminalIncarnationFence* fence_;
+  NativeTerminalProducer producer_;
+  std::uint64_t incarnation_;
+  std::mutex mutex_;
+  bool committed_ = false;
+  bool cancelled_ = false;
+  bool seen_ = false;
+  std::optional<MediaCommand> pending_;
+};
+
 struct HooksCommand {
-  std::string type;
+  NativeCommandType type = NativeCommandType::Count;
   std::string request_id;
 };
+
+namespace detail {
+
+struct ExactOnceNativeReleaseState final {
+  std::atomic_bool released{false};
+  std::function<void()> release;
+};
+
+}  // namespace detail
+
+inline std::function<void()> exactOnceNativeRelease(
+  std::function<void()> release
+) {
+  if (!release) {
+    throw std::invalid_argument("native resource release callback is required");
+  }
+  auto state = std::make_shared<detail::ExactOnceNativeReleaseState>();
+  state->release = std::move(release);
+  return [state = std::move(state)]() noexcept {
+    bool expected = false;
+    if (!state->released.compare_exchange_strong(
+          expected, true, std::memory_order_acq_rel)) {
+      return;
+    }
+    auto release = std::move(state->release);
+    try {
+      release();
+    } catch (...) {
+      // Ownership is already retired. A cleanup exception must not enable a
+      // second release attempt through another copied queue callback.
+    }
+  };
+}
+
+inline MediaCommand makeNativeResourceCommand(
+  NativeCommandType type,
+  std::function<void()> release
+) {
+  if (!isValidNativeCommandType(type)) {
+    throw std::invalid_argument("native resource command type is invalid");
+  }
+  const auto& policy = nativeCommandPolicy(type);
+  if (policy.resource_drop != NativeResourceDropPolicy::RequiredExactOnce ||
+      policy.owner != NativeMessageOwner::RendererLease) {
+    throw std::invalid_argument(
+      "native command does not own an exact-once renderer resource"
+    );
+  }
+  MediaCommand command;
+  command.type = type;
+  command.on_drop = exactOnceNativeRelease(std::move(release));
+  return command;
+}
+
+inline RuntimeEvent makeNativeResourceEvent(
+  NativeEventType type,
+  std::function<void()> release
+) {
+  if (!isValidNativeEventType(type)) {
+    throw std::invalid_argument("native resource event type is invalid");
+  }
+  const auto& policy = nativeEventPolicy(type);
+  if (policy.resource_drop != NativeResourceDropPolicy::RequiredExactOnce ||
+      policy.owner != NativeMessageOwner::RendererLease) {
+    throw std::invalid_argument(
+      "native event does not own an exact-once renderer resource"
+    );
+  }
+  RuntimeEvent event;
+  event.type = type;
+  event.on_drop = exactOnceNativeRelease(std::move(release));
+  return event;
+}
 
 }  // namespace syrnike::desktop_native

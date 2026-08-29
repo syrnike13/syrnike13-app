@@ -18,6 +18,7 @@
 #include "livekit_connect_policy.hpp"
 #include "media_operation.hpp"
 #include "media_runtime_support.hpp"
+#include "video_resource_admission.hpp"
 
 namespace syrnike::desktop_native::media {
 namespace {
@@ -51,6 +52,8 @@ std::string screenFailureCode(std::string_view message) {
     "gpu_encoder_unavailable",
     "gpu_interop_unavailable",
     "gpu_device_lost",
+    "gpu_resource_saturated",
+    "gpu_encoder_session_saturated",
     "gpu_permission_denied",
     "target_closed",
   };
@@ -66,6 +69,24 @@ std::string screenFailureCode(std::string_view message) {
 
 bool screenFailureRetryable(std::string_view code) noexcept {
   return code != "target_closed" && code != "gpu_permission_denied";
+}
+
+std::string screenAudioFailureCode(std::string_view message) {
+  constexpr std::string_view typed_codes[] = {
+    "audio_device_lost",
+    "audio_capture_failed",
+    "audio_source_timeout",
+    "native_operation_timeout",
+    "stale_generation",
+  };
+  for (const auto code : typed_codes) {
+    if (message == code ||
+        (message.starts_with(code) && message.size() > code.size() &&
+         message[code.size()] == ':')) {
+      return std::string(code);
+    }
+  }
+  return "audio_capture_failed";
 }
 
 class ScreenPostGate final {
@@ -183,164 +204,11 @@ class ScreenRetireCleanupTask final {
     owner_.reset();
   }
 
-  void retainBefore(std::shared_ptr<ScreenRetireCleanupTask> next) noexcept {
-    retained_next_ = std::move(next);
-  }
-
-  std::shared_ptr<ScreenRetireCleanupTask> takeRetainedNext() noexcept {
-    return std::move(retained_next_);
-  }
-
  private:
   std::atomic_bool started_{false};
   std::shared_ptr<void> owner_;
   std::shared_ptr<void> state_;
   CleanupThunk cleanup_ = nullptr;
-  std::shared_ptr<ScreenRetireCleanupTask> retained_next_;
-};
-
-class ScreenRetireFallbackDispatcher final {
- public:
-  using Task = std::shared_ptr<ScreenRetireCleanupTask>;
-
-  explicit ScreenRetireFallbackDispatcher(
-      ScreenPublicationController::LaunchRetireWorker launcher,
-      ScreenPublicationController::BeforeRetireEnqueue before_enqueue)
-      : state_(std::make_shared<State>()) {
-    if (!launcher) {
-      launcher = [](std::function<void()> work) {
-        return std::thread(std::move(work));
-      };
-    }
-    state_->launcher = std::move(launcher);
-    state_->before_enqueue = std::move(before_enqueue);
-    management_thread_ = std::thread([state = state_] {
-      runManagement(std::move(state));
-    });
-  }
-
-  ~ScreenRetireFallbackDispatcher() {
-    close(std::chrono::steady_clock::now() + kNativeShutdownBudget);
-  }
-
-  void submit(Task task) {
-    {
-      std::lock_guard lock(state_->mutex);
-      bool force_retained = false;
-      try {
-        if (state_->before_enqueue) state_->before_enqueue();
-      } catch (...) {
-        force_retained = true;
-      }
-      if (!force_retained && state_->ready.size() < kReadyCapacity) {
-        try {
-          state_->ready.push_back(task);
-        } catch (...) {
-          task->retainBefore(std::move(state_->retained_overflow));
-          state_->retained_overflow = std::move(task);
-        }
-      } else {
-        task->retainBefore(std::move(state_->retained_overflow));
-        state_->retained_overflow = std::move(task);
-      }
-    }
-    state_->changed.notify_all();
-  }
-
-  void close(std::chrono::steady_clock::time_point deadline) noexcept {
-    if (!management_thread_.joinable()) return;
-    {
-      std::lock_guard lock(state_->mutex);
-      state_->closing = true;
-    }
-    state_->changed.notify_all();
-    bool finished = false;
-    {
-      std::unique_lock lock(state_->mutex);
-      state_->finished_changed.wait_until(
-          lock, deadline, [&] { return state_->finished; });
-      finished = state_->finished;
-    }
-    if (finished) {
-      management_thread_.join();
-    } else {
-      management_thread_.detach();
-      logScreen(
-        "screen_retire_dispatcher_detached",
-        {{"reason", "shutdown_deadline"}}
-      );
-    }
-  }
-
- private:
-  static constexpr std::size_t kReadyCapacity = 8;
-
-  struct State {
-    std::mutex mutex;
-    std::condition_variable changed;
-    std::condition_variable finished_changed;
-    std::deque<Task> ready;
-    Task retained_overflow;
-    ScreenPublicationController::LaunchRetireWorker launcher;
-    ScreenPublicationController::BeforeRetireEnqueue before_enqueue;
-    bool closing = false;
-    bool finished = false;
-  };
-
-  static void runManagement(std::shared_ptr<State> state) noexcept {
-    for (;;) {
-      Task task;
-      {
-        std::unique_lock lock(state->mutex);
-        state->changed.wait(lock, [&] {
-          return state->closing || !state->ready.empty() ||
-              state->retained_overflow != nullptr;
-        });
-        if (state->ready.empty() && state->retained_overflow) {
-          task = std::move(state->retained_overflow);
-          state->retained_overflow = task->takeRetainedNext();
-        } else if (!state->ready.empty()) {
-          task = state->ready.front();
-        }
-        if (!task) {
-          state->finished = true;
-          state->finished_changed.notify_all();
-          return;
-        }
-      }
-
-      try {
-        auto worker = state->launcher([task] { task->run(); });
-        worker.detach();
-        std::lock_guard lock(state->mutex);
-        if (!state->ready.empty() &&
-            state->ready.front() == task) {
-          state->ready.pop_front();
-        }
-      } catch (...) {
-        {
-          std::lock_guard lock(state->mutex);
-          if (state->ready.empty() ||
-              state->ready.front() != task) {
-            task->retainBefore(std::move(state->retained_overflow));
-            state->retained_overflow = task;
-          }
-        }
-        try {
-          logScreen(
-            "screen_retire_dispatcher_worker_failed",
-            {{"reason", "worker_launch_failed"}}
-          );
-        } catch (...) {
-        }
-        std::unique_lock lock(state->mutex);
-        state->changed.wait_for(lock, std::chrono::milliseconds(25));
-      }
-    }
-  }
-
-  std::shared_ptr<State> state_;
-  std::thread management_thread_;
 };
 
 }  // namespace
@@ -358,13 +226,17 @@ class ScreenPublicationController::Implementation
     Now now,
     DescribePublication describe_publication,
     PrepareCapture prepare_capture,
-    StartCaptureWorkers start_capture_workers,
+    StartVideoCaptureWorker start_video_capture_worker,
+    StartAudioCaptureWorker start_audio_capture_worker,
     CapturePromoted capture_promoted,
+    AfterVideoPublished after_video_published,
+    ScreenVideoPublicationObserver video_publication_observer,
     QueryEncoderCapability query_encoder_capability,
     CreateVideoSource create_video_source,
-    LaunchRetireWorker launch_retire_worker,
-    BeforeRetireEnqueue before_retire_enqueue,
-    BeforeResourceCleanup before_resource_cleanup
+    CleanupStartProbe cleanup_start_probe,
+    CleanupEnqueueProbe cleanup_enqueue_probe,
+    BeforeResourceCleanup before_resource_cleanup,
+    VideoResourceAdmissionBudget* resource_budget
   ) : emitter_(emitter),
       post_(std::make_shared<ScreenPostGate>(std::move(post))),
       is_current_(std::make_shared<ScreenCurrentGate>(
@@ -374,24 +246,25 @@ class ScreenPublicationController::Implementation
       now_(std::move(now)),
       describe_publication_(std::move(describe_publication)),
       prepare_capture_(std::move(prepare_capture)),
-      start_capture_workers_(std::move(start_capture_workers)),
+      start_video_capture_worker_(std::move(start_video_capture_worker)),
+      start_audio_capture_worker_(std::move(start_audio_capture_worker)),
       capture_promoted_(std::move(capture_promoted)),
+      after_video_published_(std::move(after_video_published)),
+      video_publication_observer_(std::move(video_publication_observer)),
       query_encoder_capability_(std::move(query_encoder_capability)),
       create_video_source_(std::move(create_video_source)),
       before_resource_cleanup_(std::move(before_resource_cleanup)),
-      launch_retire_worker_(
-          launch_retire_worker
-            ? std::move(launch_retire_worker)
-            : LaunchRetireWorker([](std::function<void()> work) {
-                return std::thread(std::move(work));
-              })),
+      cleanup_supervisor_(&CleanupSupervisor::instance()),
+      cleanup_start_probe_(std::move(cleanup_start_probe)),
+      cleanup_enqueue_probe_(std::move(cleanup_enqueue_probe)),
+      resource_budget_(resource_budget
+          ? resource_budget
+          : &processVideoResourceAdmissionBudget()),
       shutdown_cleanup_task_(
           std::make_shared<ScreenRetireCleanupTask>()),
-      shutdown_retiring_state_(std::make_shared<RetiringState>()),
-      retire_dispatcher_(
-          std::make_shared<ScreenRetireFallbackDispatcher>(
-              launch_retire_worker_,
-              std::move(before_retire_enqueue))) {
+      shutdown_cleanup_job_(
+          std::make_shared<CleanupJob>(cleanup_start_probe_)),
+      shutdown_retiring_state_(std::make_shared<RetiringState>()) {
     if (!commit_if_current_) {
       commit_if_current_ = [this](
         const std::string& session_id,
@@ -495,6 +368,8 @@ class ScreenPublicationController::Implementation
       throwCapacityOccupied("screen publication attempt is still completing");
     }
     if (active_ && matches(*active_, command)) {
+      const auto description = describe_publication_(command);
+      reconcileAudio(command, *active_, description);
       emitStarted(command, *active_, false);
       return;
     }
@@ -502,6 +377,7 @@ class ScreenPublicationController::Implementation
       throwCapacityOccupied("screen retirement backlog is occupied");
     }
     if (active_) {
+      if (audio_candidate_) retireAudioAttempt(std::move(audio_candidate_));
       retireResources(std::move(active_));
       if (deferred_retire_) {
         throwCapacityOccupied("screen retirement worker is still occupied");
@@ -543,6 +419,10 @@ class ScreenPublicationController::Implementation
         candidate_->command.session_id == command.session_id) {
       candidate_->operation.requestCancel();
     }
+    if (audio_candidate_ &&
+        audio_candidate_->command.session_id == command.session_id) {
+      retireAudioAttempt(std::move(audio_candidate_));
+    }
     if (!active_ || (!command.session_id.empty() && !matchesSession(*active_, command))) return;
     const auto stopped_session_id = active_->command.session_id;
     const auto stopped_generation = active_->command.generation;
@@ -562,7 +442,7 @@ class ScreenPublicationController::Implementation
         {"force", command.force}
       }
     );
-    if ((command.type == "disconnectScreen" || command.terminal || command.force) &&
+    if ((command.type == NativeCommandType::DisconnectScreen || command.terminal || command.force) &&
         !is_current_->current(command.session_id, command.generation)) {
       logScreen(
         "screen_disconnect_stale",
@@ -574,6 +454,12 @@ class ScreenPublicationController::Implementation
     if (candidate_ &&
         (command.session_id.empty() || candidate_->command.session_id == command.session_id)) {
       candidate_->operation.requestCancel();
+      matched = true;
+    }
+    if (audio_candidate_ &&
+        (command.session_id.empty() ||
+         audio_candidate_->command.session_id == command.session_id)) {
+      retireAudioAttempt(std::move(audio_candidate_));
       matched = true;
     }
     if (active_ && (command.session_id.empty() || matchesSession(*active_, command))) {
@@ -605,6 +491,12 @@ class ScreenPublicationController::Implementation
         candidate_->terminal_reason = command.internal_message;
       }
     }
+    if (audio_candidate_ &&
+        audio_candidate_->command.session_id == command.session_id &&
+        audio_candidate_->command.generation == command.generation) {
+      retireAudioAttempt(std::move(audio_candidate_));
+      affected = true;
+    }
     if (active_ && matches(*active_, command)) {
       retireResources(std::move(active_));
       affected = true;
@@ -617,12 +509,21 @@ class ScreenPublicationController::Implementation
   }
 
   void handleWorkerCommand(const MediaCommand& command) {
-    if (command.type == "__screenAttemptReady" ||
-        command.type == "__screenAttemptFailed") {
+    if (command.type == NativeCommandType::ScreenAudioAttemptReady ||
+        command.type == NativeCommandType::ScreenAudioAttemptFailed) {
+      finishAudioAttempt(command);
+      return;
+    }
+    if (command.type == NativeCommandType::ScreenAudioTerminal) {
+      handleAudioTerminal(command);
+      return;
+    }
+    if (command.type == NativeCommandType::ScreenAttemptReady ||
+        command.type == NativeCommandType::ScreenAttemptFailed) {
       finishAttempt(command.session_id, command.generation);
       return;
     }
-    if (command.type == "__screenRetireDone") {
+    if (command.type == NativeCommandType::ScreenRetireDone) {
       finishRetire(command.internal_message);
     }
   }
@@ -638,10 +539,52 @@ class ScreenPublicationController::Implementation
     const bool deferred_stuck = deferred_retire_ &&
       deferred_retire_->retire_requested_at != LiveKitConnectPolicy::Clock::time_point{} &&
       now - deferred_retire_->retire_requested_at >= stuck_threshold;
-    if (!candidate_stuck && !retirement_stuck && !deferred_stuck) {
+    const bool audio_candidate_stuck = audio_candidate_ &&
+      now - audio_candidate_->started_at >= stuck_threshold;
+    const auto stuck_audio_retirement = std::find_if(
+      audio_retiring_.begin(),
+      audio_retiring_.end(),
+      [now, stuck_threshold](const auto& retirement) {
+        return retirement &&
+          !retirement->finished.load(std::memory_order_acquire) &&
+          now - retirement->started_at >= stuck_threshold;
+      }
+    );
+    const bool audio_retirement_stuck =
+      stuck_audio_retirement != audio_retiring_.end();
+    if (!candidate_stuck && !retirement_stuck && !deferred_stuck &&
+        !audio_candidate_stuck && !audio_retirement_stuck) {
       auto result = successfulReply(command);
-      result.state = candidate_ || retiring_ || deferred_retire_ ? "busy" : "available";
+      result.state = candidate_ || retiring_ || deferred_retire_ ||
+          audio_candidate_ || !audio_retiring_.empty()
+        ? "busy"
+        : "available";
       return result;
+    }
+
+    std::string stuck_session_id;
+    std::uint64_t stuck_generation = 0;
+    if (candidate_stuck) {
+      stuck_session_id = candidate_->command.session_id;
+      stuck_generation = candidate_->command.generation;
+    } else if (audio_candidate_stuck) {
+      stuck_session_id = audio_candidate_->command.session_id;
+      stuck_generation = audio_candidate_->command.generation;
+    } else if (retirement_stuck) {
+      stuck_session_id = retiring_->session_id;
+      stuck_generation = retiring_->generation;
+    } else if (audio_retirement_stuck) {
+      const auto& retirement = **stuck_audio_retirement;
+      const MediaCommand* audio_command = retirement.attempt
+        ? &retirement.attempt->command
+        : (retirement.resources ? &retirement.resources->command : nullptr);
+      if (audio_command) {
+        stuck_session_id = audio_command->session_id;
+        stuck_generation = audio_command->generation;
+      }
+    } else {
+      stuck_session_id = deferred_retire_->command.session_id;
+      stuck_generation = deferred_retire_->command.generation;
     }
 
     logScreen(
@@ -650,38 +593,30 @@ class ScreenPublicationController::Implementation
         {"candidateStuck", candidate_stuck},
         {"retirementStuck", retirement_stuck},
         {"deferredStuck", deferred_stuck},
-        {"sessionId", candidate_stuck
-          ? candidate_->command.session_id
-          : (retirement_stuck
-            ? retiring_->session_id
-            : deferred_retire_->command.session_id)},
-        {"generation", candidate_stuck
-          ? candidate_->command.generation
-          : (retirement_stuck
-            ? retiring_->generation
-            : deferred_retire_->command.generation)}
+        {"audioCandidateStuck", audio_candidate_stuck},
+        {"audioRetirementStuck", audio_retirement_stuck},
+        {"audioQuarantined", static_cast<std::uint64_t>(audio_retiring_.size())},
+        {"sessionId", stuck_session_id},
+        {"generation", stuck_generation}
       }
     );
 
+    const char* message = candidate_stuck
+      ? "screen publication worker exceeded its operation deadline"
+      : (audio_candidate_stuck
+        ? "screen audio publication worker exceeded its operation deadline"
+        : (audio_retirement_stuck
+          ? "screen audio retirement worker exceeded its operation deadline"
+          : "screen retirement worker exceeded its operation deadline"));
     auto result = failedReply(
       command,
       "actor_unresponsive",
-      candidate_stuck
-        ? "screen publication worker exceeded its operation deadline"
-        : "screen retirement worker exceeded its operation deadline",
+      message,
       true
     );
     if (result.error) {
-      if (candidate_stuck) {
-        result.error->session_id = candidate_->command.session_id;
-        result.error->generation = candidate_->command.generation;
-      } else if (retirement_stuck) {
-        result.error->session_id = retiring_->session_id;
-        result.error->generation = retiring_->generation;
-      } else {
-        result.error->session_id = deferred_retire_->command.session_id;
-        result.error->generation = deferred_retire_->command.generation;
-      }
+      result.error->session_id = std::move(stuck_session_id);
+      result.error->generation = stuck_generation;
     }
     return result;
   }
@@ -698,20 +633,30 @@ class ScreenPublicationController::Implementation
     is_current_->disable();
     logScreen("screen_shutdown_start");
     if (candidate_) {
-      candidate_->operation.requestCancel();
-      while (!candidate_->finished.load(std::memory_order_acquire) &&
-             std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      auto attempt = std::move(candidate_);
+      attempt->operation.requestCancel();
+      const auto retirement = quarantineAttempt(std::move(attempt));
+      if (retirement && retirement->cleanup_job &&
+          !retirement->cleanup_job->waitUntil(cleanupCancellationAt(deadline))) {
+        cleanup_cancellation_.requestCancel();
       }
-      if (candidate_->worker.joinable()) {
-        if (candidate_->finished.load(std::memory_order_acquire)) {
-          candidate_->worker.join();
-        } else {
-          candidate_->worker.detach();
-          logScreen("screen_attempt_detached_at_shutdown");
-        }
+      if (retirement && retirement->cleanup_job &&
+          !retirement->cleanup_job->waitUntil(deadline)) {
+        const auto cleanup = cleanup_supervisor_->snapshot();
+        logScreen(
+          "screen_attempt_quarantined_at_shutdown",
+          {
+            {"sessionId", retirement->session_id},
+            {"generation", retirement->generation},
+            {"activeJobs", static_cast<std::uint64_t>(cleanup.active_jobs)},
+            {"backlogJobs", static_cast<std::uint64_t>(cleanup.backlog_jobs)},
+            {"ownedJobs", static_cast<std::uint64_t>(cleanup.owned_jobs)}
+          }
+        );
       }
-      candidate_.reset();
+    }
+    if (audio_candidate_) {
+      retireAudioAttempt(std::move(audio_candidate_));
     }
     if (active_) {
       try { retireResources(std::move(active_)); } catch (...) {}
@@ -720,25 +665,38 @@ class ScreenPublicationController::Implementation
       try { retireResources(std::move(prepared_)); } catch (...) {}
     }
     drainRetirements(deadline);
+    drainAudioRetirements(deadline);
     logScreen("screen_shutdown_done");
   }
 
  private:
   enum class AttemptKind { Prepare, Start };
+  struct ScreenAudioResources {
+    MediaCommand command;
+    ScreenPublicationDescription description;
+    std::uint64_t epoch = 0;
+    std::shared_ptr<std::atomic_bool> running;
+    std::shared_ptr<syrnike::voice::ScreenAudioStopSignal> stop;
+    std::thread worker;
+    std::shared_ptr<livekit::AudioSource> source;
+    std::shared_ptr<livekit::LocalAudioTrack> track;
+    std::string publication_sid;
+    SessionEpoch owner_epoch;
+    LiveKitConnectPolicy::Clock::time_point retire_requested_at{};
+  };
+
   struct ScreenResources {
     MediaCommand command;
     ScreenPublicationDescription description;
-    std::shared_ptr<std::atomic_bool> capture_running;
-    std::shared_ptr<syrnike::voice::ScreenAudioStopSignal> audio_stop;
-    std::thread capture_thread;
-    std::thread audio_thread;
+    std::shared_ptr<std::atomic_bool> video_running;
+    std::thread video_thread;
+    std::shared_ptr<VideoResourceLease> encoder_lease;
     std::shared_ptr<livekit::D3D11H264VideoSource> video_source;
     std::shared_ptr<livekit::LocalVideoTrack> video_track;
     std::shared_ptr<ScreenGpuCapturer> capturer;
     std::string video_publication_sid;
-    std::shared_ptr<livekit::AudioSource> audio_source;
-    std::shared_ptr<livekit::LocalAudioTrack> audio_track;
-    std::string audio_publication_sid;
+    SessionEpoch owner_epoch;
+    std::unique_ptr<ScreenAudioResources> audio;
     LiveKitConnectPolicy::Clock::time_point retire_requested_at{};
   };
 
@@ -754,8 +712,36 @@ class ScreenPublicationController::Implementation
     bool succeeded = false;
     bool stale = false;
     bool terminal_cancelled = false;
+    bool publication_lifecycle_started = false;
+    std::atomic_bool publication_lifecycle_terminal{false};
     std::string terminal_reason;
     std::string error;
+  };
+
+  struct AudioAttemptState {
+    MediaCommand command;
+    ScreenPublicationDescription description;
+    std::uint64_t epoch = 0;
+    std::unique_ptr<ScreenAudioResources> resources;
+    std::thread worker;
+    MediaOperation operation;
+    std::atomic_bool finished{false};
+    LiveKitConnectPolicy::Clock::time_point started_at =
+      LiveKitConnectPolicy::Clock::now();
+    bool succeeded = false;
+    bool stale = false;
+    bool terminal_cancelled = false;
+    std::string terminal_reason;
+    std::string error;
+  };
+
+  struct AttemptRetiringState {
+    std::string session_id;
+    std::uint64_t generation = 0;
+    std::shared_ptr<AttemptState> attempt;
+    std::shared_ptr<CleanupJob> cleanup_job;
+    std::atomic_bool cleanup_started{false};
+    std::atomic_bool finished{false};
   };
 
   struct RetiringState {
@@ -763,15 +749,26 @@ class ScreenPublicationController::Implementation
     std::string session_id;
     std::uint64_t generation = 0;
     std::unique_ptr<ScreenResources> resources;
-    std::thread worker;
+    std::shared_ptr<CleanupJob> cleanup_job;
     std::atomic_bool cleanup_started{false};
     std::atomic_bool finished{false};
     LiveKitConnectPolicy::Clock::time_point started_at = LiveKitConnectPolicy::Clock::now();
   };
 
+  struct AudioRetiringState {
+    std::string id;
+    std::shared_ptr<AudioAttemptState> attempt;
+    std::unique_ptr<ScreenAudioResources> resources;
+    std::shared_ptr<CleanupJob> cleanup_job;
+    std::atomic_bool cleanup_started{false};
+    std::atomic_bool finished{false};
+    LiveKitConnectPolicy::Clock::time_point started_at =
+      LiveKitConnectPolicy::Clock::now();
+  };
+
   RuntimeEvent successfulReply(const MediaCommand& command) const {
     RuntimeEvent result;
-    result.type = "reply";
+    result.type = NativeEventType::Reply;
     result.request_id = command.request_id;
     result.session_id = command.session_id;
     result.generation = command.generation;
@@ -786,7 +783,7 @@ class ScreenPublicationController::Implementation
     bool retryable
   ) const {
     RuntimeEvent result;
-    result.type = "reply";
+    result.type = NativeEventType::Reply;
     result.request_id = command.request_id;
     result.session_id = command.session_id;
     result.generation = command.generation;
@@ -794,7 +791,7 @@ class ScreenPublicationController::Implementation
     result.error = NativeError{
       code,
       message,
-      command.type,
+      std::string(nativeCommandName(command.type)),
       retryable,
       command.session_id,
       command.generation,
@@ -852,6 +849,43 @@ class ScreenPublicationController::Implementation
           attempt->command.session_id, attempt->command.generation);
   }
 
+  bool isCurrent(const std::shared_ptr<AudioAttemptState>& attempt) const {
+    return !shutdown_requested_.load(std::memory_order_acquire) &&
+      !attempt->operation.cancelled() &&
+      !attempt->operation.expired() &&
+      is_current_->current(
+        attempt->command.session_id,
+        attempt->command.generation
+      );
+  }
+
+  void emitAudioLifecycle(
+    const MediaCommand& command,
+    const std::string& status,
+    const std::string& reason = {},
+    const std::string& error_code = {}
+  ) {
+    RuntimeEvent event;
+    event.type = NativeEventType::SessionLifecycle;
+    event.request_id = command.request_id;
+    event.session_id = command.session_id;
+    event.generation = command.generation;
+    event.kind = "screen_audio";
+    event.status = status == "failed" ? "error" : status;
+    event.detail = reason;
+    if (!error_code.empty()) {
+      event.error = NativeError{
+        error_code,
+        reason.empty() ? error_code : reason,
+        "screenAudioCapture",
+        true,
+        command.session_id,
+        command.generation,
+      };
+    }
+    emitter_.emit(std::move(event));
+  }
+
   [[noreturn]] void throwCapacityOccupied(const char* message) const {
     const auto now = now_();
     const bool attempt_overdue = candidate_ &&
@@ -877,12 +911,18 @@ class ScreenPublicationController::Implementation
         {"replacesPreparedPublication", candidate->obsolete != nullptr}
       }
     );
+    if (candidate->kind == AttemptKind::Start) {
+      candidate->publication_lifecycle_started = true;
+      observeVideoPublication(
+          candidate->command, ScreenVideoPublicationPhase::Started);
+    }
     try {
       const auto self = shared_from_this();
       candidate->worker =
           std::thread([self, candidate] { self->runAttempt(candidate); });
     } catch (...) {
       auto failed = std::move(candidate_);
+      finishVideoPublication(failed, ScreenVideoPublicationPhase::Failed);
       if (failed->obsolete) prepared_ = std::move(failed->obsolete);
       throw ScreenActorUnresponsiveError("failed to start screen publication worker");
     }
@@ -904,7 +944,18 @@ class ScreenPublicationController::Implementation
       if (!isCurrent(attempt)) throw std::runtime_error("stale screen connect generation");
       auto& resources = *attempt->resources;
       const auto& command = attempt->command;
-      voice_session_->requireVoiceSession(command.session_id);
+      auto owner_call = requireSessionPortValue(
+        voice_session_->bindCurrentOwner(
+          command.session_id,
+          command.generation,
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+            attempt->operation.deadline() - SessionPortCall::Clock::now()
+          )
+        )
+      );
+      owner_call.deadline = attempt->operation.deadline();
+      requireSessionPortSuccess(voice_session_->lifecycle().require(owner_call));
+      resources.owner_epoch = owner_call.expected_epoch;
       resources.command = trackCommand(command);
       if (!isCurrent(attempt)) throw std::runtime_error("stale screen connect generation");
 
@@ -923,6 +974,7 @@ class ScreenPublicationController::Implementation
         }
       );
     } catch (const std::exception& error) {
+      finishVideoPublication(attempt, ScreenVideoPublicationPhase::Failed);
       attempt->error = error.what();
       // Deadline expiry is a terminal failure for the current generation, not
       // stale work. Only explicit cancellation or a superseded generation may
@@ -946,6 +998,7 @@ class ScreenPublicationController::Implementation
         }
       );
     } catch (...) {
+      finishVideoPublication(attempt, ScreenVideoPublicationPhase::Failed);
       attempt->error = "unknown screen publication failure";
       attempt->stale = attempt->operation.cancelled();
       if (attempt->resources) cleanupResources(*attempt->resources);
@@ -954,7 +1007,9 @@ class ScreenPublicationController::Implementation
     attempt->obsolete.reset();
     attempt->finished.store(true);
     MediaCommand internal;
-    internal.type = attempt->succeeded ? "__screenAttemptReady" : "__screenAttemptFailed";
+    internal.type = attempt->succeeded
+      ? NativeCommandType::ScreenAttemptReady
+      : NativeCommandType::ScreenAttemptFailed;
     internal.session_id = attempt->command.session_id;
     internal.generation = attempt->command.generation;
     internal.internal_message = attempt->error;
@@ -978,6 +1033,36 @@ class ScreenPublicationController::Implementation
       throw std::runtime_error(
         "gpu_encoder_unavailable: " + capability.reason
       );
+    }
+    try {
+      resources.encoder_lease = requireVideoResourceAdmission(
+          *resource_budget_,
+          VideoResourceRequest{
+              .owner = VideoResourceOwner::ScreenEncoder,
+              .owner_id = "screen:encoder:" + command.session_id + ":" +
+                  std::to_string(command.generation),
+              .hardware_encoder_sessions = 1,
+          });
+    } catch (const VideoResourceSaturationError& error) {
+      const auto& saturation = error.saturation();
+      logScreen(
+          "screen_video_resource_saturated",
+          {
+              {"owner", videoResourceOwnerName(saturation.owner)},
+              {"ownerId", saturation.owner_id},
+              {"resourceClass",
+               videoResourceClassName(saturation.resource_class)},
+              {"current", saturation.current},
+              {"requested", saturation.requested},
+              {"limit", saturation.limit},
+              {"fallback", "fail_closed"},
+          });
+      throw std::runtime_error(
+          "gpu_encoder_session_saturated: " +
+          saturation.message());
+    }
+    if (!isCurrent(attempt)) {
+      throw std::runtime_error("stale screen capture generation");
     }
     resources.capturer = prepare_capture_(command, description);
     if (!resources.capturer) {
@@ -1008,6 +1093,9 @@ class ScreenPublicationController::Implementation
     video_options.simulcast = false;
     video_options.video_codec = livekit::VideoCodec::H264;
     video_options.video_encoder = livekit::VideoEncoderBackend::WindowsD3D11Hardware;
+    video_options.frame_metadata_features.emplace();
+    video_options.frame_metadata_features->user_timestamp = true;
+    video_options.frame_metadata_features->frame_id = true;
     video_options.video_encoding = livekit::VideoEncodingOptions{
       static_cast<std::uint64_t>(description.bitrate),
       static_cast<double>(description.fps),
@@ -1016,26 +1104,155 @@ class ScreenPublicationController::Implementation
       "screen_publish_start",
       {{"sessionId", command.session_id}, {"generation", command.generation}}
     );
-    resources.video_publication_sid = voice_session_->publishVideoTrack(
-      command.session_id,
-      command.generation,
-      resources.video_track,
-      video_options
+    auto publication_call = SessionPortCall::forOwner(resources.owner_epoch);
+    publication_call.deadline = attempt->operation.deadline();
+    resources.video_publication_sid = requireSessionPortValue(
+      voice_session_->publication().publishVideoTrack(
+        publication_call, resources.video_track, video_options
+      )
     );
     if (resources.video_publication_sid.empty()) {
       throw std::runtime_error("LiveKit screen publication SID is empty");
+    }
+    if (after_video_published_) {
+      after_video_published_(command, resources.video_publication_sid);
     }
     logScreen(
       "screen_publish_ack",
       {{"sessionId", command.session_id}, {"generation", command.generation}}
     );
     if (!isCurrent(attempt)) throw std::runtime_error("stale screen publish generation");
+    // LiveKit installs the sender frame transformer while completing
+    // publication. Starting capture earlier can initialize the encoder before
+    // that transformer exists, permanently bypassing packet-trailer metadata.
+    resources.video_running = std::make_shared<std::atomic_bool>(true);
+    start_video_capture_worker_(
+      command,
+      description,
+      resources.video_source,
+      resources.video_track,
+      resources.capturer,
+      resources.video_running,
+      [self = shared_from_this(), attempt] {
+        return self->isCurrent(attempt);
+      },
+      resources.video_thread
+    );
+    // Published is terminal for teardown only after capture has started.
+    finishVideoPublication(attempt, ScreenVideoPublicationPhase::Published);
+  }
 
-    if (description.publish_audio) {
-      resources.audio_source = std::make_shared<livekit::AudioSource>(48'000, 2);
-      resources.audio_track = livekit::LocalAudioTrack::createLocalAudioTrack(
+  void observeVideoPublication(
+    const MediaCommand& command,
+    ScreenVideoPublicationPhase phase
+  ) noexcept {
+    try {
+      if (video_publication_observer_) {
+        video_publication_observer_(command, phase);
+      }
+    } catch (...) {
+      // A diagnostic observer must not change publication ownership.
+    }
+  }
+
+  void finishVideoPublication(
+    const std::shared_ptr<AttemptState>& attempt,
+    ScreenVideoPublicationPhase phase
+  ) {
+    if (!attempt || !attempt->publication_lifecycle_started ||
+        attempt->publication_lifecycle_terminal.exchange(
+          true, std::memory_order_acq_rel)) {
+      return;
+    }
+    observeVideoPublication(attempt->command, phase);
+  }
+
+  void reconcileAudio(
+    const MediaCommand& command,
+    ScreenResources& resources,
+    const ScreenPublicationDescription& description
+  ) {
+    resources.description.publish_audio = description.publish_audio;
+    resources.description.audio_mode = description.audio_mode;
+    resources.description.loopback_mode = description.loopback_mode;
+    resources.description.audio_target_process_id =
+      description.audio_target_process_id;
+    if (!description.publish_audio) {
+      if (audio_candidate_ &&
+          audio_candidate_->command.session_id == command.session_id &&
+          audio_candidate_->command.generation == command.generation) {
+        retireAudioAttempt(std::move(audio_candidate_));
+      }
+      if (resources.audio) {
+        retireAudioResources(std::move(resources.audio));
+        emitAudioLifecycle(command, "stopped", "audio_disabled");
+      }
+      return;
+    }
+    if (resources.audio || audio_candidate_) return;
+    reapAudioRetirements();
+    if (audio_retiring_.size() >= kMaximumAudioQuarantines) {
+      emitAudioLifecycle(
+        command,
+        "failed",
+        "screen audio cleanup capacity is occupied",
+        "audio_capture_failed"
+      );
+      return;
+    }
+    launchAudioAttempt(command, description);
+  }
+
+  void launchAudioAttempt(
+    const MediaCommand& command,
+    const ScreenPublicationDescription& description
+  ) {
+    auto attempt = std::make_shared<AudioAttemptState>();
+    attempt->command = trackCommand(command);
+    attempt->description = description;
+    attempt->epoch = ++next_audio_epoch_;
+    attempt->started_at = now_();
+    attempt->resources = std::make_unique<ScreenAudioResources>();
+    attempt->resources->command = trackCommand(command);
+    attempt->resources->description = description;
+    attempt->resources->epoch = attempt->epoch;
+    audio_candidate_ = attempt;
+    emitAudioLifecycle(command, "starting", "audio_publish_start");
+    try {
+      const auto self = shared_from_this();
+      attempt->worker = std::thread(
+        [self, attempt] { self->runAudioAttempt(attempt); });
+    } catch (...) {
+      audio_candidate_.reset();
+      emitAudioLifecycle(
+        command,
+        "failed",
+        "failed to start screen audio publication worker",
+        "audio_capture_failed"
+      );
+    }
+  }
+
+  void runAudioAttempt(const std::shared_ptr<AudioAttemptState>& attempt) {
+    try {
+      auto& resources = *attempt->resources;
+      const auto& command = attempt->command;
+      auto owner_call = requireSessionPortValue(
+        voice_session_->bindCurrentOwner(
+          command.session_id,
+          command.generation,
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+            attempt->operation.deadline() - SessionPortCall::Clock::now()
+          )
+        )
+      );
+      owner_call.deadline = attempt->operation.deadline();
+      requireSessionPortSuccess(voice_session_->lifecycle().require(owner_call));
+      resources.owner_epoch = owner_call.expected_epoch;
+      resources.source = std::make_shared<livekit::AudioSource>(48'000, 2);
+      resources.track = livekit::LocalAudioTrack::createLocalAudioTrack(
         "screen-audio",
-        resources.audio_source
+        resources.source
       );
       livekit::AudioEncodingOptions audio_encoding;
       audio_encoding.max_bitrate = command.audio_bitrate;
@@ -1046,43 +1263,141 @@ class ScreenPublicationController::Implementation
       audio_options.source = livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO;
       logScreen(
         "screen_audio_publish_start",
-        {{"sessionId", command.session_id}, {"generation", command.generation}}
+        {
+          {"sessionId", command.session_id},
+          {"generation", command.generation},
+          {"epoch", attempt->epoch}
+        }
       );
-      resources.audio_publication_sid = voice_session_->publishAudioTrack(
-        command.session_id,
-        command.generation,
-        resources.audio_track,
-        audio_options
+      auto publication_call = SessionPortCall::forOwner(resources.owner_epoch);
+      publication_call.deadline = attempt->operation.deadline();
+      resources.publication_sid = requireSessionPortValue(
+        voice_session_->publication().publishAudioTrack(
+          publication_call, resources.track, audio_options
+        )
       );
-      if (resources.audio_publication_sid.empty()) {
-        throw std::runtime_error("LiveKit screen audio publication SID is empty");
+      if (resources.publication_sid.empty()) {
+        throw std::runtime_error("audio_capture_failed: empty publication SID");
       }
-      logScreen(
-        "screen_audio_publish_ack",
-        {{"sessionId", command.session_id}, {"generation", command.generation}}
+      if (!isCurrent(attempt)) {
+        throw std::runtime_error("stale_generation: screen audio publish");
+      }
+      resources.running = std::make_shared<std::atomic_bool>(true);
+      resources.stop =
+        std::make_shared<syrnike::voice::ScreenAudioStopSignal>();
+      auto worker_command = command;
+      worker_command.internal_epoch = attempt->epoch;
+      start_audio_capture_worker_(
+        worker_command,
+        attempt->description,
+        resources.source,
+        resources.running,
+        resources.stop,
+        resources.worker
       );
       if (!isCurrent(attempt)) {
-        throw std::runtime_error("stale screen audio publish generation");
+        throw std::runtime_error("stale_generation: screen audio start");
       }
+      attempt->succeeded = true;
+    } catch (const std::exception& error) {
+      attempt->error = error.what();
+      attempt->stale =
+        shutdown_requested_.load(std::memory_order_acquire) ||
+        attempt->operation.cancelled() ||
+        !is_current_->current(
+          attempt->command.session_id,
+          attempt->command.generation
+        );
+      attempt->succeeded = false;
+    } catch (...) {
+      attempt->error = "audio_capture_failed: unknown screen audio failure";
+      attempt->stale = attempt->operation.cancelled();
+      attempt->succeeded = false;
     }
+    attempt->finished.store(true, std::memory_order_release);
+    if (shutdown_requested_.load(std::memory_order_acquire)) return;
+    MediaCommand internal;
+    internal.type = attempt->succeeded
+      ? NativeCommandType::ScreenAudioAttemptReady
+      : NativeCommandType::ScreenAudioAttemptFailed;
+    internal.session_id = attempt->command.session_id;
+    internal.generation = attempt->command.generation;
+    internal.internal_epoch = attempt->epoch;
+    internal.internal_message = attempt->error;
+    post_->post(std::move(internal));
+  }
 
-    resources.capture_running = std::make_shared<std::atomic_bool>(true);
-    resources.audio_stop =
-      std::make_shared<syrnike::voice::ScreenAudioStopSignal>();
-    start_capture_workers_(
+  void finishAudioAttempt(const MediaCommand& command) {
+    if (!audio_candidate_ ||
+        audio_candidate_->command.session_id != command.session_id ||
+        audio_candidate_->command.generation != command.generation ||
+        audio_candidate_->epoch != command.internal_epoch) {
+      return;
+    }
+    auto attempt = std::move(audio_candidate_);
+    if (attempt->worker.joinable()) attempt->worker.join();
+    const bool current = active_ && matches(*active_, attempt->command) &&
+      is_current_->current(
+        attempt->command.session_id,
+        attempt->command.generation
+      );
+    const bool promoted = attempt->succeeded && current &&
+      !attempt->terminal_cancelled && !attempt->operation.cancelled() &&
+      !attempt->operation.expired();
+    if (promoted) {
+      active_->audio = std::move(attempt->resources);
+      emitAudioLifecycle(attempt->command, "running", "audio_capture_ready");
+      return;
+    }
+    if (attempt->resources) {
+      retireAudioResources(std::move(attempt->resources));
+    }
+    const bool stale = attempt->stale || !current ||
+      attempt->operation.cancelled();
+    if (stale && !attempt->terminal_cancelled) return;
+    const auto reason = attempt->terminal_cancelled
+      ? attempt->terminal_reason
+      : (attempt->operation.expired()
+          ? std::string("native_operation_timeout")
+          : attempt->error);
+    emitAudioLifecycle(
+      attempt->command,
+      "failed",
+      reason.empty() ? "screen audio capture failed" : reason,
+      screenAudioFailureCode(reason)
+    );
+  }
+
+  void handleAudioTerminal(const MediaCommand& command) {
+    if (audio_candidate_ &&
+        audio_candidate_->command.session_id == command.session_id &&
+        audio_candidate_->command.generation == command.generation &&
+        (command.internal_epoch == 0 ||
+         audio_candidate_->epoch == command.internal_epoch)) {
+      auto attempt = std::move(audio_candidate_);
+      attempt->terminal_cancelled = true;
+      attempt->terminal_reason = command.internal_message;
+      retireAudioAttempt(std::move(attempt));
+      emitAudioLifecycle(
+        command,
+        "failed",
+        command.internal_message,
+        screenAudioFailureCode(command.internal_message)
+      );
+      return;
+    }
+    if (!active_ || !active_->audio || !matches(*active_, command) ||
+        (command.internal_epoch != 0 &&
+         active_->audio->epoch != command.internal_epoch)) {
+      return;
+    }
+    auto resources = std::move(active_->audio);
+    retireAudioResources(std::move(resources));
+    emitAudioLifecycle(
       command,
-      description,
-      resources.video_source,
-      resources.video_track,
-      resources.audio_source,
-      resources.capturer,
-      resources.capture_running,
-      resources.audio_stop,
-      [self = shared_from_this(), attempt] {
-        return self->isCurrent(attempt);
-      },
-      resources.capture_thread,
-      resources.audio_thread
+      "failed",
+      command.internal_message,
+      screenAudioFailureCode(command.internal_message)
     );
   }
 
@@ -1169,6 +1484,11 @@ class ScreenPublicationController::Implementation
       *active_,
       true
     );
+    reconcileAudio(
+      attempt->command,
+      *active_,
+      active_->description
+    );
     logScreen(
       "screen_capture_promoted",
       {{"sessionId", attempt->command.session_id}, {"generation", attempt->command.generation}}
@@ -1194,11 +1514,11 @@ class ScreenPublicationController::Implementation
     emitter_.emit(result);
     if (emit_session_started) {
       RuntimeEvent started = result;
-      started.type = "sessionStarted";
+      started.type = NativeEventType::SessionStarted;
       emitter_.emit(std::move(started));
     }
     RuntimeEvent running;
-    running.type = "sessionLifecycle";
+    running.type = NativeEventType::SessionLifecycle;
     running.request_id = command.request_id;
     running.session_id = command.session_id;
     running.generation = command.generation;
@@ -1219,57 +1539,264 @@ class ScreenPublicationController::Implementation
   ) {
     if (session_id.empty()) return;
     RuntimeEvent event;
-    event.type = "sessionStopped";
+    event.type = NativeEventType::SessionStopped;
     event.session_id = session_id;
     event.generation = generation;
     event.reason = reason;
     emitter_.emit(std::move(event));
   }
 
-  void cleanupResources(ScreenResources& resources) noexcept {
-    if (resources.capture_running) resources.capture_running->store(false);
-    if (resources.audio_stop) resources.audio_stop->signal();
-    auto finish_thread = [](std::thread& worker) noexcept {
-      if (!worker.joinable()) return;
+  void cleanupAudioResources(ScreenAudioResources& resources) noexcept {
+    if (resources.running) resources.running->store(false);
+    if (resources.stop) resources.stop->signal();
+    if (resources.worker.joinable()) {
       try {
-        worker.join();
+        resources.worker.join();
       } catch (...) {
+        std::terminate();
+      }
+    }
+    auto publication_sid = std::move(resources.publication_sid);
+    if (!publication_sid.empty()) {
+      try {
+        auto call = SessionPortCall::forOwner(resources.owner_epoch);
+        call.cancellation = cleanup_cancellation_;
+        requireSessionPortSuccess(voice_session_->publication().unpublishTrack(
+          std::move(call), publication_sid
+        ));
+      } catch (...) {
+      }
+    }
+    resources.track.reset();
+    resources.source.reset();
+    resources.running.reset();
+    resources.stop.reset();
+  }
+
+  void finalizeAudioRetirement(
+    const std::shared_ptr<AudioRetiringState>& state
+  ) noexcept {
+    if (!state ||
+        state->cleanup_started.exchange(true, std::memory_order_acq_rel)) {
+      return;
+    }
+    if (state->attempt) {
+      if (state->attempt->worker.joinable()) {
         try {
-          if (worker.joinable()) worker.detach();
+          state->attempt->worker.join();
         } catch (...) {
+          std::terminate();
         }
       }
-    };
-    finish_thread(resources.capture_thread);
-    finish_thread(resources.audio_thread);
+      if (!state->resources) {
+        state->resources = std::move(state->attempt->resources);
+      }
+      state->attempt.reset();
+    }
+    if (state->resources) cleanupAudioResources(*state->resources);
+    state->resources.reset();
+    state->finished.store(true, std::memory_order_release);
+  }
+
+  void finalizeAttemptRetirement(
+    const std::shared_ptr<AttemptRetiringState>& state
+  ) noexcept {
+    if (!state ||
+        state->cleanup_started.exchange(true, std::memory_order_acq_rel)) {
+      return;
+    }
+    if (state->attempt) {
+      if (state->attempt->worker.joinable()) {
+        try {
+          state->attempt->worker.join();
+        } catch (...) {
+          std::terminate();
+        }
+      }
+      if (state->attempt->resources) {
+        cleanupResources(*state->attempt->resources);
+      }
+      if (state->attempt->obsolete) {
+        cleanupResources(*state->attempt->obsolete);
+      }
+      state->attempt.reset();
+    }
+    state->finished.store(true, std::memory_order_release);
+  }
+
+  static void cleanupAttemptRetirement(
+    const std::shared_ptr<void>& owner,
+    const std::shared_ptr<void>& retained_state
+  ) noexcept {
+    const auto implementation = std::static_pointer_cast<Implementation>(owner);
+    const auto retirement =
+      std::static_pointer_cast<AttemptRetiringState>(retained_state);
+    implementation->finalizeAttemptRetirement(retirement);
+  }
+
+  std::shared_ptr<AttemptRetiringState> quarantineAttempt(
+    std::shared_ptr<AttemptState> attempt
+  ) noexcept {
+    if (!attempt) return {};
+    try {
+      auto state = std::make_shared<AttemptRetiringState>();
+      state->session_id = attempt->command.session_id;
+      state->generation = attempt->command.generation;
+      state->attempt = std::move(attempt);
+      auto task = std::make_shared<ScreenRetireCleanupTask>();
+      auto job = std::make_shared<CleanupJob>(cleanup_start_probe_);
+      task->configure(
+        shared_from_this(), state, &Implementation::cleanupAttemptRetirement);
+      job->prepare(
+        task,
+        reinterpret_cast<CleanupResourceKey>(state->attempt.get()),
+        [](void* context) {
+          static_cast<ScreenRetireCleanupTask*>(context)->run();
+        }
+      );
+      state->cleanup_job = job;
+      runCleanupEnqueueProbe(cleanup_enqueue_probe_);
+      cleanup_supervisor_->submitOrEscalate(job, "screen_publication_attempt");
+      return state;
+    } catch (...) {
+      logScreen("screen_attempt_quarantine_submit_failed");
+      std::terminate();
+    }
+  }
+
+  static void cleanupAudioRetirement(
+    const std::shared_ptr<void>& owner,
+    const std::shared_ptr<void>& retained_state
+  ) noexcept {
+    const auto implementation = std::static_pointer_cast<Implementation>(owner);
+    const auto retirement =
+      std::static_pointer_cast<AudioRetiringState>(retained_state);
+    implementation->finalizeAudioRetirement(retirement);
+  }
+
+  void submitAudioRetirement(
+    const std::shared_ptr<AudioRetiringState>& state
+  ) noexcept {
+    try {
+      auto task = std::make_shared<ScreenRetireCleanupTask>();
+      auto job = std::make_shared<CleanupJob>(cleanup_start_probe_);
+      task->configure(
+        shared_from_this(),
+        state,
+        &Implementation::cleanupAudioRetirement
+      );
+      job->prepare(
+        task,
+        reinterpret_cast<CleanupResourceKey>(voice_session_.get()),
+        [](void* context) {
+          static_cast<ScreenRetireCleanupTask*>(context)->run();
+        }
+      );
+      state->cleanup_job = job;
+      audio_retiring_.push_back(state);
+      runCleanupEnqueueProbe(cleanup_enqueue_probe_);
+      cleanup_supervisor_->submitOrEscalate(job, "screen_audio_publication");
+    } catch (...) {
+      logScreen("screen_audio_retire_submit_failed");
+      std::terminate();
+    }
+  }
+
+  void retireAudioResources(
+    std::unique_ptr<ScreenAudioResources> resources
+  ) noexcept {
+    if (!resources) return;
+    if (resources->running) resources->running->store(false);
+    if (resources->stop) resources->stop->signal();
+    auto state = std::make_shared<AudioRetiringState>();
+    state->id = "audio-" + std::to_string(++next_audio_retire_id_);
+    state->started_at = now_();
+    state->resources = std::move(resources);
+    submitAudioRetirement(state);
+  }
+
+  void retireAudioAttempt(
+    std::shared_ptr<AudioAttemptState> attempt
+  ) noexcept {
+    if (!attempt) return;
+    attempt->operation.requestCancel();
+    auto state = std::make_shared<AudioRetiringState>();
+    state->id = "audio-attempt-" +
+      std::to_string(++next_audio_retire_id_);
+    state->started_at = now_();
+    state->attempt = std::move(attempt);
+    submitAudioRetirement(state);
+  }
+
+  void reapAudioRetirements() {
+    for (auto iterator = audio_retiring_.begin();
+         iterator != audio_retiring_.end();) {
+      if (!(*iterator)->finished.load(std::memory_order_acquire)) {
+        ++iterator;
+        continue;
+      }
+      iterator = audio_retiring_.erase(iterator);
+    }
+  }
+
+  void drainAudioRetirements(
+    std::chrono::steady_clock::time_point deadline
+  ) noexcept {
+    const auto cancellation_at = cleanupCancellationAt(deadline);
+    for (const auto& retirement : audio_retiring_) {
+      if (!retirement || !retirement->cleanup_job ||
+          retirement->cleanup_job->waitUntil(cancellation_at)) {
+        continue;
+      }
+      cleanup_cancellation_.requestCancel();
+      break;
+    }
+    for (const auto& retirement : audio_retiring_) {
+      if (!retirement || !retirement->cleanup_job ||
+          retirement->cleanup_job->waitUntil(deadline)) {
+        continue;
+      }
+      logScreen(
+        "screen_audio_retire_unfinished_at_shutdown",
+        {{"retireId", retirement->id}}
+      );
+    }
+    audio_retiring_.clear();
+  }
+
+  void cleanupResources(ScreenResources& resources) noexcept {
+    if (resources.video_running) resources.video_running->store(false);
+    if (resources.audio) cleanupAudioResources(*resources.audio);
+    if (resources.video_thread.joinable()) {
+      try {
+        resources.video_thread.join();
+      } catch (...) {
+        std::terminate();
+      }
+    }
     resources.capturer.reset();
 
     auto video_sid = std::move(resources.video_publication_sid);
-    auto audio_sid = std::move(resources.audio_publication_sid);
     const auto session_id = resources.command.session_id;
-    const auto generation = resources.command.generation;
     try {
       if (before_resource_cleanup_) before_resource_cleanup_();
     } catch (...) {
     }
     if (!video_sid.empty()) {
       try {
-        voice_session_->unpublishTrack(session_id, generation, video_sid);
-      } catch (...) {
-      }
-    }
-    if (!audio_sid.empty()) {
-      try {
-        voice_session_->unpublishTrack(session_id, generation, audio_sid);
+        auto call = SessionPortCall::forOwner(resources.owner_epoch);
+        call.cancellation = cleanup_cancellation_;
+        requireSessionPortSuccess(voice_session_->publication().unpublishTrack(
+          std::move(call), video_sid
+        ));
       } catch (...) {
       }
     }
     resources.video_track.reset();
-    resources.audio_track.reset();
     resources.video_source.reset();
-    resources.audio_source.reset();
-    resources.capture_running.reset();
-    resources.audio_stop.reset();
+    resources.encoder_lease.reset();
+    resources.video_running.reset();
+    resources.audio.reset();
   }
 
   void finalizeRetirement(
@@ -1288,38 +1815,92 @@ class ScreenPublicationController::Implementation
     state->finished.store(true, std::memory_order_release);
   }
 
-  void retainRetirement(
-      const std::shared_ptr<RetiringState>& state,
-      std::shared_ptr<ScreenRetireCleanupTask> task) noexcept {
-    const auto self = shared_from_this();
-    task->configure(
-      self,
-      state,
-      [](
-          const std::shared_ptr<void>& owner,
-          const std::shared_ptr<void>& retained_state) noexcept {
-        const auto implementation =
-          std::static_pointer_cast<Implementation>(owner);
-        const auto retirement =
-          std::static_pointer_cast<RetiringState>(retained_state);
-        implementation->finalizeRetirement(retirement);
+  static void cleanupRetirement(
+      const std::shared_ptr<void>& owner,
+      const std::shared_ptr<void>& retained_state) noexcept {
+    const auto implementation =
+        std::static_pointer_cast<Implementation>(owner);
+    const auto retirement =
+        std::static_pointer_cast<RetiringState>(retained_state);
+    implementation->finalizeRetirement(retirement);
+  }
+
+  static void cleanupRetirementAndPost(
+      const std::shared_ptr<void>& owner,
+      const std::shared_ptr<void>& retained_state) noexcept {
+    const auto implementation =
+        std::static_pointer_cast<Implementation>(owner);
+    const auto retirement =
+        std::static_pointer_cast<RetiringState>(retained_state);
+    implementation->finalizeRetirement(retirement);
+    try {
+      const auto retry_warning_at =
+          std::chrono::steady_clock::now() + std::chrono::seconds(5);
+      bool warned = false;
+      while (!implementation->shutdown_requested_.load(
+          std::memory_order_acquire)) {
+        MediaCommand done;
+        done.type = NativeCommandType::ScreenRetireDone;
+        done.internal_message = retirement->id;
+        if (implementation->post_->post(std::move(done))) return;
+        if (!warned &&
+            std::chrono::steady_clock::now() >= retry_warning_at) {
+          warned = true;
+          logScreen(
+              "screen_retire_completion_retry_delayed",
+              {{"retireId", retirement->id}});
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
       }
-    );
-    retire_dispatcher_->submit(std::move(task));
+    } catch (...) {
+    }
+  }
+
+  void submitRetirement(
+      const std::shared_ptr<RetiringState>& state,
+      bool post_completion,
+      std::shared_ptr<ScreenRetireCleanupTask> task = {},
+      std::shared_ptr<CleanupJob> job = {}) noexcept {
+    try {
+      if (!task) task = std::make_shared<ScreenRetireCleanupTask>();
+      if (!job) job = std::make_shared<CleanupJob>(cleanup_start_probe_);
+      task->configure(
+          shared_from_this(),
+          state,
+          post_completion
+              ? &Implementation::cleanupRetirementAndPost
+              : &Implementation::cleanupRetirement);
+      job->prepare(
+          task,
+          reinterpret_cast<CleanupResourceKey>(voice_session_.get()),
+          [](void* context) {
+            static_cast<ScreenRetireCleanupTask*>(context)->run();
+          });
+      runCleanupEnqueueProbe(cleanup_enqueue_probe_);
+      cleanup_supervisor_->submitOrEscalate(job, "screen_publication");
+      state->cleanup_job = std::move(job);
+    } catch (...) {
+      logScreen(
+          "screen_retire_submit_failed",
+          {{"reason", "runtime_loss"}});
+      std::terminate();
+    }
   }
 
   void retireResources(std::unique_ptr<ScreenResources> resources) noexcept {
     try {
       if (!resources) return;
-      if (resources->capture_running) resources->capture_running->store(false);
-      if (resources->audio_stop) resources->audio_stop->signal();
+      if (resources->video_running) resources->video_running->store(false);
+      if (resources->audio) {
+        if (resources->audio->running) resources->audio->running->store(false);
+        if (resources->audio->stop) resources->audio->stop->signal();
+      }
       if (resources->retire_requested_at ==
           LiveKitConnectPolicy::Clock::time_point{}) {
         resources->retire_requested_at = now_();
       }
       if (retiring_) {
         if (deferred_retire_) {
-          auto cleanup_task = std::make_shared<ScreenRetireCleanupTask>();
           auto overflow = std::make_shared<RetiringState>();
           overflow->id = "overflow-" + std::to_string(++next_retire_id_);
           overflow->resources = std::move(resources);
@@ -1329,24 +1910,10 @@ class ScreenPublicationController::Implementation
           try {
             overflow_retiring_.push_back(overflow);
           } catch (...) {
-            retainRetirement(overflow, std::move(cleanup_task));
+            submitRetirement(overflow, false);
             return;
           }
-          try {
-            const auto state = overflow;
-            const auto self = shared_from_this();
-            overflow->worker = launch_retire_worker_([self, state] {
-              self->finalizeRetirement(state);
-            });
-          } catch (...) {
-            overflow_retiring_.pop_back();
-            retainRetirement(overflow, std::move(cleanup_task));
-            try {
-              logScreen("screen_retire_overflow_worker_start_failed");
-            } catch (...) {
-            }
-            return;
-          }
+          submitRetirement(overflow, false);
           try {
             logScreen("screen_retire_overflow_forced");
           } catch (...) {
@@ -1371,58 +1938,18 @@ class ScreenPublicationController::Implementation
           {"generation", retiring->resources->command.generation}
         }
       );
-      const auto state = retiring;
-      try {
-        const auto self = shared_from_this();
-        retiring->worker = launch_retire_worker_(
-          [self, state]() mutable {
-            self->finalizeRetirement(state);
-            try {
-              const auto retry_warning_at =
-                std::chrono::steady_clock::now() + std::chrono::seconds(5);
-              bool warned = false;
-              while (!self->shutdown_requested_.load(
-                  std::memory_order_acquire)) {
-                MediaCommand done;
-                done.type = "__screenRetireDone";
-                done.internal_message = state->id;
-                if (self->post_->post(std::move(done))) return;
-                if (!warned &&
-                    std::chrono::steady_clock::now() >= retry_warning_at) {
-                  warned = true;
-                  try {
-                    logScreen(
-                      "screen_retire_completion_retry_delayed",
-                      {{"retireId", state->id}}
-                    );
-                  } catch (...) {
-                  }
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-              }
-            } catch (...) {
-            }
-          }
-        );
-      } catch (...) {
-        deferred_retire_ = std::move(retiring->resources);
-        logScreen("screen_retire_worker_start_failed");
-        return;
-      }
       retiring_ = std::move(retiring);
+      submitRetirement(retiring_, true);
     } catch (...) {
-      // This function is called from terminal/disconnect paths. Allocation or
-      // logging failures must not escape them or terminate the utility host.
-      try {
-        if (resources) cleanupResources(*resources);
-      } catch (...) {
-      }
+      logScreen(
+          "screen_retire_prepare_failed",
+          {{"reason", "runtime_loss"}});
+      std::terminate();
     }
   }
 
   void finishRetire(const std::string& id) {
     if (!retiring_ || retiring_->id != id) return;
-    if (retiring_->worker.joinable()) retiring_->worker.join();
     retiring_.reset();
     logScreen("screen_retire_done", {{"retireId", id}});
     startDeferredRetire();
@@ -1439,6 +1966,17 @@ class ScreenPublicationController::Implementation
     if (candidate_ && candidate_->finished.load()) {
       finishAttempt(candidate_->command.session_id, candidate_->command.generation);
     }
+    if (audio_candidate_ &&
+        audio_candidate_->finished.load(std::memory_order_acquire)) {
+      MediaCommand finished;
+      finished.type = audio_candidate_->succeeded
+        ? NativeCommandType::ScreenAudioAttemptReady
+        : NativeCommandType::ScreenAudioAttemptFailed;
+      finished.session_id = audio_candidate_->command.session_id;
+      finished.generation = audio_candidate_->command.generation;
+      finished.internal_epoch = audio_candidate_->epoch;
+      finishAudioAttempt(finished);
+    }
     if (retiring_ && retiring_->finished.load()) {
       const auto id = retiring_->id;
       finishRetire(id);
@@ -1450,9 +1988,9 @@ class ScreenPublicationController::Implementation
         ++iterator;
         continue;
       }
-      if ((*iterator)->worker.joinable()) (*iterator)->worker.join();
       iterator = overflow_retiring_.erase(iterator);
     }
+    reapAudioRetirements();
   }
 
   void drainRetirements(
@@ -1463,41 +2001,46 @@ class ScreenPublicationController::Implementation
       state->generation = state->resources->command.generation;
       state->started_at = state->resources->retire_requested_at;
       shutdown_retiring_in_flight_ = state;
-      try {
-        const auto self = shared_from_this();
-        state->worker = launch_retire_worker_([self, state] {
-          self->finalizeRetirement(state);
-        });
-      } catch (...) {
-        shutdown_retiring_in_flight_.reset();
-        // The management dispatcher owns this exact cleanup and retries worker
-        // launch independently of any later actor command. SDK teardown never
-        // runs on the management thread, so one hung unpublish cannot stall
-        // subsequent retained retirements.
-        auto task = std::move(shutdown_cleanup_task_);
-        retainRetirement(state, std::move(task));
-        try {
-          logScreen("screen_shutdown_deferred_retire_launch_failed");
-        } catch (...) {
-        }
-      }
+      submitRetirement(
+          state,
+          false,
+          std::move(shutdown_cleanup_task_),
+          std::move(shutdown_cleanup_job_));
     }
 
+    const auto cancellation_at = cleanupCancellationAt(deadline);
+    auto finished_by = [](const std::shared_ptr<RetiringState>& state,
+                          std::chrono::steady_clock::time_point wait_until) {
+      return !state || !state->cleanup_job ||
+        state->cleanup_job->waitUntil(wait_until);
+    };
+    bool cancellation_requested = false;
+    auto cancel_if_unfinished = [&](const std::shared_ptr<RetiringState>& state) {
+      if (cancellation_requested || finished_by(state, cancellation_at)) return;
+      cleanup_cancellation_.requestCancel();
+      cancellation_requested = true;
+    };
+    cancel_if_unfinished(retiring_);
+    for (const auto& overflow : overflow_retiring_) {
+      cancel_if_unfinished(overflow);
+    }
+    cancel_if_unfinished(shutdown_retiring_in_flight_);
+
     auto wait_state = [&](const std::shared_ptr<RetiringState>& state) {
-      while (!state->finished.load(std::memory_order_acquire) &&
-             std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      if (!state || !state->cleanup_job ||
+          state->cleanup_job->waitUntil(deadline)) {
+        return;
       }
-      if (!state->worker.joinable()) return;
-      if (state->finished.load(std::memory_order_acquire)) {
-        state->worker.join();
-      } else {
-        state->worker.detach();
-        logScreen(
-          "screen_retire_detached_at_shutdown",
-          {{"retireId", state->id}}
-        );
-      }
+      const auto cleanup = cleanup_supervisor_->snapshot();
+      logScreen(
+        "screen_retire_unfinished_at_shutdown",
+        {
+          {"retireId", state->id},
+          {"activeJobs", static_cast<std::uint64_t>(cleanup.active_jobs)},
+          {"backlogJobs", static_cast<std::uint64_t>(cleanup.backlog_jobs)},
+          {"ownedJobs", static_cast<std::uint64_t>(cleanup.owned_jobs)}
+        }
+      );
     };
 
     if (retiring_) wait_state(retiring_);
@@ -1508,7 +2051,14 @@ class ScreenPublicationController::Implementation
     retiring_.reset();
     overflow_retiring_.clear();
     shutdown_retiring_in_flight_.reset();
-    retire_dispatcher_->close(deadline);
+  }
+
+  static std::chrono::steady_clock::time_point cleanupCancellationAt(
+      std::chrono::steady_clock::time_point deadline) noexcept {
+    return (std::min)(
+      deadline,
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(250)
+    );
   }
 
   SequencedEmitter& emitter_;
@@ -1519,24 +2069,36 @@ class ScreenPublicationController::Implementation
   Now now_;
   DescribePublication describe_publication_;
   PrepareCapture prepare_capture_;
-  StartCaptureWorkers start_capture_workers_;
+  StartVideoCaptureWorker start_video_capture_worker_;
+  StartAudioCaptureWorker start_audio_capture_worker_;
   CapturePromoted capture_promoted_;
+  AfterVideoPublished after_video_published_;
+  ScreenVideoPublicationObserver video_publication_observer_;
   QueryEncoderCapability query_encoder_capability_;
   CreateVideoSource create_video_source_;
   BeforeResourceCleanup before_resource_cleanup_;
-  LaunchRetireWorker launch_retire_worker_;
+  CleanupSupervisor* cleanup_supervisor_;
+  CleanupStartProbe cleanup_start_probe_;
+  CleanupEnqueueProbe cleanup_enqueue_probe_;
+  livekit::OperationCancellation cleanup_cancellation_;
+  VideoResourceAdmissionBudget* resource_budget_ = nullptr;
   std::shared_ptr<ScreenRetireCleanupTask> shutdown_cleanup_task_;
+  std::shared_ptr<CleanupJob> shutdown_cleanup_job_;
   std::shared_ptr<RetiringState> shutdown_retiring_state_;
   std::shared_ptr<RetiringState> shutdown_retiring_in_flight_;
-  std::shared_ptr<ScreenRetireFallbackDispatcher> retire_dispatcher_;
   std::unique_ptr<ScreenResources> prepared_;
   std::unique_ptr<ScreenResources> active_;
   std::shared_ptr<AttemptState> candidate_;
+  std::shared_ptr<AudioAttemptState> audio_candidate_;
   std::shared_ptr<RetiringState> retiring_;
   std::unique_ptr<ScreenResources> deferred_retire_;
   std::vector<std::shared_ptr<RetiringState>> overflow_retiring_;
+  std::vector<std::shared_ptr<AudioRetiringState>> audio_retiring_;
   std::atomic_bool shutdown_requested_{false};
   std::uint64_t next_retire_id_ = 0;
+  std::uint64_t next_audio_epoch_ = 0;
+  std::uint64_t next_audio_retire_id_ = 0;
+  static constexpr std::size_t kMaximumAudioQuarantines = 2;
   bool shutdown_ = false;
 };
 
@@ -1549,13 +2111,17 @@ ScreenPublicationController::ScreenPublicationController(
   Now now,
   DescribePublication describe_publication,
   PrepareCapture prepare_capture,
-  StartCaptureWorkers start_capture_workers,
+  StartVideoCaptureWorker start_video_capture_worker,
+  StartAudioCaptureWorker start_audio_capture_worker,
   CapturePromoted capture_promoted,
   QueryEncoderCapability query_encoder_capability,
   CreateVideoSource create_video_source,
-  LaunchRetireWorker launch_retire_worker,
-  BeforeRetireEnqueue before_retire_enqueue,
-  BeforeResourceCleanup before_resource_cleanup
+  CleanupStartProbe cleanup_start_probe,
+  CleanupEnqueueProbe cleanup_enqueue_probe,
+  BeforeResourceCleanup before_resource_cleanup,
+  VideoResourceAdmissionBudget* resource_budget,
+  AfterVideoPublished after_video_published,
+  ScreenVideoPublicationObserver video_publication_observer
 ) : implementation_(std::make_shared<Implementation>(
       emitter,
       std::move(post),
@@ -1565,13 +2131,17 @@ ScreenPublicationController::ScreenPublicationController(
       std::move(now),
       std::move(describe_publication),
       std::move(prepare_capture),
-      std::move(start_capture_workers),
+      std::move(start_video_capture_worker),
+      std::move(start_audio_capture_worker),
       std::move(capture_promoted),
+      std::move(after_video_published),
+      std::move(video_publication_observer),
       std::move(query_encoder_capability),
       std::move(create_video_source),
-      std::move(launch_retire_worker),
-      std::move(before_retire_enqueue),
-      std::move(before_resource_cleanup)
+      std::move(cleanup_start_probe),
+      std::move(cleanup_enqueue_probe),
+      std::move(before_resource_cleanup),
+      resource_budget
     )) {}
 
 ScreenPublicationController::~ScreenPublicationController() {

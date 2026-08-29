@@ -18,10 +18,13 @@
 #include <livekit/video_frame.h>
 
 #include "media/remote_video_texture_pool.hpp"
+#include "media/video_resource_admission.hpp"
 
 using Microsoft::WRL::ComPtr;
 using syrnike::desktop_native::media::RemoteVideoTextureFrame;
 using syrnike::desktop_native::media::RemoteVideoTexturePool;
+using syrnike::desktop_native::media::VideoResourceAdmissionBudget;
+using syrnike::desktop_native::media::productionVideoResourceLimits;
 
 namespace {
 using Clock = std::chrono::steady_clock;
@@ -150,8 +153,18 @@ int main() try {
     }
   }
 
+  VideoResourceAdmissionBudget resource_budget(productionVideoResourceLimits());
+  const auto electron_main_pid = GetCurrentProcessId();
+
   {
-    RemoteVideoTexturePool freshness_pool(GetCurrentProcessId(), 5);
+    RemoteVideoTexturePool freshness_pool(
+      resource_budget,
+      "remote:freshness",
+      electron_main_pid,
+      width,
+      height,
+      5
+    );
     require(freshness_pool.submit(source, 10), "freshness frame 1 rejected");
     require(freshness_pool.submit(source, 20), "freshness frame 2 rejected");
     require(freshness_pool.submit(source, 30), "freshness frame 3 rejected");
@@ -177,7 +190,14 @@ int main() try {
   }
 
   {
-    RemoteVideoTexturePool pressure_pool(GetCurrentProcessId(), 3);
+    RemoteVideoTexturePool pressure_pool(
+      resource_budget,
+      "remote:pressure",
+      electron_main_pid,
+      width,
+      height,
+      3
+    );
     std::vector<std::shared_ptr<void>> held_leases;
     for (std::uint64_t timestamp = 1; timestamp <= 3; ++timestamp) {
       require(
@@ -223,7 +243,14 @@ int main() try {
     );
   }
 
-  RemoteVideoTexturePool pool(GetCurrentProcessId(), 5);
+  RemoteVideoTexturePool pool(
+    resource_budget,
+    "remote:benchmark",
+    electron_main_pid,
+    width,
+    height,
+    5
+  );
   std::deque<OutstandingLease> leases;
   std::vector<std::uint64_t> completion_us;
   std::uint64_t submitted = 0;

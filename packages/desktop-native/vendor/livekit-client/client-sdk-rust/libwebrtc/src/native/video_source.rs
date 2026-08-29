@@ -24,7 +24,7 @@ use cxx::SharedPtr;
 use livekit_runtime::interval;
 use webrtc_sys::{video_frame as vf_sys, video_frame::ffi::VideoRotation, video_track as vt_sys};
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use crate::video_frame::FrameMetadata;
 use crate::{
     native::packet_trailer::PacketTrailerHandler,
@@ -187,6 +187,41 @@ impl NativeVideoSource {
         height: u32,
         timestamp_us: i64,
     ) -> i32 {
+        self.capture_d3d11_frame_with_metadata(
+            shared_texture_handle,
+            adapter_luid,
+            acquire_key,
+            release_key,
+            width,
+            height,
+            timestamp_us,
+            None,
+        )
+    }
+
+    /// Captures a D3D11 texture with packet-trailer frame metadata.
+    #[cfg(target_os = "windows")]
+    pub fn capture_d3d11_frame_with_metadata(
+        &self,
+        shared_texture_handle: u64,
+        adapter_luid: u64,
+        acquire_key: u64,
+        release_key: u64,
+        width: u32,
+        height: u32,
+        timestamp_us: i64,
+        frame_metadata: Option<FrameMetadata>,
+    ) -> i32 {
+        let (has_trailer, user_ts, fid, user_data) = match frame_metadata {
+            Some(meta) => (
+                true,
+                meta.user_timestamp.unwrap_or(0),
+                meta.frame_id.unwrap_or(0),
+                meta.user_data.unwrap_or_default(),
+            ),
+            None => (false, 0, 0, Vec::new()),
+        };
+
         self.has_captured_frame.store(true, Ordering::Release);
         self.sys_handle.capture_d3d11_frame(
             shared_texture_handle,
@@ -196,6 +231,12 @@ impl NativeVideoSource {
             width as i32,
             height as i32,
             timestamp_us,
+            &vt_sys::ffi::FrameMetadata {
+                has_packet_trailer: has_trailer,
+                user_timestamp: user_ts,
+                frame_id: fid,
+                user_data,
+            },
         )
     }
 

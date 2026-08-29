@@ -2,6 +2,7 @@ import {
   DesktopDisplayMediaSourceSchema,
   NativeMediaDeviceInfoSchema,
   type DesktopDisplayMediaSource,
+  type DesktopDisplayMediaSourcePage,
   type NativeMediaDeviceInfo,
   type NativeMediaRuntimeState,
   type NativeMicrophoneMetricsEvent,
@@ -12,6 +13,7 @@ import { Effect, Fiber, Layer, ManagedRuntime, Option, Schema } from 'effect'
 import type { DiagnosticLogSink } from './diagnostic-log'
 import {
   isNativeRuntimeCommand,
+  nativeRuntimeError,
   type MediaRuntimeCommand,
   type MediaRuntimeEvent,
 } from './contract'
@@ -28,6 +30,52 @@ const REMOTE_VIDEO_FIRST_FRAME_TIMEOUT_MS = 8_000
 const REMOTE_VIDEO_RETRY_BASE_DELAY_MS = 250
 const REMOTE_VIDEO_RETRY_MAX_DELAY_MS = 8_000
 const REMOTE_VIDEO_DEGRADED_RECOVERY_ATTEMPT = 3
+const DISPLAY_SOURCE_PAGE_SIZE = 24
+
+const normalizeLocalScreenPreviewDemandEffect = Effect.fn(
+  'nativeMedia.normalizeLocalScreenPreviewDemand',
+)(function* (demand: LocalScreenPreviewDemand) {
+  if (
+    !demand ||
+    typeof demand.demanded !== 'boolean' ||
+    !Number.isFinite(demand.width) ||
+    !Number.isFinite(demand.height) ||
+    !Number.isFinite(demand.fps)
+  ) {
+    return yield* Effect.fail(
+      new NativeRuntimeRequestError(
+        nativeRuntimeError(
+          'invalid_preview_demand',
+          'Invalid local screen preview demand',
+          { stage: 'screen_preview_demand' },
+        ),
+      ),
+    )
+  }
+  return {
+    demanded: demand.demanded,
+    width: Math.max(16, Math.min(3840, Math.trunc(demand.width))),
+    height: Math.max(16, Math.min(2160, Math.trunc(demand.height))),
+    fps: Math.max(1, Math.min(60, Math.trunc(demand.fps))),
+  }
+})
+
+const validateLocalCameraPreviewDemandEffect = Effect.fn(
+  'nativeMedia.validateLocalCameraPreviewDemand',
+)(function* (demanded: boolean) {
+  if (typeof demanded !== 'boolean') {
+    return yield* Effect.fail(
+      new NativeRuntimeRequestError(
+        nativeRuntimeError(
+          'invalid_preview_demand',
+          'Invalid local camera preview demand',
+          { stage: 'camera_preview_demand' },
+        ),
+      ),
+    )
+  }
+  return demanded
+})
 
 type PreviewSessionState = {
   sessionId: string
@@ -108,6 +156,7 @@ export class NativeMediaController {
   private lastRestoredRestartCount = 0
   private disposed = false
   private activeScreen: { sessionId: string; generation: number } | null = null
+  private activeCamera: { sessionId: string; generation: number } | null = null
   private activeVoiceSession: { sessionId: string; generation: number } | null = null
   private readonly remoteVideoPublications = new Map<
     string,
@@ -124,6 +173,7 @@ export class NativeMediaController {
     height: 720,
     fps: 30,
   }
+  private localCameraPreviewDemanded = true
 
   constructor(private readonly options: NativeMediaControllerOptions) {
     this.unsubscribeRuntimeEvent = options.supervisor.onEvent((event) =>
@@ -196,23 +246,86 @@ export class NativeMediaController {
     )
   }
 
-  listDisplaySources(): Promise<DesktopDisplayMediaSource[]> {
-    return this.effectRuntime.runPromise(this.listDisplaySourcesEffect())
+  listDisplaySourcePage(
+    enumerationId: string,
+    page: number,
+  ): Promise<DesktopDisplayMediaSourcePage> {
+    return this.effectRuntime.runPromise(
+      this.listDisplaySourcePageEffect(enumerationId, page),
+    )
   }
 
-  listDisplaySourcesEffect() {
+  listDisplaySourcePageEffect(enumerationId: string, page: number) {
     return Effect.gen({ self: this }, function*() {
-      if (!this.options.runtimeAvailable()) return []
+      if (!this.options.runtimeAvailable()) {
+        return { sources: [], page, hasPrevious: page > 0, hasNext: false }
+      }
       const result = yield* this.requestEffect(
         {
           type: 'listDisplaySources',
+          action: 'metadata',
+          enumerationId,
+          page,
           selfWindowHwnd: this.options.getSelfWindowHwnd(),
         },
         QUERY_TIMEOUT_MS,
       )
-      return Array.isArray(result)
+      const sources = Array.isArray(result)
         ? result.filter(isDesktopDisplayMediaSource)
         : []
+      return {
+        sources: sources.slice(0, DISPLAY_SOURCE_PAGE_SIZE),
+        page,
+        hasPrevious: page > 0,
+        hasNext: sources.length > DISPLAY_SOURCE_PAGE_SIZE,
+      }
+    })
+  }
+
+  loadDisplaySourceVisual(
+    enumerationId: string,
+    sourceId: string,
+  ): Promise<DesktopDisplayMediaSource | null> {
+    return this.effectRuntime.runPromise(
+      this.loadDisplaySourceVisualEffect(enumerationId, sourceId),
+    )
+  }
+
+  loadDisplaySourceVisualEffect(enumerationId: string, sourceId: string) {
+    return Effect.gen({ self: this }, function*() {
+      if (!this.options.runtimeAvailable()) return null
+      const result = yield* this.requestEffect(
+        {
+          type: 'listDisplaySources',
+          action: 'thumbnail',
+          enumerationId,
+          sourceId,
+          selfWindowHwnd: this.options.getSelfWindowHwnd(),
+        },
+        QUERY_TIMEOUT_MS,
+      )
+      if (!Array.isArray(result)) return null
+      return result.find(isDesktopDisplayMediaSource) ?? null
+    })
+  }
+
+  cancelDisplaySourceEnumeration(enumerationId: string): Promise<void> {
+    return this.effectRuntime.runPromise(
+      this.cancelDisplaySourceEnumerationEffect(enumerationId),
+    )
+  }
+
+  cancelDisplaySourceEnumerationEffect(enumerationId: string) {
+    return Effect.gen({ self: this }, function*() {
+      if (!this.options.runtimeAvailable()) return
+      yield* this.requestEffect(
+        {
+          type: 'listDisplaySources',
+          action: 'cancel',
+          enumerationId,
+        },
+        QUERY_TIMEOUT_MS,
+      )
     })
   }
 
@@ -504,6 +617,24 @@ export class NativeMediaController {
     )
   }
 
+  recoverLocalCameraPreview() {
+    return this.effectRuntime.runPromise(
+      Effect.gen({ self: this }, function*() {
+        const camera = this.activeCamera
+        if (!camera || !this.localCameraPreviewDemanded) return false
+        yield* this.requestEffect(
+          {
+            type: 'retryLocalCameraPreview',
+            ...camera,
+            reason: 'renderer_presentation_stall',
+          },
+          2_000,
+        )
+        return true
+      }),
+    )
+  }
+
   private performRemoteVideoRecoveryEffect(
     key: string,
     desired: RemoteVideoDemandState,
@@ -544,25 +675,21 @@ export class NativeMediaController {
   setLocalScreenPreviewDemand(demand: LocalScreenPreviewDemand) {
     return this.effectRuntime.runPromise(
       Effect.gen({ self: this }, function*() {
-        if (
-          !demand ||
-          typeof demand.demanded !== 'boolean' ||
-          !Number.isFinite(demand.width) ||
-          !Number.isFinite(demand.height) ||
-          !Number.isFinite(demand.fps)
-        ) {
-          return yield* Effect.fail(
-            new Error('Invalid local screen preview demand'),
-          )
-        }
-        this.localScreenPreviewDemand = {
-          demanded: Boolean(demand.demanded),
-          width: Math.max(16, Math.min(3840, Math.trunc(demand.width))),
-          height: Math.max(16, Math.min(2160, Math.trunc(demand.height))),
-          fps: Math.max(1, Math.min(60, Math.trunc(demand.fps))),
-        }
+        this.localScreenPreviewDemand =
+          yield* normalizeLocalScreenPreviewDemandEffect(demand)
         const screen = this.activeScreen
         if (screen) yield* this.sendLocalScreenPreviewDemandEffect(screen)
+      }),
+    )
+  }
+
+  setLocalCameraPreviewDemand(demanded: boolean) {
+    return this.effectRuntime.runPromise(
+      Effect.gen({ self: this }, function*() {
+        this.localCameraPreviewDemanded =
+          yield* validateLocalCameraPreviewDemandEffect(demanded)
+        const camera = this.activeCamera
+        if (camera) yield* this.sendLocalCameraPreviewDemandEffect(camera)
       }),
     )
   }
@@ -688,6 +815,19 @@ export class NativeMediaController {
     )
   }
 
+  private sendLocalCameraPreviewDemandEffect(
+    camera: { sessionId: string; generation: number },
+  ) {
+    return this.requestEffect(
+      {
+        type: 'setLocalCameraPreviewDemand',
+        ...camera,
+        demanded: this.localCameraPreviewDemanded,
+      },
+      2_000,
+    )
+  }
+
   private handleRuntimeEvent(event: MediaRuntimeEvent) {
     if (
       event.type === 'voiceTerminal' &&
@@ -807,9 +947,35 @@ export class NativeMediaController {
         this.activeScreen = null
       }
     }
+    if (event.type === 'sessionLifecycle' && event.kind === 'camera') {
+      if (event.state.status === 'starting' || event.state.status === 'running') {
+        const next = { sessionId: event.sessionId, generation: event.generation }
+        if (this.activeCamera && event.generation < this.activeCamera.generation) {
+          return
+        }
+        const changed = this.activeCamera?.sessionId !== next.sessionId ||
+          this.activeCamera.generation !== next.generation
+        this.activeCamera = next
+        if (changed) {
+          this.effectRuntime.runFork(
+            this.sendLocalCameraPreviewDemandEffect(next).pipe(
+              Effect.catch(() => Effect.void),
+              Effect.asVoid,
+            ),
+          )
+        }
+      } else if (this.activeCamera?.sessionId === event.sessionId &&
+        event.generation >= this.activeCamera.generation) {
+        this.activeCamera = null
+      }
+    }
     if (event.type === 'sessionStopped' && this.activeScreen?.sessionId === event.sessionId &&
       event.generation >= this.activeScreen.generation) {
       this.activeScreen = null
+    }
+    if (event.type === 'sessionStopped' && this.activeCamera?.sessionId === event.sessionId &&
+      event.generation >= this.activeCamera.generation) {
+      this.activeCamera = null
     }
     const preview = this.preview
     if (!preview || event.sessionId !== preview.sessionId || event.generation !== preview.generation) return
@@ -839,6 +1005,7 @@ export class NativeMediaController {
       snapshot.status === 'stopped'
     ) {
       this.activeScreen = null
+      this.activeCamera = null
       this.retireVoiceSession()
     }
     if (snapshot.status === 'degraded' && (this.preview || this.previewStartOperation)) {

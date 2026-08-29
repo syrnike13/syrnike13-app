@@ -64,6 +64,42 @@ Result<proto::OwnedDataTrackStream, SubscribeDataTrackError> subscribeDataTrackF
   return Result<proto::OwnedDataTrackStream, SubscribeDataTrackError>::failure(SubscribeDataTrackError{code, message});
 }
 
+std::string currentExceptionMessage() {
+  try {
+    throw;
+  } catch (const std::exception& e) {
+    return e.what();
+  } catch (...) {
+    return "Unknown FFI request failure";
+  }
+}
+
+void releaseOwnedHandle(std::uint64_t handle_id) noexcept {
+  if (handle_id != 0) {
+    const FfiHandle handle(static_cast<std::uintptr_t>(handle_id));
+  }
+}
+
+void releaseUnclaimedOperationResult(const proto::FfiEvent& event) noexcept {
+  if (event.has_publish_track() && event.publish_track().has_publication()) {
+    releaseOwnedHandle(event.publish_track().publication().handle().id());
+    return;
+  }
+  if (!event.has_connect() || !event.connect().has_result()) {
+    return;
+  }
+
+  const auto& result = event.connect().result();
+  releaseOwnedHandle(result.room().handle().id());
+  releaseOwnedHandle(result.local_participant().handle().id());
+  for (const auto& participant : result.participants()) {
+    releaseOwnedHandle(participant.participant().handle().id());
+    for (const auto& publication : participant.publications()) {
+      releaseOwnedHandle(publication.handle().id());
+    }
+  }
+}
+
 std::optional<FfiClient::AsyncId> ExtractAsyncId(const proto::FfiEvent& event) {
   using E = proto::FfiEvent;
   switch (event.message_case()) {
@@ -163,7 +199,13 @@ FfiClient& FfiClient::instance() noexcept {
   return instance;
 }
 
+FfiClient::FfiClient() : cancellation_gate_(std::make_shared<CancellationGate>()) { cancellation_gate_->client = this; }
+
 FfiClient::~FfiClient() {
+  {
+    const std::scoped_lock<std::mutex> guard(cancellation_gate_->mutex);
+    cancellation_gate_->client = nullptr;
+  }
   if (lifecycle_state_.load() == LifecycleState::Initialized) {
     // Explicitly use this over spdlog/std::cerr which can throw
     // Wrapping spdlog try/catch also flags "empty catch" clang-tidy check
@@ -215,11 +257,14 @@ void FfiClient::shutdown() noexcept {
         }
       }
       pending_by_id_.clear();
+#ifdef LIVEKIT_TEST_ACCESS
+      request_sender_for_testing_ = {};
+#endif
     }
 
     // Cancel the pending operations
     for (auto& pending : pending_to_cancel) {
-      pending->cancel();
+      pending->cancel(FfiOperationError{FfiOperationErrorCode::Shutdown, "LiveKit SDK is shutting down"});
     }
 
     const auto this_thread = std::this_thread::get_id();
@@ -314,6 +359,17 @@ proto::FfiResponse FfiClient::sendRequest(const proto::FfiRequest& request) cons
     throw std::runtime_error("FfiClient::sendRequest failed: LiveKit is not initialized");
   }
 
+#ifdef LIVEKIT_TEST_ACCESS
+  RequestSender request_sender;
+  {
+    const std::scoped_lock<std::mutex> guard(lock_);
+    request_sender = request_sender_for_testing_;
+  }
+  if (request_sender) {
+    return request_sender(request);
+  }
+#endif
+
   std::string bytes;
   if (!request.SerializeToString(&bytes) || bytes.empty()) {
     throw std::runtime_error("failed to serialize FfiRequest");
@@ -342,6 +398,7 @@ proto::FfiResponse FfiClient::sendRequest(const proto::FfiRequest& request) cons
 void FfiClient::pushEvent(const proto::FfiEvent& event) const {
   std::unique_ptr<PendingBase> to_complete;
   std::vector<std::shared_ptr<ListenerSlot>> listeners_copy;
+  bool release_unclaimed_result = false;
   {
     const std::scoped_lock<std::mutex> guard(lock_);
     if (lifecycle_state_.load(std::memory_order_acquire) != LifecycleState::Initialized) {
@@ -354,6 +411,8 @@ void FfiClient::pushEvent(const proto::FfiEvent& event) const {
       if (it != pending_by_id_.end() && it->second && it->second->matches(event)) {
         to_complete = std::move(it->second);
         pending_by_id_.erase(it);
+      } else {
+        release_unclaimed_result = true;
       }
     }
 
@@ -366,6 +425,8 @@ void FfiClient::pushEvent(const proto::FfiEvent& event) const {
   // Run handler outside lock
   if (to_complete) {
     to_complete->complete(event);
+  } else if (release_unclaimed_result) {
+    releaseUnclaimedOperationResult(event);
   }
 
   // Notify listeners outside lock
@@ -427,7 +488,11 @@ extern "C" LIVEKIT_INTERNAL_API void ffiEventCallback(const uint8_t* buf, size_t
 
 FfiClient::AsyncId FfiClient::generateAsyncId() { return next_async_id_.fetch_add(1, std::memory_order_relaxed); }
 
-bool FfiClient::cancelPendingByAsyncId(AsyncId async_id) {
+#ifdef LIVEKIT_TEST_ACCESS
+bool FfiClient::dropHandleForTesting(std::uint64_t handle_id) { return livekit_ffi_drop_handle(handle_id); }
+#endif
+
+bool FfiClient::cancelPendingByAsyncId(AsyncId async_id, FfiOperationError error) {
   std::unique_ptr<PendingBase> to_cancel;
   {
     const std::scoped_lock<std::mutex> guard(lock_);
@@ -438,10 +503,33 @@ bool FfiClient::cancelPendingByAsyncId(AsyncId async_id) {
     }
   }
   if (to_cancel) {
-    to_cancel->cancel();
+    to_cancel->cancel(std::move(error));
     return true;
   }
   return false;
+}
+
+template <typename T>
+FfiOperation<T> FfiClient::registerOperation(AsyncId async_id, std::function<bool(const proto::FfiEvent&)> match,
+                                             std::function<FfiOperationResult<T>(const proto::FfiEvent&)> handler) {
+  auto pending = std::make_unique<OperationPending<T>>();
+  pending->async_id = async_id;
+  auto future = pending->promise.get_future();
+  pending->match = std::move(match);
+  pending->handler = std::move(handler);
+  {
+    const std::scoped_lock<std::mutex> guard(lock_);
+    pending_by_id_.emplace(async_id, std::move(pending));
+  }
+
+  auto cancellation_gate = cancellation_gate_;
+  return FfiOperation<T>(async_id, std::move(future), [cancellation_gate, async_id](FfiOperationError error) {
+    const std::scoped_lock<std::mutex> guard(cancellation_gate->mutex);
+    if (!cancellation_gate->client) {
+      return false;
+    }
+    return cancellation_gate->client->cancelPendingByAsyncId(async_id, std::move(error));
+  });
 }
 
 template <typename T>
@@ -460,27 +548,29 @@ std::future<T> FfiClient::registerAsync(AsyncId async_id, std::function<bool(con
 }
 
 // Room APIs Implementation
-std::future<proto::ConnectCallback> FfiClient::connectAsync(const std::string& url, const std::string& token,
-                                                            const RoomOptions& options) {
+FfiOperation<proto::ConnectCallback> FfiClient::connectAsync(const std::string& url, const std::string& token,
+                                                             const RoomOptions& options) {
   // Generate client-side async_id first
   const AsyncId async_id = generateAsyncId();
 
   // Register the async handler BEFORE sending the request
-  auto fut = registerAsync<proto::ConnectCallback>(
+  auto operation = registerOperation<proto::ConnectCallback>(
       async_id,
       // match lambda: is this the connect event with our async_id?
       [async_id](const proto::FfiEvent& event) {
         return event.has_connect() && event.connect().async_id() == async_id;
       },
-      // handler lambda: fill the promise with RoomInfo or an exception
-      [](const proto::FfiEvent& event, std::promise<proto::ConnectCallback>& pr) {
+      [](const proto::FfiEvent& event) -> FfiOperationResult<proto::ConnectCallback> {
         const auto& connectCb = event.connect();
         if (!connectCb.error().empty()) {
-          pr.set_exception(std::make_exception_ptr(std::runtime_error(connectCb.error())));
-          return;
+          return FfiOperationResult<proto::ConnectCallback>::failure(
+              FfiOperationError{FfiOperationErrorCode::CallbackFailed, connectCb.error()});
         }
-
-        pr.set_value(connectCb);
+        if (!connectCb.has_result()) {
+          return FfiOperationResult<proto::ConnectCallback>::failure(
+              FfiOperationError{FfiOperationErrorCode::CallbackFailed, "ConnectCallback missing result"});
+        }
+        return FfiOperationResult<proto::ConnectCallback>::success(connectCb);
       });
 
   // Build and send the request
@@ -498,30 +588,32 @@ std::future<proto::ConnectCallback> FfiClient::connectAsync(const std::string& u
       options.single_peer_connection, optional_to_string(options.join_retries),
       optional_to_string(options.connect_timeout));
 
+  proto::FfiResponse response;
   try {
-    const proto::FfiResponse resp = sendRequest(req);
-    if (!resp.has_connect()) {
-      logAndThrow("FfiResponse missing connect");
-    }
+    response = sendRequest(req);
   } catch (...) {
-    cancelPendingByAsyncId(async_id);
-    throw;
+    cancelPendingByAsyncId(async_id,
+                           FfiOperationError{FfiOperationErrorCode::RequestFailed, currentExceptionMessage()});
+    return operation;
+  }
+  if (!response.has_connect()) {
+    cancelPendingByAsyncId(async_id,
+                           FfiOperationError{FfiOperationErrorCode::ProtocolError, "FfiResponse missing connect"});
   }
 
-  return fut;
+  return operation;
 }
 
-std::future<void> FfiClient::disconnectAsync(uintptr_t room_handle, DisconnectReason reason) {
+FfiOperation<void> FfiClient::disconnectAsync(uintptr_t room_handle, DisconnectReason reason) {
   const AsyncId async_id = generateAsyncId();
 
-  auto fut = registerAsync<void>(
+  auto operation = registerOperation<void>(
       async_id,
       // match: this DisconnectCallback's async_id
       [async_id](const proto::FfiEvent& event) {
         return event.has_disconnect() && event.disconnect().async_id() == async_id;
       },
-      // handler: nothing to extract; the callback is signal-only
-      [](const proto::FfiEvent& /*event*/, std::promise<void>& pr) { pr.set_value(); });
+      [](const proto::FfiEvent& /*event*/) { return FfiOperationResult<void>::success(); });
 
   proto::FfiRequest req;
   auto* disconnect = req.mutable_disconnect();
@@ -529,17 +621,20 @@ std::future<void> FfiClient::disconnectAsync(uintptr_t room_handle, DisconnectRe
   disconnect->set_request_async_id(async_id);
   disconnect->set_reason(toProto(reason));
 
+  proto::FfiResponse response;
   try {
-    const proto::FfiResponse resp = sendRequest(req);
-    if (!resp.has_disconnect()) {
-      logAndThrow("FfiResponse missing disconnect");
-    }
+    response = sendRequest(req);
   } catch (...) {
-    cancelPendingByAsyncId(async_id);
-    throw;
+    cancelPendingByAsyncId(async_id,
+                           FfiOperationError{FfiOperationErrorCode::RequestFailed, currentExceptionMessage()});
+    return operation;
+  }
+  if (!response.has_disconnect()) {
+    cancelPendingByAsyncId(async_id,
+                           FfiOperationError{FfiOperationErrorCode::ProtocolError, "FfiResponse missing disconnect"});
   }
 
-  return fut;
+  return operation;
 }
 
 // Track APIs Implementation
@@ -644,36 +739,35 @@ std::future<SessionStats> FfiClient::getSessionStatsAsync(uintptr_t room_handle)
 }
 
 // Participant APIs Implementation
-std::future<proto::OwnedTrackPublication> FfiClient::publishTrackAsync(std::uint64_t local_participant_handle,
-                                                                       std::uint64_t track_handle,
-                                                                       const TrackPublishOptions& options) {
+FfiOperation<proto::OwnedTrackPublication> FfiClient::publishTrackAsync(std::uint64_t local_participant_handle,
+                                                                        std::uint64_t track_handle,
+                                                                        const TrackPublishOptions& options) {
   // Generate client-side async_id first
   const AsyncId async_id = generateAsyncId();
 
   // Register the async handler BEFORE sending the request
-  auto fut = registerAsync<proto::OwnedTrackPublication>(
+  auto operation = registerOperation<proto::OwnedTrackPublication>(
       async_id,
       // Match: is this our PublishTrackCallback?
       [async_id](const proto::FfiEvent& event) {
         return event.has_publish_track() && event.publish_track().async_id() == async_id;
       },
-      // Handler: resolve with publication or throw error
-      [](const proto::FfiEvent& event, std::promise<proto::OwnedTrackPublication>& pr) {
+      [](const proto::FfiEvent& event) -> FfiOperationResult<proto::OwnedTrackPublication> {
         const auto& cb = event.publish_track();
 
         // Oneof message { string error = 2; OwnedTrackPublication publication =
         // 3; }
         if (cb.has_error() && !cb.error().empty()) {
-          pr.set_exception(std::make_exception_ptr(std::runtime_error(cb.error())));
-          return;
+          return FfiOperationResult<proto::OwnedTrackPublication>::failure(
+              FfiOperationError{FfiOperationErrorCode::CallbackFailed, cb.error()});
         }
         if (!cb.has_publication()) {
-          pr.set_exception(std::make_exception_ptr(std::runtime_error("PublishTrackCallback missing publication")));
-          return;
+          return FfiOperationResult<proto::OwnedTrackPublication>::failure(
+              FfiOperationError{FfiOperationErrorCode::CallbackFailed, "PublishTrackCallback missing publication"});
         }
 
         const proto::OwnedTrackPublication& pub = cb.publication();
-        pr.set_value(pub);
+        return FfiOperationResult<proto::OwnedTrackPublication>::success(pub);
       });
 
   // Build and send the request
@@ -685,37 +779,40 @@ std::future<proto::OwnedTrackPublication> FfiClient::publishTrackAsync(std::uint
   auto optionProto = toProto(options);
   msg->mutable_options()->CopyFrom(optionProto);
 
+  proto::FfiResponse response;
   try {
-    const proto::FfiResponse resp = sendRequest(req);
-    if (!resp.has_publish_track()) {
-      logAndThrow("FfiResponse missing publish_track");
-    }
+    response = sendRequest(req);
   } catch (...) {
-    cancelPendingByAsyncId(async_id);
-    throw;
+    cancelPendingByAsyncId(async_id,
+                           FfiOperationError{FfiOperationErrorCode::RequestFailed, currentExceptionMessage()});
+    return operation;
+  }
+  if (!response.has_publish_track()) {
+    cancelPendingByAsyncId(
+        async_id, FfiOperationError{FfiOperationErrorCode::ProtocolError, "FfiResponse missing publish_track"});
   }
 
-  return fut;
+  return operation;
 }
 
-std::future<void> FfiClient::unpublishTrackAsync(std::uint64_t local_participant_handle, const std::string& track_sid,
-                                                 bool stop_on_unpublish) {
+FfiOperation<void> FfiClient::unpublishTrackAsync(std::uint64_t local_participant_handle, const std::string& track_sid,
+                                                  bool stop_on_unpublish) {
   // Generate client-side async_id first
   const AsyncId async_id = generateAsyncId();
 
   // Register the async handler BEFORE sending the request
-  auto fut = registerAsync<void>(
+  auto operation = registerOperation<void>(
       async_id,
       [async_id](const proto::FfiEvent& event) {
         return event.has_unpublish_track() && event.unpublish_track().async_id() == async_id;
       },
-      [](const proto::FfiEvent& event, std::promise<void>& pr) {
+      [](const proto::FfiEvent& event) -> FfiOperationResult<void> {
         const auto& cb = event.unpublish_track();
         if (cb.has_error() && !cb.error().empty()) {
-          pr.set_exception(std::make_exception_ptr(std::runtime_error(cb.error())));
-          return;
+          return FfiOperationResult<void>::failure(
+              FfiOperationError{FfiOperationErrorCode::CallbackFailed, cb.error()});
         }
-        pr.set_value();
+        return FfiOperationResult<void>::success();
       });
 
   // Build and send the request
@@ -726,17 +823,20 @@ std::future<void> FfiClient::unpublishTrackAsync(std::uint64_t local_participant
   msg->set_stop_on_unpublish(stop_on_unpublish);
   msg->set_request_async_id(async_id);
 
+  proto::FfiResponse response;
   try {
-    const proto::FfiResponse resp = sendRequest(req);
-    if (!resp.has_unpublish_track()) {
-      logAndThrow("FfiResponse missing unpublish_track");
-    }
+    response = sendRequest(req);
   } catch (...) {
-    cancelPendingByAsyncId(async_id);
-    throw;
+    cancelPendingByAsyncId(async_id,
+                           FfiOperationError{FfiOperationErrorCode::RequestFailed, currentExceptionMessage()});
+    return operation;
+  }
+  if (!response.has_unpublish_track()) {
+    cancelPendingByAsyncId(
+        async_id, FfiOperationError{FfiOperationErrorCode::ProtocolError, "FfiResponse missing unpublish_track"});
   }
 
-  return fut;
+  return operation;
 }
 
 std::future<void> FfiClient::publishDataAsync(std::uint64_t local_participant_handle, const std::uint8_t* data_ptr,
@@ -949,26 +1049,25 @@ std::future<void> FfiClient::setLocalMetadataAsync(std::uint64_t local_participa
   return fut;
 }
 
-std::future<void> FfiClient::captureAudioFrameAsync(std::uint64_t source_handle,
-                                                    const proto::AudioFrameBufferInfo& buffer) {
+FfiOperation<void> FfiClient::captureAudioFrameAsync(std::uint64_t source_handle,
+                                                     const proto::AudioFrameBufferInfo& buffer) {
   // Generate client-side async_id first
   const AsyncId async_id = generateAsyncId();
 
   // Register the async handler BEFORE sending the request
-  auto fut = registerAsync<void>(
+  auto operation = registerOperation<void>(
       async_id,
       // match predicate
       [async_id](const proto::FfiEvent& event) {
         return event.has_capture_audio_frame() && event.capture_audio_frame().async_id() == async_id;
       },
-      // completion handler
-      [](const proto::FfiEvent& event, std::promise<void>& pr) {
+      [](const proto::FfiEvent& event) -> FfiOperationResult<void> {
         const auto& cb = event.capture_audio_frame();
         if (cb.has_error() && !cb.error().empty()) {
-          pr.set_exception(std::make_exception_ptr(std::runtime_error(cb.error())));
-          return;
+          return FfiOperationResult<void>::failure(
+              FfiOperationError{FfiOperationErrorCode::CallbackFailed, cb.error()});
         }
-        pr.set_value();
+        return FfiOperationResult<void>::success();
       });
 
   // Build and send the request
@@ -978,17 +1077,20 @@ std::future<void> FfiClient::captureAudioFrameAsync(std::uint64_t source_handle,
   msg->set_request_async_id(async_id);
   msg->mutable_buffer()->CopyFrom(buffer);
 
+  proto::FfiResponse response;
   try {
-    const proto::FfiResponse resp = sendRequest(req);
-    if (!resp.has_capture_audio_frame()) {
-      logAndThrow("FfiResponse missing capture_audio_frame");
-    }
+    response = sendRequest(req);
   } catch (...) {
-    cancelPendingByAsyncId(async_id);
-    throw;
+    cancelPendingByAsyncId(async_id,
+                           FfiOperationError{FfiOperationErrorCode::RequestFailed, currentExceptionMessage()});
+    return operation;
+  }
+  if (!response.has_capture_audio_frame()) {
+    cancelPendingByAsyncId(
+        async_id, FfiOperationError{FfiOperationErrorCode::ProtocolError, "FfiResponse missing capture_audio_frame"});
   }
 
-  return fut;
+  return operation;
 }
 
 std::future<std::string> FfiClient::performRpcAsync(std::uint64_t local_participant_handle,

@@ -117,7 +117,7 @@ void LiveKitRuntimeLifetime::initialize() {
 
 RuntimeEvent reply(const MediaCommand& command) {
   RuntimeEvent event;
-  event.type = "reply";
+  event.type = NativeEventType::Reply;
   event.request_id = command.request_id;
   event.session_id = command.session_id;
   event.generation = command.generation;
@@ -139,7 +139,7 @@ RuntimeEvent lifecycle(
   std::string detail
 ) {
   RuntimeEvent event;
-  event.type = "sessionLifecycle";
+  event.type = NativeEventType::SessionLifecycle;
   event.request_id = command.request_id;
   event.session_id = command.session_id;
   event.generation = command.generation;

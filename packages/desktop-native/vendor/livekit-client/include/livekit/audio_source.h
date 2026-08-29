@@ -30,6 +30,7 @@ class FfiResponse;
 } // namespace proto
 
 class FfiClient;
+class OperationCancellation;
 
 /// Represents a real-time audio source with an internal audio queue.
 class LIVEKIT_API AudioSource {
@@ -89,6 +90,8 @@ public:
   /// queue tracking.
   void clearQueue();
 
+  /// @brief Pushes an audio frame using the legacy timeout contract.
+  ///
   /// Push an AudioFrame into the audio source and BLOCK until the FFI callback
   /// confirms that the native side has finished processing (consuming) the
   /// frame. Safe usage: The frame's internal buffer must remain valid only until
@@ -99,10 +102,9 @@ public:
   /// zero samples.
   /// @param timeout_ms  Maximum time to wait for the FFI callback.
   ///                    - If timeout_ms > 0: block up to this duration.
-  ///                      A timeout will cause std::runtime_error.
-  ///                    - If timeout_ms == 0: wait indefinitely until the
-  /// callback arrives (recommended for production unless the caller needs
-  /// explicit timeout control).
+  ///                      A timeout is logged and returns without throwing.
+  ///                    - If timeout_ms == 0: wait indefinitely.
+  ///                    - If timeout_ms < 0: perform an immediate timeout check.
   ///
   /// Blocking semantics:
   /// The blocking behavior of this call depends on the buffering mode selected
@@ -126,11 +128,33 @@ public:
   ///     engines or agents) that generate audio independently of real-time
   /// pacing, while still streaming audio out in real time.
   ///
-  /// @throws std::runtime_error if the FFI reports an error or a timeout
-  ///         occurs in bounded-wait mode.
+  /// @throws std::runtime_error If the FFI reports an operation error.
   void captureFrame(const AudioFrame& frame, int timeout_ms = 20);
 
+  /// @brief Captures an audio frame with a bounded, cancellable wait.
+  ///
+  /// Capture an audio frame with cooperative cancellation for the pending FFI
+  /// acknowledgement. The timeout remains authoritative; cancellation lets a
+  /// stopping real-time producer release the wait before that deadline.
+  ///
+  /// @param frame Audio frame to send. A frame with zero samples is ignored.
+  /// @param timeout_ms Maximum wait in milliseconds. Positive values are used
+  /// directly; non-positive values select a queue-aware bounded budget capped
+  /// at two minutes.
+  /// @param cancellation Cooperative cancellation handle for the pending FFI
+  /// acknowledgement.
+  /// @throws std::runtime_error If the FFI request fails, the deadline expires,
+  /// or cancellation is requested.
+  /// @throws std::bad_alloc If operation or cancellation state cannot be allocated.
+  void captureFrame(const AudioFrame& frame,
+                    std::int32_t timeout_ms,
+                    const OperationCancellation& cancellation);
+
 private:
+  void captureFrameImpl(const AudioFrame& frame,
+                        std::int32_t timeout_ms,
+                        const OperationCancellation* cancellation);
+
   // Internal helper to reset the local queue tracking (like _release_waiter).
   void resetQueueTracking() noexcept;
 

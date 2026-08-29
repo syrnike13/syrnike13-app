@@ -12,8 +12,11 @@
 #include "api/scoped_refptr.h"
 #include "api/video/video_frame_buffer.h"
 #include "api/video_codecs/video_encoder_factory.h"
+#include "rust/cxx.h"
 
 namespace livekit_ffi {
+
+class VideoFrameBuffer;
 
 class D3D11TextureFrameBuffer : public webrtc::VideoFrameBuffer {
  public:
@@ -59,6 +62,15 @@ class D3D11TextureFrameBuffer : public webrtc::VideoFrameBuffer {
 };
 
 bool IsWindowsD3D11HardwareH264Supported();
+bool windows_d3d11_h264_accepts_buffer_for_test(
+    const VideoFrameBuffer& buffer);
+rust::Vec<uint8_t> windows_d3d11_h264_repair_keyframe_for_test(
+    rust::Slice<const uint8_t> initial_keyframe,
+    rust::Slice<const uint8_t> forced_keyframe);
+bool windows_d3d11_h264_merge_keyframe_intent_for_test(
+    bool pending,
+    bool requested,
+    bool superseded);
 std::unique_ptr<webrtc::VideoEncoderFactory>
 CreateWindowsD3D11HardwareH264EncoderFactory();
 

@@ -52,7 +52,11 @@ vi.mock('electron', () => ({
   sharedTexture: electron.sharedTexture,
 }))
 
-import { IPC, type SyrnikeDesktopApi } from '@syrnike13/platform'
+import {
+  IPC,
+  type DesktopDisplayMediaSource,
+  type SyrnikeDesktopApi,
+} from '@syrnike13/platform'
 
 describe('desktop preload media runtime bridge', () => {
   let desktop: SyrnikeDesktopApi
@@ -77,6 +81,41 @@ describe('desktop preload media runtime bridge', () => {
     await expect(desktop.media.retryRuntime()).resolves.toEqual(ready)
     expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(
       IPC.mediaRetryRuntime,
+    )
+  })
+
+  it('decodes metadata pages and lazy display-source visuals', async () => {
+    const source: DesktopDisplayMediaSource = {
+      id: 'window:42',
+      name: 'Window',
+      type: 'window',
+      thumbnailDataUrl: null,
+      appIconDataUrl: null,
+    }
+    const page = {
+      sources: [source],
+      page: 2,
+      hasPrevious: true,
+      hasNext: false,
+    }
+    electron.ipcRenderer.invoke.mockResolvedValueOnce(page)
+
+    await expect(desktop.media.getDisplaySources('picker-1', 2)).resolves.toEqual(page)
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(
+      IPC.mediaGetDisplaySources,
+      'picker-1',
+      2,
+    )
+
+    const visual = { ...source, thumbnailDataUrl: 'data:image/bmp;base64,preview' }
+    electron.ipcRenderer.invoke.mockResolvedValueOnce(visual)
+    await expect(
+      desktop.media.getDisplaySourceVisual('picker-1', source.id),
+    ).resolves.toEqual(visual)
+    expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(
+      IPC.mediaGetDisplaySourceVisual,
+      'picker-1',
+      source.id,
     )
   })
 

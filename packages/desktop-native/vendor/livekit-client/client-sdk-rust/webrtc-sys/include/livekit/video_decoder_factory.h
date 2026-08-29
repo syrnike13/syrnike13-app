@@ -21,6 +21,11 @@
 #include "absl/strings/match.h"
 
 namespace livekit_ffi {
+void reset_h264_decode_startup_observations();
+uint64_t h264_pre_keyframe_decode_inputs();
+uint64_t h264_complete_keyframe_decode_inputs();
+uint64_t h264_decoded_outputs();
+
 class VideoDecoderFactory : public webrtc::VideoDecoderFactory {
  public:
   VideoDecoderFactory();

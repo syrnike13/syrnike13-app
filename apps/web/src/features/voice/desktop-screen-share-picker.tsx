@@ -35,6 +35,37 @@ import {
 
 type SourceTab = 'screen' | 'applications'
 const SourceTabSchema = Schema.Literals(['screen', 'applications'])
+const DISPLAY_SOURCE_PAGE_SIZE = 24
+export const DISPLAY_SOURCE_VISUAL_CONCURRENCY = 4
+
+type DisplaySourceVisualLoadOptions = {
+  requestId: string
+  sources: readonly DesktopDisplayMediaSource[]
+  loadVisual: (
+    requestId: string,
+    sourceId: string,
+  ) => Promise<DesktopDisplayMediaSource | null>
+  isCurrent: () => boolean
+  onVisual: (visual: DesktopDisplayMediaSource) => void
+}
+
+export const loadDisplaySourceVisualsEffect = Effect.fn(
+  'desktopScreenSharePicker.loadVisuals',
+)(function*(options: DisplaySourceVisualLoadOptions) {
+  yield* Effect.forEach(
+    options.sources.slice(0, DISPLAY_SOURCE_PAGE_SIZE),
+    (source) =>
+      Effect.gen(function*() {
+        if (!options.isCurrent()) return
+        const visual = yield* Effect.tryPromise({
+          try: () => options.loadVisual(options.requestId, source.id),
+          catch: (cause) => cause,
+        })
+        if (visual && options.isCurrent()) options.onVisual(visual)
+      }).pipe(Effect.catch(() => Effect.void)),
+    { concurrency: DISPLAY_SOURCE_VISUAL_CONCURRENCY, discard: true },
+  )
+})
 
 const SOURCE_TABS: Array<{
   value: SourceTab
@@ -72,6 +103,9 @@ export function DesktopScreenSharePicker() {
   const [activeTab, setActiveTab] = useState<SourceTab>('screen')
   const [audioRequested, setAudioRequested] = useState(true)
   const [loading, setLoading] = useState(false)
+  const [page, setPage] = useState(0)
+  const [hasPreviousPage, setHasPreviousPage] = useState(false)
+  const [hasNextPage, setHasNextPage] = useState(false)
   const [submittingSourceId, setSubmittingSourceId] = useState<string | null>(
     null,
   )
@@ -83,47 +117,76 @@ export function DesktopScreenSharePicker() {
       setSources([])
       setActiveTab('screen')
       setAudioRequested(nextRequest.audioRequested)
+      setPage(0)
+      setHasPreviousPage(false)
+      setHasNextPage(false)
       setSubmittingSourceId(null)
     })
   }, [desktop])
 
+  const requestId = request?.id ?? null
   useEffect(() => {
-    if (!desktop || !request) return
+    if (!desktop || !requestId) return
 
+    let current = true
     setLoading(true)
+    setSources([])
     const fiber = Effect.runFork(
       Effect.tryPromise({
-        try: () => desktop.media.getDisplaySources(request.id),
+        try: () => desktop.media.getDisplaySources(requestId, page),
         catch: (cause) => cause,
       }).pipe(
-        Effect.matchEffect({
-          onFailure: (error) =>
-            Effect.sync(() => {
-              toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Не удалось получить источники демонстрации',
-              )
-              setLoading(false)
-            }),
-          onSuccess: (nextSources) =>
-            Effect.sync(() => {
-              setSources(nextSources)
+        Effect.flatMap((nextPage) =>
+          Effect.gen(function*() {
+            if (!current) return
+            yield* Effect.sync(() => {
+              setSources(nextPage.sources)
+              setHasPreviousPage(nextPage.hasPrevious)
+              setHasNextPage(nextPage.hasNext)
               setActiveTab(
-                nextSources.some((source) => source.type === 'screen')
+                nextPage.sources.some((source) => source.type === 'screen')
                   ? 'screen'
                   : 'applications',
               )
               setLoading(false)
-            }),
-        }),
+            })
+            yield* loadDisplaySourceVisualsEffect({
+              requestId,
+              sources: nextPage.sources,
+              loadVisual: (activeRequestId, sourceId) =>
+                desktop.media.getDisplaySourceVisual(activeRequestId, sourceId),
+              isCurrent: () => current,
+              onVisual: (visual) => {
+                setSources((currentSources) =>
+                  current
+                    ? currentSources.map((source) =>
+                        source.id === visual.id ? visual : source,
+                      )
+                    : currentSources,
+                )
+              },
+            })
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            if (!current) return
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось получить источники демонстрации',
+            )
+            setLoading(false)
+          }),
+        ),
       ),
     )
 
     return () => {
+      current = false
       Effect.runFork(Fiber.interrupt(fiber))
     }
-  }, [desktop, request])
+  }, [desktop, page, requestId])
 
   const screenSources = useMemo(
     () => sources.filter((source) => source.type === 'screen'),
@@ -137,6 +200,9 @@ export function DesktopScreenSharePicker() {
     const activeRequest = request
     setRequest(null)
     setSources([])
+    setPage(0)
+    setHasPreviousPage(false)
+    setHasNextPage(false)
     setSubmittingSourceId(null)
     if (desktop && activeRequest) {
       void desktop.media.cancelRequest(activeRequest.id)
@@ -162,6 +228,9 @@ export function DesktopScreenSharePicker() {
         rememberDesktopScreenShareBroadcastSource(source)
         setRequest(null)
         setSources([])
+        setPage(0)
+        setHasPreviousPage(false)
+        setHasNextPage(false)
         setSubmittingSourceId(null)
       } catch (error) {
         toast.error(
@@ -251,14 +320,41 @@ export function DesktopScreenSharePicker() {
           ) : (
             <span />
           )}
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={cancelRequest}
-            disabled={submitting}
-          >
-            Отмена
-          </Button>
+          <div className="flex items-center gap-2">
+            {hasPreviousPage || hasNextPage ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((currentPage) => Math.max(0, currentPage - 1))}
+                  disabled={!hasPreviousPage || loading || submitting}
+                >
+                  Назад
+                </Button>
+                <span className="min-w-8 text-center text-xs text-muted-foreground">
+                  {page + 1}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((currentPage) => currentPage + 1)}
+                  disabled={!hasNextPage || loading || submitting}
+                >
+                  Далее
+                </Button>
+              </>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={cancelRequest}
+              disabled={submitting}
+            >
+              Отмена
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -344,6 +440,8 @@ function DisplaySourceTile({
               alt=""
               className="size-full object-cover"
               draggable={false}
+              loading="lazy"
+              decoding="async"
             />
           ) : (
             <div className="grid size-full place-items-center text-muted-foreground">
@@ -376,6 +474,8 @@ function DisplaySourceTile({
             alt=""
             className="size-4 shrink-0"
             draggable={false}
+            loading="lazy"
+            decoding="async"
           />
         ) : (
           <FallbackIcon className="size-4 shrink-0 text-muted-foreground" />

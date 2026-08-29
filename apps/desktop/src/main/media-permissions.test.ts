@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   displayMediaSourceTypeFromId,
+  displayMediaSourcePage,
   isAllowedMediaOrigin,
   shouldGrantDesktopMediaPermission,
   shouldAllowBrowserDisplayMediaFallback,
@@ -55,6 +56,17 @@ describe('desktop media permissions', () => {
     expect(shouldAllowBrowserDisplayMediaFallback('linux')).toBe(true)
   })
 
+  it('returns one fixed-budget metadata page for 500 sources', () => {
+    const sources = Array.from({ length: 500 }, (_, index) => ({ id: `${index}` }))
+
+    expect(displayMediaSourcePage(sources, 10)).toEqual({
+      sources: sources.slice(240, 264),
+      page: 10,
+      hasPrevious: true,
+      hasNext: true,
+    })
+  })
+
   it('short-circuits browser display media requests on Windows before creating a browser picker request', () => {
     const source = readFileSync(
       fileURLToPath(new URL('./media-permissions.ts', import.meta.url)),
@@ -82,12 +94,13 @@ describe('desktop media permissions', () => {
       'utf8',
     )
     const nativeRefreshBody = source.match(
-      /const refreshPendingNativePickerSourcesEffect[\s\S]*?\r?\n}\)\r?\n\r?\nfunction selectPendingDisplayMediaSource/,
+      /const refreshPendingNativePickerSourcesEffect[\s\S]*?\r?\n}\)\r?\n\r?\nconst refreshPendingNativePickerVisualEffect/,
     )?.[0]
 
     expect(nativeRefreshBody).toBeDefined()
-    expect(nativeRefreshBody).toContain(
-      'listNativeDisplaySourcesEffect(getWindow)',
+    expect(nativeRefreshBody).toContain('listNativeDisplaySourcePageEffect(')
+    expect(nativeRefreshBody).toMatch(
+      /listNativeDisplaySourcePageEffect\(\s*requestId,\s*page,\s*getWindow,\s*\)/,
     )
     expect(nativeRefreshBody).not.toContain('loadSourcesForRequestEffect')
   })

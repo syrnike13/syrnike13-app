@@ -5,7 +5,7 @@
 
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
-#include "../common/async_cleanup_dispatcher.hpp"
+#include "../common/cleanup_supervisor.hpp"
 #include "livekit_voice_session.hpp"
 
 namespace syrnike::desktop_native::media {
@@ -20,8 +20,8 @@ class VoiceActor final {
     InternalPost post,
     IsCurrent is_current,
     std::shared_ptr<LiveKitVoiceSession> voice_session,
-    AsyncCleanupLauncher async_cleanup_launcher = {},
-    AsyncCleanupEnqueueProbe async_cleanup_enqueue_probe = {}
+    CleanupStartProbe cleanup_start_probe = {},
+    CleanupEnqueueProbe cleanup_enqueue_probe = {}
   );
   ~VoiceActor();
 

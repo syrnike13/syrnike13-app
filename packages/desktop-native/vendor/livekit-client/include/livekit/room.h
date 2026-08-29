@@ -21,10 +21,12 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <optional>
 
 #include "livekit/data_stream.h"
 #include "livekit/e2ee.h"
 #include "livekit/ffi_handle.h"
+#include "livekit/operation_cancellation.h"
 #include "livekit/room_event_types.h"
 #include "livekit/stats.h"
 #include "livekit/subscription_thread_dispatcher.h"
@@ -145,7 +147,9 @@ public:
   ///     room.setDelegate(&del);
   void setDelegate(RoomDelegate* delegate);
 
-  /// Connect to a LiveKit room using the given URL and token, applying the
+  /// @brief Connects to a LiveKit room and preserves the legacy unbounded wait.
+  ///
+  /// Connect using the given URL and token, applying the
   /// supplied connection options.
   ///
   /// @param url      WebSocket URL of the LiveKit server.
@@ -163,9 +167,32 @@ public:
   ///   RoomOptions defaults auto_subscribe = true.
   ///   Without auto_subscribe enabled, remote tracks will NOT be subscribed
   ///   automatically, and no remote audio/video will ever arrive.
+  ///
+  /// @return `true` after the room state is committed, or `false` if the FFI
+  /// connection fails.
+  /// @throws std::runtime_error If this room is already connecting or connected.
+  /// @throws std::bad_alloc If operation state cannot be allocated.
   bool connect(const std::string& url, const std::string& token, const RoomOptions& options);
 
-  /// Disconnect from the room.
+  /// @brief Connects with a bounded wait and cooperative cancellation.
+  ///
+  /// Connect to a LiveKit room, allowing another thread to cancel the pending
+  /// FFI operation. Cancellation removes the pending callback registration and
+  /// returns false without publishing a partially initialized Room.
+  ///
+  /// @param url WebSocket URL of the LiveKit server.
+  /// @param token Access token for authentication.
+  /// @param options Connection options; retry count and per-attempt timeout
+  /// determine the bounded operation deadline.
+  /// @param cancellation Cooperative cancellation handle for the operation.
+  /// @return `true` after the room state is committed, or `false` after
+  /// cancellation, timeout, or another FFI failure.
+  /// @throws std::runtime_error If this room is already connecting or connected.
+  /// @throws std::bad_alloc If operation or cancellation state cannot be allocated.
+  bool connect(const std::string& url, const std::string& token, const RoomOptions& options,
+               const OperationCancellation& cancellation);
+
+  /// @brief Disconnects from the room and preserves the legacy unbounded wait.
   ///
   /// This method attempts a best-effort graceful disconnect of the room. If the room was connected prior, after @ref
   /// disconnect() is called the room object is considered in a terminal state and should no longer be used. If @ref
@@ -177,9 +204,22 @@ public:
   /// `RoomDelegate` callback — doing so will deadlock the event listener.
   ///
   /// @param reason  Reason reported to the server (default: ClientInitiated).
-  /// @returns true if the graceful disconnect succeeds; false if the
-  ///          room was already disconnected (no-op) or the graceful disconnect fails.
+  /// @return `true` if the graceful disconnect succeeds; `false` if the room
+  /// was already disconnected or the graceful disconnect fails.
   bool disconnect(DisconnectReason reason = DisconnectReason::ClientInitiated);
+
+  /// @brief Disconnects from the room before an absolute deadline.
+  ///
+  /// Local ownership is retired before waiting for the FFI acknowledgement, so
+  /// timeout still leaves the C++ room in a terminal disconnected state.
+  ///
+  /// @param deadline Absolute deadline for the FFI disconnect acknowledgement.
+  /// @param reason Reason reported to the server.
+  /// @return `true` if the graceful disconnect succeeds; `false` if the room
+  /// was already disconnected, the deadline expires, or the FFI operation fails.
+  bool disconnectUntil(
+      std::chrono::steady_clock::time_point deadline,
+      DisconnectReason reason = DisconnectReason::ClientInitiated);
 
   // Accessors
 
@@ -354,6 +394,11 @@ private:
   // FfiClient listener ID (0 means no listener registered)
   int listener_id_{0};
 
+  bool connectImpl(const std::string& url, const std::string& token, const RoomOptions& options,
+                   const OperationCancellation* cancellation,
+                   std::optional<std::chrono::steady_clock::time_point> deadline);
+  bool disconnectImpl(DisconnectReason reason,
+                      std::optional<std::chrono::steady_clock::time_point> deadline);
   void onEvent(const proto::FfiEvent& event);
 };
 } // namespace livekit

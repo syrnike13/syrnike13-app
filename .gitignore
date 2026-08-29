@@ -99,4 +99,11 @@ secrets.env
 # Generated native helper artifacts
 /apps/desktop/native/music-presence-win/
 
+# Local native media soak/build scratch
+packages/desktop-native/.codex-build*/
+packages/desktop-native/.codex-tools/
+packages/desktop-native/artifacts/
+vc140.pdb
+*.obj
+
 .playwright-mcp

@@ -35,6 +35,8 @@ use crate::{
     video_track::RtcVideoTrack,
 };
 
+static NEXT_VIDEO_FRAME_QUEUE_INSTANCE: AtomicU64 = AtomicU64::new(1);
+
 pub struct NativeVideoStream {
     native_sink: SharedPtr<sys_vt::ffi::NativeVideoSink>,
     observer: Arc<VideoTrackObserver>,
@@ -45,10 +47,10 @@ pub struct NativeVideoStream {
 impl NativeVideoStream {
     pub fn new(video_track: RtcVideoTrack, queue_size_frames: Option<usize>) -> Self {
         let frame_queue = Arc::new(VideoFrameQueue::new(queue_size_frames));
-        // Auto-wire the packet trailer handler from the track if one is set.
+        // Share the track's handler slot so a late receiver attachment is visible here.
         let observer = Arc::new(VideoTrackObserver {
             frame_queue: frame_queue.clone(),
-            packet_trailer_handler: Mutex::new(video_track.handle.packet_trailer_handler()),
+            packet_trailer_handler: video_track.handle.packet_trailer_handler_slot(),
         });
         let native_sink = sys_vt::ffi::new_native_video_sink(Box::new(
             sys_vt::VideoSinkWrapper::new(observer.clone()),
@@ -62,14 +64,12 @@ impl NativeVideoStream {
 
     /// Set the packet trailer handler for this stream.
     ///
-    /// When set, each frame produced by this stream will have its
-    /// `user_timestamp` field populated from the handler's receive
-    /// map (looked up by RTP timestamp).
+    /// When set, each frame produced by streams linked to this track will have
+    /// metadata populated from the handler's receive map (looked up by RTP
+    /// timestamp).
     ///
-    /// Note: If the handler was already set on the `RtcVideoTrack` before
-    /// creating this stream, it is automatically wired up. This method is
-    /// only needed if you want to override or set the handler after
-    /// construction.
+    /// The handler slot is shared with the `RtcVideoTrack`, so this also applies
+    /// to other existing and future streams linked to the same track.
     pub fn set_packet_trailer_handler(&self, handler: PacketTrailerHandler) {
         *self.observer.packet_trailer_handler.lock() = Some(handler);
     }
@@ -101,7 +101,7 @@ impl Stream for NativeVideoStream {
 
 struct VideoTrackObserver {
     frame_queue: Arc<VideoFrameQueue>,
-    packet_trailer_handler: Mutex<Option<PacketTrailerHandler>>,
+    packet_trailer_handler: Arc<Mutex<Option<PacketTrailerHandler>>>,
 }
 
 impl VideoTrackObserver {
@@ -145,6 +145,7 @@ impl sys_vt::VideoSink for VideoTrackObserver {
 }
 
 struct VideoFrameQueue {
+    instance_id: u64,
     kind: VideoFrameQueueKind,
     closed: AtomicBool,
     dropped_frames: AtomicU64,
@@ -189,6 +190,7 @@ impl VideoFrameQueue {
         };
 
         Self {
+            instance_id: NEXT_VIDEO_FRAME_QUEUE_INSTANCE.fetch_add(1, Ordering::Relaxed),
             kind,
             closed: AtomicBool::new(false),
             dropped_frames: AtomicU64::new(0),
@@ -235,8 +237,10 @@ impl VideoFrameQueue {
         }
     }
 
-    fn close(&self) {
-        self.closed.store(true, Ordering::Release);
+    fn close(&self) -> Option<(u64, u64)> {
+        if self.closed.swap(true, Ordering::AcqRel) {
+            return None;
+        }
         self.wake_receiver();
 
         match &self.kind {
@@ -251,6 +255,17 @@ impl VideoFrameQueue {
                 queue.frames.lock().clear();
             }
         }
+
+        let dropped_frames = self.dropped_frames.load(Ordering::Acquire);
+        if dropped_frames == 0 {
+            return None;
+        }
+        log::warn!(
+            "native video stream queue summary; stream_instance={} dropped {} queued frames",
+            self.instance_id,
+            dropped_frames,
+        );
+        Some((self.instance_id, dropped_frames))
     }
 
     fn poll_recv(&self, cx: &mut Context<'_>) -> Poll<Option<BoxVideoFrame>> {
@@ -293,8 +308,9 @@ impl VideoFrameQueue {
         let dropped_frames = self.dropped_frames.fetch_add(1, Ordering::Relaxed) + 1;
         if dropped_frames == 1 || dropped_frames % 100 == 0 {
             log::warn!(
-                "native video stream queue overflow; dropped {} queued frames",
-                dropped_frames
+                "native video stream queue overflow; stream_instance={} dropped {} queued frames",
+                self.instance_id,
+                dropped_frames,
             );
         }
     }
@@ -302,10 +318,15 @@ impl VideoFrameQueue {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::Ordering;
+    use std::sync::{atomic::Ordering, Arc};
 
-    use super::VideoFrameQueue;
-    use crate::video_frame::{BoxVideoFrame, I420Buffer, VideoFrame, VideoRotation};
+    use super::{VideoFrameQueue, VideoTrackObserver};
+    use crate::{
+        native::packet_trailer::PacketTrailerHandler,
+        video_frame::{BoxVideoFrame, I420Buffer, VideoFrame, VideoRotation},
+        video_track::RtcVideoTrack,
+    };
+    use webrtc_sys::video_track as sys_vt;
 
     fn test_frame(timestamp_us: i64) -> BoxVideoFrame {
         VideoFrame {
@@ -318,6 +339,22 @@ mod tests {
 
     fn pop_timestamp(queue: &VideoFrameQueue) -> Option<i64> {
         queue.try_pop().map(|frame| frame.timestamp_us)
+    }
+
+    #[test]
+    fn existing_stream_observer_sees_handler_attached_after_construction() {
+        let track = RtcVideoTrack {
+            handle: crate::imp::video_track::RtcVideoTrack::new(sys_vt::ffi::_shared_video_track()),
+        };
+        let observer = Arc::new(VideoTrackObserver {
+            frame_queue: Arc::new(VideoFrameQueue::new(Some(1))),
+            packet_trailer_handler: track.handle.packet_trailer_handler_slot(),
+        });
+        assert!(observer.packet_trailer_handler.lock().is_none());
+
+        track.set_packet_trailer_handler(PacketTrailerHandler::null_for_test());
+
+        assert!(observer.packet_trailer_handler.lock().is_some());
     }
 
     #[test]
@@ -362,6 +399,18 @@ mod tests {
     }
 
     #[test]
+    fn close_reports_the_exact_drop_total_once() {
+        let queue = VideoFrameQueue::new(Some(1));
+
+        queue.push(test_frame(1));
+        queue.push(test_frame(2));
+        queue.push(test_frame(3));
+
+        assert_eq!(queue.close(), Some((queue.instance_id, 2)));
+        assert_eq!(queue.close(), None);
+    }
+
+    #[test]
     fn unbounded_queue_retains_all_frames() {
         let queue = VideoFrameQueue::new(None);
 
@@ -374,6 +423,15 @@ mod tests {
         }
         assert_eq!(pop_timestamp(&queue), None);
         assert_eq!(queue.dropped_frames.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn video_frame_queue_instances_are_process_unique_and_nonzero() {
+        let first = VideoFrameQueue::new(Some(1));
+        let second = VideoFrameQueue::new(Some(1));
+
+        assert_ne!(first.instance_id, 0);
+        assert_ne!(first.instance_id, second.instance_id);
     }
 
     #[test]

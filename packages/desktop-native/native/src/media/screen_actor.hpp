@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "../common/runtime_types.hpp"
+#include "../common/cleanup_supervisor.hpp"
 #include "../common/sequenced_emitter.hpp"
 #include "livekit_voice_session.hpp"
 #include "screen_gpu_capture.hpp"
@@ -36,31 +37,22 @@ std::thread launchScreenCaptureWorker(
   PrepareOwnedScreenWork prepare_owned_work = nullptr
 );
 
-class ScreenCapturerRetireDispatcher final {
- public:
-  using LaunchWorker = LaunchScreenWorker;
-
-  explicit ScreenCapturerRetireDispatcher(LaunchWorker launcher = {});
-  ~ScreenCapturerRetireDispatcher();
-
-  void submit(std::shared_ptr<ScreenGpuCapturer> capturer);
-  void submit(std::vector<std::shared_ptr<ScreenGpuCapturer>> capturers);
-  void submitShutdown(
-    std::vector<std::shared_ptr<ScreenGpuCapturer>> capturers
-  ) noexcept;
-  void close(std::chrono::steady_clock::time_point deadline) noexcept;
-
- private:
-  class Implementation;
-  std::shared_ptr<Implementation> implementation_;
-};
-
 bool emitScreenBackendRestart(
   SequencedEmitter& emitter,
   const std::string& session_id,
   std::uint64_t generation,
   const ScreenGpuRecoveryTransition& transition
 );
+using ScreenFrameHandoffObserver = std::function<void(
+  const std::string&,
+  std::uint64_t,
+  std::uint64_t,
+  std::uint64_t
+)>;
+using AfterScreenVideoPublished = std::function<void(
+  const MediaCommand&,
+  const std::string&
+)>;
 
 class ScreenActor final {
  public:
@@ -72,7 +64,6 @@ class ScreenActor final {
     std::function<void()>
   )>;
   using Now = std::function<std::chrono::steady_clock::time_point()>;
-  using LaunchRetireWorker = ScreenCapturerRetireDispatcher::LaunchWorker;
 
   ScreenActor(
     SequencedEmitter& emitter,
@@ -81,9 +72,12 @@ class ScreenActor final {
     std::shared_ptr<LiveKitVoiceSession> voice_session,
     CommitIfCurrent commit_if_current = {},
     Now now = {},
-    LaunchRetireWorker launch_retire_worker = {},
+    CleanupStartProbe cleanup_start_probe = {},
     LaunchScreenWorker launch_stats_worker = {},
-    LaunchScreenWorker launch_capture_worker = {}
+    LaunchScreenWorker launch_capture_worker = {},
+    ScreenFrameHandoffObserver frame_handoff_observer = {},
+    AfterScreenVideoPublished after_video_published = {},
+    ScreenVideoPublicationObserver video_publication_observer = {}
   );
   ~ScreenActor();
 

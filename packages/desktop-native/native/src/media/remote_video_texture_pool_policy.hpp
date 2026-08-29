@@ -1,8 +1,45 @@
 #pragma once
 
+#include <cstddef>
+
 #include "gpu_completion_slot_policy.hpp"
 
 namespace syrnike::desktop_native::media {
+
+enum class RemoteVideoGpuRolloverCause {
+  CapacityExhausted,
+  DeviceFailure,
+};
+
+enum class RemoteVideoGpuDeviceDisposition {
+  ReuseCurrent,
+  CreateFresh,
+};
+
+struct RemoteVideoGpuDeviceRolloverPlan {
+  RemoteVideoGpuDeviceDisposition device;
+  std::size_t overlapping_devices = 0;
+  std::size_t overlapping_generations = 0;
+  bool requires_multithread_protection = false;
+};
+
+inline constexpr RemoteVideoGpuDeviceRolloverPlan
+decideRemoteVideoGpuDeviceRollover(RemoteVideoGpuRolloverCause cause) noexcept {
+  if (cause == RemoteVideoGpuRolloverCause::DeviceFailure) {
+    return {
+        RemoteVideoGpuDeviceDisposition::CreateFresh,
+        2,
+        2,
+        false,
+    };
+  }
+  return {
+      RemoteVideoGpuDeviceDisposition::ReuseCurrent,
+      1,
+      2,
+      true,
+  };
+}
 
 enum class RemoteVideoTextureSlotPhase {
   Available,

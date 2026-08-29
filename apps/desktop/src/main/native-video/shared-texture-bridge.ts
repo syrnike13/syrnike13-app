@@ -1,5 +1,11 @@
 import { sharedTexture, type BrowserWindow } from 'electron'
-import { Duration, Effect, Fiber, Schedule } from 'effect'
+import { Deferred, Effect, Fiber } from 'effect'
+
+import {
+  isMediaTimelineFrameSampled,
+  type MediaIncidentTimeline,
+  type MediaTimelineFrame,
+} from './media-incident-timeline'
 
 export type NativeVideoSource = 'camera' | 'screen'
 
@@ -28,12 +34,15 @@ export type NativeVideoPresentationStallReason =
   | 'shared-texture-fence'
   | 'renderer-delivery'
   | 'retained-budget-exhausted'
+  | 'retired-fence-deadline'
+  | 'retired-fence-recycle'
 
 export type NativeVideoPresentationMetrics = {
   retainedFrames: number
   retainedBytes: number
   trackActiveReferences: number
   trackRetainedReferences: number
+  trackRetiredReferences: number
   oldestRetainedAgeMs: number
   deliveredFrames: number
   rejectedFrames: number
@@ -60,9 +69,11 @@ export type SharedTextureBridgeDependencies = {
   maxInFlight?: number
   maxRetainedBytes?: number
   stallTimeoutMs?: number
+  retiredFenceReloadMs?: number
+  retiredFenceRecycleMs?: number
   deliveryFailureThreshold?: number
   deliveryFailureCooldownMs?: number
-  releaseAttempts?: number
+  timeline?: MediaIncidentTimeline
   onPresentationStalled?: (
     frame: NativeSharedVideoFrame,
     reason: NativeVideoPresentationStallReason,
@@ -80,14 +91,22 @@ export type SharedTextureBridgeDependencies = {
 type Entry = {
   frame: NativeSharedVideoFrame
   imported: Electron.SharedTextureImported
+  targetFrame: Electron.WebFrameMain
+  ownerTermination: Deferred.Deferred<void>
   released: boolean
+  sendInProgress: boolean
+  mainReferenceReleaseRequested: boolean
   active: boolean
   importedAtMs: number
+  recoveryReason?: NativeVideoPresentationStallReason
   stallTimer: Fiber.Fiber<void, never> | null
+  rendererEpoch: number
+  retiredAtMs: number | null
+  retiredFenceStage: 'awaiting-reload' | 'awaiting-recycle' | 'complete'
 }
 
 type ReleaseOperation = {
-  frame: NativeSharedVideoRelease
+  frame: NativeSharedVideoFrame
   fiber: Fiber.Fiber<void, never>
 }
 
@@ -112,6 +131,8 @@ export class NativeSharedTextureBridge {
   private disposed = false
   private lastFailureReportAt = 0
   private lastCapacityReportAt = 0
+  private retiredFenceReaper: Fiber.Fiber<void, never> | null = null
+  private retiredFenceReaperRevision = 0
 
   constructor(private readonly dependencies: SharedTextureBridgeDependencies) {}
 
@@ -126,6 +147,27 @@ export class NativeSharedTextureBridge {
   rendererReloaded() {
     this.rendererEpoch += 1
     this.releaseMainReferences()
+    this.settleTerminatedRendererOwners()
+    this.deliveryFailures.clear()
+    this.lastDeliveryRecoveryAt.clear()
+  }
+
+  rendererOwnerTerminated() {
+    this.settleTerminatedRendererOwners()
+  }
+
+  runtimeReplaced(runtimeEpoch: number) {
+    if (!Number.isSafeInteger(runtimeEpoch) || runtimeEpoch < 0) return
+    if (this.runtimeEpoch !== null && runtimeEpoch <= this.runtimeEpoch) return
+    const previousEpoch = this.runtimeEpoch
+    this.runtimeEpoch = runtimeEpoch
+    if (previousEpoch === null) return
+    this.cancelReleaseOperations((operation) =>
+      operation.frame.runtimeEpoch < runtimeEpoch
+    )
+    this.rendererEpoch += 1
+    this.releaseMainReferences()
+    this.latestSequence.clear()
     this.deliveryFailures.clear()
     this.lastDeliveryRecoveryAt.clear()
   }
@@ -173,19 +215,11 @@ export class NativeSharedTextureBridge {
         this.releaseNativeFrame(frame)
         return false
       }
-      if (this.runtimeEpoch === null) {
-        this.runtimeEpoch = frame.runtimeEpoch
-      } else if (this.runtimeEpoch !== frame.runtimeEpoch) {
-        this.runtimeEpoch = frame.runtimeEpoch
-        this.cancelReleaseOperations((operation) =>
-          operation.frame.runtimeEpoch !== frame.runtimeEpoch
-        )
-        this.rendererEpoch += 1
-        this.releaseMainReferences()
-        this.latestSequence.clear()
-        this.deliveryFailures.clear()
-        this.lastDeliveryRecoveryAt.clear()
+      if (this.runtimeEpoch !== null && frame.runtimeEpoch < this.runtimeEpoch) {
+        this.rejectedFrames += 1
+        return false
       }
+      this.runtimeReplaced(frame.runtimeEpoch)
       const trackKey = [
         frame.sessionId,
         frame.generation,
@@ -243,8 +277,12 @@ export class NativeSharedTextureBridge {
         return false
       }
       const key = `${trackKey}:${frame.sequence}`
+      const rendererEpoch = this.rendererEpoch
+      const targetFrame = window.webContents.mainFrame
+      const ownerTermination = yield* Deferred.make<void>()
       const importTexture = this.dependencies.importTexture ??
         sharedTexture.importSharedTexture.bind(sharedTexture)
+      const importStartedAtMs = this.now()
       const imported = yield* Effect.try({
         try: () =>
           importTexture({
@@ -280,13 +318,24 @@ export class NativeSharedTextureBridge {
       const entry: Entry = {
         frame,
         imported,
+        targetFrame,
+        ownerTermination,
         released: false,
+        sendInProgress: true,
+        mainReferenceReleaseRequested: false,
         active: true,
         importedAtMs: this.now(),
         stallTimer: null,
+        rendererEpoch,
+        retiredAtMs: null,
+        retiredFenceStage: 'awaiting-reload',
       }
       this.inFlight.set(key, entry)
       this.retainedBytes += frameBytes
+      this.recordTimeline('electron_imported', frame, {
+        durationMs: this.now() - importStartedAtMs,
+        metrics: this.presentationMetrics(trackKey),
+      })
       entry.stallTimer = yield* unrefSleep(
         Math.max(1_000, this.dependencies.stallTimeoutMs ?? 5_000),
       ).pipe(
@@ -295,14 +344,13 @@ export class NativeSharedTextureBridge {
         ),
         Effect.forkDetach,
       )
-      const rendererEpoch = this.rendererEpoch
       const sendTexture = this.dependencies.sendTexture ??
         sharedTexture.sendSharedTexture.bind(sharedTexture)
-      return yield* Effect.tryPromise({
+      const send = Effect.tryPromise({
         try: () =>
           sendTexture(
             {
-              frame: window.webContents.mainFrame,
+              frame: targetFrame,
               importedSharedTexture: imported,
             },
             {
@@ -314,6 +362,7 @@ export class NativeSharedTextureBridge {
               local: frame.local,
               sequence: frame.sequence,
               rendererEpoch,
+              ...this.rendererTimelineMetadata(frame, entry),
             },
           ),
         catch: (error) => error,
@@ -321,6 +370,10 @@ export class NativeSharedTextureBridge {
         Effect.tap(() =>
           Effect.sync(() => {
             this.deliveredFrames += 1
+            this.recordTimeline('renderer_handoff', frame, {
+              durationMs: this.now() - entry.importedAtMs,
+              metrics: this.presentationMetrics(trackKey),
+            })
           })
         ),
         Effect.as(true),
@@ -335,8 +388,13 @@ export class NativeSharedTextureBridge {
             return false
           }),
         ),
+      )
+      return yield* send.pipe(
+        Effect.raceFirst(
+          Deferred.await(ownerTermination).pipe(Effect.as(false)),
+        ),
         Effect.ensuring(
-          Effect.sync(() => this.releaseEntryMainReference(key, entry)),
+          Effect.sync(() => this.finishEntrySend(key, entry)),
         ),
       )
     })
@@ -350,6 +408,7 @@ export class NativeSharedTextureBridge {
     this.deliveryFailures.clear()
     this.lastDeliveryRecoveryAt.clear()
     this.cancelReleaseOperations()
+    this.cancelRetiredFenceReaper()
     this.runtimeEpoch = null
   }
 
@@ -370,23 +429,51 @@ export class NativeSharedTextureBridge {
 
   private retireEntry(key: string, entry: Entry) {
     entry.active = false
+    entry.retiredAtMs ??= this.now()
     if (entry.stallTimer) {
       Effect.runFork(Fiber.interrupt(entry.stallTimer))
       entry.stallTimer = null
     }
     this.releaseEntryMainReference(key, entry)
+    this.armRetiredFenceReaper()
   }
 
   private releaseEntryMainReference(key: string, entry: Entry) {
+    entry.mainReferenceReleaseRequested = true
+    this.flushEntryMainReferenceRelease(key, entry)
+  }
+
+  private flushEntryMainReferenceRelease(_key: string, entry: Entry) {
+    if (!entry.mainReferenceReleaseRequested || entry.sendInProgress) return
     if (entry.released) return
     entry.released = true
     entry.imported.release()
     // Keep the entry until all renderer/VideoFrame GPU references are fenced.
   }
 
+  private finishEntrySend(key: string, entry: Entry) {
+    entry.sendInProgress = false
+    this.releaseEntryMainReference(key, entry)
+  }
+
+  private rendererOwnerIsTerminated(entry: Entry) {
+    return entry.targetFrame.isDestroyed() || entry.targetFrame.detached
+  }
+
+  private settleTerminatedRendererOwners() {
+    for (const entry of this.inFlight.values()) {
+      if (!entry.sendInProgress || !this.rendererOwnerIsTerminated(entry)) {
+        continue
+      }
+      Effect.runFork(Deferred.succeed(entry.ownerTermination, undefined))
+    }
+  }
+
   private finishNativeRelease(key: string) {
     const entry = this.inFlight.get(key)
     if (!entry) return
+    const metrics = this.presentationMetrics(trackKeyFor(entry.frame))
+    const fenceLatencyMs = this.now() - entry.importedAtMs
     if (entry.stallTimer) Effect.runFork(Fiber.interrupt(entry.stallTimer))
     entry.stallTimer = null
     this.inFlight.delete(key)
@@ -394,18 +481,24 @@ export class NativeSharedTextureBridge {
       0,
       this.retainedBytes - entry.frame.width * entry.frame.height * 4,
     )
+    this.recordTimeline('renderer_fenced', entry.frame, {
+      ...(entry.recoveryReason ? { anomaly: entry.recoveryReason } : {}),
+      durationMs: fenceLatencyMs,
+      metrics,
+    })
     this.releaseNativeFrame(entry.frame)
+    this.armRetiredFenceReaper()
   }
 
-  private releaseNativeFrame(frame: NativeSharedVideoRelease) {
+  private releaseNativeFrame(frame: NativeSharedVideoFrame) {
+    if (this.runtimeEpoch !== null && frame.runtimeEpoch < this.runtimeEpoch) {
+      return
+    }
     const key = releaseKey(frame)
     if (this.releaseOperations.has(key)) return
-    const attempts = Math.max(1, this.dependencies.releaseAttempts ?? 6)
-    const retrySchedule = Schedule.exponential(100).pipe(
-      Schedule.modifyDelay(({ duration }) =>
-        Effect.succeed(Duration.min(duration, Duration.millis(1_000)))
-      ),
-    )
+    const requestedAtMs = this.now()
+    const correlatedFrame = timelineFrame(frame)
+    this.recordTimeline('native_release_requested', correlatedFrame)
     let fiber: Fiber.Fiber<void, never>
     const release = Effect.tryPromise({
         try: async () => {
@@ -413,13 +506,22 @@ export class NativeSharedTextureBridge {
         },
         catch: (cause) => cause,
       }).pipe(
-      Effect.retry({
-        times: attempts - 1,
-        schedule: retrySchedule,
-      }),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          this.recordTimeline('native_released', correlatedFrame, {
+            durationMs: this.now() - requestedAtMs,
+            outcome: 'acknowledged',
+          })
+        })
+      ),
       Effect.catch((error) =>
         Effect.sync(() => {
           this.operationFailures += 1
+          this.recordTimeline('native_release_timeout', correlatedFrame, {
+            anomaly: 'native-release-timeout',
+            durationMs: this.now() - requestedAtMs,
+            outcome: 'timeout',
+          })
           this.reportFailure('release', frame, error)
         })
       ),
@@ -457,9 +559,121 @@ export class NativeSharedTextureBridge {
     return { active, total }
   }
 
+  private retiredFenceDeadlines() {
+    const reloadMs = Math.max(
+      1,
+      this.dependencies.retiredFenceReloadMs ?? 5_000,
+    )
+    return {
+      reloadMs,
+      recycleMs: Math.max(
+        reloadMs + 1,
+        this.dependencies.retiredFenceRecycleMs ?? 10_000,
+      ),
+    }
+  }
+
+  private cancelRetiredFenceReaper() {
+    this.retiredFenceReaperRevision += 1
+    if (!this.retiredFenceReaper) return
+    Effect.runFork(Fiber.interrupt(this.retiredFenceReaper))
+    this.retiredFenceReaper = null
+  }
+
+  private armRetiredFenceReaper() {
+    this.cancelRetiredFenceReaper()
+    if (this.disposed) return
+    const { reloadMs, recycleMs } = this.retiredFenceDeadlines()
+    let nextDueAt = Number.POSITIVE_INFINITY
+    for (const entry of this.inFlight.values()) {
+      if (entry.active || entry.retiredAtMs === null ||
+        entry.retiredFenceStage === 'complete') continue
+      nextDueAt = Math.min(
+        nextDueAt,
+        entry.retiredAtMs + (
+          entry.retiredFenceStage === 'awaiting-reload'
+            ? reloadMs
+            : recycleMs
+        ),
+      )
+    }
+    if (!Number.isFinite(nextDueAt)) return
+
+    const revision = this.retiredFenceReaperRevision
+    const delayMs = Math.max(1, nextDueAt - this.now())
+    let fiber: Fiber.Fiber<void, never>
+    fiber = Effect.runFork(
+      unrefSleep(delayMs).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            if (this.retiredFenceReaperRevision !== revision ||
+              this.retiredFenceReaper !== fiber) return
+            this.retiredFenceReaper = null
+            this.reapRetiredRendererGenerations()
+            this.armRetiredFenceReaper()
+          }),
+        ),
+      ),
+    )
+    this.retiredFenceReaper = fiber
+  }
+
+  private reapRetiredRendererGenerations() {
+    const groups = new Map<string, Entry[]>()
+    for (const entry of this.inFlight.values()) {
+      if (entry.active || entry.retiredAtMs === null ||
+        entry.retiredFenceStage === 'complete') continue
+      if (this.rendererOwnerIsTerminated(entry)) {
+        Effect.runFork(Deferred.succeed(entry.ownerTermination, undefined))
+        continue
+      }
+      const groupKey = `${entry.frame.runtimeEpoch}:${entry.rendererEpoch}`
+      const group = groups.get(groupKey)
+      if (group) group.push(entry)
+      else groups.set(groupKey, [entry])
+    }
+
+    const now = this.now()
+    const { reloadMs, recycleMs } = this.retiredFenceDeadlines()
+    for (const entries of groups.values()) {
+      const representative = entries.reduce((oldest, candidate) =>
+        (candidate.retiredAtMs ?? now) < (oldest.retiredAtMs ?? now)
+          ? candidate
+          : oldest
+      )
+      const retiredAtMs = representative.retiredAtMs ?? now
+      if (now >= retiredAtMs + recycleMs) {
+        for (const entry of entries) {
+          entry.recoveryReason = 'retired-fence-recycle'
+          entry.retiredAtMs = now
+        }
+        this.notifyPresentationStalled(
+          representative.frame,
+          'retired-fence-recycle',
+          this.presentationMetrics(trackKeyFor(representative.frame)),
+        )
+        continue
+      }
+      if (now < retiredAtMs + reloadMs ||
+        !entries.some((entry) =>
+          entry.retiredFenceStage === 'awaiting-reload'
+        )) continue
+      for (const entry of entries) {
+        entry.retiredFenceStage = 'awaiting-recycle'
+        entry.recoveryReason = 'retired-fence-deadline'
+      }
+      this.notifyPresentationStalled(
+        representative.frame,
+        'retired-fence-deadline',
+        this.presentationMetrics(trackKeyFor(representative.frame)),
+      )
+    }
+  }
+
   private recoverStalledTrack(key: string, trackKey: string, entry: Entry) {
     if (this.disposed || this.inFlight.get(key) !== entry || !entry.active) return
     const metrics = this.presentationMetrics(trackKey)
+    entry.recoveryReason = 'shared-texture-fence'
     const prefix = `${trackKey}:`
     for (const [candidateKey, candidate] of this.inFlight) {
       if (!candidate.active || !candidateKey.startsWith(prefix)) continue
@@ -517,6 +731,13 @@ export class NativeSharedTextureBridge {
     reason: NativeVideoPresentationStallReason,
     metrics: NativeVideoPresentationMetrics,
   ) {
+    this.recordTimeline('renderer_recovery', frame, {
+      anomaly: reason,
+      durationMs: reason === 'shared-texture-fence'
+        ? metrics.oldestRetainedAgeMs
+        : undefined,
+      metrics,
+    })
     Effect.runFork(
       Effect.tryPromise({
         try: async () => {
@@ -612,6 +833,7 @@ export class NativeSharedTextureBridge {
       retainedBytes: this.retainedBytes,
       trackActiveReferences: references.active,
       trackRetainedReferences: references.total,
+      trackRetiredReferences: references.total - references.active,
       oldestRetainedAgeMs: hasRetainedTrackFrame
         ? Math.max(0, this.now() - oldestImportedAtMs)
         : 0,
@@ -632,6 +854,48 @@ export class NativeSharedTextureBridge {
 
   private now() {
     return this.dependencies.now?.() ?? Date.now()
+  }
+
+  private recordTimeline(
+    stage: Parameters<MediaIncidentTimeline['recordVideo']>[0],
+    frame: NativeSharedVideoFrame | MediaTimelineFrame,
+    observation: Parameters<MediaIncidentTimeline['recordVideo']>[2] = {},
+  ) {
+    const correlated = timelineFrame(frame)
+    this.dependencies.timeline?.recordVideo(stage, correlated, {
+      ...observation,
+      ...(observation.metrics ? { metrics: { ...observation.metrics } } : {}),
+    })
+  }
+
+  private rendererTimelineMetadata(
+    frame: NativeSharedVideoFrame,
+    entry: Entry,
+  ) {
+    const correlated = timelineFrame(frame)
+    const peerAlias = this.dependencies.timeline?.correlate(correlated).peerAlias
+    return {
+      nativeCaptureTimestampUs: frame.timestampUs,
+      runtimeEpoch: frame.runtimeEpoch,
+      timelineSampled: isMediaTimelineFrameSampled(correlated),
+      electronImportedAtMs: entry.importedAtMs,
+      ...(peerAlias ? { peerAlias } : {}),
+    }
+  }
+}
+
+function timelineFrame(
+  frame: NativeSharedVideoFrame | MediaTimelineFrame,
+): MediaTimelineFrame {
+  if ('nativeCaptureTimestampUs' in frame) return frame
+  return {
+    sessionId: frame.sessionId,
+    generation: frame.generation,
+    trackId: frame.trackId,
+    participantIdentity: frame.participantIdentity,
+    frameSequence: frame.sequence,
+    nativeCaptureTimestampUs: frame.timestampUs,
+    runtimeEpoch: frame.runtimeEpoch,
   }
 }
 

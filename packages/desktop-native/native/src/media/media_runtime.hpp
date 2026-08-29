@@ -4,11 +4,14 @@
 #include <functional>
 #include <memory>
 
-#include "../common/async_cleanup_dispatcher.hpp"
+#include "../common/cleanup_supervisor.hpp"
 #include "../common/bounded_queue.hpp"
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
 #include "livekit_voice_session.hpp"
+#include "microphone_actor.hpp"
+#include "preview_actor.hpp"
+#include "screen_actor.hpp"
 
 namespace syrnike::desktop_native::media {
 
@@ -26,8 +29,13 @@ class MediaRuntime final {
     BeforeMicrophoneOperation before_microphone_operation = {},
     BeforeVoiceShutdown before_voice_shutdown = {},
     std::shared_ptr<LiveKitRuntimeLifetime> livekit_lifetime = {},
-    AsyncCleanupLauncher subsystem_cleanup_launcher = {},
-    AfterSubsystemCleanup after_subsystem_cleanup = {}
+    CleanupStartProbe subsystem_cleanup_start_probe = {},
+    AfterSubsystemCleanup after_subsystem_cleanup = {},
+    MicrophoneCaptureAdapter microphone_capture_adapter = {},
+    MicrophoneIdleCaptureTiming microphone_idle_timing = {},
+    ScreenFrameHandoffObserver screen_frame_handoff_observer = {},
+    AfterScreenVideoPublished after_screen_video_published = {},
+    ScreenVideoPublicationObserver screen_video_publication_observer = {}
   );
   ~MediaRuntime();
 
@@ -38,6 +46,7 @@ class MediaRuntime final {
   bool dispatch(MediaCommand command);
   void requestShutdown();
   void shutdownAndWait();
+  [[nodiscard]] PreviewQueueMetrics microphonePreviewQueueMetrics() const noexcept;
 
  private:
   class Implementation;

@@ -95,6 +95,7 @@ message CaptureD3D11VideoFrameRequest {
   required uint32 width = 6;
   required uint32 height = 7;
   required int64 timestamp_us = 8;
+  optional FrameMetadata metadata = 9;
 }
 message CaptureD3D11VideoFrameResponse {
   required bool accepted = 1;

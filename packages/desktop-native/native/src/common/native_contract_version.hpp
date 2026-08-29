@@ -4,6 +4,6 @@
 
 namespace syrnike::desktop_native {
 
-inline constexpr std::uint32_t kNativeRuntimeContractVersion = 9;
+inline constexpr std::uint32_t kNativeRuntimeContractVersion = 10;
 
 }  // namespace syrnike::desktop_native

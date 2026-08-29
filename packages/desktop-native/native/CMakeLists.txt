@@ -100,6 +100,7 @@ function(syrnike_copy_livekit_runtime target)
 endfunction()
 
 add_library(syrnike_media_core STATIC
+  src/common/cleanup_supervisor.cpp
   src/common/diagnostic_log.cpp
   src/media/audio_devices.cpp
   src/media/audio_failure.cpp
@@ -107,8 +108,10 @@ add_library(syrnike_media_core STATIC
   src/media/audio_processing.cpp
   src/media/camera_actor.cpp
   src/media/camera_capture.cpp
+  src/media/camera_device_notification.cpp
   src/media/display_sources.cpp
   src/media/livekit_voice_session.cpp
+  src/media/media_incident_timeline.cpp
   src/media/media_runtime.cpp
   src/media/media_runtime_support.cpp
   src/media/media_operation.hpp
@@ -118,6 +121,7 @@ add_library(syrnike_media_core STATIC
   src/media/microphone_echo_reference.cpp
   src/media/preview_actor.cpp
   src/media/remote_audio_ingress.cpp
+  src/media/remote_audio_operation_supervisor.cpp
   src/media/remote_audio_playout.hpp
   src/media/remote_audio_output.cpp
   src/media/remote_publication_reconciler.cpp
@@ -133,6 +137,8 @@ add_library(syrnike_media_core STATIC
   src/media/voice_gate.cpp
   src/media/voice_activity_detector.cpp
   src/media/voice_actor.cpp
+  src/media/video_resource_admission.cpp
+  src/media/windows_audio_session_policy.cpp
 )
 syrnike_native_target(syrnike_media_core)
 target_link_libraries(syrnike_media_core PUBLIC
@@ -184,6 +190,7 @@ endif()
 foreach(HOOK_RUNTIME hotkey overlay)
   add_library(syrnike_${HOOK_RUNTIME} MODULE
     ${CMAKE_JS_SRC}
+    src/common/cleanup_supervisor.cpp
     src/common/diagnostic_log.cpp
     src/common/node_event_sink.cpp
     src/hooks/hooks_addon.cpp
@@ -205,6 +212,138 @@ foreach(HOOK_RUNTIME hotkey overlay)
 endforeach()
 
 enable_testing()
+
+add_library(syrnike_native_message_contract_addon MODULE
+  ${CMAKE_JS_SRC}
+  src/common/node_event_sink.cpp
+  tests/native_message_contract_addon.cpp
+)
+set_target_properties(syrnike_native_message_contract_addon PROPERTIES
+  PREFIX ""
+  SUFFIX ".node"
+)
+syrnike_native_target(syrnike_native_message_contract_addon)
+target_include_directories(
+  syrnike_native_message_contract_addon SYSTEM PRIVATE
+  ${CMAKE_JS_INC}
+  "${NODE_ADDON_API_DIR}"
+)
+target_compile_definitions(syrnike_native_message_contract_addon PRIVATE
+  NAPI_CPP_EXCEPTIONS
+  NAPI_VERSION=${NAPI_VERSION}
+  SYRNIKE_NATIVE_COMMIT="${SYRNIKE_NATIVE_COMMIT}"
+  SYRNIKE_NATIVE_CONTRACT_RUNTIME_VALIDATION=1
+)
+target_link_libraries(
+  syrnike_native_message_contract_addon PRIVATE
+  ${CMAKE_JS_LIB}
+  syrnike_media_core
+)
+if(MSVC)
+  target_link_libraries(syrnike_native_message_contract_addon PRIVATE delayimp)
+  target_link_options(
+    syrnike_native_message_contract_addon PRIVATE
+    /DELAYLOAD:node.exe
+    /DELAYLOAD:livekit.dll
+  )
+endif()
+syrnike_copy_livekit_runtime(syrnike_native_message_contract_addon)
+if(WIN32)
+  set(SYRNIKE_PNPM_LAUNCHER cmd /c pnpm)
+else()
+  set(SYRNIKE_PNPM_LAUNCHER pnpm)
+endif()
+add_test(
+  NAME syrnike-native-message-contract-boundary-tests
+  COMMAND "${CMAKE_COMMAND}" -E env
+    "SYRNIKE_NATIVE_MESSAGE_CONTRACT_ADDON=$<TARGET_FILE:syrnike_native_message_contract_addon>"
+    ${SYRNIKE_PNPM_LAUNCHER}
+    --filter @syrnike13/desktop exec vitest run
+    src/main/native-runtime/native-message-boundary.test.ts
+)
+set_tests_properties(
+  syrnike-native-message-contract-boundary-tests PROPERTIES
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../../.."
+)
+
+add_executable(syrnike-native-cleanup-supervisor-tests
+  tests/cleanup_supervisor_test.cpp
+  src/common/cleanup_supervisor.cpp
+  src/common/diagnostic_log.cpp
+)
+syrnike_native_target(syrnike-native-cleanup-supervisor-tests)
+add_test(
+  NAME syrnike-native-cleanup-supervisor-tests
+  COMMAND syrnike-native-cleanup-supervisor-tests
+)
+
+add_executable(syrnike-native-media-runtime-shutdown-order-tests
+  tests/media_runtime_shutdown_order_test.cpp
+)
+syrnike_native_target(syrnike-native-media-runtime-shutdown-order-tests)
+add_test(
+  NAME syrnike-native-media-runtime-shutdown-order-tests
+  COMMAND syrnike-native-media-runtime-shutdown-order-tests
+)
+
+add_executable(syrnike-native-windows-resource-snapshot-tests
+  tests/windows_process_resource_snapshot_test.cpp
+  tests/windows_process_resource_snapshot.cpp
+)
+syrnike_native_target(syrnike-native-windows-resource-snapshot-tests)
+add_test(
+  NAME syrnike-native-windows-resource-snapshot-tests
+  COMMAND syrnike-native-windows-resource-snapshot-tests
+)
+
+add_executable(syrnike-native-camera-device-notification-tests
+  tests/camera_device_notification_test.cpp
+  src/media/camera_device_notification.cpp
+)
+syrnike_native_target(syrnike-native-camera-device-notification-tests)
+target_link_libraries(
+  syrnike-native-camera-device-notification-tests PRIVATE cfgmgr32
+)
+add_test(
+  NAME syrnike-native-camera-device-notification-tests
+  COMMAND syrnike-native-camera-device-notification-tests
+)
+
+add_executable(syrnike-native-renderer-texture-lease-registry-tests
+  tests/renderer_texture_lease_registry_test.cpp
+)
+syrnike_native_target(
+  syrnike-native-renderer-texture-lease-registry-tests
+)
+add_test(
+  NAME syrnike-native-renderer-texture-lease-registry-tests
+  COMMAND syrnike-native-renderer-texture-lease-registry-tests
+)
+
+add_executable(syrnike-native-video-resource-admission-tests
+  tests/video_resource_admission_test.cpp
+  src/media/video_resource_admission.cpp
+)
+syrnike_native_target(syrnike-native-video-resource-admission-tests)
+add_test(
+  NAME syrnike-native-video-resource-admission-tests
+  COMMAND syrnike-native-video-resource-admission-tests
+)
+
+add_executable(syrnike-native-media-incident-timeline-tests
+  tests/media_incident_timeline_test.cpp
+  src/media/media_incident_timeline.cpp
+  src/common/diagnostic_log.cpp
+)
+target_compile_definitions(syrnike-native-media-incident-timeline-tests PRIVATE
+  SYRNIKE_MEDIA_TIMELINE_SAMPLER_GOLDEN_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/../../../test-fixtures/media-timeline-sampler-vectors.tsv"
+)
+syrnike_native_target(syrnike-native-media-incident-timeline-tests)
+add_test(
+  NAME syrnike-native-media-incident-timeline-tests
+  COMMAND syrnike-native-media-incident-timeline-tests
+)
+
 add_executable(syrnike-native-actor-mailbox-tests
   tests/actor_mailbox_test.cpp
 )
@@ -212,6 +351,24 @@ syrnike_native_target(syrnike-native-actor-mailbox-tests)
 add_test(
   NAME syrnike-native-actor-mailbox-tests
   COMMAND syrnike-native-actor-mailbox-tests
+)
+
+add_executable(syrnike-native-voice-control-lane-tests
+  tests/voice_control_lane_test.cpp
+)
+syrnike_native_target(syrnike-native-voice-control-lane-tests)
+add_test(
+  NAME syrnike-native-voice-control-lane-tests
+  COMMAND syrnike-native-voice-control-lane-tests
+)
+
+add_executable(syrnike-native-message-policy-tests
+  tests/native_message_policy_test.cpp
+)
+syrnike_native_target(syrnike-native-message-policy-tests)
+add_test(
+  NAME syrnike-native-message-policy-tests
+  COMMAND syrnike-native-message-policy-tests
 )
 
 add_executable(syrnike-native-runtime-core-tests
@@ -231,6 +388,94 @@ syrnike_native_target(syrnike-native-media-processing-tests)
 target_link_libraries(syrnike-native-media-processing-tests PRIVATE syrnike_media_core)
 syrnike_copy_livekit_runtime(syrnike-native-media-processing-tests)
 add_test(NAME syrnike-native-media-processing-tests COMMAND syrnike-native-media-processing-tests)
+
+add_executable(syrnike-native-microphone-hot-path-tests
+  tests/microphone_hot_path_test.cpp
+  src/media/audio_processing.cpp
+  src/media/microphone_audio_processor.cpp
+  src/media/voice_gate.cpp
+)
+syrnike_native_target(syrnike-native-microphone-hot-path-tests)
+target_link_libraries(
+  syrnike-native-microphone-hot-path-tests PRIVATE LiveKit::livekit
+)
+syrnike_copy_livekit_runtime(syrnike-native-microphone-hot-path-tests)
+add_test(
+  NAME syrnike-native-microphone-hot-path-tests
+  COMMAND syrnike-native-microphone-hot-path-tests
+)
+
+add_executable(syrnike-native-windows-audio-session-policy-tests
+  tests/windows_audio_session_policy_test.cpp
+  src/media/windows_audio_session_policy.cpp
+)
+syrnike_native_target(syrnike-native-windows-audio-session-policy-tests)
+target_link_libraries(
+  syrnike-native-windows-audio-session-policy-tests PRIVATE ole32
+)
+add_test(
+  NAME syrnike-native-windows-audio-session-policy-tests
+  COMMAND syrnike-native-windows-audio-session-policy-tests
+)
+
+add_executable(syrnike-native-windows-audio-policy-matrix
+  tests/windows_audio_policy_matrix.cpp
+  src/media/windows_audio_session_policy.cpp
+)
+syrnike_native_target(syrnike-native-windows-audio-policy-matrix)
+target_link_libraries(
+  syrnike-native-windows-audio-policy-matrix PRIVATE Mmdevapi ole32
+)
+add_test(
+  NAME syrnike-native-windows-audio-policy-matrix
+  COMMAND syrnike-native-windows-audio-policy-matrix
+)
+set_tests_properties(
+  syrnike-native-windows-audio-policy-matrix PROPERTIES
+  SKIP_RETURN_CODE 77
+)
+
+add_executable(syrnike-native-remote-audio-operation-supervisor-tests
+  tests/remote_audio_operation_supervisor_test.cpp
+  src/common/cleanup_supervisor.cpp
+  src/common/diagnostic_log.cpp
+  src/media/audio_failure.cpp
+  src/media/remote_audio_operation_supervisor.cpp
+)
+syrnike_native_target(
+  syrnike-native-remote-audio-operation-supervisor-tests
+)
+add_test(
+  NAME syrnike-native-remote-audio-operation-supervisor-tests
+  COMMAND syrnike-native-remote-audio-operation-supervisor-tests
+)
+
+add_executable(syrnike-native-remote-audio-output-adapter-tests
+  tests/remote_audio_output_adapter_test.cpp
+  src/common/cleanup_supervisor.cpp
+  src/common/diagnostic_log.cpp
+  src/media/audio_devices.cpp
+  src/media/audio_failure.cpp
+  src/media/remote_audio_ingress.cpp
+  src/media/remote_audio_operation_supervisor.cpp
+  src/media/remote_audio_output.cpp
+  src/media/voice_activity_detector.cpp
+  src/media/windows_audio_session_policy.cpp
+)
+syrnike_native_target(syrnike-native-remote-audio-output-adapter-tests)
+target_link_libraries(
+  syrnike-native-remote-audio-output-adapter-tests PRIVATE
+  LiveKit::livekit
+  avrt
+  cfgmgr32
+  Mmdevapi
+  ole32
+)
+syrnike_copy_livekit_runtime(syrnike-native-remote-audio-output-adapter-tests)
+add_test(
+  NAME syrnike-native-remote-audio-output-adapter-tests
+  COMMAND syrnike-native-remote-audio-output-adapter-tests
+)
 
 add_executable(syrnike-native-remote-publication-reconciler-tests
   tests/remote_publication_reconciler_test.cpp
@@ -253,6 +498,57 @@ if(MSVC AND SYRNIKE_ENABLE_ASAN)
       _DISABLE_VECTOR_ANNOTATION
   )
 endif()
+
+# Production-shaped microphone soak addon. It exports the same media runtime
+# interface, but lives in an isolated output directory and links only test
+# external ports around the real MediaRuntime/MicrophoneActor ownership tree.
+add_library(syrnike_microphone_resilience_addon MODULE
+  ${CMAKE_JS_SRC}
+  src/common/node_event_sink.cpp
+  tests/microphone_resilience_addon.cpp
+)
+set_target_properties(syrnike_microphone_resilience_addon PROPERTIES
+  OUTPUT_NAME "syrnike_media"
+  PREFIX ""
+  SUFFIX ".node"
+  RUNTIME_OUTPUT_DIRECTORY_DEBUG
+    "${CMAKE_CURRENT_BINARY_DIR}/microphone-resilience-addon/Debug"
+  RUNTIME_OUTPUT_DIRECTORY_RELEASE
+    "${CMAKE_CURRENT_BINARY_DIR}/microphone-resilience-addon/Release"
+  LIBRARY_OUTPUT_DIRECTORY_DEBUG
+    "${CMAKE_CURRENT_BINARY_DIR}/microphone-resilience-addon/Debug"
+  LIBRARY_OUTPUT_DIRECTORY_RELEASE
+    "${CMAKE_CURRENT_BINARY_DIR}/microphone-resilience-addon/Release"
+  ARCHIVE_OUTPUT_DIRECTORY_DEBUG
+    "${CMAKE_CURRENT_BINARY_DIR}/microphone-resilience-addon/Debug/import"
+  ARCHIVE_OUTPUT_DIRECTORY_RELEASE
+    "${CMAKE_CURRENT_BINARY_DIR}/microphone-resilience-addon/Release/import"
+)
+syrnike_native_target(syrnike_microphone_resilience_addon)
+target_include_directories(
+  syrnike_microphone_resilience_addon SYSTEM PRIVATE
+  ${CMAKE_JS_INC}
+  "${NODE_ADDON_API_DIR}"
+)
+target_compile_definitions(syrnike_microphone_resilience_addon PRIVATE
+  NAPI_CPP_EXCEPTIONS
+  NAPI_VERSION=${NAPI_VERSION}
+  SYRNIKE_NATIVE_COMMIT="${SYRNIKE_NATIVE_COMMIT}"
+)
+target_link_libraries(
+  syrnike_microphone_resilience_addon PRIVATE
+  ${CMAKE_JS_LIB}
+  syrnike_media_core
+)
+if(MSVC)
+  target_link_libraries(syrnike_microphone_resilience_addon PRIVATE delayimp)
+  target_link_options(
+    syrnike_microphone_resilience_addon PRIVATE
+    /DELAYLOAD:node.exe
+    /DELAYLOAD:livekit.dll
+  )
+endif()
+syrnike_copy_livekit_runtime(syrnike_microphone_resilience_addon)
 if(NOT TARGET protobuf::libprotobuf)
   find_package(Protobuf CONFIG REQUIRED)
 endif()
@@ -297,6 +593,19 @@ syrnike_copy_livekit_runtime(syrnike-native-media-actor-lifecycle-tests)
 add_test(
   NAME syrnike-native-media-actor-lifecycle-tests
   COMMAND syrnike-native-media-actor-lifecycle-tests
+)
+
+add_executable(syrnike-native-preview-actor-attempt-tests
+  tests/preview_actor_attempt_test.cpp
+)
+syrnike_native_target(syrnike-native-preview-actor-attempt-tests)
+target_link_libraries(
+  syrnike-native-preview-actor-attempt-tests PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(syrnike-native-preview-actor-attempt-tests)
+add_test(
+  NAME syrnike-native-preview-actor-attempt-tests
+  COMMAND syrnike-native-preview-actor-attempt-tests
 )
 
 add_executable(syrnike-native-livekit-voice-session-tests
@@ -349,6 +658,25 @@ add_test(
   COMMAND syrnike-native-microphone-publication-control-plane-tests
 )
 
+add_executable(syrnike-native-microphone-resilience-soak-tests
+  tests/microphone_resilience_soak_test.cpp
+)
+syrnike_native_target(syrnike-native-microphone-resilience-soak-tests)
+target_link_libraries(
+  syrnike-native-microphone-resilience-soak-tests PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(syrnike-native-microphone-resilience-soak-tests)
+add_test(
+  NAME syrnike-native-microphone-resilience-soak-tests
+  COMMAND syrnike-native-microphone-resilience-soak-tests
+)
+set_tests_properties(
+  syrnike-native-microphone-resilience-soak-tests
+  PROPERTIES
+    ENVIRONMENT "SYRNIKE_MICROPHONE_SOAK_PROFILE=ci"
+    TIMEOUT 60
+)
+
 add_executable(syrnike-native-screen-publication-control-plane-tests
   tests/screen_publication_control_plane_test.cpp
 )
@@ -385,6 +713,8 @@ add_test(
 
 add_executable(syrnike-native-screen-frame-pipeline-tests
   tests/screen_frame_pipeline_test.cpp
+  src/common/cleanup_supervisor.cpp
+  src/common/diagnostic_log.cpp
 )
 syrnike_native_target(syrnike-native-screen-frame-pipeline-tests)
 add_test(
@@ -427,10 +757,26 @@ add_test(
   COMMAND syrnike-native-screen-audio-packetizer-soak-tests
 )
 
+add_executable(syrnike-native-screen-audio-capture-tests
+  tests/screen_audio_capture_test.cpp
+)
+syrnike_native_target(syrnike-native-screen-audio-capture-tests)
+target_link_libraries(
+  syrnike-native-screen-audio-capture-tests PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(syrnike-native-screen-audio-capture-tests)
+add_test(
+  NAME syrnike-native-screen-audio-capture-tests
+  COMMAND syrnike-native-screen-audio-capture-tests
+)
+
 add_executable(syrnike-native-display-source-window-probe-tests
   tests/display_source_window_probe_test.cpp
 )
 syrnike_native_target(syrnike-native-display-source-window-probe-tests)
+target_link_libraries(
+  syrnike-native-display-source-window-probe-tests PRIVATE syrnike_media_core
+)
 add_test(
   NAME syrnike-native-display-source-window-probe-tests
   COMMAND syrnike-native-display-source-window-probe-tests
@@ -511,6 +857,25 @@ set_tests_properties(
   PROPERTIES TIMEOUT 15
 )
 
+add_executable(syrnike-native-remote-video-renderer-stall-tests
+  tests/remote_video_renderer_stall_test.cpp
+)
+syrnike_native_target(syrnike-native-remote-video-renderer-stall-tests)
+target_link_libraries(
+  syrnike-native-remote-video-renderer-stall-tests PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(
+  syrnike-native-remote-video-renderer-stall-tests
+)
+add_test(
+  NAME syrnike-native-remote-video-renderer-stall-tests
+  COMMAND syrnike-native-remote-video-renderer-stall-tests
+)
+set_tests_properties(
+  syrnike-native-remote-video-renderer-stall-tests
+  PROPERTIES TIMEOUT 30
+)
+
 add_executable(syrnike-native-hooks-runtime-lifecycle-tests
   tests/hooks_runtime_lifecycle_test.cpp
 )
@@ -531,6 +896,37 @@ add_test(
   COMMAND syrnike-native-d3d11-gpu-completion-tests
 )
 
+add_executable(syrnike-native-remote-video-completion-control-tests
+  tests/remote_video_texture_completion_control_test.cpp
+)
+
+add_executable(syrnike-native-remote-video-d3d-device-owner-tests
+  tests/remote_video_d3d_device_owner_test.cpp
+)
+syrnike_native_target(syrnike-native-remote-video-d3d-device-owner-tests)
+target_link_libraries(
+  syrnike-native-remote-video-d3d-device-owner-tests PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(
+  syrnike-native-remote-video-d3d-device-owner-tests
+)
+add_test(
+  NAME syrnike-native-remote-video-d3d-device-owner-tests
+  COMMAND syrnike-native-remote-video-d3d-device-owner-tests
+)
+syrnike_native_target(syrnike-native-remote-video-completion-control-tests)
+target_link_libraries(
+  syrnike-native-remote-video-completion-control-tests
+  PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(
+  syrnike-native-remote-video-completion-control-tests
+)
+add_test(
+  NAME syrnike-native-remote-video-completion-control-tests
+  COMMAND syrnike-native-remote-video-completion-control-tests
+)
+
 # Manual, non-gating benchmark for the exact decoded-BGRA to Electron shared
 # texture path. It verifies cross-device contents and reports 1080p throughput.
 add_executable(syrnike-native-remote-video-texture-pool-benchmark
@@ -544,6 +940,98 @@ target_link_libraries(
 syrnike_copy_livekit_runtime(
   syrnike-native-remote-video-texture-pool-benchmark
 )
+
+# Checked native priority policy and failure-outcome contract.
+add_executable(syrnike-native-screen-capture-priority-tests
+  tests/screen_capture_priority_test.cpp
+  src/common/diagnostic_log.cpp
+  src/media/screen_capture_priority.cpp
+)
+syrnike_native_target(syrnike-native-screen-capture-priority-tests)
+target_link_libraries(
+  syrnike-native-screen-capture-priority-tests PRIVATE avrt dxgi
+)
+add_test(
+  NAME syrnike-native-screen-capture-priority-tests
+  COMMAND syrnike-native-screen-capture-priority-tests
+)
+
+# The protocol writer keeps a blocked child stdout pipe off the media loop and
+# reserves lossless capacity for control/anomaly records.
+add_executable(syrnike-native-media-contention-protocol-writer-tests
+  tests/media_contention_protocol_writer_test.cpp
+)
+syrnike_native_target(syrnike-native-media-contention-protocol-writer-tests)
+add_test(
+  NAME syrnike-native-media-contention-protocol-writer-tests
+  COMMAND syrnike-native-media-contention-protocol-writer-tests
+)
+
+add_executable(syrnike-native-media-contention-handoff-table-tests
+  tests/media_contention_handoff_table_test.cpp
+)
+syrnike_native_target(syrnike-native-media-contention-handoff-table-tests)
+add_test(
+  NAME syrnike-native-media-contention-handoff-table-tests
+  COMMAND syrnike-native-media-contention-handoff-table-tests
+)
+
+add_executable(syrnike-native-media-contention-viewer-track-filter-tests
+  tests/media_contention_viewer_track_filter_test.cpp
+)
+syrnike_native_target(syrnike-native-media-contention-viewer-track-filter-tests)
+add_test(
+  NAME syrnike-native-media-contention-viewer-track-filter-tests
+  COMMAND syrnike-native-media-contention-viewer-track-filter-tests
+)
+
+add_executable(syrnike-native-media-contention-resource-baseline-tests
+  tests/media_contention_resource_baseline_test.cpp
+)
+syrnike_native_target(syrnike-native-media-contention-resource-baseline-tests)
+add_test(
+  NAME syrnike-native-media-contention-resource-baseline-tests
+  COMMAND syrnike-native-media-contention-resource-baseline-tests
+)
+
+add_executable(syrnike-native-media-contention-terminal-resource-tests
+  tests/media_contention_terminal_resource_test.cpp
+)
+syrnike_native_target(syrnike-native-media-contention-terminal-resource-tests)
+add_test(
+  NAME syrnike-native-media-contention-terminal-resource-tests
+  COMMAND syrnike-native-media-contention-terminal-resource-tests
+)
+
+add_executable(syrnike-native-media-contention-audio-recovery-tests
+  tests/media_contention_audio_recovery_test.cpp
+)
+syrnike_native_target(syrnike-native-media-contention-audio-recovery-tests)
+add_test(
+  NAME syrnike-native-media-contention-audio-recovery-tests
+  COMMAND syrnike-native-media-contention-audio-recovery-tests
+)
+
+add_executable(syrnike-native-media-contention-screen-cadence-tests
+  tests/media_contention_screen_cadence_test.cpp
+)
+syrnike_native_target(syrnike-native-media-contention-screen-cadence-tests)
+add_test(
+  NAME syrnike-native-media-contention-screen-cadence-tests
+  COMMAND syrnike-native-media-contention-screen-cadence-tests
+)
+
+# Manual production-shaped contention lane. Electron owns the orchestration,
+# renderer fence, bounded artifact, and the short/ten-minute profiles.
+add_executable(syrnike-native-media-contention-probe
+  tests/media_contention_probe.cpp
+  tests/windows_process_resource_snapshot.cpp
+)
+syrnike_native_target(syrnike-native-media-contention-probe)
+target_link_libraries(
+  syrnike-native-media-contention-probe PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(syrnike-native-media-contention-probe)
 
 add_executable(syrnike-native-screen-dxgi-compositor-tests
   tests/screen_dxgi_compositor_test.cpp
@@ -563,11 +1051,13 @@ add_test(
 # report SKIP rather than silently falling back when the adapter lacks support.
 add_executable(syrnike-native-screen-streaming-benchmark
   tests/screen_streaming_benchmark.cpp
+  tests/windows_process_resource_snapshot.cpp
   src/common/diagnostic_log.cpp
   src/media/screen_capture_target.cpp
   src/media/screen_capture_priority.cpp
   src/media/screen_dxgi_compositor.cpp
   src/media/screen_gpu_capture.cpp
+  src/media/video_resource_admission.cpp
   tests/screen_video_capture_benchmark.cpp
 )
 syrnike_native_target(syrnike-native-screen-streaming-benchmark)
