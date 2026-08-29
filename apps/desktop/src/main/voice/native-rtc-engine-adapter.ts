@@ -126,7 +126,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
   private active: ActiveVoiceConnection | null = null
   private mediaRevision = 0
   private mediaHandledRevision = 0
-  private mediaReconcile: Fiber.Fiber<void, never> | null = null
+  private mediaReconcileRunning = false
   private microphoneAppliedConfigRevision = 0
   private microphoneConfigKey: string | null = null
   private microphoneConfigFiber: Fiber.Fiber<void, unknown> | null = null
@@ -783,18 +783,18 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
 
   private ensureMediaReconcile() {
     if (
-      this.mediaReconcile ||
+      this.mediaReconcileRunning ||
       !this.active?.voiceReady ||
       !this.desired
     ) {
       return
     }
-    let fiber: Fiber.Fiber<void, never>
+    this.mediaReconcileRunning = true
     const effect = this.reconcileMediaLoopEffect().pipe(
       Effect.ignore,
       Effect.ensuring(
         Effect.sync(() => {
-          if (this.mediaReconcile === fiber) this.mediaReconcile = null
+          this.mediaReconcileRunning = false
           if (
             this.active &&
             this.desired &&
@@ -805,8 +805,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
         }),
       ),
     )
-    fiber = this.effectRuntime.runFork(effect)
-    this.mediaReconcile = fiber
+    this.effectRuntime.runFork(effect)
   }
 
   private reconcileMediaLoopEffect() {
