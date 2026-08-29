@@ -177,24 +177,36 @@ int main() try {
           2s),
       "flowing renderer generation did not return to baseline");
 
+  std::mutex pending_gpu_frames_mutex;
+  std::vector<std::pair<std::uint64_t, std::uint64_t>> pending_gpu_frames;
+  bool release_late_pending_gpu_frames = false;
+  std::atomic_bool late_pending_gpu_release_failed{false};
+  const RendererTextureLeaseFence pending_gpu_fence{
+      NativeCommandType::RemoteVideoFrame,
+      "renderer-pending-gpu",
+      5,
+      "renderer-pending-gpu-track"};
   {
     auto pending_gpu_counters = std::make_shared<ReaderCounters>();
     auto pending_gpu_track = std::make_shared<FakeVideoTrack>();
-    std::mutex pending_gpu_frames_mutex;
-    std::vector<std::pair<std::uint64_t, std::uint64_t>> pending_gpu_frames;
     std::atomic_bool hold_third_gpu_completion{true};
-    const RendererTextureLeaseFence pending_gpu_fence{
-        NativeCommandType::RemoteVideoFrame,
-        "renderer-pending-gpu",
-        5,
-        "renderer-pending-gpu-track"};
     RemoteVideoBridge pending_gpu_bridge(
         GetCurrentProcessId(),
         [&](MediaCommand command) {
           if (command.type == NativeCommandType::RemoteVideoFrame) {
-            std::lock_guard lock(pending_gpu_frames_mutex);
-            pending_gpu_frames.emplace_back(
-                command.frame_sequence, command.timestamp_us);
+            bool release_immediately = false;
+            {
+              std::lock_guard lock(pending_gpu_frames_mutex);
+              pending_gpu_frames.emplace_back(
+                  command.frame_sequence, command.timestamp_us);
+              release_immediately = release_late_pending_gpu_frames;
+            }
+            if (release_immediately &&
+                !releaseRendererTextureLease(
+                    pending_gpu_fence, command.frame_sequence)) {
+              late_pending_gpu_release_failed.store(
+                  true, std::memory_order_release);
+            }
           }
           return true;
         },
@@ -253,22 +265,26 @@ int main() try {
         "pending GPU work prevented released renderer capacity from resuming");
 
     hold_third_gpu_completion.store(false, std::memory_order_release);
-    pending_gpu_bridge.removeTrack("renderer-pending-gpu-track", false);
     std::vector<std::uint64_t> pending_gpu_sequences;
     {
       std::lock_guard lock(pending_gpu_frames_mutex);
+      release_late_pending_gpu_frames = true;
       for (const auto& [sequence, _] : pending_gpu_frames) {
         if (sequence != released_pending_gpu_sequence) {
           pending_gpu_sequences.push_back(sequence);
         }
       }
     }
+    pending_gpu_bridge.removeTrack("renderer-pending-gpu-track", false);
     for (const auto sequence : pending_gpu_sequences) {
       require(
           releaseRendererTextureLease(pending_gpu_fence, sequence),
           "pending GPU regression lease did not release exactly once");
     }
   }
+  require(
+      !late_pending_gpu_release_failed.load(std::memory_order_acquire),
+      "late pending GPU regression lease did not release exactly once");
   require(
       waitUntil(
           [&] {

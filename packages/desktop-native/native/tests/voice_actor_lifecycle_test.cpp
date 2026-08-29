@@ -234,6 +234,16 @@ int main() try {
       launcher_client->disconnectCallCount() == 1,
     "voice cleanup enqueue/launcher failure lost or duplicated disconnect"
   );
+  require(
+    waitUntil(
+      [] {
+        return syrnike::desktop_native::CleanupSupervisor::instance()
+          .snapshot().owned_jobs == 0;
+      },
+      std::chrono::seconds(2)
+    ),
+    "voice launcher cleanup did not reach a quiescent baseline"
+  );
 
   {
     const auto cleanup_before_exact =
@@ -553,6 +563,16 @@ int main() try {
       std::chrono::seconds(2)
     ),
     "initial runtime quarantine did not release its LiveKit lease"
+  );
+  require(
+    waitUntil(
+      [] {
+        return syrnike::desktop_native::CleanupSupervisor::instance()
+          .snapshot().owned_jobs == 0;
+      },
+      std::chrono::seconds(2)
+    ),
+    "initial runtime quarantine did not reach a quiescent cleanup baseline"
   );
 
   const auto leases_before_blocked_runtime =
