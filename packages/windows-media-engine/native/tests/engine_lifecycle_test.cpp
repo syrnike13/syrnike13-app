@@ -10,6 +10,10 @@
 
 #include "core/engine.hpp"
 
+namespace syrnike::windows_media::tests {
+void runRoomOwnerTests();
+}
+
 namespace {
 
 using syrnike::windows_media::Engine;
@@ -320,6 +324,7 @@ int main() try {
   invalidStateDoesNotPartiallyApply();
   diagnosticsCannotMutateState();
   expiredApplyNeverCommitsLate();
+  syrnike::windows_media::tests::runRoomOwnerTests();
   std::cout << "media-core-tests:ok\n";
   return 0;
 } catch (const std::exception& error) {

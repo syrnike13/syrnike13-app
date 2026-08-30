@@ -5,6 +5,7 @@ packages:
   - packages/api-types
   - packages/desktop-native
   - packages/windows-media-engine
+  - packages/native-media-lab
   - packages/platform
 
 allowBuilds:

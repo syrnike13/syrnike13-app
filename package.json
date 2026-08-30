@@ -39,6 +39,8 @@
     "windows-media:test:debug": "pnpm --filter @syrnike13/windows-media-engine test:debug",
     "windows-media:probe": "pnpm --filter @syrnike13/windows-media-engine probe:repeat",
     "windows-media:verify": "pnpm --filter @syrnike13/windows-media-engine verify",
+    "native-media:lab": "pnpm --filter @syrnike13/native-media-lab lab",
+    "native-media:observer": "pnpm --filter @syrnike13/native-media-lab observer",
     "platform:build": "pnpm --filter @syrnike13/platform build",
     "backend:check": "cargo check --manifest-path services/backend/Cargo.toml --workspace",
     "livekit:check": "cd services/livekit-server && go test ./..."

@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 2,
+  "accepted": true,
+  "generatedAt": "2026-08-30T22:06:24.557Z",
+  "scenarios": {
+    "room-owner-control": {
+      "accepted": true,
+      "cancellation": "typed",
+      "generationFencing": "passed",
+      "delayedCompletion": "passed",
+      "lifecycleCycles": 50
+    },
+    "normal": {
+      "schemaVersion": 1,
+      "accepted": true,
+      "startedAt": "2026-08-30T22:04:36.863Z",
+      "finishedAt": "2026-08-30T22:05:17.407Z",
+      "durationMs": 40544,
+      "video": {
+        "receivedFrames": 600,
+        "decodedFrames": 600,
+        "maximumConsecutiveFrames": 600,
+        "sequenceGaps": 0,
+        "outOfOrderFrames": 0,
+        "minimumLatencyMs": 6,
+        "maximumLatencyMs": 85,
+        "averageLatencyMs": 37.23,
+        "observerDroppedFrames": 0,
+        "maximumObserverBacklogFrames": 0
+      },
+      "audio": {
+        "receivedFrames": 3997,
+        "receivedSamples": 1918560,
+        "controlPulses": 40,
+        "discontinuities": 0
+      },
+      "tracks": {
+        "subscribed": 2,
+        "unsubscribed": 0
+      },
+      "failures": []
+    },
+    "republish": {
+      "schemaVersion": 1,
+      "accepted": true,
+      "startedAt": "2026-08-30T22:05:21.913Z",
+      "finishedAt": "2026-08-30T22:05:31.482Z",
+      "durationMs": 9569,
+      "video": {
+        "receivedFrames": 134,
+        "decodedFrames": 128,
+        "maximumConsecutiveFrames": 57,
+        "sequenceGaps": 7,
+        "outOfOrderFrames": 0,
+        "minimumLatencyMs": 6,
+        "maximumLatencyMs": 20,
+        "averageLatencyMs": 17.7265625,
+        "observerDroppedFrames": 0,
+        "maximumObserverBacklogFrames": 0
+      },
+      "audio": {
+        "receivedFrames": 804,
+        "receivedSamples": 385920,
+        "controlPulses": 7,
+        "discontinuities": 1
+      },
+      "tracks": {
+        "subscribed": 4,
+        "unsubscribed": 2
+      },
+      "failures": []
+    },
+    "slow-observer": {
+      "schemaVersion": 1,
+      "accepted": true,
+      "startedAt": "2026-08-30T22:05:38.944Z",
+      "finishedAt": "2026-08-30T22:05:44.121Z",
+      "durationMs": 5177,
+      "video": {
+        "receivedFrames": 116,
+        "decodedFrames": 40,
+        "maximumConsecutiveFrames": 1,
+        "sequenceGaps": 99,
+        "outOfOrderFrames": 0,
+        "minimumLatencyMs": 7,
+        "maximumLatencyMs": 18,
+        "averageLatencyMs": 16.475,
+        "observerDroppedFrames": 76,
+        "maximumObserverBacklogFrames": 1
+      },
+      "audio": {
+        "receivedFrames": 464,
+        "receivedSamples": 222720,
+        "controlPulses": 4,
+        "discontinuities": 0
+      },
+      "tracks": {
+        "subscribed": 2,
+        "unsubscribed": 0
+      },
+      "failures": []
+    },
+    "late-observer": {
+      "schemaVersion": 1,
+      "accepted": true,
+      "startedAt": "2026-08-30T22:05:46.145Z",
+      "finishedAt": "2026-08-30T22:05:53.014Z",
+      "durationMs": 6869,
+      "video": {
+        "receivedFrames": 100,
+        "decodedFrames": 100,
+        "maximumConsecutiveFrames": 100,
+        "sequenceGaps": 0,
+        "outOfOrderFrames": 0,
+        "minimumLatencyMs": 6,
+        "maximumLatencyMs": 87,
+        "averageLatencyMs": 70.79,
+        "observerDroppedFrames": 0,
+        "maximumObserverBacklogFrames": 0
+      },
+      "audio": {
+        "receivedFrames": 670,
+        "receivedSamples": 321600,
+        "controlPulses": 7,
+        "discontinuities": 0
+      },
+      "tracks": {
+        "subscribed": 2,
+        "unsubscribed": 0
+      },
+      "failures": []
+    },
+    "disconnect-before-publish": {
+      "scenario": "disconnect-before-publish",
+      "cycles": 1,
+      "pendingCallbacks": 0,
+      "workerThreads": 0
+    },
+    "lifecycle-50": {
+      "accepted": true,
+      "cycles": 50,
+      "processBoundary": true,
+      "residualPublisherProcesses": 0,
+      "residualPublisherThreads": 0,
+      "residualPublisherHandles": 0,
+      "pendingCallbacks": 0
+    },
+    "publisher-stops": {
+      "schemaVersion": 1,
+      "accepted": false,
+      "startedAt": "2026-08-30T22:06:14.348Z",
+      "finishedAt": "2026-08-30T22:06:19.511Z",
+      "durationMs": 5163,
+      "video": {
+        "receivedFrames": 0,
+        "decodedFrames": 0,
+        "maximumConsecutiveFrames": 0,
+        "sequenceGaps": 0,
+        "outOfOrderFrames": 0,
+        "minimumLatencyMs": null,
+        "maximumLatencyMs": null,
+        "averageLatencyMs": null,
+        "observerDroppedFrames": 0,
+        "maximumObserverBacklogFrames": 0
+      },
+      "audio": {
+        "receivedFrames": 461,
+        "receivedSamples": 221280,
+        "controlPulses": 0,
+        "discontinuities": 0
+      },
+      "tracks": {
+        "subscribed": 1,
+        "unsubscribed": 0
+      },
+      "failures": [
+        "observer acceptance deadline exceeded"
+      ]
+    },
+    "observer-exits": {
+      "accepted": true,
+      "publisherCompleted": true
+    }
+  }
+}

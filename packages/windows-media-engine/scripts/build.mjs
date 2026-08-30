@@ -79,6 +79,7 @@ const configIndex = process.argv.indexOf('--config')
 const configuration = configIndex >= 0 ? process.argv[configIndex + 1] : 'Release'
 const shouldStage = !args.has('--no-stage') && configuration === 'Release'
 const enableAsan = args.has('--asan')
+const buildMediaLab = args.has('--lab')
 
 if (configuration !== 'Debug' && configuration !== 'Release') {
   throw new Error(`Unsupported media engine configuration: ${configuration}`)
@@ -113,6 +114,7 @@ const cmakeArgs = [
   configuration,
   `--CDNAPI_VERSION=${NAPI_VERSION}`,
   `--CDWINDOWS_MEDIA_ENABLE_ASAN=${enableAsan ? 'ON' : 'OFF'}`,
+  `--CDWINDOWS_MEDIA_BUILD_LAB=${buildMediaLab ? 'ON' : 'OFF'}`,
   `--CDWINDOWS_MEDIA_COMMIT=${commitSha}`,
 ]
 
