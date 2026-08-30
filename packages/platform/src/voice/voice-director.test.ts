@@ -266,6 +266,29 @@ describe('VoiceDirector', () => {
     })
   })
 
+  it('commits membership while the media engine is unavailable', async () => {
+    const harness = createHarness()
+    harness.engine.emit({
+      type: 'availabilityChanged',
+      available: false,
+      retryable: false,
+      failure: {
+        code: 'native_media_unavailable',
+        message: 'Native media is unavailable while the v2 engine is rebuilt.',
+        retryable: false,
+        stage: 'native_runtime',
+      },
+    })
+
+    await connect(harness, 'A')
+
+    expect(harness.director.snapshot()).toMatchObject({
+      connection: 'connected',
+      intentChannelId: 'A',
+      membershipChannelId: 'A',
+    })
+  })
+
   it('performs break-before-make and leaves failed destination disconnected', async () => {
     const harness = createHarness()
     await connect(harness, 'A')

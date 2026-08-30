@@ -67,18 +67,24 @@ describe('desktop preload media runtime bridge', () => {
   })
 
   it('invokes runtime state and retry IPC channels', async () => {
-    const ready = {
-      available: true,
-      status: 'ready' as const,
-      restartCount: 4,
+    const unavailable = {
+      available: false,
+      status: 'unavailable',
+      restartCount: 0,
+      failure: {
+        code: 'native_media_unavailable',
+        message: 'Native media is unavailable while the v2 engine is rebuilt.',
+        retryable: false,
+        stage: 'native_runtime',
+      },
     }
-    electron.ipcRenderer.invoke.mockResolvedValue(ready)
+    electron.ipcRenderer.invoke.mockResolvedValue(unavailable)
 
-    await expect(desktop.media.getRuntimeState()).resolves.toEqual(ready)
+    await expect(desktop.media.getRuntimeState()).resolves.toEqual(unavailable)
     expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(
       IPC.mediaGetRuntimeState,
     )
-    await expect(desktop.media.retryRuntime()).resolves.toEqual(ready)
+    await expect(desktop.media.retryRuntime()).resolves.toEqual(unavailable)
     expect(electron.ipcRenderer.invoke).toHaveBeenLastCalledWith(
       IPC.mediaRetryRuntime,
     )
@@ -147,9 +153,9 @@ describe('desktop preload media runtime bridge', () => {
 
   it('rejects malformed runtime state returned by main IPC', async () => {
     electron.ipcRenderer.invoke.mockResolvedValueOnce({
-      available: true,
-      status: 'degraded',
-      restartCount: -1,
+      available: false,
+      status: 'stopped',
+      restartCount: 0,
     })
     await expect(desktop.media.getRuntimeState()).rejects.toThrow(
       'Invalid native media runtime state',
@@ -169,24 +175,34 @@ describe('desktop preload media runtime bridge', () => {
     const listener = vi.fn()
     const unsubscribe = desktop.media.onRuntimeState(listener)
     electron.emit(IPC.mediaRuntimeStateChanged, {
-      available: true,
-      status: 'degraded',
-      restartCount: -1,
+      available: false,
+      status: 'stopped',
+      restartCount: 0,
     })
     electron.emit(IPC.mediaRuntimeStateChanged, {
-      available: true,
-      status: 'degraded',
-      restartCount: 3,
-      degradedRetryAttempt: 1,
-      nextRetryAt: 30_000,
+      available: false,
+      status: 'unavailable',
+      restartCount: 0,
+      failure: {
+        code: 'native_media_unavailable',
+        message: 'Native media is unavailable while the v2 engine is rebuilt.',
+        retryable: false,
+        stage: 'native_runtime',
+      },
     })
 
     expect(listener).toHaveBeenCalledTimes(1)
     unsubscribe()
     electron.emit(IPC.mediaRuntimeStateChanged, {
-      available: true,
-      status: 'ready',
-      restartCount: 4,
+      available: false,
+      status: 'unavailable',
+      restartCount: 0,
+      failure: {
+        code: 'native_media_unavailable',
+        message: 'Native media is unavailable while the v2 engine is rebuilt.',
+        retryable: false,
+        stage: 'native_runtime',
+      },
     })
     expect(listener).toHaveBeenCalledTimes(1)
   })

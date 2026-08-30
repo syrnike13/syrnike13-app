@@ -5,15 +5,9 @@ import path from 'node:path'
 import { Option, Schema } from 'effect'
 
 const NATIVE_BINARY_NAMES = [
-  'livekit.dll',
-  'livekit_ffi.dll',
   'syrnike_hotkey.node',
   'syrnike_overlay.node',
-  'syrnike_media.node',
 ] as const
-
-export const NATIVE_RUNTIME_LIVEKIT_VERSION = '1.3.0'
-
 const NATIVE_DISTRIBUTION_NAMES = [
   ...NATIVE_BINARY_NAMES,
   'native-manifest.json',
@@ -33,7 +27,10 @@ export const NativeArtifactManifestSchema = Schema.Struct({
   commitSha: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/i)),
   electronVersion: Schema.String,
   napiVersion: Schema.Int.check(Schema.isGreaterThan(0)),
-  liveKitVersion: Schema.String,
+  capabilities: Schema.Tuple([
+    Schema.Literal('hotkeys'),
+    Schema.Literal('overlay'),
+  ]),
   files: Schema.Array(Schema.Struct({
     name: Schema.String,
     sha256: Sha256Schema,
@@ -49,7 +46,6 @@ export type NativeArtifactExpectations = {
   contractVersion: number
   electronVersion: string
   minimumNapiVersion: number
-  liveKitVersion: string
   releaseChannel: 'stable' | 'nightly'
 }
 
@@ -90,9 +86,6 @@ export function verifyNativeArtifactDistribution(
   }
   if (manifest.napiVersion > expected.minimumNapiVersion) {
     throw new Error('Native artifact requires a newer Node-API version')
-  }
-  if (manifest.liveKitVersion !== expected.liveKitVersion) {
-    throw new Error('Native artifact LiveKit version mismatch')
   }
 
   const expectedHashes = new Map(

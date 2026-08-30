@@ -30,9 +30,7 @@ import {
   disposeDesktopOverlay,
 } from './overlay-manager'
 import {
-  disposeNativeMediaRuntimeEffect,
   logNativeVoiceDiagnostic,
-  startNativeMediaRuntime,
 } from './native-media-engine'
 import { resolveWebDistRoot } from './paths'
 import { createMainWindow } from './window'
@@ -474,7 +472,6 @@ const disposeAppResourcesEffect = Effect.fn('desktop.disposeResources')(
             })
             yield* hooksRuntimeController.disposeEffect()
           }).pipe(Effect.ignore),
-          disposeNativeMediaRuntimeEffect().pipe(Effect.ignore),
           (server ? server.closeEffect() : Effect.void).pipe(Effect.ignore),
           anonymousNativeMetricsReporter.flushEffect().pipe(
             Effect.ensuring(
@@ -546,7 +543,6 @@ if (setupSingleInstance()) {
           desktopLocalSettings.observability.nativeCrashReports,
       })
       applyLoginItemSettings(desktopPreferences.openAtLogin)
-      startNativeMediaRuntime()
       desktopVoiceService.startSystemLifecycle()
     })
     yield* pruneExpiredNativeCrashDumpsEffect().pipe(

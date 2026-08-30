@@ -10,7 +10,6 @@
 
 #include "../common/cleanup_supervisor.hpp"
 #include "../common/native_contract_version.hpp"
-#include "../common/native_message_bindings.hpp"
 #include "../common/node_event_sink.hpp"
 #include "../common/runtime_types.hpp"
 #include "hooks_runtime.hpp"
@@ -44,21 +43,6 @@ HooksCommand parseHooksCommand(const Napi::Object& object) {
   command.request_id = request_id.As<Napi::String>().Utf8Value();
   if (command.request_id.empty()) {
     throw std::invalid_argument("command.type and command.requestId are required");
-  }
-  const auto native_type = command.type;
-  const auto& policy = nativeCommandPolicy(native_type);
-  if (nativeCommandTypeForSchema(policy.schema) != native_type ||
-      nativeCommandTypeForAction(policy.action) != native_type) {
-    throw std::invalid_argument(
-      "command has no generated schema or dispatch handler"
-    );
-  }
-  if (policy.visibility !=
-        NativeMessageVisibility::External ||
-      (policy.destination !=
-         NativeMessageDestination::Hooks &&
-       native_type != NativeCommandType::Shutdown)) {
-    throw std::invalid_argument("command is absent from the typed hooks policy");
   }
 #if defined(SYRNIKE_HOOK_RUNTIME_hotkey)
   if (command.type != NativeCommandType::StartHotkeys && command.type != NativeCommandType::StopHotkeys &&

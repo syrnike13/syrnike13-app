@@ -1,4 +1,4 @@
-import { Deferred, Effect, Fiber, Layer, ManagedRuntime, Schema } from 'effect'
+import { Effect } from 'effect'
 
 import {
   NATIVE_RUNTIME_CONTRACT_VERSION,
@@ -8,30 +8,18 @@ import {
   nativeRuntimeError,
   redactSensitiveText,
   type NativeRuntimeCommand,
-  type NativeRuntimeDiagnosticContext,
   type NativeRuntimeError,
   type NativeRuntimeEvent,
   type NativeRuntimeKind,
-  type NativeRuntimeLane,
   type NativeRuntimeReady,
+  type NativeRuntimeReply,
   type NativeRuntimeRequest,
 } from './contract'
-import type { DiagnosticLogRecord, DiagnosticLogSink } from './diagnostic-log'
 import type {
   NativeRuntimeAdapter,
   NativeRuntimeAdapterExit,
   NativeRuntimeAdapterFactory,
 } from './utility-adapter'
-
-const DEFAULT_HANDSHAKE_TIMEOUT_MS = 5_000
-const DEFAULT_PROBE_TIMEOUT_MS = 2_500
-const VOICE_CONTROL_RELEASE_ATTEMPT_TIMEOUT_MS = 2_000
-export const VOICE_CONTROL_RELEASE_DEADLINE_MS = 6_500
-const RETIREMENT_WATCHDOG_INTERVAL_MS = 1_000
-const RESTART_DELAYS_MS = [250, 1_000, 5_000] as const
-const DEGRADED_RETRY_DELAYS_MS = [30_000, 60_000, 5 * 60_000] as const
-const CRASH_WINDOW_MS = 60_000
-const MAX_TRACKED_SCREEN_RECOVERY_EPOCHS = 256
 
 export type NativeRuntimeSupervisorStatus =
   | 'stopped'
@@ -41,16 +29,11 @@ export type NativeRuntimeSupervisorStatus =
   | 'degraded'
 
 export type NativeRuntimeFailureCause =
-  | 'spawn_failed'
-  | 'handshake_timeout'
-  | 'handshake_incompatible'
-  | 'process_exit'
-  | 'transport_error'
-  | 'request_outcome_unknown'
-  | 'actor_unresponsive'
-  | 'control_delivery_lost'
-  | 'liveness_probe_failed'
-  | 'circuit_open'
+  | 'start'
+  | 'handshake'
+  | 'protocol'
+  | 'exit'
+  | 'request_timeout'
 
 export type NativeRuntimeFailure = {
   cause: NativeRuntimeFailureCause
@@ -61,23 +44,12 @@ export type NativeRuntimeFailure = {
 export type NativeRuntimeSupervisorSnapshot = {
   runtime: NativeRuntimeKind
   status: NativeRuntimeSupervisorStatus
-  pid?: number
   restartCount: number
-  /** Monotonic identity of the utility host whose state is being reported. */
-  hostEpoch?: number
+  pid?: number
   failure?: NativeRuntimeFailure
-  degradedReason?: string
-  degradedRetryAttempt?: number
   nextRetryAt?: number
-  lastFailure?: string
   ready?: NativeRuntimeReady
 }
-
-export type NativeRuntimeGenerationLane =
-  | 'voice'
-  | 'microphone'
-  | 'screen'
-  | 'camera'
 
 export class NativeRuntimeRequestError extends Error {
   constructor(readonly detail: NativeRuntimeError) {
@@ -86,131 +58,39 @@ export class NativeRuntimeRequestError extends Error {
   }
 }
 
-type PendingRequestBase = {
-  timeout: Fiber.Fiber<void, never>
-  context: NativeRuntimeRequestContext
-  startedAt: number
-  probeKey?: string
-  adapterEpoch: number
-}
-
-type PendingRequest =
-  | PendingRequestBase & {
-      kind: 'command'
-      result: Deferred.Deferred<unknown, Error>
-    }
-  | PendingRequestBase & {
-      kind: 'probe'
-    }
-
-type NativeRuntimeRequestContext = {
-  stage: NativeRuntimeCommand['type']
-  lane: NativeRuntimeLane
-  sessionId?: string
-  generation?: number
-  actionId?: string
-  operation?: string
-  revision?: number
-  hostEpoch?: number
-}
-
-function requestContext(
-  command: NativeRuntimeCommand,
-  diagnostic?: Omit<NativeRuntimeDiagnosticContext, 'hostEpoch'>,
-  hostEpoch?: number,
-): NativeRuntimeRequestContext {
-  return {
-    stage: command.type,
-    lane: nativeRuntimeCommandLane(command),
-    sessionId:
-      'sessionId' in command && typeof command.sessionId === 'string'
-        ? command.sessionId
-        : undefined,
-    generation:
-      'generation' in command && typeof command.generation === 'number'
-        ? command.generation
-        : undefined,
-    actionId: diagnostic?.actionId,
-    operation: diagnostic?.operationId,
-    revision:
-      ('revision' in command && typeof command.revision === 'number'
-        ? command.revision
-        : diagnostic?.revision),
-    hostEpoch,
-  }
+type PendingRequest = {
+  resolve(value: unknown): void
+  reject(error: Error): void
+  timeout: ReturnType<typeof setTimeout>
 }
 
 export type NativeRuntimeSupervisorOptions = {
   runtime: NativeRuntimeKind
   createAdapter: NativeRuntimeAdapterFactory
   handshakeTimeoutMs?: number
-  probeTimeoutMs?: number
+  restartDelaysMs?: readonly number[]
+  requestId?: () => string
   now?: () => number
-  schedule?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>
-  degradedRetryDelaysMs?: readonly number[]
-  diagnostics?: DiagnosticLogSink
 }
-
-export type NativeRuntimeRequestOptions = {
-  probeOnTimeout?: boolean
-  allowDuringShutdown?: boolean
-  diagnostic?: Omit<NativeRuntimeDiagnosticContext, 'hostEpoch'>
-}
-
-export type RendererLeaseReleaseCommand = Extract<
-  NativeRuntimeCommand,
-  {
-    readonly type:
-      | 'releaseRemoteVideoFrame'
-      | 'releaseLocalScreenPreviewFrame'
-      | 'releaseLocalCameraPreviewFrame'
-  }
->
 
 export class NativeRuntimeSupervisor {
-  private readonly runtime = ManagedRuntime.make(Layer.empty)
   private adapter: NativeRuntimeAdapter | null = null
+  private adapterEpoch = 0
   private snapshot: NativeRuntimeSupervisorSnapshot
-  private readonly pending = new Map<string, PendingRequest>()
   private readonly eventListeners = new Set<(event: NativeRuntimeEvent) => void>()
   private readonly stateListeners = new Set<
     (snapshot: NativeRuntimeSupervisorSnapshot) => void
   >()
+  private readonly pending = new Map<string, PendingRequest>()
   private startPromise: Promise<NativeRuntimeReady> | null = null
-  private startResult: Deferred.Deferred<NativeRuntimeReady, Error> | null = null
+  private resolveStart: ((ready: NativeRuntimeReady) => void) | null = null
+  private rejectStart: ((error: Error) => void) | null = null
   private handshakeTimer: ReturnType<typeof setTimeout> | null = null
   private restartTimer: ReturnType<typeof setTimeout> | null = null
-  private degradedRetryTimer: ReturnType<typeof setTimeout> | null = null
-  private degradedRetryScheduleEpoch = 0
-  private degradedRetryAttempt = 0
-  private crashTimes: number[] = []
-  private expectedExitEpoch: number | null = null
-  private startEpoch: number | null = null
-  private restartScheduleEpoch = 0
-  private shutdownPromise: Promise<void> | null = null
-  private shutdownResult: Deferred.Deferred<void, Error> | null = null
+  private restartAttempt = 0
   private requestSequence = 0
-  private adapterEpoch = 0
-  // Native generation fences outlive account-scoped RTC adapters, so their
-  // sequence source must share the supervisor's runtime lifetime.
-  private readonly generationSequences: Record<
-    NativeRuntimeGenerationLane,
-    number
-  > = {
-    voice: 0,
-    microphone: 0,
-    screen: 0,
-    camera: 0,
-  }
-  private microphoneConfigRevision = 0
-  private lastControlEventSequence = -1
-  private lastRealtimeEventSequence = -1
-  private readonly activeProbeKeys = new Set<string>()
-  private readonly retirementWatchdogs = new Map<
-    NativeRuntimeLane,
-    ReturnType<typeof setTimeout>
-  >()
-  private readonly screenRecoverableLostCounts = new Map<string, number>()
+  private hasStarted = false
+  private shuttingDown = false
 
   constructor(private readonly options: NativeRuntimeSupervisorOptions) {
     this.snapshot = {
@@ -221,25 +101,11 @@ export class NativeRuntimeSupervisor {
   }
 
   getSnapshot() {
-    return { ...this.snapshot }
+    return this.snapshot
   }
 
   getPendingRequestCount() {
     return this.pending.size
-  }
-
-  allocateGeneration(lane: NativeRuntimeGenerationLane) {
-    const generation = this.generationSequences[lane] + 1
-    assertSafeSequence(generation, `${lane} generation`)
-    this.generationSequences[lane] = generation
-    return generation
-  }
-
-  allocateMicrophoneConfigRevision() {
-    const revision = this.microphoneConfigRevision + 1
-    assertSafeSequence(revision, 'microphone config revision')
-    this.microphoneConfigRevision = revision
-    return revision
   }
 
   onEvent(listener: (event: NativeRuntimeEvent) => void) {
@@ -253,1013 +119,390 @@ export class NativeRuntimeSupervisor {
   }
 
   start() {
-    if (this.startPromise) return this.startPromise
-    if (this.startResult) {
-      const start = this.runtime.runPromise(Deferred.await(this.startResult))
-      this.startPromise = start
-      return start
+    if (this.snapshot.status === 'ready' && this.snapshot.ready) {
+      return Promise.resolve(this.snapshot.ready)
     }
-    if (
-      this.shutdownPromise ||
-      (this.snapshot.status === 'ready' && this.snapshot.ready) ||
-      this.restartTimer ||
-      this.snapshot.status === 'degraded'
-    ) {
-      return this.runtime.runPromise(this.startEffect())
+    if (this.startPromise) return this.startPromise
+    if (this.shuttingDown) {
+      return Promise.reject(
+        new NativeRuntimeRequestError(
+          nativeRuntimeError(
+            'runtime_stopping',
+            'Native hooks runtime is shutting down',
+          ),
+        ),
+      )
     }
 
-    const startResult = this.runtime.runSync(
-      Deferred.make<NativeRuntimeReady, Error>(),
-    )
-    const start = this.runtime.runPromise(Deferred.await(startResult))
-    this.startResult = startResult
-    this.startPromise = start
-    this.beginStart()
-    return start
+    this.clearRestartTimer()
+    const recovering = this.hasStarted
+    this.updateSnapshot({
+      status: recovering ? 'recovering' : 'starting',
+      failure: undefined,
+      nextRetryAt: undefined,
+      ready: undefined,
+    })
+
+    const startPromise = new Promise<NativeRuntimeReady>((resolve, reject) => {
+      this.resolveStart = resolve
+      this.rejectStart = reject
+    })
+    this.startPromise = startPromise
+    const adapter = this.options.createAdapter()
+    const epoch = ++this.adapterEpoch
+    this.adapter = adapter
+    try {
+      adapter.start({
+        onMessage: (message) => this.handleMessage(adapter, epoch, message),
+        onExit: (exit) => this.handleExit(adapter, epoch, exit),
+      })
+      this.updateSnapshot({ pid: adapter.pid })
+    } catch (error) {
+      const failure = makeFailure('start', error, true)
+      this.failStart(failure)
+      this.adapter = null
+      this.scheduleRestart(failure)
+    }
+
+    if (this.adapter === adapter) {
+      this.handshakeTimer = setTimeout(
+        () => this.failHandshake(adapter, epoch),
+        this.options.handshakeTimeoutMs ?? 5_000,
+      )
+      this.handshakeTimer.unref?.()
+    }
+    return startPromise
   }
 
   startEffect() {
-    return Effect.suspend(() => {
-      if (this.shutdownPromise) {
-        return Effect.fail(
-          new NativeRuntimeRequestError(
-            nativeRuntimeError('runtime_stopped', 'Native runtime is stopping'),
-          ),
-        )
-      }
-      if (this.snapshot.status === 'ready' && this.snapshot.ready) {
-        return Effect.succeed(this.snapshot.ready)
-      }
-      if (this.startResult) return Deferred.await(this.startResult)
-      if (this.restartTimer) return this.waitForScheduledStartEffect()
-      if (this.snapshot.status === 'degraded') {
-        return Effect.fail(
-          new NativeRuntimeRequestError(
-            nativeRuntimeError(
-              'runtime_degraded',
-              this.snapshot.degradedReason ?? 'Native runtime is degraded',
-            ),
-          ),
-        )
-      }
-
-      return Effect.gen({ self: this }, function*() {
-        const startResult = yield* Deferred.make<NativeRuntimeReady, Error>()
-        if (this.startResult) return yield* Deferred.await(this.startResult)
-        this.startResult = startResult
-        this.beginStart()
-        return yield* Deferred.await(startResult)
-      })
+    return Effect.tryPromise({
+      try: () => this.start(),
+      catch: (cause) =>
+        cause instanceof Error ? cause : new Error(String(cause)),
     })
   }
 
-  private beginStart() {
-    this.expectedExitEpoch = null
-    const adapterEpoch = ++this.adapterEpoch
-    this.startEpoch = adapterEpoch
-    this.log('start_requested', {
-      status: this.snapshot.status,
-      restartCount: this.snapshot.restartCount,
-      pendingCount: this.pending.size,
-    })
-    this.updateSnapshot({
-      status: this.snapshot.restartCount > 0 ? 'recovering' : 'starting',
-      degradedReason: undefined,
-      degradedRetryAttempt: undefined,
-      nextRetryAt: undefined,
-      lastFailure: undefined,
-      failure: undefined,
-      ready: undefined,
-      hostEpoch: adapterEpoch,
-    })
-    if (this.startEpoch !== adapterEpoch) return
-
-    let adapter: NativeRuntimeAdapter | null = null
-    try {
-      const createdAdapter = this.options.createAdapter()
-      adapter = createdAdapter
-      this.adapter = createdAdapter
-      this.lastControlEventSequence = -1
-      this.lastRealtimeEventSequence = -1
-      this.screenRecoverableLostCounts.clear()
-      this.log('adapter_created', {
-        pendingCount: this.pending.size,
-      })
-      this.handshakeTimer = setTimeout(
-        () => this.failHandshake(
-          createdAdapter,
-          adapterEpoch,
-          failure('handshake_timeout', 'Native runtime handshake timed out'),
-        ),
-        this.options.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS,
-      )
-      this.log('handshake_started', {
-        pendingCount: this.pending.size,
-      })
-      createdAdapter.start({
-        onMessage: (message) =>
-          this.handleMessage(createdAdapter, adapterEpoch, message),
-        onExit: (exit) =>
-          this.handleExit(createdAdapter, adapterEpoch, exit),
-      })
-      if (!this.isCurrentHost(createdAdapter, adapterEpoch)) return
-      this.updateSnapshot({ pid: createdAdapter.pid })
-      this.log('adapter_started', {
-        adapterPid: createdAdapter.pid,
-        pendingCount: this.pending.size,
-      })
-    } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : 'Native runtime failed to start'
-      const activeAdapter = this.adapter
-      const activeEpoch = this.adapterEpoch
-      if (adapter && activeAdapter === adapter) {
-        this.failHandshake(
-          activeAdapter,
-          activeEpoch,
-          failure('spawn_failed', message),
-        )
-      } else if (!adapter) {
-        this.failStartWithoutHost(failure('spawn_failed', message))
-      }
-    }
+  request(command: NativeRuntimeCommand, timeoutMs = 5_000) {
+    return Effect.runPromise(this.requestEffect(command, timeoutMs))
   }
 
-  request(
-    command: NativeRuntimeCommand,
-    timeoutMs: number,
-    options: NativeRuntimeRequestOptions = {},
-  ) {
-    return this.runtime.runPromise(
-      this.requestEffect(command, timeoutMs, options),
+  requestEffect(command: NativeRuntimeCommand, timeoutMs = 5_000) {
+    return this.startEffect().pipe(
+      Effect.flatMap(() =>
+        Effect.tryPromise({
+          try: () => this.sendRequest(command, timeoutMs),
+          catch: (cause) =>
+            cause instanceof Error ? cause : new Error(String(cause)),
+        }),
+      ),
     )
-  }
-
-  requestEffect(
-    command: NativeRuntimeCommand,
-    timeoutMs: number,
-    options: NativeRuntimeRequestOptions = {},
-  ) {
-    return Effect.gen({ self: this }, function*() {
-      const requestedContext = requestContext(
-        command,
-        options.diagnostic,
-        this.snapshot.hostEpoch,
-      )
-      this.log('request_start', {
-        ...requestedContext,
-        commandStage: 'requested',
-        outcome: 'started',
-        timeoutMs,
-        pendingCount: this.pending.size,
-      })
-      if (!options.allowDuringShutdown) yield* this.startEffect()
-      const context = requestContext(
-        command,
-        options.diagnostic,
-        this.adapterEpoch,
-      )
-      if (!this.adapter || this.snapshot.status !== 'ready') {
-        this.log('request_rejected_not_ready', {
-          ...context,
-          commandStage: 'validation',
-          outcome: 'rejected',
-          pendingCount: this.pending.size,
-          status: this.snapshot.status,
-        })
-        this.logCommandSummary(context, undefined, 'rejected', {
-          errorCode: 'runtime_lost',
-        })
-        return yield* Effect.fail(
-          new NativeRuntimeRequestError(
-            nativeRuntimeError('runtime_lost', 'Native runtime is not ready', {
-              retryable: true,
-              ...context,
-            }),
-          ),
-        )
-      }
-      if (this.pending.size >= NATIVE_RUNTIME_MAX_PENDING_REQUESTS) {
-        this.log('request_rejected_queue_full', {
-          ...context,
-          commandStage: 'electron_queue',
-          outcome: 'rejected',
-          pendingCount: this.pending.size,
-        })
-        this.logCommandSummary(context, undefined, 'rejected', {
-          errorCode: 'queue_full',
-        })
-        return yield* Effect.fail(
-          new NativeRuntimeRequestError(
-            nativeRuntimeError(
-              'queue_full',
-              'Native runtime command queue is full',
-              {
-                retryable: true,
-                ...context,
-              },
-            ),
-          ),
-        )
-      }
-
-      const requestId = `${this.options.runtime}-${++this.requestSequence}-${crypto.randomUUID()}`
-      const adapterEpoch = this.adapterEpoch
-      const request: NativeRuntimeRequest = {
-        type: 'request',
-        requestId,
-        lane: context.lane,
-        hostEpoch: adapterEpoch,
-        command,
-        ...(options.diagnostic
-          ? {
-              diagnostic: {
-                ...options.diagnostic,
-                revision: context.revision,
-                hostEpoch: adapterEpoch,
-              },
-            }
-          : {}),
-      }
-      const startedAt = this.now()
-      this.log('request_enqueued', {
-        ...context,
-        requestId,
-        commandStage: 'electron_queue',
-        outcome: 'accepted',
-        timeoutMs,
-        pendingCount: this.pending.size + 1,
-      })
-      const result = yield* Deferred.make<unknown, Error>()
-      const timeout = yield* Effect.sleep(timeoutMs).pipe(
-        Effect.andThen(
-          Effect.gen({ self: this }, function*() {
-            const timedOut = this.pending.get(requestId)
-            if (!timedOut) return
-            this.pending.delete(requestId)
-            const timeoutMessage = `Native runtime request timed out (${context.stage})`
-            this.releaseProbeKey(timedOut)
-            this.log('request_timed_out', {
-              ...context,
-              requestId,
-              commandStage: 'completed',
-              outcome: 'timeout',
-              timeoutMs,
-              durationMs: this.now() - timedOut.startedAt,
-              pendingCount: this.pending.size,
-            })
-            this.logCommandSummary(context, requestId, 'timeout', {
-              durationMs: this.now() - timedOut.startedAt,
-              errorCode: 'request_timeout',
-            })
-            const error = new NativeRuntimeRequestError(
-              nativeRuntimeError('request_timeout', timeoutMessage, {
-                retryable: true,
-                ...context,
-              }),
-            )
-            yield* this.failPendingResult(timedOut, error)
-            if (hasUncertainMutationOutcome(command)) {
-              this.recycleHungAdapterIfCurrent(
-                timedOut.adapterEpoch,
-                'request_outcome_unknown',
-                timeoutMessage,
-                'Native runtime recycled after a mutating command timed out with an uncertain outcome',
-              )
-              return
-            }
-            if (timedOut.kind === 'probe') {
-              this.recycleHungAdapterIfCurrent(
-                timedOut.adapterEpoch,
-                'liveness_probe_failed',
-                `Native runtime liveness probe timed out (${context.lane ?? 'unknown'})`,
-                'Native runtime recycled after an actor liveness probe timed out',
-              )
-              return
-            }
-            if (options.probeOnTimeout === false || !context.lane) return
-            this.ensureLaneProbe(
-              timedOut.adapterEpoch,
-              context.lane,
-              timeoutMessage,
-            )
-          }),
-        ),
-        Effect.forkDetach,
-      )
-      this.pending.set(requestId, {
-        result,
-        timeout,
-        context,
-        startedAt,
-        kind: 'command',
-        adapterEpoch,
-      })
-
-      try {
-        this.adapter.postMessage(request)
-        this.log('request_posted', {
-          ...context,
-          requestId,
-          commandStage: 'electron_transport',
-          outcome: 'accepted',
-          timeoutMs,
-          pendingCount: this.pending.size,
-        })
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? redactSensitiveText(error.message)
-            : 'Native runtime is unavailable'
-        this.log('request_post_failed', {
-          ...context,
-          requestId,
-          commandStage: 'electron_transport',
-          outcome: 'error',
-          pendingCount: this.pending.size,
-          message,
-        })
-        yield* this.rejectPendingEffect(
-          requestId,
-          new NativeRuntimeRequestError(
-            nativeRuntimeError('runtime_lost', message, {
-              retryable: true,
-              ...context,
-            }),
-          ),
-        )
-        // A failed structured-clone send means this transport can no longer be
-        // trusted even if Electron has not delivered its exit event yet.
-        this.recycleHungAdapterIfCurrent(
-          adapterEpoch,
-          'transport_error',
-          message,
-        )
-      }
-      return yield* Deferred.await(result)
-    })
-  }
-
-  /**
-   * Owns one renderer-to-native release obligation. Its monotonic 6.5 second
-   * deadline consists of one 2 second attempt, a probe bounded by 2.5 seconds,
-   * and one 2 second idempotent retry. Missing that bound recycles the exact
-   * utility-host epoch, which retires the old native lease owner.
-   */
-  releaseRendererLeaseEffect(command: RendererLeaseReleaseCommand) {
-    const ownerAdapter = this.snapshot.status === 'ready' ? this.adapter : null
-    const ownerEpoch = ownerAdapter ? this.adapterEpoch : null
-    const deadlineAt = this.now() + VOICE_CONTROL_RELEASE_DEADLINE_MS
-    return Effect.gen({ self: this }, function*() {
-      if (!ownerAdapter || ownerEpoch === null ||
-        this.adapter !== ownerAdapter || this.adapterEpoch !== ownerEpoch) {
-        return undefined
-      }
-      const remaining = (maximumMs: number) =>
-        Math.max(1, Math.min(maximumMs, deadlineAt - this.now()))
-      const attempt = (timeoutMs: number) => Effect.gen({ self: this }, function*() {
-        if (this.adapter !== ownerAdapter || this.adapterEpoch !== ownerEpoch) {
-          return { ok: true as const, value: undefined }
-        }
-        return yield* this.requestEffect(command, timeoutMs, {
-          probeOnTimeout: false,
-          allowDuringShutdown: true,
-        }).pipe(
-          Effect.map((value) => ({ ok: true as const, value })),
-          Effect.catch((error) =>
-            Effect.succeed({ ok: false as const, error })
-          ),
-        )
-      })
-
-      const first = yield* attempt(
-        remaining(VOICE_CONTROL_RELEASE_ATTEMPT_TIMEOUT_MS),
-      )
-      if (first.ok) return first.value
-      if (this.adapterEpoch !== ownerEpoch || !this.adapter) return undefined
-      if (!isRetriableRendererReleaseFailure(first.error)) {
-        return yield* Effect.fail(first.error)
-      }
-
-      const probe = yield* this.requestEffect(
-        { type: 'probeVoiceControl' },
-        remaining(this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS),
-        { probeOnTimeout: false, allowDuringShutdown: true },
-      ).pipe(
-        Effect.map((value) => ({ ok: true as const, value })),
-        Effect.catch((error) =>
-          Effect.succeed({ ok: false as const, error })
-        ),
-      )
-      if (this.adapterEpoch !== ownerEpoch || !this.adapter) return undefined
-      if (!probe.ok || !isVoiceControlProbeForHost(probe.value, ownerEpoch)) {
-        const error = probe.ok
-          ? new NativeRuntimeRequestError(nativeRuntimeError(
-            'liveness_probe_failed',
-            `Native voice-control probe returned an invalid host epoch (${ownerEpoch})`,
-            { retryable: true, stage: command.type },
-          ))
-          : probe.error
-        this.recycleHungAdapterIfCurrent(
-          ownerEpoch,
-          'liveness_probe_failed',
-          error.message,
-          'Native runtime recycled after a voice-control release probe failed',
-        )
-        return yield* Effect.fail(error)
-      }
-
-      const retried = yield* attempt(
-        remaining(VOICE_CONTROL_RELEASE_ATTEMPT_TIMEOUT_MS),
-      )
-      if (retried.ok) return retried.value
-      if (this.adapterEpoch !== ownerEpoch || !this.adapter) return undefined
-      this.recycleHungAdapterIfCurrent(
-        ownerEpoch,
-        'liveness_probe_failed',
-        retried.error.message,
-        'Native runtime recycled after a renderer release missed its bounded retry',
-      )
-      return yield* Effect.fail(retried.error)
-    })
-  }
-
-  /**
-   * Fails closed when Electron still owns renderer fences after its reload
-   * deadline. The host epoch is the authority: a late reaper from an older
-   * renderer/runtime pair can never recycle the replacement utility host.
-   */
-  recycleRendererFenceOwner(hostEpoch: number) {
-    if (!Number.isSafeInteger(hostEpoch) || hostEpoch <= 0 ||
-      this.adapterEpoch !== hostEpoch || !this.adapter) return false
-    this.recycleHungAdapterIfCurrent(
-      hostEpoch,
-      'liveness_probe_failed',
-      'Renderer fences remained retained after the bounded reload deadline',
-      'Native runtime recycled after its renderer fences missed the hard deadline',
-    )
-    return this.adapter === null
   }
 
   retry() {
-    return this.runtime.runPromise(this.retryEffect())
+    return Effect.runPromise(this.retryEffect())
   }
 
   retryEffect() {
-    return this.retryDegradedEffect('manual')
-  }
-
-  private retryDegradedEffect(source: 'manual' | 'automatic') {
-    return Effect.gen({ self: this }, function*() {
-      if (this.snapshot.status !== 'degraded') {
-        return yield* this.startEffect()
-      }
-      this.clearDegradedRetryTimer()
-      if (source === 'manual') this.degradedRetryAttempt = 0
-      this.crashTimes = []
-      this.log(
-        source === 'manual' ? 'retry_requested' : 'degraded_auto_retry_started',
-        {
-          restartCount: this.snapshot.restartCount,
-          pendingCount: this.pending.size,
-        },
-      )
-      this.updateSnapshot({
-        status: 'stopped',
-        // Keep this epoch monotonic so controllers can distinguish a manual
-        // circuit reset from the host instance that just degraded.
-        restartCount: this.snapshot.restartCount + 1,
-        degradedReason: undefined,
-        degradedRetryAttempt: undefined,
-        nextRetryAt: undefined,
-        lastFailure: undefined,
-        failure: undefined,
-      })
-      return yield* this.startEffect()
+    return Effect.suspend(() => {
+      if (this.snapshot.status !== 'degraded') return Effect.void
+      this.restartAttempt = 0
+      return this.startEffect().pipe(Effect.asVoid)
     })
   }
 
   shutdown() {
-    if (this.shutdownPromise) return this.shutdownPromise
-    if (this.shutdownResult) {
-      const shutdown = this.runtime.runPromise(Deferred.await(this.shutdownResult))
-      this.shutdownPromise = shutdown
-      return shutdown
-    }
-    const shutdownResult = this.runtime.runSync(Deferred.make<void, Error>())
-    const shutdown = this.runtime.runPromise(Deferred.await(shutdownResult))
-    // Publish both sentinels before shutdownAtomic can synchronously notify an
-    // observer. Reentrant Promise and Effect callers must join this transition.
-    this.shutdownResult = shutdownResult
-    this.shutdownPromise = shutdown
-    this.runtime.runFork(this.completeShutdown(shutdownResult))
-    return shutdown
+    return Effect.runPromise(this.shutdownEffect())
   }
 
   shutdownEffect() {
     return Effect.suspend(() => {
-      if (this.shutdownResult) return Deferred.await(this.shutdownResult)
-      return Effect.gen({ self: this }, function*() {
-        const shutdownResult = yield* Deferred.make<void, Error>()
-        if (this.shutdownResult) return yield* Deferred.await(this.shutdownResult)
-        this.shutdownResult = shutdownResult
-        yield* this.completeShutdown(shutdownResult).pipe(Effect.forkDetach)
-        return yield* Deferred.await(shutdownResult)
-      })
+      if (this.shuttingDown) return Effect.void
+      this.shuttingDown = true
+      this.clearRestartTimer()
+      const adapter = this.adapter
+      if (!adapter) {
+        this.finishStopped()
+        return Effect.void
+      }
+      const graceful =
+        this.snapshot.status === 'ready'
+          ? Effect.tryPromise({
+              try: () => this.sendRequest({ type: 'shutdown' }, 1_000),
+              catch: () => undefined,
+            }).pipe(Effect.ignore)
+          : Effect.void
+      return graceful.pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (this.adapter === adapter) adapter.kill()
+            this.adapter = null
+            this.finishStopped()
+          }),
+        ),
+        Effect.asVoid,
+      )
     })
   }
 
-  private completeShutdown(shutdownResult: Deferred.Deferred<void, Error>) {
-    return Effect.exit(this.shutdownAtomic()).pipe(
-      Effect.flatMap((exit) => Deferred.done(shutdownResult, exit)),
-      Effect.ensuring(
-        Effect.sync(() => {
-          if (this.shutdownResult !== shutdownResult) return
-          this.shutdownPromise = null
-          this.shutdownResult = null
-        }),
-      ),
-      Effect.asVoid,
-    )
-  }
-
-  private shutdownAtomic() {
-    return Effect.gen({ self: this }, function*() {
-      const shutdownEpoch = this.adapterEpoch
-      this.expectedExitEpoch = shutdownEpoch
-      this.log('shutdown_requested', {
-        pendingCount: this.pending.size,
-        status: this.snapshot.status,
-      })
-      this.clearRestartTimer()
-      this.clearDegradedRetryTimer()
-      this.clearRetirementWatchdogs()
-      const adapter = this.adapter
-      if (adapter && this.snapshot.status === 'ready') {
-        const exited = Effect.callback<void>((resume) => {
-          const stopListening = this.onStateChange((snapshot) => {
-            if (snapshot.status !== 'stopped') return
-            stopListening()
-            resume(Effect.void)
-          })
-          return Effect.sync(stopListening)
-        })
-        yield* Effect.all(
-          [
-            this.requestEffect(
-              { type: 'shutdown' },
-              2_000,
-              {
-                probeOnTimeout: false,
-                allowDuringShutdown: true,
-              },
-            ).pipe(Effect.catch(() => Effect.void)),
-            exited,
-          ],
-          { concurrency: 'unbounded' },
-        ).pipe(Effect.timeoutOption(2_000))
-      }
-      if (adapter && this.adapter === adapter) {
-        adapter.kill()
-        this.adapter = null
-        this.log('adapter_killed', {
-          reason: 'shutdown',
-          pendingCount: this.pending.size,
-        })
-      }
-      this.rejectAllPending('runtime_stopped', 'Native runtime stopped')
-      this.clearHandshake()
-      this.failStart(
+  private sendRequest(command: NativeRuntimeCommand, timeoutMs: number) {
+    const adapter = this.adapter
+    if (!adapter || this.snapshot.status !== 'ready') {
+      return Promise.reject(
         new NativeRuntimeRequestError(
-          nativeRuntimeError('runtime_stopped', 'Native runtime stopped'),
+          nativeRuntimeError(
+            'runtime_unavailable',
+            'Native hooks runtime is not ready',
+            { retryable: true },
+          ),
         ),
       )
-      this.clearStartResult()
-      this.updateSnapshot({
-        status: 'stopped',
-        pid: undefined,
-        ready: undefined,
-        degradedReason: undefined,
-        degradedRetryAttempt: undefined,
-        nextRetryAt: undefined,
-        failure: undefined,
-      })
+    }
+    if (this.pending.size >= NATIVE_RUNTIME_MAX_PENDING_REQUESTS) {
+      return Promise.reject(
+        new NativeRuntimeRequestError(
+          nativeRuntimeError(
+            'request_capacity_exceeded',
+            'Native hooks request capacity is exhausted',
+            { retryable: true },
+          ),
+        ),
+      )
+    }
+
+    const lane = nativeRuntimeCommandLane(command)
+    if (
+      lane !== 'runtime' &&
+      lane !== this.options.runtime &&
+      command.type !== 'probeHooksRuntime'
+    ) {
+      return Promise.reject(
+        new NativeRuntimeRequestError(
+          nativeRuntimeError(
+            'invalid_runtime_command',
+            `Command ${command.type} does not belong to ${this.options.runtime}`,
+          ),
+        ),
+      )
+    }
+
+    const requestId = this.nextRequestId()
+    const request: NativeRuntimeRequest = {
+      type: 'request',
+      requestId,
+      lane: command.type === 'probeHooksRuntime' ? this.options.runtime : lane,
+      hostEpoch: this.adapterEpoch,
+      command,
+    }
+    return new Promise<unknown>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pending.delete(requestId)
+        const error = new NativeRuntimeRequestError(
+          nativeRuntimeError(
+            'request_timeout',
+            `Native hooks request timed out: ${command.type}`,
+            { retryable: true, stage: command.type },
+          ),
+        )
+        reject(error)
+        this.retireAdapter(
+          makeFailure('request_timeout', error, true),
+          adapter,
+        )
+      }, Math.max(1, timeoutMs))
+      timeout.unref?.()
+      this.pending.set(requestId, { resolve, reject, timeout })
+      try {
+        adapter.postMessage(request)
+      } catch (error) {
+        clearTimeout(timeout)
+        this.pending.delete(requestId)
+        reject(error instanceof Error ? error : new Error(String(error)))
+        this.retireAdapter(makeFailure('exit', error, true), adapter)
+      }
     })
   }
 
   private handleMessage(
     adapter: NativeRuntimeAdapter,
-    adapterEpoch: number,
+    epoch: number,
     message: unknown,
   ) {
-    if (!this.isCurrentHost(adapter, adapterEpoch) || !isNativeRuntimeMessage(message)) return
-    if (message.type === 'ready') {
-      if (
-        message.runtime !== this.options.runtime ||
-        message.contractVersion !== NATIVE_RUNTIME_CONTRACT_VERSION
-      ) {
-        const reason =
-          message.runtime !== this.options.runtime
-            ? `Native runtime kind mismatch (expected ${this.options.runtime}, received ${message.runtime})`
-            : `Native runtime contract mismatch (expected ${NATIVE_RUNTIME_CONTRACT_VERSION}, received ${message.contractVersion})`
-        this.degrade(failure('handshake_incompatible', reason, false), adapterEpoch)
-        return
-      }
-      this.log('handshake_ready', {
-        pendingCount: this.pending.size,
-      })
-      this.clearHandshake()
-      this.updateSnapshot({
-        status: 'ready',
-        pid: adapter.pid,
-        ready: message,
-        degradedReason: undefined,
-        degradedRetryAttempt: undefined,
-        nextRetryAt: undefined,
-        failure: undefined,
-      })
-      this.clearDegradedRetryTimer()
-      this.degradedRetryAttempt = 0
-      this.succeedStart(message)
-      this.clearStartResult(adapterEpoch)
-      return
-    }
-    if (message.type === 'reply') {
-      const pending = this.pending.get(message.requestId)
-      if (!pending) return
-      this.pending.delete(message.requestId)
-      this.cancelPendingTimeout(pending)
-      this.releaseProbeKey(pending)
-      if (message.ok) {
-        this.log(pending.kind === 'probe' ? 'probe_reply_ok' : 'request_reply_ok', {
-          ...pending.context,
-          requestId: message.requestId,
-          commandStage: 'completed',
-          outcome: 'success',
-          durationMs: this.now() - pending.startedAt,
-          pendingCount: this.pending.size,
-        })
-        this.logCommandSummary(pending.context, message.requestId, 'success', {
-          durationMs: this.now() - pending.startedAt,
-        })
-        if (
-          pending.kind === 'probe' &&
-          pending.context.lane &&
-          isBusyProbeResult(message.result)
-        ) {
-          this.armRetirementWatchdog(
-            pending.context.lane,
-            pending.adapterEpoch,
-          )
-        }
-        this.runtime.runFork(this.succeedPendingResult(pending, message.result))
-        if (
-          pending.kind === 'command' &&
-          pending.context.lane &&
-          shouldWatchRetirementAfter(pending.context.stage)
-        ) {
-          this.armRetirementWatchdog(
-            pending.context.lane,
-            pending.adapterEpoch,
-          )
-        }
-      } else {
-        this.log(pending.kind === 'probe' ? 'probe_reply_error' : 'request_reply_error', {
-          ...pending.context,
-          requestId: message.requestId,
-          commandStage: 'completed',
-          outcome: 'error',
-          durationMs: this.now() - pending.startedAt,
-          pendingCount: this.pending.size,
-          errorCode: message.error.code,
-          message: message.error.message,
-        })
-        this.logCommandSummary(pending.context, message.requestId, 'error', {
-          durationMs: this.now() - pending.startedAt,
-          errorCode: message.error.code,
-        })
-        const error = new NativeRuntimeRequestError(message.error)
-        if (pending.kind === 'probe') {
-          this.recycleHungAdapterIfCurrent(
-            pending.adapterEpoch,
-            'liveness_probe_failed',
-            `Native runtime liveness probe failed (${pending.context.lane ?? 'unknown'})`,
-            'Native runtime recycled after an actor liveness probe failed',
-          )
-        } else if (message.error.code === 'actor_unresponsive') {
-          this.recycleHungAdapterIfCurrent(
-            pending.adapterEpoch,
-            'actor_unresponsive',
-            `Native runtime actor reported lost capacity (${pending.context.lane ?? 'unknown'})`,
-            'Native runtime recycled after an actor became unresponsive',
-          )
-        } else if (
-          message.error.code === 'queue_full' &&
-          pending.context.lane === 'voice-control'
-        ) {
-          this.ensureLaneProbe(
-            pending.adapterEpoch,
-            pending.context.lane,
-            message.error.message,
-          )
-        }
-        this.runtime.runFork(this.failPendingResult(pending, error))
-      }
-      return
-    }
-    const event = message.event
-    // This signal bypasses the ordinary control TSFN after that lane has
-    // already failed. A later normal control callback may therefore arrive
-    // first; never let its sequence fence suppress the fail-closed recycle.
-    if (
-      event.type === 'runtimeError' &&
-      event.error.code === 'native_control_delivery_lost'
-    ) {
-      this.recycleHungAdapterIfCurrent(
-        adapterEpoch,
-        'control_delivery_lost',
-        event.error.message,
-        'Native runtime recycled after lossless control delivery failed',
+    if (adapter !== this.adapter || epoch !== this.adapterEpoch) return
+    if (!isNativeRuntimeMessage(message)) {
+      this.retireAdapter(
+        makeFailure('protocol', 'Native hooks runtime sent an invalid message', false),
+        adapter,
       )
       return
     }
-    const isLossyMedia = isLossyMediaEvent(event)
-    const isRealtime = isRealtimeEvent(event)
-    if (isRealtime && event.sequence <= this.lastRealtimeEventSequence) {
-      this.log('runtime_event_dropped_out_of_order', {
-        nativeEventType: event.type,
-        nativeSequence: event.sequence,
-        pendingCount: this.pending.size,
-        message: `last=${this.lastRealtimeEventSequence}; lane=realtime`,
-      })
-      return
-    }
-    if (isRealtime) this.lastRealtimeEventSequence = event.sequence
-    if (!isLossyMedia && !isRealtime &&
-        event.sequence <= this.lastControlEventSequence) {
-      this.log('runtime_event_dropped_out_of_order', {
-        nativeEventType: event.type,
-        nativeSequence: event.sequence,
-        pendingCount: this.pending.size,
-        message: `last=${this.lastControlEventSequence}`,
-      })
-      return
-    }
-    if (!isLossyMedia && !isRealtime) {
-      this.lastControlEventSequence = event.sequence
-      this.recordCameraReadStallEvent(event)
-      this.log('runtime_event_received', {
-        nativeEventType: event.type,
-        nativeSequence: event.sequence,
-        requestId: 'requestId' in event ? event.requestId : undefined,
-        sessionId: 'sessionId' in event ? event.sessionId : undefined,
-        generation: 'generation' in event ? event.generation : undefined,
-        status: event.type === 'sessionLifecycle' ? event.state.status : undefined,
-        stage: event.type === 'runtimeError' ? event.error.stage : undefined,
-        errorCode: event.type === 'runtimeError' ? event.error.code : undefined,
-        message: event.type === 'runtimeError' ? event.error.message : undefined,
-        pendingCount: this.pending.size,
-      })
-    }
-    this.recordScreenBackendRestart(event)
-    for (const listener of this.eventListeners) {
-      try {
-        listener(event)
-      } catch {
-        // A consumer failure must not corrupt request correlation or later consumers.
+    if (message.type === 'ready') {
+      if (
+        message.contractVersion !== NATIVE_RUNTIME_CONTRACT_VERSION ||
+        message.runtime !== this.options.runtime
+      ) {
+        this.retireAdapter(
+          makeFailure(
+            'handshake',
+            `Native hooks runtime handshake mismatch for ${this.options.runtime}`,
+            false,
+          ),
+          adapter,
+        )
+        return
       }
+      this.clearHandshake()
+      this.restartAttempt = 0
+      const restartCount = this.hasStarted
+        ? this.snapshot.restartCount + 1
+        : this.snapshot.restartCount
+      this.hasStarted = true
+      this.updateSnapshot({
+        status: 'ready',
+        restartCount,
+        pid: adapter.pid,
+        failure: undefined,
+        nextRetryAt: undefined,
+        ready: message,
+      })
+      this.resolveStart?.(message)
+      this.clearStartPromise()
+      return
     }
+    if (message.type === 'event') {
+      for (const listener of this.eventListeners) listener(message.event)
+      return
+    }
+    this.settleReply(message)
+  }
+
+  private settleReply(reply: NativeRuntimeReply) {
+    const pending = this.pending.get(reply.requestId)
+    if (!pending) return
+    this.pending.delete(reply.requestId)
+    clearTimeout(pending.timeout)
+    if (reply.ok) pending.resolve(reply.result)
+    else pending.reject(new NativeRuntimeRequestError(reply.error))
   }
 
   private handleExit(
     adapter: NativeRuntimeAdapter,
-    adapterEpoch: number,
+    epoch: number,
     exit: NativeRuntimeAdapterExit,
   ) {
-    if (!this.isCurrentHost(adapter, adapterEpoch)) return
+    if (adapter !== this.adapter || epoch !== this.adapterEpoch) return
     this.adapter = null
     this.clearHandshake()
-    this.clearRetirementWatchdogs()
-    const message = exit.error
-      ? redactSensitiveText(exit.error.message)
-      : `Native runtime exited (${exit.code ?? 'unknown'})`
-    this.log('adapter_exited', {
-      pendingCount: this.pending.size,
-      message,
-      reason: this.expectedExitEpoch === adapterEpoch ? 'expected' : 'unexpected',
-    })
-    this.failStart(
-      new NativeRuntimeRequestError(
-        nativeRuntimeError('runtime_lost', message, { retryable: true }),
-      ),
+    const failure = makeFailure(
+      'exit',
+      exit.error ?? `Native hooks runtime exited with code ${String(exit.code)}`,
+      !this.shuttingDown,
     )
-    this.clearStartResult(adapterEpoch)
-    this.rejectAllPending('runtime_lost', message)
-    if (this.expectedExitEpoch === adapterEpoch) {
-      this.updateSnapshot({ status: 'stopped', pid: undefined, ready: undefined })
+    this.failStart(failure)
+    this.rejectAllPending('runtime_lost', failure.message)
+    if (this.shuttingDown) {
+      this.finishStopped()
       return
     }
-    this.scheduleRestart(failure(
-      exit.error ? 'transport_error' : 'process_exit',
-      message,
-    ), adapterEpoch)
+    this.scheduleRestart(failure)
   }
 
-  private scheduleRestart(runtimeFailure: NativeRuntimeFailure, hostEpoch = this.adapterEpoch) {
-    const now = (this.options.now ?? Date.now)()
-    this.crashTimes = this.crashTimes.filter((time) => now - time <= CRASH_WINDOW_MS)
-    this.crashTimes.push(now)
-    // Three configured delays represent three allowed restart attempts. Open
-    // the circuit only when a fourth host fails inside the crash window.
-    if (this.crashTimes.length > RESTART_DELAYS_MS.length) {
-      this.log('restart_aborted_circuit_open', {
-        pendingCount: this.pending.size,
-        message: redactSensitiveText(runtimeFailure.message),
-      })
-      this.degrade(
-        failure('circuit_open', runtimeFailure.message),
-        hostEpoch,
-      )
+  private failHandshake(adapter: NativeRuntimeAdapter, epoch: number) {
+    if (adapter !== this.adapter || epoch !== this.adapterEpoch) return
+    this.retireAdapter(
+      makeFailure('handshake', 'Native hooks runtime handshake timed out', true),
+      adapter,
+    )
+  }
+
+  private retireAdapter(
+    failure: NativeRuntimeFailure,
+    adapter: NativeRuntimeAdapter,
+  ) {
+    if (adapter !== this.adapter) return
+    this.adapter = null
+    this.adapterEpoch += 1
+    this.clearHandshake()
+    try {
+      adapter.kill()
+    } catch {
+      // Retirement is already committed; recovery does not depend on kill.
+    }
+    this.failStart(failure)
+    this.rejectAllPending('runtime_lost', failure.message)
+    if (this.shuttingDown) this.finishStopped()
+    else if (failure.retryable) this.scheduleRestart(failure)
+    else this.degrade(failure)
+  }
+
+  private scheduleRestart(failure: NativeRuntimeFailure) {
+    const delays = this.options.restartDelaysMs ?? [250, 1_000, 3_000]
+    const delay = delays[this.restartAttempt]
+    if (delay === undefined) {
+      this.degrade(failure)
       return
     }
-    const restartCount = this.snapshot.restartCount + 1
+    this.restartAttempt += 1
     this.updateSnapshot({
       status: 'recovering',
       pid: undefined,
+      failure,
+      nextRetryAt: this.now() + delay,
       ready: undefined,
-      restartCount,
-      lastFailure: redactSensitiveText(runtimeFailure.message),
-      failure: sanitizeFailure(runtimeFailure),
     })
-    if (this.expectedExitEpoch === hostEpoch || this.shutdownPromise) return
-    const crashIndex = Math.min(
-      this.crashTimes.length - 1,
-      RESTART_DELAYS_MS.length - 1,
-    )
-    const delay = RESTART_DELAYS_MS[crashIndex]
-    this.log('restart_scheduled', {
-      pendingCount: this.pending.size,
-      restartCount,
-      delayMs: delay,
-      message: redactSensitiveText(runtimeFailure.message),
-    })
-    const schedule = this.options.schedule ?? setTimeout
-    const scheduleEpoch = ++this.restartScheduleEpoch
-    this.restartTimer = schedule(() => {
-      if (scheduleEpoch !== this.restartScheduleEpoch || this.shutdownPromise) return
+    this.restartTimer = setTimeout(() => {
       this.restartTimer = null
-      this.runtime.runFork(this.startEffect().pipe(Effect.catch(() => Effect.void)))
+      void this.start().catch(() => {})
     }, delay)
+    this.restartTimer.unref?.()
   }
 
-  private failHandshake(
-    adapter: NativeRuntimeAdapter,
-    adapterEpoch: number,
-    runtimeFailure: NativeRuntimeFailure,
-  ) {
-    if (!this.isCurrentHost(adapter, adapterEpoch)) return
-    this.adapter = null
-    adapter.kill()
-    this.log('handshake_failed', {
-      pendingCount: this.pending.size,
-      message: redactSensitiveText(runtimeFailure.message),
-    })
-    this.clearHandshake()
-    this.clearRetirementWatchdogs()
-    const error = new NativeRuntimeRequestError(
-      nativeRuntimeError('handshake_failed', redactSensitiveText(runtimeFailure.message), {
-        retryable: runtimeFailure.retryable,
-      }),
-    )
-    this.failStart(error)
-    this.clearStartResult(adapterEpoch)
-    this.scheduleRestart(runtimeFailure, adapterEpoch)
-  }
-
-  private degrade(runtimeFailure: NativeRuntimeFailure, hostEpoch = this.adapterEpoch) {
-    if (hostEpoch !== this.adapterEpoch) return
-    this.expectedExitEpoch = hostEpoch
-    this.adapter?.kill()
-    this.adapter = null
-    this.log('runtime_degraded', {
-      pendingCount: this.pending.size,
-      message: redactSensitiveText(runtimeFailure.message),
-    })
-    this.clearHandshake()
-    this.clearRestartTimer()
-    this.clearDegradedRetryTimer()
-    this.clearRetirementWatchdogs()
-    this.failStart(
-      new NativeRuntimeRequestError(
-        nativeRuntimeError(
-          'runtime_degraded',
-          redactSensitiveText(runtimeFailure.message),
-          { retryable: runtimeFailure.retryable },
-        ),
-      ),
-    )
-    this.clearStartResult(hostEpoch)
-    this.rejectAllPending('runtime_degraded', runtimeFailure.message)
+  private degrade(failure: NativeRuntimeFailure) {
     this.updateSnapshot({
       status: 'degraded',
       pid: undefined,
-      ready: undefined,
-      degradedReason: redactSensitiveText(runtimeFailure.message),
-      degradedRetryAttempt: undefined,
+      failure,
       nextRetryAt: undefined,
-      failure: sanitizeFailure(runtimeFailure),
-    })
-    this.scheduleDegradedRetry(runtimeFailure)
-  }
-
-  private rejectPending(requestId: string, error: Error) {
-    this.runtime.runFork(this.rejectPendingEffect(requestId, error))
-  }
-
-  private rejectPendingEffect(requestId: string, error: Error) {
-    return Effect.gen({ self: this }, function*() {
-      const pending = this.pending.get(requestId)
-      if (!pending) return
-      this.pending.delete(requestId)
-      yield* Fiber.interrupt(pending.timeout)
-      this.releaseProbeKey(pending)
-      this.log('request_rejected', {
-        ...pending.context,
-        requestId,
-        commandStage: 'completed',
-        outcome: 'error',
-        durationMs: this.now() - pending.startedAt,
-        pendingCount: this.pending.size,
-        message: error.message,
-        errorCode:
-          error instanceof NativeRuntimeRequestError
-            ? error.detail.code
-            : undefined,
-      })
-      this.logCommandSummary(pending.context, requestId, 'error', {
-        durationMs: this.now() - pending.startedAt,
-        errorCode:
-          error instanceof NativeRuntimeRequestError
-            ? error.detail.code
-            : undefined,
-      })
-      yield* this.failPendingResult(pending, error)
+      ready: undefined,
     })
   }
 
-  private recycleHungAdapterIfCurrent(
-    adapterEpoch: number,
-    cause: NativeRuntimeFailureCause,
-    reason: string,
-    pendingMessage = reason,
-  ) {
-    if (this.adapterEpoch !== adapterEpoch) return
-    this.recycleHungAdapter(
-      failure(cause, reason),
-      pendingMessage,
+  private failStart(failure: NativeRuntimeFailure) {
+    this.rejectStart?.(
+      new NativeRuntimeRequestError(
+        nativeRuntimeError(
+          failure.cause === 'handshake'
+            ? 'handshake_failed'
+            : 'runtime_lost',
+          failure.message,
+          { retryable: failure.retryable },
+        ),
+      ),
     )
-  }
-
-  private recycleHungAdapter(
-    runtimeFailure: NativeRuntimeFailure,
-    pendingMessage = runtimeFailure.message,
-  ) {
-    const adapter = this.adapter
-    if (!adapter) return
-    this.adapter = null
-    this.clearRetirementWatchdogs()
-    adapter.kill()
-    this.log('adapter_recycled', {
-      pendingCount: this.pending.size,
-      message: redactSensitiveText(runtimeFailure.message),
-      reason: redactSensitiveText(pendingMessage),
-    })
-    this.rejectAllPending('runtime_lost', pendingMessage)
-    if (this.expectedExitEpoch === this.adapterEpoch) {
-      this.updateSnapshot({
-        status: 'stopped',
-        pid: undefined,
-        ready: undefined,
-      })
-      return
-    }
-    this.scheduleRestart(runtimeFailure)
+    this.clearStartPromise()
   }
 
   private rejectAllPending(code: string, message: string) {
-    const safeMessage = redactSensitiveText(message)
-    for (const [requestId, pending] of Array.from(this.pending.entries())) {
-      this.rejectPending(
-        requestId,
-        new NativeRuntimeRequestError(
-          nativeRuntimeError(code, safeMessage, {
-            retryable: true,
-            ...pending.context,
-          }),
-        ),
-      )
+    const error = new NativeRuntimeRequestError(
+      nativeRuntimeError(code, message, { retryable: true }),
+    )
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timeout)
+      pending.reject(error)
     }
+    this.pending.clear()
+  }
+
+  private finishStopped() {
+    this.clearHandshake()
+    this.clearStartPromise()
+    this.rejectAllPending('runtime_stopped', 'Native hooks runtime stopped')
+    this.updateSnapshot({
+      status: 'stopped',
+      pid: undefined,
+      failure: undefined,
+      nextRetryAt: undefined,
+      ready: undefined,
+    })
   }
 
   private clearHandshake() {
@@ -1269,564 +512,38 @@ export class NativeRuntimeSupervisor {
   }
 
   private clearRestartTimer() {
-    this.restartScheduleEpoch += 1
     if (!this.restartTimer) return
     clearTimeout(this.restartTimer)
     this.restartTimer = null
   }
 
-  private scheduleDegradedRetry(runtimeFailure: NativeRuntimeFailure) {
-    if (this.snapshot.status !== 'degraded' || this.shutdownPromise) return
-    if (runtimeFailure.cause === 'handshake_incompatible') return
-    const delays =
-      this.options.degradedRetryDelaysMs ?? DEGRADED_RETRY_DELAYS_MS
-    if (delays.length === 0) return
-    const index = Math.min(this.degradedRetryAttempt, delays.length - 1)
-    const configuredDelay =
-      delays[index] ?? delays[delays.length - 1] ?? DEGRADED_RETRY_DELAYS_MS[0]
-    const delayMs = Number.isFinite(configuredDelay)
-      ? Math.max(0, configuredDelay)
-      : DEGRADED_RETRY_DELAYS_MS[0]
-    const attempt = ++this.degradedRetryAttempt
-    const nextRetryAt = this.now() + delayMs
-    this.log('degraded_auto_retry_scheduled', {
-      restartCount: this.snapshot.restartCount,
-      delayMs,
-      message: redactSensitiveText(runtimeFailure.message),
-    })
-    this.updateSnapshot({
-      degradedRetryAttempt: attempt,
-      nextRetryAt,
-    })
-    const schedule = this.options.schedule ?? setTimeout
-    const scheduleEpoch = ++this.degradedRetryScheduleEpoch
-    this.degradedRetryTimer = schedule(() => {
-      if (scheduleEpoch !== this.degradedRetryScheduleEpoch) return
-      this.degradedRetryTimer = null
-      if (this.shutdownPromise || this.snapshot.status !== 'degraded') return
-      this.runtime.runFork(
-        this.retryDegradedEffect('automatic').pipe(Effect.catch(() => Effect.void)),
-      )
-    }, delayMs)
-    this.degradedRetryTimer.unref?.()
-  }
-
-  private clearDegradedRetryTimer() {
-    this.degradedRetryScheduleEpoch += 1
-    if (!this.degradedRetryTimer) return
-    clearTimeout(this.degradedRetryTimer)
-    this.degradedRetryTimer = null
-  }
-
-  private armRetirementWatchdog(
-    lane: NativeRuntimeLane,
-    adapterEpoch: number,
-  ) {
-    if (lane !== 'microphone' && lane !== 'screen' && lane !== 'camera') return
-    const existing = this.retirementWatchdogs.get(lane)
-    if (existing) clearTimeout(existing)
-    const timer = setTimeout(() => {
-      this.retirementWatchdogs.delete(lane)
-      this.runtime.runFork(this.runRetirementWatchdogEffect(lane, adapterEpoch))
-    }, RETIREMENT_WATCHDOG_INTERVAL_MS)
-    this.retirementWatchdogs.set(lane, timer)
-  }
-
-  private runRetirementWatchdogEffect(
-    lane: NativeRuntimeLane,
-    adapterEpoch: number,
-  ) {
-    return Effect.gen({ self: this }, function*() {
-      if (
-        !this.adapter ||
-        this.adapterEpoch !== adapterEpoch ||
-        this.snapshot.status !== 'ready'
-      ) {
-        return
-      }
-      if (this.hasPendingLaneCommand(lane, adapterEpoch)) {
-        this.armRetirementWatchdog(lane, adapterEpoch)
-        return
-      }
-      const command = probeCommand(this.options.runtime, lane)
-      if (!command) return
-      yield* this.requestEffect(
-        command,
-        this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS,
-        { probeOnTimeout: false },
-      ).pipe(
-        Effect.matchEffect({
-          onFailure: (error) =>
-            Effect.sync(() => {
-              this.recordCameraReadStall(
-                lane,
-                this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS,
-                error.message,
-              )
-              this.recycleHungAdapterIfCurrent(
-                adapterEpoch,
-                'liveness_probe_failed',
-                error.message,
-                'Native runtime recycled after a retirement watchdog failed',
-              )
-            }),
-          onSuccess: (result) =>
-            Effect.sync(() => {
-              if (isBusyProbeResult(result)) {
-                this.armRetirementWatchdog(lane, adapterEpoch)
-              }
-            }),
-        }),
-      )
-    })
-  }
-
-  private clearRetirementWatchdogs() {
-    for (const timer of this.retirementWatchdogs.values()) clearTimeout(timer)
-    this.retirementWatchdogs.clear()
-  }
-
-  private clearStartResult(epoch?: number) {
-    if (epoch !== undefined && this.startEpoch !== epoch) return
+  private clearStartPromise() {
     this.startPromise = null
-    this.startResult = null
-    this.startEpoch = null
-  }
-
-  private waitForScheduledStartEffect() {
-    return Effect.callback<NativeRuntimeReady, Error>((resume) => {
-      const stopListening = this.onStateChange((snapshot) => {
-        if (snapshot.status === 'ready' && snapshot.ready) {
-          stopListening()
-          resume(Effect.succeed(snapshot.ready))
-          return
-        }
-        if (snapshot.status !== 'degraded' && snapshot.status !== 'stopped') return
-        stopListening()
-        const code = snapshot.status === 'degraded'
-          ? 'runtime_degraded'
-          : 'runtime_stopped'
-        resume(
-          Effect.fail(
-            new NativeRuntimeRequestError(
-              nativeRuntimeError(
-                code,
-                snapshot.degradedReason ?? 'Native runtime stopped before recovery',
-                { retryable: snapshot.status !== 'degraded' },
-              ),
-            ),
-          ),
-        )
-      })
-      return Effect.sync(stopListening)
-    })
-  }
-
-  private ensureLaneProbe(
-    adapterEpoch: number,
-    lane: NativeRuntimeLane,
-    timeoutMessage: string,
-  ) {
-    if (!this.adapter || this.adapterEpoch !== adapterEpoch) return
-    const probeKey = `${adapterEpoch}:${lane}`
-    if (this.activeProbeKeys.has(probeKey)) {
-      this.log('probe_coalesced', {
-        pendingCount: this.pending.size,
-        message: `${lane}:${timeoutMessage}`,
-      })
-      return
-    }
-    const command = probeCommand(this.options.runtime, lane)
-    if (!command) return
-    const requestId = `${this.options.runtime}-probe-${++this.requestSequence}-${crypto.randomUUID()}`
-    const request: NativeRuntimeRequest = {
-      type: 'request',
-      requestId,
-      lane,
-      hostEpoch: adapterEpoch,
-      command,
-    }
-    const startedAt = this.now()
-    const context: NativeRuntimeRequestContext = {
-      stage: command.type,
-      lane,
-      hostEpoch: adapterEpoch,
-    }
-    const timeoutMs = this.options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
-    const timeout = this.runtime.runFork(
-      Effect.sleep(timeoutMs).pipe(
-        Effect.andThen(
-          Effect.sync(() => {
-            const pending = this.pending.get(requestId)
-            if (!pending) return
-            this.pending.delete(requestId)
-            this.releaseProbeKey(pending)
-            this.log('probe_timed_out', {
-              ...context,
-              requestId,
-              commandStage: 'completed',
-              outcome: 'timeout',
-              timeoutMs,
-              durationMs: this.now() - startedAt,
-              pendingCount: this.pending.size,
-            })
-            this.logCommandSummary(context, requestId, 'timeout', {
-              durationMs: this.now() - startedAt,
-              errorCode: 'request_timeout',
-            })
-            this.recordCameraReadStall(
-              lane,
-              timeoutMs,
-              `Native runtime liveness probe timed out (${lane})`,
-            )
-            this.recycleHungAdapterIfCurrent(
-              adapterEpoch,
-              'liveness_probe_failed',
-              `Native runtime liveness probe timed out (${lane})`,
-              'Native runtime recycled after an actor liveness probe timed out',
-            )
-          }),
-        ),
-      ),
-    )
-    this.activeProbeKeys.add(probeKey)
-    this.pending.set(requestId, {
-      timeout,
-      context,
-      startedAt,
-      kind: 'probe',
-      probeKey,
-      adapterEpoch,
-    })
-    try {
-      this.adapter.postMessage(request)
-      this.log('probe_enqueued', {
-        ...context,
-        requestId,
-        commandStage: 'electron_transport',
-        outcome: 'accepted',
-        timeoutMs,
-        pendingCount: this.pending.size,
-        message: timeoutMessage,
-      })
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? redactSensitiveText(error.message)
-          : 'Native runtime is unavailable'
-      this.rejectPending(
-        requestId,
-        new NativeRuntimeRequestError(
-          nativeRuntimeError('runtime_lost', message, {
-            retryable: true,
-            stage: command.type,
-          }),
-        ),
-      )
-      this.recycleHungAdapterIfCurrent(adapterEpoch, 'transport_error', message)
-    }
-  }
-
-  private releaseProbeKey(pending: PendingRequest) {
-    if (!pending.probeKey) return
-    this.activeProbeKeys.delete(pending.probeKey)
-  }
-
-  private cancelPendingTimeout(pending: PendingRequest) {
-    this.runtime.runFork(Fiber.interrupt(pending.timeout))
-  }
-
-  private succeedPendingResult(pending: PendingRequest, value: unknown) {
-    return pending.kind === 'command'
-      ? Deferred.succeed(pending.result, value)
-      : Effect.void
-  }
-
-  private failPendingResult(pending: PendingRequest, error: Error) {
-    return pending.kind === 'command'
-      ? Deferred.fail(pending.result, error)
-      : Effect.void
-  }
-
-  private succeedStart(ready: NativeRuntimeReady) {
-    const startResult = this.startResult
-    if (startResult) this.runtime.runFork(Deferred.succeed(startResult, ready))
-  }
-
-  private failStart(error: Error) {
-    const startResult = this.startResult
-    if (startResult) this.runtime.runFork(Deferred.fail(startResult, error))
+    this.resolveStart = null
+    this.rejectStart = null
   }
 
   private updateSnapshot(patch: Partial<NativeRuntimeSupervisorSnapshot>) {
     this.snapshot = { ...this.snapshot, ...patch }
-    this.log('state_changed', {
-      pendingCount: this.pending.size,
-      status: this.snapshot.status,
-      restartCount: this.snapshot.restartCount,
-      message: this.snapshot.lastFailure ?? this.snapshot.degradedReason,
-    })
-    const snapshot = this.getSnapshot()
-    for (const listener of this.stateListeners) {
-      try {
-        listener(snapshot)
-      } catch {
-        // Supervisor lifecycle must remain independent from observer failures.
-      }
-    }
+    for (const listener of this.stateListeners) listener(this.snapshot)
   }
 
-  private recordScreenBackendRestart(event: NativeRuntimeEvent) {
-    if (event.type !== 'stats' && event.type !== 'screenBackendRestart') return
-    const count = event.type === 'screenBackendRestart'
-      ? event.count
-      : event.stats.videoRecoverableLostCount
-    if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
-      return
-    }
-    const key = `${event.sessionId}:${event.generation}`
-    if (
-      !this.screenRecoverableLostCounts.has(key) &&
-      this.screenRecoverableLostCounts.size >= MAX_TRACKED_SCREEN_RECOVERY_EPOCHS
-    ) {
-      const oldest = this.screenRecoverableLostCounts.keys().next().value
-      if (oldest !== undefined) this.screenRecoverableLostCounts.delete(oldest)
-    }
-    const previous = this.screenRecoverableLostCounts.get(key) ?? 0
-    this.screenRecoverableLostCounts.set(key, count)
-    if (count <= previous) return
-    this.log('screen_backend_restart', {
-      lane: 'screen',
-      sessionId: event.sessionId,
-      generation: event.generation,
-      kind: event.type === 'screenBackendRestart' ? event.backend : undefined,
-      reason: event.type === 'screenBackendRestart' ? event.reason : undefined,
-      errorCode: event.type === 'screenBackendRestart'
-        ? event.errorCode
-        : undefined,
-      hresult: event.type === 'screenBackendRestart'
-        ? event.hresult
-        : undefined,
-      restartCount: count,
-      message: event.type === 'screenBackendRestart'
-        ? `backend=${event.backend} action=${event.reason} error=${event.errorCode ?? 'unknown'} hresult=${event.hresult ?? 'unknown'} count=${count}`
-        : `recoverable_lost_count=${count}`,
-    })
-  }
-
-  private recordCameraReadStall(
-    lane: NativeRuntimeLane,
-    timeoutMs: number,
-    message?: string,
-  ) {
-    if (lane !== 'camera') return
-    this.log('camera_read_stall', {
-      lane,
-      stage: 'probeCameraActor',
-      timeoutMs,
-      message,
-    })
-  }
-
-  private recordCameraReadStallEvent(event: NativeRuntimeEvent) {
-    if (
-      event.type !== 'cameraTerminal' ||
-      event.error.code !== 'camera_read_stall'
-    ) {
-      return
-    }
-    this.log('camera_read_stall', {
-      lane: 'camera',
-      nativeEventType: event.type,
-      nativeSequence: event.sequence,
-      sessionId: event.sessionId,
-      generation: event.generation,
-      stage: event.error.stage ?? 'cameraCapture',
-      errorCode: event.error.code,
-      message: event.error.message,
-    })
-  }
-
-  private hasPendingLaneCommand(
-    lane: NativeRuntimeLane,
-    adapterEpoch: number,
-  ) {
-    for (const pending of this.pending.values()) {
-      if (
-        pending.kind === 'command' &&
-        pending.adapterEpoch === adapterEpoch &&
-        pending.context.lane === lane
-      ) {
-        return true
-      }
-    }
-    return false
-  }
-
-  private isCurrentHost(adapter: NativeRuntimeAdapter, epoch: number) {
-    return this.adapter === adapter && this.adapterEpoch === epoch
-  }
-
-  private failStartWithoutHost(runtimeFailure: NativeRuntimeFailure) {
-    const error = new NativeRuntimeRequestError(
-      nativeRuntimeError(
-        'handshake_failed',
-        redactSensitiveText(runtimeFailure.message),
-        { retryable: runtimeFailure.retryable },
-      ),
-    )
-    this.failStart(error)
-    this.clearStartResult()
-    this.scheduleRestart(runtimeFailure)
+  private nextRequestId() {
+    this.requestSequence += 1
+    return this.options.requestId?.() ??
+      `${this.options.runtime}-${this.adapterEpoch}-${this.requestSequence}`
   }
 
   private now() {
-    return (this.options.now ?? Date.now)()
-  }
-
-  private logCommandSummary(
-    context: NativeRuntimeRequestContext,
-    requestId: string | undefined,
-    outcome: 'success' | 'error' | 'timeout' | 'rejected',
-    detail: Pick<DiagnosticLogRecord, 'durationMs' | 'errorCode'> = {},
-  ) {
-    this.log('command_summary', {
-      ...context,
-      requestId,
-      commandStage: 'completed',
-      outcome,
-      ...detail,
-    })
-  }
-
-  private log(
-    event: string,
-    detail: Omit<
-      Parameters<NonNullable<NativeRuntimeSupervisorOptions['diagnostics']>>[0],
-      'scope' | 'event' | 'runtime'
-    >,
-  ) {
-    if (isSuccessfulFrameReleaseDiagnostic(event, detail)) return
-    this.options.diagnostics?.({
-      scope: 'native-runtime-supervisor',
-      event,
-      runtime: this.options.runtime,
-      ...detail,
-    })
+    return this.options.now?.() ?? Date.now()
   }
 }
 
-function isSuccessfulFrameReleaseDiagnostic(
-  event: string,
-  detail: Pick<DiagnosticLogRecord, 'stage' | 'outcome'>,
-) {
-  if (
-    detail.stage !== 'releaseRemoteVideoFrame' &&
-    detail.stage !== 'releaseLocalScreenPreviewFrame' &&
-    detail.stage !== 'releaseLocalCameraPreviewFrame'
-  ) {
-    return false
-  }
-  return event === 'request_start' ||
-    event === 'request_enqueued' ||
-    event === 'request_posted' ||
-    event === 'request_reply_ok' ||
-    (event === 'command_summary' && detail.outcome === 'success')
-}
-
-function failure(
+function makeFailure(
   cause: NativeRuntimeFailureCause,
-  message: string,
-  retryable = true,
+  error: unknown,
+  retryable: boolean,
 ): NativeRuntimeFailure {
+  const message = error instanceof Error ? error.message : String(error)
   return { cause, message: redactSensitiveText(message), retryable }
-}
-
-function assertSafeSequence(value: number, label: string) {
-  if (!Number.isSafeInteger(value)) {
-    throw new Error(`Native runtime ${label} exhausted`)
-  }
-}
-
-function sanitizeFailure(value: NativeRuntimeFailure): NativeRuntimeFailure {
-  return { ...value, message: redactSensitiveText(value.message) }
-}
-
-function isLossyMediaEvent(event: NativeRuntimeEvent) {
-  return (
-    event.type === 'microphoneMetrics' ||
-    event.type === 'stats' ||
-    event.type === 'voiceStats' ||
-    event.type === 'remoteVideoFrame' ||
-    event.type === 'localScreenPreviewFrame' ||
-    event.type === 'localCameraPreviewFrame' ||
-    event.type === 'activeSpeakers'
-  )
-}
-
-function isRealtimeEvent(event: NativeRuntimeEvent) {
-  return event.type === 'input' || event.type === 'foregroundWindow'
-}
-
-function hasUncertainMutationOutcome(command: NativeRuntimeCommand) {
-  switch (command.type) {
-    case 'connectVoice':
-    case 'disconnectVoice':
-      return true
-    default:
-      return false
-  }
-}
-
-function shouldWatchRetirementAfter(
-  stage: NativeRuntimeCommand['type'],
-) {
-  return (
-    stage === 'connectMicrophone' ||
-    stage === 'disconnectMicrophone' ||
-    stage === 'connectScreen' ||
-    stage === 'startScreenCapture' ||
-    stage === 'stopScreenCapture' ||
-    stage === 'disconnectScreen' ||
-    stage === 'connectCamera' ||
-    stage === 'disconnectCamera'
-  )
-}
-
-function probeCommand(
-  runtime: NativeRuntimeKind,
-  lane: NativeRuntimeLane,
-): NativeRuntimeCommand | null {
-  if (runtime === 'media') {
-    if (lane === 'voice-control') return { type: 'probeVoiceControl' }
-    if (lane === 'microphone') return { type: 'probeMicrophoneActor' }
-    if (lane === 'screen') return { type: 'probeScreenActor' }
-    if (lane === 'camera') return { type: 'probeCameraActor' }
-    if (lane === 'query') return { type: 'probeQueryWorker' }
-    return null
-  }
-  if (lane === 'hotkey' || lane === 'overlay') {
-    return { type: 'probeHooksRuntime' }
-  }
-  return null
-}
-
-const isBusyProbeResult = Schema.is(
-  Schema.Struct({ state: Schema.Literal('busy') }),
-)
-
-const isVoiceControlProbeResult = Schema.is(Schema.Struct({
-  hostEpoch: Schema.Int.check(Schema.isGreaterThan(0)),
-  queueDepth: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-  queueCapacity: Schema.Int.check(Schema.isGreaterThan(0)),
-}))
-
-function isVoiceControlProbeForHost(value: unknown, hostEpoch: number) {
-  return isVoiceControlProbeResult(value) && value.hostEpoch === hostEpoch
-}
-
-function isRetriableRendererReleaseFailure(error: Error) {
-  return error instanceof NativeRuntimeRequestError &&
-    (error.detail.code === 'request_timeout' ||
-      error.detail.code === 'queue_full')
 }

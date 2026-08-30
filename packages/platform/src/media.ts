@@ -329,25 +329,18 @@ export const NativeMicrophonePreviewStateEventSchema = Schema.Union([
 export type NativeMicrophonePreviewStateEvent =
   Mutable<typeof NativeMicrophonePreviewStateEventSchema.Type>
 
+const NativeMediaUnavailableFailureSchema = Schema.Struct({
+  code: Schema.Literal('native_media_unavailable'),
+  message: Schema.String.check(Schema.isMaxLength(4_096)),
+  retryable: Schema.Literal(false),
+  stage: Schema.Literal('native_runtime'),
+})
+
 export const NativeMediaRuntimeStateSchema = Schema.Struct({
-  available: Schema.Boolean,
-  status: Schema.Literals([
-    'stopped',
-    'starting',
-    'ready',
-    'recovering',
-    'degraded',
-  ]),
-  restartCount: Schema.Natural,
-  degradedReason: Schema.optional(
-    Schema.String.check(Schema.isMaxLength(4_096)),
-  ),
-  degradedRetryAttempt: Schema.optional(
-    Schema.Int.check(Schema.isGreaterThan(0)),
-  ),
-  nextRetryAt: Schema.optional(
-    Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
-  ),
+  available: Schema.Literal(false),
+  status: Schema.Literal('unavailable'),
+  restartCount: Schema.Literal(0),
+  failure: NativeMediaUnavailableFailureSchema,
 })
 
 export type NativeMediaRuntimeState = typeof NativeMediaRuntimeStateSchema.Type

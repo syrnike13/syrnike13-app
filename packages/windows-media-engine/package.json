@@ -1,0 +1,9 @@
+{
+  "name": "@syrnike13/windows-media-engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-placeholder.mjs"
+  }
+}

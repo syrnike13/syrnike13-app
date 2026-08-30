@@ -37,11 +37,8 @@ if (requireWindowsSigning && missingAzureSigningFields.length > 0) {
 }
 
 const nativeFiles = [
-  'syrnike_media.node',
   'syrnike_hotkey.node',
   'syrnike_overlay.node',
-  'livekit.dll',
-  'livekit_ffi.dll',
   'native-manifest.json',
 ]
 
@@ -120,7 +117,7 @@ module.exports = {
   win: {
     icon: 'assets/app.ico',
     target: ['nsis'],
-    signExts: ['.node', '.dll'],
+    signExts: ['.node'],
     forceCodeSigning: requireWindowsSigning,
     ...(missingAzureSigningFields.length === 0
       ? { azureSignOptions: azureSigning }

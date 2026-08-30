@@ -2,360 +2,140 @@ import path from 'node:path'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  NATIVE_RUNTIME_CONTRACT_VERSION,
-  isNativeRuntimeMessage,
-  type NativeRuntimeEvent,
-  type NativeRuntimeRequest,
-} from '../main/native-runtime/contract'
-import { NATIVE_RUNTIME_LIVEKIT_VERSION } from '../main/native-runtime/native-artifacts'
-import {
-  isAdvisoryNativeRuntimeEventCandidate,
-  runNativeUtilityHost,
-  shouldLogNativeRuntimeEvent,
-} from './runtime-host'
+import type { NativeArtifactManifest } from '../main/native-runtime/native-artifacts'
+import { runNativeUtilityHost } from './runtime-host'
+
+const COMMIT_SHA = 'a'.repeat(40)
+
+function createManifest(): NativeArtifactManifest {
+  return {
+    schemaVersion: 1,
+    contractVersion: 10,
+    platform: 'win32',
+    arch: 'x64',
+    appVersion: '0.6.11',
+    releaseChannel: 'stable',
+    commitSha: COMMIT_SHA,
+    electronVersion: process.versions.electron ?? '',
+    napiVersion: 8,
+    capabilities: ['hotkeys', 'overlay'],
+    files: [],
+  }
+}
 
 describe('runNativeUtilityHost', () => {
-  it('isolates malformed advisory telemetry from the control contract', () => {
-    for (const type of [
-      'screenBackendRestart',
-      'stats',
-      'microphoneMetrics',
-      'activeSpeakers',
-    ]) {
-      expect(isAdvisoryNativeRuntimeEventCandidate({ type })).toBe(true)
-    }
-
-    expect(
-      isAdvisoryNativeRuntimeEventCandidate({ type: 'sessionLifecycle' }),
-    ).toBe(false)
-    expect(isAdvisoryNativeRuntimeEventCandidate({})).toBe(false)
-  })
-
-  it('does not enqueue high-frequency video frames in diagnostic logs', () => {
-    for (const type of [
-      'remoteVideoFrame',
-      'localScreenPreviewFrame',
-      'localCameraPreviewFrame',
-      'microphoneMetrics',
-    ] satisfies NativeRuntimeEvent['type'][]) {
-      expect(shouldLogNativeRuntimeEvent({ type } as NativeRuntimeEvent)).toBe(
-        false,
-      )
-    }
-    expect(
-      shouldLogNativeRuntimeEvent({
-        type: 'runtimeError',
-      } as NativeRuntimeEvent),
-    ).toBe(true)
-  })
-
-  it('emits a valid handshake when a non-media addon has no LiveKit metadata', async () => {
-    const commitSha = 'b'.repeat(40)
+  it('starts a hook-only host and forwards typed requests and replies', async () => {
     const nativeRoot = path.resolve('test-native-runtime')
     const nativeModulePath = path.join(nativeRoot, 'syrnike_hotkey.node')
-    const postedMessages: unknown[] = []
+    const posted: unknown[] = []
+    let onMessage: ((event: { data: unknown }) => void) | undefined
+    const dispatch = vi.fn()
 
-    class PrototypeBackedHotkeyRuntime {
-      dispatch() {}
-      shutdown() {}
-    }
+    await runNativeUtilityHost('hotkey', {
+      parentPort: {
+        on: (_event, listener) => {
+          onMessage = listener
+        },
+        postMessage: (message) => posted.push(message),
+      },
+      environment: {
+        SYRNIKE_NATIVE_MODULE_PATH: nativeModulePath,
+        SYRNIKE_NATIVE_ROOT: nativeRoot,
+        SYRNIKE_NATIVE_APP_VERSION: '0.6.11',
+        SYRNIKE_NATIVE_RELEASE_CHANNEL: 'stable',
+        SYRNIKE_NATIVE_CONTRACT_VERSION: '10',
+        SYRNIKE_NATIVE_COMMIT_SHA: COMMIT_SHA,
+      },
+      nativeModuleExists: () => true,
+      verifyDistribution: () => createManifest(),
+      loadAddon: () => ({
+        getRuntimeInfo: () => ({
+          runtime: 'hotkey',
+          contractVersion: 10,
+          capabilities: ['hotkeys'],
+          commit: COMMIT_SHA,
+          napi: '8',
+        }),
+        createHotkeyRuntime: (
+          emit: (event: Record<string, unknown>) => void,
+        ) => ({
+          ready: () => undefined,
+          dispatch: (command: Record<string, unknown>) => {
+            dispatch(command)
+            emit({
+              type: 'reply',
+              requestId: command.requestId,
+              ok: true,
+              result: { accepted: true },
+            })
+          },
+          shutdown: () => undefined,
+        }),
+      }),
+      registerShutdownSignals: () => undefined,
+    })
+
+    expect(posted[0]).toMatchObject({
+      type: 'ready',
+      contractVersion: 10,
+      runtime: 'hotkey',
+      capabilities: ['hotkeys'],
+    })
+
+    onMessage?.({
+      data: {
+        type: 'request',
+        requestId: 'request-1',
+        lane: 'hotkey',
+        hostEpoch: 1,
+        command: { type: 'startHotkeys' },
+      },
+    })
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: 'startHotkeys',
+      requestId: 'request-1',
+      lane: 'hotkey',
+      hostEpoch: 1,
+      diagnostic: undefined,
+    })
+    expect(posted[1]).toEqual({
+      type: 'reply',
+      requestId: 'request-1',
+      ok: true,
+      result: { accepted: true },
+    })
+  })
+
+  it('rejects a module path outside the verified native root', async () => {
+    const nativeRoot = path.resolve('test-native-runtime')
+    const posted: unknown[] = []
+    const loadAddon = vi.fn()
 
     await runNativeUtilityHost('hotkey', {
       parentPort: {
         on: () => undefined,
-        postMessage: (message) => {
-          postedMessages.push(message)
-        },
+        postMessage: (message) => posted.push(message),
       },
       environment: {
-        SYRNIKE_NATIVE_MODULE_PATH: nativeModulePath,
-        SYRNIKE_NATIVE_ROOT: nativeRoot,
-        SYRNIKE_NATIVE_APP_VERSION: '0.6.3',
-        SYRNIKE_NATIVE_RELEASE_CHANNEL: 'stable',
-        SYRNIKE_NATIVE_CONTRACT_VERSION: String(
-          NATIVE_RUNTIME_CONTRACT_VERSION,
+        SYRNIKE_NATIVE_MODULE_PATH: path.resolve(
+          'other-native-runtime',
+          'syrnike_hotkey.node',
         ),
-        SYRNIKE_NATIVE_LIVEKIT_VERSION: NATIVE_RUNTIME_LIVEKIT_VERSION,
-        SYRNIKE_NATIVE_COMMIT_SHA: commitSha,
+        SYRNIKE_NATIVE_ROOT: nativeRoot,
       },
       nativeModuleExists: () => true,
-      verifyDistribution: (_root, expected) => ({
-        schemaVersion: 1,
-        contractVersion: expected.contractVersion,
-        platform: 'win32',
-        arch: 'x64',
-        appVersion: expected.appVersion,
-        releaseChannel: expected.releaseChannel,
-        commitSha: expected.commitSha,
-        electronVersion: expected.electronVersion,
-        napiVersion: expected.minimumNapiVersion,
-        liveKitVersion: expected.liveKitVersion,
-        files: [],
-      }),
-      loadAddon: () => ({
-        getRuntimeInfo: () => ({
-          runtime: 'hotkey',
-          contractVersion: NATIVE_RUNTIME_CONTRACT_VERSION,
-          capabilities: ['hotkeys'],
-          commit: commitSha,
-          napi: process.versions.napi,
-        }),
-        createHotkeyRuntime: () => new PrototypeBackedHotkeyRuntime(),
-      }),
-      registerShutdownSignals: () => undefined,
+      loadAddon,
     })
 
-    expect(postedMessages).toHaveLength(1)
-    const ready = postedMessages[0]
-    expect(isNativeRuntimeMessage(ready)).toBe(true)
-    if (!isNativeRuntimeMessage(ready) || ready.type !== 'ready') {
-      throw new Error('hotkey handshake was invalid')
-    }
-    expect(ready).toMatchObject({
-      runtime: 'hotkey',
-      contractVersion: NATIVE_RUNTIME_CONTRACT_VERSION,
-    })
-    expect(ready.build).not.toHaveProperty('livekit')
-  })
-
-  it('ignores a requestless reply and fences the bound utility host epoch', async () => {
-    const commitSha = 'a'.repeat(40)
-    const nativeRoot = path.resolve('test-native-runtime')
-    const nativeModulePath = path.join(nativeRoot, 'syrnike_media.node')
-    const postedMessages: unknown[] = []
-    let messageListener: ((event: { data: unknown }) => void) | undefined
-    let emitFromRuntime:
-      | ((event: Record<string, unknown>) => void)
-      | undefined
-    const dispatchedCommands: Array<Record<string, unknown>> = []
-    const exit = vi.fn()
-    const shutdown = vi.fn(async () => undefined)
-    const addExtraParameter = vi.fn()
-    let runtimeInstance: object | undefined
-    let observedRuntime: object | undefined
-
-    class PrototypeBackedMediaRuntime {
-      dispatch(command: Record<string, unknown>) {
-        dispatchedCommands.push(command)
-        if (command.type !== 'shutdown') return
-        emitFromRuntime?.({
-          type: 'reply',
-          requestId: command.requestId,
-          ok: true,
-        })
-      }
-
-      shutdown() {
-        return shutdown()
-      }
-    }
-
-    await runNativeUtilityHost('media', {
-      parentPort: {
-        on: (_event, listener) => {
-          messageListener = listener
-        },
-        postMessage: (message) => {
-          postedMessages.push(message)
-        },
-      },
-      environment: {
-        SYRNIKE_NATIVE_MODULE_PATH: nativeModulePath,
-        SYRNIKE_NATIVE_ROOT: nativeRoot,
-        SYRNIKE_NATIVE_APP_VERSION: '0.6.3',
-        SYRNIKE_NATIVE_RELEASE_CHANNEL: 'stable',
-        SYRNIKE_NATIVE_CONTRACT_VERSION: String(
-          NATIVE_RUNTIME_CONTRACT_VERSION,
-        ),
-        SYRNIKE_NATIVE_LIVEKIT_VERSION: NATIVE_RUNTIME_LIVEKIT_VERSION,
-        SYRNIKE_NATIVE_COMMIT_SHA: commitSha,
-      },
-      nativeModuleExists: () => true,
-      verifyDistribution: (_root, expected) => ({
-        schemaVersion: 1,
-        contractVersion: expected.contractVersion,
-        platform: 'win32',
-        arch: 'x64',
-        appVersion: expected.appVersion,
-        releaseChannel: expected.releaseChannel,
-        commitSha: expected.commitSha,
-        electronVersion: expected.electronVersion,
-        napiVersion: expected.minimumNapiVersion,
-        liveKitVersion: expected.liveKitVersion,
-        files: [],
-      }),
-      loadAddon: () => ({
-        getRuntimeInfo: () => ({
-          runtime: 'media',
-          contractVersion: NATIVE_RUNTIME_CONTRACT_VERSION,
-          capabilities: [
-            'microphone',
-            'screen',
-            'screenAudio',
-            'preview',
-            'queries',
-            'remoteVideo',
-            'localScreenPreview',
-            'localCameraPreview',
-            'directRemoteAudio',
-            'voiceControl',
-          ],
-          commit: commitSha,
-          napi: process.versions.napi,
-          livekit: NATIVE_RUNTIME_LIVEKIT_VERSION,
-        }),
-        createMediaRuntime: (emit) => {
-          emitFromRuntime = emit
-          emit({
-            type: 'reply',
-            ok: false,
-            error: {
-              code: 'internal',
-              message: 'legacy requestless reply',
-            },
-          })
-          runtimeInstance = new PrototypeBackedMediaRuntime()
-          return runtimeInstance
-        },
-      }),
-      registerShutdownSignals: () => undefined,
-      onRuntimeCreated: (createdRuntime) => {
-        observedRuntime = createdRuntime
-      },
-      crashReporter: { addExtraParameter },
-      exit,
-    })
-
-    expect(runtimeInstance).toBeDefined()
-    if (!runtimeInstance) throw new Error('runtime instance was not created')
-    expect(observedRuntime).toBe(runtimeInstance)
-    expect(Object.hasOwn(runtimeInstance, 'dispatch')).toBe(false)
-    expect(Object.hasOwn(runtimeInstance, 'shutdown')).toBe(false)
-    expect(emitFromRuntime).toBeTypeOf('function')
-    expect(addExtraParameter).toHaveBeenCalledWith(
-      'native_runtime_kind',
-      'media',
-    )
-    expect(addExtraParameter).toHaveBeenCalledWith(
-      'native_runtime_commit',
-      commitSha,
-    )
-    expect(addExtraParameter).toHaveBeenCalledWith(
-      'native_host_stage',
-      'ready',
-    )
-    expect(postedMessages).toEqual([
+    expect(loadAddon).not.toHaveBeenCalled()
+    expect(posted).toEqual([
       expect.objectContaining({
         type: 'ready',
-        runtime: 'media',
-        contractVersion: NATIVE_RUNTIME_CONTRACT_VERSION,
+        contractVersion: 0,
+        runtime: 'hotkey',
+        capabilities: [],
       }),
     ])
-
-    emitFromRuntime?.({
-      type: 'screenBackendRestart',
-      sequence: 1,
-      sessionId: 'screen',
-      generation: 1,
-      backend: 'dxgi_gpu',
-      reason: 'future_advisory_reason',
-      count: 1,
-    })
-    expect(exit).not.toHaveBeenCalled()
-    expect(shutdown).not.toHaveBeenCalled()
-    expect(postedMessages).toHaveLength(1)
-
-    messageListener?.({
-      data: {
-        type: 'request',
-        requestId: 'camera-1',
-        lane: 'camera',
-        hostEpoch: 3,
-        command: {
-          type: 'connectCamera',
-          sessionId: 'private-session',
-          generation: 7,
-          options: {
-            participantIdentity: 'private-participant',
-          },
-        },
-      } satisfies NativeRuntimeRequest,
-    })
-    expect(addExtraParameter).toHaveBeenCalledWith(
-      'native_last_command',
-      'connectCamera',
-    )
-    expect(addExtraParameter).toHaveBeenCalledWith(
-      'native_camera_stage',
-      'connect_dispatch',
-    )
-    expect(addExtraParameter).not.toHaveBeenCalledWith(
-      expect.any(String),
-      'private-participant',
-    )
-
-    const dispatchCountAtBoundEpoch = dispatchedCommands.length
-    messageListener?.({
-      data: {
-        type: 'request',
-        requestId: 'retired-host-mute',
-        lane: 'microphone',
-        hostEpoch: 2,
-        command: {
-          type: 'setMicrophoneMuted',
-          sessionId: 'microphone-resilience-soak',
-          generation: 7,
-          muted: true,
-        },
-      } satisfies NativeRuntimeRequest,
-    })
-    expect(dispatchedCommands).toHaveLength(dispatchCountAtBoundEpoch)
-    expect(postedMessages.at(-1)).toEqual({
-      type: 'reply',
-      requestId: 'retired-host-mute',
-      ok: false,
-      error: expect.objectContaining({
-        code: 'stale_host_epoch',
-        retryable: false,
-      }),
-    })
-
-    const shutdownRequest: NativeRuntimeRequest = {
-      type: 'request',
-      requestId: 'shutdown-1',
-      lane: 'runtime',
-      hostEpoch: 3,
-      command: { type: 'shutdown' },
-      diagnostic: {
-        actionId: 'media-action-a',
-        operationId: 'operation-a',
-        revision: 5,
-        hostEpoch: 3,
-      },
-    }
-    messageListener?.({ data: shutdownRequest })
-    expect(addExtraParameter).toHaveBeenCalledWith(
-      'native_last_command',
-      'shutdown',
-    )
-    await vi.waitFor(() => {
-      expect(shutdown).toHaveBeenCalledOnce()
-      expect(exit).toHaveBeenCalledWith(0)
-    })
-    expect(postedMessages).toHaveLength(3)
-    expect(postedMessages[2]).toEqual({
-      type: 'reply',
-      requestId: 'shutdown-1',
-      ok: true,
-    })
-    expect(dispatchedCommands).toContainEqual(
-      expect.objectContaining({
-        requestId: 'shutdown-1',
-        lane: 'runtime',
-        hostEpoch: 3,
-        diagnostic: shutdownRequest.diagnostic,
-      }),
-    )
   })
 })

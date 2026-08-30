@@ -1,7 +1,5 @@
 #include "cleanup_supervisor.hpp"
 
-#include "diagnostic_log.hpp"
-
 #include <algorithm>
 #include <stdexcept>
 #include <thread>
@@ -366,61 +364,15 @@ CleanupSupervisor& CleanupSupervisor::instance() {
 
 CleanupSubmitResult CleanupSupervisor::submit(
     std::shared_ptr<CleanupJob> job) noexcept {
-  const auto result = implementation_->submit(std::move(job));
-  const auto state = snapshot();
-  const char* outcome = "invalid";
-  if (result == CleanupSubmitResult::Accepted) outcome = "accepted";
-  if (result == CleanupSubmitResult::Saturated) outcome = "saturated";
-  if (result == CleanupSubmitResult::Closed) outcome = "closed";
-  diagnostics::DiagnosticLog::instance().write(
-      "native_cleanup_state",
-      {
-          {"outcome", outcome},
-          {"workerLimit", static_cast<std::uint64_t>(state.worker_limit)},
-          {"admissionCapacity",
-           static_cast<std::uint64_t>(state.admission_capacity)},
-          {"workerThreads",
-           static_cast<std::uint64_t>(state.worker_threads)},
-          {"workerHandles",
-           static_cast<std::uint64_t>(state.worker_handles)},
-          {"activeJobs", static_cast<std::uint64_t>(state.active_jobs)},
-          {"backlogJobs", static_cast<std::uint64_t>(state.backlog_jobs)},
-          {"ownedJobs", static_cast<std::uint64_t>(state.owned_jobs)},
-          {"acceptedJobs", state.accepted_jobs},
-          {"completedJobs", state.completed_jobs},
-          {"saturatedSubmissions", state.saturated_submissions},
-          {"closedSubmissions", state.closed_submissions},
-          {"startFailures", state.start_failures},
-      });
-  return result;
+  return implementation_->submit(std::move(job));
 }
 
 void CleanupSupervisor::submitOrEscalate(
     std::shared_ptr<CleanupJob> job,
     std::string_view owner) noexcept {
+  static_cast<void>(owner);
   const auto result = submit(job);
-  const char* outcome = "invalid";
-  if (result == CleanupSubmitResult::Accepted) outcome = "accepted";
-  if (result == CleanupSubmitResult::Saturated) outcome = "saturated";
-  if (result == CleanupSubmitResult::Closed) outcome = "closed";
-  diagnostics::DiagnosticLog::instance().write(
-      "native_cleanup_submission",
-      {{"owner", owner}, {"outcome", outcome}});
   if (result == CleanupSubmitResult::Accepted) return;
-  const auto state = snapshot();
-  const char* reason = outcome;
-  diagnostics::DiagnosticLog::instance().write(
-      "native_cleanup_admission_failed",
-      {
-          {"owner", owner},
-          {"reason", reason},
-          {"workerLimit", static_cast<std::uint64_t>(state.worker_limit)},
-          {"admissionCapacity",
-           static_cast<std::uint64_t>(state.admission_capacity)},
-          {"activeJobs", static_cast<std::uint64_t>(state.active_jobs)},
-          {"backlogJobs", static_cast<std::uint64_t>(state.backlog_jobs)},
-          {"ownedJobs", static_cast<std::uint64_t>(state.owned_jobs)},
-      });
   std::terminate();
 }
 
@@ -430,32 +382,7 @@ CleanupSupervisorSnapshot CleanupSupervisor::snapshot() const noexcept {
 
 CleanupShutdownReport CleanupSupervisor::shutdown(
     std::chrono::steady_clock::time_point deadline) noexcept {
-  const auto started_at = std::chrono::steady_clock::now();
-  const auto deadline_budget_ms = std::chrono::duration_cast<
-      std::chrono::milliseconds>(deadline - started_at).count();
-  const auto report = implementation_->shutdown(deadline);
-  const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::steady_clock::now() - started_at).count();
-  diagnostics::DiagnosticLog::instance().write(
-      "native_cleanup_shutdown",
-      {
-          {"outcome", report.finished ? "finished" : "deadline"},
-          {"deadlineBudgetMs", static_cast<std::uint64_t>(
-             (std::max<std::int64_t>)(0, deadline_budget_ms))},
-          {"elapsedMs", static_cast<std::uint64_t>(
-             (std::max<std::int64_t>)(0, elapsed_ms))},
-          {"unfinishedJobs",
-           static_cast<std::uint64_t>(report.unfinished_jobs)},
-          {"activeJobs", static_cast<std::uint64_t>(report.active_jobs)},
-          {"backlogJobs", static_cast<std::uint64_t>(report.backlog_jobs)},
-          {"workerThreads",
-           static_cast<std::uint64_t>(report.worker_threads)},
-          {"workerHandles",
-           static_cast<std::uint64_t>(report.worker_handles)},
-          {"detachedThreads",
-           static_cast<std::uint64_t>(report.detached_threads)},
-      });
-  return report;
+  return implementation_->shutdown(deadline);
 }
 
 CleanupStartProbe failFirstCleanupStartProbe(bool enabled) {

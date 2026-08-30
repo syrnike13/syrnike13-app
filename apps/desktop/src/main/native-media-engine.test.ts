@@ -1,37 +1,50 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { IPC } from '@syrnike13/platform'
 
-vi.mock('electron', () => ({
-  app: {
-    isPackaged: false,
-    getAppPath: () => process.cwd(),
-  },
-  ipcMain: { handle: vi.fn() },
-  utilityProcess: { fork: vi.fn() },
+const electron = vi.hoisted(() => ({
+  handlers: new Map<string, (...args: unknown[]) => unknown>(),
 }))
 
-describe('native media runtime façade', () => {
-  it('exposes controller-backed runtime lifecycle and IPC registration', async () => {
+vi.mock('electron', () => ({
+  ipcMain: {
+    handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
+      electron.handlers.set(channel, handler)
+    }),
+  },
+}))
+
+describe('native media unavailable boundary', () => {
+  beforeEach(() => electron.handlers.clear())
+
+  it('returns one finite unavailable state without a runtime lifecycle', async () => {
     const runtime = await import('./native-media-engine')
-    expect(runtime.getNativeMediaController()).toBeDefined()
-    expect(runtime.registerNativeMediaRuntimeIpc).toEqual(expect.any(Function))
-    expect(runtime.startNativeMediaRuntime).toEqual(expect.any(Function))
-    expect(runtime.disposeNativeMediaRuntime).toEqual(expect.any(Function))
+    const webContents = {}
+    const getWindow = () => ({
+      isDestroyed: () => false,
+      webContents,
+    })
+
+    runtime.registerNativeMediaRuntimeIpc(getWindow)
+
+    const event = { sender: webContents }
+    expect(
+      electron.handlers.get(IPC.mediaGetRuntimeState)?.(event),
+    ).toEqual(runtime.NATIVE_MEDIA_UNAVAILABLE_STATE)
+    expect(
+      electron.handlers.get(IPC.mediaRetryRuntime)?.(event),
+    ).toEqual(runtime.NATIVE_MEDIA_UNAVAILABLE_STATE)
+    expect(
+      electron.handlers.get(IPC.mediaListDevices)?.(event, 'audioinput'),
+    ).toEqual([])
+    expect(runtime).not.toHaveProperty('startNativeMediaRuntime')
+    expect(runtime).not.toHaveProperty('disposeNativeMediaRuntime')
   })
 
-  it('resets renderer-owned media only for a full main-frame navigation', async () => {
-    const { isRendererReplacementNavigation } = await import('./native-media-engine')
+  it('creates the resource-free unavailable RTC adapter', async () => {
+    const runtime = await import('./native-media-engine')
+    const adapter = runtime.createNativeRtcEngineAdapter()
 
-    expect(isRendererReplacementNavigation(false, true)).toBe(true)
-    expect(isRendererReplacementNavigation(true, true)).toBe(false)
-    expect(isRendererReplacementNavigation(false, false)).toBe(false)
-  })
-
-  it('enables local native diagnostics by default with an explicit opt-out', async () => {
-    const { nativeMediaDiagnosticsEnabled } = await import('./native-media-engine')
-
-    expect(nativeMediaDiagnosticsEnabled('win32', undefined)).toBe(true)
-    expect(nativeMediaDiagnosticsEnabled('win32', '1')).toBe(true)
-    expect(nativeMediaDiagnosticsEnabled('win32', '0')).toBe(false)
-    expect(nativeMediaDiagnosticsEnabled('linux', undefined)).toBe(false)
+    expect(adapter.telemetry()).toBeNull()
+    adapter.dispose()
   })
 })

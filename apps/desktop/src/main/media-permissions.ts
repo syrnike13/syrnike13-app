@@ -17,13 +17,6 @@ import {
 import { Effect, Fiber, Schema } from 'effect'
 
 import { decodeIpcInput } from './ipc-schema'
-import {
-  clearPendingNativePicker,
-  getPendingNativePicker,
-  listNativeDisplaySourcePageEffect,
-  loadNativeDisplaySourceVisualEffect,
-  setPendingNativePicker,
-} from './native-media-engine'
 
 type DisplayMediaHandler = NonNullable<
   Parameters<Session['setDisplayMediaRequestHandler']>[0]
@@ -190,60 +183,6 @@ const refreshPendingDisplayMediaSourcesEffect = Effect.fn(
     : displayMediaSourcePage<DesktopDisplayMediaSource>([], page)
 })
 
-const refreshPendingNativePickerSourcesEffect = Effect.fn(
-  'desktopMedia.refreshNativePickerSources',
-)(function*(
-  requestId: string,
-  page: number,
-  getWindow: () => BrowserWindow | null,
-) {
-  const pending = getPendingNativePicker()
-  if (!pending || pending.id !== requestId) {
-    return displayMediaSourcePage<DesktopDisplayMediaSource>([], page)
-  }
-  const result = yield* listNativeDisplaySourcePageEffect(
-    requestId,
-    page,
-    getWindow,
-  )
-  if (getPendingNativePicker() !== pending) {
-    return displayMediaSourcePage<DesktopDisplayMediaSource>([], page)
-  }
-  yield* Effect.sync(() => {
-    pending.sources = result.sources
-  })
-  return result
-})
-
-const refreshPendingNativePickerVisualEffect = Effect.fn(
-  'desktopMedia.refreshNativePickerVisual',
-)(function*(
-  requestId: string,
-  sourceId: string,
-  getWindow: () => BrowserWindow | null,
-) {
-  const pending = getPendingNativePicker()
-  if (
-    !pending ||
-    pending.id !== requestId ||
-    !pending.sources.some((source) => source.id === sourceId)
-  ) {
-    return null
-  }
-  const visual = yield* loadNativeDisplaySourceVisualEffect(
-    requestId,
-    sourceId,
-    getWindow,
-  )
-  if (!visual || getPendingNativePicker() !== pending) return null
-  yield* Effect.sync(() => {
-    pending.sources = pending.sources.map((source) =>
-      source.id === sourceId ? visual : source,
-    )
-  })
-  return visual
-})
-
 function pendingDisplayMediaSourceVisual(requestId: string, sourceId: string) {
   const pending = pendingDisplayMediaRequest
   if (!pending || pending.id !== requestId) return null
@@ -299,11 +238,8 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
       Schema.Natural,
       pageInput,
     )
-    const nativePending = getPendingNativePicker()
     return Effect.runPromise(
-      nativePending?.id === requestId
-        ? refreshPendingNativePickerSourcesEffect(requestId, page, getWindow)
-        : refreshPendingDisplayMediaSourcesEffect(requestId, page),
+      refreshPendingDisplayMediaSourcesEffect(requestId, page),
     )
   })
 
@@ -325,11 +261,7 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
       Schema.String,
       sourceInput,
     )
-    return getPendingNativePicker()?.id === requestId
-      ? Effect.runPromise(
-          refreshPendingNativePickerVisualEffect(requestId, sourceId, getWindow),
-        )
-      : pendingDisplayMediaSourceVisual(requestId, sourceId)
+    return pendingDisplayMediaSourceVisual(requestId, sourceId)
   })
 
   ipcMain.handle(
@@ -338,7 +270,6 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
       event,
       requestInput: unknown,
       sourceInput: unknown,
-      audioInput?: unknown,
     ) => {
       if (!isTrustedSender(event, getWindow)) return false
       const requestId = decodeIpcInput(
@@ -353,42 +284,6 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
         Schema.String,
         sourceInput,
       )
-      const audioRequested =
-        audioInput === undefined
-          ? undefined
-          : decodeIpcInput(
-              IPC.mediaSelectDisplaySource,
-              'audioRequested',
-              Schema.Boolean,
-              audioInput,
-            )
-
-      const nativePending = getPendingNativePicker()
-      if (nativePending?.id === requestId) {
-        const source = nativePending.sources.find(
-          (candidate) => candidate.id === sourceId,
-        )
-        if (!source) return false
-
-        clearPendingNativePicker()
-
-        const win = getWindow()
-        if (!win || win.isDestroyed()) return false
-
-        const selectedAudioRequested =
-          (typeof audioRequested === 'boolean'
-            ? audioRequested
-            : nativePending.audioRequested) &&
-          source.audioAvailable !== false
-
-        win.webContents.send(IPC.mediaDisplayPickerResolved, {
-          requestId,
-          sourceId,
-          audioRequested: selectedAudioRequested,
-        })
-        return true
-      }
-
       return selectPendingDisplayMediaSource(requestId, sourceId)
     },
   )
@@ -401,12 +296,6 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
       Schema.String,
       input,
     )
-
-    const nativePending = getPendingNativePicker()
-    if (nativePending?.id === requestId) {
-      clearPendingNativePicker()
-      return
-    }
 
     const pending = pendingDisplayMediaRequest
     if (!pending || pending.id !== requestId) return

@@ -1,15 +1,15 @@
-name: Native Media Windows
+name: Windows Native Boundary
 
 on:
   workflow_call:
     inputs:
       release_channel:
-        description: Desktop release channel used by the package smoke test.
+        description: Desktop release channel used by packaging.
         required: false
         type: string
         default: stable
       desktop_build_version:
-        description: Desktop version embedded into the staged native runtime.
+        description: Desktop version embedded into staged hook addons.
         required: false
         type: string
         default: ""
@@ -26,12 +26,14 @@ on:
       - apps/desktop/scripts/**
       - apps/desktop/src/main/native-runtime/**
       - apps/desktop/src/main/native-media-engine*
+      - apps/desktop/src/main/voice/**
       - apps/desktop/src/utility/**
       - apps/desktop/tsup.config.ts
-      - apps/web/src/features/voice/**
+      - apps/web/src/features/desktop/native-media-runtime-banner*
+      - docs/native-v2/**
       - packages/desktop-native/**
+      - packages/windows-media-engine/**
       - packages/platform/src/media*
-      - packages/platform/src/ipc*
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
@@ -41,8 +43,8 @@ permissions:
   contents: read
 
 jobs:
-  native-runtime:
-    name: DLL runtime, Electron ABI, and package
+  native-boundary:
+    name: Hook addons and unavailable media boundary
     runs-on: windows-2025-vs2026
     env:
       SYRNIKE_DESKTOP_CHANNEL: ${{ inputs.release_channel || 'stable' }}
@@ -54,86 +56,32 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Set up pinned vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: fb87e2bb3fe69e16c224989acb5a61349166c782
-      - name: Restore vcpkg binary cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}\vcpkg-binary-cache
-          key: vcpkg-binaries-v1-${{ runner.os }}-${{ runner.arch }}-fb87e2bb3fe69e16c224989acb5a61349166c782-${{ hashFiles('packages/desktop-native/vendor/livekit-client/vcpkg.json', 'packages/desktop-native/vendor/livekit-client/vcpkg-configuration.json') }}
-      - name: Configure native build caches
-        shell: pwsh
-        run: |
-          $cacheRoot = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
-          $rustTargetRoot = Join-Path $env:RUNNER_TEMP 'syrnike13-livekit-rust-target'
-          New-Item -ItemType Directory -Force -Path $cacheRoot | Out-Null
-          "VCPKG_DEFAULT_BINARY_CACHE=$cacheRoot" >> $env:GITHUB_ENV
-          "VCPKG_BINARY_SOURCES=clear;files,$cacheRoot,readwrite" >> $env:GITHUB_ENV
-          "SYRNIKE_LIVEKIT_RUST_TARGET_DIR=$rustTargetRoot" >> $env:GITHUB_ENV
-      - name: Restore LiveKit Rust build cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}\syrnike13-livekit-rust-target
-          key: livekit-rust-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/desktop-native/vendor/livekit-client/client-sdk-rust/Cargo.lock', 'packages/desktop-native/scripts/build.mjs') }}
-      - name: Install pinned LiveKit Rust toolchain
-        shell: pwsh
-        run: |
-          $toolchainFile = 'packages/desktop-native/vendor/livekit-client/client-sdk-rust/rust-toolchain.toml'
-          $channel = Select-String -LiteralPath $toolchainFile -Pattern '^\s*channel\s*=\s*"([^"]+)"\s*$' | Select-Object -First 1
-          if ($null -eq $channel) {
-            throw "Rust channel is missing from $toolchainFile"
-          }
-          $toolchain = $channel.Matches[0].Groups[1].Value
-          rustup set auto-self-update disable
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            rustup toolchain install $toolchain --profile minimal
-            if ($LASTEXITCODE -eq 0) {
-              rustup run $toolchain rustc --version
-              exit $LASTEXITCODE
-            }
-            if ($attempt -eq 3) {
-              throw "Failed to install Rust $toolchain after $attempt attempts"
-            }
-            Start-Sleep -Seconds (15 * $attempt)
-          }
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build shared platform contract
-        run: pnpm --filter @syrnike13/platform build
-      - name: Build Debug DLL runtime
-        run: pnpm desktop-native:build:debug
-      - name: Test Debug native core
-        run: pnpm desktop-native:test:debug
-      - name: Build Release DLL runtime
-        run: pnpm desktop-native:build
-      - name: Test Release native core
-        run: pnpm desktop-native:test
-      - name: Verify staged DLL-only runtime
-        run: pnpm desktop-native:verify
-      - name: Typecheck desktop media contract
-        run: pnpm desktop:typecheck
-      - name: Test desktop runtime behavior
-        run: pnpm desktop:test
-      - name: Build utility hosts
+      - name: Check empty v2 package boundary
+        run: pnpm --filter @syrnike13/windows-media-engine build
+      - name: Build and test Debug hook addons
         run: |
-          pnpm --filter @syrnike13/platform build
-          pnpm --filter @syrnike13/desktop exec tsup
-      - name: Smoke-test Electron ABI and utility handshakes
-        run: pnpm --filter @syrnike13/desktop-native smoke:electron
-      - name: Verify Crashpad minidump capture
-        run: pnpm --filter @syrnike13/desktop-native smoke:crashpad
-      - name: Build web assets for packaged smoke
-        run: pnpm web:build
-      - name: Verify packaged web assets
-        run: pnpm --filter @syrnike13/desktop verify:web-dist
+          pnpm desktop-native:build:debug
+          pnpm desktop-native:test:debug
+      - name: Build, test, and verify Release hook addons
+        run: |
+          pnpm desktop-native:build
+          pnpm desktop-native:test
+          pnpm desktop-native:verify
+          pnpm --filter @syrnike13/desktop-native smoke:hooks
+      - name: Verify desktop boundary
+        run: |
+          pnpm desktop:typecheck
+          pnpm desktop:test
+      - name: Build desktop assets for package
+        run: pnpm desktop:build
       - name: Build and verify unpacked Windows package
         run: pnpm --filter @syrnike13/desktop package:prepared
-      - name: Upload verified Windows native runtime
+      - name: Upload verified Windows hook addons
         uses: actions/upload-artifact@v4
         with:
-          name: native-runtime-windows-${{ inputs.release_channel || 'stable' }}-${{ github.sha }}
+          name: native-hooks-windows-${{ inputs.release_channel || 'stable' }}-${{ github.sha }}
           if-no-files-found: error
           retention-days: 1
           path: |
@@ -143,15 +91,15 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: native-runtime-windows-symbols-${{ github.sha }}
+          name: native-hooks-windows-symbols-${{ github.sha }}
           if-no-files-found: warn
           retention-days: ${{ inputs.symbol_retention_days || 14 }}
           path: |
             packages/desktop-native/build/**/*.pdb
             packages/desktop-native/dist/win32-x64/native-manifest.json
 
-  native-core-asan:
-    name: Native core AddressSanitizer
+  native-hooks-asan:
+    name: Hook addons AddressSanitizer
     runs-on: windows-2025-vs2026
     steps:
       - uses: actions/checkout@v4
@@ -160,48 +108,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Set up pinned vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: fb87e2bb3fe69e16c224989acb5a61349166c782
-      - name: Restore vcpkg binary cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}\vcpkg-binary-cache
-          key: vcpkg-binaries-v1-${{ runner.os }}-${{ runner.arch }}-fb87e2bb3fe69e16c224989acb5a61349166c782-${{ hashFiles('packages/desktop-native/vendor/livekit-client/vcpkg.json', 'packages/desktop-native/vendor/livekit-client/vcpkg-configuration.json') }}
-      - name: Use supported vcpkg binary cache
-        shell: pwsh
-        run: |
-          $cacheRoot = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
-          New-Item -ItemType Directory -Force -Path $cacheRoot | Out-Null
-          "VCPKG_DEFAULT_BINARY_CACHE=$cacheRoot" >> $env:GITHUB_ENV
-          "VCPKG_BINARY_SOURCES=clear;files,$cacheRoot,readwrite" >> $env:GITHUB_ENV
-      - name: Install pinned LiveKit Rust toolchain
-        shell: pwsh
-        run: |
-          $toolchainFile = 'packages/desktop-native/vendor/livekit-client/client-sdk-rust/rust-toolchain.toml'
-          $channel = Select-String -LiteralPath $toolchainFile -Pattern '^\s*channel\s*=\s*"([^"]+)"\s*$' | Select-Object -First 1
-          if ($null -eq $channel) {
-            throw "Rust channel is missing from $toolchainFile"
-          }
-          $toolchain = $channel.Matches[0].Groups[1].Value
-          rustup set auto-self-update disable
-          for ($attempt = 1; $attempt -le 3; $attempt++) {
-            rustup toolchain install $toolchain --profile minimal
-            if ($LASTEXITCODE -eq 0) {
-              rustup run $toolchain rustc --version
-              exit $LASTEXITCODE
-            }
-            if ($attempt -eq 3) {
-              throw "Failed to install Rust $toolchain after $attempt attempts"
-            }
-            Start-Sleep -Seconds (15 * $attempt)
-          }
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build shared platform contract
-        run: pnpm --filter @syrnike13/platform build
-      - name: Build Debug native core with AddressSanitizer
-        run: pnpm desktop-native:build:asan
-      - name: Test AddressSanitizer native core
-        run: pnpm desktop-native:test:debug
+      - name: Build and test Debug hook addons with AddressSanitizer
+        run: |
+          pnpm desktop-native:build:asan
+          pnpm desktop-native:test:debug

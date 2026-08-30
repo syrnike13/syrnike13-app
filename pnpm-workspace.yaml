@@ -4,6 +4,7 @@ packages:
   - apps/desktop
   - packages/api-types
   - packages/desktop-native
+  - packages/windows-media-engine
   - packages/platform
 
 allowBuilds:
