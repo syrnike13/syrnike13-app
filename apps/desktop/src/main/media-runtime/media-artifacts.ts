@@ -4,13 +4,27 @@ import path from 'node:path'
 
 import { Option, Schema } from 'effect'
 
+import {
+  MEDIA_LIFECYCLE_MAX_DEADLINE_MS,
+  MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_FIELDS,
+  MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_METRICS,
+  MEDIA_LIFECYCLE_MAX_IDENTIFIER_LENGTH,
+  MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS,
+  MEDIA_LIFECYCLE_PROTOCOL_VERSION,
+  MEDIA_LIFECYCLE_CONTROL_QUEUE_CAPACITY,
+  MEDIA_LIFECYCLE_EVENT_QUEUE_CAPACITY,
+  MEDIA_LIFECYCLE_START_TIMEOUT_MS,
+  MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
+  MEDIA_LIFECYCLE_SHUTDOWN_TIMEOUT_MS,
+} from './contract'
+
 const MediaSha256Schema = Schema.String.check(
   Schema.isPattern(/^[0-9a-f]{64}$/i),
 )
 
 export const MediaArtifactManifestSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
-  protocolVersion: Schema.Literal(1),
+  protocolVersion: Schema.Literal(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
   platform: Schema.Literal('win32'),
   arch: Schema.Literal('x64'),
   appVersion: Schema.String,
@@ -18,13 +32,22 @@ export const MediaArtifactManifestSchema = Schema.Struct({
   commitSha: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/i)),
   electronVersion: Schema.String,
   napiVersion: Schema.Literal(8),
-  capabilities: Schema.Tuple([Schema.Literal('lifecycle')]),
+  capabilities: Schema.Tuple([
+    Schema.Literal('lifecycle'),
+    Schema.Literal('control-v2'),
+    Schema.Literal('diagnostics-v2'),
+  ]),
   limits: Schema.Struct({
-    controlQueue: Schema.Literal(16),
-    eventQueue: Schema.Literal(64),
-    startDeadlineMs: Schema.Literal(2_000),
-    pingDeadlineMs: Schema.Literal(1_000),
-    shutdownDeadlineMs: Schema.Literal(1_000),
+    controlQueue: Schema.Literal(MEDIA_LIFECYCLE_CONTROL_QUEUE_CAPACITY),
+    eventQueue: Schema.Literal(MEDIA_LIFECYCLE_EVENT_QUEUE_CAPACITY),
+    startDeadlineMs: Schema.Literal(MEDIA_LIFECYCLE_START_TIMEOUT_MS),
+    pingDeadlineMs: Schema.Literal(MEDIA_LIFECYCLE_PING_TIMEOUT_MS),
+    shutdownDeadlineMs: Schema.Literal(MEDIA_LIFECYCLE_SHUTDOWN_TIMEOUT_MS),
+    maxIdentifierLength: Schema.Literal(MEDIA_LIFECYCLE_MAX_IDENTIFIER_LENGTH),
+    maxRemoteVideoDemands: Schema.Literal(MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS),
+    maxDiagnosticMetrics: Schema.Literal(MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_METRICS),
+    maxDiagnosticFields: Schema.Literal(MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_FIELDS),
+    maxRequestDeadlineMs: Schema.Literal(MEDIA_LIFECYCLE_MAX_DEADLINE_MS),
   }),
   files: Schema.Tuple([
     Schema.Struct({
@@ -69,9 +92,9 @@ export function verifyMediaArtifactDistribution(
   if (Option.isNone(parsed)) {
     throw new Error('Media artifact manifest is not valid JSON')
   }
-  const decoded = Schema.decodeUnknownOption(MediaArtifactManifestSchema)(
-    parsed.value,
-  )
+  const decoded = Schema.decodeUnknownOption(MediaArtifactManifestSchema, {
+    onExcessProperty: 'error',
+  })(parsed.value)
   if (Option.isNone(decoded)) {
     throw new Error('Media artifact manifest has an invalid shape')
   }
@@ -92,4 +115,3 @@ export function verifyMediaArtifactDistribution(
   }
   return manifest
 }
-

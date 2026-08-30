@@ -8,15 +8,20 @@ import {
   MEDIA_LIFECYCLE_PROTOCOL_VERSION,
   MediaAddonHandshakeSchema,
   MediaAddonPingSchema,
+  MediaAddonSnapshotSchema,
   MediaAddonShutdownSchema,
+  MediaDesiredStateAcceptedSchema,
+  MediaLifecycleDiagnosticEventSchema,
   MediaLifecycleEventSchema,
   failureFromUnknown,
   isMediaLifecycleRequest,
   mediaLifecycleFailure,
+  redactMediaLifecycleText,
   type MediaLifecycleEvent,
   type MediaLifecycleFailure,
   type MediaLifecycleReady,
   type MediaLifecycleReply,
+  type MediaLifecycleResult,
 } from '../main/media-runtime/contract'
 import {
   type MediaArtifactExpectations,
@@ -30,10 +35,13 @@ type ParentPort = {
 }
 
 type MediaLifecycleAddon = {
-  registerEventCallback(callback: (event: unknown) => void): unknown
+  registerPublicEventCallback(callback: (event: unknown) => void): unknown
+  registerDiagnosticEventCallback(callback: (event: unknown) => void): unknown
   handshake(): unknown
-  ping(): unknown
-  shutdown(): unknown
+  applyDesiredState(desiredState: unknown, deadlineMs?: number): unknown
+  querySnapshot(deadlineMs?: number): unknown
+  ping(deadlineMs?: number): unknown
+  shutdown(deadlineMs?: number): unknown
 }
 
 type MediaHostDependencies = {
@@ -62,8 +70,11 @@ const MediaLifecycleAddonSchema = Schema.declare<MediaLifecycleAddon>(
   (input): input is MediaLifecycleAddon =>
     typeof input === 'object' &&
     input !== null &&
-    typeof Reflect.get(input, 'registerEventCallback') === 'function' &&
+    typeof Reflect.get(input, 'registerPublicEventCallback') === 'function' &&
+    typeof Reflect.get(input, 'registerDiagnosticEventCallback') === 'function' &&
     typeof Reflect.get(input, 'handshake') === 'function' &&
+    typeof Reflect.get(input, 'applyDesiredState') === 'function' &&
+    typeof Reflect.get(input, 'querySnapshot') === 'function' &&
     typeof Reflect.get(input, 'ping') === 'function' &&
     typeof Reflect.get(input, 'shutdown') === 'function',
 )
@@ -104,6 +115,16 @@ export const runMediaUtilityHostEffect = Effect.fn(
   const releaseChannel = environment.SYRNIKE_MEDIA_RELEASE_CHANNEL
   const commitSha = environment.SYRNIKE_MEDIA_COMMIT_SHA
   const protocolVersion = Number(environment.SYRNIKE_MEDIA_PROTOCOL_VERSION)
+  if (protocolVersion !== MEDIA_LIFECYCLE_PROTOCOL_VERSION) {
+    failStartup(
+      mediaLifecycleFailure(
+        'protocol_incompatible',
+        'Media utility host requires the exact protocol v2 version',
+        'environment',
+      ),
+    )
+    return
+  }
   if (
     !modulePath ||
     !mediaRoot ||
@@ -115,8 +136,7 @@ export const runMediaUtilityHostEffect = Effect.fn(
     !moduleExists(modulePath) ||
     (releaseChannel !== 'stable' && releaseChannel !== 'nightly') ||
     !commitSha ||
-    !/^[0-9a-f]{40}$/i.test(commitSha) ||
-    protocolVersion !== MEDIA_LIFECYCLE_PROTOCOL_VERSION
+    !/^[0-9a-f]{40}$/i.test(commitSha)
   ) {
     failStartup(
       mediaLifecycleFailure(
@@ -167,8 +187,10 @@ export const runMediaUtilityHostEffect = Effect.fn(
 
   let shuttingDown = false
   let boundHostEpoch: number | undefined
-  const emit = (rawEvent: unknown) => {
-    const decoded = Schema.decodeUnknownOption(MediaLifecycleEventSchema)(rawEvent)
+  const emitPublic = (rawEvent: unknown) => {
+    const decoded = Schema.decodeUnknownOption(MediaLifecycleEventSchema, {
+      onExcessProperty: 'error',
+    })(rawEvent)
     if (Option.isNone(decoded)) {
       failStartup(
         mediaLifecycleFailure(
@@ -179,19 +201,55 @@ export const runMediaUtilityHostEffect = Effect.fn(
       )
       return
     }
-    hostPort.postMessage({ type: 'event', event: decoded.value })
+    hostPort.postMessage({
+      type: 'event',
+      protocolVersion: MEDIA_LIFECYCLE_PROTOCOL_VERSION,
+      event: sanitizePublicEvent(decoded.value),
+    })
   }
 
-  const registered = yield* invokeAddon(
-    () => addon.registerEventCallback(emit),
-    'register_event_callback',
+  const emitDiagnostic = (rawEvent: unknown) => {
+    const decoded = Schema.decodeUnknownOption(
+      MediaLifecycleDiagnosticEventSchema,
+      { onExcessProperty: 'error' },
+    )(rawEvent)
+    if (Option.isNone(decoded)) return
+    const event = decoded.value.implementation
+      ? {
+          ...decoded.value,
+          implementation: decoded.value.implementation.map((field) => ({
+            ...field,
+            value: redactMediaLifecycleText(field.value),
+          })),
+        }
+      : decoded.value
+    hostPort.postMessage({
+      type: 'diagnostic',
+      protocolVersion: MEDIA_LIFECYCLE_PROTOCOL_VERSION,
+      event,
+    })
+  }
+
+  const publicRegistered = yield* invokeAddon(
+    () => addon.registerPublicEventCallback(emitPublic),
+    'register_public_event_callback',
   ).pipe(
     Effect.catch((failure) => {
       failStartup(failure)
       return Effect.succeed(null)
     }),
   )
-  if (registered === null) return
+  if (publicRegistered === null) return
+  const diagnosticRegistered = yield* invokeAddon(
+    () => addon.registerDiagnosticEventCallback(emitDiagnostic),
+    'register_diagnostic_event_callback',
+  ).pipe(
+    Effect.catch((failure) => {
+      failStartup(failure)
+      return Effect.succeed(null)
+    }),
+  )
+  if (diagnosticRegistered === null) return
 
   const handshakeValue = yield* invokeAddon(
     () => addon.handshake(),
@@ -203,9 +261,9 @@ export const runMediaUtilityHostEffect = Effect.fn(
     }),
   )
   if (handshakeValue === null) return
-  const handshake = Schema.decodeUnknownOption(MediaAddonHandshakeSchema)(
-    handshakeValue,
-  )
+  const handshake = Schema.decodeUnknownOption(MediaAddonHandshakeSchema, {
+    onExcessProperty: 'error',
+  })(handshakeValue)
   if (
     Option.isNone(handshake) ||
     handshake.value.protocolVersion !== MEDIA_LIFECYCLE_PROTOCOL_VERSION ||
@@ -215,7 +273,7 @@ export const runMediaUtilityHostEffect = Effect.fn(
   ) {
     failStartup(
       mediaLifecycleFailure(
-        'media_handshake_incompatible',
+        'protocol_incompatible',
         'Native media lifecycle handshake is incompatible with its manifest',
         'handshake',
       ),
@@ -250,7 +308,21 @@ export const runMediaUtilityHostEffect = Effect.fn(
 
   hostPort.on('message', (messageEvent) => {
     const request = messageEvent.data
-    if (!isMediaLifecycleRequest(request)) return
+    if (!isMediaLifecycleRequest(request)) {
+      const requestId = malformedRequestId(request)
+      if (requestId) {
+        postFailureReply(
+          hostPort,
+          requestId,
+          mediaLifecycleFailure(
+            malformedProtocolVersion(request) ? 'protocol_incompatible' : 'protocol_invalid',
+            'Media request does not match the exact protocol v2 contract',
+            'protocol',
+          ),
+        )
+      }
+      return
+    }
     if (boundHostEpoch === undefined) boundHostEpoch = request.hostEpoch
     if (request.hostEpoch !== boundHostEpoch) {
       postFailureReply(
@@ -264,11 +336,82 @@ export const runMediaUtilityHostEffect = Effect.fn(
       )
       return
     }
+    if (request.command.type === 'handshake') {
+      postSuccessReply(hostPort, request.requestId, {
+        type: 'handshake',
+        protocolVersion: MEDIA_LIFECYCLE_PROTOCOL_VERSION,
+        engineState: 'running',
+        build: handshake.value.build,
+      })
+      return
+    }
+    if (request.command.type === 'applyDesiredState') {
+      const desiredState = request.command.desiredState
+      void Effect.runPromise(
+        invokeAddon(
+          () => addon.applyDesiredState(desiredState, request.deadlineMs),
+          'apply_desired_state',
+        ).pipe(
+          Effect.flatMap((value) => {
+            const decoded = Schema.decodeUnknownOption(
+              MediaDesiredStateAcceptedSchema,
+              { onExcessProperty: 'error' },
+            )(value)
+            return Option.isSome(decoded)
+              ? Effect.sync(() =>
+                  postSuccessReply(hostPort, request.requestId, decoded.value),
+                )
+              : Effect.fail(
+                  mediaLifecycleFailure(
+                    'media_apply_invalid',
+                    'Native media apply returned an invalid result',
+                    'apply_desired_state',
+                  ),
+                )
+          }),
+          Effect.catch((failure) =>
+            Effect.sync(() => postFailureReply(hostPort, request.requestId, failure)),
+          ),
+        ),
+      )
+      return
+    }
+    if (request.command.type === 'querySnapshot') {
+      void Effect.runPromise(
+        invokeAddon(
+          () => addon.querySnapshot(request.deadlineMs),
+          'query_snapshot',
+        ).pipe(
+          Effect.flatMap((value) => {
+            const decoded = Schema.decodeUnknownOption(MediaAddonSnapshotSchema, {
+              onExcessProperty: 'error',
+            })(value)
+            return Option.isSome(decoded)
+              ? Effect.sync(() =>
+                  postSuccessReply(hostPort, request.requestId, decoded.value),
+                )
+              : Effect.fail(
+                  mediaLifecycleFailure(
+                    'media_snapshot_invalid',
+                    'Native media query returned an invalid snapshot',
+                    'query_snapshot',
+                  ),
+                )
+          }),
+          Effect.catch((failure) =>
+            Effect.sync(() => postFailureReply(hostPort, request.requestId, failure)),
+          ),
+        ),
+      )
+      return
+    }
     if (request.command.type === 'ping') {
       void Effect.runPromise(
-        invokeAddon(() => addon.ping(), 'ping').pipe(
+        invokeAddon(() => addon.ping(request.deadlineMs), 'ping').pipe(
           Effect.flatMap((value) => {
-            const decoded = Schema.decodeUnknownOption(MediaAddonPingSchema)(value)
+            const decoded = Schema.decodeUnknownOption(MediaAddonPingSchema, {
+              onExcessProperty: 'error',
+            })(value)
             if (Option.isNone(decoded)) {
               return Effect.fail(
                 mediaLifecycleFailure(
@@ -291,12 +434,28 @@ export const runMediaUtilityHostEffect = Effect.fn(
       )
       return
     }
-    if (shuttingDown) return
+    if (shuttingDown) {
+      postFailureReply(
+        hostPort,
+        request.requestId,
+        mediaLifecycleFailure(
+          'engine_stopping',
+          'Media engine shutdown has already started',
+          'shutdown',
+        ),
+      )
+      return
+    }
     shuttingDown = true
     void Effect.runPromise(
-      invokeAddon(() => addon.shutdown(), 'shutdown').pipe(
+      invokeAddon(
+        () => addon.shutdown(request.deadlineMs),
+        'shutdown',
+      ).pipe(
         Effect.flatMap((value) => {
-          const decoded = Schema.decodeUnknownOption(MediaAddonShutdownSchema)(value)
+          const decoded = Schema.decodeUnknownOption(MediaAddonShutdownSchema, {
+            onExcessProperty: 'error',
+          })(value)
           if (Option.isNone(decoded)) {
             return Effect.fail(
               mediaLifecycleFailure(
@@ -330,13 +489,40 @@ function invokeAddon(operation: () => unknown, stage: string) {
   })
 }
 
+function sanitizePublicEvent(event: MediaLifecycleEvent): MediaLifecycleEvent {
+  if (event.type === 'fatalEngineFailure') {
+    return {
+      ...event,
+      failure: mediaLifecycleFailure(
+        event.failure.code,
+        event.failure.message,
+        event.failure.stage,
+        event.failure.retryable,
+      ),
+    }
+  }
+  if (event.type === 'engineStateChanged' && event.failure) {
+    return {
+      ...event,
+      failure: mediaLifecycleFailure(
+        event.failure.code,
+        event.failure.message,
+        event.failure.stage,
+        event.failure.retryable,
+      ),
+    }
+  }
+  return event
+}
+
 function postSuccessReply(
   port: ParentPort,
   requestId: string,
-  result: unknown,
+  result: MediaLifecycleResult,
 ) {
   port.postMessage({
     type: 'reply',
+    protocolVersion: MEDIA_LIFECYCLE_PROTOCOL_VERSION,
     requestId,
     ok: true,
     result,
@@ -350,10 +536,26 @@ function postFailureReply(
 ) {
   port.postMessage({
     type: 'reply',
+    protocolVersion: MEDIA_LIFECYCLE_PROTOCOL_VERSION,
     requestId,
     ok: false,
     failure,
   } satisfies MediaLifecycleReply)
+}
+
+function malformedRequestId(value: unknown) {
+  if (typeof value !== 'object' || value === null || Reflect.get(value, 'type') !== 'request') {
+    return undefined
+  }
+  const requestId = Reflect.get(value, 'requestId')
+  return typeof requestId === 'string' && requestId.length > 0 && requestId.length <= 256
+    ? requestId
+    : undefined
+}
+
+function malformedProtocolVersion(value: unknown) {
+  return typeof value === 'object' && value !== null &&
+    Reflect.get(value, 'protocolVersion') !== MEDIA_LIFECYCLE_PROTOCOL_VERSION
 }
 
 function postIncompatibleReady(
@@ -367,4 +569,3 @@ function postIncompatibleReady(
     failure,
   } satisfies MediaLifecycleReady)
 }
-

@@ -6,14 +6,32 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
+#include <vector>
+
+#include "core/protocol_limits.generated.hpp"
 
 namespace syrnike::windows_media {
 
-inline constexpr std::size_t kControlQueueCapacity = 16;
-inline constexpr std::size_t kEventQueueCapacity = 64;
-inline constexpr auto kStartDeadline = std::chrono::seconds(2);
-inline constexpr auto kPingDeadline = std::chrono::seconds(1);
-inline constexpr auto kShutdownDeadline = std::chrono::seconds(1);
+inline constexpr std::size_t kControlQueueCapacity =
+  protocol::kControlQueueCapacity;
+inline constexpr std::size_t kEventQueueCapacity = protocol::kEventQueueCapacity;
+inline constexpr std::size_t kMaximumIdentifierLength =
+  protocol::kMaximumIdentifierLength;
+inline constexpr std::size_t kMaximumRemoteVideoDemands =
+  protocol::kMaximumRemoteVideoDemands;
+inline constexpr std::uint32_t kMaximumRequestDeadlineMs =
+  protocol::kMaximumRequestDeadlineMs;
+inline constexpr std::uint64_t kMaximumProtocolInteger = 9007199254740991ULL;
+inline constexpr int kProtocolVersion = protocol::kVersion;
+inline constexpr auto kStartDeadline =
+  std::chrono::milliseconds(protocol::kStartDeadlineMs);
+inline constexpr auto kPingDeadline =
+  std::chrono::milliseconds(protocol::kPingDeadlineMs);
+inline constexpr auto kControlDeadline =
+  std::chrono::milliseconds(protocol::kPingDeadlineMs);
+inline constexpr auto kShutdownDeadline =
+  std::chrono::milliseconds(protocol::kShutdownDeadlineMs);
 
 enum class EngineState {
   Stopped,
@@ -45,12 +63,100 @@ struct LifecycleEvent {
   std::optional<EngineFailure> failure;
 };
 
-using LifecycleEventCallback = std::function<void(const LifecycleEvent&)>;
+struct RoomStateChangedEvent {
+  std::uint64_t sequence = 0;
+  std::uint64_t revision = 0;
+  bool desired = false;
+};
+
+enum class TrackKind {
+  Microphone,
+  Camera,
+  Screen,
+  Output,
+};
+
+struct TrackStateChangedEvent {
+  std::uint64_t sequence = 0;
+  std::uint64_t revision = 0;
+  TrackKind track = TrackKind::Microphone;
+};
+
+struct FatalEngineFailureEvent {
+  std::uint64_t sequence = 0;
+  EngineFailure failure;
+};
+
+using PublicEvent = std::variant<
+  LifecycleEvent,
+  RoomStateChangedEvent,
+  TrackStateChangedEvent,
+  FatalEngineFailureEvent
+>;
+
+struct RoomIntent {
+  std::string room_id;
+  std::string participant_identity;
+
+  bool operator==(const RoomIntent&) const = default;
+};
+
+struct RemoteVideoDemand {
+  std::string participant_identity;
+  std::string publication_id;
+
+  bool operator==(const RemoteVideoDemand&) const = default;
+};
+
+struct EngineDesiredState {
+  std::uint64_t revision = 0;
+  std::optional<RoomIntent> room;
+  std::vector<RemoteVideoDemand> remote_video_demand;
+
+  bool operator==(const EngineDesiredState&) const = default;
+};
+
+struct EngineSnapshot {
+  EngineState engine_state = EngineState::Stopped;
+  std::uint64_t accepted_revision = 0;
+  std::optional<EngineDesiredState> desired_state;
+};
+
+struct ApplyDesiredStateResult {
+  bool ok = false;
+  std::uint64_t accepted_revision = 0;
+  bool duplicate = false;
+  std::optional<EngineFailure> failure;
+};
+
+struct QuerySnapshotResult {
+  bool ok = false;
+  std::optional<EngineSnapshot> snapshot;
+  std::optional<EngineFailure> failure;
+};
+
+struct DiagnosticMetric {
+  std::string name;
+  double value = 0;
+};
+
+struct DiagnosticEvent {
+  std::uint64_t sequence = 0;
+  std::uint64_t timestamp_ms = 0;
+  std::string component;
+  std::string operation;
+  std::string code;
+  std::vector<DiagnosticMetric> metrics;
+};
+
+using PublicEventCallback = std::function<void(const PublicEvent&)>;
+using DiagnosticEventCallback = std::function<void(const DiagnosticEvent&)>;
 
 struct EngineOptions {
   bool fail_start = false;
   bool test_block_start_until_shutdown = false;
   bool test_hang_on_shutdown = false;
+  std::function<void()> test_before_apply_commit;
 };
 
 class Engine final {
@@ -62,13 +168,23 @@ class Engine final {
   Engine& operator=(const Engine&) = delete;
 
   [[nodiscard]] EngineResult registerEventCallback(
-    LifecycleEventCallback callback
+    PublicEventCallback callback
+  );
+  [[nodiscard]] EngineResult registerDiagnosticEventCallback(
+    DiagnosticEventCallback callback
   );
   [[nodiscard]] EngineResult start(
     std::chrono::milliseconds deadline = kStartDeadline
   );
   [[nodiscard]] EngineResult ping(
     std::chrono::milliseconds deadline = kPingDeadline
+  );
+  [[nodiscard]] ApplyDesiredStateResult applyDesiredState(
+    EngineDesiredState desired_state,
+    std::chrono::milliseconds deadline = kControlDeadline
+  );
+  [[nodiscard]] QuerySnapshotResult querySnapshot(
+    std::chrono::milliseconds deadline = kControlDeadline
   );
   [[nodiscard]] EngineResult shutdown(
     std::chrono::milliseconds deadline = kShutdownDeadline
@@ -81,6 +197,6 @@ class Engine final {
 };
 
 [[nodiscard]] const char* engineStateName(EngineState state) noexcept;
+[[nodiscard]] const char* trackKindName(TrackKind track) noexcept;
 
 }  // namespace syrnike::windows_media
-

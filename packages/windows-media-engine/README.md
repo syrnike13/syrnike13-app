@@ -2,7 +2,7 @@
 
 This package owns the isolated lifecycle skeleton for the replacement Windows native media engine. It contains a media-free C++20 core, `media_probe.exe`, and the thin `windows_media.node` binding. It has no LiveKit, audio, capture, camera, graphics, or compatibility dependency on v1.
 
-The Engine is one-shot: one instance can start and shut down once, and another lifecycle creates a new instance. All state transitions run on its single control thread; shutdown is idempotent and bounded. A non-cooperative test worker is contained by process termination rather than a detached cleanup thread.
+The Engine is one-shot: one instance can start and shut down once, and another lifecycle creates a new instance. All lifecycle and desired-state commits run on its single control thread; shutdown is idempotent and bounded. Protocol v2 stores only bounded declarative intent and still performs no media work. A non-cooperative test worker is contained by process termination rather than a detached cleanup thread.
 
 Build and verify with:
 

@@ -10,7 +10,7 @@ const COMMIT_SHA = 'b'.repeat(40)
 function manifest(): MediaArtifactManifest {
   return {
     schemaVersion: 1,
-    protocolVersion: 1,
+    protocolVersion: 2,
     platform: 'win32',
     arch: 'x64',
     appVersion: '0.6.11',
@@ -18,13 +18,18 @@ function manifest(): MediaArtifactManifest {
     commitSha: COMMIT_SHA,
     electronVersion: process.versions.electron,
     napiVersion: 8,
-    capabilities: ['lifecycle'],
+    capabilities: ['lifecycle', 'control-v2', 'diagnostics-v2'],
     limits: {
       controlQueue: 16,
       eventQueue: 64,
       startDeadlineMs: 2_000,
       pingDeadlineMs: 1_000,
       shutdownDeadlineMs: 1_000,
+      maxIdentifierLength: 256,
+      maxRemoteVideoDemands: 64,
+      maxDiagnosticMetrics: 16,
+      maxDiagnosticFields: 16,
+      maxRequestDeadlineMs: 5_000,
     },
     files: [{ name: 'windows_media.node', sha256: 'a'.repeat(64) }],
   }
@@ -36,7 +41,7 @@ function environment(mediaRoot: string): NodeJS.ProcessEnv {
     SYRNIKE_MEDIA_ROOT: mediaRoot,
     SYRNIKE_MEDIA_APP_VERSION: '0.6.11',
     SYRNIKE_MEDIA_RELEASE_CHANNEL: 'stable',
-    SYRNIKE_MEDIA_PROTOCOL_VERSION: '1',
+    SYRNIKE_MEDIA_PROTOCOL_VERSION: '2',
     SYRNIKE_MEDIA_COMMIT_SHA: COMMIT_SHA,
   }
 }
@@ -47,6 +52,7 @@ describe('runMediaUtilityHost', () => {
     const posted: unknown[] = []
     let onMessage: ((event: { data: unknown }) => void) | undefined
     let emit: ((event: unknown) => void) | undefined
+    let emitDiagnostic: ((event: unknown) => void) | undefined
     const exit = vi.fn()
 
     await runMediaUtilityHost({
@@ -60,17 +66,37 @@ describe('runMediaUtilityHost', () => {
       nativeModuleExists: () => true,
       verifyDistribution: () => manifest(),
       loadAddon: () => ({
-        registerEventCallback: (callback: (event: unknown) => void) => {
+        registerPublicEventCallback: (callback: (event: unknown) => void) => {
           emit = callback
           return true
         },
+        registerDiagnosticEventCallback: (callback: (event: unknown) => void) => {
+          emitDiagnostic = callback
+          return true
+        },
         handshake: () => ({
-          protocolVersion: 1,
+          protocolVersion: 2,
           engineState: 'running',
           build: { commit: COMMIT_SHA, napi: '8' },
         }),
-        ping: () => ({ ok: true, engineState: 'running' }),
-        shutdown: () => ({ ok: true, engineState: 'stopped' }),
+        applyDesiredState: (desiredState: unknown) => ({
+          type: 'desiredStateAccepted',
+          acceptedRevision: Reflect.get(desiredState as object, 'revision'),
+          disposition: 'accepted',
+        }),
+        querySnapshot: () => ({
+          type: 'snapshot',
+          snapshot: {
+            engineState: 'running',
+            acceptedRevision: null,
+            desiredState: null,
+            roomState: 'off',
+            tracks: { microphone: 'off', camera: 'off', screen: 'off', output: 'off' },
+          },
+          unexpected: true,
+        }),
+        ping: () => ({ type: 'pong', engineState: 'running' }),
+        shutdown: () => ({ type: 'shutdownComplete', engineState: 'stopped' }),
       }),
       registerShutdownSignals: () => undefined,
       exit,
@@ -79,7 +105,7 @@ describe('runMediaUtilityHost', () => {
 
     expect(posted).toContainEqual({
       type: 'ready',
-      protocolVersion: 1,
+      protocolVersion: 2,
       engineState: 'running',
       build: { commit: COMMIT_SHA, napi: '8' },
     })
@@ -88,44 +114,248 @@ describe('runMediaUtilityHost', () => {
       type: 'engineStateChanged',
       sequence: 3,
       previous: 'running',
-      state: 'stopping',
+      state: 'failed',
+      failure: {
+        code: 'fatal',
+        message: 'authorization=secret',
+        stage: 'engine',
+        retryable: false,
+      },
     })
     expect(posted).toContainEqual({
       type: 'event',
-      event: expect.objectContaining({ state: 'stopping' }),
+      protocolVersion: 2,
+      event: expect.objectContaining({
+        state: 'failed',
+        failure: expect.objectContaining({
+          message: 'authorization=[redacted]',
+        }),
+      }),
+    })
+
+    emitDiagnostic?.({
+      sequence: 1,
+      timestampMs: 1,
+      component: 'engine',
+      operation: 'ping',
+      code: 'ok',
+      metrics: [],
+    })
+    expect(posted).toContainEqual({
+      type: 'diagnostic',
+      protocolVersion: 2,
+      event: expect.objectContaining({ code: 'ok' }),
     })
 
     onMessage?.({
       data: {
         type: 'request',
+        protocolVersion: 2,
         requestId: 'ping-1',
         hostEpoch: 1,
+        deadlineMs: 1_000,
         command: { type: 'ping' },
       },
     })
     await vi.waitFor(() =>
       expect(posted).toContainEqual({
         type: 'reply',
+        protocolVersion: 2,
         requestId: 'ping-1',
         ok: true,
-        result: { ok: true, engineState: 'running' },
+        result: { type: 'pong', engineState: 'running' },
+      }),
+    )
+
+    const incompatible = {
+      type: 'request',
+      protocolVersion: 1,
+      requestId: 'old-v1',
+      hostEpoch: 1,
+      deadlineMs: 1_000,
+      command: { type: 'ping' },
+    }
+    onMessage?.({ data: incompatible })
+    onMessage?.({ data: incompatible })
+    await vi.waitFor(() =>
+      expect(posted).toContainEqual({
+        type: 'reply',
+        protocolVersion: 2,
+        requestId: 'old-v1',
+        ok: false,
+        failure: expect.objectContaining({ code: 'protocol_incompatible' }),
+      }),
+    )
+    expect(
+      posted.filter(
+        (message) =>
+          typeof message === 'object' && message !== null &&
+          Reflect.get(message, 'requestId') === 'old-v1',
+      ),
+    ).toHaveLength(2)
+
+    onMessage?.({
+      data: {
+        type: 'request',
+        protocolVersion: 2,
+        requestId: 'apply-1',
+        hostEpoch: 1,
+        deadlineMs: 1_000,
+        command: {
+          type: 'applyDesiredState',
+          desiredState: {
+            revision: 7,
+            room: null,
+            microphone: { state: 'off' },
+            camera: { state: 'off' },
+            screen: { state: 'off' },
+            output: { state: 'off' },
+            remoteVideoDemand: [],
+          },
+        },
+      },
+    })
+    await vi.waitFor(() =>
+      expect(posted).toContainEqual({
+        type: 'reply',
+        protocolVersion: 2,
+        requestId: 'apply-1',
+        ok: true,
+        result: {
+          type: 'desiredStateAccepted',
+          acceptedRevision: 7,
+          disposition: 'accepted',
+        },
       }),
     )
 
     onMessage?.({
       data: {
         type: 'request',
+        protocolVersion: 2,
+        requestId: 'query-invalid-envelope',
+        hostEpoch: 1,
+        deadlineMs: 1_000,
+        command: { type: 'querySnapshot' },
+      },
+    })
+    await vi.waitFor(() =>
+      expect(posted).toContainEqual({
+        type: 'reply',
+        protocolVersion: 2,
+        requestId: 'query-invalid-envelope',
+        ok: false,
+        failure: expect.objectContaining({ code: 'media_snapshot_invalid' }),
+      }),
+    )
+
+    onMessage?.({
+      data: {
+        type: 'request',
+        protocolVersion: 2,
         requestId: 'shutdown-1',
         hostEpoch: 1,
+        deadlineMs: 1_000,
+        command: { type: 'shutdown' },
+      },
+    })
+    onMessage?.({
+      data: {
+        type: 'request',
+        protocolVersion: 2,
+        requestId: 'shutdown-2',
+        hostEpoch: 1,
+        deadlineMs: 1_000,
         command: { type: 'shutdown' },
       },
     })
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0))
     expect(posted).toContainEqual({
       type: 'reply',
+      protocolVersion: 2,
       requestId: 'shutdown-1',
       ok: true,
-      result: { ok: true, engineState: 'stopped' },
+      result: { type: 'shutdownComplete', engineState: 'stopped' },
+    })
+    expect(posted).toContainEqual({
+      type: 'reply',
+      protocolVersion: 2,
+      requestId: 'shutdown-2',
+      ok: false,
+      failure: expect.objectContaining({ code: 'engine_stopping' }),
+    })
+    for (const id of [
+      'ping-1',
+      'apply-1',
+      'query-invalid-envelope',
+      'shutdown-1',
+      'shutdown-2',
+    ]) {
+      expect(
+        posted.filter(
+          (message) =>
+            typeof message === 'object' &&
+            message !== null &&
+            Reflect.get(message, 'requestId') === id,
+        ),
+      ).toHaveLength(1)
+    }
+  })
+
+  it('redacts diagnostic implementation values before forwarding them', async () => {
+    const mediaRoot = path.resolve('test-media-engine')
+    const posted: unknown[] = []
+    let emitDiagnostic: ((event: unknown) => void) | undefined
+
+    await runMediaUtilityHost({
+      parentPort: {
+        on: () => undefined,
+        postMessage: (message) => posted.push(message),
+      },
+      environment: environment(mediaRoot),
+      nativeModuleExists: () => true,
+      verifyDistribution: () => manifest(),
+      loadAddon: () => ({
+        registerPublicEventCallback: () => true,
+        registerDiagnosticEventCallback: (callback: (event: unknown) => void) => {
+          emitDiagnostic = callback
+          return true
+        },
+        handshake: () => ({
+          protocolVersion: 2,
+          engineState: 'running',
+          build: { commit: COMMIT_SHA, napi: '8' },
+        }),
+        ping: vi.fn(),
+        applyDesiredState: vi.fn(),
+        querySnapshot: vi.fn(),
+        shutdown: vi.fn(),
+      }),
+      registerShutdownSignals: () => undefined,
+    })
+
+    emitDiagnostic?.({
+      sequence: 1,
+      timestampMs: 1,
+      component: 'engine',
+      operation: 'connect',
+      code: 'trace',
+      metrics: [],
+      implementation: [{
+        name: 'endpoint',
+        value: 'Bearer abc.secret https://example.invalid/room',
+      }],
+    })
+
+    expect(posted).toContainEqual({
+      type: 'diagnostic',
+      protocolVersion: 2,
+      event: expect.objectContaining({
+        implementation: [{
+          name: 'endpoint',
+          value: 'Bearer [redacted] [redacted-url]',
+        }],
+      }),
     })
   })
 
@@ -143,13 +373,16 @@ describe('runMediaUtilityHost', () => {
       nativeModuleExists: () => true,
       verifyDistribution: () => manifest(),
       loadAddon: () => ({
-        registerEventCallback: () => true,
+        registerPublicEventCallback: () => true,
+        registerDiagnosticEventCallback: () => true,
         handshake: () => ({
-          protocolVersion: 2,
+          protocolVersion: 1,
           engineState: 'running',
           build: { commit: COMMIT_SHA, napi: '8' },
         }),
         ping: vi.fn(),
+        applyDesiredState: vi.fn(),
+        querySnapshot: vi.fn(),
         shutdown: vi.fn(),
       }),
       exit,
@@ -162,11 +395,10 @@ describe('runMediaUtilityHost', () => {
         protocolVersion: 0,
         engineState: 'failed',
         failure: expect.objectContaining({
-          code: 'media_handshake_incompatible',
+          code: 'protocol_incompatible',
         }),
       }),
     ])
     expect(exit).toHaveBeenCalledWith(1)
   })
 })
-

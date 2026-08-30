@@ -29,7 +29,7 @@ class FakeMediaAdapter implements MediaUtilityAdapter {
   ready() {
     this.callbacks?.onMessage({
       type: 'ready',
-      protocolVersion: 1,
+      protocolVersion: 2,
       engineState: 'running',
       build: { commit: COMMIT_SHA, napi: '8' },
     })
@@ -38,6 +38,7 @@ class FakeMediaAdapter implements MediaUtilityAdapter {
   reply(requestId: string, result?: unknown) {
     this.callbacks?.onMessage({
       type: 'reply',
+      protocolVersion: 2,
       requestId,
       ok: true,
       result,
@@ -73,21 +74,31 @@ describe('MediaRuntimeSupervisor', () => {
     adapter.ready()
     await started
 
-    const ping = supervisor.ping()
+    const handshake = supervisor.handshake()
     await vi.waitFor(() => expect(adapter.requests).toHaveLength(1))
     adapter.reply(requestId(adapter.requests[0]), {
-      ok: true,
+      type: 'handshake',
+      protocolVersion: 2,
+      engineState: 'running',
+      build: { commit: COMMIT_SHA, napi: '8' },
+    })
+    await expect(handshake).resolves.toMatchObject({ type: 'handshake' })
+
+    const ping = supervisor.ping()
+    await vi.waitFor(() => expect(adapter.requests).toHaveLength(2))
+    adapter.reply(requestId(adapter.requests[1]), {
+      type: 'pong',
       engineState: 'running',
     })
     await expect(ping).resolves.toEqual({
-      ok: true,
+      type: 'pong',
       engineState: 'running',
     })
 
     const shutdown = supervisor.shutdown()
-    await vi.waitFor(() => expect(adapter.requests).toHaveLength(2))
-    adapter.reply(requestId(adapter.requests[1]), {
-      ok: true,
+    await vi.waitFor(() => expect(adapter.requests).toHaveLength(3))
+    adapter.reply(requestId(adapter.requests[2]), {
+      type: 'shutdownComplete',
       engineState: 'stopped',
     })
     await shutdown
@@ -125,7 +136,7 @@ describe('MediaRuntimeSupervisor', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(second.requests).toHaveLength(1)
     second.reply(requestId(second.requests[0]), {
-      ok: true,
+      type: 'shutdownComplete',
       engineState: 'stopped',
     })
     await shutdown
@@ -144,14 +155,14 @@ describe('MediaRuntimeSupervisor', () => {
       protocolVersion: 0,
       engineState: 'failed',
       failure: {
-        code: 'media_handshake_incompatible',
+        code: 'protocol_incompatible',
         message: 'incompatible',
         stage: 'handshake',
         retryable: false,
       },
     })
     await expect(started).rejects.toMatchObject({
-      failure: { code: 'media_handshake_incompatible' },
+      failure: { code: 'protocol_incompatible' },
     })
     expect(adapter.killed).toBe(true)
     expect(supervisor.getSnapshot().status).toBe('failed')
@@ -172,5 +183,42 @@ describe('MediaRuntimeSupervisor', () => {
     await startFailure
     expect(adapter.killed).toBe(true)
     expect(supervisor.getSnapshot().status).toBe('stopped')
+  })
+
+  it('settles start when the adapter factory throws synchronously', async () => {
+    const supervisor = new MediaRuntimeSupervisor({
+      createAdapter: () => {
+        throw new Error('factory failed')
+      },
+      restartDelaysMs: [],
+    })
+
+    await expect(supervisor.start()).rejects.toMatchObject({
+      failure: { code: 'media_host_start_failed' },
+    })
+    expect(supervisor.getSnapshot()).toMatchObject({
+      status: 'failed',
+      failure: { code: 'media_host_start_failed' },
+    })
+  })
+
+  it('validates command-specific reply payloads', async () => {
+    const adapter = new FakeMediaAdapter()
+    const supervisor = new MediaRuntimeSupervisor({
+      createAdapter: () => adapter,
+    })
+    const started = supervisor.start()
+    adapter.ready()
+    await started
+
+    const query = supervisor.querySnapshot()
+    await vi.waitFor(() => expect(adapter.requests).toHaveLength(1))
+    adapter.reply(requestId(adapter.requests[0]), {
+      type: 'pong',
+      engineState: 'running',
+    })
+    await expect(query).rejects.toMatchObject({
+      failure: { code: 'media_snapshot_invalid' },
+    })
   })
 })

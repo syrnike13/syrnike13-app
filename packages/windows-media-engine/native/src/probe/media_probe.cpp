@@ -18,6 +18,7 @@ using syrnike::windows_media::EngineOptions;
 using syrnike::windows_media::EngineResult;
 using syrnike::windows_media::EngineState;
 using syrnike::windows_media::LifecycleEvent;
+using syrnike::windows_media::PublicEvent;
 
 struct ResourceBaseline {
   DWORD handles = 0;
@@ -81,9 +82,11 @@ void lifecycleCycle() {
   std::vector<LifecycleEvent> events;
   std::mutex events_mutex;
   Engine engine;
-  requireOk(engine.registerEventCallback([&](const LifecycleEvent& event) {
+  requireOk(engine.registerEventCallback([&](const PublicEvent& event) {
+    const auto* lifecycle = std::get_if<LifecycleEvent>(&event);
+    if (!lifecycle) return;
     std::lock_guard lock(events_mutex);
-    events.push_back(event);
+    events.push_back(*lifecycle);
   }), "registerEventCallback");
   requireOk(engine.start(), "start");
   requireOk(engine.ping(), "ping");

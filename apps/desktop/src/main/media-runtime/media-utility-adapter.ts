@@ -4,7 +4,10 @@ import path from 'node:path'
 import { app, utilityProcess, type UtilityProcess } from 'electron'
 
 import { DESKTOP_RELEASE_CHANNEL } from '../desktop-app-identity'
-import type { MediaLifecycleRequest } from './contract'
+import {
+  MEDIA_LIFECYCLE_PROTOCOL_VERSION,
+  type MediaLifecycleRequest,
+} from './contract'
 
 const MEDIA_UTILITY_ENV_ALLOWLIST = [
   'APPDATA',
@@ -176,7 +179,7 @@ function mediaUtilityEnvironment(
     SYRNIKE_MEDIA_ROOT: mediaRoot,
     SYRNIKE_MEDIA_APP_VERSION: app.getVersion(),
     SYRNIKE_MEDIA_RELEASE_CHANNEL: DESKTOP_RELEASE_CHANNEL,
-    SYRNIKE_MEDIA_PROTOCOL_VERSION: '1',
+    SYRNIKE_MEDIA_PROTOCOL_VERSION: String(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
     SYRNIKE_MEDIA_COMMIT_SHA: __DESKTOP_COMMIT_SHA__,
   }
 }

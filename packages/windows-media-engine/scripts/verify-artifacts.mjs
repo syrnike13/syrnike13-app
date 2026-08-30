@@ -8,6 +8,18 @@ import { fileURLToPath } from 'node:url'
 const EXPECTED_FILES = ['media-manifest.json', 'windows_media.node']
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(packageRoot, '..', '..')
+const protocolSource = readFileSync(
+  path.resolve(
+    repoRoot,
+    'apps',
+    'desktop',
+    'src',
+    'main',
+    'media-runtime',
+    'contract.ts',
+  ),
+  'utf8',
+)
 const targetRoot = path.resolve(
   process.argv[2] || path.resolve(packageRoot, 'dist', 'win32-x64'),
 )
@@ -40,7 +52,7 @@ const expectedChannel =
 const expectedCommit = process.env.GITHUB_SHA || gitCommitSha()
 if (
   manifest.schemaVersion !== 1 ||
-  manifest.protocolVersion !== 1 ||
+  manifest.protocolVersion !== protocolConstant('MEDIA_LIFECYCLE_PROTOCOL_VERSION') ||
   manifest.platform !== 'win32' ||
   manifest.arch !== 'x64' ||
   manifest.appVersion !== expectedVersion ||
@@ -48,13 +60,19 @@ if (
   manifest.commitSha !== expectedCommit ||
   manifest.electronVersion !== desktopRequire('electron/package.json').version ||
   manifest.napiVersion !== 8 ||
-  JSON.stringify(manifest.capabilities) !== JSON.stringify(['lifecycle']) ||
+  JSON.stringify(manifest.capabilities) !==
+    JSON.stringify(['lifecycle', 'control-v2', 'diagnostics-v2']) ||
   JSON.stringify(manifest.limits) !== JSON.stringify({
-    controlQueue: 16,
-    eventQueue: 64,
-    startDeadlineMs: 2000,
-    pingDeadlineMs: 1000,
-    shutdownDeadlineMs: 1000,
+    controlQueue: protocolConstant('MEDIA_LIFECYCLE_CONTROL_QUEUE_CAPACITY'),
+    eventQueue: protocolConstant('MEDIA_LIFECYCLE_EVENT_QUEUE_CAPACITY'),
+    startDeadlineMs: protocolConstant('MEDIA_LIFECYCLE_START_TIMEOUT_MS'),
+    pingDeadlineMs: protocolConstant('MEDIA_LIFECYCLE_PING_TIMEOUT_MS'),
+    shutdownDeadlineMs: protocolConstant('MEDIA_LIFECYCLE_SHUTDOWN_TIMEOUT_MS'),
+    maxIdentifierLength: protocolConstant('MEDIA_LIFECYCLE_MAX_IDENTIFIER_LENGTH'),
+    maxRemoteVideoDemands: protocolConstant('MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS'),
+    maxDiagnosticMetrics: protocolConstant('MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_METRICS'),
+    maxDiagnosticFields: protocolConstant('MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_FIELDS'),
+    maxRequestDeadlineMs: protocolConstant('MEDIA_LIFECYCLE_MAX_DEADLINE_MS'),
   }) ||
   !Array.isArray(manifest.files) ||
   manifest.files.length !== 1 ||
@@ -80,3 +98,10 @@ function gitCommitSha() {
   return result.stdout.trim()
 }
 
+function protocolConstant(name) {
+  const match = protocolSource.match(
+    new RegExp(`export const ${name} = ([0-9_]+)`),
+  )
+  if (!match) throw new Error(`Missing protocol source constant: ${name}`)
+  return Number(match[1].replaceAll('_', ''))
+}

@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 
 import {
   MEDIA_LIFECYCLE_HANDSHAKE_TIMEOUT_MS,
@@ -7,11 +7,18 @@ import {
   MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
   MEDIA_LIFECYCLE_PROTOCOL_VERSION,
   MEDIA_LIFECYCLE_SHUTDOWN_TIMEOUT_MS,
+  MediaAddonPingSchema,
+  MediaAddonSnapshotSchema,
+  MediaDesiredStateAcceptedSchema,
+  MediaLifecycleHandshakeResultSchema,
   MediaLifecycleError,
   isMediaLifecycleMessage,
   mediaLifecycleError,
   mediaLifecycleFailure,
   type MediaLifecycleCommand,
+  type EngineDesiredState,
+  type MediaLifecycleResult,
+  type MediaLifecycleDiagnosticEvent,
   type MediaLifecycleEvent,
   type MediaLifecycleFailure,
   type MediaLifecycleReady,
@@ -69,6 +76,9 @@ export class MediaRuntimeSupervisor {
   private readonly eventListeners = new Set<
     (event: MediaLifecycleEvent) => void
   >()
+  private readonly diagnosticListeners = new Set<
+    (event: MediaLifecycleDiagnosticEvent) => void
+  >()
   private readonly pending = new Map<string, PendingRequest>()
   private startPromise: Promise<MediaLifecycleReady> | null = null
   private resolveStart: ((ready: MediaLifecycleReady) => void) | null = null
@@ -100,6 +110,11 @@ export class MediaRuntimeSupervisor {
     return () => this.eventListeners.delete(listener)
   }
 
+  onDiagnostic(listener: (event: MediaLifecycleDiagnosticEvent) => void) {
+    this.diagnosticListeners.add(listener)
+    return () => this.diagnosticListeners.delete(listener)
+  }
+
   start() {
     if (this.snapshot.status === 'ready' && this.snapshot.ready) {
       return Promise.resolve(this.snapshot.ready)
@@ -127,10 +142,10 @@ export class MediaRuntimeSupervisor {
       this.rejectStart = reject
     })
     const startPromise = this.startPromise
-    const adapter = this.options.createAdapter()
-    const epoch = ++this.hostEpoch
-    this.adapter = adapter
     try {
+      const adapter = this.options.createAdapter()
+      const epoch = ++this.hostEpoch
+      this.adapter = adapter
       adapter.start({
         onMessage: (message) => this.handleMessage(adapter, epoch, message),
         onExit: (exit) => this.handleExit(adapter, epoch, exit),
@@ -182,9 +197,64 @@ export class MediaRuntimeSupervisor {
             this.sendRequest(
               { type: 'ping' },
               MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
+            ).then((result) =>
+              decodeCommandResult(
+                MediaAddonPingSchema,
+                result,
+                'media_ping_invalid',
+                'ping',
+              ),
             ),
           catch: normalizeLifecycleError('ping'),
         }),
+      ),
+    )
+  }
+
+  handshake() {
+    return this.start().then(() =>
+      this.sendRequest(
+        { type: 'handshake' },
+        MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
+      ).then((result) =>
+        decodeCommandResult(
+          MediaLifecycleHandshakeResultSchema,
+          result,
+          'media_handshake_invalid',
+          'handshake',
+        ),
+      ),
+    )
+  }
+
+  applyDesiredState(desiredState: EngineDesiredState) {
+    return this.start().then(() =>
+      this.sendRequest(
+        { type: 'applyDesiredState', desiredState },
+        MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
+      ).then((result) =>
+        decodeCommandResult(
+          MediaDesiredStateAcceptedSchema,
+          result,
+          'media_apply_invalid',
+          'apply_desired_state',
+        ),
+      ),
+    )
+  }
+
+  querySnapshot() {
+    return this.start().then(() =>
+      this.sendRequest(
+        { type: 'querySnapshot' },
+        MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
+      ).then((result) =>
+        decodeCommandResult(
+          MediaAddonSnapshotSchema,
+          result,
+          'media_snapshot_invalid',
+          'query_snapshot',
+        ).snapshot,
       ),
     )
   }
@@ -238,7 +308,10 @@ export class MediaRuntimeSupervisor {
     })
   }
 
-  private sendRequest(command: MediaLifecycleCommand, timeoutMs: number) {
+  private sendRequest(
+    command: MediaLifecycleCommand,
+    timeoutMs: number,
+  ): Promise<MediaLifecycleResult> {
     const adapter = this.adapter
     if (!adapter || this.snapshot.status !== 'ready') {
       return Promise.reject(
@@ -263,11 +336,13 @@ export class MediaRuntimeSupervisor {
     const requestId = this.nextRequestId()
     const request: MediaLifecycleRequest = {
       type: 'request',
+      protocolVersion: MEDIA_LIFECYCLE_PROTOCOL_VERSION,
       requestId,
       hostEpoch: this.hostEpoch,
+      deadlineMs: timeoutMs,
       command,
     }
-    return new Promise<unknown>((resolve, reject) => {
+    return new Promise<MediaLifecycleResult>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(requestId)
         reject(
@@ -315,6 +390,10 @@ export class MediaRuntimeSupervisor {
     }
     if (rawMessage.type === 'reply') {
       this.handleReply(rawMessage)
+      return
+    }
+    if (rawMessage.type === 'diagnostic') {
+      for (const listener of this.diagnosticListeners) listener(rawMessage.event)
       return
     }
     for (const listener of this.eventListeners) listener(rawMessage.event)
@@ -528,4 +607,21 @@ function normalizeLifecycleError(stage: string) {
           cause instanceof Error ? cause.message : String(cause),
           stage,
         )
+}
+
+function decodeCommandResult<S extends Schema.ConstraintDecoder<unknown>>(
+  schema: S,
+  value: unknown,
+  code: string,
+  stage: string,
+): S['Type'] {
+  const decoded = Schema.decodeUnknownOption(schema, {
+    onExcessProperty: 'error',
+  })(value)
+  if (Option.isSome(decoded)) return decoded.value
+  throw mediaLifecycleError(
+    code,
+    'Media utility host returned an invalid command result',
+    stage,
+  )
 }
