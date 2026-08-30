@@ -84,6 +84,7 @@ export default defineConfig([
     entry: {
       'hotkey-host': 'src/utility/hotkey-host.ts',
       'overlay-host': 'src/utility/overlay-host.ts',
+      'media-host': 'src/utility/media-host-entry.ts',
       'shutdown-budget': 'src/main/shutdown-budget.ts',
     },
     outDir: 'out/utility',

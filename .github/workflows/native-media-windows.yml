@@ -44,7 +44,7 @@ permissions:
 
 jobs:
   native-boundary:
-    name: Hook addons and unavailable media boundary
+    name: Hook addons and media lifecycle boundary
     runs-on: windows-2025-vs2026
     env:
       SYRNIKE_DESKTOP_CHANNEL: ${{ inputs.release_channel || 'stable' }}
@@ -58,8 +58,16 @@ jobs:
           cache: pnpm
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
-      - name: Check empty v2 package boundary
-        run: pnpm --filter @syrnike13/windows-media-engine build
+      - name: Build and test Debug media lifecycle engine
+        run: |
+          pnpm windows-media:build:debug
+          pnpm windows-media:test:debug
+      - name: Build, test, and verify Release media lifecycle engine
+        run: |
+          pnpm windows-media:build
+          pnpm windows-media:test
+          pnpm windows-media:probe
+          pnpm windows-media:verify
       - name: Build and test Debug hook addons
         run: |
           pnpm desktop-native:build:debug
@@ -76,6 +84,8 @@ jobs:
           pnpm desktop:test
       - name: Build desktop assets for package
         run: pnpm desktop:build
+      - name: Run 50-cycle Electron media lifecycle smoke
+        run: pnpm --filter @syrnike13/desktop smoke:media-lifecycle
       - name: Build and verify unpacked Windows package
         run: pnpm --filter @syrnike13/desktop package:prepared
       - name: Upload verified Windows hook addons
@@ -87,6 +97,15 @@ jobs:
           path: |
             packages/desktop-native/dist/win32-x64/**
             apps/desktop/out/native/win32-x64/**
+      - name: Upload verified Windows media lifecycle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: media-engine-windows-${{ inputs.release_channel || 'stable' }}-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            packages/windows-media-engine/dist/win32-x64/**
+            apps/desktop/out/media-native/win32-x64/**
       - name: Upload native debug symbols
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -97,6 +116,17 @@ jobs:
           path: |
             packages/desktop-native/build/**/*.pdb
             packages/desktop-native/dist/win32-x64/native-manifest.json
+      - name: Upload media lifecycle debug symbols
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: media-engine-windows-symbols-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: ${{ inputs.symbol_retention_days || 14 }}
+          path: |
+            packages/windows-media-engine/build/**/*.pdb
+            packages/windows-media-engine/build/Release/media_probe.exe
+            packages/windows-media-engine/dist/win32-x64/media-manifest.json
 
   native-hooks-asan:
     name: Hook addons AddressSanitizer
@@ -114,3 +144,5 @@ jobs:
         run: |
           pnpm desktop-native:build:asan
           pnpm desktop-native:test:debug
+          pnpm windows-media:build:asan
+          pnpm windows-media:test:debug

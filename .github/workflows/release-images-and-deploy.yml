@@ -416,12 +416,27 @@ jobs:
       - name: Verify downloaded Windows hook addons
         if: runner.os == 'Windows'
         run: pnpm desktop-native:verify
+      - name: Download verified Windows media lifecycle artifacts
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: media-engine-windows-stable-${{ github.sha }}
+          path: .
+      - name: Verify downloaded Windows media lifecycle artifacts
+        if: runner.os == 'Windows'
+        run: pnpm windows-media:verify
       - name: Download Windows native debug symbols
         if: runner.os == 'Windows'
         uses: actions/download-artifact@v4
         with:
           name: native-hooks-windows-symbols-${{ github.sha }}
           path: packages/desktop-native
+      - name: Download Windows media lifecycle debug symbols
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: media-engine-windows-symbols-${{ github.sha }}
+          path: packages/windows-media-engine
       - name: Build desktop
         if: runner.os != 'Windows'
         run: pnpm desktop:build

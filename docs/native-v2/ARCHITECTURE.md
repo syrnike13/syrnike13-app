@@ -34,6 +34,31 @@ Electron hotkeys / overlay
 - Desktop packaging contains only the hotkey and overlay addons plus their manifest; no `syrnike_media.node`, LiveKit DLL, media helper, or custom runtime executable is allowed.
 - Historical v1 behavior is available from Git history and `main`; v2 must not copy old C++ files or wrap the old engine behind a compatibility API.
 
-## Next implementation seam
+## Lifecycle foundation
 
-Future work belongs in `packages/windows-media-engine`. The first executable code must define explicit owners, owner threads, cancellation, teardown order, and bounded waits before adding LiveKit, WASAPI, Media Foundation, D3D, capture, or rendering dependencies.
+The first executable v2 slice lives in `packages/windows-media-engine` and contains no media API:
+
+```text
+Electron main: MediaRuntimeSupervisor
+  -> Electron media utility process
+    -> windows_media.node: AddonOwner
+      -> media_core.lib: Engine
+        -> one bounded control queue / one control thread
+
+media_probe.exe
+  -> media_core.lib directly
+```
+
+The one-shot `Engine` follows this finite transition table. A second lifecycle creates a new `Engine` rather than resetting a consumed instance.
+
+```text
+Stopped -> Starting -> Running -> Stopping -> Stopped
+             |          |
+             +-------> Failed -> Stopping -> Stopped
+```
+
+Only the control thread commits these transitions. Its command queue has capacity 16 and reserves the last slot for shutdown. The addon callback places immutable lifecycle values into a Node-API thread-safe function with capacity 64; it cannot start, stop, or recover the Engine. The TypeScript supervisor owns at most 16 pending lifecycle requests and may restart the utility host after 250 ms and 1 second before entering `failed`. It never replays media intent because no media intent exists in this slice.
+
+Deadlines are fixed at 2 seconds for core startup, 1 second for core ping and shutdown, 5 seconds for the Electron handshake, and 1.5 seconds for the outer utility shutdown. A non-cooperative worker is never detached: the outer probe or Electron main terminates the utility process after its deadline.
+
+`NativeRtcEngineAdapter` remains unavailable. The lifecycle process proves ownership and fault containment only; the versioned desired-state protocol belongs to the next roadmap issue, and real media integration belongs to the later desktop cutover.

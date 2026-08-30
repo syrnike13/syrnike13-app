@@ -398,7 +398,15 @@ importers:
         specifier: ^4.1.5
         version: 4.1.8(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(jsdom@28.1.0)(vite@8.0.16(@types/node@24.13.3)(esbuild@0.27.7)(jiti@2.7.0)(yaml@2.9.0))
 
-  packages/windows-media-engine: {}
+  packages/windows-media-engine:
+    dependencies:
+      node-addon-api:
+        specifier: ^8.9.0
+        version: 8.9.0
+    devDependencies:
+      cmake-js:
+        specifier: ^8.0.0
+        version: 8.0.0
 
 packages:
 

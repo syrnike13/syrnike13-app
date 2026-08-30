@@ -1,0 +1,176 @@
+import { describe, expect, it, vi } from 'vitest'
+
+import type {
+  MediaUtilityAdapter,
+  MediaUtilityCallbacks,
+} from './media-utility-adapter'
+import { MediaRuntimeSupervisor } from './media-runtime-supervisor'
+
+const COMMIT_SHA = 'c'.repeat(40)
+
+class FakeMediaAdapter implements MediaUtilityAdapter {
+  readonly pid = 81
+  callbacks: MediaUtilityCallbacks | null = null
+  readonly requests: unknown[] = []
+  killed = false
+
+  start(callbacks: MediaUtilityCallbacks) {
+    this.callbacks = callbacks
+  }
+
+  postMessage(message: unknown) {
+    this.requests.push(message)
+  }
+
+  kill() {
+    this.killed = true
+  }
+
+  ready() {
+    this.callbacks?.onMessage({
+      type: 'ready',
+      protocolVersion: 1,
+      engineState: 'running',
+      build: { commit: COMMIT_SHA, napi: '8' },
+    })
+  }
+
+  reply(requestId: string, result?: unknown) {
+    this.callbacks?.onMessage({
+      type: 'reply',
+      requestId,
+      ok: true,
+      result,
+    })
+  }
+
+  unexpectedExit() {
+    this.callbacks?.onExit({
+      code: 9,
+      source: 'exit',
+      expected: false,
+      uptimeMs: 20,
+      stderr: '',
+      stderrTruncated: false,
+    })
+  }
+}
+
+function requestId(value: unknown) {
+  if (typeof value !== 'object' || value === null) throw new Error('request missing')
+  const id = Reflect.get(value, 'requestId')
+  if (typeof id !== 'string') throw new Error('request id missing')
+  return id
+}
+
+describe('MediaRuntimeSupervisor', () => {
+  it('routes handshake, ping, and bounded graceful shutdown', async () => {
+    const adapter = new FakeMediaAdapter()
+    const supervisor = new MediaRuntimeSupervisor({
+      createAdapter: () => adapter,
+    })
+    const started = supervisor.start()
+    adapter.ready()
+    await started
+
+    const ping = supervisor.ping()
+    await vi.waitFor(() => expect(adapter.requests).toHaveLength(1))
+    adapter.reply(requestId(adapter.requests[0]), {
+      ok: true,
+      engineState: 'running',
+    })
+    await expect(ping).resolves.toEqual({
+      ok: true,
+      engineState: 'running',
+    })
+
+    const shutdown = supervisor.shutdown()
+    await vi.waitFor(() => expect(adapter.requests).toHaveLength(2))
+    adapter.reply(requestId(adapter.requests[1]), {
+      ok: true,
+      engineState: 'stopped',
+    })
+    await shutdown
+    expect(adapter.killed).toBe(true)
+    expect(supervisor.getSnapshot().status).toBe('stopped')
+    expect(supervisor.getPendingRequestCount()).toBe(0)
+  })
+
+  it('detects unexpected exit and performs only the bounded restart policy', async () => {
+    vi.useFakeTimers()
+    const first = new FakeMediaAdapter()
+    const second = new FakeMediaAdapter()
+    const adapters = [first, second]
+    const supervisor = new MediaRuntimeSupervisor({
+      createAdapter: () => {
+        const adapter = adapters.shift()
+        if (!adapter) throw new Error('restart budget exhausted')
+        return adapter
+      },
+      restartDelaysMs: [10],
+    })
+    const started = supervisor.start()
+    first.ready()
+    await started
+    first.unexpectedExit()
+    expect(supervisor.getSnapshot()).toMatchObject({
+      status: 'recovering',
+      failure: { code: 'unexpected_exit' },
+    })
+    await vi.advanceTimersByTimeAsync(10)
+    second.ready()
+    await vi.waitFor(() => expect(supervisor.getSnapshot().status).toBe('ready'))
+    expect(supervisor.getSnapshot().restartCount).toBe(1)
+    const shutdown = supervisor.shutdown()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(second.requests).toHaveLength(1)
+    second.reply(requestId(second.requests[0]), {
+      ok: true,
+      engineState: 'stopped',
+    })
+    await shutdown
+    vi.useRealTimers()
+  })
+
+  it('rejects an incompatible handshake and stops after zero configured retries', async () => {
+    const adapter = new FakeMediaAdapter()
+    const supervisor = new MediaRuntimeSupervisor({
+      createAdapter: () => adapter,
+      restartDelaysMs: [],
+    })
+    const started = supervisor.start()
+    adapter.callbacks?.onMessage({
+      type: 'ready',
+      protocolVersion: 0,
+      engineState: 'failed',
+      failure: {
+        code: 'media_handshake_incompatible',
+        message: 'incompatible',
+        stage: 'handshake',
+        retryable: false,
+      },
+    })
+    await expect(started).rejects.toMatchObject({
+      failure: { code: 'media_handshake_incompatible' },
+    })
+    expect(adapter.killed).toBe(true)
+    expect(supervisor.getSnapshot().status).toBe('failed')
+  })
+
+  it('settles a pending start when shutdown happens before the handshake', async () => {
+    const adapter = new FakeMediaAdapter()
+    const supervisor = new MediaRuntimeSupervisor({
+      createAdapter: () => adapter,
+    })
+    const started = supervisor.start()
+    const startFailure = expect(started).rejects.toMatchObject({
+      failure: { code: 'media_host_stopped' },
+    })
+
+    await supervisor.shutdown()
+
+    await startFailure
+    expect(adapter.killed).toBe(true)
+    expect(supervisor.getSnapshot().status).toBe('stopped')
+  })
+})

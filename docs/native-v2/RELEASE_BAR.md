@@ -2,6 +2,15 @@
 
 Windows native media remains unavailable until every item below is demonstrated on supported Windows hardware and recorded in CI or a repeatable qualification run.
 
+## Lifecycle foundation evidence
+
+- `media_probe lifecycle-repeat --count 100` creates a new one-shot Engine per cycle and requires exact post-warmup thread/handle baseline after every cycle.
+- CTest covers the transition table, concurrent ping/shutdown, shutdown during `Starting`, deterministic startup rollback, double shutdown, late-event fencing, and forced process containment for a non-cooperative test worker.
+- The Electron smoke performs 50 real utility-process start/handshake/ping/shutdown cycles, rejects an incompatible protocol environment, kills a running utility process, and starts another clean cycle in the surviving Electron main process.
+- Release, Debug, and Debug/ASan builds use the same core sources; CI retains the probe executable, PDBs, manifests, and command output as evidence.
+
+This evidence only opens the lifecycle boundary. It does not make desktop media available and does not satisfy any audio, video, capture, transport, or hardware row below.
+
 ## Correctness
 
 - Join, leave, channel move, reconnect, credential rotation, logout, suspend, lock, unlock, and app shutdown preserve Voice Director and membership invariants without stale participants or publications.
