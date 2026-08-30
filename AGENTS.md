@@ -11,6 +11,7 @@
 - The user does not see code by default, so explanations must cite concrete files and relevant snippets.
 - Do not create issues, branches, PRs, comments, deployments, or external side effects unless requested.
 - For manual-save UI, register dirty state with the shared draft controller and show `UnsavedChangesBar` with save and reset actions.
+- When diagnosing environment, toolchain, or third-party library failures, read `know-bugs.md` before changing the machine. Record there only known external bugs and constraints that cannot be fixed in this codebase; application defects belong in the issue tracker or application documentation.
 
 ## Repository map
 
