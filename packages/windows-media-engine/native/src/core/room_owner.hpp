@@ -4,6 +4,8 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <thread>
 
 #include "core/engine.hpp"
 
@@ -19,6 +21,8 @@ enum class RoomConnectionState {
 struct RoomConnectRequest {
   std::string url;
   std::string token;
+  std::string expected_room_id;
+  std::string expected_participant_identity;
 };
 
 struct RoomConnectionEvent {
@@ -48,8 +52,9 @@ public:
 class RoomOwner final {
 public:
   explicit RoomOwner(std::shared_ptr<RoomTransport> transport,
-                     RoomConnectionEventCallback event_callback = {});
-  ~RoomOwner() = default;
+                     RoomConnectionEventCallback event_callback = {},
+                     RoomOperationDeadlines deadlines = {});
+  ~RoomOwner();
 
   RoomOwner(const RoomOwner &) = delete;
   RoomOwner &operator=(const RoomOwner &) = delete;
@@ -63,9 +68,17 @@ public:
 
 private:
   struct SharedState;
+  void runDeadlineWatchdog() noexcept;
+
   std::shared_ptr<RoomTransport> transport_;
   std::shared_ptr<SharedState> state_;
+  RoomOperationDeadlines deadlines_;
+  std::thread deadline_watchdog_;
 };
+
+[[nodiscard]] EngineResult validateRoomAuthority(
+    const RoomConnectRequest &request, std::string_view actual_room_id,
+    std::string_view actual_participant_identity);
 
 [[nodiscard]] const char *
 roomConnectionStateName(RoomConnectionState state) noexcept;

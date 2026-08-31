@@ -278,4 +278,62 @@ describe('MediaRuntimeSupervisor', () => {
       roomState: 'connected',
     })
   })
+
+  it('retires and replaces a utility epoch after a fatal native engine failure', async () => {
+    vi.useFakeTimers()
+    const first = new FakeMediaAdapter()
+    const second = new FakeMediaAdapter()
+    const adapters = [first, second]
+    const supervisor = new MediaRuntimeSupervisor({
+      createAdapter: () => {
+        const adapter = adapters.shift()
+        if (!adapter) throw new Error('restart budget exhausted')
+        return adapter
+      },
+      restartDelaysMs: [10],
+    })
+    const started = supervisor.start()
+    first.ready()
+    await started
+    const pendingPing = supervisor.ping()
+    await vi.waitFor(() => expect(first.requests).toHaveLength(1))
+
+    first.callbacks?.onMessage({
+      type: 'event',
+      protocolVersion: 3,
+      event: {
+        type: 'fatalEngineFailure',
+        sequence: 1,
+        failure: {
+          code: 'room_operation_unresponsive',
+          message: 'Room operation exceeded its independent deadline',
+          stage: 'room_disconnect',
+          retryable: true,
+        },
+      },
+    })
+
+    expect(first.killed).toBe(true)
+    expect(supervisor.getSnapshot()).toMatchObject({
+      status: 'recovering',
+      failure: { code: 'room_operation_unresponsive' },
+    })
+    await expect(pendingPing).rejects.toMatchObject({
+      failure: { code: 'room_operation_unresponsive' },
+    })
+    await vi.advanceTimersByTimeAsync(10)
+    second.ready()
+    await vi.waitFor(() => expect(supervisor.getSnapshot().status).toBe('ready'))
+    expect(supervisor.getSnapshot().restartCount).toBe(1)
+    expect(second.requests).toHaveLength(0)
+
+    const shutdown = supervisor.shutdown()
+    await vi.advanceTimersByTimeAsync(0)
+    second.reply(requestId(second.requests[0]), {
+      type: 'shutdownComplete',
+      engineState: 'stopped',
+    })
+    await shutdown
+    vi.useRealTimers()
+  })
 })

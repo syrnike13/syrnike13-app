@@ -413,7 +413,7 @@ int main() {
       if (!lease.ok)
         throw std::runtime_error("Credential lease was rejected");
       const RoomIntent room_intent{
-          "media-lab",
+          "native-v2-media-lab",
           "native-v2-publisher",
           "media-lab-lease",
       };

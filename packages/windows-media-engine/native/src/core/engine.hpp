@@ -42,6 +42,15 @@ inline constexpr auto kControlDeadline =
 inline constexpr auto kShutdownDeadline =
     std::chrono::milliseconds(protocol::kShutdownDeadlineMs);
 
+struct RoomOperationDeadlines {
+  std::chrono::milliseconds connect{
+      protocol::kRoomConnectDeadlineMs};
+  std::chrono::milliseconds disconnect{
+      protocol::kRoomDisconnectDeadlineMs};
+  std::chrono::milliseconds cancellation{
+      protocol::kRoomCancellationDeadlineMs};
+};
+
 enum class EngineState {
   Stopped,
   Starting,
@@ -199,6 +208,7 @@ struct EngineOptions {
   std::function<void()> test_before_apply_commit;
   std::function<void()> test_before_credential_commit;
   std::shared_ptr<RoomTransport> room_transport;
+  RoomOperationDeadlines room_operation_deadlines;
 };
 
 class Engine final {

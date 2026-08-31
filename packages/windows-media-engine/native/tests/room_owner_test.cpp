@@ -278,6 +278,103 @@ void fiftyLifecycleCyclesReturnToBaseline() {
           "callbacks did not return to baseline");
 }
 
+void roomAuthorityMustMatchDesiredIntent() {
+  const RoomConnectRequest expected{
+      "ws://localhost", "token", "room-a", "participant-a"};
+  require(validateRoomAuthority(expected, "room-a", "participant-a").ok,
+          "matching LiveKit authority was rejected");
+  for (const auto &[room_id, participant_identity] : {
+           std::pair{"room-b", "participant-a"},
+           std::pair{"room-a", "participant-b"},
+           std::pair{"", "participant-a"},
+       }) {
+    const auto result =
+        validateRoomAuthority(expected, room_id, participant_identity);
+    require(!result.ok && result.failure &&
+                result.failure->code == "room_authority_mismatch" &&
+                !result.failure->retryable,
+            "LiveKit authority mismatch was not rejected with a typed failure");
+  }
+}
+
+enum class HungRoomOperation { Connect, Disconnect, Cancellation };
+
+void hundredHungOperationsAreBounded(HungRoomOperation operation) {
+  constexpr std::size_t kIterations = 100;
+  const RoomOperationDeadlines deadlines{
+      std::chrono::milliseconds(10),
+      std::chrono::milliseconds(10),
+      std::chrono::milliseconds(10),
+  };
+  for (std::size_t iteration = 0; iteration < kIterations; ++iteration) {
+    auto transport = std::make_shared<ManualRoomTransport>();
+    std::mutex mutex;
+    std::condition_variable changed;
+    std::vector<RoomConnectionEvent> events;
+    RoomOwner owner(
+        transport,
+        [&](const RoomConnectionEvent &event) {
+          {
+            std::lock_guard lock(mutex);
+            events.push_back(event);
+          }
+          changed.notify_all();
+        },
+        deadlines);
+    require(owner
+                .beginConnect(RoomConnectRequest{
+                    "ws://localhost", "token", "room-a", "participant-a"})
+                .ok,
+            "bounded room operation did not start connect");
+    transport->waitForConnectStarts(1);
+
+    if (operation == HungRoomOperation::Disconnect) {
+      transport->completeConnect(1, EngineResult::success());
+      {
+        std::lock_guard lock(mutex);
+        events.clear();
+      }
+      require(owner.beginDisconnect().ok,
+              "bounded room disconnect did not start");
+      transport->waitForDisconnectStarts(1);
+    } else if (operation == HungRoomOperation::Cancellation) {
+      require(owner.cancelPendingConnect().ok,
+              "bounded room cancellation did not start");
+    }
+    if (operation != HungRoomOperation::Connect) {
+      require(owner.beginTeardown().ok,
+              "repeated teardown during a hung operation was not idempotent");
+    }
+
+    {
+      std::unique_lock lock(mutex);
+      require(changed.wait_for(lock, std::chrono::seconds(1), [&] {
+                return !events.empty();
+              }),
+              "hung room operation had no finite terminal outcome");
+      const auto expected_stage =
+          operation == HungRoomOperation::Connect
+              ? "room_connect"
+              : operation == HungRoomOperation::Disconnect
+                    ? "room_disconnect"
+                    : "room_cancel_teardown";
+      require(events.size() == 1 && events.front().failure &&
+                  events.front().failure->code ==
+                      "room_operation_unresponsive" &&
+                  events.front().failure->stage == expected_stage,
+              "hung room operation did not emit one typed deadline failure");
+    }
+
+    if (operation == HungRoomOperation::Disconnect)
+      transport->completeDisconnect(1, EngineResult::success());
+    else
+      transport->completeConnect(1, EngineResult::success());
+    std::lock_guard lock(mutex);
+    require(events.size() == 1,
+            "late room completion emitted a second terminal outcome");
+  }
+}
+
 } // namespace
 
 void runRoomOwnerTests() {
@@ -288,6 +385,10 @@ void runRoomOwnerTests() {
   lateCancellationFallsThroughToDisconnect();
   lateCompletionCannotMutateNewGeneration();
   fiftyLifecycleCyclesReturnToBaseline();
+  roomAuthorityMustMatchDesiredIntent();
+  hundredHungOperationsAreBounded(HungRoomOperation::Connect);
+  hundredHungOperationsAreBounded(HungRoomOperation::Disconnect);
+  hundredHungOperationsAreBounded(HungRoomOperation::Cancellation);
 }
 
 } // namespace syrnike::windows_media::tests

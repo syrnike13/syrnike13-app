@@ -5,10 +5,11 @@ Windows native media remains unavailable until every item below is demonstrated 
 ## Lifecycle foundation evidence
 
 - `media_probe lifecycle-repeat --count 100` creates a new one-shot Engine per cycle and requires exact post-warmup thread/handle baseline after every cycle.
-- CTest covers the transition table, all public event variants, concurrent ping/shutdown, shutdown during `Starting`, deterministic startup rollback, an in-flight apply/deadline race with a coherent unchanged snapshot, double shutdown, late-event fencing, and forced process containment for a non-cooperative test worker.
+- CTest covers the transition table, all public event variants, concurrent ping/shutdown, shutdown during `Starting`, deterministic startup rollback, an in-flight apply/deadline race with a coherent unchanged snapshot, double shutdown, late-event fencing, forced process containment for a non-cooperative test worker, and 100 consecutive bounded outcomes for each hung Room connect/disconnect/cancellation path.
 - The Electron smoke performs 50 real utility-process start/handshake/ping/shutdown cycles, rejects an incompatible protocol environment, kills a running utility process, and starts another clean cycle in the surviving Electron main process.
 - Every Electron smoke cycle round-trips the same desired-state fixture through TypeScript, the utility host, N-API, and C++ before comparing the queried snapshot field for field. Direct addon conformance covers revision conflicts, maximum bounds, one-over and malformed rejection, late-callback fencing, and a 502-event diagnostic flood that delivers at most the queue capacity while control remains responsive.
 - Release, Debug, and Debug/ASan builds use the same core sources; CI retains the probe executable, PDBs, manifests, and command output as evidence.
+- CI runs the non-mutating generated-protocol check before native compilation, so a descriptor change cannot be hidden by build-time regeneration.
 
 This evidence only opens the lifecycle boundary. It does not make desktop media available and does not satisfy any audio, video, capture, transport, or hardware row below.
 

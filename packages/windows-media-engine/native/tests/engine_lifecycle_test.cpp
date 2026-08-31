@@ -110,6 +110,11 @@ public:
     return request_.token;
   }
 
+  RoomConnectRequest lastRequest() const {
+    std::lock_guard lock(mutex_);
+    return request_;
+  }
+
   std::size_t connectStarts() const {
     std::lock_guard lock(mutex_);
     return connect_starts_;
@@ -614,6 +619,50 @@ void failedCancellationTeardownDoesNotStartReplacementRoom() {
   requireOk(shutdown_result, "cancellation failure shutdown retry");
 }
 
+void authorityMismatchRetiresEngineEpoch() {
+  auto transport = std::make_shared<EngineRoomTransport>();
+  std::mutex mutex;
+  std::condition_variable changed;
+  std::optional<EngineFailure> fatal_failure;
+  Engine engine(EngineOptions{.room_transport = transport});
+  requireOk(engine.registerEventCallback([&](const PublicEvent &event) {
+    const auto *fatal = std::get_if<FatalEngineFailureEvent>(&event);
+    if (!fatal)
+      return;
+    {
+      std::lock_guard lock(mutex);
+      fatal_failure = fatal->failure;
+    }
+    changed.notify_all();
+  }),
+            "authority mismatch callback");
+  requireOk(engine.start(), "authority mismatch Engine start");
+  require(engine
+              .installCredentialLease(CredentialLease{
+                  "lease-1", "ws://127.0.0.1:7880", "wrong-authority-token"})
+              .ok,
+          "authority mismatch lease install failed");
+  require(engine.applyDesiredState(desiredState(1, "room-a")).ok,
+          "authority mismatch desired state failed");
+  transport->completeConnect(EngineResult::fail(EngineFailure{
+      "room_authority_mismatch",
+      "Connected LiveKit authority does not match the desired room intent",
+      "room_authority", false}));
+  {
+    std::unique_lock lock(mutex);
+    require(changed.wait_for(lock, std::chrono::seconds(1), [&] {
+              return fatal_failure.has_value();
+            }),
+            "authority mismatch did not emit a fatal Engine event");
+    require(fatal_failure->code == "room_authority_mismatch" &&
+                !fatal_failure->retryable,
+            "authority mismatch fatal event lost its typed failure");
+  }
+  require(engine.state() == EngineState::Failed,
+          "authority mismatch left the Engine reusable");
+  requireOk(engine.shutdown(), "authority mismatch shutdown");
+}
+
 void desiredRoomUsesProductionCoordinatorPath() {
   auto transport = std::make_shared<EngineRoomTransport>();
   Engine engine(EngineOptions{.room_transport = transport});
@@ -641,6 +690,11 @@ void desiredRoomUsesProductionCoordinatorPath() {
           "room intent did not start a non-blocking connection");
   require(transport->lastToken() == "private-token",
           "private credential did not reach the transport");
+  const auto connect_request = transport->lastRequest();
+  require(connect_request.expected_room_id == "room-a" &&
+              connect_request.expected_participant_identity ==
+                  "participant-1",
+          "desired room authority did not reach the transport");
   transport->completeConnect();
   snapshot = engine.querySnapshot();
   require(snapshot.ok && snapshot.snapshot &&
@@ -715,6 +769,7 @@ int main() try {
   tooLateCancellationDisconnectsCommittedRoom();
   failedDisconnectDoesNotStartReplacementRoom();
   failedCancellationTeardownDoesNotStartReplacementRoom();
+  authorityMismatchRetiresEngineEpoch();
   desiredRoomUsesProductionCoordinatorPath();
   syrnike::windows_media::tests::runRoomOwnerTests();
   std::cout << "media-core-tests:ok\n";

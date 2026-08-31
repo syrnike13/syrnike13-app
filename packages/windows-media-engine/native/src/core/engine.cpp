@@ -210,7 +210,8 @@ public:
               mailbox->room_events.push_back(event);
             }
             mailbox->changed.notify_one();
-          });
+          },
+          options_.room_operation_deadlines);
     }
     control_thread_ = std::thread([this] { controlLoop(); });
   }
@@ -722,6 +723,17 @@ private:
                         event.state != room_owner_->state())) {
       return;
     }
+    const bool fatal_room_failure =
+        event.failure &&
+        (event.failure->code == "room_operation_unresponsive" ||
+         event.failure->code == "room_authority_mismatch");
+    if (fatal_room_failure) {
+      setRoomPublicState(RoomStateChangedEvent::State::Failed, event.failure);
+      transition(EngineState::Failed, event.failure);
+      if (pending_shutdown_command_)
+        completeDeferredShutdown(EngineResult::fail(*event.failure));
+      return;
+    }
     if (state_.load() == EngineState::Stopping) {
       if (event.state == RoomConnectionState::Disconnected) {
         active_room_intent_.reset();
@@ -859,6 +871,8 @@ private:
     const auto result = room_owner_->beginConnect(RoomConnectRequest{
         std::move(credential.server_url),
         std::move(credential.access_token),
+        desired.room->room_id,
+        desired.room->participant_identity,
     });
     if (!result.ok)
       setRoomPublicState(RoomStateChangedEvent::State::Failed, result.failure);

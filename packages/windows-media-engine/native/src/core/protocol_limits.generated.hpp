@@ -10,7 +10,7 @@
 namespace syrnike::windows_media::protocol {
 
 inline constexpr int kVersion = 3;
-inline constexpr std::string_view kSchemaSha256 = "3d68aa01741ac4047ad38e15b0dc7f267f05db1beced3a970d40267e900bf16a";
+inline constexpr std::string_view kSchemaSha256 = "16ef123aad7acfccd9ed82ab91e8845fd09da23ff8f166d6f048c48a24d54fad";
 inline constexpr std::size_t kControlQueueCapacity = 16;
 inline constexpr std::size_t kEventQueueCapacity = 64;
 inline constexpr std::size_t kMaximumCredentialLeases = 4;
@@ -27,6 +27,9 @@ inline constexpr std::size_t kMaximumFailureCodeLength = 128;
 inline constexpr std::size_t kMaximumFailureMessageLength = 4096;
 inline constexpr std::size_t kMaximumFailureStageLength = 128;
 inline constexpr std::uint32_t kMaximumRequestDeadlineMs = 5000;
+inline constexpr std::uint32_t kRoomConnectDeadlineMs = 12000;
+inline constexpr std::uint32_t kRoomDisconnectDeadlineMs = 2000;
+inline constexpr std::uint32_t kRoomCancellationDeadlineMs = 2000;
 inline constexpr std::uint32_t kStartDeadlineMs = 2000;
 inline constexpr std::uint32_t kPingDeadlineMs = 1000;
 inline constexpr std::uint32_t kShutdownDeadlineMs = 1000;

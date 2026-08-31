@@ -66,6 +66,8 @@ jobs:
           cache-dependency-path: services/livekit-server/go.sum
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
+      - name: Verify generated media protocol is committed
+        run: pnpm --filter @syrnike13/windows-media-engine protocol:check
       - name: Build and test Debug media lifecycle engine
         run: |
           pnpm windows-media:build:debug

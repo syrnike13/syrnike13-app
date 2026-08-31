@@ -434,6 +434,14 @@ export class MediaRuntimeSupervisor {
     const hasGap = event.sequence !== this.lastPublicEventSequence + 1
     this.lastPublicEventSequence = event.sequence
     for (const listener of this.eventListeners) listener(event)
+    if (event.type === 'fatalEngineFailure') {
+      this.retireHost(
+        adapter,
+        epoch,
+        MediaLifecycleError.make({ failure: event.failure }),
+      )
+      return
+    }
     if (hasGap) this.recoverSnapshot()
   }
 

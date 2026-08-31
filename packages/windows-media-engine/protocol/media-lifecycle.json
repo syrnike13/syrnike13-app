@@ -20,6 +20,9 @@
     "maximumFailureMessageLength": 4096,
     "maximumFailureStageLength": 128,
     "maximumRequestDeadlineMs": 5000,
+    "roomConnectDeadlineMs": 12000,
+    "roomDisconnectDeadlineMs": 2000,
+    "roomCancellationDeadlineMs": 2000,
     "startDeadlineMs": 2000,
     "pingDeadlineMs": 1000,
     "shutdownDeadlineMs": 1000

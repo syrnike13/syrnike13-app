@@ -1,7 +1,10 @@
 #include "core/room_owner.hpp"
 
+#include <chrono>
+#include <condition_variable>
 #include <exception>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
@@ -31,10 +34,15 @@ EngineResult invalidState(const char *operation, RoomConnectionState state) {
 
 struct RoomOwner::SharedState final {
   mutable std::mutex mutex;
+  std::condition_variable deadline_changed;
   RoomConnectionState connection_state = RoomConnectionState::Disconnected;
   std::uint64_t generation = 0;
   bool cancellation_requested = false;
   bool teardown_requested = false;
+  bool completion_pending = false;
+  bool stopping = false;
+  std::optional<std::chrono::steady_clock::time_point> operation_deadline;
+  std::string operation_stage;
   RoomConnectionEventCallback event_callback;
 };
 
@@ -53,12 +61,87 @@ const char *roomConnectionStateName(RoomConnectionState state) noexcept {
 }
 
 RoomOwner::RoomOwner(std::shared_ptr<RoomTransport> transport,
-                     RoomConnectionEventCallback event_callback)
+                     RoomConnectionEventCallback event_callback,
+                     RoomOperationDeadlines deadlines)
     : transport_(std::move(transport)),
-      state_(std::make_shared<SharedState>()) {
+      state_(std::make_shared<SharedState>()), deadlines_(deadlines) {
   if (!transport_)
     throw std::invalid_argument("RoomOwner transport is required");
+  if (deadlines_.connect <= std::chrono::milliseconds::zero() ||
+      deadlines_.disconnect <= std::chrono::milliseconds::zero() ||
+      deadlines_.cancellation <= std::chrono::milliseconds::zero()) {
+    throw std::invalid_argument("Room operation deadlines must be positive");
+  }
   state_->event_callback = std::move(event_callback);
+  deadline_watchdog_ = std::thread([this] { runDeadlineWatchdog(); });
+}
+
+RoomOwner::~RoomOwner() {
+  {
+    std::lock_guard lock(state_->mutex);
+    state_->stopping = true;
+    state_->completion_pending = false;
+    state_->operation_deadline.reset();
+  }
+  state_->deadline_changed.notify_all();
+  if (deadline_watchdog_.joinable())
+    deadline_watchdog_.join();
+}
+
+EngineResult validateRoomAuthority(
+    const RoomConnectRequest &request, std::string_view actual_room_id,
+    std::string_view actual_participant_identity) {
+  if (!request.expected_room_id.empty() &&
+      !request.expected_participant_identity.empty() &&
+      request.expected_room_id == actual_room_id &&
+      request.expected_participant_identity == actual_participant_identity) {
+    return EngineResult::success();
+  }
+  return EngineResult::fail(roomFailure(
+      "room_authority_mismatch",
+      "Connected LiveKit authority does not match the desired room intent",
+      "room_authority"));
+}
+
+void RoomOwner::runDeadlineWatchdog() noexcept {
+  while (true) {
+    RoomConnectionEventCallback callback;
+    RoomConnectionEvent event;
+    {
+      std::unique_lock lock(state_->mutex);
+      state_->deadline_changed.wait(lock, [this] {
+        return state_->stopping ||
+               (state_->completion_pending && state_->operation_deadline);
+      });
+      if (state_->stopping)
+        return;
+      const auto deadline = *state_->operation_deadline;
+      const auto generation = state_->generation;
+      if (state_->deadline_changed.wait_until(
+              lock, deadline, [this, deadline, generation] {
+                return state_->stopping || !state_->completion_pending ||
+                       !state_->operation_deadline ||
+                       *state_->operation_deadline != deadline ||
+                       state_->generation != generation;
+              })) {
+        if (state_->stopping)
+          return;
+        continue;
+      }
+      state_->completion_pending = false;
+      state_->operation_deadline.reset();
+      callback = state_->event_callback;
+      event = RoomConnectionEvent{
+          generation,
+          state_->connection_state,
+          roomFailure("room_operation_unresponsive",
+                      "Room operation exceeded its independent deadline",
+                      state_->operation_stage, true),
+      };
+    }
+    if (callback)
+      callback(event);
+  }
 }
 
 EngineResult RoomOwner::beginConnect(RoomConnectRequest request) {
@@ -71,7 +154,13 @@ EngineResult RoomOwner::beginConnect(RoomConnectRequest request) {
     generation = ++state_->generation;
     state_->connection_state = RoomConnectionState::Connecting;
     state_->cancellation_requested = false;
+    state_->teardown_requested = false;
+    state_->completion_pending = true;
+    state_->operation_stage = "room_connect";
+    state_->operation_deadline =
+        std::chrono::steady_clock::now() + deadlines_.connect;
   }
+  state_->deadline_changed.notify_all();
 
   const std::weak_ptr weak_state(state_);
   try {
@@ -86,9 +175,12 @@ EngineResult RoomOwner::beginConnect(RoomConnectRequest request) {
           {
             std::lock_guard lock(state->mutex);
             if (state->generation != completed_generation ||
+                !state->completion_pending ||
                 (state->connection_state != RoomConnectionState::Connecting &&
                  state->connection_state != RoomConnectionState::Disconnecting))
               return;
+            state->completion_pending = false;
+            state->operation_deadline.reset();
             if (state->cancellation_requested) {
               const bool teardown_failed =
                   result.failure &&
@@ -122,17 +214,28 @@ EngineResult RoomOwner::beginConnect(RoomConnectRequest request) {
                 std::move(result.failure),
             };
           }
+          state->deadline_changed.notify_all();
           if (callback)
             callback(event);
         });
   } catch (const std::exception &error) {
-    std::lock_guard lock(state_->mutex);
-    state_->connection_state = RoomConnectionState::Disconnected;
+    {
+      std::lock_guard lock(state_->mutex);
+      state_->connection_state = RoomConnectionState::Disconnected;
+      state_->completion_pending = false;
+      state_->operation_deadline.reset();
+    }
+    state_->deadline_changed.notify_all();
     return EngineResult::fail(
         roomFailure("room_connect_start_failed", error.what(), "room_connect"));
   } catch (...) {
-    std::lock_guard lock(state_->mutex);
-    state_->connection_state = RoomConnectionState::Disconnected;
+    {
+      std::lock_guard lock(state_->mutex);
+      state_->connection_state = RoomConnectionState::Disconnected;
+      state_->completion_pending = false;
+      state_->operation_deadline.reset();
+    }
+    state_->deadline_changed.notify_all();
     return EngineResult::fail(roomFailure("room_connect_start_failed",
                                           "Unknown room transport failure",
                                           "room_connect"));
@@ -153,6 +256,7 @@ EngineResult RoomOwner::cancelPendingConnect() {
 EngineResult RoomOwner::beginTeardown() {
   std::uint64_t generation = 0;
   bool cancel_connect = false;
+  bool deadline_changed = false;
   {
     std::lock_guard lock(state_->mutex);
     if (state_->connection_state == RoomConnectionState::Disconnected ||
@@ -166,13 +270,24 @@ EngineResult RoomOwner::beginTeardown() {
       if (transport_->cancelConnect(generation)) {
         state_->connection_state = RoomConnectionState::Disconnecting;
         state_->cancellation_requested = true;
+        state_->operation_stage = "room_cancel_teardown";
+        state_->operation_deadline =
+            std::chrono::steady_clock::now() + deadlines_.cancellation;
+        deadline_changed = true;
       }
     } else {
       state_->connection_state = RoomConnectionState::Disconnecting;
       state_->cancellation_requested = false;
       state_->teardown_requested = false;
+      state_->completion_pending = true;
+      state_->operation_stage = "room_disconnect";
+      state_->operation_deadline =
+          std::chrono::steady_clock::now() + deadlines_.disconnect;
+      deadline_changed = true;
     }
   }
+  if (deadline_changed)
+    state_->deadline_changed.notify_all();
   if (cancel_connect)
     return EngineResult::success();
 
@@ -189,8 +304,11 @@ EngineResult RoomOwner::beginTeardown() {
           {
             std::lock_guard lock(state->mutex);
             if (state->generation != completed_generation ||
+                !state->completion_pending ||
                 state->connection_state != RoomConnectionState::Disconnecting)
               return;
+            state->completion_pending = false;
+            state->operation_deadline.reset();
             state->connection_state = result.ok
                                           ? RoomConnectionState::Disconnected
                                           : RoomConnectionState::Connected;
@@ -199,17 +317,28 @@ EngineResult RoomOwner::beginTeardown() {
                                         state->connection_state,
                                         std::move(result.failure)};
           }
+          state->deadline_changed.notify_all();
           if (callback)
             callback(event);
         });
   } catch (const std::exception &error) {
-    std::lock_guard lock(state_->mutex);
-    state_->connection_state = RoomConnectionState::Connected;
+    {
+      std::lock_guard lock(state_->mutex);
+      state_->connection_state = RoomConnectionState::Connected;
+      state_->completion_pending = false;
+      state_->operation_deadline.reset();
+    }
+    state_->deadline_changed.notify_all();
     return EngineResult::fail(roomFailure("room_disconnect_start_failed",
                                           error.what(), "room_disconnect"));
   } catch (...) {
-    std::lock_guard lock(state_->mutex);
-    state_->connection_state = RoomConnectionState::Connected;
+    {
+      std::lock_guard lock(state_->mutex);
+      state_->connection_state = RoomConnectionState::Connected;
+      state_->completion_pending = false;
+      state_->operation_deadline.reset();
+    }
+    state_->deadline_changed.notify_all();
     return EngineResult::fail(roomFailure("room_disconnect_start_failed",
                                           "Unknown room transport failure",
                                           "room_disconnect"));
@@ -226,7 +355,12 @@ EngineResult RoomOwner::beginDisconnect() {
     }
     generation = state_->generation;
     state_->connection_state = RoomConnectionState::Disconnecting;
+    state_->completion_pending = true;
+    state_->operation_stage = "room_disconnect";
+    state_->operation_deadline =
+        std::chrono::steady_clock::now() + deadlines_.disconnect;
   }
+  state_->deadline_changed.notify_all();
 
   const std::weak_ptr weak_state(state_);
   try {
@@ -241,8 +375,11 @@ EngineResult RoomOwner::beginDisconnect() {
           {
             std::lock_guard lock(state->mutex);
             if (state->generation != completed_generation ||
+                !state->completion_pending ||
                 state->connection_state != RoomConnectionState::Disconnecting)
               return;
+            state->completion_pending = false;
+            state->operation_deadline.reset();
             state->connection_state = result.ok
                                           ? RoomConnectionState::Disconnected
                                           : RoomConnectionState::Connected;
@@ -253,17 +390,28 @@ EngineResult RoomOwner::beginDisconnect() {
                 std::move(result.failure),
             };
           }
+          state->deadline_changed.notify_all();
           if (callback)
             callback(event);
         });
   } catch (const std::exception &error) {
-    std::lock_guard lock(state_->mutex);
-    state_->connection_state = RoomConnectionState::Connected;
+    {
+      std::lock_guard lock(state_->mutex);
+      state_->connection_state = RoomConnectionState::Connected;
+      state_->completion_pending = false;
+      state_->operation_deadline.reset();
+    }
+    state_->deadline_changed.notify_all();
     return EngineResult::fail(roomFailure("room_disconnect_start_failed",
                                           error.what(), "room_disconnect"));
   } catch (...) {
-    std::lock_guard lock(state_->mutex);
-    state_->connection_state = RoomConnectionState::Connected;
+    {
+      std::lock_guard lock(state_->mutex);
+      state_->connection_state = RoomConnectionState::Connected;
+      state_->completion_pending = false;
+      state_->operation_deadline.reset();
+    }
+    state_->deadline_changed.notify_all();
     return EngineResult::fail(roomFailure("room_disconnect_start_failed",
                                           "Unknown room transport failure",
                                           "room_disconnect"));

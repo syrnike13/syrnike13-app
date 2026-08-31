@@ -8,6 +8,8 @@
     "build:debug": "node scripts/build.mjs --config Debug --no-stage",
     "build:asan": "node scripts/build.mjs --config Debug --no-stage --asan",
     "build:lab": "node scripts/build.mjs --config Release --lab",
+    "protocol:generate": "node scripts/build.mjs --generate-protocol-only",
+    "protocol:check": "node scripts/build.mjs --check-protocol",
     "test": "ctest --test-dir build -C Release --output-on-failure",
     "test:debug": "ctest --test-dir build -C Debug --output-on-failure",
     "probe:repeat": ".\\build\\Release\\media_probe.exe lifecycle-repeat --count 100",

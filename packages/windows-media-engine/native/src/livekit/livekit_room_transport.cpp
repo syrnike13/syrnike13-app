@@ -228,6 +228,18 @@ void LiveKitRoomTransport::runConnect(ConnectTask task) noexcept {
         liveKitFailure("livekit_connect_failed",
                        "Unknown LiveKit connect failure", "room_connect", true);
   }
+  if (result.ok) {
+    const auto local_participant = room->localParticipant().lock();
+    const auto authority = validateRoomAuthority(
+        task.request, room->roomInfo().name,
+        local_participant ? local_participant->identity() : std::string_view{});
+    if (!authority.ok) {
+      // The credential lease is already consumed. Tear down the unexpected
+      // authority before reporting the typed mismatch to the Engine.
+      static_cast<void>(cancelLiveKitRoom(room));
+      result = authority;
+    }
+  }
   bool cancelled = false;
   std::optional<EngineResult> cancellation_result;
   {

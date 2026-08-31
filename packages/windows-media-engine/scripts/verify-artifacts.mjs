@@ -62,6 +62,9 @@ if (
   JSON.stringify(manifest.limits) !== JSON.stringify({
     controlQueue: protocol.limits.controlQueueCapacity,
     eventQueue: protocol.limits.eventQueueCapacity,
+    roomConnectDeadlineMs: protocol.limits.roomConnectDeadlineMs,
+    roomDisconnectDeadlineMs: protocol.limits.roomDisconnectDeadlineMs,
+    roomCancellationDeadlineMs: protocol.limits.roomCancellationDeadlineMs,
     startDeadlineMs: protocol.limits.startDeadlineMs,
     pingDeadlineMs: protocol.limits.pingDeadlineMs,
     shutdownDeadlineMs: protocol.limits.shutdownDeadlineMs,

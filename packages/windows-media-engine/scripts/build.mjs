@@ -18,6 +18,10 @@ const MEDIA_FILES = ['windows_media.node', 'livekit.dll', 'livekit_ffi.dll']
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(packageRoot, '..', '..')
+const args = new Set(process.argv.slice(2))
+const checkProtocol = args.has('--check-protocol')
+const generateProtocolOnly = args.has('--generate-protocol-only')
+const staleGeneratedFiles = []
 const protocolSpecPath = path.resolve(packageRoot, 'protocol', 'media-lifecycle.json')
 const protocolSpecSource = readFileSync(protocolSpecPath, 'utf8')
 const protocolSpec = JSON.parse(protocolSpecSource)
@@ -42,12 +46,28 @@ const MAX_FAILURE_CODE_LENGTH = protocolSpec.limits.maximumFailureCodeLength
 const MAX_FAILURE_MESSAGE_LENGTH = protocolSpec.limits.maximumFailureMessageLength
 const MAX_FAILURE_STAGE_LENGTH = protocolSpec.limits.maximumFailureStageLength
 const MAX_REQUEST_DEADLINE_MS = protocolSpec.limits.maximumRequestDeadlineMs
+const ROOM_CONNECT_DEADLINE_MS = protocolSpec.limits.roomConnectDeadlineMs
+const ROOM_DISCONNECT_DEADLINE_MS = protocolSpec.limits.roomDisconnectDeadlineMs
+const ROOM_CANCELLATION_DEADLINE_MS = protocolSpec.limits.roomCancellationDeadlineMs
 const START_DEADLINE_MS = protocolSpec.limits.startDeadlineMs
 const PING_DEADLINE_MS = protocolSpec.limits.pingDeadlineMs
 const SHUTDOWN_DEADLINE_MS = protocolSpec.limits.shutdownDeadlineMs
 const nativeRoot = path.resolve(packageRoot, 'native')
 generateProtocolHeader()
 generateTypeScriptProtocolIdentity()
+if (staleGeneratedFiles.length > 0) {
+  throw new Error(
+    `Generated media protocol files are stale: ${staleGeneratedFiles.join(', ')}. Run pnpm --filter @syrnike13/windows-media-engine protocol:generate.`,
+  )
+}
+if (checkProtocol || generateProtocolOnly) {
+  console.info(
+    checkProtocol
+      ? '[windows-media-engine] generated protocol files are current'
+      : '[windows-media-engine] generated protocol files updated',
+  )
+  process.exit(0)
+}
 const buildRoot = path.resolve(
   packageRoot,
   process.env.WINDOWS_MEDIA_BUILD_ROOT || 'build',
@@ -63,7 +83,6 @@ const desktopStageRoot = path.resolve(
 )
 const windowsCmakeBin = resolveWindowsCmakeBin()
 
-const args = new Set(process.argv.slice(2))
 const configIndex = process.argv.indexOf('--config')
 const configuration = configIndex >= 0 ? process.argv[configIndex + 1] : 'Release'
 const shouldStage = !args.has('--no-stage') && configuration === 'Release'
@@ -141,6 +160,9 @@ const manifest = {
   limits: {
     controlQueue: CONTROL_QUEUE_CAPACITY,
     eventQueue: EVENT_QUEUE_CAPACITY,
+    roomConnectDeadlineMs: ROOM_CONNECT_DEADLINE_MS,
+    roomDisconnectDeadlineMs: ROOM_DISCONNECT_DEADLINE_MS,
+    roomCancellationDeadlineMs: ROOM_CANCELLATION_DEADLINE_MS,
     startDeadlineMs: START_DEADLINE_MS,
     pingDeadlineMs: PING_DEADLINE_MS,
     shutdownDeadlineMs: SHUTDOWN_DEADLINE_MS,
@@ -196,6 +218,9 @@ inline constexpr std::size_t kMaximumFailureCodeLength = ${MAX_FAILURE_CODE_LENG
 inline constexpr std::size_t kMaximumFailureMessageLength = ${MAX_FAILURE_MESSAGE_LENGTH};
 inline constexpr std::size_t kMaximumFailureStageLength = ${MAX_FAILURE_STAGE_LENGTH};
 inline constexpr std::uint32_t kMaximumRequestDeadlineMs = ${MAX_REQUEST_DEADLINE_MS};
+inline constexpr std::uint32_t kRoomConnectDeadlineMs = ${ROOM_CONNECT_DEADLINE_MS};
+inline constexpr std::uint32_t kRoomDisconnectDeadlineMs = ${ROOM_DISCONNECT_DEADLINE_MS};
+inline constexpr std::uint32_t kRoomCancellationDeadlineMs = ${ROOM_CANCELLATION_DEADLINE_MS};
 inline constexpr std::uint32_t kStartDeadlineMs = ${START_DEADLINE_MS};
 inline constexpr std::uint32_t kPingDeadlineMs = ${PING_DEADLINE_MS};
 inline constexpr std::uint32_t kShutdownDeadlineMs = ${SHUTDOWN_DEADLINE_MS};
@@ -219,9 +244,7 @@ ${Object.entries(protocolSpec.eventFields).flatMap(([name, fields]) =>
 }  // namespace syrnike::windows_media::protocol
 // clang-format on
 `
-  if (!existsSync(target) || readFileSync(target, 'utf8') !== content) {
-    writeFileSync(target, content, 'utf8')
-  }
+  syncGeneratedFile(target, content)
 }
 
 function generateTypeScriptProtocolIdentity() {
@@ -246,9 +269,16 @@ function generateTypeScriptProtocolIdentity() {
     `// prettier-ignore\nexport const MEDIA_LIFECYCLE_PUBLIC_EVENTS = ${JSON.stringify(protocolSpec.publicEvents)} as const\n` +
     `// prettier-ignore\nexport const MEDIA_LIFECYCLE_ROOM_STATES = ${JSON.stringify(protocolSpec.roomStates)} as const\n` +
     `// prettier-ignore\nexport const MEDIA_LIFECYCLE_CANONICAL_FIXTURES = ${JSON.stringify(protocolSpec.canonical)} as const\n`
-  if (!existsSync(target) || readFileSync(target, 'utf8') !== content) {
-    writeFileSync(target, content, 'utf8')
+  syncGeneratedFile(target, content)
+}
+
+function syncGeneratedFile(target, content) {
+  if (existsSync(target) && readFileSync(target, 'utf8') === content) return
+  if (checkProtocol) {
+    staleGeneratedFiles.push(path.relative(repoRoot, target))
+    return
   }
+  writeFileSync(target, content, 'utf8')
 }
 
 function run(command, commandArgs) {

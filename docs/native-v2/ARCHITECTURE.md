@@ -44,7 +44,8 @@ Electron main: MediaRuntimeSupervisor
     -> windows_media.node: AddonOwner
       -> media_core.lib: Engine
         -> one bounded control queue / one control thread
-        -> RoomOwner -> one LiveKit transport worker lane
+        -> RoomOwner -> deadline watchdog
+                     -> one LiveKit operation lane plus one cancellation lane
 
 media_probe.exe
   -> media_core.lib directly
@@ -60,6 +61,8 @@ Stopped -> Starting -> Running -> Stopping -> Stopped
 
 Only the control thread commits lifecycle transitions and accepted desired-state snapshots. Its command queue has capacity 16 and reserves shutdown/completion progress. Public state uses a bounded coalescing buffer with sequence-gap snapshot recovery, while diagnostics are independently lossy; neither callback mutates Engine state. The TypeScript supervisor owns at most 16 pending requests and may restart the utility after 250 ms and 1 second. It does not replay desired state after restart, so the future orchestration owner must submit credentials and a new authoritative snapshot.
 
-Deadlines are fixed at 2 seconds for core startup, 1 second for core ping and shutdown requests, 5 seconds for the Electron handshake, 10 seconds for SDK connect, and 1.5 seconds for outer utility shutdown. Protocol identity and limits are generated from the canonical JSON descriptor. A non-cooperative SDK worker is never detached: Electron terminates the isolated utility after the outer deadline.
+Deadlines are fixed at 2 seconds for core startup, 1 second for core ping and shutdown requests, 5 seconds for the Electron handshake, 12 seconds for a Room connect attempt, 2 seconds for Room disconnect/cancellation, and 1.5 seconds for outer utility shutdown. `RoomOwner` owns the Room-operation watchdog independently of synchronous SDK calls. A missed deadline emits exactly one `room_operation_unresponsive` failure, moves the Engine to `Failed`, and makes the supervisor kill and replace the compromised utility epoch; no second Room worker starts over the hung one.
 
-The lifecycle boundary carries the exact protocol v3 described in `PROTOCOL.md`. Its full-snapshot desired state is accepted and queried on the same C++ control thread, while the room intent is reconciled asynchronously through one transport lane; track intents still support only `off`, so `NativeRtcEngineAdapter` remains unavailable until the later desktop cutover.
+Before a successful LiveKit connect becomes public, the transport compares `Room::roomInfo().name` and the local participant identity with the expected values from the desired Room intent. A mismatch is torn down and reported as non-retryable `room_authority_mismatch`; its credential lease remains consumed, and the utility epoch is retired so uncertain wrong-Room ownership cannot be reused.
+
+The lifecycle boundary carries the exact protocol v3 described in `PROTOCOL.md`. Its full-snapshot desired state is accepted and queried on the same C++ control thread, while the room intent is reconciled asynchronously through bounded transport lanes; track intents still support only `off`, so `NativeRtcEngineAdapter` remains unavailable until the later desktop cutover.
