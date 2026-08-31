@@ -78,6 +78,12 @@ jobs:
           pnpm windows-media:test
           pnpm windows-media:probe
           pnpm windows-media:verify
+      - name: Verify 1000 bounded source enumerations
+        shell: pwsh
+        run: |
+          $report = & packages/windows-media-engine/build/Release/media_probe.exe enumerate-sources --repeat 1000 --diff --sanitized
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $report | Set-Content -Encoding utf8 packages/windows-media-engine/build/source-enumeration-report.json
       - name: Build and test Debug hook addons
         run: |
           pnpm desktop-native:build:debug
@@ -125,6 +131,13 @@ jobs:
           path: |
             packages/windows-media-engine/dist/win32-x64/**
             apps/desktop/out/media-native/win32-x64/**
+      - name: Upload sanitized source enumeration report
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-enumeration-windows-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: packages/windows-media-engine/build/source-enumeration-report.json
       - name: Upload Native v2 Media Lab report
         if: ${{ always() }}
         uses: actions/upload-artifact@v4

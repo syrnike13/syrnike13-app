@@ -1,15 +1,22 @@
 #include <windows.h>
 #include <tlhelp32.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <cstdint>
+#include <iomanip>
 #include <iostream>
+#include <map>
 #include <mutex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "core/engine.hpp"
+#include "sources/source_registry.hpp"
+#include "sources/win32_source_enumerator.hpp"
 
 namespace {
 
@@ -19,6 +26,7 @@ using syrnike::windows_media::EngineResult;
 using syrnike::windows_media::EngineState;
 using syrnike::windows_media::LifecycleEvent;
 using syrnike::windows_media::PublicEvent;
+using namespace syrnike::windows_media::sources;
 
 struct ResourceBaseline {
   DWORD handles = 0;
@@ -219,12 +227,320 @@ int parseCount(int argc, char** argv) {
   throw std::runtime_error("lifecycle-repeat requires --count N");
 }
 
+std::string jsonString(const std::string& value) {
+  std::ostringstream output;
+  output << '"';
+  for (const unsigned char character : value) {
+    switch (character) {
+      case '"': output << "\\\""; break;
+      case '\\': output << "\\\\"; break;
+      case '\b': output << "\\b"; break;
+      case '\f': output << "\\f"; break;
+      case '\n': output << "\\n"; break;
+      case '\r': output << "\\r"; break;
+      case '\t': output << "\\t"; break;
+      default:
+        if (character < 0x20U) {
+          output << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+                 << static_cast<unsigned int>(character) << std::dec;
+        } else {
+          output << static_cast<char>(character);
+        }
+    }
+  }
+  output << '"';
+  return output.str();
+}
+
+std::string boundsJson(const SourceBounds& bounds) {
+  return "{\"x\":" + std::to_string(bounds.x) +
+         ",\"y\":" + std::to_string(bounds.y) +
+         ",\"width\":" + std::to_string(bounds.width) +
+         ",\"height\":" + std::to_string(bounds.height) + "}";
+}
+
+template <typename Value>
+std::string optionalNumberJson(const std::optional<Value>& value) {
+  if (!value) return "null";
+  std::ostringstream output;
+  output << *value;
+  return output.str();
+}
+
+std::string monitorJson(const std::optional<MonitorMetadata>& monitor) {
+  if (!monitor) return "null";
+  return "{\"logicalBounds\":" + boundsJson(monitor->logical_bounds) +
+         ",\"physicalBounds\":" +
+         (monitor->physical_bounds ? boundsJson(*monitor->physical_bounds)
+                                   : std::string("null")) +
+         ",\"dpi\":{\"x\":" + optionalNumberJson(monitor->dpi_x) +
+         ",\"y\":" + optionalNumberJson(monitor->dpi_y) +
+         ",\"scale\":" + optionalNumberJson(monitor->scale_factor) + "}}";
+}
+
+std::string sourceJson(const SourceSnapshot& source) {
+  std::ostringstream output;
+  output << "{\"id\":" << jsonString(source.id)
+         << ",\"kind\":" << jsonString(toString(source.kind))
+         << ",\"title\":" << jsonString(source.title)
+         << ",\"label\":" << jsonString(source.label)
+         << ",\"availability\":" << jsonString(toString(source.availability))
+         << ",\"flags\":{\"visible\":"
+         << (source.flags.visible ? "true" : "false")
+         << ",\"available\":"
+         << (source.availability == SourceAvailability::Available ? "true" : "false")
+         << ",\"minimized\":" << (source.flags.minimized ? "true" : "false")
+         << ",\"primary\":" << (source.flags.primary ? "true" : "false")
+         << ",\"ownProcess\":" << (source.flags.own_process ? "true" : "false")
+         << "},\"captureSupport\":"
+         << jsonString(toString(source.capture_support)) << ",\"exclusions\":[";
+  for (std::size_t index = 0; index < source.exclusions.size(); ++index) {
+    if (index != 0) output << ',';
+    output << jsonString(toString(source.exclusions[index]));
+  }
+  output << "],\"monitor\":" << monitorJson(source.monitor) << '}';
+  return output.str();
+}
+
+std::string snapshotJson(const SourceEnumeration& snapshot) {
+  std::ostringstream output;
+  output << "{\"ok\":" << (snapshot.ok ? "true" : "false")
+         << ",\"complete\":" << (snapshot.complete ? "true" : "false")
+         << ",\"completeness\":{\"monitors\":"
+         << jsonString(toString(snapshot.monitors)) << ",\"windows\":"
+         << jsonString(toString(snapshot.windows)) << "}"
+         << ",\"sources\":[";
+  for (std::size_t index = 0; index < snapshot.sources.size(); ++index) {
+    if (index != 0) output << ',';
+    output << sourceJson(snapshot.sources[index]);
+  }
+  output << "],\"addedIds\":[";
+  for (std::size_t index = 0; index < snapshot.added_ids.size(); ++index) {
+    if (index != 0) output << ',';
+    output << jsonString(snapshot.added_ids[index]);
+  }
+  output << "],\"updatedIds\":[";
+  for (std::size_t index = 0; index < snapshot.updated_ids.size(); ++index) {
+    if (index != 0) output << ',';
+    output << jsonString(snapshot.updated_ids[index]);
+  }
+  output << "],\"removed\":[";
+  for (std::size_t index = 0; index < snapshot.removed.size(); ++index) {
+    if (index != 0) output << ',';
+    output << "{\"id\":" << jsonString(snapshot.removed[index].id)
+           << ",\"kind\":" << jsonString(toString(snapshot.removed[index].kind))
+           << ",\"availability\":"
+           << jsonString(toString(snapshot.removed[index].availability)) << '}';
+  }
+  output << "],\"truncated\":{\"monitors\":"
+         << (snapshot.monitors_truncated ? "true" : "false")
+         << ",\"windows\":" << (snapshot.windows_truncated ? "true" : "false")
+         << "},\"diagnostics\":[";
+  for (std::size_t index = 0; index < snapshot.diagnostics.size(); ++index) {
+    if (index != 0) output << ',';
+    output << "{\"code\":" << jsonString(snapshot.diagnostics[index].code)
+           << ",\"detail\":" << jsonString(snapshot.diagnostics[index].detail)
+           << '}';
+  }
+  output << "]}";
+  return output.str();
+}
+
+std::string sanitizedSnapshotJson(const SourceEnumeration& snapshot) {
+  const auto monitors = static_cast<std::size_t>(std::count_if(
+      snapshot.sources.begin(), snapshot.sources.end(),
+      [](const SourceSnapshot& source) { return source.kind == SourceKind::Monitor; }));
+  const auto windows = snapshot.sources.size() - monitors;
+  std::ostringstream output;
+  output << "{\"ok\":" << (snapshot.ok ? "true" : "false")
+         << ",\"complete\":" << (snapshot.complete ? "true" : "false")
+         << ",\"completeness\":{\"monitors\":"
+         << jsonString(toString(snapshot.monitors)) << ",\"windows\":"
+         << jsonString(toString(snapshot.windows)) << "}"
+         << ",\"counts\":{\"monitors\":" << monitors
+         << ",\"windows\":" << windows << "}"
+         << ",\"changes\":{\"added\":" << snapshot.added_ids.size()
+         << ",\"updated\":" << snapshot.updated_ids.size()
+         << ",\"removed\":" << snapshot.removed.size() << "}"
+         << ",\"truncated\":{\"monitors\":"
+         << (snapshot.monitors_truncated ? "true" : "false")
+         << ",\"windows\":" << (snapshot.windows_truncated ? "true" : "false")
+         << "},\"diagnosticCodes\":[";
+  for (std::size_t index = 0; index < snapshot.diagnostics.size(); ++index) {
+    if (index != 0) output << ',';
+    output << jsonString(snapshot.diagnostics[index].code);
+  }
+  output << "]}";
+  return output.str();
+}
+
+struct EnumerateArguments {
+  int repeat = 1;
+  bool diff = false;
+  bool sanitized = false;
+  EnumerationOptions options;
+};
+
+EnumerateArguments parseEnumerateArguments(int argc, char** argv) {
+  EnumerateArguments result;
+  bool repeat_seen = false;
+  bool kind_seen = false;
+  for (int index = 2; index < argc; ++index) {
+    const std::string argument = argv[index];
+    if (argument == "--repeat") {
+      require(index + 1 < argc, "--repeat requires N");
+      require(!repeat_seen, "--repeat may be specified only once");
+      repeat_seen = true;
+      const std::string value = argv[++index];
+      require(!value.empty() &&
+                  std::all_of(value.begin(), value.end(), [](unsigned char character) {
+                    return character >= '0' && character <= '9';
+                  }),
+              "--repeat requires a decimal integer between 1 and 1000");
+      unsigned int parsed = 0;
+      for (const unsigned char character : value) {
+        parsed = parsed * 10U + static_cast<unsigned int>(character - '0');
+        require(parsed <= 1000U,
+                "--repeat requires a decimal integer between 1 and 1000");
+      }
+      require(parsed >= 1U, "--repeat must be between 1 and 1000");
+      result.repeat = static_cast<int>(parsed);
+    } else if (argument == "--diff") {
+      result.diff = true;
+    } else if (argument == "--sanitized") {
+      result.sanitized = true;
+    } else if (argument == "--include-own-windows") {
+      result.options.include_own_windows = true;
+    } else if (argument == "--kind") {
+      require(index + 1 < argc, "--kind requires monitor, window, or all");
+      require(!kind_seen, "--kind may be specified only once");
+      kind_seen = true;
+      const std::string kind = argv[++index];
+      if (kind == "monitor")
+        result.options.kind = EnumerationOptions::Kind::Monitor;
+      else if (kind == "window")
+        result.options.kind = EnumerationOptions::Kind::Window;
+      else if (kind == "all")
+        result.options.kind = EnumerationOptions::Kind::All;
+      else
+        throw std::runtime_error("--kind requires monitor, window, or all");
+    } else {
+      throw std::runtime_error("unknown enumerate-sources argument: " + argument);
+    }
+  }
+  return result;
+}
+
+std::string kindName(EnumerationOptions::Kind value) {
+  switch (value) {
+    case EnumerationOptions::Kind::Monitor: return "monitor";
+    case EnumerationOptions::Kind::Window: return "window";
+    case EnumerationOptions::Kind::All: return "all";
+  }
+  return "all";
+}
+
+int enumerateSources(int argc, char** argv) {
+  const auto arguments = parseEnumerateArguments(argc, argv);
+  bool enumeration_ok = true;
+  {
+    // DisplayConfig, DPI and process metadata APIs lazily initialize process-wide
+    // Windows state. Keep that one-time cost outside the registry lifetime
+    // measurement, while still destroying the registry used by the measured run.
+    SourceRegistry warm_registry(createWin32SourceEnumerator());
+    enumeration_ok = warm_registry.enumerate(arguments.options).ok;
+  }
+  const auto before = resources();
+  SourceEnumeration first;
+  SourceEnumeration last;
+  std::vector<std::string> diffs;
+  {
+    SourceRegistry registry(createWin32SourceEnumerator());
+    for (int iteration = 1; iteration <= arguments.repeat; ++iteration) {
+      auto current = registry.enumerate(arguments.options);
+      enumeration_ok = enumeration_ok && current.ok;
+      if (iteration == 1) first = current;
+      if (arguments.diff && (!current.added_ids.empty() ||
+                             !current.updated_ids.empty() ||
+                             !current.removed.empty())) {
+        std::ostringstream diff;
+        diff << "{\"iteration\":" << iteration;
+        if (arguments.sanitized) {
+          diff << ",\"added\":" << current.added_ids.size()
+               << ",\"updated\":" << current.updated_ids.size()
+               << ",\"removed\":" << current.removed.size() << '}';
+          diffs.push_back(diff.str());
+          last = std::move(current);
+          continue;
+        }
+        diff << ",\"addedIds\":[";
+        for (std::size_t index = 0; index < current.added_ids.size(); ++index) {
+          if (index != 0) diff << ',';
+          diff << jsonString(current.added_ids[index]);
+        }
+        diff << "],\"updatedIds\":[";
+        for (std::size_t index = 0; index < current.updated_ids.size(); ++index) {
+          if (index != 0) diff << ',';
+          diff << jsonString(current.updated_ids[index]);
+        }
+        diff << "],\"removed\":[";
+        for (std::size_t index = 0; index < current.removed.size(); ++index) {
+          if (index != 0) diff << ',';
+          diff << "{\"id\":" << jsonString(current.removed[index].id)
+               << ",\"kind\":" << jsonString(toString(current.removed[index].kind))
+               << "}";
+        }
+        diff << "]}";
+        diffs.push_back(diff.str());
+      }
+      last = std::move(current);
+    }
+  }
+  const auto after = resources();
+  const auto handle_delta = static_cast<std::int64_t>(after.handles) -
+                            static_cast<std::int64_t>(before.handles);
+  const auto thread_delta = static_cast<std::int64_t>(after.threads) -
+                            static_cast<std::int64_t>(before.threads);
+  constexpr std::int64_t kHandleBudget = 2;
+  constexpr std::int64_t kThreadBudget = 0;
+  const bool within_budget = handle_delta <= kHandleBudget &&
+                             thread_delta <= kThreadBudget;
+  const bool ok = within_budget && enumeration_ok;
+  std::cout << "{\"ok\":" << (ok ? "true" : "false")
+            << ",\"command\":\"enumerate-sources\",\"repeat\":"
+            << arguments.repeat << ",\"kind\":"
+            << jsonString(kindName(arguments.options.kind))
+            << ",\"includeOwnWindows\":"
+            << (arguments.options.include_own_windows ? "true" : "false")
+            << ",\"sanitized\":" << (arguments.sanitized ? "true" : "false")
+            << ",\"first\":"
+            << (arguments.sanitized ? sanitizedSnapshotJson(first)
+                                    : snapshotJson(first))
+            << ",\"last\":"
+            << (arguments.sanitized ? sanitizedSnapshotJson(last)
+                                    : snapshotJson(last))
+            << ",\"diffs\":[";
+  for (std::size_t index = 0; index < diffs.size(); ++index) {
+    if (index != 0) std::cout << ',';
+    std::cout << diffs[index];
+  }
+  std::cout << "],\"resources\":{\"before\":{\"handles\":" << before.handles
+            << ",\"threads\":" << before.threads
+            << "},\"after\":{\"handles\":" << after.handles
+            << ",\"threads\":" << after.threads
+            << "},\"delta\":{\"handles\":" << handle_delta
+            << ",\"threads\":" << thread_delta
+            << "},\"budget\":{\"handles\":" << kHandleBudget
+            << ",\"threads\":" << kThreadBudget << "}}}\n";
+  return ok ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) try {
   if (argc < 2) {
     throw std::runtime_error(
-      "usage: media_probe <lifecycle-once|lifecycle-repeat|fail-start|hang-worker>"
+      "usage: media_probe <lifecycle-once|lifecycle-repeat|fail-start|hang-worker|enumerate-sources>"
     );
   }
   const std::string mode = argv[1];
@@ -233,6 +549,7 @@ int main(int argc, char** argv) try {
   if (mode == "fail-start") return failStart();
   if (mode == "hang-worker") return hangWorker();
   if (mode == "hang-worker-child") return hangWorkerChild();
+  if (mode == "enumerate-sources") return enumerateSources(argc, argv);
   throw std::runtime_error("unknown media_probe mode: " + mode);
 } catch (const std::exception& error) {
   std::cerr << error.what() << '\n';

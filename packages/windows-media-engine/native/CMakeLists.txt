@@ -62,6 +62,15 @@ add_library(media_core STATIC
 windows_media_target(media_core)
 target_include_directories(media_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
+add_library(media_sources STATIC
+  src/sources/source_registry.cpp
+  src/sources/utf8.cpp
+  src/sources/win32_source_enumerator.cpp
+)
+windows_media_target(media_sources)
+target_include_directories(media_sources PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(media_sources PRIVATE dwmapi shcore)
+
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/LiveKitSDK.cmake")
 windows_media_setup_livekit_sdk()
 find_package(LiveKit CONFIG REQUIRED)
@@ -77,7 +86,7 @@ add_executable(media_probe
   src/probe/media_probe.cpp
 )
 windows_media_target(media_probe)
-target_link_libraries(media_probe PRIVATE media_core)
+target_link_libraries(media_probe PRIVATE media_core media_sources)
 
 execute_process(
   COMMAND node -p "require('node-addon-api').include"
@@ -139,6 +148,49 @@ add_test(NAME media-core-lifecycle COMMAND media_core_tests)
 add_test(NAME media-probe-lifecycle-once COMMAND media_probe lifecycle-once)
 add_test(NAME media-probe-fail-start COMMAND media_probe fail-start)
 add_test(NAME media-probe-hang-worker COMMAND media_probe hang-worker)
+add_test(NAME media-probe-enumerate-sources
+  COMMAND media_probe enumerate-sources --repeat 10 --diff)
+add_test(NAME media-probe-source-json-contract
+  COMMAND powershell -NoProfile -NonInteractive -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/verify_source_probe_json.ps1"
+    -Probe "$<TARGET_FILE:media_probe>")
+add_test(NAME media-probe-source-invalid-repeat-junk
+  COMMAND media_probe enumerate-sources --repeat 1junk)
+add_test(NAME media-probe-source-invalid-repeat-sign
+  COMMAND media_probe enumerate-sources --repeat +1)
+add_test(NAME media-probe-source-invalid-repeat-range
+  COMMAND media_probe enumerate-sources --repeat 1001)
+set_tests_properties(
+  media-probe-source-invalid-repeat-junk
+  media-probe-source-invalid-repeat-sign
+  media-probe-source-invalid-repeat-range
+  PROPERTIES WILL_FAIL TRUE TIMEOUT 5)
+set_tests_properties(
+  media-probe-enumerate-sources
+  media-probe-source-json-contract
+  PROPERTIES TIMEOUT 30)
+
+add_executable(source_registry_tests
+  tests/source_registry_test.cpp
+)
+windows_media_target(source_registry_tests)
+target_link_libraries(source_registry_tests PRIVATE media_sources)
+add_test(NAME source-registry COMMAND source_registry_tests)
+set_tests_properties(source-registry PROPERTIES TIMEOUT 10)
+
+add_executable(source_window_fixture WIN32
+  fixtures/source_window_fixture.cpp
+)
+windows_media_target(source_window_fixture)
+
+add_executable(source_win32_integration_tests
+  tests/source_win32_integration_test.cpp
+)
+windows_media_target(source_win32_integration_tests)
+target_link_libraries(source_win32_integration_tests PRIVATE media_sources)
+add_dependencies(source_win32_integration_tests source_window_fixture)
+add_test(NAME source-win32-integration COMMAND source_win32_integration_tests)
+set_tests_properties(source-win32-integration PROPERTIES TIMEOUT 10)
 
 if(WINDOWS_MEDIA_BUILD_LAB)
   add_executable(native_media_lab_publisher

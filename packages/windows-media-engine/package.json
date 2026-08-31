@@ -13,6 +13,8 @@
     "test": "ctest --test-dir build -C Release --output-on-failure",
     "test:debug": "ctest --test-dir build -C Debug --output-on-failure",
     "probe:repeat": ".\\build\\Release\\media_probe.exe lifecycle-repeat --count 100",
+    "probe:sources": ".\\build\\Release\\media_probe.exe enumerate-sources --repeat 1000 --diff",
+    "probe:sources:sanitized": ".\\build\\Release\\media_probe.exe enumerate-sources --repeat 1000 --diff --sanitized",
     "lab:publisher": ".\\build\\Release\\native_media_lab_publisher.exe",
     "verify": "node scripts/verify-artifacts.mjs"
   },

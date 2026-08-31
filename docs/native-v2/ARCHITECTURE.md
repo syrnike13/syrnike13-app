@@ -49,7 +49,10 @@ Electron main: MediaRuntimeSupervisor
 
 media_probe.exe
   -> media_core.lib directly
+  -> media_sources.lib -> SourceRegistry -> Win32 SourceEnumerator
 ```
+
+Source discovery is a separate deep module described in [SOURCE_ENUMERATION.md](SOURCE_ENUMERATION.md). Its public seam returns process-local opaque IDs and bounded value snapshots, while Win32 identity keys and handles stop at the adapter boundary. Issue #117 intentionally leaves the Engine protocol, addon, Electron, capture sessions, and LiveKit unchanged.
 
 The one-shot `Engine` follows this finite transition table. A second lifecycle creates a new `Engine` rather than resetting a consumed instance.
 
