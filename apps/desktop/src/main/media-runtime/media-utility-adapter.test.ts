@@ -14,7 +14,10 @@ vi.mock('electron', () => ({
 
 vi.stubGlobal('__DESKTOP_COMMIT_SHA__', 'a'.repeat(40))
 
-import { MEDIA_LIFECYCLE_PROTOCOL_VERSION } from './contract'
+import {
+  MEDIA_LIFECYCLE_PROTOCOL_VERSION,
+  MEDIA_UTILITY_BOOTSTRAP_MESSAGE,
+} from './contract'
 import { ElectronMediaUtilityAdapter } from './media-utility-adapter'
 
 class FakeUtilityProcess extends EventEmitter {
@@ -26,6 +29,7 @@ class FakeUtilityProcess extends EventEmitter {
 
 describe('ElectronMediaUtilityAdapter', () => {
   it('starts the production host with the current media protocol version', () => {
+    vi.useFakeTimers()
     const child = new FakeUtilityProcess()
     const fork = vi.fn(() => child)
     const adapter = new ElectronMediaUtilityAdapter({
@@ -40,5 +44,15 @@ describe('ElectronMediaUtilityAdapter', () => {
       SYRNIKE_MEDIA_PROTOCOL_VERSION: String(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
       SYRNIKE_MEDIA_MODULE_PATH: 'C:\\syrnike\\windows_media.node',
     })
+    child.emit('spawn')
+    expect(child.postMessage).toHaveBeenCalledWith(
+      MEDIA_UTILITY_BOOTSTRAP_MESSAGE,
+    )
+    vi.advanceTimersByTime(50)
+    expect(child.postMessage).toHaveBeenCalledTimes(3)
+    child.emit('message', { type: 'ready' })
+    vi.advanceTimersByTime(50)
+    expect(child.postMessage).toHaveBeenCalledTimes(3)
+    vi.useRealTimers()
   })
 })

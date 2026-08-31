@@ -9,6 +9,7 @@ import {
   MEDIA_LIFECYCLE_SHUTDOWN_TIMEOUT_MS,
   MediaAddonPingSchema,
   MediaAddonSnapshotSchema,
+  MediaCredentialLeaseInstalledSchema,
   MediaDesiredStateAcceptedSchema,
   MediaLifecycleHandshakeResultSchema,
   MediaLifecycleError,
@@ -16,10 +17,12 @@ import {
   mediaLifecycleError,
   mediaLifecycleFailure,
   type MediaLifecycleCommand,
+  type MediaCredentialLease,
   type EngineDesiredState,
   type MediaLifecycleResult,
   type MediaLifecycleDiagnosticEvent,
   type MediaLifecycleEvent,
+  type MediaEngineSnapshot,
   type MediaLifecycleFailure,
   type MediaLifecycleReady,
   type MediaLifecycleReply,
@@ -79,6 +82,9 @@ export class MediaRuntimeSupervisor {
   private readonly diagnosticListeners = new Set<
     (event: MediaLifecycleDiagnosticEvent) => void
   >()
+  private readonly snapshotListeners = new Set<
+    (snapshot: MediaEngineSnapshot) => void
+  >()
   private readonly pending = new Map<string, PendingRequest>()
   private startPromise: Promise<MediaLifecycleReady> | null = null
   private resolveStart: ((ready: MediaLifecycleReady) => void) | null = null
@@ -89,6 +95,9 @@ export class MediaRuntimeSupervisor {
   private requestSequence = 0
   private hasBeenReady = false
   private shuttingDown = false
+  private lastPublicEventSequence = 0
+  private latestEngineSnapshot: MediaEngineSnapshot | undefined
+  private snapshotRecoveryPending = false
 
   constructor(private readonly options: MediaRuntimeSupervisorOptions) {}
 
@@ -113,6 +122,15 @@ export class MediaRuntimeSupervisor {
   onDiagnostic(listener: (event: MediaLifecycleDiagnosticEvent) => void) {
     this.diagnosticListeners.add(listener)
     return () => this.diagnosticListeners.delete(listener)
+  }
+
+  onSnapshot(listener: (snapshot: MediaEngineSnapshot) => void) {
+    this.snapshotListeners.add(listener)
+    return () => this.snapshotListeners.delete(listener)
+  }
+
+  getLatestEngineSnapshot() {
+    return this.latestEngineSnapshot
   }
 
   start() {
@@ -222,6 +240,22 @@ export class MediaRuntimeSupervisor {
           result,
           'media_handshake_invalid',
           'handshake',
+        ),
+      ),
+    )
+  }
+
+  installCredentialLease(lease: MediaCredentialLease) {
+    return this.start().then(() =>
+      this.sendRequest(
+        { type: 'installCredentialLease', lease },
+        MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
+      ).then((result) =>
+        decodeCommandResult(
+          MediaCredentialLeaseInstalledSchema,
+          result,
+          'media_credential_lease_invalid',
+          'install_credential_lease',
         ),
       ),
     )
@@ -396,7 +430,11 @@ export class MediaRuntimeSupervisor {
       for (const listener of this.diagnosticListeners) listener(rawMessage.event)
       return
     }
-    for (const listener of this.eventListeners) listener(rawMessage.event)
+    const event = rawMessage.event
+    const hasGap = event.sequence !== this.lastPublicEventSequence + 1
+    this.lastPublicEventSequence = event.sequence
+    for (const listener of this.eventListeners) listener(event)
+    if (hasGap) this.recoverSnapshot()
   }
 
   private handleReady(
@@ -427,6 +465,9 @@ export class MediaRuntimeSupervisor {
     this.clearHandshakeTimer()
     const recovered = this.hasBeenReady
     this.hasBeenReady = true
+    this.lastPublicEventSequence = 0
+    this.latestEngineSnapshot = undefined
+    this.snapshotRecoveryPending = false
     if (recovered) this.restartAttempt = 0
     this.updateSnapshot({
       status: 'ready',
@@ -439,6 +480,19 @@ export class MediaRuntimeSupervisor {
     const resolve = this.resolveStart
     this.clearStartPromise()
     resolve?.(ready)
+  }
+
+  private recoverSnapshot() {
+    if (this.snapshotRecoveryPending) return
+    this.snapshotRecoveryPending = true
+    void this.querySnapshot().then((snapshot) => {
+      this.latestEngineSnapshot = snapshot
+      for (const listener of this.snapshotListeners) listener(snapshot)
+    }).catch(() => {
+      // Host retirement and request deadlines already surface through supervisor state.
+    }).finally(() => {
+      this.snapshotRecoveryPending = false
+    })
   }
 
   private handleReply(reply: MediaLifecycleReply) {

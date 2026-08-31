@@ -4,6 +4,38 @@ const path = require('node:path')
 const { app, utilityProcess } = require('electron')
 
 const desktopRoot = path.resolve(__dirname, '..')
+const protocol = JSON.parse(
+  readFileSync(
+    path.resolve(desktopRoot, '..', '..', 'packages', 'windows-media-engine', 'protocol', 'media-lifecycle.json'),
+    'utf8',
+  ),
+)
+const MEDIA_UTILITY_BOOTSTRAP_MESSAGE = protocol.electron.utilityBootstrapMessage
+const canonicalRequest = (commandType, requestId, hostEpoch) => {
+  const fixture = protocol.canonical.requests.find(
+    (request) => request.command.type === commandType,
+  )
+  if (!fixture) throw new Error(`Missing canonical ${commandType} request`)
+  return {
+    ...structuredClone(fixture),
+    requestId,
+    hostEpoch,
+  }
+}
+const canonicalResult = (resultType) => {
+  const fixture = protocol.canonical.successReplies.find(
+    (reply) => reply.result.type === resultType,
+  )
+  if (!fixture) throw new Error(`Missing canonical ${resultType} result`)
+  return structuredClone(fixture.result)
+}
+const canonicalPublicEvent = (eventType) => {
+  const fixture = protocol.canonical.publicEventMessages.find(
+    (message) => message.event.type === eventType,
+  )
+  if (!fixture) throw new Error(`Missing canonical ${eventType} event`)
+  return structuredClone(fixture.event)
+}
 const hostPath = path.resolve(desktopRoot, 'out', 'utility', 'media-host.cjs')
 const mediaRoot = path.resolve(
   desktopRoot,
@@ -54,23 +86,33 @@ function spawnHost(overrides = {}) {
   const messages = []
   const waiters = new Set()
   let exitResult
+  let bootstrapTimer
   let resolveExit
   const exited = new Promise((resolve) => {
     resolveExit = resolve
   })
   child.on('message', (message) => {
+    clearInterval(bootstrapTimer)
     messages.push(message)
     for (const waiter of waiters) waiter()
   })
   child.on('exit', (code) => {
+    clearInterval(bootstrapTimer)
     exitResult = { code }
     resolveExit(exitResult)
     for (const waiter of waiters) waiter()
   })
   child.on('error', (error) => {
+    clearInterval(bootstrapTimer)
     exitResult = { code: null, error }
     resolveExit(exitResult)
     for (const waiter of waiters) waiter()
+  })
+  child.on('spawn', () => {
+    const bootstrap = () => child.postMessage(MEDIA_UTILITY_BOOTSTRAP_MESSAGE)
+    bootstrapTimer = setInterval(bootstrap, 25)
+    bootstrapTimer.unref?.()
+    bootstrap()
   })
   const waitMessage = (predicate, label, timeoutMs = 5_000) =>
     boundedTimeout(
@@ -104,18 +146,12 @@ function spawnHost(overrides = {}) {
 async function lifecycleCycle(index) {
   const host = spawnHost()
   await host.waitMessage(
-    (message) => message?.type === 'ready' && message.protocolVersion === 2,
+    (message) =>
+      message?.type === 'ready' && message.protocolVersion === protocol.version,
     `cycle ${index} handshake`,
   )
   const handshakeId = `handshake-${index}`
-  host.child.postMessage({
-    type: 'request',
-    protocolVersion: 2,
-    requestId: handshakeId,
-    hostEpoch: index,
-    deadlineMs: 1_000,
-    command: { type: 'handshake' },
-  })
+  host.child.postMessage(canonicalRequest('handshake', handshakeId, index))
   await host.waitMessage(
     (message) =>
       message?.type === 'reply' &&
@@ -126,37 +162,30 @@ async function lifecycleCycle(index) {
     1_000,
   )
   const pingId = `ping-${index}`
-  host.child.postMessage({
-    type: 'request',
-    protocolVersion: 2,
-    requestId: pingId,
-    hostEpoch: index,
-    deadlineMs: 1_000,
-    command: { type: 'ping' },
-  })
+  host.child.postMessage(canonicalRequest('ping', pingId, index))
   await host.waitMessage(
     (message) => message?.type === 'reply' && message.requestId === pingId && message.ok,
     `cycle ${index} ping`,
     1_000,
   )
-  const desiredState = {
-    revision: index,
-    room: { roomId: `room-${index}`, participantIdentity: 'smoke-participant' },
-    microphone: { state: 'off' },
-    camera: { state: 'off' },
-    screen: { state: 'off' },
-    output: { state: 'off' },
-    remoteVideoDemand: [],
+  const leaseId = `lease-${index}`
+  const leaseRequest = canonicalRequest('installCredentialLease', leaseId, index)
+  leaseRequest.command.lease.leaseId = leaseId
+  host.child.postMessage(leaseRequest)
+  const installed = await host.waitMessage(
+    (message) => message?.type === 'reply' && message.requestId === leaseId,
+    `cycle ${index} credential lease`,
+    1_000,
+  )
+  if (!installed.ok || installed.result?.type !== 'credentialLeaseInstalled') {
+    throw new Error(`cycle ${index} canonical credential lease was rejected`)
   }
+  const desiredState = structuredClone(protocol.canonical.desiredState)
+  desiredState.revision = index
   const applyId = `apply-${index}`
-  host.child.postMessage({
-    type: 'request',
-    protocolVersion: 2,
-    requestId: applyId,
-    hostEpoch: index,
-    deadlineMs: 1_000,
-    command: { type: 'applyDesiredState', desiredState },
-  })
+  const applyRequest = canonicalRequest('applyDesiredState', applyId, index)
+  applyRequest.command.desiredState = desiredState
+  host.child.postMessage(applyRequest)
   const accepted = await host.waitMessage(
     (message) => message?.type === 'reply' && message.requestId === applyId,
     `cycle ${index} apply`,
@@ -168,14 +197,7 @@ async function lifecycleCycle(index) {
     )
   }
   const queryId = `query-${index}`
-  host.child.postMessage({
-    type: 'request',
-    protocolVersion: 2,
-    requestId: queryId,
-    hostEpoch: index,
-    deadlineMs: 1_000,
-    command: { type: 'querySnapshot' },
-  })
+  host.child.postMessage(canonicalRequest('querySnapshot', queryId, index))
   const snapshot = await host.waitMessage(
     (message) => message?.type === 'reply' && message.requestId === queryId,
     `cycle ${index} query`,
@@ -187,14 +209,7 @@ async function lifecycleCycle(index) {
     throw new Error(`cycle ${index} TS/native golden snapshot changed`)
   }
   const shutdownId = `shutdown-${index}`
-  host.child.postMessage({
-    type: 'request',
-    protocolVersion: 2,
-    requestId: shutdownId,
-    hostEpoch: index,
-    deadlineMs: 1_000,
-    command: { type: 'shutdown' },
-  })
+  host.child.postMessage(canonicalRequest('shutdown', shutdownId, index))
   await host.waitMessage(
     (message) =>
       message?.type === 'reply' && message.requestId === shutdownId && message.ok,
@@ -212,20 +227,29 @@ async function lifecycleCycle(index) {
 async function nativeConformance() {
   const addon = require(modulePath)
   let publicEvents = 0
-  const publicEventTypes = new Set()
+  const publicEventsByType = new Map()
   let diagnostics = 0
   addon.registerPublicEventCallback((event) => {
     publicEvents += 1
-    publicEventTypes.add(event.type)
+    const events = publicEventsByType.get(event.type) || []
+    events.push(structuredClone(event))
+    publicEventsByType.set(event.type, events)
   })
   addon.registerDiagnosticEventCallback(() => { diagnostics += 1 })
   const handshake = addon.handshake()
-  if (handshake.protocolVersion !== 2 || handshake.engineState !== 'running') {
+  if (
+    handshake.protocolVersion !== protocol.version ||
+    handshake.engineState !== 'running'
+  ) {
     throw new Error('native conformance handshake failed')
   }
   const makeState = (revision, roomId = 'room-conformance') => ({
     revision,
-    room: { roomId, participantIdentity: 'participant-conformance' },
+    room: {
+      roomId,
+      participantIdentity: 'participant-conformance',
+      credentialLeaseId: 'conformance-lease',
+    },
     microphone: { state: 'off' },
     camera: { state: 'off' },
     screen: { state: 'off' },
@@ -240,6 +264,30 @@ async function nativeConformance() {
       throw new Error(`expected ${code}, received ${error?.code || error}`)
     }
     throw new Error(`expected ${code}, operation succeeded`)
+  }
+
+  const installed = addon.installCredentialLease(
+    structuredClone(protocol.canonical.credentialLease),
+  )
+  if (JSON.stringify(installed) !== JSON.stringify(
+    canonicalResult('credentialLeaseInstalled'),
+  )) {
+    throw new Error('canonical credential lease changed across native boundary')
+  }
+  const canonicalState = structuredClone(protocol.canonical.desiredState)
+  const canonicalAccepted = addon.applyDesiredState(canonicalState)
+  if (JSON.stringify(canonicalAccepted) !== JSON.stringify(
+    canonicalResult('desiredStateAccepted'),
+  )) {
+    throw new Error('canonical desired-state result changed across native boundary')
+  }
+  if (JSON.stringify(addon.querySnapshot()) !== JSON.stringify(
+    canonicalResult('snapshot'),
+  )) {
+    throw new Error('canonical snapshot changed across native boundary')
+  }
+  if (JSON.stringify(addon.ping()) !== JSON.stringify(canonicalResult('pong'))) {
+    throw new Error('canonical ping changed across native boundary')
   }
 
   const accepted = addon.applyDesiredState(makeState(2, 'room-a'))
@@ -296,7 +344,10 @@ async function nativeConformance() {
   if (addon.querySnapshot().snapshot.acceptedRevision !== 512) {
     throw new Error('diagnostic flood changed control state')
   }
-  addon.shutdown()
+  const shutdown = addon.shutdown()
+  if (JSON.stringify(shutdown) !== JSON.stringify(canonicalResult('shutdownComplete'))) {
+    throw new Error('canonical shutdown changed across native boundary')
+  }
   await new Promise((resolve) => setImmediate(resolve))
   await new Promise((resolve) => setImmediate(resolve))
   if (diagnostics > 64) {
@@ -307,8 +358,12 @@ async function nativeConformance() {
     'roomStateChanged',
     'trackStateChanged',
   ]) {
-    if (!publicEventTypes.has(type)) {
-      throw new Error(`native public event variant was not emitted: ${type}`)
+    const canonical = canonicalPublicEvent(type)
+    const emitted = publicEventsByType.get(type) || []
+    if (!emitted.some((event) => JSON.stringify(event) === JSON.stringify(canonical))) {
+      throw new Error(
+        `native ${type} event changed across the C++/JS boundary: ${JSON.stringify(emitted)}`,
+      )
     }
   }
   const publicEventsAtShutdown = publicEvents
@@ -317,7 +372,16 @@ async function nativeConformance() {
   if (publicEvents !== publicEventsAtShutdown) {
     throw new Error('public callback escaped terminal shutdown')
   }
-  return { publicEvents, diagnostics, diagnosticFlood: 502 }
+  return {
+    publicEvents,
+    diagnostics,
+    diagnosticFlood: 502,
+    canonicalPublicEvents: [
+      'engineStateChanged',
+      'roomStateChanged',
+      'trackStateChanged',
+    ],
+  }
 }
 
 async function incompatibleHandshake() {
@@ -339,7 +403,8 @@ async function incompatibleHandshake() {
 async function unexpectedExit() {
   const host = spawnHost()
   await host.waitMessage(
-    (message) => message?.type === 'ready' && message.protocolVersion === 2,
+    (message) =>
+      message?.type === 'ready' && message.protocolVersion === protocol.version,
     'unexpected-exit handshake',
   )
   process.kill(host.child.pid)

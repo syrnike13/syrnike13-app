@@ -5,11 +5,14 @@ import path from 'node:path'
 import { Effect, Option, Schema } from 'effect'
 
 import {
+  MEDIA_LIFECYCLE_MAX_REQUEST_ID_LENGTH,
   MEDIA_LIFECYCLE_PROTOCOL_VERSION,
+  MEDIA_UTILITY_BOOTSTRAP_MESSAGE,
   MediaAddonHandshakeSchema,
   MediaAddonPingSchema,
   MediaAddonSnapshotSchema,
   MediaAddonShutdownSchema,
+  MediaCredentialLeaseInstalledSchema,
   MediaDesiredStateAcceptedSchema,
   MediaLifecycleDiagnosticEventSchema,
   MediaLifecycleEventSchema,
@@ -38,6 +41,7 @@ type MediaLifecycleAddon = {
   registerPublicEventCallback(callback: (event: unknown) => void): unknown
   registerDiagnosticEventCallback(callback: (event: unknown) => void): unknown
   handshake(): unknown
+  installCredentialLease(lease: unknown, deadlineMs?: number): unknown
   applyDesiredState(desiredState: unknown, deadlineMs?: number): unknown
   querySnapshot(deadlineMs?: number): unknown
   ping(deadlineMs?: number): unknown
@@ -73,6 +77,7 @@ const MediaLifecycleAddonSchema = Schema.declare<MediaLifecycleAddon>(
     typeof Reflect.get(input, 'registerPublicEventCallback') === 'function' &&
     typeof Reflect.get(input, 'registerDiagnosticEventCallback') === 'function' &&
     typeof Reflect.get(input, 'handshake') === 'function' &&
+    typeof Reflect.get(input, 'installCredentialLease') === 'function' &&
     typeof Reflect.get(input, 'applyDesiredState') === 'function' &&
     typeof Reflect.get(input, 'querySnapshot') === 'function' &&
     typeof Reflect.get(input, 'ping') === 'function' &&
@@ -97,6 +102,9 @@ export const runMediaUtilityHostEffect = Effect.fn(
       new Error('Media utility host has no Electron parent port'),
     )
   }
+  if (dependencies.parentPort === undefined) {
+    yield* Effect.promise(() => waitForMediaUtilityBootstrap(hostPort))
+  }
   const environment = dependencies.environment ?? process.env
   const moduleExists = dependencies.nativeModuleExists ?? existsSync
   const verifyDistribution =
@@ -119,7 +127,7 @@ export const runMediaUtilityHostEffect = Effect.fn(
     failStartup(
       mediaLifecycleFailure(
         'protocol_incompatible',
-        'Media utility host requires the exact protocol v2 version',
+        'Media utility host requires the exact media lifecycle protocol version',
         'environment',
       ),
     )
@@ -269,6 +277,7 @@ export const runMediaUtilityHostEffect = Effect.fn(
     handshake.value.protocolVersion !== MEDIA_LIFECYCLE_PROTOCOL_VERSION ||
     handshake.value.engineState !== 'running' ||
     handshake.value.build.commit !== manifest.commitSha ||
+    handshake.value.build.protocolSchemaSha256 !== manifest.protocolSchemaSha256 ||
     Number(handshake.value.build.napi) !== manifest.napiVersion
   ) {
     failStartup(
@@ -316,7 +325,7 @@ export const runMediaUtilityHostEffect = Effect.fn(
           requestId,
           mediaLifecycleFailure(
             malformedProtocolVersion(request) ? 'protocol_incompatible' : 'protocol_invalid',
-            'Media request does not match the exact protocol v2 contract',
+            'Media request does not match the exact media lifecycle protocol contract',
             'protocol',
           ),
         )
@@ -343,6 +352,37 @@ export const runMediaUtilityHostEffect = Effect.fn(
         engineState: 'running',
         build: handshake.value.build,
       })
+      return
+    }
+    if (request.command.type === 'installCredentialLease') {
+      const lease = request.command.lease
+      void Effect.runPromise(
+        invokeAddon(
+          () => addon.installCredentialLease(lease, request.deadlineMs),
+          'install_credential_lease',
+        ).pipe(
+          Effect.flatMap((value) => {
+            const decoded = Schema.decodeUnknownOption(
+              MediaCredentialLeaseInstalledSchema,
+              { onExcessProperty: 'error' },
+            )(value)
+            return Option.isSome(decoded)
+              ? Effect.sync(() =>
+                  postSuccessReply(hostPort, request.requestId, decoded.value),
+                )
+              : Effect.fail(
+                  mediaLifecycleFailure(
+                    'media_credential_lease_invalid',
+                    'Native media credential lease returned an invalid result',
+                    'install_credential_lease',
+                  ),
+                )
+          }),
+          Effect.catch((failure) =>
+            Effect.sync(() => postFailureReply(hostPort, request.requestId, failure)),
+          ),
+        ),
+      )
       return
     }
     if (request.command.type === 'applyDesiredState') {
@@ -501,7 +541,10 @@ function sanitizePublicEvent(event: MediaLifecycleEvent): MediaLifecycleEvent {
       ),
     }
   }
-  if (event.type === 'engineStateChanged' && event.failure) {
+  if (
+    (event.type === 'engineStateChanged' || event.type === 'roomStateChanged') &&
+    event.failure
+  ) {
     return {
       ...event,
       failure: mediaLifecycleFailure(
@@ -548,7 +591,8 @@ function malformedRequestId(value: unknown) {
     return undefined
   }
   const requestId = Reflect.get(value, 'requestId')
-  return typeof requestId === 'string' && requestId.length > 0 && requestId.length <= 256
+  return typeof requestId === 'string' && requestId.length > 0 &&
+    requestId.length <= MEDIA_LIFECYCLE_MAX_REQUEST_ID_LENGTH
     ? requestId
     : undefined
 }
@@ -568,4 +612,15 @@ function postIncompatibleReady(
     engineState: 'failed',
     failure,
   } satisfies MediaLifecycleReady)
+}
+
+function waitForMediaUtilityBootstrap(port: ParentPort) {
+  return new Promise<void>((resolve) => {
+    let started = false
+    port.on('message', (event) => {
+      if (started || event.data !== MEDIA_UTILITY_BOOTSTRAP_MESSAGE) return
+      started = true
+      resolve()
+    })
+  })
 }

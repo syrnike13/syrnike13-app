@@ -6,6 +6,7 @@ import { app, utilityProcess, type UtilityProcess } from 'electron'
 import { DESKTOP_RELEASE_CHANNEL } from '../desktop-app-identity'
 import {
   MEDIA_LIFECYCLE_PROTOCOL_VERSION,
+  MEDIA_UTILITY_BOOTSTRAP_MESSAGE,
   type MediaLifecycleRequest,
 } from './contract'
 
@@ -61,6 +62,7 @@ export type ElectronMediaUtilityAdapterOptions = {
 export class ElectronMediaUtilityAdapter implements MediaUtilityAdapter {
   private child: UtilityProcessLike | null = null
   private killRequested = false
+  private bootstrapTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(private readonly options: ElectronMediaUtilityAdapterOptions) {}
 
@@ -91,6 +93,7 @@ export class ElectronMediaUtilityAdapter implements MediaUtilityAdapter {
     ) => {
       if (terminal) return
       terminal = true
+      this.stopBootstrap()
       if (this.child === child) this.child = null
       const snapshot = stderr.snapshot()
       callbacks.onExit({
@@ -103,7 +106,10 @@ export class ElectronMediaUtilityAdapter implements MediaUtilityAdapter {
         error,
       })
     }
-    child.on('message', callbacks.onMessage)
+    child.on('message', (message) => {
+      this.stopBootstrap()
+      callbacks.onMessage(message)
+    })
     child.on('error', (error) => {
       finish('error', null, new Error(String(error)))
       try {
@@ -113,6 +119,18 @@ export class ElectronMediaUtilityAdapter implements MediaUtilityAdapter {
       }
     })
     child.on('exit', (code) => finish('exit', code))
+    child.on('spawn', () => {
+      const bootstrap = () => {
+        try {
+          child.postMessage(MEDIA_UTILITY_BOOTSTRAP_MESSAGE)
+        } catch {
+          // An exit/error event owns terminal reporting.
+        }
+      }
+      this.bootstrapTimer = setInterval(bootstrap, 25)
+      this.bootstrapTimer.unref?.()
+      bootstrap()
+    })
   }
 
   postMessage(message: MediaLifecycleRequest) {
@@ -122,12 +140,18 @@ export class ElectronMediaUtilityAdapter implements MediaUtilityAdapter {
 
   kill() {
     this.killRequested = true
+    this.stopBootstrap()
     try {
       this.child?.kill()
     } catch {
       // Killing an already exited utility process is idempotent.
     }
     this.child = null
+  }
+
+  private stopBootstrap() {
+    if (this.bootstrapTimer) clearInterval(this.bootstrapTimer)
+    this.bootstrapTimer = null
   }
 }
 

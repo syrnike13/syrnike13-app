@@ -62,6 +62,17 @@ add_library(media_core STATIC
 windows_media_target(media_core)
 target_include_directories(media_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/LiveKitSDK.cmake")
+windows_media_setup_livekit_sdk()
+find_package(LiveKit CONFIG REQUIRED)
+
+add_library(media_livekit STATIC
+  src/livekit/livekit_room_transport.cpp
+)
+windows_media_target(media_livekit)
+target_include_directories(media_livekit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(media_livekit PUBLIC media_core LiveKit::livekit)
+
 add_executable(media_probe
   src/probe/media_probe.cpp
 )
@@ -92,7 +103,8 @@ target_compile_definitions(windows_media PRIVATE
   NAPI_VERSION=${NAPI_VERSION}
   WINDOWS_MEDIA_COMMIT="${WINDOWS_MEDIA_COMMIT}"
 )
-target_link_libraries(windows_media PRIVATE ${CMAKE_JS_LIB} media_core)
+target_link_libraries(windows_media PRIVATE ${CMAKE_JS_LIB} media_core media_livekit)
+windows_media_copy_livekit_runtime(windows_media)
 if(MSVC)
   target_link_libraries(windows_media PRIVATE delayimp)
   target_link_options(windows_media PRIVATE /DELAYLOAD:node.exe)
@@ -129,16 +141,12 @@ add_test(NAME media-probe-fail-start COMMAND media_probe fail-start)
 add_test(NAME media-probe-hang-worker COMMAND media_probe hang-worker)
 
 if(WINDOWS_MEDIA_BUILD_LAB)
-  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/LiveKitSDK.cmake")
-  windows_media_setup_livekit_sdk()
-  find_package(LiveKit CONFIG REQUIRED)
-
   add_executable(native_media_lab_publisher
     src/lab/native_media_lab_publisher.cpp
   )
   windows_media_target(native_media_lab_publisher)
   target_compile_definitions(native_media_lab_publisher PRIVATE _CRT_SECURE_NO_WARNINGS)
-  target_link_libraries(native_media_lab_publisher PRIVATE media_core LiveKit::livekit)
+  target_link_libraries(native_media_lab_publisher PRIVATE media_core media_livekit LiveKit::livekit)
 
   get_filename_component(_livekit_cmake_parent "${LiveKit_DIR}" DIRECTORY)
   get_filename_component(_livekit_lib_dir "${_livekit_cmake_parent}" DIRECTORY)

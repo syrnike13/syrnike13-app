@@ -1,50 +1,18 @@
-# Windows native media protocol v2
+# Windows native media protocol v3
 
-`apps/desktop/src/main/media-runtime/contract.ts` is the production source of truth for every Electron main/utility message. It defines the Effect Schema codecs, inferred TypeScript types, exact protocol version, queue capacities, deadlines, and payload bounds. The native build generates `protocol_limits.generated.hpp` from those exported constants and uses the same values in the artifact manifest and verifier. The C++ representation is checked through native revision tests plus the Electron TS -> utility -> addon -> C++ -> addon -> utility -> TS golden round trip.
+`packages/windows-media-engine/protocol/media-lifecycle.json` is the canonical protocol descriptor. The native build hashes it, generates C++ limits and required/optional field definitions in `protocol_limits.generated.hpp`, and generates the TypeScript identity, field maps, and canonical fixtures in `protocol.generated.ts`. Conformance tests validate requests, replies, failures, and all public-event variants against the Effect schemas and generated field order; the native smoke also compares deterministic C++ events byte-for-byte with the canonical fixtures. The utility rejects an addon whose handshake hash differs from its artifact manifest.
 
 ```text
-Electron main                              C++ control thread
-  request v2 + requestId + deadlineMs        validate complete snapshot
-    -> utility host Schema decode               -> compare revision
-      -> N-API strict field decode                 -> atomically store or reject
-      <- typed addon result                        <- coherent snapshot
-    <- reply v2 with same requestId
-
-C++ public callback -> lossless public TSFN -> utility Schema -> Electron event
-C++ diagnostic callback -> lossy diagnostic TSFN -> utility Schema -> diagnostic
+Electron main -> utility host -> N-API addon -> Engine control thread
+ request v3      exact Schema    bounded decode   atomic desired-state commit
+ credential lease (private) --------------------> private credential store
+ room intent (lease ID only) --------------------> non-blocking Room coordinator
 ```
 
-## Commands and state
+The commands are `handshake`, `installCredentialLease`, `applyDesiredState`, `querySnapshot`, `ping`, and `shutdown`. `requestId` only correlates a reply, while `revision` orders immutable desired-state snapshots. A greater revision is accepted, an identical revision/content pair is a duplicate, the same revision with different content is a conflict, and a lower revision is stale. A deadline cannot be followed by an ambiguous late commit: the command stores its committed reply under the same commit mutex, so the caller never performs an unbounded post-deadline wait.
 
-The only control commands are `handshake`, `applyDesiredState`, `querySnapshot`, `ping`, and `shutdown`. `requestId` correlates one reply and has no ordering, replay, or deduplication meaning; `revision` is the only recency marker. `applyDesiredState` validates the complete snapshot before the C++ control thread takes the command commit lock. A caller that wins the deadline race marks the command cancelled, while a control thread that wins completes the already-committed result, so a timeout can never be followed by a late state mutation.
+Room credentials cross Electron IPC only in `installCredentialLease`. The Engine stores at most four leases privately and consumes a lease when it starts one connection attempt; installing a missing lease also resumes an already accepted failed intent. Desired state contains only a bounded `credentialLeaseId`, and snapshots, public events, diagnostics, and manifests never contain a URL or token. Room reconciliation reports `off`, `connecting`, `connected`, `disconnecting`, or `failed`; microphone, camera, screen, output, and remote-video quality remain `off` in Phase A.
 
-Revision handling is deterministic:
+Public state and diagnostics have separate types and lanes. The addon keeps a bounded public-event buffer and schedules at most one Node TSFN dispatch; room/track state can coalesce, terminal lifecycle/failure events are retained, and a sequence gap makes the supervisor query one coherent snapshot. Diagnostic overflow remains lossy. Queue capacity is 64, control capacity and pending Electron requests are 16, identifiers are 256 printable ASCII bytes, remote demands are 64, credential URLs are 2048 bytes, tokens are 16384 bytes, and request deadlines are 1–5000 ms.
 
-- A greater revision is accepted atomically; gaps are allowed because revisions represent recency, not a delivery count.
-- The accepted revision with byte-for-field equivalent content returns `duplicate`, making replay idempotent.
-- The accepted revision with different content returns `revision_conflict`.
-- A lower revision returns `stale_revision`.
-
-At protocol v2, microphone, camera, screen, output, and remote-video quality support only `off`. A room intent carries bounded logical identifiers but no URL, token, SDK handle, device identifier, HWND, HRESULT, GPU object, or N-API value. Supporting active media requires a later protocol version and does not change the meaning of v2.
-
-## Versioning and limits
-
-Version negotiation is exact: both sides require version `2`; any other value returns `protocol_incompatible`. There is no compatibility range or v1 fallback.
-
-| Value | Bound |
-| --- | ---: |
-| Request ID | 256 UTF-16 code units in TypeScript; 256 bytes for native identifiers |
-| Room/participant/publication identifier | 256 printable ASCII bytes |
-| Remote video demands | 64 |
-| Pending Electron requests / C++ control queue | 16 |
-| Public event queue / diagnostic event queue | 64 each |
-| Diagnostic metrics / implementation fields | 16 each |
-| Diagnostic metric/field name | 64 |
-| Diagnostic implementation value | 256 |
-| Request deadline | 1–5000 ms; current native control operations use at most 1000 ms |
-
-Public state and diagnostic messages use distinct schemas and distinct N-API queues. Public queue overflow terminates the isolated utility so Electron observes a fault instead of silently losing state; diagnostic overflow only drops telemetry. Diagnostics contain typed codes, bounded finite metrics, and redacted optional implementation fields, and no diagnostic callback can enqueue a command or mutate Engine state.
-
-The utility host rejects excess properties recursively before calling N-API. The addon then probes only the fixed expected property set and preflights string byte lengths with raw N-API before allocation; it deliberately does not enumerate attacker-controlled property names. This keeps parser allocation bounded while the production path still enforces the exact object shape.
-
-The Engine emits all four public variants. Lifecycle transitions emit `engineStateChanged`; deterministic fatal startup/control failures additionally emit `fatalEngineFailure`; the first accepted desired snapshot publishes one `roomStateChanged` and four `trackStateChanged` events, and later room presence changes emit another room event. Revisions that leave public state unchanged do not flood the lossless queue.
+Compatibility is exact. Version, schema SHA-256, addon commit, N-API version, staged file hashes, and release identity must agree before readiness; there is no v1/v2 fallback.

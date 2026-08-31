@@ -7,7 +7,7 @@
     "build": "node scripts/build.mjs --config Release",
     "build:debug": "node scripts/build.mjs --config Debug --no-stage",
     "build:asan": "node scripts/build.mjs --config Debug --no-stage --asan",
-    "build:lab": "node scripts/build.mjs --config Release --no-stage --lab",
+    "build:lab": "node scripts/build.mjs --config Release --lab",
     "test": "ctest --test-dir build -C Release --output-on-failure",
     "test:debug": "ctest --test-dir build -C Debug --output-on-failure",
     "probe:repeat": ".\\build\\Release\\media_probe.exe lifecycle-repeat --count 100",

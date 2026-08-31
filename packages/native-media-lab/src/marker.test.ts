@@ -7,6 +7,7 @@ import {
   MARKER_MAGIC,
   MARKER_ROWS,
   MARKER_TILE_SIZE,
+  videoMarkerLatency,
 } from './marker.js'
 
 describe('decodeVideoMarker', () => {
@@ -39,5 +40,11 @@ describe('decodeVideoMarker', () => {
     expect(
       decodeVideoMarker(new VideoFrame(data, width, height, VideoBufferType.I420)),
     ).toEqual({ sequence, capturedAtMs })
+  })
+
+  it('rejects future and stale timestamps instead of bypassing latency checks', () => {
+    expect(videoMarkerLatency(9_900, 10_000, 1_000)).toBe(100)
+    expect(videoMarkerLatency(10_001, 10_000, 1_000)).toBeUndefined()
+    expect(videoMarkerLatency(9_000, 10_000, 1_000)).toBeUndefined()
   })
 })

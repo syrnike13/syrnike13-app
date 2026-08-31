@@ -16,6 +16,7 @@ import {
   MEDIA_LIFECYCLE_START_TIMEOUT_MS,
   MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
   MEDIA_LIFECYCLE_SHUTDOWN_TIMEOUT_MS,
+  MEDIA_LIFECYCLE_SCHEMA_SHA256,
 } from './contract'
 
 const MediaSha256Schema = Schema.String.check(
@@ -25,6 +26,7 @@ const MediaSha256Schema = Schema.String.check(
 export const MediaArtifactManifestSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   protocolVersion: Schema.Literal(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
+  protocolSchemaSha256: Schema.Literal(MEDIA_LIFECYCLE_SCHEMA_SHA256),
   platform: Schema.Literal('win32'),
   arch: Schema.Literal('x64'),
   appVersion: Schema.String,
@@ -34,7 +36,7 @@ export const MediaArtifactManifestSchema = Schema.Struct({
   napiVersion: Schema.Literal(8),
   capabilities: Schema.Tuple([
     Schema.Literal('lifecycle'),
-    Schema.Literal('control-v2'),
+    Schema.Literal('control-v3'),
     Schema.Literal('diagnostics-v2'),
   ]),
   limits: Schema.Struct({
@@ -52,6 +54,14 @@ export const MediaArtifactManifestSchema = Schema.Struct({
   files: Schema.Tuple([
     Schema.Struct({
       name: Schema.Literal('windows_media.node'),
+      sha256: MediaSha256Schema,
+    }),
+    Schema.Struct({
+      name: Schema.Literal('livekit.dll'),
+      sha256: MediaSha256Schema,
+    }),
+    Schema.Struct({
+      name: Schema.Literal('livekit_ffi.dll'),
       sha256: MediaSha256Schema,
     }),
   ]),
@@ -82,7 +92,12 @@ export function verifyMediaArtifactDistribution(
   const names = entries.map((entry) => entry.name).sort()
   if (
     JSON.stringify(names) !==
-    JSON.stringify(['media-manifest.json', 'windows_media.node'])
+    JSON.stringify([
+      'livekit.dll',
+      'livekit_ffi.dll',
+      'media-manifest.json',
+      'windows_media.node',
+    ])
   ) {
     throw new Error('Media artifact distribution has unexpected contents')
   }
@@ -107,11 +122,13 @@ export function verifyMediaArtifactDistribution(
   ) {
     throw new Error('Media artifact build identity mismatch')
   }
-  const hash = createHash('sha256')
-    .update(readFileSync(path.join(mediaRoot, 'windows_media.node')))
-    .digest('hex')
-  if (manifest.files[0].sha256 !== hash) {
-    throw new Error('Media artifact SHA-256 mismatch')
+  for (const file of manifest.files) {
+    const hash = createHash('sha256')
+      .update(readFileSync(path.join(mediaRoot, file.name)))
+      .digest('hex')
+    if (file.sha256 !== hash) {
+      throw new Error(`Media artifact SHA-256 mismatch: ${file.name}`)
+    }
   }
   return manifest
 }

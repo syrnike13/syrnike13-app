@@ -1,6 +1,8 @@
 import {
   AudioStream,
+  ContinualGatheringPolicy,
   dispose,
+  IceTransportType,
   Room,
   RoomEvent,
   TrackKind,
@@ -9,7 +11,7 @@ import {
 } from '@livekit/rtc-node'
 import { Effect, Schema } from 'effect'
 import { writeFile } from 'node:fs/promises'
-import { decodeVideoMarker } from './marker.js'
+import { decodeVideoMarker, videoMarkerLatency } from './marker.js'
 
 const ObserverEnvironment = Schema.Struct({
   LIVEKIT_URL: Schema.String,
@@ -23,6 +25,9 @@ const ObserverEnvironment = Schema.Struct({
   MEDIA_LAB_ALLOW_VIDEO_GAPS: Schema.optional(Schema.String),
   MEDIA_LAB_EXPECT_SUBSCRIPTIONS: Schema.optional(Schema.String),
   MEDIA_LAB_MAX_VIDEO_LATENCY_MS: Schema.optional(Schema.String),
+  MEDIA_LAB_ICE_TRANSPORT: Schema.optional(
+    Schema.Union([Schema.Literal('all'), Schema.Literal('nohost')]),
+  ),
 })
 
 interface ObserverOptions {
@@ -37,6 +42,7 @@ interface ObserverOptions {
   readonly allowVideoGaps: boolean
   readonly expectedSubscriptions: number
   readonly maximumVideoLatencyMs: number
+  readonly iceTransportType: IceTransportType
 }
 
 interface VerificationReport {
@@ -54,6 +60,7 @@ interface VerificationReport {
     readonly minimumLatencyMs: number | null
     readonly maximumLatencyMs: number | null
     readonly averageLatencyMs: number | null
+    readonly invalidTimestampFrames: number
     readonly observerDroppedFrames: number
     readonly maximumObserverBacklogFrames: number
   }
@@ -128,6 +135,9 @@ function optionsFromEnvironment(): ObserverOptions {
       2_000,
       'MEDIA_LAB_MAX_VIDEO_LATENCY_MS',
     ),
+    iceTransportType: env.MEDIA_LAB_ICE_TRANSPORT === 'nohost'
+      ? IceTransportType.TRANSPORT_NOHOST
+      : IceTransportType.TRANSPORT_ALL,
   }
 }
 
@@ -137,6 +147,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
   const videoLatencies: number[] = []
   let videoReceived = 0
   let videoDecoded = 0
+  let invalidVideoTimestamps = 0
   let maximumConsecutiveFrames = 0
   let currentConsecutiveFrames = 0
   let sequenceGaps = 0
@@ -168,6 +179,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
       : maximumConsecutiveFrames >= options.minimumVideoFrames
     if (
       videoAccepted &&
+      videoLatencies.length === videoDecoded &&
       audioPulses >= options.minimumAudioPulses &&
       tracksSubscribed >= options.expectedSubscriptions
     ) resolveAccepted?.()
@@ -175,42 +187,88 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
 
   const consumeVideo = async (track: RemoteTrack) => {
     const reader = new VideoStream(track).getReader()
-    let nextProcessingAt = 0
-    try {
+    type VideoValue = NonNullable<Awaited<ReturnType<typeof reader.read>>['value']>
+    const processValue = (value: VideoValue) => {
+      const marker = decodeVideoMarker(value.frame)
+      if (marker !== undefined) {
+        videoDecoded += 1
+        const latency = videoMarkerLatency(
+          marker.capturedAtMs,
+          Date.now(),
+          options.timeoutMs,
+        )
+        if (latency !== undefined) {
+          videoLatencies.push(latency)
+        } else {
+          invalidVideoTimestamps += 1
+        }
+        if (lastVideoSequence === undefined || marker.sequence === lastVideoSequence + 1) {
+          currentConsecutiveFrames += 1
+        } else if (marker.sequence <= lastVideoSequence) {
+          outOfOrderFrames += 1
+          currentConsecutiveFrames = 1
+        } else {
+          const gap = marker.sequence - lastVideoSequence - 1
+          sequenceGaps += gap
+          observerDroppedFrames += gap
+          currentConsecutiveFrames = 1
+        }
+        lastVideoSequence = marker.sequence
+        maximumConsecutiveFrames = Math.max(
+          maximumConsecutiveFrames,
+          currentConsecutiveFrames,
+        )
+      }
+      checkAcceptance()
+    }
+
+    if (options.delayMs === 0) {
+      try {
+        while (true) {
+          const result = await reader.read()
+          if (result.done) break
+          videoReceived += 1
+          processValue(result.value)
+        }
+      } finally {
+        reader.releaseLock()
+      }
+      return
+    }
+
+    let pending: VideoValue | undefined
+    let readingDone = false
+    let wake: (() => void) | undefined
+    const pump = (async () => {
       while (true) {
         const result = await reader.read()
         if (result.done) break
         videoReceived += 1
-        const receivedAt = Date.now()
-        if (options.delayMs > 0 && receivedAt < nextProcessingAt) {
-          observerDroppedFrames += 1
-          maximumObserverBacklogFrames = 1
+        if (pending !== undefined) observerDroppedFrames += 1
+        pending = result.value
+        maximumObserverBacklogFrames = 1
+        wake?.()
+        wake = undefined
+      }
+      readingDone = true
+      wake?.()
+    })()
+    try {
+      while (!readingDone || pending !== undefined) {
+        if (pending === undefined) {
+          await new Promise<void>((resolve) => {
+            if (pending !== undefined || readingDone) resolve()
+            else wake = resolve
+          })
           continue
         }
-        nextProcessingAt = receivedAt + options.delayMs
-        const marker = decodeVideoMarker(result.value.frame)
-        if (marker !== undefined) {
-          videoDecoded += 1
-          const latency = Date.now() - marker.capturedAtMs
-          if (latency >= 0 && latency < options.timeoutMs) videoLatencies.push(latency)
-          if (lastVideoSequence === undefined || marker.sequence === lastVideoSequence + 1) {
-            currentConsecutiveFrames += 1
-          } else if (marker.sequence <= lastVideoSequence) {
-            outOfOrderFrames += 1
-            currentConsecutiveFrames = 1
-          } else {
-            sequenceGaps += marker.sequence - lastVideoSequence - 1
-            currentConsecutiveFrames = 1
-          }
-          lastVideoSequence = marker.sequence
-          maximumConsecutiveFrames = Math.max(
-            maximumConsecutiveFrames,
-            currentConsecutiveFrames,
-          )
-        }
-        checkAcceptance()
+        const value = pending
+        pending = undefined
+        await new Promise<void>((resolve) => setTimeout(resolve, options.delayMs))
+        processValue(value)
       }
     } finally {
+      await pump
       reader.releaseLock()
     }
   }
@@ -270,6 +328,12 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
   await room.connect(options.url, options.token, {
     autoSubscribe: true,
     dynacast: false,
+    rtcConfig: {
+      iceTransportType: options.iceTransportType,
+      continualGatheringPolicy:
+        ContinualGatheringPolicy.GATHER_CONTINUALLY,
+      iceServers: [],
+    },
   })
   await writeFile(options.readyPath, 'ready\n', 'utf8')
 
@@ -289,8 +353,9 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
       : maximumConsecutiveFrames >= options.minimumVideoFrames) &&
     audioPulses >= options.minimumAudioPulses &&
     tracksSubscribed >= options.expectedSubscriptions &&
-    (videoLatencies.length === 0 ||
-      Math.max(...videoLatencies) <= options.maximumVideoLatencyMs)
+    videoLatencies.length === videoDecoded &&
+    videoLatencies.length > 0 &&
+    Math.max(...videoLatencies) <= options.maximumVideoLatencyMs
   const latencyTotal = videoLatencies.reduce((sum, value) => sum + value, 0)
   return {
     schemaVersion: 1,
@@ -308,6 +373,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
       maximumLatencyMs: videoLatencies.length > 0 ? Math.max(...videoLatencies) : null,
       averageLatencyMs:
         videoLatencies.length > 0 ? latencyTotal / videoLatencies.length : null,
+      invalidTimestampFrames: invalidVideoTimestamps,
       observerDroppedFrames,
       maximumObserverBacklogFrames,
     },

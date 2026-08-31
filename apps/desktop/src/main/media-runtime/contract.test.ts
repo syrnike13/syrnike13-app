@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+
 import { Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -5,14 +8,29 @@ import {
   MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS,
   MEDIA_LIFECYCLE_MAX_REQUEST_ID_LENGTH,
   MEDIA_LIFECYCLE_PROTOCOL_VERSION,
+  MEDIA_LIFECYCLE_SCHEMA_SHA256,
   EngineDesiredStateSchema,
+  MediaCredentialLeaseSchema,
   MediaLifecycleDiagnosticMessageSchema,
+  MediaLifecyclePublicEventMessageSchema,
+  MediaLifecycleReplySchema,
   MediaLifecycleRequestSchema,
+  RoomIntentSchema,
   isMediaLifecycleMessage,
   isMediaLifecycleRequest,
   mediaLifecycleFailure,
   type EngineDesiredState,
 } from './contract'
+import {
+  MEDIA_LIFECYCLE_CANONICAL_FIXTURES,
+  MEDIA_LIFECYCLE_EVENT_FIELDS,
+  MEDIA_LIFECYCLE_PROTOCOL_COMMANDS,
+  MEDIA_LIFECYCLE_PROTOCOL_FIELDS,
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS,
+  MEDIA_LIFECYCLE_PROTOCOL_RESULTS,
+  MEDIA_LIFECYCLE_PUBLIC_EVENTS,
+  MEDIA_LIFECYCLE_ROOM_STATES,
+} from './protocol.generated'
 
 const off = { state: 'off' } as const
 
@@ -22,6 +40,7 @@ function desiredState(revision = 1): EngineDesiredState {
     room: {
       roomId: 'room-1',
       participantIdentity: 'participant-1',
+      credentialLeaseId: 'lease-1',
     },
     microphone: off,
     camera: off,
@@ -31,7 +50,113 @@ function desiredState(revision = 1): EngineDesiredState {
   }
 }
 
-describe('native media protocol v2 contract', () => {
+describe('native media protocol v3 contract', () => {
+  it('validates the canonical source and generated C++ identity', () => {
+    const sourceUrl = new URL(
+      '../../../../../packages/windows-media-engine/protocol/media-lifecycle.json',
+      import.meta.url,
+    )
+    const source = readFileSync(sourceUrl, 'utf8')
+    const specification = JSON.parse(source) as {
+      version: number
+      limits: object
+      commands: string[]
+      results: string[]
+      publicEvents: string[]
+      eventFields: Record<string, { required: string[]; optional: string[] }>
+      roomStates: string[]
+      canonical: {
+        credentialLease: unknown
+        roomIntent: unknown
+        desiredState: unknown
+        requests: unknown[]
+        successReplies: unknown[]
+        failureReplies: unknown[]
+        publicEventMessages: unknown[]
+      }
+      fields: {
+        failure: string[]
+        roomIntent: string[]
+        engineDesiredState: string[]
+      }
+    }
+    expect(createHash('sha256').update(source).digest('hex')).toBe(
+      MEDIA_LIFECYCLE_SCHEMA_SHA256,
+    )
+    expect(specification.version).toBe(MEDIA_LIFECYCLE_PROTOCOL_VERSION)
+    expect(MEDIA_LIFECYCLE_PROTOCOL_LIMITS).toEqual(specification.limits)
+    expect(MEDIA_LIFECYCLE_PROTOCOL_FIELDS).toEqual(specification.fields)
+    expect(MEDIA_LIFECYCLE_EVENT_FIELDS).toEqual(specification.eventFields)
+    expect(MEDIA_LIFECYCLE_PROTOCOL_COMMANDS).toEqual(specification.commands)
+    expect(MEDIA_LIFECYCLE_PROTOCOL_RESULTS).toEqual(specification.results)
+    expect(MEDIA_LIFECYCLE_PUBLIC_EVENTS).toEqual(specification.publicEvents)
+    expect(MEDIA_LIFECYCLE_ROOM_STATES).toEqual(specification.roomStates)
+    expect(Schema.is(MediaCredentialLeaseSchema)(
+      specification.canonical.credentialLease,
+    )).toBe(true)
+    expect(Schema.is(RoomIntentSchema)(specification.canonical.roomIntent)).toBe(true)
+    expect(Schema.is(EngineDesiredStateSchema)(
+      specification.canonical.desiredState,
+    )).toBe(true)
+    expect(Object.keys(specification.canonical.roomIntent as object)).toEqual(
+      specification.fields.roomIntent,
+    )
+    expect(Object.keys(specification.canonical.desiredState as object)).toEqual(
+      specification.fields.engineDesiredState,
+    )
+    expect(MEDIA_LIFECYCLE_CANONICAL_FIXTURES).toEqual(specification.canonical)
+    expect(specification.canonical.requests).toHaveLength(specification.commands.length)
+    expect(specification.canonical.successReplies).toHaveLength(specification.results.length)
+    expect(specification.canonical.publicEventMessages).toHaveLength(
+      specification.publicEvents.length,
+    )
+    expect(specification.canonical.requests.map((request) =>
+      (request as { command: { type: string } }).command.type,
+    )).toEqual(specification.commands)
+    expect(specification.canonical.successReplies.map((reply) =>
+      (reply as { result: { type: string } }).result.type,
+    )).toEqual(specification.results)
+    expect(specification.canonical.publicEventMessages.map((message) =>
+      (message as { event: { type: string } }).event.type,
+    )).toEqual(specification.publicEvents)
+    for (const request of specification.canonical.requests) {
+      expect(Schema.is(MediaLifecycleRequestSchema)(request)).toBe(true)
+    }
+    for (const reply of [
+      ...specification.canonical.successReplies,
+      ...specification.canonical.failureReplies,
+    ]) {
+      expect(Schema.is(MediaLifecycleReplySchema)(reply)).toBe(true)
+    }
+    const snapshotReply = specification.canonical.successReplies.find((reply) =>
+      (reply as { result?: { type?: string } }).result?.type === 'snapshot') as {
+        result: { snapshot: { acceptedRevision: number | null; desiredState: unknown } }
+      }
+    expect(snapshotReply.result.snapshot.acceptedRevision).toBe(
+      (snapshotReply.result.snapshot.desiredState as { revision: number }).revision,
+    )
+    for (const event of specification.canonical.publicEventMessages) {
+      expect(Schema.is(MediaLifecyclePublicEventMessageSchema)(event)).toBe(true)
+      const value = (event as { event: { type: string; failure?: object } }).event
+      const fields = specification.eventFields[value.type]
+      expect(fields).toBeDefined()
+      expect(Object.keys(value)).toEqual([
+        ...fields.required,
+        ...fields.optional.filter((field) => Object.hasOwn(value, field)),
+      ])
+      if (value.failure) {
+        expect(Object.keys(value.failure)).toEqual(specification.fields.failure)
+      }
+    }
+    const nativeHeader = readFileSync(
+      new URL(
+        '../../../../../packages/windows-media-engine/native/src/core/protocol_limits.generated.hpp',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+    expect(nativeHeader).toContain(MEDIA_LIFECYCLE_SCHEMA_SHA256)
+  })
   it('accepts the maximum valid request and rejects one byte or entry over', () => {
     const maximum = {
       type: 'request',
@@ -65,6 +190,7 @@ describe('native media protocol v2 contract', () => {
             room: {
               roomId: 'x'.repeat(256),
               participantIdentity: 'participant',
+              credentialLeaseId: 'lease-1',
             },
           },
         },
@@ -80,6 +206,7 @@ describe('native media protocol v2 contract', () => {
             room: {
               roomId: 'x'.repeat(257),
               participantIdentity: 'participant',
+              credentialLeaseId: 'lease-1',
             },
           },
         },

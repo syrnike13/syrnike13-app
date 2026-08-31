@@ -1,15 +1,15 @@
 include_guard(GLOBAL)
 
-set(WINDOWS_MEDIA_LIVEKIT_VERSION "1.10.0")
+set(WINDOWS_MEDIA_LIVEKIT_VERSION "1.10.0-syrnike.1")
 set(WINDOWS_MEDIA_LIVEKIT_UPSTREAM_COMMIT
   "336d14e17d9432acce89e4c0d57078bbfbb23026"
 )
 set(WINDOWS_MEDIA_LIVEKIT_FORK_COMMIT
-  "336d14e17d9432acce89e4c0d57078bbfbb23026"
+  "c4848874cc9a316b319979f17a0b6944e50e6246"
 )
-set(WINDOWS_MEDIA_LIVEKIT_FORK_RELEASE "native-v2-baseline-v1.10.0")
+set(WINDOWS_MEDIA_LIVEKIT_FORK_RELEASE "v1.10.0-syrnike.1")
 set(WINDOWS_MEDIA_LIVEKIT_WINDOWS_X64_SHA256
-  "6808b44e8ef8fdb31194ac084049f416eae144a34c51a6233f43a5106a54b6d2"
+  "5e0180c02111e22264337286732d426b07cf460f724cb1e99e72f02a07fc2c48"
 )
 
 function(windows_media_setup_livekit_sdk)
@@ -52,7 +52,7 @@ function(windows_media_setup_livekit_sdk)
 
   set(LiveKit_DIR "${_sdk_root}/lib/cmake/LiveKit" PARENT_SCOPE)
   set(WINDOWS_MEDIA_LIVEKIT_SDK_ROOT "${_sdk_root}" CACHE PATH
-    "Pinned Syrnike LiveKit mirror used by Native v2 Media Lab" FORCE
+    "Syrnike LiveKit SDK used by Native v2 Media Lab" FORCE
   )
 endfunction()
 

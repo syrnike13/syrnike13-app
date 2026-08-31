@@ -5,21 +5,17 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-const EXPECTED_FILES = ['media-manifest.json', 'windows_media.node']
+const EXPECTED_FILES = [
+  'livekit.dll', 'livekit_ffi.dll', 'media-manifest.json', 'windows_media.node',
+]
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(packageRoot, '..', '..')
 const protocolSource = readFileSync(
-  path.resolve(
-    repoRoot,
-    'apps',
-    'desktop',
-    'src',
-    'main',
-    'media-runtime',
-    'contract.ts',
-  ),
+  path.resolve(packageRoot, 'protocol', 'media-lifecycle.json'),
   'utf8',
 )
+const protocol = JSON.parse(protocolSource)
+const protocolSchemaSha256 = createHash('sha256').update(protocolSource).digest('hex')
 const targetRoot = path.resolve(
   process.argv[2] || path.resolve(packageRoot, 'dist', 'win32-x64'),
 )
@@ -52,7 +48,8 @@ const expectedChannel =
 const expectedCommit = process.env.GITHUB_SHA || gitCommitSha()
 if (
   manifest.schemaVersion !== 1 ||
-  manifest.protocolVersion !== protocolConstant('MEDIA_LIFECYCLE_PROTOCOL_VERSION') ||
+  manifest.protocolVersion !== protocol.version ||
+  manifest.protocolSchemaSha256 !== protocolSchemaSha256 ||
   manifest.platform !== 'win32' ||
   manifest.arch !== 'x64' ||
   manifest.appVersion !== expectedVersion ||
@@ -61,29 +58,32 @@ if (
   manifest.electronVersion !== desktopRequire('electron/package.json').version ||
   manifest.napiVersion !== 8 ||
   JSON.stringify(manifest.capabilities) !==
-    JSON.stringify(['lifecycle', 'control-v2', 'diagnostics-v2']) ||
+    JSON.stringify(['lifecycle', 'control-v3', 'diagnostics-v2']) ||
   JSON.stringify(manifest.limits) !== JSON.stringify({
-    controlQueue: protocolConstant('MEDIA_LIFECYCLE_CONTROL_QUEUE_CAPACITY'),
-    eventQueue: protocolConstant('MEDIA_LIFECYCLE_EVENT_QUEUE_CAPACITY'),
-    startDeadlineMs: protocolConstant('MEDIA_LIFECYCLE_START_TIMEOUT_MS'),
-    pingDeadlineMs: protocolConstant('MEDIA_LIFECYCLE_PING_TIMEOUT_MS'),
-    shutdownDeadlineMs: protocolConstant('MEDIA_LIFECYCLE_SHUTDOWN_TIMEOUT_MS'),
-    maxIdentifierLength: protocolConstant('MEDIA_LIFECYCLE_MAX_IDENTIFIER_LENGTH'),
-    maxRemoteVideoDemands: protocolConstant('MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS'),
-    maxDiagnosticMetrics: protocolConstant('MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_METRICS'),
-    maxDiagnosticFields: protocolConstant('MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_FIELDS'),
-    maxRequestDeadlineMs: protocolConstant('MEDIA_LIFECYCLE_MAX_DEADLINE_MS'),
+    controlQueue: protocol.limits.controlQueueCapacity,
+    eventQueue: protocol.limits.eventQueueCapacity,
+    startDeadlineMs: protocol.limits.startDeadlineMs,
+    pingDeadlineMs: protocol.limits.pingDeadlineMs,
+    shutdownDeadlineMs: protocol.limits.shutdownDeadlineMs,
+    maxIdentifierLength: protocol.limits.maximumIdentifierLength,
+    maxRemoteVideoDemands: protocol.limits.maximumRemoteVideoDemands,
+    maxDiagnosticMetrics: protocol.limits.maximumDiagnosticMetrics,
+    maxDiagnosticFields: protocol.limits.maximumDiagnosticFields,
+    maxRequestDeadlineMs: protocol.limits.maximumRequestDeadlineMs,
   }) ||
   !Array.isArray(manifest.files) ||
-  manifest.files.length !== 1 ||
-  manifest.files[0]?.name !== 'windows_media.node'
+  manifest.files.length !== 3
 ) {
   throw new Error('Media engine manifest has an unsupported shape')
 }
-const binary = readFileSync(path.resolve(targetRoot, 'windows_media.node'))
-const hash = createHash('sha256').update(binary).digest('hex')
-if (manifest.files[0].sha256 !== hash) {
-  throw new Error('Media engine SHA-256 mismatch')
+for (const file of manifest.files) {
+  if (!EXPECTED_FILES.includes(file.name)) {
+    throw new Error(`Unexpected media engine manifest file: ${file.name}`)
+  }
+  const hash = createHash('sha256')
+    .update(readFileSync(path.resolve(targetRoot, file.name)))
+    .digest('hex')
+  if (file.sha256 !== hash) throw new Error(`Media engine SHA-256 mismatch: ${file.name}`)
 }
 console.info(`[windows-media-engine] verified lifecycle artifacts at ${targetRoot}`)
 
@@ -96,12 +96,4 @@ function gitCommitSha() {
     throw new Error('Cannot determine the media engine commit')
   }
   return result.stdout.trim()
-}
-
-function protocolConstant(name) {
-  const match = protocolSource.match(
-    new RegExp(`export const ${name} = ([0-9_]+)`),
-  )
-  if (!match) throw new Error(`Missing protocol source constant: ${name}`)
-  return Number(match[1].replaceAll('_', ''))
 }

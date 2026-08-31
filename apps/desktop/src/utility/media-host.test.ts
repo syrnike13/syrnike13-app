@@ -3,6 +3,8 @@ import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { MediaArtifactManifest } from '../main/media-runtime/media-artifacts'
+import { MEDIA_LIFECYCLE_SCHEMA_SHA256 } from '../main/media-runtime/contract'
+import { MEDIA_LIFECYCLE_CANONICAL_FIXTURES } from '../main/media-runtime/protocol.generated'
 import { runMediaUtilityHost } from './media-host'
 
 const COMMIT_SHA = 'b'.repeat(40)
@@ -10,7 +12,8 @@ const COMMIT_SHA = 'b'.repeat(40)
 function manifest(): MediaArtifactManifest {
   return {
     schemaVersion: 1,
-    protocolVersion: 2,
+    protocolVersion: 3,
+    protocolSchemaSha256: MEDIA_LIFECYCLE_SCHEMA_SHA256,
     platform: 'win32',
     arch: 'x64',
     appVersion: '0.6.11',
@@ -18,7 +21,7 @@ function manifest(): MediaArtifactManifest {
     commitSha: COMMIT_SHA,
     electronVersion: process.versions.electron,
     napiVersion: 8,
-    capabilities: ['lifecycle', 'control-v2', 'diagnostics-v2'],
+    capabilities: ['lifecycle', 'control-v3', 'diagnostics-v2'],
     limits: {
       controlQueue: 16,
       eventQueue: 64,
@@ -31,7 +34,11 @@ function manifest(): MediaArtifactManifest {
       maxDiagnosticFields: 16,
       maxRequestDeadlineMs: 5_000,
     },
-    files: [{ name: 'windows_media.node', sha256: 'a'.repeat(64) }],
+    files: [
+      { name: 'windows_media.node', sha256: 'a'.repeat(64) },
+      { name: 'livekit.dll', sha256: 'b'.repeat(64) },
+      { name: 'livekit_ffi.dll', sha256: 'c'.repeat(64) },
+    ],
   }
 }
 
@@ -41,7 +48,7 @@ function environment(mediaRoot: string): NodeJS.ProcessEnv {
     SYRNIKE_MEDIA_ROOT: mediaRoot,
     SYRNIKE_MEDIA_APP_VERSION: '0.6.11',
     SYRNIKE_MEDIA_RELEASE_CHANNEL: 'stable',
-    SYRNIKE_MEDIA_PROTOCOL_VERSION: '2',
+    SYRNIKE_MEDIA_PROTOCOL_VERSION: '3',
     SYRNIKE_MEDIA_COMMIT_SHA: COMMIT_SHA,
   }
 }
@@ -75,9 +82,17 @@ describe('runMediaUtilityHost', () => {
           return true
         },
         handshake: () => ({
-          protocolVersion: 2,
+          protocolVersion: 3,
           engineState: 'running',
-          build: { commit: COMMIT_SHA, napi: '8' },
+          build: {
+            commit: COMMIT_SHA,
+            napi: '8',
+            protocolSchemaSha256: MEDIA_LIFECYCLE_SCHEMA_SHA256,
+          },
+        }),
+        installCredentialLease: (lease: unknown) => ({
+          type: 'credentialLeaseInstalled',
+          leaseId: Reflect.get(lease as object, 'leaseId'),
         }),
         applyDesiredState: (desiredState: unknown) => ({
           type: 'desiredStateAccepted',
@@ -105,9 +120,13 @@ describe('runMediaUtilityHost', () => {
 
     expect(posted).toContainEqual({
       type: 'ready',
-      protocolVersion: 2,
+      protocolVersion: 3,
       engineState: 'running',
-      build: { commit: COMMIT_SHA, napi: '8' },
+      build: {
+        commit: COMMIT_SHA,
+        napi: '8',
+        protocolSchemaSha256: MEDIA_LIFECYCLE_SCHEMA_SHA256,
+      },
     })
 
     emit?.({
@@ -124,7 +143,7 @@ describe('runMediaUtilityHost', () => {
     })
     expect(posted).toContainEqual({
       type: 'event',
-      protocolVersion: 2,
+      protocolVersion: 3,
       event: expect.objectContaining({
         state: 'failed',
         failure: expect.objectContaining({
@@ -132,6 +151,11 @@ describe('runMediaUtilityHost', () => {
         }),
       }),
     })
+
+    for (const message of MEDIA_LIFECYCLE_CANONICAL_FIXTURES.publicEventMessages) {
+      emit?.(structuredClone(message.event))
+      expect(posted).toContainEqual(message)
+    }
 
     emitDiagnostic?.({
       sequence: 1,
@@ -143,14 +167,14 @@ describe('runMediaUtilityHost', () => {
     })
     expect(posted).toContainEqual({
       type: 'diagnostic',
-      protocolVersion: 2,
+      protocolVersion: 3,
       event: expect.objectContaining({ code: 'ok' }),
     })
 
     onMessage?.({
       data: {
         type: 'request',
-        protocolVersion: 2,
+        protocolVersion: 3,
         requestId: 'ping-1',
         hostEpoch: 1,
         deadlineMs: 1_000,
@@ -160,7 +184,7 @@ describe('runMediaUtilityHost', () => {
     await vi.waitFor(() =>
       expect(posted).toContainEqual({
         type: 'reply',
-        protocolVersion: 2,
+        protocolVersion: 3,
         requestId: 'ping-1',
         ok: true,
         result: { type: 'pong', engineState: 'running' },
@@ -180,7 +204,7 @@ describe('runMediaUtilityHost', () => {
     await vi.waitFor(() =>
       expect(posted).toContainEqual({
         type: 'reply',
-        protocolVersion: 2,
+        protocolVersion: 3,
         requestId: 'old-v1',
         ok: false,
         failure: expect.objectContaining({ code: 'protocol_incompatible' }),
@@ -197,7 +221,7 @@ describe('runMediaUtilityHost', () => {
     onMessage?.({
       data: {
         type: 'request',
-        protocolVersion: 2,
+        protocolVersion: 3,
         requestId: 'apply-1',
         hostEpoch: 1,
         deadlineMs: 1_000,
@@ -218,7 +242,7 @@ describe('runMediaUtilityHost', () => {
     await vi.waitFor(() =>
       expect(posted).toContainEqual({
         type: 'reply',
-        protocolVersion: 2,
+        protocolVersion: 3,
         requestId: 'apply-1',
         ok: true,
         result: {
@@ -232,7 +256,7 @@ describe('runMediaUtilityHost', () => {
     onMessage?.({
       data: {
         type: 'request',
-        protocolVersion: 2,
+        protocolVersion: 3,
         requestId: 'query-invalid-envelope',
         hostEpoch: 1,
         deadlineMs: 1_000,
@@ -242,7 +266,7 @@ describe('runMediaUtilityHost', () => {
     await vi.waitFor(() =>
       expect(posted).toContainEqual({
         type: 'reply',
-        protocolVersion: 2,
+        protocolVersion: 3,
         requestId: 'query-invalid-envelope',
         ok: false,
         failure: expect.objectContaining({ code: 'media_snapshot_invalid' }),
@@ -252,7 +276,7 @@ describe('runMediaUtilityHost', () => {
     onMessage?.({
       data: {
         type: 'request',
-        protocolVersion: 2,
+        protocolVersion: 3,
         requestId: 'shutdown-1',
         hostEpoch: 1,
         deadlineMs: 1_000,
@@ -262,7 +286,7 @@ describe('runMediaUtilityHost', () => {
     onMessage?.({
       data: {
         type: 'request',
-        protocolVersion: 2,
+        protocolVersion: 3,
         requestId: 'shutdown-2',
         hostEpoch: 1,
         deadlineMs: 1_000,
@@ -272,14 +296,14 @@ describe('runMediaUtilityHost', () => {
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0))
     expect(posted).toContainEqual({
       type: 'reply',
-      protocolVersion: 2,
+      protocolVersion: 3,
       requestId: 'shutdown-1',
       ok: true,
       result: { type: 'shutdownComplete', engineState: 'stopped' },
     })
     expect(posted).toContainEqual({
       type: 'reply',
-      protocolVersion: 2,
+      protocolVersion: 3,
       requestId: 'shutdown-2',
       ok: false,
       failure: expect.objectContaining({ code: 'engine_stopping' }),
@@ -321,10 +345,15 @@ describe('runMediaUtilityHost', () => {
           emitDiagnostic = callback
           return true
         },
+        installCredentialLease: vi.fn(),
         handshake: () => ({
-          protocolVersion: 2,
+          protocolVersion: 3,
           engineState: 'running',
-          build: { commit: COMMIT_SHA, napi: '8' },
+          build: {
+            commit: COMMIT_SHA,
+            napi: '8',
+            protocolSchemaSha256: MEDIA_LIFECYCLE_SCHEMA_SHA256,
+          },
         }),
         ping: vi.fn(),
         applyDesiredState: vi.fn(),
@@ -349,7 +378,7 @@ describe('runMediaUtilityHost', () => {
 
     expect(posted).toContainEqual({
       type: 'diagnostic',
-      protocolVersion: 2,
+      protocolVersion: 3,
       event: expect.objectContaining({
         implementation: [{
           name: 'endpoint',
@@ -375,10 +404,15 @@ describe('runMediaUtilityHost', () => {
       loadAddon: () => ({
         registerPublicEventCallback: () => true,
         registerDiagnosticEventCallback: () => true,
+        installCredentialLease: vi.fn(),
         handshake: () => ({
           protocolVersion: 1,
           engineState: 'running',
-          build: { commit: COMMIT_SHA, napi: '8' },
+          build: {
+            commit: COMMIT_SHA,
+            napi: '8',
+            protocolSchemaSha256: MEDIA_LIFECYCLE_SCHEMA_SHA256,
+          },
         }),
         ping: vi.fn(),
         applyDesiredState: vi.fn(),

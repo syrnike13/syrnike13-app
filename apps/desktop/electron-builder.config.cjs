@@ -41,7 +41,9 @@ const nativeFiles = [
   'syrnike_overlay.node',
   'native-manifest.json',
 ]
-const mediaFiles = ['windows_media.node', 'media-manifest.json']
+const mediaFiles = [
+  'windows_media.node', 'livekit.dll', 'livekit_ffi.dll', 'media-manifest.json',
+]
 
 function refreshManifest(root, manifestName, files) {
   const manifestPath = path.join(root, manifestName)

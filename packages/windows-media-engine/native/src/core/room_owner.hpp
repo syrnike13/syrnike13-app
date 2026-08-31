@@ -1,6 +1,5 @@
 #pragma once
 
-#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -29,54 +28,46 @@ struct RoomConnectionEvent {
 };
 
 using RoomOperationCompletion =
-  std::function<void(std::uint64_t, EngineResult)>;
+    std::function<void(std::uint64_t, EngineResult)>;
 using RoomConnectionEventCallback =
-  std::function<void(const RoomConnectionEvent&)>;
+    std::function<void(const RoomConnectionEvent &)>;
 
 class RoomTransport {
- public:
+public:
   virtual ~RoomTransport() = default;
 
-  virtual void startConnect(
-    std::uint64_t generation,
-    RoomConnectRequest request,
-    RoomOperationCompletion completion
-  ) = 0;
-  virtual void cancelConnect(std::uint64_t generation) noexcept = 0;
-  virtual void startDisconnect(
-    std::uint64_t generation,
-    RoomOperationCompletion completion
-  ) = 0;
+  virtual void startConnect(std::uint64_t generation,
+                            RoomConnectRequest request,
+                            RoomOperationCompletion completion) = 0;
+  [[nodiscard]] virtual bool
+  cancelConnect(std::uint64_t generation) noexcept = 0;
+  virtual void startDisconnect(std::uint64_t generation,
+                               RoomOperationCompletion completion) = 0;
 };
 
 class RoomOwner final {
- public:
-  explicit RoomOwner(
-    std::shared_ptr<RoomTransport> transport,
-    RoomConnectionEventCallback event_callback = {}
-  );
+public:
+  explicit RoomOwner(std::shared_ptr<RoomTransport> transport,
+                     RoomConnectionEventCallback event_callback = {});
   ~RoomOwner() = default;
 
-  RoomOwner(const RoomOwner&) = delete;
-  RoomOwner& operator=(const RoomOwner&) = delete;
+  RoomOwner(const RoomOwner &) = delete;
+  RoomOwner &operator=(const RoomOwner &) = delete;
 
-  [[nodiscard]] EngineResult connect(
-    RoomConnectRequest request,
-    std::chrono::milliseconds deadline
-  );
+  [[nodiscard]] EngineResult beginConnect(RoomConnectRequest request);
   [[nodiscard]] EngineResult cancelPendingConnect();
-  [[nodiscard]] EngineResult disconnect(std::chrono::milliseconds deadline);
+  [[nodiscard]] EngineResult beginTeardown();
+  [[nodiscard]] EngineResult beginDisconnect();
   [[nodiscard]] RoomConnectionState state() const noexcept;
   [[nodiscard]] std::uint64_t generation() const noexcept;
 
- private:
+private:
   struct SharedState;
   std::shared_ptr<RoomTransport> transport_;
   std::shared_ptr<SharedState> state_;
 };
 
-[[nodiscard]] const char* roomConnectionStateName(
-  RoomConnectionState state
-) noexcept;
+[[nodiscard]] const char *
+roomConnectionStateName(RoomConnectionState state) noexcept;
 
-}  // namespace syrnike::windows_media
+} // namespace syrnike::windows_media

@@ -1,19 +1,44 @@
 import { Option, Schema } from 'effect'
 
-export const MEDIA_LIFECYCLE_PROTOCOL_VERSION = 2
-export const MEDIA_LIFECYCLE_MAX_PENDING_REQUESTS = 16
-export const MEDIA_LIFECYCLE_CONTROL_QUEUE_CAPACITY = 16
-export const MEDIA_LIFECYCLE_EVENT_QUEUE_CAPACITY = 64
-export const MEDIA_LIFECYCLE_MAX_REQUEST_ID_LENGTH = 256
-export const MEDIA_LIFECYCLE_MAX_IDENTIFIER_LENGTH = 256
-export const MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS = 64
-export const MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_METRICS = 16
-export const MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_FIELDS = 16
-export const MEDIA_LIFECYCLE_MAX_DEADLINE_MS = 5_000
-export const MEDIA_LIFECYCLE_START_TIMEOUT_MS = 2_000
+import {
+  MEDIA_LIFECYCLE_GENERATED_VERSION,
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS,
+  MEDIA_LIFECYCLE_SCHEMA_SHA256,
+  MEDIA_UTILITY_GENERATED_BOOTSTRAP_MESSAGE,
+} from './protocol.generated'
+
+export { MEDIA_LIFECYCLE_SCHEMA_SHA256 }
+
+export const MEDIA_LIFECYCLE_PROTOCOL_VERSION = MEDIA_LIFECYCLE_GENERATED_VERSION
+// Private Electron parent/utility synchronization. This is intentionally not
+// part of the public native lifecycle protocol.
+export const MEDIA_UTILITY_BOOTSTRAP_MESSAGE =
+  MEDIA_UTILITY_GENERATED_BOOTSTRAP_MESSAGE
+export const MEDIA_LIFECYCLE_CONTROL_QUEUE_CAPACITY =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.controlQueueCapacity
+export const MEDIA_LIFECYCLE_MAX_PENDING_REQUESTS =
+  MEDIA_LIFECYCLE_CONTROL_QUEUE_CAPACITY
+export const MEDIA_LIFECYCLE_EVENT_QUEUE_CAPACITY =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.eventQueueCapacity
+export const MEDIA_LIFECYCLE_MAX_REQUEST_ID_LENGTH =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumRequestIdLength
+export const MEDIA_LIFECYCLE_MAX_IDENTIFIER_LENGTH =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumIdentifierLength
+export const MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumRemoteVideoDemands
+export const MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_METRICS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDiagnosticMetrics
+export const MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_FIELDS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDiagnosticFields
+export const MEDIA_LIFECYCLE_MAX_DEADLINE_MS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumRequestDeadlineMs
+export const MEDIA_LIFECYCLE_START_TIMEOUT_MS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.startDeadlineMs
 export const MEDIA_LIFECYCLE_HANDSHAKE_TIMEOUT_MS = 5_000
-export const MEDIA_LIFECYCLE_PING_TIMEOUT_MS = 1_000
-export const MEDIA_LIFECYCLE_SHUTDOWN_TIMEOUT_MS = 1_000
+export const MEDIA_LIFECYCLE_PING_TIMEOUT_MS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.pingDeadlineMs
+export const MEDIA_LIFECYCLE_SHUTDOWN_TIMEOUT_MS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.shutdownDeadlineMs
 export const MEDIA_LIFECYCLE_OUTER_SHUTDOWN_MS = 1_500
 
 const boundedString = (maximumLength: number, minimumLength = 1) =>
@@ -34,9 +59,11 @@ const identifierSchema = boundedString(MEDIA_LIFECYCLE_MAX_IDENTIFIER_LENGTH).ch
 const offIntentSchema = Schema.Struct({ state: Schema.Literal('off') })
 
 export const MediaLifecycleFailureSchema = Schema.Struct({
-  code: boundedString(128),
-  message: boundedString(4_096),
-  stage: boundedString(128),
+  code: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureCodeLength),
+  message: boundedString(
+    MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureMessageLength,
+  ),
+  stage: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureStageLength),
   retryable: Schema.Boolean,
 })
 
@@ -53,11 +80,23 @@ export const MediaEngineStateSchema = Schema.Literals([
 const MediaBuildIdentitySchema = Schema.Struct({
   commit: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/i)),
   napi: Schema.String.check(Schema.isPattern(/^\d+$/)),
+  protocolSchemaSha256: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/i)),
 })
 
 export const RoomIntentSchema = Schema.Struct({
   roomId: identifierSchema,
   participantIdentity: identifierSchema,
+  credentialLeaseId: identifierSchema,
+})
+
+export const MediaCredentialLeaseSchema = Schema.Struct({
+  leaseId: identifierSchema,
+  serverUrl: boundedString(
+    MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumServerUrlLength,
+  ).check(Schema.isPattern(/^wss?:\/\//)),
+  accessToken: boundedString(
+    MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumAccessTokenLength,
+  ),
 })
 
 export const RemoteVideoDemandSchema = Schema.Struct({
@@ -89,7 +128,10 @@ export const MediaEngineSnapshotSchema = Schema.Struct({
   engineState: MediaEngineStateSchema,
   acceptedRevision: Schema.Union([protocolInteger, Schema.Null]),
   desiredState: Schema.Union([EngineDesiredStateSchema, Schema.Null]),
-  roomState: Schema.Literals(['off', 'desired']),
+  roomState: Schema.Literals([
+    'off', 'connecting', 'connected', 'disconnecting', 'failed',
+  ]),
+  roomFailure: Schema.optional(MediaLifecycleFailureSchema),
   tracks: TrackPublicStateSchema,
 })
 
@@ -97,6 +139,11 @@ export const MediaDesiredStateAcceptedSchema = Schema.Struct({
   type: Schema.Literal('desiredStateAccepted'),
   acceptedRevision: positiveProtocolInteger,
   disposition: Schema.Literals(['accepted', 'duplicate']),
+})
+
+export const MediaCredentialLeaseInstalledSchema = Schema.Struct({
+  type: Schema.Literal('credentialLeaseInstalled'),
+  leaseId: identifierSchema,
 })
 
 export const MediaAddonHandshakeSchema = Schema.Struct({
@@ -146,6 +193,10 @@ export const MediaLifecycleReadySchema = Schema.Union([
 export const MediaLifecycleCommandSchema = Schema.Union([
   Schema.Struct({ type: Schema.Literal('handshake') }),
   Schema.Struct({
+    type: Schema.Literal('installCredentialLease'),
+    lease: MediaCredentialLeaseSchema,
+  }),
+  Schema.Struct({
     type: Schema.Literal('applyDesiredState'),
     desiredState: EngineDesiredStateSchema,
   }),
@@ -167,6 +218,7 @@ export const MediaLifecycleRequestSchema = Schema.Struct({
 
 export const MediaLifecycleResultSchema = Schema.Union([
   MediaLifecycleHandshakeResultSchema,
+  MediaCredentialLeaseInstalledSchema,
   MediaDesiredStateAcceptedSchema,
   MediaAddonSnapshotSchema,
   MediaAddonPingSchema,
@@ -202,7 +254,10 @@ export const MediaLifecycleEventSchema = Schema.Union([
     type: Schema.Literal('roomStateChanged'),
     sequence: positiveProtocolInteger,
     revision: positiveProtocolInteger,
-    state: Schema.Literals(['off', 'desired']),
+    state: Schema.Literals([
+      'off', 'connecting', 'connected', 'disconnecting', 'failed',
+    ]),
+    failure: Schema.optional(MediaLifecycleFailureSchema),
   }),
   Schema.Struct({
     type: Schema.Literal('trackStateChanged'),
@@ -219,12 +274,15 @@ export const MediaLifecycleEventSchema = Schema.Union([
 ])
 
 const DiagnosticMetricSchema = Schema.Struct({
-  name: boundedString(64),
+  name: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDiagnosticNameLength),
   value: Schema.Finite,
 })
 const DiagnosticImplementationFieldSchema = Schema.Struct({
-  name: boundedString(64),
-  value: boundedString(256, 0),
+  name: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDiagnosticNameLength),
+  value: boundedString(
+    MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDiagnosticValueLength,
+    0,
+  ),
 })
 export const MediaLifecycleDiagnosticEventSchema = Schema.Struct({
   sequence: positiveProtocolInteger,
@@ -266,6 +324,7 @@ export type MediaEngineState = typeof MediaEngineStateSchema.Type
 export type EngineDesiredState = typeof EngineDesiredStateSchema.Type
 export type MediaEngineSnapshot = typeof MediaEngineSnapshotSchema.Type
 export type MediaDesiredStateAccepted = typeof MediaDesiredStateAcceptedSchema.Type
+export type MediaCredentialLease = typeof MediaCredentialLeaseSchema.Type
 export type MediaAddonHandshake = typeof MediaAddonHandshakeSchema.Type
 export type MediaAddonSnapshot = typeof MediaAddonSnapshotSchema.Type
 export type MediaLifecycleReady = typeof MediaLifecycleReadySchema.Type
@@ -300,9 +359,18 @@ export function mediaLifecycleFailure(
   retryable = false,
 ): MediaLifecycleFailure {
   return {
-    code: boundedText(code, 128),
-    message: boundedText(redactMediaLifecycleText(message), 4_096),
-    stage: boundedText(stage, 128),
+    code: boundedText(
+      code,
+      MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureCodeLength,
+    ),
+    message: boundedText(
+      redactMediaLifecycleText(message),
+      MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureMessageLength,
+    ),
+    stage: boundedText(
+      stage,
+      MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureStageLength,
+    ),
     retryable,
   }
 }
@@ -330,7 +398,10 @@ export function failureFromUnknown(cause: unknown, stage: string): MediaLifecycl
     if (Option.isSome(decoded)) {
       return {
         ...decoded.value,
-        message: boundedText(redactMediaLifecycleText(decoded.value.message), 4_096),
+        message: boundedText(
+          redactMediaLifecycleText(decoded.value.message),
+          MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureMessageLength,
+        ),
       }
     }
   }
@@ -354,5 +425,5 @@ export function redactMediaLifecycleText(value: string) {
     )
     .replace(/\bBearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
     .replace(/\b(?:wss?|https?):\/\/[^\s,;]+/gi, '[redacted-url]')
-    .slice(0, 4_096)
+    .slice(0, MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureMessageLength)
 }

@@ -11,6 +11,15 @@ export interface VideoMarker {
   readonly capturedAtMs: number
 }
 
+export function videoMarkerLatency(
+  capturedAtMs: number,
+  receivedAtMs: number,
+  timeoutMs: number,
+): number | undefined {
+  const latency = receivedAtMs - capturedAtMs
+  return latency >= 0 && latency < timeoutMs ? latency : undefined
+}
+
 export function decodeVideoMarker(frame: VideoFrame): VideoMarker | undefined {
   const i420 = frame.type === VideoBufferType.I420
     ? frame

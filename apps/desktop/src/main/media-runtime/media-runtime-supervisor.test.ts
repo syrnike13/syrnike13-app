@@ -5,6 +5,7 @@ import type {
   MediaUtilityCallbacks,
 } from './media-utility-adapter'
 import { MediaRuntimeSupervisor } from './media-runtime-supervisor'
+import { MEDIA_LIFECYCLE_SCHEMA_SHA256 } from './contract'
 
 const COMMIT_SHA = 'c'.repeat(40)
 
@@ -29,16 +30,20 @@ class FakeMediaAdapter implements MediaUtilityAdapter {
   ready() {
     this.callbacks?.onMessage({
       type: 'ready',
-      protocolVersion: 2,
+      protocolVersion: 3,
       engineState: 'running',
-      build: { commit: COMMIT_SHA, napi: '8' },
+      build: {
+        commit: COMMIT_SHA,
+        napi: '8',
+        protocolSchemaSha256: MEDIA_LIFECYCLE_SCHEMA_SHA256,
+      },
     })
   }
 
   reply(requestId: string, result?: unknown) {
     this.callbacks?.onMessage({
       type: 'reply',
-      protocolVersion: 2,
+      protocolVersion: 3,
       requestId,
       ok: true,
       result,
@@ -78,9 +83,13 @@ describe('MediaRuntimeSupervisor', () => {
     await vi.waitFor(() => expect(adapter.requests).toHaveLength(1))
     adapter.reply(requestId(adapter.requests[0]), {
       type: 'handshake',
-      protocolVersion: 2,
+      protocolVersion: 3,
       engineState: 'running',
-      build: { commit: COMMIT_SHA, napi: '8' },
+      build: {
+        commit: COMMIT_SHA,
+        napi: '8',
+        protocolSchemaSha256: MEDIA_LIFECYCLE_SCHEMA_SHA256,
+      },
     })
     await expect(handshake).resolves.toMatchObject({ type: 'handshake' })
 
@@ -219,6 +228,54 @@ describe('MediaRuntimeSupervisor', () => {
     })
     await expect(query).rejects.toMatchObject({
       failure: { code: 'media_snapshot_invalid' },
+    })
+  })
+
+  it('recovers a coherent snapshot when the first public event has a sequence gap', async () => {
+    const adapter = new FakeMediaAdapter()
+    const supervisor = new MediaRuntimeSupervisor({
+      createAdapter: () => adapter,
+    })
+    const onSnapshot = vi.fn()
+    supervisor.onSnapshot(onSnapshot)
+    const started = supervisor.start()
+    adapter.ready()
+    await started
+
+    adapter.callbacks?.onMessage({
+      type: 'event',
+      protocolVersion: 3,
+      event: {
+        type: 'roomStateChanged',
+        sequence: 3,
+        revision: 1,
+        state: 'connected',
+      },
+    })
+
+    await vi.waitFor(() => expect(adapter.requests).toHaveLength(1))
+    expect(adapter.requests[0]).toMatchObject({
+      command: { type: 'querySnapshot' },
+    })
+    adapter.reply(requestId(adapter.requests[0]), {
+      type: 'snapshot',
+      snapshot: {
+        engineState: 'running',
+        acceptedRevision: 1,
+        desiredState: null,
+        roomState: 'connected',
+        tracks: {
+          microphone: 'off',
+          camera: 'off',
+          screen: 'off',
+          output: 'off',
+        },
+      },
+    })
+
+    await vi.waitFor(() => expect(onSnapshot).toHaveBeenCalledOnce())
+    expect(supervisor.getLatestEngineSnapshot()).toMatchObject({
+      roomState: 'connected',
     })
   })
 })

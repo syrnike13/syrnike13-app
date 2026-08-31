@@ -26,13 +26,17 @@ on:
       - apps/desktop/scripts/**
       - apps/desktop/src/main/native-runtime/**
       - apps/desktop/src/main/native-media-engine*
+      - apps/desktop/src/main/media-runtime/**
       - apps/desktop/src/main/voice/**
       - apps/desktop/src/utility/**
-      - apps/desktop/tsup.config.ts
+      - apps/desktop/tsup*.ts
       - apps/web/src/features/desktop/native-media-runtime-banner*
       - docs/native-v2/**
+      - docs/adr/0007-native-media-utility-lifetime.md
       - packages/desktop-native/**
       - packages/windows-media-engine/**
+      - packages/native-media-lab/**
+      - services/livekit-server/**
       - packages/platform/src/media*
       - package.json
       - pnpm-lock.yaml
@@ -56,6 +60,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: services/livekit-server/go.mod
+          cache-dependency-path: services/livekit-server/go.sum
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
       - name: Build and test Debug media lifecycle engine
@@ -86,6 +94,15 @@ jobs:
         run: pnpm desktop:build
       - name: Run 50-cycle Electron media lifecycle smoke
         run: pnpm --filter @syrnike13/desktop smoke:media-lifecycle
+      - name: Build local LiveKit server for the Media Lab
+        working-directory: services/livekit-server
+        run: |
+          New-Item -ItemType Directory -Force -Path ..\..\packages\native-media-lab\.ci | Out-Null
+          go build -o ..\..\packages\native-media-lab\.ci\livekit-server.exe ./cmd/server
+      - name: Run Native v2 Media Lab through Engine room control
+        env:
+          MEDIA_LAB_SERVER_EXE: ${{ github.workspace }}\packages\native-media-lab\.ci\livekit-server.exe
+        run: pnpm native-media:lab
       - name: Build and verify unpacked Windows package
         run: pnpm --filter @syrnike13/desktop package:prepared
       - name: Upload verified Windows hook addons
@@ -106,6 +123,14 @@ jobs:
           path: |
             packages/windows-media-engine/dist/win32-x64/**
             apps/desktop/out/media-native/win32-x64/**
+      - name: Upload Native v2 Media Lab report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-v2-media-lab-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: packages/native-media-lab/artifacts/latest-report.json
       - name: Upload native debug symbols
         if: ${{ always() }}
         uses: actions/upload-artifact@v4

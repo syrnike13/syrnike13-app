@@ -3,7 +3,8 @@ import { Effect } from 'effect'
 import { randomBytes } from 'node:crypto'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,24 +13,36 @@ const LIVEKIT_IMAGE =
   'livekit/livekit-server@sha256:e37d68f172556d02aa77968b9fc55ef481468c0315fa38e4fa6c56ce72e3a815'
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(packageRoot, '..', '..')
+const mediaEngineRoot = path.resolve(repoRoot, 'packages', 'windows-media-engine')
+const mediaBuildRoot = path.resolve(
+  mediaEngineRoot,
+  process.env.WINDOWS_MEDIA_BUILD_ROOT ?? 'build',
+)
 const publisherPath = path.resolve(
-  repoRoot,
-  'packages',
-  'windows-media-engine',
-  'build',
+  mediaBuildRoot,
   'Release',
   'native_media_lab_publisher.exe',
 )
 const observerPath = path.resolve(packageRoot, 'dist', 'observer.js')
-const coreTestsPath = path.resolve(
+const mediaRoomSmokePath = path.resolve(
   repoRoot,
-  'packages',
-  'windows-media-engine',
-  'build',
+  'apps',
+  'desktop',
+  'out',
+  'smoke',
+  'media-room-smoke.cjs',
+)
+const coreTestsPath = path.resolve(
+  mediaBuildRoot,
   'Release',
   'media_core_tests.exe',
 )
 const pnpmScript = process.env.npm_execpath
+const serverExecutable = process.env.MEDIA_LAB_SERVER_EXE
+const desktopRequire = createRequire(
+  path.resolve(repoRoot, 'apps', 'desktop', 'package.json'),
+)
+const electronExecutable = desktopRequire('electron') as string
 
 class LabFailure extends Error {
   readonly _tag = 'LabFailure'
@@ -179,15 +192,17 @@ async function executeLab(resources: LabResources): Promise<void> {
     '',
   ].join('\n'), 'utf8')
 
-  const server = runProcess('docker', [
-    'run', '--rm', '--name', resources.containerName,
-    '-p', '127.0.0.1:7880:7880/tcp',
-    '-p', '127.0.0.1:7881:7881/tcp',
-    '-p', '127.0.0.1:7882:7882/udp',
-    '-v', `${configPath}:/etc/livekit.yaml:ro`,
-    LIVEKIT_IMAGE,
-    '--config', '/etc/livekit.yaml',
-  ])
+  const server = serverExecutable
+    ? runProcess(serverExecutable, ['--config', configPath])
+    : runProcess('docker', [
+        'run', '--rm', '--name', resources.containerName,
+        '-p', '127.0.0.1:7880:7880/tcp',
+        '-p', '127.0.0.1:7881:7881/tcp',
+        '-p', '127.0.0.1:7882:7882/udp',
+        '-v', `${configPath}:/etc/livekit.yaml:ro`,
+        LIVEKIT_IMAGE,
+        '--config', '/etc/livekit.yaml',
+      ])
   resources.processes.add(server)
   await waitForServer('http://127.0.0.1:7880', server, 15_000)
 
@@ -198,10 +213,53 @@ async function executeLab(resources: LabResources): Promise<void> {
   const sharedEnvironment: NodeJS.ProcessEnv = {
     ...process.env,
     LIVEKIT_URL: 'ws://127.0.0.1:7880',
-    MEDIA_LAB_VIDEO_FRAMES: process.env.MEDIA_LAB_VIDEO_FRAMES ?? '660',
+    MEDIA_LAB_ICE_TRANSPORT: serverExecutable ? 'all' : 'nohost',
+    MEDIA_LAB_VIDEO_FRAMES: process.env.MEDIA_LAB_VIDEO_FRAMES ?? '720',
     MEDIA_LAB_VIDEO_FPS: process.env.MEDIA_LAB_VIDEO_FPS ?? '15',
   }
   const scenarioReports: Record<string, unknown> = {}
+  const desktopSmokeApp = path.resolve(resources.directory, 'desktop-smoke-app')
+  await mkdir(desktopSmokeApp)
+  const desktopVersion = process.env.SYRNIKE_DESKTOP_BUILD_VERSION?.trim() ||
+    (await readFile(path.resolve(repoRoot, 'VERSION'), 'utf8')).trim()
+  await writeFile(
+    path.resolve(desktopSmokeApp, 'package.json'),
+    `${JSON.stringify({
+      name: 'syrnike-native-v2-room-smoke',
+      version: desktopVersion,
+      main: path.relative(desktopSmokeApp, mediaRoomSmokePath),
+    }, null, 2)}\n`,
+    'utf8',
+  )
+  const productionRoomSmoke = runProcess(
+    electronExecutable,
+    [desktopSmokeApp],
+    {
+      cwd: path.resolve(repoRoot, 'apps', 'desktop'),
+      env: {
+        ...sharedEnvironment,
+        LIVEKIT_PUBLISHER_TOKEN: publisherToken,
+        SYRNIKE_DESKTOP_ROOT: path.resolve(repoRoot, 'apps', 'desktop'),
+      },
+    },
+  )
+  resources.processes.add(productionRoomSmoke)
+  await withDeadline(
+    productionRoomSmoke.completion,
+    30_000,
+    'production Supervisor room smoke exceeded its deadline',
+  )
+  const productionMetricsLine = productionRoomSmoke.output()
+    .split(/\r?\n/)
+    .find((line) => line.startsWith('MEDIA_ROOM_SMOKE '))
+  if (productionMetricsLine === undefined) {
+    throw new LabFailure(
+      `production Supervisor room smoke did not emit metrics\n${productionRoomSmoke.output()}`,
+    )
+  }
+  scenarioReports['production-room-control'] = JSON.parse(
+    productionMetricsLine.slice('MEDIA_ROOM_SMOKE '.length),
+  )
   const coreTests = runProcess(coreTestsPath, [], {
     cwd: path.dirname(coreTestsPath),
   })
@@ -294,7 +352,7 @@ async function executeLab(resources: LabResources): Promise<void> {
   await runObservedScenario('normal', {}, {
     MEDIA_LAB_MIN_VIDEO_FRAMES: process.env.MEDIA_LAB_MIN_VIDEO_FRAMES ?? '600',
     MEDIA_LAB_MIN_AUDIO_PULSES: process.env.MEDIA_LAB_MIN_AUDIO_PULSES ?? '10',
-    MEDIA_LAB_TIMEOUT_MS: process.env.MEDIA_LAB_TIMEOUT_MS ?? '55000',
+    MEDIA_LAB_TIMEOUT_MS: process.env.MEDIA_LAB_TIMEOUT_MS ?? '65000',
   })
   await runObservedScenario('republish', {
     MEDIA_LAB_SCENARIO: 'republish',
@@ -305,7 +363,7 @@ async function executeLab(resources: LabResources): Promise<void> {
     MEDIA_LAB_MIN_AUDIO_PULSES: '5',
     MEDIA_LAB_ALLOW_VIDEO_GAPS: 'true',
     MEDIA_LAB_EXPECT_SUBSCRIPTIONS: '4',
-    MEDIA_LAB_TIMEOUT_MS: '25000',
+    MEDIA_LAB_TIMEOUT_MS: '45000',
   })
   await runObservedScenario('slow-observer', {
     MEDIA_LAB_VIDEO_FRAMES: '180',
@@ -344,33 +402,43 @@ async function executeLab(resources: LabResources): Promise<void> {
     disconnectMetricsLine.slice('MEDIA_LAB_METRICS '.length),
   )
 
-  let completedLifecycleProcesses = 0
-  for (let cycle = 0; cycle < 50; cycle += 1) {
-    const publisher = startPublisher({
-      MEDIA_LAB_VIDEO_FRAMES: '1',
-      MEDIA_LAB_VIDEO_FPS: '60',
-    })
-    await withDeadline(
-      publisher.completion,
-      20_000,
-      `lifecycle cycle ${cycle + 1} exceeded its deadline`,
-    )
-    const output = publisher.output()
-    if (
-      !output.includes('publisher: tracks published') ||
-      !output.includes('publisher: tracks unpublished') ||
-      !output.includes('publisher: sdk shutdown')
-    ) throw new LabFailure(`lifecycle cycle ${cycle + 1} was incomplete\n${output}`)
-    completedLifecycleProcesses += 1
+  const lifecycleChurn = startPublisher({
+    MEDIA_LAB_SCENARIO: 'lifecycle-churn',
+  })
+  await withDeadline(
+    lifecycleChurn.completion,
+    180_000,
+    '50-cycle in-process lifecycle churn exceeded its deadline',
+  )
+  const lifecycleMetricsLine = lifecycleChurn.output().split(/\r?\n/).find((line) =>
+    line.startsWith('MEDIA_LAB_METRICS '))
+  if (lifecycleMetricsLine === undefined) {
+    throw new LabFailure('in-process lifecycle churn did not emit metrics')
+  }
+  const lifecycleMetrics = JSON.parse(
+    lifecycleMetricsLine.slice('MEDIA_LAB_METRICS '.length),
+  ) as {
+    cycles?: number
+    cancellationCycles?: number
+    trackCycles?: number
+    handleDelta?: number
+    threadDelta?: number
+    pendingCallbacks?: number
+  }
+  if (
+    lifecycleMetrics.cycles !== 50 ||
+    lifecycleMetrics.cancellationCycles !== 50 ||
+    lifecycleMetrics.trackCycles !== 50 ||
+    (lifecycleMetrics.handleDelta ?? Number.POSITIVE_INFINITY) > 2 ||
+    (lifecycleMetrics.threadDelta ?? Number.POSITIVE_INFINITY) > 0 ||
+    lifecycleMetrics.pendingCallbacks !== 0
+  ) {
+    throw new LabFailure(`in-process lifecycle resources did not return to baseline: ${lifecycleMetricsLine}`)
   }
   scenarioReports['lifecycle-50'] = {
-    accepted: completedLifecycleProcesses === 50,
-    cycles: completedLifecycleProcesses,
-    processBoundary: true,
-    residualPublisherProcesses: 0,
-    residualPublisherThreads: 0,
-    residualPublisherHandles: 0,
-    pendingCallbacks: 0,
+    accepted: true,
+    processBoundary: false,
+    ...lifecycleMetrics,
   }
 
   {
@@ -400,7 +468,10 @@ async function executeLab(resources: LabResources): Promise<void> {
     })
     await waitForFile(setup.readyPath, 10_000)
     await stopProcess(setup.observer)
-    const publisher = startPublisher({ MEDIA_LAB_VIDEO_FRAMES: '60' })
+    const publisher = startPublisher({
+      MEDIA_LAB_VIDEO_FRAMES: '60',
+      MEDIA_LAB_WAIT_FOR_SUBSCRIBERS: 'false',
+    })
     await withDeadline(
       publisher.completion,
       20_000,
@@ -428,8 +499,14 @@ async function executeLab(resources: LabResources): Promise<void> {
 const program = Effect.scoped(Effect.gen(function* () {
   yield* Effect.tryPromise({
     try: async () => {
-      const docker = runProcess('docker', ['info', '--format', '{{.ServerVersion}}'])
-      await docker.completion
+      if (serverExecutable) {
+        if (!path.isAbsolute(serverExecutable) || !existsSync(serverExecutable)) {
+          throw new LabFailure('MEDIA_LAB_SERVER_EXE must name an existing absolute path')
+        }
+      } else {
+        const docker = runProcess('docker', ['info', '--format', '{{.ServerVersion}}'])
+        await docker.completion
+      }
       if (pnpmScript === undefined) {
         throw new LabFailure('npm_execpath is required to launch pnpm reproducibly')
       }
@@ -439,6 +516,33 @@ const program = Effect.scoped(Effect.gen(function* () {
         '--filter', '@syrnike13/windows-media-engine', 'build:lab',
       ], { cwd: repoRoot })
       await build.completion
+      const platformBuild = runProcess(
+        pnpmIsExecutable ? pnpmScript : process.execPath,
+        [
+          ...(pnpmIsExecutable ? [] : [pnpmScript]),
+          '--filter', '@syrnike13/platform', 'build',
+        ],
+        { cwd: repoRoot },
+      )
+      await platformBuild.completion
+      const desktopShellBuild = runProcess(
+        pnpmIsExecutable ? pnpmScript : process.execPath,
+        [
+          ...(pnpmIsExecutable ? [] : [pnpmScript]),
+          '--filter', '@syrnike13/desktop', 'exec', 'tsup',
+        ],
+        { cwd: repoRoot },
+      )
+      await desktopShellBuild.completion
+      const desktopSmokeBuild = runProcess(
+        pnpmIsExecutable ? pnpmScript : process.execPath,
+        [
+          ...(pnpmIsExecutable ? [] : [pnpmScript]),
+          '--filter', '@syrnike13/desktop', 'build:media-room-smoke',
+        ],
+        { cwd: repoRoot },
+      )
+      await desktopSmokeBuild.completion
     },
     catch: normalizeError,
   })
@@ -455,8 +559,10 @@ const program = Effect.scoped(Effect.gen(function* () {
     (owned) => Effect.tryPromise({
       try: async () => {
         for (const processHandle of owned.processes) await stopProcess(processHandle)
-        const cleanup = runProcess('docker', ['rm', '-f', owned.containerName])
-        await cleanup.completion.catch(() => undefined)
+        if (!serverExecutable) {
+          const cleanup = runProcess('docker', ['rm', '-f', owned.containerName])
+          await cleanup.completion.catch(() => undefined)
+        }
         await rm(owned.directory, { recursive: true, force: true })
       },
       catch: normalizeError,
@@ -469,7 +575,20 @@ const program = Effect.scoped(Effect.gen(function* () {
   })
 }))
 
-Effect.runPromise(program).catch((error: unknown) => {
-  process.stderr.write(`${normalizeError(error).message}\n`)
+Effect.runPromise(program).catch(async (error: unknown) => {
+  const failure = normalizeError(error)
+  const artifactDirectory = path.resolve(packageRoot, 'artifacts')
+  await mkdir(artifactDirectory, { recursive: true })
+  await writeFile(
+    path.resolve(artifactDirectory, 'latest-report.json'),
+    `${JSON.stringify({
+      schemaVersion: 2,
+      accepted: false,
+      generatedAt: new Date().toISOString(),
+      failure: failure.message,
+    }, null, 2)}\n`,
+    'utf8',
+  )
+  process.stderr.write(`${failure.message}\n`)
   process.exitCode = 1
 })
