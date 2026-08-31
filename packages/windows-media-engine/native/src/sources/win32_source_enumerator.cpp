@@ -565,6 +565,30 @@ class Win32SourceEnumerator final : public SourceEnumerator {
                                                        : ResolveStatus::Stale;
   }
 
+  MonitorTargetResult resolveMonitorTarget(
+      const std::string& identity) override {
+    if (cancelled_.load()) return {ResolveStatus::Failed, std::nullopt};
+    const auto before = displayIdentities();
+    if (!before.failure.empty()) return {ResolveStatus::Failed, std::nullopt};
+    MonitorHandleContext context{this, &before.identities, &identity};
+    const BOOL enumerated = EnumDisplayMonitors(
+        nullptr, nullptr, &findMonitorHandle,
+        reinterpret_cast<LPARAM>(&context));
+    if (cancelled_.load() || context.api_failed ||
+        (!enumerated && !context.found)) {
+      return {ResolveStatus::Failed, std::nullopt};
+    }
+    const auto after = displayIdentities();
+    if (!after.failure.empty() ||
+        !sameDisplayMapping(before.identities, after.identities)) {
+      return {ResolveStatus::Stale, std::nullopt};
+    }
+    if (!context.found) return {ResolveStatus::Removed, std::nullopt};
+    return {ResolveStatus::Available,
+            MonitorTargetToken{
+                reinterpret_cast<std::uintptr_t>(context.found), identity}};
+  }
+
  private:
   static void appendOmission(EnumerationBatch& batch, const char* code,
                              const char* detail) {
@@ -605,6 +629,37 @@ class Win32SourceEnumerator final : public SourceEnumerator {
     bool identity_failed = false;
     bool api_failed = false;
   };
+
+  struct MonitorHandleContext {
+    Win32SourceEnumerator* self;
+    const std::vector<DisplayIdentity>* identities;
+    const std::string* requested_identity;
+    HMONITOR found = nullptr;
+    bool api_failed = false;
+  };
+
+  static BOOL CALLBACK findMonitorHandle(HMONITOR monitor, HDC, LPRECT,
+                                          LPARAM parameter) {
+    auto* context = reinterpret_cast<MonitorHandleContext*>(parameter);
+    if (context->self->cancelled_.load()) return FALSE;
+    MONITORINFOEXW info{};
+    info.cbSize = sizeof(info);
+    if (!GetMonitorInfoW(monitor, &info)) {
+      context->api_failed = true;
+      return FALSE;
+    }
+    const auto match = std::find_if(
+        context->identities->begin(), context->identities->end(),
+        [&](const DisplayIdentity& candidate) {
+          return _wcsicmp(candidate.gdi_name.c_str(), info.szDevice) == 0;
+        });
+    if (match != context->identities->end() &&
+        match->identity == *context->requested_identity) {
+      context->found = monitor;
+      return FALSE;
+    }
+    return TRUE;
+  }
 
   static void eraseWindows(EnumerationBatch& batch) {
     batch.candidates.erase(

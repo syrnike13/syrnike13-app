@@ -51,6 +51,12 @@ bool kindRequested(SourceKind kind, const EnumerationOptions& options) {
 
 }  // namespace
 
+MonitorTargetResult SourceEnumerator::resolveMonitorTarget(
+    const std::string& identity) {
+  (void)identity;
+  return {ResolveStatus::Failed, std::nullopt};
+}
+
 SourceRegistry::SourceRegistry(std::unique_ptr<SourceEnumerator> enumerator)
     : enumerator_(std::move(enumerator)) {
   if (!enumerator_) throw std::invalid_argument("SourceEnumerator is required");
@@ -292,6 +298,35 @@ ResolveResult SourceRegistry::resolve(const std::string& id) {
     }
   }
   return ResolveResult{ResolveStatus::Unknown, id, std::nullopt};
+}
+
+MonitorTargetResult SourceRegistry::resolveMonitorTarget(
+    const std::string& id) {
+  if (stopping_.load()) return {ResolveStatus::Failed, std::nullopt};
+  std::lock_guard lock(mutex_);
+  if (stopping_.load()) return {ResolveStatus::Failed, std::nullopt};
+  for (const auto& [identity, entry] : active_) {
+    (void)identity;
+    if (entry.id != id) continue;
+    if (entry.kind != SourceKind::Monitor) {
+      return {ResolveStatus::Failed, std::nullopt};
+    }
+    auto result = enumerator_->resolveMonitorTarget(entry.identity);
+    if (stopping_.load()) {
+      return {ResolveStatus::Failed, std::nullopt};
+    }
+    if (result.status != ResolveStatus::Available || !result.target ||
+        !result.target->valid()) {
+      result.target.reset();
+    }
+    return result;
+  }
+  for (const auto& tombstone : tombstones_) {
+    if (tombstone.id == id) {
+      return {ResolveStatus::Removed, std::nullopt};
+    }
+  }
+  return {ResolveStatus::Unknown, std::nullopt};
 }
 
 const char* toString(SourceKind value) noexcept {

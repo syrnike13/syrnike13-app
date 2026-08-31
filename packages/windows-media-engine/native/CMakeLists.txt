@@ -71,6 +71,14 @@ windows_media_target(media_sources)
 target_include_directories(media_sources PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(media_sources PRIVATE dwmapi shcore)
 
+add_library(media_capture STATIC
+  src/capture/monitor_capture.cpp
+  src/capture/wgc_monitor_capture.cpp
+)
+windows_media_target(media_capture)
+target_include_directories(media_capture PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(media_capture PUBLIC media_sources PRIVATE d3d11 dxgi dxguid windowsapp)
+
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/LiveKitSDK.cmake")
 windows_media_setup_livekit_sdk()
 find_package(LiveKit CONFIG REQUIRED)
@@ -87,6 +95,7 @@ add_executable(media_probe
 )
 windows_media_target(media_probe)
 target_link_libraries(media_probe PRIVATE media_core media_sources)
+target_link_libraries(media_probe PRIVATE media_capture)
 
 execute_process(
   COMMAND node -p "require('node-addon-api').include"
@@ -154,6 +163,10 @@ add_test(NAME media-probe-source-json-contract
   COMMAND powershell -NoProfile -NonInteractive -File
     "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/verify_source_probe_json.ps1"
     -Probe "$<TARGET_FILE:media_probe>")
+add_test(NAME media-probe-monitor-capture-json-contract
+  COMMAND powershell -NoProfile -NonInteractive -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/verify_monitor_capture_probe_json.ps1"
+    -Probe "$<TARGET_FILE:media_probe>")
 add_test(NAME media-probe-source-invalid-repeat-junk
   COMMAND media_probe enumerate-sources --repeat 1junk)
 add_test(NAME media-probe-source-invalid-repeat-sign
@@ -169,6 +182,8 @@ set_tests_properties(
   media-probe-enumerate-sources
   media-probe-source-json-contract
   PROPERTIES TIMEOUT 30)
+set_tests_properties(media-probe-monitor-capture-json-contract
+  PROPERTIES TIMEOUT 180)
 
 add_executable(source_registry_tests
   tests/source_registry_test.cpp
@@ -183,6 +198,12 @@ add_executable(source_window_fixture WIN32
 )
 windows_media_target(source_window_fixture)
 
+add_executable(monitor_pattern_fixture WIN32
+  fixtures/monitor_pattern_fixture.cpp
+)
+windows_media_target(monitor_pattern_fixture)
+add_dependencies(media_probe monitor_pattern_fixture)
+
 add_executable(source_win32_integration_tests
   tests/source_win32_integration_test.cpp
 )
@@ -191,6 +212,14 @@ target_link_libraries(source_win32_integration_tests PRIVATE media_sources)
 add_dependencies(source_win32_integration_tests source_window_fixture)
 add_test(NAME source-win32-integration COMMAND source_win32_integration_tests)
 set_tests_properties(source-win32-integration PROPERTIES TIMEOUT 10)
+
+add_executable(monitor_capture_tests
+  tests/monitor_capture_test.cpp
+)
+windows_media_target(monitor_capture_tests)
+target_link_libraries(monitor_capture_tests PRIVATE media_capture)
+add_test(NAME monitor-capture COMMAND monitor_capture_tests)
+set_tests_properties(monitor-capture PROPERTIES TIMEOUT 10)
 
 if(WINDOWS_MEDIA_BUILD_LAB)
   add_executable(native_media_lab_publisher

@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace syrnike::windows_media::sources {
@@ -93,12 +94,35 @@ struct EnumerationBatch {
   bool windows_truncated = false;
 };
 
+// Internal native token consumed only by capture adapters. Product callers and
+// JSON snapshots never receive or serialize the platform value.
+class MonitorTargetToken final {
+ public:
+  MonitorTargetToken() = default;
+  explicit MonitorTargetToken(std::uintptr_t platform_value,
+                              std::string cache_key = {})
+      : platform_value_(platform_value), cache_key_(std::move(cache_key)) {}
+  bool valid() const noexcept { return platform_value_ != 0; }
+  std::uintptr_t platformValue() const noexcept { return platform_value_; }
+  const std::string& cacheKey() const noexcept { return cache_key_; }
+
+ private:
+  std::uintptr_t platform_value_ = 0;
+  std::string cache_key_;
+};
+
+struct MonitorTargetResult {
+  ResolveStatus status = ResolveStatus::Unknown;
+  std::optional<MonitorTargetToken> target;
+};
+
 class SourceEnumerator {
  public:
   virtual ~SourceEnumerator() = default;
   virtual EnumerationBatch enumerate(const EnumerationOptions& options) = 0;
   virtual ResolveStatus validate(SourceKind kind,
                                  const std::string& identity) = 0;
+  virtual MonitorTargetResult resolveMonitorTarget(const std::string& identity);
   virtual void requestStop() noexcept {}
 };
 
@@ -148,6 +172,7 @@ class SourceRegistry final {
 
   SourceEnumeration enumerate(const EnumerationOptions& options = {});
   ResolveResult resolve(const std::string& id);
+  MonitorTargetResult resolveMonitorTarget(const std::string& id);
   void shutdown() noexcept;
 
  private:

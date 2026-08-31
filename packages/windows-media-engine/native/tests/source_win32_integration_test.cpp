@@ -188,6 +188,10 @@ void realMonitorsExposeMinimumMetadata() {
     (void)monitor.monitor->dpi_x;
     (void)monitor.monitor->dpi_y;
     (void)monitor.monitor->scale_factor;
+    const auto target = registry.resolveMonitorTarget(monitor.id);
+    require(target.status == ResolveStatus::Available && target.target &&
+                target.target->valid(),
+            "active monitor did not resolve to a native capture target");
   }
 }
 

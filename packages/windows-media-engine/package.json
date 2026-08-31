@@ -15,6 +15,10 @@
     "probe:repeat": ".\\build\\Release\\media_probe.exe lifecycle-repeat --count 100",
     "probe:sources": ".\\build\\Release\\media_probe.exe enumerate-sources --repeat 1000 --diff",
     "probe:sources:sanitized": ".\\build\\Release\\media_probe.exe enumerate-sources --repeat 1000 --diff --sanitized",
+    "probe:capture-monitor": ".\\build\\Release\\media_probe.exe capture-monitor --frames 600",
+    "probe:capture-monitor:repeat": ".\\build\\Release\\media_probe.exe capture-monitor-repeat --cycles 50",
+    "probe:capture-monitor:slow": ".\\build\\Release\\media_probe.exe capture-monitor-slow-consumer",
+    "probe:capture-monitor:stop-during-start": ".\\build\\Release\\media_probe.exe capture-monitor-stop-during-start",
     "lab:publisher": ".\\build\\Release\\native_media_lab_publisher.exe",
     "verify": "node scripts/verify-artifacts.mjs"
   },

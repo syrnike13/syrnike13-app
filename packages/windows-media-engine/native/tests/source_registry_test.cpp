@@ -543,6 +543,41 @@ class BlockingEnumerator final : public SourceEnumerator {
   bool released = false;
 };
 
+class BlockingTargetEnumerator final : public SourceEnumerator {
+ public:
+  EnumerationBatch enumerate(const EnumerationOptions&) override {
+    EnumerationBatch batch;
+    batch.candidates = {
+        candidate(SourceKind::Monitor, "blocking-monitor", "Display")};
+    return batch;
+  }
+
+  ResolveStatus validate(SourceKind, const std::string&) override {
+    return ResolveStatus::Available;
+  }
+
+  MonitorTargetResult resolveMonitorTarget(const std::string&) override {
+    std::unique_lock lock(mutex);
+    entered = true;
+    changed.notify_all();
+    changed.wait(lock, [this] { return released; });
+    return {ResolveStatus::Available, MonitorTargetToken{41}};
+  }
+
+  void requestStop() noexcept override {
+    {
+      std::lock_guard lock(mutex);
+      released = true;
+    }
+    changed.notify_all();
+  }
+
+  std::mutex mutex;
+  std::condition_variable changed;
+  bool entered = false;
+  bool released = false;
+};
+
 void concurrentEnumerationIsRejectedWithoutQueuing() {
   auto adapter = std::make_unique<BlockingEnumerator>();
   auto* fake = adapter.get();
@@ -599,6 +634,23 @@ void stoppedResolveNeverCallsTheAdapter() {
           "stopped registry performed platform validation during resolve");
 }
 
+void shutdownInvalidatesAnInFlightMonitorTarget() {
+  auto adapter = std::make_unique<BlockingTargetEnumerator>();
+  auto* fake = adapter.get();
+  SourceRegistry registry(std::move(adapter));
+  const auto id = registry.enumerate().sources.at(0).id;
+  MonitorTargetResult resolved;
+  std::thread resolver([&] { resolved = registry.resolveMonitorTarget(id); });
+  {
+    std::unique_lock lock(fake->mutex);
+    fake->changed.wait(lock, [&] { return fake->entered; });
+  }
+  registry.shutdown();
+  resolver.join();
+  require(resolved.status == ResolveStatus::Failed && !resolved.target,
+          "in-flight target resolution escaped registry shutdown");
+}
+
 }  // namespace
 
 int main() try {
@@ -618,6 +670,7 @@ int main() try {
   concurrentEnumerationIsRejectedWithoutQueuing();
   ownerShutdownCancelsAnActiveEnumeration();
   stoppedResolveNeverCallsTheAdapter();
+  shutdownInvalidatesAnInFlightMonitorTarget();
   partialEnumerationPreservesIdentityAndSuppressesRemoval();
   completeRemovalIsTypedAndResolvable();
   truncatedOrderChurnPreservesIssuedIds();
