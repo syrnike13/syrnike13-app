@@ -19,6 +19,11 @@
     "probe:capture-monitor:repeat": ".\\build\\Release\\media_probe.exe capture-monitor-repeat --cycles 50",
     "probe:capture-monitor:slow": ".\\build\\Release\\media_probe.exe capture-monitor-slow-consumer",
     "probe:capture-monitor:stop-during-start": ".\\build\\Release\\media_probe.exe capture-monitor-stop-during-start",
+    "probe:capture-window": ".\\build\\Release\\media_probe.exe capture-window --frames 600",
+    "probe:capture-window:resize": ".\\build\\Release\\media_probe.exe capture-window-resize --fixture",
+    "probe:capture-window:minimize": ".\\build\\Release\\media_probe.exe capture-window-minimize --fixture",
+    "probe:capture-window:close": ".\\build\\Release\\media_probe.exe capture-window-close --fixture",
+    "probe:capture-window:repeat": ".\\build\\Release\\media_probe.exe capture-window-repeat --cycles 50",
     "lab:publisher": ".\\build\\Release\\native_media_lab_publisher.exe",
     "verify": "node scripts/verify-artifacts.mjs"
   },

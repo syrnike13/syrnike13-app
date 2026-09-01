@@ -28,6 +28,7 @@ struct FrameMetadata {
   std::uint32_t width = 0;
   std::uint32_t height = 0;
   FramePixelFormat format = FramePixelFormat::Bgra8;
+  std::uint64_t generation = 1;
 };
 
 class FrameResource {
@@ -42,6 +43,7 @@ struct BackendFrame {
   std::uint32_t height = 0;
   FramePixelFormat format = FramePixelFormat::Bgra8;
   std::shared_ptr<FrameResource> resource;
+  std::uint64_t generation = 1;
 };
 
 class FrameLease final {
@@ -61,8 +63,12 @@ class FrameLease final {
  private:
   struct State;
   explicit FrameLease(std::shared_ptr<State> state);
+  static FrameLease create(FrameMetadata metadata,
+                           std::shared_ptr<FrameResource> resource,
+                           std::function<void()> on_release);
   std::shared_ptr<State> state_;
   friend class MonitorCapture;
+  friend class WindowCapture;
 };
 
 struct CaptureStats {

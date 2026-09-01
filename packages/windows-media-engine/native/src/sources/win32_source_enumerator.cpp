@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <charconv>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -16,6 +17,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -108,6 +110,23 @@ std::string windowFingerprint(HWND window) {
          utf8(class_name, class_length > 0
                               ? static_cast<std::size_t>(class_length)
                               : 0);
+}
+
+std::optional<HWND> windowHandleFromIdentity(const std::string& identity) {
+  constexpr std::string_view prefix = "window:";
+  if (!identity.starts_with(prefix)) return std::nullopt;
+  const auto separator = identity.find(':', prefix.size());
+  if (separator == std::string::npos || separator == prefix.size()) {
+    return std::nullopt;
+  }
+  std::uintptr_t value = 0;
+  const auto* begin = identity.data() + prefix.size();
+  const auto* end = identity.data() + separator;
+  const auto parsed = std::from_chars(begin, end, value, 16);
+  if (parsed.ec != std::errc{} || parsed.ptr != end || value == 0) {
+    return std::nullopt;
+  }
+  return reinterpret_cast<HWND>(value);
 }
 
 struct DisplayIdentity {
@@ -587,6 +606,42 @@ class Win32SourceEnumerator final : public SourceEnumerator {
     return {ResolveStatus::Available,
             MonitorTargetToken{
                 reinterpret_cast<std::uintptr_t>(context.found), identity}};
+  }
+
+  WindowTargetResult resolveWindowTarget(
+      const std::string& identity) override {
+    if (cancelled_.load()) return {ResolveStatus::Failed, std::nullopt};
+    EnumerationOptions options;
+    options.kind = EnumerationOptions::Kind::Window;
+    options.include_own_windows = true;
+    const auto batch = enumerate(options);
+    if (batch.windows == EnumerationCompleteness::Failed) {
+      return {ResolveStatus::Failed, std::nullopt};
+    }
+    const auto found = std::find_if(
+        batch.candidates.begin(), batch.candidates.end(),
+        [&](const SourceCandidate& candidate) {
+          return candidate.kind == SourceKind::Window &&
+                 candidate.identity == identity;
+        });
+    if (found == batch.candidates.end()) {
+      return {batch.windows == EnumerationCompleteness::Complete
+                  ? ResolveStatus::Removed
+                  : ResolveStatus::Stale,
+              std::nullopt};
+    }
+    const auto window = windowHandleFromIdentity(identity);
+    if (!window || !IsWindow(*window)) {
+      return {ResolveStatus::Removed, std::nullopt};
+    }
+    const auto fingerprint = windowFingerprint(*window);
+    if (fingerprint.empty() ||
+        !identity.starts_with(fingerprint + ":event:")) {
+      return {ResolveStatus::Stale, std::nullopt};
+    }
+    return {ResolveStatus::Available,
+            WindowTargetToken{reinterpret_cast<std::uintptr_t>(*window),
+                              identity}};
   }
 
  private:

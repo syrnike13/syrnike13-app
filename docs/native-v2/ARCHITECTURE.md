@@ -50,12 +50,14 @@ Electron main: MediaRuntimeSupervisor
 media_probe.exe
   -> media_core.lib directly
   -> media_sources.lib -> SourceRegistry -> Win32 SourceEnumerator
-  -> media_capture.lib -> MonitorCapture -> WGC/D3D11
+  -> media_capture.lib -> MonitorCapture/WindowCapture -> WGC/D3D11
 ```
 
 Source discovery is a separate deep module described in [SOURCE_ENUMERATION.md](SOURCE_ENUMERATION.md). Its public seam returns process-local opaque IDs and bounded value snapshots, while Win32 identity keys and handles stop at the adapter boundary. Issue #117 intentionally leaves the Engine protocol, addon, Electron, capture sessions, and LiveKit unchanged.
 
 The first isolated capture slice is described in [MONITOR_CAPTURE.md](MONITOR_CAPTURE.md). It consumes the opaque monitor ID through the registry, owns a bounded three-frame latest-wins lease queue, and ends at local probe verification; it does not publish or preview frames.
+
+The window extension is described in [WINDOW_CAPTURE.md](WINDOW_CAPTURE.md). It resolves one exact HWND lifetime, preserves the three-frame lease bound, fences each content-size transition by generation, and distinguishes minimized/hidden no-content from terminal close without selecting a replacement window.
 
 The one-shot `Engine` follows this finite transition table. A second lifecycle creates a new `Engine` rather than resetting a consumed instance.
 

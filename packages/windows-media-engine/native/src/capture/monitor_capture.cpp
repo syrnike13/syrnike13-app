@@ -62,6 +62,16 @@ class ScopeExit final {
 
 FrameLease::FrameLease(std::shared_ptr<State> state) : state_(std::move(state)) {}
 
+FrameLease FrameLease::create(FrameMetadata metadata,
+                              std::shared_ptr<FrameResource> resource,
+                              std::function<void()> on_release) {
+  auto state = std::make_shared<State>();
+  state->metadata = std::move(metadata);
+  state->resource = std::move(resource);
+  state->on_release = std::move(on_release);
+  return FrameLease{std::move(state)};
+}
+
 FrameLease::~FrameLease() { release(); }
 
 FrameLease::FrameLease(FrameLease&& other) noexcept

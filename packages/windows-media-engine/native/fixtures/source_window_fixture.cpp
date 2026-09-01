@@ -1,7 +1,9 @@
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -20,6 +22,10 @@ constexpr UINT kHide = WM_APP + 9;
 constexpr UINT kShow = WM_APP + 10;
 constexpr UINT kCloseSecond = WM_APP + 11;
 constexpr UINT kSetSecondTitle = WM_APP + 12;
+constexpr UINT kResize = WM_APP + 13;
+constexpr UINT kMove = WM_APP + 14;
+constexpr UINT kCloseAfter = WM_APP + 15;
+constexpr UINT kClosePrimary = WM_APP + 16;
 
 std::atomic<HWND> primary_window = nullptr;
 HWND second_window = nullptr;
@@ -28,11 +34,21 @@ HANDLE hang_release = nullptr;
 HANDLE hang_entered = nullptr;
 bool rapid_recycled = false;
 int rapid_attempts = 0;
+std::atomic<std::uint64_t> rendered_frames{0};
+std::atomic<std::uint64_t> close_after_frame{0};
+
+struct PairRequest {
+  int first = 0;
+  int second = 0;
+};
 
 HWND createSourceWindow(const wchar_t* title, int offset) {
-  return CreateWindowExW(0, kClassName, title, WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-                         120 + offset, 120 + offset, 640, 360, nullptr, nullptr,
-                         GetModuleHandleW(nullptr), nullptr);
+  const HWND window = CreateWindowExW(
+      0, kClassName, title, WS_OVERLAPPEDWINDOW | WS_VISIBLE, 120 + offset,
+      120 + offset, 640, 360, nullptr, nullptr, GetModuleHandleW(nullptr),
+      nullptr);
+  if (window != nullptr) SetTimer(window, 1, 16, nullptr);
+  return window;
 }
 
 LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wparam,
@@ -42,7 +58,75 @@ LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wparam,
     WaitForSingleObject(hang_release, INFINITE);
     return 0;
   }
-  if (window != controller_window) return DefWindowProcW(window, message, wparam, lparam);
+  if (window != controller_window) {
+    switch (message) {
+      case WM_TIMER: {
+        const auto frame = rendered_frames.fetch_add(1) + 1;
+        InvalidateRect(window, nullptr, FALSE);
+        const auto close_at = close_after_frame.load();
+        if (close_at != 0 && frame >= close_at &&
+            window == primary_window.load()) {
+          close_after_frame.store(0);
+          PostMessageW(window, WM_CLOSE, 0, 0);
+        }
+        return 0;
+      }
+      case WM_ERASEBKGND:
+        return 1;
+      case WM_PAINT: {
+        PAINTSTRUCT paint{};
+        const HDC context = BeginPaint(window, &paint);
+        RECT bounds{};
+        GetClientRect(window, &bounds);
+        const auto frame = rendered_frames.load();
+        const COLORREF background =
+            RGB(static_cast<BYTE>((frame * 17) % 256),
+                static_cast<BYTE>((frame * 31) % 256),
+                static_cast<BYTE>((frame * 47) % 256));
+        const HBRUSH background_brush = CreateSolidBrush(background);
+        FillRect(context, &bounds, background_brush);
+        DeleteObject(background_brush);
+        const int width = (std::max)(1L, bounds.right - bounds.left);
+        const int bar_width = (std::max)(20, width / 8);
+        const int x = static_cast<int>((frame * 13) %
+                                       static_cast<std::uint64_t>(width));
+        RECT bar{x, 0, (std::min)(width, x + bar_width), bounds.bottom};
+        const HBRUSH bar_brush = CreateSolidBrush(RGB(255, 255, 255));
+        FillRect(context, &bar, bar_brush);
+        DeleteObject(bar_brush);
+        SetBkMode(context, TRANSPARENT);
+        SetTextColor(context, RGB(0, 0, 0));
+        const std::wstring marker =
+            L"frame=" + std::to_wstring(frame) + L" tick=" +
+            std::to_wstring(GetTickCount64());
+        DrawTextW(context, marker.c_str(), static_cast<int>(marker.size()),
+                  &bounds, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        EndPaint(window, &paint);
+        return 0;
+      }
+      case WM_DPICHANGED: {
+        const auto* suggested = reinterpret_cast<const RECT*>(lparam);
+        if (suggested != nullptr) {
+          SetWindowPos(window, nullptr, suggested->left, suggested->top,
+                       suggested->right - suggested->left,
+                       suggested->bottom - suggested->top,
+                       SWP_NOACTIVATE | SWP_NOZORDER);
+        }
+        return 0;
+      }
+      case WM_CLOSE:
+        DestroyWindow(window);
+        return 0;
+      case WM_NCDESTROY: {
+        HWND expected = window;
+        (void)primary_window.compare_exchange_strong(expected, nullptr);
+        if (second_window == window) second_window = nullptr;
+        return DefWindowProcW(window, message, wparam, lparam);
+      }
+      default:
+        return DefWindowProcW(window, message, wparam, lparam);
+    }
+  }
   switch (message) {
     case kSetTitle: {
       const auto* title = reinterpret_cast<const wchar_t*>(lparam);
@@ -57,6 +141,33 @@ LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wparam,
     case kSetSecondTitle: {
       const auto* title = reinterpret_cast<const wchar_t*>(lparam);
       if (second_window != nullptr) SetWindowTextW(second_window, title);
+      return 0;
+    }
+    case kResize: {
+      const auto* request = reinterpret_cast<const PairRequest*>(lparam);
+      const HWND current = primary_window.load();
+      if (request != nullptr && current != nullptr) {
+        SetWindowPos(current, nullptr, 0, 0, request->first, request->second,
+                     SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER);
+      }
+      return 0;
+    }
+    case kMove: {
+      const auto* request = reinterpret_cast<const PairRequest*>(lparam);
+      const HWND current = primary_window.load();
+      if (request != nullptr && current != nullptr) {
+        SetWindowPos(current, nullptr, request->first, request->second, 0, 0,
+                     SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER);
+      }
+      return 0;
+    }
+    case kCloseAfter:
+      close_after_frame.store(rendered_frames.load() +
+                              static_cast<std::uint64_t>(wparam));
+      return 0;
+    case kClosePrimary: {
+      const HWND current = primary_window.load();
+      if (current != nullptr) PostMessageW(current, WM_CLOSE, 0, 0);
       return 0;
     }
     case kDestroyPrimary: {
@@ -193,6 +304,52 @@ void controlLoop() {
     } else if (command == "show") {
       SendMessageW(controller_window, kShow, 0, 0);
       acknowledge("show");
+    } else if (command == "resize-burst") {
+      for (int step = 0; step < 24; ++step) {
+        PairRequest request{320 + (step % 6) * 130,
+                            240 + (step % 5) * 70};
+        SendMessageW(controller_window, kResize, 0,
+                     reinterpret_cast<LPARAM>(&request));
+      }
+      PairRequest final_size{840, 480};
+      SendMessageW(controller_window, kResize, 0,
+                   reinterpret_cast<LPARAM>(&final_size));
+      acknowledge("resize-burst");
+    } else if (command.rfind("resize ", 0) == 0) {
+      PairRequest request;
+      std::istringstream values(command.substr(7));
+      if (!(values >> request.first >> request.second) ||
+          request.first < 160 || request.second < 120 ||
+          request.first > 3840 || request.second > 2160) {
+        std::cout << "ERROR resize" << std::endl;
+      } else {
+        SendMessageW(controller_window, kResize, 0,
+                     reinterpret_cast<LPARAM>(&request));
+        acknowledge("resize");
+      }
+    } else if (command.rfind("move ", 0) == 0) {
+      PairRequest request;
+      std::istringstream values(command.substr(5));
+      if (!(values >> request.first >> request.second)) {
+        std::cout << "ERROR move" << std::endl;
+      } else {
+        SendMessageW(controller_window, kMove, 0,
+                     reinterpret_cast<LPARAM>(&request));
+        acknowledge("move");
+      }
+    } else if (command.rfind("close-after ", 0) == 0) {
+      std::uint64_t frames = 0;
+      std::istringstream values(command.substr(12));
+      if (!(values >> frames) || frames == 0 || frames > 10'000) {
+        std::cout << "ERROR close-after" << std::endl;
+      } else {
+        SendMessageW(controller_window, kCloseAfter,
+                     static_cast<WPARAM>(frames), 0);
+        acknowledge("close-after");
+      }
+    } else if (command == "close") {
+      SendMessageW(controller_window, kClosePrimary, 0, 0);
+      acknowledge("close");
     } else if (command == "quit") {
       SetEvent(hang_release);
       PostMessageW(controller_window, WM_CLOSE, 0, 0);
@@ -209,6 +366,8 @@ void controlLoop() {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
+  (void)SetProcessDpiAwarenessContext(
+      DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
   WNDCLASSW window_class{};
   window_class.lpfnWndProc = windowProcedure;
   window_class.hInstance = instance;

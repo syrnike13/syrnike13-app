@@ -116,6 +116,28 @@ struct MonitorTargetResult {
   std::optional<MonitorTargetToken> target;
 };
 
+// Internal native token for one validated HWND lifetime. The cache key carries
+// the full registry identity, so a recycled HWND cannot alias an older target.
+class WindowTargetToken final {
+ public:
+  WindowTargetToken() = default;
+  explicit WindowTargetToken(std::uintptr_t platform_value,
+                             std::string cache_key = {})
+      : platform_value_(platform_value), cache_key_(std::move(cache_key)) {}
+  bool valid() const noexcept { return platform_value_ != 0; }
+  std::uintptr_t platformValue() const noexcept { return platform_value_; }
+  const std::string& cacheKey() const noexcept { return cache_key_; }
+
+ private:
+  std::uintptr_t platform_value_ = 0;
+  std::string cache_key_;
+};
+
+struct WindowTargetResult {
+  ResolveStatus status = ResolveStatus::Unknown;
+  std::optional<WindowTargetToken> target;
+};
+
 class SourceEnumerator {
  public:
   virtual ~SourceEnumerator() = default;
@@ -123,6 +145,7 @@ class SourceEnumerator {
   virtual ResolveStatus validate(SourceKind kind,
                                  const std::string& identity) = 0;
   virtual MonitorTargetResult resolveMonitorTarget(const std::string& identity);
+  virtual WindowTargetResult resolveWindowTarget(const std::string& identity);
   virtual void requestStop() noexcept {}
 };
 
@@ -173,6 +196,7 @@ class SourceRegistry final {
   SourceEnumeration enumerate(const EnumerationOptions& options = {});
   ResolveResult resolve(const std::string& id);
   MonitorTargetResult resolveMonitorTarget(const std::string& id);
+  WindowTargetResult resolveWindowTarget(const std::string& id);
   void shutdown() noexcept;
 
  private:

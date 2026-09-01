@@ -19,6 +19,7 @@
 #include "capture/monitor_capture.hpp"
 #include "capture/wgc_monitor_capture.hpp"
 #include "core/engine.hpp"
+#include "probe/window_capture_probe.hpp"
 #include "sources/source_registry.hpp"
 #include "sources/win32_source_enumerator.hpp"
 
@@ -1102,7 +1103,7 @@ int captureMonitor(int argc, char** argv, const std::string& command) {
 int main(int argc, char** argv) try {
   if (argc < 2) {
     throw std::runtime_error(
-      "usage: media_probe <lifecycle-once|lifecycle-repeat|fail-start|hang-worker|enumerate-sources|capture-monitor|capture-monitor-repeat|capture-monitor-slow-consumer|capture-monitor-stop-during-start>"
+      "usage: media_probe <lifecycle-once|lifecycle-repeat|fail-start|hang-worker|enumerate-sources|capture-monitor|capture-monitor-repeat|capture-monitor-slow-consumer|capture-monitor-stop-during-start|capture-window|capture-window-resize|capture-window-minimize|capture-window-close|capture-window-repeat>"
     );
   }
   const std::string mode = argv[1];
@@ -1116,6 +1117,11 @@ int main(int argc, char** argv) try {
       mode == "capture-monitor-slow-consumer" ||
       mode == "capture-monitor-stop-during-start") {
     return captureMonitor(argc, argv, mode);
+  }
+  if (mode == "capture-window" || mode == "capture-window-resize" ||
+      mode == "capture-window-minimize" || mode == "capture-window-close" ||
+      mode == "capture-window-repeat") {
+    return captureWindowProbe(argc, argv, mode);
   }
   throw std::runtime_error("unknown media_probe mode: " + mode);
 } catch (const std::exception& error) {

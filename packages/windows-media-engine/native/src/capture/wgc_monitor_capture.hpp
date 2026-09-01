@@ -22,6 +22,7 @@ struct WgcMonitorCaptureDiagnostics {
   bool live_objects_reported = false;
   long live_objects_hresult = 0;
   std::size_t live_engine_objects = 0;
+  std::size_t peak_engine_objects = 0;
 };
 
 class WgcMonitorCaptureBackend : public MonitorCaptureBackend {

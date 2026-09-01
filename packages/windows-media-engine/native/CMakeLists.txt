@@ -73,6 +73,7 @@ target_link_libraries(media_sources PRIVATE dwmapi shcore)
 
 add_library(media_capture STATIC
   src/capture/monitor_capture.cpp
+  src/capture/window_capture.cpp
   src/capture/wgc_monitor_capture.cpp
 )
 windows_media_target(media_capture)
@@ -92,6 +93,7 @@ target_link_libraries(media_livekit PUBLIC media_core LiveKit::livekit)
 
 add_executable(media_probe
   src/probe/media_probe.cpp
+  src/probe/window_capture_probe.cpp
 )
 windows_media_target(media_probe)
 target_link_libraries(media_probe PRIVATE media_core media_sources)
@@ -167,6 +169,10 @@ add_test(NAME media-probe-monitor-capture-json-contract
   COMMAND powershell -NoProfile -NonInteractive -File
     "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/verify_monitor_capture_probe_json.ps1"
     -Probe "$<TARGET_FILE:media_probe>")
+add_test(NAME media-probe-window-capture-json-contract
+  COMMAND powershell -NoProfile -NonInteractive -File
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/verify_window_capture_probe_json.ps1"
+    -Probe "$<TARGET_FILE:media_probe>")
 add_test(NAME media-probe-source-invalid-repeat-junk
   COMMAND media_probe enumerate-sources --repeat 1junk)
 add_test(NAME media-probe-source-invalid-repeat-sign
@@ -184,6 +190,8 @@ set_tests_properties(
   PROPERTIES TIMEOUT 30)
 set_tests_properties(media-probe-monitor-capture-json-contract
   PROPERTIES TIMEOUT 180)
+set_tests_properties(media-probe-window-capture-json-contract
+  PROPERTIES TIMEOUT 240)
 
 add_executable(source_registry_tests
   tests/source_registry_test.cpp
@@ -203,6 +211,7 @@ add_executable(monitor_pattern_fixture WIN32
 )
 windows_media_target(monitor_pattern_fixture)
 add_dependencies(media_probe monitor_pattern_fixture)
+add_dependencies(media_probe source_window_fixture)
 
 add_executable(source_win32_integration_tests
   tests/source_win32_integration_test.cpp
@@ -220,6 +229,14 @@ windows_media_target(monitor_capture_tests)
 target_link_libraries(monitor_capture_tests PRIVATE media_capture)
 add_test(NAME monitor-capture COMMAND monitor_capture_tests)
 set_tests_properties(monitor-capture PROPERTIES TIMEOUT 10)
+
+add_executable(window_capture_tests
+  tests/window_capture_test.cpp
+)
+windows_media_target(window_capture_tests)
+target_link_libraries(window_capture_tests PRIVATE media_capture)
+add_test(NAME window-capture COMMAND window_capture_tests)
+set_tests_properties(window-capture PROPERTIES TIMEOUT 10)
 
 if(WINDOWS_MEDIA_BUILD_LAB)
   add_executable(native_media_lab_publisher

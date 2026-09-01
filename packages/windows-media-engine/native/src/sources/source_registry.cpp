@@ -57,6 +57,12 @@ MonitorTargetResult SourceEnumerator::resolveMonitorTarget(
   return {ResolveStatus::Failed, std::nullopt};
 }
 
+WindowTargetResult SourceEnumerator::resolveWindowTarget(
+    const std::string& identity) {
+  (void)identity;
+  return {ResolveStatus::Failed, std::nullopt};
+}
+
 SourceRegistry::SourceRegistry(std::unique_ptr<SourceEnumerator> enumerator)
     : enumerator_(std::move(enumerator)) {
   if (!enumerator_) throw std::invalid_argument("SourceEnumerator is required");
@@ -312,6 +318,35 @@ MonitorTargetResult SourceRegistry::resolveMonitorTarget(
       return {ResolveStatus::Failed, std::nullopt};
     }
     auto result = enumerator_->resolveMonitorTarget(entry.identity);
+    if (stopping_.load()) {
+      return {ResolveStatus::Failed, std::nullopt};
+    }
+    if (result.status != ResolveStatus::Available || !result.target ||
+        !result.target->valid()) {
+      result.target.reset();
+    }
+    return result;
+  }
+  for (const auto& tombstone : tombstones_) {
+    if (tombstone.id == id) {
+      return {ResolveStatus::Removed, std::nullopt};
+    }
+  }
+  return {ResolveStatus::Unknown, std::nullopt};
+}
+
+WindowTargetResult SourceRegistry::resolveWindowTarget(
+    const std::string& id) {
+  if (stopping_.load()) return {ResolveStatus::Failed, std::nullopt};
+  std::lock_guard lock(mutex_);
+  if (stopping_.load()) return {ResolveStatus::Failed, std::nullopt};
+  for (const auto& [identity, entry] : active_) {
+    (void)identity;
+    if (entry.id != id) continue;
+    if (entry.kind != SourceKind::Window) {
+      return {ResolveStatus::Failed, std::nullopt};
+    }
+    auto result = enumerator_->resolveWindowTarget(entry.identity);
     if (stopping_.load()) {
       return {ResolveStatus::Failed, std::nullopt};
     }
