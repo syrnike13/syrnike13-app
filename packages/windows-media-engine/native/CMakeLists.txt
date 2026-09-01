@@ -80,6 +80,14 @@ windows_media_target(media_capture)
 target_include_directories(media_capture PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(media_capture PUBLIC media_sources PRIVATE d3d11 dxgi dxguid windowsapp)
 
+add_library(media_screen STATIC
+  src/screen/screen_frame_pipeline.cpp
+  src/screen/cpu_screen_converter.cpp
+)
+windows_media_target(media_screen)
+target_include_directories(media_screen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(media_screen PUBLIC media_capture)
+
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/LiveKitSDK.cmake")
 windows_media_setup_livekit_sdk()
 find_package(LiveKit CONFIG REQUIRED)
@@ -90,6 +98,13 @@ add_library(media_livekit STATIC
 windows_media_target(media_livekit)
 target_include_directories(media_livekit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(media_livekit PUBLIC media_core LiveKit::livekit)
+
+add_library(media_screen_livekit STATIC
+  src/screen/screen_sender.cpp
+)
+windows_media_target(media_screen_livekit)
+target_include_directories(media_screen_livekit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(media_screen_livekit PUBLIC media_screen LiveKit::livekit)
 
 add_executable(media_probe
   src/probe/media_probe.cpp
@@ -238,13 +253,25 @@ target_link_libraries(window_capture_tests PRIVATE media_capture)
 add_test(NAME window-capture COMMAND window_capture_tests)
 set_tests_properties(window-capture PROPERTIES TIMEOUT 10)
 
+add_executable(screen_reference_tests
+  tests/screen_reference_test.cpp
+)
+windows_media_target(screen_reference_tests)
+target_link_libraries(screen_reference_tests PRIVATE media_screen)
+add_test(NAME screen-reference COMMAND screen_reference_tests)
+set_tests_properties(screen-reference PROPERTIES TIMEOUT 10)
+
 if(WINDOWS_MEDIA_BUILD_LAB)
   add_executable(native_media_lab_publisher
     src/lab/native_media_lab_publisher.cpp
+    src/lab/screen_cpu_lab.cpp
   )
   windows_media_target(native_media_lab_publisher)
   target_compile_definitions(native_media_lab_publisher PRIVATE _CRT_SECURE_NO_WARNINGS)
-  target_link_libraries(native_media_lab_publisher PRIVATE media_core media_livekit LiveKit::livekit)
+  target_link_libraries(native_media_lab_publisher PRIVATE
+    media_core media_livekit media_sources media_capture media_screen_livekit
+    LiveKit::livekit)
+  add_dependencies(native_media_lab_publisher monitor_pattern_fixture source_window_fixture)
 
   get_filename_component(_livekit_cmake_parent "${LiveKit_DIR}" DIRECTORY)
   get_filename_component(_livekit_lib_dir "${_livekit_cmake_parent}" DIRECTORY)

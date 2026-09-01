@@ -11,7 +11,11 @@ import {
 } from '@livekit/rtc-node'
 import { Effect, Schema } from 'effect'
 import { writeFile } from 'node:fs/promises'
-import { decodeVideoMarker, videoMarkerLatency } from './marker.js'
+import {
+  decodeVideoMarker,
+  sampleVideoContentHash,
+  videoMarkerLatency,
+} from './marker.js'
 
 const ObserverEnvironment = Schema.Struct({
   LIVEKIT_URL: Schema.String,
@@ -22,9 +26,13 @@ const ObserverEnvironment = Schema.Struct({
   MEDIA_LAB_MIN_AUDIO_PULSES: Schema.optional(Schema.String),
   MEDIA_LAB_TIMEOUT_MS: Schema.optional(Schema.String),
   MEDIA_LAB_OBSERVER_DELAY_MS: Schema.optional(Schema.String),
+  MEDIA_LAB_SUBSCRIBE_DELAY_MS: Schema.optional(Schema.String),
   MEDIA_LAB_ALLOW_VIDEO_GAPS: Schema.optional(Schema.String),
   MEDIA_LAB_EXPECT_SUBSCRIPTIONS: Schema.optional(Schema.String),
   MEDIA_LAB_MAX_VIDEO_LATENCY_MS: Schema.optional(Schema.String),
+  MEDIA_LAB_MAX_FRAME_AGE_MS: Schema.optional(Schema.String),
+  MEDIA_LAB_EXPECT_VIDEO_END: Schema.optional(Schema.String),
+  MEDIA_LAB_MIN_AUDIO_FRAMES_AFTER_VIDEO_END: Schema.optional(Schema.String),
   MEDIA_LAB_ICE_TRANSPORT: Schema.optional(
     Schema.Union([Schema.Literal('all'), Schema.Literal('nohost')]),
   ),
@@ -39,9 +47,13 @@ interface ObserverOptions {
   readonly minimumAudioPulses: number
   readonly timeoutMs: number
   readonly delayMs: number
+  readonly subscribeDelayMs: number
   readonly allowVideoGaps: boolean
   readonly expectedSubscriptions: number
   readonly maximumVideoLatencyMs: number
+  readonly maximumFrameAgeMs: number
+  readonly expectVideoEnd: boolean
+  readonly minimumAudioFramesAfterVideoEnd: number
   readonly iceTransportType: IceTransportType
 }
 
@@ -57,18 +69,34 @@ interface VerificationReport {
     readonly maximumConsecutiveFrames: number
     readonly sequenceGaps: number
     readonly outOfOrderFrames: number
+    readonly duplicateFrames: number
     readonly minimumLatencyMs: number | null
     readonly maximumLatencyMs: number | null
     readonly averageLatencyMs: number | null
     readonly invalidTimestampFrames: number
     readonly observerDroppedFrames: number
     readonly maximumObserverBacklogFrames: number
+    readonly firstSequence: number | null
+    readonly lastSequence: number | null
+    readonly p50LatencyMs: number | null
+    readonly p95LatencyMs: number | null
+    readonly staleFrames: number
+    readonly resolutionTransitions: number
+    readonly resolutions: readonly {
+      readonly generation: number
+      readonly width: number
+      readonly height: number
+    }[]
+    readonly maximumNoFrameDurationMs: number
+    readonly contentChanges: number
+    readonly endReason: string
   }
   readonly audio: {
     readonly receivedFrames: number
     readonly receivedSamples: number
     readonly controlPulses: number
     readonly discontinuities: number
+    readonly framesAfterVideoEnd: number
   }
   readonly tracks: {
     readonly subscribed: number
@@ -120,6 +148,11 @@ function optionsFromEnvironment(): ObserverOptions {
     ),
     timeoutMs: integerOption(env.MEDIA_LAB_TIMEOUT_MS, 45_000, 'MEDIA_LAB_TIMEOUT_MS'),
     delayMs: integerOption(env.MEDIA_LAB_OBSERVER_DELAY_MS, 0, 'MEDIA_LAB_OBSERVER_DELAY_MS'),
+    subscribeDelayMs: integerOption(
+      env.MEDIA_LAB_SUBSCRIBE_DELAY_MS,
+      0,
+      'MEDIA_LAB_SUBSCRIBE_DELAY_MS',
+    ),
     allowVideoGaps: booleanOption(
       env.MEDIA_LAB_ALLOW_VIDEO_GAPS,
       false,
@@ -135,6 +168,21 @@ function optionsFromEnvironment(): ObserverOptions {
       2_000,
       'MEDIA_LAB_MAX_VIDEO_LATENCY_MS',
     ),
+    maximumFrameAgeMs: integerOption(
+      env.MEDIA_LAB_MAX_FRAME_AGE_MS,
+      2_000,
+      'MEDIA_LAB_MAX_FRAME_AGE_MS',
+    ),
+    expectVideoEnd: booleanOption(
+      env.MEDIA_LAB_EXPECT_VIDEO_END,
+      false,
+      'MEDIA_LAB_EXPECT_VIDEO_END',
+    ),
+    minimumAudioFramesAfterVideoEnd: integerOption(
+      env.MEDIA_LAB_MIN_AUDIO_FRAMES_AFTER_VIDEO_END,
+      0,
+      'MEDIA_LAB_MIN_AUDIO_FRAMES_AFTER_VIDEO_END',
+    ),
     iceTransportType: env.MEDIA_LAB_ICE_TRANSPORT === 'nohost'
       ? IceTransportType.TRANSPORT_NOHOST
       : IceTransportType.TRANSPORT_ALL,
@@ -149,22 +197,36 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
   let videoDecoded = 0
   let invalidVideoTimestamps = 0
   let maximumConsecutiveFrames = 0
-  let currentConsecutiveFrames = 0
   let sequenceGaps = 0
   let outOfOrderFrames = 0
+  let duplicateFrames = 0
   let observerDroppedFrames = 0
   let maximumObserverBacklogFrames = 0
-  let lastVideoSequence: number | undefined
+  let reportLastVideoSequence: number | undefined
+  let firstVideoSequence: number | undefined
+  let staleVideoFrames = 0
+  let resolutionTransitions = 0
+  const resolutions: Array<{ generation: number; width: number; height: number }> = []
+  let lastResolution: { generation: number; width: number; height: number } | undefined
+  let lastVideoFrameAt: number | undefined
+  let maximumNoFrameDurationMs = 0
+  let lastContentHash: number | undefined
+  let contentChanges = 0
+  let videoEndReason: string | undefined
+  let videoEndedAt: number | undefined
   let audioFrames = 0
   let audioSamples = 0
   let audioPulses = 0
   let audioDiscontinuities = 0
+  let audioFramesAfterVideoEnd = 0
   let lastAudioFrameAt: number | undefined
   let pulseActive = false
   let lastPulseAt = 0
   let tracksSubscribed = 0
   let tracksUnsubscribed = 0
   const streamTasks = new Set<Promise<void>>()
+  const cancelVideoStreams = new Map<RemoteTrack, () => Promise<void>>()
+  const subscriptionTimers = new Set<NodeJS.Timeout>()
 
   let resolveAccepted: (() => void) | undefined
   let rejectAccepted: ((error: Error) => void) | undefined
@@ -180,43 +242,92 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
     if (
       videoAccepted &&
       videoLatencies.length === videoDecoded &&
+      outOfOrderFrames === 0 &&
+      staleVideoFrames === 0 &&
       audioPulses >= options.minimumAudioPulses &&
-      tracksSubscribed >= options.expectedSubscriptions
+      tracksSubscribed >= options.expectedSubscriptions &&
+      (!options.expectVideoEnd || videoEndReason !== undefined) &&
+      audioFramesAfterVideoEnd >= options.minimumAudioFramesAfterVideoEnd
     ) resolveAccepted?.()
   }
 
   const consumeVideo = async (track: RemoteTrack) => {
     const reader = new VideoStream(track).getReader()
+    cancelVideoStreams.set(track, async () => {
+      try {
+        await reader.cancel('track unpublished')
+      } catch {
+        // EOS and cancellation can race; either path has already stopped delivery.
+      }
+    })
+    let streamLastSequence: number | undefined
+    let streamConsecutiveFrames = 0
     type VideoValue = NonNullable<Awaited<ReturnType<typeof reader.read>>['value']>
     const processValue = (value: VideoValue) => {
+      const receivedAt = Date.now()
+      if (lastVideoFrameAt !== undefined) {
+        maximumNoFrameDurationMs = Math.max(
+          maximumNoFrameDurationMs,
+          receivedAt - lastVideoFrameAt,
+        )
+      }
+      lastVideoFrameAt = receivedAt
       const marker = decodeVideoMarker(value.frame)
       if (marker !== undefined) {
         videoDecoded += 1
+        firstVideoSequence ??= marker.sequence
         const latency = videoMarkerLatency(
           marker.capturedAtMs,
-          Date.now(),
+          receivedAt,
           options.timeoutMs,
         )
         if (latency !== undefined) {
           videoLatencies.push(latency)
+          if (latency > options.maximumFrameAgeMs) staleVideoFrames += 1
         } else {
           invalidVideoTimestamps += 1
         }
-        if (lastVideoSequence === undefined || marker.sequence === lastVideoSequence + 1) {
-          currentConsecutiveFrames += 1
-        } else if (marker.sequence <= lastVideoSequence) {
+        if (
+          streamLastSequence === undefined ||
+          marker.sequence === streamLastSequence + 1
+        ) {
+          streamConsecutiveFrames += 1
+        } else if (marker.sequence < streamLastSequence) {
           outOfOrderFrames += 1
-          currentConsecutiveFrames = 1
+          streamConsecutiveFrames = 1
+        } else if (marker.sequence === streamLastSequence) {
+          duplicateFrames += 1
         } else {
-          const gap = marker.sequence - lastVideoSequence - 1
+          const gap = marker.sequence - streamLastSequence - 1
           sequenceGaps += gap
           observerDroppedFrames += gap
-          currentConsecutiveFrames = 1
+          streamConsecutiveFrames = 1
         }
-        lastVideoSequence = marker.sequence
+        streamLastSequence = marker.sequence
+        reportLastVideoSequence = marker.sequence
+        const resolution = {
+          generation: marker.generation,
+          width: marker.sourceWidth,
+          height: marker.sourceHeight,
+        }
+        if (
+          lastResolution === undefined ||
+          lastResolution.generation !== resolution.generation ||
+          lastResolution.width !== resolution.width ||
+          lastResolution.height !== resolution.height
+        ) {
+          if (lastResolution !== undefined) resolutionTransitions += 1
+          if (resolutions.length < 64) resolutions.push(resolution)
+          lastResolution = resolution
+        }
+        const contentHash = sampleVideoContentHash(value.frame)
+        if (lastContentHash !== undefined && lastContentHash !== contentHash) {
+          contentChanges += 1
+        }
+        lastContentHash = contentHash
         maximumConsecutiveFrames = Math.max(
           maximumConsecutiveFrames,
-          currentConsecutiveFrames,
+          streamConsecutiveFrames,
         )
       }
       checkAcceptance()
@@ -231,6 +342,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
           processValue(result.value)
         }
       } finally {
+        cancelVideoStreams.delete(track)
         reader.releaseLock()
       }
       return
@@ -269,6 +381,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
       }
     } finally {
       await pump
+      cancelVideoStreams.delete(track)
       reader.releaseLock()
     }
   }
@@ -289,6 +402,9 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
         }
         lastAudioFrameAt = receivedAt
         audioFrames += 1
+        if (videoEndedAt !== undefined && receivedAt >= videoEndedAt) {
+          audioFramesAfterVideoEnd += 1
+        }
         audioSamples += result.value.samplesPerChannel
         let maximumAmplitude = 0
         for (const sample of result.value.data) {
@@ -318,15 +434,46 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
   room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
     if (participant.identity !== 'native-v2-publisher') return
     tracksSubscribed += 1
-    if (track.kind === TrackKind.KIND_VIDEO) startStream(consumeVideo(track))
+    if (track.kind === TrackKind.KIND_VIDEO) {
+      videoEndReason = undefined
+      videoEndedAt = undefined
+      audioFramesAfterVideoEnd = 0
+      startStream(consumeVideo(track))
+    }
     if (track.kind === TrackKind.KIND_AUDIO) startStream(consumeAudio(track))
   })
   room.on(RoomEvent.TrackUnsubscribed, (_track, _publication, participant) => {
-    if (participant.identity === 'native-v2-publisher') tracksUnsubscribed += 1
+    if (participant.identity !== 'native-v2-publisher') return
+    tracksUnsubscribed += 1
+    if (_track.kind === TrackKind.KIND_VIDEO) {
+      void cancelVideoStreams.get(_track)?.()
+      videoEndReason ??= 'track-unpublished'
+      videoEndedAt ??= Date.now()
+      checkAcceptance()
+    }
   })
+  room.on(RoomEvent.Disconnected, () => {
+    videoEndReason ??= 'room-disconnected'
+    videoEndedAt ??= Date.now()
+    checkAcceptance()
+  })
+  if (options.subscribeDelayMs > 0) {
+    room.on(RoomEvent.TrackPublished, (publication, participant) => {
+      if (participant.identity !== 'native-v2-publisher') return
+      const timer = setTimeout(() => {
+        subscriptionTimers.delete(timer)
+        try {
+          publication.setSubscribed(true)
+        } catch {
+          // A deliberately late subscription may race publication teardown.
+        }
+      }, options.subscribeDelayMs)
+      subscriptionTimers.add(timer)
+    })
+  }
 
   await room.connect(options.url, options.token, {
-    autoSubscribe: true,
+    autoSubscribe: options.subscribeDelayMs === 0,
     dynacast: false,
     rtcConfig: {
       iceTransportType: options.iceTransportType,
@@ -343,7 +490,10 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
     failures.push(normalizeError(error).message)
   }
 
+  videoEndReason ??= 'observer-complete'
   await room.disconnect()
+  for (const timer of subscriptionTimers) clearTimeout(timer)
+  subscriptionTimers.clear()
   await Promise.allSettled(streamTasks)
   const finishedAtMs = Date.now()
   const acceptedResult =
@@ -353,10 +503,22 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
       : maximumConsecutiveFrames >= options.minimumVideoFrames) &&
     audioPulses >= options.minimumAudioPulses &&
     tracksSubscribed >= options.expectedSubscriptions &&
+    (!options.expectVideoEnd || videoEndReason !== 'observer-complete') &&
+    audioFramesAfterVideoEnd >= options.minimumAudioFramesAfterVideoEnd &&
     videoLatencies.length === videoDecoded &&
     videoLatencies.length > 0 &&
-    Math.max(...videoLatencies) <= options.maximumVideoLatencyMs
+    Math.max(...videoLatencies) <= options.maximumVideoLatencyMs &&
+    outOfOrderFrames === 0 &&
+    staleVideoFrames === 0
   const latencyTotal = videoLatencies.reduce((sum, value) => sum + value, 0)
+  const sortedLatencies = [...videoLatencies].sort((left, right) => left - right)
+  const percentile = (ratio: number): number | null => {
+    if (sortedLatencies.length === 0) return null
+    return sortedLatencies[Math.min(
+      sortedLatencies.length - 1,
+      Math.ceil(sortedLatencies.length * ratio) - 1,
+    )] ?? null
+  }
   return {
     schemaVersion: 1,
     accepted: acceptedResult,
@@ -369,6 +531,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
       maximumConsecutiveFrames,
       sequenceGaps,
       outOfOrderFrames,
+      duplicateFrames,
       minimumLatencyMs: videoLatencies.length > 0 ? Math.min(...videoLatencies) : null,
       maximumLatencyMs: videoLatencies.length > 0 ? Math.max(...videoLatencies) : null,
       averageLatencyMs:
@@ -376,12 +539,23 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
       invalidTimestampFrames: invalidVideoTimestamps,
       observerDroppedFrames,
       maximumObserverBacklogFrames,
+      firstSequence: firstVideoSequence ?? null,
+      lastSequence: reportLastVideoSequence ?? null,
+      p50LatencyMs: percentile(0.5),
+      p95LatencyMs: percentile(0.95),
+      staleFrames: staleVideoFrames,
+      resolutionTransitions,
+      resolutions,
+      maximumNoFrameDurationMs,
+      contentChanges,
+      endReason: videoEndReason,
     },
     audio: {
       receivedFrames: audioFrames,
       receivedSamples: audioSamples,
       controlPulses: audioPulses,
       discontinuities: audioDiscontinuities,
+      framesAfterVideoEnd: audioFramesAfterVideoEnd,
     },
     tracks: {
       subscribed: tracksSubscribed,

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -20,6 +21,7 @@
 #include <tlhelp32.h>
 
 #include "core/engine.hpp"
+#include "lab/screen_cpu_lab.hpp"
 #include "livekit/livekit.h"
 #include "livekit/livekit_room_transport.hpp"
 
@@ -28,8 +30,9 @@ namespace {
 constexpr int kAudioSampleRate = 48000;
 constexpr int kAudioChannels = 1;
 constexpr int kAudioFrameMilliseconds = 10;
-constexpr int kMarkerBits = 96;
+constexpr int kMarkerBits = 144;
 constexpr int kMarkerColumns = 24;
+constexpr int kMarkerRows = 6;
 constexpr int kMarkerTileSize = 12;
 constexpr std::uint16_t kMarkerMagic = 0x534d;
 constexpr double kPi = 3.14159265358979323846;
@@ -116,7 +119,7 @@ Options optionsFromEnvironment() {
       options.scenario != "lifecycle-churn")
     throw std::runtime_error("Unsupported MEDIA_LAB_SCENARIO");
   if (options.width < kMarkerColumns * kMarkerTileSize ||
-      options.height < 4 * kMarkerTileSize) {
+      options.height < kMarkerRows * kMarkerTileSize) {
     throw std::runtime_error(
         "Video resolution is too small for the machine-readable marker");
   }
@@ -131,12 +134,21 @@ std::uint64_t epochMilliseconds() {
 }
 
 bool markerBit(std::uint64_t sequence, std::uint64_t captured_at_ms,
-               int index) {
+               std::uint64_t generation, std::uint32_t source_width,
+               std::uint32_t source_height, int index) {
   if (index < 16)
     return ((kMarkerMagic >> (15 - index)) & 1U) != 0;
   if (index < 48)
     return ((sequence >> (47 - index)) & 1ULL) != 0;
-  return ((captured_at_ms >> (95 - index)) & 1ULL) != 0;
+  if (index < 96)
+    return ((captured_at_ms >> (95 - index)) & 1ULL) != 0;
+  if (index < 112)
+    return ((generation >> (111 - index)) & 1ULL) != 0;
+  if (index < 128)
+    return ((static_cast<std::uint64_t>(source_width) >> (127 - index)) &
+            1ULL) != 0;
+  return ((static_cast<std::uint64_t>(source_height) >> (143 - index)) &
+          1ULL) != 0;
 }
 
 void fillVideoFrame(livekit::VideoFrame &frame, std::uint64_t sequence,
@@ -165,7 +177,11 @@ void fillVideoFrame(livekit::VideoFrame &frame, std::uint64_t sequence,
     const int column = bit % kMarkerColumns;
     const int row = bit / kMarkerColumns;
     const auto level = static_cast<std::uint8_t>(
-        markerBit(sequence, captured_at_ms, bit) ? 255 : 0);
+        markerBit(sequence, captured_at_ms, 1,
+                  static_cast<std::uint32_t>(width),
+                  static_cast<std::uint32_t>(height), bit)
+            ? 255
+            : 0);
     for (int y = row * kMarkerTileSize; y < (row + 1) * kMarkerTileSize; ++y) {
       for (int x = column * kMarkerTileSize; x < (column + 1) * kMarkerTileSize;
            ++x) {
@@ -180,7 +196,8 @@ void fillVideoFrame(livekit::VideoFrame &frame, std::uint64_t sequence,
 }
 
 void runAudio(const std::shared_ptr<livekit::AudioSource> &source,
-              std::atomic_bool &running) {
+              std::atomic_bool &running,
+              std::atomic<std::uint64_t> *published_frames = nullptr) {
   const int samples_per_channel =
       kAudioSampleRate * kAudioFrameMilliseconds / 1000;
   std::uint64_t frame_sequence = 0;
@@ -210,6 +227,7 @@ void runAudio(const std::shared_ptr<livekit::AudioSource> &source,
       }
     }
     ++frame_sequence;
+    if (published_frames) published_frames->store(frame_sequence);
     next_frame += std::chrono::milliseconds(kAudioFrameMilliseconds);
     std::this_thread::sleep_until(next_frame);
   }
@@ -264,6 +282,16 @@ public:
     changed_.notify_all();
   }
 
+  void onLocalTrackUnpublished(
+      livekit::Room &,
+      const livekit::LocalTrackUnpublishedEvent &) override {
+    {
+      std::lock_guard lock(mutex_);
+      ++unpublications_;
+    }
+    changed_.notify_all();
+  }
+
   void waitFor(std::size_t expected, std::chrono::seconds timeout) {
     std::unique_lock lock(mutex_);
     if (!changed_.wait_for(lock, timeout, [this, expected] {
@@ -273,10 +301,23 @@ public:
     }
   }
 
+  void waitForUnpublished(
+      std::size_t expected,
+      std::chrono::steady_clock::time_point deadline) {
+    std::unique_lock lock(mutex_);
+    if (!changed_.wait_until(lock, deadline, [this, expected] {
+          return unpublications_ >= expected;
+        })) {
+      throw std::runtime_error(
+          "Timed out waiting for local track unpublish acknowledgement");
+    }
+  }
+
 private:
   std::mutex mutex_;
   std::condition_variable changed_;
   std::size_t subscriptions_ = 0;
+  std::size_t unpublications_ = 0;
 };
 
 class ScopedRoomDelegate final {
@@ -389,23 +430,37 @@ void publishAndUnpublishSyntheticTracks(
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
   try {
     const auto options = optionsFromEnvironment();
+    const std::string command = argc > 1 ? argv[1] : "";
+    if (!command.empty() &&
+        !syrnike::windows_media::lab::isScreenCpuMode(command)) {
+      throw std::runtime_error("Unsupported media_lab command: " + command);
+    }
+    int screen_cycles = command == "screen-cpu-repeat" ? 30 : 1;
+    for (int index = 2; index < argc; ++index) {
+      const std::string argument = argv[index];
+      if (argument != "--cycles" || index + 1 >= argc)
+        throw std::runtime_error("screen CPU modes accept only --cycles N");
+      screen_cycles = std::stoi(argv[++index]);
+      if (screen_cycles < 1 || screen_cycles > 30)
+        throw std::runtime_error("--cycles must be between 1 and 30");
+    }
     int exit_code = 0;
     {
       auto transport = std::make_shared<LiveKitRoomTransport>();
       RoomStateLatch room_state;
-      Engine engine(EngineOptions{.room_transport = transport});
-      if (!engine
-               .registerEventCallback([&room_state](const auto &event) {
+      auto engine = std::make_unique<Engine>(
+          EngineOptions{.room_transport = transport});
+      if (!engine->registerEventCallback([&room_state](const auto &event) {
                  room_state.observe(event);
                })
                .ok ||
-          !engine.start().ok) {
+          !engine->start().ok) {
         throw std::runtime_error("Engine v2 failed to start");
       }
-      const auto lease = engine.installCredentialLease(CredentialLease{
+      const auto lease = engine->installCredentialLease(CredentialLease{
           "media-lab-lease",
           options.url,
           options.token,
@@ -418,27 +473,195 @@ int main() {
           "media-lab-lease",
       };
       const auto connect_result =
-          engine.applyDesiredState(desiredState(1, room_intent));
+          engine->applyDesiredState(desiredState(1, room_intent));
       if (!connect_result.ok)
         throw std::runtime_error("Room intent was rejected");
       room_state.waitFor(RoomPublicState::Connected, std::chrono::seconds(12));
       std::cout << "publisher: connected" << std::endl;
 
-      if (options.scenario == "lifecycle-churn") {
+      if (!command.empty()) {
+        auto room = transport->activeRoom();
+        if (!room)
+          throw std::runtime_error("Connected LiveKit Room is unavailable");
+        {
+          LocalSubscriptionLatch warmup_latch;
+          ScopedRoomDelegate warmup_delegate(room, &warmup_latch);
+          std::size_t expected_subscriptions = 0;
+          std::size_t expected_unpublications = 0;
+          const auto wait_until_ready = [&] {
+            warmup_latch.waitFor(++expected_subscriptions,
+                                 std::chrono::seconds{25});
+          };
+          const auto wait_until_unpublished =
+              [&](std::chrono::steady_clock::time_point deadline) {
+                warmup_latch.waitForUnpublished(
+                    ++expected_unpublications, deadline);
+              };
+          auto participant = room->localParticipant().lock();
+          if (!participant)
+            throw std::runtime_error("Warm-up participant is unavailable");
+          auto audio_source = std::make_shared<livekit::AudioSource>(
+              kAudioSampleRate, kAudioChannels, kAudioFrameMilliseconds);
+          auto audio_track = livekit::LocalAudioTrack::createLocalAudioTrack(
+              "screen-reference-warmup-audio", audio_source);
+          livekit::TrackPublishOptions audio_options;
+          audio_options.source = livekit::TrackSource::SOURCE_MICROPHONE;
+          audio_options.dtx = false;
+          audio_options.simulcast = false;
+          participant->publishTrack(audio_track, audio_options);
+          wait_until_ready();
+          std::atomic_bool audio_running{true};
+          std::thread audio_thread(
+              [&] { runAudio(audio_source, audio_running); });
+          std::exception_ptr warmup_failure;
+          try {
+            syrnike::windows_media::lab::warmScreenCpuLab(
+                room, command, wait_until_ready, wait_until_unpublished);
+          } catch (...) {
+            warmup_failure = std::current_exception();
+          }
+          audio_running.store(false);
+          audio_thread.join();
+          if (audio_track->publication()) {
+            participant->unpublishTrack(audio_track->publication()->sid());
+            wait_until_unpublished(std::chrono::steady_clock::now() +
+                                   std::chrono::seconds{5});
+          }
+          audio_source->clearQueue();
+          if (warmup_failure) std::rethrow_exception(warmup_failure);
+        }
+        room.reset();
+        if (!engine->applyDesiredState(desiredState(2, std::nullopt)).ok)
+          throw std::runtime_error("Screen warm-up disconnect was rejected");
+        room_state.waitFor(RoomPublicState::Off, std::chrono::seconds{12});
+        waitForTransportIdle(transport, std::chrono::seconds{5});
+
+        const auto measured_lease = engine->installCredentialLease(
+            CredentialLease{"media-lab-lease", options.url, options.token});
+        if (!measured_lease.ok ||
+            !engine->applyDesiredState(desiredState(3, room_intent)).ok) {
+          throw std::runtime_error("Measured screen reconnect was rejected");
+        }
+        room_state.waitFor(RoomPublicState::Connected,
+                           std::chrono::seconds{12});
+        room = transport->activeRoom();
+        if (!room)
+          throw std::runtime_error("Measured screen Room is unavailable");
+        auto participant = room->localParticipant().lock();
+        if (!participant)
+          throw std::runtime_error("Local participant is unavailable");
+        LocalSubscriptionLatch subscription_latch;
+        auto delegate_scope =
+            std::make_unique<ScopedRoomDelegate>(room, &subscription_latch);
+        std::size_t expected_subscriptions = 0;
+        std::size_t expected_unpublications = 0;
+        const auto wait_until_ready = [&] {
+          subscription_latch.waitFor(++expected_subscriptions,
+                                     std::chrono::seconds{25});
+        };
+        const auto wait_until_unpublished =
+            [&](std::chrono::steady_clock::time_point deadline) {
+              subscription_latch.waitForUnpublished(
+                  ++expected_unpublications, deadline);
+            };
+        auto audio_source = std::make_shared<livekit::AudioSource>(
+            kAudioSampleRate, kAudioChannels, kAudioFrameMilliseconds);
+        auto audio_track = livekit::LocalAudioTrack::createLocalAudioTrack(
+            "screen-reference-companion-audio", audio_source);
+        livekit::TrackPublishOptions audio_options;
+        audio_options.source = livekit::TrackSource::SOURCE_MICROPHONE;
+        audio_options.dtx = false;
+        audio_options.simulcast = false;
+        participant->publishTrack(audio_track, audio_options);
+        wait_until_ready();
+        std::atomic_bool audio_running{true};
+        std::atomic<std::uint64_t> audio_frames{0};
+        std::thread audio_thread([&] {
+          runAudio(audio_source, audio_running, &audio_frames);
+        });
+        std::string report;
+        std::exception_ptr screen_failure;
+        try {
+          if (command == "screen-cpu-repeat") {
+            syrnike::windows_media::lab::warmScreenCpuLab(
+                room, command, wait_until_ready, wait_until_unpublished);
+          }
+          std::function<void()> during_publication;
+          if (command == "screen-cpu-room-disconnect") {
+            during_publication = [&] {
+              if (!engine->applyDesiredState(
+                       desiredState(4, std::nullopt)).ok) {
+                throw std::runtime_error(
+                    "Room disconnect during screen publication was rejected");
+              }
+              room_state.waitFor(RoomPublicState::Off,
+                                 std::chrono::seconds{12});
+              std::cout << "publisher: room disconnected during screen publication"
+                        << std::endl;
+            };
+          }
+          report = syrnike::windows_media::lab::runScreenCpuLab(
+              room, command, screen_cycles, wait_until_ready,
+              wait_until_unpublished, during_publication);
+          if (command != "screen-cpu-room-disconnect") {
+            const auto audio_target = audio_frames.load() + 120;
+            const auto audio_deadline =
+                std::chrono::steady_clock::now() + std::chrono::seconds{3};
+            while (audio_frames.load() < audio_target &&
+                   std::chrono::steady_clock::now() < audio_deadline) {
+              std::this_thread::sleep_for(std::chrono::milliseconds{1});
+            }
+            if (audio_frames.load() < audio_target)
+              throw std::runtime_error(
+                  "companion audio did not continue after screen stop");
+          }
+        } catch (...) {
+          screen_failure = std::current_exception();
+        }
+        audio_running.store(false);
+        audio_thread.join();
+        if (command != "screen-cpu-room-disconnect" &&
+            audio_track->publication()) {
+          participant->unpublishTrack(audio_track->publication()->sid());
+          wait_until_unpublished(std::chrono::steady_clock::now() +
+                                 std::chrono::seconds{5});
+        }
+        audio_track.reset();
+        audio_source.reset();
+        participant.reset();
+        if (command != "screen-cpu-room-disconnect") {
+          if (!engine->applyDesiredState(desiredState(4, std::nullopt)).ok)
+            exit_code = 1;
+          room_state.waitFor(RoomPublicState::Off,
+                             std::chrono::seconds{12});
+        }
+        delegate_scope.reset();
+        room.reset();
+        waitForTransportIdle(transport, std::chrono::seconds{5});
+        if (!engine->shutdown(std::chrono::seconds{12}).ok)
+          exit_code = 1;
+        engine.reset();
+        transport.reset();
+        std::cout << "SCREEN_CPU_REPORT " << report << std::endl;
+        if (report.find("\"accepted\":true") == std::string::npos)
+          exit_code = 1;
+        if (screen_failure) std::rethrow_exception(screen_failure);
+        std::cout << "publisher: disconnected" << std::endl;
+      } else if (options.scenario == "lifecycle-churn") {
         std::uint64_t revision = 2;
-        if (!engine.applyDesiredState(desiredState(revision++, std::nullopt))
+        if (!engine->applyDesiredState(desiredState(revision++, std::nullopt))
                  .ok) {
           throw std::runtime_error("Lifecycle warm-up disconnect failed");
         }
         room_state.waitFor(RoomPublicState::Off, std::chrono::seconds(12));
         const auto run_cancellation_cycle = [&](int timing_variant) {
-          const auto cancellation_lease = engine.installCredentialLease(
+          const auto cancellation_lease = engine->installCredentialLease(
               CredentialLease{"media-lab-lease", options.url, options.token});
           if (!cancellation_lease.ok) {
             throw std::runtime_error(
                 "Lifecycle cancellation lease was rejected");
           }
-          if (!engine.applyDesiredState(desiredState(revision++, room_intent))
+          if (!engine->applyDesiredState(desiredState(revision++, room_intent))
                    .ok) {
             throw std::runtime_error(
                 "Lifecycle cancellation connect intent failed");
@@ -448,7 +671,7 @@ int main() {
           } else if (timing_variant == 1) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
           }
-          if (!engine.applyDesiredState(desiredState(revision++, std::nullopt))
+          if (!engine->applyDesiredState(desiredState(revision++, std::nullopt))
                    .ok) {
             throw std::runtime_error(
                 "Lifecycle cancellation off intent failed");
@@ -462,10 +685,10 @@ int main() {
         for (int timing_variant = 0; timing_variant < 3; ++timing_variant) {
           run_cancellation_cycle(timing_variant);
         }
-        const auto warmup_lease = engine.installCredentialLease(
+        const auto warmup_lease = engine->installCredentialLease(
             CredentialLease{"media-lab-lease", options.url, options.token});
         if (!warmup_lease.ok ||
-            !engine.applyDesiredState(desiredState(revision++, room_intent))
+            !engine->applyDesiredState(desiredState(revision++, room_intent))
                  .ok) {
           throw std::runtime_error("Lifecycle track warm-up connect failed");
         }
@@ -475,7 +698,7 @@ int main() {
         if (!warmup_room)
           throw std::runtime_error("Lifecycle track warm-up room unavailable");
         publishAndUnpublishSyntheticTracks(warmup_room, options, -1);
-        if (!engine.applyDesiredState(desiredState(revision++, std::nullopt))
+        if (!engine->applyDesiredState(desiredState(revision++, std::nullopt))
                  .ok) {
           throw std::runtime_error("Lifecycle track warm-up disconnect failed");
         }
@@ -491,12 +714,12 @@ int main() {
         for (int cycle = 0; cycle < options.lifecycle_cycles; ++cycle) {
           run_cancellation_cycle(cycle % 3);
 
-          const auto cycle_lease = engine.installCredentialLease(
+          const auto cycle_lease = engine->installCredentialLease(
               CredentialLease{"media-lab-lease", options.url, options.token});
           if (!cycle_lease.ok) {
             throw std::runtime_error("Lifecycle churn lease was rejected");
           }
-          if (!engine.applyDesiredState(desiredState(revision++, room_intent))
+          if (!engine->applyDesiredState(desiredState(revision++, room_intent))
                    .ok) {
             throw std::runtime_error("Lifecycle churn connect intent failed");
           }
@@ -506,7 +729,7 @@ int main() {
           if (!cycle_room)
             throw std::runtime_error("Lifecycle churn room unavailable");
           publishAndUnpublishSyntheticTracks(cycle_room, options, cycle);
-          if (!engine.applyDesiredState(desiredState(revision++, std::nullopt))
+          if (!engine->applyDesiredState(desiredState(revision++, std::nullopt))
                    .ok) {
             throw std::runtime_error(
                 "Lifecycle churn disconnect intent failed");
@@ -576,7 +799,7 @@ int main() {
           exit_code = 1;
       } else if (options.scenario == "disconnect-before-publish") {
         const auto initial_disconnect =
-            engine.applyDesiredState(desiredState(2, std::nullopt));
+            engine->applyDesiredState(desiredState(2, std::nullopt));
         if (!initial_disconnect.ok) {
           throw std::runtime_error("Lifecycle initial disconnect failed");
         }
@@ -683,13 +906,13 @@ int main() {
         }
         std::cout << "publisher: tracks unpublished" << std::endl;
         const auto disconnect_result =
-            engine.applyDesiredState(desiredState(2, std::nullopt));
+            engine->applyDesiredState(desiredState(2, std::nullopt));
         if (!disconnect_result.ok)
           exit_code = 1;
         room_state.waitFor(RoomPublicState::Off, std::chrono::seconds(12));
         std::cout << "publisher: disconnected" << std::endl;
       }
-      if (!engine.shutdown(std::chrono::seconds(12)).ok)
+      if (engine && !engine->shutdown(std::chrono::seconds(12)).ok)
         exit_code = 1;
     }
     std::cout << "publisher: room destroyed" << std::endl;

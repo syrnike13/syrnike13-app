@@ -18,10 +18,16 @@ describe('decodeVideoMarker', () => {
     data.fill(128)
     const sequence = 123_456
     const capturedAtMs = 1_788_000_123_456
+    const generation = 7
+    const sourceWidth = 1_280
+    const sourceHeight = 720
     const value =
-      (BigInt(MARKER_MAGIC) << 80n) |
-      (BigInt(sequence) << 48n) |
-      BigInt(capturedAtMs)
+      (BigInt(MARKER_MAGIC) << 128n) |
+      (BigInt(sequence) << 96n) |
+      (BigInt(capturedAtMs) << 48n) |
+      (BigInt(generation) << 32n) |
+      (BigInt(sourceWidth) << 16n) |
+      BigInt(sourceHeight)
 
     for (let bit = 0; bit < MARKER_BITS; bit += 1) {
       const shift = BigInt(MARKER_BITS - bit - 1)
@@ -39,7 +45,7 @@ describe('decodeVideoMarker', () => {
 
     expect(
       decodeVideoMarker(new VideoFrame(data, width, height, VideoBufferType.I420)),
-    ).toEqual({ sequence, capturedAtMs })
+    ).toEqual({ sequence, capturedAtMs, generation, sourceWidth, sourceHeight })
   })
 
   it('rejects future and stale timestamps instead of bypassing latency checks', () => {

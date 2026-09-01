@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 
 #include "sources/source_registry.hpp"
@@ -35,6 +36,8 @@ class FrameResource {
  public:
   virtual ~FrameResource() = default;
   virtual std::uint64_t sampledHash() = 0;
+  virtual void copyBgraTo(std::span<std::uint8_t> destination,
+                          std::size_t destination_stride);
 };
 
 struct BackendFrame {
@@ -58,6 +61,8 @@ class FrameLease final {
   explicit operator bool() const noexcept;
   const FrameMetadata& metadata() const;
   std::uint64_t sampledHash() const;
+  void copyBgraTo(std::span<std::uint8_t> destination,
+                  std::size_t destination_stride) const;
   LeaseReleaseStatus release() noexcept;
 
  private:

@@ -3,7 +3,7 @@ import { Effect } from 'effect'
 import { randomBytes } from 'node:crypto'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -39,6 +39,7 @@ const coreTestsPath = path.resolve(
 )
 const pnpmScript = process.env.npm_execpath
 const serverExecutable = process.env.MEDIA_LAB_SERVER_EXE
+const localLiveKitSdkRoot = process.env.MEDIA_LAB_LIVEKIT_SDK_ROOT
 const desktopRequire = createRequire(
   path.resolve(repoRoot, 'apps', 'desktop', 'package.json'),
 )
@@ -62,6 +63,11 @@ interface LabResources {
 
 function normalizeError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
+}
+
+function isAcceptedReport(value: unknown): value is { readonly accepted: true } {
+  return typeof value === 'object' && value !== null &&
+    'accepted' in value && value.accepted === true
 }
 
 function runProcess(
@@ -276,8 +282,11 @@ async function executeLab(resources: LabResources): Promise<void> {
     lifecycleCycles: 50,
   }
 
-  const startPublisher = (environment: NodeJS.ProcessEnv): RunningProcess => {
-    const publisher = runProcess(publisherPath, [], {
+  const startPublisher = (
+    environment: NodeJS.ProcessEnv,
+    args: readonly string[] = [],
+  ): RunningProcess => {
+    const publisher = runProcess(publisherPath, args, {
       cwd: path.dirname(publisherPath),
       env: {
         ...sharedEnvironment,
@@ -348,6 +357,194 @@ async function executeLab(resources: LabResources): Promise<void> {
       ].join('\n'))
     }
   }
+
+  const runScreenScenario = async (
+    mode: string,
+    minimumFrames: number,
+    args: readonly string[] = [mode],
+    expectedSubscriptions = 4,
+    observerOverrides: NodeJS.ProcessEnv = {},
+  ): Promise<void> => {
+    let publisher: RunningProcess | undefined
+    let observerSetup: ReturnType<typeof startObserver> | undefined
+    try {
+      observerSetup = startObserver(mode, {
+        MEDIA_LAB_MIN_VIDEO_FRAMES: String(minimumFrames),
+        MEDIA_LAB_MIN_AUDIO_PULSES: '1',
+        MEDIA_LAB_EXPECT_SUBSCRIPTIONS: String(expectedSubscriptions),
+        MEDIA_LAB_EXPECT_VIDEO_END: 'true',
+        MEDIA_LAB_MIN_AUDIO_FRAMES_AFTER_VIDEO_END: '20',
+        MEDIA_LAB_ALLOW_VIDEO_GAPS: 'true',
+        MEDIA_LAB_MAX_VIDEO_LATENCY_MS: '1500',
+        MEDIA_LAB_MAX_FRAME_AGE_MS: '1500',
+        MEDIA_LAB_TIMEOUT_MS: mode === 'screen-cpu-repeat' ? '120000' : '60000',
+        ...observerOverrides,
+      })
+      await waitForFile(observerSetup.readyPath, 10_000)
+      publisher = startPublisher({}, args)
+      await withDeadline(
+        Promise.all([publisher.completion, observerSetup.observer.completion]),
+        mode === 'screen-cpu-repeat' ? 150_000 : 75_000,
+        `${mode} exceeded its process deadline`,
+      )
+      const observerReportText = await readFile(observerSetup.reportPath, 'utf8')
+      const observerReport: unknown = JSON.parse(observerReportText)
+      const senderLine = publisher.output().split(/\r?\n/).find((line) =>
+        line.startsWith('SCREEN_CPU_REPORT ')
+      )
+      if (senderLine === undefined) {
+        throw new LabFailure(`${mode} did not emit SCREEN_CPU_REPORT`)
+      }
+      const senderReport: unknown = JSON.parse(
+        senderLine.slice('SCREEN_CPU_REPORT '.length),
+      )
+      if (
+        typeof observerReport !== 'object' || observerReport === null ||
+        !('accepted' in observerReport) || observerReport.accepted !== true ||
+        typeof senderReport !== 'object' || senderReport === null ||
+        !('accepted' in senderReport) || senderReport.accepted !== true
+      ) {
+        throw new LabFailure(
+          `${mode} was rejected\nobserver=${observerReportText}\nsender=${senderLine}`,
+        )
+      }
+      scenarioReports[mode] = {
+        sender: senderReport,
+        observer: observerReport,
+      }
+    } catch (error: unknown) {
+      throw new LabFailure([
+        normalizeError(error).message,
+        `--- publisher ---\n${publisher?.output().slice(-8000) ?? 'not started'}`,
+        `--- observer ---\n${observerSetup?.observer.output().slice(-8000) ?? 'not started'}`,
+        `--- server ---\n${server.output().slice(-8000)}`,
+      ].join('\n'))
+    }
+  }
+
+  const runScreenObserverRejoin = async (): Promise<void> => {
+    let publisher: RunningProcess | undefined
+    let first: ReturnType<typeof startObserver> | undefined
+    let second: ReturnType<typeof startObserver> | undefined
+    const observerEnvironment: NodeJS.ProcessEnv = {
+      MEDIA_LAB_MIN_VIDEO_FRAMES: '60',
+      MEDIA_LAB_MIN_AUDIO_PULSES: '1',
+      MEDIA_LAB_ALLOW_VIDEO_GAPS: 'true',
+      MEDIA_LAB_MAX_VIDEO_LATENCY_MS: '1500',
+      MEDIA_LAB_MAX_FRAME_AGE_MS: '1500',
+      MEDIA_LAB_TIMEOUT_MS: '30000',
+    }
+    try {
+      first = startObserver('screen-cpu-observer-before-leave', {
+        ...observerEnvironment,
+        MEDIA_LAB_EXPECT_SUBSCRIPTIONS: '4',
+      })
+      await waitForFile(first.readyPath, 10_000)
+      publisher = startPublisher({}, ['screen-cpu-monitor'])
+      await withDeadline(
+        first.observer.completion,
+        45_000,
+        'first screen observer did not leave after receiving frames',
+      )
+      const firstReport: unknown = JSON.parse(await readFile(first.reportPath, 'utf8'))
+      if (!isAcceptedReport(firstReport)) {
+        throw new LabFailure('first screen observer rejected delivery before leave')
+      }
+
+      second = startObserver('screen-cpu-observer-after-rejoin', {
+        ...observerEnvironment,
+        MEDIA_LAB_MIN_VIDEO_FRAMES: '40',
+        MEDIA_LAB_EXPECT_SUBSCRIPTIONS: '2',
+      })
+      await waitForFile(second.readyPath, 10_000)
+      await withDeadline(
+        Promise.all([publisher.completion, second.observer.completion]),
+        75_000,
+        'screen observer rejoin scenario exceeded its deadline',
+      )
+      const secondReport: unknown = JSON.parse(await readFile(second.reportPath, 'utf8'))
+      const senderLine = publisher.output().split(/\r?\n/).find((line) =>
+        line.startsWith('SCREEN_CPU_REPORT ')
+      )
+      if (!isAcceptedReport(secondReport) || senderLine === undefined) {
+        throw new LabFailure('screen delivery did not recover after observer rejoin')
+      }
+      const sender: unknown = JSON.parse(senderLine.slice('SCREEN_CPU_REPORT '.length))
+      if (!isAcceptedReport(sender)) {
+        throw new LabFailure('screen sender failed after observer rejoin')
+      }
+      scenarioReports['screen-cpu-observer-rejoin'] = {
+        accepted: true,
+        beforeLeave: firstReport,
+        afterRejoin: secondReport,
+        sender,
+      }
+    } catch (error: unknown) {
+      throw new LabFailure([
+        normalizeError(error).message,
+        `--- publisher ---\n${publisher?.output().slice(-8000) ?? 'not started'}`,
+        `--- first observer ---\n${first?.observer.output().slice(-8000) ?? 'not started'}`,
+        `--- second observer ---\n${second?.observer.output().slice(-8000) ?? 'not started'}`,
+        `--- server ---\n${server.output().slice(-8000)}`,
+      ].join('\n'))
+    }
+  }
+
+  const requestedScreenMode = process.env.MEDIA_LAB_SCREEN_MODE
+  const screenCycles = Number(process.env.MEDIA_LAB_SCREEN_CYCLES ?? '30')
+  if (!Number.isInteger(screenCycles) || screenCycles < 1 || screenCycles > 30) {
+    throw new LabFailure('MEDIA_LAB_SCREEN_CYCLES must be an integer from 1 to 30')
+  }
+  const screenScenario = async (
+    mode: string,
+    minimumFrames: number,
+    args?: readonly string[],
+    expectedSubscriptions?: number,
+  ) => {
+    if (requestedScreenMode === undefined || requestedScreenMode === mode) {
+      await runScreenScenario(mode, minimumFrames, args, expectedSubscriptions)
+    }
+  }
+  await screenScenario('screen-cpu-monitor', 80)
+  await screenScenario('screen-cpu-window', 80)
+  await screenScenario('screen-cpu-slow-pipeline', 20)
+  await screenScenario('screen-cpu-resize', 50)
+  await screenScenario('screen-cpu-source-close', 20)
+  await screenScenario(
+    'screen-cpu-repeat',
+    screenCycles * 10,
+    ['screen-cpu-repeat', '--cycles', String(screenCycles)],
+    screenCycles + 4,
+  )
+  if (requestedScreenMode === undefined ||
+      requestedScreenMode === 'screen-cpu-late-observer') {
+    // Track publication exists before this observer deliberately subscribes.
+    await runScreenScenario(
+      'screen-cpu-late-observer',
+      40,
+      ['screen-cpu-monitor'],
+      4,
+      { MEDIA_LAB_SUBSCRIBE_DELAY_MS: '1000' },
+    )
+  }
+  await screenScenario('screen-cpu-stop-during-conversion', 1)
+  if (requestedScreenMode === undefined ||
+      requestedScreenMode === 'screen-cpu-room-disconnect') {
+    await runScreenScenario(
+      'screen-cpu-room-disconnect',
+      20,
+      ['screen-cpu-room-disconnect'],
+      4,
+      { MEDIA_LAB_MIN_AUDIO_FRAMES_AFTER_VIDEO_END: '0' },
+    )
+  }
+  if (requestedScreenMode === undefined ||
+      requestedScreenMode === 'screen-cpu-observer-rejoin') {
+    await runScreenObserverRejoin()
+  }
+
+  const screenOnly = process.env.MEDIA_LAB_SCREEN_ONLY === 'true'
+  if (!screenOnly) {
 
   await runObservedScenario('normal', {}, {
     MEDIA_LAB_MIN_VIDEO_FRAMES: process.env.MEDIA_LAB_MIN_VIDEO_FRAMES ?? '600',
@@ -479,6 +676,7 @@ async function executeLab(resources: LabResources): Promise<void> {
     )
     scenarioReports['observer-exits'] = { accepted: true, publisherCompleted: true }
   }
+  }
 
   const report = {
     schemaVersion: 2,
@@ -543,6 +741,18 @@ const program = Effect.scoped(Effect.gen(function* () {
         { cwd: repoRoot },
       )
       await desktopSmokeBuild.completion
+      if (localLiveKitSdkRoot !== undefined) {
+        if (!path.isAbsolute(localLiveKitSdkRoot)) {
+          throw new LabFailure('MEDIA_LAB_LIVEKIT_SDK_ROOT must be an absolute path')
+        }
+        for (const fileName of ['livekit.dll', 'livekit_ffi.dll']) {
+          const source = path.resolve(localLiveKitSdkRoot, fileName)
+          if (!existsSync(source)) {
+            throw new LabFailure(`Local LiveKit SDK is missing ${source}`)
+          }
+          await copyFile(source, path.resolve(path.dirname(publisherPath), fileName))
+        }
+      }
     },
     catch: normalizeError,
   })

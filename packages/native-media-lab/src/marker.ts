@@ -1,14 +1,17 @@
 import { VideoBufferType, type VideoFrame } from '@livekit/rtc-node'
 
 export const MARKER_MAGIC = 0x534d
-export const MARKER_BITS = 96
+export const MARKER_BITS = 144
 export const MARKER_COLUMNS = 24
-export const MARKER_ROWS = 4
+export const MARKER_ROWS = 6
 export const MARKER_TILE_SIZE = 12
 
 export interface VideoMarker {
   readonly sequence: number
   readonly capturedAtMs: number
+  readonly generation: number
+  readonly sourceWidth: number
+  readonly sourceHeight: number
 }
 
 export function videoMarkerLatency(
@@ -42,10 +45,40 @@ export function decodeVideoMarker(frame: VideoFrame): VideoMarker | undefined {
   if (magic !== MARKER_MAGIC) return undefined
   const sequence = Number(readBits(bits, 16, 32))
   const capturedAtMs = Number(readBits(bits, 48, 48))
-  if (!Number.isSafeInteger(sequence) || !Number.isSafeInteger(capturedAtMs)) {
+  const generation = Number(readBits(bits, 96, 16))
+  const sourceWidth = Number(readBits(bits, 112, 16))
+  const sourceHeight = Number(readBits(bits, 128, 16))
+  if (
+    !Number.isSafeInteger(sequence) || !Number.isSafeInteger(capturedAtMs) ||
+    generation <= 0 || sourceWidth <= 0 || sourceHeight <= 0
+  ) {
     return undefined
   }
-  return { sequence, capturedAtMs }
+  return { sequence, capturedAtMs, generation, sourceWidth, sourceHeight }
+}
+
+export function sampleVideoContentHash(frame: VideoFrame): number {
+  const i420 = frame.type === VideoBufferType.I420
+    ? frame
+    : frame.convert(VideoBufferType.I420)
+  const markerBottom = MARKER_ROWS * MARKER_TILE_SIZE
+  if (i420.width === 0 || i420.height <= markerBottom) return 0
+  let hash = 2_166_136_261
+  for (let sampleY = 0; sampleY < 8; sampleY += 1) {
+    const y = markerBottom + Math.floor(
+      (sampleY + 0.5) * (i420.height - markerBottom) / 8,
+    )
+    for (let sampleX = 0; sampleX < 8; sampleX += 1) {
+      const x = Math.min(
+        i420.width - 1,
+        Math.floor((sampleX + 0.5) * i420.width / 8),
+      )
+      const value = i420.data[y * i420.width + x]
+      if (value === undefined) return hash
+      hash = Math.imul(hash ^ value, 16_777_619) >>> 0
+    }
+  }
+  return hash
 }
 
 function readBits(bits: readonly number[], offset: number, length: number): bigint {

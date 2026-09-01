@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
+#include <cstring>
 #include <cstdint>
 #include <mutex>
 #include <sstream>
@@ -53,6 +54,9 @@ struct DeviceState {
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11DeviceContext> context;
   std::mutex context_mutex;
+  ComPtr<ID3D11Texture2D> readback_staging;
+  std::uint32_t readback_width = 0;
+  std::uint32_t readback_height = 0;
 };
 
 struct DebugDeviceCache {
@@ -272,7 +276,78 @@ class D3D11FrameResource final : public FrameResource {
     return (hash ^ staging_description.Height) * prime;
   }
 
+  void copyBgraTo(std::span<std::uint8_t> destination,
+                  std::size_t destination_stride) override {
+    const auto required_stride = static_cast<std::size_t>(width_) * 4U;
+    if (destination_stride < required_stride ||
+        destination.size() < destination_stride * height_) {
+      throw std::invalid_argument("CPU readback destination is too small");
+    }
+    withMappedBgra([&](const D3D11_MAPPED_SUBRESOURCE& mapped,
+                       std::uint32_t width, std::uint32_t height) {
+      const auto* source = static_cast<const std::uint8_t*>(mapped.pData);
+      for (std::uint32_t y = 0; y < height; ++y) {
+        std::memcpy(destination.data() + y * destination_stride,
+                    source + y * mapped.RowPitch,
+                    static_cast<std::size_t>(width) * 4U);
+      }
+      return 0;
+    });
+  }
+
  private:
+  template <typename Callback>
+  auto withMappedBgra(Callback callback) {
+    D3D11_TEXTURE2D_DESC source_description{};
+    texture_->GetDesc(&source_description);
+    const auto copy_width = (std::min)(source_description.Width, width_);
+    const auto copy_height = (std::min)(source_description.Height, height_);
+    if (copy_width != width_ || copy_height != height_) {
+      throw std::runtime_error(
+          "WGC texture is smaller than its immutable frame metadata");
+    }
+    std::lock_guard lock(device_->context_mutex);
+    if (!device_->readback_staging ||
+        device_->readback_width != copy_width ||
+        device_->readback_height != copy_height) {
+      D3D11_TEXTURE2D_DESC staging_description = source_description;
+      staging_description.Width = copy_width;
+      staging_description.Height = copy_height;
+      staging_description.Usage = D3D11_USAGE_STAGING;
+      staging_description.BindFlags = 0;
+      staging_description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+      staging_description.MiscFlags = 0;
+      staging_description.MipLevels = 1;
+      staging_description.ArraySize = 1;
+      staging_description.SampleDesc = {1, 0};
+      ComPtr<ID3D11Texture2D> staging;
+      winrt::check_hresult(device_->device->CreateTexture2D(
+          &staging_description, nullptr, &staging));
+      constexpr char staging_name[] = "SyrnikeCpuReferenceReadback";
+      (void)staging->SetPrivateData(WKPDID_D3DDebugObjectName,
+                                    sizeof(staging_name) - 1, staging_name);
+      device_->readback_staging = std::move(staging);
+      device_->readback_width = copy_width;
+      device_->readback_height = copy_height;
+    }
+
+    const D3D11_BOX source_box{0, 0, 0, copy_width, copy_height, 1};
+    device_->context->CopySubresourceRegion(device_->readback_staging.Get(), 0,
+                                            0, 0, 0, texture_.Get(), 0,
+                                            &source_box);
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    winrt::check_hresult(device_->context->Map(device_->readback_staging.Get(),
+                                               0, D3D11_MAP_READ, 0, &mapped));
+    try {
+      auto result = callback(mapped, copy_width, copy_height);
+      device_->context->Unmap(device_->readback_staging.Get(), 0);
+      return result;
+    } catch (...) {
+      device_->context->Unmap(device_->readback_staging.Get(), 0);
+      throw;
+    }
+  }
+
   std::shared_ptr<DeviceState> device_;
   std::shared_ptr<std::atomic<std::uint64_t>> live_resources_;
   std::shared_ptr<std::atomic<std::uint64_t>> peak_resources_;
@@ -473,12 +548,19 @@ void finalizeWindowResources(
       state->live_engine_resources->load();
   state->diagnostics.peak_engine_objects =
       state->peak_engine_resources->load();
-  if (state->device && state->diagnostics.d3d_debug_enabled) {
+  if (state->device) {
     {
       std::lock_guard context_lock(state->device->context_mutex);
-      state->device->context->ClearState();
-      state->device->context->Flush();
+      state->device->readback_staging.Reset();
+      state->device->readback_width = 0;
+      state->device->readback_height = 0;
+      if (state->diagnostics.d3d_debug_enabled) {
+        state->device->context->ClearState();
+        state->device->context->Flush();
+      }
     }
+  }
+  if (state->device && state->diagnostics.d3d_debug_enabled) {
     ComPtr<ID3D11Debug> debug;
     const HRESULT query = state->device->device.As(&debug);
     if (SUCCEEDED(query)) {
@@ -773,12 +855,19 @@ class WgcMonitorCaptureBackendImpl final : public WgcMonitorCaptureBackend {
         state_->live_engine_resources->load();
     state_->diagnostics.peak_engine_objects =
         state_->peak_engine_resources->load();
-    if (state_->device && state_->diagnostics.d3d_debug_enabled) {
+    if (state_->device) {
       {
         std::lock_guard context_lock(state_->device->context_mutex);
-        state_->device->context->ClearState();
-        state_->device->context->Flush();
+        state_->device->readback_staging.Reset();
+        state_->device->readback_width = 0;
+        state_->device->readback_height = 0;
+        if (state_->diagnostics.d3d_debug_enabled) {
+          state_->device->context->ClearState();
+          state_->device->context->Flush();
+        }
       }
+    }
+    if (state_->device && state_->diagnostics.d3d_debug_enabled) {
       ComPtr<ID3D11Debug> debug;
       const HRESULT query = state_->device->device.As(&debug);
       if (SUCCEEDED(query)) {

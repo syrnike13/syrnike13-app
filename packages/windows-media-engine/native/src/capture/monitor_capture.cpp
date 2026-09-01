@@ -20,6 +20,10 @@ constexpr auto kBackendRollbackDeadline = std::chrono::seconds{5};
 
 }  // namespace
 
+void FrameResource::copyBgraTo(std::span<std::uint8_t>, std::size_t) {
+  throw std::logic_error("frame resource does not support CPU readback");
+}
+
 struct FrameLease::State {
   std::mutex mutex;
   FrameMetadata metadata;
@@ -100,6 +104,14 @@ std::uint64_t FrameLease::sampledHash() const {
   std::lock_guard lock(state_->mutex);
   if (!state_->resource) throw std::logic_error("frame lease was released");
   return state_->resource->sampledHash();
+}
+
+void FrameLease::copyBgraTo(std::span<std::uint8_t> destination,
+                            std::size_t destination_stride) const {
+  if (!*this) throw std::logic_error("frame lease was released");
+  std::lock_guard lock(state_->mutex);
+  if (!state_->resource) throw std::logic_error("frame lease was released");
+  state_->resource->copyBgraTo(destination, destination_stride);
 }
 
 LeaseReleaseStatus FrameLease::release() noexcept {
