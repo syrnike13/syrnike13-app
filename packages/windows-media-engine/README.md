@@ -1,6 +1,6 @@
 # Windows media engine v2
 
-This package owns the isolated lifecycle foundation for the replacement Windows native media engine. It contains the C++20 core, `media_probe.exe`, the thin `windows_media.node` binding, the Phase A LiveKit Room transport, probe-only Windows source discovery, and isolated WGC monitor/window capture. Audio, camera, encoding, preview, DXGI fallback, and compatibility code from v1 remain absent; capture is not wired to Engine, Electron, or LiveKit.
+This package owns the isolated lifecycle foundation for the replacement Windows native media engine. It contains the C++20 core, `media_probe.exe`, the thin `windows_media.node` binding, the Phase A LiveKit Room transport, Windows source discovery, and isolated WGC monitor/window capture. The disposable Media Lab connects WGC to LiveKit through a CPU `lab::ReferenceScreenSender`, but product Engine, addon, and Electron paths do not. Audio, camera, production encoding, preview, DXGI fallback, and compatibility code from v1 remain absent.
 
 The Engine is one-shot: one instance can start and shut down once, and another lifecycle creates a new instance. All lifecycle and desired-state commits run on its single control thread; Room work runs on persistent transport lanes guarded by independent operation deadlines. Protocol v3 stores bounded declarative intent and private one-attempt credential leases. A non-cooperative SDK operation produces a typed fatal event, after which Electron replaces the utility process rather than reusing unknown native ownership.
 
@@ -30,3 +30,5 @@ pnpm --filter @syrnike13/windows-media-engine protocol:check
 The monitor probes place a controlled animated window on the selected monitor, capture it through WGC, and emit JSON evidence for 600 frames, a one-frame-per-second consumer, 50 start/stop cycles, and stop-during-start. See `docs/native-v2/MONITOR_CAPTURE.md` for ownership, queue, lease, debug-layer, and process-local source-ID contracts.
 
 The window probes capture a controlled animated HWND and exercise 30 generation-fenced resizes, ten-second minimize/restore, hide/show, cross-monitor movement, terminal close, a typed handle-reuse attempt, and 50 lifecycle cycles. See `docs/native-v2/WINDOW_CAPTURE.md` for event, ownership, resize-retirement, and no-content semantics.
+
+The CPU screen path is a non-production delivery oracle with a process-level fault boundary. See `docs/native-v2/SCREEN_CPU_REFERENCE.md` for its evidence and `docs/native-v2/SCREEN_PUBLICATION_SEAM.md` for the separate Room-free boundary required by the production GPU path.

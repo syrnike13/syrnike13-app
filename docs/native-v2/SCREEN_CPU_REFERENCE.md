@@ -42,11 +42,12 @@ lease until its explicit deadline.
   the public LiveKit source accepts BGRA and owns its internal encoder format
   conversion.
 - CPU input is capped at 7680x4320x4 bytes, output storage is allocated once by
-  `ScreenSender`, and timing sample arrays stop growing at 4096 entries.
+  `lab::ReferenceScreenSender`, and timing sample arrays stop growing at 4096
+  entries.
 
 ## Publication lifecycle
 
-`ScreenSender` owns the LiveKit source, local screen track, reusable output
+`lab::ReferenceScreenSender` owns the LiveKit source, local screen track, reusable output
 frame, worker, and publication lifecycle. Start succeeds only after
 `publishTrack` exposes a real local publication. The Media Lab additionally
 waits for LiveKit's public local-subscriber callback before it starts producing
@@ -58,6 +59,14 @@ the Room is already disconnected, server-side track state is already gone, so
 stop skips network unpublish and still releases every local object. The
 companion synthetic audio track proves that ordinary screen stop and source
 close do not disconnect the Room or stop other tracks.
+
+This lifecycle is laboratory-only. `publishTrack`, D3D readback,
+`VideoSource::captureFrame`, worker join, and `unpublishTrack` may block inside
+third-party/native code, so the `stop` deadline cannot make every call bounded.
+The outer Media Lab deadline terminates the disposable publisher process if one
+does not return. Production code must use the separate asynchronous boundary in
+[SCREEN_PUBLICATION_SEAM.md](SCREEN_PUBLICATION_SEAM.md), and must not link to or
+copy this sender's Room ownership.
 
 ## Receiver marker and clocks
 
@@ -107,11 +116,25 @@ WebRTC runtime initialization. Every sender report also requires zero pending
 frames, zero active frames, `released == submitted`, zero capture leases, queue
 depth at or below one, and zero live D3D reference objects. The repeat mode
 first warms process-global initialization, reconnects the Room, primes one
-reusable screen transceiver in that same measured session, then runs the 30
-measured cycles. Every measured publication must return to the same warmed
-resource baseline.
+reusable screen transceiver in that same measured session, then runs 30 cycles.
+The first cycle establishes the exact sender-local warmed baseline; cycles 2–30
+must return to it after unpublish. The report preserves a `resources.series`
+entry after each acknowledged unpublish with handle/thread deltas, published frame count,
+pending/active pipeline frames, and live D3D resources. Published tracks and
+pending publications are zero by acknowledgement; reusable-transceiver count
+is `null` because the public SDK does not expose that diagnostic.
 
-The repeat resource oracle allows at most eight additional process handles and
-no additional threads after settling. The small handle allowance absorbs
-observed Windows/WebRTC handle timing jitter; it remains far below the
-hundreds of handles and threads created by an unreused transceiver per cycle.
+The final repeat resource oracle allows at most twelve additional process
+handles and no additional threads after settling. This process-wide value also
+includes the bounded WGC capture-item cache for the measured fixture identity.
+Individual acknowledged publication cycles retain no pipeline frames or threads
+and have a 32-handle transient ceiling; the full series remains visible so a
+monotonic trend cannot be hidden by the final value. Both allowances remain far
+below the hundreds of handles and threads created by an unreused transceiver per
+cycle.
+
+The latest accepted full screen run from this implementation is preserved as
+[`examples/screen-cpu-media-lab-report.json`](examples/screen-cpu-media-lab-report.json).
+It contains every screen scenario plus all 30 repeat-cycle samples, so review
+and CI can compare evidence without relying on an issue comment or ignored
+local artifact.

@@ -1,4 +1,4 @@
-#include "screen/screen_sender.hpp"
+#include "lab/reference_screen_sender.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -8,20 +8,21 @@
 #include <thread>
 #include <utility>
 
-namespace syrnike::windows_media::screen {
+namespace syrnike::windows_media::lab {
 namespace {
 
 void appendBounded(std::vector<std::uint64_t>& samples,
                    std::uint64_t value) {
-  if (samples.size() < kMaximumScreenTimingSamples) samples.push_back(value);
+  if (samples.size() < kMaximumReferenceScreenTimingSamples)
+    samples.push_back(value);
 }
 
 }  // namespace
 
-struct ScreenSender::State {
+struct ReferenceScreenSender::State {
   State(std::shared_ptr<livekit::Room> owned_room,
-        std::shared_ptr<ScreenFramePipeline> owned_pipeline,
-        ScreenSenderOptions owned_options)
+        std::shared_ptr<screen::ScreenFramePipeline> owned_pipeline,
+        ReferenceScreenSenderOptions owned_options)
       : room(std::move(owned_room)),
         pipeline(std::move(owned_pipeline)),
         options(owned_options) {}
@@ -29,14 +30,14 @@ struct ScreenSender::State {
   mutable std::mutex mutex;
   std::condition_variable changed;
   std::shared_ptr<livekit::Room> room;
-  std::shared_ptr<ScreenFramePipeline> pipeline;
-  ScreenSenderOptions options;
+  std::shared_ptr<screen::ScreenFramePipeline> pipeline;
+  ReferenceScreenSenderOptions options;
   std::shared_ptr<livekit::LocalParticipant> participant;
   std::shared_ptr<livekit::VideoSource> source;
   std::shared_ptr<livekit::LocalVideoTrack> track;
   std::optional<livekit::VideoFrame> output_frame;
-  CpuScreenConverter converter;
-  ScreenSenderStats stats;
+  screen::CpuScreenConverter converter;
+  ReferenceScreenSenderStats stats;
   std::optional<std::string> terminal_failure;
   bool started = false;
   bool running = false;
@@ -44,23 +45,39 @@ struct ScreenSender::State {
   std::thread worker;
 };
 
-ScreenSender::ScreenSender(std::shared_ptr<livekit::Room> room,
-                           std::shared_ptr<ScreenFramePipeline> pipeline,
-                           ScreenSenderOptions options)
+ReferenceScreenSender::ReferenceScreenSender(
+    std::shared_ptr<livekit::Room> room,
+    std::shared_ptr<screen::ScreenFramePipeline> pipeline,
+    ReferenceScreenSenderOptions options)
     : state_(std::make_shared<State>(std::move(room), std::move(pipeline),
                                      options)) {
   if (!state_->room || !state_->pipeline)
-    throw std::invalid_argument("ScreenSender requires Room and pipeline");
+    throw std::invalid_argument(
+        "ReferenceScreenSender requires Room and pipeline");
   if (options.width == 0 || options.height == 0 ||
       options.frames_per_second == 0 || options.frames_per_second > 60)
-    throw std::invalid_argument("ScreenSender profile is invalid");
+    throw std::invalid_argument("ReferenceScreenSender profile is invalid");
+  state_->source = std::make_shared<livekit::VideoSource>(
+      static_cast<int>(options.width), static_cast<int>(options.height));
+  state_->track = livekit::LocalVideoTrack::createLocalVideoTrack(
+      "screen-cpu-reference", state_->source);
+  state_->output_frame.emplace(livekit::VideoFrame::create(
+      static_cast<int>(options.width), static_cast<int>(options.height),
+      livekit::VideoBufferType::BGRA));
+  state_->stats.capture_age_ms.reserve(kMaximumReferenceScreenTimingSamples);
+  state_->stats.readback_duration_us.reserve(
+      kMaximumReferenceScreenTimingSamples);
+  state_->stats.conversion_duration_us.reserve(
+      kMaximumReferenceScreenTimingSamples);
+  state_->stats.publish_duration_us.reserve(
+      kMaximumReferenceScreenTimingSamples);
 }
 
-ScreenSender::~ScreenSender() {
+ReferenceScreenSender::~ReferenceScreenSender() {
   (void)stop(std::chrono::steady_clock::now() + std::chrono::seconds{5});
 }
 
-ScreenSenderStartResult ScreenSender::start() {
+ReferenceScreenSenderStartResult ReferenceScreenSender::start() {
   std::lock_guard lock(state_->mutex);
   if (state_->started)
     return {false, "screen sender was already started"};
@@ -70,15 +87,6 @@ ScreenSenderStartResult ScreenSender::start() {
     state_->participant = state_->room->localParticipant().lock();
     if (!state_->participant)
       return {false, "LiveKit local participant is unavailable"};
-    if (!state_->source) {
-      state_->source = std::make_shared<livekit::VideoSource>(
-          static_cast<int>(state_->options.width),
-          static_cast<int>(state_->options.height));
-    }
-    if (!state_->track) {
-      state_->track = livekit::LocalVideoTrack::createLocalVideoTrack(
-          "screen-cpu-reference", state_->source);
-    }
     livekit::TrackPublishOptions publish_options;
     publish_options.source = livekit::TrackSource::SOURCE_SCREENSHARE;
     publish_options.simulcast = false;
@@ -87,16 +95,6 @@ ScreenSenderStartResult ScreenSender::start() {
     state_->participant->publishTrack(state_->track, publish_options);
     if (!state_->track->publication())
       return {false, "LiveKit screen publication is unavailable"};
-    if (!state_->output_frame) {
-      state_->output_frame.emplace(livekit::VideoFrame::create(
-          static_cast<int>(state_->options.width),
-          static_cast<int>(state_->options.height),
-          livekit::VideoBufferType::BGRA));
-    }
-    state_->stats.capture_age_ms.reserve(kMaximumScreenTimingSamples);
-    state_->stats.readback_duration_us.reserve(kMaximumScreenTimingSamples);
-    state_->stats.conversion_duration_us.reserve(kMaximumScreenTimingSamples);
-    state_->stats.publish_duration_us.reserve(kMaximumScreenTimingSamples);
     state_->started = true;
     state_->running = true;
     state_->stopped = false;
@@ -113,7 +111,8 @@ ScreenSenderStartResult ScreenSender::start() {
   }
 }
 
-void ScreenSender::runWorker(const std::shared_ptr<State>& state) noexcept {
+void ReferenceScreenSender::runWorker(
+    const std::shared_ptr<State>& state) noexcept {
   const auto frame_interval = std::chrono::microseconds{
       1'000'000 / state->options.frames_per_second};
   auto next_frame = std::chrono::steady_clock::now();
@@ -206,7 +205,7 @@ void ScreenSender::runWorker(const std::shared_ptr<State>& state) noexcept {
   }
 }
 
-bool ScreenSender::waitForPublished(
+bool ReferenceScreenSender::waitForPublished(
     std::uint64_t count, std::chrono::steady_clock::time_point deadline) {
   std::unique_lock lock(state_->mutex);
   state_->changed.wait_until(lock, deadline, [this, count] {
@@ -216,7 +215,7 @@ bool ScreenSender::waitForPublished(
   return state_->stats.published >= count;
 }
 
-ScreenSenderStopResult ScreenSender::stop(
+ReferenceScreenSenderStopResult ReferenceScreenSender::stop(
     std::chrono::steady_clock::time_point deadline) noexcept {
   {
     std::lock_guard lock(state_->mutex);
@@ -277,16 +276,16 @@ ScreenSenderStopResult ScreenSender::stop(
   return {failure.empty(), std::move(failure)};
 }
 
-ScreenSenderStats ScreenSender::stats() const {
+ReferenceScreenSenderStats ReferenceScreenSender::stats() const {
   std::lock_guard lock(state_->mutex);
   auto result = state_->stats;
   result.converter = state_->converter.stats();
   return result;
 }
 
-std::optional<std::string> ScreenSender::terminalFailure() const {
+std::optional<std::string> ReferenceScreenSender::terminalFailure() const {
   std::lock_guard lock(state_->mutex);
   return state_->terminal_failure;
 }
 
-}  // namespace syrnike::windows_media::screen
+}  // namespace syrnike::windows_media::lab

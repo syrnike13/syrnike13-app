@@ -51,6 +51,11 @@ media_probe.exe
   -> media_core.lib directly
   -> media_sources.lib -> SourceRegistry -> Win32 SourceEnumerator
   -> media_capture.lib -> MonitorCapture/WindowCapture -> WGC/D3D11
+
+native_media_lab_publisher.exe
+  -> media_capture.lib -> WGC/D3D11 FrameLease
+  -> media_screen.lib -> one-slot CPU reference pipeline/converter
+  -> lab::ReferenceScreenSender -> public LiveKit VideoSource API
 ```
 
 Source discovery is a separate deep module described in [SOURCE_ENUMERATION.md](SOURCE_ENUMERATION.md). Its public seam returns process-local opaque IDs and bounded value snapshots, while Win32 identity keys and handles stop at the adapter boundary. Issue #117 intentionally leaves the Engine protocol, addon, Electron, capture sessions, and LiveKit unchanged.
@@ -58,6 +63,10 @@ Source discovery is a separate deep module described in [SOURCE_ENUMERATION.md](
 The first isolated capture slice is described in [MONITOR_CAPTURE.md](MONITOR_CAPTURE.md). It consumes the opaque monitor ID through the registry, owns a bounded three-frame latest-wins lease queue, and ends at local probe verification; it does not publish or preview frames.
 
 The window extension is described in [WINDOW_CAPTURE.md](WINDOW_CAPTURE.md). It resolves one exact HWND lifetime, preserves the three-frame lease bound, fences each content-size transition by generation, and distinguishes minimized/hidden no-content from terminal close without selecting a replacement window.
+
+The CPU publication oracle is described in [SCREEN_CPU_REFERENCE.md](SCREEN_CPU_REFERENCE.md). It runs only in the disposable Media Lab publisher, owns a direct Room reference for test convenience, and has no in-process guarantee against a non-returning SDK or D3D call. Product Engine, addon, Electron, and `NativeRtcEngineAdapter` do not link to or instantiate that sender.
+
+The production boundary for #121 is described in [SCREEN_PUBLICATION_SEAM.md](SCREEN_PUBLICATION_SEAM.md). The screen pipeline will submit bounded commands and encoded-slot tokens to the Room/media-session owner; it will never receive owning Room or participant pointers. The compiled seam is deliberately deferred until #121 supplies both the real SDK adapter and a deterministic failure-injection adapter, so the interface is shaped by two implementations rather than by the CPU oracle alone.
 
 The one-shot `Engine` follows this finite transition table. A second lifecycle creates a new `Engine` rather than resetting a consumed instance.
 

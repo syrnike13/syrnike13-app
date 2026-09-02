@@ -74,7 +74,9 @@ target_link_libraries(media_sources PRIVATE dwmapi shcore)
 add_library(media_capture STATIC
   src/capture/monitor_capture.cpp
   src/capture/window_capture.cpp
+  src/capture/wgc_capture_support.cpp
   src/capture/wgc_monitor_capture.cpp
+  src/capture/wgc_window_capture.cpp
 )
 windows_media_target(media_capture)
 target_include_directories(media_capture PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -100,7 +102,7 @@ target_include_directories(media_livekit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src
 target_link_libraries(media_livekit PUBLIC media_core LiveKit::livekit)
 
 add_library(media_screen_livekit STATIC
-  src/screen/screen_sender.cpp
+  src/lab/reference_screen_sender.cpp
 )
 windows_media_target(media_screen_livekit)
 target_include_directories(media_screen_livekit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
