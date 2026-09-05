@@ -376,6 +376,8 @@ async function executeLab(resources: LabResources): Promise<void> {
     let observerSetup: ReturnType<typeof startObserver> | undefined
     try {
       observerSetup = startObserver(mode, {
+        MEDIA_LAB_VIDEO_READY_PATH: mode === 'screen-cpu-room-disconnect'
+          ? path.resolve(resources.directory, `${mode}.video-ready`) : undefined,
         MEDIA_LAB_MIN_VIDEO_FRAMES: String(minimumFrames),
         MEDIA_LAB_MIN_CONTENT_CHANGES: String(Math.min(3, Math.max(0, minimumFrames - 1))),
         MEDIA_LAB_MIN_AUDIO_PULSES: '1',
@@ -390,7 +392,10 @@ async function executeLab(resources: LabResources): Promise<void> {
         ...observerOverrides,
       })
       await waitForFile(observerSetup.readyPath, 10_000)
-      publisher = startPublisher({}, args)
+      publisher = startPublisher({
+        MEDIA_LAB_VIDEO_READY_PATH: mode === 'screen-cpu-room-disconnect'
+          ? path.resolve(resources.directory, `${mode}.video-ready`) : undefined,
+      }, args)
       await withDeadline(
         Promise.all([publisher.completion, observerSetup.observer.completion]),
         // Lifecycle churn includes publish/unpublish acknowledgements and a

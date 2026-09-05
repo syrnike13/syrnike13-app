@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -607,6 +608,13 @@ int main(int argc, char** argv) {
           std::function<void()> during_publication;
           if (command == "screen-cpu-room-disconnect") {
             during_publication = [&] {
+              const auto path = requiredEnvironment("MEDIA_LAB_VIDEO_READY_PATH");
+              const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{30};
+              while (!std::filesystem::exists(path)) {
+                if (std::chrono::steady_clock::now() >= deadline)
+                  throw std::runtime_error("Observer did not confirm decoded video before Room disconnect");
+                std::this_thread::sleep_for(std::chrono::milliseconds{10});
+              }
               if (!engine->applyDesiredState(
                        desiredState(4, std::nullopt)).ok) {
                 throw std::runtime_error(

@@ -23,6 +23,7 @@ const ObserverEnvironment = Schema.Struct({
   LIVEKIT_OBSERVER_TOKEN: Schema.String,
   MEDIA_LAB_REPORT_PATH: Schema.String,
   MEDIA_LAB_READY_PATH: Schema.String,
+  MEDIA_LAB_VIDEO_READY_PATH: Schema.optional(Schema.String),
   MEDIA_LAB_MIN_VIDEO_FRAMES: Schema.optional(Schema.String),
   MEDIA_LAB_MIN_CONTENT_CHANGES: Schema.optional(Schema.String),
   MEDIA_LAB_MIN_RESOLUTION_TRANSITIONS: Schema.optional(Schema.String),
@@ -46,6 +47,7 @@ interface ObserverOptions {
   readonly token: string
   readonly reportPath: string
   readonly readyPath: string
+  readonly videoReadyPath: string | undefined
   readonly minimumVideoFrames: number
   readonly minimumContentChanges: number
   readonly minimumResolutionTransitions: number
@@ -148,6 +150,7 @@ function optionsFromEnvironment(): ObserverOptions {
     token: env.LIVEKIT_OBSERVER_TOKEN,
     reportPath: env.MEDIA_LAB_REPORT_PATH,
     readyPath: env.MEDIA_LAB_READY_PATH,
+    videoReadyPath: env.MEDIA_LAB_VIDEO_READY_PATH,
     minimumVideoFrames: integerOption(
       env.MEDIA_LAB_MIN_VIDEO_FRAMES,
       600,
@@ -241,6 +244,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
   let lastPulseAt = 0
   let tracksSubscribed = 0
   let tracksUnsubscribed = 0
+  let videoReadyWritten = false
   const streamTasks = new Set<Promise<void>>()
   const cancelVideoStreams = new Map<RemoteTrack, () => Promise<void>>()
   const subscriptionTimers = new Set<NodeJS.Timeout>()
@@ -361,6 +365,17 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
           maximumConsecutiveFrames,
           streamConsecutiveFrames,
         )
+      }
+      // Destructive lifecycle actions must wait for decoded media on the
+      // current track, not merely for successful local capture submissions.
+      if (options.videoReadyPath !== undefined && !videoReadyWritten &&
+          streamFrames >= options.minimumVideoFrames &&
+          tracksSubscribed >= options.expectedSubscriptions &&
+          staleVideoFrames === 0 && invalidVideoTimestamps === 0) {
+        videoReadyWritten = true
+        void writeFile(options.videoReadyPath, 'decoded').catch((error: unknown) => {
+          rejectAccepted?.(new ObserverFailure(`Video readiness write failed: ${String(error)}`))
+        })
       }
       checkAcceptance()
     }
