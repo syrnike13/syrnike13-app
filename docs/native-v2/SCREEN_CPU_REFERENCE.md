@@ -85,6 +85,12 @@ duplicate frames, capture-to-receive p50/p95/max age, stale frames, dimension
 transitions, maximum no-frame duration, moving-content changes, and end reason.
 Receiver delivery is the source of truth; sender counters alone cannot make a
 scenario pass.
+Animated screen fixtures require at least three receiver-observed content
+changes outside the marker area. The resize scenario additionally requires at
+least one source dimension/generation transition. Both the early completion
+gate and the final report enforce these requirements; fresh marker sequences
+alone cannot make frozen content pass. Other scenarios opt in with
+`MEDIA_LAB_MIN_CONTENT_CHANGES` and `MEDIA_LAB_MIN_RESOLUTION_TRANSITIONS`.
 
 ## Media Lab evidence
 

@@ -23,6 +23,10 @@ void require(bool condition, const std::string &message) {
 
 class ManualRoomTransport final : public RoomTransport {
 public:
+  RoomConnectionEventCallback connection_callback;
+  void setConnectionEventCallback(RoomConnectionEventCallback callback) override {
+    connection_callback = std::move(callback);
+  }
   void startConnect(std::uint64_t generation, RoomConnectRequest,
                     RoomOperationCompletion completion) override {
     {
@@ -112,6 +116,27 @@ private:
   std::size_t disconnect_starts_ = 0;
   bool cancel_accepted_ = true;
 };
+
+void unexpectedDisconnectIsGenerationFenced() {
+  auto transport = std::make_shared<ManualRoomTransport>();
+  std::vector<RoomConnectionEvent> events;
+  {
+    RoomOwner owner(transport, [&](const auto& event) { events.push_back(event); });
+    require(owner.beginConnect({"ws://localhost", "token"}).ok, "connect failed");
+    transport->completeConnect(1, EngineResult::success());
+    transport->connection_callback({0, RoomConnectionState::Disconnected, {}});
+    require(owner.state() == RoomConnectionState::Connected, "stale event changed room");
+    const RoomConnectionEvent lost{1, RoomConnectionState::Disconnected,
+        EngineFailure{"room_connection_lost", "lost", "room_connection", true}};
+    transport->connection_callback(lost);
+    transport->connection_callback(lost);
+    require(owner.state() == RoomConnectionState::Disconnected && events.size() == 2,
+            "unexpected disconnect was missing or duplicated");
+    require(events.back().failure->code == "room_connection_lost", "failure lost");
+  }
+  transport->connection_callback({1, RoomConnectionState::Disconnected, {}});
+  require(events.size() == 2, "callback outlived owner");
+}
 
 void connectAndDisconnectEmitFiniteEvents() {
   auto transport = std::make_shared<ManualRoomTransport>();
@@ -378,6 +403,7 @@ void hundredHungOperationsAreBounded(HungRoomOperation operation) {
 } // namespace
 
 void runRoomOwnerTests() {
+  unexpectedDisconnectIsGenerationFenced();
   connectAndDisconnectEmitFiniteEvents();
   pendingConnectCancellationIsTyped();
   failedDisconnectRetainsRoomOwnership();

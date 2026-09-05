@@ -4,6 +4,13 @@ This package is the independent black-box observer and local harness for Native 
 
 The harness owns only ephemeral test resources. It never reads production LiveKit configuration, writes credentials into the repository, or imports the native engine from the observer process. The generated report is ignored by Git and stored at `artifacts/latest-report.json`.
 
+Every run also disconnects a real SDK Room without sending an Engine off intent
+and requires `room_connection_lost` to reach the public Engine snapshot within
+two seconds while ping remains responsive. The transport samples the SDK's
+synchronized terminal state every 100 ms on its owner lane, independently of
+the lab's track delegate. Stale generations and callbacks after RoomOwner
+destruction are ignored.
+
 Issue #120 adds the non-production CPU screen oracle documented in [`docs/native-v2/SCREEN_CPU_REFERENCE.md`](../../docs/native-v2/SCREEN_CPU_REFERENCE.md). To run only its monitor, window, overload, lifecycle, and observer scenarios:
 
 ```powershell

@@ -23,6 +23,7 @@ public:
 
   LiveKitRoomTransport();
   ~LiveKitRoomTransport() override;
+  void setConnectionEventCallback(RoomConnectionEventCallback callback) override;
 
   LiveKitRoomTransport(const LiveKitRoomTransport &) = delete;
   LiveKitRoomTransport &operator=(const LiveKitRoomTransport &) = delete;
@@ -66,6 +67,8 @@ private:
   void enqueue(Task task);
 
   mutable std::mutex mutex_;
+  RoomConnectionEventCallback connection_event_callback_;
+  bool disconnect_reported_ = false;
   std::condition_variable changed_;
   std::condition_variable cancellation_changed_;
   std::condition_variable cancellation_completed_;

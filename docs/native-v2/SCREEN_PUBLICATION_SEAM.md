@@ -28,7 +28,8 @@ Issue #121 implements this boundary in `screen/production_screen_sender.*`. The
 port has two consumers: `livekit/LiveKitScreenPublicationAdapter` translates it
 onto `LiveKitRoomTransport`'s serialized SDK lane, while the deterministic test
 adapter can hold and complete publish, frame, and unpublish calls independently.
-The video mailbox has one active and one latest-wins pending frame, the event
+The video mailbox has one active and one ordered pending encoded frame. Further
+admission returns `VideoBackpressure` without borrowing or superseding a slot. The event
 mailbox has sixteen entries with four reserved for control, and every borrowed
 encoded slot produces exactly one release event after the SDK call returns.
 

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -66,7 +67,8 @@ class ProductionScreenPipeline final {
       std::shared_ptr<ScreenFramePipeline> capture_pipeline,
       ScreenVideoProfile profile,
       ScreenPublicationAdapterFactory adapter_factory,
-      ScreenPublicationDeadlines publication_deadlines = {});
+      ScreenPublicationDeadlines publication_deadlines = {},
+      bool lab_frame_marker = false);
   ~ProductionScreenPipeline();
   ProductionScreenPipeline(const ProductionScreenPipeline&) = delete;
   ProductionScreenPipeline& operator=(const ProductionScreenPipeline&) =
@@ -101,6 +103,8 @@ class ProductionScreenPipeline final {
   std::int64_t last_encoder_timestamp_us_ = 0;
   bool published_ = false;
   bool stop_requested_ = false;
+  bool worker_done_ = false;
+  std::condition_variable worker_changed_;
   std::thread worker_;
 };
 

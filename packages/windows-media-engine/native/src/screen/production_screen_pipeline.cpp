@@ -15,7 +15,8 @@ std::chrono::milliseconds remaining(
 }
 
 ScreenPublicationFailure encoderFailure(const HardwareH264Failure& failure) {
-  return {failure.code, failure.message, failure.stage, false, false};
+  return {failure.code, failure.message, failure.stage, false,
+          failure.utility_epoch_retirement_required};
 }
 
 }  // namespace
@@ -25,11 +26,11 @@ ProductionScreenPipeline::ProductionScreenPipeline(
     std::shared_ptr<ScreenFramePipeline> capture_pipeline,
     ScreenVideoProfile profile,
     ScreenPublicationAdapterFactory adapter_factory,
-    ScreenPublicationDeadlines publication_deadlines)
+    ScreenPublicationDeadlines publication_deadlines, bool lab_frame_marker)
     : device_owner_(std::move(device_owner)),
       capture_pipeline_(std::move(capture_pipeline)),
       profile_(profile),
-      converter_(device_owner_, profile),
+      converter_(device_owner_, profile, lab_frame_marker),
       encoder_(std::make_shared<HardwareH264Encoder>(device_owner_, profile)) {
   if (!capture_pipeline_ || !adapter_factory)
     throw std::invalid_argument(
@@ -47,6 +48,7 @@ ProductionScreenPipeline::ProductionScreenPipeline(
 
 ProductionScreenPipeline::~ProductionScreenPipeline() {
   (void)stop(std::chrono::steady_clock::now() + std::chrono::seconds(2));
+  if (worker_.joinable()) std::terminate();
 }
 
 ScreenStartResult ProductionScreenPipeline::start(
@@ -101,7 +103,8 @@ void ProductionScreenPipeline::handleEvent(
   if (event.generation != generation_) return;
   if (event.kind == ScreenPublicationEventKind::Published) {
     published_ = true;
-    state_ = ProductionScreenPipelineState::running;
+    if (!stop_requested_ && !failure_)
+      state_ = ProductionScreenPipelineState::running;
   } else if (event.kind == ScreenPublicationEventKind::SlotReleased &&
              event.slot < submitted_slots_.size()) {
     submitted_slots_[event.slot].reset();
@@ -130,12 +133,21 @@ void ProductionScreenPipeline::run() noexcept {
         published = published_;
       }
       if (stop) break;
+      if (const auto failure = encoder_->failure()) {
+        std::scoped_lock lock(mutex_);
+        failure_ = encoderFailure(*failure);
+        state_ = ProductionScreenPipelineState::failed;
+        stop_requested_ = true;
+        break;
+      }
       if (!published) {
         std::this_thread::sleep_for(std::chrono::milliseconds{1});
         continue;
       }
 
-      while (auto output = encoder_->takeEncoded()) {
+      while (sender_->stats().video_depth < kScreenPublicationVideoCapacity) {
+        auto output = encoder_->takeEncoded();
+        if (!output) break;
         const auto slot = output->slot();
         const auto view = output->frame();
         const auto result = sender_->submit(EncodedScreenFrame{
@@ -151,6 +163,7 @@ void ProductionScreenPipeline::run() noexcept {
         } else {
           std::scoped_lock lock(mutex_);
           ++stats_.publication_rejections;
+          throw std::runtime_error("Encoded frame rejected by publication");
         }
       }
 
@@ -225,6 +238,13 @@ void ProductionScreenPipeline::run() noexcept {
     state_ = ProductionScreenPipelineState::failed;
     stop_requested_ = true;
   }
+  (void)capture_pipeline_->stop(std::chrono::steady_clock::now());
+  (void)sender_->stop(generation_);
+  {
+    std::scoped_lock lock(mutex_);
+    worker_done_ = true;
+    worker_changed_.notify_all();
+  }
 }
 
 ScreenCommandResult ProductionScreenPipeline::stop(
@@ -241,7 +261,19 @@ ScreenCommandResult ProductionScreenPipeline::stop(
     generation = generation_;
   }
   const bool capture_stopped = capture_pipeline_->stop(deadline);
-  if (worker_.joinable()) worker_.join();
+  if (worker_.joinable()) {
+    std::unique_lock lock(mutex_);
+    if (!worker_changed_.wait_until(lock, deadline, [this] { return worker_done_; })) {
+      failure_ = ScreenPublicationFailure{
+          "screen_pipeline_worker_stop_timeout",
+          "GPU worker requires utility epoch retirement", "screen_pipeline_stop",
+          true, true};
+      state_ = ProductionScreenPipelineState::failed;
+      return {false, failure_};
+    }
+    lock.unlock();
+    worker_.join();
+  }
   const bool encoder_stopped = encoder_->stop(remaining(deadline));
 
   auto sender_stop = sender_->stop(generation);
@@ -254,6 +286,9 @@ ScreenCommandResult ProductionScreenPipeline::stop(
     publication_stopped = sender_->state() == ScreenPublicationState::Idle;
     if (sender_->state() == ScreenPublicationState::Failed) break;
   }
+  // Idle can be visible before the consumer has read the final release events.
+  while (auto event = sender_->waitForEvent(std::chrono::milliseconds{0}))
+    handleEvent(std::move(*event));
   const bool slots_released = std::all_of(
       submitted_slots_.begin(), submitted_slots_.end(),
       [](const auto& slot) { return !slot.has_value(); });
@@ -280,6 +315,13 @@ ScreenCommandResult ProductionScreenPipeline::stop(
               : "An in-flight SDK frame still requires utility epoch retirement",
           "screen_pipeline_stop", true, !slots_released};
       state_ = ProductionScreenPipelineState::failed;
+    }
+    if (!stopped && failure_) {
+      state_ = ProductionScreenPipelineState::failed;
+      const auto encoder_failure = encoder_->failure();
+      failure_->utility_epoch_retirement_required |= !slots_released ||
+          !capture_stopped || (encoder_failure &&
+              encoder_failure->utility_epoch_retirement_required);
     }
   }
   return stopped ? ScreenCommandResult{true, std::nullopt}

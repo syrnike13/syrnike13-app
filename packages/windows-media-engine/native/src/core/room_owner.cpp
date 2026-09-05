@@ -73,6 +73,21 @@ RoomOwner::RoomOwner(std::shared_ptr<RoomTransport> transport,
     throw std::invalid_argument("Room operation deadlines must be positive");
   }
   state_->event_callback = std::move(event_callback);
+  transport_->setConnectionEventCallback(
+      [weak = std::weak_ptr(state_)](const RoomConnectionEvent& event) {
+        const auto state = weak.lock();
+        if (!state) return;
+        RoomConnectionEventCallback callback;
+        {
+          std::lock_guard lock(state->mutex);
+          if (state->stopping || event.generation != state->generation ||
+              state->connection_state != RoomConnectionState::Connected ||
+              event.state != RoomConnectionState::Disconnected) return;
+          state->connection_state = RoomConnectionState::Disconnected;
+          callback = state->event_callback;
+        }
+        if (callback) callback(event);
+      });
   deadline_watchdog_ = std::thread([this] { runDeadlineWatchdog(); });
 }
 

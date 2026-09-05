@@ -16,6 +16,7 @@
 namespace syrnike::windows_media::screen::tests {
 void hardwareH264ProbeCoversFixedProfiles();
 void hardwareH264EncoderProducesBoundedAnnexBOutput();
+void encodedBackpressureKeepsEveryReferenceFrame();
 void productionGpuPipelineStartsHardwareBeforePublicationAndStops();
 }
 
@@ -187,7 +188,18 @@ void oddInputDimensionsUseAnEvenCrop() {
 
 void gpuMarkerMatchesNeutralObserverContract() {
   const auto owner = processD3d11Device(false);
-  GpuScreenConverter converter(owner, kScreenProfile720p30);
+  {
+    GpuScreenConverter production(owner, kScreenProfile720p30);
+    const auto black = solidBgra(owner, 320, 180, {0, 0, 0, 255});
+    const auto clean = production.convert({owner, black.Get()},
+        {7, 1, 320, 180, FramePixelFormat::Bgra8, 3});
+    require(clean.has_value(), "production conversion failed");
+    require(readMarkerMagic(owner, clean->texture(), 1280, 720) == 0,
+            "production conversion painted laboratory marker");
+    require(production.stats().texture_bytes == 1280ULL * 720 * 3 / 2 * 3,
+            "production allocated a laboratory marker texture");
+  }
+  GpuScreenConverter converter(owner, kScreenProfile720p30, true);
   const auto source = solidBgra(owner, 320, 180, {0, 0, 0, 255});
   const auto converted = converter.convert(
       {owner, source.Get()},
@@ -208,6 +220,7 @@ int main() try {
   gpuMarkerMatchesNeutralObserverContract();
   syrnike::windows_media::screen::tests::hardwareH264ProbeCoversFixedProfiles();
   syrnike::windows_media::screen::tests::hardwareH264EncoderProducesBoundedAnnexBOutput();
+  syrnike::windows_media::screen::tests::encodedBackpressureKeepsEveryReferenceFrame();
   syrnike::windows_media::screen::tests::productionGpuPipelineStartsHardwareBeforePublicationAndStops();
   return 0;
 } catch (const std::exception& error) {

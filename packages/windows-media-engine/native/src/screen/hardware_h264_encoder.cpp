@@ -230,7 +230,6 @@ void fail(const std::shared_ptr<detail::HardwareH264EncoderStateData>& state,
       HardwareH264Failure{std::move(code), std::move(message), std::move(stage)};
   state->state = HardwareH264EncoderState::failed;
   state->pending_input.reset();
-  state->clearAcceptedInputs();
   state->changed.notify_all();
 }
 
@@ -347,12 +346,6 @@ std::optional<std::uint32_t> reserveOutput(
     const auto& slot = state->outputs[index];
     if (!slot.queued && !slot.leased) return index;
   }
-  if (const auto queued = state->popQueuedOutput()) {
-    const auto index = *queued;
-    state->outputs[index].queued = false;
-    ++state->stats.output_superseded;
-    return index;
-  }
   ++state->stats.output_pool_exhausted;
   return std::nullopt;
 }
@@ -372,8 +365,12 @@ void publishOutput(
   }
   if (size > kEncodedH264SlotBytes) {
     (void)buffer->Unlock();
-    std::scoped_lock lock(state->mutex);
-    ++state->stats.output_oversized;
+    {
+      std::scoped_lock lock(state->mutex);
+      ++state->stats.output_oversized;
+    }
+    fail(state, "screen_hardware_h264_output_oversized",
+         "Encoded access unit exceeds the bounded output slot", "encoder_output");
     return;
   }
   auto& slot = state->outputs[slot_index];
@@ -453,6 +450,9 @@ bool processOneOutput(
     return false;
   }
   const auto slot = reserveOutput(state);
+  if (!slot)
+    fail(state, "screen_hardware_h264_output_pool_exhausted",
+         "Reserved encoded output slot is unavailable", "encoder_output");
   if (slot && output.pSample) {
     ComPtr<IMFMediaBuffer> buffer;
     const HRESULT buffer_result = output.pSample->ConvertToContiguousBuffer(&buffer);
@@ -483,6 +483,7 @@ void encoderWorker(
     fail(state, "screen_encoder_com_unavailable",
          hresultMessage("CoInitializeEx", com_result), "encoder_start");
     std::scoped_lock lock(state->mutex);
+    state->worker_done = true;
     state->changed.notify_all();
     return;
   }
@@ -505,6 +506,12 @@ void encoderWorker(
   MFT_OUTPUT_STREAM_INFO output_info{};
   if (!initializeTransform(state, activation, transform, events, manager,
                            output_info, caller_output)) {
+    if (activation) (void)activation->ShutdownObject();
+    caller_output.Reset();
+    events.Reset();
+    transform.Reset();
+    manager.Reset();
+    activation.Reset();
     (void)MFShutdown();
     if (uninitialize_com) CoUninitialize();
     std::scoped_lock lock(state->mutex);
@@ -517,6 +524,10 @@ void encoderWorker(
   bool draining = false;
   bool done = false;
   while (!done) {
+    {
+      std::scoped_lock lock(state->mutex);
+      if (state->state == HardwareH264EncoderState::failed) break;
+    }
     for (;;) {
       ComPtr<IMFMediaEvent> event;
       const HRESULT event_result =
@@ -564,8 +575,14 @@ void encoderWorker(
     {
       std::scoped_lock lock(state->mutex);
       request_keyframe = std::exchange(state->keyframe_requested, false);
+      const auto occupied_outputs = std::count_if(
+          state->outputs.begin(), state->outputs.end(),
+          [](const auto& slot) { return slot.queued || slot.leased; });
+      // Reserve room for every accepted input before encoding. Only raw
+      // pending input may be superseded; encoded reference frames must survive.
       if (requested_inputs > 0 && state->pending_input && !draining &&
-          state->accepted_input_size < state->accepted_inputs.size()) {
+          !state->stop_requested && state->accepted_input_size +
+              static_cast<std::size_t>(occupied_outputs) < state->outputs.size()) {
         input = std::move(state->pending_input);
         state->pending_input.reset();
       }
@@ -650,11 +667,8 @@ void encoderWorker(
   {
     std::scoped_lock lock(state->mutex);
     state->pending_input.reset();
-    state->clearAcceptedInputs();
     if (state->state != HardwareH264EncoderState::failed)
       state->state = HardwareH264EncoderState::stopped;
-    state->worker_done = true;
-    state->changed.notify_all();
   }
   ComPtr<IMFShutdown> shutdown;
   if (SUCCEEDED(transform.As(&shutdown))) (void)shutdown->Shutdown();
@@ -669,6 +683,7 @@ void encoderWorker(
   if (uninitialize_com) CoUninitialize();
   {
     std::scoped_lock lock(state->mutex);
+    state->clearAcceptedInputs();
     state->worker_done = true;
     state->changed.notify_all();
   }
@@ -735,7 +750,7 @@ HardwareH264Encoder::~HardwareH264Encoder() {
   if (stopped || worker_done)
     worker_.join();
   else
-    worker_.detach();
+    std::terminate();  // The isolated utility epoch must retire with its worker.
 }
 
 std::optional<HardwareH264Failure> HardwareH264Encoder::start(
@@ -841,6 +856,14 @@ bool HardwareH264Encoder::stop(std::chrono::milliseconds deadline) noexcept {
   });
   const bool stopped = completed &&
                        state_->state == HardwareH264EncoderState::stopped;
+  if (!completed) {
+    if (!state_->failure)
+      state_->failure = HardwareH264Failure{
+          "screen_hardware_h264_stop_timeout",
+          "Hardware encoder cleanup requires utility epoch retirement", "encoder_stop"};
+    state_->failure->utility_epoch_retirement_required = true;
+    state_->state = HardwareH264EncoderState::failed;
+  }
   lock.unlock();
   if (completed && worker_.joinable()) worker_.join();
   return stopped;

@@ -37,6 +37,7 @@ struct GpuScreenConverterState final {
   std::mutex mutex;
   std::shared_ptr<capture::D3d11DeviceOwner> owner;
   ScreenVideoProfile profile;
+  bool lab_frame_marker = false;
   ComPtr<ID3D11VideoDevice> video_device;
   ComPtr<ID3D11VideoContext> video_context;
   ComPtr<ID3D11VideoContext1> video_context1;
@@ -144,35 +145,35 @@ bool configureProcessor(detail::GpuScreenConverterState& state,
     throw gpuError("CreateVideoProcessor", processor_result);
   D3D11_VIDEO_PROCESSOR_CAPS capabilities{};
   if (FAILED(enumerator->GetVideoProcessorCaps(&capabilities)) ||
-      capabilities.MaxInputStreams < 2)
+      capabilities.MaxInputStreams < (state.lab_frame_marker ? 2U : 1U))
     throw std::runtime_error(
-        "D3D11 video processor cannot blend the bounded observer marker");
+        "D3D11 video processor lacks the required input streams");
 
-  D3D11_TEXTURE2D_DESC marker_texture{};
-  marker_texture.Width = input_width;
-  marker_texture.Height = input_height;
-  marker_texture.MipLevels = 1;
-  marker_texture.ArraySize = 1;
-  marker_texture.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-  marker_texture.SampleDesc.Count = 1;
-  marker_texture.Usage = D3D11_USAGE_DEFAULT;
-  marker_texture.BindFlags =
-      D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
   ComPtr<ID3D11Texture2D> marker;
-  if (FAILED(state.owner->device()->CreateTexture2D(&marker_texture, nullptr,
-                                                     &marker)))
-    throw std::runtime_error("observer marker texture allocation failed");
-  D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC marker_input{};
-  marker_input.FourCC = 0;
-  marker_input.ViewDimension = D3D11_VPIV_DIMENSION_TEXTURE2D;
-  marker_input.Texture2D.MipSlice = 0;
-  marker_input.Texture2D.ArraySlice = 0;
   ComPtr<ID3D11VideoProcessorInputView> marker_view;
-  const HRESULT marker_result =
-      state.video_device->CreateVideoProcessorInputView(
-          marker.Get(), enumerator.Get(), &marker_input, &marker_view);
-  if (FAILED(marker_result))
-    throw gpuError("CreateVideoProcessorInputView(marker)", marker_result);
+  if (state.lab_frame_marker) {
+    D3D11_TEXTURE2D_DESC marker_texture{};
+    marker_texture.Width = input_width;
+    marker_texture.Height = input_height;
+    marker_texture.MipLevels = 1;
+    marker_texture.ArraySize = 1;
+    marker_texture.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    marker_texture.SampleDesc.Count = 1;
+    marker_texture.Usage = D3D11_USAGE_DEFAULT;
+    marker_texture.BindFlags =
+        D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    if (FAILED(state.owner->device()->CreateTexture2D(&marker_texture, nullptr, &marker)))
+      throw std::runtime_error("observer marker texture allocation failed");
+    D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC marker_input{};
+    marker_input.FourCC = 0;
+    marker_input.ViewDimension = D3D11_VPIV_DIMENSION_TEXTURE2D;
+    marker_input.Texture2D.MipSlice = 0;
+    marker_input.Texture2D.ArraySlice = 0;
+    const HRESULT marker_result = state.video_device->CreateVideoProcessorInputView(
+        marker.Get(), enumerator.Get(), &marker_input, &marker_view);
+    if (FAILED(marker_result))
+      throw gpuError("CreateVideoProcessorInputView(marker)", marker_result);
+  }
 
   for (auto& slot : state.slots) {
     D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC output{};
@@ -197,7 +198,8 @@ bool configureProcessor(detail::GpuScreenConverterState& state,
   state.stats.texture_bytes =
       static_cast<std::uint64_t>(state.profile.width) *
           state.profile.height * 3ULL / 2ULL * kGpuConversionSlotCapacity +
-      static_cast<std::uint64_t>(input_width) * input_height * 4ULL;
+      (state.lab_frame_marker
+           ? static_cast<std::uint64_t>(input_width) * input_height * 4ULL : 0ULL);
   ++state.stats.processor_reconfigurations;
   return true;
 }
@@ -293,12 +295,13 @@ void GpuNv12SlotLease::release() noexcept {
 
 GpuScreenConverter::GpuScreenConverter(
     std::shared_ptr<capture::D3d11DeviceOwner> device_owner,
-    ScreenVideoProfile profile)
+    ScreenVideoProfile profile, bool lab_frame_marker)
     : state_(std::make_shared<detail::GpuScreenConverterState>()) {
   if (!device_owner || !validProfile(profile))
     throw std::invalid_argument("GPU screen converter configuration is invalid");
   state_->owner = std::move(device_owner);
   state_->profile = profile;
+  state_->lab_frame_marker = lab_frame_marker;
   if (FAILED(state_->owner->device()->QueryInterface(
           IID_PPV_ARGS(&state_->video_device))) ||
       FAILED(state_->owner->context()->QueryInterface(
@@ -380,7 +383,7 @@ std::optional<GpuNv12SlotLease> GpuScreenConverter::convert(
     std::lock_guard context_lock(state_->owner->contextMutex());
     auto* input_view = inputView(*state_, frame.texture);
     if (input_view) {
-      const bool include_marker = metadata.width >= kScreenMarkerWidth &&
+      const bool include_marker = state_->lab_frame_marker && metadata.width >= kScreenMarkerWidth &&
                                   metadata.height >= kScreenMarkerHeight;
       if (include_marker) {
         writeScreenFrameMarker(

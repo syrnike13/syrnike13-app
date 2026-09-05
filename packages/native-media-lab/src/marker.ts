@@ -57,13 +57,13 @@ export function decodeVideoMarker(frame: VideoFrame): VideoMarker | undefined {
   return { sequence, capturedAtMs, generation, sourceWidth, sourceHeight }
 }
 
-export function sampleVideoContentHash(frame: VideoFrame): number {
+export function sampleVideoContent(frame: VideoFrame): readonly number[] {
   const i420 = frame.type === VideoBufferType.I420
     ? frame
     : frame.convert(VideoBufferType.I420)
   const markerBottom = MARKER_ROWS * MARKER_TILE_SIZE
-  if (i420.width === 0 || i420.height <= markerBottom) return 0
-  let hash = 2_166_136_261
+  if (i420.width === 0 || i420.height <= markerBottom) return []
+  const samples: number[] = []
   for (let sampleY = 0; sampleY < 8; sampleY += 1) {
     const y = markerBottom + Math.floor(
       (sampleY + 0.5) * (i420.height - markerBottom) / 8,
@@ -74,11 +74,11 @@ export function sampleVideoContentHash(frame: VideoFrame): number {
         Math.floor((sampleX + 0.5) * i420.width / 8),
       )
       const value = i420.data[y * i420.width + x]
-      if (value === undefined) return hash
-      hash = Math.imul(hash ^ value, 16_777_619) >>> 0
+      if (value === undefined) return []
+      samples.push(value)
     }
   }
-  return hash
+  return samples
 }
 
 function readBits(bits: readonly number[], offset: number, length: number): bigint {

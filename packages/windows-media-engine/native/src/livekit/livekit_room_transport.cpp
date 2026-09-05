@@ -46,6 +46,11 @@ LiveKitRoomTransport::LiveKitRoomTransport() {
   cancellation_worker_ = std::thread([this] { runCancellationLane(); });
 }
 
+void LiveKitRoomTransport::setConnectionEventCallback(RoomConnectionEventCallback callback) {
+  std::lock_guard lock(mutex_);
+  connection_event_callback_ = std::move(callback);
+}
+
 LiveKitRoomTransport::~LiveKitRoomTransport() {
   {
     std::lock_guard lock(mutex_);
@@ -142,17 +147,34 @@ void LiveKitRoomTransport::run() noexcept {
     std::optional<Task> task;
     {
       std::unique_lock lock(mutex_);
-      changed_.wait(lock,
+      // Read the SDK's synchronized state on its owner lane; this also works
+      // when the laboratory installs a RoomDelegate for track observations.
+      changed_.wait_for(lock, std::chrono::milliseconds(100),
                     [this] { return stopping_ || pending_task_.has_value(); });
       if (stopping_) {
         pending_task_.reset();
         return;
       }
+      if (active_room_ && !disconnect_reported_ &&
+          active_room_->connectionState() == livekit::ConnectionState::Disconnected) {
+        disconnect_reported_ = true;
+        const auto callback = connection_event_callback_;
+        const auto generation = active_generation_;
+        lock.unlock();
+        if (callback) callback(RoomConnectionEvent{
+            generation, RoomConnectionState::Disconnected,
+            EngineFailure{"room_connection_lost", "LiveKit Room disconnected unexpectedly",
+                          "room_connection", true}});
+        continue;
+      }
+      if (!pending_task_) continue;
       task = std::move(pending_task_);
       pending_task_.reset();
       operation_running_ = true;
-      if (const auto *connect = std::get_if<ConnectTask>(&*task))
+      if (const auto *connect = std::get_if<ConnectTask>(&*task)) {
         active_generation_ = connect->generation;
+        disconnect_reported_ = false;
+      }
     }
     if (auto *connect = std::get_if<ConnectTask>(&*task)) {
       runConnect(std::move(*connect));

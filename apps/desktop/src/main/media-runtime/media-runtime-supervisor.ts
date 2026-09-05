@@ -476,7 +476,8 @@ export class MediaRuntimeSupervisor {
     this.lastPublicEventSequence = 0
     this.latestEngineSnapshot = undefined
     this.snapshotRecoveryPending = false
-    if (recovered) this.restartAttempt = 0
+    // A ready handshake is not evidence of stability. Keep the finite retry
+    // budget across recovered hosts, including hosts that crash after ready.
     this.updateSnapshot({
       status: 'ready',
       restartCount: this.snapshot.restartCount + (recovered ? 1 : 0),

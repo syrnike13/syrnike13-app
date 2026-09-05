@@ -77,7 +77,7 @@ class GpuScreenConverter final {
  public:
   GpuScreenConverter(
       std::shared_ptr<capture::D3d11DeviceOwner> device_owner,
-      ScreenVideoProfile profile);
+      ScreenVideoProfile profile, bool lab_frame_marker = false);
   ~GpuScreenConverter();
   GpuScreenConverter(const GpuScreenConverter&) = delete;
   GpuScreenConverter& operator=(const GpuScreenConverter&) = delete;

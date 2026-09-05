@@ -114,6 +114,7 @@ enum class ScreenSubmitResult {
   InvalidState,
   StaleGeneration,
   InvalidFrame,
+  VideoBackpressure,
   EventBackpressure,
 };
 

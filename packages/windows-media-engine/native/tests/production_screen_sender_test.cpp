@@ -94,9 +94,10 @@ ScreenPublicationEvent waitEvent(ProductionScreenSender& sender) {
 
 EncodedScreenFrame frame(std::uint64_t generation, std::uint32_t slot,
                          std::uint64_t sequence) {
-  static constexpr std::uint8_t kAccessUnit[] = {0, 0, 0, 1, 0x65};
+  static constexpr std::uint8_t kIdr[] = {0, 0, 0, 1, 0x65};
+  static constexpr std::uint8_t kPredicted[] = {0, 0, 0, 1, 0x41};
   return EncodedScreenFrame{generation, slot, sequence, sequence * 1'000,
-                            true, kAccessUnit, sizeof(kAccessUnit)};
+                            sequence == 1, sequence == 1 ? kIdr : kPredicted, sizeof(kIdr)};
 }
 
 void publishesSubmitsAndStopsAsynchronously() {
@@ -129,7 +130,7 @@ void publishesSubmitsAndStopsAsynchronously() {
           "unpublish acknowledgement did not close the generation");
 }
 
-void overloadKeepsNewestPendingFrameAndReturnsSupersededSlot() {
+void overloadPreservesEncodedReferenceFrames() {
   auto adapter = std::make_shared<ManualPublicationAdapter>();
   ProductionScreenSender sender(adapter);
   require(sender.start(ScreenTrackDescriptor{"screen", 2560, 1440, 30,
@@ -143,23 +144,17 @@ void overloadKeepsNewestPendingFrameAndReturnsSupersededSlot() {
           "active frame was rejected");
   require(sender.submit(frame(1, 2, 2)) == ScreenSubmitResult::Accepted,
           "pending frame was rejected");
-  require(sender.submit(frame(1, 3, 3)) == ScreenSubmitResult::Accepted,
-          "newest pending frame was rejected");
-  const auto superseded = waitEvent(sender);
-  require(superseded.kind == ScreenPublicationEventKind::SlotReleased &&
-              superseded.slot == 2 &&
-              superseded.release_reason ==
-                  ScreenSlotReleaseReason::Superseded,
-          "latest-wins overload did not return the older pending slot");
+  require(sender.submit(frame(1, 3, 3)) == ScreenSubmitResult::VideoBackpressure,
+          "encoded reference frame was superseded under backpressure");
 
   adapter->completeSubmit(1);
   const auto first = waitEvent(sender);
   require(first.slot == 1 &&
               first.release_reason == ScreenSlotReleaseReason::Consumed,
           "active slot was not returned before the pending frame advanced");
-  adapter->completeSubmit(3);
+  adapter->completeSubmit(2);
   const auto newest = waitEvent(sender);
-  require(newest.slot == 3 &&
+  require(newest.slot == 2 &&
               newest.release_reason == ScreenSlotReleaseReason::Consumed,
           "newest pending slot was not submitted");
 }
@@ -256,7 +251,7 @@ void adapterSubmitStartFailureReturnsSlotBeforeTerminalFailure() {
 
 int main() try {
   publishesSubmitsAndStopsAsynchronously();
-  overloadKeepsNewestPendingFrameAndReturnsSupersededSlot();
+  overloadPreservesEncodedReferenceFrames();
   staleCompletionCannotMutateANewGeneration();
   hungSubmitEscalatesAndLateCompletionReturnsBorrowedSlot();
   hungUnpublishHasAnIndependentDeadline();

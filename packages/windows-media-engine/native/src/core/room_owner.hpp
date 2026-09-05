@@ -39,6 +39,7 @@ using RoomConnectionEventCallback =
 class RoomTransport {
 public:
   virtual ~RoomTransport() = default;
+  virtual void setConnectionEventCallback(RoomConnectionEventCallback callback) = 0;
 
   virtual void startConnect(std::uint64_t generation,
                             RoomConnectRequest request,

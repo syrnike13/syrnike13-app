@@ -387,6 +387,10 @@ ScreenSubmitResult ProductionScreenSender::submit(EncodedScreenFrame frame) {
       ++state_->stats.rejected;
       return ScreenSubmitResult::EventBackpressure;
     }
+    if (state_->active && state_->pending) {
+      ++state_->stats.rejected;
+      return ScreenSubmitResult::VideoBackpressure;
+    }
     ++state_->stats.accepted;
     if (!state_->active) {
       state_->active = frame;
@@ -395,10 +399,6 @@ ScreenSubmitResult ProductionScreenSender::submit(EncodedScreenFrame frame) {
           std::chrono::steady_clock::now() + deadlines_.submit;
       begin = frame;
     } else if (!state_->pending) {
-      state_->pending = frame;
-    } else {
-      releaseSlotLocked(*state_, *state_->pending,
-                        ScreenSlotReleaseReason::Superseded);
       state_->pending = frame;
     }
     const auto depth = static_cast<std::size_t>(state_->active.has_value()) +

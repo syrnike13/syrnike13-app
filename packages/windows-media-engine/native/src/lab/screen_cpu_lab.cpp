@@ -868,7 +868,7 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
                              if (const auto active = weak_encoder.lock())
                                active->requestKeyFrame();
                            }});
-      });
+      }, {}, true);
   require(capture_source.start().ok, "GPU WGC capture failed to start");
   const auto started = pipeline.start("screen-gpu-production", 5s);
   if (!started.ok) {

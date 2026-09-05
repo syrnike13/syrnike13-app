@@ -15,6 +15,7 @@ struct HardwareH264Failure {
   std::string code;
   std::string message;
   std::string stage;
+  bool utility_epoch_retirement_required = false;
 };
 
 struct HardwareH264ProfileCapability {

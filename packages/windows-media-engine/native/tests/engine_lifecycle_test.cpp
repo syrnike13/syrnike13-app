@@ -53,6 +53,10 @@ void requireOk(const EngineResult &result, const std::string &operation) {
 
 class EngineRoomTransport final : public RoomTransport {
 public:
+  void setConnectionEventCallback(syrnike::windows_media::RoomConnectionEventCallback callback) override {
+    connection_callback = std::move(callback);
+  }
+  syrnike::windows_media::RoomConnectionEventCallback connection_callback;
   void startConnect(std::uint64_t generation, RoomConnectRequest request,
                     RoomOperationCompletion completion) override {
     std::lock_guard lock(mutex_);
@@ -754,7 +758,30 @@ void desiredRoomUsesProductionCoordinatorPath() {
 
 } // namespace
 
+void unexpectedRoomLossReachesEngineSnapshot() {
+  auto transport = std::make_shared<EngineRoomTransport>();
+  Engine engine(EngineOptions{.room_transport = transport});
+  requireOk(engine.start(), "room loss start");
+  require(engine.installCredentialLease(
+      CredentialLease{"lease-1", "ws://localhost", "token"}).ok, "lease failed");
+  require(engine.applyDesiredState(desiredState(1, "room-a")).ok, "intent failed");
+  transport->completeConnect();
+  (void)engine.querySnapshot();
+  transport->connection_callback({1, syrnike::windows_media::RoomConnectionState::Disconnected,
+      syrnike::windows_media::EngineFailure{
+          "room_connection_lost", "lost", "room_connection", true}});
+  const auto snapshot = engine.querySnapshot();
+  require(snapshot.ok && snapshot.snapshot &&
+      snapshot.snapshot->room_state == RoomStateChangedEvent::State::Failed &&
+      snapshot.snapshot->room_failure &&
+      snapshot.snapshot->room_failure->code == "room_connection_lost",
+      "unexpected Room loss was hidden from public state");
+  requireOk(engine.ping(), "engine must remain responsive after room loss");
+  requireOk(engine.shutdown(), "room loss shutdown");
+}
+
 int main() try {
+  unexpectedRoomLossReachesEngineSnapshot();
   transitionTable();
   shutdownDuringStarting();
   concurrentPingAndShutdown();

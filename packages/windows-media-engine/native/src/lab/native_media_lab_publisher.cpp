@@ -116,6 +116,7 @@ Options optionsFromEnvironment() {
       booleanEnvironment("MEDIA_LAB_WAIT_FOR_SUBSCRIBERS", true);
   if (options.scenario != "normal" && options.scenario != "republish" &&
       options.scenario != "disconnect-before-publish" &&
+      options.scenario != "unexpected-room-disconnect" &&
       options.scenario != "lifecycle-churn")
     throw std::runtime_error("Unsupported MEDIA_LAB_SCENARIO");
   if (options.width < kMarkerColumns * kMarkerTileSize ||
@@ -256,7 +257,7 @@ public:
         })) {
       throw std::runtime_error("Timed out waiting for Engine room state");
     }
-    if (state_ == RoomPublicState::Failed) {
+    if (state_ == RoomPublicState::Failed && expected != RoomPublicState::Failed) {
       throw std::runtime_error(
           "Engine room failed: " +
           (failure_ ? failure_->code : std::string("missing_failure")));
@@ -822,6 +823,19 @@ int main(int argc, char** argv) {
             final_resources.threads > baseline.threads ||
             transport->pendingOperationCount() != 0)
           exit_code = 1;
+      } else if (options.scenario == "unexpected-room-disconnect") {
+        // Disconnect the real SDK Room without an Engine off intent. The
+        // production transport must independently discover and report the loss.
+        const auto room = transport->activeRoom();
+        if (!room || !room->disconnect())
+          throw std::runtime_error("Could not inject SDK Room disconnect");
+        room_state.waitFor(RoomPublicState::Failed, std::chrono::seconds(2));
+        const auto snapshot = engine->querySnapshot();
+        if (!snapshot.ok || !snapshot.snapshot || !snapshot.snapshot->room_failure ||
+            snapshot.snapshot->room_failure->code != "room_connection_lost" ||
+            !engine->ping().ok)
+          throw std::runtime_error("SDK Room loss did not reach Engine state");
+        std::cout << "publisher: unexpected Room loss observed" << std::endl;
       } else if (options.scenario == "disconnect-before-publish") {
         const auto initial_disconnect =
             engine->applyDesiredState(desiredState(2, std::nullopt));

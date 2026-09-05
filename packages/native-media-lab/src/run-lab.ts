@@ -298,6 +298,13 @@ async function executeLab(resources: LabResources): Promise<void> {
     return publisher
   }
 
+  const roomLoss = startPublisher({ MEDIA_LAB_SCENARIO: 'unexpected-room-disconnect' })
+  await withDeadline(roomLoss.completion, 30_000, 'Unexpected Room loss exceeded its deadline')
+  if (!roomLoss.output().includes('publisher: unexpected Room loss observed')) {
+    throw new LabFailure(`SDK Room loss did not reach Engine state\n${roomLoss.output()}`)
+  }
+  scenarioReports['unexpected-room-disconnect'] = { accepted: true }
+
   const startObserver = (
     name: string,
     environment: NodeJS.ProcessEnv,
@@ -370,6 +377,7 @@ async function executeLab(resources: LabResources): Promise<void> {
     try {
       observerSetup = startObserver(mode, {
         MEDIA_LAB_MIN_VIDEO_FRAMES: String(minimumFrames),
+        MEDIA_LAB_MIN_CONTENT_CHANGES: String(Math.min(3, Math.max(0, minimumFrames - 1))),
         MEDIA_LAB_MIN_AUDIO_PULSES: '1',
         MEDIA_LAB_EXPECT_SUBSCRIPTIONS: String(expectedSubscriptions),
         MEDIA_LAB_EXPECT_VIDEO_END: 'true',
@@ -504,19 +512,22 @@ async function executeLab(resources: LabResources): Promise<void> {
     minimumFrames: number,
     args?: readonly string[],
     expectedSubscriptions?: number,
+    observerOverrides?: NodeJS.ProcessEnv,
   ) => {
     const explicitlyRequestedGpuMode =
       mode.startsWith('screen-gpu-') && requestedScreenMode === mode
     const selectedCpuMode = !mode.startsWith('screen-gpu-') &&
       (requestedScreenMode === undefined || requestedScreenMode === mode)
     if (explicitlyRequestedGpuMode || selectedCpuMode) {
-      await runScreenScenario(mode, minimumFrames, args, expectedSubscriptions)
+      await runScreenScenario(mode, minimumFrames, args, expectedSubscriptions, observerOverrides)
     }
   }
   await screenScenario('screen-cpu-monitor', 80)
   await screenScenario('screen-cpu-window', 80)
   await screenScenario('screen-cpu-slow-pipeline', 20)
-  await screenScenario('screen-cpu-resize', 50)
+  await screenScenario('screen-cpu-resize', 50, ['screen-cpu-resize'], 4, {
+    MEDIA_LAB_MIN_RESOLUTION_TRANSITIONS: '1',
+  })
   await screenScenario('screen-cpu-source-close', 20)
   await screenScenario(
     'screen-cpu-repeat',

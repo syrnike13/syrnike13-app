@@ -10,10 +10,11 @@ import {
   type RemoteTrack,
 } from '@livekit/rtc-node'
 import { Effect, Schema } from 'effect'
+import { screenEvidenceAccepted, videoContentChanged } from './screen-evidence.js'
 import { writeFile } from 'node:fs/promises'
 import {
   decodeVideoMarker,
-  sampleVideoContentHash,
+  sampleVideoContent,
   videoMarkerLatency,
 } from './marker.js'
 
@@ -23,6 +24,8 @@ const ObserverEnvironment = Schema.Struct({
   MEDIA_LAB_REPORT_PATH: Schema.String,
   MEDIA_LAB_READY_PATH: Schema.String,
   MEDIA_LAB_MIN_VIDEO_FRAMES: Schema.optional(Schema.String),
+  MEDIA_LAB_MIN_CONTENT_CHANGES: Schema.optional(Schema.String),
+  MEDIA_LAB_MIN_RESOLUTION_TRANSITIONS: Schema.optional(Schema.String),
   MEDIA_LAB_MIN_AUDIO_PULSES: Schema.optional(Schema.String),
   MEDIA_LAB_TIMEOUT_MS: Schema.optional(Schema.String),
   MEDIA_LAB_OBSERVER_DELAY_MS: Schema.optional(Schema.String),
@@ -44,6 +47,8 @@ interface ObserverOptions {
   readonly reportPath: string
   readonly readyPath: string
   readonly minimumVideoFrames: number
+  readonly minimumContentChanges: number
+  readonly minimumResolutionTransitions: number
   readonly minimumAudioPulses: number
   readonly timeoutMs: number
   readonly delayMs: number
@@ -183,6 +188,10 @@ function optionsFromEnvironment(): ObserverOptions {
       0,
       'MEDIA_LAB_MIN_AUDIO_FRAMES_AFTER_VIDEO_END',
     ),
+    minimumContentChanges: integerOption(env.MEDIA_LAB_MIN_CONTENT_CHANGES, 0,
+      'MEDIA_LAB_MIN_CONTENT_CHANGES'),
+    minimumResolutionTransitions: integerOption(env.MEDIA_LAB_MIN_RESOLUTION_TRANSITIONS, 0,
+      'MEDIA_LAB_MIN_RESOLUTION_TRANSITIONS'),
     iceTransportType: env.MEDIA_LAB_ICE_TRANSPORT === 'nohost'
       ? IceTransportType.TRANSPORT_NOHOST
       : IceTransportType.TRANSPORT_ALL,
@@ -210,7 +219,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
   let lastResolution: { generation: number; width: number; height: number } | undefined
   let lastVideoFrameAt: number | undefined
   let maximumNoFrameDurationMs = 0
-  let lastContentHash: number | undefined
+  let lastContent: readonly number[] | undefined
   let contentChanges = 0
   let videoEndReason: string | undefined
   let videoEndedAt: number | undefined
@@ -241,6 +250,8 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
       : maximumConsecutiveFrames >= options.minimumVideoFrames
     if (
       videoAccepted &&
+      screenEvidenceAccepted(contentChanges, resolutionTransitions,
+        options.minimumContentChanges, options.minimumResolutionTransitions) &&
       videoLatencies.length === videoDecoded &&
       outOfOrderFrames === 0 &&
       staleVideoFrames === 0 &&
@@ -316,15 +327,17 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
           lastResolution.width !== resolution.width ||
           lastResolution.height !== resolution.height
         ) {
-          if (lastResolution !== undefined) resolutionTransitions += 1
+          if (lastResolution !== undefined &&
+              (lastResolution.width !== resolution.width ||
+               lastResolution.height !== resolution.height)) resolutionTransitions += 1
           if (resolutions.length < 64) resolutions.push(resolution)
           lastResolution = resolution
         }
-        const contentHash = sampleVideoContentHash(value.frame)
-        if (lastContentHash !== undefined && lastContentHash !== contentHash) {
+        const content = sampleVideoContent(value.frame)
+        if (lastContent !== undefined && videoContentChanged(lastContent, content)) {
           contentChanges += 1
         }
-        lastContentHash = contentHash
+        lastContent = content
         maximumConsecutiveFrames = Math.max(
           maximumConsecutiveFrames,
           streamConsecutiveFrames,
@@ -497,6 +510,8 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
   await Promise.allSettled(streamTasks)
   const finishedAtMs = Date.now()
   const acceptedResult =
+    screenEvidenceAccepted(contentChanges, resolutionTransitions,
+      options.minimumContentChanges, options.minimumResolutionTransitions) &&
     failures.length === 0 &&
     (options.allowVideoGaps
       ? videoDecoded >= options.minimumVideoFrames

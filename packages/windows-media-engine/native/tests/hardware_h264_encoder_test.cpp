@@ -122,6 +122,49 @@ void hardwareH264EncoderProducesBoundedAnnexBOutput() {
   }
 }
 
+void encodedBackpressureKeepsEveryReferenceFrame() {
+  using namespace std::chrono_literals;
+  const auto owner = capture::processD3d11Device(false);
+  GpuScreenConverter converter(owner, kScreenProfile720p30);
+  HardwareH264Encoder encoder(owner, kScreenProfile720p30);
+  if (encoder.start(5s)) throw std::runtime_error("backpressure encoder start failed");
+  const auto source = makeFrame(owner, 1280, 720);
+  std::array<std::optional<EncodedH264SlotLease>, 3> held;
+  auto submit = [&](std::uint64_t sequence) {
+    auto converted = converter.convert({owner, source.Get()},
+        {sequence, 1, 1280, 720, capture::FramePixelFormat::Bgra8, 1});
+    if (!converted || !encoder.submit(std::move(*converted),
+        static_cast<std::int64_t>(sequence) * 33333, 33333))
+      throw std::runtime_error("backpressure input rejected");
+  };
+  auto take = [&]() {
+    std::optional<EncodedH264SlotLease> result;
+    const auto deadline = std::chrono::steady_clock::now() + 5s;
+    while (!result && std::chrono::steady_clock::now() < deadline) {
+      result = encoder.takeEncoded();
+      if (!result) std::this_thread::sleep_for(2ms);
+    }
+    if (!result) throw std::runtime_error("backpressure output missing");
+    return result;
+  };
+  for (std::size_t index = 0; index < held.size(); ++index) {
+    submit(index + 1);
+    held[index] = take();
+  }
+  for (std::uint64_t sequence = 4; sequence <= 12; ++sequence) submit(sequence);
+  std::this_thread::sleep_for(100ms);
+  if (encoder.stats().encoded != 3 || encoder.stats().output_superseded != 0 ||
+      encoder.failure())
+    throw std::runtime_error("encoder discarded a reference under backpressure");
+  held[0].reset();
+  auto resumed = take();
+  if (resumed->frame().timestamp_us != 12 * 33333)
+    throw std::runtime_error("raw input did not converge after backpressure");
+  resumed.reset();
+  for (auto& output : held) output.reset();
+  if (!encoder.stop(5s)) throw std::runtime_error("backpressure encoder stop failed");
+}
+
 namespace {
 
 class ImmediatePublicationAdapter final : public ScreenPublicationAdapter {

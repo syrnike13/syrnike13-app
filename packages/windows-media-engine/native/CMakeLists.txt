@@ -291,6 +291,12 @@ target_link_libraries(gpu_screen_converter_tests PRIVATE media_screen)
 add_test(NAME gpu-screen-converter COMMAND gpu_screen_converter_tests)
 set_tests_properties(gpu-screen-converter PROPERTIES TIMEOUT 30)
 
+add_executable(encoder_fault_tests tests/encoder_fault_test.cpp)
+windows_media_target(encoder_fault_tests)
+target_link_libraries(encoder_fault_tests PRIVATE media_screen)
+add_test(NAME encoder-faults COMMAND encoder_fault_tests)
+set_tests_properties(encoder-faults PROPERTIES TIMEOUT 20)
+
 if(WINDOWS_MEDIA_BUILD_LAB)
   add_executable(native_media_lab_publisher
     src/lab/native_media_lab_publisher.cpp

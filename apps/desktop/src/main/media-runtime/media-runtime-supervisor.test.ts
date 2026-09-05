@@ -70,6 +70,35 @@ function requestId(value: unknown) {
 }
 
 describe('MediaRuntimeSupervisor', () => {
+  it('exhausts its retry budget when every recovered host crashes after ready', async () => {
+    vi.useFakeTimers()
+    try {
+      const adapters: FakeMediaAdapter[] = []
+      const supervisor = new MediaRuntimeSupervisor({
+        createAdapter: () => {
+          const adapter = new FakeMediaAdapter()
+          adapters.push(adapter)
+          return adapter
+        },
+        restartDelaysMs: [10, 20],
+      })
+      const started = supervisor.start()
+      adapters[0]!.ready()
+      await started
+      for (const delay of [10, 20]) {
+        adapters.at(-1)!.unexpectedExit()
+        await vi.advanceTimersByTimeAsync(delay)
+        adapters.at(-1)!.ready()
+      }
+      adapters.at(-1)!.unexpectedExit()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(adapters).toHaveLength(3)
+      expect(supervisor.getSnapshot().status).toBe('failed')
+      await supervisor.shutdown()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('routes handshake, ping, and bounded graceful shutdown', async () => {
     const adapter = new FakeMediaAdapter()
     const supervisor = new MediaRuntimeSupervisor({
