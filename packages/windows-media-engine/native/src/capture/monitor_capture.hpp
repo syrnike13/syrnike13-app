@@ -9,6 +9,7 @@
 #include <string>
 
 #include "sources/source_registry.hpp"
+#include "capture/d3d11_device.hpp"
 
 namespace syrnike::windows_media::capture {
 
@@ -32,10 +33,20 @@ struct FrameMetadata {
   std::uint64_t generation = 1;
 };
 
+struct D3d11FrameView {
+  std::shared_ptr<D3d11DeviceOwner> device_owner;
+  ID3D11Texture2D* texture = nullptr;
+
+  explicit operator bool() const noexcept {
+    return device_owner && texture;
+  }
+};
+
 class FrameResource {
  public:
   virtual ~FrameResource() = default;
   virtual std::uint64_t sampledHash() = 0;
+  virtual std::optional<D3d11FrameView> d3d11View();
   virtual void copyBgraTo(std::span<std::uint8_t> destination,
                           std::size_t destination_stride);
 };
@@ -61,6 +72,7 @@ class FrameLease final {
   explicit operator bool() const noexcept;
   const FrameMetadata& metadata() const;
   std::uint64_t sampledHash() const;
+  std::optional<D3d11FrameView> d3d11View() const;
   void copyBgraTo(std::span<std::uint8_t> destination,
                   std::size_t destination_stride) const;
   LeaseReleaseStatus release() noexcept;

@@ -78,6 +78,11 @@ const capture::FrameMetadata& ScreenPipelineFrame::metadata() const {
   return metadata_;
 }
 
+std::optional<capture::D3d11FrameView> ScreenPipelineFrame::d3d11View() const {
+  if (!*this) return std::nullopt;
+  return lease_.d3d11View();
+}
+
 void ScreenPipelineFrame::copyBgraTo(
     std::span<std::uint8_t> destination,
     std::size_t destination_stride) const {

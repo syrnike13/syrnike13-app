@@ -15,5 +15,5 @@ Use `MEDIA_LAB_SCREEN_MODE` with a mode listed in that document to isolate one s
 
 To validate an unpublished local LiveKit fork without changing the repository
 pin, set `MEDIA_LAB_LIVEKIT_SDK_ROOT` to the absolute directory containing its
-`livekit.dll` and `livekit_ffi.dll`. The lab applies this override after its
-normal native build, so the pinned SDK cannot silently replace the candidate.
+`include`, `lib`, and `bin` directories. The isolated lab compiles and runs
+against that explicit root; ordinary native builds keep using the verified pin.

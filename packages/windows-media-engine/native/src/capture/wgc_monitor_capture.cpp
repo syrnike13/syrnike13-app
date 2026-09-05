@@ -316,19 +316,16 @@ class WgcMonitorCaptureBackendImpl final : public WgcMonitorCaptureBackend {
         state_->peak_engine_resources->load();
     if (state_->device) {
       {
-        std::lock_guard context_lock(state_->device->context_mutex);
+        std::lock_guard context_lock(state_->device->owner->contextMutex());
         state_->device->readback_staging.Reset();
         state_->device->readback_width = 0;
         state_->device->readback_height = 0;
-        if (state_->diagnostics.d3d_debug_enabled) {
-          state_->device->context->ClearState();
-          state_->device->context->Flush();
-        }
       }
     }
     if (state_->device && state_->diagnostics.d3d_debug_enabled) {
       ComPtr<ID3D11Debug> debug;
-      const HRESULT query = state_->device->device.As(&debug);
+      const HRESULT query = state_->device->owner->device()->QueryInterface(
+          IID_PPV_ARGS(&debug));
       if (SUCCEEDED(query)) {
         state_->diagnostics.live_objects_hresult = debug->ReportLiveDeviceObjects(
             D3D11_RLDO_DETAIL | D3D11_RLDO_IGNORE_INTERNAL);

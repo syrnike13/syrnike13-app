@@ -434,15 +434,22 @@ int main(int argc, char** argv) {
   try {
     const auto options = optionsFromEnvironment();
     const std::string command = argc > 1 ? argv[1] : "";
+    const bool screen_gpu_mode =
+        syrnike::windows_media::lab::isScreenGpuMode(command);
     if (!command.empty() &&
-        !syrnike::windows_media::lab::isScreenCpuMode(command)) {
+        !syrnike::windows_media::lab::isScreenCpuMode(command) &&
+        !screen_gpu_mode) {
       throw std::runtime_error("Unsupported media_lab command: " + command);
     }
-    int screen_cycles = command == "screen-cpu-repeat" ? 30 : 1;
+    int screen_cycles =
+        command == "screen-cpu-repeat" ||
+                command == "screen-gpu-repeat-720p30"
+            ? 30
+            : 1;
     for (int index = 2; index < argc; ++index) {
       const std::string argument = argv[index];
       if (argument != "--cycles" || index + 1 >= argc)
-        throw std::runtime_error("screen CPU modes accept only --cycles N");
+        throw std::runtime_error("screen modes accept only --cycles N");
       screen_cycles = std::stoi(argv[++index]);
       if (screen_cycles < 1 || screen_cycles > 30)
         throw std::runtime_error("--cycles must be between 1 and 30");
@@ -515,8 +522,14 @@ int main(int argc, char** argv) {
               [&] { runAudio(audio_source, audio_running); });
           std::exception_ptr warmup_failure;
           try {
-            syrnike::windows_media::lab::warmScreenCpuLab(
-                room, command, wait_until_ready, wait_until_unpublished);
+            if (screen_gpu_mode) {
+              syrnike::windows_media::lab::warmScreenGpuLab(
+                  transport, command, wait_until_ready,
+                  wait_until_unpublished);
+            } else {
+              syrnike::windows_media::lab::warmScreenCpuLab(
+                  room, command, wait_until_ready, wait_until_unpublished);
+            }
           } catch (...) {
             warmup_failure = std::current_exception();
           }
@@ -585,6 +598,10 @@ int main(int argc, char** argv) {
           if (command == "screen-cpu-repeat") {
             syrnike::windows_media::lab::warmScreenCpuLab(
                 room, command, wait_until_ready, wait_until_unpublished);
+          } else if (command == "screen-gpu-repeat-720p30") {
+            syrnike::windows_media::lab::warmScreenGpuLab(
+                transport, command, wait_until_ready,
+                wait_until_unpublished);
           }
           std::function<void()> during_publication;
           if (command == "screen-cpu-room-disconnect") {
@@ -600,9 +617,15 @@ int main(int argc, char** argv) {
                         << std::endl;
             };
           }
-          report = syrnike::windows_media::lab::runScreenCpuLab(
-              room, command, screen_cycles, wait_until_ready,
-              wait_until_unpublished, during_publication);
+          if (screen_gpu_mode) {
+            report = syrnike::windows_media::lab::runScreenGpuLab(
+                transport, command, screen_cycles, wait_until_ready,
+                wait_until_unpublished);
+          } else {
+            report = syrnike::windows_media::lab::runScreenCpuLab(
+                room, command, screen_cycles, wait_until_ready,
+                wait_until_unpublished, during_publication);
+          }
           if (command != "screen-cpu-room-disconnect") {
             const auto audio_target = audio_frames.load() + 120;
             const auto audio_deadline =
@@ -642,7 +665,9 @@ int main(int argc, char** argv) {
           exit_code = 1;
         engine.reset();
         transport.reset();
-        std::cout << "SCREEN_CPU_REPORT " << report << std::endl;
+        std::cout << (screen_gpu_mode ? "SCREEN_GPU_REPORT "
+                                     : "SCREEN_CPU_REPORT ")
+                  << report << std::endl;
         if (report.find("\"accepted\":true") == std::string::npos)
           exit_code = 1;
         if (screen_failure) std::rethrow_exception(screen_failure);

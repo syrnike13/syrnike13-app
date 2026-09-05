@@ -3,6 +3,7 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -17,6 +18,9 @@ namespace syrnike::windows_media {
 
 class LiveKitRoomTransport final : public RoomTransport {
 public:
+  using ActiveRoomTask =
+      std::function<void(const std::shared_ptr<livekit::Room> &)>;
+
   LiveKitRoomTransport();
   ~LiveKitRoomTransport() override;
 
@@ -30,6 +34,9 @@ public:
                        RoomOperationCompletion completion) override;
 
   [[nodiscard]] std::shared_ptr<livekit::Room> activeRoom() const;
+  // Serializes publication work with connect/disconnect on the SDK lane.
+  // Returns false when the bounded single pending slot is occupied.
+  [[nodiscard]] bool enqueueActiveRoomTask(ActiveRoomTask task) noexcept;
   [[nodiscard]] std::size_t pendingOperationCount() const noexcept;
 
 private:
@@ -46,12 +53,16 @@ private:
     std::uint64_t generation;
     EngineResult result;
   };
-  using Task = std::variant<ConnectTask, DisconnectTask>;
+  struct ActiveRoomLaneTask {
+    ActiveRoomTask task;
+  };
+  using Task = std::variant<ConnectTask, DisconnectTask, ActiveRoomLaneTask>;
 
   void run() noexcept;
   void runCancellationLane() noexcept;
   void runConnect(ConnectTask task) noexcept;
   void runDisconnect(DisconnectTask task) noexcept;
+  void runActiveRoomTask(ActiveRoomLaneTask task) noexcept;
   void enqueue(Task task);
 
   mutable std::mutex mutex_;

@@ -28,13 +28,13 @@ using winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 using DxgiInterfaceAccess =
     ::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess;
 
-struct DebugDeviceCache {
+struct WgcDeviceCache {
   std::mutex mutex;
   std::shared_ptr<WgcDeviceState> device;
 };
 
-DebugDeviceCache& debugDeviceCache() {
-  static DebugDeviceCache cache;
+WgcDeviceCache& wgcDeviceCache() {
+  static WgcDeviceCache cache;
   return cache;
 }
 
@@ -122,6 +122,7 @@ class D3D11FrameResource final : public FrameResource {
   ~D3D11FrameResource() override;
 
   std::uint64_t sampledHash() override;
+  std::optional<D3d11FrameView> d3d11View() override;
   void copyBgraTo(std::span<std::uint8_t> destination,
                   std::size_t destination_stride) override;
 
@@ -153,44 +154,21 @@ void ensureRoInitialized() {
 
 std::shared_ptr<WgcDeviceState> createWgcDevice(bool request_debug,
                                                 bool& debug_enabled) {
-  auto create = [](UINT flags) {
-    auto device = std::make_shared<WgcDeviceState>();
-    constexpr D3D_FEATURE_LEVEL levels[] = {
-        D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0};
-    D3D_FEATURE_LEVEL selected_level{};
-    const HRESULT result = D3D11CreateDevice(
-        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
-        flags | D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels,
-        static_cast<UINT>(std::size(levels)), D3D11_SDK_VERSION,
-        &device->device, &selected_level, &device->context);
-    (void)selected_level;
-    return std::pair{result, std::move(device)};
-  };
-
-  if (request_debug) {
-    auto& cache = debugDeviceCache();
-    std::lock_guard lock(cache.mutex);
-    if (cache.device) {
-      debug_enabled = true;
-      return cache.device;
-    }
-    auto [result, device] = create(D3D11_CREATE_DEVICE_DEBUG);
-    if (SUCCEEDED(result)) {
-      debug_enabled = true;
-      cache.device = device;
-      return cache.device;
-    }
+  auto& cache = wgcDeviceCache();
+  std::lock_guard lock(cache.mutex);
+  if (!cache.device) {
+    cache.device = std::make_shared<WgcDeviceState>();
+    cache.device->owner = processD3d11Device(request_debug);
   }
-  auto [result, device] = create(0);
-  if (FAILED(result)) throw winrt::hresult_error(result);
-  debug_enabled = false;
-  return device;
+  debug_enabled = cache.device->owner->debugLayerEnabled();
+  return cache.device;
 }
 
 IDirect3DDevice createWinrtD3DDevice(
     const std::shared_ptr<WgcDeviceState>& device) {
   ComPtr<IDXGIDevice> dxgi_device;
-  winrt::check_hresult(device->device.As(&dxgi_device));
+  winrt::check_hresult(device->owner->device()->QueryInterface(
+      IID_PPV_ARGS(&dxgi_device)));
   winrt::com_ptr<::IInspectable> inspectable;
   winrt::check_hresult(CreateDirect3D11DeviceFromDXGIDevice(
       dxgi_device.Get(), inspectable.put()));
@@ -241,6 +219,10 @@ D3D11FrameResource::D3D11FrameResource(
 
 D3D11FrameResource::~D3D11FrameResource() { live_resources_->fetch_sub(1); }
 
+std::optional<D3d11FrameView> D3D11FrameResource::d3d11View() {
+  return D3d11FrameView{device_->owner, texture_.Get()};
+}
+
 std::uint64_t D3D11FrameResource::sampledHash() {
   D3D11_TEXTURE2D_DESC description{};
   texture_->GetDesc(&description);
@@ -255,7 +237,7 @@ std::uint64_t D3D11FrameResource::sampledHash() {
   staging_description.ArraySize = 1;
   staging_description.SampleDesc = {1, 0};
   ComPtr<ID3D11Texture2D> staging;
-  winrt::check_hresult(device_->device->CreateTexture2D(
+  winrt::check_hresult(device_->owner->device()->CreateTexture2D(
       &staging_description, nullptr, &staging));
   constexpr char staging_name[] = "SyrnikeMonitorHashStaging";
   (void)staging->SetPrivateData(WKPDID_D3DDebugObjectName,
@@ -263,20 +245,20 @@ std::uint64_t D3D11FrameResource::sampledHash() {
 
   D3D11_MAPPED_SUBRESOURCE mapped{};
   {
-    std::lock_guard lock(device_->context_mutex);
+    std::lock_guard lock(device_->owner->contextMutex());
     const D3D11_BOX source_box{0, 0, 0, staging_description.Width,
                                staging_description.Height, 1};
-    device_->context->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0,
+    device_->owner->context()->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0,
                                             texture_.Get(), 0, &source_box);
-    winrt::check_hresult(device_->context->Map(
+    winrt::check_hresult(device_->owner->context()->Map(
         staging.Get(), 0, D3D11_MAP_READ, 0, &mapped));
   }
   struct Unmapper {
     std::shared_ptr<WgcDeviceState> device;
     ID3D11Texture2D* texture;
     ~Unmapper() {
-      std::lock_guard lock(device->context_mutex);
-      device->context->Unmap(texture, 0);
+      std::lock_guard lock(device->owner->contextMutex());
+      device->owner->context()->Unmap(texture, 0);
     }
   } unmapper{device_, staging.Get()};
 
@@ -312,7 +294,7 @@ auto D3D11FrameResource::withMappedBgra(Callback callback) {
     throw std::runtime_error(
         "WGC texture is smaller than its immutable frame metadata");
   }
-  std::lock_guard lock(device_->context_mutex);
+  std::lock_guard lock(device_->owner->contextMutex());
   if (!device_->readback_staging || device_->readback_width != copy_width ||
       device_->readback_height != copy_height) {
     D3D11_TEXTURE2D_DESC staging_description = source_description;
@@ -326,7 +308,7 @@ auto D3D11FrameResource::withMappedBgra(Callback callback) {
     staging_description.ArraySize = 1;
     staging_description.SampleDesc = {1, 0};
     ComPtr<ID3D11Texture2D> staging;
-    winrt::check_hresult(device_->device->CreateTexture2D(
+    winrt::check_hresult(device_->owner->device()->CreateTexture2D(
         &staging_description, nullptr, &staging));
     constexpr char staging_name[] = "SyrnikeCpuReferenceReadback";
     (void)staging->SetPrivateData(WKPDID_D3DDebugObjectName,
@@ -337,18 +319,18 @@ auto D3D11FrameResource::withMappedBgra(Callback callback) {
   }
 
   const D3D11_BOX source_box{0, 0, 0, copy_width, copy_height, 1};
-  device_->context->CopySubresourceRegion(device_->readback_staging.Get(), 0,
+  device_->owner->context()->CopySubresourceRegion(device_->readback_staging.Get(), 0,
                                           0, 0, 0, texture_.Get(), 0,
                                           &source_box);
   D3D11_MAPPED_SUBRESOURCE mapped{};
-  winrt::check_hresult(device_->context->Map(device_->readback_staging.Get(), 0,
+  winrt::check_hresult(device_->owner->context()->Map(device_->readback_staging.Get(), 0,
                                              D3D11_MAP_READ, 0, &mapped));
   try {
     auto result = callback(mapped, copy_width, copy_height);
-    device_->context->Unmap(device_->readback_staging.Get(), 0);
+    device_->owner->context()->Unmap(device_->readback_staging.Get(), 0);
     return result;
   } catch (...) {
-    device_->context->Unmap(device_->readback_staging.Get(), 0);
+    device_->owner->context()->Unmap(device_->readback_staging.Get(), 0);
     throw;
   }
 }

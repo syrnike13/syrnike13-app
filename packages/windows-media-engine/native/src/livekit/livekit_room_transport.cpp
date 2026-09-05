@@ -101,6 +101,17 @@ std::shared_ptr<livekit::Room> LiveKitRoomTransport::activeRoom() const {
   return active_room_;
 }
 
+bool LiveKitRoomTransport::enqueueActiveRoomTask(ActiveRoomTask task) noexcept {
+  if (!task)
+    return false;
+  try {
+    enqueue(ActiveRoomLaneTask{std::move(task)});
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
 std::size_t LiveKitRoomTransport::pendingOperationCount() const noexcept {
   std::lock_guard lock(mutex_);
   return static_cast<std::size_t>(pending_task_.has_value()) +
@@ -145,14 +156,30 @@ void LiveKitRoomTransport::run() noexcept {
     }
     if (auto *connect = std::get_if<ConnectTask>(&*task)) {
       runConnect(std::move(*connect));
+    } else if (auto *disconnect = std::get_if<DisconnectTask>(&*task)) {
+      runDisconnect(std::move(*disconnect));
     } else {
-      runDisconnect(std::move(std::get<DisconnectTask>(*task)));
+      runActiveRoomTask(std::move(std::get<ActiveRoomLaneTask>(*task)));
     }
     {
       std::lock_guard lock(mutex_);
       operation_running_ = false;
       operation_room_.reset();
     }
+  }
+}
+
+void LiveKitRoomTransport::runActiveRoomTask(ActiveRoomLaneTask task) noexcept {
+  std::shared_ptr<livekit::Room> room;
+  {
+    std::lock_guard lock(mutex_);
+    room = active_room_;
+  }
+  try {
+    task.task(room);
+  } catch (...) {
+    // ActiveRoomTask owns its typed completion contract. Never let a client
+    // callback terminate the shared SDK lane.
   }
 }
 

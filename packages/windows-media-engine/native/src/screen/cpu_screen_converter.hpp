@@ -5,6 +5,7 @@
 #include <span>
 #include <vector>
 
+#include "screen/screen_frame_marker.hpp"
 #include "screen/screen_frame_pipeline.hpp"
 
 namespace syrnike::windows_media::screen {
@@ -14,12 +15,6 @@ inline constexpr std::uint32_t kCpuReferenceHeight = 720;
 inline constexpr std::uint32_t kCpuReferenceFramesPerSecond = 30;
 inline constexpr std::uint64_t kMaximumCpuReadbackBytes =
     7680ULL * 4320ULL * 4ULL;
-
-inline constexpr std::uint16_t kScreenMarkerMagic = 0x534d;
-inline constexpr std::size_t kScreenMarkerBits = 144;
-inline constexpr std::size_t kScreenMarkerColumns = 24;
-inline constexpr std::size_t kScreenMarkerRows = 6;
-inline constexpr std::size_t kScreenMarkerTileSize = 12;
 
 struct ScreenConversionResult {
   capture::FrameMetadata source;

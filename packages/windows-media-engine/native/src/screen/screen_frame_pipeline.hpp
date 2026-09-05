@@ -42,6 +42,7 @@ class ScreenPipelineFrame final {
 
   explicit operator bool() const noexcept;
   const capture::FrameMetadata& metadata() const;
+  [[nodiscard]] std::optional<capture::D3d11FrameView> d3d11View() const;
   void copyBgraTo(std::span<std::uint8_t> destination,
                   std::size_t destination_stride) const;
   void release() noexcept;

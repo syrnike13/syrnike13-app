@@ -22,6 +22,20 @@ The Room/media-session owner is the only code allowed to translate those command
 - Publish, submit, unpublish, D3D mapping, conversion, and encoder operations each have typed deadlines. A cooperative timeout ends only the affected generation; a non-returning native/SDK call retires the media utility epoch because C++ cannot safely reclaim unknown borrowed resources in-process.
 - Stop is complete only after capture callbacks are revoked, pending/active frames are released, encoder slots are returned, and unpublication is acknowledged or the utility epoch has been retired.
 
-## Implementation gate
+## Implementation
 
-This document defines the boundary, not a speculative C++ interface. The compiled port belongs in #121, when both a real LiveKit adapter and a deterministic failure-injection adapter exist; that gives the seam two consumers and lets tests prove hung publish, map/readback, frame submission, and unpublish escalation. Until then, `lab::ReferenceScreenSender` remains the frozen CPU oracle and its process deadline is its only non-cooperative fault boundary.
+Issue #121 implements this boundary in `screen/production_screen_sender.*`. The
+port has two consumers: `livekit/LiveKitScreenPublicationAdapter` translates it
+onto `LiveKitRoomTransport`'s serialized SDK lane, while the deterministic test
+adapter can hold and complete publish, frame, and unpublish calls independently.
+The video mailbox has one active and one latest-wins pending frame, the event
+mailbox has sixteen entries with four reserved for control, and every borrowed
+encoded slot produces exactly one release event after the SDK call returns.
+
+`screen/production_screen_pipeline.*` owns capture consumption, GPU conversion,
+the hardware encoder, and slot leases, but receives its publication adapter from
+a factory. This keeps `Room`, participant, track, and source ownership on the
+media-session side. A hung SDK call leaves its active encoded lease borrowed and
+sets `utility_epoch_retirement_required`; a late completion still returns that
+lease, while a completion that never arrives makes in-process stop fail instead
+of guessing that the pointer is safe.

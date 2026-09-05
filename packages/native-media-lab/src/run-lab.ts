@@ -377,26 +377,30 @@ async function executeLab(resources: LabResources): Promise<void> {
         MEDIA_LAB_ALLOW_VIDEO_GAPS: 'true',
         MEDIA_LAB_MAX_VIDEO_LATENCY_MS: '1500',
         MEDIA_LAB_MAX_FRAME_AGE_MS: '1500',
-        MEDIA_LAB_TIMEOUT_MS: mode === 'screen-cpu-repeat' ? '120000' : '60000',
+        MEDIA_LAB_TIMEOUT_MS: process.env.MEDIA_LAB_TIMEOUT_MS ??
+          (mode.includes('repeat') ? '120000' : '60000'),
         ...observerOverrides,
       })
       await waitForFile(observerSetup.readyPath, 10_000)
       publisher = startPublisher({}, args)
       await withDeadline(
         Promise.all([publisher.completion, observerSetup.observer.completion]),
-        mode === 'screen-cpu-repeat' ? 150_000 : 75_000,
+        mode.includes('repeat') ? 150_000 : 75_000,
         `${mode} exceeded its process deadline`,
       )
       const observerReportText = await readFile(observerSetup.reportPath, 'utf8')
       const observerReport: unknown = JSON.parse(observerReportText)
+      const reportPrefix = mode.startsWith('screen-gpu-')
+        ? 'SCREEN_GPU_REPORT '
+        : 'SCREEN_CPU_REPORT '
       const senderLine = publisher.output().split(/\r?\n/).find((line) =>
-        line.startsWith('SCREEN_CPU_REPORT ')
+        line.startsWith(reportPrefix)
       )
       if (senderLine === undefined) {
-        throw new LabFailure(`${mode} did not emit SCREEN_CPU_REPORT`)
+        throw new LabFailure(`${mode} did not emit ${reportPrefix.trim()}`)
       }
       const senderReport: unknown = JSON.parse(
-        senderLine.slice('SCREEN_CPU_REPORT '.length),
+        senderLine.slice(reportPrefix.length),
       )
       if (
         typeof observerReport !== 'object' || observerReport === null ||
@@ -501,7 +505,11 @@ async function executeLab(resources: LabResources): Promise<void> {
     args?: readonly string[],
     expectedSubscriptions?: number,
   ) => {
-    if (requestedScreenMode === undefined || requestedScreenMode === mode) {
+    const explicitlyRequestedGpuMode =
+      mode.startsWith('screen-gpu-') && requestedScreenMode === mode
+    const selectedCpuMode = !mode.startsWith('screen-gpu-') &&
+      (requestedScreenMode === undefined || requestedScreenMode === mode)
+    if (explicitlyRequestedGpuMode || selectedCpuMode) {
       await runScreenScenario(mode, minimumFrames, args, expectedSubscriptions)
     }
   }
@@ -542,6 +550,15 @@ async function executeLab(resources: LabResources): Promise<void> {
       requestedScreenMode === 'screen-cpu-observer-rejoin') {
     await runScreenObserverRejoin()
   }
+  await screenScenario('screen-gpu-monitor-1080p60', 80)
+  await screenScenario('screen-gpu-window-1080p60', 80)
+  await screenScenario('screen-gpu-monitor-1440p30', 80)
+  await screenScenario(
+    'screen-gpu-repeat-720p30',
+    screenCycles * 10,
+    ['screen-gpu-repeat-720p30', '--cycles', String(screenCycles)],
+    screenCycles + 4,
+  )
 
   const screenOnly = process.env.MEDIA_LAB_SCREEN_ONLY === 'true'
   if (!screenOnly) {
@@ -746,7 +763,7 @@ const program = Effect.scoped(Effect.gen(function* () {
           throw new LabFailure('MEDIA_LAB_LIVEKIT_SDK_ROOT must be an absolute path')
         }
         for (const fileName of ['livekit.dll', 'livekit_ffi.dll']) {
-          const source = path.resolve(localLiveKitSdkRoot, fileName)
+          const source = path.resolve(localLiveKitSdkRoot, 'bin', fileName)
           if (!existsSync(source)) {
             throw new LabFailure(`Local LiveKit SDK is missing ${source}`)
           }

@@ -72,6 +72,7 @@ target_include_directories(media_sources PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src
 target_link_libraries(media_sources PRIVATE dwmapi shcore)
 
 add_library(media_capture STATIC
+  src/capture/d3d11_device.cpp
   src/capture/monitor_capture.cpp
   src/capture/window_capture.cpp
   src/capture/wgc_capture_support.cpp
@@ -84,11 +85,18 @@ target_link_libraries(media_capture PUBLIC media_sources PRIVATE d3d11 dxgi dxgu
 
 add_library(media_screen STATIC
   src/screen/screen_frame_pipeline.cpp
+  src/screen/screen_frame_marker.cpp
   src/screen/cpu_screen_converter.cpp
+  src/screen/gpu_screen_converter.cpp
+  src/screen/hardware_h264_capability.cpp
+  src/screen/hardware_h264_encoder.cpp
+  src/screen/production_screen_pipeline.cpp
+  src/screen/production_screen_sender.cpp
 )
 windows_media_target(media_screen)
 target_include_directories(media_screen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(media_screen PUBLIC media_capture)
+target_link_libraries(media_screen PUBLIC media_capture PRIVATE
+  mf mfplat mfuuid wmcodecdspuuid)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/LiveKitSDK.cmake")
 windows_media_setup_livekit_sdk()
@@ -103,6 +111,7 @@ target_link_libraries(media_livekit PUBLIC media_core LiveKit::livekit)
 
 add_library(media_screen_livekit STATIC
   src/lab/reference_screen_sender.cpp
+  src/livekit/livekit_screen_publication_adapter.cpp
 )
 windows_media_target(media_screen_livekit)
 target_include_directories(media_screen_livekit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -240,6 +249,7 @@ add_test(NAME source-win32-integration COMMAND source_win32_integration_tests)
 set_tests_properties(source-win32-integration PROPERTIES TIMEOUT 10)
 
 add_executable(monitor_capture_tests
+  tests/d3d11_device_test.cpp
   tests/monitor_capture_test.cpp
 )
 windows_media_target(monitor_capture_tests)
@@ -262,6 +272,24 @@ windows_media_target(screen_reference_tests)
 target_link_libraries(screen_reference_tests PRIVATE media_screen)
 add_test(NAME screen-reference COMMAND screen_reference_tests)
 set_tests_properties(screen-reference PROPERTIES TIMEOUT 10)
+
+add_executable(production_screen_sender_tests
+  tests/production_screen_sender_test.cpp
+)
+windows_media_target(production_screen_sender_tests)
+target_link_libraries(production_screen_sender_tests PRIVATE media_screen)
+add_test(NAME production-screen-sender COMMAND production_screen_sender_tests)
+set_tests_properties(production-screen-sender PROPERTIES TIMEOUT 10)
+
+add_executable(gpu_screen_converter_tests
+  tests/gpu_screen_converter_test.cpp
+  tests/hardware_h264_capability_test.cpp
+  tests/hardware_h264_encoder_test.cpp
+)
+windows_media_target(gpu_screen_converter_tests)
+target_link_libraries(gpu_screen_converter_tests PRIVATE media_screen)
+add_test(NAME gpu-screen-converter COMMAND gpu_screen_converter_tests)
+set_tests_properties(gpu-screen-converter PROPERTIES TIMEOUT 30)
 
 if(WINDOWS_MEDIA_BUILD_LAB)
   add_executable(native_media_lab_publisher

@@ -1,6 +1,6 @@
 # Windows media engine v2
 
-This package owns the isolated lifecycle foundation for the replacement Windows native media engine. It contains the C++20 core, `media_probe.exe`, the thin `windows_media.node` binding, the Phase A LiveKit Room transport, Windows source discovery, and isolated WGC monitor/window capture. The disposable Media Lab connects WGC to LiveKit through a CPU `lab::ReferenceScreenSender`, but product Engine, addon, and Electron paths do not. Audio, camera, production encoding, preview, DXGI fallback, and compatibility code from v1 remain absent.
+This package owns the isolated lifecycle foundation for the replacement Windows native media engine. It contains the C++20 core, `media_probe.exe`, the thin `windows_media.node` binding, the LiveKit Room transport, Windows source discovery, isolated WGC capture, and the Room-free production GPU screen pipeline. The disposable Media Lab still uses the CPU `lab::ReferenceScreenSender` until the pre-encoded fork bundle is released; product Engine, addon, and Electron entry points remain gated. Audio, camera, preview, DXGI fallback, and compatibility code from v1 remain absent.
 
 The Engine is one-shot: one instance can start and shut down once, and another lifecycle creates a new instance. All lifecycle and desired-state commits run on its single control thread; Room work runs on persistent transport lanes guarded by independent operation deadlines. Protocol v3 stores bounded declarative intent and private one-attempt credential leases. A non-cooperative SDK operation produces a typed fatal event, after which Electron replaces the utility process rather than reusing unknown native ownership.
 
@@ -31,4 +31,4 @@ The monitor probes place a controlled animated window on the selected monitor, c
 
 The window probes capture a controlled animated HWND and exercise 30 generation-fenced resizes, ten-second minimize/restore, hide/show, cross-monitor movement, terminal close, a typed handle-reuse attempt, and 50 lifecycle cycles. See `docs/native-v2/WINDOW_CAPTURE.md` for event, ownership, resize-retirement, and no-content semantics.
 
-The CPU screen path is a non-production delivery oracle with a process-level fault boundary. See `docs/native-v2/SCREEN_CPU_REFERENCE.md` for its evidence and `docs/native-v2/SCREEN_PUBLICATION_SEAM.md` for the separate Room-free boundary required by the production GPU path.
+The CPU screen path is a non-production delivery oracle with a process-level fault boundary. See `docs/native-v2/SCREEN_CPU_REFERENCE.md` for its evidence, `docs/native-v2/SCREEN_PUBLICATION_SEAM.md` for the Room-free publication boundary, and `docs/native-v2/SCREEN_GPU_PRODUCTION.md` for the GPU conversion, hardware encoder, bounds, and remaining SDK-bundle gate.

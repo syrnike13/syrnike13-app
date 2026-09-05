@@ -123,6 +123,9 @@ const cmakeArgs = [
   `--CDNAPI_VERSION=${NAPI_VERSION}`,
   `--CDWINDOWS_MEDIA_ENABLE_ASAN=${enableAsan ? 'ON' : 'OFF'}`,
   `--CDWINDOWS_MEDIA_BUILD_LAB=${buildMediaLab ? 'ON' : 'OFF'}`,
+  `--CDWINDOWS_MEDIA_LIVEKIT_SDK_ROOT=${
+    buildMediaLab ? process.env.MEDIA_LAB_LIVEKIT_SDK_ROOT ?? '' : ''
+  }`,
   `--CDWINDOWS_MEDIA_COMMIT=${commitSha}`,
 ]
 

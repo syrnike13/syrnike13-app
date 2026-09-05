@@ -11,10 +11,28 @@ set(WINDOWS_MEDIA_LIVEKIT_FORK_RELEASE "v1.10.0-syrnike.2")
 set(WINDOWS_MEDIA_LIVEKIT_WINDOWS_X64_SHA256
   "caab37d69516fd7b9da146bb80574e3b2bc1d0e422b2ad5f8e1a2dceea91bcf8"
 )
+set(WINDOWS_MEDIA_LIVEKIT_SDK_ROOT "" CACHE PATH
+  "Optional explicit LiveKit SDK root for isolated Media Lab validation"
+)
 
 function(windows_media_setup_livekit_sdk)
   if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "Native v2 Media Lab currently requires Windows x64")
+  endif()
+
+  if(WINDOWS_MEDIA_LIVEKIT_SDK_ROOT)
+    set(_local_config
+      "${WINDOWS_MEDIA_LIVEKIT_SDK_ROOT}/lib/cmake/LiveKit/LiveKitConfig.cmake"
+    )
+    if(NOT EXISTS "${_local_config}")
+      message(FATAL_ERROR
+        "Explicit LiveKit SDK root has no lib/cmake/LiveKit/LiveKitConfig.cmake: ${WINDOWS_MEDIA_LIVEKIT_SDK_ROOT}"
+      )
+    endif()
+    set(LiveKit_DIR
+      "${WINDOWS_MEDIA_LIVEKIT_SDK_ROOT}/lib/cmake/LiveKit" PARENT_SCOPE
+    )
+    return()
   endif()
 
   set(_archive_name
@@ -51,9 +69,7 @@ function(windows_media_setup_livekit_sdk)
   endif()
 
   set(LiveKit_DIR "${_sdk_root}/lib/cmake/LiveKit" PARENT_SCOPE)
-  set(WINDOWS_MEDIA_LIVEKIT_SDK_ROOT "${_sdk_root}" CACHE PATH
-    "Syrnike LiveKit SDK used by Native v2 Media Lab" FORCE
-  )
+  set(WINDOWS_MEDIA_LIVEKIT_SDK_ROOT "${_sdk_root}" PARENT_SCOPE)
 endfunction()
 
 function(windows_media_copy_livekit_runtime target_name)

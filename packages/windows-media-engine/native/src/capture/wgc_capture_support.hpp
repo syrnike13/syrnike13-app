@@ -14,13 +14,12 @@
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
 
 #include "capture/monitor_capture.hpp"
+#include "capture/d3d11_device.hpp"
 
 namespace syrnike::windows_media::capture::detail {
 
 struct WgcDeviceState {
-  Microsoft::WRL::ComPtr<ID3D11Device> device;
-  Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
-  std::mutex context_mutex;
+  std::shared_ptr<D3d11DeviceOwner> owner;
   Microsoft::WRL::ComPtr<ID3D11Texture2D> readback_staging;
   std::uint32_t readback_width = 0;
   std::uint32_t readback_height = 0;

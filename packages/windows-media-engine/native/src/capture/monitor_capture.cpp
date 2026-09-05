@@ -24,6 +24,10 @@ void FrameResource::copyBgraTo(std::span<std::uint8_t>, std::size_t) {
   throw std::logic_error("frame resource does not support CPU readback");
 }
 
+std::optional<D3d11FrameView> FrameResource::d3d11View() {
+  return std::nullopt;
+}
+
 struct FrameLease::State {
   std::mutex mutex;
   FrameMetadata metadata;
@@ -104,6 +108,13 @@ std::uint64_t FrameLease::sampledHash() const {
   std::lock_guard lock(state_->mutex);
   if (!state_->resource) throw std::logic_error("frame lease was released");
   return state_->resource->sampledHash();
+}
+
+std::optional<D3d11FrameView> FrameLease::d3d11View() const {
+  if (!*this) throw std::logic_error("frame lease was released");
+  std::lock_guard lock(state_->mutex);
+  if (!state_->resource) throw std::logic_error("frame lease was released");
+  return state_->resource->d3d11View();
 }
 
 void FrameLease::copyBgraTo(std::span<std::uint8_t> destination,

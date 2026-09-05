@@ -187,19 +187,16 @@ void finalizeWindowResources(
       state->peak_engine_resources->load();
   if (state->device) {
     {
-      std::lock_guard context_lock(state->device->context_mutex);
+      std::lock_guard context_lock(state->device->owner->contextMutex());
       state->device->readback_staging.Reset();
       state->device->readback_width = 0;
       state->device->readback_height = 0;
-      if (state->diagnostics.d3d_debug_enabled) {
-        state->device->context->ClearState();
-        state->device->context->Flush();
-      }
     }
   }
   if (state->device && state->diagnostics.d3d_debug_enabled) {
     ComPtr<ID3D11Debug> debug;
-    const HRESULT query = state->device->device.As(&debug);
+    const HRESULT query = state->device->owner->device()->QueryInterface(
+        IID_PPV_ARGS(&debug));
     if (SUCCEEDED(query)) {
       state->diagnostics.live_objects_hresult = debug->ReportLiveDeviceObjects(
           D3D11_RLDO_DETAIL | D3D11_RLDO_IGNORE_INTERNAL);

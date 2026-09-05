@@ -27,6 +27,9 @@
 #include "capture/wgc_window_capture.hpp"
 #include "capture/window_capture.hpp"
 #include "lab/reference_screen_sender.hpp"
+#include "livekit/livekit_room_transport.hpp"
+#include "livekit/livekit_screen_publication_adapter.hpp"
+#include "screen/production_screen_pipeline.hpp"
 #include "sources/win32_source_enumerator.hpp"
 
 namespace syrnike::windows_media::lab {
@@ -823,6 +826,205 @@ std::string reportJson(const std::string& mode, const ScreenEvidence& evidence,
   return output.str();
 }
 
+#if defined(LIVEKIT_CPP_HAS_PREENCODED_VIDEO_SOURCE)
+
+screen::ScreenVideoProfile gpuProfile(const std::string& mode) {
+  if (mode.find("1440p30") != std::string::npos)
+    return screen::kScreenProfile1440p30;
+  if (mode.find("720p30") != std::string::npos)
+    return screen::kScreenProfile720p30;
+  return screen::kScreenProfile1080p60;
+}
+
+std::string jsonString(const std::string& value) {
+  std::string result;
+  result.reserve(value.size() + 2);
+  result.push_back('"');
+  for (const char character : value) {
+    if (character == '"' || character == '\\') result.push_back('\\');
+    result.push_back(character);
+  }
+  result.push_back('"');
+  return result;
+}
+
+template <typename Capture>
+screen::ProductionScreenPipelineStats driveGpuCapture(
+    Capture& capture_source,
+    const std::shared_ptr<LiveKitRoomTransport>& transport,
+    screen::ScreenVideoProfile profile, std::uint64_t target_frames,
+    const std::function<void()>& wait_until_ready,
+    const std::function<void(std::chrono::steady_clock::time_point)>&
+        wait_until_unpublished) {
+  const auto owner = capture::processD3d11Device(false);
+  auto frames = std::make_shared<ScreenFramePipeline>();
+  screen::ProductionScreenPipeline pipeline(
+      owner, frames, profile,
+      [transport](const std::shared_ptr<screen::HardwareH264Encoder>& encoder) {
+        const std::weak_ptr weak_encoder(encoder);
+        return std::make_shared<LiveKitScreenPublicationAdapter>(
+            transport, LiveKitScreenEncoderControls{
+                           [weak_encoder] {
+                             if (const auto active = weak_encoder.lock())
+                               active->requestKeyFrame();
+                           }});
+      });
+  require(capture_source.start().ok, "GPU WGC capture failed to start");
+  const auto started = pipeline.start("screen-gpu-production", 5s);
+  if (!started.ok) {
+    (void)capture_source.stop(5s);
+    throw std::runtime_error(
+        started.failure ? started.failure->message
+                        : "GPU screen publication failed to start");
+  }
+  const auto publish_deadline = std::chrono::steady_clock::now() + 10s;
+  while (pipeline.state() == screen::ProductionScreenPipelineState::starting &&
+         std::chrono::steady_clock::now() < publish_deadline)
+    Sleep(1);
+  require(pipeline.state() == screen::ProductionScreenPipelineState::running,
+          "GPU screen track did not reach running");
+  if (wait_until_ready) wait_until_ready();
+  std::cout << "publisher: GPU screen track published" << std::endl;
+
+  std::atomic_bool producer_running{true};
+  std::thread producer([&] {
+    while (producer_running.load()) {
+      auto lease = capture_source.waitForFrame(50ms);
+      if (lease) {
+        (void)frames->submit(std::move(*lease));
+      } else if (capture_source.state() == CaptureState::Failed ||
+                 capture_source.state() == CaptureState::Stopped) {
+        break;
+      }
+    }
+  });
+
+  std::exception_ptr operation_failure;
+  try {
+    const auto frame_deadline = std::chrono::steady_clock::now() + 45s;
+    while (pipeline.stats().sender.consumed < target_frames &&
+           std::chrono::steady_clock::now() < frame_deadline) {
+      if (pipeline.state() == screen::ProductionScreenPipelineState::failed) {
+        const auto failure = pipeline.failure();
+        throw std::runtime_error(failure ? failure->message
+                                         : "GPU screen pipeline failed");
+      }
+      Sleep(2);
+    }
+    require(pipeline.stats().sender.consumed >= target_frames,
+            "GPU screen sender publication deadline exceeded");
+  } catch (...) {
+    operation_failure = std::current_exception();
+  }
+
+  producer_running.store(false);
+  const auto stopped =
+      pipeline.stop(std::chrono::steady_clock::now() + 10s);
+  const auto capture_stopped = capture_source.stop(5s);
+  producer.join();
+  if (stopped.ok && wait_until_unpublished)
+    wait_until_unpublished(std::chrono::steady_clock::now() + 5s);
+  if (operation_failure) std::rethrow_exception(operation_failure);
+  require(stopped.ok, stopped.failure ? stopped.failure->message
+                                      : "GPU screen pipeline did not stop");
+  require(capture_stopped.ok, "GPU WGC capture did not stop");
+  return pipeline.stats();
+}
+
+screen::ProductionScreenPipelineStats runGpuMonitorCycle(
+    const std::shared_ptr<LiveKitRoomTransport>& transport,
+    screen::ScreenVideoProfile profile, std::uint64_t target_frames,
+    const std::function<void()>& wait_until_ready,
+    const std::function<void(std::chrono::steady_clock::time_point)>&
+        wait_until_unpublished) {
+  SourceRegistry registry(sources::createWin32SourceEnumerator());
+  EnumerationOptions options;
+  options.kind = EnumerationOptions::Kind::Monitor;
+  const auto values = registry.enumerate(options);
+  require(values.ok, "GPU monitor enumeration failed");
+  const auto selected = primaryMonitor(values);
+  MonitorFixture fixture(selected);
+  MonitorCapture capture_source(registry, selected.id,
+                                capture::createWgcMonitorCaptureBackend());
+  return driveGpuCapture(capture_source, transport, profile, target_frames,
+                         wait_until_ready, wait_until_unpublished);
+}
+
+screen::ProductionScreenPipelineStats runGpuWindowCycle(
+    const std::shared_ptr<LiveKitRoomTransport>& transport,
+    screen::ScreenVideoProfile profile, std::uint64_t target_frames,
+    const std::function<void()>& wait_until_ready,
+    const std::function<void(std::chrono::steady_clock::time_point)>&
+        wait_until_unpublished) {
+  WindowFixture fixture;
+  SourceRegistry registry(sources::createWin32SourceEnumerator());
+  EnumerationOptions options;
+  options.kind = EnumerationOptions::Kind::Window;
+  const auto values = registry.enumerate(options);
+  require(values.ok, "GPU window enumeration failed");
+  WindowCapture capture_source(registry, fixtureWindow(values).id,
+                               capture::createWgcWindowCaptureBackend());
+  return driveGpuCapture(capture_source, transport, profile, target_frames,
+                         wait_until_ready, wait_until_unpublished);
+}
+
+std::string gpuReportJson(
+    const std::string& mode, const screen::ScreenVideoProfile& profile,
+    const screen::ProductionScreenPipelineStats& stats, int cycles) {
+  const bool accepted = stats.sender.consumed > 0 &&
+                        stats.sender.terminal_failures == 0 &&
+                        stats.encoder.encoded > 0 &&
+                        stats.encoder.encoded_bytes > 0 &&
+                        stats.encoder.output_stalls == 0 &&
+                        stats.capture.pending == 0 &&
+                        stats.capture.active == 0 &&
+                        stats.converter.slots_in_use == 0 &&
+                        stats.encoder.input_slots_in_use == 0 &&
+                        stats.encoder.output_slots_in_use == 0 &&
+                        stats.sender.video_depth == 0;
+  std::ostringstream output;
+  output << "{\"schemaVersion\":1,\"accepted\":"
+         << (accepted ? "true" : "false") << ",\"mode\":"
+         << jsonString(mode) << ",\"productionPath\":\"d3d11-hardware-h264\""
+         << ",\"profile\":{\"width\":" << profile.width
+         << ",\"height\":" << profile.height
+         << ",\"fps\":" << profile.frames_per_second
+         << ",\"bitrate\":" << profile.bitrate << "}"
+         << ",\"adapter\":{\"luidLow\":" << stats.adapter_luid.low_part
+         << ",\"luidHigh\":" << stats.adapter_luid.high_part << "}"
+         << ",\"encoder\":{\"implementation\":"
+         << jsonString(stats.encoder_implementation)
+         << ",\"submitted\":" << stats.encoder.submitted
+         << ",\"encoded\":" << stats.encoder.encoded
+         << ",\"bytes\":" << stats.encoder.encoded_bytes
+         << ",\"keyframes\":" << stats.encoder.keyframes
+         << ",\"outputStalls\":" << stats.encoder.output_stalls << "}"
+         << ",\"gpu\":{\"converted\":" << stats.converter.converted
+         << ",\"timingMeasurements\":"
+         << stats.converter.gpu_timing_measurements
+         << ",\"timingUnavailable\":"
+         << stats.converter.gpu_timing_unavailable
+         << ",\"durationTotalUs\":"
+         << stats.converter.gpu_duration_total_us
+         << ",\"durationMaxUs\":" << stats.converter.gpu_duration_max_us
+         << ",\"textureBytes\":" << stats.converter.texture_bytes << "}"
+         << ",\"cadence\":{\"captureAgeLastUs\":"
+         << stats.capture_age_last_us << ",\"captureAgeMaxUs\":"
+         << stats.capture_age_max_us << ",\"frameRateDrops\":"
+         << stats.frame_rate_drops << "}"
+         << ",\"backpressure\":{\"captureSuperseded\":"
+         << stats.capture.superseded << ",\"conversionDrops\":"
+         << stats.conversion_drops << ",\"encoderSuperseded\":"
+         << stats.encoder.input_superseded << ",\"publicationSuperseded\":"
+         << stats.sender.superseded << ",\"maximumPublicationDepth\":"
+         << stats.sender.maximum_video_depth << "}"
+         << ",\"resources\":{\"cycles\":" << cycles
+         << ",\"estimatedBytes\":" << stats.memory.total_bytes << "}}";
+  return output.str();
+}
+
+#endif
+
 }  // namespace
 
 bool isScreenCpuMode(const std::string& mode) noexcept {
@@ -832,6 +1034,79 @@ bool isScreenCpuMode(const std::string& mode) noexcept {
          mode == "screen-cpu-source-close" ||
          mode == "screen-cpu-stop-during-conversion" ||
          mode == "screen-cpu-room-disconnect";
+}
+
+bool isScreenGpuMode(const std::string& mode) noexcept {
+  return mode == "screen-gpu-monitor-1080p60" ||
+         mode == "screen-gpu-window-1080p60" ||
+         mode == "screen-gpu-monitor-1440p30" ||
+         mode == "screen-gpu-repeat-720p30";
+}
+
+void warmScreenGpuLab(
+    const std::shared_ptr<LiveKitRoomTransport>& transport,
+    const std::string& mode, const std::function<void()>& wait_until_ready,
+    const std::function<void(std::chrono::steady_clock::time_point)>&
+        wait_until_unpublished) {
+  require(isScreenGpuMode(mode), "unknown screen GPU lab mode");
+#if defined(LIVEKIT_CPP_HAS_PREENCODED_VIDEO_SOURCE)
+  require(static_cast<bool>(transport),
+          "screen GPU warm-up requires a Room transport");
+  const auto profile = gpuProfile(mode);
+  if (mode.find("window") != std::string::npos ||
+      mode.find("repeat") != std::string::npos) {
+    (void)runGpuWindowCycle(transport, profile, 30, wait_until_ready,
+                            wait_until_unpublished);
+  } else {
+    (void)runGpuMonitorCycle(transport, profile, 30, wait_until_ready,
+                             wait_until_unpublished);
+  }
+#else
+  (void)transport;
+  (void)wait_until_ready;
+  (void)wait_until_unpublished;
+  throw std::runtime_error(
+      "screen GPU lab requires the pre-encoded LiveKit SDK bundle");
+#endif
+}
+
+std::string runScreenGpuLab(
+    const std::shared_ptr<LiveKitRoomTransport>& transport,
+    const std::string& mode, int cycles,
+    const std::function<void()>& wait_until_ready,
+    const std::function<void(std::chrono::steady_clock::time_point)>&
+        wait_until_unpublished) {
+  require(isScreenGpuMode(mode), "unknown screen GPU lab mode");
+#if defined(LIVEKIT_CPP_HAS_PREENCODED_VIDEO_SOURCE)
+  require(static_cast<bool>(transport),
+          "screen GPU lab requires a Room transport");
+  const auto profile = gpuProfile(mode);
+  const int cycle_count = mode == "screen-gpu-repeat-720p30" ? cycles : 1;
+  screen::ProductionScreenPipelineStats stats;
+  for (int cycle = 0; cycle < cycle_count; ++cycle) {
+    const auto target = cycle_count > 1
+                            ? 60ULL
+                            : static_cast<std::uint64_t>(
+                                  profile.frames_per_second) *
+                                  8ULL;
+    if (mode.find("window") != std::string::npos ||
+        mode.find("repeat") != std::string::npos) {
+      stats = runGpuWindowCycle(transport, profile, target, wait_until_ready,
+                                wait_until_unpublished);
+    } else {
+      stats = runGpuMonitorCycle(transport, profile, target, wait_until_ready,
+                                 wait_until_unpublished);
+    }
+  }
+  return gpuReportJson(mode, profile, stats, cycle_count);
+#else
+  (void)transport;
+  (void)cycles;
+  (void)wait_until_ready;
+  (void)wait_until_unpublished;
+  throw std::runtime_error(
+      "screen GPU lab requires the pre-encoded LiveKit SDK bundle");
+#endif
 }
 
 void warmScreenCpuLab(const std::shared_ptr<livekit::Room>& room,

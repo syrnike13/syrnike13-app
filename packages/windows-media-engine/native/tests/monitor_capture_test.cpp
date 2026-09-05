@@ -12,6 +12,10 @@
 
 #include "capture/monitor_capture.hpp"
 
+namespace syrnike::windows_media::capture::tests {
+void processDeviceIsSharedAndVideoCapable();
+}
+
 namespace {
 
 using namespace syrnike::windows_media::capture;
@@ -480,6 +484,8 @@ void stopContractsCoverStaticTerminalAndLateRelease() {
 }  // namespace
 
 int main() try {
+  syrnike::windows_media::capture::tests::
+      processDeviceIsSharedAndVideoCapable();
   sourceMustResolveAsAvailableMonitor();
   latestWinsQueueAndLeaseAreBounded();
   stopDuringStartIsBounded();
