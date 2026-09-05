@@ -1,8 +1,18 @@
 # Issue #122: remote publication event contract blocker
 
-Status: fixed and verified in a local SDK candidate, 2026-09-05. The bounded
-viewer path is implemented locally; see [receive/bridge verification](REMOTE_VIDEO_RECEIVE.md).
-The published application pin is unchanged.
+Status: fixed, published and pinned as `v1.10.0-syrnike.4`, 2026-09-05. See
+[receive/bridge verification](REMOTE_VIDEO_RECEIVE.md). The following local
+candidate results are retained as historical red/green evidence.
+
+The release source is `7e3a9465733666f6fa463c58d842e3702ed2e646`. Clean CI checkout
+exposed that the former Rust pin `247ef11b8f4aa87dc877d6ad2a40b4b28cf78a4b`
+existed only locally. The release instead pins published upstream
+`1a477bc422c6890537b3bcdb017f0ac094d49661` and applies one consolidated native-v2
+patch reproducing the tested source content, including #121 H264 support.
+Tag `.3` failed before compilation and produced no assets; `.4` passed all
+seven platform builds. Local `.4` rebuilt via `build.cmd`, passed all 359 unit
+tests and repeated both real subscription/publication integration tests three
+times. The published archive identity is recorded in `REMOTE_VIDEO_RECEIVE.md`.
 
 ## Local fix and verification
 
@@ -107,10 +117,8 @@ patch. This defect is in the publication event preceding decoded ingress.
 Treating it as a prerequisite blocker avoids silently enabling subscriptions
 for every track or working around the event through mutable SDK internals.
 
-The contract and viewer are now unblocked locally using the tested override.
-Publish a reproducible SDK artifact and update the shared pin
-before delivering the viewer to other machines. No SDK release or remote issue
-change has been made.
+The contract and viewer are unblocked using the published, hash-pinned SDK.
+The local override is no longer required for a fresh application build.
 
 The Electron side has a suitable documented safety primitive:
 [`allReferencesReleased`](https://www.electronjs.org/docs/latest/api/shared-texture).

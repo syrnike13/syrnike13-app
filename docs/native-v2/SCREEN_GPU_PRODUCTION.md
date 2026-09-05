@@ -89,7 +89,7 @@ neutral `@livekit/rtc-node` observer. The measured 1080p60 monitor run decoded
 with 60 ms p95 latency, the 1440p30 run decoded 209 frames with 186 ms p95
 latency, and 30 720p30 publish/unpublish cycles delivered 900 measured frames
 with 56 ms p95 latency. All runs had zero stale or out-of-order frames and no
-encoder output stall. The application keeps using the pinned `.2`
-SDK bundle until the fork changes are reviewed, released, and deliberately
-pinned; local validation uses `MEDIA_LAB_LIVEKIT_SDK_ROOT` and does not alter the
-release dependency.
+encoder output stall. Those measurements used a local SDK candidate. The #122
+delivery now pins published `v1.10.0-syrnike.4`, which includes this H264 API and
+the manual remote-publication fix; see [REMOTE_VIDEO_RECEIVE.md](REMOTE_VIDEO_RECEIVE.md)
+for its source commit, archive identity and verification.

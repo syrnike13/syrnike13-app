@@ -1,10 +1,12 @@
 # Remote video receive and Electron texture bridge (#122)
 
-Implemented and verified locally on Windows, 2026-09-05. This is the opt-in
-native Media Lab receive slice, not the Voice UI cutover. It requires the
-[local SDK candidate](REMOTE_VIDEO_SDK_BLOCKER.md); the published `.2` SDK pin
-still contains the publication-event defect. No SDK release, deployment or
-issue closure is implied by these results.
+Implemented on Windows, 2026-09-05. This is the opt-in native Media Lab receive
+slice, not the Voice UI cutover. The application pins published SDK
+[`v1.10.0-syrnike.4`](https://github.com/syrnike13/client-sdk-cpp/releases/tag/v1.10.0-syrnike.4)
+at commit `7e3a9465733666f6fa463c58d842e3702ed2e646`. Its Windows archive SHA-256
+is `06ea330c76bd736fbfc5c46dc997c1d2f965e822a70d86b39bb84b590d7741c1`.
+The [SDK blocker history](REMOTE_VIDEO_SDK_BLOCKER.md) records the original
+local candidate and the reproducible release source.
 
 ## Ownership and bounds
 
@@ -98,10 +100,10 @@ Electron's release contract is documented in
 
 ## Reproduce
 
-Build with the unpublished SDK override; do not silently use the shared `.2` pin:
+Build with the published SDK pin. The normal build downloads and verifies it:
 
 ```powershell
-$env:MEDIA_LAB_LIVEKIT_SDK_ROOT = 'E:/Nextcloud/Files/Code/client-sdk-cpp/sdk-out/livekit-sdk-issue122'
+Remove-Item Env:MEDIA_LAB_LIVEKIT_SDK_ROOT -ErrorAction SilentlyContinue
 pnpm --filter @syrnike13/windows-media-engine build:lab
 pnpm --filter @syrnike13/desktop build:video-lab
 $env:MEDIA_LAB_SERVER_EXE = '<absolute path to local livekit-server.exe>'
@@ -168,5 +170,5 @@ allocation cycles. The D3D debug layer reports no live textures after cleanup;
 the same pool test passes under MSVC AddressSanitizer. This is pool-focused
 ASan/debug-layer coverage, not instrumentation of Electron or the SDK decoder.
 The desktop bridge tests exercise authoritative release/ACK, transfer timeout,
-schema bounds and epoch-safe metadata. Voice subscription reconciliation and
-shipping a reproducible SDK release remain later integration work.
+schema bounds and epoch-safe metadata. Voice subscription reconciliation remains
+later integration work; the SDK prerequisite is now published and pinned.
