@@ -1,0 +1,5 @@
+# Protocol identity hashes canonical source bytes. Windows checkouts must not
+# change the schema hash or make generated-file verification platform-dependent.
+packages/windows-media-engine/protocol/media-lifecycle.json text eol=lf
+packages/windows-media-engine/native/src/core/protocol_limits.generated.hpp text eol=lf
+apps/desktop/src/main/media-runtime/protocol.generated.ts text eol=lf
