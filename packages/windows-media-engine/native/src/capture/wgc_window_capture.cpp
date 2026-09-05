@@ -180,6 +180,11 @@ void finalizeWindowResources(
     const std::shared_ptr<WindowBackendState>& state) noexcept {
   std::lock_guard lock(state->mutex);
   if (state->finalized) return;
+  // A terminal signal stops WGC callbacks, but the consumer may still hold its
+  // final frame. WindowCapture::stop calls us again after all leases drain.
+  // Do not freeze resource diagnostics or finalize the shared readback device
+  // during that interval.
+  if (!state->stopped || state->live_engine_resources->load() != 0) return;
   state->finalized = true;
   state->diagnostics.live_engine_objects =
       state->live_engine_resources->load();
@@ -400,6 +405,17 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
               ComPtr<ID3D11Texture2D> source_texture;
               winrt::check_hresult(access->GetInterface(
                   IID_PPV_ARGS(&source_texture)));
+              D3D11_TEXTURE2D_DESC texture_description{};
+              source_texture->GetDesc(&texture_description);
+              // Recreate can race the compositor's resize. ContentSize may
+              // already describe the new window while this surface still
+              // belongs to the smaller pool. Drop that transitional frame;
+              // never publish metadata extending beyond its actual backing.
+              if (texture_description.Width < static_cast<UINT>(content_size.Width) ||
+                  texture_description.Height < static_cast<UINT>(content_size.Height)) {
+                frame.Close();
+                return;
+              }
               FrameCallback callback;
               std::uint64_t generation = 1;
               {

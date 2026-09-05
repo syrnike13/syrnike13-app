@@ -376,6 +376,8 @@ async function executeLab(resources: LabResources): Promise<void> {
     let observerSetup: ReturnType<typeof startObserver> | undefined
     try {
       observerSetup = startObserver(mode, {
+        MEDIA_LAB_VIDEO_READY_PATH: mode === 'screen-cpu-room-disconnect'
+          ? path.resolve(resources.directory, `${mode}.video-ready`) : undefined,
         MEDIA_LAB_MIN_VIDEO_FRAMES: String(minimumFrames),
         MEDIA_LAB_MIN_CONTENT_CHANGES: String(Math.min(3, Math.max(0, minimumFrames - 1))),
         MEDIA_LAB_MIN_AUDIO_PULSES: '1',
@@ -386,14 +388,20 @@ async function executeLab(resources: LabResources): Promise<void> {
         MEDIA_LAB_MAX_VIDEO_LATENCY_MS: '1500',
         MEDIA_LAB_MAX_FRAME_AGE_MS: '1500',
         MEDIA_LAB_TIMEOUT_MS: process.env.MEDIA_LAB_TIMEOUT_MS ??
-          (mode.includes('repeat') ? '120000' : '60000'),
+          String(mode.includes('repeat') ? 30_000 + screenCycles * 10_000 : 60_000),
         ...observerOverrides,
       })
       await waitForFile(observerSetup.readyPath, 10_000)
-      publisher = startPublisher({}, args)
+      publisher = startPublisher({
+        MEDIA_LAB_VIDEO_READY_PATH: mode === 'screen-cpu-room-disconnect'
+          ? path.resolve(resources.directory, `${mode}.video-ready`) : undefined,
+      }, args)
       await withDeadline(
         Promise.all([publisher.completion, observerSetup.observer.completion]),
-        mode.includes('repeat') ? 150_000 : 75_000,
+        // Lifecycle churn includes publish/unpublish acknowledgements and a
+        // resource-drain check per cycle. Its total duration is distinct from
+        // the unchanged 1500 ms frame-age/latency acceptance limit.
+        mode.includes('repeat') ? 45_000 + screenCycles * 10_000 : 75_000,
         `${mode} exceeded its process deadline`,
       )
       const observerReportText = await readFile(observerSetup.reportPath, 'utf8')

@@ -969,13 +969,22 @@ int captureWindowProbe(int argc, char** argv, const std::string& command) {
     CaptureInstance first(registry, source_id, arguments.debug, hooks);
     startCapture(first, evidence);
     captureFrames(first.capture, 10, evidence);
+    auto held_on_close = first.capture.waitForFrame(3s);
+    require(held_on_close.has_value(), "close regression needs a retained frame");
     close_gate.arm();
     close_gate.waitUntilEntered(3s, "frame callback gate was not reached");
     const auto rapid = fixture.command("rapid");
     (void)waitForEvent(first.capture, WindowCaptureEventKind::SourceClosed,
                        evidence, 3s);
     close_gate.release();
-    waitForAutomaticCleanup(first, 3s);
+    // Join automatic terminal cleanup while a consumer still owns a frame.
+    // Previously it finalized diagnostics here with live_engine_objects == 1,
+    // permanently reporting a leak even after WindowCapture::stop drained it.
+    require(first.diagnostics->stop(std::chrono::steady_clock::now() + 3s).ok,
+            "terminal backend cleanup failed with a retained frame");
+    require(!first.diagnostics->diagnostics().cleanup_completed,
+            "terminal cleanup finalized before the consumer released its frame");
+    held_on_close->release();
     stopCapture(first, evidence);
     const auto refreshed = registry.enumerate(window_options);
     const auto replacement = findWindow(refreshed,

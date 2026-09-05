@@ -90,6 +90,10 @@ ReferenceScreenSenderStartResult ReferenceScreenSender::start() {
     livekit::TrackPublishOptions publish_options;
     publish_options.source = livekit::TrackSource::SOURCE_SCREENSHARE;
     publish_options.simulcast = false;
+    // This is the CPU oracle, not an automatic hardware/backend selection
+    // test. Keep its encoder explicit and use the production wire codec.
+    publish_options.video_codec = livekit::VideoCodec::H264;
+    publish_options.video_encoder = livekit::VideoEncoderBackend::Software;
     // Match the fork's allowed 720p30 preset; the SDK's implicit 1.5 Mbps
     // default is rejected by the server's screen-share policy.
     publish_options.video_encoding = livekit::VideoEncodingOptions{

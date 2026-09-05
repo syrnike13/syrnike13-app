@@ -16,6 +16,7 @@
 #include "screen/hardware_h264_encoder.hpp"
 #include "screen/production_screen_sender.hpp"
 #include "screen/screen_frame_pipeline.hpp"
+#include "screen/local_screen_preview.hpp"
 
 namespace syrnike::windows_media::screen {
 
@@ -52,6 +53,7 @@ struct ProductionScreenPipelineStats {
   HardwareH264EncoderStats encoder;
   ProductionScreenSenderStats sender;
   ProductionScreenMemoryBudget memory;
+  PreviewStats preview;
 };
 
 using ScreenPublicationAdapterFactory = std::function<
@@ -104,6 +106,7 @@ class ProductionScreenPipeline final {
   bool published_ = false;
   bool stop_requested_ = false;
   bool worker_done_ = false;
+  bool owns_preview_ = false;
   std::condition_variable worker_changed_;
   std::thread worker_;
 };

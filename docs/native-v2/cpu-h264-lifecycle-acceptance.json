@@ -1,0 +1,507 @@
+{
+  "schemaVersion": 2,
+  "accepted": true,
+  "generatedAt": "2026-09-05T10:54:07.187Z",
+  "scenarios": {
+    "production-room-control": {
+      "accepted": true,
+      "connected": true,
+      "disconnected": true
+    },
+    "room-owner-control": {
+      "accepted": true,
+      "cancellation": "typed",
+      "generationFencing": "passed",
+      "delayedCompletion": "passed",
+      "lifecycleCycles": 50
+    },
+    "unexpected-room-disconnect": {
+      "accepted": true
+    },
+    "screen-cpu-repeat": {
+      "sender": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "mode": "screen-cpu-repeat",
+        "referencePath": "cpu-non-production",
+        "requestedCodec": "h264",
+        "requestedEncoderBackend": "software",
+        "profile": {
+          "width": 1280,
+          "height": 720,
+          "fps": 30
+        },
+        "pipeline": {
+          "capacity": 1,
+          "maximumAgeMs": 250,
+          "submitted": 4493,
+          "accepted": 1503,
+          "superseded": 595,
+          "dropped": 3593,
+          "tooOld": 0,
+          "released": 4493,
+          "maximumDepth": 1,
+          "pending": 0,
+          "active": 0
+        },
+        "capture": {
+          "received": 4493,
+          "dropped": 0,
+          "maximumDepth": 2,
+          "outstandingLeases": 0,
+          "resizeCount": 0,
+          "sourceClosed": 0
+        },
+        "sender": {
+          "published": 900,
+          "publicationFailures": 0,
+          "generationTransitions": 0
+        },
+        "timing": {
+          "captureAgeMs": {
+            "p50": 4,
+            "p95": 24,
+            "max": 32
+          },
+          "readbackUs": {
+            "p50": 436,
+            "p95": 1931
+          },
+          "convertUs": {
+            "p50": 1603,
+            "p95": 2412
+          },
+          "publishUs": {
+            "p50": 2687,
+            "p95": 4102
+          }
+        },
+        "resources": {
+          "cycles": 30,
+          "handlesDelta": 12,
+          "threadsDelta": -5,
+          "d3dLiveObjects": 0,
+          "d3dPeakObjects": 2,
+          "series": [
+            {
+              "cycle": 1,
+              "handlesDelta": 0,
+              "threadsDelta": 0,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 2,
+              "handlesDelta": 0,
+              "threadsDelta": 0,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 3,
+              "handlesDelta": 0,
+              "threadsDelta": 0,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 4,
+              "handlesDelta": 0,
+              "threadsDelta": 0,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 5,
+              "handlesDelta": 0,
+              "threadsDelta": 0,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 6,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 7,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 8,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 9,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 10,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 11,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 12,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 13,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 14,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 15,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 16,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 17,
+              "handlesDelta": 10,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 18,
+              "handlesDelta": 10,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 19,
+              "handlesDelta": 10,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 20,
+              "handlesDelta": 10,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 21,
+              "handlesDelta": 10,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 22,
+              "handlesDelta": 9,
+              "threadsDelta": -5,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 23,
+              "handlesDelta": 9,
+              "threadsDelta": -5,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 24,
+              "handlesDelta": 9,
+              "threadsDelta": -5,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 25,
+              "handlesDelta": 9,
+              "threadsDelta": -5,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 26,
+              "handlesDelta": 9,
+              "threadsDelta": -5,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 27,
+              "handlesDelta": 9,
+              "threadsDelta": -5,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 28,
+              "handlesDelta": 9,
+              "threadsDelta": -5,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 29,
+              "handlesDelta": 9,
+              "threadsDelta": -5,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 30,
+              "handlesDelta": 9,
+              "threadsDelta": -5,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            }
+          ]
+        }
+      },
+      "observer": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "startedAt": "2026-09-05T10:52:09.991Z",
+        "finishedAt": "2026-09-05T10:54:01.163Z",
+        "durationMs": 111172,
+        "video": {
+          "receivedFrames": 948,
+          "decodedFrames": 777,
+          "maximumConsecutiveFrames": 4,
+          "sequenceGaps": 473,
+          "outOfOrderFrames": 0,
+          "duplicateFrames": 0,
+          "minimumLatencyMs": 11,
+          "maximumLatencyMs": 171,
+          "maximumLatencyFrame": {
+            "trackSid": "TR_VSWvA6PsXkDzY3",
+            "trackFrame": 24,
+            "sequence": 931,
+            "ageMs": 171,
+            "receivedAfterStartMs": 28083
+          },
+          "averageLatencyMs": 33.53024453024453,
+          "invalidTimestampFrames": 0,
+          "observerDroppedFrames": 473,
+          "maximumObserverBacklogFrames": 0,
+          "firstSequence": 10,
+          "lastSequence": 4290,
+          "p50LatencyMs": 32,
+          "p95LatencyMs": 48,
+          "staleFrames": 0,
+          "resolutionTransitions": 0,
+          "resolutions": [
+            {
+              "generation": 1,
+              "width": 626,
+              "height": 353
+            }
+          ],
+          "maximumNoFrameDurationMs": 5202,
+          "contentChanges": 728,
+          "endReason": "track-unpublished"
+        },
+        "audio": {
+          "receivedFrames": 11015,
+          "receivedSamples": 5287200,
+          "controlPulses": 111,
+          "discontinuities": 1,
+          "framesAfterVideoEnd": 20
+        },
+        "tracks": {
+          "subscribed": 34,
+          "unsubscribed": 33
+        },
+        "failures": []
+      }
+    }
+  }
+}

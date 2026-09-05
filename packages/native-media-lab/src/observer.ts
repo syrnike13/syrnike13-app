@@ -23,6 +23,7 @@ const ObserverEnvironment = Schema.Struct({
   LIVEKIT_OBSERVER_TOKEN: Schema.String,
   MEDIA_LAB_REPORT_PATH: Schema.String,
   MEDIA_LAB_READY_PATH: Schema.String,
+  MEDIA_LAB_VIDEO_READY_PATH: Schema.optional(Schema.String),
   MEDIA_LAB_MIN_VIDEO_FRAMES: Schema.optional(Schema.String),
   MEDIA_LAB_MIN_CONTENT_CHANGES: Schema.optional(Schema.String),
   MEDIA_LAB_MIN_RESOLUTION_TRANSITIONS: Schema.optional(Schema.String),
@@ -46,6 +47,7 @@ interface ObserverOptions {
   readonly token: string
   readonly reportPath: string
   readonly readyPath: string
+  readonly videoReadyPath: string | undefined
   readonly minimumVideoFrames: number
   readonly minimumContentChanges: number
   readonly minimumResolutionTransitions: number
@@ -77,6 +79,13 @@ interface VerificationReport {
     readonly duplicateFrames: number
     readonly minimumLatencyMs: number | null
     readonly maximumLatencyMs: number | null
+    readonly maximumLatencyFrame: {
+      readonly trackSid: string | null
+      readonly trackFrame: number
+      readonly sequence: number
+      readonly ageMs: number
+      readonly receivedAfterStartMs: number
+    } | null
     readonly averageLatencyMs: number | null
     readonly invalidTimestampFrames: number
     readonly observerDroppedFrames: number
@@ -141,6 +150,7 @@ function optionsFromEnvironment(): ObserverOptions {
     token: env.LIVEKIT_OBSERVER_TOKEN,
     reportPath: env.MEDIA_LAB_REPORT_PATH,
     readyPath: env.MEDIA_LAB_READY_PATH,
+    videoReadyPath: env.MEDIA_LAB_VIDEO_READY_PATH,
     minimumVideoFrames: integerOption(
       env.MEDIA_LAB_MIN_VIDEO_FRAMES,
       600,
@@ -205,6 +215,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
   let videoReceived = 0
   let videoDecoded = 0
   let invalidVideoTimestamps = 0
+  let maximumLatencyFrame: VerificationReport['video']['maximumLatencyFrame'] = null
   let maximumConsecutiveFrames = 0
   let sequenceGaps = 0
   let outOfOrderFrames = 0
@@ -233,6 +244,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
   let lastPulseAt = 0
   let tracksSubscribed = 0
   let tracksUnsubscribed = 0
+  let videoReadyWritten = false
   const streamTasks = new Set<Promise<void>>()
   const cancelVideoStreams = new Map<RemoteTrack, () => Promise<void>>()
   const subscriptionTimers = new Set<NodeJS.Timeout>()
@@ -273,6 +285,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
     })
     let streamLastSequence: number | undefined
     let streamConsecutiveFrames = 0
+    let streamFrames = 0
     type VideoValue = NonNullable<Awaited<ReturnType<typeof reader.read>>['value']>
     const processValue = (value: VideoValue) => {
       const receivedAt = Date.now()
@@ -285,6 +298,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
       lastVideoFrameAt = receivedAt
       const marker = decodeVideoMarker(value.frame)
       if (marker !== undefined) {
+        streamFrames += 1
         videoDecoded += 1
         firstVideoSequence ??= marker.sequence
         const latency = videoMarkerLatency(
@@ -294,6 +308,15 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
         )
         if (latency !== undefined) {
           videoLatencies.push(latency)
+          if (maximumLatencyFrame === null || latency > maximumLatencyFrame.ageMs) {
+            maximumLatencyFrame = {
+              trackSid: track.sid ?? null,
+              trackFrame: streamFrames,
+              sequence: marker.sequence,
+              ageMs: latency,
+              receivedAfterStartMs: receivedAt - startedAtMs,
+            }
+          }
           if (latency > options.maximumFrameAgeMs) staleVideoFrames += 1
         } else {
           invalidVideoTimestamps += 1
@@ -342,6 +365,17 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
           maximumConsecutiveFrames,
           streamConsecutiveFrames,
         )
+      }
+      // Destructive lifecycle actions must wait for decoded media on the
+      // current track, not merely for successful local capture submissions.
+      if (options.videoReadyPath !== undefined && !videoReadyWritten &&
+          streamFrames >= options.minimumVideoFrames &&
+          tracksSubscribed >= options.expectedSubscriptions &&
+          staleVideoFrames === 0 && invalidVideoTimestamps === 0) {
+        videoReadyWritten = true
+        void writeFile(options.videoReadyPath, 'decoded').catch((error: unknown) => {
+          rejectAccepted?.(new ObserverFailure(`Video readiness write failed: ${String(error)}`))
+        })
       }
       checkAcceptance()
     }
@@ -549,6 +583,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
       duplicateFrames,
       minimumLatencyMs: videoLatencies.length > 0 ? Math.min(...videoLatencies) : null,
       maximumLatencyMs: videoLatencies.length > 0 ? Math.max(...videoLatencies) : null,
+      maximumLatencyFrame,
       averageLatencyMs:
         videoLatencies.length > 0 ? latencyTotal / videoLatencies.length : null,
       invalidTimestampFrames: invalidVideoTimestamps,

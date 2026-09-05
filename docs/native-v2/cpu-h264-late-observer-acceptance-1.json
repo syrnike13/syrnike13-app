@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 2,
+  "accepted": true,
+  "generatedAt": "2026-09-05T10:41:07.149Z",
+  "scenarios": {
+    "production-room-control": {
+      "accepted": true,
+      "connected": true,
+      "disconnected": true
+    },
+    "room-owner-control": {
+      "accepted": true,
+      "cancellation": "typed",
+      "generationFencing": "passed",
+      "delayedCompletion": "passed",
+      "lifecycleCycles": 50
+    },
+    "unexpected-room-disconnect": {
+      "accepted": true
+    },
+    "screen-cpu-late-observer": {
+      "sender": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "mode": "screen-cpu-monitor",
+        "referencePath": "cpu-non-production",
+        "profile": {
+          "width": 1280,
+          "height": 720,
+          "fps": 30
+        },
+        "pipeline": {
+          "capacity": 1,
+          "maximumAgeMs": 250,
+          "submitted": 444,
+          "accepted": 443,
+          "superseded": 263,
+          "dropped": 264,
+          "tooOld": 0,
+          "released": 444,
+          "maximumDepth": 1,
+          "pending": 0,
+          "active": 0
+        },
+        "capture": {
+          "received": 517,
+          "dropped": 70,
+          "maximumDepth": 3,
+          "outstandingLeases": 0,
+          "resizeCount": 0,
+          "sourceClosed": 0
+        },
+        "sender": {
+          "published": 180,
+          "publicationFailures": 0,
+          "generationTransitions": 0
+        },
+        "timing": {
+          "captureAgeMs": {
+            "p50": 4,
+            "p95": 12,
+            "max": 17
+          },
+          "readbackUs": {
+            "p50": 3066,
+            "p95": 3882
+          },
+          "convertUs": {
+            "p50": 2008,
+            "p95": 2925
+          },
+          "publishUs": {
+            "p50": 2454,
+            "p95": 3177
+          }
+        },
+        "resources": {
+          "cycles": 1,
+          "handlesDelta": 16,
+          "threadsDelta": 1,
+          "d3dLiveObjects": 0,
+          "d3dPeakObjects": 4,
+          "series": []
+        }
+      },
+      "observer": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "startedAt": "2026-09-05T10:40:45.690Z",
+        "finishedAt": "2026-09-05T10:41:01.182Z",
+        "durationMs": 15492,
+        "video": {
+          "receivedFrames": 182,
+          "decodedFrames": 175,
+          "maximumConsecutiveFrames": 1,
+          "sequenceGaps": 320,
+          "outOfOrderFrames": 0,
+          "duplicateFrames": 0,
+          "minimumLatencyMs": 10,
+          "maximumLatencyMs": 982,
+          "maximumLatencyFrame": {
+            "trackSid": "TR_VS9gHB3YAXvcJg",
+            "trackFrame": 1,
+            "sequence": 70,
+            "ageMs": 982,
+            "receivedAfterStartMs": 4441
+          },
+          "averageLatencyMs": 188.72571428571428,
+          "invalidTimestampFrames": 0,
+          "observerDroppedFrames": 320,
+          "maximumObserverBacklogFrames": 0,
+          "firstSequence": 70,
+          "lastSequence": 513,
+          "p50LatencyMs": 71,
+          "p95LatencyMs": 450,
+          "staleFrames": 0,
+          "resolutionTransitions": 0,
+          "resolutions": [
+            {
+              "generation": 1,
+              "width": 2560,
+              "height": 1440
+            }
+          ],
+          "maximumNoFrameDurationMs": 3710,
+          "contentChanges": 155,
+          "endReason": "track-unpublished"
+        },
+        "audio": {
+          "receivedFrames": 1230,
+          "receivedSamples": 590400,
+          "controlPulses": 13,
+          "discontinuities": 1,
+          "framesAfterVideoEnd": 20
+        },
+        "tracks": {
+          "subscribed": 4,
+          "unsubscribed": 3
+        },
+        "failures": []
+      }
+    }
+  }
+}

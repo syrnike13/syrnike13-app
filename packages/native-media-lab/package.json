@@ -8,6 +8,7 @@
     "lab": "pnpm build && node dist/run-lab.js",
     "observer": "pnpm build && node dist/observer.js",
     "viewer": "node scripts/run-viewer.mjs",
+    "preview": "pnpm build && node scripts/run-preview.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

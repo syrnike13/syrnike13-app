@@ -93,6 +93,7 @@ ScreenStartResult ProductionScreenPipeline::start(
     std::scoped_lock lock(mutex_);
     generation_ = started.generation;
   }
+  owns_preview_ = LocalScreenPreview::processPreview().beginPublication(started.generation);
   worker_ = std::thread([this] { run(); });
   return started;
 }
@@ -203,7 +204,6 @@ void ProductionScreenPipeline::run() noexcept {
         continue;
       }
       auto converted = converter_.convert(*d3d, metadata);
-      capture->release();
       if (!converted) {
         std::scoped_lock lock(mutex_);
         ++stats_.conversion_drops;
@@ -216,6 +216,8 @@ void ProductionScreenPipeline::run() noexcept {
         continue;
       }
       last_encoder_timestamp_us_ = timestamp_us;
+      if (owns_preview_) LocalScreenPreview::processPreview().offer(*d3d, metadata);
+      capture->release();
     }
   } catch (const std::exception& error) {
     std::scoped_lock lock(mutex_);
@@ -238,6 +240,7 @@ void ProductionScreenPipeline::run() noexcept {
     state_ = ProductionScreenPipelineState::failed;
     stop_requested_ = true;
   }
+  if (owns_preview_) LocalScreenPreview::processPreview().stopPublication();
   (void)capture_pipeline_->stop(std::chrono::steady_clock::now());
   (void)sender_->stop(generation_);
   {
@@ -275,6 +278,11 @@ ScreenCommandResult ProductionScreenPipeline::stop(
     worker_.join();
   }
   const bool encoder_stopped = encoder_->stop(remaining(deadline));
+  // Stop can arrive between encoding and sender admission. These final queued
+  // outputs were never borrowed by LiveKit; return them before reporting drain.
+  if (encoder_stopped) {
+    while (auto unsubmitted = encoder_->takeEncoded()) unsubmitted->release();
+  }
 
   auto sender_stop = sender_->stop(generation);
   bool publication_stopped = sender_->state() == ScreenPublicationState::Idle;
@@ -336,6 +344,7 @@ ProductionScreenPipelineState ProductionScreenPipeline::state() const noexcept {
 ProductionScreenPipelineStats ProductionScreenPipeline::stats() const noexcept {
   std::scoped_lock lock(mutex_);
   auto result = stats_;
+  result.preview = LocalScreenPreview::processPreview().stats();
   result.capture = capture_pipeline_->stats();
   result.converter = converter_.stats();
   result.encoder = encoder_->stats();

@@ -92,6 +92,7 @@ add_library(media_screen STATIC
   src/screen/hardware_h264_encoder.cpp
   src/screen/production_screen_pipeline.cpp
   src/screen/production_screen_sender.cpp
+  src/screen/local_screen_preview.cpp
 )
 windows_media_target(media_screen)
 target_include_directories(media_screen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -296,6 +297,11 @@ add_test(NAME gpu-screen-converter COMMAND gpu_screen_converter_tests)
 set_tests_properties(gpu-screen-converter PROPERTIES TIMEOUT 30)
 
 add_executable(encoder_fault_tests tests/encoder_fault_test.cpp)
+add_executable(local_screen_preview_tests tests/local_screen_preview_test.cpp)
+windows_media_target(local_screen_preview_tests)
+target_link_libraries(local_screen_preview_tests PRIVATE media_screen)
+add_test(NAME local-screen-preview COMMAND local_screen_preview_tests)
+set_tests_properties(local-screen-preview PROPERTIES TIMEOUT 60 LABELS "requires-gpu-video")
 windows_media_target(encoder_fault_tests)
 target_link_libraries(encoder_fault_tests PRIVATE media_screen)
 add_test(NAME encoder-faults COMMAND encoder_fault_tests)
@@ -307,6 +313,16 @@ set_tests_properties(monitor-capture gpu-screen-converter encoder-faults
   PROPERTIES LABELS "requires-gpu-video")
 
 if(WINDOWS_MEDIA_BUILD_LAB)
+  add_library(preview_bridge_lab MODULE ${CMAKE_JS_SRC}
+    src/lab/preview_bridge_addon.cpp src/lab/screen_cpu_lab.cpp)
+  set_target_properties(preview_bridge_lab PROPERTIES PREFIX "" SUFFIX ".node")
+  windows_media_target(preview_bridge_lab)
+  target_include_directories(preview_bridge_lab SYSTEM PRIVATE ${CMAKE_JS_INC} "${NODE_ADDON_API_DIR}")
+  target_compile_definitions(preview_bridge_lab PRIVATE NAPI_CPP_EXCEPTIONS NAPI_VERSION=${NAPI_VERSION})
+  target_link_libraries(preview_bridge_lab PRIVATE ${CMAKE_JS_LIB} media_screen_livekit media_livekit delayimp)
+  target_link_options(preview_bridge_lab PRIVATE /DELAYLOAD:node.exe)
+  windows_media_copy_livekit_runtime(preview_bridge_lab)
+  add_dependencies(preview_bridge_lab monitor_pattern_fixture source_window_fixture)
   add_executable(shared_texture_pool_tests tests/shared_texture_pool_test.cpp)
   windows_media_target(shared_texture_pool_tests)
   target_link_libraries(shared_texture_pool_tests PRIVATE media_video)
