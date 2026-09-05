@@ -768,7 +768,8 @@ std::string reportJson(const std::string& mode, const ScreenEvidence& evidence,
   std::ostringstream output;
   output << "{\"schemaVersion\":1,\"accepted\":"
          << (ok ? "true" : "false") << ",\"mode\":\"" << mode
-         << "\",\"referencePath\":\"cpu-non-production\",\"profile\":{"
+         << "\",\"referencePath\":\"cpu-non-production\","
+         << "\"requestedCodec\":\"h264\",\"requestedEncoderBackend\":\"software\",\"profile\":{"
          << "\"width\":" << screen::kCpuReferenceWidth
          << ",\"height\":" << screen::kCpuReferenceHeight
          << ",\"fps\":" << screen::kCpuReferenceFramesPerSecond

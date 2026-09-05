@@ -182,3 +182,14 @@ frame and verifies clean stop. The D3D-debug result is recorded separately in
 threads and one added handle within the existing four-handle budget. Earlier
 preview evidence retains its original source fingerprints; this supplementary
 proof covers the follow-up fix.
+
+The CPU-reference late-observer check also reproduced a 2-second initial frame
+and, on a separate run, no decoded video with implicit codec/backend selection.
+The CPU oracle now explicitly requests software H264, matching the production
+wire codec while keeping its encoder path CPU-only. Two independent local
+late-observer runs passed the unchanged 1500 ms maximum/age thresholds: maxima
+982/1018 ms and p95 450/499 ms. Their reports are
+`cpu-h264-late-observer-acceptance-{1,2}.json`. Observer diagnostics retain the
+single worst frame's track/sequence/ordinal; both maxima were initial frames.
+This change does not claim to fix every SDK automatic-codec behavior or qualify
+the CPU reference as a production sender.
