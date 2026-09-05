@@ -102,8 +102,15 @@ Napi::Value snapshot(const Napi::CallbackInfo& info) {
   value.Set("sdkConnected", room && room->connectionState() == livekit::ConnectionState::Connected);
   std::lock_guard lock(owner->control->mutex);
   const auto& stats = owner->control->stats;
+  value.Set("networkAvailable", stats.network.available_outgoing_bitrate.has_value());
+  number("networkAvailableOutgoingBitrate", stats.network.available_outgoing_bitrate.value_or(0));
+  number("networkMeasuredAtMs", stats.network.measured_at_ms);
+  value.Set("adaptiveEnabled", stats.adaptive_enabled);
+  number("adaptiveProfile", stats.current_profile);
+  number("profileChanges", stats.profile_changes);
+  number("profileGeneration", stats.profile_generation);
   value.Set("done", owner->control->done); value.Set("failure", owner->control->failure);
-  number("publicationConsumed", stats.sender.consumed);
+  number("publicationConsumed", stats.total_publication_consumed);
   number("publicationFailures", stats.sender.terminal_failures);
   number("publicationDepth", stats.sender.video_depth);
   number("encoderFrames", stats.encoder.encoded); number("encoderStalls", stats.encoder.output_stalls);

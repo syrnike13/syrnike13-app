@@ -13,6 +13,7 @@
 #include <livekit/livekit.h>
 
 #include "core/room_owner.hpp"
+#include "livekit/livekit_network_sampler.hpp"
 
 namespace syrnike::windows_media {
 
@@ -45,6 +46,9 @@ public:
   // Returns false when the bounded single pending slot is occupied.
   [[nodiscard]] bool enqueueActiveRoomTask(ActiveRoomTask task) noexcept;
   [[nodiscard]] std::size_t pendingOperationCount() const noexcept;
+  [[nodiscard]] std::shared_ptr<LiveKitNetworkSampler> networkSampler() const noexcept {
+    return network_sampler_;
+  }
 
 private:
   struct ConnectTask {
@@ -73,6 +77,8 @@ private:
   void enqueue(Task task);
 
   mutable std::mutex mutex_;
+  const std::shared_ptr<LiveKitNetworkSampler> network_sampler_ =
+      std::make_shared<LiveKitNetworkSampler>();
   std::shared_ptr<LiveKitRoomObserver> delegate_;
   RoomConnectionEventCallback connection_event_callback_;
   bool disconnect_reported_ = false;

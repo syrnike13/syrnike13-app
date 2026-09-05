@@ -109,8 +109,12 @@ void hardwareH264EncoderProducesBoundedAnnexBOutput() {
       throw std::runtime_error("hardware encoder output accounting is invalid");
     output.reset();
     if (!encoder.stop(5s) ||
-        encoder.state() != HardwareH264EncoderState::stopped)
-      throw std::runtime_error("hardware encoder did not drain and stop");
+        encoder.state() != HardwareH264EncoderState::stopped) {
+      const auto failure = encoder.failure();
+      throw std::runtime_error("hardware encoder did not drain and stop (" +
+          std::to_string(profile.width) + "x" + std::to_string(profile.height) + "): " +
+          (failure ? failure->code + ": " + failure->message : "no failure diagnostic"));
+    }
     const auto converter_stats = converter.stats();
     if (converter_stats.slots_in_use != 0 ||
         converter_stats.gpu_timing_measurements +
@@ -169,6 +173,7 @@ namespace {
 
 class ImmediatePublicationAdapter final : public ScreenPublicationAdapter {
  public:
+  syrnike::windows_media::OutgoingNetworkObservation networkObservation() const noexcept override { return {}; }
   void startPublish(std::uint64_t generation, ScreenTrackDescriptor,
                     ScreenOperationCompletion completion) override {
     completion(generation, ScreenOperationResult::success());
@@ -192,7 +197,7 @@ void productionGpuPipelineStartsHardwareBeforePublicationAndStops() {
     auto capture_pipeline = std::make_shared<ScreenFramePipeline>();
     ProductionScreenPipeline pipeline(
         owner, capture_pipeline, kScreenProfile720p30,
-        [](const std::shared_ptr<HardwareH264Encoder>&) {
+        [](std::function<void()>) {
           return std::make_shared<ImmediatePublicationAdapter>();
         });
     const auto started = pipeline.start("screen-production", 5s);

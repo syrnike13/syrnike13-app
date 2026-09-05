@@ -1,4 +1,5 @@
 #include "lab/screen_cpu_lab.hpp"
+#include "lab/gpu_contention.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -13,6 +14,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <type_traits>
 #include <utility>
@@ -866,20 +868,47 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
     const std::function<void(std::chrono::steady_clock::time_point)>&
         wait_until_unpublished,
     const std::shared_ptr<PreviewLabControl>& preview_control = {},
-    const std::function<void(std::chrono::milliseconds)>& preview_action = {}) {
+    const std::function<void(std::chrono::milliseconds)>& preview_action = {},
+    bool adaptive = false, bool contention = false, bool late_observer = false) {
+  std::size_t adaptive_maximum = 4;
+  wchar_t adaptive_preview[6]{};
+  if (preview_control && GetEnvironmentVariableW(L"PREVIEW_LAB_ADAPTIVE", adaptive_preview, 6) == 4 &&
+      std::wstring_view(adaptive_preview) == L"true") {
+    adaptive = true;
+    // Isolate preview pressure from initial RTP bandwidth ramp-up. The cold
+    // preview Room starts around 6 Mbit/s, safely above this 4 Mbit/s ceiling.
+    adaptive_maximum = 2;
+    const auto& p = screen::kAdaptiveScreenProfiles[adaptive_maximum];
+    profile = {p.width, p.height, p.fps, p.target_bitrate};
+  }
   const auto owner = capture::processD3d11Device(false);
+  std::uint32_t admitted = 0;
+  if (adaptive) {
+    std::array<screen::ScreenVideoProfile, screen::kAdaptiveScreenProfiles.size()> profiles;
+    for (std::size_t i = 0; i < profiles.size(); ++i) {
+      const auto& p = screen::kAdaptiveScreenProfiles[i];
+      profiles[i] = {p.width, p.height, p.fps, p.target_bitrate};
+    }
+    const auto capability = screen::probeHardwareH264(owner, profiles);
+    for (std::size_t i = 0; i < capability.profiles.size(); ++i) {
+      if (!capability.profiles[i].available) continue;
+      screen::GpuScreenConverter converter(owner, profiles[i]);
+      // Fixed publication allocation budget, independent of preview demand.
+      const auto bytes = converter.stats().texture_bytes +
+          screen::kEncodedH264SlotCapacity * screen::kEncodedH264SlotBytes + 64ULL * 1024 * 1024;
+      if (bytes <= 128ULL * 1024 * 1024) admitted |= 1U << i;
+    }
+    require(admitted == 31, "Adaptive lab requires all five admitted hardware profiles");
+  }
   auto frames = std::make_shared<ScreenFramePipeline>();
   screen::ProductionScreenPipeline pipeline(
       owner, frames, profile,
-      [transport](const std::shared_ptr<screen::HardwareH264Encoder>& encoder) {
-        const std::weak_ptr weak_encoder(encoder);
+      [transport](std::function<void()> request_keyframe) {
         return std::make_shared<LiveKitScreenPublicationAdapter>(
             transport, LiveKitScreenEncoderControls{
-                           [weak_encoder] {
-                             if (const auto active = weak_encoder.lock())
-                               active->requestKeyFrame();
-                           }});
+                           std::move(request_keyframe)});
       }, {}, true);
+  if (adaptive) require(pipeline.enableAdaptiveQuality(admitted, adaptive_maximum), "Adaptive enable rejected");
   require(capture_source.start().ok, "GPU WGC capture failed to start");
   const auto started = pipeline.start("screen-gpu-production", 5s);
   if (!started.ok) {
@@ -894,7 +923,7 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
     Sleep(1);
   require(pipeline.state() == screen::ProductionScreenPipelineState::running,
           "GPU screen track did not reach running");
-  if (wait_until_ready) wait_until_ready();
+  if (wait_until_ready && !late_observer) wait_until_ready();
   std::cout << "publisher: GPU screen track published" << std::endl;
 
   std::atomic_bool producer_running{true};
@@ -913,13 +942,44 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
   std::exception_ptr operation_failure;
   try {
     const auto began = std::chrono::steady_clock::now();
-    const auto frame_deadline = began + (preview_control ? 90s : 45s);
-    while ((preview_control ? !preview_control->stop.load() : pipeline.stats().sender.consumed < target_frames) &&
+    std::unique_ptr<lab::GpuContention> load;
+    if (contention) load = std::make_unique<lab::GpuContention>(owner);
+    const auto frame_deadline = began + (preview_control ? 90s : contention ? 1200s : adaptive ? 120s : 45s);
+    std::uint64_t last_sample_ms = 0;
+    bool lowered = false, restored = false;
+    while ((preview_control ? !preview_control->stop.load() : adaptive || pipeline.stats().sender.consumed < target_frames) &&
            std::chrono::steady_clock::now() < frame_deadline) {
       if (pipeline.state() == screen::ProductionScreenPipelineState::failed) {
         const auto failure = pipeline.failure();
         throw std::runtime_error(failure ? failure->message
                                          : "GPU screen pipeline failed");
+      }
+      if (adaptive) {
+        const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - began).count());
+        const bool load_active = contention && elapsed % 60000 < 10000;
+        if (load) {
+          require(SUCCEEDED(load->failure()), "GPU contention fixture device failed");
+          load->setActive(load_active);
+        }
+        if (!preview_control && !contention && !lowered && elapsed >= 10000) { require(pipeline.setMaximumQuality(2, 0), "lower ceiling rejected"); lowered = true; }
+        if (!preview_control && !contention && !restored && elapsed >= 20000) { require(pipeline.setMaximumQuality(3, 4), "restore ceiling rejected"); restored = true; }
+        if (elapsed - last_sample_ms >= 500) {
+          const auto s = pipeline.stats(); const auto resources = currentResources();
+          std::cout << "ADAPTIVE_SAMPLE {\"elapsedMs\":" << elapsed
+              << ",\"profile\":" << s.current_profile << ",\"generation\":" << s.profile_generation
+              << ",\"reason\":" << static_cast<int>(s.decision_reason)
+              << ",\"desiredRevision\":" << s.desired_revision << ",\"appliedRevision\":" << s.applied_revision
+              << ",\"networkBps\":" << s.network.available_outgoing_bitrate.value_or(0)
+              << ",\"consumed\":" << s.total_publication_consumed << ",\"keyframeRequests\":" << s.keyframe_requests
+              << ",\"captureAgeUs\":" << s.capture_age_last_us << ",\"publishAgeUs\":" << s.publish_age_last_us
+              << ",\"videoDepth\":" << s.sender.video_depth << ",\"bytes\":" << s.memory.total_bytes
+              << ",\"contentionActive\":" << (load_active ? "true" : "false")
+              << ",\"contentionBatches\":" << (load ? load->batches() : 0)
+              << ",\"contentionBytes\":" << (load ? lab::GpuContention::allocated_bytes : 0)
+              << ",\"handles\":" << resources.handles << ",\"threads\":" << resources.threads << "}" << std::endl;
+          last_sample_ms = elapsed;
+        }
       }
       if (preview_control) {
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began);
@@ -932,7 +992,7 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
       }
       Sleep(2);
     }
-    require(preview_control || pipeline.stats().sender.consumed >= target_frames,
+    require(adaptive || preview_control || pipeline.stats().sender.consumed >= target_frames,
             "GPU screen sender publication deadline exceeded");
   } catch (...) {
     operation_failure = std::current_exception();
@@ -980,7 +1040,7 @@ screen::ProductionScreenPipelineStats runGpuWindowCycle(
     screen::ScreenVideoProfile profile, std::uint64_t target_frames,
     const std::function<void()>& wait_until_ready,
     const std::function<void(std::chrono::steady_clock::time_point)>&
-        wait_until_unpublished) {
+        wait_until_unpublished, bool adaptive = false, bool contention = false, bool late_observer = false) {
   WindowFixture fixture;
   SourceRegistry registry(sources::createWin32SourceEnumerator());
   EnumerationOptions options;
@@ -990,7 +1050,7 @@ screen::ProductionScreenPipelineStats runGpuWindowCycle(
   WindowCapture capture_source(registry, fixtureWindow(values).id,
                                capture::createWgcWindowCaptureBackend());
   return driveGpuCapture(capture_source, transport, profile, target_frames,
-                         wait_until_ready, wait_until_unpublished);
+                         wait_until_ready, wait_until_unpublished, {}, {}, adaptive, contention, late_observer);
 }
 
 std::string gpuReportJson(
@@ -1101,6 +1161,9 @@ bool isScreenGpuMode(const std::string& mode) noexcept {
   return mode == "screen-gpu-monitor-1080p60" ||
          mode == "screen-gpu-window-1080p60" ||
          mode == "screen-gpu-monitor-1440p30" ||
+         mode == "screen-gpu-adaptive-window" ||
+         mode == "screen-gpu-adaptive-late-window" ||
+         mode == "screen-gpu-adaptive-contention-window" ||
          mode == "screen-gpu-repeat-720p30";
 }
 
@@ -1153,7 +1216,9 @@ std::string runScreenGpuLab(
     if (mode.find("window") != std::string::npos ||
         mode.find("repeat") != std::string::npos) {
       stats = runGpuWindowCycle(transport, profile, target, wait_until_ready,
-                                wait_until_unpublished);
+                                wait_until_unpublished, mode.find("adaptive") != std::string::npos,
+                                mode == "screen-gpu-adaptive-contention-window",
+                                mode == "screen-gpu-adaptive-late-window");
     } else {
       stats = runGpuMonitorCycle(transport, profile, target, wait_until_ready,
                                  wait_until_unpublished);

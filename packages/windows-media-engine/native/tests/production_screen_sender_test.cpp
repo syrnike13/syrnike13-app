@@ -21,6 +21,7 @@ void require(bool condition, const std::string& message) {
 
 class ManualPublicationAdapter final : public ScreenPublicationAdapter {
  public:
+  syrnike::windows_media::OutgoingNetworkObservation networkObservation() const noexcept override { return {}; }
   void startPublish(std::uint64_t generation, ScreenTrackDescriptor,
                     ScreenOperationCompletion completion) override {
     std::lock_guard lock(mutex_);

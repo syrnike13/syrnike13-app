@@ -51,6 +51,10 @@ struct LiveKitScreenPublicationAdapter::State {
   std::shared_ptr<livekit::LocalVideoTrack> track;
 };
 
+OutgoingNetworkObservation LiveKitScreenPublicationAdapter::networkObservation() const noexcept {
+  return transport_->networkSampler()->snapshot();
+}
+
 LiveKitScreenPublicationAdapter::LiveKitScreenPublicationAdapter(
     std::shared_ptr<LiveKitRoomTransport> transport,
     LiveKitScreenEncoderControls controls)
@@ -148,10 +152,11 @@ void LiveKitScreenPublicationAdapter::startSubmit(
     std::uint64_t generation, screen::EncodedScreenFrame frame,
     screen::ScreenOperationCompletion completion) {
   const auto state = state_;
+  const auto sampler = transport_->networkSampler();
   auto queued_completion = completion;
   const bool queued = transport_->enqueueActiveRoomTask(
-      [state, generation, frame, completion = std::move(queued_completion)](
-          const std::shared_ptr<livekit::Room>&) mutable {
+      [state, sampler, generation, frame, completion = std::move(queued_completion)](
+          const std::shared_ptr<livekit::Room>& room) mutable {
         try {
           std::shared_ptr<livekit::EncodedVideoSource> source;
           LiveKitScreenEncoderControls controls;
@@ -185,6 +190,7 @@ void LiveKitScreenPublicationAdapter::startSubmit(
                         "screen_submit", true));
           if (source->takeKeyFrameRequest() && controls.request_key_frame)
             controls.request_key_frame();
+          sampler->sampleOnSdkLane(room);
           completion(generation, screen::ScreenOperationResult::success());
         } catch (...) {
           completeException(generation, std::move(completion),

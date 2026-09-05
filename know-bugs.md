@@ -2,6 +2,18 @@
 
 This file records reproducible bugs and constraints in the local environment, toolchain, operating system, or third-party libraries that the application repository cannot fix. Application defects do not belong here.
 
+## MSVC cannot resolve long nested WebRTC include paths
+
+An isolated SDK checkout on Windows can exceed the native compiler's supported
+include-path length under `target/release/build/scratch-*/out/livekit_webrtc/`.
+Observed with MSVC 14.51 on 2026-09-05: `C1083` for
+`absl/strings/internal/str_format/constexpr_parser.h`, even though the header
+exists. A junction at `target/` does not shorten the logical path reported by
+the cached `scratch` build helper. Use the SDK's existing `LK_CUSTOM_WEBRTC`
+environment option pointing at a short junction to the same prebuilt WebRTC
+bundle, and an explicit `CARGO_TARGET_DIR`. No compiler reinstall or machine-wide
+setting change is required.
+
 ## Hosted Windows runner has no D3D11 Video interfaces
 
 The `windows-2025-vs2026` GitHub-hosted runner used by native CI does not expose
