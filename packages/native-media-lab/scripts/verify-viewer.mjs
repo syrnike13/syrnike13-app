@@ -18,7 +18,11 @@ export function verifyViewer(report, scenario, seconds) {
     check(Boolean(start && resume && report.frames > resume.frames), 'Missing resume progress')
     if (scenario === 'stall') {
       check(Boolean(start && resume && resume.time - start.time >= 29900), 'Stall shorter than 30 seconds')
-      const held = samples.filter(sample => sample.phase === 'stall' && sample.delivered === 4)
+      // Delivered also includes normal-mode frames whose GPU release is still
+      // in flight at the transition. Verify the plateau after that bounded
+      // settling interval; the pool count/byte checks above cover every sample.
+      const held = samples.filter(sample => sample.phase === 'stall' &&
+        sample.time >= (start?.time ?? Infinity) + 2000 && sample.delivered === 4)
       check(held.length >= 25 && held.every(sample => sample.accepted === held[0].accepted &&
         sample.backingBytes === held[0].backingBytes) && held.at(-1).decoded > held[0].decoded,
       'Stall did not preserve fixed backing while decoding continued')
