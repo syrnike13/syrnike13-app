@@ -112,6 +112,19 @@ windows_media_target(media_livekit)
 target_include_directories(media_livekit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(media_livekit PUBLIC media_core LiveKit::livekit)
 
+add_library(media_screen_audio_capture STATIC
+  src/audio/screen_audio_pcm.cpp
+  src/audio/process_loopback.cpp
+  src/audio/screen_audio_owner.cpp
+)
+windows_media_target(media_screen_audio_capture)
+target_include_directories(media_screen_audio_capture PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(media_screen_audio_capture PUBLIC media_sources PRIVATE mmdevapi ole32)
+
+add_library(media_screen_audio_livekit STATIC src/audio/screen_audio_sender.cpp)
+windows_media_target(media_screen_audio_livekit)
+target_link_libraries(media_screen_audio_livekit PUBLIC media_screen_audio_capture media_livekit)
+
 add_library(media_video STATIC src/video/shared_texture_pool.cpp src/video/remote_video_track.cpp)
 windows_media_target(media_video)
 target_link_libraries(media_video PUBLIC media_capture LiveKit::livekit PRIVATE dxgi)
@@ -288,6 +301,16 @@ target_link_libraries(media_screen PUBLIC media_screen_policy)
 add_executable(adaptive_screen_policy_tests tests/adaptive_screen_policy_test.cpp)
 windows_media_target(adaptive_screen_policy_tests)
 target_link_libraries(adaptive_screen_policy_tests PRIVATE media_screen_policy)
+
+add_executable(screen_audio_pcm_tests tests/screen_audio_pcm_test.cpp)
+windows_media_target(screen_audio_pcm_tests)
+target_link_libraries(screen_audio_pcm_tests PRIVATE media_screen_audio_capture)
+add_test(NAME screen-audio-pcm COMMAND screen_audio_pcm_tests)
+
+add_executable(screen_audio_owner_tests tests/screen_audio_owner_test.cpp)
+windows_media_target(screen_audio_owner_tests)
+target_link_libraries(screen_audio_owner_tests PRIVATE media_screen_audio_capture)
+add_test(NAME screen-audio-owner COMMAND screen_audio_owner_tests)
 add_test(NAME adaptive-screen-policy COMMAND adaptive_screen_policy_tests)
 add_executable(adaptive_screen_pipeline_tests tests/adaptive_screen_pipeline_test.cpp)
 windows_media_target(adaptive_screen_pipeline_tests)
@@ -370,6 +393,27 @@ if(WINDOWS_MEDIA_BUILD_LAB)
     src/lab/screen_cpu_lab.cpp
     src/lab/gpu_contention.cpp
   )
+  add_executable(audio_sync_fixture src/lab/audio_sync_fixture.cpp)
+  # Explicitly invoked local proof only: this helper temporarily changes and
+  # restores normal default endpoints. Never run by the default lab or CI.
+  add_executable(default_endpoint_proof src/lab/default_endpoint_proof.cpp)
+  windows_media_target(default_endpoint_proof)
+  target_link_libraries(default_endpoint_proof PRIVATE ole32 uuid)
+  windows_media_target(audio_sync_fixture)
+  target_link_libraries(audio_sync_fixture PRIVATE winmm)
+  add_executable(audio_capture_lab src/lab/audio_capture_lab.cpp)
+  windows_media_target(audio_capture_lab)
+  target_link_libraries(audio_capture_lab PRIVATE media_screen_audio_capture)
+  add_executable(screen_audio_lab src/lab/screen_audio_lab.cpp)
+  windows_media_target(screen_audio_lab)
+  target_compile_definitions(screen_audio_lab PRIVATE _CRT_SECURE_NO_WARNINGS)
+  target_link_libraries(screen_audio_lab PRIVATE media_screen_audio_livekit media_screen_livekit winmm)
+  windows_media_copy_livekit_runtime(screen_audio_lab)
+  add_executable(remote_audio_reference src/lab/remote_audio_reference.cpp)
+  windows_media_target(remote_audio_reference)
+  target_compile_definitions(remote_audio_reference PRIVATE _CRT_SECURE_NO_WARNINGS)
+  target_link_libraries(remote_audio_reference PRIVATE LiveKit::livekit)
+  windows_media_copy_livekit_runtime(remote_audio_reference)
   windows_media_target(native_media_lab_publisher)
   target_compile_definitions(native_media_lab_publisher PRIVATE _CRT_SECURE_NO_WARNINGS)
   target_link_libraries(native_media_lab_publisher PRIVATE
