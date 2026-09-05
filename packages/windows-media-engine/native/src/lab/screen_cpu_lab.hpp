@@ -4,6 +4,9 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <atomic>
+#include <mutex>
+#include "screen/production_screen_pipeline.hpp"
 
 #include <livekit/livekit.h>
 
@@ -12,6 +15,17 @@ class LiveKitRoomTransport;
 }
 
 namespace syrnike::windows_media::lab {
+
+struct PreviewLabControl {
+  std::atomic_bool stop{false};
+  std::mutex mutex;
+  screen::ProductionScreenPipelineStats stats;
+  std::string failure;
+  bool done = false;
+};
+void runScreenPreviewLab(const std::shared_ptr<LiveKitRoomTransport>& transport,
+                         const std::shared_ptr<PreviewLabControl>& control,
+                         const std::string& scenario);
 
 bool isScreenCpuMode(const std::string& mode) noexcept;
 bool isScreenGpuMode(const std::string& mode) noexcept;

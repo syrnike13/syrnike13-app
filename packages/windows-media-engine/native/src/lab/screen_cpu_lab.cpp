@@ -85,7 +85,12 @@ void require(bool condition, const std::string& message) {
 
 std::wstring executablePath() {
   std::wstring path(32768, L'\0');
-  const DWORD size = GetModuleFileNameW(nullptr, path.data(),
+  HMODULE module = nullptr;
+  require(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR>(&executablePath), &module) != FALSE,
+          "media_lab module is unavailable");
+  const DWORD size = GetModuleFileNameW(module, path.data(),
                                         static_cast<DWORD>(path.size()));
   require(size > 0 && size < path.size(), "media_lab path is unavailable");
   path.resize(size);
@@ -858,7 +863,9 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
     screen::ScreenVideoProfile profile, std::uint64_t target_frames,
     const std::function<void()>& wait_until_ready,
     const std::function<void(std::chrono::steady_clock::time_point)>&
-        wait_until_unpublished) {
+        wait_until_unpublished,
+    const std::shared_ptr<PreviewLabControl>& preview_control = {},
+    const std::function<void(std::chrono::milliseconds)>& preview_action = {}) {
   const auto owner = capture::processD3d11Device(false);
   auto frames = std::make_shared<ScreenFramePipeline>();
   screen::ProductionScreenPipeline pipeline(
@@ -904,17 +911,27 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
 
   std::exception_ptr operation_failure;
   try {
-    const auto frame_deadline = std::chrono::steady_clock::now() + 45s;
-    while (pipeline.stats().sender.consumed < target_frames &&
+    const auto began = std::chrono::steady_clock::now();
+    const auto frame_deadline = began + (preview_control ? 90s : 45s);
+    while ((preview_control ? !preview_control->stop.load() : pipeline.stats().sender.consumed < target_frames) &&
            std::chrono::steady_clock::now() < frame_deadline) {
       if (pipeline.state() == screen::ProductionScreenPipelineState::failed) {
         const auto failure = pipeline.failure();
         throw std::runtime_error(failure ? failure->message
                                          : "GPU screen pipeline failed");
       }
+      if (preview_control) {
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began);
+        if (preview_action) preview_action(elapsed);
+        {
+          std::lock_guard lock(preview_control->mutex);
+          preview_control->stats = pipeline.stats();
+        }
+        if (capture_source.state() == CaptureState::Stopped || capture_source.state() == CaptureState::Failed) break;
+      }
       Sleep(2);
     }
-    require(pipeline.stats().sender.consumed >= target_frames,
+    require(preview_control || pipeline.stats().sender.consumed >= target_frames,
             "GPU screen sender publication deadline exceeded");
   } catch (...) {
     operation_failure = std::current_exception();
@@ -925,6 +942,10 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
       pipeline.stop(std::chrono::steady_clock::now() + 10s);
   const auto capture_stopped = capture_source.stop(5s);
   producer.join();
+  if (preview_control) {
+    std::lock_guard lock(preview_control->mutex);
+    preview_control->stats = pipeline.stats();
+  }
   if (stopped.ok && wait_until_unpublished)
     wait_until_unpublished(std::chrono::steady_clock::now() + 5s);
   if (operation_failure) std::rethrow_exception(operation_failure);
@@ -1029,6 +1050,42 @@ std::string gpuReportJson(
 #endif
 
 }  // namespace
+
+void runScreenPreviewLab(const std::shared_ptr<LiveKitRoomTransport>& transport,
+                         const std::shared_ptr<PreviewLabControl>& control,
+                         const std::string& scenario) {
+  try {
+    SourceRegistry registry(sources::createWin32SourceEnumerator());
+    EnumerationOptions options;
+    if (scenario == "monitor") {
+      options.kind = EnumerationOptions::Kind::Monitor;
+      const auto values = registry.enumerate(options);
+      const auto selected = primaryMonitor(values);
+      MonitorFixture fixture(selected);
+      MonitorCapture source(registry, selected.id, capture::createWgcMonitorCaptureBackend());
+      (void)driveGpuCapture(source, transport, screen::kScreenProfile1080p60,
+                            0, {}, {}, control);
+    } else {
+      WindowFixture fixture;
+      options.kind = EnumerationOptions::Kind::Window;
+      const auto values = registry.enumerate(options);
+      WindowCapture source(registry, fixtureWindow(values).id, capture::createWgcWindowCaptureBackend());
+      bool injected = false;
+      (void)driveGpuCapture(source, transport, screen::kScreenProfile1080p60,
+          0, {}, {}, control, [&](std::chrono::milliseconds elapsed) {
+            if (injected || elapsed < 8s) return;
+            injected = true;
+            if (scenario == "resize") fixture.command("resize 900 540");
+            if (scenario == "source-close") fixture.command("close-after 5");
+          });
+    }
+  } catch (const std::exception& error) {
+    std::lock_guard lock(control->mutex);
+    control->failure = error.what();
+  }
+  std::lock_guard lock(control->mutex);
+  control->done = true;
+}
 
 bool isScreenCpuMode(const std::string& mode) noexcept {
   return mode == "screen-cpu-monitor" || mode == "screen-cpu-window" ||
