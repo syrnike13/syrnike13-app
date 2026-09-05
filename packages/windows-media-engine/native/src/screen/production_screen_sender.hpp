@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include "core/network_observation.hpp"
 
 namespace syrnike::windows_media::screen {
 
@@ -58,11 +59,13 @@ struct ScreenOperationResult {
 using ScreenOperationCompletion =
     std::function<void(std::uint64_t, ScreenOperationResult)>;
 
+
 // Adapter methods enqueue work onto the Room owner's serialized SDK lane and
 // must return without calling LiveKit or waiting for native completion.
 class ScreenPublicationAdapter {
  public:
   virtual ~ScreenPublicationAdapter() = default;
+  [[nodiscard]] virtual OutgoingNetworkObservation networkObservation() const noexcept = 0;
   virtual void startPublish(std::uint64_t generation,
                             ScreenTrackDescriptor descriptor,
                             ScreenOperationCompletion completion) = 0;

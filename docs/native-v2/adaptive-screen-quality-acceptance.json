@@ -1,0 +1,1096 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-05T14:18:10.726Z",
+  "sdk": {
+    "release": "v1.10.0-syrnike.5",
+    "commit": "da46cc0d5f678ab0b75977be79e7b36905964ce2",
+    "archiveSha256": "f3937eac5540f174060a340096f44780001edec5d011597376c06dfbcbfcec02"
+  },
+  "sourceReportSha256": "5fcc6799a6e03b9399875678b36905832e772e8bf5e98776fc8703721a74f3df",
+  "contention": {
+    "sampleCount": 2397,
+    "firstSample": {
+      "elapsedMs": 501,
+      "profile": 4,
+      "generation": 1,
+      "reason": 1,
+      "desiredRevision": 1,
+      "appliedRevision": 1,
+      "networkBps": 7200000,
+      "consumed": 19,
+      "keyframeRequests": 1,
+      "captureAgeUs": 0,
+      "publishAgeUs": 0,
+      "videoDepth": 0,
+      "bytes": 19158304,
+      "contentionActive": true,
+      "contentionBatches": 336,
+      "contentionBytes": 16777216,
+      "handles": 988,
+      "threads": 101
+    },
+    "lastSample": {
+      "elapsedMs": 1199970,
+      "profile": 4,
+      "generation": 1,
+      "reason": 1,
+      "desiredRevision": 1,
+      "appliedRevision": 1,
+      "networkBps": 12494977,
+      "consumed": 47553,
+      "keyframeRequests": 4,
+      "captureAgeUs": 0,
+      "publishAgeUs": 0,
+      "videoDepth": 0,
+      "bytes": 19158304,
+      "contentionActive": false,
+      "contentionBatches": 132673,
+      "contentionBytes": 16777216,
+      "handles": 1024,
+      "threads": 94
+    },
+    "acceptance": {
+      "accepted": true,
+      "failures": [],
+      "maximumChangesPerMinute": 0,
+      "growth": [
+        {
+          "profile": 4,
+          "handles": 34.39999999999998,
+          "threads": -7,
+          "bytes": 0
+        }
+      ],
+      "latencyGrowthMs": 1.6666666666666679,
+      "decodedPublications": 1
+    },
+    "sender": {
+      "schemaVersion": 1,
+      "accepted": true,
+      "mode": "screen-gpu-adaptive-contention-window",
+      "productionPath": "d3d11-hardware-h264",
+      "profile": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 60,
+        "bitrate": 8000000
+      },
+      "adapter": {
+        "luidLow": 66824,
+        "luidHigh": 0
+      },
+      "encoder": {
+        "implementation": "NVIDIA H.264 Encoder MFT",
+        "submitted": 47556,
+        "encoded": 47555,
+        "bytes": 790930700,
+        "keyframes": 793,
+        "outputStalls": 0
+      },
+      "gpu": {
+        "converted": 47556,
+        "timingMeasurements": 47556,
+        "timingUnavailable": 0,
+        "durationTotalUs": 294415,
+        "durationMaxUs": 3820,
+        "textureBytes": 10215112
+      },
+      "cadence": {
+        "captureAgeLastUs": 0,
+        "captureAgeMaxUs": 46420,
+        "frameRateDrops": 676
+      },
+      "backpressure": {
+        "captureSuperseded": 2,
+        "conversionDrops": 0,
+        "encoderSuperseded": 1,
+        "publicationSuperseded": 0,
+        "maximumPublicationDepth": 1
+      },
+      "resources": {
+        "cycles": 1,
+        "estimatedBytes": 19158304
+      }
+    },
+    "observer": {
+      "schemaVersion": 1,
+      "accepted": true,
+      "startedAt": "2026-09-05T13:58:05.888Z",
+      "finishedAt": "2026-09-05T14:18:09.759Z",
+      "durationMs": 1203871,
+      "video": {
+        "receivedFrames": 47488,
+        "decodedFrames": 47484,
+        "outputSizes": [
+          {
+            "width": 1920,
+            "height": 1080,
+            "frames": 47484
+          }
+        ],
+        "decodedStreams": [
+          {
+            "trackSid": "TR_VSeE4udaioZ2eG",
+            "subscribedAfterStartMs": 1405,
+            "firstFrameAfterStartMs": null,
+            "lastFrameAfterStartMs": null,
+            "width": 0,
+            "height": 0,
+            "frames": 0
+          },
+          {
+            "trackSid": "TR_VSwwg3xBdeNCYj",
+            "subscribedAfterStartMs": 3415,
+            "firstFrameAfterStartMs": 4963,
+            "lastFrameAfterStartMs": 1203443,
+            "width": 1920,
+            "height": 1080,
+            "frames": 47484
+          }
+        ],
+        "latencyMinutes": [
+          {
+            "minute": 0,
+            "frames": 2197,
+            "averageMs": 22.79563040509786,
+            "p95Ms": 25,
+            "maximumMs": 77
+          },
+          {
+            "minute": 1,
+            "frames": 2358,
+            "averageMs": 22.83248515691264,
+            "p95Ms": 24,
+            "maximumMs": 101
+          },
+          {
+            "minute": 2,
+            "frames": 2422,
+            "averageMs": 23.03922378199835,
+            "p95Ms": 24,
+            "maximumMs": 48
+          },
+          {
+            "minute": 3,
+            "frames": 2379,
+            "averageMs": 23.147540983606557,
+            "p95Ms": 24,
+            "maximumMs": 86
+          },
+          {
+            "minute": 4,
+            "frames": 2375,
+            "averageMs": 22.833684210526314,
+            "p95Ms": 24,
+            "maximumMs": 44
+          },
+          {
+            "minute": 5,
+            "frames": 2414,
+            "averageMs": 24.070422535211268,
+            "p95Ms": 26,
+            "maximumMs": 44
+          },
+          {
+            "minute": 6,
+            "frames": 2342,
+            "averageMs": 24.4000853970965,
+            "p95Ms": 26,
+            "maximumMs": 62
+          },
+          {
+            "minute": 7,
+            "frames": 2348,
+            "averageMs": 24.17206132879046,
+            "p95Ms": 26,
+            "maximumMs": 44
+          },
+          {
+            "minute": 8,
+            "frames": 2360,
+            "averageMs": 24.436864406779662,
+            "p95Ms": 26,
+            "maximumMs": 66
+          },
+          {
+            "minute": 9,
+            "frames": 2385,
+            "averageMs": 24.246121593291406,
+            "p95Ms": 26,
+            "maximumMs": 49
+          },
+          {
+            "minute": 10,
+            "frames": 2378,
+            "averageMs": 24.14003364171573,
+            "p95Ms": 26,
+            "maximumMs": 36
+          },
+          {
+            "minute": 11,
+            "frames": 2379,
+            "averageMs": 24.39302227826818,
+            "p95Ms": 26,
+            "maximumMs": 55
+          },
+          {
+            "minute": 12,
+            "frames": 2359,
+            "averageMs": 24.211954217888938,
+            "p95Ms": 26,
+            "maximumMs": 45
+          },
+          {
+            "minute": 13,
+            "frames": 2388,
+            "averageMs": 24.022613065326635,
+            "p95Ms": 26,
+            "maximumMs": 43
+          },
+          {
+            "minute": 14,
+            "frames": 2382,
+            "averageMs": 24.067590260285474,
+            "p95Ms": 25,
+            "maximumMs": 41
+          },
+          {
+            "minute": 15,
+            "frames": 2352,
+            "averageMs": 24.154761904761905,
+            "p95Ms": 26,
+            "maximumMs": 45
+          },
+          {
+            "minute": 16,
+            "frames": 2355,
+            "averageMs": 24.369426751592357,
+            "p95Ms": 26,
+            "maximumMs": 41
+          },
+          {
+            "minute": 17,
+            "frames": 2380,
+            "averageMs": 24.397899159663865,
+            "p95Ms": 26,
+            "maximumMs": 41
+          },
+          {
+            "minute": 18,
+            "frames": 2417,
+            "averageMs": 24.470004137360363,
+            "p95Ms": 26,
+            "maximumMs": 45
+          },
+          {
+            "minute": 19,
+            "frames": 2375,
+            "averageMs": 24.293894736842105,
+            "p95Ms": 26,
+            "maximumMs": 77
+          },
+          {
+            "minute": 20,
+            "frames": 139,
+            "averageMs": 24.503597122302157,
+            "p95Ms": 26,
+            "maximumMs": 26
+          }
+        ],
+        "maximumConsecutiveFrames": 736,
+        "sequenceGaps": 686,
+        "outOfOrderFrames": 0,
+        "duplicateFrames": 0,
+        "minimumLatencyMs": 11,
+        "maximumLatencyMs": 101,
+        "maximumLatencyFrame": {
+          "trackSid": "TR_VSwwg3xBdeNCYj",
+          "trackFrame": 2508,
+          "sequence": 2614,
+          "ageMs": 101,
+          "receivedAfterStartMs": 68146
+        },
+        "averageLatencyMs": 23.92993429365681,
+        "invalidTimestampFrames": 0,
+        "observerDroppedFrames": 686,
+        "maximumObserverBacklogFrames": 0,
+        "firstSequence": 75,
+        "lastSequence": 48244,
+        "p50LatencyMs": 24,
+        "p95LatencyMs": 26,
+        "staleFrames": 0,
+        "resolutionTransitions": 0,
+        "resolutions": [
+          {
+            "generation": 1,
+            "width": 626,
+            "height": 353
+          }
+        ],
+        "maximumNoFrameDurationMs": 119,
+        "contentChanges": 37842,
+        "endReason": "track-unpublished"
+      },
+      "audio": {
+        "receivedFrames": 120295,
+        "receivedSamples": 57741600,
+        "controlPulses": 1204,
+        "discontinuities": 1,
+        "framesAfterVideoEnd": 20
+      },
+      "tracks": {
+        "subscribed": 4,
+        "unsubscribed": 3
+      },
+      "failures": []
+    },
+    "minuteResources": [
+      {
+        "minute": 0,
+        "samples": 119,
+        "handlesMin": 987.0,
+        "handlesMax": 990.0,
+        "threadsMin": 96.0,
+        "threadsMax": 101.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 1.0,
+        "contentionBatches": 6591,
+        "consumed": 2372
+      },
+      {
+        "minute": 1,
+        "samples": 120,
+        "handlesMin": 987.0,
+        "handlesMax": 999.0,
+        "threadsMin": 96.0,
+        "threadsMax": 96.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 1.0,
+        "contentionBatches": 13192,
+        "consumed": 4739
+      },
+      {
+        "minute": 2,
+        "samples": 120,
+        "handlesMin": 991.0,
+        "handlesMax": 999.0,
+        "threadsMin": 94.0,
+        "threadsMax": 96.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 1.0,
+        "contentionBatches": 19833,
+        "consumed": 7159
+      },
+      {
+        "minute": 3,
+        "samples": 120,
+        "handlesMin": 995.0,
+        "handlesMax": 1001.0,
+        "threadsMin": 94.0,
+        "threadsMax": 95.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 0.0,
+        "contentionBatches": 26478,
+        "consumed": 9544
+      },
+      {
+        "minute": 4,
+        "samples": 120,
+        "handlesMin": 990.0,
+        "handlesMax": 1003.0,
+        "threadsMin": 93.0,
+        "threadsMax": 95.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 0.0,
+        "contentionBatches": 33124,
+        "consumed": 11923
+      },
+      {
+        "minute": 5,
+        "samples": 120,
+        "handlesMin": 1003.0,
+        "handlesMax": 1005.0,
+        "threadsMin": 95.0,
+        "threadsMax": 95.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 1.0,
+        "contentionBatches": 39788,
+        "consumed": 14334
+      },
+      {
+        "minute": 6,
+        "samples": 120,
+        "handlesMin": 996.0,
+        "handlesMax": 1006.0,
+        "threadsMin": 93.0,
+        "threadsMax": 95.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 1.0,
+        "contentionBatches": 46405,
+        "consumed": 16681
+      },
+      {
+        "minute": 7,
+        "samples": 119,
+        "handlesMin": 1000.0,
+        "handlesMax": 1006.0,
+        "threadsMin": 93.0,
+        "threadsMax": 94.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 0.0,
+        "contentionBatches": 53033,
+        "consumed": 19019
+      },
+      {
+        "minute": 8,
+        "samples": 120,
+        "handlesMin": 1000.0,
+        "handlesMax": 1011.0,
+        "threadsMin": 93.0,
+        "threadsMax": 94.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 0.0,
+        "contentionBatches": 59661,
+        "consumed": 21383
+      },
+      {
+        "minute": 9,
+        "samples": 120,
+        "handlesMin": 1007.0,
+        "handlesMax": 1012.0,
+        "threadsMin": 94.0,
+        "threadsMax": 95.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 1.0,
+        "contentionBatches": 66274,
+        "consumed": 23772
+      },
+      {
+        "minute": 10,
+        "samples": 120,
+        "handlesMin": 1012.0,
+        "handlesMax": 1012.0,
+        "threadsMin": 95.0,
+        "threadsMax": 95.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 1.0,
+        "contentionBatches": 72910,
+        "consumed": 26156
+      },
+      {
+        "minute": 11,
+        "samples": 120,
+        "handlesMin": 1006.0,
+        "handlesMax": 1014.0,
+        "threadsMin": 93.0,
+        "threadsMax": 95.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 0.0,
+        "contentionBatches": 79571,
+        "consumed": 28537
+      },
+      {
+        "minute": 12,
+        "samples": 120,
+        "handlesMin": 1010.0,
+        "handlesMax": 1015.0,
+        "threadsMin": 93.0,
+        "threadsMax": 94.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 0.0,
+        "contentionBatches": 86202,
+        "consumed": 30901
+      },
+      {
+        "minute": 13,
+        "samples": 119,
+        "handlesMin": 1011.0,
+        "handlesMax": 1015.0,
+        "threadsMin": 93.0,
+        "threadsMax": 94.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 1.0,
+        "contentionBatches": 92841,
+        "consumed": 33267
+      },
+      {
+        "minute": 14,
+        "samples": 120,
+        "handlesMin": 1015.0,
+        "handlesMax": 1017.0,
+        "threadsMin": 94.0,
+        "threadsMax": 94.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 0.0,
+        "contentionBatches": 99472,
+        "consumed": 35656
+      },
+      {
+        "minute": 15,
+        "samples": 120,
+        "handlesMin": 1017.0,
+        "handlesMax": 1023.0,
+        "threadsMin": 93.0,
+        "threadsMax": 94.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 0.0,
+        "contentionBatches": 106103,
+        "consumed": 38007
+      },
+      {
+        "minute": 16,
+        "samples": 120,
+        "handlesMin": 1018.0,
+        "handlesMax": 1022.0,
+        "threadsMin": 93.0,
+        "threadsMax": 94.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 1.0,
+        "contentionBatches": 112756,
+        "consumed": 40369
+      },
+      {
+        "minute": 17,
+        "samples": 120,
+        "handlesMin": 1018.0,
+        "handlesMax": 1022.0,
+        "threadsMin": 93.0,
+        "threadsMax": 94.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 0.0,
+        "contentionBatches": 119382,
+        "consumed": 42752
+      },
+      {
+        "minute": 18,
+        "samples": 120,
+        "handlesMin": 1020.0,
+        "handlesMax": 1022.0,
+        "threadsMin": 94.0,
+        "threadsMax": 94.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 1.0,
+        "contentionBatches": 126026,
+        "consumed": 45181
+      },
+      {
+        "minute": 19,
+        "samples": 120,
+        "handlesMin": 1022.0,
+        "handlesMax": 1024.0,
+        "threadsMin": 94.0,
+        "threadsMax": 94.0,
+        "bytesMax": 19158304.0,
+        "depthMax": 1.0,
+        "contentionBatches": 132673,
+        "consumed": 47553
+      }
+    ]
+  },
+  "lateSubscriptionAndRecovery": {
+    "sourceReportSha256": "da7eada25147829879114b6f6f032cf0dfa411a44c51f9e4ca2a315c444d53bf",
+    "acceptance": {
+      "accepted": true,
+      "failures": [],
+      "maximumChangesPerMinute": 3,
+      "growth": [
+        {
+          "profile": 0,
+          "handles": 4.400000000000091,
+          "threads": -0.29999999999999716,
+          "bytes": 0
+        },
+        {
+          "profile": 1,
+          "handles": 5,
+          "threads": -3,
+          "bytes": 0
+        },
+        {
+          "profile": 2,
+          "handles": 2,
+          "threads": 0,
+          "bytes": 0
+        },
+        {
+          "profile": 3,
+          "handles": 1.2000000000000455,
+          "threads": 0,
+          "bytes": 0
+        },
+        {
+          "profile": 4,
+          "handles": 23,
+          "threads": -4,
+          "bytes": 0
+        }
+      ],
+      "latencyGrowthMs": 0,
+      "decodedPublications": 6
+    },
+    "observer": {
+      "schemaVersion": 1,
+      "accepted": true,
+      "startedAt": "2026-09-05T14:19:21.987Z",
+      "finishedAt": "2026-09-05T14:21:34.577Z",
+      "durationMs": 132590,
+      "video": {
+        "receivedFrames": 2700,
+        "decodedFrames": 2675,
+        "outputSizes": [
+          {
+            "width": 1920,
+            "height": 1080,
+            "frames": 1099
+          },
+          {
+            "width": 960,
+            "height": 540,
+            "frames": 563
+          },
+          {
+            "width": 1280,
+            "height": 720,
+            "frames": 1013
+          }
+        ],
+        "decodedStreams": [
+          {
+            "trackSid": "TR_VSno5D2FBQcATj",
+            "subscribedAfterStartMs": 7358,
+            "firstFrameAfterStartMs": null,
+            "lastFrameAfterStartMs": null,
+            "width": 0,
+            "height": 0,
+            "frames": 0
+          },
+          {
+            "trackSid": "TR_VSoGVYqg5vMAcd",
+            "subscribedAfterStartMs": 15356,
+            "firstFrameAfterStartMs": 16710,
+            "lastFrameAfterStartMs": 22167,
+            "width": 1920,
+            "height": 1080,
+            "frames": 212
+          },
+          {
+            "trackSid": "TR_VSyuuK9anVk8H4",
+            "subscribedAfterStartMs": 25504,
+            "firstFrameAfterStartMs": 27706,
+            "lastFrameAfterStartMs": 52689,
+            "width": 960,
+            "height": 540,
+            "frames": 563
+          },
+          {
+            "trackSid": "TR_VSYkP5KyPKyR93",
+            "subscribedAfterStartMs": 56035,
+            "firstFrameAfterStartMs": 56795,
+            "lastFrameAfterStartMs": 73353,
+            "width": 1280,
+            "height": 720,
+            "frames": 375
+          },
+          {
+            "trackSid": "TR_VSc7dVKFQL44RB",
+            "subscribedAfterStartMs": 76705,
+            "firstFrameAfterStartMs": 78146,
+            "lastFrameAfterStartMs": 94032,
+            "width": 1280,
+            "height": 720,
+            "frames": 638
+          },
+          {
+            "trackSid": "TR_VS8bPjKraEBWwn",
+            "subscribedAfterStartMs": 97355,
+            "firstFrameAfterStartMs": 98140,
+            "lastFrameAfterStartMs": 114659,
+            "width": 1920,
+            "height": 1080,
+            "frames": 372
+          },
+          {
+            "trackSid": "TR_VSXcfHTAaxqAtY",
+            "subscribedAfterStartMs": 118035,
+            "firstFrameAfterStartMs": 119329,
+            "lastFrameAfterStartMs": 132150,
+            "width": 1920,
+            "height": 1080,
+            "frames": 515
+          }
+        ],
+        "latencyMinutes": [
+          {
+            "minute": 0,
+            "frames": 848,
+            "averageMs": 18.451650943396228,
+            "p95Ms": 23,
+            "maximumMs": 37
+          },
+          {
+            "minute": 1,
+            "frames": 1339,
+            "averageMs": 18.980582524271846,
+            "p95Ms": 22,
+            "maximumMs": 41
+          },
+          {
+            "minute": 2,
+            "frames": 488,
+            "averageMs": 22.46106557377049,
+            "p95Ms": 24,
+            "maximumMs": 25
+          }
+        ],
+        "maximumConsecutiveFrames": 413,
+        "sequenceGaps": 1029,
+        "outOfOrderFrames": 0,
+        "duplicateFrames": 0,
+        "minimumLatencyMs": 6,
+        "maximumLatencyMs": 41,
+        "maximumLatencyFrame": {
+          "trackSid": "TR_VS8bPjKraEBWwn",
+          "trackFrame": 97,
+          "sequence": 3618,
+          "ageMs": 41,
+          "receivedAfterStartMs": 102457
+        },
+        "averageLatencyMs": 19.44785046728972,
+        "invalidTimestampFrames": 0,
+        "observerDroppedFrames": 1029,
+        "maximumObserverBacklogFrames": 0,
+        "firstSequence": 190,
+        "lastSequence": 4820,
+        "p50LatencyMs": 19,
+        "p95LatencyMs": 23,
+        "staleFrames": 0,
+        "resolutionTransitions": 0,
+        "resolutions": [
+          {
+            "generation": 1,
+            "width": 626,
+            "height": 353
+          }
+        ],
+        "maximumNoFrameDurationMs": 5347,
+        "contentChanges": 2299,
+        "endReason": "track-unpublished"
+      },
+      "audio": {
+        "receivedFrames": 12566,
+        "receivedSamples": 6031680,
+        "controlPulses": 126,
+        "discontinuities": 1,
+        "framesAfterVideoEnd": 20
+      },
+      "reconnects": 0,
+      "tracks": {
+        "subscribed": 9,
+        "unsubscribed": 8
+      },
+      "failures": []
+    },
+    "sender": {
+      "schemaVersion": 1,
+      "accepted": true,
+      "mode": "screen-gpu-adaptive-late-window",
+      "productionPath": "d3d11-hardware-h264",
+      "profile": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 60,
+        "bitrate": 8000000
+      },
+      "adapter": {
+        "luidLow": 66824,
+        "luidHigh": 0
+      },
+      "encoder": {
+        "implementation": "NVIDIA H.264 Encoder MFT",
+        "submitted": 696,
+        "encoded": 695,
+        "bytes": 11626962,
+        "keyframes": 12,
+        "outputStalls": 0
+      },
+      "gpu": {
+        "converted": 696,
+        "timingMeasurements": 696,
+        "timingUnavailable": 0,
+        "durationTotalUs": 2997,
+        "durationMaxUs": 69,
+        "textureBytes": 10215112
+      },
+      "cadence": {
+        "captureAgeLastUs": 0,
+        "captureAgeMaxUs": 43264,
+        "frameRateDrops": 1275
+      },
+      "backpressure": {
+        "captureSuperseded": 16,
+        "conversionDrops": 0,
+        "encoderSuperseded": 1,
+        "publicationSuperseded": 0,
+        "maximumPublicationDepth": 1
+      },
+      "resources": {
+        "cycles": 1,
+        "estimatedBytes": 19158304
+      }
+    },
+    "transitions": [
+      {
+        "first": {
+          "elapsedMs": 500,
+          "profile": 4,
+          "generation": 1,
+          "reason": 1,
+          "desiredRevision": 1,
+          "appliedRevision": 1,
+          "networkBps": 7777000,
+          "consumed": 19,
+          "keyframeRequests": 1,
+          "captureAgeUs": 0,
+          "publishAgeUs": 0,
+          "videoDepth": 0,
+          "bytes": 19158304,
+          "contentionActive": false,
+          "contentionBatches": 0,
+          "contentionBytes": 0,
+          "handles": 846,
+          "threads": 71
+        },
+        "last": {
+          "elapsedMs": 10010,
+          "profile": 4,
+          "generation": 1,
+          "reason": 7,
+          "desiredRevision": 2,
+          "appliedRevision": 1,
+          "networkBps": 9405454,
+          "consumed": 392,
+          "keyframeRequests": 5,
+          "captureAgeUs": 0,
+          "publishAgeUs": 0,
+          "videoDepth": 0,
+          "bytes": 19158304,
+          "contentionActive": false,
+          "contentionBatches": 0,
+          "contentionBytes": 0,
+          "handles": 790,
+          "threads": 67
+        }
+      },
+      {
+        "first": {
+          "elapsedMs": 10511,
+          "profile": 0,
+          "generation": 2,
+          "reason": 1,
+          "desiredRevision": 2,
+          "appliedRevision": 2,
+          "networkBps": 9405454,
+          "consumed": 402,
+          "keyframeRequests": 6,
+          "captureAgeUs": 0,
+          "publishAgeUs": 0,
+          "videoDepth": 0,
+          "bytes": 12159904,
+          "contentionActive": false,
+          "contentionBatches": 0,
+          "contentionBytes": 0,
+          "handles": 848,
+          "threads": 70
+        },
+        "last": {
+          "elapsedMs": 40541,
+          "profile": 0,
+          "generation": 2,
+          "reason": 0,
+          "desiredRevision": 3,
+          "appliedRevision": 3,
+          "networkBps": 9405454,
+          "consumed": 1075,
+          "keyframeRequests": 9,
+          "captureAgeUs": 0,
+          "publishAgeUs": 0,
+          "videoDepth": 0,
+          "bytes": 12159904,
+          "contentionActive": false,
+          "contentionBatches": 0,
+          "contentionBytes": 0,
+          "handles": 802,
+          "threads": 67
+        }
+      },
+      {
+        "first": {
+          "elapsedMs": 41042,
+          "profile": 1,
+          "generation": 3,
+          "reason": 1,
+          "desiredRevision": 3,
+          "appliedRevision": 3,
+          "networkBps": 9405454,
+          "consumed": 1085,
+          "keyframeRequests": 10,
+          "captureAgeUs": 0,
+          "publishAgeUs": 0,
+          "videoDepth": 0,
+          "bytes": 13974304,
+          "contentionActive": false,
+          "contentionBatches": 0,
+          "contentionBytes": 0,
+          "handles": 860,
+          "threads": 70
+        },
+        "last": {
+          "elapsedMs": 61056,
+          "profile": 1,
+          "generation": 3,
+          "reason": 0,
+          "desiredRevision": 3,
+          "appliedRevision": 3,
+          "networkBps": 9405454,
+          "consumed": 1536,
+          "keyframeRequests": 12,
+          "captureAgeUs": 0,
+          "publishAgeUs": 0,
+          "videoDepth": 0,
+          "bytes": 13974304,
+          "contentionActive": false,
+          "contentionBatches": 0,
+          "contentionBytes": 0,
+          "handles": 865,
+          "threads": 67
+        }
+      },
+      {
+        "first": {
+          "elapsedMs": 61556,
+          "profile": 2,
+          "generation": 4,
+          "reason": 1,
+          "desiredRevision": 3,
+          "appliedRevision": 3,
+          "networkBps": 9405454,
+          "consumed": 1548,
+          "keyframeRequests": 13,
+          "captureAgeUs": 0,
+          "publishAgeUs": 0,
+          "videoDepth": 0,
+          "bytes": 13974304,
+          "contentionActive": false,
+          "contentionBatches": 0,
+          "contentionBytes": 0,
+          "handles": 865,
+          "threads": 67
+        },
+        "last": {
+          "elapsedMs": 81568,
+          "profile": 2,
+          "generation": 4,
+          "reason": 0,
+          "desiredRevision": 3,
+          "appliedRevision": 3,
+          "networkBps": 9405454,
+          "consumed": 2345,
+          "keyframeRequests": 16,
+          "captureAgeUs": 0,
+          "publishAgeUs": 0,
+          "videoDepth": 0,
+          "bytes": 13974304,
+          "contentionActive": false,
+          "contentionBatches": 0,
+          "contentionBytes": 0,
+          "handles": 867,
+          "threads": 67
+        }
+      },
+      {
+        "first": {
+          "elapsedMs": 82069,
+          "profile": 3,
+          "generation": 5,
+          "reason": 1,
+          "desiredRevision": 3,
+          "appliedRevision": 3,
+          "networkBps": 9405454,
+          "consumed": 2361,
+          "keyframeRequests": 17,
+          "captureAgeUs": 0,
+          "publishAgeUs": 0,
+          "videoDepth": 0,
+          "bytes": 19158304,
+          "contentionActive": false,
+          "contentionBatches": 0,
+          "contentionBytes": 0,
+          "handles": 867,
+          "threads": 67
+        },
+        "last": {
+          "elapsedMs": 102093,
+          "profile": 3,
+          "generation": 5,
+          "reason": 0,
+          "desiredRevision": 3,
+          "appliedRevision": 3,
+          "networkBps": 9405454,
+          "consumed": 2812,
+          "keyframeRequests": 20,
+          "captureAgeUs": 0,
+          "publishAgeUs": 0,
+          "videoDepth": 0,
+          "bytes": 19158304,
+          "contentionActive": false,
+          "contentionBatches": 0,
+          "contentionBytes": 0,
+          "handles": 869,
+          "threads": 67
+        }
+      },
+      {
+        "first": {
+          "elapsedMs": 102594,
+          "profile": 4,
+          "generation": 6,
+          "reason": 0,
+          "desiredRevision": 3,
+          "appliedRevision": 3,
+          "networkBps": 9405454,
+          "consumed": 2820,
+          "keyframeRequests": 20,
+          "captureAgeUs": 0,
+          "publishAgeUs": 0,
+          "videoDepth": 0,
+          "bytes": 18274392,
+          "contentionActive": false,
+          "contentionBatches": 0,
+          "contentionBytes": 0,
+          "handles": 847,
+          "threads": 67
+        },
+        "last": {
+          "elapsedMs": 119612,
+          "profile": 4,
+          "generation": 6,
+          "reason": 1,
+          "desiredRevision": 3,
+          "appliedRevision": 3,
+          "networkBps": 11162952,
+          "consumed": 3500,
+          "keyframeRequests": 24,
+          "captureAgeUs": 0,
+          "publishAgeUs": 0,
+          "videoDepth": 0,
+          "bytes": 19158304,
+          "contentionActive": false,
+          "contentionBatches": 0,
+          "contentionBytes": 0,
+          "handles": 869,
+          "threads": 67
+        }
+      }
+    ]
+  }
+}

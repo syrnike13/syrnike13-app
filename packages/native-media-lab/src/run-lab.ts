@@ -1,5 +1,6 @@
 import { AccessToken } from 'livekit-server-sdk'
 import { Effect } from 'effect'
+import { verifyAdaptiveEvidence } from './adaptive-evidence.js'
 import { randomBytes } from 'node:crypto'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -192,7 +193,7 @@ async function executeLab(resources: LabResources): Promise<void> {
     '  use_external_ip: false',
     '  node_ip: "127.0.0.1"',
     'logging:',
-    '  level: warn',
+    process.env.MEDIA_LAB_DIAGNOSTIC_LOGS === 'true' ? '  level: debug' : '  level: warn',
     'keys:',
     `  ${apiKey}: ${apiSecret}`,
     '',
@@ -401,7 +402,9 @@ async function executeLab(resources: LabResources): Promise<void> {
         // Lifecycle churn includes publish/unpublish acknowledgements and a
         // resource-drain check per cycle. Its total duration is distinct from
         // the unchanged 1500 ms frame-age/latency acceptance limit.
-        mode.includes('repeat') ? 45_000 + screenCycles * 10_000 : 75_000,
+        mode === 'screen-gpu-adaptive-contention-window' ? 1_240_000 :
+        mode.includes('screen-gpu-adaptive') ? 160_000 :
+          mode.includes('repeat') ? 45_000 + screenCycles * 10_000 : 75_000,
         `${mode} exceeded its process deadline`,
       )
       const observerReportText = await readFile(observerSetup.reportPath, 'utf8')
@@ -428,11 +431,27 @@ async function executeLab(resources: LabResources): Promise<void> {
           `${mode} was rejected\nobserver=${observerReportText}\nsender=${senderLine}`,
         )
       }
+      const adaptiveSamples = publisher.output().split(/\r?\n/)
+        .filter(line => line.startsWith('ADAPTIVE_SAMPLE '))
+        .map(line => JSON.parse(line.slice('ADAPTIVE_SAMPLE '.length)))
+      const adaptive = mode.includes('adaptive')
+        ? verifyAdaptiveEvidence(adaptiveSamples, observerReport, mode.includes('contention')) : undefined
+      if (adaptive && ('reconnects' in observerReport && observerReport.reconnects !== 0 ||
+          /resuming connection|restarting connection/.test(publisher.output())))
+        throw new LabFailure('Adaptive observation crossed a Room reconnection')
+      if (adaptive && !adaptive.accepted) throw new LabFailure(`Adaptive acceptance: ${JSON.stringify(adaptive)}`)
       scenarioReports[mode] = {
         sender: senderReport,
         observer: observerReport,
+        adaptiveSamples,
+        adaptive,
       }
     } catch (error: unknown) {
+      const diagnosticDirectory = path.resolve(packageRoot, 'artifacts')
+      await mkdir(diagnosticDirectory, { recursive: true })
+      await writeFile(path.join(diagnosticDirectory, `${mode}.failure.json`), JSON.stringify({
+        publisher: publisher?.output(), observer: observerSetup?.observer.output(), server: server.output(),
+      }, null, 2))
       throw new LabFailure([
         `${mode}: ${normalizeError(error).message}`,
         `--- publisher ---\n${publisher?.output().slice(-8000) ?? 'not started'}`,
@@ -571,6 +590,25 @@ async function executeLab(resources: LabResources): Promise<void> {
   }
   await screenScenario('screen-gpu-monitor-1080p60', 80)
   await screenScenario('screen-gpu-window-1080p60', 80)
+  await screenScenario('screen-gpu-adaptive-window', 1500, undefined, 5, {
+    MEDIA_LAB_MIN_OBSERVATION_MS: '120000',
+    MEDIA_LAB_TIMEOUT_MS: '150000',
+    MEDIA_LAB_MAX_VIDEO_LATENCY_MS: '1500',
+    MEDIA_LAB_MAX_FRAME_AGE_MS: '1500',
+  })
+  await screenScenario('screen-gpu-adaptive-contention-window', 20_000, undefined, 4, {
+    MEDIA_LAB_MIN_OBSERVATION_MS: '1200000',
+    MEDIA_LAB_TIMEOUT_MS: '1230000',
+    MEDIA_LAB_MAX_VIDEO_LATENCY_MS: '1500',
+    MEDIA_LAB_MAX_FRAME_AGE_MS: '1500',
+  })
+  await screenScenario('screen-gpu-adaptive-late-window', 1500, undefined, 5, {
+    MEDIA_LAB_MIN_OBSERVATION_MS: '120000',
+    MEDIA_LAB_TIMEOUT_MS: '170000',
+    MEDIA_LAB_SUBSCRIBE_DELAY_MS: '3000',
+    MEDIA_LAB_MAX_VIDEO_LATENCY_MS: '1500',
+    MEDIA_LAB_MAX_FRAME_AGE_MS: '1500',
+  })
   await screenScenario('screen-gpu-monitor-1440p30', 80)
   await screenScenario(
     'screen-gpu-repeat-720p30',

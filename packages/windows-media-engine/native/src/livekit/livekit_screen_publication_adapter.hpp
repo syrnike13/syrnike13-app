@@ -25,6 +25,7 @@ class LiveKitScreenPublicationAdapter final
       std::shared_ptr<LiveKitRoomTransport> transport,
       LiveKitScreenEncoderControls controls = {});
   ~LiveKitScreenPublicationAdapter() override;
+  [[nodiscard]] OutgoingNetworkObservation networkObservation() const noexcept override;
 
   void startPublish(std::uint64_t generation,
                     screen::ScreenTrackDescriptor descriptor,

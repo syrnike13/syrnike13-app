@@ -91,6 +91,7 @@ add_library(media_screen STATIC
   src/screen/hardware_h264_capability.cpp
   src/screen/hardware_h264_encoder.cpp
   src/screen/production_screen_pipeline.cpp
+  src/screen/production_screen_adaptation.cpp
   src/screen/production_screen_sender.cpp
   src/screen/local_screen_preview.cpp
 )
@@ -105,6 +106,7 @@ find_package(LiveKit CONFIG REQUIRED)
 
 add_library(media_livekit STATIC
   src/livekit/livekit_room_transport.cpp
+  src/livekit/livekit_network_sampler.cpp
 )
 windows_media_target(media_livekit)
 target_include_directories(media_livekit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -278,6 +280,22 @@ target_link_libraries(screen_reference_tests PRIVATE media_screen)
 add_test(NAME screen-reference COMMAND screen_reference_tests)
 set_tests_properties(screen-reference PROPERTIES TIMEOUT 10)
 
+add_library(media_screen_policy STATIC
+  src/screen/adaptive_screen_policy.cpp src/screen/screen_keyframe_control.cpp)
+windows_media_target(media_screen_policy)
+target_include_directories(media_screen_policy PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(media_screen PUBLIC media_screen_policy)
+add_executable(adaptive_screen_policy_tests tests/adaptive_screen_policy_test.cpp)
+windows_media_target(adaptive_screen_policy_tests)
+target_link_libraries(adaptive_screen_policy_tests PRIVATE media_screen_policy)
+add_test(NAME adaptive-screen-policy COMMAND adaptive_screen_policy_tests)
+add_executable(adaptive_screen_pipeline_tests tests/adaptive_screen_pipeline_test.cpp)
+windows_media_target(adaptive_screen_pipeline_tests)
+target_link_libraries(adaptive_screen_pipeline_tests PRIVATE media_screen)
+add_test(NAME adaptive-screen-pipeline COMMAND adaptive_screen_pipeline_tests)
+set_tests_properties(adaptive-screen-pipeline PROPERTIES TIMEOUT 45 LABELS "requires-gpu-video")
+set_tests_properties(adaptive-screen-policy PROPERTIES TIMEOUT 10)
+
 add_executable(production_screen_sender_tests
   tests/production_screen_sender_test.cpp
 )
@@ -314,12 +332,12 @@ set_tests_properties(monitor-capture gpu-screen-converter encoder-faults
 
 if(WINDOWS_MEDIA_BUILD_LAB)
   add_library(preview_bridge_lab MODULE ${CMAKE_JS_SRC}
-    src/lab/preview_bridge_addon.cpp src/lab/screen_cpu_lab.cpp)
+    src/lab/preview_bridge_addon.cpp src/lab/screen_cpu_lab.cpp src/lab/gpu_contention.cpp)
   set_target_properties(preview_bridge_lab PROPERTIES PREFIX "" SUFFIX ".node")
   windows_media_target(preview_bridge_lab)
   target_include_directories(preview_bridge_lab SYSTEM PRIVATE ${CMAKE_JS_INC} "${NODE_ADDON_API_DIR}")
   target_compile_definitions(preview_bridge_lab PRIVATE NAPI_CPP_EXCEPTIONS NAPI_VERSION=${NAPI_VERSION})
-  target_link_libraries(preview_bridge_lab PRIVATE ${CMAKE_JS_LIB} media_screen_livekit media_livekit delayimp)
+  target_link_libraries(preview_bridge_lab PRIVATE ${CMAKE_JS_LIB} media_screen_livekit media_livekit delayimp d3dcompiler)
   target_link_options(preview_bridge_lab PRIVATE /DELAYLOAD:node.exe)
   windows_media_copy_livekit_runtime(preview_bridge_lab)
   add_dependencies(preview_bridge_lab monitor_pattern_fixture source_window_fixture)
@@ -350,12 +368,13 @@ if(WINDOWS_MEDIA_BUILD_LAB)
   add_executable(native_media_lab_publisher
     src/lab/native_media_lab_publisher.cpp
     src/lab/screen_cpu_lab.cpp
+    src/lab/gpu_contention.cpp
   )
   windows_media_target(native_media_lab_publisher)
   target_compile_definitions(native_media_lab_publisher PRIVATE _CRT_SECURE_NO_WARNINGS)
   target_link_libraries(native_media_lab_publisher PRIVATE
     media_core media_livekit media_sources media_capture media_screen_livekit
-    LiveKit::livekit)
+    LiveKit::livekit d3dcompiler)
   add_dependencies(native_media_lab_publisher monitor_pattern_fixture source_window_fixture)
 
   get_filename_component(_livekit_cmake_parent "${LiveKit_DIR}" DIRECTORY)

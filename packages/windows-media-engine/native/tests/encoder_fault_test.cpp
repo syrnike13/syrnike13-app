@@ -36,13 +36,16 @@ HRESULT testMFShutdown() {
 #define MFShutdown testMFShutdown
 #include "screen/hardware_h264_encoder.cpp"
 #undef MFShutdown
+#define private public
 #include "screen/production_screen_pipeline.hpp"
+#undef private
 
 using namespace syrnike::windows_media::screen;
 using namespace std::chrono_literals;
 
 class FaultTestAdapter final : public ScreenPublicationAdapter {
  public:
+  syrnike::windows_media::OutgoingNetworkObservation networkObservation() const noexcept override { return {}; }
   std::atomic<bool> unpublished = false;
   void startPublish(std::uint64_t g, ScreenTrackDescriptor,
                     ScreenOperationCompletion cb) override { cb(g, {}); }
@@ -59,11 +62,10 @@ void pipelinePropagatesEncoderFailure() {
   auto device = syrnike::windows_media::capture::processD3d11Device(false);
   auto frames = std::make_shared<ScreenFramePipeline>();
   auto adapter = std::make_shared<FaultTestAdapter>();
-  std::shared_ptr<HardwareH264Encoder> encoder;
   ProductionScreenPipeline pipeline(device, frames, kScreenProfile720p30,
-      [&](const auto& value) { encoder = value; return adapter; });
+      [&](const auto&) { return adapter; });
   if (!pipeline.start("fault-test", 5s).ok) throw std::runtime_error("start failed");
-  fail(encoder->state_, "screen_hardware_h264_output_stalled", "injected stall",
+  fail(pipeline.encoder_->state_, "screen_hardware_h264_output_stalled", "injected stall",
        "encoder_output");
   const auto deadline = std::chrono::steady_clock::now() + 1s;
   while (!adapter->unpublished && std::chrono::steady_clock::now() < deadline)
