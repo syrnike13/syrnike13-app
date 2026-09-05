@@ -16,12 +16,18 @@
 
 namespace syrnike::windows_media {
 
+// A Room observer must quiesce its SDK operations/readers before SDK shutdown.
+class LiveKitRoomObserver : public livekit::RoomDelegate {
+ public:
+  virtual void stop() = 0;
+};
+
 class LiveKitRoomTransport final : public RoomTransport {
 public:
   using ActiveRoomTask =
       std::function<void(const std::shared_ptr<livekit::Room> &)>;
 
-  LiveKitRoomTransport();
+  explicit LiveKitRoomTransport(std::shared_ptr<LiveKitRoomObserver> delegate = {});
   ~LiveKitRoomTransport() override;
   void setConnectionEventCallback(RoomConnectionEventCallback callback) override;
 
@@ -67,6 +73,7 @@ private:
   void enqueue(Task task);
 
   mutable std::mutex mutex_;
+  std::shared_ptr<LiveKitRoomObserver> delegate_;
   RoomConnectionEventCallback connection_event_callback_;
   bool disconnect_reported_ = false;
   std::condition_variable changed_;

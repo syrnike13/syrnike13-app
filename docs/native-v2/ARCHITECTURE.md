@@ -83,3 +83,8 @@ Deadlines are fixed at 2 seconds for core startup, 1 second for core ping and sh
 Before a successful LiveKit connect becomes public, the transport compares `Room::roomInfo().name` and the local participant identity with the expected values from the desired Room intent. A mismatch is torn down and reported as non-retryable `room_authority_mismatch`; its credential lease remains consumed, and the utility epoch is retired so uncertain wrong-Room ownership cannot be reused.
 
 The lifecycle boundary carries the exact protocol v3 described in `PROTOCOL.md`. Its full-snapshot desired state is accepted and queried on the same C++ control thread, while the room intent is reconciled asynchronously through bounded transport lanes; track intents still support only `off`, so `NativeRtcEngineAdapter` remains unavailable until the later desktop cutover.
+
+The opt-in #122 receive slice is described in [REMOTE_VIDEO_RECEIVE.md](REMOTE_VIDEO_RECEIVE.md).
+It adds a bounded remote track owner, a process-wide four-slot shared texture pool
+and an Electron bridge with authoritative GPU release. Media Lab drives demand;
+the product lifecycle protocol and Voice adapter are not cut over by this slice.

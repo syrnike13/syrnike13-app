@@ -40,7 +40,8 @@ EngineResult cancelLiveKitRoom(const std::shared_ptr<livekit::Room> &room) {
 
 } // namespace
 
-LiveKitRoomTransport::LiveKitRoomTransport() {
+LiveKitRoomTransport::LiveKitRoomTransport(std::shared_ptr<LiveKitRoomObserver> delegate)
+    : delegate_(std::move(delegate)) {
   livekit::initialize(livekit::LogLevel::Info);
   worker_ = std::thread([this] { run(); });
   cancellation_worker_ = std::thread([this] { runCancellationLane(); });
@@ -62,6 +63,7 @@ LiveKitRoomTransport::~LiveKitRoomTransport() {
     cancellation_worker_.join();
   if (worker_.joinable())
     worker_.join();
+  if (delegate_) delegate_->stop();
   {
     std::lock_guard lock(mutex_);
     operation_room_.reset();
@@ -246,6 +248,7 @@ void LiveKitRoomTransport::runConnect(ConnectTask task) noexcept {
       active_generation_ = 0;
     } else {
       room = std::make_shared<livekit::Room>();
+      room->setDelegate(delegate_.get());
       operation_room_ = room;
     }
   }

@@ -109,6 +109,10 @@ windows_media_target(media_livekit)
 target_include_directories(media_livekit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(media_livekit PUBLIC media_core LiveKit::livekit)
 
+add_library(media_video STATIC src/video/shared_texture_pool.cpp src/video/remote_video_track.cpp)
+windows_media_target(media_video)
+target_link_libraries(media_video PUBLIC media_capture LiveKit::livekit PRIVATE dxgi)
+
 add_library(media_screen_livekit STATIC
   src/lab/reference_screen_sender.cpp
   src/livekit/livekit_screen_publication_adapter.cpp
@@ -298,6 +302,30 @@ add_test(NAME encoder-faults COMMAND encoder_fault_tests)
 set_tests_properties(encoder-faults PROPERTIES TIMEOUT 20)
 
 if(WINDOWS_MEDIA_BUILD_LAB)
+  add_executable(shared_texture_pool_tests tests/shared_texture_pool_test.cpp)
+  windows_media_target(shared_texture_pool_tests)
+  target_link_libraries(shared_texture_pool_tests PRIVATE media_video)
+  add_test(NAME shared-texture-pool COMMAND shared_texture_pool_tests)
+  set_tests_properties(shared-texture-pool PROPERTIES TIMEOUT 30)
+  add_library(video_bridge_lab MODULE ${CMAKE_JS_SRC} src/lab/video_bridge_addon.cpp)
+  set_target_properties(video_bridge_lab PROPERTIES PREFIX "" SUFFIX ".node")
+  windows_media_target(video_bridge_lab)
+  target_include_directories(video_bridge_lab SYSTEM PRIVATE ${CMAKE_JS_INC} "${NODE_ADDON_API_DIR}")
+  target_compile_definitions(video_bridge_lab PRIVATE NAPI_CPP_EXCEPTIONS NAPI_VERSION=${NAPI_VERSION})
+  target_link_libraries(video_bridge_lab PRIVATE ${CMAKE_JS_LIB} media_video media_livekit delayimp)
+  windows_media_copy_livekit_runtime(video_bridge_lab)
+  target_link_options(video_bridge_lab PRIVATE /DELAYLOAD:node.exe)
+  add_executable(remote_video_contract_probe src/lab/remote_video_contract_probe.cpp)
+  add_executable(remote_video_publisher src/lab/remote_video_publisher.cpp)
+  windows_media_target(remote_video_publisher)
+  target_compile_definitions(remote_video_publisher PRIVATE _CRT_SECURE_NO_WARNINGS)
+  target_link_libraries(remote_video_publisher PRIVATE LiveKit::livekit)
+  windows_media_copy_livekit_runtime(remote_video_publisher)
+  windows_media_target(remote_video_contract_probe)
+  target_compile_definitions(remote_video_contract_probe PRIVATE _CRT_SECURE_NO_WARNINGS)
+  target_link_libraries(remote_video_contract_probe PRIVATE LiveKit::livekit)
+  windows_media_copy_livekit_runtime(remote_video_contract_probe)
+
   add_executable(native_media_lab_publisher
     src/lab/native_media_lab_publisher.cpp
     src/lab/screen_cpu_lab.cpp
