@@ -2,6 +2,21 @@
 
 This file records reproducible bugs and constraints in the local environment, toolchain, operating system, or third-party libraries that the application repository cannot fix. Application defects do not belong here.
 
+## Hosted Windows runner has no D3D11 Video interfaces
+
+The `windows-2025-vs2026` GitHub-hosted runner used by native CI does not expose
+the D3D11 Video interfaces required by monitor device checks, GPU conversion
+and hardware H264 encoder fault tests. Confirmed on 2026-09-05 in
+[job 101261582758](https://github.com/syrnike13/syrnike13-app/actions/runs/33949541934/job/101261582758):
+the failures are `process D3D11 device has no video interface` and
+`D3D11 video processor interfaces are unavailable`.
+
+These tests carry CTest label `requires-gpu-video` and remain part of the full
+default suite. Hosted CI explicitly excludes that label and reports this
+coverage boundary. Validate the complete suite on a Windows GPU machine and
+retain hardware/ASan evidence before merging media changes; installing SDKs on
+the hosted runner cannot provide the missing hardware capability.
+
 ## Docker Desktop fails to restart on Windows build 26200
 
 ### Symptoms

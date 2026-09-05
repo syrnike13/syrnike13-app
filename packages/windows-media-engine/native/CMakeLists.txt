@@ -301,6 +301,11 @@ target_link_libraries(encoder_fault_tests PRIVATE media_screen)
 add_test(NAME encoder-faults COMMAND encoder_fault_tests)
 set_tests_properties(encoder-faults PROPERTIES TIMEOUT 20)
 
+# Hosted Windows runners expose no D3D11 Video interface. Keep these tests in
+# the default full suite; only the hosted workflow selects the portable subset.
+set_tests_properties(monitor-capture gpu-screen-converter encoder-faults
+  PROPERTIES LABELS "requires-gpu-video")
+
 if(WINDOWS_MEDIA_BUILD_LAB)
   add_executable(shared_texture_pool_tests tests/shared_texture_pool_test.cpp)
   windows_media_target(shared_texture_pool_tests)

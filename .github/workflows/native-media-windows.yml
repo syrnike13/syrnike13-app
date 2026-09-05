@@ -71,13 +71,23 @@ jobs:
       - name: Build and test Debug media lifecycle engine
         run: |
           pnpm windows-media:build:debug
-          pnpm windows-media:test:debug
+          pnpm windows-media:test:debug --label-exclude requires-gpu-video
       - name: Build, test, and verify Release media lifecycle engine
         run: |
           pnpm windows-media:build
-          pnpm windows-media:test
+          pnpm windows-media:test --label-exclude requires-gpu-video
           pnpm windows-media:probe
           pnpm windows-media:verify
+      - name: Report hardware validation boundary
+        shell: pwsh
+        run: |
+          @'
+          ### Hardware validation
+          This hosted runner has no D3D11 Video interfaces. The three tests labeled
+          `requires-gpu-video` are excluded here, not reported as passed. Run the full
+          `pnpm windows-media:test` on a Windows GPU machine before merging media
+          changes; see docs/native-v2/REMOTE_VIDEO_RECEIVE.md for recorded GPU/ASan evidence.
+          '@ | Add-Content $env:GITHUB_STEP_SUMMARY
       - name: Verify 1000 bounded source enumerations
         shell: pwsh
         run: |

@@ -22,7 +22,7 @@ const reportPath = process.env.VIDEO_LAB_REPORT || path.join(artifacts, `remote-
 const temporary = await mkdtemp(path.join(tmpdir(), 'syrnike-viewer-'))
 const key = randomBytes(12).toString('hex'), secret = randomBytes(32).toString('hex')
 const config = path.join(temporary, 'livekit.yaml')
-await writeFile(config, `port: 17980\nbind_addresses: [127.0.0.1]\nrtc:\n  tcp_port: 17981\n  udp_port: 17982\n  use_external_ip: false\n  node_ip: 127.0.0.1\nkeys:\n  ${key}: ${secret}\nlogging:\n  level: error\n`)
+await writeFile(config, `port: 17980\nbind_addresses: [127.0.0.1]\nrtc:\n  tcp_port: 17981\n  udp_port: 17982\n  use_external_ip: false\n  node_ip: 127.0.0.1\nkeys:\n  ${key}: ${secret}\nlogging:\n  level: warn\n`)
 const children = []
 function launch(executable, args, options = {}) {
   const child = spawn(executable, args, { windowsHide: true, ...options })
@@ -33,7 +33,9 @@ function launch(executable, args, options = {}) {
   children.push({ child, done })
   return { child, done }
 }
-const server = launch(serverPath, ['--config', config], { stdio: 'ignore' })
+const server = launch(serverPath, ['--config', config], { stdio: ['ignore', 'ignore', 'pipe'] })
+let serverDiagnostics = ''
+server.child.stderr.on('data', chunk => { serverDiagnostics = (serverDiagnostics + chunk).slice(-8192) })
 let deadline
 try {
   let ready = false
@@ -70,6 +72,7 @@ try {
   const report = JSON.parse(await readFile(reportPath, 'utf8'))
   const acceptanceErrors = verifyViewer(report, scenario, seconds)
   const accepted = code === 0 && acceptanceErrors.length === 0
+  if (!accepted && serverDiagnostics) process.stderr.write(serverDiagnostics)
   console.log(JSON.stringify({ accepted, scenario, frames: report.frames, reportPath,
     finalBackingBytes: report.final?.backingBytes, failures: report.failures, acceptanceErrors }))
   process.exitCode = accepted ? 0 : 1

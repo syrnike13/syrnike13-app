@@ -169,6 +169,9 @@ multiple active owners, retirement, invalid/duplicate/late releases and 30
 allocation cycles. The D3D debug layer reports no live textures after cleanup;
 the same pool test passes under MSVC AddressSanitizer. This is pool-focused
 ASan/debug-layer coverage, not instrumentation of Electron or the SDK decoder.
+Hosted Windows CI runs the portable native subset: its software adapter lacks
+D3D11 Video interfaces. Tests labeled `requires-gpu-video` stay enabled in the
+default full local suite and require the recorded GPU-machine run before merge.
 The desktop bridge tests exercise authoritative release/ACK, transfer timeout,
 schema bounds and epoch-safe metadata. Voice subscription reconciliation remains
 later integration work; the SDK prerequisite is now published and pinned.
