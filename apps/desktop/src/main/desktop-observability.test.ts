@@ -81,8 +81,8 @@ describe('desktop observability privacy defaults', () => {
           {
             type: 'pe_dotnet',
             debug_id: 'ABC',
-            code_file: 'C:\\Users\\private\\syrnike_media.node',
-            debug_file: 'C:\\build\\syrnike_media.pdb',
+            code_file: 'C:\\Users\\private\\syrnike_hotkey.node',
+            debug_file: 'C:\\build\\syrnike_hotkey.pdb',
           },
         ],
       },

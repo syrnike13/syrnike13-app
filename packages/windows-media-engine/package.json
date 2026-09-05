@@ -1,0 +1,41 @@
+{
+  "name": "@syrnike13/windows-media-engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs --config Release",
+    "build:debug": "node scripts/build.mjs --config Debug --no-stage",
+    "build:asan": "node scripts/build.mjs --config Debug --no-stage --asan",
+    "build:lab": "node scripts/build.mjs --config Release --lab",
+    "protocol:generate": "node scripts/build.mjs --generate-protocol-only",
+    "protocol:check": "node scripts/build.mjs --check-protocol",
+    "test": "ctest --test-dir build -C Release --output-on-failure",
+    "test:debug": "ctest --test-dir build -C Debug --output-on-failure",
+    "probe:repeat": ".\\build\\Release\\media_probe.exe lifecycle-repeat --count 100",
+    "probe:sources": ".\\build\\Release\\media_probe.exe enumerate-sources --repeat 1000 --diff",
+    "probe:sources:sanitized": ".\\build\\Release\\media_probe.exe enumerate-sources --repeat 1000 --diff --sanitized",
+    "probe:capture-monitor": ".\\build\\Release\\media_probe.exe capture-monitor --frames 600",
+    "probe:capture-monitor:repeat": ".\\build\\Release\\media_probe.exe capture-monitor-repeat --cycles 50",
+    "probe:capture-monitor:slow": ".\\build\\Release\\media_probe.exe capture-monitor-slow-consumer",
+    "probe:capture-monitor:stop-during-start": ".\\build\\Release\\media_probe.exe capture-monitor-stop-during-start",
+    "probe:capture-window": ".\\build\\Release\\media_probe.exe capture-window --frames 600",
+    "probe:capture-window:resize": ".\\build\\Release\\media_probe.exe capture-window-resize --fixture",
+    "probe:capture-window:minimize": ".\\build\\Release\\media_probe.exe capture-window-minimize --fixture",
+    "probe:capture-window:close": ".\\build\\Release\\media_probe.exe capture-window-close --fixture",
+    "probe:capture-window:repeat": ".\\build\\Release\\media_probe.exe capture-window-repeat --cycles 50",
+    "lab:publisher": ".\\build\\Release\\native_media_lab_publisher.exe",
+    "verify": "node scripts/verify-artifacts.mjs"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.9.0"
+  },
+  "devDependencies": {
+    "cmake-js": "^8.0.0"
+  },
+  "binary": {
+    "napi_versions": [
+      8
+    ]
+  }
+}

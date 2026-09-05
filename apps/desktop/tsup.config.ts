@@ -82,13 +82,9 @@ export default defineConfig([
   },
   {
     entry: {
-      'media-host': 'src/utility/media-host.ts',
       'hotkey-host': 'src/utility/hotkey-host.ts',
       'overlay-host': 'src/utility/overlay-host.ts',
-      'runtime-supervisor': 'src/main/native-runtime/runtime-supervisor.ts',
-      'media-contention-runtime': 'src/utility/media-contention-runtime.ts',
-      'microphone-resilience-host':
-        'src/utility/microphone-resilience-host.ts',
+      'media-host': 'src/utility/media-host-entry.ts',
       'shutdown-budget': 'src/main/shutdown-budget.ts',
     },
     outDir: 'out/utility',

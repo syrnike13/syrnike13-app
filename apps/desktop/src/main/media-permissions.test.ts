@@ -88,35 +88,13 @@ describe('desktop media permissions', () => {
     expect(browserRequestIndex).toBeGreaterThan(callbackIndex ?? -1)
   })
 
-  it('loads native picker sources from the native helper', () => {
+  it('does not retain the removed native picker path', () => {
     const source = readFileSync(
       fileURLToPath(new URL('./media-permissions.ts', import.meta.url)),
       'utf8',
     )
-    const nativeRefreshBody = source.match(
-      /const refreshPendingNativePickerSourcesEffect[\s\S]*?\r?\n}\)\r?\n\r?\nconst refreshPendingNativePickerVisualEffect/,
-    )?.[0]
-
-    expect(nativeRefreshBody).toBeDefined()
-    expect(nativeRefreshBody).toContain('listNativeDisplaySourcePageEffect(')
-    expect(nativeRefreshBody).toMatch(
-      /listNativeDisplaySourcePageEffect\(\s*requestId,\s*page,\s*getWindow,\s*\)/,
-    )
-    expect(nativeRefreshBody).not.toContain('loadSourcesForRequestEffect')
-  })
-
-  it('returns selected native picker audio preference to the renderer', () => {
-    const source = readFileSync(
-      fileURLToPath(new URL('./media-permissions.ts', import.meta.url)),
-      'utf8',
-    )
-    const selectBody = source.match(
-      /ipcMain\.handle\(\s*IPC\.mediaSelectDisplaySource[\s\S]*?return selectPendingDisplayMediaSource/,
-    )?.[0]
-
-    expect(selectBody).toBeDefined()
-    expect(selectBody).toContain('audioRequested')
-    expect(selectBody).toContain('nativePending.audioRequested')
-    expect(selectBody).toContain('source.audioAvailable !== false')
+    expect(source).not.toContain('getPendingNativePicker')
+    expect(source).not.toContain('listNativeDisplaySourcePageEffect')
+    expect(source).not.toContain('loadNativeDisplaySourceVisualEffect')
   })
 })

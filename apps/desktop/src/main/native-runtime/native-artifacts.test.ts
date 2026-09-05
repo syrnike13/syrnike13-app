@@ -10,11 +10,8 @@ import { NATIVE_RUNTIME_CONTRACT_VERSION } from './contract'
 
 const roots: string[] = []
 const binaries = [
-  'livekit.dll',
-  'livekit_ffi.dll',
   'syrnike_hotkey.node',
   'syrnike_overlay.node',
-  'syrnike_media.node',
 ]
 const expected = {
   appVersion: '0.5.1',
@@ -22,7 +19,6 @@ const expected = {
   contractVersion: 6,
   electronVersion: '35.7.5',
   minimumNapiVersion: 10,
-  liveKitVersion: '1.3.0',
   releaseChannel: 'stable' as const,
 }
 
@@ -54,7 +50,7 @@ async function distribution() {
       commitSha: 'a'.repeat(40),
       electronVersion: '35.7.5',
       napiVersion: 8,
-      liveKitVersion: '1.3.0',
+      capabilities: ['hotkeys', 'overlay'],
       files,
     }),
   )
@@ -89,17 +85,17 @@ describe('native artifact integrity', () => {
     )
   })
 
-  it('accepts only the pinned DLL distribution', async () => {
+  it('accepts only the pinned hook-addon distribution', async () => {
     const root = await distribution()
     expect(verifyNativeArtifactDistribution(root, expected)).toMatchObject({
       contractVersion: 6,
-      liveKitVersion: '1.3.0',
+      capabilities: ['hotkeys', 'overlay'],
     })
   })
 
   it('rejects a modified native binary', async () => {
     const root = await distribution()
-    await writeFile(path.join(root, 'syrnike_media.node'), 'tampered')
+    await writeFile(path.join(root, 'syrnike_hotkey.node'), 'tampered')
     expect(() => verifyNativeArtifactDistribution(root, expected)).toThrow(
       'SHA-256 mismatch',
     )

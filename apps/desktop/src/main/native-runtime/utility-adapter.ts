@@ -2,20 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { app, utilityProcess, type UtilityProcess } from 'electron'
-import { Effect, Option, Schema } from 'effect'
 
 import { DESKTOP_RELEASE_CHANNEL } from '../desktop-app-identity'
-import {
-  createNativeDiagnosticLog,
-  createNativeDiagnosticSession,
-  NATIVE_DIAGNOSTIC_MAX_FILE_BYTES,
-  NATIVE_DIAGNOSTIC_MAX_ROLLED_FILES,
-  redactDiagnosticText,
-  rolledDiagnosticFilePath,
-  type NativeDiagnosticLog,
-  type NativeDiagnosticSession,
-} from './diagnostic-log'
-import { NATIVE_RUNTIME_LIVEKIT_VERSION } from './native-artifacts'
 import {
   NATIVE_RUNTIME_CONTRACT_VERSION,
   type NativeRuntimeKind,
@@ -31,24 +19,6 @@ const UTILITY_ENV_ALLOWLIST = [
   'USERPROFILE',
   'WINDIR',
 ] as const
-
-const HighFrequencyMediaTransportMessageSchema = Schema.Union([
-  Schema.Struct({
-    type: Schema.Literal('reply'),
-    ok: Schema.Literal(true),
-  }),
-  Schema.Struct({
-    type: Schema.Literal('event'),
-    event: Schema.Struct({
-      type: Schema.Literals([
-        'microphoneMetrics',
-        'remoteVideoFrame',
-        'localScreenPreviewFrame',
-        'localCameraPreviewFrame',
-      ]),
-    }),
-  }),
-])
 
 export type NativeRuntimeAdapterExit = {
   code: number | null
@@ -86,9 +56,6 @@ export type ElectronUtilityAdapterOptions = {
   runtime: NativeRuntimeKind
   utilityEntryPath: string
   nativeModulePath: string
-  diagnosticSession?: NativeDiagnosticSession
-  diagnosticLog?: NativeDiagnosticLog
-  diagnosticRootDir?: string
   fork?: (
     modulePath: string,
     args: string[],
@@ -98,8 +65,6 @@ export type ElectronUtilityAdapterOptions = {
 
 export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
   private child: UtilityProcessLike | null = null
-  private diagnosticLog: NativeDiagnosticLog | null = null
-  private ownsDiagnosticLog = false
   private killRequested = false
 
   constructor(private readonly options: ElectronUtilityAdapterOptions) {}
@@ -113,88 +78,23 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
     const fork = this.options.fork ?? utilityProcess.fork
     this.killRequested = false
     const startedAt = Date.now()
-    const diagnosticSession =
-      this.options.runtime === 'media'
-        ? this.options.diagnosticSession ??
-          maybeCreateNativeDiagnosticSession(
-            this.options.runtime,
-            this.options.diagnosticRootDir,
-          )
-        : undefined
-    const env = nativeUtilityEnvironment({
-      nativeRoot: path.dirname(this.options.nativeModulePath),
-      SYRNIKE_NATIVE_RUNTIME_KIND: this.options.runtime,
-      SYRNIKE_NATIVE_MODULE_PATH: this.options.nativeModulePath,
-      // Remote video NT handles are process-local. Native duplicates them into
-      // this PID before they cross the utility-process message boundary.
-      SYRNIKE_ELECTRON_MAIN_PID: String(process.pid),
-      ...(diagnosticSession
-        ? {
-            SYRNIKE_NATIVE_DIAGNOSTIC_RUN_ID: diagnosticSession.runId,
-            SYRNIKE_NATIVE_UTILITY_LOG_PATH: diagnosticSession.paths.utilityPath,
-            SYRNIKE_NATIVE_MEDIA_LOG_PATH: diagnosticSession.paths.nativePath,
-          }
-        : {}),
-    })
-    this.diagnosticLog =
-      this.options.diagnosticLog ??
-      (diagnosticSession
-        ? createNativeDiagnosticLog({
-          runtime: this.options.runtime,
-          role: 'electron-main',
-          runId: diagnosticSession.runId,
-          directory: diagnosticSession.directory,
-          latestPath: diagnosticSession.latestPath,
-          filePath: diagnosticSession.paths.electronMainPath,
-          paths: diagnosticSession.paths,
-        })
-        : null)
-    this.ownsDiagnosticLog = Boolean(
-      this.diagnosticLog && !this.options.diagnosticLog,
-    )
-    this.diagnosticLog?.log('transport_spawn', {
-      utilityEntryFile: path.basename(this.options.utilityEntryPath),
-      nativeModuleFile: path.basename(this.options.nativeModulePath),
-      utilityLogFile: diagnosticSession
-        ? path.basename(diagnosticSession.paths.utilityPath)
-        : undefined,
-      nativeLogFile: diagnosticSession
-        ? path.basename(diagnosticSession.paths.nativePath)
-        : undefined,
-    })
-    if (diagnosticSession) {
-      for (const filePath of [
-        diagnosticSession.paths.utilityPath,
-        diagnosticSession.paths.nativePath,
-      ]) {
-        try {
-          rotateOversizedDiagnosticFileSync(filePath)
-        } catch (error) {
-          this.diagnosticLog?.log('diagnostic_prespawn_rotation_failed', {
-            fileName: path.basename(filePath),
-            error: error instanceof Error ? error.message : String(error),
-          })
-        }
-      }
-    }
     const child = fork(this.options.utilityEntryPath, [], {
       serviceName: `syrnike-${this.options.runtime}-runtime`,
-      // stdout remains ignored, while stderr is drained into a bounded tail so
-      // a native crash cannot fill a pipe or erase its last useful evidence.
       stdio: ['ignore', 'ignore', 'pipe'],
-      env,
+      env: nativeUtilityEnvironment({
+        nativeRoot: path.dirname(this.options.nativeModulePath),
+        SYRNIKE_NATIVE_RUNTIME_KIND: this.options.runtime,
+        SYRNIKE_NATIVE_MODULE_PATH: this.options.nativeModulePath,
+      }),
     })
     this.child = child
+
     const stderr = new BoundedByteTail()
     const stderrStream = child.stderr as
       | (NodeJS.ReadableStream & { readableEnded?: boolean })
       | null
-    stderrStream?.on('data', (chunk) => {
-      stderr.append(chunk)
-    })
-    this.diagnosticLog?.log('transport_started', {
-      adapterPid: child.pid,
-    })
+    stderrStream?.on('data', (chunk) => stderr.append(chunk))
+
     let terminal = false
     const finish = (
       exit: NativeRuntimeAdapterExit,
@@ -208,7 +108,7 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
         try {
           child.kill()
         } catch {
-          // The error event is already terminal; the supervisor must still recover.
+          // The error event is already terminal; the supervisor still recovers.
         }
       }
       let finalized = false
@@ -219,7 +119,7 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
         if (drainTimer) clearTimeout(drainTimer)
         stderrStream?.removeListener('end', finalize)
         const stderrSnapshot = stderr.snapshot()
-        const exitWithDiagnostics = {
+        callbacks.onExit({
           ...exit,
           terminationSource,
           uptimeMs: Math.max(0, Date.now() - startedAt),
@@ -228,24 +128,7 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
           stderrBytesSeen: stderrSnapshot.bytesSeen,
           stderrBytesCaptured: stderrSnapshot.value.byteLength,
           stderrTruncated: stderrSnapshot.truncated,
-        }
-        this.diagnosticLog?.log('transport_exit', {
-          adapterPid: child.pid,
-          code: exitWithDiagnostics.code,
-          signal: exitWithDiagnostics.signal,
-          error: exitWithDiagnostics.error?.message,
-          terminate,
-          terminationSource: exitWithDiagnostics.terminationSource,
-          uptimeMs: exitWithDiagnostics.uptimeMs,
-          killRequested: exitWithDiagnostics.killRequested,
-          stderrDrainTimedOut: exitWithDiagnostics.stderrDrainTimedOut,
-          stderrBytesSeen: exitWithDiagnostics.stderrBytesSeen,
-          stderrBytesCaptured: exitWithDiagnostics.stderrBytesCaptured,
-          stderrTruncated: exitWithDiagnostics.stderrTruncated,
-          stderrTailChunks: diagnosticTextChunks(stderrSnapshot.value),
         })
-        this.releaseDiagnosticLog()
-        callbacks.onExit(exitWithDiagnostics)
       }
       if (!stderrStream || stderrStream.readableEnded) {
         finalize()
@@ -255,59 +138,31 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
       drainTimer = setTimeout(() => finalize(true), STDERR_DRAIN_GRACE_MS)
       drainTimer.unref?.()
     }
-    child.on('message', (message) => {
-      if (!isHighFrequencyMediaTransportMessage(message)) {
-        this.diagnosticLog?.log('transport_message', message)
-      }
-      callbacks.onMessage(message)
-    })
+
+    child.on('message', callbacks.onMessage)
     child.on('error', (error) => {
-      finish(
-        {
-          code: null,
-          error: new Error(String(error)),
-        },
-        'error',
-        true,
-      )
+      finish({ code: null, error: new Error(String(error)) }, 'error', true)
     })
-    child.on('exit', (code) => {
-      finish({ code }, 'exit')
-    })
+    child.on('exit', (code) => finish({ code }, 'exit'))
   }
 
   postMessage(message: NativeRuntimeRequest) {
     if (!this.child) throw new Error('Native utility process is not running')
-    if (!isFrameReleaseCommand(message.command)) {
-      this.diagnosticLog?.log('transport_post', message)
-    }
     this.child.postMessage(message)
   }
 
   kill() {
     this.killRequested = true
     try {
-      this.diagnosticLog?.log('transport_kill')
       this.child?.kill()
     } catch {
-      // Killing an already exited Electron utility process is idempotent here.
+      // Killing an already exited utility process is idempotent.
     }
     this.child = null
-    // The exit/error path owns stderr draining and releases the log only after
-    // the bounded tail has been recorded.
-  }
-
-  private releaseDiagnosticLog() {
-    if (this.ownsDiagnosticLog && this.diagnosticLog) {
-      Effect.runFork(this.diagnosticLog.closeEffect())
-    }
-    this.diagnosticLog = null
-    this.ownsDiagnosticLog = false
   }
 }
 
 const MAX_STDERR_TAIL_BYTES = 16 * 1024
-const MAX_DIAGNOSTIC_TEXT_CHUNK_BYTES = 4 * 1024
 const STDERR_DRAIN_GRACE_MS = 100
 
 export class BoundedByteTail {
@@ -343,84 +198,6 @@ export class BoundedByteTail {
   }
 }
 
-function diagnosticTextChunks(value: Buffer) {
-  const text = redactDiagnosticText(
-    value.toString('utf8'),
-    Number.MAX_SAFE_INTEGER,
-  )
-  const chunks: string[] = []
-  for (
-    let offset = 0;
-    offset < text.length;
-    offset += MAX_DIAGNOSTIC_TEXT_CHUNK_BYTES
-  ) {
-    chunks.push(text.slice(offset, offset + MAX_DIAGNOSTIC_TEXT_CHUNK_BYTES))
-  }
-  return chunks
-}
-
-const ErrnoErrorSchema = Schema.Struct({
-  code: Schema.String,
-})
-
-function isErrnoError(error: unknown, code: string) {
-  const decoded = Schema.decodeUnknownOption(ErrnoErrorSchema)(error)
-  return Option.isSome(decoded) && decoded.value.code === code
-}
-
-function rotateOversizedDiagnosticFileSync(filePath: string) {
-  let size = 0
-  try {
-    size = fs.statSync(filePath).size
-  } catch (error) {
-    if (isErrnoError(error, 'ENOENT')) return
-    throw error
-  }
-  if (size < NATIVE_DIAGNOSTIC_MAX_FILE_BYTES) return
-  const last = rolledDiagnosticFilePath(
-    filePath,
-    NATIVE_DIAGNOSTIC_MAX_ROLLED_FILES,
-  )
-  try {
-    fs.unlinkSync(last)
-  } catch (error) {
-    if (!isErrnoError(error, 'ENOENT')) throw error
-  }
-  for (
-    let index = NATIVE_DIAGNOSTIC_MAX_ROLLED_FILES - 1;
-    index >= 1;
-    index -= 1
-  ) {
-    renameSyncIfPresent(
-      rolledDiagnosticFilePath(filePath, index),
-      rolledDiagnosticFilePath(filePath, index + 1),
-    )
-  }
-  renameSyncIfPresent(filePath, rolledDiagnosticFilePath(filePath, 1))
-}
-
-function renameSyncIfPresent(source: string, destination: string) {
-  try {
-    fs.renameSync(source, destination)
-  } catch (error) {
-    if (!isErrnoError(error, 'ENOENT')) throw error
-  }
-}
-
-function isHighFrequencyMediaTransportMessage(message: unknown) {
-  return Option.isSome(
-    Schema.decodeUnknownOption(HighFrequencyMediaTransportMessageSchema)(
-      message,
-    ),
-  )
-}
-
-function isFrameReleaseCommand(command: NativeRuntimeRequest['command']) {
-  return command.type === 'releaseRemoteVideoFrame' ||
-    command.type === 'releaseLocalScreenPreviewFrame' ||
-    command.type === 'releaseLocalCameraPreviewFrame'
-}
-
 function nativeUtilityEnvironment(
   native: Record<string, string> & { nativeRoot: string },
 ) {
@@ -437,25 +214,24 @@ function nativeUtilityEnvironment(
     SYRNIKE_NATIVE_APP_VERSION: app.getVersion(),
     SYRNIKE_NATIVE_RELEASE_CHANNEL: DESKTOP_RELEASE_CHANNEL,
     SYRNIKE_NATIVE_CONTRACT_VERSION: String(NATIVE_RUNTIME_CONTRACT_VERSION),
-    SYRNIKE_NATIVE_LIVEKIT_VERSION: NATIVE_RUNTIME_LIVEKIT_VERSION,
     SYRNIKE_NATIVE_COMMIT_SHA: __DESKTOP_COMMIT_SHA__,
   }
 }
 
 export function resolveNativeRuntimePaths(runtime: NativeRuntimeKind) {
-  const utilityFilename = `${runtime}-host.cjs`
-  const nativeFilename = `syrnike_${runtime}.node`
   const utilityEntryPath = path.resolve(
     app.getAppPath(),
     'out',
     'utility',
-    utilityFilename,
+    `${runtime}-host.cjs`,
   )
   const nativeRoot = app.isPackaged
     ? path.join(process.resourcesPath, 'native', 'win32-x64')
     : path.resolve(app.getAppPath(), 'out', 'native', 'win32-x64')
-  const nativeModulePath = path.join(nativeRoot, nativeFilename)
-  return { utilityEntryPath, nativeModulePath }
+  return {
+    utilityEntryPath,
+    nativeModulePath: path.join(nativeRoot, `syrnike_${runtime}.node`),
+  }
 }
 
 export function nativeRuntimeAvailable(runtime: NativeRuntimeKind) {
@@ -466,24 +242,7 @@ export function nativeRuntimeAvailable(runtime: NativeRuntimeKind) {
 
 export function createElectronUtilityAdapterFactory(
   runtime: NativeRuntimeKind,
-  diagnostics: Pick<
-    ElectronUtilityAdapterOptions,
-    'diagnosticSession' | 'diagnosticLog' | 'diagnosticRootDir'
-  > = {},
 ): NativeRuntimeAdapterFactory {
-  return () => {
-    const paths = resolveNativeRuntimePaths(runtime)
-    return new ElectronUtilityAdapter({ runtime, ...paths, ...diagnostics })
-  }
-}
-
-function maybeCreateNativeDiagnosticSession(
-  runtime: NativeRuntimeKind,
-  diagnosticRootDir = process.env.SYRNIKE_NATIVE_DIAGNOSTIC_ROOT_DIR,
-) {
-  if (!diagnosticRootDir) return undefined
-  return createNativeDiagnosticSession({
-    runtime,
-    rootDir: diagnosticRootDir,
-  })
+  return () =>
+    new ElectronUtilityAdapter({ runtime, ...resolveNativeRuntimePaths(runtime) })
 }

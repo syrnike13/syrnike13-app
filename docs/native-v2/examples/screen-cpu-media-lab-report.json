@@ -1,0 +1,1585 @@
+{
+  "schemaVersion": 2,
+  "accepted": true,
+  "generatedAt": "2026-09-02T00:24:09.369Z",
+  "scenarios": {
+    "production-room-control": {
+      "accepted": true,
+      "connected": true,
+      "disconnected": true
+    },
+    "room-owner-control": {
+      "accepted": true,
+      "cancellation": "typed",
+      "generationFencing": "passed",
+      "delayedCompletion": "passed",
+      "lifecycleCycles": 50
+    },
+    "screen-cpu-monitor": {
+      "sender": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "mode": "screen-cpu-monitor",
+        "referencePath": "cpu-non-production",
+        "profile": {
+          "width": 1280,
+          "height": 720,
+          "fps": 30
+        },
+        "pipeline": {
+          "capacity": 1,
+          "maximumAgeMs": 250,
+          "submitted": 392,
+          "accepted": 391,
+          "superseded": 211,
+          "dropped": 212,
+          "tooOld": 0,
+          "released": 392,
+          "maximumDepth": 1,
+          "pending": 0,
+          "active": 0
+        },
+        "capture": {
+          "received": 402,
+          "dropped": 8,
+          "maximumDepth": 3,
+          "outstandingLeases": 0,
+          "resizeCount": 0,
+          "sourceClosed": 0
+        },
+        "sender": {
+          "published": 180,
+          "publicationFailures": 0,
+          "generationTransitions": 0
+        },
+        "timing": {
+          "captureAgeMs": {
+            "p50": 4,
+            "p95": 14,
+            "max": 29
+          },
+          "readbackUs": {
+            "p50": 2342,
+            "p95": 2977
+          },
+          "convertUs": {
+            "p50": 1585,
+            "p95": 1798
+          },
+          "publishUs": {
+            "p50": 2076,
+            "p95": 2496
+          }
+        },
+        "resources": {
+          "cycles": 1,
+          "handlesDelta": 31,
+          "threadsDelta": 4,
+          "d3dLiveObjects": 0,
+          "d3dPeakObjects": 4,
+          "series": []
+        }
+      },
+      "observer": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "startedAt": "2026-09-02T00:21:05.768Z",
+        "finishedAt": "2026-09-02T00:21:16.782Z",
+        "durationMs": 11014,
+        "video": {
+          "receivedFrames": 130,
+          "decodedFrames": 127,
+          "maximumConsecutiveFrames": 2,
+          "sequenceGaps": 327,
+          "outOfOrderFrames": 0,
+          "duplicateFrames": 0,
+          "minimumLatencyMs": 51,
+          "maximumLatencyMs": 164,
+          "averageLatencyMs": 123.92125984251969,
+          "invalidTimestampFrames": 0,
+          "observerDroppedFrames": 327,
+          "maximumObserverBacklogFrames": 0,
+          "firstSequence": 11,
+          "lastSequence": 397,
+          "p50LatencyMs": 146,
+          "p95LatencyMs": 155,
+          "staleFrames": 0,
+          "resolutionTransitions": 0,
+          "resolutions": [
+            {
+              "generation": 1,
+              "width": 2560,
+              "height": 1440
+            }
+          ],
+          "maximumNoFrameDurationMs": 859,
+          "contentChanges": 126,
+          "endReason": "track-unpublished"
+        },
+        "audio": {
+          "receivedFrames": 985,
+          "receivedSamples": 472800,
+          "controlPulses": 10,
+          "discontinuities": 1,
+          "framesAfterVideoEnd": 20
+        },
+        "tracks": {
+          "subscribed": 4,
+          "unsubscribed": 3
+        },
+        "failures": []
+      }
+    },
+    "screen-cpu-window": {
+      "sender": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "mode": "screen-cpu-window",
+        "referencePath": "cpu-non-production",
+        "profile": {
+          "width": 1280,
+          "height": 720,
+          "fps": 30
+        },
+        "pipeline": {
+          "capacity": 1,
+          "maximumAgeMs": 250,
+          "submitted": 277,
+          "accepted": 276,
+          "superseded": 96,
+          "dropped": 97,
+          "tooOld": 0,
+          "released": 277,
+          "maximumDepth": 1,
+          "pending": 0,
+          "active": 0
+        },
+        "capture": {
+          "received": 286,
+          "dropped": 8,
+          "maximumDepth": 3,
+          "outstandingLeases": 0,
+          "resizeCount": 0,
+          "sourceClosed": 0
+        },
+        "sender": {
+          "published": 180,
+          "publicationFailures": 0,
+          "generationTransitions": 0
+        },
+        "timing": {
+          "captureAgeMs": {
+            "p50": 3,
+            "p95": 23,
+            "max": 30
+          },
+          "readbackUs": {
+            "p50": 319,
+            "p95": 433
+          },
+          "convertUs": {
+            "p50": 1485,
+            "p95": 1672
+          },
+          "publishUs": {
+            "p50": 2074,
+            "p95": 2479
+          }
+        },
+        "resources": {
+          "cycles": 1,
+          "handlesDelta": 22,
+          "threadsDelta": 4,
+          "d3dLiveObjects": 0,
+          "d3dPeakObjects": 4,
+          "series": []
+        }
+      },
+      "observer": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "startedAt": "2026-09-02T00:21:23.256Z",
+        "finishedAt": "2026-09-02T00:21:34.115Z",
+        "durationMs": 10859,
+        "video": {
+          "receivedFrames": 125,
+          "decodedFrames": 120,
+          "maximumConsecutiveFrames": 2,
+          "sequenceGaps": 200,
+          "outOfOrderFrames": 0,
+          "duplicateFrames": 0,
+          "minimumLatencyMs": 54,
+          "maximumLatencyMs": 129,
+          "averageLatencyMs": 100.85,
+          "invalidTimestampFrames": 0,
+          "observerDroppedFrames": 200,
+          "maximumObserverBacklogFrames": 0,
+          "firstSequence": 9,
+          "lastSequence": 284,
+          "p50LatencyMs": 115,
+          "p95LatencyMs": 128,
+          "staleFrames": 0,
+          "resolutionTransitions": 0,
+          "resolutions": [
+            {
+              "generation": 1,
+              "width": 626,
+              "height": 353
+            }
+          ],
+          "maximumNoFrameDurationMs": 957,
+          "contentChanges": 118,
+          "endReason": "track-unpublished"
+        },
+        "audio": {
+          "receivedFrames": 979,
+          "receivedSamples": 469920,
+          "controlPulses": 10,
+          "discontinuities": 1,
+          "framesAfterVideoEnd": 20
+        },
+        "tracks": {
+          "subscribed": 4,
+          "unsubscribed": 3
+        },
+        "failures": []
+      }
+    },
+    "screen-cpu-slow-pipeline": {
+      "sender": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "mode": "screen-cpu-slow-pipeline",
+        "referencePath": "cpu-non-production",
+        "profile": {
+          "width": 1280,
+          "height": 720,
+          "fps": 30
+        },
+        "pipeline": {
+          "capacity": 1,
+          "maximumAgeMs": 250,
+          "submitted": 455,
+          "accepted": 454,
+          "superseded": 393,
+          "dropped": 395,
+          "tooOld": 0,
+          "released": 455,
+          "maximumDepth": 1,
+          "pending": 0,
+          "active": 0
+        },
+        "capture": {
+          "received": 465,
+          "dropped": 8,
+          "maximumDepth": 3,
+          "outstandingLeases": 0,
+          "resizeCount": 0,
+          "sourceClosed": 0
+        },
+        "sender": {
+          "published": 60,
+          "publicationFailures": 0,
+          "generationTransitions": 0
+        },
+        "timing": {
+          "captureAgeMs": {
+            "p50": 106,
+            "p95": 115,
+            "max": 132
+          },
+          "readbackUs": {
+            "p50": 2357,
+            "p95": 2901
+          },
+          "convertUs": {
+            "p50": 1609,
+            "p95": 1835
+          },
+          "publishUs": {
+            "p50": 2065,
+            "p95": 2484
+          }
+        },
+        "resources": {
+          "cycles": 1,
+          "handlesDelta": 21,
+          "threadsDelta": 4,
+          "d3dLiveObjects": 0,
+          "d3dPeakObjects": 4,
+          "series": []
+        }
+      },
+      "observer": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "startedAt": "2026-09-02T00:21:40.699Z",
+        "finishedAt": "2026-09-02T00:21:52.729Z",
+        "durationMs": 12030,
+        "video": {
+          "receivedFrames": 80,
+          "decodedFrames": 78,
+          "maximumConsecutiveFrames": 1,
+          "sequenceGaps": 431,
+          "outOfOrderFrames": 0,
+          "duplicateFrames": 0,
+          "minimumLatencyMs": 44,
+          "maximumLatencyMs": 493,
+          "averageLatencyMs": 237.78205128205127,
+          "invalidTimestampFrames": 0,
+          "observerDroppedFrames": 431,
+          "maximumObserverBacklogFrames": 0,
+          "firstSequence": 11,
+          "lastSequence": 451,
+          "p50LatencyMs": 242,
+          "p95LatencyMs": 388,
+          "staleFrames": 0,
+          "resolutionTransitions": 0,
+          "resolutions": [
+            {
+              "generation": 1,
+              "width": 2560,
+              "height": 1440
+            }
+          ],
+          "maximumNoFrameDurationMs": 813,
+          "contentChanges": 77,
+          "endReason": "track-unpublished"
+        },
+        "audio": {
+          "receivedFrames": 1099,
+          "receivedSamples": 527520,
+          "controlPulses": 12,
+          "discontinuities": 1,
+          "framesAfterVideoEnd": 20
+        },
+        "tracks": {
+          "subscribed": 4,
+          "unsubscribed": 3
+        },
+        "failures": []
+      }
+    },
+    "screen-cpu-resize": {
+      "sender": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "mode": "screen-cpu-resize",
+        "referencePath": "cpu-non-production",
+        "profile": {
+          "width": 1280,
+          "height": 720,
+          "fps": 30
+        },
+        "pipeline": {
+          "capacity": 1,
+          "maximumAgeMs": 250,
+          "submitted": 185,
+          "accepted": 184,
+          "superseded": 64,
+          "dropped": 65,
+          "tooOld": 0,
+          "released": 185,
+          "maximumDepth": 1,
+          "pending": 0,
+          "active": 0
+        },
+        "capture": {
+          "received": 193,
+          "dropped": 7,
+          "maximumDepth": 3,
+          "outstandingLeases": 0,
+          "resizeCount": 1,
+          "sourceClosed": 0
+        },
+        "sender": {
+          "published": 120,
+          "publicationFailures": 0,
+          "generationTransitions": 1
+        },
+        "timing": {
+          "captureAgeMs": {
+            "p50": 5,
+            "p95": 23,
+            "max": 27
+          },
+          "readbackUs": {
+            "p50": 450,
+            "p95": 620
+          },
+          "convertUs": {
+            "p50": 1485,
+            "p95": 1651
+          },
+          "publishUs": {
+            "p50": 2039,
+            "p95": 2473
+          }
+        },
+        "resources": {
+          "cycles": 1,
+          "handlesDelta": 23,
+          "threadsDelta": 4,
+          "d3dLiveObjects": 0,
+          "d3dPeakObjects": 4,
+          "series": []
+        }
+      },
+      "observer": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "startedAt": "2026-09-02T00:21:59.188Z",
+        "finishedAt": "2026-09-02T00:22:07.709Z",
+        "durationMs": 8521,
+        "video": {
+          "receivedFrames": 93,
+          "decodedFrames": 87,
+          "maximumConsecutiveFrames": 2,
+          "sequenceGaps": 142,
+          "outOfOrderFrames": 0,
+          "duplicateFrames": 0,
+          "minimumLatencyMs": 46,
+          "maximumLatencyMs": 112,
+          "averageLatencyMs": 73.22988505747126,
+          "invalidTimestampFrames": 0,
+          "observerDroppedFrames": 142,
+          "maximumObserverBacklogFrames": 0,
+          "firstSequence": 9,
+          "lastSequence": 190,
+          "p50LatencyMs": 67,
+          "p95LatencyMs": 99,
+          "staleFrames": 0,
+          "resolutionTransitions": 1,
+          "resolutions": [
+            {
+              "generation": 1,
+              "width": 626,
+              "height": 353
+            },
+            {
+              "generation": 2,
+              "width": 886,
+              "height": 533
+            }
+          ],
+          "maximumNoFrameDurationMs": 949,
+          "contentChanges": 86,
+          "endReason": "track-unpublished"
+        },
+        "audio": {
+          "receivedFrames": 746,
+          "receivedSamples": 358080,
+          "controlPulses": 8,
+          "discontinuities": 1,
+          "framesAfterVideoEnd": 20
+        },
+        "tracks": {
+          "subscribed": 4,
+          "unsubscribed": 3
+        },
+        "failures": []
+      }
+    },
+    "screen-cpu-source-close": {
+      "sender": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "mode": "screen-cpu-source-close",
+        "referencePath": "cpu-non-production",
+        "profile": {
+          "width": 1280,
+          "height": 720,
+          "fps": 30
+        },
+        "pipeline": {
+          "capacity": 1,
+          "maximumAgeMs": 250,
+          "submitted": 65,
+          "accepted": 65,
+          "superseded": 21,
+          "dropped": 21,
+          "tooOld": 0,
+          "released": 65,
+          "maximumDepth": 1,
+          "pending": 0,
+          "active": 0
+        },
+        "capture": {
+          "received": 72,
+          "dropped": 7,
+          "maximumDepth": 3,
+          "outstandingLeases": 0,
+          "resizeCount": 0,
+          "sourceClosed": 1
+        },
+        "sender": {
+          "published": 44,
+          "publicationFailures": 0,
+          "generationTransitions": 0
+        },
+        "timing": {
+          "captureAgeMs": {
+            "p50": 3,
+            "p95": 26,
+            "max": 40
+          },
+          "readbackUs": {
+            "p50": 298,
+            "p95": 518
+          },
+          "convertUs": {
+            "p50": 1491,
+            "p95": 1607
+          },
+          "publishUs": {
+            "p50": 2046,
+            "p95": 2527
+          }
+        },
+        "resources": {
+          "cycles": 1,
+          "handlesDelta": 24,
+          "threadsDelta": 5,
+          "d3dLiveObjects": 0,
+          "d3dPeakObjects": 4,
+          "series": []
+        }
+      },
+      "observer": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "startedAt": "2026-09-02T00:22:14.177Z",
+        "finishedAt": "2026-09-02T00:22:19.867Z",
+        "durationMs": 5690,
+        "video": {
+          "receivedFrames": 50,
+          "decodedFrames": 44,
+          "maximumConsecutiveFrames": 2,
+          "sequenceGaps": 66,
+          "outOfOrderFrames": 0,
+          "duplicateFrames": 0,
+          "minimumLatencyMs": 45,
+          "maximumLatencyMs": 122,
+          "averageLatencyMs": 62.40909090909091,
+          "invalidTimestampFrames": 0,
+          "observerDroppedFrames": 66,
+          "maximumObserverBacklogFrames": 0,
+          "firstSequence": 9,
+          "lastSequence": 72,
+          "p50LatencyMs": 53,
+          "p95LatencyMs": 110,
+          "staleFrames": 0,
+          "resolutionTransitions": 0,
+          "resolutions": [
+            {
+              "generation": 1,
+              "width": 626,
+              "height": 353
+            }
+          ],
+          "maximumNoFrameDurationMs": 957,
+          "contentChanges": 43,
+          "endReason": "track-unpublished"
+        },
+        "audio": {
+          "receivedFrames": 463,
+          "receivedSamples": 222240,
+          "controlPulses": 5,
+          "discontinuities": 1,
+          "framesAfterVideoEnd": 20
+        },
+        "tracks": {
+          "subscribed": 4,
+          "unsubscribed": 3
+        },
+        "failures": []
+      }
+    },
+    "screen-cpu-repeat": {
+      "sender": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "mode": "screen-cpu-repeat",
+        "referencePath": "cpu-non-production",
+        "profile": {
+          "width": 1280,
+          "height": 720,
+          "fps": 30
+        },
+        "pipeline": {
+          "capacity": 1,
+          "maximumAgeMs": 250,
+          "submitted": 1629,
+          "accepted": 1481,
+          "superseded": 579,
+          "dropped": 729,
+          "tooOld": 0,
+          "released": 1629,
+          "maximumDepth": 1,
+          "pending": 0,
+          "active": 0
+        },
+        "capture": {
+          "received": 1629,
+          "dropped": 0,
+          "maximumDepth": 3,
+          "outstandingLeases": 0,
+          "resizeCount": 0,
+          "sourceClosed": 0
+        },
+        "sender": {
+          "published": 900,
+          "publicationFailures": 0,
+          "generationTransitions": 0
+        },
+        "timing": {
+          "captureAgeMs": {
+            "p50": 4,
+            "p95": 24,
+            "max": 31
+          },
+          "readbackUs": {
+            "p50": 323,
+            "p95": 407
+          },
+          "convertUs": {
+            "p50": 1484,
+            "p95": 1661
+          },
+          "publishUs": {
+            "p50": 2071,
+            "p95": 2493
+          }
+        },
+        "resources": {
+          "cycles": 30,
+          "handlesDelta": 1,
+          "threadsDelta": -2,
+          "d3dLiveObjects": 0,
+          "d3dPeakObjects": 3,
+          "series": [
+            {
+              "cycle": 1,
+              "handlesDelta": 0,
+              "threadsDelta": 0,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 2,
+              "handlesDelta": 0,
+              "threadsDelta": 0,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 3,
+              "handlesDelta": 0,
+              "threadsDelta": 0,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 4,
+              "handlesDelta": 0,
+              "threadsDelta": 0,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 5,
+              "handlesDelta": 0,
+              "threadsDelta": 0,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 6,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 7,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 8,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 9,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 10,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 11,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 12,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 13,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 14,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 15,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 16,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 17,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 18,
+              "handlesDelta": 0,
+              "threadsDelta": -1,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 19,
+              "handlesDelta": 0,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 20,
+              "handlesDelta": 0,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 21,
+              "handlesDelta": 0,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 22,
+              "handlesDelta": 0,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 23,
+              "handlesDelta": 0,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 24,
+              "handlesDelta": 0,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 25,
+              "handlesDelta": 0,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 26,
+              "handlesDelta": 0,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 27,
+              "handlesDelta": 0,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 28,
+              "handlesDelta": 0,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 29,
+              "handlesDelta": 0,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            },
+            {
+              "cycle": 30,
+              "handlesDelta": 0,
+              "threadsDelta": -2,
+              "publishedTracksAfterStop": 0,
+              "reusableTransceivers": null,
+              "pendingPublications": 0,
+              "framesPublished": 30,
+              "pendingFrames": 0,
+              "activeFrames": 0,
+              "liveD3dResources": 0
+            }
+          ]
+        }
+      },
+      "observer": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "startedAt": "2026-09-02T00:22:26.369Z",
+        "finishedAt": "2026-09-02T00:23:12.528Z",
+        "durationMs": 46159,
+        "video": {
+          "receivedFrames": 621,
+          "decodedFrames": 468,
+          "maximumConsecutiveFrames": 2,
+          "sequenceGaps": 722,
+          "outOfOrderFrames": 0,
+          "duplicateFrames": 0,
+          "minimumLatencyMs": 45,
+          "maximumLatencyMs": 144,
+          "averageLatencyMs": 60.64102564102564,
+          "invalidTimestampFrames": 0,
+          "observerDroppedFrames": 722,
+          "maximumObserverBacklogFrames": 0,
+          "firstSequence": 9,
+          "lastSequence": 1625,
+          "p50LatencyMs": 60,
+          "p95LatencyMs": 72,
+          "staleFrames": 0,
+          "resolutionTransitions": 0,
+          "resolutions": [
+            {
+              "generation": 1,
+              "width": 626,
+              "height": 353
+            }
+          ],
+          "maximumNoFrameDurationMs": 1261,
+          "contentChanges": 465,
+          "endReason": "track-unpublished"
+        },
+        "audio": {
+          "receivedFrames": 4516,
+          "receivedSamples": 2167680,
+          "controlPulses": 46,
+          "discontinuities": 1,
+          "framesAfterVideoEnd": 20
+        },
+        "tracks": {
+          "subscribed": 34,
+          "unsubscribed": 33
+        },
+        "failures": []
+      }
+    },
+    "screen-cpu-late-observer": {
+      "sender": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "mode": "screen-cpu-monitor",
+        "referencePath": "cpu-non-production",
+        "profile": {
+          "width": 1280,
+          "height": 720,
+          "fps": 30
+        },
+        "pipeline": {
+          "capacity": 1,
+          "maximumAgeMs": 250,
+          "submitted": 387,
+          "accepted": 386,
+          "superseded": 205,
+          "dropped": 207,
+          "tooOld": 0,
+          "released": 387,
+          "maximumDepth": 1,
+          "pending": 0,
+          "active": 0
+        },
+        "capture": {
+          "received": 454,
+          "dropped": 66,
+          "maximumDepth": 3,
+          "outstandingLeases": 0,
+          "resizeCount": 0,
+          "sourceClosed": 0
+        },
+        "sender": {
+          "published": 180,
+          "publicationFailures": 0,
+          "generationTransitions": 0
+        },
+        "timing": {
+          "captureAgeMs": {
+            "p50": 5,
+            "p95": 15,
+            "max": 32
+          },
+          "readbackUs": {
+            "p50": 2325,
+            "p95": 2950
+          },
+          "convertUs": {
+            "p50": 1589,
+            "p95": 1776
+          },
+          "publishUs": {
+            "p50": 2093,
+            "p95": 2532
+          }
+        },
+        "resources": {
+          "cycles": 1,
+          "handlesDelta": 21,
+          "threadsDelta": 4,
+          "d3dLiveObjects": 0,
+          "d3dPeakObjects": 4,
+          "series": []
+        }
+      },
+      "observer": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "startedAt": "2026-09-02T00:23:14.099Z",
+        "finishedAt": "2026-09-02T00:23:29.038Z",
+        "durationMs": 14939,
+        "video": {
+          "receivedFrames": 110,
+          "decodedFrames": 105,
+          "maximumConsecutiveFrames": 2,
+          "sequenceGaps": 280,
+          "outOfOrderFrames": 0,
+          "duplicateFrames": 0,
+          "minimumLatencyMs": 44,
+          "maximumLatencyMs": 1039,
+          "averageLatencyMs": 293.4,
+          "invalidTimestampFrames": 0,
+          "observerDroppedFrames": 280,
+          "maximumObserverBacklogFrames": 0,
+          "firstSequence": 71,
+          "lastSequence": 449,
+          "p50LatencyMs": 120,
+          "p95LatencyMs": 867,
+          "staleFrames": 0,
+          "resolutionTransitions": 0,
+          "resolutions": [
+            {
+              "generation": 1,
+              "width": 2560,
+              "height": 1440
+            }
+          ],
+          "maximumNoFrameDurationMs": 3330,
+          "contentChanges": 104,
+          "endReason": "track-unpublished"
+        },
+        "audio": {
+          "receivedFrames": 1181,
+          "receivedSamples": 566880,
+          "controlPulses": 12,
+          "discontinuities": 1,
+          "framesAfterVideoEnd": 20
+        },
+        "tracks": {
+          "subscribed": 4,
+          "unsubscribed": 3
+        },
+        "failures": []
+      }
+    },
+    "screen-cpu-stop-during-conversion": {
+      "sender": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "mode": "screen-cpu-stop-during-conversion",
+        "referencePath": "cpu-non-production",
+        "profile": {
+          "width": 1280,
+          "height": 720,
+          "fps": 30
+        },
+        "pipeline": {
+          "capacity": 1,
+          "maximumAgeMs": 250,
+          "submitted": 42,
+          "accepted": 41,
+          "superseded": 35,
+          "dropped": 37,
+          "tooOld": 0,
+          "released": 42,
+          "maximumDepth": 1,
+          "pending": 0,
+          "active": 0
+        },
+        "capture": {
+          "received": 53,
+          "dropped": 9,
+          "maximumDepth": 3,
+          "outstandingLeases": 0,
+          "resizeCount": 0,
+          "sourceClosed": 0
+        },
+        "sender": {
+          "published": 5,
+          "publicationFailures": 0,
+          "generationTransitions": 0
+        },
+        "timing": {
+          "captureAgeMs": {
+            "p50": 103,
+            "p95": 123,
+            "max": 123
+          },
+          "readbackUs": {
+            "p50": 2515,
+            "p95": 3725
+          },
+          "convertUs": {
+            "p50": 1567,
+            "p95": 2012
+          },
+          "publishUs": {
+            "p50": 1930,
+            "p95": 2594
+          }
+        },
+        "resources": {
+          "cycles": 1,
+          "handlesDelta": 21,
+          "threadsDelta": 5,
+          "d3dLiveObjects": 0,
+          "d3dPeakObjects": 4,
+          "series": []
+        }
+      },
+      "observer": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "startedAt": "2026-09-02T00:23:35.529Z",
+        "finishedAt": "2026-09-02T00:23:39.782Z",
+        "durationMs": 4253,
+        "video": {
+          "receivedFrames": 29,
+          "decodedFrames": 23,
+          "maximumConsecutiveFrames": 1,
+          "sequenceGaps": 78,
+          "outOfOrderFrames": 0,
+          "duplicateFrames": 0,
+          "minimumLatencyMs": 44,
+          "maximumLatencyMs": 267,
+          "averageLatencyMs": 98.8695652173913,
+          "invalidTimestampFrames": 0,
+          "observerDroppedFrames": 78,
+          "maximumObserverBacklogFrames": 0,
+          "firstSequence": 10,
+          "lastSequence": 45,
+          "p50LatencyMs": 53,
+          "p95LatencyMs": 244,
+          "staleFrames": 0,
+          "resolutionTransitions": 0,
+          "resolutions": [
+            {
+              "generation": 1,
+              "width": 2560,
+              "height": 1440
+            }
+          ],
+          "maximumNoFrameDurationMs": 808,
+          "contentChanges": 22,
+          "endReason": "track-unpublished"
+        },
+        "audio": {
+          "receivedFrames": 322,
+          "receivedSamples": 154560,
+          "controlPulses": 4,
+          "discontinuities": 1,
+          "framesAfterVideoEnd": 20
+        },
+        "tracks": {
+          "subscribed": 4,
+          "unsubscribed": 3
+        },
+        "failures": []
+      }
+    },
+    "screen-cpu-room-disconnect": {
+      "sender": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "mode": "screen-cpu-room-disconnect",
+        "referencePath": "cpu-non-production",
+        "profile": {
+          "width": 1280,
+          "height": 720,
+          "fps": 30
+        },
+        "pipeline": {
+          "capacity": 1,
+          "maximumAgeMs": 250,
+          "submitted": 131,
+          "accepted": 131,
+          "superseded": 70,
+          "dropped": 71,
+          "tooOld": 0,
+          "released": 131,
+          "maximumDepth": 1,
+          "pending": 0,
+          "active": 0
+        },
+        "capture": {
+          "received": 140,
+          "dropped": 9,
+          "maximumDepth": 3,
+          "outstandingLeases": 0,
+          "resizeCount": 0,
+          "sourceClosed": 0
+        },
+        "sender": {
+          "published": 60,
+          "publicationFailures": 0,
+          "generationTransitions": 0
+        },
+        "timing": {
+          "captureAgeMs": {
+            "p50": 3,
+            "p95": 15,
+            "max": 30
+          },
+          "readbackUs": {
+            "p50": 2338,
+            "p95": 3123
+          },
+          "convertUs": {
+            "p50": 1600,
+            "p95": 1809
+          },
+          "publishUs": {
+            "p50": 2114,
+            "p95": 2544
+          }
+        },
+        "resources": {
+          "cycles": 1,
+          "handlesDelta": -8,
+          "threadsDelta": -1,
+          "d3dLiveObjects": 0,
+          "d3dPeakObjects": 4,
+          "series": []
+        }
+      },
+      "observer": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "startedAt": "2026-09-02T00:23:46.245Z",
+        "finishedAt": "2026-09-02T00:23:50.683Z",
+        "durationMs": 4438,
+        "video": {
+          "receivedFrames": 38,
+          "decodedFrames": 37,
+          "maximumConsecutiveFrames": 1,
+          "sequenceGaps": 93,
+          "outOfOrderFrames": 0,
+          "duplicateFrames": 0,
+          "minimumLatencyMs": 45,
+          "maximumLatencyMs": 169,
+          "averageLatencyMs": 69.4054054054054,
+          "invalidTimestampFrames": 0,
+          "observerDroppedFrames": 93,
+          "maximumObserverBacklogFrames": 0,
+          "firstSequence": 10,
+          "lastSequence": 72,
+          "p50LatencyMs": 52,
+          "p95LatencyMs": 163,
+          "staleFrames": 0,
+          "resolutionTransitions": 0,
+          "resolutions": [
+            {
+              "generation": 1,
+              "width": 2560,
+              "height": 1440
+            }
+          ],
+          "maximumNoFrameDurationMs": 877,
+          "contentChanges": 36,
+          "endReason": "track-unpublished"
+        },
+        "audio": {
+          "receivedFrames": 335,
+          "receivedSamples": 160800,
+          "controlPulses": 4,
+          "discontinuities": 1,
+          "framesAfterVideoEnd": 0
+        },
+        "tracks": {
+          "subscribed": 4,
+          "unsubscribed": 4
+        },
+        "failures": []
+      }
+    },
+    "screen-cpu-observer-rejoin": {
+      "accepted": true,
+      "beforeLeave": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "startedAt": "2026-09-02T00:23:52.572Z",
+        "finishedAt": "2026-09-02T00:23:58.663Z",
+        "durationMs": 6091,
+        "video": {
+          "receivedFrames": 61,
+          "decodedFrames": 60,
+          "maximumConsecutiveFrames": 2,
+          "sequenceGaps": 152,
+          "outOfOrderFrames": 0,
+          "duplicateFrames": 0,
+          "minimumLatencyMs": 43,
+          "maximumLatencyMs": 176,
+          "averageLatencyMs": 97.83333333333333,
+          "invalidTimestampFrames": 0,
+          "observerDroppedFrames": 152,
+          "maximumObserverBacklogFrames": 0,
+          "firstSequence": 11,
+          "lastSequence": 158,
+          "p50LatencyMs": 71,
+          "p95LatencyMs": 162,
+          "staleFrames": 0,
+          "resolutionTransitions": 0,
+          "resolutions": [
+            {
+              "generation": 1,
+              "width": 2560,
+              "height": 1440
+            }
+          ],
+          "maximumNoFrameDurationMs": 874,
+          "contentChanges": 59,
+          "endReason": "observer-complete"
+        },
+        "audio": {
+          "receivedFrames": 500,
+          "receivedSamples": 240000,
+          "controlPulses": 6,
+          "discontinuities": 1,
+          "framesAfterVideoEnd": 0
+        },
+        "tracks": {
+          "subscribed": 4,
+          "unsubscribed": 2
+        },
+        "failures": []
+      },
+      "afterRejoin": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "startedAt": "2026-09-02T00:23:59.273Z",
+        "finishedAt": "2026-09-02T00:24:02.659Z",
+        "durationMs": 3386,
+        "video": {
+          "receivedFrames": 40,
+          "decodedFrames": 40,
+          "maximumConsecutiveFrames": 1,
+          "sequenceGaps": 112,
+          "outOfOrderFrames": 0,
+          "duplicateFrames": 0,
+          "minimumLatencyMs": 44,
+          "maximumLatencyMs": 493,
+          "averageLatencyMs": 127.1,
+          "invalidTimestampFrames": 0,
+          "observerDroppedFrames": 112,
+          "maximumObserverBacklogFrames": 0,
+          "firstSequence": 222,
+          "lastSequence": 373,
+          "p50LatencyMs": 95,
+          "p95LatencyMs": 391,
+          "staleFrames": 0,
+          "resolutionTransitions": 0,
+          "resolutions": [
+            {
+              "generation": 1,
+              "width": 2560,
+              "height": 1440
+            }
+          ],
+          "maximumNoFrameDurationMs": 312,
+          "contentChanges": 39,
+          "endReason": "observer-complete"
+        },
+        "audio": {
+          "receivedFrames": 302,
+          "receivedSamples": 144960,
+          "controlPulses": 3,
+          "discontinuities": 0,
+          "framesAfterVideoEnd": 0
+        },
+        "tracks": {
+          "subscribed": 2,
+          "unsubscribed": 0
+        },
+        "failures": []
+      },
+      "sender": {
+        "schemaVersion": 1,
+        "accepted": true,
+        "mode": "screen-cpu-monitor",
+        "referencePath": "cpu-non-production",
+        "profile": {
+          "width": 1280,
+          "height": 720,
+          "fps": 30
+        },
+        "pipeline": {
+          "capacity": 1,
+          "maximumAgeMs": 250,
+          "submitted": 389,
+          "accepted": 388,
+          "superseded": 207,
+          "dropped": 209,
+          "tooOld": 0,
+          "released": 389,
+          "maximumDepth": 1,
+          "pending": 0,
+          "active": 0
+        },
+        "capture": {
+          "received": 400,
+          "dropped": 9,
+          "maximumDepth": 3,
+          "outstandingLeases": 0,
+          "resizeCount": 0,
+          "sourceClosed": 0
+        },
+        "sender": {
+          "published": 180,
+          "publicationFailures": 0,
+          "generationTransitions": 0
+        },
+        "timing": {
+          "captureAgeMs": {
+            "p50": 3,
+            "p95": 16,
+            "max": 37
+          },
+          "readbackUs": {
+            "p50": 2340,
+            "p95": 3065
+          },
+          "convertUs": {
+            "p50": 1590,
+            "p95": 1756
+          },
+          "publishUs": {
+            "p50": 2101,
+            "p95": 2514
+          }
+        },
+        "resources": {
+          "cycles": 1,
+          "handlesDelta": 21,
+          "threadsDelta": 4,
+          "d3dLiveObjects": 0,
+          "d3dPeakObjects": 4,
+          "series": []
+        }
+      }
+    }
+  }
+}

@@ -5,8 +5,10 @@
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
-    "build:native-runtime": "pnpm --filter @syrnike13/desktop-native build",
+    "build:native-runtime": "pnpm --filter @syrnike13/desktop-native build && pnpm --filter @syrnike13/windows-media-engine build",
     "build:shell": "pnpm --filter @syrnike13/platform build && pnpm run build:native-runtime && tsup && pnpm run verify:preload-bundle",
+    "build:media-room-smoke": "tsup --config tsup.media-room-smoke.config.ts",
+    "build:video-lab": "tsup --config tsup.video-lab.config.ts",
     "postinstall": "node scripts/ensure-electron-path.mjs",
     "predev": "node scripts/ensure-electron-path.mjs",
     "prestart": "node scripts/ensure-electron-path.mjs",
@@ -22,6 +24,7 @@
     "package": "pnpm run build && pnpm run package:prepared",
     "package:nightly": "pnpm run build && pnpm run package:prepared",
     "package:prepared": "electron-builder --config electron-builder.config.cjs --publish never && node scripts/verify-native-package.mjs",
+    "smoke:media-lifecycle": "electron scripts/smoke-media-lifecycle.cjs",
     "upload:debug-artifacts": "node scripts/upload-debug-artifacts.mjs",
     "typecheck": "pnpm --filter @syrnike13/platform build && tsc --noEmit -p tsconfig.json"
   },

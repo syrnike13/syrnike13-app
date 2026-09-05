@@ -1,0 +1,24 @@
+{
+  "name": "@syrnike13/native-media-lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --outDir dist",
+    "lab": "pnpm build && node dist/run-lab.js",
+    "observer": "pnpm build && node dist/observer.js",
+    "viewer": "node scripts/run-viewer.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@livekit/rtc-node": "0.13.34",
+    "effect": "4.0.0-beta.103",
+    "livekit-server-sdk": "2.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.5"
+  }
+}

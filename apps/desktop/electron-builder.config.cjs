@@ -37,33 +37,40 @@ if (requireWindowsSigning && missingAzureSigningFields.length > 0) {
 }
 
 const nativeFiles = [
-  'syrnike_media.node',
   'syrnike_hotkey.node',
   'syrnike_overlay.node',
-  'livekit.dll',
-  'livekit_ffi.dll',
   'native-manifest.json',
 ]
+const mediaFiles = [
+  'windows_media.node', 'livekit.dll', 'livekit_ffi.dll', 'media-manifest.json',
+]
 
-function refreshPackagedNativeManifest(context) {
-  if (context.electronPlatformName !== 'win32') return
-  const nativeRoot = path.join(
-    context.appOutDir,
-    'resources',
-    'native',
-    'win32-x64',
-  )
-  const manifestPath = path.join(nativeRoot, 'native-manifest.json')
+function refreshManifest(root, manifestName, files) {
+  const manifestPath = path.join(root, manifestName)
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-  manifest.files = nativeFiles
-    .filter((name) => name !== 'native-manifest.json')
+  manifest.files = files
+    .filter((name) => name !== manifestName)
     .map((name) => ({
       name,
       sha256: createHash('sha256')
-        .update(readFileSync(path.join(nativeRoot, name)))
+        .update(readFileSync(path.join(root, name)))
         .digest('hex'),
     }))
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+}
+
+function refreshPackagedNativeManifests(context) {
+  if (context.electronPlatformName !== 'win32') return
+  refreshManifest(
+    path.join(context.appOutDir, 'resources', 'native', 'win32-x64'),
+    'native-manifest.json',
+    nativeFiles,
+  )
+  refreshManifest(
+    path.join(context.appOutDir, 'resources', 'media-engine', 'win32-x64'),
+    'media-manifest.json',
+    mediaFiles,
+  )
 }
 
 /** @type {import('electron-builder').Configuration} */
@@ -79,7 +86,13 @@ module.exports = {
   directories: {
     output: isNightly ? 'release-nightly' : 'release',
   },
-  files: ['out/**/*', '!out/native/**', '!out/**/*.map', 'package.json'],
+  files: [
+    'out/**/*',
+    '!out/native/**',
+    '!out/media-native/**',
+    '!out/**/*.map',
+    'package.json',
+  ],
   extraMetadata: {
     name: isNightly ? 'syrnike13-nightly' : '@syrnike13/desktop',
     productName,
@@ -106,13 +119,18 @@ module.exports = {
             to: 'native/win32-x64',
             filter: nativeFiles,
           },
+          {
+            from: 'out/media-native/win32-x64',
+            to: 'media-engine/win32-x64',
+            filter: mediaFiles,
+          },
         ]
       : []),
   ],
   // afterPack covers unsigned/nightly packages. afterSign refreshes hashes after
   // Authenticode has changed the signed binary bytes and before NSIS is built.
-  afterPack: refreshPackagedNativeManifest,
-  afterSign: refreshPackagedNativeManifest,
+  afterPack: refreshPackagedNativeManifests,
+  afterSign: refreshPackagedNativeManifests,
   mac: {
     category: 'public.app-category.social-networking',
     target: ['dmg', 'zip'],
@@ -120,7 +138,7 @@ module.exports = {
   win: {
     icon: 'assets/app.ico',
     target: ['nsis'],
-    signExts: ['.node', '.dll'],
+    signExts: ['.node'],
     forceCodeSigning: requireWindowsSigning,
     ...(missingAzureSigningFields.length === 0
       ? { azureSignOptions: azureSigning }

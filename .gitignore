@@ -103,6 +103,7 @@ secrets.env
 packages/desktop-native/.codex-build*/
 packages/desktop-native/.codex-tools/
 packages/desktop-native/artifacts/
+packages/native-media-lab/artifacts/
 vc140.pdb
 *.obj
 

@@ -366,7 +366,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/app-livekit-server:${{ needs.version.outputs.sha_tag }}
 
   native-windows:
-    name: Verify Windows DLL runtime
+    name: Verify Windows native boundary
     needs:
       - changes
       - version
@@ -407,21 +407,36 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 fakeroot rpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm version:sync
-      - name: Download verified Windows native runtime
+      - name: Download verified Windows hook addons
         if: runner.os == 'Windows'
         uses: actions/download-artifact@v4
         with:
-          name: native-runtime-windows-stable-${{ github.sha }}
+          name: native-hooks-windows-stable-${{ github.sha }}
           path: .
-      - name: Verify downloaded Windows native runtime
+      - name: Verify downloaded Windows hook addons
         if: runner.os == 'Windows'
         run: pnpm desktop-native:verify
+      - name: Download verified Windows media lifecycle artifacts
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: media-engine-windows-stable-${{ github.sha }}
+          path: .
+      - name: Verify downloaded Windows media lifecycle artifacts
+        if: runner.os == 'Windows'
+        run: pnpm windows-media:verify
       - name: Download Windows native debug symbols
         if: runner.os == 'Windows'
         uses: actions/download-artifact@v4
         with:
-          name: native-runtime-windows-symbols-${{ github.sha }}
+          name: native-hooks-windows-symbols-${{ github.sha }}
           path: packages/desktop-native
+      - name: Download Windows media lifecycle debug symbols
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: media-engine-windows-symbols-${{ github.sha }}
+          path: packages/windows-media-engine
       - name: Build desktop
         if: runner.os != 'Windows'
         run: pnpm desktop:build
