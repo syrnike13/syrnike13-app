@@ -90,6 +90,10 @@ ReferenceScreenSenderStartResult ReferenceScreenSender::start() {
     livekit::TrackPublishOptions publish_options;
     publish_options.source = livekit::TrackSource::SOURCE_SCREENSHARE;
     publish_options.simulcast = false;
+    // Match the fork's allowed 720p30 preset; the SDK's implicit 1.5 Mbps
+    // default is rejected by the server's screen-share policy.
+    publish_options.video_encoding = livekit::VideoEncodingOptions{
+        3'000'000, static_cast<double>(screen::kCpuReferenceFramesPerSecond)};
     publish_options.frame_metadata_features =
         livekit::FrameMetadataFeatures{true, true, false};
     state_->participant->publishTrack(state_->track, publish_options);
