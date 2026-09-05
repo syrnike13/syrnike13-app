@@ -138,6 +138,10 @@ Reports sample once per second. `decoded` counts reader observations;
 uploads, not SDK/newest-slot drops; `presented` counts renderer draw ACKs, not
 physical display scanout. `decoded - presented` therefore includes several
 different reasons and is not a single error counter.
+`sdkConnected` and `sdkReconnects` observe SDK Room events independently of the
+owner snapshot; acceptance requires uninterrupted SDK connection after joining
+and zero SDK reconnect transitions. The runner also rejects premature publisher
+or server exit and captures bounded stderr diagnostics when a scenario fails.
 
 Pool state counts, estimated backing, oldest outstanding lease age, stall age,
 retired generations and release latency are reported. Release p50/p95 use the

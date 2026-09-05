@@ -36,6 +36,8 @@ function launch(executable, args, options = {}) {
 const server = launch(serverPath, ['--config', config], { stdio: ['ignore', 'ignore', 'pipe'] })
 let serverDiagnostics = ''
 server.child.stderr.on('data', chunk => { serverDiagnostics = (serverDiagnostics + chunk).slice(-8192) })
+let publisherDiagnostics = ''
+let publisherExitCode = null
 let deadline
 try {
   let ready = false
@@ -62,7 +64,10 @@ try {
     stdout = (stdout + chunk).slice(-4096)
     if (!started && stdout.includes('video-lab-connected')) {
       started = true
-      launch(path.join(root, 'packages/windows-media-engine/build/Release/remote_video_publisher.exe'), [], { env, stdio: 'ignore' })
+      const publisher = launch(path.join(root, 'packages/windows-media-engine/build/Release/remote_video_publisher.exe'), [],
+        { env, stdio: ['ignore', 'ignore', 'pipe'] })
+      publisher.child.stderr.on('data', chunk => { publisherDiagnostics = (publisherDiagnostics + chunk).slice(-8192) })
+      publisher.done.then(code => { publisherExitCode = code })
     }
   })
   viewer.child.stderr.on('data', chunk => process.stderr.write(chunk))
@@ -71,8 +76,11 @@ try {
   clearTimeout(deadline)
   const report = JSON.parse(await readFile(reportPath, 'utf8'))
   const acceptanceErrors = verifyViewer(report, scenario, seconds)
+  if (publisherExitCode !== null) acceptanceErrors.push(`Publisher exited early: ${publisherExitCode}`)
+  if (server.child.exitCode !== null) acceptanceErrors.push(`Server exited early: ${server.child.exitCode}`)
   const accepted = code === 0 && acceptanceErrors.length === 0
   if (!accepted && serverDiagnostics) process.stderr.write(serverDiagnostics)
+  if (!accepted && publisherDiagnostics) process.stderr.write(publisherDiagnostics)
   console.log(JSON.stringify({ accepted, scenario, frames: report.frames, reportPath,
     finalBackingBytes: report.final?.backingBytes, failures: report.failures, acceptanceErrors }))
   process.exitCode = accepted ? 0 : 1

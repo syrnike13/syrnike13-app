@@ -23,6 +23,10 @@ class RemoteVideoTrack final : public LiveKitRoomObserver {
   std::optional<TextureLease> takeFrame();
   std::uint64_t decoded() const { return decoded_.load(); }
   bool failed() const { return failed_.load(); }
+  bool sdkConnected() const { return sdk_connected_.load(); }
+  std::uint64_t sdkReconnects() const { return sdk_reconnects_.load(); }
+  void onConnectionStateChanged(
+      livekit::Room&, const livekit::ConnectionStateChangedEvent&) override;
   std::uint64_t generation() const { return generation_.load(); }
   void onTrackPublished(livekit::Room&,
                         const livekit::TrackPublishedEvent&) override;
@@ -47,6 +51,8 @@ class RemoteVideoTrack final : public LiveKitRoomObserver {
   std::atomic<std::uint64_t> decoded_{0};
   std::atomic<std::uint64_t> generation_{0};
   std::atomic<bool> failed_{false};
+  std::atomic<bool> sdk_connected_{false};
+  std::atomic<std::uint64_t> sdk_reconnects_{0};
   bool enabled_ = false;
   bool stopping_ = false;
   std::shared_ptr<livekit::RemoteTrackPublication> publication_;

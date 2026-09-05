@@ -135,6 +135,11 @@ Napi::Value snapshot(const Napi::CallbackInfo& info) {
       Napi::Number::New(info.Env(),
                         remote ? static_cast<double>(remote->decoded()) : 0));
   result.Set("failed", remote && remote->failed());
+  result.Set("sdkConnected", remote && remote->sdkConnected());
+  result.Set("sdkReconnects",
+             Napi::Number::New(
+                 info.Env(),
+                 remote ? static_cast<double>(remote->sdkReconnects()) : 0));
   result.Set("room", room ? syrnike::windows_media::roomConnectionStateName(
                                 room->state())
                           : "absent");

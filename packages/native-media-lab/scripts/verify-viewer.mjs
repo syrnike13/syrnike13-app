@@ -11,6 +11,9 @@ export function verifyViewer(report, scenario, seconds) {
     sample.delivered + sample.retired + sample.quarantined <= 4), 'Pool bound exceeded')
   const connected = samples.findIndex(sample => sample.room === 'connected')
   check(connected >= 0 && samples.slice(connected).every(sample => sample.room === 'connected'), 'Room lost during scenario')
+  const sdkConnected = samples.findIndex(sample => sample.sdkConnected === true)
+  check(sdkConnected >= 0 && samples.slice(sdkConnected).every(sample => sample.sdkConnected === true) &&
+    samples.every(sample => sample.sdkReconnects === 0), 'SDK Room disconnected or reconnected')
   const transitions = report.transitions
   if (scenario === 'stall' || scenario === 'slow') {
     const start = transitions.find(item => item.phase === scenario)

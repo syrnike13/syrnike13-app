@@ -32,7 +32,9 @@ void RemoteVideoTrack::demand(bool enabled) {
   }
 }
 void RemoteVideoTrack::onTrackPublished(
-    livekit::Room&, const livekit::TrackPublishedEvent& event) {
+    livekit::Room& room, const livekit::TrackPublishedEvent& event) {
+  sdk_connected_ =
+      room.connectionState() == livekit::ConnectionState::Connected;
   if (!event.publication || !event.participant ||
       event.participant->identity() != participant_ ||
       event.publication->name() != track_name_ ||
@@ -43,6 +45,11 @@ void RemoteVideoTrack::onTrackPublished(
   track_.reset();
   ++revision_;
   changed_.notify_all();
+}
+void RemoteVideoTrack::onConnectionStateChanged(
+    livekit::Room&, const livekit::ConnectionStateChangedEvent& event) {
+  sdk_connected_ = event.state == livekit::ConnectionState::Connected;
+  if (event.state == livekit::ConnectionState::Reconnecting) ++sdk_reconnects_;
 }
 void RemoteVideoTrack::onTrackUnpublished(
     livekit::Room&, const livekit::TrackUnpublishedEvent& event) {
