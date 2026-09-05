@@ -424,9 +424,10 @@ ScreenEvidence driveCapture(Capture& capture, ReferenceScreenSender& sender,
   try {
     if (action) action(sender);
     if (target_frames > 0) {
-      require(sender.waitForPublished(
-                  target_frames, std::chrono::steady_clock::now() + 45s),
-              "screen sender publication deadline exceeded");
+      const bool published = sender.waitForPublished(
+          target_frames, std::chrono::steady_clock::now() + 45s);
+      require(published, sender.terminalFailure().value_or(
+                  "screen sender publication deadline exceeded"));
     }
   } catch (...) {
     operation_failure = std::current_exception();
@@ -505,7 +506,9 @@ ScreenEvidence runMonitorCycle(SourceRegistry& registry,
               "converter did not expose an active owned frame before stop");
     };
   } else if (mode == "screen-cpu-room-disconnect") {
-    target = 60;
+    // Room loss ends publication. Require frames before the interruption, then
+    // verify teardown instead of depending on capture into a disposed source.
+    target = 0;
     action = [&](ReferenceScreenSender& active_sender) {
       require(active_sender.waitForPublished(
                   30, std::chrono::steady_clock::now() + 20s),

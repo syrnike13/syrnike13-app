@@ -426,7 +426,7 @@ async function executeLab(resources: LabResources): Promise<void> {
       }
     } catch (error: unknown) {
       throw new LabFailure([
-        normalizeError(error).message,
+        `${mode}: ${normalizeError(error).message}`,
         `--- publisher ---\n${publisher?.output().slice(-8000) ?? 'not started'}`,
         `--- observer ---\n${observerSetup?.observer.output().slice(-8000) ?? 'not started'}`,
         `--- server ---\n${server.output().slice(-8000)}`,

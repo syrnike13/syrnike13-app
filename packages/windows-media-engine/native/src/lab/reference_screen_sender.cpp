@@ -196,8 +196,12 @@ void ReferenceScreenSender::runWorker(
     }
   } catch (const std::exception& error) {
     std::lock_guard lock(state->mutex);
-    ++state->stats.publication_failures;
-    state->terminal_failure = error.what();
+    // The Room can dispose the source while a CPU upload is in flight. That
+    // terminal removal cancels the worker; it is not a publication failure.
+    if (state->room->connectionState() != livekit::ConnectionState::Disconnected) {
+      ++state->stats.publication_failures;
+      state->terminal_failure = error.what();
+    }
     state->running = false;
     state->changed.notify_all();
   } catch (...) {
