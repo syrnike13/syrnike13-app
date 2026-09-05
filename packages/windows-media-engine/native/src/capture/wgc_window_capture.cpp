@@ -405,6 +405,17 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
               ComPtr<ID3D11Texture2D> source_texture;
               winrt::check_hresult(access->GetInterface(
                   IID_PPV_ARGS(&source_texture)));
+              D3D11_TEXTURE2D_DESC texture_description{};
+              source_texture->GetDesc(&texture_description);
+              // Recreate can race the compositor's resize. ContentSize may
+              // already describe the new window while this surface still
+              // belongs to the smaller pool. Drop that transitional frame;
+              // never publish metadata extending beyond its actual backing.
+              if (texture_description.Width < static_cast<UINT>(content_size.Width) ||
+                  texture_description.Height < static_cast<UINT>(content_size.Height)) {
+                frame.Close();
+                return;
+              }
               FrameCallback callback;
               std::uint64_t generation = 1;
               {
