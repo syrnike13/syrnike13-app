@@ -193,3 +193,11 @@ late-observer runs passed the unchanged 1500 ms maximum/age thresholds: maxima
 single worst frame's track/sequence/ordinal; both maxima were initial frames.
 This change does not claim to fix every SDK automatic-codec behavior or qualify
 the CPU reference as a production sender.
+
+The repeat harness now budgets 30 seconds for setup/teardown plus 10 seconds
+per requested cycle (maximum 330 seconds for 30 cycles), with a further
+15-second child-process cleanup bound. This replaces a fixed 120-second overall
+observer timeout that could expire before all 30 publication lifecycles finished.
+Per-frame maximum latency and age remain 1500 ms. The complete 30-cycle proof
+is in `cpu-h264-lifecycle-acceptance.json`: all 34 expected subscriptions,
+777 decoded frames, p95 48 ms, zero live D3D resources and no added threads.
