@@ -165,3 +165,20 @@ with a pending copy, and D3D debug-layer live textures. It carries the existing
 `requires-gpu-video` label and must run on real Windows GPU hardware; hosted CI
 does not supply that hardware. Bridge tests cover cross-generation bounds,
 uncertain imports and schema separation from remote video.
+
+## Follow-up: terminal WGC cleanup with a retained frame
+
+The hosted nightly run exposed a pre-existing source-close diagnostic race:
+automatic terminal cleanup finalized its resource snapshot while the consumer
+still held the last WGC frame. A later explicit stop could not refresh the
+already-finalized count. Finalization now waits until callback cleanup has
+finished and the retained engine frame count is zero; the normal capture stop
+already waits for that drain and invokes finalization again.
+
+The `capture-window-close` probe now holds a frame across the terminal event,
+joins backend cleanup, verifies finalization has not happened, then releases the
+frame and verifies clean stop. The D3D-debug result is recorded separately in
+`window-close-held-frame-acceptance.json`: zero live engine objects, zero added
+threads and one added handle within the existing four-handle budget. Earlier
+preview evidence retains its original source fingerprints; this supplementary
+proof covers the follow-up fix.

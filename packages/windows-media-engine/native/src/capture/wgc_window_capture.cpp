@@ -180,6 +180,11 @@ void finalizeWindowResources(
     const std::shared_ptr<WindowBackendState>& state) noexcept {
   std::lock_guard lock(state->mutex);
   if (state->finalized) return;
+  // A terminal signal stops WGC callbacks, but the consumer may still hold its
+  // final frame. WindowCapture::stop calls us again after all leases drain.
+  // Do not freeze resource diagnostics or finalize the shared readback device
+  // during that interval.
+  if (!state->stopped || state->live_engine_resources->load() != 0) return;
   state->finalized = true;
   state->diagnostics.live_engine_objects =
       state->live_engine_resources->load();
