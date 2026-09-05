@@ -195,4 +195,4 @@ jobs:
           pnpm desktop-native:build:asan
           pnpm desktop-native:test:debug
           pnpm windows-media:build:asan
-          pnpm windows-media:test:debug
+          pnpm windows-media:test:debug --label-exclude requires-gpu-video

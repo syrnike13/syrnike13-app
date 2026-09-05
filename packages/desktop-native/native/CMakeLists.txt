@@ -121,3 +121,25 @@ add_test(
   NAME syrnike-native-cleanup-supervisor-tests
   COMMAND syrnike-native-cleanup-supervisor-tests
 )
+
+set_tests_properties(
+  syrnike-native-hooks-runtime-lifecycle-tests
+  syrnike-native-cleanup-supervisor-tests
+  PROPERTIES TIMEOUT 60
+)
+
+if(MSVC AND SYRNIKE_ENABLE_ASAN)
+  get_filename_component(SYRNIKE_MSVC_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
+  set(SYRNIKE_ASAN_RUNTIME "${SYRNIKE_MSVC_BIN}/clang_rt.asan_dynamic-x86_64.dll")
+  if(NOT EXISTS "${SYRNIKE_ASAN_RUNTIME}")
+    message(FATAL_ERROR "MSVC AddressSanitizer runtime was not found")
+  endif()
+  foreach(target syrnike-native-hooks-runtime-lifecycle-tests
+                 syrnike-native-cleanup-supervisor-tests)
+    add_custom_command(TARGET ${target} POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${SYRNIKE_ASAN_RUNTIME}" "$<TARGET_FILE_DIR:${target}>"
+      VERBATIM
+    )
+  endforeach()
+endif()

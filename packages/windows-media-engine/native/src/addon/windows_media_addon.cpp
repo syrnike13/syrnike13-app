@@ -317,7 +317,9 @@ public:
             .room_transport = room_transport_,
         }) {}
 
-  ~AddonOwner() {
+  ~AddonOwner() { cleanup(); }
+
+  void cleanup() {
     const auto shutdown = engine_.shutdown();
     if (!shutdown.ok) {
       // Native callbacks still own their TSFN references until Engine shutdown
@@ -852,8 +854,18 @@ Napi::Value shutdown(const Napi::CallbackInfo &info) {
 
 void finalizeAddon(Napi::Env, AddonOwner *value) { delete value; }
 
+void cleanupAddon(void *value) {
+  // Instance-data and TSFN finalizers have no relative ordering. Stop native
+  // producers and release their TSFN references before either is finalized.
+  static_cast<AddonOwner *>(value)->cleanup();
+}
+
 Napi::Object initialize(Napi::Env env, Napi::Object exports) {
-  env.SetInstanceData<AddonOwner, finalizeAddon>(new AddonOwner(env));
+  auto value = std::make_unique<AddonOwner>(env);
+  if (napi_add_env_cleanup_hook(env, cleanupAddon, value.get()) != napi_ok) {
+    throw Napi::Error::New(env, "Failed to register media environment cleanup");
+  }
+  env.SetInstanceData<AddonOwner, finalizeAddon>(value.release());
   exports.Set("registerPublicEventCallback",
               Napi::Function::New(env, registerPublicEventCallback));
   exports.Set("registerDiagnosticEventCallback",
