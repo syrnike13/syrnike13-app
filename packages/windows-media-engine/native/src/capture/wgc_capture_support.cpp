@@ -25,8 +25,7 @@ using Microsoft::WRL::ComPtr;
 using winrt::Windows::Graphics::Capture::Direct3D11CaptureFrame;
 using winrt::Windows::Graphics::Capture::GraphicsCaptureItem;
 using winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
-using DxgiInterfaceAccess =
-    ::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess;
+using DxgiInterfaceAccess = ::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess;
 
 struct WgcDeviceCache {
   std::mutex mutex;
@@ -42,18 +41,34 @@ struct CaptureItemCacheEntry {
   GraphicsCaptureItem item{nullptr};
   winrt::event_token closed_token{};
   bool closed = false;
+  std::uint64_t generation = 0;
 };
 
 struct CaptureItemCache {
+  CO_MTA_USAGE_COOKIE apartment = nullptr;
   std::mutex mutex;
   std::unordered_map<std::string, CaptureItemCacheEntry> items;
+  std::uint64_t next_generation = 1;
+  CaptureItemCache() { winrt::check_hresult(CoIncrementMTAUsage(&apartment)); }
+  ~CaptureItemCache() {
+    for (auto& [key, entry] : items) {
+      (void)key;
+      try {
+        entry.item.Closed(entry.closed_token);
+      } catch (...) {
+      }
+    }
+    items.clear();
+    CoDecrementMTAUsage(apartment);
+  }
 };
 
-CaptureItemCache& captureItemCache() {
-  // Closed is delivered asynchronously by WGC. Keep the bounded cache alive
-  // through process teardown so a late callback cannot race static teardown.
-  static auto* cache = new CaptureItemCache();
-  return *cache;
+std::shared_ptr<CaptureItemCache> captureItemCache() {
+  // Cached agile WinRT objects can outlive every generation worker. Retain
+  // their MTA until the cache releases them; weak callbacks cannot resurrect
+  // the cache or race its final destruction.
+  static const auto cache = std::make_shared<CaptureItemCache>();
+  return cache;
 }
 
 inline constexpr std::size_t kMaximumCachedCaptureItems = 64;
@@ -68,28 +83,31 @@ void pruneClosedCaptureItems(CaptureItemCache& cache) {
 }
 
 template <typename CreateItem>
-GraphicsCaptureItem acquireCachedCaptureItem(std::string key,
-                                             CreateItem create_item) {
-  auto& cache = captureItemCache();
-  std::lock_guard lock(cache.mutex);
-  pruneClosedCaptureItems(cache);
-  const auto found = cache.items.find(key);
-  if (found != cache.items.end()) return found->second.item;
+GraphicsCaptureItem acquireCachedCaptureItem(std::string key, CreateItem create_item) {
+  const auto cache = captureItemCache();
+  std::lock_guard lock(cache->mutex);
+  pruneClosedCaptureItems(*cache);
+  const auto found = cache->items.find(key);
+  if (found != cache->items.end()) return found->second.item;
 
-  const auto item_factory = winrt::get_activation_factory<
-      GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
+  const auto item_factory =
+      winrt::get_activation_factory<GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
   GraphicsCaptureItem item{nullptr};
   winrt::check_hresult(create_item(item_factory, item));
-  const auto token = item.Closed(
-      [key](const GraphicsCaptureItem&,
-            const winrt::Windows::Foundation::IInspectable&) {
-        auto& item_cache = captureItemCache();
-        std::lock_guard cache_lock(item_cache.mutex);
-        const auto found = item_cache.items.find(key);
-        if (found != item_cache.items.end()) found->second.closed = true;
+  const auto generation = cache->next_generation++;
+  const std::weak_ptr weak = cache;
+  const auto token =
+      item.Closed([key, weak, generation](const GraphicsCaptureItem&,
+                                          const winrt::Windows::Foundation::IInspectable&) {
+        const auto item_cache = weak.lock();
+        if (!item_cache) return;
+        std::lock_guard cache_lock(item_cache->mutex);
+        const auto found = item_cache->items.find(key);
+        if (found != item_cache->items.end() && found->second.generation == generation)
+          found->second.closed = true;
       });
-  if (cache.items.size() < kMaximumCachedCaptureItems) {
-    cache.items.emplace(key, CaptureItemCacheEntry{item, token, false});
+  if (cache->items.size() < kMaximumCachedCaptureItems) {
+    cache->items.emplace(key, CaptureItemCacheEntry{item, token, false, generation});
   } else {
     item.Closed(token);
   }
@@ -100,8 +118,7 @@ class ScopedRoInitialization final {
  public:
   ScopedRoInitialization() {
     result_ = RoInitialize(RO_INIT_MULTITHREADED);
-    if (FAILED(result_) && result_ != RPC_E_CHANGED_MODE)
-      winrt::check_hresult(result_);
+    if (FAILED(result_) && result_ != RPC_E_CHANGED_MODE) winrt::check_hresult(result_);
   }
   ~ScopedRoInitialization() {
     if (SUCCEEDED(result_)) RoUninitialize();
@@ -113,18 +130,16 @@ class ScopedRoInitialization final {
 
 class D3D11FrameResource final : public FrameResource {
  public:
-  D3D11FrameResource(
-      std::shared_ptr<WgcDeviceState> device,
-      std::shared_ptr<std::atomic<std::uint64_t>> live_resources,
-      std::shared_ptr<std::atomic<std::uint64_t>> peak_resources,
-      Direct3D11CaptureFrame frame, ComPtr<ID3D11Texture2D> texture,
-      std::uint32_t width, std::uint32_t height);
+  D3D11FrameResource(std::shared_ptr<WgcDeviceState> device,
+                     std::shared_ptr<std::atomic<std::uint64_t>> live_resources,
+                     std::shared_ptr<std::atomic<std::uint64_t>> peak_resources,
+                     Direct3D11CaptureFrame frame, ComPtr<ID3D11Texture2D> texture,
+                     std::uint32_t width, std::uint32_t height);
   ~D3D11FrameResource() override;
 
   std::uint64_t sampledHash() override;
   std::optional<D3d11FrameView> d3d11View() override;
-  void copyBgraTo(std::span<std::uint8_t> destination,
-                  std::size_t destination_stride) override;
+  void copyBgraTo(std::span<std::uint8_t> destination, std::size_t destination_stride) override;
 
  private:
   template <typename Callback>
@@ -152,8 +167,7 @@ void ensureRoInitialized() {
   (void)apartment;
 }
 
-std::shared_ptr<WgcDeviceState> createWgcDevice(bool request_debug,
-                                                bool& debug_enabled) {
+std::shared_ptr<WgcDeviceState> createWgcDevice(bool request_debug, bool& debug_enabled) {
   auto& cache = wgcDeviceCache();
   std::lock_guard lock(cache.mutex);
   if (!cache.device) {
@@ -164,45 +178,57 @@ std::shared_ptr<WgcDeviceState> createWgcDevice(bool request_debug,
   return cache.device;
 }
 
-IDirect3DDevice createWinrtD3DDevice(
-    const std::shared_ptr<WgcDeviceState>& device) {
+IDirect3DDevice createWinrtD3DDevice(const std::shared_ptr<WgcDeviceState>& device) {
   ComPtr<IDXGIDevice> dxgi_device;
-  winrt::check_hresult(device->owner->device()->QueryInterface(
-      IID_PPV_ARGS(&dxgi_device)));
+  winrt::check_hresult(device->owner->device()->QueryInterface(IID_PPV_ARGS(&dxgi_device)));
   winrt::com_ptr<::IInspectable> inspectable;
-  winrt::check_hresult(CreateDirect3D11DeviceFromDXGIDevice(
-      dxgi_device.Get(), inspectable.put()));
+  winrt::check_hresult(CreateDirect3D11DeviceFromDXGIDevice(dxgi_device.Get(), inspectable.put()));
   return inspectable.as<IDirect3DDevice>();
 }
 
-GraphicsCaptureItem acquireMonitorCaptureItem(
-    std::uintptr_t platform_value, const std::string& stable_identity) {
+GraphicsCaptureItem acquireMonitorCaptureItem(std::uintptr_t platform_value,
+                                              const std::string& stable_identity) {
   return acquireCachedCaptureItem(
       "monitor:" + stable_identity + "@" + std::to_string(platform_value),
       [platform_value](const auto& factory, GraphicsCaptureItem& item) {
-        return factory->CreateForMonitor(
-            reinterpret_cast<HMONITOR>(platform_value),
-            winrt::guid_of<GraphicsCaptureItem>(), winrt::put_abi(item));
+        return factory->CreateForMonitor(reinterpret_cast<HMONITOR>(platform_value),
+                                         winrt::guid_of<GraphicsCaptureItem>(),
+                                         winrt::put_abi(item));
       });
 }
 
-GraphicsCaptureItem acquireWindowCaptureItem(
-    std::uintptr_t platform_value, const std::string& stable_identity) {
+GraphicsCaptureItem acquireWindowCaptureItem(std::uintptr_t platform_value,
+                                             const std::string& stable_identity) {
   return acquireCachedCaptureItem(
       "window:" + stable_identity + "@" + std::to_string(platform_value),
       [platform_value](const auto& factory, GraphicsCaptureItem& item) {
-        return factory->CreateForWindow(
-            reinterpret_cast<HWND>(platform_value),
-            winrt::guid_of<GraphicsCaptureItem>(), winrt::put_abi(item));
+        return factory->CreateForWindow(reinterpret_cast<HWND>(platform_value),
+                                        winrt::guid_of<GraphicsCaptureItem>(),
+                                        winrt::put_abi(item));
       });
 }
 
-D3D11FrameResource::D3D11FrameResource(
-    std::shared_ptr<WgcDeviceState> device,
-    std::shared_ptr<std::atomic<std::uint64_t>> live_resources,
-    std::shared_ptr<std::atomic<std::uint64_t>> peak_resources,
-    Direct3D11CaptureFrame frame, ComPtr<ID3D11Texture2D> texture,
-    std::uint32_t width, std::uint32_t height)
+void invalidateMonitorCaptureItem(std::uintptr_t platform_value,
+                                  const std::string& stable_identity) {
+  const auto cache = captureItemCache();
+  CaptureItemCacheEntry retired;
+  {
+    std::lock_guard lock(cache->mutex);
+    const auto found =
+        cache->items.find("monitor:" + stable_identity + "@" + std::to_string(platform_value));
+    if (found == cache->items.end()) return;
+    retired = std::move(found->second);
+    cache->items.erase(found);
+  }
+  retired.item.Closed(retired.closed_token);
+}
+
+D3D11FrameResource::D3D11FrameResource(std::shared_ptr<WgcDeviceState> device,
+                                       std::shared_ptr<std::atomic<std::uint64_t>> live_resources,
+                                       std::shared_ptr<std::atomic<std::uint64_t>> peak_resources,
+                                       Direct3D11CaptureFrame frame,
+                                       ComPtr<ID3D11Texture2D> texture, std::uint32_t width,
+                                       std::uint32_t height)
     : device_(std::move(device)),
       live_resources_(std::move(live_resources)),
       peak_resources_(std::move(peak_resources)),
@@ -212,8 +238,7 @@ D3D11FrameResource::D3D11FrameResource(
       height_(height) {
   const auto current = live_resources_->fetch_add(1) + 1;
   auto peak = peak_resources_->load();
-  while (peak < current &&
-         !peak_resources_->compare_exchange_weak(peak, current)) {
+  while (peak < current && !peak_resources_->compare_exchange_weak(peak, current)) {
   }
 }
 
@@ -237,21 +262,19 @@ std::uint64_t D3D11FrameResource::sampledHash() {
   staging_description.ArraySize = 1;
   staging_description.SampleDesc = {1, 0};
   ComPtr<ID3D11Texture2D> staging;
-  winrt::check_hresult(device_->owner->device()->CreateTexture2D(
-      &staging_description, nullptr, &staging));
+  winrt::check_hresult(
+      device_->owner->device()->CreateTexture2D(&staging_description, nullptr, &staging));
   constexpr char staging_name[] = "SyrnikeMonitorHashStaging";
-  (void)staging->SetPrivateData(WKPDID_D3DDebugObjectName,
-                                sizeof(staging_name) - 1, staging_name);
+  (void)staging->SetPrivateData(WKPDID_D3DDebugObjectName, sizeof(staging_name) - 1, staging_name);
 
   D3D11_MAPPED_SUBRESOURCE mapped{};
   {
     std::lock_guard lock(device_->owner->contextMutex());
-    const D3D11_BOX source_box{0, 0, 0, staging_description.Width,
-                               staging_description.Height, 1};
-    device_->owner->context()->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0,
-                                            texture_.Get(), 0, &source_box);
-    winrt::check_hresult(device_->owner->context()->Map(
-        staging.Get(), 0, D3D11_MAP_READ, 0, &mapped));
+    const D3D11_BOX source_box{0, 0, 0, staging_description.Width, staging_description.Height, 1};
+    device_->owner->context()->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, texture_.Get(), 0,
+                                                     &source_box);
+    winrt::check_hresult(
+        device_->owner->context()->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped));
   }
   struct Unmapper {
     std::shared_ptr<WgcDeviceState> device;
@@ -269,12 +292,12 @@ std::uint64_t D3D11FrameResource::sampledHash() {
   const auto sample_width = (std::min)(staging_description.Width, 64U);
   const auto sample_height = (std::min)(staging_description.Height, 64U);
   for (std::uint32_t sample_y = 0; sample_y < sample_height; ++sample_y) {
-    const auto y = static_cast<std::uint64_t>(sample_y) *
-                   staging_description.Height / sample_height;
+    const auto y =
+        static_cast<std::uint64_t>(sample_y) * staging_description.Height / sample_height;
     const auto* row = bytes + y * mapped.RowPitch;
     for (std::uint32_t sample_x = 0; sample_x < sample_width; ++sample_x) {
-      const auto x = static_cast<std::uint64_t>(sample_x) *
-                     staging_description.Width / sample_width;
+      const auto x =
+          static_cast<std::uint64_t>(sample_x) * staging_description.Width / sample_width;
       const auto* pixel = row + x * 4U;
       for (std::uint32_t channel = 0; channel < 4; ++channel)
         hash = (hash ^ pixel[channel]) * prime;
@@ -291,8 +314,7 @@ auto D3D11FrameResource::withMappedBgra(Callback callback) {
   const auto copy_width = (std::min)(source_description.Width, width_);
   const auto copy_height = (std::min)(source_description.Height, height_);
   if (copy_width != width_ || copy_height != height_) {
-    throw std::runtime_error(
-        "WGC texture is smaller than its immutable frame metadata");
+    throw std::runtime_error("WGC texture is smaller than its immutable frame metadata");
   }
   std::lock_guard lock(device_->owner->contextMutex());
   if (!device_->readback_staging || device_->readback_width != copy_width ||
@@ -308,23 +330,22 @@ auto D3D11FrameResource::withMappedBgra(Callback callback) {
     staging_description.ArraySize = 1;
     staging_description.SampleDesc = {1, 0};
     ComPtr<ID3D11Texture2D> staging;
-    winrt::check_hresult(device_->owner->device()->CreateTexture2D(
-        &staging_description, nullptr, &staging));
+    winrt::check_hresult(
+        device_->owner->device()->CreateTexture2D(&staging_description, nullptr, &staging));
     constexpr char staging_name[] = "SyrnikeCpuReferenceReadback";
-    (void)staging->SetPrivateData(WKPDID_D3DDebugObjectName,
-                                  sizeof(staging_name) - 1, staging_name);
+    (void)staging->SetPrivateData(WKPDID_D3DDebugObjectName, sizeof(staging_name) - 1,
+                                  staging_name);
     device_->readback_staging = std::move(staging);
     device_->readback_width = copy_width;
     device_->readback_height = copy_height;
   }
 
   const D3D11_BOX source_box{0, 0, 0, copy_width, copy_height, 1};
-  device_->owner->context()->CopySubresourceRegion(device_->readback_staging.Get(), 0,
-                                          0, 0, 0, texture_.Get(), 0,
-                                          &source_box);
+  device_->owner->context()->CopySubresourceRegion(device_->readback_staging.Get(), 0, 0, 0, 0,
+                                                   texture_.Get(), 0, &source_box);
   D3D11_MAPPED_SUBRESOURCE mapped{};
   winrt::check_hresult(device_->owner->context()->Map(device_->readback_staging.Get(), 0,
-                                             D3D11_MAP_READ, 0, &mapped));
+                                                      D3D11_MAP_READ, 0, &mapped));
   try {
     auto result = callback(mapped, copy_width, copy_height);
     device_->owner->context()->Unmap(device_->readback_staging.Get(), 0);
@@ -335,36 +356,31 @@ auto D3D11FrameResource::withMappedBgra(Callback callback) {
   }
 }
 
-void D3D11FrameResource::copyBgraTo(
-    std::span<std::uint8_t> destination,
-    std::size_t destination_stride) {
+void D3D11FrameResource::copyBgraTo(std::span<std::uint8_t> destination,
+                                    std::size_t destination_stride) {
   const auto required_stride = static_cast<std::size_t>(width_) * 4U;
-  if (destination_stride < required_stride ||
-      destination.size() < destination_stride * height_) {
+  if (destination_stride < required_stride || destination.size() < destination_stride * height_) {
     throw std::invalid_argument("CPU readback destination is too small");
   }
-  withMappedBgra([&](const D3D11_MAPPED_SUBRESOURCE& mapped,
-                     std::uint32_t width, std::uint32_t height) {
-    const auto* source = static_cast<const std::uint8_t*>(mapped.pData);
-    for (std::uint32_t y = 0; y < height; ++y) {
-      std::memcpy(destination.data() + y * destination_stride,
-                  source + y * mapped.RowPitch,
-                  static_cast<std::size_t>(width) * 4U);
-    }
-    return 0;
-  });
+  withMappedBgra(
+      [&](const D3D11_MAPPED_SUBRESOURCE& mapped, std::uint32_t width, std::uint32_t height) {
+        const auto* source = static_cast<const std::uint8_t*>(mapped.pData);
+        for (std::uint32_t y = 0; y < height; ++y) {
+          std::memcpy(destination.data() + y * destination_stride, source + y * mapped.RowPitch,
+                      static_cast<std::size_t>(width) * 4U);
+        }
+        return 0;
+      });
 }
 
 std::shared_ptr<FrameResource> makeWgcFrameResource(
     std::shared_ptr<WgcDeviceState> device,
     std::shared_ptr<std::atomic<std::uint64_t>> live_resources,
-    std::shared_ptr<std::atomic<std::uint64_t>> peak_resources,
-    Direct3D11CaptureFrame frame, ComPtr<ID3D11Texture2D> texture,
-    std::uint32_t width, std::uint32_t height) {
-  return std::make_shared<D3D11FrameResource>(
-      std::move(device), std::move(live_resources),
-      std::move(peak_resources), std::move(frame), std::move(texture), width,
-      height);
+    std::shared_ptr<std::atomic<std::uint64_t>> peak_resources, Direct3D11CaptureFrame frame,
+    ComPtr<ID3D11Texture2D> texture, std::uint32_t width, std::uint32_t height) {
+  return std::make_shared<D3D11FrameResource>(std::move(device), std::move(live_resources),
+                                              std::move(peak_resources), std::move(frame),
+                                              std::move(texture), width, height);
 }
 
 }  // namespace syrnike::windows_media::capture::detail

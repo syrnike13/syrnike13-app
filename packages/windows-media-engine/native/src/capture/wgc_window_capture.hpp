@@ -13,6 +13,7 @@ struct WgcWindowCaptureDiagnostics : WgcMonitorCaptureDiagnostics {
 };
 
 struct WgcWindowCaptureTestHooks {
+  std::function<void()> before_frame_visibility_check;
   std::function<void()> before_frame_callback;
   std::function<void()> before_frame_pool_recreate;
 };

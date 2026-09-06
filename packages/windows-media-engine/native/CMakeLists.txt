@@ -72,6 +72,10 @@ target_include_directories(media_sources PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src
 target_link_libraries(media_sources PRIVATE dwmapi shcore)
 
 add_library(media_capture STATIC
+  src/capture/backend_selection_policy.cpp
+  src/capture/selecting_monitor_capture.cpp
+  src/capture/dxgi_frame_compositor.cpp
+  src/capture/dxgi_monitor_capture.cpp
   src/capture/d3d11_device.cpp
   src/capture/monitor_capture.cpp
   src/capture/window_capture.cpp
@@ -81,7 +85,7 @@ add_library(media_capture STATIC
 )
 windows_media_target(media_capture)
 target_include_directories(media_capture PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(media_capture PUBLIC media_sources PRIVATE d3d11 dxgi dxguid windowsapp)
+target_link_libraries(media_capture PUBLIC media_sources PRIVATE d3d11 dxgi dxguid windowsapp d3dcompiler)
 
 add_library(media_screen STATIC
   src/screen/screen_frame_pipeline.cpp
@@ -177,6 +181,32 @@ if(MSVC)
 endif()
 
 enable_testing()
+
+add_executable(backend_selection_policy_tests tests/backend_selection_policy_test.cpp)
+windows_media_target(backend_selection_policy_tests)
+target_link_libraries(backend_selection_policy_tests PRIVATE media_capture)
+add_test(NAME backend-selection-policy COMMAND backend_selection_policy_tests)
+set_tests_properties(backend-selection-policy PROPERTIES TIMEOUT 10)
+add_executable(dxgi_capture_tests tests/dxgi_capture_test.cpp)
+windows_media_target(dxgi_capture_tests)
+target_link_libraries(dxgi_capture_tests PRIVATE media_capture)
+add_test(NAME dxgi-capture COMMAND dxgi_capture_tests)
+set_tests_properties(dxgi-capture PROPERTIES TIMEOUT 30 LABELS "requires-gpu-video")
+add_executable(selecting_monitor_capture_tests tests/selecting_monitor_capture_test.cpp)
+windows_media_target(selecting_monitor_capture_tests)
+target_link_libraries(selecting_monitor_capture_tests PRIVATE media_capture)
+add_test(NAME selecting-monitor-capture COMMAND selecting_monitor_capture_tests)
+set_tests_properties(selecting-monitor-capture PROPERTIES TIMEOUT 30)
+add_executable(screen_frame_cadence_tests tests/screen_frame_cadence_test.cpp)
+windows_media_target(screen_frame_cadence_tests)
+add_test(NAME screen-frame-cadence COMMAND screen_frame_cadence_tests)
+add_test(NAME backend-selection-golden COMMAND ${CMAKE_COMMAND}
+  -DPROBE=$<TARGET_FILE:backend_selection_policy_tests>
+  -DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/../../../docs/native-v2/backend-selection-golden.json
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_backend_golden.cmake)
+add_executable(screen_encoded_continuity_tests tests/screen_encoded_continuity_test.cpp)
+windows_media_target(screen_encoded_continuity_tests)
+add_test(NAME screen-encoded-continuity COMMAND screen_encoded_continuity_tests)
 
 add_executable(media_core_tests
   tests/engine_lifecycle_test.cpp
@@ -354,6 +384,16 @@ set_tests_properties(monitor-capture gpu-screen-converter encoder-faults
   PROPERTIES LABELS "requires-gpu-video")
 
 if(WINDOWS_MEDIA_BUILD_LAB)
+  add_executable(backend_capture_lab src/lab/backend_capture_lab.cpp)
+  add_executable(backend_transition_lab src/lab/backend_transition_lab.cpp)
+  # Explicit local proof only; restores the selected non-primary display mode.
+  add_executable(display_mode_proof src/lab/display_mode_proof.cpp)
+  windows_media_target(display_mode_proof)
+  windows_media_target(backend_transition_lab)
+  target_link_libraries(backend_transition_lab PRIVATE media_capture)
+  windows_media_target(backend_capture_lab)
+  target_link_libraries(backend_capture_lab PRIVATE media_capture)
+  add_dependencies(backend_capture_lab monitor_pattern_fixture)
   add_library(preview_bridge_lab MODULE ${CMAKE_JS_SRC}
     src/lab/preview_bridge_addon.cpp src/lab/screen_cpu_lab.cpp src/lab/gpu_contention.cpp)
   set_target_properties(preview_bridge_lab PROPERTIES PREFIX "" SUFFIX ".node")

@@ -86,8 +86,9 @@ References: [process-tree semantics and minimum build](https://learn.microsoft.c
 
 Build the opt-in native lab with `pnpm --filter @syrnike13/windows-media-engine
 build:lab` and the observer with `pnpm --filter @syrnike13/native-media-lab build`.
-The default SDK pin is the published `.6` archive; a private local SDK build is
-not required. Then run `node packages/native-media-lab/dist/run-screen-audio-lab.js`
+Use the current published SDK pin; the recorded issue #125 evidence below used
+the `.6` archive. A private local SDK build is not required. Then run
+`node packages/native-media-lab/dist/run-screen-audio-lab.js`
 with these explicit environment variables:
 
 | Variable | Meaning |

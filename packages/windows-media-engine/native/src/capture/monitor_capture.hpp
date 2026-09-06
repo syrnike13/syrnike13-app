@@ -15,13 +15,28 @@ namespace syrnike::windows_media::capture {
 
 inline constexpr std::size_t kMaximumMonitorFrames = 3;
 
-enum class CaptureState { Idle, Starting, Running, Stopped, Failed };
+enum class CaptureState { Idle, Starting, Running, Paused, Stopped, Failed };
 enum class FramePixelFormat { Bgra8 };
 enum class LeaseReleaseStatus { Released, AlreadyReleased };
 
+enum class CaptureFailureKind {
+  backend_failed,
+  unsupported,
+  source_unavailable,
+  access_lost,
+  device_removed,
+  secure_desktop,
+  stop_timeout
+};
 struct CaptureFailure {
   std::string code;
   std::string message;
+  CaptureFailureKind kind = CaptureFailureKind::backend_failed;
+};
+enum class CaptureBackendProgressState { active, paused };
+struct CaptureBackendProgress {
+  CaptureBackendProgressState state = CaptureBackendProgressState::active;
+  std::optional<CaptureFailureKind> reason;
 };
 
 struct FrameMetadata {
@@ -37,9 +52,7 @@ struct D3d11FrameView {
   std::shared_ptr<D3d11DeviceOwner> device_owner;
   ID3D11Texture2D* texture = nullptr;
 
-  explicit operator bool() const noexcept {
-    return device_owner && texture;
-  }
+  explicit operator bool() const noexcept { return device_owner && texture; }
 };
 
 class FrameResource {
@@ -47,8 +60,7 @@ class FrameResource {
   virtual ~FrameResource() = default;
   virtual std::uint64_t sampledHash() = 0;
   virtual std::optional<D3d11FrameView> d3d11View();
-  virtual void copyBgraTo(std::span<std::uint8_t> destination,
-                          std::size_t destination_stride);
+  virtual void copyBgraTo(std::span<std::uint8_t> destination, std::size_t destination_stride);
 };
 
 struct BackendFrame {
@@ -73,15 +85,13 @@ class FrameLease final {
   const FrameMetadata& metadata() const;
   std::uint64_t sampledHash() const;
   std::optional<D3d11FrameView> d3d11View() const;
-  void copyBgraTo(std::span<std::uint8_t> destination,
-                  std::size_t destination_stride) const;
+  void copyBgraTo(std::span<std::uint8_t> destination, std::size_t destination_stride) const;
   LeaseReleaseStatus release() noexcept;
 
  private:
   struct State;
   explicit FrameLease(std::shared_ptr<State> state);
-  static FrameLease create(FrameMetadata metadata,
-                           std::shared_ptr<FrameResource> resource,
+  static FrameLease create(FrameMetadata metadata, std::shared_ptr<FrameResource> resource,
                            std::function<void()> on_release);
   std::shared_ptr<State> state_;
   friend class MonitorCapture;
@@ -117,13 +127,11 @@ class MonitorCaptureBackend {
   using TerminalCallback = std::function<void(CaptureFailure)>;
 
   virtual ~MonitorCaptureBackend() = default;
-  virtual BackendStartResult start(
-      const sources::MonitorTargetToken& target,
-      FrameCallback on_frame,
-      TerminalCallback on_terminal) = 0;
-  virtual CaptureStopResult stop(
-      std::chrono::steady_clock::time_point deadline) noexcept = 0;
+  virtual BackendStartResult start(const sources::MonitorTargetToken& target,
+                                   FrameCallback on_frame, TerminalCallback on_terminal) = 0;
+  virtual CaptureStopResult stop(std::chrono::steady_clock::time_point deadline) noexcept = 0;
   virtual void finalizeStop() noexcept {}
+  virtual CaptureBackendProgress progress() const = 0;
 };
 
 class MonitorCapture final {
@@ -138,6 +146,7 @@ class MonitorCapture final {
   std::optional<FrameLease> waitForFrame(std::chrono::milliseconds timeout);
   CaptureStopResult stop(std::chrono::milliseconds lease_deadline);
   CaptureState state() const;
+  CaptureBackendProgress progress() const;
   CaptureStats stats() const;
   std::optional<CaptureFailure> terminalFailure() const;
 

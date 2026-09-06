@@ -72,7 +72,7 @@ struct Resources {
   DWORD threads = 0;
 };
 
-DWORD threadCount() {
+DWORD threadCount(std::vector<DWORD>* ids = nullptr) {
   const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
   require(snapshot != INVALID_HANDLE_VALUE, "thread snapshot failed");
   THREADENTRY32 entry{};
@@ -80,11 +80,33 @@ DWORD threadCount() {
   DWORD count = 0;
   if (Thread32First(snapshot, &entry)) {
     do {
-      if (entry.th32OwnerProcessID == GetCurrentProcessId()) ++count;
+      if (entry.th32OwnerProcessID == GetCurrentProcessId()) {
+        ++count;
+        if (ids != nullptr && ids->size() < 512) {
+          ids->push_back(entry.th32ThreadID);
+        }
+      }
     } while (Thread32Next(snapshot, &entry));
   }
   CloseHandle(snapshot);
   return count;
+}
+
+void logResourceThreads(const char* phase) {
+  wchar_t enabled[2]{};
+  if (GetEnvironmentVariableW(L"WINDOWS_MEDIA_WINDOW_THREAD_DIAGNOSTIC",
+                              enabled, 2) != 1 || enabled[0] != L'1') {
+    return;
+  }
+  std::vector<DWORD> ids;
+  const auto count = threadCount(&ids);
+  std::cerr << "WINDOW_RESOURCE_THREADS {\"phase\":" << jsonString(phase)
+            << ",\"count\":" << count << ",\"ids\":[";
+  for (std::size_t index = 0; index < ids.size(); ++index) {
+    if (index != 0) std::cerr << ',';
+    std::cerr << ids[index];
+  }
+  std::cerr << "]}\n";
 }
 
 Resources currentResources() {
@@ -827,6 +849,7 @@ int captureWindowProbe(int argc, char** argv, const std::string& command) {
     }
   }
   const auto before = currentResources();
+  logResourceThreads("baseline");
   Evidence evidence;
   bool handle_reuse_rejected = false;
   std::string handle_reuse_status = "not_applicable";
@@ -839,13 +862,20 @@ int captureWindowProbe(int argc, char** argv, const std::string& command) {
       merge(evidence, simpleCycle(registry, source_id, arguments.frames,
                                   arguments.debug));
       const auto current = waitForBudget(before);
-      extra_ok = extra_ok &&
-                 static_cast<std::int64_t>(current.handles) -
-                         static_cast<std::int64_t>(before.handles) <=
-                     kHandleBudget &&
-                 static_cast<std::int64_t>(current.threads) -
-                         static_cast<std::int64_t>(before.threads) <=
-                     0;
+      const bool resources_in_budget =
+          static_cast<std::int64_t>(current.handles) -
+                  static_cast<std::int64_t>(before.handles) <= kHandleBudget &&
+          static_cast<std::int64_t>(current.threads) -
+                  static_cast<std::int64_t>(before.threads) <= 0;
+      if (!resources_in_budget) {
+        logResourceThreads("failed_cycle");
+        std::cerr << "WINDOW_RESOURCE_CYCLE {\"cycle\":" << cycle
+                  << ",\"handles\":" << current.handles
+                  << ",\"threads\":" << current.threads
+                  << ",\"baselineHandles\":" << before.handles
+                  << ",\"baselineThreads\":" << before.threads << "}\n";
+      }
+      extra_ok = extra_ok && resources_in_budget;
     }
     extra_ok = extra_ok && evidence.captured ==
                                static_cast<std::uint64_t>(arguments.frames) *
@@ -934,10 +964,30 @@ int captureWindowProbe(int argc, char** argv, const std::string& command) {
                evidence.frames_per_size.size() >= 3 &&
                evidence.terminal_event_count == 0;
   } else if (command == "capture-window-minimize") {
-    CaptureInstance instance(registry, source_id, arguments.debug);
+    CallbackGate visibility_gate;
+    std::atomic_bool minimized{false};
+    std::atomic_uint minimized_work{0};
+    auto hooks = std::make_shared<WgcWindowCaptureTestHooks>();
+    hooks->before_frame_visibility_check = [&] { visibility_gate.enter(); };
+    const auto record_minimized_work = [&] {
+      if (minimized.load()) ++minimized_work;
+    };
+    hooks->before_frame_callback = record_minimized_work;
+    hooks->before_frame_pool_recreate = record_minimized_work;
+    CaptureInstance instance(registry, source_id, arguments.debug, hooks);
     startCapture(instance, evidence);
     captureFrames(instance.capture, 10, evidence);
-    fixture.command("minimize");
+    visibility_gate.arm();
+    try {
+      visibility_gate.waitUntilEntered(3s,
+                                      "visibility-check callback was not reached");
+      fixture.command("minimize");
+      minimized.store(true);
+    } catch (...) {
+      visibility_gate.release();
+      throw;
+    }
+    visibility_gate.release();
     (void)waitForEvent(instance.capture,
                        WindowCaptureEventKind::TemporarilyNoContent, evidence,
                        3s);
@@ -947,6 +997,9 @@ int captureWindowProbe(int argc, char** argv, const std::string& command) {
       require(!instance.capture.terminalFailure(),
               "minimized window became terminal");
     }
+    require(minimized_work.load() == 0,
+            "minimized window frame reached resize or delivery");
+    minimized.store(false);
     fixture.command("restore");
     (void)waitForEvent(instance.capture,
                        WindowCaptureEventKind::ContentRestored, evidence, 3s);
@@ -1005,6 +1058,7 @@ int captureWindowProbe(int argc, char** argv, const std::string& command) {
   }
 
   const auto after = waitForBudget(before);
+  logResourceThreads("final");
   const std::string mode =
       command == "capture-window" ? "capture" :
       command.substr(std::string("capture-window-").size());

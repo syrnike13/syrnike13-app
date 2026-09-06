@@ -312,9 +312,11 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
                  const winrt::Windows::Foundation::IInspectable&) {
             const auto state = weak.lock();
             if (!state) return;
+            HWND window = nullptr;
             {
               std::lock_guard lock(state->mutex);
               if (!state->active || state->stop_requested.load()) return;
+              window = state->window;
               ++state->active_callbacks;
             }
             CallbackGuard<WindowBackendState> guard(state);
@@ -322,6 +324,17 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
             try {
               auto frame = sender.TryGetNextFrame();
               if (!frame) return;
+              if (state->test_hooks &&
+                  state->test_hooks->before_frame_visibility_check) {
+                state->test_hooks->before_frame_visibility_check();
+              }
+              // WGC can emit minimized-window geometry before the observer's
+              // next visibility sample. Drain that frame without resizing the
+              // pool or creating a generation for unavailable window content.
+              if (IsIconic(window) != FALSE || IsWindowVisible(window) == FALSE) {
+                frame.Close();
+                return;
+              }
               const auto content_size = frame.ContentSize();
               if (content_size.Width <= 0 || content_size.Height <= 0) return;
               const std::int64_t timestamp =

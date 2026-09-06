@@ -1,0 +1,247 @@
+{
+  "schemaVersion": 1,
+  "steps": [
+    {
+      "event": "start",
+      "timeMs": 0,
+      "originBackend": "wgc",
+      "originGeneration": 0,
+      "forced": null,
+      "action": "start_candidate",
+      "activeGeneration": 0,
+      "candidateGeneration": 1,
+      "attemptCount": 1
+    },
+    {
+      "event": "healthy_frame",
+      "timeMs": 1,
+      "originBackend": "wgc",
+      "originGeneration": 1,
+      "forced": null,
+      "action": "commit_candidate",
+      "activeGeneration": 1,
+      "candidateGeneration": 0,
+      "attemptCount": 1
+    },
+    {
+      "event": "force_backend",
+      "timeMs": 1000,
+      "originBackend": "wgc",
+      "originGeneration": 0,
+      "forced": "dxgi",
+      "action": "start_candidate",
+      "activeGeneration": 1,
+      "candidateGeneration": 2,
+      "attemptCount": 2
+    },
+    {
+      "event": "prepare_failed",
+      "timeMs": 1001,
+      "originBackend": "dxgi",
+      "originGeneration": 2,
+      "forced": null,
+      "action": "discard_candidate",
+      "activeGeneration": 1,
+      "candidateGeneration": 0,
+      "attemptCount": 2
+    },
+    {
+      "event": "healthy_frame",
+      "timeMs": 1002,
+      "originBackend": "dxgi",
+      "originGeneration": 2,
+      "forced": null,
+      "action": "keep",
+      "activeGeneration": 1,
+      "candidateGeneration": 0,
+      "attemptCount": 2
+    },
+    {
+      "event": "force_backend",
+      "timeMs": 2000,
+      "originBackend": "wgc",
+      "originGeneration": 0,
+      "forced": "dxgi",
+      "action": "start_candidate",
+      "activeGeneration": 1,
+      "candidateGeneration": 3,
+      "attemptCount": 3
+    },
+    {
+      "event": "healthy_frame",
+      "timeMs": 2001,
+      "originBackend": "dxgi",
+      "originGeneration": 3,
+      "forced": null,
+      "action": "commit_candidate",
+      "activeGeneration": 3,
+      "candidateGeneration": 0,
+      "attemptCount": 3
+    },
+    {
+      "event": "force_backend",
+      "timeMs": 3000,
+      "originBackend": "wgc",
+      "originGeneration": 0,
+      "forced": "wgc",
+      "action": "keep",
+      "activeGeneration": 3,
+      "candidateGeneration": 0,
+      "attemptCount": 3
+    },
+    {
+      "event": "retirement_drained",
+      "timeMs": 3001,
+      "originBackend": "wgc",
+      "originGeneration": 0,
+      "forced": null,
+      "action": "keep",
+      "activeGeneration": 3,
+      "candidateGeneration": 0,
+      "attemptCount": 3
+    },
+    {
+      "event": "tick",
+      "timeMs": 3002,
+      "originBackend": "wgc",
+      "originGeneration": 0,
+      "forced": null,
+      "action": "start_candidate",
+      "activeGeneration": 3,
+      "candidateGeneration": 4,
+      "attemptCount": 4
+    },
+    {
+      "event": "secure_desktop",
+      "timeMs": 3500,
+      "originBackend": "wgc",
+      "originGeneration": 0,
+      "forced": null,
+      "action": "pause",
+      "activeGeneration": 3,
+      "candidateGeneration": 0,
+      "attemptCount": 4
+    },
+    {
+      "event": "no_content",
+      "timeMs": 63500,
+      "originBackend": "wgc",
+      "originGeneration": 0,
+      "forced": null,
+      "action": "keep",
+      "activeGeneration": 3,
+      "candidateGeneration": 0,
+      "attemptCount": 4
+    },
+    {
+      "event": "desktop_available",
+      "timeMs": 64000,
+      "originBackend": "wgc",
+      "originGeneration": 0,
+      "forced": null,
+      "action": "start_candidate",
+      "activeGeneration": 3,
+      "candidateGeneration": 5,
+      "attemptCount": 1
+    },
+    {
+      "event": "healthy_frame",
+      "timeMs": 64001,
+      "originBackend": "wgc",
+      "originGeneration": 5,
+      "forced": null,
+      "action": "commit_candidate",
+      "activeGeneration": 5,
+      "candidateGeneration": 0,
+      "attemptCount": 1
+    },
+    {
+      "event": "retirement_drained",
+      "timeMs": 64002,
+      "originBackend": "wgc",
+      "originGeneration": 0,
+      "forced": null,
+      "action": "keep",
+      "activeGeneration": 5,
+      "candidateGeneration": 0,
+      "attemptCount": 1
+    },
+    {
+      "event": "access_lost",
+      "timeMs": 65000,
+      "originBackend": "wgc",
+      "originGeneration": 5,
+      "forced": null,
+      "action": "start_candidate",
+      "activeGeneration": 5,
+      "candidateGeneration": 6,
+      "attemptCount": 2
+    },
+    {
+      "event": "first_frame_timeout",
+      "timeMs": 68000,
+      "originBackend": "wgc",
+      "originGeneration": 6,
+      "forced": null,
+      "action": "discard_candidate",
+      "activeGeneration": 5,
+      "candidateGeneration": 0,
+      "attemptCount": 2
+    },
+    {
+      "event": "tick",
+      "timeMs": 69000,
+      "originBackend": "wgc",
+      "originGeneration": 0,
+      "forced": null,
+      "action": "start_candidate",
+      "activeGeneration": 5,
+      "candidateGeneration": 7,
+      "attemptCount": 3
+    },
+    {
+      "event": "prepare_failed",
+      "timeMs": 69001,
+      "originBackend": "wgc",
+      "originGeneration": 7,
+      "forced": null,
+      "action": "discard_candidate",
+      "activeGeneration": 5,
+      "candidateGeneration": 0,
+      "attemptCount": 3
+    },
+    {
+      "event": "tick",
+      "timeMs": 70000,
+      "originBackend": "wgc",
+      "originGeneration": 0,
+      "forced": null,
+      "action": "start_candidate",
+      "activeGeneration": 5,
+      "candidateGeneration": 8,
+      "attemptCount": 4
+    },
+    {
+      "event": "prepare_failed",
+      "timeMs": 70001,
+      "originBackend": "wgc",
+      "originGeneration": 8,
+      "forced": null,
+      "action": "discard_candidate",
+      "activeGeneration": 5,
+      "candidateGeneration": 0,
+      "attemptCount": 4
+    },
+    {
+      "event": "tick",
+      "timeMs": 71000,
+      "originBackend": "wgc",
+      "originGeneration": 0,
+      "forced": null,
+      "action": "terminal",
+      "activeGeneration": 5,
+      "candidateGeneration": 0,
+      "attemptCount": 4
+    }
+  ]
+}

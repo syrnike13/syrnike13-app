@@ -83,7 +83,7 @@ jobs:
         run: |
           @'
           ### Hardware validation
-          This hosted runner has no D3D11 Video interfaces. The three tests labeled
+          This hosted runner has no D3D11 Video interfaces. Tests labeled
           `requires-gpu-video` are excluded here, not reported as passed. Run the full
           `pnpm windows-media:test` on a Windows GPU machine before merging media
           changes; see docs/native-v2/REMOTE_VIDEO_RECEIVE.md for recorded GPU/ASan evidence.
@@ -120,7 +120,14 @@ jobs:
       - name: Run Native v2 Media Lab through Engine room control
         env:
           MEDIA_LAB_SERVER_EXE: ${{ github.workspace }}\packages\native-media-lab\.ci\livekit-server.exe
-        run: pnpm native-media:lab
+        shell: pwsh
+        run: |
+          $labInterface = Get-NetIPConfiguration |
+            Where-Object { $_.IPv4DefaultGateway.NextHop -and $_.IPv4DefaultGateway.NextHop -ne '0.0.0.0' } |
+            Sort-Object InterfaceIndex | Select-Object -First 1
+          if (!$labInterface) { throw 'No IPv4 interface with a configured gateway for the native lab' }
+          $env:MEDIA_LAB_SERVER_IP = $labInterface.IPv4Address.IPAddress | Select-Object -First 1
+          pnpm native-media:lab
       - name: Build and verify unpacked Windows package
         run: pnpm --filter @syrnike13/desktop package:prepared
       - name: Upload verified Windows hook addons

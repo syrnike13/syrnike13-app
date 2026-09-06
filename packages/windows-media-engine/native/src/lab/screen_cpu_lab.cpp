@@ -1,5 +1,6 @@
 #include "lab/screen_cpu_lab.hpp"
 #include "lab/gpu_contention.hpp"
+#include "lab/encoded_video_proof.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -25,6 +26,7 @@
 #include <tlhelp32.h>
 
 #include "capture/monitor_capture.hpp"
+#include "capture/selecting_monitor_capture.hpp"
 #include "capture/wgc_monitor_capture.hpp"
 #include "capture/wgc_window_capture.hpp"
 #include "capture/window_capture.hpp"
@@ -88,12 +90,11 @@ void require(bool condition, const std::string& message) {
 std::wstring executablePath() {
   std::wstring path(32768, L'\0');
   HMODULE module = nullptr;
-  require(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                            reinterpret_cast<LPCWSTR>(&executablePath), &module) != FALSE,
+  require(GetModuleHandleExW(
+              GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+              reinterpret_cast<LPCWSTR>(&executablePath), &module) != FALSE,
           "media_lab module is unavailable");
-  const DWORD size = GetModuleFileNameW(module, path.data(),
-                                        static_cast<DWORD>(path.size()));
+  const DWORD size = GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size()));
   require(size > 0 && size < path.size(), "media_lab path is unavailable");
   path.resize(size);
   return path;
@@ -102,8 +103,7 @@ std::wstring executablePath() {
 std::wstring siblingExecutable(const wchar_t* name) {
   auto path = executablePath();
   const auto separator = path.find_last_of(L"\\/");
-  require(separator != std::wstring::npos,
-          "media_lab executable directory is unavailable");
+  require(separator != std::wstring::npos, "media_lab executable directory is unavailable");
   return path.substr(0, separator + 1) + name;
 }
 
@@ -129,8 +129,7 @@ ProcessResources currentResources() {
   return {handles, currentThreadCount()};
 }
 
-ProcessResources settleResources(const ProcessResources& baseline,
-                                 DWORD handle_allowance,
+ProcessResources settleResources(const ProcessResources& baseline, DWORD handle_allowance,
                                  std::chrono::steady_clock::time_point deadline) {
   auto current = currentResources();
   while ((current.handles > baseline.handles + handle_allowance ||
@@ -142,15 +141,13 @@ ProcessResources settleResources(const ProcessResources& baseline,
   return current;
 }
 
-ProcessResources stableCurrentResources(
-    std::chrono::steady_clock::time_point deadline) {
+ProcessResources stableCurrentResources(std::chrono::steady_clock::time_point deadline) {
   auto previous = currentResources();
   int stable_samples = 0;
   while (stable_samples < 5 && std::chrono::steady_clock::now() < deadline) {
     Sleep(10);
     const auto current = currentResources();
-    if (current.handles == previous.handles &&
-        current.threads == previous.threads) {
+    if (current.handles == previous.handles && current.threads == previous.threads) {
       ++stable_samples;
     } else {
       stable_samples = 0;
@@ -169,29 +166,26 @@ class MonitorFixture final {
     const auto point_x = bounds.x + bounds.width / 2;
     const auto point_y = bounds.y + bounds.height / 2;
     const auto executable = siblingExecutable(L"monitor_pattern_fixture.exe");
-    std::wstring command = L"\"" + executable + L"\" --monitor-point " +
-                           std::to_wstring(point_x) + L" " +
-                           std::to_wstring(point_y);
+    std::wstring command = L"\"" + executable + L"\" --monitor-point " + std::to_wstring(point_x) +
+                           L" " + std::to_wstring(point_y);
     job_ = CreateJobObjectW(nullptr, nullptr);
     require(job_ != nullptr, "monitor fixture job creation failed");
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
     limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-    require(SetInformationJobObject(job_, JobObjectExtendedLimitInformation,
-                                    &limits, sizeof(limits)) != FALSE,
+    require(SetInformationJobObject(job_, JobObjectExtendedLimitInformation, &limits,
+                                    sizeof(limits)) != FALSE,
             "monitor fixture job configuration failed");
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
-    require(CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr,
-                           FALSE, CREATE_SUSPENDED, nullptr, nullptr, &startup,
-                           &process_) != FALSE,
+    require(CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE,
+                           CREATE_SUSPENDED, nullptr, nullptr, &startup, &process_) != FALSE,
             "monitor fixture failed to start");
     require(AssignProcessToJobObject(job_, process_.hProcess) != FALSE &&
                 ResumeThread(process_.hThread) != static_cast<DWORD>(-1),
             "monitor fixture ownership failed");
     CloseHandle(process_.hThread);
     process_.hThread = nullptr;
-    require(WaitForInputIdle(process_.hProcess, 3000) == 0,
-            "monitor fixture did not become ready");
+    require(WaitForInputIdle(process_.hProcess, 3000) == 0, "monitor fixture did not become ready");
   }
 
   ~MonitorFixture() { cleanup(); }
@@ -231,8 +225,8 @@ class WindowFixture final {
     require(job_ != nullptr, "window fixture job creation failed");
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
     limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-    require(SetInformationJobObject(job_, JobObjectExtendedLimitInformation,
-                                    &limits, sizeof(limits)) != FALSE,
+    require(SetInformationJobObject(job_, JobObjectExtendedLimitInformation, &limits,
+                                    sizeof(limits)) != FALSE,
             "window fixture job configuration failed");
 
     const auto executable = siblingExecutable(L"source_window_fixture.exe");
@@ -243,9 +237,9 @@ class WindowFixture final {
     startup.hStdInput = child_input;
     startup.hStdOutput = child_output;
     startup.hStdError = child_output;
-    require(CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr,
-                           TRUE, CREATE_SUSPENDED | CREATE_NO_WINDOW, nullptr,
-                           nullptr, &startup, &process_) != FALSE,
+    require(CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, TRUE,
+                           CREATE_SUSPENDED | CREATE_NO_WINDOW, nullptr, nullptr, &startup,
+                           &process_) != FALSE,
             "window fixture failed to start");
     CloseHandle(child_input);
     CloseHandle(child_output);
@@ -262,17 +256,15 @@ class WindowFixture final {
   void command(const std::string& value) {
     const std::string line = value + "\n";
     DWORD written = 0;
-    require(WriteFile(input_, line.data(), static_cast<DWORD>(line.size()),
-                      &written, nullptr) != FALSE && written == line.size(),
+    require(WriteFile(input_, line.data(), static_cast<DWORD>(line.size()), &written, nullptr) !=
+                    FALSE &&
+                written == line.size(),
             "window fixture command failed");
     const auto response = readLine(5s);
-    require(response.rfind("OK ", 0) == 0,
-            "window fixture rejected command: " + response);
+    require(response.rfind("OK ", 0) == 0, "window fixture rejected command: " + response);
   }
 
-  static constexpr const char* title() {
-    return "Syrnike Source Fixture Primary";
-  }
+  static constexpr const char* title() { return "Syrnike Source Fixture Primary"; }
 
  private:
   std::string readLine(std::chrono::milliseconds timeout) {
@@ -280,8 +272,7 @@ class WindowFixture final {
     std::string line;
     while (std::chrono::steady_clock::now() < deadline) {
       DWORD available = 0;
-      require(PeekNamedPipe(output_, nullptr, 0, nullptr, &available, nullptr) !=
-                  FALSE,
+      require(PeekNamedPipe(output_, nullptr, 0, nullptr, &available, nullptr) != FALSE,
               "window fixture output failed");
       if (available == 0) {
         if (WaitForSingleObject(process_.hProcess, 0) != WAIT_TIMEOUT)
@@ -306,11 +297,9 @@ class WindowFixture final {
     if (input_) {
       const std::string quit = "quit\n";
       DWORD written = 0;
-      (void)WriteFile(input_, quit.data(), static_cast<DWORD>(quit.size()),
-                      &written, nullptr);
+      (void)WriteFile(input_, quit.data(), static_cast<DWORD>(quit.size()), &written, nullptr);
     }
-    if (process_.hProcess &&
-        WaitForSingleObject(process_.hProcess, 1000) == WAIT_TIMEOUT) {
+    if (process_.hProcess && WaitForSingleObject(process_.hProcess, 1000) == WAIT_TIMEOUT) {
       (void)TerminateProcess(process_.hProcess, 0);
       (void)WaitForSingleObject(process_.hProcess, 1000);
     }
@@ -332,36 +321,31 @@ class WindowFixture final {
 };
 
 const SourceSnapshot& primaryMonitor(const sources::SourceEnumeration& values) {
-  const auto primary = std::find_if(
-      values.sources.begin(), values.sources.end(),
-      [](const SourceSnapshot& value) {
+  const auto primary =
+      std::find_if(values.sources.begin(), values.sources.end(), [](const SourceSnapshot& value) {
         return value.kind == SourceKind::Monitor && value.flags.primary;
       });
   if (primary != values.sources.end()) return *primary;
-  const auto first = std::find_if(
-      values.sources.begin(), values.sources.end(),
-      [](const SourceSnapshot& value) { return value.kind == SourceKind::Monitor; });
+  const auto first =
+      std::find_if(values.sources.begin(), values.sources.end(),
+                   [](const SourceSnapshot& value) { return value.kind == SourceKind::Monitor; });
   require(first != values.sources.end(), "no monitor is available");
   return *first;
 }
 
 const SourceSnapshot& fixtureWindow(const sources::SourceEnumeration& values) {
-  const auto found = std::find_if(
-      values.sources.begin(), values.sources.end(),
-      [](const SourceSnapshot& value) {
-        return value.kind == SourceKind::Window &&
-               value.title == WindowFixture::title();
+  const auto found =
+      std::find_if(values.sources.begin(), values.sources.end(), [](const SourceSnapshot& value) {
+        return value.kind == SourceKind::Window && value.title == WindowFixture::title();
       });
   require(found != values.sources.end(), "window fixture source is unavailable");
   return *found;
 }
 
 template <typename Values>
-void appendSamples(std::vector<std::uint64_t>& destination,
-                   const Values& source) {
+void appendSamples(std::vector<std::uint64_t>& destination, const Values& source) {
   const auto available = kMaximumReferenceScreenTimingSamples -
-                         (std::min)(destination.size(),
-                                    kMaximumReferenceScreenTimingSamples);
+                         (std::min)(destination.size(), kMaximumReferenceScreenTimingSamples);
   const auto count = (std::min)(available, source.size());
   destination.insert(destination.end(), source.begin(), source.begin() + count);
 }
@@ -379,8 +363,7 @@ void merge(ScreenEvidence& target, const ScreenEvidence& value) {
   target.pipeline.active += value.pipeline.active;
   target.sender.published += value.sender.published;
   target.sender.publication_failures += value.sender.publication_failures;
-  target.sender.source_generation_transitions +=
-      value.sender.source_generation_transitions;
+  target.sender.source_generation_transitions += value.sender.source_generation_transitions;
   target.capture_received += value.capture_received;
   target.capture_dropped += value.capture_dropped;
   target.capture_maximum_depth =
@@ -390,15 +373,12 @@ void merge(ScreenEvidence& target, const ScreenEvidence& value) {
   target.cycles += value.cycles;
   target.source_closed += value.source_closed;
   target.d3d_live_objects += value.d3d_live_objects;
-  target.d3d_peak_objects =
-      (std::max)(target.d3d_peak_objects, value.d3d_peak_objects);
-  target.cycle_resources.insert(target.cycle_resources.end(),
-                                value.cycle_resources.begin(),
+  target.d3d_peak_objects = (std::max)(target.d3d_peak_objects, value.d3d_peak_objects);
+  target.cycle_resources.insert(target.cycle_resources.end(), value.cycle_resources.begin(),
                                 value.cycle_resources.end());
   appendSamples(target.capture_age_ms, value.sender.capture_age_ms);
   appendSamples(target.readback_duration_us, value.sender.readback_duration_us);
-  appendSamples(target.conversion_duration_us,
-                value.sender.conversion_duration_us);
+  appendSamples(target.conversion_duration_us, value.sender.conversion_duration_us);
   appendSamples(target.publish_duration_us, value.sender.publish_duration_us);
 }
 
@@ -410,8 +390,7 @@ ScreenEvidence driveCapture(Capture& capture, ReferenceScreenSender& sender,
                             const std::function<void(ReferenceScreenSender&)>& action = {}) {
   require(capture.start().ok, "WGC screen capture failed to start");
   const auto sender_started = sender.start();
-  require(sender_started.ok, "screen publication failed: " +
-                                 sender_started.failure);
+  require(sender_started.ok, "screen publication failed: " + sender_started.failure);
   if (wait_until_ready) wait_until_ready();
   std::cout << "publisher: screen track published" << std::endl;
   std::atomic_bool producer_running{true};
@@ -431,22 +410,20 @@ ScreenEvidence driveCapture(Capture& capture, ReferenceScreenSender& sender,
   try {
     if (action) action(sender);
     if (target_frames > 0) {
-      const bool published = sender.waitForPublished(
-          target_frames, std::chrono::steady_clock::now() + 45s);
-      require(published, sender.terminalFailure().value_or(
-                  "screen sender publication deadline exceeded"));
+      const bool published =
+          sender.waitForPublished(target_frames, std::chrono::steady_clock::now() + 45s);
+      require(published,
+              sender.terminalFailure().value_or("screen sender publication deadline exceeded"));
     }
   } catch (...) {
     operation_failure = std::current_exception();
   }
   producer_running.store(false);
-  const auto sender_stopped =
-      sender.stop(std::chrono::steady_clock::now() + 5s);
+  const auto sender_stopped = sender.stop(std::chrono::steady_clock::now() + 5s);
   const auto capture_stopped = capture.stop(5s);
   producer.join();
   if (operation_failure) std::rethrow_exception(operation_failure);
-  require(sender_stopped.ok, "screen sender stop failed: " +
-                                 sender_stopped.failure);
+  require(sender_stopped.ok, "screen sender stop failed: " + sender_stopped.failure);
   require(capture_stopped.ok, "screen capture stop failed");
 
   ScreenEvidence evidence;
@@ -474,39 +451,31 @@ ScreenEvidence driveCapture(Capture& capture, ReferenceScreenSender& sender,
   return evidence;
 }
 
-ScreenEvidence runMonitorCycle(SourceRegistry& registry,
-                               const std::string& source_id,
-                               const std::shared_ptr<livekit::Room>& room,
-                               const std::string& mode,
-                               const std::function<void()>& wait_until_ready,
-                               std::uint64_t target_override = 0,
-                               const std::function<void()>& during_publication = {},
-                               const std::function<void(
-                                   std::chrono::steady_clock::time_point)>&
-                                   wait_until_unpublished = {}) {
+ScreenEvidence runMonitorCycle(
+    SourceRegistry& registry, const std::string& source_id,
+    const std::shared_ptr<livekit::Room>& room, const std::string& mode,
+    const std::function<void()>& wait_until_ready, std::uint64_t target_override = 0,
+    const std::function<void()>& during_publication = {},
+    const std::function<void(std::chrono::steady_clock::time_point)>& wait_until_unpublished = {}) {
   auto backend = capture::createWgcMonitorCaptureBackend();
   auto* diagnostics = backend.get();
   MonitorCapture capture(registry, source_id, std::move(backend));
   auto pipeline = std::make_shared<ScreenFramePipeline>();
   ReferenceScreenSenderOptions options;
   options.wait_for_unpublish = wait_until_unpublished;
-  if (mode == "screen-cpu-slow-pipeline" ||
-      mode == "screen-cpu-stop-during-conversion")
+  if (mode == "screen-cpu-slow-pipeline" || mode == "screen-cpu-stop-during-conversion")
     options.artificial_conversion_delay = 100ms;
   ReferenceScreenSender sender(room, pipeline, options);
-  std::uint64_t target = target_override > 0
-                             ? target_override
-                             : (mode == "screen-cpu-slow-pipeline" ? 60 : 180);
+  std::uint64_t target =
+      target_override > 0 ? target_override : (mode == "screen-cpu-slow-pipeline" ? 60 : 180);
   std::function<void(ReferenceScreenSender&)> action;
   if (mode == "screen-cpu-stop-during-conversion") {
     target = 0;
     action = [&](ReferenceScreenSender& active_sender) {
-      require(active_sender.waitForPublished(
-                  5, std::chrono::steady_clock::now() + 20s),
+      require(active_sender.waitForPublished(5, std::chrono::steady_clock::now() + 20s),
               "stop-during-conversion precondition frames were not published");
       const auto deadline = std::chrono::steady_clock::now() + 5s;
-      while (pipeline->stats().active == 0 &&
-             std::chrono::steady_clock::now() < deadline) {
+      while (pipeline->stats().active == 0 && std::chrono::steady_clock::now() < deadline) {
         Sleep(1);
       }
       require(pipeline->stats().active == 1,
@@ -517,32 +486,25 @@ ScreenEvidence runMonitorCycle(SourceRegistry& registry,
     // verify teardown instead of depending on capture into a disposed source.
     target = 0;
     action = [&](ReferenceScreenSender& active_sender) {
-      require(active_sender.waitForPublished(
-                  30, std::chrono::steady_clock::now() + 20s),
+      require(active_sender.waitForPublished(30, std::chrono::steady_clock::now() + 20s),
               "room-disconnect precondition frames were not published");
       require(static_cast<bool>(during_publication),
               "room-disconnect mode requires an interruption callback");
       during_publication();
     };
   }
-  auto evidence = driveCapture(
-      capture, sender, pipeline, target, wait_until_ready, action);
+  auto evidence = driveCapture(capture, sender, pipeline, target, wait_until_ready, action);
   const auto d3d = diagnostics->diagnostics();
   evidence.d3d_live_objects = d3d.live_engine_objects;
   evidence.d3d_peak_objects = d3d.peak_engine_objects;
   return evidence;
 }
 
-ScreenEvidence runWindowCycle(SourceRegistry& registry,
-                              const std::string& source_id,
-                              const std::shared_ptr<livekit::Room>& room,
-                              const std::string& mode,
-                              WindowFixture& fixture,
-                              const std::function<void()>& wait_until_ready,
-                              std::uint64_t target_override = 0,
-                              const std::function<void(
-                                  std::chrono::steady_clock::time_point)>&
-                                  wait_until_unpublished = {}) {
+ScreenEvidence runWindowCycle(
+    SourceRegistry& registry, const std::string& source_id,
+    const std::shared_ptr<livekit::Room>& room, const std::string& mode, WindowFixture& fixture,
+    const std::function<void()>& wait_until_ready, std::uint64_t target_override = 0,
+    const std::function<void(std::chrono::steady_clock::time_point)>& wait_until_unpublished = {}) {
   auto backend = capture::createWgcWindowCaptureBackend();
   auto* diagnostics = backend.get();
   WindowCapture capture(registry, source_id, std::move(backend));
@@ -555,16 +517,14 @@ ScreenEvidence runWindowCycle(SourceRegistry& registry,
   if (mode == "screen-cpu-resize") {
     target = 120;
     action = [&](ReferenceScreenSender& active_sender) {
-      require(active_sender.waitForPublished(
-                  40, std::chrono::steady_clock::now() + 20s),
+      require(active_sender.waitForPublished(40, std::chrono::steady_clock::now() + 20s),
               "resize precondition frames were not published");
       fixture.command("resize 900 540");
     };
   } else if (mode == "screen-cpu-source-close") {
     target = 0;
     action = [&](ReferenceScreenSender& active_sender) {
-      require(active_sender.waitForPublished(
-                  40, std::chrono::steady_clock::now() + 20s),
+      require(active_sender.waitForPublished(40, std::chrono::steady_clock::now() + 20s),
               "source-close precondition frames were not published");
       fixture.command("close-after 5");
       const auto close_deadline = std::chrono::steady_clock::now() + 5s;
@@ -576,8 +536,7 @@ ScreenEvidence runWindowCycle(SourceRegistry& registry,
         if (!event) continue;
         if (event->kind == capture::WindowCaptureEventKind::SourceClosed) {
           closed = true;
-        } else if (event->kind ==
-                   capture::WindowCaptureEventKind::CaptureFailed) {
+        } else if (event->kind == capture::WindowCaptureEventKind::CaptureFailed) {
           throw std::runtime_error(
               "window close became capture failure: " +
               (event->failure ? event->failure->code : std::string("unknown")));
@@ -590,8 +549,7 @@ ScreenEvidence runWindowCycle(SourceRegistry& registry,
     target = target_override;
     action = {};
   }
-  auto evidence = driveCapture(capture, sender, pipeline, target,
-                               wait_until_ready, action);
+  auto evidence = driveCapture(capture, sender, pipeline, target, wait_until_ready, action);
   const auto d3d = diagnostics->diagnostics();
   evidence.d3d_live_objects = d3d.live_engine_objects;
   evidence.d3d_peak_objects = d3d.peak_engine_objects;
@@ -603,8 +561,7 @@ ScreenEvidence runWindowRepeat(
     SourceRegistry& registry, const std::string& source_id,
     const std::shared_ptr<livekit::Room>& room, int cycles,
     const std::function<void()>& wait_until_ready,
-    const std::function<void(std::chrono::steady_clock::time_point)>&
-        wait_until_unpublished) {
+    const std::function<void(std::chrono::steady_clock::time_point)>& wait_until_unpublished) {
   auto backend = capture::createWgcWindowCaptureBackend();
   auto* diagnostics = backend.get();
   WindowCapture capture(registry, source_id, std::move(backend));
@@ -633,8 +590,7 @@ ScreenEvidence runWindowRepeat(
   cycle_resources.reserve(static_cast<std::size_t>(cycles));
   std::uint64_t previous_published = 0;
   try {
-    const auto capture_warmup_deadline =
-        std::chrono::steady_clock::now() + 5s;
+    const auto capture_warmup_deadline = std::chrono::steady_clock::now() + 5s;
     while (capture.stats().frames.received_frames < 30 &&
            std::chrono::steady_clock::now() < capture_warmup_deadline) {
       Sleep(10);
@@ -646,39 +602,31 @@ ScreenEvidence runWindowRepeat(
 
     for (int cycle = 0; cycle < cycles; ++cycle) {
       if (cycle > 0) {
-        require(pipeline->restart(),
-                "repeat pipeline did not return to its stopped baseline");
+        require(pipeline->restart(), "repeat pipeline did not return to its stopped baseline");
       }
       const auto started = sender.start();
-      require(started.ok, "repeat screen publication failed: " +
-                              started.failure);
+      require(started.ok, "repeat screen publication failed: " + started.failure);
       if (wait_until_ready) wait_until_ready();
       std::cout << "publisher: screen track published" << std::endl;
-      require(sender.waitForPublished(
-                  previous_published + 30ULL,
-                  std::chrono::steady_clock::now() + 45s),
+      require(sender.waitForPublished(previous_published + 30ULL,
+                                      std::chrono::steady_clock::now() + 45s),
               "repeat screen publication deadline exceeded");
-      const auto stopped =
-          sender.stop(std::chrono::steady_clock::now() + 5s);
+      const auto stopped = sender.stop(std::chrono::steady_clock::now() + 5s);
       require(stopped.ok, "repeat screen stop failed: " + stopped.failure);
       const auto pipeline_stats = pipeline->stats();
       const auto sender_stats = sender.stats();
       const auto d3d_stats = diagnostics->diagnostics();
       ProcessResources resources;
       if (cycle == 0) {
-        resources = stableCurrentResources(
-            std::chrono::steady_clock::now() + 5s);
+        resources = stableCurrentResources(std::chrono::steady_clock::now() + 5s);
         publication_baseline = resources;
       } else {
-        resources = settleResources(
-            publication_baseline, 8, std::chrono::steady_clock::now() + 5s);
+        resources = settleResources(publication_baseline, 8, std::chrono::steady_clock::now() + 5s);
       }
       cycle_resources.push_back({
           static_cast<std::uint64_t>(cycle + 1),
-          static_cast<long long>(resources.handles) -
-              publication_baseline.handles,
-          static_cast<long long>(resources.threads) -
-              publication_baseline.threads,
+          static_cast<long long>(resources.handles) - publication_baseline.handles,
+          static_cast<long long>(resources.threads) - publication_baseline.threads,
           sender_stats.published - previous_published,
           pipeline_stats.pending,
           pipeline_stats.active,
@@ -728,57 +676,42 @@ ScreenEvidence runWindowRepeat(
 std::uint64_t percentile(std::vector<std::uint64_t> values, double ratio) {
   if (values.empty()) return 0;
   std::sort(values.begin(), values.end());
-  const auto index = (std::min)(
-      values.size() - 1,
-      static_cast<std::size_t>(
-          std::ceil(static_cast<double>(values.size()) * ratio) - 1));
+  const auto index =
+      (std::min)(values.size() - 1, static_cast<std::size_t>(
+                                        std::ceil(static_cast<double>(values.size()) * ratio) - 1));
   return values[index];
 }
 
 std::string reportJson(const std::string& mode, const ScreenEvidence& evidence,
-                       const ProcessResources& before,
-                       const ProcessResources& after) {
+                       const ProcessResources& before, const ProcessResources& after) {
   const auto handle_delta = static_cast<long long>(after.handles) - before.handles;
   const auto thread_delta = static_cast<long long>(after.threads) - before.threads;
-  const bool slow_ok = mode != "screen-cpu-slow-pipeline" ||
-                       evidence.pipeline.dropped > 0;
-  const bool resize_ok = mode != "screen-cpu-resize" ||
-                         evidence.resize_count > 0;
-  const bool close_ok = mode != "screen-cpu-source-close" ||
-                        evidence.source_closed > 0;
+  const bool slow_ok = mode != "screen-cpu-slow-pipeline" || evidence.pipeline.dropped > 0;
+  const bool resize_ok = mode != "screen-cpu-resize" || evidence.resize_count > 0;
+  const bool close_ok = mode != "screen-cpu-source-close" || evidence.source_closed > 0;
   const bool repeat_resources_ok =
       mode != "screen-cpu-repeat" ||
       (handle_delta <= 12 && thread_delta <= 0 &&
-       std::all_of(evidence.cycle_resources.begin(),
-                   evidence.cycle_resources.end(),
+       std::all_of(evidence.cycle_resources.begin(), evidence.cycle_resources.end(),
                    [](const CycleResourceSample& sample) {
-                     return sample.handles_delta <= 32 &&
-                            sample.threads_delta <= 0 &&
-                            sample.pending_frames == 0 &&
-                            sample.active_frames == 0;
+                     return sample.handles_delta <= 32 && sample.threads_delta <= 0 &&
+                            sample.pending_frames == 0 && sample.active_frames == 0;
                    }));
-  const bool ok = evidence.sender.published > 0 &&
-                  evidence.sender.publication_failures == 0 && slow_ok &&
-                  resize_ok && close_ok && repeat_resources_ok &&
-                  evidence.pipeline.maximum_depth <=
-                      screen::kScreenFramePipelineCapacity &&
-                  evidence.pipeline.pending == 0 &&
-                  evidence.pipeline.active == 0 &&
+  const bool ok = evidence.sender.published > 0 && evidence.sender.publication_failures == 0 &&
+                  slow_ok && resize_ok && close_ok && repeat_resources_ok &&
+                  evidence.pipeline.maximum_depth <= screen::kScreenFramePipelineCapacity &&
+                  evidence.pipeline.pending == 0 && evidence.pipeline.active == 0 &&
                   evidence.pipeline.released == evidence.pipeline.submitted &&
-                  evidence.outstanding_leases == 0 &&
-                  evidence.d3d_live_objects == 0;
+                  evidence.outstanding_leases == 0 && evidence.d3d_live_objects == 0;
   std::ostringstream output;
-  output << "{\"schemaVersion\":1,\"accepted\":"
-         << (ok ? "true" : "false") << ",\"mode\":\"" << mode
-         << "\",\"referencePath\":\"cpu-non-production\","
+  output << "{\"schemaVersion\":1,\"accepted\":" << (ok ? "true" : "false") << ",\"mode\":\""
+         << mode << "\",\"referencePath\":\"cpu-non-production\","
          << "\"requestedCodec\":\"h264\",\"requestedEncoderBackend\":\"software\",\"profile\":{"
          << "\"width\":" << screen::kCpuReferenceWidth
          << ",\"height\":" << screen::kCpuReferenceHeight
          << ",\"fps\":" << screen::kCpuReferenceFramesPerSecond
-         << "},\"pipeline\":{\"capacity\":"
-         << screen::kScreenFramePipelineCapacity
-         << ",\"maximumAgeMs\":"
-         << screen::kScreenFrameMaximumAge.count()
+         << "},\"pipeline\":{\"capacity\":" << screen::kScreenFramePipelineCapacity
+         << ",\"maximumAgeMs\":" << screen::kScreenFrameMaximumAge.count()
          << ",\"submitted\":" << evidence.pipeline.submitted
          << ",\"accepted\":" << evidence.pipeline.accepted
          << ",\"superseded\":" << evidence.pipeline.superseded
@@ -795,43 +728,32 @@ std::string reportJson(const std::string& mode, const ScreenEvidence& evidence,
          << ",\"resizeCount\":" << evidence.resize_count
          << ",\"sourceClosed\":" << evidence.source_closed
          << "},\"sender\":{\"published\":" << evidence.sender.published
-         << ",\"publicationFailures\":"
-         << evidence.sender.publication_failures
-         << ",\"generationTransitions\":"
-         << evidence.sender.source_generation_transitions
-         << "},\"timing\":{\"captureAgeMs\":{\"p50\":"
-         << percentile(evidence.capture_age_ms, 0.50)
+         << ",\"publicationFailures\":" << evidence.sender.publication_failures
+         << ",\"generationTransitions\":" << evidence.sender.source_generation_transitions
+         << "},\"timing\":{\"captureAgeMs\":{\"p50\":" << percentile(evidence.capture_age_ms, 0.50)
          << ",\"p95\":" << percentile(evidence.capture_age_ms, 0.95)
          << ",\"max\":" << percentile(evidence.capture_age_ms, 1.0)
-         << "},\"readbackUs\":{\"p50\":"
-         << percentile(evidence.readback_duration_us, 0.50)
+         << "},\"readbackUs\":{\"p50\":" << percentile(evidence.readback_duration_us, 0.50)
          << ",\"p95\":" << percentile(evidence.readback_duration_us, 0.95)
-         << "},\"convertUs\":{\"p50\":"
-         << percentile(evidence.conversion_duration_us, 0.50)
+         << "},\"convertUs\":{\"p50\":" << percentile(evidence.conversion_duration_us, 0.50)
          << ",\"p95\":" << percentile(evidence.conversion_duration_us, 0.95)
-         << "},\"publishUs\":{\"p50\":"
-         << percentile(evidence.publish_duration_us, 0.50)
+         << "},\"publishUs\":{\"p50\":" << percentile(evidence.publish_duration_us, 0.50)
          << ",\"p95\":" << percentile(evidence.publish_duration_us, 0.95)
          << "}},\"resources\":{\"cycles\":" << evidence.cycles
-         << ",\"handlesDelta\":" << handle_delta
-         << ",\"threadsDelta\":" << thread_delta
+         << ",\"handlesDelta\":" << handle_delta << ",\"threadsDelta\":" << thread_delta
          << ",\"d3dLiveObjects\":" << evidence.d3d_live_objects
-         << ",\"d3dPeakObjects\":" << evidence.d3d_peak_objects
-         << ",\"series\":[";
+         << ",\"d3dPeakObjects\":" << evidence.d3d_peak_objects << ",\"series\":[";
   for (std::size_t index = 0; index < evidence.cycle_resources.size(); ++index) {
     if (index > 0) output << ',';
     const auto& sample = evidence.cycle_resources[index];
-    output << "{\"cycle\":" << sample.cycle
-           << ",\"handlesDelta\":" << sample.handles_delta
-           << ",\"threadsDelta\":" << sample.threads_delta
-           << ",\"publishedTracksAfterStop\":0"
+    output << "{\"cycle\":" << sample.cycle << ",\"handlesDelta\":" << sample.handles_delta
+           << ",\"threadsDelta\":" << sample.threads_delta << ",\"publishedTracksAfterStop\":0"
            << ",\"reusableTransceivers\":null"
            << ",\"pendingPublications\":0"
            << ",\"framesPublished\":" << sample.frames_published
            << ",\"pendingFrames\":" << sample.pending_frames
            << ",\"activeFrames\":" << sample.active_frames
-           << ",\"liveD3dResources\":" << sample.live_d3d_resources
-           << '}';
+           << ",\"liveD3dResources\":" << sample.live_d3d_resources << '}';
   }
   output << "]}}";
   return output.str();
@@ -840,10 +762,8 @@ std::string reportJson(const std::string& mode, const ScreenEvidence& evidence,
 #if defined(LIVEKIT_CPP_HAS_PREENCODED_VIDEO_SOURCE)
 
 screen::ScreenVideoProfile gpuProfile(const std::string& mode) {
-  if (mode.find("1440p30") != std::string::npos)
-    return screen::kScreenProfile1440p30;
-  if (mode.find("720p30") != std::string::npos)
-    return screen::kScreenProfile720p30;
+  if (mode.find("1440p30") != std::string::npos) return screen::kScreenProfile1440p30;
+  if (mode.find("720p30") != std::string::npos) return screen::kScreenProfile720p30;
   return screen::kScreenProfile1080p60;
 }
 
@@ -861,18 +781,18 @@ std::string jsonString(const std::string& value) {
 
 template <typename Capture>
 screen::ProductionScreenPipelineStats driveGpuCapture(
-    Capture& capture_source,
-    const std::shared_ptr<LiveKitRoomTransport>& transport,
+    Capture& capture_source, const std::shared_ptr<LiveKitRoomTransport>& transport,
     screen::ScreenVideoProfile profile, std::uint64_t target_frames,
     const std::function<void()>& wait_until_ready,
-    const std::function<void(std::chrono::steady_clock::time_point)>&
-        wait_until_unpublished,
+    const std::function<void(std::chrono::steady_clock::time_point)>& wait_until_unpublished,
     const std::shared_ptr<PreviewLabControl>& preview_control = {},
     const std::function<void(std::chrono::milliseconds)>& preview_action = {},
-    bool adaptive = false, bool contention = false, bool late_observer = false) {
+    bool adaptive = false, bool contention = false, bool late_observer = false,
+    std::chrono::seconds observation_duration = 0s) {
   std::size_t adaptive_maximum = 4;
   wchar_t adaptive_preview[6]{};
-  if (preview_control && GetEnvironmentVariableW(L"PREVIEW_LAB_ADAPTIVE", adaptive_preview, 6) == 4 &&
+  if (preview_control &&
+      GetEnvironmentVariableW(L"PREVIEW_LAB_ADAPTIVE", adaptive_preview, 6) == 4 &&
       std::wstring_view(adaptive_preview) == L"true") {
     adaptive = true;
     // Isolate preview pressure from initial RTP bandwidth ramp-up. The cold
@@ -895,7 +815,8 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
       screen::GpuScreenConverter converter(owner, profiles[i]);
       // Fixed publication allocation budget, independent of preview demand.
       const auto bytes = converter.stats().texture_bytes +
-          screen::kEncodedH264SlotCapacity * screen::kEncodedH264SlotBytes + 64ULL * 1024 * 1024;
+                         screen::kEncodedH264SlotCapacity * screen::kEncodedH264SlotBytes +
+                         64ULL * 1024 * 1024;
       if (bytes <= 128ULL * 1024 * 1024) admitted |= 1U << i;
     }
     require(admitted == 31, "Adaptive lab requires all five admitted hardware profiles");
@@ -903,19 +824,30 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
   auto frames = std::make_shared<ScreenFramePipeline>();
   screen::ProductionScreenPipeline pipeline(
       owner, frames, profile,
-      [transport](std::function<void()> request_keyframe) {
-        return std::make_shared<LiveKitScreenPublicationAdapter>(
-            transport, LiveKitScreenEncoderControls{
-                           std::move(request_keyframe)});
-      }, {}, true);
-  if (adaptive) require(pipeline.enableAdaptiveQuality(admitted, adaptive_maximum), "Adaptive enable rejected");
+      [transport](std::function<void()> request_keyframe)
+          -> std::shared_ptr<screen::ScreenPublicationAdapter> {
+        auto adapter = std::make_shared<LiveKitScreenPublicationAdapter>(
+            transport, LiveKitScreenEncoderControls{std::move(request_keyframe)});
+        char path[1024]{};
+        const auto path_length =
+            GetEnvironmentVariableA("MEDIA_LAB_ENCODED_PROOF_PATH", path, sizeof(path));
+        if (path_length >= sizeof(path)) throw std::runtime_error("Encoded proof path too long");
+        if (path_length) {
+          static std::atomic_uint64_t recording{0};
+          return std::make_shared<EncodedVideoProof>(
+              adapter, std::string(path) + "-" + std::to_string(recording++) + ".h264");
+        }
+        return adapter;
+      },
+      {}, true);
+  if (adaptive)
+    require(pipeline.enableAdaptiveQuality(admitted, adaptive_maximum), "Adaptive enable rejected");
   require(capture_source.start().ok, "GPU WGC capture failed to start");
   const auto started = pipeline.start("screen-gpu-production", 5s);
   if (!started.ok) {
     (void)capture_source.stop(5s);
-    throw std::runtime_error(
-        started.failure ? started.failure->message
-                        : "GPU screen publication failed to start");
+    throw std::runtime_error(started.failure ? started.failure->message
+                                             : "GPU screen publication failed to start");
   }
   const auto publish_deadline = std::chrono::steady_clock::now() + 10s;
   while (pipeline.state() == screen::ProductionScreenPipelineState::starting &&
@@ -944,63 +876,110 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
     const auto began = std::chrono::steady_clock::now();
     std::unique_ptr<lab::GpuContention> load;
     if (contention) load = std::make_unique<lab::GpuContention>(owner);
-    const auto frame_deadline = began + (preview_control ? 90s : contention ? 1200s : adaptive ? 120s : 45s);
+    const auto frame_deadline = began + (observation_duration > 0s ? observation_duration
+                                         : preview_control         ? 90s
+                                         : contention              ? 1200s
+                                         : adaptive                ? 120s
+                                                                   : 45s);
     std::uint64_t last_sample_ms = 0;
     bool lowered = false, restored = false;
-    while ((preview_control ? !preview_control->stop.load() : adaptive || pipeline.stats().sender.consumed < target_frames) &&
+    while ((preview_control ? !preview_control->stop.load()
+                            : observation_duration > 0s || adaptive ||
+                                  pipeline.stats().sender.consumed < target_frames) &&
            std::chrono::steady_clock::now() < frame_deadline) {
       if (pipeline.state() == screen::ProductionScreenPipelineState::failed) {
         const auto failure = pipeline.failure();
-        throw std::runtime_error(failure ? failure->message
-                                         : "GPU screen pipeline failed");
+        const auto diagnostic = pipeline.stats();
+        std::cerr << "GPU_FAILURE {\"capture\":" << diagnostic.capture_frames
+                  << ",\"submitted\":" << diagnostic.encoder.submitted
+                  << ",\"encoded\":" << diagnostic.encoder.encoded
+                  << ",\"superseded\":" << diagnostic.encoder.input_superseded
+                  << ",\"staleEncoded\":" << diagnostic.stale_encoded_drops
+                  << ",\"consumed\":" << diagnostic.sender.consumed
+                  << ",\"captureAgeUs\":" << diagnostic.capture_age_last_us
+                  << ",\"contextWaitTotalUs\":" << diagnostic.converter.context_wait_total_us
+                  << ",\"contextHoldTotalUs\":" << diagnostic.converter.context_hold_total_us
+                  << ",\"contextHoldMaxUs\":" << diagnostic.converter.context_hold_max_us
+                  << ",\"publishAgeUs\":" << diagnostic.publish_age_last_us << "}" << std::endl;
+        throw std::runtime_error(failure ? failure->message : "GPU screen pipeline failed");
+      }
+      const auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - began);
+      if (preview_action) preview_action(elapsed_time);
+      if (load && !adaptive) {
+        require(SUCCEEDED(load->failure()), "GPU contention fixture device failed");
+        load->setActive(elapsed_time.count() % 20000 < 10000);
       }
       if (adaptive) {
-        const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - began).count());
+        const auto elapsed =
+            static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                           std::chrono::steady_clock::now() - began)
+                                           .count());
         const bool load_active = contention && elapsed % 60000 < 10000;
         if (load) {
           require(SUCCEEDED(load->failure()), "GPU contention fixture device failed");
           load->setActive(load_active);
         }
-        if (!preview_control && !contention && !lowered && elapsed >= 10000) { require(pipeline.setMaximumQuality(2, 0), "lower ceiling rejected"); lowered = true; }
-        if (!preview_control && !contention && !restored && elapsed >= 20000) { require(pipeline.setMaximumQuality(3, 4), "restore ceiling rejected"); restored = true; }
+        if (!preview_control && !contention && !lowered && elapsed >= 10000) {
+          require(pipeline.setMaximumQuality(2, 0), "lower ceiling rejected");
+          lowered = true;
+        }
+        if (!preview_control && !contention && !restored && elapsed >= 20000) {
+          require(pipeline.setMaximumQuality(3, 4), "restore ceiling rejected");
+          restored = true;
+        }
         if (elapsed - last_sample_ms >= 500) {
-          const auto s = pipeline.stats(); const auto resources = currentResources();
+          const auto s = pipeline.stats();
+          const auto resources = currentResources();
           std::cout << "ADAPTIVE_SAMPLE {\"elapsedMs\":" << elapsed
-              << ",\"profile\":" << s.current_profile << ",\"generation\":" << s.profile_generation
-              << ",\"reason\":" << static_cast<int>(s.decision_reason)
-              << ",\"desiredRevision\":" << s.desired_revision << ",\"appliedRevision\":" << s.applied_revision
-              << ",\"networkBps\":" << s.network.available_outgoing_bitrate.value_or(0)
-              << ",\"consumed\":" << s.total_publication_consumed << ",\"keyframeRequests\":" << s.keyframe_requests
-              << ",\"captureAgeUs\":" << s.capture_age_last_us << ",\"publishAgeUs\":" << s.publish_age_last_us
-              << ",\"videoDepth\":" << s.sender.video_depth << ",\"bytes\":" << s.memory.total_bytes
-              << ",\"contentionActive\":" << (load_active ? "true" : "false")
-              << ",\"contentionBatches\":" << (load ? load->batches() : 0)
-              << ",\"contentionBytes\":" << (load ? lab::GpuContention::allocated_bytes : 0)
-              << ",\"handles\":" << resources.handles << ",\"threads\":" << resources.threads << "}" << std::endl;
+                    << ",\"profile\":" << s.current_profile
+                    << ",\"generation\":" << s.profile_generation
+                    << ",\"reason\":" << static_cast<int>(s.decision_reason)
+                    << ",\"desiredRevision\":" << s.desired_revision
+                    << ",\"appliedRevision\":" << s.applied_revision
+                    << ",\"networkBps\":" << s.network.available_outgoing_bitrate.value_or(0)
+                    << ",\"consumed\":" << s.total_publication_consumed
+                    << ",\"keyframeRequests\":" << s.keyframe_requests
+                    << ",\"captureAgeUs\":" << s.capture_age_last_us
+                    << ",\"publishAgeUs\":" << s.publish_age_last_us
+                    << ",\"videoDepth\":" << s.sender.video_depth
+                    << ",\"bytes\":" << s.memory.total_bytes
+                    << ",\"contentionActive\":" << (load_active ? "true" : "false")
+                    << ",\"contentionBatches\":" << (load ? load->batches() : 0)
+                    << ",\"contentionBytes\":" << (load ? lab::GpuContention::allocated_bytes : 0)
+                    << ",\"handles\":" << resources.handles << ",\"threads\":" << resources.threads
+                    << "}" << std::endl;
           last_sample_ms = elapsed;
         }
       }
       if (preview_control) {
-        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began);
-        if (preview_action) preview_action(elapsed);
         {
           std::lock_guard lock(preview_control->mutex);
           preview_control->stats = pipeline.stats();
         }
-        if (capture_source.state() == CaptureState::Stopped || capture_source.state() == CaptureState::Failed) break;
+        if (capture_source.state() == CaptureState::Stopped ||
+            capture_source.state() == CaptureState::Failed)
+          break;
       }
       Sleep(2);
     }
-    require(adaptive || preview_control || pipeline.stats().sender.consumed >= target_frames,
+    if (load && !adaptive) {
+      load->setActive(false);
+      require(SUCCEEDED(load->failure()) && load->batches() > 0,
+              "GPU contention fixture did not complete compute work");
+      std::cout << "GPU_CONTENTION {\"batches\":" << load->batches()
+                << ",\"allocatedBytes\":" << lab::GpuContention::allocated_bytes << "}"
+                << std::endl;
+    }
+    require(observation_duration > 0s || adaptive || preview_control ||
+                pipeline.stats().sender.consumed >= target_frames,
             "GPU screen sender publication deadline exceeded");
   } catch (...) {
     operation_failure = std::current_exception();
   }
 
   producer_running.store(false);
-  const auto stopped =
-      pipeline.stop(std::chrono::steady_clock::now() + 10s);
+  const auto stopped = pipeline.stop(std::chrono::steady_clock::now() + 10s);
   const auto capture_stopped = capture_source.stop(5s);
   producer.join();
   if (preview_control) {
@@ -1010,18 +989,17 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
   if (stopped.ok && wait_until_unpublished)
     wait_until_unpublished(std::chrono::steady_clock::now() + 5s);
   if (operation_failure) std::rethrow_exception(operation_failure);
-  require(stopped.ok, stopped.failure ? stopped.failure->message
-                                      : "GPU screen pipeline did not stop");
+  require(stopped.ok,
+          stopped.failure ? stopped.failure->message : "GPU screen pipeline did not stop");
   require(capture_stopped.ok, "GPU WGC capture did not stop");
   return pipeline.stats();
 }
 
 screen::ProductionScreenPipelineStats runGpuMonitorCycle(
-    const std::shared_ptr<LiveKitRoomTransport>& transport,
-    screen::ScreenVideoProfile profile, std::uint64_t target_frames,
-    const std::function<void()>& wait_until_ready,
-    const std::function<void(std::chrono::steady_clock::time_point)>&
-        wait_until_unpublished) {
+    const std::shared_ptr<LiveKitRoomTransport>& transport, screen::ScreenVideoProfile profile,
+    std::uint64_t target_frames, const std::function<void()>& wait_until_ready,
+    const std::function<void(std::chrono::steady_clock::time_point)>& wait_until_unpublished,
+    const std::string& mode = {}) {
   SourceRegistry registry(sources::createWin32SourceEnumerator());
   EnumerationOptions options;
   options.kind = EnumerationOptions::Kind::Monitor;
@@ -1029,18 +1007,90 @@ screen::ProductionScreenPipelineStats runGpuMonitorCycle(
   require(values.ok, "GPU monitor enumeration failed");
   const auto selected = primaryMonitor(values);
   MonitorFixture fixture(selected);
-  MonitorCapture capture_source(registry, selected.id,
-                                capture::createWgcMonitorCaptureBackend());
-  return driveGpuCapture(capture_source, transport, profile, target_frames,
-                         wait_until_ready, wait_until_unpublished);
+  capture::SelectingMonitorOptions selection_options;
+  selection_options.forced = mode.find("dxgi") != std::string::npos
+                                 ? capture::CaptureBackendKind::dxgi
+                                 : capture::CaptureBackendKind::wgc;
+  selection_options.resolve_target = [&] {
+    return registry.resolveMonitorTarget(selected.id).target;
+  };
+  auto backend = capture::createSelectingMonitorCaptureBackend(std::move(selection_options));
+  const auto selection = backend.get();
+  MonitorCapture capture_source(registry, selected.id, std::move(backend));
+  const bool switching = mode.find("switch") != std::string::npos;
+  const bool contention = mode.find("contention") != std::string::npos;
+  unsigned requested_switches = 0;
+  std::int64_t last_sample = -500;
+  const auto action = [&](std::chrono::milliseconds elapsed) {
+    if (switching && requested_switches < 30 &&
+        elapsed.count() >= (requested_switches + 1) * 12000LL) {
+      ++requested_switches;
+      selection->select(requested_switches % 2 ? capture::CaptureBackendKind::dxgi
+                                               : capture::CaptureBackendKind::wgc);
+    }
+    if (elapsed.count() - last_sample >= 500) {
+      last_sample = elapsed.count();
+      const auto value = selection->diagnostics();
+      const auto resources = currentResources();
+      std::cout << "BACKEND_SAMPLE {\"elapsedMs\":" << elapsed.count()
+                << ",\"attempts\":" << value.attempts
+                << ",\"switches\":" << value.policy.committed_switches
+                << ",\"liveGenerations\":" << value.live_generations
+                << ",\"retainedFrames\":" << value.retained_frames
+                << ",\"handles\":" << resources.handles << ",\"threads\":" << resources.threads
+                << ",\"dxgiTextures\":" << value.dxgi.allocated_textures
+                << ",\"delivered\":" << value.delivered_frames
+                << ",\"dxgiAcquired\":" << value.dxgi.acquired_frames
+                << ",\"contextContentionWaits\":" << value.dxgi.context_contention_waits
+                << ",\"noContent\":" << value.dxgi.no_content
+                << ",\"slotsUnavailable\":" << value.dxgi.unavailable_slots
+                << ",\"maximumHoldUs\":" << value.dxgi.maximum_duplication_hold_us
+                << ",\"holdBeforeCopyUs\":" << value.dxgi.maximum_hold_before_copy_us
+                << ",\"holdCopyUs\":" << value.dxgi.maximum_hold_copy_us
+                << ",\"holdReleaseUs\":" << value.dxgi.maximum_hold_release_us << ",\"backend\":"
+                << jsonString(value.policy.active ? capture::toString(value.policy.active->kind)
+                                                  : "none")
+                << "}" << std::endl;
+    }
+  };
+  std::cout << "BACKEND_BEGIN" << std::endl;
+  const auto result =
+      driveGpuCapture(capture_source, transport, profile, target_frames, wait_until_ready,
+                      wait_until_unpublished, {}, action, false, contention, false,
+                      mode.find("warmup") != std::string::npos ? 10s
+                      : switching                              ? 375s
+                      : contention                             ? 60s
+                      : target_frames > 30 ? (profile.frames_per_second == 60 ? 120s : 30s)
+                                           : 0s);
+  const auto evidence = selection->diagnostics();
+  require(evidence.delivered_frames > 0 && evidence.maximum_live_generations <= 2 &&
+              evidence.live_generations == 0,
+          "monitor selection did not deliver/drain bounded generations");
+  require(!switching || evidence.policy.committed_switches == 30,
+          "Thirty forced switches did not commit");
+  std::cout << "BACKEND_SELECTION {\"attempts\":" << evidence.attempts
+            << ",\"switches\":" << evidence.policy.committed_switches
+            << ",\"pauses\":" << evidence.pauses << ",\"delivered\":" << evidence.delivered_frames
+            << ",\"maximumGenerations\":" << evidence.maximum_live_generations
+            << ",\"liveGenerations\":" << evidence.live_generations
+            << ",\"dxgiAcquired\":" << evidence.dxgi.acquired_frames
+            << ",\"dxgiReleased\":" << evidence.dxgi.released_frames
+            << ",\"maximumHoldUs\":" << evidence.dxgi.maximum_duplication_hold_us
+            << ",\"holdBeforeCopyUs\":" << evidence.dxgi.maximum_hold_before_copy_us
+            << ",\"holdCopyUs\":" << evidence.dxgi.maximum_hold_copy_us
+            << ",\"holdReleaseUs\":" << evidence.dxgi.maximum_hold_release_us
+            << ",\"holdBudgetUs\":" << capture::kDxgiDuplicationHoldBudgetUs
+            << ",\"contextContentionWaits\":" << evidence.dxgi.context_contention_waits
+            << ",\"dxgiNoContent\":" << evidence.dxgi.no_content
+            << ",\"dxgiPointerUpdates\":" << evidence.dxgi.pointer_updates << "}" << std::endl;
+  return result;
 }
 
 screen::ProductionScreenPipelineStats runGpuWindowCycle(
-    const std::shared_ptr<LiveKitRoomTransport>& transport,
-    screen::ScreenVideoProfile profile, std::uint64_t target_frames,
-    const std::function<void()>& wait_until_ready,
-    const std::function<void(std::chrono::steady_clock::time_point)>&
-        wait_until_unpublished, bool adaptive = false, bool contention = false, bool late_observer = false) {
+    const std::shared_ptr<LiveKitRoomTransport>& transport, screen::ScreenVideoProfile profile,
+    std::uint64_t target_frames, const std::function<void()>& wait_until_ready,
+    const std::function<void(std::chrono::steady_clock::time_point)>& wait_until_unpublished,
+    bool adaptive = false, bool contention = false, bool late_observer = false) {
   WindowFixture fixture;
   SourceRegistry registry(sources::createWin32SourceEnumerator());
   EnumerationOptions options;
@@ -1049,60 +1099,48 @@ screen::ProductionScreenPipelineStats runGpuWindowCycle(
   require(values.ok, "GPU window enumeration failed");
   WindowCapture capture_source(registry, fixtureWindow(values).id,
                                capture::createWgcWindowCaptureBackend());
-  return driveGpuCapture(capture_source, transport, profile, target_frames,
-                         wait_until_ready, wait_until_unpublished, {}, {}, adaptive, contention, late_observer);
+  return driveGpuCapture(capture_source, transport, profile, target_frames, wait_until_ready,
+                         wait_until_unpublished, {}, {}, adaptive, contention, late_observer);
 }
 
-std::string gpuReportJson(
-    const std::string& mode, const screen::ScreenVideoProfile& profile,
-    const screen::ProductionScreenPipelineStats& stats, int cycles) {
-  const bool accepted = stats.sender.consumed > 0 &&
-                        stats.sender.terminal_failures == 0 &&
-                        stats.encoder.encoded > 0 &&
-                        stats.encoder.encoded_bytes > 0 &&
-                        stats.encoder.output_stalls == 0 &&
-                        stats.capture.pending == 0 &&
-                        stats.capture.active == 0 &&
-                        stats.converter.slots_in_use == 0 &&
+std::string gpuReportJson(const std::string& mode, const screen::ScreenVideoProfile& profile,
+                          const screen::ProductionScreenPipelineStats& stats, int cycles) {
+  const bool accepted = stats.sender.consumed > 0 && stats.sender.terminal_failures == 0 &&
+                        stats.encoder.encoded > 0 && stats.encoder.encoded_bytes > 0 &&
+                        stats.encoder.output_stalls == 0 && stats.capture.pending == 0 &&
+                        stats.capture.active == 0 && stats.converter.slots_in_use == 0 &&
                         stats.encoder.input_slots_in_use == 0 &&
-                        stats.encoder.output_slots_in_use == 0 &&
-                        stats.sender.video_depth == 0;
+                        stats.encoder.output_slots_in_use == 0 && stats.sender.video_depth == 0;
   std::ostringstream output;
-  output << "{\"schemaVersion\":1,\"accepted\":"
-         << (accepted ? "true" : "false") << ",\"mode\":"
-         << jsonString(mode) << ",\"productionPath\":\"d3d11-hardware-h264\""
-         << ",\"profile\":{\"width\":" << profile.width
-         << ",\"height\":" << profile.height
-         << ",\"fps\":" << profile.frames_per_second
-         << ",\"bitrate\":" << profile.bitrate << "}"
+  output << "{\"schemaVersion\":1,\"accepted\":" << (accepted ? "true" : "false")
+         << ",\"mode\":" << jsonString(mode) << ",\"productionPath\":\"d3d11-hardware-h264\""
+         << ",\"diagnosticOnly\":"
+         << (GetEnvironmentVariableA("MEDIA_LAB_ENCODED_PROOF_PATH", nullptr, 0) ? "true" : "false")
+         << ",\"profile\":{\"width\":" << profile.width << ",\"height\":" << profile.height
+         << ",\"fps\":" << profile.frames_per_second << ",\"bitrate\":" << profile.bitrate << "}"
          << ",\"adapter\":{\"luidLow\":" << stats.adapter_luid.low_part
          << ",\"luidHigh\":" << stats.adapter_luid.high_part << "}"
-         << ",\"encoder\":{\"implementation\":"
-         << jsonString(stats.encoder_implementation)
-         << ",\"submitted\":" << stats.encoder.submitted
-         << ",\"encoded\":" << stats.encoder.encoded
+         << ",\"encoder\":{\"implementation\":" << jsonString(stats.encoder_implementation)
+         << ",\"submitted\":" << stats.encoder.submitted << ",\"encoded\":" << stats.encoder.encoded
          << ",\"bytes\":" << stats.encoder.encoded_bytes
          << ",\"keyframes\":" << stats.encoder.keyframes
          << ",\"outputStalls\":" << stats.encoder.output_stalls << "}"
          << ",\"gpu\":{\"converted\":" << stats.converter.converted
-         << ",\"timingMeasurements\":"
-         << stats.converter.gpu_timing_measurements
-         << ",\"timingUnavailable\":"
-         << stats.converter.gpu_timing_unavailable
-         << ",\"durationTotalUs\":"
-         << stats.converter.gpu_duration_total_us
+         << ",\"timingMeasurements\":" << stats.converter.gpu_timing_measurements
+         << ",\"timingUnavailable\":" << stats.converter.gpu_timing_unavailable
+         << ",\"durationTotalUs\":" << stats.converter.gpu_duration_total_us
          << ",\"durationMaxUs\":" << stats.converter.gpu_duration_max_us
          << ",\"textureBytes\":" << stats.converter.texture_bytes << "}"
-         << ",\"cadence\":{\"captureAgeLastUs\":"
-         << stats.capture_age_last_us << ",\"captureAgeMaxUs\":"
-         << stats.capture_age_max_us << ",\"frameRateDrops\":"
-         << stats.frame_rate_drops << "}"
-         << ",\"backpressure\":{\"captureSuperseded\":"
-         << stats.capture.superseded << ",\"conversionDrops\":"
-         << stats.conversion_drops << ",\"encoderSuperseded\":"
-         << stats.encoder.input_superseded << ",\"publicationSuperseded\":"
-         << stats.sender.superseded << ",\"maximumPublicationDepth\":"
-         << stats.sender.maximum_video_depth << "}"
+         << ",\"cadence\":{\"captureAgeLastUs\":" << stats.capture_age_last_us
+         << ",\"captureAgeMaxUs\":" << stats.capture_age_max_us
+         << ",\"frameRateDrops\":" << stats.frame_rate_drops << "}"
+         << ",\"backpressure\":{\"captureSuperseded\":" << stats.capture.superseded
+         << ",\"conversionDrops\":" << stats.conversion_drops
+         << ",\"encoderSuperseded\":" << stats.encoder.input_superseded
+         << ",\"publicationSuperseded\":" << stats.sender.superseded
+         << ",\"staleEncodedDrops\":" << stats.stale_encoded_drops
+         << ",\"dependentEncodedDrops\":" << stats.dependent_encoded_drops
+         << ",\"maximumPublicationDepth\":" << stats.sender.maximum_video_depth << "}"
          << ",\"resources\":{\"cycles\":" << cycles
          << ",\"estimatedBytes\":" << stats.memory.total_bytes << "}}";
   return output.str();
@@ -1124,21 +1162,21 @@ void runScreenPreviewLab(const std::shared_ptr<LiveKitRoomTransport>& transport,
       const auto selected = primaryMonitor(values);
       MonitorFixture fixture(selected);
       MonitorCapture source(registry, selected.id, capture::createWgcMonitorCaptureBackend());
-      (void)driveGpuCapture(source, transport, screen::kScreenProfile1080p60,
-                            0, {}, {}, control);
+      (void)driveGpuCapture(source, transport, screen::kScreenProfile1080p60, 0, {}, {}, control);
     } else {
       WindowFixture fixture;
       options.kind = EnumerationOptions::Kind::Window;
       const auto values = registry.enumerate(options);
-      WindowCapture source(registry, fixtureWindow(values).id, capture::createWgcWindowCaptureBackend());
+      WindowCapture source(registry, fixtureWindow(values).id,
+                           capture::createWgcWindowCaptureBackend());
       bool injected = false;
-      (void)driveGpuCapture(source, transport, screen::kScreenProfile1080p60,
-          0, {}, {}, control, [&](std::chrono::milliseconds elapsed) {
-            if (injected || elapsed < 8s) return;
-            injected = true;
-            if (scenario == "resize") fixture.command("resize 900 540");
-            if (scenario == "source-close") fixture.command("close-after 5");
-          });
+      (void)driveGpuCapture(source, transport, screen::kScreenProfile1080p60, 0, {}, {}, control,
+                            [&](std::chrono::milliseconds elapsed) {
+                              if (injected || elapsed < 8s) return;
+                              injected = true;
+                              if (scenario == "resize") fixture.command("resize 900 540");
+                              if (scenario == "source-close") fixture.command("close-after 5");
+                            });
     }
   } catch (const std::exception& error) {
     std::lock_guard lock(control->mutex);
@@ -1150,78 +1188,63 @@ void runScreenPreviewLab(const std::shared_ptr<LiveKitRoomTransport>& transport,
 
 bool isScreenCpuMode(const std::string& mode) noexcept {
   return mode == "screen-cpu-monitor" || mode == "screen-cpu-window" ||
-         mode == "screen-cpu-slow-pipeline" ||
-         mode == "screen-cpu-resize" || mode == "screen-cpu-repeat" ||
-         mode == "screen-cpu-source-close" ||
-         mode == "screen-cpu-stop-during-conversion" ||
-         mode == "screen-cpu-room-disconnect";
+         mode == "screen-cpu-slow-pipeline" || mode == "screen-cpu-resize" ||
+         mode == "screen-cpu-repeat" || mode == "screen-cpu-source-close" ||
+         mode == "screen-cpu-stop-during-conversion" || mode == "screen-cpu-room-disconnect";
 }
 
 bool isScreenGpuMode(const std::string& mode) noexcept {
-  return mode == "screen-gpu-monitor-1080p60" ||
-         mode == "screen-gpu-window-1080p60" ||
-         mode == "screen-gpu-monitor-1440p30" ||
-         mode == "screen-gpu-adaptive-window" ||
-         mode == "screen-gpu-adaptive-late-window" ||
-         mode == "screen-gpu-adaptive-contention-window" ||
-         mode == "screen-gpu-repeat-720p30";
+  return mode == "screen-gpu-monitor-1080p60" || mode == "screen-gpu-dxgi-monitor-1080p60" ||
+         mode == "screen-gpu-switch-monitor-1080p60" ||
+         mode == "screen-gpu-dxgi-contention-monitor-1080p60" ||
+         mode == "screen-gpu-window-1080p60" || mode == "screen-gpu-monitor-1440p30" ||
+         mode == "screen-gpu-adaptive-window" || mode == "screen-gpu-adaptive-late-window" ||
+         mode == "screen-gpu-adaptive-contention-window" || mode == "screen-gpu-repeat-720p30";
 }
 
 void warmScreenGpuLab(
-    const std::shared_ptr<LiveKitRoomTransport>& transport,
-    const std::string& mode, const std::function<void()>& wait_until_ready,
-    const std::function<void(std::chrono::steady_clock::time_point)>&
-        wait_until_unpublished) {
+    const std::shared_ptr<LiveKitRoomTransport>& transport, const std::string& mode,
+    const std::function<void()>& wait_until_ready,
+    const std::function<void(std::chrono::steady_clock::time_point)>& wait_until_unpublished) {
   require(isScreenGpuMode(mode), "unknown screen GPU lab mode");
 #if defined(LIVEKIT_CPP_HAS_PREENCODED_VIDEO_SOURCE)
-  require(static_cast<bool>(transport),
-          "screen GPU warm-up requires a Room transport");
+  require(static_cast<bool>(transport), "screen GPU warm-up requires a Room transport");
   const auto profile = gpuProfile(mode);
-  if (mode.find("window") != std::string::npos ||
-      mode.find("repeat") != std::string::npos) {
-    (void)runGpuWindowCycle(transport, profile, 30, wait_until_ready,
-                            wait_until_unpublished);
+  if (mode.find("window") != std::string::npos || mode.find("repeat") != std::string::npos) {
+    (void)runGpuWindowCycle(transport, profile, 30, wait_until_ready, wait_until_unpublished);
   } else {
-    (void)runGpuMonitorCycle(transport, profile, 30, wait_until_ready,
-                             wait_until_unpublished);
+    (void)runGpuMonitorCycle(transport, profile, 30, wait_until_ready, wait_until_unpublished,
+                             mode.find("dxgi") != std::string::npos ? "dxgi-warmup" : "wgc-warmup");
   }
 #else
   (void)transport;
   (void)wait_until_ready;
   (void)wait_until_unpublished;
-  throw std::runtime_error(
-      "screen GPU lab requires the pre-encoded LiveKit SDK bundle");
+  throw std::runtime_error("screen GPU lab requires the pre-encoded LiveKit SDK bundle");
 #endif
 }
 
 std::string runScreenGpuLab(
-    const std::shared_ptr<LiveKitRoomTransport>& transport,
-    const std::string& mode, int cycles,
+    const std::shared_ptr<LiveKitRoomTransport>& transport, const std::string& mode, int cycles,
     const std::function<void()>& wait_until_ready,
-    const std::function<void(std::chrono::steady_clock::time_point)>&
-        wait_until_unpublished) {
+    const std::function<void(std::chrono::steady_clock::time_point)>& wait_until_unpublished) {
   require(isScreenGpuMode(mode), "unknown screen GPU lab mode");
 #if defined(LIVEKIT_CPP_HAS_PREENCODED_VIDEO_SOURCE)
-  require(static_cast<bool>(transport),
-          "screen GPU lab requires a Room transport");
+  require(static_cast<bool>(transport), "screen GPU lab requires a Room transport");
   const auto profile = gpuProfile(mode);
   const int cycle_count = mode == "screen-gpu-repeat-720p30" ? cycles : 1;
   screen::ProductionScreenPipelineStats stats;
   for (int cycle = 0; cycle < cycle_count; ++cycle) {
-    const auto target = cycle_count > 1
-                            ? 60ULL
-                            : static_cast<std::uint64_t>(
-                                  profile.frames_per_second) *
-                                  8ULL;
-    if (mode.find("window") != std::string::npos ||
-        mode.find("repeat") != std::string::npos) {
+    const auto target =
+        cycle_count > 1 ? 60ULL : static_cast<std::uint64_t>(profile.frames_per_second) * 8ULL;
+    if (mode.find("window") != std::string::npos || mode.find("repeat") != std::string::npos) {
       stats = runGpuWindowCycle(transport, profile, target, wait_until_ready,
                                 wait_until_unpublished, mode.find("adaptive") != std::string::npos,
                                 mode == "screen-gpu-adaptive-contention-window",
                                 mode == "screen-gpu-adaptive-late-window");
     } else {
       stats = runGpuMonitorCycle(transport, profile, target, wait_until_ready,
-                                 wait_until_unpublished);
+                                 wait_until_unpublished, mode);
     }
   }
   return gpuReportJson(mode, profile, stats, cycle_count);
@@ -1230,22 +1253,17 @@ std::string runScreenGpuLab(
   (void)cycles;
   (void)wait_until_ready;
   (void)wait_until_unpublished;
-  throw std::runtime_error(
-      "screen GPU lab requires the pre-encoded LiveKit SDK bundle");
+  throw std::runtime_error("screen GPU lab requires the pre-encoded LiveKit SDK bundle");
 #endif
 }
 
-void warmScreenCpuLab(const std::shared_ptr<livekit::Room>& room,
-                      const std::string& mode,
-                      const std::function<void()>& wait_until_ready,
-                      const std::function<void(
-                          std::chrono::steady_clock::time_point)>&
-                          wait_until_unpublished) {
+void warmScreenCpuLab(
+    const std::shared_ptr<livekit::Room>& room, const std::string& mode,
+    const std::function<void()>& wait_until_ready,
+    const std::function<void(std::chrono::steady_clock::time_point)>& wait_until_unpublished) {
   require(static_cast<bool>(room), "screen CPU warm-up requires Room");
-  if (mode == "screen-cpu-monitor" ||
-      mode == "screen-cpu-slow-pipeline" ||
-      mode == "screen-cpu-stop-during-conversion" ||
-      mode == "screen-cpu-room-disconnect") {
+  if (mode == "screen-cpu-monitor" || mode == "screen-cpu-slow-pipeline" ||
+      mode == "screen-cpu-stop-during-conversion" || mode == "screen-cpu-room-disconnect") {
     SourceRegistry registry(sources::createWin32SourceEnumerator());
     EnumerationOptions options;
     options.kind = EnumerationOptions::Kind::Monitor;
@@ -1253,8 +1271,8 @@ void warmScreenCpuLab(const std::shared_ptr<livekit::Room>& room,
     require(values.ok, "monitor warm-up enumeration failed");
     const auto selected = primaryMonitor(values);
     MonitorFixture fixture(selected);
-    (void)runMonitorCycle(registry, selected.id, room, "screen-cpu-monitor",
-                          wait_until_ready, 30, {}, wait_until_unpublished);
+    (void)runMonitorCycle(registry, selected.id, room, "screen-cpu-monitor", wait_until_ready, 30,
+                          {}, wait_until_unpublished);
   } else {
     WindowFixture fixture;
     SourceRegistry registry(sources::createWin32SourceEnumerator());
@@ -1263,28 +1281,22 @@ void warmScreenCpuLab(const std::shared_ptr<livekit::Room>& room,
     const auto values = registry.enumerate(options);
     require(values.ok, "window warm-up enumeration failed");
     const auto source_id = fixtureWindow(values).id;
-    (void)runWindowCycle(registry, source_id, room, "screen-cpu-window",
-                         fixture, wait_until_ready, 30,
-                         wait_until_unpublished);
+    (void)runWindowCycle(registry, source_id, room, "screen-cpu-window", fixture, wait_until_ready,
+                         30, wait_until_unpublished);
   }
 }
 
-std::string runScreenCpuLab(const std::shared_ptr<livekit::Room>& room,
-                            const std::string& mode, int cycles,
-                            const std::function<void()>& wait_until_ready,
-                            const std::function<void(
-                                std::chrono::steady_clock::time_point)>&
-                                wait_until_unpublished,
-                            const std::function<void()>& during_publication) {
-  require(static_cast<bool>(room),
-          "screen CPU lab requires a connected Room");
+std::string runScreenCpuLab(
+    const std::shared_ptr<livekit::Room>& room, const std::string& mode, int cycles,
+    const std::function<void()>& wait_until_ready,
+    const std::function<void(std::chrono::steady_clock::time_point)>& wait_until_unpublished,
+    const std::function<void()>& during_publication) {
+  require(static_cast<bool>(room), "screen CPU lab requires a connected Room");
   require(isScreenCpuMode(mode), "unknown screen CPU lab mode");
   const auto before = currentResources();
   ScreenEvidence evidence;
-  if (mode == "screen-cpu-monitor" ||
-      mode == "screen-cpu-slow-pipeline" ||
-      mode == "screen-cpu-stop-during-conversion" ||
-      mode == "screen-cpu-room-disconnect") {
+  if (mode == "screen-cpu-monitor" || mode == "screen-cpu-slow-pipeline" ||
+      mode == "screen-cpu-stop-during-conversion" || mode == "screen-cpu-room-disconnect") {
     SourceRegistry registry(sources::createWin32SourceEnumerator());
     EnumerationOptions options;
     options.kind = EnumerationOptions::Kind::Monitor;
@@ -1293,10 +1305,8 @@ std::string runScreenCpuLab(const std::shared_ptr<livekit::Room>& room,
     const auto selected = primaryMonitor(values);
     const auto source_id = selected.id;
     MonitorFixture fixture(selected);
-    merge(evidence, runMonitorCycle(registry, source_id, room, mode,
-                                    wait_until_ready, 0,
-                                    during_publication,
-                                    wait_until_unpublished));
+    merge(evidence, runMonitorCycle(registry, source_id, room, mode, wait_until_ready, 0,
+                                    during_publication, wait_until_unpublished));
   } else {
     WindowFixture fixture;
     SourceRegistry registry(sources::createWin32SourceEnumerator());
@@ -1306,18 +1316,14 @@ std::string runScreenCpuLab(const std::shared_ptr<livekit::Room>& room,
     require(values.ok, "window enumeration failed");
     const auto source_id = fixtureWindow(values).id;
     if (mode == "screen-cpu-repeat") {
-      merge(evidence,
-            runWindowRepeat(registry, source_id, room, cycles,
-                            wait_until_ready, wait_until_unpublished));
+      merge(evidence, runWindowRepeat(registry, source_id, room, cycles, wait_until_ready,
+                                      wait_until_unpublished));
     } else {
-      merge(evidence,
-            runWindowCycle(registry, source_id, room, mode, fixture,
-                           wait_until_ready, 0,
-                           wait_until_unpublished));
+      merge(evidence, runWindowCycle(registry, source_id, room, mode, fixture, wait_until_ready, 0,
+                                     wait_until_unpublished));
     }
   }
-  const auto after = settleResources(before, 12,
-                                     std::chrono::steady_clock::now() + 5s);
+  const auto after = settleResources(before, 12, std::chrono::steady_clock::now() + 5s);
   return reportJson(mode, evidence, before, after);
 }
 
