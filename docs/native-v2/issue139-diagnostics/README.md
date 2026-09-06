@@ -285,6 +285,27 @@ hashes are retained in
 They use unpublished SDK candidate source `6a97655469e6c6df1e31d43fc72ff38c32252629`
 and are diagnostic evidence only. Duplicate process logs are omitted.
 
+### Checked marker preview candidate
+
+The marker now covers sequence, capture clock, generation and dimensions with
+CRC-16/CCITT-FALSE. The old format only checked magic and could interpret a
+corrupted payload as a valid timestamp. The native writer and TypeScript reader
+share an independently computed golden vector; all 160 single-bit payload/CRC
+corruptions are rejected. This detects corruption without repairing timestamps
+or changing receiver freshness/invalid-marker thresholds.
+
+With the original 30 ms raw gate and unchanged network/preview schedule,
+`issue139-preview-crc-diagnostic` passed the complete 180-second interval:
+7,359 frames, p95 **139 ms**, maximum **1362 ms**, maximum gap **882 ms**,
+two bitrate reductions and three recoveries. All 180 audio pulses passed at
+p95 **110.7 ms**; remote OS playback advanced while the actual preview consumer
+was held for 140 seconds, then pixel observation resumed. Encoder/source and
+publication identities stayed fixed. No damaged markers were detected, so
+this run does not establish that corruption caused earlier latency failures.
+The complete report is retained in
+[`crc-preview-candidate.json.gz`](crc-preview-candidate.json.gz). It still uses
+the local SDK candidate; final published-pin qualification remains pending.
+
 ## Earlier local validation of the proposed source
 
 - Release lab build, generated protocol check and staged artifact verification: passed.

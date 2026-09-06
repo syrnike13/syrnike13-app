@@ -70,12 +70,20 @@ copy this sender's Room ownership.
 
 ## Receiver marker and clocks
 
-The converter writes a 144-bit luminance marker into every published frame:
+The converter writes a 160-bit luminance marker into every published frame:
 
 ```text
 16 magic | 32 sequence | 48 capture epoch ms | 16 generation |
-16 source width | 16 source height
+16 source width | 16 source height | 16 CRC
 ```
+
+The magic is `0x534e`. CRC-16/CCITT-FALSE (polynomial `0x1021`, initial
+`0xffff`, no final XOR) covers the first 18 bytes in network bit order. The
+marker occupies 24 × 7 tiles of 12 × 12 pixels, with eight zero padding bits.
+All writers use the same native implementation. The observer rejects a damaged
+payload instead of interpreting a concealed or corrupted timestamp as elapsed
+time; invalid-marker counts remain part of acceptance. Previous `0x534d`
+reports used an unchecked 144-bit marker and remain historical measurements.
 
 Capture timestamps originate in WGC's steady/QPC domain. Immediately before
 publication, the converter correlates that value with `system_clock` and writes

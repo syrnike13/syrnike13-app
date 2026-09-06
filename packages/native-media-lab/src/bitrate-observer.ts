@@ -159,6 +159,7 @@ if (duration >= 1200_000 && average(populated.at(-2)!) - average(populated[0]!) 
 if (audio.length < duration / 1000 * 0.8) failures.push('Insufficient independent audio pulses')
 const report = { accepted: failures.length === 0, failures, duration, firstAt, lastAt, frames, invalidMarkers,
   p95AgeMs, maximumAgeMs, maximumGapMs, sequenceDrops, identities, generation, reconnects, unpublished, captureClockAnomaly, maximumAgeFrame,
+  markerFormat: '0x534e-crc16-ccitt-false',
   audioFrames, maximumAudioGapMs, audio, minutes: minutes.map((minute, index) => {
     let count = 0, p95AgeMs = 0
     for (let age = 0; age < 2002; ++age) {

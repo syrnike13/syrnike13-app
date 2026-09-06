@@ -35,14 +35,22 @@ void writeScreenFrameMarker(std::span<std::uint8_t> output_bgra,
   if (output_stride < kScreenMarkerWidth * 4 ||
       output_bgra.size() < output_stride * kScreenMarkerHeight)
     throw std::invalid_argument("screen marker destination is too small");
-  for (std::size_t bit = 0; bit < kScreenMarkerBits; ++bit) {
+  // CRC-16/CCITT-FALSE over the 18 payload bytes, most-significant bit first.
+  // Loss concealment can mix timestamp tiles from different decoded frames.
+  std::uint16_t checksum = 0xffff;
+  for (std::size_t bit = 0; bit < kScreenMarkerPayloadBits; ++bit) {
+    const bool feedback = ((checksum & 0x8000U) != 0) != markerBit(
+        sequence, captured_at_ms, generation, source_width, source_height, bit);
+    checksum = static_cast<std::uint16_t>(checksum << 1);
+    if (feedback) checksum ^= 0x1021;
+  }
+  for (std::size_t bit = 0; bit < kScreenMarkerRows * kScreenMarkerColumns; ++bit) {
     const auto column = bit % kScreenMarkerColumns;
     const auto row = bit / kScreenMarkerColumns;
-    const std::uint8_t value = markerBit(
-                                   sequence, captured_at_ms, generation,
-                                   source_width, source_height, bit)
-                                   ? 255
-                                   : 0;
+    const bool white = bit < kScreenMarkerPayloadBits
+        ? markerBit(sequence, captured_at_ms, generation, source_width, source_height, bit)
+        : bit < kScreenMarkerBits && ((checksum >> (kScreenMarkerBits - 1 - bit)) & 1U) != 0;
+    const std::uint8_t value = white ? 255 : 0;
     for (std::size_t tile_y = 0; tile_y < kScreenMarkerTileSize; ++tile_y) {
       const auto y = row * kScreenMarkerTileSize + tile_y;
       for (std::size_t tile_x = 0; tile_x < kScreenMarkerTileSize; ++tile_x) {

@@ -243,6 +243,17 @@ void converterReusesBuffersAndWritesMarker() {
           "converter pipeline failed to stop");
 }
 
+void markerChecksumGoldenVector() {
+  std::vector<std::uint8_t> output(kScreenMarkerBgraBytes, 255);
+  writeScreenFrameMarker(output, kScreenMarkerWidth * 4,
+                         123456, 1788000123456ULL, 7, 1280, 720);
+  require(markerBits(output, kScreenMarkerWidth, 0, 16) == 0x534e &&
+          markerBits(output, kScreenMarkerWidth, 48, 48) == 1788000123456ULL &&
+          markerBits(output, kScreenMarkerWidth, 144, 16) == 0x8f28 &&
+          markerBits(output, kScreenMarkerWidth, 160, 8) == 0,
+          "screen marker checksum/padding differs from the independent golden vector");
+}
+
 }  // namespace
 
 int main() try {
@@ -252,6 +263,7 @@ int main() try {
   pipelineDropsInvalidTimestamp();
   pipelineAllowsSmallCaptureClockSkew();
   converterReusesBuffersAndWritesMarker();
+  markerChecksumGoldenVector();
   std::cout << "screen-reference-tests:ok\n";
   return 0;
 } catch (const std::exception& error) {
