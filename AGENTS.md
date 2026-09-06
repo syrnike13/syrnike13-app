@@ -4,11 +4,8 @@
 
 - Use `pnpm` and prefer the narrowest command for the affected package or service.
 - Search with `rg`/`rg --files`; never search inside `node_modules`.
-- Never use `fork_context=true` for subagents, and wait for delegated work to finish before relying on it.
 - Preserve unrelated user changes in a dirty worktree. Use `apply_patch` for manual edits and avoid destructive Git commands.
-- For bugs, find the architectural cause. Ask before changing architecture, security boundaries, or public behavior.
 - Prefer small, explicit, production-friendly APIs. Do not add compatibility paths or wrappers unless requested.
-- The user does not see code by default, so explanations must cite concrete files and relevant snippets.
 - Do not create issues, branches, PRs, comments, deployments, or external side effects unless requested.
 - For manual-save UI, register dirty state with the shared draft controller and show `UnsavedChangesBar` with save and reset actions.
 - When diagnosing environment, toolchain, or third-party library failures, read `know-bugs.md` before changing the machine. Record there only known external bugs and constraints that cannot be fixed in this codebase; application defects belong in the issue tracker or application documentation.
@@ -44,9 +41,7 @@ On Windows, missing OpenSSL/vcpkg/Docker for backend checks is an environment bl
 ## Git and releases
 
 - `develop` is nightly integration; `main` is production.
-- Before non-trivial work, check the branch, remotes, linked PR/issue, and relevant existing issues.
 - Issue branches should include the issue number when applicable.
-- If asked to commit, push, and open a PR in one flow, use the `yeet` skill.
 - Open completed PRs ready for review unless there is a concrete reason to use draft.
 - Always distinguish local, committed, pushed, built, and deployed state.
 - A `VERSION` change on `main` triggers release workflows.
