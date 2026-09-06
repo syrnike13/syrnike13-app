@@ -22,10 +22,13 @@ bitrate adaptation.
 | 720p30 | 1280 × 720 | 30 | 500 kbit/s | 2 Mbit/s |
 | 720p60 | 1280 × 720 | 60 | 750 kbit/s | 4 Mbit/s |
 | 1080p30 | 1920 × 1080 | 30 | 1 Mbit/s | 6 Mbit/s |
-| 1080p60 | 1920 × 1080 | 60 | 1.5 Mbit/s | 8 Mbit/s |
+| 1080p60 | 1920 × 1080 | 60 | 2 Mbit/s | 8 Mbit/s |
 
 These finite floors permit substantial compression while bounding the operating
 range. They do not guarantee legible output or sustainable FPS on every scene.
+The 1080p60 floor is 2 Mbit/s because repeated live 2/4 Mbit/s stages tracked
+the declared tolerance on the tested MFT, while the preliminary 1.5 Mbit/s
+floor did not. The lab still restricts the link to 1.25 Mbit/s below this floor.
 Actual frame drops under pressure do not change the target cadence.
 Admission requires the exact preset's capability bit. No implicit fallback,
 1440p, HDR, software encoder or extra layer is introduced.
@@ -48,8 +51,9 @@ bitrate are separate inputs; requested bitrate is never treated as confirmed.
 The owner samples every 500 ms. Duplicate, reversed, or faster samples cannot
 accumulate evidence. Valid measurement intervals are 250–1500 ms; a gap over
 1500 ms resets hysteresis. Room stats have one outstanding request, at least
-500 ms between requests, and a two-second freshness limit measured from request
-time. Only the selected publisher ICE pair contributes available bandwidth.
+20 ms between requests, and a two-second bandwidth freshness limit measured from request
+time. Sampling continues on the existing SDK owner lane even when no video
+frames are submitted. Only the selected publisher ICE pair contributes available bandwidth.
 Missing/stale network or local measurements cannot authorize recovery. A static
 source does not turn old last-value GPU/age data into fresh pressure. New
 captured and converted input makes a zero encoder-output delta meaningful.
@@ -99,9 +103,30 @@ The NVIDIA MFT returns `E_NOTIMPL` from `IsModifiable` despite accepting live
 A successful property call alone also does not prove bitstream reaction.
 Startup configures CBR and low latency before committing the media types.
 
+Keyframe requests use `CODECAPI_AVEncVideoForceKeyFrame` with `VT_UI4 = 1`.
+The NVIDIA MFT returned success for the previous `VT_BOOL` value but ignored
+the request. A real five-frame regression checks I/P/requested-I/P/requested-I;
+restoring the old type makes the test fail.
+
+Before changing bitrate, the same worker explicitly clears ForceKeyFrame with
+`VT_UI4 = 0`, then applies MeanBitRate only if that clear returned exactly
+`S_OK`. Both calls share the single control operation and its two-second
+deadline. New keyframe intent is issued afterwards, before the next input.
+The intent remains pending until an input is actually admitted. After that
+`ProcessInput` succeeds, the worker also explicitly clears the consumed flag;
+leaving it armed between input calls made mixed keyframe/bitrate requests
+timing-dependent on the tested driver. The hardware probe requests a keyframe
+at every bitrate-stage boundary to cover that interaction.
+On the tested NVIDIA driver, omitting this clear after a valid keyframe request
+made a requested 2 Mbit/s stage produce about 5.4 Mbit/s despite `S_OK`.
+Restoring the clear brought repeated 2/4 Mbit/s stages back inside the declared
+tolerance. No media type change, flush or resource replacement is involved.
+
 Microsoft documents the encoder property and result semantics:
 [H.264 encoder](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-encoder),
 [ICodecAPI::SetValue](https://learn.microsoft.com/en-us/windows/win32/api/icodecapi/nf-icodecapi-icodecapi-setvalue).
+[ForceKeyFrame parameter type](https://learn.microsoft.com/en-us/windows/win32/medfound/codecapi-avencvideoforcekeyframe)
+documents the unsigned 32-bit value required by the keyframe control.
 
 ## Transport and continuity
 
@@ -113,6 +138,17 @@ The preencoded SDK sender continues to use its existing rate-control feedback
 and RTP pacer. A real restricted-link observer is required to demonstrate that
 changing MFT output does not leave a growing transport backlog.
 
+Raw capture admission pauses while fresh outgoing video statistics show a
+mean packet send delay of at least 30 ms. The delay is the difference in
+`totalPacketSendDelay` divided by newly sent packets, for one unambiguous video
+stream in the same Room. Counter resets, missing/multiple streams and
+observations older than 250 ms permit admission again. Unchanged counters keep
+the last observation's original timestamp; they cannot renew a pause. This
+backpressure drops raw input before conversion/encoding; it leaves target FPS,
+dimensions and encoded references unchanged. Preview receives the capture
+before this check and continues using its own bounded pool. The short and full
+receiver labs must still qualify this behavior.
+
 Encoded output older than 150 ms is discarded before SDK admission. Losing an
 encoded reference retains the existing dependent-frame suppression and
 keyframe recovery. The requested/issued/acknowledged keyframe watermarks and
@@ -120,6 +156,14 @@ one-second cadence remain; three unsuccessful progress attempts are a distinct
 recovery fault. Static input does not spend retries without new encoder input.
 Preview is an independent consumer and never contributes pressure to policy.
 Screen audio retains its own bounded owner and publication.
+
+The SFU negotiates the RTP playout-delay extension on its sending transport.
+Screen-video downtracks default to zero additional playout delay, while an
+explicit enabled room/subscriber setting takes precedence. Camera, microphone
+and screen-audio defaults are unchanged. This does not suppress receiver age,
+gap, decode-error or drop measurements; every transition remains measured.
+Focused SFU tests cover source selection, explicit configuration and the actual
+subscriber SDP offer. This source change has not been deployed.
 
 ## Warning contract
 
@@ -135,13 +179,13 @@ of the same state belongs to #130.
 
 ## Hardware and evidence protocol
 
-Exact SDK pin: `v1.10.0-syrnike.9`, commit
-`049ec1b977365dfe18e0a80342a39be33f020bb1`; the authoritative pin is
+Exact SDK pin: `v1.10.0-syrnike.10`, commit
+`2826ea81c1c19674357f1468ee44c9f38b5ee600`; the authoritative pin is
 `packages/windows-media-engine/native/cmake/LiveKitSDK.cmake`.
 
 | Hardware | Driver / OS | Status |
 | --- | --- | --- |
-| NVIDIA GeForce RTX 5070 Ti | 32.0.16.1074 / Windows 10.0.26200 | Live update and end-to-end acceptance being measured |
+| NVIDIA GeForce RTX 5070 Ti | 32.0.16.1074 / Windows 10.0.26200 | Repeated 2/4 Mbit/s live update verified; 1.5 Mbit/s bitstream tolerance and full-run receiver freshness failed |
 | Intel / AMD / other NVIDIA | Not tested | Unqualified; do not infer support |
 
 The standalone real-MFT probe uses a deterministic moving tiled 1080p60 scene
@@ -151,6 +195,10 @@ subsequent 2/4 Mbit/s stage must be within ±30% of requested, and each repeated
 down/up must change measured output by at least 40%. These tolerances are fixed
 before the acceptance run. Property success and synthetic setters are not
 substitutes for this proof.
+
+The retained [20-minute diagnostic](issue139-diagnostics/README.md) failed
+receiver freshness (p95 359 ms, maximum 2676 ms). Stable identities, continuing
+preview/audio and passing local tests do not make that run accepted.
 
 The end-to-end lab uses a disposable local SFU, a publisher-only UDP link with
 a finite 64-packet / 40 ms queue, and a separate Node RTC decoder. Audio and

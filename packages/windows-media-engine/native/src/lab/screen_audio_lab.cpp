@@ -9,9 +9,12 @@
 #include "lab/audio_session_volume_probe.hpp"
 #include "lab/preview_pixel_observer.hpp"
 #include "lab/gpu_contention.hpp"
+#include <syncstream>
 #include <tlhelp32.h>
 #include <psapi.h>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 
@@ -89,7 +92,7 @@ int main(int argc, char** argv) {
       const auto window = reinterpret_cast<HWND>(window_target.target->platformValue());
       RECT bounds{};
       GetClientRect(window, &bounds);
-      std::cout << "AUDIO_WINDOW_DIAGNOSTIC visible=" << IsWindowVisible(window)
+      std::osyncstream(std::cout) << "AUDIO_WINDOW_DIAGNOSTIC visible=" << IsWindowVisible(window)
                 << " minimized=" << IsIconic(window) << " client=" << bounds.right << "x"
                 << bounds.bottom << std::endl;
       capture::WindowCapture capture(registry, source_id, capture::createWgcWindowCaptureBackend());
@@ -147,7 +150,7 @@ int main(int argc, char** argv) {
         while (!stop.stop_requested())
           if (auto frame = capture.waitForFrame(50ms)) (void)frames->submit(std::move(*frame));
       });
-      std::cout << "SCREEN_AUDIO_READY" << std::endl;
+      std::osyncstream(std::cout) << "SCREEN_AUDIO_READY" << std::endl;
       const auto began = std::chrono::steady_clock::now();
       const auto end = began + std::chrono::seconds{seconds};
       std::uint64_t last_bitrate_sample_ms = 0;
@@ -181,7 +184,7 @@ int main(int argc, char** argv) {
             require(GetProcessMemoryInfo(GetCurrentProcess(),
                 reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory), sizeof(memory)) != FALSE,
                 "Memory query failed");
-            std::cout << "BITRATE_SAMPLE {\"elapsedMs\":" << elapsed
+            std::osyncstream(std::cout) << "BITRATE_SAMPLE {\"elapsedMs\":" << elapsed
                 << ",\"profile\":" << s.current_profile << ",\"generation\":" << s.profile_generation
                 << ",\"encoderInstance\":" << s.encoder.instance_id
                 << ",\"width\":" << profile.width << ",\"height\":" << profile.height
@@ -192,9 +195,18 @@ int main(int argc, char** argv) {
                 << ",\"reason\":" << static_cast<int>(s.decision_reason)
                 << ",\"warning\":" << (s.quality_warning ? "true" : "false")
                 << ",\"networkBps\":" << s.network.available_outgoing_bitrate.value_or(0)
+                << ",\"senderAllocationKnown\":" << (s.network.sender_bitrate_allocation ? "true" : "false")
+                << ",\"senderAllocationBps\":" << s.network.sender_bitrate_allocation.value_or(0)
                 << ",\"networkMeasuredAtMs\":" << s.network.measured_at_ms
+                << ",\"packetSendDelayKnown\":" << (s.network.packet_send_delay_us ? "true" : "false")
+                << ",\"packetSendDelayUs\":" << s.network.packet_send_delay_us.value_or(0)
+                << ",\"packetSendDelayMeasuredAtMs\":" << s.network.packet_send_delay_measured_at_ms
+                << ",\"networkBackpressureDrops\":" << s.network_backpressure_drops
                 << ",\"captureFrames\":" << s.capture_frames << ",\"encoderFrames\":" << s.encoder.encoded
                 << ",\"encodedBytes\":" << s.encoder.encoded_bytes
+                << ",\"keyframes\":" << s.encoder.keyframes
+                << ",\"keyframeBytes\":" << s.encoder.keyframe_bytes
+                << ",\"lastKeyframeBytes\":" << s.encoder.last_keyframe_bytes
                 << ",\"consumed\":" << s.total_publication_consumed
                 << ",\"videoDepth\":" << s.sender.video_depth << ",\"bytes\":" << s.memory.total_bytes
                 << ",\"handles\":" << handles << ",\"threads\":" << threads
@@ -204,7 +216,9 @@ int main(int argc, char** argv) {
                 << ",\"audioPackets\":" << audio_owner.stats().session.submitted
                 << ",\"keyframeRequests\":" << s.keyframe_requests
                 << ",\"gpuActive\":" << (busy ? "true" : "false")
-                << ",\"gpuBatches\":" << contention->batches() << "}" << std::endl;
+                  << ",\"gpuDurationUs\":" << s.converter.gpu_duration_last_us
+                  << ",\"gpuDurationMaxUs\":" << s.converter.gpu_duration_max_us
+                  << ",\"gpuBatches\":" << contention->batches() << "}" << std::endl;
             last_bitrate_sample_ms = elapsed;
           }
         }
@@ -234,7 +248,7 @@ int main(int argc, char** argv) {
             DWORD handles = 0;
             require(GetProcessHandleCount(GetCurrentProcess(), &handles) != FALSE,
                     "Cycle handle query failed");
-            std::cout << "AUDIO_OWNER_CYCLE {\"cycle\":" << completed_cycles
+            std::osyncstream(std::cout) << "AUDIO_OWNER_CYCLE {\"cycle\":" << completed_cycles
                       << ",\"handles\":" << handles
                       << ",\"clients\":0,\"captureThreads\":0,\"pcmDepth\":0}" << std::endl;
           }
@@ -275,6 +289,14 @@ int main(int argc, char** argv) {
         }
         std::this_thread::sleep_for(20ms);
       }
+      if (scenario == "bitrate") {
+        const auto end_path = environment("MEDIA_LAB_MEASURED_END_PATH");
+        std::ofstream measured_end(std::filesystem::path(std::u8string(end_path.begin(), end_path.end())));
+        measured_end << std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        measured_end.flush();
+        require(static_cast<bool>(measured_end), "Measured interval end could not be recorded");
+      }
       producer.request_stop();
       if (producer.joinable()) producer.join();
       if (preview) preview->drain();
@@ -284,7 +306,7 @@ int main(int argc, char** argv) {
       require(audio_owner.stop(std::chrono::steady_clock::now() + 25s), "Audio owner did not stop");
       const auto audio_stats = audio_owner.stats().session;
       session_volumes.observe();
-      std::cout << "AUDIO_SESSION_VOLUME_REPORT {\"foreignActiveSessions\":"
+      std::osyncstream(std::cout) << "AUDIO_SESSION_VOLUME_REPORT {\"foreignActiveSessions\":"
                 << session_volumes.sessions()
                 << ",\"observations\":" << session_volumes.observations()
                 << ",\"volumeChanges\":0,\"muteChanges\":0}" << std::endl;
@@ -307,7 +329,7 @@ int main(int argc, char** argv) {
         require(!reference_playback->failed() && reference_playback->audiblePackets() >= 15 &&
                     reference_playback->playedSamples() >= 48000 * 5,
                 "Own remote reference voice was not actually played");
-        std::cout << "REFERENCE_PLAYBACK_REPORT {\"audiblePackets\":"
+        std::osyncstream(std::cout) << "REFERENCE_PLAYBACK_REPORT {\"audiblePackets\":"
                   << reference_playback->audiblePackets()
                   << ",\"playedSamples\":" << reference_playback->playedSamples() << "}"
                   << std::endl;
@@ -316,9 +338,9 @@ int main(int argc, char** argv) {
       require(video.stop(std::chrono::steady_clock::now() + 5s).ok,
               "Video publication did not stop");
       if (bitrate_lab)
-        std::cout << "BITRATE_STOP {\"warning\":" << (video.stats().quality_warning ? "true" : "false")
+        std::osyncstream(std::cout) << "BITRATE_STOP {\"warning\":" << (video.stats().quality_warning ? "true" : "false")
                   << ",\"encoderInstance\":" << video.stats().encoder.instance_id << "}" << std::endl;
-      std::cout << "SCREEN_AUDIO_REPORT {\"submitted\":" << audio_stats.submitted
+      std::osyncstream(std::cout) << "SCREEN_AUDIO_REPORT {\"submitted\":" << audio_stats.submitted
                 << ",\"audioFailure\":\""
                 << (audio_owner.stats().failure ? "target_exited" : "none") << "\""
                 << ",\"maximumSubmitAgeUs\":" << audio_stats.maximum_submit_age_us

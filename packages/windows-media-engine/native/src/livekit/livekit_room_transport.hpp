@@ -46,6 +46,8 @@ public:
   // Returns false when the bounded single pending slot is occupied.
   [[nodiscard]] bool enqueueActiveRoomTask(ActiveRoomTask task) noexcept;
   [[nodiscard]] std::size_t pendingOperationCount() const noexcept;
+  // One weak screen-publication observer on the existing SDK lane.
+  void setScreenFeedbackPoll(ActiveRoomTask poll);
   [[nodiscard]] std::shared_ptr<LiveKitNetworkSampler> networkSampler() const noexcept {
     return network_sampler_;
   }
@@ -74,6 +76,7 @@ private:
   void runConnect(ConnectTask task) noexcept;
   void runDisconnect(DisconnectTask task) noexcept;
   void runActiveRoomTask(ActiveRoomLaneTask task) noexcept;
+  void pollScreenFeedback(const std::shared_ptr<livekit::Room>& room) noexcept;
   void enqueue(Task task);
 
   mutable std::mutex mutex_;
@@ -81,6 +84,7 @@ private:
       std::make_shared<LiveKitNetworkSampler>();
   std::shared_ptr<LiveKitRoomObserver> delegate_;
   RoomConnectionEventCallback connection_event_callback_;
+  ActiveRoomTask screen_feedback_poll_;
   bool disconnect_reported_ = false;
   std::condition_variable changed_;
   std::condition_variable cancellation_changed_;

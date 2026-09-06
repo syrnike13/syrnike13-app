@@ -174,6 +174,7 @@ struct HardwareH264EncoderStateData {
   bool worker_done = false;
   bool keyframe_requested = false;
   LiveBitrateMailbox bitrate;
+  std::atomic<const char*> worker_operation{"initialize"};
   Clock::time_point stop_deadline{};
 
   void clearAcceptedInputs() noexcept {
@@ -294,9 +295,9 @@ bool initializeTransform(
                       setCodecU32(transform.Get(),
                                   CODECAPI_AVEncCommonMeanBitRate,
                                   state->profile.bitrate);
-    if (configured)
-      (void)setCodecU32(transform.Get(),
-                        CODECAPI_AVEncMPVDefaultBPictureCount, 0);
+      if (configured)
+        (void)setCodecU32(transform.Get(),
+                          CODECAPI_AVEncMPVDefaultBPictureCount, 0);
     // Configure rate control before committing media types: hardware transforms
     // may freeze the rate-control mode when their input type is installed.
     if (configured)
@@ -408,7 +409,11 @@ void publishOutput(
   }
   ++state->stats.encoded;
   state->stats.encoded_bytes += size;
-  if (slot.keyframe) ++state->stats.keyframes;
+  if (slot.keyframe) {
+    ++state->stats.keyframes;
+    state->stats.keyframe_bytes += size;
+    state->stats.last_keyframe_bytes = size;
+  }
   std::size_t occupied = 0;
   for (const auto& candidate : state->outputs)
     if (candidate.queued || candidate.leased) ++occupied;
@@ -540,6 +545,7 @@ void encoderWorker(
     }
     for (;;) {
       ComPtr<IMFMediaEvent> event;
+      state->worker_operation.store("poll_event", std::memory_order_relaxed);
       const HRESULT event_result =
           events->GetEvent(MF_EVENT_FLAG_NO_WAIT, &event);
       if (event_result == MF_E_NO_EVENTS_AVAILABLE) break;
@@ -566,6 +572,7 @@ void encoderWorker(
             requested_inputs + 1,
             static_cast<std::uint32_t>(kGpuConversionSlotCapacity));
       } else if (type == METransformHaveOutput) {
+        state->worker_operation.store("process_output", std::memory_order_relaxed);
         if (!processOneOutput(state, transform.Get(), output_info,
                               caller_output.Get())) {
           done = true;
@@ -584,13 +591,26 @@ void encoderWorker(
       if (!state->stop_requested) bitrate = state->bitrate.take(monotonicMs());
     }
     if (bitrate) {
+      state->worker_operation.store("set_bitrate", std::memory_order_relaxed);
       ComPtr<ICodecAPI> codec;
       HRESULT result = transform.As(&codec);
       if (result == S_OK) {
         VARIANT value{};
         value.vt = VT_UI4;
-        value.ulVal = bitrate->requested_bitrate;
-        result = codec->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &value);
+        // ForceKeyFrame is documented to reset after ProcessInput. NVIDIA's
+        // MFT nevertheless retains control state that breaks later rate
+        // updates unless explicitly cleared. This changes no media type and
+        // runs before any new keyframe intent is issued below.
+        value.ulVal = 0;
+        result = codec->SetValue(&CODECAPI_AVEncVideoForceKeyFrame, &value);
+        if (result == S_OK) {
+          value.ulVal = bitrate->requested_bitrate;
+#if defined(WINDOWS_MEDIA_TEST_SET_BITRATE)
+          result = WINDOWS_MEDIA_TEST_SET_BITRATE(codec.Get(), &value);
+#else
+          result = codec->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &value);
+#endif
+        }
         // Exact S_OK is the application result. S_FALSE means read-only, not
         // success. Property readback alone cannot establish live capability;
         // the hardware probe separately measures the resulting bitstream.
@@ -613,7 +633,6 @@ void encoderWorker(
     Clock::time_point stop_deadline;
     {
       std::scoped_lock lock(state->mutex);
-      request_keyframe = std::exchange(state->keyframe_requested, false);
       const auto occupied_outputs = std::count_if(
           state->outputs.begin(), state->outputs.end(),
           [](const auto& slot) { return slot.queued || slot.leased; });
@@ -624,17 +643,22 @@ void encoderWorker(
               static_cast<std::size_t>(occupied_outputs) < state->outputs.size()) {
         input = std::move(state->pending_input);
         state->pending_input.reset();
+        request_keyframe = std::exchange(state->keyframe_requested, false);
       }
       request_stop = state->stop_requested;
       stop_deadline = state->stop_deadline;
     }
+    state->worker_operation.store("set_keyframe", std::memory_order_relaxed);
+    // This command is VT_UI4, unlike AVLowLatencyMode. Some hardware returns
+    // S_OK for VT_BOOL but silently ignores it, leaving only periodic GOP IDRs.
     if (request_keyframe &&
-        !setCodecBool(transform.Get(), CODECAPI_AVEncVideoForceKeyFrame, true)) {
+        !setCodecU32(transform.Get(), CODECAPI_AVEncVideoForceKeyFrame, 1)) {
       fail(state, "screen_hardware_h264_keyframe_request_failed",
            "Hardware encoder rejected a keyframe request", "encoder_control");
       break;
     }
     if (input) {
+      state->worker_operation.store("process_input", std::memory_order_relaxed);
       auto sample = makeInputSample(*input);
       const HRESULT input_result =
           sample ? transform->ProcessInput(0, sample.Get(), 0) : E_FAIL;
@@ -657,6 +681,12 @@ void encoderWorker(
              "encoder_input");
         break;
       }
+      if (request_keyframe &&
+          !setCodecU32(transform.Get(), CODECAPI_AVEncVideoForceKeyFrame, 0)) {
+        fail(state, "screen_hardware_h264_keyframe_reset_failed",
+             "Hardware encoder did not clear the consumed keyframe command", "encoder_control");
+        break;
+      }
     }
     if (request_stop && !draining) {
       {
@@ -667,10 +697,13 @@ void encoderWorker(
       }
       draining = true;
       requested_inputs = 0;
+      state->worker_operation.store("end_of_stream", std::memory_order_relaxed);
       HRESULT result = transform->ProcessMessage(
           MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0);
-      if (SUCCEEDED(result))
+      if (SUCCEEDED(result)) {
+        state->worker_operation.store("command_drain", std::memory_order_relaxed);
         result = transform->ProcessMessage(MFT_MESSAGE_COMMAND_DRAIN, 0);
+      }
       if (FAILED(result)) {
         fail(state, "screen_hardware_h264_drain_failed",
              hresultMessage("IMFTransform drain", result), "encoder_stop");
@@ -699,9 +732,12 @@ void encoderWorker(
       break;
     }
     std::unique_lock lock(state->mutex);
+    state->worker_operation.store(draining ? "await_drain" : "await_input",
+                                   std::memory_order_relaxed);
     state->changed.wait_for(lock, std::chrono::milliseconds(1));
   }
 
+  state->worker_operation.store("flush", std::memory_order_relaxed);
   (void)transform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
   {
     std::scoped_lock lock(state->mutex);
@@ -710,15 +746,20 @@ void encoderWorker(
       state->state = HardwareH264EncoderState::stopped;
   }
   ComPtr<IMFShutdown> shutdown;
+  state->worker_operation.store("transform_shutdown", std::memory_order_relaxed);
   if (SUCCEEDED(transform.As(&shutdown))) (void)shutdown->Shutdown();
+  state->worker_operation.store("activation_shutdown", std::memory_order_relaxed);
   (void)activation->ShutdownObject();
+  state->worker_operation.store("release_transform", std::memory_order_relaxed);
   caller_output.Reset();
   events.Reset();
   transform.Reset();
   manager.Reset();
   activation.Reset();
   shutdown.Reset();
+  state->worker_operation.store("mf_shutdown", std::memory_order_relaxed);
   (void)MFShutdown();
+  state->worker_operation.store("com_uninitialize", std::memory_order_relaxed);
   if (uninitialize_com) CoUninitialize();
   {
     std::scoped_lock lock(state->mutex);
@@ -914,7 +955,8 @@ bool HardwareH264Encoder::stop(std::chrono::milliseconds deadline) noexcept {
     if (!state_->failure)
       state_->failure = HardwareH264Failure{
           "screen_hardware_h264_stop_timeout",
-          "Hardware encoder cleanup requires utility epoch retirement", "encoder_stop"};
+          std::string("Hardware encoder cleanup requires utility epoch retirement; operation=") +
+              state_->worker_operation.load(std::memory_order_relaxed), "encoder_stop"};
     state_->failure->utility_epoch_retirement_required = true;
     state_->state = HardwareH264EncoderState::failed;
   }

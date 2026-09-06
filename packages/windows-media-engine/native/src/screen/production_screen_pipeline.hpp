@@ -45,6 +45,7 @@ struct ProductionScreenPipelineStats {
   capture::D3d11AdapterLuid adapter_luid;
   std::uint64_t capture_frames = 0;
   std::uint64_t frame_rate_drops = 0;
+  std::uint64_t network_backpressure_drops = 0;
   std::uint64_t missing_gpu_frames = 0;
   std::uint64_t conversion_drops = 0;
   std::uint64_t encoder_rejections = 0;

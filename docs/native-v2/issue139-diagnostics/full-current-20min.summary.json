@@ -1,0 +1,239 @@
+{
+  "accepted": false,
+  "purpose": "Failed 20-minute diagnostic, not acceptance",
+  "duration": 1200000,
+  "provenance": {
+    "appCommit": "539109d806e2acb0f07d71da86eaded227d51a36",
+    "dirty": true,
+    "binarySha256": {
+      "screen_audio_lab.exe": "eca98f869ab69eca44358d3a761fff01a0012a5f4ae8cf5e38ba34968e146d33",
+      "audio_sync_fixture.exe": "52a4c25d850b876dc2af8f9f91582614d9b14fd61f0f715c0e47f1b1b701d161",
+      "livekit.dll": "1358626e16ea25b18bfe66052083cdfc2fb47137746462c0b4cefd3f5fce6953",
+      "livekit_ffi.dll": "e2bc4383cd8996bd1b0403ba8cda20df0dc7e50896db6cbaf774af87b2f403b9"
+    }
+  },
+  "diagnosticSdkCommit": "6b979cec82c5e0309bb76944056f036f9090a2ab",
+  "sourceSha256": {
+    "publisher": "2e0ba55c1f3ebfdc9fff07c74eb45b74391ba2547bb03560f02c0ca877f45c60",
+    "receiver": "f4c6a3ecf7cb6da7b93e230cc2e7c5be6799910ee10a09c53bbbf494416aa5f8"
+  },
+  "measurementsSha256": "69a695c57c904a3cae740270f4de08340c884dfd579ea750765f0b521a564cdb",
+  "measurementFile": "full-current-20min.json.gz",
+  "failures": [
+    "Full-run receiver freshness failed",
+    "Receiver freshness failed"
+  ],
+  "publisherSamples": 2365,
+  "encoderInstances": [
+    1
+  ],
+  "generations": [
+    1
+  ],
+  "updates": 27,
+  "growth": {
+    "handles": -4,
+    "threads": -9,
+    "bytes": 0,
+    "privateBytes": 9307750.400000006
+  },
+  "latencyGrowthMs": -228.66666666666666,
+  "receiver": {
+    "frames": 55702,
+    "p95AgeMs": 359,
+    "maximumAgeMs": 2676,
+    "maximumGapMs": 2624,
+    "sequenceDrops": 5743,
+    "invalidMarkers": 0,
+    "identities": [
+      "TR_AsH7JKxDuCJmmd",
+      "TR_VSC2x5PYPAM2tj"
+    ],
+    "reconnects": 0,
+    "minutes": [
+      {
+        "frames": 2821,
+        "ageSum": 247582,
+        "maxAge": 910,
+        "maxGap": 1119,
+        "sequenceDrops": 127,
+        "p95AgeMs": 224
+      },
+      {
+        "frames": 1700,
+        "ageSum": 487164,
+        "maxAge": 1208,
+        "maxGap": 871,
+        "sequenceDrops": 1430,
+        "p95AgeMs": 534
+      },
+      {
+        "frames": 3081,
+        "ageSum": 70265,
+        "maxAge": 81,
+        "maxGap": 82,
+        "sequenceDrops": 3,
+        "p95AgeMs": 56
+      },
+      {
+        "frames": 3107,
+        "ageSum": 68200,
+        "maxAge": 62,
+        "maxGap": 82,
+        "sequenceDrops": 1,
+        "p95AgeMs": 57
+      },
+      {
+        "frames": 3098,
+        "ageSum": 37631,
+        "maxAge": 58,
+        "maxGap": 80,
+        "sequenceDrops": 0,
+        "p95AgeMs": 15
+      },
+      {
+        "frames": 3061,
+        "ageSum": 205770,
+        "maxAge": 1102,
+        "maxGap": 511,
+        "sequenceDrops": 24,
+        "p95AgeMs": 343
+      },
+      {
+        "frames": 1756,
+        "ageSum": 476376,
+        "maxAge": 1380,
+        "maxGap": 807,
+        "sequenceDrops": 1405,
+        "p95AgeMs": 512
+      },
+      {
+        "frames": 3123,
+        "ageSum": 96743,
+        "maxAge": 61,
+        "maxGap": 61,
+        "sequenceDrops": 5,
+        "p95AgeMs": 39
+      },
+      {
+        "frames": 3119,
+        "ageSum": 90895,
+        "maxAge": 57,
+        "maxGap": 62,
+        "sequenceDrops": 10,
+        "p95AgeMs": 31
+      },
+      {
+        "frames": 3130,
+        "ageSum": 89963,
+        "maxAge": 56,
+        "maxGap": 60,
+        "sequenceDrops": 9,
+        "p95AgeMs": 31
+      },
+      {
+        "frames": 2913,
+        "ageSum": 233368,
+        "maxAge": 914,
+        "maxGap": 876,
+        "sequenceDrops": 78,
+        "p95AgeMs": 410
+      },
+      {
+        "frames": 1845,
+        "ageSum": 321348,
+        "maxAge": 1375,
+        "maxGap": 1468,
+        "sequenceDrops": 1262,
+        "p95AgeMs": 493
+      },
+      {
+        "frames": 3044,
+        "ageSum": 37163,
+        "maxAge": 59,
+        "maxGap": 83,
+        "sequenceDrops": 0,
+        "p95AgeMs": 17
+      },
+      {
+        "frames": 3056,
+        "ageSum": 41203,
+        "maxAge": 59,
+        "maxGap": 77,
+        "sequenceDrops": 7,
+        "p95AgeMs": 21
+      },
+      {
+        "frames": 3056,
+        "ageSum": 56214,
+        "maxAge": 59,
+        "maxGap": 77,
+        "sequenceDrops": 4,
+        "p95AgeMs": 22
+      },
+      {
+        "frames": 2934,
+        "ageSum": 177349,
+        "maxAge": 971,
+        "maxGap": 882,
+        "sequenceDrops": 58,
+        "p95AgeMs": 241
+      },
+      {
+        "frames": 1759,
+        "ageSum": 525255,
+        "maxAge": 2676,
+        "maxGap": 2624,
+        "sequenceDrops": 1314,
+        "p95AgeMs": 505
+      },
+      {
+        "frames": 3030,
+        "ageSum": 56897,
+        "maxAge": 74,
+        "maxGap": 74,
+        "sequenceDrops": 1,
+        "p95AgeMs": 43
+      },
+      {
+        "frames": 3052,
+        "ageSum": 65408,
+        "maxAge": 67,
+        "maxGap": 77,
+        "sequenceDrops": 4,
+        "p95AgeMs": 50
+      },
+      {
+        "frames": 3017,
+        "ageSum": 48264,
+        "maxAge": 62,
+        "maxGap": 84,
+        "sequenceDrops": 1,
+        "p95AgeMs": 35
+      },
+      {
+        "frames": 0,
+        "ageSum": 0,
+        "maxAge": 0,
+        "maxGap": 0,
+        "sequenceDrops": 0,
+        "p95AgeMs": 0
+      },
+      {
+        "frames": 0,
+        "ageSum": 0,
+        "maxAge": 0,
+        "maxGap": 0,
+        "sequenceDrops": 0,
+        "p95AgeMs": 0
+      }
+    ]
+  },
+  "audioAge": {
+    "accepted": true,
+    "matchedPulses": 1201,
+    "p95Ms": 139.30000001192093,
+    "minimumMs": 58.963600009679794,
+    "maximumMs": 141.89790001511574
+  }
+}

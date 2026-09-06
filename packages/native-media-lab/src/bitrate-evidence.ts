@@ -1,5 +1,12 @@
 import { Schema } from 'effect'
 
+/** SFU close placeholders are outside an explicitly finished measurement. */
+export function isBitrateTeardownFrame(width: number, height: number, endedAtMs: number,
+  nowMs: number, firstAtMs: number, durationMs: number) {
+  return width === 2 && height === 2 && firstAtMs > 0 && Number.isSafeInteger(endedAtMs) &&
+    endedAtMs >= firstAtMs + durationMs - 5000 && endedAtMs <= nowMs
+}
+
 const Sample = Schema.Struct({
   elapsedMs: Schema.Number, profile: Schema.Number, generation: Schema.Number, encoderInstance: Schema.Number,
   width: Schema.Number, height: Schema.Number, fps: Schema.Number, targetBps: Schema.Number, appliedBps: Schema.Number,
@@ -30,7 +37,7 @@ export function verifyBitrateEvidence(samplesValue: unknown, receiverValue: unkn
     if (sample.profile !== 4 || sample.width !== 1920 || sample.height !== 1080 || sample.fps !== 60 ||
         !sample.encoderInstance || sample.generation !== first?.generation || sample.encoderInstance !== first?.encoderInstance)
       failures.add('Preset or encoder/source identity changed')
-    if (sample.targetBps < 1_500_000 || sample.targetBps > 8_000_000 || sample.appliedBps < 1_500_000 || sample.appliedBps > 8_000_000)
+    if (sample.targetBps < 2_000_000 || sample.targetBps > 8_000_000 || sample.appliedBps < 2_000_000 || sample.appliedBps > 8_000_000)
       failures.add('Bitrate escaped selected preset')
     if (sample.videoDepth > 2 || sample.bytes > 128 * 1024 * 1024) failures.add('Publication queue/memory exceeded')
     if (previous) {
@@ -76,7 +83,7 @@ export function verifyBitrateEvidence(samplesValue: unknown, receiverValue: unkn
     if (!samples.some(sample => sample.gpuActive && sample.gpuBatches > 0)) failures.add('Missing real GPU contention')
     for (let cycle = 0; cycle + 90_000 <= duration; cycle += 300_000) {
       const low = samples.filter(sample => sample.elapsedMs >= cycle + 60_000 && sample.elapsedMs < cycle + 90_000)
-      if (!low.some(sample => sample.appliedBps === 1_500_000 && sample.warning)) failures.add('Below-minimum warning/floor not exercised')
+      if (!low.some(sample => sample.appliedBps === 2_000_000 && sample.warning)) failures.add('Below-minimum warning/floor not exercised')
       const received = receiver.rtcSamples.filter(sample => sample.atMs >= startAt + cycle + 65_000 && sample.atMs < startAt + cycle + 90_000)
       if (received.length < 2 || received.at(-1)!.framesDecoded <= received[0]!.framesDecoded || received.at(-1)!.bytesReceived <= received[0]!.bytesReceived)
         failures.add('No decoded output below minimum')

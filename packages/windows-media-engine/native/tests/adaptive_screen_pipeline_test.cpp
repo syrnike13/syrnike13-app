@@ -103,7 +103,7 @@ void automaticControlKeepsGeneration() {
   until([&] { return pipeline.state() == ProductionScreenPipelineState::running; });
   const auto instance = pipeline.stats().encoder.instance_id;
   adapter->bandwidth = 1'000'000;
-  until([&] { return pipeline.stats().bitrate.applied_bitrate == 1'500'000; });
+  until([&] { return pipeline.stats().bitrate.applied_bitrate == 2'000'000; });
   const auto reduced = pipeline.stats();
   require(reduced.current_profile == 4 && reduced.profile_generation == 1 &&
           reduced.encoder.instance_id == instance && reduced.profile_changes == 0 &&

@@ -126,6 +126,50 @@ void hardwareH264EncoderProducesBoundedAnnexBOutput() {
   }
 }
 
+void hardwareKeyframeRequestAppliesToNextInput() {
+  using namespace std::chrono_literals;
+  const auto owner = capture::processD3d11Device(false);
+  GpuScreenConverter converter(owner, kScreenProfile720p30);
+  HardwareH264Encoder encoder(owner, kScreenProfile720p30);
+  if (const auto failure = encoder.start(5s)) throw std::runtime_error(failure->message);
+  const auto source = makeFrame(owner, 1280, 720);
+  // Requests at 3 and 5 cannot be satisfied by the encoder's ordinary GOP.
+  // Serial input/output excludes an already queued frame as an acknowledgement.
+  for (std::uint64_t sequence = 1; sequence <= 5; ++sequence) {
+    const bool requested = sequence == 3 || sequence == 5;
+    if (requested) {
+      encoder.requestKeyFrame();
+      const auto revision = sequence == 3 ? 1U : 2U;
+      const auto bitrate = sequence == 3 ? 2'000'000U : 4'000'000U;
+      if (!encoder.requestBitrate(revision, bitrate))
+        throw std::runtime_error("keyframe test bitrate request rejected");
+      const auto applied_by = std::chrono::steady_clock::now() + 2s;
+      while (encoder.bitrateUpdate().revision != revision &&
+             std::chrono::steady_clock::now() < applied_by)
+        std::this_thread::sleep_for(1ms);
+      while (encoder.bitrateUpdate().outcome == BitrateUpdateOutcome::pending &&
+             std::chrono::steady_clock::now() < applied_by)
+        std::this_thread::sleep_for(1ms);
+      if (encoder.bitrateUpdate().applied_bitrate != bitrate)
+        throw std::runtime_error("keyframe test bitrate request did not apply");
+    }
+    auto converted = converter.convert({owner, source.Get()},
+        {sequence, 1, 1280, 720, capture::FramePixelFormat::Bgra8, 1});
+    if (!converted || !encoder.submit(std::move(*converted), sequence * 33333, 33333))
+      throw std::runtime_error("keyframe test input rejected");
+    std::optional<EncodedH264SlotLease> output;
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while (!output && std::chrono::steady_clock::now() < deadline) {
+      output = encoder.takeEncoded();
+      if (!output) std::this_thread::sleep_for(1ms);
+    }
+    if (!output || output->frame().timestamp_us != static_cast<std::int64_t>(sequence * 33333) ||
+        output->frame().keyframe != (sequence == 1 || requested))
+      throw std::runtime_error("hardware keyframe request did not apply to exactly the next input");
+  }
+  if (!encoder.stop(5s)) throw std::runtime_error("keyframe test encoder stop failed");
+}
+
 void encodedBackpressureKeepsEveryReferenceFrame() {
   using namespace std::chrono_literals;
   const auto owner = capture::processD3d11Device(false);

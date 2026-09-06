@@ -17,6 +17,7 @@ namespace syrnike::windows_media::screen::tests {
 void hardwareH264ProbeCoversFixedProfiles();
 void hardwareH264EncoderProducesBoundedAnnexBOutput();
 void encodedBackpressureKeepsEveryReferenceFrame();
+void hardwareKeyframeRequestAppliesToNextInput();
 void productionGpuPipelineStartsHardwareBeforePublicationAndStops();
 }  // namespace syrnike::windows_media::screen::tests
 
@@ -220,6 +221,7 @@ int main() try {
   gpuMarkerMatchesNeutralObserverContract();
   syrnike::windows_media::screen::tests::hardwareH264ProbeCoversFixedProfiles();
   syrnike::windows_media::screen::tests::hardwareH264EncoderProducesBoundedAnnexBOutput();
+  syrnike::windows_media::screen::tests::hardwareKeyframeRequestAppliesToNextInput();
   syrnike::windows_media::screen::tests::encodedBackpressureKeepsEveryReferenceFrame();
   syrnike::windows_media::screen::tests::
       productionGpuPipelineStartsHardwareBeforePublicationAndStops();

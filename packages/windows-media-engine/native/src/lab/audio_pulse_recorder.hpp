@@ -1,4 +1,5 @@
 #pragma once
+#include <syncstream>
 #include "audio/screen_audio_pcm.hpp"
 #include <cmath>
 #include <iomanip>
@@ -42,7 +43,7 @@ class AudioPulseRecorder {
       }
     } else if (rms < 100 && active_) {
       active_ = false;
-      std::cout << "CODED_AUDIO_CAPTURE {\"atMs\":" << std::setprecision(17)
+      std::osyncstream(std::cout) << "CODED_AUDIO_CAPTURE {\"atMs\":" << std::setprecision(17)
                 << static_cast<double>(timestamp_) / 10000.0 << ",\"code\":" << code_
                 << ",\"rms\":" << best_rms_ << "}" << std::endl;
     }

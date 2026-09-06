@@ -3,8 +3,10 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <livekit/room.h>
 #include "core/network_observation.hpp"
+#include "core/packet_send_delay.hpp"
 
 namespace syrnike::windows_media {
 // One instance per Room transport, surviving all track/profile replacements.
@@ -21,5 +23,7 @@ class LiveKitNetworkSampler final {
   std::optional<std::future<livekit::SessionStats>> pending_;
   std::weak_ptr<livekit::Room> requested_room_;
   std::uint64_t requested_at_ms_ = 0;
+  PacketSendDelayEstimator packet_delay_;
+  std::weak_ptr<livekit::Room> previous_packet_room_;
 };
 }

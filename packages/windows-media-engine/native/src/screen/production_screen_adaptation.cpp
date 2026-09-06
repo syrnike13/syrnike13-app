@@ -118,6 +118,12 @@ void ProductionScreenPipeline::runAdaptiveControl() {
   m.live_update_available = update.available;
   m.update_pending = bitrate_command_ != bitrate_completed_;
   m.available_outgoing_bitrate = current.network.available_outgoing_bitrate;
+  // The sender allocation can be tighter than the available link (audio,
+  // retransmission and congestion-window budgets). It is a current control
+  // value, while the independently sampled link must still be fresh below.
+  if (m.available_outgoing_bitrate && current.network.sender_bitrate_allocation)
+    m.available_outgoing_bitrate = (std::min)(*m.available_outgoing_bitrate,
+                                            *current.network.sender_bitrate_allocation);
   m.network_measurement_fresh = current.network.measured_at_ms > 0 &&
                                 current.network.measured_at_ms <= now &&
                                 now - current.network.measured_at_ms <= 2000;
@@ -148,6 +154,7 @@ void ProductionScreenPipeline::runAdaptiveControl() {
     }
     if (current.encoder.encoded == previous.encoder.encoded) m.publish_age_ms = 0;
     const auto dropped =
+        delta(current.network_backpressure_drops, previous.network_backpressure_drops) +
         delta(current.conversion_drops, previous.conversion_drops) +
         delta(current.encoder_rejections, previous.encoder_rejections) +
         delta(current.stale_encoded_drops, previous.stale_encoded_drops) +

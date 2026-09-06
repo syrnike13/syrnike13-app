@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { verifyBitrateEvidence } from './bitrate-evidence.js'
+import { isBitrateTeardownFrame, verifyBitrateEvidence } from './bitrate-evidence.js'
 
 function fixture() {
   const samples = Array.from({ length: 40 }, (_, index) => ({
@@ -16,6 +16,12 @@ function fixture() {
   return { samples, receiver }
 }
 describe('full-interval fixed-preset acceptance', () => {
+  it('excludes an SFU close placeholder only after an explicit complete measured interval', () => {
+    expect(isBitrateTeardownFrame(2, 2, 180_000, 180_001, 1000, 180_000)).toBe(true)
+    for (const ended of [NaN, 0, 90_000, 181_000])
+      expect(isBitrateTeardownFrame(2, 2, ended, 180_001, 1000, 180_000)).toBe(false)
+    expect(isBitrateTeardownFrame(1280, 720, 180_000, 180_001, 1000, 180_000)).toBe(false)
+  })
   it('admits a short stable transport diagnostic without claiming the soak', () => {
     const { samples, receiver } = fixture()
     expect(verifyBitrateEvidence(samples, receiver, 20_000, 0).accepted).toBe(true)

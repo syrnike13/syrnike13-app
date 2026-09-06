@@ -151,7 +151,7 @@ void LiveKitRoomTransport::run() noexcept {
       std::unique_lock lock(mutex_);
       // Read the SDK's synchronized state on its owner lane; this also works
       // when the laboratory installs a RoomDelegate for track observations.
-      changed_.wait_for(lock, std::chrono::milliseconds(100),
+      changed_.wait_for(lock, std::chrono::milliseconds(20),
                     [this] { return stopping_ || pending_task_.has_value(); });
       if (stopping_) {
         pending_task_.reset();
@@ -169,7 +169,13 @@ void LiveKitRoomTransport::run() noexcept {
                           "room_connection", true}});
         continue;
       }
-      if (!pending_task_) continue;
+      if (!pending_task_) {
+        const auto room = active_room_;
+        lock.unlock();
+        pollScreenFeedback(room);
+        network_sampler_->sampleOnSdkLane(room);
+        continue;
+      }
       task = std::move(pending_task_);
       pending_task_.reset();
       operation_running_ = true;
@@ -185,11 +191,34 @@ void LiveKitRoomTransport::run() noexcept {
     } else {
       runActiveRoomTask(std::move(std::get<ActiveRoomLaneTask>(*task)));
     }
+    std::shared_ptr<livekit::Room> sampled_room;
     {
       std::lock_guard lock(mutex_);
       operation_running_ = false;
       operation_room_.reset();
+      if (!stopping_) sampled_room = active_room_;
     }
+    pollScreenFeedback(sampled_room);
+    network_sampler_->sampleOnSdkLane(sampled_room);
+  }
+}
+
+void LiveKitRoomTransport::setScreenFeedbackPoll(ActiveRoomTask poll) {
+  std::lock_guard lock(mutex_);
+  screen_feedback_poll_ = std::move(poll);
+}
+
+void LiveKitRoomTransport::pollScreenFeedback(const std::shared_ptr<livekit::Room>& room) noexcept {
+  try {
+    ActiveRoomTask poll;
+    {
+      std::lock_guard lock(mutex_);
+      if (stopping_) return;
+      poll = screen_feedback_poll_;
+    }
+    if (room && poll) poll(room);
+  } catch (...) {
+    // Feedback reads must not terminate the shared SDK lane.
   }
 }
 

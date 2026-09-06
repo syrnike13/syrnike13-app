@@ -21,6 +21,8 @@ class PreviewPixelObserver final {
     desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM; desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_STAGING; desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
     check(device_->CreateTexture2D(&desc, nullptr, &staging_));
+    const D3D11_QUERY_DESC completion{D3D11_QUERY_EVENT, 0};
+    check(device_->CreateQuery(&completion, &completion_));
     if (!screen::LocalScreenPreview::processPreview().demand(1, true))
       throw std::runtime_error("Preview demand failed");
   }
@@ -44,6 +46,7 @@ class PreviewPixelObserver final {
           std::chrono::steady_clock::now() - began_ < std::chrono::milliseconds(200)) return;
       check(acquired);
       context_->CopyResource(staging_.Get(), shared_.Get());
+      context_->End(completion_.Get());
       // Queue the keyed release after the copy, just like the producer. Keep
       // the logical pool lease until readback completes, but do not hold GPU
       // ownership while polling an asynchronous transfer.
@@ -52,6 +55,10 @@ class PreviewPixelObserver final {
       copy_submitted_ = true;
       began_ = std::chrono::steady_clock::now();
     }
+    const auto completed = context_->GetData(completion_.Get(), nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH);
+    if (completed == S_FALSE &&
+        std::chrono::steady_clock::now() - began_ < std::chrono::milliseconds(200)) return;
+    check(completed);
     D3D11_MAPPED_SUBRESOURCE mapped{};
     const auto result = context_->Map(staging_.Get(), 0, D3D11_MAP_READ,
         D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
@@ -96,6 +103,7 @@ class PreviewPixelObserver final {
   Microsoft::WRL::ComPtr<ID3D11Device> device_;
   Microsoft::WRL::ComPtr<ID3D11Device1> device1_;
   Microsoft::WRL::ComPtr<ID3D11DeviceContext> context_;
+  Microsoft::WRL::ComPtr<ID3D11Query> completion_;
   Microsoft::WRL::ComPtr<ID3D11Texture2D> shared_, staging_;
   Microsoft::WRL::ComPtr<IDXGIKeyedMutex> keyed_;
   std::optional<screen::PreviewFrame> lease_;

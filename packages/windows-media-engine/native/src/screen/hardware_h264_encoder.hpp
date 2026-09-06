@@ -39,6 +39,8 @@ struct HardwareH264EncoderStats {
   std::uint64_t output_stalls = 0;
   std::uint64_t keyframes = 0;
   std::uint64_t encoded_bytes = 0;
+  std::uint64_t keyframe_bytes = 0;
+  std::uint64_t last_keyframe_bytes = 0;
   std::size_t input_slots_in_use = 0;
   std::size_t output_slots_in_use = 0;
   std::size_t output_pool_capacity = kEncodedH264SlotCapacity;

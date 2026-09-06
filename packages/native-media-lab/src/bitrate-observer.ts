@@ -1,13 +1,15 @@
 import { AudioStream, VideoStream, Room, RoomEvent, TrackKind, dispose, type RemoteTrack } from '@livekit/rtc-node'
 import { Schema } from 'effect'
-import { writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { pulseCode, type SyncPulse } from './audio-sync-evidence.js'
 import { decodeVideoMarker } from './marker.js'
+import { isBitrateTeardownFrame } from './bitrate-evidence.js'
 
 const env = Schema.decodeUnknownSync(Schema.Struct({
   LIVEKIT_URL: Schema.String, LIVEKIT_OBSERVER_TOKEN: Schema.String,
   MEDIA_LAB_READY_PATH: Schema.String, MEDIA_LAB_REPORT_PATH: Schema.String,
   MEDIA_LAB_AUDIO_DURATION_MS: Schema.String,
+  MEDIA_LAB_MEASURED_END_PATH: Schema.String,
 }))(process.env)
 const duration = Number(env.MEDIA_LAB_AUDIO_DURATION_MS)
 if (!Number.isSafeInteger(duration) || duration < 5000 || duration > 1260_000) throw new Error('Invalid duration')
@@ -19,7 +21,11 @@ const minuteHistograms = Array.from({ length: 22 }, () => new Uint32Array(2002))
 let firstAt = 0, lastAt = 0, lastSequence = 0, generation = 0
 let frames = 0, invalidMarkers = 0, maximumAgeMs = 0, maximumGapMs = 0, sequenceDrops = 0
 let audioFrames = 0, lastAudioAt = 0, maximumAudioGapMs = 0, unpublished = 0, reconnects = 0
-const rtcSamples: { atMs: number; bytesReceived: number; framesDecoded: number; framesDropped: number; packetsLost: number }[] = []
+let teardownFrames = 0, measurementEndedAtMs: number | undefined
+const rtcSamples: { atMs: number; bytesReceived: number; framesDecoded: number; framesDropped: number; packetsLost: number;
+  jitterBufferDelay: number; jitterBufferTargetDelay: number; jitterBufferMinimumDelay: number; jitterBufferEmittedCount: number;
+  totalDecodeTime: number; totalProcessingDelay: number; totalAssemblyTime: number; framesReceived: number;
+  retransmittedBytesReceived: number; nackCount: number; pliCount: number }[] = []
 async function video(track: RemoteTrack) {
   const reader = new VideoStream(track).getReader()
   try {
@@ -27,6 +33,18 @@ async function video(track: RemoteTrack) {
       const next = await reader.read()
       if (next.done) break
       const now = Date.now(), frame = next.value.frame
+      if (frame.width === 2 && frame.height === 2) {
+        // Preserve all ordinary frames (including late arrivals). Only the SFU's
+        // explicit close placeholder may be classified as teardown, after the
+        // publisher has durably marked the complete interval before stopping.
+        try {
+          measurementEndedAtMs = Number(await readFile(env.MEDIA_LAB_MEASURED_END_PATH, 'utf8'))
+        } catch { measurementEndedAtMs = undefined }
+        if (isBitrateTeardownFrame(frame.width, frame.height, measurementEndedAtMs ?? NaN, now, firstAt, duration)) {
+          ++teardownFrames
+          continue
+        }
+      }
       if (!firstAt) firstAt = now
       ++frames
       if (frame.width !== 1920 || frame.height !== 1080) throw new Error(`Decoded dimensions changed: ${frame.width}x${frame.height} at ${now}, elapsed ${now - firstAt}ms`)
@@ -98,7 +116,17 @@ try {
         if (rtcSamples.length >= 2600) throw new Error('RTC evidence capacity exceeded')
         rtcSamples.push({ atMs: Date.now(), bytesReceived: Number(value.inbound?.bytesReceived ?? 0),
           framesDecoded: Number(value.inbound?.framesDecoded ?? 0), framesDropped: Number(value.inbound?.framesDropped ?? 0),
-          packetsLost: Number(value.received?.packetsLost ?? 0) })
+          packetsLost: Number(value.received?.packetsLost ?? 0),
+          jitterBufferDelay: Number(value.inbound?.jitterBufferDelay ?? 0),
+          jitterBufferTargetDelay: Number(value.inbound?.jitterBufferTargetDelay ?? 0),
+          jitterBufferMinimumDelay: Number(value.inbound?.jitterBufferMinimumDelay ?? 0),
+          jitterBufferEmittedCount: Number(value.inbound?.jitterBufferEmittedCount ?? 0),
+          totalDecodeTime: Number(value.inbound?.totalDecodeTime ?? 0),
+          totalProcessingDelay: Number(value.inbound?.totalProcessingDelay ?? 0),
+          totalAssemblyTime: Number(value.inbound?.totalAssemblyTime ?? 0),
+          framesReceived: Number(value.inbound?.framesReceived ?? 0),
+          retransmittedBytesReceived: Number(value.inbound?.retransmittedBytesReceived ?? 0),
+          nackCount: Number(value.inbound?.nackCount ?? 0), pliCount: Number(value.inbound?.pliCount ?? 0) })
       }
     }
     await new Promise(resolve => setTimeout(resolve, 20))
@@ -127,7 +155,7 @@ const report = { accepted: failures.length === 0, failures, duration, firstAt, l
       if (count >= minute.frames * 0.95) { p95AgeMs = age; break }
     }
     return { ...minute, p95AgeMs }
-  }), rtcSamples, ageHistogram: Array.from(histogram) }
+  }), rtcSamples, ageHistogram: Array.from(histogram), teardownFrames, measurementEndedAtMs }
 await writeFile(env.MEDIA_LAB_REPORT_PATH, JSON.stringify(report, null, 2))
 console.log(JSON.stringify({ accepted: report.accepted, failures, frames, p95AgeMs, maximumAgeMs, maximumGapMs }))
 if (!report.accepted) process.exitCode = 1

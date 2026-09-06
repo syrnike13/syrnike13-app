@@ -3,7 +3,10 @@
 #include <wrl/client.h>
 #include <array>
 #include <iostream>
+#include <fstream>
+#include <filesystem>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 using namespace syrnike::windows_media;
@@ -20,6 +23,27 @@ int main(int argc, char** argv) {
     HardwareH264Encoder encoder(owner, profile);
     if (auto failure = encoder.start(5s)) throw std::runtime_error(failure->message);
     std::cout << "encoder=" << encoder.transformName() << std::endl;
+    std::ofstream bitstream;
+    std::uint64_t written_bytes = 0;
+    const bool initial_keyframe_only = argc > 3 &&
+        std::string_view(argv[3]) == "--initial-keyframe-only";
+    if (argc > 3 && !initial_keyframe_only) {
+      const std::string output_path(argv[3]);
+      bitstream.open(std::filesystem::path(std::u8string(output_path.begin(), output_path.end())),
+                     std::ios::binary);
+      if (!bitstream) throw std::runtime_error("bitstream output could not be opened");
+    }
+    const auto drain = [&] {
+      while (auto output = encoder.takeEncoded()) {
+        if (!bitstream.is_open()) continue;
+        const auto bytes = output->frame().bytes;
+        written_bytes += bytes.size();
+        if (written_bytes > 256ULL * 1024 * 1024)
+          throw std::runtime_error("bitstream diagnostic exceeded 256 MiB");
+        bitstream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        if (!bitstream) throw std::runtime_error("bitstream output failed");
+      }
+    };
     D3D11_TEXTURE2D_DESC desc{};
     desc.Width = 1920; desc.Height = 1080; desc.MipLevels = desc.ArraySize = 1;
     desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM; desc.SampleDesc.Count = 1;
@@ -37,15 +61,15 @@ int main(int argc, char** argv) {
                           profile.bitrate / 2, profile.bitrate / 4, profile.bitrate / 2};
     std::array<std::uint64_t, rates.size()> measured{};
     const auto instance = encoder.stats().instance_id;
-    encoder.requestKeyFrame();
     for (std::size_t segment = 0; segment < rates.size(); ++segment) {
       if (segment && !encoder.requestBitrate(segment, rates[segment]))
         throw std::runtime_error("bitrate command rejected at admission");
+      if (!segment || !initial_keyframe_only) encoder.requestKeyFrame();
       const auto start = std::chrono::steady_clock::now();
       const auto before = encoder.stats();
       auto next = start;
       while (std::chrono::steady_clock::now() - start < std::chrono::seconds(segment_seconds)) {
-        while (encoder.takeEncoded()) {}
+        drain();
         if (auto failure = encoder.failure()) throw std::runtime_error(failure->message);
         if (std::chrono::steady_clock::now() >= next) {
           ++sequence;
@@ -82,7 +106,7 @@ int main(int argc, char** argv) {
             : measured[segment - 1] * 10 < measured[segment] * 14))
         throw std::runtime_error("bitstream did not respond by 40%");
     }
-    while (encoder.takeEncoded()) {}
+    drain();
     if (!encoder.stop(5s)) throw std::runtime_error("stop failed");
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

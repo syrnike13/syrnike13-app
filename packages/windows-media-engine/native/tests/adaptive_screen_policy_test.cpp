@@ -1,4 +1,7 @@
 #include "screen/adaptive_screen_policy.hpp"
+#include "core/network_observation.hpp"
+#include "core/packet_send_delay.hpp"
+#include <limits>
 #include "screen/screen_keyframe_control.hpp"
 #include "screen/live_bitrate_mailbox.hpp"
 #include <iostream>
@@ -45,13 +48,13 @@ void golden() {
   Trace collapse;
   collapse.sample.available_outgoing_bitrate = 1'000'000;
   collapse.ticks(10);
-  require(collapse.changes == std::vector<Change>{{500, 1'500'000, AdaptiveReason::network}},
+  require(collapse.changes == std::vector<Change>{{500, 2'000'000, AdaptiveReason::network}},
           "collapse golden differs");
   require(collapse.state.warning, "below minimum must warn without terminating");
   collapse.sample.available_outgoing_bitrate = 20'000'000;
   collapse.ticks(41);
-  require(collapse.changes == std::vector<Change>{{500, 1'500'000, AdaptiveReason::network},
-      {25000, 1'875'000, AdaptiveReason::healthy}}, "recovery golden differs");
+  require(collapse.changes == std::vector<Change>{{500, 2'000'000, AdaptiveReason::network},
+      {25000, 2'500'000, AdaptiveReason::healthy}}, "recovery golden differs");
   require(!collapse.state.warning, "sustained recovery did not clear warning");
   require(collapse.sample.selected_preset == 4, "automatic control changed user intent");
 
@@ -217,7 +220,40 @@ void keyframes() {
 
 }
 int main() {
+  using syrnike::windows_media::OutgoingNetworkObservation;
+  using syrnike::windows_media::screenPacketQueueBackpressured;
+  OutgoingNetworkObservation network;
+  require(!screenPacketQueueBackpressured(network, 1000), "unknown queue blocked capture");
+  network.packet_send_delay_us = 30'000;
+  network.packet_send_delay_measured_at_ms = 1000;
+  require(screenPacketQueueBackpressured(network, 1250), "fresh queue pressure ignored");
+  require(!screenPacketQueueBackpressured(network, 1251), "stale queue blocked capture");
+  require(!screenPacketQueueBackpressured(network, 999), "future queue blocked capture");
+  network.packet_send_delay_us = 29'999;
+  require(!screenPacketQueueBackpressured(network, 1000), "healthy queue blocked capture");
+  network.packet_send_delay_measured_at_ms = 0;
+  network.packet_send_delay_us = 100'000;
+  require(!screenPacketQueueBackpressured(network, 100), "missing timestamp blocked capture");
   try {
+    syrnike::windows_media::PacketSendDelayEstimator queue;
+    require(!queue.observe("screen", 10, 1, 1000).delay_us, "first packet counter is not a delta");
+    auto sample = queue.observe("screen", 20, 2, 1020);
+    require(sample.delay_us == 100'000U && sample.measured_at_ms == 1020, "packet delay units changed");
+    sample = queue.observe("screen", 20, 2, 1040);
+    require(sample.delay_us == 100'000U && sample.measured_at_ms == 1020, "cached counters refreshed pressure");
+    network.packet_send_delay_us = sample.delay_us;
+    network.packet_send_delay_measured_at_ms = sample.measured_at_ms;
+    require(!screenPacketQueueBackpressured(network, 1271), "unchanged counters starved capture");
+    require(queue.observe("screen", 30, 2, 1060).delay_us == 0U, "new unqueued packets retained pressure");
+    require(!queue.observe("other", 40, 3, 1080).delay_us, "different stream mixed counters");
+    require(!queue.observe("other", 1, 1, 1100).delay_us, "reset counters invented pressure");
+    require(!queue.observe("other", 2, 2, 1099).delay_us, "reversed time retained pressure");
+    require(!queue.observe("other", 3, 3, 4000).delay_us, "stale counters invented pressure");
+    require(!queue.observe("other", 4, std::numeric_limits<double>::quiet_NaN(), 4020).delay_us,
+        "NaN packet delay became pressure");
+    require(!queue.observe("other", 5, 0, 4040).delay_us, "missing packet delay became pressure");
+    queue.reset();
+    require(!queue.observe("screen", 99, 20, 4060).delay_us, "Room reset retained packet history");
     golden(); boundaries(); longTraces(); mailboxFences(); keyframes();
     std::cout << "Fixed-preset bitrate golden traces and keyframe boundaries passed\n";
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

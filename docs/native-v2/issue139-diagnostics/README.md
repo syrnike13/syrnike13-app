@@ -56,6 +56,107 @@ other hardware remain unqualified.
 
 ## Work required before merge
 
+### Subsequent diagnostics, 2026-09-06
+
+The later working tree is based on app commit
+`539109d806e2acb0f07d71da86eaded227d51a36`. It corrects ForceKeyFrame to
+`VT_UI4`, retains requests until actual input admission, and explicitly clears
+the property after accepted input and before a bitrate update. A five-frame
+real-MFT I/P/I/P/I test also changes bitrate while the next keyframe request is
+pending. The mixed keyframe/bitrate probe passed its full 20-second stages at
+8/4/2/4/2/4 Mbit/s. These results do not qualify the lower 1.5 Mbit/s floor.
+
+| Later diagnostic | Duration | Receiver p95 / max age | Maximum gap | Audio p95 | Result |
+| --- | --- | --- | --- | --- | --- |
+| `issue139-idle-gpu-control.json` | 180 s | 378 / 1162 ms | 1109 ms | 132 ms | Failed |
+| `issue139-floor2-diagnostic.json` | 180 s | 474 / 1152 ms | 1751 ms | 132 ms | Failed |
+
+The 2 Mbit/s floor experiment retained the same 1.25 Mbit/s restricted link and
+150 ms receiver threshold. It did not fix freshness and was reverted. It kept
+one encoder/source generation, decoded 7,692 frames, and independently matched
+180 audio pulses; preview continued with 3,772 observed pixel changes. The
+reports and receiver files remain in local `packages/native-media-lab/artifacts/`.
+
+These later runs use the local SDK implementation proposed in
+[SDK PR #6](https://github.com/syrnike13/client-sdk-cpp/pull/6), including sender
+bitrate allocation feedback. The bundle was built from `6b979ce`; the subsequent
+PR commit `1f5161fc54c684ff979f209d5fc066e72dd4481d` corrects protocol NEXT_ID
+comments. This remains unpublished diagnostic provenance, not the app pin.
+Its DLL hashes are `1358626e16ea25b18bfe66052083cdfc2fb47137746462c0b4cefd3f5fce6953`
+(`livekit.dll`) and
+`e2bc4383cd8996bd1b0403ba8cda20df0dc7e50896db6cbaf774af87b2f403b9`
+(`livekit_ffi.dll`). Each harness report also records the actual executable hashes.
+
+LowDelayVBR and PeakConstrainedVBR were tested separately and reverted: both
+returned successful live control results but produced identical output across
+repeated 1.5/3 Mbit/s requests in ten-second diagnostic windows (about 1.02 and
+1.84 Mbit/s respectively). They are not qualified live-update alternatives.
+The production candidate continues to use CBR. The 1.5 Mbit/s CBR scene also
+failed its independent bitstream tolerance; a setter acknowledgement alone
+does not establish the usable lower range on this hardware.
+
+The completed 20-minute run is retained in
+[`full-current-20min.summary.json`](full-current-20min.summary.json) and
+[`full-current-20min.json.gz`](full-current-20min.json.gz). The compressed JSON
+contains all 2,365 publisher samples, link samples, all receiver minute/RTC
+counters, the complete age histogram and coded audio pulse measurements.
+Duplicate process logs are omitted; source-report hashes and the decompressed
+measurement hash preserve provenance. No captured media is included.
+
+This run received 55,702 video frames with p95 age **359 ms**, maximum age
+**2,676 ms**, and maximum gap **2,624 ms**: freshness failed. It retained one
+encoder/source generation and stable publication identities through 27 updates
+(9 down / 18 up), four network cycles and four compute-workload intervals.
+Audio independently matched 1,201 pulses with p95 **139.3 ms**, passing.
+Tracked queue/pool memory growth was zero, handles changed by -4 and threads
+by -9. Process private memory grew by about 9.3 MB and plateaued; the report
+retains that measurement rather than treating the tracked-pool counter as
+total process memory. This is a failed diagnostic, not qualification.
+
+A subsequent 8/4/2/4/2/4 Mbit/s probe with only the initial keyframe request
+also passed every complete 20-second stage (4.004 / 2.372 / 3.894 / 2.114 /
+3.882 Mbit/s after startup). An extra keyframe on every bitrate update is
+therefore not required by this tested sequence. The optional probe argument
+`--initial-keyframe-only` exercises that case. The hardware rejected the
+separate `AVEncCommonAllowFrameDrops=1` startup experiment; it was reverted.
+
+The intermediate CBR source passed all 31 native Release tests and all 38 lab
+Vitest tests with the local SDK bundle. Those passes do not change the failed
+receiver result or substitute for final checks against the published SDK pin.
+
+The later `issue139-cleared-playout-zero-diagnostic.json` repeated the same
+180-second network schedule with the test SFU's additional playout delay set
+to zero. It still failed: p95 352 ms, maximum age 1582 ms, maximum gap 851 ms;
+the receiver also logged H.264 decode errors during packet loss. Audio passed
+at p95 98.7 ms. This experimental room setting is not a product configuration
+change and is not used by the default harness.
+
+### Packet admission and receiver experiments
+
+Published `.10` SDK packet-queue experiments used the same default 180-second
+network/GPU schedule and unchanged receiver thresholds:
+
+| Report prefix | Sampling / raw admission | Receiver p95 / max | Maximum gap |
+| --- | --- | --- | --- |
+| `issue139-packet-gate-diagnostic` | 100 ms, pause at 30 ms packet delay | 258 / 1091 ms | 1291 ms |
+| `issue139-fast-packet-gate-diagnostic` | 20 ms, unchanged counters clear observation | 387 / 1034 ms | 972 ms |
+| `issue139-held-packet-gate-diagnostic` | 20 ms, unchanged counters retain original measurement time | 234 / 1085 ms | 1004 ms |
+
+All failed freshness. The last run additionally exposed interleaved publisher
+audio/video log lines; its independent receiver JSON survived, but the combined
+report failed parsing and is not usable as complete evidence. Lab writers now
+emit whole records through `std::osyncstream`. The raw gate expires at 250 ms;
+no duplicate counter response renews that deadline. Pure counter-delta and
+admission boundary tests pass. Encoder and publication identities remained
+unchanged in the inspected measurements. A later GOP-size experiment must be
+qualified separately; these numbers precede it.
+
+`issue139-gop-packet-gate-diagnostic.json` set a five-second target GOP at
+startup. Periodic keyframes fell from 127 to 34 in 180 seconds, but freshness
+did not improve: p95 233 ms, max age 1562 ms, max gap 1057 ms; audio p95
+125.2 ms. GOP tuning was reverted. The next experiment retains the hardware
+default GOP and tests earlier raw backpressure admission.
+
 Resolve transport/reference recovery under sustained bandwidth below the
 selected preset floor without changing target FPS/resolution, restarting the
 encoder, or growing queues. The buffer experiment still emitted approximately
@@ -70,7 +171,42 @@ rejected outcomes have deterministic mailbox coverage, not a completed live
 fault-injection matrix. Debug/ASan and final artifact checks must be recorded
 separately; a failed short diagnostic must never be promoted to acceptance.
 
-## Local validation of the proposed source
+### Latest controlled comparison and remaining acceptance
+
+The 5 ms raw-admission experiment failed at p95 249 ms and was reverted to
+30 ms. Sender feedback now polls on the existing SDK lane even while raw
+admission is paused. The 1080p60 floor is 2 Mbit/s following the real bitstream
+probe; the network fixture remains 1.25 Mbit/s during its below-floor phase.
+
+The SDK candidate in
+[SDK PR #7](https://github.com/syrnike13/client-sdk-cpp/pull/7) restores the
+passthrough encoder's trusted-rate-controller contract: rate pressure must
+drop raw input before encoding, because dropping already encoded references
+causes repeated keyframe recovery. The continuity guard and bitrate feedback
+remain enabled. Windows build, all 367 SDK unit tests and targeted clang tools
+passed; the candidate was not yet published for these diagnostics.
+
+| 180-second report | SDK / SFU | Video p95 / maximum / gap | Audio p95 | Result |
+| --- | --- | --- | --- | --- |
+| `issue139-raw-only-playout-zero-diagnostic` | local candidate / explicit room zero delay | 121 / 1002 / 806 ms | 120.8 ms | Short pass only |
+| `issue139-screen-playout-default-diagnostic` | local candidate / screen-only zero-delay default | 151 / 903 / 1565 ms | 112.1 ms | Failed |
+| `issue139-sdk10-controlled-comparison` | published `.10` / same screen-only default | 219 / 1061 / 900 ms | 163.9 ms | Failed |
+
+The last two runs use identical application executables and differ only in
+`livekit_ffi.dll`; keyframe requests were 3 versus 7. Reports record executable
+hashes, including the SFU. These are diagnostics from a dirty application
+checkout, not final qualification. The SFU default is implemented in source and
+covered by source/configuration and actual SDP-offer tests; it is not deployed.
+All measurements from these three reports, including complete receiver
+histograms and transition samples, are retained in
+[`raw-admission-comparison.json.gz`](raw-admission-comparison.json.gz).
+Duplicate process logs are omitted and source hashes are retained.
+
+The complete scenario matrix, stronger actual GPU contention, full 20-minute
+run and final Release/Debug/ASan/artifact checks remain pending. Receiver
+thresholds are unchanged; 151 ms is not rounded into a 150 ms pass.
+
+## Earlier local validation of the proposed source
 
 - Release lab build, generated protocol check and staged artifact verification: passed.
 - Lab Vitest: 37 tests passed; TypeScript typecheck/build passed.

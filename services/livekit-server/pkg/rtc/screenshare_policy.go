@@ -27,6 +27,15 @@ const (
 	screenShareMaxLayers  = 2
 )
 
+// Screen sharing prioritizes fresh frames over extra receiver playout buffering.
+// An explicitly enabled room/subscriber policy still takes precedence.
+func screenSharePlayoutDelay(source livekit.TrackSource, configured *livekit.PlayoutDelay) *livekit.PlayoutDelay {
+	if source != livekit.TrackSource_SCREEN_SHARE || configured.GetEnabled() {
+		return configured
+	}
+	return &livekit.PlayoutDelay{Enabled: true, Min: 0, Max: 0}
+}
+
 func validateScreenSharePublish(req *livekit.AddTrackRequest) error {
 	if req.Source != livekit.TrackSource_SCREEN_SHARE {
 		return nil

@@ -49,10 +49,15 @@ struct LiveKitScreenPublicationAdapter::State {
   std::shared_ptr<livekit::LocalParticipant> participant;
   std::shared_ptr<livekit::EncodedVideoSource> source;
   std::shared_ptr<livekit::LocalVideoTrack> track;
+  std::optional<std::uint64_t> sender_bitrate_allocation;
 };
 
 OutgoingNetworkObservation LiveKitScreenPublicationAdapter::networkObservation() const noexcept {
-  return transport_->networkSampler()->snapshot();
+  auto observation = transport_->networkSampler()->snapshot();
+  std::scoped_lock lock(state_->mutex);
+  if (state_->source && !state_->stopping)
+    observation.sender_bitrate_allocation = state_->sender_bitrate_allocation;
+  return observation;
 }
 
 LiveKitScreenPublicationAdapter::LiveKitScreenPublicationAdapter(
@@ -74,9 +79,11 @@ void LiveKitScreenPublicationAdapter::startPublish(
     std::uint64_t generation, screen::ScreenTrackDescriptor descriptor,
     screen::ScreenOperationCompletion completion) {
   const auto state = state_;
+  // The transport joins its lane before destruction; avoid a self-owning task.
+  auto* const transport = transport_.get();
   auto queued_completion = completion;
   const bool queued = transport_->enqueueActiveRoomTask(
-      [state, generation, descriptor = std::move(descriptor),
+      [state, transport, generation, descriptor = std::move(descriptor),
        completion = std::move(queued_completion)](
           const std::shared_ptr<livekit::Room>& room) mutable {
         try {
@@ -123,6 +130,7 @@ void LiveKitScreenPublicationAdapter::startPublish(
               state->generation = generation;
               state->participant = participant;
               state->source = std::move(source);
+              state->sender_bitrate_allocation.reset();
               state->track = std::move(track);
             }
           }
@@ -135,6 +143,29 @@ void LiveKitScreenPublicationAdapter::startPublish(
                         "Screen publication adapter is stopping",
                         "screen_publish", true));
           }
+          transport->setScreenFeedbackPoll(
+              [weak_state = std::weak_ptr<State>(state), weak_room = std::weak_ptr<livekit::Room>(room),
+               generation](const std::shared_ptr<livekit::Room>& active) {
+                const auto current = weak_state.lock();
+                if (!current || weak_room.lock() != active) return;
+                std::shared_ptr<livekit::EncodedVideoSource> source;
+                LiveKitScreenEncoderControls controls;
+                {
+                  std::scoped_lock lock(current->mutex);
+                  if (current->stopping || current->generation != generation) return;
+                  source = current->source;
+                  controls = current->controls;
+                }
+                if (!source) return;
+                const bool keyframe = source->takeKeyFrameRequest();
+                const auto allocation = source->takeBitrateRequest();
+                {
+                  std::scoped_lock lock(current->mutex);
+                  if (current->stopping || current->generation != generation) return;
+                  if (allocation) current->sender_bitrate_allocation = allocation;
+                }
+                if (keyframe && controls.request_key_frame) controls.request_key_frame();
+              });
           completion(generation, screen::ScreenOperationResult::success());
         } catch (...) {
           completeException(generation, std::move(completion),
@@ -152,14 +183,12 @@ void LiveKitScreenPublicationAdapter::startSubmit(
     std::uint64_t generation, screen::EncodedScreenFrame frame,
     screen::ScreenOperationCompletion completion) {
   const auto state = state_;
-  const auto sampler = transport_->networkSampler();
   auto queued_completion = completion;
   const bool queued = transport_->enqueueActiveRoomTask(
-      [state, sampler, generation, frame, completion = std::move(queued_completion)](
-          const std::shared_ptr<livekit::Room>& room) mutable {
+      [state, generation, frame, completion = std::move(queued_completion)](
+          const std::shared_ptr<livekit::Room>&) mutable {
         try {
           std::shared_ptr<livekit::EncodedVideoSource> source;
-          LiveKitScreenEncoderControls controls;
           bool stale = false;
           {
             std::scoped_lock lock(state->mutex);
@@ -167,7 +196,6 @@ void LiveKitScreenPublicationAdapter::startSubmit(
                     !state->source;
             if (!stale) {
               source = state->source;
-              controls = state->controls;
             }
           }
           if (stale)
@@ -188,9 +216,6 @@ void LiveKitScreenPublicationAdapter::startSubmit(
                 failure("screen_livekit_encoded_frame_rejected",
                         "LiveKit rejected the encoded H.264 access unit",
                         "screen_submit", true));
-          if (source->takeKeyFrameRequest() && controls.request_key_frame)
-            controls.request_key_frame();
-          sampler->sampleOnSdkLane(room);
           completion(generation, screen::ScreenOperationResult::success());
         } catch (...) {
           completeException(generation, std::move(completion),
