@@ -24,9 +24,7 @@ void FrameResource::copyBgraTo(std::span<std::uint8_t>, std::size_t) {
   throw std::logic_error("frame resource does not support CPU readback");
 }
 
-std::optional<D3d11FrameView> FrameResource::d3d11View() {
-  return std::nullopt;
-}
+std::optional<D3d11FrameView> FrameResource::d3d11View() { return std::nullopt; }
 
 struct FrameLease::State {
   std::mutex mutex;
@@ -60,8 +58,7 @@ struct MonitorCapture::SharedState {
 
 class ScopeExit final {
  public:
-  explicit ScopeExit(std::function<void()> cleanup)
-      : cleanup_(std::move(cleanup)) {}
+  explicit ScopeExit(std::function<void()> cleanup) : cleanup_(std::move(cleanup)) {}
   ~ScopeExit() { cleanup_(); }
 
  private:
@@ -70,8 +67,7 @@ class ScopeExit final {
 
 FrameLease::FrameLease(std::shared_ptr<State> state) : state_(std::move(state)) {}
 
-FrameLease FrameLease::create(FrameMetadata metadata,
-                              std::shared_ptr<FrameResource> resource,
+FrameLease FrameLease::create(FrameMetadata metadata, std::shared_ptr<FrameResource> resource,
                               std::function<void()> on_release) {
   auto state = std::make_shared<State>();
   state->metadata = std::move(metadata);
@@ -82,8 +78,7 @@ FrameLease FrameLease::create(FrameMetadata metadata,
 
 FrameLease::~FrameLease() { release(); }
 
-FrameLease::FrameLease(FrameLease&& other) noexcept
-    : state_(std::move(other.state_)) {}
+FrameLease::FrameLease(FrameLease&& other) noexcept : state_(std::move(other.state_)) {}
 
 FrameLease& FrameLease::operator=(FrameLease&& other) noexcept {
   if (this == &other) return *this;
@@ -92,9 +87,7 @@ FrameLease& FrameLease::operator=(FrameLease&& other) noexcept {
   return *this;
 }
 
-FrameLease::operator bool() const noexcept {
-  return state_ && !state_->released.load();
-}
+FrameLease::operator bool() const noexcept { return state_ && !state_->released.load(); }
 
 const FrameMetadata& FrameLease::metadata() const {
   if (!*this) throw std::logic_error("frame lease was released");
@@ -139,8 +132,7 @@ LeaseReleaseStatus FrameLease::release() noexcept {
   return LeaseReleaseStatus::Released;
 }
 
-MonitorCapture::MonitorCapture(sources::SourceRegistry& registry,
-                               std::string source_id,
+MonitorCapture::MonitorCapture(sources::SourceRegistry& registry, std::string source_id,
                                std::unique_ptr<MonitorCaptureBackend> backend)
     : registry_(registry),
       source_id_(std::move(source_id)),
@@ -156,8 +148,7 @@ MonitorCapture::~MonitorCapture() {
     start_in_flight = shared_->start_in_flight;
   }
   (void)stop(start_in_flight
-                 ? std::chrono::duration_cast<std::chrono::milliseconds>(
-                       kBackendRollbackDeadline)
+                 ? std::chrono::duration_cast<std::chrono::milliseconds>(kBackendRollbackDeadline)
                  : std::chrono::milliseconds{0});
 }
 
@@ -165,8 +156,7 @@ CaptureStartResult MonitorCapture::start() {
   {
     std::lock_guard lock(shared_->mutex);
     if (shared_->state != CaptureState::Idle) {
-      return {false, CaptureFailure{"capture_already_started",
-                                    "monitor capture is not idle"}};
+      return {false, CaptureFailure{"capture_already_started", "monitor capture is not idle"}};
     }
     shared_->state = CaptureState::Starting;
     shared_->accepting_frames = true;
@@ -184,8 +174,7 @@ CaptureStartResult MonitorCapture::start() {
     if (shared->stop_requested) {
       shared->state = CaptureState::Stopped;
       return CaptureStartResult{
-          false, CaptureFailure{"start_cancelled",
-                                "capture was stopped during start"}};
+          false, CaptureFailure{"start_cancelled", "capture was stopped during start"}};
     }
     shared->state = CaptureState::Failed;
     shared->terminal_failure = failure;
@@ -197,8 +186,7 @@ CaptureStartResult MonitorCapture::start() {
     return fail_start(sourceFailure(resolved.status));
   }
   if (resolved.kind != sources::SourceKind::Monitor) {
-    return fail_start(
-        CaptureFailure{"source_kind_mismatch", "source is not a monitor"});
+    return fail_start(CaptureFailure{"source_kind_mismatch", "source is not a monitor"});
   }
 
   const auto target = registry_.resolveMonitorTarget(source_id_);
@@ -209,8 +197,7 @@ CaptureStartResult MonitorCapture::start() {
   {
     std::lock_guard lock(shared_->mutex);
     if (shared_->stop_requested) {
-      const CaptureFailure failure{"start_cancelled",
-                                   "capture was stopped during start"};
+      const CaptureFailure failure{"start_cancelled", "capture was stopped during start"};
       shared_->accepting_frames = false;
       shared_->state = CaptureState::Stopped;
       return {false, failure};
@@ -223,27 +210,26 @@ CaptureStartResult MonitorCapture::start() {
       *target.target,
       [weak](BackendFrame frame) {
         const auto shared = weak.lock();
-        if (!shared || !frame.resource || frame.width == 0 ||
-            frame.height == 0) {
+        if (!shared || !frame.resource || frame.width == 0 || frame.height == 0) {
           return;
         }
         std::lock_guard lock(shared->mutex);
         if (!shared->accepting_frames ||
-            (shared->state != CaptureState::Starting &&
-             shared->state != CaptureState::Running)) {
+            (shared->state != CaptureState::Starting && shared->state != CaptureState::Running)) {
           return;
         }
         ++shared->stats.received_frames;
-        if (shared->last_timestamp &&
-            frame.capture_timestamp_100ns < *shared->last_timestamp) {
+        if (shared->last_timestamp && frame.capture_timestamp_100ns < *shared->last_timestamp) {
           shared->stats.timestamps_monotonic = false;
         }
         shared->last_timestamp = frame.capture_timestamp_100ns;
         FrameMetadata metadata{shared->next_sequence++,
-                               frame.capture_timestamp_100ns, frame.width,
-                               frame.height, frame.format};
-        if (shared->queue.size() + shared->stats.outstanding_leases >=
-            kMaximumMonitorFrames) {
+                               frame.capture_timestamp_100ns,
+                               frame.width,
+                               frame.height,
+                               frame.format,
+                               frame.generation};
+        if (shared->queue.size() + shared->stats.outstanding_leases >= kMaximumMonitorFrames) {
           if (shared->queue.empty()) {
             ++shared->stats.dropped_frames;
             return;
@@ -251,11 +237,9 @@ CaptureStartResult MonitorCapture::start() {
           shared->queue.pop_front();
           ++shared->stats.dropped_frames;
         }
-        shared->queue.push_back(
-            SharedState::QueuedFrame{metadata, std::move(frame.resource)});
+        shared->queue.push_back(SharedState::QueuedFrame{metadata, std::move(frame.resource)});
         shared->stats.maximum_queue_depth =
-            (std::max)(shared->stats.maximum_queue_depth,
-                       shared->queue.size());
+            (std::max)(shared->stats.maximum_queue_depth, shared->queue.size());
         shared->condition.notify_one();
       },
       [weak](CaptureFailure failure) {
@@ -279,8 +263,7 @@ CaptureStartResult MonitorCapture::start() {
       shared_->queue.clear();
       if (shared_->stop_requested) {
         shared_->state = CaptureState::Stopped;
-        start_failure = CaptureFailure{"start_cancelled",
-                                       "capture was stopped during start"};
+        start_failure = CaptureFailure{"start_cancelled", "capture was stopped during start"};
       } else {
         shared_->state = CaptureState::Failed;
         shared_->terminal_failure = backend_result.failure.value_or(
@@ -294,8 +277,7 @@ CaptureStartResult MonitorCapture::start() {
     } else if (shared_->state == CaptureState::Failed) {
       shared_->accepting_frames = false;
       start_failure = shared_->terminal_failure.value_or(
-          CaptureFailure{"capture_start_failed",
-                         "capture failed while backend was starting"});
+          CaptureFailure{"capture_start_failed", "capture failed while backend was starting"});
       if (!shared_->backend_stop_called) {
         shared_->backend_stop_called = true;
         stop_backend = true;
@@ -308,12 +290,11 @@ CaptureStartResult MonitorCapture::start() {
     }
   }
   if (stop_backend) {
-    const auto rollback_deadline =
-        std::chrono::steady_clock::now() + kBackendRollbackDeadline;
+    const auto rollback_deadline = std::chrono::steady_clock::now() + kBackendRollbackDeadline;
     const auto stopped = backend_->stop(rollback_deadline);
     if (!stopped.ok) {
-      const auto rollback_failure = stopped.failure.value_or(CaptureFailure{
-          "capture_backend_stop_failed", "capture backend rollback failed"});
+      const auto rollback_failure = stopped.failure.value_or(
+          CaptureFailure{"capture_backend_stop_failed", "capture backend rollback failed"});
       {
         std::lock_guard lock(shared_->mutex);
         shared_->backend_stop_failure = rollback_failure;
@@ -325,8 +306,7 @@ CaptureStartResult MonitorCapture::start() {
   {
     std::lock_guard lock(shared_->mutex);
     if (shared_->stop_requested) {
-      return {false, CaptureFailure{"start_cancelled",
-                                    "capture was stopped during start"}};
+      return {false, CaptureFailure{"start_cancelled", "capture was stopped during start"}};
     }
     if (shared_->state == CaptureState::Failed) {
       return {false, shared_->terminal_failure};
@@ -335,8 +315,7 @@ CaptureStartResult MonitorCapture::start() {
   return {};
 }
 
-std::optional<FrameLease> MonitorCapture::waitForFrame(
-    std::chrono::milliseconds timeout) {
+std::optional<FrameLease> MonitorCapture::waitForFrame(std::chrono::milliseconds timeout) {
   std::unique_lock lock(shared_->mutex);
   shared_->condition.wait_for(lock, timeout, [this] {
     return !shared_->queue.empty() || shared_->state == CaptureState::Stopped ||
@@ -362,8 +341,7 @@ std::optional<FrameLease> MonitorCapture::waitForFrame(
   return FrameLease{std::move(lease)};
 }
 
-CaptureStopResult MonitorCapture::stop(
-    std::chrono::milliseconds lease_deadline) {
+CaptureStopResult MonitorCapture::stop(std::chrono::milliseconds lease_deadline) {
   const auto duration = (std::max)(lease_deadline, std::chrono::milliseconds{0});
   const auto deadline = std::chrono::steady_clock::now() + duration;
   bool stop_backend = false;
@@ -385,8 +363,8 @@ CaptureStopResult MonitorCapture::stop(
   if (stop_backend) {
     const auto stopped = backend_->stop(deadline);
     if (!stopped.ok) {
-      backend_failure = stopped.failure.value_or(CaptureFailure{
-          "capture_backend_stop_failed", "capture backend stop failed"});
+      backend_failure = stopped.failure.value_or(
+          CaptureFailure{"capture_backend_stop_failed", "capture backend stop failed"});
       std::lock_guard lock(shared_->mutex);
       shared_->backend_stop_failure = backend_failure;
     }
@@ -394,13 +372,11 @@ CaptureStopResult MonitorCapture::stop(
 
   std::unique_lock lock(shared_->mutex);
   if (!shared_->condition.wait_until(lock, deadline, [this] {
-        return !shared_->start_in_flight &&
-               shared_->stats.outstanding_leases == 0;
+        return !shared_->start_in_flight && shared_->stats.outstanding_leases == 0;
       })) {
     const bool start_pending = shared_->start_in_flight;
     CaptureFailure failure{
-        start_pending ? "capture_start_deadline_exceeded"
-                      : "frame_lease_deadline_exceeded",
+        start_pending ? "capture_start_deadline_exceeded" : "frame_lease_deadline_exceeded",
         start_pending ? "capture start exceeded stop deadline"
                       : "outstanding frame lease exceeded stop deadline"};
     shared_->state = CaptureState::Failed;
@@ -423,9 +399,14 @@ CaptureStopResult MonitorCapture::stop(
 }
 
 CaptureState MonitorCapture::state() const {
+  const auto progress = backend_->progress();
   std::lock_guard lock(shared_->mutex);
+  if (shared_->state == CaptureState::Running &&
+      progress.state == CaptureBackendProgressState::paused)
+    return CaptureState::Paused;
   return shared_->state;
 }
+CaptureBackendProgress MonitorCapture::progress() const { return backend_->progress(); }
 
 CaptureStats MonitorCapture::stats() const {
   std::lock_guard lock(shared_->mutex);
@@ -439,11 +420,18 @@ std::optional<CaptureFailure> MonitorCapture::terminalFailure() const {
 
 const char* toString(CaptureState value) noexcept {
   switch (value) {
-    case CaptureState::Idle: return "idle";
-    case CaptureState::Starting: return "starting";
-    case CaptureState::Running: return "running";
-    case CaptureState::Stopped: return "stopped";
-    case CaptureState::Failed: return "failed";
+    case CaptureState::Idle:
+      return "idle";
+    case CaptureState::Starting:
+      return "starting";
+    case CaptureState::Running:
+      return "running";
+    case CaptureState::Paused:
+      return "paused";
+    case CaptureState::Stopped:
+      return "stopped";
+    case CaptureState::Failed:
+      return "failed";
   }
   return "failed";
 }

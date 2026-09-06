@@ -1,12 +1,13 @@
 import { AccessToken } from 'livekit-server-sdk'
 import { Effect } from 'effect'
 import { verifyAdaptiveEvidence } from './adaptive-evidence.js'
+import { decodeGpuContentionEvidence, verifyBackendEvidence } from './backend-evidence.js'
 import { randomBytes } from 'node:crypto'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
+import { networkInterfaces, tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -182,16 +183,43 @@ async function createToken(
 async function executeLab(resources: LabResources): Promise<void> {
   const apiKey = `lab_${randomBytes(12).toString('hex')}`
   const apiSecret = randomBytes(32).toString('base64url')
+  // Interface ordering can select a VPN/TUN adapter and route the local lab
+  // through a proxy. Native SFU runs require an explicit local interface.
+  const nativeNodeIp = serverExecutable ? process.env.MEDIA_LAB_SERVER_IP : undefined
+  if (serverExecutable && !Object.values(networkInterfaces()).flatMap(addresses => addresses ?? [])
+    .some(address => address.family === 'IPv4' && !address.internal &&
+      !address.address.startsWith('169.254.') && address.address === nativeNodeIp)) {
+    throw new LabFailure('Set MEDIA_LAB_SERVER_IP to a local non-loopback IPv4 address on the intended lab interface')
+  }
   const configPath = path.resolve(resources.directory, 'livekit.yaml')
   await writeFile(configPath, [
     'port: 7880',
     'bind_addresses:',
-    '  - "0.0.0.0"',
+    serverExecutable ? '  - "127.0.0.1"' : '  - "0.0.0.0"',
     'rtc:',
     '  tcp_port: 7881',
     '  udp_port: 7882',
     '  use_external_ip: false',
-    '  node_ip: "127.0.0.1"',
+    `  node_ip: ${JSON.stringify(nativeNodeIp ?? '127.0.0.1')}`,
+    // Advertise the actual native UDP listener. WebRTC clients do not normally
+    // gather loopback interfaces; Docker uses its published-port NAT mapping.
+    ...(nativeNodeIp ? [
+      '  ips:',
+      '    includes:',
+      `      - "${nativeNodeIp}/32"`,
+      // Embedded UDP TURN supplies local STUN discovery. Without it the SFU
+      // sends default public STUN servers even when stun_servers is empty.
+      // Keep fixture discovery/relay traffic on this one lab endpoint.
+      'turn:',
+      '  enabled: true',
+      '  udp_port: 3478',
+      '  tls_port: 0',
+      `  bind_addresses: ["${nativeNodeIp}"]`,
+      '  relay_range_start: 30000',
+      '  relay_range_end: 30100',
+      '  ttl_seconds: 3600',
+      `  allow_restricted_peer_cidrs: ["${nativeNodeIp}/32"]`,
+    ] : []),
     'logging:',
     process.env.MEDIA_LAB_DIAGNOSTIC_LOGS === 'true' ? '  level: debug' : '  level: warn',
     'keys:',
@@ -251,11 +279,15 @@ async function executeLab(resources: LabResources): Promise<void> {
     },
   )
   resources.processes.add(productionRoomSmoke)
-  await withDeadline(
-    productionRoomSmoke.completion,
-    30_000,
-    'production Supervisor room smoke exceeded its deadline',
-  )
+  try {
+    await withDeadline(
+      productionRoomSmoke.completion,
+      30_000,
+      'production Supervisor room smoke exceeded its deadline',
+    )
+  } catch (error: unknown) {
+    throw new LabFailure(`${normalizeError(error).message}\n--- server ---\n${server.output().slice(-8000)}`)
+  }
   const productionMetricsLine = productionRoomSmoke.output()
     .split(/\r?\n/)
     .find((line) => line.startsWith('MEDIA_ROOM_SMOKE '))
@@ -403,6 +435,9 @@ async function executeLab(resources: LabResources): Promise<void> {
         // resource-drain check per cycle. Its total duration is distinct from
         // the unchanged 1500 ms frame-age/latency acceptance limit.
         mode === 'screen-gpu-adaptive-contention-window' ? 1_240_000 :
+        mode === 'screen-gpu-switch-monitor-1080p60' ? 420_000 :
+        mode === 'screen-gpu-dxgi-contention-monitor-1080p60' ? 100_000 :
+        (mode === 'screen-gpu-monitor-1080p60' || mode === 'screen-gpu-dxgi-monitor-1080p60') ? 160_000 :
         mode.includes('screen-gpu-adaptive') ? 160_000 :
           mode.includes('repeat') ? 45_000 + screenCycles * 10_000 : 75_000,
         `${mode} exceeded its process deadline`,
@@ -434,17 +469,35 @@ async function executeLab(resources: LabResources): Promise<void> {
       const adaptiveSamples = publisher.output().split(/\r?\n/)
         .filter(line => line.startsWith('ADAPTIVE_SAMPLE '))
         .map(line => JSON.parse(line.slice('ADAPTIVE_SAMPLE '.length)))
+      const backendOutput = publisher.output().slice(publisher.output().lastIndexOf('BACKEND_BEGIN'))
+      const backendSamples = backendOutput.split(/\r?\n/)
+        .filter(line => line.startsWith('BACKEND_SAMPLE '))
+        .map(line => JSON.parse(line.slice('BACKEND_SAMPLE '.length)))
+      const backendLine = backendOutput.split(/\r?\n/).find(line => line.startsWith('BACKEND_SELECTION '))
+      const backend = backendLine === undefined ? undefined : JSON.parse(backendLine.slice('BACKEND_SELECTION '.length))
+      const contentionLine = backendOutput.split(/\r?\n/).find(line => line.startsWith('GPU_CONTENTION '))
+      const gpuContention = mode === 'screen-gpu-dxgi-contention-monitor-1080p60'
+        ? decodeGpuContentionEvidence(contentionLine === undefined ? undefined
+          : JSON.parse(contentionLine.slice('GPU_CONTENTION '.length))) : undefined
       const adaptive = mode.includes('adaptive')
         ? verifyAdaptiveEvidence(adaptiveSamples, observerReport, mode.includes('contention')) : undefined
       if (adaptive && ('reconnects' in observerReport && observerReport.reconnects !== 0 ||
           /resuming connection|restarting connection/.test(publisher.output())))
         throw new LabFailure('Adaptive observation crossed a Room reconnection')
       if (adaptive && !adaptive.accepted) throw new LabFailure(`Adaptive acceptance: ${JSON.stringify(adaptive)}`)
+      const backendVerification = backend !== undefined && mode.includes('1080p60')
+        ? verifyBackendEvidence(backend, backendSamples, observerReport, mode) : undefined
+      if (backendVerification && (!backendVerification.accepted || /resuming connection|restarting connection/.test(backendOutput)))
+        throw new LabFailure(`Backend acceptance: ${JSON.stringify(backendVerification)}`)
       scenarioReports[mode] = {
         sender: senderReport,
         observer: observerReport,
         adaptiveSamples,
         adaptive,
+        backendSamples,
+        backend,
+        backendVerification,
+        gpuContention,
       }
     } catch (error: unknown) {
       const diagnosticDirectory = path.resolve(packageRoot, 'artifacts')
@@ -588,7 +641,22 @@ async function executeLab(resources: LabResources): Promise<void> {
       requestedScreenMode === 'screen-cpu-observer-rejoin') {
     await runScreenObserverRejoin()
   }
-  await screenScenario('screen-gpu-monitor-1080p60', 80)
+  await screenScenario('screen-gpu-monitor-1080p60', 5000, undefined, 3, {
+    MEDIA_LAB_MIN_OBSERVATION_MS: '120000', MEDIA_LAB_TIMEOUT_MS: '150000',
+    MEDIA_LAB_ALLOW_VIDEO_GAPS: 'true',
+  })
+  await screenScenario('screen-gpu-dxgi-monitor-1080p60', 5000, undefined, 3, {
+    MEDIA_LAB_MIN_OBSERVATION_MS: '120000', MEDIA_LAB_TIMEOUT_MS: '150000',
+    MEDIA_LAB_ALLOW_VIDEO_GAPS: 'true',
+  })
+  await screenScenario('screen-gpu-switch-monitor-1080p60', 8000, undefined, 3, {
+    MEDIA_LAB_MIN_OBSERVATION_MS: '375000', MEDIA_LAB_TIMEOUT_MS: '410000',
+    MEDIA_LAB_ALLOW_VIDEO_GAPS: 'true',
+  })
+  await screenScenario('screen-gpu-dxgi-contention-monitor-1080p60', 1500, undefined, 3, {
+    MEDIA_LAB_MIN_OBSERVATION_MS: '60000', MEDIA_LAB_TIMEOUT_MS: '90000',
+    MEDIA_LAB_ALLOW_VIDEO_GAPS: 'true',
+  })
   await screenScenario('screen-gpu-window-1080p60', 80)
   await screenScenario('screen-gpu-adaptive-window', 1500, undefined, 5, {
     MEDIA_LAB_MIN_OBSERVATION_MS: '120000',

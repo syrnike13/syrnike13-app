@@ -28,8 +28,7 @@ class TestResource final : public FrameResource {
 
   std::uint64_t sampledHash() override { return value_; }
 
-  void copyBgraTo(std::span<std::uint8_t> destination,
-                  std::size_t stride) override {
+  void copyBgraTo(std::span<std::uint8_t> destination, std::size_t stride) override {
     require(stride >= width_ * 4ULL && destination.size() >= stride * height_,
             "test readback destination was too small");
     for (std::uint32_t y = 0; y < height_; ++y) {
@@ -67,30 +66,25 @@ class TestEnumerator final : public SourceEnumerator {
 
   MonitorTargetResult resolveMonitorTarget(const std::string& identity) override {
     return identity == "screen-test-monitor"
-               ? MonitorTargetResult{ResolveStatus::Available,
-                                     MonitorTargetToken{1, identity}}
+               ? MonitorTargetResult{ResolveStatus::Available, MonitorTargetToken{1, identity}}
                : MonitorTargetResult{ResolveStatus::Unknown, std::nullopt};
   }
 };
 
 class TestBackend final : public MonitorCaptureBackend {
  public:
+  CaptureBackendProgress progress() const override { return {}; }
   BackendStartResult start(const MonitorTargetToken&, FrameCallback on_frame,
                            TerminalCallback) override {
     callback = std::move(on_frame);
     return {};
   }
 
-  CaptureStopResult stop(
-      std::chrono::steady_clock::time_point) noexcept override {
-    return {};
-  }
+  CaptureStopResult stop(std::chrono::steady_clock::time_point) noexcept override { return {}; }
 
-  void emit(std::int64_t timestamp, std::uint32_t width,
-            std::uint32_t height, std::uint8_t value) {
+  void emit(std::int64_t timestamp, std::uint32_t width, std::uint32_t height, std::uint8_t value) {
     callback(BackendFrame{timestamp, width, height, FramePixelFormat::Bgra8,
-                          std::make_shared<TestResource>(width, height, value),
-                          1});
+                          std::make_shared<TestResource>(width, height, value), 1});
   }
 
   FrameCallback callback;
@@ -106,15 +100,15 @@ struct TestCapture {
     require(sources.sources.size() == 1, "test source enumeration failed");
     auto owned_backend = std::make_unique<TestBackend>();
     backend = owned_backend.get();
-    capture = std::make_unique<MonitorCapture>(
-        registry, sources.sources.front().id, std::move(owned_backend));
+    capture = std::make_unique<MonitorCapture>(registry, sources.sources.front().id,
+                                               std::move(owned_backend));
     require(capture->start().ok, "test capture failed to start");
   }
 
   ~TestCapture() { (void)capture->stop(1s); }
 
-  FrameLease next(std::uint8_t value, std::int64_t timestamp,
-                  std::uint32_t width = 4, std::uint32_t height = 4) {
+  FrameLease next(std::uint8_t value, std::int64_t timestamp, std::uint32_t width = 4,
+                  std::uint32_t height = 4) {
     backend->emit(timestamp, width, height, value);
     auto lease = capture->waitForFrame(10ms);
     require(lease.has_value(), "test frame lease was unavailable");
@@ -122,19 +116,15 @@ struct TestCapture {
   }
 };
 
-std::uint64_t markerBits(const std::vector<std::uint8_t>& frame,
-                         std::uint32_t width, std::size_t offset,
-                         std::size_t length) {
+std::uint64_t markerBits(const std::vector<std::uint8_t>& frame, std::uint32_t width,
+                         std::size_t offset, std::size_t length) {
   std::uint64_t value = 0;
   for (std::size_t bit = offset; bit < offset + length; ++bit) {
     const auto column = bit % kScreenMarkerColumns;
     const auto row = bit / kScreenMarkerColumns;
-    const auto x = column * kScreenMarkerTileSize +
-                   kScreenMarkerTileSize / 2;
-    const auto y = row * kScreenMarkerTileSize +
-                   kScreenMarkerTileSize / 2;
-    value = (value << 1U) |
-            (frame[(y * width + x) * 4ULL] >= 128 ? 1ULL : 0ULL);
+    const auto x = column * kScreenMarkerTileSize + kScreenMarkerTileSize / 2;
+    const auto y = row * kScreenMarkerTileSize + kScreenMarkerTileSize / 2;
+    value = (value << 1U) | (frame[(y * width + x) * 4ULL] >= 128 ? 1ULL : 0ULL);
   }
   return value;
 }
@@ -144,19 +134,16 @@ void pipelineLatestWinsAndReleases() {
   ScreenFramePipeline pipeline;
   const auto now = screenSteadyTimestamp100ns();
   require(pipeline.submit(source.next(10, now)), "first frame was rejected");
-  require(pipeline.submit(source.next(20, now + 1)),
-          "second frame was rejected");
+  require(pipeline.submit(source.next(20, now + 1)), "second frame was rejected");
   auto frame = pipeline.waitForFrame(10ms);
-  require(frame && frame->metadata().sequence == 2,
-          "pipeline did not retain the newest frame");
+  require(frame && frame->metadata().sequence == 2, "pipeline did not retain the newest frame");
   frame->release();
-  require(pipeline.stop(std::chrono::steady_clock::now() + 1s),
-          "pipeline failed to stop");
+  require(pipeline.stop(std::chrono::steady_clock::now() + 1s), "pipeline failed to stop");
   const auto stats = pipeline.stats();
   require(stats.submitted == 2 && stats.accepted == 2 && stats.superseded == 1 &&
               stats.dropped == 1 && stats.released == 2 &&
-              stats.maximum_depth == kScreenFramePipelineCapacity &&
-              stats.pending == 0 && stats.active == 0,
+              stats.maximum_depth == kScreenFramePipelineCapacity && stats.pending == 0 &&
+              stats.active == 0,
           "pipeline counters violated latest-wins ownership");
 }
 
@@ -166,11 +153,9 @@ void pipelineDropsExpiredFrame() {
   const auto old = screenSteadyTimestamp100ns() - 1'000'000;
   require(pipeline.submit(source.next(30, old)), "old frame was not accepted");
   require(!pipeline.waitForFrame(10ms), "old frame escaped the age fence");
-  require(pipeline.stop(std::chrono::steady_clock::now() + 1s),
-          "expired pipeline failed to stop");
+  require(pipeline.stop(std::chrono::steady_clock::now() + 1s), "expired pipeline failed to stop");
   const auto stats = pipeline.stats();
-  require(stats.submitted == 1 && stats.too_old == 1 && stats.dropped == 1 &&
-              stats.released == 1,
+  require(stats.submitted == 1 && stats.too_old == 1 && stats.dropped == 1 && stats.released == 1,
           "expired frame counters were incorrect");
 }
 
@@ -178,28 +163,24 @@ void pipelineRestartsOnlyAfterFullRelease() {
   TestCapture source;
   ScreenFramePipeline pipeline;
   const auto now = screenSteadyTimestamp100ns();
-  require(pipeline.submit(source.next(21, now)),
-          "restart test frame was rejected");
+  require(pipeline.submit(source.next(21, now)), "restart test frame was rejected");
   auto active = pipeline.waitForFrame(10ms);
   require(active.has_value(), "restart test frame was unavailable");
   require(!pipeline.stop(std::chrono::steady_clock::now()),
           "pipeline stopped while an active lease was retained");
-  require(!pipeline.restart(),
-          "pipeline restarted while an active lease was retained");
+  require(!pipeline.restart(), "pipeline restarted while an active lease was retained");
   active->release();
   require(pipeline.stop(std::chrono::steady_clock::now() + 1s),
           "pipeline failed to observe the released lease");
   require(pipeline.restart(), "fully released pipeline did not restart");
-  require(pipeline.submit(source.next(22, now + 1)),
-          "restarted pipeline rejected a frame");
+  require(pipeline.submit(source.next(22, now + 1)), "restarted pipeline rejected a frame");
   auto restarted = pipeline.waitForFrame(10ms);
   require(restarted.has_value(), "restarted pipeline produced no frame");
   restarted->release();
   require(pipeline.stop(std::chrono::steady_clock::now() + 1s),
           "restarted pipeline failed to stop");
   const auto stats = pipeline.stats();
-  require(stats.submitted == 2 && stats.released == 2 &&
-              stats.pending == 0 && stats.active == 0,
+  require(stats.submitted == 2 && stats.released == 2 && stats.pending == 0 && stats.active == 0,
           "pipeline restart violated exact lease accounting");
 }
 
@@ -213,8 +194,7 @@ void pipelineDropsInvalidTimestamp() {
   require(pipeline.stop(std::chrono::steady_clock::now() + 1s),
           "invalid-timestamp pipeline failed to stop");
   const auto stats = pipeline.stats();
-  require(stats.submitted == 1 && stats.too_old == 1 && stats.dropped == 1 &&
-              stats.released == 1,
+  require(stats.submitted == 1 && stats.too_old == 1 && stats.dropped == 1 && stats.released == 1,
           "invalid timestamp did not use the stale-frame release path");
 }
 
@@ -243,19 +223,16 @@ void converterReusesBuffersAndWritesMarker() {
   require(pipeline.submit(source.next(40, now)), "converter frame rejected");
   auto first = pipeline.waitForFrame(10ms);
   require(first.has_value(), "converter frame unavailable");
-  const auto first_result = converter.convert(*first, output, output_width,
-                                               output_height);
+  const auto first_result = converter.convert(*first, output, output_width, output_height);
   require(markerBits(output, output_width, 0, 16) == kScreenMarkerMagic &&
-              markerBits(output, output_width, 16, 32) ==
-                  first_result.source.sequence &&
+              markerBits(output, output_width, 16, 32) == first_result.source.sequence &&
               markerBits(output, output_width, 96, 16) == 1 &&
               markerBits(output, output_width, 112, 16) == 4 &&
               markerBits(output, output_width, 128, 16) == 4,
           "screen marker did not preserve frame metadata");
   first->release();
 
-  require(pipeline.submit(source.next(50, now + 1)),
-          "second converter frame rejected");
+  require(pipeline.submit(source.next(50, now + 1)), "second converter frame rejected");
   auto second = pipeline.waitForFrame(10ms);
   require(second.has_value(), "second converter frame unavailable");
   (void)converter.convert(*second, output, output_width, output_height);

@@ -46,6 +46,23 @@ describe('decodeVideoMarker', () => {
     expect(
       decodeVideoMarker(new VideoFrame(data, width, height, VideoBufferType.I420)),
     ).toEqual({ sequence, capturedAtMs, generation, sourceWidth, sourceHeight })
+    // A damaged center pixel must not flip an otherwise uniform coded tile.
+    for (let bit = 0; bit < MARKER_BITS; bit += 1) {
+      const x = (bit % MARKER_COLUMNS) * MARKER_TILE_SIZE + Math.floor(MARKER_TILE_SIZE / 2)
+      const y = Math.floor(bit / MARKER_COLUMNS) * MARKER_TILE_SIZE + Math.floor(MARKER_TILE_SIZE / 2)
+      data[y * width + x] = data[y * width + x]! >= 128 ? 16 : 235
+    }
+    expect(decodeVideoMarker(new VideoFrame(data, width, height, VideoBufferType.I420)))
+      .toEqual({ sequence, capturedAtMs, generation, sourceWidth, sourceHeight })
+    expect(decodeVideoMarker(new VideoFrame(data, width, height, VideoBufferType.I420), 0)).toBeUndefined()
+    // A genuinely different sequence tile remains different: spatial sampling
+    // must not guess timestamps or repair ordering from previous frames.
+    const sequenceBit = 47
+    for (let y = MARKER_TILE_SIZE; y < 2 * MARKER_TILE_SIZE; y += 1)
+      data.fill(235, y * width + (sequenceBit % MARKER_COLUMNS) * MARKER_TILE_SIZE,
+        y * width + ((sequenceBit % MARKER_COLUMNS) + 1) * MARKER_TILE_SIZE)
+    expect(decodeVideoMarker(new VideoFrame(data, width, height, VideoBufferType.I420))?.sequence)
+      .toBe(sequence + 1)
   })
 
   it('rejects future and stale timestamps instead of bypassing latency checks', () => {

@@ -22,6 +22,8 @@ const ObserverEnvironment = Schema.Struct({
   LIVEKIT_URL: Schema.String,
   LIVEKIT_OBSERVER_TOKEN: Schema.String,
   MEDIA_LAB_REPORT_PATH: Schema.String,
+  MEDIA_LAB_ENCODED_PROOF_PATH: Schema.optionalKey(Schema.String),
+  MEDIA_LAB_RTC_STATS_PATH: Schema.optionalKey(Schema.String),
   MEDIA_LAB_READY_PATH: Schema.String,
   MEDIA_LAB_VIDEO_READY_PATH: Schema.optional(Schema.String),
   MEDIA_LAB_MIN_VIDEO_FRAMES: Schema.optional(Schema.String),
@@ -64,6 +66,8 @@ interface ObserverOptions {
   readonly expectVideoEnd: boolean
   readonly minimumAudioFramesAfterVideoEnd: number
   readonly iceTransportType: IceTransportType
+  readonly recordMarkerTrace: boolean
+  readonly rtcStatsPath: string | undefined
 }
 
 interface DecodedStream {
@@ -74,10 +78,14 @@ interface DecodedStream {
   width: number
   height: number
   frames: number
+  p95LatencyMs: number | null
 }
+
+type TrackedDecodedStream = Omit<DecodedStream, 'p95LatencyMs'> & { latencies: number[] }
 
 interface VerificationReport {
   readonly schemaVersion: 1
+  readonly diagnosticOnly: boolean
   readonly accepted: boolean
   readonly startedAt: string
   readonly finishedAt: string
@@ -100,6 +108,13 @@ interface VerificationReport {
     } | null
     readonly averageLatencyMs: number | null
     readonly invalidTimestampFrames: number
+    readonly markerTrace: readonly (readonly [number, number, number])[] | null
+    readonly markerSamplingDifferences: number
+    readonly markerSamplingExamples: readonly {
+      readonly center: ReturnType<typeof decodeVideoMarker> | null
+      readonly area: ReturnType<typeof decodeVideoMarker> | null
+      readonly receivedAt: number
+    }[]
     readonly observerDroppedFrames: number
     readonly maximumObserverBacklogFrames: number
     readonly firstSequence: number | null
@@ -165,6 +180,8 @@ function optionsFromEnvironment(): ObserverOptions {
     url: env.LIVEKIT_URL,
     token: env.LIVEKIT_OBSERVER_TOKEN,
     reportPath: env.MEDIA_LAB_REPORT_PATH,
+    recordMarkerTrace: env.MEDIA_LAB_ENCODED_PROOF_PATH !== undefined,
+    rtcStatsPath: env.MEDIA_LAB_RTC_STATS_PATH,
     readyPath: env.MEDIA_LAB_READY_PATH,
     videoReadyPath: env.MEDIA_LAB_VIDEO_READY_PATH,
     minimumVideoFrames: integerOption(
@@ -233,6 +250,9 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
   let videoReceived = 0
   let videoDecoded = 0
   let invalidVideoTimestamps = 0
+  const markerTrace: Array<readonly [number, number, number]> = []
+  let markerSamplingDifferences = 0
+  const markerSamplingExamples: Array<VerificationReport['video']['markerSamplingExamples'][number]> = []
   let maximumLatencyFrame: VerificationReport['video']['maximumLatencyFrame'] = null
   let maximumConsecutiveFrames = 0
   let sequenceGaps = 0
@@ -251,7 +271,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
   let lastContent: readonly number[] | undefined
   let contentChanges = 0
   const outputSizes: { width: number; height: number; frames: number }[] = []
-  const decodedStreams: DecodedStream[] = []
+  const decodedStreams: TrackedDecodedStream[] = []
   const latencyMinutes: { frames: number; sum: number; maximum: number; histogram: Uint32Array }[] = []
   let videoEndReason: string | undefined
   let videoEndedAt: number | undefined
@@ -297,10 +317,10 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
 
   const consumeVideo = async (track: RemoteTrack) => {
     if (decodedStreams.length >= 128) throw new Error('Observer exceeded bounded video stream history')
-    const stream: DecodedStream = {
+    const stream: TrackedDecodedStream = {
       trackSid: track.sid ?? null, subscribedAfterStartMs: Date.now() - startedAtMs,
       firstFrameAfterStartMs: null, lastFrameAfterStartMs: null,
-      width: 0, height: 0, frames: 0,
+      width: 0, height: 0, frames: 0, latencies: [],
     }
     decodedStreams.push(stream)
     const reader = new VideoStream(track).getReader()
@@ -325,7 +345,20 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
       }
       lastVideoFrameAt = receivedAt
       const marker = decodeVideoMarker(value.frame)
+      const centerMarker = decodeVideoMarker(value.frame, 0)
+      if (JSON.stringify(marker) !== JSON.stringify(centerMarker)) {
+        markerSamplingDifferences += 1
+        if (markerSamplingExamples.length < 16) {
+          const example = { center: centerMarker ?? null, area: marker ?? null, receivedAt }
+          markerSamplingExamples.push(example)
+          process.stderr.write(`MARKER_SAMPLING ${JSON.stringify(example)}\n`)
+        }
+      }
       if (marker !== undefined) {
+        if (options.recordMarkerTrace) {
+          if (markerTrace.length >= 32768) throw new ObserverFailure('Diagnostic marker trace capacity exceeded')
+          markerTrace.push([decodedStreams.indexOf(stream), marker.sequence, marker.capturedAtMs])
+        }
         const { width, height } = value.frame
         stream.firstFrameAfterStartMs ??= receivedAt - startedAtMs
         stream.lastFrameAfterStartMs = receivedAt - startedAtMs
@@ -354,7 +387,9 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
           bucket.frames++; bucket.sum += latency; bucket.maximum = Math.max(bucket.maximum, latency)
           const bin = Math.min(2000, Math.max(0, Math.floor(latency)))
           bucket.histogram[bin] = bucket.histogram[bin]! + 1
+          if (videoLatencies.length >= 120_000) throw new Error('Observer exceeded bounded frame-age history')
           videoLatencies.push(latency)
+          stream.latencies.push(latency)
           if (maximumLatencyFrame === null || latency > maximumLatencyFrame.ageMs) {
             maximumLatencyFrame = {
               trackSid: track.sid ?? null,
@@ -367,6 +402,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
           if (latency > options.maximumFrameAgeMs) staleVideoFrames += 1
         } else {
           invalidVideoTimestamps += 1
+          if (invalidVideoTimestamps <= 16) process.stderr.write(`MARKER_INVALID ${JSON.stringify({ ...marker, receivedAt, previousSequence: streamLastSequence })}\n`)
         }
         if (
           streamLastSequence === undefined ||
@@ -375,6 +411,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
           streamConsecutiveFrames += 1
         } else if (marker.sequence < streamLastSequence) {
           outOfOrderFrames += 1
+          if (outOfOrderFrames <= 16) process.stderr.write(`MARKER_ORDER ${JSON.stringify({ ...marker, receivedAt, previousSequence: streamLastSequence })}\n`)
           streamConsecutiveFrames = 1
         } else if (marker.sequence === streamLastSequence) {
           duplicateFrames += 1
@@ -579,6 +616,23 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
   })
   await writeFile(options.readyPath, 'ready\n', 'utf8')
 
+  // Opt-in diagnostic snapshots never queue concurrent FFI requests. Keep a
+  // fixed sample/byte bound and let room disconnect cancel an outstanding call.
+  const rtcSnapshots: string[] = []
+  let rtcPending: Promise<void> | undefined
+  const rtcTimer = options.rtcStatsPath === undefined ? undefined : setInterval(() => {
+    if (rtcPending || rtcSnapshots.length >= 96) return
+    const elapsedMs = Date.now() - startedAtMs
+    rtcPending = room.getRtcStats().then(stats => {
+      const entry = JSON.stringify({ elapsedMs, stats }, (_key, value: unknown) =>
+        typeof value === 'bigint' ? value.toString() : value)
+      rtcSnapshots.push(Buffer.byteLength(entry) <= 128 * 1024
+        ? entry : JSON.stringify({ elapsedMs, error: 'RTC snapshot exceeded 128 KiB' }))
+    }).catch((error: unknown) => {
+      rtcSnapshots.push(JSON.stringify({ elapsedMs, error: normalizeError(error).message.slice(0, 512) }))
+    }).finally(() => { rtcPending = undefined })
+  }, 5000)
+
   try {
     await withDeadline(accepted, options.timeoutMs, 'observer acceptance deadline exceeded')
   } catch (error: unknown) {
@@ -586,11 +640,18 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
   }
 
   videoEndReason ??= 'observer-complete'
+  clearInterval(rtcTimer)
   await room.disconnect()
+  await rtcPending
+  if (options.rtcStatsPath !== undefined) {
+    await writeFile(options.rtcStatsPath, `[${rtcSnapshots.join(',\n')}]\n`, 'utf8')
+  }
   for (const timer of subscriptionTimers) clearTimeout(timer)
   subscriptionTimers.clear()
   await Promise.allSettled(streamTasks)
   const finishedAtMs = Date.now()
+  const minimumLatency = videoLatencies.reduce((minimum, value) => Math.min(minimum, value), Infinity)
+  const maximumLatency = videoLatencies.reduce((maximum, value) => Math.max(maximum, value), 0)
   const acceptedResult =
     finishedAtMs - startedAtMs >= options.minimumObservationMs &&
     screenEvidenceAccepted(contentChanges, resolutionTransitions,
@@ -605,7 +666,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
     audioFramesAfterVideoEnd >= options.minimumAudioFramesAfterVideoEnd &&
     videoLatencies.length === videoDecoded &&
     videoLatencies.length > 0 &&
-    Math.max(...videoLatencies) <= options.maximumVideoLatencyMs &&
+    maximumLatency <= options.maximumVideoLatencyMs &&
     outOfOrderFrames === 0 &&
     staleVideoFrames === 0
   const latencyTotal = videoLatencies.reduce((sum, value) => sum + value, 0)
@@ -619,6 +680,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
   }
   return {
     schemaVersion: 1,
+    diagnosticOnly: options.rtcStatsPath !== undefined || options.recordMarkerTrace,
     accepted: acceptedResult,
     startedAt: new Date(startedAtMs).toISOString(),
     finishedAt: new Date(finishedAtMs).toISOString(),
@@ -627,7 +689,9 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
       receivedFrames: videoReceived,
       decodedFrames: videoDecoded,
       outputSizes,
-      decodedStreams,
+      decodedStreams: decodedStreams.map(({ latencies, ...stream }) => ({ ...stream,
+        p95LatencyMs: latencies.sort((left, right) => left - right)[Math.ceil(latencies.length * 0.95) - 1] ?? null,
+      })),
       latencyMinutes: latencyMinutes.map((bucket, minute) => {
         let count = 0, p95Ms = 0
         for (; p95Ms < 2000; p95Ms++) {
@@ -641,12 +705,15 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
       sequenceGaps,
       outOfOrderFrames,
       duplicateFrames,
-      minimumLatencyMs: videoLatencies.length > 0 ? Math.min(...videoLatencies) : null,
-      maximumLatencyMs: videoLatencies.length > 0 ? Math.max(...videoLatencies) : null,
+      minimumLatencyMs: videoLatencies.length > 0 ? minimumLatency : null,
+      maximumLatencyMs: videoLatencies.length > 0 ? maximumLatency : null,
       maximumLatencyFrame,
       averageLatencyMs:
         videoLatencies.length > 0 ? latencyTotal / videoLatencies.length : null,
       invalidTimestampFrames: invalidVideoTimestamps,
+      markerTrace: options.recordMarkerTrace ? markerTrace : null,
+      markerSamplingDifferences,
+      markerSamplingExamples,
       observerDroppedFrames,
       maximumObserverBacklogFrames,
       firstSequence: firstVideoSequence ?? null,

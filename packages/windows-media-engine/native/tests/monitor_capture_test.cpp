@@ -51,8 +51,7 @@ class FakeEnumerator final : public SourceEnumerator {
                                                        : ResolveStatus::Removed;
   }
 
-  MonitorTargetResult resolveMonitorTarget(
-      const std::string& identity) override {
+  MonitorTargetResult resolveMonitorTarget(const std::string& identity) override {
     if (!target_available || identity != "monitor-a") {
       return {ResolveStatus::Removed, std::nullopt};
     }
@@ -62,8 +61,8 @@ class FakeEnumerator final : public SourceEnumerator {
 
 class FakeBackend final : public MonitorCaptureBackend {
  public:
-  BackendStartResult start(const MonitorTargetToken& target,
-                           FrameCallback on_frame,
+  CaptureBackendProgress progress() const override { return {}; }
+  BackendStartResult start(const MonitorTargetToken& target, FrameCallback on_frame,
                            TerminalCallback on_terminal) override {
     ++starts;
     target_valid = target.valid();
@@ -75,15 +74,14 @@ class FakeBackend final : public MonitorCaptureBackend {
     return start_result;
   }
 
-  CaptureStopResult stop(
-      std::chrono::steady_clock::time_point) noexcept override {
+  CaptureStopResult stop(std::chrono::steady_clock::time_point) noexcept override {
     ++stops;
     return {};
   }
 
-  void emit(std::int64_t timestamp, std::uint64_t hash) {
+  void emit(std::int64_t timestamp, std::uint64_t hash, std::uint64_t generation = 1) {
     frame(BackendFrame{timestamp, 640, 360, FramePixelFormat::Bgra8,
-                       std::make_shared<FakeResource>(hash)});
+                       std::make_shared<FakeResource>(hash), generation});
   }
 
   void fail(std::string code) {
@@ -150,8 +148,8 @@ class BlockingTargetEnumerator final : public SourceEnumerator {
 
 class BlockingStartBackend final : public MonitorCaptureBackend {
  public:
-  BackendStartResult start(const MonitorTargetToken&, FrameCallback,
-                           TerminalCallback) override {
+  CaptureBackendProgress progress() const override { return {}; }
+  BackendStartResult start(const MonitorTargetToken&, FrameCallback, TerminalCallback) override {
     std::unique_lock lock(mutex_);
     entered_ = true;
     condition_.notify_all();
@@ -159,8 +157,7 @@ class BlockingStartBackend final : public MonitorCaptureBackend {
     return {};
   }
 
-  CaptureStopResult stop(
-      std::chrono::steady_clock::time_point) noexcept override {
+  CaptureStopResult stop(std::chrono::steady_clock::time_point) noexcept override {
     std::lock_guard lock(mutex_);
     stopped_ = true;
     condition_.notify_all();
@@ -181,19 +178,17 @@ class BlockingStartBackend final : public MonitorCaptureBackend {
 
 class DeadlineStopBackend final : public MonitorCaptureBackend {
  public:
-  BackendStartResult start(const MonitorTargetToken&, FrameCallback,
-                           TerminalCallback) override {
+  CaptureBackendProgress progress() const override { return {}; }
+  BackendStartResult start(const MonitorTargetToken&, FrameCallback, TerminalCallback) override {
     return {};
   }
 
-  CaptureStopResult stop(
-      std::chrono::steady_clock::time_point deadline) noexcept override {
+  CaptureStopResult stop(std::chrono::steady_clock::time_point deadline) noexcept override {
     std::mutex mutex;
     std::unique_lock lock(mutex);
     condition_.wait_until(lock, deadline);
-    return {false,
-            CaptureFailure{"wgc_callback_deadline_exceeded",
-                           "simulated callback exceeded deadline"}};
+    return {false, CaptureFailure{"wgc_callback_deadline_exceeded",
+                                  "simulated callback exceeded deadline"}};
   }
 
  private:
@@ -220,8 +215,7 @@ void sourceMustResolveAsAvailableMonitor() {
   auto backend = std::make_unique<FakeBackend>();
   auto* fake_backend = backend.get();
   MonitorCapture capture(registry, source.id, std::move(backend));
-  require(capture.start().ok && fake_backend->starts == 1 &&
-              fake_backend->target_valid,
+  require(capture.start().ok && fake_backend->starts == 1 && fake_backend->target_valid,
           "available monitor did not cross the validated target seam");
   require(capture.stop(100ms).ok, "clean capture stop failed");
 
@@ -233,11 +227,9 @@ void sourceMustResolveAsAvailableMonitor() {
   removed_fake->target_available = false;
   auto unused_backend = std::make_unique<FakeBackend>();
   auto* unused = unused_backend.get();
-  MonitorCapture removed_capture(removed_registry, removed_id,
-                                 std::move(unused_backend));
+  MonitorCapture removed_capture(removed_registry, removed_id, std::move(unused_backend));
   const auto failed = removed_capture.start();
-  require(!failed.ok && failed.failure &&
-              failed.failure->code == "source_unavailable" &&
+  require(!failed.ok && failed.failure && failed.failure->code == "source_unavailable" &&
               unused->starts == 0,
           "removed monitor reached the capture backend");
 }
@@ -255,7 +247,7 @@ void latestWinsQueueAndLeaseAreBounded() {
   fake->emit(10, 10);
   fake->emit(20, 20);
   fake->emit(30, 30);
-  fake->emit(40, 40);
+  fake->emit(40, 40, 17);
   const auto stats = capture.stats();
   require(stats.received_frames == 4 && stats.dropped_frames == 1 &&
               stats.maximum_queue_depth == kMaximumMonitorFrames,
@@ -265,9 +257,9 @@ void latestWinsQueueAndLeaseAreBounded() {
   auto second = capture.waitForFrame(0ms);
   auto third = capture.waitForFrame(0ms);
   require(first && second && third && first->metadata().sequence == 2 &&
-              second->metadata().sequence == 3 &&
-              third->metadata().sequence == 4 &&
-              first->sampledHash() == 20 && third->sampledHash() == 40,
+              second->metadata().sequence == 3 && third->metadata().sequence == 4 &&
+              third->metadata().generation == 17 && first->sampledHash() == 20 &&
+              third->sampledHash() == 40,
           "slow consumer did not receive the latest bounded frame set");
   require(third->release() == LeaseReleaseStatus::Released &&
               third->release() == LeaseReleaseStatus::AlreadyReleased,
@@ -314,17 +306,14 @@ void stopWaitsForRegistryResolutionBeforeReturning() {
 
   std::promise<CaptureStopResult> stopped_promise;
   auto stopped_future = stopped_promise.get_future();
-  std::thread stopper(
-      [&] { stopped_promise.set_value(capture.stop(1s)); });
-  const bool returned_before_start =
-      stopped_future.wait_for(20ms) == std::future_status::ready;
+  std::thread stopper([&] { stopped_promise.set_value(capture.stop(1s)); });
+  const bool returned_before_start = stopped_future.wait_for(20ms) == std::future_status::ready;
   blocking->release();
   starter.join();
   stopper.join();
   const auto stop_result = stopped_future.get();
 
-  require(!returned_before_start && stop_result.ok && !start_result.ok &&
-              start_result.failure &&
+  require(!returned_before_start && stop_result.ok && !start_result.ok && start_result.failure &&
               start_result.failure->code == "start_cancelled" &&
               capture.state() == CaptureState::Stopped && fake->starts == 0,
           "stop returned while start still used capture-owned state");
@@ -341,8 +330,8 @@ void terminalDuringBackendStartRollsBackBackend() {
   MonitorCapture capture(registry, source.id, std::move(backend));
 
   const auto started = capture.start();
-  require(!started.ok && started.failure &&
-              started.failure->code == "source_removed" && fake->stops == 1,
+  require(!started.ok && started.failure && started.failure->code == "source_removed" &&
+              fake->stops == 1,
           "terminal callback during backend start did not roll back backend");
 }
 
@@ -361,8 +350,7 @@ void frameLeaseCanOutliveCaptureOwnerSafely() {
     lease = capture.waitForFrame(0ms);
     require(lease.has_value(), "outliving frame lease was absent");
   }
-  require(lease && lease->sampledHash() == 77 &&
-              lease->release() == LeaseReleaseStatus::Released,
+  require(lease && lease->sampledHash() == 77 && lease->release() == LeaseReleaseStatus::Released,
           "capture destruction invalidated an outstanding frame lease");
 }
 
@@ -371,17 +359,15 @@ void backendStopCannotExceedTheCallerDeadline() {
   enumerator->candidates = {monitorCandidate()};
   SourceRegistry registry(std::move(enumerator));
   const auto source = registry.enumerate().sources.at(0);
-  MonitorCapture capture(registry, source.id,
-                         std::make_unique<DeadlineStopBackend>());
+  MonitorCapture capture(registry, source.id, std::make_unique<DeadlineStopBackend>());
   require(capture.start().ok, "deadline backend did not start");
   const auto began = std::chrono::steady_clock::now();
   const auto stopped = capture.stop(20ms);
   const auto elapsed = std::chrono::steady_clock::now() - began;
   const auto repeated = capture.stop(20ms);
   require(!stopped.ok && stopped.failure &&
-              stopped.failure->code == "wgc_callback_deadline_exceeded" &&
-              !repeated.ok && repeated.failure &&
-              repeated.failure->code == "wgc_callback_deadline_exceeded" &&
+              stopped.failure->code == "wgc_callback_deadline_exceeded" && !repeated.ok &&
+              repeated.failure && repeated.failure->code == "wgc_callback_deadline_exceeded" &&
               elapsed < 200ms,
           "backend stop ignored the caller's absolute deadline");
 }
@@ -404,11 +390,9 @@ void lateFramesAndOutstandingLeasesAreBounded() {
               timed_out.failure->code == "frame_lease_deadline_exceeded",
           "outstanding lease did not produce a typed stop failure");
   fake->emit(20, 20);
-  require(capture.stats().received_frames == 1 &&
-              !capture.waitForFrame(0ms).has_value(),
+  require(capture.stats().received_frames == 1 && !capture.waitForFrame(0ms).has_value(),
           "late backend frame escaped a stopped session");
-  require(lease->release() == LeaseReleaseStatus::Released &&
-              capture.stop(100ms).ok,
+  require(lease->release() == LeaseReleaseStatus::Released && capture.stop(100ms).ok,
           "late lease release did not unblock repeated stop");
 }
 
@@ -424,8 +408,7 @@ void captureOwnsFiftyCleanSessions() {
     require(capture.start().ok, "repeat capture did not start");
     fake->emit(cycle + 1, static_cast<std::uint64_t>(cycle + 1));
     auto lease = capture.waitForFrame(0ms);
-    require(lease && lease->sampledHash() ==
-                         static_cast<std::uint64_t>(cycle + 1),
+    require(lease && lease->sampledHash() == static_cast<std::uint64_t>(cycle + 1),
             "repeat capture returned the wrong resource");
     lease->release();
     require(capture.stop(100ms).ok && fake->starts == 1 && fake->stops == 1,
@@ -445,9 +428,9 @@ void stopContractsCoverStaticTerminalAndLateRelease() {
     MonitorCapture capture(registry, source.id, std::move(backend));
     require(capture.start().ok && !capture.waitForFrame(1ms),
             "static interval was treated as a capture failure");
-    require(capture.stop(100ms).ok && capture.stop(100ms).ok &&
-                fake->starts == 1 && fake->stops == 1,
-            "double stop restarted or stopped the backend twice");
+    require(
+        capture.stop(100ms).ok && capture.stop(100ms).ok && fake->starts == 1 && fake->stops == 1,
+        "double stop restarted or stopped the backend twice");
   }
 
   {
@@ -475,8 +458,7 @@ void stopContractsCoverStaticTerminalAndLateRelease() {
     fake->fail("source_removed");
     const auto failure = capture.terminalFailure();
     require(capture.state() == CaptureState::Failed && failure &&
-                failure->code == "source_removed" && capture.stop(100ms).ok &&
-                fake->stops == 1,
+                failure->code == "source_removed" && capture.stop(100ms).ok && fake->stops == 1,
             "source removal did not produce terminal teardown");
   }
 }
@@ -484,8 +466,7 @@ void stopContractsCoverStaticTerminalAndLateRelease() {
 }  // namespace
 
 int main() try {
-  syrnike::windows_media::capture::tests::
-      processDeviceIsSharedAndVideoCapable();
+  syrnike::windows_media::capture::tests::processDeviceIsSharedAndVideoCapable();
   sourceMustResolveAsAvailableMonitor();
   latestWinsQueueAndLeaseAreBounded();
   stopDuringStartIsBounded();

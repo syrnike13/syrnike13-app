@@ -23,7 +23,7 @@ export function videoMarkerLatency(
   return latency >= 0 && latency < timeoutMs ? latency : undefined
 }
 
-export function decodeVideoMarker(frame: VideoFrame): VideoMarker | undefined {
+export function decodeVideoMarker(frame: VideoFrame, sampleRadius: 0 | 2 = 2): VideoMarker | undefined {
   const i420 = frame.type === VideoBufferType.I420
     ? frame
     : frame.convert(VideoBufferType.I420)
@@ -38,7 +38,13 @@ export function decodeVideoMarker(frame: VideoFrame): VideoMarker | undefined {
     const row = Math.floor(bit / MARKER_COLUMNS)
     const centerX = column * MARKER_TILE_SIZE + Math.floor(MARKER_TILE_SIZE / 2)
     const centerY = row * MARKER_TILE_SIZE + Math.floor(MARKER_TILE_SIZE / 2)
-    bits.push(i420.data[centerY * i420.width + centerX]! >= 128 ? 1 : 0)
+    // The encoder is lossy. Read the interior of the tile rather than making
+    // the entire timestamp depend on one ringing/quantization pixel.
+    let white = 0
+    for (let y = -sampleRadius; y <= sampleRadius; y += 1)
+      for (let x = -sampleRadius; x <= sampleRadius; x += 1)
+        if (i420.data[(centerY + y) * i420.width + centerX + x]! >= 128) white += 1
+    bits.push(white > ((sampleRadius * 2 + 1) ** 2) / 2 ? 1 : 0)
   }
 
   const magic = Number(readBits(bits, 0, 16))

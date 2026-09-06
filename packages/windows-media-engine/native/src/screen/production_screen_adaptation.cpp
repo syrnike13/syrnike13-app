@@ -7,7 +7,8 @@ namespace syrnike::windows_media::screen {
 namespace {
 std::uint64_t monotonicMs() noexcept {
   return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::steady_clock::now().time_since_epoch()).count());
+                                        std::chrono::steady_clock::now().time_since_epoch())
+                                        .count());
 }
 std::uint64_t delta(std::uint64_t current, std::uint64_t previous) noexcept {
   return current >= previous ? current - previous : 0;
@@ -17,21 +18,23 @@ bool fits(std::size_t value, std::size_t maximum) noexcept {
   const auto& b = kAdaptiveScreenProfiles[maximum];
   return value <= maximum && a.width <= b.width && a.height <= b.height && a.fps <= b.fps;
 }
-}
+}  // namespace
 
-bool ProductionScreenPipeline::enableAdaptiveQuality(
-    std::uint32_t supported_profiles, std::size_t user_maximum) {
+bool ProductionScreenPipeline::enableAdaptiveQuality(std::uint32_t supported_profiles,
+                                                     std::size_t user_maximum) {
   std::scoped_lock lock(mutex_);
   if (state_ != ProductionScreenPipelineState::idle ||
-      user_maximum >= kAdaptiveScreenProfiles.size()) return false;
+      user_maximum >= kAdaptiveScreenProfiles.size())
+    return false;
   std::optional<std::size_t> initial;
   for (std::size_t i = 0; i < kAdaptiveScreenProfiles.size(); ++i) {
     const auto& p = kAdaptiveScreenProfiles[i];
     if (p.width == profile_.width && p.height == profile_.height &&
-        p.fps == profile_.frames_per_second && p.target_bitrate == profile_.bitrate) initial = i;
+        p.fps == profile_.frames_per_second && p.target_bitrate == profile_.bitrate)
+      initial = i;
   }
-  if (!initial || !fits(*initial, user_maximum) ||
-      (supported_profiles & (1U << *initial)) == 0) return false;
+  if (!initial || !fits(*initial, user_maximum) || (supported_profiles & (1U << *initial)) == 0)
+    return false;
   supported_profiles_ = supported_profiles;
   user_maximum_ = user_maximum;
   stats_.adaptive_enabled = true;
@@ -41,12 +44,13 @@ bool ProductionScreenPipeline::enableAdaptiveQuality(
   return true;
 }
 
-bool ProductionScreenPipeline::setMaximumQuality(
-    std::uint64_t revision, std::size_t user_maximum) noexcept {
+bool ProductionScreenPipeline::setMaximumQuality(std::uint64_t revision,
+                                                 std::size_t user_maximum) noexcept {
   std::scoped_lock lock(mutex_);
   if (!stats_.adaptive_enabled || revision <= stats_.desired_revision ||
       user_maximum >= kAdaptiveScreenProfiles.size() || stop_requested_ ||
-      state_ == ProductionScreenPipelineState::failed || state_ == ProductionScreenPipelineState::stopped)
+      state_ == ProductionScreenPipelineState::failed ||
+      state_ == ProductionScreenPipelineState::stopped)
     return false;
   user_maximum_ = user_maximum;
   stats_.desired_revision = revision;
@@ -74,8 +78,10 @@ void ProductionScreenPipeline::runAdaptiveControl() {
   const auto keyframe_action = keyframes_.poll(now, encoder_->stats().submitted);
   if (keyframe_action == KeyframeAction::exhausted) {
     std::scoped_lock lock(mutex_);
-    failure_ = ScreenPublicationFailure{"screen_keyframe_progress_deadline",
-        "Three bounded keyframe requests produced no confirmed publication progress", "screen_keyframe"};
+    failure_ = ScreenPublicationFailure{
+        "screen_keyframe_progress_deadline",
+        "Three bounded keyframe requests produced no confirmed publication progress",
+        "screen_keyframe"};
     state_ = ProductionScreenPipelineState::failed;
     stop_requested_ = true;
     return;
@@ -97,13 +103,17 @@ void ProductionScreenPipeline::runAdaptiveControl() {
   m.supported_profiles = supported_profiles_;
   m.available_outgoing_bitrate = current.network.available_outgoing_bitrate;
   m.network_measurement_fresh = current.network.measured_at_ms > 0 &&
-      current.network.measured_at_ms <= now && now - current.network.measured_at_ms <= 2000;
-  m.capture_age_ms = static_cast<std::uint32_t>((std::min)(current.capture_age_last_us / 1000, 60'000ULL));
-  m.convert_age_ms = static_cast<std::uint32_t>((std::min)(current.converter.gpu_duration_last_us / 1000, 60'000ULL));
-  m.publish_age_ms = static_cast<std::uint32_t>((std::min)(current.publish_age_last_us / 1000, 60'000ULL));
+                                current.network.measured_at_ms <= now &&
+                                now - current.network.measured_at_ms <= 2000;
+  m.capture_age_ms =
+      static_cast<std::uint32_t>((std::min)(current.capture_age_last_us / 1000, 60'000ULL));
+  m.convert_age_ms = static_cast<std::uint32_t>(
+      (std::min)(current.converter.gpu_duration_last_us / 1000, 60'000ULL));
+  m.publish_age_ms =
+      static_cast<std::uint32_t>((std::min)(current.publish_age_last_us / 1000, 60'000ULL));
   const auto frame_interval = 1'000'000ULL / kAdaptiveScreenProfiles[current.current_profile].fps;
-  m.publication_gpu_pressure_permille = static_cast<std::uint32_t>((std::min)(
-      current.converter.gpu_duration_last_us * 1000 / frame_interval, 1000ULL));
+  m.publication_gpu_pressure_permille = static_cast<std::uint32_t>(
+      (std::min)(current.converter.gpu_duration_last_us * 1000 / frame_interval, 1000ULL));
   if (previous_policy_stats_) {
     const auto& previous = *previous_policy_stats_;
     m.encoder_inputs = delta(current.encoder.submitted, previous.encoder.submitted);
@@ -117,13 +127,14 @@ void ProductionScreenPipeline::runAdaptiveControl() {
       m.publication_gpu_pressure_permille = 0;
     }
     if (current.encoder.encoded == previous.encoder.encoded) m.publish_age_ms = 0;
-    const auto dropped = delta(current.conversion_drops, previous.conversion_drops) +
+    const auto dropped =
+        delta(current.conversion_drops, previous.conversion_drops) +
         delta(current.encoder_rejections, previous.encoder_rejections) +
         delta(current.stale_encoded_drops, previous.stale_encoded_drops) +
         delta(current.sender.superseded, previous.sender.superseded) +
         delta(current.encoder.output_superseded, previous.encoder.output_superseded);
-    m.backpressure_permille = captures ? static_cast<std::uint32_t>(
-        (std::min)(dropped * 1000 / captures, 1000ULL)) : 0;
+    m.backpressure_permille =
+        captures ? static_cast<std::uint32_t>((std::min)(dropped * 1000 / captures, 1000ULL)) : 0;
     if (current.encoder.output_superseded > previous.encoder.output_superseded)
       keyframe_intents_->fetch_add(1);
   }
@@ -137,8 +148,10 @@ void ProductionScreenPipeline::runAdaptiveControl() {
     // Re-read revision before applying a decision from the immutable sample.
     if (revision != stats_.desired_revision || stop_requested_) return;
     if (decision.action == AdaptiveAction::terminal_capability_failure) {
-      failure_ = ScreenPublicationFailure{"screen_adaptive_capability_unavailable",
-          "No admitted profile can satisfy the current ceiling and transition budget", "screen_adaptive_policy"};
+      failure_ = ScreenPublicationFailure{
+          "screen_adaptive_capability_unavailable",
+          "No admitted profile can satisfy the current ceiling and transition budget",
+          "screen_adaptive_policy"};
       state_ = ProductionScreenPipelineState::failed;
       stop_requested_ = true;
       return;
@@ -174,8 +187,10 @@ void ProductionScreenPipeline::reconfigure(std::size_t target, std::uint64_t rev
   }
   const bool capture_stopped = capture_pipeline_->stop(deadline);
   const auto drained = drainGeneration(deadline, capture_stopped);
-  if (!drained.ok) throw std::runtime_error(drained.failure
-      ? drained.failure->message : "Profile transition did not drain its old generation");
+  if (!drained.ok)
+    throw std::runtime_error(drained.failure
+                                 ? drained.failure->message
+                                 : "Profile transition did not drain its old generation");
   std::unique_ptr<GpuScreenConverter> old_converter;
   std::shared_ptr<HardwareH264Encoder> old_encoder;
   std::unique_ptr<ProductionScreenSender> old_sender;
@@ -186,8 +201,9 @@ void ProductionScreenPipeline::reconfigure(std::size_t target, std::uint64_t rev
     // A newer setting supersedes this pending attempt. Recompute a safe
     // ceiling before creating resources; an increase still needs policy health.
     revision = stats_.desired_revision;
-    while (target > 0 && (!fits(target, user_maximum_) ||
-        (supported_profiles_ & (1U << target)) == 0)) --target;
+    while (target > 0 &&
+           (!fits(target, user_maximum_) || (supported_profiles_ & (1U << target)) == 0))
+      --target;
     if (!fits(target, user_maximum_) || (supported_profiles_ & (1U << target)) == 0)
       throw std::runtime_error("No admitted replacement profile remains");
     retired_publication_consumed_ += sender_->stats().consumed;
@@ -200,21 +216,26 @@ void ProductionScreenPipeline::reconfigure(std::size_t target, std::uint64_t rev
     stats_.current_profile = target;
     attempt_revision_ = revision;
     published_ = false;
-    last_encoder_timestamp_us_ = 0;
+    cadence_.reset();
   }
   // No second generation is allocated until the drained generation is gone.
-  old_sender.reset(); old_adapter.reset(); old_encoder.reset(); old_converter.reset();
+  old_sender.reset();
+  old_adapter.reset();
+  old_encoder.reset();
+  old_converter.reset();
   const auto& p = kAdaptiveScreenProfiles[target];
   createGeneration({p.width, p.height, p.fps, p.target_bitrate});
   minimum_capture_timestamp_100ns_ = screenSteadyTimestamp100ns();
-  if (!capture_pipeline_->restart()) throw std::runtime_error("Capture frame generation did not restart after drain");
+  if (!capture_pipeline_->restart())
+    throw std::runtime_error("Capture frame generation did not restart after drain");
   const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
       deadline - std::chrono::steady_clock::now());
   if (remaining.count() <= 0) throw std::runtime_error("Profile transition deadline exceeded");
   const auto started = startGeneration(remaining);
-  if (!started.ok) throw std::runtime_error(started.failure
-      ? started.failure->message : "Replacement profile could not start");
+  if (!started.ok)
+    throw std::runtime_error(started.failure ? started.failure->message
+                                             : "Replacement profile could not start");
   previous_policy_stats_.reset();
   last_policy_ms_ = 0;
 }
-}
+}  // namespace syrnike::windows_media::screen

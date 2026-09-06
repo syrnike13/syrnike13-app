@@ -7,8 +7,7 @@
 namespace syrnike::windows_media::screen {
 namespace {
 
-std::chrono::milliseconds remaining(
-    std::chrono::steady_clock::time_point deadline) noexcept {
+std::chrono::milliseconds remaining(std::chrono::steady_clock::time_point deadline) noexcept {
   const auto now = std::chrono::steady_clock::now();
   if (deadline <= now) return std::chrono::milliseconds::zero();
   return std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
@@ -23,8 +22,7 @@ ScreenPublicationFailure encoderFailure(const HardwareH264Failure& failure) {
 
 ProductionScreenPipeline::ProductionScreenPipeline(
     std::shared_ptr<capture::D3d11DeviceOwner> device_owner,
-    std::shared_ptr<ScreenFramePipeline> capture_pipeline,
-    ScreenVideoProfile profile,
+    std::shared_ptr<ScreenFramePipeline> capture_pipeline, ScreenVideoProfile profile,
     ScreenPublicationAdapterFactory adapter_factory,
     ScreenPublicationDeadlines publication_deadlines, bool lab_frame_marker)
     : device_owner_(std::move(device_owner)),
@@ -34,8 +32,7 @@ ProductionScreenPipeline::ProductionScreenPipeline(
       publication_deadlines_(publication_deadlines),
       lab_frame_marker_(lab_frame_marker) {
   if (!capture_pipeline_ || !adapter_factory_)
-    throw std::invalid_argument(
-        "Production screen pipeline requires capture and adapter factory");
+    throw std::invalid_argument("Production screen pipeline requires capture and adapter factory");
   createGeneration(profile);
 }
 
@@ -48,8 +45,7 @@ void ProductionScreenPipeline::createGeneration(ScreenVideoProfile profile) {
     if (const auto active = weak_intents.lock()) active->fetch_add(1);
   });
   if (!adapter)
-    throw std::invalid_argument(
-        "Production screen adapter factory returned no adapter");
+    throw std::invalid_argument("Production screen adapter factory returned no adapter");
   auto sender = std::make_unique<ProductionScreenSender>(adapter, publication_deadlines_);
   std::scoped_lock lock(mutex_);
   converter_ = std::move(converter);
@@ -58,6 +54,7 @@ void ProductionScreenPipeline::createGeneration(ScreenVideoProfile profile) {
   sender_ = std::move(sender);
   keyframe_intents_ = std::move(intents);
   keyframes_.begin(stats_.profile_generation);
+  encoded_continuity_ = {};
   profile_ = profile;
   stats_.adapter_luid = device_owner_->adapterLuid();
   stats_.memory.conversion_texture_bytes = converter_->stats().texture_bytes;
@@ -69,22 +66,21 @@ ProductionScreenPipeline::~ProductionScreenPipeline() {
   if (worker_.joinable()) std::terminate();
 }
 
-ScreenStartResult ProductionScreenPipeline::start(
-    std::string track_name, std::chrono::milliseconds deadline) {
+ScreenStartResult ProductionScreenPipeline::start(std::string track_name,
+                                                  std::chrono::milliseconds deadline) {
   {
     std::scoped_lock lock(mutex_);
     if (state_ != ProductionScreenPipelineState::idle) {
       return {false, generation_,
-              ScreenPublicationFailure{
-                  "screen_pipeline_invalid_state",
-                  "Production screen pipeline is already active",
-                  "screen_pipeline_start"}};
+              ScreenPublicationFailure{"screen_pipeline_invalid_state",
+                                       "Production screen pipeline is already active",
+                                       "screen_pipeline_start"}};
     }
     state_ = ProductionScreenPipelineState::starting;
     failure_.reset();
     published_ = false;
     stop_requested_ = false;
-    last_encoder_timestamp_us_ = 0;
+    cadence_.reset();
     track_name_ = std::move(track_name);
   }
   const auto started = startGeneration(deadline);
@@ -104,8 +100,7 @@ ScreenStartResult ProductionScreenPipeline::startGeneration(std::chrono::millise
     stats_.encoder_implementation = encoder_->transformName();
   }
   auto started = sender_->start(ScreenTrackDescriptor{
-      track_name_, profile_.width, profile_.height,
-      profile_.frames_per_second, profile_.bitrate});
+      track_name_, profile_.width, profile_.height, profile_.frames_per_second, profile_.bitrate});
   if (!started.ok) {
     (void)encoder_->stop(deadline);
     std::scoped_lock lock(mutex_);
@@ -121,8 +116,7 @@ ScreenStartResult ProductionScreenPipeline::startGeneration(std::chrono::millise
   return started;
 }
 
-void ProductionScreenPipeline::handleEvent(
-    ScreenPublicationEvent event) noexcept {
+void ProductionScreenPipeline::handleEvent(ScreenPublicationEvent event) noexcept {
   std::scoped_lock lock(mutex_);
   if (event.generation != generation_) return;
   if (event.kind == ScreenPublicationEventKind::Published) {
@@ -164,9 +158,12 @@ void ProductionScreenPipeline::run() noexcept {
         std::scoped_lock lock(mutex_);
         stop = stop_requested_;
         published = published_;
-        if (!stop && stats_.reconfiguring && std::chrono::steady_clock::now() >= profile_deadline_) {
-          failure_ = ScreenPublicationFailure{"screen_profile_transition_deadline",
-              "Profile drain, encoder start and publication exceeded the shared deadline", "screen_reconfigure", true};
+        if (!stop && stats_.reconfiguring &&
+            std::chrono::steady_clock::now() >= profile_deadline_) {
+          failure_ = ScreenPublicationFailure{
+              "screen_profile_transition_deadline",
+              "Profile drain, encoder start and publication exceeded the shared deadline",
+              "screen_reconfigure", true};
           state_ = ProductionScreenPipelineState::failed;
           stop_requested_ = stop = true;
         }
@@ -196,25 +193,27 @@ void ProductionScreenPipeline::run() noexcept {
         if (!output) break;
         const auto slot = output->slot();
         const auto view = output->frame();
-        const auto publish_age_us = static_cast<std::uint64_t>((std::max)(
-            screenSteadyTimestamp100ns() / 10 - view.timestamp_us, std::int64_t{0}));
+        const auto publish_age_us = static_cast<std::uint64_t>(
+            (std::max)(screenSteadyTimestamp100ns() / 10 - view.timestamp_us, std::int64_t{0}));
         {
           std::scoped_lock lock(mutex_);
           stats_.publish_age_last_us = publish_age_us;
         }
-        if (publish_age_us > 150'000) {
+        const auto admission = encoded_continuity_.admit(view.keyframe, publish_age_us);
+        if (admission != EncodedFrameAdmission::publish) {
           output->release();
-          keyframe_intents_->fetch_add(1);
+          if (admission == EncodedFrameAdmission::stale) keyframe_intents_->fetch_add(1);
           std::scoped_lock lock(mutex_);
-          ++stats_.stale_encoded_drops;
+          if (admission == EncodedFrameAdmission::stale)
+            ++stats_.stale_encoded_drops;
+          else
+            ++stats_.dependent_encoded_drops;
           continue;
         }
         const auto result = sender_->submit(EncodedScreenFrame{
             generation_, slot, view.sequence,
-            static_cast<std::uint64_t>((std::max)(view.timestamp_us,
-                                                  std::int64_t{1})),
-            view.keyframe,
-            reinterpret_cast<const std::uint8_t*>(view.bytes.data()),
+            static_cast<std::uint64_t>((std::max)(view.timestamp_us, std::int64_t{1})),
+            view.keyframe, reinterpret_cast<const std::uint8_t*>(view.bytes.data()),
             view.bytes.size()});
         if (result == ScreenSubmitResult::Accepted) {
           std::scoped_lock lock(mutex_);
@@ -226,8 +225,7 @@ void ProductionScreenPipeline::run() noexcept {
         }
       }
 
-      auto capture = capture_pipeline_->waitForFrame(
-          std::chrono::milliseconds{2});
+      auto capture = capture_pipeline_->waitForFrame(std::chrono::milliseconds{2});
       if (!capture) continue;
       const auto metadata = capture->metadata();
       // Fence leases acquired before drain but submitted after restart.
@@ -236,24 +234,20 @@ void ProductionScreenPipeline::run() noexcept {
         continue;
       }
       const auto capture_age_100ns =
-          (std::max)(screenSteadyTimestamp100ns() -
-                         metadata.capture_timestamp_100ns,
+          (std::max)(screenSteadyTimestamp100ns() - metadata.capture_timestamp_100ns,
                      std::int64_t{0});
-      const auto capture_age_us =
-          static_cast<std::uint64_t>(capture_age_100ns / 10);
+      const auto capture_age_us = static_cast<std::uint64_t>(capture_age_100ns / 10);
       {
         std::scoped_lock lock(mutex_);
         ++stats_.capture_frames;
         stats_.capture_age_last_us = capture_age_us;
-        stats_.capture_age_max_us =
-            (std::max)(stats_.capture_age_max_us, capture_age_us);
+        stats_.capture_age_max_us = (std::max)(stats_.capture_age_max_us, capture_age_us);
         stats_.memory.capture_texture_bytes =
-            static_cast<std::uint64_t>(capture::kMaximumMonitorFrames) *
-            metadata.width * metadata.height * 4ULL;
+            static_cast<std::uint64_t>(capture::kMaximumMonitorFrames) * metadata.width *
+            metadata.height * 4ULL;
       }
       const auto timestamp_us = metadata.capture_timestamp_100ns / 10;
-      if (last_encoder_timestamp_us_ != 0 &&
-          timestamp_us - last_encoder_timestamp_us_ < frame_interval_us) {
+      if (!cadence_.due(timestamp_us, frame_interval_us)) {
         capture->release();
         std::scoped_lock lock(mutex_);
         ++stats_.frame_rate_drops;
@@ -272,13 +266,12 @@ void ProductionScreenPipeline::run() noexcept {
         ++stats_.conversion_drops;
         continue;
       }
-      if (!encoder_->submit(std::move(*converted), timestamp_us,
-                            frame_interval_us)) {
+      if (!encoder_->submit(std::move(*converted), timestamp_us, frame_interval_us)) {
         std::scoped_lock lock(mutex_);
         ++stats_.encoder_rejections;
         continue;
       }
-      last_encoder_timestamp_us_ = timestamp_us;
+      cadence_.accepted(timestamp_us, frame_interval_us);
       if (owns_preview_) LocalScreenPreview::processPreview().offer(*d3d, metadata);
       capture->release();
     }
@@ -288,18 +281,18 @@ void ProductionScreenPipeline::run() noexcept {
     const bool device_lost = removed_reason == DXGI_ERROR_DEVICE_REMOVED ||
                              removed_reason == DXGI_ERROR_DEVICE_RESET ||
                              removed_reason == DXGI_ERROR_DEVICE_HUNG;
-    if (!failure_) failure_ = ScreenPublicationFailure{
-        device_lost ? "screen_d3d11_device_lost"
-                    : "screen_pipeline_worker_failed",
-        error.what(), device_lost ? "screen_gpu_device" : "screen_pipeline",
-        false, device_lost};
+    if (!failure_)
+      failure_ = ScreenPublicationFailure{
+          device_lost ? "screen_d3d11_device_lost" : "screen_pipeline_worker_failed", error.what(),
+          device_lost ? "screen_gpu_device" : "screen_pipeline", false, device_lost};
     state_ = ProductionScreenPipelineState::failed;
     stop_requested_ = true;
   } catch (...) {
     std::scoped_lock lock(mutex_);
-    if (!failure_) failure_ = ScreenPublicationFailure{
-        "screen_pipeline_worker_failed",
-        "Unknown production screen pipeline failure", "screen_pipeline"};
+    if (!failure_)
+      failure_ =
+          ScreenPublicationFailure{"screen_pipeline_worker_failed",
+                                   "Unknown production screen pipeline failure", "screen_pipeline"};
     state_ = ProductionScreenPipelineState::failed;
     stop_requested_ = true;
   }
@@ -328,10 +321,9 @@ ScreenCommandResult ProductionScreenPipeline::stop(
   if (worker_.joinable()) {
     std::unique_lock lock(mutex_);
     if (!worker_changed_.wait_until(lock, deadline, [this] { return worker_done_; })) {
-      failure_ = ScreenPublicationFailure{
-          "screen_pipeline_worker_stop_timeout",
-          "GPU worker requires utility epoch retirement", "screen_pipeline_stop",
-          true, true};
+      failure_ = ScreenPublicationFailure{"screen_pipeline_worker_stop_timeout",
+                                          "GPU worker requires utility epoch retirement",
+                                          "screen_pipeline_stop", true, true};
       state_ = ProductionScreenPipelineState::failed;
       return {false, failure_};
     }
@@ -358,8 +350,8 @@ ScreenCommandResult ProductionScreenPipeline::drainGeneration(
   auto sender_stop = sender_->stop(generation);
   bool publication_stopped = sender_->state() == ScreenPublicationState::Idle;
   while (!publication_stopped && std::chrono::steady_clock::now() < deadline) {
-    if (auto event = sender_->waitForEvent(
-            (std::min)(remaining(deadline), std::chrono::milliseconds{10}))) {
+    if (auto event =
+            sender_->waitForEvent((std::min)(remaining(deadline), std::chrono::milliseconds{10}))) {
       handleEvent(std::move(*event));
     }
     publication_stopped = sender_->state() == ScreenPublicationState::Idle;
@@ -368,11 +360,10 @@ ScreenCommandResult ProductionScreenPipeline::drainGeneration(
   // Idle can be visible before the consumer has read the final release events.
   while (auto event = sender_->waitForEvent(std::chrono::milliseconds{0}))
     handleEvent(std::move(*event));
-  const bool slots_released = std::all_of(
-      submitted_slots_.begin(), submitted_slots_.end(),
-      [](const auto& slot) { return !slot.has_value(); });
-  const bool stopped = capture_stopped && encoder_stopped && sender_stop.ok &&
-                       publication_stopped && slots_released;
+  const bool slots_released = std::all_of(submitted_slots_.begin(), submitted_slots_.end(),
+                                          [](const auto& slot) { return !slot.has_value(); });
+  const bool stopped =
+      capture_stopped && encoder_stopped && sender_stop.ok && publication_stopped && slots_released;
   {
     std::scoped_lock lock(mutex_);
     stats_.capture = capture_pipeline_->stats();
@@ -385,27 +376,25 @@ ScreenCommandResult ProductionScreenPipeline::drainGeneration(
                                 stats_.memory.conversion_texture_bytes +
                                 stats_.memory.encoded_output_bytes;
     if (stopped) {
-      state_ = stats_.reconfiguring && !stop_requested_
-          ? ProductionScreenPipelineState::starting : ProductionScreenPipelineState::stopped;
+      state_ = stats_.reconfiguring && !stop_requested_ ? ProductionScreenPipelineState::starting
+                                                        : ProductionScreenPipelineState::stopped;
     } else if (!failure_) {
       failure_ = ScreenPublicationFailure{
           "screen_pipeline_stop_incomplete",
-          slots_released
-              ? "Production screen pipeline did not stop before its deadline"
-              : "An in-flight SDK frame still requires utility epoch retirement",
+          slots_released ? "Production screen pipeline did not stop before its deadline"
+                         : "An in-flight SDK frame still requires utility epoch retirement",
           "screen_pipeline_stop", true, !slots_released};
       state_ = ProductionScreenPipelineState::failed;
     }
     if (!stopped && failure_) {
       state_ = ProductionScreenPipelineState::failed;
       const auto encoder_failure = encoder_->failure();
-      failure_->utility_epoch_retirement_required |= !slots_released ||
-          !capture_stopped || (encoder_failure &&
-              encoder_failure->utility_epoch_retirement_required);
+      failure_->utility_epoch_retirement_required |=
+          !slots_released || !capture_stopped ||
+          (encoder_failure && encoder_failure->utility_epoch_retirement_required);
     }
   }
-  return stopped ? ScreenCommandResult{true, std::nullopt}
-                 : ScreenCommandResult{false, failure()};
+  return stopped ? ScreenCommandResult{true, std::nullopt} : ScreenCommandResult{false, failure()};
 }
 
 ProductionScreenPipelineState ProductionScreenPipeline::state() const noexcept {
@@ -431,8 +420,7 @@ ProductionScreenPipelineStats ProductionScreenPipeline::stats() const noexcept {
   return result;
 }
 
-std::optional<ScreenPublicationFailure> ProductionScreenPipeline::failure()
-    const {
+std::optional<ScreenPublicationFailure> ProductionScreenPipeline::failure() const {
   std::scoped_lock lock(mutex_);
   return failure_;
 }
