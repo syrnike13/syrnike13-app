@@ -99,7 +99,8 @@ Two rejected hardware runs reached 97.9 ms during output removal and 95.9 ms
 under contention. Their causes remain unresolved; a later instrumented
 contention run reached 9.6 ms, almost entirely in `ReleaseFrame`. A passing
 rerun does not explain those failures or establish a fix. The 50 ms gate remains
-unchanged, and full acceptance remains pending.
+unchanged. On 2026-09-06 the project owner explicitly accepted this documented
+historical risk and authorized merging #126 without further investigation.
 
 An explicit selection starts a new failure episode but cannot reset the rolling
 attempt budget. Retained frames keep their slot pool alive and remain included
@@ -232,8 +233,8 @@ behavior on disconnect and frames from the same selected source after reconnect.
 Also require final generation/lease drain and the duplication-hold budget.
 Exit code zero by itself confirms cleanup, not these observed transitions.
 
-Acceptance evidence is still being collected. This document does not declare
-the issue or Phase C complete.
+The recorded qualification is accepted for merge with the explicit historical
+hold-time risk above. Issue closure and Phase C completion require the PR merge.
 
 Actual UAC qualification on 2026-09-06 used the published SDK `.8` application
 build and two 120-second transition probes. The user opened the Windows UAC
@@ -315,7 +316,7 @@ AddressSanitizer, but its ordinary Media Lab observer failed after audio
 discontinuities and a 5362 ms maximum video age. The failed job passed on the
 second attempt at the identical application commit. The original failure is
 retained; its cause is not established. CI on the final SDK pin and application
-changes remains required.
+changes subsequently passed in run `34023518692` as recorded below.
 
 Run `34015154172` on `5624fef2` passed native and ASan checks but rejected
 `screen-cpu-repeat`: the observer decoded 773 frames at p95 99 ms, with one
@@ -354,9 +355,28 @@ The application now pins `.9`; default public download, checksum, build and
 native/desktop artifact verification passed with no local SDK override.
 Capture/observer hardware evidence above retains its original SDK version;
 the released `.9` check specifically covers negotiation shutdown.
-Final application CI and resolution of the historical intermittent duplication
-hold-budget violations remain pending. Later passing measurements do not
+Application CI `34023518692` and PR checks `34023518715` passed on `738d6860`.
+The synthetic merge and branch head have the same source tree. Its published
+Media Lab artifact confirms all 50 lifecycle/cancellation cycles at zero handle
+growth, zero thread growth and zero pending callbacks, including every sample.
+The historical intermittent duplication hold-budget violations are accepted
+as a documented risk by the project owner. Later passing measurements do not
 establish the cause of those violations or a fix.
+
+Two subsequent focused SDK `.9` contention diagnostics ran the existing
+publisher and neutral observer without rebuilding or repeating the matrix.
+Both passed at about 59.7 fps, with one generation, no switches/reconnects and
+complete acquisition/release accounting (8209/8209 and 8365/8365).
+Maximum holds were 17187 us (17184 us in `ReleaseFrame`) and 3698 us (3695 us
+in `ReleaseFrame`). Neither reproduced the historical 50 ms violation.
+The first WPR configuration used circular memory: CPU samples retained only
+trace seconds 66 onward, after its maximum hold. The corrected file-mode CPU
+recording covers the start but lost 1109006 ETW events. These are limitations
+of the diagnostic recordings; neither is accepted as causal proof. Partial
+stacks show the ordinary `ReleaseFrame` path through `DXGIReleaseSync` and
+`NtGdiDdDDIOutputDuplReleaseFrame`, but cannot explain the historical outliers.
+Both records and trace hashes remain under `dxgiEtwDiagnostics`; no further
+test matrix or threshold change was made.
 
 The subsequent local window regression suite exposed intermittent whole-process
 resource failures. The latest Release run passed 30/31 tests: normal 600-frame
