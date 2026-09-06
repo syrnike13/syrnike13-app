@@ -1,13 +1,51 @@
-# Issue #139: blocked qualification
+# Issue #139: qualification diagnostics
 
-These are failed diagnostic runs, not acceptance. Do not merge or close #139
-using these reports. No successful 20-minute qualification exists.
+These reports include historical failures and controls, plus the accepted
+published `.11` network scenario below. Complete issue qualification remains
+pending; this directory alone does not authorize closing #139.
 
-The implementation fixes preset ownership and adds bounded live bitrate control,
-but the restricted-link receiver still violates the existing 150 ms p95 age
-limit. Capture, independent preview pixels and coded audio continue. Automatic
+The early implementation fixed preset ownership and added bounded live bitrate
+control, but its restricted-link receiver violated the existing 150 ms p95 age
+limit. Capture, independent preview pixels and coded audio continued. Automatic
 encoder/publication replacement and threshold changes are not solutions allowed
 by #139.
+
+## Published SDK `.11`, 2026-09-07
+
+[`published-sdk11-diagnostics.json.gz`](published-sdk11-diagnostics.json.gz)
+retains complete measurement counters, histograms, receiver/audio references,
+network samples and original file hashes. Duplicate raw process logs are
+omitted; embedded errors keep their diagnostic first line.
+
+The unmodified app commit `2e1d6e973756864ffcdc0216628b831f9e4661c1`, built
+against published SDK `v1.10.0-syrnike.11`, passed the complete 1200-second
+network/GPU schedule. Video: 52,758 frames, p95 106 ms, maximum 1307 ms,
+maximum gap 2545 ms, 9620 sequence drops, zero invalid CRC markers and no
+reconnects. Audio: all 1200 pulses matched, p95 136.062 ms. Five decreases and
+twelve increases retained the same encoder, generation and two publication SIDs.
+Publisher pool growth was zero; private memory growth was 9.84 MB.
+
+Two subsequent unmodified `.11` focused GPU attempts failed at workload onset
+with audio publication timeout. The older local candidate repeated that failure.
+Changing GPU priority or isolating the competing device did not fix it; both
+experiments were reverted. A diagnostic stack capture found the competing
+converter waiting inside NVIDIA/D3D11 while MFT and capture threads waited for
+D3D access. This identifies a blocked driver path, not a proven driver root cause.
+The controller had not issued a bitrate update at the failure boundary.
+
+A control using only seven fixed 4096x4096 encoders completed 180 seconds,
+reached 2 Mbit/s with warning, recovered to 2.5 Mbit/s and preserved media
+progress. Video p95/max were 62/103 ms, audio p95 79.002 ms. It remained
+rejected because the unchanged oracle also required compute batches.
+Final focused qualification uses those seven encoders alongside the original
+16 MiB compute workload, removing the experimental 64 MiB random-read shader
+and priority elevation. It additionally requires competing encoder output and
+compute progress throughout every 10-second load window. Receiver thresholds,
+minimum-warning requirement, 20–140-second load interval and publication
+continuity requirements are unchanged. A fresh final run is required.
+
+Everything below is historical, with SDK/app pins and pending statuses as they
+were recorded at the time.
 
 ## Provenance and results
 

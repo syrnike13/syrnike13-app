@@ -15,7 +15,7 @@ const Sample = Schema.Struct({
   videoDepth: Schema.Number, bytes: Schema.Number, handles: Schema.Number, threads: Schema.Number, privateBytes: Schema.Number,
   previewFrames: Schema.Number, previewChanges: Schema.Number, audioPackets: Schema.Number,
   previewStalled: Schema.Boolean, remoteVoicePlayed: Schema.Number,
-  gpuActive: Schema.Boolean, gpuBatches: Schema.Number, reason: Schema.Number,
+  gpuActive: Schema.Boolean, gpuBatches: Schema.Number, competingEncoderFrames: Schema.Number, reason: Schema.Number,
 })
 const Receiver = Schema.Struct({
   frames: Schema.Number, p95AgeMs: Schema.Number, maximumAgeMs: Schema.Number,
@@ -78,6 +78,9 @@ export function verifyBitrateEvidence(samplesValue: unknown, receiverValue: unkn
       failures.add('Remote voice playback stopped in a measured window')
     if (lateStatic && at >= 40_000 && at < 60_000 && a && b && b.previewChanges !== a.previewChanges)
       failures.add('Static fixture pixels changed')
+    if (gpuPressure && at >= 20_000 && at < 140_000 &&
+        (!a || !b || b.competingEncoderFrames <= a.competingEncoderFrames || b.gpuBatches <= a.gpuBatches))
+      failures.add('Competing hardware encoder/GPU work stopped in a measured window')
   }
   if (previewStall && (duration !== 180_000 || downs < 2 || ups < 2))
     failures.add('Incomplete preview stall/live update scenario')

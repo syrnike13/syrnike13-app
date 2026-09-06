@@ -947,7 +947,7 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
                     << ",\"bytes\":" << s.memory.total_bytes
                     << ",\"contentionActive\":" << (load_active ? "true" : "false")
                     << ",\"contentionBatches\":" << (load ? load->batches() : 0)
-                    << ",\"contentionBytes\":" << (load ? load->allocatedBytes() : 0)
+                    << ",\"contentionBytes\":" << (load ? lab::GpuContention::allocated_bytes : 0)
                     << ",\"handles\":" << resources.handles << ",\"threads\":" << resources.threads
                     << "}" << std::endl;
           last_sample_ms = elapsed;
@@ -969,7 +969,7 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
       require(SUCCEEDED(load->failure()) && load->batches() > 0,
               "GPU contention fixture did not complete compute work");
       std::cout << "GPU_CONTENTION {\"batches\":" << load->batches()
-                << ",\"allocatedBytes\":" << load->allocatedBytes() << "}"
+                << ",\"allocatedBytes\":" << lab::GpuContention::allocated_bytes << "}"
                 << std::endl;
     }
     require(observation_duration > 0s || adaptive || preview_control ||

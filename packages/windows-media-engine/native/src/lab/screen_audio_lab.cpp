@@ -120,7 +120,7 @@ int main(int argc, char** argv) {
       if (bitrate_lab) {
         require(video.enableAdaptiveQuality(1U << 4, 4), "Exact 1080p60 preset was not admitted");
         preview = std::make_unique<lab::PreviewPixelObserver>();
-        contention = std::make_unique<lab::GpuContention>(gpu, gpu_pressure);
+        contention = std::make_unique<lab::GpuContention>(gpu);
         if (gpu_pressure) encoder_contention = std::make_unique<lab::EncoderContention>(gpu);
       }
       lab::AudioPulseRecorder audio_references;
@@ -245,7 +245,7 @@ int main(int argc, char** argv) {
                 << ",\"gpuActive\":" << (busy ? "true" : "false")
                 << ",\"gpuDurationUs\":" << s.converter.gpu_duration_last_us
                 << ",\"gpuDurationMaxUs\":" << s.converter.gpu_duration_max_us
-                << ",\"gpuFixtureBytes\":" << contention->allocatedBytes()
+                << ",\"gpuFixtureBytes\":" << lab::GpuContention::allocated_bytes
                 << ",\"competingEncoderFrames\":" << (encoder_contention ? encoder_contention->frames() : 0)
                 << ",\"competingEncoderBytes\":" << (encoder_contention ? lab::EncoderContention::tracked_bytes : 0)
                 << ",\"gpuBatches\":" << contention->batches() << "}" << std::endl;

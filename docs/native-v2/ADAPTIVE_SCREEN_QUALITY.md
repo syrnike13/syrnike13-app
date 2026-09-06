@@ -6,9 +6,9 @@ operation can replace the encoder/source/publication generation. Automatic
 control changes only the existing hardware encoder's bitrate. Product Voice UI
 cutover remains #130; qualification #132 must use this contract.
 
-Qualification is blocked by restricted-link receiver freshness; see the
-[failed full-interval diagnostics](issue139-diagnostics/README.md). No accepted
-20-minute run exists. Historical #124 results are
+The published SDK `.11` passed the complete 20-minute network/GPU schedule;
+focused GPU, late/static and preview-stall final qualification remains pending.
+See the [full-interval diagnostics](issue139-diagnostics/README.md). Historical #124 results are
 not acceptance for #139. In particular,
 [adaptive-screen-quality-acceptance.json](adaptive-screen-quality-acceptance.json)
 records the old profile-switch behavior and must not be used to claim seamless
@@ -185,14 +185,19 @@ Exact SDK pin: `v1.10.0-syrnike.11`, commit
 
 | Hardware | Driver / OS | Status |
 | --- | --- | --- |
-| NVIDIA GeForce RTX 5070 Ti | 32.0.16.1074 / Windows 10.0.26200 | Repeated 2/4 Mbit/s live update verified; 1.5 Mbit/s bitstream tolerance and full-run receiver freshness failed |
+| NVIDIA GeForce RTX 5070 Ti | 32.0.16.1074 / Windows 10.0.26200 | Repeated 2/4 Mbit/s live update and published `.11` 20-minute network schedule passed; focused final scenarios pending. Preliminary 1.5 Mbit/s floor failed bitstream tolerance. |
 | Intel / AMD / other NVIDIA | Not tested | Unqualified; do not infer support |
 
 The bitrate lab accepts `MEDIA_LAB_BITRATE_SCENARIO`: `network` (default),
 `gpu-pressure`, `preview-stall`, or `late-static`. Focused scenarios run exactly
 180 seconds. The default network/GPU 20-minute schedule is unchanged.
 GPU pressure keeps a 12 Mbit/s link and runs seven bounded competing 4096×4096
-hardware encoders plus GPU memory traffic during seconds 20–140. Preview stall
+hardware encoders plus the original bounded 16 MiB compute workload during
+seconds 20–140. Both workloads must advance in every measured 10-second window;
+the policy must reach the minimum and retain output with a warning. The former
+memory-heavy shader variant caused driver waits and audio publication timeout
+on repeated runs and is retained as a failed diagnostic, not acceptance.
+Preview stall
 stops the pixel consumer during seconds 20–160 and independently measures OS
 playback of the existing remote-audio reference; capture, encoder and both audio
 paths must keep progressing. Late/static freezes the fixture pixels during
@@ -209,9 +214,12 @@ down/up must change measured output by at least 40%. These tolerances are fixed
 before the acceptance run. Property success and synthetic setters are not
 substitutes for this proof.
 
-The retained [20-minute diagnostic](issue139-diagnostics/README.md) failed
+The older retained [20-minute diagnostic](issue139-diagnostics/README.md) failed
 receiver freshness (p95 359 ms, maximum 2676 ms). Stable identities, continuing
-preview/audio and passing local tests do not make that run accepted.
+preview/audio and passing local tests do not make that run accepted. The later
+published `.11` run at app `2e1d6e973756864ffcdc0216628b831f9e4661c1`
+passed with video p95 106 ms, maximum 1307 ms and maximum gap 2545 ms,
+including all transitions. Its full metrics are retained separately.
 
 The end-to-end lab uses a disposable local SFU, a publisher-only UDP link with
 a finite 64-packet / 40 ms queue, and a separate Node RTC decoder. Audio and
