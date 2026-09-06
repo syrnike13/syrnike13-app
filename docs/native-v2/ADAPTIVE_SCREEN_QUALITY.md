@@ -179,8 +179,8 @@ of the same state belongs to #130.
 
 ## Hardware and evidence protocol
 
-Exact SDK pin: `v1.10.0-syrnike.10`, commit
-`2826ea81c1c19674357f1468ee44c9f38b5ee600`; the authoritative pin is
+Exact SDK pin: `v1.10.0-syrnike.11`, commit
+`59c074b2397d71ed45db7749af275cf291c2a36c`; the authoritative pin is
 `packages/windows-media-engine/native/cmake/LiveKitSDK.cmake`.
 
 | Hardware | Driver / OS | Status |
