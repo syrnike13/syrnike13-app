@@ -7,6 +7,10 @@
 #include "lab/audio_pulse_recorder.hpp"
 #include "lab/reference_audio_playback.hpp"
 #include "lab/audio_session_volume_probe.hpp"
+#include "lab/preview_pixel_observer.hpp"
+#include "lab/gpu_contention.hpp"
+#include <tlhelp32.h>
+#include <psapi.h>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -33,9 +37,10 @@ int main(int argc, char** argv) {
     require(scenario == "sync" || scenario == "system" || scenario == "process-isolation" ||
                 scenario == "audio-stop" || scenario == "video-stop" || scenario == "audio-loss" ||
                 scenario == "source-close" || scenario == "slow-source" ||
-                scenario == "audio-cycles" || scenario == "default-output",
+                scenario == "audio-cycles" || scenario == "default-output" || scenario == "bitrate",
             "Unknown audio scenario");
-    require(seconds >= 5 && seconds <= 660, "Duration outside audio lab bounds");
+    const bool bitrate_lab = scenario == "bitrate";
+    require(seconds >= 5 && seconds <= (bitrate_lab ? 1260UL : 660UL), "Duration outside audio lab bounds");
     auto transport = std::make_shared<LiveKitRoomTransport>();
     Engine engine(EngineOptions{.room_transport = transport});
     require(engine.start().ok, "Engine start failed");
@@ -89,13 +94,22 @@ int main(int argc, char** argv) {
                 << bounds.bottom << std::endl;
       capture::WindowCapture capture(registry, source_id, capture::createWgcWindowCaptureBackend());
       auto frames = std::make_shared<screen::ScreenFramePipeline>();
+      const auto gpu = capture::processD3d11Device(false);
+      const auto profile = bitrate_lab ? screen::kScreenProfile1080p60 : screen::kScreenProfile720p30;
       screen::ProductionScreenPipeline video(
-          capture::processD3d11Device(false), frames, screen::kScreenProfile720p30,
+          gpu, frames, profile,
           [transport](std::function<void()> keyframe) {
             return std::make_shared<LiveKitScreenPublicationAdapter>(
                 transport, LiveKitScreenEncoderControls{std::move(keyframe)});
           },
           {}, true);
+      std::unique_ptr<lab::PreviewPixelObserver> preview;
+      std::unique_ptr<lab::GpuContention> contention;
+      if (bitrate_lab) {
+        require(video.enableAdaptiveQuality(1U << 4, 4), "Exact 1080p60 preset was not admitted");
+        preview = std::make_unique<lab::PreviewPixelObserver>();
+        contention = std::make_unique<lab::GpuContention>(gpu);
+      }
       lab::AudioPulseRecorder audio_references;
       lab::AudioSessionVolumeProbe session_volumes;
       std::uint64_t observed_packets = 0;
@@ -134,7 +148,9 @@ int main(int argc, char** argv) {
           if (auto frame = capture.waitForFrame(50ms)) (void)frames->submit(std::move(*frame));
       });
       std::cout << "SCREEN_AUDIO_READY" << std::endl;
-      const auto end = std::chrono::steady_clock::now() + std::chrono::seconds{seconds};
+      const auto began = std::chrono::steady_clock::now();
+      const auto end = began + std::chrono::seconds{seconds};
+      std::uint64_t last_bitrate_sample_ms = 0;
       const auto change_at = std::chrono::steady_clock::now() + 8s;
       bool changed = false;
       bool source_closed = false;
@@ -143,6 +159,55 @@ int main(int argc, char** argv) {
       bool cycle_audio_on = true;
       auto cycle_at = std::chrono::steady_clock::now() + 1s;
       while (std::chrono::steady_clock::now() < end) {
+        if (bitrate_lab) {
+          preview->poll();
+          const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::steady_clock::now() - began).count());
+          const bool busy = elapsed % 300000 >= 150000 && elapsed % 300000 < 160000;
+          contention->setActive(busy);
+          require(SUCCEEDED(contention->failure()), "GPU contention fixture failed");
+          if (elapsed - last_bitrate_sample_ms >= 500) {
+            const auto s = video.stats();
+            DWORD handles = 0, threads = 0;
+            require(GetProcessHandleCount(GetCurrentProcess(), &handles) != FALSE, "Handle query failed");
+            const auto thread_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+            require(thread_snapshot != INVALID_HANDLE_VALUE, "Thread snapshot failed");
+            THREADENTRY32 entry{sizeof(THREADENTRY32)};
+            if (Thread32First(thread_snapshot, &entry)) do {
+              if (entry.th32OwnerProcessID == GetCurrentProcessId()) ++threads;
+            } while (Thread32Next(thread_snapshot, &entry));
+            CloseHandle(thread_snapshot);
+            PROCESS_MEMORY_COUNTERS_EX memory{};
+            require(GetProcessMemoryInfo(GetCurrentProcess(),
+                reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory), sizeof(memory)) != FALSE,
+                "Memory query failed");
+            std::cout << "BITRATE_SAMPLE {\"elapsedMs\":" << elapsed
+                << ",\"profile\":" << s.current_profile << ",\"generation\":" << s.profile_generation
+                << ",\"encoderInstance\":" << s.encoder.instance_id
+                << ",\"width\":" << profile.width << ",\"height\":" << profile.height
+                << ",\"fps\":" << profile.frames_per_second
+                << ",\"targetBps\":" << s.target_bitrate << ",\"appliedBps\":" << s.bitrate.applied_bitrate
+                << ",\"updates\":" << s.bitrate_updates << ",\"outcome\":" << static_cast<int>(s.bitrate.outcome)
+                << ",\"platformResult\":" << s.bitrate.platform_result
+                << ",\"reason\":" << static_cast<int>(s.decision_reason)
+                << ",\"warning\":" << (s.quality_warning ? "true" : "false")
+                << ",\"networkBps\":" << s.network.available_outgoing_bitrate.value_or(0)
+                << ",\"networkMeasuredAtMs\":" << s.network.measured_at_ms
+                << ",\"captureFrames\":" << s.capture_frames << ",\"encoderFrames\":" << s.encoder.encoded
+                << ",\"encodedBytes\":" << s.encoder.encoded_bytes
+                << ",\"consumed\":" << s.total_publication_consumed
+                << ",\"videoDepth\":" << s.sender.video_depth << ",\"bytes\":" << s.memory.total_bytes
+                << ",\"handles\":" << handles << ",\"threads\":" << threads
+                << ",\"privateBytes\":" << memory.PrivateUsage
+                << ",\"previewFrames\":" << preview->frames << ",\"previewChanges\":" << preview->content_changes
+                << ",\"previewAgeMaxUs\":" << preview->maximum_age_us
+                << ",\"audioPackets\":" << audio_owner.stats().session.submitted
+                << ",\"keyframeRequests\":" << s.keyframe_requests
+                << ",\"gpuActive\":" << (busy ? "true" : "false")
+                << ",\"gpuBatches\":" << contention->batches() << "}" << std::endl;
+            last_bitrate_sample_ms = elapsed;
+          }
+        }
         session_volumes.observe();
         if (scenario == "audio-cycles" && completed_cycles < 30 &&
             std::chrono::steady_clock::now() >= cycle_at) {
@@ -212,6 +277,8 @@ int main(int argc, char** argv) {
       }
       producer.request_stop();
       if (producer.joinable()) producer.join();
+      if (preview) preview->drain();
+      if (contention) contention->setActive(false);
       if (scenario == "audio-cycles")
         require(completed_cycles == 30, "Thirty audio lifecycle cycles did not finish");
       require(audio_owner.stop(std::chrono::steady_clock::now() + 25s), "Audio owner did not stop");
@@ -248,6 +315,9 @@ int main(int argc, char** argv) {
       require(capture.stop(5s).ok, "Window capture did not stop");
       require(video.stop(std::chrono::steady_clock::now() + 5s).ok,
               "Video publication did not stop");
+      if (bitrate_lab)
+        std::cout << "BITRATE_STOP {\"warning\":" << (video.stats().quality_warning ? "true" : "false")
+                  << ",\"encoderInstance\":" << video.stats().encoder.instance_id << "}" << std::endl;
       std::cout << "SCREEN_AUDIO_REPORT {\"submitted\":" << audio_stats.submitted
                 << ",\"audioFailure\":\""
                 << (audio_owner.stats().failure ? "target_exited" : "none") << "\""

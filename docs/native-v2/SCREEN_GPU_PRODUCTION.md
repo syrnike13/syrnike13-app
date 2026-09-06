@@ -3,6 +3,11 @@
 Issue #121 adds a separate production screen path. The CPU reference remains a
 lab oracle and is never selected as a fallback.
 
+The current preset/adaptation contract is [fixed-preset bitrate control
+(#139)](ADAPTIVE_SCREEN_QUALITY.md). The original #121 lab configurations and
+reports below are historical hardware-path evidence, not the product preset
+catalogue or proof of live bitrate adaptation.
+
 ## Data path and ownership
 
 ```text
@@ -58,8 +63,9 @@ Backpressure therefore reaches raw input before any reference frame is lost.
 Publication control, key-frame requests,
 unpublish acknowledgements, and slot releases are lossless. PLI/FIR is polled
 from the pre-encoded LiveKit source and forwarded to
-`CODECAPI_AVEncVideoForceKeyFrame`. The selected profile keeps a fixed bitrate,
-FPS, and resolution for its entire publication.
+`CODECAPI_AVEncVideoForceKeyFrame`. The selected preset keeps fixed target FPS
+and resolution. Under #139, live bitrate updates stay inside its finite range
+on the same encoder and publication.
 
 Stop revokes capture acceptance, joins the pipeline worker, drains the encoder,
 unpublishes the screen track, and waits for every submitted encoded slot. A

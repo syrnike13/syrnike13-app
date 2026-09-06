@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <condition_variable>
 #include <cstring>
 #include <mutex>
@@ -23,6 +24,11 @@ namespace {
 using Microsoft::WRL::ComPtr;
 using Clock = std::chrono::steady_clock;
 constexpr auto kOutputProgressDeadline = std::chrono::seconds{2};
+std::atomic_uint64_t next_encoder_instance{1};
+std::uint64_t monotonicMs() noexcept {
+  return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+      Clock::now().time_since_epoch()).count());
+}
 
 struct PendingInput {
   GpuNv12SlotLease frame;
@@ -57,7 +63,7 @@ bool setCodecU32(IMFTransform* transform, const GUID& key,
   VARIANT setting{};
   setting.vt = VT_UI4;
   setting.ulVal = value;
-  return SUCCEEDED(codec->SetValue(&key, &setting));
+  return codec->SetValue(&key, &setting) == S_OK;
 }
 
 bool setCodecBool(IMFTransform* transform, const GUID& key, bool value) {
@@ -66,7 +72,7 @@ bool setCodecBool(IMFTransform* transform, const GUID& key, bool value) {
   VARIANT setting{};
   setting.vt = VT_BOOL;
   setting.boolVal = value ? VARIANT_TRUE : VARIANT_FALSE;
-  return SUCCEEDED(codec->SetValue(&key, &setting));
+  return codec->SetValue(&key, &setting) == S_OK;
 }
 
 HRESULT setVideoType(IMFTransform* transform, const ScreenVideoProfile& profile,
@@ -144,7 +150,7 @@ struct HardwareH264EncoderStateData {
   explicit HardwareH264EncoderStateData(
       std::shared_ptr<capture::D3d11DeviceOwner> owner,
       ScreenVideoProfile video_profile)
-      : device_owner(std::move(owner)), profile(video_profile) {}
+      : device_owner(std::move(owner)), profile(video_profile), bitrate(video_profile.bitrate) {}
 
   std::shared_ptr<capture::D3d11DeviceOwner> device_owner;
   ScreenVideoProfile profile;
@@ -167,6 +173,7 @@ struct HardwareH264EncoderStateData {
   bool stop_requested = false;
   bool worker_done = false;
   bool keyframe_requested = false;
+  LiveBitrateMailbox bitrate;
   Clock::time_point stop_deadline{};
 
   void clearAcceptedInputs() noexcept {
@@ -279,11 +286,8 @@ bool initializeTransform(
       result = transform->ProcessMessage(
           MFT_MESSAGE_SET_D3D_MANAGER,
           reinterpret_cast<ULONG_PTR>(manager.Get()));
-    if (SUCCEEDED(result)) result = setVideoType(transform.Get(), state->profile, true);
-    if (SUCCEEDED(result)) result = setVideoType(transform.Get(), state->profile, false);
     bool configured = SUCCEEDED(result) &&
-                      setCodecU32(transform.Get(), CODECAPI_AVLowLatencyMode,
-                                  TRUE) &&
+                      setCodecBool(transform.Get(), CODECAPI_AVLowLatencyMode, true) &&
                       setCodecU32(transform.Get(),
                                   CODECAPI_AVEncCommonRateControlMode,
                                   eAVEncCommonRateControlMode_CBR) &&
@@ -293,6 +297,11 @@ bool initializeTransform(
     if (configured)
       (void)setCodecU32(transform.Get(),
                         CODECAPI_AVEncMPVDefaultBPictureCount, 0);
+    // Configure rate control before committing media types: hardware transforms
+    // may freeze the rate-control mode when their input type is installed.
+    if (configured)
+      configured = SUCCEEDED(setVideoType(transform.Get(), state->profile, true)) &&
+                   SUCCEEDED(setVideoType(transform.Get(), state->profile, false));
     if (configured)
       configured = SUCCEEDED(transform->GetOutputStreamInfo(0, &output_info));
     if (configured &&
@@ -312,6 +321,7 @@ bool initializeTransform(
       activation = candidates.values[index];
       std::scoped_lock lock(state->mutex);
       state->transform_name = utf8Name(activation.Get());
+      state->stats.instance_id = next_encoder_instance.fetch_add(1);
       if (state->state != HardwareH264EncoderState::failed)
         state->state = HardwareH264EncoderState::running;
       state->changed.notify_all();
@@ -568,6 +578,35 @@ void encoderWorker(
     }
     if (done) break;
 
+    std::optional<BitrateUpdateResult> bitrate;
+    {
+      std::scoped_lock lock(state->mutex);
+      if (!state->stop_requested) bitrate = state->bitrate.take(monotonicMs());
+    }
+    if (bitrate) {
+      ComPtr<ICodecAPI> codec;
+      HRESULT result = transform.As(&codec);
+      if (result == S_OK) {
+        VARIANT value{};
+        value.vt = VT_UI4;
+        value.ulVal = bitrate->requested_bitrate;
+        result = codec->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &value);
+        // Exact S_OK is the application result. S_FALSE means read-only, not
+        // success. Property readback alone cannot establish live capability;
+        // the hardware probe separately measures the resulting bitstream.
+      }
+      bitrate->outcome = result == S_OK ? BitrateUpdateOutcome::applied
+                                       : BitrateUpdateOutcome::rejected;
+      if (result == S_FALSE || result == E_NOTIMPL || result == E_NOINTERFACE)
+        bitrate->outcome = BitrateUpdateOutcome::unsupported;
+      if (const auto removed = state->device_owner->removedReason(); FAILED(removed)) {
+        bitrate->outcome = BitrateUpdateOutcome::unsafe;
+        result = removed;
+      }
+      std::scoped_lock lock(state->mutex);
+      state->bitrate.complete(bitrate->revision, bitrate->outcome, result, monotonicMs());
+    }
+
     bool request_keyframe = false;
     std::optional<PendingInput> input;
     bool request_stop = false;
@@ -823,10 +862,25 @@ void HardwareH264Encoder::requestKeyFrame() noexcept {
   state_->changed.notify_all();
 }
 
+bool HardwareH264Encoder::requestBitrate(std::uint64_t revision, std::uint32_t bitrate) noexcept {
+  std::scoped_lock lock(state_->mutex);
+  if (state_->state != HardwareH264EncoderState::running || state_->stop_requested ||
+      !state_->bitrate.request(revision, bitrate))
+    return false;
+  state_->changed.notify_all();
+  return true;
+}
+
+BitrateUpdateResult HardwareH264Encoder::bitrateUpdate() const noexcept {
+  std::scoped_lock lock(state_->mutex);
+  return state_->bitrate.snapshot(monotonicMs());
+}
+
 bool HardwareH264Encoder::stop(std::chrono::milliseconds deadline) noexcept {
   std::optional<bool> terminal_result;
   {
     std::scoped_lock lock(state_->mutex);
+    state_->bitrate.stop();
     if (state_->state == HardwareH264EncoderState::idle) {
       state_->state = HardwareH264EncoderState::stopped;
       state_->worker_done = true;

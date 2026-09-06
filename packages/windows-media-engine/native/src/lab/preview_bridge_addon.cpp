@@ -106,6 +106,10 @@ Napi::Value snapshot(const Napi::CallbackInfo& info) {
   number("networkAvailableOutgoingBitrate", stats.network.available_outgoing_bitrate.value_or(0));
   number("networkMeasuredAtMs", stats.network.measured_at_ms);
   value.Set("adaptiveEnabled", stats.adaptive_enabled);
+  value.Set("qualityWarning", stats.quality_warning);
+  number("targetBitrate", stats.target_bitrate);
+  number("appliedBitrate", stats.bitrate.applied_bitrate);
+  number("bitrateUpdates", stats.bitrate_updates);
   number("adaptiveProfile", stats.current_profile);
   number("profileChanges", stats.profile_changes);
   number("profileGeneration", stats.profile_generation);

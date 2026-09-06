@@ -18,8 +18,11 @@
     "livekit-server-sdk": "2.18.0"
   },
   "devDependencies": {
+    "@livekit/protocol": "1.48.0",
     "@types/node": "^24.10.0",
+    "@types/ws": "8.18.1",
     "typescript": "^6.0.2",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.5",
+    "ws": "8.21.0"
   }
 }

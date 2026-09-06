@@ -9,6 +9,7 @@ const duration = Number(process.env.PREVIEW_LAB_SECONDS || 20) * 1000
 const report = { version: 1, scenario, frames: 0, samples: [], failures: [], transitions: [] }
 let window, endpoint, bridge, ready = false, finishing = false, began = 0, revision = 1, injected = false, cycles = 0
 let interval, deadline, latest
+let lastQualityWarning
 const record = phase => report.transitions.push({ phase, time: Date.now(), frames: report.frames })
 function createWindow() {
   ready = false
@@ -23,6 +24,7 @@ const demand = enabled => endpoint.postMessage({ type: 'demand', enabled, revisi
 async function finish() {
   if (finishing) return
   finishing = true; record('publication-stop'); endpoint?.postMessage({ type: 'stop' })
+  if (window && !window.isDestroyed()) window.webContents.send('quality-warning', false)
   clearTimeout(deadline)
   if (scenario === 'publication-stop') await new Promise(resolve => setTimeout(resolve, 500))
   if (window && !window.isDestroyed()) {
@@ -48,7 +50,9 @@ process.on('uncaughtException', error => { report.failures.push(error.message); 
 app.whenReady().then(() => {
   createWindow()
   const current = event => window && !window.isDestroyed() && event.sender === window.webContents
-  ipcMain.on('preview-ready', event => { if (current(event)) { ready = true; bridge?.setReady(true) } })
+  ipcMain.on('preview-ready', event => {
+    if (current(event)) { ready = true; lastQualityWarning = undefined; bridge?.setReady(true) }
+  })
   ipcMain.on('preview-presented', event => { if (current(event)) report.frames++ })
   ipcMain.on('preview-renderer', (event, data) => { if (current(event)) report.renderer = data })
   endpoint = utilityProcess.fork(path.join(__dirname, 'utility.cjs'), [], {
@@ -80,6 +84,10 @@ app.whenReady().then(() => {
     else if (message.type === 'failure') { report.failures.push(message.message); void finish() }
     else if (message.type === 'metrics') {
       latest = message.metrics
+      if (!window.isDestroyed() && ready && latest.qualityWarning !== lastQualityWarning) {
+        lastQualityWarning = latest.qualityWarning
+        window.webContents.send('quality-warning', latest.qualityWarning)
+      }
       report.samples.push({ time: Date.now(), frames: report.frames, rendererHeld: report.renderer?.held ?? 0, ...latest })
       bridge.setGeneration(latest.generation)
       if (!window.isDestroyed()) window.webContents.send('preview-generation', latest.generation)

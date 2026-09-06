@@ -1,4 +1,8 @@
 const { sharedTexture, ipcRenderer } = require('electron')
+const { renderQualityWarning } = require('./quality-warning.cjs')
+ipcRenderer.on('quality-warning', (_event, active) => {
+  renderQualityWarning(document.getElementById('quality-warning'), active)
+})
 let held = [], mode = 'normal', generation = 0, sequence = 0
 function release(entry) { entry.frame.close(); entry.texture.release() }
 function clear() { for (const entry of held) release(entry); held = [] }

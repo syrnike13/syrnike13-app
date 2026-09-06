@@ -17,7 +17,8 @@ const Observer = Schema.Struct({ video: Schema.Struct({
   })),
 }) })
 
-/** Reject local-success reports unless each replacement also decodes remotely. */
+/** Historical #124 / explicit-user-preset replacement oracle. This does not
+ * prove automatic adaptation under #139; use verifyBitrateEvidence for that. */
 export function verifyAdaptiveEvidence(samplesValue: unknown, observerValue: unknown, contention: boolean) {
   const samples = Schema.decodeUnknownSync(Samples)(samplesValue)
   const observer = Schema.decodeUnknownSync(Observer)(observerValue)
@@ -31,7 +32,7 @@ export function verifyAdaptiveEvidence(samplesValue: unknown, observerValue: unk
     if (sample.profile < 0 || sample.profile > 4 || sample.videoDepth > 2 || sample.bytes > 128 * 1024 * 1024)
       failures.push('publication profile/queue/memory budget exceeded')
     if (!contention && sample.appliedRevision === 2 && sample.profile !== 0)
-      failures.push('applied low user ceiling exceeded')
+      failures.push('explicit low user preset not applied exactly')
     if (previous && sample !== previous) {
       if (sample.elapsedMs <= previous.elapsedMs || sample.generation < previous.generation || sample.consumed < previous.consumed)
         failures.push('non-monotonic adaptive progress')
@@ -42,7 +43,7 @@ export function verifyAdaptiveEvidence(samplesValue: unknown, observerValue: unk
   const maximumChangesPerMinute = Math.max(0, ...changes.map(time => changes.filter(value => value > time - 60_000 && value <= time).length))
   if (maximumChangesPerMinute > 6) failures.push('profile change rate exceeded')
   if (!contention && (samples.at(-1)?.profile !== 4 || samples.at(-1)?.appliedRevision !== 3))
-    failures.push('quality did not recover to restored user ceiling')
+    failures.push('explicit restored user preset not applied exactly')
   if (contention && (!samples.some(s => s.contentionActive) || !samples.some(s => !s.contentionActive) || (samples.at(-1)?.contentionBatches ?? 0) < 20))
     failures.push('alternating GPU contention was not observed')
   const decoded = observer.video.decodedStreams.filter(stream => stream.frames > 0)

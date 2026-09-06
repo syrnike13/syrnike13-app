@@ -98,6 +98,9 @@ ScreenStartResult ProductionScreenPipeline::startGeneration(std::chrono::millise
   {
     std::scoped_lock lock(mutex_);
     stats_.encoder_implementation = encoder_->transformName();
+    stats_.bitrate = encoder_->bitrateUpdate();
+    stats_.target_bitrate = profile_.bitrate;
+    stats_.quality_warning = false;
   }
   auto started = sender_->start(ScreenTrackDescriptor{
       track_name_, profile_.width, profile_.height, profile_.frames_per_second, profile_.bitrate});
@@ -144,6 +147,7 @@ void ProductionScreenPipeline::handleEvent(ScreenPublicationEvent event) noexcep
     failure_ = std::move(event.failure);
     state_ = ProductionScreenPipelineState::failed;
     stop_requested_ = true;
+    stats_.quality_warning = false;
   }
 }
 
@@ -316,6 +320,7 @@ ScreenCommandResult ProductionScreenPipeline::stop(
     if (state_ != ProductionScreenPipelineState::failed)
       state_ = ProductionScreenPipelineState::stopping;
     stop_requested_ = true;
+    stats_.quality_warning = false;
   }
   const bool capture_stopped = capture_pipeline_->stop(deadline);
   if (worker_.joinable()) {

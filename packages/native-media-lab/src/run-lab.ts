@@ -659,6 +659,8 @@ async function executeLab(resources: LabResources): Promise<void> {
     MEDIA_LAB_ALLOW_VIDEO_GAPS: 'true',
   })
   await screenScenario('screen-gpu-window-1080p60', 80)
+  // Legacy names retained for existing lab selectors. These scenarios exercise
+  // explicit user preset changes; run-bitrate-lab is the #139 adaptation oracle.
   await screenScenario('screen-gpu-adaptive-window', 1500, undefined, 5, {
     MEDIA_LAB_MIN_OBSERVATION_MS: '120000',
     MEDIA_LAB_TIMEOUT_MS: '150000',

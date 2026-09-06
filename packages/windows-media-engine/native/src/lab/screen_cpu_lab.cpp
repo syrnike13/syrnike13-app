@@ -789,16 +789,16 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
     const std::function<void(std::chrono::milliseconds)>& preview_action = {},
     bool adaptive = false, bool contention = false, bool late_observer = false,
     std::chrono::seconds observation_duration = 0s) {
-  std::size_t adaptive_maximum = 4;
+  std::size_t selected_preset = 4;
   wchar_t adaptive_preview[6]{};
   if (preview_control &&
       GetEnvironmentVariableW(L"PREVIEW_LAB_ADAPTIVE", adaptive_preview, 6) == 4 &&
       std::wstring_view(adaptive_preview) == L"true") {
     adaptive = true;
     // Isolate preview pressure from initial RTP bandwidth ramp-up. The cold
-    // preview Room starts around 6 Mbit/s, safely above this 4 Mbit/s ceiling.
-    adaptive_maximum = 2;
-    const auto& p = screen::kAdaptiveScreenProfiles[adaptive_maximum];
+    // preview Room starts around 6 Mbit/s, above this preset's 4 Mbit/s maximum.
+    selected_preset = 2;
+    const auto& p = screen::kAdaptiveScreenProfiles[selected_preset];
     profile = {p.width, p.height, p.fps, p.target_bitrate};
   }
   const auto owner = capture::processD3d11Device(false);
@@ -841,7 +841,7 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
       },
       {}, true);
   if (adaptive)
-    require(pipeline.enableAdaptiveQuality(admitted, adaptive_maximum), "Adaptive enable rejected");
+    require(pipeline.enableAdaptiveQuality(admitted, selected_preset), "Adaptive enable rejected");
   require(capture_source.start().ok, "GPU WGC capture failed to start");
   const auto started = pipeline.start("screen-gpu-production", 5s);
   if (!started.ok) {
@@ -921,11 +921,12 @@ screen::ProductionScreenPipelineStats driveGpuCapture(
           load->setActive(load_active);
         }
         if (!preview_control && !contention && !lowered && elapsed >= 10000) {
-          require(pipeline.setMaximumQuality(2, 0), "lower ceiling rejected");
+          // Historical scenario now exercises explicit user changes only.
+          require(pipeline.setSelectedPreset(2, 0), "explicit low preset rejected");
           lowered = true;
         }
         if (!preview_control && !contention && !restored && elapsed >= 20000) {
-          require(pipeline.setMaximumQuality(3, 4), "restore ceiling rejected");
+          require(pipeline.setSelectedPreset(3, 4), "explicit restored preset rejected");
           restored = true;
         }
         if (elapsed - last_sample_ms >= 500) {

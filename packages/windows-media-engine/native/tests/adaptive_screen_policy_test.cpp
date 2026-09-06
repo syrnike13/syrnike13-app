@@ -1,80 +1,60 @@
 #include "screen/adaptive_screen_policy.hpp"
 #include "screen/screen_keyframe_control.hpp"
-
+#include "screen/live_bitrate_mailbox.hpp"
 #include <iostream>
 #include <stdexcept>
-#include <string>
 #include <vector>
 
 using namespace syrnike::windows_media::screen;
 namespace {
-void require(bool value, const char* message) {
-  if (!value) throw std::runtime_error(message);
-}
+void require(bool value, const char* message) { if (!value) throw std::runtime_error(message); }
 struct Change {
   std::uint64_t time;
-  std::size_t target;
+  std::uint32_t bitrate;
   AdaptiveReason reason;
   bool operator==(const Change&) const = default;
 };
 struct Trace {
-  AdaptivePolicyState state;
   AdaptiveMeasurements sample;
+  AdaptivePolicyState state;
   std::vector<Change> changes;
   Trace() {
-    sample.current_profile = 4;
-    sample.supported_profiles = 31;
+    sample.selected_preset = 4;
+    sample.applied_bitrate = 8'000'000;
     sample.available_outgoing_bitrate = 20'000'000;
-    sample.network_measurement_fresh = true;
+    sample.network_measurement_fresh = sample.local_measurements_fresh = true;
     sample.encoder_inputs = sample.encoder_outputs = 30;
-    sample.capture_age_ms = sample.convert_age_ms = sample.publish_age_ms = 20;
   }
-  AdaptiveDecision tick() {
-    auto d = evaluateAdaptiveScreenPolicy(sample, state);
-    state = d.next;
-    require(d.action != AdaptiveAction::terminal_capability_failure, "unexpected terminal decision");
-    if (d.action != AdaptiveAction::keep) {
-      require(d.target_profile <= sample.user_maximum, "user ceiling exceeded");
-      changes.push_back({sample.now_ms, d.target_profile, d.reason});
-      sample.current_profile = d.target_profile;
-      state = recordAdaptiveProfileAttempt(state, sample.now_ms);
+  AdaptiveDecision tick(bool apply = true) {
+    const auto decision = evaluateAdaptiveScreenPolicy(sample, state);
+    state = decision.next;
+    if (decision.action == AdaptiveAction::update_bitrate) {
+      const auto& preset = kAdaptiveScreenProfiles[sample.selected_preset];
+      require(decision.target_bitrate >= preset.min_bitrate &&
+              decision.target_bitrate <= preset.max_bitrate, "bitrate escaped preset bounds");
+      changes.push_back({sample.now_ms, decision.target_bitrate, decision.reason});
+      state = recordAdaptiveBitrateAttempt(state, sample.now_ms);
+      if (apply) sample.applied_bitrate = decision.target_bitrate;
     }
     sample.now_ms += 500;
-    return d;
+    return decision;
   }
   void ticks(unsigned count) { while (count--) tick(); }
 };
-std::vector<Change> collapseRecovery() {
-  Trace t;
-  t.ticks(10);
-  t.sample.available_outgoing_bitrate = 1'000'000;
-  t.ticks(10);
-  t.sample.available_outgoing_bitrate = 20'000'000;
-  t.ticks(170);
-  const std::vector<Change> golden{
-    {5500, 0, AdaptiveReason::network},
-    {30000, 1, AdaptiveReason::healthy},
-    {50500, 2, AdaptiveReason::healthy},
-    {71000, 3, AdaptiveReason::healthy},
-    {91500, 4, AdaptiveReason::healthy},
-  };
-  if (t.changes != golden) for (const auto& c : t.changes)
-    std::cerr << c.time << ": profile=" << c.target << " reason=" << static_cast<int>(c.reason) << '\n';
-  require(t.changes == golden, "collapse/recovery differs from golden trace");
-  return t.changes;
-}
-void pressureTraces() {
-  Trace recovery_margin;
-  recovery_margin.sample.current_profile = 3;
-  recovery_margin.sample.available_outgoing_bitrate = 8'799'999;
-  recovery_margin.ticks(100);
-  require(recovery_margin.changes.empty(), "recovery ignored next-profile bandwidth margin");
-  recovery_margin.sample.available_outgoing_bitrate = 8'800'000;
-  recovery_margin.ticks(40);
-  require(recovery_margin.changes.empty(), "recovery skipped sustained healthy interval");
-  recovery_margin.tick();
-  require(recovery_margin.changes == std::vector<Change>{{70000, 4, AdaptiveReason::healthy}},
-      "bounded RTP bandwidth estimate cannot recover the user ceiling");
+void golden() {
+  Trace collapse;
+  collapse.sample.available_outgoing_bitrate = 1'000'000;
+  collapse.ticks(10);
+  require(collapse.changes == std::vector<Change>{{500, 1'500'000, AdaptiveReason::network}},
+          "collapse golden differs");
+  require(collapse.state.warning, "below minimum must warn without terminating");
+  collapse.sample.available_outgoing_bitrate = 20'000'000;
+  collapse.ticks(41);
+  require(collapse.changes == std::vector<Change>{{500, 1'500'000, AdaptiveReason::network},
+      {25000, 1'875'000, AdaptiveReason::healthy}}, "recovery golden differs");
+  require(!collapse.state.warning, "sustained recovery did not clear warning");
+  require(collapse.sample.selected_preset == 4, "automatic control changed user intent");
+
   for (const auto reason : {AdaptiveReason::encoder, AdaptiveReason::gpu,
                             AdaptiveReason::frame_age, AdaptiveReason::backpressure}) {
     Trace t;
@@ -84,23 +64,130 @@ void pressureTraces() {
     if (reason == AdaptiveReason::frame_age) t.sample.publish_age_ms = 200;
     if (reason == AdaptiveReason::backpressure) t.sample.backpressure_permille = 300;
     t.ticks(3);
-    require(t.changes == std::vector<Change>{{2000, 3, reason}}, "pressure golden trace differs");
+    require(t.changes == std::vector<Change>{{2000, 6'000'000, reason}}, "pressure golden differs");
   }
-  Trace burst;
-  burst.sample.publish_age_ms = 900;
-  burst.tick();
-  burst.sample.publish_age_ms = 20;
-  burst.ticks(100);
-  require(burst.changes.empty(), "single burst changed profile");
-  Trace noisy;
+}
+void boundaries() {
+  Trace t;
+  t.sample.available_outgoing_bitrate = 1'000'000;
+  t.tick();
+  auto duplicate = t.sample;
+  duplicate.now_ms = 0;
+  for (unsigned i = 0; i < 1000; ++i) {
+    auto d = evaluateAdaptiveScreenPolicy(duplicate, t.state);
+    require(d.action == AdaptiveAction::keep && d.next.pressure_samples == 1,
+            "duplicate samples built pressure");
+  }
+  t.sample.now_ms += 2000;
+  require(t.tick().action == AdaptiveAction::keep, "gap built pressure");
+  t.sample.update_pending = true;
+  t.ticks(30);
+  require(t.changes.empty(), "pending operation created another command");
+
+  Trace unconfirmed;
+  unconfirmed.sample.available_outgoing_bitrate = 1'000'000;
+  unconfirmed.tick(false); unconfirmed.tick(false);
+  require(unconfirmed.sample.applied_bitrate == 8'000'000,
+          "policy pretended requested bitrate was applied");
+  unconfirmed.sample.live_update_available = false;
+  unconfirmed.ticks(2400);
+  require(unconfirmed.changes.size() == 1 && unconfirmed.state.warning,
+          "unsupported update retried or cleared warning");
+  unconfirmed.sample.available_outgoing_bitrate = 20'000'000;
+  unconfirmed.ticks(2400);
+  require(unconfirmed.state.warning, "healthy network pretended capability recovered");
+
+  for (int missing = 0; missing < 3; ++missing) {
+    Trace unknown;
+    unknown.sample.applied_bitrate = 2'000'000;
+    unknown.state.warning = true;
+    if (missing == 0) unknown.sample.network_measurement_fresh = false;
+    if (missing == 1) unknown.sample.local_measurements_fresh = false;
+    if (missing == 2) unknown.sample.available_outgoing_bitrate.reset();
+    unknown.ticks(2400);
+    require(unknown.changes.empty() && unknown.state.warning,
+            "partially stale measurements proved recovery");
+  }
+  Trace static_screen;
+  static_screen.sample.encoder_inputs = static_screen.sample.encoder_outputs = 0;
+  static_screen.sample.local_measurements_fresh = false;
+  static_screen.sample.publish_age_ms = 60000;
+  static_screen.ticks(2400);
+  require(static_screen.changes.empty(), "static last-value diagnostics changed bitrate");
+
+  for (std::size_t preset = 0; preset < kAdaptiveScreenProfiles.size(); ++preset) {
+    Trace minimum;
+    minimum.sample.selected_preset = preset;
+    minimum.sample.applied_bitrate = kAdaptiveScreenProfiles[preset].min_bitrate;
+    minimum.sample.available_outgoing_bitrate = 1;
+    minimum.ticks(2400);
+    require(minimum.changes.empty() && minimum.state.warning, "minimum did not continue bounded");
+  }
+}
+void longTraces() {
+  Trace noisy, stable, contention;
   for (unsigned i = 0; i < 2400; ++i) {
     noisy.sample.available_outgoing_bitrate = i % 2 ? 20'000'000 : 1'000'000;
-    noisy.tick();
+    noisy.tick(); stable.tick();
+    contention.sample.publication_gpu_pressure_permille = i % 120 < 20 ? 990 : 200;
+    contention.tick();
   }
-  require(noisy.changes.empty(), "20-minute noisy golden trace oscillates");
-  Trace stable;
-  stable.ticks(2400);
-  require(stable.changes.empty(), "stable high capacity changed profile");
+  require(noisy.changes.empty() && stable.changes.empty(), "stable/noisy trace oscillated");
+  require(!contention.changes.empty(), "contention exercised no updates");
+  for (const auto& change : contention.changes) {
+    unsigned count = 0;
+    for (const auto& other : contention.changes)
+      if (other.time <= change.time && change.time - other.time < 60000) ++count;
+    require(count <= kAdaptiveMaxChangesPerMinute, "rolling update budget exceeded");
+  }
+}
+void mailboxFences() {
+  LiveBitrateMailbox mailbox(8'000'000);
+  require(!mailbox.request(1, 9'000'000), "encoder maximum exceeded");
+  require(mailbox.request(1, 4'000'000), "first command rejected");
+  require(mailbox.take(0)->revision == 1, "first command missing");
+  for (std::uint64_t revision = 2; revision <= 1000; ++revision)
+    require(mailbox.request(revision, 2'000'000), "coalesced desired value rejected");
+  require(!mailbox.take(1), "two simultaneous platform operations");
+  require(mailbox.snapshot(1).applied_bitrate == 8'000'000, "unconfirmed update committed");
+  mailbox.complete(1, BitrateUpdateOutcome::applied, 0, 10);
+  require(mailbox.snapshot(10).applied_bitrate == 4'000'000, "confirmed result missing");
+  require(mailbox.take(20)->revision == 1000, "latest desired value did not coalesce");
+  mailbox.complete(1, BitrateUpdateOutcome::applied, 0, 30);
+  require(mailbox.snapshot(30).outcome == BitrateUpdateOutcome::pending, "stale completion won");
+  mailbox.stop();
+  mailbox.complete(1000, BitrateUpdateOutcome::applied, 0, 40);
+  require(mailbox.snapshot(40).applied_bitrate == 4'000'000 && !mailbox.request(1001, 1'500'000),
+          "late completion changed stopped intent");
+  LiveBitrateMailbox nextIntent(6'000'000);
+  require(nextIntent.snapshot(50).applied_bitrate == 6'000'000, "old command leaked to new encoder");
+
+  LiveBitrateMailbox unsupported(8'000'000);
+  require(unsupported.request(1, 4'000'000) && unsupported.take(0).has_value(), "request missing");
+  unsupported.complete(1, BitrateUpdateOutcome::unsupported, -1, 1);
+  for (std::uint64_t revision = 2; revision < 1000; ++revision)
+    require(!unsupported.request(revision, 4'000'000), "unsupported update storm");
+  require(unsupported.snapshot(2).applied_bitrate == 8'000'000, "unsupported changed initial bitrate");
+
+  LiveBitrateMailbox rejected(8'000'000);
+  require(rejected.request(1, 4'000'000) && rejected.take(0).has_value(), "request missing");
+  rejected.complete(1, BitrateUpdateOutcome::applied, 0, 1);
+  for (std::uint64_t revision = 2; revision <= 4; ++revision) {
+    require(rejected.request(revision, 2'000'000) && rejected.take(revision * 5000).has_value(),
+            "retry budget exhausted prematurely");
+    rejected.complete(revision, BitrateUpdateOutcome::rejected, -2, revision * 5000 + 1);
+    require(rejected.snapshot(revision * 5000 + 2).applied_bitrate == 4'000'000,
+            "rejected update replaced last confirmed bitrate");
+  }
+  require(!rejected.request(5, 2'000'000) && !rejected.snapshot(25000).available,
+          "rejected updates exceeded finite lifetime budget");
+  LiveBitrateMailbox hung(8'000'000);
+  require(hung.request(1, 4'000'000) && hung.take(0).has_value(), "request missing");
+  require(hung.snapshot(1999).outcome == BitrateUpdateOutcome::pending &&
+          hung.snapshot(2000).outcome == BitrateUpdateOutcome::unsafe, "deadline boundary wrong");
+  hung.complete(1, BitrateUpdateOutcome::applied, 0, 2000);
+  require(hung.snapshot(2001).outcome == BitrateUpdateOutcome::unsafe &&
+          hung.snapshot(2001).applied_bitrate == 8'000'000, "late unsafe result committed");
 }
 void keyframes() {
   ScreenKeyframeControl c;
@@ -127,89 +214,11 @@ void keyframes() {
   require(c.poll(63000, 3) == KeyframeAction::exhausted && c.pending() == 1,
           "retry budget lost intent or loops forever");
 }
-void contention() {
-  Trace t;
-  for (unsigned i = 0; i < 2400; ++i) {
-    const bool busy = i % 120 < 20;
-    t.sample.publication_gpu_pressure_permille = busy ? 990 : 200;
-    t.tick();
-  }
-  for (const auto& c : t.changes) {
-    unsigned count = 0;
-    for (const auto& other : t.changes)
-      if (other.time <= c.time && c.time - other.time < 60000) ++count;
-    require(count <= kAdaptiveMaxChangesPerMinute, "20-minute contention exceeds rate bound");
-  }
-  require(!t.changes.empty(), "contention trace exercised no transitions");
-}
-void boundaries() {
-  Trace fps_downgrade;
-  fps_downgrade.sample.current_profile = 3;
-  fps_downgrade.sample.encoder_outputs = 10;
-  fps_downgrade.ticks(3);
-  require(fps_downgrade.sample.current_profile == 1,
-          "encoder-pressure downgrade increased FPS");
-  Trace fps_ceiling;
-  fps_ceiling.sample.current_profile = 2;
-  fps_ceiling.sample.user_maximum = 3;
-  require(fps_ceiling.tick().reason == AdaptiveReason::user_maximum &&
-          fps_ceiling.sample.current_profile == 1,
-          "1080p30 ceiling allowed 720p60");
-  fps_ceiling.ticks(41);
-  require(fps_ceiling.sample.current_profile == 3,
-          "upgrade did not skip profile exceeding the FPS ceiling");
-  Trace t;
-  t.sample.user_maximum = 1;
-  require(t.tick().target_profile == 1, "user max did not constrain immediately");
-  t.sample.available_outgoing_bitrate = 100'000;
-  t.tick();
-  auto emergency = t.tick();
-  require(emergency.emergency && emergency.target_profile == 0,
-          "emergency cooldown blocked downgrade");
-  Trace unknown;
-  unknown.sample.current_profile = 1;
-  unknown.sample.network_measurement_fresh = false;
-  unknown.ticks(100);
-  require(unknown.changes.empty(), "unknown network permitted upgrade");
-  Trace gap;
-  gap.sample.current_profile = 1;
-  gap.ticks(39);
-  gap.sample.now_ms += 5000;
-  gap.tick();
-  gap.tick();
-  require(gap.changes.empty(), "missing samples count as healthy interval");
-  Trace unsupported;
-  unsupported.sample.supported_profiles = 0;
-  require(evaluateAdaptiveScreenPolicy(unsupported.sample, {}).action ==
-          AdaptiveAction::terminal_capability_failure, "missing capability not terminal");
-  Trace limited;
-  for (unsigned i = 0; i < 6; ++i) limited.state = recordAdaptiveProfileAttempt(limited.state, i * 500);
-  limited.sample.now_ms = 3000;
-  limited.sample.user_maximum = 0;
-  require(evaluateAdaptiveScreenPolicy(limited.sample, limited.state).action ==
-          AdaptiveAction::terminal_capability_failure, "rate cap silently violates user maximum");
-  Trace duplicates;
-  duplicates.sample.available_outgoing_bitrate = 1'000'000;
-  duplicates.tick();
-  duplicates.sample.now_ms = 0;
-  for (unsigned i = 0; i < 100; ++i) {
-    const auto d = evaluateAdaptiveScreenPolicy(duplicates.sample, duplicates.state);
-    require(d.action == AdaptiveAction::keep && d.next.pressure_samples == 1,
-            "duplicate samples built hysteresis");
-  }
-}
+
 }
 int main() {
   try {
-    require(collapseRecovery() == collapseRecovery(), "trace is nondeterministic");
-    pressureTraces();
-    boundaries();
-    keyframes();
-    contention();
-    std::cout << "Adaptive policy golden traces and boundaries passed\n";
-    return 0;
-  } catch (const std::exception& e) {
-    std::cerr << e.what() << '\n';
-    return 1;
-  }
+    golden(); boundaries(); longTraces(); mailboxFences(); keyframes();
+    std::cout << "Fixed-preset bitrate golden traces and keyframe boundaries passed\n";
+  } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

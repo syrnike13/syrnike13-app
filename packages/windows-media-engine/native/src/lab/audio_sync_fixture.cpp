@@ -7,6 +7,7 @@
 #include <iostream>
 #include <string>
 #include <thread>
+#include "lab/bitrate_fixture_pattern.hpp"
 
 namespace {
 constexpr DWORD rate = 48000;
@@ -18,6 +19,8 @@ HANDLE stopped = nullptr;
 unsigned tone_offset = 0;
 unsigned phase_ms = 0;
 bool keep_audio_after_close = false;
+bool bitrate_fixture = false;
+std::array<std::vector<std::uint32_t>, 8> bitrate_patterns;
 
 void renderAudio() {
   HANDLE event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
@@ -112,6 +115,20 @@ LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
     // The rising edge still follows the played sample clock exactly.
     const bool pulse = position >= rate && position % rate < rate / 10;
     FillRect(dc, &bounds, static_cast<HBRUSH>(GetStockObject(pulse ? WHITE_BRUSH : BLACK_BRUSH)));
+    if (bitrate_fixture) {
+      BITMAPINFO info{};
+      info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+      info.bmiHeader.biWidth = 1920; info.bmiHeader.biHeight = -1080;
+      info.bmiHeader.biPlanes = 1; info.bmiHeader.biBitCount = 32;
+      info.bmiHeader.biCompression = BI_RGB;
+      const auto& pixels = bitrate_patterns[(position * 60 / rate) % bitrate_patterns.size()];
+      StretchDIBits(dc, 0, 0, bounds.right, bounds.bottom, 0, 0, 1920, 1080,
+          pixels.data(), &info, DIB_RGB_COLORS, SRCCOPY);
+      // Preserve the independent pulse oracle's existing sampling region.
+      RECT flash{bounds.right * 9 / 20, bounds.bottom * 7 / 10,
+                 bounds.right * 11 / 20, bounds.bottom * 8 / 10};
+      FillRect(dc, &flash, static_cast<HBRUSH>(GetStockObject(pulse ? WHITE_BRUSH : BLACK_BRUSH)));
+    }
     const auto code = (position / rate + tone_offset) % 16;
     for (unsigned bit = 0; bit < 4; ++bit) {
       RECT cell{bounds.right * static_cast<LONG>(2 + bit) / 8, bounds.bottom / 4,
@@ -140,6 +157,12 @@ LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
 }
 }  // namespace
 int main(int argc, char** argv) {
+  wchar_t scenario[32]{};
+  if (GetEnvironmentVariableW(L"MEDIA_LAB_AUDIO_SCENARIO", scenario, 32) > 0)
+    bitrate_fixture = std::wstring_view(scenario) == L"bitrate";
+  if (bitrate_fixture)
+    for (std::uint32_t phase = 0; phase < bitrate_patterns.size(); ++phase)
+      bitrate_patterns[phase] = syrnike::windows_media::lab::bitrateFixturePattern(phase);
   if (argc >= 2) tone_offset = static_cast<unsigned>(std::stoul(argv[1]));
   if (argc >= 3) phase_ms = static_cast<unsigned>(std::stoul(argv[2]));
   if (argc == 4) keep_audio_after_close = std::string(argv[3]) == "keep-audio";
@@ -158,7 +181,8 @@ int main(int argc, char** argv) {
   }
   const auto window = CreateWindowExW(0, type.lpszClassName, L"Syrnike audio sync fixture",
                                       WS_OVERLAPPEDWINDOW | WS_VISIBLE, tone_offset ? 820 : 120,
-                                      120, 640, 400, nullptr, nullptr, instance, nullptr);
+                                      120, bitrate_fixture ? 1920 : 640,
+                                      bitrate_fixture ? 1080 : 400, nullptr, nullptr, instance, nullptr);
   if (!window) {
     CloseHandle(stopped);
     return 1;
