@@ -249,6 +249,42 @@ source hashes and no captured media or duplicate process logs. They still use
 the local SDK candidate and dirty app sources. Final published-pin runs must
 repeat the required scenarios.
 
+### Full candidate run and preview follow-ups
+
+The subsequent 20-minute candidate run (`issue139-full20-candidate11`) used
+the trusted preencoded SDK candidate, the screen-only SFU default and 30 ms raw
+packet-queue admission. It decoded 53,216 frames: p95 age **95 ms**, maximum
+age **1517 ms**, maximum gap **3042 ms**, and zero invalid pixel markers.
+The run failed the unchanged 1500 ms maximum age limit. Its 17 applied updates
+(5 down / 12 up), four below-minimum network cycles and four GPU intervals
+retained one encoder/source generation and the same publications. Capture,
+preview pixels and audio progressed throughout; all 1200 independently matched
+audio pulses passed at p95 **125.3 ms**. Tracked pool growth was zero; handles
+changed by -2, threads by -9, and process private memory grew about 10.2 MB.
+Mean minute p95 decreased by 112.7 ms between the first and last three minutes.
+These results show improvement, but do not qualify the candidate.
+
+Two complete 180-second preview follow-ups did not reproduce the earlier audio
+owner failure, but both failed receiver freshness. A five-second GOP produced
+p95/max age **208/1714 ms**, with audio p95 **123.4 ms**. A 5 ms raw queue gate
+produced **174/1654 ms**, with audio p95 **147.8 ms**, and did not exercise the
+required repeated bitrate recovery. Both experiments were reverted. Neither
+is evidence that the earlier intermittent audio failure has been fixed.
+
+The intermediate 15 ms raw queue gate also failed and was reverted to 30 ms.
+It measured only one bitrate recovery and p95 **341 ms** before a decoded
+capture-clock anomaly ended video observation. Its publisher and audio ran the
+complete 180 seconds; video observation was incomplete, so the report is not
+acceptance. The observer now records the first clock anomaly and continues
+collecting video while preserving the unconditional failed result; it also
+records timestamp/sequence metadata for the oldest measured frame.
+
+All four reports, receiver histograms, transition samples and source
+hashes are retained in
+[`full-candidate11-and-preview-diagnostics.json.gz`](full-candidate11-and-preview-diagnostics.json.gz).
+They use unpublished SDK candidate source `6a97655469e6c6df1e31d43fc72ff38c32252629`
+and are diagnostic evidence only. Duplicate process logs are omitted.
+
 ## Earlier local validation of the proposed source
 
 - Release lab build, generated protocol check and staged artifact verification: passed.

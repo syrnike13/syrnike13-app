@@ -20,6 +20,8 @@ const minutes = Array.from({ length: 22 }, () => ({ frames: 0, ageSum: 0, maxAge
 const minuteHistograms = Array.from({ length: 22 }, () => new Uint32Array(2002))
 let firstAt = 0, lastAt = 0, lastSequence = 0, generation = 0
 let frames = 0, invalidMarkers = 0, maximumAgeMs = 0, maximumGapMs = 0, sequenceDrops = 0
+let captureClockAnomaly: { receivedAtMs: number; capturedAtMs: number; sequence: number } | undefined
+let maximumAgeFrame: { receivedAtMs: number; capturedAtMs: number; sequence: number } | undefined
 let audioFrames = 0, lastAudioAt = 0, maximumAudioGapMs = 0, unpublished = 0, reconnects = 0
 let teardownFrames = 0, measurementEndedAtMs: number | undefined
 const rtcSamples: { atMs: number; bytesReceived: number; framesDecoded: number; framesDropped: number; packetsLost: number;
@@ -58,9 +60,18 @@ async function video(track: RemoteTrack) {
       if (generation && marker.generation !== generation) throw new Error('Source generation changed')
       generation = marker.generation
       const age = now - marker.capturedAtMs
-      if (age < 0) throw new Error('Invalid capture clock')
+      if (age < 0) {
+        ++invalidMarkers
+        if (!captureClockAnomaly) {
+          captureClockAnomaly = { receivedAtMs: now, capturedAtMs: marker.capturedAtMs, sequence: marker.sequence }
+          failures.push('Invalid capture clock')
+        }
+        // Keep the run failed, but continue collecting the remaining interval.
+        continue
+      }
       histogram[Math.min(2001, Math.floor(age))]!++
       minuteHistograms[minuteIndex]![Math.min(2001, Math.floor(age))]!++
+      if (age > maximumAgeMs) maximumAgeFrame = { receivedAtMs: now, capturedAtMs: marker.capturedAtMs, sequence: marker.sequence }
       maximumAgeMs = Math.max(maximumAgeMs, age); minute.ageSum += age; minute.maxAge = Math.max(minute.maxAge, age)
       if (lastSequence && marker.sequence > lastSequence + 1) {
         const missing = marker.sequence - lastSequence - 1; sequenceDrops += missing; minute.sequenceDrops += missing
@@ -147,7 +158,7 @@ const average = (minute: typeof minutes[number]) => minute.ageSum / minute.frame
 if (duration >= 1200_000 && average(populated.at(-2)!) - average(populated[0]!) > 20) failures.push('Receiver age grew over 20 ms')
 if (audio.length < duration / 1000 * 0.8) failures.push('Insufficient independent audio pulses')
 const report = { accepted: failures.length === 0, failures, duration, firstAt, lastAt, frames, invalidMarkers,
-  p95AgeMs, maximumAgeMs, maximumGapMs, sequenceDrops, identities, generation, reconnects, unpublished,
+  p95AgeMs, maximumAgeMs, maximumGapMs, sequenceDrops, identities, generation, reconnects, unpublished, captureClockAnomaly, maximumAgeFrame,
   audioFrames, maximumAudioGapMs, audio, minutes: minutes.map((minute, index) => {
     let count = 0, p95AgeMs = 0
     for (let age = 0; age < 2002; ++age) {

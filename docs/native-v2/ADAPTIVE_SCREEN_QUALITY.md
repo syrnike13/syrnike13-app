@@ -220,7 +220,7 @@ are suppressed so video cannot bypass the shaper. Actual offered/delivered
 bytes, drops and candidate rewriting must be nonzero as appropriate.
 
 The 20-minute schedule repeats a 300-second cycle: 12 Mbit/s for 30 seconds,
-3 Mbit/s for 30 seconds, 1.25 Mbit/s for 30 seconds (below the 1.5 Mbit/s
+3 Mbit/s for 30 seconds, 1.25 Mbit/s for 30 seconds (below the 2 Mbit/s
 floor), then 12 Mbit/s for 210 seconds. GPU contention runs at 150–160 seconds
 of each cycle. Full-run decoded dimensions, track SID, generation, frame age,
 gap, sequence drops and RTC receive counters are recorded, including updates.

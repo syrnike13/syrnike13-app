@@ -175,6 +175,7 @@ try {
   await writeFile(env.MEDIA_LAB_AUDIO_REPORT, JSON.stringify({ accepted: failures.length === 0, failures, duration, startAt, provenance,
     scenario: gpuPressure ? '1080p60; constant 12Mbps; GPU 20-140s' :
       lateStatic ? '1080p60; constant 12Mbps; static pixels 30-70s; second subscriber at 40s' :
+      previewStall ? '1080p60; network cycle; preview consumer stalled 20-160s; remote voice playback' :
       '1080p60; repeating 300s: 12Mbps 30s, 3Mbps 30s, 1.25Mbps 30s, 12Mbps 210s; GPU 150-160s',
     evidence, audioAge, references, samples, linkSamples, lateStartedAt, lateReceiver, publisherLog: redact(publisher.output()) }, null, 2))
   console.log(JSON.stringify({ failures, audioAge, sampleCount: samples.length, link: shaper.snapshot() }))

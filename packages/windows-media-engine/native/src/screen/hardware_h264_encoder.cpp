@@ -295,9 +295,8 @@ bool initializeTransform(
                       setCodecU32(transform.Get(),
                                   CODECAPI_AVEncCommonMeanBitRate,
                                   state->profile.bitrate);
-      if (configured)
-        (void)setCodecU32(transform.Get(),
-                          CODECAPI_AVEncMPVDefaultBPictureCount, 0);
+    if (configured)
+      (void)setCodecU32(transform.Get(), CODECAPI_AVEncMPVDefaultBPictureCount, 0);
     // Configure rate control before committing media types: hardware transforms
     // may freeze the rate-control mode when their input type is installed.
     if (configured)
