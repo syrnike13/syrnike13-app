@@ -188,6 +188,19 @@ Exact SDK pin: `v1.10.0-syrnike.10`, commit
 | NVIDIA GeForce RTX 5070 Ti | 32.0.16.1074 / Windows 10.0.26200 | Repeated 2/4 Mbit/s live update verified; 1.5 Mbit/s bitstream tolerance and full-run receiver freshness failed |
 | Intel / AMD / other NVIDIA | Not tested | Unqualified; do not infer support |
 
+The bitrate lab accepts `MEDIA_LAB_BITRATE_SCENARIO`: `network` (default),
+`gpu-pressure`, `preview-stall`, or `late-static`. Focused scenarios run exactly
+180 seconds. The default network/GPU 20-minute schedule is unchanged.
+GPU pressure keeps a 12 Mbit/s link and runs seven bounded competing 4096×4096
+hardware encoders plus GPU memory traffic during seconds 20–140. Preview stall
+stops the pixel consumer during seconds 20–160 and independently measures OS
+playback of the existing remote-audio reference; capture, encoder and both audio
+paths must keep progressing. Late/static freezes the fixture pixels during
+seconds 30–70 and connects a second observer at second 40; it must decode the
+same publication within 1500 ms, with complete age measurements retained for
+both observers. The fixture continues repainting identical pixels while static;
+zero-new-input policy behavior is covered separately by deterministic traces.
+
 The standalone real-MFT probe uses a deterministic moving tiled 1080p60 scene
 and one encoder: 8 → 4 → 2 → 4 → 2 → 4 Mbit/s, 20 seconds per stage. Each full
 stage includes its transition. The initial 8 Mbit/s scene may underfill; every

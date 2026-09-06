@@ -14,7 +14,8 @@ const Sample = Schema.Struct({
   captureFrames: Schema.Number, encoderFrames: Schema.Number, encodedBytes: Schema.Number, consumed: Schema.Number,
   videoDepth: Schema.Number, bytes: Schema.Number, handles: Schema.Number, threads: Schema.Number, privateBytes: Schema.Number,
   previewFrames: Schema.Number, previewChanges: Schema.Number, audioPackets: Schema.Number,
-  gpuActive: Schema.Boolean, gpuBatches: Schema.Number,
+  previewStalled: Schema.Boolean, remoteVoicePlayed: Schema.Number,
+  gpuActive: Schema.Boolean, gpuBatches: Schema.Number, reason: Schema.Number,
 })
 const Receiver = Schema.Struct({
   frames: Schema.Number, p95AgeMs: Schema.Number, maximumAgeMs: Schema.Number,
@@ -24,7 +25,11 @@ const Receiver = Schema.Struct({
 })
 
 /** Full-interval oracle: a startup/transition failure cannot disappear through slicing. */
-export function verifyBitrateEvidence(samplesValue: unknown, receiverValue: unknown, duration: number, startAt: number) {
+export type BitrateScenario = 'network' | 'preview-stall' | 'gpu-pressure' | 'late-static'
+export function verifyBitrateEvidence(samplesValue: unknown, receiverValue: unknown, duration: number, startAt: number,
+  scenario: BitrateScenario = 'network') {
+  const previewStall = scenario === 'preview-stall', gpuPressure = scenario === 'gpu-pressure'
+  const lateStatic = scenario === 'late-static'
   const samples = Schema.decodeUnknownSync(Schema.Array(Sample))(samplesValue)
   const receiver = Schema.decodeUnknownSync(Receiver)(receiverValue)
   const failures = new Set<string>(), first = samples[0], last = samples.at(-1)
@@ -34,6 +39,8 @@ export function verifyBitrateEvidence(samplesValue: unknown, receiverValue: unkn
   let downs = 0, ups = 0
   for (let index = 0; index < samples.length; ++index) {
     const sample = samples[index]!, previous = samples[index - 1]
+    if (sample.previewStalled !== (previewStall && sample.elapsedMs >= 20_000 && sample.elapsedMs < 160_000))
+      failures.add('Unexpected preview stall interval')
     if (sample.profile !== 4 || sample.width !== 1920 || sample.height !== 1080 || sample.fps !== 60 ||
         !sample.encoderInstance || sample.generation !== first?.generation || sample.encoderInstance !== first?.encoderInstance)
       failures.add('Preset or encoder/source identity changed')
@@ -60,9 +67,26 @@ export function verifyBitrateEvidence(samplesValue: unknown, receiverValue: unkn
   for (let at = 0; at + 10_000 <= duration; at += 10_000) {
     const window = samples.filter(sample => sample.elapsedMs >= at && sample.elapsedMs < at + 10_000)
     const a = window[0], b = window.at(-1)
+    const deliberatelyStalled = previewStall && at >= 20_000 && at < 160_000
+    const deliberatelyStatic = lateStatic && at >= 30_000 && at < 70_000
     if (!a || !b || b.captureFrames <= a.captureFrames || b.encoderFrames <= a.encoderFrames ||
-        b.previewChanges <= a.previewChanges || b.audioPackets <= a.audioPackets)
+        (!deliberatelyStalled && !deliberatelyStatic && b.previewChanges <= a.previewChanges) || b.audioPackets <= a.audioPackets)
       failures.add('Capture/encoder/preview/audio stopped in a measured window')
+    if (a && b && deliberatelyStalled && (b.previewFrames !== a.previewFrames || b.previewChanges !== a.previewChanges))
+      failures.add('Preview consumer did not actually stall')
+    if (previewStall && (!a || !b || b.remoteVoicePlayed <= a.remoteVoicePlayed))
+      failures.add('Remote voice playback stopped in a measured window')
+    if (lateStatic && at >= 40_000 && at < 60_000 && a && b && b.previewChanges !== a.previewChanges)
+      failures.add('Static fixture pixels changed')
+  }
+  if (previewStall && (duration !== 180_000 || downs < 2 || ups < 2))
+    failures.add('Incomplete preview stall/live update scenario')
+  if (gpuPressure) {
+    const loaded = samples.filter(sample => sample.elapsedMs >= 20_000 && sample.elapsedMs < 140_000)
+    if (!loaded.some(sample => sample.gpuActive && sample.gpuBatches > 0 && [3, 4, 5, 6].includes(sample.reason)))
+      failures.add('Real GPU workload did not produce local policy pressure')
+    if (!loaded.some(sample => sample.appliedBps === 2_000_000 && sample.warning && sample.reason === 10))
+      failures.add('GPU pressure did not exercise the minimum warning')
   }
   const mean = (values: typeof samples, field: 'handles' | 'threads' | 'bytes' | 'privateBytes') =>
     values.reduce((sum, sample) => sum + sample[field], 0) / Math.max(1, values.length)

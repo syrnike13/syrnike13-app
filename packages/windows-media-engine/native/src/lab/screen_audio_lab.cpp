@@ -9,6 +9,7 @@
 #include "lab/audio_session_volume_probe.hpp"
 #include "lab/preview_pixel_observer.hpp"
 #include "lab/gpu_contention.hpp"
+#include "lab/encoder_contention.hpp"
 #include <syncstream>
 #include <tlhelp32.h>
 #include <psapi.h>
@@ -43,6 +44,13 @@ int main(int argc, char** argv) {
                 scenario == "audio-cycles" || scenario == "default-output" || scenario == "bitrate",
             "Unknown audio scenario");
     const bool bitrate_lab = scenario == "bitrate";
+    const auto* bitrate_scenario_value = std::getenv("MEDIA_LAB_BITRATE_SCENARIO");
+    const std::string_view bitrate_scenario = bitrate_scenario_value ? bitrate_scenario_value : "network";
+    require(bitrate_scenario == "network" || bitrate_scenario == "preview-stall" ||
+                bitrate_scenario == "gpu-pressure" || bitrate_scenario == "late-static", "Unknown bitrate scenario");
+    const bool preview_stall = bitrate_lab && bitrate_scenario == "preview-stall";
+    const bool gpu_pressure = bitrate_lab && bitrate_scenario == "gpu-pressure";
+    const bool late_static = bitrate_lab && bitrate_scenario == "late-static";
     require(seconds >= 5 && seconds <= (bitrate_lab ? 1260UL : 660UL), "Duration outside audio lab bounds");
     auto transport = std::make_shared<LiveKitRoomTransport>();
     Engine engine(EngineOptions{.room_transport = transport});
@@ -62,7 +70,7 @@ int main(int argc, char** argv) {
     require(transport->activeRoom() != nullptr, "Room did not connect");
     {
       std::unique_ptr<lab::ReferenceAudioPlayback> reference_playback;
-      if (scenario == "system")
+      if (scenario == "system" || preview_stall)
         reference_playback = std::make_unique<lab::ReferenceAudioPlayback>(transport->activeRoom());
       sources::SourceRegistry registry(sources::createWin32SourceEnumerator());
       sources::EnumerationOptions options;
@@ -108,10 +116,12 @@ int main(int argc, char** argv) {
           {}, true);
       std::unique_ptr<lab::PreviewPixelObserver> preview;
       std::unique_ptr<lab::GpuContention> contention;
+      std::unique_ptr<lab::EncoderContention> encoder_contention;
       if (bitrate_lab) {
         require(video.enableAdaptiveQuality(1U << 4, 4), "Exact 1080p60 preset was not admitted");
         preview = std::make_unique<lab::PreviewPixelObserver>();
-        contention = std::make_unique<lab::GpuContention>(gpu);
+        contention = std::make_unique<lab::GpuContention>(gpu, gpu_pressure);
+        if (gpu_pressure) encoder_contention = std::make_unique<lab::EncoderContention>(gpu);
       }
       lab::AudioPulseRecorder audio_references;
       lab::AudioSessionVolumeProbe session_volumes;
@@ -161,13 +171,27 @@ int main(int argc, char** argv) {
       std::uint64_t audio_revision = 1;
       bool cycle_audio_on = true;
       auto cycle_at = std::chrono::steady_clock::now() + 1s;
+      bool fixture_static = false;
+      bool audio_failure_reported = false;
       while (std::chrono::steady_clock::now() < end) {
         if (bitrate_lab) {
-          preview->poll();
           const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
               std::chrono::steady_clock::now() - began).count());
-          const bool busy = elapsed % 300000 >= 150000 && elapsed % 300000 < 160000;
+          const bool preview_stalled = preview_stall && elapsed >= 20000 && elapsed < 160000;
+          const bool make_static = late_static && elapsed >= 30000 && elapsed < 70000;
+          if (make_static != fixture_static) {
+            require(PostMessageW(window, WM_APP + 139, make_static ? 1 : 0, 0) != FALSE,
+                    "Static fixture control failed");
+            fixture_static = make_static;
+          }
+          if (!preview_stalled) preview->poll();
+          const bool busy = gpu_pressure ? elapsed >= 20000 && elapsed < 140000
+              : elapsed % 300000 >= 150000 && elapsed % 300000 < 160000;
           contention->setActive(busy);
+          if (encoder_contention) {
+            encoder_contention->setActive(busy);
+            require(!encoder_contention->failed(), "Competing hardware encoder failed");
+          }
           require(SUCCEEDED(contention->failure()), "GPU contention fixture failed");
           if (elapsed - last_bitrate_sample_ms >= 500) {
             const auto s = video.stats();
@@ -213,12 +237,18 @@ int main(int argc, char** argv) {
                 << ",\"privateBytes\":" << memory.PrivateUsage
                 << ",\"previewFrames\":" << preview->frames << ",\"previewChanges\":" << preview->content_changes
                 << ",\"previewAgeMaxUs\":" << preview->maximum_age_us
+                << ",\"previewStalled\":" << (preview_stalled ? "true" : "false")
+                << ",\"fixtureStatic\":" << (fixture_static ? "true" : "false")
+                << ",\"remoteVoicePlayed\":" << (reference_playback ? reference_playback->playedSamples() : 0)
                 << ",\"audioPackets\":" << audio_owner.stats().session.submitted
                 << ",\"keyframeRequests\":" << s.keyframe_requests
                 << ",\"gpuActive\":" << (busy ? "true" : "false")
-                  << ",\"gpuDurationUs\":" << s.converter.gpu_duration_last_us
-                  << ",\"gpuDurationMaxUs\":" << s.converter.gpu_duration_max_us
-                  << ",\"gpuBatches\":" << contention->batches() << "}" << std::endl;
+                << ",\"gpuDurationUs\":" << s.converter.gpu_duration_last_us
+                << ",\"gpuDurationMaxUs\":" << s.converter.gpu_duration_max_us
+                << ",\"gpuFixtureBytes\":" << contention->allocatedBytes()
+                << ",\"competingEncoderFrames\":" << (encoder_contention ? encoder_contention->frames() : 0)
+                << ",\"competingEncoderBytes\":" << (encoder_contention ? lab::EncoderContention::tracked_bytes : 0)
+                << ",\"gpuBatches\":" << contention->batches() << "}" << std::endl;
             last_bitrate_sample_ms = elapsed;
           }
         }
@@ -256,6 +286,13 @@ int main(int argc, char** argv) {
           cycle_at = std::chrono::steady_clock::now() + (cycle_audio_on ? 1s : 200ms);
         }
         const auto audio_failure = audio_owner.stats().failure;
+        if (audio_failure && !audio_failure_reported) {
+          audio_failure_reported = true;
+          std::osyncstream(std::cout) << "AUDIO_OWNER_FAILURE {\"code\":" << static_cast<int>(audio_failure->code)
+              << ",\"platformResult\":" << audio_failure->result
+              << ",\"utilityRetirementRequired\":" << (audio_failure->utility_retirement_required ? "true" : "false")
+              << "}" << std::endl;
+        }
         require(
             !audio_failure || (scenario == "audio-loss" &&
                                audio_failure->code == audio::ScreenAudioFailureCode::target_exited),

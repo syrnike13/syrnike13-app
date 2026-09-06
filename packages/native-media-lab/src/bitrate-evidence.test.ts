@@ -10,6 +10,7 @@ function fixture() {
     consumed: index * 30, videoDepth: 1, bytes: 48_000_000, handles: 1000, threads: 100,
     privateBytes: 180_000_000, previewFrames: index * 10, previewChanges: index * 9,
     audioPackets: index * 50, gpuActive: false, gpuBatches: 0,
+    previewStalled: false, remoteVoicePlayed: 0, reason: 0,
   }))
   const receiver = { frames: 1200, p95AgeMs: 25, maximumAgeMs: 45, maximumGapMs: 33,
     reconnects: 0, identities: ['video', 'audio'], minutes: [{ frames: 1200, p95AgeMs: 25 }], rtcSamples: [] }
@@ -45,6 +46,28 @@ describe('full-interval fixed-preset acceptance', () => {
       if (mutation === 'audio') for (const sample of samples) sample.audioPackets = 0
       if (mutation === 'handles') for (const sample of samples.slice(-10)) sample.handles += 65
       expect(verifyBitrateEvidence(samples, receiver, 20_000, 0).accepted).toBe(false)
+    }
+  })
+  it('requires an actual preview stall, resumed pixels and continuous remote playback', () => {
+    const base = fixture()
+    const samples = Array.from({ length: 360 }, (_, index) => {
+      const elapsedMs = index * 500 + 500
+      const updates = [30_000, 60_000, 120_000, 145_000, 170_000].filter(at => at <= elapsedMs).length
+      const bitrate = [8_000_000, 4_000_000, 2_000_000, 2_500_000, 3_125_000, 3_900_000][updates]!
+      const preview = Math.min(index, 39) + Math.max(0, index - 319)
+      return { ...base.samples[0]!, elapsedMs, updates, appliedBps: bitrate, targetBps: bitrate,
+        captureFrames: index * 30, encoderFrames: index * 30, audioPackets: index * 50,
+        previewFrames: preview * 10, previewChanges: preview * 9,
+        previewStalled: elapsedMs >= 20_000 && elapsedMs < 160_000, remoteVoicePlayed: index * 24_000 }
+    })
+    expect(verifyBitrateEvidence(samples, base.receiver, 180_000, 0, 'preview-stall').accepted).toBe(true)
+    expect(verifyBitrateEvidence(samples, base.receiver, 180_000, 0).accepted).toBe(false)
+    for (const mode of ['voice-stop', 'no-stall', 'no-resume'] as const) {
+      const broken = samples.map((sample, index) => ({ ...sample,
+        remoteVoicePlayed: mode === 'voice-stop' ? 0 : sample.remoteVoicePlayed,
+        previewChanges: mode === 'no-stall' ? index : mode === 'no-resume' && index >= 319 ? 351 : sample.previewChanges,
+      }))
+      expect(verifyBitrateEvidence(broken, base.receiver, 180_000, 0, 'preview-stall').accepted).toBe(false)
     }
   })
 })

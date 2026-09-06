@@ -20,6 +20,8 @@ unsigned tone_offset = 0;
 unsigned phase_ms = 0;
 bool keep_audio_after_close = false;
 bool bitrate_fixture = false;
+bool freeze_video = false;
+std::uint64_t frozen_position = 0;
 std::array<std::vector<std::uint32_t>, 8> bitrate_patterns;
 
 void renderAudio() {
@@ -88,6 +90,11 @@ void renderAudio() {
   CloseHandle(event);
 }
 LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+  if (message == WM_APP + 139 && bitrate_fixture) {
+    if (wparam && !freeze_video) frozen_position = played.load();
+    freeze_video = wparam != 0;
+    return 0;
+  }
   if (message == WM_TIMER) {
     if (failed)
       DestroyWindow(window);
@@ -110,7 +117,7 @@ LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
       return 0;
     }
     const auto previous = SelectObject(dc, bitmap);
-    const auto position = played.load();
+    const auto position = freeze_video ? frozen_position : played.load();
     // A 100 ms plateau spans multiple frames at the 30 fps test profile.
     // The rising edge still follows the played sample clock exactly.
     const bool pulse = position >= rate && position % rate < rate / 10;

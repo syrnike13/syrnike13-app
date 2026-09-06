@@ -202,9 +202,52 @@ histograms and transition samples, are retained in
 [`raw-admission-comparison.json.gz`](raw-admission-comparison.json.gz).
 Duplicate process logs are omitted and source hashes are retained.
 
-The complete scenario matrix, stronger actual GPU contention, full 20-minute
-run and final Release/Debug/ASan/artifact checks remain pending. Receiver
-thresholds are unchanged; 151 ms is not rounded into a 150 ms pass.
+The full 20-minute run and final exact-pin Release/Debug/ASan/artifact checks
+remain pending. Receiver thresholds are unchanged; 151 ms is not rounded into
+a 150 ms pass.
+
+### Focused hardware and preview scenarios
+
+`issue139-encoder4096-contention-diagnostic` passed its complete 180-second
+interval: video p95 **60 ms**, maximum **117 ms**, maximum gap **297 ms**, 6,669
+decoded frames and no invalid markers; 180 audio pulses at p95 **108.9 ms**.
+The link remained at 12 Mbit/s with zero packet loss. Seven additional hardware
+encoders processed fixed 4096×4096 surfaces during seconds 20–140, alongside a
+bounded memory-heavy GPU dispatch. The publisher's encoder/source generation
+and publication remained unchanged as the policy reached 2 Mbit/s, kept output
+and the warning under encoder pressure, then recovered to 2.5 Mbit/s and
+cleared the warning. This is actual hardware work, not injected policy samples.
+The extra surfaces are laboratory workload dimensions, not product presets.
+
+The load has seven fixed encoder/converter owners, two input textures, and the
+existing three-slot pools per converter/encoder. The separate GPU device owns
+an 80 MiB texture set and at most one outstanding dispatch. Publisher tracked
+queue/pool growth was zero; full-process private memory (including the competing
+MFTs) plateaued around 1.64 GB and grew by about 13.8 MB over startup. The report
+retains full process resources rather than calling publisher-owned counters
+total memory. Lighter compute-only, memory-only and seven 4K encoder workloads
+did not reach the minimum and were rejected by the scenario oracle.
+
+The first preview-stall diagnostic paused the actual pixel consumer during
+seconds 20–160 while the existing reference receiver played remote audio.
+Preview counters stayed constant and resumed, and the OS played-sample counter
+continued, but the screen-audio owner failed around second 169. The run also
+failed video p95 at 191 ms. It is not accepted; the exact audio failure code is
+now emitted once by the lab for the follow-up investigation.
+
+`issue139-late-static-diagnostic` passed with two independent receivers. Pixels
+were held static during seconds 30–70; the second viewer joined at second 40
+and decoded the same publication after **849 ms**. Both observers measured
+p95 **51 ms**, maximum **293 ms**; the original observer's maximum gap was
+334 ms. The source generation stayed at one and keyframe requests increased
+from three to four. Audio passed at p95 **80.9 ms**. Pixel observation confirms
+the static interval and subsequent moving output.
+
+These complete candidate/failed scenario measurements are retained in
+[`scenario-diagnostics.json.gz`](scenario-diagnostics.json.gz), with original
+source hashes and no captured media or duplicate process logs. They still use
+the local SDK candidate and dirty app sources. Final published-pin runs must
+repeat the required scenarios.
 
 ## Earlier local validation of the proposed source
 
