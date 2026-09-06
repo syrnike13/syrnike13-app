@@ -213,8 +213,8 @@ Windows topology through `SetDisplayConfig`, holds it absent for eight seconds,
 then restores every saved display mode and position. Release and ASan evidence
 requires a real source-unavailable interval with no frames or repeated attempts,
 followed by bounded recovery. This proves operating-system output removal; it
-does not claim a physical cable test. UAC/lock still requires an actual user
-action; injected policy events are not a substitute for that scenario.
+does not claim a physical cable test. UAC/lock requires an actual user action;
+the recorded UAC proof below supplies this independently of injected events.
 
 `backend_transition_lab switch monitor-index 375` provides a separate 30-cycle
 resource check with no encoder or SDK. It records handles, bounded textures and
@@ -235,6 +235,23 @@ Exit code zero by itself confirms cleanup, not these observed transitions.
 Acceptance evidence is still being collected. This document does not declare
 the issue or Phase C complete.
 
+Actual UAC qualification on 2026-09-06 used the published SDK `.8` application
+build and two 120-second transition probes. The user opened the Windows UAC
+prompt, held it and selected No. WGC and DXGI each recorded 13 secure-desktop
+paused samples with zero live generations, retained frames and DXGI textures,
+spanning 6041/6032 ms. Attempts stayed fixed during the pause; both resumed
+frames afterward and drained at stop. WGC used two total attempts and at most
+one generation; DXGI used three attempts and at most two generations. Maximum
+DXGI hold was 8667 us against 50000 us. Logs and hashes are recorded under
+`secureDesktopCases` in the acceptance JSON.
+
+The PowerShell wrapper initially rejected a null process ExitCode after its
+timed WaitForExit with redirected output. The same null result was reproduced
+with `cmd /c exit 0`. The recorded transition samples, unique terminal summary
+and empty stderr were therefore verified directly using the unchanged pause,
+retry, recovery and drain requirements; the original exit code is unavailable.
+The user did not have to repeat the UAC action.
+
 The historical SDK `.7` release-binary matrix uses the explicit Ethernet IPv4 and local
 STUN/TURN with a 3600-second credential lifetime. Ordinary WGC, ordinary DXGI
 and DXGI contention all passed. The 375-second run completed all 30 switches
@@ -252,7 +269,7 @@ socket kept all nine samples at 143 handles. The SDK candidate passed the full
 30-switch observer run with WGC/DXGI handle growth 11/13, 58.37 fps, p95 93 ms,
 zero Room reconnects, maximum duplication hold 23215 us and final generation
 count zero. This is a private candidate result, not released-binary hardware
-qualification. Actual secure-desktop qualification is still required.
+qualification.
 
 The final local `.8` bundle passed the separate WGC, DXGI and contention cases.
 Its first 30-switch run was rejected at 17 handles for both backends against
@@ -299,6 +316,18 @@ discontinuities and a 5362 ms maximum video age. The failed job passed on the
 second attempt at the identical application commit. The original failure is
 retained; its cause is not established. CI on the final SDK pin and application
 changes remains required.
+
+Run `34015154172` on `5624fef2` passed native and ASan checks but rejected
+`screen-cpu-repeat`: the observer decoded 773 frames at p95 99 ms, with one
+stale frame at 4479 ms and nine audio discontinuities, then timed out. This
+failure remains recorded; its cause is not established.
+
+Only the failed `screen-cpu-repeat` surface was then run locally against the
+published SDK `.8`: all 30 cycles passed, with 781 decoded frames, p95 48 ms,
+maximum age 181 ms, zero stale frames and zero reconnects. Final process handle
+growth was three, thread growth was minus two and live D3D objects were zero.
+One audio scheduling discontinuity was recorded. This local result does not
+reclassify the failed hosted run or establish its cause.
 
 The subsequent local window regression suite exposed intermittent whole-process
 resource failures. The latest Release run passed 30/31 tests: normal 600-frame
