@@ -61,6 +61,13 @@ MTA usage reference so its WinRT objects cannot outlive the COM runtime when a
 generation worker exits. Weak, generation-fenced cache callbacks permit orderly
 cache destruction before releasing that reference.
 
+The WGC window callback also checks the actual window visibility before using
+frame geometry. WGC can emit minimized-window dimensions before the 25 ms
+observer notices the transition. Such frames are drained without pool resize,
+generation creation or delivery. The window fixture gates an already-arrived
+callback, minimizes the window, then releases it and requires no resize/delivery
+work until restoration. This regression also runs under AddressSanitizer.
+
 Scripted owner tests cover an HDR revision while healthy, an unavailable HDR
 query while degraded, and recovery after a subsequent real revision. The
 hardware evidence covers resolution, refresh, rotation and output removal;
@@ -228,14 +235,83 @@ Exit code zero by itself confirms cleanup, not these observed transitions.
 Acceptance evidence is still being collected. This document does not declare
 the issue or Phase C complete.
 
-The release-binary 30-switch run with the corrected native SFU address also
-remains rejected: measured video p95 was 612 ms and both backend groups reached
+The historical SDK `.7` release-binary matrix uses the explicit Ethernet IPv4 and local
+STUN/TURN with a 3600-second credential lifetime. Ordinary WGC, ordinary DXGI
+and DXGI contention all passed. The 375-second run completed all 30 switches
+with accepted video, 58.92 decoded fps and a 4142 us maximum duplication hold,
+but WGC and DXGI handle growth was 22 and 23 against the unchanged limit of 16.
+It remains rejected. An SDK-only Room with no capture or publications reproduced
+22 handles of growth with public STUN and 16 with local STUN/TURN; these controls
+locate growth outside capture but do not prove a specific networking defect.
+
+The subsequent SDK prerequisite is [client SDK PR #4](https://github.com/syrnike13/client-sdk-cpp/pull/4).
+A direct reproduction against the pinned WebRTC archive retained exactly four
+shared UDP sockets per failed-network regather: 149 to 181 handles over eight
+cycles, with four ready ports throughout. Giving each port ownership of its
+socket kept all nine samples at 143 handles. The SDK candidate passed the full
+30-switch observer run with WGC/DXGI handle growth 11/13, 58.37 fps, p95 93 ms,
+zero Room reconnects, maximum duplication hold 23215 us and final generation
+count zero. This is a private candidate result, not released-binary hardware
+qualification. Actual secure-desktop qualification is still required.
+
+The final local `.8` bundle passed the separate WGC, DXGI and contention cases.
+Its first 30-switch run was rejected at 17 handles for both backends against
+16. The subsequent focused resource diagnostic passed at 14/15, 58.31 fps,
+measured p95 73 ms, zero reconnects, 9277 us maximum duplication hold and zero
+final generations. The earlier rejection remains in the evidence. UDP endpoint
+snapshots fell from 13 to 6, rose to 11 during regather, then returned to 6;
+the temporary sockets were retired. The first inspector missed startup, so
+the evidence records actual snapshot times instead of claiming a time-zero
+baseline. No acceptance threshold was changed.
+
+SDK CI also exposed an existing polling race in the late-connect regression
+on Intel macOS: connect finished before the test could disconnect it. A private
+implementation seam now gates the request after listener ownership is installed.
+The public API and Room layout remain unchanged. Only that regression and
+ordinary reconnect were rerun locally, five times each, against a real SFU;
+all ten passed. Further development checks are scoped to the changed surface.
+
+SDK PR #4 is merged as `83c2bd5ef7f840de7046f5fb1efae61475659464` and
+[v1.10.0-syrnike.8](https://github.com/syrnike13/client-sdk-cpp/releases/tag/v1.10.0-syrnike.8)
+is published for all seven platforms. Final CI `34009700804` passed; the merge
+has the identical tested source tree. Redundant post-merge CI was cancelled.
+Release run `34013219905` passed. All 53 Windows archive files match the release
+bundle, and the archive SHA-256 is
+`900d65e5309a806c44a4f72900885dbaf28ca9912e16acb2e0305eda0f64e741`.
+The released DLLs passed two focused Room connect/reconnect smoke tests against
+the real local SFU. The application now pins this release; default public
+download, checksum, build and matching native/desktop staging passed without
+a local SDK override. These packaging checks complement the local `.8` hardware
+qualification above; the hardware matrix was not repeated after publication.
+
+An earlier release-binary 30-switch run with the corrected native SFU address
+was also rejected: measured video p95 was 612 ms and both backend groups reached
 27 handles of forward growth against the 16-handle limit. All 30 switches
 completed with zero Room reconnects, invalid markers or audio discontinuities.
 Capture age stayed below 35 ms and GPU conversion below 9 ms. Independent
 snapshots show 21 additional pipes/sockets, with disk, character and unknown
 file categories unchanged; this narrows the observation but does not establish
 the cause of the growth or the receiver latency.
+
+Hosted CI run 34003960171 initially passed Debug/Release native checks and
+AddressSanitizer, but its ordinary Media Lab observer failed after audio
+discontinuities and a 5362 ms maximum video age. The failed job passed on the
+second attempt at the identical application commit. The original failure is
+retained; its cause is not established. CI on the final SDK pin and application
+changes remains required.
+
+The subsequent local window regression suite exposed intermittent whole-process
+resource failures. The latest Release run passed 30/31 tests: normal 600-frame
+window capture retained one process thread (28 to 29), while handles grew only
+by two and engine-owned D3D objects returned to zero. The gated minimize test
+and the complete ASan window suite passed. Two isolated thread diagnostics did
+not reproduce the extra thread. Its origin is not yet established; the window
+probe retains its four-handle and zero-thread limits. A diagnostic inside the
+full Release suite passed the window contract, including the gated minimize
+regression; an unchanged monitor contract instead retained one thread whose
+entry point was in `ntdll.dll`. These whole-process outliers remain recorded.
+They did not trigger changes to the monitor implementation or another broad
+test run; the changed window surface also has its focused ASan pass.
 
 `MEDIA_LAB_RTC_STATS_PATH` enables an observer-only WebRTC diagnostic file.
 It samples every five seconds, allows one pending FFI request, and retains at
