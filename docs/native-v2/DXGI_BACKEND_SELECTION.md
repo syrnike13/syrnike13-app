@@ -296,7 +296,7 @@ Release run `34013219905` passed. All 53 Windows archive files match the release
 bundle, and the archive SHA-256 is
 `900d65e5309a806c44a4f72900885dbaf28ca9912e16acb2e0305eda0f64e741`.
 The released DLLs passed two focused Room connect/reconnect smoke tests against
-the real local SFU. The application now pins this release; default public
+the real local SFU. The application previously pinned this release; default public
 download, checksum, build and matching native/desktop staging passed without
 a local SDK override. These packaging checks complement the local `.8` hardware
 qualification above; the hardware matrix was not repeated after publication.
@@ -328,6 +328,35 @@ maximum age 181 ms, zero stale frames and zero reconnects. Final process handle
 growth was three, thread growth was minus two and live D3D objects were zero.
 One audio scheduling discontinuity was recorded. This local result does not
 reclassify the failed hosted run or establish its cause.
+
+Run `34016936287` on `e9bb1a99` subsequently passed frontend/backend and ASan,
+but the separate `lifecycle-churn` scenario retained 99 handles and 12 threads
+after 50 cycles and the unchanged five-second cleanup deadline. A focused local
+run with published SDK `.8` reproduced final growth of four handles/two threads.
+SDK [PR #5](https://github.com/syrnike13/client-sdk-cpp/pull/5) cancels and joins
+negotiation tasks that retained the closed session during their answer timeout,
+and drains pending/running debounced negotiation. With the same publisher and
+candidate DLLs, all 50 cycles passed at zero additional handles/threads, zero
+pending callbacks and zero cleanup wait. Two exact-source Rust cancellation
+tests also passed. This did not repeat the capture matrix.
+
+SDK PR #5 is merged as `049ec1b977365dfe18e0a80342a39be33f020bb1`.
+SDK CI `34018749099` passed on the identical source tree, and release run
+`34020516794` passed. Its initial macOS dependency-download failure was retried
+only for that platform after the other builds completed.
+[v1.10.0-syrnike.9](https://github.com/syrnike13/client-sdk-cpp/releases/tag/v1.10.0-syrnike.9)
+was published on 2026-09-06. All 53 Windows archive files match the CI bundle.
+The actual release DLLs passed the same 50-cycle lifecycle reproduction with
+zero handle/thread growth in every sample, zero pending callbacks and zero
+cleanup wait. The public archive SHA-256 is
+`1de6b41344890bc3476d11472f11e57927c4f7ee8c1baee0a3b914c7b7236a8f`.
+The application now pins `.9`; default public download, checksum, build and
+native/desktop artifact verification passed with no local SDK override.
+Capture/observer hardware evidence above retains its original SDK version;
+the released `.9` check specifically covers negotiation shutdown.
+Final application CI and resolution of the historical intermittent duplication
+hold-budget violations remain pending. Later passing measurements do not
+establish the cause of those violations or a fix.
 
 The subsequent local window regression suite exposed intermittent whole-process
 resource failures. The latest Release run passed 30/31 tests: normal 600-frame
