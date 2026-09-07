@@ -40,6 +40,25 @@ artifact verification also passed. SDK CI, all seven release platforms and
 documentation checks passed; the SDK PR records the earlier macOS integration
 timeout (also seen before the pacing change) and the HTTP 504 download failure.
 
+### Subsequent isolated transport diagnostics
+
+Three independent unpublished SDK experiments retained the `.12` C++ DLL and
+the same app executable. None qualifies as an accepted fix. Complete reports
+and hashes are in [`sdk12-followup-diagnostics.json.gz`](sdk12-followup-diagnostics.json.gz).
+
+- Marking encoded sources as screencasts ended early with an audio-owner
+  failure at about 86 seconds. Video p95 was 341 ms; the receiver later saw
+  2×2 output during termination. The causal relationship between the source
+  flag and the audio failure is unproven.
+- Changing only the video pacing factor from 1.1 to 1.0 completed 180 seconds
+  with video p95/max/gap of 157/735/980 ms and audio p95 224.732 ms: failed.
+- Enabling only fast retransmissions completed 180 seconds with video
+  p95/max/gap of 151/850/722 ms and audio p95 191.019 ms: failed.
+
+All three experiments were reverted. Uncontrolled concurrent applications
+were present during these diagnostics; their contribution is unmeasured.
+The failures remain failures and are not excluded from the evidence.
+
 ## Published SDK `.11`, 2026-09-07
 
 [`published-sdk11-diagnostics.json.gz`](published-sdk11-diagnostics.json.gz)
