@@ -6,9 +6,10 @@ operation can replace the encoder/source/publication generation. Automatic
 control changes only the existing hardware encoder's bitrate. Product Voice UI
 cutover remains #130; qualification #132 must use this contract.
 
-The published SDK `.11` passed the complete 20-minute network/GPU schedule
-and focused GPU and late/static scenarios. Preview-stall qualification remains
-pending: its final run exceeded the unchanged 150 ms receiver p95 age limit.
+The published SDK `.12` passed the complete 20-minute network/GPU schedule
+at receiver p95 94 ms. Preview-stall qualification remains pending: its complete
+run measured 162 ms against the unchanged 150 ms receiver p95 age limit.
+Earlier `.11` GPU and late/static results remain historical checks.
 See the [full-interval diagnostics](issue139-diagnostics/README.md). Historical #124 results are
 not acceptance for #139. In particular,
 [adaptive-screen-quality-acceptance.json](adaptive-screen-quality-acceptance.json)
@@ -180,13 +181,13 @@ of the same state belongs to #130.
 
 ## Hardware and evidence protocol
 
-Exact SDK pin: `v1.10.0-syrnike.11`, commit
-`59c074b2397d71ed45db7749af275cf291c2a36c`; the authoritative pin is
+Exact SDK pin: `v1.10.0-syrnike.12`, commit
+`cd0e8b09b097af0f078853781991638a18345d37`; the authoritative pin is
 `packages/windows-media-engine/native/cmake/LiveKitSDK.cmake`.
 
 | Hardware | Driver / OS | Status |
 | --- | --- | --- |
-| NVIDIA GeForce RTX 5070 Ti | 32.0.16.1074 / Windows 10.0.26200 | Repeated 2/4 Mbit/s live update and published `.11` 20-minute network schedule passed; focused final scenarios pending. Preliminary 1.5 Mbit/s floor failed bitstream tolerance. |
+| NVIDIA GeForce RTX 5070 Ti | 32.0.16.1074 / Windows 10.0.26200 | Repeated 2/4 Mbit/s live update and published `.12` 20-minute network schedule passed; preview-stall failed at p95 162 ms, focused final scenarios remain pending. Preliminary 1.5 Mbit/s floor failed bitstream tolerance. |
 | Intel / AMD / other NVIDIA | Not tested | Unqualified; do not infer support |
 
 The bitrate lab accepts `MEDIA_LAB_BITRATE_SCENARIO`: `network` (default),

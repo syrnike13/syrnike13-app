@@ -1,7 +1,7 @@
 # Issue #139: qualification diagnostics
 
-These reports include historical failures and controls, plus the accepted
-published `.11` network, GPU and late/static scenarios below. Complete issue qualification remains
+These reports include historical failures and controls, plus accepted individual
+scenarios for published SDKs `.11` and `.12`. Complete issue qualification remains
 pending; this directory alone does not authorize closing #139.
 
 The early implementation fixed preset ownership and added bounded live bitrate
@@ -9,6 +9,36 @@ control, but its restricted-link receiver violated the existing 150 ms p95 age
 limit. Capture, independent preview pixels and coded audio continued. Automatic
 encoder/publication replacement and threshold changes are not solutions allowed
 by #139.
+
+## Published SDK `.12`, 2026-09-07
+
+The clean app `707266e87ffe4b190d7265861858a59f3ed0520b` uses published SDK
+`v1.10.0-syrnike.12`, source `cd0e8b09b097af0f078853781991638a18345d37`.
+The full 1200-second network/GPU schedule passed: 56,497 decoded frames,
+p95 **94 ms**, maximum **1233 ms**, maximum gap **1212 ms**, no invalid CRC
+markers and no reconnects. Five bitrate decreases and twelve recoveries kept
+one encoder instance, generation and selected 1080p60 preset. All 1200 audio
+pulses passed at p95 **124.105 ms**. Tracked pool growth was zero and private
+memory growth was 9.94 MB.
+
+The following complete preview-stall run failed receiver freshness at p95
+**162 ms**, despite maximum age **1044 ms**, maximum gap **745 ms**, no invalid
+markers, two bitrate decreases and three recoveries. Audio p95 was **124.239 ms**;
+remote OS playback progressed while the preview consumer was held, then pixel
+observation resumed. Passing the long run does not cancel this failed scenario.
+
+Both complete reports, histograms, transition samples and original file hashes
+are retained in [`published-sdk12-diagnostics.json.gz`](published-sdk12-diagnostics.json.gz).
+The observer's two final unsubscriptions are the expected video/audio stop;
+additional subscriptions or reconnects fail its identity check.
+
+Local Release **31/31**, focused Debug **5/5** and MSVC ASan **5/5** passed on
+the official Windows release-job DLLs. Both DLL hashes were subsequently
+verified byte-for-byte against the published archive; the app pin commit
+changed only four CMake pin lines. Normal published-pin download, staging and
+artifact verification also passed. SDK CI, all seven release platforms and
+documentation checks passed; the SDK PR records the earlier macOS integration
+timeout (also seen before the pacing change) and the HTTP 504 download failure.
 
 ## Published SDK `.11`, 2026-09-07
 
