@@ -1,7 +1,7 @@
 # Issue #139: qualification diagnostics
 
 These reports include historical failures and controls, plus the accepted
-published `.11` network scenario below. Complete issue qualification remains
+published `.11` network, GPU and late/static scenarios below. Complete issue qualification remains
 pending; this directory alone does not authorize closing #139.
 
 The early implementation fixed preset ownership and added bounded live bitrate
@@ -42,7 +42,36 @@ Final focused qualification uses those seven encoders alongside the original
 and priority elevation. It additionally requires competing encoder output and
 compute progress throughout every 10-second load window. Receiver thresholds,
 minimum-warning requirement, 20–140-second load interval and publication
-continuity requirements are unchanged. A fresh final run is required.
+continuity requirements are unchanged.
+
+The final bounded GPU run at clean app commit
+`026ac59bde0960e793c86f58eab4e2aaab3082dd` passed: 7103 video frames,
+p95/max age 61/151 ms, maximum gap 233 ms, zero invalid markers,
+24,081 competing encoder outputs and 76,111 compute batches, with both
+progressing in every load window. Four decreases and one increase retained
+the encoder and publication identities. Audio p95 was 73.953 ms.
+The same commit passed late/static qualification: original/late receiver p95
+45/43 ms, late first decode 863 ms, audio p95 65.116 ms.
+
+The final preview-stall run at that commit failed receiver freshness:
+7534 frames, p95/max age 171/951 ms, maximum gap 840 ms, zero invalid
+markers. Preview counters stopped during 20–160 seconds and resumed;
+screen audio p95 was 118.459 ms and remote voice progressed throughout.
+The identity, resource and bitrate checks passed. This is still a failed run.
+
+A subsequent buffer experiment returned `S_OK` for setting and reading
+16,666 bytes through `CODECAPI_AVEncCommonBufferSize`. Video p95 improved
+to 137 ms, but audio failed at 193.272 ms. A separate identical-input
+comparison (six three-second stages) showed that the small buffer impaired
+bitrate response: later 2/4 Mbit/s requests produced about 6 Mbit/s, while
+the default buffer responded to those requests. The experiment was removed;
+the diagnostic is not acceptance evidence.
+
+A raw-admission hysteresis experiment required 40 ms of fresh send-delay
+measurements at or below 10 ms before clearing 30 ms queue pressure.
+Unknown/stale observations still released admission after 250 ms. It worsened
+receiver p95 to 208 ms (maximum 1213 ms, gap 1479 ms); audio passed at
+117.200 ms. This experiment was also reverted.
 
 Everything below is historical, with SDK/app pins and pending statuses as they
 were recorded at the time.

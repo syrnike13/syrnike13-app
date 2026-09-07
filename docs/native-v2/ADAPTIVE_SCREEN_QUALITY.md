@@ -6,8 +6,9 @@ operation can replace the encoder/source/publication generation. Automatic
 control changes only the existing hardware encoder's bitrate. Product Voice UI
 cutover remains #130; qualification #132 must use this contract.
 
-The published SDK `.11` passed the complete 20-minute network/GPU schedule;
-focused GPU, late/static and preview-stall final qualification remains pending.
+The published SDK `.11` passed the complete 20-minute network/GPU schedule
+and focused GPU and late/static scenarios. Preview-stall qualification remains
+pending: its final run exceeded the unchanged 150 ms receiver p95 age limit.
 See the [full-interval diagnostics](issue139-diagnostics/README.md). Historical #124 results are
 not acceptance for #139. In particular,
 [adaptive-screen-quality-acceptance.json](adaptive-screen-quality-acceptance.json)
