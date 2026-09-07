@@ -73,6 +73,21 @@ Unknown/stale observations still released admission after 250 ms. It worsened
 receiver p95 to 208 ms (maximum 1213 ms, gap 1479 ms); audio passed at
 117.200 ms. This experiment was also reverted.
 
+## Keyframe pacing candidate
+
+The SDK's zero-playout-delay factory can enable WebRTC's existing keyframe
+queue flushing. A new keyframe supersedes pending video/RTX packets for its
+stream, while an already-paced keyframe, audio and unrelated queues are kept.
+Two otherwise unchanged preview-stall runs passed with video p95 132/133 ms,
+maximum gaps 532/467 ms, zero invalid CRC markers and audio p95 118.712/137.713 ms.
+Each retained the encoder, selected preset and publication identities through
+two bitrate decreases and three increases. Complete reports are in
+[`keyframe-pacing-candidates.json.gz`](keyframe-pacing-candidates.json.gz).
+The late/static candidate also passed: original/late receiver p95 52/46 ms,
+zero invalid CRC markers and audio p95 149.752 ms.
+These used a local candidate FFI DLL and are not published-pin qualification.
+The SDK change is tracked in [SDK PR #8](https://github.com/syrnike13/client-sdk-cpp/pull/8).
+
 Everything below is historical, with SDK/app pins and pending statuses as they
 were recorded at the time.
 
