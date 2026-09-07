@@ -50,6 +50,28 @@ On the same production source, Release 31/31, focused Debug 7/7 and MSVC ASan
 7/7 passed, including PCM recovery and audio-owner tests. All four app CI jobs
 passed. Full hardware qualification after the PCM change remains pending.
 
+## Static pixels and late receiver startup
+
+The late/static follow-up measured a first decoded frame at 1775 ms from process
+launch, failing the unchanged 1500 ms deadline. Added startup timestamps
+separate process/module loading, connection, subscription and first frame.
+One diagnostic measured 769 ms before connection and 273 ms from connection
+to first frame. Direct `effect/Schema` imports avoid loading the whole Effect
+entry point; an isolated import comparison measured 279 ms versus 524 ms.
+The original process-launch start time and 1500 ms check remain unchanged.
+
+Saved preview frames established the static-pixel failure: exactly 158 RGB
+pixels differed, all in the previous/current OS cursor positions; the rest of
+the image was identical. A fixture `WM_SETCURSOR` experiment still captured
+the cursor and was reverted. The late/static lab now disables WGC cursor
+composition for its controlled source. Default product window capture and
+the other scenarios keep cursor capture enabled. The complete cursor-free
+diagnostic passed, with audio p95/max 101.127/121.080 ms and no static changes.
+
+The failed runs, intermediate control, startup timestamps, original BMPs and
+removed pixel-dump instrumentation are retained in
+[`static-cursor-diagnostics.json.gz`](static-cursor-diagnostics.json.gz).
+
 ## Published SDK `.12`, 2026-09-07
 
 The clean app `707266e87ffe4b190d7265861858a59f3ed0520b` uses published SDK

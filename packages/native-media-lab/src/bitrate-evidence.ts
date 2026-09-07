@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import * as Schema from 'effect/Schema'
 
 /** SFU close placeholders are outside an explicitly finished measurement. */
 export function isBitrateTeardownFrame(width: number, height: number, endedAtMs: number,

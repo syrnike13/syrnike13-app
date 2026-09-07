@@ -133,7 +133,9 @@ int main(int argc, char** argv) {
       std::osyncstream(std::cout) << "AUDIO_WINDOW_DIAGNOSTIC visible=" << IsWindowVisible(window)
                 << " minimized=" << IsIconic(window) << " client=" << bounds.right << "x"
                 << bounds.bottom << std::endl;
-      capture::WindowCapture capture(registry, source_id, capture::createWgcWindowCaptureBackend());
+      // A moving OS cursor is not part of the controlled static fixture.
+      capture::WindowCapture capture(registry, source_id,
+          capture::createWgcWindowCaptureBackend({.include_cursor = !late_static}));
       auto frames = std::make_shared<screen::ScreenFramePipeline>();
       const auto gpu = capture::processD3d11Device(false);
       const auto profile = bitrate_lab ? screen::kScreenProfile1080p60 : screen::kScreenProfile720p30;

@@ -305,6 +305,7 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
           direct3d_device, DirectXPixelFormat::B8G8R8A8UIntNormalized,
           static_cast<int>(kMaximumWindowFrames + 1), initial_size);
       auto session = frame_pool.CreateCaptureSession(item);
+      if (!options_.include_cursor) session.IsCursorCaptureEnabled(false);
 
       const std::weak_ptr weak = state_;
       const auto frame_token = frame_pool.FrameArrived(

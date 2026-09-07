@@ -1,10 +1,12 @@
 import { AudioStream, VideoStream, Room, RoomEvent, TrackKind, dispose, type RemoteTrack } from '@livekit/rtc-node'
-import { Schema } from 'effect'
+import * as Schema from 'effect/Schema'
 import { readFile, writeFile } from 'node:fs/promises'
 import { pulseCode, type SyncPulse } from './audio-sync-evidence.js'
 import { decodeVideoMarker } from './marker.js'
 import { isBitrateTeardownFrame } from './bitrate-evidence.js'
 
+const startup = { processStartedAt: performance.timeOrigin, moduleReadyAt: Date.now(),
+  connectStartedAt: 0, connectedAt: 0, videoSubscribedAt: 0, audioSubscribedAt: 0 }
 const env = Schema.decodeUnknownSync(Schema.Struct({
   LIVEKIT_URL: Schema.String, LIVEKIT_OBSERVER_TOKEN: Schema.String,
   MEDIA_LAB_READY_PATH: Schema.String, MEDIA_LAB_REPORT_PATH: Schema.String,
@@ -112,12 +114,16 @@ room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
   if (participant.identity !== 'native-v2-publisher') return
   if (!publication.sid) { failures.push('Missing publication SID'); return }
   identities.push(publication.sid)
+  if (track.kind === TrackKind.KIND_VIDEO) startup.videoSubscribedAt = Date.now()
+  else startup.audioSubscribedAt = Date.now()
   readers.push((track.kind === TrackKind.KIND_VIDEO ? video(track) : sound(track)).catch(error => { failures.push(String(error)) }))
 })
 room.on(RoomEvent.TrackUnsubscribed, (_track, _publication, participant) => { if (participant.identity === 'native-v2-publisher') ++unpublished })
 room.on(RoomEvent.Reconnecting, () => { ++reconnects })
 try {
+  startup.connectStartedAt = Date.now()
   await room.connect(env.LIVEKIT_URL, env.LIVEKIT_OBSERVER_TOKEN, { autoSubscribe: true, dynacast: false })
+  startup.connectedAt = Date.now()
   await writeFile(env.MEDIA_LAB_READY_PATH, 'ready\n')
   const deadline = performance.now() + duration + 30_000
   let lastStats = 0
@@ -174,7 +180,7 @@ const populated = minutes.filter(minute => minute.frames > 0)
 const average = (minute: typeof minutes[number]) => minute.ageSum / minute.frames
 if (duration >= 1200_000 && average(populated.at(-2)!) - average(populated[0]!) > 20) failures.push('Receiver age grew over 20 ms')
 if (audio.length < duration / 1000 * 0.8) failures.push('Insufficient independent audio pulses')
-const report = { accepted: failures.length === 0, failures, duration, firstAt, lastAt, frames, invalidMarkers,
+const report = { accepted: failures.length === 0, failures, duration, startup, firstAt, lastAt, frames, invalidMarkers,
   p95AgeMs, maximumAgeMs, maximumGapMs, sequenceDrops, identities, generation, reconnects, unpublished, captureClockAnomaly, maximumAgeFrame,
   markerFormat: '0x534e-crc16-ccitt-false',
   audioFrames, maximumAudioGapMs, audio, minutes: minutes.map((minute, index) => {
