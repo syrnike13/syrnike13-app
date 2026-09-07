@@ -14,6 +14,7 @@
 #include <tlhelp32.h>
 #include <psapi.h>
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -28,10 +29,39 @@ std::string environment(const char* name) {
   return value;
 }
 void require(bool ok, const char* message) {
-  if (!ok) throw std::runtime_error(message);
+  if (!ok) {
+    std::cerr << "LAB_REQUIRE_FAILURE " << message << std::endl;
+    throw std::runtime_error(message);
+  }
+}
+void logTermination() noexcept {
+  std::cerr << "LAB_TERMINATE" << std::endl;
+  if (const auto error = std::current_exception()) {
+    try {
+      std::rethrow_exception(error);
+    } catch (const std::exception& cause) {
+      std::cerr << cause.what() << std::endl;
+    } catch (...) {
+      std::cerr << "Unknown active exception" << std::endl;
+    }
+  }
+  void* frames[32]{};
+  const auto count = CaptureStackBackTrace(0, 32, frames, nullptr);
+  for (USHORT index = 0; index < count; ++index) {
+    HMODULE module{};
+    char name[MAX_PATH]{};
+    GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        reinterpret_cast<LPCSTR>(frames[index]), &module);
+    GetModuleFileNameA(module, name, MAX_PATH);
+    std::cerr << std::filesystem::path(name).filename().string() << "+0x" << std::hex
+        << (reinterpret_cast<std::uintptr_t>(frames[index]) - reinterpret_cast<std::uintptr_t>(module))
+        << std::dec << std::endl;
+  }
+  std::abort();
 }
 }  // namespace
 int main(int argc, char** argv) {
+  std::set_terminate(logTermination);
   try {
     require(argc == 3, "Expected fixture PID and duration seconds");
     const auto pid = static_cast<DWORD>(std::stoul(argv[1]));

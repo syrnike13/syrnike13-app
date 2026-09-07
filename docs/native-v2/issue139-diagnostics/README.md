@@ -36,6 +36,20 @@ committed-source qualification. They demonstrate queue recovery; the earlier
 isolated 100 ms timeout was not reproduced in the timing traces, so its precise
 cause is not claimed as established.
 
+The first clean-source GPU qualification at `8b17e16f` aborted after 117 seconds
+with status `0xc0000409`; it recorded no audio-owner failure and audio p95/max
+77.404/117.536 ms before termination. The incomplete interval fails acceptance.
+Lab termination logging now captures the active exception and module-relative
+stack addresses; failed requirements are logged before resource unwinding.
+The following full diagnostic GPU, CPU+GPU and late/static runs passed at audio
+p95/max 81.862/112.594, 136.820/277.953 and 83.025/104.925 ms respectively.
+These do not establish the abort's cause. Reports are retained in
+[`audio-followup-diagnostics.json.gz`](audio-followup-diagnostics.json.gz).
+
+On the same production source, Release 31/31, focused Debug 7/7 and MSVC ASan
+7/7 passed, including PCM recovery and audio-owner tests. All four app CI jobs
+passed. Full hardware qualification after the PCM change remains pending.
+
 ## Published SDK `.12`, 2026-09-07
 
 The clean app `707266e87ffe4b190d7265861858a59f3ed0520b` uses published SDK
