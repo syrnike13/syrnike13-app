@@ -1,0 +1,72 @@
+{
+  "issue": 127,
+  "acceptance": false,
+  "sdkBase": "cd0e8b09b097af0f078853781991638a18345d37",
+  "sdkCandidate": "77b2494b32ef2c6a12913e2725546090ea3e6d68 (SDK PR 9; release not yet pinned)",
+  "publicProtobufApmBaseline": {
+    "frames": 1000,
+    "allocations": 17000,
+    "bytes": 489000
+  },
+  "initialFixedFrameExperiment": {
+    "status": "fail",
+    "erleDb": 40.5542,
+    "noiseSuppressionDb": 13.8224,
+    "steadyAllocations": 0,
+    "noiseAllocations": 0,
+    "rendererEpochResetAllocations": 1369,
+    "rendererEpochResetUs": 1101,
+    "p50Us": 88,
+    "p95Us": 375,
+    "maxUs": 2372,
+    "heapImports": 4
+  },
+  "allocationSafeEpochExperiment": {
+    "status": "pass",
+    "erleDb": 40.5542,
+    "noiseSuppressionDb": 13.8224,
+    "steadyAllocations": 0,
+    "noiseAllocations": 0,
+    "rendererEpochAllocations": 0,
+    "rendererEpochOutcome": "unsupported",
+    "p50Us": 79,
+    "p95Us": 251,
+    "maxUs": 593
+  },
+  "canonicalCommandVerification": {
+    "command": "media_lab microphone-synthetic-aec",
+    "status": "pass",
+    "measuredFrames": 1000,
+    "erleDb": 40.5542,
+    "noiseSuppressionDb": 13.8224,
+    "allocations": 0,
+    "reallocations": 0,
+    "epochOutcome": "unsupported",
+    "p50Us": 61,
+    "p95Us": 67,
+    "maxUs": 127
+  },
+  "warmPipelineMuteExperiment": {
+    "status": "pass",
+    "cycles": 200,
+    "publicationAttached": false,
+    "digitalSilenceFrames": 201,
+    "captureOpens": 2,
+    "committedInputs": 1,
+    "failedCandidateRollback": true,
+    "meterUpdates": 39,
+    "elapsedMs": 4009,
+    "outputFrames": 402,
+    "staleFrames": 0,
+    "dspWorkerAllocations": 0,
+    "dspWorkerReallocations": 0,
+    "idleMeterCleared": true,
+    "stopped": true
+  },
+  "decision": "WebRTC Initialize is forbidden in the frame callback. A changed renderer epoch produces typed unsupported AEC; independent NS and microphone processing continue. A fresh DSP owner is required to resume AEC on a different renderer epoch.",
+  "limitations": [
+    "Synthetic echo-only fixture; not a physical room or double-talk quality assessment.",
+    "Heap import instrumentation covers loaded SDK and UCRT HeapAlloc/HeapReAlloc on the calling thread; this is not a full ETW trace.",
+    "Other development reports record capture allocation, publication, ducking, and the 30-minute soak; final issue acceptance remains open."
+  ]
+}

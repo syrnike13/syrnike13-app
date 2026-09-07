@@ -1,0 +1,19 @@
+{
+  "command": "microphone-capture-allocation",
+  "accepted": true,
+  "positiveControl": true,
+  "seconds": 10,
+  "frames": 1004,
+  "callbackCount": 1005,
+  "callbackMaxUs": 30,
+  "heapAllocations": 0,
+  "heapReallocations": 0,
+  "heapBytes": 0,
+  "interceptedImports": 2,
+  "stopped": true,
+  "coverage": "UCRT HeapAlloc/HeapReAlloc imports on the production capture worker, after client startup and before teardown",
+  "limitations": [
+    "Does not instrument allocations internal to Windows audio-service or driver modules.",
+    "Probe is enabled only in the disposable benchmark executable."
+  ]
+}

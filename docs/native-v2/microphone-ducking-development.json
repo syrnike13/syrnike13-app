@@ -1,0 +1,24 @@
+{
+  "command": "microphone-ducking",
+  "status": "pass",
+  "environment": "Windows local hardware, 2026-09-08",
+  "foreignMedia": "Separate Windows PowerShell SoundPlayer process, 48 kHz mono 1 kHz tone, amplitude 800 PCM16",
+  "foreignSessions": 2,
+  "volumeObservations": 187,
+  "sessionVolumesAndMuteUnchanged": true,
+  "relativeLevelTolerance": 0.03,
+  "phases": [
+    { "name": "baseline", "rms": 564.565, "samples": 153600 },
+    { "name": "warm", "rms": 564.565, "samples": 153600 },
+    { "name": "muted", "rms": 564.564, "samples": 153600 },
+    { "name": "unmuted", "rms": 564.563, "samples": 153600 },
+    { "name": "stopped", "rms": 564.564, "samples": 153600 }
+  ],
+  "systemSettingsChanged": false,
+  "stopped": true,
+  "limitations": [
+    "Uses the machine's current communications attenuation preference; no preference changes were made.",
+    "PCM evidence is process loopback plus session-volume observation, not an external acoustic measurement.",
+    "Tests default input without attached microphone publication."
+  ]
+}

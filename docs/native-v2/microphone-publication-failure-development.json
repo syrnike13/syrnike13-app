@@ -1,0 +1,15 @@
+{
+  "command": "microphone-publication-failure",
+  "status": "pass",
+  "environment": "Windows local hardware, 2026-09-08",
+  "attempts": 10,
+  "failure": "publish_failed",
+  "publicationCommits": 0,
+  "captureOpens": 1,
+  "warmCapturePreserved": true,
+  "stopped": true,
+  "limitations": [
+    "Uses the real SDK task lane with no joined Room.",
+    "Does not inject a delayed server response or partial server-side publication."
+  ]
+}

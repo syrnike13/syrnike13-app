@@ -1,0 +1,29 @@
+{
+  "accepted": true,
+  "seconds": 30,
+  "explicitInput": 1,
+  "dspUpdatesWhilePublishing": true,
+  "subscribed": 2,
+  "unsubscribed": 1,
+  "deliberateRejoins": 1,
+  "reconnects": 0,
+  "publicationSid": "TR_AMudXzNqi5JodN",
+  "frames": 3004,
+  "maximumGapMs": 21,
+  "maximumMutedRms": 0.07905694150420949,
+  "maximumAudibleRms": 48.17636436400461,
+  "failures": [],
+  "publisherReport": [
+    {
+      "status": "pass",
+      "cycles": 200,
+      "dspUpdatesWhilePublishing": true,
+      "explicitInput": true,
+      "captureOpens": 1,
+      "publicationCommits": 1,
+      "submitted": 3012,
+      "rejectedStale": 0,
+      "dspWorkerAllocations": 0
+    }
+  ]
+}

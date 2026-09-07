@@ -1,0 +1,14 @@
+{
+  "command": "microphone-default-change",
+  "status": "pass",
+  "environment": "Windows local hardware, 2026-09-08",
+  "realDefaultTransitions": 2,
+  "healthyCommits": 2,
+  "systemDefaultRestored": true,
+  "stopped": true,
+  "method": "Temporarily select a previously verified healthy input using the existing opt-in default_endpoint_proof helper, observe actual Windows notifications, then restore both ordinary default roles.",
+  "limitations": [
+    "No physical unplug is performed.",
+    "This fixture checks warm capture without an attached publication."
+  ]
+}

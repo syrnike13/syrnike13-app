@@ -1,0 +1,17 @@
+{
+  "command": "microphone_capture_allocation --device-loss",
+  "accepted": true,
+  "injectedHresult": true,
+  "physicalUnplug": false,
+  "failure": "device_lost",
+  "frames": 100,
+  "clientAlive": false,
+  "threadAlive": false,
+  "mmcssRegistered": false,
+  "stopped": true,
+  "limitations": [
+    "Injects AUDCLNT_E_DEVICE_INVALIDATED after 100 real captured frames.",
+    "The user cannot perform physical unplug/replug during this session; that hardware acceptance remains open.",
+    "No Room, screen, or camera is instantiated by this capture-only fixture."
+  ]
+}
