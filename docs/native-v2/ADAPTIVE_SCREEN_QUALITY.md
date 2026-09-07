@@ -179,6 +179,30 @@ Technical outcome, reason, requested/applied bitrate and platform result remain
 diagnostics, without frames, window titles or credentials. Product integration
 of the same state belongs to #130.
 
+## Audio recovery after scheduling stalls
+
+The PCM queue still owns at most eight 10 ms packets, and the SDK source keeps
+its fixed 10 ms clock and existing 100 ms capture-callback deadline. A queue
+with more than one packet now catches up to its newest packet when its oldest
+capture timestamp is over 30 ms old. The retained packet is marked discontinuous
+and skipped packets remain counted in diagnostics. Ordinary batches up to
+30 ms retain their original order. The 100 ms hard stale-packet limit remains.
+
+The previous worker-gap check ran only after a successful SDK call and required
+a pause over 100 ms. Shorter stalls could leave both producer and consumer
+running at 10 ms per packet with a persistent queue delay. Timing diagnostics
+observed PCM ages up to 75 ms before the SDK even after GPU load ended.
+Capture-age-based catch-up handles time spent inside the SDK as well as worker
+scheduling gaps. The regression test covers a 50 ms pause followed by equal-rate
+production and consumption, plus normal batching and bounded storage.
+
+Three preliminary post-change GPU runs passed, including two with four extra
+CPU workers. Audio p95 was 74, 80 and 117 ms; no audio timeout occurred. One run
+used diagnostic SDK timing instrumentation, which was subsequently removed.
+The others used published `.12` DLLs. These comparisons identify retained PCM
+latency; they do not independently establish the cause of the earlier isolated
+100 ms timeout. Final committed-source qualification remains required.
+
 ## Hardware and evidence protocol
 
 On 2026-09-07 the user explicitly accepted the published `.12` preview-stall

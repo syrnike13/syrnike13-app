@@ -40,6 +40,16 @@ bool PcmQueue::push(const PcmPacket& packet, std::int64_t now) noexcept {
 }
 std::optional<PcmPacket> PcmQueue::take(std::int64_t now) noexcept {
   std::scoped_lock lock(mutex_);
+  if (!stopped_ && stats_.depth > 1 && packets_[head_].capture_timestamp_100ns <= now &&
+      now - packets_[head_].capture_timestamp_100ns > kAudioBacklogAge100ns) {
+    // Recover using capture age, including time spent waiting inside the SDK.
+    // A clocked sender cannot drain old PCM faster than new PCM arrives.
+    const auto discarded = stats_.depth - 1;
+    head_ = (head_ + discarded) % kAudioQueueCapacity;
+    stats_.depth = 1;
+    stats_.superseded += discarded;
+    packets_[head_].discontinuity = true;
+  }
   while (!stopped_ && stats_.depth) {
     auto packet = packets_[head_];
     head_ = (head_ + 1) % kAudioQueueCapacity;
@@ -53,15 +63,6 @@ std::optional<PcmPacket> PcmQueue::take(std::int64_t now) noexcept {
     return packet;
   }
   return std::nullopt;
-}
-void PcmQueue::discardBacklogExceptLatest() noexcept {
-  std::scoped_lock lock(mutex_);
-  if (stats_.depth > 1) {
-    const auto discarded = stats_.depth - 1;
-    head_ = (head_ + discarded) % kAudioQueueCapacity;
-    stats_.depth = 1;
-    stats_.superseded += discarded;
-  }
 }
 void PcmQueue::wait(std::chrono::milliseconds timeout) {
   std::unique_lock lock(mutex_);

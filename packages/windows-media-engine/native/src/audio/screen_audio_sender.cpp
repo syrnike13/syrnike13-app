@@ -145,15 +145,12 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
       source = state->source;
     }
     auto frame = livekit::AudioFrame::create(kAudioRate, kAudioChannels, kAudioPacketFrames);
-    auto last_submit = Clock::now();
     for (;;) {
       {
         std::scoped_lock lock(state->mutex);
         if (state->stop || !source) break;
       }
       if (queue_->stopped()) break;
-      if (Clock::now() - last_submit > std::chrono::milliseconds{100})
-        queue_->discardBacklogExceptLatest();
       auto packet = queue_->take(now100ns());
       if (!packet) {
         queue_->wait(std::chrono::milliseconds{10});
@@ -168,7 +165,6 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
       std::copy(packet->samples.begin(), packet->samples.end(), frame.data().begin());
       try {
         source->captureFrame(frame, 100);
-        last_submit = Clock::now();
       } catch (const std::system_error& error) {
         throw ScreenAudioFailure{error.code() == std::errc::timed_out
                                      ? ScreenAudioFailureCode::publication_timeout

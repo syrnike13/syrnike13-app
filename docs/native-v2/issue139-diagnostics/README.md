@@ -10,6 +10,32 @@ limit. Capture, independent preview pixels and coded audio continued. Automatic
 encoder/publication replacement and threshold changes are not solutions allowed
 by #139.
 
+## Audio queue recovery investigation
+
+[`audio-catchup-diagnostics.json.gz`](audio-catchup-diagnostics.json.gz) retains
+six complete source comparisons, SDK timing diagnostics, capture-to-SDK pulse
+timestamps, receiver audio jitter-buffer counters and the bounded CPU fixture.
+The diagnostic SDK edits were reverted; the production SDK remains `.12`.
+
+The old PCM queue retained up to 75 ms of ingress delay after short stalls.
+Both the producer and clocked SDK consumer then advanced at the same rate, so
+the backlog persisted. The old 100 ms worker-gap check also excluded time spent
+waiting inside a successful SDK call. The new queue catches up using actual
+capture age above 30 ms, preserving the existing storage bound and SDK deadline.
+
+The initial timing-only runs failed audio p95 at 191.719 and 164.170 ms.
+After the PCM change, the complete GPU run passed at p95/max 74.247/74.911 ms.
+Two CPU+GPU runs passed at 79.511/98.273 ms with diagnostic SDK instrumentation
+and 117.276/238.697 ms with the published DLLs. They observed five and 27
+superseded PCM packets respectively, no stale submitted packets and no audio
+owner timeout. The unchanged old-queue control measured audio p95 114.483 ms,
+but separately failed video generation observation and is not an accepted run.
+
+These are worktree diagnostics with actual executable/DLL hashes, not final
+committed-source qualification. They demonstrate queue recovery; the earlier
+isolated 100 ms timeout was not reproduced in the timing traces, so its precise
+cause is not claimed as established.
+
 ## Published SDK `.12`, 2026-09-07
 
 The clean app `707266e87ffe4b190d7265861858a59f3ed0520b` uses published SDK

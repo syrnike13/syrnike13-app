@@ -28,6 +28,9 @@ const rtcSamples: { atMs: number; bytesReceived: number; framesDecoded: number; 
   jitterBufferDelay: number; jitterBufferTargetDelay: number; jitterBufferMinimumDelay: number; jitterBufferEmittedCount: number;
   totalDecodeTime: number; totalProcessingDelay: number; totalAssemblyTime: number; framesReceived: number;
   retransmittedBytesReceived: number; nackCount: number; pliCount: number }[] = []
+const audioRtcSamples: { atMs: number; ssrc: number; trackIdentifier: string; bytesReceived: number; packetsLost: number;
+  jitterBufferDelay: number; jitterBufferTargetDelay: number;
+  jitterBufferMinimumDelay: number; jitterBufferEmittedCount: number }[] = []
 async function video(track: RemoteTrack) {
   const reader = new VideoStream(track).getReader()
   try {
@@ -57,7 +60,9 @@ async function video(track: RemoteTrack) {
       lastAt = now
       const marker = decodeVideoMarker(frame)
       if (!marker) { ++invalidMarkers; continue }
-      if (generation && marker.generation !== generation) throw new Error('Source generation changed')
+      if (generation && marker.generation !== generation) {
+        throw new Error(`Source generation changed from ${generation} to ${marker.generation} at sequence ${marker.sequence}, capture ${marker.capturedAtMs}, received ${now}`)
+      }
       generation = marker.generation
       const age = now - marker.capturedAtMs
       if (age < 0) {
@@ -122,6 +127,18 @@ try {
       // Serial await: at most one SDK stats request exists at a time.
       const stats = await room.getRtcStats()
       for (const item of [...stats.subscriberStats, ...stats.publisherStats]) {
+        if (item.stats.case === 'inboundRtp' && item.stats.value.stream?.kind === 'audio') {
+          const value = item.stats.value
+          if (audioRtcSamples.length >= 2600) throw new Error('Audio RTC evidence capacity exceeded')
+          audioRtcSamples.push({ atMs: Date.now(), ssrc: Number(value.stream?.ssrc ?? 0),
+            trackIdentifier: value.inbound?.trackIdentifier ?? '',
+            bytesReceived: Number(value.inbound?.bytesReceived ?? 0),
+            packetsLost: Number(value.received?.packetsLost ?? 0),
+            jitterBufferDelay: Number(value.inbound?.jitterBufferDelay ?? 0),
+            jitterBufferTargetDelay: Number(value.inbound?.jitterBufferTargetDelay ?? 0),
+            jitterBufferMinimumDelay: Number(value.inbound?.jitterBufferMinimumDelay ?? 0),
+            jitterBufferEmittedCount: Number(value.inbound?.jitterBufferEmittedCount ?? 0) })
+        }
         if (item.stats.case !== 'inboundRtp' || item.stats.value.stream?.kind !== 'video') continue
         const value = item.stats.value
         if (rtcSamples.length >= 2600) throw new Error('RTC evidence capacity exceeded')
@@ -167,7 +184,7 @@ const report = { accepted: failures.length === 0, failures, duration, firstAt, l
       if (count >= minute.frames * 0.95) { p95AgeMs = age; break }
     }
     return { ...minute, p95AgeMs }
-  }), rtcSamples, ageHistogram: Array.from(histogram), teardownFrames, measurementEndedAtMs }
+  }), rtcSamples, audioRtcSamples, ageHistogram: Array.from(histogram), teardownFrames, measurementEndedAtMs }
 await writeFile(env.MEDIA_LAB_REPORT_PATH, JSON.stringify(report, null, 2))
 console.log(JSON.stringify({ accepted: report.accepted, failures, frames, p95AgeMs, maximumAgeMs, maximumGapMs }))
 if (!report.accepted) process.exitCode = 1

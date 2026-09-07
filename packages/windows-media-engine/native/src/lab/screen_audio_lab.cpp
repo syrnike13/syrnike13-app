@@ -195,6 +195,7 @@ int main(int argc, char** argv) {
           require(SUCCEEDED(contention->failure()), "GPU contention fixture failed");
           if (elapsed - last_bitrate_sample_ms >= 500) {
             const auto s = video.stats();
+            const auto audio_stats = audio_owner.stats().session;
             DWORD handles = 0, threads = 0;
             require(GetProcessHandleCount(GetCurrentProcess(), &handles) != FALSE, "Handle query failed");
             const auto thread_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
@@ -240,7 +241,12 @@ int main(int argc, char** argv) {
                 << ",\"previewStalled\":" << (preview_stalled ? "true" : "false")
                 << ",\"fixtureStatic\":" << (fixture_static ? "true" : "false")
                 << ",\"remoteVoicePlayed\":" << (reference_playback ? reference_playback->playedSamples() : 0)
-                << ",\"audioPackets\":" << audio_owner.stats().session.submitted
+                << ",\"audioPackets\":" << audio_stats.submitted
+                << ",\"audioQueueDepth\":" << audio_stats.queue_depth
+                << ",\"audioQueueMaximumDepth\":" << audio_stats.maximum_queue_depth
+                << ",\"audioSupersededPackets\":" << audio_stats.superseded_packets
+                << ",\"audioStalePackets\":" << audio_stats.stale_packets
+                << ",\"audioMaximumSubmitAgeUs\":" << audio_stats.maximum_submit_age_us
                 << ",\"keyframeRequests\":" << s.keyframe_requests
                 << ",\"gpuActive\":" << (busy ? "true" : "false")
                 << ",\"gpuDurationUs\":" << s.converter.gpu_duration_last_us
