@@ -32,6 +32,25 @@ are retained in [`published-sdk12-diagnostics.json.gz`](published-sdk12-diagnost
 The observer's two final unsubscriptions are the expected video/audio stop;
 additional subscriptions or reconnects fail its identity check.
 
+On 2026-09-07 the user accepted the measured preview p95 of 162 ms and deferred
+latency investigation. This scoped exception does not turn the report into a
+passing test, change the general 150 ms threshold or waive other failures.
+
+The subsequent published `.12` GPU-pressure run stopped at about 82 seconds
+with `publication_timeout` in the audio owner (100 ms SDK capture deadline).
+Video up to termination measured p95/max/gap 65/105/136 ms and audio p95
+141.339 ms, but the interval is incomplete and fails acceptance. The audio
+sender implementation is unchanged from `develop`; this alone does not
+establish whether the failure is pre-existing or caused by this change.
+
+The complete late/static run also failed: preview pixels changed during the
+static interval and the late receiver's first frame arrived after 1514 ms
+against the 1500 ms deadline. The late receiver otherwise passed, decoding
+7,498 frames at p95/max/gap 50/242/310 ms with the same publication identities;
+all 180 audio pulses passed at p95 144.216 ms. Both full reports are retained
+in [`sdk12-final-focused-diagnostics.json.gz`](sdk12-final-focused-diagnostics.json.gz).
+These additional failures are outside the preview-latency exception.
+
 Local Release **31/31**, focused Debug **5/5** and MSVC ASan **5/5** passed on
 the official Windows release-job DLLs. Both DLL hashes were subsequently
 verified byte-for-byte against the published archive; the app pin commit

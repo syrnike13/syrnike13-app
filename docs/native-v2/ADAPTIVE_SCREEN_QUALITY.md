@@ -181,13 +181,18 @@ of the same state belongs to #130.
 
 ## Hardware and evidence protocol
 
+On 2026-09-07 the user explicitly accepted the published `.12` preview-stall
+p95 of 162 ms for this change and deferred further latency investigation.
+This is an exception for that measured result only. The 150 ms test threshold
+and original failed report remain unchanged; other failures are not covered.
+
 Exact SDK pin: `v1.10.0-syrnike.12`, commit
 `cd0e8b09b097af0f078853781991638a18345d37`; the authoritative pin is
 `packages/windows-media-engine/native/cmake/LiveKitSDK.cmake`.
 
 | Hardware | Driver / OS | Status |
 | --- | --- | --- |
-| NVIDIA GeForce RTX 5070 Ti | 32.0.16.1074 / Windows 10.0.26200 | Repeated 2/4 Mbit/s live update and published `.12` 20-minute network schedule passed; preview-stall failed at p95 162 ms, focused final scenarios remain pending. Preliminary 1.5 Mbit/s floor failed bitstream tolerance. |
+| NVIDIA GeForce RTX 5070 Ti | 32.0.16.1074 / Windows 10.0.26200 | Repeated 2/4 Mbit/s live update and published `.12` 20-minute network schedule passed; preview p95 162 ms accepted by user exception. Final GPU run stopped with audio publication timeout; late/static failed static-pixel stability and startup at 1514 ms. See retained diagnostics. Preliminary 1.5 Mbit/s floor failed bitstream tolerance. |
 | Intel / AMD / other NVIDIA | Not tested | Unqualified; do not infer support |
 
 The bitrate lab accepts `MEDIA_LAB_BITRATE_SCENARIO`: `network` (default),
