@@ -1,0 +1,263 @@
+{
+  "qualificationStatus": "accepted-with-deferred-preview-video-latency",
+  "allScenariosPassed": false,
+  "deferredVideoLatency": {
+    "scenario": "preview-stall",
+    "metric": "receiver p95 age",
+    "unchangedLimitMs": 150,
+    "initialDeferredMeasurementMs": 162,
+    "finalMeasurementMs": 170,
+    "reason": "The user deferred investigation of preview video latency on 2026-09-07 and required audio stability before merge. The new video-only p95 failure remains recorded as failed; audio and all other checks remain mandatory."
+  },
+  "sourceCommits": [
+    "e8cc126382cfbe4468ec37f6cdc968efaa0c6d5b",
+    "a6eff90ebfde112a35bffecd2486fe48ea62c565"
+  ],
+  "finalSourceCommit": "a6eff90ebfde112a35bffecd2486fe48ea62c565",
+  "qualificationNote": "Network, GPU and preview reports use clean e8cc1263. The later a6eff90e changes only observer startup imports/timestamps and an opt-out of cursor capture used exclusively by late/static; default production capture, audio, encoder and transport behavior remain unchanged. Late/static is requalified on that clean commit. Actual per-run source and binary hashes are preserved.",
+  "sdk": {
+    "version": "1.10.0-syrnike.12",
+    "commit": "cd0e8b09b097af0f078853781991638a18345d37",
+    "archiveSha256": "121368ec9a5e8813617d965179d02970295f94b4148c9f678e6b718f4330707a",
+    "binarySha256": {
+      "livekit.dll": "1023ec6ea028bd8e851f751d5dd1a3a3916b09e72518224659fb7b2669038893",
+      "livekit_ffi.dll": "f9ad8014ee59d28a6886038f895d8c41914cd1557d2593b3d4d026c1491e31df"
+    }
+  },
+  "serverBinarySha256": "726eb547e8a4d5be0c80a90e10fb5df2fdc7f265f083897c3367d6e41598477d",
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 5070 Ti",
+    "driver": "32.0.16.1074",
+    "windows": "10.0.26200"
+  },
+  "unqualifiedHardware": [
+    "Intel",
+    "AMD",
+    "Other NVIDIA devices/drivers"
+  ],
+  "fullReports": "issue139-diagnostics/audio-qualified-acceptance.json.gz",
+  "nativeChecks": [
+    {
+      "configuration": "release",
+      "passed": 31,
+      "failed": 0,
+      "sourceCommit": "8b17e16f5af7ff27691768eef8abbe75b1f8f2ab",
+      "note": "Tests include PCM catch-up and audio owner coverage. The following commit adds only lab termination diagnostics and retained reports; production code is unchanged."
+    },
+    {
+      "configuration": "debug",
+      "passed": 7,
+      "failed": 0,
+      "sourceCommit": "8b17e16f5af7ff27691768eef8abbe75b1f8f2ab",
+      "note": "Tests include PCM catch-up and audio owner coverage. The following commit adds only lab termination diagnostics and retained reports; production code is unchanged."
+    },
+    {
+      "configuration": "asan",
+      "passed": 7,
+      "failed": 0,
+      "sourceCommit": "8b17e16f5af7ff27691768eef8abbe75b1f8f2ab",
+      "note": "Tests include PCM catch-up and audio owner coverage. The following commit adds only lab termination diagnostics and retained reports; production code is unchanged."
+    },
+    {
+      "configuration": "release-window-and-audio-followup",
+      "passed": 4,
+      "failed": 0,
+      "sourceCommit": "a6eff90ebfde112a35bffecd2486fe48ea62c565",
+      "note": "Default window capture lifecycle/JSON plus PCM and audio owner after adding the lab-only cursor opt-out."
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "issue139-audio-qualified-network20",
+      "sourceCommit": "e8cc126382cfbe4468ec37f6cdc968efaa0c6d5b",
+      "passed": true,
+      "durationMs": 1200000,
+      "video": {
+        "frames": 54392,
+        "p95AgeMs": 99,
+        "maximumAgeMs": 1133,
+        "maximumGapMs": 2535,
+        "sequenceDrops": 11547,
+        "invalidMarkers": 0,
+        "reconnects": 0,
+        "totalPublisherTrackSubscriptions": 2,
+        "totalUnsubscriptionsIncludingStop": 2
+      },
+      "audio": {
+        "accepted": true,
+        "matchedPulses": 1201,
+        "p95Ms": 141.88540000095963,
+        "minimumMs": 61.03510000184178,
+        "maximumMs": 261.986099999398
+      },
+      "bitrateDowns": 5,
+      "bitrateUps": 14,
+      "growth": {
+        "handles": 0.40000000000009095,
+        "threads": -8,
+        "bytes": 0,
+        "privateBytes": 11156684.800000012
+      },
+      "latencyGrowthMs": -100.33333333333331,
+      "selectedPresetIndices": [
+        4
+      ],
+      "dimensions": [
+        "1920x1080@60"
+      ],
+      "encoderInstances": [
+        1
+      ],
+      "generations": [
+        1
+      ]
+    },
+    {
+      "name": "issue139-audio-qualified-gpu-pressure",
+      "sourceCommit": "e8cc126382cfbe4468ec37f6cdc968efaa0c6d5b",
+      "passed": true,
+      "durationMs": 180000,
+      "video": {
+        "frames": 7274,
+        "p95AgeMs": 64,
+        "maximumAgeMs": 113,
+        "maximumGapMs": 922,
+        "sequenceDrops": 2948,
+        "invalidMarkers": 1,
+        "reconnects": 0,
+        "totalPublisherTrackSubscriptions": 2,
+        "totalUnsubscriptionsIncludingStop": 2
+      },
+      "audio": {
+        "accepted": true,
+        "matchedPulses": 180,
+        "p95Ms": 89.83549999818206,
+        "minimumMs": 68.43409999832511,
+        "maximumMs": 168.56729999929667
+      },
+      "bitrateDowns": 4,
+      "bitrateUps": 1,
+      "growth": {
+        "handles": 15,
+        "threads": -6,
+        "bytes": 0,
+        "privateBytes": 10884710.400000095
+      },
+      "latencyGrowthMs": 0,
+      "selectedPresetIndices": [
+        4
+      ],
+      "dimensions": [
+        "1920x1080@60"
+      ],
+      "encoderInstances": [
+        8
+      ],
+      "generations": [
+        1
+      ]
+    },
+    {
+      "name": "issue139-audio-qualified-preview-stall",
+      "sourceCommit": "e8cc126382cfbe4468ec37f6cdc968efaa0c6d5b",
+      "passed": false,
+      "durationMs": 180000,
+      "video": {
+        "frames": 7122,
+        "p95AgeMs": 170,
+        "maximumAgeMs": 744,
+        "maximumGapMs": 943,
+        "sequenceDrops": 3082,
+        "invalidMarkers": 1,
+        "reconnects": 0,
+        "totalPublisherTrackSubscriptions": 2,
+        "totalUnsubscriptionsIncludingStop": 2
+      },
+      "audio": {
+        "accepted": true,
+        "matchedPulses": 181,
+        "p95Ms": 121.03819999843836,
+        "minimumMs": 60.92669999971986,
+        "maximumMs": 144.46509999781847
+      },
+      "bitrateDowns": 2,
+      "bitrateUps": 2,
+      "growth": {
+        "handles": 5,
+        "threads": -6,
+        "bytes": 0,
+        "privateBytes": 5088460.800000012
+      },
+      "latencyGrowthMs": 0,
+      "selectedPresetIndices": [
+        4
+      ],
+      "dimensions": [
+        "1920x1080@60"
+      ],
+      "encoderInstances": [
+        1
+      ],
+      "generations": [
+        1
+      ]
+    },
+    {
+      "name": "issue139-static-final-late-static",
+      "sourceCommit": "a6eff90ebfde112a35bffecd2486fe48ea62c565",
+      "passed": true,
+      "durationMs": 180000,
+      "video": {
+        "frames": 9341,
+        "p95AgeMs": 52,
+        "maximumAgeMs": 285,
+        "maximumGapMs": 950,
+        "sequenceDrops": 660,
+        "invalidMarkers": 1,
+        "reconnects": 0,
+        "totalPublisherTrackSubscriptions": 2,
+        "totalUnsubscriptionsIncludingStop": 2
+      },
+      "lateVideo": {
+        "frames": 7268,
+        "p95AgeMs": 53,
+        "maximumAgeMs": 286,
+        "maximumGapMs": 302,
+        "sequenceDrops": 530,
+        "invalidMarkers": 0,
+        "reconnects": 0,
+        "totalPublisherTrackSubscriptions": 2,
+        "totalUnsubscriptionsIncludingStop": 2
+      },
+      "lateFirstDecodeMs": 1008,
+      "audio": {
+        "accepted": true,
+        "matchedPulses": 182,
+        "p95Ms": 98.04450000077486,
+        "minimumMs": 55.927100002765656,
+        "maximumMs": 146.88180000334978
+      },
+      "bitrateDowns": 1,
+      "bitrateUps": 2,
+      "growth": {
+        "handles": 5.099999999999909,
+        "threads": -6,
+        "bytes": 0,
+        "privateBytes": 6160384
+      },
+      "latencyGrowthMs": 0,
+      "selectedPresetIndices": [
+        4
+      ],
+      "dimensions": [
+        "1920x1080@60"
+      ],
+      "encoderInstances": [
+        1
+      ],
+      "generations": [
+        1
+      ]
+    }
+  ]
+}

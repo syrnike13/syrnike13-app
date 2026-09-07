@@ -6,11 +6,13 @@ operation can replace the encoder/source/publication generation. Automatic
 control changes only the existing hardware encoder's bitrate. Product Voice UI
 cutover remains #130; qualification #132 must use this contract.
 
-The published SDK `.12` passed the complete 20-minute network/GPU schedule
-at receiver p95 94 ms. Preview-stall qualification remains pending: its complete
-run measured 162 ms against the unchanged 150 ms receiver p95 age limit.
-Earlier `.11` GPU and late/static results remain historical checks.
-See the [full-interval diagnostics](issue139-diagnostics/README.md). Historical #124 results are
+The final published SDK `.12` qualification includes a complete 20-minute
+network/GPU run, focused GPU pressure and late/static runs. All audio checks
+pass after capture-age-based PCM recovery. Preview video p95 remains a failed
+measurement at 170 ms, covered by the user's decision to defer that latency
+investigation; the 150 ms test threshold is unchanged.
+See the [qualification manifest](fixed-screen-preset-acceptance.json) and
+[full-interval diagnostics](issue139-diagnostics/README.md). Historical #124 results are
 not acceptance for #139. In particular,
 [adaptive-screen-quality-acceptance.json](adaptive-screen-quality-acceptance.json)
 records the old profile-switch behavior and must not be used to claim seamless
@@ -201,14 +203,19 @@ CPU workers. Audio p95 was 74, 80 and 117 ms; no audio timeout occurred. One run
 used diagnostic SDK timing instrumentation, which was subsequently removed.
 The others used published `.12` DLLs. These comparisons identify retained PCM
 latency; they do not independently establish the cause of the earlier isolated
-100 ms timeout. Final committed-source qualification remains required.
+100 ms timeout. Final committed-source audio p95 is 141.885 ms over 20 minutes,
+89.835 ms under focused GPU pressure, 121.038 ms with stalled preview and remote
+voice playback, and 98.045 ms in late/static. All complete without audio-owner
+failure. Maximum individual audio ages are 261.986, 168.567, 144.465 and
+146.882 ms respectively; p95 compliance is not a bound on every packet.
 
 ## Hardware and evidence protocol
 
-On 2026-09-07 the user explicitly accepted the published `.12` preview-stall
-p95 of 162 ms for this change and deferred further latency investigation.
-This is an exception for that measured result only. The 150 ms test threshold
-and original failed report remain unchanged; other failures are not covered.
+On 2026-09-07 the user deferred preview video latency investigation after the
+published `.12` run measured p95 162 ms, while explicitly requiring audio
+stability. The final preview run measured 170 ms and is retained as failed,
+with that same video p95 issue deferred. This does not waive audio, maximum
+video age, identity, lifecycle or static-pixel failures. No threshold changed.
 
 Exact SDK pin: `v1.10.0-syrnike.12`, commit
 `cd0e8b09b097af0f078853781991638a18345d37`; the authoritative pin is
@@ -216,7 +223,7 @@ Exact SDK pin: `v1.10.0-syrnike.12`, commit
 
 | Hardware | Driver / OS | Status |
 | --- | --- | --- |
-| NVIDIA GeForce RTX 5070 Ti | 32.0.16.1074 / Windows 10.0.26200 | Repeated 2/4 Mbit/s live update and published `.12` 20-minute network schedule passed; preview p95 162 ms accepted by user exception. Final GPU run stopped with audio publication timeout; late/static failed static-pixel stability and startup at 1514 ms. See retained diagnostics. Preliminary 1.5 Mbit/s floor failed bitstream tolerance. |
+| NVIDIA GeForce RTX 5070 Ti | 32.0.16.1074 / Windows 10.0.26200 | Repeated 2/4 Mbit/s live update, final 20-minute network, GPU and late/static passed; all four audio checks passed. Preview video p95 170 ms remains deferred. Late first frame: 1008 ms. Historical failures, including an unreproduced abort, remain retained. Preliminary 1.5 Mbit/s floor failed bitstream tolerance. |
 | Intel / AMD / other NVIDIA | Not tested | Unqualified; do not infer support |
 
 The bitrate lab accepts `MEDIA_LAB_BITRATE_SCENARIO`: `network` (default),
@@ -236,6 +243,11 @@ seconds 30–70 and connects a second observer at second 40; it must decode the
 same publication within 1500 ms, with complete age measurements retained for
 both observers. The fixture continues repainting identical pixels while static;
 zero-new-input policy behavior is covered separately by deterministic traces.
+Only late/static disables WGC cursor composition, because an OS pointer is not
+part of the controlled static pixels. Default product capture retains its
+cursor behavior. Observer startup timestamps include process/module loading,
+connection and subscription; the 1500 ms deadline still starts before process
+launch, and direct Schema imports avoid unrelated startup work.
 
 The standalone real-MFT probe uses a deterministic moving tiled 1080p60 scene
 and one encoder: 8 → 4 → 2 → 4 → 2 → 4 Mbit/s, 20 seconds per stage. Each full

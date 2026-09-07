@@ -1,8 +1,45 @@
 # Issue #139: qualification diagnostics
 
-These reports include historical failures and controls, plus accepted individual
-scenarios for published SDKs `.11` and `.12`. Complete issue qualification remains
-pending; this directory alone does not authorize closing #139.
+These reports retain historical failures and controls as well as final
+qualification with published SDK `.12`. The final result has one explicit
+deferred preview video p95 failure; it is not an all-tests-passed result.
+
+## Final qualification, 2026-09-07
+
+The [manifest](../fixed-screen-preset-acceptance.json) and
+[`audio-qualified-acceptance.json.gz`](audio-qualified-acceptance.json.gz)
+contain every measured interval, original report hashes and actual source/SDK
+binary provenance. Network, GPU and preview used clean `e8cc1263`; late/static
+used clean `a6eff90e` after observer startup and static-cursor fixes. Those
+follow-ups preserve the default product capture, audio, encoder and transport
+behavior. All use the exact published `.12` DLLs.
+
+| Complete scenario | Video p95 / max / max gap (ms) | Audio p95 / max (ms) | Result |
+| --- | --- | --- | --- |
+| Network/GPU, 1200 s | 99 / 1133 / 2535 | 141.885 / 261.986 | Passed |
+| Seven competing encoders + compute, 180 s | 64 / 113 / 922 | 89.835 / 168.567 | Passed |
+| Preview stall + remote playback, 180 s | 170 / 744 / 943 | 121.038 / 144.465 | Video p95 failed; deferred by user |
+| Late/static, 180 s | 52 / 285 / 950 | 98.045 / 146.882 | Passed |
+
+The late observer decoded after 1008 ms from process launch, with p95/max
+53/286 ms. All final intervals retained 1080p60, one encoder/generation and
+the same two track identities, with no reconnects or audio-owner failures.
+The long run recorded 54,392 frames, five bitrate decreases, fourteen recoveries,
+zero tracked pool growth and 11.16 MB private-memory growth. It had zero invalid
+markers; the other primary observers each rejected one damaged marker, within
+the unchanged 1% limit. No transition is excluded from the measurements.
+
+All audio p95 checks pass the unchanged 150 ms limit. The user's deferral of
+preview video latency initially followed a 162 ms result; the final 170 ms
+result remains explicitly failed. Other checks were not waived. Historical
+100 ms audio timeout and one later `0xc0000409` abort did not recur in final
+runs; their exact causes are not claimed as independently established.
+
+Release 31/31, focused Debug 7/7 and ASan 7/7 passed after the PCM fix.
+After the cursor option, default window capture lifecycle/JSON, PCM and audio
+owner checks passed 4/4. Lab TypeScript build and Vitest 40/40, normal native
+lab build and staged-artifact verification passed. The manifest identifies
+the source commit for each check. Other GPUs/drivers remain unqualified.
 
 The early implementation fixed preset ownership and added bounded live bitrate
 control, but its restricted-link receiver violated the existing 150 ms p95 age
@@ -48,7 +85,8 @@ These do not establish the abort's cause. Reports are retained in
 
 On the same production source, Release 31/31, focused Debug 7/7 and MSVC ASan
 7/7 passed, including PCM recovery and audio-owner tests. All four app CI jobs
-passed. Full hardware qualification after the PCM change remains pending.
+passed. Final hardware results are listed above; the earlier abort remains
+retained as a diagnostic, not relabeled as a passing interval.
 
 ## Static pixels and late receiver startup
 
