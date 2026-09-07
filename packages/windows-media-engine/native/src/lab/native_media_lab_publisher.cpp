@@ -25,17 +25,13 @@
 #include "lab/screen_cpu_lab.hpp"
 #include "livekit/livekit.h"
 #include "livekit/livekit_room_transport.hpp"
+#include "screen/screen_frame_marker.hpp"
 
 namespace {
 
 constexpr int kAudioSampleRate = 48000;
 constexpr int kAudioChannels = 1;
 constexpr int kAudioFrameMilliseconds = 10;
-constexpr int kMarkerBits = 144;
-constexpr int kMarkerColumns = 24;
-constexpr int kMarkerRows = 6;
-constexpr int kMarkerTileSize = 12;
-constexpr std::uint16_t kMarkerMagic = 0x534d;
 constexpr double kPi = 3.14159265358979323846;
 
 using syrnike::windows_media::CredentialLease;
@@ -108,8 +104,8 @@ Options optionsFromEnvironment() {
       options.scenario != "disconnect-before-publish" &&
       options.scenario != "unexpected-room-disconnect" && options.scenario != "lifecycle-churn")
     throw std::runtime_error("Unsupported MEDIA_LAB_SCENARIO");
-  if (options.width < kMarkerColumns * kMarkerTileSize ||
-      options.height < kMarkerRows * kMarkerTileSize) {
+  if (options.width < static_cast<int>(syrnike::windows_media::screen::kScreenMarkerWidth) ||
+      options.height < static_cast<int>(syrnike::windows_media::screen::kScreenMarkerHeight)) {
     throw std::runtime_error("Video resolution is too small for the machine-readable marker");
   }
   return options;
@@ -119,16 +115,6 @@ std::uint64_t epochMilliseconds() {
   return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
                                         std::chrono::system_clock::now().time_since_epoch())
                                         .count());
-}
-
-bool markerBit(std::uint64_t sequence, std::uint64_t captured_at_ms, std::uint64_t generation,
-               std::uint32_t source_width, std::uint32_t source_height, int index) {
-  if (index < 16) return ((kMarkerMagic >> (15 - index)) & 1U) != 0;
-  if (index < 48) return ((sequence >> (47 - index)) & 1ULL) != 0;
-  if (index < 96) return ((captured_at_ms >> (95 - index)) & 1ULL) != 0;
-  if (index < 112) return ((generation >> (111 - index)) & 1ULL) != 0;
-  if (index < 128) return ((static_cast<std::uint64_t>(source_width) >> (127 - index)) & 1ULL) != 0;
-  return ((static_cast<std::uint64_t>(source_height) >> (143 - index)) & 1ULL) != 0;
 }
 
 void fillVideoFrame(livekit::VideoFrame& frame, std::uint64_t sequence,
@@ -149,24 +135,9 @@ void fillVideoFrame(livekit::VideoFrame& frame, std::uint64_t sequence,
     }
   }
 
-  for (int bit = 0; bit < kMarkerBits; ++bit) {
-    const int column = bit % kMarkerColumns;
-    const int row = bit / kMarkerColumns;
-    const auto level = static_cast<std::uint8_t>(markerBit(sequence, captured_at_ms, 1,
-                                                           static_cast<std::uint32_t>(width),
-                                                           static_cast<std::uint32_t>(height), bit)
-                                                     ? 255
-                                                     : 0);
-    for (int y = row * kMarkerTileSize; y < (row + 1) * kMarkerTileSize; ++y) {
-      for (int x = column * kMarkerTileSize; x < (column + 1) * kMarkerTileSize; ++x) {
-        const auto offset = static_cast<std::size_t>((y * width + x) * 4);
-        pixels[offset] = level;
-        pixels[offset + 1] = level;
-        pixels[offset + 2] = level;
-        pixels[offset + 3] = 255;
-      }
-    }
-  }
+  syrnike::windows_media::screen::writeScreenFrameMarker(
+      std::span<std::uint8_t>{pixels, frame.dataSize()}, static_cast<std::size_t>(width) * 4,
+      sequence, captured_at_ms, 1, static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height));
 }
 
 void runAudio(const std::shared_ptr<livekit::AudioSource>& source, std::atomic_bool& running,

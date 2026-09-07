@@ -7,7 +7,16 @@
 #include "lab/audio_pulse_recorder.hpp"
 #include "lab/reference_audio_playback.hpp"
 #include "lab/audio_session_volume_probe.hpp"
+#include "lab/preview_pixel_observer.hpp"
+#include "lab/gpu_contention.hpp"
+#include "lab/encoder_contention.hpp"
+#include <syncstream>
+#include <tlhelp32.h>
+#include <psapi.h>
 #include <cstdlib>
+#include <exception>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 
@@ -20,10 +29,39 @@ std::string environment(const char* name) {
   return value;
 }
 void require(bool ok, const char* message) {
-  if (!ok) throw std::runtime_error(message);
+  if (!ok) {
+    std::cerr << "LAB_REQUIRE_FAILURE " << message << std::endl;
+    throw std::runtime_error(message);
+  }
+}
+void logTermination() noexcept {
+  std::cerr << "LAB_TERMINATE" << std::endl;
+  if (const auto error = std::current_exception()) {
+    try {
+      std::rethrow_exception(error);
+    } catch (const std::exception& cause) {
+      std::cerr << cause.what() << std::endl;
+    } catch (...) {
+      std::cerr << "Unknown active exception" << std::endl;
+    }
+  }
+  void* frames[32]{};
+  const auto count = CaptureStackBackTrace(0, 32, frames, nullptr);
+  for (USHORT index = 0; index < count; ++index) {
+    HMODULE module{};
+    char name[MAX_PATH]{};
+    GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        reinterpret_cast<LPCSTR>(frames[index]), &module);
+    GetModuleFileNameA(module, name, MAX_PATH);
+    std::cerr << std::filesystem::path(name).filename().string() << "+0x" << std::hex
+        << (reinterpret_cast<std::uintptr_t>(frames[index]) - reinterpret_cast<std::uintptr_t>(module))
+        << std::dec << std::endl;
+  }
+  std::abort();
 }
 }  // namespace
 int main(int argc, char** argv) {
+  std::set_terminate(logTermination);
   try {
     require(argc == 3, "Expected fixture PID and duration seconds");
     const auto pid = static_cast<DWORD>(std::stoul(argv[1]));
@@ -33,9 +71,17 @@ int main(int argc, char** argv) {
     require(scenario == "sync" || scenario == "system" || scenario == "process-isolation" ||
                 scenario == "audio-stop" || scenario == "video-stop" || scenario == "audio-loss" ||
                 scenario == "source-close" || scenario == "slow-source" ||
-                scenario == "audio-cycles" || scenario == "default-output",
+                scenario == "audio-cycles" || scenario == "default-output" || scenario == "bitrate",
             "Unknown audio scenario");
-    require(seconds >= 5 && seconds <= 660, "Duration outside audio lab bounds");
+    const bool bitrate_lab = scenario == "bitrate";
+    const auto* bitrate_scenario_value = std::getenv("MEDIA_LAB_BITRATE_SCENARIO");
+    const std::string_view bitrate_scenario = bitrate_scenario_value ? bitrate_scenario_value : "network";
+    require(bitrate_scenario == "network" || bitrate_scenario == "preview-stall" ||
+                bitrate_scenario == "gpu-pressure" || bitrate_scenario == "late-static", "Unknown bitrate scenario");
+    const bool preview_stall = bitrate_lab && bitrate_scenario == "preview-stall";
+    const bool gpu_pressure = bitrate_lab && bitrate_scenario == "gpu-pressure";
+    const bool late_static = bitrate_lab && bitrate_scenario == "late-static";
+    require(seconds >= 5 && seconds <= (bitrate_lab ? 1260UL : 660UL), "Duration outside audio lab bounds");
     auto transport = std::make_shared<LiveKitRoomTransport>();
     Engine engine(EngineOptions{.room_transport = transport});
     require(engine.start().ok, "Engine start failed");
@@ -54,7 +100,7 @@ int main(int argc, char** argv) {
     require(transport->activeRoom() != nullptr, "Room did not connect");
     {
       std::unique_ptr<lab::ReferenceAudioPlayback> reference_playback;
-      if (scenario == "system")
+      if (scenario == "system" || preview_stall)
         reference_playback = std::make_unique<lab::ReferenceAudioPlayback>(transport->activeRoom());
       sources::SourceRegistry registry(sources::createWin32SourceEnumerator());
       sources::EnumerationOptions options;
@@ -84,18 +130,31 @@ int main(int argc, char** argv) {
       const auto window = reinterpret_cast<HWND>(window_target.target->platformValue());
       RECT bounds{};
       GetClientRect(window, &bounds);
-      std::cout << "AUDIO_WINDOW_DIAGNOSTIC visible=" << IsWindowVisible(window)
+      std::osyncstream(std::cout) << "AUDIO_WINDOW_DIAGNOSTIC visible=" << IsWindowVisible(window)
                 << " minimized=" << IsIconic(window) << " client=" << bounds.right << "x"
                 << bounds.bottom << std::endl;
-      capture::WindowCapture capture(registry, source_id, capture::createWgcWindowCaptureBackend());
+      // A moving OS cursor is not part of the controlled static fixture.
+      capture::WindowCapture capture(registry, source_id,
+          capture::createWgcWindowCaptureBackend({.include_cursor = !late_static}));
       auto frames = std::make_shared<screen::ScreenFramePipeline>();
+      const auto gpu = capture::processD3d11Device(false);
+      const auto profile = bitrate_lab ? screen::kScreenProfile1080p60 : screen::kScreenProfile720p30;
       screen::ProductionScreenPipeline video(
-          capture::processD3d11Device(false), frames, screen::kScreenProfile720p30,
+          gpu, frames, profile,
           [transport](std::function<void()> keyframe) {
             return std::make_shared<LiveKitScreenPublicationAdapter>(
                 transport, LiveKitScreenEncoderControls{std::move(keyframe)});
           },
           {}, true);
+      std::unique_ptr<lab::PreviewPixelObserver> preview;
+      std::unique_ptr<lab::GpuContention> contention;
+      std::unique_ptr<lab::EncoderContention> encoder_contention;
+      if (bitrate_lab) {
+        require(video.enableAdaptiveQuality(1U << 4, 4), "Exact 1080p60 preset was not admitted");
+        preview = std::make_unique<lab::PreviewPixelObserver>();
+        contention = std::make_unique<lab::GpuContention>(gpu);
+        if (gpu_pressure) encoder_contention = std::make_unique<lab::EncoderContention>(gpu);
+      }
       lab::AudioPulseRecorder audio_references;
       lab::AudioSessionVolumeProbe session_volumes;
       std::uint64_t observed_packets = 0;
@@ -133,8 +192,10 @@ int main(int argc, char** argv) {
         while (!stop.stop_requested())
           if (auto frame = capture.waitForFrame(50ms)) (void)frames->submit(std::move(*frame));
       });
-      std::cout << "SCREEN_AUDIO_READY" << std::endl;
-      const auto end = std::chrono::steady_clock::now() + std::chrono::seconds{seconds};
+      std::osyncstream(std::cout) << "SCREEN_AUDIO_READY" << std::endl;
+      const auto began = std::chrono::steady_clock::now();
+      const auto end = began + std::chrono::seconds{seconds};
+      std::uint64_t last_bitrate_sample_ms = 0;
       const auto change_at = std::chrono::steady_clock::now() + 8s;
       bool changed = false;
       bool source_closed = false;
@@ -142,7 +203,93 @@ int main(int argc, char** argv) {
       std::uint64_t audio_revision = 1;
       bool cycle_audio_on = true;
       auto cycle_at = std::chrono::steady_clock::now() + 1s;
+      bool fixture_static = false;
+      bool audio_failure_reported = false;
       while (std::chrono::steady_clock::now() < end) {
+        if (bitrate_lab) {
+          const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::steady_clock::now() - began).count());
+          const bool preview_stalled = preview_stall && elapsed >= 20000 && elapsed < 160000;
+          const bool make_static = late_static && elapsed >= 30000 && elapsed < 70000;
+          if (make_static != fixture_static) {
+            require(PostMessageW(window, WM_APP + 139, make_static ? 1 : 0, 0) != FALSE,
+                    "Static fixture control failed");
+            fixture_static = make_static;
+          }
+          if (!preview_stalled) preview->poll();
+          const bool busy = gpu_pressure ? elapsed >= 20000 && elapsed < 140000
+              : elapsed % 300000 >= 150000 && elapsed % 300000 < 160000;
+          contention->setActive(busy);
+          if (encoder_contention) {
+            encoder_contention->setActive(busy);
+            require(!encoder_contention->failed(), "Competing hardware encoder failed");
+          }
+          require(SUCCEEDED(contention->failure()), "GPU contention fixture failed");
+          if (elapsed - last_bitrate_sample_ms >= 500) {
+            const auto s = video.stats();
+            const auto audio_stats = audio_owner.stats().session;
+            DWORD handles = 0, threads = 0;
+            require(GetProcessHandleCount(GetCurrentProcess(), &handles) != FALSE, "Handle query failed");
+            const auto thread_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+            require(thread_snapshot != INVALID_HANDLE_VALUE, "Thread snapshot failed");
+            THREADENTRY32 entry{sizeof(THREADENTRY32)};
+            if (Thread32First(thread_snapshot, &entry)) do {
+              if (entry.th32OwnerProcessID == GetCurrentProcessId()) ++threads;
+            } while (Thread32Next(thread_snapshot, &entry));
+            CloseHandle(thread_snapshot);
+            PROCESS_MEMORY_COUNTERS_EX memory{};
+            require(GetProcessMemoryInfo(GetCurrentProcess(),
+                reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory), sizeof(memory)) != FALSE,
+                "Memory query failed");
+            std::osyncstream(std::cout) << "BITRATE_SAMPLE {\"elapsedMs\":" << elapsed
+                << ",\"profile\":" << s.current_profile << ",\"generation\":" << s.profile_generation
+                << ",\"encoderInstance\":" << s.encoder.instance_id
+                << ",\"width\":" << profile.width << ",\"height\":" << profile.height
+                << ",\"fps\":" << profile.frames_per_second
+                << ",\"targetBps\":" << s.target_bitrate << ",\"appliedBps\":" << s.bitrate.applied_bitrate
+                << ",\"updates\":" << s.bitrate_updates << ",\"outcome\":" << static_cast<int>(s.bitrate.outcome)
+                << ",\"platformResult\":" << s.bitrate.platform_result
+                << ",\"reason\":" << static_cast<int>(s.decision_reason)
+                << ",\"warning\":" << (s.quality_warning ? "true" : "false")
+                << ",\"networkBps\":" << s.network.available_outgoing_bitrate.value_or(0)
+                << ",\"senderAllocationKnown\":" << (s.network.sender_bitrate_allocation ? "true" : "false")
+                << ",\"senderAllocationBps\":" << s.network.sender_bitrate_allocation.value_or(0)
+                << ",\"networkMeasuredAtMs\":" << s.network.measured_at_ms
+                << ",\"packetSendDelayKnown\":" << (s.network.packet_send_delay_us ? "true" : "false")
+                << ",\"packetSendDelayUs\":" << s.network.packet_send_delay_us.value_or(0)
+                << ",\"packetSendDelayMeasuredAtMs\":" << s.network.packet_send_delay_measured_at_ms
+                << ",\"networkBackpressureDrops\":" << s.network_backpressure_drops
+                << ",\"captureFrames\":" << s.capture_frames << ",\"encoderFrames\":" << s.encoder.encoded
+                << ",\"encodedBytes\":" << s.encoder.encoded_bytes
+                << ",\"keyframes\":" << s.encoder.keyframes
+                << ",\"keyframeBytes\":" << s.encoder.keyframe_bytes
+                << ",\"lastKeyframeBytes\":" << s.encoder.last_keyframe_bytes
+                << ",\"consumed\":" << s.total_publication_consumed
+                << ",\"videoDepth\":" << s.sender.video_depth << ",\"bytes\":" << s.memory.total_bytes
+                << ",\"handles\":" << handles << ",\"threads\":" << threads
+                << ",\"privateBytes\":" << memory.PrivateUsage
+                << ",\"previewFrames\":" << preview->frames << ",\"previewChanges\":" << preview->content_changes
+                << ",\"previewAgeMaxUs\":" << preview->maximum_age_us
+                << ",\"previewStalled\":" << (preview_stalled ? "true" : "false")
+                << ",\"fixtureStatic\":" << (fixture_static ? "true" : "false")
+                << ",\"remoteVoicePlayed\":" << (reference_playback ? reference_playback->playedSamples() : 0)
+                << ",\"audioPackets\":" << audio_stats.submitted
+                << ",\"audioQueueDepth\":" << audio_stats.queue_depth
+                << ",\"audioQueueMaximumDepth\":" << audio_stats.maximum_queue_depth
+                << ",\"audioSupersededPackets\":" << audio_stats.superseded_packets
+                << ",\"audioStalePackets\":" << audio_stats.stale_packets
+                << ",\"audioMaximumSubmitAgeUs\":" << audio_stats.maximum_submit_age_us
+                << ",\"keyframeRequests\":" << s.keyframe_requests
+                << ",\"gpuActive\":" << (busy ? "true" : "false")
+                << ",\"gpuDurationUs\":" << s.converter.gpu_duration_last_us
+                << ",\"gpuDurationMaxUs\":" << s.converter.gpu_duration_max_us
+                << ",\"gpuFixtureBytes\":" << lab::GpuContention::allocated_bytes
+                << ",\"competingEncoderFrames\":" << (encoder_contention ? encoder_contention->frames() : 0)
+                << ",\"competingEncoderBytes\":" << (encoder_contention ? lab::EncoderContention::tracked_bytes : 0)
+                << ",\"gpuBatches\":" << contention->batches() << "}" << std::endl;
+            last_bitrate_sample_ms = elapsed;
+          }
+        }
         session_volumes.observe();
         if (scenario == "audio-cycles" && completed_cycles < 30 &&
             std::chrono::steady_clock::now() >= cycle_at) {
@@ -169,7 +316,7 @@ int main(int argc, char** argv) {
             DWORD handles = 0;
             require(GetProcessHandleCount(GetCurrentProcess(), &handles) != FALSE,
                     "Cycle handle query failed");
-            std::cout << "AUDIO_OWNER_CYCLE {\"cycle\":" << completed_cycles
+            std::osyncstream(std::cout) << "AUDIO_OWNER_CYCLE {\"cycle\":" << completed_cycles
                       << ",\"handles\":" << handles
                       << ",\"clients\":0,\"captureThreads\":0,\"pcmDepth\":0}" << std::endl;
           }
@@ -177,6 +324,13 @@ int main(int argc, char** argv) {
           cycle_at = std::chrono::steady_clock::now() + (cycle_audio_on ? 1s : 200ms);
         }
         const auto audio_failure = audio_owner.stats().failure;
+        if (audio_failure && !audio_failure_reported) {
+          audio_failure_reported = true;
+          std::osyncstream(std::cout) << "AUDIO_OWNER_FAILURE {\"code\":" << static_cast<int>(audio_failure->code)
+              << ",\"platformResult\":" << audio_failure->result
+              << ",\"utilityRetirementRequired\":" << (audio_failure->utility_retirement_required ? "true" : "false")
+              << "}" << std::endl;
+        }
         require(
             !audio_failure || (scenario == "audio-loss" &&
                                audio_failure->code == audio::ScreenAudioFailureCode::target_exited),
@@ -210,14 +364,24 @@ int main(int argc, char** argv) {
         }
         std::this_thread::sleep_for(20ms);
       }
+      if (scenario == "bitrate") {
+        const auto end_path = environment("MEDIA_LAB_MEASURED_END_PATH");
+        std::ofstream measured_end(std::filesystem::path(std::u8string(end_path.begin(), end_path.end())));
+        measured_end << std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        measured_end.flush();
+        require(static_cast<bool>(measured_end), "Measured interval end could not be recorded");
+      }
       producer.request_stop();
       if (producer.joinable()) producer.join();
+      if (preview) preview->drain();
+      if (contention) contention->setActive(false);
       if (scenario == "audio-cycles")
         require(completed_cycles == 30, "Thirty audio lifecycle cycles did not finish");
       require(audio_owner.stop(std::chrono::steady_clock::now() + 25s), "Audio owner did not stop");
       const auto audio_stats = audio_owner.stats().session;
       session_volumes.observe();
-      std::cout << "AUDIO_SESSION_VOLUME_REPORT {\"foreignActiveSessions\":"
+      std::osyncstream(std::cout) << "AUDIO_SESSION_VOLUME_REPORT {\"foreignActiveSessions\":"
                 << session_volumes.sessions()
                 << ",\"observations\":" << session_volumes.observations()
                 << ",\"volumeChanges\":0,\"muteChanges\":0}" << std::endl;
@@ -240,7 +404,7 @@ int main(int argc, char** argv) {
         require(!reference_playback->failed() && reference_playback->audiblePackets() >= 15 &&
                     reference_playback->playedSamples() >= 48000 * 5,
                 "Own remote reference voice was not actually played");
-        std::cout << "REFERENCE_PLAYBACK_REPORT {\"audiblePackets\":"
+        std::osyncstream(std::cout) << "REFERENCE_PLAYBACK_REPORT {\"audiblePackets\":"
                   << reference_playback->audiblePackets()
                   << ",\"playedSamples\":" << reference_playback->playedSamples() << "}"
                   << std::endl;
@@ -248,7 +412,10 @@ int main(int argc, char** argv) {
       require(capture.stop(5s).ok, "Window capture did not stop");
       require(video.stop(std::chrono::steady_clock::now() + 5s).ok,
               "Video publication did not stop");
-      std::cout << "SCREEN_AUDIO_REPORT {\"submitted\":" << audio_stats.submitted
+      if (bitrate_lab)
+        std::osyncstream(std::cout) << "BITRATE_STOP {\"warning\":" << (video.stats().quality_warning ? "true" : "false")
+                  << ",\"encoderInstance\":" << video.stats().encoder.instance_id << "}" << std::endl;
+      std::osyncstream(std::cout) << "SCREEN_AUDIO_REPORT {\"submitted\":" << audio_stats.submitted
                 << ",\"audioFailure\":\""
                 << (audio_owner.stats().failure ? "target_exited" : "none") << "\""
                 << ",\"maximumSubmitAgeUs\":" << audio_stats.maximum_submit_age_us

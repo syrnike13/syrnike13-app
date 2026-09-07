@@ -1,9 +1,9 @@
 import { VideoBufferType, type VideoFrame } from '@livekit/rtc-node'
 
-export const MARKER_MAGIC = 0x534d
-export const MARKER_BITS = 144
+export const MARKER_MAGIC = 0x534e
+export const MARKER_BITS = 160
 export const MARKER_COLUMNS = 24
-export const MARKER_ROWS = 6
+export const MARKER_ROWS = 7
 export const MARKER_TILE_SIZE = 12
 
 export interface VideoMarker {
@@ -49,6 +49,13 @@ export function decodeVideoMarker(frame: VideoFrame, sampleRadius: 0 | 2 = 2): V
 
   const magic = Number(readBits(bits, 0, 16))
   if (magic !== MARKER_MAGIC) return undefined
+  let checksum = 0xffff
+  for (let bit = 0; bit < 144; ++bit) {
+    const feedback = ((checksum >>> 15) & 1) !== bits[bit]
+    checksum = (checksum << 1) & 0xffff
+    if (feedback) checksum ^= 0x1021
+  }
+  if (checksum !== Number(readBits(bits, 144, 16))) return undefined
   const sequence = Number(readBits(bits, 16, 32))
   const capturedAtMs = Number(readBits(bits, 48, 48))
   const generation = Number(readBits(bits, 96, 16))

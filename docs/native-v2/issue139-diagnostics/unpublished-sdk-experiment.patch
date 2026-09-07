@@ -1,0 +1,25 @@
+diff --git a/patches/client-sdk-rust/0001-native-v2-runtime.patch b/patches/client-sdk-rust/0001-native-v2-runtime.patch
+index 8d9af23..466dbcc 100644
+--- a/patches/client-sdk-rust/0001-native-v2-runtime.patch
++++ b/patches/client-sdk-rust/0001-native-v2-runtime.patch
+@@ -1386 +1386 @@ diff --git a/webrtc-sys/src/passthrough_video_encoder.cpp b/webrtc-sys/src/passt
+-index cd45b9e3..15fab01e 100644
++index cd45b9e3..1981a4e9 100644
+@@ -1484 +1484 @@ index cd45b9e3..15fab01e 100644
+-@@ -331,6 +350,7 @@ class PassthroughVideoEncoder final : public VideoEncoder {
++@@ -331,6 +350,10 @@ class PassthroughVideoEncoder final : public VideoEncoder {
+@@ -1488 +1488,4 @@ index cd45b9e3..15fab01e 100644
+-+    info.has_trusted_rate_controller = true;
+++    // External encoders may reach their bitrate floor above available
+++    // bandwidth. Keep WebRTC backpressure; the continuity guard requests IDR
+++    // after a drop.
+++    info.has_trusted_rate_controller = false;
+@@ -1492 +1495 @@ index cd45b9e3..15fab01e 100644
+-@@ -338,8 +358,7 @@ class PassthroughVideoEncoder final : public VideoEncoder {
++@@ -338,8 +361,7 @@ class PassthroughVideoEncoder final : public VideoEncoder {
+@@ -1502 +1505 @@ index cd45b9e3..15fab01e 100644
+-@@ -357,10 +376,13 @@ class PassthroughVideoEncoder final : public VideoEncoder {
++@@ -357,10 +379,13 @@ class PassthroughVideoEncoder final : public VideoEncoder {
+@@ -1517 +1520 @@ index cd45b9e3..15fab01e 100644
+-@@ -388,8 +410,8 @@ PassthroughVideoEncoderFactory::GetSupportedFormats() const {
++@@ -388,8 +413,8 @@ PassthroughVideoEncoderFactory::GetSupportedFormats() const {

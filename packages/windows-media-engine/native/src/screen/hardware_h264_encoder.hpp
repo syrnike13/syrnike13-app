@@ -12,6 +12,7 @@
 #include "capture/d3d11_device.hpp"
 #include "screen/gpu_screen_converter.hpp"
 #include "screen/hardware_h264_capability.hpp"
+#include "screen/live_bitrate_mailbox.hpp"
 
 namespace syrnike::windows_media::screen {
 
@@ -28,6 +29,7 @@ enum class HardwareH264EncoderState {
 };
 
 struct HardwareH264EncoderStats {
+  std::uint64_t instance_id = 0;
   std::uint64_t submitted = 0;
   std::uint64_t input_superseded = 0;
   std::uint64_t encoded = 0;
@@ -37,6 +39,8 @@ struct HardwareH264EncoderStats {
   std::uint64_t output_stalls = 0;
   std::uint64_t keyframes = 0;
   std::uint64_t encoded_bytes = 0;
+  std::uint64_t keyframe_bytes = 0;
+  std::uint64_t last_keyframe_bytes = 0;
   std::size_t input_slots_in_use = 0;
   std::size_t output_slots_in_use = 0;
   std::size_t output_pool_capacity = kEncodedH264SlotCapacity;
@@ -99,6 +103,9 @@ class HardwareH264Encoder final {
                             std::int64_t duration_us);
   [[nodiscard]] std::optional<EncodedH264SlotLease> takeEncoded();
   void requestKeyFrame() noexcept;
+  // One owner-thread operation and one latest desired value. No COM on caller.
+  [[nodiscard]] bool requestBitrate(std::uint64_t revision, std::uint32_t bitrate) noexcept;
+  [[nodiscard]] BitrateUpdateResult bitrateUpdate() const noexcept;
   [[nodiscard]] bool stop(std::chrono::milliseconds deadline) noexcept;
 
   [[nodiscard]] HardwareH264EncoderState state() const noexcept;

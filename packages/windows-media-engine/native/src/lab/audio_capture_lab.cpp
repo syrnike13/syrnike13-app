@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <syncstream>
 #include <stdexcept>
 #include <string>
 
@@ -78,7 +79,7 @@ int main(int argc, char** argv) {
       }
       DWORD handles = 0;
       GetProcessHandleCount(GetCurrentProcess(), &handles);
-      std::cout << "AUDIO_CAPTURE_SAMPLE {\"cycle\":" << cycle << ",\"packets\":" << packets
+      std::osyncstream(std::cout) << "AUDIO_CAPTURE_SAMPLE {\"cycle\":" << cycle << ",\"packets\":" << packets
                 << ",\"activePackets\":" << active_packets << ",\"peakRms\":" << peak_rms
                 << ",\"maximumAgeUs\":" << age_max_us
                 << ",\"failure\":" << (failure ? static_cast<int>(failure->code) : -1)

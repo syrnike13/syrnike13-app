@@ -1,137 +1,289 @@
-# Adaptive screen quality (#124)
+# Fixed screen preset and live bitrate control (#139)
 
-Implementation status: policy and keyframe control are integrated with the
-production sender. Golden traces, superseded-setting integration, full quality
-recovery, late subscription and stalled preview pass locally. The required
-20-minute contention acceptance also passes on the published SDK. Dependency
-#123 is merged. Local Release tests pass 23/23, focused ASan tests 3/3 and
-Media Lab tests 18/18. Protocol generation and staged artifacts also verify.
+This contract supersedes the automatic resolution/FPS ladder from #124.
+The selected preset is exact user intent. Only an explicit `setSelectedPreset`
+operation can replace the encoder/source/publication generation. Automatic
+control changes only the existing hardware encoder's bitrate. Product Voice UI
+cutover remains #130; qualification #132 must use this contract.
 
-The real SFU reproduction exposed stale MSID signalling when the SDK reused a
-sender for a replacement track, followed by a null-track accessor crash while
-inspecting inactive transceivers. Both fixes and their regression tests are
-merged in SDK PR #1, release tag `v1.10.0-syrnike.5`. The seven-platform release
-build passed. The Windows release artifact decoded 47,484 frames during the
-20-minute contention run: 26 ms p95 age, 101 ms maximum, 119 ms maximum frame gap.
+The final published SDK `.12` qualification includes a complete 20-minute
+network/GPU run, focused GPU pressure and late/static runs. All audio checks
+pass after capture-age-based PCM recovery. Preview video p95 remains a failed
+measurement at 170 ms, covered by the user's decision to defer that latency
+investigation; the 150 ms test threshold is unchanged.
+See the [qualification manifest](fixed-screen-preset-acceptance.json) and
+[full-interval diagnostics](issue139-diagnostics/README.md). Historical #124 results are
+not acceptance for #139. In particular,
+[adaptive-screen-quality-acceptance.json](adaptive-screen-quality-acceptance.json)
+records the old profile-switch behavior and must not be used to claim seamless
+bitrate adaptation.
 
-## Profiles
+## Presets and admission
 
-The finite profile order is also the user ceiling order; dimensions and FPS
-must each fit the selected ceiling. A 1080p30 ceiling excludes 720p60. A
-downgrade never increases FPS. Admission requires an
-explicit capability bit for the exact hardware H264, GPU conversion and
-publication memory configuration. Optional preview memory is excluded from
-publication pressure. The policy owns no resources and probes no capabilities.
-
-| Profile | Dimensions | FPS | Target / maximum bitrate | Frame-age budget |
+| Selected preset | Dimensions | Target FPS | Minimum | Initial / maximum |
 | --- | --- | --- | --- | --- |
-| 540p30 | 960 × 540 | 30 | 625 / 625 kbit/s | 150 ms |
-| 720p30 | 1280 × 720 | 30 | 2 / 2 Mbit/s | 150 ms |
-| 720p60 | 1280 × 720 | 60 | 4 / 4 Mbit/s | 150 ms |
-| 1080p30 | 1920 × 1080 | 30 | 6 / 6 Mbit/s | 150 ms |
-| 1080p60 | 1920 × 1080 | 60 | 8 / 8 Mbit/s | 150 ms |
+| 540p30 | 960 × 540 | 30 | 250 kbit/s | 625 kbit/s |
+| 720p30 | 1280 × 720 | 30 | 500 kbit/s | 2 Mbit/s |
+| 720p60 | 1280 × 720 | 60 | 750 kbit/s | 4 Mbit/s |
+| 1080p30 | 1920 × 1080 | 30 | 1 Mbit/s | 6 Mbit/s |
+| 1080p60 | 1920 × 1080 | 60 | 2 Mbit/s | 8 Mbit/s |
 
-These configurations stay within the current project SFU's screen policy.
-1440p requires a separate product/SFU decision and is not admitted here.
+These finite floors permit substantial compression while bounding the operating
+range. They do not guarantee legible output or sustainable FPS on every scene.
+The 1080p60 floor is 2 Mbit/s because repeated live 2/4 Mbit/s stages tracked
+the declared tolerance on the tested MFT, while the preliminary 1.5 Mbit/s
+floor did not. The lab still restricts the link to 1.25 Mbit/s below this floor.
+Actual frame drops under pressure do not change the target cadence.
+Admission requires the exact preset's capability bit. No implicit fallback,
+1440p, HDR, software encoder or extra layer is introduced.
 
-## Decision rules
+## Deterministic policy
 
-Evaluation consumes an immutable measurement and previous policy state and
-returns a decision plus next state. The caller supplies monotonic milliseconds;
-the policy does not read a clock. All history occupies six fixed entries.
+One existing sender worker evaluates immutable samples and owns decisions.
+The pure policy allocates no resources and reads no clock. History contains at
+most six attempt timestamps. The selected preset and last confirmed applied
+bitrate are separate inputs; requested bitrate is never treated as confirmed.
 
-| Input | Pressure threshold | Recovery threshold |
+| Fresh measurement | Pressure | Recovery |
 | --- | --- | --- |
-| Fresh network estimate | Less than 90% of current target, or poor quality | At least 110% of the next profile maximum |
-| Encoder cadence | Outputs below 70% of inputs, with at least four inputs | Outputs at least 90% of inputs |
-| Publication GPU pressure | At least 850 permille | Below 600 permille |
-| Capture / convert / publish age | Any above 150 ms | All below 75 ms |
+| Network bandwidth | Below 90% of applied bitrate | At least 110% of next target |
+| Encoder progress | Outputs below 70% of inputs, at least four inputs | At least 90%, at least four inputs |
+| Publication GPU duration / target frame interval | At least 850 permille | Below 600 permille |
+| Capture / conversion / publication age | Above 150 ms | All below 75 ms |
 | Backpressure | At least 250 permille | Below 50 permille |
 
-Sampling is at least 500 ms apart. Duplicate, out-of-order, or faster samples
-cannot build hysteresis. A gap over 1500 ms resets accumulated evidence. Missing
-or stale network estimates cannot authorize an upgrade. A pending
-reconfiguration resets evidence; enforcing a superseding user setting during
-that operation belongs to the sender owner.
+The owner samples every 500 ms. Duplicate, reversed, or faster samples cannot
+accumulate evidence. Valid measurement intervals are 250–1500 ms; a gap over
+1500 ms resets hysteresis. Room stats have one outstanding request, at least
+20 ms between requests, and a two-second bandwidth freshness limit measured from request
+time. Sampling continues on the existing SDK owner lane even when no video
+frames are submitted. Only the selected publisher ICE pair contributes available bandwidth.
+Missing/stale network or local measurements cannot authorize recovery. A static
+source does not turn old last-value GPU/age data into fresh pressure. New
+captured and converted input makes a zero encoder-output delta meaningful.
 
-Normal downgrade requires three consecutive samples with the same pressure
-reason. Emergency downgrade requires two: age at least 300 ms, available bitrate
-below half the target, or GPU pressure at least 980 permille. Normal cooldown is
-5 seconds; emergency reduction bypasses it. Upgrade requires a continuous
-20-second healthy interval with enough bandwidth for the next profile and moves
-one level at a time.
+Three consecutive pressure samples with the same reason request a decrease.
+Emergency pressure needs two samples: age at least 300 ms, GPU at least 980
+permille, or bandwidth below half the applied bitrate. The next target is 75%
+of applied, additionally bounded by 80% of available bandwidth for network
+pressure, rounded down to 25 kbit/s and clamped to the preset range.
 
-At most six reconfiguration attempts are admitted in a rolling minute, including
-failed and superseded attempts. Upgrades reserve one attempt for an emergency.
-If the budget is full when a user ceiling or capability loss forbids the current
-profile, the decision is terminal rather than silently violating the constraint.
-The caller records an attempt only when it actually starts reconfiguration.
+Normal update cooldown is five seconds; emergencies retain a hard one-second
+minimum. At most six attempts occur in any rolling minute. Increases reserve
+one attempt for emergencies. Recovery requires 20 continuous healthy seconds
+and increases by 25% (at least 25 kbit/s), rounded down to 25 kbit/s, capped at
+the preset maximum. Any pending operation or unknown measurement resets the
+healthy interval. This is independent of the preset catalogue's bitrate ladder.
 
-## Keyframe control
+Sustained pressure activates a warning. Reaching the minimum continues output
+with bounded queues and the same warning. Twenty healthy seconds clear a
+resource warning. Unsupported capability remains unavailable and warning stays
+active for that encoder; a healthy network sample cannot restore capability.
 
-Each generation begins with keyframe intent. Requested, issued and acknowledged
-watermarks preserve intent arriving after a previous request. A keyframe from
-the matching generation and a sequence after issuance acknowledges only the
-issued watermark. Delta frames and stale generations/sequences cannot acknowledge
-it. Requests are limited to one per second, with three attempts before an
-explicit exhausted result. Exhaustion retains pending intent for the owner to
-handle as a terminal recovery failure. SDK callbacks must enqueue into the single
-sender control lane; they must not mutate this object concurrently.
-An interval without new encoder input does not spend retries: static capture
-retains the pending keyframe intent until a new input can satisfy it.
+## Encoder control and liveness
 
-## Sender ownership and measurements
+`HardwareH264Encoder::requestBitrate(revision, bps)` writes the existing owner's
+control slot. At most one operation is active and one latest desired value is
+coalesced. The encoder worker executes `ICodecAPI::SetValue` for
+`CODECAPI_AVEncCommonMeanBitRate` with `VT_UI4`, without holding the shared
+mutex across COM. Capture, UI, preview and stop admission do not call COM.
 
-One sender worker owns decisions and profile replacement. It stops frame
-admission, drains encoder and publication leases, destroys the old resources,
-and only then allocates the next generation. A monotonic capture-time fence also
-rejects leases acquired by the producer before drain and submitted after restart.
-Drain, encoder initialization and publication share one 10-second deadline.
-Room remains connected. A newer desired revision is revalidated before admission;
-a delayed publication response cannot commit a superseded setting.
+The typed result distinguishes pending, applied, unsupported, rejected and
+unsafe. Exactly `S_OK` confirms application. `S_FALSE` is read-only;
+`E_NOTIMPL` and `E_NOINTERFACE` are unsupported. Other ordinary failures are
+rejected, retaining the last confirmed bitrate. Three rejected calls total per
+encoder exhaust the retry budget; successful calls do not refill it.
+Unsupported disables further requests immediately. Requests and completion
+after stop, or completion for another revision, cannot mutate current intent.
+Explicit preset changes drain the old generation before allocating the new one.
 
-The Room transport owns one public `Room::getStats()` sampler with at most one
-outstanding future across profile replacements. Requests are spaced by 500 ms;
-only the selected publisher ICE candidate pair contributes available bandwidth.
-Samples older than two seconds are unknown, including late responses (timestamped
-at request time). Preview measurements do not enter the policy. A real fixed
-1080p60 preview/SFU run produced 206 bandwidth measurements, 7.30–9.90 Mbit/s,
-while the observer decoded 775 frames at 25 ms p95 frame age.
+An active operation has a two-second deadline. A late result or actual device
+removal is unsafe and follows the existing terminal containment path. It is
+not represented as ordinary overload. No flush, reinitialization, encoder
+candidate switch, track replacement or Room reconnect is a live-update fallback.
 
-Encoded output older than 150 ms is discarded before SDK admission and queues
-keyframe recovery intent. Static capture does not reuse stale last-value
-diagnostics as fresh GPU/age pressure.
+The NVIDIA MFT returns `E_NOTIMPL` from `IsModifiable` despite accepting live
+`SetValue`; property introspection alone is not a capability oracle.
+A successful property call alone also does not prove bitstream reaction.
+Startup configures CBR and low latency before committing the media types.
 
-## Local validation
+Keyframe requests use `CODECAPI_AVEncVideoForceKeyFrame` with `VT_UI4 = 1`.
+The NVIDIA MFT returned success for the previous `VT_BOOL` value but ignored
+the request. A real five-frame regression checks I/P/requested-I/P/requested-I;
+restoring the old type makes the test fail.
 
-`adaptive-screen-policy` runs without a GPU, sleeps or wall-clock dependencies.
-Golden decisions cover bandwidth collapse/recovery and separate encoder, GPU,
-age and backpressure causes. Stable and noisy 20-minute synthetic traces require
-zero switches. Alternating contention checks the rolling change-rate bound.
-Boundary tests cover unknown network measurements, missing samples, duplicate
-samples, user ceilings, capability loss, emergency cooldown bypass, and keyframe
-intent arriving while an earlier request is in flight.
+Before changing bitrate, the same worker explicitly clears ForceKeyFrame with
+`VT_UI4 = 0`, then applies MeanBitRate only if that clear returned exactly
+`S_OK`. Both calls share the single control operation and its two-second
+deadline. New keyframe intent is issued afterwards, before the next input.
+The intent remains pending until an input is actually admitted. After that
+`ProcessInput` succeeds, the worker also explicitly clears the consumed flag;
+leaving it armed between input calls made mixed keyframe/bitrate requests
+timing-dependent on the tested driver. The hardware probe requests a keyframe
+at every bitrate-stage boundary to cover that interaction.
+On the tested NVIDIA driver, omitting this clear after a valid keyframe request
+made a requested 2 Mbit/s stage produce about 5.4 Mbit/s despite `S_OK`.
+Restoring the clear brought repeated 2/4 Mbit/s stages back inside the declared
+tolerance. No media type change, flush or resource replacement is involved.
 
-## Observer acceptance
+Microsoft documents the encoder property and result semantics:
+[H.264 encoder](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-encoder),
+[ICodecAPI::SetValue](https://learn.microsoft.com/en-us/windows/win32/api/icodecapi/nf-icodecapi-icodecapi-setvalue).
+[ForceKeyFrame parameter type](https://learn.microsoft.com/en-us/windows/win32/medfound/codecapi-avencvideoforcekeyframe)
+documents the unsigned 32-bit value required by the keyframe control.
 
-- The published SDK artifact is pinned. Late subscription and recovery decoded
-  2,675 frames across six publications, at 23 ms p95 and 41 ms maximum age, with
-  zero observer reconnects. The rolling maximum was three changes per minute.
-  The transition and 20-minute release-artifact evidence is
-  in [adaptive-screen-quality-acceptance.json](adaptive-screen-quality-acceptance.json).
-- One earlier run crossed an SDK Room reconnection after a server
-  connection timeout, leaving two replacements without decoded frames and
-  exceeding the handle allowance. This is rejected, even though frame-age p95
-  remained 26 ms. The oracle also explicitly rejects Room reconnection. The
-  qualifying run had no profile changes, constant publication bytes, queue depth
-  at most two, and 1.7 ms additional p95 age. Process handle mean changed by 34.4
-  within the fixed 64-handle allowance; thread mean decreased by seven. D3D handle
-  types remained constant in additional live snapshots. This is a bounded
-  20-minute observation, not a claim that every OS/driver cache is allocation-free.
+## Transport and continuity
 
-Existing local evidence: full recovery decoded 3,227 frames across six
-publications (25 ms p95, 43 ms maximum); delayed subscription decoded 2,644
-frames (24 ms p95, 40 ms maximum), with each replacement's first frame within
-2.5 seconds of subscription. A stalled preview at the admitted 720p60 ceiling
-left publication at that ceiling with zero quality changes and zero reconnects.
-These short runs do not replace the contention acceptance.
+The publication declares the selected preset's initial/maximum bitrate once.
+Every live target remains at or below that declaration. The SFU validates the
+unchanged maximum declaration; intermediate encoder targets do not create new
+publications or expand allowed dimensions, FPS, layers or authorization.
+The preencoded SDK sender continues to use its existing rate-control feedback
+and RTP pacer. A real restricted-link observer is required to demonstrate that
+changing MFT output does not leave a growing transport backlog.
+
+Raw capture admission pauses while fresh outgoing video statistics show a
+mean packet send delay of at least 30 ms. The delay is the difference in
+`totalPacketSendDelay` divided by newly sent packets, for one unambiguous video
+stream in the same Room. Counter resets, missing/multiple streams and
+observations older than 250 ms permit admission again. Unchanged counters keep
+the last observation's original timestamp; they cannot renew a pause. This
+backpressure drops raw input before conversion/encoding; it leaves target FPS,
+dimensions and encoded references unchanged. Preview receives the capture
+before this check and continues using its own bounded pool. The short and full
+receiver labs must still qualify this behavior.
+
+Encoded output older than 150 ms is discarded before SDK admission. Losing an
+encoded reference retains the existing dependent-frame suppression and
+keyframe recovery. The requested/issued/acknowledged keyframe watermarks and
+one-second cadence remain; three unsuccessful progress attempts are a distinct
+recovery fault. Static input does not spend retries without new encoder input.
+Preview is an independent consumer and never contributes pressure to policy.
+Screen audio retains its own bounded owner and publication.
+
+The SFU negotiates the RTP playout-delay extension on its sending transport.
+Screen-video downtracks default to zero additional playout delay, while an
+explicit enabled room/subscriber setting takes precedence. Camera, microphone
+and screen-audio defaults are unchanged. This does not suppress receiver age,
+gap, decode-error or drop measurements; every transition remains measured.
+Focused SFU tests cover source selection, explicit configuration and the actual
+subscriber SDP offer. This source change has not been deployed.
+
+## Warning contract
+
+The lab bridge exposes typed `qualityWarning`, target/applied bitrate and
+bounded update counts. The renderer receives a boolean state and shows:
+
+> Демонстрация может идти с задержками. Попробуйте снизить качество вручную
+
+This is a deduplicated status, not repeated toasts. Stop explicitly clears it.
+Technical outcome, reason, requested/applied bitrate and platform result remain
+diagnostics, without frames, window titles or credentials. Product integration
+of the same state belongs to #130.
+
+## Audio recovery after scheduling stalls
+
+The PCM queue still owns at most eight 10 ms packets, and the SDK source keeps
+its fixed 10 ms clock and existing 100 ms capture-callback deadline. A queue
+with more than one packet now catches up to its newest packet when its oldest
+capture timestamp is over 30 ms old. The retained packet is marked discontinuous
+and skipped packets remain counted in diagnostics. Ordinary batches up to
+30 ms retain their original order. The 100 ms hard stale-packet limit remains.
+
+The previous worker-gap check ran only after a successful SDK call and required
+a pause over 100 ms. Shorter stalls could leave both producer and consumer
+running at 10 ms per packet with a persistent queue delay. Timing diagnostics
+observed PCM ages up to 75 ms before the SDK even after GPU load ended.
+Capture-age-based catch-up handles time spent inside the SDK as well as worker
+scheduling gaps. The regression test covers a 50 ms pause followed by equal-rate
+production and consumption, plus normal batching and bounded storage.
+
+Three preliminary post-change GPU runs passed, including two with four extra
+CPU workers. Audio p95 was 74, 80 and 117 ms; no audio timeout occurred. One run
+used diagnostic SDK timing instrumentation, which was subsequently removed.
+The others used published `.12` DLLs. These comparisons identify retained PCM
+latency; they do not independently establish the cause of the earlier isolated
+100 ms timeout. Final committed-source audio p95 is 141.885 ms over 20 minutes,
+89.835 ms under focused GPU pressure, 121.038 ms with stalled preview and remote
+voice playback, and 98.045 ms in late/static. All complete without audio-owner
+failure. Maximum individual audio ages are 261.986, 168.567, 144.465 and
+146.882 ms respectively; p95 compliance is not a bound on every packet.
+
+## Hardware and evidence protocol
+
+On 2026-09-07 the user deferred preview video latency investigation after the
+published `.12` run measured p95 162 ms, while explicitly requiring audio
+stability. The final preview run measured 170 ms and is retained as failed,
+with that same video p95 issue deferred. This does not waive audio, maximum
+video age, identity, lifecycle or static-pixel failures. No threshold changed.
+
+Exact SDK pin: `v1.10.0-syrnike.12`, commit
+`cd0e8b09b097af0f078853781991638a18345d37`; the authoritative pin is
+`packages/windows-media-engine/native/cmake/LiveKitSDK.cmake`.
+
+| Hardware | Driver / OS | Status |
+| --- | --- | --- |
+| NVIDIA GeForce RTX 5070 Ti | 32.0.16.1074 / Windows 10.0.26200 | Repeated 2/4 Mbit/s live update, final 20-minute network, GPU and late/static passed; all four audio checks passed. Preview video p95 170 ms remains deferred. Late first frame: 1008 ms. Historical failures, including an unreproduced abort, remain retained. Preliminary 1.5 Mbit/s floor failed bitstream tolerance. |
+| Intel / AMD / other NVIDIA | Not tested | Unqualified; do not infer support |
+
+The bitrate lab accepts `MEDIA_LAB_BITRATE_SCENARIO`: `network` (default),
+`gpu-pressure`, `preview-stall`, or `late-static`. Focused scenarios run exactly
+180 seconds. The default network/GPU 20-minute schedule is unchanged.
+GPU pressure keeps a 12 Mbit/s link and runs seven bounded competing 4096×4096
+hardware encoders plus the original bounded 16 MiB compute workload during
+seconds 20–140. Both workloads must advance in every measured 10-second window;
+the policy must reach the minimum and retain output with a warning. The former
+memory-heavy shader variant caused driver waits and audio publication timeout
+on repeated runs and is retained as a failed diagnostic, not acceptance.
+Preview stall
+stops the pixel consumer during seconds 20–160 and independently measures OS
+playback of the existing remote-audio reference; capture, encoder and both audio
+paths must keep progressing. Late/static freezes the fixture pixels during
+seconds 30–70 and connects a second observer at second 40; it must decode the
+same publication within 1500 ms, with complete age measurements retained for
+both observers. The fixture continues repainting identical pixels while static;
+zero-new-input policy behavior is covered separately by deterministic traces.
+Only late/static disables WGC cursor composition, because an OS pointer is not
+part of the controlled static pixels. Default product capture retains its
+cursor behavior. Observer startup timestamps include process/module loading,
+connection and subscription; the 1500 ms deadline still starts before process
+launch, and direct Schema imports avoid unrelated startup work.
+
+The standalone real-MFT probe uses a deterministic moving tiled 1080p60 scene
+and one encoder: 8 → 4 → 2 → 4 → 2 → 4 Mbit/s, 20 seconds per stage. Each full
+stage includes its transition. The initial 8 Mbit/s scene may underfill; every
+subsequent 2/4 Mbit/s stage must be within ±30% of requested, and each repeated
+down/up must change measured output by at least 40%. These tolerances are fixed
+before the acceptance run. Property success and synthetic setters are not
+substitutes for this proof.
+
+The older retained [20-minute diagnostic](issue139-diagnostics/README.md) failed
+receiver freshness (p95 359 ms, maximum 2676 ms). Stable identities, continuing
+preview/audio and passing local tests do not make that run accepted. The later
+published `.11` run at app `2e1d6e973756864ffcdc0216628b831f9e4661c1`
+passed with video p95 106 ms, maximum 1307 ms and maximum gap 2545 ms,
+including all transitions. Its full metrics are retained separately.
+
+The end-to-end lab uses a disposable local SFU, a publisher-only UDP link with
+a finite 64-packet / 40 ms queue, and a separate Node RTC decoder. Audio and
+RTCP/STUN/DTLS have independent reservation. Direct publisher ICE candidates
+are suppressed so video cannot bypass the shaper. Actual offered/delivered
+bytes, drops and candidate rewriting must be nonzero as appropriate.
+
+The 20-minute schedule repeats a 300-second cycle: 12 Mbit/s for 30 seconds,
+3 Mbit/s for 30 seconds, 1.25 Mbit/s for 30 seconds (below the 2 Mbit/s
+floor), then 12 Mbit/s for 210 seconds. GPU contention runs at 150–160 seconds
+of each cycle. Full-run decoded dimensions, track SID, generation, frame age,
+gap, sequence drops and RTC receive counters are recorded, including updates.
+No transitions are excluded as warmup. Receiver age limits remain p95 ≤150 ms,
+maximum ≤1500 ms and growth ≤20 ms. Publication queue/memory and process
+resource growth retain the existing acceptance limits. Independent preview
+pixel readback and coded audio pulses prove progress separately from running
+flags.
+
+Run `live_bitrate_probe.exe 8000000 20` from the built Release lab.
+Build the TypeScript harness with `pnpm --filter @syrnike13/native-media-lab build`.
+Run `node packages/native-media-lab/dist/run-bitrate-lab.js` with
+`MEDIA_LAB_SERVER_EXE`, `MEDIA_LAB_AUDIO_BIN`, `MEDIA_LAB_AUDIO_REPORT` and
+`MEDIA_LAB_AUDIO_DURATION_MS=1200000`. Reports must include exact app commit,
+hardware, SDK pin and checks; short diagnostics are not the 20-minute acceptance.

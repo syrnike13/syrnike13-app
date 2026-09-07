@@ -45,6 +45,7 @@ struct ProductionScreenPipelineStats {
   capture::D3d11AdapterLuid adapter_luid;
   std::uint64_t capture_frames = 0;
   std::uint64_t frame_rate_drops = 0;
+  std::uint64_t network_backpressure_drops = 0;
   std::uint64_t missing_gpu_frames = 0;
   std::uint64_t conversion_drops = 0;
   std::uint64_t encoder_rejections = 0;
@@ -73,6 +74,10 @@ struct ProductionScreenPipelineStats {
   bool adaptive_enabled = false;
   bool reconfiguring = false;
   AdaptiveReason decision_reason = AdaptiveReason::healthy;
+  BitrateUpdateResult bitrate;
+  std::uint32_t target_bitrate = 0;
+  std::uint64_t bitrate_updates = 0;
+  bool quality_warning = false;
 };
 
 using ScreenPublicationAdapterFactory = std::function<std::shared_ptr<ScreenPublicationAdapter>(
@@ -94,8 +99,8 @@ class ProductionScreenPipeline final {
 
   [[nodiscard]] ScreenStartResult start(std::string track_name, std::chrono::milliseconds deadline);
   [[nodiscard]] bool enableAdaptiveQuality(std::uint32_t supported_profiles,
-                                           std::size_t user_maximum);
-  [[nodiscard]] bool setMaximumQuality(std::uint64_t revision, std::size_t user_maximum) noexcept;
+                                           std::size_t selected_preset);
+  [[nodiscard]] bool setSelectedPreset(std::uint64_t revision, std::size_t selected_preset) noexcept;
   [[nodiscard]] ScreenCommandResult stop(std::chrono::steady_clock::time_point deadline) noexcept;
   [[nodiscard]] ProductionScreenPipelineState state() const noexcept;
   [[nodiscard]] ProductionScreenPipelineStats stats() const noexcept;
@@ -125,7 +130,9 @@ class ProductionScreenPipeline final {
   std::shared_ptr<std::atomic_uint64_t> keyframe_intents_;
   ScreenKeyframeControl keyframes_;
   std::uint32_t supported_profiles_ = 0;
-  std::size_t user_maximum_ = 4;
+  std::size_t selected_preset_ = 4;
+  std::uint64_t bitrate_command_ = 0;
+  std::uint64_t bitrate_completed_ = 0;
   AdaptivePolicyState policy_state_;
   std::optional<ProductionScreenPipelineStats> previous_policy_stats_;
   std::uint64_t last_policy_ms_ = 0;

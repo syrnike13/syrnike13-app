@@ -38,6 +38,6 @@ describe('adaptive observer evidence', () => {
     const result = verifyAdaptiveEvidence(f.samples.slice(0, 120), f.observer, false)
     expect(result.failures).toContain('insufficient adaptive observation duration')
     expect(result.failures).toContain('profile change rate exceeded')
-    expect(result.failures).toContain('quality did not recover to restored user ceiling')
+    expect(result.failures).toContain('explicit restored user preset not applied exactly')
   })
 })

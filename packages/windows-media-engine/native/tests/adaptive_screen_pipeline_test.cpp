@@ -2,6 +2,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <vector>
+#include <atomic>
 
 using namespace syrnike::windows_media;
 using namespace syrnike::windows_media::screen;
@@ -23,7 +24,12 @@ class Adapter final : public ScreenPublicationAdapter {
   ScreenOperationCompletion pending;
   std::uint64_t generation = 0;
   bool unpublish_seen = false;
-  OutgoingNetworkObservation networkObservation() const noexcept override { return {}; }
+  std::atomic<std::uint64_t> bandwidth{0};
+  OutgoingNetworkObservation networkObservation() const noexcept override {
+    if (!bandwidth.load()) return {};
+    return {static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count()), bandwidth.load()};
+  }
   void startPublish(std::uint64_t g, ScreenTrackDescriptor, ScreenOperationCompletion cb) override {
     std::scoped_lock lock(mutex);
     generation = g; pending = std::move(cb);
@@ -60,10 +66,10 @@ void supersededSettingAndDrain() {
   until([&] { return adapterAt(0)->publishReady(); });
   adapterAt(0)->complete();
   until([&] { return pipeline.state() == ProductionScreenPipelineState::running; });
-  require(pipeline.setMaximumQuality(2, 3), "first ceiling rejected");
+  require(pipeline.setSelectedPreset(2, 3), "first explicit preset rejected");
   until([&] { auto a = adapterAt(1); return a && a->publishReady(); });
-  require(pipeline.setMaximumQuality(3, 0), "newer ceiling rejected");
-  require(!pipeline.setMaximumQuality(2, 4), "stale revision accepted");
+  require(pipeline.setSelectedPreset(3, 0), "newer explicit preset rejected");
+  require(!pipeline.setSelectedPreset(2, 4), "stale revision accepted");
   adapterAt(1)->complete();
   until([&] { auto a = adapterAt(2); return a && a->publishReady(); });
   const auto pending = pipeline.stats();
@@ -72,7 +78,7 @@ void supersededSettingAndDrain() {
   adapterAt(2)->complete();
   until([&] { return pipeline.stats().applied_revision == 3; });
   require(pipeline.stats().current_profile == 0 && pipeline.stats().profile_generation == 3,
-          "replacement did not obey latest ceiling");
+          "replacement did not obey latest explicit preset");
   require(pipeline.stop(std::chrono::steady_clock::now() + 5s).ok, "replacement stop failed");
   const auto stopped = pipeline.stats();
   require(stopped.capture.active == 0 && stopped.converter.slots_in_use == 0 &&
@@ -82,8 +88,34 @@ void supersededSettingAndDrain() {
     std::scoped_lock lock(a->mutex); require(a->unpublish_seen, "generation was not unpublished");
   }
 }
+void automaticControlKeepsGeneration() {
+  const auto device = capture::processD3d11Device(false);
+  auto frames = std::make_shared<ScreenFramePipeline>();
+  auto adapter = std::make_shared<Adapter>();
+  std::atomic<unsigned> creations{0};
+  ProductionScreenPipeline pipeline(device, frames, kScreenProfile1080p60,
+      [&](std::function<void()>) { ++creations; return adapter; });
+  require(!pipeline.enableAdaptiveQuality(15, 4), "unsupported exact preset silently fell back");
+  require(!pipeline.enableAdaptiveQuality(31, 3), "different initial preset silently accepted");
+  require(pipeline.enableAdaptiveQuality(1U << 4, 4), "exact preset admission failed");
+  require(pipeline.start("fixed-preset-test", 5s).ok, "initial start failed");
+  until([&] { return adapter->publishReady(); }); adapter->complete();
+  until([&] { return pipeline.state() == ProductionScreenPipelineState::running; });
+  const auto instance = pipeline.stats().encoder.instance_id;
+  adapter->bandwidth = 1'000'000;
+  until([&] { return pipeline.stats().bitrate.applied_bitrate == 2'000'000; });
+  const auto reduced = pipeline.stats();
+  require(reduced.current_profile == 4 && reduced.profile_generation == 1 &&
+          reduced.encoder.instance_id == instance && reduced.profile_changes == 0 &&
+          reduced.quality_warning && creations == 1, "automatic bitrate control replaced resources");
+  { std::scoped_lock lock(adapter->mutex); require(!adapter->unpublish_seen, "automatic unpublish"); }
+  require(!pipeline.setSelectedPreset(2, 0), "explicit unsupported preset accepted");
+  require(pipeline.stop(std::chrono::steady_clock::now() + 5s).ok, "bitrate stop failed");
+  require(!pipeline.stats().quality_warning && !pipeline.setSelectedPreset(3, 4),
+          "stopped intent/warning fence failed");
+}
 }
 int main() {
-  try { supersededSettingAndDrain(); std::cout << "Adaptive sender generation and setting fences passed\n"; }
+  try { supersededSettingAndDrain(); automaticControlKeepsGeneration(); std::cout << "Fixed-preset sender control and explicit setting fences passed\n"; }
   catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

@@ -1,5 +1,7 @@
 #pragma once
+#include <syncstream>
 #include "audio/screen_audio_pcm.hpp"
+#include <chrono>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
@@ -20,6 +22,8 @@ class AudioPulseRecorder {
       if (!active_) {
         active_ = true;
         timestamp_ = packet.capture_timestamp_100ns;
+        observed_at_ms_ = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
         best_rms_ = 0;
       }
       if (rms <= best_rms_) return;
@@ -42,8 +46,9 @@ class AudioPulseRecorder {
       }
     } else if (rms < 100 && active_) {
       active_ = false;
-      std::cout << "CODED_AUDIO_CAPTURE {\"atMs\":" << std::setprecision(17)
+      std::osyncstream(std::cout) << "CODED_AUDIO_CAPTURE {\"atMs\":" << std::setprecision(17)
                 << static_cast<double>(timestamp_) / 10000.0 << ",\"code\":" << code_
+                << ",\"observedAtMs\":" << observed_at_ms_
                 << ",\"rms\":" << best_rms_ << "}" << std::endl;
     }
   }
@@ -51,6 +56,7 @@ class AudioPulseRecorder {
  private:
   bool active_ = false;
   double best_rms_ = 0;
+  double observed_at_ms_ = 0;
   unsigned code_ = 0;
   std::int64_t timestamp_ = 0;
 };

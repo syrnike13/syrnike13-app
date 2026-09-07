@@ -1,0 +1,7 @@
+encoder=NVIDIA H.264 Encoder MFT
+segment=0 requested=8000000 applied=8000000 outcome=0 hr=0 measured_bps=2877173 frames=1200 keyframes=20 instance=1
+segment=1 requested=4000000 applied=4000000 outcome=2 hr=0 measured_bps=4004027 frames=1200 keyframes=20 instance=1
+segment=2 requested=2000000 applied=2000000 outcome=2 hr=0 measured_bps=2371861 frames=1200 keyframes=20 instance=1
+segment=3 requested=4000000 applied=4000000 outcome=2 hr=0 measured_bps=3893654 frames=1200 keyframes=20 instance=1
+segment=4 requested=2000000 applied=2000000 outcome=2 hr=0 measured_bps=2114014 frames=1200 keyframes=20 instance=1
+segment=5 requested=4000000 applied=4000000 outcome=2 hr=0 measured_bps=3882174 frames=1200 keyframes=20 instance=1

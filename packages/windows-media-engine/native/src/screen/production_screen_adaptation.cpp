@@ -13,18 +13,13 @@ std::uint64_t monotonicMs() noexcept {
 std::uint64_t delta(std::uint64_t current, std::uint64_t previous) noexcept {
   return current >= previous ? current - previous : 0;
 }
-bool fits(std::size_t value, std::size_t maximum) noexcept {
-  const auto& a = kAdaptiveScreenProfiles[value];
-  const auto& b = kAdaptiveScreenProfiles[maximum];
-  return value <= maximum && a.width <= b.width && a.height <= b.height && a.fps <= b.fps;
-}
 }  // namespace
 
 bool ProductionScreenPipeline::enableAdaptiveQuality(std::uint32_t supported_profiles,
-                                                     std::size_t user_maximum) {
+                                                     std::size_t selected_preset) {
   std::scoped_lock lock(mutex_);
   if (state_ != ProductionScreenPipelineState::idle ||
-      user_maximum >= kAdaptiveScreenProfiles.size())
+      selected_preset >= kAdaptiveScreenProfiles.size())
     return false;
   std::optional<std::size_t> initial;
   for (std::size_t i = 0; i < kAdaptiveScreenProfiles.size(); ++i) {
@@ -33,10 +28,10 @@ bool ProductionScreenPipeline::enableAdaptiveQuality(std::uint32_t supported_pro
         p.fps == profile_.frames_per_second && p.target_bitrate == profile_.bitrate)
       initial = i;
   }
-  if (!initial || !fits(*initial, user_maximum) || (supported_profiles & (1U << *initial)) == 0)
+  if (!initial || *initial != selected_preset || (supported_profiles & (1U << *initial)) == 0)
     return false;
   supported_profiles_ = supported_profiles;
-  user_maximum_ = user_maximum;
+  selected_preset_ = selected_preset;
   stats_.adaptive_enabled = true;
   stats_.current_profile = *initial;
   stats_.desired_revision = 1;
@@ -44,15 +39,16 @@ bool ProductionScreenPipeline::enableAdaptiveQuality(std::uint32_t supported_pro
   return true;
 }
 
-bool ProductionScreenPipeline::setMaximumQuality(std::uint64_t revision,
-                                                 std::size_t user_maximum) noexcept {
+bool ProductionScreenPipeline::setSelectedPreset(std::uint64_t revision,
+                                                 std::size_t selected_preset) noexcept {
   std::scoped_lock lock(mutex_);
   if (!stats_.adaptive_enabled || revision <= stats_.desired_revision ||
-      user_maximum >= kAdaptiveScreenProfiles.size() || stop_requested_ ||
+      selected_preset >= kAdaptiveScreenProfiles.size() ||
+      (supported_profiles_ & (1U << selected_preset)) == 0 || stop_requested_ ||
       state_ == ProductionScreenPipelineState::failed ||
       state_ == ProductionScreenPipelineState::stopped)
     return false;
-  user_maximum_ = user_maximum;
+  selected_preset_ = selected_preset;
   stats_.desired_revision = revision;
   return true;
 }
@@ -62,14 +58,14 @@ void ProductionScreenPipeline::runAdaptiveControl() {
   std::uint64_t profile_generation;
   std::uint64_t revision;
   std::uint64_t applied_revision;
-  std::size_t maximum;
+  std::size_t selected;
   bool adaptive_enabled;
   {
     std::scoped_lock lock(mutex_);
     profile_generation = stats_.profile_generation;
     revision = stats_.desired_revision;
     applied_revision = stats_.applied_revision;
-    maximum = user_maximum_;
+    selected = selected_preset_;
     adaptive_enabled = stats_.adaptive_enabled;
   }
   // A request arriving after issuance cannot be acknowledged by an already
@@ -93,15 +89,41 @@ void ProductionScreenPipeline::runAdaptiveControl() {
   }
   if (!adaptive_enabled) return;
   const bool desired_changed = revision != applied_revision;
+  if (desired_changed) { reconfigure(selected, revision); return; }
+  const auto update = encoder_->bitrateUpdate();
+  if (update.outcome == BitrateUpdateOutcome::unsafe) {
+    std::scoped_lock lock(mutex_);
+    failure_ = ScreenPublicationFailure{"screen_bitrate_update_unsafe",
+        "Encoder control lost liveness or reported device removal", "encoder_control", false, true};
+    state_ = ProductionScreenPipelineState::failed;
+    stop_requested_ = true;
+    return;
+  }
+  if (bitrate_command_ != bitrate_completed_ && update.revision == bitrate_command_ &&
+      update.outcome != BitrateUpdateOutcome::pending) {
+    bitrate_completed_ = bitrate_command_;
+    std::scoped_lock lock(mutex_);
+    if (!stop_requested_ && revision == stats_.desired_revision) {
+      stats_.bitrate = update;
+      if (update.outcome != BitrateUpdateOutcome::applied) stats_.quality_warning = true;
+    }
+  }
   if (!desired_changed && now - last_policy_ms_ < 500) return;
   const auto current = stats();
   AdaptiveMeasurements m;
   m.now_ms = now;
   m.interval_ms = last_policy_ms_ ? now - last_policy_ms_ : 500;
-  m.current_profile = current.current_profile;
-  m.user_maximum = maximum;
-  m.supported_profiles = supported_profiles_;
+  m.selected_preset = current.current_profile;
+  m.applied_bitrate = update.applied_bitrate;
+  m.live_update_available = update.available;
+  m.update_pending = bitrate_command_ != bitrate_completed_;
   m.available_outgoing_bitrate = current.network.available_outgoing_bitrate;
+  // The sender allocation can be tighter than the available link (audio,
+  // retransmission and congestion-window budgets). It is a current control
+  // value, while the independently sampled link must still be fresh below.
+  if (m.available_outgoing_bitrate && current.network.sender_bitrate_allocation)
+    m.available_outgoing_bitrate = (std::min)(*m.available_outgoing_bitrate,
+                                            *current.network.sender_bitrate_allocation);
   m.network_measurement_fresh = current.network.measured_at_ms > 0 &&
                                 current.network.measured_at_ms <= now &&
                                 now - current.network.measured_at_ms <= 2000;
@@ -119,6 +141,10 @@ void ProductionScreenPipeline::runAdaptiveControl() {
     m.encoder_inputs = delta(current.encoder.submitted, previous.encoder.submitted);
     m.encoder_outputs = delta(current.encoder.encoded, previous.encoder.encoded);
     const auto captures = delta(current.capture_frames, previous.capture_frames);
+    // New captured/converted input makes the output delta meaningful even when
+    // that delta is zero. Requiring output would hide an encoder progress stall.
+    m.local_measurements_fresh = captures > 0 &&
+        current.converter.converted > previous.converter.converted;
     // Last-value diagnostics are not fresh pressure samples during a static
     // capture. Unknown cadence must neither downgrade nor authorize recovery.
     if (captures == 0) m.capture_age_ms = 0;
@@ -128,6 +154,7 @@ void ProductionScreenPipeline::runAdaptiveControl() {
     }
     if (current.encoder.encoded == previous.encoder.encoded) m.publish_age_ms = 0;
     const auto dropped =
+        delta(current.network_backpressure_drops, previous.network_backpressure_drops) +
         delta(current.conversion_drops, previous.conversion_drops) +
         delta(current.encoder_rejections, previous.encoder_rejections) +
         delta(current.stale_encoded_drops, previous.stale_encoded_drops) +
@@ -147,27 +174,17 @@ void ProductionScreenPipeline::runAdaptiveControl() {
     stats_.decision_reason = decision.reason;
     // Re-read revision before applying a decision from the immutable sample.
     if (revision != stats_.desired_revision || stop_requested_) return;
-    if (decision.action == AdaptiveAction::terminal_capability_failure) {
-      failure_ = ScreenPublicationFailure{
-          "screen_adaptive_capability_unavailable",
-          "No admitted profile can satisfy the current ceiling and transition budget",
-          "screen_adaptive_policy"};
-      state_ = ProductionScreenPipelineState::failed;
-      stop_requested_ = true;
-      return;
-    }
-    if (decision.action == AdaptiveAction::keep) {
-      // This also validates a late publication completion against a newer
-      // setting before any frames from it can enter the encoder.
-      if (fits(current.current_profile, maximum)) {
-        stats_.applied_revision = revision;
-        stats_.reconfiguring = false;
-        state_ = ProductionScreenPipelineState::running;
-      }
-      return;
+    stats_.quality_warning = decision.next.warning || !update.available ||
+        update.outcome == BitrateUpdateOutcome::rejected;
+    if (decision.action == AdaptiveAction::keep) return;
+    const auto command = bitrate_command_ + 1;
+    if (encoder_->requestBitrate(command, decision.target_bitrate)) {
+      bitrate_command_ = command;
+      ++stats_.bitrate_updates;
+      stats_.target_bitrate = decision.target_bitrate;
+      policy_state_ = recordAdaptiveBitrateAttempt(policy_state_, now);
     }
   }
-  reconfigure(decision.target_profile, revision);
 }
 
 void ProductionScreenPipeline::reconfigure(std::size_t target, std::uint64_t revision) {
@@ -177,7 +194,7 @@ void ProductionScreenPipeline::reconfigure(std::size_t target, std::uint64_t rev
     stats_.reconfiguring = true;
     state_ = ProductionScreenPipelineState::starting;
     ++stats_.profile_changes;
-    policy_state_ = recordAdaptiveProfileAttempt(policy_state_, monotonicMs());
+    policy_state_ = {};
     profile_deadline_ = std::chrono::steady_clock::now() + std::chrono::seconds{10};
   }
   const auto deadline = profile_deadline_;
@@ -198,14 +215,11 @@ void ProductionScreenPipeline::reconfigure(std::size_t target, std::uint64_t rev
   {
     std::scoped_lock lock(mutex_);
     if (stop_requested_) return;
-    // A newer setting supersedes this pending attempt. Recompute a safe
-    // ceiling before creating resources; an increase still needs policy health.
+    // Only an explicit user operation reaches resource replacement.
     revision = stats_.desired_revision;
-    while (target > 0 &&
-           (!fits(target, user_maximum_) || (supported_profiles_ & (1U << target)) == 0))
-      --target;
-    if (!fits(target, user_maximum_) || (supported_profiles_ & (1U << target)) == 0)
-      throw std::runtime_error("No admitted replacement profile remains");
+    target = selected_preset_;
+    if ((supported_profiles_ & (1U << target)) == 0)
+      throw std::runtime_error("Selected preset is not admitted");
     retired_publication_consumed_ += sender_->stats().consumed;
     old_converter = std::move(converter_);
     old_encoder = std::move(encoder_);
@@ -235,6 +249,7 @@ void ProductionScreenPipeline::reconfigure(std::size_t target, std::uint64_t rev
   if (!started.ok)
     throw std::runtime_error(started.failure ? started.failure->message
                                              : "Replacement profile could not start");
+  bitrate_command_ = bitrate_completed_ = 0;
   previous_policy_stats_.reset();
   last_policy_ms_ = 0;
 }

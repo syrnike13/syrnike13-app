@@ -98,6 +98,9 @@ ScreenStartResult ProductionScreenPipeline::startGeneration(std::chrono::millise
   {
     std::scoped_lock lock(mutex_);
     stats_.encoder_implementation = encoder_->transformName();
+    stats_.bitrate = encoder_->bitrateUpdate();
+    stats_.target_bitrate = profile_.bitrate;
+    stats_.quality_warning = false;
   }
   auto started = sender_->start(ScreenTrackDescriptor{
       track_name_, profile_.width, profile_.height, profile_.frames_per_second, profile_.bitrate});
@@ -144,6 +147,7 @@ void ProductionScreenPipeline::handleEvent(ScreenPublicationEvent event) noexcep
     failure_ = std::move(event.failure);
     state_ = ProductionScreenPipelineState::failed;
     stop_requested_ = true;
+    stats_.quality_warning = false;
   }
 }
 
@@ -247,17 +251,27 @@ void ProductionScreenPipeline::run() noexcept {
             metadata.height * 4ULL;
       }
       const auto timestamp_us = metadata.capture_timestamp_100ns / 10;
-      if (!cadence_.due(timestamp_us, frame_interval_us)) {
-        capture->release();
-        std::scoped_lock lock(mutex_);
-        ++stats_.frame_rate_drops;
-        continue;
-      }
       const auto d3d = capture->d3d11View();
       if (!d3d) {
         capture->release();
         std::scoped_lock lock(mutex_);
         ++stats_.missing_gpu_frames;
+        continue;
+      }
+      if (owns_preview_) LocalScreenPreview::processPreview().offer(*d3d, metadata);
+      const auto now_ms = static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::steady_clock::now().time_since_epoch()).count());
+      if (adapter_ && screenPacketQueueBackpressured(adapter_->networkObservation(), now_ms)) {
+        capture->release();
+        std::scoped_lock lock(mutex_);
+        ++stats_.network_backpressure_drops;
+        continue;
+      }
+      if (!cadence_.due(timestamp_us, frame_interval_us)) {
+        capture->release();
+        std::scoped_lock lock(mutex_);
+        ++stats_.frame_rate_drops;
         continue;
       }
       auto converted = converter_->convert(*d3d, metadata);
@@ -272,7 +286,6 @@ void ProductionScreenPipeline::run() noexcept {
         continue;
       }
       cadence_.accepted(timestamp_us, frame_interval_us);
-      if (owns_preview_) LocalScreenPreview::processPreview().offer(*d3d, metadata);
       capture->release();
     }
   } catch (const std::exception& error) {
@@ -316,6 +329,7 @@ ScreenCommandResult ProductionScreenPipeline::stop(
     if (state_ != ProductionScreenPipelineState::failed)
       state_ = ProductionScreenPipelineState::stopping;
     stop_requested_ = true;
+    stats_.quality_warning = false;
   }
   const bool capture_stopped = capture_pipeline_->stop(deadline);
   if (worker_.joinable()) {

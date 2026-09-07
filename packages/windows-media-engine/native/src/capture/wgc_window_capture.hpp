@@ -21,6 +21,7 @@ struct WgcWindowCaptureTestHooks {
 struct WgcWindowCaptureOptions {
   bool request_d3d_debug_layer = kDefaultD3dDebugLayer;
   std::shared_ptr<WgcWindowCaptureTestHooks> test_hooks;
+  bool include_cursor = true;
 };
 
 class WgcWindowCaptureBackend : public WindowCaptureBackend {
