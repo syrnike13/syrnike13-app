@@ -61,6 +61,7 @@ class LocalScreenPreview final {
  private:
   enum class SlotState { free, copying, ready, delivered, retired, retiring, quarantined };
   struct Slot {
+    bool budget_reserved = false;
     SlotState state = SlotState::free;
     PreviewFrame frame;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;

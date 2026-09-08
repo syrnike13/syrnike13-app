@@ -1,0 +1,71 @@
+{
+  "date": "2026-09-08",
+  "scope": "Local camera native owners; client UI integration remains #130",
+  "compiler": "MSVC 19.51, /W4 /WX",
+  "releaseTests": {
+    "accepted": true,
+    "cameraSeconds": 0.98,
+    "previewSeconds": 0.57,
+    "previewQuarantineSeconds": 0.54,
+    "screenPreviewRegressionSeconds": 0.39
+  },
+  "debugAddressSanitizerTests": {
+    "accepted": true,
+    "cameraSeconds": 1.25,
+    "previewSeconds": 0.82,
+    "previewQuarantineSeconds": 0.80,
+    "screenPreviewRegressionSeconds": 0.75,
+    "runtime": "VS 18 compiler bin directory on the child process PATH",
+    "addressSanitizerFindings": 0
+  },
+  "publicationRollback": {
+    "accepted": true,
+    "configurations": ["Release", "Debug with AddressSanitizer"],
+    "attemptsPerConfiguration": 10,
+    "publicationCommits": 0,
+    "captureOpens": 1,
+    "workingCapturePreserved": true,
+    "cleanupCompleted": true
+  },
+  "hardwareRows": [
+    {
+      "device": "Pixel 9 (Windows virtual camera)",
+      "kind": "virtual_camera",
+      "classificationEvidence": "Windows SWD enumerator metadata",
+      "adapter": "Real asynchronous Media Foundation Source Reader",
+      "configurations": ["Release", "Debug with AddressSanitizer"],
+      "width": 1280,
+      "height": 720,
+      "fps": 30,
+      "frames": 93,
+      "observation": "Three healthy start frames followed by three seconds of capture",
+      "failure": "none",
+      "stopped": true
+    },
+    {
+      "device": "Pixel 9 (Windows virtual camera)",
+      "kind": "virtual_camera",
+      "adapter": "Real asynchronous Media Foundation Source Reader",
+      "configurations": ["Release", "Debug with AddressSanitizer"],
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "frames": 0,
+      "failure": "unsupported_profile",
+      "platformError": -1072875852,
+      "enteredRunning": false,
+      "stopped": true
+    },
+    {
+      "kind": "physical_camera",
+      "result": "waived by user on 2026-09-08; no physical camera available",
+      "verified": false
+    },
+    {
+      "kind": "physical_usb_unplug_replug",
+      "result": "waived by user on 2026-09-08; simulated callback removal and recovery tested separately",
+      "verified": false
+    }
+  ],
+  "fixedDuringHardwareValidation": "Source Reader already shuts down its media source on release. A repeated MF_E_SHUTDOWN now counts as already closed, with callback destruction still required."
+}

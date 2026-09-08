@@ -1,0 +1,309 @@
+{
+  "accepted": true,
+  "scope": "synthetic asynchronous camera and real GPU preview",
+  "warmupCycles": 3,
+  "measuredCycles": 50,
+  "lateCallbacks": 53,
+  "samples": [
+    {
+      "cycle": 1,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59891712
+    },
+    {
+      "cycle": 2,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59895808
+    },
+    {
+      "cycle": 3,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59895808
+    },
+    {
+      "cycle": 4,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59895808
+    },
+    {
+      "cycle": 5,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59895808
+    },
+    {
+      "cycle": 6,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59895808
+    },
+    {
+      "cycle": 7,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59895808
+    },
+    {
+      "cycle": 8,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59895808
+    },
+    {
+      "cycle": 9,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59895808
+    },
+    {
+      "cycle": 10,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59895808
+    },
+    {
+      "cycle": 11,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59899904
+    },
+    {
+      "cycle": 12,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59895808
+    },
+    {
+      "cycle": 13,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59895808
+    },
+    {
+      "cycle": 14,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59899904
+    },
+    {
+      "cycle": 15,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59899904
+    },
+    {
+      "cycle": 16,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59899904
+    },
+    {
+      "cycle": 17,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59904000
+    },
+    {
+      "cycle": 18,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59912192
+    },
+    {
+      "cycle": 19,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59912192
+    },
+    {
+      "cycle": 20,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59912192
+    },
+    {
+      "cycle": 21,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59912192
+    },
+    {
+      "cycle": 22,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59912192
+    },
+    {
+      "cycle": 23,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59912192
+    },
+    {
+      "cycle": 24,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59912192
+    },
+    {
+      "cycle": 25,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59912192
+    },
+    {
+      "cycle": 26,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59912192
+    },
+    {
+      "cycle": 27,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59912192
+    },
+    {
+      "cycle": 28,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59912192
+    },
+    {
+      "cycle": 29,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59920384
+    },
+    {
+      "cycle": 30,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59920384
+    },
+    {
+      "cycle": 31,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59920384
+    },
+    {
+      "cycle": 32,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 60837888
+    },
+    {
+      "cycle": 33,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59920384
+    },
+    {
+      "cycle": 34,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59924480
+    },
+    {
+      "cycle": 35,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59920384
+    },
+    {
+      "cycle": 36,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59924480
+    },
+    {
+      "cycle": 37,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59924480
+    },
+    {
+      "cycle": 38,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59920384
+    },
+    {
+      "cycle": 39,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59928576
+    },
+    {
+      "cycle": 40,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59928576
+    },
+    {
+      "cycle": 41,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59928576
+    },
+    {
+      "cycle": 42,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59928576
+    },
+    {
+      "cycle": 43,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59940864
+    },
+    {
+      "cycle": 44,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59940864
+    },
+    {
+      "cycle": 45,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59940864
+    },
+    {
+      "cycle": 46,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59940864
+    },
+    {
+      "cycle": 47,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59940864
+    },
+    {
+      "cycle": 48,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59940864
+    },
+    {
+      "cycle": 49,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59940864
+    },
+    {
+      "cycle": 50,
+      "handles": 463,
+      "threads": 23,
+      "privateBytes": 59940864
+    }
+  ]
+}
