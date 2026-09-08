@@ -122,11 +122,14 @@ jobs:
           MEDIA_LAB_SERVER_EXE: ${{ github.workspace }}\packages\native-media-lab\.ci\livekit-server.exe
         shell: pwsh
         run: |
-          $labInterface = Get-NetIPConfiguration |
-            Where-Object { $_.IPv4DefaultGateway.NextHop -and $_.IPv4DefaultGateway.NextHop -ne '0.0.0.0' } |
+          $labRoute = Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' |
+            Where-Object { $_.NextHop -ne '0.0.0.0' } |
             Sort-Object InterfaceIndex | Select-Object -First 1
-          if (!$labInterface) { throw 'No IPv4 interface with a configured gateway for the native lab' }
-          $env:MEDIA_LAB_SERVER_IP = $labInterface.IPv4Address.IPAddress | Select-Object -First 1
+          if (!$labRoute) { throw 'No IPv4 default route for the native lab' }
+          $labAddress = Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $labRoute.InterfaceIndex -AddressState Preferred |
+            Select-Object -ExpandProperty IPAddress -First 1
+          if (!$labAddress) { throw 'No preferred IPv4 address on the native lab interface' }
+          $env:MEDIA_LAB_SERVER_IP = $labAddress
           pnpm native-media:lab
       - name: Build and verify unpacked Windows package
         run: pnpm --filter @syrnike13/desktop package:prepared

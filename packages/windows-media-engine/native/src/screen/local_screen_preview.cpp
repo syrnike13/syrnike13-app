@@ -1,4 +1,5 @@
 #include "screen/local_screen_preview.hpp"
+#include "capture/optional_preview_budget.hpp"
 
 #include <dxgi1_2.h>
 #include <algorithm>
@@ -33,6 +34,7 @@ LocalScreenPreview::~LocalScreenPreview() {
 void LocalScreenPreview::clearLocked(Slot& slot) {
   if (slot.frame.handle) CloseHandle(reinterpret_cast<HANDLE>(slot.frame.handle));
   if (slot.texture) stats_.backing_bytes -= kTextureBytes;
+  if (slot.budget_reserved) capture::releaseOptionalPreview(kTextureBytes);
   slot = {};
 }
 void LocalScreenPreview::allocateLocked() {
@@ -52,6 +54,12 @@ void LocalScreenPreview::allocateLocked() {
     desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
                      D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
     try {
+      if (!capture::reserveOptionalPreview(kTextureBytes)) {
+        ++stats_.pressure_drops;
+        stats_.state = PreviewState::degraded;
+        return;
+      }
+      slot.budget_reserved = true;
       check(device_->device()->CreateTexture2D(&desc, nullptr, &slot.texture));
       stats_.backing_bytes += kTextureBytes;
       ComPtr<IDXGIResource1> resource;

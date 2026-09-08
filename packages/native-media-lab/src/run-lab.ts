@@ -7,7 +7,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { networkInterfaces, tmpdir } from 'node:os'
+import { cpus, freemem, networkInterfaces, tmpdir, totalmem } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -61,6 +61,7 @@ interface LabResources {
   readonly directory: string
   readonly containerName: string
   readonly processes: Set<RunningProcess>
+  hostMonitor?: ReturnType<typeof setInterval>
 }
 
 function normalizeError(error: unknown): Error {
@@ -181,6 +182,22 @@ async function createToken(
 }
 
 async function executeLab(resources: LabResources): Promise<void> {
+  const cpuTimes = () => cpus().reduce((sum, cpu) => ({
+    idle: sum.idle + cpu.times.idle,
+    total: sum.total + Object.values(cpu.times).reduce((total, value) => total + value, 0),
+  }), { idle: 0, total: 0 })
+  let previousCpuTimes = cpuTimes()
+  resources.hostMonitor = setInterval(() => {
+    const current = cpuTimes()
+    const elapsed = current.total - previousCpuTimes.total
+    const busyPercent = elapsed > 0 ? 100 * (1 - (current.idle - previousCpuTimes.idle) / elapsed) : 0
+    previousCpuTimes = current
+    console.log('MEDIA_LAB_HOST', JSON.stringify({
+      at: new Date().toISOString(), logicalProcessors: cpus().length,
+      busyPercent: Math.round(busyPercent), freeMiB: Math.round(freemem() / 1024 / 1024),
+      totalMiB: Math.round(totalmem() / 1024 / 1024),
+    }))
+  }, 5000)
   const apiKey = `lab_${randomBytes(12).toString('hex')}`
   const apiSecret = randomBytes(32).toString('base64url')
   // Interface ordering can select a VPN/TUN adapter and route the local lab
@@ -913,6 +930,7 @@ const program = Effect.scoped(Effect.gen(function* () {
     }),
     (owned) => Effect.tryPromise({
       try: async () => {
+        clearInterval(owned.hostMonitor)
         for (const processHandle of owned.processes) await stopProcess(processHandle)
         if (!serverExecutable) {
           const cleanup = runProcess('docker', ['rm', '-f', owned.containerName])

@@ -62,6 +62,42 @@ add_library(media_core STATIC
 windows_media_target(media_core)
 target_include_directories(media_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
+add_library(media_preview_budget STATIC src/capture/optional_preview_budget.cpp)
+windows_media_target(media_preview_budget)
+target_include_directories(media_preview_budget PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
+add_library(media_camera_core STATIC src/camera/camera_frame.cpp src/camera/camera_device_registry.cpp)
+windows_media_target(media_camera_core)
+target_include_directories(media_camera_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+add_library(media_camera_devices STATIC src/camera/windows_camera_devices.cpp)
+windows_media_target(media_camera_devices)
+target_link_libraries(media_camera_devices PUBLIC media_camera_core PRIVATE mf mfplat mfuuid ole32 setupapi cfgmgr32 uuid strmiids)
+add_library(media_camera_capture STATIC src/camera/camera_capture.cpp src/camera/media_foundation_camera.cpp)
+windows_media_target(media_camera_capture)
+target_link_libraries(media_camera_capture PUBLIC media_camera_core PRIVATE mf mfplat mfreadwrite mfuuid ole32)
+add_library(media_camera_pipeline STATIC src/camera/camera_pipeline.cpp)
+windows_media_target(media_camera_pipeline)
+target_link_libraries(media_camera_pipeline PUBLIC media_camera_capture)
+add_library(media_camera_publication STATIC src/camera/camera_publication.cpp)
+windows_media_target(media_camera_publication)
+target_link_libraries(media_camera_publication PUBLIC media_camera_core media_livekit)
+add_library(media_camera_preview STATIC src/camera/camera_preview.cpp)
+windows_media_target(media_camera_preview)
+target_link_libraries(media_camera_preview PUBLIC media_camera_core media_capture media_preview_budget)
+add_library(media_camera_fixture STATIC src/lab/synthetic_camera_reader.cpp)
+windows_media_target(media_camera_fixture)
+target_link_libraries(media_camera_fixture PUBLIC media_camera_capture)
+
+add_executable(camera_tests tests/camera_test.cpp)
+windows_media_target(camera_tests)
+target_link_libraries(camera_tests PRIVATE media_camera_pipeline media_camera_fixture media_camera_preview media_screen)
+add_test(NAME camera COMMAND camera_tests)
+set_tests_properties(camera PROPERTIES TIMEOUT 30)
+add_test(NAME camera-preview COMMAND camera_tests --preview)
+set_tests_properties(camera-preview PROPERTIES TIMEOUT 30 LABELS "requires-gpu-video")
+add_test(NAME camera-preview-quarantine COMMAND camera_tests --preview-quarantine)
+set_tests_properties(camera-preview-quarantine PROPERTIES TIMEOUT 30 LABELS "requires-gpu-video")
+
 add_library(media_sources STATIC
   src/sources/source_registry.cpp
   src/sources/utf8.cpp
@@ -101,7 +137,7 @@ add_library(media_screen STATIC
 )
 windows_media_target(media_screen)
 target_include_directories(media_screen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(media_screen PUBLIC media_capture PRIVATE
+target_link_libraries(media_screen PUBLIC media_capture media_preview_budget PRIVATE
   mf mfplat mfuuid wmcodecdspuuid)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/LiveKitSDK.cmake")
@@ -456,6 +492,12 @@ set_tests_properties(monitor-capture gpu-screen-converter encoder-faults
   PROPERTIES LABELS "requires-gpu-video")
 
 if(WINDOWS_MEDIA_BUILD_LAB)
+  add_executable(camera_lab src/lab/camera_lab.cpp)
+  windows_media_target(camera_lab)
+  target_compile_definitions(camera_lab PRIVATE _CRT_SECURE_NO_WARNINGS)
+  target_link_libraries(camera_lab PRIVATE media_camera_pipeline media_camera_devices media_camera_fixture
+    media_camera_publication media_camera_preview media_core psapi)
+  windows_media_copy_livekit_runtime(camera_lab)
   add_executable(apm_allocation_baseline src/lab/apm_allocation_baseline.cpp)
   windows_media_target(apm_allocation_baseline)
   target_link_libraries(apm_allocation_baseline PRIVATE LiveKit::livekit)

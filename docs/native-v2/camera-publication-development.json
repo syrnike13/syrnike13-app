@@ -1,0 +1,44 @@
+{
+  "accepted": true,
+  "seconds": 26,
+  "minimumStalledFps": 30,
+  "maximumStalledAgeMs": 28,
+  "phases": [
+    {
+      "name": "publication-only-720",
+      "atUnixMs": 1788845060421
+    },
+    {
+      "name": "preview-running",
+      "atUnixMs": 1788845063422
+    },
+    {
+      "name": "preview-stalled",
+      "atUnixMs": 1788845066428
+    },
+    {
+      "name": "preview-resumed",
+      "atUnixMs": 1788845070426
+    },
+    {
+      "name": "switched-1080",
+      "atUnixMs": 1788845072539
+    },
+    {
+      "name": "failed-candidate-rollback",
+      "atUnixMs": 1788845076436
+    },
+    {
+      "name": "returned-720",
+      "atUnixMs": 1788845080534
+    },
+    {
+      "name": "simulated-removal-recovered",
+      "atUnixMs": 1788845082537
+    },
+    {
+      "name": "stopped",
+      "atUnixMs": 1788845086474
+    }
+  ]
+}
