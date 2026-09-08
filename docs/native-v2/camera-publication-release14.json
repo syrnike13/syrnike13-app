@@ -2,44 +2,44 @@
   "accepted": true,
   "seconds": 26,
   "minimumStalledFps": 30,
-  "maximumStalledAgeMs": 28,
+  "maximumStalledAgeMs": 27,
   "terminalFramesFollowStop": true,
   "phases": [
     {
       "name": "publication-only-720",
-      "atUnixMs": 1788848665011
+      "atUnixMs": 1788849562230
     },
     {
       "name": "preview-running",
-      "atUnixMs": 1788848668014
+      "atUnixMs": 1788849565235
     },
     {
       "name": "preview-stalled",
-      "atUnixMs": 1788848671017
+      "atUnixMs": 1788849568238
     },
     {
       "name": "preview-resumed",
-      "atUnixMs": 1788848675019
+      "atUnixMs": 1788849572235
     },
     {
       "name": "switched-1080",
-      "atUnixMs": 1788848677122
+      "atUnixMs": 1788849574348
     },
     {
       "name": "failed-candidate-rollback",
-      "atUnixMs": 1788848681022
+      "atUnixMs": 1788849578242
     },
     {
       "name": "returned-720",
-      "atUnixMs": 1788848685127
+      "atUnixMs": 1788849582340
     },
     {
       "name": "simulated-removal-recovered",
-      "atUnixMs": 1788848687131
+      "atUnixMs": 1788849584343
     },
     {
       "name": "stopped",
-      "atUnixMs": 1788848691060
+      "atUnixMs": 1788849588293
     }
   ]
 }

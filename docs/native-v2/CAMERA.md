@@ -233,14 +233,15 @@ evidence; the final published-SDK smoke run is recorded separately.
 
 The normal `build:lab` uses the same hash-pinned `v1.10.0-syrnike.14` dependency
 as #128, with `WINDOWS_MEDIA_LIVEKIT_SDK_ROOT=OFF`. Both SDK DLLs match the
-published archive. Artifact verification and all 37 native tests passed in
-118.38 seconds, including eight GPU tests. The final preview-off and quarantine
+published archive. After integrating #128, artifact verification and all 38
+native tests passed in 118.82 seconds, including eight GPU tests. The final preview-off and quarantine
 regressions also pass under Debug/ASan.
 
 The [published-SDK observer](camera-observer-release14.json) verifies the actual
 `SOURCE_CAMERA` publication, profile changes and removal/recovery with no
 generation regression. Its [publication report](camera-publication-release14.json)
-measures 30 fps and at most 28 ms age during fully held preview. The real virtual
+measures 30 fps and at most 27 ms age during fully held preview after integrating
+#128. The real virtual
 device's `physical-switch 1` row also passes: the unsupported 1080p candidate
 leaves generation 1 running, advancing from 3 to 64 frames before safe stop.
 
