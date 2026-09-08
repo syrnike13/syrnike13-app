@@ -1,4 +1,5 @@
 #include "audio/microphone_dsp.hpp"
+#include "audio/rendered_echo_reference.hpp"
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -115,11 +116,35 @@ void referenceFreshness() {
   dsp.process(frame, 1'300'000, &reference);
   require(dsp.stats().echo == EchoAvailability::unsupported && adapter.noise_enabled,
           "Unsupported echo reset disabled microphone/NS");
+  dsp.process(frame, 1'400'000, &reference);
+  require(dsp.stats().echo == EchoAvailability::unavailable && adapter.noise_enabled,
+          "Output loss retained unsupported instead of unavailable echo state");
+}
+void renderedReferenceRetirement() {
+  RenderedEchoReference port(2);
+  EchoReferenceFrame frame;
+  frame.renderer_epoch = 2;
+  frame.rendered_timestamp_100ns = 1'000'000;
+  for (std::uint64_t sequence = 1; sequence <= 100; ++sequence) {
+    frame.sequence = sequence;
+    require(port.publish(frame), "Valid rendered reference rejected");
+  }
+  const auto latest = port.take();
+  require(latest && latest->sequence == 100 && !port.take(), "Echo reference accumulated/repeated backlog");
+  frame.renderer_epoch = 1;
+  frame.sequence = 101;
+  require(!port.publish(frame), "Wrong renderer epoch published into reference port");
+  frame.renderer_epoch = 2;
+  require(port.publish(frame), "Current renderer reference rejected");
+  port.retire();
+  frame.sequence = 102;
+  require(!port.take() && !port.publish(frame), "Lost output retained an available echo reference");
 }
 }  // namespace
 int main() try {
   silenceAndControls();
   referenceFreshness();
+  renderedReferenceRetirement();
   std::cout << "Microphone DSP contracts passed\n";
   return 0;
 } catch (const std::exception& error) {
