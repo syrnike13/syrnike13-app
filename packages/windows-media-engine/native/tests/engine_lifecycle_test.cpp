@@ -417,20 +417,25 @@ void mediaQuiesceDeadlineRetiresEngine() {
 
 void unsafeMediaOwnerRetiresEngine() {
   auto media = std::make_shared<ManualMediaRuntime>();
-  Engine engine(EngineOptions{.media_runtime = media});
   std::atomic<unsigned> failures{0};
+  std::promise<void> terminal_event;
+  auto delivered = terminal_event.get_future();
+  Engine engine(EngineOptions{.media_runtime = media});
   requireOk(engine.registerEventCallback([&](const PublicEvent& event) {
-    if (const auto* fatal = std::get_if<syrnike::windows_media::FatalEngineFailureEvent>(&event);
-        fatal && fatal->failure.code == "screen_audio_requires_restart") ++failures;
+    const auto* fatal = std::get_if<syrnike::windows_media::FatalEngineFailureEvent>(&event);
+    if (!fatal || fatal->failure.code != "screen_audio_requires_restart") return;
+    if (failures.fetch_add(1) == 0) terminal_event.set_value();
   }), "media failure callback");
   requireOk(engine.start(), "media owner failure start");
   media->requireRestart();
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
-  while (engine.state() != EngineState::Failed && std::chrono::steady_clock::now() < deadline)
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-  require(engine.state() == EngineState::Failed && failures == 1, "unsafe owner did not retire the engine exactly once");
+  // State is published before its event. Synchronize with delivery, then join
+  // shutdown before checking the final count so late duplicates cannot escape.
+  const bool event_delivered = delivered.wait_for(std::chrono::seconds(1)) == std::future_status::ready;
+  const bool retired = engine.state() == EngineState::Failed;
   media->release(true);
   requireOk(engine.shutdown(), "media owner failure cleanup");
+  require(event_delivered && retired && failures == 1,
+          "unsafe owner did not retire the engine exactly once");
 }
 
 void desiredStateRevisionMatrix() {
@@ -995,7 +1000,7 @@ void unexpectedRoomLossReachesEngineSnapshot() {
 int main() try {
   mediaQuiescesBeforeRoomTeardown();
   mediaQuiesceDeadlineRetiresEngine();
-  unsafeMediaOwnerRetiresEngine();
+  for (unsigned cycle = 0; cycle < 100; ++cycle) unsafeMediaOwnerRetiresEngine();
   unexpectedRoomLossReachesEngineSnapshot();
   transitionTable();
   shutdownDuringStarting();

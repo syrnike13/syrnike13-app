@@ -67,6 +67,17 @@ stalled-host retirement checks a retained Windows process handle.
   fixtures passed after avoiding 64 unnecessary visible temporary HWNDs during
   handle-reuse probing. Production enumeration/capture deadlines were unchanged.
 - Native ASan Debug: complete 39/39 pass, including all GPU tests (190.65 seconds).
+- The complete Media Lab passed all 21 scenarios on `3f61baa7`, including its
+  50-cycle lifecycle check. The initial local monitor scenario was obstructed by
+  the Windows Start menu. Exposing the animated scene restored receiver content
+  evidence without changing fixture code or acceptance thresholds.
+- Hosted Debug initially reported one additional process thread after monitor
+  capture, with zero additional handles or live D3D engine objects. The repeated
+  Debug and Release suites passed with the original zero-thread-delta budget.
+- CI exposed a race in the unsafe-owner test: Engine state becomes Failed before
+  the fatal callback is delivered. The test now waits for that callback and checks
+  its final count after joined shutdown. Its 100 repetitions pass in Release and
+  ASan Debug; production event ordering is unchanged.
 
 ## Diagnostic example and remaining qualification
 
