@@ -1,4 +1,5 @@
 #include "probe/window_capture_probe.hpp"
+#include "probe/resource_thread_diagnostics.hpp"
 
 #include <windows.h>
 #include <tlhelp32.h>
@@ -34,6 +35,7 @@ namespace {
 using namespace syrnike::windows_media::capture;
 using namespace syrnike::windows_media::sources;
 using namespace std::chrono_literals;
+using syrnike::windows_media::probe::logResourceThreads;
 
 constexpr auto kResourceDeadline = 5s;
 constexpr std::int64_t kHandleBudget = 4;
@@ -72,7 +74,7 @@ struct Resources {
   DWORD threads = 0;
 };
 
-DWORD threadCount(std::vector<DWORD>* ids = nullptr) {
+DWORD threadCount() {
   const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
   require(snapshot != INVALID_HANDLE_VALUE, "thread snapshot failed");
   THREADENTRY32 entry{};
@@ -82,31 +84,11 @@ DWORD threadCount(std::vector<DWORD>* ids = nullptr) {
     do {
       if (entry.th32OwnerProcessID == GetCurrentProcessId()) {
         ++count;
-        if (ids != nullptr && ids->size() < 512) {
-          ids->push_back(entry.th32ThreadID);
-        }
       }
     } while (Thread32Next(snapshot, &entry));
   }
   CloseHandle(snapshot);
   return count;
-}
-
-void logResourceThreads(const char* phase) {
-  wchar_t enabled[2]{};
-  if (GetEnvironmentVariableW(L"WINDOWS_MEDIA_WINDOW_THREAD_DIAGNOSTIC",
-                              enabled, 2) != 1 || enabled[0] != L'1') {
-    return;
-  }
-  std::vector<DWORD> ids;
-  const auto count = threadCount(&ids);
-  std::cerr << "WINDOW_RESOURCE_THREADS {\"phase\":" << jsonString(phase)
-            << ",\"count\":" << count << ",\"ids\":[";
-  for (std::size_t index = 0; index < ids.size(); ++index) {
-    if (index != 0) std::cerr << ',';
-    std::cerr << ids[index];
-  }
-  std::cerr << "]}\n";
 }
 
 Resources currentResources() {
