@@ -5,7 +5,7 @@ per-participant mixing, a shared WASAPI renderer, and the rendered reference
 consumed by #127 microphone DSP. Desktop product wiring belongs to #130.
 The opt-in `remote_audio_lab` exercises these owners against the project SFU
 and real Windows output endpoints. Development reports use SDK 14 development
-binaries; they are not evidence of a published SDK release.
+binaries; final release verification below uses published `v1.10.0-syrnike.14`.
 
 ## Ownership
 
@@ -161,8 +161,29 @@ to 13,180,928 bytes, handles from 386 to 388 and threads from 33 to 29.
 
 The SDK correction preserves local sender identities while signalling current
 track identities to the SFU; transceiver reuse remains enabled. The routing
-report uses that corrected development binary. Final SDK release verification
-remains pending.
+report uses that corrected development binary.
+
+## Published SDK verification
+
+SDK [v1.10.0-syrnike.14](https://github.com/syrnike13/client-sdk-cpp/releases/tag/v1.10.0-syrnike.14)
+was built from merge commit `ed1c398982a14d41706f62c88399f6f10bc78f73`.
+All seven release platforms and generated-documentation validation passed.
+The Windows archive SHA-256 is
+`06c1a046e02fabeefb1bba1c7fb95ba2f80bbe2391cfd9159711ba35d11be5ac`,
+matching GitHub's asset digest. Build-info reports the same version and source.
+
+The normal `build:lab` downloaded the pinned archive with
+`WINDOWS_MEDIA_LIVEKIT_SDK_ROOT=OFF`, built every target and staged the addon.
+Both staged SDK DLL hashes match the release archive. Artifact verification and
+all 35 native CTest checks passed in 119.12 seconds, including six GPU tests.
+
+The published binaries passed the [two-participant mix](remote-audio-multiparticipant-release14.json)
+and all 17 [routing/replacement phases](remote-audio-routing-release14.json).
+The mix decoded 4,576 frames in 23 seconds, kept the application queue at most
+two frames, had no track failures or underruns, and measured scheduled age
+p95 ≤50 ms / maximum 53.538 ms. The routing run decoded 6,113 frames with no track
+failure and preserved adjacent sources and user controls through replacements.
+The longer development soak and hardware limitations remain separately labeled.
 
 ## Running the probes
 
