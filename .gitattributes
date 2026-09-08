@@ -3,3 +3,6 @@
 packages/windows-media-engine/protocol/media-lifecycle.json text eol=lf
 packages/windows-media-engine/native/src/core/protocol_limits.generated.hpp text eol=lf
 apps/desktop/src/main/media-runtime/protocol.generated.ts text eol=lf
+packages/windows-media-engine/native/src/core/media_models.generated.hpp text eol=lf
+packages/windows-media-engine/native/src/addon/media_codecs.generated.hpp text eol=lf
+apps/desktop/src/main/media-runtime/media-models.generated.ts text eol=lf
