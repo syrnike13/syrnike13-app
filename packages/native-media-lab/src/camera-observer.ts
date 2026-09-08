@@ -1,4 +1,4 @@
-import { Room, RoomEvent, TrackKind, VideoBufferType, VideoStream, dispose, type RemoteTrack } from '@livekit/rtc-node'
+import { Room, RoomEvent, TrackKind, TrackSource, VideoBufferType, VideoStream, dispose, type RemoteTrack } from '@livekit/rtc-node'
 import { Schema } from 'effect'
 import { writeFile } from 'node:fs/promises'
 
@@ -19,10 +19,13 @@ const buckets = Array.from({ length: seconds + 30 }, (_, index) => ({
 const ages = new Uint32Array(5001)
 const resolutions: { width: number, height: number, generation: number, atUnixMs: number }[] = []
 const failures: string[] = []
+const terminalFrames: { atUnixMs: number, width: number, height: number }[] = []
 let frames = 0, changes = 0, subscribed = 0, unsubscribed = 0, reconnects = 0
 let previousSequence = 0, previousGeneration = 0, previousWidth = 0, lastAt = 0, maximumGapMs = 0
 let regressed = 0, maximumAgeMs = 0
 let publicationSid: string | undefined
+let publicationSource: TrackSource | undefined
+let unsubscribedAt: number | undefined
 let readerTask: Promise<void> | undefined
 let cancelReader: (() => Promise<void>) | undefined
 async function consume(track: RemoteTrack) {
@@ -35,7 +38,16 @@ async function consume(track: RemoteTrack) {
       const now = Date.now()
       const input = result.value.frame
       const frame = input.type === VideoBufferType.I420 ? input : input.convert(VideoBufferType.I420)
-      if (frame.width < 528 || frame.height < 96) throw new Error('Camera frame is smaller than marker')
+      // The SFU closes VP8 downtracks with 8x8 decoder-reset keyframes. They
+      // must occur only at terminal unpublish, never amid the camera stream.
+      if (frame.width === 8 && frame.height === 8) {
+        if (terminalFrames.length >= 16) throw new Error('Too many SFU terminal reset frames')
+        terminalFrames.push({ atUnixMs: now, width: frame.width, height: frame.height })
+        continue
+      }
+      if (frame.width < 528 || frame.height < 96)
+        throw new Error(`Camera frame is smaller than marker: ${frame.width}x${frame.height} at ${now}`)
+      if (terminalFrames.length) throw new Error('Camera frames resumed after an SFU terminal reset')
       const barcode = (y: number) => {
         let value = 0
         for (let bit = 0; bit < 32; ++bit) {
@@ -68,18 +80,21 @@ async function consume(track: RemoteTrack) {
       ++bucket.frames
       bucket.maximumAgeMs = Math.max(bucket.maximumAgeMs, age)
     }
-  } finally { reader.releaseLock() }
+  } finally { cancelReader = undefined; reader.releaseLock() }
 }
 room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
   if (participant.identity !== 'native-v2-publisher' || track.kind !== TrackKind.KIND_VIDEO) return
   ++subscribed
   if (subscribed !== 1) { failures.push('Camera was republished'); return }
   publicationSid = publication.sid
+  publicationSource = publication.source
+  if (publicationSource !== TrackSource.SOURCE_CAMERA) failures.push('Camera publication has the wrong source kind')
   readerTask = consume(track).catch(error => { failures.push(String(error)) })
 })
 room.on(RoomEvent.TrackUnsubscribed, (track, _publication, participant) => {
   if (participant.identity !== 'native-v2-publisher' || track.kind !== TrackKind.KIND_VIDEO) return
   ++unsubscribed
+  unsubscribedAt = Date.now()
   void cancelReader?.().catch(error => { failures.push(String(error)) })
 })
 room.on(RoomEvent.Reconnecting, () => { ++reconnects })
@@ -110,8 +125,11 @@ if (!resolutions.some(value => value.width === 1280 && value.height === 720 && v
   failures.push('Camera 720/1080/720 profile changes were not decoded')
 }
 if (p95AgeMs > 250 || maximumGapMs > 1000) failures.push('Camera receive age or gap exceeded budget')
+if (terminalFrames.some(frame => unsubscribedAt === undefined || frame.atUnixMs < unsubscribedAt - 500 ||
+    frame.atUnixMs > unsubscribedAt + 200)) failures.push('SFU reset frame occurred outside terminal unpublish')
 const report = { accepted: failures.length === 0, failures, seconds, frames, changes, subscribed, unsubscribed,
-  reconnects, publicationSid, resolutions, regressed, p95AgeMs, maximumAgeMs, maximumGapMs,
+  reconnects, publicationSid, publicationSource, resolutions, regressed, p95AgeMs, maximumAgeMs, maximumGapMs,
+  terminalFrames, unsubscribedAt,
   windows: buckets.filter(bucket => bucket.frames > 0) }
 await writeFile(env.MEDIA_LAB_REPORT_PATH, JSON.stringify(report, null, 2))
 console.log(JSON.stringify({ ...report, windows: undefined }))

@@ -270,8 +270,14 @@ void previewIsolation(bool quarantine = false) {
   screen.stopPublication();
   port->selectGeneration(2);
   first.reset(); second.reset();
+  {
+    auto resumed = take();
+    require(resumed.metadata().generation == 2, "Old camera preview generation survived switch");
+  }
+  port->selectGeneration(0);
+  until([&] { return preview->stats().backing_bytes == 0; }, "Preview off retained reusable textures");
+  port->selectGeneration(3);
   auto current = std::make_optional(take());
-  require(current->metadata().generation == 2, "Old camera preview generation survived switch");
   require(preview->stop(Clock::now() + std::chrono::seconds{2}), "Camera preview stop deadline");
   preview.reset();
   require(capture::optionalPreviewBytes() > 0, "Held preview lease lost its backing at stop");
@@ -288,6 +294,16 @@ void previewIsolation(bool quarantine = false) {
   }
   current.reset();
   require(capture::optionalPreviewBytes() == 0, "Camera preview leases leaked optional budget");
+  // Stop immediately after submission, with no consumer or later frame to
+  // flush the driver. The final query must drain without quarantining backing.
+  for (unsigned cycle = 0; cycle < 20; ++cycle) {
+    preview = std::make_unique<CameraPreview>(port);
+    until([&] { offer(); return preview->stats().submitted > 0; }, "Preview stop fixture did not submit");
+    require(preview->stop(Clock::now() + std::chrono::seconds{2}), "Submitted preview stop deadline");
+    require(preview->stats().failure == CameraPreviewFailure::none, "Submitted preview failed to drain");
+    preview.reset();
+    require(capture::optionalPreviewBytes() == 0, "Submitted preview stop retained GPU backing");
+  }
 }
 }  // namespace
 int main(int argc, char** argv) try {

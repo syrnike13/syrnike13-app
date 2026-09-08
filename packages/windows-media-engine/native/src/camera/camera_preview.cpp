@@ -86,6 +86,7 @@ void CameraPreviewLease::release() noexcept {
       if (state_->stopping || slot.metadata.generation != state_->input->generation()) slot.clear();
     } else {
       slot.phase = SlotPhase::quarantined;
+      state_->stats.last_gpu_result = static_cast<std::uint32_t>(result);
       state_->stats.failure = CameraPreviewFailure::consumer_stalled;
     }
   }
@@ -156,14 +157,24 @@ void CameraPreview::run(const std::shared_ptr<CameraPreviewState>& state) noexce
         if (context.owns_lock()) {
           auto* gpu = state->device->context();
           for (auto& slot : state->slots) {
+            if (slot.phase == SlotPhase::free && slot.texture &&
+                slot.metadata.generation != state->input->generation()) slot.clear();
             if (slot.phase == SlotPhase::copying) {
-              const auto result = gpu->GetData(slot.query.Get(), nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH);
+              // Submit pending driver work even when capture has stopped. A
+              // DONOTFLUSH poll can strand the final event query indefinitely.
+              const auto result = gpu->GetData(slot.query.Get(), nullptr, 0, 0);
               if (result == S_OK) {
-                if (slot.metadata.generation != state->input->generation()) slot.clear();
-                else if (SUCCEEDED(slot.keyed->ReleaseSync(1))) slot.phase = SlotPhase::ready;
-                else { slot.phase = SlotPhase::quarantined; state->stats.failure = CameraPreviewFailure::gpu_failed; }
+                const bool retired = slot.metadata.generation != state->input->generation();
+                const auto released = slot.keyed->ReleaseSync(retired ? 0 : 1);
+                if (FAILED(released)) {
+                  slot.phase = SlotPhase::quarantined;
+                  state->stats.last_gpu_result = static_cast<std::uint32_t>(released);
+                  state->stats.failure = CameraPreviewFailure::gpu_failed;
+                } else if (retired) slot.clear();
+                else slot.phase = SlotPhase::ready;
               } else if (result != S_FALSE || Clock::now() - slot.submitted > std::chrono::milliseconds{500}) {
                 slot.phase = SlotPhase::quarantined;
+                state->stats.last_gpu_result = static_cast<std::uint32_t>(result);
                 state->stats.failure = result == S_FALSE ? CameraPreviewFailure::gpu_stalled : CameraPreviewFailure::gpu_failed;
               }
             }
@@ -196,7 +207,9 @@ void CameraPreview::run(const std::shared_ptr<CameraPreviewState>& state) noexce
                   D3D11_QUERY_DESC query{D3D11_QUERY_EVENT, 0};
                   check(state->device->device()->CreateQuery(&query, &slot.query));
                 }
-                if (slot.keyed->AcquireSync(0, 0) != S_OK) {
+                const auto acquired = slot.keyed->AcquireSync(0, 0);
+                if (acquired != S_OK) {
+                  state->stats.last_gpu_result = static_cast<std::uint32_t>(acquired);
                   slot.phase = SlotPhase::quarantined; state->stats.failure = CameraPreviewFailure::consumer_stalled;
                 } else {
                   gpu->UpdateSubresource(slot.texture.Get(), 0, nullptr, scaled.data(), kWidth * 4, 0);
@@ -227,11 +240,19 @@ void CameraPreview::run(const std::shared_ptr<CameraPreviewState>& state) noexce
         for (auto& slot : state->slots) {
           if (slot.phase != SlotPhase::copying) continue;
           const auto result = context.owns_lock()
-              ? state->device->context()->GetData(slot.query.Get(), nullptr, 0, D3D11_ASYNC_GETDATA_DONOTFLUSH)
+              ? state->device->context()->GetData(slot.query.Get(), nullptr, 0, 0)
               : S_FALSE;
-          if (result == S_OK) slot.clear();
+          if (result == S_OK) {
+            const auto released = slot.keyed->ReleaseSync(0);
+            if (FAILED(released)) {
+              slot.phase = SlotPhase::quarantined;
+              state->stats.last_gpu_result = static_cast<std::uint32_t>(released);
+              state->stats.failure = CameraPreviewFailure::gpu_failed;
+            } else slot.clear();
+          }
           else if (result != S_FALSE || Clock::now() >= drained_by) {
             slot.phase = SlotPhase::quarantined;
+            state->stats.last_gpu_result = static_cast<std::uint32_t>(result);
             state->stats.failure = CameraPreviewFailure::gpu_stalled;
           } else pending = true;
         }

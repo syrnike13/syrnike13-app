@@ -4,17 +4,19 @@
   "compiler": "MSVC 19.51, /W4 /WX",
   "releaseTests": {
     "accepted": true,
-    "cameraSeconds": 0.98,
-    "previewSeconds": 0.57,
-    "previewQuarantineSeconds": 0.54,
-    "screenPreviewRegressionSeconds": 0.39
+    "cameraSeconds": 0.95,
+    "previewSeconds": 0.74,
+    "previewQuarantineSeconds": 0.58,
+    "screenPreviewRegressionSeconds": 0.41,
+    "immediateGpuSubmissionStopCycles": 20
   },
   "debugAddressSanitizerTests": {
     "accepted": true,
-    "cameraSeconds": 1.25,
-    "previewSeconds": 0.82,
-    "previewQuarantineSeconds": 0.80,
-    "screenPreviewRegressionSeconds": 0.75,
+    "cameraSeconds": 1.27,
+    "previewSeconds": 1.30,
+    "previewQuarantineSeconds": 0.86,
+    "screenPreviewRegressionSeconds": 0.73,
+    "immediateGpuSubmissionStopCycles": 20,
     "runtime": "VS 18 compiler bin directory on the child process PATH",
     "addressSanitizerFindings": 0
   },
@@ -26,6 +28,19 @@
     "captureOpens": 1,
     "workingCapturePreserved": true,
     "cleanupCompleted": true
+  },
+  "realVirtualCandidateRollback": {
+    "accepted": true,
+    "sdk": "Published v1.10.0-syrnike.14",
+    "device": "Pixel 9 (Windows virtual camera)",
+    "activeProfile": "1280x720@30",
+    "candidateProfile": "1920x1080@30",
+    "candidateFailure": "unsupported_profile",
+    "beforeGeneration": 1,
+    "afterGeneration": 1,
+    "beforeFrames": 3,
+    "afterFrames": 64,
+    "stopped": true
   },
   "hardwareRows": [
     {

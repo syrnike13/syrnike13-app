@@ -75,17 +75,21 @@ try {
     .map(line => Schema.decodeUnknownSync(Phase)(JSON.parse(line.slice('CAMERA_PHASE '.length))))
   const report = Schema.decodeUnknownSync(Schema.Struct({
     accepted: Schema.Boolean,
+    terminalFrames: Schema.Array(Schema.Struct({ atUnixMs: Schema.Number, width: Schema.Number, height: Schema.Number })),
     windows: Schema.Array(Schema.Struct({ atUnixMs: Schema.Number, frames: Schema.Number, maximumAgeMs: Schema.Number })),
   }))(JSON.parse(await readFile(env.MEDIA_LAB_CAMERA_REPORT, 'utf8')))
   const stalled = phases.find(phase => phase.name === 'preview-stalled')
   const resumed = phases.find(phase => phase.name === 'preview-resumed')
-  if (!stalled || !resumed) throw new Error('Preview stall evidence missing')
+  const stopped = phases.find(phase => phase.name === 'stopped')
+  if (!stalled || !resumed || !stopped) throw new Error('Preview stall or publication stop evidence missing')
   const windows = report.windows.filter(window => window.atUnixMs > stalled.atUnixMs + 100 &&
     window.atUnixMs + 1000 < resumed.atUnixMs)
   const minimumStalledFps = Math.min(...windows.map(window => window.frames))
   const maximumStalledAgeMs = Math.max(...windows.map(window => window.maximumAgeMs))
-  const accepted = report.accepted && windows.length >= 2 && minimumStalledFps >= 24 && maximumStalledAgeMs <= 500
-  const evidence = { accepted, seconds, minimumStalledFps, maximumStalledAgeMs, phases }
+  const terminalFramesFollowStop = report.terminalFrames.every(frame => frame.atUnixMs >= stopped.atUnixMs - 5)
+  const accepted = report.accepted && terminalFramesFollowStop && windows.length >= 2 &&
+    minimumStalledFps >= 24 && maximumStalledAgeMs <= 500
+  const evidence = { accepted, seconds, minimumStalledFps, maximumStalledAgeMs, terminalFramesFollowStop, phases }
   await writeFile(`${env.MEDIA_LAB_CAMERA_REPORT}.publication.json`, JSON.stringify(evidence, null, 2))
   console.log(JSON.stringify(evidence))
   if (!accepted) throw new Error('Camera publication degraded while preview stalled')

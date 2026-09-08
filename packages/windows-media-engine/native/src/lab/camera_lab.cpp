@@ -127,6 +127,32 @@ int cycles(unsigned count) {
             << ",\"lateCallbacks\":" << control->late_callbacks << "}" << std::endl;
   return 0;
 }
+int physicalSwitch(unsigned id) {
+  CameraDeviceRegistry registry(makeWindowsCameraDeviceEnumerator());
+  require(registry.refresh().status == CameraRegistryStatus::ready, "Camera enumeration failed");
+  CameraPipeline pipeline;
+  require(pipeline.selectDevice(registry, id, {1280, 720, 30}) == CameraFailure::none &&
+          pipeline.setDemand(true, false) == CameraFailure::none, "Real camera switch fixture start failed");
+  const auto before = pipeline.stats().capture;
+  const auto candidate = pipeline.selectDevice(registry, id, {1920, 1080, 30});
+  std::this_thread::sleep_for(std::chrono::seconds{2});
+  const auto after = pipeline.stats().capture;
+  require(after.state == CameraCaptureState::running && after.failure == CameraFailure::none,
+          "Real camera candidate interrupted the active source");
+  if (candidate == CameraFailure::none) {
+    require(after.generation != before.generation && after.actual.width == 1920 && after.frames >= 3,
+            "Real camera profile candidate was not committed");
+  } else {
+    require(after.generation == before.generation && after.frames >= before.frames + 40,
+            "Real failed candidate did not preserve active frame delivery");
+  }
+  require(pipeline.stop(Clock::now() + std::chrono::seconds{5}), "Real camera switch cleanup failed");
+  std::cout << "CAMERA_RESULT {\"scenario\":\"real-device-profile-candidate\",\"accepted\":true,\"id\":" << id
+            << ",\"candidateFailure\":" << static_cast<int>(candidate) << ",\"beforeGeneration\":" << before.generation
+            << ",\"afterGeneration\":" << after.generation << ",\"beforeFrames\":" << before.frames
+            << ",\"afterFrames\":" << after.frames << ",\"stopped\":true}" << std::endl;
+  return 0;
+}
 int publish(unsigned seconds) {
   require(seconds >= 24 && seconds <= 1800, "Camera publication duration outside bounds");
   const auto* url = std::getenv("LIVEKIT_URL");
@@ -224,6 +250,13 @@ int publish(unsigned seconds) {
     phase("stopped");
     require(publication.stop(Clock::now() + std::chrono::seconds{6}), "Camera publication stop failed");
     if (preview) require(preview->stop(Clock::now() + std::chrono::seconds{2}), "Camera preview stop failed");
+    if (preview) {
+      const auto stopped_preview = preview->stats();
+      std::cout << "CAMERA_PREVIEW_STOP {\"failure\":" << static_cast<int>(stopped_preview.failure)
+                << ",\"gpuResult\":" << stopped_preview.last_gpu_result << ",\"quarantined\":" << stopped_preview.quarantined
+                << ",\"backingBytes\":" << stopped_preview.backing_bytes << ",\"globalBytes\":" << capture::optionalPreviewBytes()
+                << "}" << std::endl;
+    }
     held = {};
     preview.reset();
     require(pipeline.setDemand(false, false) == CameraFailure::none && pipeline.stop(Clock::now() + std::chrono::seconds{2}),
@@ -269,6 +302,7 @@ int main(int argc, char** argv) try {
   if (command == "publication-failure") return publicationFailure();
   const unsigned value = argc > 2 ? static_cast<unsigned>(std::stoul(argv[2])) : 0;
   if (command == "physical" && value > 0) return physical(value);
+  if (command == "physical-switch" && value > 0) return physicalSwitch(value);
   if (command == "cycles" && value > 0 && value <= 100) return cycles(value);
   if (command == "publish") return publish(value);
   throw std::runtime_error("Usage: camera_lab devices | physical ID | cycles COUNT | publish SECONDS");

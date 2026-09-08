@@ -13,6 +13,7 @@ struct CameraPreviewStats {
   CameraPreviewFailure failure = CameraPreviewFailure::none;
   std::uint64_t submitted = 0, delivered = 0, dropped = 0, backing_bytes = 0;
   std::uint32_t outstanding = 0, quarantined = 0;
+  std::uint32_t last_gpu_result = 0;
 };
 
 // The consumer opens the NT handle and acquires key 1, then releases key 0
