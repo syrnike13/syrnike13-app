@@ -1,0 +1,1 @@
+{"scope":"wasapi-default-endpoint-removal-return","status":"pass","programmaticEndpointDisable":true,"physicalUnplug":false,"defaultRolesRestored":3,"initialEpoch":1,"fallbackEpoch":2,"restoredEpoch":3,"restoredAudibleFrames":50}

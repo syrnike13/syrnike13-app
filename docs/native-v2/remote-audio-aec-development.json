@@ -1,0 +1,1 @@
+{"scope":"wasapi-rendered-reference-synthetic-echo","status":"pass","renderedFrames":1500,"activeAecFrames":1500,"erleDb":40.5022,"sequenceGaps":0,"minimumStreamDelayMs":10,"maximumStreamDelayMs":10,"outputLossUnavailable":true}

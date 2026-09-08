@@ -30,13 +30,14 @@ std::int64_t timestamp() noexcept {
 }
 }  // namespace
 struct MicrophonePipeline::State {
-  enum class CommandKind { input, config };
+  enum class CommandKind { input, config, echo_reference };
   struct Command {
     CommandKind kind = CommandKind::input;
     MicrophonePcmPort* input = nullptr;
     HANDLE frame_event = nullptr;
     std::uint64_t generation = 0;
     MicrophoneDspConfig config;
+    EchoReferencePort* echo_reference = nullptr;
   } command;
   Event control, acknowledged, ready{true}, stop{true}, done{true}, output_event;
   std::atomic<std::uint64_t> posted{0}, applied{0};
@@ -163,6 +164,18 @@ MicrophonePipelineFailure MicrophonePipeline::configure(const MicrophoneDspConfi
   if (submit()) return MicrophonePipelineFailure::none;
   return stats_.retired ? MicrophonePipelineFailure::command_timeout : MicrophonePipelineFailure::invalid_state;
 }
+MicrophonePipelineFailure MicrophonePipeline::setEchoReference(std::shared_ptr<EchoReferencePort> reference) {
+  if (!onOwner()) return MicrophonePipelineFailure::invalid_state;
+  if (reference == echo_reference_) return MicrophonePipelineFailure::none;
+  pending_echo_reference_ = std::move(reference);
+  state_->command.kind = State::CommandKind::echo_reference;
+  state_->command.echo_reference = pending_echo_reference_.get();
+  // Keep both projections alive if acknowledgement times out. As with input
+  // captures, the retired pipeline cannot reuse this command slot before join.
+  if (!submit()) return MicrophonePipelineFailure::command_timeout;
+  echo_reference_ = std::move(pending_echo_reference_);
+  return MicrophonePipelineFailure::none;
+}
 MicrophonePipelineStats MicrophonePipeline::stats() {
   if (owner_ != std::this_thread::get_id()) throw std::logic_error("Microphone pipeline owner mismatch");
   stats_.capture = active_ ? active_->stats() : MicrophoneCaptureStats{};
@@ -193,6 +206,8 @@ bool MicrophonePipeline::stop(Clock::time_point deadline) noexcept {
   if (active_ && !active_->stop(deadline)) return false;
   candidate_.reset();
   active_.reset();
+  pending_echo_reference_.reset();
+  echo_reference_.reset();
   return true;
 }
 std::shared_ptr<MicrophonePcmPort> MicrophonePipeline::output() const noexcept { return state_->output; }
@@ -204,6 +219,7 @@ void MicrophonePipeline::run(const std::shared_ptr<State>& state, EnhancementFac
     Mmcss mmcss;
     if (!mmcss.handle) throw std::runtime_error("Microphone DSP MMCSS registration failed");
     MicrophonePcmPort* input = nullptr;
+    EchoReferencePort* echo_reference = nullptr;
     HANDLE frame_event = nullptr;
     std::uint64_t generation = 0;
     auto next_meter = Clock::now();
@@ -218,6 +234,7 @@ void MicrophonePipeline::run(const std::shared_ptr<State>& state, EnhancementFac
         const auto& command = state->command;
         bool accepted = true;
         if (command.kind == State::CommandKind::config) accepted = dsp.configure(revision, command.config);
+        else if (command.kind == State::CommandKind::echo_reference) echo_reference = command.echo_reference;
         else {
           input = command.input;
           frame_event = command.frame_event;
@@ -237,7 +254,7 @@ void MicrophonePipeline::run(const std::shared_ptr<State>& state, EnhancementFac
         state->stale_frames.fetch_add(1, std::memory_order_relaxed);
         continue;
       }
-      dsp.process(*frame, now, nullptr);
+      dsp.process(*frame, now, echo_reference);
       state->output->publish(*frame);
       state->output_frames.fetch_add(1, std::memory_order_relaxed);
       SetEvent(state->output_event.value);

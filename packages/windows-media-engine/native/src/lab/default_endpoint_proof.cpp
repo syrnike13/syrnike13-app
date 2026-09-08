@@ -39,7 +39,58 @@ std::wstring current(IMMDeviceEnumerator* enumerator, EDataFlow flow, ERole role
   CoTaskMemFree(id);
   return value;
 }
+int removeOutputProof() {
+  check(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
+  int result = 0;
+  {
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    ComPtr<Policy> policy;
+    std::array<std::wstring, 3> original;
+    std::wstring endpoint;
+    bool removal_requested = false;
+    try {
+      check(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator)));
+      CLSID clsid;
+      check(CLSIDFromString(L"{870af99c-171d-4f9e-af0d-e63df40c2bc9}", &clsid));
+      check(CoCreateInstance(clsid, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&policy)));
+      for (unsigned role = 0; role < original.size(); ++role)
+        original[role] = current(enumerator.Get(), eRender, static_cast<ERole>(role));
+      endpoint = original[eMultimedia];
+      // The independent helper owns restoration even if its observing lab
+      // fails. This is an OS endpoint disable, not a simulated registry event.
+      removal_requested = true;
+      check(policy->SetEndpointVisibility(endpoint.c_str(), FALSE));
+      ComPtr<IMMDevice> removed;
+      check(enumerator->GetDevice(endpoint.c_str(), &removed));
+      DWORD state = DEVICE_STATE_ACTIVE;
+      check(removed->GetState(&state));
+      if (state == DEVICE_STATE_ACTIVE) throw std::runtime_error("Endpoint remained active after removal request");
+      std::cout << "OUTPUT_ENDPOINT_REMOVED" << std::endl;
+      std::this_thread::sleep_for(std::chrono::seconds{5});
+    } catch (const std::exception& error) {
+      std::cerr << error.what() << std::endl;
+      result = 1;
+    }
+    if (removal_requested) {
+      if (FAILED(policy->SetEndpointVisibility(endpoint.c_str(), TRUE))) result = 2;
+      for (unsigned role = 0; role < original.size(); ++role) {
+        if (FAILED(policy->SetDefaultEndpoint(original[role].c_str(), static_cast<ERole>(role)))) result = 2;
+        try {
+          if (current(enumerator.Get(), eRender, static_cast<ERole>(role)) != original[role]) result = 2;
+        } catch (...) { result = 2; }
+      }
+      ComPtr<IMMDevice> restored;
+      DWORD state = 0;
+      if (FAILED(enumerator->GetDevice(endpoint.c_str(), &restored)) ||
+          FAILED(restored->GetState(&state)) || state != DEVICE_STATE_ACTIVE) result = 2;
+      if (result != 2) std::cout << "OUTPUT_ENDPOINT_RESTORED" << std::endl;
+    }
+  }
+  CoUninitialize();
+  return result;
+}
 int wmain(int argc, wchar_t** argv) {
+  if (argc == 2 && std::wstring_view(argv[1]) == L"--remove-output") return removeOutputProof();
   const bool input = argc == 3 && std::wstring_view(argv[1]) == L"--input";
   if (argc != 2 && !input) return 1;
   const auto flow = input ? eCapture : eRender;

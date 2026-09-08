@@ -18,6 +18,7 @@ bool MicrophoneDsp::configure(std::uint64_t revision, const MicrophoneDspConfig&
 }
 void MicrophoneDsp::process(MicrophoneFrame& frame, std::int64_t now_100ns, EchoReferencePort* port) noexcept {
   std::optional<EchoReferenceFrame> reference = port ? port->take() : std::nullopt;
+  bool unsupported_reference = false;
   if (reference) {
     if (!reference->renderer_epoch || reference->renderer_epoch < stats_.echo_epoch ||
         reference->rendered_timestamp_100ns <= 0 || now_100ns < reference->rendered_timestamp_100ns ||
@@ -31,12 +32,15 @@ void MicrophoneDsp::process(MicrophoneFrame& frame, std::int64_t now_100ns, Echo
         stats_.echo_epoch = reference->renderer_epoch;
       }
       reference_sequence_ = reference->sequence;
-      if (echo_reset_failed_) reference.reset();
+      if (echo_reset_failed_) {
+        unsupported_reference = true;
+        reference.reset();
+      }
     }
   }
   stats_.echo = enhancement_->process(frame.samples, reference ? &*reference : nullptr,
                                       config_.noise_suppression, config_.echo_cancellation);
-  if (config_.echo_cancellation && echo_reset_failed_) stats_.echo = EchoAvailability::unsupported;
+  if (config_.echo_cancellation && unsupported_reference) stats_.echo = EchoAvailability::unsupported;
   std::array<float, kMicrophoneFrameSamples> samples{};
   float energy = 0;
   for (std::size_t index = 0; index < samples.size(); ++index) {
