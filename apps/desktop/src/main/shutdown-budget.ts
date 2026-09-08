@@ -9,6 +9,7 @@ type DesktopShutdownBudgetOptions = {
   onVoiceDisposeError(error: unknown): void
   onVoiceDeadlineExceeded(timeoutMs: number): void
   onDeadlineSettled(): void
+  forceExit(): void
   shutdownTimeoutMs?: number
   voiceGraceMs?: number
 }
@@ -29,9 +30,14 @@ export const disposeWithinDesktopShutdownBudgetEffect = Effect.fn(
   onVoiceDisposeError,
   onVoiceDeadlineExceeded,
   onDeadlineSettled,
+  forceExit,
   shutdownTimeoutMs = APP_SHUTDOWN_TIMEOUT_MS,
   voiceGraceMs = VOICE_SHUTDOWN_GRACE_MS,
 }: DesktopShutdownBudgetEffectOptions) {
+  // Effect interruption waits for uninterruptible resource finalizers. The
+  // process deadline must therefore run independently of that finalization.
+  const processDeadline = setTimeout(forceExit, shutdownTimeoutMs)
+  processDeadline.unref?.()
   const disposeVoiceWithinGrace = disposeVoice.pipe(
     Effect.catchIf(
       () => true,
@@ -52,7 +58,10 @@ export const disposeWithinDesktopShutdownBudgetEffect = Effect.fn(
       duration: shutdownTimeoutMs,
       orElse: () => Effect.void,
     }),
-    Effect.ensuring(Effect.sync(onDeadlineSettled)),
+    Effect.ensuring(Effect.sync(() => {
+      clearTimeout(processDeadline)
+      onDeadlineSettled()
+    })),
   )
 
   yield* disposal

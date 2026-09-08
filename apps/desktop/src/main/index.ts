@@ -446,6 +446,7 @@ const disposeAppResourcesEffect = Effect.fn('desktop.disposeResources')(
     })
     yield* disposeWithinDesktopShutdownBudgetEffect({
       disposeVoice: desktopVoiceService.disposeEffect(),
+      forceExit: () => app.exit(0),
       onVoiceDisposeError: (error) => {
         logNativeVoiceDiagnostic('dispose_failed', {
           stage: 'voice_shutdown',

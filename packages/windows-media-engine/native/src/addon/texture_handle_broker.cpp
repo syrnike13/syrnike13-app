@@ -16,10 +16,22 @@ class UtilityProcessGuard : public Napi::ObjectWrap<UtilityProcessGuard> {
     const auto pid = info[0].As<Napi::Number>().DoubleValue();
     if (!std::isfinite(pid) || pid <= 0 || pid > MAXDWORD || std::floor(pid) != pid)
       throw Napi::TypeError::New(info.Env(), "Invalid utility PID");
-    handle_ = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, static_cast<DWORD>(pid));
-    if (!handle_) throw Napi::Error::New(info.Env(), "Cannot retain utility process");
+    const auto process = OpenProcess(PROCESS_TERMINATE | PROCESS_SET_QUOTA | SYNCHRONIZE,
+                                    FALSE, static_cast<DWORD>(pid));
+    if (!process) throw Napi::Error::New(info.Env(), "Cannot retain utility process");
+    const auto job = CreateJobObjectW(nullptr, nullptr);
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!job || !SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits)) ||
+        !AssignProcessToJobObject(job, process)) {
+      if (job) CloseHandle(job);
+      CloseHandle(process);
+      throw Napi::Error::New(info.Env(), "Cannot contain utility process lifetime");
+    }
+    handle_ = process;
+    job_ = job;
   }
-  ~UtilityProcessGuard() { if (handle_) CloseHandle(handle_); }
+  ~UtilityProcessGuard() { closeHandles(); }
   static Napi::Value open(const Napi::CallbackInfo& info) {
     auto constructor = DefineClass(info.Env(), "UtilityProcessGuard", {
       InstanceMethod("terminate", &UtilityProcessGuard::terminate),
@@ -46,10 +58,17 @@ class UtilityProcessGuard : public Napi::ObjectWrap<UtilityProcessGuard> {
     return Napi::Boolean::New(info.Env(), result == WAIT_OBJECT_0);
   }
   Napi::Value close(const Napi::CallbackInfo& info) {
-    if (const auto handle = std::exchange(handle_, nullptr)) CloseHandle(handle);
+    closeHandles();
     return info.Env().Undefined();
   }
+  void closeHandles() {
+    // The unnamed, non-inherited job also closes when main exits abruptly.
+    // Native hangs cannot leave the utility alive after its owner disappears.
+    if (const auto job = std::exchange(job_, nullptr)) CloseHandle(job);
+    if (const auto handle = std::exchange(handle_, nullptr)) CloseHandle(handle);
+  }
   HANDLE handle_ = nullptr;
+  HANDLE job_ = nullptr;
 };
 
 struct ProducerProcess {

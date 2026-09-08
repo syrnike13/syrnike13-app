@@ -34,7 +34,8 @@ encoder failure. Query timeout alone does not prove utility death.
 | Graceful utility shutdown wrapper | 1,500 ms | This excludes the termination finalizer |
 | Kernel-confirmed utility termination | 2,000 ms after kill | No replacement until the old process exits |
 | Conservative supervisor shutdown composition | 3,500 ms | Actual finalizer composition and hung native proof |
-| Desktop Voice grace / app timeout | 2,500 / 4,900 ms | Real disposal/finalizer and parent/utility exit proof, not only never-resolving Promise tests |
+| Desktop Voice grace / app process deadline | 2,500 / 4,900 ms | Independent process timer survives hung Effect finalizers; real active-product fault coverage remains required |
+| Utility owner disappearance | Unnamed, non-inherited kill-on-close Windows Job Object | Closing the last main-owned job handle terminates the utility even when main exits without finalizers |
 | Capture candidate | 3,000 ms | One candidate, no overlap with unresolved retirement |
 | Capture attempt budget | One-second spacing, six/minute, three consecutive failures | Verify latest intent, exhaustion semantics and repeated partial recovery |
 | Screen publication publish / submit / unpublish | 10,000 / 2,000 / 10,000 ms | Existing injectable deadlines can accelerate repeated SDK completion tests |
@@ -137,3 +138,28 @@ late/duplicate completion and returns to zero retained entries. This is owner
 contract evidence; neutral receiver and real Electron fault evidence are still
 required for the matrix.
 
+## Shutdown and process containment
+
+The 4,900 ms process timer is scheduled before scoped disposal starts. It calls
+Electron `app.exit(0)` if disposal cannot settle, including an uninterruptible
+finalizer. Successful disposal clears the timer. The existing 2,500 ms Voice grace
+and graceful utility shutdown/termination deadlines are unchanged.
+
+Main retains both a kernel process handle and an unnamed Job Object for each
+utility. The job is non-inherited and has `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`;
+process disappearance therefore closes it without needing JavaScript cleanup.
+Assignment failure rejects host bootstrap. Normal retirement still waits for the
+retained process object to become signaled before replacement. This follows the
+[Windows job lifetime contract](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
+
+The shutdown test injects hung Voice and remaining-resource finalizers 100 times
+each and verifies exactly one process-exit callback at 4,900 ms. The lifecycle
+smoke uses the real native broker for 100 explicit terminations, 100 guard closes
+and 100 abrupt parent deaths, then checks descendant exit through retained
+kernel handles. It runs in an isolated Node host and Electron integration.
+Each measured batch follows 100 identical warmup cycles; logging is initialized
+before sampling to avoid counting its lazy stdout handle as a guard leak.
+The isolated host must return handles/threads to baseline. Chromium integration
+records its complete process delta separately because Chromium background
+services are outside the guard's ownership. Neither test proves active-product
+media continuity or replaces the pending combined shutdown matrix.
