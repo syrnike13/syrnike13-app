@@ -3,6 +3,8 @@
   "accepted": true,
   "injectedHresult": true,
   "physicalUnplug": false,
+  "physicalUnplugWaivedByUser": true,
+  "physicalUnplugWaiverDate": "2026-09-08",
   "failure": "device_lost",
   "frames": 100,
   "clientAlive": false,
@@ -11,7 +13,7 @@
   "stopped": true,
   "limitations": [
     "Injects AUDCLNT_E_DEVICE_INVALIDATED after 100 real captured frames.",
-    "The user cannot perform physical unplug/replug during this session; that hardware acceptance remains open.",
+    "Physical unplug/replug remains unverified. The user explicitly waived this test and authorized continuation on 2026-09-08.",
     "No Room, screen, or camera is instantiated by this capture-only fixture."
   ]
 }

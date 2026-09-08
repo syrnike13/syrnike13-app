@@ -1,9 +1,10 @@
 # Warm microphone pipeline (#127)
 
 The implementation has passed local observer, DSP, candidate-switch, allocation,
-Windows ducking and 30-minute publication checks. This document does not record
-final acceptance of #127: physical device-loss validation remains open before
-merge.
+Windows ducking and 30-minute publication checks. On 2026-09-08 the user explicitly
+waived the physical microphone unplug/replug test and authorized continuation.
+That scenario remains unverified; the waiver removes its merge gate for #127
+without treating fault injection as hardware acceptance.
 
 The local development SDK build completed all native targets and 34/34 CTest
 checks, including GPU tests, in 120.30 seconds. The subsequent targeted mute
@@ -16,7 +17,7 @@ six GPU tests). The published binary also passed `microphone-synthetic-aec`
 (40.5542 dB ERLE, 13.8224 dB NS attenuation, zero measured heap calls, frame
 p50/p95/max 62/79/127 microseconds) and `microphone-mute-cycle` (200 cycles,
 zero DSP heap calls, failed-candidate rollback and cleared idle meter).
-These release checks do not replace the physical device-loss acceptance gate.
+These release checks do not prove physical device-loss behavior.
 
 ## Audio device registry
 
@@ -57,9 +58,7 @@ and defaults. It omits endpoint paths and labels from collected probe output.
 `audio-device-registry` checks replug identity, same-label devices, default
 changes, removal, direction isolation, failure and storage exhaustion.
 
-## Remaining stage work
-
-- Physical unplug/replug.
+## DSP dependency and limitations
 
 The previous LiveKit APM API allocates 17,000 times for 1,000 warmed frames through
 protobuf FFI. A fixed-frame DSP seam passed the SDK's cross-platform CI and was
@@ -224,8 +223,8 @@ does not compile these hooks. See `microphone-capture-allocation-development.jso
 The same executable's `--device-loss` mode injects `AUDCLNT_E_DEVICE_INVALIDATED`
 after 100 real PCM frames, verifies typed `device_lost`, and joins the worker with
 client/MMCSS released. `microphone-device-loss-development.json` explicitly marks
-this as fault injection. Physical unplug/replug remains unverified because the
-user cannot disconnect the microphone during this session.
+this as fault injection. Physical unplug/replug remains unverified and was
+explicitly waived by the user on 2026-09-08.
 
 ## Reproducing the lab checks
 
