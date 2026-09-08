@@ -42,7 +42,8 @@ const nativeFiles = [
   'native-manifest.json',
 ]
 const mediaFiles = [
-  'windows_media.node', 'livekit.dll', 'livekit_ffi.dll', 'media-manifest.json',
+  'windows_media.node', 'livekit.dll', 'livekit_ffi.dll',
+  'windows_media_texture_broker.node', 'media-manifest.json',
 ]
 
 function refreshManifest(root, manifestName, files) {

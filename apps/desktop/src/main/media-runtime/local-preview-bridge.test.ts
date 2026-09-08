@@ -24,7 +24,7 @@ describe('isolated local preview lease bridge', () => {
     const { bridge, driver, callbacks } = setup()
     await bridge.offer(frame()); await bridge.offer(frame(2)); await bridge.offer(frame(3, 2))
     expect(driver.importTexture).toHaveBeenCalledTimes(2)
-    expect(driver.failure).toHaveBeenCalledWith('lease-capacity')
+    expect(driver.failure).toHaveBeenCalledWith('lease-capacity', frame(3, 2))
     expect(bridge.acknowledgeRelease(frame())).toBe(false)
     callbacks[0]?.(); callbacks[0]?.()
     expect(driver.returnLease).toHaveBeenCalledTimes(1)

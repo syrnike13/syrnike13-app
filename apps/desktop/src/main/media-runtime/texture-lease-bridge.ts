@@ -10,7 +10,7 @@ export interface TextureBridgeDriver<Lease extends NativeTextureLease, Texture e
   importTexture(lease: Lease, allReferencesReleased: () => void): Texture
   sendTexture(texture: Texture, metadata: Omit<Lease, 'handle'> & { readonly hostEpoch: number }): Promise<void>
   returnLease(lease: TextureLeaseKey): void
-  failure(code: 'invalid-frame' | 'lease-capacity' | 'texture-transfer' | 'release-channel'): void
+  failure(code: 'invalid-frame' | 'lease-capacity' | 'texture-transfer' | 'release-channel', lease?: Lease): void
 }
 interface Entry<Lease> { readonly lease: Lease; referencesReleased: boolean }
 const keyOf = (lease: TextureLeaseKey) => `${lease.generation}:${lease.sequence}:${lease.slot}`
@@ -35,7 +35,7 @@ export class TextureLeaseBridge<Lease extends NativeTextureLease, Texture extend
     if (!lease) { this.driver.failure('invalid-frame'); return }
     const key = keyOf(lease)
     if (this.entries.has(key)) return
-    if (this.entries.size >= this.capacity) { this.driver.failure('lease-capacity'); return }
+    if (this.entries.size >= this.capacity) { this.driver.failure('lease-capacity', lease); return }
     const entry: Entry<Lease> = { lease, referencesReleased: false }
     this.entries.set(key, entry)
     const released = () => {
@@ -52,7 +52,7 @@ export class TextureLeaseBridge<Lease extends NativeTextureLease, Texture extend
       await this.driver.sendTexture(texture, { ...metadata, hostEpoch: this.driver.hostEpoch })
     } catch {
       // An uncertain import stays bounded until Electron proves reference safety.
-      this.driver.failure('texture-transfer')
+      this.driver.failure('texture-transfer', lease)
     } finally { texture?.release() }
   }
   retryReleases() {
@@ -60,7 +60,7 @@ export class TextureLeaseBridge<Lease extends NativeTextureLease, Texture extend
   }
   private sendRelease(entry: Entry<Lease>) {
     try { this.driver.returnLease(entry.lease) }
-    catch { this.driver.failure('release-channel') }
+    catch { this.driver.failure('release-channel', entry.lease) }
   }
   acknowledgeRelease(lease: TextureLeaseKey): boolean {
     const key = keyOf(lease)

@@ -39,7 +39,7 @@ vi.mock('../native-media-engine', () => ({
       subscribe: vi.fn(() => () => undefined),
       prewarmMicrophone: vi.fn(async () => undefined),
       telemetry: vi.fn(() => null),
-      dispose: vi.fn(),
+      dispose: vi.fn(async () => undefined),
     }
     runtimeMocks.engines.push(engine)
     return engine
@@ -71,6 +71,34 @@ describe('DesktopVoiceService session scope', () => {
   beforeEach(() => {
     runtimeMocks.engines.length = 0
     runtimeMocks.transports.length = 0
+  })
+
+  it('waits for native shutdown before creating the next account runtime', async () => {
+    const service = new DesktopVoiceService()
+    let release = () => undefined
+    const stopped = new Promise<void>(resolve => { release = () => resolve() })
+    runtimeMocks.engines[0]!.dispose.mockReturnValue(stopped)
+    service.configureSession({ _id: 'session-b', user_id: 'user-b', token: 'token-b' })
+    await vi.waitFor(() => expect(runtimeMocks.engines[0]!.dispose).toHaveBeenCalledOnce())
+    expect(runtimeMocks.engines).toHaveLength(1)
+    release()
+    await service.dispatch({ type: 'setUserMuted', muted: true })
+    expect(runtimeMocks.engines).toHaveLength(2)
+    await service.dispose()
+  })
+
+  it('does not create another account runtime after native termination fails', async () => {
+    const service = new DesktopVoiceService()
+    runtimeMocks.engines[0]!.dispose.mockRejectedValue(new Error('utility still alive'))
+    service.configureSession({ _id: 'session-b', user_id: 'user-b', token: 'token-b' })
+    await service.dispatch({ type: 'setUserMuted', muted: true })
+    expect(runtimeMocks.engines).toHaveLength(1)
+    expect(runtimeMocks.transports[0].stop).toHaveBeenCalledOnce()
+    service.configureSession({ _id: 'session-c', user_id: 'user-c', token: 'token-c' })
+    await service.dispatch({ type: 'setUserMuted', muted: false })
+    expect(runtimeMocks.engines).toHaveLength(1)
+    expect(runtimeMocks.transports[0].configured).toHaveLength(0)
+    await service.dispose()
   })
 
   it('rotates runtime ownership across accounts but not for a token refresh', async () => {

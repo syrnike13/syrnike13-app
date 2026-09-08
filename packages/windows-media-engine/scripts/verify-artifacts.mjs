@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const EXPECTED_FILES = [
-  'livekit.dll', 'livekit_ffi.dll', 'media-manifest.json', 'windows_media.node',
+  'livekit.dll', 'livekit_ffi.dll', 'media-manifest.json', 'windows_media.node', 'windows_media_texture_broker.node',
 ]
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(packageRoot, '..', '..')
@@ -58,7 +58,7 @@ if (
   manifest.electronVersion !== desktopRequire('electron/package.json').version ||
   manifest.napiVersion !== 8 ||
   JSON.stringify(manifest.capabilities) !==
-    JSON.stringify(['lifecycle', 'control-v3', 'diagnostics-v2']) ||
+    JSON.stringify(['lifecycle', 'control-v4', 'diagnostics-v2']) ||
   JSON.stringify(manifest.limits) !== JSON.stringify({
     controlQueue: protocol.limits.controlQueueCapacity,
     eventQueue: protocol.limits.eventQueueCapacity,
@@ -75,7 +75,8 @@ if (
     maxRequestDeadlineMs: protocol.limits.maximumRequestDeadlineMs,
   }) ||
   !Array.isArray(manifest.files) ||
-  manifest.files.length !== 3
+  JSON.stringify(manifest.files.map(file => file?.name).sort()) !==
+    JSON.stringify(EXPECTED_FILES.filter(name => name !== 'media-manifest.json').sort())
 ) {
   throw new Error('Media engine manifest has an unsupported shape')
 }

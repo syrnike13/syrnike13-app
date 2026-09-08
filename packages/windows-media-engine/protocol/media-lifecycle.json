@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "electron": {
     "utilityBootstrapMessage": "syrnike-media-host-bootstrap-v1"
   },
@@ -12,6 +12,17 @@
     "maximumServerUrlLength": 2048,
     "maximumAccessTokenLength": 16384,
     "maximumRemoteVideoDemands": 64,
+    "maximumAudioDevices": 128,
+    "maximumCameraDevices": 64,
+    "maximumScreenSources": 264,
+    "maximumDeviceLabelLength": 512,
+    "maximumSourceLabelLength": 256,
+    "maximumExportedFrames": 16,
+    "maximumFrameReleases": 68,
+    "maximumThumbnailBytes": 230400,
+    "thumbnailWidth": 320,
+    "thumbnailHeight": 180,
+    "thumbnailDeadlineMs": 2000,
     "maximumDiagnosticMetrics": 16,
     "maximumDiagnosticFields": 16,
     "maximumDiagnosticNameLength": 64,
@@ -31,9 +42,88 @@
     "failure": ["code", "message", "stage", "retryable"],
     "credentialLease": ["leaseId", "serverUrl", "accessToken"],
     "roomIntent": ["roomId", "participantIdentity", "credentialLeaseId"],
-    "remoteVideoDemand": ["participantIdentity", "publicationId", "quality"],
-    "engineDesiredState": ["revision", "room", "microphone", "camera", "screen", "output", "remoteVideoDemand"],
-    "engineSnapshot": ["engineState", "acceptedRevision", "desiredState", "roomState", "roomFailure", "tracks"]
+    "remoteVideoDemand": ["participantIdentity", "publicationId"],
+    "engineDesiredState": ["revision", "room", "microphone", "camera", "screen", "output", "remoteVideoDemand", "rendererId"],
+    "engineSnapshot": ["engineState", "acceptedRevision", "desiredState", "roomState", "roomFailure", "tracks"],
+    "mediaSourceQuery": ["revision", "kind"],
+    "mediaInventory": ["audio", "cameras", "sources", "video", "microphoneMeter"],
+    "microphoneMeter": ["revision", "inputLevel", "gateThreshold", "gateOpen"],
+    "exportedFrame": ["kind", "generation", "sequence", "slot", "revision", "rendererId", "publicationId", "participantIdentity", "width", "height", "timestamp", "ingressUs", "handle"],
+    "frameRelease": ["generation", "sequence", "slot"],
+    "thumbnailQuery": ["revision", "sourceId"],
+    "thumbnail": ["type", "revision", "state", "code", "pixels"],
+    "audioInventory": ["revision", "status", "devices"],
+    "audioDevice": ["id", "label", "direction", "isDefault"],
+    "cameraInventory": ["revision", "status", "devices"],
+    "cameraDevice": ["id", "label", "available", "isDefault"],
+    "sourceInventory": ["revision", "complete", "ok", "truncated", "entries"],
+    "screenSource": ["id", "kind", "title", "label", "available", "minimized", "primary", "audioAvailable"],
+    "videoInventory": ["revision", "publications"],
+    "videoPublication": ["participantIdentity", "publicationId", "source"]
+  },
+  "mediaModels": {
+    "AudioMixSetting": {
+      "fields": {
+        "identity": { "type": "identifier" },
+        "volume": { "type": "number", "minimum": 0, "maximum": 3 },
+        "muted": { "type": "boolean" }
+      }
+    },
+    "MicrophoneIntent": {
+      "states": ["off", "warm", "on"],
+      "fields": {
+        "deviceId": { "type": "identifier", "nullable": true },
+        "muted": { "type": "boolean" },
+        "pushToTalk": { "type": "boolean" },
+        "pushToTalkHeld": { "type": "boolean" },
+        "bypassSystemProcessing": { "type": "boolean" },
+        "automaticGainControl": { "type": "boolean" },
+        "noiseSuppression": { "type": "boolean" },
+        "echoCancellation": { "type": "boolean" },
+        "inputVolume": { "type": "number", "minimum": 0, "maximum": 4 },
+        "gateEnabled": { "type": "boolean" },
+        "gateThresholdDb": { "type": "number", "minimum": -100, "maximum": 0 },
+        "gateAutoThreshold": { "type": "boolean" },
+        "meterDemand": { "type": "boolean" },
+        "retryRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+      }
+    },
+    "CameraIntent": {
+      "states": ["off", "on"],
+      "fields": {
+        "deviceId": { "type": "identifier", "nullable": true },
+        "profile": { "type": "enum", "values": ["hd720p30", "hd1080p30"] },
+        "publication": { "type": "boolean" },
+        "previewRendererId": { "type": "identifier", "nullable": true },
+        "retryRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+      }
+    },
+    "ScreenIntent": {
+      "states": ["off", "on"],
+      "fields": {
+        "sourceId": { "type": "identifier" },
+        "width": { "type": "integer", "minimum": 64, "maximum": 7680 },
+        "height": { "type": "integer", "minimum": 64, "maximum": 4320 },
+        "fps": { "type": "integer", "minimum": 1, "maximum": 240 },
+        "bitrate": { "type": "integer", "minimum": 32000, "maximum": 100000000 },
+        "audioMode": { "type": "enum", "values": ["none", "system", "process"] },
+        "audioBitrate": { "type": "integer", "minimum": 6000, "maximum": 512000 },
+        "previewRendererId": { "type": "identifier", "nullable": true },
+        "retryRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "audioRetryRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+      }
+    },
+    "OutputIntent": {
+      "states": ["off", "on"],
+      "fields": {
+        "deviceId": { "type": "identifier", "nullable": true },
+        "deafened": { "type": "boolean" },
+        "volume": { "type": "number", "minimum": 0, "maximum": 3 },
+        "users": { "type": "array", "item": "AudioMixSetting", "maximum": 1024 },
+        "streams": { "type": "array", "item": "AudioMixSetting", "maximum": 1024 },
+        "retryRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+      }
+    }
   },
   "eventFields": {
     "engineStateChanged": {
@@ -45,18 +135,20 @@
       "optional": ["failure"]
     },
     "trackStateChanged": {
-      "required": ["type", "sequence", "revision", "track", "state"],
-      "optional": []
+      "required": ["type", "sequence", "revision", "track", "state", "warning"],
+      "optional": ["failure"]
     },
     "fatalEngineFailure": {
       "required": ["type", "sequence", "failure"],
       "optional": []
     }
   },
-  "commands": ["handshake", "installCredentialLease", "applyDesiredState", "querySnapshot", "ping", "shutdown"],
-  "results": ["handshake", "credentialLeaseInstalled", "desiredStateAccepted", "snapshot", "pong", "shutdownComplete"],
+  "commands": ["queryThumbnail", "queryInventory", "querySources", "queryFrames", "handshake", "installCredentialLease", "applyDesiredState", "querySnapshot", "ping", "shutdown"],
+  "results": ["thumbnail", "inventory", "sourcesQueryAccepted", "frames", "handshake", "credentialLeaseInstalled", "desiredStateAccepted", "snapshot", "pong", "shutdownComplete"],
   "publicEvents": ["engineStateChanged", "roomStateChanged", "trackStateChanged", "fatalEngineFailure"],
   "roomStates": ["off", "connecting", "connected", "disconnecting", "failed"],
+  "trackKinds": ["microphone", "camera", "screen", "output", "screen_audio", "screen_preview", "camera_preview", "remote_video"],
+  "trackStates": ["off", "starting", "running", "muted", "failed"],
   "canonical": {
     "credentialLease": {
       "leaseId": "fixture-lease",
@@ -75,12 +167,31 @@
       "camera": { "state": "off" },
       "screen": { "state": "off" },
       "output": { "state": "off" },
-      "remoteVideoDemand": []
+      "remoteVideoDemand": [],
+      "rendererId": null
     },
     "requests": [
       {
+        "type": "request", "protocolVersion": 4, "requestId": "fixture-thumbnail",
+        "hostEpoch": 1, "deadlineMs": 1000,
+        "command": { "type": "queryThumbnail", "query": { "revision": 1, "sourceId": null } }
+      },
+      {
+        "type": "request", "protocolVersion": 4, "requestId": "fixture-inventory",
+        "hostEpoch": 1, "deadlineMs": 1000, "command": { "type": "queryInventory" }
+      },
+      {
+        "type": "request", "protocolVersion": 4, "requestId": "fixture-sources",
+        "hostEpoch": 1, "deadlineMs": 1000,
+        "command": { "type": "querySources", "query": { "revision": 1, "kind": "all" } }
+      },
+      {
+        "type": "request", "protocolVersion": 4, "requestId": "fixture-frames",
+        "hostEpoch": 1, "deadlineMs": 1000, "command": { "type": "queryFrames", "releases": [] }
+      },
+      {
         "type": "request",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "requestId": "fixture-handshake",
         "hostEpoch": 1,
         "deadlineMs": 1000,
@@ -88,7 +199,7 @@
       },
       {
         "type": "request",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "requestId": "fixture-lease",
         "hostEpoch": 1,
         "deadlineMs": 1000,
@@ -103,7 +214,7 @@
       },
       {
         "type": "request",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "requestId": "fixture-desired-state",
         "hostEpoch": 1,
         "deadlineMs": 1000,
@@ -116,13 +227,14 @@
             "camera": { "state": "off" },
             "screen": { "state": "off" },
             "output": { "state": "off" },
-            "remoteVideoDemand": []
+            "remoteVideoDemand": [],
+            "rendererId": null
           }
         }
       },
       {
         "type": "request",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "requestId": "fixture-snapshot",
         "hostEpoch": 1,
         "deadlineMs": 1000,
@@ -130,7 +242,7 @@
       },
       {
         "type": "request",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "requestId": "fixture-ping",
         "hostEpoch": 1,
         "deadlineMs": 1000,
@@ -138,7 +250,7 @@
       },
       {
         "type": "request",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "requestId": "fixture-shutdown",
         "hostEpoch": 1,
         "deadlineMs": 1000,
@@ -147,13 +259,35 @@
     ],
     "successReplies": [
       {
+        "type": "reply", "protocolVersion": 4, "requestId": "fixture-thumbnail", "ok": true,
+        "result": { "type": "thumbnail", "revision": 1, "state": "cancelled" }
+      },
+      {
+        "type": "reply", "protocolVersion": 4, "requestId": "fixture-inventory", "ok": true,
+        "result": { "type": "inventory", "inventory": {
+          "audio": { "revision": 1, "status": "ready", "devices": [] },
+          "cameras": { "revision": 1, "status": "ready", "devices": [] },
+          "sources": { "revision": 1, "complete": true, "ok": true, "truncated": false, "entries": [] },
+          "video": { "revision": 1, "publications": [] },
+          "microphoneMeter": { "revision": 1, "inputLevel": 0, "gateThreshold": 0, "gateOpen": false }
+        } }
+      },
+      {
+        "type": "reply", "protocolVersion": 4, "requestId": "fixture-sources", "ok": true,
+        "result": { "type": "sourcesQueryAccepted", "revision": 1 }
+      },
+      {
+        "type": "reply", "protocolVersion": 4, "requestId": "fixture-frames", "ok": true,
+        "result": { "type": "frames", "frames": [] }
+      },
+      {
         "type": "reply",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "requestId": "fixture-handshake",
         "ok": true,
         "result": {
           "type": "handshake",
-          "protocolVersion": 3,
+          "protocolVersion": 4,
           "engineState": "running",
           "build": {
             "commit": "0000000000000000000000000000000000000000",
@@ -164,14 +298,14 @@
       },
       {
         "type": "reply",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "requestId": "fixture-lease",
         "ok": true,
         "result": { "type": "credentialLeaseInstalled", "leaseId": "fixture-lease" }
       },
       {
         "type": "reply",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "requestId": "fixture-desired-state",
         "ok": true,
         "result": {
@@ -182,7 +316,7 @@
       },
       {
         "type": "reply",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "requestId": "fixture-snapshot",
         "ok": true,
         "result": {
@@ -197,28 +331,33 @@
               "camera": { "state": "off" },
               "screen": { "state": "off" },
               "output": { "state": "off" },
-              "remoteVideoDemand": []
+              "remoteVideoDemand": [],
+              "rendererId": null
             },
             "roomState": "off",
             "tracks": {
-              "microphone": "off",
-              "camera": "off",
-              "screen": "off",
-              "output": "off"
+              "microphone": { "revision": 1, "state": "off", "warning": false },
+              "camera": { "revision": 1, "state": "off", "warning": false },
+              "screen": { "revision": 1, "state": "off", "warning": false },
+              "output": { "revision": 1, "state": "off", "warning": false },
+              "screen_audio": { "revision": 1, "state": "off", "warning": false },
+              "screen_preview": { "revision": 1, "state": "off", "warning": false },
+              "camera_preview": { "revision": 1, "state": "off", "warning": false },
+              "remote_video": { "revision": 1, "state": "off", "warning": false }
             }
           }
         }
       },
       {
         "type": "reply",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "requestId": "fixture-ping",
         "ok": true,
         "result": { "type": "pong", "engineState": "running" }
       },
       {
         "type": "reply",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "requestId": "fixture-shutdown",
         "ok": true,
         "result": { "type": "shutdownComplete", "engineState": "stopped" }
@@ -227,7 +366,7 @@
     "failureReplies": [
       {
         "type": "reply",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "requestId": "fixture-failure",
         "ok": false,
         "failure": {
@@ -241,20 +380,20 @@
     "publicEventMessages": [
       {
         "type": "event",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "event": {
           "type": "engineStateChanged",
-          "sequence": 9,
+          "sequence": 13,
           "previous": "stopping",
           "state": "stopped"
         }
       },
       {
         "type": "event",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "event": {
           "type": "roomStateChanged",
-          "sequence": 7,
+          "sequence": 11,
           "revision": 2,
           "state": "failed",
           "failure": {
@@ -267,18 +406,19 @@
       },
       {
         "type": "event",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "event": {
           "type": "trackStateChanged",
           "sequence": 4,
           "revision": 1,
           "track": "camera",
-          "state": "off"
+          "state": "off",
+          "warning": false
         }
       },
       {
         "type": "event",
-        "protocolVersion": 3,
+        "protocolVersion": 4,
         "event": {
           "type": "fatalEngineFailure",
           "sequence": 4,

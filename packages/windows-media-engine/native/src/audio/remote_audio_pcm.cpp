@@ -78,7 +78,7 @@ bool RemoteAudioMixer::setInputs(std::span<const RemoteAudioMixInput> inputs) no
   if (inputs.size() > inputs_.size()) return false;
   for (std::size_t index = 0; index < inputs.size(); ++index) {
     const auto& input = inputs[index];
-    if (!input.port || !std::isfinite(input.volume) || input.volume < 0 || input.volume > 2)
+    if (!input.port || !std::isfinite(input.volume) || input.volume < 0 || input.volume > 9)
       return false;
     for (std::size_t earlier = 0; earlier < index; ++earlier)
       if (inputs[earlier].port == input.port) return false;

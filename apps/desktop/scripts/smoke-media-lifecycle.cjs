@@ -1,5 +1,6 @@
 const { readFileSync } = require('node:fs')
 const path = require('node:path')
+const { isDeepStrictEqual } = require('node:util')
 
 const { app, utilityProcess } = require('electron')
 
@@ -203,9 +204,7 @@ async function lifecycleCycle(index) {
     `cycle ${index} query`,
     1_000,
   )
-  if (!snapshot.ok ||
-      JSON.stringify(snapshot.result?.snapshot?.desiredState) !==
-        JSON.stringify(desiredState)) {
+  if (!snapshot.ok || !isDeepStrictEqual(snapshot.result?.snapshot?.desiredState, desiredState)) {
     throw new Error(`cycle ${index} TS/native golden snapshot changed`)
   }
   const shutdownId = `shutdown-${index}`
@@ -255,6 +254,7 @@ async function nativeConformance() {
     screen: { state: 'off' },
     output: { state: 'off' },
     remoteVideoDemand: [],
+    rendererId: null,
   })
   const expectFailure = (code, operation) => {
     try {
@@ -269,30 +269,41 @@ async function nativeConformance() {
   const installed = addon.installCredentialLease(
     structuredClone(protocol.canonical.credentialLease),
   )
-  if (JSON.stringify(installed) !== JSON.stringify(
-    canonicalResult('credentialLeaseInstalled'),
-  )) {
+  if (!isDeepStrictEqual(installed, canonicalResult('credentialLeaseInstalled'))) {
     throw new Error('canonical credential lease changed across native boundary')
   }
   const canonicalState = structuredClone(protocol.canonical.desiredState)
   const canonicalAccepted = addon.applyDesiredState(canonicalState)
-  if (JSON.stringify(canonicalAccepted) !== JSON.stringify(
-    canonicalResult('desiredStateAccepted'),
-  )) {
+  if (!isDeepStrictEqual(canonicalAccepted, canonicalResult('desiredStateAccepted'))) {
     throw new Error('canonical desired-state result changed across native boundary')
   }
-  if (JSON.stringify(addon.querySnapshot()) !== JSON.stringify(
-    canonicalResult('snapshot'),
-  )) {
-    throw new Error('canonical snapshot changed across native boundary')
+  // Acceptance is synchronous; independent product owners settle their actual
+  // path revisions asynchronously. Compare the complete settled golden state.
+  const snapshotDeadline = Date.now() + 1_000
+  let canonicalSnapshot = addon.querySnapshot()
+  while (!isDeepStrictEqual(canonicalSnapshot, canonicalResult('snapshot')) &&
+      Date.now() < snapshotDeadline) {
+    await new Promise(resolve => setTimeout(resolve, 10))
+    canonicalSnapshot = addon.querySnapshot()
   }
-  if (JSON.stringify(addon.ping()) !== JSON.stringify(canonicalResult('pong'))) {
+  if (!isDeepStrictEqual(canonicalSnapshot, canonicalResult('snapshot'))) {
+    throw new Error(`canonical snapshot changed across native boundary: ${JSON.stringify(canonicalSnapshot)}`)
+  }
+  if (!isDeepStrictEqual(addon.ping(), canonicalResult('pong'))) {
     throw new Error('canonical ping changed across native boundary')
   }
 
   const accepted = addon.applyDesiredState(makeState(2, 'room-a'))
   if (accepted.acceptedRevision !== 2 || accepted.disposition !== 'accepted') {
     throw new Error('native new revision matrix case failed')
+  }
+  // The missing-credential failure belongs to actual Room reconciliation,
+  // which must finish before the next desired revision supersedes this one.
+  const roomFailureDeadline = Date.now() + 1_000
+  while (!(publicEventsByType.get('roomStateChanged') || [])
+      .some(event => event.revision === 2 && event.state === 'failed') &&
+      Date.now() < roomFailureDeadline) {
+    await new Promise(resolve => setTimeout(resolve, 10))
   }
   const duplicate = addon.applyDesiredState(makeState(2, 'room-a'))
   if (duplicate.disposition !== 'duplicate') {
@@ -313,10 +324,10 @@ async function nativeConformance() {
   }
 
   const maximum = makeState(10, 'x'.repeat(256))
+  maximum.rendererId = 'renderer-conformance'
   maximum.remoteVideoDemand = Array.from({ length: 64 }, (_, index) => ({
     participantIdentity: `participant-${index}`,
     publicationId: `publication-${index}`,
-    quality: 'off',
   }))
   addon.applyDesiredState(maximum)
   expectFailure('desired_state_invalid', () =>
@@ -325,12 +336,12 @@ async function nativeConformance() {
   expectFailure('desired_state_invalid', () =>
     addon.applyDesiredState({
       ...makeState(11),
+      rendererId: maximum.rendererId,
       remoteVideoDemand: [
         ...maximum.remoteVideoDemand,
         {
           participantIdentity: 'one-too-many',
           publicationId: 'one-too-many',
-          quality: 'off',
         },
       ],
     }),
@@ -338,6 +349,7 @@ async function nativeConformance() {
 
   // Keep the JS thread busy so the bounded diagnostic TSFN reaches capacity;
   // telemetry may drop, but control and the final snapshot must remain live.
+  const diagnosticsBeforeFlood = diagnostics
   for (let revision = 11; revision <= 512; ++revision) {
     addon.applyDesiredState(makeState(revision))
   }
@@ -345,13 +357,14 @@ async function nativeConformance() {
     throw new Error('diagnostic flood changed control state')
   }
   const shutdown = addon.shutdown()
-  if (JSON.stringify(shutdown) !== JSON.stringify(canonicalResult('shutdownComplete'))) {
+  if (!isDeepStrictEqual(shutdown, canonicalResult('shutdownComplete'))) {
     throw new Error('canonical shutdown changed across native boundary')
   }
   await new Promise((resolve) => setImmediate(resolve))
   await new Promise((resolve) => setImmediate(resolve))
-  if (diagnostics > 64) {
-    throw new Error(`diagnostic queue exceeded capacity: ${diagnostics}`)
+  const floodDiagnostics = diagnostics - diagnosticsBeforeFlood
+  if (floodDiagnostics > 64) {
+    throw new Error(`diagnostic queue exceeded capacity: ${floodDiagnostics}`)
   }
   for (const type of [
     'engineStateChanged',
@@ -360,7 +373,8 @@ async function nativeConformance() {
   ]) {
     const canonical = canonicalPublicEvent(type)
     const emitted = publicEventsByType.get(type) || []
-    if (!emitted.some((event) => JSON.stringify(event) === JSON.stringify(canonical))) {
+    // Sequence is monotonic delivery identity, not a fixed cross-owner schedule.
+    if (!emitted.some((event) => isDeepStrictEqual({ ...event, sequence: canonical.sequence }, canonical))) {
       throw new Error(
         `native ${type} event changed across the C++/JS boundary: ${JSON.stringify(emitted)}`,
       )
@@ -375,6 +389,7 @@ async function nativeConformance() {
   return {
     publicEvents,
     diagnostics,
+    floodDiagnostics,
     diagnosticFlood: 502,
     canonicalPublicEvents: [
       'engineStateChanged',
@@ -417,7 +432,38 @@ async function unexpectedExit() {
   await lifecycleCycle(10_001)
 }
 
-app.whenReady().then(async () => {
+async function stalledUtilityTermination() {
+  const broker = require(path.resolve(mediaRoot, 'windows_media_texture_broker.node'))
+  const child = utilityProcess.fork(__filename, ['--stalled-utility'], {
+    serviceName: 'syrnike-media-termination-smoke', stdio: 'ignore',
+  })
+  const exited = new Promise(resolve => child.once('exit', resolve))
+  await boundedTimeout('stalled utility spawn', 2_000,
+    new Promise(resolve => child.once('spawn', resolve)))
+  const guard = broker.openUtilityProcess(child.pid)
+  try {
+    const stalled = new Promise(resolve => child.once('message', resolve))
+    child.postMessage('stall')
+    await boundedTimeout('utility stall', 2_000, stalled)
+    if (guard.hasExited()) throw new Error('stalled fixture unexpectedly exited')
+    guard.terminate()
+    guard.terminate()
+    await boundedTimeout('retained-handle termination', 2_000, (async () => {
+      while (!guard.hasExited()) await new Promise(resolve => setTimeout(resolve, 10))
+    })())
+    await boundedTimeout('Electron utility exit notification', 2_000, exited)
+  } finally {
+    try { if (!guard.hasExited()) guard.terminate() } finally { guard.close() }
+  }
+}
+
+if (process.argv.includes('--stalled-utility')) {
+  process.parentPort.on('message', () => {
+    process.parentPort.postMessage('stalled')
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60_000)
+  })
+} else app.whenReady().then(async () => {
+  await stalledUtilityTermination()
   const conformance = await nativeConformance()
   for (let cycle = 1; cycle <= 50; ++cycle) await lifecycleCycle(cycle)
   await incompatibleHandshake()
@@ -428,6 +474,7 @@ app.whenReady().then(async () => {
       lifecycleCycles: 50,
       incompatibleHandshake: 'rejected',
       unexpectedExit: 'unexpected_exit',
+      stalledUtilityTermination: 'kernel_exit_confirmed',
       nativeConformance: conformance,
     }),
   )

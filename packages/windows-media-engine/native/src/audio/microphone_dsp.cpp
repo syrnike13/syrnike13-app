@@ -10,8 +10,8 @@ MicrophoneDsp::MicrophoneDsp(std::unique_ptr<MicrophoneEnhancement> enhancement)
 }
 bool MicrophoneDsp::configure(std::uint64_t revision, const MicrophoneDspConfig& config) noexcept {
   if (revision <= stats_.config_revision || !std::isfinite(config.input_volume) ||
-      config.input_volume < 0 || config.input_volume > 2 || !std::isfinite(config.gate_threshold_db) ||
-      config.gate_threshold_db < -80 || config.gate_threshold_db > -10) return false;
+      config.input_volume < 0 || config.input_volume > 4 || !std::isfinite(config.gate_threshold_db) ||
+      config.gate_threshold_db < -100 || config.gate_threshold_db > 0) return false;
   config_ = config;
   stats_.config_revision = revision;
   return true;

@@ -1,4 +1,5 @@
 #include "camera/camera_device_registry.hpp"
+#include "core/opaque_device_id.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -40,13 +41,17 @@ CameraDeviceSnapshot CameraDeviceRegistry::refresh() {
     });
     if (identity == identities.end()) {
       if (identities.size() == 256) return fail(CameraRegistryStatus::capacity_exceeded);
-      identities.push_back({endpoint.symbolic_link, identities.size() + 1});
+      const auto id = opaqueDeviceId(L"camera:", endpoint.symbolic_link);
+      if (!id || std::any_of(identities.begin(), identities.end(),
+          [&](const Identity& existing) { return existing.id == *id; }))
+        return fail(CameraRegistryStatus::enumeration_failed);
+      identities.push_back({endpoint.symbolic_link, *id});
       identity = std::prev(identities.end());
     }
     if (std::any_of(next.begin(), next.end(), [&](const auto& value) { return value.id == identity->id; }))
       return fail(CameraRegistryStatus::enumeration_failed);
     next.push_back({identity->id, endpoint.label, endpoint.kind, endpoint.available, false});
-    if (endpoint.available && (!default_id || identity->id < default_id)) default_id = identity->id;
+    if (endpoint.available && !default_id) default_id = identity->id;
   }
   CameraDeviceId old_default = 0;
   for (const auto& old : snapshot_.devices) {

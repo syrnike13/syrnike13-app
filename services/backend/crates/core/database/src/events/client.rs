@@ -42,6 +42,14 @@ impl std::str::FromStr for VoiceRtcEngine {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VoiceCameraProfile {
+    #[serde(rename = "hd720p30")]
+    Hd720p30,
+    #[serde(rename = "hd1080p30")]
+    Hd1080p30,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct VoiceRtcCredential {
     pub rtc_engine: VoiceRtcEngine,
@@ -49,6 +57,7 @@ pub struct VoiceRtcCredential {
     pub connection_epoch: String,
     pub token: String,
     pub identity: String,
+    pub camera_profiles: Vec<VoiceCameraProfile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -641,7 +650,7 @@ impl EventV1 {
 mod tests {
     use super::{
         EventV1, GatewayErrorRequest, GatewayErrorScope, GatewayRequestKind, VoiceAuthorityLease,
-        VoiceAuthorityMembershipClaim, VoiceRtcCredential, VoiceRtcEngine,
+        VoiceAuthorityMembershipClaim, VoiceCameraProfile, VoiceRtcCredential, VoiceRtcEngine,
     };
     use iso8601_timestamp::Timestamp;
     use serde_json::json;
@@ -685,6 +694,7 @@ mod tests {
                 connection_epoch: "epoch-1".to_string(),
                 token: "token".to_string(),
                 identity: "identity".to_string(),
+                camera_profiles: vec![VoiceCameraProfile::Hd720p30],
             },
         };
 
@@ -693,6 +703,7 @@ mod tests {
         assert_eq!(value["type"], json!("VoiceServerUpdate"));
         assert_eq!(value["operation_id"], json!("op-join"));
         assert_eq!(value["channel_id"], json!("channel-1"));
+        assert_eq!(value["credential"]["camera_profiles"], json!(["hd720p30"]));
     }
 
     #[test]
@@ -717,6 +728,10 @@ mod tests {
                     connection_epoch: "epoch-b".to_string(),
                     token: "token-b".to_string(),
                     identity: "identity-b".to_string(),
+                    camera_profiles: vec![
+                        VoiceCameraProfile::Hd720p30,
+                        VoiceCameraProfile::Hd1080p30,
+                    ],
                 },
             },
         };
@@ -727,6 +742,10 @@ mod tests {
         assert_eq!(value["from"]["connection_epoch"], json!("epoch-a"));
         assert_eq!(value["lease"]["operation_id"], json!("op-b"));
         assert_eq!(value["lease"]["authority_version"], json!(12));
+        assert_eq!(
+            value["lease"]["credential"]["camera_profiles"],
+            json!(["hd720p30", "hd1080p30"])
+        );
         assert_eq!(
             value["lease"]["credential"]["connection_epoch"],
             json!("epoch-b")

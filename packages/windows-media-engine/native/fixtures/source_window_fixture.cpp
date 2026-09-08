@@ -42,9 +42,10 @@ struct PairRequest {
   int second = 0;
 };
 
-HWND createSourceWindow(const wchar_t* title, int offset) {
+HWND createSourceWindow(const wchar_t* title, int offset, bool visible = true) {
   const HWND window = CreateWindowExW(
-      0, kClassName, title, WS_OVERLAPPEDWINDOW | WS_VISIBLE, 120 + offset,
+      0, kClassName, title, WS_OVERLAPPEDWINDOW | (visible ? WS_VISIBLE : 0),
+      120 + offset,
       120 + offset, 640, 360, nullptr, nullptr, GetModuleHandleW(nullptr),
       nullptr);
   if (window != nullptr) SetTimer(window, 1, 16, nullptr);
@@ -192,8 +193,10 @@ LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wparam,
       rapid_recycled = false;
       rapid_attempts = 0;
       for (int attempt = 1; attempt <= 64; ++attempt) {
+        // Only the surviving HWND is a capture source. Showing every temporary
+        // candidate adds compositor work unrelated to handle reuse.
         const HWND replacement =
-            createSourceWindow(L"Syrnike Source Fixture Rapid", 0);
+            createSourceWindow(L"Syrnike Source Fixture Rapid", 0, false);
         rapid_attempts = attempt;
         if (replacement == current) {
           rapid_recycled = true;
@@ -205,6 +208,9 @@ LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wparam,
           break;
         }
         DestroyWindow(replacement);
+      }
+      if (primary_window.load() != nullptr) {
+        ShowWindow(primary_window.load(), SW_SHOWNOACTIVATE);
       }
       return 0;
     }

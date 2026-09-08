@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "core/room_owner.hpp"
+#include "core/media_runtime.hpp"
 
 namespace syrnike::windows_media {
 
@@ -101,6 +102,13 @@ bool validServerUrl(const std::string &value) {
 
 std::optional<EngineFailure>
 validateDesiredState(const EngineDesiredState &desired_state) {
+  if (!validMediaModel(desired_state.microphone) ||
+      !validMediaModel(desired_state.camera) ||
+      !validMediaModel(desired_state.screen) ||
+      !validMediaModel(desired_state.output)) {
+    return failure("desired_state_invalid", "Invalid bounded media intent",
+                   "apply_desired_state");
+  }
   if (desired_state.revision == 0 ||
       desired_state.revision > kMaximumProtocolInteger) {
     return failure("desired_state_invalid",
@@ -118,6 +126,15 @@ validateDesiredState(const EngineDesiredState &desired_state) {
   if (desired_state.remote_video_demand.size() > kMaximumRemoteVideoDemands) {
     return failure("desired_state_invalid",
                    "Remote video demand exceeds the bounded entry limit",
+                   "apply_desired_state");
+  }
+  if ((desired_state.renderer_id && !validIdentifier(*desired_state.renderer_id)) ||
+      (!desired_state.remote_video_demand.empty() && !desired_state.renderer_id) ||
+      (desired_state.camera.state == CameraIntentState::on && desired_state.camera.preview_renderer_id &&
+       desired_state.camera.preview_renderer_id != desired_state.renderer_id) ||
+      (desired_state.screen.state == ScreenIntentState::on && desired_state.screen.preview_renderer_id &&
+       desired_state.screen.preview_renderer_id != desired_state.renderer_id)) {
+    return failure("desired_state_invalid", "Video demand must belong to the current renderer",
                    "apply_desired_state");
   }
   for (const auto &demand : desired_state.remote_video_demand) {
@@ -168,8 +185,27 @@ const char *trackKindName(TrackKind track) noexcept {
     return "screen";
   case TrackKind::Output:
     return "output";
+  case TrackKind::ScreenAudio:
+    return "screen_audio";
+  case TrackKind::ScreenPreview:
+    return "screen_preview";
+  case TrackKind::CameraPreview:
+    return "camera_preview";
+  case TrackKind::RemoteVideo:
+    return "remote_video";
   }
   return "microphone";
+}
+
+const char *mediaPathStateName(MediaPathState state) noexcept {
+  switch (state) {
+  case MediaPathState::Off: return "off";
+  case MediaPathState::Starting: return "starting";
+  case MediaPathState::Running: return "running";
+  case MediaPathState::Muted: return "muted";
+  case MediaPathState::Failed: return "failed";
+  }
+  return "failed";
 }
 
 const char *roomPublicStateName(RoomStateChangedEvent::State state) noexcept {
@@ -422,22 +458,27 @@ private:
       std::optional<RoomConnectionEvent> room_event;
       {
         std::unique_lock lock(mailbox_->mutex);
-        mailbox_->changed.wait(lock, [this] {
+        const auto ready = [this] {
           return !mailbox_->commands.empty() || !mailbox_->room_events.empty();
-        });
+        };
+        if (options_.media_runtime)
+          mailbox_->changed.wait_for(lock, std::chrono::milliseconds(20), ready);
+        else
+          mailbox_->changed.wait(lock, ready);
         if (!mailbox_->room_events.empty()) {
           room_event = std::move(mailbox_->room_events.front());
           mailbox_->room_events.pop_front();
-        } else {
+        } else if (!mailbox_->commands.empty()) {
           command = std::move(mailbox_->commands.front());
           mailbox_->commands.pop_front();
         }
       }
 
       try {
+        pollMediaRuntime();
         if (room_event) {
           handleRoomEvent(*room_event);
-        } else {
+        } else if (command) {
           auto result = handle(*command);
           if (result) {
             command->completion.set_value(std::move(*result));
@@ -562,6 +603,7 @@ private:
     };
     command.committed = true;
     command.committed_reply = accepted_reply;
+    updateMediaRuntime();
     emitDesiredStateEvents(previous, *desired_state);
     reconcileRoom(previous, *desired_state);
     emitDiagnostic("desired_state_accepted",
@@ -598,6 +640,15 @@ private:
                   "Expired credential lease was not committed",
                   "install_credential_lease", true)));
     }
+    // A main-process adapter owns only its latest intent. Credentials may
+    // arrive after that intent was superseded, before any apply consumes them.
+    // Retain the currently referenced lease and the incoming one, never a
+    // history of abandoned connects that can exhaust the private lease budget.
+    std::erase_if(credential_leases_, [&](const auto& entry) {
+      return entry.first != command.credential_lease->lease_id &&
+          (!accepted_desired_state_ || !accepted_desired_state_->room ||
+           accepted_desired_state_->room->credential_lease_id != entry.first);
+    });
     if (credential_leases_.size() >= kMaximumCredentialLeases &&
         !credential_leases_.contains(command.credential_lease->lease_id)) {
       return controlReply(
@@ -636,6 +687,7 @@ private:
         accepted_desired_state_,
         room_public_state_,
         room_failure_,
+        tracks_,
     };
     return reply;
   }
@@ -675,9 +727,15 @@ private:
 
   std::optional<EngineResult> handleShutdown() {
     transition(EngineState::Stopping);
+    if (options_.media_runtime) options_.media_runtime->beginStop();
     if (options_.test_hang_on_shutdown) {
       std::unique_lock lock(hang_mutex_);
       hang_gate_.wait(lock, [] { return false; });
+    }
+    if (!publicationsStopped()) {
+      deferRoomTeardown();
+      setRoomPublicState(RoomStateChangedEvent::State::Disconnecting);
+      return std::nullopt;
     }
     if (room_owner_) {
       const auto result = room_owner_->beginTeardown();
@@ -688,6 +746,8 @@ private:
         return std::nullopt;
       }
     }
+    if (options_.media_runtime && !options_.media_runtime->snapshot().stopped)
+      return std::nullopt;
     finishShutdown();
     return EngineResult::success();
   }
@@ -710,6 +770,8 @@ private:
 
   void completeDeferredShutdown(EngineResult result) {
     if (!pending_shutdown_command_)
+      return;
+    if (result.ok && options_.media_runtime && !options_.media_runtime->snapshot().stopped)
       return;
     if (result.ok)
       finishShutdown();
@@ -786,6 +848,11 @@ private:
       if (active_room_is_desired) {
         setRoomPublicState(RoomStateChangedEvent::State::Connected);
       } else {
+        if (!publicationsStopped()) {
+          deferRoomTeardown();
+          setRoomPublicState(RoomStateChangedEvent::State::Disconnecting);
+          return;
+        }
         const auto teardown = room_owner_->beginTeardown();
         if (!teardown.ok)
           setRoomPublicState(RoomStateChangedEvent::State::Failed,
@@ -825,6 +892,11 @@ private:
       return;
     }
     const auto state = room_owner_->state();
+    if (state != RoomConnectionState::Disconnected && !publicationsStopped()) {
+      deferRoomTeardown();
+      setRoomPublicState(RoomStateChangedEvent::State::Disconnecting);
+      return;
+    }
     if (!desired.room) {
       active_room_intent_.reset();
       const auto result = room_owner_->beginTeardown();
@@ -885,6 +957,7 @@ private:
       return;
     room_public_state_ = state;
     room_failure_ = std::move(state_failure);
+    updateMediaRuntime();
     PublicEventCallback callback;
     {
       std::lock_guard lock(callback_mutex_);
@@ -928,6 +1001,10 @@ private:
 
   void emitDesiredStateEvents(const std::optional<EngineDesiredState> &previous,
                               const EngineDesiredState &desired_state) {
+    if (options_.media_runtime) {
+      projectMediaPaths(options_.media_runtime->snapshot().paths, !previous);
+      return;
+    }
     PublicEventCallback callback;
     {
       std::lock_guard lock(callback_mutex_);
@@ -942,14 +1019,126 @@ private:
                TrackKind::Camera,
                TrackKind::Screen,
                TrackKind::Output,
+               TrackKind::ScreenAudio,
+               TrackKind::ScreenPreview,
+               TrackKind::CameraPreview,
+               TrackKind::RemoteVideo,
            }) {
+        auto& media = tracks_[static_cast<std::size_t>(track)];
+        media.revision = desired_state.revision;
         callback(PublicEvent{TrackStateChangedEvent{
             ++event_sequence_,
-            desired_state.revision,
             track,
+            media,
         }});
       }
     }
+  }
+
+  void updateMediaRuntime() {
+    if (!options_.media_runtime || !accepted_desired_state_ ||
+        state_.load() != EngineState::Running) return;
+    const bool connected = room_owner_ &&
+        room_public_state_ == RoomStateChangedEvent::State::Connected &&
+        accepted_desired_state_->room &&
+        active_room_intent_ == accepted_desired_state_->room;
+    options_.media_runtime->apply(*accepted_desired_state_,
+        connected ? std::optional(room_owner_->generation()) : std::nullopt);
+  }
+
+  bool publicationsStopped() const {
+    return !options_.media_runtime || options_.media_runtime->snapshot().publications_stopped;
+  }
+
+  void deferRoomTeardown() {
+    if (room_teardown_pending_) return;
+    room_teardown_pending_ = true;
+    media_quiesce_deadline_ = std::chrono::steady_clock::now() +
+        options_.room_operation_deadlines.disconnect;
+  }
+
+  void projectMediaPaths(const MediaPathsSnapshot& paths, bool force = false) {
+    PublicEventCallback callback;
+    {
+      std::lock_guard lock(callback_mutex_);
+      callback = callback_;
+    }
+    for (std::size_t index = 0; index < paths.size(); ++index) {
+      // Actors may not have observed their first intent yet. Do not publish an
+      // unversioned result or let a delayed actor regress a projected revision.
+      if (paths[index].revision == 0 || paths[index].revision < tracks_[index].revision) continue;
+      if (!force && tracks_[index] == paths[index]) continue;
+      tracks_[index] = paths[index];
+      if (callback) callback(PublicEvent{TrackStateChangedEvent{
+          ++event_sequence_, static_cast<TrackKind>(index), paths[index]}});
+    }
+  }
+
+  void pollMediaRuntime() {
+    if (!options_.media_runtime) return;
+    const auto media = options_.media_runtime->snapshot();
+    projectMediaPaths(media.paths);
+    if (media.failure && state_.load() != EngineState::Failed && state_.load() != EngineState::Stopping) {
+      transition(EngineState::Failed, media.failure);
+      return;
+    }
+    const auto telemetry_now = std::chrono::steady_clock::now();
+    if ((media.screen_audio_metrics || media.camera_metrics || media.microphone_metrics) && telemetry_now >= next_media_diagnostic_) {
+      next_media_diagnostic_ = telemetry_now + std::chrono::seconds{1};
+      DiagnosticEventCallback callback;
+      {
+        std::lock_guard lock(diagnostic_callback_mutex_);
+        callback = diagnostic_callback_;
+      }
+      if (callback && media.screen_audio_metrics) callback(DiagnosticEvent{
+          ++diagnostic_sequence_, static_cast<std::uint64_t>(
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::system_clock::now().time_since_epoch()).count()),
+          "screen_audio", "sample", "screen_audio_metrics",
+          {media.screen_audio_metrics->begin(), media.screen_audio_metrics->end()},
+      });
+      if (callback && media.camera_metrics) callback(DiagnosticEvent{
+          ++diagnostic_sequence_, static_cast<std::uint64_t>(
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::system_clock::now().time_since_epoch()).count()),
+          "camera", "sample", "camera_metrics",
+          {media.camera_metrics->begin(), media.camera_metrics->end()},
+      });
+      if (callback && media.microphone_metrics) callback(DiagnosticEvent{
+          ++diagnostic_sequence_, static_cast<std::uint64_t>(
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::system_clock::now().time_since_epoch()).count()),
+          "microphone", "sample", "microphone_metrics",
+          {media.microphone_metrics->begin(), media.microphone_metrics->end()},
+      });
+    }
+    if (room_teardown_pending_ && !media.publications_stopped &&
+        std::chrono::steady_clock::now() >= media_quiesce_deadline_) {
+      room_teardown_pending_ = false;
+      const auto problem = failure("media_quiesce_unresponsive",
+          "Media publications did not release before the Room teardown deadline",
+          "media_stop");
+      setRoomPublicState(RoomStateChangedEvent::State::Failed, problem);
+      transition(EngineState::Failed, problem);
+      completeDeferredShutdown(EngineResult::fail(problem));
+      return;
+    }
+    if (room_teardown_pending_ && media.publications_stopped) {
+      room_teardown_pending_ = false;
+      const auto result = room_owner_ ? room_owner_->beginTeardown() : EngineResult::success();
+      if (!result.ok) {
+        setRoomPublicState(RoomStateChangedEvent::State::Failed, result.failure);
+        if (state_.load() == EngineState::Stopping) completeDeferredShutdown(result);
+      } else if (!room_owner_ || room_owner_->state() == RoomConnectionState::Disconnected) {
+        if (state_.load() == EngineState::Running && accepted_desired_state_)
+          reconcileRoom(std::nullopt, *accepted_desired_state_);
+        else
+          setRoomPublicState(RoomStateChangedEvent::State::Off);
+      }
+    }
+    if (state_.load() == EngineState::Stopping && media.stopped &&
+        (!room_owner_ || room_owner_->state() == RoomConnectionState::Disconnected))
+      completeDeferredShutdown(EngineResult::success());
   }
 
   void emitDiagnostic(const char *code, double revision) {
@@ -995,6 +1184,7 @@ private:
   std::mutex diagnostic_callback_mutex_;
   DiagnosticEventCallback diagnostic_callback_;
   std::uint64_t diagnostic_sequence_ = 0;
+  std::chrono::steady_clock::time_point next_media_diagnostic_{};
   std::optional<EngineDesiredState> accepted_desired_state_;
   std::map<std::string, CredentialLease> credential_leases_;
   std::unique_ptr<RoomOwner> room_owner_;
@@ -1002,6 +1192,9 @@ private:
   RoomStateChangedEvent::State room_public_state_ =
       RoomStateChangedEvent::State::Off;
   std::optional<EngineFailure> room_failure_;
+  MediaPathsSnapshot tracks_;
+  bool room_teardown_pending_ = false;
+  std::chrono::steady_clock::time_point media_quiesce_deadline_;
   std::mutex startup_mutex_;
   std::condition_variable startup_gate_;
   std::mutex hang_mutex_;

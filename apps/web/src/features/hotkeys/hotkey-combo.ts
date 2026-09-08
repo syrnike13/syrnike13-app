@@ -82,8 +82,8 @@ export const HOTKEY_ACTIONS: HotkeyActionDefinition[] = [
   {
     id: 'toggle-vad',
     label: 'Переключить Voice Activity / Push-to-Talk',
-    description: 'Скоро: появится вместе с режимом Push-to-Talk.',
-    available: false,
+    description: 'Переключает активацию микрофона голосом или удержанием клавиши.',
+    available: true,
   },
 ]
 

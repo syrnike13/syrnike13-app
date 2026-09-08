@@ -207,6 +207,8 @@ void hungSubmitEscalatesAndLateCompletionReturnsBorrowedSlot() {
               returned.slot == 2 &&
               returned.release_reason == ScreenSlotReleaseReason::Consumed,
           "late SDK completion did not return the borrowed slot exactly once");
+  require(!sender.stop(1).ok,
+          "late completion incorrectly cleared required utility retirement");
 }
 
 void hungUnpublishHasAnIndependentDeadline() {
@@ -246,17 +248,67 @@ void adapterSubmitStartFailureReturnsSlotBeforeTerminalFailure() {
               released.release_reason == ScreenSlotReleaseReason::Failed &&
               terminal.kind == ScreenPublicationEventKind::TerminalFailure,
           "adapter start failure did not return the active slot before failing");
+  require(sender.stop(1).ok, "completed adapter failure prevented cleanup");
+  adapter->completeUnpublish(1);
+  require(waitEvent(sender).kind == ScreenPublicationEventKind::Unpublished &&
+              sender.state() == ScreenPublicationState::Idle,
+          "completed adapter failure did not drain its publication");
+}
+
+void completedSubmitFailureDrainsBeforeAndDuringStop() {
+  for (const bool stop_first : {false, true}) {
+    auto adapter = std::make_shared<ManualPublicationAdapter>();
+    ProductionScreenSender sender(adapter);
+    require(sender.start({"screen", 1280, 720, 30, 2'000'000}).ok,
+            "failure cleanup generation did not start");
+    adapter->completePublish(1);
+    (void)waitEvent(sender);
+    require(sender.submit(frame(1, 1, 1)) == ScreenSubmitResult::Accepted,
+            "failure cleanup frame was rejected");
+    if (stop_first) require(sender.stop(1).ok, "in-flight stop was rejected");
+    adapter->completeSubmit(1, ScreenOperationResult::fail(
+        {"screen_submit_failed", "Room disconnected", "screen_submit", true}));
+    require(waitEvent(sender).kind == ScreenPublicationEventKind::SlotReleased,
+            "completed failed call retained its borrowed frame");
+    require(waitEvent(sender).kind == ScreenPublicationEventKind::TerminalFailure,
+            "cleanup hid the original submission failure");
+    require(sender.stop(1).ok, "completed failed call could not unpublish");
+    adapter->completeUnpublish(1);
+    require(waitEvent(sender).kind == ScreenPublicationEventKind::Unpublished &&
+                sender.state() == ScreenPublicationState::Idle &&
+                sender.stats().video_depth == 0,
+            "failed submission did not release publication and slots");
+  }
+}
+
+void cancelledPublishDrainsWithoutPublishingOrFailing() {
+  auto adapter = std::make_shared<ManualPublicationAdapter>();
+  ProductionScreenSender sender(adapter);
+  const auto started = sender.start({"screen", 1280, 720, 30, 2'000'000});
+  require(started.ok, "cancelled generation was not admitted");
+  adapter->completePublish(started.generation, ScreenOperationResult::fail(
+      {"screen_publish_cancelled", "Cancelled", "screen_publish"}));
+  require(sender.state() == ScreenPublicationState::Stopping,
+          "cancelled publish did not enter ordered unpublish");
+  require(!sender.waitForEvent(0ms), "cancelled publish emitted a publication or terminal event");
+  adapter->completeUnpublish(started.generation);
+  require(waitEvent(sender).kind == ScreenPublicationEventKind::Unpublished,
+          "cancelled publish did not acknowledge cleanup");
+  require(sender.state() == ScreenPublicationState::Idle && !sender.waitForEvent(0ms),
+          "cancelled generation did not drain cleanly to Idle");
 }
 
 }  // namespace
 
 int main() try {
   publishesSubmitsAndStopsAsynchronously();
+  cancelledPublishDrainsWithoutPublishingOrFailing();
   overloadPreservesEncodedReferenceFrames();
   staleCompletionCannotMutateANewGeneration();
   hungSubmitEscalatesAndLateCompletionReturnsBorrowedSlot();
   hungUnpublishHasAnIndependentDeadline();
   adapterSubmitStartFailureReturnsSlotBeforeTerminalFailure();
+  completedSubmitFailureDrainsBeforeAndDuringStop();
   return 0;
 } catch (const std::exception& error) {
   return error.what()[0] == '\0' ? 2 : 1;

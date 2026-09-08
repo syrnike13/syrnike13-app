@@ -14,6 +14,7 @@ const electronPath = desktopRequire('electron')
 
 const script = String.raw`
   const path = require('node:path')
+  const manifest = require(path.resolve('out/native/win32-x64/native-manifest.json'))
   ;(async () => {
     for (const kind of ['hotkey', 'overlay']) {
       const addon = require(path.resolve(
@@ -23,6 +24,11 @@ const script = String.raw`
       const info = addon.getRuntimeInfo()
       if (!info.available || info.runtime !== kind) {
         throw new Error('Invalid ' + kind + ' runtime info')
+      }
+      if (info.commit !== manifest.commitSha ||
+          info.contractVersion !== manifest.contractVersion ||
+          Number(info.napi) !== manifest.napiVersion) {
+        throw new Error(kind + ' addon does not match its artifact manifest')
       }
       const factory = kind === 'hotkey'
         ? addon.createHotkeyRuntime

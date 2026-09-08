@@ -120,6 +120,34 @@ void referenceFreshness() {
   require(dsp.stats().echo == EchoAvailability::unavailable && adapter.noise_enabled,
           "Output loss retained unsupported instead of unavailable echo state");
 }
+void productControlRange() {
+  MicrophoneDsp dsp(std::make_unique<Enhancement>());
+  MicrophoneDspConfig config;
+  config.input_volume = 4;
+  config.automatic_gain = false;
+  config.gate_threshold_db = -100;
+  require(dsp.configure(1, config), "Product gain/gate range rejected");
+  auto frame = signal(1000);
+  dsp.process(frame, 1'000'000, nullptr);
+  require(frame.samples[1] >= 3998 && frame.samples[1] <= 4000, "Product input gain was clamped");
+  frame = signal(32000);
+  dsp.process(frame, 1'000'000, nullptr);
+  require(frame.samples[1] > 0 && frame.samples[1] <= 32112, "Maximum input gain overflowed limiter");
+  config.input_volume = 1;
+  config.gate_threshold_db = 0;
+  require(dsp.configure(2, config), "Product upper gate bound rejected");
+  for (int index = 0; index < 12; ++index) {
+    frame = signal(1000);
+    dsp.process(frame, 1'000'000, nullptr);
+  }
+  require(frame.samples == std::array<std::int16_t, 480>{}, "Upper gate bound leaked audio");
+  config.input_volume = 4.01f;
+  require(!dsp.configure(3, config), "Out-of-range gain accepted");
+  config.input_volume = 1;
+  config.gate_threshold_db = -100.01f;
+  require(!dsp.configure(3, config) && dsp.stats().config_revision == 2,
+          "Invalid gate changed committed controls");
+}
 void renderedReferenceRetirement() {
   RenderedEchoReference port(2);
   EchoReferenceFrame frame;
@@ -143,6 +171,7 @@ void renderedReferenceRetirement() {
 }  // namespace
 int main() try {
   silenceAndControls();
+  productControlRange();
   referenceFreshness();
   renderedReferenceRetirement();
   std::cout << "Microphone DSP contracts passed\n";

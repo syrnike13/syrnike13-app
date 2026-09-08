@@ -17,6 +17,7 @@ export const REGISTERABLE_ACTIONS = new Set<HotkeyAction>([
   'navigate-forward',
   'push-to-talk',
   'push-to-mute',
+  'toggle-vad',
 ])
 
 type ActiveCombo = {

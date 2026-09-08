@@ -33,6 +33,7 @@ struct MicrophoneSender::State {
   std::atomic<MicrophonePublicationFailure> failure{MicrophonePublicationFailure::none};
   std::atomic<std::uint64_t> submitted{0}, rejected_stale{0}, device_generation{0}, commits{0};
   std::atomic<std::uint64_t> latest_frame_age_us{0}, maximum_frame_age_us{0};
+  std::atomic<std::uint64_t> maximum_callback_wait_us{0};
   // Room lane creates these before ready, and destroys them after the sender
   // has stopped submitting and enqueued cleanup. Events/queue establish order.
   std::shared_ptr<livekit::LocalParticipant> participant;
@@ -86,6 +87,7 @@ MicrophonePublicationFailure MicrophoneSender::start() {
   if (failure != MicrophonePublicationFailure::none) return failure;
   return state_->published.load() ? MicrophonePublicationFailure::none : MicrophonePublicationFailure::publish_failed;
 }
+void MicrophoneSender::cancel() noexcept { state_->cancel(); }
 bool MicrophoneSender::stop(Clock::time_point deadline) noexcept {
   if (owner_ != std::this_thread::get_id()) return false;
   state_->cancel();
@@ -99,7 +101,8 @@ bool MicrophoneSender::stop(Clock::time_point deadline) noexcept {
 MicrophoneSenderStats MicrophoneSender::stats() const noexcept {
   return {state_->published.load(), state_->failure.load(), state_->submitted.load(),
           state_->rejected_stale.load(), state_->device_generation.load(), state_->commits.load(),
-          state_->latest_frame_age_us.load(), state_->maximum_frame_age_us.load(), state_->pcm->pendingFrames()};
+          state_->latest_frame_age_us.load(), state_->maximum_frame_age_us.load(), state_->pcm->pendingFrames(),
+          state_->maximum_callback_wait_us.load()};
 }
 void MicrophoneSender::run(const std::shared_ptr<State>& state) noexcept {
   try {
@@ -158,7 +161,11 @@ void MicrophoneSender::run(const std::shared_ptr<State>& state) noexcept {
       std::copy(input->samples.begin(), input->samples.end(), frame.data().begin());
       // A new input generation deliberately uses the same source/publication.
       // The SDK owns a bounded 10 ms clocked queue and a finite completion wait.
-      state->source->captureFrame(frame, 100);
+      const auto submitted_at = Clock::now();
+      state->source->captureFrame(frame, 500);
+      const auto callback_wait_us = static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - submitted_at).count());
+      state->maximum_callback_wait_us.store((std::max)(state->maximum_callback_wait_us.load(), callback_wait_us));
       state->device_generation.store(input->generation);
       state->submitted.fetch_add(1);
     }
@@ -176,12 +183,14 @@ void MicrophoneSender::run(const std::shared_ptr<State>& state) noexcept {
         if (state->source) state->source->clearQueue();
         if (state->track && state->track->publication() && state->participant)
           state->participant->unpublishTrack(state->track->publication()->sid());
-        state->track.reset();
-        state->source.reset();
-        state->participant.reset();
-        state->published.store(false);
-        SetEvent(state->unpublished.value);
       } catch (...) { state->fail(MicrophonePublicationFailure::publish_failed); }
+      // A disconnected Room can reject clear/unpublish. It must not prevent
+      // local SDK objects from being released or leave shutdown waiting forever.
+      state->track.reset();
+      state->source.reset();
+      state->participant.reset();
+      state->published.store(false);
+      SetEvent(state->unpublished.value);
     }, deadline) || WaitForSingleObject(state->unpublished.value, remaining(deadline)) != WAIT_OBJECT_0)
       state->fail(MicrophonePublicationFailure::timeout);
   } catch (...) { state->fail(MicrophonePublicationFailure::timeout); }

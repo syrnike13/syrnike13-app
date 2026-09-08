@@ -236,12 +236,12 @@ describe('ChannelSidebarItem voice navigation', () => {
     vi.restoreAllMocks()
   })
 
-  it('explicitly opens the connected voice channel from another channel', () => {
+  it('reasserts the selected intent when opening the connected channel', () => {
     renderVoiceItem('text-general')
 
     fireEvent.click(screen.getByRole('link', { name: 'main' }))
 
-    expect(mocks.join).not.toHaveBeenCalled()
+    expect(mocks.join).toHaveBeenCalledWith('voice-main')
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: '/app/c/$channelId',
       params: { channelId: 'voice-main' },
@@ -249,12 +249,12 @@ describe('ChannelSidebarItem voice navigation', () => {
     })
   })
 
-  it('reopens the current voice screen without rejoining', () => {
+  it('reasserts the selected intent when reopening its voice screen', () => {
     renderVoiceItem('voice-main')
 
     fireEvent.click(screen.getByRole('link', { name: 'main' }))
 
-    expect(mocks.join).not.toHaveBeenCalled()
+    expect(mocks.join).toHaveBeenCalledWith('voice-main')
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: '/app/c/$channelId',
       params: { channelId: 'voice-main' },

@@ -3,6 +3,7 @@
 #if defined(LIVEKIT_CPP_HAS_PREENCODED_VIDEO_SOURCE)
 
 #include <exception>
+#include <atomic>
 #include <mutex>
 #include <stdexcept>
 #include <utility>
@@ -39,6 +40,9 @@ void completeException(std::uint64_t generation,
 }  // namespace
 
 struct LiveKitScreenPublicationAdapter::State {
+  enum class Commit { pending, committed, cancelled };
+  std::atomic<Commit> commit{Commit::pending};
+  std::atomic_bool cancelled{false};
   explicit State(LiveKitScreenEncoderControls owned_controls)
       : controls(std::move(owned_controls)) {}
 
@@ -75,6 +79,12 @@ LiveKitScreenPublicationAdapter::~LiveKitScreenPublicationAdapter() {
   state_->stopping = true;
 }
 
+void LiveKitScreenPublicationAdapter::cancel() noexcept {
+  state_->cancelled = true;
+  auto pending = State::Commit::pending;
+  state_->commit.compare_exchange_strong(pending, State::Commit::cancelled);
+}
+
 void LiveKitScreenPublicationAdapter::startPublish(
     std::uint64_t generation, screen::ScreenTrackDescriptor descriptor,
     screen::ScreenOperationCompletion completion) {
@@ -87,6 +97,14 @@ void LiveKitScreenPublicationAdapter::startPublish(
        completion = std::move(queued_completion)](
           const std::shared_ptr<livekit::Room>& room) mutable {
         try {
+          if (state->cancelled) {
+            {
+              std::scoped_lock lock(state->mutex);
+              state->generation = generation;
+            }
+            return completion(generation, failure("screen_publish_cancelled",
+                "Screen publication was cancelled", "screen_publish"));
+          }
           if (!room)
             return completion(
                 generation,
@@ -143,6 +161,12 @@ void LiveKitScreenPublicationAdapter::startPublish(
                         "Screen publication adapter is stopping",
                         "screen_publish", true));
           }
+          auto pending = State::Commit::pending;
+          if (!state->commit.compare_exchange_strong(pending, State::Commit::committed)) {
+            // Retain partially published resources for ordered unpublish.
+            return completion(generation, failure("screen_publish_cancelled",
+                "Screen publication was cancelled", "screen_publish"));
+          }
           transport->setScreenFeedbackPoll(
               [weak_state = std::weak_ptr<State>(state), weak_room = std::weak_ptr<livekit::Room>(room),
                generation](const std::shared_ptr<livekit::Room>& active) {
@@ -152,7 +176,7 @@ void LiveKitScreenPublicationAdapter::startPublish(
                 LiveKitScreenEncoderControls controls;
                 {
                   std::scoped_lock lock(current->mutex);
-                  if (current->stopping || current->generation != generation) return;
+                  if (current->stopping || current->cancelled || current->generation != generation) return;
                   source = current->source;
                   controls = current->controls;
                 }
@@ -161,7 +185,7 @@ void LiveKitScreenPublicationAdapter::startPublish(
                 const auto allocation = source->takeBitrateRequest();
                 {
                   std::scoped_lock lock(current->mutex);
-                  if (current->stopping || current->generation != generation) return;
+                  if (current->stopping || current->cancelled || current->generation != generation) return;
                   if (allocation) current->sender_bitrate_allocation = allocation;
                 }
                 if (keyframe && controls.request_key_frame) controls.request_key_frame();
@@ -188,6 +212,8 @@ void LiveKitScreenPublicationAdapter::startSubmit(
       [state, generation, frame, completion = std::move(queued_completion)](
           const std::shared_ptr<livekit::Room>&) mutable {
         try {
+          if (state->cancelled)
+            return completion(generation, screen::ScreenOperationResult::success());
           std::shared_ptr<livekit::EncodedVideoSource> source;
           bool stale = false;
           {
@@ -235,7 +261,7 @@ void LiveKitScreenPublicationAdapter::startUnpublish(
   auto queued_completion = completion;
   const bool queued = transport_->enqueueActiveRoomTask(
       [state, generation, completion = std::move(queued_completion)](
-          const std::shared_ptr<livekit::Room>&) mutable {
+          const std::shared_ptr<livekit::Room>& room) mutable {
         try {
           std::shared_ptr<livekit::LocalParticipant> participant;
           std::shared_ptr<livekit::LocalVideoTrack> track;
@@ -256,10 +282,17 @@ void LiveKitScreenPublicationAdapter::startUnpublish(
                 failure("screen_livekit_publication_stale",
                         "The unpublish command belongs to an inactive publication",
                         "screen_unpublish"));
-          if (participant && track && track->publication())
+          // A disconnected Room has already lost its publications. Local SDK
+          // references still drain here, but there is no remote track to remove.
+          if (room && room->connectionState() != livekit::ConnectionState::Disconnected &&
+              participant && track && track->publication())
             participant->unpublishTrack(track->publication()->sid());
           completion(generation, screen::ScreenOperationResult::success());
         } catch (...) {
+          // Disconnect can race the check above while unpublish is in flight.
+          // Its synchronous completion still releases the local SDK references.
+          if (!room || room->connectionState() == livekit::ConnectionState::Disconnected)
+            return completion(generation, screen::ScreenOperationResult::success());
           completeException(generation, std::move(completion),
                             "screen_unpublish");
         }

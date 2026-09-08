@@ -75,15 +75,9 @@ function frameMessage(sequence: number, frame: CountedVideoFrame) {
 }
 
 function deliver(registry: NativeVideoRegistry, data: unknown) {
-  ;(
-    registry as unknown as {
-      onMessage(event: MessageEvent<unknown>): void
-    }
-  ).onMessage({
-    source: window,
-    origin: window.location.origin,
-    data,
-  } as MessageEvent<unknown>)
+  const event = new MessageEvent<unknown>('message', { origin: window.location.origin, data })
+  Object.defineProperty(event, 'source', { value: window })
+  registry['onMessage'](event)
 }
 
 function createRuntimeWindow() {

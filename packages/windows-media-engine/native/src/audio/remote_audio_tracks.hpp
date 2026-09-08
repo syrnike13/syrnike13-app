@@ -26,15 +26,19 @@ class RemoteAudioTracks final : public LiveKitRoomObserver {
  public:
   explicit RemoteAudioTracks(RemoteAudioMixerWorker& mixer);
   ~RemoteAudioTracks() override;
-  bool attachRoom(const std::shared_ptr<livekit::Room>& room);
+  bool attachRoom(const std::shared_ptr<livekit::Room>& room) override;
   // Call after successful connect to seed publications predating this join.
   // Returns false if concurrent events prevented a consistent bounded seed.
-  bool seedConnectedRoom();
-  bool detachRoom();
+  bool seedConnectedRoom() override;
+  bool detachRoom() override;
   bool setScreenDemand(std::span<const RemoteVideoDemand> demand);
   bool setUserVolume(std::string_view participant, float volume, bool muted);
+  // Replace the complete product mix atomically, including removal of saved
+  // overrides. User and screen-audio controls are independent by participant.
+  bool configureMix(const OutputIntent&);
   void setDeafened(bool enabled);
   RemoteAudioTracksStats stats() const noexcept;
+  void beginStop();
   void stop() override;
   void onConnectionStateChanged(livekit::Room&, const livekit::ConnectionStateChangedEvent&) override;
   void onTrackPublished(livekit::Room&, const livekit::TrackPublishedEvent&) override;
@@ -46,7 +50,8 @@ class RemoteAudioTracks final : public LiveKitRoomObserver {
 
  private:
   static constexpr std::size_t kPublicationCapacity = 64;
-  static constexpr std::size_t kUserCapacity = 128;
+  // Voice Director admits 512 volume and 512 mute keys independently.
+  static constexpr std::size_t kUserCapacity = 1024;
   struct Publication {
     std::string participant;
     std::shared_ptr<livekit::RemoteTrackPublication> publication;
@@ -55,11 +60,6 @@ class RemoteAudioTracks final : public LiveKitRoomObserver {
     std::uint64_t generation = 0;
     bool failed = false;
   };
-  struct UserControl {
-    std::string participant;
-    float volume = 1;
-    bool muted = false;
-  };
   bool desired(const Publication&) const;
   void addPublication(std::string_view participant, const std::shared_ptr<livekit::RemoteTrackPublication>& publication);
   void retire(Publication&);
@@ -67,10 +67,12 @@ class RemoteAudioTracks final : public LiveKitRoomObserver {
   void run() noexcept;
   RemoteAudioMixerWorker& mixer_;
   std::mutex mutex_;
+  std::mutex join_mutex_;
   std::condition_variable changed_;
   std::shared_ptr<livekit::Room> room_;
   std::array<Publication, kPublicationCapacity> publications_{};
-  std::array<UserControl, kUserCapacity> users_{};
+  std::vector<AudioMixSetting> users_, streams_;
+  float output_volume_ = 1;
   std::array<RemoteVideoDemand, kRemoteAudioTrackCapacity> demand_{};
   std::size_t demand_count_ = 0;
   std::uint64_t next_generation_ = 0;

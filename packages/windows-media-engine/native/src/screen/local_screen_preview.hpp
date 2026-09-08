@@ -37,6 +37,10 @@ struct PreviewStats {
 // cannot be borrowed by preview, including across publication/renderer epochs.
 class LocalScreenPreview final {
  public:
+  explicit LocalScreenPreview(std::uint32_t width = 1280, std::uint32_t height = 720);
+  ~LocalScreenPreview();
+  // Only before first use; publication/renderer changes keep fixed dimensions.
+  bool configureSize(std::uint32_t width, std::uint32_t height);
   static constexpr std::size_t kSlots = 2;
   static constexpr std::uint64_t kPublicationReserve = 192ULL << 20;
   static constexpr std::uint64_t kRemoteReserve = 256ULL << 20;
@@ -62,6 +66,7 @@ class LocalScreenPreview final {
   enum class SlotState { free, copying, ready, delivered, retired, retiring, quarantined };
   struct Slot {
     bool budget_reserved = false;
+    std::uint64_t backing_bytes = 0;
     SlotState state = SlotState::free;
     PreviewFrame frame;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
@@ -69,13 +74,13 @@ class LocalScreenPreview final {
     Microsoft::WRL::ComPtr<IDXGIKeyedMutex> keyed;
     std::chrono::steady_clock::time_point submitted;
   };
-  LocalScreenPreview() = default;
-  ~LocalScreenPreview();
   void retireLocked();
-  void clearLocked(Slot& slot);
+  void clearLocked(Slot& slot, bool completion_proven = true);
   void pollLocked();
   void allocateLocked();
   mutable std::mutex mutex_;
+  std::uint32_t width_ = 1280, height_ = 720;
+  std::uint64_t texture_bytes_ = 0;
   std::shared_ptr<capture::D3d11DeviceOwner> device_;
   Microsoft::WRL::ComPtr<ID3D11VideoDevice> video_device_;
   Microsoft::WRL::ComPtr<ID3D11VideoContext> video_context_;

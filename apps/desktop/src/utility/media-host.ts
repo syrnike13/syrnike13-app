@@ -11,6 +11,10 @@ import {
   MediaAddonHandshakeSchema,
   MediaAddonPingSchema,
   MediaAddonSnapshotSchema,
+  MediaAddonInventorySchema,
+  MediaSourcesQueryAcceptedSchema,
+  MediaAddonFramesSchema,
+  MediaAddonThumbnailSchema,
   MediaAddonShutdownSchema,
   MediaCredentialLeaseInstalledSchema,
   MediaDesiredStateAcceptedSchema,
@@ -44,6 +48,10 @@ type MediaLifecycleAddon = {
   installCredentialLease(lease: unknown, deadlineMs?: number): unknown
   applyDesiredState(desiredState: unknown, deadlineMs?: number): unknown
   querySnapshot(deadlineMs?: number): unknown
+  queryInventory(): unknown
+  querySources(query: unknown): unknown
+  queryFrames(releases: unknown): unknown
+  queryThumbnail(query: unknown): unknown
   ping(deadlineMs?: number): unknown
   shutdown(deadlineMs?: number): unknown
 }
@@ -80,6 +88,10 @@ const MediaLifecycleAddonSchema = Schema.declare<MediaLifecycleAddon>(
     typeof Reflect.get(input, 'installCredentialLease') === 'function' &&
     typeof Reflect.get(input, 'applyDesiredState') === 'function' &&
     typeof Reflect.get(input, 'querySnapshot') === 'function' &&
+    typeof Reflect.get(input, 'queryInventory') === 'function' &&
+    typeof Reflect.get(input, 'querySources') === 'function' &&
+    typeof Reflect.get(input, 'queryFrames') === 'function' &&
+    typeof Reflect.get(input, 'queryThumbnail') === 'function' &&
     typeof Reflect.get(input, 'ping') === 'function' &&
     typeof Reflect.get(input, 'shutdown') === 'function',
 )
@@ -443,6 +455,33 @@ export const runMediaUtilityHostEffect = Effect.fn(
           ),
         ),
       )
+      return
+    }
+    if (request.command.type === 'queryInventory' || request.command.type === 'querySources' ||
+        request.command.type === 'queryFrames' || request.command.type === 'queryThumbnail') {
+      const command = request.command
+      const invoke = command.type === 'queryInventory'
+        ? () => addon.queryInventory()
+        : command.type === 'querySources' ? () => addon.querySources(command.query)
+        : command.type === 'queryThumbnail' ? () => addon.queryThumbnail(command.query)
+        : () => addon.queryFrames(command.releases)
+      void Effect.runPromise(invokeAddon(invoke, command.type).pipe(
+        Effect.flatMap((value) => {
+          const decoded: Option.Option<typeof MediaAddonInventorySchema.Type | typeof MediaSourcesQueryAcceptedSchema.Type |
+            typeof MediaAddonFramesSchema.Type | typeof MediaAddonThumbnailSchema.Type> = command.type === 'queryInventory'
+            ? Schema.decodeUnknownOption(MediaAddonInventorySchema, { onExcessProperty: 'error' })(value)
+            : command.type === 'querySources'
+            ? Schema.decodeUnknownOption(MediaSourcesQueryAcceptedSchema, { onExcessProperty: 'error' })(value)
+            : command.type === 'queryThumbnail'
+            ? Schema.decodeUnknownOption(MediaAddonThumbnailSchema, { onExcessProperty: 'error' })(value)
+            : Schema.decodeUnknownOption(MediaAddonFramesSchema, { onExcessProperty: 'error' })(value)
+          return Option.isSome(decoded)
+            ? Effect.sync(() => postSuccessReply(hostPort, request.requestId, decoded.value))
+            : Effect.fail(mediaLifecycleFailure('media_query_invalid',
+              'Native media query returned an invalid result', command.type))
+        }),
+        Effect.catch(failure => Effect.sync(() => postFailureReply(hostPort, request.requestId, failure))),
+      ))
       return
     }
     if (request.command.type === 'ping') {

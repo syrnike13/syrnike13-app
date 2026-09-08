@@ -1,4 +1,5 @@
 import { Option, Schema } from 'effect'
+import { DesktopCameraProfileSchema, type DesktopCameraProfile } from '../settings'
 
 const VoiceIdentifierSchema = Schema.String.check(
   Schema.isMinLength(1),
@@ -86,9 +87,11 @@ export type VoiceMediaDesiredState = Readonly<{
   outputVolume: number
   cameraEnabled: boolean
   cameraDeviceId?: string
+  cameraProfile: DesktopCameraProfile
   screenEnabled: boolean
   screenSourceId?: string
   screenAudioEnabled: boolean
+  screenAudioMode: 'system' | 'process'
   screenWidth?: number
   screenHeight?: number
   screenFps?: number
@@ -100,6 +103,7 @@ export type VoiceCredential = Readonly<{
   url: string
   token: string
   participantIdentity: string
+  cameraProfiles: readonly DesktopCameraProfile[]
 }>
 
 export type VoiceLease = Readonly<{
@@ -198,17 +202,27 @@ export type VoiceCommand =
       type: 'setCamera'
       enabled: boolean
       deviceId?: string
+      profile?: DesktopCameraProfile
     }>
   | Readonly<{
       type: 'setScreen'
       enabled: boolean
       sourceId?: string
       audioEnabled?: boolean
+      audioMode?: 'system' | 'process'
       width?: number
       height?: number
       fps?: number
       bitrate?: number
       audioBitrate?: number
+    }>
+  | Readonly<{
+      type: 'setScreenProfile'
+      width: number
+      height: number
+      fps: number
+      bitrate: number
+      audioBitrate: number
     }>
   | Readonly<{ type: 'retryVoice' }>
   | Readonly<{ type: 'retryMedia'; kind: VoiceMediaKind }>
@@ -294,17 +308,27 @@ export const VoiceCommandSchema = Schema.Union([
     type: Schema.Literal('setCamera'),
     enabled: Schema.Boolean,
     deviceId: Schema.optional(VoiceIdentifierSchema),
+    profile: Schema.optional(DesktopCameraProfileSchema),
   }),
   Schema.Struct({
     type: Schema.Literal('setScreen'),
     enabled: Schema.Boolean,
     sourceId: Schema.optional(VoiceIdentifierSchema),
     audioEnabled: Schema.optional(Schema.Boolean),
+    audioMode: Schema.optional(Schema.Literals(['system', 'process'])),
     width: Schema.optional(voiceInteger(64, 7_680)),
     height: Schema.optional(voiceInteger(64, 4_320)),
     fps: Schema.optional(voiceInteger(1, 240)),
     bitrate: Schema.optional(voiceInteger(32_000, 100_000_000)),
     audioBitrate: Schema.optional(voiceInteger(6_000, 512_000)),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('setScreenProfile'),
+    width: voiceInteger(64, 7_680),
+    height: voiceInteger(64, 4_320),
+    fps: voiceInteger(1, 240),
+    bitrate: voiceInteger(32_000, 100_000_000),
+    audioBitrate: voiceInteger(6_000, 512_000),
   }),
   Schema.Struct({ type: Schema.Literal('retryVoice') }),
   Schema.Struct({
@@ -395,7 +419,7 @@ export function computeEffectiveMuted(
 }
 
 export function createInitialVoiceMediaDesiredState(): VoiceMediaDesiredState {
-  const state = {
+  const state: Omit<VoiceMediaDesiredState, 'effectiveMuted'> = {
     userMuted: true,
     userDeafened: false,
     serverMuted: false,
@@ -414,8 +438,10 @@ export function createInitialVoiceMediaDesiredState(): VoiceMediaDesiredState {
     voiceGateAutoThreshold: true,
     outputVolume: 1,
     cameraEnabled: false,
+    cameraProfile: 'hd720p30',
     screenEnabled: false,
     screenAudioEnabled: false,
+    screenAudioMode: 'system',
   }
   return { ...state, effectiveMuted: computeEffectiveMuted(state) }
 }
@@ -448,9 +474,11 @@ export function areVoiceMediaDesiredStatesEqual(
     left.outputVolume === right.outputVolume &&
     left.cameraEnabled === right.cameraEnabled &&
     left.cameraDeviceId === right.cameraDeviceId &&
+    left.cameraProfile === right.cameraProfile &&
     left.screenEnabled === right.screenEnabled &&
     left.screenSourceId === right.screenSourceId &&
     left.screenAudioEnabled === right.screenAudioEnabled &&
+    left.screenAudioMode === right.screenAudioMode &&
     left.screenWidth === right.screenWidth &&
     left.screenHeight === right.screenHeight &&
     left.screenFps === right.screenFps &&

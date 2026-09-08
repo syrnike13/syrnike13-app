@@ -78,9 +78,9 @@ void CameraPreviewLease::release() noexcept {
   {
     std::lock_guard lock(state_->mutex);
     auto& slot = state_->slots[slot_];
-    // Reclaim both a consumed lease (key 0) and an unopened lease (key 1).
-    auto result = slot.keyed->AcquireSync(0, 0);
-    if (result != S_OK) result = slot.keyed->AcquireSync(1, 0);
+    // Electron imports shared textures with key 0. The lease prevents reuse
+    // until its final GPU reference is released, including unopened leases.
+    const auto result = slot.keyed->AcquireSync(0, 0);
     if (result == S_OK && SUCCEEDED(slot.keyed->ReleaseSync(0))) {
       slot.phase = SlotPhase::free;
       if (state_->stopping || slot.metadata.generation != state_->input->generation()) slot.clear();
@@ -110,7 +110,8 @@ bool CameraPreview::stop(Clock::time_point deadline) noexcept {
   return true;
 }
 std::optional<CameraPreviewLease> CameraPreview::take() {
-  std::lock_guard lock(state_->mutex);
+  std::unique_lock lock(state_->mutex, std::try_to_lock);
+  if (!lock.owns_lock()) return std::nullopt;
   if (state_->stopping) return std::nullopt;
   for (std::uint32_t index = 0; index < state_->slots.size(); ++index) {
     auto& slot = state_->slots[index];
@@ -165,7 +166,7 @@ void CameraPreview::run(const std::shared_ptr<CameraPreviewState>& state) noexce
               const auto result = gpu->GetData(slot.query.Get(), nullptr, 0, 0);
               if (result == S_OK) {
                 const bool retired = slot.metadata.generation != state->input->generation();
-                const auto released = slot.keyed->ReleaseSync(retired ? 0 : 1);
+                const auto released = slot.keyed->ReleaseSync(0);
                 if (FAILED(released)) {
                   slot.phase = SlotPhase::quarantined;
                   state->stats.last_gpu_result = static_cast<std::uint32_t>(released);

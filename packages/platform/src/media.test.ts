@@ -72,10 +72,22 @@ describe('native media support contracts', () => {
   })
 
   it('validates the runtime state crossing the preload boundary', () => {
+    const inactivePath = { revision: 0, state: 'off', warning: false }
     expect(isNativeMediaRuntimeState({
       available: false,
       status: 'unavailable',
       restartCount: 0,
+      hostEpoch: 0,
+      paths: {
+        microphone: inactivePath,
+        camera: inactivePath,
+        screen: inactivePath,
+        output: inactivePath,
+        screen_audio: inactivePath,
+        screen_preview: inactivePath,
+        camera_preview: inactivePath,
+        remote_video: inactivePath,
+      },
       failure: {
         code: 'native_media_unavailable',
         message: 'Native media is unavailable while the v2 engine is rebuilt.',

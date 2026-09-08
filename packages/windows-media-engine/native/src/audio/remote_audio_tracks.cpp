@@ -84,13 +84,18 @@ bool RemoteAudioTracks::seedConnectedRoom() {
   }
   return false;
 }
+void RemoteAudioTracks::beginStop() {
+  std::lock_guard lock(mutex_);
+  stopping_ = true;
+  for (auto& value : publications_)
+    if (value.port) value.port->retire();
+  changed_.notify_all();
+}
 void RemoteAudioTracks::stop() {
+  std::lock_guard join_lock(join_mutex_);
+  beginStop();
   {
     std::unique_lock lock(mutex_);
-    clearRoom();
-    room_.reset();
-    stopping_ = true;
-    changed_.notify_all();
     // The SDK offers no cancellable sink destructor. A stuck native teardown
     // cannot outlive this owner or turn shutdown into an unbounded wait; the
     // existing utility-process boundary contains that terminal failure.
@@ -118,16 +123,41 @@ bool RemoteAudioTracks::setScreenDemand(std::span<const RemoteVideoDemand> deman
   return true;
 }
 bool RemoteAudioTracks::setUserVolume(std::string_view participant, float volume, bool muted) {
-  if (!validIdentity(participant) || !std::isfinite(volume) || volume < 0 || volume > 2) return false;
+  if (!validIdentity(participant) || !std::isfinite(volume) || volume < 0 || volume > 3) return false;
   std::scoped_lock lock(mutex_);
   if (stopping_ || done_) return false;
   auto found = std::find_if(users_.begin(), users_.end(), [&](const auto& user) {
-    return user.participant == participant;
+    return user.identity == participant;
   });
-  if (found == users_.end())
-    found = std::find_if(users_.begin(), users_.end(), [](const auto& user) { return user.participant.empty(); });
-  if (found == users_.end()) return false;
-  *found = {std::string(participant), volume, muted};
+  if (found == users_.end()) {
+    if (users_.size() == kUserCapacity) return false;
+    users_.push_back({std::string(participant), volume, muted});
+  } else {
+    *found = {std::string(participant), volume, muted};
+  }
+  ++revision_;
+  changed_.notify_all();
+  return true;
+}
+bool RemoteAudioTracks::configureMix(const OutputIntent& intent) {
+  if (intent.state != OutputIntentState::on || !validMediaModel(intent)) return false;
+  auto users = intent.users;
+  auto streams = intent.streams;
+  const auto unique = [](auto& settings) {
+    std::sort(settings.begin(), settings.end(), [](const auto& left, const auto& right) {
+      return left.identity < right.identity;
+    });
+    return std::adjacent_find(settings.begin(), settings.end(), [](const auto& left, const auto& right) {
+      return left.identity == right.identity;
+    }) == settings.end();
+  };
+  if (!unique(users) || !unique(streams)) return false;
+  std::scoped_lock lock(mutex_);
+  if (stopping_ || done_) return false;
+  users_ = std::move(users);
+  streams_ = std::move(streams);
+  output_volume_ = static_cast<float>(intent.volume);
+  deafened_ = intent.deafened;
   ++revision_;
   changed_.notify_all();
   return true;
@@ -285,6 +315,8 @@ void RemoteAudioTracks::run() noexcept {
     std::uint64_t observed_dropped = 0, observed_stale = 0;
   };
   std::array<Reader, kPublicationCapacity> readers{};
+  std::vector<AudioMixSetting> users, streams;
+  float output_volume = 1;
   std::uint64_t applied = 0;
   const auto release = [](Reader& reader) {
     if (reader.port) reader.port->retire();
@@ -296,7 +328,6 @@ void RemoteAudioTracks::run() noexcept {
   try {
     while (true) {
       std::array<Publication, kPublicationCapacity> snapshot;
-      std::array<UserControl, kUserCapacity> controls;
       std::array<bool, kPublicationCapacity> wanted{};
       std::uint64_t revision;
       bool deafened;
@@ -306,7 +337,11 @@ void RemoteAudioTracks::run() noexcept {
         if (stopping_) break;
         revision = revision_;
         snapshot = publications_;
-        controls = users_;
+        if (revision != applied) {
+          users = users_;
+          streams = streams_;
+          output_volume = output_volume_;
+        }
         deafened = deafened_;
         for (std::size_t index = 0; index < snapshot.size(); ++index) wanted[index] = desired(snapshot[index]);
       }
@@ -361,11 +396,13 @@ void RemoteAudioTracks::run() noexcept {
             ++track_failures_;
           }
           if (!reader.port) continue;
-          float volume = 1;
+          float volume = output_volume;
           bool muted = false;
+          const auto& controls = value.publication->source() == livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO
+              ? streams : users;
           for (const auto& control : controls)
-            if (control.participant == value.participant) {
-              volume = control.volume;
+            if (control.identity == value.participant) {
+              volume *= static_cast<float>(control.volume);
               muted = control.muted;
               break;
             }
@@ -431,6 +468,8 @@ void RemoteAudioTracks::run() noexcept {
   reading_ = 0;
   {
     std::scoped_lock lock(mutex_);
+    clearRoom();
+    room_.reset();
     done_ = true;
     acknowledged_ = revision_;
   }

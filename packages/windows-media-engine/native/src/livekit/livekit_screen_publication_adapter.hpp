@@ -25,6 +25,8 @@ class LiveKitScreenPublicationAdapter final
       std::shared_ptr<LiveKitRoomTransport> transport,
       LiveKitScreenEncoderControls controls = {});
   ~LiveKitScreenPublicationAdapter() override;
+  // Revokes publication commit without acquiring the SDK/state mutex.
+  void cancel() noexcept;
   [[nodiscard]] OutgoingNetworkObservation networkObservation() const noexcept override;
 
   void startPublish(std::uint64_t generation,

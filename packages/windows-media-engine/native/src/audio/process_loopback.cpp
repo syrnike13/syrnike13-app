@@ -2,8 +2,10 @@
 #include <audioclient.h>
 #include <audioclientactivationparams.h>
 #include <mmdeviceapi.h>
+#include <tlhelp32.h>
 #include <wrl.h>
 #include <atomic>
+#include <algorithm>
 #include <cstring>
 #include <stdexcept>
 
@@ -17,7 +19,7 @@ struct Handle {
   }
 };
 struct Cancelled {};
-bool processLoopbackSupported() noexcept {
+bool detectProcessLoopbackSupport() noexcept {
   using GetVersion = LONG(WINAPI*)(OSVERSIONINFOW*);
   const auto address = GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
   GetVersion version = nullptr;
@@ -76,6 +78,10 @@ void checked(HRESULT result, ScreenAudioFailureCode code) {
   if (FAILED(result)) throw ScreenAudioFailure{code, result};
 }
 }  // namespace
+bool processLoopbackSupported() noexcept {
+  static const bool supported = detectProcessLoopbackSupport();
+  return supported;
+}
 AudioProcessIdentity::~AudioProcessIdentity() {
   if (process_) CloseHandle(process_);
 }
@@ -96,6 +102,26 @@ std::shared_ptr<AudioProcessIdentity> AudioProcessIdentity::fromProcess(std::uin
 }
 std::shared_ptr<AudioProcessIdentity> AudioProcessIdentity::current() {
   return fromProcess(GetCurrentProcessId(), processCreationTime(GetCurrentProcess()));
+}
+std::shared_ptr<AudioProcessIdentity> AudioProcessIdentity::parent() {
+  Handle snapshot{CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)};
+  if (snapshot.value == INVALID_HANDLE_VALUE) { snapshot.value = nullptr; return {}; }
+  PROCESSENTRY32W entry{};
+  entry.dwSize = sizeof(entry);
+  if (!Process32FirstW(snapshot.value, &entry)) return {};
+  do {
+    if (entry.th32ProcessID != GetCurrentProcessId()) continue;
+    Handle parent{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, entry.th32ParentProcessID)};
+    if (!parent.value) return {};
+    const auto created = processCreationTime(parent.value);
+    const auto own_created = processCreationTime(GetCurrentProcess());
+    // A reused parent PID is younger than this child. Retain the validated
+    // process identity so all Electron children, including this utility, are
+    // excluded from system loopback for the lifetime of the audio publication.
+    if (!created || !own_created || created > own_created) return {};
+    return fromProcess(entry.th32ParentProcessID, created);
+  } while (Process32NextW(snapshot.value, &entry));
+  return {};
 }
 std::shared_ptr<AudioProcessIdentity> AudioProcessIdentity::fromWindow(
     sources::SourceRegistry& registry, const std::string& id) {
@@ -268,11 +294,16 @@ void ProcessLoopback::run(ScreenAudioMode mode, std::shared_ptr<AudioProcessIden
     format.wBitsPerSample = 16;
     format.nBlockAlign = 4;
     format.nAvgBytesPerSec = kAudioRate * 4;
+    // The default process session can be muted by the SDK's platform audio
+    // initialization or by output controls. Captured screen audio must have
+    // its own session so that output mute never suppresses the publication.
+    GUID capture_session{};
+    checked(CoCreateGuid(&capture_session), ScreenAudioFailureCode::activation_failed);
     checked(client->Initialize(AUDCLNT_SHAREMODE_SHARED,
                                AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
                                    AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
                                    AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-                               0, 0, &format, nullptr),
+                               0, 0, &format, &capture_session),
             ScreenAudioFailureCode::format_unavailable);
     checked(client->SetEventHandle(sample_event.value), ScreenAudioFailureCode::capture_failed);
     ComPtr<IAudioCaptureClient> capture;
@@ -308,6 +339,12 @@ void ProcessLoopback::run(ScreenAudioMode mode, std::shared_ptr<AudioProcessIden
         checked(capture->GetBuffer(&data, &frames, &flags, &position, &qpc),
                 ScreenAudioFailureCode::device_lost);
         const bool silent = (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0;
+        std::uint32_t peak_sample = 0;
+        if (!silent && data) {
+          const auto samples = reinterpret_cast<const std::int16_t*>(data);
+          for (std::size_t index = 0; index < static_cast<std::size_t>(frames) * kAudioChannels; ++index)
+            peak_sample = (std::max)(peak_sample, static_cast<std::uint32_t>(std::abs(static_cast<int>(samples[index]))));
+        }
         packetizer.ingest(
             silent || !data
                 ? std::span<const std::int16_t>{}
@@ -319,6 +356,7 @@ void ProcessLoopback::run(ScreenAudioMode mode, std::shared_ptr<AudioProcessIden
         checked(capture->ReleaseBuffer(frames), ScreenAudioFailureCode::capture_failed);
         std::scoped_lock lock(mutex_);
         ++stats_.capture_packets;
+        stats_.peak_sample = (std::max)(stats_.peak_sample, peak_sample);
         if (silent) ++stats_.silent_packets;
         if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) ++stats_.discontinuities;
         if (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) ++stats_.invalid_timestamps;

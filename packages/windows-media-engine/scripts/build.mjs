@@ -11,10 +11,11 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { generateMediaModels } from './generate-media-models.mjs'
 
 const NAPI_VERSION = 8
 const ARCH = 'x64'
-const MEDIA_FILES = ['windows_media.node', 'livekit.dll', 'livekit_ffi.dll']
+const MEDIA_FILES = ['windows_media.node', 'livekit.dll', 'livekit_ffi.dll', 'windows_media_texture_broker.node']
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(packageRoot, '..', '..')
@@ -55,6 +56,10 @@ const SHUTDOWN_DEADLINE_MS = protocolSpec.limits.shutdownDeadlineMs
 const nativeRoot = path.resolve(packageRoot, 'native')
 generateProtocolHeader()
 generateTypeScriptProtocolIdentity()
+const mediaModels = generateMediaModels(protocolSpec.mediaModels, MAX_IDENTIFIER_LENGTH)
+syncGeneratedFile(path.resolve(nativeRoot, 'src/core/media_models.generated.hpp'), mediaModels.types)
+syncGeneratedFile(path.resolve(nativeRoot, 'src/addon/media_codecs.generated.hpp'), mediaModels.codecs)
+syncGeneratedFile(path.resolve(repoRoot, 'apps/desktop/src/main/media-runtime/media-models.generated.ts'), mediaModels.schemas)
 if (staleGeneratedFiles.length > 0) {
   throw new Error(
     `Generated media protocol files are stale: ${staleGeneratedFiles.join(', ')}. Run pnpm --filter @syrnike13/windows-media-engine protocol:generate.`,
@@ -161,7 +166,7 @@ const manifest = {
   commitSha,
   electronVersion,
   napiVersion: NAPI_VERSION,
-  capabilities: ['lifecycle', 'control-v3', 'diagnostics-v2'],
+  capabilities: ['lifecycle', `control-v${PROTOCOL_VERSION}`, 'diagnostics-v2'],
   limits: {
     controlQueue: CONTROL_QUEUE_CAPACITY,
     eventQueue: EVENT_QUEUE_CAPACITY,
@@ -273,6 +278,8 @@ function generateTypeScriptProtocolIdentity() {
     `// prettier-ignore\nexport const MEDIA_LIFECYCLE_PROTOCOL_RESULTS = ${JSON.stringify(protocolSpec.results)} as const\n` +
     `// prettier-ignore\nexport const MEDIA_LIFECYCLE_PUBLIC_EVENTS = ${JSON.stringify(protocolSpec.publicEvents)} as const\n` +
     `// prettier-ignore\nexport const MEDIA_LIFECYCLE_ROOM_STATES = ${JSON.stringify(protocolSpec.roomStates)} as const\n` +
+    `// prettier-ignore\nexport const MEDIA_LIFECYCLE_TRACK_KINDS = ${JSON.stringify(protocolSpec.trackKinds)} as const\n` +
+    `// prettier-ignore\nexport const MEDIA_LIFECYCLE_TRACK_STATES = ${JSON.stringify(protocolSpec.trackStates)} as const\n` +
     `// prettier-ignore\nexport const MEDIA_LIFECYCLE_CANONICAL_FIXTURES = ${JSON.stringify(protocolSpec.canonical)} as const\n`
   syncGeneratedFile(target, content)
 }

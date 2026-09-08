@@ -1,9 +1,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { createRequire } from 'node:module'
 
 import { app, utilityProcess, type UtilityProcess } from 'electron'
 
 import { DESKTOP_RELEASE_CHANNEL } from '../desktop-app-identity'
+import { verifyMediaArtifactDistribution } from './media-artifacts'
 import {
   MEDIA_LIFECYCLE_PROTOCOL_VERSION,
   MEDIA_UTILITY_BOOTSTRAP_MESSAGE,
@@ -39,7 +41,7 @@ export interface MediaUtilityAdapter {
   readonly pid: number | undefined
   start(callbacks: MediaUtilityCallbacks): void
   postMessage(message: MediaLifecycleRequest): void
-  kill(): void
+  kill(): Promise<void>
 }
 
 export type MediaUtilityAdapterFactory = () => MediaUtilityAdapter
@@ -52,6 +54,7 @@ type UtilityProcessLike =
 export type ElectronMediaUtilityAdapterOptions = {
   utilityEntryPath: string
   nativeModulePath: string
+  openProcess?: (pid: number) => UtilityProcessGuard
   fork?: (
     modulePath: string,
     args: string[],
@@ -59,10 +62,42 @@ export type ElectronMediaUtilityAdapterOptions = {
   ) => UtilityProcessLike
 }
 
+type UtilityProcessGuard = {
+  terminate(): void
+  hasExited(): boolean
+  close(): void
+}
+
+function loadProcessGuard(nativeModulePath: string): (pid: number) => UtilityProcessGuard {
+  verifyMediaArtifactDistribution(path.dirname(nativeModulePath), {
+    appVersion: app.getVersion(), commitSha: __DESKTOP_COMMIT_SHA__,
+    electronVersion: process.versions.electron ?? '', releaseChannel: DESKTOP_RELEASE_CHANNEL,
+  })
+  const filename = path.join(path.dirname(nativeModulePath), 'windows_media_texture_broker.node')
+  const loaded: unknown = createRequire(filename)(filename)
+  if (typeof loaded !== 'object' || loaded === null ||
+      typeof Reflect.get(loaded, 'openUtilityProcess') !== 'function') {
+    throw new Error('Invalid utility process broker')
+  }
+  return (pid) => {
+    const guard: unknown = Reflect.get(loaded, 'openUtilityProcess')(pid)
+    if (!isProcessGuard(guard)) throw new Error('Invalid utility process guard')
+    return guard
+  }
+}
+
+function isProcessGuard(value: unknown): value is UtilityProcessGuard {
+  return typeof value === 'object' && value !== null &&
+    ['terminate', 'hasExited', 'close'].every(key => typeof Reflect.get(value, key) === 'function')
+}
+
 export class ElectronMediaUtilityAdapter implements MediaUtilityAdapter {
   private child: UtilityProcessLike | null = null
   private killRequested = false
   private bootstrapTimer: ReturnType<typeof setInterval> | null = null
+  private processGuard: UtilityProcessGuard | null = null
+  private termination: Promise<void> | null = null
+  private exited = false
 
   constructor(private readonly options: ElectronMediaUtilityAdapterOptions) {}
 
@@ -73,6 +108,8 @@ export class ElectronMediaUtilityAdapter implements MediaUtilityAdapter {
   start(callbacks: MediaUtilityCallbacks) {
     if (this.child) throw new Error('Media utility process is already running')
     this.killRequested = false
+    this.exited = false
+    const openProcess = this.options.openProcess ?? loadProcessGuard(this.options.nativeModulePath)
     const startedAt = Date.now()
     const fork = this.options.fork ?? utilityProcess.fork
     const child = fork(this.options.utilityEntryPath, [], {
@@ -94,7 +131,6 @@ export class ElectronMediaUtilityAdapter implements MediaUtilityAdapter {
       if (terminal) return
       terminal = true
       this.stopBootstrap()
-      if (this.child === child) this.child = null
       const snapshot = stderr.snapshot()
       callbacks.onExit({
         code,
@@ -112,14 +148,26 @@ export class ElectronMediaUtilityAdapter implements MediaUtilityAdapter {
     })
     child.on('error', (error) => {
       finish('error', null, new Error(String(error)))
-      try {
-        child.kill()
-      } catch {
-        // The error is already terminal and the supervisor owns recovery.
-      }
     })
-    child.on('exit', (code) => finish('exit', code))
+    child.on('exit', (code) => {
+      this.exited = true
+      this.processGuard?.close()
+      this.processGuard = null
+      if (this.child === child) this.child = null
+      finish('exit', code)
+    })
     child.on('spawn', () => {
+      try {
+        if (!child.pid) throw new Error('Utility spawned without a PID')
+        this.processGuard = openProcess(child.pid)
+        if (this.killRequested) {
+          this.processGuard.terminate()
+          return
+        }
+      } catch (cause) {
+        finish('error', null, cause instanceof Error ? cause : new Error(String(cause)))
+        return
+      }
       const bootstrap = () => {
         try {
           child.postMessage(MEDIA_UTILITY_BOOTSTRAP_MESSAGE)
@@ -139,14 +187,29 @@ export class ElectronMediaUtilityAdapter implements MediaUtilityAdapter {
   }
 
   kill() {
+    if (this.termination) return this.termination
     this.killRequested = true
     this.stopBootstrap()
-    try {
-      this.child?.kill()
-    } catch {
-      // Killing an already exited utility process is idempotent.
+    this.termination = this.terminateProcess()
+    return this.termination
+  }
+
+  private async terminateProcess() {
+    if (!this.child || this.exited) return
+    if (this.processGuard) this.processGuard.terminate()
+    else this.child.kill()
+    const deadline = Date.now() + 2_000
+    while (!this.exited) {
+      if (this.processGuard?.hasExited()) {
+        this.processGuard.close()
+        this.processGuard = null
+        this.child = null
+        this.exited = true
+        return
+      }
+      if (Date.now() >= deadline) throw new Error('Utility process termination exceeded its deadline')
+      await new Promise<void>(resolve => setTimeout(resolve, 10))
     }
-    this.child = null
   }
 
   private stopBootstrap() {
@@ -235,5 +298,12 @@ export function mediaUtilityAvailable() {
 }
 
 export function createElectronMediaUtilityAdapterFactory(): MediaUtilityAdapterFactory {
-  return () => new ElectronMediaUtilityAdapter(resolveMediaUtilityPaths())
+  const paths = resolveMediaUtilityPaths()
+  let openProcess: ((pid: number) => UtilityProcessGuard) | undefined
+  return () => {
+    // The native broker stays loaded in main. Verify it once before loading,
+    // avoiding synchronous DLL hashing during an active media recovery.
+    openProcess ??= loadProcessGuard(paths.nativeModulePath)
+    return new ElectronMediaUtilityAdapter({ ...paths, openProcess })
+  }
 }

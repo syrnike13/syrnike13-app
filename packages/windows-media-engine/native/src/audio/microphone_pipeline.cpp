@@ -95,10 +95,10 @@ bool MicrophonePipeline::commitInput(MicrophoneCapture* capture) noexcept {
   state_->command.generation = capture ? capture->stats().generation : 0;
   return submit();
 }
-MicrophonePipelineFailure MicrophonePipeline::switchCapture(const AudioEndpoint& endpoint) {
+MicrophonePipelineFailure MicrophonePipeline::switchCapture(const AudioEndpoint& endpoint, bool bypass_system_processing) {
   candidate_ = std::make_unique<MicrophoneCapture>();
   ++stats_.capture_opens;
-  stats_.candidate_failure = candidate_->start(endpoint, ++generation_);
+  stats_.candidate_failure = candidate_->start(endpoint, ++generation_, bypass_system_processing);
   if (stats_.candidate_failure != MicrophoneCaptureFailure::none) {
     if (!candidate_->stop(Clock::now() + std::chrono::seconds{5})) {
       stats_.retired = true;
@@ -123,7 +123,7 @@ MicrophonePipelineFailure MicrophonePipeline::selectInput(AudioEndpoint endpoint
   if (selected_ && selected_->endpoint_id == endpoint.endpoint_id && active_ &&
       active_->stats().state == MicrophoneCaptureState::healthy) return MicrophonePipelineFailure::none;
   if (stats_.demand.needed()) {
-    const auto failure = switchCapture(endpoint);
+    const auto failure = switchCapture(endpoint, bypass_system_processing_);
     if (failure != MicrophonePipelineFailure::none) return failure;
   }
   selected_ = std::move(endpoint);
@@ -144,7 +144,7 @@ MicrophonePipelineFailure MicrophonePipeline::setDemand(MicrophoneDemand demand)
   if (!onOwner()) return MicrophonePipelineFailure::invalid_state;
   if (demand.needed() && !active_) {
     if (!selected_) return MicrophonePipelineFailure::input_unavailable;
-    const auto failure = switchCapture(*selected_);
+    const auto failure = switchCapture(*selected_, bypass_system_processing_);
     if (failure != MicrophonePipelineFailure::none) return failure;
   } else if (!demand.needed() && active_) {
     if (!commitInput(nullptr)) return MicrophonePipelineFailure::command_timeout;
@@ -155,6 +155,16 @@ MicrophonePipelineFailure MicrophonePipeline::setDemand(MicrophoneDemand demand)
     active_.reset();
   }
   stats_.demand = demand;
+  return MicrophonePipelineFailure::none;
+}
+MicrophonePipelineFailure MicrophonePipeline::setSystemProcessingBypass(bool bypass) {
+  if (!onOwner()) return MicrophonePipelineFailure::invalid_state;
+  if (bypass == bypass_system_processing_) return MicrophonePipelineFailure::none;
+  if (active_ && selected_) {
+    const auto failure = switchCapture(*selected_, bypass);
+    if (failure != MicrophonePipelineFailure::none) return failure;
+  }
+  bypass_system_processing_ = bypass;
   return MicrophonePipelineFailure::none;
 }
 MicrophonePipelineFailure MicrophonePipeline::configure(const MicrophoneDspConfig& config) {

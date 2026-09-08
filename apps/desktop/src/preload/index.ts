@@ -24,7 +24,8 @@ import {
   VoiceRtcTelemetrySnapshotSchema,
   normalizeDesktopLocalSettings,
 } from '@syrnike13/platform'
-import { Effect, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
+import { MEDIA_TEXTURE_ACK, MEDIA_TEXTURE_TRANSFER, MediaTextureTransferSchema } from '../media-texture-contract'
 
 import type {
   DesktopOverlaySnapshot,
@@ -164,19 +165,34 @@ const isNativeMediaRuntimeState = Schema.is(NativeMediaRuntimeStateSchema)
 const isNativeInputEvent = Schema.is(NativeInputEventSchema)
 const isVoiceSnapshot = Schema.is(VoiceSnapshotSchema)
 
-sharedTexture.setSharedTextureReceiver(async ({ importedSharedTexture }, metadata) => {
+ipcRenderer.on(MEDIA_TEXTURE_TRANSFER, (_event, raw: unknown) => {
+  const decoded = Schema.decodeUnknownOption(MediaTextureTransferSchema)(raw)
+  if (Option.isNone(decoded)) return
+  const { id, transfer, metadata } = decoded.value
+  let texture: ReturnType<typeof sharedTexture.subtle.finishTransferSharedTexture> | null = null
   let frame: VideoFrame | null = null
   try {
-    frame = importedSharedTexture.getVideoFrame()
+    texture = sharedTexture.subtle.finishTransferSharedTexture(transfer)
+    // Verify/flush acquisition even when the app drops this frame without a
+    // GPU draw. Otherwise its release callback can wait on unsubmitted work.
+    texture.getFrameCreationSyncToken()
+    frame = texture.getVideoFrame()
     window.postMessage(
       { type: NATIVE_VIDEO_FRAME_MESSAGE, metadata, frame },
       window.location.origin,
       [frame],
     )
     frame = null
+    ipcRenderer.send(MEDIA_TEXTURE_ACK, { id, phase: 'imported' })
+  } catch {
+    // Without an import acknowledgement, main reports this presentation path
+    // as failed. A release acknowledgement only proves resource safety.
   } finally {
     frame?.close()
-    importedSharedTexture.release()
+    texture?.release(() => {
+      try { ipcRenderer.send(MEDIA_TEXTURE_ACK, { id, phase: 'released' }) }
+      catch { /* Main also retires references when this exact frame is destroyed. */ }
+    })
   }
 })
 

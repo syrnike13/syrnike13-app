@@ -11,6 +11,45 @@ import {
 } from './settings'
 
 describe('desktop local settings contract', () => {
+  it('defaults and persists native screen profiles independently of browser quality', () => {
+    const legacy = normalizeDesktopLocalSettings({
+      voice: { screenShareQuality: 'high60' },
+    })
+    const invalid = normalizeDesktopLocalSettings({
+      voice: { nativeScreenShareProfile: 'invalid' },
+    })
+    const saved = normalizeDesktopLocalSettings({
+      voice: { nativeScreenShareProfile: '1080p60' },
+    })
+    const patch = normalizeDesktopLocalSettingsPatch({
+      voice: { nativeScreenShareProfile: '720p60' },
+    })
+    expect(legacy.voice.nativeScreenShareProfile).toBe('720p30')
+    expect(legacy.voice.screenShareQuality).toBe('high60')
+    expect(invalid.voice.nativeScreenShareProfile).toBe('720p30')
+    expect(saved.voice.nativeScreenShareProfile).toBe('1080p60')
+    expect(patch.voice).toEqual({ nativeScreenShareProfile: '720p60' })
+  })
+
+  it('defaults old camera preferences and preserves validated profile patches', () => {
+    const legacy = normalizeDesktopLocalSettings({ voice: {} })
+    const invalid = normalizeDesktopLocalSettings({
+      voice: { cameraProfile: 'invalid' },
+    })
+    const saved = normalizeDesktopLocalSettings({
+      voice: { cameraProfile: 'hd1080p30' },
+    })
+    const patch = normalizeDesktopLocalSettingsPatch({
+      voice: { cameraProfile: 'hd1080p30' },
+    })
+    expect(legacy.voice.cameraProfile).toBe('hd720p30')
+    expect(invalid.voice.cameraProfile).toBe('hd720p30')
+    expect(saved.voice.cameraProfile).toBe('hd1080p30')
+    expect(patch).toMatchObject({
+      voice: { cameraProfile: 'hd1080p30' },
+    })
+  })
+
   it('defaults missing settings to the production defaults', () => {
     expect(normalizeDesktopLocalSettings(undefined)).toEqual(
       DEFAULT_DESKTOP_LOCAL_SETTINGS,

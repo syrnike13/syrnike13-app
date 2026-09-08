@@ -36,6 +36,7 @@ describe('ElectronMediaUtilityAdapter', () => {
       utilityEntryPath: 'C:\\syrnike\\media-host.cjs',
       nativeModulePath: 'C:\\syrnike\\windows_media.node',
       fork,
+      openProcess: () => ({ terminate: vi.fn(), hasExited: () => false, close: vi.fn() }),
     })
 
     adapter.start({ onMessage: vi.fn(), onExit: vi.fn() })
@@ -54,5 +55,32 @@ describe('ElectronMediaUtilityAdapter', () => {
     vi.advanceTimersByTime(50)
     expect(child.postMessage).toHaveBeenCalledTimes(3)
     vi.useRealTimers()
+  })
+
+  it('forces the retained process and waits for its kernel exit before resolving kill', async () => {
+    vi.useFakeTimers()
+    try {
+      const child = new FakeUtilityProcess()
+      let exited = false
+      const guard = { terminate: vi.fn(), hasExited: () => exited, close: vi.fn() }
+      const adapter = new ElectronMediaUtilityAdapter({
+        utilityEntryPath: 'C:\\syrnike\\media-host.cjs',
+        nativeModulePath: 'C:\\syrnike\\windows_media.node',
+        fork: () => child, openProcess: () => guard,
+      })
+      adapter.start({ onMessage: vi.fn(), onExit: vi.fn() })
+      child.emit('spawn')
+      let finished = false
+      const killed = adapter.kill().then(() => { finished = true })
+      await vi.advanceTimersByTimeAsync(100)
+      expect(guard.terminate).toHaveBeenCalledTimes(1)
+      expect(child.kill).not.toHaveBeenCalled()
+      expect(finished).toBe(false)
+      exited = true
+      await vi.advanceTimersByTimeAsync(10)
+      await killed
+      expect(guard.close).toHaveBeenCalledTimes(1)
+      expect(adapter.pid).toBeUndefined()
+    } finally { vi.useRealTimers() }
   })
 })

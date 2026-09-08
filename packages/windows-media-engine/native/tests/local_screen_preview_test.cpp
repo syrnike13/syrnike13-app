@@ -77,6 +77,8 @@ int main() {
     auto stalled = preview.stats();
     require(stalled.outstanding == 2 && stalled.pool_drops >= 1000 &&
         stalled.backing_bytes <= preview.kPreviewBudget, "never release exceeded fixed pool");
+    require(stalled.state == screen::PreviewState::running && stalled.failures == 0,
+        "bounded preview backpressure was reported as a failure");
     require(preview.demand(++revision, false), "stop preview");
     require(!preview.demand(revision - 1, true), "stale demand resurrected preview");
     require(!preview.release(first.generation, first.sequence + 1, first.slot), "wrong release accepted");

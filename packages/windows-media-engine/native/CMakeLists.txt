@@ -68,6 +68,7 @@ target_include_directories(media_preview_budget PUBLIC "${CMAKE_CURRENT_SOURCE_D
 
 add_library(media_camera_core STATIC src/camera/camera_frame.cpp src/camera/camera_device_registry.cpp)
 windows_media_target(media_camera_core)
+target_link_libraries(media_camera_core PRIVATE bcrypt)
 target_include_directories(media_camera_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 add_library(media_camera_devices STATIC src/camera/windows_camera_devices.cpp)
 windows_media_target(media_camera_devices)
@@ -84,6 +85,9 @@ target_link_libraries(media_camera_publication PUBLIC media_camera_core media_li
 add_library(media_camera_preview STATIC src/camera/camera_preview.cpp)
 windows_media_target(media_camera_preview)
 target_link_libraries(media_camera_preview PUBLIC media_camera_core media_capture media_preview_budget)
+add_library(media_camera_owner STATIC src/camera/camera_owner.cpp)
+windows_media_target(media_camera_owner)
+target_link_libraries(media_camera_owner PUBLIC media_camera_pipeline media_camera_devices media_camera_publication media_camera_preview)
 add_library(media_camera_fixture STATIC src/lab/synthetic_camera_reader.cpp)
 windows_media_target(media_camera_fixture)
 target_link_libraries(media_camera_fixture PUBLIC media_camera_capture)
@@ -162,12 +166,13 @@ target_include_directories(media_screen_audio_capture PUBLIC "${CMAKE_CURRENT_SO
 target_link_libraries(media_screen_audio_capture PUBLIC media_sources PRIVATE mmdevapi ole32)
 
 add_library(media_audio_devices STATIC
+  src/audio/audio_device_catalog.cpp
   src/audio/audio_device_registry.cpp
   src/audio/windows_audio_device_enumerator.cpp
 )
 windows_media_target(media_audio_devices)
 target_include_directories(media_audio_devices PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(media_audio_devices PRIVATE mmdevapi ole32 uuid)
+target_link_libraries(media_audio_devices PRIVATE mmdevapi ole32 uuid bcrypt)
 
 add_library(media_microphone_capture STATIC
   src/audio/microphone_pcm.cpp
@@ -197,7 +202,8 @@ add_library(media_microphone_pipeline STATIC src/audio/microphone_pipeline.cpp)
 windows_media_target(media_microphone_pipeline)
 target_link_libraries(media_microphone_pipeline PUBLIC media_microphone_capture media_microphone_dsp PRIVATE avrt)
 
-add_library(media_microphone_livekit STATIC src/audio/microphone_sender.cpp src/audio/livekit_microphone_dsp.cpp)
+add_library(media_microphone_livekit STATIC src/audio/microphone_sender.cpp src/audio/livekit_microphone_dsp.cpp
+  src/audio/microphone_owner.cpp)
 windows_media_target(media_microphone_livekit)
 target_link_libraries(media_microphone_livekit PUBLIC media_microphone_pipeline media_livekit)
 
@@ -205,11 +211,16 @@ add_library(media_remote_audio_livekit STATIC src/audio/remote_audio_tracks.cpp)
 windows_media_target(media_remote_audio_livekit)
 target_link_libraries(media_remote_audio_livekit PUBLIC media_remote_audio_mixer media_livekit)
 
+add_library(media_output_owner STATIC src/audio/output_owner.cpp)
+windows_media_target(media_output_owner)
+target_link_libraries(media_output_owner PUBLIC media_remote_audio_livekit media_wasapi_output)
+
 add_library(media_screen_audio_livekit STATIC src/audio/screen_audio_sender.cpp)
 windows_media_target(media_screen_audio_livekit)
 target_link_libraries(media_screen_audio_livekit PUBLIC media_screen_audio_capture media_livekit)
 
-add_library(media_video STATIC src/video/shared_texture_pool.cpp src/video/remote_video_track.cpp)
+add_library(media_video STATIC src/video/shared_texture_pool.cpp src/video/remote_video_track.cpp
+  src/video/remote_video_owner.cpp)
 windows_media_target(media_video)
 target_link_libraries(media_video PUBLIC media_capture LiveKit::livekit PRIVATE dxgi)
 
@@ -220,6 +231,15 @@ add_library(media_screen_livekit STATIC
 windows_media_target(media_screen_livekit)
 target_include_directories(media_screen_livekit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(media_screen_livekit PUBLIC media_screen LiveKit::livekit)
+add_library(media_screen_owner STATIC src/screen/screen_owner.cpp)
+windows_media_target(media_screen_owner)
+target_link_libraries(media_screen_owner PUBLIC media_screen_livekit media_livekit media_screen_audio_capture)
+add_library(media_product_runtime STATIC src/core/windows_media_runtime.cpp src/video/frame_export_owner.cpp
+  src/sources/thumbnail_owner.cpp)
+windows_media_target(media_product_runtime)
+target_include_directories(media_product_runtime PUBLIC src)
+target_link_libraries(media_product_runtime PUBLIC media_microphone_livekit media_output_owner
+  media_camera_owner media_screen_owner media_screen_audio_livekit media_video)
 
 add_executable(media_probe
   src/probe/media_probe.cpp
@@ -254,14 +274,31 @@ target_compile_definitions(windows_media PRIVATE
   NAPI_VERSION=${NAPI_VERSION}
   WINDOWS_MEDIA_COMMIT="${WINDOWS_MEDIA_COMMIT}"
 )
-target_link_libraries(windows_media PRIVATE ${CMAKE_JS_LIB} media_core media_livekit)
+target_link_libraries(windows_media PRIVATE ${CMAKE_JS_LIB} media_product_runtime)
 windows_media_copy_livekit_runtime(windows_media)
+add_library(windows_media_texture_broker MODULE ${CMAKE_JS_SRC} src/addon/texture_handle_broker.cpp)
+set_target_properties(windows_media_texture_broker PROPERTIES PREFIX "" SUFFIX ".node")
+windows_media_target(windows_media_texture_broker)
+target_include_directories(windows_media_texture_broker SYSTEM PRIVATE ${CMAKE_JS_INC} "${NODE_ADDON_API_DIR}")
+target_compile_definitions(windows_media_texture_broker PRIVATE NAPI_CPP_EXCEPTIONS NAPI_VERSION=${NAPI_VERSION})
+target_link_libraries(windows_media_texture_broker PRIVATE ${CMAKE_JS_LIB})
 if(MSVC)
+  target_link_libraries(windows_media_texture_broker PRIVATE delayimp)
+  target_link_options(windows_media_texture_broker PRIVATE /DELAYLOAD:node.exe)
   target_link_libraries(windows_media PRIVATE delayimp)
   target_link_options(windows_media PRIVATE /DELAYLOAD:node.exe)
 endif()
 
 enable_testing()
+
+add_executable(product_runtime_tests tests/product_runtime_test.cpp)
+windows_media_target(product_runtime_tests)
+target_link_libraries(product_runtime_tests PRIVATE media_product_runtime)
+add_test(NAME product-thumbnails COMMAND product_runtime_tests --thumbnails)
+set_tests_properties(product-thumbnails PROPERTIES TIMEOUT 60 LABELS "requires-gpu-video")
+windows_media_copy_livekit_runtime(product_runtime_tests)
+add_test(NAME product-runtime COMMAND product_runtime_tests)
+set_tests_properties(product-runtime PROPERTIES TIMEOUT 30)
 
 add_executable(audio_device_registry_tests tests/audio_device_registry_test.cpp)
 windows_media_target(audio_device_registry_tests)

@@ -69,7 +69,7 @@ struct RemoteAudioMixInput {
   // Borrowed for the whole configuration's lifetime. Control owner must retain
   // ports until a subsequent setInputs() has acknowledged their removal.
   RemoteAudioPcmPort* port = nullptr;
-  float volume = 1.0f;
+  float volume = 1.0f; // product output (0..3) times source gain (0..3)
   bool muted = false;
 };
 struct RemoteAudioMixStats {

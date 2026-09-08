@@ -219,6 +219,7 @@ export class VoiceDirector {
         this.updateDesiredMedia({
           cameraEnabled: command.enabled,
           cameraDeviceId: command.deviceId,
+          cameraProfile: command.profile ?? this.desiredMedia.cameraProfile,
         })
         return
       case 'setScreen':
@@ -226,6 +227,16 @@ export class VoiceDirector {
           screenEnabled: command.enabled,
           screenSourceId: command.sourceId,
           screenAudioEnabled: command.enabled && Boolean(command.audioEnabled),
+          screenAudioMode: command.audioMode ?? this.desiredMedia.screenAudioMode,
+          screenWidth: command.width,
+          screenHeight: command.height,
+          screenFps: command.fps,
+          screenBitrate: command.bitrate,
+          screenAudioBitrate: command.audioBitrate,
+        })
+        return
+      case 'setScreenProfile':
+        this.updateDesiredMedia({
           screenWidth: command.width,
           screenHeight: command.height,
           screenFps: command.fps,

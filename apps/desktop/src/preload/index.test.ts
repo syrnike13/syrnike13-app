@@ -36,7 +36,7 @@ const electron = vi.hoisted(() => {
       ),
     },
     sharedTexture: {
-      setSharedTextureReceiver: vi.fn(),
+      subtle: { finishTransferSharedTexture: vi.fn() },
     },
     emit(channel: string, payload: unknown) {
       for (const listener of listeners.get(channel) ?? []) {
@@ -57,6 +57,8 @@ import {
   type DesktopDisplayMediaSource,
   type SyrnikeDesktopApi,
 } from '@syrnike13/platform'
+import { MEDIA_TEXTURE_ACK, MEDIA_TEXTURE_TRANSFER } from '../media-texture-contract'
+import { createInactiveMediaPaths } from '../main/media-runtime/contract'
 
 describe('desktop preload media runtime bridge', () => {
   let desktop: SyrnikeDesktopApi
@@ -66,11 +68,48 @@ describe('desktop preload media runtime bridge', () => {
     desktop = electron.exposed as SyrnikeDesktopApi
   })
 
+  it('acknowledges transfer separately from GPU release and closes a failed frame', () => {
+    let gpuReleased: () => void = () => {}
+    const frame = { close: vi.fn() }
+    electron.sharedTexture.subtle.finishTransferSharedTexture.mockReturnValue({
+      getFrameCreationSyncToken: vi.fn(() => ({ syncToken: 'verified' })),
+      getVideoFrame: () => frame,
+      release: (callback: () => void) => { gpuReleased = callback },
+    })
+    const postMessage = vi.fn()
+    vi.stubGlobal('window', { location: { origin: 'https://fixture.invalid' }, postMessage })
+    const payload = {
+      id: '12345678-1234-1234-1234-123456789012', metadata: { runtimeEpoch: 2 },
+      transfer: {
+        transfer: 'opaque', syncToken: 'opaque', pixelFormat: 'bgra',
+        codedSize: { width: 16, height: 16 }, visibleRect: { x: 0, y: 0, width: 16, height: 16 }, timestamp: 1,
+      },
+    }
+    try {
+      electron.ipcRenderer.send.mockClear()
+      electron.emit(MEDIA_TEXTURE_TRANSFER, payload)
+      expect(postMessage).toHaveBeenCalledOnce()
+      expect(electron.ipcRenderer.send).toHaveBeenCalledExactlyOnceWith(MEDIA_TEXTURE_ACK, { id: payload.id, phase: 'imported' })
+      expect(frame.close).not.toHaveBeenCalled()
+      gpuReleased()
+      expect(electron.ipcRenderer.send).toHaveBeenLastCalledWith(MEDIA_TEXTURE_ACK, { id: payload.id, phase: 'released' })
+      postMessage.mockImplementationOnce(() => { throw new Error('document gone') })
+      electron.ipcRenderer.send.mockClear()
+      electron.emit(MEDIA_TEXTURE_TRANSFER, payload)
+      expect(frame.close).toHaveBeenCalledOnce()
+      expect(electron.ipcRenderer.send).not.toHaveBeenCalled()
+      gpuReleased()
+      expect(electron.ipcRenderer.send).toHaveBeenCalledExactlyOnceWith(MEDIA_TEXTURE_ACK, { id: payload.id, phase: 'released' })
+    } finally { vi.unstubAllGlobals() }
+  })
+
   it('invokes runtime state and retry IPC channels', async () => {
     const unavailable = {
       available: false,
       status: 'unavailable',
       restartCount: 0,
+      hostEpoch: 0,
+      paths: createInactiveMediaPaths(),
       failure: {
         code: 'native_media_unavailable',
         message: 'Native media is unavailable while the v2 engine is rebuilt.',
@@ -183,6 +222,8 @@ describe('desktop preload media runtime bridge', () => {
       available: false,
       status: 'unavailable',
       restartCount: 0,
+      hostEpoch: 0,
+      paths: createInactiveMediaPaths(),
       failure: {
         code: 'native_media_unavailable',
         message: 'Native media is unavailable while the v2 engine is rebuilt.',
@@ -197,6 +238,8 @@ describe('desktop preload media runtime bridge', () => {
       available: false,
       status: 'unavailable',
       restartCount: 0,
+      hostEpoch: 0,
+      paths: createInactiveMediaPaths(),
       failure: {
         code: 'native_media_unavailable',
         message: 'Native media is unavailable while the v2 engine is rebuilt.',

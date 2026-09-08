@@ -79,6 +79,7 @@ CameraPublicationFailure CameraPublication::start() {
   }
   return state_->failure.load();
 }
+void CameraPublication::cancel() noexcept { state_->cancel(); }
 bool CameraPublication::stop(Clock::time_point deadline) noexcept {
   if (owner_ != std::this_thread::get_id()) return false;
   state_->cancel();
@@ -150,12 +151,14 @@ void CameraPublication::run(const std::shared_ptr<State>& state) noexcept {
       try {
         if (state->track && state->track->publication() && state->participant)
           state->participant->unpublishTrack(state->track->publication()->sid());
-        state->track.reset();
-        state->source.reset();
-        state->participant.reset();
-        state->published = false;
-        SetEvent(state->unpublished.value);
       } catch (...) { state->fail(CameraPublicationFailure::publish_failed); }
+      // A server-side disconnect can make unpublish fail after the track is
+      // already gone. Local release must still complete on the SDK owner lane.
+      state->track.reset();
+      state->source.reset();
+      state->participant.reset();
+      state->published = false;
+      SetEvent(state->unpublished.value);
     }, deadline) || WaitForSingleObject(state->unpublished.value, remaining(deadline)) != WAIT_OBJECT_0)
       state->fail(CameraPublicationFailure::timeout);
   } catch (...) { state->fail(CameraPublicationFailure::timeout); }

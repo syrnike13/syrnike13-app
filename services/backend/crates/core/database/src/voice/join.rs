@@ -26,8 +26,8 @@ use crate::{
         delete_channel_voice_state, finish_voice_call_started_system_message, get_channel_node,
         get_current_voice_reservation, get_current_voice_session, get_user_voice_channel_in_server,
         get_voice_channel_members, get_voice_participant_reconciliation, is_in_voice_channel,
-        raise_if_in_voice, remove_user_from_voice_channel, set_call_notification_recipients,
-        set_channel_node, voice_participant_identity,
+        native_camera_profiles, raise_if_in_voice, remove_user_from_voice_channel,
+        set_call_notification_recipients, set_channel_node, voice_participant_identity,
     },
 };
 use iso8601_timestamp::{Duration, Timestamp};
@@ -441,6 +441,7 @@ pub async fn join_voice_channel(
             connection_epoch: connection_epoch.to_string(),
             token,
             identity,
+            camera_profiles: native_camera_profiles(&user.limits().await, current_permissions),
         },
     })
 }
@@ -834,7 +835,7 @@ pub async fn refresh_voice_credentials(
         operation_id,
         connection_epoch,
     );
-    let token = if let Some(server_id) = temporary_server_id {
+    let (token, camera_profiles) = if let Some(server_id) = temporary_server_id {
         with_temporary_voice_user_lock(db, &user.id, || async {
             db.fetch_member(&server_id, &user.id).await?;
             let mut locked_permissions = perms(db, user).channel(&channel);
@@ -851,15 +852,21 @@ pub async fn refresh_voice_credentials(
             {
                 return Err(create_error!(InvalidOperation));
             }
-            voice_client
+            let token = voice_client
                 .create_token_for_identity(&node, db, user, &identity, locked_permissions, &channel)
-                .await
+                .await?;
+            let camera_profiles = native_camera_profiles(&user.limits().await, locked_permissions);
+            Ok((token, camera_profiles))
         })
         .await?
     } else {
-        voice_client
+        let token = voice_client
             .create_token_for_identity(&node, db, user, &identity, current_permissions, &channel)
-            .await?
+            .await?;
+        (
+            token,
+            native_camera_profiles(&user.limits().await, current_permissions),
+        )
     };
 
     Ok(VoiceJoinCredentials {
@@ -872,6 +879,7 @@ pub async fn refresh_voice_credentials(
             connection_epoch: connection_epoch.to_string(),
             token,
             identity,
+            camera_profiles,
         },
     })
 }

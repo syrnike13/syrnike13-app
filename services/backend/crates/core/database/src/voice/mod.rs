@@ -25,7 +25,7 @@ pub mod call_lifecycle;
 mod join;
 mod session;
 mod voice_client;
-pub use crate::events::client::{VoiceRtcCredential, VoiceRtcEngine};
+pub use crate::events::client::{VoiceCameraProfile, VoiceRtcCredential, VoiceRtcEngine};
 pub use join::*;
 pub use session::*;
 pub use voice_client::VoiceClient;
@@ -410,6 +410,32 @@ fn get_allowed_track_sources(
     };
 
     allowed_sources
+}
+
+/// Fixed native camera modes admitted by the same video limits as ingress.
+pub fn native_camera_profiles(
+    limits: &FeaturesLimits,
+    permissions: PermissionValue,
+) -> Vec<VoiceCameraProfile> {
+    if !limits.video || !permissions.has(ChannelPermission::Video as u64) {
+        return Vec::new();
+    }
+    let [minimum_aspect, maximum_aspect] = limits.video_aspect_ratio;
+    if minimum_aspect != maximum_aspect
+        && !(minimum_aspect..=maximum_aspect).contains(&(16.0_f32 / 9.0))
+    {
+        return Vec::new();
+    }
+    let [width_limit, height_limit] = limits.video_resolution;
+    let unlimited_area = width_limit == 0 || height_limit == 0;
+    let maximum_area = u64::from(width_limit) * u64::from(height_limit);
+    [
+        (VoiceCameraProfile::Hd720p30, 1280_u64 * 720),
+        (VoiceCameraProfile::Hd1080p30, 1920_u64 * 1080),
+    ]
+    .into_iter()
+    .filter_map(|(profile, area)| (unlimited_area || area <= maximum_area).then_some(profile))
+    .collect()
 }
 
 pub fn get_allowed_sources(
@@ -1223,6 +1249,9 @@ pub async fn sync_user_voice_permissions(
             if let Some(state) = get_voice_state(&user_voice_channel, &user.id).await? {
                 publish_voice_state_snapshot(channel_id, &state).await;
             }
+            // Voice Director consumes the private authority stream, while the
+            // public channel snapshot updates participant presentation.
+            publish_authoritative_voice_snapshot(&user.id).await?;
         };
     };
 
@@ -1662,7 +1691,10 @@ impl FromRedisValue for UserVoiceChannel {
 
 #[cfg(test)]
 mod tests {
-    use super::{livekit_participant_permission, partial_voice_state_for_track};
+    use super::{
+        livekit_participant_permission, native_camera_profiles, partial_voice_state_for_track,
+        VoiceCameraProfile,
+    };
     use crate::{SystemMessage, VoiceCallEndReason};
     use iso8601_timestamp::{Duration, Timestamp};
     use livekit_protocol::TrackSource;
@@ -1724,9 +1756,8 @@ mod tests {
         assert_eq!(partial, PartialUserVoiceState::default());
     }
 
-    #[test]
-    fn server_mute_revokes_only_microphone_publication() {
-        let limits = FeaturesLimits {
+    fn video_limits() -> FeaturesLimits {
+        FeaturesLimits {
             outgoing_friend_requests: 0,
             bots: 0,
             message_length: 0,
@@ -1739,7 +1770,84 @@ mod tests {
             screen_share_resolution: [1920, 1080],
             screen_share_bitrate: 10_000_000,
             file_upload_size_limit: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn native_camera_profiles_follow_ingress_pixel_area() {
+        let permissions = PermissionValue::from(ChannelPermission::Video as u64);
+        for (resolution, expected) in [
+            ([1080, 720], vec![]),
+            ([1280, 720], vec![VoiceCameraProfile::Hd720p30]),
+            ([720, 1280], vec![VoiceCameraProfile::Hd720p30]),
+            (
+                [1920, 1080],
+                vec![VoiceCameraProfile::Hd720p30, VoiceCameraProfile::Hd1080p30],
+            ),
+        ] {
+            let limits = FeaturesLimits {
+                video_resolution: resolution,
+                ..video_limits()
+            };
+            assert_eq!(
+                native_camera_profiles(&limits, permissions),
+                expected,
+                "{resolution:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_camera_profiles_require_video_entitlement_and_permission() {
+        let permissions = PermissionValue::from(ChannelPermission::Video as u64);
+        assert!(native_camera_profiles(&video_limits(), PermissionValue::from(0_u64)).is_empty());
+        let limits = FeaturesLimits {
+            video: false,
+            ..video_limits()
         };
+        assert!(native_camera_profiles(&limits, permissions).is_empty());
+    }
+
+    #[test]
+    fn native_camera_profiles_follow_ingress_aspect_range() {
+        let permissions = PermissionValue::from(ChannelPermission::Video as u64);
+        for (aspect, allowed) in [
+            ([0.3, 1.5], false),
+            ([2.0, 2.5], false),
+            ([16.0_f32 / 9.0, 2.5], true),
+            ([0.3, 16.0_f32 / 9.0], true),
+            ([1.0, 1.0], true),
+        ] {
+            let limits = FeaturesLimits {
+                video_aspect_ratio: aspect,
+                ..video_limits()
+            };
+            assert_eq!(
+                !native_camera_profiles(&limits, permissions).is_empty(),
+                allowed,
+                "{aspect:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_camera_profiles_disable_area_cap_if_either_dimension_is_zero() {
+        let permissions = PermissionValue::from(ChannelPermission::Video as u64);
+        for resolution in [[0, 720], [1280, 0], [0, 0]] {
+            let limits = FeaturesLimits {
+                video_resolution: resolution,
+                ..video_limits()
+            };
+            assert_eq!(
+                native_camera_profiles(&limits, permissions),
+                vec![VoiceCameraProfile::Hd720p30, VoiceCameraProfile::Hd1080p30]
+            );
+        }
+    }
+
+    #[test]
+    fn server_mute_revokes_only_microphone_publication() {
+        let limits = video_limits();
         let permissions = PermissionValue::from(
             ChannelPermission::Listen as u64 | ChannelPermission::Video as u64,
         );

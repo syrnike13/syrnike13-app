@@ -22,6 +22,8 @@ struct WgcWindowCaptureOptions {
   bool request_d3d_debug_layer = kDefaultD3dDebugLayer;
   std::shared_ptr<WgcWindowCaptureTestHooks> test_hooks;
   bool include_cursor = true;
+  std::uint32_t maximum_width = 0, maximum_height = 0;
+  std::uint32_t frame_pool_size = kMaximumWindowFrames + 1;
 };
 
 class WgcWindowCaptureBackend : public WindowCaptureBackend {

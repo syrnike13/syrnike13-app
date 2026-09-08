@@ -17,6 +17,11 @@ endpoint system loopback. The virtual endpoint spans rendering endpoints;
 changing the default output does not intentionally select a different capture
 source. Device invalidation remains an explicit capture failure.
 
+Each capture uses a distinct WASAPI session GUID. Joining the default process
+session lets its output mute/volume suppress loopback PCM, even when the
+captured application is audible. The capture session leaves that output state
+untouched. The product smoke checks received screen-audio energy while deafened.
+
 Source resolution retains a process handle, validates its creation time and
 rechecks the window registry identity. Process exit is observed through the
 process handle, independently of video and Room.
@@ -57,8 +62,12 @@ mode was rejected by the slow-ingress observer test because stopping its audio
 clock caused persistent receiver delay after capture resumed. No buffer grows
 to smooth drift. After a publication-worker gap over 100 ms, the ingress queue
 discards all but the latest packet; freshness is checked again immediately
-before the SDK call. The SDK callback deadline is 100 ms, with an explicit typed
+before the SDK call. The SDK callback deadline is 500 ms, with an explicit typed
 timeout and utility-retirement requirement if native completion is uncertain.
+The product all-media run observed a successful callback after 155 ms; the old
+100 ms completion wait treated that delay as terminal. This deadline bounds the
+calling worker, not the audio queue: clocked storage and input-age rejection
+remain unchanged. Numeric telemetry records maximum callback wait separately.
 
 ## Independent lifecycle
 

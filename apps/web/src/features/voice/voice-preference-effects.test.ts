@@ -5,6 +5,7 @@ import type { VoicePreferenceState } from './voice-preference-store'
 
 const base: VoicePreferenceState = {
   micEnabled: true,
+  cameraProfile: 'hd720p30',
   deafened: false,
   inputVolume: 1,
   outputVolume: 1,
@@ -16,6 +17,7 @@ const base: VoicePreferenceState = {
   voiceGateThresholdDb: -28,
   voiceGateAutoThreshold: true,
   screenShareQuality: 'low',
+  nativeScreenShareProfile: '720p30',
   screenShareCodec: 'auto',
   screenShareAudio: true,
   screenShareCaptureMode: 'auto',

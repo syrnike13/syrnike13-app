@@ -8,6 +8,10 @@ import {
 } from '#/features/voice/voice-preference-types'
 import {
   DesktopVoiceSettingsSchema,
+  DesktopCameraProfileSchema,
+  DesktopNativeScreenShareProfileSchema,
+  type DesktopCameraProfile,
+  type DesktopNativeScreenShareProfile,
   type DesktopVoiceSettings,
 } from '@syrnike13/platform'
 import {
@@ -63,6 +67,7 @@ export function defaultScreenShareQuality(): ScreenShareQualityName {
 }
 
 const DEFAULT_STATE: VoicePreferenceState = {
+  cameraProfile: 'hd720p30',
   micEnabled: true,
   deafened: false,
   inputVolume: 1,
@@ -75,6 +80,7 @@ const DEFAULT_STATE: VoicePreferenceState = {
   voiceGateThresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
   voiceGateAutoThreshold: true,
   screenShareQuality: defaultScreenShareQuality(),
+  nativeScreenShareProfile: '720p30',
   screenShareCodec: 'auto',
   screenShareAudio: true,
   screenShareCaptureMode: 'auto',
@@ -157,6 +163,10 @@ export function normalizeVoicePreferenceState(
       typeof parsed.preferredVideoDevice === 'string'
         ? parsed.preferredVideoDevice
         : undefined,
+    cameraProfile: Option.getOrElse(
+      Schema.decodeUnknownOption(DesktopCameraProfileSchema)(parsed.cameraProfile),
+      () => DEFAULT_STATE.cameraProfile,
+    ),
     inputVolume:
       typeof parsed.inputVolume === 'number' &&
       parsed.inputVolume >= 0 &&
@@ -195,6 +205,12 @@ export function normalizeVoicePreferenceState(
         ? parsed.voiceGateAutoThreshold
         : DEFAULT_STATE.voiceGateAutoThreshold,
     screenShareQuality: parseScreenShareQuality(parsed.screenShareQuality),
+    nativeScreenShareProfile: Option.getOrElse(
+      Schema.decodeUnknownOption(DesktopNativeScreenShareProfileSchema)(
+        parsed.nativeScreenShareProfile,
+      ),
+      () => DEFAULT_STATE.nativeScreenShareProfile,
+    ),
     screenShareCodec: parseScreenShareCodec(parsed.screenShareCodec),
     screenShareAudio:
       typeof parsed.screenShareAudio === 'boolean'
@@ -314,6 +330,7 @@ export const voicePreferenceStore = {
   getPreferredAudioInputDevice: () => state.preferredAudioInputDevice,
   getPreferredAudioOutputDevice: () => state.preferredAudioOutputDevice,
   getPreferredVideoDevice: () => state.preferredVideoDevice,
+  getCameraProfile: () => state.cameraProfile,
 
   setMicEnabled: (micEnabled: boolean) => {
     if (state.micEnabled === micEnabled) return
@@ -368,6 +385,10 @@ export const voicePreferenceStore = {
     if (state.preferredVideoDevice === deviceId) return
     patch({ preferredVideoDevice: deviceId })
   },
+  setCameraProfile: (cameraProfile: DesktopCameraProfile) => {
+    if (state.cameraProfile === cameraProfile) return
+    patch({ cameraProfile })
+  },
   setEchoCancellation: (echoCancellation: boolean) => {
     if (state.echoCancellation === echoCancellation) return
     patch({ echoCancellation })
@@ -390,6 +411,12 @@ export const voicePreferenceStore = {
   setScreenShareQuality: (screenShareQuality: ScreenShareQualityName) => {
     if (state.screenShareQuality === screenShareQuality) return
     patch({ screenShareQuality })
+  },
+  setNativeScreenShareProfile: (
+    nativeScreenShareProfile: DesktopNativeScreenShareProfile,
+  ) => {
+    if (state.nativeScreenShareProfile === nativeScreenShareProfile) return
+    patch({ nativeScreenShareProfile })
   },
   setScreenShareCodec: (screenShareCodec: ScreenShareCodec) => {
     if (state.screenShareCodec === screenShareCodec) return

@@ -60,10 +60,9 @@ const desktopRequire = createRequire(
 const electronVersion = desktopRequire('electron/package.json').version
 const buildCommitSha = process.env.GITHUB_SHA || gitCommitSha()
 
-run('pnpm', [
+const cmakeArgs = [
   'exec',
   'cmake-js',
-  'compile',
   '--directory',
   nativeRoot,
   '--out',
@@ -79,7 +78,12 @@ run('pnpm', [
   `--CDNAPI_VERSION=${NAPI_VERSION}`,
   `--CDSYRNIKE_ENABLE_ASAN=${enableAsan ? 'ON' : 'OFF'}`,
   `--CDSYRNIKE_NATIVE_COMMIT=${buildCommitSha}`,
-])
+]
+
+// compile reuses cached definitions, including the commit embedded in the
+// addon. Refresh them before writing a manifest for this checkout.
+run('pnpm', [...cmakeArgs.slice(0, 2), 'configure', ...cmakeArgs.slice(2)])
+run('pnpm', [...cmakeArgs.slice(0, 2), 'compile', ...cmakeArgs.slice(2)])
 
 if (!shouldStage) {
   console.info(`[desktop-native] ${configuration} hook build completed without staging`)

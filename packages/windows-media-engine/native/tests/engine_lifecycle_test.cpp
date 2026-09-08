@@ -2,6 +2,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
+#include <future>
 #include <latch>
 #include <mutex>
 #include <stdexcept>
@@ -11,6 +12,7 @@
 
 #include "core/engine.hpp"
 #include "core/room_owner.hpp"
+#include "core/media_runtime.hpp"
 
 namespace syrnike::windows_media::tests {
 void runRoomOwnerTests();
@@ -136,6 +138,11 @@ public:
     complete_disconnect_inline_ = true;
   }
 
+  bool disconnectStarted() const {
+    std::lock_guard lock(mutex_);
+    return bool(disconnect_);
+  }
+
   void rejectCancellationAsTooLate() {
     std::lock_guard lock(mutex_);
     cancel_accepted_ = false;
@@ -151,6 +158,51 @@ private:
   std::size_t connect_starts_ = 0;
   bool complete_disconnect_inline_ = false;
   bool cancel_accepted_ = true;
+};
+
+class ManualMediaRuntime final : public syrnike::windows_media::MediaRuntime {
+ public:
+  void apply(const EngineDesiredState& desired, std::optional<std::uint64_t> room) override {
+    std::lock_guard lock(mutex);
+    room_generation = room;
+    current.stopped = false;
+    if (room) current.publications_stopped = false;
+    for (auto& path : current.paths) path.revision = desired.revision;
+  }
+  void beginStop() override { stop_requested.count_down(); }
+  syrnike::windows_media::MediaRuntimeSnapshot snapshot() const override {
+    std::lock_guard lock(mutex);
+    return current;
+  }
+  void release(bool all) {
+    std::lock_guard lock(mutex);
+    current.publications_stopped = true;
+    current.stopped = all;
+  }
+  void failMicrophone() {
+    std::lock_guard lock(mutex);
+    current.paths[0].state = syrnike::windows_media::MediaPathState::Failed;
+    current.paths[0].failure = EngineFailure{"input_unavailable", "Input unavailable", "microphone", true};
+  }
+  void requireRestart() {
+    std::lock_guard lock(mutex);
+    current.failure = EngineFailure{"screen_audio_requires_restart", "SDK work still pending", "screenAudio", true};
+  }
+  void setAudioMetrics(bool active) {
+    std::lock_guard lock(mutex);
+    if (!active) { current.screen_audio_metrics.reset(); return; }
+    current.screen_audio_metrics.emplace();
+    for (auto& metric : *current.screen_audio_metrics) metric = {"captured", 42};
+  }
+  bool hasRoom() const {
+    std::lock_guard lock(mutex);
+    return room_generation.has_value();
+  }
+  std::latch stop_requested{1};
+ private:
+  mutable std::mutex mutex;
+  std::optional<std::uint64_t> room_generation;
+  syrnike::windows_media::MediaRuntimeSnapshot current;
 };
 
 void transitionTable() {
@@ -302,7 +354,83 @@ EngineDesiredState desiredState(std::uint64_t revision, std::string room_id) {
       {},
       {},
       {RemoteVideoDemand{"participant-2", "publication-1"}},
+      "renderer-1",
   };
+}
+
+void mediaQuiescesBeforeRoomTeardown() {
+  auto transport = std::make_shared<EngineRoomTransport>();
+  auto media = std::make_shared<ManualMediaRuntime>();
+  Engine engine(EngineOptions{.room_transport = transport, .media_runtime = media});
+  requireOk(engine.start(), "media Engine start");
+  require(engine.installCredentialLease({"lease-1", "ws://localhost", "token"}).ok, "lease failed");
+  require(engine.applyDesiredState(desiredState(1, "room-a")).ok, "media intent failed");
+  require(!media->hasRoom(), "Media received an unconnected Room generation");
+  transport->completeConnect();
+  require(engine.querySnapshot().snapshot->room_state == RoomStateChangedEvent::State::Connected,
+          "Room did not connect");
+  require(media->hasRoom(), "Connected generation was not delivered");
+  media->failMicrophone();
+  const auto failed_path = engine.querySnapshot().snapshot;
+  require(failed_path->tracks[0].failure && failed_path->room_state == RoomStateChangedEvent::State::Connected,
+          "Media failure changed Room membership or was not projected");
+  auto off = desiredState(2, "room-a");
+  off.room.reset();
+  require(engine.applyDesiredState(off).ok, "Off intent blocked on media stop");
+  requireOk(engine.ping(), "Control blocked on media stop");
+  require(!media->hasRoom() && !transport->disconnectStarted(),
+          "Room disconnected before publication release");
+  media->release(false);
+  transport->waitForDisconnect();
+  transport->completeDisconnect();
+  require(engine.querySnapshot().snapshot->room_state == RoomStateChangedEvent::State::Off,
+          "Room off did not settle after publication release");
+  auto shutdown = std::async(std::launch::async, [&] { return engine.shutdown(); });
+  media->stop_requested.wait();
+  require(shutdown.wait_for(std::chrono::milliseconds(30)) == std::future_status::timeout,
+          "Shutdown completed while capture/decoder owners remained alive");
+  media->release(true);
+  requireOk(shutdown.get(), "Media owner shutdown");
+}
+
+void mediaQuiesceDeadlineRetiresEngine() {
+  auto transport = std::make_shared<EngineRoomTransport>();
+  transport->completeDisconnectInline();
+  auto media = std::make_shared<ManualMediaRuntime>();
+  Engine engine(EngineOptions{.room_transport = transport, .media_runtime = media,
+      .room_operation_deadlines = {.disconnect = std::chrono::milliseconds(50)}});
+  requireOk(engine.start(), "quiesce deadline start");
+  require(engine.installCredentialLease({"lease-1", "ws://localhost", "token"}).ok, "lease failed");
+  require(engine.applyDesiredState(desiredState(1, "room-a")).ok, "intent failed");
+  transport->completeConnect();
+  (void)engine.querySnapshot();
+  auto off = desiredState(2, "room-a");
+  off.room.reset();
+  require(engine.applyDesiredState(off).ok, "off failed");
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  while (engine.state() == EngineState::Running && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  require(engine.state() == EngineState::Failed, "Publication quiesce had no bounded failure");
+  media->release(true);
+  requireOk(engine.shutdown(), "quiesce deadline cleanup");
+}
+
+void unsafeMediaOwnerRetiresEngine() {
+  auto media = std::make_shared<ManualMediaRuntime>();
+  Engine engine(EngineOptions{.media_runtime = media});
+  std::atomic<unsigned> failures{0};
+  requireOk(engine.registerEventCallback([&](const PublicEvent& event) {
+    if (const auto* fatal = std::get_if<syrnike::windows_media::FatalEngineFailureEvent>(&event);
+        fatal && fatal->failure.code == "screen_audio_requires_restart") ++failures;
+  }), "media failure callback");
+  requireOk(engine.start(), "media owner failure start");
+  media->requireRestart();
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  while (engine.state() != EngineState::Failed && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  require(engine.state() == EngineState::Failed && failures == 1, "unsafe owner did not retire the engine exactly once");
+  media->release(true);
+  requireOk(engine.shutdown(), "media owner failure cleanup");
 }
 
 void desiredStateRevisionMatrix() {
@@ -344,7 +472,8 @@ void desiredStateRevisionMatrix() {
       ++track_events;
   }
   require(room_events == 1, "initial desired state did not emit a room event");
-  require(track_events == 4, "initial desired state did not emit track events");
+  require(track_events == syrnike::windows_media::kMediaPathCount,
+          "initial desired state did not emit independent path events");
 
   const auto snapshot = engine.querySnapshot();
   require(snapshot.ok && snapshot.snapshot &&
@@ -382,6 +511,60 @@ void invalidStateDoesNotPartiallyApply() {
   requireOk(engine.shutdown(), "invalid-state shutdown");
 }
 
+void activeMediaIntentIsAtomicAndBounded() {
+  using namespace syrnike::windows_media;
+  Engine engine;
+  requireOk(engine.start(), "media-intent start");
+  auto desired = desiredState(1, "room-a");
+  desired.microphone.state = MicrophoneIntentState::on;
+  desired.microphone.muted = true;
+  desired.microphone.input_volume = 1;
+  desired.microphone.gate_threshold_db = -50;
+  desired.camera.state = CameraIntentState::on;
+  desired.camera.profile = CameraIntentProfile::hd1080p30;
+  desired.camera.publication = true;
+  desired.screen.state = ScreenIntentState::on;
+  desired.screen.source_id = "source-1";
+  desired.screen.width = 1920;
+  desired.screen.height = 1080;
+  desired.screen.fps = 60;
+  desired.screen.bitrate = 8'000'000;
+  desired.screen.audio_bitrate = 128'000;
+  desired.output.state = OutputIntentState::on;
+  desired.output.users.push_back({"participant-2", 0.5, false});
+  require(engine.applyDesiredState(desired).ok, "active media intent rejected");
+  auto invalid = desired;
+  invalid.revision = 2;
+  invalid.microphone.input_volume = 4.01;
+  require(!engine.applyDesiredState(invalid).ok, "invalid DSP volume accepted");
+  invalid = desired;
+  invalid.revision = 3;
+  invalid.screen.fps = 0;
+  require(!engine.applyDesiredState(invalid).ok, "zero target FPS accepted");
+  invalid = desired;
+  invalid.revision = 4;
+  invalid.output.users.resize(1025, {"participant", 1, false});
+  require(!engine.applyDesiredState(invalid).ok, "unbounded audio settings accepted");
+  const auto snapshot = engine.querySnapshot();
+  require(snapshot.ok && snapshot.snapshot &&
+              snapshot.snapshot->desired_state == desired,
+          "invalid media update partially changed accepted intent");
+  requireOk(engine.shutdown(), "media-intent shutdown");
+}
+
+void supersededCredentialsDoNotExhaustThePrivateStore() {
+  Engine engine;
+  requireOk(engine.start(), "credential churn start");
+  for (unsigned index = 0; index < 100; ++index) {
+    require(engine.installCredentialLease({
+      "superseded-" + std::to_string(index), "ws://localhost", "private-token",
+    }).ok, "superseded credentials exhausted the lease budget");
+  }
+  require(engine.installCredentialLease({"latest", "ws://localhost", "private-token"}).ok,
+          "latest credential rejected after churn");
+  requireOk(engine.shutdown(), "credential churn shutdown");
+}
+
 void diagnosticsCannotMutateState() {
   Engine engine;
   std::vector<DiagnosticEvent> diagnostics;
@@ -401,6 +584,35 @@ void diagnosticsCannotMutateState() {
               snapshot.snapshot->accepted_revision == 4,
           "diagnostic callback changed engine state");
   requireOk(engine.shutdown(), "diagnostic shutdown");
+}
+
+void mediaDiagnosticsAreBoundedAndOptional() {
+  auto media = std::make_shared<ManualMediaRuntime>();
+  Engine engine(EngineOptions{.media_runtime = media});
+  std::mutex mutex;
+  std::condition_variable changed;
+  std::size_t samples = 0;
+  bool valid = true;
+  requireOk(engine.registerDiagnosticEventCallback([&](const DiagnosticEvent& event) {
+    if (event.code != "screen_audio_metrics") return;
+    std::lock_guard lock(mutex);
+    valid = valid && event.metrics.size() == 12 && event.metrics[0].value == 42;
+    ++samples;
+    changed.notify_one();
+  }), "register media diagnostics");
+  requireOk(engine.start(), "media diagnostic start");
+  media->setAudioMetrics(true);
+  {
+    std::unique_lock lock(mutex);
+    require(changed.wait_for(lock, std::chrono::seconds{1}, [&] { return samples == 1; }),
+            "media diagnostic was not emitted");
+    require(!changed.wait_for(lock, std::chrono::milliseconds{200}, [&] { return samples > 1; }),
+            "media diagnostics flooded the callback");
+    require(valid, "media diagnostics lost their bounded cached values");
+  }
+  media->setAudioMetrics(false);
+  requireOk(engine.ping(), "diagnostics kept the control lane responsive");
+  requireOk(engine.shutdown(), "media diagnostic shutdown");
 }
 
 void expiredApplyNeverCommitsLate() {
@@ -781,6 +993,9 @@ void unexpectedRoomLossReachesEngineSnapshot() {
 }
 
 int main() try {
+  mediaQuiescesBeforeRoomTeardown();
+  mediaQuiesceDeadlineRetiresEngine();
+  unsafeMediaOwnerRetiresEngine();
   unexpectedRoomLossReachesEngineSnapshot();
   transitionTable();
   shutdownDuringStarting();
@@ -789,7 +1004,10 @@ int main() try {
   deterministicStartupRollback();
   desiredStateRevisionMatrix();
   invalidStateDoesNotPartiallyApply();
+  activeMediaIntentIsAtomicAndBounded();
+  supersededCredentialsDoNotExhaustThePrivateStore();
   diagnosticsCannotMutateState();
+  mediaDiagnosticsAreBoundedAndOptional();
   expiredApplyNeverCommitsLate();
   expiredCredentialLeaseNeverCommitsLate();
   roomCompletionBurstPreservesTerminalState();

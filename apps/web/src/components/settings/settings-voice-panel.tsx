@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Effect, Fiber, Option, Schema } from 'effect'
+import { DesktopCameraProfileSchema } from '@syrnike13/platform'
 
 import {
   SettingsBlock,
@@ -12,6 +13,7 @@ import { Switch } from '#/components/ui/switch'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -28,6 +30,9 @@ import {
   SCREEN_SHARE_QUALITY_LABELS,
   ScreenShareCaptureModeSchema,
   ScreenShareQualitySchema,
+  NativeScreenShareProfileSchema,
+  NATIVE_SCREEN_SHARE_PROFILES,
+  NATIVE_SCREEN_SHARE_PROFILE_LABELS,
 } from '#/features/voice/voice-preference-types'
 import { usePlatform } from '#/platform/use-platform'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
@@ -66,27 +71,29 @@ function DeviceSelectField({
   onChange: (deviceId: string) => void
 }) {
   const selectableDevices = devices.filter((device) => device.deviceId.length > 0)
-  const selectValue =
-    value.length > 0 &&
-    (value === 'default' ||
-      selectableDevices.some((device) => device.deviceId === value))
-      ? value
-      : 'default'
+  const selectValue = value.length > 0 ? value : 'default'
+  const unavailable = selectValue !== 'default' &&
+    !selectableDevices.some((device) => device.deviceId === selectValue)
 
   return (
     <div className="space-y-2">
       <p className="text-base font-medium">{label}</p>
       <Select value={selectValue} onValueChange={onChange}>
-        <SelectTrigger className="w-full">
+        <SelectTrigger aria-label={label} className="w-full">
           <SelectValue placeholder="По умолчанию" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="default">По умолчанию</SelectItem>
-          {selectableDevices.map((device) => (
-            <SelectItem key={device.deviceId} value={device.deviceId}>
-              {device.label || 'Устройство'}
-            </SelectItem>
-          ))}
+          <SelectGroup>
+            <SelectItem value="default">По умолчанию</SelectItem>
+            {unavailable ? (
+              <SelectItem value={selectValue} disabled>Устройство недоступно</SelectItem>
+            ) : null}
+            {selectableDevices.map((device) => (
+              <SelectItem key={device.deviceId} value={device.deviceId}>
+                {device.label || 'Устройство'}
+              </SelectItem>
+            ))}
+          </SelectGroup>
         </SelectContent>
       </Select>
     </div>
@@ -152,6 +159,7 @@ export function SettingsVoicePanel() {
   const setSelfMonitoringActiveRef = useRef(setSelfMonitoringActive)
   const inputDevices = useMediaDevices('audioinput')
   const outputDevices = useMediaDevices('audiooutput')
+  const cameraDevices = useMediaDevices('videoinput')
   const [micTestActive, setMicTestActive] = useState(false)
   const av1Supported = isAv1ScreenShareSupported()
 
@@ -206,6 +214,46 @@ export function SettingsVoicePanel() {
 
   return (
     <div className="space-y-2">
+      {os === 'win32' ? (
+        <SettingsBlock title="Камера">
+          <DeviceSelectField
+            label="Устройство камеры"
+            devices={cameraDevices}
+            value={prefs.preferredVideoDevice ?? 'default'}
+            onChange={(deviceId) => {
+              voicePreferenceStore.setPreferredVideoDevice(
+                deviceId === 'default' ? undefined : deviceId,
+              )
+            }}
+          />
+          <SettingsRow label="Качество видео">
+            <Select
+              value={prefs.cameraProfile}
+              onValueChange={(value) => {
+                const profile = Schema.decodeUnknownOption(
+                  DesktopCameraProfileSchema,
+                )(value)
+                if (Option.isSome(profile)) {
+                  voicePreferenceStore.setCameraProfile(profile.value)
+                }
+              }}
+            >
+              <SelectTrigger
+                aria-label="Качество видео камеры"
+                className="w-[220px] max-w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="hd720p30">720p · 30 FPS</SelectItem>
+                  <SelectItem value="hd1080p30">1080p · 30 FPS</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+        </SettingsBlock>
+      ) : null}
       <SettingsBlock title="Устройства">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div className="space-y-4">
@@ -335,28 +383,58 @@ export function SettingsVoicePanel() {
 
       <SettingsBlock title="Демонстрация экрана">
         <SettingsRow label="Качество по умолчанию">
-          <Select
-            value={prefs.screenShareQuality}
-            onValueChange={(value) => {
-              const quality = Schema.decodeUnknownOption(
-                ScreenShareQualitySchema,
-              )(value)
-              if (Option.isSome(quality)) {
-                voicePreferenceStore.setScreenShareQuality(quality.value)
-              }
-            }}
-          >
-            <SelectTrigger className="w-[220px] max-w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SCREEN_SHARE_QUALITY_NAMES.map((name) => (
+          {capabilities.nativeScreenShare ? (
+            <Select
+              value={prefs.nativeScreenShareProfile}
+              onValueChange={(value) => {
+                const profile = Schema.decodeUnknownOption(
+                  NativeScreenShareProfileSchema,
+                )(value)
+                if (Option.isSome(profile)) {
+                  voicePreferenceStore.setNativeScreenShareProfile(profile.value)
+                }
+              }}
+            >
+              <SelectTrigger
+                aria-label="Качество демонстрации экрана"
+                className="w-[220px] max-w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {NATIVE_SCREEN_SHARE_PROFILES.map((profile) => (
+                    <SelectItem key={profile} value={profile}>
+                      {NATIVE_SCREEN_SHARE_PROFILE_LABELS[profile]}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          ) : (
+            <Select
+              value={prefs.screenShareQuality}
+              onValueChange={(value) => {
+                const quality = Schema.decodeUnknownOption(
+                  ScreenShareQualitySchema,
+                )(value)
+                if (Option.isSome(quality)) {
+                  voicePreferenceStore.setScreenShareQuality(quality.value)
+                }
+              }}
+            >
+              <SelectTrigger className="w-[220px] max-w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SCREEN_SHARE_QUALITY_NAMES.map((name) => (
                   <SelectItem key={name} value={name}>
                     {SCREEN_SHARE_QUALITY_LABELS[name]}
                   </SelectItem>
                 ))}
-            </SelectContent>
-          </Select>
+              </SelectContent>
+            </Select>
+          )}
         </SettingsRow>
 
         {capabilities.nativeScreenShare ? (

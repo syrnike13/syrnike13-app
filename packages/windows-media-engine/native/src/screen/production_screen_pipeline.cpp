@@ -66,6 +66,8 @@ ProductionScreenPipeline::~ProductionScreenPipeline() {
   if (worker_.joinable()) std::terminate();
 }
 
+void ProductionScreenPipeline::requestStop() noexcept { cancellation_requested_ = true; }
+
 ScreenStartResult ProductionScreenPipeline::start(std::string track_name,
                                                   std::chrono::milliseconds deadline) {
   {
@@ -125,7 +127,7 @@ void ProductionScreenPipeline::handleEvent(ScreenPublicationEvent event) noexcep
   if (event.kind == ScreenPublicationEventKind::Published) {
     published_ = true;
     const bool superseded = stats_.adaptive_enabled && attempt_revision_ != stats_.desired_revision;
-    if (!stop_requested_ && !failure_ && !superseded) {
+    if (!stop_requested_ && !cancellation_requested_ && !failure_ && !superseded) {
       state_ = ProductionScreenPipelineState::running;
       stats_.applied_revision = attempt_revision_;
       stats_.reconfiguring = false;
@@ -160,7 +162,7 @@ void ProductionScreenPipeline::run() noexcept {
       bool published = false;
       {
         std::scoped_lock lock(mutex_);
-        stop = stop_requested_;
+        stop = stop_requested_ || cancellation_requested_;
         published = published_;
         if (!stop && stats_.reconfiguring &&
             std::chrono::steady_clock::now() >= profile_deadline_) {
@@ -187,7 +189,7 @@ void ProductionScreenPipeline::run() noexcept {
       runAdaptiveControl();
       {
         std::scoped_lock lock(mutex_);
-        if (stop_requested_ || !published_) continue;
+        if (stop_requested_ || cancellation_requested_ || !published_) continue;
       }
       const auto frame_interval_us =
           static_cast<std::int64_t>(1'000'000 / profile_.frames_per_second);
@@ -369,7 +371,12 @@ ScreenCommandResult ProductionScreenPipeline::drainGeneration(
       handleEvent(std::move(*event));
     }
     publication_stopped = sender_->state() == ScreenPublicationState::Idle;
-    if (sender_->state() == ScreenPublicationState::Failed) break;
+    if (sender_->state() == ScreenPublicationState::Failed) {
+      // A submit can complete with an error while stop is waiting. Drain its
+      // publication after the slot returns, but never bypass a timed-out call.
+      sender_stop = sender_->stop(generation);
+      if (!sender_stop.ok) break;
+    }
   }
   // Idle can be visible before the consumer has read the final release events.
   while (auto event = sender_->waitForEvent(std::chrono::milliseconds{0}))

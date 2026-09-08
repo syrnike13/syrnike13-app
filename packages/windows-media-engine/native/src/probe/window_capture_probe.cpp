@@ -228,14 +228,14 @@ class WindowFixture final {
                         FALSE &&
                     written == line.size(),
             "window fixture command write failed");
-    const auto response = readLine();
+    const auto response = readLine(value);
     require(response.rfind("OK ", 0) == 0,
             "window fixture command failed: " + response);
     return response;
   }
 
  private:
-  std::string readLine() {
+  std::string readLine(const std::string& command = "startup") {
     std::promise<std::string> completion;
     auto result = completion.get_future();
     std::thread reader([this, promise = std::move(completion)]() mutable {
@@ -263,7 +263,7 @@ class WindowFixture final {
         (void)WaitForSingleObject(process_.hProcess, 1000);
       }
       reader.join();
-      throw std::runtime_error("window fixture response deadline exceeded");
+      throw std::runtime_error("window fixture response deadline exceeded: " + command);
     }
     reader.join();
     return result.get();

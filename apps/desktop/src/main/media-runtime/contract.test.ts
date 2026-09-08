@@ -47,10 +47,62 @@ function desiredState(revision = 1): EngineDesiredState {
     screen: off,
     output: off,
     remoteVideoDemand: [],
+    rendererId: null,
   }
 }
 
-describe('native media protocol v3 contract', () => {
+describe('native media protocol contract', () => {
+  it('preserves complete media intent and rejects invalid active settings', () => {
+    const state: EngineDesiredState = {
+      ...desiredState(),
+      microphone: {
+        state: 'on', deviceId: null, muted: true,
+        pushToTalk: true, pushToTalkHeld: false, bypassSystemProcessing: false,
+        automaticGainControl: true, noiseSuppression: true, echoCancellation: true,
+        inputVolume: 1, gateEnabled: true, gateThresholdDb: -50,
+        gateAutoThreshold: false, meterDemand: false, retryRevision: 0,
+      },
+      camera: {
+        state: 'on', deviceId: 'camera-1', profile: 'hd1080p30',
+        publication: true, previewRendererId: 'renderer-1', retryRevision: 0,
+      },
+      screen: {
+        state: 'on', sourceId: 'source-1', width: 1920, height: 1080,
+        fps: 60, bitrate: 8_000_000, audioMode: 'system', audioBitrate: 128_000,
+        previewRendererId: 'renderer-1', retryRevision: 0, audioRetryRevision: 0,
+      },
+      output: {
+        state: 'on', deviceId: null, deafened: true, volume: 1,
+        users: [{ identity: 'participant-2', volume: 0.5, muted: false }],
+        streams: [], retryRevision: 0,
+      },
+    }
+    const decode = Schema.decodeUnknownOption(EngineDesiredStateSchema, {
+      onExcessProperty: 'error',
+    })
+    expect(Option.getOrThrow(decode(state))).toEqual(state)
+    expect(Option.isNone(decode({
+      ...state, screen: { ...state.screen, fps: 0 },
+    }))).toBe(true)
+    expect(Option.isNone(decode({
+      ...state, microphone: { ...state.microphone, inputVolume: Infinity },
+    }))).toBe(true)
+    expect(Option.isNone(decode({
+      ...state, camera: { ...state.camera, deviceId: 'raw device name' },
+    }))).toBe(true)
+    expect(Option.isNone(decode({
+      ...state, output: {
+        ...state.output,
+        users: Array.from({ length: 1025 }, () => ({
+          identity: 'participant', volume: 1, muted: false,
+        })),
+      },
+    }))).toBe(true)
+    expect(Option.isNone(decode({
+      ...state, screen: { ...state.screen, automaticResolution: true },
+    }))).toBe(true)
+  })
+
   it('validates the canonical source and generated C++ identity', () => {
     const sourceUrl = new URL(
       '../../../../../packages/windows-media-engine/protocol/media-lifecycle.json',
@@ -173,7 +225,6 @@ describe('native media protocol v3 contract', () => {
             (_, index) => ({
               participantIdentity: `participant-${index}`,
               publicationId: `publication-${index}`,
-              quality: 'off' as const,
             }),
           ),
         },
@@ -230,7 +281,6 @@ describe('native media protocol v3 contract', () => {
               {
                 participantIdentity: 'one-too-many',
                 publicationId: 'one-too-many',
-                quality: 'off',
               },
             ],
           },

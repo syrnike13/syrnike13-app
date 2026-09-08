@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
@@ -55,8 +56,12 @@ class AudioDeviceEnumerator {
 };
 std::unique_ptr<AudioDeviceEnumerator> makeWindowsAudioDeviceEnumerator();
 
-// Construct, refresh, resolve and destroy on one control thread. Notifications
+// Construct, refresh and destroy on one catalog thread. Notifications
 // are coalesced by the adapter; snapshots have at most 128 devices/258 events.
+// Media owners may resolve cached endpoint values concurrently. Enumeration
+// never holds the cache lock, so opening a microphone or output does not wait
+// for a slow Windows enumeration. Callers must outlive neither this registry
+// nor its catalog owner.
 // Retain at most 512 identities for this process registry's lifetime. Exhaustion
 // fails explicitly instead of reusing an ID or evicting a disconnected device.
 class AudioDeviceRegistry final {
@@ -75,6 +80,7 @@ class AudioDeviceRegistry final {
   };
   const std::thread::id owner_ = std::this_thread::get_id();
   std::unique_ptr<AudioDeviceEnumerator> enumerator_;
+  mutable std::mutex cache_mutex_;
   std::vector<Identity> identities_;
   std::vector<AudioEndpoint> endpoints_;
   AudioDeviceSnapshot snapshot_;

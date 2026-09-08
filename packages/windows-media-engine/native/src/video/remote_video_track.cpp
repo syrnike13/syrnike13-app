@@ -9,18 +9,27 @@ std::int64_t nowUs() {
 }
 }  // namespace
 RemoteVideoTrack::RemoteVideoTrack(std::string participant,
-                                   std::string track_name)
+                                   std::string track_name, std::string publication_id)
     : participant_(std::move(participant)),
       track_name_(std::move(track_name)),
+      publication_id_(std::move(publication_id)),
       worker_([this] { run(); }) {}
 RemoteVideoTrack::~RemoteVideoTrack() { stop(); }
-void RemoteVideoTrack::stop() {
+void RemoteVideoTrack::beginStop() {
   {
     std::scoped_lock lock(mutex_);
     stopping_ = true;
     ++revision_;
   }
   changed_.notify_all();
+}
+void RemoteVideoTrack::stop() {
+  std::lock_guard join_lock(join_mutex_);
+  beginStop();
+  {
+    std::unique_lock lock(mutex_);
+    if (!changed_.wait_for(lock, kShutdownDeadline, [&] { return done_; })) std::terminate();
+  }
   if (worker_.joinable()) worker_.join();
 }
 void RemoteVideoTrack::demand(bool enabled) {
@@ -37,7 +46,7 @@ void RemoteVideoTrack::onTrackPublished(
       room.connectionState() == livekit::ConnectionState::Connected;
   if (!event.publication || !event.participant ||
       event.participant->identity() != participant_ ||
-      event.publication->name() != track_name_ ||
+      (publication_id_.empty() ? event.publication->name() != track_name_ : event.publication->sid() != publication_id_) ||
       event.publication->kind() != livekit::TrackKind::KIND_VIDEO)
     return;
   std::scoped_lock lock(mutex_);
@@ -250,5 +259,22 @@ void RemoteVideoTrack::run() noexcept {
   } catch (...) {
     failed_ = true;
   }
+  {
+    std::lock_guard lock(mutex_);
+    done_ = true;
+  }
+  changed_.notify_all();
+}
+void RemoteVideoTrack::seedPublication(std::shared_ptr<livekit::RemoteTrackPublication> publication,
+                                      std::shared_ptr<livekit::Track> track) {
+  if (!publication || publication->kind() != livekit::TrackKind::KIND_VIDEO ||
+      (publication_id_.empty() ? publication->name() != track_name_ : publication->sid() != publication_id_)) return;
+  std::lock_guard lock(mutex_);
+  if (stopping_) return;
+  if (publication_ == publication && track_ == track) return;
+  publication_ = std::move(publication);
+  track_ = std::move(track);
+  ++revision_;
+  changed_.notify_all();
 }
 }  // namespace syrnike::windows_media::video

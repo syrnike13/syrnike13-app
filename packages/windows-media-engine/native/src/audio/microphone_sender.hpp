@@ -15,6 +15,7 @@ struct MicrophoneSenderStats {
   std::uint64_t latest_frame_age_us = 0;
   std::uint64_t maximum_frame_age_us = 0;
   std::uint32_t pending_frames = 0;
+  std::uint64_t maximum_callback_wait_us = 0;
 };
 // One publication consumer of a warm pipeline. Serialize lifecycle calls on
 // its control owner; retain the pipeline's borrowed event until stop succeeds.
@@ -26,6 +27,9 @@ class MicrophoneSender final {
   MicrophoneSender(const MicrophoneSender&) = delete;
   MicrophoneSender& operator=(const MicrophoneSender&) = delete;
   MicrophonePublicationFailure start();
+  // Any control thread may revoke a pending publication commit immediately.
+  // Resource release remains serialized through stop() on the owner.
+  void cancel() noexcept;
   bool stop(std::chrono::steady_clock::time_point) noexcept;
   MicrophoneSenderStats stats() const noexcept;
  private:

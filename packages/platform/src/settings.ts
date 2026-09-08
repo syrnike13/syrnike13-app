@@ -29,12 +29,26 @@ export const DesktopScreenShareCaptureModeSchema = Schema.Literals([
 export type DesktopScreenShareCaptureMode =
   typeof DesktopScreenShareCaptureModeSchema.Type
 
+export const DesktopCameraProfileSchema = Schema.Literals(['hd720p30', 'hd1080p30'])
+export type DesktopCameraProfile = typeof DesktopCameraProfileSchema.Type
+
+export const DesktopNativeScreenShareProfileSchema = Schema.Literals([
+  '540p30',
+  '720p30',
+  '720p60',
+  '1080p30',
+  '1080p60',
+])
+export type DesktopNativeScreenShareProfile =
+  typeof DesktopNativeScreenShareProfileSchema.Type
+
 export type DesktopVoiceSettings = {
   micEnabled: boolean
   deafened: boolean
   preferredAudioInputDevice?: string
   preferredAudioOutputDevice?: string
   preferredVideoDevice?: string
+  cameraProfile: DesktopCameraProfile
   inputVolume: number
   outputVolume: number
   bypassSystemAudioInputProcessing: boolean
@@ -45,6 +59,7 @@ export type DesktopVoiceSettings = {
   voiceGateThresholdDb: number
   voiceGateAutoThreshold: boolean
   screenShareQuality: DesktopScreenShareQualityName
+  nativeScreenShareProfile: DesktopNativeScreenShareProfile
   screenShareCodec: DesktopScreenShareCodec
   screenShareAudio: boolean
   screenShareCaptureMode: DesktopScreenShareCaptureMode
@@ -56,6 +71,7 @@ export const DesktopVoiceSettingsSchema = Schema.Struct({
   preferredAudioInputDevice: Schema.optional(Schema.String),
   preferredAudioOutputDevice: Schema.optional(Schema.String),
   preferredVideoDevice: Schema.optional(Schema.String),
+  cameraProfile: DesktopCameraProfileSchema,
   inputVolume: Schema.Finite,
   outputVolume: Schema.Finite,
   bypassSystemAudioInputProcessing: Schema.Boolean,
@@ -66,6 +82,7 @@ export const DesktopVoiceSettingsSchema = Schema.Struct({
   voiceGateThresholdDb: Schema.Finite,
   voiceGateAutoThreshold: Schema.Boolean,
   screenShareQuality: DesktopScreenShareQualitySchema,
+  nativeScreenShareProfile: DesktopNativeScreenShareProfileSchema,
   screenShareCodec: DesktopScreenShareCodecSchema,
   screenShareAudio: Schema.Boolean,
   screenShareCaptureMode: DesktopScreenShareCaptureModeSchema,
@@ -230,6 +247,7 @@ const UnknownSettingsRecordSchema = Schema.Record(
 )
 
 export const DEFAULT_DESKTOP_VOICE_SETTINGS: DesktopVoiceSettings = {
+  cameraProfile: 'hd720p30',
   micEnabled: true,
   deafened: false,
   inputVolume: 1,
@@ -242,6 +260,7 @@ export const DEFAULT_DESKTOP_VOICE_SETTINGS: DesktopVoiceSettings = {
   voiceGateThresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
   voiceGateAutoThreshold: true,
   screenShareQuality: 'low',
+  nativeScreenShareProfile: '720p30',
   screenShareCodec: 'auto',
   screenShareAudio: true,
   screenShareCaptureMode: 'auto',
@@ -417,6 +436,10 @@ export function normalizeDesktopVoiceSettings(
       settings.preferredAudioOutputDevice,
     ),
     preferredVideoDevice: stringOrUndefined(settings.preferredVideoDevice),
+    cameraProfile: Option.getOrElse(
+      Schema.decodeUnknownOption(DesktopCameraProfileSchema)(settings.cameraProfile),
+      () => defaults.cameraProfile,
+    ),
     inputVolume: clampNumber(
       settings.inputVolume,
       defaults.inputVolume,
@@ -462,6 +485,12 @@ export function normalizeDesktopVoiceSettings(
     screenShareQuality: screenShareQualityOrDefault(
       settings.screenShareQuality,
       defaults.screenShareQuality,
+    ),
+    nativeScreenShareProfile: Option.getOrElse(
+      Schema.decodeUnknownOption(DesktopNativeScreenShareProfileSchema)(
+        settings.nativeScreenShareProfile,
+      ),
+      () => defaults.nativeScreenShareProfile,
     ),
     screenShareCodec: screenShareCodecOrDefault(
       settings.screenShareCodec,
@@ -642,6 +671,12 @@ export function normalizeDesktopVoiceSettingsPatch(
   if ('preferredVideoDevice' in patch) {
     next.preferredVideoDevice = stringOrUndefined(patch.preferredVideoDevice)
   }
+  if ('cameraProfile' in patch) {
+    next.cameraProfile = Option.getOrElse(
+      Schema.decodeUnknownOption(DesktopCameraProfileSchema)(patch.cameraProfile),
+      () => DEFAULT_DESKTOP_VOICE_SETTINGS.cameraProfile,
+    )
+  }
   if ('inputVolume' in patch) {
     next.inputVolume = clampNumber(patch.inputVolume, 1, 0, VOICE_VOLUME_MAX)
   }
@@ -696,6 +731,14 @@ export function normalizeDesktopVoiceSettingsPatch(
     next.screenShareQuality = screenShareQualityOrDefault(
       patch.screenShareQuality,
       DEFAULT_DESKTOP_VOICE_SETTINGS.screenShareQuality,
+    )
+  }
+  if ('nativeScreenShareProfile' in patch) {
+    next.nativeScreenShareProfile = Option.getOrElse(
+      Schema.decodeUnknownOption(DesktopNativeScreenShareProfileSchema)(
+        patch.nativeScreenShareProfile,
+      ),
+      () => DEFAULT_DESKTOP_VOICE_SETTINGS.nativeScreenShareProfile,
     )
   }
   if ('screenShareCodec' in patch) {

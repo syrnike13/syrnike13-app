@@ -138,12 +138,17 @@ class WgcMonitorCaptureBackendImpl final : public WgcMonitorCaptureBackend {
       GraphicsCaptureItem item =
           acquireMonitorCaptureItem(target.platformValue(), target.cacheKey());
       const auto size = item.Size();
+      if (options_.frame_pool_size < 1 || options_.frame_pool_size > kMaximumMonitorFrames + 1 ||
+          (options_.maximum_width && size.Width > static_cast<std::int64_t>(options_.maximum_width)) ||
+          (options_.maximum_height && size.Height > static_cast<std::int64_t>(options_.maximum_height))) {
+        return {false, CaptureFailure{"capture_admission_limit", "Capture exceeds one-shot admission bounds"}};
+      }
       if (size.Width <= 0 || size.Height <= 0) {
         return {false, CaptureFailure{"invalid_monitor_size", "WGC monitor size is empty"}};
       }
       auto frame_pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
           direct3d_device, DirectXPixelFormat::B8G8R8A8UIntNormalized,
-          static_cast<int>(kMaximumMonitorFrames + 1), size);
+          static_cast<int>(options_.frame_pool_size), size);
       auto session = frame_pool.CreateCaptureSession(item);
 
       const std::weak_ptr weak = state_;

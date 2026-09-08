@@ -20,7 +20,9 @@ EngineResult liveKitFailure(std::string code, std::string message,
 
 EngineResult cancelLiveKitRoom(const std::shared_ptr<livekit::Room> &room) {
   try {
-    if (!room->disconnect()) {
+    const bool already_disconnected =
+        room->connectionState() == livekit::ConnectionState::Disconnected;
+    if (!room->disconnect() && !already_disconnected) {
       return liveKitFailure("room_cancel_teardown_failed",
                             "LiveKit Room cancellation teardown returned false",
                             "room_disconnect", true);
@@ -112,7 +114,12 @@ bool LiveKitRoomTransport::enqueueActiveRoomTask(ActiveRoomTask task) noexcept {
   if (!task)
     return false;
   try {
-    enqueue(ActiveRoomLaneTask{std::move(task)});
+    {
+      std::lock_guard lock(mutex_);
+      if (stopping_ || media_tasks_.size() == kLiveKitMediaTaskCapacity) return false;
+      media_tasks_.push_back(ActiveRoomLaneTask{std::move(task)});
+    }
+    changed_.notify_one();
     return true;
   } catch (...) {
     return false;
@@ -122,6 +129,7 @@ bool LiveKitRoomTransport::enqueueActiveRoomTask(ActiveRoomTask task) noexcept {
 std::size_t LiveKitRoomTransport::pendingOperationCount() const noexcept {
   std::lock_guard lock(mutex_);
   return static_cast<std::size_t>(pending_task_.has_value()) +
+         media_tasks_.size() +
          static_cast<std::size_t>(operation_running_) +
          static_cast<std::size_t>(pending_cancellation_.has_value()) +
          static_cast<std::size_t>(cancellation_running_.has_value()) +
@@ -152,9 +160,10 @@ void LiveKitRoomTransport::run() noexcept {
       // Read the SDK's synchronized state on its owner lane; this also works
       // when the laboratory installs a RoomDelegate for track observations.
       changed_.wait_for(lock, std::chrono::milliseconds(20),
-                    [this] { return stopping_ || pending_task_.has_value(); });
+                    [this] { return stopping_ || pending_task_.has_value() || !media_tasks_.empty(); });
       if (stopping_) {
         pending_task_.reset();
+        media_tasks_.clear();
         return;
       }
       if (active_room_ && !disconnect_reported_ &&
@@ -169,15 +178,20 @@ void LiveKitRoomTransport::run() noexcept {
                           "room_connection", true}});
         continue;
       }
-      if (!pending_task_) {
+      if (!pending_task_ && media_tasks_.empty()) {
         const auto room = active_room_;
         lock.unlock();
         pollScreenFeedback(room);
         network_sampler_->sampleOnSdkLane(room);
         continue;
       }
-      task = std::move(pending_task_);
-      pending_task_.reset();
+      if (pending_task_) {
+        task = std::move(pending_task_);
+        pending_task_.reset();
+      } else {
+        task = std::move(media_tasks_.front());
+        media_tasks_.pop_front();
+      }
       operation_running_ = true;
       if (const auto *connect = std::get_if<ConnectTask>(&*task)) {
         active_generation_ = connect->generation;
@@ -290,6 +304,9 @@ void LiveKitRoomTransport::runConnect(ConnectTask task) noexcept {
     return;
   }
   livekit::RoomOptions options;
+  // Reader failure is an independent media failure, never a reason to deny
+  // Room membership. The observer exposes its own bounded failure state.
+  if (delegate_) static_cast<void>(delegate_->attachRoom(room));
   options.auto_subscribe = false;
   options.dynacast = false;
   options.connect_timeout = std::chrono::seconds(10);
@@ -317,6 +334,7 @@ void LiveKitRoomTransport::runConnect(ConnectTask task) noexcept {
     if (!authority.ok) {
       // The credential lease is already consumed. Tear down the unexpected
       // authority before reporting the typed mismatch to the Engine.
+      if (delegate_ && !delegate_->detachRoom()) std::terminate();
       static_cast<void>(cancelLiveKitRoom(room));
       result = authority;
     }
@@ -368,7 +386,10 @@ void LiveKitRoomTransport::runConnect(ConnectTask task) noexcept {
     }
   }
   if (!result.ok) {
+    if (delegate_ && !delegate_->detachRoom()) std::terminate();
     room.reset();
+  } else if (delegate_) {
+    static_cast<void>(delegate_->seedConnectedRoom());
   }
   task.completion(task.generation, std::move(result));
   {
@@ -393,7 +414,18 @@ void LiveKitRoomTransport::runDisconnect(DisconnectTask task) noexcept {
                             "room_disconnect");
   } else {
     try {
-      result = room->disconnect()
+      if (delegate_ && !delegate_->detachRoom()) {
+        task.completion(task.generation, liveKitFailure("room_media_teardown_failed",
+            "Remote media readers did not release the Room", "room_disconnect"));
+        return;
+      }
+      // The SDK returns false when server/EOS cleanup already claimed the Room.
+      // Still call it to drain any remaining local state. A false result from
+      // a previously connected Room remains a teardown failure.
+      const bool already_disconnected =
+          room->connectionState() == livekit::ConnectionState::Disconnected;
+      const bool disconnected = room->disconnect();
+      result = disconnected || already_disconnected
                    ? EngineResult::success()
                    : liveKitFailure("livekit_disconnect_failed",
                                     "LiveKit Room disconnect returned false",
