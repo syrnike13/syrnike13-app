@@ -2,12 +2,21 @@
 
 The implementation has passed local observer, DSP, candidate-switch, allocation,
 Windows ducking and 30-minute publication checks. This document does not record
-final acceptance of #127: physical device-loss validation and the published SDK
-dependency remain open before merge.
+final acceptance of #127: physical device-loss validation remains open before
+merge.
 
 The local development SDK build completed all native targets and 34/34 CTest
 checks, including GPU tests, in 120.30 seconds. The subsequent targeted mute
 fixture also verifies that stopped input clears meter and speaking state.
+
+After publishing SDK `v1.10.0-syrnike.13`, the normal `build:lab` downloaded its
+hash-pinned archive and built every target without a local SDK override.
+Artifact verification and all 34 CTest checks passed (117.87 seconds, including
+six GPU tests). The published binary also passed `microphone-synthetic-aec`
+(40.5542 dB ERLE, 13.8224 dB NS attenuation, zero measured heap calls, frame
+p50/p95/max 62/79/127 microseconds) and `microphone-mute-cycle` (200 cycles,
+zero DSP heap calls, failed-candidate rollback and cleared idle meter).
+These release checks do not replace the physical device-loss acceptance gate.
 
 ## Audio device registry
 
@@ -51,12 +60,14 @@ changes, removal, direction isolation, failure and storage exhaustion.
 ## Remaining stage work
 
 - Physical unplug/replug.
-- Publish and pin the reviewed fixed-frame SDK dependency, then run the normal
-  pinned package build/checks and open the application PR.
 
-The pinned LiveKit APM API allocates 17,000 times for 1,000 warmed frames through
-protobuf FFI. An isolated SDK candidate adds a fixed-frame DSP seam; it is not
-published or pinned yet ([SDK PR #9](https://github.com/syrnike13/client-sdk-cpp/pull/9)).
+The previous LiveKit APM API allocates 17,000 times for 1,000 warmed frames through
+protobuf FFI. A fixed-frame DSP seam passed the SDK's cross-platform CI and was
+merged into `native-v2` at `55d7ea89843aa2776b54ca83b0a19c6f08de2f5b`
+([SDK PR #9](https://github.com/syrnike13/client-sdk-cpp/pull/9)). The application
+pins the published [v1.10.0-syrnike.13 SDK](https://github.com/syrnike13/client-sdk-cpp/releases/tag/v1.10.0-syrnike.13)
+and verifies the Windows archive with SHA-256
+`23093de4734d8016b430d3788551d9c710fe2f9e9a495fb6baad003fea7b9c27`.
 The synthetic fixture measures 40.6 dB ERLE and 13.8 dB
 noise suppression with zero measured steady-state heap calls. The processors
 are independent, followed by input volume, gate/activity, AGC, exact silence
@@ -220,8 +231,8 @@ user cannot disconnect the microphone during this session.
 
 Build from the repository root with `pnpm --filter @syrnike13/windows-media-engine
 build:lab` and `pnpm --filter @syrnike13/native-media-lab build`. The normal build
-needs the published SDK pin; while that release is pending, the development
-reports use the explicitly configured local SDK build.
+downloads the pinned SDK release. The development reports below were collected
+with an explicitly configured local build of the same SDK change before release.
 
 The standalone native checks are:
 
