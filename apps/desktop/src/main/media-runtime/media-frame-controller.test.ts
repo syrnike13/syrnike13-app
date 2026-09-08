@@ -117,7 +117,7 @@ describe('product media frame controller', () => {
     texture.release()
     expect(released).not.toHaveBeenCalled()
     destroyed = true
-    transfers.sweepDestroyedFrames()
+    transfers.sweep()
     expect(released).toHaveBeenCalledOnce()
     expect(transfers.outstanding).toBe(0)
   })
@@ -132,6 +132,68 @@ describe('product media frame controller', () => {
       expect(test.runtime.queryInventory.mock.calls.length).toBeLessThanOrEqual(4)
       expect(test.onInventory).toHaveBeenCalled()
     } finally { test.controller.dispose() }
+  })
+
+  it.each(['receiver', 'gpu'])('detects %s release stalls 100/100 times without reusing retained textures', async phase => {
+    vi.useFakeTimers()
+    const gpuCallbacks: Array<() => void> = []
+    const transfers = new ElectronFrameTransfers(() => ({
+      startTransferSharedTexture: () => ({
+        transfer: 'opaque', syncToken: 'opaque', pixelFormat: 'bgra',
+        codedSize: { width: 16, height: 16 }, visibleRect: { x: 0, y: 0, width: 16, height: 16 }, timestamp: 1,
+      }),
+      release: callback => { if (callback) gpuCallbacks.push(callback) },
+    }))
+    const info = { pixelFormat: 'bgra', codedSize: { width: 16, height: 16 }, handle: { ntHandle: Buffer.alloc(8) } }
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const released = vi.fn()
+      const stalled = vi.fn()
+      const frame = { processId: attempt + 1, routingId: 20, isDestroyed: () => false, send: vi.fn() }
+      const texture = transfers.importTexture(info, released, stalled)
+      const sent = transfers.send(texture, frame, {})
+      transfers.acknowledge(frame, texture.id, 'imported')
+      await sent
+      texture.release()
+      if (phase === 'gpu') transfers.acknowledge(frame, texture.id, 'released')
+      await vi.advanceTimersByTimeAsync(1_999)
+      transfers.sweep()
+      expect(stalled).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      transfers.sweep()
+      expect(stalled).toHaveBeenCalledExactlyOnceWith(`${phase}_release_timeout`)
+      expect(released).not.toHaveBeenCalled()
+      expect(transfers.outstanding).toBe(1)
+
+      // A different consumer still imports and returns its own texture.
+      const healthyReleased = vi.fn()
+      const healthy = transfers.importTexture(info, healthyReleased)
+      const healthySent = transfers.send(healthy, frame, {})
+      transfers.acknowledge(frame, healthy.id, 'imported')
+      await healthySent
+      healthy.release()
+      transfers.acknowledge(frame, healthy.id, 'released')
+      const healthyGpu = gpuCallbacks.pop()
+      if (!healthyGpu) throw new Error('Healthy consumer did not release its reference')
+      healthyGpu()
+      expect(healthyReleased).toHaveBeenCalledOnce()
+      expect(transfers.outstanding).toBe(1)
+
+      await vi.advanceTimersByTimeAsync(2_000)
+      transfers.sweep()
+      transfers.acknowledge({ ...frame, processId: frame.processId + 1 }, texture.id, 'released')
+      expect(stalled).toHaveBeenCalledOnce()
+      expect(released).not.toHaveBeenCalled()
+      transfers.acknowledge(frame, texture.id, 'released')
+      const gpu = gpuCallbacks.pop()
+      if (!gpu) throw new Error('Original consumer did not release its reference')
+      gpu()
+      gpu()
+      transfers.acknowledge(frame, texture.id, 'released')
+      texture.release()
+      expect(released).toHaveBeenCalledOnce()
+      expect(transfers.outstanding).toBe(0)
+      expect(gpuCallbacks).toHaveLength(0)
+    }
   })
 
   it.each(['renderer', 'revision', 'epoch'])('drops an inventory reply after %s replacement', async reason => {
@@ -234,6 +296,36 @@ describe('product media frame controller', () => {
       test.controller['presentationFailed'](frame, 1, 'late_failure')
       expect(test.controller.presentationPaths().screen_preview.state).toBe('running')
       expect(test.failure).toHaveBeenCalledTimes(1)
+    } finally { test.controller.dispose() }
+  })
+
+  it('requires every stalled lease of the affected stream to drain before clearing its failure', () => {
+    vi.useFakeTimers()
+    const test = fixture()
+    try {
+      test.controller.rendererReady()
+      test.enablePreview()
+      const rendererId = test.adapter.rendererReady.mock.lastCall?.[0]
+      if (!rendererId) throw new Error('Renderer was not registered')
+      const frame: MediaExportedFrame = {
+        generation: 1, sequence: 1, slot: 0, kind: 'screen_preview', revision: 1,
+        rendererId, publicationId: 'preview', participantIdentity: 'local',
+        width: 960, height: 540, timestamp: 1, ingressUs: 1, handle: 123,
+      }
+      const second = { ...frame, sequence: 2, slot: 1 }
+      test.controller['presentationFailed'](frame, 1, 'video_bridge_receiver_release_timeout', true)
+      test.controller['presentationFailed'](second, 1, 'video_bridge_gpu_release_timeout', true)
+      test.controller['presentationRecovered']({ ...frame, publicationId: 'other' }, 1)
+      test.controller['presentationRecovered']({ ...frame, sequence: 3 }, 1)
+      expect(test.controller.presentationPaths().screen_preview.state).toBe('failed')
+      test.controller['presentationRecovered'](frame, 1)
+      expect(test.controller.presentationPaths().screen_preview.state).toBe('failed')
+      expect(test.failure).toHaveBeenCalledOnce()
+      test.controller['presentationRecovered'](second, 1)
+      expect(test.controller.presentationPaths().screen_preview.state).toBe('running')
+      test.nextEpoch()
+      test.controller['presentationFailed'](frame, 1, 'late_stall', true)
+      expect(test.failure).toHaveBeenCalledOnce()
     } finally { test.controller.dispose() }
   })
 })
