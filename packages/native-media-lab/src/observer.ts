@@ -87,6 +87,7 @@ interface VerificationReport {
   readonly schemaVersion: 1
   readonly diagnosticOnly: boolean
   readonly accepted: boolean
+  readonly failureTransport?: unknown
   readonly startedAt: string
   readonly finishedAt: string
   readonly durationMs: number
@@ -639,6 +640,27 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
     failures.push(normalizeError(error).message)
   }
 
+  // Inspect failed runs only, after their acceptance window has ended. Avoid
+  // adding RTC polling to successful timing proofs or serializing certificates.
+  let failureTransport: unknown
+  if (failures.length > 0) {
+    try {
+      const stats = await withDeadline(room.getRtcStats(), 1000, 'failure RTC snapshot deadline')
+      const transportKeys = ['candidatePair', 'transport', 'localCandidate', 'remoteCandidate']
+      const selectTransports = (entries: readonly unknown[]) => entries.map(entry =>
+        Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(
+          JSON.parse(JSON.stringify(entry, (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value)),
+        ),
+      ).filter(entry => transportKeys.some(key => Object.hasOwn(entry, key))).slice(0, 32)
+      failureTransport = {
+        publisher: selectTransports(stats.publisherStats),
+        subscriber: selectTransports(stats.subscriberStats),
+      }
+    } catch (error: unknown) {
+      failureTransport = { error: normalizeError(error).message.slice(0, 512) }
+    }
+  }
+
   videoEndReason ??= 'observer-complete'
   clearInterval(rtcTimer)
   await room.disconnect()
@@ -682,6 +704,7 @@ async function observe(room: Room, options: ObserverOptions): Promise<Verificati
     schemaVersion: 1,
     diagnosticOnly: options.rtcStatsPath !== undefined || options.recordMarkerTrace,
     accepted: acceptedResult,
+    failureTransport,
     startedAt: new Date(startedAtMs).toISOString(),
     finishedAt: new Date(finishedAtMs).toISOString(),
     durationMs: finishedAtMs - startedAtMs,
