@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "capture/monitor_capture.hpp"
+#include "audio/audio_device_registry.hpp"
 #include "capture/wgc_monitor_capture.hpp"
 #include "core/engine.hpp"
 #include "probe/window_capture_probe.hpp"
@@ -1112,6 +1113,26 @@ int main(int argc, char** argv) try {
   if (mode == "fail-start") return failStart();
   if (mode == "hang-worker") return hangWorker();
   if (mode == "hang-worker-child") return hangWorkerChild();
+  if (mode == "enumerate-audio-devices") {
+    if (argc != 2) throw std::runtime_error("enumerate-audio-devices accepts no arguments");
+    using namespace syrnike::windows_media::audio;
+    AudioDeviceRegistry registry(makeWindowsAudioDeviceEnumerator());
+    const auto snapshot = registry.refresh();
+    std::cout << "{\"command\":\"enumerate-audio-devices\",\"status\":\""
+              << (snapshot.status == AudioRegistryStatus::ready ? "ready" :
+                  snapshot.status == AudioRegistryStatus::capacity_exceeded ? "capacity_exceeded" : "enumeration_failed")
+              << "\",\"revision\":" << snapshot.revision << ",\"devices\":[";
+    bool first = true;
+    for (const auto& device : snapshot.devices) {
+      if (!first) std::cout << ',';
+      first = false;
+      std::cout << "{\"id\":\"audio-" << device.id << "\",\"direction\":\""
+                << (device.direction == AudioDirection::input ? "input" : "output")
+                << "\",\"default\":" << (device.is_default ? "true" : "false") << '}';
+    }
+    std::cout << "]}\n";
+    return snapshot.status == AudioRegistryStatus::ready ? 0 : 1;
+  }
   if (mode == "enumerate-sources") return enumerateSources(argc, argv);
   if (mode == "capture-monitor" || mode == "capture-monitor-repeat" ||
       mode == "capture-monitor-slow-consumer" ||

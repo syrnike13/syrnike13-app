@@ -1,0 +1,17 @@
+{
+  "command": "microphone-device-switch",
+  "status": "pass",
+  "environment": "Windows local hardware, 2026-09-08",
+  "successfulExplicitSwitches": 3,
+  "failedCandidateRollbacks": 2,
+  "failedCandidateOutcome": "format_unavailable",
+  "simulatedDefaultNotifications": 2,
+  "explicitSelectionIgnoredDefaultChanges": true,
+  "systemDefaultChanged": false,
+  "stopped": true,
+  "limitations": [
+    "Default notifications use a lab registry projection over real Windows endpoints.",
+    "Physical unplug has not been exercised.",
+    "This fixture checks input transactions without an attached publication."
+  ]
+}

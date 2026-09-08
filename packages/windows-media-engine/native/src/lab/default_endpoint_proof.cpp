@@ -6,6 +6,7 @@
 #include <array>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <chrono>
 // Standalone, opt-in lab helper; never part of the product. Windows exposes
@@ -29,9 +30,9 @@ using Microsoft::WRL::ComPtr;
 void check(HRESULT result) {
   if (FAILED(result)) throw std::runtime_error("Default endpoint helper API failed");
 }
-std::wstring current(IMMDeviceEnumerator* enumerator, ERole role) {
+std::wstring current(IMMDeviceEnumerator* enumerator, EDataFlow flow, ERole role) {
   ComPtr<IMMDevice> device;
-  check(enumerator->GetDefaultAudioEndpoint(eRender, role, &device));
+  check(enumerator->GetDefaultAudioEndpoint(flow, role, &device));
   LPWSTR id = nullptr;
   check(device->GetId(&id));
   std::wstring value(id);
@@ -39,7 +40,10 @@ std::wstring current(IMMDeviceEnumerator* enumerator, ERole role) {
   return value;
 }
 int wmain(int argc, wchar_t** argv) {
-  if (argc != 2) return 1;
+  const bool input = argc == 3 && std::wstring_view(argv[1]) == L"--input";
+  if (argc != 2 && !input) return 1;
+  const auto flow = input ? eCapture : eRender;
+  const auto* endpoint = argv[input ? 2 : 1];
   check(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
   int result = 0;
   {
@@ -54,23 +58,28 @@ int wmain(int argc, wchar_t** argv) {
       check(CLSIDFromString(L"{870af99c-171d-4f9e-af0d-e63df40c2bc9}", &clsid));
       check(CoCreateInstance(clsid, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&policy)));
       ComPtr<IMMDevice> target;
-      check(enumerator->GetDevice(argv[1], &target));
+      check(enumerator->GetDevice(endpoint, &target));
+      ComPtr<IMMEndpoint> endpoint_info;
+      check(target.As(&endpoint_info));
+      EDataFlow actual_flow;
+      check(endpoint_info->GetDataFlow(&actual_flow));
+      if (actual_flow != flow) throw std::runtime_error("Wrong endpoint direction");
       DWORD state = 0;
       check(target->GetState(&state));
       if (state != DEVICE_STATE_ACTIVE) throw std::runtime_error("Target endpoint inactive");
       for (unsigned role = 0; role < 2; ++role)
-        original[role] = current(enumerator.Get(), static_cast<ERole>(role));
+        original[role] = current(enumerator.Get(), flow, static_cast<ERole>(role));
       for (unsigned role = 0; role < 2; ++role) {
-        if (_wcsicmp(original[role].c_str(), argv[1]) == 0)
+        if (_wcsicmp(original[role].c_str(), endpoint) == 0)
           throw std::runtime_error("Proof requires a different endpoint");
         ++changed;
-        check(policy->SetDefaultEndpoint(argv[1], static_cast<ERole>(role)));
+        check(policy->SetDefaultEndpoint(endpoint, static_cast<ERole>(role)));
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{2};
-        while (_wcsicmp(current(enumerator.Get(), static_cast<ERole>(role)).c_str(), argv[1]) !=
+        while (_wcsicmp(current(enumerator.Get(), flow, static_cast<ERole>(role)).c_str(), endpoint) !=
                    0 &&
                std::chrono::steady_clock::now() < deadline)
           std::this_thread::sleep_for(std::chrono::milliseconds{20});
-        if (_wcsicmp(current(enumerator.Get(), static_cast<ERole>(role)).c_str(), argv[1]) != 0)
+        if (_wcsicmp(current(enumerator.Get(), flow, static_cast<ERole>(role)).c_str(), endpoint) != 0)
           throw std::runtime_error("Default did not switch");
       }
       std::cout << "DEFAULT_ENDPOINT_CHANGED" << std::endl;
@@ -82,7 +91,7 @@ int wmain(int argc, wchar_t** argv) {
     for (unsigned role = 0; role < changed; ++role) {
       const auto restored =
           policy->SetDefaultEndpoint(original[role].c_str(), static_cast<ERole>(role));
-      if (FAILED(restored) || current(enumerator.Get(), static_cast<ERole>(role)) != original[role])
+      if (FAILED(restored) || current(enumerator.Get(), flow, static_cast<ERole>(role)) != original[role])
         result = 2;
     }
     if (changed && result != 2) std::cout << "DEFAULT_ENDPOINT_RESTORED" << std::endl;

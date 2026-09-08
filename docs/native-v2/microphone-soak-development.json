@@ -1,0 +1,574 @@
+{
+  "durationSeconds": 1800,
+  "accepted": true,
+  "observerFrames": 180011,
+  "subscriptions": 1,
+  "unsubscriptions": 1,
+  "reconnects": 0,
+  "maximumObserverDeliveryGapMs": 308,
+  "maximumMutedRms": 0.07905694150420949,
+  "maximumAudibleRms": 3845.2686739434225,
+  "subsequentTelemetryProbe": {
+    "durationSeconds": 15,
+    "nativePublicationPassed": true,
+    "submitted": 1510,
+    "maximumFrameAgeUs": 21022,
+    "sampledPendingFrames": [0, 0],
+    "rejectedStale": 0,
+    "dspWorkerAllocations": 0,
+    "acousticAcceptance": false,
+    "maximumAudibleRms": 8.840154598949802,
+    "note": "Separate short run after adding age/depth counters; acoustic signal was too quiet. This does not replace the completed 30-minute report."
+  },
+  "resourceSamples": [
+    {
+      "elapsedMs": 9174,
+      "handles": 398,
+      "threads": 38,
+      "privateBytes": 13959168,
+      "captured": 920,
+      "submitted": 918,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 39338,
+      "handles": 400,
+      "threads": 39,
+      "privateBytes": 13905920,
+      "captured": 3937,
+      "submitted": 3934,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 69500,
+      "handles": 396,
+      "threads": 36,
+      "privateBytes": 13979648,
+      "captured": 6953,
+      "submitted": 6951,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 99641,
+      "handles": 396,
+      "threads": 36,
+      "privateBytes": 14168064,
+      "captured": 9967,
+      "submitted": 9965,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 129753,
+      "handles": 396,
+      "threads": 37,
+      "privateBytes": 14196736,
+      "captured": 12979,
+      "submitted": 12976,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 159920,
+      "handles": 394,
+      "threads": 37,
+      "privateBytes": 14204928,
+      "captured": 15995,
+      "submitted": 15993,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 190009,
+      "handles": 396,
+      "threads": 37,
+      "privateBytes": 14204928,
+      "captured": 19004,
+      "submitted": 19001,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 220084,
+      "handles": 403,
+      "threads": 35,
+      "privateBytes": 14147584,
+      "captured": 22012,
+      "submitted": 22007,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 250248,
+      "handles": 405,
+      "threads": 35,
+      "privateBytes": 14147584,
+      "captured": 25028,
+      "submitted": 24983,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 280558,
+      "handles": 398,
+      "threads": 35,
+      "privateBytes": 14143488,
+      "captured": 28060,
+      "submitted": 27879,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 310753,
+      "handles": 403,
+      "threads": 36,
+      "privateBytes": 14176256,
+      "captured": 31079,
+      "submitted": 30895,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 340867,
+      "handles": 404,
+      "threads": 36,
+      "privateBytes": 14176256,
+      "captured": 34091,
+      "submitted": 33905,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 371019,
+      "handles": 407,
+      "threads": 36,
+      "privateBytes": 14278656,
+      "captured": 37106,
+      "submitted": 36918,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 401150,
+      "handles": 400,
+      "threads": 36,
+      "privateBytes": 14336000,
+      "captured": 40119,
+      "submitted": 39922,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 431351,
+      "handles": 398,
+      "threads": 35,
+      "privateBytes": 14381056,
+      "captured": 43139,
+      "submitted": 42942,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 461528,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 14409728,
+      "captured": 46157,
+      "submitted": 45960,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 491685,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 14544896,
+      "captured": 49173,
+      "submitted": 48975,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 521857,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 14544896,
+      "captured": 52190,
+      "submitted": 51992,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 552026,
+      "handles": 398,
+      "threads": 35,
+      "privateBytes": 14544896,
+      "captured": 55207,
+      "submitted": 55009,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 582156,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 14680064,
+      "captured": 58220,
+      "submitted": 58018,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 612236,
+      "handles": 411,
+      "threads": 37,
+      "privateBytes": 14831616,
+      "captured": 61228,
+      "submitted": 61023,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 642465,
+      "handles": 405,
+      "threads": 37,
+      "privateBytes": 14880768,
+      "captured": 64251,
+      "submitted": 64045,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 672657,
+      "handles": 398,
+      "threads": 34,
+      "privateBytes": 14798848,
+      "captured": 67271,
+      "submitted": 67065,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 702826,
+      "handles": 398,
+      "threads": 35,
+      "privateBytes": 14831616,
+      "captured": 70288,
+      "submitted": 70081,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 732912,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 14831616,
+      "captured": 73296,
+      "submitted": 73087,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 763034,
+      "handles": 407,
+      "threads": 35,
+      "privateBytes": 14860288,
+      "captured": 76309,
+      "submitted": 76097,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 793191,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 14860288,
+      "captured": 79324,
+      "submitted": 79113,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 823360,
+      "handles": 398,
+      "threads": 35,
+      "privateBytes": 14860288,
+      "captured": 82341,
+      "submitted": 82128,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 853503,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 14995456,
+      "captured": 85356,
+      "submitted": 85140,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 883582,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 14995456,
+      "captured": 88364,
+      "submitted": 88146,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 913700,
+      "handles": 403,
+      "threads": 35,
+      "privateBytes": 14995456,
+      "captured": 91376,
+      "submitted": 91154,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 943865,
+      "handles": 402,
+      "threads": 36,
+      "privateBytes": 15024128,
+      "captured": 94392,
+      "submitted": 94169,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 974020,
+      "handles": 403,
+      "threads": 37,
+      "privateBytes": 15052800,
+      "captured": 97408,
+      "submitted": 97178,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1004190,
+      "handles": 400,
+      "threads": 37,
+      "privateBytes": 15052800,
+      "captured": 100425,
+      "submitted": 100195,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1034280,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 14995456,
+      "captured": 103434,
+      "submitted": 103199,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1064365,
+      "handles": 407,
+      "threads": 35,
+      "privateBytes": 15036416,
+      "captured": 106443,
+      "submitted": 106147,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1094582,
+      "handles": 401,
+      "threads": 35,
+      "privateBytes": 15069184,
+      "captured": 109464,
+      "submitted": 109163,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1124695,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 15069184,
+      "captured": 112476,
+      "submitted": 112174,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1154830,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 15069184,
+      "captured": 115489,
+      "submitted": 115184,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1184938,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 15040512,
+      "captured": 118500,
+      "submitted": 118189,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1215063,
+      "handles": 401,
+      "threads": 34,
+      "privateBytes": 15032320,
+      "captured": 121513,
+      "submitted": 121193,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1245158,
+      "handles": 398,
+      "threads": 35,
+      "privateBytes": 15069184,
+      "captured": 124522,
+      "submitted": 124199,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1275252,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 15069184,
+      "captured": 127532,
+      "submitted": 127209,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1305355,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 15069184,
+      "captured": 130542,
+      "submitted": 130211,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1335549,
+      "handles": 407,
+      "threads": 35,
+      "privateBytes": 15069184,
+      "captured": 133562,
+      "submitted": 133204,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1365623,
+      "handles": 403,
+      "threads": 35,
+      "privateBytes": 15069184,
+      "captured": 136569,
+      "submitted": 136211,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1395793,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 15204352,
+      "captured": 139586,
+      "submitted": 139220,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1425931,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 15204352,
+      "captured": 142600,
+      "submitted": 142232,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1456106,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 15204352,
+      "captured": 145618,
+      "submitted": 145249,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1486208,
+      "handles": 398,
+      "threads": 34,
+      "privateBytes": 15171584,
+      "captured": 148628,
+      "submitted": 148259,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1516345,
+      "handles": 401,
+      "threads": 35,
+      "privateBytes": 15204352,
+      "captured": 151642,
+      "submitted": 151272,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1546470,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 15179776,
+      "captured": 154655,
+      "submitted": 154285,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1576509,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 15101952,
+      "captured": 157659,
+      "submitted": 157289,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1606626,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 15228928,
+      "captured": 160670,
+      "submitted": 160300,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1636748,
+      "handles": 398,
+      "threads": 35,
+      "privateBytes": 15351808,
+      "captured": 163683,
+      "submitted": 163312,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1666882,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 15351808,
+      "captured": 166696,
+      "submitted": 166326,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1697002,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 15351808,
+      "captured": 169708,
+      "submitted": 169338,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1727128,
+      "handles": 400,
+      "threads": 35,
+      "privateBytes": 15351808,
+      "captured": 172721,
+      "submitted": 172350,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1757258,
+      "handles": 405,
+      "threads": 34,
+      "privateBytes": 15319040,
+      "captured": 175734,
+      "submitted": 175363,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1787381,
+      "handles": 403,
+      "threads": 35,
+      "privateBytes": 15347712,
+      "captured": 178746,
+      "submitted": 178375,
+      "staleFrames": 0
+    },
+    {
+      "elapsedMs": 1800054,
+      "handles": 405,
+      "threads": 35,
+      "privateBytes": 15347712,
+      "captured": 180014,
+      "submitted": 179642,
+      "staleFrames": 0
+    }
+  ]
+}

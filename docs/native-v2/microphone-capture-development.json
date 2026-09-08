@@ -1,0 +1,40 @@
+{
+  "issue": 127,
+  "acceptanceComplete": false,
+  "scope": "capture foundation only; no DSP, publication or soak proof",
+  "date": "2026-09-08",
+  "defaultInput": {
+    "command": "media_lab microphone-capture --seconds 5",
+    "status": "pass",
+    "failure": "none",
+    "rate": 48000,
+    "channels": 1,
+    "samplesPerFrame": 480,
+    "captured": 503,
+    "observed": 460,
+    "superseded": 40,
+    "maxAgeUs": 28491,
+    "rms": 0.00650579,
+    "callbackCount": 504,
+    "callbackMaxUs": 28,
+    "callbackHistogram": [400, 103, 1, 0, 0, 0, 0, 0],
+    "discontinuities": 3,
+    "platformDiscontinuities": 1,
+    "firstPositionStep": 441,
+    "firstPacketFrames": 446,
+    "invalidTimestamps": 0,
+    "baselineHandles": 158,
+    "peakHandles": 204,
+    "finalHandles": 182,
+    "baselineThreads": 5,
+    "peakThreads": 6,
+    "finalThreads": 6,
+    "stopped": true
+  },
+  "limitations": [
+    "Input 2 returned policy_unavailable (AUDCLNT_E_RAW_MODE_UNSUPPORTED).",
+    "Single cold-start handle/thread counts do not establish resource stability.",
+    "Lab observer timer can supersede frames; this is not the production DSP consumer.",
+    "All #127 publication, DSP, device-switch, allocation, ducking and 30-minute acceptance gates remain pending."
+  ]
+}

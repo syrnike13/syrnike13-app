@@ -125,6 +125,34 @@ windows_media_target(media_screen_audio_capture)
 target_include_directories(media_screen_audio_capture PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(media_screen_audio_capture PUBLIC media_sources PRIVATE mmdevapi ole32)
 
+add_library(media_audio_devices STATIC
+  src/audio/audio_device_registry.cpp
+  src/audio/windows_audio_device_enumerator.cpp
+)
+windows_media_target(media_audio_devices)
+target_include_directories(media_audio_devices PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(media_audio_devices PRIVATE mmdevapi ole32 uuid)
+
+add_library(media_microphone_capture STATIC
+  src/audio/microphone_pcm.cpp
+  src/audio/microphone_capture.cpp
+)
+windows_media_target(media_microphone_capture)
+target_include_directories(media_microphone_capture PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(media_microphone_capture PUBLIC media_audio_devices PRIVATE avrt)
+
+add_library(media_microphone_dsp STATIC src/audio/microphone_dsp.cpp)
+windows_media_target(media_microphone_dsp)
+target_include_directories(media_microphone_dsp PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
+add_library(media_microphone_pipeline STATIC src/audio/microphone_pipeline.cpp)
+windows_media_target(media_microphone_pipeline)
+target_link_libraries(media_microphone_pipeline PUBLIC media_microphone_capture media_microphone_dsp PRIVATE avrt)
+
+add_library(media_microphone_livekit STATIC src/audio/microphone_sender.cpp src/audio/livekit_microphone_dsp.cpp)
+windows_media_target(media_microphone_livekit)
+target_link_libraries(media_microphone_livekit PUBLIC media_microphone_pipeline media_livekit)
+
 add_library(media_screen_audio_livekit STATIC src/audio/screen_audio_sender.cpp)
 windows_media_target(media_screen_audio_livekit)
 target_link_libraries(media_screen_audio_livekit PUBLIC media_screen_audio_capture media_livekit)
@@ -148,6 +176,7 @@ add_executable(media_probe
 windows_media_target(media_probe)
 target_link_libraries(media_probe PRIVATE media_core media_sources)
 target_link_libraries(media_probe PRIVATE media_capture)
+target_link_libraries(media_probe PRIVATE media_audio_devices)
 
 execute_process(
   COMMAND node -p "require('node-addon-api').include"
@@ -181,6 +210,24 @@ if(MSVC)
 endif()
 
 enable_testing()
+
+add_executable(audio_device_registry_tests tests/audio_device_registry_test.cpp)
+windows_media_target(audio_device_registry_tests)
+target_link_libraries(audio_device_registry_tests PRIVATE media_audio_devices)
+add_test(NAME audio-device-registry COMMAND audio_device_registry_tests)
+set_tests_properties(audio-device-registry PROPERTIES TIMEOUT 10)
+
+add_executable(microphone_pcm_tests tests/microphone_pcm_test.cpp)
+windows_media_target(microphone_pcm_tests)
+target_link_libraries(microphone_pcm_tests PRIVATE media_microphone_capture)
+add_test(NAME microphone-pcm COMMAND microphone_pcm_tests)
+set_tests_properties(microphone-pcm PROPERTIES TIMEOUT 20)
+
+add_executable(microphone_dsp_tests tests/microphone_dsp_test.cpp)
+windows_media_target(microphone_dsp_tests)
+target_link_libraries(microphone_dsp_tests PRIVATE media_microphone_dsp)
+add_test(NAME microphone-dsp COMMAND microphone_dsp_tests)
+set_tests_properties(microphone-dsp PROPERTIES TIMEOUT 10)
 
 add_executable(backend_selection_policy_tests tests/backend_selection_policy_test.cpp)
 windows_media_target(backend_selection_policy_tests)
@@ -387,6 +434,23 @@ set_tests_properties(monitor-capture gpu-screen-converter encoder-faults
   PROPERTIES LABELS "requires-gpu-video")
 
 if(WINDOWS_MEDIA_BUILD_LAB)
+  add_executable(apm_allocation_baseline src/lab/apm_allocation_baseline.cpp)
+  windows_media_target(apm_allocation_baseline)
+  target_link_libraries(apm_allocation_baseline PRIVATE LiveKit::livekit)
+  windows_media_copy_livekit_runtime(apm_allocation_baseline)
+  add_executable(media_lab src/lab/microphone_lab.cpp src/lab/microphone_pipeline_lab.cpp
+    src/lab/microphone_ducking_lab.cpp src/lab/microphone_dsp_lab.cpp)
+  windows_media_target(media_lab)
+  target_link_libraries(media_lab PRIVATE media_microphone_livekit media_screen_audio_capture LiveKit::livekit)
+  target_compile_definitions(media_lab PRIVATE _CRT_SECURE_NO_WARNINGS)
+  windows_media_copy_livekit_runtime(media_lab)
+  # Compile the production capture loop with disposable-process heap evidence;
+  # allocator hooks never enter the product capture library or normal media_lab.
+  add_executable(microphone_capture_allocation src/lab/microphone_capture_allocation.cpp
+    src/audio/microphone_capture.cpp src/audio/microphone_pcm.cpp)
+  windows_media_target(microphone_capture_allocation)
+  target_compile_definitions(microphone_capture_allocation PRIVATE WINDOWS_MEDIA_CAPTURE_HEAP_PROBE)
+  target_link_libraries(microphone_capture_allocation PRIVATE media_audio_devices avrt)
   add_executable(backend_capture_lab src/lab/backend_capture_lab.cpp)
   add_executable(backend_transition_lab src/lab/backend_transition_lab.cpp)
   # Explicit local proof only; restores the selected non-primary display mode.
@@ -441,6 +505,7 @@ if(WINDOWS_MEDIA_BUILD_LAB)
   # restores normal default endpoints. Never run by the default lab or CI.
   add_executable(default_endpoint_proof src/lab/default_endpoint_proof.cpp)
   windows_media_target(default_endpoint_proof)
+  add_dependencies(media_lab default_endpoint_proof)
   target_link_libraries(default_endpoint_proof PRIVATE ole32 uuid)
   windows_media_target(audio_sync_fixture)
   target_link_libraries(audio_sync_fixture PRIVATE winmm)
