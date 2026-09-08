@@ -21,12 +21,18 @@ struct ScreenAudioSender::State {
   std::shared_ptr<livekit::LocalParticipant> participant;
   std::shared_ptr<livekit::LocalAudioTrack> track;
   std::shared_ptr<livekit::AudioSource> source;
+  std::uint32_t bitrate = 128'000;
+};
+struct ScreenAudioSender::Cancellation {
+  enum class Commit { pending, committed, cancelled };
+  std::atomic_bool cancelled{false};
+  std::atomic<Commit> commit{Commit::pending};
 };
 ScreenAudioSender::ScreenAudioSender(std::shared_ptr<LiveKitRoomTransport> transport,
                                      std::shared_ptr<PcmQueue> queue, PacketObserver observer)
     : transport_(std::move(transport)),
       queue_(std::move(queue)),
-      packet_observer_(std::move(observer)) {
+      packet_observer_(std::move(observer)), cancellation_(std::make_shared<Cancellation>()) {
   if (!transport_ || !queue_)
     throw std::invalid_argument("Screen audio sender needs Room and PCM ports");
 }
@@ -34,9 +40,15 @@ ScreenAudioSender::~ScreenAudioSender() {
   (void)stop(Clock::now() + std::chrono::seconds{6});
   if (worker_.joinable()) std::terminate();
 }
-std::optional<ScreenAudioFailure> ScreenAudioSender::start(std::uint64_t generation) {
+void ScreenAudioSender::cancel() noexcept {
+  cancellation_->cancelled = true;
+  auto expected = Cancellation::Commit::pending;
+  cancellation_->commit.compare_exchange_strong(expected, Cancellation::Commit::cancelled);
+}
+std::optional<ScreenAudioFailure> ScreenAudioSender::start(std::uint64_t generation, std::uint32_t bitrate) {
   std::scoped_lock owner_lock(mutex_);
-  if (!generation) return ScreenAudioFailure{ScreenAudioFailureCode::invalid_state};
+  if (!generation || bitrate < 6'000 || bitrate > 512'000) return ScreenAudioFailure{ScreenAudioFailureCode::invalid_state};
+  if (cancellation_->cancelled) return ScreenAudioFailure{ScreenAudioFailureCode::cancelled};
   if (worker_.joinable()) return ScreenAudioFailure{ScreenAudioFailureCode::invalid_state};
   if (state_) {
     std::scoped_lock lock(state_->mutex);
@@ -44,6 +56,7 @@ std::optional<ScreenAudioFailure> ScreenAudioSender::start(std::uint64_t generat
   }
   state_ = std::make_shared<State>();
   state_->stats.generation = generation;
+  state_->bitrate = bitrate;
   try {
     worker_ = std::thread([this, state = state_] { run(state); });
   } catch (...) {
@@ -81,11 +94,12 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
     const auto deadline = Clock::now() + std::chrono::seconds{5};
     if (!enqueue(
             state,
-            [state](const std::shared_ptr<livekit::Room>& room) {
+            [state, cancellation = cancellation_](const std::shared_ptr<livekit::Room>& room) {
               try {
                 {
                   std::scoped_lock lock(state->mutex);
-                  if (state->stop) {
+                  if (state->stop || cancellation->cancelled) {
+                    state->failure = ScreenAudioFailure{ScreenAudioFailureCode::cancelled};
                     state->ready = true;
                     state->changed.notify_all();
                     return;
@@ -104,23 +118,23 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
                 options.source = livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO;
                 options.simulcast = false;
                 options.dtx = false;
+                options.audio_encoding = livekit::AudioEncodingOptions{state->bitrate};
+                {
+                  std::lock_guard lock(state->mutex);
+                  state->participant = participant;
+                  state->source = source;
+                  state->track = track;
+                }
                 participant->publishTrack(track, options);
                 if (!track->publication())
                   throw std::runtime_error("Screen audio publication missing");
-                bool stopped;
+                auto expected = Cancellation::Commit::pending;
+                const bool committed = cancellation->commit.compare_exchange_strong(expected, Cancellation::Commit::committed);
                 {
                   std::scoped_lock lock(state->mutex);
-                  stopped = state->stop;
-                }
-                if (stopped) participant->unpublishTrack(track->publication()->sid());
-                {
-                  std::scoped_lock lock(state->mutex);
-                  if (!stopped) {
-                    state->participant = participant;
-                    state->source = source;
-                    state->track = track;
+                  if (committed && !state->stop) {
                     state->stats.published = true;
-                  }
+                  } else state->failure = ScreenAudioFailure{ScreenAudioFailureCode::cancelled};
                   state->ready = true;
                   state->changed.notify_all();
                 }
@@ -148,7 +162,7 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
     for (;;) {
       {
         std::scoped_lock lock(state->mutex);
-        if (state->stop || !source) break;
+        if (state->stop || cancellation_->cancelled || !source) break;
       }
       if (queue_->stopped()) break;
       auto packet = queue_->take(now100ns());
@@ -163,8 +177,9 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
       const auto age = now100ns() - packet->capture_timestamp_100ns;
       if (age < 0 || age > kAudioMaximumAge100ns) continue;
       std::copy(packet->samples.begin(), packet->samples.end(), frame.data().begin());
+      const auto submitted_at = Clock::now();
       try {
-        source->captureFrame(frame, 100);
+        source->captureFrame(frame, 500);
       } catch (const std::system_error& error) {
         throw ScreenAudioFailure{error.code() == std::errc::timed_out
                                      ? ScreenAudioFailureCode::publication_timeout
@@ -172,6 +187,8 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
                                  E_FAIL, true};
       }
       std::scoped_lock lock(state->mutex);
+      state->stats.maximum_callback_wait_us = (std::max)(state->stats.maximum_callback_wait_us,
+          static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - submitted_at).count()));
       ++state->stats.submitted;
       if (packet->discontinuity) ++state->stats.discontinuities;
       state->stats.last_capture_timestamp_100ns = packet->capture_timestamp_100ns;
@@ -195,15 +212,19 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
   try {
     if (!enqueue(
             state,
-            [state](const std::shared_ptr<livekit::Room>&) {
+            [state](const std::shared_ptr<livekit::Room>& room) {
               try {
                 if (state->source) state->source->clearQueue();
-                if (state->track && state->track->publication() && state->participant)
+                if (room && room->connectionState() != livekit::ConnectionState::Disconnected &&
+                    state->track && state->track->publication() && state->participant)
                   state->participant->unpublishTrack(state->track->publication()->sid());
               } catch (...) {
                 std::scoped_lock lock(state->mutex);
-                state->failure =
-                    ScreenAudioFailure{ScreenAudioFailureCode::publication_failed, E_FAIL, true};
+                // Preserve any earlier uncertain SDK operation. A disconnected
+                // Room rejecting cleanup alone does not leave a borrowed frame.
+                if (!state->failure) state->failure = ScreenAudioFailure{
+                    ScreenAudioFailureCode::publication_failed, E_FAIL,
+                    room && room->connectionState() != livekit::ConnectionState::Disconnected};
               }
               std::scoped_lock lock(state->mutex);
               state->track.reset();
@@ -228,6 +249,7 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
   state->changed.notify_all();
 }
 bool ScreenAudioSender::stop(Clock::time_point deadline) noexcept {
+  cancel();
   std::unique_lock owner_lock(mutex_);
   if (!state_) return true;
   const auto state = state_;

@@ -18,6 +18,7 @@ import type { NativeDiagnosticIncidentSeverity } from '@syrnike13/platform'
 import { redactSensitiveText, type NativeRuntimeKind } from './contract'
 
 export type NativeDiagnosticRole = 'electron-main' | 'utility' | 'native'
+export type NativeDiagnosticRuntime = NativeRuntimeKind | 'media'
 
 export type NativeDiagnosticPaths = {
   electronMainPath: string
@@ -26,7 +27,7 @@ export type NativeDiagnosticPaths = {
 }
 
 export type NativeDiagnosticSession = {
-  runtime: NativeRuntimeKind
+  runtime: NativeDiagnosticRuntime
   runId: string
   directory: string
   latestPath: string
@@ -100,14 +101,14 @@ type JsonValue = NativeDiagnosticPrimitive
 type JsonRecord = Record<string, JsonValue>
 
 type CreateNativeDiagnosticSessionOptions = {
-  runtime: NativeRuntimeKind
+  runtime: NativeDiagnosticRuntime
   rootDir: string
   now?: () => number
   randomUUID?: () => string
 }
 
 type CreateNativeDiagnosticLogOptions = {
-  runtime: NativeRuntimeKind
+  runtime: NativeDiagnosticRuntime
   role: NativeDiagnosticRole
   runId: string
   directory: string
@@ -129,7 +130,7 @@ type CreateNativeDiagnosticLogOptions = {
 }
 
 export interface NativeDiagnosticLog {
-  readonly runtime: NativeRuntimeKind
+  readonly runtime: NativeDiagnosticRuntime
   readonly role: NativeDiagnosticRole
   readonly runId: string
   readonly directory: string
@@ -163,7 +164,7 @@ const MAX_RETAINED_DIAGNOSTIC_SESSIONS = 20
 const MAX_RETAINED_DIAGNOSTIC_BYTES = 200 * 1024 * 1024
 
 const SENSITIVE_KEY =
-  /token|authorization|url|identity|participant|user(?:id)?|device|label|source(?:id)?|window|hwnd|room(?:id|name|url)?|process(?:id|path)|path/i
+  /token|authorization|url|identity|participant|user(?:id)?|channel(?:id)?|device|label|source(?:id)?|window|hwnd|room(?:id|name|url)?|process(?:id|path)|path/i
 
 export function createNativeDiagnosticSession({
   runtime,
@@ -575,7 +576,7 @@ export function redactDiagnosticText(
 ) {
   return redactSensitiveText(value, Number.MAX_SAFE_INTEGER)
     .replace(
-      /\b(identity|participant(?:Identity)?|user(?:Id)?|room(?:Id|Name|Url)?|device(?:Id|Name)?|source(?:Id)?|window(?:Title)?|processPath)\s*[:=]\s*(?:["']?)[^\s,;"'}\]]+/gi,
+      /\b(identity|participant(?:Identity)?|user(?:Id)?|channel(?:Id)?|room(?:Id|Name|Url)?|device(?:Id|Name)?|source(?:Id)?|window(?:Title)?|processPath)\s*[:=]\s*(?:["']?)[^\s,;"'}\]]+/gi,
       '$1=[redacted]',
     )
     .replace(/\b[A-Za-z]:[\\/][^\r\n"',;}\]]+/g, '[redacted-path]')

@@ -87,6 +87,7 @@ function SplitControlChevron({
         <PopoverTrigger asChild>
           <button
             type="button"
+            aria-label={title}
             aria-disabled={disabled}
             className={splitControlChevronButtonClass(surface, segmentState)}
           >
@@ -140,6 +141,7 @@ export function VoiceSplitControl({
         <VoiceControlTooltip title={mainTitle}>
           <button
             type="button"
+            aria-label={mainTitle}
             aria-disabled={disabled}
             onClick={disabled ? undefined : onMainClick}
             className={splitControlMainButtonClass(surface, segmentState)}

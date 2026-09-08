@@ -118,6 +118,12 @@ void registryIdentity() {
   require(first.devices.size() == 2 && first.devices[0].id != first.devices[1].id && first.devices[0].is_default,
           "Camera identity depended on label or enumeration order");
   const auto original = first.devices[0].id;
+  auto restarted_enumerator = std::make_unique<Enumerator>();
+  restarted_enumerator->endpoints = std::vector<CameraEndpoint>{{L"device-b", "renamed"}};
+  CameraDeviceRegistry restarted(std::move(restarted_enumerator));
+  require(restarted.refresh().devices.front().id == first.devices[1].id,
+          "Restart changed the retained camera identity");
+  require(!restarted.resolve(original), "Restart rebound a removed camera to another device");
   fixture->endpoints = std::vector<CameraEndpoint>{{L"device-b", "same name"}};
   const auto removed = registry.refresh();
   require(removed.devices[0].is_default && removed.events.size() == 2 && !registry.resolve(original),
@@ -238,7 +244,7 @@ void previewIsolation(bool quarantine = false) {
   require(SUCCEEDED(device1->OpenSharedResource1(reinterpret_cast<HANDLE>(first->handle()),
       IID_PPV_ARGS(&imported))), "Camera preview import");
   Microsoft::WRL::ComPtr<IDXGIKeyedMutex> keyed;
-  require(SUCCEEDED(imported.As(&keyed)) && keyed->AcquireSync(1, 0) == S_OK, "Camera preview readiness key");
+  require(SUCCEEDED(imported.As(&keyed)) && keyed->AcquireSync(0, 0) == S_OK, "Camera preview Electron readiness key");
   D3D11_TEXTURE2D_DESC desc{};
   imported->GetDesc(&desc);
   require(desc.Width == 640 && desc.Height == 360, "Camera preview dimensions");
@@ -283,7 +289,7 @@ void previewIsolation(bool quarantine = false) {
   require(capture::optionalPreviewBytes() > 0, "Held preview lease lost its backing at stop");
   if (quarantine) {
     require(SUCCEEDED(device1->OpenSharedResource1(reinterpret_cast<HANDLE>(current->handle()),
-        IID_PPV_ARGS(&imported))) && SUCCEEDED(imported.As(&keyed)) && keyed->AcquireSync(1, 0) == S_OK,
+        IID_PPV_ARGS(&imported))) && SUCCEEDED(imported.As(&keyed)) && keyed->AcquireSync(0, 0) == S_OK,
         "Quarantine consumer did not acquire its texture");
     current.reset(); // Deliberately violates the consumer's key-release order.
     require(capture::optionalPreviewBytes() > 0, "Unproven renderer release recycled its global budget");

@@ -1,10 +1,18 @@
 import { Option, Schema } from 'effect'
+import {
+  MicrophoneIntentSchema,
+  CameraIntentSchema,
+  ScreenIntentSchema,
+  OutputIntentSchema,
+} from './media-models.generated'
 
 import {
   MEDIA_LIFECYCLE_GENERATED_VERSION,
   MEDIA_LIFECYCLE_PROTOCOL_LIMITS,
   MEDIA_LIFECYCLE_SCHEMA_SHA256,
   MEDIA_UTILITY_GENERATED_BOOTSTRAP_MESSAGE,
+  MEDIA_LIFECYCLE_TRACK_KINDS,
+  MEDIA_LIFECYCLE_TRACK_STATES,
 } from './protocol.generated'
 
 export { MEDIA_LIFECYCLE_SCHEMA_SHA256 }
@@ -62,7 +70,6 @@ const requestIdSchema = boundedString(MEDIA_LIFECYCLE_MAX_REQUEST_ID_LENGTH)
 const identifierSchema = boundedString(MEDIA_LIFECYCLE_MAX_IDENTIFIER_LENGTH).check(
   Schema.isPattern(/^[\x21-\x7e]+$/),
 )
-const offIntentSchema = Schema.Struct({ state: Schema.Literal('off') })
 
 export const MediaLifecycleFailureSchema = Schema.Struct({
   code: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureCodeLength),
@@ -108,26 +115,36 @@ export const MediaCredentialLeaseSchema = Schema.Struct({
 export const RemoteVideoDemandSchema = Schema.Struct({
   participantIdentity: identifierSchema,
   publicationId: identifierSchema,
-  quality: Schema.Literal('off'),
 })
 
 export const EngineDesiredStateSchema = Schema.Struct({
   revision: positiveProtocolInteger,
   room: Schema.Union([RoomIntentSchema, Schema.Null]),
-  microphone: offIntentSchema,
-  camera: offIntentSchema,
-  screen: offIntentSchema,
-  output: offIntentSchema,
+  microphone: MicrophoneIntentSchema,
+  camera: CameraIntentSchema,
+  screen: ScreenIntentSchema,
+  output: OutputIntentSchema,
   remoteVideoDemand: Schema.Array(RemoteVideoDemandSchema).check(
     Schema.isMaxLength(MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS),
   ),
+  rendererId: Schema.Union([identifierSchema, Schema.Null]),
 })
 
+export const MediaPathSnapshotSchema = Schema.Struct({
+  revision: protocolInteger,
+  state: Schema.Literals(MEDIA_LIFECYCLE_TRACK_STATES),
+  warning: Schema.Boolean,
+  failure: Schema.optional(MediaLifecycleFailureSchema),
+})
 const TrackPublicStateSchema = Schema.Struct({
-  microphone: Schema.Literal('off'),
-  camera: Schema.Literal('off'),
-  screen: Schema.Literal('off'),
-  output: Schema.Literal('off'),
+  microphone: MediaPathSnapshotSchema,
+  camera: MediaPathSnapshotSchema,
+  screen: MediaPathSnapshotSchema,
+  output: MediaPathSnapshotSchema,
+  screen_audio: MediaPathSnapshotSchema,
+  screen_preview: MediaPathSnapshotSchema,
+  camera_preview: MediaPathSnapshotSchema,
+  remote_video: MediaPathSnapshotSchema,
 })
 
 export const MediaEngineSnapshotSchema = Schema.Struct({
@@ -173,6 +190,109 @@ export const MediaAddonSnapshotSchema = Schema.Struct({
   snapshot: MediaEngineSnapshotSchema,
 })
 
+const DeviceCatalogStatusSchema = Schema.Literals(['ready', 'enumeration_failed', 'capacity_exceeded'])
+export const MediaInventorySchema = Schema.Struct({
+  microphoneMeter: Schema.Struct({
+    revision: protocolInteger,
+    inputLevel: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
+    gateThreshold: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
+    gateOpen: Schema.Boolean,
+  }),
+  audio: Schema.Struct({
+    revision: protocolInteger,
+    status: DeviceCatalogStatusSchema,
+    devices: Schema.Array(Schema.Struct({
+      id: identifierSchema,
+      label: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDeviceLabelLength, 0),
+      direction: Schema.Literals(['input', 'output']),
+      isDefault: Schema.Boolean,
+    })).check(Schema.isMaxLength(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumAudioDevices)),
+  }),
+  cameras: Schema.Struct({
+    revision: protocolInteger,
+    status: DeviceCatalogStatusSchema,
+    devices: Schema.Array(Schema.Struct({
+      id: identifierSchema,
+      label: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDeviceLabelLength, 0),
+      available: Schema.Boolean,
+      isDefault: Schema.Boolean,
+    })).check(Schema.isMaxLength(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumCameraDevices)),
+  }),
+  sources: Schema.Struct({
+    revision: protocolInteger,
+    complete: Schema.Boolean,
+    ok: Schema.Boolean,
+    truncated: Schema.Boolean,
+    entries: Schema.Array(Schema.Struct({
+      id: identifierSchema,
+      kind: Schema.Literals(['monitor', 'window']),
+      title: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumSourceLabelLength, 0),
+      label: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumSourceLabelLength, 0),
+      available: Schema.Boolean,
+      minimized: Schema.Boolean,
+      audioAvailable: Schema.Boolean,
+      primary: Schema.Boolean,
+    })).check(Schema.isMaxLength(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumScreenSources)),
+  }),
+  video: Schema.Struct({
+    revision: protocolInteger,
+    publications: Schema.Array(Schema.Struct({
+      participantIdentity: identifierSchema,
+      publicationId: identifierSchema,
+      source: Schema.Literals(['camera', 'screen']),
+    })).check(Schema.isMaxLength(MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS)),
+  }),
+})
+export const MediaSourceQuerySchema = Schema.Struct({
+  revision: positiveProtocolInteger,
+  kind: Schema.Literals(['all', 'monitor', 'window']),
+})
+export const MediaThumbnailQuerySchema = Schema.Struct({
+  revision: positiveProtocolInteger,
+  sourceId: Schema.Union([identifierSchema, Schema.Null]),
+})
+export const MediaAddonThumbnailSchema = Schema.Struct({
+  type: Schema.Literal('thumbnail'),
+  revision: protocolInteger,
+  state: Schema.Literals(['pending', 'ready', 'failed', 'cancelled']),
+  code: Schema.optional(boundedString(128)),
+  pixels: Schema.optional(Schema.Uint8Array.check(Schema.makeFilter(
+    value => value.byteLength === MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumThumbnailBytes,
+    { expected: 'one fixed 320 by 180 BGRA thumbnail' },
+  ))),
+}).check(Schema.makeFilter(value => (value.state === 'ready') === (value.pixels !== undefined),
+  { expected: 'pixels only for a ready thumbnail' }))
+export const MediaAddonInventorySchema = Schema.Struct({
+  type: Schema.Literal('inventory'),
+  inventory: MediaInventorySchema,
+})
+export const MediaSourcesQueryAcceptedSchema = Schema.Struct({
+  type: Schema.Literal('sourcesQueryAccepted'),
+  revision: positiveProtocolInteger,
+})
+export const MediaFrameReleaseSchema = Schema.Struct({
+  generation: positiveProtocolInteger,
+  sequence: positiveProtocolInteger,
+  slot: protocolInteger.check(Schema.isLessThan(4)),
+})
+export const MediaExportedFrameSchema = Schema.Struct({
+  ...MediaFrameReleaseSchema.fields,
+  kind: Schema.Literals(['remote', 'screen_preview', 'camera_preview']),
+  revision: positiveProtocolInteger,
+  rendererId: identifierSchema,
+  publicationId: identifierSchema,
+  participantIdentity: identifierSchema,
+  width: positiveProtocolInteger.check(Schema.isLessThanOrEqualTo(3840)),
+  height: positiveProtocolInteger.check(Schema.isLessThanOrEqualTo(2160)),
+  timestamp: protocolInteger,
+  ingressUs: protocolInteger,
+  handle: positiveProtocolInteger,
+})
+export const MediaAddonFramesSchema = Schema.Struct({
+  type: Schema.Literal('frames'),
+  frames: Schema.Array(MediaExportedFrameSchema).check(Schema.isMaxLength(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumExportedFrames)),
+})
+
 export const MediaLifecycleHandshakeResultSchema = Schema.Struct({
   type: Schema.Literal('handshake'),
   protocolVersion: Schema.Literal(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
@@ -207,6 +327,13 @@ export const MediaLifecycleCommandSchema = Schema.Union([
     desiredState: EngineDesiredStateSchema,
   }),
   Schema.Struct({ type: Schema.Literal('querySnapshot') }),
+  Schema.Struct({ type: Schema.Literal('queryInventory') }),
+  Schema.Struct({ type: Schema.Literal('querySources'), query: MediaSourceQuerySchema }),
+  Schema.Struct({ type: Schema.Literal('queryThumbnail'), query: MediaThumbnailQuerySchema }),
+  Schema.Struct({
+    type: Schema.Literal('queryFrames'),
+    releases: Schema.Array(MediaFrameReleaseSchema).check(Schema.isMaxLength(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFrameReleases)),
+  }),
   Schema.Struct({ type: Schema.Literal('ping') }),
   Schema.Struct({ type: Schema.Literal('shutdown') }),
 ])
@@ -227,6 +354,10 @@ export const MediaLifecycleResultSchema = Schema.Union([
   MediaCredentialLeaseInstalledSchema,
   MediaDesiredStateAcceptedSchema,
   MediaAddonSnapshotSchema,
+  MediaAddonInventorySchema,
+  MediaSourcesQueryAcceptedSchema,
+  MediaAddonFramesSchema,
+  MediaAddonThumbnailSchema,
   MediaAddonPingSchema,
   MediaAddonShutdownSchema,
 ])
@@ -269,8 +400,10 @@ export const MediaLifecycleEventSchema = Schema.Union([
     type: Schema.Literal('trackStateChanged'),
     sequence: positiveProtocolInteger,
     revision: positiveProtocolInteger,
-    track: Schema.Literals(['microphone', 'camera', 'screen', 'output']),
-    state: Schema.Literal('off'),
+    track: Schema.Literals(MEDIA_LIFECYCLE_TRACK_KINDS),
+    state: Schema.Literals(MEDIA_LIFECYCLE_TRACK_STATES),
+    warning: Schema.Boolean,
+    failure: Schema.optional(MediaLifecycleFailureSchema),
   }),
   Schema.Struct({
     type: Schema.Literal('fatalEngineFailure'),
@@ -327,12 +460,25 @@ export const MediaLifecycleMessageSchema = Schema.Union([
 
 export type MediaLifecycleFailure = typeof MediaLifecycleFailureSchema.Type
 export type MediaEngineState = typeof MediaEngineStateSchema.Type
+export type MediaPathSnapshot = typeof MediaPathSnapshotSchema.Type
 export type EngineDesiredState = typeof EngineDesiredStateSchema.Type
 export type MediaEngineSnapshot = typeof MediaEngineSnapshotSchema.Type
+export function createInactiveMediaPaths(revision = 0): MediaEngineSnapshot['tracks'] {
+  const off: MediaPathSnapshot = { revision, state: 'off', warning: false }
+  return {
+    microphone: off, camera: off, screen: off, output: off,
+    screen_audio: off, screen_preview: off, camera_preview: off, remote_video: off,
+  }
+}
 export type MediaDesiredStateAccepted = typeof MediaDesiredStateAcceptedSchema.Type
 export type MediaCredentialLease = typeof MediaCredentialLeaseSchema.Type
 export type MediaAddonHandshake = typeof MediaAddonHandshakeSchema.Type
 export type MediaAddonSnapshot = typeof MediaAddonSnapshotSchema.Type
+export type MediaInventory = typeof MediaInventorySchema.Type
+export type MediaThumbnailQuery = typeof MediaThumbnailQuerySchema.Type
+export type MediaSourceQuery = typeof MediaSourceQuerySchema.Type
+export type MediaFrameRelease = typeof MediaFrameReleaseSchema.Type
+export type MediaExportedFrame = typeof MediaExportedFrameSchema.Type
 export type MediaLifecycleReady = typeof MediaLifecycleReadySchema.Type
 export type MediaLifecycleCommand = typeof MediaLifecycleCommandSchema.Type
 export type MediaLifecycleRequest = typeof MediaLifecycleRequestSchema.Type

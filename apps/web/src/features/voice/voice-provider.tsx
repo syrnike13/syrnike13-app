@@ -47,6 +47,7 @@ import {
 } from '#/features/voice/voice-media-availability'
 import { useMediaDevices } from '#/features/voice/use-media-devices'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
+import { nativeScreenShareProfileSettings } from '#/features/voice/voice-preference-types'
 import {
   readStageMediaFilters,
   writeStageMediaFilters,
@@ -249,9 +250,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const previousFailureRef = useRef<string | null>(null)
   const previousMediaFailureRef = useRef<string | null>(null)
   const voicePreferences = useVoicePreferences()
-  const localScreenPreviewFps = screenQuality(
-    voicePreferences.screenShareQuality,
-  ).fps
+  const localScreenPreviewFps = desktop?.platform.os === 'win32'
+    ? nativeScreenShareProfileSettings(voicePreferences.nativeScreenShareProfile).fps
+    : screenQuality(voicePreferences.screenShareQuality).fps
   const localScreenPreviewActive = snapshot.screen.state === 'starting' ||
     snapshot.screen.state === 'running'
 
@@ -342,11 +343,38 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [auth.user?._id, desktop])
 
   useEffect(() => {
+    let cameraProfile = readVoicePreferences().cameraProfile
+    let nativeScreenShareProfile = readVoicePreferences().nativeScreenShareProfile
     return voicePreferenceStore.subscribe(() => {
       const client = clientRef.current
       if (client) syncPreferences(client)
+      const preferences = readVoicePreferences()
+      const screenProfileChanged =
+        nativeScreenShareProfile !== preferences.nativeScreenShareProfile
+      nativeScreenShareProfile = preferences.nativeScreenShareProfile
+      if (desktop?.platform.os === 'win32' && screenProfileChanged) {
+        client?.dispatch({
+          type: 'setScreenProfile',
+          ...nativeScreenShareProfileSettings(preferences.nativeScreenShareProfile),
+        })
+      }
+      const profileChanged = cameraProfile !== preferences.cameraProfile
+      cameraProfile = preferences.cameraProfile
+      const cameraState = client?.snapshot().camera.state
+      if (
+        desktop?.platform.os === 'win32' &&
+        profileChanged &&
+        (cameraState === 'running' || cameraState === 'starting' || cameraState === 'failed')
+      ) {
+        client?.dispatch({
+          type: 'setCamera',
+          enabled: true,
+          deviceId: preferences.preferredVideoDevice,
+          profile: preferences.cameraProfile,
+        })
+      }
     })
-  }, [])
+  }, [desktop])
 
   useEffect(() => {
     if (!desktop) return
@@ -365,12 +393,16 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!desktop) return
     return desktop.media.onDisplayPickerResolved((selection) => {
-      const quality = screenQuality(readVoicePreferences().screenShareQuality)
+      const preferences = readVoicePreferences()
+      const quality = desktop.platform.os === 'win32'
+        ? nativeScreenShareProfileSettings(preferences.nativeScreenShareProfile)
+        : screenQuality(preferences.screenShareQuality)
       void dispatchVoice({
         type: 'setScreen',
         enabled: true,
         sourceId: selection.sourceId,
         audioEnabled: selection.audioRequested,
+        audioMode: selection.audioMode,
         ...quality,
       })
     })
@@ -641,8 +673,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       : null
     if (failureKey && failureKey !== previousMediaFailureRef.current) {
       if (error?.code === 'output_device_fallback') {
-        toast.warning(error.message)
-      } else {
+        toast.warning(desktop
+          ? 'Выбранное устройство вывода недоступно. Используем устройство по умолчанию.'
+          : error.message)
+      } else if (!desktop) {
+        // Desktop path failures already have localized, actionable runtime banners.
         toast.error(error?.message ?? 'Медиа недоступно')
       }
       if (auth.session?.token && error && mediaFailure) {
@@ -748,6 +783,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       type: 'setCamera',
       enabled,
       deviceId: readVoicePreferences().preferredVideoDevice,
+      profile: readVoicePreferences().cameraProfile,
     })
   }, [dispatchVoice, snapshot.camera.state])
 

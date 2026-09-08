@@ -61,6 +61,7 @@ struct ProductionScreenSenderState final {
   std::size_t event_head = 0;
   std::size_t event_size = 0;
   bool stop_requested = false;
+  bool cleanup_blocked = false;
   bool stopping_watchdog = false;
   ProductionScreenSenderStats stats;
 };
@@ -93,6 +94,8 @@ void releaseSlotLocked(detail::ProductionScreenSenderState& state,
 
 void failLocked(detail::ProductionScreenSenderState& state,
                 ScreenPublicationFailure operation_failure) {
+  state.cleanup_blocked |= operation_failure.utility_epoch_retirement_required ||
+                           operation_failure.stage == "screen_unpublish";
   state.publication_state = ScreenPublicationState::Failed;
   state.operation = PendingOperation::None;
   state.deadline.reset();
@@ -300,6 +303,7 @@ ScreenStartResult ProductionScreenSender::start(
                       "screen_publish", true)};
     }
     generation = ++state_->generation;
+    state_->cleanup_blocked = false;
     state_->publication_state = ScreenPublicationState::Publishing;
     state_->operation = PendingOperation::Publish;
     state_->deadline = std::chrono::steady_clock::now() + deadlines_.publish;
@@ -324,7 +328,11 @@ ScreenStartResult ProductionScreenSender::start(
               return;
             shared->operation = PendingOperation::None;
             shared->deadline.reset();
-            if (!result.ok) {
+            if (!result.ok && result.failure && result.failure->code == "screen_publish_cancelled") {
+              shared->stop_requested = true;
+              shared->publication_state = ScreenPublicationState::Stopping;
+              unpublish = true;
+            } else if (!result.ok) {
               failLocked(*shared,
                          result.failure.value_or(failure(
                              "screen_publish_failed",
@@ -421,8 +429,14 @@ ScreenCommandResult ProductionScreenSender::stop(std::uint64_t generation) {
     if (state_->publication_state == ScreenPublicationState::Idle)
       return {true, std::nullopt};
     if (state_->publication_state == ScreenPublicationState::Failed) {
-      return commandFailure("screen_generation_failed",
-                            "Screen generation already failed", "screen_stop");
+      // A completed failed submission has returned its borrowed slot. It still
+      // needs ordered unpublication; failure alone does not imply a hung SDK.
+      // Deadlines and failed cleanup remain terminal for this utility epoch.
+      if (state_->cleanup_blocked || state_->active)
+        return commandFailure("screen_generation_failed",
+                              "Screen generation requires retirement", "screen_stop");
+      state_->publication_state = ScreenPublicationState::Stopping;
+      unpublish = true;
     }
     state_->stop_requested = true;
     if (state_->pending) {

@@ -19,6 +19,8 @@ class CameraPublication final {
   CameraPublication(std::shared_ptr<LiveKitRoomTransport>, std::shared_ptr<CameraFramePort>, CameraProfile initial_profile);
   ~CameraPublication();
   CameraPublicationFailure start();
+  // Thread-safe revocation only; stop() on the owner proves SDK retirement.
+  void cancel() noexcept;
   bool stop(std::chrono::steady_clock::time_point deadline) noexcept;
   CameraPublicationStats stats() const noexcept;
  private:

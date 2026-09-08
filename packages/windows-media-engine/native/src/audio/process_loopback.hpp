@@ -8,6 +8,7 @@
 #include <thread>
 
 namespace syrnike::windows_media::audio {
+bool processLoopbackSupported() noexcept;
 enum class ScreenAudioMode { system_exclude_client, include_process_tree };
 enum class ScreenAudioState { idle, starting, running, stopping, stopped, failed };
 enum class ScreenAudioFailureCode {
@@ -42,6 +43,7 @@ class AudioProcessIdentity final {
   static std::shared_ptr<AudioProcessIdentity> fromWindow(sources::SourceRegistry&,
                                                           const std::string& source_id);
   static std::shared_ptr<AudioProcessIdentity> current();
+  static std::shared_ptr<AudioProcessIdentity> parent();
   HANDLE handle() const noexcept { return process_; }
   std::uint32_t pid() const noexcept { return pid_; }
   std::uint64_t creationTime() const noexcept { return creation_; }
@@ -58,6 +60,7 @@ struct LoopbackStats {
   std::uint64_t generation = 0, capture_packets = 0, silent_packets = 0;
   std::uint64_t discontinuities = 0, invalid_timestamps = 0;
   std::uint32_t audio_clients = 0, capture_threads = 0, event_handles = 0;
+  std::uint32_t peak_sample = 0;
 };
 
 // Owns only Windows capture and the PCM port, never Room or screen video.

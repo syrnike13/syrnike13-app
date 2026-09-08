@@ -16,7 +16,7 @@ struct CameraPreviewStats {
   std::uint32_t last_gpu_result = 0;
 };
 
-// The consumer opens the NT handle and acquires key 1, then releases key 0
+// The consumer opens the NT handle and acquires key 0, then releases key 0
 // before releasing this lease. A held lease retains its backing after stop.
 class CameraPreviewLease final {
  public:
@@ -27,6 +27,7 @@ class CameraPreviewLease final {
   CameraPreviewLease& operator=(const CameraPreviewLease&) = delete;
   std::uintptr_t handle() const noexcept { return handle_; }
   const CameraFrameMetadata& metadata() const noexcept { return metadata_; }
+  std::uint32_t slot() const noexcept { return slot_; }
   static constexpr std::uint32_t width = 640, height = 360;
  private:
   friend class CameraPreview;

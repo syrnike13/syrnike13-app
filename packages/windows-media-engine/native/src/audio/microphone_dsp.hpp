@@ -29,8 +29,8 @@ class MicrophoneEnhancement {
   virtual bool resetEcho() noexcept = 0;
 };
 struct MicrophoneDspConfig {
-  float input_volume = 1.0f; // 0..2, linear
-  float gate_threshold_db = -50.0f; // -80..-10 dBFS
+  float input_volume = 1.0f; // 0..4, linear; matches Voice Director controls
+  float gate_threshold_db = -50.0f; // -100..0 dBFS
   bool automatic_threshold = false;
   bool noise_suppression = true;
   bool echo_cancellation = true;

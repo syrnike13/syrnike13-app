@@ -44,7 +44,7 @@ describe('RemoteVideoBridge', () => {
     expect(driver.importTexture).toHaveBeenCalledTimes(4)
     expect(driver.returnLease).not.toHaveBeenCalled()
     expect(bridge.outstanding).toBe(4)
-    expect(driver.failure).toHaveBeenCalledWith('lease-capacity')
+    expect(driver.failure).toHaveBeenCalledWith('lease-capacity', lease(5, 2))
   })
   it('rejects duplicate imports and never exports a native handle to the renderer', async () => {
     const { bridge, driver } = setup()

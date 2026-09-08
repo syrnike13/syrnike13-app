@@ -58,6 +58,29 @@ mod tests {
 
     use super::WebhookBody;
 
+    #[test]
+    fn decodes_native_screen_packet_trailers_from_sfu_webhooks() {
+        for event_name in ["track_published", "track_unpublished"] {
+            let event: livekit_protocol::WebhookEvent = serde_json::from_value(serde_json::json!({
+                "event": event_name,
+                "room": { "name": "test-room" },
+                "participant": { "identity": "test-participant" },
+                "track": {
+                    "sid": "test-screen",
+                    "type": "VIDEO",
+                    "source": "SCREEN_SHARE",
+                    "width": 1280,
+                    "height": 720,
+                    "packetTrailerFeatures": ["PTF_FRAME_ID", "PTF_USER_TIMESTAMP"]
+                }
+            }))
+            .expect("current SFU packet trailer features must decode");
+            let track = event.track.expect("screen track");
+            assert_eq!(track.source, livekit_protocol::TrackSource::ScreenShare as i32);
+            assert_eq!(track.packet_trailer_features, vec![1, 0]);
+        }
+    }
+
     #[post("/", data = "<body>")]
     async fn echo_len(body: WebhookBody) -> String {
         body.as_str().len().to_string()

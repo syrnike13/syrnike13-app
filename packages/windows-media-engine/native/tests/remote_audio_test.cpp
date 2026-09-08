@@ -94,13 +94,18 @@ void mixingAndControls() {
 void limiterAndRetirement() {
   RemoteAudioPcmPort port(1);
   RemoteAudioMixer mixer;
-  const std::array inputs{RemoteAudioMixInput{&port, 2, false}};
+  std::array inputs{RemoteAudioMixInput{&port, 9, false}};
   require(mixer.setInputs(inputs), "Limiter config rejected");
-  port.publish(frame(1, 30'000));
+  port.publish(frame(1, 1000));
+  require(mixer.mix(1'000'000, 0, 1).samples[0] == 9000,
+          "Combined product output/source gain was clamped");
+  inputs[0].volume = 9.01f;
+  require(!mixer.setInputs(inputs), "Gain beyond product bounds accepted");
+  port.publish(frame(2, 30'000));
   const auto output = mixer.mix(1'000'000, 0, 1);
   require(output.samples[0] == 32'112 && mixer.stats().limited_frames == 1,
           "Limiter clipped or wrapped PCM");
-  port.publish(frame(2));
+  port.publish(frame(3));
   port.retire();
   require(mixer.mix(1'000'000, 0, 1).samples[0] == 0, "Late track remained audible");
 }

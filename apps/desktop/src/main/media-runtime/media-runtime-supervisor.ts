@@ -9,6 +9,13 @@ import {
   MEDIA_LIFECYCLE_SHUTDOWN_TIMEOUT_MS,
   MediaAddonPingSchema,
   MediaAddonSnapshotSchema,
+  MediaAddonInventorySchema,
+  MediaSourcesQueryAcceptedSchema,
+  type MediaSourceQuery,
+  MediaAddonFramesSchema,
+  MediaAddonThumbnailSchema,
+  type MediaThumbnailQuery,
+  type MediaFrameRelease,
   MediaCredentialLeaseInstalledSchema,
   MediaDesiredStateAcceptedSchema,
   MediaLifecycleHandshakeResultSchema,
@@ -58,6 +65,14 @@ type PendingRequest = {
 
 export type MediaRuntimeSupervisorOptions = {
   createAdapter: MediaUtilityAdapterFactory
+  onUtilityExit?: (evidence: {
+    code: number | null
+    source: MediaUtilityExit['source']
+    expected: boolean
+    uptimeMs: number
+    stderrBytes: number
+    stderrTruncated: boolean
+  }) => void
   handshakeTimeoutMs?: number
   restartDelaysMs?: readonly number[]
   requestId?: () => string
@@ -95,14 +110,21 @@ export class MediaRuntimeSupervisor {
   private requestSequence = 0
   private hasBeenReady = false
   private shuttingDown = false
+  private shutdownPromise: Promise<void> | null = null
   private lastPublicEventSequence = 0
   private latestEngineSnapshot: MediaEngineSnapshot | undefined
   private snapshotRecoveryPending = false
+  private retirement: Promise<void> | null = null
+  private terminationFailure: MediaLifecycleError | null = null
 
   constructor(private readonly options: MediaRuntimeSupervisorOptions) {}
 
   getSnapshot() {
     return this.snapshot
+  }
+
+  getHostEpoch() {
+    return this.hostEpoch
   }
 
   getPendingRequestCount() {
@@ -133,7 +155,9 @@ export class MediaRuntimeSupervisor {
     return this.latestEngineSnapshot
   }
 
-  start() {
+  start(): Promise<MediaLifecycleReady> {
+    if (this.terminationFailure) return Promise.reject(this.terminationFailure)
+    if (this.retirement) return this.retirement.then(() => this.start())
     if (this.snapshot.status === 'ready' && this.snapshot.ready) {
       return Promise.resolve(this.snapshot.ready)
     }
@@ -293,17 +317,60 @@ export class MediaRuntimeSupervisor {
     )
   }
 
+  queryInventory() {
+    return this.start().then(() => this.sendRequest(
+      { type: 'queryInventory' }, MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
+    )).then(result => decodeCommandResult(
+      MediaAddonInventorySchema, result, 'media_inventory_invalid', 'query_inventory',
+    ).inventory)
+  }
+
+  querySources(query: MediaSourceQuery) {
+    return this.start().then(() => this.sendRequest(
+      { type: 'querySources', query }, MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
+    )).then(result => decodeCommandResult(
+      MediaSourcesQueryAcceptedSchema, result, 'media_source_query_invalid', 'query_sources',
+    ))
+  }
+
+  queryFrames(releases: ReadonlyArray<MediaFrameRelease>) {
+    return this.start().then(() => this.sendRequest(
+      { type: 'queryFrames', releases }, MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
+    )).then(result => decodeCommandResult(
+      MediaAddonFramesSchema, result, 'media_frames_invalid', 'query_frames',
+    ).frames)
+  }
+
+  queryThumbnail(query: MediaThumbnailQuery) {
+    return this.start().then(() => this.sendRequest(
+      { type: 'queryThumbnail', query }, MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
+    )).then(result => decodeCommandResult(
+      MediaAddonThumbnailSchema, result, 'media_thumbnail_invalid', 'query_thumbnail',
+    ))
+  }
+
   shutdown() {
     return Effect.runPromise(this.shutdownEffect())
   }
 
   shutdownEffect() {
+    return Effect.tryPromise({
+      try: () => this.shutdownPromise ??= Effect.runPromise(this.stopOwnerEffect()),
+      catch: normalizeLifecycleError('shutdown'),
+    })
+  }
+
+  private stopOwnerEffect() {
     return Effect.suspend(() => {
-      if (this.shuttingDown) return Effect.void
+      if (this.shuttingDown) return this.terminationFailure ? Effect.fail(this.terminationFailure) : Effect.void
       this.shuttingDown = true
       this.clearRestartTimer()
       const adapter = this.adapter
       if (!adapter) {
+        if (this.retirement) return Effect.promise(() => this.retirement ?? Promise.resolve()).pipe(
+          Effect.flatMap(() => this.terminationFailure ? Effect.fail(this.terminationFailure) : Effect.void),
+        )
+        if (this.terminationFailure) return Effect.fail(this.terminationFailure)
         this.finishStopped()
         return Effect.void
       }
@@ -324,8 +391,10 @@ export class MediaRuntimeSupervisor {
           orElse: () => Effect.void,
         }),
         Effect.ensuring(
-          Effect.sync(() => {
-            if (this.adapter === adapter) adapter.kill()
+          Effect.promise(async () => {
+            if (this.adapter === adapter && !await this.terminateAdapter(adapter)) return
+            if (this.retirement) await this.retirement
+            if (this.terminationFailure) return
             this.adapter = null
             const stopped = mediaLifecycleError(
               'media_host_stopped',
@@ -337,7 +406,7 @@ export class MediaRuntimeSupervisor {
             this.finishStopped()
           }),
         ),
-        Effect.asVoid,
+        Effect.flatMap(() => this.terminationFailure ? Effect.fail(this.terminationFailure) : Effect.void),
       )
     })
   }
@@ -519,6 +588,18 @@ export class MediaRuntimeSupervisor {
     exit: MediaUtilityExit,
   ) {
     if (this.adapter !== adapter || epoch !== this.hostEpoch) return
+    this.options.onUtilityExit?.({
+      code: exit.code, source: exit.source, expected: exit.expected,
+      uptimeMs: exit.uptimeMs, stderrBytes: Buffer.byteLength(exit.stderr, 'utf8'),
+      stderrTruncated: exit.stderrTruncated,
+    })
+    if (exit.source === 'error') {
+      this.retireHost(adapter, epoch, mediaLifecycleError(
+        'media_host_process_error', exit.error?.message ?? 'Utility process error',
+        'utility_process', true,
+      ))
+      return
+    }
     this.clearHandshakeTimer()
     this.adapter = null
     if (this.shuttingDown || exit.expected) {
@@ -566,11 +647,32 @@ export class MediaRuntimeSupervisor {
   ) {
     if (this.adapter !== adapter || epoch !== this.hostEpoch) return
     this.clearHandshakeTimer()
-    adapter.kill()
     this.adapter = null
     this.rejectStarting(error)
     this.rejectPending(error)
-    this.scheduleRestart(error.failure)
+    this.retirement = this.terminateAdapter(adapter).then((terminated) => {
+      if (terminated) this.scheduleRestart(error.failure)
+    }).finally(() => { this.retirement = null })
+    this.updateSnapshot({ status: 'recovering', ready: undefined, nextRetryAt: undefined, failure: error.failure })
+  }
+
+  private async terminateAdapter(adapter: MediaUtilityAdapter) {
+    try {
+      await adapter.kill()
+      return true
+    } catch (cause) {
+      this.terminationFailure = mediaLifecycleError(
+        'media_host_termination_failed',
+        cause instanceof Error ? cause.message : 'Utility process could not be terminated',
+        'utility_process', false,
+      )
+      this.clearRestartTimer()
+      this.updateSnapshot({
+        status: 'failed', ready: undefined, nextRetryAt: undefined,
+        failure: this.terminationFailure.failure,
+      })
+      return false
+    }
   }
 
   private scheduleRestart(failure: MediaLifecycleFailure) {

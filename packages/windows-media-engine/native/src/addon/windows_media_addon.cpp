@@ -14,6 +14,10 @@
 #include <vector>
 
 #include "core/engine.hpp"
+#include "core/windows_media_runtime.hpp"
+#include "addon/media_codecs.generated.hpp"
+#include "addon/media_inventory.hpp"
+#include "addon/media_frames.hpp"
 #include "livekit/livekit_room_transport.hpp"
 
 #ifndef WINDOWS_MEDIA_COMMIT
@@ -31,7 +35,6 @@ using syrnike::windows_media::EngineResult;
 using syrnike::windows_media::engineStateName;
 using syrnike::windows_media::FatalEngineFailureEvent;
 using syrnike::windows_media::LifecycleEvent;
-using syrnike::windows_media::LiveKitRoomTransport;
 using syrnike::windows_media::PublicEvent;
 using syrnike::windows_media::RemoteVideoDemand;
 using syrnike::windows_media::RoomIntent;
@@ -145,20 +148,6 @@ std::string boundedIdentifier(Napi::Env env, const Napi::Value &value,
                             syrnike::windows_media::kMaximumIdentifierLength);
 }
 
-void requireOffIntent(Napi::Env env, const Napi::Value &value,
-                      const char *field) {
-  if (!value.IsObject() || value.IsArray() || value.IsNull()) {
-    throwProtocolInvalid(env, std::string(field) + " intent must be an object");
-  }
-  const auto intent = value.As<Napi::Object>();
-  requireExactKeys(env, intent, {"state"});
-  const auto state = intent.Get("state");
-  if (boundedAsciiString(env, state, field, 16) != "off") {
-    throwProtocolInvalid(env,
-                         std::string(field) + " currently supports only off");
-  }
-}
-
 EngineDesiredState parseDesiredState(Napi::Env env, const Napi::Value &value) {
   if (!value.IsObject() || value.IsArray() || value.IsNull()) {
     throwProtocolInvalid(env, "Desired state must be an object");
@@ -197,10 +186,11 @@ EngineDesiredState parseDesiredState(Napi::Env env, const Napi::Value &value) {
                           "credentialLeaseId"),
     };
   }
-  requireOffIntent(env, object.Get("microphone"), "microphone");
-  requireOffIntent(env, object.Get("camera"), "camera");
-  requireOffIntent(env, object.Get("screen"), "screen");
-  requireOffIntent(env, object.Get("output"), "output");
+  namespace codec = syrnike::windows_media::media_codec;
+  auto microphone = codec::readMicrophoneIntent(env, object.Get("microphone"));
+  auto camera = codec::readCameraIntent(env, object.Get("camera"));
+  auto screen = codec::readScreenIntent(env, object.Get("screen"));
+  auto output = codec::readOutputIntent(env, object.Get("output"));
 
   const auto demands_value = object.Get("remoteVideoDemand");
   if (!demands_value.IsArray()) {
@@ -224,11 +214,6 @@ EngineDesiredState parseDesiredState(Napi::Env env, const Napi::Value &value) {
     requireExactKeys(
         env, entry,
         syrnike::windows_media::protocol::fields::kRemoteVideoDemand);
-    const auto quality = entry.Get("quality");
-    if (boundedAsciiString(env, quality, "quality", 16) != "off") {
-      throwProtocolInvalid(env,
-                           "Remote video quality currently supports only off");
-    }
     demands.push_back(RemoteVideoDemand{
         boundedIdentifier(env, entry.Get("participantIdentity"),
                           "participantIdentity"),
@@ -238,11 +223,13 @@ EngineDesiredState parseDesiredState(Napi::Env env, const Napi::Value &value) {
   return EngineDesiredState{
       static_cast<std::uint64_t>(revision_number),
       std::move(room),
-      {},
-      {},
-      {},
-      {},
+      std::move(microphone),
+      std::move(camera),
+      std::move(screen),
+      std::move(output),
       std::move(demands),
+      object.Get("rendererId").IsNull() ? std::nullopt :
+          std::optional(boundedIdentifier(env, object.Get("rendererId"), "rendererId")),
   };
 }
 
@@ -251,6 +238,8 @@ Napi::Object desiredStateObject(Napi::Env env,
   auto object = Napi::Object::New(env);
   object.Set("revision",
              Napi::Number::New(env, static_cast<double>(state.revision)));
+  if (state.renderer_id) object.Set("rendererId", *state.renderer_id);
+  else object.Set("rendererId", env.Null());
   if (state.room) {
     auto room = Napi::Object::New(env);
     room.Set("roomId", state.room->room_id);
@@ -260,11 +249,11 @@ Napi::Object desiredStateObject(Napi::Env env,
   } else {
     object.Set("room", env.Null());
   }
-  for (const auto *field : {"microphone", "camera", "screen", "output"}) {
-    auto intent = Napi::Object::New(env);
-    intent.Set("state", "off");
-    object.Set(field, intent);
-  }
+  namespace codec = syrnike::windows_media::media_codec;
+  object.Set("microphone", codec::writeModel(env, state.microphone));
+  object.Set("camera", codec::writeModel(env, state.camera));
+  object.Set("screen", codec::writeModel(env, state.screen));
+  object.Set("output", codec::writeModel(env, state.output));
   auto demands = Napi::Array::New(env, state.remote_video_demand.size());
   for (std::size_t index = 0; index < state.remote_video_demand.size();
        ++index) {
@@ -272,7 +261,6 @@ Napi::Object desiredStateObject(Napi::Env env,
     entry.Set("participantIdentity",
               state.remote_video_demand[index].participant_identity);
     entry.Set("publicationId", state.remote_video_demand[index].publication_id);
-    entry.Set("quality", "off");
     demands.Set(static_cast<std::uint32_t>(index), entry);
   }
   object.Set("remoteVideoDemand", demands);
@@ -312,9 +300,10 @@ private:
 
 public:
   explicit AddonOwner(Napi::Env env)
-      : env_(env), room_transport_(std::make_shared<LiveKitRoomTransport>()),
+      : env_(env), media_runtime_(std::make_shared<syrnike::windows_media::WindowsMediaRuntime>()),
         engine_(syrnike::windows_media::EngineOptions{
-            .room_transport = room_transport_,
+            .room_transport = media_runtime_->transport(),
+            .media_runtime = media_runtime_,
         }) {}
 
   ~AddonOwner() { cleanup(); }
@@ -545,15 +534,79 @@ public:
       snapshot.Set("roomFailure", failureObject(env_, *value.room_failure));
     }
     auto tracks = Napi::Object::New(env_);
-    tracks.Set("microphone", "off");
-    tracks.Set("camera", "off");
-    tracks.Set("screen", "off");
-    tracks.Set("output", "off");
+    for (std::size_t index = 0; index < value.tracks.size(); ++index) {
+      const auto& path = value.tracks[index];
+      auto media = Napi::Object::New(env_);
+      media.Set("revision", Napi::Number::New(env_, static_cast<double>(path.revision)));
+      media.Set("state", syrnike::windows_media::mediaPathStateName(path.state));
+      media.Set("warning", path.warning);
+      if (path.failure) media.Set("failure", failureObject(env_, *path.failure));
+      tracks.Set(trackKindName(static_cast<syrnike::windows_media::TrackKind>(index)), media);
+    }
     snapshot.Set("tracks", tracks);
     auto response = Napi::Object::New(env_);
     response.Set("type", "snapshot");
     response.Set("snapshot", snapshot);
     return response;
+  }
+
+  Napi::Value queryFrames(const Napi::CallbackInfo& info) {
+    if (info.Length() != 1) throwProtocolInvalid(env_, "Frame query requires a release batch");
+    const auto releases = syrnike::windows_media::addon::readReleases(env_, info[0]);
+    for (const auto& release : releases) (void)media_runtime_->releaseFrame(release);
+    auto result = Napi::Object::New(env_);
+    result.Set("type", "frames");
+    result.Set("frames", syrnike::windows_media::addon::exportedFrames(env_, media_runtime_->takeFrames()));
+    return result;
+  }
+
+  Napi::Value queryInventory() {
+    auto result = Napi::Object::New(env_);
+    result.Set("type", "inventory");
+    result.Set("inventory", syrnike::windows_media::addon::mediaInventory(env_, *media_runtime_));
+    return result;
+  }
+
+  Napi::Value queryThumbnail(const Napi::CallbackInfo& info) {
+    if (info.Length() != 1 || !info[0].IsObject() || info[0].IsNull() || info[0].IsArray())
+      throwProtocolInvalid(env_, "Thumbnail query must be an object");
+    const auto query = info[0].As<Napi::Object>();
+    requireExactKeys(env_, query, syrnike::windows_media::protocol::fields::kThumbnailQuery);
+    const auto revision = static_cast<std::uint64_t>(syrnike::windows_media::media_codec::readNumber(
+        env_, query.Get("revision"), 1, 9007199254740991.0, true));
+    std::optional<std::string> source_id;
+    if (!query.Get("sourceId").IsNull()) source_id = boundedAsciiString(
+        env_, query.Get("sourceId"), "sourceId", syrnike::windows_media::kMaximumIdentifierLength);
+    const auto thumbnail = media_runtime_->queryThumbnail(revision, std::move(source_id));
+    using State = syrnike::windows_media::sources::ThumbnailState;
+    auto result = Napi::Object::New(env_);
+    result.Set("type", "thumbnail");
+    result.Set("revision", static_cast<double>(thumbnail.revision));
+    result.Set("state", thumbnail.state == State::ready ? "ready" : thumbnail.state == State::pending ? "pending" :
+        thumbnail.state == State::failed ? "failed" : "cancelled");
+    if (!thumbnail.code.empty()) result.Set("code", thumbnail.code);
+    if (thumbnail.pixels) result.Set("pixels", Napi::Buffer<std::uint8_t>::Copy(
+        env_, thumbnail.pixels->data(), thumbnail.pixels->size()));
+    return result;
+  }
+
+  Napi::Value querySources(const Napi::CallbackInfo& info) {
+    if (info.Length() != 1 || !info[0].IsObject() || info[0].IsNull() || info[0].IsArray())
+      throwProtocolInvalid(env_, "Source query must be an object");
+    const auto query = info[0].As<Napi::Object>();
+    requireExactKeys(env_, query, syrnike::windows_media::protocol::fields::kMediaSourceQuery);
+    const auto revision = static_cast<std::uint64_t>(syrnike::windows_media::media_codec::readNumber(
+        env_, query.Get("revision"), 1, 9007199254740991.0, true));
+    const auto kind = boundedAsciiString(env_, query.Get("kind"), "kind", 7);
+    syrnike::windows_media::sources::EnumerationOptions options;
+    if (kind == "monitor") options.kind = decltype(options.kind)::Monitor;
+    else if (kind == "window") options.kind = decltype(options.kind)::Window;
+    else if (kind != "all") throwProtocolInvalid(env_, "Source query kind is invalid");
+    media_runtime_->queryScreenSources(revision, options);
+    auto result = Napi::Object::New(env_);
+    result.Set("type", "sourcesQueryAccepted");
+    result.Set("revision", static_cast<double>(revision));
+    return result;
   }
 
   Napi::Value shutdown(const Napi::CallbackInfo &info) {
@@ -632,9 +685,11 @@ private:
       event.Set(protocolField(env, fields, 1),
                 Napi::Number::New(env, static_cast<double>(track->sequence)));
       event.Set(protocolField(env, fields, 2),
-                Napi::Number::New(env, static_cast<double>(track->revision)));
+                Napi::Number::New(env, static_cast<double>(track->media.revision)));
       event.Set(protocolField(env, fields, 3), trackKindName(track->track));
-      event.Set(protocolField(env, fields, 4), "off");
+      event.Set(protocolField(env, fields, 4), syrnike::windows_media::mediaPathStateName(track->media.state));
+      event.Set(protocolField(env, fields, 5), track->media.warning);
+      if (track->media.failure) event.Set("failure", failureObject(env, *track->media.failure));
     } else if (const auto *fatal =
                    std::get_if<FatalEngineFailureEvent>(&*queued)) {
       const auto &fields = syrnike::windows_media::protocol::event_fields::
@@ -772,7 +827,7 @@ private:
   }
 
   Napi::Env env_;
-  std::shared_ptr<LiveKitRoomTransport> room_transport_;
+  std::shared_ptr<syrnike::windows_media::WindowsMediaRuntime> media_runtime_;
   Engine engine_;
   std::shared_ptr<PublicDispatchState> public_dispatch_;
   std::shared_ptr<DiagnosticDispatchState> diagnostic_dispatch_;
@@ -852,6 +907,19 @@ Napi::Value shutdown(const Napi::CallbackInfo &info) {
                  [&info](AddonOwner &value) { return value.shutdown(info); });
 }
 
+Napi::Value queryInventory(const Napi::CallbackInfo& info) {
+  return guarded(info, [](AddonOwner& value) { return value.queryInventory(); });
+}
+Napi::Value querySources(const Napi::CallbackInfo& info) {
+  return guarded(info, [&info](AddonOwner& value) { return value.querySources(info); });
+}
+Napi::Value queryFrames(const Napi::CallbackInfo& info) {
+  return guarded(info, [&info](AddonOwner& value) { return value.queryFrames(info); });
+}
+Napi::Value queryThumbnail(const Napi::CallbackInfo& info) {
+  return guarded(info, [&info](AddonOwner& value) { return value.queryThumbnail(info); });
+}
+
 void finalizeAddon(Napi::Env, AddonOwner *value) { delete value; }
 
 void cleanupAddon(void *value) {
@@ -875,6 +943,10 @@ Napi::Object initialize(Napi::Env env, Napi::Object exports) {
               Napi::Function::New(env, installCredentialLease));
   exports.Set("applyDesiredState", Napi::Function::New(env, applyDesiredState));
   exports.Set("querySnapshot", Napi::Function::New(env, querySnapshot));
+  exports.Set("queryInventory", Napi::Function::New(env, queryInventory));
+  exports.Set("querySources", Napi::Function::New(env, querySources));
+  exports.Set("queryFrames", Napi::Function::New(env, queryFrames));
+  exports.Set("queryThumbnail", Napi::Function::New(env, queryThumbnail));
   exports.Set("ping", Napi::Function::New(env, ping));
   exports.Set("shutdown", Napi::Function::New(env, shutdown));
   return exports;

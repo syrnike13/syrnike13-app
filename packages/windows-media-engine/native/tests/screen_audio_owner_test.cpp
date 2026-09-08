@@ -22,7 +22,7 @@ struct Gate {
   std::mutex mutex;
   std::condition_variable changed;
   bool release = false;
-  unsigned starts = 0, stops = 0;
+  unsigned starts = 0, stops = 0, cancels = 0;
   std::optional<ScreenAudioFailure> failure;
   std::vector<ScreenAudioMode> modes;
 };
@@ -44,6 +44,10 @@ class Session final : public ScreenAudioSession {
     ++gate_->stops;
     running_ = false;
     return true;
+  }
+  void cancel() noexcept override {
+    std::lock_guard lock(gate_->mutex);
+    ++gate_->cancels;
   }
   std::optional<ScreenAudioFailure> failure() const noexcept override {
     std::scoped_lock lock(gate_->mutex);
@@ -72,6 +76,10 @@ void supersededStartNeverCommits() {
             "Start not entered");
   }
   require(owner.applyDesired(2, std::nullopt), "Superseding off rejected");
+  {
+    std::lock_guard lock(gate->mutex);
+    require(gate->cancels == 1, "Off did not revoke the pending publication immediately");
+  }
   require(!owner.applyDesired(1, on), "Stale intent accepted");
   {
     std::scoped_lock lock(gate->mutex);

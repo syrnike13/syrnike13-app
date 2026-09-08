@@ -40,7 +40,7 @@ class MicrophoneCapture final {
   ~MicrophoneCapture();
   MicrophoneCapture(const MicrophoneCapture&) = delete;
   MicrophoneCapture& operator=(const MicrophoneCapture&) = delete;
-  MicrophoneCaptureFailure start(AudioEndpoint, std::uint64_t generation);
+  MicrophoneCaptureFailure start(AudioEndpoint, std::uint64_t generation, bool bypass_system_processing = true);
   bool stop(std::chrono::steady_clock::time_point deadline) noexcept;
   MicrophoneCaptureStats stats() const noexcept;
   // Exactly one downstream DSP consumer uses this port.
@@ -51,7 +51,7 @@ class MicrophoneCapture final {
   void* frameEvent() const noexcept;
  private:
   struct State;
-  static void run(const std::shared_ptr<State>&, AudioEndpoint) noexcept;
+  static void run(const std::shared_ptr<State>&, AudioEndpoint, bool bypass_system_processing) noexcept;
   std::shared_ptr<State> state_;
   const std::thread::id owner_ = std::this_thread::get_id();
   std::thread worker_;

@@ -211,6 +211,7 @@ const lease: VoiceLease = {
     url: 'wss://voice.invalid',
     token: 'token-a',
     participantIdentity: 'identity-a',
+    cameraProfiles: ['hd720p30', 'hd1080p30'],
   },
 }
 
@@ -237,8 +238,10 @@ function desired(
     voiceGateAutoThreshold: true,
     outputVolume: 1,
     cameraEnabled: false,
+    cameraProfile: 'hd720p30',
     screenEnabled: false,
     screenAudioEnabled: false,
+    screenAudioMode: 'system',
     ...patch,
   }
 }

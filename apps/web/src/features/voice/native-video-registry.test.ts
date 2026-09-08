@@ -800,6 +800,7 @@ function remoteFrameMessage(sequence: number, frame: FakeVideoFrame) {
       local: false,
       sequence,
       rendererEpoch: 0,
+      runtimeEpoch: 0,
     },
     frame,
   }

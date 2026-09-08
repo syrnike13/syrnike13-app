@@ -75,7 +75,7 @@ It only tries the process D3D11 context mutex; it never waits for capture or
 publication. GPU event queries are polled without a blocking GPU wait. No progress
 for 500 ms quarantines that slot and reports `gpu_stalled`. Allocation pressure,
 GPU failure and a consumer holding a keyed mutex have separate preview failures.
-A consumer opens the NT handle, acquires key 1 and releases key 0 before releasing
+A consumer opens the NT handle, acquires key 0 and releases key 0 before releasing
 the move-only lease. An unopened lease can also be returned. Held leases retain
 their exact backing across generation changes and owner stop; the last lease
 returns its reservation. A stalled consumer consumes at most the two slots.
@@ -262,3 +262,18 @@ runs passed with zero retained preview reservation, 38–42 ms p95 age and at mo
 139 ms receive gap. The native GPU test additionally stops immediately after
 submission twenty times without a consumer; Release and Debug/ASan both pass.
 Preview-off also clears reusable textures from the retired generation.
+
+## Product profile policy
+
+Voice credentials include `camera_profiles`, computed by the backend from the
+account's video entitlement, channel Video permission, pixel-area cap and aspect
+range. Native profiles are `hd720p30` and `hd1080p30`; the desktop adapter does
+not start capture for a profile absent from that credential. The camera path
+reports `camera_profile_not_permitted` while the Room and other media paths stay
+active. Selecting an allowed profile applies the retained camera intent without
+a new Room join. Refresh and channel moves carry the destination policy.
+
+A device can also reject an allowed profile. The camera transaction retains the
+previous healthy capture in that case, and the product banner explicitly reports
+that the requested settings were not applied. It does not silently choose a
+different profile.

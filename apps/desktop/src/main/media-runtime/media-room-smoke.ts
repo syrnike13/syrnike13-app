@@ -105,6 +105,7 @@ async function run() {
       screen: { state: 'off' },
       output: { state: 'off' },
       remoteVideoDemand: [],
+      rendererId: null,
     })
     await waitForRoomState(subscribe, () => roomState, 'connected')
     const connected = await supervisor.querySnapshot()

@@ -13,13 +13,12 @@ use syrnike_database::{
     voice::{
         cancel_current_pending_voice_join_in_server, create_voice_session, get_channel_node,
         get_current_voice_operation_id, get_current_voice_session,
-        get_user_voice_channel_in_server, get_voice_state,
+        get_user_voice_channel_in_server, get_voice_state, native_camera_profiles,
         publish_authoritative_voice_snapshot,
         remove_temporary_server_member_after_voice_disconnect_locked,
         remove_user_from_voice_channel, set_channel_node, sync_user_voice_permissions,
-        voice_participant_identity,
-        voice_session_for_join_request, with_temporary_voice_user_lock, UserVoiceChannel,
-        VoiceClient, VOICE_OPERATION_ID_PREFIX,
+        voice_participant_identity, voice_session_for_join_request, with_temporary_voice_user_lock,
+        UserVoiceChannel, VoiceClient, VOICE_OPERATION_ID_PREFIX,
     },
     Database, File, PartialMember, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
@@ -564,6 +563,10 @@ pub async fn edit(
                             connection_epoch: connection_epoch.clone(),
                             token,
                             identity,
+                            camera_profiles: native_camera_profiles(
+                                &target_user.limits().await,
+                                permissions,
+                            ),
                         },
                     },
                 }

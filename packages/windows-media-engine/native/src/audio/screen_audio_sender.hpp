@@ -8,6 +8,7 @@ struct ScreenAudioSenderStats {
   std::int64_t last_capture_timestamp_100ns = 0;
   std::uint64_t maximum_submit_age_us = 0;
   bool published = false;
+  std::uint64_t maximum_callback_wait_us = 0;
 };
 // Publish/unpublish use the Room control lane. PCM has a separate worker and
 // a fixed 10 ms clocked SDK source, so capture never waits for networking or video.
@@ -19,13 +20,15 @@ class ScreenAudioSender final {
   ScreenAudioSender(std::shared_ptr<LiveKitRoomTransport>, std::shared_ptr<PcmQueue>,
                     PacketObserver = {});
   ~ScreenAudioSender();
-  std::optional<ScreenAudioFailure> start(std::uint64_t generation);
+  std::optional<ScreenAudioFailure> start(std::uint64_t generation, std::uint32_t bitrate = 128'000);
+  void cancel() noexcept;
   bool stop(std::chrono::steady_clock::time_point deadline) noexcept;
   ScreenAudioSenderStats stats() const noexcept;
   std::optional<ScreenAudioFailure> failure() const noexcept;
 
  private:
   struct State;
+  struct Cancellation;
   void run(const std::shared_ptr<State>&) noexcept;
   bool enqueue(const std::shared_ptr<State>&, LiveKitRoomTransport::ActiveRoomTask,
                std::chrono::steady_clock::time_point deadline);
@@ -34,6 +37,7 @@ class ScreenAudioSender final {
   PacketObserver packet_observer_;
   mutable std::mutex mutex_;
   std::shared_ptr<State> state_;
+  std::shared_ptr<Cancellation> cancellation_;
   std::thread worker_;
 };
 }  // namespace syrnike::windows_media::audio

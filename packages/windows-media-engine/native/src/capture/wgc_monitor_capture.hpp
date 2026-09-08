@@ -14,6 +14,9 @@ inline constexpr bool kDefaultD3dDebugLayer = false;
 
 struct WgcMonitorCaptureOptions {
   bool request_d3d_debug_layer = kDefaultD3dDebugLayer;
+  // Optional one-shot admission bounds; normal capture keeps existing defaults.
+  std::uint32_t maximum_width = 0, maximum_height = 0;
+  std::uint32_t frame_pool_size = kMaximumMonitorFrames + 1;
 };
 
 struct WgcMonitorCaptureDiagnostics {

@@ -1,4 +1,5 @@
 #include "audio/audio_device_registry.hpp"
+#include "core/opaque_device_id.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -20,6 +21,7 @@ bool AudioDeviceRegistry::changed() const {
 AudioDeviceSnapshot AudioDeviceRegistry::refresh() {
   requireOwner();
   auto endpoints = enumerator_->enumerate();
+  std::lock_guard cache_lock(cache_mutex_);
   snapshot_.events.clear();
   const auto fail = [&](AudioRegistryStatus status) {
     if (snapshot_.status != status) ++snapshot_.revision;
@@ -45,8 +47,12 @@ AudioDeviceSnapshot AudioDeviceRegistry::refresh() {
       if (next_identities.size() == kAudioIdentityCapacity) {
         return fail(AudioRegistryStatus::capacity_exceeded);
       }
-      next_identities.push_back({endpoint.endpoint_id, endpoint.direction,
-                                 next_identities.size() + 1});
+      const auto id = opaqueDeviceId(endpoint.direction == AudioDirection::input
+          ? L"audio-input:" : L"audio-output:", endpoint.endpoint_id);
+      if (!id || std::any_of(next_identities.begin(), next_identities.end(),
+          [&](const Identity& existing) { return existing.id == *id; }))
+        return fail(AudioRegistryStatus::enumeration_failed);
+      next_identities.push_back({endpoint.endpoint_id, endpoint.direction, *id});
       identity = std::prev(next_identities.end());
     }
     if (std::any_of(next.begin(), next.end(), [&](const AudioDevice& value) {
@@ -85,7 +91,7 @@ AudioDeviceSnapshot AudioDeviceRegistry::refresh() {
   return snapshot_;
 }
 std::optional<AudioEndpoint> AudioDeviceRegistry::resolve(const AudioDeviceIntent& intent) const {
-  requireOwner();
+  std::lock_guard cache_lock(cache_mutex_);
   // A failed refresh cannot safely resolve a removed/default endpoint from a
   // stale snapshot. The current capture can continue independently.
   if (snapshot_.status != AudioRegistryStatus::ready) return {};

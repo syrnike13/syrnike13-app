@@ -39,6 +39,9 @@ const CredentialSchema = Schema.Struct({
   client_instance_id: ProtocolString,
   connection_epoch: ProtocolString,
   token: VoiceToken,
+  camera_profiles: Schema.Array(Schema.Literals(['hd720p30', 'hd1080p30'])).check(
+    Schema.isMaxLength(2),
+  ),
   identity: Schema.String.check(
     Schema.isMinLength(1),
     Schema.isMaxLength(2_048),
@@ -677,6 +680,7 @@ function parseVoiceLease(event: typeof VoiceLeaseSchema.Type): VoiceLease {
       url: event.url,
       token: event.credential.token,
       participantIdentity: event.credential.identity,
+      cameraProfiles: event.credential.camera_profiles,
     },
   }
 }

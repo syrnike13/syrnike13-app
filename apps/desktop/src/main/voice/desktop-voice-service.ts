@@ -62,6 +62,7 @@ export class DesktopVoiceService {
     | ((patch: DesktopVoiceSettingsPatch) => Promise<void> | void)
     | null = null
   private disposed = false
+  private runtimeRetirementFailed = false
 
   constructor() {
     const initial = this.createOwnedRuntime()
@@ -125,7 +126,7 @@ export class DesktopVoiceService {
   }
 
   configureSession(session: DesktopStoredSession | null) {
-    if (this.disposed) return
+    if (this.disposed || this.runtimeRetirementFailed) return
     const identity = session ? `${session.user_id}:${session._id}` : null
     if (identity === this.sessionIdentity) {
       if (!session || session.token === this.sessionToken) return
@@ -162,7 +163,7 @@ export class DesktopVoiceService {
       Effect.gen({ self: this }, function* () {
         const previousOwner = this.runtimeOwner
         yield* previousOwner.disposeEffect
-        if (this.disposed || revision !== this.sessionRevision) return
+        if (this.disposed || this.runtimeRetirementFailed || revision !== this.sessionRevision) return
 
         const replacement = this.createOwnedRuntime()
         this.runtime = replacement.value
@@ -321,7 +322,7 @@ export class DesktopVoiceService {
   }
 
   private disposeRuntime(runtime: DesktopVoiceRuntime) {
-    return Effect.gen(function* () {
+    return Effect.gen({ self: this }, function* () {
       yield* ignoreRuntimeDisposalFailure(
         runtime.director.disposeEffect(),
         'director',
@@ -331,7 +332,16 @@ export class DesktopVoiceService {
         'director_subscription',
       )
       yield* ignoreRuntimeDisposalFailure(
-        Effect.sync(() => runtime.engine.dispose()),
+        Effect.tryPromise({
+          try: async () => {
+            await runtime.engine.dispose()
+          },
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.tapCause(() => Effect.sync(() => {
+            this.runtimeRetirementFailed = true
+          })),
+        ),
         'engine',
       )
       yield* ignoreRuntimeDisposalFailure(
@@ -436,6 +446,8 @@ export class DesktopVoiceService {
     } else if (action === 'toggle-camera') {
       this.runtime.director.dispatch({
         type: 'setCamera',
+        deviceId: this.preferences?.preferredVideoDevice,
+        profile: this.preferences?.cameraProfile,
         enabled:
           snapshot.camera.state === 'off' || snapshot.camera.state === 'failed',
       })
@@ -536,7 +548,7 @@ export function broadcastDesktopVoiceSnapshot(
 export const desktopVoiceService = new DesktopVoiceService()
 
 function ignoreRuntimeDisposalFailure(
-  effect: Effect.Effect<void>,
+  effect: Effect.Effect<void, unknown>,
   component: string,
 ) {
   return effect.pipe(

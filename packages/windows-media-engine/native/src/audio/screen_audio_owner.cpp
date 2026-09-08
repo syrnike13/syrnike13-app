@@ -5,7 +5,8 @@ namespace syrnike::windows_media::audio {
 using Clock = std::chrono::steady_clock;
 namespace {
 bool sameIntent(const ScreenAudioIntent& a, const ScreenAudioIntent& b) noexcept {
-  return a.mode == b.mode && a.target && b.target && a.target->pid() == b.target->pid() &&
+  return a.mode == b.mode && a.room_generation == b.room_generation && a.bitrate == b.bitrate &&
+         a.target && b.target && a.target->pid() == b.target->pid() &&
          a.target->creationTime() == b.target->creationTime();
 }
 }  // namespace
@@ -20,16 +21,24 @@ bool ScreenAudioOwner::applyDesired(std::uint64_t revision,
                                     std::optional<ScreenAudioIntent> intent) {
   std::scoped_lock lock(mutex_);
   if (stopping_ || revision <= stats_.desired_revision || (intent && !intent->target)) return false;
+  if (session_ && (!intent || !desired_ || !sameIntent(*intent, *desired_))) session_->cancel();
   stats_.desired_revision = revision;
   desired_ = std::move(intent);
   changed_.notify_all();
   return true;
+}
+void ScreenAudioOwner::beginStop() {
+  std::lock_guard lock(mutex_);
+  stopping_ = true;
+  if (session_) session_->cancel();
+  changed_.notify_all();
 }
 ScreenAudioOwnerStats ScreenAudioOwner::stats() const noexcept {
   std::scoped_lock lock(mutex_);
   return stats_;
 }
 bool ScreenAudioOwner::stop(Clock::time_point deadline) noexcept {
+  beginStop();
   std::unique_lock lock(mutex_);
   stopping_ = true;
   changed_.notify_all();
@@ -52,6 +61,10 @@ void ScreenAudioOwner::run() noexcept {
     const bool stopped = session->stop(Clock::now() + std::chrono::seconds{6});
     const auto resources = session->stats();
     const auto failure = session->failure();
+    {
+      std::lock_guard lock(mutex_);
+      session_ = nullptr;
+    }
     session.reset();
     active.reset();
     std::scoped_lock lock(mutex_);
@@ -123,6 +136,11 @@ void ScreenAudioOwner::run() noexcept {
       }
       session = factory_();
       if (!session) throw std::runtime_error("Audio session factory returned null");
+      {
+        std::lock_guard lock(mutex_);
+        session_ = session.get();
+        if (stopping_ || revision != stats_.desired_revision) session_->cancel();
+      }
       const auto failure = session->start(*next);
       bool superseded;
       {

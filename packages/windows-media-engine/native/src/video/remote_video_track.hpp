@@ -16,9 +16,13 @@ namespace syrnike::windows_media::video {
 // stream teardown and upload execute on this owner's worker, not the FFI lane.
 class RemoteVideoTrack final : public LiveKitRoomObserver {
  public:
-  RemoteVideoTrack(std::string participant, std::string track_name);
+  RemoteVideoTrack(std::string participant, std::string track_name, std::string publication_id = {});
   ~RemoteVideoTrack() override;
   void demand(bool enabled);
+  void beginStop();
+  // Seed a publication observed before this demand was installed. The caller
+  // obtains track values from SDK events, never unsynchronized Track getters.
+  void seedPublication(std::shared_ptr<livekit::RemoteTrackPublication>, std::shared_ptr<livekit::Track> = {});
   void stop() override;
   std::optional<TextureLease> takeFrame();
   std::uint64_t decoded() const { return decoded_.load(); }
@@ -45,6 +49,8 @@ class RemoteVideoTrack final : public LiveKitRoomObserver {
   void run() noexcept;
   const std::string participant_;
   const std::string track_name_;
+  const std::string publication_id_;
+  std::mutex join_mutex_;
   std::mutex mutex_;
   std::condition_variable changed_;
   std::atomic<std::uint64_t> revision_{0};
@@ -55,6 +61,7 @@ class RemoteVideoTrack final : public LiveKitRoomObserver {
   std::atomic<std::uint64_t> sdk_reconnects_{0};
   bool enabled_ = false;
   bool stopping_ = false;
+  bool done_ = false;
   std::shared_ptr<livekit::RemoteTrackPublication> publication_;
   std::shared_ptr<livekit::Track> track_;
   std::optional<livekit::VideoFrameEvent> newest_;

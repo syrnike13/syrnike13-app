@@ -329,18 +329,34 @@ export const NativeMicrophonePreviewStateEventSchema = Schema.Union([
 export type NativeMicrophonePreviewStateEvent =
   Mutable<typeof NativeMicrophonePreviewStateEventSchema.Type>
 
-const NativeMediaUnavailableFailureSchema = Schema.Struct({
-  code: Schema.Literal('native_media_unavailable'),
+const NativeMediaFailureSchema = Schema.Struct({
+  code: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
   message: Schema.String.check(Schema.isMaxLength(4_096)),
-  retryable: Schema.Literal(false),
-  stage: Schema.Literal('native_runtime'),
+  retryable: Schema.Boolean,
+  stage: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
 })
-
+export const NativeMediaPathStateSchema = Schema.Struct({
+  revision: Schema.Natural,
+  state: Schema.Literals(['off', 'starting', 'running', 'muted', 'failed']),
+  warning: Schema.Boolean,
+  failure: Schema.optional(NativeMediaFailureSchema),
+})
 export const NativeMediaRuntimeStateSchema = Schema.Struct({
-  available: Schema.Literal(false),
-  status: Schema.Literal('unavailable'),
-  restartCount: Schema.Literal(0),
-  failure: NativeMediaUnavailableFailureSchema,
+  available: Schema.Boolean,
+  status: Schema.Literals(['unavailable', 'stopped', 'starting', 'ready', 'recovering', 'failed']),
+  restartCount: Schema.Natural,
+  hostEpoch: Schema.Natural,
+  failure: Schema.optional(NativeMediaFailureSchema),
+  paths: Schema.Struct({
+    microphone: NativeMediaPathStateSchema,
+    camera: NativeMediaPathStateSchema,
+    screen: NativeMediaPathStateSchema,
+    output: NativeMediaPathStateSchema,
+    screen_audio: NativeMediaPathStateSchema,
+    screen_preview: NativeMediaPathStateSchema,
+    camera_preview: NativeMediaPathStateSchema,
+    remote_video: NativeMediaPathStateSchema,
+  }),
 })
 
 export type NativeMediaRuntimeState = typeof NativeMediaRuntimeStateSchema.Type

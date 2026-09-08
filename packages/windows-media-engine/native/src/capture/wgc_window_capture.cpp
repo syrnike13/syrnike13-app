@@ -79,6 +79,8 @@ struct WindowBackendState {
   std::optional<CaptureFailure> stop_failure;
   WgcWindowCaptureDiagnostics diagnostics;
   std::shared_ptr<WgcWindowCaptureTestHooks> test_hooks;
+  std::uint32_t maximum_width = 0, maximum_height = 0;
+  std::uint32_t frame_pool_size = kMaximumWindowFrames + 1;
 };
 
 template <typename State>
@@ -261,6 +263,9 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
     state_->diagnostics.d3d_debug_requested =
         options_.request_d3d_debug_layer;
     state_->test_hooks = options_.test_hooks;
+    state_->maximum_width = options_.maximum_width;
+    state_->maximum_height = options_.maximum_height;
+    state_->frame_pool_size = options_.frame_pool_size;
   }
 
   ~WgcWindowCaptureBackendImpl() override {
@@ -299,11 +304,16 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
       GraphicsCaptureItem item = acquireWindowCaptureItem(
           target.platformValue(), target.cacheKey());
       const auto item_size = item.Size();
+      if (options_.frame_pool_size < 1 || options_.frame_pool_size > kMaximumWindowFrames + 1 ||
+          (options_.maximum_width && item_size.Width > static_cast<std::int64_t>(options_.maximum_width)) ||
+          (options_.maximum_height && item_size.Height > static_cast<std::int64_t>(options_.maximum_height))) {
+        return {false, CaptureFailure{"capture_admission_limit", "Capture exceeds one-shot admission bounds"}};
+      }
       const SizeInt32 initial_size{(std::max)(item_size.Width, 1),
                                    (std::max)(item_size.Height, 1)};
       auto frame_pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
           direct3d_device, DirectXPixelFormat::B8G8R8A8UIntNormalized,
-          static_cast<int>(kMaximumWindowFrames + 1), initial_size);
+          static_cast<int>(options_.frame_pool_size), initial_size);
       auto session = frame_pool.CreateCaptureSession(item);
       if (!options_.include_cursor) session.IsCursorCaptureEnabled(false);
 
@@ -338,6 +348,12 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
               }
               const auto content_size = frame.ContentSize();
               if (content_size.Width <= 0 || content_size.Height <= 0) return;
+              if ((state->maximum_width && content_size.Width > static_cast<std::int64_t>(state->maximum_width)) ||
+                  (state->maximum_height && content_size.Height > static_cast<std::int64_t>(state->maximum_height))) {
+                frame.Close();
+                sendWindowTerminal(state, {"capture_admission_limit", "Capture exceeds one-shot admission bounds"});
+                return;
+              }
               const std::int64_t timestamp =
                   frame.SystemRelativeTime().count();
 
@@ -398,7 +414,7 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
                 sender.Recreate(
                     state->direct3d_device,
                     DirectXPixelFormat::B8G8R8A8UIntNormalized,
-                    static_cast<int>(kMaximumWindowFrames + 1), resize_to);
+                    static_cast<int>(state->frame_pool_size), resize_to);
                 {
                   std::lock_guard lock(state->mutex);
                   if (!state->active || state->stop_requested.load()) return;

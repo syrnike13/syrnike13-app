@@ -314,14 +314,15 @@ export function ChannelSidebarItem({
       return
     }
 
+    // The displayed membership may lag a pending move. Reassert the clicked
+    // intent even when opening its stage; Voice Director deduplicates stable joins.
+    void voice.join(channel._id)
     if (action === 'open') {
       void navigate({
         to: channelRoute,
         params: { channelId: channel._id },
         search: { m: undefined },
       })
-    } else {
-      void voice.join(channel._id)
     }
   }
 

@@ -433,7 +433,8 @@ function compactNumbers<T extends Record<string, number | undefined>>(
   values: T,
 ) {
   const compact: { [Key in keyof T]?: number } = {}
-  for (const key of Object.keys(values)) {
+  for (const key in values) {
+    if (!Object.hasOwn(values, key)) continue
     const value = values[key]
     if (value !== undefined && Number.isFinite(value)) compact[key] = value
   }

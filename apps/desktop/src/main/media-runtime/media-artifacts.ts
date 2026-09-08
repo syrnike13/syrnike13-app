@@ -39,7 +39,7 @@ export const MediaArtifactManifestSchema = Schema.Struct({
   napiVersion: Schema.Literal(8),
   capabilities: Schema.Tuple([
     Schema.Literal('lifecycle'),
-    Schema.Literal('control-v3'),
+    Schema.Literal('control-v4'),
     Schema.Literal('diagnostics-v2'),
   ]),
   limits: Schema.Struct({
@@ -72,6 +72,10 @@ export const MediaArtifactManifestSchema = Schema.Struct({
     }),
     Schema.Struct({
       name: Schema.Literal('livekit_ffi.dll'),
+      sha256: MediaSha256Schema,
+    }),
+    Schema.Struct({
+      name: Schema.Literal('windows_media_texture_broker.node'),
       sha256: MediaSha256Schema,
     }),
   ]),
@@ -107,6 +111,7 @@ export function verifyMediaArtifactDistribution(
       'livekit_ffi.dll',
       'media-manifest.json',
       'windows_media.node',
+      'windows_media_texture_broker.node',
     ])
   ) {
     throw new Error('Media artifact distribution has unexpected contents')

@@ -350,10 +350,6 @@ export function rtcDebugSnapshotFromTelemetry(
         videoNoFrameCount: capture.videoNoFrameCount,
         videoRepeatedFrameCount: capture.videoRepeatedFrameCount,
         videoRecoverableLostCount: capture.videoRecoverableLostCount,
-        videoGpuPoolSlotsAvailable: capture.videoGpuPoolSlotsAvailable,
-        videoGpuPoolSlotsTotal: capture.videoGpuPoolSlotsTotal,
-        videoDxgiDuplicationHoldUsMax:
-          capture.videoDxgiDuplicationHoldUsMax,
         videoSourceUpdates: capture.videoSourceUpdates,
         videoGpuSubmissions: capture.videoGpuSubmissions,
         videoIdleRefreshes: capture.videoIdleRefreshes,
@@ -857,18 +853,6 @@ function screenShareSnapshot(
     captureVideoRecoverableLostCount:
       nativeStats?.backend === 'native'
         ? nativeStats.videoRecoverableLostCount
-        : undefined,
-    captureVideoGpuPoolSlotsAvailable:
-      nativeStats?.backend === 'native'
-        ? nativeStats.videoGpuPoolSlotsAvailable
-        : undefined,
-    captureVideoGpuPoolSlotsTotal:
-      nativeStats?.backend === 'native'
-        ? nativeStats.videoGpuPoolSlotsTotal
-        : undefined,
-    captureVideoDxgiDuplicationHoldUsMax:
-      nativeStats?.backend === 'native'
-        ? nativeStats.videoDxgiDuplicationHoldUsMax
         : undefined,
     captureVideoSourceUpdates:
       nativeStats?.backend === 'native'

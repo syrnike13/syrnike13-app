@@ -69,15 +69,16 @@ MicrophoneCapture::MicrophoneCapture() : state_(std::make_shared<State>()) {}
 MicrophoneCapture::~MicrophoneCapture() {
   if (!stop(Clock::now() + std::chrono::seconds{5})) std::terminate();
 }
-MicrophoneCaptureFailure MicrophoneCapture::start(AudioEndpoint endpoint, std::uint64_t generation) {
+MicrophoneCaptureFailure MicrophoneCapture::start(AudioEndpoint endpoint, std::uint64_t generation,
+                                                 bool bypass_system_processing) {
   if (owner_ != std::this_thread::get_id() || state_->state.load() != MicrophoneCaptureState::idle || !generation ||
       endpoint.direction != AudioDirection::input || endpoint.endpoint_id.empty())
     return MicrophoneCaptureFailure::invalid_state;
   state_->generation = generation;
   state_->state = MicrophoneCaptureState::starting;
   try {
-    worker_ = std::thread([state = state_, endpoint = std::move(endpoint)]() mutable {
-      run(state, std::move(endpoint));
+    worker_ = std::thread([state = state_, endpoint = std::move(endpoint), bypass_system_processing]() mutable {
+      run(state, std::move(endpoint), bypass_system_processing);
     });
   } catch (...) {
     state_->fail(MicrophoneCaptureFailure::activation_failed, E_OUTOFMEMORY);
@@ -130,7 +131,8 @@ MicrophoneCaptureStats MicrophoneCapture::stats() const noexcept {
   result.mmcss_registered = state_->mmcss_registered.load(std::memory_order_relaxed);
   return result;
 }
-void MicrophoneCapture::run(const std::shared_ptr<State>& state, AudioEndpoint endpoint) noexcept {
+void MicrophoneCapture::run(const std::shared_ptr<State>& state, AudioEndpoint endpoint,
+                            bool bypass_system_processing) noexcept {
   state->thread_alive = true;
   try {
     Apartment apartment;
@@ -146,7 +148,7 @@ void MicrophoneCapture::run(const std::shared_ptr<State>& state, AudioEndpoint e
     AudioClientProperties properties{};
     properties.cbSize = sizeof(properties);
     properties.eCategory = AudioCategory_Other;
-    properties.Options = AUDCLNT_STREAMOPTIONS_RAW;
+    properties.Options = bypass_system_processing ? AUDCLNT_STREAMOPTIONS_RAW : AUDCLNT_STREAMOPTIONS_NONE;
     check(client->SetClientProperties(&properties), MicrophoneCaptureFailure::policy_unavailable);
     WAVEFORMATEX format{};
     format.wFormatTag = WAVE_FORMAT_PCM;

@@ -46,6 +46,9 @@ on:
 permissions:
   contents: read
 
+env:
+  WINDOWS_MEDIA_CAPTURE_THREAD_DIAGNOSTIC: "1"
+
 jobs:
   native-boundary:
     name: Hook addons and media lifecycle boundary

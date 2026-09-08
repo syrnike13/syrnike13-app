@@ -65,8 +65,10 @@ const reservation: VoiceReservationRequest = {
     voiceGateAutoThreshold: true,
     outputVolume: 1,
     cameraEnabled: false,
+    cameraProfile: 'hd720p30',
     screenEnabled: false,
     screenAudioEnabled: false,
+    screenAudioMode: 'system',
   },
 }
 
@@ -111,6 +113,7 @@ describe('GatewayVoiceAuthorityAdapter', () => {
         connection_epoch: 'epoch-a',
         token: 'secret-token',
         identity: 'voice:v1|windows_native|client-a|epoch-a|voice-op-a|user-a',
+        camera_profiles: ['hd720p30'],
       },
     })
 
@@ -120,6 +123,7 @@ describe('GatewayVoiceAuthorityAdapter', () => {
       authorityVersion: 3,
       credential: {
         url: 'wss://voice.invalid',
+        cameraProfiles: ['hd720p30'],
         participantIdentity:
           'voice:v1|windows_native|client-a|epoch-a|voice-op-a|user-a',
       },
@@ -267,6 +271,7 @@ describe('GatewayVoiceAuthorityAdapter', () => {
           connection_epoch: 'epoch-b',
           token: 'secret-b',
           identity: 'identity-b',
+          camera_profiles: [],
         },
       },
     })
@@ -291,6 +296,7 @@ describe('GatewayVoiceAuthorityAdapter', () => {
           url: 'wss://voice.invalid',
           token: 'secret-b',
           participantIdentity: 'identity-b',
+          cameraProfiles: [],
         },
       },
     })

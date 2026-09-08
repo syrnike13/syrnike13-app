@@ -22,6 +22,11 @@ Local preview is an optional projection of the current WGC monitor/window
 frame. It does not create a LiveKit track, own Room, restart capture, or change
 the hardware H.264 profile. Product Voice UI integration remains #130.
 
+Offers dropped because both preview slots are in use remain counted as pool
+drops without changing a healthy preview to failed. This is expected when
+capture runs faster than presentation. Allocation, GPU and budget failures
+still report degradation.
+
 ```text
 WGC lease -> latest capture slot -> GPU conversion -> encoder admission
                     |                                   |

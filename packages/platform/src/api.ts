@@ -229,6 +229,7 @@ export const DesktopDisplayMediaSelectionSchema = Schema.Struct({
   requestId: Schema.String,
   sourceId: Schema.String,
   audioRequested: Schema.Boolean,
+  audioMode: Schema.optional(Schema.Literals(['system', 'process'])),
 })
 
 export type DesktopDisplayMediaSelection =

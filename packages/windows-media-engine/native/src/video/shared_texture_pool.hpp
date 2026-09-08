@@ -50,6 +50,7 @@ struct PoolSnapshot {
 class SharedTexturePool final {
  public:
   static constexpr std::size_t kSlots = 4;
+  static constexpr std::size_t kGenerations = 16;
   static constexpr std::uint64_t kBudget = 256ULL * 1024 * 1024;
   static SharedTexturePool& processPool();
   std::uint64_t beginGeneration();
@@ -77,7 +78,7 @@ class SharedTexturePool final {
   mutable std::mutex mutex_;
   std::shared_ptr<capture::D3d11DeviceOwner> device_;
   std::array<Slot, kSlots> slots_;
-  std::array<std::uint64_t, 16> active_generations_{};
+  std::array<std::uint64_t, kGenerations> active_generations_{};
   PoolSnapshot metrics_;
   std::uint64_t sequence_ = 0;
   std::array<double, 1024> release_samples_{};

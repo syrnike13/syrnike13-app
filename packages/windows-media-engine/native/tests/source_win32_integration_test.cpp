@@ -95,13 +95,13 @@ class FixtureProcess final {
     require(WriteFile(stdin_write_, line.data(), static_cast<DWORD>(line.size()),
                       &written, nullptr) != FALSE && written == line.size(),
             "fixture command write failed");
-    const auto response = readLine();
+    const auto response = readLine(value);
     require(response.rfind("OK ", 0) == 0, "fixture command failed");
     return response;
   }
 
  private:
-  std::string readLine() {
+  std::string readLine(const std::string& command = "startup") {
     std::promise<std::string> completed;
     auto result = completed.get_future();
     std::thread reader([this, promise = std::move(completed)]() mutable {
@@ -128,7 +128,7 @@ class FixtureProcess final {
         (void)WaitForSingleObject(process_.hProcess, 1000);
       }
       reader.join();
-      throw std::runtime_error("fixture response exceeded its 5 second deadline");
+      throw std::runtime_error("fixture response exceeded its 5 second deadline: " + command);
     }
     reader.join();
     return result.get();
@@ -244,7 +244,14 @@ void fixtureBehaviorIsObservableWithoutBlocking() {
   const std::string recreated_title =
       processUniqueTitle("Syrnike Source Fixture Recreated");
   fixture.command("title " + primary_title);
-  SourceRegistry registry(createWin32SourceEnumerator());
+  // Removal requires a complete scan. Unrelated desktop windows can exceed
+  // the production inventory bound, so scope this lifecycle test to its fixture.
+  Win32SourceEnumeratorTestHooks hooks;
+  hooks.include_window_title = [&](const std::string& title) {
+    return title == primary_title || title == renamed_title ||
+        title == second_title || title == rapid_title || title == recreated_title;
+  };
+  SourceRegistry registry(createWin32SourceEnumerator(std::move(hooks)));
   EnumerationOptions options;
   options.kind = EnumerationOptions::Kind::Window;
 
@@ -276,7 +283,11 @@ void fixtureBehaviorIsObservableWithoutBlocking() {
                           [&](const SourceEnumeration::RemovedSource& removed) {
                             return removed.id == second_id;
                           }),
-          "second fixture close was not reported as a typed removal");
+          "second fixture close was not reported as a typed removal: present=" +
+              std::to_string(findTitle(result, second_title) != nullptr) +
+              " complete=" + std::to_string(result.complete) +
+              " ok=" + std::to_string(result.ok) +
+              " removed=" + std::to_string(result.removed.size()));
 
   fixture.command("minimize");
   result = registry.enumerate(options);
@@ -343,6 +354,7 @@ void closeDuringEnumerationIsRejectedAtThePostBarrier() {
   fixture.command("second-title " + second_title);
   std::atomic<bool> close_during_scan{false};
   Win32SourceEnumeratorTestHooks hooks;
+  hooks.include_window_title = [&](const std::string& title) { return title == second_title; };
   hooks.before_post_barrier = [&] {
     if (close_during_scan.exchange(false)) fixture.command("close-second");
   };
@@ -461,6 +473,7 @@ void delayedCloseIsRejectedAtTheFinalBarrier() {
   fixture.command("second-title " + second_title);
   std::atomic<bool> armed{false};
   Win32SourceEnumeratorTestHooks hooks;
+  hooks.include_window_title = [&](const std::string& title) { return title == second_title; };
   hooks.before_final_barrier = [&] {
     if (armed.exchange(false)) fixture.command("close-second");
   };

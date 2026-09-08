@@ -9,7 +9,10 @@ namespace syrnike::windows_media::screen {
 namespace {
 using Microsoft::WRL::ComPtr;
 // 256-byte rows and 64KiB allocation alignment, as in remote receive.
-constexpr std::uint64_t kTextureBytes = (1280ULL * 4 * 720 + 65535) & ~65535ULL;
+std::uint64_t textureBytes(std::uint32_t width, std::uint32_t height) {
+  const auto row = (width * 4ULL + 255) & ~255ULL;
+  return (row * height + 65535) & ~65535ULL;
+}
 void check(HRESULT result) {
   if (FAILED(result)) throw std::runtime_error("preview_d3d_failure");
 }
@@ -29,12 +32,26 @@ LocalScreenPreview& LocalScreenPreview::processPreview() {
   return preview;
 }
 LocalScreenPreview::~LocalScreenPreview() {
-  for (auto& slot : slots_) clearLocked(slot);
+  for (auto& slot : slots_)
+    clearLocked(slot, slot.state == SlotState::free || slot.state == SlotState::ready);
 }
-void LocalScreenPreview::clearLocked(Slot& slot) {
+LocalScreenPreview::LocalScreenPreview(std::uint32_t width, std::uint32_t height) {
+  if (!configureSize(width, height)) throw std::invalid_argument("Invalid fixed preview dimensions");
+}
+bool LocalScreenPreview::configureSize(std::uint32_t width, std::uint32_t height) {
+  std::lock_guard lock(mutex_);
+  if (width < 64 || height < 64 || width > 1280 || height > 720 ||
+      stats_.generation || stats_.publication_active || stats_.backing_bytes) return false;
+  width_ = width;
+  height_ = height;
+  texture_bytes_ = textureBytes(width, height);
+  return true;
+}
+void LocalScreenPreview::clearLocked(Slot& slot, bool completion_proven) {
   if (slot.frame.handle) CloseHandle(reinterpret_cast<HANDLE>(slot.frame.handle));
-  if (slot.texture) stats_.backing_bytes -= kTextureBytes;
-  if (slot.budget_reserved) capture::releaseOptionalPreview(kTextureBytes);
+  if (slot.texture) stats_.backing_bytes -= slot.backing_bytes;
+  // Unproved GPU/consumer completion keeps its reservation until process exit.
+  if (slot.budget_reserved && completion_proven) capture::releaseOptionalPreview(slot.backing_bytes);
   slot = {};
 }
 void LocalScreenPreview::allocateLocked() {
@@ -46,28 +63,31 @@ void LocalScreenPreview::allocateLocked() {
   for (auto& slot : slots_) {
     if (slot.texture || slot.state != SlotState::free) continue;
     if (stats_.process_budget < kPublicationReserve + kRemoteReserve +
-                                    stats_.backing_bytes + kTextureBytes) return;
+                                    stats_.backing_bytes + texture_bytes_) return;
     D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = 1280; desc.Height = 720; desc.MipLevels = 1; desc.ArraySize = 1;
+    desc.Width = width_; desc.Height = height_; desc.MipLevels = 1; desc.ArraySize = 1;
     desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM; desc.SampleDesc.Count = 1;
     desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
     desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
                      D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
     try {
-      if (!capture::reserveOptionalPreview(kTextureBytes)) {
+      if (!capture::reserveOptionalPreview(texture_bytes_)) {
         ++stats_.pressure_drops;
         stats_.state = PreviewState::degraded;
         return;
       }
       slot.budget_reserved = true;
+      slot.backing_bytes = texture_bytes_;
       check(device_->device()->CreateTexture2D(&desc, nullptr, &slot.texture));
-      stats_.backing_bytes += kTextureBytes;
+      stats_.backing_bytes += texture_bytes_;
       ComPtr<IDXGIResource1> resource;
       check(slot.texture.As(&resource));
       HANDLE handle = nullptr;
       check(resource->CreateSharedHandle(nullptr,
           DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE, nullptr, &handle));
       slot.frame.handle = reinterpret_cast<std::uintptr_t>(handle);
+      slot.frame.width = width_;
+      slot.frame.height = height_;
       check(slot.texture.As(&slot.keyed));
       D3D11_QUERY_DESC query{D3D11_QUERY_EVENT, 0};
       check(device_->device()->CreateQuery(&query, &slot.query));
@@ -138,7 +158,7 @@ void LocalScreenPreview::offer(const capture::D3d11FrameView& frame,
   std::unique_lock lock(mutex_, std::try_to_lock);
   if (!lock.owns_lock()) { ++contention_drops_; return; }
   if (!stats_.desired || !stats_.publication_active) return;
-  if (stats_.process_budget < kPublicationReserve + kRemoteReserve + kTextureBytes) {
+  if (stats_.process_budget < kPublicationReserve + kRemoteReserve + texture_bytes_) {
     ++stats_.pressure_drops; stats_.state = PreviewState::degraded; return;
   }
   if (!frame || frame.device_owner != device_ || metadata.width < 2 ||
@@ -148,7 +168,12 @@ void LocalScreenPreview::offer(const capture::D3d11FrameView& frame,
   auto found = std::find_if(slots_.begin(), slots_.end(), [](const auto& slot) {
     return slot.texture && slot.state == SlotState::free;
   });
-  if (found == slots_.end()) { ++stats_.pool_drops; stats_.state = PreviewState::degraded; return; }
+  if (found == slots_.end()) {
+    // A faster producer normally fills both bounded slots between renderer
+    // releases. Dropping that offer is backpressure, not a preview failure.
+    ++stats_.pool_drops;
+    return;
+  }
   std::unique_lock context(device_->contextMutex(), std::try_to_lock);
   if (!context.owns_lock()) { ++contention_drops_; return; }
   auto& slot = *found;
@@ -168,7 +193,7 @@ void LocalScreenPreview::offer(const capture::D3d11FrameView& frame,
     D3D11_VIDEO_PROCESSOR_CONTENT_DESC content{};
     content.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
     content.InputWidth = metadata.width; content.InputHeight = metadata.height;
-    content.OutputWidth = 1280; content.OutputHeight = 720;
+    content.OutputWidth = width_; content.OutputHeight = height_;
     content.InputFrameRate = {60, 1}; content.OutputFrameRate = {60, 1};
     content.Usage = D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;
     if (!processor_ || input_width_ != metadata.width || input_height_ != metadata.height) {
@@ -190,7 +215,7 @@ void LocalScreenPreview::offer(const capture::D3d11FrameView& frame,
     ComPtr<ID3D11VideoProcessorOutputView> output;
     check(video_device->CreateVideoProcessorOutputView(slot.texture.Get(), enumerator.Get(), &output_desc, &output));
     const RECT source{0, 0, static_cast<LONG>(metadata.width), static_cast<LONG>(metadata.height)};
-    const RECT destination{0, 0, 1280, 720};
+    const RECT destination{0, 0, static_cast<LONG>(width_), static_cast<LONG>(height_)};
     video_context->VideoProcessorSetStreamSourceRect(processor.Get(), 0, TRUE, &source);
     video_context->VideoProcessorSetStreamDestRect(processor.Get(), 0, TRUE, &destination);
     video_context->VideoProcessorSetOutputTargetRect(processor.Get(), TRUE, &destination);

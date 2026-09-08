@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -10,10 +11,12 @@
 #include <vector>
 
 #include "core/protocol_limits.generated.hpp"
+#include "core/media_models.generated.hpp"
 
 namespace syrnike::windows_media {
 
 class RoomTransport;
+class MediaRuntime;
 
 inline constexpr std::size_t kControlQueueCapacity =
     protocol::kControlQueueCapacity;
@@ -101,12 +104,27 @@ enum class TrackKind {
   Camera,
   Screen,
   Output,
+  ScreenAudio,
+  ScreenPreview,
+  CameraPreview,
+  RemoteVideo,
 };
+
+inline constexpr std::size_t kMediaPathCount = 8;
+enum class MediaPathState { Off, Starting, Running, Muted, Failed };
+struct MediaPathSnapshot {
+  std::uint64_t revision = 0;
+  MediaPathState state = MediaPathState::Off;
+  std::optional<EngineFailure> failure;
+  bool warning = false;
+  bool operator==(const MediaPathSnapshot&) const = default;
+};
+using MediaPathsSnapshot = std::array<MediaPathSnapshot, kMediaPathCount>;
 
 struct TrackStateChangedEvent {
   std::uint64_t sequence = 0;
-  std::uint64_t revision = 0;
   TrackKind track = TrackKind::Microphone;
+  MediaPathSnapshot media;
 };
 
 struct FatalEngineFailureEvent {
@@ -133,20 +151,15 @@ struct RemoteVideoDemand {
   bool operator==(const RemoteVideoDemand &) const = default;
 };
 
-struct TrackIntent {
-  enum class State { Off } state = State::Off;
-
-  bool operator==(const TrackIntent &) const = default;
-};
-
 struct EngineDesiredState {
   std::uint64_t revision = 0;
   std::optional<RoomIntent> room;
-  TrackIntent microphone;
-  TrackIntent camera;
-  TrackIntent screen;
-  TrackIntent output;
+  MicrophoneIntent microphone;
+  CameraIntent camera;
+  ScreenIntent screen;
+  OutputIntent output;
   std::vector<RemoteVideoDemand> remote_video_demand;
+  std::optional<std::string> renderer_id;
 
   bool operator==(const EngineDesiredState &) const = default;
 };
@@ -169,6 +182,7 @@ struct EngineSnapshot {
   std::optional<EngineDesiredState> desired_state;
   RoomStateChangedEvent::State room_state = RoomStateChangedEvent::State::Off;
   std::optional<EngineFailure> room_failure;
+  MediaPathsSnapshot tracks;
 };
 
 struct ApplyDesiredStateResult {
@@ -208,6 +222,7 @@ struct EngineOptions {
   std::function<void()> test_before_apply_commit;
   std::function<void()> test_before_credential_commit;
   std::shared_ptr<RoomTransport> room_transport;
+  std::shared_ptr<MediaRuntime> media_runtime;
   RoomOperationDeadlines room_operation_deadlines;
 };
 
@@ -246,6 +261,7 @@ private:
 
 [[nodiscard]] const char *engineStateName(EngineState state) noexcept;
 [[nodiscard]] const char *trackKindName(TrackKind track) noexcept;
+[[nodiscard]] const char *mediaPathStateName(MediaPathState state) noexcept;
 [[nodiscard]] const char *
 roomPublicStateName(RoomStateChangedEvent::State state) noexcept;
 

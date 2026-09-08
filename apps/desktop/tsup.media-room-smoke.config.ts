@@ -17,7 +17,7 @@ if (releaseChannel !== 'stable' && releaseChannel !== 'nightly') {
 }
 
 export default defineConfig({
-  entry: ['src/main/media-runtime/media-room-smoke.ts'],
+  entry: ['src/main/media-runtime/media-room-smoke.ts', 'src/main/media-runtime/media-product-smoke.ts'],
   outDir: 'out/smoke',
   format: ['cjs'],
   platform: 'node',

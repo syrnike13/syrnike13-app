@@ -17,6 +17,7 @@ import {
 import { Effect, Fiber, Schema } from 'effect'
 
 import { decodeIpcInput } from './ipc-schema'
+import { getNativeScreenPicker } from './native-media-engine'
 
 type DisplayMediaHandler = NonNullable<
   Parameters<Session['setDisplayMediaRequestHandler']>[0]
@@ -112,7 +113,8 @@ export function isTrustedSender(
   getWindow: () => BrowserWindow | null,
 ) {
   const win = getWindow()
-  return Boolean(win && !win.isDestroyed() && event.sender === win.webContents)
+  return Boolean(win && !win.isDestroyed() && event.sender === win.webContents &&
+    event.senderFrame && event.senderFrame === win.webContents.mainFrame)
 }
 
 function clearPendingDisplayMediaRequest() {
@@ -238,6 +240,8 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
       Schema.Natural,
       pageInput,
     )
+    if (process.platform === 'win32') return getNativeScreenPicker()?.sources(requestId, page) ??
+      displayMediaSourcePage<DesktopDisplayMediaSource>([], page)
     return Effect.runPromise(
       refreshPendingDisplayMediaSourcesEffect(requestId, page),
     )
@@ -261,6 +265,7 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
       Schema.String,
       sourceInput,
     )
+    if (process.platform === 'win32') return getNativeScreenPicker()?.visual(requestId, sourceId) ?? null
     return pendingDisplayMediaSourceVisual(requestId, sourceId)
   })
 
@@ -270,6 +275,7 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
       event,
       requestInput: unknown,
       sourceInput: unknown,
+      audioInput: unknown,
     ) => {
       if (!isTrustedSender(event, getWindow)) return false
       const requestId = decodeIpcInput(
@@ -284,6 +290,11 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
         Schema.String,
         sourceInput,
       )
+      if (process.platform === 'win32') {
+        const audioRequested = decodeIpcInput(IPC.mediaSelectDisplaySource, 'audioRequested',
+          Schema.Union([Schema.Boolean, Schema.Undefined]), audioInput)
+        return getNativeScreenPicker()?.select(requestId, sourceId, audioRequested) ?? false
+      }
       return selectPendingDisplayMediaSource(requestId, sourceId)
     },
   )
@@ -296,6 +307,10 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
       Schema.String,
       input,
     )
+    if (process.platform === 'win32') {
+      getNativeScreenPicker()?.cancel(requestId)
+      return
+    }
 
     const pending = pendingDisplayMediaRequest
     if (!pending || pending.id !== requestId) return

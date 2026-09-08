@@ -98,6 +98,8 @@ class ProductionScreenPipeline final {
   ProductionScreenPipeline& operator=(const ProductionScreenPipeline&) = delete;
 
   [[nodiscard]] ScreenStartResult start(std::string track_name, std::chrono::milliseconds deadline);
+  // Pure admission revocation. Owner-thread stop() still proves full drain.
+  void requestStop() noexcept;
   [[nodiscard]] bool enableAdaptiveQuality(std::uint32_t supported_profiles,
                                            std::size_t selected_preset);
   [[nodiscard]] bool setSelectedPreset(std::uint64_t revision, std::size_t selected_preset) noexcept;
@@ -150,6 +152,7 @@ class ProductionScreenPipeline final {
   std::int64_t minimum_capture_timestamp_100ns_ = 0;
   bool published_ = false;
   bool stop_requested_ = false;
+  std::atomic_bool cancellation_requested_{false};
   bool worker_done_ = false;
   bool owns_preview_ = false;
   std::condition_variable worker_changed_;

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createInactiveMediaPaths } from './contract'
 
 import type {
   MediaUtilityAdapter,
@@ -23,14 +24,14 @@ class FakeMediaAdapter implements MediaUtilityAdapter {
     this.requests.push(message)
   }
 
-  kill() {
+  async kill() {
     this.killed = true
   }
 
   ready() {
     this.callbacks?.onMessage({
       type: 'ready',
-      protocolVersion: 3,
+      protocolVersion: 4,
       engineState: 'running',
       build: {
         commit: COMMIT_SHA,
@@ -43,7 +44,7 @@ class FakeMediaAdapter implements MediaUtilityAdapter {
   reply(requestId: string, result?: unknown) {
     this.callbacks?.onMessage({
       type: 'reply',
-      protocolVersion: 3,
+      protocolVersion: 4,
       requestId,
       ok: true,
       result,
@@ -70,6 +71,96 @@ function requestId(value: unknown) {
 }
 
 describe('MediaRuntimeSupervisor', () => {
+  it('keeps concurrent shutdown callers waiting for retirement after a protocol failure', async () => {
+    vi.useFakeTimers()
+    try {
+      const adapter = new FakeMediaAdapter()
+      let confirmExit = () => {}
+      adapter.kill = () => new Promise<void>(resolve => { confirmExit = resolve })
+      const supervisor = new MediaRuntimeSupervisor({ createAdapter: () => adapter })
+      const started = supervisor.start()
+      adapter.ready()
+      await started
+      const completed = vi.fn()
+      const first = supervisor.shutdown().then(completed)
+      const second = supervisor.shutdown().then(completed)
+      adapter.callbacks?.onMessage({ invalid: true })
+      await vi.advanceTimersByTimeAsync(1)
+      expect(completed).not.toHaveBeenCalled()
+      confirmExit()
+      await Promise.all([first, second])
+      expect(completed).toHaveBeenCalledTimes(2)
+      expect(supervisor.getSnapshot().status).toBe('stopped')
+    } finally { vi.useRealTimers() }
+  })
+
+  it('waits for confirmed utility termination before allowing a replacement', async () => {
+    vi.useFakeTimers()
+    try {
+      const adapter = new FakeMediaAdapter()
+      let confirmExit: () => void = () => undefined
+      adapter.kill = () => new Promise<void>(resolve => { confirmExit = resolve })
+      const replacement = new FakeMediaAdapter()
+      const createAdapter = vi.fn().mockReturnValueOnce(adapter).mockReturnValue(replacement)
+      const supervisor = new MediaRuntimeSupervisor({ createAdapter, restartDelaysMs: [10] })
+      const started = supervisor.start()
+      adapter.ready()
+      await started
+      adapter.callbacks?.onMessage({ invalid: true })
+      const restart = supervisor.start()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(createAdapter).toHaveBeenCalledTimes(1)
+      confirmExit()
+      await vi.advanceTimersByTimeAsync(10)
+      expect(createAdapter).toHaveBeenCalledTimes(2)
+      replacement.ready()
+      await restart
+      replacement.unexpectedExit()
+      await supervisor.shutdown()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('fails closed when the previous utility cannot be terminated', async () => {
+    const adapter = new FakeMediaAdapter()
+    adapter.kill = async () => { throw new Error('process still alive') }
+    const createAdapter = vi.fn(() => adapter)
+    const supervisor = new MediaRuntimeSupervisor({ createAdapter })
+    const started = supervisor.start()
+    adapter.ready()
+    await started
+    adapter.callbacks?.onMessage({ invalid: true })
+    await expect(supervisor.start()).rejects.toMatchObject({
+      failure: { code: 'media_host_termination_failed' },
+    })
+    expect(createAdapter).toHaveBeenCalledTimes(1)
+    expect(supervisor.getSnapshot().status).toBe('failed')
+    await expect(supervisor.shutdown()).rejects.toMatchObject({
+      failure: { code: 'media_host_termination_failed' },
+    })
+    expect(supervisor.getSnapshot().status).toBe('failed')
+  })
+
+  it('records utility exit evidence without forwarding stderr contents', async () => {
+    const adapter = new FakeMediaAdapter()
+    const record = vi.fn()
+    const supervisor = new MediaRuntimeSupervisor({
+      createAdapter: () => adapter, restartDelaysMs: [], onUtilityExit: record,
+    })
+    const started = supervisor.start()
+    adapter.ready()
+    await started
+    adapter.callbacks?.onExit({
+      code: 0xc0000409, source: 'exit', expected: false, uptimeMs: 1200,
+      stderr: 'private-device-name', stderrTruncated: true,
+    })
+    expect(record).toHaveBeenCalledWith({
+      code: 0xc0000409, source: 'exit', expected: false, uptimeMs: 1200,
+      stderrBytes: 19, stderrTruncated: true,
+    })
+    expect(supervisor.getSnapshot().status).toBe('failed')
+    await supervisor.shutdown()
+  })
+
   it('exhausts its retry budget when every recovered host crashes after ready', async () => {
     vi.useFakeTimers()
     try {
@@ -112,7 +203,7 @@ describe('MediaRuntimeSupervisor', () => {
     await vi.waitFor(() => expect(adapter.requests).toHaveLength(1))
     adapter.reply(requestId(adapter.requests[0]), {
       type: 'handshake',
-      protocolVersion: 3,
+      protocolVersion: 4,
       engineState: 'running',
       build: {
         commit: COMMIT_SHA,
@@ -273,7 +364,7 @@ describe('MediaRuntimeSupervisor', () => {
 
     adapter.callbacks?.onMessage({
       type: 'event',
-      protocolVersion: 3,
+      protocolVersion: 4,
       event: {
         type: 'roomStateChanged',
         sequence: 3,
@@ -293,12 +384,7 @@ describe('MediaRuntimeSupervisor', () => {
         acceptedRevision: 1,
         desiredState: null,
         roomState: 'connected',
-        tracks: {
-          microphone: 'off',
-          camera: 'off',
-          screen: 'off',
-          output: 'off',
-        },
+        tracks: createInactiveMediaPaths(1),
       },
     })
 
@@ -329,7 +415,7 @@ describe('MediaRuntimeSupervisor', () => {
 
     first.callbacks?.onMessage({
       type: 'event',
-      protocolVersion: 3,
+      protocolVersion: 4,
       event: {
         type: 'fatalEngineFailure',
         sequence: 1,

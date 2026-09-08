@@ -44,6 +44,7 @@ describe('native diagnostic log', () => {
 
     log.log('transport_post', {
       requestId: 'request-1',
+      channelId: 'private-user-or-channel',
       diagnostic: {
         actionId: 'media-action-a',
         operationId: 'operation-a',
@@ -66,7 +67,7 @@ describe('native diagnostic log', () => {
       processPath: 'C:\\secret\\runtime.exe',
       nested: [{ authorization: 'Bearer abc' }, 'https://voice.example/room'],
       message:
-        'identity=user:123 roomName=secret-room deviceId=usb-mic C:\\Users\\Alice\\runtime.dll',
+        'identity=user:123 channelId=private-channel roomName=secret-room deviceId=usb-mic C:\\Users\\Alice\\runtime.dll',
     })
 
     await log.close()
@@ -119,7 +120,7 @@ describe('native diagnostic log', () => {
       },
       nested: [{}, '[redacted-url]'],
       message:
-        'identity=[redacted] roomName=[redacted] deviceId=[redacted] [redacted-path]',
+        'identity=[redacted] channelId=[redacted] roomName=[redacted] deviceId=[redacted] [redacted-path]',
     })
   })
 

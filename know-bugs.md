@@ -2,6 +2,24 @@
 
 This file records reproducible bugs and constraints in the local environment, toolchain, operating system, or third-party libraries that the application repository cannot fix. Application defects do not belong here.
 
+## Electron managed shared-texture transfer can lose late renderer releases
+
+On Electron 43.1.0, a delayed managed texture transfer during native utility loss
+produced renderer errors from `IMPORT_SHARED_TEXTURE_RELEASE_RENDERER_TO_MAIN`
+with `Shared texture ... not found`. The
+[main implementation](https://github.com/electron/electron/blob/v43.1.0/lib/browser/api/shared-texture.ts)
+registers renderer references only after a 1000 ms transfer race succeeds. A late
+renderer import after that timeout is consequently absent from reference tracking;
+releasing the main reference removes its record. The
+[renderer implementation](https://github.com/electron/electron/blob/v43.1.0/lib/renderer/api/shared-texture.ts)
+then invokes the missing record from an asynchronous release callback without
+handling rejection.
+
+Product integration uses the documented `sharedTexture.subtle` API with separate
+import and GPU-release acknowledgements and a process-wide retention bound.
+Timeouts retain uncertain GPU leases rather than treating them as released. This
+does not patch Electron or change native capture/encoding algorithms.
+
 ## MSVC cannot resolve long nested WebRTC include paths
 
 An isolated SDK checkout on Windows can exceed the native compiler's supported

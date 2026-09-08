@@ -42,6 +42,7 @@ class MicrophonePipeline final {
   MicrophonePipelineFailure reconcileInput(AudioDeviceRegistry&);
   MicrophonePipelineFailure setDemand(MicrophoneDemand);
   MicrophonePipelineFailure configure(const MicrophoneDspConfig&);
+  MicrophonePipelineFailure setSystemProcessingBypass(bool);
   // Commit between DSP frames. This retains the projection, never its renderer.
   // A null/retired port makes AEC unavailable without changing capture/sender.
   MicrophonePipelineFailure setEchoReference(std::shared_ptr<EchoReferencePort>);
@@ -55,7 +56,7 @@ class MicrophonePipeline final {
   struct State;
   static void run(const std::shared_ptr<State>&, EnhancementFactory) noexcept;
   MicrophonePipelineFailure selectInput(AudioEndpoint);
-  MicrophonePipelineFailure switchCapture(const AudioEndpoint&);
+  MicrophonePipelineFailure switchCapture(const AudioEndpoint&, bool bypass_system_processing);
   bool commitInput(MicrophoneCapture*) noexcept;
   bool submit() noexcept;
   bool onOwner() const noexcept;
@@ -71,5 +72,6 @@ class MicrophonePipeline final {
   MicrophonePipelineStats stats_;
   std::uint64_t generation_ = 0;
   std::uint64_t command_revision_ = 0;
+  bool bypass_system_processing_ = true;
 };
 }  // namespace syrnike::windows_media::audio

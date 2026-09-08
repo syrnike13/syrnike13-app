@@ -21,6 +21,7 @@
 #include "capture/wgc_monitor_capture.hpp"
 #include "core/engine.hpp"
 #include "probe/window_capture_probe.hpp"
+#include "probe/resource_thread_diagnostics.hpp"
 #include "sources/source_registry.hpp"
 #include "sources/win32_source_enumerator.hpp"
 
@@ -994,6 +995,7 @@ int captureMonitor(int argc, char** argv, const std::string& command) {
 
   const auto before = resources();
   CaptureMonitorEvidence evidence;
+  syrnike::windows_media::probe::logResourceThreads("monitor_baseline");
   bool each_cycle_at_baseline = true;
   std::int64_t maximum_cycle_handle_delta = 0;
   std::int64_t maximum_cycle_thread_delta = 0;
@@ -1020,6 +1022,7 @@ int captureMonitor(int argc, char** argv, const std::string& command) {
   }
   const auto after =
       waitForCaptureResourceBudget(before, kCaptureResourceDeadline);
+  syrnike::windows_media::probe::logResourceThreads("monitor_final");
   const auto handle_delta = static_cast<std::int64_t>(after.handles) -
                             static_cast<std::int64_t>(before.handles);
   const auto thread_delta = static_cast<std::int64_t>(after.threads) -
