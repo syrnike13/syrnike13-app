@@ -645,3 +645,30 @@ Process resources were sampled during this series, and texture retention stayed
 within the existing bound. These samples are not zero-growth qualification.
 Microphone mute privacy, pending-operation shutdowns, failed native resource
 gates and final matrix coverage remain outstanding; this is not full #131 PASS.
+
+## Microphone privacy through utility replacement
+
+The [unchanged 199-report archive](full-product-microphone-c5becbc9.json.gz)
+contains 100/100 passing primary crashes and 49/49 exhaustion/explicit Retry
+checks. Every primary row includes actual incoming output PCM and an independent
+receiver's microphone PCM before and after replacement. Each baseline was
+nonzero; the minimum peak baseline window RMS was 129.99. Every replacement
+microphone publication was distinct, and its maximum RMS across all received
+frames stayed below the existing limit of 2 (overall maximum 0.756). Maximum
+primary recovery was 8,862 ms. Desktop/browser error lists were empty; the
+independent receiver reported no failures or reconnects and exited normally.
+The isolated profile's original microphone settings were restored afterward.
+
+The application remained at `b007397a`; microphone assertions and the fresh
+receiver ran from `c5becbc9`. The Node process retained the older `b007397a`
+series driver in its module cache. Its loaded function was compared directly
+with that source and matched; the archive includes both hashes and that source.
+Consequently the original summary lacks the newly added privacy counter. It was
+not rewritten: the supplemental count of 100 is derived from the 100 original
+passing microphone reports. All 158 recorded file hashes and three backend
+binary hashes matched after execution. Node, Electron and Chrome executable
+hashes also matched the preceding combined-run capture.
+
+This qualifies the stated microphone/incoming-PCM utility scope. It does not
+qualify zero resource growth, every pending-operation shutdown, complete
+cross-layer incidents or the remaining native matrix failures.

@@ -155,3 +155,5 @@ The utility report preserves both aggregate observations and the series counts
 successful privacy cycles. Hash the receiver and harness with the application
 inputs; preserve failed reports. This adds microphone privacy evidence only and
 does not qualify unaffected-track continuity during a Room replacement.
+Start a fresh Node runner after changing fixture scripts: a long-lived runner's
+module cache can otherwise execute an earlier driver despite newer file hashes.
