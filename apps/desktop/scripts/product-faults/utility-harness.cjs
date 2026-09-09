@@ -9,7 +9,7 @@ const execFileAsync = promisify(execFile)
 const alias = value => createHash('sha256').update(String(value)).digest('hex').slice(0, 12)
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
-exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, nativeUserId, observerUserId, outputProbe }) => {
+exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, nativeUserId, observerUserId, neutralUserId, outputProbe }) => {
   let processOwner
 
   async function processInventory() {
@@ -52,7 +52,10 @@ exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, native
 
   const actor = identity => {
     const userId = identity.split('|').at(-1)
-    return userId === nativeUserId ? 'native' : userId === observerUserId ? 'observer' : 'unexpected'
+    if (userId === nativeUserId) return 'native'
+    if (userId === observerUserId) return 'observer'
+    if (neutralUserId && userId === neutralUserId) return 'neutral-observer'
+    return 'unexpected'
   }
 
   async function snapshot() {

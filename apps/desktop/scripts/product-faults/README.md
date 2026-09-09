@@ -86,3 +86,48 @@ page's `addInitScript` before loading it. This fixture supplies a 997 Hz tone
 without capturing a physical microphone or playing it locally. Stopping each
 generated track retires its AudioContext. Its four-context cap rejects a broken
 fixture instead of allowing unbounded generator allocation.
+
+## Combined continuity series
+
+`run-combined-series.cjs` runs up to 100 cycles of an incoming audio gap,
+withheld renderer releases and external GPU load. It stops on the first failure.
+Prepare the same desktop and browser participants with microphone, camera,
+screen, screen audio and incoming output active. Keep the desktop screen stage
+and incoming camera visible. Install `installRendererReleaseProbe` in the
+desktop page. Its two `VideoFrame` clones retain actual GPU resources until
+the harness releases them; overflow fails the cycle.
+
+Build the opt-in native lab targets and supply absolute `audioProbe` and
+`gpuProbe` paths for `audio_capture_lab.exe` and `gpu_contention_lab.exe`.
+The GPU fixture uses one 16 MiB allocation and at most one outstanding dispatch.
+The audio fixture captures only the desktop process tree and emits 100 ms
+aggregate windows, never raw PCM. The browser tone control creates a measured
+gap without replacing its publication. The cycle requires recovery within
+1,500 ms and conservatively includes both adjacent windows in its silence bound.
+
+Use a third local test account for `packages/native-media-lab/scripts/product-neutral-observer.mjs`.
+Start it with `startProbe` from `probe-process.cjs`, the prefix
+`PRODUCT_OBSERVER_RESULT`, and the environment variables `VOICE_GATEWAY_URL`,
+`VOICE_SESSION_TOKEN`, `VOICE_CHANNEL_ID` and `LIVEKIT_OBSERVER_PUBLISHER`.
+It joins through the ordinary backend Voice Authority flow and receives the
+native participant's four publications through a separate Node SDK process.
+Do not substitute an administrative SFU token. Wait for its `ready` event and
+fresh frames before starting. Pass its user ID as `neutralUserId` to
+`createHarness`. The observer's publication identities, frame progress and
+maximum gaps must remain valid throughout each cycle.
+
+Call `run({ directory, count: 100, app, ui, receiver, harness, observer,
+audioProbe, gpuProbe, diagnosticDirectory })`. The report directory must be new;
+`diagnosticDirectory` must be the active desktop main journal's directory.
+Detection of withheld releases must take at most 3,000 ms, and presentation
+must resume within 3,000 ms of release. Journal samples must show retained
+leases within the existing 68-lease bound. Authority, participants, publications
+and utility identity must remain unchanged. Each cycle confirms both temporary
+native probes exit; finish the series with observer `stop`, then `finished()`.
+Use `stop()` in failure cleanup to confirm its owned process exits as well.
+
+These reports qualify their declared combined continuity and sampled texture
+bound only. Process samples do not establish zero resource growth, and the
+injected incoming gap does not test local microphone mute privacy. Preserve
+exact binary and script hashes before and after the series, including the
+separate observer SDK and external probes, and audit reports before publishing.

@@ -4,6 +4,15 @@
 exports.installToneMicrophone = function installToneMicrophone() {
   const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
   const contexts = new Set()
+  const gains = new Set()
+  let silent = false
+  window.toneMicrophoneFixture = {
+    setSilent(value) {
+      silent = Boolean(value)
+      for (const gain of gains) gain.gain.value = silent ? 0 : 0.1
+    },
+    snapshot() { return { silent, contexts: contexts.size, sources: gains.size } },
+  }
   navigator.mediaDevices.getUserMedia = async constraints => {
     if (!constraints?.audio) return original(constraints)
     if (contexts.size >= 4) throw new Error('tone_microphone_capacity')
@@ -17,7 +26,8 @@ exports.installToneMicrophone = function installToneMicrophone() {
     const oscillator = context.createOscillator()
     oscillator.frequency.value = 997
     const gain = context.createGain()
-    gain.gain.value = 0.1
+    gain.gain.value = silent ? 0 : 0.1
+    gains.add(gain)
     const destination = context.createMediaStreamDestination()
     oscillator.connect(gain).connect(destination)
     const track = destination.stream.getAudioTracks()[0]
@@ -28,6 +38,7 @@ exports.installToneMicrophone = function installToneMicrophone() {
       stopped = true
       originalStop()
       oscillator.stop()
+      gains.delete(gain)
       // A failed close retains its capacity slot rather than permitting more
       // contexts to accumulate during repeated fixture failures.
       void context.close().then(() => contexts.delete(context), () => {})
