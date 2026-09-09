@@ -157,3 +157,26 @@ inputs; preserve failed reports. This adds microphone privacy evidence only and
 does not qualify unaffected-track continuity during a Room replacement.
 Start a fresh Node runner after changing fixture scripts: a long-lived runner's
 module cache can otherwise execute an earlier driver despite newer file hashes.
+
+## Shutdown with held native calls
+
+Build the compile-time test variant described in `FAULT_CATALOG.md` into an
+isolated application checkout. `shutdown-harness.cjs` accepts that artifact
+directory as `mediaRoot`, its texture broker, and real product `launch`,
+`inventory` and `enterFault` callbacks. `launch` must prepare the native utility
+before returning (the ordinary `media.listDevices('audioinput')` call starts it
+without joining a Room). `inventory` must identify main and its one current media
+utility. The harness retains read-only Windows process handles before injection.
+
+`enterFault(app, point, waitForPoint)` starts the requested UI operation without
+waiting for the operation that will hang. For `sdk-cancel`, supply
+`precondition: { point: 'sdk-connect', call: 1 }`, join, await
+`waitForPoint('sdk-connect')`, and request leave. Both actual worker entries must
+be observed. Other rows select one point and its one-based call number.
+
+The harness requires both app-close completion and kernel-confirmed main/utility
+exit within 4,900 ms. Test-side forced cleanup is recorded only for failed rows;
+it never qualifies application containment. It stops on the first failure and
+preserves individual reports. Configuration and markers are kept beside the
+verified artifact directory, whose strict file list remains unchanged. This
+fixture's availability is not a passing shutdown matrix.

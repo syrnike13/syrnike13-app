@@ -247,11 +247,13 @@ explicitly disables `WINDOWS_MEDIA_TEST_FAULT_GATES`; it neither reads the
 sidecar nor waits at these calls. The build script refuses to stage this variant
 or build it into the default production build directory.
 
-In an isolated test application's media directory, `native-test-fault.txt`
-contains an exact point name, newline, then the one-based matching call number
-(LF line endings, optional final newline). The configuration is read once per
-utility. The selected call writes `native-test-fault-held-<pid>.json` in that
-directory, closes the marker and waits on an unsignaled event. This adds no
+Beside an isolated test application's media artifact directory,
+`native-test-fault.txt` contains an exact point name, newline, then the one-based
+matching call number (LF line endings, optional final newline). At most two
+point/number pairs are accepted, allowing cancellation to be held after the
+connect worker is already held. The configuration is read once per utility.
+Each selected call writes `native-test-fault-held-<pid>-<point>.json` beside the
+configuration, closes the marker and waits on an unsignaled event. This adds no
 worker thread and cannot be released by a production command; shutdown must
 complete through the existing utility/process boundary. Missing or malformed
 entry evidence cannot qualify a row. The fixture must preserve every report and
