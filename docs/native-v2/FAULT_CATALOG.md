@@ -451,6 +451,40 @@ requires both participants and recent incoming frames before injecting any fault
 it also samples main/utility handles, threads and memory. The 100-cycle gate
 remains outstanding.
 
+## Full-product development series at `48da394c`
+
+The [redacted development series](full-product-utility-dev-48da394c.json.gz)
+contains the exact app/backend/SDK identities, all 114 JSON reports and their
+source hashes. It completed 56 utility injections and 28 exhaustion/explicit
+Retry checks. The slowest successful primary cycle took 7,981 ms. Before the
+57th injection, its baseline rejected incoming frames older than 2.7 seconds;
+the voice connection and both SFU participants remained present. No 57th fault
+was injected and this is not the required 100-cycle PASS. The frames subsequently
+resumed without another utility replacement. Application and harness hashes were
+verified unchanged after the series.
+
+Renderer private memory grew from 347 MiB to about 2.5 GiB. The separate
+[post-run memory diagnosis](full-product-dev-memory-48da394c.json) found roughly
+2.5 million React development `PerformanceMeasure` entries. After clearing the
+performance timeline and collecting garbage, private memory fell to 692 MiB and
+embedder heap usage fell from 315 MiB to 6 MiB. These diagnostic actions occurred
+after the series stopped. They do not make the run a resource PASS or establish
+that the rendering gap had only one cause. The next run must use the production
+frontend; the development instrumentation constraint is recorded in `know-bugs.md`.
+
+The [product harness](../../apps/desktop/scripts/product-faults/README.md) is now
+in the repository. Its production-compatible draw probe observes successful
+canvas draws without importing a Vite module or retaining VideoFrames. Its
+real production-frontend run remains required.
+
+SDK [v1.10.0-syrnike.15](https://github.com/syrnike13/client-sdk-cpp/releases/tag/v1.10.0-syrnike.15)
+is published from merge commit `0906793` and is now hash-pinned by the app. All
+seven platform builds and release documentation validation passed. The downloaded
+Windows archive matches SHA-256 `0591cb265e0eea037c05614f7c972c832a64194059e006b437660605d3646cf3`;
+its embedded identity matches the release. Separate post-release documentation
+upload failed because the fork lacks upstream AWS credentials. The archive is
+available; application qualification on this published binary remains due.
+
 ## Recorded Release matrix at `84a050dc`
 
 The [unchanged redacted artifact](native-faults-release-84a050dc.json) records all

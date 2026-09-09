@@ -33,6 +33,24 @@ encoder resource qualification on this setup; successful owner assertions are
 not a complete PASS. Process containment closes resources when the utility exits,
 but does not establish zero growth during repeated encoder lifecycles.
 
+## React development performance tracks accumulate during long media runs
+
+The React development frontend retained about 2.5 million `PerformanceMeasure`
+objects during the local #131 utility recovery series on 2026-09-09. Renderer
+private memory grew from 347 MiB after the first cycle to roughly 2.5 GiB after
+56 cycles. A heap snapshot attributed 303 MB of object storage to those measures;
+the Chromium allocator dump showed additional associated storage. Ordinary GC
+left the growth in place. Clearing the performance timeline after the run and
+then collecting garbage reduced renderer private memory to 692 MiB and embedder
+heap usage from 315 MiB to 6 MiB. This diagnostic does not establish that all
+remaining memory was leaked or that every observed rendering gap had that cause.
+
+[React performance tracks](https://react.dev/reference/dev-tools/react-performance-tracks)
+are enabled by default in development and disabled in normal production builds.
+Long resource qualification must use the production frontend. Periodically
+clearing measures during an acceptance run would change the measured environment;
+the existing development run remains incomplete evidence, not a resource PASS.
+
 ## Electron managed shared-texture transfer can lose late renderer releases
 
 On Electron 43.1.0, a delayed managed texture transfer during native utility loss

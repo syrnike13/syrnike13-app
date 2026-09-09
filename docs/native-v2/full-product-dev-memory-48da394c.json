@@ -1,0 +1,192 @@
+{
+  "scope": "post-run-development-renderer-memory-diagnosis",
+  "appCommit": "48da394c8952f9bbc1cdc7cfafff14a9a30db7d5",
+  "qualificationPassed": false,
+  "completedUtilityCycles": 56,
+  "heapSnapshot": {
+    "nativePerformanceMeasures": 2513859,
+    "selfBytes": 303276200
+  },
+  "performanceTimeline": {
+    "count": 2514615,
+    "last": [
+      {
+        "name": "​TooltipTrigger",
+        "duration": 0.4750000238418579
+      },
+      {
+        "name": "​PopperAnchor",
+        "duration": 0.375
+      },
+      {
+        "name": "​Primitive.div",
+        "duration": 0.33000001311302185
+      },
+      {
+        "name": "​Primitive.div.Slot",
+        "duration": 0.2900000214576721
+      },
+      {
+        "name": "​Primitive.div.SlotClone",
+        "duration": 0.23500001430511475
+      },
+      {
+        "name": "​Primitive.button",
+        "duration": 0.21000000834465027
+      },
+      {
+        "name": "​Primitive.button.Slot",
+        "duration": 0.16500002145767212
+      },
+      {
+        "name": "​Primitive.button.SlotClone",
+        "duration": 0.11500000953674316
+      },
+      {
+        "name": "​TooltipPortal",
+        "duration": 0.11000001430511475
+      },
+      {
+        "name": "​TooltipPortalProvider",
+        "duration": 0.05500000715255737
+      },
+      {
+        "name": "​Presence",
+        "duration": 0.025000005960464478
+      },
+      {
+        "name": "Cascading Update",
+        "duration": 0.015000015497207642
+      }
+    ]
+  },
+  "beforeGc": {
+    "heap": {
+      "usedSize": 79391752,
+      "totalSize": 141000704,
+      "embedderHeapUsedSize": 333035432,
+      "backingStorageSize": 33915299
+    },
+    "dom": {
+      "documents": 1,
+      "nodes": 747,
+      "jsEventListeners": 614
+    },
+    "resources": [
+      {
+        "role": "main",
+        "handles": 1062,
+        "threads": 56,
+        "privateBytes": 126689280,
+        "workingSetBytes": 152080384
+      },
+      {
+        "role": "media",
+        "handles": 1287,
+        "threads": 118,
+        "privateBytes": 292360192,
+        "workingSetBytes": 356257792
+      },
+      {
+        "role": "renderer",
+        "handles": 375,
+        "threads": 24,
+        "privateBytes": 2666053632,
+        "workingSetBytes": 2529574912
+      },
+      {
+        "role": "gpu",
+        "handles": 809,
+        "threads": 62,
+        "privateBytes": 156823552,
+        "workingSetBytes": 145383424
+      }
+    ]
+  },
+  "afterGc": {
+    "heap": {
+      "usedSize": 54090280,
+      "totalSize": 57032704,
+      "embedderHeapUsedSize": 330469824,
+      "backingStorageSize": 25492195
+    },
+    "dom": {
+      "documents": 1,
+      "nodes": 747,
+      "jsEventListeners": 614
+    },
+    "resources": [
+      {
+        "role": "main",
+        "handles": 1062,
+        "threads": 56,
+        "privateBytes": 127320064,
+        "workingSetBytes": 153075712
+      },
+      {
+        "role": "media",
+        "handles": 1288,
+        "threads": 118,
+        "privateBytes": 297725952,
+        "workingSetBytes": 360144896
+      },
+      {
+        "role": "renderer",
+        "handles": 375,
+        "threads": 24,
+        "privateBytes": 2608435200,
+        "workingSetBytes": 2476326912
+      },
+      {
+        "role": "gpu",
+        "handles": 809,
+        "threads": 62,
+        "privateBytes": 156758016,
+        "workingSetBytes": 145317888
+      }
+    ]
+  },
+  "afterClearingPerformanceTimeline": {
+    "heap": {
+      "usedSize": 52718516,
+      "totalSize": 55721984,
+      "embedderHeapUsedSize": 5936608,
+      "backingStorageSize": 25492445
+    },
+    "resources": [
+      {
+        "role": "main",
+        "handles": 1096,
+        "threads": 56,
+        "privateBytes": 154038272,
+        "workingSetBytes": 152264704
+      },
+      {
+        "role": "media",
+        "handles": 1304,
+        "threads": 118,
+        "privateBytes": 293220352,
+        "workingSetBytes": 324317184
+      },
+      {
+        "role": "renderer",
+        "handles": 383,
+        "threads": 24,
+        "privateBytes": 725192704,
+        "workingSetBytes": 690462720
+      },
+      {
+        "role": "gpu",
+        "handles": 820,
+        "threads": 63,
+        "privateBytes": 169725952,
+        "workingSetBytes": 142057472
+      }
+    ]
+  },
+  "notes": [
+    "Diagnostic only, performed after the failed 100-cycle run ended.",
+    "No production-memory qualification is claimed.",
+    "Raw heap and memory trace contain private data and are not public artifacts."
+  ]
+}
