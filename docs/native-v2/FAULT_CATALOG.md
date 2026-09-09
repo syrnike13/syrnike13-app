@@ -315,25 +315,49 @@ separate requirements.
 
 ## Active renderer fault runner
 
-`MEDIA_PRODUCT_RENDERER_FAULTS=1` enables 100 real renderer reloads and 100 real
-renderer crashes in the existing `@syrnike13/native-media-lab product` runner.
+`MEDIA_PRODUCT_RENDERER_FAULTS=1` enables 100 real renderer reloads, 100 real
+renderer crashes and 100 withheld texture-release cycles in the existing
+`@syrnike13/native-media-lab product` runner.
 The publisher uses the shipping Electron adapter, utility and preload with the
 isolated project SFU. Each replacement must replay inventory and show ten camera
-and screen frames, retaining the native epoch, Room credential lease and running
-media paths. The existing 15-second readiness deadline bounds each wait; the
+and screen frames plus ten incoming companion frames, retaining the native epoch,
+Room credential lease and running media paths. The existing 15-second readiness
+deadline bounds each wait; the
 complete fault batch has a 900-second test-process deadline.
 
 An independent LiveKit receiver verifies all four unchanged publication aliases
 and new decoded frames during every measured iteration. It rejects missing or
 duplicate publications and any observed media gap above 1,500 ms. Evidence keeps
-two aggregate rows, minimum per-iteration frame progress and maximum gaps/durations;
+three aggregate rows, minimum per-iteration frame progress and maximum gaps/durations;
 it does not retain per-frame logs. The evidence parser rejects missing, duplicate,
 out-of-order and partial results. A physical camera is required in this mode.
 
-This runner is prepared but has not yet passed on the current #131 build. Its
-scope excludes resource retirement, withheld texture releases, combined faults,
-utility replacement and Voice Director/backend authority. Those remain separate
-qualification requirements even when these two renderer rows pass.
+The release-stall row holds two renderer-owned screen frames until the production
+bridge reports its release deadline. Camera, incoming video and outgoing media
+must continue. Closing those frames must restore screen preview within three
+seconds; detection has its own three-second test deadline. The runner records
+maximum retained textures without treating uncertain GPU leases as released.
+
+The [original Release report at `a1e70c1e`](renderer-faults-release-a1e70c1e.json.gz)
+passed all three rows on 2026-09-09. Reload and crash maxima were 1,554 and 1,936 ms;
+each recovered at least ten incoming frames. The independent outgoing receiver's
+maximum gaps were 469 and 251 ms. Withheld releases were detected within 2,288 ms,
+retained at most four textures, and completed recovery within 2,581 ms. That row's
+maximum outgoing gap was 246 ms and minimum incoming progress was 33 frames.
+All four outgoing publication aliases remained unchanged, with zero observer
+reconnects or reader failures. The publisher completed cleanup and exited with
+code zero, without reaching its process deadline.
+
+The [preceding failed report at `3cd9a0b0`](renderer-faults-release-3cd9a0b0.json.gz)
+is preserved too: incoming video remained in `Starting` after 13 completed reloads,
+while local media continued and no presentation leases remained outstanding.
+`a1e70c1e` adds diagnostic counters, not a recovery fix. Its successful repeat
+does not resolve that intermittent failure. The pinned SDK's subscription event
+handling is under investigation; no causal conclusion follows from this pass.
+
+Resource retirement, combined faults, utility replacement, Voice Director/backend
+authority, remote audio output measurement and other build configurations remain
+separate qualification requirements.
 
 ## Recorded Release matrix at `84a050dc`
 
