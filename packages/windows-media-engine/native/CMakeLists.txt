@@ -38,10 +38,17 @@ function(windows_media_target target)
     WIN32_LEAN_AND_MEAN
     NOMINMAX
     _WIN32_WINNT=0x0A00
-    WINDOWS_MEDIA_FAULT_COMMIT="${WINDOWS_MEDIA_COMMIT}"
-    WINDOWS_MEDIA_FAULT_CONFIGURATION="$<CONFIG>"
-    WINDOWS_MEDIA_FAULT_ASAN=$<BOOL:${WINDOWS_MEDIA_ENABLE_ASAN}>
   )
+  # Fault evidence is emitted by test/lab executables. Tag those binaries without
+  # invalidating every shipping library whenever only the source commit changes.
+  get_target_property(target_type ${target} TYPE)
+  if(target_type STREQUAL "EXECUTABLE")
+    target_compile_definitions(${target} PRIVATE
+      WINDOWS_MEDIA_FAULT_COMMIT="${WINDOWS_MEDIA_COMMIT}"
+      WINDOWS_MEDIA_FAULT_CONFIGURATION="$<CONFIG>"
+      WINDOWS_MEDIA_FAULT_ASAN=$<BOOL:${WINDOWS_MEDIA_ENABLE_ASAN}>
+    )
+  endif()
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /WX /permissive- /EHsc /Zi /FS)
     target_link_options(${target} PRIVATE /DEBUG:FULL)
