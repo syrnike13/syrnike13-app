@@ -71,6 +71,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Verify generated media protocol is committed
         run: pnpm --filter @syrnike13/windows-media-engine protocol:check
+      - name: Verify native fault evidence reporter
+        run: pnpm --filter @syrnike13/windows-media-engine exec node --test scripts/fault-matrix.test.mjs
       - name: Build and test Debug media lifecycle engine
         run: |
           pnpm windows-media:build:debug

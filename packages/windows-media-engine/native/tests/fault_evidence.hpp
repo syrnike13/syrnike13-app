@@ -17,6 +17,13 @@ struct FaultResources {
   DWORD threads = 0;
 };
 
+inline void beginFaultEvidence(std::ostream& output, std::string_view id) {
+  output << "NATIVE_FAULT_RESULT {\"id\":\"" << id << "\",\"build\":{\"commit\":\""
+         << WINDOWS_MEDIA_FAULT_COMMIT << "\",\"configuration\":\"" << WINDOWS_MEDIA_FAULT_CONFIGURATION
+         << "\",\"asan\":" << (WINDOWS_MEDIA_FAULT_ASAN ? "true" : "false")
+         << ",\"msvc\":" << _MSC_FULL_VER << '}';
+}
+
 inline FaultResources faultResources() {
   FaultResources result;
   if (!GetProcessHandleCount(GetCurrentProcess(), &result.handles))
@@ -54,14 +61,16 @@ void repeatFault(std::string_view id, Test test, unsigned warmup = 1) {
           std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
     }
   } catch (...) {
-    std::cerr << "NATIVE_FAULT_RESULT {\"id\":\"" << id << "\",\"passed\":" << passed
+    beginFaultEvidence(std::cerr, id);
+    std::cerr << ",\"passed\":" << passed
               << ",\"required\":100,\"ownerChecksPassed\":false}\n";
     throw;
   }
   const auto final = faultResources();
   probe::logResourceThreads((std::string(id) + "-final").c_str());
   const bool resources_recovered = final.handles <= baseline.handles && final.threads <= baseline.threads;
-  std::cout << "NATIVE_FAULT_RESULT {\"id\":\"" << id << "\",\"passed\":" << passed
+  beginFaultEvidence(std::cout, id);
+  std::cout << ",\"passed\":" << passed
             << ",\"required\":100,\"warmup\":" << warmup
             << ",\"ownerChecksPassed\":true,\"resourceChecksPassed\":"
             << (resources_recovered ? "true" : "false") << ",\"maximumIterationMs\":"

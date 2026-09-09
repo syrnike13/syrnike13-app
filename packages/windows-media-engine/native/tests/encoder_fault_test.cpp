@@ -309,6 +309,18 @@ void inspectPlatformResourceStage(unsigned stage, bool inline_worker = false) {
 }
 
 int main(int argc, char** argv) try {
+  if (argc == 2 && std::string_view(argv[1]) == "--bitrate-unsupported") {
+    syrnike::windows_media::tests::repeatFault("encoder-bitrate-unsupported", [] {
+      failedBitrateControlPreservesWorkingPublication(false);
+    });
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--bitrate-rejected") {
+    syrnike::windows_media::tests::repeatFault("encoder-bitrate-rejected", [] {
+      failedBitrateControlPreservesWorkingPublication(true);
+    });
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--same-thread-activation") {
     syrnike::windows_media::tests::repeatFault("mf-activation-same-thread", [] { inspectPlatformResourceStage(2, true); });
     return 0;

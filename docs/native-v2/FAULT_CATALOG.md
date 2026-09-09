@@ -92,6 +92,26 @@ matrix.
 
 ## Evidence contract
 
+`pnpm --filter @syrnike13/windows-media-engine test:fault-matrix --config Release`
+runs the complete local CTest suite and writes a redacted native-owner artifact
+under `.codex-tmp/native-faults/`. `--config Debug`, `--asan` and `--output <file>`
+select the configuration and destination. `WINDOWS_MEDIA_BUILD_ROOT` selects the
+same build directory used by `scripts/build.mjs`. First commit the source and
+build that commit with `--lab` and the matching configuration/sanitizer options.
+The reporter refuses a stale cache or dirty tracked source; every fault result
+must also carry matching commit, configuration, ASan and MSVC identity compiled
+into the test binary. It hashes executables/modules before and after the run and
+rejects source changes, binary changes, skipped tests, missing/duplicate rows,
+fewer than 100 repetitions and positive or inconsistent resource deltas.
+
+The required native list currently has 41 rows. Unsupported and rejected live
+bitrate updates each have a separate 100-lifecycle CTest entry, preserving the
+existing media-identity and warning assertions. They require GPU video hardware;
+the unresolved MFT activation resource issue applies to these runs as well.
+The reporter records owner evidence only. Its successful exit does not replace
+neutral observers, full-product replay/shutdown, correlated incidents, other
+build configurations or #132 hardware/soak evidence.
+
 The machine-readable result must distinguish:
 
 1. deterministic owner/adapter execution (at least 100/100 per fault);

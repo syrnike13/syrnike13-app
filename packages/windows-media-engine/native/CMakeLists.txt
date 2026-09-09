@@ -38,6 +38,9 @@ function(windows_media_target target)
     WIN32_LEAN_AND_MEAN
     NOMINMAX
     _WIN32_WINNT=0x0A00
+    WINDOWS_MEDIA_FAULT_COMMIT="${WINDOWS_MEDIA_COMMIT}"
+    WINDOWS_MEDIA_FAULT_CONFIGURATION="$<CONFIG>"
+    WINDOWS_MEDIA_FAULT_ASAN=$<BOOL:${WINDOWS_MEDIA_ENABLE_ASAN}>
   )
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /WX /permissive- /EHsc /Zi /FS)
@@ -522,6 +525,11 @@ windows_media_target(encoder_fault_tests)
 target_link_libraries(encoder_fault_tests PRIVATE media_screen)
 add_test(NAME encoder-faults COMMAND encoder_fault_tests)
 set_tests_properties(encoder-faults PROPERTIES TIMEOUT 300)
+add_test(NAME encoder-bitrate-unsupported COMMAND encoder_fault_tests --bitrate-unsupported)
+add_test(NAME encoder-bitrate-rejected COMMAND encoder_fault_tests --bitrate-rejected)
+# These are 100 complete hardware pipeline lifecycles per setter outcome.
+set_tests_properties(encoder-bitrate-unsupported encoder-bitrate-rejected
+  PROPERTIES TIMEOUT 1800 LABELS "requires-gpu-video")
 
 # Hosted Windows runners expose no D3D11 Video interface. Keep these tests in
 # the default full suite; only the hosted workflow selects the portable subset.
