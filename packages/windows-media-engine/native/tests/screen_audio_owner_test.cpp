@@ -1,4 +1,5 @@
 #include "audio/screen_audio_owner.hpp"
+#include "fault_evidence.hpp"
 #include <barrier>
 #include <iostream>
 #include <stdexcept>
@@ -172,10 +173,10 @@ void retirementCannotBeSupersededByNewIntent() {
 }  // namespace
 int main() {
   try {
-    supersededStartNeverCommits();
-    independentRevisionAndExplicitRetry();
-    retirementCannotBeSupersededByNewIntent();
-    concurrentStopJoinsOnce();
+    syrnike::windows_media::tests::repeatFault("screen-audio-superseded-start", supersededStartNeverCommits);
+    syrnike::windows_media::tests::repeatFault("screen-audio-target-exit", independentRevisionAndExplicitRetry);
+    syrnike::windows_media::tests::repeatFault("screen-audio-retirement-during-new-intent", retirementCannotBeSupersededByNewIntent);
+    syrnike::windows_media::tests::repeatFault("screen-audio-concurrent-stop", concurrentStopJoinsOnce);
     std::cout << "Screen audio desired-state and failure isolation passed\n";
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

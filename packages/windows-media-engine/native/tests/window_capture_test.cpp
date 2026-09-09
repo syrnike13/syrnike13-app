@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "capture/window_capture.hpp"
+#include "fault_evidence.hpp"
 
 namespace {
 
@@ -455,17 +456,17 @@ void concurrentStopsSerializeFinalize() {
 int main() try {
   generationFenceAndQueueAreBounded();
   cancelledResizeRestoresFramesWithoutPublicTransition();
-  noContentAndCloseAreExplicitAndExactlyOnce();
-  closeRacingFrameDeliveryIsTerminalOnce();
+  syrnike::windows_media::tests::repeatFault("wgc-source-closed", noContentAndCloseAreExplicitAndExactlyOnce);
+  syrnike::windows_media::tests::repeatFault("wgc-close-racing-frame", closeRacingFrameDeliveryIsTerminalOnce);
   unresolvedAndWrongKindSourcesAreRejected();
   outstandingLeaseHasBoundedStopFailure();
   lateReleaseAndOwnerDestructionAreSafe();
-  stopRacingResizeIgnoresLateGeneration();
+  syrnike::windows_media::tests::repeatFault("wgc-frame-after-stop", stopRacingResizeIgnoresLateGeneration);
   removedBeforeStartIsTypedClosed();
   handleReuseDuringStartIsRejected();
-  backendStartFailureUsesPostValidationType();
+  syrnike::windows_media::tests::repeatFault("wgc-prepare-failure", backendStartFailureUsesPostValidationType);
   terminalSignalRevalidatesWindowIdentity();
-  concurrentStopsSerializeFinalize();
+  syrnike::windows_media::tests::repeatFault("wgc-concurrent-stop", concurrentStopsSerializeFinalize);
   std::cout << "window-capture-tests:ok\n";
   return 0;
 } catch (const std::exception& error) {

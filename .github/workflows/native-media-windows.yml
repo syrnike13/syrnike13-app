@@ -74,11 +74,11 @@ jobs:
       - name: Build and test Debug media lifecycle engine
         run: |
           pnpm windows-media:build:debug
-          pnpm windows-media:test:debug --label-exclude requires-gpu-video
+          pnpm windows-media:test:debug --label-exclude 'requires-gpu-video|requires-audio-device'
       - name: Build, test, and verify Release media lifecycle engine
         run: |
           pnpm windows-media:build
-          pnpm windows-media:test --label-exclude requires-gpu-video
+          pnpm windows-media:test --label-exclude 'requires-gpu-video|requires-audio-device'
           pnpm windows-media:probe
           pnpm windows-media:verify
       - name: Report hardware validation boundary
@@ -86,10 +86,11 @@ jobs:
         run: |
           @'
           ### Hardware validation
-          This hosted runner has no D3D11 Video interfaces. Tests labeled
-          `requires-gpu-video` are excluded here, not reported as passed. Run the full
-          `pnpm windows-media:test` on a Windows GPU machine before merging media
-          changes; see docs/native-v2/REMOTE_VIDEO_RECEIVE.md for recorded GPU/ASan evidence.
+          This hosted runner has no D3D11 Video interfaces or qualified audio endpoints.
+          Tests labeled `requires-gpu-video` or `requires-audio-device` are excluded
+          here, not reported as passed. Build with `--lab` and run the full local
+          suite on a Windows GPU/audio machine before merging media changes;
+          see docs/native-v2/FAULT_CATALOG.md for the required fault evidence.
           '@ | Add-Content $env:GITHUB_STEP_SUMMARY
       - name: Verify 1000 bounded source enumerations
         shell: pwsh
@@ -208,4 +209,4 @@ jobs:
           pnpm desktop-native:build:asan
           pnpm desktop-native:test:debug
           pnpm windows-media:build:asan
-          pnpm windows-media:test:debug --label-exclude requires-gpu-video
+          pnpm windows-media:test:debug --label-exclude 'requires-gpu-video|requires-audio-device'

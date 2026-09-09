@@ -115,6 +115,15 @@ class SyntheticReader final : public CameraReader {
       while (!closing_) {
         changed_.wait(lock, [&] { return closing_ || requested_; });
         if (closing_) break;
+        if (control_->withhold_samples) {
+          {
+            std::lock_guard fault_lock(control_->fault_mutex);
+            ++control_->withheld_samples;
+          }
+          control_->fault_changed.notify_all();
+          changed_.wait(lock, [&] { return closing_; });
+          break;
+        }
         next = (std::max)(next + std::chrono::microseconds{33'333}, Clock::now());
         next += std::chrono::milliseconds{control_->delay_ms.exchange(0)};
         if (changed_.wait_until(lock, next, [&] { return closing_; })) break;

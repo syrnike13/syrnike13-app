@@ -200,6 +200,7 @@ void WasapiOutput::run(const std::shared_ptr<State>& state, AudioEndpoint endpoi
         const auto delay = (std::min)(lab::render_delay_ms.exchange(0), std::uint32_t{1500});
         if (delay && WaitForSingleObject(state->stop.value, delay) == WAIT_OBJECT_0) break;
         if (lab::render_stop_client.exchange(false)) check(client->Stop(), WasapiOutputFailure::render_failed);
+        if (lab::render_device_loss.exchange(false)) check(AUDCLNT_E_DEVICE_INVALIDATED, WasapiOutputFailure::device_lost);
       }
 #endif
       UINT32 padding = 0;

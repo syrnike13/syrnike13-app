@@ -6,6 +6,7 @@
 #include "camera/camera_preview.hpp"
 #include "capture/optional_preview_budget.hpp"
 #include "screen/local_screen_preview.hpp"
+#include "fault_evidence.hpp"
 #include <d3d11_1.h>
 
 #include <array>
@@ -19,8 +20,9 @@ using namespace syrnike::windows_media::camera;
 namespace {
 void require(bool value, const char* reason) { if (!value) throw std::runtime_error(reason); }
 template <typename Predicate>
-void until(Predicate predicate, const char* reason) {
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{2};
+void until(Predicate predicate, const char* reason,
+           std::chrono::milliseconds budget = std::chrono::seconds{2}) {
+  const auto deadline = std::chrono::steady_clock::now() + budget;
   while (!predicate()) {
     require(std::chrono::steady_clock::now() < deadline, reason);
     std::this_thread::sleep_for(std::chrono::milliseconds{1});
@@ -139,6 +141,31 @@ void registryIdentity() {
   require(registry.refresh().status == CameraRegistryStatus::enumeration_failed && !registry.resolve({}),
           "Failed enumeration resolved stale device state");
 }
+void cameraFaultRetiresItsReader(bool missing_callback) {
+  using namespace syrnike::windows_media::lab;
+  using Clock = std::chrono::steady_clock;
+  auto control = std::make_shared<SyntheticCameraControl>();
+  control->emit_late_callback = true;
+  CameraCapture capture({L"synthetic", "Synthetic"}, {1280, 720, 30}, 1, false, syntheticCameraReader(control));
+  require(capture.start() == CameraFailure::none, "Camera fault fixture did not become healthy");
+  if (missing_callback) {
+    control->withhold_samples = true;
+    std::unique_lock lock(control->fault_mutex);
+    require(control->fault_changed.wait_for(lock, std::chrono::seconds{1}, [&] {
+      return control->withheld_samples == 1;
+    }), "Camera reader did not withhold its requested callback");
+  } else {
+    control->next_failure = CameraFailure::device_removed;
+  }
+  until([&] { return capture.stats().state == CameraCaptureState::failed; },
+        "Camera fault was not detected", std::chrono::milliseconds{2'500});
+  require(capture.stats().failure == (missing_callback ? CameraFailure::no_frames : CameraFailure::device_removed),
+          "Camera no-progress and explicit device failure were confused");
+  require(capture.stop(Clock::now() + std::chrono::seconds{2}) && control->readers_alive == 0 &&
+              control->samples_alive == 0 && control->late_callbacks == 1 && capture.output()->stats().queued == 0,
+          "Camera fault leaked a reader/sample or accepted a late callback");
+}
+
 void asynchronousCaptureLifetime() {
   using namespace syrnike::windows_media::lab;
   using Clock = std::chrono::steady_clock;
@@ -329,6 +356,8 @@ int main(int argc, char** argv) try {
   registryIdentity();
   asynchronousCaptureLifetime();
   transactionalPipelineDemands();
+  syrnike::windows_media::tests::repeatFault("camera-device-removed", [] { cameraFaultRetiresItsReader(false); });
+  syrnike::windows_media::tests::repeatFault("camera-reader-no-callback", [] { cameraFaultRetiresItsReader(true); });
   std::cout << "Camera format, freshness and registry contracts passed\n";
   return 0;
 } catch (const std::exception& error) {

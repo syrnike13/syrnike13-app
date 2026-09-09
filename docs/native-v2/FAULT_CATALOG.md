@@ -3,6 +3,13 @@
 This catalog records the recovery boundaries for #131. Qualification is in progress;
 no row is accepted until its deterministic and observer evidence exists.
 
+The native fault runner reports owner assertions and process resource assertions
+separately. A positive handle or thread delta fails the process even when all
+100 owner assertions passed. Warmup count is explicit; it does not count toward
+the required 100 measured iterations. Optional
+`WINDOWS_MEDIA_CAPTURE_THREAD_DIAGNOSTIC=1` identifies thread modules at both
+resource snapshots without recording process addresses or machine paths.
+
 ## Ownership and escalation
 
 ```mermaid
@@ -163,3 +170,36 @@ The isolated host must return handles/threads to baseline. Chromium integration
 records its complete process delta separately because Chromium background
 services are outside the guard's ownership. Neither test proves active-product
 media continuity or replaces the pending combined shutdown matrix.
+
+## Native platform fault execution
+
+The following probes exercise native ownership; they are not neutral receiver
+or complete product qualification. Final configuration/commit evidence is still
+required. Configure with `--lab` for the platform audio probes. They are registered
+in the full local CTest suite with label `requires-audio-device`; hosted CI
+explicitly excludes this label because it has no qualified audio endpoints.
+Missing lab/audio execution is missing evidence, never a pass.
+
+| Probe | Measured repetitions and assertions |
+| --- | --- |
+| `production_screen_sender_tests` | 100 each: duplicate submit; held publish, submit and unpublish. Late callbacks cannot resurrect a failed generation or release the next borrowed frame. Shipping deadlines remain unchanged; these adapter tests use injectable 20 ms deadlines. |
+| `camera_tests` | 100 device errors and 100 withheld real reader callbacks. The latter uses the shipping two-second no-frame detector and verifies reader/sample retirement. |
+| `dxgi_capture_tests` | 100 each ACCESS_LOST and DEVICE_REMOVED, injected at AcquireNextFrame after a real first frame. One typed terminal callback, balanced acquire/release, zero remaining textures and leases. |
+| `shared_texture_pool_tests` | 100 late decoded frames across demand replacement and stop; a second owner keeps its generation and continues uploading. All retained GPU resources drain. |
+| `microphone_capture_allocation --fault-matrix` | 100 active device-loss HRESULTs and 100 actual client stops without an error. Faults are armed only after start has returned healthy; the no-progress detector remains one second. |
+| `remote_audio_lab fault-matrix` | 100 invalidations, 100 actual output client stops with the shipping 500 ms no-progress detector, and 100 failed candidate transactions. A healthy second worker continues consuming; a failed candidate preserves the active output epoch and live deafen controls. |
+
+DXGI stress initially added five handles and one thread. Module diagnostics
+identified the additional thread as `nvwgf2umx.dll`; a subsequent identical batch
+had no growth. DXGI now warms the complete 100-cycle workload before each measured
+100-cycle batch, recording that warmup explicitly. The resource assertion remains
+zero positive growth. This is separate from the unresolved encoder activation
+resource growth on the same machine.
+
+The first microphone no-progress batch initially left one extra process handle.
+An instrumented run identified a Windows thread-pool thread handle while every
+capture worker, client and MMCSS registration retired. The microphone no-progress
+probe therefore also warms its full 100-cycle workload before measuring 100
+cycles. The following measured batch returned 190 handles and six threads to
+the same baseline, with a maximum iteration of 1,101 ms. Diagnostic pauses were
+removed before that run and are not part of the test.

@@ -1,4 +1,5 @@
 #include "capture/backend_selection_policy.hpp"
+#include "fault_evidence.hpp"
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -220,6 +221,10 @@ int main(int argc, char** argv) {
       std::cout << trace << '\n';
       return 0;
     }
+    syrnike::windows_media::tests::repeatFault("capture-candidate-failure", failedCandidatePreservesActiveAndFencesLateFrame);
+    syrnike::windows_media::tests::repeatFault("capture-retry-exhaustion", prepareFallbackAndBoundedRetries);
+    syrnike::windows_media::tests::repeatFault("capture-rolling-attempt-budget", rollingBudgetAndDeadline);
+    syrnike::windows_media::tests::repeatFault("capture-concurrent-failure-fences", concurrentFailureAndPermissionFences);
     std::cout << "Backend selection policy passed\n";
     return 0;
   } catch (const std::exception& error) {

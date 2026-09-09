@@ -6,6 +6,7 @@
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
+#include "fault_evidence.hpp"
 
 using namespace syrnike::windows_media::audio;
 namespace {
@@ -69,6 +70,74 @@ Measurement measure(RemoteAudioOutput& output, std::chrono::milliseconds duratio
   return result;
 }
 }
+int remoteAudioFaultMatrix() {
+  namespace lab = syrnike::windows_media::lab;
+  AudioDeviceRegistry registry(std::make_unique<OutputFixtureDevices>());
+  const auto inventory = registry.refresh();
+  require(inventory.status == AudioRegistryStatus::ready, "Output registry unavailable");
+  const auto endpoint = registry.resolve({AudioDirection::output, {}});
+  require(endpoint.has_value(), "Default output unavailable");
+  std::optional<AudioDeviceId> invalid;
+  for (const auto& device : inventory.devices)
+    if (device.direction == AudioDirection::output && device.label == "invalid-candidate-fixture") invalid = device.id;
+  require(invalid.has_value(), "Invalid output fixture missing");
+  const auto worker_fault = [&](bool stop_progress) {
+    lab::render_probe_epoch = 2;
+    struct ResetFault {
+      ~ResetFault() {
+        lab::render_stop_client = false;
+        lab::render_device_loss = false;
+        lab::render_probe_epoch = 0;
+      }
+    } reset;
+    WasapiOutput healthy, failing;
+    require(healthy.start(*endpoint, 1) == WasapiOutputFailure::none &&
+            failing.start(*endpoint, 2) == WasapiOutputFailure::none, "Output fault fixture did not become healthy");
+    const auto before = healthy.stats();
+    if (stop_progress) lab::render_stop_client = true;
+    else lab::render_device_loss = true;
+    const auto deadline = Clock::now() + std::chrono::milliseconds(750);
+    while (failing.stats().failure == WasapiOutputFailure::none && Clock::now() < deadline)
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    const auto expected = stop_progress ? WasapiOutputFailure::no_progress : WasapiOutputFailure::device_lost;
+    require(failing.stats().failure == expected, "Output fault missed its typed liveness deadline");
+    require(failing.stop(Clock::now() + std::chrono::seconds(2)), "Failed output worker did not join");
+    const auto stopped = failing.stats();
+    require(!stopped.client_alive && !stopped.thread_alive, "Failed output retained WASAPI resources");
+    const auto progress_deadline = Clock::now() + std::chrono::milliseconds(250);
+    while (healthy.stats().consumed_frames <= before.consumed_frames && Clock::now() < progress_deadline)
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    const auto continued = healthy.stats();
+    require(continued.state == WasapiOutputState::running && continued.epoch == before.epoch &&
+            continued.consumed_frames > before.consumed_frames, "A local output fault stopped the healthy worker");
+    require(healthy.stop(Clock::now() + std::chrono::seconds(2)), "Healthy output did not join");
+  };
+  const auto candidate_fault = [&] {
+    RemoteAudioMixerWorker mixer;
+    RemoteAudioOutput output(mixer);
+    require(output.selectOutput(registry, {AudioDirection::output, {}}) == RemoteOutputFailure::none,
+            "Output candidate fixture did not become healthy");
+    const auto before = output.stats();
+    require(output.selectOutput(registry, {AudioDirection::output, invalid}) == RemoteOutputFailure::candidate_failed,
+            "Invalid output candidate was committed");
+    require(output.setDeafened(true) && output.setDeafened(false), "Candidate failure blocked live output controls");
+    const auto deadline = Clock::now() + std::chrono::milliseconds(250);
+    while (output.stats().active.consumed_frames <= before.active.consumed_frames && Clock::now() < deadline)
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    const auto continued = output.stats();
+    require(continued.state == RemoteOutputState::running && continued.commits == before.commits &&
+            continued.active.epoch == before.active.epoch &&
+            continued.active.consumed_frames > before.active.consumed_frames,
+            "Candidate failure replaced or silenced the healthy output");
+    require(output.stop(Clock::now() + std::chrono::seconds(2)) &&
+            mixer.stop(Clock::now() + std::chrono::seconds(2)), "Output candidate fixture did not drain");
+  };
+  syrnike::windows_media::tests::repeatFault("output-device-invalidated", [&] { worker_fault(false); });
+  syrnike::windows_media::tests::repeatFault("output-no-progress", [&] { worker_fault(true); });
+  syrnike::windows_media::tests::repeatFault("output-candidate-failure", candidate_fault);
+  return 0;
+}
+
 int remoteAudioOutputStress() {
   AudioDeviceRegistry registry(std::make_unique<OutputFixtureDevices>());
   const auto devices = registry.refresh();
