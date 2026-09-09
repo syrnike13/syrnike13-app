@@ -1,4 +1,5 @@
 #include "audio/wasapi_output.hpp"
+#include "testing/product_fault_gate.hpp"
 
 #include <windows.h>
 #include <audioclient.h>
@@ -173,6 +174,7 @@ void WasapiOutput::run(const std::shared_ptr<State>& state, AudioEndpoint endpoi
     properties.eCategory = AudioCategory_Other;
     check(client->SetClientProperties(&properties), WasapiOutputFailure::policy_unavailable);
     WAVEFORMATEX format{WAVE_FORMAT_PCM, 2, kRemoteAudioRate, kRemoteAudioRate * 4, 4, 16, 0};
+    testing::holdProductFault("output-initialize");
     check(client->Initialize(AUDCLNT_SHAREMODE_SHARED,
           AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
               AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
@@ -267,6 +269,7 @@ void WasapiOutput::run(const std::shared_ptr<State>& state, AudioEndpoint endpoi
       }
       if (count) {
         BYTE* destination = nullptr;
+        testing::holdProductFault("output-render");
         check(render->GetBuffer(count, &destination), WasapiOutputFailure::render_failed);
         std::copy_n(prepared.begin(), static_cast<std::size_t>(count) * 2, reinterpret_cast<std::int16_t*>(destination));
         check(render->ReleaseBuffer(count, 0), WasapiOutputFailure::render_failed);

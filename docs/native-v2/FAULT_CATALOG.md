@@ -239,6 +239,33 @@ media continuity or replaces the pending combined shutdown matrix.
 
 ## Native platform fault execution
 
+### Test-only product shutdown gates
+
+`--test-fault-gates --no-stage` with a separate `WINDOWS_MEDIA_BUILD_ROOT`
+builds held-call adapters for product shutdown qualification. The normal build
+explicitly disables `WINDOWS_MEDIA_TEST_FAULT_GATES`; it neither reads the
+sidecar nor waits at these calls. The build script refuses to stage this variant
+or build it into the default production build directory.
+
+In an isolated test application's media directory, `native-test-fault.txt`
+contains an exact point name, newline, then the one-based matching call number
+(LF line endings, optional final newline). The configuration is read once per
+utility. The selected call writes `native-test-fault-held-<pid>.json` in that
+directory, closes the marker and waits on an unsignaled event. This adds no
+worker thread and cannot be released by a production command; shutdown must
+complete through the existing utility/process boundary. Missing or malformed
+entry evidence cannot qualify a row. The fixture must preserve every report and
+verify actual parent and utility exit within the existing overall budget.
+
+Available SDK points: `sdk-connect`, `sdk-cancel`, `sdk-disconnect`, and
+`sdk-{screen,microphone,screen-audio,camera}-{publish,unpublish}`. Platform points:
+`microphone-initialize`, `microphone-capture`, `output-initialize`, `output-render`,
+`screen-audio-initialize`, `screen-audio-capture`, `camera-read-sample`,
+`encoder-input`, `encoder-output`, `wgc-{monitor,window}-{frame-pool,start}` and
+`dxgi-acquire-frame`. These intercept the named API call on its actual owner;
+they are test-only never-returning substitutes, not evidence of a real driver
+hang. No shutdown qualification result is implied by their availability.
+
 The following probes exercise native ownership; they are not neutral receiver
 or complete product qualification. Final configuration/commit evidence is still
 required. Configure with `--lab` for the platform audio probes. They are registered

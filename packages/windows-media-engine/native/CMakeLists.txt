@@ -14,6 +14,7 @@ set(CMAKE_COMPILE_PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
 
 option(WINDOWS_MEDIA_ENABLE_ASAN "Enable AddressSanitizer for lifecycle tests" OFF)
 option(WINDOWS_MEDIA_BUILD_LAB "Build the isolated LiveKit media lab publisher" OFF)
+option(WINDOWS_MEDIA_TEST_FAULT_GATES "Enable test-only held platform-call gates" OFF)
 
 if(NOT DEFINED NAPI_VERSION OR "${NAPI_VERSION}" STREQUAL "")
   set(NAPI_VERSION 8)
@@ -33,6 +34,9 @@ if(NOT DEFINED WINDOWS_MEDIA_COMMIT OR "${WINDOWS_MEDIA_COMMIT}" STREQUAL "")
 endif()
 
 function(windows_media_target target)
+  if(WINDOWS_MEDIA_TEST_FAULT_GATES)
+    target_compile_definitions(${target} PRIVATE WINDOWS_MEDIA_TEST_FAULT_GATES=1)
+  endif()
   target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_compile_definitions(${target} PRIVATE
     WIN32_LEAN_AND_MEAN

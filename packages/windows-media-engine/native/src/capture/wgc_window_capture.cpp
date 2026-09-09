@@ -1,4 +1,5 @@
 #include "capture/wgc_window_capture.hpp"
+#include "testing/product_fault_gate.hpp"
 #include "capture/wgc_capture_support.hpp"
 
 #include <windows.h>
@@ -311,6 +312,7 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
       }
       const SizeInt32 initial_size{(std::max)(item_size.Width, 1),
                                    (std::max)(item_size.Height, 1)};
+      testing::holdProductFault("wgc-window-frame-pool");
       auto frame_pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
           direct3d_device, DirectXPixelFormat::B8G8R8A8UIntNormalized,
           static_cast<int>(options_.frame_pool_size), initial_size);
@@ -519,6 +521,7 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
         state_->active = true;
         state_->diagnostics.d3d_debug_enabled = debug_enabled;
       }
+      testing::holdProductFault("wgc-window-start");
       session.StartCapture();
 
       {

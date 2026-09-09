@@ -1,4 +1,5 @@
 #include "audio/screen_audio_sender.hpp"
+#include "testing/product_fault_gate.hpp"
 #include <algorithm>
 #include <stdexcept>
 #include <system_error>
@@ -125,6 +126,7 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
                   state->source = source;
                   state->track = track;
                 }
+                testing::holdProductFault("sdk-screen-audio-publish");
                 participant->publishTrack(track, options);
                 if (!track->publication())
                   throw std::runtime_error("Screen audio publication missing");
@@ -216,8 +218,10 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
               try {
                 if (state->source) state->source->clearQueue();
                 if (room && room->connectionState() != livekit::ConnectionState::Disconnected &&
-                    state->track && state->track->publication() && state->participant)
+                    state->track && state->track->publication() && state->participant) {
+                  testing::holdProductFault("sdk-screen-audio-unpublish");
                   state->participant->unpublishTrack(state->track->publication()->sid());
+                }
               } catch (...) {
                 std::scoped_lock lock(state->mutex);
                 // Preserve any earlier uncertain SDK operation. A disconnected

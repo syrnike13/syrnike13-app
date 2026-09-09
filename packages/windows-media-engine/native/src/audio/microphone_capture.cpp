@@ -1,4 +1,5 @@
 #include "audio/microphone_capture.hpp"
+#include "testing/product_fault_gate.hpp"
 
 #include <windows.h>
 #include <audioclient.h>
@@ -170,6 +171,7 @@ void MicrophoneCapture::run(const std::shared_ptr<State>& state, AudioEndpoint e
     format.wBitsPerSample = 16;
     format.nBlockAlign = 2;
     format.nAvgBytesPerSec = kMicrophoneRate * 2;
+    testing::holdProductFault("microphone-initialize");
     check(client->Initialize(AUDCLNT_SHAREMODE_SHARED,
                              AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
                                AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
@@ -229,6 +231,7 @@ void MicrophoneCapture::run(const std::shared_ptr<State>& state, AudioEndpoint e
         BYTE* data = nullptr;
         DWORD flags = 0;
         UINT64 position = 0, qpc = 0;
+        testing::holdProductFault("microphone-capture");
         const auto buffer_result = capture->GetBuffer(&data, &available, &flags, &position, &qpc);
         check(buffer_result, MicrophoneCaptureFailure::device_lost);
         if (buffer_result == AUDCLNT_S_BUFFER_EMPTY || available == 0) break;
