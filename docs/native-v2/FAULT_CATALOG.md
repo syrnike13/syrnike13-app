@@ -766,6 +766,18 @@ The manifest's typed upload metadata is preserved separately from generic
 redaction. Earlier full-product capture exposed missing manifest `source` and
 `release_channel`, redacted correlation aliases and multiple incident roots;
 those earlier captures do not prove successful upload. Native 100-cycle
-projection checks and focused protocol/renderer tests passed; a rebuilt
-full-product capture is still required. This change does not qualify the
+projection checks and focused protocol/renderer tests passed. The rebuilt
+[upload pilot](report-upload-efb2ed08-pilot.json) produced one report request,
+HTTP 200 and one Voice correlation alias after local S3 storage was supplied;
+all 150 application file hashes matched. This is one attempt, not the final
+100-cycle qualification. This change does not qualify the
 remaining local media fault timelines or hardware resource gates.
+
+That pilot did not retain the separate C++ diagnostic: public failure events
+and best-effort diagnostics use independent N-API queues, and diagnostics
+arriving after utility retirement can be discarded. Terminal failures now also
+carry `causeTimestampMs`, stamped in C++ before either callback. Main journals
+that origin when it receives the first public event with the matching cause
+sequence. The additional record uses the native timestamp and the same alias;
+it does not claim a new native callback occurred. A rebuilt product capture of
+this additional field is pending.

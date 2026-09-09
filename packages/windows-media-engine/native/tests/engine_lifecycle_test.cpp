@@ -849,10 +849,14 @@ void authorityMismatchRetiresEngineEpoch() {
   std::uint64_t room_cause = 0;
   std::uint64_t engine_cause = 0;
   double diagnostic_cause = 0;
+  std::uint64_t diagnostic_timestamp = 0;
+  std::uint64_t room_timestamp = 0;
+  std::uint64_t engine_timestamp = 0;
   Engine engine(EngineOptions{.room_transport = transport});
   requireOk(engine.registerDiagnosticEventCallback([&](const DiagnosticEvent &event) {
     if (event.code != "room_authority_mismatch") return;
     std::lock_guard lock(mutex);
+    diagnostic_timestamp = event.timestamp_ms;
     for (const auto &metric : event.metrics)
       if (metric.name == "cause_sequence") diagnostic_cause = metric.value;
   }), "authority mismatch diagnostic callback");
@@ -862,9 +866,13 @@ void authorityMismatchRetiresEngineEpoch() {
         room && room->failure) {
       room_sequence = room->sequence;
       room_cause = room->failure->cause_sequence;
+      room_timestamp = room->failure->cause_timestamp_ms;
     }
     if (const auto *lifecycle = std::get_if<syrnike::windows_media::LifecycleEvent>(&event);
-        lifecycle && lifecycle->failure) engine_cause = lifecycle->failure->cause_sequence;
+        lifecycle && lifecycle->failure) {
+      engine_cause = lifecycle->failure->cause_sequence;
+      engine_timestamp = lifecycle->failure->cause_timestamp_ms;
+    }
     const auto *fatal = std::get_if<FatalEngineFailureEvent>(&event);
     if (!fatal)
       return;
@@ -897,6 +905,10 @@ void authorityMismatchRetiresEngineEpoch() {
                 engine_cause == room_cause && fatal_failure->cause_sequence == room_cause &&
                 diagnostic_cause == static_cast<double>(room_cause),
             "terminal native projections lost their originating cause");
+    require(room_timestamp != 0 && room_timestamp == diagnostic_timestamp &&
+                engine_timestamp == room_timestamp &&
+                fatal_failure->cause_timestamp_ms == room_timestamp,
+            "terminal native projections lost their native origin timestamp");
   }
   require(engine.state() == EngineState::Failed,
           "authority mismatch left the Engine reusable");

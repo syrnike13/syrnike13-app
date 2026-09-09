@@ -792,7 +792,7 @@ private:
     if (fatal_room_failure) {
       auto problem = *event.failure;
       problem.cause_sequence = event_sequence_ + 1;
-      emitFailureDiagnostic(problem);
+      stampFailureOriginAndEmitDiagnostic(problem);
       setRoomPublicState(RoomStateChangedEvent::State::Failed, problem);
       transition(EngineState::Failed, problem);
       if (pending_shutdown_command_)
@@ -983,7 +983,7 @@ private:
         transition_failure->code != "startup_cancelled" &&
         transition_failure->cause_sequence == 0) {
       transition_failure->cause_sequence = event_sequence_ + 1;
-      emitFailureDiagnostic(*transition_failure);
+      stampFailureOriginAndEmitDiagnostic(*transition_failure);
     }
     const auto previous = state_.exchange(next);
     PublicEventCallback callback;
@@ -1157,15 +1157,18 @@ private:
       completeDeferredShutdown(EngineResult::success());
   }
 
-  void emitFailureDiagnostic(const EngineFailure &problem) {
+  void stampFailureOriginAndEmitDiagnostic(EngineFailure &problem) {
+    const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    // Retain the native origin on the reliable failure path even when the
+    // independent best-effort diagnostic queue is not drained before retirement.
+    problem.cause_timestamp_ms = static_cast<std::uint64_t>(now);
     DiagnosticEventCallback callback;
     {
       std::lock_guard lock(diagnostic_callback_mutex_);
       callback = diagnostic_callback_;
     }
     if (!callback) return;
-    const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
     callback(DiagnosticEvent{
         ++diagnostic_sequence_, static_cast<std::uint64_t>(now),
         "engine", problem.stage, problem.code,

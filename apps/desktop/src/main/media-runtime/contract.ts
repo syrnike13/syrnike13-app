@@ -82,6 +82,7 @@ export const MediaLifecycleFailureSchema = Schema.Struct({
   causeSequence: Schema.optional(Schema.Int.check(
     Schema.isBetween({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
   )),
+  causeTimestampMs: Schema.optional(positiveProtocolInteger),
 })
 
 export class MediaLifecycleError extends Schema.TaggedErrorClass<
@@ -556,6 +557,7 @@ export function failureFromUnknown(cause: unknown, stage: string): MediaLifecycl
       stage: Reflect.get(cause, 'stage') ?? stage,
       retryable: Reflect.get(cause, 'retryable') ?? false,
       causeSequence: Reflect.get(cause, 'causeSequence'),
+      causeTimestampMs: Reflect.get(cause, 'causeTimestampMs'),
     })
     if (Option.isSome(decoded)) {
       return {

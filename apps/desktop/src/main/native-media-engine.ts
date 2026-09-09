@@ -166,6 +166,15 @@ export function createNativeRtcEngineAdapter() {
       episodeId: runtime.getFailureEpisodeId(), fatal: state.status === 'failed',
     })
   }), runtime.onEvent(event => {
+    if (event.failure?.causeSequence === event.sequence && event.failure.causeTimestampMs !== undefined) {
+      const episodeId = runtime.getFailureEpisodeId(event.failure.causeSequence)
+      logNativeVoiceDiagnostic('native_failure_origin', {
+        hostEpoch: runtime.getHostEpoch(), nativeSequence: event.sequence,
+        timestampMs: event.failure.causeTimestampMs, component: 'engine',
+        operation: event.failure.stage, code: event.failure.code,
+        correlationId: episodeId ? getNativeDiagnosticCorrelationId(episodeId) : undefined,
+      })
+    }
     recordMediaDiagnostic({
       scope: 'native-media-controller', event: event.type, runtime: 'media',
       hostEpoch: runtime.getHostEpoch(), nativeSequence: event.sequence,

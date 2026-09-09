@@ -58,8 +58,9 @@ describe('native media protocol contract', () => {
     const decode = Schema.decodeUnknownOption(MediaLifecycleFailureSchema)
     expect(Option.isSome(decode(failure))).toBe(true)
     expect(Schema.decodeUnknownSync(MediaLifecycleFailureSchema)({
-      ...failure, causeSequence: 7, diagnosticCorrelationId: 'incident-79360566-3412-4a77-8f4b-36f392b48d6d',
-    })).toEqual({ ...failure, causeSequence: 7 })
+      ...failure, causeSequence: 7, causeTimestampMs: 1788958459378,
+      diagnosticCorrelationId: 'incident-79360566-3412-4a77-8f4b-36f392b48d6d',
+    })).toEqual({ ...failure, causeSequence: 7, causeTimestampMs: 1788958459378 })
     expect(isMediaLifecycleMessage({
       type: 'event', protocolVersion: MEDIA_LIFECYCLE_PROTOCOL_VERSION,
       event: { type: 'fatalEngineFailure', sequence: 7, failure: {
@@ -68,6 +69,7 @@ describe('native media protocol contract', () => {
     })).toBe(false)
     for (const causeSequence of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, '7']) {
       expect(Option.isNone(decode({ ...failure, causeSequence }))).toBe(true)
+      expect(Option.isNone(decode({ ...failure, causeTimestampMs: causeSequence }))).toBe(true)
     }
   })
   it('preserves complete media intent and rejects invalid active settings', () => {
