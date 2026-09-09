@@ -13,10 +13,36 @@ vi.mock('electron', () => ({
 }))
 
 import { createDesktopDiagnosticBundle } from './diagnostic-bundle'
+import * as diagnosticLog from './native-runtime/diagnostic-log'
 
 describe('desktop diagnostic bundle', () => {
   beforeEach(async () => {
     state.userData = await mkdtemp(path.join(tmpdir(), 'syrnike-diagnostics-'))
+  })
+
+  it('lets queued main-loop work run before native record normalization completes', async () => {
+    const directory = path.join(state.userData, 'logs', 'native-media-diagnostics', 'native-media-yield')
+    await mkdir(directory, { recursive: true })
+    const count = 1_000
+    await writeFile(path.join(directory, 'native.jsonl'), Array.from({ length: count }, (_, index) =>
+      JSON.stringify({ event: 'main_loop_probe', yieldProbeIndex: index })).join('\n'))
+    const sanitize = diagnosticLog.sanitizeDiagnosticValue
+    let normalized = 0
+    let controlRanBeforeCompletion = false
+    const spy = vi.spyOn(diagnosticLog, 'sanitizeDiagnosticValue').mockImplementation(value => {
+      if (typeof value === 'object' && value !== null && 'yieldProbeIndex' in value) {
+        ++normalized
+        if (normalized === 1) setImmediate(() => { controlRanBeforeCompletion = normalized < count })
+      }
+      return sanitize(value)
+    })
+    try {
+      await createDesktopDiagnosticBundle('{"type":"manifest","source":"desktop"}')
+      expect(normalized).toBe(count)
+      expect(controlRanBeforeCompletion).toBe(true)
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('combines renderer and redacted native JSONL into gzip', async () => {

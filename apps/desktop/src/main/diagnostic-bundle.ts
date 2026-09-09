@@ -21,6 +21,7 @@ const MAX_COMPRESSED_BUNDLE_BYTES = 10 * 1024 * 1024
 const MAX_DECOMPRESSED_BUNDLE_BYTES = 33 * 1024 * 1024
 const INVENTORY_RESERVE_BYTES = 64 * 1024
 const MAX_NATIVE_SESSIONS = 3
+const RECORDS_PER_YIELD = 64
 const DIAGNOSTIC_SCHEMA = 'syrnike.diagnostic' as const
 const DIAGNOSTIC_SCHEMA_VERSION = 1 as const
 const gzipAsync = promisify(gzip)
@@ -59,15 +60,13 @@ export const createDesktopDiagnosticBundleEffect = Effect.fn(
     )
   }
 
-  const rendererRecords = yield* Effect.try({
-    try: () => normalizeJsonl(rendererJsonl, 'renderer', true),
-    catch: (cause) => cause,
-  })
+  const rendererRecords = yield* normalizeJsonlEffect(rendererJsonl, 'renderer', true)
   const native = yield* readRecentNativeDiagnosticsEffect()
-  const nativeRecordGroups = native.files.map((file) =>
-    normalizeJsonl(file.value, file.source, false),
-  )
-  const rendererBytes = serializedRecordsBytes(rendererRecords)
+  const nativeRecordGroups: DiagnosticEnvelope[][] = []
+  for (const file of native.files) {
+    nativeRecordGroups.push(yield* normalizeJsonlEffect(file.value, file.source, false))
+  }
+  const rendererBytes = yield* serializedRecordsBytesEffect(rendererRecords)
   const nativeBudget = Math.max(
     0,
     MAX_DECOMPRESSED_BUNDLE_BYTES - rendererBytes - INVENTORY_RESERVE_BYTES,
@@ -117,15 +116,20 @@ const buildNormalizedBundleEffect = Effect.fn(
   nativeRecordGroups: DiagnosticEnvelope[][],
   nativeBudget: number,
 ) {
-  const normalizedGroupBytes = nativeRecordGroups.map(serializedRecordsBytes)
+  const normalizedGroupBytes: number[] = []
+  for (const records of nativeRecordGroups) {
+    normalizedGroupBytes.push(yield* serializedRecordsBytesEffect(records))
+  }
   const normalizedBudgets = allocateFairReadBudgets(
     normalizedGroupBytes,
     nativeBudget,
   )
-  const selectedGroups = nativeRecordGroups.map((records, index) =>
-    selectRecordTail(records, normalizedBudgets[index] ?? 0),
-  )
+  const selectedGroups: DiagnosticEnvelope[][] = []
+  for (const [index, records] of nativeRecordGroups.entries()) {
+    selectedGroups.push(yield* selectRecordTailEffect(records, normalizedBudgets[index] ?? 0))
+  }
   const nativeRecords = selectedGroups.flat()
+  const nativeBytes = yield* serializedRecordsBytesEffect(nativeRecords)
   const recordsBySource = nativeRecords.reduce<Record<string, number>>(
     (counts, record) => {
       counts[record.source] = (counts[record.source] ?? 0) + 1
@@ -153,7 +157,7 @@ const buildNormalizedBundleEffect = Effect.fn(
           file.truncated || selectedGroups[index]!.length < nativeRecordGroups[index]!.length,
       ).length,
       native_source_bytes_read: native.files.reduce((sum, file) => sum + file.bytes, 0),
-      native_bytes_included: serializedRecordsBytes(nativeRecords),
+      native_bytes_included: nativeBytes,
       native_records_included: nativeRecords.length,
       native_records_by_source: recordsBySource,
     },
@@ -162,9 +166,12 @@ const buildNormalizedBundleEffect = Effect.fn(
   const events = [...rendererEvents, ...nativeRecords, inventory].sort(
     (left, right) => left.timestamp_ms - right.timestamp_ms,
   )
-  const jsonl = [firstRendererRecord, ...events]
-    .map((record) => JSON.stringify(record))
-    .join('\n')
+  const lines = [JSON.stringify(firstRendererRecord)]
+  for (const [index, record] of events.entries()) {
+    lines.push(JSON.stringify(record))
+    if ((index + 1) % RECORDS_PER_YIELD === 0) yield* Effect.yieldNow
+  }
+  const jsonl = lines.join('\n')
   if (Buffer.byteLength(jsonl) > MAX_DECOMPRESSED_BUNDLE_BYTES) {
     return yield* Effect.fail(
       new Error('Normalized diagnostic bundle is too large'),
@@ -176,33 +183,43 @@ const buildNormalizedBundleEffect = Effect.fn(
   })
 })
 
-function serializedRecordsBytes(records: DiagnosticEnvelope[]) {
-  return records.reduce(
-    (total, record) => total + Buffer.byteLength(JSON.stringify(record)) + 1,
-    0,
-  )
-}
+const serializedRecordsBytesEffect = Effect.fn('desktop.diagnosticRecordsBytes')(
+  function*(records: DiagnosticEnvelope[]) {
+    let total = 0
+    for (const [index, record] of records.entries()) {
+      total += Buffer.byteLength(JSON.stringify(record)) + 1
+      if ((index + 1) % RECORDS_PER_YIELD === 0) yield* Effect.yieldNow
+    }
+    return total
+  },
+)
 
-function selectRecordTail(records: DiagnosticEnvelope[], maximumBytes: number) {
-  const selected: DiagnosticEnvelope[] = []
-  let used = 0
-  for (let index = records.length - 1; index >= 0; index -= 1) {
-    const record = records[index]!
-    const bytes = Buffer.byteLength(JSON.stringify(record)) + 1
-    if (bytes > maximumBytes - used) break
-    selected.unshift(record)
-    used += bytes
-  }
-  return selected
-}
+const selectRecordTailEffect = Effect.fn('desktop.selectDiagnosticRecordTail')(
+  function*(records: DiagnosticEnvelope[], maximumBytes: number) {
+    let firstSelected = records.length
+    let used = 0
+    for (let index = records.length - 1; index >= 0; index -= 1) {
+      const record = records[index]!
+      const bytes = Buffer.byteLength(JSON.stringify(record)) + 1
+      if (bytes > maximumBytes - used) break
+      firstSelected = index
+      used += bytes
+      if ((records.length - index) % RECORDS_PER_YIELD === 0) yield* Effect.yieldNow
+    }
+    return records.slice(firstSelected)
+  },
+)
 
-function normalizeJsonl(
+const normalizeJsonlEffect = Effect.fn('desktop.normalizeDiagnosticJsonl')(function*(
   value: string,
   fallbackSource: DiagnosticEnvelopeSource,
   strict: boolean,
 ) {
   const records: DiagnosticEnvelope[] = []
-  for (const line of value.split(/\r?\n/)) {
+  for (const [index, line] of value.split(/\r?\n/).entries()) {
+    // Redaction must not postpone media deadlines on Electron's main thread.
+    // Yield even across invalid/empty records; all content limits stay intact.
+    if ((index + 1) % RECORDS_PER_YIELD === 0) yield* Effect.yieldNow
     if (!line.trim()) continue
     try {
       const json = Schema.decodeUnknownOption(UnknownJsonSchema)(line)
@@ -211,14 +228,14 @@ function normalizeJsonl(
       if (!normalized) throw new Error('Unsupported diagnostic record')
       records.push(normalized)
     } catch (error) {
-      if (strict) throw new Error('Renderer diagnostics contain invalid JSONL', { cause: error })
+      if (strict) return yield* Effect.fail(new Error('Renderer diagnostics contain invalid JSONL', { cause: error }))
     }
   }
   if (strict && records.length === 0) {
-    throw new Error('Renderer diagnostics are empty')
+    return yield* Effect.fail(new Error('Renderer diagnostics are empty'))
   }
   return records
-}
+})
 
 function normalizeRecord(
   value: unknown,
