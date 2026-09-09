@@ -40,6 +40,7 @@ class MicrophoneOwner final {
   std::mutex join_mutex_;
   std::condition_variable changed_;
   Desired desired_;
+  std::stop_source capture_cancellation_;
   MicrophoneOwnerSnapshot snapshot_;
   // Only run() constructs/destroys the sender; apply() calls its thread-safe
   // cancellation signal under mutex_ so a superseded publish cannot commit.

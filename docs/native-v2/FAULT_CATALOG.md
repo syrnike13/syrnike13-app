@@ -50,6 +50,7 @@ encoder failure. Query timeout alone does not prove utility death.
 | Microphone no-progress | 1,000 ms | Real worker detects stopped progress without forged error state |
 | Output no-progress / retry | 500 ms; three attempts, one-second spacing | Successful candidates retain the attempt count; explicit selection or a new device-registry revision resets it. Active/candidate isolation, latest intent and full-product proof remain required. |
 | Output candidate cancellation | Event-driven cancellation of the five-second readiness wait; five-second native teardown fallback | New selection/retry/device revision or shutdown signals the pending worker immediately. The 500 ms cancellable-fixture assertion does not establish cancellation of a hung Windows API; that remains contained by the utility deadline. |
+| Microphone candidate cancellation | Event-driven cancellation of the five-second readiness wait; five-second native teardown fallback | Selection, processing bypass, explicit retry, device revision and shutdown signal pending preparation. A healthy active capture remains attached to DSP until a new candidate is admitted. Non-cancellable platform calls still require utility containment. |
 | Native frame export age / queue | 150 ms; total 68, batch 16, remote 4/stream, preview 2/stream | Renderer never releasing must remain bounded without unsafe reuse |
 | Electron transfer import acknowledgement / capacity | 1,000 ms / 68 process-wide | Timeout never frees an uncertain lease |
 | Electron receiver release / final GPU release | 2,000 ms from send / 2,000 ms from main release; 250 ms sweep | One failure per retained lease; no retry or unsafe reuse; exact-frame release/destruction plus final GPU completion returns ownership |
@@ -200,6 +201,7 @@ Missing lab/audio execution is missing evidence, never a pass.
 | `shared_texture_pool_tests` | 100 late decoded frames across demand replacement and stop; a second owner keeps its generation and continues uploading. All retained GPU resources drain. |
 | `microphone_capture_allocation --fault-matrix` | 100 active device-loss HRESULTs and 100 actual client stops without an error. Faults are armed only after start has returned healthy; the no-progress detector remains one second. |
 | `media_lab microphone-candidate-fault` | 100 failed WASAPI candidate opens. The retained capture generation continues producing frames, mute still produces digital silence, and returning to the healthy selection does not reopen capture. |
+| `media_lab microphone-cancellation` | 100 latest selections and 100 shutdowns during blocked candidate preparation through the shipping MicrophoneOwner. Latest selection retains healthy PCM progress and generation with no stale failure or publication; shutdown joins the pending capture and DSP workers within the 500 ms fixture assertion. |
 | `remote_audio_lab fault-matrix` | 100 invalidations, 100 actual output client stops with the shipping 500 ms no-progress detector, 100 failed candidate transactions, and 100 finite retry sequences. A healthy second worker continues consuming; a failed candidate preserves the active output epoch and live deafen controls. Only the retry schedule uses a test clock; all WASAPI health and shutdown clocks remain real. |
 | `remote_audio_lab cancellation` | 100 each: cancelled preparation retaining the active output; newer desired selection through the shipping OutputOwner; shutdown through that owner during pending preparation. Preparation blocks on the worker's cancellation event. Old terminal errors cannot appear on the new desired revision, the healthy epoch keeps consuming, cancelled retries allocate no candidate, and shutdown joins all workers. |
 
@@ -241,3 +243,14 @@ rerun returned that row to baseline but left one extra handle after 100
 no-progress faults. That run showed only Windows thread-pool entries in the
 final thread inventory. Their involvement does not establish the handle's cause.
 Both failed resource results remain failures despite successful owner assertions.
+
+Microphone cancellation passed both 100-cycle owner rows with 230 handles and 20
+threads unchanged; each complete iteration was below 119 ms. The existing failed
+candidate regression also passed 100 cycles after the signature changes. Both
+audio owners force reconciliation of the latest selection after a cancelled
+transaction, including a change arriving just after commit admission: equality
+with an older applied intent must not leave an intermediate selection active.
+Output cancellation's subsequent CTest run also observed a positive thread delta;
+a diagnostic rerun passed all three owner rows, which does not resolve that
+intermittent resource result. Thread diagnostics now record kernel termination
+state without changing resource counts or budgets.

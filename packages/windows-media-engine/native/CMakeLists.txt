@@ -540,13 +540,16 @@ if(WINDOWS_MEDIA_BUILD_LAB)
   target_link_libraries(apm_allocation_baseline PRIVATE LiveKit::livekit)
   windows_media_copy_livekit_runtime(apm_allocation_baseline)
   add_executable(media_lab src/lab/microphone_lab.cpp src/lab/microphone_pipeline_lab.cpp
-    src/lab/microphone_ducking_lab.cpp src/lab/microphone_dsp_lab.cpp)
+    src/lab/microphone_ducking_lab.cpp src/lab/microphone_dsp_lab.cpp src/audio/microphone_capture.cpp)
   windows_media_target(media_lab)
   target_link_libraries(media_lab PRIVATE media_microphone_livekit media_screen_audio_capture LiveKit::livekit)
-  target_compile_definitions(media_lab PRIVATE _CRT_SECURE_NO_WARNINGS)
+  # Link the same capture implementation with a lab-only cancellation gate.
+  target_compile_definitions(media_lab PRIVATE _CRT_SECURE_NO_WARNINGS WINDOWS_MEDIA_CAPTURE_FAULT_PROBE)
   target_include_directories(media_lab PRIVATE tests)
   add_test(NAME microphone-candidate-fault COMMAND media_lab microphone-candidate-fault)
   set_tests_properties(microphone-candidate-fault PROPERTIES TIMEOUT 60 LABELS "requires-audio-device")
+  add_test(NAME microphone-cancellation-faults COMMAND media_lab microphone-cancellation)
+  set_tests_properties(microphone-cancellation-faults PROPERTIES TIMEOUT 60 LABELS "requires-audio-device")
   windows_media_copy_livekit_runtime(media_lab)
   # Compile the production capture loop with disposable-process heap evidence;
   # allocator hooks never enter the product capture library or normal media_lab.

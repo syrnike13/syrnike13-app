@@ -37,7 +37,9 @@ inline void logResourceThreads(const char* phase) {
       first = false;
       output << "{\"id\":" << entry.th32ThreadID;
       const HANDLE thread =
-          OpenThread(THREAD_QUERY_INFORMATION, FALSE, entry.th32ThreadID);
+          OpenThread(THREAD_QUERY_INFORMATION | SYNCHRONIZE, FALSE, entry.th32ThreadID);
+      if (thread)
+        output << ",\"terminated\":" << (WaitForSingleObject(thread, 0) == WAIT_OBJECT_0 ? "true" : "false");
       PVOID start = nullptr;
       constexpr ULONG kThreadQuerySetWin32StartAddress = 9;
       if (thread && query &&

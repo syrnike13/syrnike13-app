@@ -65,6 +65,7 @@ void OutputOwner::run() noexcept {
   Desired applied;
   std::optional<EngineFailure> problem;
   bool mix_failed = false;
+  bool selection_pending = false;
   const auto stopOutput = [&] {
     if (output && !output->stop(Clock::now() + kShutdownDeadline)) std::terminate();
     output.reset();
@@ -86,7 +87,7 @@ void OutputOwner::run() noexcept {
       }
       const bool needed = desired.intent.state == OutputIntentState::on && desired.room_connected;
       const auto previous_problem = problem;
-      const bool retry = desired.intent.state != applied.intent.state ||
+      const bool retry = selection_pending || desired.intent.state != applied.intent.state ||
           desired.room_connected != applied.room_connected || desired.intent.device_id != applied.intent.device_id ||
           desired.intent.retry_revision != applied.intent.retry_revision ||
           desired.device_revision != applied.device_revision;
@@ -131,6 +132,7 @@ void OutputOwner::run() noexcept {
       // The next pass consumes the latest intent or shutdown request.
       if (cancellation.stop_requested()) {
         problem = previous_problem;
+        selection_pending = true;
         continue;
       }
       OutputOwnerSnapshot current;
@@ -151,10 +153,12 @@ void OutputOwner::run() noexcept {
         std::lock_guard lock(mutex_);
         if (cancellation.stop_requested()) {
           problem = previous_problem;
+          selection_pending = true;
           continue;
         }
         snapshot_ = std::move(current);
       }
+      selection_pending = false;
       applied = std::move(desired);
     }
   } catch (...) {

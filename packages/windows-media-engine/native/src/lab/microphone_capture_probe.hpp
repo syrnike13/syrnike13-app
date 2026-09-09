@@ -3,6 +3,9 @@
 #include <atomic>
 
 namespace syrnike::windows_media::lab {
+// The media lab uses only this cancellation gate, without allocator interception.
+inline std::atomic_uint64_t capture_block_generation{0};
+inline std::atomic_bool capture_prepare_entered{false};
 // Only linked into the disposable capture benchmark. The control thread reads
 // the result after joining capture; production has no probe or allocator hooks.
 inline HeapAllocationProbe::Counts capture_heap_counts;
