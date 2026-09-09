@@ -256,6 +256,44 @@ describe('NativeRtcEngineAdapterV2', () => {
     await adapter.dispose()
   })
 
+  it('invalidates old host media before publishing recovery and new host availability', async () => {
+    const runtime = new Runtime()
+    const adapter = new NativeRtcEngineAdapterV2(runtime)
+    const desired = createInitialVoiceMediaDesiredState()
+    await join(runtime, adapter, desired)
+    runtime.current = {
+      ...runtime.current,
+      tracks: { ...runtime.current.tracks, microphone: {
+        revision: runtime.current.acceptedRevision ?? 0, state: 'running', warning: false,
+      } },
+    }
+    runtime.connected()
+    expect(adapter.snapshot().tracks.microphone.state).toBe('running')
+    adapter.updateDesiredMedia({ ...desired, userMuted: true, effectiveMuted: true })
+    const latest = adapter.desiredSnapshot()
+    const availabilitySnapshots: MediaEngineSnapshot[] = []
+    const snapshots: MediaEngineSnapshot[] = []
+    adapter.onSnapshot(snapshot => snapshots.push(snapshot))
+    const unsubscribe = adapter.subscribe(event => {
+      if (event.type === 'availabilityChanged') availabilitySnapshots.push(adapter.snapshot())
+    })
+    availabilitySnapshots.length = 0
+    runtime.restart()
+    expect(availabilitySnapshots).toHaveLength(2)
+    for (const snapshot of availabilitySnapshots) {
+      expect(snapshot).toEqual({
+        engineState: 'stopped', acceptedRevision: null, desiredState: null,
+        roomState: 'off', tracks: createInactiveMediaPaths(),
+      })
+    }
+    expect(snapshots.at(-1)).toEqual(adapter.snapshot())
+    expect(adapter.desiredSnapshot()).toEqual(latest)
+    await vi.waitFor(() => expect(runtime.applied.at(-1)).toEqual(latest))
+    expect(runtime.applied.at(-1)?.microphone).toMatchObject({ muted: true })
+    unsubscribe()
+    await adapter.dispose()
+  })
+
   it('cancels a superseded credential completion without applying its old Room', async () => {
     const runtime = new Runtime()
     const adapter = new NativeRtcEngineAdapterV2(runtime)

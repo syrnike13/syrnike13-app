@@ -175,9 +175,18 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     this.unsubscribe = [
       runtime.onStateChange(snapshot => {
         if (this.disposed) return
+        const epoch = runtime.getHostEpoch()
+        if (snapshot.status !== 'ready' || this.epoch !== epoch) {
+          // Observed media belongs to one host. Clear it before availability
+          // listeners can combine a replacement host with the old media paths.
+          this.current = {
+            engineState: 'stopped', acceptedRevision: null, desiredState: null,
+            roomState: 'off', tracks: createInactiveMediaPaths(),
+          }
+          for (const listener of this.snapshotListeners) listener(this.current)
+        }
         this.emitAvailability()
         if (snapshot.status === 'ready') {
-          const epoch = runtime.getHostEpoch()
           if (this.epoch !== epoch) {
             this.epoch = epoch
             this.appliedRevision = 0
