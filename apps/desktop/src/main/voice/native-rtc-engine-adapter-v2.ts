@@ -162,7 +162,6 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
   private flushRequested = false
   private shutdownPromise: Promise<void> | null = null
   private waiter: RoomWaiter | null = null
-  private recovering = false
   private terminalReported = false
 
   constructor(
@@ -193,10 +192,9 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
             this.installedLeaseId = null
           }
           this.scheduleFlush()
-        } else if (snapshot.status === 'recovering') {
-          if (!this.recovering && this.binding) this.emitBound({ type: 'transientReconnectStarted' })
-          this.recovering = true
-        } else if (snapshot.status === 'failed' && snapshot.failure) {
+        } else if ((snapshot.status === 'recovering' || snapshot.status === 'failed') && snapshot.failure) {
+          // A replacement process cannot resume the old Room. Voice Director
+          // must retire its authority and acquire a fresh lease before replay.
           this.failRoom(snapshot.failure)
         }
       }),
@@ -368,6 +366,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     this.flushRequested = false
     while (!this.disposed && this.latest && this.appliedRevision !== this.latest.revision) {
       this.flushRequested = false
+      if (this.binding && this.terminalReported) return
       const epoch = this.runtime.getHostEpoch()
       if (epoch !== this.epoch) {
         this.epoch = epoch
@@ -375,25 +374,33 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
         this.appliedRevision = 0
       }
       const binding = this.binding
-      if (binding && this.installedLeaseId !== binding.credentialLeaseId) {
-        await this.runtime.installCredentialLease({
-          leaseId: binding.credentialLeaseId,
-          serverUrl: binding.lease.credential.url,
-          accessToken: binding.lease.credential.token,
-        })
+      try {
+        if (binding && this.installedLeaseId !== binding.credentialLeaseId) {
+          await this.runtime.installCredentialLease({
+            leaseId: binding.credentialLeaseId,
+            serverUrl: binding.lease.credential.url,
+            accessToken: binding.lease.credential.token,
+          })
+          if (this.disposed || epoch !== this.runtime.getHostEpoch()) return
+          if (binding && this.terminalReported) return
+          this.installedLeaseId = binding.credentialLeaseId
+          // Credentials can finish after move/leave. Never replay their old intent.
+          if (binding !== this.binding) continue
+        }
+        const desired = this.latest
+        const accepted = await this.runtime.applyDesiredState(desired)
         if (this.disposed || epoch !== this.runtime.getHostEpoch()) return
-        this.installedLeaseId = binding.credentialLeaseId
-        // Credentials can finish after move/leave. Never replay their old intent.
-        if (binding !== this.binding) continue
+        this.appliedRevision = accepted.acceptedRevision
+        if (this.latest.revision !== desired.revision) continue
+        const snapshot = await this.runtime.querySnapshot()
+        if (this.disposed || epoch !== this.runtime.getHostEpoch()) return
+        this.observeSnapshot(snapshot)
+      } catch (error) {
+        // A late rejection from a retired host or lease must not reject the
+        // replacement Room's waiter. Its pending intent will flush separately.
+        if (this.disposed || epoch !== this.runtime.getHostEpoch() || binding !== this.binding) return
+        throw error
       }
-      const desired = this.latest
-      const accepted = await this.runtime.applyDesiredState(desired)
-      if (this.disposed || epoch !== this.runtime.getHostEpoch()) return
-      this.appliedRevision = accepted.acceptedRevision
-      if (this.latest.revision !== desired.revision) continue
-      const snapshot = await this.runtime.querySnapshot()
-      if (this.disposed || epoch !== this.runtime.getHostEpoch()) return
-      this.observeSnapshot(snapshot)
     }
   }
 
@@ -471,6 +478,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
 
   private observeSnapshot(snapshot: MediaEngineSnapshot): void {
     if (this.disposed || !this.latest || snapshot.acceptedRevision !== this.latest.revision) return
+    if (this.binding && this.terminalReported) return
     if (snapshot.desiredState?.room?.credentialLeaseId !== this.latest.room?.credentialLeaseId) return
     const cameraFailure = cameraPolicyFailure(this.binding, this.desired)
     const projected: MediaEngineSnapshot = cameraFailure ? {
@@ -491,10 +499,6 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
       this.emitBound({ type: 'mediaState', kind, media: { state: path.state, error: path.failure } })
     }
     if (snapshot.roomState === 'failed' && snapshot.roomFailure) this.failRoom(snapshot.roomFailure)
-    if (snapshot.roomState === 'connected' && this.recovering) {
-      this.recovering = false
-      this.emitBound({ type: 'transientReconnectSucceeded' })
-    }
     for (const listener of this.snapshotListeners) listener(projected)
   }
 
@@ -538,7 +542,6 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
 
 type BoundEvent =
   | { type: 'terminalFailure'; failure: MediaLifecycleFailure }
-  | { type: 'transientReconnectStarted' | 'transientReconnectSucceeded' }
   | { type: 'mediaState'; kind: VoiceMediaKind; media: { state: 'off' | 'starting' | 'running' | 'muted' | 'failed'; error?: MediaLifecycleFailure } }
 
 function normalizeFailure(error: unknown): MediaLifecycleError {

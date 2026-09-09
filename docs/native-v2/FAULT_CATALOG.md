@@ -393,6 +393,22 @@ backoff, manual budget renewal and refusal to replace an unterminated host.
 The corrected full-product exhaustion/manual-Retry run and the 100-cycle utility
 qualification remain required; the successful single pilot is not that gate.
 
+The next local run at `f4096cdd` reached stable exhaustion and explicit Retry,
+but its first injected utility crash caused an additional, spontaneous host exit.
+Its original pilot report's success flag is rejected: the observer did not yet
+require exactly one host replacement per injection. That assertion is now
+mandatory. A diagnostic repeat captured `0xC0000409` in microphone-owner shutdown
+while an SDK thread remained in `LocalParticipant::publishTrack`; this is not a
+successful recovery qualification.
+
+The adapter had replayed the lost Room's credential into the replacement host
+before Voice Director retired its backend authority. It now reports terminal
+Room loss as soon as utility recovery begins and holds publication until Voice
+Director provides a fresh lease. A late rejected request from a retired host or
+lease also cannot reject a new Room waiter. Regression tests reproduce both
+ordering defects; the native crash's causal resolution still requires the
+full-product rerun.
+
 ## Recorded Release matrix at `84a050dc`
 
 The [unchanged redacted artifact](native-faults-release-84a050dc.json) records all
