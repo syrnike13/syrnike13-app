@@ -8,6 +8,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
+#include <thread>
 #include "probe/resource_thread_diagnostics.hpp"
 
 namespace syrnike::windows_media::tests {
@@ -79,8 +80,25 @@ void repeatFault(std::string_view id, Test test, unsigned warmup = 1) {
             << ",\"threads\":" << final.threads << "},\"delta\":{\"handles\":"
             << static_cast<long long>(final.handles) - baseline.handles << ",\"threads\":"
             << static_cast<long long>(final.threads) - baseline.threads << "}}}" << std::endl;
-  if (!resources_recovered)
+  if (!resources_recovered) {
+    wchar_t observe[2]{};
+    if (GetEnvironmentVariableW(L"WINDOWS_MEDIA_FAULT_RESOURCE_OBSERVE", observe, 2) == 1 &&
+        observe[0] == L'1') {
+      // Post-failure diagnostics only: the result above remains failed even if
+      // Windows subsequently retires an idle worker. Never move the acceptance
+      // snapshot or turn delayed cleanup into a passing resource assertion.
+      const auto observation_started = std::chrono::steady_clock::now();
+      for (unsigned sample = 1; sample <= 10; ++sample) {
+        std::this_thread::sleep_until(observation_started + std::chrono::seconds(sample));
+        const auto resources = faultResources();
+        std::cerr << "NATIVE_FAULT_RESOURCE_FOLLOWUP {\"id\":\"" << id
+                  << "\",\"sampleSeconds\":" << sample << ",\"handles\":" << resources.handles
+                  << ",\"threads\":" << resources.threads << "}\n";
+        probe::logResourceThreads((std::string(id) + "-followup-" + std::to_string(sample)).c_str());
+      }
+    }
     throw std::runtime_error(std::string(id) + " did not return process handles/threads to baseline");
+  }
 }
 
 }  // namespace syrnike::windows_media::tests

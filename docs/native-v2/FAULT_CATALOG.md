@@ -9,6 +9,10 @@ separately. A positive handle or thread delta fails the process even when all
 the required 100 measured iterations. Optional
 `WINDOWS_MEDIA_CAPTURE_THREAD_DIAGNOSTIC=1` identifies thread modules at both
 resource snapshots without recording process addresses or machine paths.
+`WINDOWS_MEDIA_FAULT_RESOURCE_OBSERVE=1` additionally records ten one-second
+samples after a resource failure. This diagnostic window begins after the
+acceptance snapshot and failed result have been recorded; the test still exits
+unsuccessfully even if those later samples return to baseline.
 
 ## Ownership and escalation
 
@@ -786,3 +790,22 @@ under one alias. One report request returned HTTP 200; all 150 application input
 hashes matched. The native origin timestamp precedes or equals the first utility
 forwarding timestamp. This remains a single injected connect failure, not a
 100-cycle qualification or evidence for the other fault scopes.
+
+## Output process resource investigation
+
+The [output resource investigation](output-resource-forensics-17b9f144.json)
+preserves a clean-source `17b9f144` failure with 100 completed owner checks,
+unchanged handles and one additional process thread. Subsequent diagnostic
+variants retained two extra threads in an output retry case and one extra
+handle in an output no-progress case for the full ten-second observation.
+Neither failure was converted into a pass.
+
+Matching Microsoft symbols identify the common native thread entry as
+`ntdll!TppWorkerThread`. A private dump of the no-progress case shows all four
+pool workers waiting in `NtWaitForWorkViaWorkerFactory`, with no application
+callback on those stacks. Symbol GUID/age, hashes, selected stacks and original
+logs are preserved; the process dump remains private. This narrows the thread
+investigation but does not explain the extra handle or establish that every
+earlier failure involved idle workers. The diagnostic variants and their missing
+executable hash checks are explicitly identified and do not qualify a final
+resource matrix.
