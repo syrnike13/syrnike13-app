@@ -726,3 +726,19 @@ These results qualify the two stated held-call shutdown cases. They do not
 qualify every pending operation, zero steady-state resource growth or the
 remaining incident and native-matrix gates. The normal production binary does
 not enable these fault gates.
+
+The [held-disconnect archive](full-product-shutdown-disconnect-dbe780dd.json.gz)
+adds 100/100 shutdowns after the Room connected and its microphone was running.
+The native disconnect entry was held in the owned utility. All main/utility
+process handles signalled exit and app-close completed within 4,900 ms; the
+maximum was 4,495 ms, with no test-side forced cleanup. All 141 file hashes and
+three backend hashes matched the pre-run capture. The application is the same
+`dbe780dd` test variant; product callbacks and harness are from `3941011e`.
+
+Two earlier series stopped before injection after five and seven passes because
+the authenticated server link did not appear during launch. Their reports are
+preserved. The successful run retained that deadline and added private page
+capture on missing-server failures; no such capture was triggered. Its close
+wrapper performs a page check inside the shutdown budget. The archive preserves
+loaded product callbacks and explicitly labels the post-run wrapper description.
+The intermittent startup cause remains unresolved.
