@@ -71,3 +71,18 @@ the complete fault matrix, another build configuration, or hardware/soak gates.
 Before accepting evidence, record exact commits and hash the application,
 frontend, backend, SDK and these scripts both before and after execution. Audit
 the output against fixture credentials and identifiers before publishing it.
+
+For incoming-output qualification, supply `outputProbe` as the absolute path to
+the matching native build's `audio_capture_lab.exe`. The independent browser
+must send a known continuous tone through its microphone publication, with its
+voice gate and noise suppression disabled. The probe captures only the supplied
+desktop main process's tree. Both before injection and after recovery, at least
+20 of its 500 ms sample's packets must contain actual output above RMS 100.
+Its capture clients and threads must drain before it exits. Hash this executable
+with the other fixture binaries. This adds incoming PCM evidence to each primary
+utility row; it does not prove microphone mute privacy or continuous audio gaps.
+Install `installToneMicrophone` from `tone-microphone.cjs` with the observer
+page's `addInitScript` before loading it. This fixture supplies a 997 Hz tone
+without capturing a physical microphone or playing it locally. Stopping each
+generated track retires its AudioContext. Its four-context cap rejects a broken
+fixture instead of allowing unbounded generator allocation.

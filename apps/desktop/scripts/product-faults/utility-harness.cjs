@@ -9,7 +9,7 @@ const execFileAsync = promisify(execFile)
 const alias = value => createHash('sha256').update(String(value)).digest('hex').slice(0, 12)
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
-exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, nativeUserId, observerUserId }) => {
+exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, nativeUserId, observerUserId, outputProbe }) => {
   let processOwner
 
   async function processInventory() {
@@ -88,6 +88,27 @@ exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, native
     }
   }
 
+  async function measureIncomingOutput() {
+    if (!processOwner) await processInventory()
+    const { stdout } = await execFileAsync(outputProbe,
+      ['include', String(processOwner.mainPid), '500', '1'],
+      { windowsHide: true, timeout: 3000, maxBuffer: 16384 })
+    const lines = stdout.split(/\r?\n/).filter(line => line.startsWith('AUDIO_CAPTURE_SAMPLE '))
+    if (lines.length !== 1) throw new Error('output_probe_missing_or_duplicate_sample')
+    const sample = JSON.parse(lines[0].slice('AUDIO_CAPTURE_SAMPLE '.length))
+    if (sample.failure !== -1 || sample.clientsAfterStop !== 0 || sample.threadsAfterStop !== 0 ||
+        !Number.isSafeInteger(sample.packets) || sample.packets < 30 ||
+        !Number.isSafeInteger(sample.activePackets) || sample.activePackets < 20 ||
+        !Number.isFinite(sample.peakRms) || sample.peakRms <= 100) {
+      throw new Error('incoming_output_pcm_missing')
+    }
+    return {
+      packets: sample.packets, activePackets: sample.activePackets,
+      peakRms: sample.peakRms, maximumAgeUs: sample.maximumAgeUs,
+      clientsAfterStop: sample.clientsAfterStop, threadsAfterStop: sample.threadsAfterStop,
+    }
+  }
+
   async function until(predicate, label, timeoutMs = 15000, onSample) {
     const deadline = performance.now() + timeoutMs
     let latest
@@ -137,6 +158,10 @@ exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, native
         value.video.some(track => !track.local && track.source === 'camera' &&
           track.metrics?.framesDrawn >= 10 && track.metrics.lastDrawAgeMs < 1000),
       'fixture_not_connected_to_one_utility', 15000)
+      if (outputProbe) {
+        result.scope = 'full-product-utility-latest-mute-incoming-pcm'
+        result.incomingOutputBefore = await measureIncomingOutput()
+      }
       const oldPid = before.processes[0]
       const started = performance.now()
       await ui.evaluate(() => {
@@ -228,6 +253,10 @@ exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, native
       let oldProcessAlive = false
       try { process.kill(oldPid, 0); oldProcessAlive = true } catch {}
       if (oldProcessAlive) throw new Error('retired_utility_still_alive')
+      if (outputProbe) {
+        stage = 'incoming-output-pcm'
+        result.incomingOutputAfter = await measureIncomingOutput()
+      }
       result.passed = true
       result.elapsedMs = performance.now() - started
       result.before = redactSnapshot(before)
