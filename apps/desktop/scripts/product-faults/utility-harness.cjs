@@ -9,8 +9,42 @@ const execFileAsync = promisify(execFile)
 const alias = value => createHash('sha256').update(String(value)).digest('hex').slice(0, 12)
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
-exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, nativeUserId, observerUserId, neutralUserId, outputProbe }) => {
+exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, nativeUserId, observerUserId, neutralUserId, outputProbe, microphoneObserver }) => {
   let processOwner
+  if (microphoneObserver && !neutralUserId) throw new Error('microphone_observer_user_required')
+  const expectedParticipantCount = neutralUserId ? 3 : 2
+  const hasNeutralObserver = value => !neutralUserId ||
+    value.participants.filter(participant => participant.actor === 'neutral-observer').length === 1
+
+  async function measureMicrophone(muted, previousAlias) {
+    const deadline = performance.now() + 5000
+    let latest
+    while (performance.now() < deadline) {
+      microphoneObserver.command('snapshot')
+      const observation = await microphoneObserver.take(event => event.value.event === 'snapshot',
+        'microphone_observer_snapshot_deadline', 1000)
+      if (observation.failures || observation.reconnects) throw new Error('microphone_observer_failed')
+      const microphones = observation.publications.filter(track =>
+        track.source === 'microphone' && !track.unsubscribed)
+      if (microphones.length > 1) throw new Error('duplicate_observed_microphone')
+      latest = microphones[0]
+      const windows = latest?.audioWindows.filter(window =>
+        window.samples >= 3840 && window.atUnixMs >= Date.now() - 1500) ?? []
+      if (latest && latest.ageMs < 500 && windows.length >= 4 &&
+          (!previousAlias || latest.alias !== previousAlias)) {
+        if (muted && latest.maximumAudioFrameRms > 2) {
+          const error = new Error('microphone_pcm_leaked_after_recovery')
+          error.microphoneEvidence = latest
+          throw error
+        }
+        if (muted || Math.max(...windows.map(window => window.rms)) >= 30) return latest
+      }
+      await delay(100)
+    }
+    const error = new Error(muted ? 'muted_microphone_pcm_deadline' : 'audible_microphone_baseline_deadline')
+    error.microphoneEvidence = latest
+    throw error
+  }
 
   async function processInventory() {
     if (!processOwner) {
@@ -155,12 +189,13 @@ exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, native
         value.voice.intentChannelId === channelId && value.voice.membershipChannelId === channelId &&
         !value.voice.userMuted && value.voice.screen.state === 'running' &&
         value.voice.screenAudio.state === 'running' && value.voice.camera.state === 'running' &&
-        value.participants.length === 2 &&
+        value.participants.length === expectedParticipantCount && hasNeutralObserver(value) &&
         value.participants.filter(participant => participant.actor === 'native').length === 1 &&
         value.participants.filter(participant => participant.actor === 'observer').length === 1 &&
         value.video.some(track => !track.local && track.source === 'camera' &&
           track.metrics?.framesDrawn >= 10 && track.metrics.lastDrawAgeMs < 1000),
       'fixture_not_connected_to_one_utility', 15000)
+      if (microphoneObserver) result.microphoneBefore = await measureMicrophone(false)
       if (outputProbe) {
         result.scope = 'full-product-utility-latest-mute-incoming-pcm'
         result.incomingOutputBefore = await measureIncomingOutput()
@@ -206,7 +241,7 @@ exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, native
         value.voice.microphone.state === 'muted' && value.voice.camera.state === 'running' &&
         value.participants.filter(participant => participant.actor === 'native').length === 1 &&
         value.participants.filter(participant => participant.actor === 'observer').length === 1 &&
-        value.participants.length === 2 &&
+        value.participants.length === expectedParticipantCount && hasNeutralObserver(value) &&
         value.participants.find(participant => participant.actor === 'native')?.operation === alias(value.voice.operationId) &&
         value.participants.find(participant => participant.actor === 'native')?.connectionEpoch === alias(value.voice.connectionEpoch),
       'utility_latest_state_recovery_deadline', 20000, value => {
@@ -245,6 +280,10 @@ exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, native
       if (JSON.stringify(observerBefore) !== JSON.stringify(observerAfter)) {
         throw new Error('unaffected_observer_changed')
       }
+      if (neutralUserId && JSON.stringify(before.participants.find(value => value.actor === 'neutral-observer')) !==
+          JSON.stringify(recovered.participants.find(value => value.actor === 'neutral-observer'))) {
+        throw new Error('unaffected_neutral_observer_changed')
+      }
       stage = 'video-progress'
       const progress = await until(value => {
         const incoming = value.video.find(track => !track.local && track.source === 'camera')?.metrics
@@ -260,6 +299,11 @@ exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, native
         stage = 'incoming-output-pcm'
         result.incomingOutputAfter = await measureIncomingOutput()
       }
+      if (microphoneObserver) {
+        stage = 'microphone-mute-privacy'
+        result.microphoneAfter = await measureMicrophone(true, result.microphoneBefore.alias)
+        result.microphonePrivacy = 'all-replacement-publication-frames-muted'
+      }
       result.passed = true
       result.elapsedMs = performance.now() - started
       result.before = redactSnapshot(before)
@@ -267,6 +311,7 @@ exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, native
     } catch (error) {
       result.failure = error.message
       result.failureStage = stage
+      if (error.microphoneEvidence) result.microphoneFailureEvidence = error.microphoneEvidence
       if (before) result.before = redactSnapshot(before)
       if (error.snapshot) result.after = redactSnapshot(error.snapshot)
     } finally {

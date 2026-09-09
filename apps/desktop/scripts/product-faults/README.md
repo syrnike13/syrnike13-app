@@ -131,3 +131,27 @@ bound only. Process samples do not establish zero resource growth, and the
 injected incoming gap does not test local microphone mute privacy. Preserve
 exact binary and script hashes before and after the series, including the
 separate observer SDK and external probes, and audit reports before publishing.
+
+## Microphone privacy during utility recovery
+
+For utility recovery, start the same neutral receiver with
+`LIVEKIT_OBSERVER_USER_ID` instead of `LIVEKIT_OBSERVER_PUBLISHER`. This mode
+follows that test user's replacement publications and removes retired records;
+the existing eight-reader/task limits still apply. Strict publisher mode keeps
+retired records and continues to reject replacements in continuity tests.
+
+Supply this process as `microphoneObserver` and its account as `neutralUserId`
+to the utility harness. Keep a real nonzero microphone baseline; a silent input
+cannot qualify mute privacy. The receiver stores only 32 aggregate 100 ms windows
+per publication and the maximum per-frame RMS since that publication began.
+Before injection, at least four recent populated windows must be available, with
+RMS at least 30 in one. After latest mute intent is replayed, a distinct microphone
+publication must provide four recent windows and its maximum RMS over every
+received frame must be at most 2. Missing PCM, stale windows, duplicate microphones
+or receiver failures fail the row. This checks the complete received lifetime of
+the muted replacement, including frames preceding the post-recovery snapshot.
+
+The utility report preserves both aggregate observations and the series counts
+successful privacy cycles. Hash the receiver and harness with the application
+inputs; preserve failed reports. This adds microphone privacy evidence only and
+does not qualify unaffected-track continuity during a Room replacement.

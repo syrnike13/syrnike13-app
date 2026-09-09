@@ -9,6 +9,7 @@ exports.run = async ({ ui, harness, directory, screenSourceButton, count = 100 }
   const summary = { passed: false, scope: 'utility-replay-authority-and-camera-progress',
     resourceQualification: 'not-assessed', incomingAudioOutput: 'not-measured',
     incomingAudioOutputCycles: 0,
+    microphonePrivacyCycles: 0,
     required: count, completed: 0, exhaustionChecks: 0,
     manualRetries: 0, results: [], resources: [] }
   const save = () => writeFileSync(join(directory, 'summary.json'), JSON.stringify(summary, null, 2))
@@ -56,6 +57,7 @@ exports.run = async ({ ui, harness, directory, screenSourceButton, count = 100 }
         summary.incomingAudioOutput = 'sampled-before-and-after-primary-fault'
         summary.scope = 'utility-replay-authority-camera-and-incoming-pcm'
       }
+      if (result.microphoneBefore && result.microphoneAfter) ++summary.microphonePrivacyCycles
       ++summary.completed
       ++automaticCrashesSinceManualRetry
       save()

@@ -10,6 +10,10 @@ const records = new Map()
 const readers = new Map()
 const tasks = new Set()
 const sources = ['camera', 'screen', 'screen_audio', 'microphone']
+const publisherUserId = process.env.LIVEKIT_OBSERVER_USER_ID
+const acceptsPublisher = participant => publisherUserId ?
+  participant.identity.split('|').at(-1) === publisherUserId :
+  participant.identity === process.env.LIVEKIT_OBSERVER_PUBLISHER
 let active
 let terminal = false
 let failures = 0
@@ -90,6 +94,11 @@ const snapshot = () => [...records.values()].map(record => ({
   source: record.source, alias: record.alias, frames: record.frames,
   ageMs: record.lastAt ? Date.now() - record.lastAt : null,
   unsubscribed: record.unsubscribed,
+  maximumAudioFrameRms: record.maximumAudioFrameRms,
+  audioWindows: record.audioWindows.map(window => ({
+    atUnixMs: window.atUnixMs, samples: window.samples,
+    rms: Math.sqrt(window.energy / Math.max(1, window.samples)),
+  })),
 }))
 
 async function closeGateway() {
@@ -122,13 +131,28 @@ async function consume(track, record) {
         active.maximumGapMs = Math.max(active.maximumGapMs, now - record.lastAt)
       record.lastAt = now
       ++record.frames
+      if (track.kind === TrackKind.KIND_AUDIO) {
+        const atUnixMs = Math.floor(now / 100) * 100
+        let window = record.audioWindows.at(-1)
+        if (window?.atUnixMs !== atUnixMs) {
+          window = { atUnixMs, samples: 0, energy: 0 }
+          record.audioWindows.push(window)
+          if (record.audioWindows.length > 32) record.audioWindows.shift()
+        }
+        let frameEnergy = 0
+        for (const sample of item.value.data) frameEnergy += sample * sample
+        window.energy += frameEnergy
+        window.samples += item.value.data.length
+        record.maximumAudioFrameRms = Math.max(record.maximumAudioFrameRms,
+          Math.sqrt(frameEnergy / Math.max(1, item.value.data.length)))
+      }
     }
   } catch { if (!terminal && !record.unsubscribed) ++failures }
   finally { readers.delete(track.sid); reader.releaseLock() }
 }
 
 room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-  if (participant.identity !== process.env.LIVEKIT_OBSERVER_PUBLISHER) return
+  if (!acceptsPublisher(participant)) return
   const source = sourceName(publication.source)
   if (!source || records.has(publication.sid) || records.size >= 8 || tasks.size >= 8) {
     ++failures
@@ -137,6 +161,7 @@ room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
   const record = {
     source, alias: createHash('sha256').update(publication.sid).digest('hex').slice(0, 12),
     frames: 0, lastAt: 0, unsubscribed: false,
+    audioWindows: [], maximumAudioFrameRms: 0,
   }
   records.set(publication.sid, record)
   const task = consume(track, record).catch(() => { ++failures })
@@ -144,16 +169,20 @@ room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
   void task.finally(() => tasks.delete(task))
 })
 room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
-  if (participant.identity !== process.env.LIVEKIT_OBSERVER_PUBLISHER) return
+  if (!acceptsPublisher(participant)) return
   const record = records.get(publication.sid)
   if (record) record.unsubscribed = true
   void readers.get(track.sid)?.cancel().catch(() => {})
+  // Recovery mode follows only this test user's replacement publications.
+  // Strict continuity mode retains retired records so replacement fails it.
+  if (publisherUserId) records.delete(publication.sid)
 })
 room.on(RoomEvent.Reconnecting, () => { ++reconnects })
 room.on(RoomEvent.Disconnected, () => { if (!terminal) ++failures })
 
 try {
-  if (!process.env.LIVEKIT_OBSERVER_PUBLISHER)
+  if ((!process.env.LIVEKIT_OBSERVER_PUBLISHER && !publisherUserId) ||
+      (process.env.LIVEKIT_OBSERVER_PUBLISHER && publisherUserId))
     throw new Error('observer_fixture_configuration_missing')
   phase = 'authority'
   const lease = await reserveAuthority()
