@@ -6,7 +6,7 @@ function run(change = () => {}) {
   const evidence = createRendererFaultEvidence()
   const publications = ['microphone', 'screen', 'screen_audio', 'camera'].map(source =>
     ({ source, alias: source, frames: 10, unsubscribed: false }))
-  for (const id of ['renderer-reload', 'renderer-crash']) {
+  for (const id of ['renderer-reload', 'renderer-crash', 'renderer-release-stall']) {
     evidence.record({ id, event: 'begin' }, publications)
     for (let iteration = 0; iteration < 100; ++iteration) {
       for (const value of publications) value.frames += 10
@@ -18,10 +18,10 @@ function run(change = () => {}) {
   return evidence.result()
 }
 
-test('accepts 100 reloads and crashes only with progress on all unchanged publications', () => {
+test('accepts 100 reloads, crashes and release stalls only with progress on all unchanged publications', () => {
   const result = run()
   assert.equal(result.passed, true)
-  assert.equal(result.rows.length, 2)
+  assert.equal(result.rows.length, 3)
   for (const row of result.rows) {
     assert.equal(row.passed, 100)
     assert.equal(row.minimumFrameProgress, 10)

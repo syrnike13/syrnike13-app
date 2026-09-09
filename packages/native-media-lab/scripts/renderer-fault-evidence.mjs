@@ -1,7 +1,7 @@
-const ids = ['renderer-reload', 'renderer-crash']
+const ids = ['renderer-reload', 'renderer-crash', 'renderer-release-stall']
 const sources = ['microphone', 'screen', 'screen_audio', 'camera']
 
-// Keep two aggregate rows and one current publication snapshot. No per-frame
+// Keep three aggregate rows and one current publication snapshot. No per-frame
 // history or raw participant/publication identifiers enter the report.
 export function createRendererFaultEvidence() {
   const rows = []

@@ -8,6 +8,7 @@ import { createInitialVoiceMediaDesiredState, type VoiceMediaDesiredState } from
 import { createNativeRtcEngineAdapter, registerNativeMediaRuntimeIpc, flushNativeMediaDiagnosticsEffect } from '../native-media-engine'
 import { registerDisplayMediaIpc, installMediaPermissions } from '../media-permissions'
 import { disposeWithinDesktopShutdownBudget } from '../shutdown-budget'
+import { electronFrameTransfers } from './electron-frame-transfers'
 
 const environment = Schema.decodeUnknownSync(Schema.Struct({
   LIVEKIT_URL: Schema.String,
@@ -21,21 +22,47 @@ app.setPath('userData', environment.MEDIA_PRODUCT_PROFILE)
 const rendererHtml = `<!doctype html><html lang="en"><meta charset="utf-8">
 <title>Native product transport check</title><body><h1>Native product transport check</h1>
 <canvas id="screen" width="960" height="540"></canvas><canvas id="camera" width="640" height="360"></canvas>
+<canvas id="remote" width="320" height="180"></canvas>
 <script>
-window.fixture = { ready: false, screen: 0, camera: 0, remote: 0, failures: 0, epoch: 0, states: 0 };
+window.fixture = { ready: false, screen: 0, camera: 0, remote: 0, failures: 0, epoch: 0, states: 0,
+  remoteAlias: '', holdScreen: false, heldScreens: 0 };
+const heldScreens = [];
+window.releaseHeldScreens = () => {
+  window.fixture.holdScreen = false;
+  for (const frame of heldScreens.splice(0)) frame.close();
+  window.fixture.heldScreens = 0;
+};
 window.addEventListener('message', event => {
-  if (event.source !== window || event.data?.type !== 'syrnike-native-video-frame') return;
+  if (event.source !== window) return;
+  if (event.data?.type === 'syrnike-native-video-publication-available') {
+    const { sessionId, generation, trackId } = event.data.metadata;
+    window.syrnikeDesktop.media.setRemoteVideoDemand(sessionId, generation, trackId, true)
+      .catch(() => { window.fixture.failures += 1; });
+    crypto.subtle.digest('SHA-256', new TextEncoder().encode(trackId)).then(hash => {
+      window.fixture.remoteAlias = Array.from(new Uint8Array(hash), value => value.toString(16).padStart(2, '0')).join('').slice(0, 12);
+    }).catch(() => { window.fixture.failures += 1; });
+    return;
+  }
+  if (event.data?.type !== 'syrnike-native-video-frame') return;
   const { frame, metadata } = event.data;
+  let held = false;
   try {
     if (!(frame instanceof VideoFrame)) throw Error('Missing VideoFrame');
     if (metadata.runtimeEpoch < window.fixture.epoch) throw Error('Stale runtime frame');
     window.fixture.epoch = metadata.runtimeEpoch;
     const kind = metadata.local ? metadata.source : 'remote';
-    const canvas = document.getElementById(kind === 'camera' ? 'camera' : 'screen');
+    if (metadata.local && kind === 'screen' && window.fixture.holdScreen) {
+      if (heldScreens.length >= 2) throw Error('Screen hold capacity exceeded');
+      heldScreens.push(frame);
+      window.fixture.heldScreens = heldScreens.length;
+      held = true;
+      return;
+    }
+    const canvas = document.getElementById(kind);
     canvas.getContext('2d').drawImage(frame, 0, 0, canvas.width, canvas.height);
     window.fixture[kind] += 1;
   } catch { window.fixture.failures += 1; }
-  finally { frame?.close(); }
+  finally { if (!held) frame?.close(); }
 });
 window.syrnikeDesktop.media.onRuntimeState(() => { window.fixture.states += 1; });
 window.syrnikeDesktop.media.replayRemoteVideoPublications().then(() => {
@@ -46,6 +73,10 @@ window.syrnikeDesktop.media.replayRemoteVideoPublications().then(() => {
 const RendererMetrics = Schema.Struct({
   ready: Schema.Boolean, screen: Schema.Natural, camera: Schema.Natural, remote: Schema.Natural,
   failures: Schema.Natural, epoch: Schema.Natural, states: Schema.Natural,
+  remoteAlias: Schema.String, holdScreen: Schema.Boolean, heldScreens: Schema.Natural,
+})
+const PresentationPath = Schema.Struct({ state: Schema.String,
+  failure: Schema.optional(Schema.Struct({ code: Schema.String })),
 })
 const DeviceCounts = Schema.Struct({ microphone: Schema.Natural, output: Schema.Natural, camera: Schema.Natural })
 const PickerResult = Schema.Struct({ sourceId: Schema.String, count: Schema.Natural, thumbnail: Schema.Boolean, cancelled: Schema.Boolean })
@@ -89,13 +120,16 @@ async function run() {
   }
   const metrics = async () => Schema.decodeUnknownSync(RendererMetrics)(
     await window.webContents.executeJavaScript('window.fixture'))
+  const screenPresentation = async () => Schema.decodeUnknownSync(PresentationPath)(
+    await window.webContents.executeJavaScript('window.syrnikeDesktop.media.getRuntimeState().then(value => value.paths.screen_preview)'))
   let failure: string | undefined
   let desired: VoiceMediaDesiredState = createInitialVoiceMediaDesiredState()
   let devices: typeof DeviceCounts.Type | undefined
   let picker: typeof PickerResult.Type | undefined
   let beforeReload: typeof RendererMetrics.Type | undefined
   let afterReload: typeof RendererMetrics.Type | undefined
-  const rendererFaults: Array<{ id: string; passed: number; required: number; maximumIterationMs: number }> = []
+  const rendererFaults: Array<{ id: string; passed: number; required: number; maximumIterationMs: number;
+    maximumDetectionMs: number; maximumRetainedTextures: number; minimumIncomingFrames: number | null }> = []
   let cleanupCompleted = false
   const saveReport = () => {
     const report = { accepted: !failure && cleanupCompleted, cleanupCompleted,
@@ -190,8 +224,10 @@ async function run() {
       desired = { ...desired, userMuted: false, effectiveMuted: false }
       adapter.updateDesiredMedia(desired)
       await until(() => adapter.snapshot().tracks.microphone.state === 'running', 'fault_microphone_running')
-      for (const id of ['renderer-reload', 'renderer-crash']) {
-        const row = { id, passed: 0, required: 100, maximumIterationMs: 0 }
+      await until(async () => (await metrics()).remote >= 10, 'incoming_companion_video')
+      for (const id of ['renderer-reload', 'renderer-crash', 'renderer-release-stall']) {
+        const row: typeof rendererFaults[number] = { id, passed: 0, required: 100, maximumIterationMs: 0,
+          maximumDetectionMs: 0, maximumRetainedTextures: 0, minimumIncomingFrames: null }
         rendererFaults.push(row)
         process.stdout.write(`MEDIA_PRODUCT_RENDERER_FAULT ${JSON.stringify({ id, event: 'begin' })}\n`)
         for (let iteration = 0; iteration < 100; ++iteration) {
@@ -206,16 +242,35 @@ async function run() {
               await until(() => crashed, 'renderer_crash_observed')
             } finally { window.webContents.removeListener('render-process-gone', onGone) }
           }
-          await window.loadURL(url)
-          await until(async () => (await metrics()).ready, 'fault_renderer_ready')
-          await window.webContents.executeJavaScript(`window.syrnikeDesktop.media.setLocalScreenPreviewDemand({ demanded: true, width: 960, height: 540, fps: 30 })`)
-          await until(async () => {
-            const value = await metrics()
-            return value.screen >= 10 && value.camera >= 10
-          }, 'fault_renderer_media')
+          if (id === 'renderer-release-stall') {
+            await window.webContents.executeJavaScript('window.fixture.holdScreen = true')
+            await until(async () => (await screenPresentation()).failure?.code === 'video_bridge_receiver_release_timeout',
+              'held_screen_release_detection', 3_000)
+            row.maximumDetectionMs = Math.max(row.maximumDetectionMs, performance.now() - started)
+            const held = await metrics()
+            const transfers = electronFrameTransfers().metrics()
+            row.maximumRetainedTextures = Math.max(row.maximumRetainedTextures, transfers.retained)
+            if (held.heldScreens !== 2 || transfers.awaitingReceiverRelease < 2 || transfers.retained > 68 ||
+                held.camera <= previous.camera || held.remote <= previous.remote)
+              throw new Error('held_screen_reference_or_unaffected_media_failed')
+            await window.webContents.executeJavaScript('window.releaseHeldScreens()')
+            await until(async () => (await screenPresentation()).state === 'running' &&
+              (await metrics()).screen >= previous.screen + 10, 'held_screen_release_recovery', 3_000)
+          } else {
+            await window.loadURL(url)
+            await until(async () => (await metrics()).ready, 'fault_renderer_ready')
+            await window.webContents.executeJavaScript(`window.syrnikeDesktop.media.setLocalScreenPreviewDemand({ demanded: true, width: 960, height: 540, fps: 30 })`)
+            await until(async () => {
+              const value = await metrics()
+              return value.screen >= 10 && value.camera >= 10 && value.remote >= 10
+            }, 'fault_renderer_media')
+          }
           const current = await metrics()
           const snapshot = adapter.snapshot()
-          if (current.failures || current.epoch !== previous.epoch || snapshot.roomState !== 'connected' ||
+          const incomingFrames = id === 'renderer-release-stall' ? current.remote - previous.remote : current.remote
+          row.minimumIncomingFrames = Math.min(row.minimumIncomingFrames ?? incomingFrames, incomingFrames)
+          if (current.failures || !current.remoteAlias || current.remoteAlias !== previous.remoteAlias ||
+              incomingFrames < 10 || current.epoch !== previous.epoch || snapshot.roomState !== 'connected' ||
               adapter.desiredSnapshot()?.room?.credentialLeaseId !== roomLeaseId ||
               (['screen', 'screen_audio', 'camera', 'microphone', 'output'] as const).some(key => snapshot.tracks[key].state !== 'running'))
             throw new Error('renderer_fault_changed_media_owner')

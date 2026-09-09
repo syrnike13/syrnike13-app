@@ -7,6 +7,7 @@ import path from 'node:path'
 import { AccessToken } from 'livekit-server-sdk'
 import { Room, RoomEvent, TrackKind, TrackSource, VideoStream, AudioStream, dispose } from '@livekit/rtc-node'
 import { createRendererFaultEvidence } from './renderer-fault-evidence.mjs'
+import { startProductCompanion } from './product-companion.mjs'
 
 const root = path.resolve(import.meta.dirname, '../../..')
 const desktopRoot = path.join(root, 'apps/desktop')
@@ -28,6 +29,7 @@ let readerFailures = 0
 let terminal = false
 let publisherReport
 let accepted = false
+let companion
 const key = randomBytes(12).toString('hex')
 const secret = randomBytes(32).toString('hex')
 const url = 'ws://127.0.0.1:17880'
@@ -119,6 +121,7 @@ try {
     try { return (await fetch('http://127.0.0.1:17880')).ok } catch { return false }
   }, 'isolated_server_deadline')
   await room.connect(url, await token('product-observer'), { autoSubscribe: true, dynacast: false })
+  if (rendererFaultMode) companion = await startProductCompanion(room)
   const toneReady = path.join(temporary, 'tone-ready')
   const toneStop = path.join(temporary, 'tone-stop')
   const audioFixture = process.env.MEDIA_PRODUCT_AUDIO_FIXTURE
@@ -224,14 +227,17 @@ try {
     Math.sqrt((audioAfterDeafen.energy - audioBeforeDeafen.energy) / (audioAfterDeafen.samples - audioBeforeDeafen.samples)) > 10)
   const rendererFaults = rendererFaultEvidence.result()
   const rendererFaultsPassed = !rendererFaultMode || (rendererFaults.passed &&
-    publisherReport.rendererFaults?.length === 2 && rendererFaults.rows.every(row =>
+    publisherReport.rendererFaults?.length === 3 && rendererFaults.rows.every(row =>
       publisherReport.rendererFaults.filter(value => value.id === row.id && value.passed === 100 && value.required === 100).length === 1))
-  accepted = exitCode === 0 && publisherReport.accepted && stableVideo && sourcesReceived && audioSignal && audioSurvivesDeafen && readerFailures === 0 && reconnects === 0 && rendererFaultsPassed
+  const companionPassed = !rendererFaultMode || (companion && companion.evidence.failures === 0 &&
+    companion.evidence.videoFrames >= 100 && companion.evidence.audioFrames >= 100)
+  accepted = exitCode === 0 && publisherReport.accepted && stableVideo && sourcesReceived && audioSignal && audioSurvivesDeafen && readerFailures === 0 && reconnects === 0 && rendererFaultsPassed && companionPassed
   await mkdir(path.dirname(output), { recursive: true })
-  await writeFile(output, JSON.stringify({ accepted, publisher: publisherReport, phaseEvidence, diagnostics,
+  await writeFile(output, JSON.stringify({ accepted, publisher: publisherReport, publisherExitCode: exitCode,
+    publisherTimedOut, companion: companion?.evidence, phaseEvidence, diagnostics,
     rendererFaults: rendererFaultMode ? rendererFaults : undefined,
     remainingFaultEvidence: rendererFaultMode ? ['resource-retirement', 'voice-director-and-backend-authority',
-      'renderer-release-stall', 'utility-replay', 'combined-faults', 'other-build-configurations'] : undefined,
+      'utility-replay', 'combined-faults', 'other-build-configurations', 'remote-audio-output-measurement'] : undefined,
     receiver: { reconnects, readerFailures, stableVideo, sourcesReceived, audioSignal, audioSurvivesDeafen,
       publications: [...publications.values()].map(({ energy, samples, ...value }) => ({
         ...value, samples, rms: samples ? Math.sqrt(energy / samples) : 0,
@@ -243,6 +249,7 @@ try {
   process.exitCode = accepted ? 0 : 1
 } finally {
   terminal = true
+  await companion?.stop()
   await Promise.all([...readers.values()].map(reader => reader.cancel().catch(() => {})))
   await room.disconnect()
   await Promise.all(tasks)
