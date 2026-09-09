@@ -1,0 +1,122 @@
+{
+  "schema": "issue131-report-upload-pilot-v1",
+  "commit": "b7e1eca4c4f6d29f826366aa376924ad401368d4",
+  "scope": "One held SDK connect attempt; not the final 100-cycle fault matrix",
+  "testFaultGates": true,
+  "injectedPoint": "sdk-connect",
+  "sdkEntry": {
+    "elapsedMs": 3056.884800001979,
+    "call": 1
+  },
+  "failed": false,
+  "requests": 1,
+  "responses": [
+    {
+      "elapsedMs": 16303.708500012755,
+      "status": 200
+    }
+  ],
+  "correlationAliases": [
+    "incident-9e0f8962-ec3c-4cc4-9f23-6fae39d9ebfe"
+  ],
+  "correlatedEvents": [
+    {
+      "event": "native_diagnostic",
+      "source": "electron-main",
+      "timestampMs": 1788959291803,
+      "component": "utility",
+      "payloadTimestampMs": 1788959291803,
+      "operation": "forward_native_failure",
+      "code": "room_operation_unresponsive"
+    },
+    {
+      "event": "native_failure_origin",
+      "source": "electron-main",
+      "timestampMs": 1788959291805,
+      "component": "engine",
+      "payloadTimestampMs": 1788959291803,
+      "operation": "room_connect",
+      "code": "room_operation_unresponsive"
+    },
+    {
+      "event": "roomStateChanged",
+      "source": "electron-main",
+      "timestampMs": 1788959291805
+    },
+    {
+      "event": "native_diagnostic",
+      "source": "electron-main",
+      "timestampMs": 1788959291806,
+      "component": "utility",
+      "payloadTimestampMs": 1788959291803,
+      "operation": "forward_native_failure",
+      "code": "room_operation_unresponsive"
+    },
+    {
+      "event": "engineStateChanged",
+      "source": "electron-main",
+      "timestampMs": 1788959291806
+    },
+    {
+      "event": "native_diagnostic",
+      "source": "electron-main",
+      "timestampMs": 1788959291806,
+      "component": "utility",
+      "payloadTimestampMs": 1788959291803,
+      "operation": "forward_native_failure",
+      "code": "room_operation_unresponsive"
+    },
+    {
+      "event": "fatalEngineFailure",
+      "source": "electron-main",
+      "timestampMs": 1788959291806
+    },
+    {
+      "event": "runtime_degraded",
+      "source": "electron-main",
+      "timestampMs": 1788959291809
+    },
+    {
+      "event": "voice.session_snapshot",
+      "source": "renderer",
+      "timestampMs": 1788959291827
+    },
+    {
+      "event": "runtime_degraded",
+      "source": "electron-main",
+      "timestampMs": 1788959291839
+    },
+    {
+      "event": "native-runtime.instability_detected",
+      "source": "renderer",
+      "timestampMs": 1788959292844,
+      "payloadTimestampMs": 1788959291839
+    },
+    {
+      "event": "native-runtime.report_triggered",
+      "source": "renderer",
+      "timestampMs": 1788959292845
+    }
+  ],
+  "close": {
+    "elapsedMs": 326.04339998960495,
+    "originalProcessesExited": [
+      true,
+      true
+    ]
+  },
+  "inputVerification": {
+    "files": 150,
+    "matched": 150,
+    "changed": 0
+  },
+  "traceSha256": "9f696f6765a37b9509fdd84d67f3406cc922302c4c38f440f09cd0f8ec646b74",
+  "requestSha256": "e7211ed8fa8dee950a12840d9de86c387c01309f538921d991026b2a886e5c52",
+  "limitations": [
+    "Original trace and report contain private test data and remain local; hashes identify those originals.",
+    "Report includes bounded history from earlier application sessions; correlatedEvents selects only this attempt alias.",
+    "Native origin is reconstructed in main from the reliable failure metadata; it is not a separately delivered native diagnostic callback.",
+    "Local backend originally lacked S3 and returned HTTP 500. This run adds isolated MinIO storage and restarts only local API.",
+    "This is a single pilot; other media faults and repeated timeline/resource qualification remain pending."
+  ]
+}

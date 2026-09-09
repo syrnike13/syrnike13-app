@@ -779,5 +779,10 @@ arriving after utility retirement can be discarded. Terminal failures now also
 carry `causeTimestampMs`, stamped in C++ before either callback. Main journals
 that origin when it receives the first public event with the matching cause
 sequence. The additional record uses the native timestamp and the same alias;
-it does not claim a new native callback occurred. A rebuilt product capture of
-this additional field is pending.
+it does not claim a new native callback occurred. The rebuilt
+[`b7e1eca4` pilot](report-upload-b7e1eca4-pilot.json) retains that C++ timestamp,
+three utility forwarding records, main state transitions and renderer evidence
+under one alias. One report request returned HTTP 200; all 150 application input
+hashes matched. The native origin timestamp precedes or equals the first utility
+forwarding timestamp. This remains a single injected connect failure, not a
+100-cycle qualification or evidence for the other fault scopes.
