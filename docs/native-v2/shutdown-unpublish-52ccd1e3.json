@@ -1,0 +1,2734 @@
+{
+  "applicationCommit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+  "scope": "Full-product shutdown with verified held SDK microphone unpublish",
+  "summary": {
+    "scope": "full-product-shutdown-with-held-native-call",
+    "point": "sdk-microphone-unpublish",
+    "call": 1,
+    "passed": true,
+    "required": 100,
+    "completed": 100,
+    "shutdownBudgetMs": 4900,
+    "results": [
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 1,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1579.1809000000358,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 2,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1478.1097999997437,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 3,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1380.1757000004873,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 4,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1464.8556000003591,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 5,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1448.5441999994218,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 6,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1284.961299999617,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 7,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1497.6606999998912,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 8,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1276.336299999617,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 9,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1535.032300000079,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 10,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1397.9194000000134,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 11,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1356.409400000237,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 12,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1312.7997999992222,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 13,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1419.1619999995455,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 14,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1371.6852000001818,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 15,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1486.9986999994144,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 16,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1425.9309000000358,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 17,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1773.0000999998301,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 18,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1332.3174000000581,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 19,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1288.2655999995768,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 20,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1425.112000000663,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 21,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1381.62239999976,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 22,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1565.7193999998271,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 23,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1461.2990000005811,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 24,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1290.915400000289,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 25,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1286.3851999994367,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 26,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1405.4547000005841,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 27,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1474.3228000001982,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 28,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1518.7007999997586,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 29,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1325.219800000079,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 30,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1353.405799999833,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 31,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1380.4758000001311,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 32,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1473.7504000002518,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 33,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1381.0142999999225,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 34,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1314.6478999992833,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 35,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1305.5658999998122,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 36,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1373.2342999996617,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 37,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1456.0774999996647,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 38,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1288.8129000002518,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 39,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1356.3903000000864,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 40,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1457.4944000001997,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 41,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1427.7412999998778,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 42,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1601.8332000002265,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 43,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1289.00530000031,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 44,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1376.1242000004277,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 45,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1379.6477999994531,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 46,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1317.5935000004247,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 47,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1388.092199999839,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 48,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1312.9064999995753,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 49,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1316.0573000004515,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 50,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1532.3393000001088,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 51,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1305.8298000004143,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 52,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1284.4561000000685,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 53,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1424.3579000001773,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 54,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1479.2982999999076,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 55,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1375.7066999999806,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 56,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1323.9544999999925,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 57,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1435.251099999994,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 58,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1369.9642000002787,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 59,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1391.5254999995232,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 60,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2050.8596999999136,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 61,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1282.628200000152,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 62,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1311.3474000003189,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 63,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1411.9090999998152,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 64,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1421.5090999994427,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 65,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1485.9099000003189,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 66,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1318.8704999992624,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 67,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1448.3989000003785,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 68,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1262.5358000006527,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 69,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1430.8500000005588,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 70,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1382.696500000544,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 71,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1307.1916000004858,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 72,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1469.404600000009,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 73,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1766.2635000003502,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 74,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1276.4724000003189,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 75,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1390.9785999991,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 76,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1372.9173999996856,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 77,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1561.709599999711,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 78,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1494.6786000002176,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 79,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1453.0569000001997,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 80,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1302.9556999998167,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 81,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1374.0480000004172,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 82,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1344.9016000004485,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 83,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1463.0111999996006,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 84,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1516.0612000003457,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 85,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1406.2843999993056,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 86,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1405.8155000004917,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 87,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1437.6910000005737,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 88,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1396.6540000000969,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 89,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1156.501099999994,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 90,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1322.1735000004992,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 91,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1680.2240000003949,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 92,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1287.270599999465,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 93,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1362.407899999991,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 94,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1284.5794999999925,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 95,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1451.3535000002012,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 96,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 3432.1748000001535,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 97,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1395.3438999997452,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 98,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1271.9402999999002,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 99,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1277.3606000002474,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 100,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 1526.8467999994755,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      }
+    ]
+  },
+  "maximumShutdownMs": 3432.1748000001535,
+  "summarySha256": "4b8f70e88ba6f1affea98ded5b61fa7df2a0c8255550e8577ce3618bf9e0c352",
+  "inputCaptureSha256": "0ba88d5b94694ab656e4bccb16598e748138972b7424b20519586abf3bc6d413",
+  "applicationFiles": 167,
+  "driverFiles": 2,
+  "postSeriesMismatches": 0,
+  "runningBackendSha256": [
+    "373cb6e7b8aaf87b4dce3a437ef35e835a367bb4a2878203c84e955bb2ecbca3",
+    "89eebe11e754ba9e9ee45809d3b9f4ebdef75f684b8ee0d51cdb57cb1f76ca39",
+    "4c77682a3f59be89b208677d6304b832ecc54be3342cc09f5b56e1b882547b8b",
+    "e579da36c38e8f7a033f29914da07013db7be95f73573c1394c7c75f0b447af8"
+  ],
+  "backendPostCaptureSha256": "12f1a6da5a52923a7809b3e3609f02254360dd139d73b8dc38495c445cc4929e",
+  "launcherSha256": "d293230c1b568a1e2b9ad808e6e04813ddaab2d860aeddef579b553ddd455bf3",
+  "errorCaptureSha256": "92017ab6a3be9145f3169593b6ac04c950fb022190d85d96249fce3278b12e89",
+  "limitations": [
+    "This completes one held-operation row, not the entire shutdown or native resource matrix.",
+    "Earlier failed series remain separately archived; they are not combined into this result."
+  ]
+}

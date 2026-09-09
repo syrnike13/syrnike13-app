@@ -897,3 +897,10 @@ Both processes exited in 4146 ms without fixture termination, inside the same
 after resource disposal; the full native matrix remains incomplete. An initial
 misconfigured desktop build failed before Room readiness and is preserved
 separately, along with the corrected build's immutable input hashes.
+
+The same corrected build then passed [100 held microphone-unpublish shutdowns](shutdown-unpublish-52ccd1e3.json).
+Maximum observed shutdown was 3433 ms; every case confirmed native hold entry,
+main and utility exit, and completion without fixture termination. All 167
+application files, both drivers and four running backend binaries matched the
+captured inputs. Other held-operation rows and final resource qualification
+remain incomplete.
