@@ -1,0 +1,457 @@
+{
+  "applicationCommit": "e3773e48fad6dd92d63d71e0b591d5b12a2243ef",
+  "scope": "Real held-unpublish shutdown failure and subsequent instrumented investigation",
+  "failedSeries": {
+    "required": 100,
+    "completed": 22,
+    "passed": false,
+    "failure": {
+      "point": "sdk-microphone-unpublish",
+      "call": 1,
+      "iteration": 23,
+      "passed": false,
+      "shutdownBudgetMs": 4900,
+      "entries": [
+        {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        }
+      ],
+      "entry": {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "ownedUtilityVerified": true
+      },
+      "elapsedMs": 4905.370600000024,
+      "closeSettled": false,
+      "closeFailed": false,
+      "processesExited": [
+        false,
+        true
+      ],
+      "failure": "product_shutdown_deadline",
+      "forcedFixtureCleanup": false
+    },
+    "summarySha256": "3d17c1e22fdbaab885db4ed7a139df8bdfd2d7391ce03ec21fe4d7216457b84b",
+    "journalSha256": "5dc1eabd4f71ee6ba27e66de54781eed6cc2698b2c99a48face016ff7eeecc1c",
+    "disposal": [
+      {
+        "event": "dispose_started",
+        "timestampMs": 1788967456860,
+        "monotonicMs": 4997.7491
+      },
+      {
+        "event": "dispose_completed",
+        "timestampMs": 1788967457639,
+        "monotonicMs": 5776.7684
+      }
+    ]
+  },
+  "diagnosisLimits": [
+    "The native hold was verified and the utility exited; main was still alive at the 4905 ms observation.",
+    "Voice disposal completed 779 ms after its start. The original capture does not identify the later delaying component.",
+    "Anonymous native metrics are disabled for this unpackaged application, so their upload is not an explanation.",
+    "Subsequent loader timeline setup was interrupted by local backend unavailability after four completed iterations; it is not a full pass."
+  ],
+  "instrumentedControl": {
+    "completed": 50,
+    "passed": true,
+    "qualifiesHundredCycleGate": false,
+    "condition": "After the existing local backend containers were restored; same application files with runtime-only main event and kernel-exit observers",
+    "maximumMainExitMs": 2048.717699999921,
+    "maximumMediaExitMs": 1134.81520000007,
+    "processes": [
+      {
+        "iteration": 1,
+        "mainExitMs": 1544.4764000000432,
+        "mediaExitMs": 1087.472000000067,
+        "traceSha256": "3f2a26cd6da39fcdf0352444f5ad20c7a7bd715f4e2331ed89af34e105ba17c9",
+        "mainEventsSha256": "6029c07c220d48df56b056e071fc942999f49b6bb085dc7fbcb3099fca94ffdf"
+      },
+      {
+        "iteration": 2,
+        "mainExitMs": 1204.2604999998584,
+        "mediaExitMs": 934.8886000001803,
+        "traceSha256": "2939f907a951bb25c0a298db17b0dd167d68df3f4b16a3c448115f95a1e6d5b3",
+        "mainEventsSha256": "3292f5ed6dc4441eaee6a1583f07701c18c771854f0fb602604a1770a0332bb8"
+      },
+      {
+        "iteration": 3,
+        "mainExitMs": 1358.5038999998942,
+        "mediaExitMs": 1011.182699999772,
+        "traceSha256": "f322d60559f6151ba774a9268192e661d32cf27194faa80aeda168a54da3760b",
+        "mainEventsSha256": "b2eaeb95fd78b72f6085218a7eb14d7258e65ab7b2e76a0040a30d6b0640e735"
+      },
+      {
+        "iteration": 4,
+        "mainExitMs": 1298.9621999999508,
+        "mediaExitMs": 1072.1286000004038,
+        "traceSha256": "055ff21bda72d53a16ebddafce1638629ec0f6532f19d7b691219e69e12f3fee",
+        "mainEventsSha256": "1e413e76f99f7d9f1d0bdd01a7d3485c3305fec3a254fbf29ffd7456b9fb6865"
+      },
+      {
+        "iteration": 5,
+        "mainExitMs": 2048.717699999921,
+        "mediaExitMs": 1134.81520000007,
+        "traceSha256": "e1f4d9b9073bf8d2593ee2ad940ec066365f67a93916e8543e2cdaf6d36f6106",
+        "mainEventsSha256": "a13eadb51f6d559f17cc1a0b3bf5a2e77abef65459b8d6723de9babaf57db442"
+      },
+      {
+        "iteration": 6,
+        "mainExitMs": 1466.7018999997526,
+        "mediaExitMs": 1106.4771999996156,
+        "traceSha256": "7f80e1d9728bf920ae33ab3c56370afb9f99ae8fa6df1cc9a961c516109df457",
+        "mainEventsSha256": "76666d2100368ff9b92a3f8c526d9333f719ec380e2ac2ee32a38bcadc1b6d3c"
+      },
+      {
+        "iteration": 7,
+        "mainExitMs": 1770.879300000146,
+        "mediaExitMs": 1082.8207000000402,
+        "traceSha256": "6e14591bf5ae74c667426acb7a2c7f1bab7eb7cd9de04275cc5c10c6ef7fe79a",
+        "mainEventsSha256": "3bc256fb2e27473fe56073dfc8ba3a40f6562bd00ab847b112cf80f7b85071f7"
+      },
+      {
+        "iteration": 8,
+        "mainExitMs": 1338.358800000511,
+        "mediaExitMs": 1083.4400000004098,
+        "traceSha256": "41e6d4dcbac833975e453f33cef796e702e45ded057502b845926ffdc89fe359",
+        "mainEventsSha256": "f4852c1556a5074df0d71da8be36e5840274fe03dc0c5d7007211031c537858d"
+      },
+      {
+        "iteration": 9,
+        "mainExitMs": 1316.7770000007004,
+        "mediaExitMs": 1099.0583000006154,
+        "traceSha256": "4cb03f7bcbeac1258d673a795cc26c0c79ec6717f1fa8df48b3fc66022264f5c",
+        "mainEventsSha256": "ee7943557e0c695c04f745aa0e5ea3e15075ffe142a60045406250b61a3a04e3"
+      },
+      {
+        "iteration": 10,
+        "mainExitMs": 1294.4846999999136,
+        "mediaExitMs": 1092.4276000000536,
+        "traceSha256": "ec805a380fe955ebb525b9d8c733e2148e39be00712407252edb291fdb371ba3",
+        "mainEventsSha256": "7aa297042e4cc4c7a2e27fbdcbedc5b3fd82840df0454273db6f4b86326f8671"
+      },
+      {
+        "iteration": 11,
+        "mainExitMs": 1411.157800000161,
+        "mediaExitMs": 1080.1485000001267,
+        "traceSha256": "ae0aa9e08ce3dcff571cd86b913c9a4e2936c44e1d0375b0a58f0607049a8514",
+        "mainEventsSha256": "3000f78b5015f15280163d937fa543bafe2708aa3123b65957e706d2de32d7e3"
+      },
+      {
+        "iteration": 12,
+        "mainExitMs": 1365.2125000003725,
+        "mediaExitMs": 1080.595300000161,
+        "traceSha256": "11c6e5308c1c55601ca8cf298890a888951fd2a0f216c104b2eb9a7532669b79",
+        "mainEventsSha256": "088a5030703863f153e85560c0efeb4c3b967c072500e45b8b10a9cd2bda053b"
+      },
+      {
+        "iteration": 13,
+        "mainExitMs": 1352.2809000005946,
+        "mediaExitMs": 1085.000500000082,
+        "traceSha256": "bfb84c06964a98790876594701d30b92fa27de67f0f0f7c2f7691061cf018bc4",
+        "mainEventsSha256": "13bbcc1f68c51eea60f195d78d3c15cea6d0cc64b682e9a757147412ce37c72f"
+      },
+      {
+        "iteration": 14,
+        "mainExitMs": 1390.0572999995202,
+        "mediaExitMs": 1034.3148999996483,
+        "traceSha256": "1bb3c4dfabab9b9225f17a7db57790ca8ec2a2c8cb5d30f7f8c45bc876aacda8",
+        "mainEventsSha256": "f3bc2b26c1445536283d64479618bcdf11d246cfca0b958a2b8113d88fe22674"
+      },
+      {
+        "iteration": 15,
+        "mainExitMs": 1434.866499999538,
+        "mediaExitMs": 1071.9095999998972,
+        "traceSha256": "1d26669519ce1539b9ed020d63ed279da90f97d232e7aff6f5e023c62175ec94",
+        "mainEventsSha256": "d7c6c0957645c8487cfaf7887f6d7dc478f3c17bc557bbead6ac8d39aac2cb79"
+      },
+      {
+        "iteration": 16,
+        "mainExitMs": 1388.395499999635,
+        "mediaExitMs": 1075.783900000155,
+        "traceSha256": "db4d0ef2a7e6572ec707b5465d40518f17c9820a9a65b9b56306c20bc89d9b24",
+        "mainEventsSha256": "e5e2edba86a72e2df80b8c8f681066249d86e730493f9a5359b5db9e7c166c06"
+      },
+      {
+        "iteration": 17,
+        "mainExitMs": 1295.5351999998093,
+        "mediaExitMs": 1076.6035000002012,
+        "traceSha256": "3329ef8cc0919791cd8d0f1d6cc6eb8e341f67bc8df5ccd1c08c977a3deab155",
+        "mainEventsSha256": "140e2c00ff83cc726cf7a1972fb8cec11593589ab19b21eee9cfdcf64f5954bd"
+      },
+      {
+        "iteration": 18,
+        "mainExitMs": 1351.6305999998003,
+        "mediaExitMs": 1056.1806999994442,
+        "traceSha256": "04d6dfbc47091be50db2d141db4023cb9c911aaceabe0e6acfc6e37f40a980fd",
+        "mainEventsSha256": "c8d5a7b66968f32188ff0fd28b6c4bfa2d21c30ed83db1a7ec32ea3952d38d58"
+      },
+      {
+        "iteration": 19,
+        "mainExitMs": 1283.0703000007197,
+        "mediaExitMs": 1067.7524000005797,
+        "traceSha256": "8f8e0ddd7ebae2b3b1cf2fa8340056b6f3c0313cd9ace6bd33f0ec08914f1a55",
+        "mainEventsSha256": "c5edb9e1acb8407174ed28518bfe3996e7716432831021a3ea9029a38ce2609a"
+      },
+      {
+        "iteration": 20,
+        "mainExitMs": 1296.820000000298,
+        "mediaExitMs": 1060.4898000005633,
+        "traceSha256": "0c645d22801f5473b714161f4c8c1fb397816072eded7886e5c98b1c23c64409",
+        "mainEventsSha256": "b95bc33525aa9d56d1c63d291b6fb248a5eeeb9d1cf61bda522ab930798718ec"
+      },
+      {
+        "iteration": 21,
+        "mainExitMs": 1447.3946000002325,
+        "mediaExitMs": 1075.0363000007346,
+        "traceSha256": "b41339bf559b200f3714536456d5ffa4e4f0a46113cd7af4a303bd0e73c0b1f5",
+        "mainEventsSha256": "96ce4945ea6ba9803187b978339d31ba7e3ad2e2876674e42db11a685d7dde3c"
+      },
+      {
+        "iteration": 22,
+        "mainExitMs": 1375.2308999998495,
+        "mediaExitMs": 1074.701099999249,
+        "traceSha256": "4d41238db8782c2750ff9203963e206e3f755e30b954f6d5853ac7e4204776b2",
+        "mainEventsSha256": "01cbb7b32c47834febde2d61a0a952792076b45446fe688c3ddad4d9aa78ed49"
+      },
+      {
+        "iteration": 23,
+        "mainExitMs": 1408.8185999998823,
+        "mediaExitMs": 1073.8932999996468,
+        "traceSha256": "5bc61678ca3a717941bd5664ccfb9029086e86a39c950f029caf842d84fde417",
+        "mainEventsSha256": "7b28b74dba35fdc2cccf87f520beb71dff16140f2f166a821a0cb172fabe1e14"
+      },
+      {
+        "iteration": 24,
+        "mainExitMs": 1653.1721000000834,
+        "mediaExitMs": 1081.1845999993384,
+        "traceSha256": "a0af0960c295e294072311749b66a80c088b8371d2a91945342b2cdafb8fb327",
+        "mainEventsSha256": "81a65f9b101be04fb4da8a7876e65a6749960e326ad090de1ade1de451bd49d5"
+      },
+      {
+        "iteration": 25,
+        "mainExitMs": 1434.500599999912,
+        "mediaExitMs": 1085.053999999538,
+        "traceSha256": "0146baa315431168628a7ed1dd3d7cd34c15a4897ff5ad27c29eaf000b9c7f8d",
+        "mainEventsSha256": "e0e184ffa82bbde648bdb53bc4478580fea627558abcd3f09bbf4ff2c87576da"
+      },
+      {
+        "iteration": 26,
+        "mainExitMs": 1368.7433000002056,
+        "mediaExitMs": 1076.8123000003397,
+        "traceSha256": "44f29272e7b7cb54035aa672a88a85b14930f030db33b7bcfe1a0167d91f91b8",
+        "mainEventsSha256": "a2dd23b7de647e38d951f302b5b4d66c08859aed079c154ab88d454726ee405b"
+      },
+      {
+        "iteration": 27,
+        "mainExitMs": 1468.8521999996156,
+        "mediaExitMs": 1074.2713000001386,
+        "traceSha256": "9cf5cdd6d2c8281bdc3a07b4dcb8a7eb6760ff7d8ec45cd16cda959f77f68486",
+        "mainEventsSha256": "6a687192196d33355a9fa1c8c05172f3cec6ea4b4337f2f022852cc5ed93bcd9"
+      },
+      {
+        "iteration": 28,
+        "mainExitMs": 1338.8985999999568,
+        "mediaExitMs": 1080.917500000447,
+        "traceSha256": "eb249e8f4242ea1a41b4a67972f1d3b07665e423df5b6976f9c5ec82ec9bf907",
+        "mainEventsSha256": "b4bf2ae7d88d51e19e4735e54c5a23f5553d7733ee19cfb7bd98de8c1c61a67c"
+      },
+      {
+        "iteration": 29,
+        "mainExitMs": 1465.8278000000864,
+        "mediaExitMs": 1082.767899999395,
+        "traceSha256": "00b0cb7758e8e1d568e7c8e1f442718cf9f48937991f98bcc8f9e0f8f7f15db8",
+        "mainEventsSha256": "48ecb5d5ceaf6e8c72551eabcd5cd5b4c896102d958b9d924dc40bcc80ffa175"
+      },
+      {
+        "iteration": 30,
+        "mainExitMs": 1375.9485999997705,
+        "mediaExitMs": 1080.3470999998972,
+        "traceSha256": "de7c80d45dbd1837ec8aaafb3d35b2aa21bdb3ebd7948a954d2b3ca3e53c2ef9",
+        "mainEventsSha256": "37df6eaeccbf992074978b74e420e8d178b4d363ef21daa19323e555d44a5532"
+      },
+      {
+        "iteration": 31,
+        "mainExitMs": 1323.2272999994457,
+        "mediaExitMs": 1093.0773999998346,
+        "traceSha256": "2d390e0d33adc9cb7f45807461bc41f336b62090e41b38fa6dd4f6f004ccbfec",
+        "mainEventsSha256": "5151383cb415c0c46263a63bbebf64e70fd9293946dcc82ca6ed83f887359e6e"
+      },
+      {
+        "iteration": 32,
+        "mainExitMs": 1360.5224999999627,
+        "mediaExitMs": 1015.6410999996588,
+        "traceSha256": "f640cb298f3d108a1f2ed0d41526eb2e2d1a8acfb6c0825de71c5a8c5d45723a",
+        "mainEventsSha256": "4528426c609ef954acd12f46761cf1d1ec5120063f5642662384e9df3cc78c41"
+      },
+      {
+        "iteration": 33,
+        "mainExitMs": 1429.9742000000551,
+        "mediaExitMs": 1084.2989999996498,
+        "traceSha256": "abf307c7194d8b47c846b05924b49b0d1b7034b3da2712935efa3aad8e4ba5df",
+        "mainEventsSha256": "7b5ecbac62426a73e9aa0320a937b2792ed8fb2728e5115a7e2287d85bab65f6"
+      },
+      {
+        "iteration": 34,
+        "mainExitMs": 1251.5135000003502,
+        "mediaExitMs": 1050.0471000000834,
+        "traceSha256": "ee2e7b01f492f68dcc164635080347f80bd24ae3268788d1b2c16ac7c1cda5fd",
+        "mainEventsSha256": "92ed31fea5f9fad7b6f8ffefb1791bf4011aa32850b6f66ee430e473455f08b6"
+      },
+      {
+        "iteration": 35,
+        "mainExitMs": 1413.7653999999166,
+        "mediaExitMs": 1101.1697000004351,
+        "traceSha256": "9dd4a915efa99d6283a5da962d6158b6d1388cda9814bd920feec12ccf1c64db",
+        "mainEventsSha256": "3280cb2818ca9206b88ffbfbffa7ed6055da1f929bf42c4df209a500d65f9a04"
+      },
+      {
+        "iteration": 36,
+        "mainExitMs": 1265.7776000006124,
+        "mediaExitMs": 1046.0338000003248,
+        "traceSha256": "aa168ae05655b47cfb791cb0e66b5fdd627f3912410c7e3fbb1faa5e13bdf979",
+        "mainEventsSha256": "023a6e4842d31ed28a80cdb6854dd7a1253d50a646c53dac2d17e258f0175416"
+      },
+      {
+        "iteration": 37,
+        "mainExitMs": 1436.0844999998808,
+        "mediaExitMs": 1088.0875000003725,
+        "traceSha256": "e36388a4fa39f8a509521967e86263baa4ad2f3f631a687028f3815cca52a502",
+        "mainEventsSha256": "62d64bab63dc7e0ea367c1960b10d2f5413f161e949f911fcf59528acf8f8698"
+      },
+      {
+        "iteration": 38,
+        "mainExitMs": 1272.7066000001505,
+        "mediaExitMs": 1013.0405000001192,
+        "traceSha256": "7e0589dd4e00b1015732a0df34bbadd1c304a131e239386364889f7e48d5c7dc",
+        "mainEventsSha256": "63c8ee499069c9cb233c4f4a969a7a445c1123eabe8304197c9a9111783911b5"
+      },
+      {
+        "iteration": 39,
+        "mainExitMs": 1284.8020999999717,
+        "mediaExitMs": 1091.903500000015,
+        "traceSha256": "8c9c36c885602bc21f13b6b05ffdd64360869a6f3bf17285da4e2cfb82e8518a",
+        "mainEventsSha256": "b1cb99f215c0567a253db8b192354beb3fa63bb1a0c6c21e5d06e858fc7c4a49"
+      },
+      {
+        "iteration": 40,
+        "mainExitMs": 1122.6561000002548,
+        "mediaExitMs": 935.6102999998257,
+        "traceSha256": "2a684fbca64a9cf1312bb47d0c46e86ace8d87894358f9cfc2cdd4790390046e",
+        "mainEventsSha256": "f4b736b96e90ce7e368861597619ed3f009ddc68428c4709481e732c1606e386"
+      },
+      {
+        "iteration": 41,
+        "mainExitMs": 1168.785600000061,
+        "mediaExitMs": 994.4587000003085,
+        "traceSha256": "4d18f86b53fa8609e0085bf82da47df165c1a44a4d82f9b75f24d6c4f7b7c105",
+        "mainEventsSha256": "3f6598d1397ea737379f7ed2bc7d6fcb90cff8b2b1c5e2af45ed90ea2fbb7df7"
+      },
+      {
+        "iteration": 42,
+        "mainExitMs": 1308.5397999994457,
+        "mediaExitMs": 1099.154199999757,
+        "traceSha256": "c68ce533361f0c8843f40fade3268bc58e37ac21ff060ee490865409572f2b54",
+        "mainEventsSha256": "c45cfd053f65a5c4f3fd7eeac32c1e6f017e1534c111539a3953ca40b116abd8"
+      },
+      {
+        "iteration": 43,
+        "mainExitMs": 1430.1743999999017,
+        "mediaExitMs": 1089.8967000003904,
+        "traceSha256": "e68da1e68b42c0c59807371e621c3418002b0ec2ce210f71b5c83a92d7a09795",
+        "mainEventsSha256": "7dc2f9956bb55759becc9ff03e3e88c1ffa0d533a839fa4e5c82f74dd8f152c7"
+      },
+      {
+        "iteration": 44,
+        "mainExitMs": 1408.1691999994218,
+        "mediaExitMs": 1078.530100000091,
+        "traceSha256": "ddf3b84ec4d40a150b51c847c3f4bbc19130cd46318b94eccbf993af792c6310",
+        "mainEventsSha256": "21ef76dca23e1bc376f8a30f094cda5afcfc42b926702328bdadf8edda50fc30"
+      },
+      {
+        "iteration": 45,
+        "mainExitMs": 1355.1870999997482,
+        "mediaExitMs": 1071.8582999994978,
+        "traceSha256": "ca365e9a88e3bdb1af1589f0c65d1beaa5b7abbc412f1ee871199d16459ca0a8",
+        "mainEventsSha256": "8168d561243a08a992ef0eda9dfb076b19b095ea887df247a442604621f2c573"
+      },
+      {
+        "iteration": 46,
+        "mainExitMs": 1262.268399999477,
+        "mediaExitMs": 1067.1728999996558,
+        "traceSha256": "558ad7f8471367a01347fb5ca99db9802fb51978e7c5b787b1e15cd14c1c3154",
+        "mainEventsSha256": "3a16bd7809ff98971b22749cce49c822b7e14cb02e639f3bdf5af10780df2288"
+      },
+      {
+        "iteration": 47,
+        "mainExitMs": 1418.8474000003189,
+        "mediaExitMs": 1071.6435000002384,
+        "traceSha256": "f51eae4b6c31844bee6562769243beab6b3e2fd4f110a21e7a2e9c82e2068495",
+        "mainEventsSha256": "830931d1cfb2e37e4505f5723b4de572c29641a65b1e2d3b12be40737978af7d"
+      },
+      {
+        "iteration": 48,
+        "mainExitMs": 1333.6994000002742,
+        "mediaExitMs": 1076.4254000000656,
+        "traceSha256": "8a3495c2bd805d80d99a666843aab353760afb4a579cbefdbb42720295722523",
+        "mainEventsSha256": "0b7f5a1872a70146c74a1981a92675281fd01a28b0eab169c147b8193b91796a"
+      },
+      {
+        "iteration": 49,
+        "mainExitMs": 1344.664300000295,
+        "mediaExitMs": 1108.5568000003695,
+        "traceSha256": "42ec1698b2cfce66e75b355ad3251ba4962b20a625c3d73e761eccf4b8dfb154",
+        "mainEventsSha256": "d8ff3bb4ed3373746f0f379b11aee6365206146707d5410946f7524d80b5dc86"
+      },
+      {
+        "iteration": 50,
+        "mainExitMs": 1375.9604000002146,
+        "mediaExitMs": 1077.667000000365,
+        "traceSha256": "9def650b97a8110e6174349d73de0152834d87bb2d3cfa8427850b1b97a22f85",
+        "mainEventsSha256": "a9f712237b7a33dce70d574a2cf1b26153177e91c0f71cd5bac17911bc8f9766"
+      }
+    ],
+    "interpretation": "The long close did not recur in these controls. They do not establish that a product change fixed it."
+  },
+  "sourceCorrection": {
+    "defect": "The process timer was cleared when resource disposal returned, before Electron quit; its 4900 ms delay also left no exit margin inside the 4900 ms observation budget.",
+    "behavior": "Leave the unreferenced process timer armed and request forced exit at 4000 ms. Keep the external 4900 ms gate unchanged.",
+    "verification": "Focused shutdown tests passed, including retained protection after successful resource disposal and 100 hung-finalizer repetitions per scope. Rebuilt-product qualification pending."
+  },
+  "preFixDelayedElectronControl": {
+    "injection": "In addition to the verified native unpublish hold, a test-only will-quit listener prevents graceful Electron exit while leaving its main event loop responsive.",
+    "outcome": {
+      "point": "sdk-microphone-unpublish",
+      "call": 1,
+      "iteration": 1,
+      "passed": false,
+      "shutdownBudgetMs": 4900,
+      "entries": [
+        {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        }
+      ],
+      "entry": {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "ownedUtilityVerified": true
+      },
+      "elapsedMs": 4903.240999999456,
+      "closeSettled": false,
+      "closeFailed": false,
+      "processesExited": [
+        false,
+        true
+      ],
+      "failure": "product_shutdown_deadline",
+      "forcedFixtureCleanup": true
+    },
+    "mainEventsSha256": "91be72cc5576c7c5fc55386bb7318a35c35c866cff47c72e10fc50647c1e2f14",
+    "kernelTraceSha256": "fd8e990de4596ac3ebc531a8daa82bce07275a874169083e75abd749588fa3a6",
+    "interpretation": "The old application reached will-quit but remained alive until fixture cleanup. This reproduces the cleared-timer gap; it is an additional controlled fault, not proof that the earlier spontaneous delay had this cause."
+  }
+}

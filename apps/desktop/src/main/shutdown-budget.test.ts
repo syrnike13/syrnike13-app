@@ -46,10 +46,11 @@ describe('disposeWithinDesktopShutdownBudget', () => {
     expect(APP_SHUTDOWN_TIMEOUT_MS).toBeLessThan(5_000)
   })
 
-  it('does not wait for the voice grace period after voice disposal completes', async () => {
+  it('keeps the exit deadline after resources finish without waiting for voice grace', async () => {
     vi.useFakeTimers()
     const disposeRemaining = vi.fn(async () => undefined)
     const onVoiceDeadlineExceeded = vi.fn()
+    const forceExit = vi.fn()
 
     await disposeWithinDesktopShutdownBudget({
       disposeVoice: async () => undefined,
@@ -57,11 +58,18 @@ describe('disposeWithinDesktopShutdownBudget', () => {
       onVoiceDisposeError: vi.fn(),
       onVoiceDeadlineExceeded,
       onDeadlineSettled: vi.fn(),
-      forceExit: vi.fn(),
+      forceExit,
     })
 
     expect(disposeRemaining).toHaveBeenCalledOnce()
     expect(onVoiceDeadlineExceeded).not.toHaveBeenCalled()
+    // Resource disposal is finished, but Electron may not have exited yet.
+    expect(forceExit).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(1)
+    await vi.advanceTimersByTimeAsync(APP_SHUTDOWN_TIMEOUT_MS - 1)
+    expect(forceExit).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(forceExit).toHaveBeenCalledOnce()
     expect(vi.getTimerCount()).toBe(0)
   })
 

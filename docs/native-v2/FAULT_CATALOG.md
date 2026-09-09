@@ -46,7 +46,7 @@ encoder failure. Query timeout alone does not prove utility death.
 | Graceful utility shutdown wrapper | 1,500 ms | This excludes the termination finalizer |
 | Kernel-confirmed utility termination | 2,000 ms after kill | No replacement until the old process exits |
 | Conservative supervisor shutdown composition | 3,500 ms | Actual finalizer composition and hung native proof |
-| Desktop Voice grace / app process deadline | 2,500 / 4,900 ms | Independent process timer survives hung Effect finalizers; real active-product fault coverage remains required |
+| Desktop Voice grace / forced exit request / process observation | 2,500 / 4,000 / 4,900 ms | Independent process timer survives hung Effect finalizers and remains armed after resource disposal; real active-product fault coverage remains required |
 | Utility owner disappearance | Unnamed, non-inherited kill-on-close Windows Job Object | Closing the last main-owned job handle terminates the utility even when main exits without finalizers |
 | Capture candidate | 3,000 ms | One candidate, no overlap with unresolved retirement |
 | Capture attempt budget | One-second spacing, six/minute, three consecutive failures | Verify latest intent, exhaustion semantics and repeated partial recovery |
@@ -876,3 +876,17 @@ unmodified unpackaged-app loader completed 100 startup controls with the same
 timeout. Full-product qualification now records that loader and its launcher
 alongside the application inputs. The startup control alone supplies no held
 native shutdown evidence and does not explain the earlier 7674 ms close.
+
+The [held-unpublish exit investigation](shutdown-exit-guard-e3773e48.json)
+preserves a later failure with verified native hold entry: the utility had
+exited, but main was still alive at 4905 ms. Voice disposal took 779 ms; the
+original journal does not identify the remaining delay. Fifty instrumented
+controls after local backend restoration did not reproduce it.
+
+The process guard had two gaps: it was cancelled when resource disposal
+finished, before Electron exited, and its exit request occurred at the same
+4900 ms boundary used to observe process termination. It now remains armed
+after disposal and requests forced exit at 4000 ms, leaving 900 ms inside the
+unchanged observation gate. Focused tests preserve both hung-finalizer
+boundaries and protection after successful disposal. Actual rebuilt-product
+verification remains required; the older diagnostic controls are not that proof.
