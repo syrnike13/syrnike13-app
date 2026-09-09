@@ -78,9 +78,13 @@ function assertTrustedSender(
 
 function observeRenderer(contents: WebContents) {
   if (observedRenderers.has(contents)) return
+  const owner = windowGetter()
+  if (!owner || owner.isDestroyed() || owner.webContents !== contents) return
   observedRenderers.add(contents)
   const rendererGone = () => {
-    if (windowGetter()?.webContents !== contents) return
+    // The destroyed event runs after BrowserWindow.webContents becomes invalid.
+    // Compare the retained owner without dereferencing its native wrapper.
+    if (windowGetter() !== owner) return
     rendererListening = false
     active?.frames.rendererGone()
     active?.picker.cancel()

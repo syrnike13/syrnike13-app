@@ -49,9 +49,13 @@ describe('native media product boundary', () => {
       once: (event: string, handler: (...args: unknown[]) => void) => callbacks.set(event, handler),
       send: vi.fn(),
     }
+    let destroyed = false
     const window = {
-      isDestroyed: () => false,
-      webContents,
+      isDestroyed: () => destroyed,
+      get webContents() {
+        if (destroyed) throw new Error('Object has been destroyed')
+        return webContents
+      },
     }
     let windowCreated = false
     const getWindow = () => windowCreated ? window : null
@@ -62,7 +66,10 @@ describe('native media product boundary', () => {
 
     const event = { sender: webContents, senderFrame: webContents.mainFrame }
     const invoke = (channel: string, ...args: unknown[]) => electron.handlers.get(channel)?.(event, ...args)
-    return { runtime, callbacks, invoke, webContents }
+    return { runtime, callbacks, invoke, webContents,
+      destroyWindow: () => { destroyed = true },
+      clearWindow: () => { windowCreated = false },
+    }
   }
 
   it('exposes a stopped native owner and retires frame ownership on disposal', async () => {
@@ -143,6 +150,27 @@ describe('native media product boundary', () => {
     expect(electron.setRemoteDemand).not.toHaveBeenCalled()
     expect(() => electron.handlers.get(IPC.mediaReplayRemoteVideoPublications)?.({ sender: {} })).toThrow('Untrusted')
     expect(() => electron.handlers.get(IPC.mediaReplayRemoteVideoPublications)?.({ sender: webContents, senderFrame: {} })).toThrow('Untrusted')
+    await adapter.dispose()
+  })
+
+  it('retires a destroyed renderer without accessing its destroyed BrowserWindow', async () => {
+    const { runtime, callbacks, invoke, destroyWindow } = await setup()
+    const adapter = runtime.createNativeRtcEngineAdapter()
+    invoke(IPC.mediaReplayRemoteVideoPublications)
+    destroyWindow()
+    expect(() => callbacks.get('destroyed')?.()).not.toThrow()
+    expect(electron.rendererGone).toHaveBeenCalledOnce()
+    await adapter.dispose()
+  })
+
+  it('ignores teardown from a window that no longer owns the runtime', async () => {
+    const { runtime, callbacks, invoke, clearWindow, destroyWindow } = await setup()
+    const adapter = runtime.createNativeRtcEngineAdapter()
+    invoke(IPC.mediaReplayRemoteVideoPublications)
+    clearWindow()
+    destroyWindow()
+    expect(() => callbacks.get('destroyed')?.()).not.toThrow()
+    expect(electron.rendererGone).not.toHaveBeenCalled()
     await adapter.dispose()
   })
 })
