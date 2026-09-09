@@ -131,7 +131,7 @@ export function captureNativeDiagnosticIncident(
       existing.timestampMs = timestampMs
       existing.occurrenceCount = (existing.occurrenceCount ?? 1) + 1
       Object.assign(existing, {
-        severity: incidentSeverity(record),
+        severity: highestIncidentSeverity(existing.severity, incidentSeverity(record)),
         actionId: record.actionId,
         operationId: record.operation,
         nativeEventType: record.nativeEventType,
@@ -216,6 +216,7 @@ export function captureRendererDiagnosticIncident(
     if (existing) {
       existing.timestampMs = timestampMs
       existing.occurrenceCount = (existing.occurrenceCount ?? 1) + 1
+      existing.severity = highestIncidentSeverity(existing.severity, value.severity)
       return true
     }
     if (!hasLeasedIncident(identity) && !lastAcknowledgedAt.has(identity)) {
@@ -414,6 +415,15 @@ function hasLeasedIncident(identity: string, correlationId?: string) {
     }
   }
   return false
+}
+
+function highestIncidentSeverity(
+  previous: NativeDiagnosticIncidentSeverity,
+  next: NativeDiagnosticIncidentSeverity,
+): NativeDiagnosticIncidentSeverity {
+  if (previous === 'fatal' || next === 'fatal') return 'fatal'
+  if (previous === 'error' || next === 'error') return 'error'
+  return 'warning'
 }
 
 function incidentSeverity(

@@ -101,6 +101,27 @@ describe('native diagnostic incident monitor', () => {
     })
   })
 
+  it.each(['native', 'renderer'] as const)('preserves the highest severity of a repeated %s incident', (source) => {
+    for (const [index, severity] of (['warning', 'fatal', 'error', 'warning'] as const).entries()) {
+      if (source === 'native') {
+        captureNativeDiagnosticIncident({
+          scope: 'native-media-controller',
+          event: 'screen_publication_failed',
+          incidentSeverity: severity,
+        }, 10_000 + index)
+      } else {
+        captureRendererDiagnosticIncident({
+          area: 'presentation',
+          triggerCode: 'renderer_stalled',
+          severity,
+        }, 10_000 + index)
+      }
+    }
+    expect(leaseNativeDiagnosticIncidents('test-account')?.incidents).toEqual([
+      expect.objectContaining({ severity: 'fatal', occurrenceCount: 4, firstTimestampMs: 10_000 }),
+    ])
+  })
+
   it('captures native failures, timeouts, and restart signals', () => {
     captureNativeDiagnosticIncident(
       {
