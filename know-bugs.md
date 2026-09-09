@@ -2,6 +2,37 @@
 
 This file records reproducible bugs and constraints in the local environment, toolchain, operating system, or third-party libraries that the application repository cannot fix. Application defects do not belong here.
 
+## Media Foundation activation retains handles on the NVIDIA test machine
+
+On 2026-09-09, Windows 11 build 26200 with RTX 5070 Ti, driver
+`32.0.16.1074` and injected `nvspcap64.dll` version `11.0.9.239` retained two
+handles per hardware H264 MFT activation/shutdown. A 100-cycle probe on one
+thread returned 321 -> 521 process handles and 10 -> 10 threads. The probe
+only enumerates, activates, calls `IMFActivate::ShutdownObject`, releases COM
+references and shuts down Media Foundation; it does not submit frames or use
+the application encoder pipeline. MFStartup/MFShutdown and enumeration alone
+showed no growth. Ordinary encoder start/stop and withheld-output faults also
+showed approximately two additional handles per cycle.
+
+The growing handle types are a mutex and section with names based on
+`{2627E361-24E2-4F14-99ED-A20D0685D8DD}_v22`. That string occurs in the installed
+NVIDIA overlay DLL. A control run with the overlay disabled has not yet been
+authorized/performed, so overlay involvement is a hypothesis rather than a
+confirmed root cause. No driver or overlay settings have been changed.
+
+Reproduce with `encoder_fault_tests --same-thread-activation`; use
+`--resource-stages` to isolate startup, enumeration and activation. The probe
+follows the documented
+[activation shutdown contract](https://learn.microsoft.com/en-us/windows/win32/api/mfobjects/nf-mfobjects-imfactivate-shutdownobject).
+Both activation-only shutdown and explicit transform shutdown plus activation
+shutdown reproduced growth. Additional end-streaming/device-manager cleanup did
+not resolve it and was not retained as a product workaround.
+
+The fault harness reports resource failure and exits nonzero. This blocks the
+encoder resource qualification on this setup; successful owner assertions are
+not a complete PASS. Process containment closes resources when the utility exits,
+but does not establish zero growth during repeated encoder lifecycles.
+
 ## Electron managed shared-texture transfer can lose late renderer releases
 
 On Electron 43.1.0, a delayed managed texture transfer during native utility loss

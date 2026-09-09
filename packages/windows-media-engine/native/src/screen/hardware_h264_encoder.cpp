@@ -545,8 +545,12 @@ void encoderWorker(
     for (;;) {
       ComPtr<IMFMediaEvent> event;
       state->worker_operation.store("poll_event", std::memory_order_relaxed);
+#ifdef WINDOWS_MEDIA_TEST_ENCODER_EVENT
+      const HRESULT event_result = WINDOWS_MEDIA_TEST_ENCODER_EVENT(events.Get(), &event);
+#else
       const HRESULT event_result =
           events->GetEvent(MF_EVENT_FLAG_NO_WAIT, &event);
+#endif
       if (event_result == MF_E_NO_EVENTS_AVAILABLE) break;
       if (FAILED(event_result)) {
         fail(state, "screen_hardware_h264_event_failed",
