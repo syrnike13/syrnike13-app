@@ -86,8 +86,11 @@ exports.createProduct = ({ electron, executablePath, applicationDirectory, envir
       }
       return
     }
-    if (/^(sdk-screen-|screen-audio-|encoder-|wgc-monitor-)/.test(point)) {
+    if (/^(sdk-screen-|screen-audio-|encoder-|wgc-monitor-|wgc-window-|dxgi-)/.test(point)) {
       await ui.getByRole('button', { name: 'Демонстрация экрана', exact: true }).first().click()
+      if (point.startsWith('wgc-window-')) {
+        await ui.getByRole('tab', { name: 'Приложения', exact: true }).click()
+      }
       await ui.getByRole('button', { name: screenSourceButton, exact: true }).click()
       if (point.endsWith('-unpublish')) {
         await running(point === 'sdk-screen-unpublish' ? 'screen' : 'screenAudio')

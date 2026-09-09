@@ -79,14 +79,26 @@ inline FaultConfiguration readConfiguration() {
     throw std::runtime_error("test_fault_selection_invalid");
   return result;
 }
+
+inline const FaultConfiguration& configuration() {
+  static const auto value = readConfiguration();
+  return value;
+}
 }  // namespace detail
+
+inline bool productFaultSelected(std::string_view point) {
+  const auto& configuration = detail::configuration();
+  for (std::size_t index = 0; index < configuration.count; ++index)
+    if (configuration.selections[index].point == point) return true;
+  return false;
+}
 
 // Test builds alone read this sidecar. At most two chosen calls record entry,
 // then behave like platform calls that cannot be cancelled. A second point can
 // hold cancellation while connect is already held. No worker is spawned: the
 // real owners remain held until the outer process boundary exits.
 inline void holdProductFault(std::string_view point) {
-  static const auto configuration = detail::readConfiguration();
+  const auto& configuration = detail::configuration();
   static std::array<std::atomic_uint, 2> calls{};
   const detail::FaultSelection* selected = nullptr;
   for (std::size_t index = 0; index < configuration.count; ++index) {
@@ -117,6 +129,7 @@ inline void holdProductFault(std::string_view point) {
 }  // namespace syrnike::windows_media::testing
 #else
 namespace syrnike::windows_media::testing {
+inline bool productFaultSelected(std::string_view) noexcept { return false; }
 inline void holdProductFault(std::string_view) noexcept {}
 }  // namespace syrnike::windows_media::testing
 #endif

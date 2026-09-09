@@ -183,10 +183,17 @@ fixture's availability is not a passing shutdown matrix.
 
 `shutdown-product.cjs` supplies product callbacks from an Electron launcher,
 executable/application paths, an isolated profile environment, the authenticated
-server name/channel ID and an exact monitor-selection button label. Its
+server name/channel ID and an exact source-selection button label. Its
 `createProduct()` result can be spread into the shutdown harness options. It
 discovers the native utility by Electron's service name and waits for actual IPC
 snapshot values before stopping a connected Room or a running publication.
 These waits have a 15-second setup deadline. A promise returned by an async
 browser predicate must not be treated as evidence that its condition is true.
-Window-capture and forced-DXGI setup still require a caller-supplied scenario.
+For `wgc-window-*`, keep a real fixture window open and provide its exact source
+button label; the driver selects the Applications tab before choosing it.
+For `dxgi-acquire-frame` and `wgc-monitor-*`, provide the monitor label. The
+test-only native selection fixes the monitor backend to the requested fault
+boundary using the same immutable configuration as the held call. Production
+builds do not read this configuration or override normal backend selection.
+Each row still requires a matching owned-utility entry marker before shutdown;
+selecting a source alone does not qualify the injected operation.

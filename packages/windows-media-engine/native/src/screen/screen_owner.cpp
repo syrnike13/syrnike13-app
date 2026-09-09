@@ -4,6 +4,7 @@
 #include "capture/wgc_window_capture.hpp"
 #include "capture/window_capture.hpp"
 #include "sources/win32_source_enumerator.hpp"
+#include "testing/product_fault_gate.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -251,6 +252,13 @@ void ScreenOwner::run() noexcept {
           capture::CaptureStartResult started;
           if (*resolved.kind == sources::SourceKind::Monitor) {
             capture::SelectingMonitorOptions options;
+            // Reach the selected platform boundary deterministically in fault builds.
+            // Normal builds never read the test configuration.
+            if (testing::productFaultSelected("dxgi-acquire-frame"))
+              options.forced = capture::CaptureBackendKind::dxgi;
+            else if (testing::productFaultSelected("wgc-monitor-frame-pool") ||
+                     testing::productFaultSelected("wgc-monitor-start"))
+              options.forced = capture::CaptureBackendKind::wgc;
             options.resolve_target = [monitor_target] { return monitor_target; };
             monitor = std::make_unique<capture::MonitorCapture>(*registry, desired.intent.source_id,
                 capture::createSelectingMonitorCaptureBackend(std::move(options)));
