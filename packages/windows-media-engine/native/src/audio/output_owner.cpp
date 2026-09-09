@@ -40,6 +40,12 @@ void OutputOwner::apply(std::uint64_t revision, const OutputIntent& intent, bool
                         std::uint64_t device_revision) {
   std::lock_guard lock(mutex_);
   if (stopping_ || done_ || revision < desired_.revision) return;
+  if (intent.state != desired_.intent.state || connected != desired_.room_connected ||
+      intent.device_id != desired_.intent.device_id ||
+      intent.retry_revision != desired_.intent.retry_revision || device_revision != desired_.device_revision) {
+    selection_cancellation_.request_stop();
+    selection_cancellation_ = std::stop_source{};
+  }
   desired_ = {revision, device_revision, intent, connected};
   if (intent.state == OutputIntentState::on && connected) snapshot_.stopped = false;
   changed_.notify_one();
@@ -47,6 +53,7 @@ void OutputOwner::apply(std::uint64_t revision, const OutputIntent& intent, bool
 void OutputOwner::beginStop() {
   std::lock_guard lock(mutex_);
   stopping_ = true;
+  selection_cancellation_.request_stop();
   changed_.notify_one();
 }
 OutputOwnerSnapshot OutputOwner::snapshot() const {
@@ -65,6 +72,7 @@ void OutputOwner::run() noexcept {
   try {
     for (;;) {
       Desired desired;
+      std::stop_token cancellation;
       {
         std::unique_lock lock(mutex_);
         changed_.wait_for(lock, std::chrono::milliseconds(20), [&] {
@@ -74,8 +82,10 @@ void OutputOwner::run() noexcept {
         });
         if (stopping_) break;
         desired = desired_;
+        cancellation = selection_cancellation_.get_token();
       }
       const bool needed = desired.intent.state == OutputIntentState::on && desired.room_connected;
+      const auto previous_problem = problem;
       const bool retry = desired.intent.state != applied.intent.state ||
           desired.room_connected != applied.room_connected || desired.intent.device_id != applied.intent.device_id ||
           desired.intent.retry_revision != applied.intent.retry_revision ||
@@ -98,7 +108,7 @@ void OutputOwner::run() noexcept {
           try {
             if (!output) output = std::make_unique<RemoteAudioOutput>(mixer_);
             if (!output->setDeafened(desired.intent.deafened) ||
-                output->selectOutput(devices_, outputDevice(desired.intent)) != RemoteOutputFailure::none)
+                output->selectOutput(devices_, outputDevice(desired.intent), cancellation) != RemoteOutputFailure::none)
               problem = outputFailure();
             else
               problem.reset();
@@ -110,12 +120,18 @@ void OutputOwner::run() noexcept {
           // merely because a mute/volume or unrelated media revision changed.
           const auto status = output->stats();
           if (status.state != RemoteOutputState::running) {
-            if (output->reconcile(devices_, desired.device_revision) != RemoteOutputFailure::none)
+            if (output->reconcile(devices_, desired.device_revision, cancellation) != RemoteOutputFailure::none)
               problem = outputFailure();
             else
               problem.reset();
           }
         }
+      }
+      // A cancelled transaction cannot publish an obsolete terminal projection.
+      // The next pass consumes the latest intent or shutdown request.
+      if (cancellation.stop_requested()) {
+        problem = previous_problem;
+        continue;
       }
       OutputOwnerSnapshot current;
       current.output = output ? output->stats() : RemoteOutputStats{};
@@ -133,6 +149,10 @@ void OutputOwner::run() noexcept {
           problem ? MediaPathState::Failed : MediaPathState::Starting;
       {
         std::lock_guard lock(mutex_);
+        if (cancellation.stop_requested()) {
+          problem = previous_problem;
+          continue;
+        }
         snapshot_ = std::move(current);
       }
       applied = std::move(desired);

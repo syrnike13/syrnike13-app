@@ -27,14 +27,15 @@ RemoteAudioOutput::~RemoteAudioOutput() {
 bool RemoteAudioOutput::onOwner() const noexcept {
   return owner_ == std::this_thread::get_id() && !stats_.retired;
 }
-RemoteOutputFailure RemoteAudioOutput::selectEndpoint(const AudioEndpoint& endpoint) {
+RemoteOutputFailure RemoteAudioOutput::selectEndpoint(const AudioEndpoint& endpoint, std::stop_token cancellation) {
+  if (cancellation.stop_requested()) return RemoteOutputFailure::cancelled;
   if (selected_ && selected_->endpoint_id == endpoint.endpoint_id && active_ &&
       active_->stats().state == WasapiOutputState::running) return RemoteOutputFailure::none;
   stats_.state = active_ ? RemoteOutputState::recovering : RemoteOutputState::starting;
   candidate_ = std::make_unique<WasapiOutput>();
   ++stats_.candidates;
-  stats_.candidate_failure = candidate_->start(endpoint, ++epoch_);
-  if (stats_.candidate_failure != WasapiOutputFailure::none) {
+  stats_.candidate_failure = candidate_->start(endpoint, ++epoch_, cancellation);
+  if (stats_.candidate_failure != WasapiOutputFailure::none || cancellation.stop_requested()) {
     if (!candidate_->stop(Clock::now() + std::chrono::seconds(5))) {
       stats_.retired = true;
       return RemoteOutputFailure::stop_timeout;
@@ -42,9 +43,9 @@ RemoteOutputFailure RemoteAudioOutput::selectEndpoint(const AudioEndpoint& endpo
     candidate_.reset();
     stats_.state = active_ && active_->stats().state == WasapiOutputState::running ?
         RemoteOutputState::running : RemoteOutputState::failed;
-    return RemoteOutputFailure::candidate_failed;
+    return cancellation.stop_requested() ? RemoteOutputFailure::cancelled : RemoteOutputFailure::candidate_failed;
   }
-  if (!candidate_->setDeafened(deafened_)) {
+  if (!candidate_->setDeafened(deafened_) || cancellation.stop_requested()) {
     if (!candidate_->stop(Clock::now() + std::chrono::seconds(5))) {
       stats_.retired = true;
       return RemoteOutputFailure::stop_timeout;
@@ -52,8 +53,11 @@ RemoteOutputFailure RemoteAudioOutput::selectEndpoint(const AudioEndpoint& endpo
     candidate_.reset();
     stats_.state = active_ && active_->stats().state == WasapiOutputState::running ?
         RemoteOutputState::running : RemoteOutputState::failed;
-    return RemoteOutputFailure::candidate_failed;
+    return cancellation.stop_requested() ? RemoteOutputFailure::cancelled : RemoteOutputFailure::candidate_failed;
   }
+  // The cancellation check above admits this healthy candidate to the serialized
+  // mixer commit. A later intent is the next transaction; it cannot reopen an
+  // older pending candidate. No platform preparation occurs after admission.
   const auto minimum = timestamp();
   if (!mixer_.bindOutput(candidate_->input(), minimum)) {
     stats_.retired = true;
@@ -85,18 +89,22 @@ RemoteOutputFailure RemoteAudioOutput::selectEndpoint(const AudioEndpoint& endpo
   ++stats_.commits;
   return RemoteOutputFailure::none;
 }
-RemoteOutputFailure RemoteAudioOutput::selectOutput(AudioDeviceRegistry& registry, AudioDeviceIntent intent) {
+RemoteOutputFailure RemoteAudioOutput::selectOutput(AudioDeviceRegistry& registry, AudioDeviceIntent intent,
+                                                   std::stop_token cancellation) {
   if (!onOwner() || intent.direction != AudioDirection::output) return RemoteOutputFailure::invalid_state;
+  if (cancellation.stop_requested()) return RemoteOutputFailure::cancelled;
   stats_.recovery_attempts = 0;
   retry_after_ = {};
   const auto endpoint = registry.resolve(intent);
   if (!endpoint) return RemoteOutputFailure::unavailable;
-  const auto result = selectEndpoint(*endpoint);
+  const auto result = selectEndpoint(*endpoint, cancellation);
   if (result == RemoteOutputFailure::none) intent_ = intent;
   return result;
 }
-RemoteOutputFailure RemoteAudioOutput::reconcile(AudioDeviceRegistry& registry, std::uint64_t revision) {
+RemoteOutputFailure RemoteAudioOutput::reconcile(AudioDeviceRegistry& registry, std::uint64_t revision,
+                                                std::stop_token cancellation) {
   if (!onOwner()) return RemoteOutputFailure::invalid_state;
+  if (cancellation.stop_requested()) return RemoteOutputFailure::cancelled;
   if (revision != registry_revision_) {
     registry_revision_ = revision;
     stats_.recovery_attempts = 0;
@@ -109,7 +117,7 @@ RemoteOutputFailure RemoteAudioOutput::reconcile(AudioDeviceRegistry& registry, 
   if (stats_.recovery_attempts >= 3 || retryNow() < retry_after_) return RemoteOutputFailure::candidate_failed;
   ++stats_.recovery_attempts;
   retry_after_ = retryNow() + std::chrono::seconds(1);
-  return selectEndpoint(*endpoint);
+  return selectEndpoint(*endpoint, cancellation);
 }
 bool RemoteAudioOutput::setDeafened(bool value) {
   if (!onOwner()) return false;

@@ -49,6 +49,7 @@ encoder failure. Query timeout alone does not prove utility death.
 | Camera startup / no-frame / reader close | 4,000 / 2,000 / 2,000 ms | Separate error callback, missing callback and late callback evidence |
 | Microphone no-progress | 1,000 ms | Real worker detects stopped progress without forged error state |
 | Output no-progress / retry | 500 ms; three attempts, one-second spacing | Successful candidates retain the attempt count; explicit selection or a new device-registry revision resets it. Active/candidate isolation, latest intent and full-product proof remain required. |
+| Output candidate cancellation | Event-driven cancellation of the five-second readiness wait; five-second native teardown fallback | New selection/retry/device revision or shutdown signals the pending worker immediately. The 500 ms cancellable-fixture assertion does not establish cancellation of a hung Windows API; that remains contained by the utility deadline. |
 | Native frame export age / queue | 150 ms; total 68, batch 16, remote 4/stream, preview 2/stream | Renderer never releasing must remain bounded without unsafe reuse |
 | Electron transfer import acknowledgement / capacity | 1,000 ms / 68 process-wide | Timeout never frees an uncertain lease |
 | Electron receiver release / final GPU release | 2,000 ms from send / 2,000 ms from main release; 250 ms sweep | One failure per retained lease; no retry or unsafe reuse; exact-frame release/destruction plus final GPU completion returns ownership |
@@ -200,6 +201,7 @@ Missing lab/audio execution is missing evidence, never a pass.
 | `microphone_capture_allocation --fault-matrix` | 100 active device-loss HRESULTs and 100 actual client stops without an error. Faults are armed only after start has returned healthy; the no-progress detector remains one second. |
 | `media_lab microphone-candidate-fault` | 100 failed WASAPI candidate opens. The retained capture generation continues producing frames, mute still produces digital silence, and returning to the healthy selection does not reopen capture. |
 | `remote_audio_lab fault-matrix` | 100 invalidations, 100 actual output client stops with the shipping 500 ms no-progress detector, 100 failed candidate transactions, and 100 finite retry sequences. A healthy second worker continues consuming; a failed candidate preserves the active output epoch and live deafen controls. Only the retry schedule uses a test clock; all WASAPI health and shutdown clocks remain real. |
+| `remote_audio_lab cancellation` | 100 each: cancelled preparation retaining the active output; newer desired selection through the shipping OutputOwner; shutdown through that owner during pending preparation. Preparation blocks on the worker's cancellation event. Old terminal errors cannot appear on the new desired revision, the healthy epoch keeps consuming, cancelled retries allocate no candidate, and shutdown joins all workers. |
 
 DXGI stress initially added five handles and one thread. Module diagnostics
 identified the additional thread as `nvwgf2umx.dll`; a subsequent identical batch
@@ -223,3 +225,19 @@ three automatic replacements, then verifies that an explicit retry starts a new
 budget. Its injected clock applies only to the retry schedule, not to WASAPI
 progress or cleanup. All 100 measured sequences returned 205 handles and six
 threads to baseline.
+
+Output cancellation uses a per-selection stop source, independent of mute/volume
+and unrelated media revisions. After readiness, a cancellation check admits the
+healthy candidate to the serialized mixer commit; subsequent desired state is the
+next transaction. Cancellation never waits for a platform call on the submitting
+lane. The owner suppresses the cancelled transaction's terminal projection and
+retains the previous problem state until it processes the latest intent.
+The three cancellation rows passed 100 measured repetitions each with 212 handles
+and six threads unchanged. Maximum complete iterations were 62, 79 and 53 ms.
+
+The separate output platform matrix is not yet resource-qualified: a later CTest
+run left one additional process thread after 100 invalidations; the diagnostic
+rerun returned that row to baseline but left one extra handle after 100
+no-progress faults. That run showed only Windows thread-pool entries in the
+final thread inventory. Their involvement does not establish the handle's cause.
+Both failed resource results remain failures despite successful owner assertions.

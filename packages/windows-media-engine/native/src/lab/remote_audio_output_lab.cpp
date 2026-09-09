@@ -1,4 +1,5 @@
 #include "audio/remote_audio_output.hpp"
+#include "audio/output_owner.hpp"
 #include "lab/remote_audio_probe.hpp"
 #include <windows.h>
 
@@ -70,6 +71,121 @@ Measurement measure(RemoteAudioOutput& output, std::chrono::milliseconds duratio
   return result;
 }
 }
+int remoteAudioCancellationFaultMatrix() {
+  namespace lab = syrnike::windows_media::lab;
+  AudioDeviceRegistry registry(std::make_unique<OutputFixtureDevices>());
+  const auto inventory = registry.refresh();
+  require(inventory.status == AudioRegistryStatus::ready, "Output registry unavailable");
+  std::optional<AudioDeviceId> invalid;
+  for (const auto& device : inventory.devices)
+    if (device.direction == AudioDirection::output && device.label == "invalid-candidate-fixture") invalid = device.id;
+  require(invalid.has_value(), "Invalid output fixture missing");
+  syrnike::windows_media::tests::repeatFault("output-candidate-cancelled", [&] {
+    struct ResetFault {
+      ~ResetFault() {
+        lab::render_block_prepare = false;
+        lab::render_prepare_entered = false;
+        lab::render_probe_epoch = 0;
+      }
+    } reset;
+    RemoteAudioMixerWorker mixer;
+    RemoteAudioOutput output(mixer);
+    require(output.selectOutput(registry, {AudioDirection::output, {}}) == RemoteOutputFailure::none,
+            "Output cancellation fixture did not become healthy");
+    const auto before = output.stats();
+    lab::render_probe_epoch = before.candidates + 1;
+    lab::render_prepare_entered = false;
+    lab::render_block_prepare = true;
+    std::stop_source cancellation;
+    bool observed = false;
+    std::jthread submitter([&] {
+      const auto deadline = Clock::now() + std::chrono::seconds(2);
+      while (!lab::render_prepare_entered.load() && Clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      observed = lab::render_prepare_entered.load();
+      cancellation.request_stop();
+    });
+    const auto started = Clock::now();
+    const auto result = output.selectOutput(registry, {AudioDirection::output, invalid}, cancellation.get_token());
+    submitter.join();
+    require(observed && result == RemoteOutputFailure::cancelled &&
+            Clock::now() - started < std::chrono::milliseconds(500),
+            "Output prepare did not observe cancellation within the control budget");
+    const auto after = output.stats();
+    require(after.state == RemoteOutputState::running && after.commits == before.commits &&
+            after.active.epoch == before.active.epoch, "Cancelled candidate replaced the healthy output");
+    require(output.reconcile(registry, inventory.revision, cancellation.get_token()) == RemoteOutputFailure::cancelled &&
+            output.stats().candidates == after.candidates && output.stats().recovery_attempts == 0,
+            "Cancelled retry consumed an attempt or created another candidate");
+    require(output.selectOutput(registry, {AudioDirection::output, {}}) == RemoteOutputFailure::none,
+            "Latest desired output could not run after cancellation");
+    const auto deadline = Clock::now() + std::chrono::milliseconds(250);
+    while (output.stats().active.consumed_frames <= before.active.consumed_frames && Clock::now() < deadline)
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    require(output.stats().active.consumed_frames > before.active.consumed_frames,
+            "Output stopped progressing during candidate cancellation");
+    require(output.stop(Clock::now() + std::chrono::seconds(2)) &&
+            mixer.stop(Clock::now() + std::chrono::seconds(2)), "Output cancellation fixture did not drain");
+  });
+  const auto owner_cancellation = [&](bool shutdown) {
+    using namespace syrnike::windows_media;
+    struct ResetFault {
+      ~ResetFault() {
+        lab::render_block_prepare = false;
+        lab::render_prepare_entered = false;
+        lab::render_probe_epoch = 0;
+      }
+    } reset;
+    RemoteAudioMixerWorker mixer;
+    RemoteAudioTracks tracks(mixer);
+    OutputOwner owner(registry, mixer, tracks);
+    OutputIntent intent;
+    intent.state = OutputIntentState::on;
+    owner.apply(1, intent, true, inventory.revision);
+    const auto ready_deadline = Clock::now() + std::chrono::seconds(2);
+    while (owner.snapshot().path.state != MediaPathState::Running && Clock::now() < ready_deadline)
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    const auto before = owner.snapshot();
+    require(before.path.state == MediaPathState::Running, "Output owner did not become healthy");
+    lab::render_probe_epoch = before.output.candidates + 1;
+    lab::render_prepare_entered = false;
+    lab::render_block_prepare = true;
+    intent.device_id = std::to_string(*invalid);
+    owner.apply(2, intent, true, inventory.revision);
+    const auto entered_deadline = Clock::now() + std::chrono::seconds(2);
+    while (!lab::render_prepare_entered.load() && Clock::now() < entered_deadline)
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    require(lab::render_prepare_entered.load(), "Output owner did not enter pending preparation");
+    const auto cancelled_at = Clock::now();
+    if (shutdown) {
+      owner.beginStop();
+      owner.stop();
+      require(owner.snapshot().stopped, "Shutdown left a pending output owner");
+    } else {
+      intent.device_id.reset();
+      owner.apply(3, intent, true, inventory.revision);
+      const auto deadline = Clock::now() + std::chrono::milliseconds(500);
+      while ((owner.snapshot().path.revision != 3 || owner.snapshot().path.state != MediaPathState::Running ||
+              owner.snapshot().output.active.consumed_frames <= before.output.active.consumed_frames) && Clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+      const auto latest = owner.snapshot();
+      require(latest.path.revision == 3 && latest.path.state == MediaPathState::Running &&
+              !latest.path.failure && latest.output.commits == before.output.commits &&
+              latest.output.active.epoch == before.output.active.epoch &&
+              latest.output.active.consumed_frames > before.output.active.consumed_frames,
+              "Output owner did not preserve healthy progress and publish only the latest intent");
+    }
+    require(Clock::now() - cancelled_at < std::chrono::milliseconds(500),
+            "Output owner cancellation exceeded its control budget");
+    owner.stop();
+    tracks.stop();
+    require(mixer.stop(Clock::now() + std::chrono::seconds(2)), "Output owner fixture did not drain");
+  };
+  syrnike::windows_media::tests::repeatFault("output-owner-latest-intent", [&] { owner_cancellation(false); });
+  syrnike::windows_media::tests::repeatFault("output-owner-pending-shutdown", [&] { owner_cancellation(true); });
+  return 0;
+}
+
 int remoteAudioFaultMatrix(bool retry_only) {
   namespace lab = syrnike::windows_media::lab;
   AudioDeviceRegistry registry(std::make_unique<OutputFixtureDevices>());

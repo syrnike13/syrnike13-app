@@ -636,7 +636,7 @@ if(WINDOWS_MEDIA_BUILD_LAB)
   target_link_libraries(media_remote_audio_livekit_lab PUBLIC media_remote_audio_mixer media_livekit)
   add_executable(remote_audio_lab src/lab/remote_audio_lab.cpp src/lab/remote_audio_livekit_lab.cpp
     src/lab/remote_audio_output_lab.cpp src/lab/remote_audio_aec_lab.cpp src/lab/remote_audio_ducking_lab.cpp
-    src/lab/remote_audio_echo_publication_lab.cpp)
+    src/lab/remote_audio_echo_publication_lab.cpp src/audio/output_owner.cpp)
   windows_media_target(remote_audio_lab)
   target_include_directories(remote_audio_lab PRIVATE tests)
   target_link_libraries(remote_audio_lab PRIVATE media_wasapi_output_lab media_remote_audio_livekit_lab media_microphone_livekit
@@ -645,6 +645,8 @@ if(WINDOWS_MEDIA_BUILD_LAB)
   windows_media_copy_livekit_runtime(remote_audio_lab)
   add_test(NAME output-platform-faults COMMAND remote_audio_lab fault-matrix)
   set_tests_properties(output-platform-faults PROPERTIES TIMEOUT 180 LABELS "requires-audio-device")
+  add_test(NAME output-cancellation-faults COMMAND remote_audio_lab cancellation)
+  set_tests_properties(output-cancellation-faults PROPERTIES TIMEOUT 60 LABELS "requires-audio-device")
   windows_media_target(remote_audio_reference)
   target_compile_definitions(remote_audio_reference PRIVATE _CRT_SECURE_NO_WARNINGS)
   target_link_libraries(remote_audio_reference PRIVATE LiveKit::livekit)

@@ -10,6 +10,7 @@ inline std::atomic_uint64_t render_probe_epoch{0};
 inline std::atomic_uint32_t render_delay_ms{0};
 inline std::atomic_bool render_stop_client{false};
 inline std::atomic_bool render_device_loss{false};
+inline std::atomic_bool render_block_prepare{false}, render_prepare_entered{false};
 // Only the output owner's retry schedule uses this test clock. WASAPI start,
 // progress and shutdown keep their real clocks and production deadlines.
 inline std::atomic_int64_t output_retry_time_ms{-1};

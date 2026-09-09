@@ -74,11 +74,12 @@ WasapiOutput::WasapiOutput() : state_(std::make_shared<State>()) {}
 WasapiOutput::~WasapiOutput() {
   if (!stop(Clock::now() + std::chrono::seconds{5})) std::terminate();
 }
-WasapiOutputFailure WasapiOutput::start(AudioEndpoint endpoint, std::uint64_t epoch) {
+WasapiOutputFailure WasapiOutput::start(AudioEndpoint endpoint, std::uint64_t epoch, std::stop_token cancellation) {
   if (owner_ != std::this_thread::get_id() || worker_.joinable() || !epoch ||
       state_->status != WasapiOutputState::stopped || state_->input ||
       endpoint.direction != AudioDirection::output || endpoint.endpoint_id.empty())
     return WasapiOutputFailure::invalid_state;
+  if (cancellation.stop_requested()) return WasapiOutputFailure::cancelled;
   state_->epoch = epoch;
   state_->input = std::make_shared<RemoteAudioPcmPort>(epoch, 2);
   state_->echo = std::make_shared<RenderedEchoReference>(epoch);
@@ -92,7 +93,14 @@ WasapiOutputFailure WasapiOutput::start(AudioEndpoint endpoint, std::uint64_t ep
     SetEvent(state_->done.value);
     return WasapiOutputFailure::activation_failed;
   }
-  if (WaitForSingleObject(state_->ready.value, 5000) != WAIT_OBJECT_0) {
+  // Cancellation only signals the worker's owned event; it never waits for the
+  // platform call on the submitting control lane. Teardown retains its deadline.
+  std::stop_callback cancel(cancellation, [state = state_] { SetEvent(state->stop.value); });
+  const HANDLE events[]{state_->stop.value, state_->ready.value};
+  const auto wake = WaitForMultipleObjects(2, events, FALSE, 5000);
+  if (cancellation.stop_requested() || wake == WAIT_OBJECT_0)
+    return WasapiOutputFailure::cancelled;
+  if (wake != WAIT_OBJECT_0 + 1) {
     state_->fail(WasapiOutputFailure::start_timeout, HRESULT_FROM_WIN32(WAIT_TIMEOUT));
     SetEvent(state_->stop.value);
     return WasapiOutputFailure::start_timeout;
@@ -138,6 +146,13 @@ WasapiOutputStats WasapiOutput::stats() const noexcept {
 void WasapiOutput::run(const std::shared_ptr<State>& state, AudioEndpoint endpoint) noexcept {
   state->thread_alive = true;
   try {
+#ifdef WINDOWS_MEDIA_REMOTE_AUDIO_PROBE
+    if (lab::render_probe_epoch.load() == state->epoch && lab::render_block_prepare.load()) {
+      lab::render_prepare_entered = true;
+      WaitForSingleObject(state->stop.value, INFINITE);
+      throw Failure{WasapiOutputFailure::cancelled, HRESULT_FROM_WIN32(ERROR_CANCELLED)};
+    }
+#endif
     Apartment apartment;
     check(apartment.result, WasapiOutputFailure::activation_failed);
     ComPtr<IMMDeviceEnumerator> enumerator;
