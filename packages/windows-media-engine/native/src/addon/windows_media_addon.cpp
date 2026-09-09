@@ -78,6 +78,9 @@ Napi::Object failureObject(Napi::Env env, const EngineFailure &failure) {
   object.Set(protocolField(env, fields, 1), failure.message);
   object.Set(protocolField(env, fields, 2), failure.stage);
   object.Set(protocolField(env, fields, 3), failure.retryable);
+  if (failure.cause_sequence != 0)
+    object.Set(protocolField(env, fields, 4), Napi::Number::New(env,
+        static_cast<double>(failure.cause_sequence)));
   return object;
 }
 

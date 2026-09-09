@@ -208,6 +208,7 @@ export const runMediaUtilityHostEffect = Effect.fn(
   let shuttingDown = false
   let boundHostEpoch: number | undefined
   const emitPublic = (rawEvent: unknown) => {
+    const receivedAtMs = Date.now()
     const decoded = Schema.decodeUnknownOption(MediaLifecycleEventSchema, {
       onExcessProperty: 'error',
     })(rawEvent)
@@ -220,6 +221,20 @@ export const runMediaUtilityHostEffect = Effect.fn(
         ),
       )
       return
+    }
+    const failure = decoded.value.failure
+    if (failure?.causeSequence !== undefined) {
+      // Record the actual utility boundary before forwarding the reliable event.
+      // Diagnostic delivery is optional; the failure itself retains the cause.
+      emitDiagnostic({
+        sequence: decoded.value.sequence, timestampMs: receivedAtMs,
+        component: 'utility', operation: 'forward_native_failure',
+        code: failure.code.slice(0, 64),
+        metrics: [
+          { name: 'cause_sequence', value: failure.causeSequence },
+          { name: 'native_event_sequence', value: decoded.value.sequence },
+        ],
+      })
     }
     hostPort.postMessage({
       type: 'event',
@@ -569,32 +584,15 @@ function invokeAddon(operation: () => unknown, stage: string) {
 }
 
 function sanitizePublicEvent(event: MediaLifecycleEvent): MediaLifecycleEvent {
-  if (event.type === 'fatalEngineFailure') {
-    return {
-      ...event,
-      failure: mediaLifecycleFailure(
-        event.failure.code,
-        event.failure.message,
-        event.failure.stage,
-        event.failure.retryable,
-      ),
-    }
+  if (!event.failure || event.type === 'trackStateChanged') return event
+  const failure = event.failure
+  return {
+    ...event,
+    failure: {
+      ...failure,
+      ...mediaLifecycleFailure(failure.code, failure.message, failure.stage, failure.retryable),
+    },
   }
-  if (
-    (event.type === 'engineStateChanged' || event.type === 'roomStateChanged') &&
-    event.failure
-  ) {
-    return {
-      ...event,
-      failure: mediaLifecycleFailure(
-        event.failure.code,
-        event.failure.message,
-        event.failure.stage,
-        event.failure.retryable,
-      ),
-    }
-  }
-  return event
 }
 
 function postSuccessReply(

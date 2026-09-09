@@ -790,10 +790,13 @@ private:
         (event.failure->code == "room_operation_unresponsive" ||
          event.failure->code == "room_authority_mismatch");
     if (fatal_room_failure) {
-      setRoomPublicState(RoomStateChangedEvent::State::Failed, event.failure);
-      transition(EngineState::Failed, event.failure);
+      auto problem = *event.failure;
+      problem.cause_sequence = event_sequence_ + 1;
+      emitFailureDiagnostic(problem);
+      setRoomPublicState(RoomStateChangedEvent::State::Failed, problem);
+      transition(EngineState::Failed, problem);
       if (pending_shutdown_command_)
-        completeDeferredShutdown(EngineResult::fail(*event.failure));
+        completeDeferredShutdown(EngineResult::fail(problem));
       return;
     }
     if (state_.load() == EngineState::Stopping) {
@@ -976,6 +979,12 @@ private:
   void
   transition(EngineState next,
              std::optional<EngineFailure> transition_failure = std::nullopt) {
+    if (next == EngineState::Failed && transition_failure &&
+        transition_failure->code != "startup_cancelled" &&
+        transition_failure->cause_sequence == 0) {
+      transition_failure->cause_sequence = event_sequence_ + 1;
+      emitFailureDiagnostic(*transition_failure);
+    }
     const auto previous = state_.exchange(next);
     PublicEventCallback callback;
     {
@@ -1146,6 +1155,24 @@ private:
     if (state_.load() == EngineState::Stopping && media.stopped &&
         (!room_owner_ || room_owner_->state() == RoomConnectionState::Disconnected))
       completeDeferredShutdown(EngineResult::success());
+  }
+
+  void emitFailureDiagnostic(const EngineFailure &problem) {
+    DiagnosticEventCallback callback;
+    {
+      std::lock_guard lock(diagnostic_callback_mutex_);
+      callback = diagnostic_callback_;
+    }
+    if (!callback) return;
+    const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    callback(DiagnosticEvent{
+        ++diagnostic_sequence_, static_cast<std::uint64_t>(now),
+        "engine", problem.stage, problem.code,
+        {DiagnosticMetric{"cause_sequence", static_cast<double>(problem.cause_sequence)},
+         DiagnosticMetric{"revision", static_cast<double>(
+             accepted_desired_state_ ? accepted_desired_state_->revision : 0)}},
+    });
   }
 
   void emitDiagnostic(const char *code, double revision) {

@@ -1,4 +1,5 @@
 import { Effect, Fiber, Layer, ManagedRuntime, Option, Schema } from 'effect'
+import { DiagnosticCorrelationIdSchema } from '../diagnostics'
 
 import type {
   VoiceAuthorityAdapter,
@@ -51,6 +52,7 @@ const VoiceFailureSchema = Schema.Struct({
   retryable: Schema.Boolean,
   stage: Schema.optional(Schema.String),
   hresult: Schema.optional(Schema.Number),
+  diagnosticCorrelationId: Schema.optional(DiagnosticCorrelationIdSchema),
 })
 
 const FailureCarrierSchema = Schema.Struct({

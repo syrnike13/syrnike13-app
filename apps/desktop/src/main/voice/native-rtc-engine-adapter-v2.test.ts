@@ -14,6 +14,7 @@ import {
 } from '../media-runtime/contract'
 import type { MediaRuntimeSupervisorSnapshot } from '../media-runtime/media-runtime-supervisor'
 import { NativeRtcEngineAdapterV2 } from './native-rtc-engine-adapter-v2'
+import { getNativeDiagnosticCorrelationId } from '../native-runtime/diagnostic-incidents'
 
 const lease: VoiceLease = {
   channelId: 'channel-a', rtcEngine: 'windows_native', clientInstanceId: 'desktop-a',
@@ -48,6 +49,9 @@ class Runtime {
     build: { commit: '0'.repeat(40), napi: '8', protocolSchemaSha256: MEDIA_LIFECYCLE_SCHEMA_SHA256 },
   }
   getHostEpoch() { return this.epoch }
+  getFailureEpisodeId(causeSequence?: number) {
+    return causeSequence === undefined ? undefined : `native:${this.epoch}:${causeSequence}`
+  }
   getSnapshot(): MediaRuntimeSupervisorSnapshot { return { status: this.status, restartCount: this.epoch - 1, failure: this.failure } }
   onStateChange(listener: (snapshot: MediaRuntimeSupervisorSnapshot) => void) { this.states.add(listener); return () => this.states.delete(listener) }
   onEvent(listener: (event: MediaLifecycleEvent) => void) { this.events.add(listener); return () => this.events.delete(listener) }
@@ -106,6 +110,28 @@ async function join(runtime: Runtime, adapter: NativeRtcEngineAdapterV2, desired
 }
 
 describe('NativeRtcEngineAdapterV2', () => {
+  it('carries the native cause through both connect rejection and terminal projection', async () => {
+    const runtime = new Runtime()
+    const adapter = new NativeRtcEngineAdapterV2(runtime)
+    const events: VoiceEngineEvent[] = []
+    adapter.subscribe(event => events.push(event))
+    const connect = adapter.connect(lease, createInitialVoiceMediaDesiredState(), new AbortController().signal)
+    const alias = getNativeDiagnosticCorrelationId('native:1:7')
+    const rejected = expect(connect).rejects.toMatchObject({
+      failure: { code: 'room_operation_unresponsive', diagnosticCorrelationId: alias },
+    })
+    await vi.waitFor(() => expect(runtime.current.acceptedRevision).not.toBeNull())
+    for (const listener of runtime.events) listener({
+      type: 'roomStateChanged', sequence: 7, revision: runtime.current.acceptedRevision!, state: 'failed',
+      failure: { code: 'room_operation_unresponsive', message: 'Connect hung', stage: 'room_connect', retryable: true, causeSequence: 7 },
+    })
+    await rejected
+    expect(events.filter(event => event.type === 'terminalFailure')).toEqual([
+      expect.objectContaining({ failure: expect.objectContaining({ diagnosticCorrelationId: alias }) }),
+    ])
+    await adapter.dispose()
+  })
+
   it('keeps capture warm across server mute and restores only microphone publication', async () => {
     const runtime = new Runtime()
     const adapter = new NativeRtcEngineAdapterV2(runtime)

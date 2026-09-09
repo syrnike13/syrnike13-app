@@ -17,7 +17,7 @@ import {
   createNativeDiagnosticLog, createNativeDiagnosticSession,
   pruneNativeDiagnosticSessionsEffect, type NativeDiagnosticLog, type DiagnosticLogRecord,
 } from './native-runtime/diagnostic-log'
-import { captureNativeDiagnosticIncident } from './native-runtime/diagnostic-incidents'
+import { captureNativeDiagnosticIncident, getNativeDiagnosticCorrelationId } from './native-runtime/diagnostic-incidents'
 
 export const NATIVE_MEDIA_UNAVAILABLE_STATE: NativeMediaRuntimeState = {
   available: false,
@@ -173,16 +173,20 @@ export function createNativeRtcEngineAdapter() {
       lane: 'track' in event ? event.track : undefined,
       status: 'state' in event ? event.state : 'failed',
       errorCode: event.failure?.code, stage: event.failure?.stage,
-      episodeId: event.type === 'fatalEngineFailure' ? runtime.getFailureEpisodeId() : undefined,
+      episodeId: event.failure ? runtime.getFailureEpisodeId(event.failure.causeSequence) : undefined,
       fatal: event.type === 'fatalEngineFailure',
     })
   }), runtime.onDiagnostic(event => {
+    const causeSequence = event.metrics.find(metric => metric.name === 'cause_sequence')?.value
+    const episodeId = typeof causeSequence === 'number' && Number.isSafeInteger(causeSequence) && causeSequence > 0
+      ? runtime.getFailureEpisodeId(causeSequence) : undefined
     // Implementation strings may contain device names or native handles. Keep
     // bounded numeric evidence and protocol codes in the product journal.
     logNativeVoiceDiagnostic('native_diagnostic', {
       hostEpoch: runtime.getHostEpoch(), nativeSequence: event.sequence,
       timestampMs: event.timestampMs, component: event.component,
       operation: event.operation, code: event.code, metrics: event.metrics,
+      correlationId: episodeId ? getNativeDiagnosticCorrelationId(episodeId) : undefined,
     })
     if (event.code === 'camera_metrics')
       logNativeVoiceDiagnostic('presentation_metrics', frames.metrics())
@@ -219,8 +223,8 @@ export function logNativeVoiceDiagnostic(event: string, data?: unknown) {
 }
 
 function recordMediaDiagnostic(record: DiagnosticLogRecord) {
-  logNativeVoiceDiagnostic(record.event, record)
-  captureNativeDiagnosticIncident(record)
+  const incident = captureNativeDiagnosticIncident(record)
+  logNativeVoiceDiagnostic(record.event, { ...record, correlationId: incident?.correlationId })
 }
 
 export const flushNativeMediaDiagnosticsEffect = Effect.fn(

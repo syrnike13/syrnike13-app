@@ -1,4 +1,5 @@
 import { Option, Schema } from 'effect'
+import { DiagnosticCorrelationIdSchema } from '@syrnike13/platform'
 import {
   MicrophoneIntentSchema,
   CameraIntentSchema,
@@ -78,12 +79,20 @@ export const MediaLifecycleFailureSchema = Schema.Struct({
   ),
   stage: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureStageLength),
   retryable: Schema.Boolean,
+  causeSequence: Schema.optional(Schema.Int.check(
+    Schema.isBetween({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+  )),
 })
 
 export class MediaLifecycleError extends Schema.TaggedErrorClass<
   MediaLifecycleError
 >()('MediaLifecycleError', {
-  failure: MediaLifecycleFailureSchema,
+  // Main may add its report alias to a rejected operation. The native wire
+  // failure remains the smaller schema above and cannot supply this alias.
+  failure: Schema.Struct({
+    ...MediaLifecycleFailureSchema.fields,
+    diagnosticCorrelationId: Schema.optional(DiagnosticCorrelationIdSchema),
+  }),
 }) {}
 
 export const MediaEngineStateSchema = Schema.Literals([
@@ -546,6 +555,7 @@ export function failureFromUnknown(cause: unknown, stage: string): MediaLifecycl
       message: Reflect.get(cause, 'message'),
       stage: Reflect.get(cause, 'stage') ?? stage,
       retryable: Reflect.get(cause, 'retryable') ?? false,
+      causeSequence: Reflect.get(cause, 'causeSequence'),
     })
     if (Option.isSome(decoded)) {
       return {

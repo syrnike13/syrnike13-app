@@ -506,23 +506,37 @@ describe('MediaRuntimeSupervisor', () => {
     await started
     const pendingPing = supervisor.ping()
     await vi.waitFor(() => expect(first.requests).toHaveLength(1))
+    const cause = supervisor.getFailureEpisodeId(1)
+    const projectedCauses: (string | undefined)[] = []
+    supervisor.onEvent(event => projectedCauses.push(supervisor.getFailureEpisodeId(event.failure?.causeSequence)))
+    const nativeFailure = {
+      code: 'room_operation_unresponsive',
+      message: 'Room operation exceeded its independent deadline',
+      stage: 'room_disconnect', retryable: true, causeSequence: 1,
+    }
+    first.callbacks?.onMessage({
+      type: 'event', protocolVersion: 4,
+      event: { type: 'roomStateChanged', sequence: 1, revision: 1, state: 'failed', failure: nativeFailure },
+    })
+    first.callbacks?.onMessage({
+      type: 'event', protocolVersion: 4,
+      event: { type: 'engineStateChanged', sequence: 2, previous: 'running', state: 'failed', failure: nativeFailure },
+    })
+    expect(first.killed).toBe(false)
 
     first.callbacks?.onMessage({
       type: 'event',
       protocolVersion: 4,
       event: {
         type: 'fatalEngineFailure',
-        sequence: 1,
-        failure: {
-          code: 'room_operation_unresponsive',
-          message: 'Room operation exceeded its independent deadline',
-          stage: 'room_disconnect',
-          retryable: true,
-        },
+        sequence: 3,
+        failure: nativeFailure,
       },
     })
 
     expect(first.killed).toBe(true)
+    expect(projectedCauses).toEqual([cause, cause, cause])
+    expect(supervisor.getFailureEpisodeId()).toBe(cause)
     expect(supervisor.getSnapshot()).toMatchObject({
       status: 'recovering',
       failure: { code: 'room_operation_unresponsive' },
@@ -534,6 +548,7 @@ describe('MediaRuntimeSupervisor', () => {
     second.ready()
     await vi.waitFor(() => expect(supervisor.getSnapshot().status).toBe('ready'))
     expect(supervisor.getSnapshot().restartCount).toBe(1)
+    expect(supervisor.getFailureEpisodeId(1)).not.toBe(cause)
     expect(second.requests).toHaveLength(0)
 
     const shutdown = supervisor.shutdown()

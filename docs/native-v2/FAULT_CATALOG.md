@@ -742,3 +742,21 @@ capture on missing-server failures; no such capture was triggered. Its close
 wrapper performs a page check inside the shutdown budget. The archive preserves
 loaded product callbacks and explicitly labels the post-run wrapper description.
 The intermittent startup cause remains unresolved.
+
+## Terminal native incident propagation
+
+Terminal Engine failures now carry an optional `causeSequence`, identifying the
+first native public event for that failure within one utility epoch. Fatal Room
+failures preserve it across Room, Engine and fatal projections. C++ emits a
+bounded diagnostic with the same cause; utility records its own forwarding time.
+Main aliases the epoch-scoped cause before journaling it and projecting the
+failure into Voice Snapshot. Renderer retains the random alias and uses the
+already queued native incident instead of submitting another root report.
+
+The manifest's typed upload metadata is preserved separately from generic
+redaction. Earlier full-product capture exposed missing manifest `source` and
+`release_channel`, redacted correlation aliases and multiple incident roots;
+those earlier captures do not prove successful upload. Native 100-cycle
+projection checks and focused protocol/renderer tests passed; a rebuilt
+full-product capture is still required. This change does not qualify the
+remaining local media fault timelines or hardware resource gates.

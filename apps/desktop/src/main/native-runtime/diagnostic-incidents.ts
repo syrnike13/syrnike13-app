@@ -522,6 +522,14 @@ function incidentCorrelationId(record: DiagnosticLogRecord) {
     record.episodeId ?? record.actionId ?? record.requestId ?? record.sessionId ?? record.operation
   if (!source) return undefined
   const key = record.episodeId ? `episode:${source}` : `${record.scope}:${source}`
+  return correlationAlias(key)
+}
+
+export function getNativeDiagnosticCorrelationId(episodeId: string) {
+  return correlationAlias(`episode:${episodeId}`)
+}
+
+function correlationAlias(key: string) {
   const existing = correlationAliases.get(key)
   if (existing) return existing
   const alias = `incident-${crypto.randomUUID()}`

@@ -20,9 +20,10 @@ import {
   type MediaLifecycleFailure,
 } from '../media-runtime/contract'
 import type { MediaRuntimeSupervisor } from '../media-runtime/media-runtime-supervisor'
+import { getNativeDiagnosticCorrelationId } from '../native-runtime/diagnostic-incidents'
 
 type RuntimePort = Pick<MediaRuntimeSupervisor,
-  'start' | 'getSnapshot' | 'getHostEpoch' | 'onStateChange' | 'onEvent' |
+  'start' | 'getSnapshot' | 'getHostEpoch' | 'getFailureEpisodeId' | 'onStateChange' | 'onEvent' |
   'onSnapshot' | 'installCredentialLease' | 'applyDesiredState' | 'querySnapshot' | 'shutdown'
 >
 
@@ -496,22 +497,32 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     for (const kind of ['microphone', 'output', 'camera', 'screen', 'screen_audio'] satisfies VoiceMediaKind[]) {
       const path = projected.tracks[kind]
       if (path.revision !== this.latest.revision) continue
-      this.emitBound({ type: 'mediaState', kind, media: { state: path.state, error: path.failure } })
+      this.emitBound({ type: 'mediaState', kind, media: {
+        state: path.state, error: path.failure ? this.projectFailure(path.failure) : undefined,
+      } })
     }
     if (snapshot.roomState === 'failed' && snapshot.roomFailure) this.failRoom(snapshot.roomFailure)
     for (const listener of this.snapshotListeners) listener(projected)
   }
 
   private failRoom(failure: MediaLifecycleFailure): void {
+    const projectedFailure = this.projectFailure(failure)
     if (this.waiter) {
       const waiter = this.waiter
       this.waiter = null
       waiter.cleanup()
-      waiter.reject(new MediaLifecycleError({ failure }))
+      waiter.reject(new MediaLifecycleError({ failure: projectedFailure }))
     }
     if (!this.binding || this.terminalReported) return
     this.terminalReported = true
-    this.emitBound({ type: 'terminalFailure', failure })
+    this.emitBound({ type: 'terminalFailure', failure: projectedFailure })
+  }
+
+  private projectFailure(failure: MediaLifecycleFailure) {
+    const episodeId = this.runtime.getFailureEpisodeId(failure.causeSequence)
+    return episodeId
+      ? { ...failure, diagnosticCorrelationId: getNativeDiagnosticCorrelationId(episodeId) }
+      : failure
   }
 
   private emitBound(event: BoundEvent): void {
@@ -531,7 +542,8 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     const state = this.runtime.getSnapshot()
     return {
       type: 'availabilityChanged', available: state.status === 'ready' || state.status === 'stopped',
-      retryable: state.failure?.retryable ?? true, failure: state.failure,
+      retryable: state.failure?.retryable ?? true,
+      failure: state.failure ? this.projectFailure(state.failure) : undefined,
     }
   }
   private emitAvailability(): void {

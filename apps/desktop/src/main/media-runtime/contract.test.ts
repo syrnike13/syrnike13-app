@@ -12,6 +12,7 @@ import {
   EngineDesiredStateSchema,
   MediaCredentialLeaseSchema,
   MediaLifecycleDiagnosticMessageSchema,
+  MediaLifecycleFailureSchema,
   MediaLifecyclePublicEventMessageSchema,
   MediaLifecycleReplySchema,
   MediaLifecycleRequestSchema,
@@ -52,6 +53,23 @@ function desiredState(revision = 1): EngineDesiredState {
 }
 
 describe('native media protocol contract', () => {
+  it('accepts an optional native cause sequence but never a wire-supplied report alias', () => {
+    const failure = mediaLifecycleFailure('owner_failed', 'Owner failed', 'room_connect')
+    const decode = Schema.decodeUnknownOption(MediaLifecycleFailureSchema)
+    expect(Option.isSome(decode(failure))).toBe(true)
+    expect(Schema.decodeUnknownSync(MediaLifecycleFailureSchema)({
+      ...failure, causeSequence: 7, diagnosticCorrelationId: 'incident-79360566-3412-4a77-8f4b-36f392b48d6d',
+    })).toEqual({ ...failure, causeSequence: 7 })
+    expect(isMediaLifecycleMessage({
+      type: 'event', protocolVersion: MEDIA_LIFECYCLE_PROTOCOL_VERSION,
+      event: { type: 'fatalEngineFailure', sequence: 7, failure: {
+        ...failure, diagnosticCorrelationId: 'incident-79360566-3412-4a77-8f4b-36f392b48d6d',
+      } },
+    })).toBe(false)
+    for (const causeSequence of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, '7']) {
+      expect(Option.isNone(decode({ ...failure, causeSequence }))).toBe(true)
+    }
+  })
   it('preserves complete media intent and rejects invalid active settings', () => {
     const state: EngineDesiredState = {
       ...desiredState(),

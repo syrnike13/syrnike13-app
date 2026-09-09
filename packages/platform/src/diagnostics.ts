@@ -2,6 +2,9 @@ import { Schema } from 'effect'
 
 export const DIAGNOSTIC_SCHEMA = 'syrnike.diagnostic' as const
 export const DIAGNOSTIC_SCHEMA_VERSION = 1 as const
+export const DiagnosticCorrelationIdSchema = Schema.String.check(
+  Schema.isPattern(/^incident-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
+)
 
 export type DiagnosticJsonValue = Schema.Json
 

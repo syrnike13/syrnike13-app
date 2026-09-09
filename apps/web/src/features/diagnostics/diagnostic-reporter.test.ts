@@ -39,12 +39,14 @@ describe('diagnostic reporter', () => {
         { correlationId: second },
         { correlationId: 'secret-value-that-is-longer-than-thirty-two-characters' },
       ],
+      failure: { diagnosticCorrelationId: first },
       message: first,
       userId: second,
     })
     const records = JSON.parse(diagnosticEventsJsonForTests())
     expect(records[0].data.payload).toEqual({
       incidents: [{ correlationId: first }, { correlationId: second }, { correlationId: '[redacted]' }],
+      failure: { diagnosticCorrelationId: first },
       message: '[redacted]',
     })
   })

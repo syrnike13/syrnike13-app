@@ -39,7 +39,7 @@
     "shutdownDeadlineMs": 1000
   },
   "fields": {
-    "failure": ["code", "message", "stage", "retryable"],
+    "failure": ["code", "message", "stage", "retryable", "causeSequence"],
     "credentialLease": ["leaseId", "serverUrl", "accessToken"],
     "roomIntent": ["roomId", "participantIdentity", "credentialLeaseId"],
     "remoteVideoDemand": ["participantIdentity", "publicationId"],
@@ -373,7 +373,8 @@
           "code": "fixture_failure",
           "message": "fixture failure",
           "stage": "fixture",
-          "retryable": false
+          "retryable": false,
+          "causeSequence": 1
         }
       }
     ],
@@ -400,7 +401,8 @@
             "code": "credential_lease_missing",
             "message": "Desired room references an unavailable credential lease",
             "stage": "room_connect",
-            "retryable": false
+            "retryable": false,
+            "causeSequence": 1
           }
         }
       },
@@ -426,7 +428,8 @@
             "code": "fixture_fatal",
             "message": "fixture fatal failure",
             "stage": "fixture",
-            "retryable": false
+            "retryable": false,
+            "causeSequence": 1
           }
         }
       }

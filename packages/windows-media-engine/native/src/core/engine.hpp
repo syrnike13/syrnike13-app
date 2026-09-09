@@ -67,6 +67,9 @@ struct EngineFailure {
   std::string message;
   std::string stage;
   bool retryable = false;
+  // First public event for this terminal failure, scoped to this Engine host.
+  // Copies retain the cause across Room, Engine and fatal projections.
+  std::uint64_t cause_sequence = 0;
 
   bool operator==(const EngineFailure &) const = default;
 };

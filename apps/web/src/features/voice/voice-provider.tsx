@@ -647,7 +647,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       : null
     if (failureKey && failureKey !== previousFailureRef.current) {
       toast.error(snapshot.failure?.message ?? 'Не удалось подключиться к голосу')
-      if (auth.session?.token && snapshot.failure) {
+      // A native cause is already queued by main and leased by the renderer.
+      // Keep its snapshot projection without enqueuing a second root report.
+      if (auth.session?.token && snapshot.failure && !snapshot.failure.diagnosticCorrelationId) {
         enqueueAutomaticDiagnosticIncident({
           area: 'voice',
           severity: 'error',
@@ -680,7 +682,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         // Desktop path failures already have localized, actionable runtime banners.
         toast.error(error?.message ?? 'Медиа недоступно')
       }
-      if (auth.session?.token && error && mediaFailure) {
+      if (auth.session?.token && error && mediaFailure && !error.diagnosticCorrelationId) {
         enqueueAutomaticDiagnosticIncident({
           area: mediaFailure[0] === 'screen_audio' ? 'screen' : mediaFailure[0],
           severity: error.code === 'output_device_fallback' ? 'warning' : 'error',

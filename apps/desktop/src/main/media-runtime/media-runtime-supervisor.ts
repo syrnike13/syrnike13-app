@@ -128,7 +128,8 @@ export class MediaRuntimeSupervisor {
     return this.hostEpoch
   }
 
-  getFailureEpisodeId() {
+  getFailureEpisodeId(causeSequence?: number) {
+    if (causeSequence !== undefined) return `native:${this.hostEpoch}:${causeSequence}`
     return this.failureEpisodeId
   }
 
@@ -524,7 +525,9 @@ export class MediaRuntimeSupervisor {
       return
     }
     const event = rawMessage.event
-    if (event.type === 'fatalEngineFailure') this.failureEpisodeId ??= crypto.randomUUID()
+    if (event.type === 'fatalEngineFailure') {
+      this.failureEpisodeId ??= this.getFailureEpisodeId(event.failure.causeSequence) ?? crypto.randomUUID()
+    }
     const hasGap = event.sequence !== this.lastPublicEventSequence + 1
     this.lastPublicEventSequence = event.sequence
     for (const listener of this.eventListeners) listener(event)
