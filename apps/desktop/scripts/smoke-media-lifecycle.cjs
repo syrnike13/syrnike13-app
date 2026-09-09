@@ -373,6 +373,13 @@ async function nativeConformance() {
     'trackStateChanged',
   ]) {
     const canonical = canonicalPublicEvent(type)
+    // Canonical transport fixtures also exercise optional terminal-incident
+    // metadata. This scenario rejects a missing credential lease before any
+    // Room operation starts, so it has no native terminal incident to cite.
+    if (type === 'roomStateChanged') {
+      delete canonical.failure.causeSequence
+      delete canonical.failure.causeTimestampMs
+    }
     const emitted = publicEventsByType.get(type) || []
     // Sequence is monotonic delivery identity, not a fixed cross-owner schedule.
     if (!emitted.some((event) => isDeepStrictEqual({ ...event, sequence: canonical.sequence }, canonical))) {

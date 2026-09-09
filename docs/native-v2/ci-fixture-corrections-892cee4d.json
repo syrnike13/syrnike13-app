@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "scope": "targeted fixture corrections following CI failure; not product fault qualification",
+  "sourceBase": "892cee4d",
+  "sourceState": "local changes identified by complete file hashes",
+  "sourceFiles": [
+    {
+      "file": "apps/desktop/scripts/smoke-media-lifecycle.cjs",
+      "sha256": "d7d3842951e817aca59fceaf69aac981539e2ec17ad6abb21cc46562f4993eae"
+    },
+    {
+      "file": "packages/windows-media-engine/native/src/probe/window_capture_probe.cpp",
+      "sha256": "0a7ed6901b4cd7bec27111c6afdc7e0c98e60cf356c54063c37c8d1f4f2bd95a"
+    }
+  ],
+  "originalCi": {
+    "runUrl": "https://github.com/syrnike13/syrnike13-app/actions/runs/34389912843",
+    "overallPassed": false,
+    "asan": {
+      "passed": false,
+      "command": "capture-window-minimize --fixture",
+      "measuredFrames": 40,
+      "noContentIntervals": 2,
+      "handles": [
+        252,
+        252
+      ],
+      "threads": [
+        10,
+        11
+      ],
+      "threadBudget": 0,
+      "additionalThreadStart": {
+        "module": "ntdll.dll",
+        "offset": "0x75bc0"
+      },
+      "causeEstablished": false,
+      "correction": "Exercise the existing full visibility scenario once before measuring; no resource budget changes."
+    },
+    "electronSmoke": {
+      "passed": false,
+      "failure": "canonical_room_event_mismatch",
+      "correction": "Missing-credential rejection has no native terminal incident; omit the two optional incident fields from the expected event for this scenario only. Preserve strict comparison of emitted fields."
+    },
+    "logs": [
+      {
+        "file": "issue131-ci-892cee4d-asan-job.log",
+        "sha256": "c046575d143d9f90148310526e710f47743a1aaff6501e135016437c76c0549e"
+      },
+      {
+        "file": "issue131-ci-892cee4d-normal-job.log",
+        "sha256": "0b15cd00de1bbe7ffc5fe90977c2e1d1d5f4371de1eb047c91c7498afa778c95"
+      }
+    ]
+  },
+  "local": {
+    "windowMinimize": {
+      "passed": true,
+      "measuredFrames": 40,
+      "warmup": {
+        "cycles": 1,
+        "visibilityTransitions": true
+      },
+      "noContentIntervals": 2,
+      "resources": {
+        "before": {
+          "handles": 461,
+          "threads": 28
+        },
+        "after": {
+          "handles": 462,
+          "threads": 28
+        },
+        "delta": {
+          "handles": 1,
+          "threads": 0
+        },
+        "budget": {
+          "handles": 4,
+          "threads": 0
+        }
+      },
+      "d3dDebug": {
+        "requested": false,
+        "enabled": false,
+        "status": "skipped",
+        "reportHresult": 0,
+        "liveEngineObjects": 0,
+        "peakEngineObjects": 1,
+        "cleanupCompleted": true
+      }
+    },
+    "windowContract": {
+      "passed": true,
+      "tests": 1,
+      "elapsedSeconds": 57.37,
+      "logSha256": "c8d6d02a212e2fc70bbedb309accee73059b2be4b9a3c71a3e627b3d823dc441",
+      "qualificationLimit": "Cached Release native build with changed probe source; ASan rerun is pending."
+    },
+    "electronSmoke": {
+      "status": "pass",
+      "lifecycleCycles": 50,
+      "incompatibleHandshake": "rejected",
+      "unexpectedExit": "unexpected_exit",
+      "stalledUtilityTermination": "kernel_exit_confirmed",
+      "processGuard": {
+        "warmupRepetitions": 100,
+        "repetitions": {
+          "terminate": 100,
+          "close": 100,
+          "parentExit": 100
+        },
+        "maximumExitMs": {
+          "terminate": 21.67290000000503,
+          "close": 21.16130000000703,
+          "parentExit": 42.10679999997956
+        },
+        "resourceScope": "electron-integration",
+        "isolatedResources": {
+          "warmupRepetitions": 100,
+          "repetitions": {
+            "terminate": 100,
+            "close": 100,
+            "parentExit": 100
+          },
+          "maximumExitMs": {
+            "terminate": 21.636200000008103,
+            "close": 22.06470000000263,
+            "parentExit": 23.10710000000836
+          },
+          "resourceScope": "isolated-kernel-guard",
+          "isolatedResources": null,
+          "resources": {
+            "cold": {
+              "handles": 210,
+              "threads": 12,
+              "privateBytes": 25665536
+            },
+            "baseline": {
+              "handles": 210,
+              "threads": 12,
+              "privateBytes": 27152384
+            },
+            "final": {
+              "handles": 210,
+              "threads": 9,
+              "privateBytes": 34000896
+            },
+            "delta": {
+              "handles": 0,
+              "threads": -3,
+              "privateBytes": 6848512
+            }
+          }
+        },
+        "resources": {
+          "cold": {
+            "handles": 713,
+            "threads": 31,
+            "privateBytes": 33452032
+          },
+          "baseline": {
+            "handles": 712,
+            "threads": 31,
+            "privateBytes": 40513536
+          },
+          "final": {
+            "handles": 706,
+            "threads": 30,
+            "privateBytes": 46141440
+          },
+          "delta": {
+            "handles": -6,
+            "threads": -1,
+            "privateBytes": 5627904
+          }
+        }
+      },
+      "processExitDeadline": {
+        "elapsedMs": 512.1315,
+        "invalidArgumentsRejected": true,
+        "repeatedArmDidNotExtend": true,
+        "blockedJavaScript": true,
+        "kernelExitConfirmed": true
+      },
+      "nativeConformance": {
+        "publicEvents": 20,
+        "diagnostics": 66,
+        "floodDiagnostics": 64,
+        "diagnosticFlood": 502,
+        "canonicalPublicEvents": [
+          "engineStateChanged",
+          "roomStateChanged",
+          "trackStateChanged"
+        ]
+      },
+      "logSha256": "8c73aa9e9b5ea04256622b03ef05359e7218ba9facd81a0b84ac9b6eca0c5deb",
+      "verifiedFrozenOutputFiles": 20,
+      "mismatches": 0,
+      "qualificationLimit": "Separate staging copied from frozen-99b5ac56 output with only the smoke test correction. This is fixture validation, not final product fault qualification.",
+      "mixedStagingAttempt": {
+        "passed": false,
+        "nativeConformancePassed": true,
+        "failure": "cycle_1_handshake_host_exit_1",
+        "logSha256": "43f40ea1d4af24315f5185dfa40417a55805b3dc01b507c287fb6b8976633ea9"
+      },
+      "missingDependencyLayoutAttempt": {
+        "passed": false,
+        "failure": "utility_cannot_resolve_effect",
+        "reason": "The private staging initially omitted the root node_modules junction needed by pnpm relative links; adding the same two dependency junctions as the frozen fixture passed the one-cycle handshake control.",
+        "logSha256": "79a54bd9442e181fe4de439ff2cd1a51a1e642f2fe2a885c9aededdf7aded8de",
+        "controlLogSha256": "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6"
+      },
+      "earlierAttempt": {
+        "passed": false,
+        "reason": "Stale staged broker did not provide the new native deadline implementation.",
+        "logSha256": "387acb5d740a83a59fa76a80cc1965f2592c7b1d64ffafb44d51654598f3674f"
+      }
+    }
+  }
+}

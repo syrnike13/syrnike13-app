@@ -931,5 +931,35 @@ plus utility exited in 4045 ms despite the blocked quit listener. No additional
 broker or test-side deadline was injected. All 167 application files, two
 drivers and three auxiliary inputs matched after the control. Unchanged web
 and platform artifacts were reused from `52ccd1e3`, with source equivalence
-and their original build identity recorded. The ordinary 100-per-row shutdown
-matrix continues; this single control does not complete it.
+and their original build identity recorded. This single control does not
+complete the ordinary 100-per-row shutdown matrix.
+
+The [subsequent unchanged-product series](shutdown-99b5ac56-incomplete.json.gz)
+remained incomplete. Seven core rows passed 100/100, then output initialize
+failed after two passes; the parallel camera-reader row failed after 86 passes.
+Both utilities exited inside the budget. Main reached `process-exit` and `quit`
+around 2.5 seconds, but its kernel handle became signaled only after 5.1–5.6
+seconds. Neither failed case required fixture termination, which does not
+override the missed 4900 ms gate. Application, driver, auxiliary and running
+backend hashes matched. The native timer's coverage of final OS teardown and
+the cause of that delay remain unresolved; the earlier blocked-JavaScript
+control is narrower evidence.
+
+A [read-only exit-status diagnostic](shutdown-exit-phase-diagnostic-99b5ac56.json)
+retained process handles with query and synchronization access before fault
+entry. Twelve output-initialize cases passed without reproducing the delay.
+The observer records exit-code publication separately from a signaled process
+handle and includes a controlled exit-code-7 check. Its setup adds time before
+fault entry; it does not alter the 4900 ms close budget. These passing cases
+neither supersede the two failures nor identify their cause. All 167 application
+files and two driver files still matched the frozen product after this diagnostic.
+
+[CI fixture corrections](ci-fixture-corrections-892cee4d.json) retain both failures
+from run `34389912843`. The minimize probe now warms up its existing complete
+visibility scenario before measuring, without changing resource budgets. The
+local Release window contract passed. The Electron smoke expects no terminal
+incident metadata for a missing-credential rejection before Room startup;
+transport fixtures still retain optional-field coverage. With consistent frozen
+output and the correct pnpm dependency layout, all 50 lifecycle cycles and the
+100-per-mode process guards passed locally. The artifact also retains failed
+local setup attempts. ASan and the new CI run still need verification.

@@ -1,0 +1,2112 @@
+{
+  "schemaVersion": 1,
+  "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+  "scope": "read-only external Windows exit-status diagnostic; not final fault qualification",
+  "overallQualificationPassed": false,
+  "diagnosticPassed": true,
+  "limits": [
+    "The original two deadline failures remain failed; this bounded 12-case diagnostic did not reproduce them.",
+    "Observer opens QUERY_LIMITED_INFORMATION and SYNCHRONIZE handles before entering the fault; no termination API is called.",
+    "Observer preparation adds approximately one second before fault entry. Measurements start at the unchanged application close boundary.",
+    "GetExitCodeProcess and WaitForSingleObject distinguish exit-status publication from signaled process handles, but do not alone identify a responsible DLL, driver or pending I/O.",
+    "No production shutdown change is justified by the passing diagnostic alone.",
+    "Input verification below covers app files and drivers after this diagnostic; no new backend qualification is claimed."
+  ],
+  "inputs": {
+    "manifestSha256": "dfae924766bef9363b2a3895992e1d58f98f36831dbb5f74f710a44851c0f624",
+    "checkedFiles": 167,
+    "checkedDrivers": 2,
+    "mismatches": 0,
+    "diagnosticHelpers": [
+      {
+        "file": "issue131-exit-status.ps1",
+        "sha256": "40f5b3309ceb4c39263fc5e350b22389c05391f535483b51c1bc9b9feb9ad70e",
+        "capturedAfterRun": true
+      },
+      {
+        "file": "issue131-observe-exit-status.cjs",
+        "sha256": "2c85c7b25b64e0ed3720a852e390759c01f1e7fb5937257cf33bb8b8c255fbb6",
+        "capturedAfterRun": true
+      },
+      {
+        "file": "issue131-observe-exit-path.cjs",
+        "sha256": "bd4fbfa31396b3942f809db02ea8fcc9532c68861e6cd16badeb045ffd1f3f2a",
+        "capturedAfterRun": true
+      }
+    ]
+  },
+  "observerControl": {
+    "expectedExitCode": 7,
+    "events": [
+      {
+        "timestampMs": 1788982133110,
+        "elapsedMs": 1.278,
+        "maximumSampleGapMs": 1.278,
+        "index": 0,
+        "exitCode": 259,
+        "queryError": 0,
+        "waitResult": 258
+      },
+      {
+        "timestampMs": 1788982136085,
+        "elapsedMs": 2977.361,
+        "maximumSampleGapMs": 11.903,
+        "index": 0,
+        "exitCode": 7,
+        "queryError": 0,
+        "waitResult": 258
+      },
+      {
+        "timestampMs": 1788982136096,
+        "elapsedMs": 2988.365,
+        "maximumSampleGapMs": 11.903,
+        "index": 0,
+        "exitCode": 7,
+        "queryError": 0,
+        "waitResult": 0
+      }
+    ]
+  },
+  "observations": [
+    {
+      "result": {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 1,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2719.1566000021994,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      "status": [
+        {
+          "relativeToCloseMs": -267,
+          "role": "main",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.25
+        },
+        {
+          "relativeToCloseMs": -267,
+          "role": "media",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.25
+        },
+        {
+          "relativeToCloseMs": 2549,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 9.009
+        },
+        {
+          "relativeToCloseMs": 2582,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 9.009
+        },
+        {
+          "relativeToCloseMs": 2676,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 9.009
+        },
+        {
+          "relativeToCloseMs": 2715,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 9.009
+        }
+      ],
+      "main": [
+        {
+          "relativeToCloseMs": -1214,
+          "event": "observer-installed",
+          "maximumTickGapMs": 0,
+          "sinceLastTickMs": 0.10199999999986176
+        },
+        {
+          "relativeToCloseMs": 2,
+          "event": "quit-called",
+          "maximumTickGapMs": 29.54240000000027,
+          "sinceLastTickMs": 1.7902000000003682
+        },
+        {
+          "relativeToCloseMs": 5,
+          "event": "before-quit",
+          "maximumTickGapMs": 29.54240000000027,
+          "sinceLastTickMs": 4.341900000000351
+        },
+        {
+          "relativeToCloseMs": 5,
+          "event": "quit-returned",
+          "maximumTickGapMs": 29.54240000000027,
+          "sinceLastTickMs": 4.568100000000413
+        },
+        {
+          "relativeToCloseMs": 2508,
+          "event": "quit-called",
+          "maximumTickGapMs": 29.54240000000027,
+          "sinceLastTickMs": 15.638300000000527
+        },
+        {
+          "relativeToCloseMs": 2509,
+          "event": "before-quit",
+          "maximumTickGapMs": 29.54240000000027,
+          "sinceLastTickMs": 15.857300000000578
+        },
+        {
+          "relativeToCloseMs": 2509,
+          "event": "quit-returned",
+          "maximumTickGapMs": 29.54240000000027,
+          "sinceLastTickMs": 16.356000000000677
+        },
+        {
+          "relativeToCloseMs": 2531,
+          "event": "will-quit",
+          "maximumTickGapMs": 29.54240000000027,
+          "sinceLastTickMs": 38.43159999999989
+        },
+        {
+          "relativeToCloseMs": 2531,
+          "event": "process-exit",
+          "maximumTickGapMs": 29.54240000000027,
+          "sinceLastTickMs": 38.79399999999987
+        },
+        {
+          "relativeToCloseMs": 2532,
+          "event": "quit",
+          "maximumTickGapMs": 29.54240000000027,
+          "sinceLastTickMs": 39.00930000000062
+        }
+      ],
+      "close": [
+        {
+          "elapsedMs": 0.006599999964237213,
+          "event": "close-called",
+          "maximumSampleGapMs": 0
+        },
+        {
+          "elapsedMs": 2581.7729000002146,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 9.671799998730421,
+          "role": "media"
+        },
+        {
+          "elapsedMs": 2714.5980000011623,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 9.671799998730421,
+          "role": "main"
+        },
+        {
+          "elapsedMs": 2717.6616000011563,
+          "event": "playwright-close-resolved",
+          "maximumSampleGapMs": 9.671799998730421
+        }
+      ],
+      "sourceSha256": {
+        "private-1-status.jsonl": "8dcd027ab92364e1e41eeb01af228f68dbdc6ed80820679429e34ab4ba498289",
+        "private-1-main.jsonl": "96d27687079796d9caef44296ad3e05175ec674f2046374f6836708a73fff927",
+        "private-1-close.jsonl": "89ec383b50854dc3f82145ade2214a4a0b5224d2a7825a66948cec524424dc67"
+      }
+    },
+    {
+      "result": {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 2,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2763.8438000008464,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      "status": [
+        {
+          "relativeToCloseMs": -404,
+          "role": "main",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.772
+        },
+        {
+          "relativeToCloseMs": -403,
+          "role": "media",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.772
+        },
+        {
+          "relativeToCloseMs": 2551,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 15.928
+        },
+        {
+          "relativeToCloseMs": 2580,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 15.928
+        },
+        {
+          "relativeToCloseMs": 2729,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 15.928
+        },
+        {
+          "relativeToCloseMs": 2760,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 15.928
+        }
+      ],
+      "main": [
+        {
+          "relativeToCloseMs": -1547,
+          "event": "observer-installed",
+          "maximumTickGapMs": 0,
+          "sinceLastTickMs": 0.12629999999990105
+        },
+        {
+          "relativeToCloseMs": 4,
+          "event": "quit-called",
+          "maximumTickGapMs": 27.42340000000013,
+          "sinceLastTickMs": 13.914400000000569
+        },
+        {
+          "relativeToCloseMs": 6,
+          "event": "before-quit",
+          "maximumTickGapMs": 27.42340000000013,
+          "sinceLastTickMs": 15.949300000000221
+        },
+        {
+          "relativeToCloseMs": 6,
+          "event": "quit-returned",
+          "maximumTickGapMs": 27.42340000000013,
+          "sinceLastTickMs": 16.256199999999808
+        },
+        {
+          "relativeToCloseMs": 2510,
+          "event": "quit-called",
+          "maximumTickGapMs": 32.29989999999998,
+          "sinceLastTickMs": 24.14089999999942
+        },
+        {
+          "relativeToCloseMs": 2510,
+          "event": "before-quit",
+          "maximumTickGapMs": 32.29989999999998,
+          "sinceLastTickMs": 24.3782999999994
+        },
+        {
+          "relativeToCloseMs": 2511,
+          "event": "quit-returned",
+          "maximumTickGapMs": 32.29989999999998,
+          "sinceLastTickMs": 25.261599999999817
+        },
+        {
+          "relativeToCloseMs": 2534,
+          "event": "will-quit",
+          "maximumTickGapMs": 32.29989999999998,
+          "sinceLastTickMs": 22.882400000000416
+        },
+        {
+          "relativeToCloseMs": 2535,
+          "event": "process-exit",
+          "maximumTickGapMs": 32.29989999999998,
+          "sinceLastTickMs": 23.23570000000018
+        },
+        {
+          "relativeToCloseMs": 2535,
+          "event": "quit",
+          "maximumTickGapMs": 32.29989999999998,
+          "sinceLastTickMs": 23.44710000000032
+        }
+      ],
+      "close": [
+        {
+          "elapsedMs": 0.006099998950958252,
+          "event": "close-called",
+          "maximumSampleGapMs": 0
+        },
+        {
+          "elapsedMs": 2575.961399998516,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 8.100900001823902,
+          "role": "media"
+        },
+        {
+          "elapsedMs": 2756.6972999982536,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 20.500300001353025,
+          "role": "main"
+        },
+        {
+          "elapsedMs": 2757.63409999758,
+          "event": "playwright-close-resolved",
+          "maximumSampleGapMs": 20.500300001353025
+        }
+      ],
+      "sourceSha256": {
+        "private-2-status.jsonl": "401ec7ee0da55daea1683eb900c30e63f94db6cdde712a38bb1276aeff35e8fd",
+        "private-2-main.jsonl": "21b836a17a4a6f268f635a6f0fe30d477793c0d8c2ab1923ecdce96fcd72e46b",
+        "private-2-close.jsonl": "65ca6833ea3c2357a795db4eaa930f9c6d8cc3ba1236306b7524b870bcf82e75"
+      }
+    },
+    {
+      "result": {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 3,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2697.8823999986053,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      "status": [
+        {
+          "relativeToCloseMs": -302,
+          "role": "main",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 2.189
+        },
+        {
+          "relativeToCloseMs": -302,
+          "role": "media",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 2.189
+        },
+        {
+          "relativeToCloseMs": 2553,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 8.069
+        },
+        {
+          "relativeToCloseMs": 2602,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 8.069
+        },
+        {
+          "relativeToCloseMs": 2661,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 8.069
+        },
+        {
+          "relativeToCloseMs": 2694,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 8.069
+        }
+      ],
+      "main": [
+        {
+          "relativeToCloseMs": -1219,
+          "event": "observer-installed",
+          "maximumTickGapMs": 0,
+          "sinceLastTickMs": 0.0747999999998683
+        },
+        {
+          "relativeToCloseMs": 3,
+          "event": "quit-called",
+          "maximumTickGapMs": 29.544400000000223,
+          "sinceLastTickMs": 11.06269999999995
+        },
+        {
+          "relativeToCloseMs": 5,
+          "event": "before-quit",
+          "maximumTickGapMs": 29.544400000000223,
+          "sinceLastTickMs": 13.00819999999976
+        },
+        {
+          "relativeToCloseMs": 5,
+          "event": "quit-returned",
+          "maximumTickGapMs": 29.544400000000223,
+          "sinceLastTickMs": 13.234300000000076
+        },
+        {
+          "relativeToCloseMs": 2509,
+          "event": "quit-called",
+          "maximumTickGapMs": 29.544400000000223,
+          "sinceLastTickMs": 1.5925999999999476
+        },
+        {
+          "relativeToCloseMs": 2509,
+          "event": "before-quit",
+          "maximumTickGapMs": 29.544400000000223,
+          "sinceLastTickMs": 1.8236000000006243
+        },
+        {
+          "relativeToCloseMs": 2510,
+          "event": "quit-returned",
+          "maximumTickGapMs": 29.544400000000223,
+          "sinceLastTickMs": 2.5304000000005544
+        },
+        {
+          "relativeToCloseMs": 2534,
+          "event": "will-quit",
+          "maximumTickGapMs": 29.544400000000223,
+          "sinceLastTickMs": 27.1208000000006
+        },
+        {
+          "relativeToCloseMs": 2535,
+          "event": "process-exit",
+          "maximumTickGapMs": 29.544400000000223,
+          "sinceLastTickMs": 27.57260000000042
+        },
+        {
+          "relativeToCloseMs": 2535,
+          "event": "quit",
+          "maximumTickGapMs": 29.544400000000223,
+          "sinceLastTickMs": 27.85820000000058
+        }
+      ],
+      "close": [
+        {
+          "elapsedMs": 0.005300000309944153,
+          "event": "close-called",
+          "maximumSampleGapMs": 0
+        },
+        {
+          "elapsedMs": 2603.818100001663,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 7.500800002366304,
+          "role": "media"
+        },
+        {
+          "elapsedMs": 2693.3566000014544,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 7.500800002366304,
+          "role": "main"
+        },
+        {
+          "elapsedMs": 2695.909200001508,
+          "event": "playwright-close-resolved",
+          "maximumSampleGapMs": 7.500800002366304
+        }
+      ],
+      "sourceSha256": {
+        "private-3-status.jsonl": "f2c1302ff02b1a42852a2fa569fb08c9093c301ca2fef5d50dcd9b71c71eb572",
+        "private-3-main.jsonl": "f7b5980dc15ddda403981c0f0e52439e4241383b13a3aac93e6cdb3c3bc31f0e",
+        "private-3-close.jsonl": "810615ee6ca0b262a11b976453f7b9175a482f66cab6c406cb821bdbadc7d3e9"
+      }
+    },
+    {
+      "result": {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 4,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2688.1942999996245,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      "status": [
+        {
+          "relativeToCloseMs": -271,
+          "role": "main",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.605
+        },
+        {
+          "relativeToCloseMs": -270,
+          "role": "media",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.605
+        },
+        {
+          "relativeToCloseMs": 2550,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 6.287
+        },
+        {
+          "relativeToCloseMs": 2578,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 6.287
+        },
+        {
+          "relativeToCloseMs": 2655,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 6.287
+        },
+        {
+          "relativeToCloseMs": 2688,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 6.287
+        }
+      ],
+      "main": [
+        {
+          "relativeToCloseMs": -1152,
+          "event": "observer-installed",
+          "maximumTickGapMs": 0,
+          "sinceLastTickMs": 0.4902999999999338
+        },
+        {
+          "relativeToCloseMs": 3,
+          "event": "quit-called",
+          "maximumTickGapMs": 26.494500000000244,
+          "sinceLastTickMs": 22.875300000000152
+        },
+        {
+          "relativeToCloseMs": 5,
+          "event": "before-quit",
+          "maximumTickGapMs": 26.494500000000244,
+          "sinceLastTickMs": 24.759900000000016
+        },
+        {
+          "relativeToCloseMs": 5,
+          "event": "quit-returned",
+          "maximumTickGapMs": 26.494500000000244,
+          "sinceLastTickMs": 24.973199999999906
+        },
+        {
+          "relativeToCloseMs": 2508,
+          "event": "quit-called",
+          "maximumTickGapMs": 26.494500000000244,
+          "sinceLastTickMs": 15.22059999999965
+        },
+        {
+          "relativeToCloseMs": 2509,
+          "event": "before-quit",
+          "maximumTickGapMs": 26.494500000000244,
+          "sinceLastTickMs": 15.545100000000275
+        },
+        {
+          "relativeToCloseMs": 2509,
+          "event": "quit-returned",
+          "maximumTickGapMs": 26.494500000000244,
+          "sinceLastTickMs": 16.248099999999795
+        },
+        {
+          "relativeToCloseMs": 2531,
+          "event": "will-quit",
+          "maximumTickGapMs": 26.494500000000244,
+          "sinceLastTickMs": 38.1884
+        },
+        {
+          "relativeToCloseMs": 2532,
+          "event": "process-exit",
+          "maximumTickGapMs": 26.494500000000244,
+          "sinceLastTickMs": 38.43419999999969
+        },
+        {
+          "relativeToCloseMs": 2532,
+          "event": "quit",
+          "maximumTickGapMs": 26.494500000000244,
+          "sinceLastTickMs": 38.60699999999997
+        }
+      ],
+      "close": [
+        {
+          "elapsedMs": 0.005300000309944153,
+          "event": "close-called",
+          "maximumSampleGapMs": 0
+        },
+        {
+          "elapsedMs": 2579.4732000008225,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 8.289599999785423,
+          "role": "media"
+        },
+        {
+          "elapsedMs": 2687.298900000751,
+          "event": "playwright-close-resolved",
+          "maximumSampleGapMs": 8.289599999785423
+        },
+        {
+          "elapsedMs": 2687.488400001079,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 8.289599999785423,
+          "role": "main"
+        }
+      ],
+      "sourceSha256": {
+        "private-4-status.jsonl": "8b77f66dee4fa63b53f554bac0e39acf9dd417e39f179e338866ba3c61e30166",
+        "private-4-main.jsonl": "7bc51f7b4a49c700816707b0631621f354fc029cb216764c16f9e0142bfb01cc",
+        "private-4-close.jsonl": "23a45c7f27be817d1de2ea429c3df3973f8c5cfdf19ae02c58d3c9f8ca5ddb64"
+      }
+    },
+    {
+      "result": {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 5,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2724.5029000006616,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      "status": [
+        {
+          "relativeToCloseMs": -261,
+          "role": "main",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.606
+        },
+        {
+          "relativeToCloseMs": -260,
+          "role": "media",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.606
+        },
+        {
+          "relativeToCloseMs": 2552,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 7.264
+        },
+        {
+          "relativeToCloseMs": 2580,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 7.264
+        },
+        {
+          "relativeToCloseMs": 2695,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 37.547
+        },
+        {
+          "relativeToCloseMs": 2722,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 37.547
+        }
+      ],
+      "main": [
+        {
+          "relativeToCloseMs": -1045,
+          "event": "observer-installed",
+          "maximumTickGapMs": 0,
+          "sinceLastTickMs": 0.1433999999999287
+        },
+        {
+          "relativeToCloseMs": 4,
+          "event": "quit-called",
+          "maximumTickGapMs": 28.958399999999983,
+          "sinceLastTickMs": 8.590999999999894
+        },
+        {
+          "relativeToCloseMs": 6,
+          "event": "before-quit",
+          "maximumTickGapMs": 28.958399999999983,
+          "sinceLastTickMs": 10.268500000000131
+        },
+        {
+          "relativeToCloseMs": 6,
+          "event": "quit-returned",
+          "maximumTickGapMs": 28.958399999999983,
+          "sinceLastTickMs": 10.811500000000251
+        },
+        {
+          "relativeToCloseMs": 2509,
+          "event": "quit-called",
+          "maximumTickGapMs": 28.958399999999983,
+          "sinceLastTickMs": 25.28440000000046
+        },
+        {
+          "relativeToCloseMs": 2509,
+          "event": "before-quit",
+          "maximumTickGapMs": 28.958399999999983,
+          "sinceLastTickMs": 25.53950000000077
+        },
+        {
+          "relativeToCloseMs": 2510,
+          "event": "quit-returned",
+          "maximumTickGapMs": 28.958399999999983,
+          "sinceLastTickMs": 25.8704000000007
+        },
+        {
+          "relativeToCloseMs": 2532,
+          "event": "will-quit",
+          "maximumTickGapMs": 28.958399999999983,
+          "sinceLastTickMs": 22.339600000000246
+        },
+        {
+          "relativeToCloseMs": 2533,
+          "event": "process-exit",
+          "maximumTickGapMs": 28.958399999999983,
+          "sinceLastTickMs": 22.660800000000563
+        },
+        {
+          "relativeToCloseMs": 2533,
+          "event": "quit",
+          "maximumTickGapMs": 28.958399999999983,
+          "sinceLastTickMs": 22.883600000000115
+        }
+      ],
+      "close": [
+        {
+          "elapsedMs": 0.005399998277425766,
+          "event": "close-called",
+          "maximumSampleGapMs": 0
+        },
+        {
+          "elapsedMs": 2579.1035000011325,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 7.539799999445677,
+          "role": "media"
+        },
+        {
+          "elapsedMs": 2723.642200000584,
+          "event": "playwright-close-resolved",
+          "maximumSampleGapMs": 45.338700000196695
+        },
+        {
+          "elapsedMs": 2723.838100001216,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 45.338700000196695,
+          "role": "main"
+        }
+      ],
+      "sourceSha256": {
+        "private-5-status.jsonl": "3d73861e66f2be43d2611f902fd3f2d87f6629aa8383dd459c37729b9b59fdb6",
+        "private-5-main.jsonl": "082c06a781642425058c0394eb6b76e0c6ac2e047979310256a7d9107837c543",
+        "private-5-close.jsonl": "f9a8666ee93c2e8a20b33bef0378e921eaffc6495d524188613aea6bbe89fd8a"
+      }
+    },
+    {
+      "result": {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 6,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2710.5657000020146,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      "status": [
+        {
+          "relativeToCloseMs": -257,
+          "role": "main",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.389
+        },
+        {
+          "relativeToCloseMs": -256,
+          "role": "media",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.389
+        },
+        {
+          "relativeToCloseMs": 2552,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 7.53
+        },
+        {
+          "relativeToCloseMs": 2579,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 7.53
+        },
+        {
+          "relativeToCloseMs": 2672,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 7.53
+        },
+        {
+          "relativeToCloseMs": 2710,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 7.53
+        }
+      ],
+      "main": [
+        {
+          "relativeToCloseMs": -1183,
+          "event": "observer-installed",
+          "maximumTickGapMs": 0,
+          "sinceLastTickMs": 0.10379999999986467
+        },
+        {
+          "relativeToCloseMs": 4,
+          "event": "quit-called",
+          "maximumTickGapMs": 30.2811999999999,
+          "sinceLastTickMs": 25.02009999999973
+        },
+        {
+          "relativeToCloseMs": 6,
+          "event": "before-quit",
+          "maximumTickGapMs": 30.2811999999999,
+          "sinceLastTickMs": 26.841599999999744
+        },
+        {
+          "relativeToCloseMs": 6,
+          "event": "quit-returned",
+          "maximumTickGapMs": 30.2811999999999,
+          "sinceLastTickMs": 27.164099999999962
+        },
+        {
+          "relativeToCloseMs": 2510,
+          "event": "quit-called",
+          "maximumTickGapMs": 70.33359999999993,
+          "sinceLastTickMs": 21.437700000000405
+        },
+        {
+          "relativeToCloseMs": 2510,
+          "event": "before-quit",
+          "maximumTickGapMs": 70.33359999999993,
+          "sinceLastTickMs": 21.65310000000045
+        },
+        {
+          "relativeToCloseMs": 2510,
+          "event": "quit-returned",
+          "maximumTickGapMs": 70.33359999999993,
+          "sinceLastTickMs": 22.03099999999995
+        },
+        {
+          "relativeToCloseMs": 2531,
+          "event": "will-quit",
+          "maximumTickGapMs": 70.33359999999993,
+          "sinceLastTickMs": 43.14720000000034
+        },
+        {
+          "relativeToCloseMs": 2532,
+          "event": "process-exit",
+          "maximumTickGapMs": 70.33359999999993,
+          "sinceLastTickMs": 43.48030000000017
+        },
+        {
+          "relativeToCloseMs": 2532,
+          "event": "quit",
+          "maximumTickGapMs": 70.33359999999993,
+          "sinceLastTickMs": 43.69710000000032
+        }
+      ],
+      "close": [
+        {
+          "elapsedMs": 0.004900000989437103,
+          "event": "close-called",
+          "maximumSampleGapMs": 0
+        },
+        {
+          "elapsedMs": 2576.0758999995887,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 8.041400000452995,
+          "role": "media"
+        },
+        {
+          "elapsedMs": 2709.260000001639,
+          "event": "playwright-close-resolved",
+          "maximumSampleGapMs": 13.11429999768734
+        },
+        {
+          "elapsedMs": 2709.7360000014305,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 13.11429999768734,
+          "role": "main"
+        }
+      ],
+      "sourceSha256": {
+        "private-6-status.jsonl": "2eee93654b53931af73688df1e8c9646cfe4a357a542d1bade70dd95c68c8156",
+        "private-6-main.jsonl": "f59d1b5b3f4ae1104f6e34eaa4b6ea33c4bdb417c9131f09c59399da4a9f7ac8",
+        "private-6-close.jsonl": "a840922ceaf31f51f241620a586e6e0b0d60c16aad1db494ec587a8f0b0925a1"
+      }
+    },
+    {
+      "result": {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 7,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2722.2367999963462,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      "status": [
+        {
+          "relativeToCloseMs": -269,
+          "role": "main",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.776
+        },
+        {
+          "relativeToCloseMs": -269,
+          "role": "media",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.776
+        },
+        {
+          "relativeToCloseMs": 2551,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 6.11
+        },
+        {
+          "relativeToCloseMs": 2584,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 6.11
+        },
+        {
+          "relativeToCloseMs": 2683,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 6.11
+        },
+        {
+          "relativeToCloseMs": 2722,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 6.11
+        }
+      ],
+      "main": [
+        {
+          "relativeToCloseMs": -989,
+          "event": "observer-installed",
+          "maximumTickGapMs": 0,
+          "sinceLastTickMs": 0.10140000000001237
+        },
+        {
+          "relativeToCloseMs": 3,
+          "event": "quit-called",
+          "maximumTickGapMs": 28.31190000000015,
+          "sinceLastTickMs": 9.097199999999702
+        },
+        {
+          "relativeToCloseMs": 5,
+          "event": "before-quit",
+          "maximumTickGapMs": 28.31190000000015,
+          "sinceLastTickMs": 11.141099999999824
+        },
+        {
+          "relativeToCloseMs": 5,
+          "event": "quit-returned",
+          "maximumTickGapMs": 28.31190000000015,
+          "sinceLastTickMs": 11.407600000000002
+        },
+        {
+          "relativeToCloseMs": 2510,
+          "event": "quit-called",
+          "maximumTickGapMs": 28.31190000000015,
+          "sinceLastTickMs": 0.6082000000005792
+        },
+        {
+          "relativeToCloseMs": 2510,
+          "event": "before-quit",
+          "maximumTickGapMs": 28.31190000000015,
+          "sinceLastTickMs": 0.8033999999997832
+        },
+        {
+          "relativeToCloseMs": 2511,
+          "event": "quit-returned",
+          "maximumTickGapMs": 28.31190000000015,
+          "sinceLastTickMs": 1.5268000000005486
+        },
+        {
+          "relativeToCloseMs": 2532,
+          "event": "will-quit",
+          "maximumTickGapMs": 28.31190000000015,
+          "sinceLastTickMs": 23.135600000000522
+        },
+        {
+          "relativeToCloseMs": 2533,
+          "event": "process-exit",
+          "maximumTickGapMs": 28.31190000000015,
+          "sinceLastTickMs": 23.580200000000332
+        },
+        {
+          "relativeToCloseMs": 2533,
+          "event": "quit",
+          "maximumTickGapMs": 28.31190000000015,
+          "sinceLastTickMs": 23.840000000000146
+        }
+      ],
+      "close": [
+        {
+          "elapsedMs": 0.005300000309944153,
+          "event": "close-called",
+          "maximumSampleGapMs": 0
+        },
+        {
+          "elapsedMs": 2581.654699999839,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 7.518799997866154,
+          "role": "media"
+        },
+        {
+          "elapsedMs": 2716.7045999988914,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 7.518799997866154,
+          "role": "main"
+        },
+        {
+          "elapsedMs": 2718.839899998158,
+          "event": "playwright-close-resolved",
+          "maximumSampleGapMs": 7.518799997866154
+        }
+      ],
+      "sourceSha256": {
+        "private-7-status.jsonl": "76214053debf8f272ac3e98c9c5eee8d6dc3be584aa1d16436836ea99ca37082",
+        "private-7-main.jsonl": "94acd640faa56372456c6ac40d10782b990110189af869a690af624e8fefbcde",
+        "private-7-close.jsonl": "c6f5e3554c0b6111803d88d48eafe24f19cbb2ee6c41c0fa3be8b59b15df513d"
+      }
+    },
+    {
+      "result": {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 8,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2718.850499998778,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      "status": [
+        {
+          "relativeToCloseMs": -314,
+          "role": "main",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.88
+        },
+        {
+          "relativeToCloseMs": -314,
+          "role": "media",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.88
+        },
+        {
+          "relativeToCloseMs": 2548,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 7.015
+        },
+        {
+          "relativeToCloseMs": 2575,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 7.015
+        },
+        {
+          "relativeToCloseMs": 2674,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 7.015
+        },
+        {
+          "relativeToCloseMs": 2717,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 7.015
+        }
+      ],
+      "main": [
+        {
+          "relativeToCloseMs": -982,
+          "event": "observer-installed",
+          "maximumTickGapMs": 0,
+          "sinceLastTickMs": 0.12400000000025102
+        },
+        {
+          "relativeToCloseMs": 4,
+          "event": "quit-called",
+          "maximumTickGapMs": 31.098999999999705,
+          "sinceLastTickMs": 1.615900000000238
+        },
+        {
+          "relativeToCloseMs": 6,
+          "event": "before-quit",
+          "maximumTickGapMs": 31.098999999999705,
+          "sinceLastTickMs": 3.464100000000144
+        },
+        {
+          "relativeToCloseMs": 6,
+          "event": "quit-returned",
+          "maximumTickGapMs": 31.098999999999705,
+          "sinceLastTickMs": 3.6948999999999614
+        },
+        {
+          "relativeToCloseMs": 2509,
+          "event": "quit-called",
+          "maximumTickGapMs": 31.098999999999705,
+          "sinceLastTickMs": 18.63500000000022
+        },
+        {
+          "relativeToCloseMs": 2509,
+          "event": "before-quit",
+          "maximumTickGapMs": 31.098999999999705,
+          "sinceLastTickMs": 18.848899999999958
+        },
+        {
+          "relativeToCloseMs": 2510,
+          "event": "quit-returned",
+          "maximumTickGapMs": 31.098999999999705,
+          "sinceLastTickMs": 19.149500000000444
+        },
+        {
+          "relativeToCloseMs": 2533,
+          "event": "will-quit",
+          "maximumTickGapMs": 31.098999999999705,
+          "sinceLastTickMs": 42.55069999999978
+        },
+        {
+          "relativeToCloseMs": 2533,
+          "event": "process-exit",
+          "maximumTickGapMs": 31.098999999999705,
+          "sinceLastTickMs": 42.877300000000105
+        },
+        {
+          "relativeToCloseMs": 2534,
+          "event": "quit",
+          "maximumTickGapMs": 31.098999999999705,
+          "sinceLastTickMs": 43.1873999999998
+        }
+      ],
+      "close": [
+        {
+          "elapsedMs": 0.005699999630451202,
+          "event": "close-called",
+          "maximumSampleGapMs": 0
+        },
+        {
+          "elapsedMs": 2572.945000000298,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 10.442099999636412,
+          "role": "media"
+        },
+        {
+          "elapsedMs": 2712.8355000019073,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 16.835999999195337,
+          "role": "main"
+        },
+        {
+          "elapsedMs": 2715.949200000614,
+          "event": "playwright-close-resolved",
+          "maximumSampleGapMs": 16.835999999195337
+        }
+      ],
+      "sourceSha256": {
+        "private-8-status.jsonl": "efab92e3acd373942f19f1957ce28424817f09d7f53d0aa4b56442b7fc73581f",
+        "private-8-main.jsonl": "18cbb2217c303349b2f71a8dc85a35bf06dc08eed331b116c11b6c65e8066c17",
+        "private-8-close.jsonl": "3ed476a430c88b7e7cac1f4cce42eafbd9caf3812c83ed08e2125967b0b93d88"
+      }
+    },
+    {
+      "result": {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 9,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2745.6386000029743,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      "status": [
+        {
+          "relativeToCloseMs": -275,
+          "role": "main",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.748
+        },
+        {
+          "relativeToCloseMs": -275,
+          "role": "media",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.748
+        },
+        {
+          "relativeToCloseMs": 2556,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 10.076
+        },
+        {
+          "relativeToCloseMs": 2594,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 10.076
+        },
+        {
+          "relativeToCloseMs": 2709,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 10.076
+        },
+        {
+          "relativeToCloseMs": 2742,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 10.076
+        }
+      ],
+      "main": [
+        {
+          "relativeToCloseMs": -964,
+          "event": "observer-installed",
+          "maximumTickGapMs": 0,
+          "sinceLastTickMs": 0.23250000000007276
+        },
+        {
+          "relativeToCloseMs": 4,
+          "event": "quit-called",
+          "maximumTickGapMs": 26.2815999999998,
+          "sinceLastTickMs": 11.284799999999905
+        },
+        {
+          "relativeToCloseMs": 7,
+          "event": "before-quit",
+          "maximumTickGapMs": 26.2815999999998,
+          "sinceLastTickMs": 13.752199999999903
+        },
+        {
+          "relativeToCloseMs": 7,
+          "event": "quit-returned",
+          "maximumTickGapMs": 26.2815999999998,
+          "sinceLastTickMs": 14.061799999999948
+        },
+        {
+          "relativeToCloseMs": 2511,
+          "event": "quit-called",
+          "maximumTickGapMs": 27.625100000000202,
+          "sinceLastTickMs": 1.6060999999999694
+        },
+        {
+          "relativeToCloseMs": 2511,
+          "event": "before-quit",
+          "maximumTickGapMs": 27.625100000000202,
+          "sinceLastTickMs": 1.8244000000004235
+        },
+        {
+          "relativeToCloseMs": 2512,
+          "event": "quit-returned",
+          "maximumTickGapMs": 27.625100000000202,
+          "sinceLastTickMs": 2.603399999999965
+        },
+        {
+          "relativeToCloseMs": 2535,
+          "event": "will-quit",
+          "maximumTickGapMs": 27.625100000000202,
+          "sinceLastTickMs": 26.209600000000137
+        },
+        {
+          "relativeToCloseMs": 2536,
+          "event": "process-exit",
+          "maximumTickGapMs": 27.625100000000202,
+          "sinceLastTickMs": 26.71219999999994
+        },
+        {
+          "relativeToCloseMs": 2536,
+          "event": "quit",
+          "maximumTickGapMs": 27.625100000000202,
+          "sinceLastTickMs": 26.955299999999625
+        }
+      ],
+      "close": [
+        {
+          "elapsedMs": 0.00520000234246254,
+          "event": "close-called",
+          "maximumSampleGapMs": 0
+        },
+        {
+          "elapsedMs": 2588.5179000012577,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 8.047399997711182,
+          "role": "media"
+        },
+        {
+          "elapsedMs": 2740.093100000173,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 9.794199999421835,
+          "role": "main"
+        },
+        {
+          "elapsedMs": 2742.449200000614,
+          "event": "playwright-close-resolved",
+          "maximumSampleGapMs": 9.794199999421835
+        }
+      ],
+      "sourceSha256": {
+        "private-9-status.jsonl": "99c7947885f640ca29025299204c931da323098a834364b84aa23250b8ac8c75",
+        "private-9-main.jsonl": "a103477490288c40b42f49071a38590dd074fb2e6f9e92b4b15ec632b4e11c50",
+        "private-9-close.jsonl": "71c67ba93f36a77508d7fd2345b7f806ca0262a1a770b58c847144a6e19c4dcc"
+      }
+    },
+    {
+      "result": {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 10,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2803.9770999997854,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      "status": [
+        {
+          "relativeToCloseMs": -270,
+          "role": "main",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.893
+        },
+        {
+          "relativeToCloseMs": -270,
+          "role": "media",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.893
+        },
+        {
+          "relativeToCloseMs": 2556,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 6.481
+        },
+        {
+          "relativeToCloseMs": 2589,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 6.481
+        },
+        {
+          "relativeToCloseMs": 2672,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 8.136
+        },
+        {
+          "relativeToCloseMs": 2798,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 8.136
+        }
+      ],
+      "main": [
+        {
+          "relativeToCloseMs": -940,
+          "event": "observer-installed",
+          "maximumTickGapMs": 0,
+          "sinceLastTickMs": 0.10579999999981737
+        },
+        {
+          "relativeToCloseMs": 1,
+          "event": "quit-called",
+          "maximumTickGapMs": 28.976900000000114,
+          "sinceLastTickMs": 8.364399999999932
+        },
+        {
+          "relativeToCloseMs": 3,
+          "event": "before-quit",
+          "maximumTickGapMs": 28.976900000000114,
+          "sinceLastTickMs": 10.286099999999806
+        },
+        {
+          "relativeToCloseMs": 3,
+          "event": "quit-returned",
+          "maximumTickGapMs": 28.976900000000114,
+          "sinceLastTickMs": 10.548699999999826
+        },
+        {
+          "relativeToCloseMs": 2506,
+          "event": "quit-called",
+          "maximumTickGapMs": 28.976900000000114,
+          "sinceLastTickMs": 0.5994000000000597
+        },
+        {
+          "relativeToCloseMs": 2506,
+          "event": "before-quit",
+          "maximumTickGapMs": 28.976900000000114,
+          "sinceLastTickMs": 0.8505000000004657
+        },
+        {
+          "relativeToCloseMs": 2507,
+          "event": "quit-returned",
+          "maximumTickGapMs": 28.976900000000114,
+          "sinceLastTickMs": 1.4097000000001572
+        },
+        {
+          "relativeToCloseMs": 2531,
+          "event": "will-quit",
+          "maximumTickGapMs": 28.976900000000114,
+          "sinceLastTickMs": 25.59820000000036
+        },
+        {
+          "relativeToCloseMs": 2531,
+          "event": "process-exit",
+          "maximumTickGapMs": 28.976900000000114,
+          "sinceLastTickMs": 25.940099999999802
+        },
+        {
+          "relativeToCloseMs": 2531,
+          "event": "quit",
+          "maximumTickGapMs": 28.976900000000114,
+          "sinceLastTickMs": 26.140699999999924
+        }
+      ],
+      "close": [
+        {
+          "elapsedMs": 0.005499999970197678,
+          "event": "close-called",
+          "maximumSampleGapMs": 0
+        },
+        {
+          "elapsedMs": 2587.262699998915,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 8.07209999859333,
+          "role": "media"
+        },
+        {
+          "elapsedMs": 2796.9210000000894,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 12.034800000488758,
+          "role": "main"
+        },
+        {
+          "elapsedMs": 2799.3064999990165,
+          "event": "playwright-close-resolved",
+          "maximumSampleGapMs": 12.034800000488758
+        }
+      ],
+      "sourceSha256": {
+        "private-10-status.jsonl": "095d9a9d38cb8cca98fc525932f9b3c2ace275434ace0d2f8a4e96d996e18b87",
+        "private-10-main.jsonl": "486a9a48267021127148f396e3797e1d18060e590424ab3bfe1eb50c5784aa1b",
+        "private-10-close.jsonl": "5ca924a53d68fd11b6ba9d04b72460bbd624cf9144da37273b7a4e97f51d25d9"
+      }
+    },
+    {
+      "result": {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 11,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2777.8761999979615,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      "status": [
+        {
+          "relativeToCloseMs": -891,
+          "role": "main",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.664
+        },
+        {
+          "relativeToCloseMs": -890,
+          "role": "media",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.664
+        },
+        {
+          "relativeToCloseMs": 2551,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 6.509
+        },
+        {
+          "relativeToCloseMs": 2579,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 6.509
+        },
+        {
+          "relativeToCloseMs": 2731,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 6.699
+        },
+        {
+          "relativeToCloseMs": 2775,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 6.699
+        }
+      ],
+      "main": [
+        {
+          "relativeToCloseMs": -1555,
+          "event": "observer-installed",
+          "maximumTickGapMs": 0,
+          "sinceLastTickMs": 0.1230000000000473
+        },
+        {
+          "relativeToCloseMs": 3,
+          "event": "quit-called",
+          "maximumTickGapMs": 33.36630000000014,
+          "sinceLastTickMs": 7.895600000000286
+        },
+        {
+          "relativeToCloseMs": 5,
+          "event": "before-quit",
+          "maximumTickGapMs": 33.36630000000014,
+          "sinceLastTickMs": 10.025300000000243
+        },
+        {
+          "relativeToCloseMs": 5,
+          "event": "quit-returned",
+          "maximumTickGapMs": 33.36630000000014,
+          "sinceLastTickMs": 10.66740000000027
+        },
+        {
+          "relativeToCloseMs": 2509,
+          "event": "quit-called",
+          "maximumTickGapMs": 149.9146999999998,
+          "sinceLastTickMs": 1.232600000000275
+        },
+        {
+          "relativeToCloseMs": 2509,
+          "event": "before-quit",
+          "maximumTickGapMs": 149.9146999999998,
+          "sinceLastTickMs": 1.422500000000582
+        },
+        {
+          "relativeToCloseMs": 2509,
+          "event": "quit-returned",
+          "maximumTickGapMs": 149.9146999999998,
+          "sinceLastTickMs": 1.8393000000005486
+        },
+        {
+          "relativeToCloseMs": 2531,
+          "event": "will-quit",
+          "maximumTickGapMs": 149.9146999999998,
+          "sinceLastTickMs": 23.34100000000035
+        },
+        {
+          "relativeToCloseMs": 2531,
+          "event": "process-exit",
+          "maximumTickGapMs": 149.9146999999998,
+          "sinceLastTickMs": 23.833800000000338
+        },
+        {
+          "relativeToCloseMs": 2531,
+          "event": "quit",
+          "maximumTickGapMs": 149.9146999999998,
+          "sinceLastTickMs": 24.03020000000015
+        }
+      ],
+      "close": [
+        {
+          "elapsedMs": 0.004900000989437103,
+          "event": "close-called",
+          "maximumSampleGapMs": 0
+        },
+        {
+          "elapsedMs": 2577.6805000007153,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 7.480200000107288,
+          "role": "media"
+        },
+        {
+          "elapsedMs": 2772.5335000008345,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 28.365299999713898,
+          "role": "main"
+        },
+        {
+          "elapsedMs": 2773.8691000007093,
+          "event": "playwright-close-resolved",
+          "maximumSampleGapMs": 28.365299999713898
+        }
+      ],
+      "sourceSha256": {
+        "private-11-status.jsonl": "390a2060ad73c725ea9f4123b9db4cdd2b81a9cb97e16d93de768f3963033a07",
+        "private-11-main.jsonl": "11be0bf31a448912e1a16b2229bf1272b90d40a81c23a59ecb8ecc71db32913d",
+        "private-11-close.jsonl": "4dfb5135a148441ac8b05b8459419eda3ec56461ffbd1182953dfc05a7b28e75"
+      }
+    },
+    {
+      "result": {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 12,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2731.1926000006497,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      "status": [
+        {
+          "relativeToCloseMs": -303,
+          "role": "main",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.864
+        },
+        {
+          "relativeToCloseMs": -303,
+          "role": "media",
+          "exitCode": 259,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 1.864
+        },
+        {
+          "relativeToCloseMs": 2551,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 12.588
+        },
+        {
+          "relativeToCloseMs": 2578,
+          "role": "media",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 12.588
+        },
+        {
+          "relativeToCloseMs": 2677,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 258,
+          "maximumSampleGapMs": 12.588
+        },
+        {
+          "relativeToCloseMs": 2727,
+          "role": "main",
+          "exitCode": 0,
+          "queryError": 0,
+          "waitResult": 0,
+          "maximumSampleGapMs": 12.588
+        }
+      ],
+      "main": [
+        {
+          "relativeToCloseMs": -978,
+          "event": "observer-installed",
+          "maximumTickGapMs": 0,
+          "sinceLastTickMs": 0.1048000000000684
+        },
+        {
+          "relativeToCloseMs": 3,
+          "event": "quit-called",
+          "maximumTickGapMs": 31.28020000000015,
+          "sinceLastTickMs": 18.31820000000016
+        },
+        {
+          "relativeToCloseMs": 4,
+          "event": "before-quit",
+          "maximumTickGapMs": 31.28020000000015,
+          "sinceLastTickMs": 20.10680000000002
+        },
+        {
+          "relativeToCloseMs": 5,
+          "event": "quit-returned",
+          "maximumTickGapMs": 31.28020000000015,
+          "sinceLastTickMs": 20.359699999999975
+        },
+        {
+          "relativeToCloseMs": 2508,
+          "event": "quit-called",
+          "maximumTickGapMs": 31.28020000000015,
+          "sinceLastTickMs": 1.4317000000000917
+        },
+        {
+          "relativeToCloseMs": 2508,
+          "event": "before-quit",
+          "maximumTickGapMs": 31.28020000000015,
+          "sinceLastTickMs": 1.6512000000002445
+        },
+        {
+          "relativeToCloseMs": 2508,
+          "event": "quit-returned",
+          "maximumTickGapMs": 31.28020000000015,
+          "sinceLastTickMs": 2.02770000000055
+        },
+        {
+          "relativeToCloseMs": 2531,
+          "event": "will-quit",
+          "maximumTickGapMs": 31.28020000000015,
+          "sinceLastTickMs": 24.712000000000444
+        },
+        {
+          "relativeToCloseMs": 2531,
+          "event": "process-exit",
+          "maximumTickGapMs": 31.28020000000015,
+          "sinceLastTickMs": 25.20380000000023
+        },
+        {
+          "relativeToCloseMs": 2532,
+          "event": "quit",
+          "maximumTickGapMs": 31.28020000000015,
+          "sinceLastTickMs": 25.429799999999886
+        }
+      ],
+      "close": [
+        {
+          "elapsedMs": 0.026799999177455902,
+          "event": "close-called",
+          "maximumSampleGapMs": 0
+        },
+        {
+          "elapsedMs": 2577.5180999971926,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 7.552099999040365,
+          "role": "media"
+        },
+        {
+          "elapsedMs": 2726.1705999970436,
+          "event": "kernel-exit",
+          "maximumSampleGapMs": 27.75499999895692,
+          "role": "main"
+        },
+        {
+          "elapsedMs": 2728.244199998677,
+          "event": "playwright-close-resolved",
+          "maximumSampleGapMs": 27.75499999895692
+        }
+      ],
+      "sourceSha256": {
+        "private-12-status.jsonl": "f39cf245d87bef2500d097d2de5cae3723f8892d98a7bbac2634d8c4c22aee3c",
+        "private-12-main.jsonl": "97081b3ba231ee5a5781bfc284be80dddfea97ecde4518ccd231983bb294adec",
+        "private-12-close.jsonl": "7949a5a40936fa99e6ea16f929e54e430f3cfbea0c3a9d6cd93338d6af40fff3"
+      }
+    }
+  ]
+}

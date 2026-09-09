@@ -656,6 +656,61 @@ Evidence simpleCycle(SourceRegistry& registry, const std::string& source_id,
   return evidence;
 }
 
+Evidence visibilityCycle(SourceRegistry& registry, const std::string& source_id,
+                         bool debug, WindowFixture& fixture) {
+  Evidence evidence;
+  CallbackGate visibility_gate;
+  std::atomic_bool minimized{false};
+  std::atomic_uint minimized_work{0};
+  auto hooks = std::make_shared<WgcWindowCaptureTestHooks>();
+  hooks->before_frame_visibility_check = [&] { visibility_gate.enter(); };
+  const auto record_minimized_work = [&] {
+    if (minimized.load()) ++minimized_work;
+  };
+  hooks->before_frame_callback = record_minimized_work;
+  hooks->before_frame_pool_recreate = record_minimized_work;
+  CaptureInstance instance(registry, source_id, debug, hooks);
+  startCapture(instance, evidence);
+  captureFrames(instance.capture, 10, evidence);
+  visibility_gate.arm();
+  try {
+    visibility_gate.waitUntilEntered(3s,
+                                    "visibility-check callback was not reached");
+    fixture.command("minimize");
+    minimized.store(true);
+  } catch (...) {
+    visibility_gate.release();
+    throw;
+  }
+  visibility_gate.release();
+  (void)waitForEvent(instance.capture,
+                     WindowCaptureEventKind::TemporarilyNoContent, evidence,
+                     3s);
+  const auto minimized_until = std::chrono::steady_clock::now() + 10s;
+  while (std::chrono::steady_clock::now() < minimized_until) {
+    if (auto lease = instance.capture.waitForFrame(250ms)) lease->release();
+    require(!instance.capture.terminalFailure(),
+            "minimized window became terminal");
+  }
+  require(minimized_work.load() == 0,
+          "minimized window frame reached resize or delivery");
+  minimized.store(false);
+  fixture.command("restore");
+  (void)waitForEvent(instance.capture,
+                     WindowCaptureEventKind::ContentRestored, evidence, 3s);
+  captureFrames(instance.capture, 20, evidence);
+  fixture.command("hide");
+  (void)waitForEvent(instance.capture,
+                     WindowCaptureEventKind::TemporarilyNoContent, evidence,
+                     3s);
+  fixture.command("show");
+  (void)waitForEvent(instance.capture,
+                     WindowCaptureEventKind::ContentRestored, evidence, 3s);
+  captureFrames(instance.capture, 10, evidence);
+  stopCapture(instance, evidence);
+  return evidence;
+}
+
 void writeEvidence(const Evidence& evidence, const std::string& command,
                    const std::string& mode, int repeat,
                    const Resources& before, const Resources& after,
@@ -684,6 +739,10 @@ void writeEvidence(const Evidence& evidence, const std::string& command,
             << ",\"command\":" << jsonString(command)
             << ",\"mode\":" << jsonString(mode)
             << ",\"repeat\":" << repeat
+            << ",\"warmup\":{\"cycles\":"
+            << (command == "capture-window-repeat" ? 3 : 1)
+            << ",\"visibilityTransitions\":"
+            << (command == "capture-window-minimize" ? "true" : "false") << '}'
             << ",\"capturedFrames\":" << evidence.captured
             << ",\"sequenceIncreasing\":"
             << (evidence.sequence_increasing ? "true" : "false")
@@ -824,6 +883,15 @@ int captureWindowProbe(int argc, char** argv, const std::string& command) {
         3s);
     captureFrames(warm_instance.capture, 2, warm_resize, warm_generation);
     stopCapture(warm_instance, warm_resize);
+  } else if (command == "capture-window-minimize") {
+    // Initialize the same visibility/callback path as the measured scenario.
+    // Ordinary frame capture does not exercise minimize, restore or hide/show.
+    // Warmup evidence is excluded from the measured frame/resource results.
+    const auto warm_visibility =
+        visibilityCycle(registry, source_id, arguments.debug, fixture);
+    require(warm_visibility.no_content_intervals >= 2 &&
+                warm_visibility.terminal_reason.empty(),
+            "visibility warmup did not preserve capture liveness");
   } else {
     const int warmup_cycles = command == "capture-window-repeat" ? 3 : 1;
     for (int warmup = 0; warmup < warmup_cycles; ++warmup) {
@@ -946,55 +1014,7 @@ int captureWindowProbe(int argc, char** argv, const std::string& command) {
                evidence.frames_per_size.size() >= 3 &&
                evidence.terminal_event_count == 0;
   } else if (command == "capture-window-minimize") {
-    CallbackGate visibility_gate;
-    std::atomic_bool minimized{false};
-    std::atomic_uint minimized_work{0};
-    auto hooks = std::make_shared<WgcWindowCaptureTestHooks>();
-    hooks->before_frame_visibility_check = [&] { visibility_gate.enter(); };
-    const auto record_minimized_work = [&] {
-      if (minimized.load()) ++minimized_work;
-    };
-    hooks->before_frame_callback = record_minimized_work;
-    hooks->before_frame_pool_recreate = record_minimized_work;
-    CaptureInstance instance(registry, source_id, arguments.debug, hooks);
-    startCapture(instance, evidence);
-    captureFrames(instance.capture, 10, evidence);
-    visibility_gate.arm();
-    try {
-      visibility_gate.waitUntilEntered(3s,
-                                      "visibility-check callback was not reached");
-      fixture.command("minimize");
-      minimized.store(true);
-    } catch (...) {
-      visibility_gate.release();
-      throw;
-    }
-    visibility_gate.release();
-    (void)waitForEvent(instance.capture,
-                       WindowCaptureEventKind::TemporarilyNoContent, evidence,
-                       3s);
-    const auto minimized_until = std::chrono::steady_clock::now() + 10s;
-    while (std::chrono::steady_clock::now() < minimized_until) {
-      if (auto lease = instance.capture.waitForFrame(250ms)) lease->release();
-      require(!instance.capture.terminalFailure(),
-              "minimized window became terminal");
-    }
-    require(minimized_work.load() == 0,
-            "minimized window frame reached resize or delivery");
-    minimized.store(false);
-    fixture.command("restore");
-    (void)waitForEvent(instance.capture,
-                       WindowCaptureEventKind::ContentRestored, evidence, 3s);
-    captureFrames(instance.capture, 20, evidence);
-    fixture.command("hide");
-    (void)waitForEvent(instance.capture,
-                       WindowCaptureEventKind::TemporarilyNoContent, evidence,
-                       3s);
-    fixture.command("show");
-    (void)waitForEvent(instance.capture,
-                       WindowCaptureEventKind::ContentRestored, evidence, 3s);
-    captureFrames(instance.capture, 10, evidence);
-    stopCapture(instance, evidence);
+    evidence = visibilityCycle(registry, source_id, arguments.debug, fixture);
     extra_ok = evidence.no_content_intervals >= 2 &&
                evidence.terminal_reason.empty();
   } else if (command == "capture-window-close") {
