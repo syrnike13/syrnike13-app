@@ -1083,7 +1083,7 @@ private:
       return;
     }
     const auto telemetry_now = std::chrono::steady_clock::now();
-    if ((media.screen_audio_metrics || media.camera_metrics || media.microphone_metrics) && telemetry_now >= next_media_diagnostic_) {
+    if ((media.screen_audio_metrics || media.camera_metrics || media.microphone_metrics || media.remote_video_metrics) && telemetry_now >= next_media_diagnostic_) {
       next_media_diagnostic_ = telemetry_now + std::chrono::seconds{1};
       DiagnosticEventCallback callback;
       {
@@ -1110,6 +1110,13 @@ private:
                   std::chrono::system_clock::now().time_since_epoch()).count()),
           "microphone", "sample", "microphone_metrics",
           {media.microphone_metrics->begin(), media.microphone_metrics->end()},
+      });
+      if (callback && media.remote_video_metrics) callback(DiagnosticEvent{
+          ++diagnostic_sequence_, static_cast<std::uint64_t>(
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::system_clock::now().time_since_epoch()).count()),
+          "remote_video", "sample", "remote_video_metrics",
+          {media.remote_video_metrics->begin(), media.remote_video_metrics->end()},
       });
     }
     if (room_teardown_pending_ && !media.publications_stopped &&

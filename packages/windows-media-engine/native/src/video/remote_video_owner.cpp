@@ -177,7 +177,7 @@ void RemoteVideoOwner::onParticipantDisconnected(livekit::Room& room, const live
 }
 void RemoteVideoOwner::run() noexcept {
   Owners owners;
-  std::uint64_t applied = 0;
+  std::uint64_t applied = 0, created = 0, retired = 0;
   try {
     for (;;) {
       std::vector<Publication> publications;
@@ -213,6 +213,7 @@ void RemoteVideoOwner::run() noexcept {
               return value.value.publication_id == entry.first && wanted(value);
             })) return false;
         entry.second->stop();
+        ++retired;
         return true;
       });
       bool capacity_exceeded = false;
@@ -227,10 +228,32 @@ void RemoteVideoOwner::run() noexcept {
           auto owner = std::make_shared<RemoteVideoTrack>(publication.value.participant_identity, "", publication.value.publication_id);
           owner->demand(true);
           found = owners.emplace(publication.value.publication_id, std::move(owner)).first;
+          ++created;
         }
         found->second->seedPublication(publication.publication, publication.track);
       }
       RemoteVideoOwnerSnapshot current;
+      RemoteVideoTrackStats total;
+      for (const auto& [id, owner] : owners) {
+        const auto stats = owner->stats();
+        total.decoded += stats.decoded;
+        total.reader_starts += stats.reader_starts;
+        total.reader_ends += stats.reader_ends;
+        total.stale_decoded += stats.stale_decoded;
+      }
+      current.metrics = {{
+        {"publications", static_cast<double>(publications.size())},
+        {"demanded", static_cast<double>(demand.size())},
+        {"owners", static_cast<double>(owners.size())},
+        {"sdk_tracks", static_cast<double>(std::count_if(publications.begin(), publications.end(),
+            [](const auto& publication) { return publication.track != nullptr; }))},
+        {"decoded", static_cast<double>(total.decoded)},
+        {"reader_starts", static_cast<double>(total.reader_starts)},
+        {"reader_ends", static_cast<double>(total.reader_ends)},
+        {"stale_decoded", static_cast<double>(total.stale_decoded)},
+        {"owner_creations", static_cast<double>(created)},
+        {"owner_retirements", static_cast<double>(retired)},
+      }};
       current.inventory_revision = inventory_revision;
       for (const auto& publication : publications) current.publications.push_back(publication.value);
       current.stopped = owners.empty();
