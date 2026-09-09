@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { assessFaults } from './fault-matrix.mjs'
+import { assessFaults, parseCTestCompletion } from './fault-matrix.mjs'
 
 const expected = { commit: 'a'.repeat(40), configuration: 'Release', asan: false }
 const record = () => ({
@@ -11,6 +11,21 @@ const record = () => ({
 })
 const assess = records => assessFaults(records, expected, ['fault-a', 'fault-b'])
 const complete = () => [record(), { ...record(), id: 'fault-b' }]
+
+test('recognizes padded CTest numbers and preserves failed or skipped results', () => {
+  for (const number of [' 1', '10', '100']) {
+    assert.deepEqual(parseCTestCompletion(` ${number}/100 Test #${number}: owner-fault ...   Passed  0.01 sec`),
+      { name: 'owner-fault', passed: true })
+    for (const status of ['***Failed', '***Timeout', '***Not Run', '***Skipped']) {
+      assert.deepEqual(parseCTestCompletion(` ${number}/100 Test #${number}: owner-fault ... ${status}  0.01 sec`),
+        { name: 'owner-fault', passed: false })
+    }
+  }
+  for (const line of ['      Start  1: owner-fault', '100% tests passed, 0 tests failed out of 100',
+    '1: 1/100 Test # 1: owner-fault ... Passed 0.01 sec', 'unrelated output']) {
+    assert.equal(parseCTestCompletion(line), undefined)
+  }
+})
 
 test('accepts exactly one complete matching result for every required fault', () => {
   const result = assess(complete())

@@ -88,6 +88,11 @@ async function sha256(file) {
   return hash.digest('hex')
 }
 
+export function parseCTestCompletion(line) {
+  const completed = line.match(/^\s*\d+\/\d+\s+Test\s+#\s*\d+:\s+([a-zA-Z0-9_.-]+)\s+\.{2,}\s+(.+)$/)
+  return completed ? { name: completed[1], passed: /^Passed\b/.test(completed[2]) } : undefined
+}
+
 async function runSuite(ctest, buildRoot, configuration) {
   const records = []
   const parsingErrors = []
@@ -107,10 +112,10 @@ async function runSuite(ctest, buildRoot, configuration) {
           if (records.length >= 256) throw new Error('too-many-records')
           records.push(JSON.parse(line.slice(marker + 'NATIVE_FAULT_RESULT '.length)))
         } catch { parsingError('invalid-native-result') }
-      } else if (/^\s*(?:\d+\/\d+ Test #|Start \d+:|\d+% tests passed|Total Test time)/.test(line)) {
+      } else if (/^\s*(?:\d+\/\d+\s+Test\s+#|Start\s+\d+:|\d+% tests passed|Total Test time)/.test(line)) {
         process.stdout.write(`${line}\n`)
-        const completed = line.match(/^\s*\d+\/\d+ Test #\d+:\s+([a-zA-Z0-9_.-]+)\s+\.{2,}\s+(.+)$/)
-        if (completed && tests.length < 512) tests.push({ name: completed[1], passed: /^Passed\b/.test(completed[2]) })
+        const completed = parseCTestCompletion(line)
+        if (completed && tests.length < 512) tests.push(completed)
       }
     }
     stream.on('data', chunk => {
