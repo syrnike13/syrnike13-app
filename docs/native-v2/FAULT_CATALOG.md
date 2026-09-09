@@ -743,6 +743,15 @@ wrapper performs a page check inside the shutdown budget. The archive preserves
 loaded product callbacks and explicitly labels the post-run wrapper description.
 The intermittent startup cause remains unresolved.
 
+The [held microphone-publish archive](full-product-shutdown-microphone-publish-dbe780dd.json.gz)
+adds another 100/100 shutdowns with the SDK publication call held after the Room
+connected. Maximum shutdown time was 3,987 ms with no test-side forced cleanup;
+all 141 file hashes and three backend hashes matched. It uses the same `dbe780dd`
+application and `3941011e` fixture. An earlier series stopped before injection
+after 42 passes with a generic setup failure; its specific cause was not captured.
+The successful diagnostic run retained the deadlines and captured no startup
+failure. Original reports and the post-run callback description are preserved.
+
 ## Terminal native incident propagation
 
 Terminal Engine failures now carry an optional `causeSequence`, identifying the
