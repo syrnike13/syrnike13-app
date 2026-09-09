@@ -154,7 +154,9 @@ describe('MediaRuntimeSupervisor', () => {
       adapter.ready()
       await started
       adapter.callbacks?.onMessage({ invalid: true })
-      const restart = supervisor.start()
+      const restart = expect(supervisor.start()).rejects.toMatchObject({
+        failure: { code: 'media_host_recovering' },
+      })
       await vi.advanceTimersByTimeAsync(100)
       expect(createAdapter).toHaveBeenCalledTimes(1)
       confirmExit()
@@ -177,6 +179,9 @@ describe('MediaRuntimeSupervisor', () => {
     await started
     adapter.callbacks?.onMessage({ invalid: true })
     await expect(supervisor.start()).rejects.toMatchObject({
+      failure: { code: 'media_host_termination_failed' },
+    })
+    await expect(supervisor.retry()).rejects.toMatchObject({
       failure: { code: 'media_host_termination_failed' },
     })
     expect(createAdapter).toHaveBeenCalledTimes(1)
@@ -232,11 +237,53 @@ describe('MediaRuntimeSupervisor', () => {
       await vi.advanceTimersByTimeAsync(60_000)
       expect(adapters).toHaveLength(3)
       expect(supervisor.getSnapshot().status).toBe('failed')
+      const automaticStart = supervisor.start().catch(error => error)
+      expect(adapters).toHaveLength(3)
+      expect(await automaticStart).toMatchObject({ failure: { code: 'unexpected_exit' } })
+      const manualStart = supervisor.retry()
+      expect(adapters).toHaveLength(4)
+      adapters.at(-1)!.ready()
+      await manualStart
+      // Only explicit Retry replenishes the two-attempt automatic budget.
+      for (const delay of [10, 20]) {
+        adapters.at(-1)!.unexpectedExit()
+        await vi.advanceTimersByTimeAsync(delay)
+        adapters.at(-1)!.ready()
+      }
+      adapters.at(-1)!.unexpectedExit()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(adapters).toHaveLength(6)
+      expect(supervisor.getSnapshot().status).toBe('failed')
       await supervisor.shutdown()
     } finally {
       vi.useRealTimers()
     }
   })
+
+  it('does not let an ordinary start bypass the scheduled recovery backoff', async () => {
+    vi.useFakeTimers()
+    try {
+      const first = new FakeMediaAdapter()
+      const second = new FakeMediaAdapter()
+      const createAdapter = vi.fn().mockReturnValueOnce(first).mockReturnValue(second)
+      const supervisor = new MediaRuntimeSupervisor({ createAdapter, restartDelaysMs: [100] })
+      const started = supervisor.start()
+      first.ready()
+      await started
+      first.unexpectedExit()
+      const automaticStart = supervisor.start().catch(error => error)
+      expect(createAdapter).toHaveBeenCalledTimes(1)
+      expect(await automaticStart).toMatchObject({ failure: { code: 'media_host_recovering' } })
+      await vi.advanceTimersByTimeAsync(99)
+      expect(createAdapter).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(createAdapter).toHaveBeenCalledTimes(2)
+      second.ready()
+      second.unexpectedExit()
+      await supervisor.shutdown()
+    } finally { vi.useRealTimers() }
+  })
+
   it('routes handshake, ping, and bounded graceful shutdown', async () => {
     const adapter = new FakeMediaAdapter()
     const supervisor = new MediaRuntimeSupervisor({

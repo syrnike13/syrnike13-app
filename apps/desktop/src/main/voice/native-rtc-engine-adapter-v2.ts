@@ -225,7 +225,8 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     this.remoteVideoDemand = []
     this.desired = { ...this.desired, cameraEnabled: false, screenEnabled: false, screenAudioEnabled: false }
     this.commitDesired()
-    if (!this.started || this.runtime.getSnapshot().status === 'stopped') return Promise.resolve()
+    const status = this.runtime.getSnapshot().status
+    if (!this.started || status === 'stopped' || status === 'failed') return Promise.resolve()
     return this.waitForRoom(null)
   }
 

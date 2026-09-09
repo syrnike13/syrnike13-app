@@ -242,7 +242,7 @@ export function registerNativeMediaRuntimeIpc(
   })
   ipcMain.handle(IPC.mediaRetryRuntime, async (event) => {
     assertTrustedSender(event, getWindow)
-    if (active && mediaUtilityAvailable()) await active.runtime.start()
+    if (active && mediaUtilityAvailable()) await active.runtime.retry()
     return runtimeState()
   })
   ipcMain.handle(IPC.mediaListDevices, async (event, value: unknown) => {

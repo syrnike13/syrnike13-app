@@ -259,7 +259,7 @@ describe('NativeRtcEngineAdapterV2', () => {
   it('invalidates old host media before publishing recovery and new host availability', async () => {
     const runtime = new Runtime()
     const adapter = new NativeRtcEngineAdapterV2(runtime)
-    const desired = createInitialVoiceMediaDesiredState()
+    const desired = { ...createInitialVoiceMediaDesiredState(), userMuted: false, effectiveMuted: false }
     await join(runtime, adapter, desired)
     runtime.current = {
       ...runtime.current,
@@ -291,6 +291,18 @@ describe('NativeRtcEngineAdapterV2', () => {
     await vi.waitFor(() => expect(runtime.applied.at(-1)).toEqual(latest))
     expect(runtime.applied.at(-1)?.microphone).toMatchObject({ muted: true })
     unsubscribe()
+    await adapter.dispose()
+  })
+
+  it('finishes Room cleanup without waiting for a snapshot from a terminal host', async () => {
+    const runtime = new Runtime()
+    const adapter = new NativeRtcEngineAdapterV2(runtime)
+    await join(runtime, adapter)
+    runtime.status = 'failed'
+    for (const listener of runtime.states) listener(runtime.getSnapshot())
+    vi.spyOn(runtime, 'start').mockRejectedValue(mediaLifecycleError('unexpected_exit', 'Host exited', 'host', true))
+    await expect(adapter.disconnect('recovery')).resolves.toBeUndefined()
+    expect(adapter.desiredSnapshot()?.room).toBeNull()
     await adapter.dispose()
   })
 

@@ -161,8 +161,16 @@ export class MediaRuntimeSupervisor {
   }
 
   start(): Promise<MediaLifecycleReady> {
+    return this.startHost(false)
+  }
+
+  retry(): Promise<MediaLifecycleReady> {
+    return this.startHost(true)
+  }
+
+  private startHost(manualRetry: boolean): Promise<MediaLifecycleReady> {
     if (this.terminationFailure) return Promise.reject(this.terminationFailure)
-    if (this.retirement) return this.retirement.then(() => this.start())
+    if (this.retirement) return this.retirement.then(() => this.startHost(manualRetry))
     if (this.snapshot.status === 'ready' && this.snapshot.ready) {
       return Promise.resolve(this.snapshot.ready)
     }
@@ -175,6 +183,17 @@ export class MediaRuntimeSupervisor {
           'start',
         ),
       )
+    }
+    // Ordinary control/intent calls cannot accelerate recovery or turn its
+    // terminal state into an unbounded outer retry loop.
+    if (this.restartTimer) return Promise.reject(mediaLifecycleError(
+      'media_host_recovering', 'Media runtime is waiting for its scheduled recovery', 'host_recovery', true,
+    ))
+    if (this.snapshot.status === 'failed') {
+      if (!manualRetry) return Promise.reject(this.snapshot.failure
+        ? new MediaLifecycleError({ failure: this.snapshot.failure })
+        : mediaLifecycleError('media_host_retry_required', 'Retry media startup explicitly', 'start', true))
+      this.restartAttempt = 0
     }
     this.clearRestartTimer()
     const recovering = this.hasBeenReady

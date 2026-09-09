@@ -125,6 +125,53 @@ describe('native media product boundary', () => {
     } finally { vi.useRealTimers() }
   })
 
+  it('requires the explicit Retry IPC after exhausting utility recovery', async () => {
+    vi.useFakeTimers()
+    try {
+      const hosts: MediaUtilityCallbacks[] = []
+      electron.createUtility.mockImplementation(() => ({
+        pid: 81, start: (callbacks: MediaUtilityCallbacks) => hosts.push(callbacks),
+        postMessage: vi.fn(), kill: async () => {},
+      }))
+      const { runtime, invoke } = await setup()
+      const adapter = runtime.createNativeRtcEngineAdapter()
+      const ready = () => {
+        const host = hosts.at(-1)
+        if (!host) throw new Error('Host was not created')
+        host.onMessage({
+          type: 'ready', protocolVersion: 4, engineState: 'running',
+          build: { commit: 'c'.repeat(40), napi: '8', protocolSchemaSha256: MEDIA_LIFECYCLE_SCHEMA_SHA256 },
+        })
+      }
+      const exit = () => {
+        const host = hosts.at(-1)
+        if (!host) throw new Error('Host was not created')
+        host.onExit({ code: 9, source: 'exit', expected: false, uptimeMs: 20, stderr: '', stderrTruncated: false })
+      }
+      const started = invoke(IPC.mediaRetryRuntime)
+      ready()
+      await started
+      for (const delay of [250, 1000]) {
+        exit()
+        await vi.advanceTimersByTimeAsync(delay)
+        ready()
+      }
+      exit()
+      expect(invoke(IPC.mediaGetRuntimeState)).toMatchObject({ status: 'failed' })
+      await expect(invoke(IPC.mediaListDevices, 'audioinput')).rejects.toMatchObject({
+        failure: { code: 'unexpected_exit' },
+      })
+      expect(hosts).toHaveLength(3)
+      const retried = invoke(IPC.mediaRetryRuntime)
+      expect(hosts).toHaveLength(4)
+      ready()
+      await expect(retried).resolves.toMatchObject({ status: 'ready' })
+      const disposed = adapter.dispose()
+      await vi.advanceTimersByTimeAsync(3500)
+      await disposed
+    } finally { vi.useRealTimers() }
+  })
+
   it('reattaches a listening renderer after account rotation and revokes it on reload', async () => {
     const { runtime, callbacks, invoke } = await setup()
     const first = runtime.createNativeRtcEngineAdapter()

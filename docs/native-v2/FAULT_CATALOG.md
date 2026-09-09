@@ -37,7 +37,7 @@ encoder failure. Query timeout alone does not prove utility death.
 | Native control start / ping / shutdown | 2,000 / 1,000 / 1,000 ms | Repeat fault while unrelated control is active |
 | Room connect / disconnect / cancellation | 12,000 / 2,000 / 2,000 ms | Existing injected 10 ms tests run 100 times; retain operation IDs and resource deltas |
 | Utility handshake | 5,000 ms | Late-ready and wrong-epoch suppression under restart |
-| Utility restart backoff | 250 ms, 1,000 ms; two restarts | No reset merely because a replacement handshakes; exhaustion is terminal |
+| Utility restart backoff | 250 ms, 1,000 ms; two restarts | Ordinary start/control calls cannot bypass backoff or exhaustion. Only explicit runtime Retry replenishes the budget; it cannot bypass unconfirmed termination. |
 | Graceful utility shutdown wrapper | 1,500 ms | This excludes the termination finalizer |
 | Kernel-confirmed utility termination | 2,000 ms after kill | No replacement until the old process exits |
 | Conservative supervisor shutdown composition | 3,500 ms | Actual finalizer composition and hung native proof |
@@ -358,6 +358,40 @@ handling is under investigation; no causal conclusion follows from this pass.
 Resource retirement, combined faults, utility replacement, Voice Director/backend
 authority, remote audio output measurement and other build configurations remain
 separate qualification requirements.
+
+The [original SDK integration repeat](renderer-faults-release-b3fa3ecf-sdk-d966cee.json.gz)
+used app `b3fa3ecf` and SDK `d966cee`; its
+[source and binary identities](renderer-faults-release-b3fa3ecf-sdk-d966cee-identity.json)
+were unchanged before and after execution. All three 100-cycle rows passed.
+Maximum reload/crash/release-stall durations were 1,539/1,587/2,564 ms;
+the independent receiver gaps were 122/114/114 ms. Every replacement recovered
+at least ten incoming frames. Release stalls retained at most four textures.
+The SDK fixes subscription event state updates that previously sent a redundant
+subscription request. This repeat does not establish that defect as the cause
+of the earlier intermittent incoming-video stall.
+
+## Full-product utility recovery investigation
+
+The [single successful pilot](full-product-utility-7a3b87ab.json) uses the actual
+desktop UI, Voice Director, local backend and SFU with an independent browser
+participant; [artifact identities](full-product-7a3b87ab-identity.json) record
+app `7a3b87ab` and SDK `d966cee`. A utility kill followed by pending mute changes
+settled within 5,210 ms. The replacement retained the latest mute intent, its
+SFU participant matched the new Voice Operation/connection epoch, and incoming
+and outgoing camera frames resumed. The browser's publications were unchanged.
+Old host media paths were invalidated before replacement availability; no old
+`running` microphone projection appeared. This checks state projection, not PCM
+privacy. Screen replay reported an expired source handle and required reselection.
+
+The [subsequent third-crash report](full-product-exhaustion-7a3b87ab.json) failed:
+after two automatic recoveries, ordinary product control started another host
+from `failed`, bypassing the supervisor budget. Regression tests also reproduced
+ordinary start bypassing the scheduled backoff. The supervisor now separates
+ordinary start from explicit runtime Retry, and terminal Room cleanup no longer
+waits for a snapshot from the exited host. Unit and IPC tests cover exhaustion,
+backoff, manual budget renewal and refusal to replace an unterminated host.
+The corrected full-product exhaustion/manual-Retry run and the 100-cycle utility
+qualification remain required; the successful single pilot is not that gate.
 
 ## Recorded Release matrix at `84a050dc`
 
