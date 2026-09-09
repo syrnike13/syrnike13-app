@@ -4,6 +4,10 @@ const { performance } = require('node:perf_hooks')
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 const shutdownBudgetMs = 4900
+// Browser/SDK exception text can contain private URLs or identities. Reports
+// retain our fixed failure codes; detailed caller diagnostics stay separate.
+const failureCode = error => typeof error?.message === 'string' && /^[a-z0-9_]{1,96}$/.test(error.message)
+  ? error.message : 'shutdown_scenario_failed'
 
 // The caller supplies a real product launch and UI scenario. A marker alone is
 // insufficient: its PID must be the selected app's current native utility.
@@ -89,7 +93,7 @@ exports.run = async ({ directory, mediaRoot, broker, launch, enterFault, invento
         await closing
         result.passed = true
       } catch (error) {
-        result.failure = error.message
+        result.failure = failureCode(error)
       } finally {
         // Only failed fixtures need a test-side kill. Record that cleanup and
         // never count it as proof of the application's shutdown boundary.
@@ -132,7 +136,7 @@ exports.run = async ({ directory, mediaRoot, broker, launch, enterFault, invento
     }
     summary.passed = true
   } catch (error) {
-    summary.failure = error.message
+    summary.failure = failureCode(error)
   } finally { save() }
   return summary
 }
