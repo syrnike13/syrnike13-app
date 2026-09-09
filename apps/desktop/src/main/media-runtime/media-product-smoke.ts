@@ -1,12 +1,13 @@
 import { createServer } from 'node:http'
 import path from 'node:path'
-import { writeFile } from 'node:fs/promises'
+import { writeFileSync } from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
 import { app, BrowserWindow } from 'electron'
 import { Effect, Schema } from 'effect'
 import { createInitialVoiceMediaDesiredState, type VoiceMediaDesiredState } from '@syrnike13/platform'
 import { createNativeRtcEngineAdapter, registerNativeMediaRuntimeIpc, flushNativeMediaDiagnosticsEffect } from '../native-media-engine'
 import { registerDisplayMediaIpc, installMediaPermissions } from '../media-permissions'
+import { disposeWithinDesktopShutdownBudget } from '../shutdown-budget'
 
 const environment = Schema.decodeUnknownSync(Schema.Struct({
   LIVEKIT_URL: Schema.String,
@@ -95,6 +96,16 @@ async function run() {
   let beforeReload: typeof RendererMetrics.Type | undefined
   let afterReload: typeof RendererMetrics.Type | undefined
   const rendererFaults: Array<{ id: string; passed: number; required: number; maximumIterationMs: number }> = []
+  let cleanupCompleted = false
+  const saveReport = () => {
+    const report = { accepted: !failure && cleanupCompleted, cleanupCompleted,
+      appCommit: __DESKTOP_COMMIT_SHA__, processId: process.pid,
+      scope: 'production-adapter-utility-preload-with-isolated-SFU',
+      backendAuthority: 'not-tested', failure, phases, devices,
+      picker: picker ? { count: picker.count, thumbnail: picker.thumbnail, cancelled: picker.cancelled } : undefined,
+      beforeReload, afterReload, rendererFaults, physicalCamera: devices?.camera ? 'tested' : 'unavailable' }
+    writeFileSync(environment.MEDIA_PRODUCT_REPORT, `${JSON.stringify(report, null, 2)}\n`)
+  }
   try {
     await window.loadURL(url)
     window.showInactive()
@@ -228,17 +239,31 @@ async function run() {
     failure = error instanceof Error && error.message ? error.message.slice(0, 128) : 'product_check_failed'
     phase('failed')
   } finally {
-    await adapter.dispose()
-    await Effect.runPromise(flushNativeMediaDiagnosticsEffect())
-    window.destroy()
-    await new Promise<void>(resolve => server.close(() => resolve()))
+    // Preserve the original outcome even when native teardown exceeds its budget.
+    saveReport()
+    try {
+      await disposeWithinDesktopShutdownBudget({
+        disposeVoice: async () => undefined,
+        disposeRemaining: async () => {
+          await adapter.dispose()
+          await Effect.runPromise(flushNativeMediaDiagnosticsEffect())
+          window.destroy()
+          await new Promise<void>(resolve => server.close(() => resolve()))
+          cleanupCompleted = true
+        },
+        onVoiceDisposeError: () => { failure ??= 'product_cleanup_failed' },
+        onVoiceDeadlineExceeded: () => { failure ??= 'product_cleanup_deadline' },
+        onDeadlineSettled: () => undefined,
+        forceExit: () => {
+          failure ??= 'product_cleanup_deadline'
+          saveReport()
+          app.exit(1)
+        },
+      })
+    } catch { failure ??= 'product_cleanup_failed' }
+    if (!cleanupCompleted) failure ??= 'product_cleanup_deadline'
+    saveReport()
   }
-  const report = { accepted: !failure, appCommit: __DESKTOP_COMMIT_SHA__, processId: process.pid,
-    scope: 'production-adapter-utility-preload-with-isolated-SFU',
-    backendAuthority: 'not-tested', failure, phases, devices,
-    picker: picker ? { count: picker.count, thumbnail: picker.thumbnail, cancelled: picker.cancelled } : undefined,
-    beforeReload, afterReload, rendererFaults, physicalCamera: devices?.camera ? 'tested' : 'unavailable' }
-  await writeFile(environment.MEDIA_PRODUCT_REPORT, `${JSON.stringify(report, null, 2)}\n`)
   if (failure) throw new Error(failure)
 }
 

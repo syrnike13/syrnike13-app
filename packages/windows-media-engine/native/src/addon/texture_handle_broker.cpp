@@ -71,6 +71,45 @@ class UtilityProcessGuard : public Napi::ObjectWrap<UtilityProcessGuard> {
   HANDLE job_ = nullptr;
 };
 
+// A crashed renderer can leave its WebFrameMain alive for a replacement
+// document. Retain the actual process object for release proof, without taking
+// ownership of the renderer's termination or changing Chromium's jobs.
+class ReceiverProcessReference : public Napi::ObjectWrap<ReceiverProcessReference> {
+ public:
+  explicit ReceiverProcessReference(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<ReceiverProcessReference>(info) {
+    if (!info[0].IsNumber()) throw Napi::TypeError::New(info.Env(), "Invalid receiver PID");
+    const auto pid = info[0].As<Napi::Number>().DoubleValue();
+    if (!std::isfinite(pid) || pid <= 0 || pid > MAXDWORD || std::floor(pid) != pid)
+      throw Napi::TypeError::New(info.Env(), "Invalid receiver PID");
+    handle_ = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(pid));
+    if (!handle_) throw Napi::Error::New(info.Env(), "Cannot retain texture receiver");
+  }
+  ~ReceiverProcessReference() { closeHandle(); }
+  static Napi::Value open(const Napi::CallbackInfo& info) {
+    auto constructor = DefineClass(info.Env(), "ReceiverProcessReference", {
+      InstanceMethod("hasExited", &ReceiverProcessReference::hasExited),
+      InstanceMethod("close", &ReceiverProcessReference::close),
+    });
+    return constructor.New({info[0]});
+  }
+ private:
+  Napi::Value hasExited(const Napi::CallbackInfo& info) {
+    if (!handle_) throw Napi::Error::New(info.Env(), "Receiver process reference is closed");
+    const auto result = WaitForSingleObject(handle_, 0);
+    if (result == WAIT_FAILED) throw Napi::Error::New(info.Env(), "Cannot query receiver process exit");
+    return Napi::Boolean::New(info.Env(), result == WAIT_OBJECT_0);
+  }
+  Napi::Value close(const Napi::CallbackInfo& info) {
+    closeHandle();
+    return info.Env().Undefined();
+  }
+  void closeHandle() {
+    if (const auto handle = std::exchange(handle_, nullptr)) CloseHandle(handle);
+  }
+  HANDLE handle_ = nullptr;
+};
+
 struct ProducerProcess {
   HANDLE handle = nullptr;
   ~ProducerProcess() { if (handle) CloseHandle(handle); }
@@ -119,6 +158,7 @@ Napi::Value closeHandle(const Napi::CallbackInfo& info) {
 }
 Napi::Object initialize(Napi::Env env, Napi::Object exports) {
   exports.Set("openUtilityProcess", Napi::Function::New(env, UtilityProcessGuard::open));
+  exports.Set("openReceiverProcess", Napi::Function::New(env, ReceiverProcessReference::open));
   exports.Set("openProducer", Napi::Function::New(env, openProducer));
   exports.Set("closeProducer", Napi::Function::New(env, closeProducer));
   exports.Set("duplicate", Napi::Function::New(env, duplicate));

@@ -158,6 +158,7 @@ try {
         try {
           const event = JSON.parse(line.slice('MEDIA_PRODUCT_RENDERER_FAULT '.length))
           rendererFaultEvidence.record(event, [...publications.values()])
+          if (event.event === 'completed' && (event.iteration + 1) % 10 === 0) console.log(line)
         } catch { rendererFaultEvidence.record(null, []) }
         continue
       }

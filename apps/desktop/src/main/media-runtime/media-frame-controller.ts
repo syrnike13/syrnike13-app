@@ -14,17 +14,18 @@ import type { MediaRuntimeSupervisor } from './media-runtime-supervisor'
 import type { NativeRtcEngineAdapterV2 } from '../voice/native-rtc-engine-adapter-v2'
 import { TextureLeaseBridge } from './texture-lease-bridge'
 import { resolveMediaUtilityPaths } from './media-utility-adapter'
-import { electronFrameTransfers, type ElectronFrameTexture } from './electron-frame-transfers'
+import { electronFrameTransfers, type ElectronFrameTexture, type ReceiverProcessReference } from './electron-frame-transfers'
 
 type Broker = {
   openProducer(pid: number): unknown
   closeProducer(producer: unknown): void
   duplicate(producer: unknown, handle: number): Buffer
   closeHandle(handle: Buffer): void
+  openReceiverProcess(pid: number): ReceiverProcessReference
 }
 const BrokerSchema = Schema.declare<Broker>((input): input is Broker =>
   typeof input === 'object' && input !== null &&
-  ['openProducer', 'closeProducer', 'duplicate', 'closeHandle'].every(key => typeof Reflect.get(input, key) === 'function'))
+  ['openProducer', 'closeProducer', 'duplicate', 'closeHandle', 'openReceiverProcess'].every(key => typeof Reflect.get(input, key) === 'function'))
 type Bridge = TextureLeaseBridge<MediaExportedFrame, ImportedSharedTexture>
 type ImportedSharedTexture = ElectronFrameTexture
 type Publication = MediaInventory['video']['publications'][number]
@@ -305,14 +306,15 @@ export class MediaFrameController {
           const window = this.getWindow()
           if (!window || window.isDestroyed() || !this.renderer || metadata.rendererId !== this.renderer.id || epoch !== this.epoch)
             return Promise.resolve()
-          return transfers.send(texture, window.webContents.mainFrame, {
+          const target = window.webContents.mainFrame
+          return transfers.send(texture, target, {
             sessionId: this.sessionId || `local-${epoch}`, generation: epoch,
             trackId: metadata.publicationId, participantIdentity: metadata.participantIdentity,
             source: metadata.kind === 'camera_preview' ? 'camera' : metadata.kind === 'screen_preview' ? 'screen' : publication?.source,
             local: metadata.kind !== 'remote', sequence: metadata.sequence,
             rendererEpoch: this.renderer.epoch, runtimeEpoch: epoch,
             nativeCaptureTimestampUs: metadata.timestamp,
-          })
+          }, broker.openReceiverProcess(target.osProcessId))
         },
         returnLease: lease => {
           if (epoch !== this.epoch || this.disposed) created.acknowledgeRelease(lease)

@@ -7,6 +7,8 @@ import { ElectronFrameTransfers } from './electron-frame-transfers'
 
 vi.mock('electron', () => ({ sharedTexture: {} }))
 
+const liveReceiver = () => ({ hasExited: () => false, close: vi.fn() })
+
 function fixture() {
   let epoch = 1
   let snapshot: MediaEngineSnapshot = {
@@ -77,7 +79,7 @@ describe('product media frame controller', () => {
       pixelFormat: 'bgra', codedSize: { width: 16, height: 16 }, handle: { ntHandle: Buffer.alloc(8) },
     }, sourceReleased)
     const frame = { processId: 10, routingId: 20, isDestroyed: () => false, send: vi.fn() }
-    const result = expect(transfers.send(texture, frame, {})).rejects.toThrow('deadline')
+    const result = expect(transfers.send(texture, frame, {}, liveReceiver())).rejects.toThrow('deadline')
     await vi.advanceTimersByTimeAsync(1_000)
     await result
     texture.release()
@@ -111,7 +113,7 @@ describe('product media frame controller', () => {
       pixelFormat: 'bgra', codedSize: { width: 16, height: 16 }, handle: { ntHandle: Buffer.alloc(8) },
     }, released)
     const frame = { processId: 10, routingId: 20, isDestroyed: () => destroyed, send: vi.fn() }
-    const imported = transfers.send(texture, frame, {})
+    const imported = transfers.send(texture, frame, {}, liveReceiver())
     transfers.acknowledge(frame, texture.id, 'imported')
     await imported
     texture.release()
@@ -134,6 +136,62 @@ describe('product media frame controller', () => {
     } finally { test.controller.dispose() }
   })
 
+  it('drains 100 crashed receiver processes whose frame wrappers remain alive, only after final GPU completion', async () => {
+    for (let attempt = 0; attempt < 100; ++attempt) {
+      let exited = false
+      let gpuReleased = () => {}
+      const receiver = { hasExited: () => exited, close: vi.fn() }
+      const native = {
+        startTransferSharedTexture: () => ({ transfer: 'opaque', syncToken: 'opaque', pixelFormat: 'bgra',
+          codedSize: { width: 16, height: 16 }, visibleRect: { x: 0, y: 0, width: 16, height: 16 }, timestamp: 1 }),
+        release: vi.fn((callback?: () => void) => { gpuReleased = callback ?? (() => {}) }),
+      }
+      const transfers = new ElectronFrameTransfers(() => native)
+      const sourceReleased = vi.fn()
+      const texture = transfers.importTexture({
+        pixelFormat: 'bgra', codedSize: { width: 16, height: 16 }, handle: { ntHandle: Buffer.alloc(8) },
+      }, sourceReleased)
+      const frame = { processId: attempt + 1, routingId: 20, isDestroyed: () => false, send: vi.fn() }
+      const pending = expect(transfers.send(texture, frame, {}, receiver)).rejects.toThrow('before presentation')
+      texture.release()
+      // Reusing the wrapper must not change the captured acknowledgement target.
+      frame.processId += 1000
+      transfers.acknowledge(frame, texture.id, 'released')
+      transfers.sweep()
+      expect(native.release).not.toHaveBeenCalled()
+      exited = true
+      transfers.sweep()
+      await pending
+      expect(native.release).toHaveBeenCalledOnce()
+      expect(sourceReleased).not.toHaveBeenCalled()
+      expect(receiver.close).not.toHaveBeenCalled()
+      expect(transfers.outstanding).toBe(1)
+      gpuReleased()
+      gpuReleased()
+      transfers.sweep()
+      expect(sourceReleased).toHaveBeenCalledOnce()
+      expect(receiver.close).toHaveBeenCalledOnce()
+      expect(transfers.outstanding).toBe(0)
+    }
+  })
+
+  it('closes the receiver process reference when transfer preparation throws', async () => {
+    const receiver = liveReceiver()
+    const transfers = new ElectronFrameTransfers(() => ({
+      startTransferSharedTexture: () => { throw new Error('prepare failed') },
+      release: callback => callback?.(),
+    }))
+    const texture = transfers.importTexture({
+      pixelFormat: 'bgra', codedSize: { width: 16, height: 16 }, handle: { ntHandle: Buffer.alloc(8) },
+    }, () => {})
+    await expect(transfers.send(texture, {
+      processId: 1, routingId: 2, isDestroyed: () => false, send: vi.fn(),
+    }, {}, receiver)).rejects.toThrow('prepare failed')
+    expect(receiver.close).toHaveBeenCalledOnce()
+    texture.release()
+    expect(transfers.outstanding).toBe(0)
+  })
+
   it.each(['receiver', 'gpu'])('detects %s release stalls 100/100 times without reusing retained textures', async phase => {
     vi.useFakeTimers()
     const gpuCallbacks: Array<() => void> = []
@@ -150,7 +208,7 @@ describe('product media frame controller', () => {
       const stalled = vi.fn()
       const frame = { processId: attempt + 1, routingId: 20, isDestroyed: () => false, send: vi.fn() }
       const texture = transfers.importTexture(info, released, stalled)
-      const sent = transfers.send(texture, frame, {})
+      const sent = transfers.send(texture, frame, {}, liveReceiver())
       transfers.acknowledge(frame, texture.id, 'imported')
       await sent
       texture.release()
@@ -167,7 +225,7 @@ describe('product media frame controller', () => {
       // A different consumer still imports and returns its own texture.
       const healthyReleased = vi.fn()
       const healthy = transfers.importTexture(info, healthyReleased)
-      const healthySent = transfers.send(healthy, frame, {})
+      const healthySent = transfers.send(healthy, frame, {}, liveReceiver())
       transfers.acknowledge(frame, healthy.id, 'imported')
       await healthySent
       healthy.release()

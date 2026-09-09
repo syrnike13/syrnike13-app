@@ -445,11 +445,17 @@ async function stalledUtilityTermination(action = 'terminate') {
     new Promise(resolve => child.once('spawn', resolve)))
   const guard = broker.openUtilityProcess(child.pid)
   let closed = false
+  let receiver
   try {
+    receiver = broker.openReceiverProcess(child.pid)
+    const releasedReference = broker.openReceiverProcess(child.pid)
+    releasedReference.close()
+    releasedReference.close()
     const stalled = new Promise(resolve => child.once('message', resolve))
     if (app) child.postMessage('stall')
     await boundedTimeout('utility stall', 2_000, stalled)
     if (guard.hasExited()) throw new Error('stalled fixture unexpectedly exited')
+    if (receiver.hasExited()) throw new Error('closing a receiver reference terminated the fixture')
     const stoppedAt = performance.now()
     if (action === 'close') {
       guard.close()
@@ -463,8 +469,10 @@ async function stalledUtilityTermination(action = 'terminate') {
       })())
     }
     await boundedTimeout('Electron utility exit notification', 2_000, exited)
+    if (!receiver.hasExited()) throw new Error('receiver reference missed confirmed process exit')
     return performance.now() - stoppedAt
   } finally {
+    receiver?.close()
     if (!closed) {
       try { if (!guard.hasExited()) guard.terminate() } finally { guard.close() }
     }
