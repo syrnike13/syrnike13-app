@@ -868,3 +868,11 @@ inside Playwright's `electron.launch` after 60000 ms. Both DevTools sockets had
 connected, but launch had not returned to the product driver. The private
 exception hash is included in the artifact. This narrows that failure to setup;
 the exact blocked initialization step is still under investigation.
+
+The subsequent [Playwright launch control](playwright-launch-control-e3773e48.json)
+reproduced a timeout without injecting any native fault. The application was
+running while automation waited for its initial page. Using Playwright's
+unmodified unpackaged-app loader completed 100 startup controls with the same
+timeout. Full-product qualification now records that loader and its launcher
+alongside the application inputs. The startup control alone supplies no held
+native shutdown evidence and does not explain the earlier 7674 ms close.

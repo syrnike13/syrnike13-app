@@ -2,6 +2,30 @@
 
 This file records reproducible bugs and constraints in the local environment, toolchain, operating system, or third-party libraries that the application repository cannot fix. Application defects do not belong here.
 
+## Playwright Electron launch can miss the initial navigation
+
+On 2026-09-09, Playwright 1.62.1 with Electron 43.1.0 timed out during
+`electron.launch` after 28 successful launch/close controls. Both DevTools
+connections were established and the renderer was running the application.
+The protocol trace returned an initial empty frame tree, received no
+`Page.frameNavigated`, and never reached Node `Runtime.enable`. All recorded
+CDP requests received responses. This is consistent with Playwright waiting
+for the initial page's navigation promise inside `CRBrowser.connect`.
+
+With a custom `executablePath`, Playwright omits its unpackaged-app loader.
+For this unpackaged fixture, preloading the unmodified official loader before
+the inspector arguments completed 100 launch/firstWindow/close controls with
+the same 60-second timeout. The loader defers Electron's ready event until
+automation initialization. The private Windows launcher prepends `-r` and the
+loader path before forwarding Playwright's arguments; it changes no installed
+package or product file. Preserve both launcher and loader hashes in fixture
+inputs. This startup control does not qualify native faults or resolve every
+earlier shutdown delay.
+
+See the [control artifact](docs/native-v2/playwright-launch-control-e3773e48.json)
+and the linked versioned upstream sources for the capture hashes, observation
+limits, and exact initialization paths.
+
 ## Media Foundation activation retains handles on the NVIDIA test machine
 
 On 2026-09-09, Windows 11 build 26200 with RTX 5070 Ti, driver
