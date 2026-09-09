@@ -925,4 +925,11 @@ earlier intermittent failure. The broker now provides a pinned, one-shot Win32
 timer, armed before resource disposal through the already verified main-process
 broker. Repeated calls cannot extend the deadline. A child-process smoke check
 verifies argument rejection, blocked-JavaScript termination and non-extension.
-Qualification of this production wiring on a coherent build remains pending.
+The [production-wiring control](shutdown-native-exit-control-99b5ac56.json)
+passed on `99b5ac56`: the real `before-quit` handler armed the broker, and main
+plus utility exited in 4045 ms despite the blocked quit listener. No additional
+broker or test-side deadline was injected. All 167 application files, two
+drivers and three auxiliary inputs matched after the control. Unchanged web
+and platform artifacts were reused from `52ccd1e3`, with source equivalence
+and their original build identity recorded. The ordinary 100-per-row shutdown
+matrix continues; this single control does not complete it.

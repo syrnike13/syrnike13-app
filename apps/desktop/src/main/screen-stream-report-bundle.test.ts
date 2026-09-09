@@ -76,7 +76,15 @@ describe('screen stream report bundle', () => {
           timestamp_ms: 1,
           source: 'renderer',
           event: 'report_manifest',
-          data: {},
+          data: {
+            source: 'desktop',
+            release_channel: 'stable',
+            app_version: '0.6.11',
+            platform: 'win32',
+            area: 'screen',
+            severity: 'error',
+            trigger_code: 'screen_renderer_frames_dropped_critical',
+          },
         }),
         JSON.stringify({
           schema: 'syrnike.diagnostic',
