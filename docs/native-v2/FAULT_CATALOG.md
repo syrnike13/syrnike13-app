@@ -836,3 +836,15 @@ was taken during a verified unpublish hold and app close; debugger suspension
 means that run does not qualify shutdown timing. It explains that fail-fast
 path but does not supply a missing stack or hold-entry observation for the
 earlier setup failures.
+
+## External font dependency during fixture startup
+
+The held-connect incident series at `b7e1eca4` completed 50 reports before its
+next launch remained at the startup gate. The failure capture includes an
+external font stylesheet timeout; no fault was injected in that launch.
+A [controlled Electron reload](startup-font-control.json) held that stylesheet
+for 45 seconds and observed the original frontend still unready at 35 seconds.
+The same font families are now self-hosted with their OFL licenses and source
+hashes. With cache disabled and Google Fonts blocked, a production frontend
+reload became ready in 972 ms with no external font request. This removes a
+startup dependency; it does not turn the incomplete native series into 100/100.

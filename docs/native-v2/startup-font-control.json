@@ -1,0 +1,46 @@
+{
+  "scope": "Electron frontend startup with an unavailable external font stylesheet",
+  "originalApplicationCommit": "17b9f14475fc5e81f43834b91e57c7d808bbe2bc",
+  "before": {
+    "stylesheetHeldMs": 45001,
+    "notReadyAt35045Ms": true,
+    "readyObservedMs": 47170,
+    "interpretation": "Original production frontend stayed behind its startup gate while Google Fonts CSS was held; became ready after the held request was aborted."
+  },
+  "after": {
+    "readyMs": 972,
+    "externalFontAttempts": 0,
+    "fonts": {
+      "normal": true,
+      "italic": true,
+      "display": true
+    },
+    "responses": [
+      {
+        "url": "http://127.0.0.1:14714/fonts/nunito-sans-normal-cyrillic-d3fe75d4c86f.woff2",
+        "status": 200
+      },
+      {
+        "url": "http://127.0.0.1:14714/fonts/nunito-sans-normal-latin-29e389049684.woff2",
+        "status": 200
+      }
+    ],
+    "cacheDisabled": true,
+    "googleFontRequestsAborted": true,
+    "qualification": "Same Electron main with a separately served production frontend containing the uncommitted font change. A reload control, not the final 100-cycle native fault matrix.",
+    "fontChecks": "Normal Cyrillic, italic Cyrillic and display font load checks were made on the first navigation before the measured reload."
+  },
+  "sources": {
+    "stylesSha256": "0b5536a25220b0ae7a59b7e4f4b8e4fd67c819bf390c00687488c539ad369748",
+    "fontsCssSha256": "d47a8986b6bbeb3d6b43c75194eaa7f165e3d456a30efc9916b7e40e935ba9b8",
+    "fontManifestSha256": "828a5ff1828b26d13bdf291e0260b9a6f4db20571ee8887b027dd27c52f85d1b",
+    "beforeSha256": "cca6c399ed6d1f62014eb5f8514a8b349c6d07c64fe38b69c3aedac317c09ebe",
+    "afterSha256": "343b1fb1d3a0ad4cd7c07010e66791abb296d572bb4753046780d5e1096dd43d"
+  },
+  "fontFiles": 13,
+  "fontBytes": 270652,
+  "licenses": [
+    "NunitoSans-OFL.txt",
+    "SpaceGrotesk-OFL.txt"
+  ]
+}
