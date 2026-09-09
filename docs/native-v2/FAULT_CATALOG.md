@@ -809,3 +809,30 @@ investigation but does not explain the extra handle or establish that every
 earlier failure involved idle workers. The diagnostic variants and their missing
 executable hash checks are explicitly identified and do not qualify a final
 resource matrix.
+
+## Pending joins and orphan-channel cleanup
+
+The [`17b9f144` microphone-unpublish series](shutdown-unpublish-17b9f144-incomplete.json)
+completed 17 shutdown checks, then failed during setup of iteration 18, before
+the fixture confirmed the selected native hold. The Room connected and disconnected 89 ms later; its
+utility subsequently exited with `0xC0000409` before the fixture's readiness
+deadline. All 150 application inputs, three driver files and three backend
+binaries still matched their captured hashes. This is an incomplete series.
+
+A separate stderr-instrumented copy reproduced the Room failure. Its
+[Redis trace](reservation-orphan-race-17b9f144.json) shows orphan-channel cleanup
+deleting the node projection while a pending reservation exists. All eight
+webhook commit attempts then stop at the missing node check. The cleanup now
+checks the reservation set atomically alongside membership. A real-Redis
+regression test passed for pending, active and empty channel states. Product
+verification with rebuilt crond and the separate native crash investigation
+remain pending.
+
+A [debugger capture of held unpublish](unpublish-failfast-17b9f144.json) resolves
+the exception stack to `MicrophoneOwner::run` at `stopPipeline()`, using a PDB
+whose GUID and age match the original native module. The owner's 1000 ms stop
+guards deliberately terminate a utility that cannot finish teardown. The dump
+was taken during a verified unpublish hold and app close; debugger suspension
+means that run does not qualify shutdown timing. It explains that fail-fast
+path but does not supply a missing stack or hold-entry observation for the
+earlier setup failures.
