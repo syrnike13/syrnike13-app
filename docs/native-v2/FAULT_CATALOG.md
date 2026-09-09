@@ -48,7 +48,7 @@ encoder failure. Query timeout alone does not prove utility death.
 | Screen publication publish / submit / unpublish | 10,000 / 2,000 / 10,000 ms | Existing injectable deadlines can accelerate repeated SDK completion tests |
 | Camera startup / no-frame / reader close | 4,000 / 2,000 / 2,000 ms | Separate error callback, missing callback and late callback evidence |
 | Microphone no-progress | 1,000 ms | Real worker detects stopped progress without forged error state |
-| Output no-progress / retry | 500 ms; three attempts, one-second spacing | Active/candidate isolation, latest revision and budget reset semantics |
+| Output no-progress / retry | 500 ms; three attempts, one-second spacing | Successful candidates retain the attempt count; explicit selection or a new device-registry revision resets it. Active/candidate isolation, latest intent and full-product proof remain required. |
 | Native frame export age / queue | 150 ms; total 68, batch 16, remote 4/stream, preview 2/stream | Renderer never releasing must remain bounded without unsafe reuse |
 | Electron transfer import acknowledgement / capacity | 1,000 ms / 68 process-wide | Timeout never frees an uncertain lease |
 | Electron receiver release / final GPU release | 2,000 ms from send / 2,000 ms from main release; 250 ms sweep | One failure per retained lease; no retry or unsafe reuse; exact-frame release/destruction plus final GPU completion returns ownership |
@@ -198,7 +198,8 @@ Missing lab/audio execution is missing evidence, never a pass.
 | `dxgi_capture_tests` | 100 each ACCESS_LOST and DEVICE_REMOVED, injected at AcquireNextFrame after a real first frame. One typed terminal callback, balanced acquire/release, zero remaining textures and leases. |
 | `shared_texture_pool_tests` | 100 late decoded frames across demand replacement and stop; a second owner keeps its generation and continues uploading. All retained GPU resources drain. |
 | `microphone_capture_allocation --fault-matrix` | 100 active device-loss HRESULTs and 100 actual client stops without an error. Faults are armed only after start has returned healthy; the no-progress detector remains one second. |
-| `remote_audio_lab fault-matrix` | 100 invalidations, 100 actual output client stops with the shipping 500 ms no-progress detector, and 100 failed candidate transactions. A healthy second worker continues consuming; a failed candidate preserves the active output epoch and live deafen controls. |
+| `media_lab microphone-candidate-fault` | 100 failed WASAPI candidate opens. The retained capture generation continues producing frames, mute still produces digital silence, and returning to the healthy selection does not reopen capture. |
+| `remote_audio_lab fault-matrix` | 100 invalidations, 100 actual output client stops with the shipping 500 ms no-progress detector, 100 failed candidate transactions, and 100 finite retry sequences. A healthy second worker continues consuming; a failed candidate preserves the active output epoch and live deafen controls. Only the retry schedule uses a test clock; all WASAPI health and shutdown clocks remain real. |
 
 DXGI stress initially added five handles and one thread. Module diagnostics
 identified the additional thread as `nvwgf2umx.dll`; a subsequent identical batch
@@ -214,3 +215,11 @@ probe therefore also warms its full 100-cycle workload before measuring 100
 cycles. The following measured batch returned 190 handles and six threads to
 the same baseline, with a maximum iteration of 1,101 ms. Diagnostic pauses were
 removed before that run and are not part of the test.
+
+The output retry regression initially failed because each successful candidate
+reset the automatic attempt count. Success now preserves that count. The probe
+performs four active endpoint failures, checks the one-second gate, permits only
+three automatic replacements, then verifies that an explicit retry starts a new
+budget. Its injected clock applies only to the retry schedule, not to WASAPI
+progress or cleanup. All 100 measured sequences returned 205 handles and six
+threads to baseline.

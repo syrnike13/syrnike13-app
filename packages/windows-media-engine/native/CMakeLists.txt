@@ -544,6 +544,9 @@ if(WINDOWS_MEDIA_BUILD_LAB)
   windows_media_target(media_lab)
   target_link_libraries(media_lab PRIVATE media_microphone_livekit media_screen_audio_capture LiveKit::livekit)
   target_compile_definitions(media_lab PRIVATE _CRT_SECURE_NO_WARNINGS)
+  target_include_directories(media_lab PRIVATE tests)
+  add_test(NAME microphone-candidate-fault COMMAND media_lab microphone-candidate-fault)
+  set_tests_properties(microphone-candidate-fault PROPERTIES TIMEOUT 60 LABELS "requires-audio-device")
   windows_media_copy_livekit_runtime(media_lab)
   # Compile the production capture loop with disposable-process heap evidence;
   # allocator hooks never enter the product capture library or normal media_lab.

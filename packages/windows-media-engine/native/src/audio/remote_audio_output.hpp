@@ -28,6 +28,8 @@ class RemoteAudioOutput final {
   RemoteOutputFailure selectOutput(AudioDeviceRegistry&, AudioDeviceIntent);
   // Caller refreshes the shared registry first. A new device revision or
   // explicit selection restarts the finite three-attempt local recovery budget.
+  // A successful replacement does not reset it: repeated active-device loss
+  // must reach manual retry instead of creating an unlimited recovery loop.
   RemoteOutputFailure reconcile(AudioDeviceRegistry&, std::uint64_t registry_revision);
   bool setDeafened(bool);
   bool stop(std::chrono::steady_clock::time_point deadline) noexcept;

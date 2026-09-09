@@ -1,10 +1,20 @@
 #include "audio/remote_audio_output.hpp"
 
 #include <stdexcept>
+#ifdef WINDOWS_MEDIA_REMOTE_AUDIO_PROBE
+#include "lab/remote_audio_probe.hpp"
+#endif
 
 namespace syrnike::windows_media::audio {
 namespace {
 using Clock = std::chrono::steady_clock;
+Clock::time_point retryNow() noexcept {
+#ifdef WINDOWS_MEDIA_REMOTE_AUDIO_PROBE
+  const auto injected = lab::output_retry_time_ms.load();
+  if (injected >= 0) return Clock::time_point(std::chrono::milliseconds(injected));
+#endif
+  return Clock::now();
+}
 std::int64_t timestamp() noexcept {
   return std::chrono::duration_cast<std::chrono::duration<std::int64_t, std::ratio<1, 10'000'000>>>(
       Clock::now().time_since_epoch()).count();
@@ -72,7 +82,6 @@ RemoteOutputFailure RemoteAudioOutput::selectEndpoint(const AudioEndpoint& endpo
   active_ = std::move(candidate_);
   selected_ = endpoint;
   stats_.state = RemoteOutputState::running;
-  stats_.recovery_attempts = 0;
   ++stats_.commits;
   return RemoteOutputFailure::none;
 }
@@ -97,9 +106,9 @@ RemoteOutputFailure RemoteAudioOutput::reconcile(AudioDeviceRegistry& registry, 
   if (!endpoint) return RemoteOutputFailure::unavailable;
   if (selected_ && selected_->endpoint_id == endpoint->endpoint_id && active_ &&
       active_->stats().state == WasapiOutputState::running) return RemoteOutputFailure::none;
-  if (stats_.recovery_attempts >= 3 || Clock::now() < retry_after_) return RemoteOutputFailure::candidate_failed;
+  if (stats_.recovery_attempts >= 3 || retryNow() < retry_after_) return RemoteOutputFailure::candidate_failed;
   ++stats_.recovery_attempts;
-  retry_after_ = Clock::now() + std::chrono::seconds(1);
+  retry_after_ = retryNow() + std::chrono::seconds(1);
   return selectEndpoint(*endpoint);
 }
 bool RemoteAudioOutput::setDeafened(bool value) {

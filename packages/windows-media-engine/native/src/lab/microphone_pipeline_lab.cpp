@@ -10,6 +10,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
+#include "fault_evidence.hpp"
 
 using namespace syrnike::windows_media::audio;
 namespace {
@@ -88,6 +89,46 @@ MicrophoneFrame nextFrame(MicrophonePipeline& pipeline) {
   }
 }
 }  // namespace
+int microphoneCandidateFaultLab() {
+  AudioDeviceRegistry registry(std::make_unique<LabDefaultEnumerator>(true));
+  const auto inventory = registry.refresh();
+  require(inventory.status == AudioRegistryStatus::ready, "Microphone registry failed");
+  const auto invalid = std::find_if(inventory.devices.begin(), inventory.devices.end(), [](const auto& device) {
+    return device.direction == AudioDirection::input && device.label == "Unavailable lab candidate";
+  });
+  require(invalid != inventory.devices.end(), "Unavailable candidate fixture missing");
+  syrnike::windows_media::tests::repeatFault("microphone-candidate-failure", [&] {
+    MicrophonePipeline pipeline(makeLiveKitMicrophoneEnhancement);
+    require(pipeline.selectInput(registry, {AudioDirection::input, {}}) == MicrophonePipelineFailure::none,
+            "Default microphone selection failed");
+    MicrophoneDspConfig config;
+    config.gate_enabled = false;
+    require(pipeline.configure(config) == MicrophonePipelineFailure::none &&
+            pipeline.setDemand({true, false, true}) == MicrophonePipelineFailure::none,
+            "Microphone candidate fixture did not become healthy");
+    const auto first = nextFrame(pipeline);
+    const auto before = pipeline.stats();
+    require(pipeline.selectInput(registry, {AudioDirection::input, invalid->id}) == MicrophonePipelineFailure::capture_failed,
+            "Unavailable microphone candidate was committed");
+    config.muted = true;
+    require(pipeline.configure(config) == MicrophonePipelineFailure::none,
+            "Microphone candidate failure blocked mute control");
+    (void)pipeline.output()->take();
+    const auto muted = nextFrame(pipeline);
+    const auto continued = pipeline.stats();
+    require(muted.generation == first.generation && muted.sequence > first.sequence &&
+            continued.capture.state == MicrophoneCaptureState::healthy &&
+            continued.committed_switches == before.committed_switches &&
+            std::all_of(muted.samples.begin(), muted.samples.end(), [](auto value) { return value == 0; }),
+            "Microphone candidate failure replaced the active generation or lost mute/progress");
+    const auto opened = continued.capture_opens;
+    require(pipeline.selectInput(registry, {AudioDirection::input, {}}) == MicrophonePipelineFailure::none &&
+            pipeline.stats().capture_opens == opened, "Restoring the healthy selection reopened capture");
+    require(pipeline.stop(Clock::now() + std::chrono::seconds(2)), "Microphone candidate fixture did not drain");
+  });
+  return 0;
+}
+
 int microphoneMuteCycleLab() {
   AudioDeviceRegistry registry(std::make_unique<LabDefaultEnumerator>(true));
   const auto devices = registry.refresh();

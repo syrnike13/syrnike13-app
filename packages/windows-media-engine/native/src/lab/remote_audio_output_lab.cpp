@@ -70,7 +70,7 @@ Measurement measure(RemoteAudioOutput& output, std::chrono::milliseconds duratio
   return result;
 }
 }
-int remoteAudioFaultMatrix() {
+int remoteAudioFaultMatrix(bool retry_only) {
   namespace lab = syrnike::windows_media::lab;
   AudioDeviceRegistry registry(std::make_unique<OutputFixtureDevices>());
   const auto inventory = registry.refresh();
@@ -132,9 +132,55 @@ int remoteAudioFaultMatrix() {
     require(output.stop(Clock::now() + std::chrono::seconds(2)) &&
             mixer.stop(Clock::now() + std::chrono::seconds(2)), "Output candidate fixture did not drain");
   };
-  syrnike::windows_media::tests::repeatFault("output-device-invalidated", [&] { worker_fault(false); });
-  syrnike::windows_media::tests::repeatFault("output-no-progress", [&] { worker_fault(true); });
-  syrnike::windows_media::tests::repeatFault("output-candidate-failure", candidate_fault);
+  const auto recovery_budget = [&] {
+    lab::output_retry_time_ms = 10'000;
+    struct ResetClock {
+      ~ResetClock() {
+        lab::output_retry_time_ms = -1;
+        lab::render_device_loss = false;
+        lab::render_probe_epoch = 0;
+      }
+    } reset;
+    RemoteAudioMixerWorker mixer;
+    RemoteAudioOutput output(mixer);
+    require(output.selectOutput(registry, {AudioDirection::output, {}}) == RemoteOutputFailure::none,
+            "Output recovery fixture did not become healthy");
+    for (unsigned fault = 0; fault < 4; ++fault) {
+      lab::render_probe_epoch = output.stats().active.epoch;
+      lab::render_device_loss = true;
+      const auto deadline = Clock::now() + std::chrono::milliseconds(250);
+      while (output.stats().active.failure == WasapiOutputFailure::none && Clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+      require(output.stats().active.failure == WasapiOutputFailure::device_lost,
+              "Output recovery fault was not delivered to the active epoch");
+      const auto candidates = output.stats().candidates;
+      if (fault > 0) {
+        require(output.reconcile(registry, inventory.revision) == RemoteOutputFailure::candidate_failed &&
+                output.stats().candidates == candidates, "Output retry bypassed its one-second backoff");
+        lab::output_retry_time_ms += 1000;
+      }
+      const auto result = output.reconcile(registry, inventory.revision);
+      if (fault < 3) {
+        require(result == RemoteOutputFailure::none && output.stats().candidates == candidates + 1 &&
+                output.stats().recovery_attempts == fault + 1,
+                "A briefly healthy output reset the fixed recovery budget");
+      } else {
+        require(result == RemoteOutputFailure::candidate_failed && output.stats().candidates == candidates &&
+                output.stats().state == RemoteOutputState::failed && output.stats().recovery_attempts == 3,
+                "Output recovery exceeded three attempts or lacked a terminal state");
+      }
+    }
+    require(output.selectOutput(registry, {AudioDirection::output, {}}) == RemoteOutputFailure::none &&
+            output.stats().recovery_attempts == 0, "Explicit output retry did not begin a new budget");
+    require(output.stop(Clock::now() + std::chrono::seconds(2)) &&
+            mixer.stop(Clock::now() + std::chrono::seconds(2)), "Output recovery fixture did not drain");
+  };
+  if (!retry_only) {
+    syrnike::windows_media::tests::repeatFault("output-device-invalidated", [&] { worker_fault(false); });
+    syrnike::windows_media::tests::repeatFault("output-no-progress", [&] { worker_fault(true); });
+    syrnike::windows_media::tests::repeatFault("output-candidate-failure", candidate_fault);
+  }
+  syrnike::windows_media::tests::repeatFault("output-retry-budget", recovery_budget);
   return 0;
 }
 
