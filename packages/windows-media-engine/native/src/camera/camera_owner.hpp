@@ -46,6 +46,7 @@ class CameraOwner final {
   std::mutex join_mutex_;
   std::condition_variable changed_;
   Desired desired_;
+  std::stop_source capture_cancellation_;
   CameraOwnerSnapshot snapshot_;
   CameraDeviceSnapshot devices_;
   std::shared_ptr<CameraPublication> publication_;

@@ -242,6 +242,53 @@ void transactionalPipelineDemands() {
   require(pipeline.stop(Clock::now() + std::chrono::seconds{2}) && control->samples_alive == 0,
           "Camera pipeline teardown retained samples");
 }
+void cancelledCameraCandidate() {
+  using namespace syrnike::windows_media::lab;
+  using Clock = std::chrono::steady_clock;
+  auto enumerator = std::make_unique<Enumerator>();
+  enumerator->endpoints = std::vector<CameraEndpoint>{{L"first", "First"}, {L"second", "Second"}};
+  CameraDeviceRegistry registry(std::move(enumerator));
+  const auto devices = registry.refresh();
+  auto active = std::make_shared<SyntheticCameraControl>();
+  auto candidate = std::make_shared<SyntheticCameraControl>();
+  candidate->withhold_samples = true;
+  candidate->emit_late_callback = true;
+  unsigned opens = 0;
+  CameraPipeline pipeline([&] {
+    return syntheticCameraReader(++opens == 1 ? active : candidate)();
+  });
+  require(pipeline.selectDevice(registry, devices.devices[0].id, {1280, 720, 30}) == CameraFailure::none &&
+          pipeline.setDemand(true, false) == CameraFailure::none, "Camera cancellation fixture did not start");
+  const auto before = pipeline.stats();
+  std::stop_source cancellation;
+  bool observed = false;
+  std::jthread submitter([&] {
+    std::unique_lock lock(candidate->fault_mutex);
+    observed = candidate->fault_changed.wait_for(lock, std::chrono::seconds(2), [&] {
+      return candidate->withheld_samples > 0;
+    });
+    lock.unlock();
+    cancellation.request_stop();
+  });
+  const auto started = Clock::now();
+  const auto result = pipeline.selectDevice(registry, devices.devices[1].id, {1280, 720, 30}, false,
+                                            cancellation.get_token());
+  submitter.join();
+  require(observed && result == CameraFailure::cancelled && Clock::now() - started < std::chrono::milliseconds(500),
+          "Camera readiness wait did not observe cancellation within the control budget");
+  const auto after = pipeline.stats();
+  require(after.active && !after.candidate && after.capture.generation == before.capture.generation &&
+          after.commits == before.commits && candidate->readers_alive == 0 && candidate->samples_alive == 0 &&
+          candidate->late_callbacks == 1, "Cancelled camera candidate committed or retained late callback resources");
+  require(pipeline.selectDevice(registry, devices.devices[0].id, {1280, 720, 30}) == CameraFailure::none &&
+          pipeline.stats().opened == after.opened, "Latest camera selection reopened the retained healthy capture");
+  require(pipeline.reconcile(registry, devices.revision, cancellation.get_token()) == CameraFailure::cancelled &&
+          pipeline.stats().opened == after.opened, "A cancelled camera retry opened another reader");
+  until([&] { return pipeline.stats().forwarded > before.forwarded; },
+        "Healthy camera stopped forwarding during candidate cancellation", std::chrono::milliseconds(500));
+  require(pipeline.stop(Clock::now() + std::chrono::seconds(2)) && active->readers_alive == 0 &&
+          active->samples_alive == 0, "Camera cancellation fixture did not drain");
+}
 void previewIsolation(bool quarantine = false) {
   using namespace syrnike::windows_media;
   using Clock = std::chrono::steady_clock;
@@ -340,6 +387,10 @@ void previewIsolation(bool quarantine = false) {
 }
 }  // namespace
 int main(int argc, char** argv) try {
+  if (argc == 2 && std::string_view(argv[1]) == "--cancellation") {
+    syrnike::windows_media::tests::repeatFault("camera-candidate-cancelled", cancelledCameraCandidate);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--preview-quarantine") {
     previewIsolation(true);
     std::cout << "Camera preview unproven renderer release kept its process budget\n";
@@ -356,6 +407,7 @@ int main(int argc, char** argv) try {
   registryIdentity();
   asynchronousCaptureLifetime();
   transactionalPipelineDemands();
+  syrnike::windows_media::tests::repeatFault("camera-candidate-cancelled", cancelledCameraCandidate);
   syrnike::windows_media::tests::repeatFault("camera-device-removed", [] { cameraFaultRetiresItsReader(false); });
   syrnike::windows_media::tests::repeatFault("camera-reader-no-callback", [] { cameraFaultRetiresItsReader(true); });
   std::cout << "Camera format, freshness and registry contracts passed\n";

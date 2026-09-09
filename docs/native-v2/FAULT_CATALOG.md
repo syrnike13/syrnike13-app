@@ -51,6 +51,7 @@ encoder failure. Query timeout alone does not prove utility death.
 | Output no-progress / retry | 500 ms; three attempts, one-second spacing | Successful candidates retain the attempt count; explicit selection or a new device-registry revision resets it. Active/candidate isolation, latest intent and full-product proof remain required. |
 | Output candidate cancellation | Event-driven cancellation of the five-second readiness wait; five-second native teardown fallback | New selection/retry/device revision or shutdown signals the pending worker immediately. The 500 ms cancellable-fixture assertion does not establish cancellation of a hung Windows API; that remains contained by the utility deadline. |
 | Microphone candidate cancellation | Event-driven cancellation of the five-second readiness wait; five-second native teardown fallback | Selection, processing bypass, explicit retry, device revision and shutdown signal pending preparation. A healthy active capture remains attached to DSP until a new candidate is admitted. Non-cancellable platform calls still require utility containment. |
+| Camera candidate cancellation | Event-driven cancellation of the four-second readiness wait; existing reader close and utility deadlines | Device/profile/retry or loss of all capture demand signals pending preparation. Forwarding commits only a ready, non-cancelled candidate; latest intent is reconciled again after supersession. |
 | Native frame export age / queue | 150 ms; total 68, batch 16, remote 4/stream, preview 2/stream | Renderer never releasing must remain bounded without unsafe reuse |
 | Electron transfer import acknowledgement / capacity | 1,000 ms / 68 process-wide | Timeout never frees an uncertain lease |
 | Electron receiver release / final GPU release | 2,000 ms from send / 2,000 ms from main release; 250 ms sweep | One failure per retained lease; no retry or unsafe reuse; exact-frame release/destruction plus final GPU completion returns ownership |
@@ -197,6 +198,7 @@ Missing lab/audio execution is missing evidence, never a pass.
 | --- | --- |
 | `production_screen_sender_tests` | 100 each: duplicate submit; held publish, submit and unpublish. Late callbacks cannot resurrect a failed generation or release the next borrowed frame. Shipping deadlines remain unchanged; these adapter tests use injectable 20 ms deadlines. |
 | `camera_tests` | 100 device errors and 100 withheld real reader callbacks. The latter uses the shipping two-second no-frame detector and verifies reader/sample retirement. |
+| `camera_tests --cancellation` | 100 withheld candidate callbacks using the existing synthetic reader and real capture/forwarding workers. Cancellation retains the healthy generation and forwarding progress, rejects obsolete retries, and releases the candidate plus its late callback sample. |
 | `dxgi_capture_tests` | 100 each ACCESS_LOST and DEVICE_REMOVED, injected at AcquireNextFrame after a real first frame. One typed terminal callback, balanced acquire/release, zero remaining textures and leases. |
 | `shared_texture_pool_tests` | 100 late decoded frames across demand replacement and stop; a second owner keeps its generation and continues uploading. All retained GPU resources drain. |
 | `microphone_capture_allocation --fault-matrix` | 100 active device-loss HRESULTs and 100 actual client stops without an error. Faults are armed only after start has returned healthy; the no-progress detector remains one second. |
@@ -254,3 +256,9 @@ Output cancellation's subsequent CTest run also observed a positive thread delta
 a diagnostic rerun passed all three owner rows, which does not resolve that
 intermittent resource result. Thread diagnostics now record kernel termination
 state without changing resource counts or budgets.
+
+Camera's complete suite passed after cancellation support, including 100 candidate
+cancellations, 100 device removals and 100 missing callbacks. All three rows had
+zero positive handle/thread deltas. These use the existing reader adapter and
+real capture/forwarding workers; product-owner and physical camera proof remain
+separate requirements.
