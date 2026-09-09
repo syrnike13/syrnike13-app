@@ -33,6 +33,14 @@ encoder resource qualification on this setup; successful owner assertions are
 not a complete PASS. Process containment closes resources when the utility exits,
 but does not establish zero growth during repeated encoder lifecycles.
 
+A subsequent [isolated child policy control](docs/native-v2/mft-extension-policy-b007397a.json)
+at `b007397a` reproduced +200 handles and zero thread growth in both 100-cycle
+runs, with Windows extension points enabled and disabled. The child policy was
+queried before resuming the process; both probes exited normally with the
+expected resource-failure status. This policy control did not establish that
+the overlay DLL was absent and does not confirm or disprove overlay involvement.
+No machine-wide settings were changed.
+
 ## React development performance tracks accumulate during long media runs
 
 The React development frontend retained about 2.5 million `PerformanceMeasure`

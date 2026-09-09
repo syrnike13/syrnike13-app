@@ -622,3 +622,26 @@ These are diagnostic pilots with separately evolving fixture sources, not the
 100-cycle qualification. The original and replayed journal sets differ, so
 their total archive times are not a controlled throughput comparison. The
 artifact explicitly retains that limitation and does not claim full #131 PASS.
+
+## Combined full-product faults at `b007397a`
+
+The [unchanged combined-series archive](full-product-combined-b007397a.json.gz)
+records 100/100 passing cycles with two actual renderer frame clones withheld,
+an incoming tone gap and bounded GPU load. Maximum stall detection was 2,302 ms,
+audio recovery 407 ms and presentation recovery after release 32 ms. The
+conservative maximum sampled incoming silence was 700 ms. The independent
+native receiver retained all four publication identities, made progress in
+every cycle and observed a maximum media gap of 308 ms. Backend authority,
+utility identity and all three participants remained stable. Desktop and browser
+error lists were empty; the receiver exited normally without forced gateway
+closure. All 158 recorded files and three backend binaries matched after the run.
+
+The [main-owner incident capture](presentation-incidents-b007397a.json) contains
+100 incidents with distinct correlations and occurrence count one, plus the
+200 journal projections for those episodes. It does not qualify a complete
+cross-layer causal timeline or successful incident upload.
+
+Process resources were sampled during this series, and texture retention stayed
+within the existing bound. These samples are not zero-growth qualification.
+Microphone mute privacy, pending-operation shutdowns, failed native resource
+gates and final matrix coverage remain outstanding; this is not full #131 PASS.
