@@ -304,3 +304,25 @@ This runner is prepared but has not yet passed on the current #131 build. Its
 scope excludes resource retirement, withheld texture releases, combined faults,
 utility replacement and Voice Director/backend authority. Those remain separate
 qualification requirements even when these two renderer rows pass.
+
+## Recorded Release matrix at `84a050dc`
+
+The [unchanged redacted artifact](native-faults-release-84a050dc.json) records all
+41 native fault rows from the complete 47-test Release suite on 2026-09-09.
+CTest completed in 1,636 seconds: 44 tests passed and the three encoder tests
+failed. All three completed 100 behavioral iterations but retained 201 additional
+process handles each. Their thread deltas were -3. Maximum complete iterations
+were 2,197 ms for withheld output, 1,462 ms for unsupported bitrate and 5,919 ms
+for rejected bitrate. None of these rows qualifies as a PASS.
+
+All output and microphone rows returned to their sampled baselines in this run.
+This does not resolve the previously recorded intermittent output resource growth.
+The failed encoder rows remain consistent with the isolated activation problem
+documented in `know-bugs.md`; the overlay hypothesis is still unconfirmed.
+
+The original report also preserves two reporter defects: padded CTest test
+numbers were missed, and a 173,286-character source-enumeration line was treated
+as oversized evidence. Both parsers are now corrected. Replaying the retained
+log through the bounded line reader recovered the same 41 fault records and the
+same three resource failures without parsing errors. The original artifact was
+not rewritten, and this replay is not another native test execution.

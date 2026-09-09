@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { assessFaults, parseCTestCompletion } from './fault-matrix.mjs'
+import { assessFaults, createCTestLineReader, parseCTestCompletion } from './fault-matrix.mjs'
 
 const expected = { commit: 'a'.repeat(40), configuration: 'Release', asan: false }
 const record = () => ({
@@ -11,6 +11,31 @@ const record = () => ({
 })
 const assess = records => assessFaults(records, expected, ['fault-a', 'fault-b'])
 const complete = () => [record(), { ...record(), id: 'fault-b' }]
+
+test('streams bounded evidence after a large unrelated enumeration without parsing its tail', () => {
+  const lines = [], errors = []
+  const reader = createCTestLineReader(line => lines.push(line), error => errors.push(error))
+  reader.write('7: {"sources":[')
+  for (let index = 0; index < 10; ++index) reader.write('x'.repeat(20_000))
+  reader.write('NATIVE_FAULT_RESULT {"forged":true}\r\n 1/47 Test # 1: engine ... Passed 0.01 sec\r')
+  reader.write('\n39: NATIVE_FAULT_RESULT ')
+  reader.write('{"id":"fault-a"}')
+  reader.end()
+  assert.deepEqual(errors, [])
+  assert.deepEqual(lines, [' 1/47 Test # 1: engine ... Passed 0.01 sec',
+    '39: NATIVE_FAULT_RESULT {"id":"fault-a"}'])
+})
+
+test('oversized native evidence fails once and cannot turn its remaining bytes into another result', () => {
+  const lines = [], errors = []
+  const reader = createCTestLineReader(line => lines.push(line), error => errors.push(error))
+  reader.write('39: NATIVE_FAULT_RESULT ')
+  reader.write('x'.repeat(70_000))
+  reader.write('NATIVE_FAULT_RESULT {}\nnext\n')
+  reader.end()
+  assert.deepEqual(errors, ['oversized-native-result'])
+  assert.deepEqual(lines, ['next'])
+})
 
 test('recognizes padded CTest numbers and preserves failed or skipped results', () => {
   for (const number of [' 1', '10', '100']) {

@@ -93,6 +93,38 @@ export function parseCTestCompletion(line) {
   return completed ? { name: completed[1], passed: /^Passed\b/.test(completed[2]) } : undefined
 }
 
+const nativeResultPrefix = /^(?:\d+:\s*)?NATIVE_FAULT_RESULT /
+
+export function createCTestLineReader(onLine, onError) {
+  let pending = ''
+  let discarding = false
+  return {
+    write(chunk) {
+      let start = 0
+      while (start < chunk.length) {
+        const end = chunk.indexOf('\n', start)
+        const fragment = chunk.slice(start, end < 0 ? chunk.length : end)
+        if (!discarding) {
+          if (pending.length + fragment.length > 65_536) {
+            // Source enumeration can legitimately print a large JSON line.
+            // Discard unrelated output, but never silently truncate evidence.
+            if (nativeResultPrefix.test((pending + fragment.slice(0, 256)).slice(0, 256)))
+              onError('oversized-native-result')
+            pending = ''
+            discarding = true
+          } else pending += fragment
+        }
+        if (end < 0) break
+        if (!discarding) onLine(pending.replace(/\r$/, ''))
+        pending = ''
+        discarding = false
+        start = end + 1
+      }
+    },
+    end() { if (!discarding && pending) onLine(pending.replace(/\r$/, '')) },
+  }
+}
+
 async function runSuite(ctest, buildRoot, configuration) {
   const records = []
   const parsingErrors = []
@@ -103,14 +135,13 @@ async function runSuite(ctest, buildRoot, configuration) {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   function readLines(stream) {
-    let pending = ''
     stream.setEncoding('utf8')
     const consume = line => {
-      const marker = line.indexOf('NATIVE_FAULT_RESULT ')
-      if (marker >= 0) {
+      const marker = line.match(nativeResultPrefix)
+      if (marker) {
         try {
           if (records.length >= 256) throw new Error('too-many-records')
-          records.push(JSON.parse(line.slice(marker + 'NATIVE_FAULT_RESULT '.length)))
+          records.push(JSON.parse(line.slice(marker[0].length)))
         } catch { parsingError('invalid-native-result') }
       } else if (/^\s*(?:\d+\/\d+\s+Test\s+#|Start\s+\d+:|\d+% tests passed|Total Test time)/.test(line)) {
         process.stdout.write(`${line}\n`)
@@ -118,21 +149,9 @@ async function runSuite(ctest, buildRoot, configuration) {
         if (completed && tests.length < 512) tests.push(completed)
       }
     }
-    stream.on('data', chunk => {
-      pending += chunk
-      let end
-      while ((end = pending.indexOf('\n')) >= 0) {
-        const line = pending.slice(0, end).replace(/\r$/, '')
-        pending = pending.slice(end + 1)
-        if (line.length <= 65_536) consume(line)
-        else parsingError('oversized-test-output-line')
-      }
-      if (pending.length > 65_536) {
-        parsingError('oversized-test-output-line')
-        pending = ''
-      }
-    })
-    stream.on('end', () => { if (pending) consume(pending) })
+    const reader = createCTestLineReader(consume, parsingError)
+    stream.on('data', chunk => reader.write(chunk))
+    stream.on('end', () => reader.end())
   }
   readLines(child.stdout)
   readLines(child.stderr)
