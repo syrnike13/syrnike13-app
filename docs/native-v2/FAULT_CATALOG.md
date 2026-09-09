@@ -38,6 +38,7 @@ encoder failure. Query timeout alone does not prove utility death.
 | Room connect / disconnect / cancellation | 12,000 / 2,000 / 2,000 ms | Existing injected 10 ms tests run 100 times; retain operation IDs and resource deltas |
 | Utility handshake | 5,000 ms | Late-ready and wrong-epoch suppression under restart |
 | Utility restart backoff | 250 ms, 1,000 ms; two restarts | Ordinary start/control calls cannot bypass backoff or exhaustion. Only explicit runtime Retry replenishes the budget; it cannot bypass unconfirmed termination. |
+| Retired SFU transport before fresh credentials | 6,000 ms total, including existing cleanup lookup; each SFU list/remove request is limited to 2,000 ms | Match all old authority claims, confirm absence before issuing credentials, preserve cleanup on failure. Unavailable SFU is not evidence of absence. |
 | Graceful utility shutdown wrapper | 1,500 ms | This excludes the termination finalizer |
 | Kernel-confirmed utility termination | 2,000 ms after kill | No replacement until the old process exits |
 | Conservative supervisor shutdown composition | 3,500 ms | Actual finalizer composition and hung native proof |
@@ -401,6 +402,12 @@ mandatory. A diagnostic repeat captured `0xC0000409` in microphone-owner shutdow
 while an SDK thread remained in `LocalParticipant::publishTrack`; this is not a
 successful recovery qualification.
 
+The [original pilot](full-product-utility-f4096cdd-1.json) and its explicit
+[rejected qualification assessment](full-product-f4096cdd-assessment.json) are
+both retained, alongside [exhaustion](full-product-exhaustion-f4096cdd.json),
+[manual Retry](full-product-manual-retry-f4096cdd.json) and
+[binary identities](full-product-f4096cdd-identity.json).
+
 The adapter had replayed the lost Room's credential into the replacement host
 before Voice Director retired its backend authority. It now reports terminal
 Room loss as soon as utility recovery begins and holds publication until Voice
@@ -408,6 +415,21 @@ Director provides a fresh lease. A late rejected request from a retired host or
 lease also cannot reject a new Room waiter. Regression tests reproduce both
 ordering defects; the native crash's causal resolution still requires the
 full-product rerun.
+
+At `258d7838`, two successive real utility kills each created exactly one
+replacement without the previous native crash, but failed because the old and
+new SFU participants overlapped. The [second failure report](full-product-utility-258d7838-2.json)
+preserves both participants and their publication identities. Backend cancellation
+retired authority immediately while leaving transport deletion to background
+cleanup. Fresh credential creation now drains that user's existing retired
+transport records within the budget above, using the same exact-claim retirement
+logic as the background reconciler. A failed removal or confirming query cannot
+allow another credential. Full-product verification of this change remains due.
+
+[Exhaustion](full-product-exhaustion-258d7838.json) and explicit
+[manual Retry](full-product-manual-retry-258d7838.json) passed again on
+the [same app build](full-product-258d7838-identity.json); explicit recovery took
+2,679 ms. These are individual checks, not the required 100-cycle utility gate.
 
 ## Recorded Release matrix at `84a050dc`
 
