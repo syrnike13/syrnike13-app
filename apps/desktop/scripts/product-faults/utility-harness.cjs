@@ -124,18 +124,19 @@ exports.createHarness = ({ app, ui, receiver, admin, roomName, channelId, native
     let before
     let stage = 'baseline'
     try {
-      before = await snapshot()
-      if (before.processes.length !== 1 || before.voice.connection !== 'connected' ||
-          before.voice.intentChannelId !== channelId || before.voice.membershipChannelId !== channelId ||
-          before.voice.userMuted || before.voice.screen.state !== 'running' ||
-          before.voice.screenAudio.state !== 'running' || before.voice.camera.state !== 'running' ||
-          before.participants.length !== 2 ||
-          before.participants.filter(value => value.actor === 'native').length !== 1 ||
-          before.participants.filter(value => value.actor === 'observer').length !== 1 ||
-          !before.video.some(value => !value.local && value.source === 'camera' &&
-            value.metrics?.framesDrawn >= 10 && value.metrics.lastDrawAgeMs < 1000)) {
-        throw new Error('fixture_not_connected_to_one_utility')
-      }
+      // Running can precede the first usable frames after screen selection.
+      // Establish the fixture before starting the injected-fault deadline.
+      before = await until(value =>
+        value.processes.length === 1 && value.voice.connection === 'connected' &&
+        value.voice.intentChannelId === channelId && value.voice.membershipChannelId === channelId &&
+        !value.voice.userMuted && value.voice.screen.state === 'running' &&
+        value.voice.screenAudio.state === 'running' && value.voice.camera.state === 'running' &&
+        value.participants.length === 2 &&
+        value.participants.filter(participant => participant.actor === 'native').length === 1 &&
+        value.participants.filter(participant => participant.actor === 'observer').length === 1 &&
+        value.video.some(track => !track.local && track.source === 'camera' &&
+          track.metrics?.framesDrawn >= 10 && track.metrics.lastDrawAgeMs < 1000),
+      'fixture_not_connected_to_one_utility', 15000)
       const oldPid = before.processes[0]
       const started = performance.now()
       await ui.evaluate(() => {

@@ -3,6 +3,7 @@
 exports.installVideoDrawProbe = async function installVideoDrawProbe() {
   window.nativeVideoDrawProbe?.dispose()
   const frames = new WeakMap()
+  const drawnFrames = new WeakSet()
   const tracks = new Map()
   const originalDrawImage = CanvasRenderingContext2D.prototype.drawImage
   let runtimeEpoch = (await window.syrnikeDesktop.media.getRuntimeState()).hostEpoch
@@ -34,6 +35,7 @@ exports.installVideoDrawProbe = async function installVideoDrawProbe() {
     const result = originalDrawImage.call(this, frame, ...arguments_)
     const metadata = frames.get(frame)
     if (!metadata || metadata.epoch !== runtimeEpoch) return result
+    if (drawnFrames.has(frame)) return result
     let track = tracks.get(metadata.key)
     if (!track) {
       if (tracks.size >= 64) {
@@ -44,6 +46,7 @@ exports.installVideoDrawProbe = async function installVideoDrawProbe() {
         lastDrawAt: 0, sourceWidth: 0, sourceHeight: 0 }
       tracks.set(metadata.key, track)
     }
+    drawnFrames.add(frame)
     ++track.framesDrawn
     track.lastDrawAt = performance.now()
     track.sourceWidth = frame.displayWidth

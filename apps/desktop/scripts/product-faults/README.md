@@ -54,6 +54,11 @@ performance entries, or change application media state. Its counters reset on
 host replacement and reject capacity overflow. Install it before joining the
 channel. It measures incoming presentation without importing Vite source modules.
 
+Before injecting a fault, the harness waits up to 15 seconds for the complete
+fixture, including fresh incoming draws. `Running` alone does not establish
+presentation readiness after screen selection. This preparation happens before
+the fault deadline begins. Multiple canvases drawing the same frame count once.
+
 Each primary cycle requires exactly one replacement, latest pending mute intent,
 fresh Voice Authority matching the SFU, no observed duplicate participant, an
 unchanged observer, and resumed incoming and outgoing camera frames. OS samples

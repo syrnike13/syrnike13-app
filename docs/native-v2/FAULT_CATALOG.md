@@ -485,6 +485,21 @@ its embedded identity matches the release. Separate post-release documentation
 upload failed because the fork lacks upstream AWS credentials. The archive is
 available; application qualification on this published binary remains due.
 
+The [published-SDK production-frontend pilot and incomplete series](full-product-utility-production-aeba53f9.json.gz)
+record app `aeba53f9` with DLLs matching the `.15` archive. The pilot recovered in
+8,743 ms with no UI errors; the production renderer had zero performance measures
+and 170 MiB private memory. The next fresh run completed two utility cycles and
+one exhaustion/manual Retry check, then rejected stale frames before injecting
+its third fault. Renderer memory was 201 MiB. This shows that the prior development
+memory growth does not by itself explain every preparation-time rendering gap.
+
+The harness had waited for media `Running` states, then immediately required fresh
+incoming video. It now waits for the complete fixture, including recent incoming
+draws, within the existing 15-second preparation budget. The injected-fault clock
+starts afterward and its limits are unchanged. The draw observer also counts a
+frame only once when multiple canvases draw it. The previous reports remain
+incomplete evidence; the corrected 100-cycle run is still required.
+
 ## Recorded Release matrix at `84a050dc`
 
 The [unchanged redacted artifact](native-faults-release-84a050dc.json) records all
