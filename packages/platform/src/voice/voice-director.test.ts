@@ -779,6 +779,13 @@ describe('VoiceDirector', () => {
   it('waits for engine availability without spending recovery attempts', async () => {
     const harness = createHarness({ recoveryDelaysMs: [0, 0, 0] })
     const original = await connect(harness, 'A')
+    for (const kind of ['microphone', 'output', 'camera', 'screen', 'screen_audio'] satisfies VoiceMediaKind[]) {
+      harness.engine.emit({
+        type: 'mediaState', operationId: original.operationId,
+        connectionEpoch: original.connectionEpoch, kind, media: { state: 'running' },
+      })
+    }
+    expect(harness.director.snapshot().microphone.state).toBe('running')
     harness.engine.emit({
       type: 'availabilityChanged',
       available: false,
@@ -794,6 +801,11 @@ describe('VoiceDirector', () => {
         retryable: true,
         stage: 'native_runtime',
       },
+    })
+
+    expect(harness.director.snapshot()).toMatchObject({
+      microphone: { state: 'off' }, output: { state: 'off' }, camera: { state: 'off' },
+      screen: { state: 'off' }, screenAudio: { state: 'off' },
     })
 
     await waitUntil(() => harness.engine.disconnected.includes('recovery'))

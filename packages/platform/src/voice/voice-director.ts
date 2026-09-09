@@ -904,6 +904,11 @@ export class VoiceDirector {
         connection: event.failure.retryable ? 'recovering' : 'failed',
         membershipChannelId: null,
         speakingUserIds: [],
+        microphone: createInactiveMediaSnapshot(),
+        output: createInactiveMediaSnapshot(),
+        camera: createInactiveMediaSnapshot(),
+        screen: createInactiveMediaSnapshot(),
+        screenAudio: createInactiveMediaSnapshot(),
         retryAttempt: event.failure.retryable ? 0 : undefined,
         failure: event.failure,
       })

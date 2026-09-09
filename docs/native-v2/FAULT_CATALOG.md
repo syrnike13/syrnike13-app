@@ -431,6 +431,26 @@ allow another credential. Full-product verification of this change remains due.
 the [same app build](full-product-258d7838-identity.json); explicit recovery took
 2,679 ms. These are individual checks, not the required 100-cycle utility gate.
 
+The first [full-product run at `224d94fe`](full-product-utility-224d94fe-1.json)
+prevented the duplicate but failed recovery: backend returned `LiveKitUnavailable`
+while retirement was still pending, and the gateway adapter classified that
+temporary error as non-retryable. The [artifact identity](full-product-224d94fe-identity.json)
+also records the local backend binaries and their dev profile. The adapter now
+preserves retryability for this specific backend error; permission and unknown
+rejections remain terminal. Voice Director also clears the lost Room's observed
+media states immediately, instead of retaining stale Running states during a
+failed recovery. Its desired media intent remains available for the new lease.
+All 36 gateway/Director tests pass, including both reproduced regressions.
+
+A diagnostic build with the retry classification passed a single utility cycle
+in 5,600 ms with exactly one host replacement, no overlapping SFU participants
+and bidirectional camera progress. This was an uncommitted diagnostic build,
+not exact-commit qualification. An earlier diagnostic repeat lacked its browser
+observer after a Vite dependency reload and is invalid evidence. The harness now
+requires both participants and recent incoming frames before injecting any fault;
+it also samples main/utility handles, threads and memory. The 100-cycle gate
+remains outstanding.
+
 ## Recorded Release matrix at `84a050dc`
 
 The [unchanged redacted artifact](native-faults-release-84a050dc.json) records all
