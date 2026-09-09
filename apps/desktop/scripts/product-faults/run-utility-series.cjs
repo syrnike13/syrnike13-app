@@ -8,6 +8,7 @@ exports.run = async ({ ui, harness, directory, screenSourceButton, count = 100 }
   mkdirSync(directory)
   const summary = { passed: false, scope: 'utility-replay-authority-and-camera-progress',
     resourceQualification: 'not-assessed', incomingAudioOutput: 'not-measured',
+    incomingAudioOutputCycles: 0,
     required: count, completed: 0, exhaustionChecks: 0,
     manualRetries: 0, results: [], resources: [] }
   const save = () => writeFileSync(join(directory, 'summary.json'), JSON.stringify(summary, null, 2))
@@ -50,6 +51,11 @@ exports.run = async ({ ui, harness, directory, screenSourceButton, count = 100 }
         elapsedMs: result.elapsedMs, hostEpoch: result.after?.runtime.hostEpoch })
       summary.resources.push({ iteration: index, phase: 'after', values: result.after?.processResources })
       if (!result.passed) throw new Error(`utility_${index}: ${result.failure}`)
+      if (result.incomingOutputBefore && result.incomingOutputAfter) {
+        ++summary.incomingAudioOutputCycles
+        summary.incomingAudioOutput = 'sampled-before-and-after-primary-fault'
+        summary.scope = 'utility-replay-authority-camera-and-incoming-pcm'
+      }
       ++summary.completed
       ++automaticCrashesSinceManualRetry
       save()
