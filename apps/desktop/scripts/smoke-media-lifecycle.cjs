@@ -464,12 +464,17 @@ async function stalledUtilityTermination(action = 'terminate') {
     } else {
       guard.terminate()
       guard.terminate()
-      await boundedTimeout('retained-handle termination', 2_000, (async () => {
-        while (!guard.hasExited()) await new Promise(resolve => setTimeout(resolve, 10))
-      })())
     }
-    await boundedTimeout('Electron utility exit notification', 2_000, exited)
-    if (!receiver.hasExited()) throw new Error('receiver reference missed confirmed process exit')
+    // Electron's exit notification can precede the Windows process handle
+    // becoming signaled, particularly when a Job Object closes the process.
+    // Require both observations within the same termination budget.
+    await boundedTimeout('confirmed utility termination', 2_000, Promise.all([
+      exited,
+      (async () => {
+        while (!receiver.hasExited()) await new Promise(resolve => setTimeout(resolve, 10))
+        if (!closed && !guard.hasExited()) throw new Error('utility guard missed confirmed process exit')
+      })(),
+    ]))
     return performance.now() - stoppedAt
   } finally {
     receiver?.close()
