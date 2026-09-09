@@ -30,6 +30,25 @@ describe('diagnostic reporter', () => {
     expect(serialized).not.toContain('private.example')
   })
 
+  it('preserves distinct native incident aliases without allowing arbitrary identifiers', () => {
+    const first = 'incident-79360566-3412-4a77-8f4b-36f392b48d6d'
+    const second = 'incident-d8d7866b-6c37-4bb2-bf4b-9d715909020b'
+    recordDiagnosticEvent('native-runtime', 'instability_detected', {
+      incidents: [
+        { correlationId: first },
+        { correlationId: second },
+        { correlationId: 'secret-value-that-is-longer-than-thirty-two-characters' },
+      ],
+      message: first,
+      userId: second,
+    })
+    const records = JSON.parse(diagnosticEventsJsonForTests())
+    expect(records[0].data.payload).toEqual({
+      incidents: [{ correlationId: first }, { correlationId: second }, { correlationId: '[redacted]' }],
+      message: '[redacted]',
+    })
+  })
+
   it('keeps bounded screen degradation metrics while removing identities', () => {
     recordDiagnosticEvent('rtc', 'health_incident', {
       triggerCode: 'screen_frames_dropped_critical',

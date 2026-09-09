@@ -30,6 +30,20 @@ const UnknownJsonSchema = Schema.String.pipe(
 )
 const UnknownRecordSchema = Schema.Record(Schema.String, Schema.Unknown)
 const DiagnosticDataSchema = Schema.Record(Schema.String, Schema.Json)
+const ManifestIdentifierSchema = Schema.String.check(
+  Schema.isPattern(/^[A-Za-z0-9_.-]{1,64}$/),
+)
+// Manifest metadata is a typed upload contract, not arbitrary diagnostic data.
+// Generic redaction drops both "source" and "release_channel" as sensitive keys.
+const ReportManifestDataSchema = Schema.Struct({
+  source: Schema.Literals(['web', 'desktop']),
+  release_channel: Schema.Literals(['stable', 'nightly', 'development']),
+  app_version: ManifestIdentifierSchema,
+  platform: ManifestIdentifierSchema,
+  area: ManifestIdentifierSchema,
+  severity: Schema.Literals(['warning', 'error', 'fatal']),
+  trigger_code: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_.-]{1,128}$/)),
+})
 
 type NativeDiagnosticFile = {
   value: string
@@ -244,6 +258,12 @@ function normalizeRecord(
   const decodedEnvelope =
     Schema.decodeUnknownOption(DiagnosticEnvelopeSchema)(value)
   if (Option.isSome(decodedEnvelope)) {
+    if (decodedEnvelope.value.record_type === 'manifest') {
+      const manifest = Schema.decodeUnknownOption(ReportManifestDataSchema)(decodedEnvelope.value.data)
+      return Option.isSome(manifest)
+        ? { ...decodedEnvelope.value, data: { ...manifest.value } }
+        : null
+    }
     return {
       ...decodedEnvelope.value,
       data: sanitizeBundleData(decodedEnvelope.value.data),
