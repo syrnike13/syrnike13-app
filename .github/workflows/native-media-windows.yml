@@ -79,12 +79,17 @@ jobs:
       - name: Build and test Debug media lifecycle engine
         run: |
           pnpm windows-media:build:debug
-          pnpm windows-media:test:debug --label-exclude 'requires-gpu-video|requires-audio-device'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Avoid forwarding regex alternation through the package-script cmd shell.
+          ctest --test-dir packages/windows-media-engine/build -C Debug --output-on-failure --label-exclude 'requires-gpu-video|requires-audio-device'
       - name: Build, test, and verify Release media lifecycle engine
         run: |
           pnpm windows-media:build
-          pnpm windows-media:test --label-exclude 'requires-gpu-video|requires-audio-device'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir packages/windows-media-engine/build -C Release --output-on-failure --label-exclude 'requires-gpu-video|requires-audio-device'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm windows-media:probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm windows-media:verify
       - name: Report hardware validation boundary
         shell: pwsh
@@ -212,6 +217,9 @@ jobs:
       - name: Build and test Debug hook addons with AddressSanitizer
         run: |
           pnpm desktop-native:build:asan
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm desktop-native:test:debug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm windows-media:build:asan
-          pnpm windows-media:test:debug --label-exclude 'requires-gpu-video|requires-audio-device'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir packages/windows-media-engine/build -C Debug --output-on-failure --label-exclude 'requires-gpu-video|requires-audio-device'
