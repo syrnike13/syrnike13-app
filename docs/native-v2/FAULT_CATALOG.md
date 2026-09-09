@@ -568,3 +568,33 @@ initialization and passed all 100 worker lifecycles after the fix: ten actual
 loopback packets per cycle, maximum cycle 230 ms, zero handle/thread deltas.
 These were diagnostic builds with uncommitted source at base `baa0c9af`; exact
 commit and full-product PCM/recovery qualification remain required.
+
+The subsequent [full-product PCM series](full-product-utility-pcm-ac3ca0fa.json.gz)
+passed 100/100 primary utility crashes, with actual incoming process-loopback PCM
+before and after every crash. It also passed 49/49 exhaustion and explicit Retry
+checks. Maximum primary recovery was 12,216 ms. There were no desktop or observer
+UI errors. The final runtime was Ready at host epoch 150, restart count 149.
+
+The application was built at `ac3ca0fa`, the reporting harness at `0ffec11a`, and
+the unchanged production frontend at `aeba53f9`; the archive records these
+identities separately. All 144 application/frontend/probe/harness hashes and
+three backend binary hashes matched after the run. Its 199 original reports
+retain their hashes. Renderer private memory settled to 205 MiB with zero
+performance measures and no forced GC or timeline clearing. This result proves
+sampled incoming PCM through utility recovery; microphone mute privacy,
+continuous gaps, combined faults and the remaining #131 gates remain separate.
+
+## Recorded Debug matrix at `baa0c9af`
+
+The [unchanged Debug artifact](native-faults-debug-baa0c9af.json) contains all
+41 then-required native fault rows and 44/47 passing CTest tests. Each of the
+three encoder rows completed 100 owner assertions but retained 201 handles;
+their thread deltas were -3. All other rows passed, including the output and
+microphone rows. This remains a failed qualification and predates the additional
+output-session-isolation regression.
+
+The next hosted Debug run also failed the monitor-repeat resource check: all
+100 requested frames arrived and final handles/threads were 249/8 against a
+249/10 baseline, but one intermediate cycle exceeded the thread baseline by one.
+ASan passed its hosted subset. Neither a final decrease nor a passing owner
+assertion overrides the failed intermediate resource gate.
