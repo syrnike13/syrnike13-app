@@ -13,6 +13,7 @@ const environment = Schema.decodeUnknownSync(Schema.Struct({
   LIVEKIT_PUBLISHER_TOKEN: Schema.String,
   MEDIA_PRODUCT_PROFILE: Schema.String,
   MEDIA_PRODUCT_REPORT: Schema.String,
+  MEDIA_PRODUCT_RENDERER_FAULTS: Schema.optional(Schema.Literal('1')),
 }))(process.env)
 app.setPath('userData', environment.MEDIA_PRODUCT_PROFILE)
 
@@ -93,6 +94,7 @@ async function run() {
   let picker: typeof PickerResult.Type | undefined
   let beforeReload: typeof RendererMetrics.Type | undefined
   let afterReload: typeof RendererMetrics.Type | undefined
+  const rendererFaults: Array<{ id: string; passed: number; required: number; maximumIterationMs: number }> = []
   try {
     await window.loadURL(url)
     window.showInactive()
@@ -172,6 +174,47 @@ async function run() {
       throw new Error('renderer_reload_changed_room')
     afterReload = await metrics()
     phase('renderer_reloaded')
+    if (environment.MEDIA_PRODUCT_RENDERER_FAULTS === '1') {
+      if (!devices.camera) throw new Error('renderer_fault_camera_missing')
+      desired = { ...desired, userMuted: false, effectiveMuted: false }
+      adapter.updateDesiredMedia(desired)
+      await until(() => adapter.snapshot().tracks.microphone.state === 'running', 'fault_microphone_running')
+      for (const id of ['renderer-reload', 'renderer-crash']) {
+        const row = { id, passed: 0, required: 100, maximumIterationMs: 0 }
+        rendererFaults.push(row)
+        process.stdout.write(`MEDIA_PRODUCT_RENDERER_FAULT ${JSON.stringify({ id, event: 'begin' })}\n`)
+        for (let iteration = 0; iteration < 100; ++iteration) {
+          const started = performance.now()
+          const previous = await metrics()
+          if (id === 'renderer-crash') {
+            let crashed = false
+            const onGone = () => { crashed = true }
+            window.webContents.once('render-process-gone', onGone)
+            try {
+              window.webContents.forcefullyCrashRenderer()
+              await until(() => crashed, 'renderer_crash_observed')
+            } finally { window.webContents.removeListener('render-process-gone', onGone) }
+          }
+          await window.loadURL(url)
+          await until(async () => (await metrics()).ready, 'fault_renderer_ready')
+          await window.webContents.executeJavaScript(`window.syrnikeDesktop.media.setLocalScreenPreviewDemand({ demanded: true, width: 960, height: 540, fps: 30 })`)
+          await until(async () => {
+            const value = await metrics()
+            return value.screen >= 10 && value.camera >= 10
+          }, 'fault_renderer_media')
+          const current = await metrics()
+          const snapshot = adapter.snapshot()
+          if (current.failures || current.epoch !== previous.epoch || snapshot.roomState !== 'connected' ||
+              adapter.desiredSnapshot()?.room?.credentialLeaseId !== roomLeaseId ||
+              (['screen', 'screen_audio', 'camera', 'microphone', 'output'] as const).some(key => snapshot.tracks[key].state !== 'running'))
+            throw new Error('renderer_fault_changed_media_owner')
+          const elapsedMs = performance.now() - started
+          row.maximumIterationMs = Math.max(row.maximumIterationMs, elapsedMs)
+          ++row.passed
+          process.stdout.write(`MEDIA_PRODUCT_RENDERER_FAULT ${JSON.stringify({ id, event: 'completed', iteration, elapsedMs })}\n`)
+        }
+      }
+    }
     desired = { ...desired, screenAudioEnabled: false }
     adapter.updateDesiredMedia(desired)
     await until(() => adapter.snapshot().tracks.screen_audio.state === 'off' &&
@@ -194,7 +237,7 @@ async function run() {
     scope: 'production-adapter-utility-preload-with-isolated-SFU',
     backendAuthority: 'not-tested', failure, phases, devices,
     picker: picker ? { count: picker.count, thumbnail: picker.thumbnail, cancelled: picker.cancelled } : undefined,
-    beforeReload, afterReload, physicalCamera: devices?.camera ? 'tested' : 'unavailable' }
+    beforeReload, afterReload, rendererFaults, physicalCamera: devices?.camera ? 'tested' : 'unavailable' }
   await writeFile(environment.MEDIA_PRODUCT_REPORT, `${JSON.stringify(report, null, 2)}\n`)
   if (failure) throw new Error(failure)
 }

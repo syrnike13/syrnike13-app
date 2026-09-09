@@ -282,3 +282,25 @@ cancellations, 100 device removals and 100 missing callbacks. All three rows had
 zero positive handle/thread deltas. These use the existing reader adapter and
 real capture/forwarding workers; product-owner and physical camera proof remain
 separate requirements.
+
+## Active renderer fault runner
+
+`MEDIA_PRODUCT_RENDERER_FAULTS=1` enables 100 real renderer reloads and 100 real
+renderer crashes in the existing `@syrnike13/native-media-lab product` runner.
+The publisher uses the shipping Electron adapter, utility and preload with the
+isolated project SFU. Each replacement must replay inventory and show ten camera
+and screen frames, retaining the native epoch, Room credential lease and running
+media paths. The existing 15-second readiness deadline bounds each wait; the
+complete fault batch has a 900-second test-process deadline.
+
+An independent LiveKit receiver verifies all four unchanged publication aliases
+and new decoded frames during every measured iteration. It rejects missing or
+duplicate publications and any observed media gap above 1,500 ms. Evidence keeps
+two aggregate rows, minimum per-iteration frame progress and maximum gaps/durations;
+it does not retain per-frame logs. The evidence parser rejects missing, duplicate,
+out-of-order and partial results. A physical camera is required in this mode.
+
+This runner is prepared but has not yet passed on the current #131 build. Its
+scope excludes resource retirement, withheld texture releases, combined faults,
+utility replacement and Voice Director/backend authority. Those remain separate
+qualification requirements even when these two renderer rows pass.

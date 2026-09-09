@@ -73,6 +73,9 @@ jobs:
         run: pnpm --filter @syrnike13/windows-media-engine protocol:check
       - name: Verify native fault evidence reporter
         run: pnpm --filter @syrnike13/windows-media-engine exec node --test scripts/fault-matrix.test.mjs
+
+      - name: Check renderer fault observer evidence
+        run: pnpm --filter @syrnike13/native-media-lab exec node --test scripts/renderer-fault-evidence.test.mjs
       - name: Build and test Debug media lifecycle engine
         run: |
           pnpm windows-media:build:debug
