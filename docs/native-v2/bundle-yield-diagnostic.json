@@ -1,0 +1,947 @@
+{
+  "qualificationPassed": false,
+  "scope": "diagnostic archive fairness and combined fault pilots",
+  "applicationCommit": "6d518feb",
+  "nativeBuildCommit": "6d518feb",
+  "frontendCommit": "aeba53f9",
+  "harnessProvenance": "uncommitted pilot sources at base 6d518feb; neutral shutdown uses subsequent ws cleanup",
+  "before": {
+    "applicationCommit": "ac3ca0fa",
+    "bundleBytes": 1228682,
+    "elapsedMs": 4130.3115,
+    "loop": {
+      "maxMs": 3783.262207,
+      "p99Ms": 3783.262207
+    },
+    "inputSet": "original native diagnostics, up to 30 MiB; differs from replay inputs"
+  },
+  "afterLoaded": {
+    "source": "6d518feb",
+    "scope": "diagnostic bundle with replayed native log load",
+    "inputs": [
+      {
+        "name": "electron-main.1.jsonl",
+        "bytes": 4193563,
+        "sha256": "a48c3e82e8e07f81400d7d579e25dc71bf5fab8253de4b05f928ea13de9da836"
+      },
+      {
+        "name": "electron-main.2.jsonl",
+        "bytes": 4194102,
+        "sha256": "4634483437bffdcbf59d9e1ffc48aa9c1846ab2de3a45e85a51aaa8eae4f9a62"
+      },
+      {
+        "name": "electron-main.3.jsonl",
+        "bytes": 4194121,
+        "sha256": "2a828147b1f51c7fd55681ea92c090f2ee662490456b22afad3e04f3b2b16db4"
+      },
+      {
+        "name": "electron-main.4.jsonl",
+        "bytes": 4193512,
+        "sha256": "daa7f54f76eb85a26b6d96d95274f86e033bfcc7c409489fd7a3ad9353cd0b81"
+      },
+      {
+        "name": "electron-main.jsonl",
+        "bytes": 1934878,
+        "sha256": "ec0f27dab8149397b97dd4770d619f71916bd6c0517943a0648c9eca7a923694"
+      }
+    ],
+    "bytes": 761260,
+    "elapsedMs": 2815.0116000026464,
+    "loop": {
+      "maxMs": 25.395199,
+      "p99Ms": 15.966207
+    }
+  },
+  "combinedWithArchive": {
+    "scope": "diagnostic combined fault with explicit archive load",
+    "bundleBytes": 780831,
+    "bundleMs": 2716.385799996555,
+    "loop": {
+      "maxMs": 23.986175,
+      "p99Ms": 14.467071
+    },
+    "combined": {
+      "passed": true,
+      "scope": "full-product-combined-media-continuity",
+      "resourceQualification": "process-samples-and-texture-bound",
+      "audioWindowMs": 100,
+      "before": {
+        "runtime": {
+          "available": true,
+          "status": "ready",
+          "restartCount": 0,
+          "hostEpoch": 1,
+          "paths": {
+            "microphone": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            },
+            "camera": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            },
+            "screen": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            },
+            "output": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            },
+            "screen_audio": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            },
+            "screen_preview": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            },
+            "camera_preview": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            },
+            "remote_video": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            }
+          }
+        },
+        "participants": [
+          {
+            "actor": "neutral-observer",
+            "identity": "7270382d7b32",
+            "state": 2,
+            "operation": "96643a00fb3b",
+            "connectionEpoch": "32dc6f444761",
+            "tracks": []
+          },
+          {
+            "actor": "observer",
+            "identity": "9cda916ee06c",
+            "state": 2,
+            "operation": "ee8b17301c10",
+            "connectionEpoch": "f0b29c7359a0",
+            "tracks": [
+              {
+                "source": 1,
+                "alias": "8f169318a5b0",
+                "muted": false
+              },
+              {
+                "source": 2,
+                "alias": "40c7e450f70f",
+                "muted": false
+              }
+            ]
+          },
+          {
+            "actor": "native",
+            "identity": "9763e9eeafe5",
+            "state": 2,
+            "operation": "8ce2dc0610dd",
+            "connectionEpoch": "995aeb49bf79",
+            "tracks": [
+              {
+                "source": 1,
+                "alias": "9e682d55b38d",
+                "muted": false
+              },
+              {
+                "source": 2,
+                "alias": "adaa85ea7d2f",
+                "muted": false
+              },
+              {
+                "source": 3,
+                "alias": "0c7b95361a5c",
+                "muted": false
+              },
+              {
+                "source": 4,
+                "alias": "52d1c12436a8",
+                "muted": false
+              }
+            ]
+          }
+        ],
+        "resources": [
+          {
+            "role": "main",
+            "handles": 1043,
+            "threads": 51,
+            "privateBytes": 119619584,
+            "workingSetBytes": 155033600
+          },
+          {
+            "role": "media",
+            "handles": 1310,
+            "threads": 118,
+            "privateBytes": 292941824,
+            "workingSetBytes": 321830912
+          },
+          {
+            "role": "renderer",
+            "handles": 352,
+            "threads": 24,
+            "privateBytes": 98037760,
+            "workingSetBytes": 173858816
+          },
+          {
+            "role": "gpu",
+            "handles": 814,
+            "threads": 64,
+            "privateBytes": 135344128,
+            "workingSetBytes": 154349568
+          }
+        ],
+        "video": [
+          {
+            "local": true,
+            "source": "camera",
+            "metrics": {
+              "framesDrawn": 4661,
+              "lastDrawAgeMs": 14.159999996423721,
+              "sourceWidth": 640,
+              "sourceHeight": 360
+            }
+          },
+          {
+            "local": true,
+            "source": "screen",
+            "metrics": {
+              "framesDrawn": 6481,
+              "lastDrawAgeMs": 14.349999994039536,
+              "sourceWidth": 960,
+              "sourceHeight": 540
+            }
+          },
+          {
+            "local": false,
+            "source": "camera",
+            "metrics": {
+              "framesDrawn": 3222,
+              "lastDrawAgeMs": 31.185000002384186,
+              "sourceWidth": 1280,
+              "sourceHeight": 720
+            }
+          }
+        ],
+        "receiverVideo": [
+          {
+            "track": "50300db2e202",
+            "local": false,
+            "frames": 5949,
+            "width": 1280,
+            "height": 720
+          },
+          {
+            "track": "5951f6cbe6b9",
+            "local": true,
+            "frames": 56676,
+            "width": 1280,
+            "height": 720
+          }
+        ]
+      },
+      "audioRecoveryMs": 392.24769999831915,
+      "detectionMs": 2125.429099999368,
+      "held": {
+        "active": true,
+        "held": 2,
+        "openFrames": 2,
+        "overflow": false
+      },
+      "presentationRecoveryMs": 33.909599997103214,
+      "audio": {
+        "cycle": 0,
+        "packets": 648,
+        "activePackets": 597,
+        "peakRms": 2353.97,
+        "maximumAgeUs": 12872,
+        "failure": -1,
+        "handlesDelta": 54,
+        "clientsAfterStop": 0,
+        "threadsAfterStop": 0,
+        "windowMs": 100,
+        "windows": [
+          {
+            "packets": 8,
+            "activePackets": 5,
+            "peakRms": 2339.53
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2337.42
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.8
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2320.24
+          },
+          {
+            "packets": 10,
+            "activePackets": 8,
+            "peakRms": 2324.73
+          },
+          {
+            "packets": 10,
+            "activePackets": 0,
+            "peakRms": 4.4441
+          },
+          {
+            "packets": 10,
+            "activePackets": 0,
+            "peakRms": 1.00985
+          },
+          {
+            "packets": 10,
+            "activePackets": 0,
+            "peakRms": 0.502079
+          },
+          {
+            "packets": 10,
+            "activePackets": 0,
+            "peakRms": 0.503115
+          },
+          {
+            "packets": 10,
+            "activePackets": 4,
+            "peakRms": 2291.94
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2350.04
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2346.53
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.25
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.97
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2332.32
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2344.26
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2346.51
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.27
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.92
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2332.73
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2344.2
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2337.43
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.24
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.8
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2332.74
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2344.25
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2346.56
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.23
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.8
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2332.72
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2344.23
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2346.52
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2344.47
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.95
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2332.73
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2344.17
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2337.43
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.24
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.86
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2332.71
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2344.16
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2337.4
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.23
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.88
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2329.55
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2344.18
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2346.54
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2344.42
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.81
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2332.71
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2344.22
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2346.59
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.23
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.94
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2329.58
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2344.08
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2346.55
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.28
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.72
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2332.73
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2344.19
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2337.47
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2350.98
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2353.77
+          },
+          {
+            "packets": 10,
+            "activePackets": 10,
+            "peakRms": 2329.55
+          }
+        ]
+      },
+      "maximumSilentWindowSpanMs": 400,
+      "maximumSilenceUpperBoundMs": 600,
+      "gpu": {
+        "batches": 5243,
+        "allocatedBytes": 16777216,
+        "maximumOutstandingDispatches": 1
+      },
+      "neutralObserver": {
+        "event": "finish",
+        "passed": true,
+        "publications": [
+          {
+            "source": "microphone",
+            "alias": "adaa85ea7d2f",
+            "frames": 8011,
+            "ageMs": 12,
+            "unsubscribed": false
+          },
+          {
+            "source": "camera",
+            "alias": "9e682d55b38d",
+            "frames": 2402,
+            "ageMs": 36,
+            "unsubscribed": false
+          },
+          {
+            "source": "screen_audio",
+            "alias": "52d1c12436a8",
+            "frames": 8011,
+            "ageMs": 12,
+            "unsubscribed": false
+          },
+          {
+            "source": "screen",
+            "alias": "0c7b95361a5c",
+            "frames": 2400,
+            "ageMs": 62,
+            "unsubscribed": false
+          }
+        ],
+        "minimumFrameProgress": 232,
+        "maximumGapMs": 79,
+        "failures": 0,
+        "reconnects": 0
+      },
+      "after": {
+        "runtime": {
+          "available": true,
+          "status": "ready",
+          "restartCount": 0,
+          "hostEpoch": 1,
+          "paths": {
+            "microphone": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            },
+            "camera": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            },
+            "screen": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            },
+            "output": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            },
+            "screen_audio": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            },
+            "screen_preview": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            },
+            "camera_preview": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            },
+            "remote_video": {
+              "revision": 14,
+              "state": "running",
+              "warning": false
+            }
+          }
+        },
+        "participants": [
+          {
+            "actor": "neutral-observer",
+            "identity": "7270382d7b32",
+            "state": 2,
+            "operation": "96643a00fb3b",
+            "connectionEpoch": "32dc6f444761",
+            "tracks": []
+          },
+          {
+            "actor": "observer",
+            "identity": "9cda916ee06c",
+            "state": 2,
+            "operation": "ee8b17301c10",
+            "connectionEpoch": "f0b29c7359a0",
+            "tracks": [
+              {
+                "source": 1,
+                "alias": "8f169318a5b0",
+                "muted": false
+              },
+              {
+                "source": 2,
+                "alias": "40c7e450f70f",
+                "muted": false
+              }
+            ]
+          },
+          {
+            "actor": "native",
+            "identity": "9763e9eeafe5",
+            "state": 2,
+            "operation": "8ce2dc0610dd",
+            "connectionEpoch": "995aeb49bf79",
+            "tracks": [
+              {
+                "source": 1,
+                "alias": "9e682d55b38d",
+                "muted": false
+              },
+              {
+                "source": 2,
+                "alias": "adaa85ea7d2f",
+                "muted": false
+              },
+              {
+                "source": 3,
+                "alias": "0c7b95361a5c",
+                "muted": false
+              },
+              {
+                "source": 4,
+                "alias": "52d1c12436a8",
+                "muted": false
+              }
+            ]
+          }
+        ],
+        "resources": [
+          {
+            "role": "main",
+            "handles": 1047,
+            "threads": 51,
+            "privateBytes": 246968320,
+            "workingSetBytes": 263249920
+          },
+          {
+            "role": "media",
+            "handles": 1309,
+            "threads": 118,
+            "privateBytes": 292941824,
+            "workingSetBytes": 321830912
+          },
+          {
+            "role": "renderer",
+            "handles": 352,
+            "threads": 24,
+            "privateBytes": 99201024,
+            "workingSetBytes": 175960064
+          },
+          {
+            "role": "gpu",
+            "handles": 819,
+            "threads": 64,
+            "privateBytes": 149450752,
+            "workingSetBytes": 156172288
+          }
+        ],
+        "video": [
+          {
+            "local": true,
+            "source": "camera",
+            "metrics": {
+              "framesDrawn": 4924,
+              "lastDrawAgeMs": 24.90999999642372,
+              "sourceWidth": 640,
+              "sourceHeight": 360
+            }
+          },
+          {
+            "local": true,
+            "source": "screen",
+            "metrics": {
+              "framesDrawn": 6783,
+              "lastDrawAgeMs": 8.074999988079071,
+              "sourceWidth": 960,
+              "sourceHeight": 540
+            }
+          },
+          {
+            "local": false,
+            "source": "camera",
+            "metrics": {
+              "framesDrawn": 3408,
+              "lastDrawAgeMs": 41.375,
+              "sourceWidth": 1280,
+              "sourceHeight": 720
+            }
+          }
+        ],
+        "receiverVideo": [
+          {
+            "track": "50300db2e202",
+            "local": false,
+            "frames": 6230,
+            "width": 1280,
+            "height": 720
+          },
+          {
+            "track": "5951f6cbe6b9",
+            "local": true,
+            "frames": 56862,
+            "width": 1280,
+            "height": 720
+          }
+        ]
+      },
+      "presentation": [
+        {
+          "retained": 2,
+          "awaitingImport": 0,
+          "awaitingReceiverRelease": 2,
+          "awaitingMainRelease": 0,
+          "awaitingGpuRelease": 0,
+          "queuedNativeReleases": 1,
+          "activeLeases": 3,
+          "retiredLeases": 0
+        },
+        {
+          "retained": 3,
+          "awaitingImport": 1,
+          "awaitingReceiverRelease": 3,
+          "awaitingMainRelease": 1,
+          "awaitingGpuRelease": 0,
+          "queuedNativeReleases": 0,
+          "activeLeases": 3,
+          "retiredLeases": 0
+        },
+        {
+          "retained": 0,
+          "awaitingImport": 0,
+          "awaitingReceiverRelease": 0,
+          "awaitingMainRelease": 0,
+          "awaitingGpuRelease": 0,
+          "queuedNativeReleases": 0,
+          "activeLeases": 0,
+          "retiredLeases": 0
+        },
+        {
+          "retained": 0,
+          "awaitingImport": 0,
+          "awaitingReceiverRelease": 0,
+          "awaitingMainRelease": 0,
+          "awaitingGpuRelease": 0,
+          "queuedNativeReleases": 2,
+          "activeLeases": 2,
+          "retiredLeases": 0
+        },
+        {
+          "retained": 0,
+          "awaitingImport": 0,
+          "awaitingReceiverRelease": 0,
+          "awaitingMainRelease": 0,
+          "awaitingGpuRelease": 0,
+          "queuedNativeReleases": 1,
+          "activeLeases": 1,
+          "retiredLeases": 0
+        },
+        {
+          "retained": 0,
+          "awaitingImport": 0,
+          "awaitingReceiverRelease": 0,
+          "awaitingMainRelease": 0,
+          "awaitingGpuRelease": 0,
+          "queuedNativeReleases": 2,
+          "activeLeases": 2,
+          "retiredLeases": 0
+        },
+        {
+          "retained": 0,
+          "awaitingImport": 0,
+          "awaitingReceiverRelease": 0,
+          "awaitingMainRelease": 0,
+          "awaitingGpuRelease": 0,
+          "queuedNativeReleases": 1,
+          "activeLeases": 1,
+          "retiredLeases": 0
+        },
+        {
+          "retained": 0,
+          "awaitingImport": 0,
+          "awaitingReceiverRelease": 0,
+          "awaitingMainRelease": 0,
+          "awaitingGpuRelease": 0,
+          "queuedNativeReleases": 1,
+          "activeLeases": 1,
+          "retiredLeases": 0
+        }
+      ],
+      "elapsedMs": 8684.640299998224
+    }
+  },
+  "neutralShutdown": [
+    {
+      "iteration": 1,
+      "elapsedMs": 91.7419000044465,
+      "cleanup": {
+        "event": "cleanup",
+        "phase": "complete",
+        "gatewayCloseForced": false
+      }
+    },
+    {
+      "iteration": 2,
+      "elapsedMs": 89.1761000007391,
+      "cleanup": {
+        "event": "cleanup",
+        "phase": "complete",
+        "gatewayCloseForced": false
+      }
+    },
+    {
+      "iteration": 3,
+      "elapsedMs": 85.29439999908209,
+      "cleanup": {
+        "event": "cleanup",
+        "phase": "complete",
+        "gatewayCloseForced": false
+      }
+    }
+  ]
+}

@@ -598,3 +598,27 @@ The next hosted Debug run also failed the monitor-repeat resource check: all
 249/10 baseline, but one intermediate cycle exceeded the thread baseline by one.
 ASan passed its hosted subset. Neither a final decrease nor a passing owner
 assertion overrides the failed intermediate resource gate.
+
+## Diagnostic archive fairness under media load
+
+The main process originally spent 3,783 ms without yielding while building a
+diagnostic archive. This delayed detection of withheld renderer releases beyond
+the 3,000 ms deadline. Native journal normalization, budget calculation, tail
+selection and final serialization now yield every 64 records; tail selection
+also avoids repeated array prepends. Existing redaction and archive size limits
+remain enforced. A regression test fails on the previous implementation and
+passes with the fix; both diagnostic bundle suites and desktop typecheck pass.
+
+The [diagnostic pilot artifact](bundle-yield-diagnostic.json) records the full
+application at `6d518feb`. Replaying 18,710,176 bytes of saved main journals took
+2,815 ms overall with a maximum main-loop delay of 25 ms. During a combined
+renderer-release stall, incoming tone gap and GPU load, an explicit archive took
+2,716 ms while detection completed in 2,125 ms and audio recovered in 392 ms.
+Maximum main-loop delay was 24 ms. The independent receiver preserved all four
+publications and media progress. Three subsequent receiver shutdown checks
+completed in 85–92 ms without forced gateway closure.
+
+These are diagnostic pilots with separately evolving fixture sources, not the
+100-cycle qualification. The original and replayed journal sets differ, so
+their total archive times are not a controlled throughput comparison. The
+artifact explicitly retains that limitation and does not claim full #131 PASS.
