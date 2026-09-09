@@ -701,3 +701,28 @@ hashes also matched the preceding combined-run capture.
 This qualifies the stated microphone/incoming-PCM utility scope. It does not
 qualify zero resource growth, every pending-operation shutdown, complete
 cross-layer incidents or the remaining native matrix failures.
+
+## Product shutdown with held SDK connect and cancellation
+
+The [200-row archive](full-product-shutdown-connect-cancel-dbe780dd.json.gz)
+records 100/100 held-connect shutdowns and 100/100 shutdowns with both connect
+and its cancellation call held. Each row verifies entry in the selected app's
+native utility before requesting close, then requires app-close completion and
+kernel-confirmed main/utility exit within 4,900 ms. Maximum times were 4,135 ms
+for connect and 2,884 ms for cancellation. No passing row used test-side forced
+cleanup. An earlier UI-navigation run stopped before injection after 13 passes;
+the replacement used the production join command and started again at cycle one.
+
+This was a compile-time test variant built at `dbe780dd`, with harness `3d94e71b`.
+Public `f6f9e935` has identical application source; differences are restricted
+to fixture/report documentation, the evidence archive and harness error
+redaction. Auxiliary inventory/video helpers were loaded from the older isolated
+checkout and match public `b007397a`; their loaded functions and source are
+preserved separately. The archive distinguishes this post-run source check from
+the pre-run broad input capture. Runtime input hashes and three backend hashes
+matched after each series; the sole changed captured file was a README.
+
+These results qualify the two stated held-call shutdown cases. They do not
+qualify every pending operation, zero steady-state resource growth or the
+remaining incident and native-matrix gates. The normal production binary does
+not enable these fault gates.

@@ -180,3 +180,13 @@ it never qualifies application containment. It stops on the first failure and
 preserves individual reports. Configuration and markers are kept beside the
 verified artifact directory, whose strict file list remains unchanged. This
 fixture's availability is not a passing shutdown matrix.
+
+`shutdown-product.cjs` supplies product callbacks from an Electron launcher,
+executable/application paths, an isolated profile environment, the authenticated
+server name/channel ID and an exact monitor-selection button label. Its
+`createProduct()` result can be spread into the shutdown harness options. It
+discovers the native utility by Electron's service name and waits for actual IPC
+snapshot values before stopping a connected Room or a running publication.
+These waits have a 15-second setup deadline. A promise returned by an async
+browser predicate must not be treated as evidence that its condition is true.
+Window-capture and forced-DXGI setup still require a caller-supplied scenario.
