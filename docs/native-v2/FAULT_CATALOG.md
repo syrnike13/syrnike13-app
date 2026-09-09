@@ -500,6 +500,33 @@ starts afterward and its limits are unchanged. The draw observer also counts a
 frame only once when multiple canvases draw it. The previous reports remain
 incomplete evidence; the corrected 100-cycle run is still required.
 
+The corrected [production-frontend series at `e3306bce`](full-product-utility-production-e3306bce.json.gz)
+passed 100/100 primary utility crashes and 49/49 exhaustion/explicit Retry checks.
+Maximum primary recovery time was 7,072 ms. Each primary fault created exactly
+one replacement, applied the latest mute intent, obtained fresh Voice Authority
+matching the SFU participant, and resumed incoming/outgoing camera presentation.
+The observer retained its publications. There were no desktop or observer UI
+errors. The final runtime was Ready at host epoch 150, lifetime restart count 149.
+
+All 142 recorded application/frontend/harness hashes matched after the run, and
+the three running backend binaries retained their recorded hashes. The archive
+contains 199 reports with source hashes, build identities and the post-run check.
+Frontend source was unchanged from its production build at `aeba53f9`.
+
+Across post-recovery samples, main handles ranged 1,042–1,053; renderer handles
+356–374; GPU handles 808–826. Renderer private memory peaked at 226 MiB and later
+settled to 160 MiB without clearing performance measures or forcing GC. There
+were zero performance measures. Resource samples are retained rather than
+treated as proof for the complete matrix: this run qualifies the declared
+utility replay/authority/camera scope, not incoming PCM privacy/output,
+combined faults, every pending-operation shutdown or Debug/ASan coverage.
+
+Windows CI separately exposed package-script shell interpretation of the `|` in
+the hardware-label exclusion regex. Its Debug/ASan builds had succeeded, but
+media tests did not start. The workflow now invokes CTest directly and stops
+when an earlier build/test/probe command fails. Hardware exclusions are unchanged;
+a read-only selection check found 30 tests and no excluded hardware labels.
+
 ## Recorded Release matrix at `84a050dc`
 
 The [unchanged redacted artifact](native-faults-release-84a050dc.json) records all
