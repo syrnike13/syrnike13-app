@@ -52,6 +52,7 @@ export function createRendererFaultEvidence() {
       active.maximumIterationMs = Math.max(active.maximumIterationMs, event.elapsedMs)
       active.minimumFrameProgress = Math.min(active.minimumFrameProgress ?? minimum, minimum)
       previous = current
+      if (completions === 100) active = undefined
     },
     result() {
       return { passed: violations.size === 0 && rows.length === ids.length && rows.every(row => row.passed === 100),
