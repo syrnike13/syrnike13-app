@@ -848,3 +848,23 @@ The same font families are now self-hosted with their OFL licenses and source
 hashes. With cache disabled and Google Fonts blocked, a production frontend
 reload became ready in 972 ms with no external font request. This removes a
 startup dependency; it does not turn the incomplete native series into 100/100.
+
+The rebuilt [`e3773e48` final-product series](final-product-e3773e48-incomplete.json)
+also remains incomplete. Held-connect reporting passed eight iterations; the
+ninth uploaded its report successfully but Playwright close took 7674 ms,
+exceeding the 4900 ms shutdown gate. Both original processes had exited when
+close completed; that trace did not sample their individual exit times.
+Separate diagnostics now measure kernel process exits while close is pending.
+
+The microphone-unpublish series passed 22 iterations, then failed during
+launch before process inventory or confirmed hold entry. Its original harness
+retained only a sanitized exception code, so the cause is unresolved. All 167
+application files, both product drivers and four local backend binaries matched
+their captured hashes after the runs. Additional diagnostic successes do not
+erase either failure or complete the missing qualification gates.
+
+An instrumented follow-up passed 42 shutdowns before the next launch timed out
+inside Playwright's `electron.launch` after 60000 ms. Both DevTools sockets had
+connected, but launch had not returned to the product driver. The private
+exception hash is included in the artifact. This narrows that failure to setup;
+the exact blocked initialization step is still under investigation.
