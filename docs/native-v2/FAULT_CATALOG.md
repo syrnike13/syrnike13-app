@@ -888,5 +888,12 @@ finished, before Electron exited, and its exit request occurred at the same
 4900 ms boundary used to observe process termination. It now remains armed
 after disposal and requests forced exit at 4000 ms, leaving 900 ms inside the
 unchanged observation gate. Focused tests preserve both hung-finalizer
-boundaries and protection after successful disposal. Actual rebuilt-product
-verification remains required; the older diagnostic controls are not that proof.
+boundaries and protection after successful disposal.
+
+The [rebuilt-product exit control](shutdown-exit-control-52ccd1e3.json) held
+microphone unpublish and deliberately prevented Electron's `will-quit` event.
+Both processes exited in 4146 ms without fixture termination, inside the same
+4900 ms gate. The earlier build failed this control. This verifies protection
+after resource disposal; the full native matrix remains incomplete. An initial
+misconfigured desktop build failed before Room readiness and is preserved
+separately, along with the corrected build's immutable input hashes.
