@@ -166,6 +166,36 @@ A timeout retains the texture and its native lease; it is never release proof.
 A destroyed renderer ends its receiver reference, but final GPU completion is
 still required. Capacity remains 68 across accounts, renderers and utility epochs.
 
+A crashed renderer can leave its `WebFrameMain` wrapper alive. Each admitted
+transfer therefore retains a read-only Windows process reference and immutable
+acknowledgement target IDs. Only a signaled kernel process object or exact frame
+destruction proves that receiver reference is gone; a changed PID alone does not.
+The process reference closes after the final GPU callback. A 100-cycle unit
+regression covers reused wrappers, stale acknowledgements and duplicate GPU
+callbacks. The real isolated Windows guard fixture also retained receiver
+references through 100 termination and 100 job-close cycles, following 100 warmup
+cycles of each: measured handle/thread deltas were 0/0 at `56e47f0b`.
+
+The Release product-adapter run at `073d6ae7` passed 100 real reloads and 100 real
+renderer crashes, followed by successful media cleanup and normal process exit.
+The independent receiver retained all four publication identities and observed
+frame progress on every iteration. Maximum receiver gaps were 158 ms for reload
+and 156 ms for crash, against the unchanged 1,500 ms limit. Maximum complete
+iteration times were 929 and 872 ms respectively. The unchanged redacted report
+is `renderer-faults-release-073d6ae7.json.gz`.
+
+The preceding `56e47f0b` run also completed both media series, but failed overall:
+the window-destruction handler accessed an already-destroyed `BrowserWindow`,
+opening Electron's uncaught-exception dialog during exit. The owned test process
+was terminated after diagnosis; its original FAIL report is preserved as
+`renderer-faults-release-56e47f0b.json.gz`. The handler now compares the retained
+window owner without accessing the destroyed native wrapper.
+
+These runs exercise the production adapter, utility, preload and isolated SFU.
+They do not yet qualify incoming remote presentation, held renderer releases,
+full-product Voice Director/backend replay, combined faults, resource retirement
+for every media owner, or Debug/ASan.
+
 A presentation failure is scoped to the stream and current renderer/revision/host
 epoch. Other streams cannot clear it. Every stalled lease in that stream must
 drain before the public path recovers. Import acknowledgement alone does not
