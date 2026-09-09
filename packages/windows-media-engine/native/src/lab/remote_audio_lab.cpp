@@ -13,6 +13,7 @@ int remoteAudioRouting();
 int remoteAudioOutputStress();
 int remoteAudioFaultMatrix(bool retry_only = false);
 int remoteAudioCancellationFaultMatrix();
+int remoteAudioSessionIsolation();
 int remoteAudioAecFixture();
 int remoteAudioDucking(std::uint32_t pid);
 int remoteAudioEchoPublication();
@@ -96,6 +97,7 @@ int outputProbe(unsigned seconds) {
 int main(int argc, char** argv) try {
   if (argc == 2 && std::string(argv[1]) == "routing") return remoteAudioRouting();
   if (argc == 2 && std::string(argv[1]) == "output-stress") return remoteAudioOutputStress();
+  if (argc == 2 && std::string(argv[1]) == "session-isolation") return remoteAudioSessionIsolation();
   if (argc == 2 && std::string(argv[1]) == "fault-matrix") return remoteAudioFaultMatrix();
   if (argc == 2 && std::string(argv[1]) == "retry-budget") return remoteAudioFaultMatrix(true);
   if (argc == 2 && std::string(argv[1]) == "cancellation") return remoteAudioCancellationFaultMatrix();
@@ -117,7 +119,7 @@ int main(int argc, char** argv) try {
   }
   if (argc != 3 || std::string(argv[1]) != "output-probe")
     throw std::runtime_error(
-        "Usage: remote_audio_lab output-probe <seconds:3..60> | output-stress | "
+        "Usage: remote_audio_lab output-probe <seconds:3..60> | output-stress | session-isolation | "
         "default-removal | aec | echo-publication | ducking <pid> | routing | "
         "publish <seconds:23..1840> <700|1300> | receive <seconds:23..1840> | "
         "receive-delay <seconds:23..1840>");

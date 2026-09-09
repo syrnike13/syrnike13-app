@@ -82,6 +82,7 @@ matrix.
 | microphone-active-loss | Device-lost error after healthy active capture | Microphone owner projects local failure/reselects according to latest device intent | Camera, screen/video/audio and Room remain; no new Voice Operation |
 | microphone-candidate-failure | Fail activation on selected candidate call; old capture remains healthy | Candidate transaction discards failed candidate and preserves active input | DSP mute/PTT updates still apply to active capture; no publication churn |
 | output-invalid-or-stalled | Explicit endpoint invalidation; separately stop render progress without error | Output owner uses finite local retry and candidate transaction | Microphone and Room persist; failed candidate does not silence a healthy active output |
+| output-default-session-muted | Disable only the fixture process's default Windows audio session, as the SDK does for built-in playback | WASAPI output uses its own stable session across replacement workers | Actual process-loopback PCM remains audible, default-session mute remains intact, and worker resources retire |
 | camera-removed-or-no-callback | Device removal; separately never signal pending source-reader sample | CameraCapture detects error or its two-second no-frame deadline; owner handles scope | Existing audio and screen remain; source-reader resources and late samples retire safely |
 | room-connect-cancel-late | Hold connect, cancel it, then return old success and duplicate callback | RoomOwner uses unique attempts and exactly-one terminal result | New desired Room cannot be mutated by the old attempt |
 | utility-crash | Kill the actual utility process during media | Main supervisor reports one host-epoch loss, verifies exit and handshakes replacement | Latest desired state only; no old replies, ghost participants or duplicate publications |
@@ -105,7 +106,7 @@ into the test binary. It hashes executables/modules before and after the run and
 rejects source changes, binary changes, skipped tests, missing/duplicate rows,
 fewer than 100 repetitions and positive or inconsistent resource deltas.
 
-The required native list currently has 41 rows. Unsupported and rejected live
+The required native list currently has 42 rows. Unsupported and rejected live
 bitrate updates each have a separate 100-lifecycle CTest entry, preserving the
 existing media-identity and warning assertions. They require GPU video hardware;
 the unresolved MFT activation resource issue applies to these runs as well.
@@ -548,3 +549,22 @@ as oversized evidence. Both parsers are now corrected. Replaying the retained
 log through the bounded line reader recovered the same 41 fault records and the
 same three resource failures without parsing errors. The original artifact was
 not rewritten, and this replay is not another native test execution.
+
+## Output session isolation regression
+
+After the production utility series, an independent browser source sent a
+997 Hz tone with nonzero WebRTC audio energy. Product output reported Running,
+but process-loopback captures of both main's tree and the utility measured only
+dither (peak RMS 0.51). A read-only Windows session probe found nonzero signal
+in the utility's muted default session, at volume zero. Rejoining the Room and
+toggling deafen did not restore audible output.
+
+The [diagnostic before/after result](output-session-isolation-diagnostic.json)
+records the regression and its exact reported scope. The output worker now uses
+a stable dedicated session GUID, preserving that
+session's mixer preferences through retries. It does not change the SDK session
+or endpoint controls. The new regression failed with the previous default-session
+initialization and passed all 100 worker lifecycles after the fix: ten actual
+loopback packets per cycle, maximum cycle 230 ms, zero handle/thread deltas.
+These were diagnostic builds with uncommitted source at base `baa0c9af`; exact
+commit and full-product PCM/recovery qualification remain required.

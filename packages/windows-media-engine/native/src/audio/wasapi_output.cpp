@@ -15,6 +15,11 @@ namespace syrnike::windows_media::audio {
 namespace {
 using Clock = std::chrono::steady_clock;
 using Microsoft::WRL::ComPtr;
+// LiveKit disables its built-in playback through the default process session.
+// Keep product output in a dedicated, stable session so replacement workers
+// preserve Windows mixer preferences without inheriting the SDK's mute.
+constexpr GUID kOutputAudioSession{
+    0x3a1665b2, 0xa3b5, 0x467c, {0x9b, 0x1c, 0x39, 0xf0, 0x46, 0x2f, 0xe3, 0x57}};
 struct Event {
   HANDLE value;
   explicit Event(bool manual = true) : value(CreateEventW(nullptr, manual, FALSE, nullptr)) {
@@ -171,7 +176,7 @@ void WasapiOutput::run(const std::shared_ptr<State>& state, AudioEndpoint endpoi
     check(client->Initialize(AUDCLNT_SHAREMODE_SHARED,
           AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
               AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-          200'000, 0, &format, nullptr), WasapiOutputFailure::format_unavailable);
+          200'000, 0, &format, &kOutputAudioSession), WasapiOutputFailure::format_unavailable);
     Event sample(false);
     check(client->SetEventHandle(sample.value), WasapiOutputFailure::render_failed);
     ComPtr<IAudioRenderClient> render;

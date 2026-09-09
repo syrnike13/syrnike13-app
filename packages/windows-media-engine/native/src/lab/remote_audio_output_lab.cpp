@@ -1,7 +1,11 @@
 #include "audio/remote_audio_output.hpp"
 #include "audio/output_owner.hpp"
+#include "audio/process_loopback.hpp"
 #include "lab/remote_audio_probe.hpp"
 #include <windows.h>
+#include <audiopolicy.h>
+#include <mmdeviceapi.h>
+#include <wrl/client.h>
 
 #include <algorithm>
 #include <cmath>
@@ -70,6 +74,82 @@ Measurement measure(RemoteAudioOutput& output, std::chrono::milliseconds duratio
   result.stats = output.stats().active;
   return result;
 }
+}
+int remoteAudioSessionIsolation() {
+  using Microsoft::WRL::ComPtr;
+  struct Apartment {
+    HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    ~Apartment() { if (SUCCEEDED(result)) CoUninitialize(); }
+  } apartment;
+  require(SUCCEEDED(apartment.result), "Session isolation COM initialization failed");
+  AudioDeviceRegistry registry(makeWindowsAudioDeviceEnumerator());
+  require(registry.refresh().status == AudioRegistryStatus::ready, "Session isolation registry unavailable");
+  const auto endpoint = registry.resolve({AudioDirection::output, {}});
+  require(endpoint.has_value(), "Session isolation output unavailable");
+  ComPtr<IMMDeviceEnumerator> enumerator;
+  require(SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                     IID_PPV_ARGS(&enumerator))), "Session isolation enumerator unavailable");
+  ComPtr<IMMDevice> device;
+  require(SUCCEEDED(enumerator->GetDevice(endpoint->endpoint_id.c_str(), &device)),
+          "Session isolation endpoint unavailable");
+  ComPtr<IAudioSessionManager2> manager;
+  require(SUCCEEDED(device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr, &manager)),
+          "Session isolation manager unavailable");
+  // This is the fixture process's default session only. Reproduce the SDK's
+  // disabled built-in playback without changing an endpoint or another app.
+  struct DefaultSession {
+    ComPtr<ISimpleAudioVolume> volume;
+    float original_volume = 1;
+    BOOL original_muted = FALSE;
+    ~DefaultSession() {
+      if (volume) {
+        (void)volume->SetMasterVolume(original_volume, nullptr);
+        (void)volume->SetMute(original_muted, nullptr);
+      }
+    }
+  } session;
+  require(SUCCEEDED(manager->GetSimpleAudioVolume(nullptr, 0, &session.volume)),
+          "Fixture default session unavailable");
+  require(SUCCEEDED(session.volume->GetMasterVolume(&session.original_volume)) &&
+          SUCCEEDED(session.volume->GetMute(&session.original_muted)), "Fixture session baseline unavailable");
+  require(SUCCEEDED(session.volume->SetMasterVolume(0, nullptr)) &&
+          SUCCEEDED(session.volume->SetMute(TRUE, nullptr)), "Fixture default session mute failed");
+  auto captured = std::make_shared<PcmQueue>();
+  ProcessLoopback loopback(captured);
+  require(!loopback.start(ScreenAudioMode::include_process_tree, AudioProcessIdentity::current()),
+          "Session isolation loopback failed");
+  syrnike::windows_media::tests::repeatFault("output-default-session-muted", [&] {
+    RemoteAudioMixerWorker mixer;
+    auto input = std::make_shared<RemoteAudioPcmPort>(1, 2);
+    require(mixer.configure(std::array{RemoteAudioInput{input, 1, false}}, false), "Session isolation graph rejected");
+    auto producer = produceTone(input);
+    RemoteAudioOutput output(mixer);
+    require(output.selectOutput(registry, {AudioDirection::output, {}}) == RemoteOutputFailure::none,
+            "Session isolation output failed");
+    const auto started = timestamp();
+    const auto deadline = Clock::now() + std::chrono::seconds(1);
+    unsigned audible = 0;
+    while (audible < 10 && Clock::now() < deadline) {
+      if (const auto packet = captured->take(timestamp())) {
+        if (packet->capture_timestamp_100ns < started) continue;
+        double squares = 0;
+        for (const auto sample : packet->samples) squares += static_cast<double>(sample) * sample;
+        if (std::sqrt(squares / packet->samples.size()) > 100) ++audible;
+      } else captured->wait(std::chrono::milliseconds(10));
+    }
+    float default_volume = 1;
+    BOOL default_muted = FALSE;
+    require(SUCCEEDED(session.volume->GetMasterVolume(&default_volume)) &&
+            SUCCEEDED(session.volume->GetMute(&default_muted)) && default_volume == 0 && default_muted,
+            "Output changed the disabled SDK session");
+    require(audible == 10, "Product output inherited the muted default session");
+    producer.request_stop();
+    producer.join();
+    require(output.stop(Clock::now() + std::chrono::seconds(5)) &&
+            mixer.stop(Clock::now() + std::chrono::seconds(2)), "Session isolation output did not drain");
+  });
+  require(loopback.stop(Clock::now() + std::chrono::seconds(5)), "Session isolation loopback did not drain");
+  return 0;
 }
 int remoteAudioCancellationFaultMatrix() {
   namespace lab = syrnike::windows_media::lab;

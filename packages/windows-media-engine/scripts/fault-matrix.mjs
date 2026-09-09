@@ -22,6 +22,7 @@ export const requiredFaults = [
   'output-device-invalidated', 'output-no-progress', 'output-candidate-failure',
   'output-retry-budget', 'output-candidate-cancelled',
   'output-owner-latest-intent', 'output-owner-pending-shutdown',
+  'output-default-session-muted',
   'camera-device-removed', 'camera-reader-no-callback', 'camera-candidate-cancelled',
   'room-connect-never-completes', 'room-disconnect-never-completes', 'room-cancel-never-completes',
 ]
