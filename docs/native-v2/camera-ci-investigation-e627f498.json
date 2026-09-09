@@ -1,0 +1,276 @@
+{
+  "scope": "CI camera failure investigation; unresolved cause, not final native qualification",
+  "failedRuns": [
+    {
+      "runId": 34372746027,
+      "jobId": 102537794088,
+      "head": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+      "message": "Camera fault was not detected",
+      "logSha256": "0750b0ccd61b4fb5e5d3050cd46de44df0c1f4e71401f76bc588c81d32e0a066",
+      "debugTestsPassed": 30,
+      "releaseTestsPassed": 29,
+      "releaseTestsRequired": 30,
+      "originalFaultRows": [
+        {
+          "id": "camera-candidate-cancelled",
+          "build": {
+            "commit": "aaf89368725a2845f6c9d4c0a3a463b7c3e53d15",
+            "configuration": "Release",
+            "asan": false,
+            "msvc": 195136256
+          },
+          "passed": 100,
+          "required": 100,
+          "warmup": 1,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": true,
+          "maximumIterationMs": 132.91,
+          "resources": {
+            "baseline": {
+              "handles": 99,
+              "threads": 4
+            },
+            "final": {
+              "handles": 99,
+              "threads": 4
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 0
+            }
+          }
+        },
+        {
+          "id": "camera-device-removed",
+          "build": {
+            "commit": "aaf89368725a2845f6c9d4c0a3a463b7c3e53d15",
+            "configuration": "Release",
+            "asan": false,
+            "msvc": 195136256
+          },
+          "passed": 100,
+          "required": 100,
+          "warmup": 1,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": true,
+          "maximumIterationMs": 161.01,
+          "resources": {
+            "baseline": {
+              "handles": 99,
+              "threads": 4
+            },
+            "final": {
+              "handles": 99,
+              "threads": 4
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 0
+            }
+          }
+        },
+        {
+          "id": "camera-reader-no-callback",
+          "build": {
+            "commit": "aaf89368725a2845f6c9d4c0a3a463b7c3e53d15",
+            "configuration": "Release",
+            "asan": false,
+            "msvc": 195136256
+          },
+          "passed": 32,
+          "required": 100,
+          "ownerChecksPassed": false
+        }
+      ]
+    },
+    {
+      "runId": 34375450062,
+      "jobId": 102546974486,
+      "head": "e627f498d779280bde2d15181d04dc23c8053d2e",
+      "message": "Camera fault fixture did not become healthy",
+      "logSha256": "ed239b4c3061e0b04e02e6f3bd8ac0f632595aac95ea38562c324517c580936a",
+      "debugTestsPassed": 30,
+      "releaseTestsPassed": 29,
+      "releaseTestsRequired": 30,
+      "originalFaultRows": [
+        {
+          "id": "camera-candidate-cancelled",
+          "build": {
+            "commit": "02837d0ee9009d8a3f72fbfd8d946a4e4f124833",
+            "configuration": "Release",
+            "asan": false,
+            "msvc": 195136256
+          },
+          "passed": 100,
+          "required": 100,
+          "warmup": 1,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": true,
+          "maximumIterationMs": 142.05,
+          "resources": {
+            "baseline": {
+              "handles": 99,
+              "threads": 4
+            },
+            "final": {
+              "handles": 99,
+              "threads": 4
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 0
+            }
+          }
+        },
+        {
+          "id": "camera-device-removed",
+          "build": {
+            "commit": "02837d0ee9009d8a3f72fbfd8d946a4e4f124833",
+            "configuration": "Release",
+            "asan": false,
+            "msvc": 195136256
+          },
+          "passed": 100,
+          "required": 100,
+          "warmup": 1,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": true,
+          "maximumIterationMs": 159.485,
+          "resources": {
+            "baseline": {
+              "handles": 99,
+              "threads": 4
+            },
+            "final": {
+              "handles": 99,
+              "threads": 4
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 0
+            }
+          }
+        },
+        {
+          "id": "camera-reader-no-callback",
+          "build": {
+            "commit": "02837d0ee9009d8a3f72fbfd8d946a4e4f124833",
+            "configuration": "Release",
+            "asan": false,
+            "msvc": 195136256
+          },
+          "passed": 60,
+          "required": 100,
+          "ownerChecksPassed": false
+        }
+      ]
+    }
+  ],
+  "sourceComparison": "GitHub compare from 52ccd1e3 to CI merge 02837d0e contained only three native evidence/documentation files. The camera source was unchanged.",
+  "diagnosticChange": "Existing test now logs failing stage, elapsed time, capture state/error codes, frame age/copy counters, callback count and live reader/sample counts before destruction. Assertions, deadlines and production code are unchanged.",
+  "localControl": {
+    "sourceBase": "e627f498d779280bde2d15181d04dc23c8053d2e",
+    "compiledMetadataCommit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+    "scope": "Uncommitted test-only failure diagnostics; application and native module unchanged",
+    "capturedAt": "2026-09-09T16:49:24.6096612Z",
+    "executableSha256": "08803a026e94c7b2fad14523740ce88278c53e7e8b813d27828d994b23d4ac7c",
+    "testSourceSha256": "c3d4c1222d0f1d8503c3875ba5c8333fc4f79a81f11af12e96fe7a6ea9e0637c",
+    "exitCode": 0,
+    "logSha256": "aa3edb454e137c7c4bcff8a38e76d8beae9b6158c58a4dae405149a3c200f931",
+    "originalFaultRows": [
+      {
+        "id": "camera-candidate-cancelled",
+        "build": {
+          "commit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+          "configuration": "Release",
+          "asan": false,
+          "msvc": 195136248
+        },
+        "passed": 100,
+        "required": 100,
+        "warmup": 1,
+        "ownerChecksPassed": true,
+        "resourceChecksPassed": true,
+        "maximumIterationMs": 185.348,
+        "resources": {
+          "baseline": {
+            "handles": 112,
+            "threads": 4
+          },
+          "final": {
+            "handles": 112,
+            "threads": 4
+          },
+          "delta": {
+            "handles": 0,
+            "threads": 0
+          }
+        }
+      },
+      {
+        "id": "camera-device-removed",
+        "build": {
+          "commit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+          "configuration": "Release",
+          "asan": false,
+          "msvc": 195136248
+        },
+        "passed": 100,
+        "required": 100,
+        "warmup": 1,
+        "ownerChecksPassed": true,
+        "resourceChecksPassed": true,
+        "maximumIterationMs": 175.767,
+        "resources": {
+          "baseline": {
+            "handles": 112,
+            "threads": 4
+          },
+          "final": {
+            "handles": 112,
+            "threads": 4
+          },
+          "delta": {
+            "handles": 0,
+            "threads": 0
+          }
+        }
+      },
+      {
+        "id": "camera-reader-no-callback",
+        "build": {
+          "commit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+          "configuration": "Release",
+          "asan": false,
+          "msvc": 195136248
+        },
+        "passed": 100,
+        "required": 100,
+        "warmup": 1,
+        "ownerChecksPassed": true,
+        "resourceChecksPassed": true,
+        "maximumIterationMs": 2166.71,
+        "resources": {
+          "baseline": {
+            "handles": 112,
+            "threads": 1
+          },
+          "final": {
+            "handles": 112,
+            "threads": 1
+          },
+          "delta": {
+            "handles": 0,
+            "threads": 0
+          }
+        }
+      }
+    ]
+  },
+  "limitations": [
+    "The original CI failures retain neither the capture error code nor detection timing, so scheduling delay and a product defect remain unresolved alternatives.",
+    "The local test binary has cached 52ccd1e3 metadata with an uncommitted diagnostics-only test change based on e627f498. It is not an exact-commit qualification artifact.",
+    "Local 100/100 successes for all three camera rows do not erase the two CI failures or validate the new failure-only log branch.",
+    "Local and CI compiler patch versions differ and are retained in the original fault records; no compiler cause has been established."
+  ]
+}

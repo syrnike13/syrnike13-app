@@ -491,6 +491,34 @@ function forkGuardFixture(mode) {
   })
 }
 
+async function nativeProcessExitDeadline() {
+  const child = forkGuardFixture('--exit-deadline-child')
+  const closed = new Promise(resolve => child.once('close', resolve))
+  let receiver
+  try {
+    const ready = await boundedTimeout('exit deadline fixture ready', 2_000,
+      new Promise((resolve, reject) => { child.once('message', resolve); child.once('error', reject) }))
+    if (ready?.validated !== true) throw new Error('Exit deadline validation failed')
+    receiver = require(brokerPath).openReceiverProcess(child.pid)
+    const startedAt = performance.now()
+    child.send('arm')
+    await boundedTimeout('native deadline through blocked JavaScript', 1_500, Promise.all([
+      closed,
+      (async () => {
+        while (!receiver.hasExited()) await new Promise(resolve => setTimeout(resolve, 10))
+      })(),
+    ]))
+    const elapsedMs = performance.now() - startedAt
+    if (child.exitCode !== 0 || elapsedMs < 400)
+      throw new Error(`Unexpected native deadline exit: ${child.exitCode}, ${elapsedMs} ms`)
+    return { elapsedMs, invalidArgumentsRejected: true, repeatedArmDidNotExtend: true,
+      blockedJavaScript: true, kernelExitConfirmed: true }
+  } finally {
+    if (child.exitCode === null) child.kill()
+    receiver?.close()
+  }
+}
+
 async function guardParentExit() {
   const parent = forkGuardFixture('--guard-parent')
   const closed = new Promise(resolve => parent.once('close', resolve))
@@ -547,7 +575,22 @@ async function isolatedGuardResources() {
   return report.processGuard
 }
 
-if (process.argv.includes('--guard-orphan')) {
+if (process.argv.includes('--exit-deadline-child')) {
+  const broker = require(brokerPath)
+  for (const value of [undefined, null, '500', 0, -1, 0.5, 4001, NaN, Infinity]) {
+    let rejected = false
+    try { broker.armProcessExitDeadline(value) } catch (error) { rejected = error instanceof TypeError }
+    if (!rejected) throw new Error('Invalid native deadline was accepted')
+  }
+  process.once('message', () => {
+    broker.armProcessExitDeadline(500)
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+    broker.armProcessExitDeadline(4_000)
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60_000)
+    process.exit(1)
+  })
+  process.send({ validated: true })
+} else if (process.argv.includes('--guard-orphan')) {
   process.send({ ready: true })
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60_000)
 } else if (process.argv.includes('--guard-parent')) {
@@ -562,6 +605,13 @@ if (process.argv.includes('--guard-orphan')) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60_000)
   })
 } else (app ? app.whenReady() : Promise.resolve()).then(async () => {
+  const processExitDeadline = await nativeProcessExitDeadline()
+  if (process.argv.includes('--process-exit-deadline-only')) {
+    console.info(JSON.stringify({ status: 'pass', processExitDeadline }))
+    if (app) app.exit(0)
+    else process.exit(0)
+    return
+  }
   const isolatedResources = app ? await isolatedGuardResources() : null
   const guardResults = { terminate: 0, close: 0, parentExit: 0 }
   const maximumExitMs = { terminate: 0, close: 0, parentExit: 0 }
@@ -614,6 +664,7 @@ if (process.argv.includes('--guard-orphan')) {
       unexpectedExit: 'unexpected_exit',
       stalledUtilityTermination: 'kernel_exit_confirmed',
       processGuard,
+      processExitDeadline,
       nativeConformance: conformance,
     }),
   )

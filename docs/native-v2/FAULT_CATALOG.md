@@ -904,3 +904,25 @@ main and utility exit, and completion without fixture termination. All 167
 application files, both drivers and four running backend binaries matched the
 captured inputs. Other held-operation rows and final resource qualification
 remain incomplete.
+
+The [connect-timeout incident series](connect-incident-timeline-52ccd1e3.json)
+completed 100/100 full-product runs on 52ccd1e3. Each run linked the native
+cause to utility, main, Voice Director and renderer records and received one
+successful incident-upload response. Original trace and request hashes, 167
+application files, two drivers and four running backend binaries were checked
+after the series. This completes that incident row only.
+
+The later [core shutdown series](shutdown-core-52ccd1e3-incomplete.json.gz)
+completed five 100-run rows, then failed microphone publish after 76 passes:
+main remained alive at 4903 ms while the utility had exited. The original
+failure is retained; its journal does not establish the remaining exit delay.
+
+A [separate late-quit control](shutdown-native-exit-timer-prototype.json)
+blocked JavaScript for seven seconds in Electron's `quit` event. The JavaScript
+deadline could not fire, whereas the injected native timer ended both processes
+within 4053 ms. This demonstrates a timer coverage gap, not the cause of the
+earlier intermittent failure. The broker now provides a pinned, one-shot Win32
+timer, armed before resource disposal through the already verified main-process
+broker. Repeated calls cannot extend the deadline. A child-process smoke check
+verifies argument rejection, blocked-JavaScript termination and non-extension.
+Qualification of this production wiring on a coherent build remains pending.

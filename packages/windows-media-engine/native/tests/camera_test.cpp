@@ -147,23 +147,60 @@ void cameraFaultRetiresItsReader(bool missing_callback) {
   auto control = std::make_shared<SyntheticCameraControl>();
   control->emit_late_callback = true;
   CameraCapture capture({L"synthetic", "Synthetic"}, {1280, 720, 30}, 1, false, syntheticCameraReader(control));
-  require(capture.start() == CameraFailure::none, "Camera fault fixture did not become healthy");
-  if (missing_callback) {
-    control->withhold_samples = true;
-    std::unique_lock lock(control->fault_mutex);
-    require(control->fault_changed.wait_for(lock, std::chrono::seconds{1}, [&] {
-      return control->withheld_samples == 1;
-    }), "Camera reader did not withhold its requested callback");
-  } else {
-    control->next_failure = CameraFailure::device_removed;
+  const auto started = Clock::now();
+  auto stage_started = started;
+  const char* stage = "start";
+  try {
+    require(capture.start() == CameraFailure::none, "Camera fault fixture did not become healthy");
+    stage = "inject";
+    stage_started = Clock::now();
+    if (missing_callback) {
+      control->withhold_samples = true;
+      std::unique_lock lock(control->fault_mutex);
+      require(control->fault_changed.wait_for(lock, std::chrono::seconds{1}, [&] {
+        return control->withheld_samples == 1;
+      }), "Camera reader did not withhold its requested callback");
+    } else {
+      control->next_failure = CameraFailure::device_removed;
+    }
+    stage = "detect";
+    stage_started = Clock::now();
+    until([&] { return capture.stats().state == CameraCaptureState::failed; },
+          "Camera fault was not detected", std::chrono::milliseconds{2'500});
+    require(capture.stats().failure == (missing_callback ? CameraFailure::no_frames : CameraFailure::device_removed),
+            "Camera no-progress and explicit device failure were confused");
+    stage = "stop";
+    stage_started = Clock::now();
+    require(capture.stop(Clock::now() + std::chrono::seconds{2}) && control->readers_alive == 0 &&
+                control->samples_alive == 0 && control->late_callbacks == 1 && capture.output()->stats().queued == 0,
+            "Camera fault leaked a reader/sample or accepted a late callback");
+  } catch (...) {
+    // Preserve the failing state before the destructor starts cleanup. These
+    // observations do not extend deadlines or turn a failed iteration into a pass.
+    const auto observed = Clock::now();
+    const auto stats = capture.stats();
+    std::uint64_t withheld_samples;
+    {
+      std::scoped_lock lock(control->fault_mutex);
+      withheld_samples = control->withheld_samples;
+    }
+    std::cerr << "CAMERA_FAULT_DIAGNOSTIC {\"stage\":\"" << stage
+              << "\",\"missingCallback\":" << (missing_callback ? "true" : "false")
+              << ",\"elapsedMs\":" << std::chrono::duration<double, std::milli>(observed - started).count()
+              << ",\"stageMs\":" << std::chrono::duration<double, std::milli>(observed - stage_started).count()
+              << ",\"stateCode\":" << static_cast<int>(stats.state)
+              << ",\"failureCode\":" << static_cast<int>(stats.failure)
+              << ",\"platformError\":" << stats.platform_error
+              << ",\"frames\":" << stats.frames << ",\"staleFrames\":" << stats.stale
+              << ",\"maximumCopyUs\":" << stats.maximum_copy_us
+              << ",\"workerAlive\":" << (stats.thread_alive ? "true" : "false")
+              << ",\"readerAlive\":" << (stats.reader_alive ? "true" : "false")
+              << ",\"callbacks\":" << control->callbacks.load()
+              << ",\"withheldSamples\":" << withheld_samples
+              << ",\"liveReaders\":" << control->readers_alive.load()
+              << ",\"liveSamples\":" << control->samples_alive.load() << "}\n";
+    throw;
   }
-  until([&] { return capture.stats().state == CameraCaptureState::failed; },
-        "Camera fault was not detected", std::chrono::milliseconds{2'500});
-  require(capture.stats().failure == (missing_callback ? CameraFailure::no_frames : CameraFailure::device_removed),
-          "Camera no-progress and explicit device failure were confused");
-  require(capture.stop(Clock::now() + std::chrono::seconds{2}) && control->readers_alive == 0 &&
-              control->samples_alive == 0 && control->late_callbacks == 1 && capture.output()->stats().queued == 0,
-          "Camera fault leaked a reader/sample or accepted a late callback");
 }
 
 void asynchronousCaptureLifetime() {
