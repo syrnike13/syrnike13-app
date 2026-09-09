@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { NativeDiagnosticIncidentSchema } from '@syrnike13/platform'
+import { Schema } from 'effect'
 
 import {
   captureNativeDiagnosticIncident,
@@ -120,6 +122,83 @@ describe('native diagnostic incident monitor', () => {
     expect(leaseNativeDiagnosticIncidents('test-account')?.incidents).toEqual([
       expect.objectContaining({ severity: 'fatal', occurrenceCount: 4, firstTimestampMs: 10_000 }),
     ])
+  })
+
+  it('groups 100 explicit cross-layer episodes without merging independent causes', () => {
+    for (let index = 0; index < 100; index += 1) {
+      const episodeId = `private-owner-episode-${index}`
+      const root = captureNativeDiagnosticIncident({
+        scope: 'native-media-controller', event: 'fatalEngineFailure',
+        episodeId, errorCode: 'native_owner_stop_timeout', fatal: true,
+        hostEpoch: index, message: 'original owner failure',
+      }, 10_000 + index)
+      for (let symptom = 0; symptom < 12; symptom += 1) {
+        expect(captureNativeDiagnosticIncident({
+          scope: 'native-runtime-supervisor', event: 'runtime_degraded',
+          episodeId, errorCode: 'media_host_termination_failed', incidentSeverity: 'warning',
+          hostEpoch: index, message: `symptom ${symptom} token=super-secret`,
+        }, 20_000 + index + symptom)).toBe(root)
+      }
+    }
+    const incidents = leaseNativeDiagnosticIncidents('test-account')!.incidents
+    expect(incidents).toHaveLength(100)
+    expect(new Set(incidents.map(incident => incident.correlationId)).size).toBe(100)
+    for (const incident of incidents) {
+      expect(incident).toMatchObject({
+        scope: 'native-media-controller', event: 'fatalEngineFailure',
+        errorCode: 'native_owner_stop_timeout', message: 'original owner failure',
+        severity: 'fatal', occurrenceCount: 13,
+      })
+      expect(Schema.decodeUnknownSync(NativeDiagnosticIncidentSchema)(incident).relatedEvidence).toHaveLength(8)
+      expect(incident.relatedEvidence?.[0]?.message).toContain('symptom 4')
+    }
+    expect(JSON.stringify(incidents)).not.toContain('private-owner-episode')
+    expect(JSON.stringify(incidents)).not.toContain('super-secret')
+  })
+
+  it.each(['released', 'expired'])('keeps a leased episode immutable and merges its follow-up when %s', transition => {
+    const episodeId = 'private-runtime-episode'
+    captureNativeDiagnosticIncident({
+      scope: 'native-media-controller', event: 'fatalEngineFailure',
+      episodeId, errorCode: 'native_failure', incidentSeverity: 'error',
+    }, 10_000)
+    const leased = leaseNativeDiagnosticIncidents('test-account', 10_001)!
+    const leasedCopy = JSON.stringify(leased)
+    captureNativeDiagnosticIncident({
+      scope: 'native-runtime-supervisor', event: 'runtime_degraded',
+      episodeId, errorCode: 'host_failure', incidentSeverity: 'fatal',
+    }, 20_000)
+    expect(JSON.stringify(leased)).toBe(leasedCopy)
+    if (transition === 'released') {
+      expect(releaseNativeDiagnosticIncidents('test-account', leased.id, 20_001)).toBe(true)
+    } else {
+      expect(leaseNativeDiagnosticIncidents('test-account', 130_001)).toBeNull()
+    }
+    const retried = leaseNativeDiagnosticIncidents('test-account', transition === 'released' ? 25_002 : 135_002)!
+    expect(retried.incidents).toHaveLength(1)
+    expect(retried.incidents[0]).toMatchObject({
+      correlationId: leased.incidents[0]!.correlationId,
+      scope: 'native-media-controller', errorCode: 'native_failure',
+      severity: 'fatal', occurrenceCount: 2, firstTimestampMs: 10_000,
+    })
+    expect(retried.incidents[0]!.relatedEvidence).toHaveLength(1)
+  })
+
+  it('forgets bounded episode roots and discards their identities on account change', () => {
+    const record = {
+      scope: 'native-runtime-supervisor' as const, event: 'utility_crashed', episodeId: 'first-cause',
+    }
+    const first = captureNativeDiagnosticIncident(record, 10_000)!
+    for (let index = 0; index < 1_000; index += 1) {
+      captureNativeDiagnosticIncident({ ...record, episodeId: `other-cause-${index}` }, 10_001)
+    }
+    const recreated = captureNativeDiagnosticIncident(record, 10_002)!
+    expect(recreated.correlationId).not.toBe(first.correlationId)
+    expect(leaseNativeDiagnosticIncidents('test-account', 10_003)!.incidents).toHaveLength(100)
+    configureNativeDiagnosticIncidentAccount('another-account')
+    const otherAccount = captureNativeDiagnosticIncident(record, 10_004)!
+    expect(otherAccount.correlationId).not.toBe(recreated.correlationId)
+    expect(leaseNativeDiagnosticIncidents('another-account', 10_005)!.incidents).toEqual([otherAccount])
   })
 
   it('captures native failures, timeouts, and restart signals', () => {

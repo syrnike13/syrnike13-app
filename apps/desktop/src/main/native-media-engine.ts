@@ -100,9 +100,20 @@ function unavailableError() {
 export function createNativeRtcEngineAdapter() {
   const runtime = new MediaRuntimeSupervisor({
     createAdapter: createElectronMediaUtilityAdapterFactory(),
-    onUtilityExit: evidence => logNativeVoiceDiagnostic('utility_exit', {
-      hostEpoch: runtime.getHostEpoch(), ...evidence,
-    }),
+    onUtilityExit: evidence => {
+      logNativeVoiceDiagnostic('utility_exit', {
+        hostEpoch: runtime.getHostEpoch(), episodeId: runtime.getFailureEpisodeId(), ...evidence,
+      })
+      if (!evidence.expected) recordMediaDiagnostic({
+        scope: 'native-runtime-supervisor', event: 'utility_crashed', runtime: 'media',
+        hostEpoch: runtime.getHostEpoch(), episodeId: runtime.getFailureEpisodeId(),
+        stage: 'utility_process', reason: evidence.source, metrics: {
+          uptimeMs: evidence.uptimeMs, stderrBytes: evidence.stderrBytes,
+          stderrTruncated: Number(evidence.stderrTruncated),
+          ...(evidence.code === null ? {} : { exitCode: evidence.code }),
+        },
+      })
+    },
   })
   const subscriptions: Array<() => void> = []
   const adapter = new NativeRtcEngineAdapterV2(runtime, undefined,
@@ -114,7 +125,14 @@ export function createNativeRtcEngineAdapter() {
       if (active?.adapter === adapter) active = null
     }, mediaUtilityAvailable)
   const frames = new MediaFrameController(runtime, adapter, () => windowGetter(),
-    code => logNativeVoiceDiagnostic('frame_bridge_failed', { code }),
+    (code, evidence) => {
+      logNativeVoiceDiagnostic('frame_bridge_failed', { code, ...evidence })
+      if (evidence) recordMediaDiagnostic({
+        scope: 'native-video', event: 'presentation_stalled', runtime: 'media',
+        errorCode: code, episodeId: evidence.episodeId, lane: evidence.path,
+        hostEpoch: evidence.epoch, revision: evidence.revision,
+      })
+    },
     inventory => {
       const microphone = adapter.desiredSnapshot()?.microphone
       const meter = inventory.microphoneMeter
@@ -141,6 +159,7 @@ export function createNativeRtcEngineAdapter() {
       scope: 'native-runtime-supervisor', event: 'runtime_degraded', runtime: 'media',
       hostEpoch: runtime.getHostEpoch(), status: state.status, restartCount: state.restartCount,
       errorCode: state.failure.code, stage: state.failure.stage,
+      episodeId: runtime.getFailureEpisodeId(), fatal: state.status === 'failed',
     })
   }), runtime.onEvent(event => {
     recordMediaDiagnostic({
@@ -150,6 +169,8 @@ export function createNativeRtcEngineAdapter() {
       lane: 'track' in event ? event.track : undefined,
       status: 'state' in event ? event.state : 'failed',
       errorCode: event.failure?.code, stage: event.failure?.stage,
+      episodeId: event.type === 'fatalEngineFailure' ? runtime.getFailureEpisodeId() : undefined,
+      fatal: event.type === 'fatalEngineFailure',
     })
   }), runtime.onDiagnostic(event => {
     // Implementation strings may contain device names or native handles. Keep

@@ -71,6 +71,53 @@ function requestId(value: unknown) {
 }
 
 describe('MediaRuntimeSupervisor', () => {
+  it('fences diagnostic causes across 100 fatal host failures and replacements', async () => {
+    vi.useFakeTimers()
+    try {
+      const causes = new Set<string>()
+      for (let iteration = 0; iteration < 100; iteration += 1) {
+        const first = new FakeMediaAdapter()
+        const second = new FakeMediaAdapter()
+        const adapters = [first, second]
+        const supervisor = new MediaRuntimeSupervisor({
+          createAdapter: () => adapters.shift()!, restartDelaysMs: [10],
+        })
+        let nativeEventCause: string | undefined
+        supervisor.onEvent(() => { nativeEventCause = supervisor.getFailureEpisodeId() })
+        const start = supervisor.start()
+        first.ready()
+        await start
+        const fatal = {
+          type: 'event', protocolVersion: 4,
+          event: {
+            type: 'fatalEngineFailure', sequence: 1,
+            failure: { code: 'native_owner_stop_timeout', message: 'Owner did not join', stage: 'shutdown', retryable: true },
+          },
+        }
+        first.callbacks!.onMessage(fatal)
+        const cause = supervisor.getFailureEpisodeId()
+        expect(cause).toBeDefined()
+        expect(nativeEventCause).toBe(cause)
+        expect(supervisor.getSnapshot().status).toBe('recovering')
+        await vi.advanceTimersByTimeAsync(10)
+        expect(supervisor.getFailureEpisodeId()).toBe(cause)
+        second.ready()
+        expect(supervisor.getFailureEpisodeId()).toBeUndefined()
+        first.callbacks!.onMessage(fatal)
+        expect(supervisor.getFailureEpisodeId()).toBeUndefined()
+        second.unexpectedExit()
+        const secondCause = supervisor.getFailureEpisodeId()
+        expect(secondCause).toBeDefined()
+        expect(secondCause).not.toBe(cause)
+        causes.add(cause!)
+        causes.add(secondCause!)
+        expect(supervisor.getSnapshot().status).toBe('failed')
+        await supervisor.shutdown()
+      }
+      expect(causes.size).toBe(200)
+    } finally { vi.useRealTimers() }
+  })
+
   it('keeps concurrent shutdown callers waiting for retirement after a protocol failure', async () => {
     vi.useFakeTimers()
     try {

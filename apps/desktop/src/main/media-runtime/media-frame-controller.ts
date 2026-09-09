@@ -32,8 +32,10 @@ type Renderer = { id: string; epoch: number }
 type PresentationPath = 'screen_preview' | 'camera_preview' | 'remote_video'
 type PresentationFailure = {
   path: PresentationPath; publicationId: string; revision: number; rendererId: string; epoch: number; code: string
+  episodeId: string
   stalledLeases: Set<string>
 }
+type PresentationFailureEvidence = Pick<PresentationFailure, 'episodeId' | 'path' | 'revision' | 'epoch'>
 type RuntimePort = Pick<MediaRuntimeSupervisor, 'getSnapshot' | 'getHostEpoch' | 'queryInventory' | 'queryFrames'>
 type AdapterPort = Pick<NativeRtcEngineAdapterV2,
   'rendererReady' | 'rendererGone' | 'setPreviewDemand' | 'setRemoteVideoDemand' | 'snapshot'>
@@ -66,7 +68,7 @@ export class MediaFrameController {
     private readonly runtime: RuntimePort,
     private readonly adapter: AdapterPort,
     private readonly getWindow: () => BrowserWindow | null,
-    private readonly reportFailure: (code: string) => void,
+    private readonly reportFailure: (code: string, evidence?: PresentationFailureEvidence) => void,
     private readonly onInventory: (inventory: MediaInventory) => void = () => undefined,
     private readonly onPresentationChange: () => void = () => undefined,
   ) {
@@ -338,15 +340,19 @@ export class MediaFrameController {
     const path = frame.kind === 'remote' ? 'remote_video' : frame.kind
     const key = `${frame.kind}:${frame.publicationId}`
     const previous = this.presentationFailures.get(key)
+    let episodeId: string | undefined
     if (previous?.revision === frame.revision && previous.rendererId === frame.rendererId && previous.epoch === epoch) {
       if (stalled) previous.stalledLeases.add(leaseKey(frame))
       if (previous.code === code || previous.stalledLeases.size > 0) return
+      episodeId = previous.episodeId
     }
+    episodeId ??= crypto.randomUUID()
     this.presentationFailures.set(key, {
       path, publicationId: frame.publicationId, code, revision: frame.revision, rendererId: frame.rendererId, epoch,
+      episodeId,
       stalledLeases: new Set(stalled ? [leaseKey(frame)] : []),
     })
-    this.reportFailure(code)
+    this.reportFailure(code, { episodeId, path, revision: frame.revision, epoch })
     this.onPresentationChange()
   }
   private presentationRecovered(frame: Omit<MediaExportedFrame, 'handle'>, epoch: number) {

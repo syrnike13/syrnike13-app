@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IPC } from '@syrnike13/platform'
-import { createInactiveMediaPaths } from './media-runtime/contract'
+import { createInactiveMediaPaths, MEDIA_LIFECYCLE_SCHEMA_SHA256 } from './media-runtime/contract'
+import type { MediaUtilityCallbacks } from './media-runtime/media-utility-adapter'
 
 const electron = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   rendererReady: vi.fn(), rendererGone: vi.fn(), disposeFrames: vi.fn(),
   setRemoteDemand: vi.fn(), setScreenPreview: vi.fn(),
+  createUtility: vi.fn(),
 }))
 
 vi.mock('electron', () => ({
@@ -18,9 +20,7 @@ vi.mock('electron', () => ({
 
 vi.mock('./media-runtime/media-utility-adapter', () => ({
   mediaUtilityAvailable: () => true,
-  createElectronMediaUtilityAdapterFactory: () => () => {
-    throw new Error('This test must not spawn a utility process')
-  },
+  createElectronMediaUtilityAdapterFactory: () => () => electron.createUtility(),
 }))
 vi.mock('./media-runtime/media-frame-controller', () => ({
   MediaFrameController: class {
@@ -34,7 +34,10 @@ vi.mock('./media-runtime/media-frame-controller', () => ({
 }))
 
 describe('native media product boundary', () => {
-  beforeEach(() => { vi.resetModules(); vi.clearAllMocks(); electron.handlers.clear() })
+  beforeEach(() => {
+    vi.resetModules(); vi.clearAllMocks(); electron.handlers.clear()
+    electron.createUtility.mockImplementation(() => { throw new Error('This test must not spawn a utility process') })
+  })
   afterEach(() => vi.restoreAllMocks())
 
   async function setup() {
@@ -70,6 +73,49 @@ describe('native media product boundary', () => {
     await adapter.dispose()
     expect(electron.disposeFrames).toHaveBeenCalledOnce()
     expect(invoke(IPC.mediaGetRuntimeState)).toEqual(runtime.NATIVE_MEDIA_UNAVAILABLE_STATE)
+  })
+
+  it.each(['native', 'utility'])('reports a %s failure and supervisor retirement as one causal incident', async source => {
+    vi.useFakeTimers()
+    try {
+      let callbacks: MediaUtilityCallbacks | undefined
+      electron.createUtility.mockReturnValue({
+        pid: 81,
+        start: (value: MediaUtilityCallbacks) => { callbacks = value },
+        postMessage: vi.fn(), kill: async () => {},
+      })
+      const { runtime } = await setup()
+      const incidents = await import('./native-runtime/diagnostic-incidents')
+      incidents.configureNativeDiagnosticIncidentAccount('test-account')
+      const adapter = runtime.createNativeRtcEngineAdapter()
+      try {
+        const started = adapter['runtime'].start()
+        callbacks!.onMessage({
+          type: 'ready', protocolVersion: 4, engineState: 'running',
+          build: { commit: 'c'.repeat(40), napi: '8', protocolSchemaSha256: MEDIA_LIFECYCLE_SCHEMA_SHA256 },
+        })
+        await started
+        if (source === 'native') {
+          callbacks!.onMessage({
+            type: 'event', protocolVersion: 4,
+            event: {
+              type: 'fatalEngineFailure', sequence: 1,
+              failure: { code: 'native_owner_stop_timeout', message: 'Owner did not join', stage: 'shutdown', retryable: true },
+            },
+          })
+        } else {
+          callbacks!.onExit({ code: 9, source: 'exit', expected: false, uptimeMs: 20, stderr: '', stderrTruncated: false })
+        }
+        const batch = incidents.leaseNativeDiagnosticIncidents('test-account')!
+        expect(batch.incidents).toHaveLength(1)
+        expect(batch.incidents[0]).toMatchObject({
+          scope: source === 'native' ? 'native-media-controller' : 'native-runtime-supervisor',
+          event: source === 'native' ? 'fatalEngineFailure' : 'utility_crashed',
+          severity: 'fatal', occurrenceCount: 2,
+          relatedEvidence: [expect.objectContaining({ scope: 'native-runtime-supervisor', event: 'runtime_degraded' })],
+        })
+      } finally { await adapter.dispose() }
+    } finally { vi.useRealTimers() }
   })
 
   it('reattaches a listening renderer after account rotation and revokes it on reload', async () => {

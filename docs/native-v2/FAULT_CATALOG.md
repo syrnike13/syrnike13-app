@@ -104,11 +104,22 @@ Missing or skipped rows fail qualification; a successful test process does not
 imply 100 executions. Synthetic decoded frames do not prove physical camera or
 acoustic quality. Hardware qualification belongs to #132 and remains separate.
 
-One causal episode needs an explicit bounded identity. Current incident
-fingerprints include layer scope and trigger code, so different-layer symptoms
-are not automatically one incident. Preserve the root identity/severity while
-enriching it with bounded related evidence; do not group unrelated faults merely
-because they happened near each other. Account changes discard incident state.
+One causal episode has an explicit owner-supplied identity. A fatal native event
+and the supervisor's resulting retirement share that identity. An unexpected
+utility exit records its cause before restart state is projected. A replacement
+host's successful handshake ends that host-failure episode, without resetting
+the finite restart budget or claiming media-path stability. Presentation has its
+own episode per failed stream; full release/recovery or owner replacement permits
+a new episode. Unrelated faults are never grouped merely by time proximity.
+
+Incident reports alias the owner identity and retain the original root fields and
+highest observed severity. Up to eight redacted related events enrich the root;
+100 pending incidents and 1,000 episode roots/correlation aliases bound memory.
+An active upload lease is immutable. Later evidence becomes a follow-up under
+the same correlation; release or expiry merges that follow-up into the retried
+root instead of queuing duplicate roots. Account changes discard all episode
+state. Tests cover 100 distinct cross-layer episodes, 100 fatal host replacements,
+lease release/expiry, root eviction, account isolation and the product wiring.
 
 ## Qualification constraints
 

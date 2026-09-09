@@ -321,11 +321,18 @@ describe('product media frame controller', () => {
       test.controller['presentationRecovered'](frame, 1)
       expect(test.controller.presentationPaths().screen_preview.state).toBe('failed')
       expect(test.failure).toHaveBeenCalledOnce()
+      const firstCause = test.failure.mock.lastCall?.[1]?.episodeId
+      expect(test.failure).toHaveBeenLastCalledWith('video_bridge_receiver_release_timeout', {
+        episodeId: expect.any(String), path: 'screen_preview', revision: 1, epoch: 1,
+      })
       test.controller['presentationRecovered'](second, 1)
       expect(test.controller.presentationPaths().screen_preview.state).toBe('running')
+      test.controller['presentationFailed'](frame, 1, 'video_bridge_receiver_release_timeout', true)
+      expect(test.failure.mock.lastCall?.[1]?.episodeId).not.toBe(firstCause)
+      test.controller['presentationRecovered'](frame, 1)
       test.nextEpoch()
       test.controller['presentationFailed'](frame, 1, 'late_stall', true)
-      expect(test.failure).toHaveBeenCalledOnce()
+      expect(test.failure).toHaveBeenCalledTimes(2)
     } finally { test.controller.dispose() }
   })
 })

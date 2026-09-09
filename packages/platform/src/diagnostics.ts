@@ -47,6 +47,20 @@ const optionalFiniteMetrics = Schema.optional(
   Schema.Record(Schema.String, Schema.Finite),
 )
 
+const NativeDiagnosticRelatedEvidenceSchema = Schema.Struct({
+  timestampMs: Schema.Finite,
+  scope: Schema.String,
+  event: Schema.String,
+  severity: NativeDiagnosticIncidentSeveritySchema,
+  errorCode: optionalString,
+  stage: optionalString,
+  status: optionalString,
+  message: optionalString,
+  hostEpoch: optionalFiniteNumber,
+  revision: optionalFiniteNumber,
+  metrics: optionalFiniteMetrics,
+})
+
 export const NativeDiagnosticIncidentSchema = Schema.Struct({
   timestampMs: Schema.Finite,
   firstTimestampMs: optionalFiniteNumber,
@@ -79,6 +93,9 @@ export const NativeDiagnosticIncidentSchema = Schema.Struct({
   durationMs: optionalFiniteNumber,
   timeoutMs: optionalFiniteNumber,
   metrics: optionalFiniteMetrics,
+  relatedEvidence: Schema.optional(
+    Schema.Array(NativeDiagnosticRelatedEvidenceSchema).check(Schema.isMaxLength(8)),
+  ),
 })
 
 export const RendererDiagnosticIncidentSchema = Schema.Struct({
