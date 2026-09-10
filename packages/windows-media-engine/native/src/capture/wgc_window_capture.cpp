@@ -286,8 +286,10 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
       return {false, CaptureFailure{"source_closed",
                                     "window closed before WGC startup"}};
     }
+    const char* startup_operation = "RoInitialize";
     try {
       ensureRoInitialized();
+      startup_operation = "GraphicsCaptureSession::IsSupported";
       if (!GraphicsCaptureSession::IsSupported()) {
         return {false, CaptureFailure{"wgc_unsupported",
                                       "Windows Graphics Capture is unsupported"}};
@@ -298,12 +300,16 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
       }
 
       bool debug_enabled = false;
+      startup_operation = "createWgcDevice";
       auto device = createWgcDevice(options_.request_d3d_debug_layer,
                                     debug_enabled);
+      startup_operation = "createWinrtD3DDevice";
       const auto direct3d_device = createWinrtD3DDevice(device);
 
+      startup_operation = "acquireWindowCaptureItem";
       GraphicsCaptureItem item = acquireWindowCaptureItem(
           target.platformValue(), target.cacheKey());
+      startup_operation = "GraphicsCaptureItem::Size";
       const auto item_size = item.Size();
       if (options_.frame_pool_size < 1 || options_.frame_pool_size > kMaximumWindowFrames + 1 ||
           (options_.maximum_width && item_size.Width > static_cast<std::int64_t>(options_.maximum_width)) ||
@@ -313,13 +319,17 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
       const SizeInt32 initial_size{(std::max)(item_size.Width, 1),
                                    (std::max)(item_size.Height, 1)};
       testing::holdProductFault("wgc-window-frame-pool");
+      startup_operation = "Direct3D11CaptureFramePool::CreateFreeThreaded";
       auto frame_pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
           direct3d_device, DirectXPixelFormat::B8G8R8A8UIntNormalized,
           static_cast<int>(options_.frame_pool_size), initial_size);
+      startup_operation = "Direct3D11CaptureFramePool::CreateCaptureSession";
       auto session = frame_pool.CreateCaptureSession(item);
+      startup_operation = "GraphicsCaptureSession::IsCursorCaptureEnabled";
       if (!options_.include_cursor) session.IsCursorCaptureEnabled(false);
 
       const std::weak_ptr weak = state_;
+      startup_operation = "Direct3D11CaptureFramePool::FrameArrived";
       const auto frame_token = frame_pool.FrameArrived(
           [weak](const Direct3D11CaptureFramePool& sender,
                  const winrt::Windows::Foundation::IInspectable&) {
@@ -480,6 +490,7 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
               sendWindowTerminal(state, {"wgc_frame_failed", error.what()});
             }
           });
+      startup_operation = "GraphicsCaptureItem::Closed";
       const auto closed_token = item.Closed(
           [weak](const GraphicsCaptureItem&,
                  const winrt::Windows::Foundation::IInspectable&) {
@@ -498,6 +509,7 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
       {
         std::lock_guard lock(state_->mutex);
         if (state_->stop_requested.load()) {
+          startup_operation = "cancel WGC startup";
           item.Closed(closed_token);
           frame_pool.FrameArrived(frame_token);
           session.Close();
@@ -522,6 +534,7 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
         state_->diagnostics.d3d_debug_enabled = debug_enabled;
       }
       testing::holdProductFault("wgc-window-start");
+      startup_operation = "GraphicsCaptureSession::StartCapture";
       session.StartCapture();
 
       {
@@ -598,8 +611,9 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
       }
       return {};
     } catch (const winrt::hresult_error& error) {
-      return {false,
-              CaptureFailure{"wgc_start_failed", hresultText(error.code())}};
+      return {false, CaptureFailure{
+          "wgc_start_failed",
+          std::string(startup_operation) + ": " + hresultText(error.code())}};
     } catch (const std::exception& error) {
       return {false, CaptureFailure{"wgc_start_failed", error.what()}};
     }

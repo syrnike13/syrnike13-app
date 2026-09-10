@@ -1029,3 +1029,15 @@ including their resource assertions. Withheld output passed 100 owner checks
 but failed resource recovery with five additional handles. The artifact records
 the probe's embedded `52ccd1e3` Release build and the observed newer overlay DLL;
 it is not a new qualification build or proof of an overlay root cause.
+
+The [capture diagnostics](capture-shutdown-diagnostics-99b5ac56.json.gz) retained
+the original native message from the 46th window attempt: `HRESULT 0x80070057`
+before frame-pool fault entry. This diagnostic run passed 45 cases; the failing
+API was not identified by that binary. WGC startup errors now include the active
+operation, and a failed `CreateForWindow` identifies that call explicitly.
+The existing window owner tests passed after this diagnostic-only message change.
+The corrected monitor coordinator passed three controls, then completed 28
+SDK-publication shutdown cases before case 29 exceeded 4900 ms. Main published
+exit code zero at 4249 ms but became kernel-signaled at 5106 ms. The expanded
+failed-case observations and the unchanged frozen product hashes are retained;
+the remaining monitor rows did not run.
