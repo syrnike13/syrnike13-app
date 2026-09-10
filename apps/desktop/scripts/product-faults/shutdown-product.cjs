@@ -89,7 +89,27 @@ exports.createProduct = ({ electron, executablePath, applicationDirectory, envir
     if (/^(sdk-screen-|screen-audio-|encoder-|wgc-monitor-|wgc-window-|dxgi-)/.test(point)) {
       await ui.getByRole('button', { name: 'Демонстрация экрана', exact: true }).first().click()
       if (point.startsWith('wgc-window-')) {
-        await ui.getByRole('tab', { name: 'Приложения', exact: true }).click()
+        const picker = ui.getByRole('dialog', { name: 'Демонстрация экрана', exact: true })
+        const applications = picker.getByRole('tab', { name: /^Приложения(?:\s+\d+)?$/ })
+        const source = picker.getByRole('button', { name: screenSourceButton, exact: true })
+        // Window sources are paginated independently of their titles or z-order.
+        // Keep fixture discovery bounded and use visible page state to advance.
+        for (let page = 0; page < 64; ++page) {
+          await applications.click()
+          const panel = picker.locator('[role="tabpanel"][data-state="active"]')
+          await until(async () => (await panel.getByRole('button').count()) > 0 ||
+            await panel.getByText('Приложения не найдены', { exact: true }).isVisible(),
+          Boolean, 'shutdown_picker_sources_deadline')
+          if (await source.isVisible()) break
+          const next = picker.getByRole('button', { name: 'Далее', exact: true })
+          if (!(await next.isVisible()) || !(await next.isEnabled())) throw new Error('shutdown_window_source_missing')
+          const indicator = next.locator('..').locator(':scope > span')
+          const previousPage = await indicator.innerText()
+          await next.click()
+          await until(() => indicator.innerText(), value => value !== previousPage,
+            'shutdown_picker_page_deadline')
+        }
+        if (!(await source.isVisible())) throw new Error('shutdown_window_source_page_limit')
       }
       await ui.getByRole('button', { name: screenSourceButton, exact: true }).click()
       if (point.endsWith('-unpublish')) {

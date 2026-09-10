@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "scope": "Post-restart diagnostic controls using the existing encoder probe",
+  "passed": false,
+  "binary": {
+    "file": "encoder_fault_tests.exe",
+    "sha256": "6be8878edd840465e1e4cbc1d9c0860e6bfcbaa6083ae870509df3d9a5978bf4",
+    "build": {
+      "commit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+      "configuration": "Release",
+      "asan": false,
+      "msvc": 195136248
+    }
+  },
+  "results": [
+    {
+      "file": "issue131-post-reboot-mft-activation.log",
+      "sha256": "ce1827c6bf952d460f68bc13b35706099fabebbfd5f5c04f02de0ca832cbbb92",
+      "result": {
+        "id": "mf-activation-same-thread",
+        "build": {
+          "commit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+          "configuration": "Release",
+          "asan": false,
+          "msvc": 195136248
+        },
+        "passed": 100,
+        "required": 100,
+        "warmup": 1,
+        "ownerChecksPassed": true,
+        "resourceChecksPassed": true,
+        "maximumIterationMs": 250.162,
+        "resources": {
+          "baseline": {
+            "handles": 330,
+            "threads": 10
+          },
+          "final": {
+            "handles": 330,
+            "threads": 10
+          },
+          "delta": {
+            "handles": 0,
+            "threads": 0
+          }
+        }
+      }
+    },
+    {
+      "file": "issue131-post-reboot-encoder-no-output.log",
+      "sha256": "8a13dad9d50aa9dce3d708f1e20a2a83f2273105deaa68d0b2c6c7c20044ad82",
+      "result": {
+        "id": "encoder-input-without-output",
+        "build": {
+          "commit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+          "configuration": "Release",
+          "asan": false,
+          "msvc": 195136248
+        },
+        "passed": 100,
+        "required": 100,
+        "warmup": 1,
+        "ownerChecksPassed": true,
+        "resourceChecksPassed": false,
+        "maximumIterationMs": 2119.07,
+        "resources": {
+          "baseline": {
+            "handles": 459,
+            "threads": 28
+          },
+          "final": {
+            "handles": 464,
+            "threads": 26
+          },
+          "delta": {
+            "handles": 5,
+            "threads": -2
+          }
+        }
+      }
+    },
+    {
+      "file": "issue131-post-reboot-encoder-bitrate-unsupported.log",
+      "sha256": "440afaedebca1d04f6cb30c19e5ba21d6f4e3b6b14837ab23ec6cd856213f0c4",
+      "result": {
+        "id": "encoder-bitrate-unsupported",
+        "build": {
+          "commit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+          "configuration": "Release",
+          "asan": false,
+          "msvc": 195136248
+        },
+        "passed": 100,
+        "required": 100,
+        "warmup": 1,
+        "ownerChecksPassed": true,
+        "resourceChecksPassed": true,
+        "maximumIterationMs": 1419.86,
+        "resources": {
+          "baseline": {
+            "handles": 459,
+            "threads": 28
+          },
+          "final": {
+            "handles": 458,
+            "threads": 25
+          },
+          "delta": {
+            "handles": -1,
+            "threads": -3
+          }
+        }
+      }
+    },
+    {
+      "file": "issue131-post-reboot-encoder-bitrate-rejected.log",
+      "sha256": "2cd00f4b8f48cdbaefb73f38ecd6181023997f90a4172ff9f145f4e838fe1629",
+      "result": {
+        "id": "encoder-bitrate-rejected",
+        "build": {
+          "commit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+          "configuration": "Release",
+          "asan": false,
+          "msvc": 195136248
+        },
+        "passed": 100,
+        "required": 100,
+        "warmup": 1,
+        "ownerChecksPassed": true,
+        "resourceChecksPassed": true,
+        "maximumIterationMs": 6422.29,
+        "resources": {
+          "baseline": {
+            "handles": 461,
+            "threads": 29
+          },
+          "final": {
+            "handles": 458,
+            "threads": 25
+          },
+          "delta": {
+            "handles": -3,
+            "threads": -4
+          }
+        }
+      }
+    }
+  ],
+  "noOutputModuleObservation": {
+    "file": "nvspcap64.dll",
+    "version": "11.0.9.251",
+    "sha256": "ec8837a6f35507beef70382071842ef4b3a0d466aa0b8be02f0d5fa911d79767",
+    "observationSha256": "560dd5118a43fdf71c3dc25294e335527e700588e87ea4b9ea64e592f303806a"
+  },
+  "limitations": [
+    "This is the existing Release diagnostic binary at its embedded commit, not a new qualification build of the current branch.",
+    "The activation-only control returned to baseline. The no-output test passed all owner assertions but retained five handles and failed its resource assertion.",
+    "NVIDIA driver remained 32.0.16.1074; the observed overlay DLL version changed from 11.0.9.239 before restart to 11.0.9.251. No driver or overlay settings were changed by this task.",
+    "The overlay module observation was captured during the no-output run. The activation-only run ended before module capture, so its overlay presence is unknown.",
+    "Changed resource behavior after restart and a different overlay DLL do not establish causation. Earlier failed evidence remains valid."
+  ]
+}

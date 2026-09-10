@@ -1,0 +1,1777 @@
+{
+  "schemaVersion": 1,
+  "scope": "Restoration and short controls after the host restart; not full fault qualification",
+  "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+  "overallFaultQualificationPassed": false,
+  "fixture": {
+    "capturedAt": "2026-09-09T23:32:46.1352571Z",
+    "backend": [
+      {
+        "role": "api",
+        "sha256": "373cb6e7b8aaf87b4dce3a437ef35e835a367bb4a2878203c84e955bb2ecbca3",
+        "expectedSha256": "373cb6e7b8aaf87b4dce3a437ef35e835a367bb4a2878203c84e955bb2ecbca3"
+      },
+      {
+        "role": "events",
+        "sha256": "89eebe11e754ba9e9ee45809d3b9f4ebdef75f684b8ee0d51cdb57cb1f76ca39",
+        "expectedSha256": "89eebe11e754ba9e9ee45809d3b9f4ebdef75f684b8ee0d51cdb57cb1f76ca39"
+      },
+      {
+        "role": "voice-ingress",
+        "sha256": "4c77682a3f59be89b208677d6304b832ecc54be3342cc09f5b56e1b882547b8b",
+        "expectedSha256": "4c77682a3f59be89b208677d6304b832ecc54be3342cc09f5b56e1b882547b8b"
+      },
+      {
+        "role": "crond",
+        "sha256": "e579da36c38e8f7a033f29914da07013db7be95f73573c1394c7c75f0b447af8",
+        "expectedSha256": "e579da36c38e8f7a033f29914da07013db7be95f73573c1394c7c75f0b447af8"
+      }
+    ],
+    "databaseHealth": "healthy",
+    "listeningPorts": [
+      14716,
+      17890,
+      17891
+    ],
+    "qualificationPassed": false,
+    "scope": "Fixture restoration only; interrupted matrices remain incomplete."
+  },
+  "startup": {
+    "firstCoreControl": {
+      "passed": false,
+      "enteredFault": false,
+      "summaryProduced": false,
+      "failure": "unhandled_playwright_launch_timeout_60000ms",
+      "inputsSha256": "750f0a2198b35d2789cf7d89c3357c93886bd060fd8d2f99bec467018c0659a8",
+      "limitation": "The process exited before the harness saved a summary; no completed case is claimed."
+    },
+    "standaloneElectronVersion": {
+      "exitCode": 0,
+      "version": "43.1.0",
+      "stdoutSha256": "2067843dcc6ce41b4a7b470e7570febc164669e59f9417286504820b52c287de",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "launchWithoutAdditionalInspector": {
+      "passed": false,
+      "elapsedMs": 60148.0916,
+      "qualification": false
+    },
+    "launchWithAdditionalInspector": {
+      "passed": true,
+      "launchMs": 22994.210000000003,
+      "qualification": false
+    },
+    "observations": [
+      "The failed diagnostic established the Node debugger connection but did not report Chromium DevTools before the 60-second timeout.",
+      "A later diagnostic attached another inspector, sampled module-resolution stacks, immediately resumed, and reached the first application window.",
+      "The additional Runtime.evaluate probe failed because require was unavailable in that context; this was a diagnostic error, not an application error.",
+      "These observations do not identify the startup delay cause. The successful diagnostic is not a fault qualification case."
+    ],
+    "diagnosticTraceSha256": "2cb6eb579bb40f010bb37ef8da4e5712783105fd5b74ffeb01e0764180c708e1",
+    "inspectorTraceSha256": "82cff07ceca3731e5ac5fad3d0ad72774cf53751a0de3fd606a3fccf1ced0b73",
+    "inspectorObservationsSha256": "2793c5744dd7b8f476145655819617961de3fc835ef47d4a7f420f14fb3a110b"
+  },
+  "controls": [
+    {
+      "role": "core",
+      "capturedAt": "2026-09-09T23:42:27.137Z",
+      "identity": {
+        "commit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+        "drivers": [
+          {
+            "file": "apps/desktop/scripts/product-faults/shutdown-product.cjs",
+            "sha256": "5bcef259380fb36102c3f395f32a31ef9755ac147c398ed08a7187a637de8de1"
+          },
+          {
+            "file": "apps/desktop/scripts/product-faults/shutdown-harness.cjs",
+            "sha256": "ab1c3c621ad9903fc82b77040775da796f16b5a65a41c8dc240df7e362b62432"
+          }
+        ],
+        "auxiliary": [
+          {
+            "file": ".codex-tmp/issue131-observe-exit-path.cjs",
+            "sha256": "bd4fbfa31396b3942f809db02ea8fcc9532c68861e6cd16badeb045ffd1f3f2a"
+          },
+          {
+            "file": ".codex-tmp/issue131-capture-product-errors.cjs",
+            "sha256": "92017ab6a3be9145f3169593b6ac04c950fb022190d85d96249fce3278b12e89"
+          },
+          {
+            "file": ".codex-tmp/issue131-electron-with-playwright-loader.cmd",
+            "sha256": "d293230c1b568a1e2b9ad808e6e04813ddaab2d860aeddef579b553ddd455bf3"
+          }
+        ],
+        "capturePhase": "before-first-product-launch",
+        "lockfileSha256": "cd17174c3bbab27d9dead15665d3769db816c9a2e2c3015e092db21b18105a9e",
+        "reusedFrontend": {
+          "reason": "Unchanged frontend and platform artifacts reused; desktop and native identity rebuilt",
+          "sourceDiffToProductCommit": "empty for apps/web and packages/platform",
+          "builtAtCommit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35"
+        },
+        "backendHashes": [
+          "api 373cb6e7b8aaf87b4dce3a437ef35e835a367bb4a2878203c84e955bb2ecbca3  /proc/1/exe",
+          "events 89eebe11e754ba9e9ee45809d3b9f4ebdef75f684b8ee0d51cdb57cb1f76ca39  /proc/1/exe",
+          "voice-ingress 4c77682a3f59be89b208677d6304b832ecc54be3342cc09f5b56e1b882547b8b  /proc/1/exe",
+          "crond e579da36c38e8f7a033f29914da07013db7be95f73573c1394c7c75f0b447af8  /proc/1/exe"
+        ],
+        "capturedAt": "2026-09-09T17:47:49.2551360Z",
+        "files": [
+          {
+            "file": "apps/desktop/out/main/index.js",
+            "sha256": "26ff05990bb49276b44f79886cde937db0c6a732f492a380e66e4fa56b3316bd"
+          },
+          {
+            "file": "apps/desktop/out/main/index.js.map",
+            "sha256": "360bc4ba9737db701b25442cbd9c7b2d8087d6120d6f13dfd7692808f015ebbd"
+          },
+          {
+            "file": "apps/desktop/out/media-native/win32-x64/livekit_ffi.dll",
+            "sha256": "3f4b1cf2e634a98c8e149e7ce64d48f92347a489b2136d21f3086322f7ead550"
+          },
+          {
+            "file": "apps/desktop/out/media-native/win32-x64/livekit.dll",
+            "sha256": "f93910d2683765826677a88e9544532c95dc2910297488b55f056e6d5bd7544f"
+          },
+          {
+            "file": "apps/desktop/out/media-native/win32-x64/media-manifest.json",
+            "sha256": "26bd5425e0ead039a1a99bf62d621d74bc5b9df6ec0326e00be3b74da4e0ff00"
+          },
+          {
+            "file": "apps/desktop/out/media-native/win32-x64/windows_media_texture_broker.node",
+            "sha256": "ba4cb7e48f6f2794ad2071e9afff05cd9382679745421a1c4210212ca54cbb93"
+          },
+          {
+            "file": "apps/desktop/out/media-native/win32-x64/windows_media.node",
+            "sha256": "b2d5213cb5e2005f59c9d4dbf9ea6224d016182ea377e1d1abada78d3caca71a"
+          },
+          {
+            "file": "apps/desktop/out/native/win32-x64/native-manifest.json",
+            "sha256": "89746e87df4e8763da665e733c4dd0630e9572abfcb984409de8a89a7630edce"
+          },
+          {
+            "file": "apps/desktop/out/native/win32-x64/syrnike_hotkey.node",
+            "sha256": "cd9c75df3169fbd5a7446905a04c86066aa5d36341c00d6f1b8d22fe073a1878"
+          },
+          {
+            "file": "apps/desktop/out/native/win32-x64/syrnike_overlay.node",
+            "sha256": "6e43b78861f688db6cce3afe3060b75af2e8ce623e96a406d9f223dbcdb2016d"
+          },
+          {
+            "file": "apps/desktop/out/preload/index.cjs",
+            "sha256": "fac061db95742769e7afc2e6c1359d66f66c1ec6730fd41849dadbec94327901"
+          },
+          {
+            "file": "apps/desktop/out/preload/index.cjs.map",
+            "sha256": "bf0b760ee60d4e4412d4530c8bf3e7604434d0909f816e84ea183fd9a175c7f0"
+          },
+          {
+            "file": "apps/desktop/out/utility/hotkey-host.cjs",
+            "sha256": "86e2b45266724d7c0e26c6a4686f1f208aab47358f85cbbdb0e13ce97b30d46c"
+          },
+          {
+            "file": "apps/desktop/out/utility/hotkey-host.cjs.map",
+            "sha256": "ddf0696fe83f807221fc6691fe3d1903854867e338a078fe97723f59c558a082"
+          },
+          {
+            "file": "apps/desktop/out/utility/media-host.cjs",
+            "sha256": "5af090487a4cebdc25456f53076d35da5b76fc4171d05efb1740718f6f29e58f"
+          },
+          {
+            "file": "apps/desktop/out/utility/media-host.cjs.map",
+            "sha256": "53a508e8c4eecebf41e93ea9f20ff864c88955b27dd08de085e1198682d25cbd"
+          },
+          {
+            "file": "apps/desktop/out/utility/overlay-host.cjs",
+            "sha256": "bfdbcfbe533d7261a9a07c84fbed204c7440f94e878eed839587c6c6121dc625"
+          },
+          {
+            "file": "apps/desktop/out/utility/overlay-host.cjs.map",
+            "sha256": "bde58d88705693dfcaeb8ee7e6de74d5ba0f0178a9c430983dc660333dcb1644"
+          },
+          {
+            "file": "apps/desktop/out/utility/shutdown-budget.cjs",
+            "sha256": "23860d9532fafa0c4b6c802656b589e923e666db791b3683de6a763856ef13e0"
+          },
+          {
+            "file": "apps/desktop/out/utility/shutdown-budget.cjs.map",
+            "sha256": "eccb6f443f01341510fe3a90f6322763f7df41d9bbeec3aaac49b85ecb58447b"
+          },
+          {
+            "file": "apps/web/dist/client/_shell.html",
+            "sha256": "5863840674837144d2f3c9f2f462ba9ecb08fcc9923b19e7c40effa8bbd64f1a"
+          },
+          {
+            "file": "apps/web/dist/client/activities/sdk.js",
+            "sha256": "4c0efd538ce5ae26611d70c10faf5cc7bf93aa4a6f876a3f4b3efb72537230dd"
+          },
+          {
+            "file": "apps/web/dist/client/activities/shared-counter/index.html",
+            "sha256": "7f7ce29aca34afbed2ab1e7563df89aa058036abc056a55f76139c466d34a0cb"
+          },
+          {
+            "file": "apps/web/dist/client/activities/shared-counter/main.js",
+            "sha256": "61118f494558e5dc0680616864b7d77f4a6f33a491a7bb00ee85a5b35aa4f6a8"
+          },
+          {
+            "file": "apps/web/dist/client/activities/shared-counter/style.css",
+            "sha256": "eb109aefa3f5775eb71dfcc7c26c7f1ced5fb653f083be387fd362e832727c01"
+          },
+          {
+            "file": "apps/web/dist/client/activities/syrnik-race/index.html",
+            "sha256": "40584f097f710cb78618b7d59208bd15ecebe99c367a9b6fc6d3d50a91719e59"
+          },
+          {
+            "file": "apps/web/dist/client/activities/syrnik-race/main.js",
+            "sha256": "42c8442aed0431a7e0e2096f5ca7a952bcc68a6a8ef47f292b949570708188b1"
+          },
+          {
+            "file": "apps/web/dist/client/activities/syrnik-race/style.css",
+            "sha256": "5a22ea62524dd1c49103dd63df209887422e7bbdb6b09996b2238cdcb99ed523"
+          },
+          {
+            "file": "apps/web/dist/client/activities/syrnik-race/syrnik.png",
+            "sha256": "3316ab62ef2ada5ebc858b4e4617bbf506f6fb068dc16a28d2cde843f7b3ceff"
+          },
+          {
+            "file": "apps/web/dist/client/app-logo.png",
+            "sha256": "e9a76fbc0ab85a8030593a2a953c9a6dbee512440ba62f8b5a81ef0ff9f08e9b"
+          },
+          {
+            "file": "apps/web/dist/client/assets/_channelId-D0Sn0Xqb.js",
+            "sha256": "5bd4802282dabb69211482756aba9def4fe3ce7b135a4771fb98cda7f9717de0"
+          },
+          {
+            "file": "apps/web/dist/client/assets/_channelId-oLB4gt86.js",
+            "sha256": "193a761d7348a192ca0b068da2645c5b8501f171001796357aa3448417b47ef3"
+          },
+          {
+            "file": "apps/web/dist/client/assets/_code-BPL1C8yh.js",
+            "sha256": "c41becb8534cd96811d69ebc56cd29265ed7a7bbd071d8b3b9798fb5a6cc0add"
+          },
+          {
+            "file": "apps/web/dist/client/assets/_feedbackId-BzpJA5gr.js",
+            "sha256": "51acd7be64c14782a2f5d8d2be30f52673f00420340d4f12ad32968c4fcf4b0a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/_feedbackId-C1CibY1F.js",
+            "sha256": "73025c0f19b8baca3cc3644122663bc80dfd85acd7d47451fc22e5eca52c4bb2"
+          },
+          {
+            "file": "apps/web/dist/client/assets/account-api-BdFTyq4t.js",
+            "sha256": "b55b8dfb740f032b001b82a93fe6ee3ccad51013ba0047a5bcc3049d5aa2b0d8"
+          },
+          {
+            "file": "apps/web/dist/client/assets/app-D_bUuyud.js",
+            "sha256": "32f87b3b7237e88ffa87f73c7bae017f7ac295af01dd05018f933253174e2180"
+          },
+          {
+            "file": "apps/web/dist/client/assets/auth-layout-DiyIOkBv.js",
+            "sha256": "aa0d38f1d72cf93ccad61802add7954eca5b11571d129d969ada78314828efae"
+          },
+          {
+            "file": "apps/web/dist/client/assets/auth-post-login-path-Pa0nia2r.js",
+            "sha256": "ea3db3f264b66525e4eebb444a74ab68a0406cab91a673017f5d58816bc723d2"
+          },
+          {
+            "file": "apps/web/dist/client/assets/auth-verify-email-D41biVeT.js",
+            "sha256": "aeddb00881176a569aaae4f0fc306e244e3036ad9df4e588b1de0a352db83376"
+          },
+          {
+            "file": "apps/web/dist/client/assets/authed-gate-Czn5Yzrb.js",
+            "sha256": "bf3eebea6242477c1b8494997399adbeebdaa3e1576ef429f4d69aed45bd9e74"
+          },
+          {
+            "file": "apps/web/dist/client/assets/avatar-EgMGoXOO.js",
+            "sha256": "1ee58b2827bbbeee7fb280a1d02cb8c80a97911098519279d92ad8eec29e7972"
+          },
+          {
+            "file": "apps/web/dist/client/assets/badge-DuS1f-T2.js",
+            "sha256": "5ab2a5227e05e86f3b9c5aa65e7b1e06d291b096d87805f080a0a10d5d82c9a7"
+          },
+          {
+            "file": "apps/web/dist/client/assets/build-command-items-KzrSgZ97.js",
+            "sha256": "2051101312e1eb072487275858aeac25731ab4eb81b5bb3aa4a417801a67e817"
+          },
+          {
+            "file": "apps/web/dist/client/assets/button-8R2ynsiJ.js",
+            "sha256": "4fd0a1a4e5c5c83f8a668a8de329e766079c8a4b038172ba74f090cb1fd4b5b0"
+          },
+          {
+            "file": "apps/web/dist/client/assets/card-BfIyTv3m.js",
+            "sha256": "4788df1c2085385aa81ce6ef8e4fdb09727d874b5ef903fcea5ab27238c4198b"
+          },
+          {
+            "file": "apps/web/dist/client/assets/channel-activity-panel-eBjukFU-.js",
+            "sha256": "2890390f3d5a586d3ecba7870c5ee57620e4346f3e92c0aad6a1013859cfc6ea"
+          },
+          {
+            "file": "apps/web/dist/client/assets/channel-view-B0fBRJox.js",
+            "sha256": "4996946820f1457825dd0ee5a20bd574fb2464b8d89b29abe4afcbcbafd96471"
+          },
+          {
+            "file": "apps/web/dist/client/assets/check-DXN5UONu.js",
+            "sha256": "e2d8b1efcaf66fb16796835a9f0c79b842b979377dfb6adc8bab30e591b983b6"
+          },
+          {
+            "file": "apps/web/dist/client/assets/config-DjxLnLJo.js",
+            "sha256": "986c8574c7b7343ac5b79a9e2a3e6399947e691bad07ce6afbadfec221c2a153"
+          },
+          {
+            "file": "apps/web/dist/client/assets/current-user-profile-menu-B7mMFkXK.js",
+            "sha256": "54eef0204e705ea6217a8230e57b1cf64fe1e2c38b19b05244e5438968a63c3a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/dialog-BooegAUc.js",
+            "sha256": "6aab540a8e8f0323a1ea48be17f13bf178e56c1e31dd6148fda5bfee9bf21c07"
+          },
+          {
+            "file": "apps/web/dist/client/assets/dist-BgXM7FiX.js",
+            "sha256": "0d809ecd35b2b5df3a7c6c95806f554ea38f37d9bca0f5e1758ac1d43a0f87e0"
+          },
+          {
+            "file": "apps/web/dist/client/assets/dist-CDYR5pTf.js",
+            "sha256": "e5ad0b4f238d1f45fb2f4ee1cc4241a6dac844d4489c267ba0ba2a1022bfba1a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/dist-D-krwN1M.js",
+            "sha256": "4b2fc79e3b3ace2a02486981ab9eb1ca797e3134f931125d77f33d7337c1c8e6"
+          },
+          {
+            "file": "apps/web/dist/client/assets/drawer-DxqmgQIG.js",
+            "sha256": "3681fdf6f38941ab9352fabd9025036851a204e9461668b166ba6597a6d6ad3f"
+          },
+          {
+            "file": "apps/web/dist/client/assets/dropdown-menu-1RmBaTdc.js",
+            "sha256": "b290f07a4cf21a6f1a39a893d0133d3a90e84b8d67c331e35889d972f950463b"
+          },
+          {
+            "file": "apps/web/dist/client/assets/effect-schema-Ca30Nqk1.js",
+            "sha256": "b49af060e260b1cc1ca02e8668a7b279bf82a3b341aaf228be21611fc6164bb7"
+          },
+          {
+            "file": "apps/web/dist/client/assets/feedback-BQVGKVBq.js",
+            "sha256": "0781dbecae0b607d87c26f91cc3fc893b37870b9bf2f825632b6b497b706a521"
+          },
+          {
+            "file": "apps/web/dist/client/assets/feedback-detail-view-AI_d59pQ.js",
+            "sha256": "f2f70934117046f3e5205403ead27bc1ddb7ee1a56cb1b3080d37afdc34fbf02"
+          },
+          {
+            "file": "apps/web/dist/client/assets/feedback-LJ-MTl4M.js",
+            "sha256": "2e9cd54dec39dfd2ce74f6aee0bcfbf6c4ccd2dfc0266fbf8c39a960f682047c"
+          },
+          {
+            "file": "apps/web/dist/client/assets/feedback-view-QrS7VCLn.js",
+            "sha256": "9cf9956b88de45945b403cdb9742fe123b991c4babdf8fdb0c9c955727667b8c"
+          },
+          {
+            "file": "apps/web/dist/client/assets/feedback-vote-button-BuQJPfkr.js",
+            "sha256": "e65c5d31233e72dad2570e0b8175e3229b1bbe95ff8272fe724210730c4a9cbe"
+          },
+          {
+            "file": "apps/web/dist/client/assets/friend-actions-CJ6WUkLb.js",
+            "sha256": "5585c9e6872e666987696abd511f411e26aa69fd1f56807f9d28d529c07082f4"
+          },
+          {
+            "file": "apps/web/dist/client/assets/hcaptcha-widget-Z_i7idVO.js",
+            "sha256": "3ab41324f627323849ded15b5e2b8dcbdfc30296bd74743067634afb1cdf3fbe"
+          },
+          {
+            "file": "apps/web/dist/client/assets/home-view-PDdkNi9s.js",
+            "sha256": "3b7ac40c9b49a4fd63cfcc46bacc3f8706a1ff882f3726fcd530d849af92da55"
+          },
+          {
+            "file": "apps/web/dist/client/assets/index-CO-Xkd0L.js",
+            "sha256": "0dc5b7c10123581fe3cbe3aa53b68dd3af9a90c3adc7acd279b2db7beb2e7fd5"
+          },
+          {
+            "file": "apps/web/dist/client/assets/input-y3iKjekd.js",
+            "sha256": "226b52603f646564294d165be3eeff19b8a3ee36cf97d31837d0b3abeaff8a73"
+          },
+          {
+            "file": "apps/web/dist/client/assets/invites-api-4HQVu2QN.js",
+            "sha256": "2fb07601b98e1c09add067a9c06e7d3e3de35f886b8f3c7e940ff1d849c74c83"
+          },
+          {
+            "file": "apps/web/dist/client/assets/jsx-runtime-DUAcabCT.js",
+            "sha256": "afa9863e5c6f7611685a66c3ed93ea9226a1af161256ae0e9339e1524204ee53"
+          },
+          {
+            "file": "apps/web/dist/client/assets/label-BNOq8Luk.js",
+            "sha256": "2dc1cc03b1480640c1f3301cae36ddfcb2cebf4b103f5f24d731cced15ae8040"
+          },
+          {
+            "file": "apps/web/dist/client/assets/link-ClC2Q6ky.js",
+            "sha256": "b60ef36486616db1c17ecbcbf11a8509d193c0f85f11028d60d508ac15aadb70"
+          },
+          {
+            "file": "apps/web/dist/client/assets/login-Byb-ipNG.js",
+            "sha256": "133b0e8be663a255f037c44bdc2e000b8362f532bc2d06cb746b7d0c0380397a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/m-_7L-vJ9G.js",
+            "sha256": "88057ec83426cf2e93a0d6e18741d98183d8ae81d8d28507e67030bcee86a7ed"
+          },
+          {
+            "file": "apps/web/dist/client/assets/ManagedRuntime-DElwhNyV.js",
+            "sha256": "0c3b7083cdc7467e75aae06458411775f8cb21b3d2c86627f59ed01f5cc5b58f"
+          },
+          {
+            "file": "apps/web/dist/client/assets/new-CEkd2wQS.js",
+            "sha256": "179a59ab37f5be562a01d25c502a94b0a2b3b5cd4ea5fa87f5d1d09a9e4b46ff"
+          },
+          {
+            "file": "apps/web/dist/client/assets/new-Dnn3aoRV.js",
+            "sha256": "5de70639498c68f78ed728273a9885c5cf345e285e40e5f1244a3f01f87ad097"
+          },
+          {
+            "file": "apps/web/dist/client/assets/notification-selectors-BIrmhIGb.js",
+            "sha256": "2d7df7288f1a5aba601ba169b5a542c55d56ba96866d8ee38b471b9cf1dd3ba3"
+          },
+          {
+            "file": "apps/web/dist/client/assets/onboard-HPYk6QhK.js",
+            "sha256": "ddb7316cb8bef479ef63aaff18621e80e57403174ffcd9efb1ecdc41cbfcb330"
+          },
+          {
+            "file": "apps/web/dist/client/assets/overlay-gE8AAnnv.js",
+            "sha256": "e7c5a4f28a33dcf1fc126dd2f4c2fa4097dffe7453c0af37ce3f97dd7ccbbdb2"
+          },
+          {
+            "file": "apps/web/dist/client/assets/password-input-U9abNITW.js",
+            "sha256": "ab148cfc7cc2d309e05aa0896fb8c172bdbfeb25d19baf72e75a9606a427726a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/permission-state-button-CxBvA4pj.js",
+            "sha256": "fa2114d0636865b6185256c26c803df96d5ed39a4afba845a1090c016ef88ad8"
+          },
+          {
+            "file": "apps/web/dist/client/assets/popover-BZswdeaZ.js",
+            "sha256": "ebd543ad4a66ca9114253de287be606df8264de937343964305213ec12e8abdf"
+          },
+          {
+            "file": "apps/web/dist/client/assets/portal-container-DQ3hIB-n.js",
+            "sha256": "11f7a25a2be46e0ce755a831061f15b34917ff18d82ff6bd91cff182a0b1233b"
+          },
+          {
+            "file": "apps/web/dist/client/assets/profile-BGT8N5f1.js",
+            "sha256": "cc151e0aef608318f64a0fea4ed6b062e760d5d2619254fec7b313b8223aca36"
+          },
+          {
+            "file": "apps/web/dist/client/assets/profile-menu-row-BzTwpslD.js",
+            "sha256": "cd9c276522a882b7bab3b36632bf87e6a2cc063550567fd1f147aef2a204a25b"
+          },
+          {
+            "file": "apps/web/dist/client/assets/react-DbyrFoBd.js",
+            "sha256": "94e5cf7525bf06257ed820655b6034fbb97c989bf9dd60bd997fe902a4d37f43"
+          },
+          {
+            "file": "apps/web/dist/client/assets/react-dom-i-Mcm3wj.js",
+            "sha256": "d0dd9366ce9f74514d25b39185b1058e3e3d3162c00f26fa21ca3f3daff8535e"
+          },
+          {
+            "file": "apps/web/dist/client/assets/register-D7Xhkag4.js",
+            "sha256": "df1c6ac98931b18614c02f8fb282f2c9441805d16000ca69692f03d9035250db"
+          },
+          {
+            "file": "apps/web/dist/client/assets/resend-URCD_FXy.js",
+            "sha256": "0fda507f3d17c334352895f206d1cb99c7e8ae7d893e52a15cd694315ef7a925"
+          },
+          {
+            "file": "apps/web/dist/client/assets/reset-BA2eM-01.js",
+            "sha256": "dc6372edd1d9019f416253502ac80a21a3c4f7902d57fd48961b1f2b385e496d"
+          },
+          {
+            "file": "apps/web/dist/client/assets/reset._token-BpcqmVAE.js",
+            "sha256": "0af26540a39aeae3400db935016264546ffdf3d95eda1caadca7ca25cb77728a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/root-nUSLhHW2.js",
+            "sha256": "9ae02fb2ec9f8300aa992446b43ae2563e6722bde2ca89e32b3ef9601f3a9e28"
+          },
+          {
+            "file": "apps/web/dist/client/assets/route-BjQ_f6qQ.js",
+            "sha256": "fe25d3d0abd19e954bf4d6af4535ded9c14689cae3acb549635a527998290524"
+          },
+          {
+            "file": "apps/web/dist/client/assets/route-BkYA3h_m.js",
+            "sha256": "50c419ce435fb924d19079ad4a602465c8ef20ee794e390be78c620b830c7717"
+          },
+          {
+            "file": "apps/web/dist/client/assets/route-JlouHOoC.js",
+            "sha256": "b0d657c26b5e54c3a64a8aab64425ce049be36116ed8fd1ac30292b2e6620d7f"
+          },
+          {
+            "file": "apps/web/dist/client/assets/route-prefix-DpNRThiE.js",
+            "sha256": "b4e4d4ff0de4b7a40d7e085464d76dc871a4e597057aefe33dc2756774a42151"
+          },
+          {
+            "file": "apps/web/dist/client/assets/routes-C51nnR-3.js",
+            "sha256": "1814d772817a60f5f8160a9a81e7287bf07e6c0900fc58cfead0555809162c07"
+          },
+          {
+            "file": "apps/web/dist/client/assets/runtime-hu8zE8Zw.js",
+            "sha256": "7e428cde81ba5822fc67041d2dd6fdd20dcf2bdbfcd968187e6dc3a54bec3f31"
+          },
+          {
+            "file": "apps/web/dist/client/assets/schemas-BJbHO22y.js",
+            "sha256": "546b714152671b47f7136e983201f8e19030fe69dd5ea904df39a7d984a91730"
+          },
+          {
+            "file": "apps/web/dist/client/assets/scroll-area-CkiJGCK7.js",
+            "sha256": "1a85a0451ce43cff1b11943d61746abca425d662d4bae376309433535532ea70"
+          },
+          {
+            "file": "apps/web/dist/client/assets/select--1ZBBh6m.js",
+            "sha256": "b539527b9513039d127eea0a3154adc2810999fcc7776431eacafa7e0bb1fa0f"
+          },
+          {
+            "file": "apps/web/dist/client/assets/server-settings-page-D-0Xv4gR.js",
+            "sha256": "8ef15c3033485dd7abf2ad4b2a7a2ba8e016a95b1556fca28a28f9f29f27464a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/settings-_qz1MNTE.js",
+            "sha256": "ba4044253a323fa2939e235b05068d6db126548a88a08f7a9be8af88413bba0c"
+          },
+          {
+            "file": "apps/web/dist/client/assets/settings-DaRWYpyY.js",
+            "sha256": "4c78d49d03aa14638a75c3d4756e16e238ca65a48e2700a55df35e866d08a888"
+          },
+          {
+            "file": "apps/web/dist/client/assets/settings-DQHV1Mwe.js",
+            "sha256": "f5165c009f72336b584647c4514806712fea0739ded7045f28ebb4174b7dfb22"
+          },
+          {
+            "file": "apps/web/dist/client/assets/settings-iecwW_rR.js",
+            "sha256": "d21de00c5c29e2f09c790f392eaf9fd0a3d1af56503d1b3e12e1061e1124cee9"
+          },
+          {
+            "file": "apps/web/dist/client/assets/settings-modal-context-CgxDJRII.js",
+            "sha256": "17b973cedc9b9ffe987f393f1c807cf4607520ece1102add2dd662d3d1decb9c"
+          },
+          {
+            "file": "apps/web/dist/client/assets/settings-profile-status-dialog-DdsrfFvM.js",
+            "sha256": "a1d3825c9f0e5031b61f980e3d63e6a11d8f378be4fad7520ac8709cbb589f88"
+          },
+          {
+            "file": "apps/web/dist/client/assets/shell-chrome-B8CyUYl8.js",
+            "sha256": "b2b151d86d061a956a1e56bb48e10a25e652683954c3a8a9e0e68b940c5e5d09"
+          },
+          {
+            "file": "apps/web/dist/client/assets/shell-title-bar-CMFZwzLW.js",
+            "sha256": "83cd1e122e74e63f9463b8c31a6bc90fc2fb3a050102f14d69612f99524fb97f"
+          },
+          {
+            "file": "apps/web/dist/client/assets/shim-u_qbbs_6.js",
+            "sha256": "acb96f8770e1da45d37c7ce053af50e3d528cd9c92e1108299f86494e9fdcf4f"
+          },
+          {
+            "file": "apps/web/dist/client/assets/styles-DmdzxXve.css",
+            "sha256": "cefdb93cb368dd688a5777600f619f80de4cec6c31a1042f9dab1dc7156c16b6"
+          },
+          {
+            "file": "apps/web/dist/client/assets/textarea-BZ6RQZ69.js",
+            "sha256": "43f1cb5bb8cf650359bda4b6201c3dea185113f2088221fdc956870ada65ca6b"
+          },
+          {
+            "file": "apps/web/dist/client/assets/tooltip-CTDIrh9O.js",
+            "sha256": "7a93ff4f4b8ee4d11edec779aa7a7f3753f766227199a30e76b001155b0073e3"
+          },
+          {
+            "file": "apps/web/dist/client/assets/use-syrnike-config--1tLhUYy.js",
+            "sha256": "940940e9b5d7517f2c99d4acc3443285063c2fc5f6d179b6768a224a27d92411"
+          },
+          {
+            "file": "apps/web/dist/client/assets/useForm-CyH0Dqwc.js",
+            "sha256": "15675f035600aa86c900c78704bb64cfe47377642dfb2f8d6600da2a1759ebd5"
+          },
+          {
+            "file": "apps/web/dist/client/assets/useInfiniteQuery-CNpIgbke.js",
+            "sha256": "ba0df208699a09551b962b83edfb7a2270406eaec0f815fe19eb43cab2bc6a0a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/useMutation-BzbBhcqS.js",
+            "sha256": "99f230f467ef94d5430f9c6260d7b60152feb844bb5de6a39d83092db7142904"
+          },
+          {
+            "file": "apps/web/dist/client/assets/user-avatar-C4pPDqvh.js",
+            "sha256": "6e8bd7d7c9cb15df81e610f0feebdd613277af4ac094a5f9ddb08533a9eff0ce"
+          },
+          {
+            "file": "apps/web/dist/client/assets/user-interactive-shell-DhwYxUyp.js",
+            "sha256": "04c3dc9ca6954e44106e7e5b56c7c11ea665c65cc1ffc1676b785ebb4f08ec1a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/user-profile-banner-C-pUcvyf.js",
+            "sha256": "67fc10b91d35428786a3be51e2901617d3cf983e9b6e66dcff73a4a67e61a077"
+          },
+          {
+            "file": "apps/web/dist/client/assets/useRouter-e_J35Ksa.js",
+            "sha256": "a2477d62c3fd7da8190df66be68f80427bd20b5a0811fe7745f044c24d288e2e"
+          },
+          {
+            "file": "apps/web/dist/client/assets/utils-BdJpUs5M.js",
+            "sha256": "9a945208bf39f68f6b78dc9487a38a9ad14a2cfc199fae70d01d561ace3f5e09"
+          },
+          {
+            "file": "apps/web/dist/client/assets/verify._token-GHrbxbpR.js",
+            "sha256": "37213f0162b8a730125de39156ead9033e1602ec1c9de6a1653b12c6ea2b1b53"
+          },
+          {
+            "file": "apps/web/dist/client/assets/voice-channel-chat-intent-ByPRwQFO.js",
+            "sha256": "fdf5ab6b6b24ee3523766fdd0f41cd968de75db19bdc33f3407b5cdb640b50a4"
+          },
+          {
+            "file": "apps/web/dist/client/assets/voice-context-I0cLFHoG.js",
+            "sha256": "917b998df12ffd6501ea179cb4038af47ec84806d6c742ebf10aebddcb9fcf6d"
+          },
+          {
+            "file": "apps/web/dist/client/assets/voice-debug-noJNWeEa.js",
+            "sha256": "6bcaf0f14e869921fbb9ac383b06e0bf9ad2b8855b37a9144cc0cf66d2a7109a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/voice-participant-icons--NGPmJ6A.js",
+            "sha256": "fedf6af545fda9b63bb56822a4f5d4332c4e17f614974db2cd6ce39cd7a8bf8c"
+          },
+          {
+            "file": "apps/web/dist/client/assets/voice-session-context-C69dzDCu.js",
+            "sha256": "a14b7b67ff66af878a95a1371887d594cc8a47e11cb1c30d16ee05b937f5c61d"
+          },
+          {
+            "file": "apps/web/dist/client/assets/voice-stage-view-D9E_wiVV.js",
+            "sha256": "8051a5e6ff987d2f80cf933f5243792aa7886f6c1083fb017a0d4ec3bff05831"
+          },
+          {
+            "file": "apps/web/dist/client/assets/voice-telemetry-context-DGrYE1fB.js",
+            "sha256": "e1ab9dbab6d6e7b3adf4a375a986f6951e8a3bf86f1c9a403d5f2891124d1fc7"
+          },
+          {
+            "file": "apps/web/dist/client/favicon.ico",
+            "sha256": "96d65506ea640accedfe68f15411094b757b800b899df1c381ffd13f744d4d97"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-italic-cyrillic-9abb4087ffe2.woff2",
+            "sha256": "9abb4087ffe24374a0e9d41152aa68bfe68c82786af437c3a02f3ab089db80c2"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-italic-cyrillic-ext-1e78a6118138.woff2",
+            "sha256": "1e78a6118138facc8902f39f7285f3b017dbfebad87ca0b1918f30f7355ec224"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-italic-latin-8904d953726b.woff2",
+            "sha256": "8904d953726b43ded1a16bfd43398325d2382dd50780c10f18d048e0e73f84a8"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-italic-latin-ext-f3093f72aabb.woff2",
+            "sha256": "f3093f72aabbc08b8f00f185aef1b9503519a227c3d75a057dc7a3c47d7c6151"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-italic-vietnamese-07ecf36ca209.woff2",
+            "sha256": "07ecf36ca209630c7a76d8c3ed7a30c2af7d06118c4c961b44645edcbc53718f"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-normal-cyrillic-d3fe75d4c86f.woff2",
+            "sha256": "d3fe75d4c86f6df84f37c76ad44fa21c45778d7e14160b0294f92ec248fa144a"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-normal-cyrillic-ext-8a8e11bad67c.woff2",
+            "sha256": "8a8e11bad67c3ae75ba03c969fbe5742b8bf088f1b2ca2dd04610a352475ee37"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-normal-latin-29e389049684.woff2",
+            "sha256": "29e3890496844a9ea81975c52771c587c872b4eb317026422d1995b88d21b57d"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-normal-latin-ext-c648ee5bfda7.woff2",
+            "sha256": "c648ee5bfda70d44b9fb628f4114d1cc4f984d050cbb4881052237ede3638a2e"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-normal-vietnamese-05ad6c0ccbb6.woff2",
+            "sha256": "05ad6c0ccbb6fc76af1914c0cc9572479659333cc00c236619df61222c48a886"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/NunitoSans-OFL.txt",
+            "sha256": "f22dcf7224df30722ce6c3257c33a9ea965d8a523cac976e9c5ac02eb59920a1"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/README.md",
+            "sha256": "ed8e81078b587a1f99fd374cc89a49306409b18c79823d0e33f98ce5c2b2f79a"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/sources.json",
+            "sha256": "828a5ff1828b26d13bdf291e0260b9a6f4db20571ee8887b027dd27c52f85d1b"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/space-grotesk-normal-latin-0640890476fc.woff2",
+            "sha256": "0640890476fc1198ab4de571fb658de443c4d85b66466ec09534a8737ab1ce9d"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/space-grotesk-normal-latin-ext-952dddb45d2f.woff2",
+            "sha256": "952dddb45d2f96f71cbf3b7f510b24379afc3c89ea02fcf89d377b45d62c0166"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/space-grotesk-normal-vietnamese-8895e3d49825.woff2",
+            "sha256": "8895e3d49825128bfa5238e4c96e9b432d7a3dadbe5c17c6081267398305dc71"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/SpaceGrotesk-OFL.txt",
+            "sha256": "564ce565c371c5e5bbf286006565a7c9aa55a9f56e7ca58d56e05d649dd61a72"
+          },
+          {
+            "file": "apps/web/dist/client/logo192.png",
+            "sha256": "fd6ebd55e680b1bf6fadddaba7301a0f53c67443e89c4e381a777d98429fbd58"
+          },
+          {
+            "file": "apps/web/dist/client/logo512.png",
+            "sha256": "78db095dc1e6e447d0e8f8e32d8dd5d49ddf7eb77a92b067e02bdf840c4b0fbe"
+          },
+          {
+            "file": "apps/web/dist/client/manifest.json",
+            "sha256": "cc06d993e1016dbba10735f2ab5a683d3175dc688db5bb345afcd08d2bde75a7"
+          },
+          {
+            "file": "apps/web/dist/client/robots.txt",
+            "sha256": "e5ab0d231eeb01b4a982d1c79a6729cac9797ad15a69247e4f28ba6afc149b4c"
+          },
+          {
+            "file": "apps/web/dist/client/serviceWorker.js",
+            "sha256": "d0948880a39ab9a4c2c4b455a715b7817f6b104d042f200bea6ac160db9a9f0b"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/deafen.ogg",
+            "sha256": "5da83615b34ed2a4fb9a6a9b2ebab7af2617d57d91062bb9e580f7892a9f7cf4"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/mute.ogg",
+            "sha256": "93e15447a113807c92db5b2b639df7745cf95f98d0164b28b79e31f22ca12fde"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/screen-share-started.ogg",
+            "sha256": "827a6f2611ecd6fc6b07d0605ed97d4f72ec1b478118cb41803c2f7a60e52bb7"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/screen-share-stopped.ogg",
+            "sha256": "80cd01d89568a8782235fff2aaf8a7ec5b5e315c0858d2dfc80da666f37085c1"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/screen-share-viewer-join.ogg",
+            "sha256": "5aa155a1827fe439bc034ce3d6475cbca6683093743797b1a950484f0a246910"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/screen-share-viewer-leave.ogg",
+            "sha256": "2daf1502e8f9ba010aa0bc240bee3b8e250114ec06e296a3198640f46e473981"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/undeafen.ogg",
+            "sha256": "88e74acee4e4335dde023d7874ae01c6df60e47b7625cd389a265d82211bba15"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/unmute.ogg",
+            "sha256": "953caf7b8d124f983671c7efb6b016ce27066bd2f09b04006fd8232f1f2646d3"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/user-join.ogg",
+            "sha256": "5594175979f6439bd01d27591c42e2f049e2bb0ac6e69fc99671f62d2e78bf72"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/user-leave.ogg",
+            "sha256": "00944669ac94c856e7deb5d613b895c821947511cf171780ff4e115dc0333582"
+          },
+          {
+            "file": "apps/web/dist/client/sw.js",
+            "sha256": "24ac98fd74ae034d1f89cb73dcacd9ec4a36d5c6c712e8e08b4a28fda9c7a497"
+          },
+          {
+            "file": "apps/web/dist/client/telegram-promo-cat.png",
+            "sha256": "aabd4e2f3a4d93a57e06dc0721139218b3f0fee7ae805421577a66588a74c4b8"
+          }
+        ],
+        "testFaultGates": true,
+        "backendScope": "Existing local API/events/voice-ingress plus rebuilt crond from fbeceaa5"
+      },
+      "helpers": [
+        {
+          "file": "issue131-instrument-launch.cjs",
+          "sha256": "e62789bd50be457420ef232f5d02c5a763f89f23e34e487c21972245d67f2d09"
+        },
+        {
+          "file": "issue131-capture-product-errors.cjs",
+          "sha256": "92017ab6a3be9145f3169593b6ac04c950fb022190d85d96249fce3278b12e89"
+        },
+        {
+          "file": "issue131-observe-exit-path.cjs",
+          "sha256": "bd4fbfa31396b3942f809db02ea8fcc9532c68861e6cd16badeb045ffd1f3f2a"
+        },
+        {
+          "file": "issue131-observe-exit-status-worker.cjs",
+          "sha256": "d5e7e4fdb8f74b2d27d250486b113a48073193b353169b71f65b8f9d314340ae"
+        },
+        {
+          "file": "issue131-exit-status-worker.ps1",
+          "sha256": "9e48c09a70ab93029ecd5081baaf87079dcd60e52d8b841ec3aa8f4d66d95845"
+        },
+        {
+          "file": "issue131-post-reboot-control.cjs",
+          "sha256": "8a1146d623e9f78e5a38baa8acf3f07048c17bb4ad189dd5628151df3e367ddc"
+        },
+        {
+          "file": "issue131-electron-with-playwright-loader.cmd",
+          "sha256": "d293230c1b568a1e2b9ad808e6e04813ddaab2d860aeddef579b553ddd455bf3"
+        }
+      ],
+      "summary": {
+        "scope": "full-product-shutdown-with-held-native-call",
+        "point": "output-initialize",
+        "call": 1,
+        "passed": true,
+        "required": 3,
+        "completed": 3,
+        "shutdownBudgetMs": 4900,
+        "results": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 1,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2868.617900000001,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 2,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2740.1401000000005,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 3,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2852.395999999997,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          }
+        ]
+      },
+      "summarySha256": "c2f182673a189abf063f2ea640b0c85fc246ceab5d331e3e740492baeefd3b15",
+      "postInputsMatched": true,
+      "inputsSha256": "2d462d630e7b5923feb0cf911a31ea43ab44aa595bd86d3138cbb91658284290"
+    },
+    {
+      "role": "video",
+      "capturedAt": "2026-09-09T23:43:08.189Z",
+      "identity": {
+        "commit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+        "drivers": [
+          {
+            "file": "apps/desktop/scripts/product-faults/shutdown-product.cjs",
+            "sha256": "5bcef259380fb36102c3f395f32a31ef9755ac147c398ed08a7187a637de8de1"
+          },
+          {
+            "file": "apps/desktop/scripts/product-faults/shutdown-harness.cjs",
+            "sha256": "ab1c3c621ad9903fc82b77040775da796f16b5a65a41c8dc240df7e362b62432"
+          }
+        ],
+        "auxiliary": [
+          {
+            "file": ".codex-tmp/issue131-observe-exit-path.cjs",
+            "sha256": "bd4fbfa31396b3942f809db02ea8fcc9532c68861e6cd16badeb045ffd1f3f2a"
+          },
+          {
+            "file": ".codex-tmp/issue131-capture-product-errors.cjs",
+            "sha256": "92017ab6a3be9145f3169593b6ac04c950fb022190d85d96249fce3278b12e89"
+          },
+          {
+            "file": ".codex-tmp/issue131-electron-with-playwright-loader.cmd",
+            "sha256": "d293230c1b568a1e2b9ad808e6e04813ddaab2d860aeddef579b553ddd455bf3"
+          },
+          {
+            "file": ".codex-tmp/issue131-run-shutdown-matrix.cjs",
+            "sha256": "964314b3919cadeda6161b16b5334a7d96129f16a456cbf01e6ad1203d8061b1"
+          },
+          {
+            "file": ".codex-tmp/issue131-99b5ac56-remaining-shutdown-rows.json",
+            "sha256": "7f0a264c6ba4bdfd8d21d17e0d8d5bdf450b02b9782c1e8cc257b1926c0c6db4"
+          }
+        ],
+        "capturePhase": "before-first-video-product-launch",
+        "lockfileSha256": "cd17174c3bbab27d9dead15665d3769db816c9a2e2c3015e092db21b18105a9e",
+        "reusedFrontend": {
+          "reason": "Unchanged frontend and platform artifacts reused; desktop and native identity rebuilt",
+          "sourceDiffToProductCommit": "empty for apps/web and packages/platform",
+          "builtAtCommit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35"
+        },
+        "backendHashes": [
+          "api 373cb6e7b8aaf87b4dce3a437ef35e835a367bb4a2878203c84e955bb2ecbca3  /proc/1/exe",
+          "events 89eebe11e754ba9e9ee45809d3b9f4ebdef75f684b8ee0d51cdb57cb1f76ca39  /proc/1/exe",
+          "voice-ingress 4c77682a3f59be89b208677d6304b832ecc54be3342cc09f5b56e1b882547b8b  /proc/1/exe",
+          "crond e579da36c38e8f7a033f29914da07013db7be95f73573c1394c7c75f0b447af8  /proc/1/exe"
+        ],
+        "capturedAt": "2026-09-09T18:38:01.463Z",
+        "files": [
+          {
+            "file": "apps/desktop/out/main/index.js",
+            "sha256": "26ff05990bb49276b44f79886cde937db0c6a732f492a380e66e4fa56b3316bd"
+          },
+          {
+            "file": "apps/desktop/out/main/index.js.map",
+            "sha256": "360bc4ba9737db701b25442cbd9c7b2d8087d6120d6f13dfd7692808f015ebbd"
+          },
+          {
+            "file": "apps/desktop/out/media-native/win32-x64/livekit_ffi.dll",
+            "sha256": "3f4b1cf2e634a98c8e149e7ce64d48f92347a489b2136d21f3086322f7ead550"
+          },
+          {
+            "file": "apps/desktop/out/media-native/win32-x64/livekit.dll",
+            "sha256": "f93910d2683765826677a88e9544532c95dc2910297488b55f056e6d5bd7544f"
+          },
+          {
+            "file": "apps/desktop/out/media-native/win32-x64/media-manifest.json",
+            "sha256": "26bd5425e0ead039a1a99bf62d621d74bc5b9df6ec0326e00be3b74da4e0ff00"
+          },
+          {
+            "file": "apps/desktop/out/media-native/win32-x64/windows_media_texture_broker.node",
+            "sha256": "ba4cb7e48f6f2794ad2071e9afff05cd9382679745421a1c4210212ca54cbb93"
+          },
+          {
+            "file": "apps/desktop/out/media-native/win32-x64/windows_media.node",
+            "sha256": "b2d5213cb5e2005f59c9d4dbf9ea6224d016182ea377e1d1abada78d3caca71a"
+          },
+          {
+            "file": "apps/desktop/out/native/win32-x64/native-manifest.json",
+            "sha256": "89746e87df4e8763da665e733c4dd0630e9572abfcb984409de8a89a7630edce"
+          },
+          {
+            "file": "apps/desktop/out/native/win32-x64/syrnike_hotkey.node",
+            "sha256": "cd9c75df3169fbd5a7446905a04c86066aa5d36341c00d6f1b8d22fe073a1878"
+          },
+          {
+            "file": "apps/desktop/out/native/win32-x64/syrnike_overlay.node",
+            "sha256": "6e43b78861f688db6cce3afe3060b75af2e8ce623e96a406d9f223dbcdb2016d"
+          },
+          {
+            "file": "apps/desktop/out/preload/index.cjs",
+            "sha256": "fac061db95742769e7afc2e6c1359d66f66c1ec6730fd41849dadbec94327901"
+          },
+          {
+            "file": "apps/desktop/out/preload/index.cjs.map",
+            "sha256": "bf0b760ee60d4e4412d4530c8bf3e7604434d0909f816e84ea183fd9a175c7f0"
+          },
+          {
+            "file": "apps/desktop/out/utility/hotkey-host.cjs",
+            "sha256": "86e2b45266724d7c0e26c6a4686f1f208aab47358f85cbbdb0e13ce97b30d46c"
+          },
+          {
+            "file": "apps/desktop/out/utility/hotkey-host.cjs.map",
+            "sha256": "ddf0696fe83f807221fc6691fe3d1903854867e338a078fe97723f59c558a082"
+          },
+          {
+            "file": "apps/desktop/out/utility/media-host.cjs",
+            "sha256": "5af090487a4cebdc25456f53076d35da5b76fc4171d05efb1740718f6f29e58f"
+          },
+          {
+            "file": "apps/desktop/out/utility/media-host.cjs.map",
+            "sha256": "53a508e8c4eecebf41e93ea9f20ff864c88955b27dd08de085e1198682d25cbd"
+          },
+          {
+            "file": "apps/desktop/out/utility/overlay-host.cjs",
+            "sha256": "bfdbcfbe533d7261a9a07c84fbed204c7440f94e878eed839587c6c6121dc625"
+          },
+          {
+            "file": "apps/desktop/out/utility/overlay-host.cjs.map",
+            "sha256": "bde58d88705693dfcaeb8ee7e6de74d5ba0f0178a9c430983dc660333dcb1644"
+          },
+          {
+            "file": "apps/desktop/out/utility/shutdown-budget.cjs",
+            "sha256": "23860d9532fafa0c4b6c802656b589e923e666db791b3683de6a763856ef13e0"
+          },
+          {
+            "file": "apps/desktop/out/utility/shutdown-budget.cjs.map",
+            "sha256": "eccb6f443f01341510fe3a90f6322763f7df41d9bbeec3aaac49b85ecb58447b"
+          },
+          {
+            "file": "apps/web/dist/client/_shell.html",
+            "sha256": "5863840674837144d2f3c9f2f462ba9ecb08fcc9923b19e7c40effa8bbd64f1a"
+          },
+          {
+            "file": "apps/web/dist/client/activities/sdk.js",
+            "sha256": "4c0efd538ce5ae26611d70c10faf5cc7bf93aa4a6f876a3f4b3efb72537230dd"
+          },
+          {
+            "file": "apps/web/dist/client/activities/shared-counter/index.html",
+            "sha256": "7f7ce29aca34afbed2ab1e7563df89aa058036abc056a55f76139c466d34a0cb"
+          },
+          {
+            "file": "apps/web/dist/client/activities/shared-counter/main.js",
+            "sha256": "61118f494558e5dc0680616864b7d77f4a6f33a491a7bb00ee85a5b35aa4f6a8"
+          },
+          {
+            "file": "apps/web/dist/client/activities/shared-counter/style.css",
+            "sha256": "eb109aefa3f5775eb71dfcc7c26c7f1ced5fb653f083be387fd362e832727c01"
+          },
+          {
+            "file": "apps/web/dist/client/activities/syrnik-race/index.html",
+            "sha256": "40584f097f710cb78618b7d59208bd15ecebe99c367a9b6fc6d3d50a91719e59"
+          },
+          {
+            "file": "apps/web/dist/client/activities/syrnik-race/main.js",
+            "sha256": "42c8442aed0431a7e0e2096f5ca7a952bcc68a6a8ef47f292b949570708188b1"
+          },
+          {
+            "file": "apps/web/dist/client/activities/syrnik-race/style.css",
+            "sha256": "5a22ea62524dd1c49103dd63df209887422e7bbdb6b09996b2238cdcb99ed523"
+          },
+          {
+            "file": "apps/web/dist/client/activities/syrnik-race/syrnik.png",
+            "sha256": "3316ab62ef2ada5ebc858b4e4617bbf506f6fb068dc16a28d2cde843f7b3ceff"
+          },
+          {
+            "file": "apps/web/dist/client/app-logo.png",
+            "sha256": "e9a76fbc0ab85a8030593a2a953c9a6dbee512440ba62f8b5a81ef0ff9f08e9b"
+          },
+          {
+            "file": "apps/web/dist/client/assets/_channelId-D0Sn0Xqb.js",
+            "sha256": "5bd4802282dabb69211482756aba9def4fe3ce7b135a4771fb98cda7f9717de0"
+          },
+          {
+            "file": "apps/web/dist/client/assets/_channelId-oLB4gt86.js",
+            "sha256": "193a761d7348a192ca0b068da2645c5b8501f171001796357aa3448417b47ef3"
+          },
+          {
+            "file": "apps/web/dist/client/assets/_code-BPL1C8yh.js",
+            "sha256": "c41becb8534cd96811d69ebc56cd29265ed7a7bbd071d8b3b9798fb5a6cc0add"
+          },
+          {
+            "file": "apps/web/dist/client/assets/_feedbackId-BzpJA5gr.js",
+            "sha256": "51acd7be64c14782a2f5d8d2be30f52673f00420340d4f12ad32968c4fcf4b0a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/_feedbackId-C1CibY1F.js",
+            "sha256": "73025c0f19b8baca3cc3644122663bc80dfd85acd7d47451fc22e5eca52c4bb2"
+          },
+          {
+            "file": "apps/web/dist/client/assets/account-api-BdFTyq4t.js",
+            "sha256": "b55b8dfb740f032b001b82a93fe6ee3ccad51013ba0047a5bcc3049d5aa2b0d8"
+          },
+          {
+            "file": "apps/web/dist/client/assets/app-D_bUuyud.js",
+            "sha256": "32f87b3b7237e88ffa87f73c7bae017f7ac295af01dd05018f933253174e2180"
+          },
+          {
+            "file": "apps/web/dist/client/assets/auth-layout-DiyIOkBv.js",
+            "sha256": "aa0d38f1d72cf93ccad61802add7954eca5b11571d129d969ada78314828efae"
+          },
+          {
+            "file": "apps/web/dist/client/assets/auth-post-login-path-Pa0nia2r.js",
+            "sha256": "ea3db3f264b66525e4eebb444a74ab68a0406cab91a673017f5d58816bc723d2"
+          },
+          {
+            "file": "apps/web/dist/client/assets/auth-verify-email-D41biVeT.js",
+            "sha256": "aeddb00881176a569aaae4f0fc306e244e3036ad9df4e588b1de0a352db83376"
+          },
+          {
+            "file": "apps/web/dist/client/assets/authed-gate-Czn5Yzrb.js",
+            "sha256": "bf3eebea6242477c1b8494997399adbeebdaa3e1576ef429f4d69aed45bd9e74"
+          },
+          {
+            "file": "apps/web/dist/client/assets/avatar-EgMGoXOO.js",
+            "sha256": "1ee58b2827bbbeee7fb280a1d02cb8c80a97911098519279d92ad8eec29e7972"
+          },
+          {
+            "file": "apps/web/dist/client/assets/badge-DuS1f-T2.js",
+            "sha256": "5ab2a5227e05e86f3b9c5aa65e7b1e06d291b096d87805f080a0a10d5d82c9a7"
+          },
+          {
+            "file": "apps/web/dist/client/assets/build-command-items-KzrSgZ97.js",
+            "sha256": "2051101312e1eb072487275858aeac25731ab4eb81b5bb3aa4a417801a67e817"
+          },
+          {
+            "file": "apps/web/dist/client/assets/button-8R2ynsiJ.js",
+            "sha256": "4fd0a1a4e5c5c83f8a668a8de329e766079c8a4b038172ba74f090cb1fd4b5b0"
+          },
+          {
+            "file": "apps/web/dist/client/assets/card-BfIyTv3m.js",
+            "sha256": "4788df1c2085385aa81ce6ef8e4fdb09727d874b5ef903fcea5ab27238c4198b"
+          },
+          {
+            "file": "apps/web/dist/client/assets/channel-activity-panel-eBjukFU-.js",
+            "sha256": "2890390f3d5a586d3ecba7870c5ee57620e4346f3e92c0aad6a1013859cfc6ea"
+          },
+          {
+            "file": "apps/web/dist/client/assets/channel-view-B0fBRJox.js",
+            "sha256": "4996946820f1457825dd0ee5a20bd574fb2464b8d89b29abe4afcbcbafd96471"
+          },
+          {
+            "file": "apps/web/dist/client/assets/check-DXN5UONu.js",
+            "sha256": "e2d8b1efcaf66fb16796835a9f0c79b842b979377dfb6adc8bab30e591b983b6"
+          },
+          {
+            "file": "apps/web/dist/client/assets/config-DjxLnLJo.js",
+            "sha256": "986c8574c7b7343ac5b79a9e2a3e6399947e691bad07ce6afbadfec221c2a153"
+          },
+          {
+            "file": "apps/web/dist/client/assets/current-user-profile-menu-B7mMFkXK.js",
+            "sha256": "54eef0204e705ea6217a8230e57b1cf64fe1e2c38b19b05244e5438968a63c3a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/dialog-BooegAUc.js",
+            "sha256": "6aab540a8e8f0323a1ea48be17f13bf178e56c1e31dd6148fda5bfee9bf21c07"
+          },
+          {
+            "file": "apps/web/dist/client/assets/dist-BgXM7FiX.js",
+            "sha256": "0d809ecd35b2b5df3a7c6c95806f554ea38f37d9bca0f5e1758ac1d43a0f87e0"
+          },
+          {
+            "file": "apps/web/dist/client/assets/dist-CDYR5pTf.js",
+            "sha256": "e5ad0b4f238d1f45fb2f4ee1cc4241a6dac844d4489c267ba0ba2a1022bfba1a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/dist-D-krwN1M.js",
+            "sha256": "4b2fc79e3b3ace2a02486981ab9eb1ca797e3134f931125d77f33d7337c1c8e6"
+          },
+          {
+            "file": "apps/web/dist/client/assets/drawer-DxqmgQIG.js",
+            "sha256": "3681fdf6f38941ab9352fabd9025036851a204e9461668b166ba6597a6d6ad3f"
+          },
+          {
+            "file": "apps/web/dist/client/assets/dropdown-menu-1RmBaTdc.js",
+            "sha256": "b290f07a4cf21a6f1a39a893d0133d3a90e84b8d67c331e35889d972f950463b"
+          },
+          {
+            "file": "apps/web/dist/client/assets/effect-schema-Ca30Nqk1.js",
+            "sha256": "b49af060e260b1cc1ca02e8668a7b279bf82a3b341aaf228be21611fc6164bb7"
+          },
+          {
+            "file": "apps/web/dist/client/assets/feedback-BQVGKVBq.js",
+            "sha256": "0781dbecae0b607d87c26f91cc3fc893b37870b9bf2f825632b6b497b706a521"
+          },
+          {
+            "file": "apps/web/dist/client/assets/feedback-detail-view-AI_d59pQ.js",
+            "sha256": "f2f70934117046f3e5205403ead27bc1ddb7ee1a56cb1b3080d37afdc34fbf02"
+          },
+          {
+            "file": "apps/web/dist/client/assets/feedback-LJ-MTl4M.js",
+            "sha256": "2e9cd54dec39dfd2ce74f6aee0bcfbf6c4ccd2dfc0266fbf8c39a960f682047c"
+          },
+          {
+            "file": "apps/web/dist/client/assets/feedback-view-QrS7VCLn.js",
+            "sha256": "9cf9956b88de45945b403cdb9742fe123b991c4babdf8fdb0c9c955727667b8c"
+          },
+          {
+            "file": "apps/web/dist/client/assets/feedback-vote-button-BuQJPfkr.js",
+            "sha256": "e65c5d31233e72dad2570e0b8175e3229b1bbe95ff8272fe724210730c4a9cbe"
+          },
+          {
+            "file": "apps/web/dist/client/assets/friend-actions-CJ6WUkLb.js",
+            "sha256": "5585c9e6872e666987696abd511f411e26aa69fd1f56807f9d28d529c07082f4"
+          },
+          {
+            "file": "apps/web/dist/client/assets/hcaptcha-widget-Z_i7idVO.js",
+            "sha256": "3ab41324f627323849ded15b5e2b8dcbdfc30296bd74743067634afb1cdf3fbe"
+          },
+          {
+            "file": "apps/web/dist/client/assets/home-view-PDdkNi9s.js",
+            "sha256": "3b7ac40c9b49a4fd63cfcc46bacc3f8706a1ff882f3726fcd530d849af92da55"
+          },
+          {
+            "file": "apps/web/dist/client/assets/index-CO-Xkd0L.js",
+            "sha256": "0dc5b7c10123581fe3cbe3aa53b68dd3af9a90c3adc7acd279b2db7beb2e7fd5"
+          },
+          {
+            "file": "apps/web/dist/client/assets/input-y3iKjekd.js",
+            "sha256": "226b52603f646564294d165be3eeff19b8a3ee36cf97d31837d0b3abeaff8a73"
+          },
+          {
+            "file": "apps/web/dist/client/assets/invites-api-4HQVu2QN.js",
+            "sha256": "2fb07601b98e1c09add067a9c06e7d3e3de35f886b8f3c7e940ff1d849c74c83"
+          },
+          {
+            "file": "apps/web/dist/client/assets/jsx-runtime-DUAcabCT.js",
+            "sha256": "afa9863e5c6f7611685a66c3ed93ea9226a1af161256ae0e9339e1524204ee53"
+          },
+          {
+            "file": "apps/web/dist/client/assets/label-BNOq8Luk.js",
+            "sha256": "2dc1cc03b1480640c1f3301cae36ddfcb2cebf4b103f5f24d731cced15ae8040"
+          },
+          {
+            "file": "apps/web/dist/client/assets/link-ClC2Q6ky.js",
+            "sha256": "b60ef36486616db1c17ecbcbf11a8509d193c0f85f11028d60d508ac15aadb70"
+          },
+          {
+            "file": "apps/web/dist/client/assets/login-Byb-ipNG.js",
+            "sha256": "133b0e8be663a255f037c44bdc2e000b8362f532bc2d06cb746b7d0c0380397a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/m-_7L-vJ9G.js",
+            "sha256": "88057ec83426cf2e93a0d6e18741d98183d8ae81d8d28507e67030bcee86a7ed"
+          },
+          {
+            "file": "apps/web/dist/client/assets/ManagedRuntime-DElwhNyV.js",
+            "sha256": "0c3b7083cdc7467e75aae06458411775f8cb21b3d2c86627f59ed01f5cc5b58f"
+          },
+          {
+            "file": "apps/web/dist/client/assets/new-CEkd2wQS.js",
+            "sha256": "179a59ab37f5be562a01d25c502a94b0a2b3b5cd4ea5fa87f5d1d09a9e4b46ff"
+          },
+          {
+            "file": "apps/web/dist/client/assets/new-Dnn3aoRV.js",
+            "sha256": "5de70639498c68f78ed728273a9885c5cf345e285e40e5f1244a3f01f87ad097"
+          },
+          {
+            "file": "apps/web/dist/client/assets/notification-selectors-BIrmhIGb.js",
+            "sha256": "2d7df7288f1a5aba601ba169b5a542c55d56ba96866d8ee38b471b9cf1dd3ba3"
+          },
+          {
+            "file": "apps/web/dist/client/assets/onboard-HPYk6QhK.js",
+            "sha256": "ddb7316cb8bef479ef63aaff18621e80e57403174ffcd9efb1ecdc41cbfcb330"
+          },
+          {
+            "file": "apps/web/dist/client/assets/overlay-gE8AAnnv.js",
+            "sha256": "e7c5a4f28a33dcf1fc126dd2f4c2fa4097dffe7453c0af37ce3f97dd7ccbbdb2"
+          },
+          {
+            "file": "apps/web/dist/client/assets/password-input-U9abNITW.js",
+            "sha256": "ab148cfc7cc2d309e05aa0896fb8c172bdbfeb25d19baf72e75a9606a427726a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/permission-state-button-CxBvA4pj.js",
+            "sha256": "fa2114d0636865b6185256c26c803df96d5ed39a4afba845a1090c016ef88ad8"
+          },
+          {
+            "file": "apps/web/dist/client/assets/popover-BZswdeaZ.js",
+            "sha256": "ebd543ad4a66ca9114253de287be606df8264de937343964305213ec12e8abdf"
+          },
+          {
+            "file": "apps/web/dist/client/assets/portal-container-DQ3hIB-n.js",
+            "sha256": "11f7a25a2be46e0ce755a831061f15b34917ff18d82ff6bd91cff182a0b1233b"
+          },
+          {
+            "file": "apps/web/dist/client/assets/profile-BGT8N5f1.js",
+            "sha256": "cc151e0aef608318f64a0fea4ed6b062e760d5d2619254fec7b313b8223aca36"
+          },
+          {
+            "file": "apps/web/dist/client/assets/profile-menu-row-BzTwpslD.js",
+            "sha256": "cd9c276522a882b7bab3b36632bf87e6a2cc063550567fd1f147aef2a204a25b"
+          },
+          {
+            "file": "apps/web/dist/client/assets/react-DbyrFoBd.js",
+            "sha256": "94e5cf7525bf06257ed820655b6034fbb97c989bf9dd60bd997fe902a4d37f43"
+          },
+          {
+            "file": "apps/web/dist/client/assets/react-dom-i-Mcm3wj.js",
+            "sha256": "d0dd9366ce9f74514d25b39185b1058e3e3d3162c00f26fa21ca3f3daff8535e"
+          },
+          {
+            "file": "apps/web/dist/client/assets/register-D7Xhkag4.js",
+            "sha256": "df1c6ac98931b18614c02f8fb282f2c9441805d16000ca69692f03d9035250db"
+          },
+          {
+            "file": "apps/web/dist/client/assets/resend-URCD_FXy.js",
+            "sha256": "0fda507f3d17c334352895f206d1cb99c7e8ae7d893e52a15cd694315ef7a925"
+          },
+          {
+            "file": "apps/web/dist/client/assets/reset-BA2eM-01.js",
+            "sha256": "dc6372edd1d9019f416253502ac80a21a3c4f7902d57fd48961b1f2b385e496d"
+          },
+          {
+            "file": "apps/web/dist/client/assets/reset._token-BpcqmVAE.js",
+            "sha256": "0af26540a39aeae3400db935016264546ffdf3d95eda1caadca7ca25cb77728a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/root-nUSLhHW2.js",
+            "sha256": "9ae02fb2ec9f8300aa992446b43ae2563e6722bde2ca89e32b3ef9601f3a9e28"
+          },
+          {
+            "file": "apps/web/dist/client/assets/route-BjQ_f6qQ.js",
+            "sha256": "fe25d3d0abd19e954bf4d6af4535ded9c14689cae3acb549635a527998290524"
+          },
+          {
+            "file": "apps/web/dist/client/assets/route-BkYA3h_m.js",
+            "sha256": "50c419ce435fb924d19079ad4a602465c8ef20ee794e390be78c620b830c7717"
+          },
+          {
+            "file": "apps/web/dist/client/assets/route-JlouHOoC.js",
+            "sha256": "b0d657c26b5e54c3a64a8aab64425ce049be36116ed8fd1ac30292b2e6620d7f"
+          },
+          {
+            "file": "apps/web/dist/client/assets/route-prefix-DpNRThiE.js",
+            "sha256": "b4e4d4ff0de4b7a40d7e085464d76dc871a4e597057aefe33dc2756774a42151"
+          },
+          {
+            "file": "apps/web/dist/client/assets/routes-C51nnR-3.js",
+            "sha256": "1814d772817a60f5f8160a9a81e7287bf07e6c0900fc58cfead0555809162c07"
+          },
+          {
+            "file": "apps/web/dist/client/assets/runtime-hu8zE8Zw.js",
+            "sha256": "7e428cde81ba5822fc67041d2dd6fdd20dcf2bdbfcd968187e6dc3a54bec3f31"
+          },
+          {
+            "file": "apps/web/dist/client/assets/schemas-BJbHO22y.js",
+            "sha256": "546b714152671b47f7136e983201f8e19030fe69dd5ea904df39a7d984a91730"
+          },
+          {
+            "file": "apps/web/dist/client/assets/scroll-area-CkiJGCK7.js",
+            "sha256": "1a85a0451ce43cff1b11943d61746abca425d662d4bae376309433535532ea70"
+          },
+          {
+            "file": "apps/web/dist/client/assets/select--1ZBBh6m.js",
+            "sha256": "b539527b9513039d127eea0a3154adc2810999fcc7776431eacafa7e0bb1fa0f"
+          },
+          {
+            "file": "apps/web/dist/client/assets/server-settings-page-D-0Xv4gR.js",
+            "sha256": "8ef15c3033485dd7abf2ad4b2a7a2ba8e016a95b1556fca28a28f9f29f27464a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/settings-_qz1MNTE.js",
+            "sha256": "ba4044253a323fa2939e235b05068d6db126548a88a08f7a9be8af88413bba0c"
+          },
+          {
+            "file": "apps/web/dist/client/assets/settings-DaRWYpyY.js",
+            "sha256": "4c78d49d03aa14638a75c3d4756e16e238ca65a48e2700a55df35e866d08a888"
+          },
+          {
+            "file": "apps/web/dist/client/assets/settings-DQHV1Mwe.js",
+            "sha256": "f5165c009f72336b584647c4514806712fea0739ded7045f28ebb4174b7dfb22"
+          },
+          {
+            "file": "apps/web/dist/client/assets/settings-iecwW_rR.js",
+            "sha256": "d21de00c5c29e2f09c790f392eaf9fd0a3d1af56503d1b3e12e1061e1124cee9"
+          },
+          {
+            "file": "apps/web/dist/client/assets/settings-modal-context-CgxDJRII.js",
+            "sha256": "17b973cedc9b9ffe987f393f1c807cf4607520ece1102add2dd662d3d1decb9c"
+          },
+          {
+            "file": "apps/web/dist/client/assets/settings-profile-status-dialog-DdsrfFvM.js",
+            "sha256": "a1d3825c9f0e5031b61f980e3d63e6a11d8f378be4fad7520ac8709cbb589f88"
+          },
+          {
+            "file": "apps/web/dist/client/assets/shell-chrome-B8CyUYl8.js",
+            "sha256": "b2b151d86d061a956a1e56bb48e10a25e652683954c3a8a9e0e68b940c5e5d09"
+          },
+          {
+            "file": "apps/web/dist/client/assets/shell-title-bar-CMFZwzLW.js",
+            "sha256": "83cd1e122e74e63f9463b8c31a6bc90fc2fb3a050102f14d69612f99524fb97f"
+          },
+          {
+            "file": "apps/web/dist/client/assets/shim-u_qbbs_6.js",
+            "sha256": "acb96f8770e1da45d37c7ce053af50e3d528cd9c92e1108299f86494e9fdcf4f"
+          },
+          {
+            "file": "apps/web/dist/client/assets/styles-DmdzxXve.css",
+            "sha256": "cefdb93cb368dd688a5777600f619f80de4cec6c31a1042f9dab1dc7156c16b6"
+          },
+          {
+            "file": "apps/web/dist/client/assets/textarea-BZ6RQZ69.js",
+            "sha256": "43f1cb5bb8cf650359bda4b6201c3dea185113f2088221fdc956870ada65ca6b"
+          },
+          {
+            "file": "apps/web/dist/client/assets/tooltip-CTDIrh9O.js",
+            "sha256": "7a93ff4f4b8ee4d11edec779aa7a7f3753f766227199a30e76b001155b0073e3"
+          },
+          {
+            "file": "apps/web/dist/client/assets/use-syrnike-config--1tLhUYy.js",
+            "sha256": "940940e9b5d7517f2c99d4acc3443285063c2fc5f6d179b6768a224a27d92411"
+          },
+          {
+            "file": "apps/web/dist/client/assets/useForm-CyH0Dqwc.js",
+            "sha256": "15675f035600aa86c900c78704bb64cfe47377642dfb2f8d6600da2a1759ebd5"
+          },
+          {
+            "file": "apps/web/dist/client/assets/useInfiniteQuery-CNpIgbke.js",
+            "sha256": "ba0df208699a09551b962b83edfb7a2270406eaec0f815fe19eb43cab2bc6a0a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/useMutation-BzbBhcqS.js",
+            "sha256": "99f230f467ef94d5430f9c6260d7b60152feb844bb5de6a39d83092db7142904"
+          },
+          {
+            "file": "apps/web/dist/client/assets/user-avatar-C4pPDqvh.js",
+            "sha256": "6e8bd7d7c9cb15df81e610f0feebdd613277af4ac094a5f9ddb08533a9eff0ce"
+          },
+          {
+            "file": "apps/web/dist/client/assets/user-interactive-shell-DhwYxUyp.js",
+            "sha256": "04c3dc9ca6954e44106e7e5b56c7c11ea665c65cc1ffc1676b785ebb4f08ec1a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/user-profile-banner-C-pUcvyf.js",
+            "sha256": "67fc10b91d35428786a3be51e2901617d3cf983e9b6e66dcff73a4a67e61a077"
+          },
+          {
+            "file": "apps/web/dist/client/assets/useRouter-e_J35Ksa.js",
+            "sha256": "a2477d62c3fd7da8190df66be68f80427bd20b5a0811fe7745f044c24d288e2e"
+          },
+          {
+            "file": "apps/web/dist/client/assets/utils-BdJpUs5M.js",
+            "sha256": "9a945208bf39f68f6b78dc9487a38a9ad14a2cfc199fae70d01d561ace3f5e09"
+          },
+          {
+            "file": "apps/web/dist/client/assets/verify._token-GHrbxbpR.js",
+            "sha256": "37213f0162b8a730125de39156ead9033e1602ec1c9de6a1653b12c6ea2b1b53"
+          },
+          {
+            "file": "apps/web/dist/client/assets/voice-channel-chat-intent-ByPRwQFO.js",
+            "sha256": "fdf5ab6b6b24ee3523766fdd0f41cd968de75db19bdc33f3407b5cdb640b50a4"
+          },
+          {
+            "file": "apps/web/dist/client/assets/voice-context-I0cLFHoG.js",
+            "sha256": "917b998df12ffd6501ea179cb4038af47ec84806d6c742ebf10aebddcb9fcf6d"
+          },
+          {
+            "file": "apps/web/dist/client/assets/voice-debug-noJNWeEa.js",
+            "sha256": "6bcaf0f14e869921fbb9ac383b06e0bf9ad2b8855b37a9144cc0cf66d2a7109a"
+          },
+          {
+            "file": "apps/web/dist/client/assets/voice-participant-icons--NGPmJ6A.js",
+            "sha256": "fedf6af545fda9b63bb56822a4f5d4332c4e17f614974db2cd6ce39cd7a8bf8c"
+          },
+          {
+            "file": "apps/web/dist/client/assets/voice-session-context-C69dzDCu.js",
+            "sha256": "a14b7b67ff66af878a95a1371887d594cc8a47e11cb1c30d16ee05b937f5c61d"
+          },
+          {
+            "file": "apps/web/dist/client/assets/voice-stage-view-D9E_wiVV.js",
+            "sha256": "8051a5e6ff987d2f80cf933f5243792aa7886f6c1083fb017a0d4ec3bff05831"
+          },
+          {
+            "file": "apps/web/dist/client/assets/voice-telemetry-context-DGrYE1fB.js",
+            "sha256": "e1ab9dbab6d6e7b3adf4a375a986f6951e8a3bf86f1c9a403d5f2891124d1fc7"
+          },
+          {
+            "file": "apps/web/dist/client/favicon.ico",
+            "sha256": "96d65506ea640accedfe68f15411094b757b800b899df1c381ffd13f744d4d97"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-italic-cyrillic-9abb4087ffe2.woff2",
+            "sha256": "9abb4087ffe24374a0e9d41152aa68bfe68c82786af437c3a02f3ab089db80c2"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-italic-cyrillic-ext-1e78a6118138.woff2",
+            "sha256": "1e78a6118138facc8902f39f7285f3b017dbfebad87ca0b1918f30f7355ec224"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-italic-latin-8904d953726b.woff2",
+            "sha256": "8904d953726b43ded1a16bfd43398325d2382dd50780c10f18d048e0e73f84a8"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-italic-latin-ext-f3093f72aabb.woff2",
+            "sha256": "f3093f72aabbc08b8f00f185aef1b9503519a227c3d75a057dc7a3c47d7c6151"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-italic-vietnamese-07ecf36ca209.woff2",
+            "sha256": "07ecf36ca209630c7a76d8c3ed7a30c2af7d06118c4c961b44645edcbc53718f"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-normal-cyrillic-d3fe75d4c86f.woff2",
+            "sha256": "d3fe75d4c86f6df84f37c76ad44fa21c45778d7e14160b0294f92ec248fa144a"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-normal-cyrillic-ext-8a8e11bad67c.woff2",
+            "sha256": "8a8e11bad67c3ae75ba03c969fbe5742b8bf088f1b2ca2dd04610a352475ee37"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-normal-latin-29e389049684.woff2",
+            "sha256": "29e3890496844a9ea81975c52771c587c872b4eb317026422d1995b88d21b57d"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-normal-latin-ext-c648ee5bfda7.woff2",
+            "sha256": "c648ee5bfda70d44b9fb628f4114d1cc4f984d050cbb4881052237ede3638a2e"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/nunito-sans-normal-vietnamese-05ad6c0ccbb6.woff2",
+            "sha256": "05ad6c0ccbb6fc76af1914c0cc9572479659333cc00c236619df61222c48a886"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/NunitoSans-OFL.txt",
+            "sha256": "f22dcf7224df30722ce6c3257c33a9ea965d8a523cac976e9c5ac02eb59920a1"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/README.md",
+            "sha256": "ed8e81078b587a1f99fd374cc89a49306409b18c79823d0e33f98ce5c2b2f79a"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/sources.json",
+            "sha256": "828a5ff1828b26d13bdf291e0260b9a6f4db20571ee8887b027dd27c52f85d1b"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/space-grotesk-normal-latin-0640890476fc.woff2",
+            "sha256": "0640890476fc1198ab4de571fb658de443c4d85b66466ec09534a8737ab1ce9d"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/space-grotesk-normal-latin-ext-952dddb45d2f.woff2",
+            "sha256": "952dddb45d2f96f71cbf3b7f510b24379afc3c89ea02fcf89d377b45d62c0166"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/space-grotesk-normal-vietnamese-8895e3d49825.woff2",
+            "sha256": "8895e3d49825128bfa5238e4c96e9b432d7a3dadbe5c17c6081267398305dc71"
+          },
+          {
+            "file": "apps/web/dist/client/fonts/SpaceGrotesk-OFL.txt",
+            "sha256": "564ce565c371c5e5bbf286006565a7c9aa55a9f56e7ca58d56e05d649dd61a72"
+          },
+          {
+            "file": "apps/web/dist/client/logo192.png",
+            "sha256": "fd6ebd55e680b1bf6fadddaba7301a0f53c67443e89c4e381a777d98429fbd58"
+          },
+          {
+            "file": "apps/web/dist/client/logo512.png",
+            "sha256": "78db095dc1e6e447d0e8f8e32d8dd5d49ddf7eb77a92b067e02bdf840c4b0fbe"
+          },
+          {
+            "file": "apps/web/dist/client/manifest.json",
+            "sha256": "cc06d993e1016dbba10735f2ab5a683d3175dc688db5bb345afcd08d2bde75a7"
+          },
+          {
+            "file": "apps/web/dist/client/robots.txt",
+            "sha256": "e5ab0d231eeb01b4a982d1c79a6729cac9797ad15a69247e4f28ba6afc149b4c"
+          },
+          {
+            "file": "apps/web/dist/client/serviceWorker.js",
+            "sha256": "d0948880a39ab9a4c2c4b455a715b7817f6b104d042f200bea6ac160db9a9f0b"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/deafen.ogg",
+            "sha256": "5da83615b34ed2a4fb9a6a9b2ebab7af2617d57d91062bb9e580f7892a9f7cf4"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/mute.ogg",
+            "sha256": "93e15447a113807c92db5b2b639df7745cf95f98d0164b28b79e31f22ca12fde"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/screen-share-started.ogg",
+            "sha256": "827a6f2611ecd6fc6b07d0605ed97d4f72ec1b478118cb41803c2f7a60e52bb7"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/screen-share-stopped.ogg",
+            "sha256": "80cd01d89568a8782235fff2aaf8a7ec5b5e315c0858d2dfc80da666f37085c1"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/screen-share-viewer-join.ogg",
+            "sha256": "5aa155a1827fe439bc034ce3d6475cbca6683093743797b1a950484f0a246910"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/screen-share-viewer-leave.ogg",
+            "sha256": "2daf1502e8f9ba010aa0bc240bee3b8e250114ec06e296a3198640f46e473981"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/undeafen.ogg",
+            "sha256": "88e74acee4e4335dde023d7874ae01c6df60e47b7625cd389a265d82211bba15"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/unmute.ogg",
+            "sha256": "953caf7b8d124f983671c7efb6b016ce27066bd2f09b04006fd8232f1f2646d3"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/user-join.ogg",
+            "sha256": "5594175979f6439bd01d27591c42e2f049e2bb0ac6e69fc99671f62d2e78bf72"
+          },
+          {
+            "file": "apps/web/dist/client/sounds/ui/default/user-leave.ogg",
+            "sha256": "00944669ac94c856e7deb5d613b895c821947511cf171780ff4e115dc0333582"
+          },
+          {
+            "file": "apps/web/dist/client/sw.js",
+            "sha256": "24ac98fd74ae034d1f89cb73dcacd9ec4a36d5c6c712e8e08b4a28fda9c7a497"
+          },
+          {
+            "file": "apps/web/dist/client/telegram-promo-cat.png",
+            "sha256": "aabd4e2f3a4d93a57e06dc0721139218b3f0fee7ae805421577a66588a74c4b8"
+          }
+        ],
+        "testFaultGates": true,
+        "backendScope": "Existing local API/events/voice-ingress plus rebuilt crond from fbeceaa5",
+        "copiedFromCaptureSha256": "dfae924766bef9363b2a3895992e1d58f98f36831dbb5f74f710a44851c0f624",
+        "concurrentWork": "Independent nine-row shutdown series on another frozen product directory, account, Voice channel and desktop profile; no concurrent native resource probes"
+      },
+      "helpers": [
+        {
+          "file": "issue131-instrument-launch.cjs",
+          "sha256": "e62789bd50be457420ef232f5d02c5a763f89f23e34e487c21972245d67f2d09"
+        },
+        {
+          "file": "issue131-capture-product-errors.cjs",
+          "sha256": "92017ab6a3be9145f3169593b6ac04c950fb022190d85d96249fce3278b12e89"
+        },
+        {
+          "file": "issue131-observe-exit-path.cjs",
+          "sha256": "bd4fbfa31396b3942f809db02ea8fcc9532c68861e6cd16badeb045ffd1f3f2a"
+        },
+        {
+          "file": "issue131-observe-exit-status-worker.cjs",
+          "sha256": "d5e7e4fdb8f74b2d27d250486b113a48073193b353169b71f65b8f9d314340ae"
+        },
+        {
+          "file": "issue131-exit-status-worker.ps1",
+          "sha256": "9e48c09a70ab93029ecd5081baaf87079dcd60e52d8b841ec3aa8f4d66d95845"
+        },
+        {
+          "file": "issue131-post-reboot-control.cjs",
+          "sha256": "8a1146d623e9f78e5a38baa8acf3f07048c17bb4ad189dd5628151df3e367ddc"
+        },
+        {
+          "file": "issue131-electron-with-playwright-loader.cmd",
+          "sha256": "d293230c1b568a1e2b9ad808e6e04813ddaab2d860aeddef579b553ddd455bf3"
+        }
+      ],
+      "summary": {
+        "scope": "full-product-shutdown-with-held-native-call",
+        "point": "camera-read-sample",
+        "call": 1,
+        "passed": true,
+        "required": 3,
+        "completed": 3,
+        "shutdownBudgetMs": 4900,
+        "results": [
+          {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 1,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2418.767100000001,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 2,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2368.2638000000006,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 3,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2276.7207000000017,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          }
+        ]
+      },
+      "summarySha256": "986528a6896290baae4c892aac6874578edc5ebf866f77df7536c54b0e14cfa3",
+      "postInputsMatched": true,
+      "inputsSha256": "fdc4748a0e88975ec85d383a4ed34dbd582779911d0b8d4c4261f43f99c551d3"
+    }
+  ],
+  "limitations": [
+    "Each control contains three repetitions, not the required 100-case fault row.",
+    "Earlier interrupted and failed series remain incomplete; no cases are added across restarts.",
+    "New full matrices were started after these controls. Their eventual results require separate evidence.",
+    "No native shutdown or resource budget was increased.",
+    "Private credentials, endpoint URLs, profile paths, process identifiers, and raw exception messages are omitted."
+  ]
+}

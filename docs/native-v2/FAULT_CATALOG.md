@@ -962,4 +962,70 @@ incident metadata for a missing-credential rejection before Room startup;
 transport fixtures still retain optional-field coverage. With consistent frozen
 output and the correct pnpm dependency layout, all 50 lifecycle cycles and the
 100-per-mode process guards passed locally. The artifact also retains failed
-local setup attempts. ASan and the new CI run still need verification.
+local setup attempts. [CI run 34397780380](https://github.com/syrnike13/syrnike13-app/actions/runs/34397780380)
+passed both Windows jobs on `62e5b90b`, including Debug, Release, Electron smoke
+and AddressSanitizer coverage.
+
+The [persistent external observer series](shutdown-exit-phase-worker-99b5ac56-incomplete.json.gz)
+also remain incomplete: output initialize passed 96 cases before a startup
+failure, and camera reader passed 42 before Room returned `LiveKitUnavailable`.
+Neither failing case entered its intended native fault. During test-side cleanup
+of the camera case, main published exit code 1 but its kernel process handle
+remained unsignaled for another 2592 ms; the observer's maximum sample gap was
+172 ms. This demonstrates delayed OS completion even after forced termination.
+It does not identify the responsible driver or I/O, and test-side cleanup is
+not a passing product shutdown. The original deadline failures remain open.
+
+The [supporting database fixture investigation](database-fixture-pressure-99b5ac56.json)
+found exhausted container swap and approximately 98–99% memory/IO pressure.
+MongoDB became unhealthy, and crond panicked after a database monitor timeout.
+Only the private test database allocation changed, from 768 MiB to 2 GiB RAM
+with a 3 GiB combined RAM/swap limit. After an OOM exit, the same database and
+crond containers were started with their existing data. Database health returned,
+swap usage and memory pressure returned to zero, and all four backend binary
+hashes matched. Three output and three camera controls passed before new matrices
+started. These fixture controls do not replace the failed series, repair the
+crond panic in application code, or prove the cause of the Windows exit delay.
+
+The host restart interrupted those new matrices before either first row reached
+100 cases; the [interruption record](shutdown-host-restart-99b5ac56-incomplete.json)
+preserves their incomplete status. The
+[restoration controls](shutdown-host-restoration-controls-99b5ac56.json) record
+healthy supporting services with matching backend binaries, two startup failures,
+a successful diagnostic launch, and three output plus three camera shutdown
+controls. All six controls completed within 4.9 seconds with matching application
+inputs. The startup delay's cause remains unproven. Full matrices restarted from
+zero after these controls; neither the controls nor interrupted cases qualify a
+100-repetition row.
+
+The [post-restoration output series](shutdown-host-restored-core-99b5ac56-incomplete.json.gz)
+then passed 61 cases and failed case 62 after entering the held output operation.
+Utility exited in 2564 ms; main emitted `quit` at approximately 2520 ms, published
+exit code zero at 4009 ms, and became kernel-signaled at 5460 ms. Independent
+process polling had a maximum sample gap of 144 ms. The unchanged 4900 ms gate
+failed, with no test-side forced termination. All application, driver, observer
+and captured runtime hashes still matched. Restoring the supporting services did
+not eliminate this final process-completion delay; its cause remains unresolved.
+
+The [post-restoration camera and window series](shutdown-host-restored-video-window-99b5ac56-incomplete.json.gz)
+passed camera reader, camera publish and camera unpublish shutdown in 100 cases
+each. The first monitor case failed before fault entry because its private
+coordinator used the display title instead of the complete accessible button name.
+The window driver now handles the Applications tab's source count and searches
+paginated sources. With that separately hashed driver, window frame-pool shutdown
+passed 11 cases before capture returned `screen_start_failed` ahead of fault entry.
+Its underlying capture error remains unresolved; neither the successful prefix
+nor the unstarted window-start row is a qualification PASS.
+
+The [WPR controls](shutdown-wpr-controls-99b5ac56.json) captured three successful
+held-output shutdowns with zero reported lost events or buffers. Only the
+recorder used authorized elevation; the product retained normal user integrity.
+The earlier process-completion delay did not reproduce, so this trace does not
+establish its cause. The raw trace and host process listing remain private.
+
+The [existing encoder probe after restart](encoder-post-restart-52ccd1e3.json)
+passed 100 activation-only cycles and 100 cycles of each bitrate failure mode,
+including their resource assertions. Withheld output passed 100 owner checks
+but failed resource recovery with five additional handles. The artifact records
+the probe's embedded `52ccd1e3` Release build and the observed newer overlay DLL;
+it is not a new qualification build or proof of an overlay root cause.

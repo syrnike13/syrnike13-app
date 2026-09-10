@@ -65,6 +65,18 @@ expected resource-failure status. This policy control did not establish that
 the overlay DLL was absent and does not confirm or disprove overlay involvement.
 No machine-wide settings were changed.
 
+After the host restart, the same existing Release probe at `52ccd1e3` passed
+100 activation-only cycles with zero handle or thread growth. Both 100-cycle
+bitrate failure controls also passed their resource assertions. The withheld-output
+control still failed its resource assertion: 459 -> 464 handles and 28 -> 26
+threads, despite passing all 100 owner assertions. During that run, the observed
+overlay DLL was version `11.0.9.251`; the NVIDIA driver remained unchanged.
+The activation-only process exited before its loaded modules could be captured.
+These [post-restart controls](docs/native-v2/encoder-post-restart-52ccd1e3.json)
+show changed behavior without establishing its cause. The earlier +200-handle
+observations remain historical evidence; they do not describe every later run.
+No driver or overlay configuration was changed by this task.
+
 ## React development performance tracks accumulate during long media runs
 
 The React development frontend retained about 2.5 million `PerformanceMeasure`
