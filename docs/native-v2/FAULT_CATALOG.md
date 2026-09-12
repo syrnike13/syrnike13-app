@@ -229,11 +229,15 @@ Assignment failure rejects host bootstrap. Normal retirement still waits for the
 retained process object to become signaled before replacement. This follows the
 [Windows job lifetime contract](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
 
-The shutdown test injects hung Voice and remaining-resource finalizers 100 times
-each and verifies exactly one process-exit callback at 4,900 ms. The lifecycle
-smoke uses the real native broker for 100 explicit terminations, 100 guard closes
-and 100 abrupt parent deaths, then checks descendant exit through retained
-kernel handles. It runs in an isolated Node host and Electron integration.
+The shutdown harness regression injects hung Voice and remaining-resource
+finalizers 100 times each and verifies exactly one process-exit callback at
+4,900 ms. That is harness and lifecycle evidence; the product qualification
+rows are the pending/hung operation subset recorded in
+`shutdown-matrix-eba2f6bb-status.json`, rather than a second shutdown series for
+every recovery fault. The lifecycle smoke uses the real native broker for 100
+explicit terminations, 100 guard closes and 100 abrupt parent deaths, then checks
+descendant exit through retained kernel handles. It runs in an isolated Node host
+and Electron integration.
 Each measured batch follows 100 identical warmup cycles; logging is initialized
 before sampling to avoid counting its lazy stdout handle as a guard leak.
 The isolated host must return handles/threads to baseline. Chromium integration
