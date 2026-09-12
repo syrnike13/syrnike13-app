@@ -81,15 +81,36 @@ exports.run = async ({ directory, mediaRoot, broker, launch, enterFault, invento
         const started = performance.now()
         let closeSettled = false
         let closeFailed = false
-        const closing = app.close().then(() => { closeSettled = true }, () => { closeFailed = true })
-        while (performance.now() - started <= shutdownBudgetMs &&
-            (!closeSettled || references.some(reference => !reference.hasExited()))) await delay(5)
+        let closeElapsedMs = null
+        const firstObservedExitMs = references.map(() => null)
+        const closing = app.close().then(() => {
+          closeElapsedMs = performance.now() - started
+          closeSettled = true
+        }, () => {
+          closeElapsedMs = performance.now() - started
+          closeFailed = true
+        })
+        while (true) {
+          // Sample every retained handle even while the close observer is pending.
+          for (const [index, reference] of references.entries()) {
+            const exited = reference.hasExited()
+            if (exited && firstObservedExitMs[index] === null)
+              firstObservedExitMs[index] = performance.now() - started
+          }
+          if (closeFailed || (closeSettled && firstObservedExitMs.every(elapsed => elapsed !== null)) ||
+              performance.now() - started >= shutdownBudgetMs) break
+          await delay(5)
+        }
         result.elapsedMs = performance.now() - started
         result.closeSettled = closeSettled
         result.closeFailed = closeFailed
-        result.processesExited = references.map(reference => reference.hasExited())
+        result.closeElapsedMs = closeElapsedMs
+        result.firstObservedExitMs = firstObservedExitMs
+        result.processesExited = firstObservedExitMs.map(elapsed => elapsed !== null)
+        result.completionElapsedMs = closeSettled && result.processesExited.every(Boolean)
+          ? Math.max(closeElapsedMs, ...firstObservedExitMs) : null
         if (closeFailed || !closeSettled || result.processesExited.some(exited => !exited) ||
-            result.elapsedMs > shutdownBudgetMs) throw new Error('product_shutdown_deadline')
+            result.completionElapsedMs > shutdownBudgetMs) throw new Error('product_shutdown_deadline')
         await closing
         result.passed = true
       } catch (error) {

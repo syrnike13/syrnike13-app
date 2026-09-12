@@ -125,6 +125,31 @@ void pipelinePropagatesEncoderFailure() {
   (void)pipeline.stop(std::chrono::steady_clock::now() + 5s);
 }
 
+void completedCooperativeEncoderFailureDrainsWithoutRetirement() {
+  HardwareH264Encoder encoder(nullptr, kScreenProfile720p30);
+  {
+    std::scoped_lock lock(encoder.state_->mutex);
+    encoder.state_->failure = HardwareH264Failure{
+        "screen_hardware_h264_output_stalled", "injected stall", "encoder_output"};
+    encoder.state_->state = HardwareH264EncoderState::failed;
+    encoder.state_->worker_done = true;
+  }
+  if (!encoder.stop(0ms) || encoder.state() != HardwareH264EncoderState::failed)
+    throw std::runtime_error("completed cooperative encoder failure was marked unsafe");
+
+  HardwareH264Encoder retirement_required(nullptr, kScreenProfile720p30);
+  {
+    std::scoped_lock lock(retirement_required.state_->mutex);
+    retirement_required.state_->failure = HardwareH264Failure{
+        "screen_hardware_h264_stop_timeout", "injected timeout", "encoder_stop", true};
+    retirement_required.state_->failure->utility_epoch_retirement_required = true;
+    retirement_required.state_->state = HardwareH264EncoderState::failed;
+    retirement_required.state_->worker_done = true;
+  }
+  if (retirement_required.stop(0ms))
+    throw std::runtime_error("retirement-required encoder failure was marked safe");
+}
+
 void shutdownDeadlineIncludesMediaFoundationCleanup() {
   auto device = syrnike::windows_media::capture::processD3d11Device(false);
   HardwareH264Encoder encoder(device, kScreenProfile720p30);
@@ -143,13 +168,15 @@ void shutdownDeadlineIncludesMediaFoundationCleanup() {
   const auto started = std::chrono::steady_clock::now();
   const bool stopped = encoder.stop(30ms);
   const auto elapsed = std::chrono::steady_clock::now() - started;
+  const auto timeout_failure = encoder.failure();
   {
     std::scoped_lock lock(shutdown_mutex);
     block_shutdown = false;
   }
   shutdown_changed.notify_all();
-  (void)encoder.stop(5s);
-  if (!entered || stopped || elapsed > 500ms)
+  const bool drained = encoder.stop(5s);
+  if (!entered || stopped || drained || !timeout_failure ||
+      !timeout_failure->utility_epoch_retirement_required || elapsed > 500ms)
     throw std::runtime_error("stop joined a worker still inside MFShutdown");
 }
 
@@ -348,6 +375,7 @@ int main(int argc, char** argv) try {
   failedBitrateControlPreservesWorkingPublication(false);
   failedBitrateControlPreservesWorkingPublication(true);
   pipelinePropagatesEncoderFailure();
+  completedCooperativeEncoderFailureDrainsWithoutRetirement();
   shutdownDeadlineIncludesMediaFoundationCleanup();
   syrnike::windows_media::tests::repeatFault("encoder-input-without-output", acceptedInputWithoutOutputTriggersTheRealDeadline);
   std::cout << "encoder fault tests passed\n";

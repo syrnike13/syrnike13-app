@@ -175,11 +175,15 @@ waiting for the operation that will hang. For `sdk-cancel`, supply
 be observed. Other rows select one point and its one-based call number.
 
 The harness requires both app-close completion and kernel-confirmed main/utility
-exit within 4,900 ms. Test-side forced cleanup is recorded only for failed rows;
-it never qualifies application containment. It stops on the first failure and
-preserves individual reports. Configuration and markers are kept beside the
-verified artifact directory, whose strict file list remains unchanged. This
-fixture's availability is not a passing shutdown matrix.
+exit within 4,900 ms. It polls the retained process handles while `app.close()`
+is still pending, records the close and first observed kernel-exit timestamps
+independently, and judges the maximum of those timestamps. This keeps scheduler
+delay in the report without silently extending the product budget. Test-side
+forced cleanup is recorded only for failed rows; it never qualifies application
+containment. It stops on the first failure and preserves individual reports.
+Configuration and markers are kept beside the verified artifact directory, whose
+strict file list remains unchanged. This fixture's availability is not a
+passing shutdown matrix.
 
 `shutdown-product.cjs` supplies product callbacks from an Electron launcher,
 executable/application paths, an isolated profile environment, the authenticated

@@ -366,6 +366,65 @@ describe('MediaRuntimeSupervisor', () => {
     vi.useRealTimers()
   })
 
+  it('rejects old replies and events after a replacement even when request IDs collide', async () => {
+    const first = new FakeMediaAdapter()
+    const second = new FakeMediaAdapter()
+    const adapters = [first, second]
+    const supervisor = new MediaRuntimeSupervisor({
+      createAdapter: () => adapters.shift()!,
+      restartDelaysMs: [0],
+      requestId: () => 'reused-request',
+    })
+    const events = vi.fn()
+    supervisor.onEvent(events)
+
+    const started = supervisor.start()
+    first.ready()
+    await started
+    const oldPing = supervisor.ping()
+    await vi.waitFor(() => expect(first.requests).toHaveLength(1))
+    first.unexpectedExit()
+    await expect(oldPing).rejects.toMatchObject({
+      failure: { code: 'unexpected_exit' },
+    })
+
+    await vi.waitFor(() => expect(second.callbacks).not.toBeNull())
+    second.ready()
+    await vi.waitFor(() => expect(supervisor.getSnapshot().status).toBe('ready'))
+
+    let freshSettled = false
+    const freshPing = supervisor.ping().finally(() => { freshSettled = true })
+    await vi.waitFor(() => expect(second.requests).toHaveLength(1))
+    expect(requestId(first.requests[0])).toBe(requestId(second.requests[0]))
+
+    first.reply('reused-request', { type: 'pong', engineState: 'failed' })
+    first.callbacks?.onMessage({
+      type: 'event',
+      protocolVersion: 4,
+      event: {
+        type: 'engineStateChanged', sequence: 1,
+        previous: 'running', state: 'failed',
+      },
+    })
+    await Promise.resolve()
+    expect(freshSettled).toBe(false)
+    expect(supervisor.getPendingRequestCount()).toBe(1)
+    expect(events).not.toHaveBeenCalled()
+    expect(supervisor.getSnapshot().status).toBe('ready')
+
+    second.reply('reused-request', { type: 'pong', engineState: 'running' })
+    await expect(freshPing).resolves.toEqual({
+      type: 'pong', engineState: 'running',
+    })
+
+    const shutdown = supervisor.shutdown()
+    await vi.waitFor(() => expect(second.requests).toHaveLength(2))
+    second.reply('reused-request', {
+      type: 'shutdownComplete', engineState: 'stopped',
+    })
+    await shutdown
+  })
+
   it('rejects an incompatible handshake and stops after zero configured retries', async () => {
     const adapter = new FakeMediaAdapter()
     const supervisor = new MediaRuntimeSupervisor({

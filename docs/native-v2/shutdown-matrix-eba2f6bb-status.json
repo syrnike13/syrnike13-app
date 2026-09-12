@@ -4,6 +4,250 @@
   "capturedAt": "2026-09-12",
   "qualification": false,
   "budgetMs": 4900,
+  "shutdownInterpretation": {
+    "scope": "pending-or-hung-operations",
+    "issue131Requirement": "Exercise application shutdown while an operation that can retain a worker or process is pending or hung, and require the main and media processes to leave the boundary within 4900 ms.",
+    "repetitionPolicy": "The 100/100 requirement applies to deterministic fault reproduction and recovery. It does not require 100 shutdown repetitions for every one of the 18 fault descriptions. Repeated shutdown rows use a 100-cycle target where a product series is run.",
+    "includedOperationClasses": [
+      "hung LiveKit connect, cancellation, disconnect, publish, and unpublish callbacks",
+      "held microphone, camera, output, screen, screen-audio, encoder, WGC, and DXGI operations",
+      "utility teardown while a native operation is still pending"
+    ],
+    "excludedOperationClasses": [
+      "faults whose operation has already terminated, such as an immediate device-lost result",
+      "renderer reload/crash and utility crash as standalone recovery events; they are covered by their recovery rows unless a separate pending operation is held",
+      "the eight-hour, multi-machine, and hardware soak work reserved for issue #132"
+    ]
+  },
+  "pendingOperationMatrix": {
+    "schema": "syrnike.native-v2.pending-shutdown-points-v1",
+    "targetRepetitions": 100,
+    "statusRule": "pass means the recorded product row completed its target with kernel-confirmed main and utility exit; fail means an injected row missed the unchanged 4900 ms gate; blocked means setup prevented injection; not-run means no product shutdown row exists.",
+    "statusCounts": {
+      "pass": 10,
+      "fail": 3,
+      "blocked": 1,
+      "not-run": 10
+    },
+    "rows": [
+      {
+        "point": "sdk-connect",
+        "status": "pass",
+        "completed": 100,
+        "required": 100,
+        "applicationCommit": "dbe780dd2fc9578add596c52f34054643cea40e3",
+        "evidence": ["docs/native-v2/full-product-shutdown-connect-cancel-dbe780dd.json.gz"],
+        "qualificationEligible": false,
+        "note": "Historical exact-input product build; current eba2f6bb still needs a final-build rerun."
+      },
+      {
+        "point": "sdk-cancel",
+        "status": "pass",
+        "completed": 100,
+        "required": 100,
+        "applicationCommit": "dbe780dd2fc9578add596c52f34054643cea40e3",
+        "evidence": ["docs/native-v2/full-product-shutdown-connect-cancel-dbe780dd.json.gz"],
+        "qualificationEligible": false,
+        "note": "Historical exact-input product build; cancellation was observed after the held connect entry."
+      },
+      {
+        "point": "sdk-disconnect",
+        "status": "pass",
+        "completed": 100,
+        "required": 100,
+        "applicationCommit": "dbe780dd2fc9578add596c52f34054643cea40e3",
+        "evidence": ["docs/native-v2/full-product-shutdown-disconnect-dbe780dd.json.gz"],
+        "qualificationEligible": false,
+        "note": "Historical exact-input product build."
+      },
+      {
+        "point": "microphone-initialize",
+        "status": "pass",
+        "completed": 100,
+        "required": 100,
+        "applicationCommit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+        "evidence": ["docs/native-v2/shutdown-core-52ccd1e3-incomplete.json.gz"],
+        "qualificationEligible": false,
+        "note": "Historical exact-input product build."
+      },
+      {
+        "point": "microphone-capture",
+        "status": "pass",
+        "completed": 100,
+        "required": 100,
+        "applicationCommit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+        "evidence": ["docs/native-v2/shutdown-core-52ccd1e3-incomplete.json.gz"],
+        "qualificationEligible": false,
+        "note": "Historical exact-input product build."
+      },
+      {
+        "point": "sdk-microphone-publish",
+        "status": "pass",
+        "completed": 100,
+        "required": 100,
+        "applicationCommit": "dbe780dd2fc9578add596c52f34054643cea40e3",
+        "evidence": ["docs/native-v2/full-product-shutdown-microphone-publish-dbe780dd.json.gz"],
+        "qualificationEligible": false,
+        "note": "Historical exact-input product build."
+      },
+      {
+        "point": "sdk-microphone-unpublish",
+        "status": "pass",
+        "completed": 100,
+        "required": 100,
+        "applicationCommit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+        "evidence": ["docs/native-v2/shutdown-unpublish-52ccd1e3.json"],
+        "qualificationEligible": false,
+        "note": "Historical exact-input product build."
+      },
+      {
+        "point": "camera-read-sample",
+        "status": "pass",
+        "completed": 100,
+        "required": 100,
+        "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+        "evidence": ["docs/native-v2/shutdown-host-restored-video-window-99b5ac56-incomplete.json.gz"],
+        "qualificationEligible": false,
+        "note": "Held source-reader callback completed 100/100; physical unplug is a separate, unrun fault."
+      },
+      {
+        "point": "sdk-camera-publish",
+        "status": "pass",
+        "completed": 100,
+        "required": 100,
+        "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+        "evidence": ["docs/native-v2/shutdown-host-restored-video-window-99b5ac56-incomplete.json.gz"],
+        "qualificationEligible": false
+      },
+      {
+        "point": "sdk-camera-unpublish",
+        "status": "pass",
+        "completed": 100,
+        "required": 100,
+        "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+        "evidence": ["docs/native-v2/shutdown-host-restored-video-window-99b5ac56-incomplete.json.gz"],
+        "qualificationEligible": false
+      },
+      {
+        "point": "output-initialize",
+        "status": "fail",
+        "completed": 77,
+        "required": 100,
+        "failedIteration": 78,
+        "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+        "failure": "product_shutdown_deadline",
+        "evidence": [
+          ".codex-tmp/issue131-external-shutdown-core-matrix/matrix/summary.json",
+          ".codex-tmp/issue131-post-reboot-core-wpr-matrix-first-matrix/matrix/summary.json"
+        ],
+        "alternateControl": {
+          "status": "pass",
+          "completed": 100,
+          "required": 100,
+          "evidence": ".codex-tmp/issue131-post-reboot-core-wpr-matrix-first-matrix/matrix/summary.json"
+        },
+        "qualificationEligible": false,
+        "note": "A separate control passed, but the failed 77-cycle series remains authoritative until the corrected timing harness and a final-build series are rerun."
+      },
+      {
+        "point": "output-render",
+        "status": "fail",
+        "completed": 36,
+        "required": 100,
+        "failedIteration": 37,
+        "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+        "failure": "product_shutdown_deadline",
+        "evidence": [".codex-tmp/issue131-post-reboot-core-wpr-matrix-first-matrix/matrix/summary.json"],
+        "observedCloseElapsedMs": 4849.3862,
+        "harnessElapsedMs": 4944.1768,
+        "qualificationEligible": false,
+        "note": "The old observer measured beyond the product close interval; the row still requires a rerun with independent close and kernel-exit timestamps."
+      },
+      {
+        "point": "sdk-screen-publish",
+        "status": "fail",
+        "completed": 28,
+        "required": 100,
+        "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+        "failure": "product_shutdown_deadline",
+        "evidence": ["docs/native-v2/capture-shutdown-diagnostics-99b5ac56.json.gz"],
+        "qualificationEligible": false,
+        "note": "The row entered the held operation but missed the 4900 ms gate; it needs a final-build rerun."
+      },
+      {
+        "point": "wgc-window-frame-pool",
+        "status": "blocked",
+        "completed": 0,
+        "required": 100,
+        "applicationCommit": "eba2f6bbaaa8a06cb5c393ee7df57885448051ba",
+        "failure": "shutdown_scenario_failed",
+        "phase": "before-injection",
+        "evidence": [".codex-tmp/issue131-wgc-operation-shell-shellcontrol2/errors/private-1-launch.txt"],
+        "qualificationEligible": false,
+        "note": "The rebuilt product could not find the local validation link; no WGC fault was injected."
+      },
+      {
+        "point": "sdk-screen-unpublish",
+        "status": "not-run",
+        "targetRepetitions": 100,
+        "reason": "No complete product shutdown row exists."
+      },
+      {
+        "point": "screen-audio-initialize",
+        "status": "not-run",
+        "targetRepetitions": 100,
+        "reason": "No complete product shutdown row exists."
+      },
+      {
+        "point": "screen-audio-capture",
+        "status": "not-run",
+        "targetRepetitions": 100,
+        "reason": "No complete product shutdown row exists."
+      },
+      {
+        "point": "sdk-screen-audio-publish",
+        "status": "not-run",
+        "targetRepetitions": 100,
+        "reason": "No complete product shutdown row exists."
+      },
+      {
+        "point": "sdk-screen-audio-unpublish",
+        "status": "not-run",
+        "targetRepetitions": 100,
+        "reason": "No complete product shutdown row exists."
+      },
+      {
+        "point": "encoder-input",
+        "status": "not-run",
+        "targetRepetitions": 100,
+        "reason": "No product shutdown row was run while the encoder input was held."
+      },
+      {
+        "point": "encoder-output",
+        "status": "not-run",
+        "targetRepetitions": 100,
+        "reason": "No product shutdown row was run while encoder output was held."
+      },
+      {
+        "point": "wgc-monitor-start",
+        "status": "not-run",
+        "targetRepetitions": 100,
+        "reason": "No complete product shutdown row exists."
+      },
+      {
+        "point": "wgc-monitor-frame-pool",
+        "status": "not-run",
+        "targetRepetitions": 100,
+        "reason": "No complete product shutdown row exists."
+      },
+      {
+        "point": "dxgi-acquire-frame",
+        "status": "not-run",
+        "targetRepetitions": 100,
+        "reason": "No complete product shutdown row exists."
+      }
+    ]
+  },
   "rows": [
     {
       "point": "output-initialize",
@@ -40,7 +284,6 @@
       "failedIteration": 37,
       "harnessElapsedMs": 4944.1768,
       "observedCloseElapsedMs": 4849.3862,
-      "measurementNote": "Harness overhead is outside the product close interval; raw elapsed time is retained without attributing it to the application.",
       "utilityExited": true,
       "mainExited": true,
       "summarySha256": "ad39a4bbd7358c39a992deb7e93d42acc4804e91f81af661f3594e7e025a8cdb",
@@ -74,7 +317,8 @@
     {
       "point": "wgc-window-frame-pool",
       "applicationCommit": "eba2f6bbaaa8a06cb5c393ee7df57885448051ba",
-      "status": "blocked-before-injection",
+      "status": "blocked",
+      "phase": "before-injection",
       "completed": 0,
       "required": 100,
       "failure": "shutdown_scenario_failed",
@@ -84,8 +328,9 @@
     }
   ],
   "notes": [
-    "A passing row is not a passing qualification unless it has 100 measured repetitions and exact-build identity.",
-    "The eba2f6b WGC attempt used a rebuilt desktop bundle and exact native manifest, but local frontend/backend listeners were unavailable; no WGC fault was injected.",
-    "The 99b5ac56 output-render failure has an independent observer gap and does not identify the cause of delayed process completion."
+    "This artifact separates the 18-fault recovery matrix from the smaller shutdown scope. A row is included here only when a pending or hung operation can retain a worker or process.",
+    "Historical pass rows are evidence of behavior on their recorded exact-input builds; they are not final-build qualification for eba2f6bb.",
+    "The output and screen publication failures remain open. The shutdown harness now records close and kernel-exit timing independently while keeping the 4900 ms gate unchanged.",
+    "The eba2f6b WGC attempt used a rebuilt desktop bundle and exact native manifest, but local frontend/backend listeners were unavailable; no WGC fault was injected."
   ]
 }

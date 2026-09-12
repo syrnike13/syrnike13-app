@@ -938,7 +938,12 @@ bool HardwareH264Encoder::stop(std::chrono::milliseconds deadline) noexcept {
       terminal_result = true;
     if (state_->state == HardwareH264EncoderState::failed &&
         state_->worker_done)
-      terminal_result = false;
+      // A failed encoder is still safe to retire in-process once its worker
+      // completed all Media Foundation cleanup.  Only a failure explicitly
+      // marked as requiring utility retirement represents unknown ownership
+      // that cannot be reused safely.
+      terminal_result = !state_->failure ||
+                        !state_->failure->utility_epoch_retirement_required;
     if (!terminal_result) {
       state_->stop_requested = true;
       state_->stop_deadline = Clock::now() + deadline;

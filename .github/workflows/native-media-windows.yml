@@ -76,6 +76,8 @@ jobs:
 
       - name: Check renderer fault observer evidence
         run: pnpm --filter @syrnike13/native-media-lab exec node --test scripts/renderer-fault-evidence.test.mjs
+      - name: Verify product shutdown timing harness
+        run: pnpm --filter @syrnike13/desktop exec node --test scripts/product-faults/shutdown-harness.node-test.cjs
       - name: Build and test Debug media lifecycle engine
         run: |
           pnpm windows-media:build:debug

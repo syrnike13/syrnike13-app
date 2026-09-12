@@ -1051,3 +1051,13 @@ not find the local validation link within 30 seconds because the required
 frontend/backend listeners were unavailable; no WGC fault was injected. The
 artifact remains non-qualifying and does not convert any prefix into a full
 100-cycle PASS.
+
+The same JSON now separates the 18-fault recovery matrix from the smaller
+shutdown scope. `pendingOperationMatrix` contains only operations that can still
+hold a worker or process when the application closes. The issue's 100/100 rule
+applies to deterministic fault reproduction and recovery; it does not require a
+second 100-cycle shutdown series for every fault description. Historical held
+connect, cancellation, microphone and camera rows remain visible as PASS on
+their recorded builds, while output and WGC rows retain their FAIL/BLOCKED
+evidence. Immediate device-loss results, standalone renderer/utility crashes,
+and the issue #132 soak are not counted as pending-operation shutdown rows.
