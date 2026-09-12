@@ -14,6 +14,7 @@ import {
 } from '../media-runtime/contract'
 import type { MediaRuntimeSupervisorSnapshot } from '../media-runtime/media-runtime-supervisor'
 import { NativeRtcEngineAdapterV2 } from './native-rtc-engine-adapter-v2'
+import { getNativeDiagnosticCorrelationId } from '../native-runtime/diagnostic-incidents'
 
 const lease: VoiceLease = {
   channelId: 'channel-a', rtcEngine: 'windows_native', clientInstanceId: 'desktop-a',
@@ -30,6 +31,7 @@ function gate() {
 class Runtime {
   epoch = 1
   status: MediaRuntimeSupervisorSnapshot['status'] = 'stopped'
+  failure: MediaRuntimeSupervisorSnapshot['failure']
   readonly applied: EngineDesiredState[] = []
   readonly credentials: MediaCredentialLease[] = []
   applyGate: Promise<void> | null = null
@@ -47,7 +49,10 @@ class Runtime {
     build: { commit: '0'.repeat(40), napi: '8', protocolSchemaSha256: MEDIA_LIFECYCLE_SCHEMA_SHA256 },
   }
   getHostEpoch() { return this.epoch }
-  getSnapshot(): MediaRuntimeSupervisorSnapshot { return { status: this.status, restartCount: this.epoch - 1 } }
+  getFailureEpisodeId(causeSequence?: number) {
+    return causeSequence === undefined ? undefined : `native:${this.epoch}:${causeSequence}`
+  }
+  getSnapshot(): MediaRuntimeSupervisorSnapshot { return { status: this.status, restartCount: this.epoch - 1, failure: this.failure } }
   onStateChange(listener: (snapshot: MediaRuntimeSupervisorSnapshot) => void) { this.states.add(listener); return () => this.states.delete(listener) }
   onEvent(listener: (event: MediaLifecycleEvent) => void) { this.events.add(listener); return () => this.events.delete(listener) }
   onSnapshot(listener: (snapshot: MediaEngineSnapshot) => void) { this.snapshots.add(listener); return () => this.snapshots.delete(listener) }
@@ -87,10 +92,12 @@ class Runtime {
   }
   restart() {
     this.status = 'recovering'
+    this.failure = { code: 'unexpected_exit', message: 'Host exited', stage: 'utility_process', retryable: true }
     for (const listener of this.states) listener(this.getSnapshot())
     ++this.epoch
     this.current = { engineState: 'running', acceptedRevision: null, desiredState: null, roomState: 'off', tracks: createInactiveMediaPaths() }
     this.status = 'ready'
+    this.failure = undefined
     for (const listener of this.states) listener(this.getSnapshot())
   }
 }
@@ -103,6 +110,28 @@ async function join(runtime: Runtime, adapter: NativeRtcEngineAdapterV2, desired
 }
 
 describe('NativeRtcEngineAdapterV2', () => {
+  it('carries the native cause through both connect rejection and terminal projection', async () => {
+    const runtime = new Runtime()
+    const adapter = new NativeRtcEngineAdapterV2(runtime)
+    const events: VoiceEngineEvent[] = []
+    adapter.subscribe(event => events.push(event))
+    const connect = adapter.connect(lease, createInitialVoiceMediaDesiredState(), new AbortController().signal)
+    const alias = getNativeDiagnosticCorrelationId('native:1:7')
+    const rejected = expect(connect).rejects.toMatchObject({
+      failure: { code: 'room_operation_unresponsive', diagnosticCorrelationId: alias },
+    })
+    await vi.waitFor(() => expect(runtime.current.acceptedRevision).not.toBeNull())
+    for (const listener of runtime.events) listener({
+      type: 'roomStateChanged', sequence: 7, revision: runtime.current.acceptedRevision!, state: 'failed',
+      failure: { code: 'room_operation_unresponsive', message: 'Connect hung', stage: 'room_connect', retryable: true, causeSequence: 7 },
+    })
+    await rejected
+    expect(events.filter(event => event.type === 'terminalFailure')).toEqual([
+      expect.objectContaining({ failure: expect.objectContaining({ diagnosticCorrelationId: alias }) }),
+    ])
+    await adapter.dispose()
+  })
+
   it('keeps capture warm across server mute and restores only microphone publication', async () => {
     const runtime = new Runtime()
     const adapter = new NativeRtcEngineAdapterV2(runtime)
@@ -237,22 +266,112 @@ describe('NativeRtcEngineAdapterV2', () => {
     await adapter.dispose()
   })
 
-  it('replays only the latest snapshot after a host loss while an old request is pending', async () => {
+  it('ignores an old host request failure while connecting the fresh lease with latest intent', async () => {
     const runtime = new Runtime()
-    const adapter = new NativeRtcEngineAdapterV2(runtime)
+    const failures = vi.fn()
+    const adapter = new NativeRtcEngineAdapterV2(runtime, undefined, failures)
     await join(runtime, adapter)
     const hold = gate()
     runtime.applyGate = hold.promise
     adapter.updateDesiredMedia({ ...createInitialVoiceMediaDesiredState(), effectiveMuted: true })
     await vi.waitFor(() => expect(runtime.applied).toHaveLength(2))
-    adapter.updateDesiredMedia({ ...createInitialVoiceMediaDesiredState(), effectiveMuted: false, cameraEnabled: true })
+    const latest = { ...createInitialVoiceMediaDesiredState(), effectiveMuted: false, cameraEnabled: true }
+    adapter.updateDesiredMedia(latest)
     runtime.restart()
+    const connected = adapter.connect({ ...lease, operationId: 'op-new', connectionEpoch: 'epoch-new' },
+      latest, new AbortController().signal)
     runtime.applyGate = null
     hold.release()
     await vi.waitFor(() => expect(runtime.applied).toHaveLength(3))
     expect(runtime.credentials).toHaveLength(2)
     expect(runtime.applied[2]).toEqual(adapter.desiredSnapshot())
     expect(runtime.applied[2]).toMatchObject({ microphone: { muted: false }, camera: { state: 'on' } })
+    expect(failures).not.toHaveBeenCalled()
+    runtime.connected()
+    await connected
+    await adapter.dispose()
+  })
+
+  it('invalidates old host media before publishing recovery and new host availability', async () => {
+    const runtime = new Runtime()
+    const adapter = new NativeRtcEngineAdapterV2(runtime)
+    const desired = { ...createInitialVoiceMediaDesiredState(), userMuted: false, effectiveMuted: false }
+    await join(runtime, adapter, desired)
+    runtime.current = {
+      ...runtime.current,
+      tracks: { ...runtime.current.tracks, microphone: {
+        revision: runtime.current.acceptedRevision ?? 0, state: 'running', warning: false,
+      } },
+    }
+    runtime.connected()
+    expect(adapter.snapshot().tracks.microphone.state).toBe('running')
+    adapter.updateDesiredMedia({ ...desired, userMuted: true, effectiveMuted: true })
+    const latest = adapter.desiredSnapshot()
+    const availabilitySnapshots: MediaEngineSnapshot[] = []
+    const snapshots: MediaEngineSnapshot[] = []
+    adapter.onSnapshot(snapshot => snapshots.push(snapshot))
+    const unsubscribe = adapter.subscribe(event => {
+      if (event.type === 'availabilityChanged') availabilitySnapshots.push(adapter.snapshot())
+    })
+    availabilitySnapshots.length = 0
+    runtime.restart()
+    expect(availabilitySnapshots).toHaveLength(2)
+    for (const snapshot of availabilitySnapshots) {
+      expect(snapshot).toEqual({
+        engineState: 'stopped', acceptedRevision: null, desiredState: null,
+        roomState: 'off', tracks: createInactiveMediaPaths(),
+      })
+    }
+    expect(snapshots.at(-1)).toEqual(adapter.snapshot())
+    expect(adapter.desiredSnapshot()).toEqual(latest)
+    const connected = adapter.connect({ ...lease, operationId: 'op-new', connectionEpoch: 'epoch-new' },
+      { ...desired, userMuted: true, effectiveMuted: true }, new AbortController().signal)
+    await vi.waitFor(() => expect(runtime.applied.at(-1)).toEqual(adapter.desiredSnapshot()))
+    expect(runtime.applied.at(-1)?.microphone).toMatchObject({ muted: true })
+    runtime.connected()
+    await connected
+    unsubscribe()
+    await adapter.dispose()
+  })
+
+  it('finishes Room cleanup without waiting for a snapshot from a terminal host', async () => {
+    const runtime = new Runtime()
+    const adapter = new NativeRtcEngineAdapterV2(runtime)
+    await join(runtime, adapter)
+    runtime.status = 'failed'
+    for (const listener of runtime.states) listener(runtime.getSnapshot())
+    vi.spyOn(runtime, 'start').mockRejectedValue(mediaLifecycleError('unexpected_exit', 'Host exited', 'host', true))
+    await expect(adapter.disconnect('recovery')).resolves.toBeUndefined()
+    expect(adapter.desiredSnapshot()?.room).toBeNull()
+    await adapter.dispose()
+  })
+
+  it('reports host loss before replay and waits for a fresh Voice Director lease', async () => {
+    const runtime = new Runtime()
+    const adapter = new NativeRtcEngineAdapterV2(runtime)
+    await join(runtime, adapter)
+    const events: VoiceEngineEvent[] = []
+    adapter.subscribe(event => events.push(event))
+    const start = vi.spyOn(runtime, 'start')
+    runtime.restart()
+    expect(events.filter(event => event.type === 'terminalFailure')).toEqual([
+      expect.objectContaining({ operationId: lease.operationId, connectionEpoch: lease.connectionEpoch,
+        failure: { code: 'unexpected_exit', message: 'Host exited', stage: 'utility_process', retryable: true } }),
+    ])
+    const latest = { ...createInitialVoiceMediaDesiredState(), effectiveMuted: true, cameraEnabled: true }
+    adapter.updateDesiredMedia(latest)
+    await vi.waitFor(() => expect(start).toHaveBeenCalled())
+    expect(runtime.credentials).toHaveLength(1)
+    expect(runtime.applied).toHaveLength(1)
+    expect(adapter.desiredSnapshot()?.camera.state).toBe('on')
+    const connected = adapter.connect({ ...lease, operationId: 'op-new', connectionEpoch: 'epoch-new' },
+      latest, new AbortController().signal)
+    await vi.waitFor(() => expect(runtime.applied).toHaveLength(2))
+    expect(runtime.credentials).toHaveLength(2)
+    expect(runtime.applied[1]).toMatchObject({ microphone: { muted: true }, camera: { state: 'on' } })
+    expect(runtime.applied[1]?.room?.credentialLeaseId).not.toBe(runtime.applied[0]?.room?.credentialLeaseId)
+    runtime.connected()
+    await connected
     await adapter.dispose()
   })
 

@@ -54,14 +54,19 @@ CameraCapture::CameraCapture(CameraEndpoint endpoint, CameraProfile profile, std
 CameraCapture::~CameraCapture() {
   if (!stop(Clock::now() + std::chrono::seconds{5})) std::terminate();
 }
-CameraFailure CameraCapture::start() {
+CameraFailure CameraCapture::start(std::stop_token cancellation) {
   if (owner_ != std::this_thread::get_id() || started_) return CameraFailure::invalid_state;
+  if (cancellation.stop_requested()) return CameraFailure::cancelled;
   started_ = true;
   state_->status = CameraCaptureState::starting;
   state_->output->selectGeneration(state_->generation);
   try { worker_ = std::thread([state = state_] { run(state); }); }
   catch (...) { state_->fail(CameraFailure::unavailable); return CameraFailure::unavailable; }
-  if (WaitForSingleObject(state_->ready.value, 4000) != WAIT_OBJECT_0) {
+  std::stop_callback cancel(cancellation, [state = state_] { SetEvent(state->stop.value); });
+  const HANDLE events[]{state_->stop.value, state_->ready.value};
+  const auto wake = WaitForMultipleObjects(2, events, FALSE, 4000);
+  if (cancellation.stop_requested() || wake == WAIT_OBJECT_0) return CameraFailure::cancelled;
+  if (wake != WAIT_OBJECT_0 + 1) {
     state_->fail(CameraFailure::start_timeout);
     state_->output->selectGeneration(0);
     SetEvent(state_->stop.value);

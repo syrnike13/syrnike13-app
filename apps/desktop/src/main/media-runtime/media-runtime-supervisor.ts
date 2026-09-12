@@ -116,6 +116,7 @@ export class MediaRuntimeSupervisor {
   private snapshotRecoveryPending = false
   private retirement: Promise<void> | null = null
   private terminationFailure: MediaLifecycleError | null = null
+  private failureEpisodeId: string | undefined
 
   constructor(private readonly options: MediaRuntimeSupervisorOptions) {}
 
@@ -125,6 +126,11 @@ export class MediaRuntimeSupervisor {
 
   getHostEpoch() {
     return this.hostEpoch
+  }
+
+  getFailureEpisodeId(causeSequence?: number) {
+    if (causeSequence !== undefined) return `native:${this.hostEpoch}:${causeSequence}`
+    return this.failureEpisodeId
   }
 
   getPendingRequestCount() {
@@ -156,8 +162,16 @@ export class MediaRuntimeSupervisor {
   }
 
   start(): Promise<MediaLifecycleReady> {
+    return this.startHost(false)
+  }
+
+  retry(): Promise<MediaLifecycleReady> {
+    return this.startHost(true)
+  }
+
+  private startHost(manualRetry: boolean): Promise<MediaLifecycleReady> {
     if (this.terminationFailure) return Promise.reject(this.terminationFailure)
-    if (this.retirement) return this.retirement.then(() => this.start())
+    if (this.retirement) return this.retirement.then(() => this.startHost(manualRetry))
     if (this.snapshot.status === 'ready' && this.snapshot.ready) {
       return Promise.resolve(this.snapshot.ready)
     }
@@ -170,6 +184,17 @@ export class MediaRuntimeSupervisor {
           'start',
         ),
       )
+    }
+    // Ordinary control/intent calls cannot accelerate recovery or turn its
+    // terminal state into an unbounded outer retry loop.
+    if (this.restartTimer) return Promise.reject(mediaLifecycleError(
+      'media_host_recovering', 'Media runtime is waiting for its scheduled recovery', 'host_recovery', true,
+    ))
+    if (this.snapshot.status === 'failed') {
+      if (!manualRetry) return Promise.reject(this.snapshot.failure
+        ? new MediaLifecycleError({ failure: this.snapshot.failure })
+        : mediaLifecycleError('media_host_retry_required', 'Retry media startup explicitly', 'start', true))
+      this.restartAttempt = 0
     }
     this.clearRestartTimer()
     const recovering = this.hasBeenReady
@@ -500,6 +525,9 @@ export class MediaRuntimeSupervisor {
       return
     }
     const event = rawMessage.event
+    if (event.type === 'fatalEngineFailure') {
+      this.failureEpisodeId ??= this.getFailureEpisodeId(event.failure.causeSequence) ?? crypto.randomUUID()
+    }
     const hasGap = event.sequence !== this.lastPublicEventSequence + 1
     this.lastPublicEventSequence = event.sequence
     for (const listener of this.eventListeners) listener(event)
@@ -545,6 +573,9 @@ export class MediaRuntimeSupervisor {
     this.lastPublicEventSequence = 0
     this.latestEngineSnapshot = undefined
     this.snapshotRecoveryPending = false
+    // A later loss of this new host is a distinct diagnostic cause. This does
+    // not reset the recovery budget or claim media-path stability.
+    this.failureEpisodeId = undefined
     // A ready handshake is not evidence of stability. Keep the finite retry
     // budget across recovered hosts, including hosts that crash after ready.
     this.updateSnapshot({
@@ -588,8 +619,10 @@ export class MediaRuntimeSupervisor {
     exit: MediaUtilityExit,
   ) {
     if (this.adapter !== adapter || epoch !== this.hostEpoch) return
+    const expected = this.shuttingDown || exit.expected
+    if (!expected) this.failureEpisodeId ??= crypto.randomUUID()
     this.options.onUtilityExit?.({
-      code: exit.code, source: exit.source, expected: exit.expected,
+      code: exit.code, source: exit.source, expected,
       uptimeMs: exit.uptimeMs, stderrBytes: Buffer.byteLength(exit.stderr, 'utf8'),
       stderrTruncated: exit.stderrTruncated,
     })
@@ -646,6 +679,7 @@ export class MediaRuntimeSupervisor {
     error: MediaLifecycleError,
   ) {
     if (this.adapter !== adapter || epoch !== this.hostEpoch) return
+    this.failureEpisodeId ??= crypto.randomUUID()
     this.clearHandshakeTimer()
     this.adapter = null
     this.rejectStarting(error)
@@ -680,6 +714,7 @@ export class MediaRuntimeSupervisor {
       this.finishStopped()
       return
     }
+    this.failureEpisodeId ??= crypto.randomUUID()
     const delays = this.options.restartDelaysMs ?? DEFAULT_RESTART_DELAYS_MS
     const delay = delays[this.restartAttempt]
     if (delay === undefined) {
@@ -726,6 +761,7 @@ export class MediaRuntimeSupervisor {
     this.clearHandshakeTimer()
     this.clearRestartTimer()
     this.clearStartPromise()
+    this.failureEpisodeId = undefined
     this.updateSnapshot({
       status: 'stopped',
       pid: undefined,

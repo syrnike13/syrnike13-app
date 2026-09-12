@@ -93,6 +93,11 @@ const configuration = configIndex >= 0 ? process.argv[configIndex + 1] : 'Releas
 const shouldStage = !args.has('--no-stage') && configuration === 'Release'
 const enableAsan = args.has('--asan')
 const buildMediaLab = args.has('--lab')
+const testFaultGates = args.has('--test-fault-gates')
+if (testFaultGates && (!args.has('--no-stage') || !process.env.WINDOWS_MEDIA_BUILD_ROOT ||
+    buildRoot.toLowerCase() === path.resolve(packageRoot, 'build').toLowerCase())) {
+  throw new Error('Test fault gates require --no-stage and a separate WINDOWS_MEDIA_BUILD_ROOT')
+}
 
 if (configuration !== 'Debug' && configuration !== 'Release') {
   throw new Error(`Unsupported media engine configuration: ${configuration}`)
@@ -128,6 +133,7 @@ const cmakeArgs = [
   `--CDNAPI_VERSION=${NAPI_VERSION}`,
   `--CDWINDOWS_MEDIA_ENABLE_ASAN=${enableAsan ? 'ON' : 'OFF'}`,
   `--CDWINDOWS_MEDIA_BUILD_LAB=${buildMediaLab ? 'ON' : 'OFF'}`,
+  `--CDWINDOWS_MEDIA_TEST_FAULT_GATES=${testFaultGates ? 'ON' : 'OFF'}`,
   // cmake-js drops empty -D values. An explicit CMake false string clears a
   // previous local override; STRING prevents PATH normalization of "OFF".
   `--CDWINDOWS_MEDIA_LIVEKIT_SDK_ROOT:STRING=${

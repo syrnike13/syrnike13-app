@@ -3,6 +3,16 @@ import { Readable } from 'node:stream'
 
 import { describe, expect, it, vi } from 'vitest'
 
+const nativeBrokerMocks = vi.hoisted(() => ({
+  load: vi.fn(),
+  verify: vi.fn(),
+}))
+
+vi.mock('node:module', () => ({ createRequire: () => nativeBrokerMocks.load }))
+vi.mock('./media-artifacts', () => ({
+  verifyMediaArtifactDistribution: nativeBrokerMocks.verify,
+}))
+
 vi.mock('electron', () => ({
   app: {
     getAppPath: () => 'C:\\syrnike',
@@ -28,6 +38,55 @@ class FakeUtilityProcess extends EventEmitter {
 }
 
 describe('ElectronMediaUtilityAdapter', () => {
+  it('retains the verified native exit deadline after the utility exits', async () => {
+    vi.resetModules()
+    const { ElectronMediaUtilityAdapter, armMediaProcessExitDeadline } =
+      await import('./media-utility-adapter')
+    nativeBrokerMocks.load.mockClear()
+    nativeBrokerMocks.verify.mockClear()
+    armMediaProcessExitDeadline(4_000)
+    expect(nativeBrokerMocks.load).not.toHaveBeenCalled()
+
+    const child = new FakeUtilityProcess()
+    const guard = { terminate: vi.fn(), hasExited: () => true, close: vi.fn() }
+    const armProcessExitDeadline = vi.fn()
+    nativeBrokerMocks.load.mockReturnValue({
+      openUtilityProcess: () => guard,
+      armProcessExitDeadline,
+    })
+    const fork = vi.fn(() => {
+      expect(nativeBrokerMocks.verify).toHaveBeenCalledTimes(1)
+      return child
+    })
+    const adapter = new ElectronMediaUtilityAdapter({
+      utilityEntryPath: 'C:\\syrnike\\media-host.cjs',
+      nativeModulePath: 'C:\\syrnike\\windows_media.node',
+      fork,
+    })
+    adapter.start({ onMessage: vi.fn(), onExit: vi.fn() })
+    child.emit('spawn')
+    child.emit('exit', 0)
+    armMediaProcessExitDeadline(4_000)
+    expect(armProcessExitDeadline).toHaveBeenCalledWith(4_000)
+    expect(nativeBrokerMocks.load).toHaveBeenCalledTimes(1)
+    expect(nativeBrokerMocks.verify).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects a broker without a native exit deadline before spawning media', async () => {
+    vi.resetModules()
+    const { ElectronMediaUtilityAdapter } = await import('./media-utility-adapter')
+    nativeBrokerMocks.load.mockReturnValue({ openUtilityProcess: vi.fn() })
+    const fork = vi.fn(() => new FakeUtilityProcess())
+    const adapter = new ElectronMediaUtilityAdapter({
+      utilityEntryPath: 'C:\\syrnike\\media-host.cjs',
+      nativeModulePath: 'C:\\syrnike\\windows_media.node',
+      fork,
+    })
+    expect(() => adapter.start({ onMessage: vi.fn(), onExit: vi.fn() }))
+      .toThrow('Invalid utility process broker')
+    expect(fork).not.toHaveBeenCalled()
+  })
+
   it('starts the production host with the current media protocol version', () => {
     vi.useFakeTimers()
     const child = new FakeUtilityProcess()

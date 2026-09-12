@@ -1,6 +1,7 @@
 const { readFileSync } = require('node:fs')
 const path = require('node:path')
 const { isDeepStrictEqual } = require('node:util')
+const { execFile, execFileSync, fork } = require('node:child_process')
 
 const { app, utilityProcess } = require('electron')
 
@@ -372,6 +373,13 @@ async function nativeConformance() {
     'trackStateChanged',
   ]) {
     const canonical = canonicalPublicEvent(type)
+    // Canonical transport fixtures also exercise optional terminal-incident
+    // metadata. This scenario rejects a missing credential lease before any
+    // Room operation starts, so it has no native terminal incident to cite.
+    if (type === 'roomStateChanged') {
+      delete canonical.failure.causeSequence
+      delete canonical.failure.causeTimestampMs
+    }
     const emitted = publicEventsByType.get(type) || []
     // Sequence is monotonic delivery identity, not a fixed cross-owner schedule.
     if (!emitted.some((event) => isDeepStrictEqual({ ...event, sequence: canonical.sequence }, canonical))) {
@@ -432,38 +440,225 @@ async function unexpectedExit() {
   await lifecycleCycle(10_001)
 }
 
-async function stalledUtilityTermination() {
-  const broker = require(path.resolve(mediaRoot, 'windows_media_texture_broker.node'))
-  const child = utilityProcess.fork(__filename, ['--stalled-utility'], {
+const brokerPath = process.env.SYRNIKE_MEDIA_BROKER_TEST_PATH || path.resolve(mediaRoot, 'windows_media_texture_broker.node')
+
+async function stalledUtilityTermination(action = 'terminate') {
+  const broker = require(brokerPath)
+  const child = !app ? forkGuardFixture('--guard-orphan') : utilityProcess.fork(__filename, ['--stalled-utility'], {
     serviceName: 'syrnike-media-termination-smoke', stdio: 'ignore',
   })
   const exited = new Promise(resolve => child.once('exit', resolve))
   await boundedTimeout('stalled utility spawn', 2_000,
     new Promise(resolve => child.once('spawn', resolve)))
   const guard = broker.openUtilityProcess(child.pid)
+  let closed = false
+  let receiver
   try {
+    receiver = broker.openReceiverProcess(child.pid)
+    const releasedReference = broker.openReceiverProcess(child.pid)
+    releasedReference.close()
+    releasedReference.close()
     const stalled = new Promise(resolve => child.once('message', resolve))
-    child.postMessage('stall')
+    if (app) child.postMessage('stall')
     await boundedTimeout('utility stall', 2_000, stalled)
     if (guard.hasExited()) throw new Error('stalled fixture unexpectedly exited')
-    guard.terminate()
-    guard.terminate()
-    await boundedTimeout('retained-handle termination', 2_000, (async () => {
-      while (!guard.hasExited()) await new Promise(resolve => setTimeout(resolve, 10))
-    })())
-    await boundedTimeout('Electron utility exit notification', 2_000, exited)
+    if (receiver.hasExited()) throw new Error('closing a receiver reference terminated the fixture')
+    const stoppedAt = performance.now()
+    if (action === 'close') {
+      guard.close()
+      guard.close()
+      closed = true
+    } else {
+      guard.terminate()
+      guard.terminate()
+    }
+    // Electron's exit notification can precede the Windows process handle
+    // becoming signaled, particularly when a Job Object closes the process.
+    // Require both observations within the same termination budget.
+    await boundedTimeout('confirmed utility termination', 2_000, Promise.all([
+      exited,
+      (async () => {
+        while (!receiver.hasExited()) await new Promise(resolve => setTimeout(resolve, 10))
+        if (!closed && !guard.hasExited()) throw new Error('utility guard missed confirmed process exit')
+      })(),
+    ]))
+    return performance.now() - stoppedAt
   } finally {
-    try { if (!guard.hasExited()) guard.terminate() } finally { guard.close() }
+    receiver?.close()
+    if (!closed) {
+      try { if (!guard.hasExited()) guard.terminate() } finally { guard.close() }
+    }
   }
 }
 
-if (process.argv.includes('--stalled-utility')) {
+function forkGuardFixture(mode) {
+  return fork(__filename, [mode], {
+    execPath: process.execPath, windowsHide: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+  })
+}
+
+async function nativeProcessExitDeadline() {
+  const child = forkGuardFixture('--exit-deadline-child')
+  const closed = new Promise(resolve => child.once('close', resolve))
+  let receiver
+  try {
+    const ready = await boundedTimeout('exit deadline fixture ready', 2_000,
+      new Promise((resolve, reject) => { child.once('message', resolve); child.once('error', reject) }))
+    if (ready?.validated !== true) throw new Error('Exit deadline validation failed')
+    receiver = require(brokerPath).openReceiverProcess(child.pid)
+    const startedAt = performance.now()
+    child.send('arm')
+    await boundedTimeout('native deadline through blocked JavaScript', 1_500, Promise.all([
+      closed,
+      (async () => {
+        while (!receiver.hasExited()) await new Promise(resolve => setTimeout(resolve, 10))
+      })(),
+    ]))
+    const elapsedMs = performance.now() - startedAt
+    if (child.exitCode !== 0 || elapsedMs < 400)
+      throw new Error(`Unexpected native deadline exit: ${child.exitCode}, ${elapsedMs} ms`)
+    return { elapsedMs, invalidArgumentsRejected: true, repeatedArmDidNotExtend: true,
+      blockedJavaScript: true, kernelExitConfirmed: true }
+  } finally {
+    if (child.exitCode === null) child.kill()
+    receiver?.close()
+  }
+}
+
+async function guardParentExit() {
+  const parent = forkGuardFixture('--guard-parent')
+  const closed = new Promise(resolve => parent.once('close', resolve))
+  let childGuard
+  try {
+    const message = await boundedTimeout('guard parent ready', 4_000,
+      new Promise((resolve, reject) => { parent.once('message', resolve); parent.once('error', reject) }))
+    if (!Number.isSafeInteger(message?.pid) || message.pid <= 0) throw new Error('Guard child PID missing')
+    childGuard = require(brokerPath).openUtilityProcess(message.pid)
+    if (childGuard.hasExited()) throw new Error('Guard child exited before its parent')
+    // Terminate the parent without running JavaScript/N-API finalizers.
+    const stoppedAt = performance.now()
+    parent.kill()
+    await boundedTimeout('guard parent and orphan exit', 2_000, Promise.all([
+      closed,
+      (async () => {
+        while (!childGuard.hasExited()) await new Promise(resolve => setTimeout(resolve, 10))
+      })(),
+    ]))
+    return performance.now() - stoppedAt
+  } finally {
+    if (parent.exitCode === null) parent.kill()
+    if (childGuard) {
+      try { if (!childGuard.hasExited()) childGuard.terminate() } finally { childGuard.close() }
+    }
+  }
+}
+
+function processResources() {
+  const command = `$sample = Get-Process -Id ${process.pid}; [pscustomobject]@{handles=$sample.HandleCount; threads=$sample.Threads.Count; privateBytes=$sample.PrivateMemorySize64} | ConvertTo-Json -Compress`
+  const result = JSON.parse(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], {
+    encoding: 'utf8', windowsHide: true,
+  }))
+  for (const key of ['handles', 'threads', 'privateBytes']) {
+    if (!Number.isSafeInteger(result[key]) || result[key] < 0) throw new Error(`Invalid process resource ${key}`)
+  }
+  if (process.env.SYRNIKE_MEDIA_HANDLE_DIAGNOSTIC) {
+    const summary = execFileSync(process.env.SYRNIKE_MEDIA_HANDLE_DIAGNOSTIC,
+      ['-nobanner', '-s', '-p', String(process.pid)], { encoding: 'utf8', windowsHide: true })
+    result.handleTypes = Object.fromEntries([...summary.matchAll(/^\s+([^:\r\n]+?)\s*:\s*(\d+)\s*$/gm)]
+      .map(match => [match[1].trim(), Number(match[2])]))
+  }
+  return result
+}
+
+async function isolatedGuardResources() {
+  const stdout = await new Promise((resolve, reject) => {
+    execFile(process.execPath, [__filename, '--process-guard-only'], {
+      windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, timeout: 600_000,
+    }, (error, output) => error ? reject(error) : resolve(output))
+  })
+  const report = JSON.parse(stdout.trim().split(/\r?\n/).at(-1))
+  if (report.status !== 'pass') throw new Error('Isolated process guard proof failed')
+  return report.processGuard
+}
+
+if (process.argv.includes('--exit-deadline-child')) {
+  const broker = require(brokerPath)
+  for (const value of [undefined, null, '500', 0, -1, 0.5, 4001, NaN, Infinity]) {
+    let rejected = false
+    try { broker.armProcessExitDeadline(value) } catch (error) { rejected = error instanceof TypeError }
+    if (!rejected) throw new Error('Invalid native deadline was accepted')
+  }
+  process.once('message', () => {
+    broker.armProcessExitDeadline(500)
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+    broker.armProcessExitDeadline(4_000)
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60_000)
+    process.exit(1)
+  })
+  process.send({ validated: true })
+} else if (process.argv.includes('--guard-orphan')) {
+  process.send({ ready: true })
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60_000)
+} else if (process.argv.includes('--guard-parent')) {
+  const child = forkGuardFixture('--guard-orphan')
+  const guard = require(brokerPath).openUtilityProcess(child.pid)
+  child.once('message', () => process.send({ pid: child.pid }))
+  // Retain the job for the entire parent lifetime, including its abrupt exit.
+  process.on('message', () => guard.hasExited())
+} else if (process.argv.includes('--stalled-utility')) {
   process.parentPort.on('message', () => {
     process.parentPort.postMessage('stalled')
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60_000)
   })
-} else app.whenReady().then(async () => {
-  await stalledUtilityTermination()
+} else (app ? app.whenReady() : Promise.resolve()).then(async () => {
+  const processExitDeadline = await nativeProcessExitDeadline()
+  if (process.argv.includes('--process-exit-deadline-only')) {
+    console.info(JSON.stringify({ status: 'pass', processExitDeadline }))
+    if (app) app.exit(0)
+    else process.exit(0)
+    return
+  }
+  const isolatedResources = app ? await isolatedGuardResources() : null
+  const guardResults = { terminate: 0, close: 0, parentExit: 0 }
+  const maximumExitMs = { terminate: 0, close: 0, parentExit: 0 }
+  console.info(JSON.stringify({ processGuardStarted: true, runtime: app ? 'electron' : 'node' }))
+  const cold = processResources()
+  // Exercise the full repeated workload before measuring the Electron process,
+  // whose background services allocate handles during the initial batch.
+  const warmupRepetitions = 100
+  for (let warmup = 0; warmup < warmupRepetitions; warmup += 1) {
+    await stalledUtilityTermination()
+    await stalledUtilityTermination('close')
+    await guardParentExit()
+  }
+  const baseline = processResources()
+  console.info(JSON.stringify({ processGuardWarmup: warmupRepetitions, cold, baseline }))
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    maximumExitMs.terminate = Math.max(maximumExitMs.terminate, await stalledUtilityTermination())
+    guardResults.terminate += 1
+    maximumExitMs.close = Math.max(maximumExitMs.close, await stalledUtilityTermination('close'))
+    guardResults.close += 1
+    maximumExitMs.parentExit = Math.max(maximumExitMs.parentExit, await guardParentExit())
+    guardResults.parentExit += 1
+    if ((attempt + 1) % 25 === 0)
+      console.info(JSON.stringify({ processGuardCheckpoint: attempt + 1, resources: processResources() }))
+  }
+  const final = processResources()
+  const resourceDelta = Object.fromEntries(['handles', 'threads', 'privateBytes'].map(key => [key, final[key] - baseline[key]]))
+  const processGuard = { warmupRepetitions, repetitions: guardResults, maximumExitMs,
+    resourceScope: app ? 'electron-integration' : 'isolated-kernel-guard', isolatedResources,
+    resources: { cold, baseline, final, delta: resourceDelta } }
+  // Chromium owns unrelated background services. Require exact resource return
+  // in the isolated kernel-guard process and retain integration deltas separately.
+  if (!app && (resourceDelta.handles > 0 || resourceDelta.threads > 0))
+    throw new Error(`Process guard resource growth: ${JSON.stringify(processGuard)}`)
+  if (process.argv.includes('--process-guard-only')) {
+    console.info(JSON.stringify({ status: 'pass', processGuard }))
+    if (app) app.exit(0)
+    else process.exit(0)
+    return
+  }
   const conformance = await nativeConformance()
   for (let cycle = 1; cycle <= 50; ++cycle) await lifecycleCycle(cycle)
   await incompatibleHandshake()
@@ -475,11 +670,14 @@ if (process.argv.includes('--stalled-utility')) {
       incompatibleHandshake: 'rejected',
       unexpectedExit: 'unexpected_exit',
       stalledUtilityTermination: 'kernel_exit_confirmed',
+      processGuard,
+      processExitDeadline,
       nativeConformance: conformance,
     }),
   )
   app.exit(0)
 }).catch((error) => {
   console.error(error)
-  app.exit(1)
+  if (app) app.exit(1)
+  else process.exit(1)
 })

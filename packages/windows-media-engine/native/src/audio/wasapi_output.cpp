@@ -1,4 +1,5 @@
 #include "audio/wasapi_output.hpp"
+#include "testing/product_fault_gate.hpp"
 
 #include <windows.h>
 #include <audioclient.h>
@@ -15,6 +16,11 @@ namespace syrnike::windows_media::audio {
 namespace {
 using Clock = std::chrono::steady_clock;
 using Microsoft::WRL::ComPtr;
+// LiveKit disables its built-in playback through the default process session.
+// Keep product output in a dedicated, stable session so replacement workers
+// preserve Windows mixer preferences without inheriting the SDK's mute.
+constexpr GUID kOutputAudioSession{
+    0x3a1665b2, 0xa3b5, 0x467c, {0x9b, 0x1c, 0x39, 0xf0, 0x46, 0x2f, 0xe3, 0x57}};
 struct Event {
   HANDLE value;
   explicit Event(bool manual = true) : value(CreateEventW(nullptr, manual, FALSE, nullptr)) {
@@ -74,11 +80,12 @@ WasapiOutput::WasapiOutput() : state_(std::make_shared<State>()) {}
 WasapiOutput::~WasapiOutput() {
   if (!stop(Clock::now() + std::chrono::seconds{5})) std::terminate();
 }
-WasapiOutputFailure WasapiOutput::start(AudioEndpoint endpoint, std::uint64_t epoch) {
+WasapiOutputFailure WasapiOutput::start(AudioEndpoint endpoint, std::uint64_t epoch, std::stop_token cancellation) {
   if (owner_ != std::this_thread::get_id() || worker_.joinable() || !epoch ||
       state_->status != WasapiOutputState::stopped || state_->input ||
       endpoint.direction != AudioDirection::output || endpoint.endpoint_id.empty())
     return WasapiOutputFailure::invalid_state;
+  if (cancellation.stop_requested()) return WasapiOutputFailure::cancelled;
   state_->epoch = epoch;
   state_->input = std::make_shared<RemoteAudioPcmPort>(epoch, 2);
   state_->echo = std::make_shared<RenderedEchoReference>(epoch);
@@ -92,7 +99,14 @@ WasapiOutputFailure WasapiOutput::start(AudioEndpoint endpoint, std::uint64_t ep
     SetEvent(state_->done.value);
     return WasapiOutputFailure::activation_failed;
   }
-  if (WaitForSingleObject(state_->ready.value, 5000) != WAIT_OBJECT_0) {
+  // Cancellation only signals the worker's owned event; it never waits for the
+  // platform call on the submitting control lane. Teardown retains its deadline.
+  std::stop_callback cancel(cancellation, [state = state_] { SetEvent(state->stop.value); });
+  const HANDLE events[]{state_->stop.value, state_->ready.value};
+  const auto wake = WaitForMultipleObjects(2, events, FALSE, 5000);
+  if (cancellation.stop_requested() || wake == WAIT_OBJECT_0)
+    return WasapiOutputFailure::cancelled;
+  if (wake != WAIT_OBJECT_0 + 1) {
     state_->fail(WasapiOutputFailure::start_timeout, HRESULT_FROM_WIN32(WAIT_TIMEOUT));
     SetEvent(state_->stop.value);
     return WasapiOutputFailure::start_timeout;
@@ -138,6 +152,13 @@ WasapiOutputStats WasapiOutput::stats() const noexcept {
 void WasapiOutput::run(const std::shared_ptr<State>& state, AudioEndpoint endpoint) noexcept {
   state->thread_alive = true;
   try {
+#ifdef WINDOWS_MEDIA_REMOTE_AUDIO_PROBE
+    if (lab::render_probe_epoch.load() == state->epoch && lab::render_block_prepare.load()) {
+      lab::render_prepare_entered = true;
+      WaitForSingleObject(state->stop.value, INFINITE);
+      throw Failure{WasapiOutputFailure::cancelled, HRESULT_FROM_WIN32(ERROR_CANCELLED)};
+    }
+#endif
     Apartment apartment;
     check(apartment.result, WasapiOutputFailure::activation_failed);
     ComPtr<IMMDeviceEnumerator> enumerator;
@@ -153,10 +174,11 @@ void WasapiOutput::run(const std::shared_ptr<State>& state, AudioEndpoint endpoi
     properties.eCategory = AudioCategory_Other;
     check(client->SetClientProperties(&properties), WasapiOutputFailure::policy_unavailable);
     WAVEFORMATEX format{WAVE_FORMAT_PCM, 2, kRemoteAudioRate, kRemoteAudioRate * 4, 4, 16, 0};
+    testing::holdProductFault("output-initialize");
     check(client->Initialize(AUDCLNT_SHAREMODE_SHARED,
           AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
               AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-          200'000, 0, &format, nullptr), WasapiOutputFailure::format_unavailable);
+          200'000, 0, &format, &kOutputAudioSession), WasapiOutputFailure::format_unavailable);
     Event sample(false);
     check(client->SetEventHandle(sample.value), WasapiOutputFailure::render_failed);
     ComPtr<IAudioRenderClient> render;
@@ -200,6 +222,7 @@ void WasapiOutput::run(const std::shared_ptr<State>& state, AudioEndpoint endpoi
         const auto delay = (std::min)(lab::render_delay_ms.exchange(0), std::uint32_t{1500});
         if (delay && WaitForSingleObject(state->stop.value, delay) == WAIT_OBJECT_0) break;
         if (lab::render_stop_client.exchange(false)) check(client->Stop(), WasapiOutputFailure::render_failed);
+        if (lab::render_device_loss.exchange(false)) check(AUDCLNT_E_DEVICE_INVALIDATED, WasapiOutputFailure::device_lost);
       }
 #endif
       UINT32 padding = 0;
@@ -246,6 +269,7 @@ void WasapiOutput::run(const std::shared_ptr<State>& state, AudioEndpoint endpoi
       }
       if (count) {
         BYTE* destination = nullptr;
+        testing::holdProductFault("output-render");
         check(render->GetBuffer(count, &destination), WasapiOutputFailure::render_failed);
         std::copy_n(prepared.begin(), static_cast<std::size_t>(count) * 2, reinterpret_cast<std::int16_t*>(destination));
         check(render->ReleaseBuffer(count, 0), WasapiOutputFailure::render_failed);

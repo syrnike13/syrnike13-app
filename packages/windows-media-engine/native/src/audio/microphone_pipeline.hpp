@@ -11,7 +11,7 @@ struct MicrophoneDemand {
   bool needed() const noexcept { return warm || publication || meter; }
 };
 enum class MicrophonePipelineFailure {
-  none, invalid_state, input_unavailable, capture_failed, command_timeout, stop_timeout
+  none, invalid_state, input_unavailable, capture_failed, command_timeout, stop_timeout, cancelled
 };
 struct MicrophonePipelineStats {
   MicrophoneDemand demand;
@@ -38,11 +38,11 @@ class MicrophonePipeline final {
   // Registry is the shared engine registry. Refresh notifications on its
   // control cadence, then call reconcileInput; follow-default and explicit
   // selections use exactly the same healthy-candidate transaction.
-  MicrophonePipelineFailure selectInput(AudioDeviceRegistry&, AudioDeviceIntent);
-  MicrophonePipelineFailure reconcileInput(AudioDeviceRegistry&);
-  MicrophonePipelineFailure setDemand(MicrophoneDemand);
+  MicrophonePipelineFailure selectInput(AudioDeviceRegistry&, AudioDeviceIntent, std::stop_token cancellation = {});
+  MicrophonePipelineFailure reconcileInput(AudioDeviceRegistry&, std::stop_token cancellation = {});
+  MicrophonePipelineFailure setDemand(MicrophoneDemand, std::stop_token cancellation = {});
   MicrophonePipelineFailure configure(const MicrophoneDspConfig&);
-  MicrophonePipelineFailure setSystemProcessingBypass(bool);
+  MicrophonePipelineFailure setSystemProcessingBypass(bool, std::stop_token cancellation = {});
   // Commit between DSP frames. This retains the projection, never its renderer.
   // A null/retired port makes AEC unavailable without changing capture/sender.
   MicrophonePipelineFailure setEchoReference(std::shared_ptr<EchoReferencePort>);
@@ -55,8 +55,8 @@ class MicrophonePipeline final {
  private:
   struct State;
   static void run(const std::shared_ptr<State>&, EnhancementFactory) noexcept;
-  MicrophonePipelineFailure selectInput(AudioEndpoint);
-  MicrophonePipelineFailure switchCapture(const AudioEndpoint&, bool bypass_system_processing);
+  MicrophonePipelineFailure selectInput(AudioEndpoint, std::stop_token);
+  MicrophonePipelineFailure switchCapture(const AudioEndpoint&, bool bypass_system_processing, std::stop_token);
   bool commitInput(MicrophoneCapture*) noexcept;
   bool submit() noexcept;
   bool onOwner() const noexcept;

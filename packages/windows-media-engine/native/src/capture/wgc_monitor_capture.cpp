@@ -1,4 +1,5 @@
 #include "capture/wgc_monitor_capture.hpp"
+#include "testing/product_fault_gate.hpp"
 #include "capture/wgc_capture_support.hpp"
 
 #include <windows.h>
@@ -146,6 +147,7 @@ class WgcMonitorCaptureBackendImpl final : public WgcMonitorCaptureBackend {
       if (size.Width <= 0 || size.Height <= 0) {
         return {false, CaptureFailure{"invalid_monitor_size", "WGC monitor size is empty"}};
       }
+      testing::holdProductFault("wgc-monitor-frame-pool");
       auto frame_pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
           direct3d_device, DirectXPixelFormat::B8G8R8A8UIntNormalized,
           static_cast<int>(options_.frame_pool_size), size);
@@ -230,6 +232,7 @@ class WgcMonitorCaptureBackendImpl final : public WgcMonitorCaptureBackend {
         state_->active = true;
         state_->diagnostics.d3d_debug_enabled = debug_enabled;
       }
+      testing::holdProductFault("wgc-monitor-start");
       session.StartCapture();
       return {};
     } catch (const winrt::hresult_error& error) {

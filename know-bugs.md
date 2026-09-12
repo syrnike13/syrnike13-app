@@ -2,6 +2,99 @@
 
 This file records reproducible bugs and constraints in the local environment, toolchain, operating system, or third-party libraries that the application repository cannot fix. Application defects do not belong here.
 
+## Playwright Electron launch can miss the initial navigation
+
+On 2026-09-09, Playwright 1.62.1 with Electron 43.1.0 timed out during
+`electron.launch` after 28 successful launch/close controls. Both DevTools
+connections were established and the renderer was running the application.
+The protocol trace returned an initial empty frame tree, received no
+`Page.frameNavigated`, and never reached Node `Runtime.enable`. All recorded
+CDP requests received responses. This is consistent with Playwright waiting
+for the initial page's navigation promise inside `CRBrowser.connect`.
+
+With a custom `executablePath`, Playwright omits its unpackaged-app loader.
+For this unpackaged fixture, preloading the unmodified official loader before
+the inspector arguments completed 100 launch/firstWindow/close controls with
+the same 60-second timeout. The loader defers Electron's ready event until
+automation initialization. The private Windows launcher prepends `-r` and the
+loader path before forwarding Playwright's arguments; it changes no installed
+package or product file. Preserve both launcher and loader hashes in fixture
+inputs. This startup control does not qualify native faults or resolve every
+earlier shutdown delay.
+
+See the [control artifact](docs/native-v2/playwright-launch-control-e3773e48.json)
+and the linked versioned upstream sources for the capture hashes, observation
+limits, and exact initialization paths.
+
+## Media Foundation activation retains handles on the NVIDIA test machine
+
+On 2026-09-09, Windows 11 build 26200 with RTX 5070 Ti, driver
+`32.0.16.1074` and injected `nvspcap64.dll` version `11.0.9.239` retained two
+handles per hardware H264 MFT activation/shutdown. A 100-cycle probe on one
+thread returned 321 -> 521 process handles and 10 -> 10 threads. The probe
+only enumerates, activates, calls `IMFActivate::ShutdownObject`, releases COM
+references and shuts down Media Foundation; it does not submit frames or use
+the application encoder pipeline. MFStartup/MFShutdown and enumeration alone
+showed no growth. Ordinary encoder start/stop and withheld-output faults also
+showed approximately two additional handles per cycle.
+
+The growing handle types are a mutex and section with names based on
+`{2627E361-24E2-4F14-99ED-A20D0685D8DD}_v22`. That string occurs in the installed
+NVIDIA overlay DLL. A control run with the overlay disabled has not yet been
+authorized/performed, so overlay involvement is a hypothesis rather than a
+confirmed root cause. No driver or overlay settings have been changed.
+
+Reproduce with `encoder_fault_tests --same-thread-activation`; use
+`--resource-stages` to isolate startup, enumeration and activation. The probe
+follows the documented
+[activation shutdown contract](https://learn.microsoft.com/en-us/windows/win32/api/mfobjects/nf-mfobjects-imfactivate-shutdownobject).
+Both activation-only shutdown and explicit transform shutdown plus activation
+shutdown reproduced growth. Additional end-streaming/device-manager cleanup did
+not resolve it and was not retained as a product workaround.
+
+The fault harness reports resource failure and exits nonzero. This blocks the
+encoder resource qualification on this setup; successful owner assertions are
+not a complete PASS. Process containment closes resources when the utility exits,
+but does not establish zero growth during repeated encoder lifecycles.
+
+A subsequent [isolated child policy control](docs/native-v2/mft-extension-policy-b007397a.json)
+at `b007397a` reproduced +200 handles and zero thread growth in both 100-cycle
+runs, with Windows extension points enabled and disabled. The child policy was
+queried before resuming the process; both probes exited normally with the
+expected resource-failure status. This policy control did not establish that
+the overlay DLL was absent and does not confirm or disprove overlay involvement.
+No machine-wide settings were changed.
+
+After the host restart, the same existing Release probe at `52ccd1e3` passed
+100 activation-only cycles with zero handle or thread growth. Both 100-cycle
+bitrate failure controls also passed their resource assertions. The withheld-output
+control still failed its resource assertion: 459 -> 464 handles and 28 -> 26
+threads, despite passing all 100 owner assertions. During that run, the observed
+overlay DLL was version `11.0.9.251`; the NVIDIA driver remained unchanged.
+The activation-only process exited before its loaded modules could be captured.
+These [post-restart controls](docs/native-v2/encoder-post-restart-52ccd1e3.json)
+show changed behavior without establishing its cause. The earlier +200-handle
+observations remain historical evidence; they do not describe every later run.
+No driver or overlay configuration was changed by this task.
+
+## React development performance tracks accumulate during long media runs
+
+The React development frontend retained about 2.5 million `PerformanceMeasure`
+objects during the local #131 utility recovery series on 2026-09-09. Renderer
+private memory grew from 347 MiB after the first cycle to roughly 2.5 GiB after
+56 cycles. A heap snapshot attributed 303 MB of object storage to those measures;
+the Chromium allocator dump showed additional associated storage. Ordinary GC
+left the growth in place. Clearing the performance timeline after the run and
+then collecting garbage reduced renderer private memory to 692 MiB and embedder
+heap usage from 315 MiB to 6 MiB. This diagnostic does not establish that all
+remaining memory was leaked or that every observed rendering gap had that cause.
+
+[React performance tracks](https://react.dev/reference/dev-tools/react-performance-tracks)
+are enabled by default in development and disabled in normal production builds.
+Long resource qualification must use the production frontend. Periodically
+clearing measures during an acceptance run would change the measured environment;
+the existing development run remains incomplete evidence, not a resource PASS.
+
 ## Electron managed shared-texture transfer can lose late renderer releases
 
 On Electron 43.1.0, a delayed managed texture transfer during native utility loss

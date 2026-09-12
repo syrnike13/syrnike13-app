@@ -73,6 +73,27 @@ const reservation: VoiceReservationRequest = {
 }
 
 describe('GatewayVoiceAuthorityAdapter', () => {
+  it.each([
+    { type: 'LiveKitUnavailable', retryable: true },
+    { type: 'Forbidden', retryable: false },
+    { type: undefined, retryable: false },
+  ])('classifies $type authority errors without retrying permission failures', async ({ type, retryable }) => {
+    const transport = new FakeTransport()
+    const adapter = new GatewayVoiceAuthorityAdapter({ transport })
+    const pending = adapter.reserve(reservation, new AbortController().signal)
+    await vi.waitFor(() => expect(transport.sent).toHaveLength(1))
+    transport.event({
+      type: 'Error',
+      request: { operation_id: reservation.operationId },
+      data: { type },
+    })
+    await expect(pending).rejects.toMatchObject({ failure: { retryable, stage: 'voice_authority' } })
+    expect(transport.sent.at(-1)?.message).toMatchObject({ request: {
+      mode: 'disconnect', operation_id: reservation.operationId,
+    } })
+    adapter.dispose()
+  })
+
   it('sends exact engine claims and validates the returned credential lease', async () => {
     const transport = new FakeTransport()
     const adapter = new GatewayVoiceAuthorityAdapter({

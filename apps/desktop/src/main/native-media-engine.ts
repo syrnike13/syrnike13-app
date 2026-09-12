@@ -17,7 +17,7 @@ import {
   createNativeDiagnosticLog, createNativeDiagnosticSession,
   pruneNativeDiagnosticSessionsEffect, type NativeDiagnosticLog, type DiagnosticLogRecord,
 } from './native-runtime/diagnostic-log'
-import { captureNativeDiagnosticIncident } from './native-runtime/diagnostic-incidents'
+import { captureNativeDiagnosticIncident, getNativeDiagnosticCorrelationId } from './native-runtime/diagnostic-incidents'
 
 export const NATIVE_MEDIA_UNAVAILABLE_STATE: NativeMediaRuntimeState = {
   available: false,
@@ -78,9 +78,13 @@ function assertTrustedSender(
 
 function observeRenderer(contents: WebContents) {
   if (observedRenderers.has(contents)) return
+  const owner = windowGetter()
+  if (!owner || owner.isDestroyed() || owner.webContents !== contents) return
   observedRenderers.add(contents)
   const rendererGone = () => {
-    if (windowGetter()?.webContents !== contents) return
+    // The destroyed event runs after BrowserWindow.webContents becomes invalid.
+    // Compare the retained owner without dereferencing its native wrapper.
+    if (windowGetter() !== owner) return
     rendererListening = false
     active?.frames.rendererGone()
     active?.picker.cancel()
@@ -100,9 +104,20 @@ function unavailableError() {
 export function createNativeRtcEngineAdapter() {
   const runtime = new MediaRuntimeSupervisor({
     createAdapter: createElectronMediaUtilityAdapterFactory(),
-    onUtilityExit: evidence => logNativeVoiceDiagnostic('utility_exit', {
-      hostEpoch: runtime.getHostEpoch(), ...evidence,
-    }),
+    onUtilityExit: evidence => {
+      logNativeVoiceDiagnostic('utility_exit', {
+        hostEpoch: runtime.getHostEpoch(), episodeId: runtime.getFailureEpisodeId(), ...evidence,
+      })
+      if (!evidence.expected) recordMediaDiagnostic({
+        scope: 'native-runtime-supervisor', event: 'utility_crashed', runtime: 'media',
+        hostEpoch: runtime.getHostEpoch(), episodeId: runtime.getFailureEpisodeId(),
+        stage: 'utility_process', reason: evidence.source, metrics: {
+          uptimeMs: evidence.uptimeMs, stderrBytes: evidence.stderrBytes,
+          stderrTruncated: Number(evidence.stderrTruncated),
+          ...(evidence.code === null ? {} : { exitCode: evidence.code }),
+        },
+      })
+    },
   })
   const subscriptions: Array<() => void> = []
   const adapter = new NativeRtcEngineAdapterV2(runtime, undefined,
@@ -114,7 +129,14 @@ export function createNativeRtcEngineAdapter() {
       if (active?.adapter === adapter) active = null
     }, mediaUtilityAvailable)
   const frames = new MediaFrameController(runtime, adapter, () => windowGetter(),
-    code => logNativeVoiceDiagnostic('frame_bridge_failed', { code }),
+    (code, evidence) => {
+      logNativeVoiceDiagnostic('frame_bridge_failed', { code, ...evidence })
+      if (evidence) recordMediaDiagnostic({
+        scope: 'native-video', event: 'presentation_stalled', runtime: 'media',
+        errorCode: code, episodeId: evidence.episodeId, lane: evidence.path,
+        hostEpoch: evidence.epoch, revision: evidence.revision,
+      })
+    },
     inventory => {
       const microphone = adapter.desiredSnapshot()?.microphone
       const meter = inventory.microphoneMeter
@@ -141,8 +163,18 @@ export function createNativeRtcEngineAdapter() {
       scope: 'native-runtime-supervisor', event: 'runtime_degraded', runtime: 'media',
       hostEpoch: runtime.getHostEpoch(), status: state.status, restartCount: state.restartCount,
       errorCode: state.failure.code, stage: state.failure.stage,
+      episodeId: runtime.getFailureEpisodeId(), fatal: state.status === 'failed',
     })
   }), runtime.onEvent(event => {
+    if (event.failure?.causeSequence === event.sequence && event.failure.causeTimestampMs !== undefined) {
+      const episodeId = runtime.getFailureEpisodeId(event.failure.causeSequence)
+      logNativeVoiceDiagnostic('native_failure_origin', {
+        hostEpoch: runtime.getHostEpoch(), nativeSequence: event.sequence,
+        timestampMs: event.failure.causeTimestampMs, component: 'engine',
+        operation: event.failure.stage, code: event.failure.code,
+        correlationId: episodeId ? getNativeDiagnosticCorrelationId(episodeId) : undefined,
+      })
+    }
     recordMediaDiagnostic({
       scope: 'native-media-controller', event: event.type, runtime: 'media',
       hostEpoch: runtime.getHostEpoch(), nativeSequence: event.sequence,
@@ -150,14 +182,20 @@ export function createNativeRtcEngineAdapter() {
       lane: 'track' in event ? event.track : undefined,
       status: 'state' in event ? event.state : 'failed',
       errorCode: event.failure?.code, stage: event.failure?.stage,
+      episodeId: event.failure ? runtime.getFailureEpisodeId(event.failure.causeSequence) : undefined,
+      fatal: event.type === 'fatalEngineFailure',
     })
   }), runtime.onDiagnostic(event => {
+    const causeSequence = event.metrics.find(metric => metric.name === 'cause_sequence')?.value
+    const episodeId = typeof causeSequence === 'number' && Number.isSafeInteger(causeSequence) && causeSequence > 0
+      ? runtime.getFailureEpisodeId(causeSequence) : undefined
     // Implementation strings may contain device names or native handles. Keep
     // bounded numeric evidence and protocol codes in the product journal.
     logNativeVoiceDiagnostic('native_diagnostic', {
       hostEpoch: runtime.getHostEpoch(), nativeSequence: event.sequence,
       timestampMs: event.timestampMs, component: event.component,
       operation: event.operation, code: event.code, metrics: event.metrics,
+      correlationId: episodeId ? getNativeDiagnosticCorrelationId(episodeId) : undefined,
     })
     if (event.code === 'camera_metrics')
       logNativeVoiceDiagnostic('presentation_metrics', frames.metrics())
@@ -194,8 +232,8 @@ export function logNativeVoiceDiagnostic(event: string, data?: unknown) {
 }
 
 function recordMediaDiagnostic(record: DiagnosticLogRecord) {
-  logNativeVoiceDiagnostic(record.event, record)
-  captureNativeDiagnosticIncident(record)
+  const incident = captureNativeDiagnosticIncident(record)
+  logNativeVoiceDiagnostic(record.event, { ...record, correlationId: incident?.correlationId })
 }
 
 export const flushNativeMediaDiagnosticsEffect = Effect.fn(
@@ -217,7 +255,7 @@ export function registerNativeMediaRuntimeIpc(
   })
   ipcMain.handle(IPC.mediaRetryRuntime, async (event) => {
     assertTrustedSender(event, getWindow)
-    if (active && mediaUtilityAvailable()) await active.runtime.start()
+    if (active && mediaUtilityAvailable()) await active.runtime.retry()
     return runtimeState()
   })
   ipcMain.handle(IPC.mediaListDevices, async (event, value: unknown) => {

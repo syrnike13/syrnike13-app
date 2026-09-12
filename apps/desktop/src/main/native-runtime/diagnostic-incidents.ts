@@ -65,6 +65,7 @@ const NON_INCIDENT_PROJECTIONS = new Set([
 const pending: NativeDiagnosticIncident[] = []
 const lastIncidentAt = new Map<string, number>()
 const correlationAliases = new Map<string, string>()
+const episodeRoots = new Map<string, NativeDiagnosticIncident>()
 const lastAcknowledgedAt = new Map<string, number>()
 const retryState = new Map<string, { attempt: number; notBefore: number }>()
 let leasedBatch: (NativeDiagnosticIncidentBatch & { expiresAt: number }) | null = null
@@ -123,6 +124,11 @@ export function captureNativeDiagnosticIncident(
     record.stage,
   ].join(':')
   const correlationId = incidentCorrelationId(record)
+  if (record.episodeId && correlationId) {
+    return captureEpisodeIncident(createNativeIncident(record, timestampMs, {
+      triggerCode, identity, correlationId,
+    }))
+  }
   const fingerprint = `${identity}:${correlationId ?? 'uncorrelated'}`
   const previous = touchIncidentFingerprint(fingerprint, timestampMs)
   if (previous !== undefined && timestampMs - previous < REPEAT_WINDOW_MS) {
@@ -131,7 +137,7 @@ export function captureNativeDiagnosticIncident(
       existing.timestampMs = timestampMs
       existing.occurrenceCount = (existing.occurrenceCount ?? 1) + 1
       Object.assign(existing, {
-        severity: incidentSeverity(record),
+        severity: highestIncidentSeverity(existing.severity, incidentSeverity(record)),
         actionId: record.actionId,
         operationId: record.operation,
         nativeEventType: record.nativeEventType,
@@ -161,14 +167,23 @@ export function captureNativeDiagnosticIncident(
     if (!hasLeasedIncident(identity, correlationId)) return null
   }
 
-  const incident: NativeDiagnosticIncident = compactIncident({
+  const incident = createNativeIncident(record, timestampMs, { triggerCode, identity, correlationId })
+  pending.push(incident)
+  if (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
+  return incident
+}
+
+function createNativeIncident(
+  record: DiagnosticLogRecord,
+  timestampMs: number,
+  identity: { triggerCode: string; identity: string; correlationId?: string },
+): NativeDiagnosticIncident {
+  return compactIncident({
     timestampMs,
     firstTimestampMs: timestampMs,
     occurrenceCount: 1,
     severity: incidentSeverity(record),
-    triggerCode,
-    identity,
-    correlationId,
+    ...identity,
     area: 'native-runtime',
     cooldownMs: NATIVE_AUTOMATIC_COOLDOWN_MS,
     scope: record.scope,
@@ -194,9 +209,48 @@ export function captureNativeDiagnosticIncident(
     timeoutMs: record.timeoutMs,
     metrics: sanitizeMetrics(record.metrics),
   })
-  pending.push(incident)
-  if (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
-  return incident
+}
+
+function captureEpisodeIncident(incoming: NativeDiagnosticIncident) {
+  const correlationId = incoming.correlationId!
+  const root = episodeRoots.get(correlationId)
+  if (!root) {
+    // Keep a separate root value: an IPC lease must never be mutated while
+    // later symptoms are collected for a follow-up batch.
+    episodeRoots.set(correlationId, { ...incoming })
+    while (episodeRoots.size > MAX_INCIDENT_FINGERPRINTS) {
+      const oldest = episodeRoots.keys().next().value
+      if (oldest === undefined) break
+      episodeRoots.delete(oldest)
+    }
+    pending.push(incoming)
+    if (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
+    return incoming
+  }
+  root.severity = highestIncidentSeverity(root.severity, incoming.severity)
+  let existing = findPendingIncident(root.identity!, correlationId)
+  if (!existing) {
+    existing = { ...root, timestampMs: incoming.timestampMs, occurrenceCount: 0 }
+    pending.push(existing)
+    if (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
+  }
+  existing.timestampMs = incoming.timestampMs
+  existing.occurrenceCount = (existing.occurrenceCount ?? 1) + 1
+  existing.severity = highestIncidentSeverity(existing.severity, root.severity)
+  existing.relatedEvidence = [...(existing.relatedEvidence ?? []), {
+    timestampMs: incoming.timestampMs,
+    scope: incoming.scope,
+    event: incoming.event,
+    severity: incoming.severity,
+    errorCode: incoming.errorCode,
+    stage: incoming.stage,
+    status: incoming.status,
+    message: incoming.message,
+    hostEpoch: incoming.hostEpoch,
+    revision: incoming.revision,
+    metrics: incoming.metrics,
+  }].slice(-8)
+  return existing
 }
 
 export function captureRendererDiagnosticIncident(
@@ -216,6 +270,7 @@ export function captureRendererDiagnosticIncident(
     if (existing) {
       existing.timestampMs = timestampMs
       existing.occurrenceCount = (existing.occurrenceCount ?? 1) + 1
+      existing.severity = highestIncidentSeverity(existing.severity, value.severity)
       return true
     }
     if (!hasLeasedIncident(identity) && !lastAcknowledgedAt.has(identity)) {
@@ -261,8 +316,7 @@ export function leaseNativeDiagnosticIncidents(
   if (!isActiveAccount(accountId)) return null
   if (leasedBatch && leasedBatch.expiresAt <= timestampMs) {
     deferIncidentRetry(leasedBatch.incidents, timestampMs)
-    pending.unshift(...leasedBatch.incidents)
-    while (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
+    restorePendingIncidents(leasedBatch.incidents)
     leasedBatch = null
   }
   if (leasedBatch) {
@@ -331,8 +385,7 @@ export function releaseNativeDiagnosticIncidents(
   if (!isActiveAccount(accountId)) return false
   if (leasedBatch?.id !== batchId || leasedBatch.accountId !== accountId) return false
   deferIncidentRetry(leasedBatch.incidents, timestampMs)
-  pending.unshift(...leasedBatch.incidents)
-  while (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
+  restorePendingIncidents(leasedBatch.incidents)
   leasedBatch = null
   return true
 }
@@ -346,6 +399,7 @@ function resetIncidentState() {
   pending.length = 0
   lastIncidentAt.clear()
   correlationAliases.clear()
+  episodeRoots.clear()
   lastAcknowledgedAt.clear()
   retryState.clear()
   leasedBatch = null
@@ -416,6 +470,32 @@ function hasLeasedIncident(identity: string, correlationId?: string) {
   return false
 }
 
+function highestIncidentSeverity(
+  previous: NativeDiagnosticIncidentSeverity,
+  next: NativeDiagnosticIncidentSeverity,
+): NativeDiagnosticIncidentSeverity {
+  if (previous === 'fatal' || next === 'fatal') return 'fatal'
+  if (previous === 'error' || next === 'error') return 'error'
+  return 'warning'
+}
+
+function restorePendingIncidents(incidents: NativeDiagnosticIncident[]) {
+  for (const incident of incidents) {
+    if (!incident.correlationId || !episodeRoots.has(incident.correlationId)) continue
+    const followUp = findPendingIncident(incident.identity!, incident.correlationId)
+    if (!followUp) continue
+    incident.timestampMs = Math.max(incident.timestampMs, followUp.timestampMs)
+    incident.occurrenceCount = (incident.occurrenceCount ?? 1) + (followUp.occurrenceCount ?? 1)
+    incident.severity = highestIncidentSeverity(incident.severity, followUp.severity)
+    incident.relatedEvidence = [...(incident.relatedEvidence ?? []), ...(followUp.relatedEvidence ?? [])]
+      .sort((first, second) => first.timestampMs - second.timestampMs)
+      .slice(-8)
+    pending.splice(pending.indexOf(followUp), 1)
+  }
+  pending.unshift(...incidents)
+  while (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
+}
+
 function incidentSeverity(
   record: DiagnosticLogRecord,
 ): NativeDiagnosticIncidentSeverity {
@@ -439,9 +519,17 @@ function sanitizeMetrics(metrics: Record<string, number> | undefined) {
 
 function incidentCorrelationId(record: DiagnosticLogRecord) {
   const source =
-    record.actionId ?? record.requestId ?? record.sessionId ?? record.operation
+    record.episodeId ?? record.actionId ?? record.requestId ?? record.sessionId ?? record.operation
   if (!source) return undefined
-  const key = `${record.scope}:${source}`
+  const key = record.episodeId ? `episode:${source}` : `${record.scope}:${source}`
+  return correlationAlias(key)
+}
+
+export function getNativeDiagnosticCorrelationId(episodeId: string) {
+  return correlationAlias(`episode:${episodeId}`)
+}
+
+function correlationAlias(key: string) {
   const existing = correlationAliases.get(key)
   if (existing) return existing
   const alias = `incident-${crypto.randomUUID()}`

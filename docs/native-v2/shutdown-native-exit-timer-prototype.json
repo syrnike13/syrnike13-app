@@ -1,0 +1,106 @@
+{
+  "scope": "Diagnostic late-quit JavaScript blockage; not final product qualification",
+  "inputs": {
+    "capturedAt": "2026-09-09T17:26:57.1776424Z",
+    "sourceBase": "e627f498d779280bde2d15181d04dc23c8053d2e",
+    "scope": "Uncommitted broker-only timer prototype, injected into an unchanged 52ccd1e3 Electron product",
+    "brokerSha256": "ba4cb7e48f6f2794ad2071e9afff05cd9382679745421a1c4210212ca54cbb93",
+    "brokerSourceSha256": "57b10d90d151756b7d01262e1c05cae0ce509a3577a3171a8baf052b146e7292",
+    "observerSha256": "bd4fbfa31396b3942f809db02ea8fcc9532c68861e6cd16badeb045ffd1f3f2a"
+  },
+  "postControlInputMismatches": 0,
+  "additionalFault": "Seven-second Atomics.wait in an Electron quit listener",
+  "previousJavaScriptDeadline": {
+    "scope": "full-product-shutdown-with-held-native-call",
+    "point": "sdk-microphone-publish",
+    "call": 1,
+    "passed": false,
+    "required": 1,
+    "completed": 0,
+    "shutdownBudgetMs": 4900,
+    "results": [
+      {
+        "point": "sdk-microphone-publish",
+        "call": 1,
+        "iteration": 1,
+        "passed": false,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-publish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-publish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 4903.304099999368,
+        "closeSettled": false,
+        "closeFailed": false,
+        "processesExited": [
+          false,
+          true
+        ],
+        "failure": "product_shutdown_deadline",
+        "forcedFixtureCleanup": true
+      }
+    ],
+    "failure": "product_shutdown_deadline"
+  },
+  "injectedNativeDeadline": {
+    "scope": "full-product-shutdown-with-held-native-call",
+    "point": "sdk-microphone-publish",
+    "call": 1,
+    "passed": true,
+    "required": 1,
+    "completed": 1,
+    "shutdownBudgetMs": 4900,
+    "results": [
+      {
+        "point": "sdk-microphone-publish",
+        "call": 1,
+        "iteration": 1,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-publish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-publish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 4052.8990000002086,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      }
+    ]
+  },
+  "nativeApiSmoke": {
+    "status": "pass",
+    "processExitDeadline": {
+      "elapsedMs": 516.2792,
+      "invalidArgumentsRejected": true,
+      "repeatedArmDidNotExtend": true,
+      "blockedJavaScript": true,
+      "kernelExitConfirmed": true
+    }
+  },
+  "limitations": [
+    "The prototype loads an additional uncommitted broker into the unchanged 52ccd1e3 product.",
+    "This control establishes a late-exit gap in the JavaScript timer; it does not establish the cause of the original intermittent shutdown failure.",
+    "Production wiring and the complete shutdown matrix require qualification on the subsequent coherent build."
+  ]
+}

@@ -2,6 +2,9 @@ import { Schema } from 'effect'
 
 export const DIAGNOSTIC_SCHEMA = 'syrnike.diagnostic' as const
 export const DIAGNOSTIC_SCHEMA_VERSION = 1 as const
+export const DiagnosticCorrelationIdSchema = Schema.String.check(
+  Schema.isPattern(/^incident-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
+)
 
 export type DiagnosticJsonValue = Schema.Json
 
@@ -47,6 +50,20 @@ const optionalFiniteMetrics = Schema.optional(
   Schema.Record(Schema.String, Schema.Finite),
 )
 
+const NativeDiagnosticRelatedEvidenceSchema = Schema.Struct({
+  timestampMs: Schema.Finite,
+  scope: Schema.String,
+  event: Schema.String,
+  severity: NativeDiagnosticIncidentSeveritySchema,
+  errorCode: optionalString,
+  stage: optionalString,
+  status: optionalString,
+  message: optionalString,
+  hostEpoch: optionalFiniteNumber,
+  revision: optionalFiniteNumber,
+  metrics: optionalFiniteMetrics,
+})
+
 export const NativeDiagnosticIncidentSchema = Schema.Struct({
   timestampMs: Schema.Finite,
   firstTimestampMs: optionalFiniteNumber,
@@ -79,6 +96,9 @@ export const NativeDiagnosticIncidentSchema = Schema.Struct({
   durationMs: optionalFiniteNumber,
   timeoutMs: optionalFiniteNumber,
   metrics: optionalFiniteMetrics,
+  relatedEvidence: Schema.optional(
+    Schema.Array(NativeDiagnosticRelatedEvidenceSchema).check(Schema.isMaxLength(8)),
+  ),
 })
 
 export const RendererDiagnosticIncidentSchema = Schema.Struct({

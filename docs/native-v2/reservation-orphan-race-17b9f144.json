@@ -1,0 +1,157 @@
+{
+  "scope": "Local Redis evidence for native Room setup failure",
+  "applicationCommit": "17b9f14475fc5e81f43834b91e57c7d808bbe2bc",
+  "diagnosticApplicationChange": "Separate copied main bundle only; writes private utility stderr from process startup. Native binaries unchanged. Not an acceptance build.",
+  "sourceSha256": "c77c9f3470dd9ac5a1c18d14e8775b63fcc57813bee370b6c674979e64febc15",
+  "conclusion": "Orphan-channel cleanup deleted the channel node after reservation preparation and node assignment, before participant_joined committed. All eight commit attempts then ended at the missing node check.",
+  "events": [
+    {
+      "timestampSeconds": 1788963430.011389,
+      "command": "GET",
+      "key": "voice_channel_node",
+      "lua": false
+    },
+    {
+      "timestampSeconds": 1788963430.05223,
+      "command": "SET",
+      "key": "voice_channel_node",
+      "lua": false
+    },
+    {
+      "timestampSeconds": 1788963430.06136,
+      "command": "GET",
+      "key": "voice_channel_node",
+      "lua": false
+    },
+    {
+      "timestampSeconds": 1788963430.177015,
+      "command": "GET",
+      "key": "voice_channel_node",
+      "lua": false
+    },
+    {
+      "timestampSeconds": 1788963430.181997,
+      "command": "EVAL",
+      "script": "remove_orphaned_active_channel",
+      "lua": false
+    },
+    {
+      "timestampSeconds": 1788963430.182072,
+      "command": "DEL",
+      "key": "voice_channel_node",
+      "lua": true
+    },
+    {
+      "timestampSeconds": 1788963430.29093,
+      "command": "EVAL",
+      "script": "commit_reservation_join",
+      "lua": false
+    },
+    {
+      "timestampSeconds": 1788963430.291276,
+      "command": "GET",
+      "key": "voice_channel_node",
+      "lua": true
+    },
+    {
+      "timestampSeconds": 1788963430.295861,
+      "command": "EVAL",
+      "script": "commit_reservation_join",
+      "lua": false
+    },
+    {
+      "timestampSeconds": 1788963430.296185,
+      "command": "GET",
+      "key": "voice_channel_node",
+      "lua": true
+    },
+    {
+      "timestampSeconds": 1788963430.300744,
+      "command": "EVAL",
+      "script": "commit_reservation_join",
+      "lua": false
+    },
+    {
+      "timestampSeconds": 1788963430.30107,
+      "command": "GET",
+      "key": "voice_channel_node",
+      "lua": true
+    },
+    {
+      "timestampSeconds": 1788963430.305305,
+      "command": "EVAL",
+      "script": "commit_reservation_join",
+      "lua": false
+    },
+    {
+      "timestampSeconds": 1788963430.305626,
+      "command": "GET",
+      "key": "voice_channel_node",
+      "lua": true
+    },
+    {
+      "timestampSeconds": 1788963430.309888,
+      "command": "EVAL",
+      "script": "commit_reservation_join",
+      "lua": false
+    },
+    {
+      "timestampSeconds": 1788963430.310199,
+      "command": "GET",
+      "key": "voice_channel_node",
+      "lua": true
+    },
+    {
+      "timestampSeconds": 1788963430.315143,
+      "command": "EVAL",
+      "script": "commit_reservation_join",
+      "lua": false
+    },
+    {
+      "timestampSeconds": 1788963430.315457,
+      "command": "GET",
+      "key": "voice_channel_node",
+      "lua": true
+    },
+    {
+      "timestampSeconds": 1788963430.32185,
+      "command": "EVAL",
+      "script": "commit_reservation_join",
+      "lua": false
+    },
+    {
+      "timestampSeconds": 1788963430.322136,
+      "command": "GET",
+      "key": "voice_channel_node",
+      "lua": true
+    },
+    {
+      "timestampSeconds": 1788963430.326899,
+      "command": "EVAL",
+      "script": "commit_reservation_join",
+      "lua": false
+    },
+    {
+      "timestampSeconds": 1788963430.327201,
+      "command": "GET",
+      "key": "voice_channel_node",
+      "lua": true
+    }
+  ],
+  "correction": "Atomically require both channel membership and pending-reservation sets to be empty before deleting channel routing projections.",
+  "regression": {
+    "command": "REDIS_URI=<test-redis> cargo test --locked -p syrnike-database --features voice orphan_cleanup_preserves_pending_and_active_channel_projections -- --ignored",
+    "passed": 1,
+    "failed": 0,
+    "logSha256": "f16f1ad0b8da830e68b489f5a47f23ab9c9d44b8a38264abc764ef822b251095",
+    "cases": [
+      "Pending reservation keeps node, Room and active-channel index",
+      "Active membership keeps routing",
+      "Empty channel removes node, Room and index"
+    ]
+  },
+  "limitations": [
+    "The rebuilt crond has not yet been tested in the product series.",
+    "The subsequent native utility exit 0xC0000409 has a separate investigation; this backend correction is not proof of safe native disconnect."
+  ]
+}

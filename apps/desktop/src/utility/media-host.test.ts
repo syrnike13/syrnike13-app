@@ -167,6 +167,23 @@ describe('runMediaUtilityHost', () => {
     for (const message of MEDIA_LIFECYCLE_CANONICAL_FIXTURES.publicEventMessages) {
       emit?.(structuredClone(message.event))
       expect(posted).toContainEqual(message)
+      if ('failure' in message.event) {
+        expect(posted.at(-2)).toMatchObject({
+          type: 'diagnostic', protocolVersion: 4,
+          event: {
+            component: 'utility', operation: 'forward_native_failure',
+            code: message.event.failure.code,
+            metrics: [
+              { name: 'cause_sequence', value: message.event.failure.causeSequence },
+              { name: 'native_event_sequence', value: message.event.sequence },
+            ],
+          },
+        })
+        expect(posted.at(-2)).toEqual(expect.objectContaining({ event: expect.objectContaining({
+          timestampMs: expect.any(Number),
+        }) }))
+        expect(JSON.stringify(posted.at(-2))).not.toContain('authorization')
+      }
     }
 
     emitDiagnostic?.({

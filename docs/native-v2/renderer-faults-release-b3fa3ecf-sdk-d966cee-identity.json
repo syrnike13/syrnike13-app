@@ -1,0 +1,51 @@
+{
+  "before": {
+    "appCommit": "b3fa3ecfe2b3da0878d7f9ec9b2ebf2987ad9b90",
+    "sdkCommit": "d966cee6abb7f6c855a50dd276c71c26ebfd1ca2",
+    "sdkBuild": {
+      "sdk": "cpp",
+      "sdk_version": "1.10.0-syrnike.15-dev",
+      "cpp_git_commit": "d966cee",
+      "rust_submodule_commit": "1a477bc4",
+      "livekit_ffi_version": "0.12.75",
+      "build_date": "2026-09-09T03:20:30Z"
+    },
+    "mediaManifestSha256": "CA0F7AB8067BED06D142C28086F33136CF0B4CFAB2FFF71FAA8387EA2580B878",
+    "sdkFiles": [
+      {
+        "name": "livekit.dll",
+        "sha256": "439CF6B0D9606B8E7347D3E02F3FCE34B1935651E55FFC0A4797371F3D33B430"
+      },
+      {
+        "name": "livekit_ffi.dll",
+        "sha256": "4A9310E0CD79016AF3BF2854198AC59F7036DE5B9CCDCB147D3240010A17A5AF"
+      }
+    ]
+  },
+  "after": {
+    "appCommit": "b3fa3ecfe2b3da0878d7f9ec9b2ebf2987ad9b90",
+    "sdkCommit": "d966cee6abb7f6c855a50dd276c71c26ebfd1ca2",
+    "sdkBuild": {
+      "sdk": "cpp",
+      "sdk_version": "1.10.0-syrnike.15-dev",
+      "cpp_git_commit": "d966cee",
+      "rust_submodule_commit": "1a477bc4",
+      "livekit_ffi_version": "0.12.75",
+      "build_date": "2026-09-09T03:20:30Z"
+    },
+    "mediaManifestSha256": "CA0F7AB8067BED06D142C28086F33136CF0B4CFAB2FFF71FAA8387EA2580B878",
+    "sdkFiles": [
+      {
+        "name": "livekit.dll",
+        "sha256": "439CF6B0D9606B8E7347D3E02F3FCE34B1935651E55FFC0A4797371F3D33B430"
+      },
+      {
+        "name": "livekit_ffi.dll",
+        "sha256": "4A9310E0CD79016AF3BF2854198AC59F7036DE5B9CCDCB147D3240010A17A5AF"
+      }
+    ]
+  },
+  "unchanged": true,
+  "productExitCode": 0,
+  "reportSha256": "8BBE41FD3049FFAEAAFD6B3299041851B9BAC0731BDC33A8D29865DB34512CA8"
+}

@@ -1,0 +1,318 @@
+{
+  "schemaVersion": 1,
+  "scope": "Local supporting database fixture correction; native acceptance budgets unchanged",
+  "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+  "overallFaultQualificationPassed": false,
+  "before": {
+    "memory": 805306368,
+    "memorySwap": 1610612736,
+    "health": "unhealthy",
+    "oomKilled": false,
+    "memoryCgroupMaxEvents": 41772,
+    "memorySwapUsedBytes": 805306368,
+    "memoryPressureFullAvg10Percent": 97.69,
+    "ioPressureFullAvg10Percent": 99,
+    "cpuThrottledMicroseconds": 0,
+    "hostFreePhysicalBytes": 17723707392,
+    "measurementScope": "Read-only cgroup and Win32 memory snapshots before changing the fixture allocation.",
+    "databaseSymptoms": {
+      "health": "unhealthy",
+      "healthFailingStreak": 45,
+      "observedSlowQueryRangeMs": [
+        10350,
+        42507
+      ],
+      "observedSlowQueryCpuRangeMs": [
+        1,
+        6
+      ]
+    },
+    "crond": {
+      "exitCode": 101,
+      "panic": "query_macro_unwrap_on_database_connection_pool_cleared",
+      "trigger": "database_server_monitor_timeout",
+      "productCodeChanged": false
+    },
+    "cameraCase43": {
+      "enteredCameraFault": false,
+      "errorType": "LiveKitUnavailable",
+      "publicFailureCode": "voice_authority_rejected"
+    }
+  },
+  "action": {
+    "databaseMemoryBytes": 2147483648,
+    "databaseMemoryPlusSwapBytes": 3221225472,
+    "composeValidationPassed": true,
+    "originalComposeSha256": "2aaf541d003f382b7aa1e3100bf5dcd13bb664d96ed37972ee5324f0b4e375e2",
+    "correctedComposeSha256": "db358313ca33a26c7086df15b0e6e9859f35b57eb31e6bb8bb75101a261afc1b",
+    "orderedActions": [
+      "Back up the private local fixture compose and capture the original allocation.",
+      "Update only that database container allocation and the corresponding private compose fields.",
+      "The already degraded database subsequently exited with OOM status and exit code 137; allocation update alone had not restored it.",
+      "Start the same stopped database container with its existing data volumes and corrected allocation.",
+      "After healthy database checks, start the same stopped crond container.",
+      "Verify all four running backend executable hashes match the original fixture.",
+      "Run three held-output and three held-camera controls before starting new matrices."
+    ],
+    "changedNativeResourceBudgets": false,
+    "changedShutdownBudget": false,
+    "deletedData": false,
+    "globalDockerOrWslRestart": false,
+    "changedDriverOrOverlaySettings": false
+  },
+  "afterRestart": {
+    "health": "healthy",
+    "swapUsedBytes": 0,
+    "memoryPressureFullAvg10Percent": 0,
+    "ioPressureFullAvg10Percent": 1.87,
+    "cgroupSnapshotSha256": "9c9b067e43e869c66c6cd531ddfbbd4c299fa7ed6319a0505c9558f923de4c9f",
+    "backend": [
+      {
+        "role": "api",
+        "sha256": "373cb6e7b8aaf87b4dce3a437ef35e835a367bb4a2878203c84e955bb2ecbca3"
+      },
+      {
+        "role": "events",
+        "sha256": "89eebe11e754ba9e9ee45809d3b9f4ebdef75f684b8ee0d51cdb57cb1f76ca39"
+      },
+      {
+        "role": "voice-ingress",
+        "sha256": "4c77682a3f59be89b208677d6304b832ecc54be3342cc09f5b56e1b882547b8b"
+      },
+      {
+        "role": "crond",
+        "sha256": "e579da36c38e8f7a033f29914da07013db7be95f73573c1394c7c75f0b447af8"
+      }
+    ],
+    "backendPostSha256": "12f1a6da5a52923a7809b3e3609f02254360dd139d73b8dc38495c445cc4929e"
+  },
+  "controls": [
+    {
+      "role": "core",
+      "result": {
+        "scope": "full-product-shutdown-with-held-native-call",
+        "point": "output-initialize",
+        "call": 1,
+        "passed": true,
+        "required": 3,
+        "completed": 3,
+        "shutdownBudgetMs": 4900,
+        "results": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 1,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2982.2317999973893,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 2,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2765.475499998778,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 3,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2758.768799997866,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          }
+        ]
+      },
+      "sha256": "824f5cbf58bdaad7b225b63c5594267030fd534b665f3da860bfd0f10e0ea4c8"
+    },
+    {
+      "role": "camera",
+      "result": {
+        "scope": "full-product-shutdown-with-held-native-call",
+        "point": "camera-read-sample",
+        "call": 1,
+        "passed": true,
+        "required": 3,
+        "completed": 3,
+        "shutdownBudgetMs": 4900,
+        "results": [
+          {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 1,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2393.8663000017405,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 2,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2325.6053999960423,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 3,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2365.421299993992,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          }
+        ]
+      },
+      "sha256": "616b3bba5d73374780fd5d4f499fe77c47bc89bbd3e54a73941852a06ac24847"
+    }
+  ],
+  "subsequentMatrices": {
+    "statusAtCapture": "in_progress",
+    "overallPassed": false,
+    "beforeLaunchInputsSha256": "6276531f53c469c70d2a082aa5e2dbe42489c415d622358dde8ab81c5d83f4cd",
+    "concurrency": "Two independent product profiles/accounts; core and video matrices may overlap. No concurrent native resource probes."
+  },
+  "evidenceLogs": [
+    {
+      "file": "issue131-phase-camera-voice-ingress-private.log",
+      "sha256": "6722a2ec395d8204fec0d51286b6d4a0ee1644be31102f8eae6f30c072ee483f",
+      "rawContentsPublished": false
+    },
+    {
+      "file": "issue131-crond-exit-private.log",
+      "sha256": "32700b73ed638ff5d956873d7af06e3149663b10475277e5aa154089cf5b32a1",
+      "rawContentsPublished": false
+    },
+    {
+      "file": "issue131-database-health-private.log",
+      "sha256": "857650d7ee448f776160df45d869ee3116d4d75cd879d0d7bf1371ee36a03d60",
+      "rawContentsPublished": false
+    },
+    {
+      "file": "issue131-database-exit-private.log",
+      "sha256": "709bbf4ffb2897b4df4ecd4fe713232d4d88963e0c50ab767bef0bf16ea5ca16",
+      "rawContentsPublished": false
+    }
+  ],
+  "limitations": [
+    "Prior failed series remain failed and are archived separately.",
+    "Database pressure explains a degraded support service; it does not establish the responsible component for the delayed Windows process signal.",
+    "The crond query panic is recorded, not repaired by an application code change.",
+    "Six passing controls are not the required 100 cases per fault or a completed fault matrix.",
+    "The controls use unchanged frozen binaries; their additional startup observer was not separately hashed before those short controls. Full subsequent matrix inputs were captured before either matrix launch."
+  ]
+}

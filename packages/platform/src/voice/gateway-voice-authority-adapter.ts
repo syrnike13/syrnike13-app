@@ -131,6 +131,7 @@ const GatewayEventSchema = Schema.Union([
     ),
     data: Schema.optional(
       Schema.Struct({
+        type: Schema.optional(Schema.String),
         message: Schema.optional(Schema.String),
       }),
     ),
@@ -576,7 +577,7 @@ export class GatewayVoiceAuthorityAdapter implements VoiceAuthorityAdapter {
     const error = authorityError(
       'voice_authority_rejected',
       event.data?.message ?? 'Voice authority rejected the request',
-      false,
+      event.data?.type === 'LiveKitUnavailable',
     )
     const nonce = event.request?.nonce
     if (nonce) this.finishAck(nonce, Effect.fail(error))

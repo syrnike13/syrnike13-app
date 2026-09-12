@@ -1,4 +1,5 @@
 #include "audio/process_loopback.hpp"
+#include "testing/product_fault_gate.hpp"
 #include <audioclient.h>
 #include <audioclientactivationparams.h>
 #include <mmdeviceapi.h>
@@ -299,6 +300,7 @@ void ProcessLoopback::run(ScreenAudioMode mode, std::shared_ptr<AudioProcessIden
     // its own session so that output mute never suppresses the publication.
     GUID capture_session{};
     checked(CoCreateGuid(&capture_session), ScreenAudioFailureCode::activation_failed);
+    testing::holdProductFault("screen-audio-initialize");
     checked(client->Initialize(AUDCLNT_SHAREMODE_SHARED,
                                AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
                                    AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
@@ -336,6 +338,7 @@ void ProcessLoopback::run(ScreenAudioMode mode, std::shared_ptr<AudioProcessIden
         BYTE* data = nullptr;
         DWORD flags = 0;
         UINT64 position = 0, qpc = 0;
+        testing::holdProductFault("screen-audio-capture");
         checked(capture->GetBuffer(&data, &frames, &flags, &position, &qpc),
                 ScreenAudioFailureCode::device_lost);
         const bool silent = (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0;

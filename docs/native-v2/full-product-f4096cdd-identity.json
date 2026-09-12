@@ -1,0 +1,36 @@
+{
+  "appCommit": "f4096cdd83b40cf57e0432b03898af02a732fc1d",
+  "sdkCommit": "d966cee6abb7f6c855a50dd276c71c26ebfd1ca2",
+  "profile": "Release",
+  "localBackend": true,
+  "artifacts": [
+    {
+      "file": "apps/desktop/out/main/index.js",
+      "sha256": "3EB31D03D22FD567C163BE8BDA3624547AB7A6077474F40177CE0B4CBA1D7B6F"
+    },
+    {
+      "file": "apps/desktop/out/preload/index.cjs",
+      "sha256": "84D83BC155B266F736AB36B5DFAF8654AB16235245F60BE93981E6A9028FF437"
+    },
+    {
+      "file": "apps/desktop/out/utility/media-host.cjs",
+      "sha256": "7BA7504B9A30A0487D2CAE5C7BE76FC60FA7D657D72D2DA81958713DE0FEA9FB"
+    },
+    {
+      "file": "apps/desktop/out/media-native/win32-x64/media-manifest.json",
+      "sha256": "0B3584E946DC88BBE6FA0B7825A7EEEE3798D03529283DA7B61E37BB9252C129"
+    },
+    {
+      "file": "apps/desktop/out/media-native/win32-x64/windows_media.node",
+      "sha256": "5E44DDABA75A8379B1BEC0FE7A74E176052E12E81ACFD8D561DC3D2033D40960"
+    },
+    {
+      "file": "apps/desktop/out/media-native/win32-x64/livekit.dll",
+      "sha256": "439CF6B0D9606B8E7347D3E02F3FCE34B1935651E55FFC0A4797371F3D33B430"
+    },
+    {
+      "file": "apps/desktop/out/media-native/win32-x64/livekit_ffi.dll",
+      "sha256": "4A9310E0CD79016AF3BF2854198AC59F7036DE5B9CCDCB147D3240010A17A5AF"
+    }
+  ]
+}

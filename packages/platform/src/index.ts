@@ -125,6 +125,7 @@ export { getCapabilities, type PlatformCapabilities } from './capabilities'
 export {
   DIAGNOSTIC_SCHEMA,
   DIAGNOSTIC_SCHEMA_VERSION,
+  DiagnosticCorrelationIdSchema,
   DiagnosticEnvelopeSchema,
   DiagnosticEnvelopeSourceSchema,
   NativeDiagnosticIncidentBatchSchema,

@@ -1,4 +1,5 @@
 #include "audio/microphone_capture.hpp"
+#include "testing/product_fault_gate.hpp"
 
 #include <windows.h>
 #include <audioclient.h>
@@ -7,7 +8,7 @@
 #include <wrl/client.h>
 #include <algorithm>
 #include <stdexcept>
-#ifdef WINDOWS_MEDIA_CAPTURE_HEAP_PROBE
+#if defined(WINDOWS_MEDIA_CAPTURE_HEAP_PROBE) || defined(WINDOWS_MEDIA_CAPTURE_FAULT_PROBE)
 #include "lab/microphone_capture_probe.hpp"
 #endif
 
@@ -70,10 +71,11 @@ MicrophoneCapture::~MicrophoneCapture() {
   if (!stop(Clock::now() + std::chrono::seconds{5})) std::terminate();
 }
 MicrophoneCaptureFailure MicrophoneCapture::start(AudioEndpoint endpoint, std::uint64_t generation,
-                                                 bool bypass_system_processing) {
+                                                 bool bypass_system_processing, std::stop_token cancellation) {
   if (owner_ != std::this_thread::get_id() || state_->state.load() != MicrophoneCaptureState::idle || !generation ||
       endpoint.direction != AudioDirection::input || endpoint.endpoint_id.empty())
     return MicrophoneCaptureFailure::invalid_state;
+  if (cancellation.stop_requested()) return MicrophoneCaptureFailure::cancelled;
   state_->generation = generation;
   state_->state = MicrophoneCaptureState::starting;
   try {
@@ -85,7 +87,12 @@ MicrophoneCaptureFailure MicrophoneCapture::start(AudioEndpoint endpoint, std::u
     SetEvent(state_->done.value);
     return MicrophoneCaptureFailure::activation_failed;
   }
-  if (WaitForSingleObject(state_->ready.value, 5000) != WAIT_OBJECT_0) {
+  std::stop_callback cancel(cancellation, [state = state_] { SetEvent(state->stop.value); });
+  const HANDLE events[]{state_->stop.value, state_->ready.value};
+  const auto wake = WaitForMultipleObjects(2, events, FALSE, 5000);
+  if (cancellation.stop_requested() || wake == WAIT_OBJECT_0)
+    return MicrophoneCaptureFailure::cancelled;
+  if (wake != WAIT_OBJECT_0 + 1) {
     SetEvent(state_->stop.value);
     state_->fail(MicrophoneCaptureFailure::start_timeout, HRESULT_FROM_WIN32(WAIT_TIMEOUT));
     return MicrophoneCaptureFailure::start_timeout;
@@ -135,6 +142,13 @@ void MicrophoneCapture::run(const std::shared_ptr<State>& state, AudioEndpoint e
                             bool bypass_system_processing) noexcept {
   state->thread_alive = true;
   try {
+#ifdef WINDOWS_MEDIA_CAPTURE_FAULT_PROBE
+    if (lab::capture_block_generation.load() == state->generation) {
+      lab::capture_prepare_entered = true;
+      WaitForSingleObject(state->stop.value, INFINITE);
+      throw Failure{MicrophoneCaptureFailure::cancelled, HRESULT_FROM_WIN32(ERROR_CANCELLED)};
+    }
+#endif
     Apartment apartment;
     check(apartment.result, MicrophoneCaptureFailure::activation_failed);
     ComPtr<IMMDeviceEnumerator> enumerator;
@@ -157,6 +171,7 @@ void MicrophoneCapture::run(const std::shared_ptr<State>& state, AudioEndpoint e
     format.wBitsPerSample = 16;
     format.nBlockAlign = 2;
     format.nAvgBytesPerSec = kMicrophoneRate * 2;
+    testing::holdProductFault("microphone-initialize");
     check(client->Initialize(AUDCLNT_SHAREMODE_SHARED,
                              AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
                                AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
@@ -186,6 +201,9 @@ void MicrophoneCapture::run(const std::shared_ptr<State>& state, AudioEndpoint e
     auto last_progress = Clock::now();
     std::uint64_t previous_frames = 0;
     std::optional<UINT64> first_position;
+#ifdef WINDOWS_MEDIA_CAPTURE_HEAP_PROBE
+    bool stopped_client_for_probe = false;
+#endif
     while (WaitForSingleObject(state->stop.value, 0) != WAIT_OBJECT_0) {
       const auto wake = WaitForMultipleObjects(2, events, FALSE, 1000);
       if (wake == WAIT_OBJECT_0) break;
@@ -194,8 +212,14 @@ void MicrophoneCapture::run(const std::shared_ptr<State>& state, AudioEndpoint e
         throw Failure{MicrophoneCaptureFailure::capture_failed, HRESULT_FROM_WIN32(GetLastError())};
       const auto began = Clock::now();
 #ifdef WINDOWS_MEDIA_CAPTURE_HEAP_PROBE
-      if (lab::capture_device_loss_after_frames && previous_frames >= lab::capture_device_loss_after_frames)
+      if (lab::capture_fault_armed && lab::capture_device_loss_after_frames &&
+          previous_frames >= lab::capture_device_loss_after_frames)
         check(AUDCLNT_E_DEVICE_INVALIDATED, MicrophoneCaptureFailure::capture_failed);
+      if (lab::capture_fault_armed && !stopped_client_for_probe && lab::capture_stop_client_after_frames &&
+          previous_frames >= lab::capture_stop_client_after_frames) {
+        check(client->Stop(), MicrophoneCaptureFailure::capture_failed);
+        stopped_client_for_probe = true;
+      }
 #endif
       // At most the endpoint's negotiated capacity per wake; additional data is
       // handled on the next wake. Cancellation never waits on an endless drain.
@@ -207,6 +231,7 @@ void MicrophoneCapture::run(const std::shared_ptr<State>& state, AudioEndpoint e
         BYTE* data = nullptr;
         DWORD flags = 0;
         UINT64 position = 0, qpc = 0;
+        testing::holdProductFault("microphone-capture");
         const auto buffer_result = capture->GetBuffer(&data, &available, &flags, &position, &qpc);
         check(buffer_result, MicrophoneCaptureFailure::device_lost);
         if (buffer_result == AUDCLNT_S_BUFFER_EMPTY || available == 0) break;

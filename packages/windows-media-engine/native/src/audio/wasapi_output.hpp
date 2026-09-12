@@ -6,13 +6,14 @@
 
 #include <chrono>
 #include <memory>
+#include <stop_token>
 #include <thread>
 
 namespace syrnike::windows_media::audio {
 enum class WasapiOutputState { stopped, starting, running, failed };
 enum class WasapiOutputFailure {
   none, invalid_state, activation_failed, format_unavailable, policy_unavailable,
-  device_lost, render_failed, no_progress, start_timeout, stop_timeout
+  device_lost, render_failed, no_progress, start_timeout, stop_timeout, cancelled
 };
 struct WasapiOutputStats {
   WasapiOutputState state = WasapiOutputState::stopped;
@@ -46,7 +47,7 @@ class WasapiOutput final {
   ~WasapiOutput();
   WasapiOutput(const WasapiOutput&) = delete;
   WasapiOutput& operator=(const WasapiOutput&) = delete;
-  WasapiOutputFailure start(AudioEndpoint, std::uint64_t epoch);
+  WasapiOutputFailure start(AudioEndpoint, std::uint64_t epoch, std::stop_token cancellation = {});
   bool commit(std::int64_t minimum_decoded_timestamp_100ns) noexcept;
   bool setDeafened(bool) noexcept;
   bool stop(std::chrono::steady_clock::time_point deadline) noexcept;

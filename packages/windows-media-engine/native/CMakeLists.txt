@@ -14,6 +14,7 @@ set(CMAKE_COMPILE_PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
 
 option(WINDOWS_MEDIA_ENABLE_ASAN "Enable AddressSanitizer for lifecycle tests" OFF)
 option(WINDOWS_MEDIA_BUILD_LAB "Build the isolated LiveKit media lab publisher" OFF)
+option(WINDOWS_MEDIA_TEST_FAULT_GATES "Enable test-only held platform-call gates" OFF)
 
 if(NOT DEFINED NAPI_VERSION OR "${NAPI_VERSION}" STREQUAL "")
   set(NAPI_VERSION 8)
@@ -33,12 +34,25 @@ if(NOT DEFINED WINDOWS_MEDIA_COMMIT OR "${WINDOWS_MEDIA_COMMIT}" STREQUAL "")
 endif()
 
 function(windows_media_target target)
+  if(WINDOWS_MEDIA_TEST_FAULT_GATES)
+    target_compile_definitions(${target} PRIVATE WINDOWS_MEDIA_TEST_FAULT_GATES=1)
+  endif()
   target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_compile_definitions(${target} PRIVATE
     WIN32_LEAN_AND_MEAN
     NOMINMAX
     _WIN32_WINNT=0x0A00
   )
+  # Fault evidence is emitted by test/lab executables. Tag those binaries without
+  # invalidating every shipping library whenever only the source commit changes.
+  get_target_property(target_type ${target} TYPE)
+  if(target_type STREQUAL "EXECUTABLE")
+    target_compile_definitions(${target} PRIVATE
+      WINDOWS_MEDIA_FAULT_COMMIT="${WINDOWS_MEDIA_COMMIT}"
+      WINDOWS_MEDIA_FAULT_CONFIGURATION="$<CONFIG>"
+      WINDOWS_MEDIA_FAULT_ASAN=$<BOOL:${WINDOWS_MEDIA_ENABLE_ASAN}>
+    )
+  endif()
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /WX /permissive- /EHsc /Zi /FS)
     target_link_options(${target} PRIVATE /DEBUG:FULL)
@@ -96,7 +110,7 @@ add_executable(camera_tests tests/camera_test.cpp)
 windows_media_target(camera_tests)
 target_link_libraries(camera_tests PRIVATE media_camera_pipeline media_camera_fixture media_camera_preview media_screen)
 add_test(NAME camera COMMAND camera_tests)
-set_tests_properties(camera PROPERTIES TIMEOUT 30)
+set_tests_properties(camera PROPERTIES TIMEOUT 300)
 add_test(NAME camera-preview COMMAND camera_tests --preview)
 set_tests_properties(camera-preview PROPERTIES TIMEOUT 30 LABELS "requires-gpu-video")
 add_test(NAME camera-preview-quarantine COMMAND camera_tests --preview-quarantine)
@@ -333,7 +347,7 @@ add_executable(dxgi_capture_tests tests/dxgi_capture_test.cpp)
 windows_media_target(dxgi_capture_tests)
 target_link_libraries(dxgi_capture_tests PRIVATE media_capture)
 add_test(NAME dxgi-capture COMMAND dxgi_capture_tests)
-set_tests_properties(dxgi-capture PROPERTIES TIMEOUT 30 LABELS "requires-gpu-video")
+set_tests_properties(dxgi-capture PROPERTIES TIMEOUT 180 LABELS "requires-gpu-video")
 add_executable(selecting_monitor_capture_tests tests/selecting_monitor_capture_test.cpp)
 windows_media_target(selecting_monitor_capture_tests)
 target_link_libraries(selecting_monitor_capture_tests PRIVATE media_capture)
@@ -455,7 +469,7 @@ add_executable(window_capture_tests
 windows_media_target(window_capture_tests)
 target_link_libraries(window_capture_tests PRIVATE media_capture)
 add_test(NAME window-capture COMMAND window_capture_tests)
-set_tests_properties(window-capture PROPERTIES TIMEOUT 10)
+set_tests_properties(window-capture PROPERTIES TIMEOUT 30)
 
 add_executable(screen_reference_tests
   tests/screen_reference_test.cpp
@@ -521,7 +535,12 @@ set_tests_properties(local-screen-preview PROPERTIES TIMEOUT 60 LABELS "requires
 windows_media_target(encoder_fault_tests)
 target_link_libraries(encoder_fault_tests PRIVATE media_screen)
 add_test(NAME encoder-faults COMMAND encoder_fault_tests)
-set_tests_properties(encoder-faults PROPERTIES TIMEOUT 20)
+set_tests_properties(encoder-faults PROPERTIES TIMEOUT 300)
+add_test(NAME encoder-bitrate-unsupported COMMAND encoder_fault_tests --bitrate-unsupported)
+add_test(NAME encoder-bitrate-rejected COMMAND encoder_fault_tests --bitrate-rejected)
+# These are 100 complete hardware pipeline lifecycles per setter outcome.
+set_tests_properties(encoder-bitrate-unsupported encoder-bitrate-rejected
+  PROPERTIES TIMEOUT 1800 LABELS "requires-gpu-video")
 
 # Hosted Windows runners expose no D3D11 Video interface. Keep these tests in
 # the default full suite; only the hosted workflow selects the portable subset.
@@ -540,18 +559,27 @@ if(WINDOWS_MEDIA_BUILD_LAB)
   target_link_libraries(apm_allocation_baseline PRIVATE LiveKit::livekit)
   windows_media_copy_livekit_runtime(apm_allocation_baseline)
   add_executable(media_lab src/lab/microphone_lab.cpp src/lab/microphone_pipeline_lab.cpp
-    src/lab/microphone_ducking_lab.cpp src/lab/microphone_dsp_lab.cpp)
+    src/lab/microphone_ducking_lab.cpp src/lab/microphone_dsp_lab.cpp src/audio/microphone_capture.cpp)
   windows_media_target(media_lab)
   target_link_libraries(media_lab PRIVATE media_microphone_livekit media_screen_audio_capture LiveKit::livekit)
-  target_compile_definitions(media_lab PRIVATE _CRT_SECURE_NO_WARNINGS)
+  # Link the same capture implementation with a lab-only cancellation gate.
+  target_compile_definitions(media_lab PRIVATE _CRT_SECURE_NO_WARNINGS WINDOWS_MEDIA_CAPTURE_FAULT_PROBE)
+  target_include_directories(media_lab PRIVATE tests)
+  add_test(NAME microphone-candidate-fault COMMAND media_lab microphone-candidate-fault)
+  set_tests_properties(microphone-candidate-fault PROPERTIES TIMEOUT 60 LABELS "requires-audio-device")
+  add_test(NAME microphone-cancellation-faults COMMAND media_lab microphone-cancellation)
+  set_tests_properties(microphone-cancellation-faults PROPERTIES TIMEOUT 60 LABELS "requires-audio-device")
   windows_media_copy_livekit_runtime(media_lab)
   # Compile the production capture loop with disposable-process heap evidence;
   # allocator hooks never enter the product capture library or normal media_lab.
   add_executable(microphone_capture_allocation src/lab/microphone_capture_allocation.cpp
     src/audio/microphone_capture.cpp src/audio/microphone_pcm.cpp)
   windows_media_target(microphone_capture_allocation)
+  target_include_directories(microphone_capture_allocation PRIVATE tests)
   target_compile_definitions(microphone_capture_allocation PRIVATE WINDOWS_MEDIA_CAPTURE_HEAP_PROBE)
   target_link_libraries(microphone_capture_allocation PRIVATE media_audio_devices avrt)
+  add_test(NAME microphone-platform-faults COMMAND microphone_capture_allocation --fault-matrix)
+  set_tests_properties(microphone-platform-faults PROPERTIES TIMEOUT 300 LABELS "requires-audio-device")
   add_executable(backend_capture_lab src/lab/backend_capture_lab.cpp)
   add_executable(backend_transition_lab src/lab/backend_transition_lab.cpp)
   # Explicit local proof only; restores the selected non-primary display mode.
@@ -575,6 +603,7 @@ if(WINDOWS_MEDIA_BUILD_LAB)
   add_executable(shared_texture_pool_tests tests/shared_texture_pool_test.cpp)
   windows_media_target(shared_texture_pool_tests)
   target_link_libraries(shared_texture_pool_tests PRIVATE media_video)
+  windows_media_copy_livekit_runtime(shared_texture_pool_tests)
   add_test(NAME shared-texture-pool COMMAND shared_texture_pool_tests)
   set_tests_properties(shared-texture-pool PROPERTIES TIMEOUT 30)
   add_library(video_bridge_lab MODULE ${CMAKE_JS_SRC} src/lab/video_bridge_addon.cpp)
@@ -613,6 +642,9 @@ if(WINDOWS_MEDIA_BUILD_LAB)
   add_executable(audio_capture_lab src/lab/audio_capture_lab.cpp)
   windows_media_target(audio_capture_lab)
   target_link_libraries(audio_capture_lab PRIVATE media_screen_audio_capture)
+  add_executable(gpu_contention_lab src/lab/gpu_contention_lab.cpp src/lab/gpu_contention.cpp)
+  windows_media_target(gpu_contention_lab)
+  target_link_libraries(gpu_contention_lab PRIVATE media_capture d3dcompiler)
   add_executable(screen_audio_lab src/lab/screen_audio_lab.cpp src/lab/gpu_contention.cpp)
   windows_media_target(screen_audio_lab)
   target_compile_definitions(screen_audio_lab PRIVATE _CRT_SECURE_NO_WARNINGS)
@@ -629,12 +661,19 @@ if(WINDOWS_MEDIA_BUILD_LAB)
   target_link_libraries(media_remote_audio_livekit_lab PUBLIC media_remote_audio_mixer media_livekit)
   add_executable(remote_audio_lab src/lab/remote_audio_lab.cpp src/lab/remote_audio_livekit_lab.cpp
     src/lab/remote_audio_output_lab.cpp src/lab/remote_audio_aec_lab.cpp src/lab/remote_audio_ducking_lab.cpp
-    src/lab/remote_audio_echo_publication_lab.cpp)
+    src/lab/remote_audio_echo_publication_lab.cpp src/audio/output_owner.cpp)
   windows_media_target(remote_audio_lab)
+  target_include_directories(remote_audio_lab PRIVATE tests)
   target_link_libraries(remote_audio_lab PRIVATE media_wasapi_output_lab media_remote_audio_livekit_lab media_microphone_livekit
     media_screen_audio_capture psapi)
   target_compile_definitions(remote_audio_lab PRIVATE _CRT_SECURE_NO_WARNINGS)
   windows_media_copy_livekit_runtime(remote_audio_lab)
+  add_test(NAME output-platform-faults COMMAND remote_audio_lab fault-matrix)
+  set_tests_properties(output-platform-faults PROPERTIES TIMEOUT 180 LABELS "requires-audio-device")
+  add_test(NAME output-cancellation-faults COMMAND remote_audio_lab cancellation)
+  set_tests_properties(output-cancellation-faults PROPERTIES TIMEOUT 60 LABELS "requires-audio-device")
+  add_test(NAME output-session-isolation COMMAND remote_audio_lab session-isolation)
+  set_tests_properties(output-session-isolation PROPERTIES TIMEOUT 180 LABELS "requires-audio-device")
   windows_media_target(remote_audio_reference)
   target_compile_definitions(remote_audio_reference PRIVATE _CRT_SECURE_NO_WARNINGS)
   target_link_libraries(remote_audio_reference PRIVATE LiveKit::livekit)

@@ -6,6 +6,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { AccessToken } from 'livekit-server-sdk'
 import { Room, RoomEvent, TrackKind, TrackSource, VideoStream, AudioStream, dispose } from '@livekit/rtc-node'
+import { createRendererFaultEvidence } from './renderer-fault-evidence.mjs'
+import { startProductCompanion } from './product-companion.mjs'
 
 const root = path.resolve(import.meta.dirname, '../../..')
 const desktopRoot = path.join(root, 'apps/desktop')
@@ -20,11 +22,14 @@ const readers = new Map()
 const tasks = []
 const publications = new Map()
 const phaseEvidence = []
+const rendererFaultMode = process.env.MEDIA_PRODUCT_RENDERER_FAULTS === '1'
+const rendererFaultEvidence = createRendererFaultEvidence()
 let reconnects = 0
 let readerFailures = 0
 let terminal = false
 let publisherReport
 let accepted = false
+let companion
 const key = randomBytes(12).toString('hex')
 const secret = randomBytes(32).toString('hex')
 const url = 'ws://127.0.0.1:17880'
@@ -54,7 +59,7 @@ async function until(predicate, label, timeout = 10_000) {
   throw Error(label)
 }
 async function token(identity) {
-  const value = new AccessToken(key, secret, { identity, ttl: '10m' })
+  const value = new AccessToken(key, secret, { identity, ttl: rendererFaultMode ? '30m' : '10m' })
   value.addGrant({ roomJoin: true, room: 'native-product-check', canPublish: true, canSubscribe: true })
   return value.toJwt()
 }
@@ -68,7 +73,10 @@ async function consume(track, record) {
       const item = await reader.read()
       if (item.done) return
       const now = Date.now()
-      if (record.lastAt) record.maximumGapMs = Math.max(record.maximumGapMs, now - record.lastAt)
+      if (record.lastAt) {
+        record.maximumGapMs = Math.max(record.maximumGapMs, now - record.lastAt)
+        rendererFaultEvidence.observeGap(now - record.lastAt)
+      }
       record.lastAt = now
       ++record.frames
       if (track.kind === TrackKind.KIND_VIDEO) {
@@ -113,6 +121,7 @@ try {
     try { return (await fetch('http://127.0.0.1:17880')).ok } catch { return false }
   }, 'isolated_server_deadline')
   await room.connect(url, await token('product-observer'), { autoSubscribe: true, dynacast: false })
+  if (rendererFaultMode) companion = await startProductCompanion(room)
   const toneReady = path.join(temporary, 'tone-ready')
   const toneStop = path.join(temporary, 'tone-stop')
   const audioFixture = process.env.MEDIA_PRODUCT_AUDIO_FIXTURE
@@ -148,6 +157,14 @@ try {
       if (end < 0) break
       const line = stdout.slice(0, end).trim()
       stdout = stdout.slice(end + 1)
+      if (rendererFaultMode && line.startsWith('MEDIA_PRODUCT_RENDERER_FAULT ')) {
+        try {
+          const event = JSON.parse(line.slice('MEDIA_PRODUCT_RENDERER_FAULT '.length))
+          rendererFaultEvidence.record(event, [...publications.values()])
+          if (event.event === 'completed' && (event.iteration + 1) % 10 === 0) console.log(line)
+        } catch { rendererFaultEvidence.record(null, []) }
+        continue
+      }
       if (!line.startsWith('MEDIA_PRODUCT_PHASE ') || phaseEvidence.length >= 32) continue
       const phase = JSON.parse(line.slice('MEDIA_PRODUCT_PHASE '.length))
       phaseEvidence.push({ ...phase, receiver: [...publications.values()].map(value => ({
@@ -158,7 +175,7 @@ try {
     }
   })
   let publisherTimedOut = false
-  const deadline = setTimeout(() => { publisherTimedOut = true; publisher.child.kill() }, 90_000)
+  const deadline = setTimeout(() => { publisherTimedOut = true; publisher.child.kill() }, rendererFaultMode ? 900_000 : 90_000)
   const exitCode = await publisher.done
   clearTimeout(deadline)
   await writeFile(toneStop, 'stop')
@@ -208,9 +225,19 @@ try {
   const audioSurvivesDeafen = Boolean(audioBeforeDeafen && audioAfterDeafen &&
     audioBeforeDeafen.alias === audioAfterDeafen.alias && audioAfterDeafen.samples > audioBeforeDeafen.samples &&
     Math.sqrt((audioAfterDeafen.energy - audioBeforeDeafen.energy) / (audioAfterDeafen.samples - audioBeforeDeafen.samples)) > 10)
-  accepted = exitCode === 0 && publisherReport.accepted && stableVideo && sourcesReceived && audioSignal && audioSurvivesDeafen && readerFailures === 0 && reconnects === 0
+  const rendererFaults = rendererFaultEvidence.result()
+  const rendererFaultsPassed = !rendererFaultMode || (rendererFaults.passed &&
+    publisherReport.rendererFaults?.length === 3 && rendererFaults.rows.every(row =>
+      publisherReport.rendererFaults.filter(value => value.id === row.id && value.passed === 100 && value.required === 100).length === 1))
+  const companionPassed = !rendererFaultMode || (companion && companion.evidence.failures === 0 &&
+    companion.evidence.videoFrames >= 100 && companion.evidence.audioFrames >= 100)
+  accepted = exitCode === 0 && publisherReport.accepted && stableVideo && sourcesReceived && audioSignal && audioSurvivesDeafen && readerFailures === 0 && reconnects === 0 && rendererFaultsPassed && companionPassed
   await mkdir(path.dirname(output), { recursive: true })
-  await writeFile(output, JSON.stringify({ accepted, publisher: publisherReport, phaseEvidence, diagnostics,
+  await writeFile(output, JSON.stringify({ accepted, publisher: publisherReport, publisherExitCode: exitCode,
+    publisherTimedOut, companion: companion?.evidence, phaseEvidence, diagnostics,
+    rendererFaults: rendererFaultMode ? rendererFaults : undefined,
+    remainingFaultEvidence: rendererFaultMode ? ['resource-retirement', 'voice-director-and-backend-authority',
+      'utility-replay', 'combined-faults', 'other-build-configurations', 'remote-audio-output-measurement'] : undefined,
     receiver: { reconnects, readerFailures, stableVideo, sourcesReceived, audioSignal, audioSurvivesDeafen,
       publications: [...publications.values()].map(({ energy, samples, ...value }) => ({
         ...value, samples, rms: samples ? Math.sqrt(energy / samples) : 0,
@@ -222,6 +249,7 @@ try {
   process.exitCode = accepted ? 0 : 1
 } finally {
   terminal = true
+  await companion?.stop()
   await Promise.all([...readers.values()].map(reader => reader.cancel().catch(() => {})))
   await room.disconnect()
   await Promise.all(tasks)

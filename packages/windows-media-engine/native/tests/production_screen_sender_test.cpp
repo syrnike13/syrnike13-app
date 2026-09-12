@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "screen/production_screen_sender.hpp"
+#include "fault_evidence.hpp"
 
 namespace {
 
@@ -64,6 +65,11 @@ class ManualPublicationAdapter final : public ScreenPublicationAdapter {
   void throwOnSubmitStart() {
     std::lock_guard lock(mutex_);
     throw_submit_ = true;
+  }
+
+  ScreenOperationCompletion submitCompletion(std::uint32_t slot) {
+    std::lock_guard lock(mutex_);
+    return submitted_.at(slot).completion;
   }
 
  private:
@@ -227,6 +233,26 @@ void hungUnpublishHasAnIndependentDeadline() {
               terminal.failure && terminal.failure->stage == "screen_unpublish" &&
               terminal.failure->utility_epoch_retirement_required,
           "hung unpublish did not produce its typed terminal deadline");
+  adapter->completeUnpublish(1);
+  require(sender.state() == ScreenPublicationState::Failed && !sender.waitForEvent(0ms),
+          "late unpublish success resurrected a retired generation");
+}
+
+void hungPublishDoesNotBlockStopOrAcceptLateSuccess() {
+  auto adapter = std::make_shared<ManualPublicationAdapter>();
+  ProductionScreenSender sender(adapter, ScreenPublicationDeadlines{20ms, 1s, 1s});
+  require(sender.start({"screen", 1280, 720, 30, 4'000'000}).ok,
+          "hung publish was not admitted");
+  require(sender.stop(1).ok, "stop waited for the held publish callback");
+  const auto terminal = waitEvent(sender);
+  require(terminal.kind == ScreenPublicationEventKind::TerminalFailure && terminal.failure &&
+              terminal.failure->stage == "screen_publish" && terminal.failure->utility_epoch_retirement_required,
+          "hung publish did not retire its utility epoch");
+  adapter->completePublish(1);
+  require(sender.state() == ScreenPublicationState::Failed && sender.stats().terminal_failures == 1 &&
+              !sender.waitForEvent(0ms), "late publish success changed a retired generation");
+  require(!sender.start({"replacement", 1280, 720, 30, 4'000'000}).ok,
+          "unresolved old publication admitted a replacement");
 }
 
 void adapterSubmitStartFailureReturnsSlotBeforeTerminalFailure() {
@@ -253,6 +279,31 @@ void adapterSubmitStartFailureReturnsSlotBeforeTerminalFailure() {
   require(waitEvent(sender).kind == ScreenPublicationEventKind::Unpublished &&
               sender.state() == ScreenPublicationState::Idle,
           "completed adapter failure did not drain its publication");
+}
+
+void duplicateSubmitCannotReleaseTheNextBorrowedFrame() {
+  auto adapter = std::make_shared<ManualPublicationAdapter>();
+  ProductionScreenSender sender(adapter);
+  require(sender.start({"screen", 1280, 720, 30, 4'000'000}).ok,
+          "duplicate callback generation did not start");
+  adapter->completePublish(1);
+  (void)waitEvent(sender);
+  require(sender.submit(frame(1, 1, 1)) == ScreenSubmitResult::Accepted &&
+              sender.submit(frame(1, 2, 2)) == ScreenSubmitResult::Accepted,
+          "duplicate callback frames were not admitted");
+  const auto duplicate = adapter->submitCompletion(1);
+  adapter->completeSubmit(1);
+  require(waitEvent(sender).slot == 1, "first submitted slot did not return");
+  duplicate(1, ScreenOperationResult::success());
+  require(sender.stats().video_depth == 1 && !sender.waitForEvent(0ms),
+          "duplicate completion released the next SDK-borrowed frame");
+  adapter->completeSubmit(2);
+  require(waitEvent(sender).slot == 2 && sender.stats().video_depth == 0,
+          "next frame did not retain its own completion");
+  require(sender.stop(1).ok, "duplicate callback generation could not stop");
+  adapter->completeUnpublish(1);
+  require(waitEvent(sender).kind == ScreenPublicationEventKind::Unpublished,
+          "duplicate callback generation did not drain");
 }
 
 void completedSubmitFailureDrainsBeforeAndDuringStop() {
@@ -305,11 +356,14 @@ int main() try {
   cancelledPublishDrainsWithoutPublishingOrFailing();
   overloadPreservesEncodedReferenceFrames();
   staleCompletionCannotMutateANewGeneration();
-  hungSubmitEscalatesAndLateCompletionReturnsBorrowedSlot();
-  hungUnpublishHasAnIndependentDeadline();
+  syrnike::windows_media::tests::repeatFault("sdk-submit-duplicate", duplicateSubmitCannotReleaseTheNextBorrowedFrame);
+  syrnike::windows_media::tests::repeatFault("sdk-publish-never-completes", hungPublishDoesNotBlockStopOrAcceptLateSuccess);
+  syrnike::windows_media::tests::repeatFault("sdk-submit-never-completes", hungSubmitEscalatesAndLateCompletionReturnsBorrowedSlot);
+  syrnike::windows_media::tests::repeatFault("sdk-unpublish-never-completes", hungUnpublishHasAnIndependentDeadline);
   adapterSubmitStartFailureReturnsSlotBeforeTerminalFailure();
   completedSubmitFailureDrainsBeforeAndDuringStop();
   return 0;
 } catch (const std::exception& error) {
+  std::cerr << error.what() << '\n';
   return error.what()[0] == '\0' ? 2 : 1;
 }

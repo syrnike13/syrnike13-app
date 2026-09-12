@@ -1,0 +1,52 @@
+{
+  "appCommit": "224d94fedc188a8984e729a1fd61aa7d8bc2e29e",
+  "sdkCommit": "d966cee6abb7f6c855a50dd276c71c26ebfd1ca2",
+  "profile": "Release",
+  "localBackend": true,
+  "artifacts": [
+    {
+      "file": "apps/desktop/out/main/index.js",
+      "sha256": "7E0C5C1335DE43A84AD403DD4FA38FDC4565AB15B6236875D83A9EA2031B5756"
+    },
+    {
+      "file": "apps/desktop/out/preload/index.cjs",
+      "sha256": "84D83BC155B266F736AB36B5DFAF8654AB16235245F60BE93981E6A9028FF437"
+    },
+    {
+      "file": "apps/desktop/out/utility/media-host.cjs",
+      "sha256": "7BA7504B9A30A0487D2CAE5C7BE76FC60FA7D657D72D2DA81958713DE0FEA9FB"
+    },
+    {
+      "file": "apps/desktop/out/media-native/win32-x64/media-manifest.json",
+      "sha256": "2E34125DD5C685C6BB5DB26AF0622F09A39981756712645719E9D4F1B48DF0C2"
+    },
+    {
+      "file": "apps/desktop/out/media-native/win32-x64/windows_media.node",
+      "sha256": "0B7DE5B3404B62CDD10F98C7FA960EC868F8195766DA3A660ED0488A0ED619DB"
+    },
+    {
+      "file": "apps/desktop/out/media-native/win32-x64/livekit.dll",
+      "sha256": "439CF6B0D9606B8E7347D3E02F3FCE34B1935651E55FFC0A4797371F3D33B430"
+    },
+    {
+      "file": "apps/desktop/out/media-native/win32-x64/livekit_ffi.dll",
+      "sha256": "4A9310E0CD79016AF3BF2854198AC59F7036DE5B9CCDCB147D3240010A17A5AF"
+    }
+  ],
+  "backendProfile": "dev",
+  "backendCommit": "224d94fedc188a8984e729a1fd61aa7d8bc2e29e",
+  "backendArtifacts": [
+    {
+      "file": "syrnike-delta",
+      "sha256": "373cb6e7b8aaf87b4dce3a437ef35e835a367bb4a2878203c84e955bb2ecbca3"
+    },
+    {
+      "file": "syrnike-bonfire",
+      "sha256": "89eebe11e754ba9e9ee45809d3b9f4ebdef75f684b8ee0d51cdb57cb1f76ca39"
+    },
+    {
+      "file": "syrnike-voice-ingress",
+      "sha256": "4c77682a3f59be89b208677d6304b832ecc54be3342cc09f5b56e1b882547b8b"
+    }
+  ]
+}

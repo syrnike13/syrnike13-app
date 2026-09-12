@@ -10,6 +10,8 @@
 
 using namespace syrnike::windows_media::audio;
 int microphoneMuteCycleLab();
+int microphoneCandidateFaultLab();
+int microphoneCancellationFaultLab();
 int microphonePublicationLab(unsigned seconds, std::optional<AudioDeviceId> input = {}, bool device_loss = false);
 int microphoneDeviceSwitchLab();
 int microphonePublicationFailureLab();
@@ -62,6 +64,8 @@ const char* failureName(MicrophoneCaptureFailure failure) {
 int main(int argc, char** argv) try {
   if (argc == 2 && std::string_view(argv[1]) == "microphone-synthetic-aec") return microphoneSyntheticAecLab();
   if (argc == 2 && std::string_view(argv[1]) == "microphone-mute-cycle") return microphoneMuteCycleLab();
+  if (argc == 2 && std::string_view(argv[1]) == "microphone-candidate-fault") return microphoneCandidateFaultLab();
+  if (argc == 2 && std::string_view(argv[1]) == "microphone-cancellation") return microphoneCancellationFaultLab();
   if (argc == 2 && std::string_view(argv[1]) == "microphone-device-switch") return microphoneDeviceSwitchLab();
   if (argc == 2 && std::string_view(argv[1]) == "microphone-publication-failure") return microphonePublicationFailureLab();
   if (argc == 2 && std::string_view(argv[1]) == "microphone-default-change") return microphoneDefaultChangeLab();

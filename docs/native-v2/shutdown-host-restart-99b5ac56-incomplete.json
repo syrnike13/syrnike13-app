@@ -1,0 +1,3493 @@
+{
+  "schemaVersion": 1,
+  "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+  "overallQualificationPassed": false,
+  "interruption": {
+    "reason": "Windows restart terminated both test controllers and local services",
+    "shutdownRequest": {
+      "provider": "User32",
+      "eventId": 1074,
+      "utc": "2026-09-09T21:13:10.9330418Z"
+    },
+    "startup": {
+      "provider": "Microsoft-Windows-Kernel-General",
+      "eventId": 12,
+      "utc": "2026-09-09T21:14:14.765036Z"
+    },
+    "controllerSessionsMissingAfterRestart": true,
+    "electronProcessesAbsentAfterRestart": true,
+    "dockerApiUnavailableAfterRestart": true
+  },
+  "inputManifestSha256": "6276531f53c469c70d2a082aa5e2dbe42489c415d622358dde8ab81c5d83f4cd",
+  "rows": [
+    {
+      "role": "core",
+      "point": "output-initialize",
+      "required": 100,
+      "completed": 56,
+      "passed": false,
+      "terminalState": "interrupted_by_host_restart",
+      "originalSummarySha256": "df0b36172d12591d4cb209bc8ee3264adc6c5890b46300285b0060319c140312",
+      "cases": [
+        {
+          "file": "shutdown-1.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 1,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2697.912600003183,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "a3718d342b66a3828dcb0b310add9c5193878f42bc38f9ece667a833b46f1bec"
+        },
+        {
+          "file": "shutdown-10.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 10,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2737.3441000021994,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "b23e7dc35ab4e316af7de26d0008d1b232db331cab661a2e9eb6f27e49df1ca2"
+        },
+        {
+          "file": "shutdown-11.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 11,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2675.9873999990523,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "24f56a625666e1d6979f335e491f406cfc4f1041cdc98d0bd0be62de6d88199d"
+        },
+        {
+          "file": "shutdown-12.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 12,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2681.1846000030637,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "ad6149286176468fe308f5e31eb554ac4f53368c5e00328e63e290a25624e14b"
+        },
+        {
+          "file": "shutdown-13.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 13,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2673.7646000012755,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "667009299bc9a09d5000cd19a4381c1a79e774e5a5d3401845cc83dd1330ebfd"
+        },
+        {
+          "file": "shutdown-14.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 14,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2816.2427000030875,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "41695e19158390007c5bf58cd640ea54d5ff541883f483f96c268b4666202015"
+        },
+        {
+          "file": "shutdown-15.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 15,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2980.6377999968827,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "e22a3dff80fa105e016b8cec74b6edd91655404027b3ca52214e2f37b5ec0deb"
+        },
+        {
+          "file": "shutdown-16.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 16,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2757.1321000009775,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "23c9a800a3ce104523c0e783651fe9e901a1f86370264cb2469706287e576fea"
+        },
+        {
+          "file": "shutdown-17.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 17,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2664.567199997604,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "51894631d8b09c80c79b9d1817716e82c0ab02bed3f47ee9f3009a63221d05c7"
+        },
+        {
+          "file": "shutdown-18.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 18,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2782.6514999978244,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "db861ea3606895cffb2f668ebd012a9d1ff22e70991677f38c76ede6e14e1897"
+        },
+        {
+          "file": "shutdown-19.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 19,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2663.1166000030935,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "100523fb4fa70250ac598e1f8da185c1598d19f33266c0ee8752bfcfcb91b935"
+        },
+        {
+          "file": "shutdown-2.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 2,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2875.36610000208,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "40cfa683253d27bce5dd851f067fa516d4ca1fd32e924044ebbd02bda0e2d0b6"
+        },
+        {
+          "file": "shutdown-20.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 20,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2651.721400000155,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "5fb782d3369d3e12a8fe4a089759206f6c93e1e7e199e082fcbeb89cae158bee"
+        },
+        {
+          "file": "shutdown-21.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 21,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2770.5348000004888,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "199ed5941ca5b3fed170cd2737cf3c288977330e4711e33acbca436c224e9390"
+        },
+        {
+          "file": "shutdown-22.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 22,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2661.029399998486,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "3483f8d8b28e7cc57c6d902337eb921b1a15ee6d1de16b9701fd1addabf7ca96"
+        },
+        {
+          "file": "shutdown-23.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 23,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2673.752999998629,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "337255d0bb23cae8340fcbfbd360d5218f206b58e444f71b75ed303c914bc267"
+        },
+        {
+          "file": "shutdown-24.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 24,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2662.538899999112,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "b6b1085fecf3faf4196396651bdbc6d58f484e5a3dd0d2dd0443d8b2b29a9636"
+        },
+        {
+          "file": "shutdown-25.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 25,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2664.740499999374,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "c5829ae47acd45dc72b8bf7fd9daff94e71077dd876d316dac7b22094c46e6b5"
+        },
+        {
+          "file": "shutdown-26.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 26,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2968.7397999987006,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "542ae981961a821be777e07771ef9e28b71dc9d415e85233241b3d061a6dd23f"
+        },
+        {
+          "file": "shutdown-27.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 27,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2672.3037000000477,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "d2f147c64bc24002aff90f26b4a1789a84a53b1e25291369dd0274dbb987edd7"
+        },
+        {
+          "file": "shutdown-28.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 28,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2656.4383000023663,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "ad3fcc142e63778a8da7023c5f6b4a068236d6f961bc54f90c9a32531106faa4"
+        },
+        {
+          "file": "shutdown-29.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 29,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2735.427200000733,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "05b57031686a6e60f63bab4009f9329d4b679ea78a507976bfaf24fbeb618265"
+        },
+        {
+          "file": "shutdown-3.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 3,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2681.0183999985456,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "bc56a5bafbe517a3a821021c61000a7d19266de3eba8e8797c5c420d04ce91c6"
+        },
+        {
+          "file": "shutdown-30.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 30,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2791.280000001192,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "4b0db1d37df3f9a2a62109e4b98eeedcb1301489dddbc08da3bcb466ae6b61e8"
+        },
+        {
+          "file": "shutdown-31.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 31,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2708.870300002396,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "b4ff1f24e558e3d8ebe28450c2ce8fb3b42708003371443bdc6c2df6479eca7d"
+        },
+        {
+          "file": "shutdown-32.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 32,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2784.9770999997854,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "35907a0d02b8b410d670285efab9b9e481872368a58912fd4b0abb44785d0761"
+        },
+        {
+          "file": "shutdown-33.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 33,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2690.2603999972343,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "63ecbccd24f2902614515cc482663194df01dee9c33f49a1bfde15a1ad9cc1ad"
+        },
+        {
+          "file": "shutdown-34.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 34,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2691.0038000009954,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "383bfcd757f9fb09d19e7323ba10e2a32d223ecb473e481fe616b03dd2ede500"
+        },
+        {
+          "file": "shutdown-35.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 35,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2687.1290000006557,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "6600b9ea286510052ed9c0199df52cf0db93b18631cadd1f443d883d95af6a32"
+        },
+        {
+          "file": "shutdown-36.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 36,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2669.2170999981463,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "1b1c781eac3944d1a15bea145d0f67da69a2c9b25a31f86cbbe5672c275e126e"
+        },
+        {
+          "file": "shutdown-37.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 37,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2684.1193000003695,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "656ac01206addcc303b8af0f2fa9ff7ccb9813f77522de89154ecde8eeed22f5"
+        },
+        {
+          "file": "shutdown-38.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 38,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2667.618100002408,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "1825db1be93f5ea42f509f0cc5b5d301a2a631c8ee46bb70b31e415af63454fc"
+        },
+        {
+          "file": "shutdown-39.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 39,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2662.6347999982536,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "12f720480ae7fb0ef36acadfa6d38e8fc6c59aeb39a0b05f8e301697be0ddea4"
+        },
+        {
+          "file": "shutdown-4.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 4,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2675.3643000014126,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "8814a715d498328de20549c08084f176201e19079cde9bb9676cc63f7382ece6"
+        },
+        {
+          "file": "shutdown-40.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 40,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2773.2232000008225,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "dec674acbf53ceef763b06c8f29c2a93c0120a4a64cdc2c36ac667a4e14cf55a"
+        },
+        {
+          "file": "shutdown-41.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 41,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2668.408900000155,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "36bd91fe6c2aa5b78f767dc58f423ea786fb7346da308a6240833baee597d2fe"
+        },
+        {
+          "file": "shutdown-42.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 42,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2680.337000001222,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "c5112addba66074a75bec55f0cf72afd467b061d9915fa22a3c878989ab5b718"
+        },
+        {
+          "file": "shutdown-43.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 43,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2673.361099999398,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "27aee909bb035efb590209c19bb259d418477d44ed135a3a2434f6197500dbf7"
+        },
+        {
+          "file": "shutdown-44.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 44,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2745.550799999386,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "79983a5cbb6b35543b6295160e989ff0ef6fef0a577484f3d28e70ba865bbd25"
+        },
+        {
+          "file": "shutdown-45.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 45,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2808.4697999991477,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "ed99b601cccd73fa03a4d7f92004032184df82b8dbd2b5764e344333d6cd3fd5"
+        },
+        {
+          "file": "shutdown-46.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 46,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2740.408100001514,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "d22ab5eeaa420e8b261ef6ca3a5b18586e62981a59c0ae5644755241a5df2050"
+        },
+        {
+          "file": "shutdown-47.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 47,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2719.3112000003457,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "8d1f2a9a9a55c341782f55e7c52b2d1df48fbe141aad4acbdabbd3a0649352e7"
+        },
+        {
+          "file": "shutdown-48.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 48,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2674.8326000012457,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "8aca6f2464c1c81e1db8fe7da766e562573b4ebe174c49f3ea3f85d51d34b688"
+        },
+        {
+          "file": "shutdown-49.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 49,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2668.1374000012875,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "8523a772bb081ba13c1d1d102dcb594c969261116ad31d028c330afbe075d5de"
+        },
+        {
+          "file": "shutdown-5.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 5,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2668.4525999985635,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "f6460c0e546efa2b3d78e541203c4c7c66e725efe23250abe57cd8ffbc0a020d"
+        },
+        {
+          "file": "shutdown-50.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 50,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2721.308100000024,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "b3b0afb52aceab6cccc9f2377fb2cdfe036d4d6a9e95d2ed5cdc6171840e7b08"
+        },
+        {
+          "file": "shutdown-51.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 51,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2930.5762999989092,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "f97979dde3c1352d67df993e42064c2fa2302194b2abab8ea2c6126f916fb903"
+        },
+        {
+          "file": "shutdown-52.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 52,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2834.447000000626,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "3132baef32206de9fe2f264a842823d7aca80058dc4edc05c8aefce9b8a62a21"
+        },
+        {
+          "file": "shutdown-53.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 53,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2692.5419999994338,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "eff25ab2862e8e5c10bc77abb72cc0af16426bb420335f534a931aa0a5936493"
+        },
+        {
+          "file": "shutdown-54.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 54,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2677.022300001234,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "9c97f4895d678ab9abf480a3c38a66400f92e9d488e9269465bdffc8eeccae55"
+        },
+        {
+          "file": "shutdown-55.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 55,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2744.4655000008643,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "8cb9c40f4ad0f2127eb3fd95a570bb3fa65b7dcda6a3d316a12612a93512e8c6"
+        },
+        {
+          "file": "shutdown-56.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 56,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2734.8655999973416,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "6c7b813d497bb0ba8bf431c5e5020b4f5e6d796b40ef6eca9aee48a5fc6a2b91"
+        },
+        {
+          "file": "shutdown-6.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 6,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2696.0169999971986,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "2b68d4d049232a84c3418be0eb78357f4ddac763b9ca67a4daa06bbc67e6b7d4"
+        },
+        {
+          "file": "shutdown-7.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 7,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2871.4492999985814,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "8f9054c7d04013cf2f8a77c099bf6624bb11f04d59ab15d9c71e9509492207ee"
+        },
+        {
+          "file": "shutdown-8.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 8,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2812.5661999993026,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "766c779f6dd873cb6d1f4aa72b490d0ed19fb36b79ea7bf2d09aaffd03fcdced"
+        },
+        {
+          "file": "shutdown-9.json",
+          "result": {
+            "point": "output-initialize",
+            "call": 1,
+            "iteration": 9,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "output-initialize",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "output-initialize",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2779.025000002235,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "ee24190d1c5b32a10970dfc16c388e5b2c5e2ee21b55173ee8025329c7f375a3"
+        }
+      ]
+    },
+    {
+      "role": "video",
+      "point": "camera-read-sample",
+      "required": 100,
+      "completed": 55,
+      "passed": false,
+      "terminalState": "interrupted_by_host_restart",
+      "originalSummarySha256": "e0186a1875f636f70da6443c64681aedd9aff90ad4710e66bce943d0f7ac2046",
+      "cases": [
+        {
+          "file": "shutdown-1.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 1,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2263.7330999970436,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "79fd7fe5247dba72d32b7379583e09e7d5ed964b954251d341487074656c609c"
+        },
+        {
+          "file": "shutdown-10.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 10,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2308.583599999547,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "d2b79b46d0b3eafd1c35e1dfc54806880370fceb617acc8a8191e28341a81761"
+        },
+        {
+          "file": "shutdown-11.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 11,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2576.810800001025,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "3064fa6b6326c44f3b0de68dd5a73f511810bae255ca973c5734929a7819e0fd"
+        },
+        {
+          "file": "shutdown-12.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 12,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2414.917300000787,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "83bf96000f275745ecd07627ac312aa413a1965002ab8166edbb4129efe93dd7"
+        },
+        {
+          "file": "shutdown-13.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 13,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2221.9174000024796,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "a787888c5f601bcbab603012d88147cddecbb14b80f8b9800bb69f2a9cce3942"
+        },
+        {
+          "file": "shutdown-14.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 14,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2541.6525000035763,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "7d0c1532ae3fa565f0a97eea8448e9198a1bc5873616be9e236d7a0e3c9c1aaa"
+        },
+        {
+          "file": "shutdown-15.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 15,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2248.9919999986887,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "5189833e28d953599c49c4cfc7cc66337ed73e5c0a6f17b8df5377c141abea10"
+        },
+        {
+          "file": "shutdown-16.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 16,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2301.767000004649,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "7ff3f80e867c16924bca2a17d2384b58dbb25452de527b1d7a8f710ac7f3c16c"
+        },
+        {
+          "file": "shutdown-17.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 17,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2303.916400000453,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "8126c871580da95a7ab354a96d11a59c6f277404c08e5a11a1d94475d27bc3f2"
+        },
+        {
+          "file": "shutdown-18.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 18,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2388.6719000041485,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "98d3a9df9d7191645953a003e455a25cb5de04ae3a9950badd495560f4dcc697"
+        },
+        {
+          "file": "shutdown-19.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 19,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2339.6153999865055,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "8bebe64d48cdb8419ee690e3916488961918e42453739b6bd895c4bc79e2a6d9"
+        },
+        {
+          "file": "shutdown-2.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 2,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2263.5667999982834,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "862edc651e3e19747fe148bf7cfa3a5260d11c70cbad35f27b98b9955b8b6f09"
+        },
+        {
+          "file": "shutdown-20.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 20,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2240.5509999990463,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "cd327c19f3b7e194de075281f07eb046eb6d17000e351bf83ce55865890a8c0d"
+        },
+        {
+          "file": "shutdown-21.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 21,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2243.343299999833,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "fb6fbb793d9d8165f913698a7a62ffd875118b37babd552116497fee2a17a88a"
+        },
+        {
+          "file": "shutdown-22.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 22,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2368.7444999963045,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "8cb7be6122cf552291bdc0bfced9353eaa56feadbc9f48cca81f6b13df699205"
+        },
+        {
+          "file": "shutdown-23.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 23,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2272.785400003195,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "f526bf067eb8a6a105aeb6169925dc33878b8aba5b6b297023cc774ab9ec684d"
+        },
+        {
+          "file": "shutdown-24.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 24,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2312.4392999857664,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "e06860ce22851f10513b985f5341473b78fee4562e1b060bd5e3a2e96133493f"
+        },
+        {
+          "file": "shutdown-25.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 25,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2323.3203999996185,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "6006d1e0458d16e181c3e2b2244e913255968fb1f48a0d4472a4acf74d094fc8"
+        },
+        {
+          "file": "shutdown-26.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 26,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2415.378999993205,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "68326b844630ed27d90c1afd4fedded35e9edbf28b254f0dcf0866673961cd78"
+        },
+        {
+          "file": "shutdown-27.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 27,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2310.040300011635,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "2d37fe1ee1bd27fa55b96e8fda4b93650b47e38f4a5a0921b34d52452a95b1a7"
+        },
+        {
+          "file": "shutdown-28.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 28,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2282.325200006366,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "613dadb3edddccf23d408f60575119b14472f385d6328bba52f30968f98ee467"
+        },
+        {
+          "file": "shutdown-29.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 29,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2276.596499994397,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "01763748f49248ee6ac074061fa90d784deb451f2c20878e01a27ce00353f1f8"
+        },
+        {
+          "file": "shutdown-3.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 3,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2407.447599992156,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "496fc37b132c15af654659687d496b20a87ee56f0d54f3f04d95bb229db6ef58"
+        },
+        {
+          "file": "shutdown-30.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 30,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2227.7071000039577,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "a7bf47ef6583394586eb6831b58476bac925d2fefefbc1b36a313a52ace4966e"
+        },
+        {
+          "file": "shutdown-31.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 31,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2286.663200005889,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "c66659090f13245a8e0a3abac9903cc5aafc908f0f1cddc5aa21bb5ee3923187"
+        },
+        {
+          "file": "shutdown-32.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 32,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2343.0911000072956,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "d6424a17b52f67750b8b5f5d9d78fef0418cc8619205bcdf982efc85e82a739a"
+        },
+        {
+          "file": "shutdown-33.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 33,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2267.116099998355,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "52beae68766a38fa19143efa29c427fb2143a9e7e6aea0d6b19e2c5f319072a7"
+        },
+        {
+          "file": "shutdown-34.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 34,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2380.623000010848,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "cff9cdae250a2e96b839f45ecbf318401e2ceb4646335d758ff38afa7c0a60f7"
+        },
+        {
+          "file": "shutdown-35.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 35,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2277.8927000015974,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "3a777ced83262fca4c4b0b3760c34716245d5a00f9079e3c9fcc39c92e296f38"
+        },
+        {
+          "file": "shutdown-36.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 36,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2294.2759000062943,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "964ca7072c8723be62f7a72ff250d27ced1c15b9b20536aff1f24645a93996cb"
+        },
+        {
+          "file": "shutdown-37.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 37,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2334.8642999976873,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "9c050dab110b0dd3caba532c6d37070e9325881afb1388ec0543c8b4d2d4114e"
+        },
+        {
+          "file": "shutdown-38.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 38,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2381.8125,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "2da8cbaadb025725da3e80e7ad7231ca79c66c992a0b9a0c0ebaa38a0197106f"
+        },
+        {
+          "file": "shutdown-39.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 39,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2261.7433000057936,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "69b258fc3d3f5fafa82dbb26f3dcba0eaba663a04f6b1c988f65c0da9747f84b"
+        },
+        {
+          "file": "shutdown-4.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 4,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2268.6886000037193,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "f8e00fa4ddbca7f8e7ea039b6a2c321fcfb71b24ca1d107930884bc1aca1c627"
+        },
+        {
+          "file": "shutdown-40.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 40,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2484.1974000036716,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "61665deef55e7b546036b8f93eb2d4e570667ca70a98d5e77898151e56cfcb34"
+        },
+        {
+          "file": "shutdown-41.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 41,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2373.4993999898434,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "1d5cda7877762af4ca3436770c6bd4b22b4b21e044c6db2812c19437f135aa9a"
+        },
+        {
+          "file": "shutdown-42.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 42,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2374.4824000000954,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "ba753d2b8ca5d6ae043a3cd0d814e72b3b5c03b2ad01d75fd5bedc492b5b5679"
+        },
+        {
+          "file": "shutdown-43.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 43,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2270.3797000050545,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "f4b1c6cdd3e3c33598ed031f5f6081136a45835aea0bbdc43fedf39dbf8ce199"
+        },
+        {
+          "file": "shutdown-44.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 44,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2531.3930999934673,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "351d873fcdee052c5aa3572e69024498373d7ff42cab97674650afe27793101e"
+        },
+        {
+          "file": "shutdown-45.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 45,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2705.303200006485,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "f63beba20aff194071e030e81061a800f603dc26aa6a3a1d84180fa895a625c4"
+        },
+        {
+          "file": "shutdown-46.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 46,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2378.197300001979,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "360a61cd9ca7c4d6abf5aed3b49202313fb016f3b88d82849ae58e7c68698671"
+        },
+        {
+          "file": "shutdown-47.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 47,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2278.7000000029802,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "54f63b3decbcdbdd697567a26c565f051e22b11428297e4e56fc9757137e8b75"
+        },
+        {
+          "file": "shutdown-48.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 48,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2444.067699998617,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "6d8b1960e32b6b249259d8d76e991616c9eaa054edab3eb1c9d55bf3c1f56ae0"
+        },
+        {
+          "file": "shutdown-49.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 49,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2378.3776999861,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "dc68c663b27545bd630c645d918f04a8391fe63d84b65516a920ad80fdf92fe6"
+        },
+        {
+          "file": "shutdown-5.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 5,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2384.252800002694,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "d6191f8e47a55314aaf1dccbadd1b5c485fc611dc7f637c284edd05c5158501a"
+        },
+        {
+          "file": "shutdown-50.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 50,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2776.1042000055313,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "0014ae22af7d96e1dc9e2eebb496fee37d50f2447c752d27ba23bd1f129e0067"
+        },
+        {
+          "file": "shutdown-51.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 51,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2547.2742000073195,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "3360e6597fe344840c7579754e505cdd55aeff33dfc96fa4b3c7dab5939bcb62"
+        },
+        {
+          "file": "shutdown-52.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 52,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2705.4830999970436,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "93d24fa7b88cd9561a715278a2dee1109e756bfe7c8623f76733c352f5988375"
+        },
+        {
+          "file": "shutdown-53.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 53,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2284.6669999957085,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "449acc469e2b5aef6c9a410395ae97290810f6f9da50482806209eeee372c7a2"
+        },
+        {
+          "file": "shutdown-54.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 54,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2653.732900008559,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "33a4c8d022847392273dacd38451b4b9e2eadeac018169f0af9ace82c30c890f"
+        },
+        {
+          "file": "shutdown-55.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 55,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2413.0416000038385,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "8a76f7c9635b985247003de20e202ba3db5a13cb464c92672496ccee4abf0a0b"
+        },
+        {
+          "file": "shutdown-6.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 6,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2412.3967999964952,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "323f7acace912c2519a126d6a1fe36c1683a9254f4dca688bd150d7d29c44dfa"
+        },
+        {
+          "file": "shutdown-7.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 7,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2472.988999992609,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "d33fdca0a7e829dffce9ce5fa453f4407de75ef949f7c5f3d5abefb391fe95ab"
+        },
+        {
+          "file": "shutdown-8.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 8,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2620.017000004649,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "28f175ca886277c146be7be3287470ed0a745489e51f567245cb0dca39004fae"
+        },
+        {
+          "file": "shutdown-9.json",
+          "result": {
+            "point": "camera-read-sample",
+            "call": 1,
+            "iteration": 9,
+            "passed": true,
+            "shutdownBudgetMs": 4900,
+            "entries": [
+              {
+                "point": "camera-read-sample",
+                "call": 1,
+                "ownedUtilityVerified": true
+              }
+            ],
+            "entry": {
+              "point": "camera-read-sample",
+              "call": 1,
+              "ownedUtilityVerified": true
+            },
+            "elapsedMs": 2326.253600001335,
+            "closeSettled": true,
+            "closeFailed": false,
+            "processesExited": [
+              true,
+              true
+            ],
+            "forcedFixtureCleanup": false
+          },
+          "sha256": "dbe9c76f40d20c8e73ebc083ad2d5439e96fe6965e4cb72326e3550b56f83d62"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Original reports are preserved without rewriting their counters or adding synthetic passing cases.",
+    "Neither row reached 100 cases; later rows had not started.",
+    "A host restart is not evidence of successful application shutdown or recovery.",
+    "No new post-run live backend identity proof is available across the restart."
+  ]
+}

@@ -1,4 +1,5 @@
 #include "livekit/livekit_screen_publication_adapter.hpp"
+#include "testing/product_fault_gate.hpp"
 
 #if defined(LIVEKIT_CPP_HAS_PREENCODED_VIDEO_SOURCE)
 
@@ -133,6 +134,7 @@ void LiveKitScreenPublicationAdapter::startPublish(
           options.video_encoder = livekit::VideoEncoderBackend::PreEncoded;
           options.frame_metadata_features =
               livekit::FrameMetadataFeatures{true, true, false};
+          testing::holdProductFault("sdk-screen-publish");
           participant->publishTrack(track, options);
           if (!track->publication())
             return completion(
@@ -153,8 +155,10 @@ void LiveKitScreenPublicationAdapter::startPublish(
             }
           }
           if (stopping) {
-            if (track->publication())
+            if (track->publication()) {
+              testing::holdProductFault("sdk-screen-unpublish");
               participant->unpublishTrack(track->publication()->sid());
+            }
             return completion(
                 generation,
                 failure("screen_livekit_adapter_stopping",
@@ -285,8 +289,10 @@ void LiveKitScreenPublicationAdapter::startUnpublish(
           // A disconnected Room has already lost its publications. Local SDK
           // references still drain here, but there is no remote track to remove.
           if (room && room->connectionState() != livekit::ConnectionState::Disconnected &&
-              participant && track && track->publication())
+              participant && track && track->publication()) {
+            testing::holdProductFault("sdk-screen-unpublish");
             participant->unpublishTrack(track->publication()->sid());
+          }
           completion(generation, screen::ScreenOperationResult::success());
         } catch (...) {
           // Disconnect can race the check above while unpublish is in flight.
