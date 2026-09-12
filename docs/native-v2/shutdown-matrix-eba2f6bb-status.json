@@ -1,0 +1,91 @@
+{
+  "schema": "syrnike.native-v2.shutdown-matrix-status",
+  "applicationCommit": "eba2f6bbaaa8a06cb5c393ee7df57885448051ba",
+  "capturedAt": "2026-09-12",
+  "qualification": false,
+  "budgetMs": 4900,
+  "rows": [
+    {
+      "point": "output-initialize",
+      "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+      "status": "fail",
+      "completed": 77,
+      "required": 100,
+      "failure": "product_shutdown_deadline",
+      "failedIteration": 78,
+      "observedElapsedMs": 4904.1125,
+      "utilityExited": true,
+      "mainExited": false,
+      "summarySha256": "9fa806e0786390fbd0ec47defcb14189e91fad1096d7e3802e47dd61ce0cf53d",
+      "inputsMatched": true,
+      "evidence": ".codex-tmp/issue131-external-shutdown-core-matrix/matrix/summary.json"
+    },
+    {
+      "point": "output-initialize",
+      "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+      "status": "pass",
+      "completed": 100,
+      "required": 100,
+      "summarySha256": "a66cb0c0d93f4267edfd10b1bdad8a4d798260884c497048e599e2f8d666a9aa",
+      "inputsMatched": true,
+      "evidence": ".codex-tmp/issue131-post-reboot-core-wpr-matrix-first-matrix/matrix/summary.json"
+    },
+    {
+      "point": "output-render",
+      "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+      "status": "fail",
+      "completed": 36,
+      "required": 100,
+      "failure": "product_shutdown_deadline",
+      "failedIteration": 37,
+      "harnessElapsedMs": 4944.1768,
+      "observedCloseElapsedMs": 4849.3862,
+      "measurementNote": "Harness overhead is outside the product close interval; raw elapsed time is retained without attributing it to the application.",
+      "utilityExited": true,
+      "mainExited": true,
+      "summarySha256": "ad39a4bbd7358c39a992deb7e93d42acc4804e91f81af661f3594e7e025a8cdb",
+      "inputsMatched": true,
+      "evidence": ".codex-tmp/issue131-post-reboot-core-wpr-matrix-first-matrix/matrix/summary.json"
+    },
+    {
+      "point": "camera-read-sample",
+      "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+      "status": "pass",
+      "completed": 100,
+      "required": 100,
+      "evidence": "docs/native-v2/shutdown-host-restored-video-window-99b5ac56-incomplete.json.gz"
+    },
+    {
+      "point": "sdk-camera-publish",
+      "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+      "status": "pass",
+      "completed": 100,
+      "required": 100,
+      "evidence": "docs/native-v2/shutdown-host-restored-video-window-99b5ac56-incomplete.json.gz"
+    },
+    {
+      "point": "sdk-camera-unpublish",
+      "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+      "status": "pass",
+      "completed": 100,
+      "required": 100,
+      "evidence": "docs/native-v2/shutdown-host-restored-video-window-99b5ac56-incomplete.json.gz"
+    },
+    {
+      "point": "wgc-window-frame-pool",
+      "applicationCommit": "eba2f6bbaaa8a06cb5c393ee7df57885448051ba",
+      "status": "blocked-before-injection",
+      "completed": 0,
+      "required": 100,
+      "failure": "shutdown_scenario_failed",
+      "startupError": "Native 131 shutdown validation link was not found within 30000 ms",
+      "inputsMatched": true,
+      "evidence": ".codex-tmp/issue131-wgc-operation-shell-shellcontrol2/errors/private-1-launch.txt"
+    }
+  ],
+  "notes": [
+    "A passing row is not a passing qualification unless it has 100 measured repetitions and exact-build identity.",
+    "The eba2f6b WGC attempt used a rebuilt desktop bundle and exact native manifest, but local frontend/backend listeners were unavailable; no WGC fault was injected.",
+    "The 99b5ac56 output-render failure has an independent observer gap and does not identify the cause of delayed process completion."
+  ]
+}

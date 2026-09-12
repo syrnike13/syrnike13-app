@@ -1041,3 +1041,13 @@ SDK-publication shutdown cases before case 29 exceeded 4900 ms. Main published
 exit code zero at 4249 ms but became kernel-signaled at 5106 ms. The expanded
 failed-case observations and the unchanged frozen product hashes are retained;
 the remaining monitor rows did not run.
+
+The current [shutdown status matrix](shutdown-matrix-eba2f6bb-status.json) keeps
+completed prefixes separate from qualification results. Earlier exact-input
+controls passed camera reader, camera publish and camera unpublish (100 each),
+while output initialize and output render retain failures after 77 and 36 cases.
+A rebuilt `eba2f6bb` WGC product reached the harness, but its first control could
+not find the local validation link within 30 seconds because the required
+frontend/backend listeners were unavailable; no WGC fault was injected. The
+artifact remains non-qualifying and does not convert any prefix into a full
+100-cycle PASS.
