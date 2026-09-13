@@ -38,7 +38,7 @@ all positive deltas remain raw failures.
 | Media utility process crashes | PASS* | Production frontend utility series reached 100/100 primary crashes and 49/49 exhaustion/manual-Retry checks. *The archived series is not the current eba2f6bb final-build qualification. |
 | Renderer reloads or crashes | PASS* | Renderer archive reached 100/100 for reload and crash with unchanged Room/publication identities. *Historical product build. |
 | New desired state arrives during retry | PASS* | Native microphone/output latest-intent and retry-fence rows reached 100/100; utility replay evidence preserves only the latest snapshot. *Final exact-build replay remains due. |
-| App shutdown during a pending or hung operation | **PARTIAL** | Ten held SDK/microphone/camera rows have 100/100 historical PASS evidence; output initialization/render and screen publication have failed prefixes; WGC product setup is blocked. This is the only shutdown scope required here, rather than 18 separate 100-cycle shutdown matrices. |
+| App shutdown during a pending or hung operation | **PARTIAL** | Ten held SDK/microphone/camera rows have 100/100 historical PASS evidence; output initialization/render and screen publication have failed prefixes. Current-head WGC injection and teardown control passes 3/3 within 4,900 ms; the exploratory 100-cycle WGC run completed 64/100 before `native_fault_entry_deadline`, so no 100-cycle WGC qualification claim is made. This is the only shutdown scope required here, rather than 18 separate 100-cycle shutdown matrices. |
 | Combined GPU contention, audio gap, and renderer stall | PASS* | Combined product archive reached 100/100 continuity cycles with bounded texture retention and neutral-observer media progress. It did not include shutdown while all faults were held. *Historical product build. |
 
 The broad issue rows are grouped over the concrete native and product IDs below.
@@ -89,7 +89,7 @@ descriptions; the 100/100 requirement is for deterministic fault/recovery rows.
 | `output-initialize` | **FAIL / rerun required** | One 77/100 series failed at iteration 78; an independent control reached 100/100. |
 | `output-render` | **FAIL / rerun required** | 36/100; old harness recorded 4,944 ms while close itself was observed at 4,849 ms. |
 | `sdk-screen-publish` | **FAIL / rerun required** | 28 completed cases before the unchanged 4,900 ms gate failed. |
-| `wgc-window-frame-pool` | **BLOCKED** | Current rebuilt product could not find the local validation link before injection; no WGC fault was entered. |
+| `wgc-window-frame-pool` | **PARTIAL** | Current-head `e3d6d7f2` Release/test-gates product entered the held WGC call and shut down the owned main and utility processes in 3/3 control iterations within 4,900 ms; see [`shutdown-wgc-e3d6d7f2-control.json`](shutdown-wgc-e3d6d7f2-control.json). A separate 100-cycle exploratory series stopped at 64/100 with `native_fault_entry_deadline`; see [`shutdown-wgc-e3d6d7f2-exploratory.json`](shutdown-wgc-e3d6d7f2-exploratory.json). The row is not promoted to 100-cycle qualification. |
 | Screen unpublish/audio, encoder, monitor WGC, and DXGI held calls | NOT RUN | No complete product shutdown row exists yet. |
 
 ## #130 product cutover
@@ -125,6 +125,8 @@ one missing follow-on DXGI row after the strict first failure. The consolidated
 machine-readable decision boundary is [`encoder-resource-matrix-445cff8a.json`](encoder-resource-matrix-445cff8a.json).
 The production-equivalent configured-MFT control remains zero-growth in Release,
 Debug and ASan; all positive deltas remain raw failures, never waivers. Local
-Debug and ASan camera rows pass 3/3, while the hosted rerun and the pending
-product shutdown/WGC setup remain required. The eight-hour and multi-machine
-work remains issue #132 and is not part of these blockers.
+Debug and ASan camera rows pass 3/3. The current-head product can now enter and
+close the WGC held call in the bounded 3/3 control, but its exploratory 100-cycle
+series stopped at 64/100 with `native_fault_entry_deadline`; the shutdown gate
+therefore remains partial. The eight-hour and multi-machine work remains issue
+#132 and is not part of these blockers.

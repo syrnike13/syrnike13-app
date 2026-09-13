@@ -3,6 +3,22 @@
   "applicationCommit": "eba2f6bbaaa8a06cb5c393ee7df57885448051ba",
   "capturedAt": "2026-09-12",
   "qualification": false,
+  "currentHeadSupplemental": {
+    "applicationCommit": "e3d6d7f27748c9268d6daaf10b98bc2bfcd1f872",
+    "wgcWindowFramePoolControl": {
+      "status": "pass",
+      "completed": 3,
+      "required": 3,
+      "evidence": "docs/native-v2/shutdown-wgc-e3d6d7f2-control.json"
+    },
+    "wgcWindowFramePoolExploratory100": {
+      "status": "fail",
+      "completed": 64,
+      "required": 100,
+      "failure": "native_fault_entry_deadline",
+      "evidence": "docs/native-v2/shutdown-wgc-e3d6d7f2-exploratory.json"
+    }
+  },
   "budgetMs": 4900,
   "shutdownInterpretation": {
     "scope": "pending-or-hung-operations",
