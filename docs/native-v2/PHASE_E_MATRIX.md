@@ -119,8 +119,8 @@ diagnostic in [`encoder-resource-isolation-2df7b3be.json`](encoder-resource-isol
 adds a production-equivalent configured-MFT control: it passed with zero growth,
 while the device-manager and clean product start/stop controls still showed
 positive growth. This is useful isolation evidence, not a waiver or a final
-qualification. Hosted run `34700126979` passed the normal Windows job but its
-ASan job failed `camera` while committing a healthy candidate; the synthetic
-fixture has a local follow-up optimization that still needs a verified commit and
-hosted rerun. The eight-hour and multi-machine work remains issue #132 and is not
-part of these blockers.
+qualification. Hosted run `34700126979` passed the normal Windows job but its ASan job failed
+`camera` before the fixture follow-up was committed. On current head, local Debug
+and ASan `camera`, `camera-preview`, and `camera-preview-quarantine` rows each
+pass 1/1; the hosted rerun is still required. The eight-hour and multi-machine
+work remains issue #132 and is not part of these blockers.
