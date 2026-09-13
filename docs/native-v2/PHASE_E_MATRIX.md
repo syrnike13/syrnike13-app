@@ -114,8 +114,13 @@ behavior are present, but the gate stays closed until the encoder resource resul
 is either fixed with application-owned evidence or formally isolated as an
 external machine blocker, the pending shutdown rows are rerun with the corrected
 harness, the WGC product fixture can inject its operation, and one consistent
-final-build Release/Debug/ASan result is archived. Hosted run `34700126979`
-passed the normal Windows job but its ASan job failed `camera` while committing a
-healthy candidate; the synthetic fixture has a local follow-up optimization that
-still needs a verified commit and hosted rerun. The eight-hour and multi-machine
-work remains issue #132 and is not part of these blockers.
+final-build Release/Debug/ASan result is archived. A new exact-head Release
+diagnostic in [`encoder-resource-isolation-2df7b3be.json`](encoder-resource-isolation-2df7b3be.json)
+adds a production-equivalent configured-MFT control: it passed with zero growth,
+while the device-manager and clean product start/stop controls still showed
+positive growth. This is useful isolation evidence, not a waiver or a final
+qualification. Hosted run `34700126979` passed the normal Windows job but its
+ASan job failed `camera` while committing a healthy candidate; the synthetic
+fixture has a local follow-up optimization that still needs a verified commit and
+hosted rerun. The eight-hour and multi-machine work remains issue #132 and is not
+part of these blockers.
