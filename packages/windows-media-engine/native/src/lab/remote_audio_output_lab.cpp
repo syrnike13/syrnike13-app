@@ -371,13 +371,24 @@ int remoteAudioFaultMatrix(bool retry_only) {
     require(output.stop(Clock::now() + std::chrono::seconds(2)) &&
             mixer.stop(Clock::now() + std::chrono::seconds(2)), "Output recovery fixture did not drain");
   };
+  int status = 0;
+  const auto runFault = [&](const char* id, const auto& fault) {
+    try {
+      syrnike::windows_media::tests::repeatFault(id, fault);
+    } catch (const std::exception& error) {
+      // Preserve the strict failure while allowing later rows to emit their
+      // own complete evidence instead of becoming missing after one failure.
+      status = 1;
+      std::cerr << error.what() << '\n';
+    }
+  };
   if (!retry_only) {
-    syrnike::windows_media::tests::repeatFault("output-device-invalidated", [&] { worker_fault(false); });
-    syrnike::windows_media::tests::repeatFault("output-no-progress", [&] { worker_fault(true); });
-    syrnike::windows_media::tests::repeatFault("output-candidate-failure", candidate_fault);
+    runFault("output-device-invalidated", [&] { worker_fault(false); });
+    runFault("output-no-progress", [&] { worker_fault(true); });
+    runFault("output-candidate-failure", candidate_fault);
   }
-  syrnike::windows_media::tests::repeatFault("output-retry-budget", recovery_budget);
-  return 0;
+  runFault("output-retry-budget", recovery_budget);
+  return status;
 }
 
 int remoteAudioOutputStress() {
