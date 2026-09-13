@@ -11,6 +11,13 @@
       "required": 3,
       "evidence": "docs/native-v2/shutdown-wgc-e3d6d7f2-control.json"
     },
+    "wgcWindowFramePool100": {
+      "status": "pass",
+      "completed": 100,
+      "required": 100,
+      "fixtureLifecycle": "fresh-source-window-fixture-per-cycle",
+      "evidence": "docs/native-v2/shutdown-wgc-e3d6d7f2-100.json"
+    },
     "wgcWindowFramePoolExploratory100": {
       "status": "fail",
       "completed": 64,
