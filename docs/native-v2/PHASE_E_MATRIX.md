@@ -105,7 +105,7 @@ descriptions; the 100/100 requirement is for deterministic fault/recovery rows.
 | Logout/account switch retires old utility and resources | PASS* | Product validation confirms old utility and native participant removal before the replacement account. *Single scenario evidence. |
 | Bounded correlated diagnostics and redacted bundle | PASS* | Connect-timeout incident series reached 100/100 and the upload pilot returned HTTP 200; full cross-layer matrix is still separate. |
 | Legacy v1 runtime/compatibility path removed | PASS* | Current desktop wiring and packaging use v2; architecture and cutover docs describe the removed path. Static/build verification is complete for the focused branch. |
-| Full relevant desktop/platform/web/native qualification | **FAIL / PARTIAL** | Local focused suites are green (desktop 290, platform 64, web 1077, harness 3), but native Release/Debug are 44/47 because of encoder resource rows; the latest hosted main job also failed an intermittent +1 WGC probe thread. |
+| Full relevant desktop/platform/web/native qualification | **FAIL / PARTIAL** | Local focused suites are green (desktop 290, platform 64, web 1077, harness 3), but native Release/Debug are 44/47 because of encoder resource rows. Hosted run `34700126979` passed the normal Windows job, while its ASan job failed the camera health-proof test (`29/30` CTest rows passed). |
 
 ## Current gate
 
@@ -114,5 +114,8 @@ behavior are present, but the gate stays closed until the encoder resource resul
 is either fixed with application-owned evidence or formally isolated as an
 external machine blocker, the pending shutdown rows are rerun with the corrected
 harness, the WGC product fixture can inject its operation, and one consistent
-final-build Release/Debug/ASan result is archived. The eight-hour and
-multi-machine work remains issue #132 and is not part of these blockers.
+final-build Release/Debug/ASan result is archived. Hosted run `34700126979`
+passed the normal Windows job but its ASan job failed `camera` while committing a
+healthy candidate; the synthetic fixture has a local follow-up optimization that
+still needs a verified commit and hosted rerun. The eight-hour and multi-machine
+work remains issue #132 and is not part of these blockers.

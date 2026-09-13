@@ -2,7 +2,9 @@
 
 #include <windows.h>
 #include <algorithm>
+#include <array>
 #include <condition_variable>
+#include <cstring>
 #include <mutex>
 #include <stdexcept>
 
@@ -28,18 +30,26 @@ class SyntheticSample final : public CameraSample {
     const auto required = cameraBgraBytes(profile_.width, profile_.height);
     if (output.size() < required) return false;
 
-    // Keep the fixture's metadata bands, but fill the bulk of the frame with
-    // one operation. The old per-pixel checkerboard made the synthetic reader
-    // spend seconds copying a 720p frame on a busy hosted runner, causing its
-    // fresh-frame proof to time out before fault injection. This changes only
-    // test-fixture pixels; production conversion and freshness budgets remain
-    // unchanged.
-    for (std::uint32_t row = 0; row < profile_.height; ++row) {
+    // Keep the fixture's metadata bands, but build the solid BGRA body through
+    // logarithmically growing copies. Byte-by-byte alpha writes made three
+    // 1080p startup frames exceed the unchanged health deadline under ASan.
+    // This changes only test-fixture pixels; production conversion and
+    // freshness budgets remain unchanged.
+    std::array<std::uint8_t, 64> block{};
+    for (std::size_t offset = 0; offset < block.size(); offset += 4) {
+      block[offset] = control_->color;
+      block[offset + 1] = control_->color;
+      block[offset + 2] = control_->color;
+      block[offset + 3] = 255;
+    }
+    std::memcpy(output.data(), block.data(), block.size());
+    for (std::size_t filled = block.size(); filled < required;) {
+      const auto copied = (std::min)(filled, required - filled);
+      std::memcpy(output.data() + filled, output.data(), copied);
+      filled += copied;
+    }
+    for (std::uint32_t row = 0; row < 96 && row < profile_.height; ++row) {
       const auto row_begin = output.begin() + static_cast<std::size_t>(row) * profile_.width * 4;
-      const auto row_bytes = static_cast<std::size_t>(profile_.width) * 4;
-      std::fill(row_begin, row_begin + row_bytes, control_->color);
-      for (std::size_t alpha = 3; alpha < row_bytes; alpha += 4) row_begin[alpha] = 255;
-      if (row >= 96) continue;
       for (std::uint32_t column = 16; column < 528 && column < profile_.width; ++column) {
         const auto offset = static_cast<std::size_t>(column) * 4;
         const auto bits = row < 48 ? sequence_ : row < 64 ? generation_ : captured_ms_;
