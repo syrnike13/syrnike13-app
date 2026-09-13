@@ -45,7 +45,7 @@
   ],
   "limitations": [
     "This is isolation evidence, not final Phase E qualification.",
-    "The strict Release full matrix was still running when this artifact was prepared; exact clean-tree Release output is stored separately by fault-matrix.",
+    "The strict clean-tree Release matrix completed with 42/42 complete rows; its machine-readable failed artifact is native-faults-c7fad424-release.json because encoder-bitrate-rejected had +1 handle.",
     "No issue-132 performance, soak or hardware-matrix work is included."
   ]
 }

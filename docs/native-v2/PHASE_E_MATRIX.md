@@ -118,8 +118,11 @@ final-build Release/Debug/ASan result is archived. A new exact-head Release
 diagnostic in [`encoder-resource-isolation-2df7b3be.json`](encoder-resource-isolation-2df7b3be.json)
 adds a production-equivalent configured-MFT control: it passed with zero growth,
 while the device-manager and clean product start/stop controls still showed
-positive growth. This is useful isolation evidence, not a waiver or a final
-qualification. Hosted run `34700126979` passed the normal Windows job but its ASan job failed
+positive growth. The strict clean-tree Release matrix is archived in
+[`native-faults-c7fad424-release.json`](native-faults-c7fad424-release.json):
+42/42 rows emitted complete 100-cycle evidence, but `encoder-bitrate-rejected`
+remains a raw FAIL because it ended with `+1` handle. This is useful isolation
+evidence, not a waiver or a final qualification. Hosted run `34700126979` passed the normal Windows job but its ASan job failed
 `camera` before the fixture follow-up was committed. On current head, local Debug
 and ASan `camera`, `camera-preview`, and `camera-preview-quarantine` rows each
 pass 1/1; the hosted rerun is still required. The eight-hour and multi-machine
