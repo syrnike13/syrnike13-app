@@ -322,9 +322,17 @@ void inspectPlatformResourceStage(unsigned stage, bool inline_worker = false) {
           throw std::runtime_error("MF resource probe device manager failed");
         (void)transform->ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, 0);
       }
+      // Match the production encoder's teardown order before sampling the
+      // platform boundary. The standalone control must distinguish an
+      // application-owned transform leak from retention below our ownership
+      // boundary, so it cannot omit IMFShutdown::Shutdown or release order.
+      Microsoft::WRL::ComPtr<IMFShutdown> shutdown;
+      if (SUCCEEDED(transform.As(&shutdown))) (void)shutdown->Shutdown();
       const auto shutdown_result = candidates.values[0]->ShutdownObject();
       if (FAILED(shutdown_result)) throw std::runtime_error("MF resource probe activation shutdown failed");
+      shutdown.Reset();
       transform.Reset();
+      manager.Reset();
     } catch (...) { error = std::current_exception(); }
   };
   if (inline_worker) work();
@@ -333,6 +341,76 @@ void inspectPlatformResourceStage(unsigned stage, bool inline_worker = false) {
     worker.join();
   }
   if (error) std::rethrow_exception(error);
+}
+
+void inspectConfiguredPlatformResource() {
+  const auto com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  if (FAILED(com)) throw std::runtime_error("MF configured probe COM start failed");
+  struct ComScope { ~ComScope() { CoUninitialize(); } } com_scope;
+  if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) throw std::runtime_error("MF configured probe startup failed");
+  struct MfScope { ~MfScope() { MFShutdown(); } } mf_scope;
+
+  MFT_REGISTER_TYPE_INFO input{MFMediaType_Video, MFVideoFormat_NV12};
+  MFT_REGISTER_TYPE_INFO output{MFMediaType_Video, MFVideoFormat_H264};
+  ActivationArray candidates;
+  if (FAILED(MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER,
+                       MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER,
+                       &input, &output, &candidates.values, &candidates.count)) ||
+      candidates.count == 0)
+    throw std::runtime_error("MF configured probe enumeration failed");
+
+  Microsoft::WRL::ComPtr<IMFTransform> transform;
+  if (FAILED(candidates.values[0]->ActivateObject(IID_PPV_ARGS(&transform))))
+    throw std::runtime_error("MF configured probe activation failed");
+  Microsoft::WRL::ComPtr<IMFMediaEventGenerator> events;
+  Microsoft::WRL::ComPtr<IMFDXGIDeviceManager> manager;
+  Microsoft::WRL::ComPtr<IMFAttributes> attributes;
+  UINT asynchronous = FALSE;
+  UINT manager_token = 0;
+  auto device = syrnike::windows_media::capture::processD3d11Device(false);
+  const auto profile = kScreenProfile720p30;
+  MFT_OUTPUT_STREAM_INFO output_info{};
+  Microsoft::WRL::ComPtr<IMFSample> caller_output;
+  bool configured =
+      SUCCEEDED(transform->GetAttributes(&attributes)) &&
+      SUCCEEDED(attributes->GetUINT32(MF_TRANSFORM_ASYNC, &asynchronous)) &&
+      asynchronous != FALSE &&
+      SUCCEEDED(attributes->SetUINT32(MF_TRANSFORM_ASYNC_UNLOCK, TRUE)) &&
+      SUCCEEDED(attributes->SetUINT32(MF_LOW_LATENCY, TRUE)) &&
+      SUCCEEDED(transform.As(&events)) &&
+      SUCCEEDED(MFCreateDXGIDeviceManager(&manager_token, &manager)) &&
+      SUCCEEDED(manager->ResetDevice(device->device(), manager_token)) &&
+      SUCCEEDED(transform->ProcessMessage(
+          MFT_MESSAGE_SET_D3D_MANAGER, reinterpret_cast<ULONG_PTR>(manager.Get()))) &&
+      setCodecBool(transform.Get(), CODECAPI_AVLowLatencyMode, true) &&
+      setCodecU32(transform.Get(), CODECAPI_AVEncCommonRateControlMode,
+                  eAVEncCommonRateControlMode_CBR) &&
+      setCodecU32(transform.Get(), CODECAPI_AVEncCommonMeanBitRate,
+                  profile.bitrate) &&
+      SUCCEEDED(setVideoType(transform.Get(), profile, true)) &&
+      SUCCEEDED(setVideoType(transform.Get(), profile, false)) &&
+      SUCCEEDED(transform->GetOutputStreamInfo(0, &output_info));
+  if (configured) (void)setCodecU32(transform.Get(), CODECAPI_AVEncMPVDefaultBPictureCount, 0);
+  if (configured && !(output_info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES)) {
+    Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
+    configured = SUCCEEDED(MFCreateSample(&caller_output)) &&
+                 SUCCEEDED(MFCreateMemoryBuffer(static_cast<DWORD>(kEncodedH264SlotBytes), &buffer)) &&
+                 SUCCEEDED(caller_output->AddBuffer(buffer.Get()));
+  }
+  if (!configured || FAILED(transform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0)) ||
+      FAILED(transform->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0)))
+    throw std::runtime_error("MF configured probe setup failed");
+
+  // This is intentionally the same cleanup sequence as the production worker.
+  Microsoft::WRL::ComPtr<IMFShutdown> shutdown;
+  if (SUCCEEDED(transform.As(&shutdown))) (void)shutdown->Shutdown();
+  const auto shutdown_result = candidates.values[0]->ShutdownObject();
+  if (FAILED(shutdown_result)) throw std::runtime_error("MF configured probe shutdown failed");
+  caller_output.Reset();
+  events.Reset();
+  shutdown.Reset();
+  transform.Reset();
+  manager.Reset();
 }
 
 int main(int argc, char** argv) try {
@@ -352,12 +430,22 @@ int main(int argc, char** argv) try {
     syrnike::windows_media::tests::repeatFault("mf-activation-same-thread", [] { inspectPlatformResourceStage(2, true); });
     return 0;
   }
+  if (argc == 2 && std::string_view(argv[1]) == "--configured-activation") {
+    syrnike::windows_media::tests::repeatFault("mf-configured-activation", inspectConfiguredPlatformResource);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--resource-stages") {
+    int status = 0;
     for (unsigned stage = 0; stage < 4; ++stage) {
       const std::array names{"mf-startup-shutdown", "mf-enumeration", "mf-activation", "mf-device-manager"};
-      syrnike::windows_media::tests::repeatFault(names[stage], [&] { inspectPlatformResourceStage(stage); });
+      try {
+        syrnike::windows_media::tests::repeatFault(names[stage], [&] { inspectPlatformResourceStage(stage); });
+      } catch (const std::exception& error) {
+        status = 1;
+        std::cerr << error.what() << '\n';
+      }
     }
-    return 0;
+    return status;
   }
   if (argc == 2 && std::string_view(argv[1]) == "--startup-only") {
     syrnike::windows_media::tests::repeatFault("encoder-clean-start-stop", [] {

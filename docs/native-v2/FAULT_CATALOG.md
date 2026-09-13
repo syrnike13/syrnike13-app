@@ -114,6 +114,12 @@ The required native list currently has 42 rows. Unsupported and rejected live
 bitrate updates each have a separate 100-lifecycle CTest entry, preserving the
 existing media-identity and warning assertions. They require GPU video hardware;
 the unresolved MFT activation resource issue applies to these runs as well.
+The encoder test also exposes `--resource-stages` for the four coarse Media
+Foundation controls and `--configured-activation` for a 100-cycle standalone
+control that follows the production setup and teardown (`IMFShutdown::Shutdown`,
+`IMFActivate::ShutdownObject`, COM release and `MFShutdown`). The configured
+control is intentionally separate from the strict owner matrix: a positive
+resource delta remains evidence of a failed row, not a PASS or waiver.
 The reporter records owner evidence only. Its successful exit does not replace
 neutral observers, full-product replay/shutdown, correlated incidents, other
 build configurations or #132 hardware/soak evidence.
