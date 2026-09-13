@@ -77,6 +77,17 @@ show changed behavior without establishing its cause. The earlier +200-handle
 observations remain historical evidence; they do not describe every later run.
 No driver or overlay configuration was changed by this task.
 
+The final exact-head diagnostics at `445cff8a` remain machine-specific: the clean
+Release matrix emitted all 42 rows but all three encoder rows retained `+1`
+handle; Debug emitted all 42 rows with `encoder-input-without-output` and
+`encoder-bitrate-rejected` at `+1` while unsupported bitrate was neutral; ASan
+had the same `+1` encoder growth, `output-no-progress` at `+1`,
+`output-default-session-muted` at `+8`, and a `dxgi-access-lost` `+2/+1` result
+that prevented the following device-removed row from emitting. The configured
+standalone MFT control remained zero-growth in Release, Debug and ASan. These
+positive deltas are preserved as strict failures and do not identify an
+application-owned leak or confirm an overlay root cause.
+
 ## React development performance tracks accumulate during long media runs
 
 The React development frontend retained about 2.5 million `PerformanceMeasure`

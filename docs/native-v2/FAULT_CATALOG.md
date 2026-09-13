@@ -120,6 +120,9 @@ control that follows the production setup and teardown (`IMFShutdown::Shutdown`,
 `IMFActivate::ShutdownObject`, COM release and `MFShutdown`). The configured
 control is intentionally separate from the strict owner matrix: a positive
 resource delta remains evidence of a failed row, not a PASS or waiver.
+The lab output fault matrix similarly continues later independent rows after an
+earlier row fails, preserving complete evidence without changing the strict
+failure status.
 The reporter records owner evidence only. Its successful exit does not replace
 neutral observers, full-product replay/shutdown, correlated incidents, other
 build configurations or #132 hardware/soak evidence.

@@ -14,17 +14,18 @@ turn the whole phase green while another required row is failed or missing.
 ## #131 recovery matrix
 
 The native owner runner contains 42 required fault records and runs each record
-for 100 measured iterations. The archived Release and Debug runs contain 41
-records from the then-current list; all 41 reached 100/100 owner checks. Three
-encoder rows failed their resource assertion, so those runs are failed
-qualification runs even though their behavioral assertions passed.
+for 100 measured iterations. The final exact-head Release and Debug archives each
+contain all 42 records at 100/100 owner checks with no missing rows. Release has
+three encoder resource failures; Debug has two. The ASan archive records the same
+strict resource issue plus any sanitizer-specific output resource observations;
+all positive deltas remain raw failures.
 
 | Fault scope | Result | Evidence and limitation |
 | --- | --- | --- |
 | WGC source closes | PASS* | Release and Debug native rows: 100/100, zero positive resource delta. *Historical native build; product shutdown during the held call is separate. |
 | WGC frame callback after stop | PASS* | Release and Debug native rows: 100/100 generation/late-frame checks. *Historical native build. |
 | DXGI access lost or device removed | PASS* | Both native results: 100/100 per result, balanced leases and owner checks. *Historical native build. |
-| Encoder accepts input but makes no output | **FAIL** | Behavioral row reached 100/100, but Release and Debug resource checks retained +201 handles. Isolated activation stages and the post-reboot no-output probe show machine/driver-dependent NVIDIA Media Foundation retention; no source change is justified without a reproducible application-owned leak. |
+| Encoder accepts input but makes no output | **FAIL** | The exact-head Release and Debug rows reached 100/100 owner checks but retained +1 handle; the strict assessor correctly keeps them failed. Production-equivalent configured-MFT controls are zero-growth, while platform-stage and historical controls show machine/driver-dependent NVIDIA Media Foundation retention; no source workaround is justified without application-owned evidence. |
 | Publish/unpublish callback never completes | PASS* | Native duplicate/publish/submit/unpublish rows reached 100/100. Product shutdown coverage for microphone/camera publication is listed below. |
 | Remote decoded callback after track removal | PASS* | Native remote-video row and renderer generation checks reached 100/100. *Historical native/product builds. |
 | Renderer never releases a texture | PASS* | Renderer fault archive has 100/100 reload, crash, and withheld-release rows; retained textures stayed within the fixed bound. *Historical product build. |
@@ -105,25 +106,25 @@ descriptions; the 100/100 requirement is for deterministic fault/recovery rows.
 | Logout/account switch retires old utility and resources | PASS* | Product validation confirms old utility and native participant removal before the replacement account. *Single scenario evidence. |
 | Bounded correlated diagnostics and redacted bundle | PASS* | Connect-timeout incident series reached 100/100 and the upload pilot returned HTTP 200; full cross-layer matrix is still separate. |
 | Legacy v1 runtime/compatibility path removed | PASS* | Current desktop wiring and packaging use v2; architecture and cutover docs describe the removed path. Static/build verification is complete for the focused branch. |
-| Full relevant desktop/platform/web/native qualification | **FAIL / PARTIAL** | Local focused suites are green (desktop 290, platform 64, web 1077, harness 3), but native Release/Debug are 44/47 because of encoder resource rows. Hosted run `34700126979` passed the normal Windows job, while its ASan job failed the camera health-proof test (`29/30` CTest rows passed). |
+| Full relevant desktop/platform/web/native qualification | **FAIL / PARTIAL** | Local focused suites are green (desktop 290, platform 64, web 1077, harness 3). Final exact-head native archives are complete for Release and Debug (42/42 rows each) and preserve encoder resource FAILs; ASan preserves the encoder/output/DXGI resource failures and one missing DXGI row. Hosted run `34700126979` passed the normal Windows job, while its ASan job failed the camera health-proof test (`29/30` CTest rows passed). |
 
 ## Current gate
 
 Phase E is **not qualified for merge yet**. The implementation and most recovery
 behavior are present, but the gate stays closed until the encoder resource result
-is either fixed with application-owned evidence or formally isolated as an
-external machine blocker, the pending shutdown rows are rerun with the corrected
-harness, the WGC product fixture can inject its operation, and one consistent
-final-build Release/Debug/ASan result is archived. A new exact-head Release
-diagnostic in [`encoder-resource-isolation-2df7b3be.json`](encoder-resource-isolation-2df7b3be.json)
-adds a production-equivalent configured-MFT control: it passed with zero growth,
-while the device-manager and clean product start/stop controls still showed
-positive growth. The strict clean-tree Release matrix is archived in
-[`native-faults-c7fad424-release.json`](native-faults-c7fad424-release.json):
-42/42 rows emitted complete 100-cycle evidence, but `encoder-bitrate-rejected`
-remains a raw FAIL because it ended with `+1` handle. This is useful isolation
-evidence, not a waiver or a final qualification. Hosted run `34700126979` passed the normal Windows job but its ASan job failed
-`camera` before the fixture follow-up was committed. On current head, local Debug
-and ASan `camera`, `camera-preview`, and `camera-preview-quarantine` rows each
-pass 1/1; the hosted rerun is still required. The eight-hour and multi-machine
+is formally isolated as an approved external machine blocker, the pending
+shutdown rows are rerun with the corrected harness, and the WGC product fixture
+can inject its operation. Final exact-head native evidence is now archived:
+[`native-faults-445cff8a-release.json`](native-faults-445cff8a-release.json) has
+42/42 complete rows with three encoder `+1`-handle failures;
+[`native-faults-445cff8a-debug.json`](native-faults-445cff8a-debug.json) has
+42/42 complete rows with two encoder `+1`-handle failures; and
+[`native-faults-445cff8a-asan.json`](native-faults-445cff8a-asan.json) preserves
+all sanitizer results, including encoder `+1`, output `+1/+8`, DXGI `+2/+1`, and
+one missing follow-on DXGI row after the strict first failure. The consolidated
+machine-readable decision boundary is [`encoder-resource-matrix-445cff8a.json`](encoder-resource-matrix-445cff8a.json).
+The production-equivalent configured-MFT control remains zero-growth in Release,
+Debug and ASan; all positive deltas remain raw failures, never waivers. Local
+Debug and ASan camera rows pass 3/3, while the hosted rerun and the pending
+product shutdown/WGC setup remain required. The eight-hour and multi-machine
 work remains issue #132 and is not part of these blockers.
