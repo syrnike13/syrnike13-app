@@ -1,4 +1,5 @@
 #include "audio/microphone_sender.hpp"
+#include "testing/product_fault_gate.hpp"
 #include <windows.h>
 #include <algorithm>
 #include <stdexcept>
@@ -123,6 +124,7 @@ void MicrophoneSender::run(const std::shared_ptr<State>& state) noexcept {
         options.source = livekit::TrackSource::SOURCE_MICROPHONE;
         options.simulcast = false;
         options.dtx = false;
+        testing::holdProductFault("sdk-microphone-publish");
         participant->publishTrack(track, options);
         if (!track->publication()) throw std::runtime_error("Microphone publication missing");
         auto pending = State::CommitState::pending;
@@ -181,8 +183,10 @@ void MicrophoneSender::run(const std::shared_ptr<State>& state) noexcept {
     if (!state->enqueue([state](const std::shared_ptr<livekit::Room>&) {
       try {
         if (state->source) state->source->clearQueue();
-        if (state->track && state->track->publication() && state->participant)
+        if (state->track && state->track->publication() && state->participant) {
+          testing::holdProductFault("sdk-microphone-unpublish");
           state->participant->unpublishTrack(state->track->publication()->sid());
+        }
       } catch (...) { state->fail(MicrophonePublicationFailure::publish_failed); }
       // A disconnected Room can reject clear/unpublish. It must not prevent
       // local SDK objects from being released or leave shutdown waiting forever.

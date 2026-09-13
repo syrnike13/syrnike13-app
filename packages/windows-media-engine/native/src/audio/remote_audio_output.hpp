@@ -5,7 +5,7 @@
 
 namespace syrnike::windows_media::audio {
 enum class RemoteOutputState { stopped, starting, running, recovering, failed };
-enum class RemoteOutputFailure { none, invalid_state, unavailable, candidate_failed, mixer_failed, stop_timeout };
+enum class RemoteOutputFailure { none, invalid_state, unavailable, candidate_failed, mixer_failed, stop_timeout, cancelled };
 struct RemoteOutputStats {
   RemoteOutputState state = RemoteOutputState::stopped;
   WasapiOutputStats active;
@@ -25,16 +25,18 @@ class RemoteAudioOutput final {
   ~RemoteAudioOutput();
   RemoteAudioOutput(const RemoteAudioOutput&) = delete;
   RemoteAudioOutput& operator=(const RemoteAudioOutput&) = delete;
-  RemoteOutputFailure selectOutput(AudioDeviceRegistry&, AudioDeviceIntent);
+  RemoteOutputFailure selectOutput(AudioDeviceRegistry&, AudioDeviceIntent, std::stop_token cancellation = {});
   // Caller refreshes the shared registry first. A new device revision or
   // explicit selection restarts the finite three-attempt local recovery budget.
-  RemoteOutputFailure reconcile(AudioDeviceRegistry&, std::uint64_t registry_revision);
+  // A successful replacement does not reset it: repeated active-device loss
+  // must reach manual retry instead of creating an unlimited recovery loop.
+  RemoteOutputFailure reconcile(AudioDeviceRegistry&, std::uint64_t registry_revision, std::stop_token cancellation = {});
   bool setDeafened(bool);
   bool stop(std::chrono::steady_clock::time_point deadline) noexcept;
   RemoteOutputStats stats();
   std::shared_ptr<RenderedEchoReference> echoReference() const;
  private:
-  RemoteOutputFailure selectEndpoint(const AudioEndpoint&);
+  RemoteOutputFailure selectEndpoint(const AudioEndpoint&, std::stop_token);
   bool onOwner() const noexcept;
   const std::thread::id owner_ = std::this_thread::get_id();
   RemoteAudioMixerWorker& mixer_;

@@ -1,4 +1,5 @@
 #include "livekit/livekit_room_transport.hpp"
+#include "testing/product_fault_gate.hpp"
 
 #include <chrono>
 #include <exception>
@@ -22,6 +23,7 @@ EngineResult cancelLiveKitRoom(const std::shared_ptr<livekit::Room> &room) {
   try {
     const bool already_disconnected =
         room->connectionState() == livekit::ConnectionState::Disconnected;
+    testing::holdProductFault("sdk-cancel");
     if (!room->disconnect() && !already_disconnected) {
       return liveKitFailure("room_cancel_teardown_failed",
                             "LiveKit Room cancellation teardown returned false",
@@ -312,6 +314,7 @@ void LiveKitRoomTransport::runConnect(ConnectTask task) noexcept {
   options.connect_timeout = std::chrono::seconds(10);
   EngineResult result;
   try {
+    testing::holdProductFault("sdk-connect");
     result = room->connect(task.request.url, task.request.token, options)
                  ? EngineResult::success()
                  : liveKitFailure("livekit_connect_failed",
@@ -424,6 +427,7 @@ void LiveKitRoomTransport::runDisconnect(DisconnectTask task) noexcept {
       // a previously connected Room remains a teardown failure.
       const bool already_disconnected =
           room->connectionState() == livekit::ConnectionState::Disconnected;
+      testing::holdProductFault("sdk-disconnect");
       const bool disconnected = room->disconnect();
       result = disconnected || already_disconnected
                    ? EngineResult::success()

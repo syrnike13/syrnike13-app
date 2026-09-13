@@ -95,18 +95,22 @@ bool MicrophonePipeline::commitInput(MicrophoneCapture* capture) noexcept {
   state_->command.generation = capture ? capture->stats().generation : 0;
   return submit();
 }
-MicrophonePipelineFailure MicrophonePipeline::switchCapture(const AudioEndpoint& endpoint, bool bypass_system_processing) {
+MicrophonePipelineFailure MicrophonePipeline::switchCapture(const AudioEndpoint& endpoint, bool bypass_system_processing,
+                                                           std::stop_token cancellation) {
+  if (cancellation.stop_requested()) return MicrophonePipelineFailure::cancelled;
   candidate_ = std::make_unique<MicrophoneCapture>();
   ++stats_.capture_opens;
-  stats_.candidate_failure = candidate_->start(endpoint, ++generation_, bypass_system_processing);
-  if (stats_.candidate_failure != MicrophoneCaptureFailure::none) {
+  stats_.candidate_failure = candidate_->start(endpoint, ++generation_, bypass_system_processing, cancellation);
+  if (stats_.candidate_failure != MicrophoneCaptureFailure::none || cancellation.stop_requested()) {
     if (!candidate_->stop(Clock::now() + std::chrono::seconds{5})) {
       stats_.retired = true;
       return MicrophonePipelineFailure::stop_timeout;
     }
     candidate_.reset();
-    return MicrophonePipelineFailure::capture_failed;
+    return cancellation.stop_requested() ? MicrophonePipelineFailure::cancelled : MicrophonePipelineFailure::capture_failed;
   }
+  // Admission to the serialized DSP commit follows the cancellation check.
+  // A newer desired state after admission is the next capture transaction.
   if (!commitInput(candidate_.get())) return MicrophonePipelineFailure::command_timeout;
   // After acknowledgement the worker no longer references active's port/event.
   if (active_ && !active_->stop(Clock::now() + std::chrono::seconds{5})) {
@@ -117,34 +121,37 @@ MicrophonePipelineFailure MicrophonePipeline::switchCapture(const AudioEndpoint&
   ++stats_.committed_switches;
   return MicrophonePipelineFailure::none;
 }
-MicrophonePipelineFailure MicrophonePipeline::selectInput(AudioEndpoint endpoint) {
+MicrophonePipelineFailure MicrophonePipeline::selectInput(AudioEndpoint endpoint, std::stop_token cancellation) {
   if (!onOwner() || endpoint.direction != AudioDirection::input || endpoint.endpoint_id.empty())
     return MicrophonePipelineFailure::invalid_state;
+  if (cancellation.stop_requested()) return MicrophonePipelineFailure::cancelled;
   if (selected_ && selected_->endpoint_id == endpoint.endpoint_id && active_ &&
       active_->stats().state == MicrophoneCaptureState::healthy) return MicrophonePipelineFailure::none;
   if (stats_.demand.needed()) {
-    const auto failure = switchCapture(endpoint, bypass_system_processing_);
+    const auto failure = switchCapture(endpoint, bypass_system_processing_, cancellation);
     if (failure != MicrophonePipelineFailure::none) return failure;
   }
   selected_ = std::move(endpoint);
   return MicrophonePipelineFailure::none;
 }
-MicrophonePipelineFailure MicrophonePipeline::selectInput(AudioDeviceRegistry& registry, AudioDeviceIntent intent) {
+MicrophonePipelineFailure MicrophonePipeline::selectInput(AudioDeviceRegistry& registry, AudioDeviceIntent intent,
+                                                         std::stop_token cancellation) {
   if (!onOwner() || intent.direction != AudioDirection::input) return MicrophonePipelineFailure::invalid_state;
   const auto endpoint = registry.resolve(intent);
   if (!endpoint) return MicrophonePipelineFailure::input_unavailable;
-  const auto failure = selectInput(*endpoint);
+  const auto failure = selectInput(*endpoint, cancellation);
   if (failure == MicrophonePipelineFailure::none) input_intent_ = intent;
   return failure;
 }
-MicrophonePipelineFailure MicrophonePipeline::reconcileInput(AudioDeviceRegistry& registry) {
-  return selectInput(registry, input_intent_);
+MicrophonePipelineFailure MicrophonePipeline::reconcileInput(AudioDeviceRegistry& registry, std::stop_token cancellation) {
+  return selectInput(registry, input_intent_, cancellation);
 }
-MicrophonePipelineFailure MicrophonePipeline::setDemand(MicrophoneDemand demand) {
+MicrophonePipelineFailure MicrophonePipeline::setDemand(MicrophoneDemand demand, std::stop_token cancellation) {
   if (!onOwner()) return MicrophonePipelineFailure::invalid_state;
+  if (cancellation.stop_requested()) return MicrophonePipelineFailure::cancelled;
   if (demand.needed() && !active_) {
     if (!selected_) return MicrophonePipelineFailure::input_unavailable;
-    const auto failure = switchCapture(*selected_, bypass_system_processing_);
+    const auto failure = switchCapture(*selected_, bypass_system_processing_, cancellation);
     if (failure != MicrophonePipelineFailure::none) return failure;
   } else if (!demand.needed() && active_) {
     if (!commitInput(nullptr)) return MicrophonePipelineFailure::command_timeout;
@@ -157,11 +164,12 @@ MicrophonePipelineFailure MicrophonePipeline::setDemand(MicrophoneDemand demand)
   stats_.demand = demand;
   return MicrophonePipelineFailure::none;
 }
-MicrophonePipelineFailure MicrophonePipeline::setSystemProcessingBypass(bool bypass) {
+MicrophonePipelineFailure MicrophonePipeline::setSystemProcessingBypass(bool bypass, std::stop_token cancellation) {
   if (!onOwner()) return MicrophonePipelineFailure::invalid_state;
+  if (cancellation.stop_requested()) return MicrophonePipelineFailure::cancelled;
   if (bypass == bypass_system_processing_) return MicrophonePipelineFailure::none;
   if (active_ && selected_) {
-    const auto failure = switchCapture(*selected_, bypass);
+    const auto failure = switchCapture(*selected_, bypass, cancellation);
     if (failure != MicrophonePipelineFailure::none) return failure;
   }
   bypass_system_processing_ = bypass;

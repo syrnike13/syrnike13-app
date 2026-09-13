@@ -5,6 +5,20 @@
 #include <thread>
 #include <condition_variable>
 #include <cmath>
+#include "fault_evidence.hpp"
+
+// Exercise the real worker and its cleanup with a one-shot platform failure.
+// The shipping capture library has no runtime injection switch.
+std::atomic<HRESULT> next_acquire_failure{S_OK};
+HRESULT testDxgiAcquire(IDXGIOutputDuplication* duplication,
+                       DXGI_OUTDUPL_FRAME_INFO* frame, IDXGIResource** resource) {
+  const auto failure = next_acquire_failure.exchange(S_OK);
+  if (FAILED(failure)) return failure;
+  return duplication->AcquireNextFrame(0, frame, resource);
+}
+#define WINDOWS_MEDIA_TEST_DXGI_ACQUIRE testDxgiAcquire
+#include "capture/dxgi_monitor_capture.cpp"
+#undef WINDOWS_MEDIA_TEST_DXGI_ACQUIRE
 
 using namespace syrnike::windows_media;
 using namespace capture;
@@ -135,7 +149,7 @@ void compositorGoldens() {
   }
   require(rejected, "short cursor metadata was accepted");
 }
-void realDuplication() {
+void realDuplication(HRESULT injected_failure = S_OK) {
   sources::SourceRegistry registry(sources::createWin32SourceEnumerator());
   sources::EnumerationOptions options;
   options.kind = sources::EnumerationOptions::Kind::Monitor;
@@ -148,6 +162,7 @@ void realDuplication() {
   std::condition_variable changed;
   std::shared_ptr<FrameResource> frame;
   std::optional<CaptureFailure> failure;
+  unsigned terminal_callbacks = 0;
   const auto started = backend->start(
       *target.target,
       [&](BackendFrame value) {
@@ -158,28 +173,45 @@ void realDuplication() {
       [&](CaptureFailure value) {
         std::scoped_lock lock(mutex);
         failure = value;
+        ++terminal_callbacks;
         changed.notify_all();
       });
   require(started.ok, started.failure ? started.failure->message.c_str() : "DXGI start failed");
   {
     std::unique_lock lock(mutex);
     changed.wait_for(lock, 3s, [&] { return frame || failure; });
+    require(frame && !failure, failure ? failure->message.c_str() : "DXGI first frame missing");
   }
-  require(frame && !failure, failure ? failure->message.c_str() : "DXGI first frame missing");
+  if (FAILED(injected_failure)) {
+    next_acquire_failure = injected_failure;
+    std::unique_lock lock(mutex);
+    require(changed.wait_for(lock, 1s, [&] { return failure.has_value(); }),
+            "DXGI platform fault was not detected within one second");
+    const auto expected = injected_failure == DXGI_ERROR_ACCESS_LOST
+        ? CaptureFailureKind::access_lost : CaptureFailureKind::device_removed;
+    require(failure->kind == expected, "DXGI platform fault lost its typed cause");
+  }
   require(backend->stop(std::chrono::steady_clock::now() + 3s).ok, "DXGI stop failed");
+  require(terminal_callbacks == (FAILED(injected_failure) ? 1U : 0U),
+          "DXGI terminal callback was missing or duplicated during stop");
   frame.reset();
   const auto stats = backend->diagnostics();
   require(stats.acquired_frames > 0 && stats.acquired_frames == stats.released_frames &&
               stats.active_leases == 0 && stats.allocated_textures == 0,
           "DXGI frame/resource leak");
-  std::cout << "DXGI acquired=" << stats.acquired_frames << " released=" << stats.released_frames
-            << " maximumHoldUs=" << stats.maximum_duplication_hold_us << '\n';
+  if (SUCCEEDED(injected_failure))
+    std::cout << "DXGI acquired=" << stats.acquired_frames << " released=" << stats.released_frames
+              << " maximumHoldUs=" << stats.maximum_duplication_hold_us << '\n';
 }
 }  // namespace
 int main() {
   try {
     compositorGoldens();
     realDuplication();
+    // NVIDIA initializes a further nvwgf2umx worker during the first stress
+    // batch. Warm the same 100-cycle workload before checking resource deltas.
+    tests::repeatFault("dxgi-access-lost", [] { realDuplication(DXGI_ERROR_ACCESS_LOST); }, 100);
+    tests::repeatFault("dxgi-device-removed", [] { realDuplication(DXGI_ERROR_DEVICE_REMOVED); }, 100);
     std::cout << "DXGI compositor/duplication passed\n";
     return 0;
   } catch (const std::exception& error) {

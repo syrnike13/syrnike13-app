@@ -1,0 +1,26 @@
+{
+  "schema": "syrnike.native-v2.product-shutdown-matrix-v1",
+  "applicationCommit": "e3d6d7f27748c9268d6daaf10b98bc2bfcd1f872",
+  "capturedAt": "2026-09-13",
+  "qualification": true,
+  "build": {
+    "configuration": "Release",
+    "testFaultGates": true,
+    "nativeBuildRoot": "build-phase131-test",
+    "frontend": "localbackend",
+    "backend": "docker-local",
+    "sfu": "livekit/livekit-server:v1.13.6"
+  },
+  "scope": "full-product-shutdown-with-held-native-call",
+  "point": "wgc-window-frame-pool",
+  "call": 1,
+  "fixtureLifecycle": "fresh-source-window-fixture-per-cycle",
+  "required": 100,
+  "completed": 100,
+  "passed": true,
+  "shutdownBudgetMs": 4900,
+  "ownedUtilityChecks": "100/100",
+  "forcedFixtureCleanup": "none",
+  "evidence": ".codex-tmp/current-wgc-fresh-fixture-matrix-2/summary.json",
+  "note": "The qualified series starts a fresh authenticated source-window fixture for each product shutdown cycle. A separate single-fixture exploratory run stopped at 64/100 with native_fault_entry_deadline and remains archived as a raw non-qualification result."
+}

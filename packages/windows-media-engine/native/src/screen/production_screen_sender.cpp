@@ -137,7 +137,7 @@ void startSubmit(const std::shared_ptr<detail::ProductionScreenSenderState>& sta
   try {
     state->adapter->startSubmit(
         frame.generation, frame,
-        [weak_state](std::uint64_t completed_generation,
+        [weak_state, slot = frame.slot, sequence = frame.sequence](std::uint64_t completed_generation,
                      ScreenOperationResult result) {
           const auto shared = weak_state.lock();
           if (!shared) return;
@@ -147,7 +147,8 @@ void startSubmit(const std::shared_ptr<detail::ProductionScreenSenderState>& sta
             std::lock_guard lock(shared->mutex);
             if (shared->generation != completed_generation ||
                 !shared->active ||
-                shared->active->generation != completed_generation)
+                shared->active->generation != completed_generation ||
+                shared->active->slot != slot || shared->active->sequence != sequence)
               return;
             const auto completed = *shared->active;
             shared->active.reset();

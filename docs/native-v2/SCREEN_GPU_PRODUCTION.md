@@ -75,7 +75,10 @@ retirement, while Voice Membership and Room ownership stay outside this module.
 The worker completion signal follows COM/MF cleanup. Stop waits for that signal
 within its deadline before joining; destruction of an unretired hung worker
 terminates the isolated utility process instead of detaching it. An encoder
-failure immediately fails the pipeline and initiates track unpublication.
+failure immediately fails the pipeline and initiates track unpublication. Once
+its worker has completed cleanup, a cooperative encoder failure is safe to drain
+inside the current utility; only a failure marked
+`utility_epoch_retirement_required` keeps stop terminal for the utility epoch.
 
 ## Verification
 

@@ -1,0 +1,535 @@
+{
+  "passed": false,
+  "scope": "full-product-utility-latest-mute",
+  "required": 1,
+  "processObservation": "os-node-utility-children-excluding-baseline-hotkey-and-overlay",
+  "intentUpdate": {
+    "status": "ready",
+    "epoch": 2,
+    "finalMuted": true
+  },
+  "authoritySamples": [
+    {
+      "connection": "recovering",
+      "operation": "1a372b20d804",
+      "connectionEpoch": "6e53b80135f6",
+      "hostEpoch": 2,
+      "nativeParticipants": [
+        {
+          "operation": "1a372b20d804",
+          "connectionEpoch": "6e53b80135f6"
+        }
+      ]
+    },
+    {
+      "connection": "recovering",
+      "operation": "1a372b20d804",
+      "connectionEpoch": "6e53b80135f6",
+      "hostEpoch": 3,
+      "nativeParticipants": [
+        {
+          "operation": "1a372b20d804",
+          "connectionEpoch": "6e53b80135f6"
+        }
+      ]
+    }
+  ],
+  "failure": "duplicate_or_unexpected_sfu_participant",
+  "failureStage": "authority-recovery",
+  "before": {
+    "voice": {
+      "intentChannelId": "test-channel",
+      "membershipChannelId": "test-channel",
+      "connection": "connected",
+      "microphone": {
+        "state": "running"
+      },
+      "output": {
+        "state": "running"
+      },
+      "camera": {
+        "state": "running"
+      },
+      "screen": {
+        "state": "running"
+      },
+      "screenAudio": {
+        "state": "running"
+      },
+      "userMuted": false,
+      "userDeafened": false,
+      "serverMuted": false,
+      "serverDeafened": false,
+      "systemPrivacyMuted": false,
+      "monitoringMuted": false,
+      "inputMode": "voice_activity",
+      "pushToTalkHeld": false,
+      "effectiveMuted": false,
+      "speakingUserIds": [],
+      "operationId": "1a372b20d804",
+      "connectionEpoch": "6e53b80135f6"
+    },
+    "runtime": {
+      "available": true,
+      "status": "ready",
+      "restartCount": 1,
+      "hostEpoch": 2,
+      "paths": {
+        "microphone": {
+          "revision": 31,
+          "state": "running",
+          "warning": false
+        },
+        "camera": {
+          "revision": 31,
+          "state": "running",
+          "warning": false
+        },
+        "screen": {
+          "revision": 31,
+          "state": "running",
+          "warning": true
+        },
+        "output": {
+          "revision": 31,
+          "state": "running",
+          "warning": false
+        },
+        "screen_audio": {
+          "revision": 31,
+          "state": "running",
+          "warning": false
+        },
+        "screen_preview": {
+          "revision": 31,
+          "state": "running",
+          "warning": false
+        },
+        "camera_preview": {
+          "revision": 31,
+          "state": "running",
+          "warning": false
+        },
+        "remote_video": {
+          "revision": 31,
+          "state": "running",
+          "warning": false
+        }
+      }
+    },
+    "video": [
+      {
+        "local": false,
+        "source": "camera",
+        "metrics": {
+          "framesReceived": 1569,
+          "framesDrawn": 1558,
+          "framesSuperseded": 10,
+          "framesDroppedNoConsumer": 1,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 3,
+          "canvasDetachCount": 2,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 1280,
+          "sourceHeight": 720,
+          "activeConsumers": 1,
+          "canvasPixels": 98884,
+          "lastFrameAgeMs": 3,
+          "lastDrawAgeMs": 1
+        }
+      },
+      {
+        "local": true,
+        "source": "camera",
+        "metrics": {
+          "framesReceived": 2296,
+          "framesDrawn": 2291,
+          "framesSuperseded": 3,
+          "framesDroppedNoConsumer": 2,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 1,
+          "canvasDetachCount": 0,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 640,
+          "sourceHeight": 360,
+          "activeConsumers": 1,
+          "canvasPixels": 98884,
+          "lastFrameAgeMs": 11,
+          "lastDrawAgeMs": 9
+        }
+      },
+      {
+        "local": true,
+        "source": "screen",
+        "metrics": {
+          "framesReceived": 893,
+          "framesDrawn": 890,
+          "framesSuperseded": 3,
+          "framesDroppedNoConsumer": 0,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 4,
+          "canvasDetachCount": 3,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 960,
+          "sourceHeight": 540,
+          "activeConsumers": 1,
+          "canvasPixels": 98230,
+          "lastFrameAgeMs": 11,
+          "lastDrawAgeMs": 8
+        }
+      }
+    ],
+    "processes": [
+      35292
+    ],
+    "participants": [
+      {
+        "actor": "native",
+        "identity": "114607cbc101",
+        "operation": "1a372b20d804",
+        "connectionEpoch": "6e53b80135f6",
+        "tracks": [
+          {
+            "source": 1,
+            "alias": "a2afdcd7349c",
+            "muted": false
+          },
+          {
+            "source": 2,
+            "alias": "8e0ac1c11013",
+            "muted": false
+          },
+          {
+            "source": 3,
+            "alias": "68dd12c5e559",
+            "muted": false
+          },
+          {
+            "source": 4,
+            "alias": "a3cfaf6df116",
+            "muted": false
+          }
+        ]
+      },
+      {
+        "actor": "observer",
+        "identity": "1b5dc4b6df89",
+        "operation": "d73cba71854b",
+        "connectionEpoch": "9622927dfd1d",
+        "tracks": [
+          {
+            "source": 1,
+            "alias": "dc23d96f8ba0",
+            "muted": false
+          },
+          {
+            "source": 2,
+            "alias": "227a2a9520fe",
+            "muted": true
+          }
+        ]
+      }
+    ],
+    "receiverVideo": [
+      {
+        "track": "ade4f1a1d6df",
+        "local": false,
+        "frames": 2477,
+        "width": 1280,
+        "height": 720
+      },
+      {
+        "track": "294310202641",
+        "local": true,
+        "frames": 16,
+        "width": 1280,
+        "height": 720
+      }
+    ]
+  },
+  "after": {
+    "voice": {
+      "intentChannelId": "test-channel",
+      "membershipChannelId": "test-channel",
+      "connection": "connected",
+      "microphone": {
+        "state": "muted"
+      },
+      "output": {
+        "state": "running"
+      },
+      "camera": {
+        "state": "running"
+      },
+      "screen": {
+        "state": "failed",
+        "error": {
+          "code": "screen_source_unavailable",
+          "message": "Select a current screen source",
+          "stage": "screen",
+          "retryable": false
+        }
+      },
+      "screenAudio": {
+        "state": "running"
+      },
+      "userMuted": true,
+      "userDeafened": false,
+      "serverMuted": false,
+      "serverDeafened": false,
+      "systemPrivacyMuted": false,
+      "monitoringMuted": false,
+      "inputMode": "voice_activity",
+      "pushToTalkHeld": false,
+      "effectiveMuted": true,
+      "speakingUserIds": [],
+      "operationId": "d1977db56647",
+      "connectionEpoch": "da66deb353f5"
+    },
+    "runtime": {
+      "available": true,
+      "status": "ready",
+      "restartCount": 2,
+      "hostEpoch": 3,
+      "paths": {
+        "microphone": {
+          "revision": 36,
+          "state": "muted",
+          "warning": false
+        },
+        "camera": {
+          "revision": 36,
+          "state": "running",
+          "warning": false
+        },
+        "screen": {
+          "revision": 36,
+          "state": "failed",
+          "warning": false,
+          "failure": {
+            "code": "screen_source_unavailable",
+            "message": "Select a current screen source",
+            "stage": "screen",
+            "retryable": false
+          }
+        },
+        "output": {
+          "revision": 36,
+          "state": "running",
+          "warning": false
+        },
+        "screen_audio": {
+          "revision": 36,
+          "state": "running",
+          "warning": false
+        },
+        "screen_preview": {
+          "revision": 36,
+          "state": "starting",
+          "warning": false
+        },
+        "camera_preview": {
+          "revision": 36,
+          "state": "running",
+          "warning": false
+        },
+        "remote_video": {
+          "revision": 36,
+          "state": "off",
+          "warning": false
+        }
+      }
+    },
+    "video": [
+      {
+        "local": true,
+        "source": "screen",
+        "metrics": {
+          "framesReceived": 893,
+          "framesDrawn": 890,
+          "framesSuperseded": 3,
+          "framesDroppedNoConsumer": 0,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 4,
+          "canvasDetachCount": 4,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 960,
+          "sourceHeight": 540,
+          "activeConsumers": 0,
+          "canvasPixels": 0,
+          "lastFrameAgeMs": 4664,
+          "lastDrawAgeMs": 4661
+        }
+      },
+      {
+        "local": true,
+        "source": "camera",
+        "metrics": {
+          "framesReceived": 3,
+          "framesDrawn": 1,
+          "framesSuperseded": 0,
+          "framesDroppedNoConsumer": 2,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 1,
+          "canvasDetachCount": 0,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 640,
+          "sourceHeight": 360,
+          "activeConsumers": 1,
+          "canvasPixels": 98884,
+          "lastFrameAgeMs": 5,
+          "lastDrawAgeMs": 3
+        }
+      }
+    ],
+    "processes": [
+      57112
+    ],
+    "participants": [
+      {
+        "actor": "native",
+        "identity": "114607cbc101",
+        "operation": "1a372b20d804",
+        "connectionEpoch": "6e53b80135f6",
+        "tracks": [
+          {
+            "source": 1,
+            "alias": "a2afdcd7349c",
+            "muted": false
+          },
+          {
+            "source": 2,
+            "alias": "8e0ac1c11013",
+            "muted": false
+          },
+          {
+            "source": 3,
+            "alias": "68dd12c5e559",
+            "muted": false
+          },
+          {
+            "source": 4,
+            "alias": "a3cfaf6df116",
+            "muted": false
+          }
+        ]
+      },
+      {
+        "actor": "native",
+        "identity": "942f3670129d",
+        "operation": "d1977db56647",
+        "connectionEpoch": "da66deb353f5",
+        "tracks": [
+          {
+            "source": 1,
+            "alias": "215c32d605d3",
+            "muted": false
+          },
+          {
+            "source": 2,
+            "alias": "6f22520d1b88",
+            "muted": false
+          },
+          {
+            "source": 4,
+            "alias": "27641824246c",
+            "muted": false
+          }
+        ]
+      },
+      {
+        "actor": "observer",
+        "identity": "1b5dc4b6df89",
+        "operation": "d73cba71854b",
+        "connectionEpoch": "9622927dfd1d",
+        "tracks": [
+          {
+            "source": 1,
+            "alias": "dc23d96f8ba0",
+            "muted": false
+          },
+          {
+            "source": 2,
+            "alias": "227a2a9520fe",
+            "muted": true
+          }
+        ]
+      }
+    ],
+    "receiverVideo": [
+      {
+        "track": "294310202641",
+        "local": true,
+        "frames": 111,
+        "width": 1280,
+        "height": 720
+      },
+      {
+        "track": "ade4f1a1d6df",
+        "local": false,
+        "frames": 0,
+        "width": 0,
+        "height": 0
+      }
+    ]
+  },
+  "runtimeTransitions": [
+    {
+      "status": "recovering",
+      "epoch": 2,
+      "failure": "unexpected_exit",
+      "microphone": "off"
+    },
+    {
+      "status": "recovering",
+      "epoch": 2,
+      "microphone": "off"
+    },
+    {
+      "status": "recovering",
+      "epoch": 3,
+      "microphone": "off"
+    },
+    {
+      "status": "ready",
+      "epoch": 3,
+      "microphone": "off"
+    },
+    {
+      "status": "ready",
+      "epoch": 3,
+      "microphone": "starting"
+    },
+    {
+      "status": "ready",
+      "epoch": 3,
+      "microphone": "muted"
+    },
+    {
+      "status": "ready",
+      "epoch": 3,
+      "microphone": "starting"
+    },
+    {
+      "status": "ready",
+      "epoch": 3,
+      "microphone": "muted"
+    }
+  ],
+  "violations": []
+}

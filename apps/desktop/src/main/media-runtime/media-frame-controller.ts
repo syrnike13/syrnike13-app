@@ -14,23 +14,29 @@ import type { MediaRuntimeSupervisor } from './media-runtime-supervisor'
 import type { NativeRtcEngineAdapterV2 } from '../voice/native-rtc-engine-adapter-v2'
 import { TextureLeaseBridge } from './texture-lease-bridge'
 import { resolveMediaUtilityPaths } from './media-utility-adapter'
-import { electronFrameTransfers, type ElectronFrameTexture } from './electron-frame-transfers'
+import { electronFrameTransfers, type ElectronFrameTexture, type ReceiverProcessReference } from './electron-frame-transfers'
 
 type Broker = {
   openProducer(pid: number): unknown
   closeProducer(producer: unknown): void
   duplicate(producer: unknown, handle: number): Buffer
   closeHandle(handle: Buffer): void
+  openReceiverProcess(pid: number): ReceiverProcessReference
 }
 const BrokerSchema = Schema.declare<Broker>((input): input is Broker =>
   typeof input === 'object' && input !== null &&
-  ['openProducer', 'closeProducer', 'duplicate', 'closeHandle'].every(key => typeof Reflect.get(input, key) === 'function'))
+  ['openProducer', 'closeProducer', 'duplicate', 'closeHandle', 'openReceiverProcess'].every(key => typeof Reflect.get(input, key) === 'function'))
 type Bridge = TextureLeaseBridge<MediaExportedFrame, ImportedSharedTexture>
 type ImportedSharedTexture = ElectronFrameTexture
 type Publication = MediaInventory['video']['publications'][number]
 type Renderer = { id: string; epoch: number }
 type PresentationPath = 'screen_preview' | 'camera_preview' | 'remote_video'
-type PresentationFailure = { revision: number; rendererId: string; epoch: number; code: string }
+type PresentationFailure = {
+  path: PresentationPath; publicationId: string; revision: number; rendererId: string; epoch: number; code: string
+  episodeId: string
+  stalledLeases: Set<string>
+}
+type PresentationFailureEvidence = Pick<PresentationFailure, 'episodeId' | 'path' | 'revision' | 'epoch'>
 type RuntimePort = Pick<MediaRuntimeSupervisor, 'getSnapshot' | 'getHostEpoch' | 'queryInventory' | 'queryFrames'>
 type AdapterPort = Pick<NativeRtcEngineAdapterV2,
   'rendererReady' | 'rendererGone' | 'setPreviewDemand' | 'setRemoteVideoDemand' | 'snapshot'>
@@ -46,7 +52,7 @@ export class MediaFrameController {
   private broker: Broker | null = null
   private producer: unknown = null
   private brokerFailed = false
-  private readonly presentationFailures = new Map<PresentationPath, PresentationFailure>()
+  private readonly presentationFailures = new Map<string, PresentationFailure>()
   private readonly bridges = new Map<string, Bridge>()
   private readonly retired = new Set<Bridge>()
   private readonly releases = new Map<string, MediaFrameRelease>()
@@ -63,7 +69,7 @@ export class MediaFrameController {
     private readonly runtime: RuntimePort,
     private readonly adapter: AdapterPort,
     private readonly getWindow: () => BrowserWindow | null,
-    private readonly reportFailure: (code: string) => void,
+    private readonly reportFailure: (code: string, evidence?: PresentationFailureEvidence) => void,
     private readonly onInventory: (inventory: MediaInventory) => void = () => undefined,
     private readonly onPresentationChange: () => void = () => undefined,
   ) {
@@ -87,6 +93,7 @@ export class MediaFrameController {
   rendererGone() {
     if (this.renderer) this.adapter.rendererGone(this.renderer.id)
     this.renderer = null
+    this.presentationFailures.clear()
     this.demanded.clear()
     this.screenPreview = false
     this.retireBridges()
@@ -108,7 +115,8 @@ export class MediaFrameController {
   presentationPaths(): MediaEngineSnapshot['tracks'] {
     const snapshot = this.adapter.snapshot()
     const paths = { ...snapshot.tracks }
-    for (const [path, failure] of this.presentationFailures) {
+    for (const failure of this.presentationFailures.values()) {
+      const path = failure.path
       if (failure.epoch !== this.runtime.getHostEpoch() || failure.rendererId !== this.renderer?.id ||
           failure.revision !== snapshot.acceptedRevision || paths[path].state === 'off') continue
       paths[path] = {
@@ -219,6 +227,10 @@ export class MediaFrameController {
         for (const publication of next)
           if (!this.publications.some(value => value.publicationId === publication.publicationId)) this.publish('available', publication)
         this.publications = next
+        for (const [key, failure] of this.presentationFailures) {
+          if (failure.path === 'remote_video' && !next.some(value => value.publicationId === failure.publicationId))
+            this.presentationFailures.delete(key)
+        }
       }).catch(() => this.reportFailure('video_inventory_query_failed')).finally(() => { this.inventoryPending = false })
     }
     const paths = this.adapter.snapshot().tracks
@@ -283,21 +295,26 @@ export class MediaFrameController {
             return transfers.importTexture({
                 pixelFormat: 'bgra', codedSize: { width: lease.width, height: lease.height },
                 timestamp: lease.timestamp, handle: { ntHandle: handle },
-            }, () => { broker.closeHandle(handle); released() })
+            }, () => {
+              broker.closeHandle(handle)
+              released()
+              this.presentationRecovered(lease, epoch)
+            }, code => this.presentationFailed(lease, epoch, `video_bridge_${code}`, true))
           } catch (error) { broker.closeHandle(handle); throw error }
         },
         sendTexture: (texture, metadata) => {
           const window = this.getWindow()
           if (!window || window.isDestroyed() || !this.renderer || metadata.rendererId !== this.renderer.id || epoch !== this.epoch)
             return Promise.resolve()
-          return transfers.send(texture, window.webContents.mainFrame, {
+          const target = window.webContents.mainFrame
+          return transfers.send(texture, target, {
             sessionId: this.sessionId || `local-${epoch}`, generation: epoch,
             trackId: metadata.publicationId, participantIdentity: metadata.participantIdentity,
             source: metadata.kind === 'camera_preview' ? 'camera' : metadata.kind === 'screen_preview' ? 'screen' : publication?.source,
             local: metadata.kind !== 'remote', sequence: metadata.sequence,
             rendererEpoch: this.renderer.epoch, runtimeEpoch: epoch,
             nativeCaptureTimestampUs: metadata.timestamp,
-          }).then(() => this.presentationRecovered(metadata, epoch))
+          }, broker.openReceiverProcess(target.osProcessId))
         },
         returnLease: lease => {
           if (epoch !== this.epoch || this.disposed) created.acknowledgeRelease(lease)
@@ -319,22 +336,35 @@ export class MediaFrameController {
       generation: lease.generation, sequence: lease.sequence, slot: lease.slot,
     })
   }
-  private presentationFailed(frame: MediaExportedFrame, epoch: number, code: string) {
+  private presentationFailed(frame: MediaExportedFrame, epoch: number, code: string, stalled = false) {
     if (this.disposed || epoch !== this.runtime.getHostEpoch() || frame.rendererId !== this.renderer?.id ||
         frame.revision !== this.adapter.snapshot().acceptedRevision) return
     const path = frame.kind === 'remote' ? 'remote_video' : frame.kind
-    const previous = this.presentationFailures.get(path)
-    if (previous?.code === code && previous.revision === frame.revision && previous.rendererId === frame.rendererId) return
-    this.presentationFailures.set(path, { code, revision: frame.revision, rendererId: frame.rendererId, epoch })
-    this.reportFailure(code)
+    const key = `${frame.kind}:${frame.publicationId}`
+    const previous = this.presentationFailures.get(key)
+    let episodeId: string | undefined
+    if (previous?.revision === frame.revision && previous.rendererId === frame.rendererId && previous.epoch === epoch) {
+      if (stalled) previous.stalledLeases.add(leaseKey(frame))
+      if (previous.code === code || previous.stalledLeases.size > 0) return
+      episodeId = previous.episodeId
+    }
+    episodeId ??= crypto.randomUUID()
+    this.presentationFailures.set(key, {
+      path, publicationId: frame.publicationId, code, revision: frame.revision, rendererId: frame.rendererId, epoch,
+      episodeId,
+      stalledLeases: new Set(stalled ? [leaseKey(frame)] : []),
+    })
+    this.reportFailure(code, { episodeId, path, revision: frame.revision, epoch })
     this.onPresentationChange()
   }
   private presentationRecovered(frame: Omit<MediaExportedFrame, 'handle'>, epoch: number) {
     if (this.disposed || epoch !== this.runtime.getHostEpoch() || frame.rendererId !== this.renderer?.id) return
-    const path = frame.kind === 'remote' ? 'remote_video' : frame.kind
-    const failure = this.presentationFailures.get(path)
+    const key = `${frame.kind}:${frame.publicationId}`
+    const failure = this.presentationFailures.get(key)
     if (!failure || failure.revision !== frame.revision || failure.rendererId !== frame.rendererId || failure.epoch !== epoch) return
-    this.presentationFailures.delete(path)
+    failure.stalledLeases.delete(leaseKey(frame))
+    if (failure.stalledLeases.size > 0) return
+    this.presentationFailures.delete(key)
     this.onPresentationChange()
   }
 }

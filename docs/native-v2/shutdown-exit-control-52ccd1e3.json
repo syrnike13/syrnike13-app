@@ -1,0 +1,98 @@
+{
+  "applicationCommit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+  "scope": "Rebuilt product exit guard regression control; not the complete qualification matrix",
+  "identities": [
+    {
+      "product": "issue131-exit-product",
+      "commit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+      "applicationFiles": 167,
+      "driverFiles": 2,
+      "identitySha256": "78d6c6c0f9212348ce415f2058e4035b404862a9b30d3ba1ddda6716c3abe7c9",
+      "postControlMismatches": 0
+    },
+    {
+      "product": "issue131-exit-shutdown-product",
+      "commit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35",
+      "applicationFiles": 167,
+      "driverFiles": 2,
+      "identitySha256": "0ba88d5b94694ab656e4bccb16598e748138972b7424b20519586abf3bc6d413",
+      "postControlMismatches": 0
+    }
+  ],
+  "control": {
+    "scope": "full-product-shutdown-with-held-native-call",
+    "point": "sdk-microphone-unpublish",
+    "call": 1,
+    "passed": true,
+    "required": 1,
+    "completed": 1,
+    "shutdownBudgetMs": 4900,
+    "results": [
+      {
+        "point": "sdk-microphone-unpublish",
+        "call": 1,
+        "iteration": 1,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-unpublish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 4145.50270000007,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      }
+    ]
+  },
+  "summarySha256": "77ad57c6e3c2ab205f93142ea4dafe33d8ceca6f8673d7be037f5a7effd7be6e",
+  "mainObservationSha256": "233e8f89af9dc48c52465d088a01a03e485d61d23eed704465d4a14ea345d9aa",
+  "kernelObservationSha256": "fc33b99885f425caf42353b988821477f1af65df880b0d27e85a99a192388f92",
+  "fixture": "After confirmed sdk-microphone-unpublish hold, prevent Electron will-quit while leaving its event loop responsive. Product guard must still terminate both processes within the unchanged 4900 ms observation limit.",
+  "priorControl": "shutdown-exit-guard-e3773e48.json contains the same blocked-will-quit control before the fix; main required fixture termination.",
+  "invalidFirstSetup": {
+    "summary": {
+      "scope": "full-product-shutdown-with-held-native-call",
+      "point": "sdk-microphone-unpublish",
+      "call": 1,
+      "passed": false,
+      "required": 1,
+      "completed": 0,
+      "shutdownBudgetMs": 4900,
+      "results": [
+        {
+          "point": "sdk-microphone-unpublish",
+          "call": 1,
+          "iteration": 1,
+          "passed": false,
+          "shutdownBudgetMs": 4900,
+          "entries": [],
+          "failure": "shutdown_room_ready_deadline",
+          "forcedFixtureCleanup": true
+        }
+      ],
+      "failure": "shutdown_room_ready_deadline"
+    },
+    "summarySha256": "24c3178d6f4f327b856434a08e2a7464726358e3f031c1f6e2d6351d94afcea8",
+    "reason": "The desktop build was given DESKTOP_BACKEND_MODE instead of SYRNIKE_DESKTOP_BACKEND_MODE, compiling the release control socket endpoint. No native hold or shutdown measurement was reached.",
+    "correction": "Rebuilt only main, preload and utility JavaScript with the local backend build setting. Web assets and native binaries were retained. Original JavaScript outputs and input hashes remain archived privately.",
+    "journalSha256": "9d199b97c200ca137db474ec2b3675708670258b3408a607e9ec13bdb4353aac",
+    "provenance": "The separately named private-unrelated-july-journal.jsonl was copied from the wrong profile and is excluded from evidence."
+  },
+  "limitations": [
+    "A deliberately prevented will-quit event demonstrates the guard contract; it does not identify the cause of the earlier spontaneous long exit.",
+    "The native shutdown matrix and correlated report series are still running."
+  ]
+}

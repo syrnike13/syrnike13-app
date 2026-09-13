@@ -5,16 +5,22 @@ import { MEDIA_TEXTURE_ACK, MEDIA_TEXTURE_TRANSFER, MediaTextureAckSchema } from
 type FrameTarget = Pick<WebFrameMain, 'processId' | 'routingId' | 'isDestroyed' | 'send'>
 type Texture = Pick<SharedTextureImportedSubtle, 'startTransferSharedTexture' | 'release'>
 export type ElectronFrameTexture = { readonly id: string; release(): void }
+export type ReceiverProcessReference = { hasExited(): boolean; close(): void }
+export type TextureReleaseStall = 'receiver_release_timeout' | 'gpu_release_timeout'
+const RELEASE_DEADLINE_MS = 2_000
 type PendingTransfer = { resolve(): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }
 type Entry = {
   texture: Texture
   allReleased(): void
   mainReference: boolean
-  frame: FrameTarget | null
+  target: { frame: FrameTarget; processId: number; routingId: number; process: ReceiverProcessReference } | null
   imported: boolean
   receiverReleased: boolean
   finalizing: boolean
   pending: PendingTransfer | null
+  releaseDeadline: number | null
+  stalled: boolean
+  onStall(code: TextureReleaseStall): void
 }
 
 /** A timeout ends the request, never the GPU lease. Keep the main texture until
@@ -39,13 +45,18 @@ export class ElectronFrameTransfers {
     }
   }
 
-  importTexture(info: SharedTextureImportTextureInfo, allReleased: () => void): ElectronFrameTexture {
+  importTexture(
+    info: SharedTextureImportTextureInfo,
+    allReleased: () => void,
+    onStall: (code: TextureReleaseStall) => void = () => undefined,
+  ): ElectronFrameTexture {
     if (this.entries.size >= 68) throw new Error('Electron texture capacity exhausted')
     const texture = this.importNative(info)
     const id = crypto.randomUUID()
     this.entries.set(id, {
-      texture, allReleased, mainReference: true, frame: null, imported: false,
+      texture, allReleased, mainReference: true, target: null, imported: false,
       receiverReleased: true, finalizing: false, pending: null,
+      releaseDeadline: null, stalled: false, onStall,
     })
     return { id, release: () => {
       const entry = this.entries.get(id)
@@ -55,12 +66,18 @@ export class ElectronFrameTransfers {
     } }
   }
 
-  send(texture: ElectronFrameTexture, frame: FrameTarget, metadata: unknown): Promise<void> {
+  send(texture: ElectronFrameTexture, frame: FrameTarget, metadata: unknown, receiver: ReceiverProcessReference): Promise<void> {
     const entry = this.entries.get(texture.id)
-    if (!entry || entry.frame || frame.isDestroyed()) return Promise.reject(new Error('Texture target is unavailable'))
-    const transfer = entry.texture.startTransferSharedTexture()
-    entry.frame = frame
+    if (!entry || entry.target || frame.isDestroyed()) {
+      receiver.close()
+      return Promise.reject(new Error('Texture target is unavailable'))
+    }
+    let transfer: ReturnType<Texture['startTransferSharedTexture']>
+    try { transfer = entry.texture.startTransferSharedTexture() }
+    catch (error) { receiver.close(); return Promise.reject(error) }
+    entry.target = { frame, processId: frame.processId, routingId: frame.routingId, process: receiver }
     entry.receiverReleased = false
+    entry.releaseDeadline = performance.now() + RELEASE_DEADLINE_MS
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         entry.pending = null
@@ -80,8 +97,8 @@ export class ElectronFrameTransfers {
 
   acknowledge(frame: FrameTarget | null, id: string, phase: 'imported' | 'released') {
     const entry = this.entries.get(id)
-    if (!entry || !frame || !entry.frame || entry.finalizing ||
-        frame.processId !== entry.frame.processId || frame.routingId !== entry.frame.routingId) return
+    if (!entry || !frame || !entry.target || entry.finalizing ||
+        frame.processId !== entry.target.processId || frame.routingId !== entry.target.routingId) return
     if (phase === 'imported') {
       entry.imported = true
       this.finishPending(entry, true)
@@ -92,12 +109,22 @@ export class ElectronFrameTransfers {
     }
   }
 
-  sweepDestroyedFrames() {
+  sweep() {
+    const now = performance.now()
     for (const [id, entry] of this.entries) {
-      if (!entry.frame?.isDestroyed()) continue
-      entry.receiverReleased = true
-      this.finishPending(entry, false)
-      this.finalize(id, entry)
+      // The retained kernel object also covers a crash whose frame wrapper is
+      // reused by Chromium. This ends only the receiver reference; native reuse
+      // still waits for the final GPU release callback below.
+      if (entry.target && (entry.target.frame.isDestroyed() || entry.target.process.hasExited())) {
+        entry.receiverReleased = true
+        this.finishPending(entry, false)
+        this.finalize(id, entry)
+      }
+      if (!this.entries.has(id) || entry.stalled || entry.releaseDeadline === null || now < entry.releaseDeadline) continue
+      if (!entry.receiverReleased || entry.finalizing) {
+        entry.stalled = true
+        entry.onStall(entry.finalizing ? 'gpu_release_timeout' : 'receiver_release_timeout')
+      }
     }
   }
 
@@ -113,8 +140,11 @@ export class ElectronFrameTransfers {
   private finalize(id: string, entry: Entry) {
     if (entry.mainReference || !entry.receiverReleased || entry.finalizing) return
     entry.finalizing = true
+    entry.releaseDeadline = performance.now() + RELEASE_DEADLINE_MS
     entry.texture.release(() => {
+      if (this.entries.get(id) !== entry) return
       this.entries.delete(id)
+      entry.target?.process.close()
       entry.allReleased()
     })
   }
@@ -129,7 +159,7 @@ export function electronFrameTransfers() {
     const ack = Schema.decodeUnknownOption(MediaTextureAckSchema)(raw)
     if (Option.isSome(ack)) transfers.acknowledge(event.senderFrame, ack.value.id, ack.value.phase)
   })
-  const timer = setInterval(() => transfers.sweepDestroyedFrames(), 250)
+  const timer = setInterval(() => transfers.sweep(), 250)
   timer.unref?.()
   return transfers
 }

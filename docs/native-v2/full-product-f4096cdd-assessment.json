@@ -1,0 +1,17 @@
+{
+  "sourceReport": "full-product-utility-f4096cdd-1.json",
+  "originalReportPreserved": true,
+  "qualificationPassed": false,
+  "rejection": "One injected crash caused two host replacements; the original observer incorrectly accepted any later epoch.",
+  "injectedHostEpoch": 1,
+  "finalHostEpoch": 3,
+  "correctedAssertion": "Exactly one replacement epoch and one restart-budget increment per injected crash",
+  "diagnosticRepeat": {
+    "qualificationRun": false,
+    "exceptionCode": "0xC0000409",
+    "faultingOwner": "MicrophoneOwner::run",
+    "failureBoundary": "Microphone sender did not stop within the owner's shutdown deadline",
+    "blockedSdkOperation": "LocalParticipant::publishTrack",
+    "rawDumpPublication": "Not published; raw thread stacks can contain credentials or private data"
+  }
+}

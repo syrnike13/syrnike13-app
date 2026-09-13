@@ -27,7 +27,8 @@ use crate::{
         get_current_voice_reservation, get_current_voice_session, get_user_voice_channel_in_server,
         get_voice_channel_members, get_voice_participant_reconciliation, is_in_voice_channel,
         native_camera_profiles, raise_if_in_voice, remove_user_from_voice_channel,
-        set_call_notification_recipients, set_channel_node, voice_participant_identity,
+        retire_pending_user_voice_transports, set_call_notification_recipients, set_channel_node,
+        voice_participant_identity,
     },
 };
 use iso8601_timestamp::{Duration, Timestamp};
@@ -380,6 +381,7 @@ pub async fn join_voice_channel(
     if !session_created {
         return Err(create_error!(InvalidOperation));
     }
+    retire_pending_user_voice_transports(db, voice_client, &user.id).await?;
     let room = match voice_client.create_room(&node, &channel).await {
         Ok(room) => room,
         Err(error) => {

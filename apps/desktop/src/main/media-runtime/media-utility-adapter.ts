@@ -68,6 +68,25 @@ type UtilityProcessGuard = {
   close(): void
 }
 
+type NativeProcessBroker = {
+  openUtilityProcess(pid: number): unknown
+  armProcessExitDeadline(timeoutMs: number): void
+}
+
+let processBroker: NativeProcessBroker | null = null
+
+export function armMediaProcessExitDeadline(timeoutMs: number) {
+  // Load and verify the broker before starting media, never during shutdown.
+  // Retain it after utility retirement so late Electron/Node exit is bounded too.
+  processBroker?.armProcessExitDeadline(timeoutMs)
+}
+
+function isNativeProcessBroker(value: unknown): value is NativeProcessBroker {
+  return typeof value === 'object' && value !== null &&
+    typeof Reflect.get(value, 'openUtilityProcess') === 'function' &&
+    typeof Reflect.get(value, 'armProcessExitDeadline') === 'function'
+}
+
 function loadProcessGuard(nativeModulePath: string): (pid: number) => UtilityProcessGuard {
   verifyMediaArtifactDistribution(path.dirname(nativeModulePath), {
     appVersion: app.getVersion(), commitSha: __DESKTOP_COMMIT_SHA__,
@@ -75,12 +94,12 @@ function loadProcessGuard(nativeModulePath: string): (pid: number) => UtilityPro
   })
   const filename = path.join(path.dirname(nativeModulePath), 'windows_media_texture_broker.node')
   const loaded: unknown = createRequire(filename)(filename)
-  if (typeof loaded !== 'object' || loaded === null ||
-      typeof Reflect.get(loaded, 'openUtilityProcess') !== 'function') {
+  if (!isNativeProcessBroker(loaded)) {
     throw new Error('Invalid utility process broker')
   }
+  processBroker = loaded
   return (pid) => {
-    const guard: unknown = Reflect.get(loaded, 'openUtilityProcess')(pid)
+    const guard = loaded.openUtilityProcess(pid)
     if (!isProcessGuard(guard)) throw new Error('Invalid utility process guard')
     return guard
   }

@@ -1,4 +1,5 @@
 #include "screen/hardware_h264_encoder.hpp"
+#include "testing/product_fault_gate.hpp"
 
 #include <strmif.h>
 #include <codecapi.h>
@@ -431,6 +432,7 @@ bool processOneOutput(
       output_info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES ? nullptr
                                                                : caller_output;
   DWORD status = 0;
+  testing::holdProductFault("encoder-output");
   const HRESULT result = transform->ProcessOutput(0, 1, &output, &status);
   if (output.pEvents) output.pEvents->Release();
   if (FAILED(result)) {
@@ -545,8 +547,12 @@ void encoderWorker(
     for (;;) {
       ComPtr<IMFMediaEvent> event;
       state->worker_operation.store("poll_event", std::memory_order_relaxed);
+#ifdef WINDOWS_MEDIA_TEST_ENCODER_EVENT
+      const HRESULT event_result = WINDOWS_MEDIA_TEST_ENCODER_EVENT(events.Get(), &event);
+#else
       const HRESULT event_result =
           events->GetEvent(MF_EVENT_FLAG_NO_WAIT, &event);
+#endif
       if (event_result == MF_E_NO_EVENTS_AVAILABLE) break;
       if (FAILED(event_result)) {
         fail(state, "screen_hardware_h264_event_failed",
@@ -659,6 +665,7 @@ void encoderWorker(
     if (input) {
       state->worker_operation.store("process_input", std::memory_order_relaxed);
       auto sample = makeInputSample(*input);
+      if (sample) testing::holdProductFault("encoder-input");
       const HRESULT input_result =
           sample ? transform->ProcessInput(0, sample.Get(), 0) : E_FAIL;
       if (FAILED(input_result)) {
@@ -931,7 +938,12 @@ bool HardwareH264Encoder::stop(std::chrono::milliseconds deadline) noexcept {
       terminal_result = true;
     if (state_->state == HardwareH264EncoderState::failed &&
         state_->worker_done)
-      terminal_result = false;
+      // A failed encoder is still safe to retire in-process once its worker
+      // completed all Media Foundation cleanup.  Only a failure explicitly
+      // marked as requiring utility retirement represents unknown ownership
+      // that cannot be reused safely.
+      terminal_result = !state_->failure ||
+                        !state_->failure->utility_epoch_retirement_required;
     if (!terminal_result) {
       state_->stop_requested = true;
       state_->stop_deadline = Clock::now() + deadline;

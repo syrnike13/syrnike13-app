@@ -6,6 +6,7 @@
 #include "camera/camera_preview.hpp"
 #include "capture/optional_preview_budget.hpp"
 #include "screen/local_screen_preview.hpp"
+#include "fault_evidence.hpp"
 #include <d3d11_1.h>
 
 #include <array>
@@ -19,8 +20,9 @@ using namespace syrnike::windows_media::camera;
 namespace {
 void require(bool value, const char* reason) { if (!value) throw std::runtime_error(reason); }
 template <typename Predicate>
-void until(Predicate predicate, const char* reason) {
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{2};
+void until(Predicate predicate, const char* reason,
+           std::chrono::milliseconds budget = std::chrono::seconds{2}) {
+  const auto deadline = std::chrono::steady_clock::now() + budget;
   while (!predicate()) {
     require(std::chrono::steady_clock::now() < deadline, reason);
     std::this_thread::sleep_for(std::chrono::milliseconds{1});
@@ -139,6 +141,68 @@ void registryIdentity() {
   require(registry.refresh().status == CameraRegistryStatus::enumeration_failed && !registry.resolve({}),
           "Failed enumeration resolved stale device state");
 }
+void cameraFaultRetiresItsReader(bool missing_callback) {
+  using namespace syrnike::windows_media::lab;
+  using Clock = std::chrono::steady_clock;
+  auto control = std::make_shared<SyntheticCameraControl>();
+  control->emit_late_callback = true;
+  CameraCapture capture({L"synthetic", "Synthetic"}, {1280, 720, 30}, 1, false, syntheticCameraReader(control));
+  const auto started = Clock::now();
+  auto stage_started = started;
+  const char* stage = "start";
+  try {
+    require(capture.start() == CameraFailure::none, "Camera fault fixture did not become healthy");
+    stage = "inject";
+    stage_started = Clock::now();
+    if (missing_callback) {
+      control->withhold_samples = true;
+      std::unique_lock lock(control->fault_mutex);
+      require(control->fault_changed.wait_for(lock, std::chrono::seconds{1}, [&] {
+        return control->withheld_samples == 1;
+      }), "Camera reader did not withhold its requested callback");
+    } else {
+      control->next_failure = CameraFailure::device_removed;
+    }
+    stage = "detect";
+    stage_started = Clock::now();
+    until([&] { return capture.stats().state == CameraCaptureState::failed; },
+          "Camera fault was not detected", std::chrono::milliseconds{2'500});
+    require(capture.stats().failure == (missing_callback ? CameraFailure::no_frames : CameraFailure::device_removed),
+            "Camera no-progress and explicit device failure were confused");
+    stage = "stop";
+    stage_started = Clock::now();
+    require(capture.stop(Clock::now() + std::chrono::seconds{2}) && control->readers_alive == 0 &&
+                control->samples_alive == 0 && control->late_callbacks == 1 && capture.output()->stats().queued == 0,
+            "Camera fault leaked a reader/sample or accepted a late callback");
+  } catch (...) {
+    // Preserve the failing state before the destructor starts cleanup. These
+    // observations do not extend deadlines or turn a failed iteration into a pass.
+    const auto observed = Clock::now();
+    const auto stats = capture.stats();
+    std::uint64_t withheld_samples;
+    {
+      std::scoped_lock lock(control->fault_mutex);
+      withheld_samples = control->withheld_samples;
+    }
+    std::cerr << "CAMERA_FAULT_DIAGNOSTIC {\"stage\":\"" << stage
+              << "\",\"missingCallback\":" << (missing_callback ? "true" : "false")
+              << ",\"elapsedMs\":" << std::chrono::duration<double, std::milli>(observed - started).count()
+              << ",\"stageMs\":" << std::chrono::duration<double, std::milli>(observed - stage_started).count()
+              << ",\"stateCode\":" << static_cast<int>(stats.state)
+              << ",\"failureCode\":" << static_cast<int>(stats.failure)
+              << ",\"platformError\":" << stats.platform_error
+              << ",\"frames\":" << stats.frames << ",\"staleFrames\":" << stats.stale
+              << ",\"maximumCopyUs\":" << stats.maximum_copy_us
+              << ",\"workerAlive\":" << (stats.thread_alive ? "true" : "false")
+              << ",\"readerAlive\":" << (stats.reader_alive ? "true" : "false")
+              << ",\"callbacks\":" << control->callbacks.load()
+              << ",\"withheldSamples\":" << withheld_samples
+              << ",\"liveReaders\":" << control->readers_alive.load()
+              << ",\"liveSamples\":" << control->samples_alive.load() << "}\n";
+    throw;
+  }
+}
+
 void asynchronousCaptureLifetime() {
   using namespace syrnike::windows_media::lab;
   using Clock = std::chrono::steady_clock;
@@ -214,6 +278,53 @@ void transactionalPipelineDemands() {
           "Removing downgrade permission silently kept an unsupported exact profile");
   require(pipeline.stop(Clock::now() + std::chrono::seconds{2}) && control->samples_alive == 0,
           "Camera pipeline teardown retained samples");
+}
+void cancelledCameraCandidate() {
+  using namespace syrnike::windows_media::lab;
+  using Clock = std::chrono::steady_clock;
+  auto enumerator = std::make_unique<Enumerator>();
+  enumerator->endpoints = std::vector<CameraEndpoint>{{L"first", "First"}, {L"second", "Second"}};
+  CameraDeviceRegistry registry(std::move(enumerator));
+  const auto devices = registry.refresh();
+  auto active = std::make_shared<SyntheticCameraControl>();
+  auto candidate = std::make_shared<SyntheticCameraControl>();
+  candidate->withhold_samples = true;
+  candidate->emit_late_callback = true;
+  unsigned opens = 0;
+  CameraPipeline pipeline([&] {
+    return syntheticCameraReader(++opens == 1 ? active : candidate)();
+  });
+  require(pipeline.selectDevice(registry, devices.devices[0].id, {1280, 720, 30}) == CameraFailure::none &&
+          pipeline.setDemand(true, false) == CameraFailure::none, "Camera cancellation fixture did not start");
+  const auto before = pipeline.stats();
+  std::stop_source cancellation;
+  bool observed = false;
+  std::jthread submitter([&] {
+    std::unique_lock lock(candidate->fault_mutex);
+    observed = candidate->fault_changed.wait_for(lock, std::chrono::seconds(2), [&] {
+      return candidate->withheld_samples > 0;
+    });
+    lock.unlock();
+    cancellation.request_stop();
+  });
+  const auto started = Clock::now();
+  const auto result = pipeline.selectDevice(registry, devices.devices[1].id, {1280, 720, 30}, false,
+                                            cancellation.get_token());
+  submitter.join();
+  require(observed && result == CameraFailure::cancelled && Clock::now() - started < std::chrono::milliseconds(500),
+          "Camera readiness wait did not observe cancellation within the control budget");
+  const auto after = pipeline.stats();
+  require(after.active && !after.candidate && after.capture.generation == before.capture.generation &&
+          after.commits == before.commits && candidate->readers_alive == 0 && candidate->samples_alive == 0 &&
+          candidate->late_callbacks == 1, "Cancelled camera candidate committed or retained late callback resources");
+  require(pipeline.selectDevice(registry, devices.devices[0].id, {1280, 720, 30}) == CameraFailure::none &&
+          pipeline.stats().opened == after.opened, "Latest camera selection reopened the retained healthy capture");
+  require(pipeline.reconcile(registry, devices.revision, cancellation.get_token()) == CameraFailure::cancelled &&
+          pipeline.stats().opened == after.opened, "A cancelled camera retry opened another reader");
+  until([&] { return pipeline.stats().forwarded > before.forwarded; },
+        "Healthy camera stopped forwarding during candidate cancellation", std::chrono::milliseconds(500));
+  require(pipeline.stop(Clock::now() + std::chrono::seconds(2)) && active->readers_alive == 0 &&
+          active->samples_alive == 0, "Camera cancellation fixture did not drain");
 }
 void previewIsolation(bool quarantine = false) {
   using namespace syrnike::windows_media;
@@ -313,6 +424,10 @@ void previewIsolation(bool quarantine = false) {
 }
 }  // namespace
 int main(int argc, char** argv) try {
+  if (argc == 2 && std::string_view(argv[1]) == "--cancellation") {
+    syrnike::windows_media::tests::repeatFault("camera-candidate-cancelled", cancelledCameraCandidate);
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--preview-quarantine") {
     previewIsolation(true);
     std::cout << "Camera preview unproven renderer release kept its process budget\n";
@@ -329,6 +444,9 @@ int main(int argc, char** argv) try {
   registryIdentity();
   asynchronousCaptureLifetime();
   transactionalPipelineDemands();
+  syrnike::windows_media::tests::repeatFault("camera-candidate-cancelled", cancelledCameraCandidate);
+  syrnike::windows_media::tests::repeatFault("camera-device-removed", [] { cameraFaultRetiresItsReader(false); });
+  syrnike::windows_media::tests::repeatFault("camera-reader-no-callback", [] { cameraFaultRetiresItsReader(true); });
   std::cout << "Camera format, freshness and registry contracts passed\n";
   return 0;
 } catch (const std::exception& error) {

@@ -202,9 +202,12 @@ GraphicsCaptureItem acquireWindowCaptureItem(std::uintptr_t platform_value,
   return acquireCachedCaptureItem(
       "window:" + stable_identity + "@" + std::to_string(platform_value),
       [platform_value](const auto& factory, GraphicsCaptureItem& item) {
-        return factory->CreateForWindow(reinterpret_cast<HWND>(platform_value),
-                                        winrt::guid_of<GraphicsCaptureItem>(),
-                                        winrt::put_abi(item));
+        const HRESULT result = factory->CreateForWindow(
+            reinterpret_cast<HWND>(platform_value),
+            winrt::guid_of<GraphicsCaptureItem>(), winrt::put_abi(item));
+        if (FAILED(result))
+          throw std::runtime_error("IGraphicsCaptureItemInterop::CreateForWindow: " + hresultText(result));
+        return result;
       });
 }
 

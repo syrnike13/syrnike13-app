@@ -1,0 +1,83 @@
+{
+  "scope": "isolated child extension-point policy control",
+  "qualified": false,
+  "source": "b007397a",
+  "launcherSha256": "33b4eef32e5ba3dd9af31f42926a436c7bc8b64250af9a2801a71ee8b61b92b6",
+  "probeSha256": "0f59beb6f7317bd215bdbddd1203720b47d9e383e5d8e70ac6a58dd091f0c213",
+  "runs": [
+    {
+      "launch": {
+        "extensionPointsDisabled": false,
+        "childExited": true,
+        "exitCode": 1,
+        "elapsedMs": 25029.5
+      },
+      "fault": {
+        "id": "mf-activation-same-thread",
+        "build": {
+          "commit": "b007397aae4a1a740eb53b2fab70dd024ce8005a",
+          "configuration": "Release",
+          "asan": false,
+          "msvc": 195136248
+        },
+        "passed": 100,
+        "required": 100,
+        "warmup": 1,
+        "ownerChecksPassed": true,
+        "resourceChecksPassed": false,
+        "maximumIterationMs": 360.305,
+        "resources": {
+          "baseline": {
+            "handles": 294,
+            "threads": 10
+          },
+          "final": {
+            "handles": 494,
+            "threads": 10
+          },
+          "delta": {
+            "handles": 200,
+            "threads": 0
+          }
+        }
+      }
+    },
+    {
+      "launch": {
+        "extensionPointsDisabled": true,
+        "childExited": true,
+        "exitCode": 1,
+        "elapsedMs": 25129.7
+      },
+      "fault": {
+        "id": "mf-activation-same-thread",
+        "build": {
+          "commit": "b007397aae4a1a740eb53b2fab70dd024ce8005a",
+          "configuration": "Release",
+          "asan": false,
+          "msvc": 195136248
+        },
+        "passed": 100,
+        "required": 100,
+        "warmup": 1,
+        "ownerChecksPassed": true,
+        "resourceChecksPassed": false,
+        "maximumIterationMs": 386.664,
+        "resources": {
+          "baseline": {
+            "handles": 294,
+            "threads": 10
+          },
+          "final": {
+            "handles": 494,
+            "threads": 10
+          },
+          "delta": {
+            "handles": 200,
+            "threads": 0
+          }
+        }
+      }
+    }
+  ]
+}

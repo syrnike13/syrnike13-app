@@ -1,4 +1,6 @@
 #include "video/shared_texture_pool.hpp"
+#include "video/remote_video_track.hpp"
+#include "fault_evidence.hpp"
 
 #include <d3d11sdklayers.h>
 
@@ -7,9 +9,67 @@
 #include <stdexcept>
 #include <vector>
 
+namespace syrnike::windows_media::video {
+class RemoteVideoFaultInjector {
+ public:
+  static std::uint64_t revision(RemoteVideoTrack& owner) { return owner.revision_; }
+  static bool decoded(RemoteVideoTrack& owner, std::uint64_t revision,
+                      std::int64_t timestamp) {
+    livekit::VideoFrameEvent event;
+    event.frame = livekit::VideoFrame::create(64, 64, livekit::VideoBufferType::BGRA);
+    event.timestamp_us = timestamp;
+    return owner.acceptDecoded(revision, std::move(event));
+  }
+};
+}  // namespace syrnike::windows_media::video
+
 using namespace syrnike::windows_media::video;
 void require(bool condition) {
   if (!condition) throw std::runtime_error("Pool invariant failed");
+}
+
+TextureLease nextInjectedFrame(RemoteVideoTrack& owner) {
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  while (std::chrono::steady_clock::now() < deadline) {
+    const auto timestamp = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    require(RemoteVideoFaultInjector::decoded(owner, RemoteVideoFaultInjector::revision(owner), timestamp));
+    if (auto frame = owner.takeFrame()) return *frame;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  throw std::runtime_error("Remote owner failed to upload a current decoded frame");
+}
+
+void staleRemoteDecodedFramesDoNotChangeAnotherOwner() {
+  auto& pool = SharedTexturePool::processPool();
+  RemoteVideoTrack replaced("replaced", "video");
+  RemoteVideoTrack healthy("healthy", "video");
+  replaced.demand(true);
+  healthy.demand(true);
+  const auto old_revision = RemoteVideoFaultInjector::revision(replaced);
+  const auto old_frame = nextInjectedFrame(replaced);
+  const auto healthy_frame = nextInjectedFrame(healthy);
+  const auto healthy_generation = healthy.generation();
+  replaced.demand(false);
+  replaced.demand(true);
+  require(!RemoteVideoFaultInjector::decoded(replaced, old_revision, 1));
+  const auto replacement_frame = nextInjectedFrame(replaced);
+  require(replacement_frame.generation != old_frame.generation);
+  require(healthy.generation() == healthy_generation && !healthy.failed());
+  require(pool.release(old_frame.generation, old_frame.sequence, old_frame.slot));
+  require(!pool.release(old_frame.generation, old_frame.sequence, old_frame.slot));
+  require(pool.release(replacement_frame.generation, replacement_frame.sequence, replacement_frame.slot));
+  replaced.stop();
+  require(!RemoteVideoFaultInjector::decoded(replaced, RemoteVideoFaultInjector::revision(replaced), 2));
+  require(!replaced.takeFrame());
+  require(pool.release(healthy_frame.generation, healthy_frame.sequence, healthy_frame.slot));
+  const auto continued = nextInjectedFrame(healthy);
+  require(continued.generation == healthy_generation);
+  require(pool.release(continued.generation, continued.sequence, continued.slot));
+  healthy.stop();
+  const auto resources = pool.snapshot();
+  require(resources.backing_bytes == 0 && resources.delivered == 0 &&
+          resources.retired == 0 && resources.quarantined == 0);
 }
 int main() try {
   auto& pool = SharedTexturePool::processPool();
@@ -65,6 +125,7 @@ int main() try {
     pool.retire(current);
     require(pool.snapshot().backing_bytes == 0);
   }
+  syrnike::windows_media::tests::repeatFault("remote-video-late-decoded", staleRemoteDecodedFramesDoNotChangeAnotherOwner);
   auto device = syrnike::windows_media::capture::processD3d11Device(true);
   require(device->debugLayerEnabled());
   Microsoft::WRL::ComPtr<ID3D11Debug> debug;

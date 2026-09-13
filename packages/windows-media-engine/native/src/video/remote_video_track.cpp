@@ -113,7 +113,10 @@ std::optional<TextureLease> RemoteVideoTrack::takeFrame() {
 bool RemoteVideoTrack::acceptDecoded(std::uint64_t revision,
                                      livekit::VideoFrameEvent event) {
   std::scoped_lock lock(mutex_);
-  if (stopping_ || !enabled_ || revision_ != revision) return false;
+  if (stopping_ || !enabled_ || revision_ != revision) {
+    ++stale_decoded_;
+    return false;
+  }
   newest_ = std::move(event);
   newest_ingress_us_ = nowUs();
   changed_.notify_all();
@@ -191,6 +194,7 @@ void RemoteVideoTrack::run() noexcept {
         reading = track;
         stream = livekit::VideoStream::fromTrack(
             track, {1, livekit::VideoBufferType::BGRA});
+        ++reader_starts_;
         reader = std::thread([this, stream, revision] {
           try {
             livekit::VideoFrameEvent event;
@@ -205,6 +209,7 @@ void RemoteVideoTrack::run() noexcept {
           } catch (...) {
             failed_ = true;
           }
+          ++reader_ends_;
         });
       }
       if (!frame || revision != revision_ ||

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "video/remote_video_track.hpp"
+#include <array>
 #include <map>
 
 namespace syrnike::windows_media::video {
@@ -14,6 +15,7 @@ struct RemoteVideoOwnerSnapshot {
   std::uint64_t inventory_revision = 0;
   std::vector<RemoteVideoPublication> publications;
   bool stopped = true;
+  std::array<DiagnosticMetric, 10> metrics{};
 };
 
 // Bounded publication inventory and demanded decoder owners. SDK callbacks

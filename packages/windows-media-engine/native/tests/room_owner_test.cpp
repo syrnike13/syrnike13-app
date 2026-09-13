@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "core/room_owner.hpp"
+#include "fault_evidence.hpp"
 
 namespace syrnike::windows_media::tests {
 
@@ -325,13 +326,14 @@ void roomAuthorityMustMatchDesiredIntent() {
 enum class HungRoomOperation { Connect, Disconnect, Cancellation };
 
 void hundredHungOperationsAreBounded(HungRoomOperation operation) {
-  constexpr std::size_t kIterations = 100;
   const RoomOperationDeadlines deadlines{
       std::chrono::milliseconds(10),
       std::chrono::milliseconds(10),
       std::chrono::milliseconds(10),
   };
-  for (std::size_t iteration = 0; iteration < kIterations; ++iteration) {
+  const auto id = operation == HungRoomOperation::Connect ? "room-connect-never-completes" :
+      operation == HungRoomOperation::Disconnect ? "room-disconnect-never-completes" : "room-cancel-never-completes";
+  repeatFault(id, [&] {
     auto transport = std::make_shared<ManualRoomTransport>();
     std::mutex mutex;
     std::condition_variable changed;
@@ -397,7 +399,7 @@ void hundredHungOperationsAreBounded(HungRoomOperation operation) {
     std::lock_guard lock(mutex);
     require(events.size() == 1,
             "late room completion emitted a second terminal outcome");
-  }
+  });
 }
 
 } // namespace

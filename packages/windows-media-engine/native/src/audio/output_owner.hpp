@@ -36,6 +36,7 @@ class OutputOwner final {
   std::mutex join_mutex_;
   std::condition_variable changed_;
   Desired desired_;
+  std::stop_source selection_cancellation_;
   OutputOwnerSnapshot snapshot_;
   bool stopping_ = false, done_ = false;
   std::thread worker_;

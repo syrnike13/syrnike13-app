@@ -166,6 +166,8 @@ void WindowsMediaRuntime::run() noexcept {
       if (desired_.camera.state == CameraIntentState::off && desired_.screen.state == ScreenIntentState::off &&
           camera.stopped && screen.stopped) thumbnail_admission_.publicationDrained();
       const auto video = video_->snapshot();
+      if (!desired_.remote_video_demand.empty()) snapshot_.remote_video_metrics = video.metrics;
+      else snapshot_.remote_video_metrics.reset();
       updateScreenAudio(screen);
       const auto audio = screen_audio_.stats();
       if (audio.failure && audio.failure->utility_retirement_required)

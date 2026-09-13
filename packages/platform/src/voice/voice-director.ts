@@ -1,4 +1,5 @@
 import { Effect, Fiber, Layer, ManagedRuntime, Option, Schema } from 'effect'
+import { DiagnosticCorrelationIdSchema } from '../diagnostics'
 
 import type {
   VoiceAuthorityAdapter,
@@ -51,6 +52,7 @@ const VoiceFailureSchema = Schema.Struct({
   retryable: Schema.Boolean,
   stage: Schema.optional(Schema.String),
   hresult: Schema.optional(Schema.Number),
+  diagnosticCorrelationId: Schema.optional(DiagnosticCorrelationIdSchema),
 })
 
 const FailureCarrierSchema = Schema.Struct({
@@ -904,6 +906,11 @@ export class VoiceDirector {
         connection: event.failure.retryable ? 'recovering' : 'failed',
         membershipChannelId: null,
         speakingUserIds: [],
+        microphone: createInactiveMediaSnapshot(),
+        output: createInactiveMediaSnapshot(),
+        camera: createInactiveMediaSnapshot(),
+        screen: createInactiveMediaSnapshot(),
+        screenAudio: createInactiveMediaSnapshot(),
         retryAttempt: event.failure.retryable ? 0 : undefined,
         failure: event.failure,
       })

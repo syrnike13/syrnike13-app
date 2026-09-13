@@ -1,0 +1,453 @@
+{
+  "passed": false,
+  "scope": "full-product-utility-exhausted-budget",
+  "observationMs": 3500,
+  "before": {
+    "voice": {
+      "intentChannelId": "test-channel",
+      "membershipChannelId": "test-channel",
+      "connection": "connected",
+      "microphone": {
+        "state": "running"
+      },
+      "output": {
+        "state": "running"
+      },
+      "camera": {
+        "state": "running"
+      },
+      "screen": {
+        "state": "running"
+      },
+      "screenAudio": {
+        "state": "running"
+      },
+      "userMuted": false,
+      "userDeafened": false,
+      "serverMuted": false,
+      "serverDeafened": false,
+      "systemPrivacyMuted": false,
+      "monitoringMuted": false,
+      "inputMode": "voice_activity",
+      "pushToTalkHeld": false,
+      "effectiveMuted": false,
+      "speakingUserIds": [],
+      "operationId": "35b3e27096e6",
+      "connectionEpoch": "8fcca9137108"
+    },
+    "runtime": {
+      "available": true,
+      "status": "ready",
+      "restartCount": 2,
+      "hostEpoch": 3,
+      "paths": {
+        "microphone": {
+          "revision": 51,
+          "state": "running",
+          "warning": false
+        },
+        "camera": {
+          "revision": 51,
+          "state": "running",
+          "warning": false
+        },
+        "screen": {
+          "revision": 51,
+          "state": "running",
+          "warning": true
+        },
+        "output": {
+          "revision": 51,
+          "state": "running",
+          "warning": false
+        },
+        "screen_audio": {
+          "revision": 51,
+          "state": "running",
+          "warning": false
+        },
+        "screen_preview": {
+          "revision": 51,
+          "state": "running",
+          "warning": false
+        },
+        "camera_preview": {
+          "revision": 51,
+          "state": "running",
+          "warning": false
+        },
+        "remote_video": {
+          "revision": 51,
+          "state": "running",
+          "warning": false
+        }
+      }
+    },
+    "video": [
+      {
+        "local": false,
+        "source": "camera",
+        "metrics": {
+          "framesReceived": 2146,
+          "framesDrawn": 2139,
+          "framesSuperseded": 6,
+          "framesDroppedNoConsumer": 1,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 3,
+          "canvasDetachCount": 2,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 1280,
+          "sourceHeight": 720,
+          "activeConsumers": 1,
+          "canvasPixels": 98884,
+          "lastFrameAgeMs": 7,
+          "lastDrawAgeMs": 2
+        }
+      },
+      {
+        "local": true,
+        "source": "camera",
+        "metrics": {
+          "framesReceived": 3189,
+          "framesDrawn": 3184,
+          "framesSuperseded": 3,
+          "framesDroppedNoConsumer": 2,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 1,
+          "canvasDetachCount": 0,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 640,
+          "sourceHeight": 360,
+          "activeConsumers": 1,
+          "canvasPixels": 98884,
+          "lastFrameAgeMs": 7,
+          "lastDrawAgeMs": 2
+        }
+      },
+      {
+        "local": true,
+        "source": "screen",
+        "metrics": {
+          "framesReceived": 1745,
+          "framesDrawn": 1739,
+          "framesSuperseded": 6,
+          "framesDroppedNoConsumer": 0,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 10,
+          "canvasDetachCount": 9,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 960,
+          "sourceHeight": 540,
+          "activeConsumers": 1,
+          "canvasPixels": 98230,
+          "lastFrameAgeMs": 7,
+          "lastDrawAgeMs": 2
+        }
+      }
+    ],
+    "processes": [
+      25092
+    ],
+    "participants": [
+      {
+        "actor": "native",
+        "identity": "0ffdcfb36fd2",
+        "operation": "35b3e27096e6",
+        "connectionEpoch": "8fcca9137108",
+        "tracks": [
+          {
+            "source": 1,
+            "alias": "e3b07493b5b5",
+            "muted": false
+          },
+          {
+            "source": 2,
+            "alias": "faf35c8d3a8e",
+            "muted": false
+          },
+          {
+            "source": 3,
+            "alias": "0501095a2561",
+            "muted": false
+          },
+          {
+            "source": 4,
+            "alias": "7430cef439d0",
+            "muted": false
+          }
+        ]
+      },
+      {
+        "actor": "observer",
+        "identity": "1b5dc4b6df89",
+        "operation": "d73cba71854b",
+        "connectionEpoch": "9622927dfd1d",
+        "tracks": [
+          {
+            "source": 1,
+            "alias": "dc23d96f8ba0",
+            "muted": false
+          },
+          {
+            "source": 2,
+            "alias": "227a2a9520fe",
+            "muted": true
+          }
+        ]
+      }
+    ],
+    "receiverVideo": [
+      {
+        "track": "30bb8eff9a3f",
+        "local": false,
+        "frames": 3245,
+        "width": 1280,
+        "height": 720
+      },
+      {
+        "track": "294310202641",
+        "local": true,
+        "frames": 141,
+        "width": 1280,
+        "height": 720
+      }
+    ]
+  },
+  "after": {
+    "voice": {
+      "intentChannelId": "test-channel",
+      "membershipChannelId": null,
+      "connection": "recovering",
+      "microphone": {
+        "state": "running"
+      },
+      "output": {
+        "state": "running"
+      },
+      "camera": {
+        "state": "running"
+      },
+      "screen": {
+        "state": "running"
+      },
+      "screenAudio": {
+        "state": "running"
+      },
+      "userMuted": false,
+      "userDeafened": false,
+      "serverMuted": false,
+      "serverDeafened": false,
+      "systemPrivacyMuted": false,
+      "monitoringMuted": false,
+      "inputMode": "voice_activity",
+      "pushToTalkHeld": false,
+      "effectiveMuted": false,
+      "speakingUserIds": [],
+      "failure": {
+        "code": "unexpected_exit",
+        "message": "Windows media utility host exited unexpectedly with code 1",
+        "stage": "utility_process",
+        "retryable": true
+      },
+      "retryAttempt": 0,
+      "operationId": "35b3e27096e6",
+      "connectionEpoch": "8fcca9137108"
+    },
+    "runtime": {
+      "available": true,
+      "status": "ready",
+      "restartCount": 3,
+      "hostEpoch": 4,
+      "paths": {
+        "microphone": {
+          "revision": 0,
+          "state": "off",
+          "warning": false
+        },
+        "camera": {
+          "revision": 0,
+          "state": "off",
+          "warning": false
+        },
+        "screen": {
+          "revision": 0,
+          "state": "off",
+          "warning": false
+        },
+        "output": {
+          "revision": 0,
+          "state": "off",
+          "warning": false
+        },
+        "screen_audio": {
+          "revision": 0,
+          "state": "off",
+          "warning": false
+        },
+        "screen_preview": {
+          "revision": 0,
+          "state": "off",
+          "warning": false
+        },
+        "camera_preview": {
+          "revision": 0,
+          "state": "off",
+          "warning": false
+        },
+        "remote_video": {
+          "revision": 0,
+          "state": "off",
+          "warning": false
+        }
+      }
+    },
+    "video": [
+      {
+        "local": true,
+        "source": "camera",
+        "metrics": {
+          "framesReceived": 3210,
+          "framesDrawn": 3205,
+          "framesSuperseded": 3,
+          "framesDroppedNoConsumer": 2,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 1,
+          "canvasDetachCount": 0,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 640,
+          "sourceHeight": 360,
+          "activeConsumers": 1,
+          "canvasPixels": 98884,
+          "lastFrameAgeMs": 1708,
+          "lastDrawAgeMs": 1705
+        }
+      },
+      {
+        "local": true,
+        "source": "screen",
+        "metrics": {
+          "framesReceived": 1776,
+          "framesDrawn": 1770,
+          "framesSuperseded": 6,
+          "framesDroppedNoConsumer": 0,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 10,
+          "canvasDetachCount": 9,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 960,
+          "sourceHeight": 540,
+          "activeConsumers": 1,
+          "canvasPixels": 98230,
+          "lastFrameAgeMs": 1709,
+          "lastDrawAgeMs": 1708
+        }
+      }
+    ],
+    "processes": [
+      55512
+    ],
+    "participants": [
+      {
+        "actor": "observer",
+        "identity": "1b5dc4b6df89",
+        "operation": "d73cba71854b",
+        "connectionEpoch": "9622927dfd1d",
+        "tracks": [
+          {
+            "source": 1,
+            "alias": "dc23d96f8ba0",
+            "muted": false
+          },
+          {
+            "source": 2,
+            "alias": "227a2a9520fe",
+            "muted": true
+          }
+        ]
+      },
+      {
+        "actor": "native",
+        "identity": "0ffdcfb36fd2",
+        "operation": "35b3e27096e6",
+        "connectionEpoch": "8fcca9137108",
+        "tracks": [
+          {
+            "source": 1,
+            "alias": "e3b07493b5b5",
+            "muted": false
+          },
+          {
+            "source": 2,
+            "alias": "faf35c8d3a8e",
+            "muted": false
+          },
+          {
+            "source": 3,
+            "alias": "0501095a2561",
+            "muted": false
+          },
+          {
+            "source": 4,
+            "alias": "7430cef439d0",
+            "muted": false
+          }
+        ]
+      }
+    ],
+    "receiverVideo": [
+      {
+        "track": "30bb8eff9a3f",
+        "local": false,
+        "frames": 3267,
+        "width": 1280,
+        "height": 720
+      },
+      {
+        "track": "294310202641",
+        "local": true,
+        "frames": 176,
+        "width": 1280,
+        "height": 720
+      }
+    ]
+  },
+  "failure": "automatic_restart_after_exhausted_budget",
+  "runtimeTransitions": [
+    {
+      "status": "failed",
+      "epoch": 3,
+      "restartCount": 2,
+      "failure": "unexpected_exit"
+    },
+    {
+      "status": "recovering",
+      "epoch": 3,
+      "restartCount": 2
+    },
+    {
+      "status": "recovering",
+      "epoch": 4,
+      "restartCount": 2
+    },
+    {
+      "status": "ready",
+      "epoch": 4,
+      "restartCount": 3
+    }
+  ]
+}

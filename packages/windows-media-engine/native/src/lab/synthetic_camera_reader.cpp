@@ -2,7 +2,9 @@
 
 #include <windows.h>
 #include <algorithm>
+#include <array>
 #include <condition_variable>
+#include <cstring>
 #include <mutex>
 #include <stdexcept>
 
@@ -25,21 +27,38 @@ class SyntheticSample final : public CameraSample {
   bool copyBgra(std::span<std::uint8_t> output) override {
     if (const auto delay = control_->copy_delay_ms.exchange(0); delay)
       std::this_thread::sleep_for(std::chrono::milliseconds{delay});
-    if (output.size() < cameraBgraBytes(profile_.width, profile_.height)) return false;
-    for (std::uint32_t row = 0; row < profile_.height; ++row) {
-      for (std::uint32_t column = 0; column < profile_.width; ++column) {
-        const auto offset = (static_cast<std::size_t>(row) * profile_.width + column) * 4;
-        std::uint8_t light = ((row / 64 + column / 64) % 2) ? 160 : 40;
-        if (row >= 16 && row < 48 && column >= 16 && column < 528)
-          light = (sequence_ & (std::uint64_t{1} << ((column - 16) / 16))) ? 235 : 16;
-        if (row >= 48 && row < 64 && column >= 16 && column < 528)
-          light = (generation_ & (std::uint64_t{1} << ((column - 16) / 16))) ? 235 : 16;
-        if (row >= 64 && row < 96 && column >= 16 && column < 528)
-          light = (captured_ms_ & (std::uint64_t{1} << ((column - 16) / 16))) ? 235 : 16;
-        output[offset] = light;
-        output[offset + 1] = row < 96 ? light : control_->color;
-        output[offset + 2] = row < 96 ? light : static_cast<std::uint8_t>(255 - light);
-        output[offset + 3] = 255;
+    const auto required = cameraBgraBytes(profile_.width, profile_.height);
+    if (output.size() < required) return false;
+
+    // Keep the fixture's metadata bands, but build the solid BGRA body through
+    // logarithmically growing copies. Byte-by-byte alpha writes made three
+    // 1080p startup frames exceed the unchanged health deadline under ASan.
+    // This changes only test-fixture pixels; production conversion and
+    // freshness budgets remain unchanged.
+    std::array<std::uint8_t, 64> block{};
+    for (std::size_t offset = 0; offset < block.size(); offset += 4) {
+      block[offset] = control_->color;
+      block[offset + 1] = control_->color;
+      block[offset + 2] = control_->color;
+      block[offset + 3] = 255;
+    }
+    std::memcpy(output.data(), block.data(), block.size());
+    for (std::size_t filled = block.size(); filled < required;) {
+      const auto copied = (std::min)(filled, required - filled);
+      std::memcpy(output.data() + filled, output.data(), copied);
+      filled += copied;
+    }
+    for (std::uint32_t row = 0; row < 96 && row < profile_.height; ++row) {
+      const auto row_begin = output.begin() + static_cast<std::size_t>(row) * profile_.width * 4;
+      for (std::uint32_t column = 16; column < 528 && column < profile_.width; ++column) {
+        const auto offset = static_cast<std::size_t>(column) * 4;
+        const auto bits = row < 48 ? sequence_ : row < 64 ? generation_ : captured_ms_;
+        const auto light = static_cast<std::uint8_t>(
+            (bits & (std::uint64_t{1} << ((column - 16) / 16))) ? 235 : 16);
+        row_begin[offset] = light;
+        row_begin[offset + 1] = light;
+        row_begin[offset + 2] = light;
+        row_begin[offset + 3] = 255;
       }
     }
     return true;
@@ -115,6 +134,15 @@ class SyntheticReader final : public CameraReader {
       while (!closing_) {
         changed_.wait(lock, [&] { return closing_ || requested_; });
         if (closing_) break;
+        if (control_->withhold_samples) {
+          {
+            std::lock_guard fault_lock(control_->fault_mutex);
+            ++control_->withheld_samples;
+          }
+          control_->fault_changed.notify_all();
+          changed_.wait(lock, [&] { return closing_; });
+          break;
+        }
         next = (std::max)(next + std::chrono::microseconds{33'333}, Clock::now());
         next += std::chrono::milliseconds{control_->delay_ms.exchange(0)};
         if (changed_.wait_until(lock, next, [&] { return closing_; })) break;

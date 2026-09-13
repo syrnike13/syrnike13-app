@@ -3,6 +3,7 @@
 #include "audio/audio_device_registry.hpp"
 #include "audio/microphone_pcm.hpp"
 #include <chrono>
+#include <stop_token>
 
 namespace syrnike::windows_media::audio {
 enum class MicrophoneCaptureState { idle, starting, healthy, stopped, failed };
@@ -40,7 +41,8 @@ class MicrophoneCapture final {
   ~MicrophoneCapture();
   MicrophoneCapture(const MicrophoneCapture&) = delete;
   MicrophoneCapture& operator=(const MicrophoneCapture&) = delete;
-  MicrophoneCaptureFailure start(AudioEndpoint, std::uint64_t generation, bool bypass_system_processing = true);
+  MicrophoneCaptureFailure start(AudioEndpoint, std::uint64_t generation, bool bypass_system_processing = true,
+                                 std::stop_token cancellation = {});
   bool stop(std::chrono::steady_clock::time_point deadline) noexcept;
   MicrophoneCaptureStats stats() const noexcept;
   // Exactly one downstream DSP consumer uses this port.

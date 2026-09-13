@@ -48,6 +48,12 @@ void throwFailure(Napi::Env env, const EngineFailure &failure) {
   error.Value().Set("code", failure.code);
   error.Value().Set("stage", failure.stage);
   error.Value().Set("retryable", Napi::Boolean::New(env, failure.retryable));
+  if (failure.cause_sequence != 0)
+    error.Value().Set("causeSequence", Napi::Number::New(env,
+        static_cast<double>(failure.cause_sequence)));
+  if (failure.cause_timestamp_ms != 0)
+    error.Value().Set("causeTimestampMs", Napi::Number::New(env,
+        static_cast<double>(failure.cause_timestamp_ms)));
   error.ThrowAsJavaScriptException();
 }
 
@@ -78,6 +84,12 @@ Napi::Object failureObject(Napi::Env env, const EngineFailure &failure) {
   object.Set(protocolField(env, fields, 1), failure.message);
   object.Set(protocolField(env, fields, 2), failure.stage);
   object.Set(protocolField(env, fields, 3), failure.retryable);
+  if (failure.cause_sequence != 0)
+    object.Set(protocolField(env, fields, 4), Napi::Number::New(env,
+        static_cast<double>(failure.cause_sequence)));
+  if (failure.cause_timestamp_ms != 0)
+    object.Set(protocolField(env, fields, 5), Napi::Number::New(env,
+        static_cast<double>(failure.cause_timestamp_ms)));
   return object;
 }
 

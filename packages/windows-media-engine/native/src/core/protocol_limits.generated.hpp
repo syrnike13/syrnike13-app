@@ -10,7 +10,7 @@
 namespace syrnike::windows_media::protocol {
 
 inline constexpr int kVersion = 4;
-inline constexpr std::string_view kSchemaSha256 = "565cf0cda3c157e494316d371486fc61f22eea15e41eb596f9257bc3225c46d1";
+inline constexpr std::string_view kSchemaSha256 = "dd2796e9e750bea987d415a92df2c3ce99ec619daf45f66c15d7cb0e61b79b0d";
 inline constexpr std::size_t kControlQueueCapacity = 16;
 inline constexpr std::size_t kEventQueueCapacity = 64;
 inline constexpr std::size_t kMaximumCredentialLeases = 4;
@@ -35,7 +35,7 @@ inline constexpr std::uint32_t kPingDeadlineMs = 1000;
 inline constexpr std::uint32_t kShutdownDeadlineMs = 1000;
 
 namespace fields {
-inline constexpr std::array<std::string_view, 4> kFailure = { "code", "message", "stage", "retryable" };
+inline constexpr std::array<std::string_view, 6> kFailure = { "code", "message", "stage", "retryable", "causeSequence", "causeTimestampMs" };
 inline constexpr std::array<std::string_view, 3> kCredentialLease = { "leaseId", "serverUrl", "accessToken" };
 inline constexpr std::array<std::string_view, 3> kRoomIntent = { "roomId", "participantIdentity", "credentialLeaseId" };
 inline constexpr std::array<std::string_view, 2> kRemoteVideoDemand = { "participantIdentity", "publicationId" };

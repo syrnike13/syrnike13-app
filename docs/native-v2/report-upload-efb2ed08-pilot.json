@@ -1,0 +1,99 @@
+{
+  "schema": "issue131-report-upload-pilot-v1",
+  "commit": "efb2ed087d8e1b89d7d90fb9aff0e8167892112f",
+  "scope": "One held SDK connect attempt; not the final 100-cycle fault matrix",
+  "testFaultGates": true,
+  "injectedPoint": "sdk-connect",
+  "failed": false,
+  "requests": 1,
+  "responses": [
+    {
+      "elapsedMs": 16210.837400004268,
+      "status": 200
+    }
+  ],
+  "correlationAliases": [
+    "incident-8665887b-3d9b-4954-b78f-9df055dbc879"
+  ],
+  "correlatedEvents": [
+    {
+      "event": "native_diagnostic",
+      "source": "electron-main",
+      "timestampMs": 1788958459378,
+      "component": "utility"
+    },
+    {
+      "event": "roomStateChanged",
+      "source": "electron-main",
+      "timestampMs": 1788958459381
+    },
+    {
+      "event": "native_diagnostic",
+      "source": "electron-main",
+      "timestampMs": 1788958459382,
+      "component": "utility"
+    },
+    {
+      "event": "engineStateChanged",
+      "source": "electron-main",
+      "timestampMs": 1788958459382
+    },
+    {
+      "event": "native_diagnostic",
+      "source": "electron-main",
+      "timestampMs": 1788958459383,
+      "component": "utility"
+    },
+    {
+      "event": "fatalEngineFailure",
+      "source": "electron-main",
+      "timestampMs": 1788958459383
+    },
+    {
+      "event": "runtime_degraded",
+      "source": "electron-main",
+      "timestampMs": 1788958459387
+    },
+    {
+      "event": "voice.session_snapshot",
+      "source": "renderer",
+      "timestampMs": 1788958459405
+    },
+    {
+      "event": "runtime_degraded",
+      "source": "electron-main",
+      "timestampMs": 1788958459407
+    },
+    {
+      "event": "native-runtime.instability_detected",
+      "source": "renderer",
+      "timestampMs": 1788958460469
+    },
+    {
+      "event": "native-runtime.report_triggered",
+      "source": "renderer",
+      "timestampMs": 1788958460469
+    }
+  ],
+  "close": {
+    "elapsedMs": 332.4801000058651,
+    "originalProcessesExited": [
+      true,
+      true
+    ]
+  },
+  "inputVerification": {
+    "files": 150,
+    "matched": 150,
+    "changed": 0
+  },
+  "traceSha256": "729628a24dd89b01a4f05300e0e36c6332293c94a2166bb11bd059d2815cb88e",
+  "requestSha256": "761ddcf7cc6fb94d6c1a1800f56cc3045582a1beaa39f8e1c85805723c58b3ae",
+  "limitations": [
+    "Original trace and report contain private test data and remain local; hashes identify those originals.",
+    "Report includes bounded history from earlier application sessions; correlatedEvents selects only this attempt alias.",
+    "No separate C++ origin diagnostic survived this capture; reliable cause timestamp work is subsequent.",
+    "Local backend originally lacked S3 and returned HTTP 500. This run adds isolated MinIO storage and restarts only local API.",
+    "A preceding local pilot used an incorrect media directory and failed before fault injection; it is not counted."
+  ]
+}

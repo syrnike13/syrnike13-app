@@ -60,6 +60,12 @@ void MicrophoneOwner::apply(std::uint64_t revision, const MicrophoneIntent& inte
                             std::uint64_t device_revision, std::shared_ptr<EchoReferencePort> echo) {
   std::lock_guard lock(mutex_);
   if (stopping_ || done_ || revision < desired_.revision) return;
+  if (intent.state != desired_.intent.state || intent.device_id != desired_.intent.device_id ||
+      intent.bypass_system_processing != desired_.intent.bypass_system_processing ||
+      intent.retry_revision != desired_.intent.retry_revision || device_revision != desired_.device_revision) {
+    capture_cancellation_.request_stop();
+    capture_cancellation_ = std::stop_source{};
+  }
   auto publication_epoch = desired_.publication_epoch;
   if (publishes(desired_.intent, desired_.room_generation) &&
       (!publishes(intent, room_generation) || desired_.room_generation != room_generation)) {
@@ -74,6 +80,7 @@ void MicrophoneOwner::apply(std::uint64_t revision, const MicrophoneIntent& inte
 void MicrophoneOwner::beginStop() {
   std::lock_guard lock(mutex_);
   stopping_ = true;
+  capture_cancellation_.request_stop();
   if (sender_) sender_->cancel();
   changed_.notify_one();
 }
@@ -88,6 +95,7 @@ void MicrophoneOwner::run() noexcept {
   std::optional<std::uint64_t> sender_room;
   std::uint64_t sender_epoch = 0;
   Desired applied;
+  bool selection_pending = false;
   std::optional<EngineFailure> problem;
   const auto stopSender = [&] {
     if (sender && !sender->stop(Clock::now() + kShutdownDeadline)) std::terminate();
@@ -106,6 +114,7 @@ void MicrophoneOwner::run() noexcept {
   try {
     for (;;) {
       Desired desired;
+      std::stop_token cancellation;
       {
         std::unique_lock lock(mutex_);
         changed_.wait_for(lock, std::chrono::milliseconds(20), [&] {
@@ -115,12 +124,14 @@ void MicrophoneOwner::run() noexcept {
         });
         if (stopping_) break;
         desired = desired_;
+        cancellation = capture_cancellation_.get_token();
       }
-      const bool changed = desired.intent != applied.intent ||
+      const auto previous_problem = problem;
+      const bool changed = selection_pending || desired.intent != applied.intent ||
           desired.publication_epoch != applied.publication_epoch ||
           desired.room_generation != applied.room_generation ||
           desired.device_revision != applied.device_revision || desired.echo != applied.echo;
-      const bool retry = desired.intent.state != applied.intent.state ||
+      const bool retry = selection_pending || desired.intent.state != applied.intent.state ||
           desired.intent.device_id != applied.intent.device_id ||
           desired.intent.bypass_system_processing != applied.intent.bypass_system_processing ||
           desired.intent.retry_revision != applied.intent.retry_revision ||
@@ -153,14 +164,14 @@ void MicrophoneOwner::run() noexcept {
           };
           check(pipeline->configure(dspConfig(desired.intent)));
           check(pipeline->setEchoReference(desired.echo));
-          check(pipeline->setSystemProcessingBypass(desired.intent.bypass_system_processing));
-          check(pipeline->selectInput(devices_, deviceIntent(desired.intent)));
-          check(pipeline->setDemand({true, publish, desired.intent.meter_demand}));
+          check(pipeline->setSystemProcessingBypass(desired.intent.bypass_system_processing, cancellation));
+          check(pipeline->selectInput(devices_, deviceIntent(desired.intent), cancellation));
+          check(pipeline->setDemand({true, publish, desired.intent.meter_demand}, cancellation));
           if (publish && !sender) {
             // Capture may have taken seconds to open. Recheck the latest Room
             // before installing a cancellable publication transaction.
             std::lock_guard lock(mutex_);
-            if (!stopping_ && publishes(desired_.intent, desired_.room_generation) &&
+            if (!stopping_ && !cancellation.stop_requested() && publishes(desired_.intent, desired_.room_generation) &&
                 desired_.room_generation == desired.room_generation &&
                 desired_.publication_epoch == desired.publication_epoch) {
               sender = std::make_shared<MicrophoneSender>(transport_, pipeline->output(), pipeline->outputEvent());
@@ -178,6 +189,11 @@ void MicrophoneOwner::run() noexcept {
         } catch (...) {
           problem = EngineFailure{"microphone_unavailable", "Microphone owner could not apply settings", "microphone", true};
         }
+      }
+      if (cancellation.stop_requested()) {
+        problem = previous_problem;
+        selection_pending = true;
+        continue;
       }
       MicrophoneOwnerSnapshot current;
       current.pipeline = pipeline ? pipeline->stats() : MicrophonePipelineStats{};
@@ -202,12 +218,18 @@ void MicrophoneOwner::run() noexcept {
               ? MediaPathState::Muted : MediaPathState::Running;
       {
         std::lock_guard lock(mutex_);
+        if (cancellation.stop_requested()) {
+          problem = previous_problem;
+          selection_pending = true;
+          continue;
+        }
         if (desired_.intent != desired.intent || desired_.room_generation != desired.room_generation) {
           if (publishes(desired_.intent, desired_.room_generation)) current.publication_stopped = false;
           if (desired_.intent.state != MicrophoneIntentState::off) current.stopped = false;
         }
         snapshot_ = std::move(current);
       }
+      selection_pending = false;
       applied = std::move(desired);
     }
   } catch (...) {
