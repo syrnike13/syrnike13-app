@@ -38,7 +38,7 @@ all positive deltas remain raw failures.
 | Media utility process crashes | PASS* | Production frontend utility series reached 100/100 primary crashes and 49/49 exhaustion/manual-Retry checks. *The archived series is not the current eba2f6bb final-build qualification. |
 | Renderer reloads or crashes | PASS* | Renderer archive reached 100/100 for reload and crash with unchanged Room/publication identities. *Historical product build. |
 | New desired state arrives during retry | PASS* | Native microphone/output latest-intent and retry-fence rows reached 100/100; utility replay evidence preserves only the latest snapshot. *Final exact-build replay remains due. |
-| App shutdown during a pending or hung operation | **PARTIAL** | Ten held SDK/microphone/camera rows have 100/100 historical PASS evidence; output initialization/render and screen publication have failed prefixes. Current-head WGC injection and teardown passes 100/100 with a fresh source-window fixture per cycle within 4,900 ms; see [`shutdown-wgc-e3d6d7f2-100.json`](shutdown-wgc-e3d6d7f2-100.json). This is the only shutdown scope required here, rather than 18 separate 100-cycle shutdown matrices. |
+| App shutdown during a pending or hung operation | PASS* | All 25 concrete pending-operation points below have 100/100 completed evidence across the cited archives. The new recheck covers 14 rows (1,400 shutdowns), with matching inputs and no fixture kills in the passing series. Earlier failures remain separate. *Build identities are preserved; the later microphone no-progress correction is validated by its native suites and is not included in the product binary. |
 | Combined GPU contention, audio gap, and renderer stall | PASS* | Combined product archive reached 100/100 continuity cycles with bounded texture retention and neutral-observer media progress. It did not include shutdown while all faults were held. *Historical product build. |
 
 The broad issue rows are grouped over the concrete native and product IDs below.
@@ -94,7 +94,8 @@ descriptions; the 100/100 requirement is for deterministic fault/recovery rows.
 | `screen-audio-initialize`, `screen-audio-capture` | PASS* | Recheck: 100/100 each; unchanged 4,900 ms gate, no fixture kills. |
 | `wgc-window-frame-pool` | PASS* | Current-head `e3d6d7f2` Release/test-gates product entered the held WGC call and shut down the owned main and utility processes in 100/100 cycles with a fresh authenticated source-window fixture per cycle; see [`shutdown-wgc-e3d6d7f2-100.json`](shutdown-wgc-e3d6d7f2-100.json). The bounded 3/3 control is archived separately. *A single-fixture exploratory run stopped at 64/100 with `native_fault_entry_deadline`; it remains a raw diagnostic failure, not a waiver. |
 | `encoder-input`, `encoder-output`, `wgc-monitor-frame-pool` | PASS* | Recheck: 100/100 each, maximum 1,542.60 / 1,478.21 / 1,490.81 ms; unchanged 4,900 ms gate, no fixture kills. The archive preserves the failed encoder-input shutdown and subsequent pre-injection setup failures separately. |
-| Monitor WGC start, window WGC start, and DXGI held calls | NOT RUN | Qualification is in progress; no complete product shutdown row is archived yet. |
+| `wgc-monitor-start`, `dxgi-acquire-frame` | PASS* | Recheck: 100/100 each, maximum 1,492.52 / 1,649.04 ms; unchanged gate, no fixture kills and all before/after hashes matched. |
+| `wgc-window-start` | PASS* | Recheck: 100/100, maximum 2,306.39 ms, unchanged gate, no fixture kills and all hashes matched. Earlier series stopped before injection after 2 and 13 shutdowns; independent inspection found a valid but hidden fixture and `CreateForWindow` error `0x80070057`. The passing fixture explicitly shows its owned source window and validates visibility before launching the app. |
 
 ## #130 product cutover
 
@@ -114,10 +115,13 @@ descriptions; the 100/100 requirement is for deterministic fault/recovery rows.
 
 ## Current gate
 
-Phase E is **not qualified for merge yet**. The implementation and most recovery
-behavior are present, but the gate stays closed until the encoder resource result
-is resolved or formally isolated as an approved external machine blocker and the
-remaining pending shutdown rows pass with the corrected harness. WGC window
+Phase E is **not qualified for merge yet**. Pending-operation shutdown coverage
+is now complete across the archives below. The gate remains closed because the
+full native suites fail process-resource checks; no maintainer exception has
+been approved. A platform background contribution is established, but not every
+retained handle is attributed. The microphone behavioral deadline defect found
+in the latest ASan suite is corrected and its focused three-configuration
+evidence is recorded below. WGC window
 frame-pool injection and shutdown already have the 100/100 evidence cited below;
 fixture entry is no longer a blocker for that row. The latest archived native
 evidence is:
@@ -135,8 +139,8 @@ All positive deltas remain raw failures, never waivers. Local
 Debug and ASan camera rows pass 3/3. The current-head product now enters and closes the WGC held call in 100/100
 cycles when the authenticated source-window fixture is refreshed per cycle; the
 single-fixture exploratory failure remains archived as a raw diagnostic result.
-The overall shutdown gate remains partial because the other required held-call
-rows still have failed or missing final-build evidence. The eight-hour and
+All remaining held-call rows now have complete passing recheck series, with
+original failed attempts preserved in the compressed archive. The eight-hour and
 multi-machine work remains issue #132 and is not part of these blockers.
 
 ## Recheck on 2026-09-19
@@ -172,8 +176,9 @@ preserved. The product shutdown recheck then passed `output-initialize`,
 cycle, binary hashes, and matching before/after frontend, desktop, and backend
 inputs. The product's embedded native commit is `e3d6d7f2`; its production source
 matched `71242209`. The later microphone progress-deadline correction below is
-not included in those binaries. Other held-call rows and the native
-resource gate remain incomplete; this subset does not qualify merge.
+not included in those binaries. The final archive contains all 14 rechecked
+held-call rows at 100/100 each. The native resource gate remains failed; these
+shutdown passes do not qualify merge on their own.
 
 Further [resource controls](resource-diagnostics-2026-09-19.json) reproduced
 background growth with a single configured MFT kept active for 200 seconds,
@@ -214,6 +219,14 @@ after 53 measured passes with no typed error yet and a successful explicit stop.
 This correction's focused validation remains separate from the earlier full suites.
 The ordinary `71242209` Debug run was interrupted for this correction and is not
 claimed as a completed qualification.
+
+The corrected `ce821886` [focused microphone suites](microphone-focused-ce821886.json)
+confirm no-progress at 100/100 after 100 warmups in Release, Debug and ASan,
+maximum 1,072.30 / 1,065.83 / 1,077.13 ms respectively, with zero resource growth.
+All three ASan CTest entries and all five fault rows passed. Release and Debug
+still fail the strict process-thread checks in the other microphone rows, and
+their early cancellation-row failure leaves pending-shutdown unmeasured in
+those runs. No resource gate is relaxed by the deadline correction.
 
 CTest can print failure markers immediately after its padding dots. The evidence
 reader now retains those failed completion rows, covered by parser regression

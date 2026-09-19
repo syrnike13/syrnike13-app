@@ -1,0 +1,555 @@
+{
+  "schemaVersion": 1,
+  "scope": "focused-microphone-correction",
+  "sourceCommit": "ce821886bc035515e79acb20ce1b0ecb860af0a9",
+  "required": [
+    "microphone-candidate-failure",
+    "microphone-owner-latest-intent",
+    "microphone-owner-pending-shutdown",
+    "microphone-active-device-loss",
+    "microphone-no-progress"
+  ],
+  "results": [
+    {
+      "name": "asan",
+      "configuration": "Debug",
+      "asan": true,
+      "tests": [
+        {
+          "name": "microphone-candidate-fault",
+          "passed": true
+        },
+        {
+          "name": "microphone-cancellation-faults",
+          "passed": true
+        },
+        {
+          "name": "microphone-platform-faults",
+          "passed": true
+        }
+      ],
+      "binaries": [
+        {
+          "file": "microphone_capture_allocation.exe",
+          "sha256": "601f9c78e9b25bfcbbec3e6dd1ab8ea80ca87d247ae1ab74a8e79fe0aea9f551"
+        },
+        {
+          "file": "media_lab.exe",
+          "sha256": "eeb3d9c697e3ddd4e76d12645f73d8c3dd1e52a90e0e1b0aa3d17fda1a7c188f"
+        }
+      ],
+      "status": "passed",
+      "faults": [
+        {
+          "id": "microphone-candidate-failure",
+          "passed": 100,
+          "required": 100,
+          "warmup": 1,
+          "build": {
+            "commit": "ce821886bc035515e79acb20ce1b0ecb860af0a9",
+            "configuration": "Debug",
+            "asan": true,
+            "msvc": 195136248
+          },
+          "maximumIterationMs": 132.201,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": true,
+          "resources": {
+            "baseline": {
+              "handles": 212,
+              "threads": 6
+            },
+            "final": {
+              "handles": 212,
+              "threads": 6
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 0
+            }
+          },
+          "status": "passed",
+          "problems": []
+        },
+        {
+          "id": "microphone-owner-latest-intent",
+          "passed": 100,
+          "required": 100,
+          "warmup": 1,
+          "build": {
+            "commit": "ce821886bc035515e79acb20ce1b0ecb860af0a9",
+            "configuration": "Debug",
+            "asan": true,
+            "msvc": 195136248
+          },
+          "maximumIterationMs": 147.433,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": true,
+          "resources": {
+            "baseline": {
+              "handles": 228,
+              "threads": 20
+            },
+            "final": {
+              "handles": 228,
+              "threads": 20
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 0
+            }
+          },
+          "status": "passed",
+          "problems": []
+        },
+        {
+          "id": "microphone-owner-pending-shutdown",
+          "passed": 100,
+          "required": 100,
+          "warmup": 1,
+          "build": {
+            "commit": "ce821886bc035515e79acb20ce1b0ecb860af0a9",
+            "configuration": "Debug",
+            "asan": true,
+            "msvc": 195136248
+          },
+          "maximumIterationMs": 124.624,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": true,
+          "resources": {
+            "baseline": {
+              "handles": 228,
+              "threads": 20
+            },
+            "final": {
+              "handles": 228,
+              "threads": 20
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 0
+            }
+          },
+          "status": "passed",
+          "problems": []
+        },
+        {
+          "id": "microphone-active-device-loss",
+          "passed": 100,
+          "required": 100,
+          "warmup": 1,
+          "build": {
+            "commit": "ce821886bc035515e79acb20ce1b0ecb860af0a9",
+            "configuration": "Debug",
+            "asan": true,
+            "msvc": 195136248
+          },
+          "maximumIterationMs": 66.5219,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": true,
+          "resources": {
+            "baseline": {
+              "handles": 197,
+              "threads": 6
+            },
+            "final": {
+              "handles": 197,
+              "threads": 6
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 0
+            }
+          },
+          "status": "passed",
+          "problems": []
+        },
+        {
+          "id": "microphone-no-progress",
+          "passed": 100,
+          "required": 100,
+          "warmup": 100,
+          "build": {
+            "commit": "ce821886bc035515e79acb20ce1b0ecb860af0a9",
+            "configuration": "Debug",
+            "asan": true,
+            "msvc": 195136248
+          },
+          "maximumIterationMs": 1077.13,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": true,
+          "resources": {
+            "baseline": {
+              "handles": 198,
+              "threads": 6
+            },
+            "final": {
+              "handles": 198,
+              "threads": 6
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 0
+            }
+          },
+          "status": "passed",
+          "problems": []
+        }
+      ],
+      "missing": [],
+      "violations": []
+    },
+    {
+      "name": "release",
+      "configuration": "Release",
+      "asan": false,
+      "tests": [
+        {
+          "name": "microphone-candidate-fault",
+          "passed": false
+        },
+        {
+          "name": "microphone-cancellation-faults",
+          "passed": false
+        },
+        {
+          "name": "microphone-platform-faults",
+          "passed": false
+        }
+      ],
+      "binaries": [
+        {
+          "file": "microphone_capture_allocation.exe",
+          "sha256": "a5909d4b3850bd9b8f8542a744df192deac53403aa8b7e0c3951dcad953e280d"
+        },
+        {
+          "file": "media_lab.exe",
+          "sha256": "58b2ef11c68fc19e061759b174a486b0124c87f2d83811fb4381c72005a1169c"
+        }
+      ],
+      "status": "failed",
+      "faults": [
+        {
+          "id": "microphone-candidate-failure",
+          "passed": 100,
+          "required": 100,
+          "warmup": 1,
+          "build": {
+            "commit": "ce821886bc035515e79acb20ce1b0ecb860af0a9",
+            "configuration": "Release",
+            "asan": false,
+            "msvc": 195136248
+          },
+          "maximumIterationMs": 147.32,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": false,
+          "resources": {
+            "baseline": {
+              "handles": 211,
+              "threads": 6
+            },
+            "final": {
+              "handles": 211,
+              "threads": 7
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 1
+            }
+          },
+          "status": "failed",
+          "problems": [
+            "resource-checks-failed",
+            "positive-resource-growth"
+          ]
+        },
+        {
+          "id": "microphone-owner-latest-intent",
+          "passed": 100,
+          "required": 100,
+          "warmup": 1,
+          "build": {
+            "commit": "ce821886bc035515e79acb20ce1b0ecb860af0a9",
+            "configuration": "Release",
+            "asan": false,
+            "msvc": 195136248
+          },
+          "maximumIterationMs": 158.382,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": false,
+          "resources": {
+            "baseline": {
+              "handles": 227,
+              "threads": 20
+            },
+            "final": {
+              "handles": 227,
+              "threads": 21
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 1
+            }
+          },
+          "status": "failed",
+          "problems": [
+            "resource-checks-failed",
+            "positive-resource-growth"
+          ]
+        },
+        {
+          "id": "microphone-active-device-loss",
+          "passed": 100,
+          "required": 100,
+          "warmup": 1,
+          "build": {
+            "commit": "ce821886bc035515e79acb20ce1b0ecb860af0a9",
+            "configuration": "Release",
+            "asan": false,
+            "msvc": 195136248
+          },
+          "maximumIterationMs": 79.2781,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": false,
+          "resources": {
+            "baseline": {
+              "handles": 198,
+              "threads": 6
+            },
+            "final": {
+              "handles": 198,
+              "threads": 7
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 1
+            }
+          },
+          "status": "failed",
+          "problems": [
+            "resource-checks-failed",
+            "positive-resource-growth"
+          ]
+        },
+        {
+          "id": "microphone-no-progress",
+          "passed": 100,
+          "required": 100,
+          "warmup": 100,
+          "build": {
+            "commit": "ce821886bc035515e79acb20ce1b0ecb860af0a9",
+            "configuration": "Release",
+            "asan": false,
+            "msvc": 195136248
+          },
+          "maximumIterationMs": 1072.3,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": true,
+          "resources": {
+            "baseline": {
+              "handles": 199,
+              "threads": 6
+            },
+            "final": {
+              "handles": 199,
+              "threads": 6
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 0
+            }
+          },
+          "status": "passed",
+          "problems": []
+        }
+      ],
+      "missing": [
+        "microphone-owner-pending-shutdown"
+      ],
+      "violations": [
+        "microphone-candidate-failure:resource-checks-failed",
+        "microphone-candidate-failure:positive-resource-growth",
+        "microphone-owner-latest-intent:resource-checks-failed",
+        "microphone-owner-latest-intent:positive-resource-growth",
+        "microphone-active-device-loss:resource-checks-failed",
+        "microphone-active-device-loss:positive-resource-growth"
+      ]
+    },
+    {
+      "name": "debug",
+      "configuration": "Debug",
+      "asan": false,
+      "tests": [
+        {
+          "name": "microphone-candidate-fault",
+          "passed": true
+        },
+        {
+          "name": "microphone-cancellation-faults",
+          "passed": false
+        },
+        {
+          "name": "microphone-platform-faults",
+          "passed": false
+        }
+      ],
+      "binaries": [
+        {
+          "file": "microphone_capture_allocation.exe",
+          "sha256": "c7bdca790eb7056d8a9c6a0862c9e1f303b7443cbb192eeaa947f93f3ac8fab1"
+        },
+        {
+          "file": "media_lab.exe",
+          "sha256": "4578cb8a2cb98ba3083e8a9e100e84808d3d3b26ce73540852521bba3ee87b84"
+        }
+      ],
+      "status": "failed",
+      "faults": [
+        {
+          "id": "microphone-candidate-failure",
+          "passed": 100,
+          "required": 100,
+          "warmup": 1,
+          "build": {
+            "commit": "ce821886bc035515e79acb20ce1b0ecb860af0a9",
+            "configuration": "Debug",
+            "asan": false,
+            "msvc": 195136248
+          },
+          "maximumIterationMs": 91.5575,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": true,
+          "resources": {
+            "baseline": {
+              "handles": 211,
+              "threads": 6
+            },
+            "final": {
+              "handles": 211,
+              "threads": 6
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 0
+            }
+          },
+          "status": "passed",
+          "problems": []
+        },
+        {
+          "id": "microphone-owner-latest-intent",
+          "passed": 100,
+          "required": 100,
+          "warmup": 1,
+          "build": {
+            "commit": "ce821886bc035515e79acb20ce1b0ecb860af0a9",
+            "configuration": "Debug",
+            "asan": false,
+            "msvc": 195136248
+          },
+          "maximumIterationMs": 150.441,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": false,
+          "resources": {
+            "baseline": {
+              "handles": 227,
+              "threads": 20
+            },
+            "final": {
+              "handles": 227,
+              "threads": 21
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 1
+            }
+          },
+          "status": "failed",
+          "problems": [
+            "resource-checks-failed",
+            "positive-resource-growth"
+          ]
+        },
+        {
+          "id": "microphone-active-device-loss",
+          "passed": 100,
+          "required": 100,
+          "warmup": 1,
+          "build": {
+            "commit": "ce821886bc035515e79acb20ce1b0ecb860af0a9",
+            "configuration": "Debug",
+            "asan": false,
+            "msvc": 195136248
+          },
+          "maximumIterationMs": 84.9296,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": false,
+          "resources": {
+            "baseline": {
+              "handles": 198,
+              "threads": 6
+            },
+            "final": {
+              "handles": 198,
+              "threads": 7
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 1
+            }
+          },
+          "status": "failed",
+          "problems": [
+            "resource-checks-failed",
+            "positive-resource-growth"
+          ]
+        },
+        {
+          "id": "microphone-no-progress",
+          "passed": 100,
+          "required": 100,
+          "warmup": 100,
+          "build": {
+            "commit": "ce821886bc035515e79acb20ce1b0ecb860af0a9",
+            "configuration": "Debug",
+            "asan": false,
+            "msvc": 195136248
+          },
+          "maximumIterationMs": 1065.83,
+          "ownerChecksPassed": true,
+          "resourceChecksPassed": true,
+          "resources": {
+            "baseline": {
+              "handles": 199,
+              "threads": 6
+            },
+            "final": {
+              "handles": 199,
+              "threads": 6
+            },
+            "delta": {
+              "handles": 0,
+              "threads": 0
+            }
+          },
+          "status": "passed",
+          "problems": []
+        }
+      ],
+      "missing": [
+        "microphone-owner-pending-shutdown"
+      ],
+      "violations": [
+        "microphone-owner-latest-intent:resource-checks-failed",
+        "microphone-owner-latest-intent:positive-resource-growth",
+        "microphone-active-device-loss:resource-checks-failed",
+        "microphone-active-device-loss:positive-resource-growth"
+      ]
+    }
+  ],
+  "limitations": [
+    "Focused suites, not complete native qualification.",
+    "Binary hashes were sampled after the tests; no separate before-run hash snapshot was collected.",
+    "Strict resource failures and missing follow-on rows remain failures."
+  ]
+}
