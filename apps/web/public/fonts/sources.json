@@ -1,0 +1,119 @@
+[
+  {
+    "family": "Nunito Sans",
+    "style": "italic",
+    "subset": "cyrillic-ext",
+    "file": "nunito-sans-italic-cyrillic-ext-1e78a6118138.woff2",
+    "source": "https://fonts.gstatic.com/s/nunitosans/v19/pe0RMImSLYBIv1o4X1M8cce4OdVisMz5nZRqy6cmmmU3t2FQWEAEOvV9wNvrwlNstMKW3Y6K5WMwd-RaLY50.woff2",
+    "sha256": "1e78a6118138facc8902f39f7285f3b017dbfebad87ca0b1918f30f7355ec224",
+    "bytes": 22936
+  },
+  {
+    "family": "Nunito Sans",
+    "style": "italic",
+    "subset": "cyrillic",
+    "file": "nunito-sans-italic-cyrillic-9abb4087ffe2.woff2",
+    "source": "https://fonts.gstatic.com/s/nunitosans/v19/pe0RMImSLYBIv1o4X1M8cce4OdVisMz5nZRqy6cmmmU3t2FQWEAEOvV9wNvrwlNstMKW3Y6K5WMwd-1aLY50.woff2",
+    "sha256": "9abb4087ffe24374a0e9d41152aa68bfe68c82786af437c3a02f3ab089db80c2",
+    "bytes": 17320
+  },
+  {
+    "family": "Nunito Sans",
+    "style": "italic",
+    "subset": "vietnamese",
+    "file": "nunito-sans-italic-vietnamese-07ecf36ca209.woff2",
+    "source": "https://fonts.gstatic.com/s/nunitosans/v19/pe0RMImSLYBIv1o4X1M8cce4OdVisMz5nZRqy6cmmmU3t2FQWEAEOvV9wNvrwlNstMKW3Y6K5WMwd-ZaLY50.woff2",
+    "sha256": "07ecf36ca209630c7a76d8c3ed7a30c2af7d06118c4c961b44645edcbc53718f",
+    "bytes": 11600
+  },
+  {
+    "family": "Nunito Sans",
+    "style": "italic",
+    "subset": "latin-ext",
+    "file": "nunito-sans-italic-latin-ext-f3093f72aabb.woff2",
+    "source": "https://fonts.gstatic.com/s/nunitosans/v19/pe0RMImSLYBIv1o4X1M8cce4OdVisMz5nZRqy6cmmmU3t2FQWEAEOvV9wNvrwlNstMKW3Y6K5WMwd-daLY50.woff2",
+    "sha256": "f3093f72aabbc08b8f00f185aef1b9503519a227c3d75a057dc7a3c47d7c6151",
+    "bytes": 30344
+  },
+  {
+    "family": "Nunito Sans",
+    "style": "italic",
+    "subset": "latin",
+    "file": "nunito-sans-italic-latin-8904d953726b.woff2",
+    "source": "https://fonts.gstatic.com/s/nunitosans/v19/pe0RMImSLYBIv1o4X1M8cce4OdVisMz5nZRqy6cmmmU3t2FQWEAEOvV9wNvrwlNstMKW3Y6K5WMwd-laLQ.woff2",
+    "sha256": "8904d953726b43ded1a16bfd43398325d2382dd50780c10f18d048e0e73f84a8",
+    "bytes": 33080
+  },
+  {
+    "family": "Nunito Sans",
+    "style": "normal",
+    "subset": "cyrillic-ext",
+    "file": "nunito-sans-normal-cyrillic-ext-8a8e11bad67c.woff2",
+    "source": "https://fonts.gstatic.com/s/nunitosans/v19/pe0TMImSLYBIv1o4X1M8ce2xCx3yop4tQpF_MeTm0lfGWVpNn64CL7U8upHZIbMV51Q42ptCp7t4R-tCKQ.woff2",
+    "sha256": "8a8e11bad67c3ae75ba03c969fbe5742b8bf088f1b2ca2dd04610a352475ee37",
+    "bytes": 21752
+  },
+  {
+    "family": "Nunito Sans",
+    "style": "normal",
+    "subset": "cyrillic",
+    "file": "nunito-sans-normal-cyrillic-d3fe75d4c86f.woff2",
+    "source": "https://fonts.gstatic.com/s/nunitosans/v19/pe0TMImSLYBIv1o4X1M8ce2xCx3yop4tQpF_MeTm0lfGWVpNn64CL7U8upHZIbMV51Q42ptCp7txR-tCKQ.woff2",
+    "sha256": "d3fe75d4c86f6df84f37c76ad44fa21c45778d7e14160b0294f92ec248fa144a",
+    "bytes": 16388
+  },
+  {
+    "family": "Nunito Sans",
+    "style": "normal",
+    "subset": "vietnamese",
+    "file": "nunito-sans-normal-vietnamese-05ad6c0ccbb6.woff2",
+    "source": "https://fonts.gstatic.com/s/nunitosans/v19/pe0TMImSLYBIv1o4X1M8ce2xCx3yop4tQpF_MeTm0lfGWVpNn64CL7U8upHZIbMV51Q42ptCp7t6R-tCKQ.woff2",
+    "sha256": "05ad6c0ccbb6fc76af1914c0cc9572479659333cc00c236619df61222c48a886",
+    "bytes": 10308
+  },
+  {
+    "family": "Nunito Sans",
+    "style": "normal",
+    "subset": "latin-ext",
+    "file": "nunito-sans-normal-latin-ext-c648ee5bfda7.woff2",
+    "source": "https://fonts.gstatic.com/s/nunitosans/v19/pe0TMImSLYBIv1o4X1M8ce2xCx3yop4tQpF_MeTm0lfGWVpNn64CL7U8upHZIbMV51Q42ptCp7t7R-tCKQ.woff2",
+    "sha256": "c648ee5bfda70d44b9fb628f4114d1cc4f984d050cbb4881052237ede3638a2e",
+    "bytes": 27908
+  },
+  {
+    "family": "Nunito Sans",
+    "style": "normal",
+    "subset": "latin",
+    "file": "nunito-sans-normal-latin-29e389049684.woff2",
+    "source": "https://fonts.gstatic.com/s/nunitosans/v19/pe0TMImSLYBIv1o4X1M8ce2xCx3yop4tQpF_MeTm0lfGWVpNn64CL7U8upHZIbMV51Q42ptCp7t1R-s.woff2",
+    "sha256": "29e3890496844a9ea81975c52771c587c872b4eb317026422d1995b88d21b57d",
+    "bytes": 31076
+  },
+  {
+    "family": "Space Grotesk",
+    "style": "normal",
+    "subset": "vietnamese",
+    "file": "space-grotesk-normal-vietnamese-8895e3d49825.woff2",
+    "source": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPb54C-s0.woff2",
+    "sha256": "8895e3d49825128bfa5238e4c96e9b432d7a3dadbe5c17c6081267398305dc71",
+    "bytes": 6712
+  },
+  {
+    "family": "Space Grotesk",
+    "style": "normal",
+    "subset": "latin-ext",
+    "file": "space-grotesk-normal-latin-ext-952dddb45d2f.woff2",
+    "source": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPb94C-s0.woff2",
+    "sha256": "952dddb45d2f96f71cbf3b7f510b24379afc3c89ea02fcf89d377b45d62c0166",
+    "bytes": 18940
+  },
+  {
+    "family": "Space Grotesk",
+    "style": "normal",
+    "subset": "latin",
+    "file": "space-grotesk-normal-latin-0640890476fc.woff2",
+    "source": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2",
+    "sha256": "0640890476fc1198ab4de571fb658de443c4d85b66466ec09534a8737ab1ce9d",
+    "bytes": 22288
+  }
+]

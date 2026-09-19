@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "scope": "issue-131-encoder-resource-recheck",
+  "qualificationStatus": "failed-diagnostic-not-final-build-qualification",
+  "capturedAt": "2026-09-19",
+  "checkoutCommit": "95db2f08ab29381db537310bc57c9ddc3add123c",
+  "build": {
+    "commit": "e3d6d7f27748c9268d6daaf10b98bc2bfcd1f872",
+    "configuration": "Release",
+    "asan": false,
+    "msvc": 195136248,
+    "binarySha256": "AF02E09D7446CCCB3D4752879E2187D6EF4D293E6FCAFA6EF2C0DB781579D29C"
+  },
+  "machine": {
+    "gpu": "NVIDIA GeForce RTX 5070 Ti",
+    "driver": "32.0.16.1074",
+    "installedOverlayDllVersion": "11.0.9.251"
+  },
+  "controls": [
+    {
+      "id": "encoder-clean-start-stop",
+      "argument": "--startup-only",
+      "exitCode": 1,
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": false,
+      "maximumIterationMs": 99.1577,
+      "resources": {
+        "baseline": { "handles": 452, "threads": 28 },
+        "final": { "handles": 650, "threads": 28 },
+        "delta": { "handles": 198, "threads": 0 }
+      }
+    },
+    {
+      "id": "mf-activation-same-thread",
+      "argument": "--same-thread-activation",
+      "exitCode": 1,
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": false,
+      "maximumIterationMs": 188.328,
+      "resources": {
+        "baseline": { "handles": 320, "threads": 10 },
+        "final": { "handles": 520, "threads": 10 },
+        "delta": { "handles": 200, "threads": 0 }
+      }
+    }
+  ],
+  "limitations": [
+    "The existing binary was tested before rebuilding the current checkout.",
+    "The standalone activation control does not create the application encoder pipeline or submit frames.",
+    "Installed overlay DLL version is not proof of module loading or root cause.",
+    "A controlled overlay-disabled comparison is still required; no overlay or driver setting was changed.",
+    "Neither result qualifies the pending product shutdown matrix or permits merge."
+  ]
+}

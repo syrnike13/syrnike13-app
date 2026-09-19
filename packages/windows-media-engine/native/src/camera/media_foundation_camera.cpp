@@ -1,4 +1,5 @@
 #include "camera/camera_capture.hpp"
+#include "testing/product_fault_gate.hpp"
 
 #include <windows.h>
 #include <mfapi.h>
@@ -231,6 +232,7 @@ class MediaFoundationReader final : public CameraReader {
   void* eventHandle() const noexcept override { return state_->event; }
   CameraFailure requestSample() override {
     if (!reader_ || pending_ || state_->closed) return CameraFailure::invalid_state;
+    testing::holdProductFault("camera-read-sample");
     const auto status = reader_->ReadSample(kVideoStream, 0, nullptr, nullptr, nullptr, nullptr);
     if (FAILED(status)) return failureFor(status);
     pending_ = true;

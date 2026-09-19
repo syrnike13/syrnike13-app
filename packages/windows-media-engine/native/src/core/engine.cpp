@@ -790,10 +790,13 @@ private:
         (event.failure->code == "room_operation_unresponsive" ||
          event.failure->code == "room_authority_mismatch");
     if (fatal_room_failure) {
-      setRoomPublicState(RoomStateChangedEvent::State::Failed, event.failure);
-      transition(EngineState::Failed, event.failure);
+      auto problem = *event.failure;
+      problem.cause_sequence = event_sequence_ + 1;
+      stampFailureOriginAndEmitDiagnostic(problem);
+      setRoomPublicState(RoomStateChangedEvent::State::Failed, problem);
+      transition(EngineState::Failed, problem);
       if (pending_shutdown_command_)
-        completeDeferredShutdown(EngineResult::fail(*event.failure));
+        completeDeferredShutdown(EngineResult::fail(problem));
       return;
     }
     if (state_.load() == EngineState::Stopping) {
@@ -976,6 +979,12 @@ private:
   void
   transition(EngineState next,
              std::optional<EngineFailure> transition_failure = std::nullopt) {
+    if (next == EngineState::Failed && transition_failure &&
+        transition_failure->code != "startup_cancelled" &&
+        transition_failure->cause_sequence == 0) {
+      transition_failure->cause_sequence = event_sequence_ + 1;
+      stampFailureOriginAndEmitDiagnostic(*transition_failure);
+    }
     const auto previous = state_.exchange(next);
     PublicEventCallback callback;
     {
@@ -1083,7 +1092,7 @@ private:
       return;
     }
     const auto telemetry_now = std::chrono::steady_clock::now();
-    if ((media.screen_audio_metrics || media.camera_metrics || media.microphone_metrics) && telemetry_now >= next_media_diagnostic_) {
+    if ((media.screen_audio_metrics || media.camera_metrics || media.microphone_metrics || media.remote_video_metrics) && telemetry_now >= next_media_diagnostic_) {
       next_media_diagnostic_ = telemetry_now + std::chrono::seconds{1};
       DiagnosticEventCallback callback;
       {
@@ -1110,6 +1119,13 @@ private:
                   std::chrono::system_clock::now().time_since_epoch()).count()),
           "microphone", "sample", "microphone_metrics",
           {media.microphone_metrics->begin(), media.microphone_metrics->end()},
+      });
+      if (callback && media.remote_video_metrics) callback(DiagnosticEvent{
+          ++diagnostic_sequence_, static_cast<std::uint64_t>(
+              std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::system_clock::now().time_since_epoch()).count()),
+          "remote_video", "sample", "remote_video_metrics",
+          {media.remote_video_metrics->begin(), media.remote_video_metrics->end()},
       });
     }
     if (room_teardown_pending_ && !media.publications_stopped &&
@@ -1139,6 +1155,27 @@ private:
     if (state_.load() == EngineState::Stopping && media.stopped &&
         (!room_owner_ || room_owner_->state() == RoomConnectionState::Disconnected))
       completeDeferredShutdown(EngineResult::success());
+  }
+
+  void stampFailureOriginAndEmitDiagnostic(EngineFailure &problem) {
+    const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    // Retain the native origin on the reliable failure path even when the
+    // independent best-effort diagnostic queue is not drained before retirement.
+    problem.cause_timestamp_ms = static_cast<std::uint64_t>(now);
+    DiagnosticEventCallback callback;
+    {
+      std::lock_guard lock(diagnostic_callback_mutex_);
+      callback = diagnostic_callback_;
+    }
+    if (!callback) return;
+    callback(DiagnosticEvent{
+        ++diagnostic_sequence_, static_cast<std::uint64_t>(now),
+        "engine", problem.stage, problem.code,
+        {DiagnosticMetric{"cause_sequence", static_cast<double>(problem.cause_sequence)},
+         DiagnosticMetric{"revision", static_cast<double>(
+             accepted_desired_state_ ? accepted_desired_state_->revision : 0)}},
+    });
   }
 
   void emitDiagnostic(const char *code, double revision) {

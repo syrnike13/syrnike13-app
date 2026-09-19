@@ -71,25 +71,38 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Verify generated media protocol is committed
         run: pnpm --filter @syrnike13/windows-media-engine protocol:check
+      - name: Verify native fault evidence reporter
+        run: pnpm --filter @syrnike13/windows-media-engine exec node --test scripts/fault-matrix.test.mjs
+
+      - name: Check renderer fault observer evidence
+        run: pnpm --filter @syrnike13/native-media-lab exec node --test scripts/renderer-fault-evidence.test.mjs
+      - name: Verify product shutdown timing harness
+        run: pnpm --filter @syrnike13/desktop exec node --test scripts/product-faults/shutdown-harness.node-test.cjs
       - name: Build and test Debug media lifecycle engine
         run: |
           pnpm windows-media:build:debug
-          pnpm windows-media:test:debug --label-exclude requires-gpu-video
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Avoid forwarding regex alternation through the package-script cmd shell.
+          ctest --test-dir packages/windows-media-engine/build -C Debug --output-on-failure --label-exclude 'requires-gpu-video|requires-audio-device'
       - name: Build, test, and verify Release media lifecycle engine
         run: |
           pnpm windows-media:build
-          pnpm windows-media:test --label-exclude requires-gpu-video
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir packages/windows-media-engine/build -C Release --output-on-failure --label-exclude 'requires-gpu-video|requires-audio-device'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm windows-media:probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm windows-media:verify
       - name: Report hardware validation boundary
         shell: pwsh
         run: |
           @'
           ### Hardware validation
-          This hosted runner has no D3D11 Video interfaces. Tests labeled
-          `requires-gpu-video` are excluded here, not reported as passed. Run the full
-          `pnpm windows-media:test` on a Windows GPU machine before merging media
-          changes; see docs/native-v2/REMOTE_VIDEO_RECEIVE.md for recorded GPU/ASan evidence.
+          This hosted runner has no D3D11 Video interfaces or qualified audio endpoints.
+          Tests labeled `requires-gpu-video` or `requires-audio-device` are excluded
+          here, not reported as passed. Build with `--lab` and run the full local
+          suite on a Windows GPU/audio machine before merging media changes;
+          see docs/native-v2/FAULT_CATALOG.md for the required fault evidence.
           '@ | Add-Content $env:GITHUB_STEP_SUMMARY
       - name: Verify 1000 bounded source enumerations
         shell: pwsh
@@ -206,6 +219,9 @@ jobs:
       - name: Build and test Debug hook addons with AddressSanitizer
         run: |
           pnpm desktop-native:build:asan
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm desktop-native:test:debug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm windows-media:build:asan
-          pnpm windows-media:test:debug --label-exclude requires-gpu-video
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir packages/windows-media-engine/build -C Debug --output-on-failure --label-exclude 'requires-gpu-video|requires-audio-device'

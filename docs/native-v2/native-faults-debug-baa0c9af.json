@@ -1,0 +1,1799 @@
+{
+  "schemaVersion": 1,
+  "scope": "native-owner-faults",
+  "status": "failed",
+  "faults": [
+    {
+      "id": "camera-candidate-cancelled",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 143.291,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 115,
+          "threads": 4
+        },
+        "final": {
+          "handles": 115,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "camera-device-removed",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 143.516,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 115,
+          "threads": 4
+        },
+        "final": {
+          "handles": 115,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "camera-reader-no-callback",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 2177.51,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 115,
+          "threads": 1
+        },
+        "final": {
+          "handles": 115,
+          "threads": 1
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "capture-candidate-failure",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 0.008,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 80,
+          "threads": 4
+        },
+        "final": {
+          "handles": 80,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "capture-retry-exhaustion",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 0.0303,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 80,
+          "threads": 4
+        },
+        "final": {
+          "handles": 80,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "capture-rolling-attempt-budget",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 0.0082,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 80,
+          "threads": 4
+        },
+        "final": {
+          "handles": 80,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "capture-concurrent-failure-fences",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 0.005,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 80,
+          "threads": 4
+        },
+        "final": {
+          "handles": 80,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "dxgi-access-lost",
+      "passed": 100,
+      "required": 100,
+      "warmup": 100,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 23.7751,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 464,
+          "threads": 48
+        },
+        "final": {
+          "handles": 464,
+          "threads": 48
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "dxgi-device-removed",
+      "passed": 100,
+      "required": 100,
+      "warmup": 100,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 29.1535,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 464,
+          "threads": 48
+        },
+        "final": {
+          "handles": 464,
+          "threads": 48
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "room-connect-never-completes",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 12.0655,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 88,
+          "threads": 5
+        },
+        "final": {
+          "handles": 88,
+          "threads": 5
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "room-disconnect-never-completes",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 12.0557,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 88,
+          "threads": 5
+        },
+        "final": {
+          "handles": 88,
+          "threads": 5
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "room-cancel-never-completes",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 12.093,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 88,
+          "threads": 5
+        },
+        "final": {
+          "handles": 88,
+          "threads": 5
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "wgc-source-closed",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 0.3028,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 93,
+          "threads": 4
+        },
+        "final": {
+          "handles": 93,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "wgc-close-racing-frame",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 0.5702,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 93,
+          "threads": 4
+        },
+        "final": {
+          "handles": 93,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "wgc-frame-after-stop",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 0.3246,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 93,
+          "threads": 4
+        },
+        "final": {
+          "handles": 93,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "wgc-prepare-failure",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 0.2,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 93,
+          "threads": 4
+        },
+        "final": {
+          "handles": 93,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "wgc-concurrent-stop",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 7.0319,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 93,
+          "threads": 4
+        },
+        "final": {
+          "handles": 93,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "screen-audio-superseded-start",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 2.2269,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 128,
+          "threads": 4
+        },
+        "final": {
+          "handles": 128,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "screen-audio-target-exit",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 17.5736,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 128,
+          "threads": 4
+        },
+        "final": {
+          "handles": 128,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "screen-audio-retirement-during-new-intent",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 2.0798,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 128,
+          "threads": 4
+        },
+        "final": {
+          "handles": 128,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "screen-audio-concurrent-stop",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 2.1452,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 128,
+          "threads": 4
+        },
+        "final": {
+          "handles": 128,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "sdk-submit-duplicate",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 0.2554,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 81,
+          "threads": 4
+        },
+        "final": {
+          "handles": 81,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "sdk-publish-never-completes",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 22.0281,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 81,
+          "threads": 4
+        },
+        "final": {
+          "handles": 81,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "sdk-submit-never-completes",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 22.0183,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 81,
+          "threads": 4
+        },
+        "final": {
+          "handles": 81,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "sdk-unpublish-never-completes",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 22.111,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 81,
+          "threads": 4
+        },
+        "final": {
+          "handles": 81,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "encoder-input-without-output",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 2266.21,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": false,
+      "resources": {
+        "baseline": {
+          "handles": 469,
+          "threads": 28
+        },
+        "final": {
+          "handles": 670,
+          "threads": 25
+        },
+        "delta": {
+          "handles": 201,
+          "threads": -3
+        }
+      },
+      "status": "failed",
+      "problems": [
+        "resource-checks-failed",
+        "positive-resource-growth"
+      ]
+    },
+    {
+      "id": "encoder-bitrate-unsupported",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 1472.03,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": false,
+      "resources": {
+        "baseline": {
+          "handles": 455,
+          "threads": 28
+        },
+        "final": {
+          "handles": 656,
+          "threads": 25
+        },
+        "delta": {
+          "handles": 201,
+          "threads": -3
+        }
+      },
+      "status": "failed",
+      "problems": [
+        "resource-checks-failed",
+        "positive-resource-growth"
+      ]
+    },
+    {
+      "id": "encoder-bitrate-rejected",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 5982.08,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": false,
+      "resources": {
+        "baseline": {
+          "handles": 455,
+          "threads": 28
+        },
+        "final": {
+          "handles": 656,
+          "threads": 25
+        },
+        "delta": {
+          "handles": 201,
+          "threads": -3
+        }
+      },
+      "status": "failed",
+      "problems": [
+        "resource-checks-failed",
+        "positive-resource-growth"
+      ]
+    },
+    {
+      "id": "microphone-candidate-failure",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 101.052,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 217,
+          "threads": 6
+        },
+        "final": {
+          "handles": 217,
+          "threads": 6
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "microphone-owner-latest-intent",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 98.3071,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 227,
+          "threads": 20
+        },
+        "final": {
+          "handles": 227,
+          "threads": 20
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "microphone-owner-pending-shutdown",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 85.9562,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 227,
+          "threads": 20
+        },
+        "final": {
+          "handles": 227,
+          "threads": 20
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "microphone-active-device-loss",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 71.581,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 204,
+          "threads": 6
+        },
+        "final": {
+          "handles": 204,
+          "threads": 6
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "microphone-no-progress",
+      "passed": 100,
+      "required": 100,
+      "warmup": 100,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 1075.37,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 205,
+          "threads": 6
+        },
+        "final": {
+          "handles": 205,
+          "threads": 6
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "remote-video-late-decoded",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 51.2059,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 393,
+          "threads": 23
+        },
+        "final": {
+          "handles": 393,
+          "threads": 23
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "output-device-invalidated",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 107.254,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 217,
+          "threads": 6
+        },
+        "final": {
+          "handles": 217,
+          "threads": 6
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "output-no-progress",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 631.135,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 217,
+          "threads": 6
+        },
+        "final": {
+          "handles": 216,
+          "threads": 4
+        },
+        "delta": {
+          "handles": -1,
+          "threads": -2
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "output-candidate-failure",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 62.7215,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 216,
+          "threads": 4
+        },
+        "final": {
+          "handles": 216,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "output-retry-budget",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 294.264,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 216,
+          "threads": 4
+        },
+        "final": {
+          "handles": 216,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "output-candidate-cancelled",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 67.9117,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 211,
+          "threads": 6
+        },
+        "final": {
+          "handles": 211,
+          "threads": 6
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "output-owner-latest-intent",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 80.9269,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 211,
+          "threads": 6
+        },
+        "final": {
+          "handles": 211,
+          "threads": 6
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    },
+    {
+      "id": "output-owner-pending-shutdown",
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Debug",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "maximumIterationMs": 57.5094,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "resources": {
+        "baseline": {
+          "handles": 211,
+          "threads": 6
+        },
+        "final": {
+          "handles": 211,
+          "threads": 6
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      },
+      "status": "passed",
+      "problems": []
+    }
+  ],
+  "missing": [],
+  "violations": [
+    "encoder-input-without-output:resource-checks-failed",
+    "encoder-input-without-output:positive-resource-growth",
+    "encoder-bitrate-unsupported:resource-checks-failed",
+    "encoder-bitrate-unsupported:positive-resource-growth",
+    "encoder-bitrate-rejected:resource-checks-failed",
+    "encoder-bitrate-rejected:positive-resource-growth"
+  ],
+  "sourceCommit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+  "configuration": "Debug",
+  "asan": false,
+  "machine": {
+    "platform": "win32",
+    "arch": "x64",
+    "osRelease": "10.0.26200"
+  },
+  "startedAt": "2026-09-09T07:09:47.902Z",
+  "finishedAt": "2026-09-09T07:37:23.606Z",
+  "suite": {
+    "tests": [
+      "camera",
+      "camera-preview",
+      "camera-preview-quarantine",
+      "product-thumbnails",
+      "product-runtime",
+      "audio-device-registry",
+      "microphone-pcm",
+      "microphone-dsp",
+      "remote-audio",
+      "backend-selection-policy",
+      "dxgi-capture",
+      "selecting-monitor-capture",
+      "screen-frame-cadence",
+      "backend-selection-golden",
+      "screen-encoded-continuity",
+      "media-core-lifecycle",
+      "media-probe-lifecycle-once",
+      "media-probe-fail-start",
+      "media-probe-hang-worker",
+      "media-probe-enumerate-sources",
+      "media-probe-source-json-contract",
+      "media-probe-monitor-capture-json-contract",
+      "media-probe-window-capture-json-contract",
+      "media-probe-source-invalid-repeat-junk",
+      "media-probe-source-invalid-repeat-sign",
+      "media-probe-source-invalid-repeat-range",
+      "source-registry",
+      "source-win32-integration",
+      "monitor-capture",
+      "window-capture",
+      "screen-reference",
+      "screen-audio-pcm",
+      "screen-audio-owner",
+      "adaptive-screen-policy",
+      "adaptive-screen-pipeline",
+      "production-screen-sender",
+      "gpu-screen-converter",
+      "local-screen-preview",
+      "encoder-faults",
+      "encoder-bitrate-unsupported",
+      "encoder-bitrate-rejected",
+      "microphone-candidate-fault",
+      "microphone-cancellation-faults",
+      "microphone-platform-faults",
+      "shared-texture-pool",
+      "output-platform-faults",
+      "output-cancellation-faults"
+    ],
+    "results": [
+      {
+        "name": "camera",
+        "passed": true
+      },
+      {
+        "name": "camera-preview",
+        "passed": true
+      },
+      {
+        "name": "camera-preview-quarantine",
+        "passed": true
+      },
+      {
+        "name": "product-thumbnails",
+        "passed": true
+      },
+      {
+        "name": "product-runtime",
+        "passed": true
+      },
+      {
+        "name": "audio-device-registry",
+        "passed": true
+      },
+      {
+        "name": "microphone-pcm",
+        "passed": true
+      },
+      {
+        "name": "microphone-dsp",
+        "passed": true
+      },
+      {
+        "name": "remote-audio",
+        "passed": true
+      },
+      {
+        "name": "backend-selection-policy",
+        "passed": true
+      },
+      {
+        "name": "dxgi-capture",
+        "passed": true
+      },
+      {
+        "name": "selecting-monitor-capture",
+        "passed": true
+      },
+      {
+        "name": "screen-frame-cadence",
+        "passed": true
+      },
+      {
+        "name": "backend-selection-golden",
+        "passed": true
+      },
+      {
+        "name": "screen-encoded-continuity",
+        "passed": true
+      },
+      {
+        "name": "media-core-lifecycle",
+        "passed": true
+      },
+      {
+        "name": "media-probe-lifecycle-once",
+        "passed": true
+      },
+      {
+        "name": "media-probe-fail-start",
+        "passed": true
+      },
+      {
+        "name": "media-probe-hang-worker",
+        "passed": true
+      },
+      {
+        "name": "media-probe-enumerate-sources",
+        "passed": true
+      },
+      {
+        "name": "media-probe-source-json-contract",
+        "passed": true
+      },
+      {
+        "name": "media-probe-monitor-capture-json-contract",
+        "passed": true
+      },
+      {
+        "name": "media-probe-window-capture-json-contract",
+        "passed": true
+      },
+      {
+        "name": "media-probe-source-invalid-repeat-junk",
+        "passed": true
+      },
+      {
+        "name": "media-probe-source-invalid-repeat-sign",
+        "passed": true
+      },
+      {
+        "name": "media-probe-source-invalid-repeat-range",
+        "passed": true
+      },
+      {
+        "name": "source-registry",
+        "passed": true
+      },
+      {
+        "name": "source-win32-integration",
+        "passed": true
+      },
+      {
+        "name": "monitor-capture",
+        "passed": true
+      },
+      {
+        "name": "window-capture",
+        "passed": true
+      },
+      {
+        "name": "screen-reference",
+        "passed": true
+      },
+      {
+        "name": "screen-audio-pcm",
+        "passed": true
+      },
+      {
+        "name": "screen-audio-owner",
+        "passed": true
+      },
+      {
+        "name": "adaptive-screen-policy",
+        "passed": true
+      },
+      {
+        "name": "adaptive-screen-pipeline",
+        "passed": true
+      },
+      {
+        "name": "production-screen-sender",
+        "passed": true
+      },
+      {
+        "name": "gpu-screen-converter",
+        "passed": true
+      },
+      {
+        "name": "local-screen-preview",
+        "passed": true
+      },
+      {
+        "name": "microphone-candidate-fault",
+        "passed": true
+      },
+      {
+        "name": "microphone-cancellation-faults",
+        "passed": true
+      },
+      {
+        "name": "microphone-platform-faults",
+        "passed": true
+      },
+      {
+        "name": "shared-texture-pool",
+        "passed": true
+      },
+      {
+        "name": "output-platform-faults",
+        "passed": true
+      },
+      {
+        "name": "output-cancellation-faults",
+        "passed": true
+      }
+    ],
+    "ctestExitCode": 8,
+    "parsingErrors": [
+      "incomplete-or-failed-full-suite"
+    ]
+  },
+  "requiredFaults": [
+    "wgc-source-closed",
+    "wgc-close-racing-frame",
+    "wgc-frame-after-stop",
+    "wgc-prepare-failure",
+    "wgc-concurrent-stop",
+    "dxgi-access-lost",
+    "dxgi-device-removed",
+    "capture-candidate-failure",
+    "capture-retry-exhaustion",
+    "capture-rolling-attempt-budget",
+    "capture-concurrent-failure-fences",
+    "encoder-input-without-output",
+    "encoder-bitrate-unsupported",
+    "encoder-bitrate-rejected",
+    "sdk-submit-duplicate",
+    "sdk-publish-never-completes",
+    "sdk-submit-never-completes",
+    "sdk-unpublish-never-completes",
+    "remote-video-late-decoded",
+    "screen-audio-superseded-start",
+    "screen-audio-target-exit",
+    "screen-audio-retirement-during-new-intent",
+    "screen-audio-concurrent-stop",
+    "microphone-active-device-loss",
+    "microphone-no-progress",
+    "microphone-candidate-failure",
+    "microphone-owner-latest-intent",
+    "microphone-owner-pending-shutdown",
+    "output-device-invalidated",
+    "output-no-progress",
+    "output-candidate-failure",
+    "output-retry-budget",
+    "output-candidate-cancelled",
+    "output-owner-latest-intent",
+    "output-owner-pending-shutdown",
+    "camera-device-removed",
+    "camera-reader-no-callback",
+    "camera-candidate-cancelled",
+    "room-connect-never-completes",
+    "room-disconnect-never-completes",
+    "room-cancel-never-completes"
+  ],
+  "binaries": [
+    {
+      "name": "adaptive_screen_pipeline_tests.exe",
+      "sha256": "51f8aac1782419033e0776dbb86f9528cc8f20bdaa35df52d3bc95be418082eb"
+    },
+    {
+      "name": "adaptive_screen_policy_tests.exe",
+      "sha256": "b821976ff5704a062b81ab35a02ac613ebd160513521474f00dfd745630e9ad3"
+    },
+    {
+      "name": "apm_allocation_baseline.exe",
+      "sha256": "37e69fbbb67aeb177af37761e242e3ef6dcdf99039f714c3f1904480d54b2cad"
+    },
+    {
+      "name": "audio_capture_lab.exe",
+      "sha256": "285e713410cef4e4f187386ba0e8dd0b3034c9b4baca41029f7e2b7878db0a68"
+    },
+    {
+      "name": "audio_device_registry_tests.exe",
+      "sha256": "527ed788b0d0e3eaa1092b81e98e0593ce01665d561126fa5750e45523c2c0a6"
+    },
+    {
+      "name": "audio_sync_fixture.exe",
+      "sha256": "8ed5270d72fe5b25f04fc356422f446edfd1de787bd04f13e190bb41defadcaa"
+    },
+    {
+      "name": "backend_capture_lab.exe",
+      "sha256": "40a344c829560d2a915d6f621047d70596bd7250b9bc61799fe55ab6c935370d"
+    },
+    {
+      "name": "backend_selection_policy_tests.exe",
+      "sha256": "70ee18f9c8cc4407b59d1b939830962e0639f84f4644fc02260404129ee7eaca"
+    },
+    {
+      "name": "backend_transition_lab.exe",
+      "sha256": "741c184d92a24c65397a21eaab575ed6726af17d0de40e34cd8cd35615739a8c"
+    },
+    {
+      "name": "camera_lab.exe",
+      "sha256": "95fdc67dacafe78fc609312a8dc3e401f208f8f2a783fbcdaed3c80a0f80c3ae"
+    },
+    {
+      "name": "camera_tests.exe",
+      "sha256": "df694a0b92ba4abb3b0907e150f741e7a2103e497c6cb7ca66b93d820dc6a588"
+    },
+    {
+      "name": "default_endpoint_proof.exe",
+      "sha256": "f594cc9eae8b2aaa0389a42757792c8b5a6d534fd937862bfec2714b12653f72"
+    },
+    {
+      "name": "display_mode_proof.exe",
+      "sha256": "a5869941c6f65eaf065cc9b786520334a95ed413a4550df52d35ef72dfa09327"
+    },
+    {
+      "name": "dxgi_capture_tests.exe",
+      "sha256": "d2cf00ff49279694237f947a8761270d813ac51e00c8e3469863c47bde859e69"
+    },
+    {
+      "name": "encoder_fault_tests.exe",
+      "sha256": "8e53a398d088695b7e45e3e1891a8e5ed46acf4eaca099b7b79e24690ef281fe"
+    },
+    {
+      "name": "gpu_screen_converter_tests.exe",
+      "sha256": "28be499b29f636f1a89fe9065f7df7c4b117800b729ccfbf8e18cfe165650645"
+    },
+    {
+      "name": "live_bitrate_probe.exe",
+      "sha256": "f6d085a3dc74e8274ffab3c1c34e4438ea0b7f08c40b7bb1867369bccbb7c4d9"
+    },
+    {
+      "name": "livekit.dll",
+      "sha256": "f93910d2683765826677a88e9544532c95dc2910297488b55f056e6d5bd7544f"
+    },
+    {
+      "name": "livekit_ffi.dll",
+      "sha256": "3f4b1cf2e634a98c8e149e7ce64d48f92347a489b2136d21f3086322f7ead550"
+    },
+    {
+      "name": "local_screen_preview_tests.exe",
+      "sha256": "4def3a0bbbc3b1d33504be2c769208ea6f1475126bfdcffb327faa24f45d38fa"
+    },
+    {
+      "name": "media_core_tests.exe",
+      "sha256": "736ce03fea494fb48f7cef1ffe92f883867354ca7bad5a14c0feec6d8f0d5668"
+    },
+    {
+      "name": "media_lab.exe",
+      "sha256": "d225e868df4ce0fb0d4d3ff5ee5f6106bd9a0d20818d0bb3cb1f2c111d31b0ec"
+    },
+    {
+      "name": "media_probe.exe",
+      "sha256": "7504e3a8cbfab0ea7c80f2e4cac74e5eb58c46c52b26a4db4c2be65e1f95663a"
+    },
+    {
+      "name": "microphone_capture_allocation.exe",
+      "sha256": "efe6e1505abe4fbcb9426bcba364f0b583e8e225b67c562efa2393ef8428f9c1"
+    },
+    {
+      "name": "microphone_dsp_tests.exe",
+      "sha256": "e113c0d5c96e5e672f5207fe80029356b1d648731f5f840018397e2237036ff0"
+    },
+    {
+      "name": "microphone_pcm_tests.exe",
+      "sha256": "dab45b54d469a6b5a7a6b069a082c02db380cf48655c901d4e298ee6f20f42b8"
+    },
+    {
+      "name": "monitor_capture_tests.exe",
+      "sha256": "7114597ecef5adb7d1d65a6be76d21feec4d13df9b730bc932fde3991e110e96"
+    },
+    {
+      "name": "monitor_pattern_fixture.exe",
+      "sha256": "3134b0a6291e097ed32555f5eb0f626b07c2973621470da00e714e73c3e0a17d"
+    },
+    {
+      "name": "native_media_lab_publisher.exe",
+      "sha256": "c2a16ed35f11935bae4520816c15d2533e060e5c5e43286ec760eb14c654c504"
+    },
+    {
+      "name": "preview_bridge_lab.node",
+      "sha256": "08e7cc25ee64517298cb04186da1c3cde5dfed232f581422035207a72101da86"
+    },
+    {
+      "name": "product_runtime_tests.exe",
+      "sha256": "64ff855c0d1f4dc86b3adb52e4cdba396739342b511847241c23b0d3ced12249"
+    },
+    {
+      "name": "production_screen_sender_tests.exe",
+      "sha256": "abec65f209db7c69e2bf005237837b3622e34b967c04d6ab82107be9835f405c"
+    },
+    {
+      "name": "remote_audio_lab.exe",
+      "sha256": "0ba31c3e4654c06e4a43be8644b8b34884b70b792d58611cb1f30de1dc731485"
+    },
+    {
+      "name": "remote_audio_reference.exe",
+      "sha256": "88fbfeaa8d4679aa390e0d7c173355284bacbfa7a0038c5588468d1dbd3f57a3"
+    },
+    {
+      "name": "remote_audio_tests.exe",
+      "sha256": "86890146aa669d7231536a4ee2c4b555bb834618f6e392fd3a87c8424cae5ace"
+    },
+    {
+      "name": "remote_video_contract_probe.exe",
+      "sha256": "12c38d88afa5a80852cab3a39a9f871e0e091729b3bdf66bb059de70efbe0577"
+    },
+    {
+      "name": "remote_video_publisher.exe",
+      "sha256": "68243b22ec22e9f4bdb477950e7994910b52e15bb04944d70f6103653cde6e8f"
+    },
+    {
+      "name": "screen_audio_lab.exe",
+      "sha256": "b181f5e56c40661108559df5196f9db98d194f746b47261ef64750af03532e06"
+    },
+    {
+      "name": "screen_audio_owner_tests.exe",
+      "sha256": "32b35f612c0d23309cc5785533a13a2d3b77c57d2ede2628bb8168b64a2351f6"
+    },
+    {
+      "name": "screen_audio_pcm_tests.exe",
+      "sha256": "67a2f9160f971da08d4b14baaa9970b0cf7aa628404e47e6f2c1e49066887c1a"
+    },
+    {
+      "name": "screen_encoded_continuity_tests.exe",
+      "sha256": "994ab46768d236ef2ba8762049160356a725f1bb95ad029034ffa5dce8db4a8f"
+    },
+    {
+      "name": "screen_frame_cadence_tests.exe",
+      "sha256": "bd9e67eb93990a07217f331dd8d2ac596503bcc4520ded6475a65c8b8c8c0a9f"
+    },
+    {
+      "name": "screen_reference_tests.exe",
+      "sha256": "b1e8efd98fcdc6ab733e9086c2c7c3daaa483169269c4e198701d061f2c48bb6"
+    },
+    {
+      "name": "selecting_monitor_capture_tests.exe",
+      "sha256": "783dddca414cedccd3f86dce4ab8decf653205b6507c31c3debfd6d3ad59ea5f"
+    },
+    {
+      "name": "shared_texture_pool_tests.exe",
+      "sha256": "cfab57552a27284e7423ea47438c48654aa7b40e82d8e4370071989ba3a0e19c"
+    },
+    {
+      "name": "source_registry_tests.exe",
+      "sha256": "4e3dcf52cb9acbb228f55d5847eac77be9eabe9dca870cf3cabdbb34c305ee23"
+    },
+    {
+      "name": "source_win32_integration_tests.exe",
+      "sha256": "0c63dc16b2e21d97012c46aa01ce55b348103603fddc35bfc8b3be0f572256ba"
+    },
+    {
+      "name": "source_window_fixture.exe",
+      "sha256": "3ddff5325bd867f7409ccca45554e38d4919bdf8e1c3916e068094482cf0a612"
+    },
+    {
+      "name": "video_bridge_lab.node",
+      "sha256": "fbe655b8b9c4818c2453c7b84638c849889345416afaef75958efa9fddc1dc59"
+    },
+    {
+      "name": "window_capture_tests.exe",
+      "sha256": "2fd94617e0f76f5ad44fd15eef23ac5fea8c02e0e492b116bfefa0ed6cea8e22"
+    },
+    {
+      "name": "windows_media.node",
+      "sha256": "f8fc31103149ba0b428a453cc53e5aac933f673b2bd8e2ffaebc11a400fff136"
+    },
+    {
+      "name": "windows_media_texture_broker.node",
+      "sha256": "9209086d003c333a1529feca69aa5d8a1a79ece81711569139dd4913638b095c"
+    }
+  ],
+  "remainingEvidence": [
+    "neutral-observer-continuity",
+    "active-product-host-and-renderer-replay",
+    "combined-faults-and-app-shutdown",
+    "cross-layer-incident-timeline",
+    "other-build-configurations"
+  ]
+}

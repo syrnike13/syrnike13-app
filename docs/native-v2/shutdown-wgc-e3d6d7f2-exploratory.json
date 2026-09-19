@@ -1,0 +1,24 @@
+{
+  "schema": "syrnike.native-v2.product-shutdown-exploratory-v1",
+  "applicationCommit": "e3d6d7f27748c9268d6daaf10b98bc2bfcd1f872",
+  "capturedAt": "2026-09-13",
+  "qualification": false,
+  "build": {
+    "configuration": "Release",
+    "testFaultGates": true,
+    "nativeBuildRoot": "build-phase131-test",
+    "frontend": "localbackend",
+    "backend": "docker-local",
+    "sfu": "livekit/livekit-server:v1.13.6"
+  },
+  "scope": "full-product-shutdown-with-held-native-call",
+  "point": "wgc-window-frame-pool",
+  "call": 1,
+  "required": 100,
+  "completed": 64,
+  "passed": false,
+  "failure": "native_fault_entry_deadline",
+  "shutdownBudgetMs": 4900,
+  "evidence": ".codex-tmp/current-wgc-product-matrix/wgc-window-frame-pool/summary.json",
+  "note": "The run entered and passed the first 64 product cycles, then failed to observe the native held-call marker on iteration 65. This remains a raw failed exploratory series; it is not converted to a waiver or counted as a 100-cycle qualification pass."
+}

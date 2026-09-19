@@ -1,0 +1,78 @@
+{
+  "scope": "Diagnostic debugger capture during held microphone unpublish and product close",
+  "applicationCommit": "17b9f14475fc5e81f43834b91e57c7d808bbe2bc",
+  "faultEntryVerified": true,
+  "faultPoint": "sdk-microphone-unpublish",
+  "exception": {
+    "exception": 3221226505,
+    "firstChance": 0,
+    "threadId": 58872,
+    "dumpWritten": true,
+    "parameter0": 7
+  },
+  "stack": {
+    "threadId": 58872,
+    "frames": [
+      {
+        "module": "ucrtbase.dll",
+        "rva": 674510
+      },
+      {
+        "module": "ucrtbase.dll",
+        "rva": 793054
+      },
+      {
+        "module": "windows_media.node",
+        "rva": 354524
+      },
+      {
+        "module": "windows_media.node",
+        "rva": 338321
+      },
+      {
+        "module": "ucrtbase.dll",
+        "rva": 14256
+      },
+      {
+        "module": "kernel32.dll",
+        "rva": 190679
+      },
+      {
+        "module": "ntdll.dll",
+        "rva": 574780,
+        "symbol": "RtlUserThreadStart",
+        "displacement": 44
+      }
+    ]
+  },
+  "symbols": [
+    {
+      "pdbGuid": "{A45E5DD5-AE7A-4DB7-AF33-0DAB927E6F40}",
+      "pdbAge": 6,
+      "rva": 354524,
+      "symbol": "?run@MicrophoneOwner@audio@windows_media@syrnike@@AEAAXXZ",
+      "displacement": 3084
+    },
+    {
+      "source": "microphone_owner.cpp",
+      "line": 152
+    }
+  ],
+  "pdbMatchesModule": {
+    "guid": "a45e5dd5-ae7a-4db7-af33-0dab927e6f40",
+    "age": 6
+  },
+  "interpretation": "The exception stack reaches MicrophoneOwner::run at its stopPipeline call. Its sender/pipeline stop guards intentionally call std::terminate when the 1000 ms teardown deadline expires. The SDK unpublish hold is non-cancellable.",
+  "limitations": [
+    "A debugger held the exception while a full dump was written. The resulting shutdown duration is not acceptance evidence.",
+    "The app main bundle was a separate private copy that recorded utility stderr; native module bytes match the original product.",
+    "This captures the fail-fast during a verified held unpublish. Earlier setup failures have the same exit code but no captured exception stack or verified hold entry."
+  ],
+  "sha256": {
+    "privateDump": "a3f22629198f3d27d5acb0e3a67ab1ae781d204d298d9c9e512a9ae06e6ef4e1",
+    "watcherLog": "e1fcc72c0b4dda2e13cf5aa411c4d684a0f61698845cea42a0363da57912f28f",
+    "nativeModule": "cf4c1e25cf6928f7fb152501b3b03123ec90e7538b4fb032dd350123493dd6e9",
+    "pdb": "bf32cc064fc9c8991f00ffadb8088c5fed7f80e40fddd1a33ac0750e25a7aa4f",
+    "watcherSource": "a393ad1fbb2cc4b7feafb6102cd9dfe270cc96f7aa561b22998a558661c72bfb"
+  }
+}

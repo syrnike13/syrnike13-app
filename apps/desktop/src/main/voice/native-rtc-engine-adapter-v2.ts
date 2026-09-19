@@ -20,9 +20,10 @@ import {
   type MediaLifecycleFailure,
 } from '../media-runtime/contract'
 import type { MediaRuntimeSupervisor } from '../media-runtime/media-runtime-supervisor'
+import { getNativeDiagnosticCorrelationId } from '../native-runtime/diagnostic-incidents'
 
 type RuntimePort = Pick<MediaRuntimeSupervisor,
-  'start' | 'getSnapshot' | 'getHostEpoch' | 'onStateChange' | 'onEvent' |
+  'start' | 'getSnapshot' | 'getHostEpoch' | 'getFailureEpisodeId' | 'onStateChange' | 'onEvent' |
   'onSnapshot' | 'installCredentialLease' | 'applyDesiredState' | 'querySnapshot' | 'shutdown'
 >
 
@@ -162,7 +163,6 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
   private flushRequested = false
   private shutdownPromise: Promise<void> | null = null
   private waiter: RoomWaiter | null = null
-  private recovering = false
   private terminalReported = false
 
   constructor(
@@ -175,19 +175,27 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     this.unsubscribe = [
       runtime.onStateChange(snapshot => {
         if (this.disposed) return
+        const epoch = runtime.getHostEpoch()
+        if (snapshot.status !== 'ready' || this.epoch !== epoch) {
+          // Observed media belongs to one host. Clear it before availability
+          // listeners can combine a replacement host with the old media paths.
+          this.current = {
+            engineState: 'stopped', acceptedRevision: null, desiredState: null,
+            roomState: 'off', tracks: createInactiveMediaPaths(),
+          }
+          for (const listener of this.snapshotListeners) listener(this.current)
+        }
         this.emitAvailability()
         if (snapshot.status === 'ready') {
-          const epoch = runtime.getHostEpoch()
           if (this.epoch !== epoch) {
             this.epoch = epoch
             this.appliedRevision = 0
             this.installedLeaseId = null
           }
           this.scheduleFlush()
-        } else if (snapshot.status === 'recovering') {
-          if (!this.recovering && this.binding) this.emitBound({ type: 'transientReconnectStarted' })
-          this.recovering = true
-        } else if (snapshot.status === 'failed' && snapshot.failure) {
+        } else if ((snapshot.status === 'recovering' || snapshot.status === 'failed') && snapshot.failure) {
+          // A replacement process cannot resume the old Room. Voice Director
+          // must retire its authority and acquire a fresh lease before replay.
           this.failRoom(snapshot.failure)
         }
       }),
@@ -216,7 +224,8 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     this.remoteVideoDemand = []
     this.desired = { ...this.desired, cameraEnabled: false, screenEnabled: false, screenAudioEnabled: false }
     this.commitDesired()
-    if (!this.started || this.runtime.getSnapshot().status === 'stopped') return Promise.resolve()
+    const status = this.runtime.getSnapshot().status
+    if (!this.started || status === 'stopped' || status === 'failed') return Promise.resolve()
     return this.waitForRoom(null)
   }
 
@@ -358,6 +367,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     this.flushRequested = false
     while (!this.disposed && this.latest && this.appliedRevision !== this.latest.revision) {
       this.flushRequested = false
+      if (this.binding && this.terminalReported) return
       const epoch = this.runtime.getHostEpoch()
       if (epoch !== this.epoch) {
         this.epoch = epoch
@@ -365,25 +375,33 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
         this.appliedRevision = 0
       }
       const binding = this.binding
-      if (binding && this.installedLeaseId !== binding.credentialLeaseId) {
-        await this.runtime.installCredentialLease({
-          leaseId: binding.credentialLeaseId,
-          serverUrl: binding.lease.credential.url,
-          accessToken: binding.lease.credential.token,
-        })
+      try {
+        if (binding && this.installedLeaseId !== binding.credentialLeaseId) {
+          await this.runtime.installCredentialLease({
+            leaseId: binding.credentialLeaseId,
+            serverUrl: binding.lease.credential.url,
+            accessToken: binding.lease.credential.token,
+          })
+          if (this.disposed || epoch !== this.runtime.getHostEpoch()) return
+          if (binding && this.terminalReported) return
+          this.installedLeaseId = binding.credentialLeaseId
+          // Credentials can finish after move/leave. Never replay their old intent.
+          if (binding !== this.binding) continue
+        }
+        const desired = this.latest
+        const accepted = await this.runtime.applyDesiredState(desired)
         if (this.disposed || epoch !== this.runtime.getHostEpoch()) return
-        this.installedLeaseId = binding.credentialLeaseId
-        // Credentials can finish after move/leave. Never replay their old intent.
-        if (binding !== this.binding) continue
+        this.appliedRevision = accepted.acceptedRevision
+        if (this.latest.revision !== desired.revision) continue
+        const snapshot = await this.runtime.querySnapshot()
+        if (this.disposed || epoch !== this.runtime.getHostEpoch()) return
+        this.observeSnapshot(snapshot)
+      } catch (error) {
+        // A late rejection from a retired host or lease must not reject the
+        // replacement Room's waiter. Its pending intent will flush separately.
+        if (this.disposed || epoch !== this.runtime.getHostEpoch() || binding !== this.binding) return
+        throw error
       }
-      const desired = this.latest
-      const accepted = await this.runtime.applyDesiredState(desired)
-      if (this.disposed || epoch !== this.runtime.getHostEpoch()) return
-      this.appliedRevision = accepted.acceptedRevision
-      if (this.latest.revision !== desired.revision) continue
-      const snapshot = await this.runtime.querySnapshot()
-      if (this.disposed || epoch !== this.runtime.getHostEpoch()) return
-      this.observeSnapshot(snapshot)
     }
   }
 
@@ -461,6 +479,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
 
   private observeSnapshot(snapshot: MediaEngineSnapshot): void {
     if (this.disposed || !this.latest || snapshot.acceptedRevision !== this.latest.revision) return
+    if (this.binding && this.terminalReported) return
     if (snapshot.desiredState?.room?.credentialLeaseId !== this.latest.room?.credentialLeaseId) return
     const cameraFailure = cameraPolicyFailure(this.binding, this.desired)
     const projected: MediaEngineSnapshot = cameraFailure ? {
@@ -478,26 +497,32 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     for (const kind of ['microphone', 'output', 'camera', 'screen', 'screen_audio'] satisfies VoiceMediaKind[]) {
       const path = projected.tracks[kind]
       if (path.revision !== this.latest.revision) continue
-      this.emitBound({ type: 'mediaState', kind, media: { state: path.state, error: path.failure } })
+      this.emitBound({ type: 'mediaState', kind, media: {
+        state: path.state, error: path.failure ? this.projectFailure(path.failure) : undefined,
+      } })
     }
     if (snapshot.roomState === 'failed' && snapshot.roomFailure) this.failRoom(snapshot.roomFailure)
-    if (snapshot.roomState === 'connected' && this.recovering) {
-      this.recovering = false
-      this.emitBound({ type: 'transientReconnectSucceeded' })
-    }
     for (const listener of this.snapshotListeners) listener(projected)
   }
 
   private failRoom(failure: MediaLifecycleFailure): void {
+    const projectedFailure = this.projectFailure(failure)
     if (this.waiter) {
       const waiter = this.waiter
       this.waiter = null
       waiter.cleanup()
-      waiter.reject(new MediaLifecycleError({ failure }))
+      waiter.reject(new MediaLifecycleError({ failure: projectedFailure }))
     }
     if (!this.binding || this.terminalReported) return
     this.terminalReported = true
-    this.emitBound({ type: 'terminalFailure', failure })
+    this.emitBound({ type: 'terminalFailure', failure: projectedFailure })
+  }
+
+  private projectFailure(failure: MediaLifecycleFailure) {
+    const episodeId = this.runtime.getFailureEpisodeId(failure.causeSequence)
+    return episodeId
+      ? { ...failure, diagnosticCorrelationId: getNativeDiagnosticCorrelationId(episodeId) }
+      : failure
   }
 
   private emitBound(event: BoundEvent): void {
@@ -517,7 +542,8 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     const state = this.runtime.getSnapshot()
     return {
       type: 'availabilityChanged', available: state.status === 'ready' || state.status === 'stopped',
-      retryable: state.failure?.retryable ?? true, failure: state.failure,
+      retryable: state.failure?.retryable ?? true,
+      failure: state.failure ? this.projectFailure(state.failure) : undefined,
     }
   }
   private emitAvailability(): void {
@@ -528,7 +554,6 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
 
 type BoundEvent =
   | { type: 'terminalFailure'; failure: MediaLifecycleFailure }
-  | { type: 'transientReconnectStarted' | 'transientReconnectSucceeded' }
   | { type: 'mediaState'; kind: VoiceMediaKind; media: { state: 'off' | 'starting' | 'running' | 'muted' | 'failed'; error?: MediaLifecycleFailure } }
 
 function normalizeFailure(error: unknown): MediaLifecycleError {

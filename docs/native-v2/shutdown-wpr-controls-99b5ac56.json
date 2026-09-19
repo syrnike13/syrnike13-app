@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+  "qualificationPassed": false,
+  "scope": "WPR recording of three successful normal-integrity held-output product shutdown controls",
+  "recorder": {
+    "startedAt": "2026-09-10T00:20:03.9856242Z",
+    "started": true,
+    "stopped": true,
+    "startExitCode": 0,
+    "stopExitCode": 0,
+    "finishedAt": "2026-09-10T00:21:58.1474363Z"
+  },
+  "productElevated": false,
+  "lostBuffers": 0,
+  "lostEvents": 0,
+  "summary": {
+    "scope": "full-product-shutdown-with-held-native-call",
+    "point": "output-initialize",
+    "call": 1,
+    "passed": true,
+    "required": 3,
+    "completed": 3,
+    "shutdownBudgetMs": 4900,
+    "results": [
+      {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 1,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2867.6337999999996,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 2,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2882.9323000000004,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      },
+      {
+        "point": "output-initialize",
+        "call": 1,
+        "iteration": 3,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "output-initialize",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "output-initialize",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 2788.7056999999986,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      }
+    ]
+  },
+  "sources": [
+    {
+      "file": "recorder.json",
+      "sha256": "0c76a4146ed36d5b3dff0352fdb3efa30220490b6ddfa294b4d11f144a69427a"
+    },
+    {
+      "file": "control.json",
+      "sha256": "c3031711bb1348010aacf13ed2dcda8cab883f6645f1aa606a76920d44fee7d3"
+    },
+    {
+      "file": "private-shutdown.etl",
+      "sha256": "334d838ab082ef54c57e6905e3bee09b18938f096ad44bea4673342c74b07b52"
+    },
+    {
+      "file": "private-trace-statistics.txt",
+      "sha256": "245773d4c48ab9d1c333cd55318350c425035fdc8692f7fb295cbc6ff212bfad"
+    },
+    {
+      "file": "private-processes.txt",
+      "sha256": "d4fb94b9b1366ca0ba1d0e7740798ea709a1b26381fd01a8e69aa81ffe6a7cde"
+    },
+    {
+      "file": "inputs.json",
+      "sha256": "61dcb7cdc6a309e00cfef9dab43a76e2e66848f0dd4a64dde5165b52ddf72113"
+    },
+    {
+      "file": "summary.json",
+      "sha256": "ea207661ab2136ba3899fd0f96f7cdb088f431801d781d5c3f381b43a001f694"
+    }
+  ],
+  "postInputsMatched": true,
+  "limitations": [
+    "Only the recorder was elevated with user-authorized UAC. The product coordinator rejected elevated execution.",
+    "All three shutdown controls met the unchanged 4900 ms budget. The previously observed delayed process completion did not reproduce in this trace.",
+    "Zero reported lost events and buffers describe trace collection, not fault qualification.",
+    "The raw ETL and process/image listing include unrelated host activity and remain private. Only their hashes are published.",
+    "Loaded modules alone do not establish the cause of the earlier shutdown delay. No machine settings were changed."
+  ]
+}

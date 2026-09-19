@@ -5,10 +5,17 @@
 #include <syncstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 using namespace syrnike::windows_media::audio;
 using Clock = std::chrono::steady_clock;
 namespace {
+struct AudioWindow {
+  unsigned packets = 0;
+  unsigned active_packets = 0;
+  double peak_rms = 0;
+};
+constexpr unsigned window_ms = 100;
 std::int64_t now100ns() {
   return std::chrono::duration_cast<std::chrono::duration<std::int64_t, std::ratio<1, 10'000'000>>>(
              Clock::now().time_since_epoch())
@@ -29,7 +36,11 @@ std::shared_ptr<AudioProcessIdentity> identity(DWORD pid) {
 // processes; this executable never selects an arbitrary user's window.
 int main(int argc, char** argv) {
   try {
-    if (argc != 5) throw std::runtime_error("Expected mode, fixture PID, duration ms and cycles");
+    if (argc != 5 && argc != 6)
+      throw std::runtime_error("Expected mode, fixture PID, duration ms, cycles and optional timeline");
+    const bool timeline = argc == 6;
+    if (timeline && std::string(argv[5]) != "timeline")
+      throw std::runtime_error("Unknown capture option");
     const std::string mode = argv[1];
     if (mode != "include" && mode != "exclude") throw std::runtime_error("Unknown capture mode");
     const auto target = identity(static_cast<DWORD>(std::stoul(argv[2])));
@@ -42,6 +53,17 @@ int main(int argc, char** argv) {
     for (unsigned long cycle = 0; cycle < cycles; ++cycle) {
       std::uint64_t packets = 0, active_packets = 0, age_max_us = 0;
       double peak_rms = 0;
+      std::vector<AudioWindow> windows(timeline ? (duration.count() + window_ms - 1) / window_ms : 0);
+      std::size_t next_window = 0;
+      const auto emit_windows = [&](std::size_t completed) {
+        while (next_window < windows.size() && next_window < completed) {
+          const auto& window = windows[next_window];
+          std::osyncstream(std::cout) << "AUDIO_CAPTURE_WINDOW {\"index\":" << next_window
+              << ",\"packets\":" << window.packets << ",\"activePackets\":" << window.active_packets
+              << ",\"peakRms\":" << window.peak_rms << "}" << std::endl;
+          ++next_window;
+        }
+      };
       std::optional<ScreenAudioFailure> failure;
       LoopbackStats capture_stats;
       {
@@ -53,8 +75,15 @@ int main(int argc, char** argv) {
                               target))
           throw std::runtime_error("Loopback start failed: " +
                                    std::to_string(static_cast<int>(error->code)));
-        const auto deadline = Clock::now() + duration;
+        const auto started = Clock::now();
+        const auto deadline = started + duration;
+        if (timeline)
+          std::osyncstream(std::cout) << "AUDIO_CAPTURE_READY {\"cycle\":" << cycle << "}" << std::endl;
         while (Clock::now() < deadline && capture.state() == ScreenAudioState::running) {
+          if (timeline) {
+            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - started).count();
+            emit_windows(static_cast<std::size_t>(elapsed / window_ms));
+          }
           if (const auto packet = queue->take(now100ns())) {
             double squares = 0;
             for (auto value : packet->samples) squares += static_cast<double>(value) * value;
@@ -62,6 +91,16 @@ int main(int argc, char** argv) {
             peak_rms = (std::max)(peak_rms, rms);
             if (rms > 100) ++active_packets;
             ++packets;
+            if (timeline) {
+              const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - started).count();
+              const auto index = static_cast<std::size_t>(elapsed / window_ms);
+              if (index < windows.size()) {
+                auto& window = windows[index];
+                ++window.packets;
+                if (rms > 100) ++window.active_packets;
+                window.peak_rms = (std::max)(window.peak_rms, rms);
+              }
+            }
             age_max_us = (std::max)(age_max_us,
                                     static_cast<std::uint64_t>(
                                         (std::max)(std::int64_t{0},
@@ -79,13 +118,26 @@ int main(int argc, char** argv) {
       }
       DWORD handles = 0;
       GetProcessHandleCount(GetCurrentProcess(), &handles);
-      std::osyncstream(std::cout) << "AUDIO_CAPTURE_SAMPLE {\"cycle\":" << cycle << ",\"packets\":" << packets
+      std::osyncstream output(std::cout);
+      output << "AUDIO_CAPTURE_SAMPLE {\"cycle\":" << cycle << ",\"packets\":" << packets
                 << ",\"activePackets\":" << active_packets << ",\"peakRms\":" << peak_rms
                 << ",\"maximumAgeUs\":" << age_max_us
                 << ",\"failure\":" << (failure ? static_cast<int>(failure->code) : -1)
                 << ",\"handlesDelta\":" << static_cast<long long>(handles) - baseline
                 << ",\"clientsAfterStop\":" << capture_stats.audio_clients
-                << ",\"threadsAfterStop\":" << capture_stats.capture_threads << "}" << std::endl;
+                << ",\"threadsAfterStop\":" << capture_stats.capture_threads;
+      if (timeline) {
+        output << ",\"windowMs\":" << window_ms << ",\"windows\":[";
+        for (std::size_t index = 0; index < windows.size(); ++index) {
+          if (index) output << ',';
+          const auto& window = windows[index];
+          output << "{\"packets\":" << window.packets << ",\"activePackets\":" << window.active_packets
+                 << ",\"peakRms\":" << window.peak_rms << '}';
+        }
+        if (timeline) emit_windows(windows.size());
+        output << ']';
+      }
+      output << "}" << std::endl;
       if (failure) break;
     }
     return 0;

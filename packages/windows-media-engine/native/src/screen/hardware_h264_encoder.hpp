@@ -106,6 +106,9 @@ class HardwareH264Encoder final {
   // One owner-thread operation and one latest desired value. No COM on caller.
   [[nodiscard]] bool requestBitrate(std::uint64_t revision, std::uint32_t bitrate) noexcept;
   [[nodiscard]] BitrateUpdateResult bitrateUpdate() const noexcept;
+  // True means the worker completed cleanup. A cooperative encoder failure can
+  // still return true; false is reserved for cleanup that requires utility
+  // epoch retirement or missed its deadline.
   [[nodiscard]] bool stop(std::chrono::milliseconds deadline) noexcept;
 
   [[nodiscard]] HardwareH264EncoderState state() const noexcept;

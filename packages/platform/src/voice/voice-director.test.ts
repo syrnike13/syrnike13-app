@@ -130,12 +130,13 @@ class FakeEngine implements RtcEngineAdapter {
     this.failedChannels.set(channelId, new Error(message))
   }
 
-  failTyped(channelId: string, retryable: boolean, code = 'engine_failed') {
+  failTyped(channelId: string, retryable: boolean, code = 'engine_failed', diagnosticCorrelationId?: string) {
     const failure = {
       code,
       message: `failed ${channelId}`,
       retryable,
       stage: 'rtc_connect',
+      diagnosticCorrelationId,
     }
     this.failedChannels.set(
       channelId,
@@ -779,6 +780,13 @@ describe('VoiceDirector', () => {
   it('waits for engine availability without spending recovery attempts', async () => {
     const harness = createHarness({ recoveryDelaysMs: [0, 0, 0] })
     const original = await connect(harness, 'A')
+    for (const kind of ['microphone', 'output', 'camera', 'screen', 'screen_audio'] satisfies VoiceMediaKind[]) {
+      harness.engine.emit({
+        type: 'mediaState', operationId: original.operationId,
+        connectionEpoch: original.connectionEpoch, kind, media: { state: 'running' },
+      })
+    }
+    expect(harness.director.snapshot().microphone.state).toBe('running')
     harness.engine.emit({
       type: 'availabilityChanged',
       available: false,
@@ -794,6 +802,11 @@ describe('VoiceDirector', () => {
         retryable: true,
         stage: 'native_runtime',
       },
+    })
+
+    expect(harness.director.snapshot()).toMatchObject({
+      microphone: { state: 'off' }, output: { state: 'off' }, camera: { state: 'off' },
+      screen: { state: 'off' }, screenAudio: { state: 'off' },
     })
 
     await waitUntil(() => harness.engine.disconnected.includes('recovery'))
@@ -889,7 +902,8 @@ describe('VoiceDirector', () => {
   it('stops recovery after the first non-retryable connect rejection', async () => {
     const harness = createHarness({ recoveryDelaysMs: [0, 0, 0] })
     const original = await connect(harness, 'A')
-    harness.engine.failTyped('A', false, 'runtime_degraded')
+    const diagnosticCorrelationId = 'incident-79360566-3412-4a77-8f4b-36f392b48d6d'
+    harness.engine.failTyped('A', false, 'runtime_degraded', diagnosticCorrelationId)
     harness.engine.emit({
       type: 'terminalFailure',
       operationId: original.operationId,
@@ -907,7 +921,7 @@ describe('VoiceDirector', () => {
     expect(harness.authority.reservations).toHaveLength(2)
     expect(harness.director.snapshot()).toMatchObject({
       connection: 'failed',
-      failure: { code: 'runtime_degraded', retryable: false },
+      failure: { code: 'runtime_degraded', retryable: false, diagnosticCorrelationId },
     })
   })
 

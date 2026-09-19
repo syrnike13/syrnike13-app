@@ -1,0 +1,160 @@
+{
+  "applicationCommit": "99b5ac567b9fca66f47dc01bb1fe06097bdbd578",
+  "scope": "Production native exit deadline under held microphone publish and seven-second quit-listener blockage",
+  "summary": {
+    "scope": "full-product-shutdown-with-held-native-call",
+    "point": "sdk-microphone-publish",
+    "call": 1,
+    "passed": true,
+    "required": 1,
+    "completed": 1,
+    "shutdownBudgetMs": 4900,
+    "results": [
+      {
+        "point": "sdk-microphone-publish",
+        "call": 1,
+        "iteration": 1,
+        "passed": true,
+        "shutdownBudgetMs": 4900,
+        "entries": [
+          {
+            "point": "sdk-microphone-publish",
+            "call": 1,
+            "ownedUtilityVerified": true
+          }
+        ],
+        "entry": {
+          "point": "sdk-microphone-publish",
+          "call": 1,
+          "ownedUtilityVerified": true
+        },
+        "elapsedMs": 4044.6492000017315,
+        "closeSettled": true,
+        "closeFailed": false,
+        "processesExited": [
+          true,
+          true
+        ],
+        "forcedFixtureCleanup": false
+      }
+    ]
+  },
+  "applicationFiles": 167,
+  "driverFiles": 2,
+  "inputCaptureSha256": "dfae924766bef9363b2a3895992e1d58f98f36831dbb5f74f710a44851c0f624",
+  "summarySha256": "618938d2c41a98a790199e7f3f7985a90a712402a0bb44a7b2e9b600ef9ff474",
+  "reusedFrontend": {
+    "reason": "Unchanged frontend and platform artifacts reused; desktop and native identity rebuilt",
+    "sourceDiffToProductCommit": "empty for apps/web and packages/platform",
+    "builtAtCommit": "52ccd1e35a1f9fa4f54cff3c1db035af8828ac35"
+  },
+  "postControlInputMismatches": 0,
+  "mainEvents": [
+    {
+      "timestampMs": 1788976094353,
+      "monotonicMs": 2332.1824,
+      "event": "observer-installed",
+      "maximumTickGapMs": 0,
+      "sinceLastTickMs": 0.10550000000012005
+    },
+    {
+      "timestampMs": 1788976094818,
+      "monotonicMs": 2796.8305,
+      "event": "quit-called",
+      "maximumTickGapMs": 26.258600000000115,
+      "sinceLastTickMs": 11.486100000000079
+    },
+    {
+      "timestampMs": 1788976094821,
+      "monotonicMs": 2799.4441,
+      "event": "before-quit",
+      "maximumTickGapMs": 26.258600000000115,
+      "sinceLastTickMs": 14.095100000000002
+    },
+    {
+      "timestampMs": 1788976094821,
+      "monotonicMs": 2799.6797,
+      "event": "quit-returned",
+      "maximumTickGapMs": 26.258600000000115,
+      "sinceLastTickMs": 14.330500000000029
+    },
+    {
+      "timestampMs": 1788976096869,
+      "monotonicMs": 4847.9828,
+      "event": "quit-called",
+      "maximumTickGapMs": 27.504100000000108,
+      "sinceLastTickMs": 24.809799999999996
+    },
+    {
+      "timestampMs": 1788976096870,
+      "monotonicMs": 4848.361,
+      "event": "before-quit",
+      "maximumTickGapMs": 27.504100000000108,
+      "sinceLastTickMs": 25.1887999999999
+    },
+    {
+      "timestampMs": 1788976096870,
+      "monotonicMs": 4848.963,
+      "event": "quit-returned",
+      "maximumTickGapMs": 27.504100000000108,
+      "sinceLastTickMs": 25.789999999999964
+    },
+    {
+      "timestampMs": 1788976096909,
+      "monotonicMs": 4887.4913,
+      "event": "will-quit",
+      "maximumTickGapMs": 27.504100000000108,
+      "sinceLastTickMs": 36.94260000000031
+    },
+    {
+      "timestampMs": 1788976096909,
+      "monotonicMs": 4887.9407,
+      "event": "process-exit",
+      "maximumTickGapMs": 27.504100000000108,
+      "sinceLastTickMs": 37.39149999999972
+    },
+    {
+      "timestampMs": 1788976096909,
+      "monotonicMs": 4888.2016,
+      "event": "quit",
+      "maximumTickGapMs": 27.504100000000108,
+      "sinceLastTickMs": 37.652500000000146
+    }
+  ],
+  "closeEvents": [
+    {
+      "timestampMs": 1788976094815,
+      "elapsedMs": 0.0066999997943639755,
+      "event": "close-called",
+      "maximumSampleGapMs": 0
+    },
+    {
+      "timestampMs": 1788976096883,
+      "elapsedMs": 2067.601499998942,
+      "event": "kernel-exit",
+      "maximumSampleGapMs": 9.852800000458956,
+      "role": "media"
+    },
+    {
+      "timestampMs": 1788976098859,
+      "elapsedMs": 4043.488299999386,
+      "event": "playwright-close-resolved",
+      "maximumSampleGapMs": 9.852800000458956
+    },
+    {
+      "timestampMs": 1788976098859,
+      "elapsedMs": 4043.7410000003874,
+      "event": "kernel-exit",
+      "maximumSampleGapMs": 9.852800000458956,
+      "role": "main"
+    }
+  ],
+  "observationHashes": {
+    "main": "dacd031808bcdc0f8b160797def8b741f6d51d936efb0ccefdea999f508401db",
+    "close": "6a35ba09e4f7a3eb0d87b929366d641a50536916b3d1376038f3ca88e067cc7f"
+  },
+  "limitations": [
+    "One deliberately blocked-exit control; the ordinary 100-per-row shutdown matrix remains in progress.",
+    "No prototype broker is injected; production before-quit wiring arms the deadline."
+  ]
+}

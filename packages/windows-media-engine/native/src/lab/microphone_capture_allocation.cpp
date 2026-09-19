@@ -5,10 +5,70 @@
 #include <cstdlib>
 #include <cstring>
 #include <string_view>
+#include "fault_evidence.hpp"
 
 using namespace syrnike::windows_media::audio;
+namespace {
+void microphoneFaultMatrix() {
+  using Clock = std::chrono::steady_clock;
+  namespace lab = syrnike::windows_media::lab;
+  AudioDeviceRegistry registry(makeWindowsAudioDeviceEnumerator());
+  if (registry.refresh().status != AudioRegistryStatus::ready) throw std::runtime_error("Registry unavailable");
+  const auto endpoint = registry.resolve({AudioDirection::input, {}});
+  if (!endpoint) throw std::runtime_error("Default microphone unavailable");
+  const auto fault = [&](bool stop_progress) {
+    lab::capture_device_loss_after_frames = stop_progress ? 0 : 3;
+    lab::capture_stop_client_after_frames = stop_progress ? 3 : 0;
+    lab::capture_fault_armed = false;
+    struct ResetFault {
+      ~ResetFault() {
+        lab::capture_device_loss_after_frames = 0;
+        lab::capture_stop_client_after_frames = 0;
+        lab::capture_fault_armed = true;
+      }
+    } reset;
+    MicrophoneCapture capture;
+    if (capture.start(*endpoint, 1) != MicrophoneCaptureFailure::none)
+      throw std::runtime_error("Fault fixture did not reach healthy microphone capture");
+    lab::capture_fault_armed = true;
+    const auto deadline = Clock::now() + std::chrono::milliseconds(1500);
+    while (capture.stats().failure == MicrophoneCaptureFailure::none && Clock::now() < deadline)
+      (void)WaitForSingleObject(capture.frameEvent(), 20);
+    const auto expected = stop_progress ? MicrophoneCaptureFailure::no_progress : MicrophoneCaptureFailure::device_lost;
+    const auto observed = capture.stats();
+    const bool stopped = capture.stop(Clock::now() + std::chrono::seconds(2));
+    if (observed.failure != expected || !stopped) {
+      std::cerr << "Microphone fault expected=" << static_cast<int>(expected)
+                << " observed=" << static_cast<int>(observed.failure)
+                << " platform=" << observed.platform_result << " frames=" << observed.frames
+                << " stopped=" << stopped << '\n';
+      throw std::runtime_error("Microphone fault missed its typed deadline or failed to join");
+    }
+    const auto result = capture.stats();
+    if (result.frames < 3 || result.client_alive || result.thread_alive || result.mmcss_registered)
+      throw std::runtime_error("Microphone fault retained its WASAPI or MMCSS owner");
+  };
+  std::exception_ptr first_failure;
+  try {
+    syrnike::windows_media::tests::repeatFault("microphone-active-device-loss", [&] { fault(false); });
+  } catch (...) { first_failure = std::current_exception(); }
+  // Exercise the full-duration WASAPI/COM workload before comparing process
+  // resources: the Windows thread pool adds a thread handle during its first
+  // long batch. Owner clients, worker threads and MMCSS retire every iteration.
+  try {
+    syrnike::windows_media::tests::repeatFault("microphone-no-progress", [&] { fault(true); }, 100);
+  } catch (...) {
+    if (!first_failure) first_failure = std::current_exception();
+  }
+  if (first_failure) std::rethrow_exception(first_failure);
+}
+}  // namespace
 int main(int argc, char** argv) try {
   using Clock = std::chrono::steady_clock;
+  if (argc == 2 && std::string_view(argv[1]) == "--fault-matrix") {
+    microphoneFaultMatrix();
+    return 0;
+  }
   const bool device_loss = argc == 2 && std::string_view(argv[1]) == "--device-loss";
   if (argc != 1 && !device_loss) throw std::invalid_argument("Usage: microphone_capture_allocation [--device-loss]");
   if (device_loss) syrnike::windows_media::lab::capture_device_loss_after_frames = 100;

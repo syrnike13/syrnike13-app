@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "scope": "issue-131-encoder-resource-matrix",
+  "sourceCommit": "445cff8a5c14d40d27fbbd81c3d4b09f7ae5a3f1",
+  "qualificationStatus": "strict-failure-with-external-machine-blocker-candidate",
+  "machine": {
+    "os": "Windows 11 Pro 10.0.26200 build 26200",
+    "gpu": "NVIDIA GeForce RTX 5070 Ti",
+    "driver": "32.0.16.1074",
+    "overlayModule": "System32/nvspcap64.dll 11.0.9.251"
+  },
+  "strictMatrices": {
+    "Release": {
+      "artifact": "native-faults-445cff8a-release.json",
+      "records": 42,
+      "completeRecords": 42,
+      "failedIds": ["encoder-input-without-output", "encoder-bitrate-unsupported", "encoder-bitrate-rejected"],
+      "resourceDeltas": [{ "handles": 1, "threads": -3 }, { "handles": 1, "threads": -3 }, { "handles": 1, "threads": -3 }]
+    },
+    "Debug": {
+      "artifact": "native-faults-445cff8a-debug.json",
+      "records": 42,
+      "completeRecords": 42,
+      "failedIds": ["encoder-input-without-output", "encoder-bitrate-rejected"],
+      "passedButRelevantIds": ["encoder-bitrate-unsupported"],
+      "resourceDeltas": [{ "handles": 1, "threads": -3 }, { "handles": 1, "threads": -3 }]
+    },
+    "ASan": {
+      "artifact": "native-faults-445cff8a-asan.json",
+      "configuration": "Debug",
+      "records": 41,
+      "completeRecords": 41,
+      "missingIds": ["dxgi-device-removed"],
+      "failedIds": ["dxgi-access-lost", "encoder-input-without-output", "encoder-bitrate-unsupported", "encoder-bitrate-rejected", "output-no-progress", "output-default-session-muted"],
+      "resourceDeltas": [
+        { "id": "dxgi-access-lost", "handles": 2, "threads": 1 },
+        { "id": "encoder-input-without-output", "handles": 1, "threads": -3 },
+        { "id": "encoder-bitrate-unsupported", "handles": 1, "threads": -3 },
+        { "id": "encoder-bitrate-rejected", "handles": 1, "threads": -3 },
+        { "id": "output-no-progress", "handles": 1, "threads": -1 },
+        { "id": "output-default-session-muted", "handles": 8, "threads": 0 }
+      ]
+    }
+  },
+  "configuredMftControl": {
+    "id": "mf-configured-activation",
+    "passed": 100,
+    "required": 100,
+    "ownerChecksPassed": true,
+    "resourceChecksPassed": true,
+    "configurations": {
+      "Release": { "delta": { "handles": 0, "threads": 0 } },
+      "Debug": { "delta": { "handles": 0, "threads": 0 } },
+      "ASan": { "configuration": "Debug", "delta": { "handles": 0, "threads": 0 } }
+    },
+    "teardown": ["IMFShutdown::Shutdown", "IMFActivate::ShutdownObject", "COM release", "MFShutdown"]
+  },
+  "decisionBoundary": {
+    "strictAssessor": "unchanged; every positive delta remains FAIL",
+    "externalMachineBlocker": "candidate-only",
+    "basis": [
+      "The production-equivalent standalone configured MFT control is zero-growth in all three configurations.",
+      "The exact-head strict failures are small positive process deltas across encoder, DXGI and ASan output controls, while owner checks remain 100/100.",
+      "Historical activation-only and no-output runs on the same NVIDIA machine also showed variable retention, including the documented +200-handle observation.",
+      "No application-owned leak or overlay root cause is proven; no driver or overlay setting was changed."
+    ],
+    "requiredBeforeMerge": [
+      "Reviewer-approved scoped external-machine-blocker decision, without converting raw rows to PASS.",
+      "Current product shutdown/WGC evidence with the corrected harness and available services.",
+      "Hosted rerun of the current branch checks."
+    ]
+  },
+  "exclusions": ["issue-132 performance", "issue-132 soak", "issue-132 hardware matrix"]
+}

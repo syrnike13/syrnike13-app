@@ -1,0 +1,551 @@
+{
+  "passed": true,
+  "scope": "full-product-utility-latest-mute",
+  "required": 1,
+  "processObservation": "os-node-utility-children-excluding-baseline-hotkey-and-overlay",
+  "intentUpdate": {
+    "status": "ready",
+    "epoch": 2,
+    "finalMuted": true
+  },
+  "authoritySamples": [
+    {
+      "connection": "recovering",
+      "operation": "158ab664e503",
+      "connectionEpoch": "216c26302420",
+      "hostEpoch": 3,
+      "nativeParticipants": [
+        {
+          "operation": "158ab664e503",
+          "connectionEpoch": "216c26302420"
+        }
+      ]
+    },
+    {
+      "connection": "recovering",
+      "operation": "158ab664e503",
+      "connectionEpoch": "216c26302420",
+      "hostEpoch": 3,
+      "nativeParticipants": []
+    },
+    {
+      "connection": "connected",
+      "operation": "35b3e27096e6",
+      "connectionEpoch": "8fcca9137108",
+      "hostEpoch": 3,
+      "nativeParticipants": [
+        {
+          "operation": "35b3e27096e6",
+          "connectionEpoch": "8fcca9137108"
+        }
+      ]
+    }
+  ],
+  "after": {
+    "voice": {
+      "intentChannelId": "test-channel",
+      "membershipChannelId": "test-channel",
+      "connection": "connected",
+      "microphone": {
+        "state": "muted"
+      },
+      "output": {
+        "state": "running"
+      },
+      "camera": {
+        "state": "running"
+      },
+      "screen": {
+        "state": "failed",
+        "error": {
+          "code": "screen_source_unavailable",
+          "message": "Select a current screen source",
+          "stage": "screen",
+          "retryable": false
+        }
+      },
+      "screenAudio": {
+        "state": "running"
+      },
+      "userMuted": true,
+      "userDeafened": false,
+      "serverMuted": false,
+      "serverDeafened": false,
+      "systemPrivacyMuted": false,
+      "monitoringMuted": false,
+      "inputMode": "voice_activity",
+      "pushToTalkHeld": false,
+      "effectiveMuted": true,
+      "speakingUserIds": [],
+      "operationId": "35b3e27096e6",
+      "connectionEpoch": "8fcca9137108"
+    },
+    "runtime": {
+      "available": true,
+      "status": "ready",
+      "restartCount": 2,
+      "hostEpoch": 3,
+      "paths": {
+        "microphone": {
+          "revision": 47,
+          "state": "muted",
+          "warning": false
+        },
+        "camera": {
+          "revision": 47,
+          "state": "running",
+          "warning": false
+        },
+        "screen": {
+          "revision": 47,
+          "state": "failed",
+          "warning": false,
+          "failure": {
+            "code": "screen_source_unavailable",
+            "message": "Select a current screen source",
+            "stage": "screen",
+            "retryable": false
+          }
+        },
+        "output": {
+          "revision": 47,
+          "state": "running",
+          "warning": false
+        },
+        "screen_audio": {
+          "revision": 47,
+          "state": "running",
+          "warning": false
+        },
+        "screen_preview": {
+          "revision": 47,
+          "state": "off",
+          "warning": false
+        },
+        "camera_preview": {
+          "revision": 47,
+          "state": "running",
+          "warning": false
+        },
+        "remote_video": {
+          "revision": 47,
+          "state": "running",
+          "warning": false
+        }
+      }
+    },
+    "video": [
+      {
+        "local": true,
+        "source": "screen",
+        "metrics": {
+          "framesReceived": 1473,
+          "framesDrawn": 1469,
+          "framesSuperseded": 4,
+          "framesDroppedNoConsumer": 0,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 8,
+          "canvasDetachCount": 8,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 960,
+          "sourceHeight": 540,
+          "activeConsumers": 0,
+          "canvasPixels": 0,
+          "lastFrameAgeMs": 4408,
+          "lastDrawAgeMs": 4404
+        }
+      },
+      {
+        "local": false,
+        "source": "camera",
+        "metrics": {
+          "framesReceived": 22,
+          "framesDrawn": 21,
+          "framesSuperseded": 0,
+          "framesDroppedNoConsumer": 1,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 2,
+          "canvasDetachCount": 1,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 1280,
+          "sourceHeight": 720,
+          "activeConsumers": 1,
+          "canvasPixels": 160200,
+          "lastFrameAgeMs": 17,
+          "lastDrawAgeMs": 17
+        }
+      },
+      {
+        "local": true,
+        "source": "camera",
+        "metrics": {
+          "framesReceived": 50,
+          "framesDrawn": 48,
+          "framesSuperseded": 0,
+          "framesDroppedNoConsumer": 2,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 1,
+          "canvasDetachCount": 0,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 640,
+          "sourceHeight": 360,
+          "activeConsumers": 1,
+          "canvasPixels": 160200,
+          "lastFrameAgeMs": 17,
+          "lastDrawAgeMs": 15
+        }
+      }
+    ],
+    "processes": [
+      25092
+    ],
+    "participants": [
+      {
+        "actor": "native",
+        "identity": "0ffdcfb36fd2",
+        "operation": "35b3e27096e6",
+        "connectionEpoch": "8fcca9137108",
+        "tracks": [
+          {
+            "source": 1,
+            "alias": "e3b07493b5b5",
+            "muted": false
+          },
+          {
+            "source": 2,
+            "alias": "faf35c8d3a8e",
+            "muted": false
+          },
+          {
+            "source": 4,
+            "alias": "b6d591f71e13",
+            "muted": false
+          }
+        ]
+      },
+      {
+        "actor": "observer",
+        "identity": "1b5dc4b6df89",
+        "operation": "d73cba71854b",
+        "connectionEpoch": "9622927dfd1d",
+        "tracks": [
+          {
+            "source": 1,
+            "alias": "dc23d96f8ba0",
+            "muted": false
+          },
+          {
+            "source": 2,
+            "alias": "227a2a9520fe",
+            "muted": true
+          }
+        ]
+      }
+    ],
+    "receiverVideo": [
+      {
+        "track": "294310202641",
+        "local": true,
+        "frames": 528,
+        "width": 1280,
+        "height": 720
+      },
+      {
+        "track": "30bb8eff9a3f",
+        "local": false,
+        "frames": 40,
+        "width": 1280,
+        "height": 720
+      }
+    ]
+  },
+  "elapsedMs": 5209.675200000405,
+  "before": {
+    "voice": {
+      "intentChannelId": "test-channel",
+      "membershipChannelId": "test-channel",
+      "connection": "connected",
+      "microphone": {
+        "state": "running"
+      },
+      "output": {
+        "state": "running"
+      },
+      "camera": {
+        "state": "running"
+      },
+      "screen": {
+        "state": "running"
+      },
+      "screenAudio": {
+        "state": "running"
+      },
+      "userMuted": false,
+      "userDeafened": false,
+      "serverMuted": false,
+      "serverDeafened": false,
+      "systemPrivacyMuted": false,
+      "monitoringMuted": false,
+      "inputMode": "voice_activity",
+      "pushToTalkHeld": false,
+      "effectiveMuted": false,
+      "speakingUserIds": [],
+      "operationId": "158ab664e503",
+      "connectionEpoch": "216c26302420"
+    },
+    "runtime": {
+      "available": true,
+      "status": "ready",
+      "restartCount": 1,
+      "hostEpoch": 2,
+      "paths": {
+        "microphone": {
+          "revision": 34,
+          "state": "running",
+          "warning": false
+        },
+        "camera": {
+          "revision": 34,
+          "state": "running",
+          "warning": false
+        },
+        "screen": {
+          "revision": 34,
+          "state": "running",
+          "warning": true
+        },
+        "output": {
+          "revision": 34,
+          "state": "running",
+          "warning": false
+        },
+        "screen_audio": {
+          "revision": 34,
+          "state": "running",
+          "warning": false
+        },
+        "screen_preview": {
+          "revision": 34,
+          "state": "running",
+          "warning": false
+        },
+        "camera_preview": {
+          "revision": 34,
+          "state": "running",
+          "warning": false
+        },
+        "remote_video": {
+          "revision": 34,
+          "state": "running",
+          "warning": false
+        }
+      }
+    },
+    "video": [
+      {
+        "local": false,
+        "source": "camera",
+        "metrics": {
+          "framesReceived": 3255,
+          "framesDrawn": 3245,
+          "framesSuperseded": 8,
+          "framesDroppedNoConsumer": 2,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 3,
+          "canvasDetachCount": 2,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 1280,
+          "sourceHeight": 720,
+          "activeConsumers": 1,
+          "canvasPixels": 98884,
+          "lastFrameAgeMs": 25,
+          "lastDrawAgeMs": 24
+        }
+      },
+      {
+        "local": true,
+        "source": "camera",
+        "metrics": {
+          "framesReceived": 4793,
+          "framesDrawn": 4787,
+          "framesSuperseded": 5,
+          "framesDroppedNoConsumer": 1,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 1,
+          "canvasDetachCount": 0,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 640,
+          "sourceHeight": 360,
+          "activeConsumers": 1,
+          "canvasPixels": 98884,
+          "lastFrameAgeMs": 9,
+          "lastDrawAgeMs": 9
+        }
+      },
+      {
+        "local": true,
+        "source": "screen",
+        "metrics": {
+          "framesReceived": 1432,
+          "framesDrawn": 1428,
+          "framesSuperseded": 4,
+          "framesDroppedNoConsumer": 0,
+          "framesDroppedHidden": 0,
+          "framesDroppedStale": 0,
+          "drawFailures": 0,
+          "canvasAttachCount": 6,
+          "canvasDetachCount": 5,
+          "presentationResets": 0,
+          "rendererEpochChanges": 0,
+          "sourceWidth": 960,
+          "sourceHeight": 540,
+          "activeConsumers": 1,
+          "canvasPixels": 98230,
+          "lastFrameAgeMs": 10,
+          "lastDrawAgeMs": 9
+        }
+      }
+    ],
+    "processes": [
+      27752
+    ],
+    "participants": [
+      {
+        "actor": "native",
+        "identity": "69a784eab370",
+        "operation": "158ab664e503",
+        "connectionEpoch": "216c26302420",
+        "tracks": [
+          {
+            "source": 1,
+            "alias": "264450073fdc",
+            "muted": false
+          },
+          {
+            "source": 2,
+            "alias": "2b236357af98",
+            "muted": false
+          },
+          {
+            "source": 3,
+            "alias": "39d7eea7173a",
+            "muted": false
+          },
+          {
+            "source": 4,
+            "alias": "a5a33dc3f132",
+            "muted": false
+          }
+        ]
+      },
+      {
+        "actor": "observer",
+        "identity": "1b5dc4b6df89",
+        "operation": "d73cba71854b",
+        "connectionEpoch": "9622927dfd1d",
+        "tracks": [
+          {
+            "source": 1,
+            "alias": "dc23d96f8ba0",
+            "muted": false
+          },
+          {
+            "source": 2,
+            "alias": "227a2a9520fe",
+            "muted": true
+          }
+        ]
+      }
+    ],
+    "receiverVideo": [
+      {
+        "track": "30bb8eff9a3f",
+        "local": false,
+        "frames": 5051,
+        "width": 1280,
+        "height": 720
+      },
+      {
+        "track": "294310202641",
+        "local": true,
+        "frames": 422,
+        "width": 1280,
+        "height": 720
+      }
+    ]
+  },
+  "runtimeTransitions": [
+    {
+      "status": "recovering",
+      "epoch": 2,
+      "failure": "unexpected_exit",
+      "microphone": "off"
+    },
+    {
+      "status": "recovering",
+      "epoch": 2,
+      "microphone": "off"
+    },
+    {
+      "status": "recovering",
+      "epoch": 3,
+      "microphone": "off"
+    },
+    {
+      "status": "ready",
+      "epoch": 3,
+      "microphone": "off"
+    },
+    {
+      "status": "ready",
+      "epoch": 3,
+      "microphone": "starting"
+    },
+    {
+      "status": "ready",
+      "epoch": 3,
+      "microphone": "muted"
+    },
+    {
+      "status": "ready",
+      "epoch": 3,
+      "microphone": "off"
+    },
+    {
+      "status": "ready",
+      "epoch": 3,
+      "microphone": "starting"
+    },
+    {
+      "status": "ready",
+      "epoch": 3,
+      "microphone": "muted"
+    },
+    {
+      "status": "ready",
+      "epoch": 3,
+      "microphone": "starting"
+    },
+    {
+      "status": "ready",
+      "epoch": 3,
+      "microphone": "muted"
+    }
+  ],
+  "violations": []
+}

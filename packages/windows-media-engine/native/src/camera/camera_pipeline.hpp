@@ -19,9 +19,10 @@ class CameraPipeline final {
  public:
   explicit CameraPipeline(CameraReaderFactory = makeMediaFoundationCameraReader);
   ~CameraPipeline();
-  CameraFailure selectDevice(CameraDeviceRegistry&, std::optional<CameraDeviceId>, CameraProfile, bool allow_downgrade = false);
-  CameraFailure setDemand(bool publication, bool preview);
-  CameraFailure reconcile(CameraDeviceRegistry&, std::uint64_t registry_revision);
+  CameraFailure selectDevice(CameraDeviceRegistry&, std::optional<CameraDeviceId>, CameraProfile, bool allow_downgrade = false,
+                             std::stop_token cancellation = {});
+  CameraFailure setDemand(bool publication, bool preview, std::stop_token cancellation = {});
+  CameraFailure reconcile(CameraDeviceRegistry&, std::uint64_t registry_revision, std::stop_token cancellation = {});
   bool stop(std::chrono::steady_clock::time_point deadline) noexcept;
   CameraPipelineStats stats() const noexcept;
   std::shared_ptr<CameraFramePort> publication() const noexcept;
@@ -31,7 +32,7 @@ class CameraPipeline final {
   static void run(const std::shared_ptr<State>&) noexcept;
   bool onOwner() const noexcept;
   bool bind(CameraFramePort*, std::uint64_t generation, bool publication, bool preview);
-  CameraFailure openCandidate(const CameraEndpoint&, CameraProfile, bool allow_downgrade);
+  CameraFailure openCandidate(const CameraEndpoint&, CameraProfile, bool allow_downgrade, std::stop_token);
   CameraFailure closeActive();
   const std::thread::id owner_ = std::this_thread::get_id();
   CameraReaderFactory factory_;

@@ -46,6 +46,9 @@ export type DiagnosticLogRecord = {
   lane?: string
   operation?: string
   actionId?: string
+  // An immediate owner supplies this for symptoms of one specific failure.
+  // Incident reports alias it; time proximity alone never establishes a cause.
+  episodeId?: string
   nativeEventType?: string
   nativeSequence?: number
   stage?: string

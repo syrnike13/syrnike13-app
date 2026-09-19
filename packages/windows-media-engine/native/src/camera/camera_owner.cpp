@@ -51,6 +51,13 @@ void CameraOwner::apply(std::uint64_t revision, const CameraIntent& intent,
                         std::optional<std::uint64_t> room_generation) {
   std::lock_guard lock(mutex_);
   if (stopping_ || done_ || revision < desired_.revision) return;
+  const bool needed = publishes(intent, room_generation) || previews(intent);
+  const bool was_needed = publishes(desired_.intent, desired_.room_generation) || previews(desired_.intent);
+  if (needed != was_needed || intent.device_id != desired_.intent.device_id ||
+      intent.profile != desired_.intent.profile || intent.retry_revision != desired_.intent.retry_revision) {
+    capture_cancellation_.request_stop();
+    capture_cancellation_ = std::stop_source{};
+  }
   auto publication_epoch = desired_.publication_epoch;
   if (publishes(desired_.intent, desired_.room_generation) &&
       (!publishes(intent, room_generation) || desired_.room_generation != room_generation)) {
@@ -65,6 +72,7 @@ void CameraOwner::apply(std::uint64_t revision, const CameraIntent& intent,
 void CameraOwner::beginStop() {
   std::lock_guard lock(mutex_);
   stopping_ = true;
+  capture_cancellation_.request_stop();
   if (publication_) publication_->cancel();
   changed_.notify_one();
 }
@@ -95,6 +103,7 @@ void CameraOwner::run() noexcept {
   std::optional<std::uint64_t> publication_room;
   std::uint64_t publication_epoch = 0;
   Desired applied;
+  bool selection_pending = false;
   std::uint64_t device_revision = 0;
   std::optional<EngineFailure> problem, preview_problem;
   const auto stopPublication = [&] {
@@ -126,6 +135,7 @@ void CameraOwner::run() noexcept {
     auto catalog = registry->refresh();
     for (;;) {
       Desired desired;
+      std::stop_token cancellation;
       {
         std::unique_lock lock(mutex_);
         changed_.wait_for(lock, std::chrono::milliseconds(20), [&] {
@@ -134,13 +144,16 @@ void CameraOwner::run() noexcept {
         });
         if (stopping_) break;
         desired = desired_;
+        cancellation = capture_cancellation_.get_token();
       }
       if (registry->changed()) catalog = registry->refresh();
       const bool devices_changed = catalog.revision != device_revision;
-      const bool retry = desired.intent.state != applied.intent.state ||
+      const auto previous_problem = problem;
+      const auto previous_preview_problem = preview_problem;
+      const bool retry = selection_pending || desired.intent.state != applied.intent.state ||
           desired.intent.device_id != applied.intent.device_id || desired.intent.profile != applied.intent.profile ||
           desired.intent.retry_revision != applied.intent.retry_revision || devices_changed;
-      const bool changed = desired.intent != applied.intent ||
+      const bool changed = selection_pending || desired.intent != applied.intent ||
           desired.room_generation != applied.room_generation || devices_changed;
       const bool publish = publishes(desired.intent, desired.room_generation);
       const bool show_preview = previews(desired.intent);
@@ -174,7 +187,8 @@ void CameraOwner::run() noexcept {
           if (!pipeline) pipeline = std::make_unique<CameraPipeline>();
           // Failed candidate selection retains the previous healthy capture.
           // Only relevant input/retry/catalog changes reopen that candidate.
-          if (!problem || retry) check(pipeline->selectDevice(*registry, deviceId(desired.intent), profile(desired.intent), false));
+          if (!problem || retry)
+            check(pipeline->selectDevice(*registry, deviceId(desired.intent), profile(desired.intent), false, cancellation));
         } catch (CameraFailure) {
           problem = EngineFailure{"camera_input_failed", "Camera input transaction failed", "camera", true};
         } catch (...) {
@@ -183,8 +197,14 @@ void CameraOwner::run() noexcept {
         // Demand changes still apply to a healthy rollback capture when the
         // requested candidate failed. They do not spend another input retry.
         if (pipeline && (!problem || pipeline->stats().capture.state == CameraCaptureState::running) &&
-            pipeline->setDemand(publish, show_preview) != CameraFailure::none && !problem)
+            pipeline->setDemand(publish, show_preview, cancellation) != CameraFailure::none && !problem)
           problem = EngineFailure{"camera_input_failed", "Camera demand could not be applied", "camera", true};
+      }
+      if (cancellation.stop_requested()) {
+        problem = previous_problem;
+        preview_problem = previous_preview_problem;
+        selection_pending = true;
+        continue;
       }
       // Capture opening can block. Never install a publication for a Room or
       // demand which was superseded while that transaction was in progress.
@@ -245,6 +265,12 @@ void CameraOwner::run() noexcept {
       current.stopped = !pipeline && !preview && !publication;
       {
         std::lock_guard lock(mutex_);
+        if (cancellation.stop_requested()) {
+          problem = previous_problem;
+          preview_problem = previous_preview_problem;
+          selection_pending = true;
+          continue;
+        }
         // Preserve admission flags for a newer desired slot until it is applied.
         if (desired_.intent != desired.intent || desired_.room_generation != desired.room_generation) {
           if (publishes(desired_.intent, desired_.room_generation)) current.publication_stopped = false;
@@ -253,6 +279,7 @@ void CameraOwner::run() noexcept {
         snapshot_ = std::move(current);
         devices_ = catalog;
       }
+      selection_pending = false;
       applied = std::move(desired);
       device_revision = catalog.revision;
     }

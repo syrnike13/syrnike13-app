@@ -6,13 +6,14 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <stop_token>
 #include <thread>
 
 namespace syrnike::windows_media::camera {
 enum class CameraFailure {
   none, invalid_state, unavailable, unsupported_profile, unsupported_format,
   malformed_sample, device_removed, source_error, format_changed, no_frames,
-  start_timeout, flush_timeout, stop_timeout
+  start_timeout, flush_timeout, stop_timeout, cancelled
 };
 enum class CameraCaptureState { stopped, starting, running, failed };
 struct CameraOpenResult {
@@ -67,7 +68,7 @@ class CameraCapture final {
   CameraCapture(CameraEndpoint, CameraProfile, std::uint64_t generation, bool allow_downgrade,
                 CameraReaderFactory = makeMediaFoundationCameraReader);
   ~CameraCapture();
-  CameraFailure start();
+  CameraFailure start(std::stop_token cancellation = {});
   bool stop(std::chrono::steady_clock::time_point deadline) noexcept;
   CameraCaptureStats stats() const noexcept;
   std::shared_ptr<CameraFramePort> output() const noexcept;

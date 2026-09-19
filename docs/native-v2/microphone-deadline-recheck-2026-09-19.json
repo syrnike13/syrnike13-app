@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "scope": "microphone-no-progress-deadline-diagnostic",
+  "parentCommit": "712422091df1b671ecb5a94404898ef8e6602c2f",
+  "source": "packages/windows-media-engine/native/src/audio/microphone_capture.cpp",
+  "sourceBeforeSha256": "42dca2b04aee0e2d99d87a2b2ff37d8d04fff2c881102e1fadded12f3703e468",
+  "sourceAfterSha256": "b8675cda38307393da1deefc05bed3fc89350548311eca3bb10f8c805baa6868",
+  "fixedBinarySha256": "d5735067ff82a2110890e44f885cf9262ae698f52d2331a2b99ca25d457da8f7",
+  "before": [
+    {
+      "id": "microphone-no-progress",
+      "build": {
+        "commit": "diagnostic-71242209",
+        "configuration": "Debug",
+        "asan": true,
+        "msvc": 195136248
+      },
+      "passed": 53,
+      "required": 100,
+      "ownerChecksPassed": false
+    }
+  ],
+  "after": [
+    {
+      "id": "microphone-no-progress",
+      "build": {
+        "commit": "diagnostic-71242209",
+        "configuration": "Debug",
+        "asan": true,
+        "msvc": 195136248
+      },
+      "passed": 100,
+      "required": 100,
+      "warmup": 100,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "maximumIterationMs": 1115.59,
+      "resources": {
+        "baseline": {
+          "handles": 194,
+          "threads": 6
+        },
+        "final": {
+          "handles": 194,
+          "threads": 6
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      }
+    }
+  ],
+  "observedFailure": {
+    "expected": "no_progress",
+    "actual": "none",
+    "frames": 4,
+    "platformResult": 0,
+    "stopped": true,
+    "observationDeadlineMs": 1500
+  },
+  "fixture": {
+    "configuration": "Debug",
+    "asan": true,
+    "warmup": 100,
+    "measured": 100,
+    "stopDeadlineMs": 2000,
+    "changes": [
+      "Run no-progress directly so unrelated resource failures cannot prevent its execution.",
+      "Always stop before reporting the observed error and join result."
+    ]
+  },
+  "limitations": [
+    "Diagnostic executable, not a complete exact-commit qualification.",
+    "The original failing binary hash was not recorded before rebuilding.",
+    "Other native resource failures remain separate merge gates."
+  ]
+}

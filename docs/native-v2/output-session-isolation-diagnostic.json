@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "scope": "diagnostic-not-exact-commit",
+  "before": {
+    "exitCode": 1,
+    "message": "Product output inherited the muted default session",
+    "logSha256": "cd973eee94134dd9ca9de99cc24ca32c4834fe59f722453e7faa09c9b75eb4a1"
+  },
+  "after": {
+    "exitCode": 0,
+    "record": {
+      "id": "output-default-session-muted",
+      "build": {
+        "commit": "baa0c9af7d6265ad0abf9376f12dc6e386d01275",
+        "configuration": "Release",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "maximumIterationMs": 229.951,
+      "resources": {
+        "baseline": {
+          "handles": 250,
+          "threads": 9
+        },
+        "final": {
+          "handles": 250,
+          "threads": 9
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      }
+    },
+    "logSha256": "4eb40787d542160ab52c59d8a79e146ad89f67431962ca5e0779d61fb3ff5105",
+    "binarySha256": "aff3b2d4c4d7fa1ea002d736c705b2fee955a2b13a3a05f0e5bc62febbe1a88c"
+  }
+}

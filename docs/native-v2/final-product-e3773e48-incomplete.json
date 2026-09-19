@@ -1,0 +1,86 @@
+{
+  "applicationCommit": "e3773e48fad6dd92d63d71e0b591d5b12a2243ef",
+  "scope": "Incomplete final-product series; neither run qualifies its 100-cycle gate",
+  "backend": {
+    "scope": "Local API, events, voice ingress and corrected crond",
+    "hashes": [
+      "373cb6e7b8aaf87b4dce3a437ef35e835a367bb4a2878203c84e955bb2ecbca3  /target/debug/syrnike-delta",
+      "89eebe11e754ba9e9ee45809d3b9f4ebdef75f684b8ee0d51cdb57cb1f76ca39  /target/debug/syrnike-bonfire",
+      "4c77682a3f59be89b208677d6304b832ecc54be3342cc09f5b56e1b882547b8b  /target/debug/syrnike-voice-ingress",
+      "e579da36c38e8f7a033f29914da07013db7be95f73573c1394c7c75f0b447af8  /target/debug/syrnike-crond"
+    ]
+  },
+  "identity": {
+    "applicationFiles": 167,
+    "shutdownDrivers": 2,
+    "postRunApplicationAndDriverHashesMatched": true,
+    "postRunFourBackendHashesMatched": true
+  },
+  "timeline": {
+    "required": 100,
+    "passed": 8,
+    "failures": [
+      {
+        "iteration": 9,
+        "error": "Shutdown boundary failed"
+      }
+    ],
+    "inputsMatchedAfterEveryIteration": true,
+    "failureObservation": {
+      "rendererRequests": 1,
+      "rendererResponseStatuses": [
+        200
+      ],
+      "close": {
+        "elapsedMs": 7673.725299999118,
+        "originalProcessesExited": [
+          true,
+          true
+        ]
+      },
+      "limitation": "Kernel exit times were sampled only after Playwright close resolved; the original trace cannot separate process lifetime from automation completion latency."
+    },
+    "privateTraceSha256": "734939883d823c9ad3b353940cfbc951d7c46af317ca348fd6554be76bd8f839",
+    "privateMainJournalSha256": "fd0fa32505fb592a954bb2b293dd56b1ea374951d355f88cc03c557f0cfe49fb",
+    "privateReportSha256": "fa44ca01d261c6f094c40680283747f3ab8acd9d8877c010f9af3f6c4df5240e",
+    "summarySha256": "ede3c23f7fa2e36b8c00e91dd20cd0ac591dcb3a17c19bee232d257d4cea95dd"
+  },
+  "shutdown": {
+    "required": 100,
+    "completed": 22,
+    "passed": false,
+    "point": "sdk-microphone-unpublish",
+    "failedIteration": {
+      "point": "sdk-microphone-unpublish",
+      "call": 1,
+      "iteration": 23,
+      "passed": false,
+      "shutdownBudgetMs": 4900,
+      "failure": "shutdown_scenario_failed",
+      "forcedFixtureCleanup": false
+    },
+    "maximumSuccessfulShutdownMs": 1494.534800000023,
+    "summarySha256": "8581c16dc4a765019c69b800bbd2914a81ba7566252aeb58f4ebd7d58963b38c",
+    "limitation": "Setup failed before inventory and verified hold entry. The original harness retained a sanitized code only; the exception cause is not established. A later diagnostic adds private exception capture."
+  },
+  "shutdownBudgetMs": 4900,
+  "instrumentedShutdown": {
+    "required": 100,
+    "completed": 42,
+    "passed": false,
+    "failedIteration": {
+      "point": "sdk-microphone-unpublish",
+      "call": 1,
+      "iteration": 43,
+      "passed": false,
+      "shutdownBudgetMs": 4900,
+      "failure": "shutdown_scenario_failed",
+      "forcedFixtureCleanup": false
+    },
+    "observedFailure": "Playwright electron.launch exceeded 60000 ms after connecting both Node and browser DevTools sockets",
+    "stage": "launch; before product scenario, inventory and verified native hold",
+    "exceptionSha256": "3ca6de2f3882d67fa4d0b58fbbf215bdd85b3c5a5108cfbdd500577270baf9d3",
+    "summarySha256": "01674afbbf2131c098a6751f11468f75d1d18580d12cdaf85186b9a1f90c100e",
+    "caveat": "This identifies the stage of the second failure; it does not prove the earlier uncaptured exception was identical."
+  }
+}

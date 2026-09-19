@@ -1,0 +1,41 @@
+{
+  "applicationCommit": "e3773e48fad6dd92d63d71e0b591d5b12a2243ef",
+  "scope": "Automation launch initialization control, not native fault or shutdown qualification",
+  "versions": {
+    "playwright": "1.62.1",
+    "electron": "43.1.0"
+  },
+  "originalLaunch": {
+    "completed": 28,
+    "failedIteration": 29,
+    "timeoutMs": 60000,
+    "evidence": [
+      "Node and browser DevTools sockets both connected",
+      "All recorded CDP requests received responses",
+      "Page.getFrameTree returned an initial empty document",
+      "No Page.frameNavigated event was received during the capture",
+      "Renderer loaded the app and exchanged application WebSocket messages",
+      "Root Node Runtime.enable was never sent; ElectronApplication.initialize was not reached"
+    ],
+    "inference": "CRBrowser.connect remains waiting for the initial page to initialize; its first non-initial navigation promise has not been resolved.",
+    "privateProtocolSha256": "19f0015befb8695128124cdd4cefaec1486792e7737aafb2e321dacbcd64a988",
+    "privateExceptionSha256": "1d2359073c640aeb6be9b03454eb250aa251f8ac59569c111d030eb9fd8d5eaf"
+  },
+  "control": {
+    "change": "Preload the unmodified official Playwright Electron loader before the inspector arguments, using a private Windows command launcher",
+    "completed": 100,
+    "passed": true,
+    "timeoutMs": 60000,
+    "limitation": "Launch/firstWindow/close only. This does not exercise held native calls or prove the unexplained earlier shutdown latency is fixed.",
+    "resultsSha256": "974b0c54fe82c2663343d09ffa4dcbd8a850695093aaab4571e07a0f4d4f3e68",
+    "launcherSha256": "d293230c1b568a1e2b9ad808e6e04813ddaab2d860aeddef579b553ddd455bf3",
+    "loaderSha256": "8f4f2c20933e7bef2bbed9a1b455278ad1461aa919b0386f360aee5b2580149d",
+    "privateProtocolSha256": "a0b6c50120e69354a6901969a7e57ebc77d9e173b3933921b7022a675bf3f440"
+  },
+  "sources": [
+    "https://github.com/microsoft/playwright/blob/v1.62.1/packages/playwright-core/src/server/electron/electron.ts",
+    "https://github.com/microsoft/playwright/blob/v1.62.1/packages/playwright-core/src/server/electron/loader.ts",
+    "https://github.com/microsoft/playwright/blob/v1.62.1/packages/playwright-core/src/server/chromium/crBrowser.ts",
+    "https://github.com/microsoft/playwright/blob/v1.62.1/packages/playwright-core/src/server/chromium/crPage.ts"
+  ]
+}

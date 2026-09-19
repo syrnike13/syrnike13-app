@@ -71,6 +71,53 @@ function requestId(value: unknown) {
 }
 
 describe('MediaRuntimeSupervisor', () => {
+  it('fences diagnostic causes across 100 fatal host failures and replacements', async () => {
+    vi.useFakeTimers()
+    try {
+      const causes = new Set<string>()
+      for (let iteration = 0; iteration < 100; iteration += 1) {
+        const first = new FakeMediaAdapter()
+        const second = new FakeMediaAdapter()
+        const adapters = [first, second]
+        const supervisor = new MediaRuntimeSupervisor({
+          createAdapter: () => adapters.shift()!, restartDelaysMs: [10],
+        })
+        let nativeEventCause: string | undefined
+        supervisor.onEvent(() => { nativeEventCause = supervisor.getFailureEpisodeId() })
+        const start = supervisor.start()
+        first.ready()
+        await start
+        const fatal = {
+          type: 'event', protocolVersion: 4,
+          event: {
+            type: 'fatalEngineFailure', sequence: 1,
+            failure: { code: 'native_owner_stop_timeout', message: 'Owner did not join', stage: 'shutdown', retryable: true },
+          },
+        }
+        first.callbacks!.onMessage(fatal)
+        const cause = supervisor.getFailureEpisodeId()
+        expect(cause).toBeDefined()
+        expect(nativeEventCause).toBe(cause)
+        expect(supervisor.getSnapshot().status).toBe('recovering')
+        await vi.advanceTimersByTimeAsync(10)
+        expect(supervisor.getFailureEpisodeId()).toBe(cause)
+        second.ready()
+        expect(supervisor.getFailureEpisodeId()).toBeUndefined()
+        first.callbacks!.onMessage(fatal)
+        expect(supervisor.getFailureEpisodeId()).toBeUndefined()
+        second.unexpectedExit()
+        const secondCause = supervisor.getFailureEpisodeId()
+        expect(secondCause).toBeDefined()
+        expect(secondCause).not.toBe(cause)
+        causes.add(cause!)
+        causes.add(secondCause!)
+        expect(supervisor.getSnapshot().status).toBe('failed')
+        await supervisor.shutdown()
+      }
+      expect(causes.size).toBe(200)
+    } finally { vi.useRealTimers() }
+  })
+
   it('keeps concurrent shutdown callers waiting for retirement after a protocol failure', async () => {
     vi.useFakeTimers()
     try {
@@ -107,7 +154,9 @@ describe('MediaRuntimeSupervisor', () => {
       adapter.ready()
       await started
       adapter.callbacks?.onMessage({ invalid: true })
-      const restart = supervisor.start()
+      const restart = expect(supervisor.start()).rejects.toMatchObject({
+        failure: { code: 'media_host_recovering' },
+      })
       await vi.advanceTimersByTimeAsync(100)
       expect(createAdapter).toHaveBeenCalledTimes(1)
       confirmExit()
@@ -130,6 +179,9 @@ describe('MediaRuntimeSupervisor', () => {
     await started
     adapter.callbacks?.onMessage({ invalid: true })
     await expect(supervisor.start()).rejects.toMatchObject({
+      failure: { code: 'media_host_termination_failed' },
+    })
+    await expect(supervisor.retry()).rejects.toMatchObject({
       failure: { code: 'media_host_termination_failed' },
     })
     expect(createAdapter).toHaveBeenCalledTimes(1)
@@ -185,11 +237,53 @@ describe('MediaRuntimeSupervisor', () => {
       await vi.advanceTimersByTimeAsync(60_000)
       expect(adapters).toHaveLength(3)
       expect(supervisor.getSnapshot().status).toBe('failed')
+      const automaticStart = supervisor.start().catch(error => error)
+      expect(adapters).toHaveLength(3)
+      expect(await automaticStart).toMatchObject({ failure: { code: 'unexpected_exit' } })
+      const manualStart = supervisor.retry()
+      expect(adapters).toHaveLength(4)
+      adapters.at(-1)!.ready()
+      await manualStart
+      // Only explicit Retry replenishes the two-attempt automatic budget.
+      for (const delay of [10, 20]) {
+        adapters.at(-1)!.unexpectedExit()
+        await vi.advanceTimersByTimeAsync(delay)
+        adapters.at(-1)!.ready()
+      }
+      adapters.at(-1)!.unexpectedExit()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(adapters).toHaveLength(6)
+      expect(supervisor.getSnapshot().status).toBe('failed')
       await supervisor.shutdown()
     } finally {
       vi.useRealTimers()
     }
   })
+
+  it('does not let an ordinary start bypass the scheduled recovery backoff', async () => {
+    vi.useFakeTimers()
+    try {
+      const first = new FakeMediaAdapter()
+      const second = new FakeMediaAdapter()
+      const createAdapter = vi.fn().mockReturnValueOnce(first).mockReturnValue(second)
+      const supervisor = new MediaRuntimeSupervisor({ createAdapter, restartDelaysMs: [100] })
+      const started = supervisor.start()
+      first.ready()
+      await started
+      first.unexpectedExit()
+      const automaticStart = supervisor.start().catch(error => error)
+      expect(createAdapter).toHaveBeenCalledTimes(1)
+      expect(await automaticStart).toMatchObject({ failure: { code: 'media_host_recovering' } })
+      await vi.advanceTimersByTimeAsync(99)
+      expect(createAdapter).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(createAdapter).toHaveBeenCalledTimes(2)
+      second.ready()
+      second.unexpectedExit()
+      await supervisor.shutdown()
+    } finally { vi.useRealTimers() }
+  })
+
   it('routes handshake, ping, and bounded graceful shutdown', async () => {
     const adapter = new FakeMediaAdapter()
     const supervisor = new MediaRuntimeSupervisor({
@@ -270,6 +364,65 @@ describe('MediaRuntimeSupervisor', () => {
     })
     await shutdown
     vi.useRealTimers()
+  })
+
+  it('rejects old replies and events after a replacement even when request IDs collide', async () => {
+    const first = new FakeMediaAdapter()
+    const second = new FakeMediaAdapter()
+    const adapters = [first, second]
+    const supervisor = new MediaRuntimeSupervisor({
+      createAdapter: () => adapters.shift()!,
+      restartDelaysMs: [0],
+      requestId: () => 'reused-request',
+    })
+    const events = vi.fn()
+    supervisor.onEvent(events)
+
+    const started = supervisor.start()
+    first.ready()
+    await started
+    const oldPing = supervisor.ping()
+    await vi.waitFor(() => expect(first.requests).toHaveLength(1))
+    first.unexpectedExit()
+    await expect(oldPing).rejects.toMatchObject({
+      failure: { code: 'unexpected_exit' },
+    })
+
+    await vi.waitFor(() => expect(second.callbacks).not.toBeNull())
+    second.ready()
+    await vi.waitFor(() => expect(supervisor.getSnapshot().status).toBe('ready'))
+
+    let freshSettled = false
+    const freshPing = supervisor.ping().finally(() => { freshSettled = true })
+    await vi.waitFor(() => expect(second.requests).toHaveLength(1))
+    expect(requestId(first.requests[0])).toBe(requestId(second.requests[0]))
+
+    first.reply('reused-request', { type: 'pong', engineState: 'failed' })
+    first.callbacks?.onMessage({
+      type: 'event',
+      protocolVersion: 4,
+      event: {
+        type: 'engineStateChanged', sequence: 1,
+        previous: 'running', state: 'failed',
+      },
+    })
+    await Promise.resolve()
+    expect(freshSettled).toBe(false)
+    expect(supervisor.getPendingRequestCount()).toBe(1)
+    expect(events).not.toHaveBeenCalled()
+    expect(supervisor.getSnapshot().status).toBe('ready')
+
+    second.reply('reused-request', { type: 'pong', engineState: 'running' })
+    await expect(freshPing).resolves.toEqual({
+      type: 'pong', engineState: 'running',
+    })
+
+    const shutdown = supervisor.shutdown()
+    await vi.waitFor(() => expect(second.requests).toHaveLength(2))
+    second.reply('reused-request', {
+      type: 'shutdownComplete', engineState: 'stopped',
+    })
+    await shutdown
   })
 
   it('rejects an incompatible handshake and stops after zero configured retries', async () => {
@@ -412,23 +565,37 @@ describe('MediaRuntimeSupervisor', () => {
     await started
     const pendingPing = supervisor.ping()
     await vi.waitFor(() => expect(first.requests).toHaveLength(1))
+    const cause = supervisor.getFailureEpisodeId(1)
+    const projectedCauses: (string | undefined)[] = []
+    supervisor.onEvent(event => projectedCauses.push(supervisor.getFailureEpisodeId(event.failure?.causeSequence)))
+    const nativeFailure = {
+      code: 'room_operation_unresponsive',
+      message: 'Room operation exceeded its independent deadline',
+      stage: 'room_disconnect', retryable: true, causeSequence: 1,
+    }
+    first.callbacks?.onMessage({
+      type: 'event', protocolVersion: 4,
+      event: { type: 'roomStateChanged', sequence: 1, revision: 1, state: 'failed', failure: nativeFailure },
+    })
+    first.callbacks?.onMessage({
+      type: 'event', protocolVersion: 4,
+      event: { type: 'engineStateChanged', sequence: 2, previous: 'running', state: 'failed', failure: nativeFailure },
+    })
+    expect(first.killed).toBe(false)
 
     first.callbacks?.onMessage({
       type: 'event',
       protocolVersion: 4,
       event: {
         type: 'fatalEngineFailure',
-        sequence: 1,
-        failure: {
-          code: 'room_operation_unresponsive',
-          message: 'Room operation exceeded its independent deadline',
-          stage: 'room_disconnect',
-          retryable: true,
-        },
+        sequence: 3,
+        failure: nativeFailure,
       },
     })
 
     expect(first.killed).toBe(true)
+    expect(projectedCauses).toEqual([cause, cause, cause])
+    expect(supervisor.getFailureEpisodeId()).toBe(cause)
     expect(supervisor.getSnapshot()).toMatchObject({
       status: 'recovering',
       failure: { code: 'room_operation_unresponsive' },
@@ -440,6 +607,7 @@ describe('MediaRuntimeSupervisor', () => {
     second.ready()
     await vi.waitFor(() => expect(supervisor.getSnapshot().status).toBe('ready'))
     expect(supervisor.getSnapshot().restartCount).toBe(1)
+    expect(supervisor.getFailureEpisodeId(1)).not.toBe(cause)
     expect(second.requests).toHaveLength(0)
 
     const shutdown = supervisor.shutdown()

@@ -1106,7 +1106,6 @@ pub async fn reconcile_server_voice_permissions(
             );
         }
     }
-
 }
 
 pub async fn reconcile_active_voice_permissions(
@@ -1433,55 +1432,7 @@ pub async fn reconcile_pending_voice_transport_cleanups(
     voice_client: &VoiceClient,
 ) -> Result<()> {
     for cleanup in list_voice_transport_cleanups().await? {
-        let participants = match async_std::future::timeout(
-            std::time::Duration::from_secs(2),
-            voice_client.list_room_participants(&cleanup.node, &cleanup.channel.id),
-        )
-        .await
-        {
-            Ok(Ok(Some(participants))) => participants,
-            Ok(Ok(None)) => {
-                if let Err(error) =
-                    complete_voice_transport_cleanup_with_membership(db, &cleanup).await
-                {
-                    syrnike_config::capture_internal_error!(&error);
-                    warn!(
-                        "Failed to complete voice cleanup {} for user {}: {error:?}",
-                        cleanup.operation_id, cleanup.user_id
-                    );
-                }
-                continue;
-            }
-            Ok(Err(_)) | Err(_) => continue,
-        };
-
-        let identities = participants
-            .iter()
-            .filter(|participant| voice_cleanup_matches_participant(&cleanup, participant))
-            .map(|participant| participant.identity.clone())
-            .collect::<Vec<_>>();
-        for identity in identities {
-            let _ = async_std::future::timeout(
-                std::time::Duration::from_secs(2),
-                voice_client.remove_user(&cleanup.node, &identity, &cleanup.channel.id),
-            )
-            .await;
-        }
-
-        let remaining = match async_std::future::timeout(
-            std::time::Duration::from_secs(2),
-            voice_client.list_room_participants(&cleanup.node, &cleanup.channel.id),
-        )
-        .await
-        {
-            Ok(Ok(Some(participants))) => participants,
-            Ok(Ok(None)) => Vec::new(),
-            Ok(Err(_)) | Err(_) => continue,
-        };
-        if !remaining
-            .iter()
-            .any(|participant| voice_cleanup_matches_participant(&cleanup, participant))
-        {
+        if retire_voice_transport(voice_client, &cleanup).await {
             if let Err(error) = complete_voice_transport_cleanup_with_membership(db, &cleanup).await
             {
                 syrnike_config::capture_internal_error!(&error);
@@ -1493,6 +1444,74 @@ pub async fn reconcile_pending_voice_transport_cleanups(
         }
     }
     Ok(())
+}
+
+// A crashed client's old SFU transport can outlive its retired authority.
+// Do not issue another credential until those exact transports are absent.
+// Keep failed cleanup records for the existing background reconciler.
+pub async fn retire_pending_user_voice_transports(
+    db: &Database,
+    voice_client: &VoiceClient,
+    user_id: &str,
+) -> Result<()> {
+    async_std::future::timeout(std::time::Duration::from_secs(6), async {
+        for cleanup in list_voice_transport_cleanups().await? {
+            if cleanup.user_id != user_id {
+                continue;
+            }
+            if !retire_voice_transport(voice_client, &cleanup).await {
+                return Err(create_error!(LiveKitUnavailable));
+            }
+            complete_voice_transport_cleanup_with_membership(db, &cleanup).await?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| create_error!(LiveKitUnavailable))?
+}
+
+async fn retire_voice_transport(
+    voice_client: &VoiceClient,
+    cleanup: &VoiceTransportCleanup,
+) -> bool {
+    let participants = match async_std::future::timeout(
+        std::time::Duration::from_secs(2),
+        voice_client.list_room_participants(&cleanup.node, &cleanup.channel.id),
+    )
+    .await
+    {
+        Ok(Ok(Some(participants))) => participants,
+        Ok(Ok(None)) => return true,
+        Ok(Err(_)) | Err(_) => return false,
+    };
+    let identities = participants
+        .iter()
+        .filter(|participant| voice_cleanup_matches_participant(cleanup, participant))
+        .map(|participant| participant.identity.as_str())
+        .collect::<Vec<_>>();
+    if identities.is_empty() {
+        return true;
+    }
+    for identity in identities {
+        let _ = async_std::future::timeout(
+            std::time::Duration::from_secs(2),
+            voice_client.remove_user(&cleanup.node, identity, &cleanup.channel.id),
+        )
+        .await;
+    }
+    // An RPC acknowledgement alone does not establish transport retirement.
+    match async_std::future::timeout(
+        std::time::Duration::from_secs(2),
+        voice_client.list_room_participants(&cleanup.node, &cleanup.channel.id),
+    )
+    .await
+    {
+        Ok(Ok(Some(remaining))) => !remaining
+            .iter()
+            .any(|participant| voice_cleanup_matches_participant(cleanup, participant)),
+        Ok(Ok(None)) => true,
+        Ok(Err(_)) | Err(_) => false,
+    }
 }
 
 async fn complete_voice_transport_cleanup_with_membership(
@@ -1896,6 +1915,63 @@ mod tests {
         assert_eq!(claims.connection_epoch, "epoch-a");
         assert_eq!(super::base_voice_identity(&identity), "user-a");
         assert!(super::voice_participant_claims("user-a:desktop-native:old:screen").is_none());
+    }
+
+    fn retired_transport() -> super::VoiceTransportCleanup {
+        let session = super::VoiceSession::new_awaiting_join(super::VoiceSessionCreate {
+            operation_id: "voice-op-550e8400-e29b-41d4-a716-446655440000".to_string(),
+            user_id: "user-a".to_string(),
+            channel: super::UserVoiceChannel {
+                id: "voice-a".to_string(),
+                server_id: None,
+            },
+            node: "node-a".to_string(),
+            rtc_engine: super::VoiceRtcEngine::WindowsNative,
+            client_instance_id: "client-a".to_string(),
+            connection_epoch: "epoch-a".to_string(),
+            self_mute: false,
+            self_deaf: false,
+            created_at: Timestamp::UNIX_EPOCH,
+            expires_at: Timestamp::UNIX_EPOCH + Duration::seconds(120),
+        });
+        super::VoiceTransportCleanup::from(&session)
+    }
+
+    #[test]
+    fn transport_retirement_cannot_remove_a_replacement_or_another_participant() {
+        let cleanup = retired_transport();
+        let participant = livekit_protocol::ParticipantInfo {
+            identity: super::voice_participant_identity(
+                &cleanup.user_id,
+                cleanup.rtc_engine,
+                &cleanup.client_instance_id,
+                &cleanup.operation_id,
+                &cleanup.connection_epoch,
+            ),
+            ..Default::default()
+        };
+        assert!(super::voice_cleanup_matches_participant(
+            &cleanup,
+            &participant
+        ));
+        let mut replacements = vec![cleanup.clone(); 5];
+        replacements[0].user_id = "user-b".to_string();
+        replacements[1].operation_id = "voice-op-550e8400-e29b-41d4-a716-446655440001".to_string();
+        replacements[2].rtc_engine = super::VoiceRtcEngine::Web;
+        replacements[3].client_instance_id = "client-b".to_string();
+        replacements[4].connection_epoch = "epoch-b".to_string();
+        for replacement in replacements {
+            assert!(!super::voice_cleanup_matches_participant(
+                &replacement,
+                &participant
+            ));
+        }
+    }
+
+    #[async_std::test]
+    async fn transport_retirement_does_not_treat_an_unavailable_node_as_absence() {
+        let voice_client = super::VoiceClient::new(HashMap::new());
+        assert!(!super::retire_voice_transport(&voice_client, &retired_transport()).await);
     }
 
     #[test]

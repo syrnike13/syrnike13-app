@@ -55,19 +55,23 @@ bool CameraPipeline::bind(CameraFramePort* input, std::uint64_t generation, bool
   }
   return true;
 }
-CameraFailure CameraPipeline::openCandidate(const CameraEndpoint& endpoint, CameraProfile profile, bool allow_downgrade) {
+CameraFailure CameraPipeline::openCandidate(const CameraEndpoint& endpoint, CameraProfile profile, bool allow_downgrade,
+                                          std::stop_token cancellation) {
+  if (cancellation.stop_requested()) return CameraFailure::cancelled;
   candidate_ = std::make_unique<CameraCapture>(endpoint, profile, ++next_generation_, allow_downgrade, factory_);
   ++stats_.opened;
-  const auto failure = candidate_->start();
-  if (failure != CameraFailure::none) {
+  const auto failure = candidate_->start(cancellation);
+  if (failure != CameraFailure::none || cancellation.stop_requested()) {
     ++stats_.rollbacks;
     if (!candidate_->stop(Clock::now() + std::chrono::seconds{5})) {
       stats_.retired = true;
       return stats_.failure = CameraFailure::stop_timeout;
     }
     candidate_.reset();
-    return stats_.failure = failure;
+    return stats_.failure = cancellation.stop_requested() ? CameraFailure::cancelled : failure;
   }
+  // Readiness and cancellation are checked before admitting the candidate to
+  // the serialized forwarding commit. Later intent is the next transaction.
   if (!bind(candidate_->output().get(), next_generation_, stats_.publication_demand, stats_.preview_demand))
     return stats_.failure = CameraFailure::stop_timeout;
   if (active_ && !active_->stop(Clock::now() + std::chrono::seconds{5})) {
@@ -82,8 +86,9 @@ CameraFailure CameraPipeline::openCandidate(const CameraEndpoint& endpoint, Came
   return stats_.failure = CameraFailure::none;
 }
 CameraFailure CameraPipeline::selectDevice(CameraDeviceRegistry& registry, std::optional<CameraDeviceId> id,
-                                           CameraProfile profile, bool allow_downgrade) {
+                                           CameraProfile profile, bool allow_downgrade, std::stop_token cancellation) {
   if (!onOwner() || !validCameraProfile(profile)) return CameraFailure::invalid_state;
+  if (cancellation.stop_requested()) return CameraFailure::cancelled;
   const auto endpoint = registry.resolve(id);
   if (!endpoint) return CameraFailure::unavailable;
   if (!stats_.publication_demand && !stats_.preview_demand) {
@@ -99,7 +104,7 @@ CameraFailure CameraPipeline::selectDevice(CameraDeviceRegistry& registry, std::
     allow_downgrade_ = allow_downgrade;
     return stats_.failure = CameraFailure::none;
   }
-  const auto failure = openCandidate(*endpoint, profile, allow_downgrade);
+  const auto failure = openCandidate(*endpoint, profile, allow_downgrade, cancellation);
   if (failure == CameraFailure::none) intent_ = id;
   return failure;
 }
@@ -112,23 +117,25 @@ CameraFailure CameraPipeline::closeActive() {
   active_.reset();
   return CameraFailure::none;
 }
-CameraFailure CameraPipeline::setDemand(bool publication, bool preview) {
+CameraFailure CameraPipeline::setDemand(bool publication, bool preview, std::stop_token cancellation) {
   if (!onOwner()) return CameraFailure::invalid_state;
+  if (cancellation.stop_requested()) return CameraFailure::cancelled;
   if ((publication || preview) && !selected_) return CameraFailure::unavailable;
   const bool old_publication = stats_.publication_demand, old_preview = stats_.preview_demand;
   stats_.publication_demand = publication;
   stats_.preview_demand = preview;
   if (!publication && !preview) return stats_.failure = closeActive();
   if (!active_) {
-    const auto failure = openCandidate(*selected_, profile_, allow_downgrade_);
+    const auto failure = openCandidate(*selected_, profile_, allow_downgrade_, cancellation);
     if (failure != CameraFailure::none) { stats_.publication_demand = old_publication; stats_.preview_demand = old_preview; }
     return failure;
   }
   if (!bind(active_->output().get(), active_->stats().generation, publication, preview)) return CameraFailure::stop_timeout;
   return CameraFailure::none;
 }
-CameraFailure CameraPipeline::reconcile(CameraDeviceRegistry& registry, std::uint64_t revision) {
+CameraFailure CameraPipeline::reconcile(CameraDeviceRegistry& registry, std::uint64_t revision, std::stop_token cancellation) {
   if (!onOwner()) return CameraFailure::invalid_state;
+  if (cancellation.stop_requested()) return CameraFailure::cancelled;
   const bool changed = revision != registry_revision_;
   registry_revision_ = revision;
   const auto endpoint = registry.resolve(intent_);
@@ -139,7 +146,7 @@ CameraFailure CameraPipeline::reconcile(CameraDeviceRegistry& registry, std::uin
   }
   if (changed && (stats_.publication_demand || stats_.preview_demand) &&
       (!active_ || !selected_ || selected_->symbolic_link != endpoint->symbolic_link))
-    return openCandidate(*endpoint, profile_, allow_downgrade_);
+    return openCandidate(*endpoint, profile_, allow_downgrade_, cancellation);
   return stats_.failure;
 }
 bool CameraPipeline::stop(Clock::time_point deadline) noexcept {

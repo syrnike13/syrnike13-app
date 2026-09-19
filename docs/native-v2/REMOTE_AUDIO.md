@@ -50,6 +50,18 @@ worker borrows raw PCM ports; final reference release happens on control owners.
 Graph changes cannot overwrite a concurrent output-switch command. A timed-out
 command retires the worker and retains both sides until it has joined.
 
+WASAPI output uses a dedicated, stable audio-session GUID. The SDK can mute its
+default process session when disabling built-in playback; joining that session
+made product output silent despite successful render submissions. Output
+replacement keeps the same dedicated session and its Windows mixer preferences.
+The product never unmutes the SDK session or changes endpoint volume.
+
+`remote_audio_lab session-isolation` mutes only the fixture process's default
+session, then verifies actual output through process loopback for 100 worker
+lifecycles. It also verifies that the disabled session stays muted and resources
+return to baseline. The previous default-session implementation fails this
+regression even though its rendered-reference samples contain the tone.
+
 ## Capacity and freshness
 
 All internal PCM is 48 kHz stereo, 480 frames (10 ms) per packet. A packet is

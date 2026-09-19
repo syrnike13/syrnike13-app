@@ -67,7 +67,9 @@ import {
 } from './desktop-observability'
 import { anonymousNativeMetricsReporter } from './native-runtime/anonymous-metrics'
 import { desktopVoiceService } from './voice/desktop-voice-service'
+import { armMediaProcessExitDeadline } from './media-runtime/media-utility-adapter'
 import {
+  APP_SHUTDOWN_TIMEOUT_MS,
   disposeWithinDesktopShutdownBudgetEffect,
   VOICE_SHUTDOWN_GRACE_MS,
 } from './shutdown-budget'
@@ -446,6 +448,7 @@ const disposeAppResourcesEffect = Effect.fn('desktop.disposeResources')(
     })
     yield* disposeWithinDesktopShutdownBudgetEffect({
       disposeVoice: desktopVoiceService.disposeEffect(),
+      forceExit: () => app.exit(0),
       onVoiceDisposeError: (error) => {
         logNativeVoiceDiagnostic('dispose_failed', {
           stage: 'voice_shutdown',
@@ -579,6 +582,11 @@ if (setupSingleInstance()) {
     if (shutdownComplete) return
     event.preventDefault()
     if (shutdownPromise) return
+    try {
+      armMediaProcessExitDeadline(APP_SHUTDOWN_TIMEOUT_MS)
+    } catch (error) {
+      console.error('[desktop] native process exit deadline failed', error)
+    }
     shutdownPromise = Effect.runPromise(
       disposeAppResourcesEffect().pipe(
         Effect.catchCause((cause) =>

@@ -1,8 +1,9 @@
 import * as ApiSchema from '@syrnike13/api-types/effect-schema'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import {
   DIAGNOSTIC_SCHEMA,
   DIAGNOSTIC_SCHEMA_VERSION,
+  DiagnosticCorrelationIdSchema,
   type DiagnosticEnvelope,
   type DiagnosticJsonValue,
   type SyrnikeDesktopApi,
@@ -45,6 +46,9 @@ const MAX_EVENTS = 800
 const MAX_EVENT_BYTES = 16 * 1024
 const MAX_EVENT_BUFFER_BYTES = 1_500 * 1024
 const MAX_STRING_LENGTH = 4_096
+// Main mints these random aliases; preserve only this exact correlation format.
+// Other identifiers and arbitrary long strings still pass through redaction.
+const isIncidentAlias = Schema.is(DiagnosticCorrelationIdSchema)
 const AUTOMATIC_COOLDOWN_MS = 10 * 60 * 1_000
 const SENSITIVE_KEY =
   /token|authorization|cookie|password|secret|identity|participant|user(?:id)?|channel(?:id)?|room|device|label|source(?:id)?|window|path|address|hostname|candidate/i
@@ -274,9 +278,9 @@ function sanitizeDiagnosticValue(
   const result: Record<string, DiagnosticJsonValue> = {}
   for (const [key, nested] of Object.entries(value).slice(0, 80)) {
     if (SENSITIVE_KEY.test(key) || key === '__proto__' || key === 'constructor') continue
-    const sanitized =
-      (key === 'triggerCode' || key === 'errorCode') &&
-      typeof nested === 'string'
+    const sanitized = (key === 'correlationId' || key === 'diagnosticCorrelationId') && isIncidentAlias(nested)
+      ? nested
+      : (key === 'triggerCode' || key === 'errorCode') && typeof nested === 'string'
         ? safeIdentifier(nested, 'unknown')
         : sanitizeDiagnosticValue(nested, depth + 1)
     if (sanitized !== undefined) result[safeIdentifier(key, 'field')] = sanitized

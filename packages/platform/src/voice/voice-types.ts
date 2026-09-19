@@ -1,5 +1,6 @@
 import { Option, Schema } from 'effect'
 import { DesktopCameraProfileSchema, type DesktopCameraProfile } from '../settings'
+import { DiagnosticCorrelationIdSchema } from '../diagnostics'
 
 const VoiceIdentifierSchema = Schema.String.check(
   Schema.isMinLength(1),
@@ -57,6 +58,7 @@ export type VoiceMediaError = Readonly<{
   retryable: boolean
   stage?: string
   hresult?: number
+  diagnosticCorrelationId?: string
 }>
 
 export type VoiceMediaSnapshot = Readonly<{
@@ -138,6 +140,7 @@ export type VoiceFailure = Readonly<{
   retryable: boolean
   stage?: string
   hresult?: number
+  diagnosticCorrelationId?: string
 }>
 
 export type VoiceSnapshot = Readonly<{
@@ -243,6 +246,7 @@ const VoiceFailureSchema = Schema.Struct({
   retryable: Schema.Boolean,
   stage: Schema.optional(Schema.String),
   hresult: Schema.optional(Schema.Int),
+  diagnosticCorrelationId: Schema.optional(DiagnosticCorrelationIdSchema),
 })
 
 const VoiceMediaSnapshotSchema = Schema.Struct({
