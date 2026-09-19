@@ -1,3 +1,8 @@
+# Per-project Caddy configs live outside this repository. The directory is mounted
+# into the container (see compose.override.yml on the server), so deploys that ship
+# this file never touch them.
+import /etc/caddy/sites/*.caddyfile
+
 {$HOSTNAME} {
 	route /app/serviceWorker.js {
 		header Content-Type "text/javascript; charset=utf-8"
