@@ -37,7 +37,11 @@ using namespace syrnike::windows_media::sources;
 using namespace std::chrono_literals;
 using syrnike::windows_media::probe::logResourceThreads;
 
-constexpr auto kResourceDeadline = 5s;
+// Windows may retire a thread-pool worker after the capture and its COM/D3D
+// objects have already been released. Keep the strict zero-growth assertion,
+// but give that asynchronous retirement enough time to settle before sampling
+// the final process baseline.
+constexpr auto kResourceDeadline = 15s;
 constexpr std::int64_t kHandleBudget = 4;
 
 void require(bool condition, const std::string& message) {
