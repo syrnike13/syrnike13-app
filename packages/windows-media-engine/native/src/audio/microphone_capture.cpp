@@ -205,7 +205,13 @@ void MicrophoneCapture::run(const std::shared_ptr<State>& state, AudioEndpoint e
     bool stopped_client_for_probe = false;
 #endif
     while (WaitForSingleObject(state->stop.value, 0) != WAIT_OBJECT_0) {
-      const auto wake = WaitForMultipleObjects(2, events, FALSE, 1000);
+      // Empty WASAPI wakes do not extend the no-progress deadline. Waiting a
+      // fresh second after each wake can postpone detection beyond the budget.
+      const auto remaining_progress = std::chrono::ceil<std::chrono::milliseconds>(
+          last_progress + std::chrono::seconds{1} - Clock::now()).count();
+      const auto wait_ms = static_cast<DWORD>(
+          (std::clamp)(remaining_progress, std::int64_t{0}, std::int64_t{1000}));
+      const auto wake = WaitForMultipleObjects(2, events, FALSE, wait_ms);
       if (wake == WAIT_OBJECT_0) break;
       if (wake == WAIT_TIMEOUT) throw Failure{MicrophoneCaptureFailure::no_progress, HRESULT_FROM_WIN32(WAIT_TIMEOUT)};
       if (wake != WAIT_OBJECT_0 + 1)

@@ -97,6 +97,97 @@
         }
       }
     ],
+    "configuredTransformActiveIdleClean": [
+      {
+        "id": "mf-active-idle",
+        "build": {
+          "commit": "712422091df1b671ecb5a94404898ef8e6602c2f",
+          "configuration": "Release",
+          "asan": false,
+          "msvc": 195136248
+        },
+        "passed": 100,
+        "required": 100,
+        "warmup": 0,
+        "ownerChecksPassed": true,
+        "resourceChecksPassed": false,
+        "maximumIterationMs": 2001.02,
+        "resources": {
+          "baseline": {
+            "handles": 507,
+            "threads": 28
+          },
+          "final": {
+            "handles": 509,
+            "threads": 23
+          },
+          "delta": {
+            "handles": 2,
+            "threads": -5
+          }
+        }
+      }
+    ],
+    "asanDxgiCurrentBuild": [
+      {
+        "id": "dxgi-access-lost",
+        "build": {
+          "commit": "712422091df1b671ecb5a94404898ef8e6602c2f",
+          "configuration": "Debug",
+          "asan": true,
+          "msvc": 195136248
+        },
+        "passed": 100,
+        "required": 100,
+        "warmup": 100,
+        "ownerChecksPassed": true,
+        "resourceChecksPassed": true,
+        "maximumIterationMs": 55.8697,
+        "resources": {
+          "baseline": {
+            "handles": 455,
+            "threads": 48
+          },
+          "final": {
+            "handles": 455,
+            "threads": 48
+          },
+          "delta": {
+            "handles": 0,
+            "threads": 0
+          }
+        }
+      },
+      {
+        "id": "dxgi-device-removed",
+        "build": {
+          "commit": "712422091df1b671ecb5a94404898ef8e6602c2f",
+          "configuration": "Debug",
+          "asan": true,
+          "msvc": 195136248
+        },
+        "passed": 100,
+        "required": 100,
+        "warmup": 100,
+        "ownerChecksPassed": true,
+        "resourceChecksPassed": true,
+        "maximumIterationMs": 67.0102,
+        "resources": {
+          "baseline": {
+            "handles": 455,
+            "threads": 48
+          },
+          "final": {
+            "handles": 455,
+            "threads": 48
+          },
+          "delta": {
+            "handles": 0,
+            "threads": 0
+          }
+        }
+      }
+    ],
     "encoderThreeBatches": [
       {
         "id": "encoder-no-output-batch-1",
@@ -659,6 +750,37 @@
           }
         }
       }
+    ],
+    "releaseMicrophoneCurrentBuild": [
+      {
+        "id": "microphone-active-device-loss",
+        "build": {
+          "commit": "712422091df1b671ecb5a94404898ef8e6602c2f",
+          "configuration": "Release",
+          "asan": false,
+          "msvc": 195136248
+        },
+        "passed": 100,
+        "required": 100,
+        "warmup": 1,
+        "ownerChecksPassed": true,
+        "resourceChecksPassed": false,
+        "maximumIterationMs": 79.4186,
+        "resources": {
+          "baseline": {
+            "handles": 194,
+            "threads": 6
+          },
+          "final": {
+            "handles": 194,
+            "threads": 7
+          },
+          "delta": {
+            "handles": 0,
+            "threads": 1
+          }
+        }
+      }
     ]
   },
   "encoderBatchInputs": [
@@ -679,6 +801,12 @@
       "sha256": "A1396CA33152D9D51FD206AECEB65D759DD247C711BECF479DEECA88A22F30A6"
     }
   ],
+  "cleanIdleInputs": {
+    "sourceCommit": "712422091df1b671ecb5a94404898ef8e6602c2f",
+    "binarySha256": "F11FEE2C1E17ABE455F21B38D2FD721F9197AEAC67B311DAA818EBEF217CAB2E",
+    "argument": "--configured-active-idle",
+    "kernelHandleTracing": false
+  },
   "threadCounts": {
     "encoder": [
       {
@@ -798,6 +926,22 @@
         "groups": {
           "remote_audio_lab.exe:0x2fa0a0:false": 1,
           "ntdll.dll:0x75bc0:false": 5
+        }
+      }
+    ],
+    "microphone": [
+      {
+        "phase": "microphone-active-device-loss-baseline",
+        "groups": {
+          "microphone_capture_allocation.exe:0x4eeb0:false": 1,
+          "ntdll.dll:0x75bc0:false": 5
+        }
+      },
+      {
+        "phase": "microphone-active-device-loss-final",
+        "groups": {
+          "microphone_capture_allocation.exe:0x4eeb0:false": 1,
+          "ntdll.dll:0x75bc0:false": 6
         }
       }
     ]

@@ -14,7 +14,7 @@ turn the whole phase green while another required row is failed or missing.
 ## #131 recovery matrix
 
 The native owner runner contains 42 required fault records and runs each record
-for 100 measured iterations. The final exact-head Release and Debug archives each
+for 100 measured iterations. The historical `445cff8a` Release and Debug archives each
 contain all 42 records at 100/100 owner checks with no missing rows. Release has
 three encoder resource failures; Debug has two. The ASan archive records the same
 strict resource issue plus any sanitizer-specific output resource observations;
@@ -93,7 +93,8 @@ descriptions; the 100/100 requirement is for deterministic fault/recovery rows.
 | `sdk-screen-audio-publish`, `sdk-screen-audio-unpublish` | PASS* | Recheck: 100/100 each, maximum 1,679.77 / 1,730.12 ms; unchanged gate, no fixture kills. |
 | `screen-audio-initialize`, `screen-audio-capture` | PASS* | Recheck: 100/100 each; unchanged 4,900 ms gate, no fixture kills. |
 | `wgc-window-frame-pool` | PASS* | Current-head `e3d6d7f2` Release/test-gates product entered the held WGC call and shut down the owned main and utility processes in 100/100 cycles with a fresh authenticated source-window fixture per cycle; see [`shutdown-wgc-e3d6d7f2-100.json`](shutdown-wgc-e3d6d7f2-100.json). The bounded 3/3 control is archived separately. *A single-fixture exploratory run stopped at 64/100 with `native_fault_entry_deadline`; it remains a raw diagnostic failure, not a waiver. |
-| Encoder, monitor WGC, window WGC start, and DXGI held calls | NOT RUN | No complete product shutdown row exists yet. |
+| `encoder-input`, `encoder-output`, `wgc-monitor-frame-pool` | PASS* | Recheck: 100/100 each, maximum 1,542.60 / 1,478.21 / 1,490.81 ms; unchanged 4,900 ms gate, no fixture kills. The archive preserves the failed encoder-input shutdown and subsequent pre-injection setup failures separately. |
+| Monitor WGC start, window WGC start, and DXGI held calls | NOT RUN | Qualification is in progress; no complete product shutdown row is archived yet. |
 
 ## #130 product cutover
 
@@ -128,8 +129,9 @@ evidence is:
 all sanitizer results, including encoder `+1`, output `+1/+8`, DXGI `+2/+1`, and
 one missing follow-on DXGI row after the strict first failure. The consolidated
 machine-readable decision boundary is [`encoder-resource-matrix-445cff8a.json`](encoder-resource-matrix-445cff8a.json).
-The production-equivalent configured-MFT control remains zero-growth in Release,
-Debug and ASan; all positive deltas remain raw failures, never waivers. Local
+The short configured-MFT control was zero-growth in Release, Debug and ASan;
+later duration-matched and active-idle controls below show platform growth.
+All positive deltas remain raw failures, never waivers. Local
 Debug and ASan camera rows pass 3/3. The current-head product now enters and closes the WGC held call in 100/100
 cycles when the authenticated source-window fixture is refreshed per cycle; the
 single-fixture exploratory failure remains archived as a raw diagnostic result.
@@ -152,7 +154,7 @@ Before the rebuild, the existing `e3d6d7f2` encoder binary again failed resource
 checks: clean start/stop retained 198 handles, and standalone same-thread MFT
 activation retained 200 over 100 iterations. The
 [diagnostic recheck](encoder-resource-recheck-2026-09-19.json) preserves these
-failures. A controlled overlay-disabled comparison remains pending; the installed
+failures. The controlled overlay-disabled comparison follows below; the installed
 overlay DLL alone does not establish the cause.
 
 The user subsequently disabled NVIDIA Overlay. The uninstrumented rebuilt
@@ -169,7 +171,8 @@ preserved. The product shutdown recheck then passed `output-initialize`,
 [compressed report](product-shutdown-recheck-2026-09-19.json.gz) includes every
 cycle, binary hashes, and matching before/after frontend, desktop, and backend
 inputs. The product's embedded native commit is `e3d6d7f2`; its production source
-matches this documentation-only head. Other held-call rows and the native
+matched `71242209`. The later microphone progress-deadline correction below is
+not included in those binaries. Other held-call rows and the native
 resource gate remain incomplete; this subset does not qualify merge.
 
 Further [resource controls](resource-diagnostics-2026-09-19.json) reproduced
@@ -188,3 +191,31 @@ The ASan output recheck also preserves resource failures, while its cancellation
 rows pass; the extra output thread starts at Windows `TppWorkerThread`.
 The strict process-resource gate remains failed. Diagnostic controls never
 waive failures or replace the full qualification matrix.
+
+The complete `71242209` [Release](native-faults-71242209-release.json) and
+[Debug/ASan](native-faults-71242209-asan.json) reruns passed 40/48 and 41/48 CTest
+entries respectively. Each emitted 38/42 required records; early failures left
+follow-on rows missing. Resource failures include encoder/output handles and
+microphone/output thread counts. The additional microphone thread in a separate
+diagnostic starts at Windows `TppWorkerThread`; its owner worker retired and its
+handles were balanced. This does not waive the process-resource check.
+
+The ASan microphone no-progress warmup also failed its behavioral deadline.
+A focused diagnostic reproduced no typed error after 1,500 ms, with four frames
+and a successful explicit stop. Inspection found that each empty WASAPI wake
+started another full 1,000 ms wait instead of consuming the remaining progress
+budget. The capture loop now waits only until the existing progress deadline.
+The fault probe always joins capture before reporting the actual failure, and
+continues to the no-progress row even if the device-loss resource row fails.
+The [focused ASan diagnostic](microphone-deadline-recheck-2026-09-19.json)
+passed 100/100 measured cycles after 100 warmups with the correction, maximum
+1,115.59 ms and zero handle/thread growth. The uncorrected diagnostic failed
+after 53 measured passes with no typed error yet and a successful explicit stop.
+This correction's focused validation remains separate from the earlier full suites.
+The ordinary `71242209` Debug run was interrupted for this correction and is not
+claimed as a completed qualification.
+
+CTest can print failure markers immediately after its padding dots. The evidence
+reader now retains those failed completion rows, covered by parser regression
+tests. The earlier raw archives are preserved unchanged; their missing CTest
+failure entries did not change their overall FAIL result.

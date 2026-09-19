@@ -35,17 +35,32 @@ void microphoneFaultMatrix() {
     while (capture.stats().failure == MicrophoneCaptureFailure::none && Clock::now() < deadline)
       (void)WaitForSingleObject(capture.frameEvent(), 20);
     const auto expected = stop_progress ? MicrophoneCaptureFailure::no_progress : MicrophoneCaptureFailure::device_lost;
-    if (capture.stats().failure != expected || !capture.stop(Clock::now() + std::chrono::seconds(2)))
+    const auto observed = capture.stats();
+    const bool stopped = capture.stop(Clock::now() + std::chrono::seconds(2));
+    if (observed.failure != expected || !stopped) {
+      std::cerr << "Microphone fault expected=" << static_cast<int>(expected)
+                << " observed=" << static_cast<int>(observed.failure)
+                << " platform=" << observed.platform_result << " frames=" << observed.frames
+                << " stopped=" << stopped << '\n';
       throw std::runtime_error("Microphone fault missed its typed deadline or failed to join");
+    }
     const auto result = capture.stats();
     if (result.frames < 3 || result.client_alive || result.thread_alive || result.mmcss_registered)
       throw std::runtime_error("Microphone fault retained its WASAPI or MMCSS owner");
   };
-  syrnike::windows_media::tests::repeatFault("microphone-active-device-loss", [&] { fault(false); });
+  std::exception_ptr first_failure;
+  try {
+    syrnike::windows_media::tests::repeatFault("microphone-active-device-loss", [&] { fault(false); });
+  } catch (...) { first_failure = std::current_exception(); }
   // Exercise the full-duration WASAPI/COM workload before comparing process
   // resources: the Windows thread pool adds a thread handle during its first
   // long batch. Owner clients, worker threads and MMCSS retire every iteration.
-  syrnike::windows_media::tests::repeatFault("microphone-no-progress", [&] { fault(true); }, 100);
+  try {
+    syrnike::windows_media::tests::repeatFault("microphone-no-progress", [&] { fault(true); }, 100);
+  } catch (...) {
+    if (!first_failure) first_failure = std::current_exception();
+  }
+  if (first_failure) std::rethrow_exception(first_failure);
 }
 }  // namespace
 int main(int argc, char** argv) try {

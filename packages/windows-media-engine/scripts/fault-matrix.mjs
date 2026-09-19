@@ -90,7 +90,7 @@ async function sha256(file) {
 }
 
 export function parseCTestCompletion(line) {
-  const completed = line.match(/^\s*\d+\/\d+\s+Test\s+#\s*\d+:\s+([a-zA-Z0-9_.-]+)\s+\.{2,}\s+(.+)$/)
+  const completed = line.match(/^\s*\d+\/\d+\s+Test\s+#\s*\d+:\s+([a-zA-Z0-9_.-]+)\s+\.{2,}\s*(.+)$/)
   return completed ? { name: completed[1], passed: /^Passed\b/.test(completed[2]) } : undefined
 }
 

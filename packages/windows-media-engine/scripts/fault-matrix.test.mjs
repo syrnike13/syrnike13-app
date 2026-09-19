@@ -42,6 +42,8 @@ test('recognizes padded CTest numbers and preserves failed or skipped results', 
     assert.deepEqual(parseCTestCompletion(` ${number}/100 Test #${number}: owner-fault ...   Passed  0.01 sec`),
       { name: 'owner-fault', passed: true })
     for (const status of ['***Failed', '***Timeout', '***Not Run', '***Skipped']) {
+      assert.deepEqual(parseCTestCompletion(` ${number}/100 Test #${number}: owner-fault ...${status}  0.01 sec`),
+        { name: 'owner-fault', passed: false })
       assert.deepEqual(parseCTestCompletion(` ${number}/100 Test #${number}: owner-fault ... ${status}  0.01 sec`),
         { name: 'owner-fault', passed: false })
     }
