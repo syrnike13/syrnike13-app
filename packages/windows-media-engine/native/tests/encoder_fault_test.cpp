@@ -343,7 +343,9 @@ void inspectPlatformResourceStage(unsigned stage, bool inline_worker = false) {
   if (error) std::rethrow_exception(error);
 }
 
-void inspectConfiguredPlatformResource() {
+enum class PlatformResourceControl { immediate, lifecycle_duration, active_idle };
+
+void inspectConfiguredPlatformResource(PlatformResourceControl control = PlatformResourceControl::immediate) {
   const auto com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
   if (FAILED(com)) throw std::runtime_error("MF configured probe COM start failed");
   struct ComScope { ~ComScope() { CoUninitialize(); } } com_scope;
@@ -401,6 +403,19 @@ void inspectConfiguredPlatformResource() {
       FAILED(transform->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0)))
     throw std::runtime_error("MF configured probe setup failed");
 
+  // Diagnostic control matches the no-output matrix's transform lifetime,
+  // without application workers, submitted frames, or recovery operations.
+  if (control == PlatformResourceControl::lifecycle_duration) std::this_thread::sleep_for(2s);
+  std::exception_ptr idle_failure;
+  if (control == PlatformResourceControl::active_idle) {
+    // Keep one configured transform alive without restarting it or submitting
+    // frames. Background platform growth is separate from recovery lifecycles.
+    // Preserve any resource failure while still performing the normal shutdown.
+    try {
+      syrnike::windows_media::tests::repeatFault("mf-active-idle", [] { std::this_thread::sleep_for(2s); }, 0);
+    } catch (...) { idle_failure = std::current_exception(); }
+  }
+
   // This is intentionally the same cleanup sequence as the production worker.
   Microsoft::WRL::ComPtr<IMFShutdown> shutdown;
   if (SUCCEEDED(transform.As(&shutdown))) (void)shutdown->Shutdown();
@@ -411,9 +426,25 @@ void inspectConfiguredPlatformResource() {
   shutdown.Reset();
   transform.Reset();
   manager.Reset();
+  if (idle_failure) std::rethrow_exception(idle_failure);
 }
 
 int main(int argc, char** argv) try {
+  if (argc == 2 && std::string_view(argv[1]) == "--no-output-batches") {
+    // Diagnostic only: each batch keeps its raw result and any failure makes
+    // the command fail. A later pass never waives an earlier resource failure.
+    int status = 0;
+    for (unsigned batch = 1; batch <= 3; ++batch) {
+      try {
+        syrnike::windows_media::tests::repeatFault(
+            "encoder-no-output-batch-" + std::to_string(batch), acceptedInputWithoutOutputTriggersTheRealDeadline);
+      } catch (const std::exception& error) {
+        status = 1;
+        std::cerr << error.what() << '\n';
+      }
+    }
+    return status;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--bitrate-unsupported") {
     syrnike::windows_media::tests::repeatFault("encoder-bitrate-unsupported", [] {
       failedBitrateControlPreservesWorkingPublication(false);
@@ -431,7 +462,17 @@ int main(int argc, char** argv) try {
     return 0;
   }
   if (argc == 2 && std::string_view(argv[1]) == "--configured-activation") {
-    syrnike::windows_media::tests::repeatFault("mf-configured-activation", inspectConfiguredPlatformResource);
+    syrnike::windows_media::tests::repeatFault("mf-configured-activation", [] { inspectConfiguredPlatformResource(); });
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--configured-duration-control") {
+    syrnike::windows_media::tests::repeatFault("mf-configured-duration-control", [] {
+      inspectConfiguredPlatformResource(PlatformResourceControl::lifecycle_duration);
+    });
+    return 0;
+  }
+  if (argc == 2 && std::string_view(argv[1]) == "--configured-active-idle") {
+    inspectConfiguredPlatformResource(PlatformResourceControl::active_idle);
     return 0;
   }
   if (argc == 2 && std::string_view(argv[1]) == "--resource-stages") {

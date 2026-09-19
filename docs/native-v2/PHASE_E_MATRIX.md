@@ -1,6 +1,6 @@
 # Phase E qualification matrix
 
-This is the status of Phase E on 2026-09-12. It covers issue #130 (product
+This is the status of Phase E on 2026-09-19. It covers issue #130 (product
 cutover) and issue #131 (bounded recovery). Issue #132 is deliberately outside
 this matrix.
 
@@ -86,11 +86,14 @@ descriptions; the 100/100 requirement is for deterministic fault/recovery rows.
 | `microphone-initialize`, `microphone-capture` | PASS* | 100/100 each; historical exact-input product archive. |
 | `sdk-microphone-publish`, `sdk-microphone-unpublish` | PASS* | 100/100 each; historical exact-input product archives. |
 | `camera-read-sample`, `sdk-camera-publish`, `sdk-camera-unpublish` | PASS* | 100/100 each; historical exact-input product archive. |
-| `output-initialize` | **FAIL / rerun required** | One 77/100 series failed at iteration 78; an independent control reached 100/100. |
-| `output-render` | **FAIL / rerun required** | 36/100; old harness recorded 4,944 ms while close itself was observed at 4,849 ms. |
-| `sdk-screen-publish` | **FAIL / rerun required** | 28 completed cases before the unchanged 4,900 ms gate failed. |
+| `output-initialize` | PASS* | Recheck: 100/100, maximum 4,464.53 ms; unchanged 4,900 ms gate, no fixture kills. Earlier 77/100 failure remains historical evidence. |
+| `output-render` | PASS* | Recheck: 100/100, maximum 4,123.21 ms; unchanged gate, no fixture kills. Earlier 36/100 failure remains historical evidence. |
+| `sdk-screen-publish` | PASS* | Recheck: 100/100, maximum 1,521.25 ms; unchanged gate, no fixture kills. Earlier 28-cycle failure remains historical evidence. |
+| `sdk-screen-unpublish` | PASS* | Recheck: 100/100, maximum 1,564.07 ms; unchanged gate, no fixture kills. |
+| `sdk-screen-audio-publish`, `sdk-screen-audio-unpublish` | PASS* | Recheck: 100/100 each, maximum 1,679.77 / 1,730.12 ms; unchanged gate, no fixture kills. |
+| `screen-audio-initialize`, `screen-audio-capture` | PASS* | Recheck: 100/100 each; unchanged 4,900 ms gate, no fixture kills. |
 | `wgc-window-frame-pool` | PASS* | Current-head `e3d6d7f2` Release/test-gates product entered the held WGC call and shut down the owned main and utility processes in 100/100 cycles with a fresh authenticated source-window fixture per cycle; see [`shutdown-wgc-e3d6d7f2-100.json`](shutdown-wgc-e3d6d7f2-100.json). The bounded 3/3 control is archived separately. *A single-fixture exploratory run stopped at 64/100 with `native_fault_entry_deadline`; it remains a raw diagnostic failure, not a waiver. |
-| Screen unpublish/audio, encoder, monitor WGC, and DXGI held calls | NOT RUN | No complete product shutdown row exists yet. |
+| Encoder, monitor WGC, window WGC start, and DXGI held calls | NOT RUN | No complete product shutdown row exists yet. |
 
 ## #130 product cutover
 
@@ -152,7 +155,36 @@ activation retained 200 over 100 iterations. The
 failures. A controlled overlay-disabled comparison remains pending; the installed
 overlay DLL alone does not establish the cause.
 
-The isolated Docker backend could not start because the known Windows AF_UNIX
-socket failure recurred (`sailor-ingest.sock`). Product shutdown runs were not
-started. Restoration of that environment and the encoder comparison remain
-prerequisites for continuing qualification; #131 is not ready to merge.
+The user subsequently disabled NVIDIA Overlay. The uninstrumented rebuilt
+encoder passed 100 activation-only and 100 clean start/stop cycles with zero
+resource growth. The no-output fault still retained one net handle after 100
+successful owner checks. The [overlay-disabled report](encoder-overlay-disabled-2026-09-19.json)
+preserves this unresolved failure. The overlay DLL was still loaded, so these
+results do not establish a DLL-level root cause.
+
+With the user's authorization, Docker's stale Windows socket directories were
+backed up and recreated. The existing isolated backend containers and data were
+preserved. The product shutdown recheck then passed `output-initialize`,
+`output-render`, and `sdk-screen-publish` at 100/100 each. The
+[compressed report](product-shutdown-recheck-2026-09-19.json.gz) includes every
+cycle, binary hashes, and matching before/after frontend, desktop, and backend
+inputs. The product's embedded native commit is `e3d6d7f2`; its production source
+matches this documentation-only head. Other held-call rows and the native
+resource gate remain incomplete; this subset does not qualify merge.
+
+Further [resource controls](resource-diagnostics-2026-09-19.json) reproduced
+background growth with a single configured MFT kept active for 200 seconds,
+without frames, encoder worker, repeated activation, or recovery. Its IO
+completion port count increased from seven to eight. Explicit flush/end-streaming
+did not remove the duration-matched control's growth. COM and MF startup/shutdown
+without activating a transform had zero handle growth over 100 duration-matched
+cycles. This isolates a background platform contribution, not the ownership of
+every handle observed in a fault run.
+
+Two separate three-batch encoder controls both passed all 300 behavioral
+iterations. In each, the first resource batch failed, the second was neutral,
+and the third grew again. A larger warmup is therefore not an established fix.
+The ASan output recheck also preserves resource failures, while its cancellation
+rows pass; the extra output thread starts at Windows `TppWorkerThread`.
+The strict process-resource gate remains failed. Diagnostic controls never
+waive failures or replace the full qualification matrix.

@@ -40,9 +40,9 @@ showed approximately two additional handles per cycle.
 
 The growing handle types are a mutex and section with names based on
 `{2627E361-24E2-4F14-99ED-A20D0685D8DD}_v22`. That string occurs in the installed
-NVIDIA overlay DLL. A control run with the overlay disabled has not yet been
-authorized/performed, so overlay involvement is a hypothesis rather than a
-confirmed root cause. No driver or overlay settings have been changed.
+NVIDIA overlay DLL. A control run with the overlay disabled had not yet been
+performed at that point, so overlay involvement remained a hypothesis. See the
+dated recheck below.
 
 Reproduce with `encoder_fault_tests --same-thread-activation`; use
 `--resource-stages` to isolate startup, enumeration and activation. The probe
@@ -96,6 +96,24 @@ installed overlay DLL versions remained `32.0.16.1074` and `11.0.9.251`.
 The [recheck artifact](docs/native-v2/encoder-resource-recheck-2026-09-19.json)
 records binary identity and raw results. This is diagnostic evidence from an
 existing build; it does not establish an overlay root cause or qualify a merge.
+
+Later on 2026-09-19, the user disabled NVIDIA Overlay. The rebuilt Release
+control passed 100 same-thread activations and 100 clean encoder lifecycles
+with zero handle/thread growth. The no-output fault still retained one net
+handle after 100 successful behavioral iterations. `nvspcap64.dll` remained
+loaded in the test process. The [overlay-disabled controls](docs/native-v2/encoder-overlay-disabled-2026-09-19.json)
+therefore isolate the large growth from the remaining resource failure without
+claiming that the DLL was absent or identifying the remaining handle's owner.
+
+A single configured hardware MFT held active for 200 seconds also added an IO
+completion port, without repeated activation, submitted frames, application
+encoder workers or recovery. The duration-matched configured-MFT control retained
+resources even with explicit flush/end-streaming. COM and MF startup/shutdown
+alone did not grow handles. These [controls](docs/native-v2/resource-diagnostics-2026-09-19.json)
+show that background platform activity can change the process counters independently
+of recovery. They do not attribute every positive delta or waive qualification.
+In two three-batch encoder runs the second batch was neutral but the third grew
+again, so additional warmup has not established a stable resource baseline.
 
 ## React development performance tracks accumulate during long media runs
 

@@ -210,10 +210,21 @@ int main() {
     realDuplication();
     // NVIDIA initializes a further nvwgf2umx worker during the first stress
     // batch. Warm the same 100-cycle workload before checking resource deltas.
-    tests::repeatFault("dxgi-access-lost", [] { realDuplication(DXGI_ERROR_ACCESS_LOST); }, 100);
-    tests::repeatFault("dxgi-device-removed", [] { realDuplication(DXGI_ERROR_DEVICE_REMOVED); }, 100);
-    std::cout << "DXGI compositor/duplication passed\n";
-    return 0;
+    // Preserve each row even when the other resource assertion fails. Both
+    // tests own and retire their backend; any failure still fails the suite.
+    int status = 0;
+    const auto run_fault = [&](const char* id, HRESULT failure) {
+      try {
+        tests::repeatFault(id, [=] { realDuplication(failure); }, 100);
+      } catch (const std::exception& error) {
+        status = 1;
+        std::cerr << error.what() << '\n';
+      }
+    };
+    run_fault("dxgi-access-lost", DXGI_ERROR_ACCESS_LOST);
+    run_fault("dxgi-device-removed", DXGI_ERROR_DEVICE_REMOVED);
+    if (status == 0) std::cout << "DXGI compositor/duplication passed\n";
+    return status;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
     return 1;

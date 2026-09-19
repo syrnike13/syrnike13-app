@@ -10,6 +10,7 @@
 #include <string_view>
 #include <thread>
 #include "probe/resource_thread_diagnostics.hpp"
+#include "resource_handle_diagnostics.hpp"
 
 namespace syrnike::windows_media::tests {
 
@@ -51,6 +52,7 @@ void repeatFault(std::string_view id, Test test, unsigned warmup = 1) {
   // may specify a representative driver warmup; it remains visible in evidence.
   for (unsigned iteration = 0; iteration < warmup; ++iteration) test();
   const auto baseline = faultResources();
+  logFaultHandleTypes(id, 0);
   probe::logResourceThreads((std::string(id) + "-baseline").c_str());
   double maximum_iteration_ms = 0;
   unsigned passed = 0;
@@ -60,6 +62,8 @@ void repeatFault(std::string_view id, Test test, unsigned warmup = 1) {
       test();
       maximum_iteration_ms = std::max(maximum_iteration_ms,
           std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
+      if (passed == 0 || passed == 1 || passed == 4 || passed == 9 || passed == 49)
+        logFaultHandleTypes(id, passed + 1);
     }
   } catch (...) {
     beginFaultEvidence(std::cerr, id);
@@ -68,6 +72,7 @@ void repeatFault(std::string_view id, Test test, unsigned warmup = 1) {
     throw;
   }
   const auto final = faultResources();
+  logFaultHandleTypes(id, 100);
   probe::logResourceThreads((std::string(id) + "-final").c_str());
   const bool resources_recovered = final.handles <= baseline.handles && final.threads <= baseline.threads;
   beginFaultEvidence(std::cout, id);
