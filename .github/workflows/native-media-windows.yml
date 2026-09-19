@@ -175,7 +175,7 @@ jobs:
           retention-days: 14
           path: packages/windows-media-engine/build/source-enumeration-report.json
       - name: Upload Native v2 Media Lab report
-        if: ${{ always() }}
+        if: ${{ always() && hashFiles('packages/native-media-lab/artifacts/latest-report.json') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: native-v2-media-lab-${{ github.sha }}
