@@ -112,9 +112,11 @@ descriptions; the 100/100 requirement is for deterministic fault/recovery rows.
 
 Phase E is **not qualified for merge yet**. The implementation and most recovery
 behavior are present, but the gate stays closed until the encoder resource result
-is formally isolated as an approved external machine blocker, the pending
-shutdown rows are rerun with the corrected harness, and the WGC product fixture
-can inject its operation. Final exact-head native evidence is now archived:
+is resolved or formally isolated as an approved external machine blocker and the
+remaining pending shutdown rows pass with the corrected harness. WGC window
+frame-pool injection and shutdown already have the 100/100 evidence cited below;
+fixture entry is no longer a blocker for that row. The latest archived native
+evidence is:
 [`native-faults-445cff8a-release.json`](native-faults-445cff8a-release.json) has
 42/42 complete rows with three encoder `+1`-handle failures;
 [`native-faults-445cff8a-debug.json`](native-faults-445cff8a-debug.json) has
@@ -131,3 +133,26 @@ single-fixture exploratory failure remains archived as a raw diagnostic result.
 The overall shutdown gate remains partial because the other required held-call
 rows still have failed or missing final-build evidence. The eight-hour and
 multi-machine work remains issue #132 and is not part of these blockers.
+
+## Recheck on 2026-09-19
+
+Release was rebuilt from `95db2f08`. The focused camera, microphone platform,
+output platform and output cancellation suites passed all four CTest entries
+and all 12 emitted fault rows at 100/100, with no positive resource deltas.
+The [focused report](focused-release-recheck-2026-09-19.json) includes the
+embedded build identities and binary hashes. Desktop tests passed 290/290 across
+39 files; desktop typecheck, preload verification and 11 evidence/shutdown
+harness tests also passed. This subset does not replace the full multi-config
+matrix or the missing product shutdown evidence.
+
+Before the rebuild, the existing `e3d6d7f2` encoder binary again failed resource
+checks: clean start/stop retained 198 handles, and standalone same-thread MFT
+activation retained 200 over 100 iterations. The
+[diagnostic recheck](encoder-resource-recheck-2026-09-19.json) preserves these
+failures. A controlled overlay-disabled comparison remains pending; the installed
+overlay DLL alone does not establish the cause.
+
+The isolated Docker backend could not start because the known Windows AF_UNIX
+socket failure recurred (`sailor-ingest.sock`). Product shutdown runs were not
+started. Restoration of that environment and the encoder comparison remain
+prerequisites for continuing qualification; #131 is not ready to merge.

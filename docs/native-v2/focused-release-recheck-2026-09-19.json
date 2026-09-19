@@ -1,0 +1,406 @@
+{
+  "schemaVersion": 1,
+  "scope": "issue-131-focused-release-camera-microphone-output-recheck",
+  "capturedAt": "2026-09-19T13:19:57.896Z",
+  "sourceCommit": "95db2f08ab29381db537310bc57c9ddc3add123c",
+  "configuration": "Release",
+  "asan": false,
+  "complete": true,
+  "passed": true,
+  "tests": [
+    {
+      "name": "camera",
+      "result": "Passed  239.75 sec"
+    },
+    {
+      "name": "microphone-platform-faults",
+      "result": "Passed  219.94 sec"
+    },
+    {
+      "name": "output-platform-faults",
+      "result": "Passed   99.55 sec"
+    },
+    {
+      "name": "output-cancellation-faults",
+      "result": "Passed   17.35 sec"
+    }
+  ],
+  "records": [
+    {
+      "id": "camera-candidate-cancelled",
+      "build": {
+        "commit": "95db2f08ab29381db537310bc57c9ddc3add123c",
+        "configuration": "Release",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "maximumIterationMs": 113.877,
+      "resources": {
+        "baseline": {
+          "handles": 110,
+          "threads": 4
+        },
+        "final": {
+          "handles": 110,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      }
+    },
+    {
+      "id": "camera-device-removed",
+      "build": {
+        "commit": "95db2f08ab29381db537310bc57c9ddc3add123c",
+        "configuration": "Release",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "maximumIterationMs": 139.052,
+      "resources": {
+        "baseline": {
+          "handles": 110,
+          "threads": 4
+        },
+        "final": {
+          "handles": 110,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      }
+    },
+    {
+      "id": "camera-reader-no-callback",
+      "build": {
+        "commit": "95db2f08ab29381db537310bc57c9ddc3add123c",
+        "configuration": "Release",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "maximumIterationMs": 2144.52,
+      "resources": {
+        "baseline": {
+          "handles": 110,
+          "threads": 4
+        },
+        "final": {
+          "handles": 110,
+          "threads": 1
+        },
+        "delta": {
+          "handles": 0,
+          "threads": -3
+        }
+      }
+    },
+    {
+      "id": "microphone-active-device-loss",
+      "build": {
+        "commit": "95db2f08ab29381db537310bc57c9ddc3add123c",
+        "configuration": "Release",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "maximumIterationMs": 76.3808,
+      "resources": {
+        "baseline": {
+          "handles": 199,
+          "threads": 6
+        },
+        "final": {
+          "handles": 199,
+          "threads": 6
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      }
+    },
+    {
+      "id": "microphone-no-progress",
+      "build": {
+        "commit": "95db2f08ab29381db537310bc57c9ddc3add123c",
+        "configuration": "Release",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "passed": 100,
+      "required": 100,
+      "warmup": 100,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "maximumIterationMs": 1068.79,
+      "resources": {
+        "baseline": {
+          "handles": 200,
+          "threads": 6
+        },
+        "final": {
+          "handles": 200,
+          "threads": 6
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      }
+    },
+    {
+      "id": "output-device-invalidated",
+      "build": {
+        "commit": "95db2f08ab29381db537310bc57c9ddc3add123c",
+        "configuration": "Release",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "maximumIterationMs": 99.7424,
+      "resources": {
+        "baseline": {
+          "handles": 212,
+          "threads": 6
+        },
+        "final": {
+          "handles": 212,
+          "threads": 6
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      }
+    },
+    {
+      "id": "output-no-progress",
+      "build": {
+        "commit": "95db2f08ab29381db537310bc57c9ddc3add123c",
+        "configuration": "Release",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "maximumIterationMs": 619.529,
+      "resources": {
+        "baseline": {
+          "handles": 212,
+          "threads": 6
+        },
+        "final": {
+          "handles": 211,
+          "threads": 4
+        },
+        "delta": {
+          "handles": -1,
+          "threads": -2
+        }
+      }
+    },
+    {
+      "id": "output-candidate-failure",
+      "build": {
+        "commit": "95db2f08ab29381db537310bc57c9ddc3add123c",
+        "configuration": "Release",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "maximumIterationMs": 58.8566,
+      "resources": {
+        "baseline": {
+          "handles": 211,
+          "threads": 4
+        },
+        "final": {
+          "handles": 211,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      }
+    },
+    {
+      "id": "output-retry-budget",
+      "build": {
+        "commit": "95db2f08ab29381db537310bc57c9ddc3add123c",
+        "configuration": "Release",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "maximumIterationMs": 250.048,
+      "resources": {
+        "baseline": {
+          "handles": 211,
+          "threads": 4
+        },
+        "final": {
+          "handles": 211,
+          "threads": 4
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      }
+    },
+    {
+      "id": "output-candidate-cancelled",
+      "build": {
+        "commit": "95db2f08ab29381db537310bc57c9ddc3add123c",
+        "configuration": "Release",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "maximumIterationMs": 59.544,
+      "resources": {
+        "baseline": {
+          "handles": 212,
+          "threads": 6
+        },
+        "final": {
+          "handles": 212,
+          "threads": 6
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      }
+    },
+    {
+      "id": "output-owner-latest-intent",
+      "build": {
+        "commit": "95db2f08ab29381db537310bc57c9ddc3add123c",
+        "configuration": "Release",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "maximumIterationMs": 72.8454,
+      "resources": {
+        "baseline": {
+          "handles": 212,
+          "threads": 6
+        },
+        "final": {
+          "handles": 212,
+          "threads": 6
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      }
+    },
+    {
+      "id": "output-owner-pending-shutdown",
+      "build": {
+        "commit": "95db2f08ab29381db537310bc57c9ddc3add123c",
+        "configuration": "Release",
+        "asan": false,
+        "msvc": 195136248
+      },
+      "passed": 100,
+      "required": 100,
+      "warmup": 1,
+      "ownerChecksPassed": true,
+      "resourceChecksPassed": true,
+      "maximumIterationMs": 51.6753,
+      "resources": {
+        "baseline": {
+          "handles": 212,
+          "threads": 6
+        },
+        "final": {
+          "handles": 212,
+          "threads": 6
+        },
+        "delta": {
+          "handles": 0,
+          "threads": 0
+        }
+      }
+    }
+  ],
+  "binaries": [
+    {
+      "name": "camera_tests.exe",
+      "sha256": "f33b23333d57f1c582fec84081061a5de7fb7938cdcb95c88ff95432e860919a"
+    },
+    {
+      "name": "microphone_capture_allocation.exe",
+      "sha256": "0e40d09100ee367b8ac567a4b98b8c6e50c6eaf0623cdacb1641338d636d0f48"
+    },
+    {
+      "name": "remote_audio_lab.exe",
+      "sha256": "30576a147b38cb2a1253dd6fd45994baa507e8b47019c125c3164821c9446c66"
+    }
+  ],
+  "otherChecks": {
+    "desktopTestFiles": 39,
+    "desktopTestsPassed": 290,
+    "harnessTestsPassed": 11,
+    "desktopTypecheck": "passed",
+    "preloadVerification": "passed",
+    "releaseBuild": "passed"
+  },
+  "limitations": [
+    "Focused subset only; not a complete native fault matrix or merge qualification.",
+    "Encoder resource controls still fail independently.",
+    "Product shutdown verification awaits restoration of the isolated Docker backend.",
+    "Documentation-only edits were present; tested source files were unchanged."
+  ]
+}

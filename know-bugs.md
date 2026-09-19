@@ -88,6 +88,15 @@ standalone MFT control remained zero-growth in Release, Debug and ASan. These
 positive deltas are preserved as strict failures and do not identify an
 application-owned leak or confirm an overlay root cause.
 
+On 2026-09-19, the existing `e3d6d7f2` Release binary again reproduced large
+positive deltas: clean encoder start/stop retained 198 handles over 100 cycles,
+and the standalone same-thread MFT activation control retained 200. Both passed
+their 100 behavioral iterations and failed resource assertions. Driver and
+installed overlay DLL versions remained `32.0.16.1074` and `11.0.9.251`.
+The [recheck artifact](docs/native-v2/encoder-resource-recheck-2026-09-19.json)
+records binary identity and raw results. This is diagnostic evidence from an
+existing build; it does not establish an overlay root cause or qualify a merge.
+
 ## React development performance tracks accumulate during long media runs
 
 The React development frontend retained about 2.5 million `PerformanceMeasure`
