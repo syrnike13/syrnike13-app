@@ -115,11 +115,14 @@ descriptions; the 100/100 requirement is for deterministic fault/recovery rows.
 
 ## Current gate
 
-Phase E is **not qualified for merge yet**. Pending-operation shutdown coverage
-is now complete across the archives below. The gate remains closed because the
-full native suites fail process-resource checks; no maintainer exception has
-been approved. A platform background contribution is established, but not every
-retained handle is attributed. The microphone behavioral deadline defect found
+On 2026-09-19, the user explicitly approved merging #131 after green CI with an
+exception for the local process-resource/full-suite gate: “Принять исключение и
+merge после CI”. Pending-operation shutdown coverage is complete across the
+archives below. Full native suites still fail process-resource checks and their
+raw results remain FAIL. A platform background contribution is established, but
+not every retained handle is attributed. The exception accepts that unresolved
+local resource risk for this merge; it does not establish zero resource growth
+or multi-machine qualification. The microphone behavioral deadline defect found
 in the latest ASan suite is corrected and its focused three-configuration
 evidence is recorded below. WGC window
 frame-pool injection and shutdown already have the 100/100 evidence cited below;
