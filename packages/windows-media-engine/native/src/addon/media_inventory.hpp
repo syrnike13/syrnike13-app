@@ -12,7 +12,13 @@ inline Napi::Object mediaInventory(Napi::Env env, const WindowsMediaRuntime& run
   meter.Set("inputLevel", microphone.pipeline.meter.input_level);
   meter.Set("gateThreshold", microphone.pipeline.meter.gate_threshold);
   meter.Set("gateOpen", microphone.pipeline.meter.gate_open);
+  meter.Set("speaking", microphone.pipeline.meter.speaking);
   inventory.Set("microphoneMeter", meter);
+  const auto active_speakers = runtime.activeSpeakers();
+  auto speakers = Napi::Array::New(env, active_speakers.size());
+  for (std::size_t index = 0; index < active_speakers.size(); ++index)
+    speakers.Set(static_cast<std::uint32_t>(index), active_speakers[index]);
+  inventory.Set("activeSpeakers", speakers);
   const auto audio = runtime.audioDevices();
   auto audio_catalog = Napi::Object::New(env);
   audio_catalog.Set("revision", static_cast<double>(audio.revision));

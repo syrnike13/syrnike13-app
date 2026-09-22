@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Effect, Fiber, Option, Schema } from 'effect'
 import {
   AppWindowIcon,
@@ -34,6 +34,11 @@ import {
 } from '#/features/voice/voice-broadcast-source'
 
 type SourceTab = 'screen' | 'applications'
+type LoadedSourcePage = {
+  requestId: string
+  page: number
+  sources: DesktopDisplayMediaSource[]
+}
 const SourceTabSchema = Schema.Literals(['screen', 'applications'])
 const DISPLAY_SOURCE_PAGE_SIZE = 24
 export const DISPLAY_SOURCE_VISUAL_CONCURRENCY = 4
@@ -100,6 +105,8 @@ export function DesktopScreenSharePicker() {
     null,
   )
   const [sources, setSources] = useState<DesktopDisplayMediaSource[]>([])
+  const [loadedPage, setLoadedPage] = useState<LoadedSourcePage | null>(null)
+  const loadedVisuals = useRef(new Set<string>())
   const [activeTab, setActiveTab] = useState<SourceTab>('screen')
   const [audioRequested, setAudioRequested] = useState(true)
   const [loading, setLoading] = useState(false)
@@ -115,6 +122,8 @@ export function DesktopScreenSharePicker() {
     return desktop.media.onRequest((nextRequest) => {
       setRequest(nextRequest)
       setSources([])
+      setLoadedPage(null)
+      loadedVisuals.current.clear()
       setActiveTab('screen')
       setAudioRequested(nextRequest.audioRequested)
       setPage(0)
@@ -131,6 +140,8 @@ export function DesktopScreenSharePicker() {
     let current = true
     setLoading(true)
     setSources([])
+    setLoadedPage(null)
+    loadedVisuals.current.clear()
     const fiber = Effect.runFork(
       Effect.tryPromise({
         try: () => desktop.media.getDisplaySources(requestId, page),
@@ -141,6 +152,7 @@ export function DesktopScreenSharePicker() {
             if (!current) return
             yield* Effect.sync(() => {
               setSources(nextPage.sources)
+              setLoadedPage({ requestId, page, sources: nextPage.sources })
               setHasPreviousPage(nextPage.hasPrevious)
               setHasNextPage(nextPage.hasNext)
               setActiveTab(
@@ -149,22 +161,6 @@ export function DesktopScreenSharePicker() {
                   : 'applications',
               )
               setLoading(false)
-            })
-            yield* loadDisplaySourceVisualsEffect({
-              requestId,
-              sources: nextPage.sources,
-              loadVisual: (activeRequestId, sourceId) =>
-                desktop.media.getDisplaySourceVisual(activeRequestId, sourceId),
-              isCurrent: () => current,
-              onVisual: (visual) => {
-                setSources((currentSources) =>
-                  current
-                    ? currentSources.map((source) =>
-                        source.id === visual.id ? visual : source,
-                      )
-                    : currentSources,
-                )
-              },
             })
           }),
         ),
@@ -188,6 +184,32 @@ export function DesktopScreenSharePicker() {
     }
   }, [desktop, page, requestId])
 
+  useEffect(() => {
+    if (!desktop || !requestId || loadedPage?.requestId !== requestId || loadedPage.page !== page) return
+    const visibleSources = loadedPage.sources.filter((source) =>
+      (activeTab === 'screen' ? source.type === 'screen' : source.type !== 'screen') &&
+      !loadedVisuals.current.has(source.id),
+    )
+    let current = true
+    const fiber = Effect.runFork(loadDisplaySourceVisualsEffect({
+      requestId,
+      sources: visibleSources,
+      loadVisual: (activeRequestId, sourceId) =>
+        desktop.media.getDisplaySourceVisual(activeRequestId, sourceId),
+      isCurrent: () => current,
+      onVisual: (visual) => {
+        loadedVisuals.current.add(visual.id)
+        setSources((currentSources) => currentSources.map((source) =>
+          source.id === visual.id ? visual : source,
+        ))
+      },
+    }))
+    return () => {
+      current = false
+      Effect.runFork(Fiber.interrupt(fiber))
+    }
+  }, [activeTab, desktop, loadedPage, page, requestId])
+
   const screenSources = useMemo(
     () => sources.filter((source) => source.type === 'screen'),
     [sources],
@@ -200,6 +222,7 @@ export function DesktopScreenSharePicker() {
     const activeRequest = request
     setRequest(null)
     setSources([])
+    setLoadedPage(null)
     setPage(0)
     setHasPreviousPage(false)
     setHasNextPage(false)
@@ -228,6 +251,7 @@ export function DesktopScreenSharePicker() {
         rememberDesktopScreenShareBroadcastSource(source)
         setRequest(null)
         setSources([])
+        setLoadedPage(null)
         setPage(0)
         setHasPreviousPage(false)
         setHasNextPage(false)

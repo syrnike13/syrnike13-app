@@ -39,6 +39,7 @@ const MAX_IDENTIFIER_LENGTH = protocolSpec.limits.maximumIdentifierLength
 const MAX_SERVER_URL_LENGTH = protocolSpec.limits.maximumServerUrlLength
 const MAX_ACCESS_TOKEN_LENGTH = protocolSpec.limits.maximumAccessTokenLength
 const MAX_REMOTE_VIDEO_DEMANDS = protocolSpec.limits.maximumRemoteVideoDemands
+const MAX_ACTIVE_SPEAKERS = protocolSpec.limits.maximumActiveSpeakers
 const MAX_DIAGNOSTIC_METRICS = protocolSpec.limits.maximumDiagnosticMetrics
 const MAX_DIAGNOSTIC_FIELDS = protocolSpec.limits.maximumDiagnosticFields
 const MAX_DIAGNOSTIC_NAME_LENGTH = protocolSpec.limits.maximumDiagnosticNameLength
@@ -184,6 +185,7 @@ const manifest = {
     shutdownDeadlineMs: SHUTDOWN_DEADLINE_MS,
     maxIdentifierLength: MAX_IDENTIFIER_LENGTH,
     maxRemoteVideoDemands: MAX_REMOTE_VIDEO_DEMANDS,
+    maxActiveSpeakers: MAX_ACTIVE_SPEAKERS,
     maxDiagnosticMetrics: MAX_DIAGNOSTIC_METRICS,
     maxDiagnosticFields: MAX_DIAGNOSTIC_FIELDS,
     maxRequestDeadlineMs: MAX_REQUEST_DEADLINE_MS,
@@ -226,6 +228,7 @@ inline constexpr std::size_t kMaximumIdentifierLength = ${MAX_IDENTIFIER_LENGTH}
 inline constexpr std::size_t kMaximumServerUrlLength = ${MAX_SERVER_URL_LENGTH};
 inline constexpr std::size_t kMaximumAccessTokenLength = ${MAX_ACCESS_TOKEN_LENGTH};
 inline constexpr std::size_t kMaximumRemoteVideoDemands = ${MAX_REMOTE_VIDEO_DEMANDS};
+inline constexpr std::size_t kMaximumActiveSpeakers = ${MAX_ACTIVE_SPEAKERS};
 inline constexpr std::size_t kMaximumDiagnosticMetrics = ${MAX_DIAGNOSTIC_METRICS};
 inline constexpr std::size_t kMaximumDiagnosticFields = ${MAX_DIAGNOSTIC_FIELDS};
 inline constexpr std::size_t kMaximumDiagnosticNameLength = ${MAX_DIAGNOSTIC_NAME_LENGTH};

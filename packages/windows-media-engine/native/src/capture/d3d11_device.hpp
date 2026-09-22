@@ -42,6 +42,7 @@ class D3d11DeviceOwner final {
   bool debug_layer_enabled_ = false;
 
   friend std::shared_ptr<D3d11DeviceOwner> processD3d11Device(bool);
+  friend std::shared_ptr<D3d11DeviceOwner> monitorD3d11Device(HMONITOR, bool);
 };
 
 // The first successful call selects the process device and adapter. Later
@@ -49,5 +50,10 @@ class D3d11DeviceOwner final {
 // production device.
 [[nodiscard]] std::shared_ptr<D3d11DeviceOwner> processD3d11Device(
     bool request_debug_layer);
+
+// DXGI duplication must use a device on the adapter that owns the monitor.
+// Returns the process device when the monitor is on that adapter.
+[[nodiscard]] std::shared_ptr<D3d11DeviceOwner> monitorD3d11Device(
+    HMONITOR monitor, bool request_debug_layer);
 
 }  // namespace syrnike::windows_media::capture

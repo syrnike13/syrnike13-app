@@ -58,7 +58,7 @@ if (
   manifest.electronVersion !== desktopRequire('electron/package.json').version ||
   manifest.napiVersion !== 8 ||
   JSON.stringify(manifest.capabilities) !==
-    JSON.stringify(['lifecycle', 'control-v4', 'diagnostics-v2']) ||
+    JSON.stringify(['lifecycle', `control-v${protocol.version}`, 'diagnostics-v2']) ||
   JSON.stringify(manifest.limits) !== JSON.stringify({
     controlQueue: protocol.limits.controlQueueCapacity,
     eventQueue: protocol.limits.eventQueueCapacity,
@@ -70,6 +70,7 @@ if (
     shutdownDeadlineMs: protocol.limits.shutdownDeadlineMs,
     maxIdentifierLength: protocol.limits.maximumIdentifierLength,
     maxRemoteVideoDemands: protocol.limits.maximumRemoteVideoDemands,
+    maxActiveSpeakers: protocol.limits.maximumActiveSpeakers,
     maxDiagnosticMetrics: protocol.limits.maximumDiagnosticMetrics,
     maxDiagnosticFields: protocol.limits.maximumDiagnosticFields,
     maxRequestDeadlineMs: protocol.limits.maximumRequestDeadlineMs,

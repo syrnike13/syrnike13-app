@@ -88,7 +88,7 @@ describe('NativeMediaRuntimeBanner', () => {
     ).toBeTruthy()
   })
 
-  it('hides healthy state and clears one screen warning on recovery and stop', async () => {
+  it('does not show a banner for a screen quality warning without a failure', async () => {
     const healthy: NativeMediaRuntimeState = { ...unavailableState, available: true, status: 'ready', failure: undefined }
     mediaRuntime.getRuntimeState.mockResolvedValue(healthy)
     render(<NativeMediaRuntimeBanner />)
@@ -98,7 +98,7 @@ describe('NativeMediaRuntimeBanner', () => {
       ...healthy, paths: { ...healthy.paths, screen: { revision: 1, state: 'running', warning: true } },
     }
     for (let index = 0; index < 3; index += 1) await act(async () => mediaRuntime.emit(warning))
-    expect(screen.getAllByText('Демонстрация может идти с задержками. Попробуйте снизить качество вручную')).toHaveLength(1)
+    expect(screen.queryByRole('status')).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
     await act(async () => mediaRuntime.emit(healthy))
     expect(screen.queryByRole('status')).toBeNull()

@@ -9,6 +9,7 @@ import {
   type MediaCredentialLease,
   type MediaDesiredStateAccepted,
   type MediaEngineSnapshot,
+  type MediaInventory,
   type MediaLifecycleEvent,
   type MediaLifecycleReady,
 } from '../media-runtime/contract'
@@ -109,7 +110,59 @@ async function join(runtime: Runtime, adapter: NativeRtcEngineAdapterV2, desired
   await connected
 }
 
+function speakingInventory(revision: number, speaking: boolean, activeSpeakers: string[]): MediaInventory {
+  return {
+    microphoneMeter: { revision, inputLevel: speaking ? 0.1 : 0, gateThreshold: 0.01, gateOpen: speaking, speaking },
+    activeSpeakers,
+    audio: { revision, status: 'ready', devices: [] },
+    cameras: { revision, status: 'ready', devices: [] },
+    sources: { revision, complete: true, ok: true, truncated: false, entries: [] },
+    video: { revision, publications: [] },
+  }
+}
+
 describe('NativeRtcEngineAdapterV2', () => {
+  it('projects local and remote speaking and clears local activity on mute and disconnect', async () => {
+    const runtime = new Runtime()
+    const adapter = new NativeRtcEngineAdapterV2(runtime)
+    const events: VoiceEngineEvent[] = []
+    adapter.subscribe(event => events.push(event))
+    const desired = {
+      ...createInitialVoiceMediaDesiredState(),
+      userMuted: false,
+      effectiveMuted: false,
+    }
+    await join(runtime, adapter, desired)
+    const revision = runtime.current.acceptedRevision!
+    runtime.current = {
+      ...runtime.current,
+      tracks: {
+        ...runtime.current.tracks,
+        microphone: { revision, state: 'running', warning: false },
+      },
+    }
+    for (const listener of runtime.snapshots) listener(runtime.current)
+
+    adapter.observeSpeakingInventory(speakingInventory(revision - 1, true, ['remote-user']))
+    expect(events.filter(event => event.type === 'speakingChanged')).toHaveLength(0)
+
+    adapter.observeSpeakingInventory(speakingInventory(revision, true, ['participant', 'remote-user']))
+    expect(events.at(-1)).toMatchObject({
+      type: 'speakingChanged', participantIdentities: ['remote-user', 'participant'],
+    })
+
+    adapter.updateDesiredMedia({ ...desired, userMuted: true, effectiveMuted: true })
+    expect(events.at(-1)).toMatchObject({
+      type: 'speakingChanged', participantIdentities: ['remote-user'],
+    })
+
+    await adapter.disconnect('leave')
+    expect(events.at(-1)).toMatchObject({
+      type: 'speakingChanged', participantIdentities: [],
+    })
+    await adapter.dispose()
+  })
+
   it('carries the native cause through both connect rejection and terminal projection', async () => {
     const runtime = new Runtime()
     const adapter = new NativeRtcEngineAdapterV2(runtime)

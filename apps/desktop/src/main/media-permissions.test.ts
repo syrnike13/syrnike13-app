@@ -111,7 +111,8 @@ describe('desktop media permissions', () => {
 function nativePickerFixture(count = 50) {
   let epoch = 1
   const inventory: MediaInventory = {
-    microphoneMeter: { revision: 0, inputLevel: 0, gateThreshold: 0, gateOpen: false },
+    microphoneMeter: { revision: 0, inputLevel: 0, gateThreshold: 0, gateOpen: false, speaking: false },
+    activeSpeakers: [],
     audio: { revision: 1, status: 'ready', devices: [] },
     cameras: { revision: 1, status: 'ready', devices: [] },
     video: { revision: 1, publications: [] },

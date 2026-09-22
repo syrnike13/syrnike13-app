@@ -253,7 +253,7 @@ add_library(media_product_runtime STATIC src/core/windows_media_runtime.cpp src/
 windows_media_target(media_product_runtime)
 target_include_directories(media_product_runtime PUBLIC src)
 target_link_libraries(media_product_runtime PUBLIC media_microphone_livekit media_output_owner
-  media_camera_owner media_screen_owner media_screen_audio_livekit media_video)
+  media_camera_owner media_screen_owner media_screen_audio_livekit media_video PRIVATE gdi32)
 
 add_executable(media_probe
   src/probe/media_probe.cpp

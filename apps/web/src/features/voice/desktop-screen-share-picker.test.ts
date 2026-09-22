@@ -166,14 +166,15 @@ describe('desktop screen share picker visual budget', () => {
 describe('desktop screen share picker paging UI', () => {
   it('keeps the normal one-page picker behavior and loads visuals lazily', async () => {
     const metadata = source('screen', { id: 'screen:1', name: 'Primary screen' })
+    const application = source('window', { id: 'window:2', name: 'Example app' })
     const getDisplaySources = vi.fn(async () => ({
-      sources: [metadata],
+      sources: [metadata, application],
       page: 0,
       hasPrevious: false,
       hasNext: false,
     }))
-    const getDisplaySourceVisual = vi.fn(async () => ({
-      ...metadata,
+    const getDisplaySourceVisual = vi.fn(async (_requestId: string, sourceId: string) => ({
+      ...(sourceId === metadata.id ? metadata : application),
       thumbnailDataUrl: 'data:image/bmp;base64,preview',
     }))
     platform.desktop = {
@@ -203,6 +204,15 @@ describe('desktop screen share picker paging UI', () => {
     await waitFor(() => expect(getDisplaySourceVisual).toHaveBeenCalledWith(
       'picker-1',
       'screen:1',
+    ))
+    expect(getDisplaySourceVisual).not.toHaveBeenCalledWith('picker-1', 'window:2')
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /Приложения/ }), {
+      button: 0,
+      ctrlKey: false,
+    })
+    await waitFor(() => expect(getDisplaySourceVisual).toHaveBeenCalledWith(
+      'picker-1',
+      'window:2',
     ))
     expect(screen.queryByRole('button', { name: 'Назад' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Далее' })).toBeNull()

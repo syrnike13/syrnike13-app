@@ -16,7 +16,8 @@ function fixture() {
     roomState: 'off', tracks: createInactiveMediaPaths(),
   }
   const inventory: MediaInventory = {
-    microphoneMeter: { revision: 1, inputLevel: 0, gateThreshold: 0, gateOpen: false },
+    microphoneMeter: { revision: 1, inputLevel: 0, gateThreshold: 0, gateOpen: false, speaking: false },
+    activeSpeakers: [],
     audio: { revision: 1, status: 'ready', devices: [] },
     cameras: { revision: 1, status: 'ready', devices: [] },
     video: { revision: 1, publications: [] },

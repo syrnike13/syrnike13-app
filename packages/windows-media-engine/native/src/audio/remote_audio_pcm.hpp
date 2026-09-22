@@ -19,7 +19,8 @@ struct RemoteAudioFrame {
   std::array<std::int16_t, kRemoteAudioSamples> samples{};
   std::uint64_t generation = 0;
   std::uint64_t sequence = 0;
-  // QPC domain, stamped at decoded ingress, before any application queue/wait.
+  // QPC domain. Input frames keep their decoded ingress time; mixed output
+  // frames start a new freshness window when the mixer creates them.
   std::int64_t decoded_timestamp_100ns = 0;
   bool discontinuity = false;
 };
@@ -43,6 +44,9 @@ class RemoteAudioPcmPort final {
   explicit RemoteAudioPcmPort(std::uint64_t generation, std::size_t capacity = kRemoteAudioQueueCapacity)
       : generation_(generation), capacity_(capacity), active_(capacity > 0 && capacity <= kRemoteAudioQueueCapacity) {}
   bool publish(const RemoteAudioFrame&) noexcept;
+  bool canAcceptFrame() const noexcept {
+    return active() && published_depth_.load(std::memory_order_relaxed) < capacity_;
+  }
   std::optional<RemoteAudioFrame> take(std::int64_t now_100ns,
                                        std::int64_t minimum_timestamp_100ns) noexcept;
   void retire() noexcept { active_.store(false, std::memory_order_release); }

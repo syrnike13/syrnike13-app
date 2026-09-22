@@ -212,10 +212,15 @@ void RemoteVideoTrack::run() noexcept {
           ++reader_ends_;
         });
       }
-      if (!frame || revision != revision_ ||
-          frame->timestamp_us <= last_timestamp ||
-          nowUs() - ingress_us > 250000)
+      if (!frame || revision != revision_) continue;
+      if (nowUs() - ingress_us > 250000) {
+        ++expired_;
         continue;
+      }
+      if (frame->timestamp_us <= 0) ++source_timestamp_unusable_;
+      // The SDK's decoded frame timestamp can be zero or use a remote clock.
+      // Presentation freshness is measured against our local steady clock.
+      const auto timestamp_us = (std::max)(ingress_us, last_timestamp + 1);
       const auto frame_width = static_cast<std::uint32_t>(frame->frame.width());
       const auto frame_height =
           static_cast<std::uint32_t>(frame->frame.height());
@@ -227,11 +232,15 @@ void RemoteVideoTrack::run() noexcept {
         width = frame_width;
         height = frame_height;
       }
-      last_timestamp = frame->timestamp_us;
-      auto lease = pool.upload(generation, width, height, frame->timestamp_us,
+      last_timestamp = timestamp_us;
+      auto lease = pool.upload(generation, width, height, timestamp_us,
                                {frame->frame.data(), frame->frame.dataSize()},
                                ingress_us);
-      if (!lease) continue;
+      if (!lease) {
+        ++upload_failed_;
+        continue;
+      }
+      ++uploaded_;
       lease->publication_id = requested ? requested->sid() : "";
       lease->participant_identity = participant_;
       std::optional<TextureLease> previous;

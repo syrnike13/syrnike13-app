@@ -1,10 +1,12 @@
 #pragma once
 
 #include "audio/remote_audio_mixer_worker.hpp"
+#include "audio/remote_speaker_activity.hpp"
 #include "livekit/livekit_room_transport.hpp"
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
 
@@ -16,6 +18,9 @@ struct RemoteAudioTracksStats {
   std::uint32_t reading = 0;
   bool failed = false;
   std::uint64_t sdk_dropped = 0, sdk_stale = 0;
+  std::uint64_t sdk_discontinuities = 0;
+  std::uint64_t app_overrun = 0, app_stale = 0;
+  std::uint64_t app_producer_contention = 0, app_consumer_contention = 0;
   std::uint64_t maximum_observed_sdk_queue = 0, maximum_observed_app_queue = 0;
 };
 
@@ -37,6 +42,7 @@ class RemoteAudioTracks final : public LiveKitRoomObserver {
   // overrides. User and screen-audio controls are independent by participant.
   bool configureMix(const OutputIntent&);
   void setDeafened(bool enabled);
+  std::vector<std::string> activeSpeakerIdentities() const;
   RemoteAudioTracksStats stats() const noexcept;
   void beginStop();
   void stop() override;
@@ -59,6 +65,7 @@ class RemoteAudioTracks final : public LiveKitRoomObserver {
     std::shared_ptr<RemoteAudioPcmPort> port;
     std::uint64_t generation = 0;
     bool failed = false;
+    RemoteSpeakerActivity::Clock::time_point speaking_until{};
   };
   bool desired(const Publication&) const;
   void addPublication(std::string_view participant, const std::shared_ptr<livekit::RemoteTrackPublication>& publication);
@@ -66,7 +73,7 @@ class RemoteAudioTracks final : public LiveKitRoomObserver {
   void clearRoom();
   void run() noexcept;
   RemoteAudioMixerWorker& mixer_;
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
   std::mutex join_mutex_;
   std::condition_variable changed_;
   std::shared_ptr<livekit::Room> room_;
@@ -81,7 +88,8 @@ class RemoteAudioTracks final : public LiveKitRoomObserver {
   std::atomic_uint64_t decoded_{0}, rejected_{0}, track_failures_{0};
   std::atomic_uint32_t reading_{0};
   std::atomic_bool failed_{false};
-  std::atomic_uint64_t sdk_dropped_{0}, sdk_stale_{0}, maximum_sdk_queue_{0}, maximum_app_queue_{0};
+  std::atomic_uint64_t sdk_dropped_{0}, sdk_stale_{0}, sdk_discontinuities_{0};
+  std::atomic_uint64_t maximum_sdk_queue_{0}, maximum_app_queue_{0};
   std::thread worker_;
 };
 }  // namespace syrnike::windows_media::audio

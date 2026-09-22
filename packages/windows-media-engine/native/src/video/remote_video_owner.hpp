@@ -15,7 +15,7 @@ struct RemoteVideoOwnerSnapshot {
   std::uint64_t inventory_revision = 0;
   std::vector<RemoteVideoPublication> publications;
   bool stopped = true;
-  std::array<DiagnosticMetric, 10> metrics{};
+  std::array<DiagnosticMetric, 14> metrics{};
 };
 
 // Bounded publication inventory and demanded decoder owners. SDK callbacks

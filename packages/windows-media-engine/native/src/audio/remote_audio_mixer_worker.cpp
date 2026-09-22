@@ -1,4 +1,5 @@
 #include "audio/remote_audio_mixer_worker.hpp"
+#include "audio/remote_audio_mixer_cadence.hpp"
 
 #include <windows.h>
 #include <avrt.h>
@@ -153,6 +154,7 @@ void RemoteAudioMixerWorker::run(const std::shared_ptr<State>& state) noexcept {
     due.QuadPart = -100'000;
     if (!SetWaitableTimer(timer.value, &due, 10, nullptr, nullptr, FALSE))
       throw std::runtime_error("Mixer timer start failed");
+    RemoteAudioMixerCadence cadence(Clock::now());
     RemoteAudioMixer mixer;
     RemoteAudioPcmPort* output = nullptr;
     std::int64_t minimum_timestamp = 0;
@@ -181,11 +183,14 @@ void RemoteAudioMixerWorker::run(const std::shared_ptr<State>& state) noexcept {
       } else if (wake != WAIT_OBJECT_0 + 3) {
         throw std::runtime_error("Mixer worker wait failed");
       }
-      // Process a due frame even during control traffic. Missed timer periods
-      // coalesce; there is no catch-up loop that could replay buffered audio.
+      // Process due audio even during control traffic. One extra frame can
+      // recover a missed timer period without replaying a long backlog.
       if (wake != WAIT_OBJECT_0 + 3 && WaitForSingleObject(timer.value, 0) != WAIT_OBJECT_0) continue;
-      const auto frame = mixer.mix(timestamp(), minimum_timestamp, output ? output->generation() : 0);
-      if (output) (void)output->publish(frame);
+      const auto frames_due = cadence.framesForWake(Clock::now());
+      for (unsigned index = 0; index < frames_due; ++index) {
+        const auto frame = mixer.mix(timestamp(), minimum_timestamp, output ? output->generation() : 0);
+        if (output) (void)output->publish(frame);
+      }
       const auto stats = mixer.stats();
       state->frames = stats.frames;
       state->source_frames = stats.source_frames;

@@ -240,6 +240,10 @@ void RemoteVideoOwner::run() noexcept {
         total.reader_starts += stats.reader_starts;
         total.reader_ends += stats.reader_ends;
         total.stale_decoded += stats.stale_decoded;
+        total.source_timestamp_unusable += stats.source_timestamp_unusable;
+        total.expired += stats.expired;
+        total.uploaded += stats.uploaded;
+        total.upload_failed += stats.upload_failed;
       }
       current.metrics = {{
         {"publications", static_cast<double>(publications.size())},
@@ -251,6 +255,10 @@ void RemoteVideoOwner::run() noexcept {
         {"reader_starts", static_cast<double>(total.reader_starts)},
         {"reader_ends", static_cast<double>(total.reader_ends)},
         {"stale_decoded", static_cast<double>(total.stale_decoded)},
+        {"source_timestamp_unusable", static_cast<double>(total.source_timestamp_unusable)},
+        {"expired", static_cast<double>(total.expired)},
+        {"uploaded", static_cast<double>(total.uploaded)},
+        {"upload_failed", static_cast<double>(total.upload_failed)},
         {"owner_creations", static_cast<double>(created)},
         {"owner_retirements", static_cast<double>(retired)},
       }};

@@ -28,13 +28,13 @@ struct DeviceCreation {
   ComPtr<ID3D11DeviceContext> context;
 };
 
-DeviceCreation createDevice(UINT flags) {
+DeviceCreation createDevice(UINT flags, IDXGIAdapter* adapter = nullptr) {
   DeviceCreation creation;
   constexpr std::array levels{D3D_FEATURE_LEVEL_11_1,
                               D3D_FEATURE_LEVEL_11_0};
   D3D_FEATURE_LEVEL selected_level{};
   creation.result = D3D11CreateDevice(
-      nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
+      adapter, adapter ? D3D_DRIVER_TYPE_UNKNOWN : D3D_DRIVER_TYPE_HARDWARE, nullptr,
       flags | D3D11_CREATE_DEVICE_BGRA_SUPPORT |
           D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
       levels.data(), static_cast<UINT>(levels.size()), D3D11_SDK_VERSION,
@@ -110,6 +110,60 @@ std::shared_ptr<D3d11DeviceOwner> processD3d11Device(
       std::move(creation.device), std::move(creation.context), luid,
       debug_enabled));
   return process.owner;
+}
+
+std::shared_ptr<D3d11DeviceOwner> monitorD3d11Device(
+    HMONITOR monitor, bool request_debug_layer) {
+  if (!monitor) throw std::runtime_error("D3D11 monitor is unavailable");
+  const auto process = processD3d11Device(false);
+  ComPtr<IDXGIFactory1> factory;
+  if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
+    throw std::runtime_error("DXGI adapter enumeration failed");
+  for (UINT adapter_index = 0;; ++adapter_index) {
+    ComPtr<IDXGIAdapter1> adapter;
+    const auto enumerated = factory->EnumAdapters1(adapter_index, &adapter);
+    if (enumerated == DXGI_ERROR_NOT_FOUND) break;
+    if (FAILED(enumerated)) throw std::runtime_error("DXGI adapter enumeration failed");
+    bool owns_monitor = false;
+    for (UINT output_index = 0;; ++output_index) {
+      ComPtr<IDXGIOutput> output;
+      const auto output_result = adapter->EnumOutputs(output_index, &output);
+      if (output_result == DXGI_ERROR_NOT_FOUND) break;
+      if (FAILED(output_result)) throw std::runtime_error("DXGI output enumeration failed");
+      DXGI_OUTPUT_DESC description{};
+      if (FAILED(output->GetDesc(&description)))
+        throw std::runtime_error("DXGI output description failed");
+      if (description.Monitor == monitor && description.AttachedToDesktop) {
+        owns_monitor = true;
+        break;
+      }
+    }
+    if (!owns_monitor) continue;
+
+    DXGI_ADAPTER_DESC1 description{};
+    if (FAILED(adapter->GetDesc1(&description)))
+      throw std::runtime_error("DXGI adapter identity failed");
+    const D3d11AdapterLuid luid{
+        description.AdapterLuid.LowPart, description.AdapterLuid.HighPart};
+    if (luid == process->adapterLuid()) return process;
+
+    bool debug_enabled = false;
+    DeviceCreation creation;
+    if (request_debug_layer) {
+      creation = createDevice(D3D11_CREATE_DEVICE_DEBUG, adapter.Get());
+      debug_enabled = SUCCEEDED(creation.result);
+    }
+    if (!debug_enabled) creation = createDevice(0, adapter.Get());
+    if (FAILED(creation.result))
+      throw std::runtime_error("D3D11 monitor adapter device creation failed");
+    ComPtr<ID3D10Multithread> multithread;
+    if (FAILED(creation.device.As(&multithread)))
+      throw std::runtime_error("D3D11 monitor multithread protection is unavailable");
+    (void)multithread->SetMultithreadProtected(TRUE);
+    return std::shared_ptr<D3d11DeviceOwner>(new D3d11DeviceOwner(
+        std::move(creation.device), std::move(creation.context), luid, debug_enabled));
+  }
+  throw std::runtime_error("Selected monitor has no DXGI output");
 }
 
 }  // namespace syrnike::windows_media::capture

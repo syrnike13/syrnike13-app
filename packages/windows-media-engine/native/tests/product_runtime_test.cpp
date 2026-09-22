@@ -20,31 +20,34 @@ void await(Predicate predicate, const char* message) {
   require(predicate(), message);
 }
 void thumbnails(WindowsMediaRuntime& runtime) {
-  std::string monitor;
+  std::vector<std::string> monitors;
   await([&] {
     const auto sources = runtime.screenSources();
-    const auto found = std::find_if(sources.enumeration.sources.begin(), sources.enumeration.sources.end(),
-        [](const auto& source) { return source.kind == sources::SourceKind::Monitor &&
-            source.availability == sources::SourceAvailability::Available; });
-    if (found != sources.enumeration.sources.end()) monitor = found->id;
-    return !monitor.empty();
+    monitors.clear();
+    for (const auto& source : sources.enumeration.sources)
+      if (source.kind == sources::SourceKind::Monitor &&
+          source.availability == sources::SourceAvailability::Available) monitors.push_back(source.id);
+    return !monitors.empty();
   }, "monitor enumeration for thumbnail");
-  std::uint64_t revision = 1;
-  sources::ThumbnailSnapshot image;
-  await([&] {
-    image = runtime.queryThumbnail(revision, monitor);
-    return image.state != sources::ThumbnailState::pending;
-  }, "thumbnail completion deadline");
-  require(image.state == sources::ThumbnailState::ready && image.pixels &&
-      image.pixels->size() == sources::kThumbnailBytes, "ready thumbnail pixels");
-  const auto& pixels = *image.pixels;
-  bool varied = false;
-  for (std::size_t offset = 4; offset < pixels.size(); offset += 4) {
-    require(pixels[offset + 3] == 255, "opaque thumbnail output");
-    varied = varied || pixels[offset] != pixels[0] || pixels[offset + 1] != pixels[1] || pixels[offset + 2] != pixels[2];
+  std::uint64_t revision = 0;
+  for (const auto& monitor : monitors) {
+    const auto request_revision = ++revision;
+    sources::ThumbnailSnapshot image;
+    await([&] {
+      image = runtime.queryThumbnail(request_revision, monitor);
+      return image.state != sources::ThumbnailState::pending;
+    }, "thumbnail completion deadline");
+    require(image.state == sources::ThumbnailState::ready && image.pixels &&
+        image.pixels->size() == sources::kThumbnailBytes, "ready thumbnail pixels");
+    const auto& pixels = *image.pixels;
+    bool varied = false;
+    for (std::size_t offset = 4; offset < pixels.size(); offset += 4) {
+      require(pixels[offset + 3] == 255, "opaque thumbnail output");
+      varied = varied || pixels[offset] != pixels[0] || pixels[offset + 1] != pixels[1] || pixels[offset + 2] != pixels[2];
+    }
+    require(varied, "neutral thumbnail readback contains visible content");
   }
-  require(varied, "neutral thumbnail readback contains visible content");
-  image = {};
+  const auto& monitor = monitors.front();
   runtime.queryThumbnail(++revision, {});
   for (unsigned cycle = 0; cycle < 16; ++cycle) {
     runtime.queryThumbnail(++revision, monitor);

@@ -16,6 +16,7 @@ import {
   mediaLifecycleError,
   type EngineDesiredState,
   type MediaEngineSnapshot,
+  type MediaInventory,
   type MediaLifecycleEvent,
   type MediaLifecycleFailure,
 } from '../media-runtime/contract'
@@ -164,6 +165,9 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
   private shutdownPromise: Promise<void> | null = null
   private waiter: RoomWaiter | null = null
   private terminalReported = false
+  private activeSpeakerIdentities: readonly string[] = []
+  private microphoneSpeaking = false
+  private speakingIdentities = new Set<string>()
 
   constructor(
     private readonly runtime: RuntimePort,
@@ -183,6 +187,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
             engineState: 'stopped', acceptedRevision: null, desiredState: null,
             roomState: 'off', tracks: createInactiveMediaPaths(),
           }
+          this.clearSpeakerObservations()
           for (const listener of this.snapshotListeners) listener(this.current)
         }
         this.emitAvailability()
@@ -208,6 +213,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     if (this.disposed) return Promise.reject(mediaLifecycleError('media_disposed', 'Media runtime has stopped', 'connect'))
     if (signal.aborted) return Promise.reject(new DOMException('Voice operation superseded', 'AbortError'))
     this.cancelWaiter()
+    this.clearSpeakerObservations()
     this.binding = { lease: structuredClone(lease), credentialLeaseId: this.newId(), revision: this.revision + 1 }
     this.desired = { ...desired }
     this.terminalReported = false
@@ -219,6 +225,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
   disconnect(_cause: VoiceDisconnectCause): Promise<void> {
     if (this.disposed) return this.shutdownPromise ?? Promise.resolve()
     this.cancelWaiter()
+    this.clearSpeakerObservations()
     this.binding = null
     this.warm = false
     this.remoteVideoDemand = []
@@ -233,6 +240,13 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     if (this.disposed) return
     this.desired = { ...desired }
     this.commitDesired()
+  }
+
+  observeSpeakingInventory(inventory: MediaInventory): void {
+    if (this.disposed || inventory.microphoneMeter.revision !== this.current.acceptedRevision) return
+    this.activeSpeakerIdentities = inventory.activeSpeakers
+    this.microphoneSpeaking = inventory.microphoneMeter.speaking
+    this.publishSpeaking()
   }
 
   updateRemoteAudioSettings(settings: VoiceRemoteAudioSettings): void {
@@ -313,6 +327,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
 
   dispose(): Promise<void> {
     if (this.shutdownPromise) return this.shutdownPromise
+    this.clearSpeakerObservations()
     this.disposed = true
     this.cancelWaiter()
     this.binding = null
@@ -329,6 +344,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     if (this.disposed) return
     this.latest = projectDesiredState(++this.revision, this.binding, this.desired,
       this.audio, this.retries, this.warm, this.meterDemand, this.preview, this.remoteVideoDemand)
+    this.publishSpeaking()
     this.scheduleFlush()
   }
 
@@ -493,6 +509,11 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
       },
     } : snapshot
     this.current = projected
+    if (projected.roomState !== 'connected') {
+      this.activeSpeakerIdentities = []
+      this.microphoneSpeaking = false
+    }
+    this.publishSpeaking()
     this.settleRoomWaiter()
     for (const kind of ['microphone', 'output', 'camera', 'screen', 'screen_audio'] satisfies VoiceMediaKind[]) {
       const path = projected.tracks[kind]
@@ -506,6 +527,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
   }
 
   private failRoom(failure: MediaLifecycleFailure): void {
+    this.clearSpeakerObservations()
     const projectedFailure = this.projectFailure(failure)
     if (this.waiter) {
       const waiter = this.waiter
@@ -523,6 +545,32 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     return episodeId
       ? { ...failure, diagnosticCorrelationId: getNativeDiagnosticCorrelationId(episodeId) }
       : failure
+  }
+
+  private clearSpeakerObservations(): void {
+    this.activeSpeakerIdentities = []
+    this.microphoneSpeaking = false
+    this.publishSpeaking()
+  }
+
+  private publishSpeaking(): void {
+    const next = new Set<string>()
+    if (this.binding && this.current.roomState === 'connected') {
+      const localIdentity = this.binding.lease.credential.participantIdentity
+      for (const identity of this.activeSpeakerIdentities) {
+        if (identity !== localIdentity) next.add(identity)
+      }
+      const microphone = this.latest?.microphone
+      if (this.microphoneSpeaking && microphone?.state === 'on' && !microphone.muted &&
+          (!microphone.pushToTalk || microphone.pushToTalkHeld) &&
+          this.current.tracks.microphone.state === 'running') {
+        next.add(localIdentity)
+      }
+    }
+    if (next.size === this.speakingIdentities.size &&
+        [...next].every(identity => this.speakingIdentities.has(identity))) return
+    this.speakingIdentities = next
+    this.emitBound({ type: 'speakingChanged', participantIdentities: [...next] })
   }
 
   private emitBound(event: BoundEvent): void {
@@ -555,6 +603,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
 type BoundEvent =
   | { type: 'terminalFailure'; failure: MediaLifecycleFailure }
   | { type: 'mediaState'; kind: VoiceMediaKind; media: { state: 'off' | 'starting' | 'running' | 'muted' | 'failed'; error?: MediaLifecycleFailure } }
+  | { type: 'speakingChanged'; participantIdentities: readonly string[] }
 
 function normalizeFailure(error: unknown): MediaLifecycleError {
   return error instanceof MediaLifecycleError ? error : mediaLifecycleError(

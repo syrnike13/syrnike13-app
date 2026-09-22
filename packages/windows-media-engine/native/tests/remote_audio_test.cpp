@@ -1,6 +1,8 @@
 #include "audio/remote_audio_pcm.hpp"
 #include "audio/remote_render_plan.hpp"
 #include "audio/remote_audio_mixer_worker.hpp"
+#include "audio/remote_audio_mixer_cadence.hpp"
+#include "audio/remote_speaker_activity.hpp"
 
 #include <atomic>
 #include <iostream>
@@ -29,6 +31,16 @@ void queueFreshness() {
   require(first_stale.publish(frame(2, 1000, 3'000'000)), "Recovery frame publish failed");
   const auto recovered = first_stale.take(3'000'000, 0);
   require(recovered && recovered->discontinuity, "Initial stale drop lost its discontinuity marker");
+  RemoteAudioPcmPort paced_port(1, 2);
+  require(paced_port.canAcceptFrame(), "Empty decoder port rejected a frame");
+  require(paced_port.publish(frame(1)) && paced_port.canAcceptFrame(),
+          "One queued frame incorrectly blocked decoder ingress");
+  require(paced_port.publish(frame(2)) && !paced_port.canAcceptFrame(),
+          "Full decoder port would drain and drop the next SDK frame");
+  require(paced_port.take(1'000'000, 0) && paced_port.canAcceptFrame(),
+          "Decoder ingress stayed blocked after mixer consumption");
+  paced_port.retire();
+  require(!paced_port.canAcceptFrame(), "Retired decoder port accepted audio");
   RemoteAudioPcmPort short_port(1, 2);
   for (std::uint64_t index = 1; index <= 4; ++index)
     require(short_port.publish(frame(index)), "Short port publish failed");
@@ -53,6 +65,36 @@ void queueFreshness() {
   port.retire();
   require(!port.take(4'100'000, 0) && !port.publish(frame(13)), "Retired track revived");
   require(port.stats().depth == 0, "Retired PCM reported as queued");
+}
+void receivedSpeechActivity() {
+  RemoteSpeakerActivity activity;
+  const auto start = RemoteSpeakerActivity::Clock::now();
+  std::array<std::int16_t, kRemoteAudioSamples> quiet{};
+  quiet.fill(20);
+  activity.observe(quiet, start);
+  require(!activity.speaking(start), "Quiet decoded PCM marked a remote speaker active");
+
+  std::array<std::int16_t, kRemoteAudioSamples> voice{};
+  voice.fill(1'000);
+  activity.observe(voice, start + std::chrono::milliseconds{10});
+  require(activity.speaking(start + std::chrono::milliseconds{10}),
+          "Decoded remote speech did not activate the indicator");
+  activity.observe(quiet, start + std::chrono::milliseconds{20});
+  require(activity.speaking(start + std::chrono::milliseconds{290}),
+          "Silence cleared the indicator between syllables");
+  require(!activity.speaking(start + std::chrono::milliseconds{310}),
+          "Remote indicator survived missing or silent PCM");
+}
+void mixerCadence() {
+  using namespace std::chrono_literals;
+  const auto start = RemoteAudioMixerCadence::Clock::now();
+  RemoteAudioMixerCadence cadence(start);
+  require(cadence.framesForWake(start + 10ms) == 1, "On-time mix produced extra audio");
+  require(cadence.framesForWake(start + 20ms) == 1, "On-time mix changed cadence");
+  require(cadence.framesForWake(start + 40ms) == 2, "One missed timer period was not recovered");
+  require(cadence.framesForWake(start + 50ms) == 1, "Recovered mix kept producing extra audio");
+  require(cadence.framesForWake(start + 250ms) == 2, "Long scheduling gap exceeded catch-up budget");
+  require(cadence.framesForWake(start + 260ms) == 1, "Long gap left playback debt behind");
 }
 void mixingAndControls() {
   RemoteAudioPcmPort left(1), right(2);
@@ -90,6 +132,18 @@ void mixingAndControls() {
   require(!mixer.setInputs(inputs), "Same PCM consumed twice");
   require(mixer.stats().maximum_age_100ns == 200'000 && mixer.stats().age_histogram[1] == 4,
           "Decoded-to-mix age accounting wrong");
+
+  RemoteAudioPcmPort older_source(3), renderer(4, 2);
+  RemoteAudioMixer staged_mixer;
+  const std::array staged_input{RemoteAudioMixInput{&older_source, 1.0f, false}};
+  require(staged_mixer.setInputs(staged_input), "Staged mixer config failed");
+  require(older_source.publish(frame(1, 1000, 1'000'000, 3)), "Older source publish failed");
+  const auto mixed = staged_mixer.mix(1'550'000, 0, 4);
+  require(mixed.decoded_timestamp_100ns == 1'550'000 && renderer.publish(mixed),
+          "Mixed output inherited the source queue's expired timestamp");
+  const auto played = renderer.take(1'850'000, 0);
+  require(played && played->samples[0] == 1000,
+          "Fresh mixed PCM was discarded after normal renderer scheduling");
 }
 void limiterAndRetirement() {
   RemoteAudioPcmPort port(1);
@@ -209,6 +263,8 @@ void mixerWorkerOwnershipAndCommands() {
 }  // namespace
 int main() try {
   queueFreshness();
+  receivedSpeechActivity();
+  mixerCadence();
   mixingAndControls();
   limiterAndRetirement();
   concurrentQueue();

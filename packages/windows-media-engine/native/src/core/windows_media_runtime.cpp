@@ -163,6 +163,28 @@ void WindowsMediaRuntime::run() noexcept {
       const auto microphone = microphone_.snapshot();
       const auto camera = camera_.snapshot();
       const auto screen = screen_.snapshot();
+      if (desired_.screen.state == ScreenIntentState::on) {
+        const auto& pipeline = screen.pipeline;
+        snapshot_.screen_video_metrics = std::array<DiagnosticMetric, 16>{{
+            {"quality_warning", pipeline.quality_warning ? 1.0 : 0.0},
+            {"decision_reason", static_cast<double>(pipeline.decision_reason)},
+            {"bitrate_available", pipeline.bitrate.available ? 1.0 : 0.0},
+            {"bitrate_outcome", static_cast<double>(pipeline.bitrate.outcome)},
+            {"bitrate_updates", static_cast<double>(pipeline.bitrate_updates)},
+            {"capture_frames", static_cast<double>(pipeline.capture_frames)},
+            {"converted", static_cast<double>(pipeline.converter.converted)},
+            {"encoder_submitted", static_cast<double>(pipeline.encoder.submitted)},
+            {"encoder_encoded", static_cast<double>(pipeline.encoder.encoded)},
+            {"capture_age_last_us", static_cast<double>(pipeline.capture_age_last_us)},
+            {"publish_age_last_us", static_cast<double>(pipeline.publish_age_last_us)},
+            {"available_outgoing_bitrate", static_cast<double>(
+                pipeline.network.available_outgoing_bitrate.value_or(0))},
+            {"network_backpressure_drops", static_cast<double>(pipeline.network_backpressure_drops)},
+            {"conversion_drops", static_cast<double>(pipeline.conversion_drops)},
+            {"encoder_rejections", static_cast<double>(pipeline.encoder_rejections)},
+            {"sender_superseded", static_cast<double>(pipeline.sender.superseded)},
+        }};
+      } else snapshot_.screen_video_metrics.reset();
       if (desired_.camera.state == CameraIntentState::off && desired_.screen.state == ScreenIntentState::off &&
           camera.stopped && screen.stopped) thumbnail_admission_.publicationDrained();
       const auto video = video_->snapshot();
@@ -229,6 +251,45 @@ void WindowsMediaRuntime::run() noexcept {
           {"pending_frames", static_cast<double>(microphone.sender.pending_frames)},
         }};
       } else snapshot_.microphone_metrics.reset();
+      if (desired_.output.state == OutputIntentState::on && room_generation_) {
+        const auto ingress = audio_->stats();
+        const auto mix = mixer_->stats();
+        const auto& render = output.output.active;
+        snapshot_.remote_audio_ingress_metrics = std::array<DiagnosticMetric, 13>{{
+          {"decoded", static_cast<double>(ingress.decoded)},
+          {"sdk_dropped", static_cast<double>(ingress.sdk_dropped)},
+          {"sdk_stale", static_cast<double>(ingress.sdk_stale)},
+          {"sdk_discontinuities", static_cast<double>(ingress.sdk_discontinuities)},
+          {"app_overrun", static_cast<double>(ingress.app_overrun)},
+          {"app_stale", static_cast<double>(ingress.app_stale)},
+          {"app_producer_contention", static_cast<double>(ingress.app_producer_contention)},
+          {"app_consumer_contention", static_cast<double>(ingress.app_consumer_contention)},
+          {"rejected", static_cast<double>(ingress.rejected)},
+          {"track_failures", static_cast<double>(ingress.track_failures)},
+          {"reading", static_cast<double>(ingress.reading)},
+          {"maximum_sdk_queue", static_cast<double>(ingress.maximum_observed_sdk_queue)},
+          {"maximum_app_queue", static_cast<double>(ingress.maximum_observed_app_queue)},
+        }};
+        snapshot_.remote_audio_output_metrics = std::array<DiagnosticMetric, 14>{{
+          {"submitted_frames", static_cast<double>(render.submitted_frames)},
+          {"consumed_frames", static_cast<double>(render.consumed_frames)},
+          {"stale_fragments", static_cast<double>(render.stale_fragments)},
+          {"input_queue_overrun", static_cast<double>(render.input_queue_overrun)},
+          {"input_queue_stale", static_cast<double>(render.input_queue_stale)},
+          {"underruns", static_cast<double>(render.underruns)},
+          {"delayed_wakes", static_cast<double>(render.delayed_wakes)},
+          {"maximum_wake_gap_us", static_cast<double>(render.maximum_wake_gap_100ns) / 10.0},
+          {"maximum_scheduled_age_us", static_cast<double>(render.maximum_scheduled_age_100ns) / 10.0},
+          {"mix_frames", static_cast<double>(mix.frames)},
+          {"mix_source_frames", static_cast<double>(mix.source_frames)},
+          {"mix_discontinuities", static_cast<double>(mix.discontinuities)},
+          {"mix_limited_frames", static_cast<double>(mix.limited_frames)},
+          {"output_committed", render.committed ? 1.0 : 0.0},
+        }};
+      } else {
+        snapshot_.remote_audio_ingress_metrics.reset();
+        snapshot_.remote_audio_output_metrics.reset();
+      }
       snapshot_.paths = {microphone.path, camera.path, screen.path, output.path,
                          audio_path, screen.preview_path, camera.preview_path, video.path};
       const bool audio_stopped = !audio_intent_ &&

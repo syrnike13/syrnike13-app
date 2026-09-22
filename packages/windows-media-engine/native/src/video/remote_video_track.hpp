@@ -13,6 +13,7 @@
 namespace syrnike::windows_media::video {
 struct RemoteVideoTrackStats {
   std::uint64_t decoded = 0, reader_starts = 0, reader_ends = 0, stale_decoded = 0;
+  std::uint64_t source_timestamp_unusable = 0, expired = 0, uploaded = 0, upload_failed = 0;
 };
 // One explicitly selected remote video owner. The Room transport owns this
 // delegate. SDK callbacks only replace bounded control values; subscription,
@@ -30,7 +31,8 @@ class RemoteVideoTrack final : public LiveKitRoomObserver {
   std::optional<TextureLease> takeFrame();
   std::uint64_t decoded() const { return decoded_.load(); }
   RemoteVideoTrackStats stats() const {
-    return {decoded_, reader_starts_, reader_ends_, stale_decoded_};
+    return {decoded_, reader_starts_, reader_ends_, stale_decoded_,
+            source_timestamp_unusable_, expired_, uploaded_, upload_failed_};
   }
   bool failed() const { return failed_.load(); }
   bool sdkConnected() const { return sdk_connected_.load(); }
@@ -62,6 +64,7 @@ class RemoteVideoTrack final : public LiveKitRoomObserver {
   std::atomic<std::uint64_t> revision_{0};
   std::atomic<std::uint64_t> decoded_{0};
   std::atomic<std::uint64_t> reader_starts_{0}, reader_ends_{0}, stale_decoded_{0};
+  std::atomic<std::uint64_t> source_timestamp_unusable_{0}, expired_{0}, uploaded_{0}, upload_failed_{0};
   std::atomic<std::uint64_t> generation_{0};
   std::atomic<bool> failed_{false};
   std::atomic<bool> sdk_connected_{false};

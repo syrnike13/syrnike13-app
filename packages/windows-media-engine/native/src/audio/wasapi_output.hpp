@@ -35,6 +35,8 @@ struct WasapiOutputStats {
   bool thread_alive = false;
   // Sample-weighted scheduled age, buckets <=10/20/30/40/50/60 ms and overflow.
   std::array<std::uint64_t, 7> scheduled_age_histogram{};
+  std::uint64_t input_queue_overrun = 0;
+  std::uint64_t input_queue_stale = 0;
 };
 
 // One endpoint and worker, independent of Room/microphone/mixer ownership.

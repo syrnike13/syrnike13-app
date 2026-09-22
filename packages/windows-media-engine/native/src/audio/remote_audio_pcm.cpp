@@ -111,8 +111,6 @@ RemoteAudioFrame RemoteAudioMixer::mix(std::int64_t now_100ns,
     ++stats_.age_histogram[(std::min)(bucket, stats_.age_histogram.size() - 1)];
     // Muted inputs are consumed too: unmute cannot expose a pre-mute backlog.
     if (deafened_ || input.muted) continue;
-    output.decoded_timestamp_100ns = (std::min)(output.decoded_timestamp_100ns,
-                                               frame->decoded_timestamp_100ns);
     for (std::size_t sample = 0; sample < mixed.size(); ++sample)
       mixed[sample] += static_cast<float>(frame->samples[sample]) * input.volume;
   }

@@ -31,7 +31,7 @@ class FakeMediaAdapter implements MediaUtilityAdapter {
   ready() {
     this.callbacks?.onMessage({
       type: 'ready',
-      protocolVersion: 4,
+      protocolVersion: 5,
       engineState: 'running',
       build: {
         commit: COMMIT_SHA,
@@ -44,7 +44,7 @@ class FakeMediaAdapter implements MediaUtilityAdapter {
   reply(requestId: string, result?: unknown) {
     this.callbacks?.onMessage({
       type: 'reply',
-      protocolVersion: 4,
+      protocolVersion: 5,
       requestId,
       ok: true,
       result,
@@ -88,7 +88,7 @@ describe('MediaRuntimeSupervisor', () => {
         first.ready()
         await start
         const fatal = {
-          type: 'event', protocolVersion: 4,
+          type: 'event', protocolVersion: 5,
           event: {
             type: 'fatalEngineFailure', sequence: 1,
             failure: { code: 'native_owner_stop_timeout', message: 'Owner did not join', stage: 'shutdown', retryable: true },
@@ -297,7 +297,7 @@ describe('MediaRuntimeSupervisor', () => {
     await vi.waitFor(() => expect(adapter.requests).toHaveLength(1))
     adapter.reply(requestId(adapter.requests[0]), {
       type: 'handshake',
-      protocolVersion: 4,
+      protocolVersion: 5,
       engineState: 'running',
       build: {
         commit: COMMIT_SHA,
@@ -400,7 +400,7 @@ describe('MediaRuntimeSupervisor', () => {
     first.reply('reused-request', { type: 'pong', engineState: 'failed' })
     first.callbacks?.onMessage({
       type: 'event',
-      protocolVersion: 4,
+      protocolVersion: 5,
       event: {
         type: 'engineStateChanged', sequence: 1,
         previous: 'running', state: 'failed',
@@ -517,7 +517,7 @@ describe('MediaRuntimeSupervisor', () => {
 
     adapter.callbacks?.onMessage({
       type: 'event',
-      protocolVersion: 4,
+      protocolVersion: 5,
       event: {
         type: 'roomStateChanged',
         sequence: 3,
@@ -574,18 +574,18 @@ describe('MediaRuntimeSupervisor', () => {
       stage: 'room_disconnect', retryable: true, causeSequence: 1,
     }
     first.callbacks?.onMessage({
-      type: 'event', protocolVersion: 4,
+      type: 'event', protocolVersion: 5,
       event: { type: 'roomStateChanged', sequence: 1, revision: 1, state: 'failed', failure: nativeFailure },
     })
     first.callbacks?.onMessage({
-      type: 'event', protocolVersion: 4,
+      type: 'event', protocolVersion: 5,
       event: { type: 'engineStateChanged', sequence: 2, previous: 'running', state: 'failed', failure: nativeFailure },
     })
     expect(first.killed).toBe(false)
 
     first.callbacks?.onMessage({
       type: 'event',
-      protocolVersion: 4,
+      protocolVersion: 5,
       event: {
         type: 'fatalEngineFailure',
         sequence: 3,

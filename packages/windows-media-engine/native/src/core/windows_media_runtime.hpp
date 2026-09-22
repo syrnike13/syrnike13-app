@@ -29,6 +29,8 @@ class WindowsMediaRuntime final : public MediaRuntime {
   }
   video::RemoteVideoOwnerSnapshot remoteVideo() const { return video_->snapshot(); }
   audio::MicrophoneOwnerSnapshot microphone() const { return microphone_.snapshot(); }
+  // Derived from fresh decoded remote microphone PCM, never from room speaker signaling.
+  std::vector<std::string> activeSpeakers() const { return audio_->activeSpeakerIdentities(); }
   std::vector<video::ExportedFrame> takeFrames() { return frames_.take(); }
   bool releaseFrame(const video::ExportRelease& release) { return frames_.release(release); }
   sources::ThumbnailSnapshot queryThumbnail(std::uint64_t revision, std::optional<std::string> source_id) {

@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "electron": {
     "utilityBootstrapMessage": "syrnike-media-host-bootstrap-v1"
   },
@@ -12,6 +12,7 @@
     "maximumServerUrlLength": 2048,
     "maximumAccessTokenLength": 16384,
     "maximumRemoteVideoDemands": 64,
+    "maximumActiveSpeakers": 64,
     "maximumAudioDevices": 128,
     "maximumCameraDevices": 64,
     "maximumScreenSources": 264,
@@ -46,8 +47,8 @@
     "engineDesiredState": ["revision", "room", "microphone", "camera", "screen", "output", "remoteVideoDemand", "rendererId"],
     "engineSnapshot": ["engineState", "acceptedRevision", "desiredState", "roomState", "roomFailure", "tracks"],
     "mediaSourceQuery": ["revision", "kind"],
-    "mediaInventory": ["audio", "cameras", "sources", "video", "microphoneMeter"],
-    "microphoneMeter": ["revision", "inputLevel", "gateThreshold", "gateOpen"],
+    "mediaInventory": ["audio", "cameras", "sources", "video", "microphoneMeter", "activeSpeakers"],
+    "microphoneMeter": ["revision", "inputLevel", "gateThreshold", "gateOpen", "speaking"],
     "exportedFrame": ["kind", "generation", "sequence", "slot", "revision", "rendererId", "publicationId", "participantIdentity", "width", "height", "timestamp", "ingressUs", "handle"],
     "frameRelease": ["generation", "sequence", "slot"],
     "thumbnailQuery": ["revision", "sourceId"],
@@ -172,26 +173,26 @@
     },
     "requests": [
       {
-        "type": "request", "protocolVersion": 4, "requestId": "fixture-thumbnail",
+        "type": "request", "protocolVersion": 5, "requestId": "fixture-thumbnail",
         "hostEpoch": 1, "deadlineMs": 1000,
         "command": { "type": "queryThumbnail", "query": { "revision": 1, "sourceId": null } }
       },
       {
-        "type": "request", "protocolVersion": 4, "requestId": "fixture-inventory",
+        "type": "request", "protocolVersion": 5, "requestId": "fixture-inventory",
         "hostEpoch": 1, "deadlineMs": 1000, "command": { "type": "queryInventory" }
       },
       {
-        "type": "request", "protocolVersion": 4, "requestId": "fixture-sources",
+        "type": "request", "protocolVersion": 5, "requestId": "fixture-sources",
         "hostEpoch": 1, "deadlineMs": 1000,
         "command": { "type": "querySources", "query": { "revision": 1, "kind": "all" } }
       },
       {
-        "type": "request", "protocolVersion": 4, "requestId": "fixture-frames",
+        "type": "request", "protocolVersion": 5, "requestId": "fixture-frames",
         "hostEpoch": 1, "deadlineMs": 1000, "command": { "type": "queryFrames", "releases": [] }
       },
       {
         "type": "request",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "requestId": "fixture-handshake",
         "hostEpoch": 1,
         "deadlineMs": 1000,
@@ -199,7 +200,7 @@
       },
       {
         "type": "request",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "requestId": "fixture-lease",
         "hostEpoch": 1,
         "deadlineMs": 1000,
@@ -214,7 +215,7 @@
       },
       {
         "type": "request",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "requestId": "fixture-desired-state",
         "hostEpoch": 1,
         "deadlineMs": 1000,
@@ -234,7 +235,7 @@
       },
       {
         "type": "request",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "requestId": "fixture-snapshot",
         "hostEpoch": 1,
         "deadlineMs": 1000,
@@ -242,7 +243,7 @@
       },
       {
         "type": "request",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "requestId": "fixture-ping",
         "hostEpoch": 1,
         "deadlineMs": 1000,
@@ -250,7 +251,7 @@
       },
       {
         "type": "request",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "requestId": "fixture-shutdown",
         "hostEpoch": 1,
         "deadlineMs": 1000,
@@ -259,35 +260,36 @@
     ],
     "successReplies": [
       {
-        "type": "reply", "protocolVersion": 4, "requestId": "fixture-thumbnail", "ok": true,
+        "type": "reply", "protocolVersion": 5, "requestId": "fixture-thumbnail", "ok": true,
         "result": { "type": "thumbnail", "revision": 1, "state": "cancelled" }
       },
       {
-        "type": "reply", "protocolVersion": 4, "requestId": "fixture-inventory", "ok": true,
+        "type": "reply", "protocolVersion": 5, "requestId": "fixture-inventory", "ok": true,
         "result": { "type": "inventory", "inventory": {
           "audio": { "revision": 1, "status": "ready", "devices": [] },
           "cameras": { "revision": 1, "status": "ready", "devices": [] },
           "sources": { "revision": 1, "complete": true, "ok": true, "truncated": false, "entries": [] },
           "video": { "revision": 1, "publications": [] },
-          "microphoneMeter": { "revision": 1, "inputLevel": 0, "gateThreshold": 0, "gateOpen": false }
+          "microphoneMeter": { "revision": 1, "inputLevel": 0, "gateThreshold": 0, "gateOpen": false, "speaking": false },
+          "activeSpeakers": []
         } }
       },
       {
-        "type": "reply", "protocolVersion": 4, "requestId": "fixture-sources", "ok": true,
+        "type": "reply", "protocolVersion": 5, "requestId": "fixture-sources", "ok": true,
         "result": { "type": "sourcesQueryAccepted", "revision": 1 }
       },
       {
-        "type": "reply", "protocolVersion": 4, "requestId": "fixture-frames", "ok": true,
+        "type": "reply", "protocolVersion": 5, "requestId": "fixture-frames", "ok": true,
         "result": { "type": "frames", "frames": [] }
       },
       {
         "type": "reply",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "requestId": "fixture-handshake",
         "ok": true,
         "result": {
           "type": "handshake",
-          "protocolVersion": 4,
+          "protocolVersion": 5,
           "engineState": "running",
           "build": {
             "commit": "0000000000000000000000000000000000000000",
@@ -298,14 +300,14 @@
       },
       {
         "type": "reply",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "requestId": "fixture-lease",
         "ok": true,
         "result": { "type": "credentialLeaseInstalled", "leaseId": "fixture-lease" }
       },
       {
         "type": "reply",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "requestId": "fixture-desired-state",
         "ok": true,
         "result": {
@@ -316,7 +318,7 @@
       },
       {
         "type": "reply",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "requestId": "fixture-snapshot",
         "ok": true,
         "result": {
@@ -350,14 +352,14 @@
       },
       {
         "type": "reply",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "requestId": "fixture-ping",
         "ok": true,
         "result": { "type": "pong", "engineState": "running" }
       },
       {
         "type": "reply",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "requestId": "fixture-shutdown",
         "ok": true,
         "result": { "type": "shutdownComplete", "engineState": "stopped" }
@@ -366,7 +368,7 @@
     "failureReplies": [
       {
         "type": "reply",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "requestId": "fixture-failure",
         "ok": false,
         "failure": {
@@ -382,7 +384,7 @@
     "publicEventMessages": [
       {
         "type": "event",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "event": {
           "type": "engineStateChanged",
           "sequence": 13,
@@ -392,7 +394,7 @@
       },
       {
         "type": "event",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "event": {
           "type": "roomStateChanged",
           "sequence": 11,
@@ -410,7 +412,7 @@
       },
       {
         "type": "event",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "event": {
           "type": "trackStateChanged",
           "sequence": 4,
@@ -422,7 +424,7 @@
       },
       {
         "type": "event",
-        "protocolVersion": 4,
+        "protocolVersion": 5,
         "event": {
           "type": "fatalEngineFailure",
           "sequence": 4,

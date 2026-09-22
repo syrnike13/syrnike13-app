@@ -1,9 +1,9 @@
 #include "sources/thumbnail_owner.hpp"
 
 #include "capture/optional_preview_budget.hpp"
-#include "capture/wgc_monitor_capture.hpp"
 #include "capture/wgc_window_capture.hpp"
 
+#include <windows.h>
 #include <d3d11_1.h>
 #include <cstring>
 #include <algorithm>
@@ -17,6 +17,71 @@ using Microsoft::WRL::ComPtr;
 constexpr std::uint64_t kStagingBytes = 262144;
 void check(HRESULT result) {
   if (result != S_OK) throw std::runtime_error("thumbnail_readback_failed");
+}
+
+std::shared_ptr<const std::vector<std::uint8_t>> captureMonitorThumbnail(
+    sources::SourceRegistry& registry, const std::string& source_id) {
+  const auto resolved = registry.resolveMonitorTarget(source_id);
+  if (resolved.status != ResolveStatus::Available || !resolved.target)
+    throw std::runtime_error("thumbnail_monitor_unavailable");
+  MONITORINFO monitor{};
+  monitor.cbSize = sizeof(monitor);
+  if (!GetMonitorInfoW(reinterpret_cast<HMONITOR>(resolved.target->platformValue()), &monitor))
+    throw std::runtime_error("thumbnail_monitor_unavailable");
+  const int width = monitor.rcMonitor.right - monitor.rcMonitor.left;
+  const int height = monitor.rcMonitor.bottom - monitor.rcMonitor.top;
+  if (width < 2 || height < 2 || width > 3840 || height > 2160)
+    throw std::runtime_error("thumbnail_monitor_size_unsupported");
+
+  struct DesktopDc {
+    HDC value = GetDC(nullptr);
+    ~DesktopDc() { if (value) ReleaseDC(nullptr, value); }
+  } desktop;
+  if (!desktop.value) throw std::runtime_error("thumbnail_desktop_dc_failed");
+  struct MemoryDc {
+    HDC value;
+    explicit MemoryDc(HDC desktop) : value(CreateCompatibleDC(desktop)) {}
+    ~MemoryDc() { if (value) DeleteDC(value); }
+  } memory(desktop.value);
+  if (!memory.value) throw std::runtime_error("thumbnail_memory_dc_failed");
+
+  BITMAPINFO format{};
+  format.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  format.bmiHeader.biWidth = kThumbnailWidth;
+  format.bmiHeader.biHeight = -static_cast<LONG>(kThumbnailHeight);
+  format.bmiHeader.biPlanes = 1;
+  format.bmiHeader.biBitCount = 32;
+  format.bmiHeader.biCompression = BI_RGB;
+  void* bits = nullptr;
+  struct Bitmap {
+    HBITMAP value;
+    ~Bitmap() { if (value) DeleteObject(value); }
+  } bitmap{CreateDIBSection(memory.value, &format, DIB_RGB_COLORS, &bits, nullptr, 0)};
+  if (!bitmap.value || !bits) throw std::runtime_error("thumbnail_bitmap_failed");
+  const HGDIOBJ previous = SelectObject(memory.value, bitmap.value);
+  if (!previous || previous == HGDI_ERROR) throw std::runtime_error("thumbnail_bitmap_select_failed");
+  struct RestoreBitmap {
+    HDC dc;
+    HGDIOBJ previous;
+    ~RestoreBitmap() { SelectObject(dc, previous); }
+  } restore{memory.value, previous};
+
+  std::memset(bits, 0, kThumbnailBytes);
+  const bool wide = static_cast<std::int64_t>(width) * kThumbnailHeight >
+      static_cast<std::int64_t>(height) * kThumbnailWidth;
+  const int output_width = wide ? kThumbnailWidth : (std::max)(1, MulDiv(width, kThumbnailHeight, height));
+  const int output_height = wide ? (std::max)(1, MulDiv(height, kThumbnailWidth, width)) : kThumbnailHeight;
+  if (!SetStretchBltMode(memory.value, HALFTONE) ||
+      !StretchBlt(memory.value, (kThumbnailWidth - output_width) / 2,
+          (kThumbnailHeight - output_height) / 2, output_width, output_height,
+          desktop.value, monitor.rcMonitor.left, monitor.rcMonitor.top,
+          width, height, SRCCOPY | CAPTUREBLT))
+    throw std::runtime_error("thumbnail_desktop_copy_failed");
+
+  auto pixels = std::make_shared<std::vector<std::uint8_t>>(kThumbnailBytes);
+  std::memcpy(pixels->data(), bits, kThumbnailBytes);
+  for (std::size_t alpha = 3; alpha < pixels->size(); alpha += 4) (*pixels)[alpha] = 255;
+  return pixels;
 }
 
 // The same asynchronous texture readback used by the neutral preview observer:
@@ -139,34 +204,31 @@ ThumbnailSnapshot ThumbnailOwner::capture(const Request& request) {
   if (!registry || !request.source_id || !current(request)) return result;
   const auto source = registry->resolve(*request.source_id);
   if (source.status != ResolveStatus::Available || !source.kind) return result;
-  std::unique_ptr<capture::MonitorCapture> monitor;
   std::unique_ptr<capture::WindowCapture> window;
   screen::LocalScreenPreview preview(kThumbnailWidth, kThumbnailHeight);
   try {
-    capture::CaptureStartResult started;
     if (*source.kind == SourceKind::Monitor) {
-      capture::WgcMonitorCaptureOptions options;
-      options.request_d3d_debug_layer = false;
-      options.maximum_width = 3840; options.maximum_height = 2160; options.frame_pool_size = 1;
-      monitor = std::make_unique<capture::MonitorCapture>(*registry, *request.source_id,
-          capture::createWgcMonitorCaptureBackend(options));
-      started = monitor->start();
-    } else {
-      capture::WgcWindowCaptureOptions options;
-      options.request_d3d_debug_layer = false;
-      options.include_cursor = false;
-      options.maximum_width = 3840; options.maximum_height = 2160; options.frame_pool_size = 1;
-      window = std::make_unique<capture::WindowCapture>(*registry, *request.source_id,
-          capture::createWgcWindowCaptureBackend(options));
-      started = window->start();
+      // One desktop snapshot avoids the WGC capture session's visible border
+      // and works for monitors attached to different graphics adapters.
+      result.pixels = captureMonitorThumbnail(*registry, *request.source_id);
+      result.state = ThumbnailState::ready;
+      result.code.clear();
+      return result;
     }
+    capture::WgcWindowCaptureOptions options;
+    options.request_d3d_debug_layer = false;
+    options.include_cursor = false;
+    options.maximum_width = 3840; options.maximum_height = 2160; options.frame_pool_size = 1;
+    window = std::make_unique<capture::WindowCapture>(*registry, *request.source_id,
+        capture::createWgcWindowCaptureBackend(options));
+    const auto started = window->start();
     if (!started.ok) throw std::runtime_error("thumbnail_capture_failed");
     (void)preview.beginPublication(request.revision);
     (void)preview.demand(request.revision, true);
     bool submitted = false;
     while (current(request)) {
       if (!submitted) {
-        auto frame = monitor ? monitor->waitForFrame(10ms) : window->waitForFrame(10ms);
+        auto frame = window->waitForFrame(10ms);
         if (frame) {
           if (const auto view = frame->d3d11View()) preview.offer(*view, frame->metadata());
           frame->release();
@@ -185,7 +247,6 @@ ThumbnailSnapshot ThumbnailOwner::capture(const Request& request) {
   } catch (...) { result.code = "thumbnail_failed"; }
   (void)preview.demand(request.revision + 1, false);
   preview.stopPublication();
-  if (monitor && !monitor->stop(kShutdownDeadline).ok) std::terminate();
   if (window && !window->stop(kShutdownDeadline).ok) std::terminate();
   const auto drain_deadline = Clock::now() + 200ms;
   while (preview.stats().pending && Clock::now() < drain_deadline) {

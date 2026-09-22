@@ -10,10 +10,12 @@
 // Exercise the real worker and its cleanup with a one-shot platform failure.
 // The shipping capture library has no runtime injection switch.
 std::atomic<HRESULT> next_acquire_failure{S_OK};
+std::atomic_bool suppress_desktop_updates{false};
 HRESULT testDxgiAcquire(IDXGIOutputDuplication* duplication,
                        DXGI_OUTDUPL_FRAME_INFO* frame, IDXGIResource** resource) {
   const auto failure = next_acquire_failure.exchange(S_OK);
   if (FAILED(failure)) return failure;
+  if (suppress_desktop_updates) return DXGI_ERROR_WAIT_TIMEOUT;
   return duplication->AcquireNextFrame(0, frame, resource);
 }
 #define WINDOWS_MEDIA_TEST_DXGI_ACQUIRE testDxgiAcquire
@@ -149,13 +151,13 @@ void compositorGoldens() {
   }
   require(rejected, "short cursor metadata was accepted");
 }
-void realDuplication(HRESULT injected_failure = S_OK) {
+void realDuplication(HRESULT injected_failure = S_OK, std::size_t monitor_index = 0) {
   sources::SourceRegistry registry(sources::createWin32SourceEnumerator());
   sources::EnumerationOptions options;
   options.kind = sources::EnumerationOptions::Kind::Monitor;
   auto values = registry.enumerate(options);
-  require(values.ok && !values.sources.empty(), "monitor enumeration failed");
-  auto target = registry.resolveMonitorTarget(values.sources.front().id);
+  require(values.ok && monitor_index < values.sources.size(), "monitor enumeration failed");
+  auto target = registry.resolveMonitorTarget(values.sources[monitor_index].id);
   require(target.target.has_value(), "monitor resolution failed");
   auto backend = createDxgiMonitorCaptureBackend(true);
   std::mutex mutex;
@@ -181,6 +183,9 @@ void realDuplication(HRESULT injected_failure = S_OK) {
     std::unique_lock lock(mutex);
     changed.wait_for(lock, 3s, [&] { return frame || failure; });
     require(frame && !failure, failure ? failure->message.c_str() : "DXGI first frame missing");
+    const auto view = frame->d3d11View();
+    require(view && view->device_owner == processD3d11Device(false),
+            "DXGI frame did not reach the process video device");
   }
   if (FAILED(injected_failure)) {
     next_acquire_failure = injected_failure;
@@ -203,11 +208,63 @@ void realDuplication(HRESULT injected_failure = S_OK) {
     std::cout << "DXGI acquired=" << stats.acquired_frames << " released=" << stats.released_frames
               << " maximumHoldUs=" << stats.maximum_duplication_hold_us << '\n';
 }
+void staticFrameRefresh() {
+  sources::SourceRegistry registry(sources::createWin32SourceEnumerator());
+  sources::EnumerationOptions options;
+  options.kind = sources::EnumerationOptions::Kind::Monitor;
+  const auto sources = registry.enumerate(options);
+  require(sources.ok && !sources.sources.empty(), "monitor enumeration failed");
+  const auto target = registry.resolveMonitorTarget(sources.sources[0].id);
+  require(target.target.has_value(), "monitor resolution failed");
+
+  auto backend = createDxgiMonitorCaptureBackend(true);
+  std::mutex mutex;
+  std::condition_variable changed;
+  std::shared_ptr<FrameResource> first_resource;
+  std::int64_t first_timestamp = 0;
+  bool refreshed = false;
+  const auto started = backend->start(
+      *target.target,
+      [&](BackendFrame frame) {
+        std::scoped_lock lock(mutex);
+        if (!first_resource) {
+          first_resource = frame.resource;
+          first_timestamp = frame.capture_timestamp_100ns;
+          suppress_desktop_updates = true;
+        } else if (frame.capture_timestamp_100ns > first_timestamp &&
+                   frame.resource == first_resource) {
+          refreshed = true;
+        }
+        changed.notify_all();
+      },
+      [&](CaptureFailure) { changed.notify_all(); });
+  require(started.ok, started.failure ? started.failure->message.c_str() : "DXGI start failed");
+  {
+    std::unique_lock lock(mutex);
+    require(changed.wait_for(lock, 3s, [&] { return refreshed; }),
+            "static desktop did not refresh its cached frame");
+  }
+  suppress_desktop_updates = false;
+  require(backend->stop(std::chrono::steady_clock::now() + 3s).ok,
+          "DXGI static refresh did not stop");
+  first_resource.reset();
+  const auto stats = backend->diagnostics();
+  require(stats.delivered_frames > stats.acquired_frames && stats.active_leases == 0,
+          "DXGI static refresh leaked a slot or required a desktop update");
+}
 }  // namespace
-int main() {
+int main(int argc, char** argv) {
   try {
     compositorGoldens();
-    realDuplication();
+    sources::SourceRegistry registry(sources::createWin32SourceEnumerator());
+    sources::EnumerationOptions options;
+    options.kind = sources::EnumerationOptions::Kind::Monitor;
+    const auto monitors = registry.enumerate(options);
+    require(monitors.ok && !monitors.sources.empty(), "monitor enumeration failed");
+    for (std::size_t index = 0; index < monitors.sources.size(); ++index)
+      realDuplication(S_OK, index);
+    staticFrameRefresh();
+    if (argc == 2 && std::string_view(argv[1]) == "--monitors-only") return 0;
     // NVIDIA initializes a further nvwgf2umx worker during the first stress
     // batch. Warm the same 100-cycle workload before checking resource deltas.
     // Preserve each row even when the other resource assertion fails. Both

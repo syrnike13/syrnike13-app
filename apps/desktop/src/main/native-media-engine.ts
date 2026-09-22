@@ -138,6 +138,7 @@ export function createNativeRtcEngineAdapter() {
       })
     },
     inventory => {
+      adapter.observeSpeakingInventory(inventory)
       const microphone = adapter.desiredSnapshot()?.microphone
       const meter = inventory.microphoneMeter
       if (!microphone || microphone.state === 'off' || !microphone.meterDemand ||

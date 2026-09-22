@@ -35,6 +35,8 @@ export const MEDIA_LIFECYCLE_MAX_IDENTIFIER_LENGTH =
   MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumIdentifierLength
 export const MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS =
   MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumRemoteVideoDemands
+export const MEDIA_LIFECYCLE_MAX_ACTIVE_SPEAKERS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumActiveSpeakers
 export const MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_METRICS =
   MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDiagnosticMetrics
 export const MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_FIELDS =
@@ -207,7 +209,11 @@ export const MediaInventorySchema = Schema.Struct({
     inputLevel: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
     gateThreshold: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
     gateOpen: Schema.Boolean,
+    speaking: Schema.Boolean,
   }),
+  activeSpeakers: Schema.Array(identifierSchema).check(
+    Schema.isMaxLength(MEDIA_LIFECYCLE_MAX_ACTIVE_SPEAKERS),
+  ),
   audio: Schema.Struct({
     revision: protocolInteger,
     status: DeviceCatalogStatusSchema,

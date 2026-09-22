@@ -13,13 +13,14 @@ const inventory = {
   cameras: { revision: 1, status: 'ready', devices: [] },
   sources: { revision: 0, complete: true, ok: true, truncated: false, entries: [] },
   video: { revision: 0, publications: [] },
-  microphoneMeter: { revision: 0, inputLevel: 0, gateThreshold: 0, gateOpen: false },
+  microphoneMeter: { revision: 0, inputLevel: 0, gateThreshold: 0, gateOpen: false, speaking: false },
+  activeSpeakers: [],
 }
 
 function manifest(): MediaArtifactManifest {
   return {
     schemaVersion: 1,
-    protocolVersion: 4,
+    protocolVersion: 5,
     protocolSchemaSha256: MEDIA_LIFECYCLE_SCHEMA_SHA256,
     platform: 'win32',
     arch: 'x64',
@@ -28,7 +29,7 @@ function manifest(): MediaArtifactManifest {
     commitSha: COMMIT_SHA,
     electronVersion: process.versions.electron,
     napiVersion: 8,
-    capabilities: ['lifecycle', 'control-v4', 'diagnostics-v2'],
+    capabilities: ['lifecycle', 'control-v5', 'diagnostics-v2'],
     limits: {
       controlQueue: 16,
       eventQueue: 64,
@@ -37,6 +38,7 @@ function manifest(): MediaArtifactManifest {
       shutdownDeadlineMs: 1_000,
       maxIdentifierLength: 256,
       maxRemoteVideoDemands: 64,
+      maxActiveSpeakers: 64,
       maxDiagnosticMetrics: 16,
       maxDiagnosticFields: 16,
       maxRequestDeadlineMs: 5_000,
@@ -56,7 +58,7 @@ function environment(mediaRoot: string): NodeJS.ProcessEnv {
     SYRNIKE_MEDIA_ROOT: mediaRoot,
     SYRNIKE_MEDIA_APP_VERSION: '0.6.11',
     SYRNIKE_MEDIA_RELEASE_CHANNEL: 'stable',
-    SYRNIKE_MEDIA_PROTOCOL_VERSION: '4',
+    SYRNIKE_MEDIA_PROTOCOL_VERSION: '5',
     SYRNIKE_MEDIA_COMMIT_SHA: COMMIT_SHA,
   }
 }
@@ -90,7 +92,7 @@ describe('runMediaUtilityHost', () => {
           return true
         },
         handshake: () => ({
-          protocolVersion: 4,
+          protocolVersion: 5,
           engineState: 'running',
           build: {
             commit: COMMIT_SHA,
@@ -132,7 +134,7 @@ describe('runMediaUtilityHost', () => {
 
     expect(posted).toContainEqual({
       type: 'ready',
-      protocolVersion: 4,
+      protocolVersion: 5,
       engineState: 'running',
       build: {
         commit: COMMIT_SHA,
@@ -155,7 +157,7 @@ describe('runMediaUtilityHost', () => {
     })
     expect(posted).toContainEqual({
       type: 'event',
-      protocolVersion: 4,
+      protocolVersion: 5,
       event: expect.objectContaining({
         state: 'failed',
         failure: expect.objectContaining({
@@ -169,7 +171,7 @@ describe('runMediaUtilityHost', () => {
       expect(posted).toContainEqual(message)
       if ('failure' in message.event) {
         expect(posted.at(-2)).toMatchObject({
-          type: 'diagnostic', protocolVersion: 4,
+          type: 'diagnostic', protocolVersion: 5,
           event: {
             component: 'utility', operation: 'forward_native_failure',
             code: message.event.failure.code,
@@ -196,14 +198,14 @@ describe('runMediaUtilityHost', () => {
     })
     expect(posted).toContainEqual({
       type: 'diagnostic',
-      protocolVersion: 4,
+      protocolVersion: 5,
       event: expect.objectContaining({ code: 'ok' }),
     })
 
     onMessage?.({
       data: {
         type: 'request',
-        protocolVersion: 4,
+        protocolVersion: 5,
         requestId: 'ping-1',
         hostEpoch: 1,
         deadlineMs: 1_000,
@@ -213,7 +215,7 @@ describe('runMediaUtilityHost', () => {
     await vi.waitFor(() =>
       expect(posted).toContainEqual({
         type: 'reply',
-        protocolVersion: 4,
+        protocolVersion: 5,
         requestId: 'ping-1',
         ok: true,
         result: { type: 'pong', engineState: 'running' },
@@ -233,7 +235,7 @@ describe('runMediaUtilityHost', () => {
     await vi.waitFor(() =>
       expect(posted).toContainEqual({
         type: 'reply',
-        protocolVersion: 4,
+        protocolVersion: 5,
         requestId: 'old-v1',
         ok: false,
         failure: expect.objectContaining({ code: 'protocol_incompatible' }),
@@ -250,7 +252,7 @@ describe('runMediaUtilityHost', () => {
     onMessage?.({
       data: {
         type: 'request',
-        protocolVersion: 4,
+        protocolVersion: 5,
         requestId: 'apply-1',
         hostEpoch: 1,
         deadlineMs: 1_000,
@@ -272,7 +274,7 @@ describe('runMediaUtilityHost', () => {
     await vi.waitFor(() =>
       expect(posted).toContainEqual({
         type: 'reply',
-        protocolVersion: 4,
+        protocolVersion: 5,
         requestId: 'apply-1',
         ok: true,
         result: {
@@ -286,7 +288,7 @@ describe('runMediaUtilityHost', () => {
     onMessage?.({
       data: {
         type: 'request',
-        protocolVersion: 4,
+        protocolVersion: 5,
         requestId: 'query-invalid-envelope',
         hostEpoch: 1,
         deadlineMs: 1_000,
@@ -296,7 +298,7 @@ describe('runMediaUtilityHost', () => {
     await vi.waitFor(() =>
       expect(posted).toContainEqual({
         type: 'reply',
-        protocolVersion: 4,
+        protocolVersion: 5,
         requestId: 'query-invalid-envelope',
         ok: false,
         failure: expect.objectContaining({ code: 'media_snapshot_invalid' }),
@@ -306,7 +308,7 @@ describe('runMediaUtilityHost', () => {
     onMessage?.({
       data: {
         type: 'request',
-        protocolVersion: 4,
+        protocolVersion: 5,
         requestId: 'inventory-1',
         hostEpoch: 1,
         deadlineMs: 1_000,
@@ -314,21 +316,21 @@ describe('runMediaUtilityHost', () => {
       },
     })
     await vi.waitFor(() => expect(posted).toContainEqual({
-      type: 'reply', protocolVersion: 4, requestId: 'inventory-1', ok: true,
+      type: 'reply', protocolVersion: 5, requestId: 'inventory-1', ok: true,
       result: { type: 'inventory', inventory },
     }))
     onMessage?.({ data: {
-      type: 'request', protocolVersion: 4, requestId: 'sources-1', hostEpoch: 1, deadlineMs: 1_000,
+      type: 'request', protocolVersion: 5, requestId: 'sources-1', hostEpoch: 1, deadlineMs: 1_000,
       command: { type: 'querySources', query: { revision: 2, kind: 'window' } },
     } })
     await vi.waitFor(() => expect(posted).toContainEqual({
-      type: 'reply', protocolVersion: 4, requestId: 'sources-1', ok: true,
+      type: 'reply', protocolVersion: 5, requestId: 'sources-1', ok: true,
       result: { type: 'sourcesQueryAccepted', revision: 2 },
     }))
     onMessage?.({
       data: {
         type: 'request',
-        protocolVersion: 4,
+        protocolVersion: 5,
         requestId: 'shutdown-1',
         hostEpoch: 1,
         deadlineMs: 1_000,
@@ -338,7 +340,7 @@ describe('runMediaUtilityHost', () => {
     onMessage?.({
       data: {
         type: 'request',
-        protocolVersion: 4,
+        protocolVersion: 5,
         requestId: 'shutdown-2',
         hostEpoch: 1,
         deadlineMs: 1_000,
@@ -348,14 +350,14 @@ describe('runMediaUtilityHost', () => {
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0))
     expect(posted).toContainEqual({
       type: 'reply',
-      protocolVersion: 4,
+      protocolVersion: 5,
       requestId: 'shutdown-1',
       ok: true,
       result: { type: 'shutdownComplete', engineState: 'stopped' },
     })
     expect(posted).toContainEqual({
       type: 'reply',
-      protocolVersion: 4,
+      protocolVersion: 5,
       requestId: 'shutdown-2',
       ok: false,
       failure: expect.objectContaining({ code: 'engine_stopping' }),
@@ -399,7 +401,7 @@ describe('runMediaUtilityHost', () => {
         },
         installCredentialLease: vi.fn(),
         handshake: () => ({
-          protocolVersion: 4,
+          protocolVersion: 5,
           engineState: 'running',
           build: {
             commit: COMMIT_SHA,
@@ -434,7 +436,7 @@ describe('runMediaUtilityHost', () => {
 
     expect(posted).toContainEqual({
       type: 'diagnostic',
-      protocolVersion: 4,
+      protocolVersion: 5,
       event: expect.objectContaining({
         implementation: [{
           name: 'endpoint',

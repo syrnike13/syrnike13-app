@@ -5,6 +5,7 @@
 #include <condition_variable>
 #include <thread>
 #include <algorithm>
+#include <cstring>
 
 namespace syrnike::windows_media::capture {
 namespace {
@@ -46,6 +47,67 @@ struct State {
   DxgiCaptureDiagnostics diagnostics;
   std::shared_ptr<detail::DxgiPoolCounters> counters;
 };
+class BridgedFrame final : public FrameResource {
+ public:
+  BridgedFrame(std::shared_ptr<D3d11DeviceOwner> device,
+               ComPtr<ID3D11Texture2D> texture, std::vector<std::uint8_t> pixels,
+               std::uint32_t width, std::uint32_t height)
+      : device_(std::move(device)), texture_(std::move(texture)),
+        pixels_(std::move(pixels)), width_(width), height_(height) {}
+  std::optional<D3d11FrameView> d3d11View() override {
+    return D3d11FrameView{device_, texture_.Get()};
+  }
+  void copyBgraTo(std::span<std::uint8_t> destination, std::size_t stride) override {
+    const auto row_bytes = static_cast<std::size_t>(width_) * 4;
+    if (stride < row_bytes || destination.size() / stride < height_)
+      throw std::invalid_argument("DXGI bridge destination is too small");
+    for (std::uint32_t row = 0; row < height_; ++row)
+      std::memcpy(destination.data() + row * stride,
+                  pixels_.data() + row * row_bytes, row_bytes);
+  }
+  std::uint64_t sampledHash() override {
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (std::uint32_t y = 0; y < height_; y += (std::max)(1U, height_ / 64))
+      for (std::uint32_t x = 0; x < width_; x += (std::max)(1U, width_ / 64)) {
+        const auto* pixel = pixels_.data() +
+            (static_cast<std::size_t>(y) * width_ + x) * 4;
+        for (unsigned channel = 0; channel < 4; ++channel)
+          hash = (hash ^ pixel[channel]) * 1099511628211ULL;
+      }
+    return hash;
+  }
+
+ private:
+  std::shared_ptr<D3d11DeviceOwner> device_;
+  ComPtr<ID3D11Texture2D> texture_;
+  std::vector<std::uint8_t> pixels_;
+  std::uint32_t width_, height_;
+};
+std::shared_ptr<FrameResource> bridgeToProcessDevice(
+    const std::shared_ptr<FrameResource>& source,
+    const std::shared_ptr<D3d11DeviceOwner>& process,
+    std::uint32_t width, std::uint32_t height) {
+  const auto row_bytes = static_cast<std::size_t>(width) * 4;
+  if (!width || !height || row_bytes > 32768 || height > 8192)
+    throw detail::DxgiApiError("DXGI bridge dimensions", DXGI_ERROR_UNSUPPORTED);
+  std::vector<std::uint8_t> pixels(row_bytes * height);
+  source->copyBgraTo(pixels, row_bytes);
+  D3D11_TEXTURE2D_DESC description{};
+  description.Width = width;
+  description.Height = height;
+  description.MipLevels = 1;
+  description.ArraySize = 1;
+  description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+  description.SampleDesc.Count = 1;
+  description.Usage = D3D11_USAGE_DEFAULT;
+  description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+  const D3D11_SUBRESOURCE_DATA initial{pixels.data(), static_cast<UINT>(row_bytes), 0};
+  ComPtr<ID3D11Texture2D> texture;
+  check(process->device()->CreateTexture2D(&description, &initial, &texture),
+        "DXGI bridge upload");
+  return std::make_shared<BridgedFrame>(process, std::move(texture),
+                                        std::move(pixels), width, height);
+}
 ComPtr<IDXGIOutput1> resolveOutput(const std::shared_ptr<D3d11DeviceOwner>& device,
                                    const sources::MonitorTargetToken& target,
                                    DXGI_OUTPUT_DESC& selected) {
@@ -85,7 +147,9 @@ void run(const std::shared_ptr<State>& state, sources::MonitorTargetToken target
   std::shared_ptr<detail::DxgiFrameCompositor> compositor;
   ComPtr<IDXGIOutputDuplication> duplication;
   try {
-    const auto device = processD3d11Device(debug);
+    const auto device = monitorD3d11Device(
+        reinterpret_cast<HMONITOR>(target.platformValue()), debug);
+    const auto process_device = processD3d11Device(false);
     DXGI_OUTPUT_DESC output_description{};
     const auto output = resolveOutput(device, target, output_description);
     check(output->DuplicateOutput(device->device(), &duplication), "DXGI DuplicateOutput");
@@ -132,6 +196,17 @@ void run(const std::shared_ptr<State>& state, sources::MonitorTargetToken target
     if (!QueryPerformanceFrequency(&frequency) || frequency.QuadPart <= 0)
       throw std::runtime_error("QPC frequency unavailable");
     std::int64_t last_timestamp = 0;
+    auto last_delivery = Clock::time_point{};
+    std::shared_ptr<FrameResource> last_resource;
+    const auto deliver = [&](std::int64_t timestamp, std::shared_ptr<FrameResource> resource) {
+      last_timestamp = timestamp;
+      last_delivery = Clock::now();
+      last_resource = resource;
+      state->on_frame(BackendFrame{timestamp, compositor->width(), compositor->height(),
+                                   FramePixelFormat::Bgra8, std::move(resource)});
+      std::scoped_lock lock(state->mutex);
+      ++state->diagnostics.delivered_frames;
+    };
     while (!state->stop) {
       const auto reserved = compositor->reserve();
       if (!reserved) {
@@ -169,6 +244,18 @@ void run(const std::shared_ptr<State>& state, sources::MonitorTargetToken target
 #endif
       if (acquired == DXGI_ERROR_WAIT_TIMEOUT) {
         context_lock.unlock();
+        // Desktop duplication is change-driven. A late subscriber still needs
+        // a fresh encoder input so its keyframe request can show a static screen.
+        if (last_resource && !state->stop &&
+            Clock::now() - last_delivery >= std::chrono::milliseconds{250}) {
+          LARGE_INTEGER now{};
+          if (!QueryPerformanceCounter(&now)) throw std::runtime_error("QPC unavailable");
+          const auto ticks = now.QuadPart;
+          const auto timestamp = ticks / frequency.QuadPart * 10'000'000 +
+                                 ticks % frequency.QuadPart * 10'000'000 / frequency.QuadPart;
+          check(device->removedReason(), "DXGI compositor device state");
+          if (timestamp > last_timestamp) deliver(timestamp, last_resource);
+        }
         std::unique_lock lock(state->mutex);
         ++state->diagnostics.no_content;
         state->changed.wait_for(lock, std::chrono::milliseconds{2},
@@ -266,13 +353,10 @@ void run(const std::shared_ptr<State>& state, sources::MonitorTargetToken target
       slot.transferred = true;
       check(device->removedReason(), "DXGI compositor device state");
       if (state->stop) continue;
-      last_timestamp = timestamp;
-      state->on_frame(BackendFrame{timestamp, compositor->width(), compositor->height(),
-                                   FramePixelFormat::Bgra8, std::move(resource)});
-      {
-        std::scoped_lock lock(state->mutex);
-        ++state->diagnostics.delivered_frames;
-      }
+      if (device.get() != process_device.get())
+        resource = bridgeToProcessDevice(resource, process_device,
+                                         compositor->width(), compositor->height());
+      deliver(timestamp, std::move(resource));
     }
   } catch (const CaptureFailure& failure) {
     std::scoped_lock lock(state->mutex);

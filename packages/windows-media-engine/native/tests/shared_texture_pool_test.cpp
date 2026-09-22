@@ -28,12 +28,14 @@ void require(bool condition) {
   if (!condition) throw std::runtime_error("Pool invariant failed");
 }
 
-TextureLease nextInjectedFrame(RemoteVideoTrack& owner) {
+TextureLease nextInjectedFrame(RemoteVideoTrack& owner,
+                               std::optional<std::int64_t> sdk_timestamp = {}) {
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
   while (std::chrono::steady_clock::now() < deadline) {
     const auto timestamp = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
-    require(RemoteVideoFaultInjector::decoded(owner, RemoteVideoFaultInjector::revision(owner), timestamp));
+    require(RemoteVideoFaultInjector::decoded(owner, RemoteVideoFaultInjector::revision(owner),
+                                             sdk_timestamp.value_or(timestamp)));
     if (auto frame = owner.takeFrame()) return *frame;
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
@@ -47,7 +49,8 @@ void staleRemoteDecodedFramesDoNotChangeAnotherOwner() {
   replaced.demand(true);
   healthy.demand(true);
   const auto old_revision = RemoteVideoFaultInjector::revision(replaced);
-  const auto old_frame = nextInjectedFrame(replaced);
+  const auto old_frame = nextInjectedFrame(replaced, 0);
+  require(old_frame.timestamp_us > 0);
   const auto healthy_frame = nextInjectedFrame(healthy);
   const auto healthy_generation = healthy.generation();
   replaced.demand(false);

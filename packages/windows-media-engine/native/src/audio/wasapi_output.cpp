@@ -146,6 +146,11 @@ WasapiOutputStats WasapiOutput::stats() const noexcept {
           state_->buffer.load(), state_->committed.load(), state_->client_alive.load(), state_->thread_alive.load()};
   for (std::size_t index = 0; index < result.scheduled_age_histogram.size(); ++index)
     result.scheduled_age_histogram[index] = state_->age_histogram[index].load();
+  if (state_->input) {
+    const auto queue = state_->input->stats();
+    result.input_queue_overrun = queue.overrun;
+    result.input_queue_stale = queue.stale;
+  }
   return result;
 }
 

@@ -252,6 +252,9 @@ void ScreenOwner::run() noexcept {
           capture::CaptureStartResult started;
           if (*resolved.kind == sources::SourceKind::Monitor) {
             capture::SelectingMonitorOptions options;
+            // WGC draws a system capture border for the entire publication.
+            // Desktop duplication captures the monitor without that border.
+            options.forced = capture::CaptureBackendKind::dxgi;
             // Reach the selected platform boundary deterministically in fault builds.
             // Normal builds never read the test configuration.
             if (testing::productFaultSelected("dxgi-acquire-frame"))

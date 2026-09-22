@@ -12,7 +12,6 @@ const pathLabels: ReadonlyArray<readonly [keyof NativeMediaRuntimeState['paths']
   ['screen_preview', 'Предпросмотр демонстрации'], ['camera_preview', 'Предпросмотр камеры'],
   ['remote_video', 'Входящее видео'],
 ]
-const screenWarning = 'Демонстрация может идти с задержками. Попробуйте снизить качество вручную'
 const retryablePaths: ReadonlyArray<readonly [VoiceMediaKind, string]> = [
   ['microphone', 'Повторить запуск микрофона'],
   ['output', 'Повторить запуск звука'],
@@ -71,7 +70,6 @@ export function NativeMediaRuntimeBanner() {
         continue
       } else messages.push(`${label}: недоступно.`)
     }
-    if (state.paths.screen.warning && state.paths.screen.state === 'running') messages.push(screenWarning)
     if (state.paths.camera.warning && state.paths.camera.state === 'running') {
       messages.push('Не удалось применить настройки камеры. Продолжаем использовать предыдущие настройки.')
     }

@@ -32,6 +32,7 @@ void RemoteAudioTracks::retire(Publication& value) {
   if (value.port) value.port->retire();
   value.port.reset();
   value.track.reset();
+  value.speaking_until = {};
 }
 void RemoteAudioTracks::clearRoom() {
   for (auto& value : publications_) {
@@ -301,8 +302,40 @@ void RemoteAudioTracks::onParticipantDisconnected(
   changed_.notify_all();
 }
 RemoteAudioTracksStats RemoteAudioTracks::stats() const noexcept {
-  return {decoded_.load(), rejected_.load(), track_failures_.load(), reading_.load(), failed_.load(),
-          sdk_dropped_.load(), sdk_stale_.load(), maximum_sdk_queue_.load(), maximum_app_queue_.load()};
+  RemoteAudioTracksStats result;
+  result.decoded = decoded_.load();
+  result.rejected = rejected_.load();
+  result.track_failures = track_failures_.load();
+  result.reading = reading_.load();
+  result.failed = failed_.load();
+  result.sdk_dropped = sdk_dropped_.load();
+  result.sdk_stale = sdk_stale_.load();
+  result.sdk_discontinuities = sdk_discontinuities_.load();
+  result.maximum_observed_sdk_queue = maximum_sdk_queue_.load();
+  result.maximum_observed_app_queue = maximum_app_queue_.load();
+  std::scoped_lock lock(mutex_);
+  for (const auto& publication : publications_) {
+    if (!publication.port) continue;
+    const auto queue = publication.port->stats();
+    result.app_overrun += queue.overrun;
+    result.app_stale += queue.stale;
+    result.app_producer_contention += queue.producer_contention;
+    result.app_consumer_contention += queue.consumer_contention;
+  }
+  return result;
+}
+std::vector<std::string> RemoteAudioTracks::activeSpeakerIdentities() const {
+  std::vector<std::string> speakers;
+  const auto now = Clock::now();
+  std::scoped_lock lock(mutex_);
+  if (!connected_) return speakers;
+  for (const auto& publication : publications_) {
+    if (!publication.track || !publication.port || !publication.port->active() ||
+        publication.speaking_until <= now || speakers.size() == kRemoteAudioTrackCapacity) continue;
+    if (std::find(speakers.begin(), speakers.end(), publication.participant) == speakers.end())
+      speakers.push_back(publication.participant);
+  }
+  return speakers;
 }
 void RemoteAudioTracks::run() noexcept {
   struct Reader {
@@ -313,6 +346,7 @@ void RemoteAudioTracks::run() noexcept {
     std::uint64_t generation = 0;
     bool subscribed = false;
     std::uint64_t observed_dropped = 0, observed_stale = 0;
+    RemoteSpeakerActivity activity;
   };
   std::array<Reader, kPublicationCapacity> readers{};
   std::vector<AudioMixSetting> users, streams;
@@ -324,6 +358,7 @@ void RemoteAudioTracks::run() noexcept {
     reader.track.reset();
     reader.port.reset();
     reader.observed_dropped = reader.observed_stale = 0;
+    reader.activity = {};
   };
   try {
     while (true) {
@@ -423,6 +458,10 @@ void RemoteAudioTracks::run() noexcept {
         // A scheduling gap never creates catch-up debt: read at most the SDK's
         // four-frame capacity, with original timestamps and its 60 ms age gate.
         for (std::size_t index = 0; index < kRemoteAudioQueueCapacity; ++index) {
+          // Leave a decoded frame in the SDK's existing queue until the mixer
+          // has room. Draining a burst into a full port discards audio that
+          // the next 10 ms mix would otherwise play.
+          if (!reader.port->canAcceptFrame()) break;
           livekit::FreshAudioFrame decoded;
           const auto result = reader.stream->tryRead(decoded);
           const auto sdk_stats = reader.stream->stats();
@@ -453,7 +492,18 @@ void RemoteAudioTracks::run() noexcept {
           frame.decoded_timestamp_100ns = std::chrono::duration_cast<
               std::chrono::duration<std::int64_t, std::ratio<1, 10'000'000>>>(decoded.decoded_at.time_since_epoch()).count();
           frame.discontinuity = decoded.discontinuity;
-          (void)reader.port->publish(frame);
+          if (decoded.discontinuity) ++sdk_discontinuities_;
+          const bool delivered = reader.port->publish(frame);
+          if (delivered && reader.publication &&
+              reader.publication->source() == livekit::TrackSource::SOURCE_MICROPHONE) {
+            const auto now = Clock::now();
+            reader.activity.observe(frame.samples, now);
+            std::scoped_lock lock(mutex_);
+            auto& current = publications_[reader_index];
+            if (current.generation == reader.generation && current.track == reader.track &&
+                current.port == reader.port)
+              current.speaking_until = reader.activity.speakingUntil();
+          }
           maximum_app_queue_ = (std::max)(maximum_app_queue_.load(), static_cast<std::uint64_t>(reader.port->stats().depth));
           ++decoded_;
         }

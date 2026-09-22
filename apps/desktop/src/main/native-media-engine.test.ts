@@ -98,13 +98,13 @@ describe('native media product boundary', () => {
       try {
         const started = adapter['runtime'].start()
         callbacks!.onMessage({
-          type: 'ready', protocolVersion: 4, engineState: 'running',
+          type: 'ready', protocolVersion: 5, engineState: 'running',
           build: { commit: 'c'.repeat(40), napi: '8', protocolSchemaSha256: MEDIA_LIFECYCLE_SCHEMA_SHA256 },
         })
         await started
         if (source === 'native') {
           callbacks!.onMessage({
-            type: 'event', protocolVersion: 4,
+            type: 'event', protocolVersion: 5,
             event: {
               type: 'fatalEngineFailure', sequence: 1,
               failure: { code: 'native_owner_stop_timeout', message: 'Owner did not join', stage: 'shutdown', retryable: true },
@@ -139,7 +139,7 @@ describe('native media product boundary', () => {
         const host = hosts.at(-1)
         if (!host) throw new Error('Host was not created')
         host.onMessage({
-          type: 'ready', protocolVersion: 4, engineState: 'running',
+          type: 'ready', protocolVersion: 5, engineState: 'running',
           build: { commit: 'c'.repeat(40), napi: '8', protocolSchemaSha256: MEDIA_LIFECYCLE_SCHEMA_SHA256 },
         })
       }

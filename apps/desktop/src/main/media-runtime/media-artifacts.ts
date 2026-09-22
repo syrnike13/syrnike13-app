@@ -6,6 +6,7 @@ import { Option, Schema } from 'effect'
 
 import {
   MEDIA_LIFECYCLE_MAX_DEADLINE_MS,
+  MEDIA_LIFECYCLE_MAX_ACTIVE_SPEAKERS,
   MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_FIELDS,
   MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_METRICS,
   MEDIA_LIFECYCLE_MAX_IDENTIFIER_LENGTH,
@@ -39,7 +40,7 @@ export const MediaArtifactManifestSchema = Schema.Struct({
   napiVersion: Schema.Literal(8),
   capabilities: Schema.Tuple([
     Schema.Literal('lifecycle'),
-    Schema.Literal('control-v4'),
+    Schema.Literal(`control-v${MEDIA_LIFECYCLE_PROTOCOL_VERSION}`),
     Schema.Literal('diagnostics-v2'),
   ]),
   limits: Schema.Struct({
@@ -57,6 +58,7 @@ export const MediaArtifactManifestSchema = Schema.Struct({
     shutdownDeadlineMs: Schema.Literal(MEDIA_LIFECYCLE_SHUTDOWN_TIMEOUT_MS),
     maxIdentifierLength: Schema.Literal(MEDIA_LIFECYCLE_MAX_IDENTIFIER_LENGTH),
     maxRemoteVideoDemands: Schema.Literal(MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS),
+    maxActiveSpeakers: Schema.Literal(MEDIA_LIFECYCLE_MAX_ACTIVE_SPEAKERS),
     maxDiagnosticMetrics: Schema.Literal(MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_METRICS),
     maxDiagnosticFields: Schema.Literal(MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_FIELDS),
     maxRequestDeadlineMs: Schema.Literal(MEDIA_LIFECYCLE_MAX_DEADLINE_MS),
