@@ -108,7 +108,7 @@ export const updateDesktopLocalSettingsEffect = Effect.fn(
       const current = yield* readDesktopLocalSettingsEffect(filePath, defaults)
       const normalizedPatch = normalizeDesktopLocalSettingsPatch(patch)
       const result: DesktopLocalSettings = {
-        version: 3,
+        version: DEFAULT_DESKTOP_LOCAL_SETTINGS.version,
         voice: {
           ...current.voice,
           ...normalizedPatch.voice,
@@ -187,7 +187,7 @@ const readDesktopLocalSettingsRecordEffect = Effect.fn(
 })
 
 function isCurrentSettingsVersion(value: Record<string, unknown>) {
-  return value.version === 3
+  return value.version === DEFAULT_DESKTOP_LOCAL_SETTINGS.version
 }
 
 function serializeSettingsWriteEffect<A, E, R>(

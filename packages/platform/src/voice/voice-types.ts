@@ -432,7 +432,7 @@ export function createInitialVoiceMediaDesiredState(): VoiceMediaDesiredState {
     monitoringMuted: false,
     inputMode: 'voice_activity' as const,
     pushToTalkHeld: false,
-    bypassSystemAudioInputProcessing: true,
+    bypassSystemAudioInputProcessing: false,
     automaticGainControl: true,
     noiseSuppression: true,
     echoCancellation: false,

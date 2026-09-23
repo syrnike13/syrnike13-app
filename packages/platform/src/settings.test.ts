@@ -70,7 +70,7 @@ describe('desktop local settings contract', () => {
         appearance: { themeId: 'night' },
       }),
     ).toMatchObject({
-      version: 3,
+      version: 4,
       voice: {
         preferredAudioInputDevice: 'legacy-mic',
         inputVolume: 0.42,
@@ -299,6 +299,21 @@ describe('desktop local settings contract', () => {
     expect(normalizeDesktopLocalSettings({}).observability).toEqual(
       DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
     )
+  })
+
+  it('turns RAW capture off once and preserves a version 4 opt-in', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        version: 3,
+        voice: { bypassSystemAudioInputProcessing: true },
+      }).voice.bypassSystemAudioInputProcessing,
+    ).toBe(false)
+    expect(
+      normalizeDesktopLocalSettings({
+        version: 4,
+        voice: { bypassSystemAudioInputProcessing: true },
+      }).voice.bypassSystemAudioInputProcessing,
+    ).toBe(true)
   })
 
   it('enables diagnostic reports for version 2 and preserves a version 3 opt-out', () => {

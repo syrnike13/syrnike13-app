@@ -72,7 +72,7 @@ const DEFAULT_STATE: VoicePreferenceState = {
   deafened: false,
   inputVolume: 1,
   outputVolume: 1,
-  bypassSystemAudioInputProcessing: true,
+  bypassSystemAudioInputProcessing: false,
   automaticGainControl: true,
   noiseSuppression: true,
   echoCancellation: false,

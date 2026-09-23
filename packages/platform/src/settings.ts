@@ -198,7 +198,7 @@ export {
 } from './appearance'
 
 export type DesktopLocalSettings = {
-  version: 3
+  version: 4
   voice: DesktopVoiceSettings
   voiceListener: DesktopVoiceListenerSettings
   overlay: DesktopOverlaySettings
@@ -209,7 +209,7 @@ export type DesktopLocalSettings = {
 }
 
 export const DesktopLocalSettingsSchema = Schema.Struct({
-  version: Schema.Literal(3),
+  version: Schema.Literal(4),
   voice: DesktopVoiceSettingsSchema,
   voiceListener: DesktopVoiceListenerSettingsSchema,
   overlay: DesktopOverlaySettingsSchema,
@@ -252,7 +252,7 @@ export const DEFAULT_DESKTOP_VOICE_SETTINGS: DesktopVoiceSettings = {
   deafened: false,
   inputVolume: 1,
   outputVolume: 1,
-  bypassSystemAudioInputProcessing: true,
+  bypassSystemAudioInputProcessing: false,
   automaticGainControl: true,
   noiseSuppression: true,
   echoCancellation: false,
@@ -297,7 +297,7 @@ export const DEFAULT_DESKTOP_UI_SETTINGS: DesktopUiSettings = {
 }
 
 export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
-  version: 3,
+  version: 4,
   voice: DEFAULT_DESKTOP_VOICE_SETTINGS,
   voiceListener: DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS,
   overlay: DEFAULT_DESKTOP_OVERLAY_SETTINGS,
@@ -622,10 +622,13 @@ export function normalizeDesktopLocalSettings(
 ): DesktopLocalSettings {
   const settings = objectRecord(value)
   const voice = normalizeDesktopVoiceSettings(settings.voice, defaults.voice)
-  if (settings.version !== 2 && settings.version !== 3) {
+  if (settings.version !== 2 && settings.version !== 3 && settings.version !== 4) {
     voice.echoCancellation = false
     voice.automaticGainControl = true
   }
+  // Version 4 turns WASAPI RAW capture off once: many drivers reject it and
+  // it bypasses their microphone processing. A later explicit opt-in is kept.
+  if (settings.version !== 4) voice.bypassSystemAudioInputProcessing = false
   const observability = normalizeDesktopObservabilitySettings(
     settings.observability,
     defaults.observability,
@@ -633,9 +636,9 @@ export function normalizeDesktopLocalSettings(
   // Version 3 intentionally enables redacted diagnostics once for every
   // existing installation. A later explicit opt-out is preserved because the
   // persisted document is already version 3.
-  if (settings.version !== 3) observability.diagnosticReports = true
+  if (settings.version !== 3 && settings.version !== 4) observability.diagnosticReports = true
   return {
-    version: 3,
+    version: 4,
     voice,
     voiceListener: normalizeDesktopVoiceListenerSettings(settings.voiceListener),
     overlay: normalizeDesktopOverlaySettings(settings.overlay, defaults.overlay),
