@@ -1,7 +1,9 @@
 #include "audio/microphone_owner.hpp"
 #include "audio/livekit_microphone_dsp.hpp"
 
+#include <windows.h>
 #include <charconv>
+#include <cstdio>
 #include <stdexcept>
 
 namespace syrnike::windows_media::audio {
@@ -10,16 +12,56 @@ using Clock = std::chrono::steady_clock;
 bool publishes(const MicrophoneIntent& intent, std::optional<std::uint64_t> room) {
   return intent.state == MicrophoneIntentState::on && room.has_value();
 }
-AudioDeviceIntent deviceIntent(const MicrophoneIntent& intent) {
+// A selected device that is missing (unplugged, renamed endpoint, stale
+// renderer preference) falls back to the default input with a warning.
+AudioDeviceIntent deviceIntent(const MicrophoneIntent& intent, const AudioDeviceRegistry& devices,
+                               bool& fallback) {
+  fallback = false;
   AudioDeviceIntent device;
   if (!intent.device_id) return device;
   AudioDeviceId id = 0;
   const auto& text = *intent.device_id;
   const auto parsed = std::from_chars(text.data(), text.data() + text.size(), id);
-  if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size() || id == 0)
-    throw std::invalid_argument("Microphone device ID is not a catalog identity");
-  device.explicit_id = id;
+  if (parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() && id != 0) {
+    device.explicit_id = id;
+    if (devices.resolve(device)) return device;
+    device.explicit_id.reset();
+  }
+  fallback = true;
   return device;
+}
+std::string hresultText(std::int32_t value) {
+  char text[16];
+  std::snprintf(text, sizeof(text), "0x%08X", static_cast<std::uint32_t>(value));
+  return text;
+}
+EngineFailure inputFailure(MicrophonePipelineFailure failure, const MicrophonePipelineStats& stats) {
+  const auto make = [&](const char* code, const char* message) {
+    std::string text = message;
+    if (stats.candidate_platform_result) text += " (" + hresultText(stats.candidate_platform_result) + ")";
+    return EngineFailure{code, std::move(text), "microphone", true};
+  };
+  if (failure == MicrophonePipelineFailure::input_unavailable)
+    return {"microphone_device_unavailable", "No microphone input device is available", "microphone", true};
+  if (failure != MicrophonePipelineFailure::capture_failed)
+    return make("microphone_input_failed", "Microphone input transaction failed");
+  switch (stats.candidate_failure) {
+    case MicrophoneCaptureFailure::activation_failed:
+      return stats.candidate_platform_result == E_ACCESSDENIED
+          ? make("microphone_access_denied", "Windows denied microphone access")
+          : make("microphone_activation_failed", "Microphone device could not be opened");
+    case MicrophoneCaptureFailure::format_unavailable:
+      return make("microphone_format_unavailable", "Microphone device rejected the capture format");
+    case MicrophoneCaptureFailure::policy_unavailable:
+      return make("microphone_policy_unavailable", "Microphone device rejected the stream configuration");
+    case MicrophoneCaptureFailure::device_lost:
+      return make("microphone_device_lost", "Microphone device is no longer available");
+    case MicrophoneCaptureFailure::no_progress:
+    case MicrophoneCaptureFailure::start_timeout:
+      return make("microphone_no_signal", "Microphone device did not deliver audio");
+    default:
+      return make("microphone_input_failed", "Microphone input transaction failed");
+  }
 }
 MicrophoneDspConfig dspConfig(const MicrophoneIntent& value) {
   return {
@@ -97,6 +139,7 @@ void MicrophoneOwner::run() noexcept {
   Desired applied;
   bool selection_pending = false;
   std::optional<EngineFailure> problem;
+  bool device_fallback = false;
   const auto stopSender = [&] {
     if (sender && !sender->stop(Clock::now() + kShutdownDeadline)) std::terminate();
     {
@@ -151,6 +194,7 @@ void MicrophoneOwner::run() noexcept {
       if (desired.intent.state == MicrophoneIntentState::off) {
         stopPipeline();
         problem.reset();
+        device_fallback = false;
       } else if (changed && (!problem || retry)) {
         if (retry) problem.reset();
         {
@@ -165,7 +209,7 @@ void MicrophoneOwner::run() noexcept {
           check(pipeline->configure(dspConfig(desired.intent)));
           check(pipeline->setEchoReference(desired.echo));
           check(pipeline->setSystemProcessingBypass(desired.intent.bypass_system_processing, cancellation));
-          check(pipeline->selectInput(devices_, deviceIntent(desired.intent), cancellation));
+          check(pipeline->selectInput(devices_, deviceIntent(desired.intent, devices_, device_fallback), cancellation));
           check(pipeline->setDemand({true, publish, desired.intent.meter_demand}, cancellation));
           if (publish && !sender) {
             // Capture may have taken seconds to open. Recheck the latest Room
@@ -184,8 +228,8 @@ void MicrophoneOwner::run() noexcept {
             stopSender();
             problem = EngineFailure{"microphone_publish_failed", "Microphone publication failed", "microphone", true};
           }
-        } catch (MicrophonePipelineFailure) {
-          problem = EngineFailure{"microphone_input_failed", "Microphone input transaction failed", "microphone", true};
+        } catch (MicrophonePipelineFailure failure) {
+          problem = inputFailure(failure, pipeline ? pipeline->stats() : MicrophonePipelineStats{});
         } catch (...) {
           problem = EngineFailure{"microphone_unavailable", "Microphone owner could not apply settings", "microphone", true};
         }
@@ -210,7 +254,10 @@ void MicrophoneOwner::run() noexcept {
       current.path.failure = problem;
       const bool healthy = pipeline && current.pipeline.capture.state == MicrophoneCaptureState::healthy &&
           (!publish || (sender && current.sender.published));
-      current.path.warning = problem.has_value() && healthy;
+      if (!problem && device_fallback && healthy)
+        current.path.failure = EngineFailure{"microphone_device_fallback",
+            "Selected microphone is unavailable; using the default input", "microphone", true};
+      current.path.warning = current.path.failure.has_value() && healthy;
       current.path.state = desired.intent.state == MicrophoneIntentState::off ? MediaPathState::Off :
           problem && !healthy ? MediaPathState::Failed :
           !healthy ? MediaPathState::Starting :

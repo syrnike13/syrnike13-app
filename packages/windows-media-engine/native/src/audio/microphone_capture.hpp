@@ -30,6 +30,9 @@ struct MicrophoneCaptureStats {
   bool client_alive = false;
   bool thread_alive = false;
   bool mmcss_registered = false;
+  // RAW is requested by bypass_system_processing but many drivers reject it.
+  // Capture then opens with the endpoint's normal processing instead of failing.
+  bool raw_processing = false;
 };
 // One-shot capture owner, driven by the ordered microphone control owner.
 // All Windows resources live and die on one joined worker. start() succeeds

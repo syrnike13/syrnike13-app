@@ -18,6 +18,7 @@ struct MicrophonePipelineStats {
   MicrophoneCaptureStats capture;
   MicrophoneDspStats meter;
   MicrophoneCaptureFailure candidate_failure = MicrophoneCaptureFailure::none;
+  std::int32_t candidate_platform_result = 0;
   std::uint64_t capture_opens = 0;
   std::uint64_t committed_switches = 0;
   std::uint64_t output_frames = 0;

@@ -75,6 +75,8 @@ describe('DesktopVoiceService session scope', () => {
 
   it('waits for native shutdown before creating the next account runtime', async () => {
     const service = new DesktopVoiceService()
+    service.configureSession({ _id: 'session-a', user_id: 'user-a', token: 'token-a' })
+    await service.dispatch({ type: 'setUserMuted', muted: false })
     let release = () => undefined
     const stopped = new Promise<void>(resolve => { release = () => resolve() })
     runtimeMocks.engines[0]!.dispose.mockReturnValue(stopped)
@@ -89,6 +91,8 @@ describe('DesktopVoiceService session scope', () => {
 
   it('does not create another account runtime after native termination fails', async () => {
     const service = new DesktopVoiceService()
+    service.configureSession({ _id: 'session-a', user_id: 'user-a', token: 'token-a' })
+    await service.dispatch({ type: 'setUserMuted', muted: false })
     runtimeMocks.engines[0]!.dispose.mockRejectedValue(new Error('utility still alive'))
     service.configureSession({ _id: 'session-b', user_id: 'user-b', token: 'token-b' })
     await service.dispatch({ type: 'setUserMuted', muted: true })
@@ -97,19 +101,19 @@ describe('DesktopVoiceService session scope', () => {
     service.configureSession({ _id: 'session-c', user_id: 'user-c', token: 'token-c' })
     await service.dispatch({ type: 'setUserMuted', muted: false })
     expect(runtimeMocks.engines).toHaveLength(1)
-    expect(runtimeMocks.transports[0].configured).toHaveLength(0)
+    expect(runtimeMocks.transports[0].configured).toHaveLength(1)
     await service.dispose()
   })
 
-  it('rotates runtime ownership across accounts but not for a token refresh', async () => {
+  it('configures the startup runtime for the first login and rotates only across sessions', async () => {
     const service = new DesktopVoiceService()
     expect(runtimeMocks.engines).toHaveLength(1)
 
     service.configureSession({ _id: 'session-a', user_id: 'user-a', token: 'token-a' })
     await service.dispatch({ type: 'setUserMuted', muted: true })
-    expect(runtimeMocks.engines).toHaveLength(2)
-    expect(runtimeMocks.engines[0].dispose).toHaveBeenCalledTimes(1)
-    expect(runtimeMocks.transports[1].configured.at(-1)?.token).toBe('token-a')
+    expect(runtimeMocks.engines).toHaveLength(1)
+    expect(runtimeMocks.engines[0].dispose).not.toHaveBeenCalled()
+    expect(runtimeMocks.transports[0].configured.at(-1)?.token).toBe('token-a')
 
     service.configureSession({
       _id: 'session-a',
@@ -117,17 +121,25 @@ describe('DesktopVoiceService session scope', () => {
       token: 'token-a-refreshed',
     })
     await service.dispatch({ type: 'setUserMuted', muted: false })
-    expect(runtimeMocks.engines).toHaveLength(2)
-    expect(runtimeMocks.transports[1].configured.at(-1)?.token).toBe(
+    expect(runtimeMocks.engines).toHaveLength(1)
+    expect(runtimeMocks.transports[0].configured.at(-1)?.token).toBe(
       'token-a-refreshed',
     )
 
     service.configureSession({ _id: 'session-b', user_id: 'user-b', token: 'token-b' })
     await service.dispatch({ type: 'setUserMuted', muted: true })
+    expect(runtimeMocks.engines).toHaveLength(2)
+    expect(runtimeMocks.engines[0].dispose).toHaveBeenCalledTimes(1)
+    expect(runtimeMocks.transports[0].stop).toHaveBeenCalledTimes(1)
+    expect(runtimeMocks.transports[1].configured.at(-1)?.token).toBe('token-b')
+
+    service.configureSession(null)
+    await service.dispatch({ type: 'setUserMuted', muted: false })
     expect(runtimeMocks.engines).toHaveLength(3)
-    expect(runtimeMocks.engines[1].dispose).toHaveBeenCalledTimes(1)
-    expect(runtimeMocks.transports[1].stop).toHaveBeenCalledTimes(1)
-    expect(runtimeMocks.transports[2].configured.at(-1)?.token).toBe('token-b')
+    service.configureSession({ _id: 'session-c', user_id: 'user-c', token: 'token-c' })
+    await service.dispatch({ type: 'setUserMuted', muted: true })
+    expect(runtimeMocks.engines).toHaveLength(3)
+    expect(runtimeMocks.transports[2].configured.at(-1)?.token).toBe('token-c')
 
     await service.dispose()
   })

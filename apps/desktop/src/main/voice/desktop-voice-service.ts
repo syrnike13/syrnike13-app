@@ -63,6 +63,7 @@ export class DesktopVoiceService {
     | null = null
   private disposed = false
   private runtimeRetirementFailed = false
+  private runtimeCarriedSession = false
 
   constructor() {
     const initial = this.createOwnedRuntime()
@@ -128,64 +129,39 @@ export class DesktopVoiceService {
   configureSession(session: DesktopStoredSession | null) {
     if (this.disposed || this.runtimeRetirementFailed) return
     const identity = session ? `${session.user_id}:${session._id}` : null
-    if (identity === this.sessionIdentity) {
-      if (!session || session.token === this.sessionToken) return
-      this.sessionToken = session.token
-      logNativeVoiceDiagnostic('session_token_refreshed')
-      this.enqueueSessionTransition(
-        Effect.sync(() => {
-          if (
-            !this.disposed &&
-            this.sessionIdentity === identity &&
-            this.sessionToken === session.token
-          ) {
-            this.runtime.transport.configure(
-              desktopVoiceWebSocketUrl(),
-              session.token,
-            )
-          }
-        }),
-      )
-      return
-    }
-
+    if (identity === this.sessionIdentity && (!session || session.token === this.sessionToken)) return
+    const tokenRefresh = identity === this.sessionIdentity
     const revision = ++this.sessionRevision
     const previousIdentity = this.sessionIdentity
     this.sessionIdentity = identity
     this.sessionToken = session?.token ?? null
-    logNativeVoiceDiagnostic(session ? 'session_rotating' : 'session_cleared', {
-      accountChanged:
-        previousIdentity !== null &&
-        session !== null &&
-        !previousIdentity.startsWith(`${session.user_id}:`),
-    })
+    logNativeVoiceDiagnostic(
+      tokenRefresh ? 'session_token_refreshed' : session ? 'session_changed' : 'session_cleared',
+      tokenRefresh ? undefined : {
+        accountChanged: previousIdentity !== null && session !== null &&
+          !previousIdentity.startsWith(`${session.user_id}:`),
+      },
+    )
     this.enqueueSessionTransition(
       Effect.gen({ self: this }, function* () {
-        const previousOwner = this.runtimeOwner
-        yield* previousOwner.disposeEffect
-        if (this.disposed || this.runtimeRetirementFailed || revision !== this.sessionRevision) return
-
-        const replacement = this.createOwnedRuntime()
-        this.runtime = replacement.value
-        this.runtimeOwner = replacement.owner
-        if (this.preferences) {
-          this.applyPreferencesTo(replacement.value, this.preferences)
+        // Native media state never crosses sessions. A runtime that has carried
+        // a session is retired; startup and logout leave one that never has.
+        if (!tokenRefresh && this.runtimeCarriedSession) {
+          yield* this.runtimeOwner.disposeEffect
+          if (this.disposed || this.runtimeRetirementFailed) return
+          const replacement = this.createOwnedRuntime()
+          this.runtime = replacement.value
+          this.runtimeOwner = replacement.owner
+          this.runtimeCarriedSession = false
+          if (this.preferences) this.applyPreferencesTo(replacement.value, this.preferences)
+          if (this.lifecycleStarted) {
+            yield* replacement.value.engine.prewarmMicrophoneEffect().pipe(Effect.ignore)
+          }
         }
-        if (this.lifecycleStarted) {
-          yield* replacement.value.engine.prewarmMicrophoneEffect().pipe(
-            Effect.ignore,
-          )
-        }
-        if (
-          this.sessionIdentity === identity &&
-          this.sessionToken
-        ) {
-          replacement.value.transport.configure(
-            desktopVoiceWebSocketUrl(),
-            this.sessionToken,
-          )
-          logNativeVoiceDiagnostic('session_configured', { rotated: true })
-        }
+        if (this.disposed || revision !== this.sessionRevision || !this.sessionToken) return
+        this.runtime.transport.configure(desktopVoiceWebSocketUrl(), this.sessionToken)
+        this.runtimeCarriedSession = true
+        logNativeVoiceDiagnostic('session_configured')
       }),
     )
   }

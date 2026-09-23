@@ -101,6 +101,7 @@ MicrophonePipelineFailure MicrophonePipeline::switchCapture(const AudioEndpoint&
   candidate_ = std::make_unique<MicrophoneCapture>();
   ++stats_.capture_opens;
   stats_.candidate_failure = candidate_->start(endpoint, ++generation_, bypass_system_processing, cancellation);
+  stats_.candidate_platform_result = candidate_->stats().platform_result;
   if (stats_.candidate_failure != MicrophoneCaptureFailure::none || cancellation.stop_requested()) {
     if (!candidate_->stop(Clock::now() + std::chrono::seconds{5})) {
       stats_.retired = true;
@@ -234,8 +235,7 @@ void* MicrophonePipeline::outputEvent() const noexcept { return state_->output_e
 void MicrophonePipeline::run(const std::shared_ptr<State>& state, EnhancementFactory factory) noexcept {
   try {
     MicrophoneDsp dsp(factory());
-    Mmcss mmcss;
-    if (!mmcss.handle) throw std::runtime_error("Microphone DSP MMCSS registration failed");
+    Mmcss mmcss;  // Scheduling hint only; absent when the MMCSS service is disabled.
     MicrophonePcmPort* input = nullptr;
     EchoReferencePort* echo_reference = nullptr;
     HANDLE frame_event = nullptr;

@@ -240,8 +240,15 @@ void WindowsMediaRuntime::run() noexcept {
           {"publication_failure", static_cast<double>(camera.publication.failure)},
         }};
       } else snapshot_.camera_metrics.reset();
-      if (desired_.microphone.state == MicrophoneIntentState::on) {
-        snapshot_.microphone_metrics = std::array<DiagnosticMetric, 7>{{
+      if (desired_.microphone.state != MicrophoneIntentState::off) {
+        const auto& capture = microphone.pipeline.capture;
+        snapshot_.microphone_metrics = std::array<DiagnosticMetric, 12>{{
+          {"capture_state", static_cast<double>(capture.state)},
+          {"capture_failure", static_cast<double>(microphone.pipeline.candidate_failure)},
+          {"capture_platform_result", static_cast<double>(
+              static_cast<std::uint32_t>(microphone.pipeline.candidate_platform_result))},
+          {"raw_processing", capture.raw_processing ? 1.0 : 0.0},
+          {"mmcss_registered", capture.mmcss_registered ? 1.0 : 0.0},
           {"published", microphone.sender.published ? 1.0 : 0.0},
           {"submitted", static_cast<double>(microphone.sender.submitted)},
           {"failure", static_cast<double>(microphone.sender.failure)},
