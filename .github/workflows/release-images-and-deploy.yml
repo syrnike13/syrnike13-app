@@ -366,7 +366,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/app-livekit-server:${{ needs.version.outputs.sha_tag }}
 
   native-windows:
-    name: Verify Windows native boundary
+    name: Build Windows native runtime
     needs:
       - changes
       - version
@@ -376,6 +376,7 @@ jobs:
       release_channel: stable
       desktop_build_version: ${{ needs.version.outputs.version }}
       symbol_retention_days: 30
+      skip_tests: true
 
   desktop:
     name: Build desktop packages

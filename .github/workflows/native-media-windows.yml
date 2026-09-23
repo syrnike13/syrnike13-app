@@ -18,6 +18,11 @@ on:
         required: false
         type: number
         default: 14
+      skip_tests:
+        description: Build and stage native artifacts without running test suites. Release pipelines set this because pull requests already ran them.
+        required: false
+        type: boolean
+        default: false
   pull_request:
     paths:
       - .github/workflows/native-media-windows.yml
@@ -65,6 +70,7 @@ jobs:
       - name: Verify generated media protocol is committed
         run: pnpm --filter @syrnike13/windows-media-engine protocol:check
       - name: Build and test Debug media lifecycle engine
+        if: ${{ !inputs.skip_tests }}
         run: |
           pnpm windows-media:build:debug
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -74,28 +80,35 @@ jobs:
         run: |
           pnpm windows-media:build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ctest --test-dir packages/windows-media-engine/build -C Release --output-on-failure --label-exclude 'requires-gpu-video|requires-audio-device'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ('${{ inputs.skip_tests }}' -ne 'true') {
+            ctest --test-dir packages/windows-media-engine/build -C Release --output-on-failure --label-exclude 'requires-gpu-video|requires-audio-device'
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
           pnpm windows-media:verify
       - name: Build and test Debug hook addons
+        if: ${{ !inputs.skip_tests }}
         run: |
           pnpm desktop-native:build:debug
           pnpm desktop-native:test:debug
       - name: Build, test, and verify Release hook addons
         run: |
           pnpm desktop-native:build
-          pnpm desktop-native:test
+          if ('${{ inputs.skip_tests }}' -ne 'true') { pnpm desktop-native:test }
           pnpm desktop-native:verify
-          pnpm --filter @syrnike13/desktop-native smoke:hooks
+          if ('${{ inputs.skip_tests }}' -ne 'true') { pnpm --filter @syrnike13/desktop-native smoke:hooks }
       - name: Verify desktop boundary
+        if: ${{ !inputs.skip_tests }}
         run: |
           pnpm desktop:typecheck
           pnpm desktop:test
       - name: Build desktop assets for package
+        if: ${{ !inputs.skip_tests }}
         run: pnpm desktop:build
       - name: Run 50-cycle Electron media lifecycle smoke
+        if: ${{ !inputs.skip_tests }}
         run: pnpm --filter @syrnike13/desktop smoke:media-lifecycle
       - name: Build and verify unpacked Windows package
+        if: ${{ !inputs.skip_tests }}
         run: pnpm --filter @syrnike13/desktop package:prepared
       - name: Upload verified Windows hook addons
         uses: actions/upload-artifact@v4
@@ -138,6 +151,7 @@ jobs:
 
   native-hooks-asan:
     name: Hook addons AddressSanitizer
+    if: ${{ !inputs.skip_tests }}
     runs-on: windows-2025-vs2026
     steps:
       - uses: actions/checkout@v4

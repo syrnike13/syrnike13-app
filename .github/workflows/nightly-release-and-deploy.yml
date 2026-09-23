@@ -41,13 +41,14 @@ jobs:
           echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
 
   native-windows:
-    name: Verify Windows native boundary
+    name: Build Windows native runtime
     needs: version
     uses: ./.github/workflows/native-media-windows.yml
     with:
       release_channel: nightly
       desktop_build_version: ${{ needs.version.outputs.nightly_version }}
       symbol_retention_days: 14
+      skip_tests: true
 
   web:
     name: Publish nightly web image
