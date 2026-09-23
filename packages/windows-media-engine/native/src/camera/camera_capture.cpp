@@ -2,6 +2,9 @@
 
 #include <windows.h>
 #include <algorithm>
+#include <condition_variable>
+#include <mutex>
+#include <optional>
 #include <stdexcept>
 
 namespace syrnike::windows_media::camera {
@@ -20,6 +23,7 @@ DWORD remaining(Clock::time_point deadline) noexcept {
   return static_cast<DWORD>((std::clamp)(std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now()).count(),
       std::int64_t{0}, std::int64_t{5000}));
 }
+constexpr auto kNoFrameTimeout = std::chrono::seconds{2};
 }  // namespace
 struct CameraCapture::State {
   CameraEndpoint endpoint;
@@ -35,6 +39,10 @@ struct CameraCapture::State {
   std::atomic_uint32_t width{0}, height{0}, fps{0};
   std::atomic_uint64_t frames{0}, stale{0}, maximum_copy_us{0};
   std::atomic<std::int64_t> platform_error{0};
+  std::mutex no_frame_mutex;
+  std::condition_variable no_frame_changed;
+  std::optional<Clock::time_point> no_frame_deadline;
+  bool no_frame_stopping = false;
   void fail(CameraFailure value) noexcept {
     auto expected = CameraFailure::none;
     failure.compare_exchange_strong(expected, value);
@@ -65,7 +73,11 @@ CameraFailure CameraCapture::start(std::stop_token cancellation) {
   std::stop_callback cancel(cancellation, [state = state_] { SetEvent(state->stop.value); });
   const HANDLE events[]{state_->stop.value, state_->ready.value};
   const auto wake = WaitForMultipleObjects(2, events, FALSE, 4000);
-  if (cancellation.stop_requested() || wake == WAIT_OBJECT_0) return CameraFailure::cancelled;
+  if (cancellation.stop_requested()) return CameraFailure::cancelled;
+  if (wake == WAIT_OBJECT_0) {
+    const auto failure = state_->failure.load();
+    return failure == CameraFailure::none ? CameraFailure::cancelled : failure;
+  }
   if (wake != WAIT_OBJECT_0 + 1) {
     state_->fail(CameraFailure::start_timeout);
     state_->output->selectGeneration(0);
@@ -93,6 +105,7 @@ CameraCaptureStats CameraCapture::stats() const noexcept {
 void CameraCapture::run(const std::shared_ptr<State>& state) noexcept {
   state->thread_alive = true;
   std::unique_ptr<CameraReader> reader;
+  std::thread no_frame_watchdog;
   try {
     std::vector<std::uint8_t> pixels(kMaximumCameraBytes);
     reader = state->factory();
@@ -108,19 +121,50 @@ void CameraCapture::run(const std::shared_ptr<State>& state) noexcept {
     state->height = opened.actual.height;
     state->fps = opened.actual.fps;
     state->downgraded = opened.downgraded;
+    no_frame_watchdog = std::thread([state] {
+      std::unique_lock lock(state->no_frame_mutex);
+      while (!state->no_frame_stopping) {
+        if (!state->no_frame_deadline) {
+          state->no_frame_changed.wait(lock, [&] {
+            return state->no_frame_stopping || state->no_frame_deadline.has_value();
+          });
+          continue;
+        }
+        const auto deadline = *state->no_frame_deadline;
+        if (state->no_frame_changed.wait_until(lock, deadline, [&] {
+              return state->no_frame_stopping || !state->no_frame_deadline ||
+                     *state->no_frame_deadline != deadline;
+            })) {
+          continue;
+        }
+        state->no_frame_deadline.reset();
+        lock.unlock();
+        state->fail(CameraFailure::no_frames);
+        SetEvent(state->stop.value);
+        lock.lock();
+      }
+    });
+    const auto armNoFrameWatchdog = [state] {
+      {
+        std::lock_guard lock(state->no_frame_mutex);
+        state->no_frame_deadline = Clock::now() + kNoFrameTimeout;
+      }
+      state->no_frame_changed.notify_all();
+    };
     auto failure = reader->requestSample();
     if (failure != CameraFailure::none) throw failure;
+    armNoFrameWatchdog();
     const HANDLE events[]{state->stop.value, static_cast<HANDLE>(reader->eventHandle())};
     if (!events[1]) throw CameraFailure::source_error;
     auto last_frame = Clock::now();
     std::int64_t previous_timestamp = 0;
     std::uint64_t sequence = 0;
     while (WaitForSingleObject(state->stop.value, 0) != WAIT_OBJECT_0) {
-      if (Clock::now() - last_frame >= std::chrono::seconds{2}) throw CameraFailure::no_frames;
+      if (Clock::now() - last_frame >= kNoFrameTimeout) throw CameraFailure::no_frames;
       const auto wake = WaitForMultipleObjects(2, events, FALSE, 100);
       if (wake == WAIT_OBJECT_0) break;
       if (wake == WAIT_TIMEOUT) {
-        if (Clock::now() - last_frame >= std::chrono::seconds{2}) throw CameraFailure::no_frames;
+        if (Clock::now() - last_frame >= kNoFrameTimeout) throw CameraFailure::no_frames;
         continue;
       }
       if (wake != WAIT_OBJECT_0 + 1) throw CameraFailure::source_error;
@@ -156,9 +200,17 @@ void CameraCapture::run(const std::shared_ptr<State>& state) noexcept {
       }
       failure = reader->requestSample();
       if (failure != CameraFailure::none) throw failure;
+      armNoFrameWatchdog();
     }
   } catch (CameraFailure failure) { state->fail(failure); }
   catch (...) { state->fail(CameraFailure::source_error); }
+  {
+    std::lock_guard lock(state->no_frame_mutex);
+    state->no_frame_stopping = true;
+    state->no_frame_deadline.reset();
+  }
+  state->no_frame_changed.notify_all();
+  if (no_frame_watchdog.joinable()) no_frame_watchdog.join();
   state->output->selectGeneration(0);
   if (reader) {
     state->closed = reader->close(Clock::now() + std::chrono::seconds{2});

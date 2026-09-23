@@ -981,7 +981,10 @@ int captureMonitor(int argc, char** argv, const std::string& command) {
   }
   const std::string source_id = selected_source->id;
   MonitorPatternFixture fixture(*selected_source);
-  const int warmup_cycles = arguments.repeat > 1 ? 3 : 1;
+  // The first WGC cycle initializes process-wide WinRT/D3D worker state. A
+  // second cycle ensures lazy worker threads are present before the resource
+  // baseline is sampled, so the measured cycle only checks for new leaks.
+  const int warmup_cycles = arguments.repeat > 1 ? 3 : 2;
   const int warmup_frames =
       (std::clamp)(arguments.frames, 64, 600);
   for (int warmup = 0; warmup < warmup_cycles; ++warmup) {
