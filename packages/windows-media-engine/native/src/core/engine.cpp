@@ -1092,64 +1092,29 @@ private:
       return;
     }
     const auto telemetry_now = std::chrono::steady_clock::now();
-    if ((media.screen_audio_metrics || media.screen_video_metrics || media.camera_metrics || media.microphone_metrics ||
-         media.remote_audio_ingress_metrics || media.remote_audio_output_metrics || media.remote_video_metrics) &&
-        telemetry_now >= next_media_diagnostic_) {
-      next_media_diagnostic_ = telemetry_now + std::chrono::seconds{1};
+    if (telemetry_now >= next_media_diagnostic_) {
       DiagnosticEventCallback callback;
       {
         std::lock_guard lock(diagnostic_callback_mutex_);
         callback = diagnostic_callback_;
       }
-      if (callback && media.screen_audio_metrics) callback(DiagnosticEvent{
-          ++diagnostic_sequence_, static_cast<std::uint64_t>(
-              std::chrono::duration_cast<std::chrono::milliseconds>(
-                  std::chrono::system_clock::now().time_since_epoch()).count()),
-          "screen_audio", "sample", "screen_audio_metrics",
-          {media.screen_audio_metrics->begin(), media.screen_audio_metrics->end()},
-      });
-      if (callback && media.screen_video_metrics) callback(DiagnosticEvent{
-          ++diagnostic_sequence_, static_cast<std::uint64_t>(
-              std::chrono::duration_cast<std::chrono::milliseconds>(
-                  std::chrono::system_clock::now().time_since_epoch()).count()),
-          "screen", "sample", "screen_video_metrics",
-          {media.screen_video_metrics->begin(), media.screen_video_metrics->end()},
-      });
-      if (callback && media.camera_metrics) callback(DiagnosticEvent{
-          ++diagnostic_sequence_, static_cast<std::uint64_t>(
-              std::chrono::duration_cast<std::chrono::milliseconds>(
-                  std::chrono::system_clock::now().time_since_epoch()).count()),
-          "camera", "sample", "camera_metrics",
-          {media.camera_metrics->begin(), media.camera_metrics->end()},
-      });
-      if (callback && media.microphone_metrics) callback(DiagnosticEvent{
-          ++diagnostic_sequence_, static_cast<std::uint64_t>(
-              std::chrono::duration_cast<std::chrono::milliseconds>(
-                  std::chrono::system_clock::now().time_since_epoch()).count()),
-          "microphone", "sample", "microphone_metrics",
-          {media.microphone_metrics->begin(), media.microphone_metrics->end()},
-      });
-      if (callback && media.remote_audio_ingress_metrics) callback(DiagnosticEvent{
-          ++diagnostic_sequence_, static_cast<std::uint64_t>(
-              std::chrono::duration_cast<std::chrono::milliseconds>(
-                  std::chrono::system_clock::now().time_since_epoch()).count()),
-          "remote_audio", "sample", "remote_audio_ingress_metrics",
-          {media.remote_audio_ingress_metrics->begin(), media.remote_audio_ingress_metrics->end()},
-      });
-      if (callback && media.remote_audio_output_metrics) callback(DiagnosticEvent{
-          ++diagnostic_sequence_, static_cast<std::uint64_t>(
-              std::chrono::duration_cast<std::chrono::milliseconds>(
-                  std::chrono::system_clock::now().time_since_epoch()).count()),
-          "remote_audio", "sample", "remote_audio_output_metrics",
-          {media.remote_audio_output_metrics->begin(), media.remote_audio_output_metrics->end()},
-      });
-      if (callback && media.remote_video_metrics) callback(DiagnosticEvent{
-          ++diagnostic_sequence_, static_cast<std::uint64_t>(
-              std::chrono::duration_cast<std::chrono::milliseconds>(
-                  std::chrono::system_clock::now().time_since_epoch()).count()),
-          "remote_video", "sample", "remote_video_metrics",
-          {media.remote_video_metrics->begin(), media.remote_video_metrics->end()},
-      });
+      if (callback) {
+        const auto timestamp = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+        const auto emit = [&](const char *component, const char *code, const auto &metrics) {
+          if (!metrics) return;
+          next_media_diagnostic_ = telemetry_now + std::chrono::seconds{1};
+          callback(DiagnosticEvent{
+              ++diagnostic_sequence_, timestamp, component, "sample", code, {metrics->begin(), metrics->end()}});
+        };
+        emit("screen_audio", "screen_audio_metrics", media.screen_audio_metrics);
+        emit("screen", "screen_video_metrics", media.screen_video_metrics);
+        emit("camera", "camera_metrics", media.camera_metrics);
+        emit("microphone", "microphone_metrics", media.microphone_metrics);
+        emit("remote_audio", "remote_audio_ingress_metrics", media.remote_audio_ingress_metrics);
+        emit("remote_audio", "remote_audio_output_metrics", media.remote_audio_output_metrics);
+        emit("remote_video", "remote_video_metrics", media.remote_video_metrics);
+      }
     }
     if (room_teardown_pending_ && !media.publications_stopped &&
         std::chrono::steady_clock::now() >= media_quiesce_deadline_) {
