@@ -22,7 +22,7 @@ package or product file. Preserve both launcher and loader hashes in fixture
 inputs. This startup control does not qualify native faults or resolve every
 earlier shutdown delay.
 
-See the [control artifact](docs/native-v2/playwright-launch-control-e3773e48.json)
+See the control artifact (`docs/native-v2/playwright-launch-control-e3773e48.json`, removed after commit 422e19da; see Git history)
 and the linked versioned upstream sources for the capture hashes, observation
 limits, and exact initialization paths.
 
@@ -57,7 +57,7 @@ encoder resource qualification on this setup; successful owner assertions are
 not a complete PASS. Process containment closes resources when the utility exits,
 but does not establish zero growth during repeated encoder lifecycles.
 
-A subsequent [isolated child policy control](docs/native-v2/mft-extension-policy-b007397a.json)
+A subsequent isolated child policy control (`docs/native-v2/mft-extension-policy-b007397a.json`, removed after commit 422e19da; see Git history)
 at `b007397a` reproduced +200 handles and zero thread growth in both 100-cycle
 runs, with Windows extension points enabled and disabled. The child policy was
 queried before resuming the process; both probes exited normally with the
@@ -72,7 +72,7 @@ control still failed its resource assertion: 459 -> 464 handles and 28 -> 26
 threads, despite passing all 100 owner assertions. During that run, the observed
 overlay DLL was version `11.0.9.251`; the NVIDIA driver remained unchanged.
 The activation-only process exited before its loaded modules could be captured.
-These [post-restart controls](docs/native-v2/encoder-post-restart-52ccd1e3.json)
+These post-restart controls (`docs/native-v2/encoder-post-restart-52ccd1e3.json`, removed after commit 422e19da; see Git history)
 show changed behavior without establishing its cause. The earlier +200-handle
 observations remain historical evidence; they do not describe every later run.
 No driver or overlay configuration was changed by this task.
@@ -93,7 +93,7 @@ positive deltas: clean encoder start/stop retained 198 handles over 100 cycles,
 and the standalone same-thread MFT activation control retained 200. Both passed
 their 100 behavioral iterations and failed resource assertions. Driver and
 installed overlay DLL versions remained `32.0.16.1074` and `11.0.9.251`.
-The [recheck artifact](docs/native-v2/encoder-resource-recheck-2026-09-19.json)
+The recheck artifact (`docs/native-v2/encoder-resource-recheck-2026-09-19.json`, removed after commit 422e19da; see Git history)
 records binary identity and raw results. This is diagnostic evidence from an
 existing build; it does not establish an overlay root cause or qualify a merge.
 
@@ -101,7 +101,7 @@ Later on 2026-09-19, the user disabled NVIDIA Overlay. The rebuilt Release
 control passed 100 same-thread activations and 100 clean encoder lifecycles
 with zero handle/thread growth. The no-output fault still retained one net
 handle after 100 successful behavioral iterations. `nvspcap64.dll` remained
-loaded in the test process. The [overlay-disabled controls](docs/native-v2/encoder-overlay-disabled-2026-09-19.json)
+loaded in the test process. The overlay-disabled controls (`docs/native-v2/encoder-overlay-disabled-2026-09-19.json`, removed after commit 422e19da; see Git history)
 therefore isolate the large growth from the remaining resource failure without
 claiming that the DLL was absent or identifying the remaining handle's owner.
 
@@ -109,7 +109,7 @@ A single configured hardware MFT held active for 200 seconds also added an IO
 completion port, without repeated activation, submitted frames, application
 encoder workers or recovery. The duration-matched configured-MFT control retained
 resources even with explicit flush/end-streaming. COM and MF startup/shutdown
-alone did not grow handles. These [controls](docs/native-v2/resource-diagnostics-2026-09-19.json)
+alone did not grow handles. These controls (`docs/native-v2/resource-diagnostics-2026-09-19.json`, removed after commit 422e19da; see Git history)
 show that background platform activity can change the process counters independently
 of recovery. They do not attribute every positive delta or waive qualification.
 In two three-batch encoder runs the second batch was neutral but the third grew

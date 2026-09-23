@@ -1,4 +1,4 @@
-#include "lab/synthetic_camera_reader.hpp"
+#include "synthetic_camera_reader.hpp"
 
 #include <windows.h>
 #include <algorithm>

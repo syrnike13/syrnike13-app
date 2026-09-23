@@ -1,5 +1,4 @@
 #include "capture/dxgi_monitor_capture.hpp"
-#include "testing/product_fault_gate.hpp"
 #include "capture/dxgi_frame_compositor.hpp"
 #include <dxgi1_6.h>
 #include <condition_variable>
@@ -239,7 +238,6 @@ void run(const std::shared_ptr<State>& state, sources::MonitorTargetToken target
 #ifdef WINDOWS_MEDIA_TEST_DXGI_ACQUIRE
       const auto acquired = WINDOWS_MEDIA_TEST_DXGI_ACQUIRE(duplication.Get(), &frame, &desktop);
 #else
-      testing::holdProductFault("dxgi-acquire-frame");
       const auto acquired = duplication->AcquireNextFrame(0, &frame, &desktop);
 #endif
       if (acquired == DXGI_ERROR_WAIT_TIMEOUT) {

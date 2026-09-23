@@ -1,5 +1,4 @@
 #include "screen/hardware_h264_encoder.hpp"
-#include "testing/product_fault_gate.hpp"
 
 #include <strmif.h>
 #include <codecapi.h>
@@ -432,7 +431,6 @@ bool processOneOutput(
       output_info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES ? nullptr
                                                                : caller_output;
   DWORD status = 0;
-  testing::holdProductFault("encoder-output");
   const HRESULT result = transform->ProcessOutput(0, 1, &output, &status);
   if (output.pEvents) output.pEvents->Release();
   if (FAILED(result)) {
@@ -665,7 +663,6 @@ void encoderWorker(
     if (input) {
       state->worker_operation.store("process_input", std::memory_order_relaxed);
       auto sample = makeInputSample(*input);
-      if (sample) testing::holdProductFault("encoder-input");
       const HRESULT input_result =
           sample ? transform->ProcessInput(0, sample.Get(), 0) : E_FAIL;
       if (FAILED(input_result)) {

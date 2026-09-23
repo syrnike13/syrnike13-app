@@ -1,5 +1,4 @@
 #include "camera/camera_publication.hpp"
-#include "testing/product_fault_gate.hpp"
 
 #include <windows.h>
 #include <algorithm>
@@ -108,7 +107,6 @@ void CameraPublication::run(const std::shared_ptr<State>& state) noexcept {
         options.simulcast = false;
         options.video_codec = livekit::VideoCodec::VP8;
         options.video_encoding = livekit::VideoEncodingOptions{3'000'000, 30};
-        testing::holdProductFault("sdk-camera-publish");
         state->participant->publishTrack(state->track, options);
         if (!state->track->publication()) throw std::runtime_error("Camera publication missing");
         auto pending = State::Commit::pending;
@@ -152,7 +150,6 @@ void CameraPublication::run(const std::shared_ptr<State>& state) noexcept {
     if (!state->enqueue([state](const std::shared_ptr<livekit::Room>&) {
       try {
         if (state->track && state->track->publication() && state->participant) {
-          testing::holdProductFault("sdk-camera-unpublish");
           state->participant->unpublishTrack(state->track->publication()->sid());
         }
       } catch (...) { state->fail(CameraPublicationFailure::publish_failed); }

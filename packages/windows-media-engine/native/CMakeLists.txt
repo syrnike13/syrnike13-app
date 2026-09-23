@@ -13,8 +13,6 @@ set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
 set(CMAKE_COMPILE_PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
 
 option(WINDOWS_MEDIA_ENABLE_ASAN "Enable AddressSanitizer for lifecycle tests" OFF)
-option(WINDOWS_MEDIA_BUILD_LAB "Build the isolated LiveKit media lab publisher" OFF)
-option(WINDOWS_MEDIA_TEST_FAULT_GATES "Enable test-only held platform-call gates" OFF)
 
 if(NOT DEFINED NAPI_VERSION OR "${NAPI_VERSION}" STREQUAL "")
   set(NAPI_VERSION 8)
@@ -34,9 +32,6 @@ if(NOT DEFINED WINDOWS_MEDIA_COMMIT OR "${WINDOWS_MEDIA_COMMIT}" STREQUAL "")
 endif()
 
 function(windows_media_target target)
-  if(WINDOWS_MEDIA_TEST_FAULT_GATES)
-    target_compile_definitions(${target} PRIVATE WINDOWS_MEDIA_TEST_FAULT_GATES=1)
-  endif()
   target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_compile_definitions(${target} PRIVATE
     WIN32_LEAN_AND_MEAN
@@ -102,7 +97,7 @@ target_link_libraries(media_camera_preview PUBLIC media_camera_core media_captur
 add_library(media_camera_owner STATIC src/camera/camera_owner.cpp)
 windows_media_target(media_camera_owner)
 target_link_libraries(media_camera_owner PUBLIC media_camera_pipeline media_camera_devices media_camera_publication media_camera_preview)
-add_library(media_camera_fixture STATIC src/lab/synthetic_camera_reader.cpp)
+add_library(media_camera_fixture STATIC tests/support/synthetic_camera_reader.cpp)
 windows_media_target(media_camera_fixture)
 target_link_libraries(media_camera_fixture PUBLIC media_camera_capture)
 
@@ -238,10 +233,7 @@ add_library(media_video STATIC src/video/shared_texture_pool.cpp src/video/remot
 windows_media_target(media_video)
 target_link_libraries(media_video PUBLIC media_capture LiveKit::livekit PRIVATE dxgi)
 
-add_library(media_screen_livekit STATIC
-  src/lab/reference_screen_sender.cpp
-  src/livekit/livekit_screen_publication_adapter.cpp
-)
+add_library(media_screen_livekit STATIC src/livekit/livekit_screen_publication_adapter.cpp)
 windows_media_target(media_screen_livekit)
 target_include_directories(media_screen_livekit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(media_screen_livekit PUBLIC media_screen LiveKit::livekit)
@@ -255,14 +247,6 @@ target_include_directories(media_product_runtime PUBLIC src)
 target_link_libraries(media_product_runtime PUBLIC media_microphone_livekit media_output_owner
   media_camera_owner media_screen_owner media_screen_audio_livekit media_video PRIVATE gdi32)
 
-add_executable(media_probe
-  src/probe/media_probe.cpp
-  src/probe/window_capture_probe.cpp
-)
-windows_media_target(media_probe)
-target_link_libraries(media_probe PRIVATE media_core media_sources)
-target_link_libraries(media_probe PRIVATE media_capture)
-target_link_libraries(media_probe PRIVATE media_audio_devices)
 
 execute_process(
   COMMAND node -p "require('node-addon-api').include"
@@ -358,7 +342,7 @@ windows_media_target(screen_frame_cadence_tests)
 add_test(NAME screen-frame-cadence COMMAND screen_frame_cadence_tests)
 add_test(NAME backend-selection-golden COMMAND ${CMAKE_COMMAND}
   -DPROBE=$<TARGET_FILE:backend_selection_policy_tests>
-  -DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/../../../docs/native-v2/backend-selection-golden.json
+  -DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/tests/support/backend-selection-golden.json
   -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_backend_golden.cmake)
 add_executable(screen_encoded_continuity_tests tests/screen_encoded_continuity_test.cpp)
 windows_media_target(screen_encoded_continuity_tests)
@@ -388,42 +372,6 @@ if(MSVC AND WINDOWS_MEDIA_ENABLE_ASAN)
 endif()
 
 add_test(NAME media-core-lifecycle COMMAND media_core_tests)
-add_test(NAME media-probe-lifecycle-once COMMAND media_probe lifecycle-once)
-add_test(NAME media-probe-fail-start COMMAND media_probe fail-start)
-add_test(NAME media-probe-hang-worker COMMAND media_probe hang-worker)
-add_test(NAME media-probe-enumerate-sources
-  COMMAND media_probe enumerate-sources --repeat 10 --diff)
-add_test(NAME media-probe-source-json-contract
-  COMMAND powershell -NoProfile -NonInteractive -File
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/verify_source_probe_json.ps1"
-    -Probe "$<TARGET_FILE:media_probe>")
-add_test(NAME media-probe-monitor-capture-json-contract
-  COMMAND powershell -NoProfile -NonInteractive -File
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/verify_monitor_capture_probe_json.ps1"
-    -Probe "$<TARGET_FILE:media_probe>")
-add_test(NAME media-probe-window-capture-json-contract
-  COMMAND powershell -NoProfile -NonInteractive -File
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/verify_window_capture_probe_json.ps1"
-    -Probe "$<TARGET_FILE:media_probe>")
-add_test(NAME media-probe-source-invalid-repeat-junk
-  COMMAND media_probe enumerate-sources --repeat 1junk)
-add_test(NAME media-probe-source-invalid-repeat-sign
-  COMMAND media_probe enumerate-sources --repeat +1)
-add_test(NAME media-probe-source-invalid-repeat-range
-  COMMAND media_probe enumerate-sources --repeat 1001)
-set_tests_properties(
-  media-probe-source-invalid-repeat-junk
-  media-probe-source-invalid-repeat-sign
-  media-probe-source-invalid-repeat-range
-  PROPERTIES WILL_FAIL TRUE TIMEOUT 5)
-set_tests_properties(
-  media-probe-enumerate-sources
-  media-probe-source-json-contract
-  PROPERTIES TIMEOUT 30)
-set_tests_properties(media-probe-monitor-capture-json-contract
-  PROPERTIES TIMEOUT 180)
-set_tests_properties(media-probe-window-capture-json-contract
-  PROPERTIES TIMEOUT 240)
 
 add_executable(source_registry_tests
   tests/source_registry_test.cpp
@@ -438,12 +386,6 @@ add_executable(source_window_fixture WIN32
 )
 windows_media_target(source_window_fixture)
 
-add_executable(monitor_pattern_fixture WIN32
-  fixtures/monitor_pattern_fixture.cpp
-)
-windows_media_target(monitor_pattern_fixture)
-add_dependencies(media_probe monitor_pattern_fixture)
-add_dependencies(media_probe source_window_fixture)
 
 add_executable(source_win32_integration_tests
   tests/source_win32_integration_test.cpp
@@ -499,9 +441,6 @@ target_link_libraries(screen_audio_owner_tests PRIVATE media_screen_audio_captur
 add_test(NAME screen-audio-owner COMMAND screen_audio_owner_tests)
 add_test(NAME adaptive-screen-policy COMMAND adaptive_screen_policy_tests)
 add_executable(adaptive_screen_pipeline_tests tests/adaptive_screen_pipeline_test.cpp)
-add_executable(live_bitrate_probe tests/live_bitrate_probe.cpp)
-windows_media_target(live_bitrate_probe)
-target_link_libraries(live_bitrate_probe PRIVATE media_screen)
 windows_media_target(adaptive_screen_pipeline_tests)
 target_link_libraries(adaptive_screen_pipeline_tests PRIVATE media_screen)
 add_test(NAME adaptive-screen-pipeline COMMAND adaptive_screen_pipeline_tests)
@@ -546,147 +485,3 @@ set_tests_properties(encoder-bitrate-unsupported encoder-bitrate-rejected
 # the default full suite; only the hosted workflow selects the portable subset.
 set_tests_properties(monitor-capture gpu-screen-converter encoder-faults
   PROPERTIES LABELS "requires-gpu-video")
-
-if(WINDOWS_MEDIA_BUILD_LAB)
-  add_executable(camera_lab src/lab/camera_lab.cpp)
-  windows_media_target(camera_lab)
-  target_compile_definitions(camera_lab PRIVATE _CRT_SECURE_NO_WARNINGS)
-  target_link_libraries(camera_lab PRIVATE media_camera_pipeline media_camera_devices media_camera_fixture
-    media_camera_publication media_camera_preview media_core psapi)
-  windows_media_copy_livekit_runtime(camera_lab)
-  add_executable(apm_allocation_baseline src/lab/apm_allocation_baseline.cpp)
-  windows_media_target(apm_allocation_baseline)
-  target_link_libraries(apm_allocation_baseline PRIVATE LiveKit::livekit)
-  windows_media_copy_livekit_runtime(apm_allocation_baseline)
-  add_executable(media_lab src/lab/microphone_lab.cpp src/lab/microphone_pipeline_lab.cpp
-    src/lab/microphone_ducking_lab.cpp src/lab/microphone_dsp_lab.cpp src/audio/microphone_capture.cpp)
-  windows_media_target(media_lab)
-  target_link_libraries(media_lab PRIVATE media_microphone_livekit media_screen_audio_capture LiveKit::livekit)
-  # Link the same capture implementation with a lab-only cancellation gate.
-  target_compile_definitions(media_lab PRIVATE _CRT_SECURE_NO_WARNINGS WINDOWS_MEDIA_CAPTURE_FAULT_PROBE)
-  target_include_directories(media_lab PRIVATE tests)
-  add_test(NAME microphone-candidate-fault COMMAND media_lab microphone-candidate-fault)
-  set_tests_properties(microphone-candidate-fault PROPERTIES TIMEOUT 60 LABELS "requires-audio-device")
-  add_test(NAME microphone-cancellation-faults COMMAND media_lab microphone-cancellation)
-  set_tests_properties(microphone-cancellation-faults PROPERTIES TIMEOUT 60 LABELS "requires-audio-device")
-  windows_media_copy_livekit_runtime(media_lab)
-  # Compile the production capture loop with disposable-process heap evidence;
-  # allocator hooks never enter the product capture library or normal media_lab.
-  add_executable(microphone_capture_allocation src/lab/microphone_capture_allocation.cpp
-    src/audio/microphone_capture.cpp src/audio/microphone_pcm.cpp)
-  windows_media_target(microphone_capture_allocation)
-  target_include_directories(microphone_capture_allocation PRIVATE tests)
-  target_compile_definitions(microphone_capture_allocation PRIVATE WINDOWS_MEDIA_CAPTURE_HEAP_PROBE)
-  target_link_libraries(microphone_capture_allocation PRIVATE media_audio_devices avrt)
-  add_test(NAME microphone-platform-faults COMMAND microphone_capture_allocation --fault-matrix)
-  set_tests_properties(microphone-platform-faults PROPERTIES TIMEOUT 300 LABELS "requires-audio-device")
-  add_executable(backend_capture_lab src/lab/backend_capture_lab.cpp)
-  add_executable(backend_transition_lab src/lab/backend_transition_lab.cpp)
-  # Explicit local proof only; restores the selected non-primary display mode.
-  add_executable(display_mode_proof src/lab/display_mode_proof.cpp)
-  windows_media_target(display_mode_proof)
-  windows_media_target(backend_transition_lab)
-  target_link_libraries(backend_transition_lab PRIVATE media_capture)
-  windows_media_target(backend_capture_lab)
-  target_link_libraries(backend_capture_lab PRIVATE media_capture)
-  add_dependencies(backend_capture_lab monitor_pattern_fixture)
-  add_library(preview_bridge_lab MODULE ${CMAKE_JS_SRC}
-    src/lab/preview_bridge_addon.cpp src/lab/screen_cpu_lab.cpp src/lab/gpu_contention.cpp)
-  set_target_properties(preview_bridge_lab PROPERTIES PREFIX "" SUFFIX ".node")
-  windows_media_target(preview_bridge_lab)
-  target_include_directories(preview_bridge_lab SYSTEM PRIVATE ${CMAKE_JS_INC} "${NODE_ADDON_API_DIR}")
-  target_compile_definitions(preview_bridge_lab PRIVATE NAPI_CPP_EXCEPTIONS NAPI_VERSION=${NAPI_VERSION})
-  target_link_libraries(preview_bridge_lab PRIVATE ${CMAKE_JS_LIB} media_screen_livekit media_livekit delayimp d3dcompiler)
-  target_link_options(preview_bridge_lab PRIVATE /DELAYLOAD:node.exe)
-  windows_media_copy_livekit_runtime(preview_bridge_lab)
-  add_dependencies(preview_bridge_lab monitor_pattern_fixture source_window_fixture)
-  add_executable(shared_texture_pool_tests tests/shared_texture_pool_test.cpp)
-  windows_media_target(shared_texture_pool_tests)
-  target_link_libraries(shared_texture_pool_tests PRIVATE media_video)
-  windows_media_copy_livekit_runtime(shared_texture_pool_tests)
-  add_test(NAME shared-texture-pool COMMAND shared_texture_pool_tests)
-  set_tests_properties(shared-texture-pool PROPERTIES TIMEOUT 30)
-  add_library(video_bridge_lab MODULE ${CMAKE_JS_SRC} src/lab/video_bridge_addon.cpp)
-  set_target_properties(video_bridge_lab PROPERTIES PREFIX "" SUFFIX ".node")
-  windows_media_target(video_bridge_lab)
-  target_include_directories(video_bridge_lab SYSTEM PRIVATE ${CMAKE_JS_INC} "${NODE_ADDON_API_DIR}")
-  target_compile_definitions(video_bridge_lab PRIVATE NAPI_CPP_EXCEPTIONS NAPI_VERSION=${NAPI_VERSION})
-  target_link_libraries(video_bridge_lab PRIVATE ${CMAKE_JS_LIB} media_video media_livekit delayimp)
-  windows_media_copy_livekit_runtime(video_bridge_lab)
-  target_link_options(video_bridge_lab PRIVATE /DELAYLOAD:node.exe)
-  add_executable(remote_video_contract_probe src/lab/remote_video_contract_probe.cpp)
-  add_executable(remote_video_publisher src/lab/remote_video_publisher.cpp)
-  windows_media_target(remote_video_publisher)
-  target_compile_definitions(remote_video_publisher PRIVATE _CRT_SECURE_NO_WARNINGS)
-  target_link_libraries(remote_video_publisher PRIVATE LiveKit::livekit)
-  windows_media_copy_livekit_runtime(remote_video_publisher)
-  windows_media_target(remote_video_contract_probe)
-  target_compile_definitions(remote_video_contract_probe PRIVATE _CRT_SECURE_NO_WARNINGS)
-  target_link_libraries(remote_video_contract_probe PRIVATE LiveKit::livekit)
-  windows_media_copy_livekit_runtime(remote_video_contract_probe)
-
-  add_executable(native_media_lab_publisher
-    src/lab/native_media_lab_publisher.cpp
-    src/lab/screen_cpu_lab.cpp
-    src/lab/gpu_contention.cpp
-  )
-  add_executable(audio_sync_fixture src/lab/audio_sync_fixture.cpp)
-  # Explicitly invoked local proof only: this helper temporarily changes and
-  # restores normal default endpoints. Never run by the default lab or CI.
-  add_executable(default_endpoint_proof src/lab/default_endpoint_proof.cpp)
-  windows_media_target(default_endpoint_proof)
-  add_dependencies(media_lab default_endpoint_proof)
-  target_link_libraries(default_endpoint_proof PRIVATE ole32 uuid)
-  windows_media_target(audio_sync_fixture)
-  target_link_libraries(audio_sync_fixture PRIVATE winmm)
-  add_executable(audio_capture_lab src/lab/audio_capture_lab.cpp)
-  windows_media_target(audio_capture_lab)
-  target_link_libraries(audio_capture_lab PRIVATE media_screen_audio_capture)
-  add_executable(gpu_contention_lab src/lab/gpu_contention_lab.cpp src/lab/gpu_contention.cpp)
-  windows_media_target(gpu_contention_lab)
-  target_link_libraries(gpu_contention_lab PRIVATE media_capture d3dcompiler)
-  add_executable(screen_audio_lab src/lab/screen_audio_lab.cpp src/lab/gpu_contention.cpp)
-  windows_media_target(screen_audio_lab)
-  target_compile_definitions(screen_audio_lab PRIVATE _CRT_SECURE_NO_WARNINGS)
-  target_link_libraries(screen_audio_lab PRIVATE media_screen_audio_livekit media_screen_livekit winmm d3dcompiler)
-  windows_media_copy_livekit_runtime(screen_audio_lab)
-  add_executable(remote_audio_reference src/lab/remote_audio_reference.cpp)
-  add_library(media_wasapi_output_lab STATIC src/audio/wasapi_output.cpp src/audio/remote_audio_output.cpp)
-  windows_media_target(media_wasapi_output_lab)
-  target_compile_definitions(media_wasapi_output_lab PRIVATE WINDOWS_MEDIA_REMOTE_AUDIO_PROBE)
-  target_link_libraries(media_wasapi_output_lab PUBLIC media_remote_audio_mixer media_audio_devices PRIVATE avrt)
-  add_library(media_remote_audio_livekit_lab STATIC src/audio/remote_audio_tracks.cpp)
-  windows_media_target(media_remote_audio_livekit_lab)
-  target_compile_definitions(media_remote_audio_livekit_lab PRIVATE WINDOWS_MEDIA_REMOTE_AUDIO_PROBE)
-  target_link_libraries(media_remote_audio_livekit_lab PUBLIC media_remote_audio_mixer media_livekit)
-  add_executable(remote_audio_lab src/lab/remote_audio_lab.cpp src/lab/remote_audio_livekit_lab.cpp
-    src/lab/remote_audio_output_lab.cpp src/lab/remote_audio_aec_lab.cpp src/lab/remote_audio_ducking_lab.cpp
-    src/lab/remote_audio_echo_publication_lab.cpp src/audio/output_owner.cpp)
-  windows_media_target(remote_audio_lab)
-  target_include_directories(remote_audio_lab PRIVATE tests)
-  target_link_libraries(remote_audio_lab PRIVATE media_wasapi_output_lab media_remote_audio_livekit_lab media_microphone_livekit
-    media_screen_audio_capture psapi)
-  target_compile_definitions(remote_audio_lab PRIVATE _CRT_SECURE_NO_WARNINGS)
-  windows_media_copy_livekit_runtime(remote_audio_lab)
-  add_test(NAME output-platform-faults COMMAND remote_audio_lab fault-matrix)
-  set_tests_properties(output-platform-faults PROPERTIES TIMEOUT 180 LABELS "requires-audio-device")
-  add_test(NAME output-cancellation-faults COMMAND remote_audio_lab cancellation)
-  set_tests_properties(output-cancellation-faults PROPERTIES TIMEOUT 60 LABELS "requires-audio-device")
-  add_test(NAME output-session-isolation COMMAND remote_audio_lab session-isolation)
-  set_tests_properties(output-session-isolation PROPERTIES TIMEOUT 180 LABELS "requires-audio-device")
-  windows_media_target(remote_audio_reference)
-  target_compile_definitions(remote_audio_reference PRIVATE _CRT_SECURE_NO_WARNINGS)
-  target_link_libraries(remote_audio_reference PRIVATE LiveKit::livekit)
-  windows_media_copy_livekit_runtime(remote_audio_reference)
-  windows_media_target(native_media_lab_publisher)
-  target_compile_definitions(native_media_lab_publisher PRIVATE _CRT_SECURE_NO_WARNINGS)
-  target_link_libraries(native_media_lab_publisher PRIVATE
-    media_core media_livekit media_sources media_capture media_screen_livekit
-    LiveKit::livekit d3dcompiler)
-  add_dependencies(native_media_lab_publisher monitor_pattern_fixture source_window_fixture)
-
-  get_filename_component(_livekit_cmake_parent "${LiveKit_DIR}" DIRECTORY)
-  get_filename_component(_livekit_lib_dir "${_livekit_cmake_parent}" DIRECTORY)
-  target_link_directories(native_media_lab_publisher PRIVATE "${_livekit_lib_dir}")
-  windows_media_copy_livekit_runtime(native_media_lab_publisher)
-endif()

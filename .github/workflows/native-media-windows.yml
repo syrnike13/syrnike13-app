@@ -31,12 +31,9 @@ on:
       - apps/desktop/src/utility/**
       - apps/desktop/tsup*.ts
       - apps/web/src/features/desktop/native-media-runtime-banner*
-      - docs/native-v2/**
       - docs/adr/0007-native-media-utility-lifetime.md
       - packages/desktop-native/**
       - packages/windows-media-engine/**
-      - packages/native-media-lab/**
-      - services/livekit-server/**
       - packages/platform/src/media*
       - package.json
       - pnpm-lock.yaml
@@ -63,21 +60,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: services/livekit-server/go.mod
-          cache-dependency-path: services/livekit-server/go.sum
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
       - name: Verify generated media protocol is committed
         run: pnpm --filter @syrnike13/windows-media-engine protocol:check
-      - name: Verify native fault evidence reporter
-        run: pnpm --filter @syrnike13/windows-media-engine exec node --test scripts/fault-matrix.test.mjs
-
-      - name: Check renderer fault observer evidence
-        run: pnpm --filter @syrnike13/native-media-lab exec node --test scripts/renderer-fault-evidence.test.mjs
-      - name: Verify product shutdown timing harness
-        run: pnpm --filter @syrnike13/desktop exec node --test scripts/product-faults/shutdown-harness.node-test.cjs
       - name: Build and test Debug media lifecycle engine
         run: |
           pnpm windows-media:build:debug
@@ -90,26 +76,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ctest --test-dir packages/windows-media-engine/build -C Release --output-on-failure --label-exclude 'requires-gpu-video|requires-audio-device'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pnpm windows-media:probe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm windows-media:verify
-      - name: Report hardware validation boundary
-        shell: pwsh
-        run: |
-          @'
-          ### Hardware validation
-          This hosted runner has no D3D11 Video interfaces or qualified audio endpoints.
-          Tests labeled `requires-gpu-video` or `requires-audio-device` are excluded
-          here, not reported as passed. Build with `--lab` and run the full local
-          suite on a Windows GPU/audio machine before merging media changes;
-          see docs/native-v2/FAULT_CATALOG.md for the required fault evidence.
-          '@ | Add-Content $env:GITHUB_STEP_SUMMARY
-      - name: Verify 1000 bounded source enumerations
-        shell: pwsh
-        run: |
-          $report = & packages/windows-media-engine/build/Release/media_probe.exe enumerate-sources --repeat 1000 --diff --sanitized
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $report | Set-Content -Encoding utf8 packages/windows-media-engine/build/source-enumeration-report.json
       - name: Build and test Debug hook addons
         run: |
           pnpm desktop-native:build:debug
@@ -128,25 +95,6 @@ jobs:
         run: pnpm desktop:build
       - name: Run 50-cycle Electron media lifecycle smoke
         run: pnpm --filter @syrnike13/desktop smoke:media-lifecycle
-      - name: Build local LiveKit server for the Media Lab
-        working-directory: services/livekit-server
-        run: |
-          New-Item -ItemType Directory -Force -Path ..\..\packages\native-media-lab\.ci | Out-Null
-          go build -o ..\..\packages\native-media-lab\.ci\livekit-server.exe ./cmd/server
-      - name: Run Native v2 Media Lab through Engine room control
-        env:
-          MEDIA_LAB_SERVER_EXE: ${{ github.workspace }}\packages\native-media-lab\.ci\livekit-server.exe
-        shell: pwsh
-        run: |
-          $labRoute = Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' |
-            Where-Object { $_.NextHop -ne '0.0.0.0' } |
-            Sort-Object InterfaceIndex | Select-Object -First 1
-          if (!$labRoute) { throw 'No IPv4 default route for the native lab' }
-          $labAddress = Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $labRoute.InterfaceIndex -AddressState Preferred |
-            Select-Object -ExpandProperty IPAddress -First 1
-          if (!$labAddress) { throw 'No preferred IPv4 address on the native lab interface' }
-          $env:MEDIA_LAB_SERVER_IP = $labAddress
-          pnpm native-media:lab
       - name: Build and verify unpacked Windows package
         run: pnpm --filter @syrnike13/desktop package:prepared
       - name: Upload verified Windows hook addons
@@ -167,21 +115,6 @@ jobs:
           path: |
             packages/windows-media-engine/dist/win32-x64/**
             apps/desktop/out/media-native/win32-x64/**
-      - name: Upload sanitized source enumeration report
-        uses: actions/upload-artifact@v4
-        with:
-          name: source-enumeration-windows-${{ github.sha }}
-          if-no-files-found: error
-          retention-days: 14
-          path: packages/windows-media-engine/build/source-enumeration-report.json
-      - name: Upload Native v2 Media Lab report
-        if: ${{ always() && hashFiles('packages/native-media-lab/artifacts/latest-report.json') != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-v2-media-lab-${{ github.sha }}
-          if-no-files-found: error
-          retention-days: 14
-          path: packages/native-media-lab/artifacts/latest-report.json
       - name: Upload native debug symbols
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -201,7 +134,6 @@ jobs:
           retention-days: ${{ inputs.symbol_retention_days || 14 }}
           path: |
             packages/windows-media-engine/build/**/*.pdb
-            packages/windows-media-engine/build/Release/media_probe.exe
             packages/windows-media-engine/dist/win32-x64/media-manifest.json
 
   native-hooks-asan:

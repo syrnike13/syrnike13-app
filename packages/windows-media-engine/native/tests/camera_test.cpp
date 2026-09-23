@@ -2,7 +2,7 @@
 #include "camera/camera_frame.hpp"
 #include "camera/camera_capture.hpp"
 #include "camera/camera_pipeline.hpp"
-#include "lab/synthetic_camera_reader.hpp"
+#include "support/synthetic_camera_reader.hpp"
 #include "camera/camera_preview.hpp"
 #include "capture/optional_preview_budget.hpp"
 #include "screen/local_screen_preview.hpp"

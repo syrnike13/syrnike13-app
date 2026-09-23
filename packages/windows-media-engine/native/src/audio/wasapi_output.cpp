@@ -1,5 +1,4 @@
 #include "audio/wasapi_output.hpp"
-#include "testing/product_fault_gate.hpp"
 
 #include <windows.h>
 #include <audioclient.h>
@@ -8,9 +7,6 @@
 #include <wrl/client.h>
 #include <algorithm>
 #include <stdexcept>
-#ifdef WINDOWS_MEDIA_REMOTE_AUDIO_PROBE
-#include "lab/remote_audio_probe.hpp"
-#endif
 
 namespace syrnike::windows_media::audio {
 namespace {
@@ -157,13 +153,6 @@ WasapiOutputStats WasapiOutput::stats() const noexcept {
 void WasapiOutput::run(const std::shared_ptr<State>& state, AudioEndpoint endpoint) noexcept {
   state->thread_alive = true;
   try {
-#ifdef WINDOWS_MEDIA_REMOTE_AUDIO_PROBE
-    if (lab::render_probe_epoch.load() == state->epoch && lab::render_block_prepare.load()) {
-      lab::render_prepare_entered = true;
-      WaitForSingleObject(state->stop.value, INFINITE);
-      throw Failure{WasapiOutputFailure::cancelled, HRESULT_FROM_WIN32(ERROR_CANCELLED)};
-    }
-#endif
     Apartment apartment;
     check(apartment.result, WasapiOutputFailure::activation_failed);
     ComPtr<IMMDeviceEnumerator> enumerator;
@@ -179,7 +168,6 @@ void WasapiOutput::run(const std::shared_ptr<State>& state, AudioEndpoint endpoi
     properties.eCategory = AudioCategory_Other;
     check(client->SetClientProperties(&properties), WasapiOutputFailure::policy_unavailable);
     WAVEFORMATEX format{WAVE_FORMAT_PCM, 2, kRemoteAudioRate, kRemoteAudioRate * 4, 4, 16, 0};
-    testing::holdProductFault("output-initialize");
     check(client->Initialize(AUDCLNT_SHAREMODE_SHARED,
           AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
               AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
@@ -222,14 +210,6 @@ void WasapiOutput::run(const std::shared_ptr<State>& state, AudioEndpoint endpoi
       if (wake == WAIT_OBJECT_0) break;
       if (wake != WAIT_OBJECT_0 + 1 && wake != WAIT_TIMEOUT)
         throw Failure{WasapiOutputFailure::render_failed, HRESULT_FROM_WIN32(GetLastError())};
-#ifdef WINDOWS_MEDIA_REMOTE_AUDIO_PROBE
-      if (lab::render_probe_epoch.load() == state->epoch) {
-        const auto delay = (std::min)(lab::render_delay_ms.exchange(0), std::uint32_t{1500});
-        if (delay && WaitForSingleObject(state->stop.value, delay) == WAIT_OBJECT_0) break;
-        if (lab::render_stop_client.exchange(false)) check(client->Stop(), WasapiOutputFailure::render_failed);
-        if (lab::render_device_loss.exchange(false)) check(AUDCLNT_E_DEVICE_INVALIDATED, WasapiOutputFailure::device_lost);
-      }
-#endif
       UINT32 padding = 0;
       UINT64 position = 0, qpc = 0;
       check(client->GetCurrentPadding(&padding), WasapiOutputFailure::device_lost);
@@ -274,7 +254,6 @@ void WasapiOutput::run(const std::shared_ptr<State>& state, AudioEndpoint endpoi
       }
       if (count) {
         BYTE* destination = nullptr;
-        testing::holdProductFault("output-render");
         check(render->GetBuffer(count, &destination), WasapiOutputFailure::render_failed);
         std::copy_n(prepared.begin(), static_cast<std::size_t>(count) * 2, reinterpret_cast<std::int16_t*>(destination));
         check(render->ReleaseBuffer(count, 0), WasapiOutputFailure::render_failed);

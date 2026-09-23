@@ -5,9 +5,6 @@
 #include <cmath>
 #include <exception>
 #include <stdexcept>
-#ifdef WINDOWS_MEDIA_REMOTE_AUDIO_PROBE
-#include "lab/remote_audio_probe.hpp"
-#endif
 
 namespace syrnike::windows_media::audio {
 namespace {
@@ -380,12 +377,6 @@ void RemoteAudioTracks::run() noexcept {
         deafened = deafened_;
         for (std::size_t index = 0; index < snapshot.size(); ++index) wanted[index] = desired(snapshot[index]);
       }
-#ifdef WINDOWS_MEDIA_REMOTE_AUDIO_PROBE
-      if (const auto delay = (std::min)(lab::decoded_reader_delay_ms.exchange(0), std::uint32_t{1500}); delay) {
-        std::unique_lock lock(mutex_);
-        if (changed_.wait_for(lock, std::chrono::milliseconds{delay}, [&] { return stopping_; })) break;
-      }
-#endif
       if (revision != applied) {
         std::array<RemoteAudioInput, kRemoteAudioTrackCapacity> inputs{};
         std::size_t count = 0;

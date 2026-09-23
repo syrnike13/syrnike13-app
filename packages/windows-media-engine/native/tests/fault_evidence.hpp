@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <thread>
-#include "probe/resource_thread_diagnostics.hpp"
+#include "support/resource_thread_diagnostics.hpp"
 #include "resource_handle_diagnostics.hpp"
 
 namespace syrnike::windows_media::tests {
