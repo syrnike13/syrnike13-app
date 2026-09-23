@@ -33,6 +33,7 @@ class WindowsMediaRuntime final : public MediaRuntime {
   std::vector<std::string> activeSpeakers() const { return audio_->activeSpeakerIdentities(); }
   std::vector<video::ExportedFrame> takeFrames() { return frames_.take(); }
   bool releaseFrame(const video::ExportRelease& release) { return frames_.release(release); }
+  void setFramesReadyListener(std::function<void()> listener) { frames_.setReadyListener(std::move(listener)); }
   sources::ThumbnailSnapshot queryThumbnail(std::uint64_t revision, std::optional<std::string> source_id) {
     return thumbnails_.query(revision, std::move(source_id));
   }

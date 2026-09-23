@@ -35,6 +35,7 @@ type ParentPort = {
 type MediaLifecycleAddon = {
   registerPublicEventCallback(callback: (event: unknown) => void): unknown
   registerDiagnosticEventCallback(callback: (event: unknown) => void): unknown
+  registerFramesReadyCallback(callback: () => void): unknown
   handshake(): unknown
   installCredentialLease(lease: unknown, deadlineMs?: number): unknown
   applyDesiredState(desiredState: unknown, deadlineMs?: number): unknown
@@ -75,6 +76,7 @@ const MediaLifecycleAddonSchema = Schema.declare<MediaLifecycleAddon>(
     input !== null &&
     typeof Reflect.get(input, 'registerPublicEventCallback') === 'function' &&
     typeof Reflect.get(input, 'registerDiagnosticEventCallback') === 'function' &&
+    typeof Reflect.get(input, 'registerFramesReadyCallback') === 'function' &&
     typeof Reflect.get(input, 'handshake') === 'function' &&
     typeof Reflect.get(input, 'installCredentialLease') === 'function' &&
     typeof Reflect.get(input, 'applyDesiredState') === 'function' &&
@@ -276,6 +278,18 @@ export const runMediaUtilityHostEffect = Effect.fn(
     }),
   )
   if (diagnosticRegistered === null) return
+  const framesReadyRegistered = yield* invokeAddon(
+    () => addon.registerFramesReadyCallback(() => hostPort.postMessage({
+      type: 'framesReady', protocolVersion: MEDIA_LIFECYCLE_PROTOCOL_VERSION,
+    })),
+    'register_frames_ready_callback',
+  ).pipe(
+    Effect.catch((failure) => {
+      failStartup(failure)
+      return Effect.succeed(null)
+    }),
+  )
+  if (framesReadyRegistered === null) return
 
   const handshakeValue = yield* invokeAddon(
     () => addon.handshake(),

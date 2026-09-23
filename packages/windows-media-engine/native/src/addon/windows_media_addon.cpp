@@ -309,6 +309,12 @@ private:
     napi_threadsafe_function callback = nullptr;
     std::atomic_uint64_t dropped{0};
   };
+  // Coalesced wakeup: at most one pending JS call; the consumer then pulls
+  // every cached frame through queryFrames.
+  struct FramesReadyDispatchState final {
+    napi_threadsafe_function callback = nullptr;
+    std::atomic_bool scheduled{false};
+  };
 
 public:
   explicit AddonOwner(Napi::Env env)
@@ -333,6 +339,11 @@ public:
     }
     if (diagnostic_dispatch_) {
       auto dispatch = std::exchange(diagnostic_dispatch_, {});
+      napi_release_threadsafe_function(dispatch->callback, napi_tsfn_abort);
+    }
+    if (frames_ready_dispatch_) {
+      media_runtime_->setFramesReadyListener({});
+      auto dispatch = std::exchange(frames_ready_dispatch_, {});
       napi_release_threadsafe_function(dispatch->callback, napi_tsfn_abort);
     }
   }
@@ -421,6 +432,48 @@ public:
                                        napi_tsfn_abort);
       return requireSuccess(env_, registered);
     }
+    return Napi::Boolean::New(env_, true);
+  }
+
+  Napi::Value registerFramesReadyCallback(const Napi::CallbackInfo &info) {
+    if (frames_ready_dispatch_) {
+      throwFailure(env_, EngineFailure{
+                             "callback_already_registered",
+                             "Only one frames-ready callback may be registered",
+                             "register_frames_ready_callback",
+                             false,
+                         });
+      return env_.Undefined();
+    }
+    if (info.Length() != 1 || !info[0].IsFunction()) {
+      throw Napi::TypeError::New(env_, "registerFramesReadyCallback requires one function");
+    }
+    auto dispatch = std::make_shared<FramesReadyDispatchState>();
+    auto *finalizer_hold = new std::shared_ptr<FramesReadyDispatchState>(dispatch);
+    const napi_status created = napi_create_threadsafe_function(
+        env_, info[0], nullptr, Napi::String::New(env_, "windows-media-frames-ready"), 1, 1,
+        finalizer_hold,
+        [](napi_env, void *data, void *) {
+          delete static_cast<std::shared_ptr<FramesReadyDispatchState> *>(data);
+        },
+        dispatch.get(),
+        [](napi_env env, napi_value callback, void *context, void *) {
+          if (!env || !callback) return;
+          static_cast<FramesReadyDispatchState *>(context)->scheduled.store(false);
+          napi_value global;
+          if (napi_get_global(env, &global) == napi_ok)
+            (void)napi_call_function(env, global, callback, 0, nullptr, nullptr);
+        },
+        &dispatch->callback);
+    if (created != napi_ok) {
+      delete finalizer_hold;
+      throw Napi::Error::New(env_, "Failed to create frames-ready callback");
+    }
+    frames_ready_dispatch_ = dispatch;
+    media_runtime_->setFramesReadyListener([dispatch] {
+      if (!dispatch->scheduled.exchange(true))
+        (void)napi_call_threadsafe_function(dispatch->callback, nullptr, napi_tsfn_nonblocking);
+    });
     return Napi::Boolean::New(env_, true);
   }
 
@@ -843,6 +896,7 @@ private:
   Engine engine_;
   std::shared_ptr<PublicDispatchState> public_dispatch_;
   std::shared_ptr<DiagnosticDispatchState> diagnostic_dispatch_;
+  std::shared_ptr<FramesReadyDispatchState> frames_ready_dispatch_;
 };
 
 AddonOwner *owner(const Napi::CallbackInfo &info) {
@@ -880,6 +934,12 @@ Napi::Value guarded(const Napi::CallbackInfo &info, Operation operation) {
 Napi::Value registerPublicEventCallback(const Napi::CallbackInfo &info) {
   return guarded(info, [&info](AddonOwner &value) {
     return value.registerPublicEventCallback(info);
+  });
+}
+
+Napi::Value registerFramesReadyCallback(const Napi::CallbackInfo &info) {
+  return guarded(info, [&info](AddonOwner &value) {
+    return value.registerFramesReadyCallback(info);
   });
 }
 
@@ -950,6 +1010,8 @@ Napi::Object initialize(Napi::Env env, Napi::Object exports) {
               Napi::Function::New(env, registerPublicEventCallback));
   exports.Set("registerDiagnosticEventCallback",
               Napi::Function::New(env, registerDiagnosticEventCallback));
+  exports.Set("registerFramesReadyCallback",
+              Napi::Function::New(env, registerFramesReadyCallback));
   exports.Set("handshake", Napi::Function::New(env, handshake));
   exports.Set("installCredentialLease",
               Napi::Function::New(env, installCredentialLease));

@@ -28,6 +28,11 @@ function fixture() {
     getSnapshot: vi.fn<MediaRuntimeSupervisor['getSnapshot']>(() => ({ status: 'ready', pid: 42, restartCount: 0 })),
     queryInventory: vi.fn<MediaRuntimeSupervisor['queryInventory']>(async () => inventory),
     queryFrames: vi.fn<MediaRuntimeSupervisor['queryFrames']>(async () => []),
+    framesReady: () => {},
+    onFramesReady(listener: () => void) {
+      this.framesReady = listener
+      return () => { this.framesReady = () => {} }
+    },
   }
   const adapter = {
     rendererReady: vi.fn<(rendererId: string) => void>(), rendererGone: vi.fn(), setPreviewDemand: vi.fn(), setRemoteVideoDemand: vi.fn(),
@@ -262,7 +267,7 @@ describe('product media frame controller', () => {
     test.runtime.queryInventory.mockImplementationOnce(() => new Promise(resolve => { resolveInventory = resolve }))
     try {
       test.controller.rendererReady()
-      await vi.advanceTimersByTimeAsync(16)
+      await vi.advanceTimersByTimeAsync(100)
       expect(test.runtime.queryInventory).toHaveBeenCalledOnce()
       if (reason === 'renderer') test.controller.rendererGone()
       if (reason === 'revision') test.nextRevision()
@@ -270,6 +275,20 @@ describe('product media frame controller', () => {
       resolveInventory(test.inventory)
       await vi.advanceTimersByTimeAsync(0)
       expect(test.onInventory).not.toHaveBeenCalled()
+    } finally { test.controller.dispose() }
+  })
+
+  it('pulls frames as soon as the engine reports them ready', async () => {
+    vi.useFakeTimers()
+    const test = fixture()
+    try {
+      test.controller.rendererReady()
+      test.enablePreview()
+      await vi.advanceTimersByTimeAsync(100)
+      const calls = test.runtime.queryFrames.mock.calls.length
+      test.runtime.framesReady()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(test.runtime.queryFrames).toHaveBeenCalledTimes(calls + 1)
     } finally { test.controller.dispose() }
   })
 

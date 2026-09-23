@@ -455,11 +455,18 @@ export const MediaLifecycleDiagnosticMessageSchema = Schema.Struct({
   event: MediaLifecycleDiagnosticEventSchema,
 })
 
+// Coalesced wakeup: the engine cached new frames for the next queryFrames.
+export const MediaFramesReadyMessageSchema = Schema.Struct({
+  type: Schema.Literal('framesReady'),
+  protocolVersion: Schema.Literal(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
+})
+
 export const MediaLifecycleMessageSchema = Schema.Union([
   MediaLifecycleReadySchema,
   MediaLifecycleReplySchema,
   MediaLifecyclePublicEventMessageSchema,
   MediaLifecycleDiagnosticMessageSchema,
+  MediaFramesReadyMessageSchema,
 ])
 
 export type MediaLifecycleFailure = typeof MediaLifecycleFailureSchema.Type

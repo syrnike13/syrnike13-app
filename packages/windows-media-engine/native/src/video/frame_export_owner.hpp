@@ -33,6 +33,9 @@ class FrameExportOwner final {
   void stop();
   std::vector<ExportedFrame> take();
   bool release(const ExportRelease&);
+  // Called on the export lane after new frames were cached for take(). The
+  // listener must not call back into this owner.
+  void setReadyListener(std::function<void()>);
 
  private:
   using NativeLease = std::variant<TextureLease, screen::PreviewFrame, camera::CameraPreviewLease>;
@@ -66,7 +69,8 @@ class FrameExportOwner final {
   std::vector<Entry> entries_;
   std::map<std::string, StreamGeneration> generations_;
   std::uint64_t next_generation_ = 0;
-  bool stopping_ = false, finishing_ = false, done_ = false;
+  std::function<void()> ready_listener_;
+  bool stopping_ = false, finishing_ = false, done_ = false, wake_ = false;
   bool room_connected_ = false;
   std::thread worker_;
 };

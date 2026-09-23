@@ -1,5 +1,6 @@
 #include "screen/local_screen_preview.hpp"
 #include "capture/optional_preview_budget.hpp"
+#include "video/frame_signal.hpp"
 
 #include <dxgi1_2.h>
 #include <algorithm>
@@ -238,6 +239,8 @@ void LocalScreenPreview::offer(const capture::D3d11FrameView& frame,
     slot.submitted = started;
     slot.state = SlotState::copying;
     ++stats_.accepted;
+    // Readiness is observed by the consumer's GetData poll.
+    video::signalFrameAvailable();
   } catch (...) {
     if (acquired) (void)slot.keyed->ReleaseSync(0);
     slot.state = SlotState::quarantined;

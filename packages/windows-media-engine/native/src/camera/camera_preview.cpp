@@ -1,6 +1,7 @@
 #include "camera/camera_preview.hpp"
 #include "capture/d3d11_device.hpp"
 #include "capture/optional_preview_budget.hpp"
+#include "video/frame_signal.hpp"
 
 #include <dxgi1_2.h>
 #include <algorithm>
@@ -172,7 +173,10 @@ void CameraPreview::run(const std::shared_ptr<CameraPreviewState>& state) noexce
                   state->stats.last_gpu_result = static_cast<std::uint32_t>(released);
                   state->stats.failure = CameraPreviewFailure::gpu_failed;
                 } else if (retired) slot.clear();
-                else slot.phase = SlotPhase::ready;
+                else {
+                  slot.phase = SlotPhase::ready;
+                  video::signalFrameAvailable();
+                }
               } else if (result != S_FALSE || Clock::now() - slot.submitted > std::chrono::milliseconds{500}) {
                 slot.phase = SlotPhase::quarantined;
                 state->stats.last_gpu_result = static_cast<std::uint32_t>(result);

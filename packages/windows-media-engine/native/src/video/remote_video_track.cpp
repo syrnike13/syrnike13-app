@@ -1,4 +1,5 @@
 #include "video/remote_video_track.hpp"
+#include "video/frame_signal.hpp"
 
 namespace syrnike::windows_media::video {
 namespace {
@@ -244,6 +245,7 @@ void RemoteVideoTrack::run() noexcept {
       lease->publication_id = requested ? requested->sid() : "";
       lease->participant_identity = participant_;
       std::optional<TextureLease> previous;
+      bool published = false;
       {
         std::scoped_lock lock(mutex_);
         if (revision_ != revision)
@@ -251,10 +253,12 @@ void RemoteVideoTrack::run() noexcept {
         else {
           previous = std::exchange(output_, lease);
           output_revision_ = revision;
+          published = true;
         }
       }
       if (previous)
         pool.release(previous->generation, previous->sequence, previous->slot);
+      if (published) signalFrameAvailable();
     }
   } catch (...) {
     failed_ = true;

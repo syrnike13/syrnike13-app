@@ -87,6 +87,7 @@ describe('runMediaUtilityHost', () => {
           emit = callback
           return true
         },
+        registerFramesReadyCallback: () => true,
         registerDiagnosticEventCallback: (callback: (event: unknown) => void) => {
           emitDiagnostic = callback
           return true
@@ -396,6 +397,7 @@ describe('runMediaUtilityHost', () => {
       verifyDistribution: () => manifest(),
       loadAddon: () => ({
         registerPublicEventCallback: () => true,
+        registerFramesReadyCallback: () => true,
         registerDiagnosticEventCallback: (callback: (event: unknown) => void) => {
           emitDiagnostic = callback
           return true
@@ -462,6 +464,7 @@ describe('runMediaUtilityHost', () => {
       verifyDistribution: () => manifest(),
       loadAddon: () => ({
         registerPublicEventCallback: () => true,
+        registerFramesReadyCallback: () => true,
         registerDiagnosticEventCallback: () => true,
         installCredentialLease: vi.fn(),
         handshake: () => ({

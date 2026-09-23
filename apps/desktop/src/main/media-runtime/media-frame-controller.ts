@@ -37,7 +37,7 @@ type PresentationFailure = {
   stalledLeases: Set<string>
 }
 type PresentationFailureEvidence = Pick<PresentationFailure, 'episodeId' | 'path' | 'revision' | 'epoch'>
-type RuntimePort = Pick<MediaRuntimeSupervisor, 'getSnapshot' | 'getHostEpoch' | 'queryInventory' | 'queryFrames'>
+type RuntimePort = Pick<MediaRuntimeSupervisor, 'getSnapshot' | 'getHostEpoch' | 'queryInventory' | 'queryFrames' | 'onFramesReady'>
 type AdapterPort = Pick<NativeRtcEngineAdapterV2,
   'rendererReady' | 'rendererGone' | 'setPreviewDemand' | 'setRemoteVideoDemand' | 'snapshot'>
 let nextRendererEpoch = 0
@@ -63,7 +63,9 @@ export class MediaFrameController {
   private inventoryPending = false
   private lastInventoryAt = 0
   private disposed = false
+  private pollAgain = false
   private readonly timer: ReturnType<typeof setInterval>
+  private readonly unsubscribeFramesReady: () => void
 
   constructor(
     private readonly runtime: RuntimePort,
@@ -73,9 +75,10 @@ export class MediaFrameController {
     private readonly onInventory: (inventory: MediaInventory) => void = () => undefined,
     private readonly onPresentationChange: () => void = () => undefined,
   ) {
-    this.timer = setInterval(() => {
-      void this.poll().catch(() => this.reportFailure('video_bridge_query_failed'))
-    }, 16)
+    // Frames are pulled when the engine reports them ready and when releases
+    // are queued; the timer only paces inventory and retries.
+    this.unsubscribeFramesReady = runtime.onFramesReady(() => this.requestPoll())
+    this.timer = setInterval(() => this.requestPoll(), 100)
     this.timer.unref?.()
   }
 
@@ -138,6 +141,7 @@ export class MediaFrameController {
     this.rendererGone()
     this.disposed = true
     clearInterval(this.timer)
+    this.unsubscribeFramesReady()
     this.retireEpoch()
   }
   private send(channel: string, metadata: unknown) {
@@ -249,7 +253,13 @@ export class MediaFrameController {
         for (const bridge of this.retired) bridge.acknowledgeRelease(release)
       }
       for (const frame of frames) this.offer(frame, epoch)
-    } finally { this.framePending = false }
+    } finally {
+      this.framePending = false
+      if (this.pollAgain) {
+        this.pollAgain = false
+        queueMicrotask(() => this.requestPoll())
+      }
+    }
   }
   private offer(frame: MediaExportedFrame, epoch: number) {
     const snapshot = this.adapter.snapshot()
@@ -335,6 +345,15 @@ export class MediaFrameController {
     this.releases.set(leaseKey(lease), {
       generation: lease.generation, sequence: lease.sequence, slot: lease.slot,
     })
+    this.requestPoll()
+  }
+  private requestPoll() {
+    if (this.disposed) return
+    if (this.framePending) {
+      this.pollAgain = true
+      return
+    }
+    void this.poll().catch(() => this.reportFailure('video_bridge_query_failed'))
   }
   private presentationFailed(frame: MediaExportedFrame, epoch: number, code: string, stalled = false) {
     if (this.disposed || epoch !== this.runtime.getHostEpoch() || frame.rendererId !== this.renderer?.id ||

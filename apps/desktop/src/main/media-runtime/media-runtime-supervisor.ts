@@ -99,6 +99,7 @@ export class MediaRuntimeSupervisor {
   private readonly snapshotListeners = new Set<
     (snapshot: MediaEngineSnapshot) => void
   >()
+  private readonly framesReadyListeners = new Set<() => void>()
   private readonly pending = new Map<string, PendingRequest>()
   private startPromise: Promise<MediaLifecycleReady> | null = null
   private resolveStart: ((ready: MediaLifecycleReady) => void) | null = null
@@ -149,6 +150,11 @@ export class MediaRuntimeSupervisor {
   onDiagnostic(listener: (event: MediaLifecycleDiagnosticEvent) => void) {
     this.diagnosticListeners.add(listener)
     return () => this.diagnosticListeners.delete(listener)
+  }
+
+  onFramesReady(listener: () => void) {
+    this.framesReadyListeners.add(listener)
+    return () => this.framesReadyListeners.delete(listener)
   }
 
   onSnapshot(listener: (snapshot: MediaEngineSnapshot) => void) {
@@ -472,6 +478,10 @@ export class MediaRuntimeSupervisor {
     }
     if (rawMessage.type === 'diagnostic') {
       for (const listener of this.diagnosticListeners) listener(rawMessage.event)
+      return
+    }
+    if (rawMessage.type === 'framesReady') {
+      for (const listener of this.framesReadyListeners) listener()
       return
     }
     const event = rawMessage.event

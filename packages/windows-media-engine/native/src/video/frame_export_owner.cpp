@@ -1,4 +1,5 @@
 #include "video/frame_export_owner.hpp"
+#include "video/frame_signal.hpp"
 
 #include <algorithm>
 #include <set>
@@ -12,7 +13,15 @@ std::string streamKey(const ExportedFrame& frame) {
 }  // namespace
 FrameExportOwner::FrameExportOwner(camera::CameraOwner& camera, screen::ScreenOwner& screen,
                                    RemoteVideoOwner& video)
-    : camera_(camera), screen_(screen), video_(video), worker_([this] { run(); }) {}
+    : camera_(camera), screen_(screen), video_(video), worker_([this] { run(); }) {
+  setFrameAvailableListener([this] {
+    {
+      std::lock_guard lock(mutex_);
+      wake_ = true;
+    }
+    changed_.notify_all();
+  });
+}
 FrameExportOwner::~FrameExportOwner() { stop(); }
 void FrameExportOwner::apply(const EngineDesiredState& desired, bool room_connected) {
   std::lock_guard lock(mutex_);
@@ -23,18 +32,25 @@ void FrameExportOwner::apply(const EngineDesiredState& desired, bool room_connec
       desired.screen.state == ScreenIntentState::on && desired.screen.preview_renderer_id.has_value(),
       desired.remote_video_demand};
   room_connected_ = room_connected;
-  changed_.notify_one();
+  wake_ = true;
+  changed_.notify_all();
 }
 void FrameExportOwner::beginStop() {
   std::lock_guard lock(mutex_);
   stopping_ = true;
-  changed_.notify_one();
+  wake_ = true;
+  changed_.notify_all();
+}
+void FrameExportOwner::setReadyListener(std::function<void()> listener) {
+  std::lock_guard lock(mutex_);
+  ready_listener_ = std::move(listener);
 }
 void FrameExportOwner::stop() {
   std::lock_guard join_lock(join_mutex_);
+  setFrameAvailableListener({});
   std::unique_lock lock(mutex_);
   stopping_ = finishing_ = true;
-  changed_.notify_one();
+  changed_.notify_all();
   if (!changed_.wait_for(lock, kShutdownDeadline, [&] { return done_; })) std::terminate();
   lock.unlock();
   if (worker_.joinable()) worker_.join();
@@ -61,7 +77,8 @@ std::vector<ExportedFrame> FrameExportOwner::take() {
     if (entry.delivered || entry.release_requested) continue;
     if (!wanted(entry.frame) || std::chrono::steady_clock::now() - entry.cached_at > 150ms) {
       entry.release_requested = true;
-      changed_.notify_one();
+      wake_ = true;
+      changed_.notify_all();
       continue;
     }
     frames.push_back(entry.frame);
@@ -76,7 +93,8 @@ bool FrameExportOwner::release(const ExportRelease& release) {
     if (entry.frame.generation == release.generation && entry.frame.sequence == release.sequence &&
         entry.frame.slot == release.slot) {
       entry.release_requested = true;
-      changed_.notify_one();
+      wake_ = true;
+      changed_.notify_all();
       break;
     }
   // A duplicate release is acknowledged without touching another generation.
@@ -91,15 +109,23 @@ void FrameExportOwner::releaseNative(NativeLease& lease) {
   lease = TextureLease{};
 }
 void FrameExportOwner::run() noexcept {
+  // Producers signal new frames. GPU preview copies complete asynchronously,
+  // so a signalled pass that finds nothing retries briefly before idling.
+  unsigned short_retries = 0;
   try {
     for (;;) {
       Demand desired;
       std::vector<Entry> retired;
       bool finishing;
+      std::function<void()> ready_listener;
       {
         std::unique_lock lock(mutex_);
-        changed_.wait_for(lock, 8ms);
+        const bool signalled = changed_.wait_for(lock, short_retries ? 2ms : 50ms, [&] { return wake_ || finishing_; });
+        wake_ = false;
+        if (signalled) short_retries = 5;
+        else if (short_retries) --short_retries;
         finishing = finishing_;
+        ready_listener = ready_listener_;
         desired = desired_;
         std::erase_if(entries_, [&](Entry& entry) {
           const bool fresh = std::chrono::steady_clock::now() - entry.cached_at <= 150ms;
@@ -112,6 +138,7 @@ void FrameExportOwner::run() noexcept {
       if (finishing) break;
       if (!desired.renderer_id) continue;
       std::set<std::string> current_streams;
+      bool accepted_any = false;
       const auto offer = [&](ExportedFrame metadata, auto take) {
         const auto key = streamKey(metadata);
         current_streams.insert(key);
@@ -168,6 +195,7 @@ void FrameExportOwner::run() noexcept {
             metadata.generation = generation.exported_generation;
             entries_.push_back({std::move(metadata), std::move(lease)});
             accepted = true;
+            accepted_any = true;
           }
         }
         if (!accepted) releaseNative(lease);
@@ -195,6 +223,10 @@ void FrameExportOwner::run() noexcept {
       if (desired.camera_preview)
         offer(local_frame(ExportKind::camera_preview, "local-camera"), [&] { return camera_.takePreview(*desired.renderer_id); });
       std::erase_if(generations_, [&](const auto& entry) { return !current_streams.contains(entry.first); });
+      if (accepted_any) {
+        short_retries = 0;
+        if (ready_listener) ready_listener();
+      }
     }
   } catch (...) { std::terminate(); }
   {
