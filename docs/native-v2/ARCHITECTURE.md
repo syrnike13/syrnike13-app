@@ -58,16 +58,6 @@ Electron main: MediaRuntimeSupervisor
         -> one bounded control queue / one control thread
         -> RoomOwner -> deadline watchdog
                      -> one LiveKit operation lane plus one cancellation lane
-
-media_probe.exe
-  -> media_core.lib directly
-  -> media_sources.lib -> SourceRegistry -> Win32 SourceEnumerator
-  -> media_capture.lib -> MonitorCapture/WindowCapture -> WGC/D3D11
-
-native_media_lab_publisher.exe
-  -> media_capture.lib -> WGC/D3D11 FrameLease
-  -> media_screen.lib -> one-slot CPU reference pipeline/converter
-  -> lab::ReferenceScreenSender -> public LiveKit VideoSource API
 ```
 
 Source discovery is a separate deep module described in [SOURCE_ENUMERATION.md](SOURCE_ENUMERATION.md). Its public seam returns process-local opaque IDs and bounded value snapshots, while Win32 identity keys and handles stop at the adapter boundary. Issue #117 intentionally leaves the Engine protocol, addon, Electron, capture sessions, and LiveKit unchanged.
@@ -75,8 +65,6 @@ Source discovery is a separate deep module described in [SOURCE_ENUMERATION.md](
 The first isolated capture slice is described in [MONITOR_CAPTURE.md](MONITOR_CAPTURE.md). It consumes the opaque monitor ID through the registry, owns a bounded three-frame latest-wins lease queue, and ends at local probe verification; it does not publish or preview frames.
 
 The window extension is described in [WINDOW_CAPTURE.md](WINDOW_CAPTURE.md). It resolves one exact HWND lifetime, preserves the three-frame lease bound, fences each content-size transition by generation, and distinguishes minimized/hidden no-content from terminal close without selecting a replacement window.
-
-The CPU publication oracle is described in [SCREEN_CPU_REFERENCE.md](SCREEN_CPU_REFERENCE.md). It runs only in the disposable Media Lab publisher, owns a direct Room reference for test convenience, and has no in-process guarantee against a non-returning SDK or D3D call. Product Engine, addon, Electron, and `NativeRtcEngineAdapterV2` do not link to or instantiate that sender.
 
 The production boundary introduced by #121 is described in [SCREEN_PUBLICATION_SEAM.md](SCREEN_PUBLICATION_SEAM.md). The screen pipeline submits bounded commands and encoded-slot tokens to the Room/media-session owner; it never receives owning Room or participant pointers. Engine v2 now composes that seam with the other independent media owners used by the product adapter.
 
@@ -95,6 +83,10 @@ Deadlines are fixed at 2 seconds for core startup, 1 second for core ping and sh
 Before a successful LiveKit connect becomes public, the transport compares `Room::roomInfo().name` and the local participant identity with the expected values from the desired Room intent. A mismatch is torn down and reported as non-retryable `room_authority_mismatch`; its credential lease remains consumed, and the utility epoch is retired so uncertain wrong-Room ownership cannot be reused.
 
 The lifecycle boundary carries the exact protocol v4 described in `PROTOCOL.md`. Its full-snapshot desired state is accepted and queried on the same C++ control thread, while Room and independent track intents are reconciled asynchronously through bounded owner-specific lanes.
+
+Video frames are pushed: producers signal the export lane when a frame is
+available, the addon raises a coalesced `framesReady` utility message, and
+Electron main pulls frames and returns releases through `queryFrames`.
 
 The remote-video receive path is described in [REMOTE_VIDEO_RECEIVE.md](REMOTE_VIDEO_RECEIVE.md).
 It uses a bounded remote track owner, a process-wide four-slot shared texture pool,

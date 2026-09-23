@@ -19,12 +19,25 @@ p50/p95/max 62/79/127 microseconds) and `microphone-mute-cycle` (200 cycles,
 zero DSP heap calls, failed-candidate rollback and cleared idle meter).
 These release checks do not prove physical device-loss behavior.
 
+## Capture policy
+
+Bypassing system processing requests WASAPI RAW mode. Drivers that reject RAW
+fall back to a normal shared-mode stream instead of failing capture; desktop
+settings disable RAW by default. MMCSS registration is a scheduling hint and
+its absence (for example a disabled MMCSS service) does not fail capture or DSP.
+Input failures carry a specific code (`microphone_access_denied`,
+`microphone_format_unavailable`, `microphone_device_lost`, ...) with the
+platform HRESULT, and microphone metrics include the capture state, failure,
+HRESULT, RAW and MMCSS status.
+
 ## Audio device registry
 
 `AudioDeviceRegistry` is a native control-thread owner. It enumerates active input
 and output endpoints and projects opaque IDs, labels and multimedia defaults.
-An absent explicit ID means follow-default; an explicit ID never silently falls
-back to another device. Input and output identities cannot cross directions.
+An absent explicit ID means follow-default. The registry never resolves an
+explicit ID to another device; the microphone owner instead captures the
+default input and reports the `microphone_device_fallback` path warning until
+the selected device returns. Input and output identities cannot cross directions.
 Two endpoints with the same label remain distinct. A removed endpoint retains
 its identity when it returns to this registry in the same engine process.
 
