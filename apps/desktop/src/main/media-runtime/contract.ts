@@ -365,26 +365,14 @@ export const MediaLifecycleRequestSchema = Schema.Struct({
   command: MediaLifecycleCommandSchema,
 })
 
-export const MediaLifecycleResultSchema = Schema.Union([
-  MediaLifecycleHandshakeResultSchema,
-  MediaCredentialLeaseInstalledSchema,
-  MediaDesiredStateAcceptedSchema,
-  MediaAddonSnapshotSchema,
-  MediaAddonInventorySchema,
-  MediaSourcesQueryAcceptedSchema,
-  MediaAddonFramesSchema,
-  MediaAddonThumbnailSchema,
-  MediaAddonPingSchema,
-  MediaAddonShutdownSchema,
-])
-
 export const MediaLifecycleReplySchema = Schema.Union([
   Schema.Struct({
     type: Schema.Literal('reply'),
     protocolVersion: Schema.Literal(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
     requestId: requestIdSchema,
     ok: Schema.Literal(true),
-    result: MediaLifecycleResultSchema,
+    // Decoded by the requester against the command-specific result schema.
+    result: Schema.Unknown,
   }),
   Schema.Struct({
     type: Schema.Literal('reply'),
@@ -498,7 +486,6 @@ export type MediaExportedFrame = typeof MediaExportedFrameSchema.Type
 export type MediaLifecycleReady = typeof MediaLifecycleReadySchema.Type
 export type MediaLifecycleCommand = typeof MediaLifecycleCommandSchema.Type
 export type MediaLifecycleRequest = typeof MediaLifecycleRequestSchema.Type
-export type MediaLifecycleResult = typeof MediaLifecycleResultSchema.Type
 export type MediaLifecycleReply = typeof MediaLifecycleReplySchema.Type
 export type MediaLifecycleEvent = typeof MediaLifecycleEventSchema.Type
 export type MediaLifecycleDiagnosticEvent = typeof MediaLifecycleDiagnosticEventSchema.Type

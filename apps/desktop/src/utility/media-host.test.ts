@@ -300,8 +300,9 @@ describe('runMediaUtilityHost', () => {
         type: 'reply',
         protocolVersion: 5,
         requestId: 'query-invalid-envelope',
-        ok: false,
-        failure: expect.objectContaining({ code: 'media_snapshot_invalid' }),
+        ok: true,
+        // The supervisor decodes command results; the host forwards them.
+        result: expect.objectContaining({ unexpected: true }),
       }),
     )
 

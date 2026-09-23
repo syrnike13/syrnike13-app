@@ -26,7 +26,6 @@ import {
   type MediaLifecycleCommand,
   type MediaCredentialLease,
   type EngineDesiredState,
-  type MediaLifecycleResult,
   type MediaLifecycleDiagnosticEvent,
   type MediaLifecycleEvent,
   type MediaEngineSnapshot,
@@ -279,99 +278,50 @@ export class MediaRuntimeSupervisor {
   }
 
   handshake() {
-    return this.start().then(() =>
-      this.sendRequest(
-        { type: 'handshake' },
-        MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
-      ).then((result) =>
-        decodeCommandResult(
-          MediaLifecycleHandshakeResultSchema,
-          result,
-          'media_handshake_invalid',
-          'handshake',
-        ),
-      ),
-    )
+    return this.call({ type: 'handshake' }, MediaLifecycleHandshakeResultSchema, 'media_handshake_invalid')
   }
 
   installCredentialLease(lease: MediaCredentialLease) {
-    return this.start().then(() =>
-      this.sendRequest(
-        { type: 'installCredentialLease', lease },
-        MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
-      ).then((result) =>
-        decodeCommandResult(
-          MediaCredentialLeaseInstalledSchema,
-          result,
-          'media_credential_lease_invalid',
-          'install_credential_lease',
-        ),
-      ),
-    )
+    return this.call({ type: 'installCredentialLease', lease },
+      MediaCredentialLeaseInstalledSchema, 'media_credential_lease_invalid')
   }
 
   applyDesiredState(desiredState: EngineDesiredState) {
-    return this.start().then(() =>
-      this.sendRequest(
-        { type: 'applyDesiredState', desiredState },
-        MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
-      ).then((result) =>
-        decodeCommandResult(
-          MediaDesiredStateAcceptedSchema,
-          result,
-          'media_apply_invalid',
-          'apply_desired_state',
-        ),
-      ),
-    )
+    return this.call({ type: 'applyDesiredState', desiredState },
+      MediaDesiredStateAcceptedSchema, 'media_apply_invalid')
   }
 
   querySnapshot() {
-    return this.start().then(() =>
-      this.sendRequest(
-        { type: 'querySnapshot' },
-        MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
-      ).then((result) =>
-        decodeCommandResult(
-          MediaAddonSnapshotSchema,
-          result,
-          'media_snapshot_invalid',
-          'query_snapshot',
-        ).snapshot,
-      ),
-    )
+    return this.call({ type: 'querySnapshot' }, MediaAddonSnapshotSchema, 'media_snapshot_invalid')
+      .then(result => result.snapshot)
   }
 
   queryInventory() {
-    return this.start().then(() => this.sendRequest(
-      { type: 'queryInventory' }, MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
-    )).then(result => decodeCommandResult(
-      MediaAddonInventorySchema, result, 'media_inventory_invalid', 'query_inventory',
-    ).inventory)
+    return this.call({ type: 'queryInventory' }, MediaAddonInventorySchema, 'media_inventory_invalid')
+      .then(result => result.inventory)
   }
 
   querySources(query: MediaSourceQuery) {
-    return this.start().then(() => this.sendRequest(
-      { type: 'querySources', query }, MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
-    )).then(result => decodeCommandResult(
-      MediaSourcesQueryAcceptedSchema, result, 'media_source_query_invalid', 'query_sources',
-    ))
+    return this.call({ type: 'querySources', query }, MediaSourcesQueryAcceptedSchema, 'media_source_query_invalid')
   }
 
   queryFrames(releases: ReadonlyArray<MediaFrameRelease>) {
-    return this.start().then(() => this.sendRequest(
-      { type: 'queryFrames', releases }, MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
-    )).then(result => decodeCommandResult(
-      MediaAddonFramesSchema, result, 'media_frames_invalid', 'query_frames',
-    ).frames)
+    return this.call({ type: 'queryFrames', releases }, MediaAddonFramesSchema, 'media_frames_invalid')
+      .then(result => result.frames)
   }
 
   queryThumbnail(query: MediaThumbnailQuery) {
-    return this.start().then(() => this.sendRequest(
-      { type: 'queryThumbnail', query }, MEDIA_LIFECYCLE_PING_TIMEOUT_MS,
-    )).then(result => decodeCommandResult(
-      MediaAddonThumbnailSchema, result, 'media_thumbnail_invalid', 'query_thumbnail',
-    ))
+    return this.call({ type: 'queryThumbnail', query }, MediaAddonThumbnailSchema, 'media_thumbnail_invalid')
+  }
+
+  private call<S extends Schema.ConstraintDecoder<unknown>>(
+    command: MediaLifecycleCommand,
+    schema: S,
+    invalidCode: string,
+  ): Promise<S['Type']> {
+    return this.start()
+      .then(() => this.sendRequest(command, MEDIA_LIFECYCLE_PING_TIMEOUT_MS))
+      .then(result => decodeCommandResult(schema, result, invalidCode, command.type))
   }
 
   shutdown() {
@@ -439,7 +389,7 @@ export class MediaRuntimeSupervisor {
   private sendRequest(
     command: MediaLifecycleCommand,
     timeoutMs: number,
-  ): Promise<MediaLifecycleResult> {
+  ): Promise<unknown> {
     const adapter = this.adapter
     if (!adapter || this.snapshot.status !== 'ready') {
       return Promise.reject(
@@ -470,7 +420,7 @@ export class MediaRuntimeSupervisor {
       deadlineMs: timeoutMs,
       command,
     }
-    return new Promise<MediaLifecycleResult>((resolve, reject) => {
+    return new Promise<unknown>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(requestId)
         reject(

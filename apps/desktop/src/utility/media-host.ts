@@ -9,26 +9,17 @@ import {
   MEDIA_LIFECYCLE_PROTOCOL_VERSION,
   MEDIA_UTILITY_BOOTSTRAP_MESSAGE,
   MediaAddonHandshakeSchema,
-  MediaAddonPingSchema,
-  MediaAddonSnapshotSchema,
-  MediaAddonInventorySchema,
-  MediaSourcesQueryAcceptedSchema,
-  MediaAddonFramesSchema,
-  MediaAddonThumbnailSchema,
-  MediaAddonShutdownSchema,
-  MediaCredentialLeaseInstalledSchema,
-  MediaDesiredStateAcceptedSchema,
   MediaLifecycleDiagnosticEventSchema,
   MediaLifecycleEventSchema,
   failureFromUnknown,
   isMediaLifecycleRequest,
   mediaLifecycleFailure,
   redactMediaLifecycleText,
+  type MediaLifecycleCommand,
   type MediaLifecycleEvent,
   type MediaLifecycleFailure,
   type MediaLifecycleReady,
   type MediaLifecycleReply,
-  type MediaLifecycleResult,
 } from '../main/media-runtime/contract'
 import {
   type MediaArtifactExpectations,
@@ -342,6 +333,29 @@ export const runMediaUtilityHostEffect = Effect.fn(
     process.once('SIGTERM', stop)
   }
 
+  // Addon results are forwarded as-is; the supervisor decodes each reply
+  // against its command-specific schema.
+  const handlers: {
+    [K in Exclude<MediaLifecycleCommand['type'], 'handshake' | 'shutdown'>]:
+      (command: Extract<MediaLifecycleCommand, { type: K }>, deadlineMs: number) => unknown
+  } = {
+    installCredentialLease: (command, deadlineMs) => addon.installCredentialLease(command.lease, deadlineMs),
+    applyDesiredState: (command, deadlineMs) => addon.applyDesiredState(command.desiredState, deadlineMs),
+    querySnapshot: (_command, deadlineMs) => addon.querySnapshot(deadlineMs),
+    queryInventory: () => addon.queryInventory(),
+    querySources: command => addon.querySources(command.query),
+    queryFrames: command => addon.queryFrames(command.releases),
+    queryThumbnail: command => addon.queryThumbnail(command.query),
+    ping: (_command, deadlineMs) => addon.ping(deadlineMs),
+  }
+  const reply = (requestId: string, operation: () => unknown, stage: string) =>
+    Effect.runPromise(invokeAddon(operation, stage).pipe(
+      Effect.match({
+        onSuccess: result => postSuccessReply(hostPort, requestId, result),
+        onFailure: failure => postFailureReply(hostPort, requestId, failure),
+      }),
+    ))
+
   hostPort.on('message', (messageEvent) => {
     const request = messageEvent.data
     if (!isMediaLifecycleRequest(request)) {
@@ -372,7 +386,8 @@ export const runMediaUtilityHostEffect = Effect.fn(
       )
       return
     }
-    if (request.command.type === 'handshake') {
+    const command = request.command
+    if (command.type === 'handshake') {
       postSuccessReply(hostPort, request.requestId, {
         type: 'handshake',
         protocolVersion: MEDIA_LIFECYCLE_PROTOCOL_VERSION,
@@ -381,151 +396,9 @@ export const runMediaUtilityHostEffect = Effect.fn(
       })
       return
     }
-    if (request.command.type === 'installCredentialLease') {
-      const lease = request.command.lease
-      void Effect.runPromise(
-        invokeAddon(
-          () => addon.installCredentialLease(lease, request.deadlineMs),
-          'install_credential_lease',
-        ).pipe(
-          Effect.flatMap((value) => {
-            const decoded = Schema.decodeUnknownOption(
-              MediaCredentialLeaseInstalledSchema,
-              { onExcessProperty: 'error' },
-            )(value)
-            return Option.isSome(decoded)
-              ? Effect.sync(() =>
-                  postSuccessReply(hostPort, request.requestId, decoded.value),
-                )
-              : Effect.fail(
-                  mediaLifecycleFailure(
-                    'media_credential_lease_invalid',
-                    'Native media credential lease returned an invalid result',
-                    'install_credential_lease',
-                  ),
-                )
-          }),
-          Effect.catch((failure) =>
-            Effect.sync(() => postFailureReply(hostPort, request.requestId, failure)),
-          ),
-        ),
-      )
-      return
-    }
-    if (request.command.type === 'applyDesiredState') {
-      const desiredState = request.command.desiredState
-      void Effect.runPromise(
-        invokeAddon(
-          () => addon.applyDesiredState(desiredState, request.deadlineMs),
-          'apply_desired_state',
-        ).pipe(
-          Effect.flatMap((value) => {
-            const decoded = Schema.decodeUnknownOption(
-              MediaDesiredStateAcceptedSchema,
-              { onExcessProperty: 'error' },
-            )(value)
-            return Option.isSome(decoded)
-              ? Effect.sync(() =>
-                  postSuccessReply(hostPort, request.requestId, decoded.value),
-                )
-              : Effect.fail(
-                  mediaLifecycleFailure(
-                    'media_apply_invalid',
-                    'Native media apply returned an invalid result',
-                    'apply_desired_state',
-                  ),
-                )
-          }),
-          Effect.catch((failure) =>
-            Effect.sync(() => postFailureReply(hostPort, request.requestId, failure)),
-          ),
-        ),
-      )
-      return
-    }
-    if (request.command.type === 'querySnapshot') {
-      void Effect.runPromise(
-        invokeAddon(
-          () => addon.querySnapshot(request.deadlineMs),
-          'query_snapshot',
-        ).pipe(
-          Effect.flatMap((value) => {
-            const decoded = Schema.decodeUnknownOption(MediaAddonSnapshotSchema, {
-              onExcessProperty: 'error',
-            })(value)
-            return Option.isSome(decoded)
-              ? Effect.sync(() =>
-                  postSuccessReply(hostPort, request.requestId, decoded.value),
-                )
-              : Effect.fail(
-                  mediaLifecycleFailure(
-                    'media_snapshot_invalid',
-                    'Native media query returned an invalid snapshot',
-                    'query_snapshot',
-                  ),
-                )
-          }),
-          Effect.catch((failure) =>
-            Effect.sync(() => postFailureReply(hostPort, request.requestId, failure)),
-          ),
-        ),
-      )
-      return
-    }
-    if (request.command.type === 'queryInventory' || request.command.type === 'querySources' ||
-        request.command.type === 'queryFrames' || request.command.type === 'queryThumbnail') {
-      const command = request.command
-      const invoke = command.type === 'queryInventory'
-        ? () => addon.queryInventory()
-        : command.type === 'querySources' ? () => addon.querySources(command.query)
-        : command.type === 'queryThumbnail' ? () => addon.queryThumbnail(command.query)
-        : () => addon.queryFrames(command.releases)
-      void Effect.runPromise(invokeAddon(invoke, command.type).pipe(
-        Effect.flatMap((value) => {
-          const decoded: Option.Option<typeof MediaAddonInventorySchema.Type | typeof MediaSourcesQueryAcceptedSchema.Type |
-            typeof MediaAddonFramesSchema.Type | typeof MediaAddonThumbnailSchema.Type> = command.type === 'queryInventory'
-            ? Schema.decodeUnknownOption(MediaAddonInventorySchema, { onExcessProperty: 'error' })(value)
-            : command.type === 'querySources'
-            ? Schema.decodeUnknownOption(MediaSourcesQueryAcceptedSchema, { onExcessProperty: 'error' })(value)
-            : command.type === 'queryThumbnail'
-            ? Schema.decodeUnknownOption(MediaAddonThumbnailSchema, { onExcessProperty: 'error' })(value)
-            : Schema.decodeUnknownOption(MediaAddonFramesSchema, { onExcessProperty: 'error' })(value)
-          return Option.isSome(decoded)
-            ? Effect.sync(() => postSuccessReply(hostPort, request.requestId, decoded.value))
-            : Effect.fail(mediaLifecycleFailure('media_query_invalid',
-              'Native media query returned an invalid result', command.type))
-        }),
-        Effect.catch(failure => Effect.sync(() => postFailureReply(hostPort, request.requestId, failure))),
-      ))
-      return
-    }
-    if (request.command.type === 'ping') {
-      void Effect.runPromise(
-        invokeAddon(() => addon.ping(request.deadlineMs), 'ping').pipe(
-          Effect.flatMap((value) => {
-            const decoded = Schema.decodeUnknownOption(MediaAddonPingSchema, {
-              onExcessProperty: 'error',
-            })(value)
-            if (Option.isNone(decoded)) {
-              return Effect.fail(
-                mediaLifecycleFailure(
-                  'media_ping_invalid',
-                  'Native media ping returned an invalid result',
-                  'ping',
-                ),
-              )
-            }
-            return Effect.sync(() =>
-              postSuccessReply(hostPort, request.requestId, decoded.value),
-            )
-          }),
-          Effect.catch((failure) =>
-            Effect.sync(() =>
-              postFailureReply(hostPort, request.requestId, failure),
-            ),
-          ),
-        ),
-      )
+    if (command.type !== 'shutdown') {
+      const handler = handlers[command.type] as (command: MediaLifecycleCommand, deadlineMs: number) => unknown
+      void reply(request.requestId, () => handler(command, request.deadlineMs), command.type)
       return
     }
     if (shuttingDown) {
@@ -541,38 +414,8 @@ export const runMediaUtilityHostEffect = Effect.fn(
       return
     }
     shuttingDown = true
-    void Effect.runPromise(
-      invokeAddon(
-        () => addon.shutdown(request.deadlineMs),
-        'shutdown',
-      ).pipe(
-        Effect.flatMap((value) => {
-          const decoded = Schema.decodeUnknownOption(MediaAddonShutdownSchema, {
-            onExcessProperty: 'error',
-          })(value)
-          if (Option.isNone(decoded)) {
-            return Effect.fail(
-              mediaLifecycleFailure(
-                'media_shutdown_invalid',
-                'Native media shutdown returned an invalid result',
-                'shutdown',
-              ),
-            )
-          }
-          return Effect.sync(() =>
-            postSuccessReply(hostPort, request.requestId, decoded.value),
-          )
-        }),
-        Effect.catch((failure) =>
-          Effect.sync(() =>
-            postFailureReply(hostPort, request.requestId, failure),
-          ),
-        ),
-        Effect.ensuring(
-          Effect.sync(() => scheduleExit(() => exit(0))),
-        ),
-      ),
-    )
+    void reply(request.requestId, () => addon.shutdown(request.deadlineMs), 'shutdown')
+      .finally(() => scheduleExit(() => exit(0)))
   })
 })
 
@@ -598,7 +441,7 @@ function sanitizePublicEvent(event: MediaLifecycleEvent): MediaLifecycleEvent {
 function postSuccessReply(
   port: ParentPort,
   requestId: string,
-  result: MediaLifecycleResult,
+  result: unknown,
 ) {
   port.postMessage({
     type: 'reply',
