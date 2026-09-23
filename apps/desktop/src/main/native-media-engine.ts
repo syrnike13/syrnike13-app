@@ -120,6 +120,7 @@ export function createNativeRtcEngineAdapter() {
     },
   })
   const subscriptions: Array<() => void> = []
+  const loggedTrackStates = new Map<string, string>()
   const adapter = new NativeRtcEngineAdapterV2(runtime, undefined,
     failure => logNativeVoiceDiagnostic('control_failed', failure),
     () => {
@@ -176,7 +177,7 @@ export function createNativeRtcEngineAdapter() {
         correlationId: episodeId ? getNativeDiagnosticCorrelationId(episodeId) : undefined,
       })
     }
-    recordMediaDiagnostic({
+    const record: DiagnosticLogRecord = {
       scope: 'native-media-controller', event: event.type, runtime: 'media',
       hostEpoch: runtime.getHostEpoch(), nativeSequence: event.sequence,
       revision: 'revision' in event ? event.revision : undefined,
@@ -185,7 +186,19 @@ export function createNativeRtcEngineAdapter() {
       errorCode: event.failure?.code, stage: event.failure?.stage,
       episodeId: event.failure ? runtime.getFailureEpisodeId(event.failure.causeSequence) : undefined,
       fatal: event.type === 'fatalEngineFailure',
-    })
+    }
+    // The engine re-announces every track on each accepted revision. Journal
+    // only per-track transitions; incidents still see every failure.
+    if (event.type === 'trackStateChanged') {
+      const key = `${runtime.getHostEpoch()}:${event.track}`
+      const value = `${event.state}:${event.failure?.code ?? ''}:${event.warning}`
+      if (loggedTrackStates.get(key) === value) {
+        captureNativeDiagnosticIncident(record)
+        return
+      }
+      loggedTrackStates.set(key, value)
+    }
+    recordMediaDiagnostic(record)
   }), runtime.onDiagnostic(event => {
     const causeSequence = event.metrics.find(metric => metric.name === 'cause_sequence')?.value
     const episodeId = typeof causeSequence === 'number' && Number.isSafeInteger(causeSequence) && causeSequence > 0

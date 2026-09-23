@@ -88,8 +88,9 @@ export class DesktopVoiceService {
       rtcEngine: 'windows_native',
       clientInstanceId: `desktop-${crypto.randomUUID()}`,
     })
+    let loggedSnapshot = ''
     const unsubscribeDirector = director.subscribe((snapshot) => {
-      logNativeVoiceDiagnostic('snapshot', {
+      const summary = {
         connection: snapshot.connection,
         operationId: snapshot.operationId,
         connectionEpoch: snapshot.connectionEpoch,
@@ -104,7 +105,14 @@ export class DesktopVoiceService {
         retryAttempt: snapshot.retryAttempt,
         failureCode: snapshot.failure?.code,
         failureStage: snapshot.failure?.stage,
-      })
+      }
+      // Director snapshots also change for meters and speaking state; the
+      // journal records only transitions of the summarized fields.
+      const serialized = JSON.stringify(summary)
+      if (serialized !== loggedSnapshot) {
+        loggedSnapshot = serialized
+        logNativeVoiceDiagnostic('snapshot', summary)
+      }
       for (const listener of this.listeners) listener(snapshot)
     })
     return { transport, authority, engine, director, unsubscribeDirector }

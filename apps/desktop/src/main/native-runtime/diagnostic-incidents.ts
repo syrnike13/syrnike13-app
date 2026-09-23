@@ -18,42 +18,13 @@ const INCIDENT_LEASE_MS = 2 * 60 * 1_000
 const NATIVE_AUTOMATIC_COOLDOWN_MS = 60_000
 const RENDERER_AUTOMATIC_COOLDOWN_MS = 10 * 60 * 1_000
 const RETRY_BACKOFF_MS = [5_000, 15_000, 60_000, 5 * 60_000] as const
-const WARNING_EVENTS = new Set([
-  'request_rejected_queue_full',
-  'restart_scheduled',
-  'runtime_event_dropped_out_of_order',
-  'screen_backend_restart',
-  'presentation_stalled',
-])
-const FATAL_EVENTS = new Set([
-  'native_contract_corruption',
-  'restart_aborted_circuit_open',
-  'runtime_contract_corrupt',
-  'utility_crashed',
-])
+// Events recorded by native-media-engine without a typed errorCode.
+const WARNING_EVENTS = new Set(['presentation_stalled'])
+const FATAL_EVENTS = new Set(['utility_crashed'])
 const FAILURE_EVENTS = new Set([
   ...WARNING_EVENTS,
   ...FATAL_EVENTS,
-  'adapter_exited',
-  'adapter_recycled',
-  'bootstrap_failed',
-  'dispose_failed',
-  'frame_delivery_rejected',
-  'handshake_failed',
-  'probe_reply_error',
-  'probe_timed_out',
-  'request_post_failed',
-  'request_rejected',
-  'request_rejected_not_ready',
-  'request_reply_error',
-  'request_timed_out',
   'runtime_degraded',
-  'camera_read_stall',
-  'remote_video_recovery_degraded',
-  'screen_pipeline_stalled',
-  'screen_publication_failed',
-  'session_rotation_failed',
-  'shared_texture_operation_failed',
 ])
 const NON_INCIDENT_PROJECTIONS = new Set([
   'command',
@@ -93,22 +64,7 @@ export function captureNativeDiagnosticIncident(
   timestampMs = Date.now(),
 ) {
   if (activeAccountId === null) return null
-  if (record.event === 'adapter_exited' && record.reason === 'expected') return null
   if (record.errorCode === 'stale_generation') return null
-  if (
-    record.event === 'screen_backend_restart' &&
-    (!record.reason ||
-      record.reason === 'reinitialize_active' ||
-      record.reason === 'probe_preferred_backend')
-  ) return null
-  // Gateway control errors with fatal=false are evidence for the active voice
-  // operation, not root incidents. A typed terminal projection will create
-  // the incident if the operation actually ends.
-  if (
-    record.scope === 'desktop-voice' &&
-    record.event === 'control_event' &&
-    record.fatal === false
-  ) return null
   if (NON_INCIDENT_PROJECTIONS.has(record.event)) return null
   if (!record.errorCode && !FAILURE_EVENTS.has(record.event)) return null
 

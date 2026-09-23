@@ -6,7 +6,6 @@ import type {
   NativeRuntimeSupervisor,
   NativeRuntimeSupervisorSnapshot,
 } from './runtime-supervisor'
-import type { DiagnosticLogRecord } from './diagnostic-log'
 
 const MAX_BATCH_SIZE = 100
 const HISTOGRAM_COALESCE_BUCKETS_MS = [
@@ -25,17 +24,6 @@ export type NativeMetricCounterName =
   | 'runtime_ready'
   | 'runtime_lost'
   | 'runtime_degraded'
-  | 'session_start_succeeded'
-  | 'session_start_failed'
-  | 'session_start_cancelled'
-  | 'screen_presentation_stalled'
-  | 'screen_presentation_recovery_requested'
-  | 'screen_presentation_recovered'
-  | 'screen_presentation_recovery_failed'
-  | 'screen_renderer_reloaded'
-  | 'screen_shared_texture_operation_failed'
-  | 'screen_publisher_stalled'
-  | 'screen_publisher_republished'
   | 'screen_publication_stalled'
   | 'screen_subscription_stalled'
   | 'screen_frames_dropped_critical'
@@ -48,10 +36,6 @@ export type NativeMetricCounterName =
   | 'rtc_latency_critical'
 export type NativeMetricHistogramName =
   | 'runtime_handshake_ms'
-  | 'session_start_ms'
-  | 'screen_presentation_recovery_ms'
-  | 'screen_retained_texture_age_ms'
-  | 'screen_publisher_republish_ms'
 
 export type AnonymousNativeMetric =
   | {
@@ -345,97 +329,6 @@ export function attachNativeRuntimeMetrics(
     }
     previous = snapshot.status
   })
-}
-
-export function recordNativeDiagnosticMetrics(
-  record: DiagnosticLogRecord,
-  reporter: AnonymousNativeMetricsReporter = anonymousNativeMetricsReporter,
-) {
-  if (record.kind && !record.kind.includes('screen')) return
-  if (record.event === 'presentation_stalled') {
-    reporter.increment('screen_presentation_stalled', 'media', 'screen')
-    const retainedAgeMs = record.metrics?.oldestRetainedAgeMs
-    if (retainedAgeMs !== undefined) {
-      reporter.observe(
-        'screen_retained_texture_age_ms',
-        retainedAgeMs,
-        'media',
-        'screen',
-      )
-    }
-    return
-  }
-  if (record.event === 'presentation_recovery_requested') {
-    reporter.increment(
-      'screen_presentation_recovery_requested',
-      'media',
-      'screen',
-    )
-    if (record.durationMs !== undefined) {
-      reporter.observe(
-        'screen_presentation_recovery_ms',
-        record.durationMs,
-        'media',
-        'screen',
-      )
-    }
-    if (record.outcome === 'renderer-reloaded') {
-      reporter.increment('screen_renderer_reloaded', 'media', 'screen')
-    } else if (record.outcome === 'window-unavailable') {
-      reporter.increment(
-        'screen_presentation_recovery_failed',
-        'media',
-        'screen',
-      )
-    }
-    return
-  }
-  if (
-    record.event === 'remote_video_frame_presented' &&
-    record.outcome === 'recovered'
-  ) {
-    reporter.increment('screen_presentation_recovered', 'media', 'screen')
-    if (record.durationMs !== undefined) {
-      reporter.observe(
-        'screen_presentation_recovery_ms',
-        record.durationMs,
-        'media',
-        'screen',
-      )
-    }
-    return
-  }
-  if (record.event === 'remote_video_recovery_degraded') {
-    reporter.increment(
-      'screen_presentation_recovery_failed',
-      'media',
-      'screen',
-    )
-    return
-  }
-  if (record.event === 'shared_texture_operation_failed') {
-    reporter.increment(
-      'screen_shared_texture_operation_failed',
-      'media',
-      'screen',
-    )
-    return
-  }
-  if (record.event === 'screen_pipeline_stalled') {
-    reporter.increment('screen_publisher_stalled', 'media', 'screen')
-    return
-  }
-  if (record.event === 'screen_republished') {
-    reporter.increment('screen_publisher_republished', 'media', 'screen')
-    if (record.durationMs !== undefined) {
-      reporter.observe(
-        'screen_publisher_republish_ms',
-        record.durationMs,
-        'media',
-        'screen',
-      )
-    }
-  }
 }
 
 export function recordRendererDiagnosticMetrics(
