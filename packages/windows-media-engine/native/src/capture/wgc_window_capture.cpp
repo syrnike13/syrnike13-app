@@ -325,6 +325,7 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
       auto session = frame_pool.CreateCaptureSession(item);
       startup_operation = "GraphicsCaptureSession::IsCursorCaptureEnabled";
       if (!options_.include_cursor) session.IsCursorCaptureEnabled(false);
+      detail::disableCaptureBorder(session);
 
       const std::weak_ptr weak = state_;
       startup_operation = "Direct3D11CaptureFramePool::FrameArrived";

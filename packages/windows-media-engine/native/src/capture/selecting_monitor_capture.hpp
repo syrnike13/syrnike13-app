@@ -11,6 +11,7 @@ struct CaptureEnvironment {
 };
 struct SelectingMonitorOptions {
   std::optional<CaptureBackendKind> forced;
+  CaptureBackendKind preferred = CaptureBackendKind::wgc;
   // Resolve again on each prepare: display topology changes can replace HMONITOR.
   std::function<std::optional<sources::MonitorTargetToken>()> resolve_target;
   std::function<std::unique_ptr<MonitorCaptureBackend>(CaptureBackendKind)> create_backend;

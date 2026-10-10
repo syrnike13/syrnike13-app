@@ -21,6 +21,7 @@ const serverPath = options.server
 if (!serverPath) throw new Error('--server <livekit-server.exe> is required')
 const addonPath = options.addon ?? path.join(packageRoot, 'dist', 'win32-x64', 'windows_media.node')
 const botPath = options.bot ?? path.join(packageRoot, 'build', 'Release', 'bench_bot.exe')
+const fixturePath = options.fixture ?? path.join(packageRoot, 'build', 'Release', 'source_window_fixture.exe')
 const phaseSeconds = Number(options.seconds ?? 20)
 const url = 'ws://127.0.0.1:7880'
 // --signal-delay-ms N routes the engine's signaling through a TCP proxy that
@@ -300,6 +301,37 @@ try {
   }
   apply({ screen: { state: 'off' } })
   report.screenShare.viewer = await viewer.done
+
+  // Sharing one animated application window at the 720p30 preset (WGC).
+  const fixture = spawn(fixturePath, [], { stdio: ['pipe', 'pipe', 'ignore'] })
+  await new Promise(resolve => fixture.stdout.once('data', resolve))
+  addon.querySources({ revision: ++sourceRevision, kind: 'all' })
+  let window
+  await waitFor(() => {
+    const sources = addon.queryInventory().inventory.sources
+    window = sources.revision === sourceRevision && sources.complete
+      ? sources.entries.find(entry => entry.kind === 'window' && entry.title.includes('Syrnike Source Fixture Primary'))
+      : undefined
+    return window
+  }, 10_000, 'fixture window source')
+  const windowViewer = bot('window-viewer', 'bench-a', ['--seconds', String(phaseSeconds + 8), '--watch', self])
+  await sleep(1500)
+  const windowStarted = now()
+  apply({ screen: { state: 'on', sourceId: window.id, width: 1280, height: 720, fps: 30, bitrate: 2_000_000,
+    audioMode: 'none', audioBitrate: 128_000, previewRendererId: null, retryRevision: 0, audioRetryRevision: 0 } })
+  await waitFor(() => tracks.screen?.revision >= revision &&
+    (tracks.screen.state === 'running' || tracks.screen.state === 'failed'), 15_000, 'window share')
+  const windowReadyMs = Math.round(now() - windowStarted)
+  const windowSharing = await measure(phaseSeconds)
+  report.windowShare = {
+    state: tracks.screen?.state, failure: tracks.screen?.failure, runningMs: windowReadyMs,
+    cpuPercentOfOneCore: windowSharing.cpuPercentOfOneCore,
+    pipeline: windowSharing.delta('screen_video_metrics', ['capture_frames', 'encoder_encoded', 'keyframes',
+      'conversion_drops', 'network_backpressure_drops', 'encoder_rejections']),
+  }
+  apply({ screen: { state: 'off' } })
+  report.windowShare.viewer = await windowViewer.done
+  fixture.kill()
 
   // Move to another channel where two people talk.
   for (const identity of ['talker-4', 'talker-5'])

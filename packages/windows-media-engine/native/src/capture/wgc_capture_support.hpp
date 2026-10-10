@@ -27,6 +27,8 @@ struct WgcDeviceState {
 
 std::string hresultText(HRESULT value);
 void ensureRoInitialized();
+// Best effort: Windows 11 captures without the yellow border when permitted.
+void disableCaptureBorder(const winrt::Windows::Graphics::Capture::GraphicsCaptureSession&) noexcept;
 void invalidateMonitorCaptureItem(std::uintptr_t platform_value,
                                   const std::string& stable_identity);
 
