@@ -365,8 +365,16 @@ void RemoteAudioPlayout::run() noexcept {
   std::optional<EngineFailure> problem;
   Clock::time_point retry_at{}, next_tick = Clock::now(), last_render = Clock::now();
   std::uint64_t applied_revision = ~0ULL;
-  bool deafened = false;
+  bool deafened = false, device_fallback = false;
+  // Counters of released readers, so published totals never go backwards.
+  RemoteAudioJitterStats retired_jitter;
   const auto releaseReader = [&](Reader& reader) {
+    if (reader.stream) {
+      const auto value = reader.jitter.stats();
+      retired_jitter.underruns += value.underruns;
+      retired_jitter.overruns += value.overruns;
+      retired_jitter.trimmed += value.trimmed;
+    }
     reader.stream.reset();
     reader.track.reset();
     reader.jitter = {};
@@ -459,7 +467,11 @@ void RemoteAudioPlayout::run() noexcept {
         device.reset();
         problem.reset();
       } else if (reselect || (!device && now >= retry_at)) {
-        const auto endpoint = devices_.resolve(outputDevice(desired.intent));
+        auto endpoint = devices_.resolve(outputDevice(desired.intent));
+        // A missing selected output (unplugged headset) plays on the default
+        // output with a warning, and returns once the selected one is back.
+        device_fallback = !endpoint && desired.intent.device_id.has_value();
+        if (device_fallback) endpoint = devices_.resolve({AudioDirection::output, {}});
         if (!endpoint) {
           device.reset();
           problem = EngineFailure{"output_device_unavailable", "No output device is available", "output", true};
@@ -568,7 +580,7 @@ void RemoteAudioPlayout::run() noexcept {
 
       // Publish observations.
       std::uint32_t buffered = 0;
-      RemoteAudioJitterStats jitter;
+      RemoteAudioJitterStats jitter = retired_jitter;
       for (auto& reader : readers) {
         if (!reader.stream) continue;
         const auto value = reader.jitter.stats();
@@ -599,6 +611,11 @@ void RemoteAudioPlayout::run() noexcept {
         snapshot_.path.revision = desired.revision;
         snapshot_.path.failure = problem;
         snapshot_.path.warning = false;
+        if (device && device_fallback && !problem) {
+          snapshot_.path.failure = EngineFailure{"output_device_fallback",
+              "Selected output is unavailable; using the default output", "output", true};
+          snapshot_.path.warning = true;
+        }
         snapshot_.path.state = !needed ? MediaPathState::Off :
             device ? (deafened ? MediaPathState::Muted : MediaPathState::Running) :
             problem ? MediaPathState::Failed : MediaPathState::Starting;

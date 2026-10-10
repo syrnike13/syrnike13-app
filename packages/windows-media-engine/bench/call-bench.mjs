@@ -208,6 +208,7 @@ try {
   report.join.mediaReadyMs = Math.round(now() - joinStarted)
   await waitFor(() => addon.queryInventory().inventory.activeSpeakers.length >= 3, 15_000, 'hearing every talker')
   report.join.hearingAllMs = Math.round(now() - joinStarted)
+  if (options['join-only'] === '1') throw new Error('join-only')
 
   // Voice.
   const voice = await measure(phaseSeconds)
