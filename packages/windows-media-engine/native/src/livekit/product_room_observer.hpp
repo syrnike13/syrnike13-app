@@ -1,6 +1,6 @@
 #pragma once
 
-#include "audio/remote_audio_tracks.hpp"
+#include "audio/remote_audio_playout.hpp"
 #include "video/remote_video_owner.hpp"
 
 namespace syrnike::windows_media {
@@ -9,10 +9,9 @@ namespace syrnike::windows_media {
 // Shared ownership keeps them alive until the transport has removed its delegate.
 class ProductRoomObserver final : public LiveKitRoomObserver {
  public:
-  ProductRoomObserver(std::shared_ptr<audio::RemoteAudioMixerWorker> mixer,
-                      std::shared_ptr<audio::RemoteAudioTracks> audio,
+  ProductRoomObserver(std::shared_ptr<audio::RemoteAudioPlayout> audio,
                       std::shared_ptr<video::RemoteVideoOwner> video)
-      : mixer_(std::move(mixer)), audio_(std::move(audio)), video_(std::move(video)) {}
+      : audio_(std::move(audio)), video_(std::move(video)) {}
 
   bool attachRoom(const std::shared_ptr<livekit::Room>& room) override {
     const bool audio = audio_->attachRoom(room);
@@ -64,8 +63,7 @@ class ProductRoomObserver final : public LiveKitRoomObserver {
   }
 
  private:
-  const std::shared_ptr<audio::RemoteAudioMixerWorker> mixer_;
-  const std::shared_ptr<audio::RemoteAudioTracks> audio_;
+  const std::shared_ptr<audio::RemoteAudioPlayout> audio_;
   const std::shared_ptr<video::RemoteVideoOwner> video_;
 };
 }  // namespace syrnike::windows_media

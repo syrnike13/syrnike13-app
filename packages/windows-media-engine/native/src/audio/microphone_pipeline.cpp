@@ -264,21 +264,22 @@ void MicrophonePipeline::run(const std::shared_ptr<State>& state, EnhancementFac
         continue;
       }
       if (result != WAIT_OBJECT_0 + 2) throw std::runtime_error("Microphone DSP wait failed");
-      auto frame = input->take();
-      if (!frame) continue;
-      const auto now = timestamp();
-      if (frame->generation != generation || frame->timestamp_100ns <= 0 || frame->timestamp_100ns > now ||
-          now - frame->timestamp_100ns > kMicrophoneMaximumAge100ns) {
-        state->stale_frames.fetch_add(1, std::memory_order_relaxed);
-        continue;
-      }
-      dsp.process(*frame, now, echo_reference);
-      state->output->publish(*frame);
-      state->output_frames.fetch_add(1, std::memory_order_relaxed);
-      SetEvent(state->output_event.value);
-      if (Clock::now() >= next_meter) {
-        state->publishMeter(dsp.stats());
-        next_meter = Clock::now() + std::chrono::milliseconds{100};
+      // One wake may follow several captured frames; process all of them.
+      while (auto frame = input->take()) {
+        const auto now = timestamp();
+        if (frame->generation != generation || frame->timestamp_100ns <= 0 || frame->timestamp_100ns > now ||
+            now - frame->timestamp_100ns > kMicrophoneMaximumAge100ns) {
+          state->stale_frames.fetch_add(1, std::memory_order_relaxed);
+          continue;
+        }
+        dsp.process(*frame, now, echo_reference);
+        state->output->publish(*frame);
+        state->output_frames.fetch_add(1, std::memory_order_relaxed);
+        SetEvent(state->output_event.value);
+        if (Clock::now() >= next_meter) {
+          state->publishMeter(dsp.stats());
+          next_meter = Clock::now() + std::chrono::milliseconds{100};
+        }
       }
     }
   } catch (...) { state->failed.store(true); }

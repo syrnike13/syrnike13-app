@@ -140,6 +140,9 @@ void MicrophoneOwner::run() noexcept {
   bool selection_pending = false;
   std::optional<EngineFailure> problem;
   bool device_fallback = false;
+  // A failed input or publication recovers by itself, like a lost output
+  // device: retry every two seconds instead of waiting for a manual Retry.
+  auto retry_at = Clock::now();
   const auto stopSender = [&] {
     if (sender && !sender->stop(Clock::now() + kShutdownDeadline)) std::terminate();
     {
@@ -170,6 +173,11 @@ void MicrophoneOwner::run() noexcept {
         cancellation = capture_cancellation_.get_token();
       }
       const auto previous_problem = problem;
+      if (problem && problem->retryable && desired.intent.state != MicrophoneIntentState::off &&
+          Clock::now() >= retry_at) {
+        selection_pending = true;
+        retry_at = Clock::now() + std::chrono::seconds{2};
+      }
       const bool changed = selection_pending || desired.intent != applied.intent ||
           desired.publication_epoch != applied.publication_epoch ||
           desired.room_generation != applied.room_generation ||
@@ -197,11 +205,15 @@ void MicrophoneOwner::run() noexcept {
         device_fallback = false;
       } else if (changed && (!problem || retry)) {
         if (retry) problem.reset();
-        {
+        // Mute, PTT, gate and meter changes only reconfigure the warm DSP.
+        // Announce Starting only when capture or publication actually starts.
+        if (retry || !pipeline || (publish && !sender)) {
           std::lock_guard lock(mutex_);
           snapshot_.path = {desired.revision, MediaPathState::Starting};
         }
         try {
+          // A retired pipeline rejects every command; a retry needs a new one.
+          if (retry && pipeline && pipeline->stats().retired) stopPipeline();
           if (!pipeline) pipeline = std::make_unique<MicrophonePipeline>(makeLiveKitMicrophoneEnhancement);
           const auto check = [](MicrophonePipelineFailure failure) {
             if (failure != MicrophonePipelineFailure::none) throw failure;
@@ -276,6 +288,7 @@ void MicrophoneOwner::run() noexcept {
         }
         snapshot_ = std::move(current);
       }
+      if (problem && !previous_problem) retry_at = Clock::now() + std::chrono::seconds{2};
       selection_pending = false;
       applied = std::move(desired);
     }

@@ -13,11 +13,12 @@ class LiveKitMicrophoneEnhancement final : public MicrophoneEnhancement {
     return !echo ? EchoAvailability::disabled : reference ? EchoAvailability::active : EchoAvailability::unavailable;
   }
   bool resetEcho() noexcept override {
-    // WebRTC Initialize reallocates its echo history (1369 allocations in the
-    // epoch fixture). Never invoke it from the frame owner. A changed renderer
-    // epoch disables AEC with typed unsupported until a fresh DSP is prepared;
-    // independent NS, capture and publication continue with the existing owner.
-    return false;
+    // WebRTC Initialize reallocates its echo history, so it never runs on the
+    // frame owner. AEC3 re-estimates delay and re-converges its filter on a new
+    // render timeline by itself, as it does when a WebRTC playout device
+    // changes. Keep cancelling instead of disabling AEC for the warm DSP's
+    // remaining lifetime (every later call and output device switch).
+    return true;
   }
  private:
   livekit::RealtimeAudioProcessing processor_;

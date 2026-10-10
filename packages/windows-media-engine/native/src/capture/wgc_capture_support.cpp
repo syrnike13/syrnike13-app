@@ -16,6 +16,7 @@
 #include <utility>
 
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Metadata.h>
 #include <winrt/base.h>
 
 namespace syrnike::windows_media::capture::detail {
@@ -384,6 +385,16 @@ std::shared_ptr<FrameResource> makeWgcFrameResource(
   return std::make_shared<D3D11FrameResource>(std::move(device), std::move(live_resources),
                                               std::move(peak_resources), std::move(frame),
                                               std::move(texture), width, height);
+}
+
+void disableCaptureBorder(const winrt::Windows::Graphics::Capture::GraphicsCaptureSession& session) noexcept {
+  try {
+    if (winrt::Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
+            L"Windows.Graphics.Capture.GraphicsCaptureSession", L"IsBorderRequired"))
+      session.IsBorderRequired(false);
+  } catch (...) {
+    // Older Windows or no borderless access: the system border stays.
+  }
 }
 
 }  // namespace syrnike::windows_media::capture::detail

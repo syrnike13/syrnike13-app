@@ -130,7 +130,8 @@ bool RemoteVideoOwner::seedConnectedRoom() {
 void RemoteVideoOwner::onConnectionStateChanged(livekit::Room& room, const livekit::ConnectionStateChangedEvent& event) {
   std::lock_guard lock(mutex_);
   if (room_.get() != &room || stopping_) return;
-  connected_ = event.state == livekit::ConnectionState::Connected;
+  // Reconnecting keeps publications and decoders; only a disconnect ends them.
+  connected_ = event.state != livekit::ConnectionState::Disconnected;
   if (event.state == livekit::ConnectionState::Disconnected) {
     publications_.clear();
     ++inventory_revision_;

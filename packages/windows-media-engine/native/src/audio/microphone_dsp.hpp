@@ -67,8 +67,11 @@ class MicrophoneDsp final {
   std::unique_ptr<MicrophoneEnhancement> enhancement_;
   MicrophoneDspConfig config_;
   MicrophoneDspStats stats_;
+  // 300 ms of 10 ms frames after the last voiced frame.
+  static constexpr std::uint32_t kGateHoldFrames = 30;
   float noise_floor_ = 0.001f;
   float gain_ = 1.0f;
+  float gate_gain_ = 0.0f;
   std::uint32_t gate_hold_frames_ = 0;
   std::uint64_t reference_sequence_ = 0;
   bool echo_reset_failed_ = false;

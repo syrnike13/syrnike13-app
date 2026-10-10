@@ -3,7 +3,7 @@
 #include "core/media_runtime.hpp"
 #include "audio/audio_device_catalog.hpp"
 #include "audio/microphone_owner.hpp"
-#include "audio/output_owner.hpp"
+#include "audio/remote_audio_playout.hpp"
 #include "audio/screen_audio_owner.hpp"
 #include "camera/camera_owner.hpp"
 #include "screen/screen_owner.hpp"
@@ -42,15 +42,13 @@ class WindowsMediaRuntime final : public MediaRuntime {
  private:
   void run() noexcept;
   void updateScreenAudio(const screen::ScreenOwnerSnapshot&);
-  // Borrowers join before their catalog, mixer and transport are destroyed.
+  // Borrowers join before their catalog and transport are destroyed.
   audio::AudioDeviceCatalog catalog_;
-  const std::shared_ptr<audio::RemoteAudioMixerWorker> mixer_;
-  const std::shared_ptr<audio::RemoteAudioTracks> audio_;
+  const std::shared_ptr<audio::RemoteAudioPlayout> audio_;
   const std::shared_ptr<video::RemoteVideoOwner> video_;
   const std::shared_ptr<ProductRoomObserver> observer_;
   const std::shared_ptr<LiveKitRoomTransport> transport_;
   audio::MicrophoneOwner microphone_;
-  audio::OutputOwner output_;
   capture::ThumbnailAdmission thumbnail_admission_;
   camera::CameraOwner camera_;
   screen::ScreenOwner screen_;

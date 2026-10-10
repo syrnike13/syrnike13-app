@@ -88,8 +88,7 @@ exhaustion/reuse, a real NV12-to-H.264 output, encoder drain, and the integrated
 production lifecycle. `production_screen_sender_tests` injects overload and
 hung SDK operations to prove encoded reference preservation, independent deadlines, late
 slot return, and unpublish escalation.
-`encoder_fault_tests` injects an encoder failure and blocks MFShutdown to verify
-failure propagation and the cleanup deadline. The GPU tests also hold all three
+The GPU tests also hold all three
 encoded slots and verify that only pending raw input is superseded.
 
 The LiveKit fork and application were built locally and exercised through a

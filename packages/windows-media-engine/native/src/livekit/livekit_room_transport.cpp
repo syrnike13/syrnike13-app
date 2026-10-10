@@ -47,6 +47,7 @@ LiveKitRoomTransport::LiveKitRoomTransport(std::shared_ptr<LiveKitRoomObserver> 
   livekit::initialize(livekit::LogLevel::Info);
   worker_ = std::thread([this] { run(); });
   cancellation_worker_ = std::thread([this] { runCancellationLane(); });
+  teardown_worker_ = std::thread([this] { runTeardownLane(); });
 }
 
 void LiveKitRoomTransport::setConnectionEventCallback(RoomConnectionEventCallback callback) {
@@ -61,10 +62,13 @@ LiveKitRoomTransport::~LiveKitRoomTransport() {
   }
   changed_.notify_one();
   cancellation_changed_.notify_one();
+  teardown_changed_.notify_one();
   if (cancellation_worker_.joinable())
     cancellation_worker_.join();
   if (worker_.joinable())
     worker_.join();
+  if (teardown_worker_.joinable())
+    teardown_worker_.join();
   if (delegate_) delegate_->stop();
   {
     std::lock_guard lock(mutex_);
@@ -280,6 +284,28 @@ void LiveKitRoomTransport::runCancellationLane() noexcept {
   }
 }
 
+void LiveKitRoomTransport::runTeardownLane() noexcept {
+  while (true) {
+    std::shared_ptr<livekit::Room> room;
+    {
+      std::unique_lock lock(mutex_);
+      teardown_changed_.wait(lock, [this] { return stopping_ || !teardown_rooms_.empty(); });
+      if (teardown_rooms_.empty()) return;
+      room = std::move(teardown_rooms_.front());
+      teardown_rooms_.pop_front();
+      teardown_running_ = true;
+    }
+    try {
+      static_cast<void>(room->disconnect());
+    } catch (...) {
+      // Best effort: the Room has no observers and no Engine membership.
+    }
+    room.reset();
+    std::lock_guard lock(mutex_);
+    teardown_running_ = false;
+  }
+}
+
 void LiveKitRoomTransport::runConnect(ConnectTask task) noexcept {
   std::shared_ptr<livekit::Room> room;
   {
@@ -419,17 +445,33 @@ void LiveKitRoomTransport::runDisconnect(DisconnectTask task) noexcept {
             "Remote media readers did not release the Room", "room_disconnect"));
         return;
       }
-      // The SDK returns false when server/EOS cleanup already claimed the Room.
-      // Still call it to drain any remaining local state. A false result from
-      // a previously connected Room remains a teardown failure.
-      const bool already_disconnected =
-          room->connectionState() == livekit::ConnectionState::Disconnected;
-      const bool disconnected = room->disconnect();
-      result = disconnected || already_disconnected
-                   ? EngineResult::success()
-                   : liveKitFailure("livekit_disconnect_failed",
-                                    "LiveKit Room disconnect returned false",
-                                    "room_disconnect", true);
+      // Readers and publications are released, so the Engine no longer uses
+      // this Room. Its graceful SDK disconnect (leave signal, transport close)
+      // runs on the teardown lane: on a dead network it blocks for tens of
+      // seconds, and neither leaving nor the next join may wait for it.
+      bool handed_off = false;
+      {
+        std::lock_guard lock(mutex_);
+        if (!stopping_ && teardown_rooms_.size() + (teardown_running_ ? 1 : 0) < 4) {
+          teardown_rooms_.push_back(room);
+          handed_off = true;
+        }
+      }
+      if (handed_off) {
+        teardown_changed_.notify_one();
+        result = EngineResult::success();
+      } else {
+        // Shutdown, or earlier teardowns are stuck: disconnect in place and
+        // let the operation deadline escalate a non-cooperative SDK.
+        const bool already_disconnected =
+            room->connectionState() == livekit::ConnectionState::Disconnected;
+        const bool disconnected = room->disconnect();
+        result = disconnected || already_disconnected
+                     ? EngineResult::success()
+                     : liveKitFailure("livekit_disconnect_failed",
+                                      "LiveKit Room disconnect returned false",
+                                      "room_disconnect", true);
+      }
     } catch (const std::exception &) {
       result = liveKitFailure("livekit_disconnect_failed",
                               "LiveKit Room disconnect raised an exception",

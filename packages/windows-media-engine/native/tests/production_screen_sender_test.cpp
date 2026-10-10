@@ -1,3 +1,4 @@
+#include <iostream>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -356,10 +357,10 @@ int main() try {
   cancelledPublishDrainsWithoutPublishingOrFailing();
   overloadPreservesEncodedReferenceFrames();
   staleCompletionCannotMutateANewGeneration();
-  syrnike::windows_media::tests::repeatFault("sdk-submit-duplicate", duplicateSubmitCannotReleaseTheNextBorrowedFrame);
-  syrnike::windows_media::tests::repeatFault("sdk-publish-never-completes", hungPublishDoesNotBlockStopOrAcceptLateSuccess);
-  syrnike::windows_media::tests::repeatFault("sdk-submit-never-completes", hungSubmitEscalatesAndLateCompletionReturnsBorrowedSlot);
-  syrnike::windows_media::tests::repeatFault("sdk-unpublish-never-completes", hungUnpublishHasAnIndependentDeadline);
+  syrnike::windows_media::tests::runFault("sdk-submit-duplicate", duplicateSubmitCannotReleaseTheNextBorrowedFrame);
+  syrnike::windows_media::tests::runFault("sdk-publish-never-completes", hungPublishDoesNotBlockStopOrAcceptLateSuccess);
+  syrnike::windows_media::tests::runFault("sdk-submit-never-completes", hungSubmitEscalatesAndLateCompletionReturnsBorrowedSlot);
+  syrnike::windows_media::tests::runFault("sdk-unpublish-never-completes", hungUnpublishHasAnIndependentDeadline);
   adapterSubmitStartFailureReturnsSlotBeforeTerminalFailure();
   completedSubmitFailureDrainsBeforeAndDuringStop();
   return 0;

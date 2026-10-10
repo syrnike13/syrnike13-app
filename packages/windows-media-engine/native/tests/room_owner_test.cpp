@@ -333,7 +333,7 @@ void hundredHungOperationsAreBounded(HungRoomOperation operation) {
   };
   const auto id = operation == HungRoomOperation::Connect ? "room-connect-never-completes" :
       operation == HungRoomOperation::Disconnect ? "room-disconnect-never-completes" : "room-cancel-never-completes";
-  repeatFault(id, [&] {
+  runFault(id, [&] {
     auto transport = std::make_shared<ManualRoomTransport>();
     std::mutex mutex;
     std::condition_variable changed;

@@ -150,6 +150,7 @@ class WgcMonitorCaptureBackendImpl final : public WgcMonitorCaptureBackend {
           direct3d_device, DirectXPixelFormat::B8G8R8A8UIntNormalized,
           static_cast<int>(options_.frame_pool_size), size);
       auto session = frame_pool.CreateCaptureSession(item);
+      detail::disableCaptureBorder(session);
 
       const std::weak_ptr weak = state_;
       const auto frame_token =

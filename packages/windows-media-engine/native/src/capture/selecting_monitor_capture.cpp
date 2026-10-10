@@ -153,6 +153,7 @@ class Backend final : public SelectingMonitorCaptureBackend {
  public:
   explicit Backend(SelectingMonitorOptions options) : options_(std::move(options)) {
     policy_.forced = options_.forced;
+    policy_.preferred = options_.preferred;
     if (!options_.create_backend)
       options_.create_backend =
           [](CaptureBackendKind kind) -> std::unique_ptr<MonitorCaptureBackend> {

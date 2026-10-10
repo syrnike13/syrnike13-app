@@ -5,9 +5,7 @@ slice, not the Voice UI cutover. The #122 acceptance used published SDK
 [`v1.10.0-syrnike.4`](https://github.com/syrnike13/client-sdk-cpp/releases/tag/v1.10.0-syrnike.4)
 at commit `7e3a9465733666f6fa463c58d842e3702ed2e646`. Its Windows archive SHA-256
 is `06ea330c76bd736fbfc5c46dc997c1d2f965e822a70d86b39bb84b590d7741c1`.
-The [SDK blocker history](REMOTE_VIDEO_SDK_BLOCKER.md) records the original
-local candidate and the reproducible release source.
-The current application pin is recorded in [LIVEKIT_BASELINE.md](LIVEKIT_BASELINE.md).
+The current application pin is in `packages/windows-media-engine/native/cmake/LiveKitSDK.cmake`.
 
 ## Ownership and bounds
 

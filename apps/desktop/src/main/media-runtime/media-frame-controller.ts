@@ -42,6 +42,8 @@ type AdapterPort = Pick<NativeRtcEngineAdapterV2,
   'rendererReady' | 'rendererGone' | 'setPreviewDemand' | 'setRemoteVideoDemand' | 'snapshot'>
 let nextRendererEpoch = 0
 const leaseKey = (lease: MediaFrameRelease) => `${lease.generation}:${lease.sequence}:${lease.slot}`
+const roomSession = (snapshot: MediaEngineSnapshot) =>
+  snapshot.roomState === 'connected' ? snapshot.desiredState?.room?.credentialLeaseId ?? '' : ''
 
 /** Main owns only Electron texture references and a retained producer-process
  * handle. Capture, SDK ownership and GPU take/release remain in the utility. */
@@ -204,18 +206,21 @@ export class MediaFrameController {
       this.epoch = epoch
       this.lastInventoryAt = 0
     }
-    if (this.renderer && !this.inventoryPending && Date.now() - this.lastInventoryAt >= 250) {
+    // Speaking indicators ride on inventory: poll at 10 Hz during a call.
+    const inventoryIntervalMs = roomSession(this.adapter.snapshot()) ? 100 : 250
+    if (this.renderer && !this.inventoryPending && Date.now() - this.lastInventoryAt >= inventoryIntervalMs) {
       const renderer = this.renderer
-      const revision = this.adapter.snapshot().acceptedRevision
+      // Fence on the Room session, not on the desired-state revision: mute,
+      // PTT and volume changes bump the revision several times per second and
+      // must not discard speaker, meter or publication observations.
+      const querySession = roomSession(this.adapter.snapshot())
       this.inventoryPending = true
       this.lastInventoryAt = Date.now()
       void this.runtime.queryInventory().then(inventory => {
         if (this.disposed || epoch !== this.epoch || epoch !== this.runtime.getHostEpoch() || this.renderer !== renderer) return
-        const snapshot = this.adapter.snapshot()
-        if (snapshot.acceptedRevision !== revision) return
+        const session = roomSession(this.adapter.snapshot())
+        if (session !== querySession) return
         this.onInventory(inventory)
-        const session = snapshot.roomState === 'connected'
-          ? snapshot.desiredState?.room?.credentialLeaseId ?? '' : ''
         if (session !== this.sessionId) {
           for (const publication of this.publications) this.publish('unavailable', publication)
           this.publications = []
@@ -262,11 +267,12 @@ export class MediaFrameController {
     }
   }
   private offer(frame: MediaExportedFrame, epoch: number) {
-    const snapshot = this.adapter.snapshot()
     const local = frame.kind !== 'remote'
     const publication = this.publications.find(value => value.publicationId === frame.publicationId)
     const totalOutstanding = [...this.bridges.values(), ...this.retired].reduce((count, bridge) => count + bridge.outstanding, 0)
-    if (!this.renderer || frame.rendererId !== this.renderer.id || frame.revision !== snapshot.acceptedRevision ||
+    // Renderer and publication identity fence a frame. Its desired-state
+    // revision does not: unrelated mute/PTT/volume revisions would drop video.
+    if (!this.renderer || frame.rendererId !== this.renderer.id ||
         (!local && !publication) || totalOutstanding >= 68) {
       this.queueRelease(frame)
       return

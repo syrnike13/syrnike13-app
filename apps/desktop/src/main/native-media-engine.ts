@@ -142,8 +142,7 @@ export function createNativeRtcEngineAdapter() {
       adapter.observeSpeakingInventory(inventory)
       const microphone = adapter.desiredSnapshot()?.microphone
       const meter = inventory.microphoneMeter
-      if (!microphone || microphone.state === 'off' || !microphone.meterDemand ||
-          meter.revision !== adapter.snapshot().acceptedRevision) return
+      if (!microphone || microphone.state === 'off' || !microphone.meterDemand) return
       const window = windowGetter()
       if (!window || window.isDestroyed()) return
       window.webContents.send(IPC.mediaMicrophoneMetrics, {

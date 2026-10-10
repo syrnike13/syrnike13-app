@@ -251,9 +251,10 @@ void ScreenOwner::run() noexcept {
           capture::CaptureStartResult started;
           if (*resolved.kind == sources::SourceKind::Monitor) {
             capture::SelectingMonitorOptions options;
-            // WGC draws a system capture border for the entire publication.
-            // Desktop duplication captures the monitor without that border.
-            options.forced = capture::CaptureBackendKind::dxgi;
+            // Desktop duplication captures the monitor without a capture
+            // border. Where it is unavailable (hybrid GPUs, some remote
+            // sessions) or lost, fall back to WGC instead of failing the share.
+            options.preferred = capture::CaptureBackendKind::dxgi;
             options.resolve_target = [monitor_target] { return monitor_target; };
             monitor = std::make_unique<capture::MonitorCapture>(*registry, desired.intent.source_id,
                 capture::createSelectingMonitorCaptureBackend(std::move(options)));

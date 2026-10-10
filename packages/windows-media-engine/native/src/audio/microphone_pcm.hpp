@@ -9,7 +9,9 @@
 namespace syrnike::windows_media::audio {
 inline constexpr std::uint32_t kMicrophoneRate = 48'000;
 inline constexpr std::size_t kMicrophoneFrameSamples = 480;
-inline constexpr std::int64_t kMicrophoneMaximumAge100ns = 500'000; // 50 ms
+// A frame older than this is dropped instead of sent late. It covers the port
+// capacity so a briefly descheduled consumer catches up rather than losing audio.
+inline constexpr std::int64_t kMicrophoneMaximumAge100ns = 1'000'000; // 100 ms
 struct MicrophoneFrame {
   std::array<std::int16_t, kMicrophoneFrameSamples> samples{};
   std::uint64_t generation = 0;
@@ -18,33 +20,44 @@ struct MicrophoneFrame {
   bool discontinuity = false;
 };
 
-// Single producer, single consumer. Three owned values: writer, exchange slot,
-// reader. Publication swaps indices, never waits and never touches the reader's
-// value. A slow consumer receives the newest complete 10 ms frame. Neither side
-// allocates, locks, logs, retries or retains a borrowed Windows capture buffer.
-// Construct a new port for each capture generation; never reset a live port.
+// Single producer, single consumer, in order. Every captured 10 ms frame is
+// sent: a consumer that wakes late drains the queue instead of losing all but
+// the newest frame. Overflow drops the oldest frame. The spin lock is held
+// only to copy one frame. Neither side allocates, logs or retains a borrowed
+// Windows capture buffer. Construct a new port per capture generation.
 class MicrophonePcmPort final {
  public:
+  static constexpr std::size_t kCapacity = 8;
   void publish(const MicrophoneFrame& frame) noexcept {
-    frames_[write_] = frame;
-    write_ = middle_.exchange(write_ | kDirty, std::memory_order_acq_rel) & kIndexMask;
+    while (busy_.test_and_set(std::memory_order_acquire)) {}
+    if (depth_ == kCapacity) {
+      head_ = (head_ + 1) % kCapacity;
+      --depth_;
+    }
+    frames_[(head_ + depth_) % kCapacity] = frame;
+    ++depth_;
+    depth_published_.store(static_cast<std::uint32_t>(depth_), std::memory_order_relaxed);
+    busy_.clear(std::memory_order_release);
   }
   std::optional<MicrophoneFrame> take() noexcept {
-    if (!(middle_.load(std::memory_order_acquire) & kDirty)) return {};
-    read_ = middle_.exchange(read_, std::memory_order_acq_rel) & kIndexMask;
-    return frames_[read_];
+    if (!depth_published_.load(std::memory_order_relaxed)) return {};
+    while (busy_.test_and_set(std::memory_order_acquire)) {}
+    std::optional<MicrophoneFrame> frame;
+    if (depth_) {
+      frame = frames_[head_];
+      head_ = (head_ + 1) % kCapacity;
+      --depth_;
+    }
+    depth_published_.store(static_cast<std::uint32_t>(depth_), std::memory_order_relaxed);
+    busy_.clear(std::memory_order_release);
+    return frame;
   }
-  std::uint32_t pendingFrames() const noexcept {
-    return (middle_.load(std::memory_order_relaxed) & kDirty) ? 1u : 0u;
-  }
+  std::uint32_t pendingFrames() const noexcept { return depth_published_.load(std::memory_order_relaxed); }
  private:
-  static constexpr unsigned kDirty = 4;
-  static constexpr unsigned kIndexMask = 3;
-  static_assert(std::atomic<unsigned>::is_always_lock_free);
-  std::array<MicrophoneFrame, 3> frames_{};
-  unsigned write_ = 2;
-  unsigned read_ = 0;
-  std::atomic<unsigned> middle_{1};
+  std::array<MicrophoneFrame, kCapacity> frames_{};
+  std::atomic_flag busy_ = ATOMIC_FLAG_INIT;
+  std::size_t head_ = 0, depth_ = 0;
+  std::atomic<std::uint32_t> depth_published_{0};
 };
 
 struct MicrophonePacketizerStats {

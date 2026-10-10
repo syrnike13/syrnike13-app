@@ -44,6 +44,8 @@ struct BackendGeneration {
 struct BackendSelectionState {
   CaptureSourceKind source = CaptureSourceKind::monitor;
   std::optional<CaptureBackendKind> forced;
+  // First backend to try when none is forced; a failure tries the other one.
+  CaptureBackendKind preferred = CaptureBackendKind::wgc;
   std::optional<BackendGeneration> active, candidate;
   std::optional<CaptureBackendKind> last_attempt;
   bool active_healthy = false, paused = false, terminal = false, pending = false;

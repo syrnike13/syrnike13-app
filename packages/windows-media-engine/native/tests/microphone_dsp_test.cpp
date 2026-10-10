@@ -70,11 +70,16 @@ void silenceAndControls() {
   frame = signal(32000);
   dsp.process(frame, 1'000'000, nullptr);
   require(frame.samples[1] > 0 && frame.samples[1] <= 32112, "Limiter overflowed after input gain");
-  for (int index = 0; index < 12; ++index) {
+  for (int index = 0; index < 29; ++index) {
     frame = signal(1);
     dsp.process(frame, 1'000'000, nullptr);
   }
-  require(frame.samples == std::array<std::int16_t, 480>{} && !dsp.stats().gate_open,
+  require(dsp.stats().gate_open && dsp.stats().speaking, "Hangover closed gate inside a speech pause");
+  for (int index = 0; index < 3; ++index) {
+    frame = signal(1);
+    dsp.process(frame, 1'000'000, nullptr);
+  }
+  require(frame.samples == std::array<std::int16_t, 480>{} && !dsp.stats().gate_open && !dsp.stats().speaking,
           "Hangover never closed gate");
 }
 void referenceFreshness() {
@@ -136,7 +141,7 @@ void productControlRange() {
   config.input_volume = 1;
   config.gate_threshold_db = 0;
   require(dsp.configure(2, config), "Product upper gate bound rejected");
-  for (int index = 0; index < 12; ++index) {
+  for (int index = 0; index < 32; ++index) {
     frame = signal(1000);
     dsp.process(frame, 1'000'000, nullptr);
   }
@@ -157,8 +162,13 @@ void renderedReferenceRetirement() {
     frame.sequence = sequence;
     require(port.publish(frame), "Valid rendered reference rejected");
   }
-  const auto latest = port.take();
-  require(latest && latest->sequence == 100 && !port.take(), "Echo reference accumulated/repeated backlog");
+  // Every rendered frame is kept in order up to the bounded FIFO; overflow
+  // drops the oldest frames and nothing is repeated.
+  for (std::uint64_t sequence = 101 - RenderedEchoReference::kCapacity; sequence <= 100; ++sequence) {
+    const auto queued = port.take();
+    require(queued && queued->sequence == sequence, "Echo reference lost or reordered a rendered frame");
+  }
+  require(!port.take(), "Echo reference exceeded its bound or repeated a frame");
   frame.renderer_epoch = 1;
   frame.sequence = 101;
   require(!port.publish(frame), "Wrong renderer epoch published into reference port");

@@ -425,7 +425,7 @@ void previewIsolation(bool quarantine = false) {
 }  // namespace
 int main(int argc, char** argv) try {
   if (argc == 2 && std::string_view(argv[1]) == "--cancellation") {
-    syrnike::windows_media::tests::repeatFault("camera-candidate-cancelled", cancelledCameraCandidate);
+    syrnike::windows_media::tests::runFault("camera-candidate-cancelled", cancelledCameraCandidate);
     return 0;
   }
   if (argc == 2 && std::string_view(argv[1]) == "--preview-quarantine") {
@@ -444,9 +444,9 @@ int main(int argc, char** argv) try {
   registryIdentity();
   asynchronousCaptureLifetime();
   transactionalPipelineDemands();
-  syrnike::windows_media::tests::repeatFault("camera-candidate-cancelled", cancelledCameraCandidate);
-  syrnike::windows_media::tests::repeatFault("camera-device-removed", [] { cameraFaultRetiresItsReader(false); });
-  syrnike::windows_media::tests::repeatFault("camera-reader-no-callback", [] { cameraFaultRetiresItsReader(true); });
+  syrnike::windows_media::tests::runFault("camera-candidate-cancelled", cancelledCameraCandidate);
+  syrnike::windows_media::tests::runFault("camera-device-removed", [] { cameraFaultRetiresItsReader(false); });
+  syrnike::windows_media::tests::runFault("camera-reader-no-callback", [] { cameraFaultRetiresItsReader(true); });
   std::cout << "Camera format, freshness and registry contracts passed\n";
   return 0;
 } catch (const std::exception& error) {

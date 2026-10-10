@@ -143,8 +143,11 @@ describe('NativeRtcEngineAdapterV2', () => {
     }
     for (const listener of runtime.snapshots) listener(runtime.current)
 
-    adapter.observeSpeakingInventory(speakingInventory(revision - 1, true, ['remote-user']))
-    expect(events.filter(event => event.type === 'speakingChanged')).toHaveLength(0)
+    // A meter sampled before an unrelated revision still reports speakers.
+    adapter.observeSpeakingInventory(speakingInventory(revision - 1, false, ['remote-user']))
+    expect(events.at(-1)).toMatchObject({
+      type: 'speakingChanged', participantIdentities: ['remote-user'],
+    })
 
     adapter.observeSpeakingInventory(speakingInventory(revision, true, ['participant', 'remote-user']))
     expect(events.at(-1)).toMatchObject({

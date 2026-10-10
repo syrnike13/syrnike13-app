@@ -456,17 +456,17 @@ void concurrentStopsSerializeFinalize() {
 int main() try {
   generationFenceAndQueueAreBounded();
   cancelledResizeRestoresFramesWithoutPublicTransition();
-  syrnike::windows_media::tests::repeatFault("wgc-source-closed", noContentAndCloseAreExplicitAndExactlyOnce);
-  syrnike::windows_media::tests::repeatFault("wgc-close-racing-frame", closeRacingFrameDeliveryIsTerminalOnce);
+  syrnike::windows_media::tests::runFault("wgc-source-closed", noContentAndCloseAreExplicitAndExactlyOnce);
+  syrnike::windows_media::tests::runFault("wgc-close-racing-frame", closeRacingFrameDeliveryIsTerminalOnce);
   unresolvedAndWrongKindSourcesAreRejected();
   outstandingLeaseHasBoundedStopFailure();
   lateReleaseAndOwnerDestructionAreSafe();
-  syrnike::windows_media::tests::repeatFault("wgc-frame-after-stop", stopRacingResizeIgnoresLateGeneration);
+  syrnike::windows_media::tests::runFault("wgc-frame-after-stop", stopRacingResizeIgnoresLateGeneration);
   removedBeforeStartIsTypedClosed();
   handleReuseDuringStartIsRejected();
-  syrnike::windows_media::tests::repeatFault("wgc-prepare-failure", backendStartFailureUsesPostValidationType);
+  syrnike::windows_media::tests::runFault("wgc-prepare-failure", backendStartFailureUsesPostValidationType);
   terminalSignalRevalidatesWindowIdentity();
-  syrnike::windows_media::tests::repeatFault("wgc-concurrent-stop", concurrentStopsSerializeFinalize);
+  syrnike::windows_media::tests::runFault("wgc-concurrent-stop", concurrentStopsSerializeFinalize);
   std::cout << "window-capture-tests:ok\n";
   return 0;
 } catch (const std::exception& error) {

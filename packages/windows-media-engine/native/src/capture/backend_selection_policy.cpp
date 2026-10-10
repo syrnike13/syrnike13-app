@@ -36,7 +36,7 @@ BackendSelectionResult beginCandidate(BackendSelectionState state, std::int64_t 
     return {state};
   const auto preferred = state.last_failure && state.last_attempt ? other(*state.last_attempt)
                          : state.active                           ? state.active->kind
-                                                                  : CaptureBackendKind::wgc;
+                                                                  : state.preferred;
   auto selected = state.forced.value_or(preferred);
   if (!available(state, selected) && !state.forced) selected = other(selected);
   if (!available(state, selected)) {
