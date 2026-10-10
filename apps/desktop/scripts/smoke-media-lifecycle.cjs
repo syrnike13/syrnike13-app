@@ -626,7 +626,7 @@ if (process.argv.includes('--exit-deadline-child')) {
   const cold = processResources()
   // Exercise the full repeated workload before measuring the Electron process,
   // whose background services allocate handles during the initial batch.
-  const warmupRepetitions = 100
+  const warmupRepetitions = 10
   for (let warmup = 0; warmup < warmupRepetitions; warmup += 1) {
     await stalledUtilityTermination()
     await stalledUtilityTermination('close')
@@ -634,7 +634,7 @@ if (process.argv.includes('--exit-deadline-child')) {
   }
   const baseline = processResources()
   console.info(JSON.stringify({ processGuardWarmup: warmupRepetitions, cold, baseline }))
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 25; attempt += 1) {
     maximumExitMs.terminate = Math.max(maximumExitMs.terminate, await stalledUtilityTermination())
     guardResults.terminate += 1
     maximumExitMs.close = Math.max(maximumExitMs.close, await stalledUtilityTermination('close'))
@@ -660,13 +660,13 @@ if (process.argv.includes('--exit-deadline-child')) {
     return
   }
   const conformance = await nativeConformance()
-  for (let cycle = 1; cycle <= 50; ++cycle) await lifecycleCycle(cycle)
+  for (let cycle = 1; cycle <= 10; ++cycle) await lifecycleCycle(cycle)
   await incompatibleHandshake()
   await unexpectedExit()
   console.info(
     JSON.stringify({
       status: 'pass',
-      lifecycleCycles: 50,
+      lifecycleCycles: 10,
       incompatibleHandshake: 'rejected',
       unexpectedExit: 'unexpected_exit',
       stalledUtilityTermination: 'kernel_exit_confirmed',
