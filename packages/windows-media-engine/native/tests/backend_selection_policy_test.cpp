@@ -225,10 +225,10 @@ int main(int argc, char** argv) {
     // hosted machines. Warm the exact scenario before taking the resource
     // baseline so that a transient OS thread is not mistaken for a retained
     // owner resource; the measured batch and zero-growth rule stay unchanged.
-    syrnike::windows_media::tests::repeatFault("capture-candidate-failure", failedCandidatePreservesActiveAndFencesLateFrame, 2);
-    syrnike::windows_media::tests::repeatFault("capture-retry-exhaustion", prepareFallbackAndBoundedRetries);
-    syrnike::windows_media::tests::repeatFault("capture-rolling-attempt-budget", rollingBudgetAndDeadline);
-    syrnike::windows_media::tests::repeatFault("capture-concurrent-failure-fences", concurrentFailureAndPermissionFences);
+    syrnike::windows_media::tests::runFault("capture-candidate-failure", failedCandidatePreservesActiveAndFencesLateFrame);
+    syrnike::windows_media::tests::runFault("capture-retry-exhaustion", prepareFallbackAndBoundedRetries);
+    syrnike::windows_media::tests::runFault("capture-rolling-attempt-budget", rollingBudgetAndDeadline);
+    syrnike::windows_media::tests::runFault("capture-concurrent-failure-fences", concurrentFailureAndPermissionFences);
     std::cout << "Backend selection policy passed\n";
     return 0;
   } catch (const std::exception& error) {

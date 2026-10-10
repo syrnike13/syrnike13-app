@@ -1,5 +1,6 @@
 #include "audio/microphone_sender.hpp"
 #include <windows.h>
+#include <avrt.h>
 #include <algorithm>
 #include <stdexcept>
 #include <system_error>
@@ -17,6 +18,11 @@ DWORD remaining(Clock::time_point deadline) noexcept {
       std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now()).count(),
       std::int64_t{0}, std::int64_t{6000}));
 }
+struct Mmcss {
+  DWORD task = 0;
+  HANDLE value = AvSetMmThreadCharacteristicsW(L"Audio", &task);
+  ~Mmcss() { if (value) AvRevertMmThreadCharacteristics(value); }
+};
 std::int64_t timestamp() noexcept {
   return std::chrono::duration_cast<std::chrono::duration<std::int64_t, std::ratio<1, 10'000'000>>>(
       Clock::now().time_since_epoch()).count();
@@ -112,7 +118,10 @@ void MicrophoneSender::run(const std::shared_ptr<State>& state) noexcept {
         if (state->stopped.load()) { SetEvent(state->ready.value); return; }
         const auto participant = room ? room->localParticipant().lock() : nullptr;
         if (!participant) throw std::runtime_error("Microphone Room unavailable");
-        auto source = std::make_shared<livekit::AudioSource>(kMicrophoneRate, 1, 10);
+        // Unbuffered: the capture clock paces frames straight into WebRTC.
+        // A buffered source adds the SDK's own 10 ms clock, which drifts from
+        // capture and drops frames whenever its thread is descheduled.
+        auto source = std::make_shared<livekit::AudioSource>(kMicrophoneRate, 1, 0);
         auto track = livekit::LocalAudioTrack::createLocalAudioTrack("microphone", source);
         // Retain the candidate before publish: even a partially successful
         // publish or a late completion is handled by the ordered cleanup task.
@@ -138,36 +147,40 @@ void MicrophoneSender::run(const std::shared_ptr<State>& state) noexcept {
     if (state->failure.load() != MicrophonePublicationFailure::none) throw state->failure.load();
     if (!state->published.load()) throw MicrophonePublicationFailure::publish_failed;
     auto frame = livekit::AudioFrame::create(kMicrophoneRate, 1, kMicrophoneFrameSamples);
+    // Same scheduling class as capture and DSP, so the last hop is not the
+    // one that falls behind under CPU load. Absent when MMCSS is disabled.
+    Mmcss mmcss;
     const HANDLE events[]{state->stop.value, state->frame_event};
     while (!state->stopped.load()) {
       const auto result = WaitForMultipleObjects(2, events, FALSE, 100);
       if (result == WAIT_OBJECT_0) break;
       if (result == WAIT_TIMEOUT) continue;
       if (result != WAIT_OBJECT_0 + 1) throw MicrophonePublicationFailure::send_failed;
-      auto input = state->pcm->take();
-      if (!input) continue;
-      const auto now = timestamp();
-      if (input->timestamp_100ns > 0 && now >= input->timestamp_100ns) {
-        const auto age_us = static_cast<std::uint64_t>((now - input->timestamp_100ns) / 10);
-        state->latest_frame_age_us.store(age_us, std::memory_order_relaxed);
-        state->maximum_frame_age_us.store((std::max)(state->maximum_frame_age_us.load(std::memory_order_relaxed), age_us),
-                                          std::memory_order_relaxed);
+      // One wake may follow several processed frames; send all of them in order.
+      while (auto input = state->pcm->take()) {
+        if (state->stopped.load()) break;
+        const auto now = timestamp();
+        if (input->timestamp_100ns > 0 && now >= input->timestamp_100ns) {
+          const auto age_us = static_cast<std::uint64_t>((now - input->timestamp_100ns) / 10);
+          state->latest_frame_age_us.store(age_us, std::memory_order_relaxed);
+          state->maximum_frame_age_us.store((std::max)(state->maximum_frame_age_us.load(std::memory_order_relaxed), age_us),
+                                            std::memory_order_relaxed);
+        }
+        if (input->timestamp_100ns <= 0 || now < input->timestamp_100ns ||
+            now - input->timestamp_100ns > kMicrophoneMaximumAge100ns) {
+          state->rejected_stale.fetch_add(1);
+          continue;
+        }
+        std::copy(input->samples.begin(), input->samples.end(), frame.data().begin());
+        // A new input generation deliberately uses the same source/publication.
+        const auto submitted_at = Clock::now();
+        state->source->captureFrame(frame, 500);
+        const auto callback_wait_us = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - submitted_at).count());
+        state->maximum_callback_wait_us.store((std::max)(state->maximum_callback_wait_us.load(), callback_wait_us));
+        state->device_generation.store(input->generation);
+        state->submitted.fetch_add(1);
       }
-      if (input->timestamp_100ns <= 0 || now < input->timestamp_100ns ||
-          now - input->timestamp_100ns > kMicrophoneMaximumAge100ns) {
-        state->rejected_stale.fetch_add(1);
-        continue;
-      }
-      std::copy(input->samples.begin(), input->samples.end(), frame.data().begin());
-      // A new input generation deliberately uses the same source/publication.
-      // The SDK owns a bounded 10 ms clocked queue and a finite completion wait.
-      const auto submitted_at = Clock::now();
-      state->source->captureFrame(frame, 500);
-      const auto callback_wait_us = static_cast<std::uint64_t>(
-          std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - submitted_at).count());
-      state->maximum_callback_wait_us.store((std::max)(state->maximum_callback_wait_us.load(), callback_wait_us));
-      state->device_generation.store(input->generation);
-      state->submitted.fetch_add(1);
     }
   } catch (MicrophonePublicationFailure failure) { state->fail(failure); }
   catch (const std::system_error& error) {

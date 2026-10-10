@@ -13,9 +13,11 @@ struct OutgoingNetworkObservation {
 };
 // Backpressure is based on measured packet queueing, never a bitrate/FPS quota.
 // Expired or missing observations cannot indefinitely stop raw admission.
+// Pacing one 1080p keyframe alone queues packets for tens of milliseconds;
+// only a queue well beyond that is congestion worth dropping capture frames.
 inline bool screenPacketQueueBackpressured(const OutgoingNetworkObservation& value,
                                          std::uint64_t now_ms) noexcept {
-  return value.packet_send_delay_us && *value.packet_send_delay_us >= 30'000 &&
+  return value.packet_send_delay_us && *value.packet_send_delay_us >= 150'000 &&
       value.packet_send_delay_measured_at_ms > 0 &&
       value.packet_send_delay_measured_at_ms <= now_ms &&
       now_ms - value.packet_send_delay_measured_at_ms <= 250;

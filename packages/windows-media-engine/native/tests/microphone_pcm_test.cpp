@@ -60,7 +60,12 @@ void concurrentLatest() {
     frame.sequence = sequence;
     port.publish(frame);
   }
-  require(port.take()->sequence == count, "Slow consumer received backlog");
+  // A slow consumer drains the most recent bounded backlog in order.
+  for (std::uint64_t sequence = count - MicrophonePcmPort::kCapacity + 1; sequence <= count; ++sequence) {
+    const auto queued = port.take();
+    require(queued && queued->sequence == sequence, "Slow consumer lost or reordered queued frames");
+  }
+  require(!port.take(), "Port exceeded its bound");
 }
 void convertedEndpointClock() {
   MicrophonePcmPort port;

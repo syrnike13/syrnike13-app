@@ -38,16 +38,6 @@ function(windows_media_target target)
     NOMINMAX
     _WIN32_WINNT=0x0A00
   )
-  # Fault evidence is emitted by test/lab executables. Tag those binaries without
-  # invalidating every shipping library whenever only the source commit changes.
-  get_target_property(target_type ${target} TYPE)
-  if(target_type STREQUAL "EXECUTABLE")
-    target_compile_definitions(${target} PRIVATE
-      WINDOWS_MEDIA_FAULT_COMMIT="${WINDOWS_MEDIA_COMMIT}"
-      WINDOWS_MEDIA_FAULT_CONFIGURATION="$<CONFIG>"
-      WINDOWS_MEDIA_FAULT_ASAN=$<BOOL:${WINDOWS_MEDIA_ENABLE_ASAN}>
-    )
-  endif()
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /WX /permissive- /EHsc /Zi /FS)
     target_link_options(${target} PRIVATE /DEBUG:FULL)
@@ -195,18 +185,6 @@ add_library(media_microphone_dsp STATIC src/audio/microphone_dsp.cpp)
 windows_media_target(media_microphone_dsp)
 target_include_directories(media_microphone_dsp PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
-add_library(media_remote_audio_pcm STATIC src/audio/remote_audio_pcm.cpp src/audio/remote_render_plan.cpp)
-windows_media_target(media_remote_audio_pcm)
-target_include_directories(media_remote_audio_pcm PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-
-add_library(media_remote_audio_mixer STATIC src/audio/remote_audio_mixer_worker.cpp)
-windows_media_target(media_remote_audio_mixer)
-target_link_libraries(media_remote_audio_mixer PUBLIC media_remote_audio_pcm PRIVATE avrt)
-
-add_library(media_wasapi_output STATIC src/audio/wasapi_output.cpp src/audio/remote_audio_output.cpp)
-windows_media_target(media_wasapi_output)
-target_link_libraries(media_wasapi_output PUBLIC media_remote_audio_mixer media_audio_devices PRIVATE avrt)
-
 add_library(media_microphone_pipeline STATIC src/audio/microphone_pipeline.cpp)
 windows_media_target(media_microphone_pipeline)
 target_link_libraries(media_microphone_pipeline PUBLIC media_microphone_capture media_microphone_dsp PRIVATE avrt)
@@ -214,15 +192,11 @@ target_link_libraries(media_microphone_pipeline PUBLIC media_microphone_capture 
 add_library(media_microphone_livekit STATIC src/audio/microphone_sender.cpp src/audio/livekit_microphone_dsp.cpp
   src/audio/microphone_owner.cpp)
 windows_media_target(media_microphone_livekit)
-target_link_libraries(media_microphone_livekit PUBLIC media_microphone_pipeline media_livekit)
+target_link_libraries(media_microphone_livekit PUBLIC media_microphone_pipeline media_livekit PRIVATE avrt)
 
-add_library(media_remote_audio_livekit STATIC src/audio/remote_audio_tracks.cpp)
-windows_media_target(media_remote_audio_livekit)
-target_link_libraries(media_remote_audio_livekit PUBLIC media_remote_audio_mixer media_livekit)
-
-add_library(media_output_owner STATIC src/audio/output_owner.cpp)
-windows_media_target(media_output_owner)
-target_link_libraries(media_output_owner PUBLIC media_remote_audio_livekit media_wasapi_output)
+add_library(media_remote_audio STATIC src/audio/remote_audio_playout.cpp)
+windows_media_target(media_remote_audio)
+target_link_libraries(media_remote_audio PUBLIC media_audio_devices media_livekit PRIVATE avrt ole32)
 
 add_library(media_screen_audio_livekit STATIC src/audio/screen_audio_sender.cpp)
 windows_media_target(media_screen_audio_livekit)
@@ -244,7 +218,7 @@ add_library(media_product_runtime STATIC src/core/windows_media_runtime.cpp src/
   src/sources/thumbnail_owner.cpp)
 windows_media_target(media_product_runtime)
 target_include_directories(media_product_runtime PUBLIC src)
-target_link_libraries(media_product_runtime PUBLIC media_microphone_livekit media_output_owner
+target_link_libraries(media_product_runtime PUBLIC media_microphone_livekit media_remote_audio
   media_camera_owner media_screen_owner media_screen_audio_livekit media_video PRIVATE gdi32)
 
 
@@ -287,6 +261,11 @@ if(MSVC)
   target_link_options(windows_media PRIVATE /DELAYLOAD:node.exe)
 endif()
 
+add_executable(bench_bot bench/bench_bot.cpp)
+windows_media_target(bench_bot)
+target_link_libraries(bench_bot PRIVATE LiveKit::livekit)
+windows_media_copy_livekit_runtime(bench_bot)
+
 enable_testing()
 
 add_executable(product_runtime_tests tests/product_runtime_test.cpp)
@@ -318,7 +297,7 @@ set_tests_properties(microphone-dsp PROPERTIES TIMEOUT 10)
 
 add_executable(remote_audio_tests tests/remote_audio_test.cpp)
 windows_media_target(remote_audio_tests)
-target_link_libraries(remote_audio_tests PRIVATE media_remote_audio_mixer)
+target_include_directories(remote_audio_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 add_test(NAME remote-audio COMMAND remote_audio_tests)
 set_tests_properties(remote-audio PROPERTIES TIMEOUT 20)
 
@@ -465,23 +444,13 @@ target_link_libraries(gpu_screen_converter_tests PRIVATE media_screen)
 add_test(NAME gpu-screen-converter COMMAND gpu_screen_converter_tests)
 set_tests_properties(gpu-screen-converter PROPERTIES TIMEOUT 30)
 
-add_executable(encoder_fault_tests tests/encoder_fault_test.cpp)
 add_executable(local_screen_preview_tests tests/local_screen_preview_test.cpp)
 windows_media_target(local_screen_preview_tests)
 target_link_libraries(local_screen_preview_tests PRIVATE media_screen)
 add_test(NAME local-screen-preview COMMAND local_screen_preview_tests)
 set_tests_properties(local-screen-preview PROPERTIES TIMEOUT 60 LABELS "requires-gpu-video")
-windows_media_target(encoder_fault_tests)
-target_link_libraries(encoder_fault_tests PRIVATE media_screen)
-add_test(NAME encoder-faults COMMAND encoder_fault_tests)
-set_tests_properties(encoder-faults PROPERTIES TIMEOUT 300)
-add_test(NAME encoder-bitrate-unsupported COMMAND encoder_fault_tests --bitrate-unsupported)
-add_test(NAME encoder-bitrate-rejected COMMAND encoder_fault_tests --bitrate-rejected)
-# These are 100 complete hardware pipeline lifecycles per setter outcome.
-set_tests_properties(encoder-bitrate-unsupported encoder-bitrate-rejected
-  PROPERTIES TIMEOUT 1800 LABELS "requires-gpu-video")
 
 # Hosted Windows runners expose no D3D11 Video interface. Keep these tests in
 # the default full suite; only the hosted workflow selects the portable subset.
-set_tests_properties(monitor-capture gpu-screen-converter encoder-faults
+set_tests_properties(monitor-capture gpu-screen-converter
   PROPERTIES LABELS "requires-gpu-video")

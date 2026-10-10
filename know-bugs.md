@@ -44,8 +44,9 @@ NVIDIA overlay DLL. A control run with the overlay disabled had not yet been
 performed at that point, so overlay involvement remained a hypothesis. See the
 dated recheck below.
 
-Reproduce with `encoder_fault_tests --same-thread-activation`; use
-`--resource-stages` to isolate startup, enumeration and activation. The probe
+The reproduction harness (`encoder_fault_tests --same-thread-activation`,
+`--resource-stages`) was removed with the fault-injection suite on 2026-10-11;
+it remains in Git history. The probe
 follows the documented
 [activation shutdown contract](https://learn.microsoft.com/en-us/windows/win32/api/mfobjects/nf-mfobjects-imfactivate-shutdownobject).
 Both activation-only shutdown and explicit transform shutdown plus activation

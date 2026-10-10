@@ -35,13 +35,11 @@ EngineFailure audioFailure(const audio::ScreenAudioFailure& failure) {
 }  // namespace
 
 WindowsMediaRuntime::WindowsMediaRuntime()
-    : mixer_(std::make_shared<audio::RemoteAudioMixerWorker>()),
-      audio_(std::make_shared<audio::RemoteAudioTracks>(*mixer_)),
+    : audio_(std::make_shared<audio::RemoteAudioPlayout>(catalog_.registry())),
       video_(std::make_shared<video::RemoteVideoOwner>()),
-      observer_(std::make_shared<ProductRoomObserver>(mixer_, audio_, video_)),
+      observer_(std::make_shared<ProductRoomObserver>(audio_, video_)),
       transport_(std::make_shared<LiveKitRoomTransport>(observer_)),
       microphone_(catalog_.registry(), transport_),
-      output_(catalog_.registry(), *mixer_, *audio_),
       camera_(transport_, thumbnail_admission_), screen_(transport_, thumbnail_admission_),
       thumbnails_(screen_, thumbnail_admission_),
       screen_audio_([transport = transport_] {
@@ -68,8 +66,8 @@ void WindowsMediaRuntime::apply(const EngineDesiredState& desired, std::optional
   // coalesces before the coordinator wakes. Publication actors fence commits.
   if (desired.camera.state == CameraIntentState::on || desired.screen.state == ScreenIntentState::on)
     thumbnail_admission_.requestPublication();
-  microphone_.apply(desired.revision, desired.microphone, room, device_revision_, output_.snapshot().echo);
-  output_.apply(desired.revision, desired.output, room.has_value(), device_revision_);
+  microphone_.apply(desired.revision, desired.microphone, room, device_revision_, audio_->snapshot().echo);
+  audio_->apply(desired.revision, desired.output, room.has_value(), device_revision_);
   camera_.apply(desired.revision, desired.camera, room);
   screen_.apply(desired.revision, desired.screen, room);
   video_->apply(desired.revision, desired.remote_video_demand, room.has_value());
@@ -99,7 +97,6 @@ void WindowsMediaRuntime::beginStop() {
   camera_.beginStop();
   screen_.beginStop();
   screen_audio_.beginStop();
-  output_.beginStop();
   audio_->beginStop();
   video_->beginStop();
   changed_.notify_all();
@@ -153,12 +150,12 @@ void WindowsMediaRuntime::run() noexcept {
       changed_.wait_for(lock, 10ms);
       if (stopping_) break;
       const auto devices = catalog_.snapshot();
-      const auto output = output_.snapshot();
+      const auto output = audio_->snapshot();
       if (device_revision_ != devices.revision || echo != output.echo) {
         device_revision_ = devices.revision;
         echo = output.echo;
         microphone_.apply(desired_.revision, desired_.microphone, room_generation_, device_revision_, echo);
-        output_.apply(desired_.revision, desired_.output, room_generation_.has_value(), device_revision_);
+        audio_->apply(desired_.revision, desired_.output, room_generation_.has_value(), device_revision_);
       }
       const auto microphone = microphone_.snapshot();
       const auto camera = camera_.snapshot();
@@ -168,8 +165,8 @@ void WindowsMediaRuntime::run() noexcept {
         snapshot_.screen_video_metrics = std::array<DiagnosticMetric, 16>{{
             {"quality_warning", pipeline.quality_warning ? 1.0 : 0.0},
             {"decision_reason", static_cast<double>(pipeline.decision_reason)},
-            {"bitrate_available", pipeline.bitrate.available ? 1.0 : 0.0},
-            {"bitrate_outcome", static_cast<double>(pipeline.bitrate.outcome)},
+            {"keyframes", static_cast<double>(pipeline.encoder.keyframes)},
+            {"last_keyframe_bytes", static_cast<double>(pipeline.encoder.last_keyframe_bytes)},
             {"bitrate_updates", static_cast<double>(pipeline.bitrate_updates)},
             {"capture_frames", static_cast<double>(pipeline.capture_frames)},
             {"converted", static_cast<double>(pipeline.converter.converted)},
@@ -242,7 +239,10 @@ void WindowsMediaRuntime::run() noexcept {
       } else snapshot_.camera_metrics.reset();
       if (desired_.microphone.state != MicrophoneIntentState::off) {
         const auto& capture = microphone.pipeline.capture;
-        snapshot_.microphone_metrics = std::array<DiagnosticMetric, 12>{{
+        snapshot_.microphone_metrics = std::array<DiagnosticMetric, 15>{{
+          {"capture_frames", static_cast<double>(capture.frames)},
+          {"dsp_frames", static_cast<double>(microphone.pipeline.output_frames)},
+          {"dsp_stale", static_cast<double>(microphone.pipeline.stale_frames)},
           {"capture_state", static_cast<double>(capture.state)},
           {"capture_failure", static_cast<double>(microphone.pipeline.candidate_failure)},
           {"capture_platform_result", static_cast<double>(
@@ -259,39 +259,24 @@ void WindowsMediaRuntime::run() noexcept {
         }};
       } else snapshot_.microphone_metrics.reset();
       if (desired_.output.state == OutputIntentState::on && room_generation_) {
-        const auto ingress = audio_->stats();
-        const auto mix = mixer_->stats();
-        const auto& render = output.output.active;
-        snapshot_.remote_audio_ingress_metrics = std::array<DiagnosticMetric, 13>{{
-          {"decoded", static_cast<double>(ingress.decoded)},
-          {"sdk_dropped", static_cast<double>(ingress.sdk_dropped)},
-          {"sdk_stale", static_cast<double>(ingress.sdk_stale)},
-          {"sdk_discontinuities", static_cast<double>(ingress.sdk_discontinuities)},
-          {"app_overrun", static_cast<double>(ingress.app_overrun)},
-          {"app_stale", static_cast<double>(ingress.app_stale)},
-          {"app_producer_contention", static_cast<double>(ingress.app_producer_contention)},
-          {"app_consumer_contention", static_cast<double>(ingress.app_consumer_contention)},
-          {"rejected", static_cast<double>(ingress.rejected)},
-          {"track_failures", static_cast<double>(ingress.track_failures)},
-          {"reading", static_cast<double>(ingress.reading)},
-          {"maximum_sdk_queue", static_cast<double>(ingress.maximum_observed_sdk_queue)},
-          {"maximum_app_queue", static_cast<double>(ingress.maximum_observed_app_queue)},
+        const auto& audio_stats = output.stats;
+        snapshot_.remote_audio_ingress_metrics = std::array<DiagnosticMetric, 8>{{
+          {"decoded", static_cast<double>(audio_stats.decoded)},
+          {"sdk_dropped", static_cast<double>(audio_stats.sdk_dropped)},
+          {"sdk_stale", static_cast<double>(audio_stats.sdk_stale)},
+          {"sdk_discontinuities", static_cast<double>(audio_stats.sdk_discontinuities)},
+          {"jitter_underruns", static_cast<double>(audio_stats.jitter_underruns)},
+          {"jitter_overruns", static_cast<double>(audio_stats.jitter_overruns)},
+          {"jitter_trimmed", static_cast<double>(audio_stats.jitter_trimmed)},
+          {"reading", static_cast<double>(audio_stats.reading)},
         }};
-        snapshot_.remote_audio_output_metrics = std::array<DiagnosticMetric, 14>{{
-          {"submitted_frames", static_cast<double>(render.submitted_frames)},
-          {"consumed_frames", static_cast<double>(render.consumed_frames)},
-          {"stale_fragments", static_cast<double>(render.stale_fragments)},
-          {"input_queue_overrun", static_cast<double>(render.input_queue_overrun)},
-          {"input_queue_stale", static_cast<double>(render.input_queue_stale)},
-          {"underruns", static_cast<double>(render.underruns)},
-          {"delayed_wakes", static_cast<double>(render.delayed_wakes)},
-          {"maximum_wake_gap_us", static_cast<double>(render.maximum_wake_gap_100ns) / 10.0},
-          {"maximum_scheduled_age_us", static_cast<double>(render.maximum_scheduled_age_100ns) / 10.0},
-          {"mix_frames", static_cast<double>(mix.frames)},
-          {"mix_source_frames", static_cast<double>(mix.source_frames)},
-          {"mix_discontinuities", static_cast<double>(mix.discontinuities)},
-          {"mix_limited_frames", static_cast<double>(mix.limited_frames)},
-          {"output_committed", render.committed ? 1.0 : 0.0},
+        snapshot_.remote_audio_output_metrics = std::array<DiagnosticMetric, 6>{{
+          {"rendered_frames", static_cast<double>(audio_stats.rendered_frames)},
+          {"device_starved", static_cast<double>(audio_stats.device_starved)},
+          {"late_wakes", static_cast<double>(audio_stats.late_wakes)},
+          {"device_opens", static_cast<double>(audio_stats.device_opens)},
+          {"latency_ms", static_cast<double>(audio_stats.latency_ms)},
+          {"device_open", audio_stats.device_open ? 1.0 : 0.0},
         }};
       } else {
         snapshot_.remote_audio_ingress_metrics.reset();
@@ -315,11 +300,9 @@ void WindowsMediaRuntime::run() noexcept {
   camera_.stop();
   screen_.stop();
   if (!screen_audio_.stop(Clock::now() + kShutdownDeadline)) std::terminate();
-  output_.stop();
   audio_->stop();
   video_->stop();
   frames_.stop();
-  if (!mixer_->stop(Clock::now() + kShutdownDeadline)) std::terminate();
   {
     std::lock_guard lock(mutex_);
     snapshot_ = {};

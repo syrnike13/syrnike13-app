@@ -295,8 +295,14 @@ bool initializeTransform(
                       setCodecU32(transform.Get(),
                                   CODECAPI_AVEncCommonMeanBitRate,
                                   state->profile.bitrate);
-    if (configured)
+    if (configured) {
       (void)setCodecU32(transform.Get(), CODECAPI_AVEncMPVDefaultBPictureCount, 0);
+      // Vendor defaults emit an IDR every second. A 1080p IDR is ~100 KB and
+      // stalls every viewer while it is paced out. Receivers and the SFU ask
+      // for keyframes they need (PLI); the periodic one is only a safety net.
+      (void)setCodecU32(transform.Get(), CODECAPI_AVEncMPVGOPSize,
+                        state->profile.frames_per_second * 60);
+    }
     // Configure rate control before committing media types: hardware transforms
     // may freeze the rate-control mode when their input type is installed.
     if (configured)

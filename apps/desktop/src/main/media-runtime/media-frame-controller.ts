@@ -206,7 +206,9 @@ export class MediaFrameController {
       this.epoch = epoch
       this.lastInventoryAt = 0
     }
-    if (this.renderer && !this.inventoryPending && Date.now() - this.lastInventoryAt >= 250) {
+    // Speaking indicators ride on inventory: poll at 10 Hz during a call.
+    const inventoryIntervalMs = roomSession(this.adapter.snapshot()) ? 100 : 250
+    if (this.renderer && !this.inventoryPending && Date.now() - this.lastInventoryAt >= inventoryIntervalMs) {
       const renderer = this.renderer
       // Fence on the Room session, not on the desired-state revision: mute,
       // PTT and volume changes bump the revision several times per second and

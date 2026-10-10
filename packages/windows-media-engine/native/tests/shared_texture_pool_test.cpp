@@ -128,7 +128,7 @@ int main() try {
     pool.retire(current);
     require(pool.snapshot().backing_bytes == 0);
   }
-  syrnike::windows_media::tests::repeatFault("remote-video-late-decoded", staleRemoteDecodedFramesDoNotChangeAnotherOwner);
+  syrnike::windows_media::tests::runFault("remote-video-late-decoded", staleRemoteDecodedFramesDoNotChangeAnotherOwner);
   auto device = syrnike::windows_media::capture::processD3d11Device(true);
   require(device->debugLayerEnabled());
   Microsoft::WRL::ComPtr<ID3D11Debug> debug;

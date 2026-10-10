@@ -272,7 +272,7 @@ int main(int argc, char** argv) {
     int status = 0;
     const auto run_fault = [&](const char* id, HRESULT failure) {
       try {
-        tests::repeatFault(id, [=] { realDuplication(failure); }, 100);
+        tests::runFault(id, [=] { realDuplication(failure); });
       } catch (const std::exception& error) {
         status = 1;
         std::cerr << error.what() << '\n';

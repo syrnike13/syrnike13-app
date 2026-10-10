@@ -224,15 +224,15 @@ int main() {
   using syrnike::windows_media::screenPacketQueueBackpressured;
   OutgoingNetworkObservation network;
   require(!screenPacketQueueBackpressured(network, 1000), "unknown queue blocked capture");
-  network.packet_send_delay_us = 30'000;
+  network.packet_send_delay_us = 150'000;
   network.packet_send_delay_measured_at_ms = 1000;
   require(screenPacketQueueBackpressured(network, 1250), "fresh queue pressure ignored");
   require(!screenPacketQueueBackpressured(network, 1251), "stale queue blocked capture");
   require(!screenPacketQueueBackpressured(network, 999), "future queue blocked capture");
-  network.packet_send_delay_us = 29'999;
+  network.packet_send_delay_us = 149'999;
   require(!screenPacketQueueBackpressured(network, 1000), "healthy queue blocked capture");
   network.packet_send_delay_measured_at_ms = 0;
-  network.packet_send_delay_us = 100'000;
+  network.packet_send_delay_us = 200'000;
   require(!screenPacketQueueBackpressured(network, 100), "missing timestamp blocked capture");
   try {
     syrnike::windows_media::PacketSendDelayEstimator queue;
