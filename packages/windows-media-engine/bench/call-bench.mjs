@@ -26,7 +26,12 @@ const url = 'ws://127.0.0.1:7880'
 // --signal-delay-ms N routes the engine's signaling through a TCP proxy that
 // delays every chunk by N ms each way (RTT 2N). Media stays on direct UDP.
 const signalDelayMs = Number(options['signal-delay-ms'] ?? 0)
-const engineUrl = signalDelayMs > 0 ? 'ws://127.0.0.1:7881' : url
+// --dead-network-before-leave 1 makes that proxy swallow all signaling just
+// before leaving, as if the network died mid-call.
+const deadNetworkBeforeLeave = options['dead-network-before-leave'] === '1'
+const proxied = signalDelayMs > 0 || deadNetworkBeforeLeave
+const engineUrl = proxied ? 'ws://127.0.0.1:7881' : url
+let signalingDead = false
 const self = 'bench-engine'
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -68,9 +73,11 @@ function bot(identity, room, args) {
 }
 
 const server = spawn(serverPath, ['--dev', '--bind', '127.0.0.1'], { stdio: 'ignore' })
-if (signalDelayMs > 0) {
+if (proxied) {
   const net = await import('node:net')
-  const delayed = (from, to) => from.on('data', chunk => setTimeout(() => to.write(chunk), signalDelayMs))
+  const delayed = (from, to) => from.on('data', chunk => setTimeout(() => {
+    if (!signalingDead) to.write(chunk)
+  }, signalDelayMs))
   net.createServer(client => {
     const upstream = net.connect(7880, '127.0.0.1')
     delayed(client, upstream)
@@ -81,7 +88,7 @@ if (signalDelayMs > 0) {
   }).listen(7881, '127.0.0.1').unref()
 }
 const bots = []
-const report = { addon: addonPath, phaseSeconds, signalDelayMs }
+const report = { addon: addonPath, phaseSeconds, signalDelayMs, deadNetworkBeforeLeave }
 try {
   for (let attempt = 0; ; attempt += 1) {
     try { if ((await fetch('http://127.0.0.1:7880')).ok) break } catch {}
@@ -100,7 +107,8 @@ try {
     if (event.type === 'roomStateChanged') room = event.state
     if (event.type === 'trackStateChanged') tracks[event.track] = { state: event.state, failure: event.failure?.code, revision: event.revision }
     // In the product a fatal engine failure kills and restarts the media process.
-    if (event.type === 'fatalEngineFailure') (report.fatal ??= []).push(event.failure.code)
+    if (event.type === 'fatalEngineFailure')
+      (report.fatal ??= []).push({ code: event.failure.code, stage: event.failure.stage, atMs: Math.round(now()) })
     if (event.type === 'roomStateChanged' && event.state === 'failed') (report.roomFailures ??= []).push(event.failure?.code)
   })
   addon.registerDiagnosticEventCallback(event => {
@@ -308,9 +316,14 @@ try {
   report.move.hearingAllMs = Math.round(now() - moveStarted)
 
   // Leave.
+  if (deadNetworkBeforeLeave) {
+    signalingDead = true
+    await sleep(500)
+  }
   const leaveStarted = now()
+  report.leaveStartedAtMs = Math.round(leaveStarted)
   apply({ room: null, microphone, output: { state: 'off' } })
-  await waitFor(() => room === 'off' && tracks.output?.state === 'off', 10_000, 'leave')
+  await waitFor(() => room === 'off' && tracks.output?.state === 'off', 40_000, 'leave')
   report.leaveMs = Math.round(now() - leaveStarted)
 
   const shutdownStarted = now()

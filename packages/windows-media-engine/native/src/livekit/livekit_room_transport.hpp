@@ -84,6 +84,7 @@ private:
 
   void run() noexcept;
   void runCancellationLane() noexcept;
+  void runTeardownLane() noexcept;
   void runConnect(ConnectTask task) noexcept;
   void runDisconnect(DisconnectTask task) noexcept;
   void runActiveRoomTask(ActiveRoomLaneTask task) noexcept;
@@ -112,8 +113,14 @@ private:
   std::uint64_t active_generation_ = 0;
   std::shared_ptr<livekit::Room> operation_room_;
   std::shared_ptr<livekit::Room> active_room_;
+  // Rooms whose graceful SDK disconnect is still running. On a dead network
+  // it can block for tens of seconds; leaving and the next join never wait.
+  std::deque<std::shared_ptr<livekit::Room>> teardown_rooms_;
+  std::condition_variable teardown_changed_;
+  bool teardown_running_ = false;
   std::thread worker_;
   std::thread cancellation_worker_;
+  std::thread teardown_worker_;
 };
 
 } // namespace syrnike::windows_media
