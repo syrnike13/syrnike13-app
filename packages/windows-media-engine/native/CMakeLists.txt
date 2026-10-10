@@ -129,7 +129,6 @@ target_link_libraries(media_capture PUBLIC media_sources PRIVATE d3d11 dxgi dxgu
 add_library(media_screen STATIC
   src/screen/screen_frame_pipeline.cpp
   src/screen/screen_frame_marker.cpp
-  src/screen/cpu_screen_converter.cpp
   src/screen/gpu_screen_converter.cpp
   src/screen/hardware_h264_capability.cpp
   src/screen/hardware_h264_encoder.cpp
@@ -391,14 +390,6 @@ windows_media_target(window_capture_tests)
 target_link_libraries(window_capture_tests PRIVATE media_capture)
 add_test(NAME window-capture COMMAND window_capture_tests)
 set_tests_properties(window-capture PROPERTIES TIMEOUT 30)
-
-add_executable(screen_reference_tests
-  tests/screen_reference_test.cpp
-)
-windows_media_target(screen_reference_tests)
-target_link_libraries(screen_reference_tests PRIVATE media_screen)
-add_test(NAME screen-reference COMMAND screen_reference_tests)
-set_tests_properties(screen-reference PROPERTIES TIMEOUT 10)
 
 add_library(media_screen_policy STATIC
   src/screen/adaptive_screen_policy.cpp src/screen/screen_keyframe_control.cpp)

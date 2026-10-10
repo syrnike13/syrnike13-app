@@ -1,97 +1,84 @@
-# Windows native media v2 architecture boundary
+# Windows native media architecture
 
-## Current product boundary
-
-Windows desktop uses Engine v2 as its only RTC/media executor:
+Windows desktop uses the native engine in `packages/windows-media-engine` as
+its only RTC executor; there is no browser capture or browser RTC fallback. The
+web client keeps `BrowserRtcEngineAdapter`.
 
 ```text
 Renderer voice UI
-  -> DesktopVoiceService
-    -> VoiceDirector
-      -> VoiceAuthority / VoiceMembership
-      -> NativeRtcEngineAdapterV2
-        -> MediaRuntimeSupervisor
-          -> Electron media utility
-            -> windows_media.node / Engine v2
-
-Web client
-  -> BrowserRtcEngineAdapter (unchanged)
-
-Electron hotkeys / overlay
-  -> independent utility hosts
-  -> syrnike_hotkey.node / syrnike_overlay.node
+  -> DesktopVoiceService -> VoiceDirector (membership, authority, recovery)
+    -> NativeRtcEngineAdapterV2   one immutable desired-state snapshot + lease
+      -> MediaRuntimeSupervisor   utility process lifetime, requests, host epochs
+        -> media utility process -> windows_media.node -> Engine
 ```
 
-`NativeRtcEngineAdapterV2` owns the latest immutable desired snapshot, credential
-lease binding, and renderer demand. `MediaRuntimeSupervisor` owns utility process
-lifetime, protocol admission, pending requests, and host epochs. Native Room and
-media owners live only in the utility process. A terminal Room/runtime loss is
-reported to Voice Director; a camera, microphone, output, screen, or presentation
-failure remains within its media path.
+`NativeRtcEngineAdapterV2` projects Voice Director intent into one complete
+desired state (Room, microphone, output, camera, screen, remote video demand)
+and retries a transiently failed apply. `MediaRuntimeSupervisor` restarts a
+lost utility after 250 ms and 1 s; a host that stayed ready for 60 s gets that
+budget back. A terminal Room or runtime loss is reported to Voice Director,
+which reconnects with a fresh lease; a camera, microphone, output or screen
+failure stays inside its media path.
 
-The web client keeps `BrowserRtcEngineAdapter`. Electron selects the desktop voice
-client whenever the desktop bridge is present, so Windows desktop has no browser
-RTC fallback. A missing packaged utility is exposed as the typed
-`media_unavailable` runtime state.
+## Engine
 
-## Preserved
+`Engine` (`core/engine.cpp`) is one-shot. One control thread commits lifecycle
+transitions and desired-state snapshots; Room work runs on `RoomOwner` with an
+independent deadline watchdog over `LiveKitRoomTransport`.
 
-- `VoiceDirector`, voice intent, authority, membership, gateway transport, and `RtcEngineAdapter` remain the control-plane seam. Voice Membership still follows backend authority rather than media readiness.
-- The browser `BrowserRtcEngineAdapter` remains the web implementation, but Windows desktop does not use it as a fallback.
-- Hotkey and overlay addons retain separate utility processes and failure domains, so removing media cannot disable desktop input or overlay behavior.
+`LiveKitRoomTransport` has three lanes:
 
-## Removed
+- operation lane: connect, disconnect and every publication task, in order;
+- cancellation lane: cancels a running connect;
+- teardown lane: the graceful SDK disconnect of a Room the Engine has already
+  left. On a dead network that call blocks for over 30 s; leaving and the next
+  join never wait for it.
 
-- The v1 native media addon, LiveKit SDK fork, media actors, capture/audio/video code, shared-texture bridge, media utility host, recovery controller, and their build/test harnesses are removed from `develop`.
-- The legacy media target and vendored SDK tree are absent. Desktop packaging contains the isolated v2 `windows_media.node` plus its pinned LiveKit runtime DLLs; product voice does not load the removed v1 target.
-- Historical v1 behavior is available from Git history and `main`; v2 must not copy old C++ files or wrap the old engine behind a compatibility API.
+A missed Room operation deadline (`room_operation_unresponsive`) or a Room
+authority mismatch is fatal: the supervisor replaces the utility process
+rather than reuse unknown SDK state.
 
-## Lifecycle and utility boundary
+`WindowsMediaRuntime` composes independent owners, each with its own thread and
+a single latest-intent slot:
 
-The native implementation lives in `packages/windows-media-engine`:
+| Owner | Responsibility | Doc |
+| --- | --- | --- |
+| `MicrophoneOwner` | warm capture, DSP, publication | [MICROPHONE.md](MICROPHONE.md) |
+| `RemoteAudioPlayout` | subscriptions, jitter, mix, render, echo reference | [REMOTE_AUDIO.md](REMOTE_AUDIO.md) |
+| `ScreenOwner` | DXGI/WGC capture, GPU convert, hardware H.264, publication | [SCREEN_GPU_PRODUCTION.md](SCREEN_GPU_PRODUCTION.md) |
+| `ScreenAudioOwner` | process / system loopback publication | [SCREEN_AUDIO.md](SCREEN_AUDIO.md) |
+| `CameraOwner` | camera capture, preview, publication | [CAMERA.md](CAMERA.md) |
+| `RemoteVideoOwner` + `FrameExportOwner` | remote decode, shared textures to Electron | [REMOTE_VIDEO_RECEIVE.md](REMOTE_VIDEO_RECEIVE.md) |
 
-```text
-Electron main: MediaRuntimeSupervisor
-  -> Electron media utility process
-    -> windows_media.node: AddonOwner
-      -> media_core.lib: Engine
-        -> one bounded control queue / one control thread
-        -> RoomOwner -> deadline watchdog
-                     -> one LiveKit operation lane plus one cancellation lane
+Protocol: [PROTOCOL.md](PROTOCOL.md). Ownership and lifetimes:
+[RESOURCE_OWNERSHIP.md](RESOURCE_OWNERSHIP.md).
+
+## Real-time audio rules
+
+- Every real-time hop is an in-order bounded FIFO drained on each wake, never a
+  latest-wins slot: a briefly descheduled consumer catches up instead of losing
+  frames.
+- Real-time threads use MMCSS when available; its absence never fails audio.
+- Remote audio is clocked by the output device; the microphone by its capture
+  device. The LiveKit microphone source is unbuffered so the SDK adds no clock.
+- Echo cancellation runs across calls and device switches; renderer epochs are
+  unique per process.
+
+## Measurements
+
+`bench/call-bench.mjs` drives the real addon through a product-like call with
+synthetic `bench_bot` participants against a local dev LiveKit server: join,
+voice (idle and with every core busy), switching output and input devices,
+viewing a 1080p30 screen, sharing the monitor (with the picker open), sharing an
+animated window over WGC, moving to another channel and leaving. Options:
+`--signal-delay-ms N` adds signaling latency, `--dead-network-before-leave 1`
+kills signaling before leaving.
+
+```sh
+go build -o livekit-server.exe ./services/livekit-server/cmd/server
+pnpm --filter @syrnike13/windows-media-engine build
+node packages/windows-media-engine/bench/call-bench.mjs --server livekit-server.exe --out report.json
 ```
 
-Source discovery is a separate deep module described in [SOURCE_ENUMERATION.md](SOURCE_ENUMERATION.md). Its public seam returns process-local opaque IDs and bounded value snapshots, while Win32 identity keys and handles stop at the adapter boundary. Issue #117 intentionally leaves the Engine protocol, addon, Electron, capture sessions, and LiveKit unchanged.
-
-The first isolated capture slice is described in [MONITOR_CAPTURE.md](MONITOR_CAPTURE.md). It consumes the opaque monitor ID through the registry, owns a bounded three-frame latest-wins lease queue, and ends at local probe verification; it does not publish or preview frames.
-
-The window extension is described in [WINDOW_CAPTURE.md](WINDOW_CAPTURE.md). It resolves one exact HWND lifetime, preserves the three-frame lease bound, fences each content-size transition by generation, and distinguishes minimized/hidden no-content from terminal close without selecting a replacement window.
-
-The production boundary introduced by #121 is described in [SCREEN_PUBLICATION_SEAM.md](SCREEN_PUBLICATION_SEAM.md). The screen pipeline submits bounded commands and encoded-slot tokens to the Room/media-session owner; it never receives owning Room or participant pointers. Engine v2 now composes that seam with the other independent media owners used by the product adapter.
-
-The one-shot `Engine` follows this finite transition table. A second lifecycle creates a new `Engine` rather than resetting a consumed instance.
-
-```text
-Stopped -> Starting -> Running -> Stopping -> Stopped
-             |          |
-             +-------> Failed -> Stopping -> Stopped
-```
-
-Only the control thread commits lifecycle transitions and accepted desired-state snapshots. Its command queue has capacity 16 and reserves shutdown/completion progress. Public state uses a bounded coalescing buffer with sequence-gap snapshot recovery, while diagnostics are independently lossy; neither callback mutates Engine state. The TypeScript supervisor owns at most 16 pending requests and may restart the utility after 250 ms and 1 second. On a fresh host epoch, `NativeRtcEngineAdapterV2` installs the current credential lease and submits only its latest accepted desired snapshot; stale replies and events are rejected by epoch, request, revision, and generation checks.
-
-Deadlines are fixed at 2 seconds for core startup, 1 second for core ping and shutdown requests, 5 seconds for the Electron handshake, 12 seconds for a Room connect attempt, 2 seconds for Room disconnect/cancellation, and 1.5 seconds for outer utility shutdown. `RoomOwner` owns the Room-operation watchdog independently of synchronous SDK calls. A missed deadline emits exactly one `room_operation_unresponsive` failure, moves the Engine to `Failed`, and makes the supervisor kill and replace the compromised utility epoch; no second Room worker starts over the hung one.
-
-Before a successful LiveKit connect becomes public, the transport compares `Room::roomInfo().name` and the local participant identity with the expected values from the desired Room intent. A mismatch is torn down and reported as non-retryable `room_authority_mismatch`; its credential lease remains consumed, and the utility epoch is retired so uncertain wrong-Room ownership cannot be reused.
-
-The lifecycle boundary carries the exact protocol v4 described in `PROTOCOL.md`. Its full-snapshot desired state is accepted and queried on the same C++ control thread, while Room and independent track intents are reconciled asynchronously through bounded owner-specific lanes.
-
-Video frames are pushed: producers signal the export lane when a frame is
-available, the addon raises a coalesced `framesReady` utility message, and
-Electron main pulls frames and returns releases through `queryFrames`.
-
-The remote-video receive path is described in [REMOTE_VIDEO_RECEIVE.md](REMOTE_VIDEO_RECEIVE.md).
-It uses a bounded remote track owner, a process-wide four-slot shared texture pool,
-and an Electron bridge with authoritative GPU release. Renderer-specific demand is
-re-established after navigation or renderer replacement without reconnecting Room.
-
-The final product ownership diagram, desired-state example, replay rules, and
-removed compatibility paths are documented in [PRODUCT_CUTOVER.md](PRODUCT_CUTOVER.md).
+The report also lists any fatal Engine failure, which in the product would
+restart the media process.
