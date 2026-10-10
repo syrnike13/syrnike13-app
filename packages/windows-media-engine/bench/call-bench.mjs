@@ -23,6 +23,10 @@ const addonPath = options.addon ?? path.join(packageRoot, 'dist', 'win32-x64', '
 const botPath = options.bot ?? path.join(packageRoot, 'build', 'Release', 'bench_bot.exe')
 const phaseSeconds = Number(options.seconds ?? 20)
 const url = 'ws://127.0.0.1:7880'
+// --signal-delay-ms N routes the engine's signaling through a TCP proxy that
+// delays every chunk by N ms each way (RTT 2N). Media stays on direct UDP.
+const signalDelayMs = Number(options['signal-delay-ms'] ?? 0)
+const engineUrl = signalDelayMs > 0 ? 'ws://127.0.0.1:7881' : url
 const self = 'bench-engine'
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -64,8 +68,20 @@ function bot(identity, room, args) {
 }
 
 const server = spawn(serverPath, ['--dev', '--bind', '127.0.0.1'], { stdio: 'ignore' })
+if (signalDelayMs > 0) {
+  const net = await import('node:net')
+  const delayed = (from, to) => from.on('data', chunk => setTimeout(() => to.write(chunk), signalDelayMs))
+  net.createServer(client => {
+    const upstream = net.connect(7880, '127.0.0.1')
+    delayed(client, upstream)
+    delayed(upstream, client)
+    const close = () => { client.destroy(); upstream.destroy() }
+    client.on('error', close).on('close', close)
+    upstream.on('error', close).on('close', close)
+  }).listen(7881, '127.0.0.1').unref()
+}
 const bots = []
-const report = { addon: addonPath, phaseSeconds }
+const report = { addon: addonPath, phaseSeconds, signalDelayMs }
 try {
   for (let attempt = 0; ; attempt += 1) {
     try { if ((await fetch('http://127.0.0.1:7880')).ok) break } catch {}
@@ -82,7 +98,10 @@ try {
   let framesBusy = false
   addon.registerPublicEventCallback(event => {
     if (event.type === 'roomStateChanged') room = event.state
-    if (event.type === 'trackStateChanged') tracks[event.track] = { state: event.state, failure: event.failure?.code }
+    if (event.type === 'trackStateChanged') tracks[event.track] = { state: event.state, failure: event.failure?.code, revision: event.revision }
+    // In the product a fatal engine failure kills and restarts the media process.
+    if (event.type === 'fatalEngineFailure') (report.fatal ??= []).push(event.failure.code)
+    if (event.type === 'roomStateChanged' && event.state === 'failed') (report.roomFailures ??= []).push(event.failure?.code)
   })
   addon.registerDiagnosticEventCallback(event => {
     if (event.operation === 'sample')
@@ -120,7 +139,7 @@ try {
   }
   const lease = (name) => {
     const leaseId = `lease-${name}-${revision + 1}`
-    addon.installCredentialLease({ leaseId, serverUrl: url, accessToken: token(self, name) }, 1000)
+    addon.installCredentialLease({ leaseId, serverUrl: engineUrl, accessToken: token(self, name) }, 1000)
     return { roomId: name, participantIdentity: self, credentialLeaseId: leaseId }
   }
   const measure = async (seconds) => {
@@ -184,6 +203,33 @@ try {
     ...voiceMetrics(voice),
   }
 
+  // Switch output and input devices mid-call and back to the defaults.
+  const devices = addon.queryInventory().inventory.audio.devices
+  const otherOutput = devices.find(device => device.direction === 'output' && !device.isDefault)
+  const otherInput = devices.find(device => device.direction === 'input' && !device.isDefault)
+  if (otherOutput && otherInput) {
+    const counter = (code, name) => metrics[code]?.[name] ?? 0
+    const switchTo = async (patch, path, label) => {
+      const started = now()
+      apply(patch)
+      const target = revision
+      await waitFor(() => tracks[path]?.revision >= target &&
+        (tracks[path].state === 'running' || tracks[path].state === 'failed'), 10_000, label)
+      return { ms: Math.round(now() - started), state: tracks[path]?.state, failure: tracks[path]?.failure }
+    }
+    const renderedBefore = counter('remote_audio_output_metrics', 'rendered_frames')
+    const sentBefore = counter('microphone_metrics', 'submitted')
+    report.deviceSwitch = {
+      output: await switchTo({ output: { ...output, deviceId: otherOutput.id } }, 'output', 'output switch'),
+      outputBack: await switchTo({ output }, 'output', 'output switch back'),
+      input: await switchTo({ microphone: { ...desired.microphone, deviceId: otherInput.id } }, 'microphone', 'input switch'),
+      inputBack: await switchTo({ microphone: { ...desired.microphone, deviceId: null } }, 'microphone', 'input switch back'),
+    }
+    await sleep(2200)
+    report.deviceSwitch.renderedFramesDuring = counter('remote_audio_output_metrics', 'rendered_frames') - renderedBefore
+    report.deviceSwitch.microphoneFramesSentDuring = counter('microphone_metrics', 'submitted') - sentBefore
+  }
+
   // Voice while every core is busy: scheduling jitter is what breaks playout.
   const { Worker } = await import('node:worker_threads')
   const load = Array.from({ length: (await import('node:os')).cpus().length }, () =>
@@ -231,7 +277,11 @@ try {
     audioMode: 'none', audioBitrate: 128_000, previewRendererId: null, retryRevision: 0, audioRetryRevision: 0 } })
   await waitFor(() => tracks.screen?.state === 'running' || tracks.screen?.state === 'failed', 15_000, 'screen share')
   const shareReadyMs = Math.round(now() - shareStarted)
+  // The share picker stays open: sources are re-enumerated every 2 s.
+  let sourceRevision = 1
+  const picker = setInterval(() => addon.querySources({ revision: ++sourceRevision, kind: 'all' }), 2000)
   const sharing = await measure(phaseSeconds)
+  clearInterval(picker)
   report.screenShare = {
     state: tracks.screen?.state, failure: tracks.screen?.failure, runningMs: shareReadyMs,
     cpuPercentOfOneCore: sharing.cpuPercentOfOneCore, threads: sharing.threads,
