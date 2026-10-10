@@ -147,8 +147,7 @@ RemoteAudioMixStats RemoteAudioMixerWorker::stats() const noexcept {
 }
 void RemoteAudioMixerWorker::run(const std::shared_ptr<State>& state) noexcept {
   try {
-    Mmcss mmcss;
-    if (!mmcss.value) throw std::runtime_error("Mixer MMCSS registration failed");
+    Mmcss mmcss;  // Scheduling hint only; absent when the MMCSS service is disabled.
     Timer timer;
     LARGE_INTEGER due{};
     due.QuadPart = -100'000;

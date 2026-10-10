@@ -44,6 +44,16 @@ function fixture() {
   return {
     controller, runtime, adapter, inventory, onInventory, failure,
     nextRevision: () => { snapshot = { ...snapshot, acceptedRevision: 2 } },
+    nextSession: () => {
+      snapshot = {
+        ...snapshot, roomState: 'connected',
+        desiredState: {
+          revision: 2, room: { roomId: 'room', participantIdentity: 'local', credentialLeaseId: 'lease-2' },
+          microphone: { state: 'off' }, camera: { state: 'off' }, screen: { state: 'off' }, output: { state: 'off' },
+          remoteVideoDemand: [], rendererId: null,
+        },
+      }
+    },
     nextEpoch: () => { epoch += 1 },
     enablePreview: () => { snapshot = { ...snapshot, tracks: {
       ...snapshot.tracks, screen_preview: { revision: 1, state: 'running', warning: false },
@@ -260,7 +270,22 @@ describe('product media frame controller', () => {
     }
   })
 
-  it.each(['renderer', 'revision', 'epoch'])('drops an inventory reply after %s replacement', async reason => {
+  it('keeps an inventory reply across an unrelated desired-state revision', async () => {
+    vi.useFakeTimers()
+    const test = fixture()
+    let resolveInventory: (value: MediaInventory) => void = () => {}
+    test.runtime.queryInventory.mockImplementationOnce(() => new Promise(resolve => { resolveInventory = resolve }))
+    try {
+      test.controller.rendererReady()
+      await vi.advanceTimersByTimeAsync(100)
+      test.nextRevision()
+      resolveInventory(test.inventory)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(test.onInventory).toHaveBeenCalledOnce()
+    } finally { test.controller.dispose() }
+  })
+
+  it.each(['renderer', 'session', 'epoch'])('drops an inventory reply after %s replacement', async reason => {
     vi.useFakeTimers()
     const test = fixture()
     let resolveInventory: (value: MediaInventory) => void = () => {}
@@ -270,7 +295,7 @@ describe('product media frame controller', () => {
       await vi.advanceTimersByTimeAsync(100)
       expect(test.runtime.queryInventory).toHaveBeenCalledOnce()
       if (reason === 'renderer') test.controller.rendererGone()
-      if (reason === 'revision') test.nextRevision()
+      if (reason === 'session') test.nextSession()
       if (reason === 'epoch') test.nextEpoch()
       resolveInventory(test.inventory)
       await vi.advanceTimersByTimeAsync(0)

@@ -74,11 +74,15 @@ export type MediaRuntimeSupervisorOptions = {
   }) => void
   handshakeTimeoutMs?: number
   restartDelaysMs?: readonly number[]
+  stableHostResetMs?: number
   requestId?: () => string
   now?: () => number
 }
 
 const DEFAULT_RESTART_DELAYS_MS = [250, 1_000] as const
+// A host that stays ready this long was not part of a crash loop. Its later
+// loss gets the full automatic budget instead of requiring a manual Retry.
+const DEFAULT_STABLE_HOST_RESET_MS = 60_000
 
 export class MediaRuntimeSupervisor {
   private adapter: MediaUtilityAdapter | null = null
@@ -106,6 +110,7 @@ export class MediaRuntimeSupervisor {
   private rejectStart: ((error: MediaLifecycleError) => void) | null = null
   private handshakeTimer: ReturnType<typeof setTimeout> | null = null
   private restartTimer: ReturnType<typeof setTimeout> | null = null
+  private stableTimer: ReturnType<typeof setTimeout> | null = null
   private restartAttempt = 0
   private requestSequence = 0
   private hasBeenReady = false
@@ -537,7 +542,15 @@ export class MediaRuntimeSupervisor {
     // not reset the recovery budget or claim media-path stability.
     this.failureEpisodeId = undefined
     // A ready handshake is not evidence of stability. Keep the finite retry
-    // budget across recovered hosts, including hosts that crash after ready.
+    // budget across recovered hosts, including hosts that crash after ready,
+    // until this host has stayed ready for the stability window.
+    this.clearStableTimer()
+    this.stableTimer = setTimeout(() => {
+      this.stableTimer = null
+      if (this.adapter === adapter && epoch === this.hostEpoch && this.snapshot.status === 'ready')
+        this.restartAttempt = 0
+    }, this.options.stableHostResetMs ?? DEFAULT_STABLE_HOST_RESET_MS)
+    this.stableTimer.unref?.()
     this.updateSnapshot({
       status: 'ready',
       restartCount: this.snapshot.restartCount + (recovered ? 1 : 0),
@@ -594,6 +607,7 @@ export class MediaRuntimeSupervisor {
       return
     }
     this.clearHandshakeTimer()
+    this.clearStableTimer()
     this.adapter = null
     if (this.shuttingDown || exit.expected) {
       const stopped = mediaLifecycleError(
@@ -641,6 +655,7 @@ export class MediaRuntimeSupervisor {
     if (this.adapter !== adapter || epoch !== this.hostEpoch) return
     this.failureEpisodeId ??= crypto.randomUUID()
     this.clearHandshakeTimer()
+    this.clearStableTimer()
     this.adapter = null
     this.rejectStarting(error)
     this.rejectPending(error)
@@ -719,6 +734,7 @@ export class MediaRuntimeSupervisor {
 
   private finishStopped() {
     this.clearHandshakeTimer()
+    this.clearStableTimer()
     this.clearRestartTimer()
     this.clearStartPromise()
     this.failureEpisodeId = undefined
@@ -735,6 +751,11 @@ export class MediaRuntimeSupervisor {
     this.startPromise = null
     this.resolveStart = null
     this.rejectStart = null
+  }
+
+  private clearStableTimer() {
+    if (this.stableTimer) clearTimeout(this.stableTimer)
+    this.stableTimer = null
   }
 
   private clearHandshakeTimer() {

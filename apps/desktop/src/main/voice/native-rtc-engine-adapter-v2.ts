@@ -162,6 +162,8 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
   }
   private flushPromise: Promise<void> | null = null
   private flushRequested = false
+  private retryTimer: ReturnType<typeof setTimeout> | null = null
+  private retryAttempt = 0
   private shutdownPromise: Promise<void> | null = null
   private waiter: RoomWaiter | null = null
   private terminalReported = false
@@ -243,7 +245,9 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
   }
 
   observeSpeakingInventory(inventory: MediaInventory): void {
-    if (this.disposed || inventory.microphoneMeter.revision !== this.current.acceptedRevision) return
+    // The caller fences inventory by Room session. Local speaking is gated
+    // again by the latest mute/PTT intent in publishSpeaking().
+    if (this.disposed) return
     this.activeSpeakerIdentities = inventory.activeSpeakers
     this.microphoneSpeaking = inventory.microphoneMeter.speaking
     this.publishSpeaking()
@@ -329,6 +333,8 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     if (this.shutdownPromise) return this.shutdownPromise
     this.clearSpeakerObservations()
     this.disposed = true
+    if (this.retryTimer) clearTimeout(this.retryTimer)
+    this.retryTimer = null
     this.cancelWaiter()
     this.binding = null
     this.latest = null
@@ -362,7 +368,20 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
         waiter.cleanup()
         waiter.reject(failure)
       }
+      // A transient control failure must not strand the latest intent (for
+      // example a mute) until some unrelated change commits again.
+      if (failure.failure.retryable) this.scheduleRetryFlush()
     })
+  }
+
+  private scheduleRetryFlush(): void {
+    if (this.retryTimer || this.disposed) return
+    const delay = Math.min(250 * 2 ** this.retryAttempt++, 5_000)
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null
+      this.scheduleFlush()
+    }, delay)
+    this.retryTimer.unref?.()
   }
 
   private flush(): Promise<void> {
@@ -409,6 +428,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
         if (this.disposed || epoch !== this.runtime.getHostEpoch()) return
         this.appliedRevision = accepted.acceptedRevision
         if (this.latest.revision !== desired.revision) continue
+        this.retryAttempt = 0
         const snapshot = await this.runtime.querySnapshot()
         if (this.disposed || epoch !== this.runtime.getHostEpoch()) return
         this.observeSnapshot(snapshot)

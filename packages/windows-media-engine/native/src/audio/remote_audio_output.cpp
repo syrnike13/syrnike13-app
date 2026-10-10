@@ -1,5 +1,6 @@
 #include "audio/remote_audio_output.hpp"
 
+#include <atomic>
 #include <stdexcept>
 
 namespace syrnike::windows_media::audio {
@@ -9,6 +10,9 @@ std::int64_t timestamp() noexcept {
   return std::chrono::duration_cast<std::chrono::duration<std::int64_t, std::ratio<1, 10'000'000>>>(
       Clock::now().time_since_epoch()).count();
 }
+// Renderer epochs fence echo references in the warm microphone DSP, which
+// outlives every output. They must never repeat across outputs in a process.
+std::atomic<std::uint64_t> next_renderer_epoch{0};
 }  // namespace
 RemoteAudioOutput::RemoteAudioOutput(RemoteAudioMixerWorker& mixer) : mixer_(mixer) {}
 RemoteAudioOutput::~RemoteAudioOutput() {
@@ -24,7 +28,7 @@ RemoteOutputFailure RemoteAudioOutput::selectEndpoint(const AudioEndpoint& endpo
   stats_.state = active_ ? RemoteOutputState::recovering : RemoteOutputState::starting;
   candidate_ = std::make_unique<WasapiOutput>();
   ++stats_.candidates;
-  stats_.candidate_failure = candidate_->start(endpoint, ++epoch_, cancellation);
+  stats_.candidate_failure = candidate_->start(endpoint, ++next_renderer_epoch, cancellation);
   if (stats_.candidate_failure != WasapiOutputFailure::none || cancellation.stop_requested()) {
     if (!candidate_->stop(Clock::now() + std::chrono::seconds(5))) {
       stats_.retired = true;

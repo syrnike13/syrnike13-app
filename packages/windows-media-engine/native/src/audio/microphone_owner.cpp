@@ -197,7 +197,9 @@ void MicrophoneOwner::run() noexcept {
         device_fallback = false;
       } else if (changed && (!problem || retry)) {
         if (retry) problem.reset();
-        {
+        // Mute, PTT, gate and meter changes only reconfigure the warm DSP.
+        // Announce Starting only when capture or publication actually starts.
+        if (retry || !pipeline || (publish && !sender)) {
           std::lock_guard lock(mutex_);
           snapshot_.path = {desired.revision, MediaPathState::Starting};
         }

@@ -62,7 +62,10 @@ void LiveKitNetworkSampler::sampleOnSdkLane(
       std::scoped_lock lock(mutex_);
       observation_ = result;
     }
-    if (!pending_ && room && now - requested_at_ms_ >= 20) {
+    // getStats collects every peer-connection report on WebRTC's network
+    // thread. Sample only as often as the 250 ms packet-delay gate needs,
+    // not on every 20 ms SDK lane wake.
+    if (!pending_ && room && now - requested_at_ms_ >= 150) {
       requested_at_ms_ = now;
       requested_room_ = room;
       pending_.emplace(room->getStats());

@@ -57,25 +57,34 @@ void MicrophoneDsp::process(MicrophoneFrame& frame, std::int64_t now_100ns, Echo
   const float threshold = config_.automatic_threshold ?
       (std::clamp)(noise_floor_ * 2.5f, 0.001f, 0.08f) : manual_threshold;
   stats_.gate_threshold = threshold;
-  // Energy activity detector with hysteresis and 100 ms hangover. It is a
-  // bounded voice-activity/gate signal, not a speech-recognition classifier.
-  const bool activity = rms >= threshold * (stats_.gate_open ? 0.75f : 1.0f);
-  if (activity) gate_hold_frames_ = 10;
+  // Energy activity detector with hysteresis and a hangover long enough to
+  // keep word endings and pauses between syllables. It is a bounded
+  // voice-activity/gate signal, not a speech-recognition classifier.
+  const bool activity = rms >= threshold * (gate_hold_frames_ ? 0.75f : 1.0f);
+  if (activity) gate_hold_frames_ = kGateHoldFrames;
   else if (gate_hold_frames_) --gate_hold_frames_;
   stats_.gate_open = !config_.gate_enabled || gate_hold_frames_ != 0;
   const bool effective_send = !config_.muted && (!config_.push_to_talk || config_.push_to_talk_pressed);
-  stats_.speaking = effective_send && stats_.gate_open && activity;
+  // The indicator shares the hangover, so it does not flicker between frames.
+  stats_.speaking = effective_send && gate_hold_frames_ != 0;
   if (config_.automatic_gain && stats_.gate_open && rms > 0.0001f) {
     const float target = (std::clamp)(0.1f / rms, 0.25f, 6.0f);
     gain_ += (target < gain_ ? 0.3f : 0.01f) * (target - gain_);
   } else if (!config_.automatic_gain) gain_ = 1.0f;
   stats_.automatic_gain = gain_;
   float output_energy = 0;
+  // A closing gate fades out across one frame instead of clicking; opening is
+  // immediate so speech onset is not attenuated. Mute and PTT stay immediate:
+  // their first closed frame is already digital silence.
+  const float gate_to = effective_send && stats_.gate_open ? 1.0f : 0.0f;
+  const float gate_from = effective_send ? (std::max)(gate_gain_, gate_to) : 0.0f;
+  gate_gain_ = gate_to;
   for (std::size_t index = 0; index < samples.size(); ++index) {
     // Silence guard is deliberately after AGC. No amplified noise, stale sample
     // or limiter history can escape a closed gate/mute/PTT state.
-    const float output = stats_.gate_open && effective_send ?
-        (std::clamp)(samples[index] * gain_, -0.98f, 0.98f) : 0.0f;
+    const float ramp = gate_from + (gate_to - gate_from) * static_cast<float>(index + 1) /
+        static_cast<float>(samples.size());
+    const float output = ramp > 0 ? (std::clamp)(samples[index] * gain_ * ramp, -0.98f, 0.98f) : 0.0f;
     frame.samples[index] = static_cast<std::int16_t>(std::lround(output * 32767.0f));
     output_energy += output * output;
   }

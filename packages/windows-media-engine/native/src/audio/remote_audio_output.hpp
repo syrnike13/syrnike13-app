@@ -44,7 +44,7 @@ class RemoteAudioOutput final {
   std::optional<AudioEndpoint> selected_;
   AudioDeviceIntent intent_{AudioDirection::output, {}};
   RemoteOutputStats stats_;
-  std::uint64_t epoch_ = 0, registry_revision_ = 0;
+  std::uint64_t registry_revision_ = 0;
   std::chrono::steady_clock::time_point retry_after_{};
   bool deafened_ = false;
 };

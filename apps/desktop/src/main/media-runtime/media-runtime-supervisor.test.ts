@@ -213,6 +213,37 @@ describe('MediaRuntimeSupervisor', () => {
     await supervisor.shutdown()
   })
 
+  it('replenishes its automatic budget after a host stays ready for the stability window', async () => {
+    vi.useFakeTimers()
+    try {
+      const adapters: FakeMediaAdapter[] = []
+      const supervisor = new MediaRuntimeSupervisor({
+        createAdapter: () => {
+          const adapter = new FakeMediaAdapter()
+          adapters.push(adapter)
+          return adapter
+        },
+        restartDelaysMs: [10, 20],
+        stableHostResetMs: 1_000,
+      })
+      const started = supervisor.start()
+      adapters[0]!.ready()
+      await started
+      for (let crash = 0; crash < 4; crash += 1) {
+        await vi.advanceTimersByTimeAsync(1_000)
+        adapters.at(-1)!.unexpectedExit()
+        await vi.advanceTimersByTimeAsync(10)
+        adapters.at(-1)!.ready()
+      }
+      expect(adapters).toHaveLength(5)
+      expect(supervisor.getSnapshot().status).toBe('ready')
+      adapters.at(-1)!.unexpectedExit()
+      await supervisor.shutdown()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('exhausts its retry budget when every recovered host crashes after ready', async () => {
     vi.useFakeTimers()
     try {

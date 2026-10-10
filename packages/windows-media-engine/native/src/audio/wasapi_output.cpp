@@ -185,8 +185,7 @@ void WasapiOutput::run(const std::shared_ptr<State>& state, AudioEndpoint endpoi
     if (buffer_frames < kRemoteAudioTargetPadding || buffer_frames > kRemoteAudioRate || latency < 0 || latency > 2'000'000)
       throw Failure{WasapiOutputFailure::format_unavailable, E_INVALIDARG};
     state->buffer = buffer_frames;
-    Mmcss mmcss;
-    if (!mmcss.value) throw Failure{WasapiOutputFailure::policy_unavailable, HRESULT_FROM_WIN32(GetLastError())};
+    Mmcss mmcss;  // Scheduling hint only; absent when the MMCSS service is disabled.
     RemoteRenderPlan plan;
     const auto initial = plan.observe({buffer_frames, 0, 0, timestamp()});
     BYTE* initial_buffer = nullptr;
