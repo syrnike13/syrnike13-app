@@ -180,7 +180,11 @@ try {
     playoutLatencyMs: sample.metrics.remote_audio_output_metrics?.latency_ms ??
       Math.round((sample.metrics.remote_audio_output_metrics?.maximum_scheduled_age_us ?? 0) / 1000),
     microphoneRaw: sample.metrics.microphone_metrics,
-    microphone: sample.delta('microphone_metrics', ['capture_frames', 'dsp_frames', 'dsp_stale', 'submitted', 'rejected_stale']),
+    microphone: {
+      ...sample.delta('microphone_metrics', ['capture_frames', 'dsp_frames', 'dsp_stale', 'submitted', 'rejected_stale']),
+      // 10 ms frames in the measured window (counters are sampled once per second).
+      expectedFrames: Math.round(sample.elapsedMs / 10),
+    },
   })
 
   // Idle app: microphone warm, no Room.
