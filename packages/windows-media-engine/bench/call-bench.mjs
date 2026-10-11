@@ -259,8 +259,13 @@ try {
     cpuPercentOfOneCore: loaded.cpuPercentOfOneCore, ...voiceMetrics(loaded),
   }
 
-  // Watching someone's screen.
-  bots.push(bot('streamer', 'bench-a', ['--seconds', String(phaseSeconds * 3), '--screen', '1920x1080@30']))
+  // Watching someone's screen with stereo screen audio. The streamer stamps its
+  // frames 150 ms early; WebRTC's audio/video sync (the server groups screen
+  // video and audio) must still play both in step for a viewer.
+  const screenSkewMs = 150
+  bots.push(bot('streamer', 'bench-a', ['--seconds', String(phaseSeconds * 3), '--screen', '1920x1080@30',
+    '--screen-audio', '1', '--screen-skew-ms', String(screenSkewMs)]))
+  const stereoWatcher = bot('stereo-watcher', 'bench-a', ['--seconds', String(phaseSeconds), '--watch', 'streamer'])
   let publication
   await waitFor(() => {
     publication = addon.queryInventory().inventory.video.publications.find(value => value.participantIdentity === 'streamer')
@@ -277,6 +282,10 @@ try {
     firstFrameMs, cpuPercentOfOneCore: watching.cpuPercentOfOneCore, threads: watching.threads,
     exportedFps: Number(((frames.get(publication.publicationId) - watchFramesBefore) / (watching.elapsedMs / 1000)).toFixed(1)),
   }
+  const stereoWatch = await stereoWatcher.done
+  // A synchronized pair leads by roughly 0 ms despite the injected skew.
+  report.screenView.screenAudio = { codec: stereoWatch?.watchScreenAudioCodec,
+    injectedSkewMs: screenSkewMs, avOffsetMs: stereoWatch?.watchScreenAvOffsetMs }
   apply({ rendererId: null, remoteVideoDemand: [] })
 
   // Sharing the primary monitor at the 1080p30 preset.
@@ -289,11 +298,12 @@ try {
       : undefined
     return monitor
   }, 10_000, 'monitor source')
-  const viewer = bot('viewer', 'bench-a', ['--seconds', String(phaseSeconds + 8), '--watch', self])
+  // The viewer reads the share's stats before it ends.
+  const viewer = bot('viewer', 'bench-a', ['--seconds', String(phaseSeconds + 1), '--watch', self])
   await sleep(1500)
   const shareStarted = now()
   apply({ screen: { state: 'on', sourceId: monitor.id, width: 1920, height: 1080, fps: 30, bitrate: 6_000_000,
-    audioMode: 'none', audioBitrate: 128_000, previewRendererId: null, retryRevision: 0, audioRetryRevision: 0 } })
+    audioMode: 'system', audioBitrate: 128_000, previewRendererId: null, retryRevision: 0, audioRetryRevision: 0 } })
   await waitFor(() => tracks.screen?.state === 'running' || tracks.screen?.state === 'failed', 15_000, 'screen share')
   const shareReadyMs = Math.round(now() - shareStarted)
   // The share picker stays open: sources are re-enumerated every 2 s.
@@ -308,6 +318,10 @@ try {
       'conversion_drops', 'network_backpressure_drops', 'encoder_rejections']),
     lastKeyframeBytes: sharing.metrics.screen_video_metrics?.last_keyframe_bytes,
     publishAgeLastUs: sharing.metrics.screen_video_metrics?.publish_age_last_us,
+    // System loopback sent as stereo; superseded packets are audible gaps.
+    audio: { state: tracks.screen_audio?.state, ...sharing.delta('screen_audio_metrics', ['captured', 'submitted', 'superseded', 'stale', 'silence_filled']),
+      maximumCallbackWaitUs: sharing.metrics.screen_audio_metrics?.maximum_callback_wait_us,
+      maximumSubmitAgeUs: sharing.metrics.screen_audio_metrics?.maximum_submit_age_us },
   }
   apply({ screen: { state: 'off' } })
   report.screenShare.viewer = await viewer.done
