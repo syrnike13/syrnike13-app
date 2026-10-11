@@ -47,6 +47,26 @@ void mixVolumesMuteAndDeafen() {
   require(!mixer.mix(inputs, true, output) && output[0] == 0, "Deafen leaked audio");
   require(left.stats().played == 3 && right.stats().played == 3, "Muted or deafened inputs built a backlog");
 }
+void volumeChangesRampAcrossOneFrame() {
+  RemoteAudioJitter jitter;
+  for (int index = 0; index < 6; ++index) jitter.push(filled(1000));
+  RemoteAudioMixer mixer;
+  RemoteAudioFrame output;
+  float gain = 1.0f;
+  std::array<RemoteAudioMixInput, 1> inputs{{{&jitter, 1.0f, false, &gain}}};
+  require(mixer.mix(inputs, false, output) && output[0] == 1000 && output.back() == 1000,
+          "A steady volume was not applied unchanged");
+  inputs[0].volume = 0.5f;
+  require(mixer.mix(inputs, false, output) && output[0] > 990 && output.back() == 500 && gain == 0.5f,
+          "A volume change stepped instead of ramping across the frame");
+  inputs[0].muted = true;
+  require(mixer.mix(inputs, false, output) && output[0] > 490 && output.back() == 0,
+          "Mute did not fade out across the frame");
+  require(!mixer.mix(inputs, false, output) && output[0] == 0, "Muted input leaked after its fade");
+  inputs[0].muted = false;
+  require(mixer.mix(inputs, false, output) && output[0] < 10 && output.back() == 500,
+          "Unmute did not fade in across the frame");
+}
 void mixControlsMatchRoomIdentitiesByUser() {
   require(voiceUserId("voice:v1|windows_native|desktop-1|epoch|operation|user-1") == "user-1",
           "Listener controls did not match a native Room identity by user");
@@ -85,6 +105,7 @@ void receivedSpeechActivity() {
 int main() try {
   jitterPrimesTrimsAndRecovers();
   mixVolumesMuteAndDeafen();
+  volumeChangesRampAcrossOneFrame();
   mixControlsMatchRoomIdentitiesByUser();
   limiterPreventsClipping();
   receivedSpeechActivity();

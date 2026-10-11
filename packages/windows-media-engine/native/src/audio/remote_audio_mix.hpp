@@ -82,6 +82,9 @@ struct RemoteAudioMixInput {
   RemoteAudioJitter* jitter = nullptr;
   float volume = 1.0f;  // output volume (0..3) times participant volume (0..3)
   bool muted = false;
+  // Gain last applied to this input. When present, volume, mute and deafen
+  // changes ramp across one frame instead of stepping, which would click.
+  float* gain = nullptr;
 };
 
 // Sums one 10 ms frame from every input. Muted inputs are still consumed so an
@@ -94,10 +97,19 @@ class RemoteAudioMixer final {
     bool audible = false;
     for (const auto& input : inputs) {
       const auto* frame = input.jitter->pop();
-      if (!frame || deafened || input.muted || input.volume <= 0) continue;
+      const float target = deafened || input.muted ? 0.0f : (std::max)(input.volume, 0.0f);
+      const float from = input.gain ? *input.gain : target;
+      if (input.gain) *input.gain = frame ? target : 0.0f;
+      if (!frame || (from <= 0 && target <= 0)) continue;
       audible = true;
-      for (std::size_t index = 0; index < mixed.size(); ++index)
-        mixed[index] += static_cast<float>((*frame)[index]) * input.volume;
+      const float step = (target - from) / static_cast<float>(kRemoteAudioFrames);
+      for (std::size_t sample = 0; sample < kRemoteAudioFrames; ++sample) {
+        const float gain = from + step * static_cast<float>(sample + 1);
+        for (std::size_t channel = 0; channel < kRemoteAudioChannels; ++channel) {
+          const auto index = sample * kRemoteAudioChannels + channel;
+          mixed[index] += static_cast<float>((*frame)[index]) * gain;
+        }
+      }
     }
     if (!audible) {
       output.fill(0);

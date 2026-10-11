@@ -355,7 +355,7 @@ void RemoteAudioPlayout::run() noexcept {
     RemoteAudioJitter jitter;
     RemoteSpeakerActivity activity;
     std::uint64_t observed_dropped = 0, observed_stale = 0;
-    float volume = 1.0f;
+    float volume = 1.0f, gain = 0.0f;
     bool muted = false;
   };
   // About 1 MB of jitter buffers: heap, not the default 1 MB thread stack.
@@ -383,6 +383,7 @@ void RemoteAudioPlayout::run() noexcept {
     reader.jitter = {};
     reader.activity = {};
     reader.observed_dropped = reader.observed_stale = 0;
+    reader.gain = 0.0f;
   };
   try {
     Apartment apartment;
@@ -525,7 +526,7 @@ void RemoteAudioPlayout::run() noexcept {
       std::array<RemoteAudioMixInput, kPublicationCapacity> inputs{};
       std::size_t input_count = 0;
       for (auto& reader : readers)
-        if (reader.stream) inputs[input_count++] = {&reader.jitter, reader.volume, reader.muted};
+        if (reader.stream) inputs[input_count++] = {&reader.jitter, reader.volume, reader.muted, &reader.gain};
       const auto mixOne = [&](RemoteAudioFrame& frame) {
         (void)mixer.mix(std::span(inputs.data(), input_count), deafened, frame);
       };
