@@ -228,3 +228,11 @@ The production server keeps the images both stacks run
 `docker.io` repo digests, so both compose files reference them by digest with
 `pull_policy: never`; `docker compose pull` skips them. A server without these
 images cannot start MinIO until they are mirrored or the storage is replaced.
+
+## Unpinned `docker.io/mongo` moved to MongoDB 9
+
+On 2026-10-12 the untagged `docker.io/mongo` reference resolved to 9.0.2. Its
+mongod exits with code 62 on our data (featureCompatibilityVersion 8.2), so a
+pull-and-recreate took the nightly database down. Both compose files pin
+`mongo:8.2.12` by digest (`e0ce8c35…`, the image production runs). A MongoDB
+upgrade must go through `setFeatureCompatibilityVersion` deliberately.
