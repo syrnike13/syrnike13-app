@@ -2,6 +2,7 @@
 
 #include <napi.h>
 #include "video/frame_export_owner.hpp"
+#include "video/shared_texture_pool.hpp"
 #include "addon/media_codecs.generated.hpp"
 
 namespace syrnike::windows_media::addon {
@@ -12,7 +13,7 @@ inline std::vector<video::ExportRelease> readReleases(Napi::Env env, const Napi:
         return video::ExportRelease{
             static_cast<std::uint64_t>(media_codec::readNumber(env, object.Get("generation"), 1, 9007199254740991.0, true)),
             static_cast<std::uint64_t>(media_codec::readNumber(env, object.Get("sequence"), 1, 9007199254740991.0, true)),
-            static_cast<std::uint32_t>(media_codec::readNumber(env, object.Get("slot"), 0, 3, true))};
+            static_cast<std::uint32_t>(media_codec::readNumber(env, object.Get("slot"), 0, video::SharedTexturePool::kSlots - 1, true))};
       });
 }
 inline Napi::Array exportedFrames(Napi::Env env, const std::vector<video::ExportedFrame>& frames) {

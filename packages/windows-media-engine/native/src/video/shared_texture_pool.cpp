@@ -1,5 +1,6 @@
 #include "video/shared_texture_pool.hpp"
 
+#include <d3d11_4.h>
 #include <dxgi1_2.h>
 
 #include <algorithm>
@@ -24,6 +25,7 @@ SharedTexturePool& SharedTexturePool::processPool() {
 }
 SharedTexturePool::~SharedTexturePool() {
   for (auto& slot : slots_) clear(slot);
+  if (fence_event_) CloseHandle(fence_event_);
 }
 void SharedTexturePool::clear(Slot& slot) {
   if (slot.lease.handle)
@@ -59,6 +61,27 @@ std::optional<TextureLease> SharedTexturePool::upload(
     std::uint64_t generation, std::uint32_t width, std::uint32_t height,
     std::int64_t timestamp_us, std::span<const std::uint8_t> bgra,
     std::int64_t ingress_us) {
+  if (bgra.size() != std::uint64_t{width} * height * 4) {
+    std::scoped_lock lock(mutex_);
+    ++metrics_.dropped;
+    return {};
+  }
+  return write(generation, width, height, timestamp_us, ingress_us,
+               [&](ID3D11DeviceContext* context, ID3D11Texture2D* slot) {
+                 context->UpdateSubresource(slot, 0, nullptr, bgra.data(), width * 4, 0);
+               });
+}
+std::optional<TextureLease> SharedTexturePool::upload(
+    std::uint64_t generation, std::uint32_t width, std::uint32_t height,
+    std::int64_t timestamp_us, ID3D11Texture2D* bgra, std::int64_t ingress_us) {
+  return write(generation, width, height, timestamp_us, ingress_us,
+               [&](ID3D11DeviceContext* context, ID3D11Texture2D* slot) {
+                 context->CopyResource(slot, bgra);
+               });
+}
+std::optional<TextureLease> SharedTexturePool::write(
+    std::uint64_t generation, std::uint32_t width, std::uint32_t height,
+    std::int64_t timestamp_us, std::int64_t ingress_us, const Write& write) {
   std::scoped_lock lock(mutex_);
   const auto drop = [this]() -> std::optional<TextureLease> {
     ++metrics_.dropped;
@@ -68,8 +91,7 @@ std::optional<TextureLease> SharedTexturePool::upload(
   if (generation == 0 ||
       std::find(active_generations_.begin(), active_generations_.end(),
                 generation) == active_generations_.end() ||
-      width == 0 || height == 0 || width > 3840 || height > 2160 ||
-      bgra.size() != std::uint64_t{width} * height * 4)
+      width == 0 || height == 0 || width > 3840 || height > 2160)
     return drop();
   // Reuse a free texture of the same size first: streams of different sizes
   // would otherwise reallocate (and re-import in Electron) on every frame.
@@ -121,7 +143,7 @@ std::optional<TextureLease> SharedTexturePool::upload(
       allocation.handle = reinterpret_cast<std::uintptr_t>(handle);
       slot.lease = allocation;
     }
-    // CPU upload runs on a worker lane, never an SDK callback. Complete the GPU
+    // Writes run on a worker lane, never an SDK callback. Complete the GPU
     // write before export. A hung device quarantines its backing; no reuse.
     slot.lease.generation = generation;
     slot.state = SlotState::Quarantined;
@@ -129,6 +151,7 @@ std::optional<TextureLease> SharedTexturePool::upload(
     checked(slot.texture.As(&keyed));
     if (keyed->AcquireSync(0, 0) != S_OK) return drop();
     bool complete = false;
+    bool fenced = false;
     Microsoft::WRL::ComPtr<ID3D11Query> query;
     {
       std::scoped_lock context_lock(device_->contextMutex());
@@ -136,10 +159,13 @@ std::optional<TextureLease> SharedTexturePool::upload(
       const auto query_result =
           device_->device()->CreateQuery(&query_desc, &query);
       if (SUCCEEDED(query_result)) {
-        device_->context()->UpdateSubresource(slot.texture.Get(), 0, nullptr,
-                                              bgra.data(), width * 4, 0);
+        write(device_->context(), slot.texture.Get());
         device_->context()->End(query.Get());
+        fenced = signalFence();
         device_->context()->Flush();
+      }
+      // Without a fence, poll the query; the context stays locked meanwhile.
+      if (query && !fenced) {
         const auto deadline =
             std::chrono::steady_clock::now() + std::chrono::milliseconds(200);
         HRESULT status = S_FALSE;
@@ -150,6 +176,20 @@ std::optional<TextureLease> SharedTexturePool::upload(
         } while (std::chrono::steady_clock::now() < deadline);
         complete = status == S_OK;
       }
+    }
+    // A fence wait sleeps without the context lock, so decoding, capture and
+    // encoding keep using the device while this write completes.
+    // The completed value, not the event, decides: a write that timed out
+    // earlier may still set the auto-reset event late.
+    if (fenced) {
+      const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(200);
+      while (fence_->GetCompletedValue() < fence_value_) {
+        const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (left <= 0) break;
+        (void)WaitForSingleObject(fence_event_, static_cast<DWORD>(left));
+      }
+      complete = fence_->GetCompletedValue() >= fence_value_;
     }
     checked(keyed->ReleaseSync(0));
     if (!complete) {
@@ -166,6 +206,20 @@ std::optional<TextureLease> SharedTexturePool::upload(
     return slot.lease;
   }
   return drop();
+}
+bool SharedTexturePool::signalFence() {
+  if (!fence_ && !fence_unavailable_) {
+    Microsoft::WRL::ComPtr<ID3D11Device5> device;
+    fence_event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (!fence_event_ || FAILED(device_->device()->QueryInterface(IID_PPV_ARGS(&device))) ||
+        FAILED(device->CreateFence(0, D3D11_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence_))) ||
+        FAILED(device_->context()->QueryInterface(IID_PPV_ARGS(&fence_context_))))
+      fence_unavailable_ = true;
+  }
+  if (fence_unavailable_) return false;
+  ++fence_value_;
+  return SUCCEEDED(fence_context_->Signal(fence_.Get(), fence_value_)) &&
+         SUCCEEDED(fence_->SetEventOnCompletion(fence_value_, fence_event_));
 }
 void SharedTexturePool::reclaimCompletedWrites() {
   for (auto& slot : slots_) {
