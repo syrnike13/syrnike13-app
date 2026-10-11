@@ -40,16 +40,9 @@ bool PcmQueue::push(const PcmPacket& packet, std::int64_t now) noexcept {
 }
 std::optional<PcmPacket> PcmQueue::take(std::int64_t now) noexcept {
   std::scoped_lock lock(mutex_);
-  if (!stopped_ && stats_.depth > 1 && packets_[head_].capture_timestamp_100ns <= now &&
-      now - packets_[head_].capture_timestamp_100ns > kAudioBacklogAge100ns) {
-    // Recover using capture age, including time spent waiting inside the SDK.
-    // A clocked sender cannot drain old PCM faster than new PCM arrives.
-    const auto discarded = stats_.depth - 1;
-    head_ = (head_ + discarded) % kAudioQueueCapacity;
-    stats_.depth = 1;
-    stats_.superseded += discarded;
-    packets_[head_].discontinuity = true;
-  }
+  // FIFO: the sender hands PCM to WebRTC synchronously, so a backlog after a
+  // stall drains at once instead of becoming lasting delay. Discarding it
+  // would stop the RTP clock and skew the sender reports audio/video sync uses.
   while (!stopped_ && stats_.depth) {
     auto packet = packets_[head_];
     head_ = (head_ + 1) % kAudioQueueCapacity;

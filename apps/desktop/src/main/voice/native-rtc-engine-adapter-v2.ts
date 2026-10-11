@@ -44,9 +44,11 @@ const emptyAudioSettings: VoiceRemoteAudioSettings = {
   revision: 0, userVolumes: {}, userMutes: {}, streamVolumes: {}, streamMutes: {},
 }
 
+// Listener settings are keyed by user id; the engine applies them to every
+// Room identity of that user.
 function mixSettings(volumes: Readonly<Record<string, number>>, mutes: Readonly<Record<string, boolean>>) {
-  return [...new Set([...Object.keys(volumes), ...Object.keys(mutes)])].sort().map(identity => ({
-    identity, volume: volumes[identity] ?? 1, muted: mutes[identity] ?? false,
+  return [...new Set([...Object.keys(volumes), ...Object.keys(mutes)])].sort().map(userId => ({
+    userId, volume: volumes[userId] ?? 1, muted: mutes[userId] ?? false,
   }))
 }
 

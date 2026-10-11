@@ -421,6 +421,10 @@ var DefaultConfig = Config{
 		CreateRoomTimeout:     10 * time.Second,
 		CreateRoomAttempts:    3,
 		UpdateBatchTargetSize: 128 * 1024,
+		// Syrnike: one sync stream per source group (camera+microphone,
+		// screen+screen audio), so receivers synchronize audio and video.
+		// LiveKit then stops reusing subscriber transceivers.
+		SyncStreams: true,
 	},
 	Limit: LimitConfig{
 		MaxMetadataSize:              64000,

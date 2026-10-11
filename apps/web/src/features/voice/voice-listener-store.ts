@@ -14,6 +14,9 @@ import {
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 const STORAGE_KEY = 'syrnike13-voice-listener'
+// A dragged slider changes the value on every pointer move; only the value it
+// settles on needs to reach disk.
+const PERSIST_DELAY_MS = 300
 const DEFAULT_USER_VOLUME = 1
 /** 0–3 (до 300% в UI, в браузере cap 100%). */
 export const VOICE_USER_VOLUME_MAX = 3
@@ -78,10 +81,28 @@ function persist() {
   }
 }
 
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+
+function schedulePersist() {
+  if (persistTimer !== null) clearTimeout(persistTimer)
+  persistTimer = setTimeout(flushPersist, PERSIST_DELAY_MS)
+}
+
+function flushPersist() {
+  if (persistTimer === null) return
+  clearTimeout(persistTimer)
+  persistTimer = null
+  persist()
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', flushPersist)
+}
+
 function replaceState(next: VoiceListenerState) {
   state = next
   stateRevision += 1
-  persist()
+  schedulePersist()
   emit()
 }
 

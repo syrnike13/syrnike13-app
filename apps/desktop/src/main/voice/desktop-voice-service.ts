@@ -16,6 +16,7 @@ import {
   type DesktopVoiceSettings,
   type DesktopVoiceSettingsPatch,
   type VoiceCommand,
+  type VoiceRemoteAudioSettings,
   type VoiceSnapshot,
 } from '@syrnike13/platform'
 
@@ -56,6 +57,10 @@ export class DesktopVoiceService {
   private sessionRevision = 0
   private sessionTransition: Fiber.Fiber<void, never> | null = null
   private preferences: DesktopVoiceSettings | null = null
+  // Listener volumes outlive renderer reloads and runtime replacement. The
+  // renderer's revision restarts with every page, so this service owns it.
+  private remoteAudio: VoiceRemoteAudioSettings | null = null
+  private remoteAudioRevision = 0
   private lifecycleStarted = false
   private unsubscribeHotkeys: (() => void) | null = null
   private persistPreferences:
@@ -162,6 +167,9 @@ export class DesktopVoiceService {
           this.runtimeOwner = replacement.owner
           this.runtimeCarriedSession = false
           if (this.preferences) this.applyPreferencesTo(replacement.value, this.preferences)
+          if (this.remoteAudio) {
+            replacement.value.director.dispatch({ type: 'configureRemoteAudio', settings: this.remoteAudio })
+          }
           if (this.lifecycleStarted) {
             yield* replacement.value.engine.prewarmMicrophoneEffect().pipe(Effect.ignore)
           }
@@ -258,7 +266,12 @@ export class DesktopVoiceService {
           command: command.type,
           connection: this.runtime.director.snapshot().connection,
         })
-        this.runtime.director.dispatch(command)
+        if (command.type === 'configureRemoteAudio') {
+          this.remoteAudio = { ...command.settings, revision: ++this.remoteAudioRevision }
+          this.runtime.director.dispatch({ type: 'configureRemoteAudio', settings: this.remoteAudio })
+        } else {
+          this.runtime.director.dispatch(command)
+        }
         return this.runtime.director.snapshot()
       }),
     )

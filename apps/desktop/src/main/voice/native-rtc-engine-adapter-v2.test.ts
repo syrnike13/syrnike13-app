@@ -240,8 +240,8 @@ describe('NativeRtcEngineAdapterV2', () => {
     if (snapshot?.output.state !== 'on') throw new Error('Output intent missing')
     expect(snapshot.output.users).toHaveLength(1024)
     expect(snapshot.output.streams).toHaveLength(1024)
-    expect(snapshot.output.users).toContainEqual({ identity: 'mute-0', volume: 1, muted: true })
-    expect(snapshot.output.users).toContainEqual({ identity: 'volume-0', volume: 3, muted: false })
+    expect(snapshot.output.users).toContainEqual({ userId: 'mute-0', volume: 1, muted: true })
+    expect(snapshot.output.users).toContainEqual({ userId: 'volume-0', volume: 3, muted: false })
     await adapter.dispose()
   })
 

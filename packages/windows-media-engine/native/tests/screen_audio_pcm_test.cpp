@@ -66,29 +66,20 @@ void stalledWorkerRecovery() {
   queue.begin(1);
   PcmPacket packet;
   packet.generation = 1;
-  // A 50 ms stall is below the old 100 ms worker-gap trigger.
+  // A 50 ms worker stall: the sender drains the backlog in one burst, so
+  // every captured packet is sent and none becomes lasting delay.
   for (std::uint64_t sequence = 1; sequence <= 5; ++sequence) {
     packet.sequence = sequence;
     packet.capture_timestamp_100ns = 100'000'000 + static_cast<std::int64_t>(sequence) * 100'000;
     require(queue.push(packet, packet.capture_timestamp_100ns), "recovery input rejected");
   }
-  const auto latest = queue.take(packet.capture_timestamp_100ns + 100'000);
-  require(latest && latest->sequence == 5 && latest->discontinuity &&
-              queue.stats().superseded == 4,
-          "worker recovery replayed accumulated PCM instead of latest packet");
-  require(!queue.take(packet.capture_timestamp_100ns + 100'000), "recovery left a burst backlog");
-  // Producer and clocked SDK both advance at 10 ms after the pause. Recovery
-  // must not preserve the accumulated delay at this equal steady-state rate.
-  for (std::uint64_t sequence = 6; sequence <= 105; ++sequence) {
-    packet.sequence = sequence;
-    packet.capture_timestamp_100ns += 100'000;
-    const auto now = packet.capture_timestamp_100ns + 100'000;
-    require(queue.push(packet, now), "post-stall input rejected");
+  const auto now = packet.capture_timestamp_100ns + 100'000;
+  for (std::uint64_t sequence = 1; sequence <= 5; ++sequence) {
     const auto next = queue.take(now);
-    require(next && next->sequence == sequence &&
-                now - next->capture_timestamp_100ns == 100'000,
-            "equal-rate recovery retained delayed PCM");
+    require(next && next->sequence == sequence && !next->discontinuity,
+            "worker recovery dropped captured PCM");
   }
+  require(!queue.take(now) && queue.stats().superseded == 0, "recovery discarded the backlog");
 }
 void normalCaptureBatch() {
   PcmQueue queue;

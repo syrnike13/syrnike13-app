@@ -156,14 +156,14 @@ Napi::Array writeArray(Napi::Env env, const std::vector<T>& entries) {
 inline AudioMixSetting readAudioMixSetting(Napi::Env env, const Napi::Value& value) {
   const auto object = readObject(env, value);
   AudioMixSetting result;
-  result.identity = readIdentifier(env, object.Get("identity"));
+  result.user_id = readIdentifier(env, object.Get("userId"));
   result.volume = readNumber(env, object.Get("volume"), 0, 3, false);
   result.muted = readBoolean(env, object.Get("muted"));
   return result;
 }
 inline Napi::Object writeModel(Napi::Env env, const AudioMixSetting& value) {
   auto object = Napi::Object::New(env);
-  object.Set("identity", value.identity);
+  object.Set("userId", value.user_id);
   object.Set("volume", value.volume);
   object.Set("muted", value.muted);
   return object;

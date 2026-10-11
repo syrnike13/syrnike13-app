@@ -15,7 +15,7 @@ enum class ScreenIntentAudioMode { none, system, process };
 enum class OutputIntentState { off, on };
 
 struct AudioMixSetting {
-  std::string identity{};
+  std::string user_id{};
   double volume{};
   bool muted{};
   bool operator==(const AudioMixSetting&) const = default;
@@ -85,7 +85,7 @@ inline bool validMediaIdentifier(const std::string& value) {
 }
 
 inline bool validMediaModel(const AudioMixSetting& value) {
-  if (!validMediaIdentifier(value.identity)) return false;
+  if (!validMediaIdentifier(value.user_id)) return false;
   if (!(std::isfinite(value.volume) && value.volume >= 0 && value.volume <= 3)) return false;
   return true;
 }

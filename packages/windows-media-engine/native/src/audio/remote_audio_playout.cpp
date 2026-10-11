@@ -6,6 +6,7 @@
 #include <mmdeviceapi.h>
 #include <wrl/client.h>
 #include <livekit/fresh_audio_stream.h>
+#include <livekit/livekit.h>
 
 #include <algorithm>
 #include <charconv>
@@ -354,8 +355,8 @@ void RemoteAudioPlayout::run() noexcept {
     bool subscribed = false, microphone = false;
     RemoteAudioJitter jitter;
     RemoteSpeakerActivity activity;
-    std::uint64_t observed_dropped = 0, observed_stale = 0;
-    float volume = 1.0f;
+    std::uint64_t observed_dropped = 0, observed_stale = 0, ingress_age_us = 0;
+    float volume = 1.0f, gain = 0.0f;
     bool muted = false;
   };
   // About 1 MB of jitter buffers: heap, not the default 1 MB thread stack.
@@ -368,6 +369,7 @@ void RemoteAudioPlayout::run() noexcept {
   std::optional<EngineFailure> problem;
   Clock::time_point retry_at{}, next_tick = Clock::now(), last_render = Clock::now();
   std::uint64_t applied_revision = ~0ULL;
+  std::uint32_t reported_delay_ms = 0;
   bool deafened = false, device_fallback = false;
   // Counters of released readers, so published totals never go backwards.
   RemoteAudioJitterStats retired_jitter;
@@ -382,7 +384,8 @@ void RemoteAudioPlayout::run() noexcept {
     reader.track.reset();
     reader.jitter = {};
     reader.activity = {};
-    reader.observed_dropped = reader.observed_stale = 0;
+    reader.observed_dropped = reader.observed_stale = reader.ingress_age_us = 0;
+    reader.gain = 0.0f;
   };
   try {
     Apartment apartment;
@@ -445,7 +448,7 @@ void RemoteAudioPlayout::run() noexcept {
             const auto& controls = reader.publication->source() == livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO
                 ? desired.intent.streams : desired.intent.users;
             for (const auto& control : controls)
-              if (control.identity == reader.participant) {
+              if (control.user_id == voiceUserId(reader.participant)) {
                 reader.volume *= static_cast<float>(control.volume);
                 reader.muted = control.muted;
                 break;
@@ -515,6 +518,7 @@ void RemoteAudioPlayout::run() noexcept {
           reader.observed_stale = sdk.stale;
           if (result != livekit::FreshAudioReadResult::frame) break;
           ++stats.decoded;
+          reader.ingress_age_us = decoded.age_us;
           if (decoded.discontinuity) ++stats.sdk_discontinuities;
           reader.jitter.push(decoded.samples);
           if (reader.microphone) reader.activity.observe(decoded.samples, now);
@@ -525,11 +529,12 @@ void RemoteAudioPlayout::run() noexcept {
       std::array<RemoteAudioMixInput, kPublicationCapacity> inputs{};
       std::size_t input_count = 0;
       for (auto& reader : readers)
-        if (reader.stream) inputs[input_count++] = {&reader.jitter, reader.volume, reader.muted};
+        if (reader.stream) inputs[input_count++] = {&reader.jitter, reader.volume, reader.muted, &reader.gain};
       const auto mixOne = [&](RemoteAudioFrame& frame) {
         (void)mixer.mix(std::span(inputs.data(), input_count), deafened, frame);
       };
       RemoteAudioFrame frame;
+      std::uint32_t device_buffered_ms = 0;
       if (device) {
         try {
           UINT32 padding = 0;
@@ -557,6 +562,7 @@ void RemoteAudioPlayout::run() noexcept {
             padding += static_cast<UINT32>(kRemoteAudioFrames);
             last_render = Clock::now();
           }
+          device_buffered_ms = padding / (kRemoteAudioRate / 1000);
           if (FAILED(status)) {
             device.reset();
             problem = EngineFailure{"output_device_lost", "Output device stopped rendering", "output", true};
@@ -582,7 +588,21 @@ void RemoteAudioPlayout::run() noexcept {
       }
 
       // Publish observations.
-      std::uint32_t buffered = 0;
+      // Remote audio is heard this long after the SDK hands it over: its
+      // decoded-ingress queue, our jitter buffer and the output device.
+      // WebRTC's audio/video sync subtracts it, so screen pictures wait for
+      // the sound actually heard.
+      std::uint32_t queued_ms = 0;
+      for (const auto& reader : readers)
+        if (reader.stream)
+          queued_ms = (std::max)(queued_ms, static_cast<std::uint32_t>(reader.ingress_age_us / 1000) +
+                                                reader.jitter.stats().depth * 10);
+      const std::uint32_t output_delay_ms = device ? device->latency_ms + device_buffered_ms + queued_ms : 0;
+      if (output_delay_ms + 5 < reported_delay_ms || output_delay_ms > reported_delay_ms + 5 ||
+          (!output_delay_ms && reported_delay_ms)) {
+        reported_delay_ms = output_delay_ms;
+        livekit::setAudioPlayoutDelay(std::chrono::milliseconds{reported_delay_ms});
+      }
       RemoteAudioJitterStats jitter = retired_jitter;
       for (auto& reader : readers) {
         if (!reader.stream) continue;
@@ -590,14 +610,13 @@ void RemoteAudioPlayout::run() noexcept {
         jitter.underruns += value.underruns;
         jitter.overruns += value.overruns;
         jitter.trimmed += value.trimmed;
-        buffered = (std::max)(buffered, value.depth);
       }
       stats.jitter_underruns = jitter.underruns;
       stats.jitter_overruns = jitter.overruns;
       stats.jitter_trimmed = jitter.trimmed;
       stats.reading = reading;
       stats.device_open = device != nullptr;
-      stats.latency_ms = device ? device->latency_ms + 20 + buffered * 10 : 0;
+      stats.latency_ms = output_delay_ms;
       {
         std::lock_guard lock(mutex_);
         for (std::size_t index = 0; index < readers.size(); ++index) {
@@ -631,6 +650,7 @@ void RemoteAudioPlayout::run() noexcept {
                       EngineFailure{"output_owner_failed", "Remote audio playout failed", "output", false}};
   }
   device.reset();
+  if (reported_delay_ms) livekit::setAudioPlayoutDelay(std::chrono::milliseconds{0});
   for (auto& reader : readers) {
     releaseReader(reader);
     reader.publication.reset();

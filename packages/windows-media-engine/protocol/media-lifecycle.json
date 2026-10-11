@@ -65,7 +65,7 @@
   "mediaModels": {
     "AudioMixSetting": {
       "fields": {
-        "identity": { "type": "identifier" },
+        "userId": { "type": "identifier" },
         "volume": { "type": "number", "minimum": 0, "maximum": 3 },
         "muted": { "type": "boolean" }
       }

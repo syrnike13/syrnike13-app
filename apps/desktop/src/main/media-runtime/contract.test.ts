@@ -94,7 +94,7 @@ describe('native media protocol contract', () => {
       },
       output: {
         state: 'on', deviceId: null, deafened: true, volume: 1,
-        users: [{ identity: 'participant-2', volume: 0.5, muted: false }],
+        users: [{ userId: 'participant-2', volume: 0.5, muted: false }],
         streams: [], retryRevision: 0,
       },
     }
@@ -115,7 +115,7 @@ describe('native media protocol contract', () => {
       ...state, output: {
         ...state.output,
         users: Array.from({ length: 1025 }, () => ({
-          identity: 'participant', volume: 1, muted: false,
+          userId: 'participant', volume: 1, muted: false,
         })),
       },
     }))).toBe(true)

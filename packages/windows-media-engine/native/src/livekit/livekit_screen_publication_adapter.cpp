@@ -1,4 +1,5 @@
 #include "livekit/livekit_screen_publication_adapter.hpp"
+#include "livekit/webrtc_clock.hpp"
 
 #if defined(LIVEKIT_CPP_HAS_PREENCODED_VIDEO_SOURCE)
 
@@ -255,7 +256,8 @@ void LiveKitScreenPublicationAdapter::startSubmit(
           metadata.user_timestamp_us = frame.timestamp_us;
           metadata.frame_id = static_cast<std::uint32_t>(frame.sequence);
           const bool accepted = source->captureFrame(livekit::EncodedVideoFrame{
-              frame.data, frame.size, static_cast<std::int64_t>(frame.timestamp_us),
+              frame.data, frame.size,
+              webrtcTimeFromSteadyUs(static_cast<std::int64_t>(frame.timestamp_us)),
               frame.key_frame, std::move(metadata)});
           if (!accepted)
             return completion(

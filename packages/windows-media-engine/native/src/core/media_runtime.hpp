@@ -15,7 +15,7 @@ struct MediaRuntimeSnapshot {
   // process. Escalate that condition through the supervised engine boundary.
   std::optional<EngineFailure> failure;
   // Fixed numeric telemetry, without device identities or audio contents.
-  std::optional<std::array<DiagnosticMetric, 12>> screen_audio_metrics;
+  std::optional<std::array<DiagnosticMetric, 13>> screen_audio_metrics;
   std::optional<std::array<DiagnosticMetric, 16>> screen_video_metrics;
   std::optional<std::array<DiagnosticMetric, 13>> camera_metrics;
   std::optional<std::array<DiagnosticMetric, 15>> microphone_metrics;

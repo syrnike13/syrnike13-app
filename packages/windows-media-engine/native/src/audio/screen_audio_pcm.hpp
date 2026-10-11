@@ -14,9 +14,6 @@ inline constexpr std::uint32_t kAudioChannels = 2;
 inline constexpr std::uint32_t kAudioPacketFrames = 480;
 inline constexpr std::size_t kAudioQueueCapacity = 8;
 inline constexpr std::int64_t kAudioMaximumAge100ns = 1'000'000;
-// Two queued 10 ms packets plus one capture period are enough to absorb normal
-// batching. Beyond that, replay at the capture rate would retain the delay.
-inline constexpr std::int64_t kAudioBacklogAge100ns = 300'000;
 
 struct PcmPacket {
   std::array<std::int16_t, kAudioPacketFrames * kAudioChannels> samples{};

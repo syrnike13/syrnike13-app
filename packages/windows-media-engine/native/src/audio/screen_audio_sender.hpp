@@ -5,13 +5,15 @@
 namespace syrnike::windows_media::audio {
 struct ScreenAudioSenderStats {
   std::uint64_t generation = 0, submitted = 0, discontinuities = 0;
+  // Silent 10 ms frames sent in place of PCM lost to a capture or worker gap.
+  std::uint64_t silence_filled = 0;
   std::int64_t last_capture_timestamp_100ns = 0;
   std::uint64_t maximum_submit_age_us = 0;
   bool published = false;
   std::uint64_t maximum_callback_wait_us = 0;
 };
 // Publish/unpublish use the Room control lane. PCM has a separate worker and
-// a fixed 10 ms clocked SDK source, so capture never waits for networking or video.
+// hands each 10 ms packet straight to the SDK, so capture never waits for networking or video.
 class ScreenAudioSender final {
  public:
   // Optional bounded observer runs on the sender worker, never capture or SDK

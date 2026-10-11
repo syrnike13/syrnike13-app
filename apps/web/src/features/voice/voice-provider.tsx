@@ -152,6 +152,8 @@ const INITIAL_SNAPSHOT: VoiceSnapshot = {
 }
 
 let remoteAudioCommandRevision = 0
+// Coalesces slider drags into at most one native mix update per interval.
+const REMOTE_AUDIO_PUBLISH_INTERVAL_MS = 40
 
 export function VoiceProvider({ children }: { children: ReactNode }) {
   const auth = useAuth()
@@ -386,8 +388,20 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         settings: voiceListenerStore.snapshot(++remoteAudioCommandRevision),
       })
     }
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const schedulePublish = () => {
+      if (timer !== null) return
+      timer = setTimeout(() => {
+        timer = null
+        publish()
+      }, REMOTE_AUDIO_PUBLISH_INTERVAL_MS)
+    }
     publish()
-    return voiceListenerStore.subscribe(publish)
+    const unsubscribe = voiceListenerStore.subscribe(schedulePublish)
+    return () => {
+      unsubscribe()
+      if (timer !== null) clearTimeout(timer)
+    }
   }, [desktop])
 
   useEffect(() => {

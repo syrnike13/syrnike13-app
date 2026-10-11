@@ -161,7 +161,7 @@ add_library(media_screen_audio_capture STATIC
 )
 windows_media_target(media_screen_audio_capture)
 target_include_directories(media_screen_audio_capture PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(media_screen_audio_capture PUBLIC media_sources PRIVATE mmdevapi ole32)
+target_link_libraries(media_screen_audio_capture PUBLIC media_sources PRIVATE mmdevapi ole32 avrt)
 
 add_library(media_audio_devices STATIC
   src/audio/audio_device_catalog.cpp
@@ -199,7 +199,7 @@ target_link_libraries(media_remote_audio PUBLIC media_audio_devices media_liveki
 
 add_library(media_screen_audio_livekit STATIC src/audio/screen_audio_sender.cpp)
 windows_media_target(media_screen_audio_livekit)
-target_link_libraries(media_screen_audio_livekit PUBLIC media_screen_audio_capture media_livekit)
+target_link_libraries(media_screen_audio_livekit PUBLIC media_screen_audio_capture media_livekit PRIVATE avrt)
 
 add_library(media_video STATIC src/video/shared_texture_pool.cpp src/video/remote_video_track.cpp
   src/video/remote_video_owner.cpp src/video/hardware_video_decoder.cpp)
@@ -209,7 +209,7 @@ target_link_libraries(media_video PUBLIC media_capture LiveKit::livekit PRIVATE 
 add_library(media_screen_livekit STATIC src/livekit/livekit_screen_publication_adapter.cpp)
 windows_media_target(media_screen_livekit)
 target_include_directories(media_screen_livekit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(media_screen_livekit PUBLIC media_screen LiveKit::livekit)
+target_link_libraries(media_screen_livekit PUBLIC media_screen LiveKit::livekit PRIVATE winmm)
 add_library(media_screen_owner STATIC src/screen/screen_owner.cpp)
 windows_media_target(media_screen_owner)
 target_link_libraries(media_screen_owner PUBLIC media_screen_livekit media_livekit media_screen_audio_capture)
@@ -262,7 +262,7 @@ endif()
 
 add_executable(bench_bot bench/bench_bot.cpp)
 windows_media_target(bench_bot)
-target_link_libraries(bench_bot PRIVATE LiveKit::livekit)
+target_link_libraries(bench_bot PRIVATE LiveKit::livekit winmm)
 windows_media_copy_livekit_runtime(bench_bot)
 
 enable_testing()

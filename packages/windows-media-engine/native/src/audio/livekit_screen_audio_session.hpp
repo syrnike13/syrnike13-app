@@ -40,7 +40,7 @@ class LiveKitScreenAudioSession final : public ScreenAudioSession {
             queue.depth,           queue.maximum_depth,
             queue.superseded,      queue.stale,
             capture.silent_packets, capture.invalid_timestamps, capture.peak_sample,
-            sender.maximum_callback_wait_us};
+            sender.maximum_callback_wait_us, sender.silence_filled};
   }
 
  private:

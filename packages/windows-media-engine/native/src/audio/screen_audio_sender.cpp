@@ -1,4 +1,5 @@
 #include "audio/screen_audio_sender.hpp"
+#include <avrt.h>
 #include <algorithm>
 #include <stdexcept>
 #include <system_error>
@@ -6,6 +7,15 @@
 namespace syrnike::windows_media::audio {
 namespace {
 using Clock = std::chrono::steady_clock;
+constexpr std::int64_t kPacket100ns = 100'000;
+// Longer gaps are an outage, not jitter: half a second of silence bounds the
+// burst while the RTP clock catches up.
+constexpr std::uint64_t kMaximumSilenceFill = 50;
+struct Mmcss {
+  DWORD task = 0;
+  HANDLE value = AvSetMmThreadCharacteristicsW(L"Audio", &task);
+  ~Mmcss() { if (value) AvRevertMmThreadCharacteristics(value); }
+};
 std::int64_t now100ns() noexcept {
   return std::chrono::duration_cast<std::chrono::duration<std::int64_t, std::ratio<1, 10'000'000>>>(
              Clock::now().time_since_epoch())
@@ -107,17 +117,19 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
                 }
                 const auto participant = room ? room->localParticipant().lock() : nullptr;
                 if (!participant) throw std::runtime_error("Screen audio Room unavailable");
-                // Keep the RTP audio clock advancing with silence during ingress gaps.
-                // The SDK's fixed 10 ms queue has a hard two-packet storage bound; the
-                // unbuffered path stops its clock when this worker is stalled.
-                auto source =
-                    std::make_shared<livekit::AudioSource>(kAudioRate, kAudioChannels, 10);
+                // Direct capture, like the microphone: the loopback device clock paces
+                // every 10 ms packet. The SDK's buffered mode runs a second 10 ms timer
+                // that injects silence whenever a packet is late and blocks this worker
+                // when two arrive together, which the backlog guard then discards.
+                auto source = std::make_shared<livekit::AudioSource>(kAudioRate, kAudioChannels, 0);
                 auto track =
                     livekit::LocalAudioTrack::createLocalAudioTrack("screen-audio", source);
                 livekit::TrackPublishOptions options;
                 options.source = livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO;
                 options.simulcast = false;
                 options.dtx = false;
+                // Captured PCM is stereo; without this the SFU negotiates mono Opus.
+                options.stereo = true;
                 options.audio_encoding = livekit::AudioEncodingOptions{state->bitrate};
                 {
                   std::lock_guard lock(state->mutex);
@@ -159,6 +171,15 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
       source = state->source;
     }
     auto frame = livekit::AudioFrame::create(kAudioRate, kAudioChannels, kAudioPacketFrames);
+    const auto silence = livekit::AudioFrame::create(kAudioRate, kAudioChannels, kAudioPacketFrames);
+    // Capture time the next packet should have. WebRTC advances the RTP clock
+    // by the samples it is given and maps it to time through sender reports,
+    // so a lost packet must still be sent, as silence; otherwise this audio
+    // falls permanently behind its screen video at every receiver.
+    std::optional<std::int64_t> next_capture;
+    // Same scheduling class as the loopback capture, so a busy game or
+    // encoder cannot starve the last hop. Absent when MMCSS is disabled.
+    Mmcss mmcss;
     for (;;) {
       {
         std::scoped_lock lock(state->mutex);
@@ -177,8 +198,14 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
       const auto age = now100ns() - packet->capture_timestamp_100ns;
       if (age < 0 || age > kAudioMaximumAge100ns) continue;
       std::copy(packet->samples.begin(), packet->samples.end(), frame.data().begin());
+      std::uint64_t filled = 0;
+      if (next_capture && packet->capture_timestamp_100ns - *next_capture >= kPacket100ns / 2)
+        filled = (std::min)(kMaximumSilenceFill, static_cast<std::uint64_t>(
+            (packet->capture_timestamp_100ns - *next_capture + kPacket100ns / 2) / kPacket100ns));
+      next_capture = packet->capture_timestamp_100ns + kPacket100ns;
       const auto submitted_at = Clock::now();
       try {
+        for (std::uint64_t index = 0; index < filled; ++index) source->captureFrame(silence, 500);
         source->captureFrame(frame, 500);
       } catch (const std::system_error& error) {
         throw ScreenAudioFailure{error.code() == std::errc::timed_out
@@ -190,6 +217,7 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
       state->stats.maximum_callback_wait_us = (std::max)(state->stats.maximum_callback_wait_us,
           static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - submitted_at).count()));
       ++state->stats.submitted;
+      state->stats.silence_filled += filled;
       if (packet->discontinuity) ++state->stats.discontinuities;
       state->stats.last_capture_timestamp_100ns = packet->capture_timestamp_100ns;
       state->stats.maximum_submit_age_us =
