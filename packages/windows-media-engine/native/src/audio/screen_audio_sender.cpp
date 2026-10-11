@@ -107,11 +107,11 @@ void ScreenAudioSender::run(const std::shared_ptr<State>& state) noexcept {
                 }
                 const auto participant = room ? room->localParticipant().lock() : nullptr;
                 if (!participant) throw std::runtime_error("Screen audio Room unavailable");
-                // Keep the RTP audio clock advancing with silence during ingress gaps.
-                // The SDK's fixed 10 ms queue has a hard two-packet storage bound; the
-                // unbuffered path stops its clock when this worker is stalled.
-                auto source =
-                    std::make_shared<livekit::AudioSource>(kAudioRate, kAudioChannels, 10);
+                // Direct capture, like the microphone: the loopback device clock paces
+                // every 10 ms packet. The SDK's buffered mode runs a second 10 ms timer
+                // that injects silence whenever a packet is late and blocks this worker
+                // when two arrive together, which the backlog guard then discards.
+                auto source = std::make_shared<livekit::AudioSource>(kAudioRate, kAudioChannels, 0);
                 auto track =
                     livekit::LocalAudioTrack::createLocalAudioTrack("screen-audio", source);
                 livekit::TrackPublishOptions options;

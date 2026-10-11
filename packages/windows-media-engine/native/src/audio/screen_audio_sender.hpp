@@ -11,7 +11,7 @@ struct ScreenAudioSenderStats {
   std::uint64_t maximum_callback_wait_us = 0;
 };
 // Publish/unpublish use the Room control lane. PCM has a separate worker and
-// a fixed 10 ms clocked SDK source, so capture never waits for networking or video.
+// hands each 10 ms packet straight to the SDK, so capture never waits for networking or video.
 class ScreenAudioSender final {
  public:
   // Optional bounded observer runs on the sender worker, never capture or SDK
