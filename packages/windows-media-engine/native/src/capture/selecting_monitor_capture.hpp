@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include "capture/backend_selection_policy.hpp"
 #include "capture/dxgi_monitor_capture.hpp"
 
@@ -16,6 +17,7 @@ struct SelectingMonitorOptions {
   std::function<std::optional<sources::MonitorTargetToken>()> resolve_target;
   std::function<std::unique_ptr<MonitorCaptureBackend>(CaptureBackendKind)> create_backend;
   std::function<CaptureEnvironment()> environment;
+  std::chrono::microseconds wgc_min_update_interval{0};
 };
 struct BackendSelectionDiagnostics {
   BackendSelectionState policy;

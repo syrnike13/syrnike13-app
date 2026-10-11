@@ -965,6 +965,24 @@ describe('VoiceDirector', () => {
     await harness.director.waitForIdle()
   })
 
+  it('ends the share when the shared window is closed', async () => {
+    const harness = createHarness()
+    const lease = await connect(harness, 'A')
+    harness.director.dispatch({ type: 'setScreen', enabled: true, sourceId: 'screen-a', audioEnabled: true })
+
+    harness.engine.emit({
+      type: 'mediaState',
+      kind: 'screen',
+      operationId: lease.operationId,
+      connectionEpoch: lease.connectionEpoch,
+      media: { state: 'failed', error: { code: 'source_closed', message: 'captured window closed', retryable: true } },
+    })
+
+    expect(harness.engine.desired.at(-1)).toMatchObject({ screenEnabled: false, screenAudioEnabled: false })
+    expect(harness.engine.desired.at(-1)?.screenSourceId).toBeUndefined()
+    expect(harness.engine.connected).toHaveLength(1)
+  })
+
   it('does not reconnect Room when one media track fails', async () => {
     const harness = createHarness()
     const lease = await connect(harness, 'A')

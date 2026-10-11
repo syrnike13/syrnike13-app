@@ -894,6 +894,11 @@ class Win32SourceEnumerator final : public SourceEnumerator {
     if ((ex_style & WS_EX_APPWINDOW) == 0 &&
         ((ex_style & WS_EX_TOOLWINDOW) != 0 || GetWindow(window, GW_OWNER) != nullptr))
       return TRUE;
+    // Content protection (WDA_MONITOR, WDA_EXCLUDEFROMCAPTURE) captures as
+    // black; Discord reports it as DisplayAffinity. It is not a usable source.
+    DWORD affinity = WDA_NONE;
+    if (GetWindowDisplayAffinity(window, &affinity) != FALSE && affinity != WDA_NONE)
+      return TRUE;
     // A hidden or cloaked window (suspended UWP app, another virtual desktop)
     // stays listed only once it was seen shown: hiding a shared window keeps
     // its ID, while never-shown helper windows (IME, DDE, broadcast

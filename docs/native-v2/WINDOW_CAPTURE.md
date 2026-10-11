@@ -46,6 +46,15 @@ are granted this without a prompt (`Allowed`). The request runs once per
 process before the first session; window shares, window thumbnails and the WGC
 monitor fallback are all borderless. Older Windows keeps the border.
 
+WGC delivers frames at the display refresh rate. The product share sets
+`MinUpdateInterval` to half the stream's frame interval (Windows 11 22H2+), so a
+165 Hz display does not copy 165 frames a second for a 30 fps stream, while any
+refresh rate still delivers at least the stream rate.
+
+Closing the shared window ends the share (`source_closed`/`source_replaced`
+turn the screen intent off in `VoiceDirector`), as in Discord, instead of
+leaving a failed path and an error banner.
+
 ## Identity and terminal behavior
 
 `SourceRegistry::resolveWindowTarget` performs a complete window reconciliation immediately before returning an HWND. The token contains the full registry identity, including process creation, owner thread, class, and WinEvent lifetime epoch; a recycled numerical HWND therefore produces a different opaque source ID. `WindowCapture` resolves the token again after WGC creates the capture item but before publishing `running`, which closes the handle-reuse interval during startup. Capture never searches by title or process and never switches to a replacement window.

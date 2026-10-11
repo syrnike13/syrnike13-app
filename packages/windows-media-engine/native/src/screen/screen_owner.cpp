@@ -247,6 +247,10 @@ void ScreenOwner::run() noexcept {
           }
           stopPipeline();
           replacing = true;
+          // Capture at no more than twice the stream rate: enough at any
+          // display refresh, without copying 165 frames a second for 30.
+          const auto capture_interval = std::chrono::microseconds{
+              500'000 / kAdaptiveScreenProfiles[selected_preset].fps};
           frames = std::make_shared<ScreenFramePipeline>();
           capture::CaptureStartResult started;
           if (*resolved.kind == sources::SourceKind::Monitor) {
@@ -256,12 +260,15 @@ void ScreenOwner::run() noexcept {
             // sessions) or lost, fall back to WGC instead of failing the share.
             options.preferred = capture::CaptureBackendKind::dxgi;
             options.resolve_target = [monitor_target] { return monitor_target; };
+            options.wgc_min_update_interval = capture_interval;
             monitor = std::make_unique<capture::MonitorCapture>(*registry, desired.intent.source_id,
                 capture::createSelectingMonitorCaptureBackend(std::move(options)));
             started = monitor->start();
           } else {
+            capture::WgcWindowCaptureOptions options;
+            options.min_update_interval = capture_interval;
             window = std::make_unique<capture::WindowCapture>(*registry, desired.intent.source_id,
-                capture::createWgcWindowCaptureBackend());
+                capture::createWgcWindowCaptureBackend(options));
             started = window->start();
           }
           if (!started.ok) throw std::runtime_error(started.failure ? started.failure->message : "Screen capture failed to start");

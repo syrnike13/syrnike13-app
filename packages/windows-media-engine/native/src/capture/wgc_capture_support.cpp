@@ -410,6 +410,18 @@ bool borderlessCaptureAllowed() noexcept {
   return allowed;
 }
 
+void limitCaptureRate(const winrt::Windows::Graphics::Capture::GraphicsCaptureSession& session,
+                      std::chrono::microseconds min_interval) noexcept {
+  if (min_interval.count() <= 0) return;
+  try {
+    if (winrt::Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
+            L"Windows.Graphics.Capture.GraphicsCaptureSession", L"MinUpdateInterval"))
+      session.MinUpdateInterval(std::chrono::duration_cast<winrt::Windows::Foundation::TimeSpan>(min_interval));
+  } catch (...) {
+    // Older Windows: the pipeline's cadence drops the surplus frames.
+  }
+}
+
 void disableCaptureBorder(const winrt::Windows::Graphics::Capture::GraphicsCaptureSession& session) noexcept {
   try {
     if (borderlessCaptureAllowed()) session.IsBorderRequired(false);

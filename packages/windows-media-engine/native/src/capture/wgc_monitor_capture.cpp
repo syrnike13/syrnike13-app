@@ -151,6 +151,7 @@ class WgcMonitorCaptureBackendImpl final : public WgcMonitorCaptureBackend {
           static_cast<int>(options_.frame_pool_size), size);
       auto session = frame_pool.CreateCaptureSession(item);
       detail::disableCaptureBorder(session);
+      detail::limitCaptureRate(session, options_.min_update_interval);
 
       const std::weak_ptr weak = state_;
       const auto frame_token =

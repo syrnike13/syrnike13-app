@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <memory>
 
@@ -24,6 +25,7 @@ struct WgcWindowCaptureOptions {
   bool include_cursor = true;
   std::uint32_t maximum_width = 0, maximum_height = 0;
   std::uint32_t frame_pool_size = kMaximumWindowFrames + 1;
+  std::chrono::microseconds min_update_interval{0};
 };
 
 class WgcWindowCaptureBackend : public WindowCaptureBackend {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <d3d11.h>
 #include <windows.h>
 #include <wrl/client.h>
@@ -29,6 +30,10 @@ std::string hresultText(HRESULT value);
 void ensureRoInitialized();
 // Windows 11 captures without the yellow border once borderless access is granted.
 bool borderlessCaptureAllowed() noexcept;
+// Windows 11 22H2+: WGC otherwise delivers frames at the display refresh rate
+// (165 Hz on a gaming monitor) although the stream encodes 30 or 60.
+void limitCaptureRate(const winrt::Windows::Graphics::Capture::GraphicsCaptureSession&,
+                      std::chrono::microseconds min_interval) noexcept;
 void disableCaptureBorder(const winrt::Windows::Graphics::Capture::GraphicsCaptureSession&) noexcept;
 void invalidateMonitorCaptureItem(std::uintptr_t platform_value,
                                   const std::string& stable_identity);

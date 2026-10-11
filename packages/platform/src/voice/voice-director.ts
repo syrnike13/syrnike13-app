@@ -67,6 +67,10 @@ class VoiceDirectorOperationError extends Schema.ErrorClass<VoiceDirectorOperati
   failure: VoiceFailureSchema,
 }) {}
 
+
+// Native capture codes for a shared window that was closed or replaced.
+const SCREEN_SOURCE_ENDED_CODES = new Set(['source_closed', 'source_replaced'])
+
 export class VoiceDirector {
   private readonly listeners = new Set<(snapshot: VoiceSnapshot) => void>()
   private readonly runtime = ManagedRuntime.make(Layer.empty)
@@ -880,6 +884,12 @@ export class VoiceDirector {
     }
     if (event.type === 'mediaState') {
       this.updateMediaSnapshot(event.kind, event.media)
+      // Like Discord, closing the shared window ends the share; it is not a
+      // failure the user has to dismiss or retry.
+      if (event.kind === 'screen' && event.media.state === 'failed' &&
+          SCREEN_SOURCE_ENDED_CODES.has(event.media.error?.code ?? '')) {
+        this.updateDesiredMedia({ screenEnabled: false, screenSourceId: undefined, screenAudioEnabled: false })
+      }
       return
     }
     if (event.type === 'transientReconnectStarted') {
