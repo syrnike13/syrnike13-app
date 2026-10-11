@@ -8,7 +8,9 @@ x-json-log-rotation: &json-log-rotation
 
 services:
   database:
-    image: docker.io/mongo
+    # Data files are at featureCompatibilityVersion 8.2; MongoDB 9 refuses to
+    # start on them. Upgrade only deliberately (setFeatureCompatibilityVersion).
+    image: docker.io/mongo:8.2.12@sha256:e0ce8c35124d4a9f9785532d1f268f39e9728ffa1cb38f46fa482436424c4bd3
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     logging: *json-log-rotation
     environment:
