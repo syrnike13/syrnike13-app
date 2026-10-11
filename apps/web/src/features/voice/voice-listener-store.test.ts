@@ -1,8 +1,14 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { voiceListenerStore } from '#/features/voice/voice-listener-store'
 
 describe('voiceListenerStore mic vs stream channels', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
   beforeEach(() => {
     voiceListenerStore.setUserVolume('user-a', 1)
     voiceListenerStore.setUserMuted('user-a', false)
@@ -34,6 +40,20 @@ describe('voiceListenerStore mic vs stream channels', () => {
     voiceListenerStore.setUserMuted('user-b', false)
     expect(voiceListenerStore.getUserMuted('user-b')).toBe(false)
     expect(voiceListenerStore.getStreamMuted('user-b')).toBe(true)
+  })
+
+  it('persists a dragged slider once it settles', () => {
+    vi.useFakeTimers()
+    vi.advanceTimersByTime(1_000)
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    for (let step = 1; step <= 20; step += 1) {
+      voiceListenerStore.setStreamVolume('user-a', step / 10)
+    }
+    expect(voiceListenerStore.getStreamVolume('user-a')).toBe(2)
+    expect(setItem).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(300)
+    expect(setItem).toHaveBeenCalledOnce()
+    expect(setItem.mock.calls[0]?.[1]).toContain('"user-a":2')
   })
 
   it('defaults stream volume to 1 and stream mute to false', () => {
