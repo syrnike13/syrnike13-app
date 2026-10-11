@@ -18,6 +18,7 @@ struct ScreenAudioSessionStats {
   std::uint64_t silent_packets = 0, invalid_timestamps = 0;
   std::uint32_t peak_sample = 0;
   std::uint64_t maximum_callback_wait_us = 0;
+  std::uint64_t silence_filled = 0;
 };
 struct ScreenAudioOwnerStats {
   ScreenAudioState state = ScreenAudioState::idle;

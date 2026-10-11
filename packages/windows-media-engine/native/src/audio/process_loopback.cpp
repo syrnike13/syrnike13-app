@@ -1,6 +1,7 @@
 #include "audio/process_loopback.hpp"
 #include <audioclient.h>
 #include <audioclientactivationparams.h>
+#include <avrt.h>
 #include <mmdeviceapi.h>
 #include <tlhelp32.h>
 #include <wrl.h>
@@ -19,6 +20,11 @@ struct Handle {
   }
 };
 struct Cancelled {};
+struct Mmcss {
+  DWORD task = 0;
+  HANDLE value = AvSetMmThreadCharacteristicsW(L"Audio", &task);
+  ~Mmcss() { if (value) AvRevertMmThreadCharacteristics(value); }
+};
 bool detectProcessLoopbackSupport() noexcept {
   using GetVersion = LONG(WINAPI*)(OSVERSIONINFOW*);
   const auto address = GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
@@ -319,6 +325,9 @@ void ProcessLoopback::run(ScreenAudioMode mode, std::shared_ptr<AudioProcessIden
       changed_.notify_all();
     }
     HANDLE events[]{stop_event_, sample_event.value, target->handle()};
+    // A busy game or encoder must not delay loopback reads into gaps.
+    // Scheduling hint only; absent when the MMCSS service is disabled.
+    Mmcss mmcss;
     for (;;) {
       const auto event = WaitForMultipleObjects(3, events, FALSE, INFINITE);
       if (event == WAIT_OBJECT_0) break;

@@ -194,7 +194,7 @@ void WindowsMediaRuntime::run() noexcept {
             "Screen audio SDK work exceeded its completion deadline", "screenAudio", true};
       if (audio.state == audio::ScreenAudioState::running || audio.state == audio::ScreenAudioState::failed) {
         const auto& metrics = audio.session;
-        snapshot_.screen_audio_metrics = std::array<DiagnosticMetric, 12>{{
+        snapshot_.screen_audio_metrics = std::array<DiagnosticMetric, 13>{{
             {"captured", static_cast<double>(metrics.captured)},
             {"submitted", static_cast<double>(metrics.submitted)},
             {"silent", static_cast<double>(metrics.silent_packets)},
@@ -207,6 +207,7 @@ void WindowsMediaRuntime::run() noexcept {
             {"client_process_id", static_cast<double>(client_process_ ? client_process_->pid() : 0)},
             {"producer_process_id", static_cast<double>(GetCurrentProcessId())},
             {"maximum_callback_wait_us", static_cast<double>(metrics.maximum_callback_wait_us)},
+            {"silence_filled", static_cast<double>(metrics.silence_filled)},
         }};
       } else snapshot_.screen_audio_metrics.reset();
       const bool wants_audio = desired_.screen.state == ScreenIntentState::on &&

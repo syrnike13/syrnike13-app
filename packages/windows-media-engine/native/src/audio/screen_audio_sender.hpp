@@ -5,6 +5,8 @@
 namespace syrnike::windows_media::audio {
 struct ScreenAudioSenderStats {
   std::uint64_t generation = 0, submitted = 0, discontinuities = 0;
+  // Silent 10 ms frames sent in place of PCM lost to a capture or worker gap.
+  std::uint64_t silence_filled = 0;
   std::int64_t last_capture_timestamp_100ns = 0;
   std::uint64_t maximum_submit_age_us = 0;
   bool published = false;
