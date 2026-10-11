@@ -70,7 +70,8 @@ int main(int argc, char** argv) {
       livekit::shutdown();
       return 1;
     }
-    const auto connect_ms = std::chrono::duration<double, std::milli>(Clock::now() - connect_started).count();
+    const auto connected_at = Clock::now();
+    const auto connect_ms = std::chrono::duration<double, std::milli>(connected_at - connect_started).count();
     auto participant = room.localParticipant().lock();
     std::atomic<bool> running{true};
 
@@ -167,10 +168,12 @@ int main(int argc, char** argv) {
     std::scoped_lock lock(watch.mutex);
     const double watched_s = watch.frames > 1
         ? std::chrono::duration<double>(watch.last - watch.first).count() : 0;
-    std::printf("{\"connectMs\":%.1f,\"watchFrames\":%llu,\"watchFps\":%.2f,\"watchWidth\":%d,"
+    const double first_frame_ms = watch.frames
+        ? std::chrono::duration<double, std::milli>(watch.first - connected_at).count() : -1;
+    std::printf("{\"connectMs\":%.1f,\"firstFrameMs\":%.1f,\"watchFrames\":%llu,\"watchFps\":%.2f,\"watchWidth\":%d,"
                 "\"watchHeight\":%d,\"watchMaxWidth\":%d,\"watchMaxHeight\":%d,\"watchSmallFrames\":%llu,"
                 "\"watchMaxGapMs\":%.1f,\"watchGapsOver100ms\":%llu}\n",
-                connect_ms, static_cast<unsigned long long>(watch.frames),
+                connect_ms, first_frame_ms, static_cast<unsigned long long>(watch.frames),
                 watched_s > 0 ? static_cast<double>(watch.frames - 1) / watched_s : 0.0,
                 watch.width, watch.height, watch.max_width, watch.max_height,
                 static_cast<unsigned long long>(watch.small_frames), watch.max_gap_ms,

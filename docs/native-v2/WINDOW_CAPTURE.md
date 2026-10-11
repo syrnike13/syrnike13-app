@@ -37,6 +37,15 @@ sequenceDiagram
     C-->>P: stopped or typed deadline failure
 ```
 
+## Capture border
+
+Windows draws a yellow border around a WGC capture unless the session sets
+`IsBorderRequired(false)`, and it honours that only after the process called
+`GraphicsCaptureAccess::RequestAccessAsync(Borderless)`. Unpackaged desktop apps
+are granted this without a prompt (`Allowed`). The request runs once per
+process before the first session; window shares, window thumbnails and the WGC
+monitor fallback are all borderless. Older Windows keeps the border.
+
 ## Identity and terminal behavior
 
 `SourceRegistry::resolveWindowTarget` performs a complete window reconciliation immediately before returning an HWND. The token contains the full registry identity, including process creation, owner thread, class, and WinEvent lifetime epoch; a recycled numerical HWND therefore produces a different opaque source ID. `WindowCapture` resolves the token again after WGC creates the capture item but before publishing `running`, which closes the handle-reuse interval during startup. Capture never searches by title or process and never switches to a replacement window.

@@ -198,24 +198,26 @@ ComPtr<ID3D11VideoProcessorInputView> inputView(detail::GpuScreenConverterState&
   return view;
 }
 
-RECT evenCenterCrop(std::uint32_t input_width, std::uint32_t input_height,
-                    std::uint32_t output_width, std::uint32_t output_height) {
-  std::uint32_t crop_width = input_width;
-  std::uint32_t crop_height = input_height;
+// Scales the whole source into the profile frame, keeping its aspect ratio.
+// Windows and ultrawide monitors are letterboxed instead of losing their edges.
+RECT evenFitRect(std::uint32_t input_width, std::uint32_t input_height,
+                 std::uint32_t output_width, std::uint32_t output_height) {
+  std::uint32_t fit_width = output_width;
+  std::uint32_t fit_height = output_height;
   if (static_cast<std::uint64_t>(input_width) * output_height >
       static_cast<std::uint64_t>(input_height) * output_width) {
-    crop_width = static_cast<std::uint32_t>(static_cast<std::uint64_t>(input_height) *
-                                            output_width / output_height);
+    fit_height = static_cast<std::uint32_t>(static_cast<std::uint64_t>(input_height) *
+                                            output_width / input_width);
   } else {
-    crop_height = static_cast<std::uint32_t>(static_cast<std::uint64_t>(input_width) *
-                                             output_height / output_width);
+    fit_width = static_cast<std::uint32_t>(static_cast<std::uint64_t>(input_width) *
+                                           output_height / input_height);
   }
-  crop_width = (std::max)(2U, crop_width & ~1U);
-  crop_height = (std::max)(2U, crop_height & ~1U);
-  const auto left = ((input_width - crop_width) / 2U) & ~1U;
-  const auto top = ((input_height - crop_height) / 2U) & ~1U;
-  return {static_cast<LONG>(left), static_cast<LONG>(top), static_cast<LONG>(left + crop_width),
-          static_cast<LONG>(top + crop_height)};
+  fit_width = (std::clamp)(fit_width & ~1U, 2U, output_width);
+  fit_height = (std::clamp)(fit_height & ~1U, 2U, output_height);
+  const auto left = ((output_width - fit_width) / 2U) & ~1U;
+  const auto top = ((output_height - fit_height) / 2U) & ~1U;
+  return {static_cast<LONG>(left), static_cast<LONG>(top), static_cast<LONG>(left + fit_width),
+          static_cast<LONG>(top + fit_height)};
 }
 
 }  // namespace
@@ -359,10 +361,13 @@ std::optional<GpuNv12SlotLease> GpuScreenConverter::convert(
                                                     state_->marker_bgra.data(),
                                                     static_cast<UINT>(kScreenMarkerWidth * 4), 0);
       }
-      const auto source = evenCenterCrop(metadata.width, metadata.height, state_->profile.width,
-                                         state_->profile.height);
-      const RECT destination{0, 0, static_cast<LONG>(state_->profile.width),
-                             static_cast<LONG>(state_->profile.height)};
+      const RECT source{0, 0, static_cast<LONG>(metadata.width & ~1U),
+                        static_cast<LONG>(metadata.height & ~1U)};
+      const auto destination = evenFitRect(metadata.width, metadata.height,
+                                           state_->profile.width, state_->profile.height);
+      const D3D11_VIDEO_COLOR black{.RGBA = {0.0F, 0.0F, 0.0F, 1.0F}};
+      state_->video_context->VideoProcessorSetOutputBackgroundColor(state_->processor.Get(), FALSE,
+                                                                    &black);
       state_->video_context->VideoProcessorSetStreamFrameFormat(
           state_->processor.Get(), 0, D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE);
       state_->video_context->VideoProcessorSetStreamAutoProcessingMode(state_->processor.Get(), 0,

@@ -49,7 +49,9 @@ struct PoolSnapshot {
 // main allReferencesReleased callback may return a delivered lease.
 class SharedTexturePool final {
  public:
-  static constexpr std::size_t kSlots = 4;
+  // Every remote camera and screen shares these. A track holds about three
+  // (one unsent, one or two in the renderer), so four starved a third stream.
+  static constexpr std::size_t kSlots = 12;
   static constexpr std::size_t kGenerations = 16;
   static constexpr std::uint64_t kBudget = 256ULL * 1024 * 1024;
   static SharedTexturePool& processPool();
@@ -70,8 +72,12 @@ class SharedTexturePool final {
     SlotState state = SlotState::Free;
     TextureLease lease;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    // A GPU write that outlived the upload deadline. Its completion, never
+    // elapsed time, returns the quarantined slot to Free.
+    Microsoft::WRL::ComPtr<ID3D11Query> pending_write;
     std::chrono::steady_clock::time_point delivered_at;
   };
+  void reclaimCompletedWrites();
   SharedTexturePool() = default;
   ~SharedTexturePool();
   void clear(Slot& slot);

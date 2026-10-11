@@ -36,6 +36,8 @@ bool rapid_recycled = false;
 int rapid_attempts = 0;
 std::atomic<std::uint64_t> rendered_frames{0};
 std::atomic<std::uint64_t> close_after_frame{0};
+// "freeze" stops repainting, like a static document; "animate" resumes.
+std::atomic<bool> frozen{false};
 
 struct PairRequest {
   int first = 0;
@@ -62,6 +64,7 @@ LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wparam,
   if (window != controller_window) {
     switch (message) {
       case WM_TIMER: {
+        if (frozen.load()) return 0;
         const auto frame = rendered_frames.fetch_add(1) + 1;
         InvalidateRect(window, nullptr, FALSE);
         const auto close_at = close_after_frame.load();
@@ -304,6 +307,9 @@ void controlLoop() {
     } else if (command == "close-second") {
       SendMessageW(controller_window, kCloseSecond, 0, 0);
       acknowledge("close-second");
+    } else if (command == "freeze" || command == "animate") {
+      frozen.store(command == "freeze");
+      acknowledge(command.c_str());
     } else if (command == "hide") {
       SendMessageW(controller_window, kHide, 0, 0);
       acknowledge("hide");

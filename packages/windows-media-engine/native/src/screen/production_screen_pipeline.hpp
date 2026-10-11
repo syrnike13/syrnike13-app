@@ -117,6 +117,8 @@ class ProductionScreenPipeline final {
                                                     bool capture_stopped) noexcept;
   void createGeneration(ScreenVideoProfile profile);
   [[nodiscard]] ScreenStartResult startGeneration(std::chrono::milliseconds deadline);
+  void keepForRepeat(const capture::D3d11FrameView& frame, const capture::FrameMetadata& metadata);
+  void repeatLastFrame();
 
   std::shared_ptr<capture::D3d11DeviceOwner> device_owner_;
   std::shared_ptr<ScreenFramePipeline> capture_pipeline_;
@@ -150,6 +152,11 @@ class ProductionScreenPipeline final {
   ScreenFrameCadence cadence_;
   ScreenEncodedContinuity encoded_continuity_;
   std::int64_t minimum_capture_timestamp_100ns_ = 0;
+  // Copy of the newest submitted capture. A static screen produces no new
+  // capture frames, so it is re-encoded to keep viewers (and keyframes) alive.
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> repeat_texture_;
+  capture::FrameMetadata repeat_metadata_;
+  std::int64_t last_submit_us_ = 0;
   bool published_ = false;
   bool stop_requested_ = false;
   std::atomic_bool cancellation_requested_{false};

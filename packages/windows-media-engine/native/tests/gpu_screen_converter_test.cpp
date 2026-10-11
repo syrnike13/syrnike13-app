@@ -55,7 +55,8 @@ ComPtr<ID3D11Texture2D> solidBgra(const std::shared_ptr<D3d11DeviceOwner>& owner
 
 std::array<std::uint8_t, 3> readNv12Pixel(const std::shared_ptr<D3d11DeviceOwner>& owner,
                                           ID3D11Texture2D* source, std::uint32_t width,
-                                          std::uint32_t height) {
+                                          std::uint32_t height, std::uint32_t x = UINT32_MAX,
+                                          std::uint32_t y = UINT32_MAX) {
   D3D11_TEXTURE2D_DESC description{};
   source->GetDesc(&description);
   description.Usage = D3D11_USAGE_STAGING;
@@ -73,8 +74,8 @@ std::array<std::uint8_t, 3> readNv12Pixel(const std::shared_ptr<D3d11DeviceOwner
             "NV12 staging map failed");
   }
   const auto* bytes = static_cast<const std::uint8_t*>(mapped.pData);
-  const auto x = width / 2;
-  const auto y = height / 2;
+  if (x == UINT32_MAX) x = width / 2;
+  if (y == UINT32_MAX) y = height / 2;
   const std::array result{
       bytes[y * mapped.RowPitch + x],
       bytes[height * mapped.RowPitch + (y / 2) * mapped.RowPitch + (x & ~1U)],
@@ -188,6 +189,22 @@ void oddInputDimensionsUseAnEvenCrop() {
   require(converted.has_value(), "GPU conversion rejected an odd-sized source crop");
 }
 
+void otherAspectRatiosAreLetterboxedNotCropped() {
+  const auto owner = processD3d11Device(false);
+  GpuScreenConverter converter(owner, kScreenProfile720p30);
+  // A portrait window: 180x320 scales to 404x720, centred in 1280x720.
+  const auto source = solidBgra(owner, 180, 320, {255, 255, 255, 255});
+  const auto converted =
+      converter.convert({owner, source.Get()}, {1, 1, 180, 320, FramePixelFormat::Bgra8, 1});
+  require(converted.has_value(), "portrait conversion failed");
+  const auto luma = [&](std::uint32_t x, std::uint32_t y) {
+    return readNv12Pixel(owner, converted->texture(), 1280, 720, x, y)[0];
+  };
+  require(luma(640, 360) > 200 && luma(640, 4) > 200 && luma(640, 715) > 200,
+          "portrait source lost its top or bottom");
+  require(luma(100, 360) < 32 && luma(1180, 360) < 32, "letterbox bars are not black");
+}
+
 void gpuMarkerMatchesNeutralObserverContract() {
   const auto owner = processD3d11Device(false);
   {
@@ -218,6 +235,7 @@ int main() try {
   slotPoolIsFixedAndReturnsReleasedSlots();
   inputViewsDoNotSurviveBackendGenerations();
   oddInputDimensionsUseAnEvenCrop();
+  otherAspectRatiosAreLetterboxedNotCropped();
   gpuMarkerMatchesNeutralObserverContract();
   syrnike::windows_media::screen::tests::hardwareH264ProbeCoversFixedProfiles();
   syrnike::windows_media::screen::tests::hardwareH264EncoderProducesBoundedAnnexBOutput();

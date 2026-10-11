@@ -13,6 +13,10 @@ std::chrono::milliseconds remaining(std::chrono::steady_clock::time_point deadli
   return std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
 }
 
+// A static screen is re-encoded this often, so a viewer who joins (or loses a
+// packet) while nothing moves still gets a keyframe without waiting for motion.
+constexpr std::int64_t kStaticRepeatIntervalUs = 250'000;
+
 ScreenPublicationFailure encoderFailure(const HardwareH264Failure& failure) {
   return {failure.code, failure.message, failure.stage, false,
           failure.utility_epoch_retirement_required};
@@ -232,7 +236,10 @@ void ProductionScreenPipeline::run() noexcept {
       }
 
       auto capture = capture_pipeline_->waitForFrame(std::chrono::milliseconds{2});
-      if (!capture) continue;
+      if (!capture) {
+        repeatLastFrame();
+        continue;
+      }
       const auto metadata = capture->metadata();
       // Fence leases acquired before drain but submitted after restart.
       if (metadata.capture_timestamp_100ns < minimum_capture_timestamp_100ns_) {
@@ -288,6 +295,8 @@ void ProductionScreenPipeline::run() noexcept {
         continue;
       }
       cadence_.accepted(timestamp_us, frame_interval_us);
+      last_submit_us_ = timestamp_us;
+      keepForRepeat(*d3d, metadata);
       capture->release();
     }
   } catch (const std::exception& error) {
@@ -311,6 +320,7 @@ void ProductionScreenPipeline::run() noexcept {
     state_ = ProductionScreenPipelineState::failed;
     stop_requested_ = true;
   }
+  repeat_texture_.Reset();
   if (owns_preview_) LocalScreenPreview::processPreview().stopPublication();
   (void)capture_pipeline_->stop(std::chrono::steady_clock::now());
   if (sender_) (void)sender_->stop(generation_);
@@ -319,6 +329,47 @@ void ProductionScreenPipeline::run() noexcept {
     worker_done_ = true;
     worker_changed_.notify_all();
   }
+}
+
+void ProductionScreenPipeline::keepForRepeat(const capture::D3d11FrameView& frame,
+                                             const capture::FrameMetadata& metadata) {
+  D3D11_TEXTURE2D_DESC source{};
+  frame.texture->GetDesc(&source);
+  if (!repeat_texture_ || repeat_metadata_.width != metadata.width ||
+      repeat_metadata_.height != metadata.height) {
+    repeat_texture_.Reset();
+    D3D11_TEXTURE2D_DESC description{};
+    description.Width = metadata.width;
+    description.Height = metadata.height;
+    description.MipLevels = 1;
+    description.ArraySize = 1;
+    description.Format = source.Format;
+    description.SampleDesc.Count = 1;
+    description.Usage = D3D11_USAGE_DEFAULT;
+    description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    if (FAILED(device_owner_->device()->CreateTexture2D(&description, nullptr, &repeat_texture_)))
+      return;
+  }
+  const D3D11_BOX box{0, 0, 0, metadata.width, metadata.height, 1};
+  std::lock_guard context_lock(device_owner_->contextMutex());
+  device_owner_->context()->CopySubresourceRegion(repeat_texture_.Get(), 0, 0, 0, 0, frame.texture,
+                                                  0, &box);
+  repeat_metadata_ = metadata;
+}
+
+void ProductionScreenPipeline::repeatLastFrame() {
+  if (!repeat_texture_) return;
+  const auto now_us = screenSteadyTimestamp100ns() / 10;
+  if (now_us - last_submit_us_ < kStaticRepeatIntervalUs) return;
+  const auto now_ms = static_cast<std::uint64_t>(now_us / 1000);
+  if (adapter_ && screenPacketQueueBackpressured(adapter_->networkObservation(), now_ms)) return;
+  const auto frame_interval_us = static_cast<std::int64_t>(1'000'000 / profile_.frames_per_second);
+  auto metadata = repeat_metadata_;
+  metadata.capture_timestamp_100ns = now_us * 10;
+  auto converted = converter_->convert({device_owner_, repeat_texture_.Get()}, metadata);
+  if (!converted || !encoder_->submit(std::move(*converted), now_us, frame_interval_us)) return;
+  cadence_.accepted(now_us, frame_interval_us);
+  last_submit_us_ = now_us;
 }
 
 ScreenCommandResult ProductionScreenPipeline::stop(
