@@ -327,8 +327,14 @@ void ScreenOwner::run() noexcept {
         auto frame = monitor ? monitor->waitForFrame(0ms) : window->waitForFrame(0ms);
         if (frame) (void)frames->submit(std::move(*frame));
         if (window) {
-          for (std::size_t count = 0; count < capture::kMaximumWindowEvents; ++count)
-            if (!window->waitForEvent(0ms)) break;
+          for (std::size_t count = 0; count < capture::kMaximumWindowEvents; ++count) {
+            const auto event = window->waitForEvent(0ms);
+            if (!event) break;
+            if (event->kind == capture::WindowCaptureEventKind::TemporarilyNoContent)
+              pipeline->setPaused(true);
+            else if (event->kind == capture::WindowCaptureEventKind::ContentRestored)
+              pipeline->setPaused(false);
+          }
         }
         const auto capture_failure = monitor ? monitor->terminalFailure() : window->terminalFailure();
         if (capture_failure)

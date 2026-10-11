@@ -344,7 +344,24 @@ try {
   fixture.stdin.write('freeze\n')
   await sleep(2000)
   report.windowShare.lateViewer = await bot('late-viewer', 'bench-a', ['--seconds', '5', '--watch', self]).done
+  // Nothing reaches the compositor, not even a repaint: like a stuck WGC
+  // session. The backend asks for a repaint, then recreates the session,
+  // whose first frame proves the capture alive.
+  fixture.stdin.write('stall\n')
+  await sleep(1000)
+  const stallStarted = { ...metrics.screen_video_metrics }
+  await sleep(12_000)
+  report.windowShare.stalledCaptureFrames =
+    (metrics.screen_video_metrics?.capture_frames ?? 0) - (stallStarted.capture_frames ?? 0)
   fixture.stdin.write('animate\n')
+  // The shared window is minimized and restored: viewers see the track
+  // muted (a paused stream) and unmuted, then frames again.
+  const pauseViewer = bot('pause-viewer', 'bench-a', ['--seconds', '7', '--watch', self])
+  await sleep(2000)
+  fixture.stdin.write('minimize\n')
+  await sleep(2000)
+  fixture.stdin.write('restore\n')
+  report.windowShare.pauseViewer = await pauseViewer.done
   // The shared window turns portrait: the stream follows its aspect ratio on
   // the same track, and a watching viewer keeps receiving frames.
   const resizeViewer = bot('resize-viewer', 'bench-a', ['--seconds', '6', '--watch', self])

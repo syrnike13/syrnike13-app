@@ -38,6 +38,9 @@ std::atomic<std::uint64_t> rendered_frames{0};
 std::atomic<std::uint64_t> close_after_frame{0};
 // "freeze" stops repainting, like a static document; "animate" resumes.
 std::atomic<bool> frozen{false};
+// "stall" also ignores repaint requests, like a stuck capture session or a
+// paused fullscreen game: no new content reaches the compositor at all.
+std::atomic<bool> stalled{false};
 
 struct PairRequest {
   int first = 0;
@@ -78,6 +81,10 @@ LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wparam,
       case WM_ERASEBKGND:
         return 1;
       case WM_PAINT: {
+        if (stalled.load()) {
+          ValidateRect(window, nullptr);
+          return 0;
+        }
         PAINTSTRUCT paint{};
         const HDC context = BeginPaint(window, &paint);
         RECT bounds{};
@@ -307,8 +314,9 @@ void controlLoop() {
     } else if (command == "close-second") {
       SendMessageW(controller_window, kCloseSecond, 0, 0);
       acknowledge("close-second");
-    } else if (command == "freeze" || command == "animate") {
-      frozen.store(command == "freeze");
+    } else if (command == "freeze" || command == "animate" || command == "stall") {
+      frozen.store(command != "animate");
+      stalled.store(command == "stall");
       acknowledge(command.c_str());
     } else if (command == "hide") {
       SendMessageW(controller_window, kHide, 0, 0);

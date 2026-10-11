@@ -154,6 +154,7 @@ export class MediaFrameController {
     this.send(`syrnike-desktop:media:remote-video-publication-${action}`, {
       sessionId: this.sessionId, generation: this.epoch, trackId: publication.publicationId,
       participantIdentity: publication.participantIdentity, source: publication.source,
+      muted: publication.muted,
     })
   }
   private retireEpoch() {
@@ -233,8 +234,10 @@ export class MediaFrameController {
             this.publish('unavailable', publication)
             this.demanded.delete(publication.publicationId)
           }
-        for (const publication of next)
-          if (!this.publications.some(value => value.publicationId === publication.publicationId)) this.publish('available', publication)
+        for (const publication of next) {
+          const known = this.publications.find(value => value.publicationId === publication.publicationId)
+          if (!known || known.muted !== publication.muted) this.publish('available', publication)
+        }
         this.publications = next
         for (const [key, failure] of this.presentationFailures) {
           if (failure.path === 'remote_video' && !next.some(value => value.publicationId === failure.publicationId))

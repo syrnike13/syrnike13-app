@@ -151,7 +151,7 @@ export function buildStageItems(options: {
       publication: {
         backend: 'native',
         source,
-        isMuted: false,
+        isMuted: publication.muted === true,
         isSubscribed: demanded,
         setSubscribed: (nextDemanded) => {
           void options.setNativeDemand(
@@ -163,7 +163,7 @@ export function buildStageItems(options: {
         },
       },
       subscribed: demanded,
-      live: true,
+      live: publication.muted !== true,
       error: demanded ? publication.error ?? undefined : undefined,
     })
   }

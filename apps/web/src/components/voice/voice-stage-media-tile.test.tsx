@@ -251,6 +251,21 @@ describe('StageMediaTile', () => {
     expect(document.querySelector('video')).toBeTruthy()
   })
 
+  it('shows a paused stream instead of a frozen frame while the sharer is paused', () => {
+    render(
+      <StageMediaTile
+        item={{ ...screenItemWithTrack, live: false }}
+        displayName="Remote User"
+        variant="grid"
+        onFocus={vi.fn()}
+        onSetSubscribed={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Трансляция на паузе')).toBeTruthy()
+    expect(document.querySelector('video')).toBeNull()
+  })
+
   it('keeps strip avatars compact instead of filling the tile', () => {
     render(
       <StageMediaTile

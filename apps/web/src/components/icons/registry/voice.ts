@@ -93,6 +93,11 @@ export const MonitorXIcon = defineIcon(
   },
 )
 
+export const PauseIcon = defineIcon(iconifyIcon('lucide:pause'), {
+  pack: 'iconify',
+  name: 'lucide:pause',
+})
+
 export const SignalIcon = defineIcon(iconifyIcon('lucide:signal'), {
   pack: 'iconify',
   name: 'lucide:signal',

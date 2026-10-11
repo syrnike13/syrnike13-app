@@ -37,6 +37,8 @@ const NativeVideoPublicationMetadataSchema = Schema.Struct({
   source: Schema.Literals(['camera', 'screen']),
   sessionId: Schema.String,
   generation: Schema.Int,
+  // The sender paused the stream (its shared window is minimized).
+  muted: Schema.optional(Schema.Boolean),
 })
 
 const OptionalNonNegativeInteger = Schema.optional(
@@ -163,6 +165,7 @@ type PublicationEntry = {
   trackId: string
   participantIdentity: string
   source: NativeVideoSource
+  muted?: boolean
   error: string | null
   adapter: NativeVideoTrackAdapter
 }

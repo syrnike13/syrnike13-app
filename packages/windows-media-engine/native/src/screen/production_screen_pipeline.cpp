@@ -462,8 +462,20 @@ void ProductionScreenPipeline::keepForRepeat(const capture::D3d11FrameView& fram
   repeat_metadata_ = metadata;
 }
 
+void ProductionScreenPipeline::setPaused(bool paused) {
+  if (paused_.exchange(paused) == paused) return;
+  std::shared_ptr<ScreenPublicationAdapter> adapter;
+  {
+    std::scoped_lock lock(mutex_);
+    adapter = adapter_;
+    // A viewer who joined during the pause has no picture yet.
+    if (!paused && keyframe_intents_) keyframe_intents_->fetch_add(1);
+  }
+  if (adapter) adapter->setPaused(paused);
+}
+
 void ProductionScreenPipeline::repeatLastFrame() {
-  if (!repeat_texture_) return;
+  if (!repeat_texture_ || paused_.load()) return;
   const auto now_us = screenSteadyTimestamp100ns() / 10;
   if (now_us - last_submit_us_ < kStaticRepeatIntervalUs) return;
   const auto now_ms = static_cast<std::uint64_t>(now_us / 1000);

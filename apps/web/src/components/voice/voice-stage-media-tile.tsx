@@ -4,6 +4,7 @@ import {
   Maximize2Icon,
   MonitorIcon,
   MonitorXIcon,
+  PauseIcon,
 } from '#/components/icons'
 import type { User } from '@syrnike13/api-types'
 
@@ -160,6 +161,33 @@ function LoadingScreenStreamTile({
   )
 }
 
+function PausedScreenStreamTile({
+  displayName,
+  variant,
+}: {
+  displayName: string
+  variant: StageMediaTileVariant
+}) {
+  return (
+    <>
+      <div className={screenStreamSurfaceClass} aria-hidden />
+
+      <div
+        className={cn(
+          'absolute inset-0 flex flex-col items-center justify-center gap-1 text-center text-muted-foreground',
+          variant === 'strip' ? 'p-1.5 text-xs' : 'p-3 text-sm',
+        )}
+        role="status"
+      >
+        <PauseIcon className={variant === 'strip' ? 'size-4' : 'size-6'} aria-hidden />
+        <span>Трансляция на паузе</span>
+      </div>
+
+      <ScreenStreamOwnerLabel displayName={displayName} variant={variant} />
+    </>
+  )
+}
+
 function FailedScreenStreamTile({
   displayName,
   error,
@@ -226,10 +254,13 @@ export function StageMediaTile({
     isScreen && !isFailedScreen && !item.isLocal && item.subscribed === false
   const isLoadingScreen =
     isScreen && !isFailedScreen && !isUnsubscribedScreen && !item.track
+  // The sharer minimized or hid the shared window (its track is muted).
+  const isPausedScreen =
+    isScreen && !isFailedScreen && !isUnsubscribedScreen && !item.isLocal && !item.live
   const isScreenPlaceholder =
-    isFailedScreen || isUnsubscribedScreen || isLoadingScreen
+    isFailedScreen || isUnsubscribedScreen || isLoadingScreen || isPausedScreen
   const hasVideo = Boolean(
-    item.track && !isFailedScreen && !isUnsubscribedScreen,
+    item.track && !isFailedScreen && !isUnsubscribedScreen && !isPausedScreen,
   )
   const fit =
     variant === 'focus'
@@ -332,6 +363,8 @@ export function StageMediaTile({
               variant={variant}
               onSubscribe={() => onSetSubscribed(item.id, true)}
             />
+          ) : isPausedScreen ? (
+            <PausedScreenStreamTile displayName={displayName} variant={variant} />
           ) : isLoadingScreen ? (
             <LoadingScreenStreamTile
               displayName={displayName}

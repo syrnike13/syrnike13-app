@@ -251,6 +251,8 @@ export const MediaInventorySchema = Schema.Struct({
       participantIdentity: identifierSchema,
       publicationId: identifierSchema,
       source: Schema.Literals(['camera', 'screen']),
+      // The sender muted the track: its shared window is minimized or hidden.
+      muted: Schema.Boolean,
     })).check(Schema.isMaxLength(MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS)),
   }),
 })

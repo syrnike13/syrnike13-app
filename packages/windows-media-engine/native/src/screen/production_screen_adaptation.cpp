@@ -239,6 +239,7 @@ void ProductionScreenPipeline::reconfigure(std::size_t target, std::uint64_t rev
   old_converter.reset();
   const auto& p = kAdaptiveScreenProfiles[target];
   createGeneration({p.width, p.height, p.fps, p.target_bitrate});
+  if (paused_.load()) adapter_->setPaused(true);
   minimum_capture_timestamp_100ns_ = screenSteadyTimestamp100ns();
   if (!capture_pipeline_->restart())
     throw std::runtime_error("Capture frame generation did not restart after drain");

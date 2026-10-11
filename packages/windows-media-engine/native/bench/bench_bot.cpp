@@ -40,6 +40,18 @@ Options parse(int argc, char** argv) {
   return options;
 }
 
+// Counts the watched sharer's track mute/unmute (a paused window share).
+struct MuteWatch final : livekit::RoomDelegate {
+  std::string identity;
+  std::atomic<int> muted{0}, unmuted{0};
+  void onTrackMuted(livekit::Room&, const livekit::TrackMutedEvent& event) override {
+    if (event.participant && event.participant->identity() == identity) ++muted;
+  }
+  void onTrackUnmuted(livekit::Room&, const livekit::TrackUnmutedEvent& event) override {
+    if (event.participant && event.participant->identity() == identity) ++unmuted;
+  }
+};
+
 struct WatchStats {
   std::mutex mutex;
   std::uint64_t frames = 0;
@@ -64,6 +76,9 @@ int main(int argc, char** argv) {
     livekit::Room room;
     livekit::RoomOptions room_options;
     room_options.auto_subscribe = !options.watch.empty();
+    MuteWatch mute_watch;
+    mute_watch.identity = options.watch;
+    room.setDelegate(&mute_watch);
     const auto connect_started = Clock::now();
     if (!room.connect(options.url, options.token, room_options)) {
       std::fprintf(stderr, "connect failed\n");
@@ -172,12 +187,13 @@ int main(int argc, char** argv) {
         ? std::chrono::duration<double, std::milli>(watch.first - connected_at).count() : -1;
     std::printf("{\"connectMs\":%.1f,\"firstFrameMs\":%.1f,\"watchFrames\":%llu,\"watchFps\":%.2f,\"watchWidth\":%d,"
                 "\"watchHeight\":%d,\"watchMaxWidth\":%d,\"watchMaxHeight\":%d,\"watchSmallFrames\":%llu,"
-                "\"watchMaxGapMs\":%.1f,\"watchGapsOver100ms\":%llu}\n",
+                "\"watchMaxGapMs\":%.1f,\"watchGapsOver100ms\":%llu,\"watchMuted\":%d,\"watchUnmuted\":%d}\n",
                 connect_ms, first_frame_ms, static_cast<unsigned long long>(watch.frames),
                 watched_s > 0 ? static_cast<double>(watch.frames - 1) / watched_s : 0.0,
                 watch.width, watch.height, watch.max_width, watch.max_height,
                 static_cast<unsigned long long>(watch.small_frames), watch.max_gap_ms,
-                static_cast<unsigned long long>(watch.gaps_over_100ms));
+                static_cast<unsigned long long>(watch.gaps_over_100ms), mute_watch.muted.load(),
+                mute_watch.unmuted.load());
     std::fflush(stdout);
   }
   livekit::shutdown();

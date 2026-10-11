@@ -69,9 +69,28 @@ This keeps old-size frames observable only through their old generation token an
 
 ## Minimize and hidden windows
 
-WGC does not provide a terminal signal for an ordinary period without frames. A joinable, capture-owned observer reports `temporarily_no_content` from explicit Win32 minimized/visibility state and `content_restored` when that state clears; it does not infer failure from an arbitrary frame timeout and never restarts the capture session. WGC may also expose a transient minimized content size, which is handled as an ordinary fenced resize without publishing mixed-size frames.
+WGC does not provide a terminal signal for an ordinary period without frames. A joinable, capture-owned observer reports `temporarily_no_content` from explicit Win32 minimized/visibility state and `content_restored` when that state clears; a missing frame is never terminal. WGC may also expose a transient minimized content size, which is handled as an ordinary fenced resize without publishing mixed-size frames.
 
 The observer waits on a condition variable with a 25 ms bound and is joined before session teardown. It captures shared state rather than a raw backend pointer. A minimized or hidden window can remain without frames indefinitely; only close or a typed platform error is terminal.
+
+In the product share, `temporarily_no_content` mutes the published track and
+stops static-frame repeats; `content_restored` unmutes it and requests a
+keyframe. Viewers see the mute as a paused stream ("Трансляция на паузе")
+rather than a frozen frame, the same signal a LiveKit browser viewer gets.
+
+## Stale sessions
+
+A WGC session can stop delivering frames while its window is shown (Discord
+logs `stale frame, asking for repaint` and `stale frame, resetting`). The
+observer does the same: after 2 s without a frame from a shown, non-hung
+window it calls `RedrawWindow(RDW_INVALIDATE | RDW_ALLCHILDREN)`, which only
+invalidates and never waits for the target thread. A repainting window answers
+with a frame. Without one within 1 s, the frame pool and session are recreated
+for the same item and frame handler (at most every 10 s, only with no leased
+frames); a new session always delivers a first frame. A pool cannot host a
+second session after its first was closed: recreating only the session left
+the capture dead. The fixture's `stall` command ignores repaints, so only the
+reset produces frames; the bench measures them.
 
 ## Fixture and tests
 

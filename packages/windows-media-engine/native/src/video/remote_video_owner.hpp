@@ -8,6 +8,8 @@ namespace syrnike::windows_media::video {
 struct RemoteVideoPublication {
   std::string participant_identity, publication_id;
   bool screen = false;
+  // The sender muted the track: a shared window is minimized or hidden.
+  bool muted = false;
   bool operator==(const RemoteVideoPublication&) const = default;
 };
 struct RemoteVideoOwnerSnapshot {
@@ -37,6 +39,8 @@ class RemoteVideoOwner final : public LiveKitRoomObserver {
   void onTrackUnpublished(livekit::Room&, const livekit::TrackUnpublishedEvent&) override;
   void onTrackSubscribed(livekit::Room&, const livekit::TrackSubscribedEvent&) override;
   void onTrackUnsubscribed(livekit::Room&, const livekit::TrackUnsubscribedEvent&) override;
+  void onTrackMuted(livekit::Room&, const livekit::TrackMutedEvent&) override;
+  void onTrackUnmuted(livekit::Room&, const livekit::TrackUnmutedEvent&) override;
   void onParticipantDisconnected(livekit::Room&, const livekit::ParticipantDisconnectedEvent&) override;
  private:
   struct Publication {
@@ -45,6 +49,7 @@ class RemoteVideoOwner final : public LiveKitRoomObserver {
     std::shared_ptr<livekit::Track> track;
   };
   using Owners = std::map<std::string, std::shared_ptr<RemoteVideoTrack>>;
+  void setMuted(livekit::Room&, const livekit::TrackPublication*, bool muted);
   void addPublication(std::string_view participant, std::shared_ptr<livekit::RemoteTrackPublication>);
   void run() noexcept;
   mutable std::mutex mutex_;

@@ -107,6 +107,8 @@ class ProductionScreenPipeline final {
   // Before start(): the first capture's size, so the stream starts at its
   // aspect ratio instead of switching on the first frame.
   void setInitialSourceSize(std::uint32_t width, std::uint32_t height);
+  // The shared window is minimized or hidden: mute the track, stop repeats.
+  void setPaused(bool paused);
   [[nodiscard]] ScreenStartResult start(std::string track_name, std::chrono::milliseconds deadline);
   // Pure admission revocation. Owner-thread stop() still proves full drain.
   void requestStop() noexcept;
@@ -173,6 +175,7 @@ class ProductionScreenPipeline final {
   Microsoft::WRL::ComPtr<ID3D11Texture2D> repeat_texture_;
   capture::FrameMetadata repeat_metadata_;
   std::int64_t last_submit_us_ = 0;
+  std::atomic_bool paused_{false};
   bool published_ = false;
   bool stop_requested_ = false;
   std::atomic_bool cancellation_requested_{false};

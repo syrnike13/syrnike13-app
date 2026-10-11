@@ -74,6 +74,9 @@ class ScreenPublicationAdapter {
                            ScreenOperationCompletion completion) = 0;
   virtual void startUnpublish(std::uint64_t generation,
                               ScreenOperationCompletion completion) = 0;
+  // Mutes the published track while the shared window has no content, so
+  // viewers show a paused stream instead of a frozen frame.
+  virtual void setPaused(bool) {}
 };
 
 enum class ScreenPublicationState { Idle, Publishing, Published, Stopping, Failed };

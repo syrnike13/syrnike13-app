@@ -31,6 +31,8 @@ using winrt::Windows::Graphics::Capture::GraphicsCaptureItem;
 using winrt::Windows::Graphics::Capture::GraphicsCaptureSession;
 using winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 using winrt::Windows::Graphics::DirectX::DirectXPixelFormat;
+using FrameHandler = winrt::Windows::Foundation::TypedEventHandler<
+    Direct3D11CaptureFramePool, winrt::Windows::Foundation::IInspectable>;
 using DxgiInterfaceAccess =
     ::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess;
 using detail::WgcDeviceState;
@@ -75,13 +77,87 @@ struct WindowBackendState {
   GraphicsCaptureSession session{nullptr};
   winrt::event_token frame_arrived_token{};
   winrt::event_token closed_token{};
+  FrameHandler frame_handler{nullptr};
   std::thread observer;
   std::optional<CaptureFailure> stop_failure;
   WgcWindowCaptureDiagnostics diagnostics;
   std::shared_ptr<WgcWindowCaptureTestHooks> test_hooks;
   std::uint32_t maximum_width = 0, maximum_height = 0;
   std::uint32_t frame_pool_size = kMaximumWindowFrames + 1;
+  bool include_cursor = true;
+  std::chrono::microseconds min_update_interval{0};
+  std::atomic<std::int64_t> last_frame_ns{0};
 };
+
+std::int64_t steadyNs() {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
+void configureSession(const GraphicsCaptureSession& session, bool include_cursor,
+                      std::chrono::microseconds min_update_interval) {
+  if (!include_cursor) session.IsCursorCaptureEnabled(false);
+  detail::disableCaptureBorder(session);
+  detail::limitCaptureRate(session, min_update_interval);
+}
+
+// Observer thread. Replaces the frame pool and session for the same item,
+// with the same frame handler; a new session always delivers a first frame.
+void resetWindowSession(const std::shared_ptr<WindowBackendState>& state) noexcept {
+  try {
+    ensureRoInitialized();
+    GraphicsCaptureItem item{nullptr};
+    FrameHandler handler{nullptr};
+    IDirect3DDevice device{nullptr};
+    SizeInt32 size{};
+    int pool_size = 1;
+    {
+      std::lock_guard lock(state->mutex);
+      // Leased frames still reference the old pool's surfaces.
+      if (!state->active || state->stop_requested.load() ||
+          state->live_engine_resources->load() != 0)
+        return;
+      item = state->item;
+      handler = state->frame_handler;
+      device = state->direct3d_device;
+      size = {static_cast<std::int32_t>(state->width), static_cast<std::int32_t>(state->height)};
+      pool_size = static_cast<int>(state->frame_pool_size);
+    }
+    if (!item || !handler || !device) return;
+    auto pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
+        device, DirectXPixelFormat::B8G8R8A8UIntNormalized, pool_size, size);
+    const auto token = pool.FrameArrived(handler);
+    auto session = pool.CreateCaptureSession(item);
+    configureSession(session, state->include_cursor, state->min_update_interval);
+    Direct3D11CaptureFramePool old_pool{nullptr};
+    GraphicsCaptureSession old_session{nullptr};
+    winrt::event_token old_token{};
+    {
+      // No frame callback runs while the pools are swapped and the old closed.
+      std::lock_guard serial(state->callback_serial_mutex);
+      {
+        std::lock_guard lock(state->mutex);
+        if (!state->active || state->stop_requested.load()) {
+          pool.FrameArrived(token);
+          session.Close();
+          pool.Close();
+          return;
+        }
+        old_pool = std::exchange(state->frame_pool, pool);
+        old_session = std::exchange(state->session, session);
+        old_token = std::exchange(state->frame_arrived_token, token);
+        ++state->diagnostics.stale_session_resets;
+      }
+      if (old_pool) old_pool.FrameArrived(old_token);
+      if (old_session) old_session.Close();
+      if (old_pool) old_pool.Close();
+    }
+    session.StartCapture();
+  } catch (...) {
+    // The next stale period tries again; close and stop still own cleanup.
+  }
+}
 
 template <typename State>
 class CallbackGuard final {
@@ -214,6 +290,7 @@ void finalizeWindowResources(
     }
   }
   state->on_frame = {};
+  state->frame_handler = nullptr;
   state->on_event = {};
   state->on_terminal = {};
   state->test_hooks.reset();
@@ -266,6 +343,8 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
     state_->maximum_width = options_.maximum_width;
     state_->maximum_height = options_.maximum_height;
     state_->frame_pool_size = options_.frame_pool_size;
+    state_->include_cursor = options_.include_cursor;
+    state_->min_update_interval = options_.min_update_interval;
   }
 
   ~WgcWindowCaptureBackendImpl() override {
@@ -324,13 +403,11 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
       startup_operation = "Direct3D11CaptureFramePool::CreateCaptureSession";
       auto session = frame_pool.CreateCaptureSession(item);
       startup_operation = "GraphicsCaptureSession::IsCursorCaptureEnabled";
-      if (!options_.include_cursor) session.IsCursorCaptureEnabled(false);
-      detail::disableCaptureBorder(session);
-      detail::limitCaptureRate(session, options_.min_update_interval);
+      configureSession(session, options_.include_cursor, options_.min_update_interval);
 
       const std::weak_ptr weak = state_;
       startup_operation = "Direct3D11CaptureFramePool::FrameArrived";
-      const auto frame_token = frame_pool.FrameArrived(
+      const FrameHandler frame_handler{
           [weak](const Direct3D11CaptureFramePool& sender,
                  const winrt::Windows::Foundation::IInspectable&) {
             const auto state = weak.lock();
@@ -347,6 +424,7 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
             try {
               auto frame = sender.TryGetNextFrame();
               if (!frame) return;
+              state->last_frame_ns.store(steadyNs());
               if (state->test_hooks &&
                   state->test_hooks->before_frame_visibility_check) {
                 state->test_hooks->before_frame_visibility_check();
@@ -489,7 +567,8 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
             } catch (const std::exception& error) {
               sendWindowTerminal(state, {"wgc_frame_failed", error.what()});
             }
-          });
+          }};
+      const auto frame_token = frame_pool.FrameArrived(frame_handler);
       startup_operation = "GraphicsCaptureItem::Closed";
       const auto closed_token = item.Closed(
           [weak](const GraphicsCaptureItem&,
@@ -526,6 +605,7 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
         state_->frame_pool = frame_pool;
         state_->session = session;
         state_->frame_arrived_token = frame_token;
+        state_->frame_handler = frame_handler;
         state_->closed_token = closed_token;
         state_->window = window;
         state_->width = static_cast<std::uint32_t>(initial_size.Width);
@@ -539,9 +619,12 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
       {
         std::lock_guard lock(state_->mutex);
         if (!state_->stop_requested.load()) {
+          state_->last_frame_ns.store(steadyNs());
           state_->observer = std::thread([weak] {
             const auto state = weak.lock();
             if (!state) return;
+            using std::chrono::nanoseconds;
+            std::int64_t repaint_ns = 0, last_reset_ns = 0;
             std::unique_lock lock(state->mutex);
             while (!state->stop_requested.load()) {
               state->observer_condition.wait_for(
@@ -576,6 +659,26 @@ class WgcWindowCaptureBackendImpl final : public WgcWindowCaptureBackend {
                 sendWindowEvent(state, WindowBackendEvent{
                     event_kind, generation, width, height,
                     steadyTimestamp100ns()});
+              }
+              // A hung window cannot repaint and a new session would not help.
+              const auto now = steadyNs();
+              const auto last_frame = state->last_frame_ns.load();
+              if (no_content || IsHungAppWindow(observed) != FALSE || (repaint_ns && repaint_ns < last_frame)) {
+                repaint_ns = 0;
+              } else if (!repaint_ns &&
+                         nanoseconds{now - last_frame} >= kWindowStaleRepaintAfter) {
+                // Asynchronous: invalidation never waits for the target thread.
+                RedrawWindow(observed, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+                repaint_ns = now;
+                std::lock_guard count(state->mutex);
+                ++state->diagnostics.stale_repaints;
+              } else if (repaint_ns &&
+                         nanoseconds{now - repaint_ns} >= kWindowStaleResetAfterRepaint &&
+                         (!last_reset_ns ||
+                          nanoseconds{now - last_reset_ns} >= kWindowStaleResetInterval)) {
+                resetWindowSession(state);
+                last_reset_ns = now;
+                repaint_ns = 0;
               }
               lock.lock();
             }
