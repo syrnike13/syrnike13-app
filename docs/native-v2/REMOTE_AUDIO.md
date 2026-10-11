@@ -23,6 +23,9 @@ flowchart LR
 
 1. Apply control changes: subscribe/unsubscribe, create/destroy SDK readers,
    volumes and mutes, deafen, the selected device (or the multimedia default).
+   Listener volume and mute are keyed by user id and apply to every Room
+   identity (`voice:v1|engine|instance|epoch|operation|userId`) of that user.
+   A changed gain ramps across one 10 ms frame instead of stepping.
 2. Drain every `FreshAudioStream` into its track's jitter buffer and update
    speaker activity from decoded microphone PCM.
 3. While the device buffer has room for a 10 ms frame, mix one frame from every
@@ -63,8 +66,11 @@ device gets a new process-unique renderer epoch for the echo reference.
 
 `remote_audio_ingress_metrics`: decoded, SDK dropped/stale/discontinuities,
 jitter underruns/overruns/trimmed, readers. `remote_audio_output_metrics`:
-rendered frames, device starved, late wakes, device opens, estimated latency
-(device latency + 20 ms buffer + deepest jitter queue), device open.
+rendered frames, device starved, late wakes, device opens, latency, device open.
+Latency is the delay after the SDK: the oldest decoded-ingress age plus jitter
+queue, the device buffer and the device latency. The same value goes to
+`livekit::setAudioPlayoutDelay`, so WebRTC's audio/video synchronization
+accounts for it.
 
 ## Measurements
 

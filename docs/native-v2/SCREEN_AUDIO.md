@@ -28,7 +28,7 @@ flowchart LR
   W[Windows process loopback owner] -->|copy and release Windows packet| P[480-frame packetizer]
   P --> Q[8 owned PCM packets]
   Q --> A[Independent screen-audio publication]
-  A --> S[SDK 10 ms clocked source / at most 2 PCM packets]
+  A --> S[Unbuffered SDK source: frame enters WebRTC on the sender worker]
   S --> O[Neutral audio observer]
   V[Screen-video owner] --> VP[Screen-video publication]
 ```
@@ -53,18 +53,48 @@ The first sample's `IAudioCaptureClient::GetBuffer` QPC position is already in
 Windows this shares the QPC clock used by screen capture and `steady_clock`.
 No wall-clock offset or extra queue is used to correct A/V drift.
 
-The SDK source uses its fixed 10 ms clocked mode: its native storage is bounded
-to two 10 ms packets and it emits silence when input is absent. The zero-buffer
-mode was rejected by the slow-ingress observer test because stopping its audio
-clock caused persistent receiver delay after capture resumed. No buffer grows
-to smooth drift. After a publication-worker gap over 100 ms, the ingress queue
-discards all but the latest packet; freshness is checked again immediately
-before the SDK call. The SDK callback deadline is 500 ms, with an explicit typed
-timeout and utility-retirement requirement if native completion is uncertain.
-The product all-media run observed a successful callback after 155 ms; the old
-100 ms completion wait treated that delay as terminal. This deadline bounds the
-calling worker, not the audio queue: clocked storage and input-age rejection
-remain unchanged. Numeric telemetry records maximum callback wait separately.
+The SDK source is unbuffered (`queue_size_ms = 0`), like the microphone, and
+the loopback device clocks the stream. Since SDK `v1.10.0-syrnike.17`
+`captureFrame` hands an unbuffered frame to WebRTC on the calling worker, with
+no SDK runtime task or completion callback, so CPU load elsewhere cannot stall
+it. The earlier 10 ms clocked mode ran its own timer: it inserted 10 ms of
+silence whenever a packet was late and blocked the worker when two arrived
+together, after which the backlog guard discarded PCM. A real session measured
+98 ms callback waits, up to 244 discarded packets per 12 s and 118 ms packet
+age, heard by viewers as crackling and lag.
+
+The queue is FIFO: a backlog after a worker stall drains at once. WebRTC
+advances the RTP clock by the samples it receives, and its sender reports map
+that clock to capture time, so a gap in capture timestamps (stale or lost
+packets) is filled with silent frames, at most 50, before the next packet.
+Without them the audio would lag its screen video permanently at every
+receiver; `silence_filled` counts them. Packets older than 100 ms are still
+rejected at admission and before the SDK call. Capture and sender threads run
+in the MMCSS "Audio" class. The SDK call keeps its 500 ms deadline and typed
+timeout; telemetry records the maximum call duration as `maximum_callback_wait_us`.
+
+The publication is stereo Opus: `TrackPublishOptions::stereo` sets `TF_STEREO`,
+so the server answers the publisher and offers subscribers `stereo=1`.
+
+## Audio/video synchronization
+
+Receivers synchronize screen audio with screen video in WebRTC itself, as
+browsers and Discord do:
+
+- The LiveKit fork enables `room.sync_streams` by default, so a sender's screen
+  video and screen audio (and camera and microphone) share one sync group. LiveKit
+  then stops reusing subscriber transceivers.
+- Screen video capture times are converted from QPC to WebRTC's clock
+  (`timeGetTime()` on Windows, about 30 ms apart from QPC after a day of uptime)
+  before they reach the SDK; they anchor the video sender reports.
+- Remote playout reports the delay it adds after the SDK (decoded-ingress queue,
+  jitter buffer, output device) through `livekit::setAudioPlayoutDelay`; the
+  synthetic audio device returns it as `PlayoutDelay`, which WebRTC subtracts
+  from the audio playout position.
+
+`bench/call-bench.mjs` measures it with a bot sender whose frames are stamped
+150 ms early: the viewer's `estimatedPlayoutTimestamp` difference stays within
+10–40 ms.
 
 ## Independent lifecycle
 
@@ -92,6 +122,6 @@ References: [process-tree semantics and minimum build](https://learn.microsoft.c
 
 `screen-audio-pcm` and `screen-audio-owner` cover fragmented, silent and
 discontinuous packets, invalid QPC, generation fencing, 60,000 producer packets
-against a stalled consumer, backlog discard on recovery, superseded startup,
+against a stalled consumer, backlog replay on recovery, superseded startup,
 explicit retry, sticky retirement and concurrent stop. Capture never writes the
 level, mute, category or ducking of foreign audio sessions.
