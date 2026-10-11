@@ -265,6 +265,8 @@ void ScreenOwner::run() noexcept {
             started = window->start();
           }
           if (!started.ok) throw std::runtime_error(started.failure ? started.failure->message : "Screen capture failed to start");
+          // The first frame sets the stream's aspect ratio before publication.
+          auto first_frame = monitor ? monitor->waitForFrame(200ms) : window->waitForFrame(200ms);
           bool current;
           {
             std::lock_guard lock(mutex_);
@@ -282,6 +284,10 @@ void ScreenOwner::run() noexcept {
                 });
             if (!pipeline->enableAdaptiveQuality(1U << selected_preset, selected_preset))
               throw std::runtime_error("Selected screen preset could not be admitted");
+            if (first_frame) {
+              pipeline->setInitialSourceSize(first_frame->metadata().width, first_frame->metadata().height);
+              (void)frames->submit(std::move(*first_frame));
+            }
             {
               std::lock_guard lock(mutex_);
               current = !stopping_ && !videoChanged(desired_.intent, desired.intent) &&

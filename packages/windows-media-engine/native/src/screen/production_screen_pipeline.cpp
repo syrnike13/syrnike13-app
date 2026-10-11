@@ -13,9 +13,18 @@ std::chrono::milliseconds remaining(std::chrono::steady_clock::time_point deadli
   return std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
 }
 
+// A resized window settles this long before the stream changes size; while it
+// is dragged, frames are letterboxed into the current size.
+constexpr auto kOutputResizeSettle = std::chrono::milliseconds{500};
+
 // A static screen is re-encoded this often, so a viewer who joins (or loses a
 // packet) while nothing moves still gets a keyframe without waiting for motion.
 constexpr std::int64_t kStaticRepeatIntervalUs = 250'000;
+
+std::uint32_t alignedSide(double value, std::uint32_t limit) noexcept {
+  if (value + 0.5 >= limit) return limit;
+  return (std::max)(static_cast<std::uint32_t>(value) & ~7U, 64U);
+}
 
 ScreenPublicationFailure encoderFailure(const HardwareH264Failure& failure) {
   return {failure.code, failure.message, failure.stage, false,
@@ -23,6 +32,18 @@ ScreenPublicationFailure encoderFailure(const HardwareH264Failure& failure) {
 }
 
 }  // namespace
+
+ScreenVideoProfile fitScreenOutput(ScreenVideoProfile box, std::uint32_t width,
+                                   std::uint32_t height) noexcept {
+  if (width < 2 || height < 2 || !box.width || !box.height) return box;
+  const double fit = (std::min)(static_cast<double>(box.width) / width,
+                                static_cast<double>(box.height) / height);
+  const double longest = (std::max)(width, height);
+  const double scale = (std::min)(fit, (std::max)(1.0, 320.0 / longest));
+  box.width = alignedSide(width * scale, box.width);
+  box.height = alignedSide(height * scale, box.height);
+  return box;
+}
 
 ProductionScreenPipeline::ProductionScreenPipeline(
     std::shared_ptr<capture::D3d11DeviceOwner> device_owner,
@@ -41,8 +62,9 @@ ProductionScreenPipeline::ProductionScreenPipeline(
 }
 
 void ProductionScreenPipeline::createGeneration(ScreenVideoProfile profile) {
-  auto converter = std::make_unique<GpuScreenConverter>(device_owner_, profile, lab_frame_marker_);
-  auto encoder = std::make_shared<HardwareH264Encoder>(device_owner_, profile);
+  const auto output = fitScreenOutput(profile, source_width_, source_height_);
+  auto converter = std::make_unique<GpuScreenConverter>(device_owner_, output, lab_frame_marker_);
+  auto encoder = std::make_shared<HardwareH264Encoder>(device_owner_, output);
   auto intents = std::make_shared<std::atomic_uint64_t>(1);
   const std::weak_ptr weak_intents(intents);
   auto adapter = adapter_factory_([weak_intents] {
@@ -60,9 +82,29 @@ void ProductionScreenPipeline::createGeneration(ScreenVideoProfile profile) {
   keyframes_.begin(stats_.profile_generation);
   encoded_continuity_ = {};
   profile_ = profile;
+  output_ = output;
+  pending_output_.reset();
   stats_.adapter_luid = device_owner_->adapterLuid();
   stats_.memory.conversion_texture_bytes = converter_->stats().texture_bytes;
   stats_.memory.encoded_output_bytes = encoder_->stats().output_pool_bytes;
+}
+
+void ProductionScreenPipeline::setInitialSourceSize(std::uint32_t width, std::uint32_t height) {
+  {
+    std::scoped_lock lock(mutex_);
+    if (state_ != ProductionScreenPipelineState::idle) return;
+  }
+  source_width_ = width;
+  source_height_ = height;
+  const auto output = fitScreenOutput(profile_, width, height);
+  if (output.width == output_.width && output.height == output_.height) return;
+  auto converter = std::make_unique<GpuScreenConverter>(device_owner_, output, lab_frame_marker_);
+  auto encoder = std::make_shared<HardwareH264Encoder>(device_owner_, output);
+  std::scoped_lock lock(mutex_);
+  converter_ = std::move(converter);
+  encoder_ = std::move(encoder);
+  output_ = output;
+  stats_.memory.conversion_texture_bytes = converter_->stats().texture_bytes;
 }
 
 ProductionScreenPipeline::~ProductionScreenPipeline() {
@@ -109,7 +151,7 @@ ScreenStartResult ProductionScreenPipeline::startGeneration(std::chrono::millise
     stats_.quality_warning = false;
   }
   auto started = sender_->start(ScreenTrackDescriptor{
-      track_name_, profile_.width, profile_.height, profile_.frames_per_second, profile_.bitrate});
+      track_name_, output_.width, output_.height, profile_.frames_per_second, profile_.bitrate});
   if (!started.ok) {
     (void)encoder_->stop(deadline);
     std::scoped_lock lock(mutex_);
@@ -259,6 +301,7 @@ void ProductionScreenPipeline::run() noexcept {
             static_cast<std::uint64_t>(capture::kMaximumMonitorFrames) * metadata.width *
             metadata.height * 4ULL;
       }
+      followSourceSize(metadata.width, metadata.height);
       const auto timestamp_us = metadata.capture_timestamp_100ns / 10;
       const auto d3d = capture->d3d11View();
       if (!d3d) {
@@ -329,6 +372,68 @@ void ProductionScreenPipeline::run() noexcept {
     worker_done_ = true;
     worker_changed_.notify_all();
   }
+}
+
+void ProductionScreenPipeline::followSourceSize(std::uint32_t width, std::uint32_t height) {
+  source_width_ = width;
+  source_height_ = height;
+  const auto wanted = fitScreenOutput(profile_, width, height);
+  if (wanted.width == output_.width && wanted.height == output_.height) {
+    pending_output_.reset();
+    return;
+  }
+  const auto now = std::chrono::steady_clock::now();
+  if (!pending_output_ || pending_output_->width != wanted.width ||
+      pending_output_->height != wanted.height) {
+    pending_output_ = wanted;
+    pending_output_since_ = now;
+    return;
+  }
+  if (now - pending_output_since_ < kOutputResizeSettle) return;
+  if (resizeOutput(wanted)) pending_output_.reset();
+}
+
+// Replaces the converter and encoder on the same publication. The H.264
+// stream changes size on its next (key) frame; viewers keep their track.
+bool ProductionScreenPipeline::resizeOutput(ScreenVideoProfile output) {
+  // Encoded slot indices are reused by the next encoder: wait until the SDK
+  // has returned every borrowed access unit of this one.
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{500};
+  const auto borrowed = [this] {
+    return std::any_of(submitted_slots_.begin(), submitted_slots_.end(),
+                       [](const auto& slot) { return slot.has_value(); });
+  };
+  while (borrowed() && std::chrono::steady_clock::now() < deadline) {
+    if (auto event = sender_->waitForEvent(std::chrono::milliseconds{5}))
+      handleEvent(std::move(*event));
+  }
+  if (borrowed()) return false;
+  auto converter = std::make_unique<GpuScreenConverter>(device_owner_, output, lab_frame_marker_);
+  auto encoder = std::make_shared<HardwareH264Encoder>(device_owner_, output);
+  if (const auto failure = encoder->start(std::chrono::milliseconds{3000}))
+    throw std::runtime_error(failure->message);
+  if (!encoder_->stop(std::chrono::milliseconds{500}))
+    throw std::runtime_error("Screen encoder did not drain before a resize");
+  while (auto unsubmitted = encoder_->takeEncoded()) unsubmitted->release();
+  std::shared_ptr<HardwareH264Encoder> old_encoder;
+  {
+    std::scoped_lock lock(mutex_);
+    old_encoder = std::exchange(encoder_, std::move(encoder));
+    converter_ = std::move(converter);
+    output_ = output;
+    stats_.memory.conversion_texture_bytes = converter_->stats().texture_bytes;
+    keyframes_.begin(stats_.profile_generation);
+    encoded_continuity_ = {};
+    cadence_.reset();
+    ++stats_.output_resizes;
+  }
+  previous_policy_stats_.reset();
+  // The new encoder starts at the preset bitrate; keep the adapted one.
+  bitrate_completed_ = bitrate_command_;
+  if (stats_.target_bitrate && stats_.target_bitrate != profile_.bitrate &&
+      encoder_->requestBitrate(bitrate_command_ + 1, stats_.target_bitrate))
+    ++bitrate_command_;
+  return true;
 }
 
 void ProductionScreenPipeline::keepForRepeat(const capture::D3d11FrameView& frame,

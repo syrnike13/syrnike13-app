@@ -45,6 +45,7 @@ struct ProductionScreenPipelineStats {
   capture::D3d11AdapterLuid adapter_luid;
   std::uint64_t capture_frames = 0;
   std::uint64_t frame_rate_drops = 0;
+  std::uint64_t output_resizes = 0;
   std::uint64_t network_backpressure_drops = 0;
   std::uint64_t missing_gpu_frames = 0;
   std::uint64_t conversion_drops = 0;
@@ -83,6 +84,12 @@ struct ProductionScreenPipelineStats {
 using ScreenPublicationAdapterFactory = std::function<std::shared_ptr<ScreenPublicationAdapter>(
     std::function<void()> request_key_frame)>;
 
+// The encoded size for a source inside a preset box, as Discord does: the
+// source's aspect ratio, never upscaled (a tiny source is scaled to a 320 px
+// long side), multiples of 8. The preset's frame rate and bitrate are kept.
+[[nodiscard]] ScreenVideoProfile fitScreenOutput(ScreenVideoProfile box, std::uint32_t width,
+                                                 std::uint32_t height) noexcept;
+
 // Coordinates the GPU-native path without owning Room. The adapter factory is
 // given a bounded keyframe-intent sink, never a mutable encoder handle.
 class ProductionScreenPipeline final {
@@ -97,6 +104,9 @@ class ProductionScreenPipeline final {
   ProductionScreenPipeline(const ProductionScreenPipeline&) = delete;
   ProductionScreenPipeline& operator=(const ProductionScreenPipeline&) = delete;
 
+  // Before start(): the first capture's size, so the stream starts at its
+  // aspect ratio instead of switching on the first frame.
+  void setInitialSourceSize(std::uint32_t width, std::uint32_t height);
   [[nodiscard]] ScreenStartResult start(std::string track_name, std::chrono::milliseconds deadline);
   // Pure admission revocation. Owner-thread stop() still proves full drain.
   void requestStop() noexcept;
@@ -117,12 +127,18 @@ class ProductionScreenPipeline final {
                                                     bool capture_stopped) noexcept;
   void createGeneration(ScreenVideoProfile profile);
   [[nodiscard]] ScreenStartResult startGeneration(std::chrono::milliseconds deadline);
+  void followSourceSize(std::uint32_t width, std::uint32_t height);
+  [[nodiscard]] bool resizeOutput(ScreenVideoProfile output);
   void keepForRepeat(const capture::D3d11FrameView& frame, const capture::FrameMetadata& metadata);
   void repeatLastFrame();
 
   std::shared_ptr<capture::D3d11DeviceOwner> device_owner_;
   std::shared_ptr<ScreenFramePipeline> capture_pipeline_;
-  ScreenVideoProfile profile_;
+  ScreenVideoProfile profile_;  // The preset box.
+  ScreenVideoProfile output_;   // What the encoder currently produces.
+  std::uint32_t source_width_ = 0, source_height_ = 0;
+  std::optional<ScreenVideoProfile> pending_output_;
+  std::chrono::steady_clock::time_point pending_output_since_{};
   std::unique_ptr<GpuScreenConverter> converter_;
   std::shared_ptr<HardwareH264Encoder> encoder_;
   std::shared_ptr<ScreenPublicationAdapter> adapter_;

@@ -11,6 +11,7 @@
 
 #include "capture/d3d11_device.hpp"
 #include "screen/gpu_screen_converter.hpp"
+#include "screen/production_screen_pipeline.hpp"
 #include "screen/screen_frame_marker.hpp"
 
 namespace syrnike::windows_media::screen::tests {
@@ -205,6 +206,22 @@ void otherAspectRatiosAreLetterboxedNotCropped() {
   require(luma(100, 360) < 32 && luma(1180, 360) < 32, "letterbox bars are not black");
 }
 
+void streamFollowsTheSourceAspectRatio() {
+  const auto fit = [](ScreenVideoProfile box, std::uint32_t w, std::uint32_t h) {
+    const auto out = fitScreenOutput(box, w, h);
+    return std::pair{out.width, out.height};
+  };
+  using Size = std::pair<std::uint32_t, std::uint32_t>;
+  require(fit(kScreenProfile1080p60, 1920, 1080) == Size{1920, 1080}, "16:9 monitor changed size");
+  require(fit(kScreenProfile1080p60, 3440, 1440) == Size{1920, 800}, "ultrawide is not 1920x800");
+  require(fit(kScreenProfile1080p60, 1080, 1920) == Size{600, 1080}, "portrait is not 600x1080");
+  require(fit(kScreenProfile1080p60, 800, 600) == Size{800, 600}, "small window was upscaled");
+  require(fit(kScreenProfile1080p60, 200, 100) == Size{320, 160}, "tiny window not raised to 320");
+  require(fit({960, 540, 30, 625'000}, 960, 540) == Size{960, 540}, "540p preset lost its height");
+  require(fitScreenOutput(kScreenProfile1080p60, 3440, 1440).bitrate == kScreenProfile1080p60.bitrate,
+          "preset bitrate changed");
+}
+
 void gpuMarkerMatchesNeutralObserverContract() {
   const auto owner = processD3d11Device(false);
   {
@@ -236,6 +253,7 @@ int main() try {
   inputViewsDoNotSurviveBackendGenerations();
   oddInputDimensionsUseAnEvenCrop();
   otherAspectRatiosAreLetterboxedNotCropped();
+  streamFollowsTheSourceAspectRatio();
   gpuMarkerMatchesNeutralObserverContract();
   syrnike::windows_media::screen::tests::hardwareH264ProbeCoversFixedProfiles();
   syrnike::windows_media::screen::tests::hardwareH264EncoderProducesBoundedAnnexBOutput();

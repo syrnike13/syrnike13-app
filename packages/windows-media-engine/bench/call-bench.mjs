@@ -284,7 +284,7 @@ try {
   let monitor
   await waitFor(() => {
     const sources = addon.queryInventory().inventory.sources
-    monitor = sources.revision === 1 && (sources.complete || sources.truncated)
+    monitor = sources.revision === 1 && sources.complete
       ? sources.entries.find(entry => entry.kind === 'monitor' && entry.primary) ?? sources.entries.find(entry => entry.kind === 'monitor')
       : undefined
     return monitor
@@ -319,7 +319,7 @@ try {
   let window
   await waitFor(() => {
     const sources = addon.queryInventory().inventory.sources
-    window = sources.revision === sourceRevision && (sources.complete || sources.truncated)
+    window = sources.revision === sourceRevision && sources.complete
       ? sources.entries.find(entry => entry.kind === 'window' && entry.title.includes('Syrnike Source Fixture Primary'))
       : undefined
     return window
@@ -345,6 +345,12 @@ try {
   await sleep(2000)
   report.windowShare.lateViewer = await bot('late-viewer', 'bench-a', ['--seconds', '5', '--watch', self]).done
   fixture.stdin.write('animate\n')
+  // The shared window turns portrait: the stream follows its aspect ratio on
+  // the same track, and a watching viewer keeps receiving frames.
+  const resizeViewer = bot('resize-viewer', 'bench-a', ['--seconds', '6', '--watch', self])
+  await sleep(2000)
+  fixture.stdin.write('resize 400 700\n')
+  report.windowShare.resizeViewer = await resizeViewer.done
   apply({ screen: { state: 'off' } })
   report.windowShare.viewer = await windowViewer.done
   fixture.kill()
