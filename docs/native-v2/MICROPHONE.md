@@ -25,8 +25,17 @@ documents for live capture: frames go straight into WebRTC on the capture
 clock. A buffered source adds the SDK's own 10 ms clock, which drifts from the
 capture clock and drops frames whenever its thread is starved.
 
-Under full CPU load the previous chain sent ~78–85% of captured frames; it now
-sends all of them (1718 captured, 1717 sent in a 15 s window).
+`bench/call-bench.mjs`, 15 s phase, average of two runs (frames sent; frames the
+phase duration implies in parentheses):
+
+| | before (develop) | after |
+| --- | --- | --- |
+| Idle machine | 1420 (1500) | 1419 (1500) |
+| Every core busy | 1103 (1501) | 1649 (1501) |
+
+The counter is sampled at phase boundaries, so frames delayed across a boundary
+land in the next phase: the idle row is equal for both builds, and the loaded
+row above 100% is the backlog of a starved moment being sent instead of dropped.
 
 ## Capture policy
 

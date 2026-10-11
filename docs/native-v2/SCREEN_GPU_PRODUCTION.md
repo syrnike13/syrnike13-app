@@ -1,12 +1,8 @@
 # Production GPU screen pipeline
 
-Issue #121 adds a separate production screen path. The CPU reference remains a
-lab oracle and is never selected as a fallback.
-
-The current preset/adaptation contract is [fixed-preset bitrate control
-(#139)](ADAPTIVE_SCREEN_QUALITY.md). The original #121 lab configurations and
-reports below are historical hardware-path evidence, not the product preset
-catalogue or proof of live bitrate adaptation.
+The product screen path: capture, GPU conversion and hardware H.264. There is
+no CPU fallback. The preset/adaptation contract is [fixed-preset bitrate
+control](ADAPTIVE_SCREEN_QUALITY.md).
 
 ## Data path and ownership
 
@@ -47,9 +43,7 @@ or re-encode in response to startup bandwidth estimates.
 | 1280×720 @ 30, 4 Mbps | 11,059,200 B | 4,147,200 B | 6,291,456 B | 21,497,856 B |
 
 The capture column is nominal because its textures follow source dimensions.
-The lab explicitly enables a source-sized BGRA marker texture and paints its
-288×72 box. Production defaults neither allocate that texture nor paint the
-marker, and require only one VideoProcessor input stream. Converter and bitstream pools never
+Production requires only one VideoProcessor input stream. Converter and bitstream pools never
 grow. A size change cannot replace converter textures while a slot lease is
 active, so a generation is retired only after all of its leases return.
 
@@ -91,13 +85,4 @@ slot return, and unpublish escalation.
 The GPU tests also hold all three
 encoded slots and verify that only pending raw input is superseded.
 
-The LiveKit fork and application were built locally and exercised through a
-neutral `@livekit/rtc-node` observer. The measured 1080p60 monitor run decoded
-417 frames with 132 ms p95 latency, the 1080p60 window run decoded 419 frames
-with 60 ms p95 latency, the 1440p30 run decoded 209 frames with 186 ms p95
-latency, and 30 720p30 publish/unpublish cycles delivered 900 measured frames
-with 56 ms p95 latency. All runs had zero stale or out-of-order frames and no
-encoder output stall. Those measurements used a local SDK candidate. The #122
-delivery now pins published `v1.10.0-syrnike.4`, which includes this H264 API and
-the manual remote-publication fix; see [REMOTE_VIDEO_RECEIVE.md](REMOTE_VIDEO_RECEIVE.md)
-for its source commit, archive identity and verification.
+`bench/call-bench.mjs` measures a real monitor and window share end to end.

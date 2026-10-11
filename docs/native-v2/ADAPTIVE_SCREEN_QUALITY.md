@@ -6,18 +6,6 @@ operation can replace the encoder/source/publication generation. Automatic
 control changes only the existing hardware encoder's bitrate. Product Voice UI
 cutover remains #130; qualification #132 must use this contract.
 
-The final published SDK `.12` qualification includes a complete 20-minute
-network/GPU run, focused GPU pressure and late/static runs. All audio checks
-pass after capture-age-based PCM recovery. Preview video p95 remains a failed
-measurement at 170 ms, covered by the user's decision to defer that latency
-investigation; the 150 ms test threshold is unchanged.
-See the [qualification manifest](fixed-screen-preset-acceptance.json) and
-[full-interval diagnostics](issue139-diagnostics/README.md). Historical #124 results are
-not acceptance for #139. In particular,
-[adaptive-screen-quality-acceptance.json](adaptive-screen-quality-acceptance.json)
-records the old profile-switch behavior and must not be used to claim seamless
-bitrate adaptation.
-
 ## Presets and admission
 
 | Selected preset | Dimensions | Target FPS | Minimum | Initial / maximum |
@@ -32,7 +20,7 @@ These finite floors permit substantial compression while bounding the operating
 range. They do not guarantee legible output or sustainable FPS on every scene.
 The 1080p60 floor is 2 Mbit/s because repeated live 2/4 Mbit/s stages tracked
 the declared tolerance on the tested MFT, while the preliminary 1.5 Mbit/s
-floor did not. The lab still restricts the link to 1.25 Mbit/s below this floor.
+floor did not.
 Actual frame drops under pressure do not change the target cadence.
 Admission requires the exact preset's capability bit. No implicit fallback,
 1440p, HDR, software encoder or extra layer is introduced.
@@ -171,7 +159,7 @@ subscriber SDP offer. This source change has not been deployed.
 
 ## Warning contract
 
-The lab bridge exposes typed `qualityWarning`, target/applied bitrate and
+The Engine exposes typed `qualityWarning`, target/applied bitrate and
 bounded update counts. The renderer receives a boolean state and shows:
 
 > Демонстрация может идти с задержками. Попробуйте снизить качество вручную
@@ -209,81 +197,9 @@ voice playback, and 98.045 ms in late/static. All complete without audio-owner
 failure. Maximum individual audio ages are 261.986, 168.567, 144.465 and
 146.882 ms respectively; p95 compliance is not a bound on every packet.
 
-## Hardware and evidence protocol
+## Verification
 
-On 2026-09-07 the user deferred preview video latency investigation after the
-published `.12` run measured p95 162 ms, while explicitly requiring audio
-stability. The final preview run measured 170 ms and is retained as failed,
-with that same video p95 issue deferred. This does not waive audio, maximum
-video age, identity, lifecycle or static-pixel failures. No threshold changed.
-
-Exact SDK pin: `v1.10.0-syrnike.12`, commit
-`cd0e8b09b097af0f078853781991638a18345d37`; the authoritative pin is
-`packages/windows-media-engine/native/cmake/LiveKitSDK.cmake`.
-
-| Hardware | Driver / OS | Status |
-| --- | --- | --- |
-| NVIDIA GeForce RTX 5070 Ti | 32.0.16.1074 / Windows 10.0.26200 | Repeated 2/4 Mbit/s live update, final 20-minute network, GPU and late/static passed; all four audio checks passed. Preview video p95 170 ms remains deferred. Late first frame: 1008 ms. Historical failures, including an unreproduced abort, remain retained. Preliminary 1.5 Mbit/s floor failed bitstream tolerance. |
-| Intel / AMD / other NVIDIA | Not tested | Unqualified; do not infer support |
-
-The bitrate lab accepts `MEDIA_LAB_BITRATE_SCENARIO`: `network` (default),
-`gpu-pressure`, `preview-stall`, or `late-static`. Focused scenarios run exactly
-180 seconds. The default network/GPU 20-minute schedule is unchanged.
-GPU pressure keeps a 12 Mbit/s link and runs seven bounded competing 4096×4096
-hardware encoders plus the original bounded 16 MiB compute workload during
-seconds 20–140. Both workloads must advance in every measured 10-second window;
-the policy must reach the minimum and retain output with a warning. The former
-memory-heavy shader variant caused driver waits and audio publication timeout
-on repeated runs and is retained as a failed diagnostic, not acceptance.
-Preview stall
-stops the pixel consumer during seconds 20–160 and independently measures OS
-playback of the existing remote-audio reference; capture, encoder and both audio
-paths must keep progressing. Late/static freezes the fixture pixels during
-seconds 30–70 and connects a second observer at second 40; it must decode the
-same publication within 1500 ms, with complete age measurements retained for
-both observers. The fixture continues repainting identical pixels while static;
-zero-new-input policy behavior is covered separately by deterministic traces.
-Only late/static disables WGC cursor composition, because an OS pointer is not
-part of the controlled static pixels. Default product capture retains its
-cursor behavior. Observer startup timestamps include process/module loading,
-connection and subscription; the 1500 ms deadline still starts before process
-launch, and direct Schema imports avoid unrelated startup work.
-
-The standalone real-MFT probe uses a deterministic moving tiled 1080p60 scene
-and one encoder: 8 → 4 → 2 → 4 → 2 → 4 Mbit/s, 20 seconds per stage. Each full
-stage includes its transition. The initial 8 Mbit/s scene may underfill; every
-subsequent 2/4 Mbit/s stage must be within ±30% of requested, and each repeated
-down/up must change measured output by at least 40%. These tolerances are fixed
-before the acceptance run. Property success and synthetic setters are not
-substitutes for this proof.
-
-The older retained [20-minute diagnostic](issue139-diagnostics/README.md) failed
-receiver freshness (p95 359 ms, maximum 2676 ms). Stable identities, continuing
-preview/audio and passing local tests do not make that run accepted. The later
-published `.11` run at app `2e1d6e973756864ffcdc0216628b831f9e4661c1`
-passed with video p95 106 ms, maximum 1307 ms and maximum gap 2545 ms,
-including all transitions. Its full metrics are retained separately.
-
-The end-to-end lab uses a disposable local SFU, a publisher-only UDP link with
-a finite 64-packet / 40 ms queue, and a separate Node RTC decoder. Audio and
-RTCP/STUN/DTLS have independent reservation. Direct publisher ICE candidates
-are suppressed so video cannot bypass the shaper. Actual offered/delivered
-bytes, drops and candidate rewriting must be nonzero as appropriate.
-
-The 20-minute schedule repeats a 300-second cycle: 12 Mbit/s for 30 seconds,
-3 Mbit/s for 30 seconds, 1.25 Mbit/s for 30 seconds (below the 2 Mbit/s
-floor), then 12 Mbit/s for 210 seconds. GPU contention runs at 150–160 seconds
-of each cycle. Full-run decoded dimensions, track SID, generation, frame age,
-gap, sequence drops and RTC receive counters are recorded, including updates.
-No transitions are excluded as warmup. Receiver age limits remain p95 ≤150 ms,
-maximum ≤1500 ms and growth ≤20 ms. Publication queue/memory and process
-resource growth retain the existing acceptance limits. Independent preview
-pixel readback and coded audio pulses prove progress separately from running
-flags.
-
-Run `live_bitrate_probe.exe 8000000 20` from the built Release lab.
-Build the TypeScript harness with `pnpm --filter @syrnike13/native-media-lab build`.
-Run `node packages/native-media-lab/dist/run-bitrate-lab.js` with
-`MEDIA_LAB_SERVER_EXE`, `MEDIA_LAB_AUDIO_BIN`, `MEDIA_LAB_AUDIO_REPORT` and
-`MEDIA_LAB_AUDIO_DURATION_MS=1200000`. Reports must include exact app commit,
-hardware, SDK pin and checks; short diagnostics are not the 20-minute acceptance.
+`adaptive-screen-policy` replays the deterministic policy traces;
+`adaptive-screen-pipeline` drives live bitrate updates through the real
+hardware encoder. `bench/call-bench.mjs` measures a real monitor share end to
+end (viewer FPS, gaps, backpressure drops).

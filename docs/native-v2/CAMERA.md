@@ -149,119 +149,18 @@ that a deadline proves resource destruction. Failed finite cleanup returns a
 typed timeout; destruction without completed cleanup terminates the disposable
 process. Camera errors do not call Room reconnect or microphone/screen controls.
 
-## Verification and reproduction
+## Verification
 
 `camera_tests` covers format bounds, color conversion, latest-frame contention,
 age/generation rejection, registry identity, failed/healthy candidates, 100
 preview toggles, preview-only and no-demand behavior, delayed conversion, pending
 sample cancellation, late callbacks and typed loss. Its test-only asynchronous
 reader has a separate callback thread and counts live readers and samples.
-`camera_tests --preview` imports the real GPU texture and checks its pixels,
+`camera-preview` (`camera_tests --preview`) imports the real GPU texture and checks its pixels,
 holds both slots, switches generations, stops with a live lease and competes
 with screen preview for the shared budget. It carries `requires-gpu-video` for
 the known hosted-runner hardware boundary. The existing screen preview regression
 test also passes with the shared budget.
-
-The test-only `camera_lab` supports:
-
-```powershell
-camera_lab.exe devices
-camera_lab.exe physical 1
-camera_lab.exe physical-switch 1
-camera_lab.exe cycles 50
-camera_lab.exe publication-failure
-```
-
-The `physical` command means a real MF device ID; its report records the detected
-kind, so a virtual device is never relabeled physical. The missing-Room publication
-test verifies ten rollbacks without a committed camera track or a restarted
-capture. Cycle tests include three warm-up cycles before measuring fifty cycles.
-
-The neutral observer uses stock `@livekit/rtc-node`, a separate process and a
-loopback SFU. It decodes sequence, generation and capture-time barcodes from the
-received pixels, verifies actual 720/1080/720 dimensions, tracks subscriptions,
-and checks age/order/continuity. The publisher includes publication-only, preview,
-held preview, 100 toggles, successful switch, failed candidate rollback and
-simulated removal/recovery. These operations retain one camera publication and
-the same Room. Physical unplug remains waived and unverified.
-
-```powershell
-$env:MEDIA_LAB_SERVER_EXE = '<absolute path to isolated LiveKit server>'
-$env:MEDIA_LAB_CAMERA_EXE = '<absolute path to camera_lab.exe>'
-$env:MEDIA_LAB_CAMERA_REPORT = '<absolute output report path>'
-$env:MEDIA_LAB_CAMERA_SECONDS = '26' # or 1800 for the required soak
-pnpm --filter @syrnike13/native-media-lab build
-node packages/native-media-lab/dist/run-camera-lab.js
-```
-
-The harness creates disposable loopback credentials and binds only ports
-7890–7892 on localhost. Report files contain no access tokens. It requires at least
-24 fps during the fully held-preview interval, at most 500 ms age in that interval,
-overall p95 age at most 250 ms and no gap longer than one second. The local
-26-second run passed with 30 fps during stalled preview and 28 ms maximum age
-there. The preceding profile run decoded all 777 frames with no generation
-regression, one subscribe/unsubscribe, no reconnect, 38 ms p95 age and 61 ms
-maximum gap. No camera SDK extension was necessary.
-
-The updated run including simulated removal/recovery decoded 776 changing frames
-with no regression, 36 ms p95 age and 140 ms maximum gap. The synthetic reader's
-pixel generation counts successful opens, while the pipeline generation also
-counts failed candidates; both are monotonic but intentionally different IDs.
-
-Local Release and Debug/AddressSanitizer contract, GPU, quarantine and screen
-preview regression tests pass. Debug/ASan also passes the real virtual-camera
-capability rows and ten missing-Room publication rollbacks. The initial ASan test
-launch omitted the compiler runtime from PATH and timed out before execution;
-with that child-process runtime path supplied, all tests execute and pass.
-
-Evidence: [observer](camera-observer-development.json),
-[publication phases and stalled-preview budget](camera-publication-development.json),
-[50 cycles](camera-cycles-development.json),
-[native/ASan and hardware rows](camera-validation-development.json).
-
-The [30-minute synthetic publication soak](camera-soak-development.json) passed:
-54,000 submitted / 53,996 independently decoded changing frames, one camera
-subscription and unsubscription, no reconnect or generation regression, 30 ms
-p95 age, 88 ms maximum age and 139 ms maximum gap. Fully held preview retained
-30 fps with at most 27 ms age. After the first ten minutes, private bytes stayed
-within 177,053,696–178,921,472, handles 707–726 and threads 56–59. One reader and
-at most one sample remained live, and preview stayed at 1,966,080 bytes. Teardown
-released every reader, sample and preview reservation. This is development-SDK
-evidence; the final published-SDK smoke run is recorded separately.
-
-## Published SDK verification
-
-The normal `build:lab` uses the same hash-pinned `v1.10.0-syrnike.14` dependency
-as #128, with `WINDOWS_MEDIA_LIVEKIT_SDK_ROOT=OFF`. Both SDK DLLs match the
-published archive. After integrating #128, artifact verification and all 38
-native tests passed in 118.82 seconds, including eight GPU tests. The final preview-off and quarantine
-regressions also pass under Debug/ASan.
-
-The [published-SDK observer](camera-observer-release14.json) verifies the actual
-`SOURCE_CAMERA` publication, profile changes and removal/recovery with no
-generation regression. Its [publication report](camera-publication-release14.json)
-measures 30 fps and at most 27 ms age during fully held preview after integrating
-#128. The real virtual
-device's `physical-switch 1` row also passes: the unsupported 1080p candidate
-leaves generation 1 running, advancing from 3 to 64 frames before safe stop.
-
-The observer records SFU terminal VP8 reset frames separately. The project's
-`DownTrack.CloseWithFlush` deliberately sends 8×8 keyframes to clear a receiver's
-decoder. They are accepted only next to unsubscription, after the publisher's
-recorded stop phase, and with no subsequent camera frames. An 8×8 reset during
-normal streaming still fails. One initial release run received a frame smaller
-than the barcode at unpublish; the SFU reset path explains that observation,
-although that run did not record its dimensions. The four final runs did not
-receive reset frames, so they verify normal teardown, not that optional branch.
-
-A repeated release run also exposed a final preview GPU event query that stayed
-`S_FALSE` with `DONOTFLUSH` polling after capture stopped. Camera now uses the
-same flushing poll as screen preview and releases the producer keyed mutex
-before clearing completed retired work. Four subsequent 26-second publication
-runs passed with zero retained preview reservation, 38–42 ms p95 age and at most
-139 ms receive gap. The native GPU test additionally stops immediately after
-submission twenty times without a consumer; Release and Debug/ASan both pass.
-Preview-off also clears reusable textures from the retired generation.
 
 ## Product profile policy
 
