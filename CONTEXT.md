@@ -44,8 +44,8 @@ This file defines shared terms and architectural invariants. Detailed decisions 
 - **Media Failure** is scoped to one track, capture device, decoder, renderer, or output path and does not initiate Voice Recovery by itself.
 - Recovery acts on the smallest failed layer: presentation generation, local bridge, subscription, capture backend, track, then runtime. A frame timeout alone is never proof that a wider layer failed.
 - **Voice Recovery** restores committed membership after terminal RTC/runtime loss while preserving Voice Intent and creating a new Connection Epoch.
-- **Runtime Loss** is termination or unresponsiveness of one Windows utility host. Media, hotkey, and overlay hosts recover independently.
-- `NativeRuntimeSupervisor` exclusively owns utility startup, handshake, crash classification, restart backoff, host epoch, and circuit state.
+- **Runtime Loss** is termination or unresponsiveness of the Windows media utility host. Global input and foreground-window hooks run in the main process (`native-hooks.ts`) on the addon's own thread and have no host to lose.
+- `MediaRuntimeSupervisor` exclusively owns media utility startup, handshake, crash classification, restart backoff, host epoch, and circuit state.
 - The **Native Event Lane** has three classes: ordered control, bounded latest-per-resource media, and lossy telemetry. Dropped media releases retained native resources exactly once.
 - A **Diagnostic Incident** is one typed causal failure with bounded sanitized evidence; related events enrich the same incident instead of creating competing reports.
 

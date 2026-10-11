@@ -2,11 +2,6 @@ import { app } from 'electron'
 import { Effect } from 'effect'
 import type { RendererDiagnosticIncident } from '@syrnike13/platform'
 
-import type {
-  NativeRuntimeSupervisor,
-  NativeRuntimeSupervisorSnapshot,
-} from './runtime-supervisor'
-
 const MAX_BATCH_SIZE = 100
 const HISTOGRAM_COALESCE_BUCKETS_MS = [
   10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 20_000, 60_000,
@@ -298,38 +293,6 @@ export class AnonymousNativeMetricsReporter {
 
 export const anonymousNativeMetricsReporter =
   new AnonymousNativeMetricsReporter()
-
-export function attachNativeRuntimeMetrics(
-  supervisor: NativeRuntimeSupervisor,
-  runtime: NativeMetricRuntime,
-  reporter: AnonymousNativeMetricsReporter = anonymousNativeMetricsReporter,
-) {
-  let previous: NativeRuntimeSupervisorSnapshot['status'] = 'stopped'
-  let handshakeStartedAt = 0
-  return supervisor.onStateChange((snapshot) => {
-    if (snapshot.status === previous) return
-    const now = performance.now()
-    if (snapshot.status === 'starting') {
-      handshakeStartedAt = now
-      reporter.increment('runtime_started', runtime)
-    } else if (snapshot.status === 'ready') {
-      reporter.increment('runtime_ready', runtime)
-      if (handshakeStartedAt > 0) {
-        reporter.observe(
-          'runtime_handshake_ms',
-          now - handshakeStartedAt,
-          runtime,
-        )
-      }
-    } else if (snapshot.status === 'recovering') {
-      handshakeStartedAt = now
-      reporter.increment('runtime_lost', runtime)
-    } else if (snapshot.status === 'degraded') {
-      reporter.increment('runtime_degraded', runtime)
-    }
-    previous = snapshot.status
-  })
-}
 
 export function recordRendererDiagnosticMetrics(
   incident: RendererDiagnosticIncident,

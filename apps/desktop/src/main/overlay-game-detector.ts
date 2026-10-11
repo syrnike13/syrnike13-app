@@ -6,7 +6,7 @@ import { Effect } from 'effect'
 
 import { OVERLAY_EXCLUDED_PROCESS_NAMES } from './overlay-game-exclusions'
 import { POPULAR_GAME_PROCESS_NAMES } from './overlay-game-processes'
-import { hooksRuntimeController } from './native-runtime/hooks-runtime-controller'
+import { hooksRuntimeController } from './native-hooks'
 
 export type OverlayForegroundWindow = {
   pid: number
@@ -59,7 +59,7 @@ export function startOverlayGameDetector(
     return
   }
 
-  if (!hooksRuntimeController.isAvailable('overlay')) {
+  if (!hooksRuntimeController.isAvailable()) {
     onTargetChanged(null)
     return
   }

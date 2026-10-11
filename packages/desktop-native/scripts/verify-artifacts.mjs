@@ -7,8 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 const EXPECTED_FILES = [
   'native-manifest.json',
-  'syrnike_hotkey.node',
-  'syrnike_overlay.node',
+  'syrnike_hooks.node',
 ]
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')

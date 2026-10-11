@@ -37,8 +37,7 @@ if (requireWindowsSigning && missingAzureSigningFields.length > 0) {
 }
 
 const nativeFiles = [
-  'syrnike_hotkey.node',
-  'syrnike_overlay.node',
+  'syrnike_hooks.node',
   'native-manifest.json',
 ]
 const mediaFiles = [

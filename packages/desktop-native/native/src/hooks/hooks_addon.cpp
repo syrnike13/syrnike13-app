@@ -17,16 +17,6 @@
 namespace syrnike::desktop_native::hooks {
 namespace {
 
-#if defined(SYRNIKE_HOOK_RUNTIME_hotkey)
-constexpr auto kRuntimeName = "hotkey";
-constexpr auto kCapability = "hotkeys";
-constexpr auto kCreateRuntimeName = "createHotkeyRuntime";
-#else
-constexpr auto kRuntimeName = "overlay";
-constexpr auto kCapability = "overlay";
-constexpr auto kCreateRuntimeName = "createOverlayRuntime";
-#endif
-
 HooksCommand parseHooksCommand(const Napi::Object& object) {
   HooksCommand command;
   const auto type = object.Get("type");
@@ -44,17 +34,6 @@ HooksCommand parseHooksCommand(const Napi::Object& object) {
   if (command.request_id.empty()) {
     throw std::invalid_argument("command.type and command.requestId are required");
   }
-#if defined(SYRNIKE_HOOK_RUNTIME_hotkey)
-  if (command.type != NativeCommandType::StartHotkeys && command.type != NativeCommandType::StopHotkeys &&
-      command.type != NativeCommandType::ProbeHooksRuntime && command.type != NativeCommandType::Shutdown) {
-    throw std::invalid_argument("command is not supported by the hotkey runtime");
-  }
-#else
-  if (command.type != NativeCommandType::StartOverlay && command.type != NativeCommandType::StopOverlay &&
-      command.type != NativeCommandType::ProbeHooksRuntime && command.type != NativeCommandType::Shutdown) {
-    throw std::invalid_argument("command is not supported by the overlay runtime");
-  }
-#endif
   return command;
 }
 
@@ -312,13 +291,14 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
   auto result = Napi::Object::New(info.Env());
   result.Set("platform", "win32");
   result.Set("available", true);
-  result.Set("runtime", kRuntimeName);
+  result.Set("runtime", "hooks");
   result.Set("contractVersion", kNativeRuntimeContractVersion);
   result.Set("pid", GetCurrentProcessId());
   result.Set("napi", std::to_string(NAPI_VERSION));
   result.Set("commit", SYRNIKE_NATIVE_COMMIT);
-  auto capabilities = Napi::Array::New(info.Env(), 1);
-  capabilities.Set(uint32_t{0}, kCapability);
+  auto capabilities = Napi::Array::New(info.Env(), 2);
+  capabilities.Set(uint32_t{0}, "hotkeys");
+  capabilities.Set(uint32_t{1}, "overlay");
   result.Set("capabilities", capabilities);
   return result;
 }
@@ -354,7 +334,7 @@ Napi::Object initialize(Napi::Env env, Napi::Object exports) {
     delete cleanup_registration;
     throw Napi::Error::New(env, "hooks addon cleanup hook registration failed");
   }
-  exports.Set(kCreateRuntimeName, Napi::Function::New(env, createHooksRuntime));
+  exports.Set("createHooksRuntime", Napi::Function::New(env, createHooksRuntime));
   exports.Set("getRuntimeInfo", Napi::Function::New(env, getRuntimeInfo));
   return exports;
 }

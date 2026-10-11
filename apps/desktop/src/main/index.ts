@@ -24,7 +24,7 @@ import {
 } from './auto-update'
 import { registerDesktopIpc } from './ipc'
 import { disposeHotkeys } from './hotkeys'
-import { hooksRuntimeController } from './native-runtime/hooks-runtime-controller'
+import { hooksRuntimeController } from './native-hooks'
 import {
   configureDesktopOverlay,
   disposeDesktopOverlay,

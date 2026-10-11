@@ -16,41 +16,30 @@ const script = String.raw`
   const path = require('node:path')
   const manifest = require(path.resolve('out/native/win32-x64/native-manifest.json'))
   ;(async () => {
-    for (const kind of ['hotkey', 'overlay']) {
-      const addon = require(path.resolve(
-        'out/native/win32-x64',
-        'syrnike_' + kind + '.node',
-      ))
-      const info = addon.getRuntimeInfo()
-      if (!info.available || info.runtime !== kind) {
-        throw new Error('Invalid ' + kind + ' runtime info')
-      }
-      if (info.commit !== manifest.commitSha ||
-          info.contractVersion !== manifest.contractVersion ||
-          Number(info.napi) !== manifest.napiVersion) {
-        throw new Error(kind + ' addon does not match its artifact manifest')
-      }
-      const factory = kind === 'hotkey'
-        ? addon.createHotkeyRuntime
-        : addon.createOverlayRuntime
-      const requestId = 'probe-' + kind
-      let runtime
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(
-          () => reject(new Error(kind + ' probe timed out')),
-          5000,
-        )
-        runtime = factory((event) => {
-          if (event.type !== 'reply' || event.requestId !== requestId) return
-          clearTimeout(timeout)
-          if (event.ok) resolve()
-          else reject(new Error(kind + ' probe failed'))
-        })
-        runtime.dispatch({ type: 'probeHooksRuntime', requestId })
-      })
-      await runtime.shutdown()
-      console.info(kind + ':ok')
+    const addon = require(path.resolve('out/native/win32-x64', 'syrnike_hooks.node'))
+    const info = addon.getRuntimeInfo()
+    if (!info.available || info.runtime !== 'hooks') {
+      throw new Error('Invalid hooks runtime info')
     }
+    if (info.commit !== manifest.commitSha ||
+        info.contractVersion !== manifest.contractVersion ||
+        Number(info.napi) !== manifest.napiVersion) {
+      throw new Error('Hooks addon does not match its artifact manifest')
+    }
+    const requestId = 'probe'
+    let runtime
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Hooks probe timed out')), 5000)
+      runtime = addon.createHooksRuntime((event) => {
+        if (event.type !== 'reply' || event.requestId !== requestId) return
+        clearTimeout(timeout)
+        if (event.ok) resolve()
+        else reject(new Error('Hooks probe failed'))
+      })
+      runtime.dispatch({ type: 'probeHooksRuntime', requestId })
+    })
+    await runtime.shutdown()
+    console.info('hooks:ok')
   })().catch((error) => {
     console.error(error)
     process.exit(1)

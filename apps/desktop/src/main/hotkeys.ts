@@ -17,7 +17,7 @@ import {
 import { Effect, Option, Schema } from 'effect'
 
 import { HotkeyState, REGISTERABLE_ACTIONS, comboKey } from './hotkey-state'
-import { hooksRuntimeController } from './native-runtime/hooks-runtime-controller'
+import { hooksRuntimeController } from './native-hooks'
 
 const HOTKEYS_FILE = 'hotkeys-v2.json'
 const UnknownArraySchema = Schema.Array(Schema.Unknown)
@@ -55,14 +55,8 @@ export function initializeHotkeys(getWindow: () => BrowserWindow | null) {
   bindings = readHotkeyBindings()
   registrationResults = validateBindings(bindings)
   unsubscribeRuntimeState?.()
-  unsubscribeRuntimeState = hooksRuntimeController.onStateChange((snapshot) => {
-    if (
-      snapshot.status === 'recovering' ||
-      snapshot.status === 'degraded' ||
-      snapshot.status === 'stopped'
-    ) {
-      emitHotkeyPressedEvents(hotkeyState.releaseHeldActions())
-    }
+  unsubscribeRuntimeState = hooksRuntimeController.onRuntimeError(() => {
+    emitHotkeyPressedEvents(hotkeyState.releaseHeldActions())
   })
   startNativeRuntime()
 }
@@ -93,10 +87,7 @@ export function stopHotkeyRecording() {
 
 export function getHotkeyRuntimeStatus() {
   if (process.platform !== 'win32') return 'unsupported-platform'
-  if (!hooksRuntimeController.isAvailable('hotkey')) return 'not-running'
-  return hooksRuntimeController.getStatus('hotkey') === 'ready'
-    ? 'running'
-    : 'not-running'
+  return hooksRuntimeController.isRunning('hotkey') ? 'running' : 'not-running'
 }
 
 export function disposeHotkeys() {
