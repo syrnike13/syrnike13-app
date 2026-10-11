@@ -1,3 +1,4 @@
+import { Effect } from 'effect'
 import { randomBytes } from 'node:crypto'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -12,7 +13,7 @@ vi.mock('electron', () => ({
   app: { getPath: () => state.userData },
 }))
 
-import { createDesktopDiagnosticBundle } from './diagnostic-bundle'
+import { createDesktopDiagnosticBundleEffect } from './diagnostic-bundle'
 import * as diagnosticLog from './native-runtime/diagnostic-log'
 
 describe('desktop diagnostic bundle', () => {
@@ -31,12 +32,12 @@ describe('desktop diagnostic bundle', () => {
       timestamp_ms: 1_000, source: 'renderer', event: 'report_manifest',
       data: { ...metadata, token: 'private-token', userId: 'private-user' },
     }
-    const compressed = await createDesktopDiagnosticBundle(JSON.stringify(manifest))
+    const compressed = await Effect.runPromise(createDesktopDiagnosticBundleEffect(JSON.stringify(manifest)))
     const first = JSON.parse(gunzipSync(compressed).toString('utf8').split('\n')[0]!)
     expect(first.data).toEqual(metadata)
-    await expect(createDesktopDiagnosticBundle(JSON.stringify({
+    await expect(Effect.runPromise(createDesktopDiagnosticBundleEffect(JSON.stringify({
       ...manifest, data: { ...metadata, source: 'private-source' },
-    }))).rejects.toThrow('invalid JSONL')
+    })))).rejects.toThrow('invalid JSONL')
   })
 
   it('lets queued main-loop work run before native record normalization completes', async () => {
@@ -56,7 +57,7 @@ describe('desktop diagnostic bundle', () => {
       return sanitize(value)
     })
     try {
-      await createDesktopDiagnosticBundle('{"type":"manifest","source":"desktop"}')
+      await Effect.runPromise(createDesktopDiagnosticBundleEffect('{"type":"manifest","source":"desktop"}'))
       expect(normalized).toBe(count)
       expect(controlRanBeforeCompletion).toBe(true)
     } finally {
@@ -78,9 +79,7 @@ describe('desktop diagnostic bundle', () => {
       'utf8',
     )
 
-    const compressed = await createDesktopDiagnosticBundle(
-      '{"type":"manifest","source":"desktop"}\n{"event":"voice_failed"}',
-    )
+    const compressed = await Effect.runPromise(createDesktopDiagnosticBundleEffect('{"type":"manifest","source":"desktop"}\n{"event":"voice_failed"}'))
     const value = gunzipSync(compressed).toString('utf8')
     expect(value).toContain('voice_failed')
     expect(value).toContain('screen_started')
@@ -254,9 +253,7 @@ describe('desktop diagnostic bundle', () => {
         },
       },
     })
-    const compressed = await createDesktopDiagnosticBundle(
-      `{"type":"manifest","source":"desktop"}\n${rendererEvent}`,
-    )
+    const compressed = await Effect.runPromise(createDesktopDiagnosticBundleEffect(`{"type":"manifest","source":"desktop"}\n${rendererEvent}`))
     const records = gunzipSync(compressed).toString('utf8')
       .split('\n')
       .map((line) => JSON.parse(line))
@@ -348,7 +345,7 @@ describe('desktop diagnostic bundle', () => {
 
   it('rejects unbounded renderer input', async () => {
     await expect(
-      createDesktopDiagnosticBundle('x'.repeat(2 * 1024 * 1024 + 1)),
+      Effect.runPromise(createDesktopDiagnosticBundleEffect('x'.repeat(2 * 1024 * 1024 + 1))),
     ).rejects.toThrow('too large')
   })
 
@@ -371,9 +368,7 @@ describe('desktop diagnostic bundle', () => {
     )
     await writeFile(path.join(session, 'native.jsonl'), nativeJsonl, 'utf8')
 
-    const compressed = await createDesktopDiagnosticBundle(
-      '{"type":"manifest","source":"desktop"}\n{"event":"voice_failed"}',
-    )
+    const compressed = await Effect.runPromise(createDesktopDiagnosticBundleEffect('{"type":"manifest","source":"desktop"}\n{"event":"voice_failed"}'))
     expect(gunzipSync(compressed).byteLength).toBeLessThanOrEqual(33 * 1024 * 1024)
   }, 60_000)
 
@@ -395,9 +390,7 @@ describe('desktop diagnostic bundle', () => {
     ).join('\n')
     await writeFile(path.join(session, 'native.jsonl'), records, 'utf8')
 
-    const compressed = await createDesktopDiagnosticBundle(
-      '{"type":"manifest","source":"desktop"}\n{"event":"voice_failed"}',
-    )
+    const compressed = await Effect.runPromise(createDesktopDiagnosticBundleEffect('{"type":"manifest","source":"desktop"}\n{"event":"voice_failed"}'))
     expect(compressed.byteLength).toBeLessThanOrEqual(10 * 1024 * 1024)
     const normalized = gunzipSync(compressed)
     expect(normalized.byteLength).toBeLessThanOrEqual(33 * 1024 * 1024)

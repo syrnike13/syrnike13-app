@@ -1,3 +1,4 @@
+import { Effect } from 'effect'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -11,7 +12,7 @@ vi.mock('electron', () => ({
   app: { getPath: () => state.userData },
 }))
 
-import { createDesktopDiagnosticBundle } from './diagnostic-bundle'
+import { createDesktopDiagnosticBundleEffect } from './diagnostic-bundle'
 
 describe('screen stream report bundle', () => {
   beforeEach(async () => {
@@ -67,8 +68,7 @@ describe('screen stream report bundle', () => {
       'utf8',
     )
 
-    const compressed = await createDesktopDiagnosticBundle(
-      [
+    const compressed = await Effect.runPromise(createDesktopDiagnosticBundleEffect([
         JSON.stringify({
           schema: 'syrnike.diagnostic',
           version: 1,
@@ -111,8 +111,7 @@ describe('screen stream report bundle', () => {
             },
           },
         }),
-      ].join('\n'),
-    )
+      ].join('\n')))
 
     const records = gunzipSync(compressed)
       .toString('utf8')
