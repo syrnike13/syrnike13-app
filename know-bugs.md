@@ -216,3 +216,15 @@ An unclean Docker Desktop stop can reproduce the corruption. Cleaning only one d
 ### Data safety
 
 Do not use Factory Reset and do not delete `%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx`; those actions are unnecessary and can destroy local images, containers, and volumes. Rename the socket parent directories instead, because the corrupted reparse points may be impossible to delete normally.
+
+## MinIO container images are no longer publicly available
+
+Since October 2026 anonymous pulls of `quay.io/minio/minio` and
+`quay.io/minio/mc` return 401, and the `minio/minio` repository no longer
+exists on Docker Hub. Every nightly deploy failed at `docker compose pull`.
+The production server keeps the images both stacks run
+(`minio@sha256:14cea493…`, RELEASE.2025-09-07T16-13-09Z, and
+`mc@sha256:a7fe349e…`, RELEASE.2025-08-13T08-35-41Z) locally with
+`docker.io` repo digests, so both compose files reference them by digest with
+`pull_policy: never`; `docker compose pull` skips them. A server without these
+images cannot start MinIO until they are mirrored or the storage is replaced.

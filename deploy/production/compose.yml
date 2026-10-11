@@ -53,7 +53,11 @@ services:
 
   # MinIO: S3-compatible storage server
   minio:
-    image: docker.io/minio/minio
+    # MinIO no longer publishes images (Quay answers 401, Docker Hub removed
+    # the repository). The server keeps this exact image locally
+    # (RELEASE.2025-09-07T16-13-09Z), so compose must never pull it.
+    image: docker.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    pull_policy: never
     logging: *json-log-rotation
     command: server /data
     volumes:
@@ -243,7 +247,9 @@ services:
 
   # Create buckets for minio.
   createbuckets:
-    image: docker.io/minio/mc
+    # Local image only, see minio (RELEASE.2025-08-13T08-35-41Z).
+    image: docker.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    pull_policy: never
     logging: *json-log-rotation
     depends_on:
       - minio
