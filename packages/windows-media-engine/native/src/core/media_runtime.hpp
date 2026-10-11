@@ -21,7 +21,7 @@ struct MediaRuntimeSnapshot {
   std::optional<std::array<DiagnosticMetric, 15>> microphone_metrics;
   std::optional<std::array<DiagnosticMetric, 8>> remote_audio_ingress_metrics;
   std::optional<std::array<DiagnosticMetric, 6>> remote_audio_output_metrics;
-  std::optional<std::array<DiagnosticMetric, 14>> remote_video_metrics;
+  std::optional<std::array<DiagnosticMetric, 15>> remote_video_metrics;
 };
 
 // Native media composition port. The Engine control thread calls these

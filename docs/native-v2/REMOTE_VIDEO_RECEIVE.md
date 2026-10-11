@@ -68,6 +68,40 @@ game no longer loses slots for good). A failed keyed-mutex acquisition stays
 quarantined until the utility process exits. There is no detached reader thread: a stuck
 SDK teardown requires containment by the outer process deadline.
 
+## GPU decoding
+
+H.264 never leaves the GPU. Since SDK `v1.10.0-syrnike.16` the application can
+install an external video decoder (`livekit::setExternalVideoDecoder`);
+`RemoteVideoOwner` installs `video/hardware_video_decoder.*` before any Room.
+WebRTC hands it complete access units in decode order, after its jitter buffer
+and reference checks, so packet loss and keyframe requests behave as with the
+built-in decoder.
+
+The decoder is the Media Foundation H.264 MFT with a DXGI device manager on the
+process D3D11 device. That is DXVA, available from every GPU vendor; nothing is
+NVIDIA-specific. Low-latency mode returns one picture per access unit. The
+D3D11 video processor converts NV12 to BGRA (BT.601/BT.709 and range from the
+stream, display aperture instead of the 1088-line coded size) into a
+per-decoder output texture, at most eight outstanding. The SDK passes that
+frame through Rust and the C++ `VideoStream` as `VideoBufferType::External`
+without a copy; the owner copies it into the pool slot on the GPU.
+
+The built-in FFmpeg decoder stays as WebRTC's software fallback: it decodes
+when no DXVA decoder exists (virtual machines, remote sessions without a GPU),
+when the decoder reports itself unusable (device removed, system-memory
+output). An ordinary decode error only requests a keyframe. VP8, VP9 and AV1 tracks use WebRTC's software
+decoders and the BGRA path. `remote_video_metrics.gpu_uploaded` counts frames
+that took the GPU path.
+
+Pool writes wait on a D3D11 fence without holding the device context lock; a
+device without fences falls back to polling the event query.
+
+Measured on 2026-10-11 (RTX 5070 Ti, three H.264 streams 1080p, 720p and 540p at
+30 fps, `bench/call-bench.mjs`-style viewer): CPU of the viewer process 56.8 %
+of one core before, 12–13 % after; GPU video-decode engine 0 % before, 6.6 %
+after; every frame on the GPU path, no drops. With the hardware decoder
+disabled the software fallback delivered every frame at 37.8 %.
+
 ## Cross-process lease protocol
 
 `apps/desktop/src/main/media-runtime/remote-video-bridge.ts` is the reusable

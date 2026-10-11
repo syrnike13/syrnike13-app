@@ -1,5 +1,6 @@
 #include "video/remote_video_track.hpp"
 #include "video/frame_signal.hpp"
+#include "video/hardware_video_decoder.hpp"
 
 namespace syrnike::windows_media::video {
 namespace {
@@ -193,8 +194,10 @@ void RemoteVideoTrack::run() noexcept {
       if (track && track != reading) {
         stop_reader();
         reading = track;
+        // H.264 arrives decoded on the GPU; other codecs and the software
+        // fallback arrive as BGRA.
         stream = livekit::VideoStream::fromTrack(
-            track, {1, livekit::VideoBufferType::BGRA});
+            track, {1, livekit::VideoBufferType::BGRA, true});
         ++reader_starts_;
         reader = std::thread([this, stream, revision] {
           try {
@@ -203,7 +206,8 @@ void RemoteVideoTrack::run() noexcept {
               ++decoded_;
               if (event.frame.width() <= 0 || event.frame.height() <= 0 ||
                   event.frame.width() > 3840 || event.frame.height() > 2160 ||
-                  event.frame.type() != livekit::VideoBufferType::BGRA)
+                  (event.frame.type() != livekit::VideoBufferType::BGRA &&
+                   event.frame.type() != livekit::VideoBufferType::External))
                 continue;
               (void)acceptDecoded(revision, std::move(event));
             }
@@ -234,14 +238,22 @@ void RemoteVideoTrack::run() noexcept {
         height = frame_height;
       }
       last_timestamp = timestamp_us;
-      auto lease = pool.upload(generation, width, height, timestamp_us,
-                               {frame->frame.data(), frame->frame.dataSize()},
-                               ingress_us);
+      const auto* decoded = frame->frame.type() == livekit::VideoBufferType::External
+          ? static_cast<const std::shared_ptr<DecodedVideoFrame>*>(frame->frame.externalFrame())
+          : nullptr;
+      auto lease = decoded
+          ? pool.upload(generation, width, height, timestamp_us, (*decoded)->texture.Get(),
+                        ingress_us)
+          : pool.upload(generation, width, height, timestamp_us,
+                        {frame->frame.data(), frame->frame.dataSize()}, ingress_us);
+      const bool gpu = decoded != nullptr;
+      frame.reset();  // returns the decoder texture
       if (!lease) {
         ++upload_failed_;
         continue;
       }
       ++uploaded_;
+      if (gpu) ++gpu_uploaded_;
       lease->publication_id = requested ? requested->sid() : "";
       lease->participant_identity = participant_;
       std::optional<TextureLease> previous;

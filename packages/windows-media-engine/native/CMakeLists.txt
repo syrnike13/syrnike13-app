@@ -202,9 +202,9 @@ windows_media_target(media_screen_audio_livekit)
 target_link_libraries(media_screen_audio_livekit PUBLIC media_screen_audio_capture media_livekit)
 
 add_library(media_video STATIC src/video/shared_texture_pool.cpp src/video/remote_video_track.cpp
-  src/video/remote_video_owner.cpp)
+  src/video/remote_video_owner.cpp src/video/hardware_video_decoder.cpp)
 windows_media_target(media_video)
-target_link_libraries(media_video PUBLIC media_capture LiveKit::livekit PRIVATE dxgi)
+target_link_libraries(media_video PUBLIC media_capture LiveKit::livekit PRIVATE dxgi mf mfplat mfuuid)
 
 add_library(media_screen_livekit STATIC src/livekit/livekit_screen_publication_adapter.cpp)
 windows_media_target(media_screen_livekit)
@@ -447,6 +447,13 @@ target_link_libraries(shared_texture_pool_tests PRIVATE media_video)
 windows_media_copy_livekit_runtime(shared_texture_pool_tests)
 add_test(NAME shared-texture-pool COMMAND shared_texture_pool_tests)
 set_tests_properties(shared-texture-pool PROPERTIES TIMEOUT 30 LABELS "requires-gpu-video")
+
+add_executable(hardware_video_decoder_tests tests/hardware_video_decoder_test.cpp)
+windows_media_target(hardware_video_decoder_tests)
+target_link_libraries(hardware_video_decoder_tests PRIVATE media_video media_screen)
+windows_media_copy_livekit_runtime(hardware_video_decoder_tests)
+add_test(NAME hardware-video-decoder COMMAND hardware_video_decoder_tests)
+set_tests_properties(hardware-video-decoder PROPERTIES TIMEOUT 60 LABELS "requires-gpu-video")
 
 # Hosted Windows runners expose no D3D11 Video interface. Keep these tests in
 # the default full suite; only the hosted workflow selects the portable subset.

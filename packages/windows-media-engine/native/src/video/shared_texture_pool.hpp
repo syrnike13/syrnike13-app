@@ -3,10 +3,13 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <span>
 #include <string>
+
+#include <d3d11_4.h>
 
 #include "capture/d3d11_device.hpp"
 
@@ -62,6 +65,12 @@ class SharedTexturePool final {
                                      std::int64_t timestamp_us,
                                      std::span<const std::uint8_t> bgra,
                                      std::int64_t ingress_us = 0);
+  // GPU copy of a BGRA texture on the process device (hardware decoding).
+  std::optional<TextureLease> upload(std::uint64_t generation,
+                                     std::uint32_t width, std::uint32_t height,
+                                     std::int64_t timestamp_us,
+                                     ID3D11Texture2D* bgra,
+                                     std::int64_t ingress_us = 0);
   bool release(std::uint64_t generation, std::uint64_t sequence,
                std::uint32_t slot);
   PoolSnapshot snapshot() const;
@@ -77,12 +86,24 @@ class SharedTexturePool final {
     Microsoft::WRL::ComPtr<ID3D11Query> pending_write;
     std::chrono::steady_clock::time_point delivered_at;
   };
+  using Write = std::function<void(ID3D11DeviceContext*, ID3D11Texture2D*)>;
+  std::optional<TextureLease> write(std::uint64_t generation, std::uint32_t width,
+                                    std::uint32_t height, std::int64_t timestamp_us,
+                                    std::int64_t ingress_us, const Write& write);
   void reclaimCompletedWrites();
+  // Signals fence_event_ when the queued write completes; false without
+  // D3D11.4 fences.
+  bool signalFence();
   SharedTexturePool() = default;
   ~SharedTexturePool();
   void clear(Slot& slot);
   mutable std::mutex mutex_;
   std::shared_ptr<capture::D3d11DeviceOwner> device_;
+  Microsoft::WRL::ComPtr<ID3D11Fence> fence_;
+  Microsoft::WRL::ComPtr<ID3D11DeviceContext4> fence_context_;
+  HANDLE fence_event_ = nullptr;
+  std::uint64_t fence_value_ = 0;
+  bool fence_unavailable_ = false;
   std::array<Slot, kSlots> slots_;
   std::array<std::uint64_t, kGenerations> active_generations_{};
   PoolSnapshot metrics_;

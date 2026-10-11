@@ -1,4 +1,5 @@
 #include "video/remote_video_owner.hpp"
+#include "video/hardware_video_decoder.hpp"
 
 #include <algorithm>
 
@@ -9,7 +10,10 @@ bool identifier(std::string_view text) {
       std::all_of(text.begin(), text.end(), [](unsigned char value) { return value >= 0x21 && value <= 0x7e; });
 }
 }  // namespace
-RemoteVideoOwner::RemoteVideoOwner() : worker_([this] { run(); }) {}
+RemoteVideoOwner::RemoteVideoOwner() : worker_([this] { run(); }) {
+  // Before any Room: subscribed H.264 then decodes on the GPU.
+  installHardwareVideoDecoder();
+}
 RemoteVideoOwner::~RemoteVideoOwner() { stop(); }
 void RemoteVideoOwner::apply(std::uint64_t revision, std::span<const RemoteVideoDemand> demand, bool connected) {
   std::lock_guard lock(mutex_);
@@ -264,6 +268,7 @@ void RemoteVideoOwner::run() noexcept {
         total.expired += stats.expired;
         total.uploaded += stats.uploaded;
         total.upload_failed += stats.upload_failed;
+        total.gpu_uploaded += stats.gpu_uploaded;
       }
       current.metrics = {{
         {"publications", static_cast<double>(publications.size())},
@@ -279,6 +284,7 @@ void RemoteVideoOwner::run() noexcept {
         {"expired", static_cast<double>(total.expired)},
         {"uploaded", static_cast<double>(total.uploaded)},
         {"upload_failed", static_cast<double>(total.upload_failed)},
+        {"gpu_uploaded", static_cast<double>(total.gpu_uploaded)},
         {"owner_creations", static_cast<double>(created)},
         {"owner_retirements", static_cast<double>(retired)},
       }};

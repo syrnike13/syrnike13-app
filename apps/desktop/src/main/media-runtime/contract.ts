@@ -286,7 +286,8 @@ export const MediaSourcesQueryAcceptedSchema = Schema.Struct({
 export const MediaFrameReleaseSchema = Schema.Struct({
   generation: positiveProtocolInteger,
   sequence: positiveProtocolInteger,
-  slot: protocolInteger.check(Schema.isLessThan(4)),
+  // SharedTexturePool::kSlots in the native engine.
+  slot: protocolInteger.check(Schema.isLessThan(12)),
 })
 export const MediaExportedFrameSchema = Schema.Struct({
   ...MediaFrameReleaseSchema.fields,

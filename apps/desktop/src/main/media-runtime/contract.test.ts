@@ -11,6 +11,7 @@ import {
   MEDIA_LIFECYCLE_SCHEMA_SHA256,
   EngineDesiredStateSchema,
   MediaCredentialLeaseSchema,
+  MediaFrameReleaseSchema,
   MediaLifecycleDiagnosticMessageSchema,
   MediaLifecycleFailureSchema,
   MediaLifecyclePublicEventMessageSchema,
@@ -416,5 +417,11 @@ describe('native media protocol contract', () => {
         'test',
       ).message,
     ).toBe('authorization=[redacted] [redacted-url]')
+  })
+
+  it('accepts every slot of the native texture pool', () => {
+    const decode = Schema.decodeUnknownOption(MediaFrameReleaseSchema)
+    expect(Option.isSome(decode({ generation: 1, sequence: 1, slot: 11 }))).toBe(true)
+    expect(Option.isNone(decode({ generation: 1, sequence: 1, slot: 12 }))).toBe(true)
   })
 })
