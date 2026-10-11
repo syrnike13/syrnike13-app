@@ -3,7 +3,6 @@ import {
   RiCloseCircleLine,
   RiErrorWarningLine,
   RiInformationLine,
-  RiWifiLine,
   RiWifiOffLine,
 } from '@remixicon/react'
 
@@ -27,11 +26,6 @@ export const TriangleAlertIcon = defineIcon(RiErrorWarningLine, {
 export const OctagonXIcon = defineIcon(RiCloseCircleLine, {
   pack: 'remixicon',
   name: 'RiCloseCircleLine',
-})
-
-export const WifiIcon = defineIcon(RiWifiLine, {
-  pack: 'remixicon',
-  name: 'RiWifiLine',
 })
 
 export const WifiOffIcon = defineIcon(RiWifiOffLine, {

@@ -41,17 +41,6 @@ export const joinInviteEffect = Effect.fn('web.invites.join')(
   },
 )
 
-export function joinInvite(
-  token: string,
-  code: string,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    joinInviteEffect(token, code),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const createChannelInviteEffect = Effect.fn('web.invites.create')(
   function*(
     token: string,

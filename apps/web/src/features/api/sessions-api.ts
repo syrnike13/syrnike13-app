@@ -33,17 +33,6 @@ export const deleteSessionEffect = Effect.fn('web.sessions.delete')(
   },
 )
 
-export function deleteSession(
-  token: string,
-  sessionId: string,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    deleteSessionEffect(token, sessionId),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const revokeOtherSessionsEffect = Effect.fn(
   'web.sessions.revokeOther',
 )(function*(token: string) {
@@ -53,10 +42,3 @@ export const revokeOtherSessionsEffect = Effect.fn(
     body: { revoke_self: false },
   })
 })
-
-export function revokeOtherSessions(token: string, signal?: AbortSignal) {
-  return Effect.runPromise(
-    revokeOtherSessionsEffect(token),
-    signal ? { signal } : undefined,
-  )
-}

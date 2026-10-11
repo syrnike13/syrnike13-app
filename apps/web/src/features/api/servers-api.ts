@@ -79,17 +79,6 @@ export const fetchServerMembersEffect = Effect.fn(
   )
 })
 
-export function fetchServerMembers(
-  token: string,
-  serverId: string,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    fetchServerMembersEffect(token, serverId),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const fetchServerInvitesEffect = Effect.fn(
   'web.servers.fetchInvites',
 )(function*(token: string, serverId: string) {
@@ -193,31 +182,6 @@ export const createServerChannelEffect = Effect.fn(
     },
   )
 })
-
-export function createServerChannel(
-  token: string,
-  serverId: string,
-  data: DataCreateServerChannel,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    createServerChannelEffect(token, serverId, data),
-    signal ? { signal } : undefined,
-  )
-}
-
-export const ackServerEffect = Effect.fn('web.servers.ack')(
-  function*(token: string, serverId: string) {
-    return yield* apiRequestEffect(`/servers/${serverId}/ack`, Schema.Void, {
-      method: 'PUT',
-      token,
-    })
-  },
-)
-
-export function ackServer(token: string, serverId: string) {
-  return Effect.runPromise(ackServerEffect(token, serverId))
-}
 
 export const deleteOrLeaveServerEffect = Effect.fn(
   'web.servers.deleteOrLeave',
@@ -348,19 +312,6 @@ export const fetchServerMemberEffect = Effect.fn(
     { token },
   )
 })
-
-export function fetchServerMember(
-  token: string,
-  serverId: string,
-  userId: string,
-  options: FetchServerMemberOptions = {},
-) {
-  const { signal, ...effectOptions } = options
-  return Effect.runPromise(
-    fetchServerMemberEffect(token, serverId, userId, effectOptions),
-    signal ? { signal } : undefined,
-  )
-}
 
 export const editServerMemberEffect = Effect.fn('web.servers.editMember')(
   function*(

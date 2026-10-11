@@ -7,12 +7,6 @@ export const ChannelSettingsTabSchema = Schema.Literals([
 ])
 export type ChannelSettingsTab = typeof ChannelSettingsTabSchema.Type
 
-export const CHANNEL_SETTINGS_TABS: ChannelSettingsTab[] = [
-  'overview',
-  'permissions',
-  'webhooks',
-]
-
 export function parseChannelSettingsTab(value: unknown): ChannelSettingsTab {
   return Option.getOrElse(
     Schema.decodeUnknownOption(ChannelSettingsTabSchema)(value),

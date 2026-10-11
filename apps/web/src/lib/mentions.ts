@@ -10,31 +10,6 @@ const MESSAGE_ENTITY_RE = new RegExp(
   'g',
 )
 
-const MENTION_INPUT_RE = /@([\w.-]*)$/
-
-export function extractMentionQuery(value: string, caret: number) {
-  const before = value.slice(0, caret)
-  const match = before.match(MENTION_INPUT_RE)
-  if (!match) return null
-  return {
-    query: match[1].toLowerCase(),
-    start: caret - match[0].length,
-  }
-}
-
-export function insertMention(
-  value: string,
-  start: number,
-  caret: number,
-  userId: string,
-) {
-  const mention = `<@${userId}> `
-  return {
-    value: value.slice(0, start) + mention + value.slice(caret),
-    caret: start + mention.length,
-  }
-}
-
 export function getMentionableUsers(
   channel: Channel | undefined,
   users: Record<string, User>,
@@ -60,17 +35,6 @@ export function getMentionableUsers(
     .map((id) => users[id])
     .filter((user): user is User => Boolean(user))
     .sort((a, b) => a.username.localeCompare(b.username))
-}
-
-export function filterUsersByQuery(users: User[], query: string) {
-  if (!query) return users.slice(0, 8)
-  return users
-    .filter(
-      (user) =>
-        user.username.toLowerCase().includes(query) ||
-        user.display_name?.toLowerCase().includes(query),
-    )
-    .slice(0, 8)
 }
 
 /** MessageFlags bit indices (backend `MessageFlags`). */

@@ -13,17 +13,6 @@ export const subscribePushEffect = Effect.fn('web.push.subscribe')(
   },
 )
 
-export function subscribePush(
-  token: string,
-  subscription: WebPushSubscription,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    subscribePushEffect(token, subscription),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const unsubscribePushEffect = Effect.fn('web.push.unsubscribe')(
   function*(token: string, subscription: WebPushSubscription) {
     return yield* apiRequestEffect('/push/unsubscribe', Schema.Void, {
@@ -33,14 +22,3 @@ export const unsubscribePushEffect = Effect.fn('web.push.unsubscribe')(
     })
   },
 )
-
-export function unsubscribePush(
-  token: string,
-  subscription: WebPushSubscription,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    unsubscribePushEffect(token, subscription),
-    signal ? { signal } : undefined,
-  )
-}

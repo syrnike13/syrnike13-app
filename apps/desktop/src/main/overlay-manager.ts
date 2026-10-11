@@ -238,10 +238,6 @@ export function setDesktopOverlayEnabled(enabled: boolean) {
   return overlayState
 }
 
-export function getDesktopOverlaySettings() {
-  return overlaySettings
-}
-
 export function setDesktopOverlaySettings(settings: DesktopOverlaySettings) {
   overlaySettings = settings
   overlayState = updateDesktopOverlayGameTarget(

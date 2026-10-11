@@ -112,13 +112,6 @@ export const logoutSessionEffect = Effect.fn('web.auth.logout')(
   },
 )
 
-export function logoutSession(token: string, signal?: AbortSignal) {
-  return Effect.runPromise(
-    logoutSessionEffect(token),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const fetchCurrentUserEffect = Effect.fn('web.auth.fetchCurrentUser')(
   function*(token: string) {
     return yield* apiRequestEffect(

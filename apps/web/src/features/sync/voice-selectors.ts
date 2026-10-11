@@ -26,27 +26,12 @@ export function getChannelVoiceParticipants(
     })
 }
 
-export function getChannelVoiceParticipantCount(
-  state: SyncState,
-  channelId: string,
-  currentUserId?: string,
-) {
-  return getChannelVoiceParticipants(state, channelId, currentUserId).length
-}
-
 export function sameVoiceParticipantList(
   previous: readonly UserVoiceState[],
   next: readonly UserVoiceState[],
 ) {
   return previous.length === next.length &&
     previous.every((participant, index) => participant === next[index])
-}
-
-export function isUserInAnyVoice(state: SyncState, userId: string) {
-  for (const channelMap of Object.values(state.voiceParticipants)) {
-    if (channelMap[userId]) return true
-  }
-  return false
 }
 
 export type LocalVoiceSessionOverride = {

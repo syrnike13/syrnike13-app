@@ -14,26 +14,8 @@ type NativeMicrophonePreferences = Pick<
   | 'voiceGateAutoThreshold'
 >
 
-export type NativeMicrophoneRecoveryState = {
-  voiceConnected: boolean
-  wantsMic: boolean
-  deafened: boolean
-  selfMonitoringActive: boolean
-}
-
 export function shouldUseNativeMicrophone() {
   return getSyrnikeDesktop()?.platform.os === 'win32'
-}
-
-export function shouldRestartNativeMicrophonePublisher(
-  state: NativeMicrophoneRecoveryState,
-) {
-  return (
-    state.voiceConnected &&
-    state.wantsMic &&
-    !state.deafened &&
-    !state.selfMonitoringActive
-  )
 }
 
 export function nativeMicrophonePipelineConfig(

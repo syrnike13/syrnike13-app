@@ -18,16 +18,6 @@ export const createAccountEffect = Effect.fn('web.account.create')(
   },
 )
 
-export function createAccount(
-  payload: DataCreateAccount,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    createAccountEffect(payload),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const verifyAccountEffect = Effect.fn('web.account.verify')(
   function*(token: string) {
     return yield* apiRequestEffect(
@@ -37,13 +27,6 @@ export const verifyAccountEffect = Effect.fn('web.account.verify')(
     )
   },
 )
-
-export function verifyAccount(token: string, signal?: AbortSignal) {
-  return Effect.runPromise(
-    verifyAccountEffect(token),
-    signal ? { signal } : undefined,
-  )
-}
 
 export const resendVerificationEffect = Effect.fn(
   'web.account.resendVerification',
@@ -104,18 +87,6 @@ export const changeAccountPasswordEffect = Effect.fn(
     },
   )
 })
-
-export function changeAccountPassword(
-  token: string,
-  password: string,
-  currentPassword: string,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    changeAccountPasswordEffect(token, password, currentPassword),
-    signal ? { signal } : undefined,
-  )
-}
 
 export const confirmPasswordResetEffect = Effect.fn(
   'web.account.confirmPasswordReset',

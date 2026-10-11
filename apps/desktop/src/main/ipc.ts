@@ -483,7 +483,3 @@ export function registerDesktopIpc(
     unsubscribeVoice()
   }
 }
-
-export function getLastActivity() {
-  return lastActivity
-}

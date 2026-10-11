@@ -17,17 +17,6 @@ export const updateCurrentUserEffect = Effect.fn('web.users.updateCurrent')(
   },
 )
 
-export function updateCurrentUser(
-  token: string,
-  data: DataEditUser,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    updateCurrentUserEffect(token, data),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const openDirectMessageEffect = Effect.fn('web.users.openDirectMessage')(
   function*(token: string, userId: string) {
     return yield* apiRequestEffect(

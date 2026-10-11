@@ -5,7 +5,6 @@ import {
   RiFileCopyLine,
   RiFileLine,
   RiLink,
-  RiLinksLine,
   RiMoreLine,
   RiPushpinLine,
   RiReplyLine,
@@ -38,11 +37,6 @@ export const CopyIcon = defineIcon(RiFileCopyLine, {
 export const LinkIcon = defineIcon(RiLink, {
   pack: 'remixicon',
   name: 'RiLink',
-})
-
-export const Link2Icon = defineIcon(RiLinksLine, {
-  pack: 'remixicon',
-  name: 'RiLinksLine',
 })
 
 export const SmilePlusIcon = defineIcon(RiEmotionAddLine, {

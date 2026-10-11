@@ -50,18 +50,6 @@ export const createGroupChannelEffect = Effect.fn('web.channels.createGroup')(
   },
 )
 
-export function createGroupChannel(
-  token: string,
-  name: string,
-  userIds: string[],
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    createGroupChannelEffect(token, name, userIds),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const fetchGroupMembersEffect = Effect.fn(
   'web.channels.fetchGroupMembers',
 )(function*(token: string, groupId: string) {
@@ -207,19 +195,6 @@ export const setChannelRolePermissionsEffect = Effect.fn(
   )
 })
 
-export function setChannelRolePermissions(
-  token: string,
-  channelId: string,
-  roleId: string,
-  data: DataSetRolePermissions,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    setChannelRolePermissionsEffect(token, channelId, roleId, data),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const setChannelUserPermissionsEffect = Effect.fn(
   'web.channels.setUserPermissions',
 )(function*(
@@ -239,19 +214,6 @@ export const setChannelUserPermissionsEffect = Effect.fn(
   )
 })
 
-export function setChannelUserPermissions(
-  token: string,
-  channelId: string,
-  userId: string,
-  data: DataSetUserPermissions,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    setChannelUserPermissionsEffect(token, channelId, userId, data),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const setDefaultChannelPermissionsEffect = Effect.fn(
   'web.channels.setDefaultPermissions',
 )(function*(
@@ -269,18 +231,6 @@ export const setDefaultChannelPermissionsEffect = Effect.fn(
     },
   )
 })
-
-export function setDefaultChannelPermissions(
-  token: string,
-  channelId: string,
-  data: { permissions: number } | DataSetRolePermissions,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    setDefaultChannelPermissionsEffect(token, channelId, data),
-    signal ? { signal } : undefined,
-  )
-}
 
 export const fetchChannelWebhooksEffect = Effect.fn(
   'web.channels.fetchWebhooks',

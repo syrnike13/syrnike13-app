@@ -11,16 +11,6 @@ export const fetchOnboardHelloEffect = Effect.fn(
   })
 })
 
-export function fetchOnboardHello(
-  token: string,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    fetchOnboardHelloEffect(token),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const completeOnboardingEffect = Effect.fn(
   'web.onboard.complete',
 )(function*(token: string, username: string) {

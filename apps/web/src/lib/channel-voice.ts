@@ -1,7 +1,6 @@
 import type { Channel } from '@syrnike13/api-types'
 
 export type ServerTextChannel = Extract<Channel, { channel_type: 'TextChannel' }>
-export type RuntimeChannel = Channel
 export type ServerChannel = ServerTextChannel
 
 function hasVoiceInfo(channel: Channel): boolean {
