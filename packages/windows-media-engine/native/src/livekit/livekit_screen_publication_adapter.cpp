@@ -54,6 +54,24 @@ struct LiveKitScreenPublicationAdapter::State {
   std::shared_ptr<livekit::EncodedVideoSource> source;
   std::shared_ptr<livekit::LocalVideoTrack> track;
   std::optional<std::uint64_t> sender_bitrate_allocation;
+  bool paused = false;
+  bool track_muted = false;
+
+  // SDK lane only. Applies the latest pause intent to the current track.
+  void applyPause() {
+    std::shared_ptr<livekit::LocalVideoTrack> current;
+    bool mute = false;
+    {
+      std::scoped_lock lock(mutex);
+      if (!track || stopping || track_muted == paused) return;
+      current = track;
+      mute = track_muted = paused;
+    }
+    if (mute)
+      current->mute();
+    else
+      current->unmute();
+  }
 };
 
 OutgoingNetworkObservation LiveKitScreenPublicationAdapter::networkObservation() const noexcept {
@@ -150,8 +168,10 @@ void LiveKitScreenPublicationAdapter::startPublish(
               state->source = std::move(source);
               state->sender_bitrate_allocation.reset();
               state->track = std::move(track);
+              state->track_muted = false;
             }
           }
+          if (!stopping) state->applyPause();
           if (stopping) {
             if (track->publication()) {
               participant->unpublishTrack(track->publication()->sid());
@@ -254,6 +274,22 @@ void LiveKitScreenPublicationAdapter::startSubmit(
                failure("screen_sdk_lane_backpressure",
                        "The bounded LiveKit SDK lane is occupied",
                        "screen_submit", true));
+}
+
+void LiveKitScreenPublicationAdapter::setPaused(bool paused) {
+  {
+    std::scoped_lock lock(state_->mutex);
+    if (state_->paused == paused) return;
+    state_->paused = paused;
+  }
+  const auto state = state_;
+  // Best effort: a full lane only delays the mute until the next change.
+  (void)transport_->enqueueActiveRoomTask([state](const std::shared_ptr<livekit::Room>&) {
+    try {
+      state->applyPause();
+    } catch (...) {
+    }
+  });
 }
 
 void LiveKitScreenPublicationAdapter::startUnpublish(

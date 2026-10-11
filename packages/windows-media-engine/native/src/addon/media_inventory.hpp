@@ -88,6 +88,7 @@ inline Napi::Object mediaInventory(Napi::Env env, const WindowsMediaRuntime& run
     value.Set("participantIdentity", publication.participant_identity);
     value.Set("publicationId", publication.publication_id);
     value.Set("source", publication.screen ? "screen" : "camera");
+    value.Set("muted", publication.muted);
     publications.Set(static_cast<std::uint32_t>(index), value);
   }
   video_catalog.Set("publications", publications);

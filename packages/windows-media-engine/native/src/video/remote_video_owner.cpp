@@ -96,7 +96,8 @@ void RemoteVideoOwner::addPublication(std::string_view participant,
   if (found != publications_.end()) return;
   if (publications_.size() == kMaximumRemoteVideoDemands) { failed_ = true; return; }
   publications_.push_back({{std::string(participant), publication->sid(),
-      publication->source() == livekit::TrackSource::SOURCE_SCREENSHARE}, std::move(publication), {}});
+      publication->source() == livekit::TrackSource::SOURCE_SCREENSHARE, publication->muted()},
+      std::move(publication), {}});
   ++inventory_revision_;
 }
 bool RemoteVideoOwner::seedConnectedRoom() {
@@ -167,6 +168,24 @@ void RemoteVideoOwner::onTrackUnsubscribed(livekit::Room& room, const livekit::T
   for (auto& entry : publications_) if (entry.track == event.track) entry.track.reset();
   ++revision_;
   changed_.notify_all();
+}
+void RemoteVideoOwner::setMuted(livekit::Room& room, const livekit::TrackPublication* publication,
+                                bool muted) {
+  std::lock_guard lock(mutex_);
+  if (room_.get() != &room || stopping_ || !publication) return;
+  for (auto& entry : publications_) {
+    if (entry.publication.get() != publication || entry.value.muted == muted) continue;
+    entry.value.muted = muted;
+    ++inventory_revision_;
+    ++revision_;
+    changed_.notify_all();
+  }
+}
+void RemoteVideoOwner::onTrackMuted(livekit::Room& room, const livekit::TrackMutedEvent& event) {
+  setMuted(room, event.publication.get(), true);
+}
+void RemoteVideoOwner::onTrackUnmuted(livekit::Room& room, const livekit::TrackUnmutedEvent& event) {
+  setMuted(room, event.publication.get(), false);
 }
 void RemoteVideoOwner::onParticipantDisconnected(livekit::Room& room, const livekit::ParticipantDisconnectedEvent& event) {
   std::lock_guard lock(mutex_);

@@ -54,6 +54,12 @@ class ProductRoomObserver final : public LiveKitRoomObserver {
     audio_->onTrackUnsubscribed(room, event);
     video_->onTrackUnsubscribed(room, event);
   }
+  void onTrackMuted(livekit::Room& room, const livekit::TrackMutedEvent& event) override {
+    video_->onTrackMuted(room, event);
+  }
+  void onTrackUnmuted(livekit::Room& room, const livekit::TrackUnmutedEvent& event) override {
+    video_->onTrackUnmuted(room, event);
+  }
   void onTrackSubscriptionFailed(livekit::Room& room, const livekit::TrackSubscriptionFailedEvent& event) override {
     audio_->onTrackSubscriptionFailed(room, event);
   }

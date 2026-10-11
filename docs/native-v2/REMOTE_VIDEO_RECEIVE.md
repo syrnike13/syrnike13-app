@@ -23,8 +23,11 @@ timestamps and rejects frames waiting more than 250 ms after reader ingress.
 There is one unsent output lease. Replacing that unsent output can immediately
 return it because no external consumer has seen it.
 
-`SharedTexturePool::processPool()` owns four slots across all track owners,
-including retired generations. Its fixed registry permits 16 active owner
+`SharedTexturePool::processPool()` owns twelve slots across all track owners,
+including retired generations. A track holds about three (one unsent output,
+one or two in the renderer); with four, a third 30 fps stream dropped most of
+its frames once the renderer held each frame 30 ms. A free slot of the same size
+is reused first, so streams of different sizes do not reallocate per frame. Its fixed registry permits 16 active owner
 generations; retiring one does not invalidate another. Dimensions are bounded
 by 3840x2160, and estimated texture backing has an independent 256 MiB ceiling.
 The estimate rounds BGRA row pitch to 256 bytes and allocation size to 64 KiB:
@@ -34,6 +37,9 @@ The estimate rounds BGRA row pitch to 256 bytes and allocation size to 64 KiB:
 | 1920x1080 | 8,323,072 | 33,292,288 | 31.75 |
 | 2560x1440 | 14,745,600 | 58,982,400 | 56.25 |
 | 3840x2160 | 33,226,752 | 132,907,008 | 126.75 |
+
+Slots are allocated on first use. Twelve 1080p slots fit the budget; at 4K only
+seven do, and an upload past the budget is dropped.
 
 This budget covers allocated pool textures, including cached free, retired and
 quarantined backing. It is an estimate, not driver memory measurement; SDK
@@ -50,13 +56,16 @@ stateDiagram-v2
     Retired --> Free: authoritative release, destroy backing
     Free --> Free: retire generation, destroy cached backing
     Quarantined --> Quarantined: timeout or uncertain GPU state
+    Quarantined --> Free: timed-out write later completes
 ```
 
 The worker uploads to a shared NT-handle D3D11 BGRA texture under the process
 device context mutex. A GPU event query must complete before export. A 200 ms
 query deadline or failed keyed-mutex acquisition quarantines the slot; elapsed
-time never grants permission to reuse it. Quarantined backing remains counted
-until the utility process exits. There is no detached reader thread: a stuck
+time never grants permission to reuse it. A timed-out write keeps its query, and
+the slot returns to Free once that query reports completion (a GPU busy with a
+game no longer loses slots for good). A failed keyed-mutex acquisition stays
+quarantined until the utility process exits. There is no detached reader thread: a stuck
 SDK teardown requires containment by the outer process deadline.
 
 ## Cross-process lease protocol

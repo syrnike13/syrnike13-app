@@ -36,6 +36,7 @@ class LiveKitScreenPublicationAdapter final
                    screen::ScreenOperationCompletion completion) override;
   void startUnpublish(std::uint64_t generation,
                       screen::ScreenOperationCompletion completion) override;
+  void setPaused(bool paused) override;
 
  private:
   struct State;

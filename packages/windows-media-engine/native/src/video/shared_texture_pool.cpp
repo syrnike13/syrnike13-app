@@ -64,15 +64,28 @@ std::optional<TextureLease> SharedTexturePool::upload(
     ++metrics_.dropped;
     return {};
   };
+  reclaimCompletedWrites();
   if (generation == 0 ||
       std::find(active_generations_.begin(), active_generations_.end(),
                 generation) == active_generations_.end() ||
       width == 0 || height == 0 || width > 3840 || height > 2160 ||
       bgra.size() != std::uint64_t{width} * height * 4)
     return drop();
+  // Reuse a free texture of the same size first: streams of different sizes
+  // would otherwise reallocate (and re-import in Electron) on every frame.
+  std::optional<std::uint32_t> chosen;
   for (std::uint32_t index = 0; index < slots_.size(); ++index) {
-    auto& slot = slots_[index];
+    const auto& slot = slots_[index];
     if (slot.state != SlotState::Free) continue;
+    if (slot.texture && slot.lease.width == width && slot.lease.height == height) {
+      chosen = index;
+      break;
+    }
+    if (!chosen || slots_[*chosen].texture) chosen = index;
+  }
+  if (chosen) {
+    const auto index = *chosen;
+    auto& slot = slots_[index];
     if (!device_) device_ = capture::processD3d11Device(true);
     if (!slot.texture || slot.lease.width != width ||
         slot.lease.height != height) {
@@ -116,9 +129,9 @@ std::optional<TextureLease> SharedTexturePool::upload(
     checked(slot.texture.As(&keyed));
     if (keyed->AcquireSync(0, 0) != S_OK) return drop();
     bool complete = false;
+    Microsoft::WRL::ComPtr<ID3D11Query> query;
     {
       std::scoped_lock context_lock(device_->contextMutex());
-      Microsoft::WRL::ComPtr<ID3D11Query> query;
       D3D11_QUERY_DESC query_desc{D3D11_QUERY_EVENT, 0};
       const auto query_result =
           device_->device()->CreateQuery(&query_desc, &query);
@@ -139,7 +152,10 @@ std::optional<TextureLease> SharedTexturePool::upload(
       }
     }
     checked(keyed->ReleaseSync(0));
-    if (!complete) return drop();
+    if (!complete) {
+      slot.pending_write = std::move(query);
+      return drop();
+    }
     slot.lease.generation = generation;
     slot.lease.sequence = ++sequence_;
     slot.lease.timestamp_us = timestamp_us;
@@ -150,6 +166,20 @@ std::optional<TextureLease> SharedTexturePool::upload(
     return slot.lease;
   }
   return drop();
+}
+void SharedTexturePool::reclaimCompletedWrites() {
+  for (auto& slot : slots_) {
+    if (slot.state != SlotState::Quarantined || !slot.pending_write) continue;
+    HRESULT status = S_FALSE;
+    {
+      std::scoped_lock context_lock(device_->contextMutex());
+      status = device_->context()->GetData(slot.pending_write.Get(), nullptr, 0,
+                                           D3D11_ASYNC_GETDATA_DONOTFLUSH);
+    }
+    if (status != S_OK) continue;
+    slot.pending_write.Reset();
+    slot.state = SlotState::Free;
+  }
 }
 bool SharedTexturePool::release(std::uint64_t generation,
                                 std::uint64_t sequence, std::uint32_t index) {

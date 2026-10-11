@@ -11,6 +11,7 @@
 
 #include "capture/d3d11_device.hpp"
 #include "screen/gpu_screen_converter.hpp"
+#include "screen/production_screen_pipeline.hpp"
 #include "screen/screen_frame_marker.hpp"
 
 namespace syrnike::windows_media::screen::tests {
@@ -55,7 +56,8 @@ ComPtr<ID3D11Texture2D> solidBgra(const std::shared_ptr<D3d11DeviceOwner>& owner
 
 std::array<std::uint8_t, 3> readNv12Pixel(const std::shared_ptr<D3d11DeviceOwner>& owner,
                                           ID3D11Texture2D* source, std::uint32_t width,
-                                          std::uint32_t height) {
+                                          std::uint32_t height, std::uint32_t x = UINT32_MAX,
+                                          std::uint32_t y = UINT32_MAX) {
   D3D11_TEXTURE2D_DESC description{};
   source->GetDesc(&description);
   description.Usage = D3D11_USAGE_STAGING;
@@ -73,8 +75,8 @@ std::array<std::uint8_t, 3> readNv12Pixel(const std::shared_ptr<D3d11DeviceOwner
             "NV12 staging map failed");
   }
   const auto* bytes = static_cast<const std::uint8_t*>(mapped.pData);
-  const auto x = width / 2;
-  const auto y = height / 2;
+  if (x == UINT32_MAX) x = width / 2;
+  if (y == UINT32_MAX) y = height / 2;
   const std::array result{
       bytes[y * mapped.RowPitch + x],
       bytes[height * mapped.RowPitch + (y / 2) * mapped.RowPitch + (x & ~1U)],
@@ -188,6 +190,38 @@ void oddInputDimensionsUseAnEvenCrop() {
   require(converted.has_value(), "GPU conversion rejected an odd-sized source crop");
 }
 
+void otherAspectRatiosAreLetterboxedNotCropped() {
+  const auto owner = processD3d11Device(false);
+  GpuScreenConverter converter(owner, kScreenProfile720p30);
+  // A portrait window: 180x320 scales to 404x720, centred in 1280x720.
+  const auto source = solidBgra(owner, 180, 320, {255, 255, 255, 255});
+  const auto converted =
+      converter.convert({owner, source.Get()}, {1, 1, 180, 320, FramePixelFormat::Bgra8, 1});
+  require(converted.has_value(), "portrait conversion failed");
+  const auto luma = [&](std::uint32_t x, std::uint32_t y) {
+    return readNv12Pixel(owner, converted->texture(), 1280, 720, x, y)[0];
+  };
+  require(luma(640, 360) > 200 && luma(640, 4) > 200 && luma(640, 715) > 200,
+          "portrait source lost its top or bottom");
+  require(luma(100, 360) < 32 && luma(1180, 360) < 32, "letterbox bars are not black");
+}
+
+void streamFollowsTheSourceAspectRatio() {
+  const auto fit = [](ScreenVideoProfile box, std::uint32_t w, std::uint32_t h) {
+    const auto out = fitScreenOutput(box, w, h);
+    return std::pair{out.width, out.height};
+  };
+  using Size = std::pair<std::uint32_t, std::uint32_t>;
+  require(fit(kScreenProfile1080p60, 1920, 1080) == Size{1920, 1080}, "16:9 monitor changed size");
+  require(fit(kScreenProfile1080p60, 3440, 1440) == Size{1920, 800}, "ultrawide is not 1920x800");
+  require(fit(kScreenProfile1080p60, 1080, 1920) == Size{600, 1080}, "portrait is not 600x1080");
+  require(fit(kScreenProfile1080p60, 800, 600) == Size{800, 600}, "small window was upscaled");
+  require(fit(kScreenProfile1080p60, 200, 100) == Size{320, 160}, "tiny window not raised to 320");
+  require(fit({960, 540, 30, 625'000}, 960, 540) == Size{960, 540}, "540p preset lost its height");
+  require(fitScreenOutput(kScreenProfile1080p60, 3440, 1440).bitrate == kScreenProfile1080p60.bitrate,
+          "preset bitrate changed");
+}
+
 void gpuMarkerMatchesNeutralObserverContract() {
   const auto owner = processD3d11Device(false);
   {
@@ -218,6 +252,8 @@ int main() try {
   slotPoolIsFixedAndReturnsReleasedSlots();
   inputViewsDoNotSurviveBackendGenerations();
   oddInputDimensionsUseAnEvenCrop();
+  otherAspectRatiosAreLetterboxedNotCropped();
+  streamFollowsTheSourceAspectRatio();
   gpuMarkerMatchesNeutralObserverContract();
   syrnike::windows_media::screen::tests::hardwareH264ProbeCoversFixedProfiles();
   syrnike::windows_media::screen::tests::hardwareH264EncoderProducesBoundedAnnexBOutput();

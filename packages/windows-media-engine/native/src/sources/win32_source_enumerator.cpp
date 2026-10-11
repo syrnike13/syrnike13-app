@@ -451,6 +451,8 @@ class Win32SourceEnumerator final : public SourceEnumerator {
         return batch;
       }
       lifetime_tracker_.pruneDead();
+      std::erase_if(seen_visible_, [](HWND window) { return IsWindow(window) == FALSE; });
+      if (seen_visible_.size() > kMaximumTrackedWindows) seen_visible_.clear();
       WindowContext context{this, &batch, options.include_own_windows};
       const BOOL enumerated =
           EnumWindows(&enumerateWindow, reinterpret_cast<LPARAM>(&context));
@@ -886,6 +888,29 @@ class Win32SourceEnumerator final : public SourceEnumerator {
       return TRUE;
     }
     if (!IsWindow(window)) return TRUE;
+    // Like Discord (WebRTC's window list), only windows with a taskbar
+    // presence: no tool windows, no owned windows without WS_EX_APPWINDOW.
+    const auto ex_style = GetWindowLongPtrW(window, GWL_EXSTYLE);
+    if ((ex_style & WS_EX_APPWINDOW) == 0 &&
+        ((ex_style & WS_EX_TOOLWINDOW) != 0 || GetWindow(window, GW_OWNER) != nullptr))
+      return TRUE;
+    // Content protection (WDA_MONITOR, WDA_EXCLUDEFROMCAPTURE) captures as
+    // black; Discord reports it as DisplayAffinity. It is not a usable source.
+    DWORD affinity = WDA_NONE;
+    if (GetWindowDisplayAffinity(window, &affinity) != FALSE && affinity != WDA_NONE)
+      return TRUE;
+    // A hidden or cloaked window (suspended UWP app, another virtual desktop)
+    // stays listed only once it was seen shown: hiding a shared window keeps
+    // its ID, while never-shown helper windows (IME, DDE, broadcast
+    // listeners) are not sources at all.
+    DWORD cloaked = 0;
+    const bool is_cloaked =
+        SUCCEEDED(DwmGetWindowAttribute(window, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) &&
+        cloaked != 0;
+    if (visible && !is_cloaked)
+      context->self->seen_visible_.insert(window);
+    else if (!context->self->seen_visible_.contains(window))
+      return TRUE;
     if (GetAncestor(window, GA_ROOT) != window) {
       appendOmission(*context->batch, "window_omitted_not_top_level",
                      "titled candidate was not a root window");
@@ -916,11 +941,6 @@ class Win32SourceEnumerator final : public SourceEnumerator {
     const bool valid_bounds = GetWindowRect(window, &bounds) != FALSE &&
                               bounds.right > bounds.left &&
                               bounds.bottom > bounds.top;
-    DWORD cloaked = 0;
-    const bool is_cloaked =
-        SUCCEEDED(DwmGetWindowAttribute(window, DWMWA_CLOAKED, &cloaked,
-                                        sizeof(cloaked))) &&
-        cloaked != 0;
     wchar_t class_name[256]{};
     const int class_length = GetClassNameW(window, class_name,
                                            static_cast<int>(std::size(class_name)));
@@ -968,6 +988,7 @@ class Win32SourceEnumerator final : public SourceEnumerator {
 
   Win32SourceEnumeratorTestHooks test_hooks_;
   WindowLifetimeTracker lifetime_tracker_;
+  std::unordered_set<HWND> seen_visible_;
   std::atomic<bool> cancelled_{false};
 };
 

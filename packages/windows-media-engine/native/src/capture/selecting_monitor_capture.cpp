@@ -156,9 +156,12 @@ class Backend final : public SelectingMonitorCaptureBackend {
     policy_.preferred = options_.preferred;
     if (!options_.create_backend)
       options_.create_backend =
-          [](CaptureBackendKind kind) -> std::unique_ptr<MonitorCaptureBackend> {
+          [interval = options_.wgc_min_update_interval](
+              CaptureBackendKind kind) -> std::unique_ptr<MonitorCaptureBackend> {
         if (kind == CaptureBackendKind::dxgi) return createDxgiMonitorCaptureBackend();
-        return createWgcMonitorCaptureBackend();
+        WgcMonitorCaptureOptions options;
+        options.min_update_interval = interval;
+        return createWgcMonitorCaptureBackend(options);
       };
     if (!options_.environment) options_.environment = environment;
   }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <memory>
 
 #include "capture/monitor_capture.hpp"
@@ -17,6 +18,7 @@ struct WgcMonitorCaptureOptions {
   // Optional one-shot admission bounds; normal capture keeps existing defaults.
   std::uint32_t maximum_width = 0, maximum_height = 0;
   std::uint32_t frame_pool_size = kMaximumMonitorFrames + 1;
+  std::chrono::microseconds min_update_interval{0};
 };
 
 struct WgcMonitorCaptureDiagnostics {

@@ -78,7 +78,7 @@ int main() try {
   auto& pool = SharedTexturePool::processPool();
   const auto generation = pool.beginGeneration();
   std::vector<std::uint8_t> frame(640 * 360 * 4, 128);
-  std::array<TextureLease, 4> leases;
+  std::array<TextureLease, SharedTexturePool::kSlots> leases;
   for (auto& lease : leases) {
     const auto value = pool.upload(generation, 640, 360, 1, frame);
     require(value.has_value());
@@ -90,7 +90,7 @@ int main() try {
   require(pool.snapshot().backing_bytes == bytes);
   pool.retire(generation);
   const auto next = pool.beginGeneration();
-  require(pool.snapshot().retired == 4 &&
+  require(pool.snapshot().retired == SharedTexturePool::kSlots &&
           pool.snapshot().retired_generations == 1);
   require(!pool.upload(next, 640, 360, 1, frame));
   for (const auto& lease : leases) {

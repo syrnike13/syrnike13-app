@@ -23,7 +23,9 @@ const addonPath = options.addon ?? path.join(packageRoot, 'dist', 'win32-x64', '
 const botPath = options.bot ?? path.join(packageRoot, 'build', 'Release', 'bench_bot.exe')
 const fixturePath = options.fixture ?? path.join(packageRoot, 'build', 'Release', 'source_window_fixture.exe')
 const phaseSeconds = Number(options.seconds ?? 20)
-const url = 'ws://127.0.0.1:7880'
+// --port P runs the dev server on P (RTC on P+1/P+2) beside another LiveKit.
+const port = Number(options.port ?? 7880)
+const url = `ws://127.0.0.1:${port}`
 // --signal-delay-ms N routes the engine's signaling through a TCP proxy that
 // delays every chunk by N ms each way (RTT 2N). Media stays on direct UDP.
 const signalDelayMs = Number(options['signal-delay-ms'] ?? 0)
@@ -31,7 +33,8 @@ const signalDelayMs = Number(options['signal-delay-ms'] ?? 0)
 // before leaving, as if the network died mid-call.
 const deadNetworkBeforeLeave = options['dead-network-before-leave'] === '1'
 const proxied = signalDelayMs > 0 || deadNetworkBeforeLeave
-const engineUrl = proxied ? 'ws://127.0.0.1:7881' : url
+const proxyPort = port === 7880 ? 7881 : port + 10
+const engineUrl = proxied ? `ws://127.0.0.1:${proxyPort}` : url
 let signalingDead = false
 const self = 'bench-engine'
 
@@ -73,26 +76,28 @@ function bot(identity, room, args) {
   return { child, done }
 }
 
-const server = spawn(serverPath, ['--dev', '--bind', '127.0.0.1'], { stdio: 'ignore' })
+const server = spawn(serverPath, ['--dev', '--bind', '127.0.0.1', ...(port === 7880 ? [] : ['--config-body',
+  `{port: ${port}, rtc: {tcp_port: ${port + 1}, udp_port: ${port + 2}}, keys: {devkey: secret}}`])],
+  { stdio: 'ignore' })
 if (proxied) {
   const net = await import('node:net')
   const delayed = (from, to) => from.on('data', chunk => setTimeout(() => {
     if (!signalingDead) to.write(chunk)
   }, signalDelayMs))
   net.createServer(client => {
-    const upstream = net.connect(7880, '127.0.0.1')
+    const upstream = net.connect(port, '127.0.0.1')
     delayed(client, upstream)
     delayed(upstream, client)
     const close = () => { client.destroy(); upstream.destroy() }
     client.on('error', close).on('close', close)
     upstream.on('error', close).on('close', close)
-  }).listen(7881, '127.0.0.1').unref()
+  }).listen(proxyPort, '127.0.0.1').unref()
 }
 const bots = []
 const report = { addon: addonPath, phaseSeconds, signalDelayMs, deadNetworkBeforeLeave }
 try {
   for (let attempt = 0; ; attempt += 1) {
-    try { if ((await fetch('http://127.0.0.1:7880')).ok) break } catch {}
+    try { if ((await fetch(`http://127.0.0.1:${port}`)).ok) break } catch {}
     if (attempt > 200) throw new Error('LiveKit server did not start')
     await sleep(50)
   }
@@ -334,6 +339,35 @@ try {
     pipeline: windowSharing.delta('screen_video_metrics', ['capture_frames', 'encoder_encoded', 'keyframes',
       'conversion_drops', 'network_backpressure_drops', 'encoder_rejections']),
   }
+  // The window stops repainting, like a static document, and only then does a
+  // viewer join. The sender must still produce a decodable frame for them.
+  fixture.stdin.write('freeze\n')
+  await sleep(2000)
+  report.windowShare.lateViewer = await bot('late-viewer', 'bench-a', ['--seconds', '5', '--watch', self]).done
+  // Nothing reaches the compositor, not even a repaint: like a stuck WGC
+  // session. The backend asks for a repaint, then recreates the session,
+  // whose first frame proves the capture alive.
+  fixture.stdin.write('stall\n')
+  await sleep(1000)
+  const stallStarted = { ...metrics.screen_video_metrics }
+  await sleep(12_000)
+  report.windowShare.stalledCaptureFrames =
+    (metrics.screen_video_metrics?.capture_frames ?? 0) - (stallStarted.capture_frames ?? 0)
+  fixture.stdin.write('animate\n')
+  // The shared window is minimized and restored: viewers see the track
+  // muted (a paused stream) and unmuted, then frames again.
+  const pauseViewer = bot('pause-viewer', 'bench-a', ['--seconds', '7', '--watch', self])
+  await sleep(2000)
+  fixture.stdin.write('minimize\n')
+  await sleep(2000)
+  fixture.stdin.write('restore\n')
+  report.windowShare.pauseViewer = await pauseViewer.done
+  // The shared window turns portrait: the stream follows its aspect ratio on
+  // the same track, and a watching viewer keeps receiving frames.
+  const resizeViewer = bot('resize-viewer', 'bench-a', ['--seconds', '6', '--watch', self])
+  await sleep(2000)
+  fixture.stdin.write('resize 400 700\n')
+  report.windowShare.resizeViewer = await resizeViewer.done
   apply({ screen: { state: 'off' } })
   report.windowShare.viewer = await windowViewer.done
   fixture.kill()

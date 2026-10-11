@@ -19,7 +19,19 @@ WGC FrameLease (BGRA D3D11 texture)
 `D3d11DeviceOwner` is process-scoped and exposes its adapter LUID. WGC,
 VideoProcessor conversion, and Media Foundation therefore use the same D3D11
 device. Conversion submits a BGRA-to-NV12 VideoProcessor blit with BT.709 studio
-range and never maps, flushes, or waits on a GPU fence. The encoder wraps the
+range and never maps, flushes, or waits on a GPU fence.
+
+The preset is a box, not the stream size. As in Discord, the stream keeps the
+source's aspect ratio inside it (`fitScreenOutput`): never upscaled, a tiny
+source raised to a 320 px long side, sides in multiples of 8, the preset's FPS
+and bitrate. An ultrawide 3440x1440 monitor is sent as 1920x800, a portrait
+1080x1920 window as 600x1080. The first frame sets the size before
+publication. When the source later changes size and the new size holds for
+500 ms, the converter and encoder are replaced on the same publication: viewers
+keep their track and the H.264 stream changes size on the new encoder's
+keyframe (in the bench a 640x360 window turned 400x700 with a 92-110 ms gap).
+While a window is being dragged, frames are scaled whole into the current size
+and letterboxed with black; nothing is cropped. The encoder wraps the
 NV12 texture in an `IMFDXGISurfaceBuffer`; the only per-frame CPU copy is the
 compressed H.264 access unit into a preallocated output slot.
 
@@ -50,7 +62,11 @@ active, so a generation is retired only after all of its leases return.
 ## Backpressure, controls, and stop
 
 Capture and encoder inputs keep the newest frame, because screen video is lossy
-and age matters more than continuity before encoding. Encoded H.264 access units
+and age matters more than continuity before encoding. Capture only delivers
+frames when the screen changes. The pipeline keeps a GPU copy of the newest
+submitted capture and re-encodes it after 250 ms without a new one, so a static
+screen still answers a new viewer's keyframe request (before this, a viewer who
+joined a static window saw nothing until it changed). Encoded H.264 access units
 retain their order: occupied output slots plus accepted inputs cannot exceed
 three, and a full publication queue rejects admission without taking ownership.
 Backpressure therefore reaches raw input before any reference frame is lost.
