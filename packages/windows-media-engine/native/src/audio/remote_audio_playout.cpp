@@ -603,7 +603,8 @@ void RemoteAudioPlayout::run() noexcept {
         for (std::size_t index = 0; index < readers.size(); ++index) {
           const auto& reader = readers[index];
           if (index < speakers_.size()) {
-            speakers_[index] = reader.stream && reader.microphone
+            // A deafened listener hears nobody, so nobody is shown speaking.
+            speakers_[index] = reader.stream && reader.microphone && !deafened
                 ? std::pair{reader.participant, reader.activity.speakingUntil()}
                 : std::pair{std::string{}, Clock::time_point{}};
           }
