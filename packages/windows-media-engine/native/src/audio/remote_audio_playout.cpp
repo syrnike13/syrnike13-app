@@ -445,7 +445,7 @@ void RemoteAudioPlayout::run() noexcept {
             const auto& controls = reader.publication->source() == livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO
                 ? desired.intent.streams : desired.intent.users;
             for (const auto& control : controls)
-              if (control.identity == reader.participant) {
+              if (control.user_id == voiceUserId(reader.participant)) {
                 reader.volume *= static_cast<float>(control.volume);
                 reader.muted = control.muted;
                 break;

@@ -7,7 +7,7 @@ const identifier = Schema.String.check(
 )
 
 export const AudioMixSettingSchema = Schema.Struct({
-  identity: identifier,
+  userId: identifier,
   volume: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 3 })),
   muted: Schema.Boolean,
 })

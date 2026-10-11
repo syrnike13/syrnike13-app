@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <span>
+#include <string_view>
 
 namespace syrnike::windows_media::audio {
 inline constexpr std::uint32_t kRemoteAudioRate = 48'000;
@@ -69,6 +70,13 @@ class RemoteAudioJitter final {
   bool primed_ = false;
   RemoteAudioJitterStats stats_;
 };
+
+// Room identities are "voice:v1|engine|instance|epoch|operation|userId". Listener
+// volume and mute are per user, across every connection that user has.
+inline std::string_view voiceUserId(std::string_view identity) noexcept {
+  if (!identity.starts_with("voice:v1|")) return identity;
+  return identity.substr(identity.rfind('|') + 1);
+}
 
 struct RemoteAudioMixInput {
   RemoteAudioJitter* jitter = nullptr;

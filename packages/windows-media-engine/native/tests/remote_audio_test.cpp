@@ -47,6 +47,13 @@ void mixVolumesMuteAndDeafen() {
   require(!mixer.mix(inputs, true, output) && output[0] == 0, "Deafen leaked audio");
   require(left.stats().played == 3 && right.stats().played == 3, "Muted or deafened inputs built a backlog");
 }
+void mixControlsMatchRoomIdentitiesByUser() {
+  require(voiceUserId("voice:v1|windows_native|desktop-1|epoch|operation|user-1") == "user-1",
+          "Listener controls did not match a native Room identity by user");
+  require(voiceUserId("voice:v1|web|tab-1|epoch|operation|user-2") == "user-2",
+          "Listener controls did not match a web Room identity by user");
+  require(voiceUserId("legacy-user") == "legacy-user", "A plain identity was rewritten");
+}
 void limiterPreventsClipping() {
   RemoteAudioJitter a, b;
   for (int index = 0; index < 4; ++index) {
@@ -78,6 +85,7 @@ void receivedSpeechActivity() {
 int main() try {
   jitterPrimesTrimsAndRecovers();
   mixVolumesMuteAndDeafen();
+  mixControlsMatchRoomIdentitiesByUser();
   limiterPreventsClipping();
   receivedSpeechActivity();
   std::cout << "Remote audio contracts passed\n";
