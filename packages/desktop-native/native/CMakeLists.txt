@@ -71,32 +71,29 @@ add_library(syrnike_hooks_core STATIC
 syrnike_native_target(syrnike_hooks_core)
 target_link_libraries(syrnike_hooks_core PUBLIC dwmapi user32)
 
-foreach(HOOK_RUNTIME hotkey overlay)
-  add_library(syrnike_${HOOK_RUNTIME} MODULE
-    ${CMAKE_JS_SRC}
-    src/common/cleanup_supervisor.cpp
-    src/common/node_event_sink.cpp
-    src/hooks/hooks_addon.cpp
-  )
-  set_target_properties(syrnike_${HOOK_RUNTIME} PROPERTIES PREFIX "" SUFFIX ".node")
-  syrnike_native_target(syrnike_${HOOK_RUNTIME})
-  target_include_directories(
-    syrnike_${HOOK_RUNTIME} SYSTEM PRIVATE ${CMAKE_JS_INC} "${NODE_ADDON_API_DIR}"
-  )
-  target_compile_definitions(syrnike_${HOOK_RUNTIME} PRIVATE
-    NAPI_CPP_EXCEPTIONS
-    NAPI_VERSION=${NAPI_VERSION}
-    SYRNIKE_NATIVE_COMMIT="${SYRNIKE_NATIVE_COMMIT}"
-    SYRNIKE_HOOK_RUNTIME_${HOOK_RUNTIME}=1
-  )
-  target_link_libraries(
-    syrnike_${HOOK_RUNTIME} PRIVATE ${CMAKE_JS_LIB} syrnike_hooks_core
-  )
-  if(MSVC)
-    target_link_libraries(syrnike_${HOOK_RUNTIME} PRIVATE delayimp)
-    target_link_options(syrnike_${HOOK_RUNTIME} PRIVATE /DELAYLOAD:node.exe)
-  endif()
-endforeach()
+add_library(syrnike_hooks MODULE
+  ${CMAKE_JS_SRC}
+  src/common/cleanup_supervisor.cpp
+  src/common/node_event_sink.cpp
+  src/hooks/hooks_addon.cpp
+)
+set_target_properties(syrnike_hooks PROPERTIES PREFIX "" SUFFIX ".node")
+syrnike_native_target(syrnike_hooks)
+target_include_directories(
+  syrnike_hooks SYSTEM PRIVATE ${CMAKE_JS_INC} "${NODE_ADDON_API_DIR}"
+)
+target_compile_definitions(syrnike_hooks PRIVATE
+  NAPI_CPP_EXCEPTIONS
+  NAPI_VERSION=${NAPI_VERSION}
+  SYRNIKE_NATIVE_COMMIT="${SYRNIKE_NATIVE_COMMIT}"
+)
+target_link_libraries(
+  syrnike_hooks PRIVATE ${CMAKE_JS_LIB} syrnike_hooks_core
+)
+if(MSVC)
+  target_link_libraries(syrnike_hooks PRIVATE delayimp)
+  target_link_options(syrnike_hooks PRIVATE /DELAYLOAD:node.exe)
+endif()
 
 enable_testing()
 

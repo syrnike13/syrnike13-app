@@ -15,10 +15,27 @@ import { Deferred, Effect, Fiber, Queue } from 'effect'
 import type { DiagnosticEnvelope } from '@syrnike13/platform'
 import type { NativeDiagnosticIncidentSeverity } from '@syrnike13/platform'
 
-import { redactSensitiveText, type NativeRuntimeKind } from './contract'
 
 export type NativeDiagnosticRole = 'electron-main' | 'utility' | 'native'
-export type NativeDiagnosticRuntime = NativeRuntimeKind | 'media'
+export type NativeDiagnosticRuntime = 'hotkey' | 'overlay' | 'media'
+
+export function redactSensitiveText(
+  value: string,
+  maximumLength = 4_096,
+) {
+  return value
+    .replace(
+      /\b(token|access_token|authorization)\s*[:=]\s*([^\s,;]+)/gi,
+      '$1=[redacted]',
+    )
+    .replace(/\bBearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+    .replace(/\b(?:wss?|https?):\/\/[^\s,;]+/gi, '[redacted-url]')
+    .replace(
+      /[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
+      '[redacted]',
+    )
+    .slice(0, maximumLength)
+}
 
 export type NativeDiagnosticPaths = {
   electronMainPath: string

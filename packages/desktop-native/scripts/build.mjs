@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 const CONTRACT_VERSION = 10
 const NAPI_VERSION = 8
 const ARCH = 'x64'
-const NATIVE_FILES = ['syrnike_hotkey.node', 'syrnike_overlay.node']
+const NATIVE_FILES = ['syrnike_hooks.node']
 
 const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

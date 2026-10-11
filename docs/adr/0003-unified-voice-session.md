@@ -8,6 +8,10 @@
   Pipeline and progress-based GPU recovery
 - **Implementation clarification:** 2026-08-03 — explicit remote subscription
   ownership and state-aware video recovery
+- **Amendment:** 2026-10-11 — hotkey and overlay hooks left their utility
+  hosts and run in the main process (one `syrnike_hooks.node`); only the media
+  host remains a separate fault domain. Mentions of `NativeRuntimeSupervisor`
+  below describe the media host, now `MediaRuntimeSupervisor`.
 - **Implementation clarification:** 2026-08-05 — playout-owned Windows output
   recovery, endpoint identity, renderer liveness, and WASAPI padding ownership
 - **Supersedes:** ADR-0001 execution model and ADR-0002 media/host ownership

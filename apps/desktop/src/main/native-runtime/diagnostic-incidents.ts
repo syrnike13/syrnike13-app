@@ -9,7 +9,7 @@ import {
 import { Option, Schema } from 'effect'
 
 import type { DiagnosticLogRecord } from './diagnostic-log'
-import { redactSensitiveText } from './contract'
+import { redactSensitiveText } from './diagnostic-log'
 
 const MAX_PENDING_INCIDENTS = 100
 const MAX_INCIDENT_FINGERPRINTS = 1_000
