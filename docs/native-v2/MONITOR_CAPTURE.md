@@ -50,21 +50,8 @@ One `GraphicsCaptureItem` is retained per live native target because repeated `C
 
 The probe performs a non-measured warm-up of 64 frames or the measured frame count, capped at 600, before taking its baseline. After every measured session it waits on a resource condition with a five-second deadline, requires threads to return to baseline, and enforces a hard four-handle Windows runtime budget for transient WGC/D3D bookkeeping. The budget is reported in JSON and applies to normal, slow, repeat, and stop-during-start instead of being silently ignored outside the repeat mode. Engine-owned D3D resources use the exact capture-local ledger, while `ReportLiveDeviceObjects` provides the independent debug-layer result.
 
-## Probe contract
+## Stop deadline
 
-```powershell
-media_probe capture-monitor --frames 600
-media_probe capture-monitor-repeat --cycles 50
-media_probe capture-monitor-slow-consumer
-media_probe capture-monitor-stop-during-start
-```
+One absolute deadline covers backend callback drain, completion of an in-flight `start()`, and outstanding frame leases. An unreleased lease returns `frame_lease_deadline_exceeded`; a stuck callback returns `wgc_callback_deadline_exceeded`; and unresolved startup returns `capture_start_deadline_exceeded`. In each case the capture moves to `failed` without unsafe reuse. A startup that cannot cross the deadline retires the utility process instead of detaching or joining an unbounded thread. A lease released before the deadline lets stop finish normally.
 
-All modes place `monitor_pattern_fixture.exe` on the monitor selected by the current registry snapshot. The probe owns the fixture through a kill-on-close Job Object, so constructor failure, timeout, or forced probe termination cannot orphan its topmost window. The fixture repaints at approximately 60 Hz with a moving bar, changing full-frame colors, a frame counter, and a clock marker, so content verification does not depend on user activity.
-
-Source IDs remain registry- and process-local by the issue #117 contract. The automated probe enumerates and passes its selected monitor's opaque ID through the same in-process registry seam; an ID copied from another process returns JSON `source_unavailable` instead of plain stderr. Native callers that share the `SourceRegistry` pass the issued ID directly, while the one-shot CLI selects from its own snapshot when `--source` is omitted.
-
-Every mode, including stop-during-start, reports received and superseded frame counts, maximum queue depth, sequence/timestamp checks, sampled hashes, startup/stop duration, process handle/thread deltas, and D3D diagnostics. Hash samples are decimal strings so 64-bit values remain exact in JSON consumers. Debug builds request the D3D11 debug layer automatically; Release probes can request it with `--d3d-debug`. If Graphics Tools is absent, `d3dDebug.status` is `skipped`; if available, the report requires both a successful `ReportLiveDeviceObjects` call and a zero capture-local resource ledger.
-
-Checked Release reports are stored in [`examples/monitor-capture-normal.json`](examples/monitor-capture-normal.json), [`examples/monitor-capture-slow-consumer.json`](examples/monitor-capture-slow-consumer.json), and [`examples/monitor-capture-repeat.json`](examples/monitor-capture-repeat.json).
-
-One absolute deadline covers backend callback drain, completion of an in-flight `start()`, and outstanding frame leases. An unreleased lease returns `frame_lease_deadline_exceeded`; a stuck callback returns `wgc_callback_deadline_exceeded`; and unresolved startup returns `capture_start_deadline_exceeded`. In each case the capture moves to `failed` without unsafe reuse. A probe whose startup cannot cross the deadline terminates its process epoch instead of detaching or joining an unbounded thread. A lease released before the deadline lets stop finish normally.
+`monitor-capture` covers this contract with a scripted backend.

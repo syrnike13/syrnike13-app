@@ -20,15 +20,6 @@ The Win32 adapter uses only bounded, non-message enrichment: `EnumWindows`, `Get
 
 One registry permits one enumeration in flight. A concurrent request returns typed incomplete failure instead of queuing, while `shutdown()` atomically cancels adapter callbacks/barrier waits and prevents later enumeration or resolve validation. Each kind has explicit complete/partial/failed status internally: partial or truncated batches preserve unseen live entries, while only a complete batch may emit typed removed IDs. A snapshot contains at most 8 monitors and 256 windows plus at most 64 diagnostics and eight exclusions per source; active state is capped at 16 monitors/512 windows, and the removed-ID FIFO retains 512 tombstones. Titles, labels, source IDs, and diagnostic code/detail values are at most 256 valid UTF-8 bytes. The temporary process-image query is capped at 32,768 wide characters; only its bounded basename crosses the adapter boundary.
 
-## Probe and fixture
-
-`media_probe enumerate-sources` writes one JSON document to stdout; failures and usage errors go to stderr. It accepts `--kind monitor|window|all`, strict decimal `--repeat N` for `1..1000`, `--diff`, `--sanitized`, and the fixture-only `--include-own-windows`. Repeats retain one registry and diff exact added/updated/removed opaque IDs. `--sanitized` emits only counts, status, diagnostic codes, and resource measurements, so CI artifacts contain no window title or process metadata. A separate warm registry absorbs process-wide Windows lazy initialization; the measured registry is then created and destroyed inside the resource interval. The enforced budget is at most two additional handles and zero additional threads.
-
-```powershell
-pnpm --filter @syrnike13/windows-media-engine build
-pnpm --filter @syrnike13/windows-media-engine test
-pnpm --filter @syrnike13/windows-media-engine probe:sources
-pnpm --filter @syrnike13/windows-media-engine probe:sources:sanitized
-```
+## Fixture
 
 `source_window_fixture.exe` is built only as a native test executable. Its pipe protocol drives title changes, a second window, minimize/restore, hide/show, a deliberately blocked UI thread, rapid destroy/create, and destroy/reconcile/create without sleeps or retry loops; `source_win32_integration_tests.exe` observes every transition through the public registry API. Hung-window enumeration has a 500 ms wall-clock assertion, and CTest terminates the whole integration executable after 10 seconds if cleanup regresses.

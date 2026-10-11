@@ -1,6 +1,6 @@
 # Production screen publication seam
 
-Issue #120 proves delivery through a disposable CPU reference process. Issue #121 must build a separate production path: it may reuse normalized frame metadata, receiver markers, age/drop rules, and black-box scenarios, but it must not depend on `lab::ReferenceScreenSender` or receive a `shared_ptr<livekit::Room>`.
+The screen pipeline never receives a `shared_ptr<livekit::Room>`; it talks to the Room owner through a bounded port.
 
 ## Ownership boundary
 
@@ -24,7 +24,7 @@ The Room/media-session owner is the only code allowed to translate those command
 
 ## Implementation
 
-Issue #121 implements this boundary in `screen/production_screen_sender.*`. The
+This boundary is implemented in `screen/production_screen_sender.*`. The
 port has two consumers: `livekit/LiveKitScreenPublicationAdapter` translates it
 onto `LiveKitRoomTransport`'s serialized SDK lane, while the deterministic test
 adapter can hold and complete publish, frame, and unpublish calls independently.

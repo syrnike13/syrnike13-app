@@ -441,6 +441,13 @@ target_link_libraries(local_screen_preview_tests PRIVATE media_screen)
 add_test(NAME local-screen-preview COMMAND local_screen_preview_tests)
 set_tests_properties(local-screen-preview PROPERTIES TIMEOUT 60 LABELS "requires-gpu-video")
 
+add_executable(shared_texture_pool_tests tests/shared_texture_pool_test.cpp)
+windows_media_target(shared_texture_pool_tests)
+target_link_libraries(shared_texture_pool_tests PRIVATE media_video)
+windows_media_copy_livekit_runtime(shared_texture_pool_tests)
+add_test(NAME shared-texture-pool COMMAND shared_texture_pool_tests)
+set_tests_properties(shared-texture-pool PROPERTIES TIMEOUT 30 LABELS "requires-gpu-video")
+
 # Hosted Windows runners expose no D3D11 Video interface. Keep these tests in
 # the default full suite; only the hosted workflow selects the portable subset.
 set_tests_properties(monitor-capture gpu-screen-converter

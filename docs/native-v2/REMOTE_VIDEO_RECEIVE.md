@@ -10,7 +10,7 @@ The current application pin is in `packages/windows-media-engine/native/cmake/Li
 ## Ownership and bounds
 
 `native/src/video/remote_video_track.*` owns one explicitly selected remote
-participant/track name. The lab supplies demand independently of Voice. It
+participant/track name. Demand comes from the desktop state, independent of Voice. It
 retains the actual publication object and SID, matches subscription callbacks
 by object identity, and fences decoded callbacks by revision. Publication,
 decoded frame and exported texture have separate lifetimes. The transport
@@ -62,7 +62,7 @@ SDK teardown requires containment by the outer process deadline.
 ## Cross-process lease protocol
 
 `apps/desktop/src/main/media-runtime/remote-video-bridge.ts` is the reusable
-main-side controller. The lab utility owns native media. The lab main addon
+main-side controller. The media utility owns native media. The main addon
 only duplicates/closes NT handles; renderer receives opaque, versioned lease
 metadata and an Electron imported texture, never a native pointer or D3D device.
 
@@ -97,84 +97,13 @@ Electron's release contract is documented in
 [sharedTexture](https://www.electronjs.org/docs/latest/api/shared-texture) and
 [SharedTextureImported](https://www.electronjs.org/docs/latest/api/structures/shared-texture-imported).
 
-## Reproduce
+## Verification
 
-Build with the published SDK pin. The normal build downloads and verifies it:
-
-```powershell
-Remove-Item Env:MEDIA_LAB_LIVEKIT_SDK_ROOT -ErrorAction SilentlyContinue
-pnpm --filter @syrnike13/windows-media-engine build:lab
-pnpm --filter @syrnike13/desktop build:video-lab
-$env:MEDIA_LAB_SERVER_EXE = '<absolute path to local livekit-server.exe>'
-$env:VIDEO_LAB_SCENARIO = 'normal'
-$env:VIDEO_LAB_SECONDS = '610'
-pnpm --filter @syrnike13/native-media-lab viewer
-```
-
-The runner starts a disposable loopback Room/server with random credentials,
-short-lived tokens, an isolated Electron profile and a controlled 1920x1080
-H264 source targeting 60 fps (8 Mbps, no simulcast). It cleans up its children
-and temporary files. It does not use production credentials. Local runs used
-upstream LiveKit v1.13.6. The source target is not a guarantee of 60 presented
-frames/sec: real encoding, decoding, newest-frame replacement and renderer
-sampling may drop frames.
-
-Use `stall/45`, `slow/22`, `reload/18`, `crash/18`, `close/18`, `cycles/52`,
-and `replace/20` for scenario/duration. Stall holds all four renderer references
-for 30 seconds, then discards them before presenting fresh frames. Slow holds
-references for 150 ms. Cycles disable/enable demand 30 times and inject a late
-decoded callback through the real revision check at each transition. Replace
-unpublishes the controlled track, pauses two seconds and publishes a new SID.
-
-Reports default to ignored `packages/native-media-lab/artifacts/remote-video-<scenario>.json`.
-`VIDEO_LAB_REPORT` can select another path. `verify-viewer.mjs` validates the
-scenario's progress, duration and resource invariants in addition to exit code.
-
-## Diagnostics and evidence
-
-Reports sample once per second. `decoded` counts reader observations;
-`accepted` counts successful pool uploads; `dropped` counts rejected pool
-uploads, not SDK/newest-slot drops; `presented` counts renderer draw ACKs, not
-physical display scanout. `decoded - presented` therefore includes several
-different reasons and is not a single error counter.
-`sdkConnected` and `sdkReconnects` observe SDK Room events independently of the
-owner snapshot; acceptance requires uninterrupted SDK connection after joining
-and zero SDK reconnect transitions. The runner also rejects premature publisher
-or server exit and captures bounded stderr diagnostics when a scenario fails.
-
-Pool state counts, estimated backing, oldest outstanding lease age, stall age,
-retired generations and release latency are reported. Release p50/p95 use the
-last 1024 returned leases; max is lifetime. Ingress-to-draw p50/p95 also use a
-rolling 1024 samples and the same Windows steady clock across processes. They
-exclude network and decode time and do not measure end-to-end source latency.
-Duplicate control retries may increment `invalidReleases`; they cannot recycle
-a current lease. Final samples are taken after renderer destruction and demand
-off, while Room remains connected.
-
-Machine-readable results and sampled long-run trend are in
-[remote-video-acceptance.json](examples/remote-video-acceptance.json).
-All scenarios must end with zero pool backing and zero pending bridge leases.
-The 30-second stall must keep backing flat while decoding continues and uploads
-stop at four held slots, then resume fresh presentation.
-
-The 610-second run presented 31,563 frames. Backing remained 33,292,288 bytes
-after warmup. Mean rolling p95 in the first/last 60 steady-state samples was
-19.94/20.09 ms; a transient rise to 53.07 ms recovered, without a rising backlog.
-Final p95 was 19.74 ms. During stall, accepted uploads stayed at 177 while
-decoded observations continued from 244 to 1,870; presentation resumed with
-final p95 19.61 ms. All eight scenarios passed the report verifier. A separate
-20-second run verified the isolated-profile runner and cleanup (956 frames).
-Electron can report cleaning up a dangling imported reference when a renderer
-is destroyed; the pool still waits for its authoritative release callback.
-
-Validation also covers the native fixed pool with actual D3D allocations,
-multiple active owners, retirement, invalid/duplicate/late releases and 30
-allocation cycles. The D3D debug layer reports no live textures after cleanup;
-the same pool test passes under MSVC AddressSanitizer. This is pool-focused
-ASan/debug-layer coverage, not instrumentation of Electron or the SDK decoder.
-Hosted Windows CI runs the portable native subset: its software adapter lacks
-D3D11 Video interfaces. Tests labeled `requires-gpu-video` stay enabled in the
-default full local suite and require the recorded GPU-machine run before merge.
-The desktop bridge tests exercise authoritative release/ACK, transfer timeout,
-schema bounds and epoch-safe metadata. Voice subscription reconciliation remains
-later integration work; the SDK prerequisite is now published and pinned.
+The native fixed pool is tested with actual D3D allocations, multiple active
+owners, retirement, invalid/duplicate/late releases and allocation cycles
+(`shared-texture-pool`), also under MSVC AddressSanitizer. Hosted Windows CI
+runs the portable native subset: its software adapter lacks D3D11 Video
+interfaces, so tests labeled `requires-gpu-video` run in the default local
+suite. The desktop bridge tests exercise authoritative release/ACK, transfer
+timeout, schema bounds and epoch-safe metadata. `bench/call-bench.mjs` measures
+first-frame time and FPS of a real remote 1080p30 screen.

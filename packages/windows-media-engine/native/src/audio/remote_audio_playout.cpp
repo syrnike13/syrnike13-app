@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <memory>
 #include <stdexcept>
 
 namespace syrnike::windows_media::audio {
@@ -357,7 +358,9 @@ void RemoteAudioPlayout::run() noexcept {
     float volume = 1.0f;
     bool muted = false;
   };
-  std::array<Reader, kPublicationCapacity> readers{};
+  // About 1 MB of jitter buffers: heap, not the default 1 MB thread stack.
+  const auto reader_storage = std::make_unique<std::array<Reader, kPublicationCapacity>>();
+  auto& readers = *reader_storage;
   std::unique_ptr<Device> device;
   RemoteAudioMixer mixer;
   RemoteAudioPlayoutStats stats;

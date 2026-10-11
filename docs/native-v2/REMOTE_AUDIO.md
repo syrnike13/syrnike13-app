@@ -68,12 +68,14 @@ rendered frames, device starved, late wakes, device opens, estimated latency
 
 ## Measurements
 
-`bench/call-bench.mjs` with three talking participants, 15 s per phase:
+`bench/call-bench.mjs` with three talking participants, 15 s per phase, average
+of two runs:
 
 | | before (develop) | after |
 | --- | --- | --- |
 | SDK frames dropped, idle machine | 0 | 0 |
-| SDK frames dropped, every core busy | 1104 | 0 |
-| Discontinuities, every core busy | 824 | 0 |
-| CPU, % of one core | 14.8 | 6.4–9.9 |
+| SDK frames dropped, every core busy | 926 | 0 |
+| Discontinuities, every core busy | 708 | 0 |
+| CPU, % of one core | 13.8 | 9.4 |
+| Output device switch, ms | 74 | 45 |
 | Estimated playout latency | ≈ 38 ms max scheduled age | 30 ms (40–50 ms under load) |
