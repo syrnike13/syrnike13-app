@@ -144,6 +144,28 @@ describe('DesktopVoiceService session scope', () => {
     await service.dispose()
   })
 
+  it('keeps listener volumes across renderer reloads and runtime replacement', async () => {
+    const service = new DesktopVoiceService()
+    service.configureSession({ _id: 'session-a', user_id: 'user-a', token: 'token-a' })
+    const settings = (revision: number, volume: number) => ({
+      revision, userVolumes: { 'user-b': volume }, userMutes: {}, streamVolumes: {}, streamMutes: { 'user-b': true },
+    })
+    await service.dispatch({ type: 'configureRemoteAudio', settings: settings(7, 0.5) })
+    // A reloaded renderer starts its revisions again from one.
+    await service.dispatch({ type: 'configureRemoteAudio', settings: settings(1, 2) })
+    const first = runtimeMocks.engines[0]!.updateRemoteAudioSettings.mock.calls.map(([value]) => value)
+    expect(first.map(value => value.revision)).toEqual([1, 2])
+    expect(first.at(-1)).toMatchObject({ userVolumes: { 'user-b': 2 }, streamMutes: { 'user-b': true } })
+
+    service.configureSession({ _id: 'session-b', user_id: 'user-c', token: 'token-b' })
+    await service.dispatch({ type: 'setUserMuted', muted: true })
+    expect(runtimeMocks.engines).toHaveLength(2)
+    expect(runtimeMocks.engines[1]!.updateRemoteAudioSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ userVolumes: { 'user-b': 2 } }),
+    )
+    await service.dispose()
+  })
+
   it('forwards the current native RTC telemetry snapshot', async () => {
     const service = new DesktopVoiceService()
     const telemetry = {
