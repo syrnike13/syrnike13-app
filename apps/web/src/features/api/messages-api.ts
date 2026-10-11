@@ -88,18 +88,6 @@ export const fetchChannelMessagesEffect = Effect.fn(
   }
 })
 
-export function fetchChannelMessages(
-  token: string,
-  channelId: string,
-  options: FetchChannelMessagesOptions = {},
-) {
-  const { signal, ...effectOptions } = options
-  return Effect.runPromise(
-    fetchChannelMessagesEffect(token, channelId, effectOptions),
-    signal ? { signal } : undefined,
-  )
-}
-
 export type SendMessageInput = {
   nonce?: string
   content?: string
@@ -182,19 +170,6 @@ export const searchChannelMessagesEffect = Effect.fn('web.messages.search')(
   },
 )
 
-export function searchChannelMessages(
-  token: string,
-  channelId: string,
-  query: string,
-  limit = 25,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    searchChannelMessagesEffect(token, channelId, query, limit),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const editChannelMessageEffect = Effect.fn('web.messages.edit')(
   function*(
     token: string,
@@ -212,19 +187,6 @@ export const editChannelMessageEffect = Effect.fn('web.messages.edit')(
   },
 )
 
-export function editChannelMessage(
-  token: string,
-  channelId: string,
-  messageId: string,
-  content: string,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    editChannelMessageEffect(token, channelId, messageId, content),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const deleteChannelMessageEffect = Effect.fn('web.messages.delete')(
   function*(token: string, channelId: string, messageId: string) {
     return yield* apiRequestEffect(
@@ -234,18 +196,6 @@ export const deleteChannelMessageEffect = Effect.fn('web.messages.delete')(
     )
   },
 )
-
-export function deleteChannelMessage(
-  token: string,
-  channelId: string,
-  messageId: string,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    deleteChannelMessageEffect(token, channelId, messageId),
-    signal ? { signal } : undefined,
-  )
-}
 
 export const reactToMessageEffect = Effect.fn('web.messages.react')(
   function*(
@@ -262,19 +212,6 @@ export const reactToMessageEffect = Effect.fn('web.messages.react')(
   },
 )
 
-export function reactToMessage(
-  token: string,
-  channelId: string,
-  messageId: string,
-  emoji: string,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    reactToMessageEffect(token, channelId, messageId, emoji),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const fetchChannelMessageEffect = Effect.fn('web.messages.fetchOne')(
   function*(token: string, channelId: string, messageId: string) {
     return yield* apiRequestEffect(
@@ -284,18 +221,6 @@ export const fetchChannelMessageEffect = Effect.fn('web.messages.fetchOne')(
     )
   },
 )
-
-export function fetchChannelMessage(
-  token: string,
-  channelId: string,
-  messageId: string,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    fetchChannelMessageEffect(token, channelId, messageId),
-    signal ? { signal } : undefined,
-  )
-}
 
 export const fetchPinnedMessagesEffect = Effect.fn(
   'web.messages.fetchPinned',
@@ -326,18 +251,6 @@ export const fetchPinnedMessagesEffect = Effect.fn(
   }
 })
 
-export function fetchPinnedMessages(
-  token: string,
-  channelId: string,
-  limit = 50,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    fetchPinnedMessagesEffect(token, channelId, limit),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const pinChannelMessageEffect = Effect.fn('web.messages.pin')(
   function*(token: string, channelId: string, messageId: string) {
     return yield* apiRequestEffect(
@@ -348,18 +261,6 @@ export const pinChannelMessageEffect = Effect.fn('web.messages.pin')(
   },
 )
 
-export function pinChannelMessage(
-  token: string,
-  channelId: string,
-  messageId: string,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    pinChannelMessageEffect(token, channelId, messageId),
-    signal ? { signal } : undefined,
-  )
-}
-
 export const unpinChannelMessageEffect = Effect.fn('web.messages.unpin')(
   function*(token: string, channelId: string, messageId: string) {
     return yield* apiRequestEffect(
@@ -369,18 +270,6 @@ export const unpinChannelMessageEffect = Effect.fn('web.messages.unpin')(
     )
   },
 )
-
-export function unpinChannelMessage(
-  token: string,
-  channelId: string,
-  messageId: string,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    unpinChannelMessageEffect(token, channelId, messageId),
-    signal ? { signal } : undefined,
-  )
-}
 
 export const unreactFromMessageEffect = Effect.fn('web.messages.unreact')(
   function*(
@@ -396,16 +285,3 @@ export const unreactFromMessageEffect = Effect.fn('web.messages.unreact')(
     )
   },
 )
-
-export function unreactFromMessage(
-  token: string,
-  channelId: string,
-  messageId: string,
-  emoji: string,
-  signal?: AbortSignal,
-) {
-  return Effect.runPromise(
-    unreactFromMessageEffect(token, channelId, messageId, emoji),
-    signal ? { signal } : undefined,
-  )
-}

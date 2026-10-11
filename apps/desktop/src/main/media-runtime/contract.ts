@@ -192,11 +192,6 @@ export const MediaAddonPingSchema = Schema.Struct({
   engineState: Schema.Literal('running'),
 })
 
-export const MediaAddonShutdownSchema = Schema.Struct({
-  type: Schema.Literal('shutdownComplete'),
-  engineState: Schema.Literal('stopped'),
-})
-
 export const MediaAddonSnapshotSchema = Schema.Struct({
   type: Schema.Literal('snapshot'),
   snapshot: MediaEngineSnapshotSchema,
@@ -470,7 +465,6 @@ export const MediaLifecycleMessageSchema = Schema.Union([
 ])
 
 export type MediaLifecycleFailure = typeof MediaLifecycleFailureSchema.Type
-export type MediaEngineState = typeof MediaEngineStateSchema.Type
 export type MediaPathSnapshot = typeof MediaPathSnapshotSchema.Type
 export type EngineDesiredState = typeof EngineDesiredStateSchema.Type
 export type MediaEngineSnapshot = typeof MediaEngineSnapshotSchema.Type
@@ -483,8 +477,6 @@ export function createInactiveMediaPaths(revision = 0): MediaEngineSnapshot['tra
 }
 export type MediaDesiredStateAccepted = typeof MediaDesiredStateAcceptedSchema.Type
 export type MediaCredentialLease = typeof MediaCredentialLeaseSchema.Type
-export type MediaAddonHandshake = typeof MediaAddonHandshakeSchema.Type
-export type MediaAddonSnapshot = typeof MediaAddonSnapshotSchema.Type
 export type MediaInventory = typeof MediaInventorySchema.Type
 export type MediaThumbnailQuery = typeof MediaThumbnailQuerySchema.Type
 export type MediaSourceQuery = typeof MediaSourceQuerySchema.Type

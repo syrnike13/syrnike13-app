@@ -56,13 +56,9 @@ export const loginSchema = Schema.Struct({
   password: requiredPasswordSchema,
 })
 
-export type LoginFormValues = typeof loginSchema.Type
-
 export const mfaPasswordSchema = Schema.Struct({
   password: requiredPasswordSchema,
 })
-
-export type MfaPasswordFormValues = typeof mfaPasswordSchema.Type
 
 export const usernameSchema = Schema.Trim.check(
   Schema.isMinLength(2).annotate({ message: 'Минимум 2 символа' }),
@@ -109,11 +105,5 @@ export const profileSchema = Schema.Struct({
   ),
   bio: Schema.String.check(
     Schema.isMaxLength(2000).annotate({ message: 'Максимум 2000 символов' }),
-  ),
-})
-
-export const friendRequestSchema = Schema.Struct({
-  username: Schema.String.check(
-    Schema.isMinLength(2).annotate({ message: 'Укажите username' }),
   ),
 })

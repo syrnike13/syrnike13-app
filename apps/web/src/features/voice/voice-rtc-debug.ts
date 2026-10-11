@@ -414,22 +414,6 @@ export function rtcDebugSnapshotFromTelemetry(
   return snapshot
 }
 
-export function collectVoiceRtcDebugSnapshot(
-  room: RtcDebugRoomLike,
-  stageMediaItems: readonly VoiceStageMediaItem[],
-  timestamp = Date.now(),
-  statsTimeoutMs = 1_000,
-) {
-  return Effect.runPromise(
-    collectVoiceRtcDebugSnapshotEffect(
-      room,
-      stageMediaItems,
-      timestamp,
-      statsTimeoutMs,
-    ),
-  )
-}
-
 function promiseWithTimeoutEffect<T>(
   promise: Promise<T>,
   timeoutMs: number,

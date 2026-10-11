@@ -141,10 +141,6 @@ export const hydrateAppearanceSettingsFromDesktopEffect = Effect.fn(
   })
 })
 
-export function hydrateAppearanceSettingsFromDesktop() {
-  return Effect.runPromise(hydrateAppearanceSettingsFromDesktopEffect())
-}
-
 export const appearanceSettingsStore = {
   subscribe(listener: () => void) {
     listeners.add(listener)
@@ -176,10 +172,6 @@ export const appearanceSettingsStore = {
   setSettings(settings: AppearanceSettings) {
     patch(normalizeAppearanceSettings(settings))
   },
-}
-
-export function useAppearanceSettingsSnapshot() {
-  return appearanceSettingsStore.getState()
 }
 
 Effect.runFork(hydrateAppearanceSettingsFromDesktopEffect())

@@ -40,10 +40,6 @@ export const loadPersistedSessionEffect = Effect.fn(
   return yield* Effect.sync(loadSession)
 })
 
-export function loadPersistedSession(): Promise<StoredSession | null> {
-  return Effect.runPromise(loadPersistedSessionEffect())
-}
-
 export const saveSessionEffect = Effect.fn('web.session.save')(
   function*(session: StoredSession) {
     const desktop =

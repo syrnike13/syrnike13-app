@@ -68,10 +68,6 @@ export function canAccessAdmin() {
   )
 }
 
-export function canAccessUser(userId: string | undefined) {
-  return hasPermissionBit(userPermissionMask(userId), UserPermission.Access)
-}
-
 export function canViewUserProfile(userId: string | undefined) {
   return hasPermissionBit(userPermissionMask(userId), UserPermission.ViewProfile)
 }
@@ -125,12 +121,6 @@ export function canGrantChannelPermission(
   permission: number,
 ) {
   return channelHas(channel, permission)
-}
-
-export function canConnectToChannel(
-  channel: { _id: string } | string | undefined,
-) {
-  return channelHas(channel, ChannelPermission.Connect)
 }
 
 export function getMemberRank(server: Server, member: Member | undefined) {
@@ -202,21 +192,6 @@ export function canBanServerMember(
   )
 }
 
-export function canTimeoutServerMember(
-  server: Server,
-  actorMember: Member | undefined,
-  actorUserId: string | undefined,
-  targetMember: Member | undefined,
-) {
-  return canModerateServerMember(
-    server,
-    actorMember,
-    actorUserId,
-    targetMember,
-    ChannelPermission.TimeoutMembers,
-  )
-}
-
 export function canMuteServerMember(
   server: Server,
   _actorMember: Member | undefined,
@@ -255,40 +230,6 @@ export function canMoveServerMember(
   // any active session, including your own, requires MoveMembers. The backend
   // additionally checks Connect on the destination for self-moves.
   return serverHas(server, ChannelPermission.MoveMembers)
-}
-
-export function canChangeMemberNickname(
-  server: Server,
-  actorMember: Member | undefined,
-  actorUserId: string | undefined,
-  targetMember: Member | undefined,
-) {
-  if (!actorUserId || !targetMember) return false
-  if (actorUserId === targetMember._id.user) {
-    return serverHas(server, ChannelPermission.ChangeNickname)
-  }
-  if (!serverHas(server, ChannelPermission.ManageNicknames)) return false
-  if (server.owner === targetMember._id.user) return false
-  if (server.owner === actorUserId) return true
-  return getMemberRank(server, targetMember) > getMemberRank(server, actorMember)
-}
-
-export function canEditMember(
-  server: Server,
-  actorMember: Member | undefined,
-  actorUserId: string | undefined,
-  targetMember: Member,
-) {
-  if (!actorUserId) return false
-  if (actorUserId === targetMember._id.user) {
-    return serverHas(server, ChannelPermission.ChangeNickname)
-  }
-  const canEdit =
-    serverHas(server, ChannelPermission.AssignRoles) ||
-    serverHas(server, ChannelPermission.ManageNicknames)
-  if (!canEdit || server.owner === targetMember._id.user) return false
-  if (server.owner === actorUserId) return true
-  return getMemberRank(server, targetMember) > getMemberRank(server, actorMember)
 }
 
 export function canManageChannelPermissionSubject(
@@ -425,19 +366,6 @@ export function canManageChannelPermissions(
   )
 }
 
-export function canManageChannelMessages(
-  server: Server | undefined,
-  channel: ServerChannel,
-  _member: Member | undefined,
-  _userId: string | undefined,
-) {
-  return Boolean(
-    server &&
-      channel.channel_type === 'TextChannel' &&
-      channelHas(channel, ChannelPermission.ManageMessages),
-  )
-}
-
 export function canManageChannelWebhooks(
   server: Server | undefined,
   channel: ServerChannel,
@@ -449,13 +377,4 @@ export function canManageChannelWebhooks(
       channel.channel_type === 'TextChannel' &&
       channelHas(channel, ChannelPermission.ManageWebhooks),
   )
-}
-
-export function canViewChannel(
-  server: Server | undefined,
-  channel: ServerTextChannel,
-  _member: Member | undefined,
-  _userId: string | undefined,
-) {
-  return Boolean(server && channelHas(channel, ChannelPermission.ViewChannel))
 }

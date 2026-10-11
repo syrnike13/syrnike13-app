@@ -14,7 +14,8 @@
 
 - `apps/web` — React/TanStack client shared by web and Electron.
 - `apps/desktop` — Electron main/preload code.
-- `packages/desktop-native` — Windows native media/runtime implementation and vendored LiveKit client.
+- `packages/desktop-native` — Windows global input and foreground-window hooks addon.
+- `packages/windows-media-engine` — Windows native media engine (`windows_media.node`): voice, screen, camera, remote media.
 - `packages/api-types` — generated/shared API types.
 - `packages/platform` — shared runtime and capability layer.
 - `services/backend` — Rust backend and daemons.

@@ -51,7 +51,6 @@ const UncorrelatedNativeRuntimeReplySchema = Schema.Struct({
 })
 
 export type NativeRuntimeKind = 'hotkey' | 'overlay'
-export type NativeRuntimeBuild = typeof NativeRuntimeBuildSchema.Type
 export type NativeRuntimeReady = typeof NativeRuntimeReadySchema.Type
 export type NativeRuntimeReply = typeof NativeRuntimeReplySchema.Type
 export type NativeRuntimeError = typeof NativeRuntimeErrorSchema.Type
@@ -113,9 +112,6 @@ export const NativeRuntimeRequestSchema = Schema.Struct({
     { expected: 'a supervision lane matching the hooks command' },
   ),
 )
-
-export type NativeRuntimeDiagnosticContext =
-  typeof NativeRuntimeDiagnosticContextSchema.Type
 export type NativeRuntimeRequest = typeof NativeRuntimeRequestSchema.Type
 
 const runtimeEventFields = {
@@ -183,32 +179,12 @@ export const NativeRuntimeMessageSchema = Schema.Union([
 ])
 
 export type NativeRuntimeMessage = typeof NativeRuntimeMessageSchema.Type
-export type NativeRuntimeEventMessage = Extract<
-  NativeRuntimeMessage,
-  { readonly type: 'event' }
->
-
-export function isNativeRuntimeCommand(
-  value: unknown,
-): value is NativeRuntimeCommand {
-  return Option.isSome(
-    Schema.decodeUnknownOption(NativeRuntimeCommandSchema)(value),
-  )
-}
 
 export function isNativeRuntimeRequest(
   value: unknown,
 ): value is NativeRuntimeRequest {
   return Option.isSome(
     Schema.decodeUnknownOption(NativeRuntimeRequestSchema)(value),
-  )
-}
-
-export function isNativeRuntimeReady(
-  value: unknown,
-): value is NativeRuntimeReady {
-  return Option.isSome(
-    Schema.decodeUnknownOption(NativeRuntimeReadySchema)(value),
   )
 }
 

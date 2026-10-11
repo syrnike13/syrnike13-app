@@ -41,7 +41,3 @@ export function createActivityPresenceController(options: {
     },
   }
 }
-
-export type ActivityPresenceController = ReturnType<
-  typeof createActivityPresenceController
->

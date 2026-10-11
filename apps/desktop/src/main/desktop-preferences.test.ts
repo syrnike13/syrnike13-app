@@ -1,3 +1,4 @@
+import { Effect } from 'effect'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -6,9 +7,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   DEFAULT_DESKTOP_PREFERENCES,
-  loadDesktopPreferences,
+  loadDesktopPreferencesEffect,
   normalizeDesktopPreferences,
-  saveDesktopPreferences,
+  saveDesktopPreferencesEffect,
 } from './desktop-preferences'
 
 describe('desktop preferences', () => {
@@ -48,16 +49,16 @@ describe('desktop preferences', () => {
     const filePath = path.join(dir, 'desktop-preferences.json')
 
     try {
-      await saveDesktopPreferences(filePath, {
+      await Effect.runPromise(saveDesktopPreferencesEffect(filePath, {
         closeToTray: false,
         openAtLogin: false,
-      })
+      }))
 
       expect(JSON.parse(await readFile(filePath, 'utf8'))).toEqual({
         closeToTray: false,
         openAtLogin: false,
       })
-      expect(await loadDesktopPreferences(filePath)).toEqual({
+      expect(await Effect.runPromise(loadDesktopPreferencesEffect(filePath))).toEqual({
         closeToTray: false,
         openAtLogin: false,
       })

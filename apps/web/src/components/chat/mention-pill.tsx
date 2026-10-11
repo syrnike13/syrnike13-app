@@ -31,15 +31,3 @@ export function MentionPill({
     </span>
   )
 }
-
-export function MassMentionPill({
-  label,
-  className,
-}: {
-  label: string
-  className?: string
-}) {
-  return (
-    <span className={cn(defaultMentionClassName, className)}>{label}</span>
-  )
-}

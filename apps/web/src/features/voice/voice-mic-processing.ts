@@ -2,7 +2,6 @@ import {
   Track,
   type LocalAudioTrack,
   type LocalParticipant,
-  type Room,
 } from 'livekit-client'
 import { Effect } from 'effect'
 
@@ -95,20 +94,4 @@ function stopProcessorEffect(audioTrack: LocalAudioTrack) {
     // LiveKit can report that the processor disappeared between reads.
     Effect.catch(() => Effect.void),
   )
-}
-
-export function refreshMicProcessing(
-  room: Room | null,
-  prefs: VoiceMicProcessingPreferences,
-) {
-  return Effect.runPromise(refreshMicProcessingEffect(room, prefs))
-}
-
-export function refreshMicProcessingEffect(
-  room: Room | null,
-  prefs: VoiceMicProcessingPreferences,
-) {
-  return room
-    ? applyMicProcessingEffect(room.localParticipant, prefs)
-    : Effect.void
 }

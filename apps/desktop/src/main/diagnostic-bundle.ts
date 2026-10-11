@@ -118,10 +118,6 @@ export const createDesktopDiagnosticBundleEffect = Effect.fn(
   }
 })
 
-export function createDesktopDiagnosticBundle(rendererJsonl: string) {
-  return Effect.runPromise(createDesktopDiagnosticBundleEffect(rendererJsonl))
-}
-
 const buildNormalizedBundleEffect = Effect.fn(
   'desktop.buildNormalizedDiagnosticBundle',
 )(function*(

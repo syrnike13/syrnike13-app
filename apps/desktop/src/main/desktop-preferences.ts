@@ -82,14 +82,3 @@ export const loadDesktopPreferencesEffect = Effect.fn(
     ),
   )
 })
-
-export function loadDesktopPreferences(filePath: string) {
-  return Effect.runPromise(loadDesktopPreferencesEffect(filePath))
-}
-
-export function saveDesktopPreferences(
-  filePath: string,
-  preferences: DesktopPreferences,
-) {
-  return Effect.runPromise(saveDesktopPreferencesEffect(filePath, preferences))
-}

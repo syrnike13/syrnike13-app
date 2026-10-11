@@ -256,12 +256,3 @@ export const startEmbeddedWebServerEffect = Effect.fn(
     closeEffect,
   }
 })
-
-export function startEmbeddedWebServer(
-  webDistRoot: string,
-  preferredPort = 0,
-): Promise<EmbeddedWebServer> {
-  return Effect.runPromise(
-    startEmbeddedWebServerEffect(webDistRoot, preferredPort),
-  )
-}

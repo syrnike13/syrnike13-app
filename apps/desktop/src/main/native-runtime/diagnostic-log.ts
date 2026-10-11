@@ -89,8 +89,6 @@ export type DiagnosticLogRecord = {
   metrics?: Record<string, number>
 }
 
-export type DiagnosticLogSink = (record: DiagnosticLogRecord) => void
-
 export type NativeDiagnosticPrimitive =
   | null
   | boolean

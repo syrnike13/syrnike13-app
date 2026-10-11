@@ -101,9 +101,10 @@ secrets.env
 
 # Local native media soak/build scratch
 packages/desktop-native/.codex-build*/
+packages/*/build-*/
+.codex-tmp/
 packages/desktop-native/.codex-tools/
 packages/desktop-native/artifacts/
-packages/native-media-lab/artifacts/
 vc140.pdb
 *.obj
 

@@ -76,25 +76,6 @@ export function loadDesktopLocalSettings(
   return Effect.runPromise(loadDesktopLocalSettingsEffect(filePath, defaults))
 }
 
-export const saveDesktopLocalSettingsEffect = Effect.fn(
-  'desktopLocalSettings.save',
-)(function*(
-  filePath: string,
-  settings: DesktopLocalSettings,
-) {
-  yield* serializeSettingsWriteEffect(
-    filePath,
-    writeDesktopLocalSettingsAtomicallyEffect(filePath, settings),
-  )
-})
-
-export function saveDesktopLocalSettings(
-  filePath: string,
-  settings: DesktopLocalSettings,
-) {
-  return Effect.runPromise(saveDesktopLocalSettingsEffect(filePath, settings))
-}
-
 export const updateDesktopLocalSettingsEffect = Effect.fn(
   'desktopLocalSettings.update',
 )(function*(

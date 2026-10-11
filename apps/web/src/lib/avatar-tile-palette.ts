@@ -79,13 +79,6 @@ const loadImageEffect = Effect.fn('avatarTilePalette.loadImage')((url: string) =
   ),
 )
 
-export function loadAvatarTilePalette(
-  avatarId: string,
-  url: string,
-) {
-  return Effect.runPromise(loadAvatarTilePaletteEffect(avatarId, url))
-}
-
 function extractPaletteFromImage(image: HTMLImageElement): TilePalette | null {
   const size = 48
   const canvas = document.createElement('canvas')

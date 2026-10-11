@@ -55,9 +55,6 @@ export const EmbeddedActivityClientMessageSchema = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal('syrnike.activity.close') }),
 ])
-
-export type EmbeddedActivityBootstrap =
-  typeof EmbeddedActivityBootstrapSchema.Type
 export type EmbeddedActivityHostMessage =
   typeof EmbeddedActivityHostMessageSchema.Type
 export type EmbeddedActivityClientMessage =

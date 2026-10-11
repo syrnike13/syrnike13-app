@@ -6,7 +6,6 @@ import {
   getThemeSurfaceVariables,
   getThemeTokens,
   resolveThemeVariant,
-  type ThemeVariant,
 } from '#/features/appearance/theme-registry'
 import { allThemeSurfaceCssVariables } from '#/features/appearance/theme-surfaces'
 
@@ -47,8 +46,4 @@ export function applyThemeToDocument(
   }
 
   return variant
-}
-
-export function resolvedVariantIsDark(variant: ThemeVariant): boolean {
-  return variant === 'dark'
 }

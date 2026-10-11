@@ -101,10 +101,6 @@ export const hydrateSoundPreferencesFromDesktopEffect = Effect.fn(
   })
 })
 
-export function hydrateSoundPreferencesFromDesktop() {
-  return Effect.runPromise(hydrateSoundPreferencesFromDesktopEffect())
-}
-
 export const soundPreferenceStore = {
   subscribe(listener: () => void) {
     listeners.add(listener)

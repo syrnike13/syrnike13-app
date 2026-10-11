@@ -1,9 +1,10 @@
+import { Effect } from 'effect'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import {
   appendRtcDebugSample,
   attachRtcRatesToScreenShares,
-  collectVoiceRtcDebugSnapshot,
+  collectVoiceRtcDebugSnapshotEffect,
   deriveRtcRates,
   rtcDebugSnapshotFromTelemetry,
   RTC_DEBUG_BROWSER_UNAVAILABLE,
@@ -62,8 +63,7 @@ describe('voice rtc debug', () => {
   })
 
   it('collects transport, outbound, inbound, and screen share diagnostics from RTC stats', async () => {
-    const snapshot = await collectVoiceRtcDebugSnapshot(
-      roomWithStats([
+    const snapshot = await Effect.runPromise(collectVoiceRtcDebugSnapshotEffect(roomWithStats([
         {
           id: 'codec-video',
           type: 'codec',
@@ -143,8 +143,7 @@ describe('voice rtc debug', () => {
           frameWidth: 1920,
           frameHeight: 1080,
         },
-      ]),
-      [
+      ]), [
         {
           id: 'user:screen',
           userId: 'user',
@@ -185,9 +184,7 @@ describe('voice rtc debug', () => {
             },
           },
         },
-      ] as never,
-      1_000,
-    )
+      ] as never, 1_000))
 
     expect(snapshot.transport.pingMs).toBe(63)
     expect(snapshot.transport.availableOutgoingBitrate).toBe(6_000_000)
@@ -255,9 +252,7 @@ describe('voice rtc debug', () => {
       },
     )
 
-    const snapshot = await collectVoiceRtcDebugSnapshot(
-      roomWithStats([]),
-      [
+    const snapshot = await Effect.runPromise(collectVoiceRtcDebugSnapshotEffect(roomWithStats([]), [
         {
           id: 'user:screen',
           userId: 'user',
@@ -291,9 +286,7 @@ describe('voice rtc debug', () => {
             },
           },
         },
-      ] as never,
-      1_000,
-    )
+      ] as never, 1_000))
 
     expect(snapshot.screenShares[0]).toMatchObject({
       captureBackend: 'native',
@@ -347,8 +340,7 @@ describe('voice rtc debug', () => {
   })
 
   it('preserves audio receive and concealment counters needed to diagnose silence', async () => {
-    const snapshot = await collectVoiceRtcDebugSnapshot(
-      roomWithStats([
+    const snapshot = await Effect.runPromise(collectVoiceRtcDebugSnapshotEffect(roomWithStats([
         {
           id: 'codec-opus',
           type: 'codec',
@@ -372,10 +364,7 @@ describe('voice rtc debug', () => {
           silentConcealedSamples: 240,
           jitterBufferEmittedCount: 47_520,
         },
-      ]),
-      [],
-      1_000,
-    )
+      ]), [], 1_000))
 
     expect(snapshot.inbound[0]).toMatchObject({
       kind: 'audio',
@@ -393,8 +382,7 @@ describe('voice rtc debug', () => {
   })
 
   it('sums transport counters from publisher and subscriber peer connections', async () => {
-    const snapshot = await collectVoiceRtcDebugSnapshot(
-      roomWithPublisherAndSubscriberStats({
+    const snapshot = await Effect.runPromise(collectVoiceRtcDebugSnapshotEffect(roomWithPublisherAndSubscriberStats({
         publisher: [
           {
             id: 'publisher-pair',
@@ -419,10 +407,7 @@ describe('voice rtc debug', () => {
             packetsReceived: 40,
           },
         ],
-      }),
-      [],
-      1_000,
-    )
+      }), [], 1_000))
 
     expect(snapshot.transport.bytesSent).toBe(4_000)
     expect(snapshot.transport.bytesReceived).toBe(6_000)
@@ -455,12 +440,7 @@ describe('voice rtc debug', () => {
       },
     }
 
-    const snapshot = await collectVoiceRtcDebugSnapshot(
-      room,
-      [],
-      1_000,
-      5,
-    )
+    const snapshot = await Effect.runPromise(collectVoiceRtcDebugSnapshotEffect(room, [], 1_000, 5))
 
     expect(snapshot.inbound).toContainEqual(
       expect.objectContaining({
@@ -473,8 +453,7 @@ describe('voice rtc debug', () => {
   })
 
   it('drops invalid quality limitation durations from RTC stats', async () => {
-    const snapshot = await collectVoiceRtcDebugSnapshot(
-      roomWithStats([
+    const snapshot = await Effect.runPromise(collectVoiceRtcDebugSnapshotEffect(roomWithStats([
         {
           id: 'out-video',
           type: 'outbound-rtp',
@@ -484,10 +463,7 @@ describe('voice rtc debug', () => {
             cpu: 'bad',
           },
         },
-      ]),
-      [],
-      1_000,
-    )
+      ]), [], 1_000))
 
     expect(snapshot.outbound[0]?.qualityLimitationDurations).toBeUndefined()
   })

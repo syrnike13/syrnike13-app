@@ -36,12 +36,3 @@ export function effectiveVoiceGateStageOptions(
 
   return { manualThresholdDb }
 }
-
-/** Kept for API compatibility. */
-export function readSessionVoiceGateThreshold() {
-  return null
-}
-
-export function writeSessionVoiceGateThreshold(_threshold: number) {}
-
-export function clearSessionVoiceGateThreshold() {}

@@ -201,12 +201,6 @@ export class NativeVideoTrackAdapter {
   }
 }
 
-export function isNativeVideoTrackAdapter(
-  track: unknown,
-): track is NativeVideoTrackAdapter {
-  return track instanceof NativeVideoTrackAdapter
-}
-
 export class NativeVideoRegistry {
   private readonly tracks = new Map<string, TrackEntry>()
   private readonly publications = new Map<string, PublicationEntry>()

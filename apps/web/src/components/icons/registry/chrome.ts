@@ -10,11 +10,9 @@ import {
   RiHomeLine,
   RiLoader4Line,
   RiLogoutBoxLine,
-  RiMoonLine,
   RiShareForwardBoxLine,
   RiSquareLine,
   RiSubtractLine,
-  RiSunLine,
 } from '@remixicon/react'
 
 import { defineIcon } from '#/components/icons/define-icon'
@@ -77,16 +75,6 @@ export const HomeIcon = defineIcon(RiHomeLine, {
 export const LogOutIcon = defineIcon(RiLogoutBoxLine, {
   pack: 'remixicon',
   name: 'RiLogoutBoxLine',
-})
-
-export const SunIcon = defineIcon(RiSunLine, {
-  pack: 'remixicon',
-  name: 'RiSunLine',
-})
-
-export const MoonIcon = defineIcon(RiMoonLine, {
-  pack: 'remixicon',
-  name: 'RiMoonLine',
 })
 
 export const Loader2Icon = defineIcon(RiLoader4Line, {
