@@ -53,34 +53,6 @@ services:
       retries: 3
       start_period: 30s
 
-  # MinIO: S3-compatible storage server
-  minio:
-    # MinIO no longer publishes images (Quay answers 401, Docker Hub removed
-    # the repository). The server keeps this exact image locally
-    # (RELEASE.2025-09-07T16-13-09Z), so compose must never pull it.
-    image: docker.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    pull_policy: never
-    logging: *json-log-rotation
-    command: server /data
-    volumes:
-      - ./data/minio:/data
-    environment:
-      MINIO_ROOT_USER: minioautumn
-      MINIO_ROOT_PASSWORD: minioautumn
-      MINIO_DOMAIN: minio
-    networks:
-      default:
-        aliases:
-          - syrnike-uploads.minio
-          # legacy support:
-          - attachments.minio
-          - avatars.minio
-          - backgrounds.minio
-          - icons.minio
-          - banners.minio
-          - emojis.minio
-    restart: always
-
   # Caddy: Web server
   caddy:
     image: docker.io/caddy
@@ -144,8 +116,6 @@ services:
     depends_on:
       database:
         condition: service_healthy
-      createbuckets:
-        condition: service_started
     volumes:
       - type: bind
         source: ./Syrnike.toml
@@ -182,8 +152,6 @@ services:
     depends_on:
       database:
         condition: service_healthy
-      minio:
-        condition: service_started
       rabbit:
         condition: service_healthy
         restart: true
@@ -246,24 +214,6 @@ services:
       - type: bind
         source: ./livekit.yml
         target: /etc/livekit.yml
-
-  # Create buckets for minio.
-  createbuckets:
-    # Local image only, see minio (RELEASE.2025-08-13T08-35-41Z).
-    image: docker.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
-    pull_policy: never
-    logging: *json-log-rotation
-    depends_on:
-      - minio
-    entrypoint: >
-      /bin/sh -c "
-      while ! /usr/bin/mc ready minio; do
-        /usr/bin/mc alias set minio http://minio:9000 minioautumn minioautumn;
-        echo 'Waiting minio...' && sleep 1;
-      done;
-      /usr/bin/mc mb minio/syrnike-uploads;
-      exit 0;
-      "
 
   # Web App
   web:
