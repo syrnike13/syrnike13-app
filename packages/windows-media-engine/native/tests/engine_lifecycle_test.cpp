@@ -525,6 +525,7 @@ void activeMediaIntentIsAtomicAndBounded() {
   desired.microphone.muted = true;
   desired.microphone.input_volume = 1;
   desired.microphone.gate_threshold_db = -50;
+  desired.microphone.bitrate = 64'000;
   desired.camera.state = CameraIntentState::on;
   desired.camera.profile = CameraIntentProfile::hd1080p30;
   desired.camera.publication = true;

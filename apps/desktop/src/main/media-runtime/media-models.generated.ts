@@ -28,6 +28,7 @@ export const MicrophoneIntentSchema = Schema.Union([Schema.Struct({ state: Schem
   gateThresholdDb: Schema.Finite.check(Schema.isBetween({ minimum: -100, maximum: 0 })),
   gateAutoThreshold: Schema.Boolean,
   meterDemand: Schema.Boolean,
+  bitrate: Schema.Int.check(Schema.isBetween({ minimum: 6000, maximum: 512000 })),
   retryRevision: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 9007199254740991 })),
 })])
 export type MicrophoneIntent = typeof MicrophoneIntentSchema.Type

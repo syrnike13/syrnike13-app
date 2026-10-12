@@ -49,6 +49,7 @@ type ActiveBrowserVoice = {
   appliedMicrophoneKey: string | null
   appliedMicrophoneDeviceId: string | null
   appliedMicrophoneProcessingKey: string | null
+  appliedMicrophoneBitrate: number | null
   appliedCameraKey: string | null
   appliedScreenKey: string | null
   appliedOutputKey: string | null
@@ -163,6 +164,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
         appliedMicrophoneKey: null,
         appliedMicrophoneDeviceId: null,
         appliedMicrophoneProcessingKey: null,
+        appliedMicrophoneBitrate: null,
         appliedCameraKey: null,
         appliedScreenKey: null,
         appliedOutputKey: null,
@@ -309,6 +311,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
         active.appliedMicrophoneKey = null
         active.appliedMicrophoneDeviceId = null
         active.appliedMicrophoneProcessingKey = null
+        active.appliedMicrophoneBitrate = null
         active.localSpeakingDetector.clear()
         active.localSpeaking = false
         if (!this.desired?.serverMuted) this.requestMediaReconcile()
@@ -497,7 +500,8 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       active.microphoneStarting ||
       (
         active.appliedMicrophoneKey === microphoneKey &&
-        active.appliedMicrophoneProcessingKey === processingKey
+        active.appliedMicrophoneProcessingKey === processingKey &&
+        active.appliedMicrophoneBitrate === desired.microphoneBitrate
       )
     ) {
       return Effect.void
@@ -520,7 +524,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
               ...voiceAudioProcessingConstraints(desired),
               deviceId: desired.microphoneDeviceId,
             },
-            voiceMicPublishOptions(),
+            voiceMicPublishOptions(desired.microphoneBitrate),
           )
         )
         yield* this.assertCurrentEffect(active)
@@ -532,6 +536,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
         publication = created
         active.microphonePublication = created
         active.appliedMicrophoneDeviceId = desired.microphoneDeviceId ?? 'default'
+        active.appliedMicrophoneBitrate = desired.microphoneBitrate
       } else if (
         active.appliedMicrophoneDeviceId !==
         (desired.microphoneDeviceId ?? 'default')
@@ -545,6 +550,19 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
         yield* this.assertCurrentEffect(active)
         active.appliedMicrophoneDeviceId =
           desired.microphoneDeviceId ?? 'default'
+      }
+
+      if (active.appliedMicrophoneBitrate !== desired.microphoneBitrate) {
+        // The channel bitrate changed during the call: retarget the Opus
+        // encoder in place instead of republishing the microphone.
+        const sender = publication.track?.sender
+        if (sender) {
+          yield* promiseEffect(() =>
+            setAudioSenderMaxBitrate(sender, desired.microphoneBitrate)
+          )
+          yield* this.assertCurrentEffect(active)
+        }
+        active.appliedMicrophoneBitrate = desired.microphoneBitrate
       }
 
       if (active.appliedMicrophoneProcessingKey !== processingKey) {
@@ -910,6 +928,14 @@ function sameStringSet(left: ReadonlySet<string>, right: ReadonlySet<string>) {
     if (!right.has(value)) return false
   }
   return true
+}
+
+async function setAudioSenderMaxBitrate(sender: RTCRtpSender, bitrate: number) {
+  const parameters = sender.getParameters()
+  const encoding = parameters.encodings[0]
+  if (!encoding || encoding.maxBitrate === bitrate) return
+  encoding.maxBitrate = bitrate
+  await sender.setParameters(parameters)
 }
 
 function browserScreenShareOptions(desired: VoiceMediaDesiredState) {

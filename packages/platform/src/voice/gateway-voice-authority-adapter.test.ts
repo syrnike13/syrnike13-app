@@ -63,6 +63,7 @@ const reservation: VoiceReservationRequest = {
     voiceGateEnabled: true,
     voiceGateThresholdDb: -28,
     voiceGateAutoThreshold: true,
+    microphoneBitrate: 64_000,
     outputVolume: 1,
     cameraEnabled: false,
     cameraProfile: 'hd720p30',

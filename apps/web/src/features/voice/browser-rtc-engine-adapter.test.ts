@@ -11,6 +11,12 @@ const livekit = vi.hoisted(() => {
       source: string
       mute: ReturnType<typeof vi.fn>
       unmute: ReturnType<typeof vi.fn>
+      track: {
+        sender: {
+          encodings: Array<{ maxBitrate?: number }>
+          setParameters: ReturnType<typeof vi.fn>
+        }
+      }
     }>
     handlers: Map<string, Set<(...args: unknown[]) => void>>
     connect: ReturnType<typeof vi.fn>
@@ -55,12 +61,25 @@ const localSpeakingDetectors = vi.hoisted(() => ({
 }))
 
 vi.mock('livekit-client', () => {
+  class MockSender {
+    encodings: Array<{ maxBitrate?: number }> = [{ maxBitrate: 64_000 }]
+    readonly getParameters = vi.fn(() => ({
+      encodings: this.encodings.map((encoding) => ({ ...encoding })),
+    }))
+    readonly setParameters = vi.fn(
+      async (parameters: { encodings: Array<{ maxBitrate?: number }> }) => {
+        this.encodings = parameters.encodings
+      },
+    )
+  }
+
   class MockRoom {
     readonly publications: Array<{
       trackSid: string
       source: string
       mute: ReturnType<typeof vi.fn>
       unmute: ReturnType<typeof vi.fn>
+      track: { sender: MockSender }
     }> = []
     readonly handlers = new Map<string, Set<(...args: unknown[]) => void>>()
     readonly connect = vi.fn(
@@ -75,6 +94,7 @@ vi.mock('livekit-client', () => {
           source: 'microphone',
           mute: vi.fn(async () => undefined),
           unmute: vi.fn(async () => undefined),
+          track: { sender: new MockSender() },
         }
         this.publications.push(publication)
         return publication
@@ -136,7 +156,7 @@ vi.mock('./voice-capture', () => ({
     screenShareEncoding: {},
   }),
   voiceAudioProcessingConstraints: () => ({}),
-  voiceMicPublishOptions: () => ({}),
+  voiceMicPublishOptions: (bitrate: number) => ({ bitrate }),
 }))
 
 vi.mock('./voice-mic-processing', () => {
@@ -236,6 +256,7 @@ function desired(
     voiceGateEnabled: true,
     voiceGateThresholdDb: -28,
     voiceGateAutoThreshold: true,
+    microphoneBitrate: 64_000,
     outputVolume: 1,
     cameraEnabled: false,
     cameraProfile: 'hd720p30',
@@ -518,6 +539,31 @@ describe('BrowserRtcEngineAdapter', () => {
       ),
     )
 
+    expect(room.localParticipant.setMicrophoneEnabled).toHaveBeenCalledTimes(1)
+    expect(room.connect).toHaveBeenCalledTimes(1)
+    await adapter.dispose()
+  })
+
+  it('publishes at the channel bitrate and retargets it without republishing', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    await adapter.connect(
+      lease,
+      desired({ microphoneBitrate: 32_000 }),
+      new AbortController().signal,
+    )
+    const room = livekit.rooms[0]
+    await waitUntil(
+      () => room.localParticipant.setMicrophoneEnabled.mock.calls.length === 1,
+    )
+    expect(room.localParticipant.setMicrophoneEnabled.mock.calls[0]?.[2]).toEqual({
+      bitrate: 32_000,
+    })
+
+    adapter.updateDesiredMedia(desired({ microphoneBitrate: 96_000 }))
+    const sender = room.publications[0].track.sender
+    await waitUntil(() => sender.setParameters.mock.calls.length === 1)
+
+    expect(sender.encodings).toEqual([{ maxBitrate: 96_000 }])
     expect(room.localParticipant.setMicrophoneEnabled).toHaveBeenCalledTimes(1)
     expect(room.connect).toHaveBeenCalledTimes(1)
     await adapter.dispose()

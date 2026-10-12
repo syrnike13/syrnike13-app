@@ -136,6 +136,7 @@ void MicrophoneOwner::run() noexcept {
   std::shared_ptr<MicrophoneSender> sender;
   std::optional<std::uint64_t> sender_room;
   std::uint64_t sender_epoch = 0;
+  std::uint64_t sender_bitrate = 0;
   Desired applied;
   bool selection_pending = false;
   std::optional<EngineFailure> problem;
@@ -188,8 +189,10 @@ void MicrophoneOwner::run() noexcept {
           desired.intent.retry_revision != applied.intent.retry_revision ||
           desired.device_revision != applied.device_revision;
       const bool publish = publishes(desired.intent, desired.room_generation);
+      // The SDK fixes the Opus bitrate at publication: a channel bitrate change
+      // republishes the microphone.
       if (sender && (!publish || sender_room != desired.room_generation ||
-          sender_epoch != desired.publication_epoch)) stopSender();
+          sender_epoch != desired.publication_epoch || sender_bitrate != desired.intent.bitrate)) stopSender();
       if ((desired.room_generation != applied.room_generation || desired.publication_epoch != applied.publication_epoch) &&
           problem && (problem->code == "microphone_publish_failed" || problem->code == "microphone_sender_failed"))
         problem.reset();
@@ -230,9 +233,11 @@ void MicrophoneOwner::run() noexcept {
             if (!stopping_ && !cancellation.stop_requested() && publishes(desired_.intent, desired_.room_generation) &&
                 desired_.room_generation == desired.room_generation &&
                 desired_.publication_epoch == desired.publication_epoch) {
-              sender = std::make_shared<MicrophoneSender>(transport_, pipeline->output(), pipeline->outputEvent());
+              sender = std::make_shared<MicrophoneSender>(transport_, pipeline->output(), pipeline->outputEvent(),
+                                                          desired.intent.bitrate);
               sender_ = sender;
               sender_room = desired.room_generation;
+              sender_bitrate = desired.intent.bitrate;
               sender_epoch = desired.publication_epoch;
             }
           }

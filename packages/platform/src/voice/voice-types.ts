@@ -85,6 +85,8 @@ export type VoiceMediaDesiredState = Readonly<{
   voiceGateEnabled: boolean
   voiceGateThresholdDb: number
   voiceGateAutoThreshold: boolean
+  /** Opus target of the microphone publication, bits per second (channel setting). */
+  microphoneBitrate: number
   outputDeviceId?: string
   outputVolume: number
   cameraEnabled: boolean
@@ -196,6 +198,7 @@ export type VoiceCommand =
       voiceGateThresholdDb: number
       voiceGateAutoThreshold: boolean
     }>
+  | Readonly<{ type: 'setMicrophoneBitrate'; bitrate: number }>
   | Readonly<{
       type: 'configureOutput'
       deviceId?: string
@@ -298,6 +301,10 @@ export const VoiceCommandSchema = Schema.Union([
     voiceGateEnabled: Schema.Boolean,
     voiceGateThresholdDb: voiceFiniteNumber(-100, 0),
     voiceGateAutoThreshold: Schema.Boolean,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('setMicrophoneBitrate'),
+    bitrate: voiceInteger(6_000, 512_000),
   }),
   Schema.Struct({
     type: Schema.Literal('configureOutput'),
@@ -422,6 +429,9 @@ export function computeEffectiveMuted(
   )
 }
 
+/** Voice channels without a bitrate setting publish at 64 kbps. */
+export const DEFAULT_VOICE_MICROPHONE_BITRATE = 64_000
+
 export function createInitialVoiceMediaDesiredState(): VoiceMediaDesiredState {
   const state: Omit<VoiceMediaDesiredState, 'effectiveMuted'> = {
     userMuted: true,
@@ -440,6 +450,7 @@ export function createInitialVoiceMediaDesiredState(): VoiceMediaDesiredState {
     voiceGateEnabled: true,
     voiceGateThresholdDb: -28,
     voiceGateAutoThreshold: true,
+    microphoneBitrate: DEFAULT_VOICE_MICROPHONE_BITRATE,
     outputVolume: 1,
     cameraEnabled: false,
     cameraProfile: 'hd720p30',
@@ -474,6 +485,7 @@ export function areVoiceMediaDesiredStatesEqual(
     left.voiceGateEnabled === right.voiceGateEnabled &&
     left.voiceGateThresholdDb === right.voiceGateThresholdDb &&
     left.voiceGateAutoThreshold === right.voiceGateAutoThreshold &&
+    left.microphoneBitrate === right.microphoneBitrate &&
     left.outputDeviceId === right.outputDeviceId &&
     left.outputVolume === right.outputVolume &&
     left.cameraEnabled === right.cameraEnabled &&

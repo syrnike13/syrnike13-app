@@ -26,6 +26,8 @@ struct Options {
   int seconds = 30;
   bool speak = false, screen_audio = false;
   int screen_width = 0, screen_height = 0, screen_fps = 0;
+  // Opus target of the spoken microphone, bits per second (0: SDK default).
+  int mic_bitrate = 0;
   // Stamps screen frames this much earlier than their audio, so a viewer's
   // audio/video synchronization has a known offset to remove.
   int screen_skew_ms = 0;
@@ -42,16 +44,23 @@ Options parse(int argc, char** argv) {
     else if (key == "--watch") options.watch = value;
     else if (key == "--screen-audio") options.screen_audio = value == "1";
     else if (key == "--screen-skew-ms") options.screen_skew_ms = std::atoi(value.c_str());
+    else if (key == "--mic-bitrate") options.mic_bitrate = std::atoi(value.c_str());
     else if (key == "--screen")
       sscanf_s(value.c_str(), "%dx%d@%d", &options.screen_width, &options.screen_height, &options.screen_fps);
   }
   return options;
 }
 
-// Counts the watched sharer's track mute/unmute (a paused window share).
+// Counts the watched participant's track mute/unmute (a paused window share)
+// and microphone publications (a republish at a new bitrate).
 struct MuteWatch final : livekit::RoomDelegate {
   std::string identity;
-  std::atomic<int> muted{0}, unmuted{0};
+  std::atomic<int> muted{0}, unmuted{0}, microphone_published{0};
+  void onTrackPublished(livekit::Room&, const livekit::TrackPublishedEvent& event) override {
+    if (event.participant && event.participant->identity() == identity && event.publication &&
+        event.publication->source() == livekit::TrackSource::SOURCE_MICROPHONE)
+      ++microphone_published;
+  }
   void onTrackMuted(livekit::Room&, const livekit::TrackMutedEvent& event) override {
     if (event.participant && event.participant->identity() == identity) ++muted;
   }
@@ -75,7 +84,7 @@ int main(int argc, char** argv) {
   const auto options = parse(argc, argv);
   if (options.url.empty() || options.token.empty()) {
     std::fprintf(stderr, "usage: bench_bot --url ws://... --token T [--seconds N] [--speak 1] "
-                         "[--screen 1920x1080@30] [--screen-audio 1] [--screen-skew-ms N] [--watch identity]\n");
+                         "[--screen 1920x1080@30] [--screen-audio 1] [--screen-skew-ms N] [--mic-bitrate N] [--watch identity]\n");
     return 2;
   }
   livekit::initialize(livekit::LogLevel::Warn);
@@ -123,6 +132,9 @@ int main(int argc, char** argv) {
     }
 
     std::thread speaker;
+    // Read after the call for the encoder target the SDK applied.
+    std::shared_ptr<livekit::LocalAudioTrack> speaker_track;
+    std::mutex speaker_mutex;
     if (options.speak) {
       speaker = std::thread([&] { try {
         auto source = std::make_shared<livekit::AudioSource>(48'000, 1, 10);
@@ -130,7 +142,13 @@ int main(int argc, char** argv) {
         livekit::TrackPublishOptions publish;
         publish.source = livekit::TrackSource::SOURCE_MICROPHONE;
         publish.dtx = false;
+        if (options.mic_bitrate > 0)
+          publish.audio_encoding = livekit::AudioEncodingOptions{static_cast<std::uint64_t>(options.mic_bitrate)};
         participant->publishTrack(track, publish);
+        {
+          std::scoped_lock lock(speaker_mutex);
+          speaker_track = track;
+        }
         auto frame = livekit::AudioFrame::create(48'000, 1, 480);
         std::uint64_t sample = 0;
         auto next = Clock::now();
@@ -212,6 +230,18 @@ int main(int argc, char** argv) {
     }
 
     std::this_thread::sleep_for(std::chrono::seconds{options.seconds});
+    std::string speak_target_bitrate = "null";
+    if (options.speak) try {
+      std::shared_ptr<livekit::LocalAudioTrack> track;
+      {
+        std::scoped_lock lock(speaker_mutex);
+        track = speaker_track;
+      }
+      if (track)
+        for (const auto& value : track->getStats().get())
+          if (const auto* outbound = std::get_if<livekit::RtcOutboundRtpStats>(&value.stats))
+            speak_target_bitrate = std::to_string(static_cast<long long>(std::llround(outbound->outbound.target_bitrate)));
+    } catch (const std::exception& error) { std::fprintf(stderr, "speak stats: %s\n", error.what()); }
     // The negotiated codec of the watched sharer's screen audio and, once
     // WebRTC synchronizes that pair, how far the picture leads the sound.
     std::string watched_audio_codec = "null", watched_av_offset = "null";
@@ -250,13 +280,14 @@ int main(int argc, char** argv) {
     std::printf("{\"connectMs\":%.1f,\"firstFrameMs\":%.1f,\"watchFrames\":%llu,\"watchFps\":%.2f,\"watchWidth\":%d,"
                 "\"watchHeight\":%d,\"watchMaxWidth\":%d,\"watchMaxHeight\":%d,\"watchSmallFrames\":%llu,"
                 "\"watchMaxGapMs\":%.1f,\"watchGapsOver100ms\":%llu,\"watchMuted\":%d,\"watchUnmuted\":%d,"
-                "\"watchScreenAudioCodec\":%s,\"watchScreenAvOffsetMs\":%s}\n",
+                "\"watchScreenAudioCodec\":%s,\"watchScreenAvOffsetMs\":%s,\"speakTargetBitrate\":%s,\"watchMicrophonePublished\":%d}\n",
                 connect_ms, first_frame_ms, static_cast<unsigned long long>(watch.frames),
                 watched_s > 0 ? static_cast<double>(watch.frames - 1) / watched_s : 0.0,
                 watch.width, watch.height, watch.max_width, watch.max_height,
                 static_cast<unsigned long long>(watch.small_frames), watch.max_gap_ms,
                 static_cast<unsigned long long>(watch.gaps_over_100ms), mute_watch.muted.load(),
-                mute_watch.unmuted.load(), watched_audio_codec.c_str(), watched_av_offset.c_str());
+                mute_watch.unmuted.load(), watched_audio_codec.c_str(), watched_av_offset.c_str(),
+                speak_target_bitrate.c_str(), mute_watch.microphone_published.load());
     std::fflush(stdout);
   }
   livekit::shutdown();

@@ -33,6 +33,7 @@ struct MicrophoneSender::State {
   std::shared_ptr<LiveKitRoomTransport> transport;
   std::shared_ptr<MicrophonePcmPort> pcm;
   HANDLE frame_event = nullptr;
+  std::uint64_t bitrate = 0;
   Event stop, ready, done, unpublished;
   std::atomic<bool> stopped{false}, published{false};
   std::atomic<CommitState> commit{CommitState::pending};
@@ -65,9 +66,12 @@ struct MicrophoneSender::State {
   }
 };
 MicrophoneSender::MicrophoneSender(std::shared_ptr<LiveKitRoomTransport> transport,
-                                   std::shared_ptr<MicrophonePcmPort> pcm, void* frame_event)
+                                   std::shared_ptr<MicrophonePcmPort> pcm, void* frame_event,
+                                   std::uint64_t bitrate)
     : state_(std::make_shared<State>()) {
   if (!transport || !pcm || !frame_event) throw std::invalid_argument("Microphone publication ports missing");
+  if (bitrate == 0) throw std::invalid_argument("Microphone bitrate missing");
+  state_->bitrate = bitrate;
   state_->transport = std::move(transport);
   state_->pcm = std::move(pcm);
   state_->frame_event = frame_event;
@@ -132,6 +136,7 @@ void MicrophoneSender::run(const std::shared_ptr<State>& state) noexcept {
         options.source = livekit::TrackSource::SOURCE_MICROPHONE;
         options.simulcast = false;
         options.dtx = false;
+        options.audio_encoding = livekit::AudioEncodingOptions{state->bitrate};
         participant->publishTrack(track, options);
         if (!track->publication()) throw std::runtime_error("Microphone publication missing");
         auto pending = State::CommitState::pending;

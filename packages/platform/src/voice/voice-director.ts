@@ -212,6 +212,9 @@ export class VoiceDirector {
           voiceGateAutoThreshold: command.voiceGateAutoThreshold,
         })
         return
+      case 'setMicrophoneBitrate':
+        this.updateDesiredMedia({ microphoneBitrate: command.bitrate })
+        return
       case 'configureOutput':
         this.updateDesiredMedia({
           outputDeviceId: command.deviceId,

@@ -53,6 +53,13 @@ export function channelAudioBitrateBps(channel: ChannelWithVoiceSettings) {
   return channelAudioBitrateKbps(channel) * 1000
 }
 
+/** Microphone bitrate of a call; DM and group calls have no setting. */
+export function callAudioBitrateBps(channel: Channel) {
+  return channelAudioBitrateBps(
+    channel.channel_type === 'TextChannel' ? channel : {},
+  )
+}
+
 export function buildVoiceChannelAudioBitratePatch(
   channel: ChannelWithVoiceSettings,
   bitrateKbps: number,

@@ -25,6 +25,7 @@ import { toast } from 'sonner'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { callAudioBitrateBps } from '#/lib/channel-audio-bitrate'
 import {
   getChannelVoiceParticipants,
   sameVoiceParticipantList,
@@ -724,6 +725,21 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     client.dispatch(command)
   }, [])
 
+  // join() sets the bitrate before connecting; this follows moderator moves
+  // and channel setting changes during the call.
+  const voiceChannelId = snapshot.intentChannelId ?? snapshot.membershipChannelId
+  const microphoneBitrate = useSyncStore((state) => {
+    const channel = voiceChannelId ? state.channels[voiceChannelId] : undefined
+    return channel ? callAudioBitrateBps(channel) : null
+  })
+  useEffect(() => {
+    if (microphoneBitrate === null) return
+    clientRef.current?.dispatch({
+      type: 'setMicrophoneBitrate',
+      bitrate: microphoneBitrate,
+    })
+  }, [microphoneBitrate])
+
   const resetRemoteStageMedia = useCallback((targetChannelId: string | null) => {
     nativeVideoRegistry.clearRemote()
     let removedWatch = false
@@ -760,6 +776,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             channel.channel_type === 'Group')
             ? channel.recipients.filter((userId) => userId !== currentUserId)
             : undefined
+        await dispatchVoice({
+          type: 'setMicrophoneBitrate',
+          bitrate: callAudioBitrateBps(channel),
+        })
         await dispatchVoice({ type: 'join', channelId, recipients })
         return true
       } catch (error) {
