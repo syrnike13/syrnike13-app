@@ -332,6 +332,16 @@ describe('VoiceDirector', () => {
     ])
   })
 
+  it('applies the channel microphone bitrate without reconnecting', async () => {
+    const harness = createHarness()
+    await connect(harness, 'A')
+    expect(harness.engine.desired.at(-1)?.microphoneBitrate).toBe(64_000)
+    harness.director.dispatch({ type: 'setMicrophoneBitrate', bitrate: 96_000 })
+    expect(harness.engine.desired.at(-1)?.microphoneBitrate).toBe(96_000)
+    expect(harness.engine.connected).toHaveLength(1)
+    expect(harness.engine.disconnected).toHaveLength(0)
+  })
+
   it('updates camera profile without reconnecting and preserves it across camera toggles', async () => {
     const harness = createHarness()
     await connect(harness, 'A')

@@ -81,7 +81,7 @@ describe('native media protocol contract', () => {
         pushToTalk: true, pushToTalkHeld: false, bypassSystemProcessing: false,
         automaticGainControl: true, noiseSuppression: true, echoCancellation: true,
         inputVolume: 1, gateEnabled: true, gateThresholdDb: -50,
-        gateAutoThreshold: false, meterDemand: false, retryRevision: 0,
+        gateAutoThreshold: false, meterDemand: false, bitrate: 64_000, retryRevision: 0,
       },
       camera: {
         state: 'on', deviceId: 'camera-1', profile: 'hd1080p30',

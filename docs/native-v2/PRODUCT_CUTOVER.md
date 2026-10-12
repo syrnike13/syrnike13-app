@@ -54,6 +54,7 @@ audio and camera devices. The Room, lease, and source IDs are fictional.
     "gateThresholdDb": -60,
     "gateAutoThreshold": false,
     "meterDemand": false,
+    "bitrate": 64000,
     "retryRevision": 0
   },
   "camera": {

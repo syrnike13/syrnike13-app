@@ -22,7 +22,9 @@ struct MicrophoneSenderStats {
 // Mute, config and input changes have no publication operation here.
 class MicrophoneSender final {
  public:
-  MicrophoneSender(std::shared_ptr<LiveKitRoomTransport>, std::shared_ptr<MicrophonePcmPort>, void* frame_event);
+  // bitrate: Opus target in bits per second, fixed for this publication.
+  MicrophoneSender(std::shared_ptr<LiveKitRoomTransport>, std::shared_ptr<MicrophonePcmPort>, void* frame_event,
+                   std::uint64_t bitrate);
   ~MicrophoneSender();
   MicrophoneSender(const MicrophoneSender&) = delete;
   MicrophoneSender& operator=(const MicrophoneSender&) = delete;

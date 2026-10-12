@@ -140,7 +140,7 @@ try {
     state: 'warm', deviceId: null, muted: false, pushToTalk: false, pushToTalkHeld: false,
     bypassSystemProcessing: false, automaticGainControl: true, noiseSuppression: true,
     echoCancellation: true, inputVolume: 1, gateEnabled: true, gateThresholdDb: -50,
-    gateAutoThreshold: true, meterDemand: false, retryRevision: 0,
+    gateAutoThreshold: true, meterDemand: false, bitrate: 64_000, retryRevision: 0,
   }
   const output = { state: 'on', deviceId: null, deafened: false, volume: 0, users: [], streams: [], retryRevision: 0 }
   let desired = {
@@ -214,6 +214,26 @@ try {
   await waitFor(() => addon.queryInventory().inventory.activeSpeakers.length >= 3, 15_000, 'hearing every talker')
   report.join.hearingAllMs = Math.round(now() - joinStarted)
   if (options['join-only'] === '1') throw new Error('join-only')
+
+  // Channel voice bitrate. The SDK fixes Opus at publication, so a changed
+  // channel setting republishes the engine microphone once; the bots show the
+  // encoder target the SDK derives from a publication's bitrate.
+  const micBitrateBots = [32_000, 96_000].map(bitrate =>
+    bot(`bitrate-${bitrate}`, 'bench-a', ['--seconds', '4', '--speak', '1', '--mic-bitrate', String(bitrate)]))
+  // A peer counts the engine's microphone publications across two changes.
+  const republishWatcher = bot('bitrate-watcher', 'bench-a', ['--seconds', '4', '--watch', self])
+  await sleep(1_000)
+  apply({ microphone: { ...microphone, state: 'on', bitrate: 96_000 } })
+  await sleep(1_000)
+  apply({ microphone: { ...microphone, state: 'on' } })
+  const watched = await republishWatcher.done
+  await waitFor(() => tracks.microphone?.state === 'running', 15_000, 'microphone after bitrate changes')
+  const micBitrateResults = await Promise.all(micBitrateBots.map(value => value.done))
+  report.micBitrate = {
+    engineRepublishes: watched?.watchMicrophonePublished,
+    botTargets: micBitrateResults.map((value, index) =>
+      ({ requested: [32_000, 96_000][index], target: value?.speakTargetBitrate })),
+  }
 
   // Voice.
   const voice = await measure(phaseSeconds)

@@ -88,6 +88,7 @@ function projectDesiredState(
       gateThresholdDb: desired.voiceGateThresholdDb,
       gateAutoThreshold: desired.voiceGateAutoThreshold,
       meterDemand,
+      bitrate: desired.microphoneBitrate,
       retryRevision: retries.microphone,
     } : { state: 'off' },
     camera: connected && desired.cameraEnabled && !cameraPolicyFailure(binding, desired) ? {
