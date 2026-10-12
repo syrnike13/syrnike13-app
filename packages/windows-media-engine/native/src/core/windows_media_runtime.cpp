@@ -38,7 +38,7 @@ WindowsMediaRuntime::WindowsMediaRuntime()
     : audio_(std::make_shared<audio::RemoteAudioPlayout>(catalog_.registry())),
       video_(std::make_shared<video::RemoteVideoOwner>()),
       observer_(std::make_shared<ProductRoomObserver>(audio_, video_)),
-      transport_(std::make_shared<LiveKitRoomTransport>(observer_)),
+      transport_(std::make_shared<LiveKitRoomTransport>(observer_, observer_->networkSampler())),
       microphone_(catalog_.registry(), transport_),
       camera_(transport_, thumbnail_admission_), screen_(transport_, thumbnail_admission_),
       thumbnails_(screen_, thumbnail_admission_),
@@ -185,8 +185,23 @@ void WindowsMediaRuntime::run() noexcept {
       if (desired_.camera.state == CameraIntentState::off && desired_.screen.state == ScreenIntentState::off &&
           camera.stopped && screen.stopped) thumbnail_admission_.publicationDrained();
       const auto video = video_->snapshot();
-      if (!desired_.remote_video_demand.empty()) snapshot_.remote_video_metrics = video.metrics;
-      else snapshot_.remote_video_metrics.reset();
+      const auto network = transport_->networkSampler()->inboundSnapshot();
+      if (room_generation_ && network) {
+        snapshot_.remote_microphone_network_metrics = network->microphone;
+        snapshot_.remote_screen_audio_network_metrics = network->screen_audio;
+        snapshot_.remote_video_network_metrics = network->video;
+      } else {
+        snapshot_.remote_microphone_network_metrics.reset();
+        snapshot_.remote_screen_audio_network_metrics.reset();
+        snapshot_.remote_video_network_metrics.reset();
+      }
+      if (!desired_.remote_video_demand.empty()) {
+        snapshot_.remote_video_metrics = video.metrics;
+        snapshot_.remote_video_lifecycle_metrics = video.lifecycle_metrics;
+      } else {
+        snapshot_.remote_video_metrics.reset();
+        snapshot_.remote_video_lifecycle_metrics.reset();
+      }
       updateScreenAudio(screen);
       const auto audio = screen_audio_.stats();
       if (audio.failure && audio.failure->utility_retirement_required)

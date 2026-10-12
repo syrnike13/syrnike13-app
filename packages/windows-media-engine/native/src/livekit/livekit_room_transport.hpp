@@ -39,7 +39,8 @@ public:
   using ActiveRoomTask =
       std::function<void(const std::shared_ptr<livekit::Room> &)>;
 
-  explicit LiveKitRoomTransport(std::shared_ptr<LiveKitRoomObserver> delegate = {});
+  explicit LiveKitRoomTransport(std::shared_ptr<LiveKitRoomObserver> delegate = {},
+      std::shared_ptr<LiveKitNetworkSampler> network_sampler = std::make_shared<LiveKitNetworkSampler>());
   ~LiveKitRoomTransport() override;
   void setConnectionEventCallback(RoomConnectionEventCallback callback) override;
 
@@ -92,8 +93,7 @@ private:
   void enqueue(Task task);
 
   mutable std::mutex mutex_;
-  const std::shared_ptr<LiveKitNetworkSampler> network_sampler_ =
-      std::make_shared<LiveKitNetworkSampler>();
+  const std::shared_ptr<LiveKitNetworkSampler> network_sampler_;
   std::shared_ptr<LiveKitRoomObserver> delegate_;
   RoomConnectionEventCallback connection_event_callback_;
   ActiveRoomTask screen_feedback_poll_;

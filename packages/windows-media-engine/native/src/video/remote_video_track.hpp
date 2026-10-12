@@ -16,6 +16,8 @@ struct RemoteVideoTrackStats {
   std::uint64_t source_timestamp_unusable = 0, expired = 0, uploaded = 0, upload_failed = 0;
   // Uploaded frames that were decoded on the GPU and never left it.
   std::uint64_t gpu_uploaded = 0;
+  std::uint64_t superseded_before_upload = 0, superseded_unsent = 0;
+  std::uint64_t maximum_upload_us = 0, total_upload_us = 0, slow_uploads = 0;
 };
 // One explicitly selected remote video owner. The Room transport owns this
 // delegate. SDK callbacks only replace bounded control values; subscription,
@@ -34,7 +36,8 @@ class RemoteVideoTrack final : public LiveKitRoomObserver {
   std::uint64_t decoded() const { return decoded_.load(); }
   RemoteVideoTrackStats stats() const {
     return {decoded_, reader_starts_, reader_ends_, stale_decoded_,
-            source_timestamp_unusable_, expired_, uploaded_, upload_failed_, gpu_uploaded_};
+            source_timestamp_unusable_, expired_, uploaded_, upload_failed_, gpu_uploaded_,
+            superseded_before_upload_, superseded_unsent_, maximum_upload_us_, total_upload_us_, slow_uploads_};
   }
   bool failed() const { return failed_.load(); }
   bool sdkConnected() const { return sdk_connected_.load(); }
@@ -56,6 +59,9 @@ class RemoteVideoTrack final : public LiveKitRoomObserver {
  private:
   friend class RemoteVideoFaultInjector;
   bool acceptDecoded(std::uint64_t revision, livekit::VideoFrameEvent event);
+  // Called with mutex_ held; all enable/publication/track changes bump revision_.
+  bool hasPendingWork(std::uint64_t active_revision) const;
+  void recordUploadDuration(std::uint64_t duration_us);
   void run() noexcept;
   const std::string participant_;
   const std::string track_name_;
@@ -68,6 +74,8 @@ class RemoteVideoTrack final : public LiveKitRoomObserver {
   std::atomic<std::uint64_t> reader_starts_{0}, reader_ends_{0}, stale_decoded_{0};
   std::atomic<std::uint64_t> source_timestamp_unusable_{0}, expired_{0}, uploaded_{0}, upload_failed_{0};
   std::atomic<std::uint64_t> gpu_uploaded_{0};
+  std::atomic<std::uint64_t> superseded_before_upload_{0}, superseded_unsent_{0};
+  std::atomic<std::uint64_t> maximum_upload_us_{0}, total_upload_us_{0}, slow_uploads_{0};
   std::atomic<std::uint64_t> generation_{0};
   std::atomic<bool> failed_{false};
   std::atomic<bool> sdk_connected_{false};

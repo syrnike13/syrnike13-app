@@ -20,12 +20,71 @@ class RemoteVideoFaultInjector {
     event.timestamp_us = timestamp;
     return owner.acceptDecoded(revision, std::move(event));
   }
+  static void enableWithoutWorker(RemoteVideoTrack& owner) {
+    owner.stop();
+    owner.stopping_ = false;
+    owner.enabled_ = true;
+  }
+  static void uploadDuration(RemoteVideoTrack& owner, std::uint64_t duration_us) {
+    owner.recordUploadDuration(duration_us);
+  }
+  static bool pendingWork(RemoteVideoTrack& owner, std::uint64_t active_revision) {
+    std::scoped_lock lock(owner.mutex_);
+    return owner.hasPendingWork(active_revision);
+  }
+  static void consumeDecoded(RemoteVideoTrack& owner) {
+    std::scoped_lock lock(owner.mutex_);
+    owner.newest_.reset();
+  }
 };
 }  // namespace syrnike::windows_media::video
 
 using namespace syrnike::windows_media::video;
 void require(bool condition) {
   if (!condition) throw std::runtime_error("Pool invariant failed");
+}
+
+void remoteVideoDiagnosticCounters() {
+  RemoteVideoTrack stopped("diagnostics", "video");
+  RemoteVideoFaultInjector::enableWithoutWorker(stopped);
+  const auto revision = RemoteVideoFaultInjector::revision(stopped);
+  require(RemoteVideoFaultInjector::decoded(stopped, revision, 1));
+  require(RemoteVideoFaultInjector::decoded(stopped, revision, 2));
+  require(RemoteVideoFaultInjector::decoded(stopped, revision, 3));
+  require(!RemoteVideoFaultInjector::decoded(stopped, revision - 1, 4));
+  RemoteVideoFaultInjector::uploadDuration(stopped, 33000);
+  RemoteVideoFaultInjector::uploadDuration(stopped, 33001);
+  RemoteVideoFaultInjector::uploadDuration(stopped, 1000);
+  const auto stats = stopped.stats();
+  require(stats.superseded_before_upload == 2 && stats.stale_decoded == 1);
+  require(stats.superseded_unsent == 0 && stats.uploaded == 0);
+  require(stats.maximum_upload_us == 33001 && stats.total_upload_us == 67001 && stats.slow_uploads == 1);
+}
+
+void remoteVideoPendingWorkSurvivesMissedNotification() {
+  RemoteVideoTrack owner("wakeup", "video");
+  RemoteVideoFaultInjector::enableWithoutWorker(owner);
+  auto active_revision = RemoteVideoFaultInjector::revision(owner);
+  require(!RemoteVideoFaultInjector::pendingWork(owner, active_revision));
+  // Model the worker uploading: acceptDecoded notifies before it waits again.
+  // The real wait predicate must see the queued frame without another notify
+  // or a timer; this assertion has no scheduler-dependent timing threshold.
+  require(RemoteVideoFaultInjector::decoded(owner, active_revision, 1));
+  require(RemoteVideoFaultInjector::pendingWork(owner, active_revision));
+  RemoteVideoFaultInjector::consumeDecoded(owner);
+  require(!RemoteVideoFaultInjector::pendingWork(owner, active_revision));
+
+  owner.demand(false);
+  require(RemoteVideoFaultInjector::pendingWork(owner, active_revision));
+  active_revision = RemoteVideoFaultInjector::revision(owner);
+  require(!RemoteVideoFaultInjector::pendingWork(owner, active_revision));
+  owner.demand(true);
+  require(RemoteVideoFaultInjector::pendingWork(owner, active_revision));
+  active_revision = RemoteVideoFaultInjector::revision(owner);
+  require(!RemoteVideoFaultInjector::pendingWork(owner, active_revision));
+  owner.beginStop();
+  active_revision = RemoteVideoFaultInjector::revision(owner);
+  require(RemoteVideoFaultInjector::pendingWork(owner, active_revision));
 }
 
 TextureLease nextInjectedFrame(RemoteVideoTrack& owner,
@@ -40,6 +99,39 @@ TextureLease nextInjectedFrame(RemoteVideoTrack& owner,
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   throw std::runtime_error("Remote owner failed to upload a current decoded frame");
+}
+
+void remoteUploadedOutputSupersession() {
+  auto& pool = SharedTexturePool::processPool();
+  RemoteVideoTrack owner("unsent", "video");
+  owner.demand(true);
+  const auto warmup = nextInjectedFrame(owner);
+  require(pool.release(warmup.generation, warmup.sequence, warmup.slot));
+  // The warmup injector may leave a newest frame in flight after taking its
+  // first output. Drain it before measuring two deliberately untaken outputs.
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  if (const auto extra = owner.takeFrame())
+    require(pool.release(extra->generation, extra->sequence, extra->slot));
+  const auto before = owner.stats();
+  // Offer one frame at a time and leave both outputs untaken. This exercises
+  // the real worker exchange independently of ingress-slot supersession.
+  for (std::uint64_t index = 1; index <= 2; ++index) {
+    require(RemoteVideoFaultInjector::decoded(owner, RemoteVideoFaultInjector::revision(owner), 0));
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (owner.stats().uploaded < before.uploaded + index && std::chrono::steady_clock::now() < deadline)
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    require(owner.stats().uploaded == before.uploaded + index);
+  }
+  // uploaded increments just before the output exchange; await that exchange.
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  while (owner.stats().superseded_unsent == before.superseded_unsent && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  require(owner.stats().superseded_unsent == before.superseded_unsent + 1);
+  const auto frame = owner.takeFrame();
+  require(frame.has_value());
+  require(pool.release(frame->generation, frame->sequence, frame->slot));
+  owner.stop();
+  require(pool.snapshot().backing_bytes == 0);
 }
 
 void staleRemoteDecodedFramesDoNotChangeAnotherOwner() {
@@ -75,6 +167,9 @@ void staleRemoteDecodedFramesDoNotChangeAnotherOwner() {
           resources.retired == 0 && resources.quarantined == 0);
 }
 int main() try {
+  remoteVideoPendingWorkSurvivesMissedNotification();
+  remoteVideoDiagnosticCounters();
+  remoteUploadedOutputSupersession();
   auto& pool = SharedTexturePool::processPool();
   const auto generation = pool.beginGeneration();
   std::vector<std::uint8_t> frame(640 * 360 * 4, 128);

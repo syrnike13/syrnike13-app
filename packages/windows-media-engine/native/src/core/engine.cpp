@@ -1114,6 +1114,13 @@ private:
         emit("remote_audio", "remote_audio_ingress_metrics", media.remote_audio_ingress_metrics);
         emit("remote_audio", "remote_audio_output_metrics", media.remote_audio_output_metrics);
         emit("remote_video", "remote_video_metrics", media.remote_video_metrics);
+        emit("remote_video", "remote_video_lifecycle_metrics", media.remote_video_lifecycle_metrics);
+        if (telemetry_now >= next_network_diagnostic_) {
+          emit("remote_audio", "remote_microphone_network_metrics", media.remote_microphone_network_metrics);
+          emit("remote_audio", "remote_screen_audio_network_metrics", media.remote_screen_audio_network_metrics);
+          emit("remote_video", "remote_video_network_metrics", media.remote_video_network_metrics);
+          next_network_diagnostic_ = telemetry_now + std::chrono::seconds{5};
+        }
       }
     }
     if (room_teardown_pending_ && !media.publications_stopped &&
@@ -1210,6 +1217,7 @@ private:
   DiagnosticEventCallback diagnostic_callback_;
   std::uint64_t diagnostic_sequence_ = 0;
   std::chrono::steady_clock::time_point next_media_diagnostic_{};
+  std::chrono::steady_clock::time_point next_network_diagnostic_{};
   std::optional<EngineDesiredState> accepted_desired_state_;
   std::map<std::string, CredentialLease> credential_leases_;
   std::unique_ptr<RoomOwner> room_owner_;
