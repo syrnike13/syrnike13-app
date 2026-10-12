@@ -21,10 +21,12 @@ class EchoReferencePort {
 class MicrophoneEnhancement {
  public:
   virtual ~MicrophoneEnhancement() = default;
-  // Fixed 48 kHz mono/10 ms input; one DSP owner. AEC and NS are independent.
+  // Fixed 48 kHz mono/10 ms input; one DSP owner. AEC, NS and AGC2 are independent.
   virtual EchoAvailability process(std::array<std::int16_t, kMicrophoneFrameSamples>&,
                                   const EchoReferenceFrame*, bool noise_suppression,
                                   bool echo_cancellation) noexcept = 0;
+  // Gain-only stage, after the gate has measured the post-AEC/NS input level.
+  virtual bool processGain(std::array<std::int16_t, kMicrophoneFrameSamples>&) noexcept = 0;
   // Called on the DSP owner before a new renderer epoch can be processed.
   virtual bool resetEcho() noexcept = 0;
 };
@@ -48,7 +50,6 @@ struct MicrophoneDspStats {
   float input_level = 0;
   float output_level = 0;
   float gate_threshold = 0;
-  float automatic_gain = 1;
   bool gate_open = false;
   bool speaking = false;
   EchoAvailability echo = EchoAvailability::unavailable;
@@ -70,7 +71,6 @@ class MicrophoneDsp final {
   // 300 ms of 10 ms frames after the last voiced frame.
   static constexpr std::uint32_t kGateHoldFrames = 30;
   float noise_floor_ = 0.001f;
-  float gain_ = 1.0f;
   float gate_gain_ = 0.0f;
   std::uint32_t gate_hold_frames_ = 0;
   std::uint64_t reference_sequence_ = 0;
