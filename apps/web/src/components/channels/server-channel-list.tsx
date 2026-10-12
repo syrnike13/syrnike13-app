@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import {
   DragDropContext,
   Draggable,
@@ -27,7 +28,7 @@ import {
   FloatingMenuItem,
 } from '#/components/ui/floating-menu'
 import { useAuth } from '#/features/auth/auth-context'
-import { editServer } from '#/features/api/servers-api'
+import { editServerEffect } from '#/features/api/servers-api'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import type { ChannelUnreadState } from '#/features/sync/types'
@@ -430,7 +431,7 @@ export function ServerChannelList({
   )
   const channels = useSyncStore((s) =>
     listServerChannels(s, serverId, auth.user?._id),
-  ) as ServerChannel[]
+  )
 
   const canManage = server
     ? canManageServerChannels(
@@ -553,22 +554,31 @@ export function ServerChannelList({
     if (!token || !server) return
 
     setReordering(true)
-    try {
-      const layout = serializeServerLayout(
-        nextSections,
-        server.channels ?? [],
-      )
-      const updated = await editServer(token, serverId, layout)
-      syncStore.upsertServer(updated)
-      setOptimisticSections(null)
-    } catch (error) {
-      setOptimisticSections(null)
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось сохранить порядок',
-      )
-    } finally {
-      setReordering(false)
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        const layout = serializeServerLayout(
+          nextSections,
+          server.channels ?? [],
+        )
+        const updated = yield* editServerEffect(token, serverId, layout)
+        yield* Effect.sync(() => {
+          syncStore.upsertServer(updated)
+          setOptimisticSections(null)
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            setOptimisticSections(null)
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось сохранить порядок',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setReordering(false))),
+      ),
+    )
   }
 
   function handleDragEnd(result: DropResult) {

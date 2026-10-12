@@ -1,12 +1,15 @@
-import type {
-  NativeDiagnosticIncident,
-  NativeDiagnosticIncidentBatch,
-  NativeDiagnosticIncidentSeverity,
-  RendererDiagnosticIncident,
+import {
+  NativeDiagnosticIncidentSchema,
+  RendererDiagnosticIncidentSchema,
+  type NativeDiagnosticIncident,
+  type NativeDiagnosticIncidentBatch,
+  type NativeDiagnosticIncidentSeverity,
+  type RendererDiagnosticIncident,
 } from '@syrnike13/platform'
+import { Option, Schema } from 'effect'
 
 import type { DiagnosticLogRecord } from './diagnostic-log'
-import { redactSensitiveText } from './contract'
+import { redactSensitiveText } from './diagnostic-log'
 
 const MAX_PENDING_INCIDENTS = 100
 const MAX_INCIDENT_FINGERPRINTS = 1_000
@@ -15,38 +18,13 @@ const INCIDENT_LEASE_MS = 2 * 60 * 1_000
 const NATIVE_AUTOMATIC_COOLDOWN_MS = 60_000
 const RENDERER_AUTOMATIC_COOLDOWN_MS = 10 * 60 * 1_000
 const RETRY_BACKOFF_MS = [5_000, 15_000, 60_000, 5 * 60_000] as const
-const WARNING_EVENTS = new Set([
-  'request_rejected_queue_full',
-  'restart_scheduled',
-  'runtime_event_dropped_out_of_order',
-  'screen_backend_restart',
-])
-const FATAL_EVENTS = new Set([
-  'native_contract_corruption',
-  'restart_aborted_circuit_open',
-  'runtime_contract_corrupt',
-  'utility_crashed',
-])
+// Events recorded by native-media-engine without a typed errorCode.
+const WARNING_EVENTS = new Set(['presentation_stalled'])
+const FATAL_EVENTS = new Set(['utility_crashed'])
 const FAILURE_EVENTS = new Set([
   ...WARNING_EVENTS,
   ...FATAL_EVENTS,
-  'adapter_exited',
-  'adapter_recycled',
-  'bootstrap_failed',
-  'dispose_failed',
-  'frame_delivery_rejected',
-  'handshake_failed',
-  'probe_reply_error',
-  'probe_timed_out',
-  'request_post_failed',
-  'request_rejected',
-  'request_rejected_not_ready',
-  'request_reply_error',
-  'request_timed_out',
   'runtime_degraded',
-  'camera_read_stall',
-  'screen_publication_failed',
-  'session_rotation_failed',
 ])
 const NON_INCIDENT_PROJECTIONS = new Set([
   'command',
@@ -58,6 +36,7 @@ const NON_INCIDENT_PROJECTIONS = new Set([
 const pending: NativeDiagnosticIncident[] = []
 const lastIncidentAt = new Map<string, number>()
 const correlationAliases = new Map<string, string>()
+const episodeRoots = new Map<string, NativeDiagnosticIncident>()
 const lastAcknowledgedAt = new Map<string, number>()
 const retryState = new Map<string, { attempt: number; notBefore: number }>()
 let leasedBatch: (NativeDiagnosticIncidentBatch & { expiresAt: number }) | null = null
@@ -85,22 +64,7 @@ export function captureNativeDiagnosticIncident(
   timestampMs = Date.now(),
 ) {
   if (activeAccountId === null) return null
-  if (record.event === 'adapter_exited' && record.reason === 'expected') return null
   if (record.errorCode === 'stale_generation') return null
-  if (
-    record.event === 'screen_backend_restart' &&
-    (!record.reason ||
-      record.reason === 'reinitialize_active' ||
-      record.reason === 'probe_preferred_backend')
-  ) return null
-  // Gateway control errors with fatal=false are evidence for the active voice
-  // operation, not root incidents. A typed terminal projection will create
-  // the incident if the operation actually ends.
-  if (
-    record.scope === 'desktop-voice' &&
-    record.event === 'control_event' &&
-    record.fatal === false
-  ) return null
   if (NON_INCIDENT_PROJECTIONS.has(record.event)) return null
   if (!record.errorCode && !FAILURE_EVENTS.has(record.event)) return null
 
@@ -116,6 +80,11 @@ export function captureNativeDiagnosticIncident(
     record.stage,
   ].join(':')
   const correlationId = incidentCorrelationId(record)
+  if (record.episodeId && correlationId) {
+    return captureEpisodeIncident(createNativeIncident(record, timestampMs, {
+      triggerCode, identity, correlationId,
+    }))
+  }
   const fingerprint = `${identity}:${correlationId ?? 'uncorrelated'}`
   const previous = touchIncidentFingerprint(fingerprint, timestampMs)
   if (previous !== undefined && timestampMs - previous < REPEAT_WINDOW_MS) {
@@ -124,7 +93,7 @@ export function captureNativeDiagnosticIncident(
       existing.timestampMs = timestampMs
       existing.occurrenceCount = (existing.occurrenceCount ?? 1) + 1
       Object.assign(existing, {
-        severity: incidentSeverity(record),
+        severity: highestIncidentSeverity(existing.severity, incidentSeverity(record)),
         actionId: record.actionId,
         operationId: record.operation,
         nativeEventType: record.nativeEventType,
@@ -144,6 +113,7 @@ export function captureNativeDiagnosticIncident(
         restartCount: record.restartCount,
         durationMs: record.durationMs,
         timeoutMs: record.timeoutMs,
+        metrics: sanitizeMetrics(record.metrics),
       })
       return existing
     }
@@ -153,14 +123,23 @@ export function captureNativeDiagnosticIncident(
     if (!hasLeasedIncident(identity, correlationId)) return null
   }
 
-  const incident: NativeDiagnosticIncident = compactIncident({
+  const incident = createNativeIncident(record, timestampMs, { triggerCode, identity, correlationId })
+  pending.push(incident)
+  if (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
+  return incident
+}
+
+function createNativeIncident(
+  record: DiagnosticLogRecord,
+  timestampMs: number,
+  identity: { triggerCode: string; identity: string; correlationId?: string },
+): NativeDiagnosticIncident {
+  return compactIncident({
     timestampMs,
     firstTimestampMs: timestampMs,
     occurrenceCount: 1,
     severity: incidentSeverity(record),
-    triggerCode,
-    identity,
-    correlationId,
+    ...identity,
     area: 'native-runtime',
     cooldownMs: NATIVE_AUTOMATIC_COOLDOWN_MS,
     scope: record.scope,
@@ -184,10 +163,50 @@ export function captureNativeDiagnosticIncident(
     restartCount: record.restartCount,
     durationMs: record.durationMs,
     timeoutMs: record.timeoutMs,
+    metrics: sanitizeMetrics(record.metrics),
   })
-  pending.push(incident)
-  if (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
-  return incident
+}
+
+function captureEpisodeIncident(incoming: NativeDiagnosticIncident) {
+  const correlationId = incoming.correlationId!
+  const root = episodeRoots.get(correlationId)
+  if (!root) {
+    // Keep a separate root value: an IPC lease must never be mutated while
+    // later symptoms are collected for a follow-up batch.
+    episodeRoots.set(correlationId, { ...incoming })
+    while (episodeRoots.size > MAX_INCIDENT_FINGERPRINTS) {
+      const oldest = episodeRoots.keys().next().value
+      if (oldest === undefined) break
+      episodeRoots.delete(oldest)
+    }
+    pending.push(incoming)
+    if (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
+    return incoming
+  }
+  root.severity = highestIncidentSeverity(root.severity, incoming.severity)
+  let existing = findPendingIncident(root.identity!, correlationId)
+  if (!existing) {
+    existing = { ...root, timestampMs: incoming.timestampMs, occurrenceCount: 0 }
+    pending.push(existing)
+    if (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
+  }
+  existing.timestampMs = incoming.timestampMs
+  existing.occurrenceCount = (existing.occurrenceCount ?? 1) + 1
+  existing.severity = highestIncidentSeverity(existing.severity, root.severity)
+  existing.relatedEvidence = [...(existing.relatedEvidence ?? []), {
+    timestampMs: incoming.timestampMs,
+    scope: incoming.scope,
+    event: incoming.event,
+    severity: incoming.severity,
+    errorCode: incoming.errorCode,
+    stage: incoming.stage,
+    status: incoming.status,
+    message: incoming.message,
+    hostEpoch: incoming.hostEpoch,
+    revision: incoming.revision,
+    metrics: incoming.metrics,
+  }].slice(-8)
+  return existing
 }
 
 export function captureRendererDiagnosticIncident(
@@ -207,6 +226,7 @@ export function captureRendererDiagnosticIncident(
     if (existing) {
       existing.timestampMs = timestampMs
       existing.occurrenceCount = (existing.occurrenceCount ?? 1) + 1
+      existing.severity = highestIncidentSeverity(existing.severity, value.severity)
       return true
     }
     if (!hasLeasedIncident(identity) && !lastAcknowledgedAt.has(identity)) {
@@ -252,8 +272,7 @@ export function leaseNativeDiagnosticIncidents(
   if (!isActiveAccount(accountId)) return null
   if (leasedBatch && leasedBatch.expiresAt <= timestampMs) {
     deferIncidentRetry(leasedBatch.incidents, timestampMs)
-    pending.unshift(...leasedBatch.incidents)
-    while (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
+    restorePendingIncidents(leasedBatch.incidents)
     leasedBatch = null
   }
   if (leasedBatch) {
@@ -322,8 +341,7 @@ export function releaseNativeDiagnosticIncidents(
   if (!isActiveAccount(accountId)) return false
   if (leasedBatch?.id !== batchId || leasedBatch.accountId !== accountId) return false
   deferIncidentRetry(leasedBatch.incidents, timestampMs)
-  pending.unshift(...leasedBatch.incidents)
-  while (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
+  restorePendingIncidents(leasedBatch.incidents)
   leasedBatch = null
   return true
 }
@@ -337,6 +355,7 @@ function resetIncidentState() {
   pending.length = 0
   lastIncidentAt.clear()
   correlationAliases.clear()
+  episodeRoots.clear()
   lastAcknowledgedAt.clear()
   retryState.clear()
   leasedBatch = null
@@ -407,20 +426,66 @@ function hasLeasedIncident(identity: string, correlationId?: string) {
   return false
 }
 
+function highestIncidentSeverity(
+  previous: NativeDiagnosticIncidentSeverity,
+  next: NativeDiagnosticIncidentSeverity,
+): NativeDiagnosticIncidentSeverity {
+  if (previous === 'fatal' || next === 'fatal') return 'fatal'
+  if (previous === 'error' || next === 'error') return 'error'
+  return 'warning'
+}
+
+function restorePendingIncidents(incidents: NativeDiagnosticIncident[]) {
+  for (const incident of incidents) {
+    if (!incident.correlationId || !episodeRoots.has(incident.correlationId)) continue
+    const followUp = findPendingIncident(incident.identity!, incident.correlationId)
+    if (!followUp) continue
+    incident.timestampMs = Math.max(incident.timestampMs, followUp.timestampMs)
+    incident.occurrenceCount = (incident.occurrenceCount ?? 1) + (followUp.occurrenceCount ?? 1)
+    incident.severity = highestIncidentSeverity(incident.severity, followUp.severity)
+    incident.relatedEvidence = [...(incident.relatedEvidence ?? []), ...(followUp.relatedEvidence ?? [])]
+      .sort((first, second) => first.timestampMs - second.timestampMs)
+      .slice(-8)
+    pending.splice(pending.indexOf(followUp), 1)
+  }
+  pending.unshift(...incidents)
+  while (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
+}
+
 function incidentSeverity(
   record: DiagnosticLogRecord,
 ): NativeDiagnosticIncidentSeverity {
+  if (record.incidentSeverity) return record.incidentSeverity
   if (FATAL_EVENTS.has(record.event)) return 'fatal'
   if (record.fatal === true) return 'fatal'
   if (WARNING_EVENTS.has(record.event)) return 'warning'
   return 'error'
 }
 
+function sanitizeMetrics(metrics: Record<string, number> | undefined) {
+  if (!metrics) return undefined
+  const sanitized: Record<string, number> = {}
+  for (const [key, value] of Object.entries(metrics).slice(0, 48)) {
+    if (!Number.isFinite(value)) continue
+    const safeKey = safeTriggerCode(key)
+    if (safeKey) sanitized[safeKey] = value
+  }
+  return Object.keys(sanitized).length > 0 ? sanitized : undefined
+}
+
 function incidentCorrelationId(record: DiagnosticLogRecord) {
   const source =
-    record.actionId ?? record.requestId ?? record.sessionId ?? record.operation
+    record.episodeId ?? record.actionId ?? record.requestId ?? record.sessionId ?? record.operation
   if (!source) return undefined
-  const key = `${record.scope}:${source}`
+  const key = record.episodeId ? `episode:${source}` : `${record.scope}:${source}`
+  return correlationAlias(key)
+}
+
+export function getNativeDiagnosticCorrelationId(episodeId: string) {
+  return correlationAlias(`episode:${episodeId}`)
+}
+
+function correlationAlias(key: string) {
   const existing = correlationAliases.get(key)
   if (existing) return existing
   const alias = `incident-${crypto.randomUUID()}`
@@ -465,21 +530,9 @@ function safeTriggerCode(value: string) {
 function isRendererDiagnosticIncident(
   value: unknown,
 ): value is RendererDiagnosticIncident {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as Record<string, unknown>
-  return typeof candidate.area === 'string' &&
-    candidate.area.length > 0 &&
-    candidate.area.length <= 128 &&
-    typeof candidate.triggerCode === 'string' &&
-    candidate.triggerCode.length > 0 &&
-    candidate.triggerCode.length <= 128 &&
-    (candidate.severity === 'warning' ||
-      candidate.severity === 'error' ||
-      candidate.severity === 'fatal') &&
-    (candidate.cooldownMs === undefined ||
-      (typeof candidate.cooldownMs === 'number' &&
-        Number.isFinite(candidate.cooldownMs) &&
-        candidate.cooldownMs >= 0))
+  return Option.isSome(
+    Schema.decodeUnknownOption(RendererDiagnosticIncidentSchema)(value),
+  )
 }
 
 function redactedText(value: string | undefined) {
@@ -489,7 +542,11 @@ function redactedText(value: string | undefined) {
 function compactIncident(
   incident: NativeDiagnosticIncident,
 ): NativeDiagnosticIncident {
-  return Object.fromEntries(
+  const compact = Object.fromEntries(
     Object.entries(incident).filter(([, value]) => value !== undefined),
-  ) as NativeDiagnosticIncident
+  )
+  const decoded = Schema.decodeUnknownOption(NativeDiagnosticIncidentSchema)(
+    compact,
+  )
+  return Option.getOrElse(decoded, () => incident)
 }

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { createRegisterSchema } from './schemas'
+import { createRegisterSchema, usernameSchema, validateForm } from './schemas'
 
 describe('createRegisterSchema', () => {
   it('accepts matching passwords', () => {
-    const result = createRegisterSchema({}).safeParse({
+    const result = validateForm(createRegisterSchema({}), {
       email: 'user@example.com',
       password: 'password123',
       confirm: 'password123',
@@ -15,7 +15,7 @@ describe('createRegisterSchema', () => {
   })
 
   it('reports a mismatched confirmation on the confirm field', () => {
-    const result = createRegisterSchema({}).safeParse({
+    const result = validateForm(createRegisterSchema({}), {
       email: 'user@example.com',
       password: 'password123',
       confirm: 'password124',
@@ -25,7 +25,7 @@ describe('createRegisterSchema', () => {
     expect(result.success).toBe(false)
     if (result.success) return
 
-    expect(result.error.issues).toContainEqual(
+    expect(result.issues).toContainEqual(
       expect.objectContaining({
         message: 'Пароли не совпадают',
         path: ['confirm'],
@@ -34,21 +34,30 @@ describe('createRegisterSchema', () => {
   })
 
   it('requires an invite only when the server is invite-only', () => {
-    const result = createRegisterSchema({ requireInvite: true }).safeParse({
+    const result = validateForm(
+      createRegisterSchema({ requireInvite: true }),
+      {
       email: 'user@example.com',
       password: 'password123',
       confirm: 'password123',
       invite: '',
-    })
+      },
+    )
 
     expect(result.success).toBe(false)
     if (result.success) return
 
-    expect(result.error.issues).toContainEqual(
+    expect(result.issues).toContainEqual(
       expect.objectContaining({
         message: 'Нужен код приглашения',
         path: ['invite'],
       }),
     )
+  })
+
+  it('trims usernames before returning validated data', () => {
+    const result = validateForm(usernameSchema, '  user_name  ')
+
+    expect(result).toEqual({ success: true, data: 'user_name' })
   })
 })

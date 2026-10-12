@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactElement } from 'react'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerSettingsMembersPanel } from '#/components/servers/server-settings-members-panel'
@@ -17,7 +18,9 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
-  fetchServerMembers: vi.fn().mockResolvedValue({ members: [], users: [] }),
+  fetchServerMembersEffect: vi.fn(() =>
+    Effect.succeed({ members: [], users: [] }),
+  ),
 }))
 
 vi.mock('#/components/user/user-interactive-shell', () => ({

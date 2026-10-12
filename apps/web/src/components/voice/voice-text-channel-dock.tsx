@@ -8,6 +8,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import {
   getChannelVoiceParticipants,
+  sameVoiceParticipantList,
   useChannelVoiceParticipantsWithLocalOverride,
 } from '#/features/sync/voice-selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
@@ -27,8 +28,9 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
   const prefix = useAppRoutePrefix()
   const [expanded, setExpanded] = useState(false)
   const users = useSyncStore((s) => s.users)
-  const storeParticipants = useSyncStore((s) =>
-    getChannelVoiceParticipants(s, channelId, auth.user?._id),
+  const storeParticipants = useSyncStore(
+    (s) => getChannelVoiceParticipants(s, channelId, auth.user?._id),
+    sameVoiceParticipantList,
   )
 
   const inThisChannel = isVoiceSessionInChannel(voice, channelId)

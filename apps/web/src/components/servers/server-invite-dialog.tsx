@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { DataCreateInvite, Invite, User } from '@syrnike13/api-types'
+import { Effect, Fiber } from 'effect'
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -20,11 +21,11 @@ import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
-import { sendChannelMessage } from '#/features/api/messages-api'
-import { fetchServerInvites } from '#/features/api/servers-api'
-import { openDirectMessage } from '#/features/api/users-api'
+import { sendChannelMessageEffect } from '#/features/api/messages-api'
+import { fetchServerInvitesEffect } from '#/features/api/servers-api'
+import { openDirectMessageEffect } from '#/features/api/users-api'
 import {
-  createChannelInvite,
+  createChannelInviteEffect,
   getInviteInactiveReason,
 } from '#/features/api/invites-api'
 import {
@@ -36,7 +37,7 @@ import {
   canInviteToChannel,
   canManageServer,
 } from '#/features/authorization/authorization'
-import { writeClipboardText } from '#/lib/clipboard'
+import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
 import { cn } from '#/lib/utils'
 
@@ -104,7 +105,6 @@ export function ServerInviteDialog({
   const [maxAgeSeconds, setMaxAgeSeconds] = useState('604800')
   const [maxUses, setMaxUses] = useState('0')
   const [selectedChannelId, setSelectedChannelId] = useState<string | undefined>()
-  const loadInvitesRequestRef = useRef(0)
 
   const textChannels = useSyncStore((s) =>
     listServerChannels(s, serverId, auth.user?._id).filter(
@@ -155,23 +155,28 @@ export function ServerInviteDialog({
   }, [friendSearch, friends])
   const currentInviteUrl = activeInviteCode ? inviteUrl(activeInviteCode) : ''
 
-  const loadInvites = useCallback(async () => {
-    const requestId = ++loadInvitesRequestRef.current
-    setActiveInviteCode('')
-    setInvites([])
-    if (!token || !canManageServerInvites) return
+  const loadInvites = useCallback(
+    () =>
+      Effect.gen(function*() {
+        yield* Effect.sync(() => {
+          setActiveInviteCode('')
+          setInvites([])
+        })
+        if (!token || !canManageServerInvites) return
 
-    try {
-      const loadedInvites = await fetchServerInvites(token, serverId)
-      if (requestId !== loadInvitesRequestRef.current) return
-      setInvites(loadedInvites)
-    } catch (error) {
-      if (requestId !== loadInvitesRequestRef.current) return
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось загрузить',
-      )
-    }
-  }, [canManageServerInvites, serverId, token])
+        const loadedInvites = yield* fetchServerInvitesEffect(token, serverId)
+        yield* Effect.sync(() => setInvites(loadedInvites))
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось загрузить',
+            )
+          }),
+        ),
+      ),
+    [canManageServerInvites, serverId, token],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -202,9 +207,9 @@ export function ServerInviteDialog({
     if (!open) return
     setFriendSearch('')
     setSentUserIds([])
-    void loadInvites()
+    const fiber = Effect.runFork(loadInvites())
     return () => {
-      loadInvitesRequestRef.current += 1
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [loadInvites, open])
 
@@ -212,76 +217,111 @@ export function ServerInviteDialog({
     setActiveInviteCode('')
   }
 
-  async function ensureInviteLink() {
-    const currentInvite = invites.find(
-      (invite) => inviteCode(invite) === activeInviteCode,
-    )
-    if (currentInvite && !getInviteInactiveReason(currentInvite)) {
-      return inviteUrl(activeInviteCode)
-    }
-    if (activeInviteCode) setActiveInviteCode('')
+  function ensureInviteLink() {
+    return Effect.suspend(() => {
+      const currentInvite = invites.find(
+        (invite) => inviteCode(invite) === activeInviteCode,
+      )
+      if (currentInvite && !getInviteInactiveReason(currentInvite)) {
+        return Effect.succeed(inviteUrl(activeInviteCode))
+      }
+      if (activeInviteCode) setActiveInviteCode('')
 
-    if (!token || !activeChannelId) {
-      throw new Error('Нет текстового канала для приглашения')
-    }
+      if (!token || !activeChannelId) {
+        return Effect.fail(
+          new Error('Нет текстового канала для приглашения'),
+        )
+      }
 
-    setCreatingLink(true)
-    try {
       const body: DataCreateInvite = {
         max_age_seconds: Number(maxAgeSeconds),
         max_uses: Number(maxUses),
       }
-      const invite = await createChannelInvite(token, activeChannelId, body)
-      const code = inviteCode(invite)
 
-      if (!code) {
-        throw new Error('Сервер не вернул код приглашения')
-      }
+      return Effect.sync(() => setCreatingLink(true)).pipe(
+        Effect.andThen(
+          Effect.gen(function*() {
+            const invite = yield* createChannelInviteEffect(
+              token,
+              activeChannelId,
+              body,
+            )
+            const code = inviteCode(invite)
 
-      const nextInvite = { ...invite, channel: invite.channel ?? activeChannelId }
-      setInvites((current) => [nextInvite, ...current])
-      setActiveInviteCode(code)
-      return inviteUrl(code)
-    } finally {
-      setCreatingLink(false)
-    }
+            if (!code) {
+              return yield* Effect.fail(
+                new Error('Сервер не вернул код приглашения'),
+              )
+            }
+
+            const nextInvite = {
+              ...invite,
+              channel: invite.channel ?? activeChannelId,
+            }
+            yield* Effect.sync(() => {
+              setInvites((current) => [nextInvite, ...current])
+              setActiveInviteCode(code)
+            })
+            return inviteUrl(code)
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setCreatingLink(false))),
+      )
+    })
   }
 
   async function copyInviteLink() {
-    try {
-      const url = await ensureInviteLink()
-      await writeClipboardText(url)
-      toast.success('Ссылка скопирована')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось скопировать',
-      )
-    }
+    await Effect.runPromise(
+      ensureInviteLink().pipe(
+        Effect.flatMap(writeClipboardTextEffect),
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error ? error.message : 'Не удалось скопировать',
+              )
+            }),
+          onSuccess: () =>
+            Effect.sync(() => toast.success('Ссылка скопирована')),
+        }),
+      ),
+    )
   }
 
   async function inviteFriend(user: User) {
     if (!token) return
 
     setBusyUserId(user._id)
-    try {
-      const url = await ensureInviteLink()
-      const channel = await openDirectMessage(token, user._id)
-      syncStore.upsertChannel(channel)
-      const message = await sendChannelMessage(token, channel._id, {
-        content: `Приглашение на сервер ${server?.name ?? 'сервер'}: ${url}`,
-      })
-      syncStore.upsertMessage(message)
-      setSentUserIds((current) =>
-        current.includes(user._id) ? current : [...current, user._id],
-      )
-      toast.success('Приглашение отправлено')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось пригласить',
-      )
-    } finally {
-      setBusyUserId(null)
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        const url = yield* ensureInviteLink()
+        const channel = yield* openDirectMessageEffect(token, user._id)
+        yield* Effect.sync(() => syncStore.upsertChannel(channel))
+        const message = yield* sendChannelMessageEffect(
+          token,
+          channel._id,
+          {
+            content: `Приглашение на сервер ${server?.name ?? 'сервер'}: ${url}`,
+          },
+        )
+        yield* Effect.sync(() => {
+          syncStore.upsertMessage(message)
+          setSentUserIds((current) =>
+            current.includes(user._id) ? current : [...current, user._id],
+          )
+          toast.success('Приглашение отправлено')
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось пригласить',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setBusyUserId(null))),
+      ),
+    )
   }
 
   return (

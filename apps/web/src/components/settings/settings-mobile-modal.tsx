@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from '@tanstack/react-router'
+import { Effect } from 'effect'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -104,16 +105,26 @@ export function SettingsMobileModal() {
     pushScreen({ kind: 'section', section: next })
   }
 
-  async function handleLogout() {
+  function handleLogout() {
     if (loggingOut) return
     setLoggingOut(true)
     setOpen(false)
-    try {
-      await auth.logout()
-      await navigate({ to: '/login', replace: true })
-    } finally {
-      setLoggingOut(false)
-    }
+    Effect.runFork(
+      auth.logout().pipe(
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () => navigate({ to: '/login', replace: true }),
+            catch: (cause) => cause,
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            setLoggingOut(false)
+          }),
+        ),
+        Effect.ignore,
+      ),
+    )
   }
 
   if (!open) return null

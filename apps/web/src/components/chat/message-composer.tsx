@@ -7,6 +7,7 @@ import {
   type DragEvent,
 } from 'react'
 import type { Message } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { Loader2Icon, PlusIcon, XIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
@@ -467,7 +468,12 @@ export function MessageComposer({
 
       setSending(true)
       try {
-        await onEdit(editingMessage._id, content)
+        await Effect.runPromise(
+          Effect.tryPromise({
+            try: () => onEdit(editingMessage._id, content),
+            catch: (cause) => cause,
+          }),
+        )
         onCancelAction?.()
       } catch (error) {
         toast.error(
@@ -489,34 +495,49 @@ export function MessageComposer({
         replyId: replyTo?._id,
         replyMention,
       })
-      if (sendAttemptRef.current?.signature !== signature) {
-        sendAttemptRef.current = { signature, nonce: crypto.randomUUID() }
-      }
-      const attachments = await uploadAttachments(token)
+      const currentAttempt = sendAttemptRef.current
+      const sendAttempt =
+        currentAttempt?.signature === signature
+          ? currentAttempt
+          : { signature, nonce: crypto.randomUUID() }
+      sendAttemptRef.current = sendAttempt
+      await Effect.runPromise(
+        Effect.gen(function*() {
+          const attachments = yield* uploadAttachments(token)
+          yield* Effect.tryPromise({
+            try: () =>
+              onSend({
+                nonce: sendAttempt.nonce,
+                content: content || undefined,
+                attachments: attachments.length ? attachments : undefined,
+                replies: replyTo
+                  ? [{ id: replyTo._id, mention: replyMention }]
+                  : undefined,
+              }),
+            catch: (cause) => cause,
+          })
+          yield* Effect.sync(() => {
+            onStopTyping?.()
+            if (
+              !bypassesSlowmode &&
+              channel?.channel_type === 'TextChannel'
+            ) {
+              const delay = channel.slowmode ?? 0
+              if (delay > 0) {
+                const endsAt = Date.now() + delay * 1_000
+                setNow(Date.now())
+                setSlowmodeEndsAt(endsAt)
+              }
+            }
 
-      await onSend({
-        nonce: sendAttemptRef.current.nonce,
-        content: content || undefined,
-        attachments: attachments.length ? attachments : undefined,
-        replies: replyTo
-          ? [{ id: replyTo._id, mention: replyMention }]
-          : undefined,
-      })
-      onStopTyping?.()
-      if (!bypassesSlowmode && channel?.channel_type === 'TextChannel') {
-        const delay = channel.slowmode ?? 0
-        if (delay > 0) {
-          const endsAt = Date.now() + delay * 1_000
-          setNow(Date.now())
-          setSlowmodeEndsAt(endsAt)
-        }
-      }
-
-      clearCompose()
-      composerRef.current?.clear()
-      resetAttachments()
-      sendAttemptRef.current = null
-      onCancelAction?.()
+            clearCompose()
+            composerRef.current?.clear()
+            resetAttachments()
+            sendAttemptRef.current = null
+            onCancelAction?.()
+          })
+        }),
+      )
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось отправить',

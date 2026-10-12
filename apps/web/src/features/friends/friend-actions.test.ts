@@ -1,4 +1,5 @@
 import type { User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -36,14 +37,19 @@ describe('friend actions', () => {
     } as User
 
     const deps = createDeps({
-      acceptFriendRequest: vi.fn().mockResolvedValue(updatedUser),
+      acceptFriendRequest: vi.fn(() => Effect.succeed(updatedUser)),
     })
 
     await expect(
-      acceptIncomingFriendRequest('token-1', 'user-1', deps),
+      Effect.runPromise(
+        acceptIncomingFriendRequest('token-1', 'user-1', deps),
+      ),
     ).resolves.toBe(updatedUser)
 
-    expect(deps.acceptFriendRequest).toHaveBeenCalledWith('token-1', 'user-1')
+    expect(deps.acceptFriendRequest).toHaveBeenCalledWith(
+      'token-1',
+      'user-1',
+    )
     expect(deps.upsertUser).toHaveBeenCalledWith(updatedUser)
     expect(deps.toastSuccess).toHaveBeenCalledWith('Заявка принята')
     expect(deps.toastError).not.toHaveBeenCalled()
@@ -57,11 +63,13 @@ describe('friend actions', () => {
     } as User
 
     const deps = createDeps({
-      removeFriendOrRequest: vi.fn().mockResolvedValue(updatedUser),
+      removeFriendOrRequest: vi.fn(() => Effect.succeed(updatedUser)),
     })
 
     await expect(
-      declineIncomingFriendRequest('token-1', 'user-1', deps),
+      Effect.runPromise(
+        declineIncomingFriendRequest('token-1', 'user-1', deps),
+      ),
     ).resolves.toBe(updatedUser)
 
     expect(deps.removeFriendOrRequest).toHaveBeenCalledWith(
@@ -81,14 +89,19 @@ describe('friend actions', () => {
     } as User
 
     const deps = createDeps({
-      blockUser: vi.fn().mockResolvedValue(updatedUser),
+      blockUser: vi.fn(() => Effect.succeed(updatedUser)),
     })
 
     await expect(
-      blockIncomingFriendRequest('token-1', 'user-1', deps),
+      Effect.runPromise(
+        blockIncomingFriendRequest('token-1', 'user-1', deps),
+      ),
     ).resolves.toBe(updatedUser)
 
-    expect(deps.blockUser).toHaveBeenCalledWith('token-1', 'user-1')
+    expect(deps.blockUser).toHaveBeenCalledWith(
+      'token-1',
+      'user-1',
+    )
     expect(deps.upsertUser).toHaveBeenCalledWith(updatedUser)
     expect(deps.toastSuccess).toHaveBeenCalledWith('Пользователь заблокирован')
     expect(deps.toastError).not.toHaveBeenCalled()
@@ -102,14 +115,17 @@ describe('friend actions', () => {
     } as User
 
     const deps = createDeps({
-      blockUser: vi.fn().mockResolvedValue(updatedUser),
+      blockUser: vi.fn(() => Effect.succeed(updatedUser)),
     })
 
-    await expect(blockUserRelationship('token-1', 'user-1', deps)).resolves.toBe(
-      updatedUser,
-    )
+    await expect(
+      Effect.runPromise(blockUserRelationship('token-1', 'user-1', deps)),
+    ).resolves.toBe(updatedUser)
 
-    expect(deps.blockUser).toHaveBeenCalledWith('token-1', 'user-1')
+    expect(deps.blockUser).toHaveBeenCalledWith(
+      'token-1',
+      'user-1',
+    )
     expect(deps.upsertUser).toHaveBeenCalledWith(updatedUser)
     expect(deps.toastSuccess).toHaveBeenCalledWith('Пользователь заблокирован')
     expect(deps.toastError).not.toHaveBeenCalled()
@@ -128,14 +144,19 @@ describe('friend actions', () => {
     } as User
 
     const deps = createDeps({
-      sendFriendRequest: vi.fn().mockResolvedValue(updatedUser),
+      sendFriendRequest: vi.fn(() => Effect.succeed(updatedUser)),
     })
 
     await expect(
-      sendFriendRequestToUser('token-1', targetUser, deps),
+      Effect.runPromise(
+        sendFriendRequestToUser('token-1', targetUser, deps),
+      ),
     ).resolves.toBe(updatedUser)
 
-    expect(deps.sendFriendRequest).toHaveBeenCalledWith('token-1', 'alice#1234')
+    expect(deps.sendFriendRequest).toHaveBeenCalledWith(
+      'token-1',
+      'alice#1234',
+    )
     expect(deps.upsertUser).toHaveBeenCalledWith(updatedUser)
     expect(deps.toastSuccess).toHaveBeenCalledWith('Заявка отправлена')
     expect(deps.toastError).not.toHaveBeenCalled()
@@ -149,14 +170,19 @@ describe('friend actions', () => {
     } as User
 
     const deps = createDeps({
-      sendFriendRequest: vi.fn().mockResolvedValue(updatedUser),
+      sendFriendRequest: vi.fn(() => Effect.succeed(updatedUser)),
     })
 
     await expect(
-      sendFriendRequestByUsername('token-1', 'alice#1234', deps),
+      Effect.runPromise(
+        sendFriendRequestByUsername('token-1', 'alice#1234', deps),
+      ),
     ).resolves.toBe(updatedUser)
 
-    expect(deps.sendFriendRequest).toHaveBeenCalledWith('token-1', 'alice#1234')
+    expect(deps.sendFriendRequest).toHaveBeenCalledWith(
+      'token-1',
+      'alice#1234',
+    )
     expect(deps.upsertUser).toHaveBeenCalledWith(updatedUser)
     expect(deps.toastSuccess).toHaveBeenCalledWith('Заявка отправлена')
     expect(deps.toastError).not.toHaveBeenCalled()
@@ -170,11 +196,13 @@ describe('friend actions', () => {
     } as User
 
     const deps = createDeps({
-      removeFriendOrRequest: vi.fn().mockResolvedValue(updatedUser),
+      removeFriendOrRequest: vi.fn(() => Effect.succeed(updatedUser)),
     })
 
     await expect(
-      cancelOutgoingFriendRequest('token-1', 'user-1', deps),
+      Effect.runPromise(
+        cancelOutgoingFriendRequest('token-1', 'user-1', deps),
+      ),
     ).resolves.toBe(updatedUser)
 
     expect(deps.removeFriendOrRequest).toHaveBeenCalledWith(
@@ -194,12 +222,12 @@ describe('friend actions', () => {
     } as User
 
     const deps = createDeps({
-      removeFriendOrRequest: vi.fn().mockResolvedValue(updatedUser),
+      removeFriendOrRequest: vi.fn(() => Effect.succeed(updatedUser)),
     })
 
-    await expect(removeFriend('token-1', 'user-1', deps)).resolves.toBe(
-      updatedUser,
-    )
+    await expect(
+      Effect.runPromise(removeFriend('token-1', 'user-1', deps)),
+    ).resolves.toBe(updatedUser)
 
     expect(deps.removeFriendOrRequest).toHaveBeenCalledWith(
       'token-1',
@@ -220,14 +248,17 @@ describe('friend actions', () => {
     } as User
 
     const deps = createDeps({
-      unblockUser: vi.fn().mockResolvedValue(updatedUser),
+      unblockUser: vi.fn(() => Effect.succeed(updatedUser)),
     })
 
-    await expect(unblockBlockedUser('token-1', 'user-1', deps)).resolves.toBe(
-      updatedUser,
-    )
+    await expect(
+      Effect.runPromise(unblockBlockedUser('token-1', 'user-1', deps)),
+    ).resolves.toBe(updatedUser)
 
-    expect(deps.unblockUser).toHaveBeenCalledWith('token-1', 'user-1')
+    expect(deps.unblockUser).toHaveBeenCalledWith(
+      'token-1',
+      'user-1',
+    )
     expect(deps.upsertUser).toHaveBeenCalledWith(updatedUser)
     expect(deps.toastSuccess).toHaveBeenCalledWith('Пользователь разблокирован')
     expect(deps.toastError).not.toHaveBeenCalled()

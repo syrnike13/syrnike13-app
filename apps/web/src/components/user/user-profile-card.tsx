@@ -1,4 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
+import { Effect } from 'effect'
 import {
   BanIcon,
   CopyIcon,
@@ -26,7 +27,7 @@ import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { blockUserRelationship, sendFriendRequestToUser } from '#/features/friends/friend-actions'
 import type { MemberRoleEntry } from '#/features/sync/selectors'
-import { writeClipboardText } from '#/lib/clipboard'
+import { writeClipboardTextEffect } from '#/lib/clipboard'
 import {
   canMessageUser,
   canViewUserProfile,
@@ -81,7 +82,7 @@ export function UserProfileCard({
     if (!window.confirm(`Заблокировать @${profile.username}?`)) return
     setBusy(true)
     try {
-      await blockUserRelationship(token, profile._id)
+      await Effect.runPromise(blockUserRelationship(token, profile._id))
       dismiss()
     } catch {
       // friend-actions already shows the concrete error toast.
@@ -95,7 +96,7 @@ export function UserProfileCard({
     if (!token || !canAddFriend) return
     setBusy(true)
     try {
-      await sendFriendRequestToUser(token, profile)
+      await Effect.runPromise(sendFriendRequestToUser(token, profile))
     } catch {
       // friend-actions already shows the concrete error toast.
     } finally {
@@ -105,7 +106,7 @@ export function UserProfileCard({
 
   async function copyUserId() {
     try {
-      await writeClipboardText(profile._id)
+      await Effect.runPromise(writeClipboardTextEffect(profile._id))
       toast.success('ID скопирован')
     } catch {
       toast.error('Не удалось скопировать')
@@ -117,15 +118,17 @@ export function UserProfileCard({
     if (!token || !canMessage) return
     setBusy(true)
     try {
-      await openDirectMessageChannel(token, profile._id, (channelId) => {
-        dismiss()
-        setMessageDraft('')
-        return navigate({
-          to: `${prefix}/c/$channelId`,
-          params: { channelId },
-          search: { m: undefined },
-        })
-      })
+      await Effect.runPromise(
+        openDirectMessageChannel(token, profile._id, (channelId) => {
+          dismiss()
+          setMessageDraft('')
+          return navigate({
+            to: `${prefix}/c/$channelId`,
+            params: { channelId },
+            search: { m: undefined },
+          })
+        }),
+      )
       if (prefill?.trim()) {
         toast.message('Откройте чат и отправьте сообщение', {
           description: prefill.trim(),

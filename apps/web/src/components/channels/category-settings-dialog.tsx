@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Category } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
@@ -19,7 +20,7 @@ import {
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { useAuth } from '#/features/auth/auth-context'
-import { editServer } from '#/features/api/servers-api'
+import { editServerEffect } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
 
 type CategorySettingsDialogProps = {
@@ -63,24 +64,33 @@ function CategorySettingsDialogContent({
     if (!server) return false
 
     setSaving(true)
-    try {
-      const categories = (server.categories ?? []).map((item) =>
-        item.id === category.id ? { ...item, title: trimmed } : item,
-      )
-      const updated = await editServer(token, serverId, { categories })
-      syncStore.upsertServer(updated)
-      setTitle(trimmed)
-      setSavedTitle(trimmed)
-      toast.success('Категория обновлена')
-      return true
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось сохранить',
-      )
-      return false
-    } finally {
-      setSaving(false)
-    }
+    return Effect.runPromise(
+      Effect.gen(function*() {
+        const categories = (server.categories ?? []).map((item) =>
+          item.id === category.id ? { ...item, title: trimmed } : item,
+        )
+        const updated = yield* editServerEffect(token, serverId, {
+          categories,
+        })
+        yield* Effect.sync(() => {
+          syncStore.upsertServer(updated)
+          setTitle(trimmed)
+          setSavedTitle(trimmed)
+          toast.success('Категория обновлена')
+        })
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось сохранить',
+            )
+            return false
+          },
+          onSuccess: () => true,
+        }),
+        Effect.ensuring(Effect.sync(() => setSaving(false))),
+      ),
+    )
   }
 
   function resetDraft() {
@@ -107,22 +117,31 @@ function CategorySettingsDialogContent({
     if (!server) return
 
     setDeleting(true)
-    try {
-      const categories = (server.categories ?? []).filter(
-        (item) => item.id !== category.id,
-      )
-      const updated = await editServer(token, serverId, { categories })
-      syncStore.upsertServer(updated)
-      toast.success('Категория удалена')
-      setConfirmingDeletion(false)
-      onOpenChange(false)
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось удалить',
-      )
-    } finally {
-      setDeleting(false)
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        const categories = (server.categories ?? []).filter(
+          (item) => item.id !== category.id,
+        )
+        const updated = yield* editServerEffect(token, serverId, {
+          categories,
+        })
+        yield* Effect.sync(() => {
+          syncStore.upsertServer(updated)
+          toast.success('Категория удалена')
+          setConfirmingDeletion(false)
+          onOpenChange(false)
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось удалить',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setDeleting(false))),
+      ),
+    )
   }
 
   return (

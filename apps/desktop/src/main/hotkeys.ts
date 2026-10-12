@@ -4,6 +4,8 @@ import path from 'node:path'
 import { app, type BrowserWindow, type WebContents } from 'electron'
 import {
   IPC,
+  HotkeyActionSchema,
+  HotkeyBindingSchema,
   type HotkeyAction,
   type HotkeyActivationEvent,
   type HotkeyBinding,
@@ -12,11 +14,25 @@ import {
   type HotkeyRuntimeStatus,
   type NativeInputEvent,
 } from '@syrnike13/platform'
+import { Effect, Option, Schema } from 'effect'
 
 import { HotkeyState, REGISTERABLE_ACTIONS, comboKey } from './hotkey-state'
-import { hooksRuntimeController } from './native-runtime/hooks-runtime-controller'
+import { hooksRuntimeController } from './native-hooks'
 
 const HOTKEYS_FILE = 'hotkeys-v2.json'
+const UnknownArraySchema = Schema.Array(Schema.Unknown)
+const PersistedHotkeyBindingSchema = Schema.Struct({
+  id: Schema.String,
+  action: HotkeyActionSchema,
+  enabled: Schema.Boolean,
+  combo: Schema.optionalKey(Schema.Unknown),
+})
+const PersistedHotkeyBindingsJsonSchema = Schema.fromJsonString(
+  Schema.Array(PersistedHotkeyBindingSchema),
+)
+const HotkeyBindingsJsonSchema = Schema.fromJsonString(
+  Schema.Array(HotkeyBindingSchema),
+)
 
 let bindings: HotkeyBinding[] = []
 let registrationResults: HotkeyRegistrationResult[] = []
@@ -39,14 +55,8 @@ export function initializeHotkeys(getWindow: () => BrowserWindow | null) {
   bindings = readHotkeyBindings()
   registrationResults = validateBindings(bindings)
   unsubscribeRuntimeState?.()
-  unsubscribeRuntimeState = hooksRuntimeController.onStateChange((snapshot) => {
-    if (
-      snapshot.status === 'recovering' ||
-      snapshot.status === 'degraded' ||
-      snapshot.status === 'stopped'
-    ) {
-      emitHotkeyPressedEvents(hotkeyState.releaseHeldActions())
-    }
+  unsubscribeRuntimeState = hooksRuntimeController.onRuntimeError(() => {
+    emitHotkeyPressedEvents(hotkeyState.releaseHeldActions())
   })
   startNativeRuntime()
 }
@@ -77,10 +87,7 @@ export function stopHotkeyRecording() {
 
 export function getHotkeyRuntimeStatus() {
   if (process.platform !== 'win32') return 'unsupported-platform'
-  if (!hooksRuntimeController.isAvailable('hotkey')) return 'not-running'
-  return hooksRuntimeController.getStatus('hotkey') === 'ready'
-    ? 'running'
-    : 'not-running'
+  return hooksRuntimeController.isRunning('hotkey') ? 'running' : 'not-running'
 }
 
 export function disposeHotkeys() {
@@ -97,13 +104,19 @@ function startNativeRuntime() {
     return
   }
 
-  void hooksRuntimeController.startHotkeys(handleNativeInputEvent).catch((error) => {
-    console.warn(
-      '[hotkeys] native runtime failed to start',
-      error instanceof Error ? error.message : 'unknown error',
-    )
-    emitHotkeyPressedEvents(hotkeyState.releaseHeldActions())
-  })
+  Effect.runFork(
+    hooksRuntimeController.startHotkeysEffect(handleNativeInputEvent).pipe(
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          console.warn(
+            '[hotkeys] native runtime failed to start',
+            error instanceof Error ? error.message : 'unknown error',
+          )
+          emitHotkeyPressedEvents(hotkeyState.releaseHeldActions())
+        }),
+      ),
+    ),
+  )
 }
 
 function handleNativeInputEvent(event: NativeInputEvent) {
@@ -152,24 +165,19 @@ function canSendToRenderer(
 }
 
 export function sanitizeHotkeyBindings(value: unknown): HotkeyBinding[] {
-  if (!Array.isArray(value)) return []
+  const items = Schema.decodeUnknownOption(UnknownArraySchema)(value)
+  if (Option.isNone(items)) return []
 
-  return value.flatMap((item) => {
-    if (!item || typeof item !== 'object') return []
-    const binding = item as Partial<HotkeyBinding>
-    if (
-      typeof binding.id !== 'string' ||
-      typeof binding.action !== 'string' ||
-      typeof binding.enabled !== 'boolean' ||
-      !REGISTERABLE_ACTIONS.has(binding.action as HotkeyAction)
-    ) {
-      return []
-    }
+  return items.value.flatMap((item) => {
+    const decoded = Schema.decodeUnknownOption(PersistedHotkeyBindingSchema)(item)
+    if (Option.isNone(decoded)) return []
+    const binding = decoded.value
+    if (!REGISTERABLE_ACTIONS.has(binding.action)) return []
 
     return [
       {
         id: binding.id,
-        action: binding.action as HotkeyAction,
+        action: binding.action,
         combo: sanitizeCombo(binding.combo),
         enabled: binding.enabled,
       },
@@ -178,22 +186,25 @@ export function sanitizeHotkeyBindings(value: unknown): HotkeyBinding[] {
 }
 
 function sanitizeCombo(value: unknown): HotkeyCombo | null {
-  if (!value || typeof value !== 'object') return null
-  const combo = value as { codes?: unknown }
-  const rawCodes = combo.codes
-  if (!Array.isArray(rawCodes)) return null
-  if (!rawCodes.every((code): code is string => typeof code === 'string')) {
-    return null
-  }
+  const combo = Schema.decodeUnknownOption(
+    Schema.Struct({ codes: Schema.Array(Schema.String) }),
+  )(value)
+  if (Option.isNone(combo)) return null
 
-  const codes = normalizeCodes(rawCodes)
+  const codes = normalizeCodes(combo.value.codes)
   return codes.length > 0 ? { codes } : null
 }
 
 function readHotkeyBindings() {
   try {
     const raw = fs.readFileSync(resolveHotkeysPath(), 'utf8')
-    return sanitizeHotkeyBindings(JSON.parse(raw))
+    return Option.match(
+      Schema.decodeUnknownOption(PersistedHotkeyBindingsJsonSchema)(raw),
+      {
+      onNone: () => [],
+      onSome: sanitizeHotkeyBindings,
+      },
+    )
   } catch {
     return []
   }
@@ -202,13 +213,16 @@ function readHotkeyBindings() {
 function writeHotkeyBindings(nextBindings: HotkeyBinding[]) {
   const filePath = resolveHotkeysPath()
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
-  fs.writeFileSync(filePath, `${JSON.stringify(nextBindings, null, 2)}\n`)
+  fs.writeFileSync(
+    filePath,
+    `${Schema.encodeSync(HotkeyBindingsJsonSchema)(nextBindings)}\n`,
+  )
 }
 
 function resolveHotkeysPath() {
   return path.join(app.getPath('userData'), HOTKEYS_FILE)
 }
 
-function normalizeCodes(codes: string[]) {
+function normalizeCodes(codes: ReadonlyArray<string>) {
   return Array.from(new Set(codes.filter((code) => code.length > 0))).sort()
 }

@@ -1,4 +1,6 @@
-import { fetchUser } from '#/features/api/users-api'
+import { Effect } from 'effect'
+
+import { fetchUserEffect } from '#/features/api/users-api'
 import { syncStore } from '#/features/sync/sync-store'
 import { isValidVoiceUserId } from '#/features/sync/voice-participant-resolve'
 
@@ -16,15 +18,20 @@ export function ensureVoiceUsersLoaded(
     if (loading.has(userId)) continue
 
     loading.add(userId)
-    void fetchUser(token, userId)
-      .then((user) => {
-        syncStore.upsertUser(user)
-      })
-      .catch(() => {
-        // пользователь недоступен — запись отфильтруем в UI
-      })
-      .finally(() => {
-        loading.delete(userId)
-      })
+    Effect.runFork(
+      fetchUserEffect(token, userId).pipe(
+        Effect.tap((user) =>
+          Effect.sync(() => {
+            syncStore.upsertUser(user)
+          }),
+        ),
+        Effect.catch(() => Effect.void),
+        Effect.ensuring(
+          Effect.sync(() => {
+            loading.delete(userId)
+          }),
+        ),
+      ),
+    )
   }
 }

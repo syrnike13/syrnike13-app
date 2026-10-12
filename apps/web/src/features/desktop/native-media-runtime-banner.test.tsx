@@ -1,127 +1,184 @@
 // @vitest-environment jsdom
 
-import { act, fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { NativeMediaRuntimeState } from '@syrnike13/platform'
 
+const inactivePath: NativeMediaRuntimeState['paths']['screen'] = { revision: 0, state: 'off', warning: false }
+const unavailableState: NativeMediaRuntimeState = {
+  available: false,
+  status: 'unavailable',
+  restartCount: 0,
+  hostEpoch: 0,
+  paths: {
+    microphone: inactivePath, camera: inactivePath, screen: inactivePath, output: inactivePath,
+    screen_audio: inactivePath, screen_preview: inactivePath, camera_preview: inactivePath, remote_video: inactivePath,
+  },
+  failure: {
+    code: 'native_media_unavailable',
+    message: 'Native media is unavailable while the v2 engine is rebuilt.',
+    retryable: false,
+    stage: 'native_runtime',
+  },
+}
+
 const mediaRuntime = vi.hoisted(() => {
-  let state: NativeMediaRuntimeState = {
-    available: true,
-    status: 'degraded',
-    restartCount: 3,
-    degradedRetryAttempt: 1,
-    nextRetryAt: 30_000,
-  }
   const listeners = new Set<(value: NativeMediaRuntimeState) => void>()
   return {
-    getRuntimeState: vi.fn(async () => state),
-    retryRuntime: vi.fn(async () => {
-      state = { available: true, status: 'ready', restartCount: 4 }
-      for (const listener of listeners) listener(state)
-      return state
-    }),
+    getRuntimeState: vi.fn<() => Promise<NativeMediaRuntimeState>>(),
+    retryRuntime: vi.fn(),
+    dispatch: vi.fn(),
     onRuntimeState: vi.fn((listener: (value: NativeMediaRuntimeState) => void) => {
       listeners.add(listener)
       return () => listeners.delete(listener)
     }),
     emit(next: NativeMediaRuntimeState) {
-      state = next
       for (const listener of listeners) listener(next)
     },
     reset() {
-      state = {
-        available: true,
-        status: 'degraded',
-        restartCount: 3,
-        degradedRetryAttempt: 1,
-        nextRetryAt: 30_000,
-      }
       listeners.clear()
-      this.getRuntimeState.mockClear()
-      this.retryRuntime.mockClear()
+      this.getRuntimeState.mockReset()
+      this.retryRuntime.mockReset()
+      this.dispatch.mockReset()
       this.onRuntimeState.mockClear()
     },
   }
 })
 
-vi.mock('#/platform/use-platform', () => ({
-  usePlatform: () => ({ desktop: { media: mediaRuntime } }),
-}))
+vi.mock('#/platform/use-platform', () => {
+  const platform = { desktop: { media: mediaRuntime, voice: { dispatch: mediaRuntime.dispatch } } }
+  return { usePlatform: () => platform }
+})
 
 import { NativeMediaRuntimeBanner } from './native-media-runtime-banner'
 
 describe('NativeMediaRuntimeBanner', () => {
+  afterEach(cleanup)
+
   beforeEach(() => {
     mediaRuntime.reset()
+    mediaRuntime.getRuntimeState.mockResolvedValue(unavailableState)
   })
 
-  it('shows degraded state and delegates the retry action', async () => {
+  it('shows the finite unavailable state without offering a restart', async () => {
     render(<NativeMediaRuntimeBanner />)
+
     expect(
       await screen.findByText(
-        'Микрофон, камера и демонстрация экрана временно недоступны.',
+        'Нативные медиа недоступны на этом устройстве.',
       ),
     ).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Перезапустить медиа' }))
-    await act(async () => {})
-
-    expect(mediaRuntime.retryRuntime).toHaveBeenCalledTimes(1)
-    expect(
-      screen.queryByText(
-        'Микрофон, камера и демонстрация экрана временно недоступны.',
-      ),
-    ).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(mediaRuntime.retryRuntime).not.toHaveBeenCalled()
   })
 
-  it('shows automatic recovery without a duplicate manual action', async () => {
+  it('accepts a pushed unavailable state while the initial request is pending', async () => {
+    mediaRuntime.getRuntimeState.mockImplementationOnce(() => new Promise(() => {}))
     render(<NativeMediaRuntimeBanner />)
+
     await act(async () => {
-      mediaRuntime.emit({
-        available: true,
-        status: 'recovering',
-        restartCount: 4,
-      })
+      mediaRuntime.emit(unavailableState)
     })
 
     expect(
       screen.getByText(
-        'Восстанавливаем микрофон, камеру и демонстрацию экрана…',
+        'Нативные медиа недоступны на этом устройстве.',
       ),
     ).toBeTruthy()
+  })
+
+  it('does not show a banner for a screen quality warning without a failure', async () => {
+    const healthy: NativeMediaRuntimeState = { ...unavailableState, available: true, status: 'ready', failure: undefined }
+    mediaRuntime.getRuntimeState.mockResolvedValue(healthy)
+    render(<NativeMediaRuntimeBanner />)
+    await act(async () => {})
+    expect(screen.queryByRole('status')).toBeNull()
+    const warning: NativeMediaRuntimeState = {
+      ...healthy, paths: { ...healthy.paths, screen: { revision: 1, state: 'running', warning: true } },
+    }
+    for (let index = 0; index < 3; index += 1) await act(async () => mediaRuntime.emit(warning))
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
+    await act(async () => mediaRuntime.emit(healthy))
+    expect(screen.queryByRole('status')).toBeNull()
+    await act(async () => mediaRuntime.emit(warning))
+    await act(async () => mediaRuntime.emit({ ...warning, paths: { ...warning.paths, screen: { ...inactivePath, warning: true } } }))
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('names only the failed path without exposing technical failure details', async () => {
+    mediaRuntime.getRuntimeState.mockResolvedValue({
+      ...unavailableState, available: true, status: 'ready',
+      paths: { ...unavailableState.paths, camera_preview: {
+        revision: 1, state: 'failed', warning: false,
+        failure: { code: 'mft_failed', message: 'HRESULT device details', retryable: true, stage: 'preview' },
+      } },
+    })
+    render(<NativeMediaRuntimeBanner />)
+    expect(await screen.findByText('Предпросмотр камеры: недоступно.')).toBeTruthy()
+    expect(screen.queryByText(/HRESULT/)).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
   })
 
-  it('does not let a stale initial snapshot overwrite a newer pushed state', async () => {
-    let resolveInitial!: (state: NativeMediaRuntimeState) => void
-    mediaRuntime.getRuntimeState.mockImplementationOnce(
-      () =>
-        new Promise<NativeMediaRuntimeState>((resolve) => {
-          resolveInitial = resolve
-        }),
-    )
+  it('explains camera rollback while the previous capture remains running', async () => {
+    const healthy: NativeMediaRuntimeState = {
+      ...unavailableState, available: true, status: 'ready', failure: undefined,
+    }
+    mediaRuntime.getRuntimeState.mockResolvedValue({
+      ...healthy, paths: { ...healthy.paths, camera: {
+        revision: 2, state: 'running', warning: true,
+        failure: { code: 'camera_input_failed', message: 'Private device details', retryable: true, stage: 'camera' },
+      } },
+    })
     render(<NativeMediaRuntimeBanner />)
+    expect(await screen.findByText('Не удалось применить настройки камеры. Продолжаем использовать предыдущие настройки.')).toBeTruthy()
+    expect(screen.queryByText(/Private device/)).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
+    await act(async () => mediaRuntime.emit(healthy))
+    expect(screen.queryByRole('status')).toBeNull()
+  })
 
-    await act(async () => {
-      mediaRuntime.emit({
-        available: true,
-        status: 'ready',
-        restartCount: 4,
-      })
+  it('asks for source selection once when an expired source affects screen video and audio', async () => {
+    const expiredSource: NativeMediaRuntimeState['paths']['screen'] = {
+      revision: 3, state: 'failed', warning: false,
+      failure: { code: 'screen_source_unavailable', message: '', retryable: false, stage: 'screen' },
+    }
+    mediaRuntime.getRuntimeState.mockResolvedValue({
+      ...unavailableState, available: true, status: 'ready', failure: undefined,
+      paths: { ...unavailableState.paths, screen: expiredSource, screen_audio: expiredSource },
     })
-    await act(async () => {
-      resolveInitial({
-        available: true,
-        status: 'degraded',
-        restartCount: 3,
-      })
-    })
+    render(<NativeMediaRuntimeBanner />)
+    expect(await screen.findByText('Источник демонстрации недоступен. Выберите экран или приложение заново.')).toBeTruthy()
+    expect(screen.queryByText('Звук демонстрации: недоступно.')).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
 
-    expect(
-      screen.queryByText(
-        'Микрофон, камера и демонстрация экрана временно недоступны.',
-      ),
-    ).toBeNull()
+  it('offers one manual runtime retry only for a retryable runtime failure', async () => {
+    mediaRuntime.getRuntimeState.mockResolvedValue({
+      ...unavailableState, available: true, status: 'failed',
+      failure: { code: 'host_failed', message: '', retryable: true, stage: 'host' },
+    })
+    mediaRuntime.retryRuntime.mockResolvedValue(undefined)
+    render(<NativeMediaRuntimeBanner />)
+    const retry = await screen.findByRole('button', { name: 'Повторить запуск' })
+    await act(async () => fireEvent.click(retry))
+    expect(mediaRuntime.retryRuntime).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries only the failed media path while the runtime and Room remain available', async () => {
+    mediaRuntime.getRuntimeState.mockResolvedValue({
+      ...unavailableState, available: true, status: 'ready',
+      paths: { ...unavailableState.paths, microphone: {
+        revision: 2, state: 'failed', warning: false,
+        failure: { code: 'microphone_sender_failed', message: '', retryable: true, stage: 'microphone' },
+      } },
+    })
+    mediaRuntime.dispatch.mockResolvedValue(undefined)
+    render(<NativeMediaRuntimeBanner />)
+    const retry = await screen.findByRole('button', { name: 'Повторить запуск микрофона' })
+    await act(async () => fireEvent.click(retry))
+    expect(mediaRuntime.dispatch).toHaveBeenCalledWith({ type: 'retryMedia', kind: 'microphone' })
+    expect(mediaRuntime.retryRuntime).not.toHaveBeenCalled()
   })
 })

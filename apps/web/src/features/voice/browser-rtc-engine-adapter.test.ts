@@ -1,11 +1,23 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 import type { VoiceLease, VoiceMediaDesiredState } from '@syrnike13/platform'
 
 const livekit = vi.hoisted(() => {
   const rooms: Array<{
-    publication: { mute: ReturnType<typeof vi.fn>; unmute: ReturnType<typeof vi.fn> }
+    publications: Array<{
+      trackSid: string
+      source: string
+      mute: ReturnType<typeof vi.fn>
+      unmute: ReturnType<typeof vi.fn>
+      track: {
+        sender: {
+          encodings: Array<{ maxBitrate?: number }>
+          setParameters: ReturnType<typeof vi.fn>
+        }
+      }
+    }>
     handlers: Map<string, Set<(...args: unknown[]) => void>>
     connect: ReturnType<typeof vi.fn>
     disconnect: ReturnType<typeof vi.fn>
@@ -30,7 +42,9 @@ const remoteAudioMixers = vi.hoisted(() => ({
     removeTrack: ReturnType<typeof vi.fn>
     removeMediaStreamTrack: ReturnType<typeof vi.fn>
     applyVolumes: ReturnType<typeof vi.fn>
+    applyVolumesEffect: ReturnType<typeof vi.fn>
     setOutputDevice: ReturnType<typeof vi.fn>
+    setOutputDeviceEffect: ReturnType<typeof vi.fn>
     dispose: ReturnType<typeof vi.fn>
     onSpeakingUserIdsChange?: (userIds: ReadonlySet<string>) => void
   }>,
@@ -40,17 +54,33 @@ const localSpeakingDetectors = vi.hoisted(() => ({
   instances: [] as Array<{
     setTrack: ReturnType<typeof vi.fn>
     setEnabled: ReturnType<typeof vi.fn>
+    clear: ReturnType<typeof vi.fn>
     dispose: ReturnType<typeof vi.fn>
     onSpeakingChange?: (speaking: boolean) => void
   }>,
 }))
 
 vi.mock('livekit-client', () => {
+  class MockSender {
+    encodings: Array<{ maxBitrate?: number }> = [{ maxBitrate: 64_000 }]
+    readonly getParameters = vi.fn(() => ({
+      encodings: this.encodings.map((encoding) => ({ ...encoding })),
+    }))
+    readonly setParameters = vi.fn(
+      async (parameters: { encodings: Array<{ maxBitrate?: number }> }) => {
+        this.encodings = parameters.encodings
+      },
+    )
+  }
+
   class MockRoom {
-    readonly publication = {
-      mute: vi.fn(async () => undefined),
-      unmute: vi.fn(async () => undefined),
-    }
+    readonly publications: Array<{
+      trackSid: string
+      source: string
+      mute: ReturnType<typeof vi.fn>
+      unmute: ReturnType<typeof vi.fn>
+      track: { sender: MockSender }
+    }> = []
     readonly handlers = new Map<string, Set<(...args: unknown[]) => void>>()
     readonly connect = vi.fn(
       () => livekit.connectPromise ?? Promise.resolve(),
@@ -58,10 +88,20 @@ vi.mock('livekit-client', () => {
     readonly disconnect = vi.fn(async () => undefined)
     readonly switchActiveDevice = vi.fn(async () => undefined)
     readonly localParticipant = {
-      setMicrophoneEnabled: vi.fn(async () => this.publication),
+      setMicrophoneEnabled: vi.fn(async () => {
+        const publication = {
+          trackSid: `TR_MIC_${this.publications.length + 1}`,
+          source: 'microphone',
+          mute: vi.fn(async () => undefined),
+          unmute: vi.fn(async () => undefined),
+          track: { sender: new MockSender() },
+        }
+        this.publications.push(publication)
+        return publication
+      }),
       setCameraEnabled: vi.fn(async () => undefined),
       setScreenShareEnabled: vi.fn(async () => undefined),
-      getTrackPublication: vi.fn(() => this.publication),
+      getTrackPublication: vi.fn(() => this.publications.at(-1)),
     }
 
     constructor() {
@@ -91,6 +131,7 @@ vi.mock('livekit-client', () => {
       Reconnecting: 'reconnecting',
       Reconnected: 'reconnected',
       Disconnected: 'disconnected',
+      LocalTrackUnpublished: 'localTrackUnpublished',
       TrackPublished: 'trackPublished',
       TrackSubscribed: 'trackSubscribed',
       TrackUnsubscribed: 'trackUnsubscribed',
@@ -99,6 +140,7 @@ vi.mock('livekit-client', () => {
     Track: {
       Kind: { Audio: 'audio' },
       Source: {
+        Microphone: 'microphone',
         ScreenShare: 'screen_share',
         ScreenShareAudio: 'screen_share_audio',
       },
@@ -114,12 +156,20 @@ vi.mock('./voice-capture', () => ({
     screenShareEncoding: {},
   }),
   voiceAudioProcessingConstraints: () => ({}),
-  voiceMicPublishOptions: () => ({}),
+  voiceMicPublishOptions: (bitrate: number) => ({ bitrate }),
 }))
 
-vi.mock('./voice-mic-processing', () => ({
-  applyMicProcessing: vi.fn(async () => undefined),
-}))
+vi.mock('./voice-mic-processing', () => {
+  const applyMicProcessing = vi.fn(async () => undefined)
+  return {
+    applyMicProcessing,
+    applyMicProcessingEffect: (...args: Parameters<typeof applyMicProcessing>) =>
+      Effect.tryPromise({
+        try: () => applyMicProcessing(...args),
+        catch: (cause) => cause,
+      }),
+  }
+})
 
 vi.mock('./remote-audio-mixer', () => ({
   createRemoteAudioMixer: (options: {
@@ -131,6 +181,18 @@ vi.mock('./remote-audio-mixer', () => ({
       removeMediaStreamTrack: vi.fn(),
       applyVolumes: vi.fn(async () => undefined),
       setOutputDevice: vi.fn(async () => undefined),
+      applyVolumesEffect: vi.fn(() =>
+        Effect.tryPromise({
+          try: () => mixer.applyVolumes(),
+          catch: (cause) => cause,
+        }),
+      ),
+      setOutputDeviceEffect: vi.fn(() =>
+        Effect.tryPromise({
+          try: () => mixer.setOutputDevice(),
+          catch: (cause) => cause,
+        }),
+      ),
       dispose: vi.fn(),
       onSpeakingUserIdsChange: options.onSpeakingUserIdsChange,
     }
@@ -146,6 +208,7 @@ vi.mock('./local-speaking-detector', () => ({
     const detector = {
       setTrack: vi.fn(),
       setEnabled: vi.fn(),
+      clear: vi.fn(),
       dispose: vi.fn(),
       onSpeakingChange: options.onSpeakingChange,
     }
@@ -168,6 +231,7 @@ const lease: VoiceLease = {
     url: 'wss://voice.invalid',
     token: 'token-a',
     participantIdentity: 'identity-a',
+    cameraProfiles: ['hd720p30', 'hd1080p30'],
   },
 }
 
@@ -192,10 +256,13 @@ function desired(
     voiceGateEnabled: true,
     voiceGateThresholdDb: -28,
     voiceGateAutoThreshold: true,
+    microphoneBitrate: 64_000,
     outputVolume: 1,
     cameraEnabled: false,
+    cameraProfile: 'hd720p30',
     screenEnabled: false,
     screenAudioEnabled: false,
+    screenAudioMode: 'system',
     ...patch,
   }
 }
@@ -232,19 +299,48 @@ describe('BrowserRtcEngineAdapter', () => {
     await waitUntil(
       () => room.localParticipant.setScreenShareEnabled.mock.calls.length === 1,
     )
+    const publication = room.publications[0]
 
     adapter.updateDesiredMedia({
       ...initial,
       userMuted: true,
       effectiveMuted: true,
     })
-    await waitUntil(() => room.publication.mute.mock.calls.length === 1)
+    await waitUntil(() => publication.mute.mock.calls.length === 1)
 
     expect(livekit.rooms).toHaveLength(1)
     expect(room.connect).toHaveBeenCalledTimes(1)
     expect(room.localParticipant.setCameraEnabled).toHaveBeenCalledTimes(1)
     expect(room.localParticipant.setScreenShareEnabled).toHaveBeenCalledTimes(1)
     expect(room.disconnect).not.toHaveBeenCalled()
+    await adapter.dispose()
+  })
+
+  it('republishes the microphone after server mute removes its track', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    await adapter.connect(lease, desired(), new AbortController().signal)
+    const room = livekit.rooms[0]
+    await waitUntil(() => room.publications.length === 1)
+    const removed = room.publications[0]
+
+    adapter.updateDesiredMedia(desired({
+      serverMuted: true,
+      effectiveMuted: true,
+    }))
+    await waitUntil(() => removed.mute.mock.calls.length === 1)
+
+    room.emit('localTrackUnpublished', removed)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(room.publications).toHaveLength(1)
+    adapter.updateDesiredMedia(desired())
+
+    await waitUntil(
+      () =>
+        room.publications.length === 2 &&
+        room.publications[1].unmute.mock.calls.length === 1,
+    )
+    expect(room.publications[1].unmute).toHaveBeenCalledTimes(1)
+    expect(room.connect).toHaveBeenCalledTimes(1)
     await adapter.dispose()
   })
 
@@ -448,6 +544,31 @@ describe('BrowserRtcEngineAdapter', () => {
     await adapter.dispose()
   })
 
+  it('publishes at the channel bitrate and retargets it without republishing', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    await adapter.connect(
+      lease,
+      desired({ microphoneBitrate: 32_000 }),
+      new AbortController().signal,
+    )
+    const room = livekit.rooms[0]
+    await waitUntil(
+      () => room.localParticipant.setMicrophoneEnabled.mock.calls.length === 1,
+    )
+    expect(room.localParticipant.setMicrophoneEnabled.mock.calls[0]?.[2]).toEqual({
+      bitrate: 32_000,
+    })
+
+    adapter.updateDesiredMedia(desired({ microphoneBitrate: 96_000 }))
+    const sender = room.publications[0].track.sender
+    await waitUntil(() => sender.setParameters.mock.calls.length === 1)
+
+    expect(sender.encodings).toEqual([{ maxBitrate: 96_000 }])
+    expect(room.localParticipant.setMicrophoneEnabled).toHaveBeenCalledTimes(1)
+    expect(room.connect).toHaveBeenCalledTimes(1)
+    await adapter.dispose()
+  })
+
   it('applies DSP changes without muting, republishing, or reconnecting', async () => {
     const adapter = new BrowserRtcEngineAdapter()
     await adapter.connect(lease, desired(), new AbortController().signal)
@@ -458,8 +579,8 @@ describe('BrowserRtcEngineAdapter', () => {
     await waitUntil(() => vi.mocked(applyMicProcessing).mock.calls.length === 2)
 
     expect(room.localParticipant.setMicrophoneEnabled).toHaveBeenCalledTimes(1)
-    expect(room.publication.mute).not.toHaveBeenCalled()
-    expect(room.publication.unmute).toHaveBeenCalledTimes(1)
+    expect(room.publications[0].mute).not.toHaveBeenCalled()
+    expect(room.publications[0].unmute).toHaveBeenCalledTimes(1)
     expect(room.connect).toHaveBeenCalledTimes(1)
     await adapter.dispose()
   })

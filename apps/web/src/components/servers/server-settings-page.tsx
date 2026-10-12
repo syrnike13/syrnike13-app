@@ -12,6 +12,7 @@ import {
   XIcon,
 } from '#/components/icons'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { ServerSettingsPanelContent } from '#/components/servers/server-settings-panels'
@@ -30,7 +31,7 @@ import {
   DialogTitle,
 } from '#/components/ui/dialog'
 import { ScrollArea } from '#/components/ui/scroll-area'
-import { deleteOrLeaveServer } from '#/features/api/servers-api'
+import { deleteOrLeaveServerEffect } from '#/features/api/servers-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
@@ -152,20 +153,32 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
     if (!token || !server || server.owner !== auth.user?._id) return
 
     setDeletingServer(true)
-    try {
-      await deleteOrLeaveServer(token, serverId)
-      syncStore.removeServer(serverId)
-      syncStore.setSelectedServerId(null)
-      setDeleteDialogOpen(false)
-      toast.success('Сервер удалён')
-      await navigate({ to: prefix, search: { tab: 'online' } })
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось удалить сервер',
-      )
-    } finally {
-      setDeletingServer(false)
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        yield* deleteOrLeaveServerEffect(token, serverId)
+        yield* Effect.sync(() => {
+          syncStore.removeServer(serverId)
+          syncStore.setSelectedServerId(null)
+          setDeleteDialogOpen(false)
+          toast.success('Сервер удалён')
+        })
+        yield* Effect.tryPromise({
+          try: () => navigate({ to: prefix, search: { tab: 'online' } }),
+          catch: (cause) => cause,
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось удалить сервер',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setDeletingServer(false))),
+      ),
+    )
   }
 
   useEffect(() => {

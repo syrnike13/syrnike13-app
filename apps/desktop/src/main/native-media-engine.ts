@@ -1,466 +1,331 @@
-import path from 'node:path'
-
-import { app, type BrowserWindow } from 'electron'
-
-import { NativeMediaController } from './native-runtime/native-media-controller'
+import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent, type WebContents } from 'electron'
+import { setTimeout as delay } from 'node:timers/promises'
 import {
-  clearPendingNativePicker,
-  getPendingNativePicker,
-  registerNativeMediaIpc,
-  setPendingNativePicker,
-  type PendingNativePicker,
-} from './native-runtime/media-ipc'
-import { NativeRuntimeSupervisor } from './native-runtime/runtime-supervisor'
+  IPC,
+  LocalScreenPreviewDemandSchema,
+  type NativeMediaRuntimeState,
+} from '@syrnike13/platform'
+import { Effect, Schema } from 'effect'
+import { createInactiveMediaPaths, mediaLifecycleError, mediaLifecycleFailure } from './media-runtime/contract'
+import { MediaRuntimeSupervisor } from './media-runtime/media-runtime-supervisor'
+import { createElectronMediaUtilityAdapterFactory, mediaUtilityAvailable } from './media-runtime/media-utility-adapter'
+import { MediaFrameController } from './media-runtime/media-frame-controller'
+import { NativeScreenPicker } from './media-runtime/native-screen-picker'
+import { NativeRtcEngineAdapterV2 } from './voice/native-rtc-engine-adapter-v2'
+import { decodeIpcInput } from './ipc-schema'
 import {
-  createElectronUtilityAdapterFactory,
-  nativeRuntimeAvailable,
-} from './native-runtime/utility-adapter'
-import {
-  createNativeDiagnosticLog,
-  createNativeDiagnosticSession,
-  pruneNativeDiagnosticSessions,
-  type DiagnosticLogSink,
-  type NativeDiagnosticLog,
-  type NativeDiagnosticSession,
+  createNativeDiagnosticLog, createNativeDiagnosticSession,
+  pruneNativeDiagnosticSessionsEffect, type NativeDiagnosticLog, type DiagnosticLogRecord,
 } from './native-runtime/diagnostic-log'
-import { captureNativeDiagnosticIncident } from './native-runtime/diagnostic-incidents'
-import { attachNativeRuntimeMetrics } from './native-runtime/anonymous-metrics'
-import { NativeRtcEngineAdapter } from './voice/native-rtc-engine-adapter'
-import { NativeSharedTextureBridge } from './native-video/shared-texture-bridge'
+import { captureNativeDiagnosticIncident, getNativeDiagnosticCorrelationId } from './native-runtime/diagnostic-incidents'
 
-let getWindowRef: (() => BrowserWindow | null) | null = null
-let remoteVideoBridge: NativeSharedTextureBridge | null = null
-let localPreviewBridge: NativeSharedTextureBridge | null = null
-let stopVideoEvents: (() => void) | null = null
-let stopControllerEvents: (() => void) | null = null
-
-type NativeMediaDiagnostics = {
-  session: NativeDiagnosticSession
-  log: NativeDiagnosticLog
+export const NATIVE_MEDIA_UNAVAILABLE_STATE: NativeMediaRuntimeState = {
+  available: false,
+  status: 'unavailable',
+  restartCount: 0,
+  hostEpoch: 0,
+  paths: createInactiveMediaPaths(),
+  failure: mediaLifecycleFailure('media_unavailable', 'Native media is unavailable on this device', 'native_runtime', false),
 }
 
-let nativeMediaDiagnostics: NativeMediaDiagnostics | null | undefined
+let registered = false
+let windowGetter: () => BrowserWindow | null = () => null
+let rendererListening = false
+const observedRenderers = new WeakSet<WebContents>()
+let diagnosticLog: NativeDiagnosticLog | null = null
+let active: {
+  runtime: MediaRuntimeSupervisor
+  adapter: NativeRtcEngineAdapterV2
+  frames: MediaFrameController
+  picker: NativeScreenPicker
+} | null = null
 
-const diagnosticSink: DiagnosticLogSink = ({ scope, event, ...detail }) => {
-  try {
-    captureNativeDiagnosticIncident({ scope, event, ...detail })
-    ensureNativeMediaDiagnostics()?.log.log(`${scope}.${event}`, {
-      scope,
-      ...detail,
-    })
-  } catch {
-    // Diagnostics must never change media runtime behavior.
+export function getNativeScreenPicker() { return active?.picker ?? null }
+
+function runtimeState(): NativeMediaRuntimeState {
+  if (!active || !mediaUtilityAvailable()) return NATIVE_MEDIA_UNAVAILABLE_STATE
+  const state = active.runtime.getSnapshot()
+  return {
+    available: mediaUtilityAvailable(), status: state.status,
+    restartCount: state.restartCount, hostEpoch: active.runtime.getHostEpoch(),
+    failure: state.failure, paths: active.frames.presentationPaths(),
   }
 }
 
-const supervisor = new NativeRuntimeSupervisor({
-  runtime: 'media',
-  createAdapter: () => {
-    const diagnostics = ensureNativeMediaDiagnostics()
-    return createElectronUtilityAdapterFactory('media', {
-      diagnosticSession: diagnostics?.session,
-      diagnosticLog: diagnostics?.log,
-    })()
-  },
-  diagnostics: diagnosticSink,
-})
-
-const controller = new NativeMediaController({
-  supervisor,
-  runtimeAvailable: () => nativeRuntimeAvailable('media'),
-  getSelfWindowHwnd: () => readWindowHwnd(getWindowRef?.() ?? null),
-  diagnostics: diagnosticSink,
-})
-
-attachNativeRuntimeMetrics(supervisor, 'media')
-
-export type { PendingNativePicker }
-export {
-  clearPendingNativePicker,
-  getPendingNativePicker,
-  setPendingNativePicker,
+function broadcastRuntimeState() {
+  const window = windowGetter()
+  if (window && !window.isDestroyed()) window.webContents.send(IPC.mediaRuntimeStateChanged, runtimeState())
 }
 
-export function getNativeMediaController() {
-  return controller
+function isTrustedSender(
+  event: IpcMainInvokeEvent,
+  getWindow: () => BrowserWindow | null,
+) {
+  const win = getWindow()
+  return Boolean(win && !win.isDestroyed() && event.sender === win.webContents &&
+    event.senderFrame && event.senderFrame === win.webContents.mainFrame)
+}
+
+function assertTrustedSender(
+  event: IpcMainInvokeEvent,
+  getWindow: () => BrowserWindow | null,
+) {
+  if (!isTrustedSender(event, getWindow)) {
+    throw new Error('Untrusted native media IPC sender')
+  }
+  observeRenderer(event.sender)
+}
+
+function observeRenderer(contents: WebContents) {
+  if (observedRenderers.has(contents)) return
+  const owner = windowGetter()
+  if (!owner || owner.isDestroyed() || owner.webContents !== contents) return
+  observedRenderers.add(contents)
+  const rendererGone = () => {
+    // The destroyed event runs after BrowserWindow.webContents becomes invalid.
+    // Compare the retained owner without dereferencing its native wrapper.
+    if (windowGetter() !== owner) return
+    rendererListening = false
+    active?.frames.rendererGone()
+    active?.picker.cancel()
+    void active?.adapter.setMicrophonePreview(false).catch(() => logNativeVoiceDiagnostic('microphone_preview_stop_failed'))
+  }
+  contents.on('did-start-navigation', details => {
+    if (details.isMainFrame && !details.isSameDocument) rendererGone()
+  })
+  contents.on('render-process-gone', rendererGone)
+  contents.once('destroyed', rendererGone)
+}
+
+function unavailableError() {
+  return mediaLifecycleError('media_unavailable', 'Native media is unavailable on this device', 'native_runtime', false)
 }
 
 export function createNativeRtcEngineAdapter() {
-  return new NativeRtcEngineAdapter(supervisor)
+  const runtime = new MediaRuntimeSupervisor({
+    createAdapter: createElectronMediaUtilityAdapterFactory(),
+    onUtilityExit: evidence => {
+      logNativeVoiceDiagnostic('utility_exit', {
+        hostEpoch: runtime.getHostEpoch(), episodeId: runtime.getFailureEpisodeId(), ...evidence,
+      })
+      if (!evidence.expected) recordMediaDiagnostic({
+        scope: 'native-runtime-supervisor', event: 'utility_crashed', runtime: 'media',
+        hostEpoch: runtime.getHostEpoch(), episodeId: runtime.getFailureEpisodeId(),
+        stage: 'utility_process', reason: evidence.source, metrics: {
+          uptimeMs: evidence.uptimeMs, stderrBytes: evidence.stderrBytes,
+          stderrTruncated: Number(evidence.stderrTruncated),
+          ...(evidence.code === null ? {} : { exitCode: evidence.code }),
+        },
+      })
+    },
+  })
+  const subscriptions: Array<() => void> = []
+  const loggedTrackStates = new Map<string, string>()
+  const adapter = new NativeRtcEngineAdapterV2(runtime, undefined,
+    failure => logNativeVoiceDiagnostic('control_failed', failure),
+    () => {
+      picker.dispose()
+      frames.dispose()
+      for (const unsubscribe of subscriptions) unsubscribe()
+      if (active?.adapter === adapter) active = null
+    }, mediaUtilityAvailable)
+  const frames = new MediaFrameController(runtime, adapter, () => windowGetter(),
+    (code, evidence) => {
+      logNativeVoiceDiagnostic('frame_bridge_failed', { code, ...evidence })
+      if (evidence) recordMediaDiagnostic({
+        scope: 'native-video', event: 'presentation_stalled', runtime: 'media',
+        errorCode: code, episodeId: evidence.episodeId, lane: evidence.path,
+        hostEpoch: evidence.epoch, revision: evidence.revision,
+      })
+    },
+    inventory => {
+      adapter.observeSpeakingInventory(inventory)
+      const microphone = adapter.desiredSnapshot()?.microphone
+      const meter = inventory.microphoneMeter
+      if (!microphone || microphone.state === 'off' || !microphone.meterDemand) return
+      const window = windowGetter()
+      if (!window || window.isDestroyed()) return
+      window.webContents.send(IPC.mediaMicrophoneMetrics, {
+        revision: meter.revision,
+        inputDb: 20 * Math.log10(Math.max(0.00001, meter.inputLevel)),
+        thresholdDb: 20 * Math.log10(Math.max(0.00001, meter.gateThreshold)),
+        open: meter.gateOpen,
+      })
+    }, broadcastRuntimeState)
+  const picker = new NativeScreenPicker(runtime, () => windowGetter())
+  active = { runtime, adapter, frames, picker }
+  subscriptions.push(runtime.onStateChange(broadcastRuntimeState), adapter.onSnapshot(broadcastRuntimeState))
+  subscriptions.push(runtime.onStateChange(state => {
+    recordMediaDiagnostic({
+      scope: 'native-runtime-supervisor', event: 'state_changed', runtime: 'media',
+      hostEpoch: runtime.getHostEpoch(), status: state.status, restartCount: state.restartCount,
+    })
+    if (state.failure) recordMediaDiagnostic({
+      scope: 'native-runtime-supervisor', event: 'runtime_degraded', runtime: 'media',
+      hostEpoch: runtime.getHostEpoch(), status: state.status, restartCount: state.restartCount,
+      errorCode: state.failure.code, stage: state.failure.stage,
+      episodeId: runtime.getFailureEpisodeId(), fatal: state.status === 'failed',
+    })
+  }), runtime.onEvent(event => {
+    if (event.failure?.causeSequence === event.sequence && event.failure.causeTimestampMs !== undefined) {
+      const episodeId = runtime.getFailureEpisodeId(event.failure.causeSequence)
+      logNativeVoiceDiagnostic('native_failure_origin', {
+        hostEpoch: runtime.getHostEpoch(), nativeSequence: event.sequence,
+        timestampMs: event.failure.causeTimestampMs, component: 'engine',
+        operation: event.failure.stage, code: event.failure.code,
+        correlationId: episodeId ? getNativeDiagnosticCorrelationId(episodeId) : undefined,
+      })
+    }
+    const record: DiagnosticLogRecord = {
+      scope: 'native-media-controller', event: event.type, runtime: 'media',
+      hostEpoch: runtime.getHostEpoch(), nativeSequence: event.sequence,
+      revision: 'revision' in event ? event.revision : undefined,
+      lane: 'track' in event ? event.track : undefined,
+      status: 'state' in event ? event.state : 'failed',
+      errorCode: event.failure?.code, stage: event.failure?.stage,
+      episodeId: event.failure ? runtime.getFailureEpisodeId(event.failure.causeSequence) : undefined,
+      fatal: event.type === 'fatalEngineFailure',
+    }
+    // The engine re-announces every track on each accepted revision. Journal
+    // only per-track transitions; incidents still see every failure.
+    if (event.type === 'trackStateChanged') {
+      const key = `${runtime.getHostEpoch()}:${event.track}`
+      const value = `${event.state}:${event.failure?.code ?? ''}:${event.warning}`
+      if (loggedTrackStates.get(key) === value) {
+        captureNativeDiagnosticIncident(record)
+        return
+      }
+      loggedTrackStates.set(key, value)
+    }
+    recordMediaDiagnostic(record)
+  }), runtime.onDiagnostic(event => {
+    const causeSequence = event.metrics.find(metric => metric.name === 'cause_sequence')?.value
+    const episodeId = typeof causeSequence === 'number' && Number.isSafeInteger(causeSequence) && causeSequence > 0
+      ? runtime.getFailureEpisodeId(causeSequence) : undefined
+    // Implementation strings may contain device names or native handles. Keep
+    // bounded numeric evidence and protocol codes in the product journal.
+    logNativeVoiceDiagnostic('native_diagnostic', {
+      hostEpoch: runtime.getHostEpoch(), nativeSequence: event.sequence,
+      timestampMs: event.timestampMs, component: event.component,
+      operation: event.operation, code: event.code, metrics: event.metrics,
+      correlationId: episodeId ? getNativeDiagnosticCorrelationId(episodeId) : undefined,
+    })
+    if (event.code === 'camera_metrics')
+      logNativeVoiceDiagnostic('presentation_metrics', frames.metrics())
+  }))
+  subscriptions.push(adapter.onSnapshot(snapshot => {
+    const microphone = adapter.desiredSnapshot()?.microphone
+    if (!microphone || microphone.state === 'off' || !microphone.meterDemand) return
+    const window = windowGetter()
+    if (!window || window.isDestroyed()) return
+    const state = snapshot.tracks.microphone
+    if (state.state === 'failed') window.webContents.send(IPC.mediaMicrophonePreviewState, {
+      status: 'error', message: state.failure?.message ?? 'Microphone preview failed',
+    })
+    else if (state.state === 'running' || state.state === 'muted')
+      window.webContents.send(IPC.mediaMicrophonePreviewState, { status: 'running' })
+  }))
+  if (rendererListening) frames.rendererReady()
+  return adapter
 }
 
 export function logNativeVoiceDiagnostic(event: string, data?: unknown) {
-  try {
-    captureNativeDiagnosticIncident(nativeVoiceDiagnosticRecord(event, data))
-    ensureNativeMediaDiagnostics()?.log.log(`desktop_voice.${event}`, data)
-  } catch {
-    // Voice diagnostics must never change control-plane or RTC behavior.
+  if (process.env.SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS !== '1') return
+  const rootDir = process.env.SYRNIKE_NATIVE_DIAGNOSTIC_ROOT_DIR
+  if (!rootDir) return
+  if (!diagnosticLog) {
+    const session = createNativeDiagnosticSession({ runtime: 'media', rootDir })
+    diagnosticLog = createNativeDiagnosticLog({
+      ...session, role: 'electron-main', filePath: session.paths.electronMainPath,
+      maxPendingWrites: 256, maxFileBytes: 4 * 1024 * 1024, maxRolledFiles: 4,
+    })
+    Effect.runFork(pruneNativeDiagnosticSessionsEffect(rootDir, Date.now()).pipe(Effect.ignore))
   }
+  diagnosticLog.log(event, data)
 }
 
-export async function flushNativeMediaDiagnostics() {
-  await ensureNativeMediaDiagnostics()?.log.flush()
+function recordMediaDiagnostic(record: DiagnosticLogRecord) {
+  const incident = captureNativeDiagnosticIncident(record)
+  logNativeVoiceDiagnostic(record.event, { ...record, correlationId: incident?.correlationId })
 }
+
+export const flushNativeMediaDiagnosticsEffect = Effect.fn(
+  'nativeMedia.flushDiagnostics',
+)(function*() {
+  if (diagnosticLog) yield* diagnosticLog.flushEffect()
+})
 
 export function registerNativeMediaRuntimeIpc(
   getWindow: () => BrowserWindow | null,
 ) {
-  getWindowRef = getWindow
-  remoteVideoBridge ??= createVideoBridge(getWindow, false)
-  localPreviewBridge ??= createVideoBridge(getWindow, true)
-  stopControllerEvents ??= controller.subscribe((event) => {
-    if (event.type !== 'remoteVideoSessionReset') return
-    remoteVideoBridge?.resetSession(event.sessionId, event.generation)
+  if (registered) return
+  registered = true
+  windowGetter = getWindow
+
+  ipcMain.handle(IPC.mediaGetRuntimeState, (event) => {
+    assertTrustedSender(event, getWindow)
+    return runtimeState()
   })
-  stopVideoEvents ??= supervisor.onEvent((event) => {
-    if (event.type === 'localScreenPreviewFailed') {
-      console.warn('[native-media] local screen preview failed', {
-        sessionId: event.sessionId,
-        generation: event.generation,
-        trackId: event.trackId,
-        code: event.error.code,
-        stage: event.error.stage,
-        message: event.error.message,
-      })
-      return
-    }
-    if (event.type === 'localCameraPreviewFailed') {
-      console.warn('[native-media] local camera preview failed', {
-        sessionId: event.sessionId,
-        generation: event.generation,
-        trackId: event.trackId,
-        code: event.error.code,
-        stage: event.error.stage,
-        message: event.error.message,
-      })
-    }
-    if (event.type === 'remoteVideoFrame' ||
-      event.type === 'localScreenPreviewFrame' ||
-      event.type === 'localCameraPreviewFrame') {
-      const local = event.type !== 'remoteVideoFrame'
-      if (!local && !controller.isCurrentVoiceSession(
-        event.sessionId,
-        event.generation,
-      )) {
-        void supervisor.request({
-          type: 'releaseRemoteVideoFrame',
-          sessionId: event.sessionId,
-          generation: event.generation,
-          trackId: event.trackId,
-          sequence: event.frameSequence,
-        }, 2_000).catch(() => undefined)
-        return
-      }
-      const bridge = local ? localPreviewBridge : remoteVideoBridge
-      if (!bridge) return
-      void bridge.deliver({
-        sessionId: event.sessionId,
-        generation: event.generation,
-        trackId: event.trackId,
-        participantIdentity: event.participantIdentity,
-        source: event.source,
-        local,
-        sequence: event.frameSequence,
-        width: event.width,
-        height: event.height,
-        timestampUs: event.timestampUs,
-        runtimeEpoch: supervisor.getSnapshot().restartCount,
-        ntHandle: Buffer.from(event.ntHandle),
-      }).catch((error) => {
-        diagnosticSink({
-          scope: 'native-video',
-          event: 'frame_delivery_rejected',
-          kind: local ? 'local-preview' : 'remote-video',
-          stage: 'renderer-delivery',
-          generation: event.generation,
-          message: safeErrorMessage(error),
-        })
-      })
-      return
-    }
-    if (event.type === 'remoteVideoPublicationAvailable' ||
-      event.type === 'remoteVideoPublicationUnavailable') {
-      if (!controller.isCurrentVoiceSession(event.sessionId, event.generation)) return
-      const window = getWindow()
-      if (window && !window.isDestroyed()) {
-        const suffix = event.type === 'remoteVideoPublicationAvailable'
-          ? 'available'
-          : 'unavailable'
-        window.webContents.send(
-          `syrnike-desktop:media:remote-video-publication-${suffix}`,
-          {
-            trackId: event.trackId,
-            participantIdentity: event.participantIdentity,
-            source: event.source,
-            sessionId: event.sessionId,
-            generation: event.generation,
-          },
-        )
-      }
-      return
-    }
-    if (event.type === 'remoteVideoTrackRemoved' || event.type === 'remoteVideoFailed' ||
-      event.type === 'localScreenPreviewTrackRemoved' ||
-      event.type === 'localCameraPreviewTrackRemoved' ||
-      event.type === 'localCameraPreviewFailed') {
-      const bridge = event.type === 'localScreenPreviewTrackRemoved' ||
-        event.type === 'localCameraPreviewTrackRemoved' ||
-        event.type === 'localCameraPreviewFailed'
-        ? localPreviewBridge
-        : remoteVideoBridge
-      if (bridge === remoteVideoBridge &&
-        !controller.isCurrentVoiceSession(event.sessionId, event.generation)) return
-      bridge?.removeTrack(event.sessionId, event.generation, event.trackId)
-      const transientRemoteRestart = bridge === remoteVideoBridge &&
-        controller.isRemoteVideoDemanded(
-          event.sessionId,
-          event.generation,
-          event.trackId,
-        )
-      if (transientRemoteRestart) {
-        diagnosticSink({
-          scope: 'native-video',
-          event: 'transient_track_removal_classified',
-          kind: 'remote-video',
-          stage: 'native-track-restart',
-          sessionId: event.sessionId,
-          generation: event.generation,
-        })
-      }
-      const window = getWindow()
-      if (window && !window.isDestroyed()) {
-        window.webContents.send('syrnike-desktop:media:remote-video-track-removed', {
-          trackId: event.trackId,
-          sessionId: event.sessionId,
-          generation: event.generation,
-          transient: transientRemoteRestart,
-        })
-      }
-    }
+  ipcMain.handle(IPC.mediaRetryRuntime, async (event) => {
+    assertTrustedSender(event, getWindow)
+    if (active && mediaUtilityAvailable()) await active.runtime.retry()
+    return runtimeState()
   })
-  const window = getWindow()
-  window?.webContents.on(
-    'did-start-navigation',
-    (_event, _url, isInPlace, isMainFrame) => {
-      if (isRendererReplacementNavigation(isInPlace, isMainFrame)) {
-        rendererReloaded()
-      }
-    },
-  )
-  window?.webContents.on('render-process-gone', (_event, details) => {
-    console.error('[native-video] renderer process gone', details)
-    rendererReloaded()
+  ipcMain.handle(IPC.mediaListDevices, async (event, value: unknown) => {
+    if (!isTrustedSender(event, getWindow)) return []
+    const kind = decodeIpcInput(IPC.mediaListDevices, 'kind', Schema.Literals(['audioinput', 'audiooutput', 'videoinput']), value)
+    const bundle = active
+    if (!bundle || !mediaUtilityAvailable()) return []
+    await bundle.runtime.start()
+    const epoch = bundle.runtime.getHostEpoch()
+    const deadline = Date.now() + 1_000
+    let inventory = await bundle.runtime.queryInventory()
+    while ((kind === 'videoinput' ? inventory.cameras.revision : inventory.audio.revision) === 0 &&
+        Date.now() < deadline && active === bundle && epoch === bundle.runtime.getHostEpoch()) {
+      await delay(25)
+      inventory = await bundle.runtime.queryInventory()
+    }
+    if (active !== bundle || epoch !== bundle.runtime.getHostEpoch()) return []
+    if (kind === 'videoinput') return inventory.cameras.devices.filter(device => device.available)
+      .map(device => ({ deviceId: device.id, label: device.label, kind }))
+    const direction = kind === 'audioinput' ? 'input' : 'output'
+    return inventory.audio.devices.filter(device => device.direction === direction)
+      .map(device => ({ deviceId: device.id, label: device.label, kind }))
   })
-  registerNativeMediaIpc(getWindow, controller)
-}
-
-function createVideoBridge(
-  getWindow: () => BrowserWindow | null,
-  local: boolean,
-) {
-  return new NativeSharedTextureBridge({
-    getWindow,
-    release: async (frame) => {
-      const runtime = supervisor.getSnapshot()
-      if (runtime.status !== 'ready' || runtime.restartCount !== frame.runtimeEpoch) return
-      const identity = {
-        sessionId: frame.sessionId,
-        generation: frame.generation,
-        trackId: frame.trackId,
-        sequence: frame.sequence,
-      }
-      const command = local
-        ? frame.source === 'camera'
-          ? { type: 'releaseLocalCameraPreviewFrame' as const, ...identity }
-          : { type: 'releaseLocalScreenPreviewFrame' as const, ...identity }
-        : { type: 'releaseRemoteVideoFrame' as const, ...identity }
-      await supervisor.request(command, 2_000)
-    },
-    onPresentationStalled: async (frame, reason) => {
-      const window = getWindow()
-      diagnosticSink({
-        scope: 'native-video',
-        event: 'presentation_stalled',
-        kind: local ? 'local-preview' : 'remote-video',
-        stage: 'renderer-presentation',
-        sessionId: frame.sessionId,
-        generation: frame.generation,
-        reason,
-        windowVisible: Boolean(window?.isVisible()),
-        windowMinimized: Boolean(window?.isMinimized()),
-      })
-      diagnosticSink({
-        scope: 'native-video',
-        event: 'presentation_recovered_locally',
-        kind: local ? 'local-preview' : 'remote-video',
-        stage: 'renderer-presentation',
-        sessionId: frame.sessionId,
-        generation: frame.generation,
-        reason,
-        outcome: 'shared-texture-generation-retired',
-      })
-    },
+  ipcMain.handle(IPC.mediaStartMicrophonePreview, async (event) => {
+    assertTrustedSender(event, getWindow)
+    if (!active || !mediaUtilityAvailable()) throw unavailableError()
+    await active.adapter.setMicrophonePreview(true)
   })
-}
-
-function rendererReloaded() {
-  controller.resetRemoteVideoDemands()
-  remoteVideoBridge?.rendererReloaded()
-  localPreviewBridge?.rendererReloaded()
-}
-
-export function isRendererReplacementNavigation(
-  isInPlace: boolean,
-  isMainFrame: boolean,
-) {
-  return isMainFrame && !isInPlace
-}
-
-export function startNativeMediaRuntime() {
-  const diagnostics = ensureNativeMediaDiagnostics()
-  diagnostics?.log.log('native_media_bootstrap_requested', {
-    packaged: app.isPackaged,
-    appVersion: app.getVersion(),
+  ipcMain.handle(IPC.mediaStopMicrophonePreview, async (event) => {
+    assertTrustedSender(event, getWindow)
+    await active?.adapter.setMicrophonePreview(false)
+    const window = getWindow()
+    if (window && !window.isDestroyed()) window.webContents.send(IPC.mediaMicrophonePreviewState, { status: 'stopped' })
   })
-  void controller
-    .start()
-    .catch((error) => {
-      diagnosticSink({
-        scope: 'native-media-controller',
-        event: 'bootstrap_failed',
-        message: safeErrorMessage(error),
-      })
-    })
-}
-
-export async function disposeNativeMediaRuntime() {
-  const diagnostics = nativeMediaDiagnostics ?? null
-  diagnostics?.log.log('native_media_dispose_requested')
-  try {
-    stopVideoEvents?.()
-    stopVideoEvents = null
-    stopControllerEvents?.()
-    stopControllerEvents = null
-    remoteVideoBridge?.dispose()
-    remoteVideoBridge = null
-    localPreviewBridge?.dispose()
-    localPreviewBridge = null
-    await controller.dispose()
-    diagnostics?.log.log('native_media_dispose_completed')
-  } catch (error) {
-    diagnosticSink({
-      scope: 'native-media-controller',
-      event: 'dispose_failed',
-      message: safeErrorMessage(error),
-    })
-  } finally {
-    await diagnostics?.log.close()
-  }
-}
-
-export async function listNativeDisplaySources(
-  getWindow?: () => BrowserWindow | null,
-) {
-  if (getWindow) getWindowRef = getWindow
-  return controller.listDisplaySources()
-}
-
-function readWindowHwnd(win: BrowserWindow | null) {
-  if (!win || win.isDestroyed()) return undefined
-  const handle = win.getNativeWindowHandle()
-  if (handle.length < 4) return undefined
-  if (handle.length >= 8) return handle.readBigUInt64LE(0).toString()
-  return handle.readUInt32LE(0).toString()
-}
-
-function safeErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Native media runtime failed'
-}
-
-function nativeVoiceDiagnosticRecord(
-  event: string,
-  data: unknown,
-): Parameters<DiagnosticLogSink>[0] {
-  const detail = isRecord(data) ? data : {}
-  const failure = isRecord(detail.failure) ? detail.failure : {}
-  return {
-    scope: 'desktop-voice',
-    event,
-    status: diagnosticString(
-      detail.status ?? detail.connection ?? detail.eventType,
-    ),
-    reason: diagnosticString(detail.reason),
-    stage: diagnosticString(detail.stage ?? failure.stage),
-    fatal: typeof detail.fatal === 'boolean'
-      ? detail.fatal
-      : typeof failure.fatal === 'boolean'
-        ? failure.fatal
-        : undefined,
-    errorCode: diagnosticString(
-      detail.errorCode ?? detail.errorType ?? failure.code,
-    ),
-    message: diagnosticString(
-      detail.errorMessage ?? detail.message ?? failure.message,
-    ),
-  }
-}
-
-function diagnosticString(value: unknown) {
-  return typeof value === 'string' && value.length > 0
-    ? value.slice(0, 4_096)
-    : undefined
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
-
-function ensureNativeMediaDiagnostics(): NativeMediaDiagnostics | null {
-  // DesktopVoiceService publishes its initial snapshot during module loading,
-  // before Electron paths are available. Do not cache that early attempt as a
-  // permanent diagnostics failure for the rest of the process lifetime.
-  if (!app.isReady()) return null
-  if (nativeMediaDiagnostics !== undefined) return nativeMediaDiagnostics
-  if (!nativeMediaDiagnosticsEnabled()) {
-    nativeMediaDiagnostics = null
-    return null
-  }
-
-  try {
-    const diagnosticRoot = path.join(
-      app.getPath('userData'),
-      'logs',
-      'native-media-diagnostics',
-    )
-    void pruneNativeDiagnosticSessions(diagnosticRoot).catch(() => undefined)
-    const session = createNativeDiagnosticSession({
-      runtime: 'media',
-      rootDir: diagnosticRoot,
-    })
-    const log = createNativeDiagnosticLog({
-      runtime: 'media',
-      role: 'electron-main',
-      runId: session.runId,
-      directory: session.directory,
-      latestPath: session.latestPath,
-      filePath: session.paths.electronMainPath,
-      paths: session.paths,
-    })
-    nativeMediaDiagnostics = { session, log }
-    log.log('diagnostic_session_started', {
-      contract: 'native-media-diagnostics-v1',
-      packaged: app.isPackaged,
-    })
-    return nativeMediaDiagnostics
-  } catch {
-    nativeMediaDiagnostics = null
-    return null
-  }
-}
-
-export function nativeMediaDiagnosticsEnabled(
-  platform = process.platform,
-  configured = process.env.SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS,
-) {
-  return platform === 'win32' && configured !== '0'
+  ipcMain.handle(IPC.mediaOpenDisplayPicker, (event, value: unknown) => {
+    assertTrustedSender(event, getWindow)
+    const audioRequested = decodeIpcInput(IPC.mediaOpenDisplayPicker, 'audioRequested', Schema.Boolean, value)
+    if (!active || !mediaUtilityAvailable()) throw unavailableError()
+    return active.picker.open(audioRequested)
+  })
+  ipcMain.handle(IPC.mediaSetRemoteVideoDemand, (event, sessionId: unknown, generation: unknown, trackId: unknown, demanded: unknown) => {
+    assertTrustedSender(event, getWindow)
+    const demand = decodeIpcInput(IPC.mediaSetRemoteVideoDemand, 'demand', Schema.Struct({
+      sessionId: Schema.String.check(Schema.isMaxLength(512)),
+      generation: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      trackId: Schema.String.check(Schema.isMaxLength(512)), demanded: Schema.Boolean,
+    }), { sessionId, generation, trackId, demanded })
+    active?.frames.setRemoteDemand(demand.sessionId, demand.generation, demand.trackId, demand.demanded)
+  })
+  ipcMain.handle(IPC.mediaReplayRemoteVideoPublications, (event) => {
+    assertTrustedSender(event, getWindow)
+    rendererListening = true
+    active?.frames.rendererReady()
+  })
+  ipcMain.handle(IPC.mediaSetLocalScreenPreviewDemand, (event, value: unknown) => {
+    assertTrustedSender(event, getWindow)
+    const demand = decodeIpcInput(IPC.mediaSetLocalScreenPreviewDemand, 'demand', LocalScreenPreviewDemandSchema, value)
+    active?.frames.setScreenPreview(demand.demanded)
+  })
 }

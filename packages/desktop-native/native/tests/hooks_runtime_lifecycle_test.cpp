@@ -1,5 +1,8 @@
+#include <windows.h>
+
 #include <chrono>
 #include <condition_variable>
+#include <new>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -11,6 +14,44 @@
 #include "hooks/hooks_runtime.hpp"
 
 namespace {
+
+void throwProcessPathAllocationFailure(
+  std::wstring&,
+  const wchar_t*,
+  std::size_t
+) {
+  throw std::bad_alloc{};
+}
+
+void testProcessPathHandleClosesWhenAssignmentThrows() {
+  const auto process = OpenProcess(
+    PROCESS_QUERY_LIMITED_INFORMATION,
+    FALSE,
+    GetCurrentProcessId()
+  );
+  if (!process) throw std::runtime_error("could not open process test handle");
+
+  bool threw = false;
+  try {
+    static_cast<void>(
+      syrnike::desktop_native::hooks::detail::processPathFromOwnedHandle(
+        process,
+        &throwProcessPathAllocationFailure
+      )
+    );
+  } catch (const std::bad_alloc&) {
+    threw = true;
+  }
+  if (!threw) {
+    throw std::runtime_error("process path allocation failure was not injected");
+  }
+  DWORD flags = 0;
+  SetLastError(ERROR_SUCCESS);
+  if (GetHandleInformation(process, &flags) ||
+      GetLastError() != ERROR_INVALID_HANDLE) {
+    throw std::runtime_error("process handle leaked when path assignment threw");
+  }
+}
 
 class CollectingSink final : public syrnike::desktop_native::EventSink {
  public:
@@ -29,13 +70,13 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     std::unique_lock lock(mutex_);
     const bool found = changed_.wait_for(lock, std::chrono::seconds(5), [&] {
       for (const auto& event : events_) {
-        if (event.type == "reply" && event.request_id == request_id) return true;
+        if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id) return true;
       }
       return false;
     });
     if (!found) throw std::runtime_error("hooks runtime reply timed out");
     for (const auto& event : events_) {
-      if (event.type == "reply" && event.request_id == request_id) return event;
+      if (event.type == syrnike::desktop_native::NativeEventType::Reply && event.request_id == request_id) return event;
     }
     throw std::runtime_error("hooks runtime reply disappeared");
   }
@@ -45,14 +86,14 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     const bool found = changed_.wait_for(lock, std::chrono::seconds(5), [&] {
       std::size_t count = 0;
       for (const auto& event : events_) {
-        if (event.type == "foregroundWindow") ++count;
+        if (event.type == syrnike::desktop_native::NativeEventType::ForegroundWindow) ++count;
       }
       return count > foreground_events_consumed_;
     });
     if (!found) throw std::runtime_error("overlay foreground event timed out");
     std::size_t index = 0;
     for (const auto& event : events_) {
-      if (event.type != "foregroundWindow") continue;
+      if (event.type != syrnike::desktop_native::NativeEventType::ForegroundWindow) continue;
       if (index++ == foreground_events_consumed_) {
         ++foreground_events_consumed_;
         return event;
@@ -74,11 +115,14 @@ int main() try {
   using syrnike::desktop_native::HooksCommand;
   using syrnike::desktop_native::hooks::HooksRuntime;
 
+  testProcessPathHandleClosesWhenAssignmentThrows();
+
   auto sink = std::make_shared<CollectingSink>();
   HooksRuntime runtime(sink);
   for (int cycle = 0; cycle < 5; ++cycle) {
     const auto start_id = "start-" + std::to_string(cycle);
-    if (!runtime.dispatch(HooksCommand{"startHotkeys", start_id})) {
+    if (!runtime.dispatch(HooksCommand{
+          syrnike::desktop_native::NativeCommandType::StartHotkeys, start_id})) {
       throw std::runtime_error("hooks runtime rejected a start command");
     }
     const auto started = sink->waitReply(start_id);
@@ -87,7 +131,8 @@ int main() try {
     }
 
     const auto stop_id = "stop-" + std::to_string(cycle);
-    if (!runtime.dispatch(HooksCommand{"stopHotkeys", stop_id})) {
+    if (!runtime.dispatch(HooksCommand{
+          syrnike::desktop_native::NativeCommandType::StopHotkeys, stop_id})) {
       throw std::runtime_error("hooks runtime rejected a stop command");
     }
     if (!sink->waitReply(stop_id).ok) {
@@ -95,7 +140,9 @@ int main() try {
     }
 
     const auto overlay_start_id = "overlay-start-" + std::to_string(cycle);
-    if (!runtime.dispatch(HooksCommand{"startOverlay", overlay_start_id}) ||
+    if (!runtime.dispatch(HooksCommand{
+          syrnike::desktop_native::NativeCommandType::StartOverlay,
+          overlay_start_id}) ||
         !sink->waitReply(overlay_start_id).ok) {
       throw std::runtime_error("overlay actor failed to start");
     }
@@ -104,18 +151,23 @@ int main() try {
       throw std::runtime_error("overlay foreground event omitted its typed payload");
     }
     const auto probe_id = "probe-" + std::to_string(cycle);
-    if (!runtime.dispatch(HooksCommand{"probeHooksRuntime", probe_id}) ||
+    if (!runtime.dispatch(HooksCommand{
+          syrnike::desktop_native::NativeCommandType::ProbeHooksRuntime,
+          probe_id}) ||
         !sink->waitReply(probe_id).ok) {
       throw std::runtime_error("hooks runtime probe failed");
     }
     const auto overlay_stop_id = "overlay-stop-" + std::to_string(cycle);
-    if (!runtime.dispatch(HooksCommand{"stopOverlay", overlay_stop_id}) ||
+    if (!runtime.dispatch(HooksCommand{
+          syrnike::desktop_native::NativeCommandType::StopOverlay,
+          overlay_stop_id}) ||
         !sink->waitReply(overlay_stop_id).ok) {
       throw std::runtime_error("overlay actor failed to stop");
     }
   }
 
-  if (!runtime.dispatch(HooksCommand{"shutdown", "shutdown"})) {
+  if (!runtime.dispatch(HooksCommand{
+        syrnike::desktop_native::NativeCommandType::Shutdown, "shutdown"})) {
     throw std::runtime_error("hooks runtime rejected shutdown");
   }
   if (!sink->waitReply("shutdown").ok) {

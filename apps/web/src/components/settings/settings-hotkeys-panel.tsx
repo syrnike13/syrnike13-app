@@ -6,6 +6,8 @@ import type {
   HotkeyRegistrationResult,
   HotkeyRegistrationStatus,
 } from '@syrnike13/platform'
+import { HotkeyActionSchema } from '@syrnike13/platform'
+import { Effect, Fiber, Option, Schema, Semaphore } from 'effect'
 
 import {
   SettingsBlock,
@@ -42,6 +44,7 @@ export function SettingsHotkeysPanel() {
   const [loaded, setLoaded] = useState(false)
   const bindingsRef = useRef<HotkeyBinding[]>([])
   const recordingEventsRef = useRef<NativeInputEvent[]>([])
+  const saveLockRef = useRef(Semaphore.makeUnsafe(1))
 
   useEffect(() => {
     bindingsRef.current = bindings
@@ -49,15 +52,41 @@ export function SettingsHotkeysPanel() {
 
   useEffect(() => {
     if (!desktop) return
-    let cancelled = false
 
-    void desktop.hotkeys.setSuspended(true)
-    void desktop.hotkeys.getBindings().then((loadedBindings) => {
-      if (cancelled) return
-      setBindings(loadedBindings)
-      setLoaded(true)
-      void saveBindings(loadedBindings)
-    })
+    const fiber = Effect.runFork(
+      Effect.all(
+        [
+          Effect.tryPromise({
+            try: () => desktop.hotkeys.setSuspended(true),
+            catch: (cause) => cause,
+          }).pipe(Effect.ignore),
+          Effect.tryPromise({
+            try: () => desktop.hotkeys.getBindings(),
+            catch: (cause) => cause,
+          }).pipe(
+            Effect.tap((loadedBindings) =>
+              Effect.sync(() => {
+                setBindings(loadedBindings)
+                setLoaded(true)
+              }),
+            ),
+            Effect.flatMap((loadedBindings) =>
+              Effect.tryPromise({
+                try: () => desktop.hotkeys.setBindings(loadedBindings),
+                catch: (cause) => cause,
+              }),
+            ),
+            Effect.tap((nextResults) =>
+              Effect.sync(() => {
+                setResults(nextResults)
+              }),
+            ),
+            Effect.ignore,
+          ),
+        ],
+        { concurrency: 'unbounded', discard: true },
+      ),
+    )
 
     const unsubscribe = desktop.hotkeys.onRecordedInput((event) => {
       setRecordingId((currentId) => {
@@ -79,10 +108,23 @@ export function SettingsHotkeysPanel() {
     })
 
     return () => {
-      cancelled = true
       unsubscribe()
-      void desktop.hotkeys.stopRecording()
-      void desktop.hotkeys.setSuspended(false)
+      Effect.runFork(Fiber.interrupt(fiber))
+      Effect.runFork(
+        Effect.all(
+          [
+            Effect.tryPromise({
+              try: () => desktop.hotkeys.stopRecording(),
+              catch: (cause) => cause,
+            }),
+            Effect.tryPromise({
+              try: () => desktop.hotkeys.setSuspended(false),
+              catch: (cause) => cause,
+            }),
+          ],
+          { concurrency: 'unbounded', discard: true },
+        ).pipe(Effect.ignore),
+      )
     }
   }, [desktop])
 
@@ -93,16 +135,24 @@ export function SettingsHotkeysPanel() {
   const duplicateIds = useMemo(() => findDuplicateCombos(bindings), [bindings])
 
   if (!desktop) return null
+  const desktopRuntime = desktop
 
   function updateBindings(nextBindings: HotkeyBinding[]) {
     setBindings(nextBindings)
-    void saveBindings(nextBindings)
-  }
-
-  async function saveBindings(nextBindings: HotkeyBinding[]) {
-    if (!desktop) return
-    const nextResults = await desktop.hotkeys.setBindings(nextBindings)
-    setResults(nextResults)
+    Effect.runFork(
+      saveLockRef.current.withPermit(
+        Effect.tryPromise({
+          try: () => desktopRuntime.hotkeys.setBindings(nextBindings),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.tap((nextResults) =>
+            Effect.sync(() => {
+              setResults(nextResults)
+            }),
+          ),
+        ),
+      ).pipe(Effect.ignore),
+    )
   }
 
   function patchBinding(id: string, patch: Partial<HotkeyBinding>) {
@@ -137,11 +187,22 @@ export function SettingsHotkeysPanel() {
     return resultById.get(binding.id) ?? 'disabled'
   }
 
-  async function startRecording(id: string) {
-    if (!desktop) return
+  function startRecording(id: string) {
     recordingEventsRef.current = []
     setRecordingId(id)
-    await desktop.hotkeys.startRecording()
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () => desktopRuntime.hotkeys.startRecording(),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.tapError(() =>
+          Effect.sync(() => {
+            setRecordingId(null)
+          }),
+        ),
+        Effect.ignore,
+      ),
+    )
   }
 
   return (
@@ -176,9 +237,14 @@ export function SettingsHotkeysPanel() {
                       <Select
                         value={binding.action}
                         onValueChange={(actionId) => {
-                          patchBinding(binding.id, {
-                            action: actionId as HotkeyBinding['action'],
-                          })
+                          const decoded = Schema.decodeUnknownOption(
+                            HotkeyActionSchema,
+                          )(actionId)
+                          if (Option.isSome(decoded)) {
+                            patchBinding(binding.id, {
+                              action: decoded.value,
+                            })
+                          }
                         }}
                       >
                         <SelectTrigger className="w-full">
@@ -211,9 +277,7 @@ export function SettingsHotkeysPanel() {
                             ? 'border-primary ring-2 ring-primary/20'
                             : 'hover:bg-accent/40',
                         )}
-                        onClick={() => {
-                          void startRecording(binding.id)
-                        }}
+                        onClick={() => startRecording(binding.id)}
                       >
                         <span
                           className={cn(

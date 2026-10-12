@@ -294,6 +294,9 @@ const REMOVE_ORPHANED_ACTIVE_VOICE_CHANNEL: &str = r#"
 if redis.call('SCARD', KEYS[4]) ~= 0 then
   return 0
 end
+if redis.call('SCARD', KEYS[5]) ~= 0 then
+  return 0
+end
 redis.call('SREM', KEYS[1], ARGV[1])
 redis.call('DEL', KEYS[2])
 redis.call('DEL', KEYS[3])
@@ -1347,12 +1350,13 @@ pub(super) async fn refresh_active_voice_session_projection_ttl(
 }
 
 pub async fn remove_orphaned_active_voice_channel(channel: &UserVoiceChannel) -> Result<()> {
-    run_eval(REMOVE_ORPHANED_ACTIVE_VOICE_CHANNEL, 4, |command| {
+    run_eval(REMOVE_ORPHANED_ACTIVE_VOICE_CHANNEL, 5, |command| {
         command
             .arg(voice_active_channels_key())
             .arg(voice_channel_node_key(&channel.id))
             .arg(voice_room_session_key(&channel.id))
             .arg(voice_channel_members_key(&channel.id))
+            .arg(voice_channel_reservations_key(&channel.id))
             .arg(&channel.id);
     })
     .await
@@ -1563,6 +1567,68 @@ mod tests {
         assert!(DELETE_VOICE_CHANNEL_PROJECTION_FOR_ROOM.contains("redis.call('DEL', KEYS[4])"));
         assert!(REMOVE_ORPHANED_ACTIVE_VOICE_CHANNEL
             .contains("if redis.call('SCARD', KEYS[4]) ~= 0 then"));
+    }
+
+    #[ignore = "requires Redis"]
+    #[async_std::test]
+    async fn orphan_cleanup_preserves_pending_and_active_channel_projections() {
+        let channel = UserVoiceChannel {
+            id: format!("test-orphan-cleanup-{}", ulid::Ulid::new()),
+            server_id: None,
+        };
+        let mut conn = super::super::get_connection()
+            .await
+            .expect("redis connection")
+            .into_inner();
+        let node_key = voice_channel_node_key(&channel.id);
+        let room_key = voice_room_session_key(&channel.id);
+        let reservations_key = voice_channel_reservations_key(&channel.id);
+        let members_key = voice_channel_members_key(&channel.id);
+        let _: () = redis_kiss::redis::pipe()
+            .set(&node_key, "node-a")
+            .set(&room_key, "room-a")
+            .sadd(voice_active_channels_key(), &channel.id)
+            .sadd(&reservations_key, "pending-user")
+            .query_async(&mut conn)
+            .await
+            .expect("prepare pending channel");
+
+        // Cleanup can run after reservation preparation but before the SDK's
+        // participant_joined webhook has installed membership.
+        remove_orphaned_active_voice_channel(&channel)
+            .await
+            .expect("cleanup during pending join");
+        let node: Option<String> = conn.get(&node_key).await.expect("pending node");
+        let room: Option<String> = conn.get(&room_key).await.expect("pending room");
+        let indexed: bool = conn.sismember(voice_active_channels_key(), &channel.id)
+            .await.expect("pending channel index");
+        assert_eq!(node.as_deref(), Some("node-a"));
+        assert_eq!(room.as_deref(), Some("room-a"));
+        assert!(indexed);
+
+        let _: () = redis_kiss::redis::pipe()
+            .sadd(&members_key, "active-user")
+            .del(&reservations_key)
+            .query_async(&mut conn)
+            .await
+            .expect("commit membership");
+        remove_orphaned_active_voice_channel(&channel)
+            .await
+            .expect("cleanup during active membership");
+        let node: Option<String> = conn.get(&node_key).await.expect("active node");
+        assert_eq!(node.as_deref(), Some("node-a"));
+
+        let _: () = conn.del(&members_key).await.expect("end membership");
+        remove_orphaned_active_voice_channel(&channel)
+            .await
+            .expect("cleanup empty channel");
+        let node: Option<String> = conn.get(&node_key).await.expect("empty node");
+        let room: Option<String> = conn.get(&room_key).await.expect("empty room");
+        let indexed: bool = conn.sismember(voice_active_channels_key(), &channel.id)
+            .await.expect("empty channel index");
+        assert_eq!(node, None);
+        assert_eq!(room, None);
+        assert!(!indexed);
     }
 
     #[test]

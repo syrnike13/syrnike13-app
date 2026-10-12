@@ -4,6 +4,7 @@ const runtimeMocks = vi.hoisted(() => ({
   engines: [] as Array<{
     dispose: ReturnType<typeof vi.fn>
     prewarmMicrophone: ReturnType<typeof vi.fn>
+    telemetry: ReturnType<typeof vi.fn>
   }>,
   transports: [] as Array<{
     configured: Array<{ url: string; token: string }>
@@ -37,7 +38,8 @@ vi.mock('../native-media-engine', () => ({
       retryMedia: vi.fn(),
       subscribe: vi.fn(() => () => undefined),
       prewarmMicrophone: vi.fn(async () => undefined),
-      dispose: vi.fn(),
+      telemetry: vi.fn(() => null),
+      dispose: vi.fn(async () => undefined),
     }
     runtimeMocks.engines.push(engine)
     return engine
@@ -71,15 +73,47 @@ describe('DesktopVoiceService session scope', () => {
     runtimeMocks.transports.length = 0
   })
 
-  it('rotates runtime ownership across accounts but not for a token refresh', async () => {
+  it('waits for native shutdown before creating the next account runtime', async () => {
+    const service = new DesktopVoiceService()
+    service.configureSession({ _id: 'session-a', user_id: 'user-a', token: 'token-a' })
+    await service.dispatch({ type: 'setUserMuted', muted: false })
+    let release = () => undefined
+    const stopped = new Promise<void>(resolve => { release = () => resolve() })
+    runtimeMocks.engines[0]!.dispose.mockReturnValue(stopped)
+    service.configureSession({ _id: 'session-b', user_id: 'user-b', token: 'token-b' })
+    await vi.waitFor(() => expect(runtimeMocks.engines[0]!.dispose).toHaveBeenCalledOnce())
+    expect(runtimeMocks.engines).toHaveLength(1)
+    release()
+    await service.dispatch({ type: 'setUserMuted', muted: true })
+    expect(runtimeMocks.engines).toHaveLength(2)
+    await service.dispose()
+  })
+
+  it('does not create another account runtime after native termination fails', async () => {
+    const service = new DesktopVoiceService()
+    service.configureSession({ _id: 'session-a', user_id: 'user-a', token: 'token-a' })
+    await service.dispatch({ type: 'setUserMuted', muted: false })
+    runtimeMocks.engines[0]!.dispose.mockRejectedValue(new Error('utility still alive'))
+    service.configureSession({ _id: 'session-b', user_id: 'user-b', token: 'token-b' })
+    await service.dispatch({ type: 'setUserMuted', muted: true })
+    expect(runtimeMocks.engines).toHaveLength(1)
+    expect(runtimeMocks.transports[0].stop).toHaveBeenCalledOnce()
+    service.configureSession({ _id: 'session-c', user_id: 'user-c', token: 'token-c' })
+    await service.dispatch({ type: 'setUserMuted', muted: false })
+    expect(runtimeMocks.engines).toHaveLength(1)
+    expect(runtimeMocks.transports[0].configured).toHaveLength(1)
+    await service.dispose()
+  })
+
+  it('configures the startup runtime for the first login and rotates only across sessions', async () => {
     const service = new DesktopVoiceService()
     expect(runtimeMocks.engines).toHaveLength(1)
 
     service.configureSession({ _id: 'session-a', user_id: 'user-a', token: 'token-a' })
     await service.dispatch({ type: 'setUserMuted', muted: true })
-    expect(runtimeMocks.engines).toHaveLength(2)
-    expect(runtimeMocks.engines[0].dispose).toHaveBeenCalledTimes(1)
-    expect(runtimeMocks.transports[1].configured.at(-1)?.token).toBe('token-a')
+    expect(runtimeMocks.engines).toHaveLength(1)
+    expect(runtimeMocks.engines[0].dispose).not.toHaveBeenCalled()
+    expect(runtimeMocks.transports[0].configured.at(-1)?.token).toBe('token-a')
 
     service.configureSession({
       _id: 'session-a',
@@ -87,18 +121,62 @@ describe('DesktopVoiceService session scope', () => {
       token: 'token-a-refreshed',
     })
     await service.dispatch({ type: 'setUserMuted', muted: false })
-    expect(runtimeMocks.engines).toHaveLength(2)
-    expect(runtimeMocks.transports[1].configured.at(-1)?.token).toBe(
+    expect(runtimeMocks.engines).toHaveLength(1)
+    expect(runtimeMocks.transports[0].configured.at(-1)?.token).toBe(
       'token-a-refreshed',
     )
 
     service.configureSession({ _id: 'session-b', user_id: 'user-b', token: 'token-b' })
     await service.dispatch({ type: 'setUserMuted', muted: true })
-    expect(runtimeMocks.engines).toHaveLength(3)
-    expect(runtimeMocks.engines[1].dispose).toHaveBeenCalledTimes(1)
-    expect(runtimeMocks.transports[1].stop).toHaveBeenCalledTimes(1)
-    expect(runtimeMocks.transports[2].configured.at(-1)?.token).toBe('token-b')
+    expect(runtimeMocks.engines).toHaveLength(2)
+    expect(runtimeMocks.engines[0].dispose).toHaveBeenCalledTimes(1)
+    expect(runtimeMocks.transports[0].stop).toHaveBeenCalledTimes(1)
+    expect(runtimeMocks.transports[1].configured.at(-1)?.token).toBe('token-b')
 
+    service.configureSession(null)
+    await service.dispatch({ type: 'setUserMuted', muted: false })
+    expect(runtimeMocks.engines).toHaveLength(3)
+    service.configureSession({ _id: 'session-c', user_id: 'user-c', token: 'token-c' })
+    await service.dispatch({ type: 'setUserMuted', muted: true })
+    expect(runtimeMocks.engines).toHaveLength(3)
+    expect(runtimeMocks.transports[2].configured.at(-1)?.token).toBe('token-c')
+
+    await service.dispose()
+  })
+
+  it('keeps listener volumes across renderer reloads and runtime replacement', async () => {
+    const service = new DesktopVoiceService()
+    service.configureSession({ _id: 'session-a', user_id: 'user-a', token: 'token-a' })
+    const settings = (revision: number, volume: number) => ({
+      revision, userVolumes: { 'user-b': volume }, userMutes: {}, streamVolumes: {}, streamMutes: { 'user-b': true },
+    })
+    await service.dispatch({ type: 'configureRemoteAudio', settings: settings(7, 0.5) })
+    // A reloaded renderer starts its revisions again from one.
+    await service.dispatch({ type: 'configureRemoteAudio', settings: settings(1, 2) })
+    const first = runtimeMocks.engines[0]!.updateRemoteAudioSettings.mock.calls.map(([value]) => value)
+    expect(first.map(value => value.revision)).toEqual([1, 2])
+    expect(first.at(-1)).toMatchObject({ userVolumes: { 'user-b': 2 }, streamMutes: { 'user-b': true } })
+
+    service.configureSession({ _id: 'session-b', user_id: 'user-c', token: 'token-b' })
+    await service.dispatch({ type: 'setUserMuted', muted: true })
+    expect(runtimeMocks.engines).toHaveLength(2)
+    expect(runtimeMocks.engines[1]!.updateRemoteAudioSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ userVolumes: { 'user-b': 2 } }),
+    )
+    await service.dispose()
+  })
+
+  it('forwards the current native RTC telemetry snapshot', async () => {
+    const service = new DesktopVoiceService()
+    const telemetry = {
+      timestamp: 1_000,
+      transport: { pingMs: 42 },
+      outbound: [],
+      inbound: [],
+    }
+    runtimeMocks.engines[0]!.telemetry.mockReturnValue(telemetry)
+
+    expect(service.telemetry()).toBe(telemetry)
     await service.dispose()
   })
 })

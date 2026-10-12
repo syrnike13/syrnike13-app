@@ -1,0 +1,45 @@
+#pragma once
+#include "audio/process_loopback.hpp"
+#include "livekit/livekit_room_transport.hpp"
+
+namespace syrnike::windows_media::audio {
+struct ScreenAudioSenderStats {
+  std::uint64_t generation = 0, submitted = 0, discontinuities = 0;
+  // Silent 10 ms frames sent in place of PCM lost to a capture or worker gap.
+  std::uint64_t silence_filled = 0;
+  std::int64_t last_capture_timestamp_100ns = 0;
+  std::uint64_t maximum_submit_age_us = 0;
+  bool published = false;
+  std::uint64_t maximum_callback_wait_us = 0;
+};
+// Publish/unpublish use the Room control lane. PCM has a separate worker and
+// hands each 10 ms packet straight to the SDK, so capture never waits for networking or video.
+class ScreenAudioSender final {
+ public:
+  // Optional bounded observer runs on the sender worker, never capture or SDK
+  // callback threads. The fixture uses it for monotonic capture-age evidence.
+  using PacketObserver = std::function<void(const PcmPacket&)>;
+  ScreenAudioSender(std::shared_ptr<LiveKitRoomTransport>, std::shared_ptr<PcmQueue>,
+                    PacketObserver = {});
+  ~ScreenAudioSender();
+  std::optional<ScreenAudioFailure> start(std::uint64_t generation, std::uint32_t bitrate = 128'000);
+  void cancel() noexcept;
+  bool stop(std::chrono::steady_clock::time_point deadline) noexcept;
+  ScreenAudioSenderStats stats() const noexcept;
+  std::optional<ScreenAudioFailure> failure() const noexcept;
+
+ private:
+  struct State;
+  struct Cancellation;
+  void run(const std::shared_ptr<State>&) noexcept;
+  bool enqueue(const std::shared_ptr<State>&, LiveKitRoomTransport::ActiveRoomTask,
+               std::chrono::steady_clock::time_point deadline);
+  std::shared_ptr<LiveKitRoomTransport> transport_;
+  std::shared_ptr<PcmQueue> queue_;
+  PacketObserver packet_observer_;
+  mutable std::mutex mutex_;
+  std::shared_ptr<State> state_;
+  std::shared_ptr<Cancellation> cancellation_;
+  std::thread worker_;
+};
+}  // namespace syrnike::windows_media::audio

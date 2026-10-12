@@ -1,22 +1,44 @@
-import type { SessionInfo } from '@syrnike13/api-types'
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Effect, Schema } from 'effect'
 
-import { apiRequest } from '#/lib/api/client'
+import { apiRequestEffect } from '#/lib/api/client'
 
-export async function fetchSessions(token: string) {
-  return apiRequest<SessionInfo[]>('/auth/session/all', { token })
+export const fetchSessionsEffect = Effect.fn('web.sessions.fetchAll')(
+  function*(token: string) {
+    return yield* apiRequestEffect(
+      '/auth/session/all',
+      ApiSchema.FetchAllFetchAll200,
+      { token },
+    )
+  },
+)
+
+export function fetchSessions(token: string, signal?: AbortSignal) {
+  return Effect.runPromise(
+    fetchSessionsEffect(token),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function deleteSession(token: string, sessionId: string) {
-  return apiRequest<void>(`/auth/session/${sessionId}`, {
-    method: 'DELETE',
-    token,
-  })
-}
+export const deleteSessionEffect = Effect.fn('web.sessions.delete')(
+  function*(token: string, sessionId: string) {
+    return yield* apiRequestEffect(
+      `/auth/session/${sessionId}`,
+      Schema.Void,
+      {
+        method: 'DELETE',
+        token,
+      },
+    )
+  },
+)
 
-export async function revokeOtherSessions(token: string) {
-  return apiRequest<void>('/auth/session/all', {
+export const revokeOtherSessionsEffect = Effect.fn(
+  'web.sessions.revokeOther',
+)(function*(token: string) {
+  return yield* apiRequestEffect('/auth/session/all', Schema.Void, {
     method: 'DELETE',
     token,
     body: { revoke_self: false },
   })
-}
+})

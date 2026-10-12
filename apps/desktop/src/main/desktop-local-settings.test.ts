@@ -157,7 +157,7 @@ describe('desktop local settings', () => {
     }
   })
 
-  it('migrates legacy microphone defaults once and persists version 3', async () => {
+  it('migrates legacy microphone defaults once and persists version 4', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'syrnike-settings-'))
     const filePath = path.join(dir, 'local-settings.json')
 
@@ -178,7 +178,7 @@ describe('desktop local settings', () => {
 
       const migrated = await loadDesktopLocalSettings(filePath)
       expect(migrated).toMatchObject({
-        version: 3,
+        version: 4,
         voice: {
           preferredAudioInputDevice: 'legacy-mic',
           inputVolume: 0.42,
@@ -194,7 +194,7 @@ describe('desktop local settings', () => {
       })
       await expect(loadDesktopLocalSettings(filePath)).resolves.toEqual(updated)
       expect(updated).toMatchObject({
-        version: 3,
+        version: 4,
         voice: { echoCancellation: true, automaticGainControl: false },
       })
     } finally {
@@ -220,7 +220,7 @@ describe('desktop local settings', () => {
       )
 
       const migrated = await loadDesktopLocalSettings(filePath)
-      expect(migrated.version).toBe(3)
+      expect(migrated.version).toBe(4)
       expect(migrated.observability).toEqual({
         anonymousNativeMetrics: false,
         diagnosticReports: true,

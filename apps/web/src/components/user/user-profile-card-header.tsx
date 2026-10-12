@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { PlusIcon, XIcon } from '#/components/icons'
 import { useMemo, useState, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
@@ -9,7 +10,7 @@ import { UserAvatar } from '#/components/user/user-avatar'
 import { UserBadges } from '#/components/user/user-badges'
 import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import { useAuth } from '#/features/auth/auth-context'
-import { editServerMember } from '#/features/api/servers-api'
+import { editServerMemberEffect } from '#/features/api/servers-api'
 import { fetchUserProfile } from '#/features/api/users-api'
 import { useUserBadges } from '#/features/users/use-user-badges'
 import { syncStore } from '#/features/sync/sync-store'
@@ -98,7 +99,7 @@ export function UserProfileCardHeader({
 
   const profileQuery = useQuery({
     queryKey: queryKeys.users.profile(user._id),
-    queryFn: () => fetchUserProfile(token!, user._id),
+    queryFn: ({ signal }) => fetchUserProfile(token!, user._id, signal),
     enabled: Boolean(token),
     staleTime: 60_000,
   })
@@ -128,22 +129,27 @@ export function UserProfileCardHeader({
     }
 
     setRemovingRoleId(roleId)
-    try {
-      const nextRoles = (member.roles ?? []).filter((id) => id !== roleId)
-      const updated = await editServerMember(
+    const nextRoles = (member.roles ?? []).filter((id) => id !== roleId)
+    await Effect.runPromise(
+      editServerMemberEffect(
         token,
         server._id,
         member._id.user,
         { roles: nextRoles },
-      )
-      syncStore.upsertMembers([updated])
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось убрать роль',
-      )
-    } finally {
-      setRemovingRoleId(null)
-    }
+      ).pipe(
+        Effect.tap((updated) =>
+          Effect.sync(() => syncStore.upsertMembers([updated])),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось убрать роль',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setRemovingRoleId(null))),
+      ),
+    )
   }
 
   return (

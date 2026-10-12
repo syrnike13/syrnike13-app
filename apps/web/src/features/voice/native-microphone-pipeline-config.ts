@@ -1,58 +1,79 @@
 import type { NativeMicrophonePipelineConfig } from '@syrnike13/platform'
+import { Effect, Fiber } from 'effect'
 
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 const CONFIGURE_DEBOUNCE_MS = 40
 let pendingConfig: NativeMicrophonePipelineConfig | null = null
-let pendingTimer: ReturnType<typeof setTimeout> | null = null
+let pendingTimer: Fiber.Fiber<void, never> | null = null
 
 function clearPendingNativeMicrophonePipelineConfig() {
   if (!pendingTimer) return
-  clearTimeout(pendingTimer)
+  Effect.runFork(Fiber.interrupt(pendingTimer))
   pendingTimer = null
   pendingConfig = null
 }
 
-async function configureNativeMicrophonePipelineNow(
-  config: NativeMicrophonePipelineConfig,
-) {
+const configureNativeMicrophonePipelineNow = Effect.fn(
+  'voice.configureNativeMicrophonePipeline',
+)(function*(config: NativeMicrophonePipelineConfig) {
   const desktop = getSyrnikeDesktop()
   if (!desktop) return
-  await desktop.voice.dispatch({
-    type: 'configureMicrophone',
-    deviceId: config.deviceId ?? undefined,
-    bypassSystemAudioInputProcessing:
-      config.bypassSystemAudioInputProcessing,
-    automaticGainControl: config.automaticGainControl,
-    noiseSuppression: config.noiseSuppression,
-    echoCancellation: config.echoCancellation,
-    inputVolume: config.inputVolume,
-    voiceGateEnabled: config.voiceGateEnabled,
-    voiceGateThresholdDb: config.voiceGateThresholdDb,
-    voiceGateAutoThreshold: config.voiceGateAutoThreshold,
+  yield* Effect.tryPromise({
+    try: () =>
+      desktop.voice.dispatch({
+        type: 'configureMicrophone',
+        deviceId: config.deviceId ?? undefined,
+        bypassSystemAudioInputProcessing:
+          config.bypassSystemAudioInputProcessing,
+        automaticGainControl: config.automaticGainControl,
+        noiseSuppression: config.noiseSuppression,
+        echoCancellation: config.echoCancellation,
+        inputVolume: config.inputVolume,
+        voiceGateEnabled: config.voiceGateEnabled,
+        voiceGateThresholdDb: config.voiceGateThresholdDb,
+        voiceGateAutoThreshold: config.voiceGateAutoThreshold,
+      }),
+    catch: (cause) => cause,
   })
-}
+})
 
 export function configureNativeMicrophonePipeline(
   config: NativeMicrophonePipelineConfig,
 ) {
   if (pendingTimer) {
-    clearTimeout(pendingTimer)
+    Effect.runFork(Fiber.interrupt(pendingTimer))
   }
 
   pendingConfig = config
-  pendingTimer = setTimeout(() => {
-    const next = pendingConfig
-    pendingConfig = null
-    pendingTimer = null
-    if (!next) return
-    void configureNativeMicrophonePipelineNow(next).catch(() => {})
-  }, CONFIGURE_DEBOUNCE_MS)
+  let fiber: Fiber.Fiber<void, never>
+  const effect = Effect.sleep(CONFIGURE_DEBOUNCE_MS).pipe(
+    Effect.andThen(
+      Effect.gen(function*() {
+        if (pendingTimer !== fiber) return
+        const next = pendingConfig
+        pendingConfig = null
+        pendingTimer = null
+        if (!next) return
+        yield* configureNativeMicrophonePipelineNow(next).pipe(
+          Effect.catch(() => Effect.void),
+        )
+      }),
+    ),
+  )
+  fiber = Effect.runFork(effect)
+  pendingTimer = fiber
 }
 
-export async function applyNativeMicrophonePipeline(
+export const applyNativeMicrophonePipelineEffect = Effect.fn(
+  'voice.applyNativeMicrophonePipeline',
+)(function*(config: NativeMicrophonePipelineConfig) {
+  yield* Effect.sync(clearPendingNativeMicrophonePipelineConfig)
+  yield* configureNativeMicrophonePipelineNow(config)
+})
+
+export function applyNativeMicrophonePipeline(
   config: NativeMicrophonePipelineConfig,
 ) {
-  clearPendingNativeMicrophonePipelineConfig()
-  await configureNativeMicrophonePipelineNow(config)
+  return Effect.runPromise(applyNativeMicrophonePipelineEffect(config))
 }

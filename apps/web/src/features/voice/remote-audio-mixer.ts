@@ -11,6 +11,7 @@ import {
   rmsToDb,
 } from '#/features/voice/voice-gate-level'
 import { advanceSpeakingPolicy } from '#/features/voice/speaking-activity-policy'
+import { Effect } from 'effect'
 
 type AudioContextConstructor = typeof AudioContext
 
@@ -79,21 +80,33 @@ function clampRemoteGain(gain: number) {
   )
 }
 
-async function applyOutputDevice(context: AudioContext, deviceId: string | undefined) {
+function applyOutputDeviceEffect(
+  context: AudioContext,
+  deviceId: string | undefined,
+) {
   const sink = context as AudioContext & AudioSinkIdTarget
-  if (deviceId === undefined || !sink.setSinkId) return
-  await sink.setSinkId(deviceId)
+  const setSinkId = sink.setSinkId
+  if (deviceId === undefined || !setSinkId) return Effect.void
+  return Effect.tryPromise({
+    try: () => setSinkId.call(sink, deviceId),
+    catch: (cause) => cause,
+  })
 }
 
-async function applyElementOutputDevice(
+function applyElementOutputDeviceEffect(
   element: HTMLAudioElement,
   deviceId: string | undefined,
 ) {
-  if (deviceId === undefined) return
+  if (deviceId === undefined) return Effect.void
   if (!('setSinkId' in element)) {
-    throw new Error('Audio output device selection is not supported')
+    return Effect.fail(
+      new Error('Audio output device selection is not supported'),
+    )
   }
-  await element.setSinkId(deviceId)
+  return Effect.tryPromise({
+    try: () => element.setSinkId(deviceId),
+    catch: (cause) => cause,
+  })
 }
 
 function registerMixer(mixer: RemoteAudioMixer) {
@@ -132,18 +145,29 @@ export class RemoteAudioMixer {
     registerMixer(this)
   }
 
-  async setOutputDevice(deviceId: string | undefined) {
-    const previousDeviceId = this.#outputDeviceId
-    this.#outputDeviceId = deviceId
-    const sinkId = deviceId ?? (previousDeviceId ? '' : undefined)
-    await Promise.all([
-      this.#context
-        ? applyOutputDevice(this.#context, sinkId)
-        : Promise.resolve(),
-      this.#outputElement
-        ? applyElementOutputDevice(this.#outputElement, sinkId)
-        : Promise.resolve(),
-    ])
+  setOutputDevice(deviceId: string | undefined) {
+    return Effect.runPromise(this.setOutputDeviceEffect(deviceId))
+  }
+
+  setOutputDeviceEffect(deviceId: string | undefined) {
+    return Effect.suspend(() => {
+      const previousDeviceId = this.#outputDeviceId
+      this.#outputDeviceId = deviceId
+      const sinkId = deviceId ?? (previousDeviceId ? '' : undefined)
+      const context = this.#context
+      const outputElement = this.#outputElement
+      return Effect.all(
+        [
+          context
+            ? applyOutputDeviceEffect(context, sinkId)
+            : Effect.void,
+          outputElement
+            ? applyElementOutputDeviceEffect(outputElement, sinkId)
+            : Effect.void,
+        ],
+        { concurrency: 'unbounded' },
+      ).pipe(Effect.asVoid)
+    })
   }
 
   addTrack(track: RemoteAudioMixerTrack) {
@@ -182,7 +206,17 @@ export class RemoteAudioMixer {
         quietSince: null,
       })
       this.#scheduleSpeakingAnalysis()
-      void context.resume().catch((error) => this.#reportOutputError(error))
+      Effect.runFork(
+        Effect.tryPromise({
+          try: () => context.resume(),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.tapError((error) =>
+            Effect.sync(() => this.#reportOutputError(error)),
+          ),
+          Effect.ignore,
+        ),
+      )
       return true
     } catch {
       return false
@@ -211,36 +245,47 @@ export class RemoteAudioMixer {
     }
   }
 
-  async applyVolumes(
+  applyVolumes(
     globallyDeafened: boolean,
     outputVolume = voicePreferenceStore.getState().outputVolume,
   ) {
-    let speakingChanged = false
-    for (const entry of this.#entries.values()) {
-      const channelMuted =
-        entry.source === 'stream'
-          ? voiceListenerStore.getStreamMuted(entry.userId)
-          : voiceListenerStore.getUserMuted(entry.userId)
-      const channelVolume =
-        entry.source === 'stream'
-          ? voiceListenerStore.getStreamVolume(entry.userId)
-          : voiceListenerStore.getUserVolume(entry.userId)
-      const gain =
-        globallyDeafened || channelMuted
-          ? 0
-          : clampRemoteGain(channelVolume * outputVolume)
-      entry.gainNode.gain.value = gain
-      if (gain <= 0 && entry.speaking) {
-        entry.speaking = false
-        entry.quietSince = null
-        speakingChanged = true
+    return Effect.runPromise(
+      this.applyVolumesEffect(globallyDeafened, outputVolume),
+    )
+  }
+
+  applyVolumesEffect(
+    globallyDeafened: boolean,
+    outputVolume = voicePreferenceStore.getState().outputVolume,
+  ) {
+    return Effect.gen({ self: this }, function*() {
+      let speakingChanged = false
+      for (const entry of this.#entries.values()) {
+        const channelMuted =
+          entry.source === 'stream'
+            ? voiceListenerStore.getStreamMuted(entry.userId)
+            : voiceListenerStore.getUserMuted(entry.userId)
+        const channelVolume =
+          entry.source === 'stream'
+            ? voiceListenerStore.getStreamVolume(entry.userId)
+            : voiceListenerStore.getUserVolume(entry.userId)
+        const gain =
+          globallyDeafened || channelMuted
+            ? 0
+            : clampRemoteGain(channelVolume * outputVolume)
+        entry.gainNode.gain.value = gain
+        if (gain <= 0 && entry.speaking) {
+          entry.speaking = false
+          entry.quietSince = null
+          speakingChanged = true
+        }
       }
-    }
-    if (speakingChanged) {
-      this.#publishSpeakingUsersIfChanged()
-    }
-    this.#scheduleSpeakingAnalysis()
-    await this.#startOutput()
+      if (speakingChanged) {
+        this.#publishSpeakingUsersIfChanged()
+      }
+      this.#scheduleSpeakingAnalysis()
+      yield* this.#startOutputEffect()
+    })
   }
 
   clear() {
@@ -260,7 +305,15 @@ export class RemoteAudioMixer {
     this.#outputElement = null
     this.#outputNode = null
     this.#disarmOutputRetry()
-    void this.#context?.close().catch(() => {})
+    const close = this.#context?.close()
+    if (close) {
+      Effect.runFork(
+        Effect.tryPromise({
+          try: () => close,
+          catch: (cause) => cause,
+        }).pipe(Effect.ignore),
+      )
+    }
     this.#context = null
   }
 
@@ -287,8 +340,13 @@ export class RemoteAudioMixer {
     if (!Context) return null
     const context = new Context()
     this.#context = context
-    void applyOutputDevice(context, this.#outputDeviceId).catch((error) =>
-      this.#reportOutputError(error),
+    Effect.runFork(
+      applyOutputDeviceEffect(context, this.#outputDeviceId).pipe(
+        Effect.tapError((error) =>
+          Effect.sync(() => this.#reportOutputError(error)),
+        ),
+        Effect.ignore,
+      ),
     )
     return context
   }
@@ -308,26 +366,42 @@ export class RemoteAudioMixer {
     element.style.display = 'none'
     document.body.appendChild(element)
     this.#outputElement = element
-    void applyElementOutputDevice(element, this.#outputDeviceId).catch((error) =>
-      this.#reportOutputError(error),
+    Effect.runFork(
+      applyElementOutputDeviceEffect(element, this.#outputDeviceId).pipe(
+        Effect.tapError((error) =>
+          Effect.sync(() => this.#reportOutputError(error)),
+        ),
+        Effect.ignore,
+      ),
     )
-    void this.#startOutput().catch(() => undefined)
+    this.#startOutputBestEffort()
     return this.#outputNode
   }
 
-  async #startOutput() {
-    const context = this.#context
-    const element = this.#outputElement
-    if (!context || !element) return
-    try {
-      await context.resume()
-      await element.play()
-      this.#disarmOutputRetry()
-    } catch (error) {
-      this.#armOutputRetry()
-      this.#reportOutputError(error)
-      throw error
-    }
+  #startOutputEffect() {
+    return Effect.suspend(() => {
+      const context = this.#context
+      const element = this.#outputElement
+      if (!context || !element) return Effect.void
+      return Effect.gen({ self: this }, function*() {
+        yield* Effect.tryPromise({
+          try: () => context.resume(),
+          catch: (cause) => cause,
+        })
+        yield* Effect.tryPromise({
+          try: () => element.play(),
+          catch: (cause) => cause,
+        })
+        this.#disarmOutputRetry()
+      }).pipe(
+        Effect.tapError((error) =>
+          Effect.sync(() => {
+            this.#armOutputRetry()
+            this.#reportOutputError(error)
+          }),
+        ),
+      )
+    })
   }
 
   #armOutputRetry() {
@@ -346,7 +420,11 @@ export class RemoteAudioMixer {
 
   #retryOutputFromGesture = () => {
     this.#disarmOutputRetry()
-    void this.#startOutput().catch(() => undefined)
+    this.#startOutputBestEffort()
+  }
+
+  #startOutputBestEffort() {
+    Effect.runFork(this.#startOutputEffect().pipe(Effect.ignore))
   }
 
   #reportOutputError(error: unknown) {

@@ -2,6 +2,7 @@
 
 import type { Role, Server } from '@syrnike13/api-types'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RoleMembersPanel } from '#/components/servers/role-members-panel'
@@ -21,7 +22,7 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
-  editServerMember: vi.fn(),
+  editServerMemberEffect: vi.fn(() => Effect.void),
 }))
 
 vi.mock('#/components/servers/add-role-members-dialog', () => ({

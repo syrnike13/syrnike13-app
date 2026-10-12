@@ -164,8 +164,9 @@ authifier = "1.0.16"
 lapin = "4.7.1"
 
 # Voice
-livekit-api = "0.4.4"
-livekit-protocol = "0.7.4"
+livekit-api = "0.4.24"
+# Generated protocol fields must match this server SDK's struct initializers.
+livekit-protocol = "=0.7.7"
 livekit-runtime = "0.4.0"
 
 # Other Utilities

@@ -9,6 +9,7 @@ import {
   within,
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerHeaderMenu } from '#/components/servers/server-header-menu'
@@ -74,7 +75,7 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
-  deleteOrLeaveServer: (
+  deleteOrLeaveServerEffect: (
     ...args: Parameters<typeof mocks.deleteOrLeaveServer>
   ) => mocks.deleteOrLeaveServer(...args),
 }))
@@ -127,7 +128,7 @@ describe('ServerHeaderMenu', () => {
     syncStore.reset()
     grantAllAuthorizationForTest({ serverIds: ['server-1'] })
     upsertServer()
-    mocks.deleteOrLeaveServer.mockResolvedValue(undefined)
+    mocks.deleteOrLeaveServer.mockReturnValue(Effect.void)
     mocks.navigate.mockResolvedValue(undefined)
   })
 

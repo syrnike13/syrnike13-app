@@ -1,13 +1,25 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 import { useComposerAttachments } from './use-composer-attachments'
 
 const uploadAttachment = vi.hoisted(() => vi.fn())
 
 vi.mock('#/features/api/media-api', () => ({
-  uploadAttachment,
+  uploadAttachmentEffect: (
+    token: string,
+    file: File,
+    options: {
+      onProgress?: (progress: number) => void
+      signal?: AbortSignal
+    },
+  ) =>
+    Effect.tryPromise({
+      try: () => uploadAttachment(token, file, options),
+      catch: (cause) => cause,
+    }),
 }))
 
 function deferred<T>() {
@@ -76,7 +88,7 @@ describe('useComposerAttachments', () => {
     const fileId = result.current.files[0]!.id
     let uploadPromise!: Promise<string[]>
     act(() => {
-      uploadPromise = result.current.uploadAll('token')
+      uploadPromise = Effect.runPromise(result.current.uploadAll('token'))
     })
     const signal = uploadAttachment.mock.calls[0]![2].signal as AbortSignal
 
@@ -102,7 +114,7 @@ describe('useComposerAttachments', () => {
     act(() => result.current.append([image]))
     let uploadPromise!: Promise<string[]>
     act(() => {
-      uploadPromise = result.current.uploadAll('token')
+      uploadPromise = Effect.runPromise(result.current.uploadAll('token'))
     })
     const signal = uploadAttachment.mock.calls[0]![2].signal as AbortSignal
 
@@ -130,7 +142,7 @@ describe('useComposerAttachments', () => {
     act(() => result.current.append([first, second]))
     let uploadPromise!: Promise<string[]>
     act(() => {
-      uploadPromise = result.current.uploadAll('token')
+      uploadPromise = Effect.runPromise(result.current.uploadAll('token'))
     })
 
     expect(uploadAttachment).toHaveBeenCalledTimes(2)
@@ -176,7 +188,9 @@ describe('useComposerAttachments', () => {
 
     act(() => result.current.append([successful, failed]))
     await act(async () => {
-      await expect(result.current.uploadAll('token')).rejects.toBe(uploadError)
+      await expect(
+        Effect.runPromise(result.current.uploadAll('token')),
+      ).rejects.toBe(uploadError)
     })
 
     expect(result.current.files).toMatchObject([
@@ -187,7 +201,9 @@ describe('useComposerAttachments', () => {
     uploadAttachment.mockResolvedValueOnce('attachment-retried')
     let retryResult!: string[]
     await act(async () => {
-      retryResult = await result.current.uploadAll('token')
+      retryResult = await Effect.runPromise(
+        result.current.uploadAll('token'),
+      )
     })
 
     expect(retryResult).toEqual([

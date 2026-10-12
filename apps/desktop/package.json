@@ -1,12 +1,12 @@
 {
   "name": "@syrnike13/desktop",
-  "version": "0.6.11",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
-    "build:native-runtime": "pnpm --filter @syrnike13/desktop-native build",
-    "build:shell": "pnpm --filter @syrnike13/platform build && pnpm run build:native-runtime && tsup",
+    "build:native-runtime": "pnpm --filter @syrnike13/desktop-native build && pnpm --filter @syrnike13/windows-media-engine build",
+    "build:shell": "pnpm --filter @syrnike13/platform build && pnpm run build:native-runtime && tsup && pnpm run verify:preload-bundle",
     "postinstall": "node scripts/ensure-electron-path.mjs",
     "predev": "node scripts/ensure-electron-path.mjs",
     "prestart": "node scripts/ensure-electron-path.mjs",
@@ -14,6 +14,7 @@
     "dev:nightly": "node scripts/run-dev-channel.mjs nightly",
     "dev:prod": "node scripts/run-dev-channel.mjs prod",
     "dev:local": "node scripts/run-dev-channel.mjs local",
+    "verify:preload-bundle": "node scripts/verify-preload-bundle.mjs",
     "verify:web-dist": "node scripts/verify-web-dist-production.mjs",
     "build": "pnpm --filter @syrnike13/web build && pnpm run verify:web-dist && pnpm run build:shell",
     "start": "pnpm exec electron .",
@@ -21,12 +22,14 @@
     "package": "pnpm run build && pnpm run package:prepared",
     "package:nightly": "pnpm run build && pnpm run package:prepared",
     "package:prepared": "electron-builder --config electron-builder.config.cjs --publish never && node scripts/verify-native-package.mjs",
+    "smoke:media-lifecycle": "electron scripts/smoke-media-lifecycle.cjs",
     "upload:debug-artifacts": "node scripts/upload-debug-artifacts.mjs",
     "typecheck": "pnpm --filter @syrnike13/platform build && tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@syrnike13/platform": "workspace:*",
     "@sentry/electron": "^7.15.0",
+    "effect": "4.0.0-beta.103",
     "electron-updater": "^6.6.2"
   },
   "devDependencies": {

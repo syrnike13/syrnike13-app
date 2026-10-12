@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
+import { Effect, Fiber } from 'effect'
 
 import {
-  fetchChannelMessage,
-  fetchChannelMessages,
+  fetchChannelMessageEffect,
+  fetchChannelMessagesEffect,
   MESSAGE_PAGE_SIZE,
 } from '#/features/api/messages-api'
 import { syncStore } from '#/features/sync/sync-store'
@@ -20,69 +21,82 @@ export function useJumpToMessage(
   useEffect(() => {
     if (!messageId || !token || lastJumped.current === messageId) return
 
-    let cancelled = false
+    const scrollTo = () => {
+      const element = document.querySelector<HTMLElement>(
+        `[data-message-id="${messageId}"]`,
+      )
+      if (!element) return false
+      element.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      element.classList.add(HIGHLIGHT_CLASS)
+      window.setTimeout(() => element.classList.remove(HIGHLIGHT_CLASS), 2500)
+      return true
+    }
 
-    async function jump() {
-      const scrollTo = () => {
-        const el = document.querySelector(
-          `[data-message-id="${messageId}"]`,
-        ) as HTMLElement | null
-        if (!el) return false
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-        el.classList.add(HIGHLIGHT_CLASS)
-        window.setTimeout(() => el.classList.remove(HIGHLIGHT_CLASS), 2500)
-        return true
-      }
+    const nextAnimationFrame = Effect.callback<void>((resume) => {
+      const frame = requestAnimationFrame(() => resume(Effect.void))
+      return Effect.sync(() => cancelAnimationFrame(frame))
+    })
 
-      if (scrollTo()) {
-        lastJumped.current = messageId!
-        return
-      }
-
-      try {
-        const message = await fetchChannelMessage(token!, channelId, messageId!)
-        if (cancelled) return
-        syncStore.upsertMessage(message)
-        if (message.user) {
-          syncStore.upsertUser(message.user)
+    const fiber = Effect.runFork(
+      Effect.gen(function*() {
+        if (scrollTo()) {
+          lastJumped.current = messageId
+          return
         }
 
-        const { messages: older, users } = await fetchChannelMessages(
-          token!,
+        const message = yield* fetchChannelMessageEffect(
+          token,
           channelId,
-          { before: messageId!, limit: MESSAGE_PAGE_SIZE },
+          messageId,
         )
-        if (cancelled) return
-        for (const user of users) {
-          syncStore.upsertUser(user)
-        }
-        for (const item of older) {
-          if (item.user) syncStore.upsertUser(item.user)
-        }
-        syncStore.prependChannelMessages(channelId, older)
+        yield* Effect.sync(() => {
+          syncStore.upsertMessage(message)
+          if (message.user) {
+            syncStore.upsertUser(message.user)
+          }
+        })
 
-        requestAnimationFrame(() => {
+        const { messages: older, users } = yield* fetchChannelMessagesEffect(
+          token,
+          channelId,
+          {
+            before: messageId,
+            limit: MESSAGE_PAGE_SIZE,
+          },
+        )
+        yield* Effect.sync(() => {
+          for (const user of users) {
+            syncStore.upsertUser(user)
+          }
+          for (const item of older) {
+            if (item.user) syncStore.upsertUser(item.user)
+          }
+          syncStore.prependChannelMessages(channelId, older)
+        })
+
+        yield* nextAnimationFrame
+        yield* Effect.sync(() => {
           if (!scrollTo()) {
             toast.error('Сообщение не найдено в ленте')
           } else {
-            lastJumped.current = messageId!
+            lastJumped.current = messageId
           }
         })
-      } catch (error) {
-        if (!cancelled) {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : 'Не удалось открыть сообщение',
-          )
-        }
-      }
-    }
-
-    void jump()
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось открыть сообщение',
+            )
+          }),
+        ),
+      ),
+    )
 
     return () => {
-      cancelled = true
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [channelId, messageId, token])
 }

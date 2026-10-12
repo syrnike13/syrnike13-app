@@ -1,0 +1,234 @@
+# Known external bugs
+
+This file records reproducible bugs and constraints in the local environment, toolchain, operating system, or third-party libraries that the application repository cannot fix. Application defects do not belong here.
+
+## Playwright Electron launch can miss the initial navigation
+
+On 2026-09-09, Playwright 1.62.1 with Electron 43.1.0 timed out during
+`electron.launch` after 28 successful launch/close controls. Both DevTools
+connections were established and the renderer was running the application.
+The protocol trace returned an initial empty frame tree, received no
+`Page.frameNavigated`, and never reached Node `Runtime.enable`. All recorded
+CDP requests received responses. This is consistent with Playwright waiting
+for the initial page's navigation promise inside `CRBrowser.connect`.
+
+With a custom `executablePath`, Playwright omits its unpackaged-app loader.
+For this unpackaged fixture, preloading the unmodified official loader before
+the inspector arguments completed 100 launch/firstWindow/close controls with
+the same 60-second timeout. The loader defers Electron's ready event until
+automation initialization. The private Windows launcher prepends `-r` and the
+loader path before forwarding Playwright's arguments; it changes no installed
+package or product file. Preserve both launcher and loader hashes in fixture
+inputs. This startup control does not qualify native faults or resolve every
+earlier shutdown delay.
+
+See the control artifact (`docs/native-v2/playwright-launch-control-e3773e48.json`, removed after commit 422e19da; see Git history)
+and the linked versioned upstream sources for the capture hashes, observation
+limits, and exact initialization paths.
+
+## Media Foundation activation retains handles on the NVIDIA test machine
+
+On 2026-09-09, Windows 11 build 26200 with RTX 5070 Ti, driver
+`32.0.16.1074` and injected `nvspcap64.dll` version `11.0.9.239` retained two
+handles per hardware H264 MFT activation/shutdown. A 100-cycle probe on one
+thread returned 321 -> 521 process handles and 10 -> 10 threads. The probe
+only enumerates, activates, calls `IMFActivate::ShutdownObject`, releases COM
+references and shuts down Media Foundation; it does not submit frames or use
+the application encoder pipeline. MFStartup/MFShutdown and enumeration alone
+showed no growth. Ordinary encoder start/stop and withheld-output faults also
+showed approximately two additional handles per cycle.
+
+The growing handle types are a mutex and section with names based on
+`{2627E361-24E2-4F14-99ED-A20D0685D8DD}_v22`. That string occurs in the installed
+NVIDIA overlay DLL. A control run with the overlay disabled had not yet been
+performed at that point, so overlay involvement remained a hypothesis. See the
+dated recheck below.
+
+The reproduction harness (`encoder_fault_tests --same-thread-activation`,
+`--resource-stages`) was removed with the fault-injection suite on 2026-10-11;
+it remains in Git history. The probe
+follows the documented
+[activation shutdown contract](https://learn.microsoft.com/en-us/windows/win32/api/mfobjects/nf-mfobjects-imfactivate-shutdownobject).
+Both activation-only shutdown and explicit transform shutdown plus activation
+shutdown reproduced growth. Additional end-streaming/device-manager cleanup did
+not resolve it and was not retained as a product workaround.
+
+The fault harness reports resource failure and exits nonzero. This blocks the
+encoder resource qualification on this setup; successful owner assertions are
+not a complete PASS. Process containment closes resources when the utility exits,
+but does not establish zero growth during repeated encoder lifecycles.
+
+A subsequent isolated child policy control (`docs/native-v2/mft-extension-policy-b007397a.json`, removed after commit 422e19da; see Git history)
+at `b007397a` reproduced +200 handles and zero thread growth in both 100-cycle
+runs, with Windows extension points enabled and disabled. The child policy was
+queried before resuming the process; both probes exited normally with the
+expected resource-failure status. This policy control did not establish that
+the overlay DLL was absent and does not confirm or disprove overlay involvement.
+No machine-wide settings were changed.
+
+After the host restart, the same existing Release probe at `52ccd1e3` passed
+100 activation-only cycles with zero handle or thread growth. Both 100-cycle
+bitrate failure controls also passed their resource assertions. The withheld-output
+control still failed its resource assertion: 459 -> 464 handles and 28 -> 26
+threads, despite passing all 100 owner assertions. During that run, the observed
+overlay DLL was version `11.0.9.251`; the NVIDIA driver remained unchanged.
+The activation-only process exited before its loaded modules could be captured.
+These post-restart controls (`docs/native-v2/encoder-post-restart-52ccd1e3.json`, removed after commit 422e19da; see Git history)
+show changed behavior without establishing its cause. The earlier +200-handle
+observations remain historical evidence; they do not describe every later run.
+No driver or overlay configuration was changed by this task.
+
+The final exact-head diagnostics at `445cff8a` remain machine-specific: the clean
+Release matrix emitted all 42 rows but all three encoder rows retained `+1`
+handle; Debug emitted all 42 rows with `encoder-input-without-output` and
+`encoder-bitrate-rejected` at `+1` while unsupported bitrate was neutral; ASan
+had the same `+1` encoder growth, `output-no-progress` at `+1`,
+`output-default-session-muted` at `+8`, and a `dxgi-access-lost` `+2/+1` result
+that prevented the following device-removed row from emitting. The configured
+standalone MFT control remained zero-growth in Release, Debug and ASan. These
+positive deltas are preserved as strict failures and do not identify an
+application-owned leak or confirm an overlay root cause.
+
+On 2026-09-19, the existing `e3d6d7f2` Release binary again reproduced large
+positive deltas: clean encoder start/stop retained 198 handles over 100 cycles,
+and the standalone same-thread MFT activation control retained 200. Both passed
+their 100 behavioral iterations and failed resource assertions. Driver and
+installed overlay DLL versions remained `32.0.16.1074` and `11.0.9.251`.
+The recheck artifact (`docs/native-v2/encoder-resource-recheck-2026-09-19.json`, removed after commit 422e19da; see Git history)
+records binary identity and raw results. This is diagnostic evidence from an
+existing build; it does not establish an overlay root cause or qualify a merge.
+
+Later on 2026-09-19, the user disabled NVIDIA Overlay. The rebuilt Release
+control passed 100 same-thread activations and 100 clean encoder lifecycles
+with zero handle/thread growth. The no-output fault still retained one net
+handle after 100 successful behavioral iterations. `nvspcap64.dll` remained
+loaded in the test process. The overlay-disabled controls (`docs/native-v2/encoder-overlay-disabled-2026-09-19.json`, removed after commit 422e19da; see Git history)
+therefore isolate the large growth from the remaining resource failure without
+claiming that the DLL was absent or identifying the remaining handle's owner.
+
+A single configured hardware MFT held active for 200 seconds also added an IO
+completion port, without repeated activation, submitted frames, application
+encoder workers or recovery. The duration-matched configured-MFT control retained
+resources even with explicit flush/end-streaming. COM and MF startup/shutdown
+alone did not grow handles. These controls (`docs/native-v2/resource-diagnostics-2026-09-19.json`, removed after commit 422e19da; see Git history)
+show that background platform activity can change the process counters independently
+of recovery. They do not attribute every positive delta or waive qualification.
+In two three-batch encoder runs the second batch was neutral but the third grew
+again, so additional warmup has not established a stable resource baseline.
+
+## React development performance tracks accumulate during long media runs
+
+The React development frontend retained about 2.5 million `PerformanceMeasure`
+objects during the local #131 utility recovery series on 2026-09-09. Renderer
+private memory grew from 347 MiB after the first cycle to roughly 2.5 GiB after
+56 cycles. A heap snapshot attributed 303 MB of object storage to those measures;
+the Chromium allocator dump showed additional associated storage. Ordinary GC
+left the growth in place. Clearing the performance timeline after the run and
+then collecting garbage reduced renderer private memory to 692 MiB and embedder
+heap usage from 315 MiB to 6 MiB. This diagnostic does not establish that all
+remaining memory was leaked or that every observed rendering gap had that cause.
+
+[React performance tracks](https://react.dev/reference/dev-tools/react-performance-tracks)
+are enabled by default in development and disabled in normal production builds.
+Long resource qualification must use the production frontend. Periodically
+clearing measures during an acceptance run would change the measured environment;
+the existing development run remains incomplete evidence, not a resource PASS.
+
+## Electron managed shared-texture transfer can lose late renderer releases
+
+On Electron 43.1.0, a delayed managed texture transfer during native utility loss
+produced renderer errors from `IMPORT_SHARED_TEXTURE_RELEASE_RENDERER_TO_MAIN`
+with `Shared texture ... not found`. The
+[main implementation](https://github.com/electron/electron/blob/v43.1.0/lib/browser/api/shared-texture.ts)
+registers renderer references only after a 1000 ms transfer race succeeds. A late
+renderer import after that timeout is consequently absent from reference tracking;
+releasing the main reference removes its record. The
+[renderer implementation](https://github.com/electron/electron/blob/v43.1.0/lib/renderer/api/shared-texture.ts)
+then invokes the missing record from an asynchronous release callback without
+handling rejection.
+
+Product integration uses the documented `sharedTexture.subtle` API with separate
+import and GPU-release acknowledgements and a process-wide retention bound.
+Timeouts retain uncertain GPU leases rather than treating them as released. This
+does not patch Electron or change native capture/encoding algorithms.
+
+## MSVC cannot resolve long nested WebRTC include paths
+
+An isolated SDK checkout on Windows can exceed the native compiler's supported
+include-path length under `target/release/build/scratch-*/out/livekit_webrtc/`.
+Observed with MSVC 14.51 on 2026-09-05: `C1083` for
+`absl/strings/internal/str_format/constexpr_parser.h`, even though the header
+exists. A junction at `target/` does not shorten the logical path reported by
+the cached `scratch` build helper. Use the SDK's existing `LK_CUSTOM_WEBRTC`
+environment option pointing at a short junction to the same prebuilt WebRTC
+bundle, and an explicit `CARGO_TARGET_DIR`. No compiler reinstall or machine-wide
+setting change is required.
+
+## Hosted Windows runner has no D3D11 Video interfaces
+
+The `windows-2025-vs2026` GitHub-hosted runner used by native CI does not expose
+the D3D11 Video interfaces required by monitor device checks, GPU conversion
+and hardware H264 encoder fault tests. Confirmed on 2026-09-05 in
+[job 101261582758](https://github.com/syrnike13/syrnike13-app/actions/runs/33949541934/job/101261582758):
+the failures are `process D3D11 device has no video interface` and
+`D3D11 video processor interfaces are unavailable`.
+
+These tests carry CTest label `requires-gpu-video` and remain part of the full
+default suite. Hosted CI explicitly excludes that label and reports this
+coverage boundary. Validate the complete suite on a Windows GPU machine and
+retain hardware/ASan evidence before merging media changes; installing SDKs on
+the hosted runner cannot provide the missing hardware capability.
+
+## Docker Desktop fails to restart on Windows build 26200
+
+### Symptoms
+
+- Docker Desktop opens and immediately reports an unexpected backend error.
+- `docker version` cannot connect to `npipe:////./pipe/dockerDesktopLinuxEngine` because the pipe does not exist.
+- The current `com.docker.backend.exe.log` reports error 1920, `The file cannot be accessed by the system`, while removing one of these AF_UNIX sockets:
+  - `%LOCALAPPDATA%\Docker\run\sailor-ingest.sock`
+  - `%LOCALAPPDATA%\Docker\run\dockerInference`
+  - `%LOCALAPPDATA%\docker-secrets-engine\engine.sock`
+- The socket appears as a zero-byte NTFS `ReparsePoint`; reading its ACL, deleting it, or querying it with `fsutil` can also fail with error 1920.
+
+### Known affected setup
+
+- Windows `10.0.26200.7309`
+- Docker Desktop `4.88.1.237512`
+- Docker Engine `29.7.2`
+- WSL `2.7.12.0`, kernel `6.18.33.2-2`
+
+This is a Docker Desktop/Windows AF_UNIX socket bug, not a missing virtualization feature. On the affected machine, firmware virtualization, the Windows hypervisor, and the Windows Hypervisor Platform API were verified as operational.
+
+Docker tracks the same failure in [docker/desktop-feedback#531](https://github.com/docker/desktop-feedback/issues/531) and [docker/desktop-feedback#554](https://github.com/docker/desktop-feedback/issues/554).
+
+### Recovery
+
+1. Fully stop every Docker Desktop process before touching the socket directories.
+2. Set `"EnableDockerAI": false` in `%APPDATA%\Docker\settings-store.json`. Docker Model Runner remains unavailable while this workaround is active.
+3. Rename both parent directories in the same recovery attempt, preserving them as timestamped backups:
+   - `%LOCALAPPDATA%\Docker\run`
+   - `%LOCALAPPDATA%\docker-secrets-engine`
+4. Start Docker Desktop and verify the server with `docker version` and `docker info`. Use `docker run --rm hello-world` when an end-to-end pull and container test is appropriate.
+
+An unclean Docker Desktop stop can reproduce the corruption. Cleaning only one directory can create a loop: startup fails on the other socket and recreates the first broken socket, so both directories must be handled before one clean start.
+
+### Data safety
+
+Do not use Factory Reset and do not delete `%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx`; those actions are unnecessary and can destroy local images, containers, and volumes. Rename the socket parent directories instead, because the corrupted reparse points may be impossible to delete normally.
+
+## MinIO container images are no longer publicly available
+
+Since October 2026 anonymous pulls of `quay.io/minio/minio` and
+`quay.io/minio/mc` return 401, and the `minio/minio` repository no longer
+exists on Docker Hub. Every nightly deploy failed at `docker compose pull`.
+The stacks no longer run MinIO: production and nightly store files in separate
+buckets of an external S3 service (`[files.s3]` in `Syrnike.toml`).
+
+## Unpinned `docker.io/mongo` moved to MongoDB 9
+
+On 2026-10-12 the untagged `docker.io/mongo` reference resolved to 9.0.2. Its
+mongod exits with code 62 on our data (featureCompatibilityVersion 8.2), so a
+pull-and-recreate took the nightly database down. Both compose files pin
+`mongo:8.2.12` by digest (`e0ce8c35…`, the image production runs). A MongoDB
+upgrade must go through `setFeatureCompatibilityVersion` deliberately.

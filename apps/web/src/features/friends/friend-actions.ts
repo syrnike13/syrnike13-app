@@ -1,32 +1,33 @@
 import type { User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import {
-  acceptFriendRequest as acceptFriendRequestApi,
-  blockUser as blockUserApi,
-  removeFriendOrRequest as removeFriendOrRequestApi,
-  sendFriendRequest as sendFriendRequestApi,
-  unblockUser as unblockUserApi,
+  acceptFriendRequestEffect,
+  blockUserEffect,
+  removeFriendOrRequestEffect,
+  sendFriendRequestEffect,
+  unblockUserEffect,
 } from '#/features/api/users-api'
 import { syncStore } from '#/features/sync/sync-store'
 
 export type FriendActionDeps = {
-  acceptFriendRequest: typeof acceptFriendRequestApi
-  removeFriendOrRequest: typeof removeFriendOrRequestApi
-  blockUser: typeof blockUserApi
-  sendFriendRequest: typeof sendFriendRequestApi
-  unblockUser: typeof unblockUserApi
+  acceptFriendRequest: typeof acceptFriendRequestEffect
+  removeFriendOrRequest: typeof removeFriendOrRequestEffect
+  blockUser: typeof blockUserEffect
+  sendFriendRequest: typeof sendFriendRequestEffect
+  unblockUser: typeof unblockUserEffect
   upsertUser: (user: User) => void
   toastSuccess: (message: string) => void
   toastError: (message: string) => void
 }
 
 const defaultDeps: FriendActionDeps = {
-  acceptFriendRequest: acceptFriendRequestApi,
-  removeFriendOrRequest: removeFriendOrRequestApi,
-  blockUser: blockUserApi,
-  sendFriendRequest: sendFriendRequestApi,
-  unblockUser: unblockUserApi,
+  acceptFriendRequest: acceptFriendRequestEffect,
+  removeFriendOrRequest: removeFriendOrRequestEffect,
+  blockUser: blockUserEffect,
+  sendFriendRequest: sendFriendRequestEffect,
+  unblockUser: unblockUserEffect,
   upsertUser: syncStore.upsertUser,
   toastSuccess: toast.success,
   toastError: toast.error,
@@ -40,7 +41,36 @@ function friendRequestUsername(user: User) {
   return `${user.username}#${user.discriminator}`
 }
 
-export async function sendFriendRequestToUser(
+const runFriendAction = Effect.fn('friends.runAction')(
+  function*(
+    request: () => Effect.Effect<User, unknown>,
+    deps: FriendActionDeps,
+    successMessage: string,
+    failureMessage: string,
+  ) {
+    const action = Effect.gen(function*() {
+      const updatedUser = yield* request()
+      yield* Effect.try({
+        try: () => {
+          deps.upsertUser(updatedUser)
+          deps.toastSuccess(successMessage)
+        },
+        catch: (cause) => cause,
+      })
+      return updatedUser
+    })
+
+    return yield* action.pipe(
+      Effect.tapError((error) =>
+        Effect.sync(() => {
+          deps.toastError(errorMessage(error, failureMessage))
+        }),
+      ),
+    )
+  },
+)
+
+export function sendFriendRequestToUser(
   token: string,
   user: User,
   deps: FriendActionDeps = defaultDeps,
@@ -48,87 +78,72 @@ export async function sendFriendRequestToUser(
   return sendFriendRequestByUsername(token, friendRequestUsername(user), deps)
 }
 
-export async function sendFriendRequestByUsername(
+export function sendFriendRequestByUsername(
   token: string,
   username: string,
   deps: FriendActionDeps = defaultDeps,
 ) {
-  try {
-    const updatedUser = await deps.sendFriendRequest(token, username)
-    deps.upsertUser(updatedUser)
-    deps.toastSuccess('Заявка отправлена')
-    return updatedUser
-  } catch (error) {
-    deps.toastError(errorMessage(error, 'Не удалось отправить заявку'))
-    throw error
-  }
+  return runFriendAction(
+    () => deps.sendFriendRequest(token, username),
+    deps,
+    'Заявка отправлена',
+    'Не удалось отправить заявку',
+  )
 }
 
-export async function acceptIncomingFriendRequest(
+export function acceptIncomingFriendRequest(
   token: string,
   userId: string,
   deps: FriendActionDeps = defaultDeps,
 ) {
-  try {
-    const user = await deps.acceptFriendRequest(token, userId)
-    deps.upsertUser(user)
-    deps.toastSuccess('Заявка принята')
-    return user
-  } catch (error) {
-    deps.toastError(errorMessage(error, 'Не удалось принять заявку'))
-    throw error
-  }
+  return runFriendAction(
+    () => deps.acceptFriendRequest(token, userId),
+    deps,
+    'Заявка принята',
+    'Не удалось принять заявку',
+  )
 }
 
-export async function declineIncomingFriendRequest(
+export function declineIncomingFriendRequest(
   token: string,
   userId: string,
   deps: FriendActionDeps = defaultDeps,
 ) {
-  try {
-    const user = await deps.removeFriendOrRequest(token, userId)
-    deps.upsertUser(user)
-    deps.toastSuccess('Заявка отклонена')
-    return user
-  } catch (error) {
-    deps.toastError(errorMessage(error, 'Не удалось отклонить заявку'))
-    throw error
-  }
+  return runFriendAction(
+    () => deps.removeFriendOrRequest(token, userId),
+    deps,
+    'Заявка отклонена',
+    'Не удалось отклонить заявку',
+  )
 }
 
-export async function cancelOutgoingFriendRequest(
+export function cancelOutgoingFriendRequest(
   token: string,
   userId: string,
   deps: FriendActionDeps = defaultDeps,
 ) {
-  try {
-    const user = await deps.removeFriendOrRequest(token, userId)
-    deps.upsertUser(user)
-    deps.toastSuccess('Заявка отменена')
-    return user
-  } catch (error) {
-    deps.toastError(errorMessage(error, 'Не удалось отменить заявку'))
-    throw error
-  }
+  return runFriendAction(
+    () => deps.removeFriendOrRequest(token, userId),
+    deps,
+    'Заявка отменена',
+    'Не удалось отменить заявку',
+  )
 }
 
-export async function removeFriend(
+export function removeFriend(
   token: string,
   userId: string,
   deps: FriendActionDeps = defaultDeps,
 ) {
-  try {
-    const user = await deps.removeFriendOrRequest(token, userId)
-    deps.upsertUser(user)
-    deps.toastSuccess('Пользователь удалён из друзей')
-    return user
-  } catch (error) {
-    deps.toastError(errorMessage(error, 'Не удалось удалить из друзей'))
-    throw error
-  }
+  return runFriendAction(
+    () => deps.removeFriendOrRequest(token, userId),
+    deps,
+    'Пользователь удалён из друзей',
+    'Не удалось удалить из друзей',
+  )
 }
 
-export async function blockIncomingFriendRequest(
+export function blockIncomingFriendRequest(
   token: string,
   userId: string,
   deps: FriendActionDeps = defaultDeps,
@@ -136,34 +151,28 @@ export async function blockIncomingFriendRequest(
   return blockUserRelationship(token, userId, deps)
 }
 
-export async function blockUserRelationship(
+export function blockUserRelationship(
   token: string,
   userId: string,
   deps: FriendActionDeps = defaultDeps,
 ) {
-  try {
-    const user = await deps.blockUser(token, userId)
-    deps.upsertUser(user)
-    deps.toastSuccess('Пользователь заблокирован')
-    return user
-  } catch (error) {
-    deps.toastError(errorMessage(error, 'Не удалось заблокировать'))
-    throw error
-  }
+  return runFriendAction(
+    () => deps.blockUser(token, userId),
+    deps,
+    'Пользователь заблокирован',
+    'Не удалось заблокировать',
+  )
 }
 
-export async function unblockBlockedUser(
+export function unblockBlockedUser(
   token: string,
   userId: string,
   deps: FriendActionDeps = defaultDeps,
 ) {
-  try {
-    const user = await deps.unblockUser(token, userId)
-    deps.upsertUser(user)
-    deps.toastSuccess('Пользователь разблокирован')
-    return user
-  } catch (error) {
-    deps.toastError(errorMessage(error, 'Не удалось разблокировать'))
-    throw error
-  }
+  return runFriendAction(
+    () => deps.unblockUser(token, userId),
+    deps,
+    'Пользователь разблокирован',
+    'Не удалось разблокировать',
+  )
 }

@@ -5,6 +5,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { VoicePanelMediaBar } from './voice-panel-media-bar'
 
+// Navigation assertions must not start Iconify requests/timers that can outlive
+// the jsdom environment. Icons are decorative in this control-flow test.
+vi.mock('#/components/icons', () => ({
+  ActivityIcon: () => null,
+  Loader2Icon: () => null,
+  MonitorUpIcon: () => null,
+  MonitorXIcon: () => null,
+  SoundboardIcon: () => null,
+  VideoIcon: () => null,
+  VideoOffIcon: () => null,
+}))
+
 const testState = vi.hoisted(() => ({
   session: { status: 'connected', channelId: 'voice-a' },
   navigate: vi.fn(() => Promise.resolve()),

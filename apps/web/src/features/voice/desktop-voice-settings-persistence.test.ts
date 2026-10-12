@@ -32,11 +32,13 @@ describe('desktop voice settings persistence', () => {
   })
 
   it('hydrates voice processing preferences from the desktop settings API', async () => {
-    installDesktopSettings({
+    const { update } = installDesktopSettings({
       ...DEFAULT_DESKTOP_LOCAL_SETTINGS,
       voice: {
         ...DEFAULT_DESKTOP_LOCAL_SETTINGS.voice,
         noiseSuppression: false,
+        cameraProfile: 'hd1080p30',
+        nativeScreenShareProfile: '1080p60',
       },
     })
 
@@ -46,6 +48,20 @@ describe('desktop voice settings persistence', () => {
     await hydrateVoicePreferencesFromDesktop()
 
     expect(voicePreferenceStore.getState().noiseSuppression).toBe(false)
+    expect(voicePreferenceStore.getCameraProfile()).toBe('hd1080p30')
+    expect(voicePreferenceStore.getState().nativeScreenShareProfile).toBe('1080p60')
+    voicePreferenceStore.setCameraProfile('hd720p30')
+    await vi.waitFor(() => {
+      expect(update).toHaveBeenCalledWith({
+        voice: expect.objectContaining({ cameraProfile: 'hd720p30' }),
+      })
+    })
+    voicePreferenceStore.setNativeScreenShareProfile('720p60')
+    await vi.waitFor(() => {
+      expect(update).toHaveBeenCalledWith({
+        voice: expect.objectContaining({ nativeScreenShareProfile: '720p60' }),
+      })
+    })
   })
 
   it('hydrates per-user listener volume from the desktop settings API', async () => {

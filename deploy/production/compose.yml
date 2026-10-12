@@ -9,7 +9,9 @@ x-json-log-rotation: &json-log-rotation
 services:
   # MongoDB: Database
   database:
-    image: docker.io/mongo
+    # Data files are at featureCompatibilityVersion 8.2; MongoDB 9 refuses to
+    # start on them. Upgrade only deliberately (setFeatureCompatibilityVersion).
+    image: docker.io/mongo:8.2.12@sha256:e0ce8c35124d4a9f9785532d1f268f39e9728ffa1cb38f46fa482436424c4bd3
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     logging: *json-log-rotation
     environment:
@@ -50,30 +52,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-
-  # MinIO: S3-compatible storage server
-  minio:
-    image: docker.io/minio/minio
-    logging: *json-log-rotation
-    command: server /data
-    volumes:
-      - ./data/minio:/data
-    environment:
-      MINIO_ROOT_USER: minioautumn
-      MINIO_ROOT_PASSWORD: minioautumn
-      MINIO_DOMAIN: minio
-    networks:
-      default:
-        aliases:
-          - syrnike-uploads.minio
-          # legacy support:
-          - attachments.minio
-          - avatars.minio
-          - backgrounds.minio
-          - icons.minio
-          - banners.minio
-          - emojis.minio
-    restart: always
 
   # Caddy: Web server
   caddy:
@@ -138,8 +116,6 @@ services:
     depends_on:
       database:
         condition: service_healthy
-      createbuckets:
-        condition: service_started
     volumes:
       - type: bind
         source: ./Syrnike.toml
@@ -176,8 +152,6 @@ services:
     depends_on:
       database:
         condition: service_healthy
-      minio:
-        condition: service_started
       rabbit:
         condition: service_healthy
         restart: true
@@ -240,22 +214,6 @@ services:
       - type: bind
         source: ./livekit.yml
         target: /etc/livekit.yml
-
-  # Create buckets for minio.
-  createbuckets:
-    image: docker.io/minio/mc
-    logging: *json-log-rotation
-    depends_on:
-      - minio
-    entrypoint: >
-      /bin/sh -c "
-      while ! /usr/bin/mc ready minio; do
-        /usr/bin/mc alias set minio http://minio:9000 minioautumn minioautumn;
-        echo 'Waiting minio...' && sleep 1;
-      done;
-      /usr/bin/mc mb minio/syrnike-uploads;
-      exit 0;
-      "
 
   # Web App
   web:

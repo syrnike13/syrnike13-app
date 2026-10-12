@@ -54,7 +54,6 @@ pub async fn calculate_server_permissions<P: PermissionQuery>(query: &mut P) -> 
         let mut permissions: PermissionValue = ChannelPermission::GrantAllSafe.into();
         if !publish_override {
             permissions.revoke(ChannelPermission::Speak as u64);
-            permissions.revoke(ChannelPermission::Video as u64);
         }
         if !receive_override {
             permissions.revoke(ChannelPermission::Listen as u64);
@@ -80,7 +79,6 @@ pub async fn calculate_server_permissions<P: PermissionQuery>(query: &mut P) -> 
 
     if !query.do_we_have_publish_overwrites().await {
         permissions.revoke(ChannelPermission::Speak as u64);
-        permissions.revoke(ChannelPermission::Video as u64);
     }
 
     if !query.do_we_have_receive_overwrites().await {
@@ -159,6 +157,15 @@ pub async fn calculate_channel_permissions<P: PermissionQuery>(query: &mut P) ->
                     permissions.allow(
                         ChannelPermission::ViewChannel as u64 | ChannelPermission::Connect as u64,
                     );
+                }
+
+                // Member voice moderation takes precedence over channel grants.
+                // Server mute gates the microphone, not camera or screen sharing.
+                if !query.do_we_have_publish_overwrites().await {
+                    permissions.revoke(ChannelPermission::Speak as u64);
+                }
+                if !query.do_we_have_receive_overwrites().await {
+                    permissions.revoke(ChannelPermission::Listen as u64);
                 }
 
                 if !permissions.has_channel_permission(ChannelPermission::ViewChannel) {

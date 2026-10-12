@@ -3,6 +3,7 @@ import type {
   Track,
   TrackProcessor,
 } from 'livekit-client'
+import { Effect } from 'effect'
 
 import {
   effectiveVoiceGateStageOptions,
@@ -60,10 +61,6 @@ export class SyrnikeMicProcessor
   #gate: VoiceGateStage | null = null
   #inputGain: VoiceInputGainStage | null = null
 
-  async whenGateCalibrated() {
-    await this.#gate?.whenCalibrated()
-  }
-
   updateGatePreferences(
     prefs: Pick<
       SyrnikeMicProcessorConfig,
@@ -87,54 +84,71 @@ export class SyrnikeMicProcessor
     this.#config = config
   }
 
-  async init(options: AudioProcessorOptions) {
-    await this.#build(options)
+  init(options: AudioProcessorOptions) {
+    return Effect.runPromise(this.initEffect(options))
   }
 
-  async restart(options: AudioProcessorOptions) {
-    await this.destroy()
-    await this.#build(options)
+  initEffect(options: AudioProcessorOptions) {
+    return this.#buildEffect(options)
   }
 
-  async destroy() {
-    this.#inputGain?.destroy()
-    this.#gate?.destroy()
-    this.#inputGain = null
-    this.#gate = null
-    this.processedTrack = undefined
+  restart(options: AudioProcessorOptions) {
+    return Effect.runPromise(this.restartEffect(options))
   }
 
-  async #build(options: AudioProcessorOptions) {
-    let track = options.track
+  restartEffect(options: AudioProcessorOptions) {
+    return this.destroyEffect().pipe(
+      Effect.andThen(this.#buildEffect(options)),
+    )
+  }
 
-    if (this.#config.gateEnabled) {
-      this.#gate = new VoiceGateStage(this.#config.gateThresholdDb)
-      const gateOptions = effectiveVoiceGateStageOptions(
-        this.#config.gateStageOptions,
-        this.#config.gateAutoThreshold,
-        this.#config.gateThresholdDb,
-      )
-      const gatedTrack = this.#gate.start(options.audioContext, track, {
-        ...gateOptions,
-        onMetrics: this.#config.gateOnMetrics,
-      })
-      if (gatedTrack) {
-        track = gatedTrack
+  destroy() {
+    return Effect.runPromise(this.destroyEffect())
+  }
+
+  destroyEffect() {
+    return Effect.sync(() => {
+      this.#inputGain?.destroy()
+      this.#gate?.destroy()
+      this.#inputGain = null
+      this.#gate = null
+      this.processedTrack = undefined
+    })
+  }
+
+  #buildEffect(options: AudioProcessorOptions) {
+    return Effect.sync(() => {
+      let track = options.track
+
+      if (this.#config.gateEnabled) {
+        this.#gate = new VoiceGateStage(this.#config.gateThresholdDb)
+        const gateOptions = effectiveVoiceGateStageOptions(
+          this.#config.gateStageOptions,
+          this.#config.gateAutoThreshold,
+          this.#config.gateThresholdDb,
+        )
+        const gatedTrack = this.#gate.start(options.audioContext, track, {
+          ...gateOptions,
+          onMetrics: this.#config.gateOnMetrics,
+        })
+        if (gatedTrack) {
+          track = gatedTrack
+        }
       }
-    }
 
-    if (this.#config.inputVolume !== 1) {
-      this.#inputGain = new VoiceInputGainStage()
-      const gainedTrack = this.#inputGain.start(
-        options.audioContext,
-        track,
-        this.#config.inputVolume,
-      )
-      if (gainedTrack) {
-        track = gainedTrack
+      if (this.#config.inputVolume !== 1) {
+        this.#inputGain = new VoiceInputGainStage()
+        const gainedTrack = this.#inputGain.start(
+          options.audioContext,
+          track,
+          this.#config.inputVolume,
+        )
+        if (gainedTrack) {
+          track = gainedTrack
+        }
       }
-    }
 
-    this.processedTrack = track
+      this.processedTrack = track
+    })
   }
 }

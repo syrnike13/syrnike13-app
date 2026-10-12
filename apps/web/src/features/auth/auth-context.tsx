@@ -9,34 +9,35 @@ import {
 } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { User } from '@syrnike13/api-types'
+import { Effect, Fiber } from 'effect'
 import { toast } from 'sonner'
 
 import { config } from '#/lib/config'
 import { queryKeys } from '#/lib/api/query-keys'
 import {
-  clearSession,
-  loadPersistedSession,
-  saveSession,
+  clearSessionEffect,
+  loadPersistedSessionEffect,
+  saveSessionEffect,
   type StoredSession,
 } from '#/lib/session'
 import { eventsGateway, type GatewayState } from '#/features/events/gateway'
 import { syncStore } from '#/features/sync/sync-store'
 import { configureRendererDiagnosticAccount } from '#/features/diagnostics/diagnostic-reporter'
 import {
-  completeOnboarding as completeOnboardingRequest,
-  fetchOnboardHello,
+  completeOnboardingEffect,
+  fetchOnboardHelloEffect,
 } from '#/features/api/onboard-api'
 
 import type { ResponseLogin } from '@syrnike13/api-types'
 
 import {
-  fetchCurrentUser,
+  fetchCurrentUserEffect,
   isLoginMfa,
   isLoginSuccess,
-  loginWithCredentials,
-  loginWithMfa,
-  loginWithVerificationTicket,
-  logoutSession,
+  loginWithCredentialsEffect,
+  loginWithMfaEffect,
+  loginWithVerificationTicketEffect,
+  logoutSessionEffect,
   type LoginCredentials,
   type MfaLoginPayload,
 } from './auth-api'
@@ -62,22 +63,22 @@ type AuthContextValue = {
   profileLoadError: Error | null
   login: (
     credentials: LoginCredentials,
-  ) => Promise<{ needsOnboarding: boolean } | undefined>
+  ) => Effect.Effect<{ needsOnboarding: boolean } | undefined, unknown>
   submitMfaPassword: (
     password: string,
-  ) => Promise<{ needsOnboarding: boolean } | undefined>
+  ) => Effect.Effect<{ needsOnboarding: boolean } | undefined, unknown>
   cancelMfa: () => void
-  logout: () => Promise<void>
-  refreshUser: () => Promise<void>
-  retryProfileLoad: () => Promise<void>
+  logout: () => Effect.Effect<void>
+  refreshUser: () => Effect.Effect<void, unknown>
+  retryProfileLoad: () => Effect.Effect<void, unknown>
   /** Вход по ticket из письма подтверждения (`POST /auth/account/verify/...`). */
   completeEmailVerification: (
     mfaTicket: string,
-  ) => Promise<{ needsOnboarding: boolean } | undefined>
+  ) => Effect.Effect<{ needsOnboarding: boolean } | undefined, unknown>
   /** `GET /onboard/hello` — нужно выбрать username. */
   needsOnboarding: boolean
   onboardingChecked: boolean
-  completeOnboarding: (username: string) => Promise<void>
+  completeOnboarding: (username: string) => Effect.Effect<void, unknown>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -95,17 +96,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    let cancelled = false
-    void loadPersistedSession()
-      .then((storedSession) => {
-        if (cancelled) return
-        applySession(storedSession)
-      })
-      .finally(() => {
-        if (!cancelled) setHydrated(true)
-      })
+    const fiber = Effect.runFork(
+      loadPersistedSessionEffect().pipe(
+        Effect.matchEffect({
+          onFailure: () => Effect.sync(() => setHydrated(true)),
+          onSuccess: (storedSession) =>
+            Effect.sync(() => {
+              applySession(storedSession)
+              setHydrated(true)
+            }),
+        }),
+      ),
+    )
     return () => {
-      cancelled = true
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [applySession])
 
@@ -118,7 +122,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const onboardingQuery = useQuery({
     queryKey: queryKeys.auth.onboarding(session?.token ?? ''),
-    queryFn: () => fetchOnboardHello(session!.token),
+    queryFn: ({ signal }) =>
+      Effect.runPromise(fetchOnboardHelloEffect(session!.token), { signal }),
     enabled: hydrated && !!session?.token,
     retry: false,
   })
@@ -129,7 +134,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const userQuery = useQuery({
     queryKey: queryKeys.auth.session,
-    queryFn: () => fetchCurrentUser(session!.token),
+    queryFn: ({ signal }) =>
+      Effect.runPromise(fetchCurrentUserEffect(session!.token), { signal }),
     enabled:
       hydrated && !!session?.token && onboardingChecked && !needsOnboarding,
     retry: false,
@@ -151,9 +157,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [hasUser, needsOnboarding, onboardingChecked, session?.token])
 
-  const invalidateSession = useCallback(
+  const resetSessionState = useCallback(
     (message?: string) => {
-      void clearSession()
       applySession(null)
       setMfaChallenge(null)
       setProfileLoadError(null)
@@ -168,6 +173,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (message) toast.error(message)
     },
     [applySession, queryClient],
+  )
+
+  const invalidateSession = useCallback(
+    (message?: string) => {
+      Effect.runFork(clearSessionEffect().pipe(Effect.ignore))
+      resetSessionState(message)
+    },
+    [resetSessionState],
   )
 
   useEffect(() => {
@@ -200,92 +213,109 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ])
 
   const syncOnboardingStatus = useCallback(
-    async (token: string) => {
-      try {
-        const status = await fetchOnboardHello(token)
-        queryClient.setQueryData(queryKeys.auth.onboarding(token), status)
-        return status.onboarding
-      } catch (error) {
-        if (isSessionInvalidatingError(error)) {
-          invalidateSession('Сессия недействительна. Войдите снова.')
-        }
-        throw error
-      }
-    },
+    (token: string) =>
+      fetchOnboardHelloEffect(token).pipe(
+        Effect.tap((status) =>
+          Effect.sync(() => {
+            queryClient.setQueryData(queryKeys.auth.onboarding(token), status)
+          }),
+        ),
+        Effect.map((status) => status.onboarding),
+        Effect.tapError((error) =>
+          isSessionInvalidatingError(error)
+            ? Effect.sync(() => {
+                invalidateSession('Сессия недействительна. Войдите снова.')
+              })
+            : Effect.void,
+        ),
+      ),
     [invalidateSession, queryClient],
   )
 
   const applySuccessSession = useCallback(
-    async (data: LoginSuccess) => {
-      const next: StoredSession = {
-        _id: data._id,
-        token: data.token,
-        user_id: data.user_id,
-      }
-      await saveSession(next)
-      applySession(next)
-      setMfaChallenge(null)
-      setProfileLoadError(null)
-      void queryClient.invalidateQueries({ queryKey: queryKeys.auth.session })
-      return next.token
-    },
+    (data: LoginSuccess) =>
+      Effect.uninterruptible(
+        Effect.gen(function*() {
+          const next: StoredSession = {
+            _id: data._id,
+            token: data.token,
+            user_id: data.user_id,
+          }
+          yield* saveSessionEffect(next)
+          yield* Effect.sync(() => {
+            applySession(next)
+            setMfaChallenge(null)
+            setProfileLoadError(null)
+            void queryClient.invalidateQueries({
+              queryKey: queryKeys.auth.session,
+            })
+          })
+          return next.token
+        }),
+      ),
     [applySession, queryClient],
   )
 
   const login = useCallback(
-    async (credentials: LoginCredentials) => {
-      const response = await loginWithCredentials(credentials)
+    (credentials: LoginCredentials) =>
+      Effect.gen(function*() {
+        const response = yield* loginWithCredentialsEffect(credentials)
 
-      if (isLoginSuccess(response)) {
-        const token = await applySuccessSession(response)
-        const needsOnboard = await syncOnboardingStatus(token)
-        toast.success('Вы вошли в аккаунт')
-        return { needsOnboarding: needsOnboard }
-      }
+        if (isLoginSuccess(response)) {
+          const token = yield* applySuccessSession(response)
+          const needsOnboard = yield* syncOnboardingStatus(token)
+          yield* Effect.sync(() => toast.success('Вы вошли в аккаунт'))
+          return { needsOnboarding: needsOnboard }
+        }
 
-      if (isLoginMfa(response)) {
-        setMfaChallenge({
-          ticket: response.ticket,
-          allowedMethods: response.allowed_methods,
-        })
-        toast.message('Нужна двухфакторная аутентификация')
-        return
-      }
+        if (isLoginMfa(response)) {
+          yield* Effect.sync(() => {
+            setMfaChallenge({
+              ticket: response.ticket,
+              allowedMethods: response.allowed_methods,
+            })
+            toast.message('Нужна двухфакторная аутентификация')
+          })
+          return
+        }
 
-      toast.error('Аккаунт отключён')
-    },
+        yield* Effect.sync(() => toast.error('Аккаунт отключён'))
+      }),
     [applySuccessSession, syncOnboardingStatus],
   )
 
   const submitMfaPassword = useCallback(
-    async (password: string) => {
-      if (!mfaChallenge) return
+    (password: string) =>
+      Effect.gen(function*() {
+        if (!mfaChallenge) return
 
-      const payload: MfaLoginPayload = {
-        mfa_ticket: mfaChallenge.ticket,
-        mfa_response: { password },
-      }
+        const payload: MfaLoginPayload = {
+          mfa_ticket: mfaChallenge.ticket,
+          mfa_response: { password },
+        }
 
-      const response = await loginWithMfa(payload)
+        const response = yield* loginWithMfaEffect(payload)
 
-      if (isLoginSuccess(response)) {
-        const token = await applySuccessSession(response)
-        const needsOnboard = await syncOnboardingStatus(token)
-        toast.success('Вы вошли в аккаунт')
-        return { needsOnboarding: needsOnboard }
-      }
+        if (isLoginSuccess(response)) {
+          const token = yield* applySuccessSession(response)
+          const needsOnboard = yield* syncOnboardingStatus(token)
+          yield* Effect.sync(() => toast.success('Вы вошли в аккаунт'))
+          return { needsOnboarding: needsOnboard }
+        }
 
-      if (isLoginMfa(response)) {
-        setMfaChallenge({
-          ticket: response.ticket,
-          allowedMethods: response.allowed_methods,
-        })
-        toast.error('MFA не пройдена, попробуйте снова')
-        return
-      }
+        if (isLoginMfa(response)) {
+          yield* Effect.sync(() => {
+            setMfaChallenge({
+              ticket: response.ticket,
+              allowedMethods: response.allowed_methods,
+            })
+            toast.error('MFA не пройдена, попробуйте снова')
+          })
+          return
+        }
 
-      toast.error('Аккаунт отключён')
-    },
+        yield* Effect.sync(() => toast.error('Аккаунт отключён'))
+      }),
     [applySuccessSession, mfaChallenge, syncOnboardingStatus],
   )
 
@@ -293,65 +323,85 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMfaChallenge(null)
   }, [])
 
-  const refreshUser = useCallback(async () => {
-    if (!session?.token) return
-    const user = await fetchCurrentUser(session.token)
-    queryClient.setQueryData(queryKeys.auth.session, user)
-    setProfileLoadError(null)
-    syncStore.upsertUser(user)
-  }, [queryClient, session?.token])
+  const refreshUser = useCallback(
+    () =>
+      Effect.gen(function*() {
+        if (!session?.token) return
+        const user = yield* fetchCurrentUserEffect(session.token)
+        yield* Effect.sync(() => {
+          queryClient.setQueryData(queryKeys.auth.session, user)
+          setProfileLoadError(null)
+          syncStore.upsertUser(user)
+        })
+      }),
+    [queryClient, session?.token],
+  )
 
   const completeOnboarding = useCallback(
-    async (username: string) => {
-      if (!session?.token) return
-      const user = await completeOnboardingRequest(session.token, username)
-      syncStore.upsertUser(user)
-      queryClient.setQueryData(queryKeys.auth.session, user)
-      queryClient.setQueryData(queryKeys.auth.onboarding(session.token), {
-        onboarding: false,
-      })
-      toast.success('Ник установлен')
-    },
+    (username: string) =>
+      Effect.gen(function*() {
+        if (!session?.token) return
+        const token = session.token
+        const user = yield* completeOnboardingEffect(token, username)
+        yield* Effect.sync(() => {
+          syncStore.upsertUser(user)
+          queryClient.setQueryData(queryKeys.auth.session, user)
+          queryClient.setQueryData(queryKeys.auth.onboarding(token), {
+            onboarding: false,
+          })
+          toast.success('Ник установлен')
+        })
+      }),
     [queryClient, session?.token],
   )
 
   const completeEmailVerification = useCallback(
-    async (mfaTicket: string) => {
-      const response = await loginWithVerificationTicket(mfaTicket)
+    (mfaTicket: string) =>
+      Effect.gen(function*() {
+        const response = yield* loginWithVerificationTicketEffect(mfaTicket)
 
-      if (isLoginSuccess(response)) {
-        const token = await applySuccessSession(response)
-        const needsOnboard = await syncOnboardingStatus(token)
-        toast.success('Email подтверждён, вы вошли в аккаунт')
-        return { needsOnboarding: needsOnboard }
-      }
+        if (isLoginSuccess(response)) {
+          const token = yield* applySuccessSession(response)
+          const needsOnboard = yield* syncOnboardingStatus(token)
+          yield* Effect.sync(() =>
+            toast.success('Email подтверждён, вы вошли в аккаунт'),
+          )
+          return { needsOnboarding: needsOnboard }
+        }
 
-      if (isLoginMfa(response)) {
-        setMfaChallenge({
-          ticket: response.ticket,
-          allowedMethods: response.allowed_methods,
-        })
-        toast.message('Подтвердите вход паролем (MFA)')
-        return
-      }
+        if (isLoginMfa(response)) {
+          yield* Effect.sync(() => {
+            setMfaChallenge({
+              ticket: response.ticket,
+              allowedMethods: response.allowed_methods,
+            })
+            toast.message('Подтвердите вход паролем (MFA)')
+          })
+          return
+        }
 
-      toast.error('Не удалось войти после подтверждения email')
-    },
+        yield* Effect.sync(() =>
+          toast.error('Не удалось войти после подтверждения email'),
+        )
+      }),
     [applySuccessSession, syncOnboardingStatus],
   )
 
-  const logout = useCallback(async () => {
-    if (session?.token) {
-      try {
-        await logoutSession(session.token)
-      } catch {
-        // сессия могла уже истечь
-      }
-    }
+  const logout = useCallback(
+    () =>
+      Effect.gen(function*() {
+        if (session?.token) {
+          yield* logoutSessionEffect(session.token).pipe(Effect.ignore)
+        }
 
-    invalidateSession()
-    toast.success('Вы вышли из аккаунта')
-  }, [invalidateSession, session?.token])
+        yield* clearSessionEffect().pipe(Effect.ignore)
+        yield* Effect.sync(() => {
+          resetSessionState()
+          toast.success('Вы вышли из аккаунта')
+        })
+      }),
+    [resetSessionState, session?.token],
+  )
 
   useEffect(() => {
     if (!session?.token || userQuery.data) {
@@ -377,11 +427,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     userQuery.isFetching,
   ])
 
-  const retryProfileLoad = useCallback(async () => {
-    if (!session?.token) return
-    setProfileLoadError(null)
-    await userQuery.refetch()
-  }, [session?.token, userQuery])
+  const retryProfileLoad = useCallback(
+    () =>
+      Effect.gen(function*() {
+        if (!session?.token) return
+        yield* Effect.sync(() => setProfileLoadError(null))
+        yield* Effect.tryPromise({
+          try: () => userQuery.refetch(),
+          catch: (cause) => cause,
+        })
+      }).pipe(Effect.asVoid),
+    [session?.token, userQuery],
+  )
 
   const profileLoadRecovering =
     !!session &&

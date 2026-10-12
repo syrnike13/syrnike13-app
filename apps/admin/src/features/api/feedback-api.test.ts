@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Effect } from 'effect'
 
 import {
   approveFeedback,
@@ -10,15 +12,18 @@ import {
   updateFeedback,
 } from '#/features/api/feedback-api'
 
-const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }))
+const mocks = vi.hoisted(() => ({ apiRequestEffect: vi.fn() }))
 
 vi.mock('#/lib/api/client', () => ({
-  apiRequest: (...args: Parameters<typeof mocks.apiRequest>) =>
-    mocks.apiRequest(...args),
+  apiRequestEffect: (...args: Parameters<typeof mocks.apiRequestEffect>) =>
+    mocks.apiRequestEffect(...args),
 }))
 
 describe('feedback moderation api', () => {
-  beforeEach(() => mocks.apiRequest.mockReset())
+  beforeEach(() => {
+    mocks.apiRequestEffect.mockReset()
+    mocks.apiRequestEffect.mockReturnValue(Effect.void)
+  })
 
   it('forwards pagination for moderation queues and catalogue search', async () => {
     await fetchPendingFeedback('token', { offset: 50, limit: 50 })
@@ -28,19 +33,22 @@ describe('feedback moderation api', () => {
       limit: 25,
     })
 
-    expect(mocks.apiRequest).toHaveBeenNthCalledWith(
+    expect(mocks.apiRequestEffect).toHaveBeenNthCalledWith(
       1,
       '/feedback/admin/pending?offset=50&limit=50',
+      ApiSchema.FeedbackAdminPending200,
       { token: 'token' },
     )
-    expect(mocks.apiRequest).toHaveBeenNthCalledWith(
+    expect(mocks.apiRequestEffect).toHaveBeenNthCalledWith(
       2,
       '/feedback?sort=new&offset=100&limit=50',
+      ApiSchema.FeedbackList200,
       { token: 'token' },
     )
-    expect(mocks.apiRequest).toHaveBeenNthCalledWith(
+    expect(mocks.apiRequestEffect).toHaveBeenNthCalledWith(
       3,
       '/feedback?search=%D0%B3%D0%BE%D0%BB%D0%BE%D1%81%D0%BE%D0%B2%D1%8B%D0%B5%20%D0%BA%D0%BE%D0%BC%D0%BD%D0%B0%D1%82%D1%8B&sort=new&offset=25&limit=25',
+      ApiSchema.FeedbackList200,
       { token: 'token' },
     )
   })
@@ -53,19 +61,22 @@ describe('feedback moderation api', () => {
       reason: 'Совпадает по смыслу',
     })
 
-    expect(mocks.apiRequest).toHaveBeenNthCalledWith(
+    expect(mocks.apiRequestEffect).toHaveBeenNthCalledWith(
       1,
       '/feedback/admin/idea-1/approve',
+      ApiSchema.FeedbackAdminApprove200,
       { method: 'POST', token: 'token' },
     )
-    expect(mocks.apiRequest).toHaveBeenNthCalledWith(
+    expect(mocks.apiRequestEffect).toHaveBeenNthCalledWith(
       2,
       '/feedback/admin/idea-2/reject',
+      ApiSchema.FeedbackAdminReject200,
       { method: 'POST', token: 'token', body: { reason: 'Дубль' } },
     )
-    expect(mocks.apiRequest).toHaveBeenNthCalledWith(
+    expect(mocks.apiRequestEffect).toHaveBeenNthCalledWith(
       3,
       '/feedback/admin/idea-3/merge',
+      ApiSchema.FeedbackAdminMerge200,
       {
         method: 'POST',
         token: 'token',
@@ -81,9 +92,10 @@ describe('feedback moderation api', () => {
       response: 'Уже работаем',
     })
 
-    expect(mocks.apiRequest).toHaveBeenCalledTimes(1)
-    expect(mocks.apiRequest).toHaveBeenCalledWith(
+    expect(mocks.apiRequestEffect).toHaveBeenCalledTimes(1)
+    expect(mocks.apiRequestEffect).toHaveBeenCalledWith(
       '/feedback/admin/idea-1',
+      ApiSchema.FeedbackAdminUpdatePublication200,
       {
         method: 'PATCH',
         token: 'token',

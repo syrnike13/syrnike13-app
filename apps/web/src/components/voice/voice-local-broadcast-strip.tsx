@@ -16,6 +16,7 @@ import {
   readScreenShareBroadcastSource,
   screenShareBroadcastIcon,
 } from '#/features/voice/voice-broadcast-source'
+import { voiceStageMediaStreamTrack } from '#/features/voice/voice-context'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
@@ -104,7 +105,7 @@ function useLocalScreenShareSource() {
     )
 
     const trackSource = readScreenShareBroadcastSource(
-      item?.track?.mediaStreamTrack,
+      voiceStageMediaStreamTrack(item?.track),
     )
     if (!desktop) {
       return trackSource
@@ -129,7 +130,7 @@ function useLocalCameraSourceLabel() {
       (entry) => entry.isLocal && entry.kind === 'camera',
     )
 
-    return readCameraBroadcastLabel(item?.track?.mediaStreamTrack)
+    return readCameraBroadcastLabel(voiceStageMediaStreamTrack(item?.track))
   }, [voiceMedia.cameraEnabled, voiceStage.stageMediaItems])
 }
 

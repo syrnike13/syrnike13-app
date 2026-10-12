@@ -19,4 +19,19 @@ describe('desktop production build profile', () => {
     expect(packageJson.scripts.build).toContain('verify:web-dist')
     expect(packageJson.scripts.package).toContain('pnpm run build')
   })
+
+  it('verifies the sandboxed preload has no external package imports', () => {
+    const packageJson = JSON.parse(
+      readFileSync(resolve(desktopRoot, 'package.json'), 'utf8'),
+    ) as { scripts: Record<string, string> }
+    const verifierPath = resolve(
+      desktopRoot,
+      'scripts/verify-preload-bundle.mjs',
+    )
+
+    expect(existsSync(verifierPath)).toBe(true)
+    expect(packageJson.scripts['build:shell']).toContain(
+      'verify:preload-bundle',
+    )
+  })
 })

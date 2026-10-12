@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { MessageSquareIcon, XIcon } from '#/components/icons'
+import { Effect } from 'effect'
 
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
 import { ChannelSearchDialog } from '#/components/chat/channel-search-dialog'
@@ -11,10 +12,10 @@ import { ChannelSettingsDialog } from '#/components/channels/channel-settings-di
 import { Button } from '#/components/ui/button'
 import { blockUserRelationship } from '#/features/friends/friend-actions'
 import {
-  reactToMessage,
-  sendChannelMessage,
-  editChannelMessage,
-  unreactFromMessage,
+  editChannelMessageEffect,
+  reactToMessageEffect,
+  sendChannelMessageEffect,
+  unreactFromMessageEffect,
 } from '#/features/api/messages-api'
 import { useChannelChat } from '#/features/chat/use-channel-chat'
 import { syncStore } from '#/features/sync/sync-store'
@@ -141,38 +142,53 @@ export function ChannelChatPanel({
           onBlock={(message) => {
             if (!token || message.author === auth.user?._id) return
             if (!window.confirm('Заблокировать этого пользователя?')) return
-            void blockUserRelationship(token, message.author).catch(
-              () => undefined,
+            Effect.runFork(
+              blockUserRelationship(token, message.author).pipe(Effect.ignore),
             )
           }}
           onPin={(message) => void handlePin(message)}
           onUnpin={(message) => void handleUnpin(message)}
           onToggleReaction={async (messageId, emoji, active) => {
             if (!token || !auth.user?._id) return
+            const userId = auth.user._id
 
             syncStore.mutateReaction(
               channelId,
               messageId,
               emoji,
-              auth.user._id,
+              userId,
               !active,
             )
 
-            try {
-              if (active) {
-                await unreactFromMessage(token, channelId, messageId, emoji)
-              } else {
-                await reactToMessage(token, channelId, messageId, emoji)
-              }
-            } catch {
-              syncStore.mutateReaction(
-                channelId,
-                messageId,
-                emoji,
-                auth.user._id,
-                active,
-              )
-            }
+            await Effect.runPromise(
+              (
+                active
+                  ? unreactFromMessageEffect(
+                      token,
+                      channelId,
+                      messageId,
+                      emoji,
+                    )
+                  : reactToMessageEffect(
+                      token,
+                      channelId,
+                      messageId,
+                      emoji,
+                    )
+              ).pipe(
+                Effect.catch(() =>
+                  Effect.sync(() => {
+                    syncStore.mutateReaction(
+                      channelId,
+                      messageId,
+                      emoji,
+                      userId,
+                      active,
+                    )
+                  }),
+                ),
+              ),
+            )
           }}
         />
 
@@ -201,17 +217,26 @@ export function ChannelChatPanel({
             onStopTyping={stopTyping}
             onSend={async (input) => {
               if (!token) return
-              await sendChannelMessage(token, channelId, input)
+              await Effect.runPromise(
+                sendChannelMessageEffect(token, channelId, input),
+              )
             }}
             onEdit={async (messageId, content) => {
               if (!token) return
-              const updated = await editChannelMessage(
-                token,
-                channelId,
-                messageId,
-                content,
+              await Effect.runPromise(
+                editChannelMessageEffect(
+                  token,
+                  channelId,
+                  messageId,
+                  content,
+                ).pipe(
+                  Effect.tap((updated) =>
+                    Effect.sync(() =>
+                      syncStore.patchMessage(channelId, messageId, updated),
+                    ),
+                  ),
+                ),
               )
-              syncStore.patchMessage(channelId, messageId, updated)
             }}
           />
         </div>

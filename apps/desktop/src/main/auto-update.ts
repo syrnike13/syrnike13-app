@@ -1,5 +1,6 @@
 import { app, type BrowserWindow } from 'electron'
 import electronUpdater from 'electron-updater'
+import { Effect, Fiber, Schedule } from 'effect'
 
 const { autoUpdater } = electronUpdater
 
@@ -11,10 +12,10 @@ const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 let currentState: DesktopUpdateState = { status: 'idle' }
 let getWindowRef: (() => BrowserWindow | null) | null = null
 let prepareToQuitRef: (() => void) | null = null
-let checkTimer: ReturnType<typeof setInterval> | null = null
+let checkTimer: Fiber.Fiber<void, never> | null = null
 let started = false
 let startupCheckActive = false
-let inFlightUpdateCheck: Promise<DesktopUpdateState> | null = null
+let inFlightUpdateCheck: Fiber.Fiber<DesktopUpdateState, never> | null = null
 
 function broadcastState() {
   const win = getWindowRef?.()
@@ -31,34 +32,55 @@ export function getDesktopUpdateState() {
   return currentState
 }
 
-export async function checkForDesktopUpdates() {
-  if (!DESKTOP_RELEASE_METADATA.autoUpdateEnabled) return currentState
+export const checkForDesktopUpdatesEffect = Effect.fn(
+  'desktop.checkForUpdates',
+)(function*() {
+  if (!DESKTOP_RELEASE_METADATA.autoUpdateEnabled) {
+    return currentState
+  }
   if (!app.isPackaged) return currentState
+  return yield* Fiber.join(startUpdateCheck())
+})
+
+export function checkForDesktopUpdates() {
+  return Effect.runPromise(checkForDesktopUpdatesEffect())
+}
+
+function startUpdateCheck() {
   if (inFlightUpdateCheck) return inFlightUpdateCheck
 
-  inFlightUpdateCheck = (async () => {
+  let fiber: Fiber.Fiber<DesktopUpdateState, never>
+  const operation = Effect.sync(() => {
     setState({ status: 'checking' })
-    try {
-      await autoUpdater.checkForUpdates()
-    } catch (error) {
-      startupCheckActive = false
-      setState({
-        status: 'error',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Не удалось проверить обновления',
-      })
-    }
-
-    return currentState
-  })()
-
-  try {
-    return await inFlightUpdateCheck
-  } finally {
-    inFlightUpdateCheck = null
-  }
+  }).pipe(
+    Effect.andThen(
+      Effect.tryPromise({
+        try: () => autoUpdater.checkForUpdates(),
+        catch: (cause) => cause,
+      }),
+    ),
+    Effect.catch((error) =>
+      Effect.sync(() => {
+        startupCheckActive = false
+        setState({
+          status: 'error',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Не удалось проверить обновления',
+        })
+      }),
+    ),
+    Effect.map(() => currentState),
+    Effect.ensuring(
+      Effect.sync(() => {
+        if (inFlightUpdateCheck === fiber) inFlightUpdateCheck = null
+      }),
+    ),
+  )
+  fiber = Effect.runFork(operation)
+  inFlightUpdateCheck = fiber
+  return fiber
 }
 
 export function quitAndInstallDesktopUpdate() {
@@ -124,14 +146,19 @@ export function initializeDesktopAutoUpdate(
 
   void checkForDesktopUpdates()
 
-  checkTimer = setInterval(() => {
-    void checkForDesktopUpdates()
-  }, CHECK_INTERVAL_MS)
+  checkTimer = Effect.runFork(
+    checkForDesktopUpdatesEffect().pipe(
+      Effect.ignore,
+      Effect.schedule(Schedule.spaced(CHECK_INTERVAL_MS)),
+      Effect.delay(CHECK_INTERVAL_MS),
+      Effect.asVoid,
+    ),
+  )
 }
 
 export function disposeDesktopAutoUpdate() {
   if (checkTimer) {
-    clearInterval(checkTimer)
+    Effect.runFork(Fiber.interrupt(checkTimer))
     checkTimer = null
   }
 }

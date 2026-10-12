@@ -21,8 +21,6 @@ import {
 import { hasPermissionBit } from '#/lib/permission-bits'
 import { ServerPermission } from '#/lib/server-permissions'
 import type { ChannelUnreadState, SyncState } from './types'
-
-export const EMPTY_CHANNELS: Channel[] = []
 export const EMPTY_MESSAGES: Message[] = []
 export const EMPTY_TYPING_USERS: string[] = []
 
@@ -312,13 +310,6 @@ export function listServerCustomEmojis(
         emoji.parent.type === 'Server' && emoji.parent.id === serverId,
     )
     .sort((a, b) => a.name.localeCompare(b.name))
-}
-
-export function memberRoleNames(
-  server: Server | undefined,
-  member: Member,
-): string[] {
-  return memberRoleEntries(server, member).map((role) => role.name)
 }
 
 export type MemberRoleEntry = {

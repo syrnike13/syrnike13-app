@@ -3,6 +3,7 @@
 import type { FeedbackSuggestion, FeedbackSuggestionPage } from '@syrnike13/api-types'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AdminDraftProvider } from '#/components/draft-controller-context'
@@ -38,8 +39,8 @@ const mocks = vi.hoisted(() => ({
   approveFeedback: vi.fn(),
   rejectFeedback: vi.fn(),
   mergeFeedback: vi.fn(),
-  hideFeedback: vi.fn(),
-  updateFeedback: vi.fn(),
+  hideFeedbackEffect: vi.fn(),
+  updateFeedbackEffect: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   toastWarning: vi.fn(),
@@ -76,10 +77,12 @@ vi.mock('#/features/api/feedback-api', () => ({
     mocks.rejectFeedback(...args),
   mergeFeedback: (...args: Parameters<typeof mocks.mergeFeedback>) =>
     mocks.mergeFeedback(...args),
-  hideFeedback: (...args: Parameters<typeof mocks.hideFeedback>) =>
-    mocks.hideFeedback(...args),
-  updateFeedback: (...args: Parameters<typeof mocks.updateFeedback>) =>
-    mocks.updateFeedback(...args),
+  hideFeedbackEffect: (
+    ...args: Parameters<typeof mocks.hideFeedbackEffect>
+  ) => mocks.hideFeedbackEffect(...args),
+  updateFeedbackEffect: (
+    ...args: Parameters<typeof mocks.updateFeedbackEffect>
+  ) => mocks.updateFeedbackEffect(...args),
 }))
 
 import { FeedbackModerationPage } from './feedback-moderation'
@@ -133,16 +136,18 @@ describe('FeedbackModerationPage', () => {
   beforeEach(() => {
     mocks.fetchPendingFeedback.mockResolvedValue(emptyPage)
     mocks.fetchPublishedFeedback.mockResolvedValue(publishedPage)
-    mocks.fetchAllPublishedFeedback.mockResolvedValue([
-      firstSuggestion,
-      secondSuggestion,
-    ])
-    mocks.updateFeedback.mockImplementation(async (_token, id, data) => ({
-      ...(id === firstSuggestion._id ? firstSuggestion : secondSuggestion),
-      status: data.status,
-      team_response: data.response,
-      updated_at: '2026-07-15T12:01:00.000Z',
-    }))
+    mocks.fetchAllPublishedFeedback.mockReturnValue(
+      Effect.succeed([firstSuggestion, secondSuggestion]),
+    )
+    mocks.hideFeedbackEffect.mockReturnValue(Effect.void)
+    mocks.updateFeedbackEffect.mockImplementation((_token, id, data) =>
+      Effect.succeed({
+        ...(id === firstSuggestion._id ? firstSuggestion : secondSuggestion),
+        status: data.status,
+        team_response: data.response,
+        updated_at: '2026-07-15T12:01:00.000Z',
+      }),
+    )
   })
 
   afterEach(() => {
@@ -193,9 +198,9 @@ describe('FeedbackModerationPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     await waitFor(() => {
-      expect(mocks.updateFeedback).toHaveBeenCalledTimes(1)
+      expect(mocks.updateFeedbackEffect).toHaveBeenCalledTimes(1)
     })
-    expect(mocks.updateFeedback).toHaveBeenCalledWith('token', 'idea-1', {
+    expect(mocks.updateFeedbackEffect).toHaveBeenCalledWith('token', 'idea-1', {
       expected_updated_at: firstSuggestion.updated_at,
       status: 'planned',
       response: 'Новый официальный ответ',

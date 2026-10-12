@@ -1,0 +1,104 @@
+# Production GPU screen pipeline
+
+The product screen path: capture, GPU conversion and hardware H.264. There is
+no CPU fallback. The preset/adaptation contract is [fixed-preset bitrate
+control](ADAPTIVE_SCREEN_QUALITY.md).
+
+## Data path and ownership
+
+```text
+WGC FrameLease (BGRA D3D11 texture)
+  -> ScreenFramePipeline, one latest-wins pending lease
+  -> GpuScreenConverter, three fixed NV12 D3D11 textures
+  -> HardwareH264Encoder, one latest-wins input and three fixed bitstream slots
+  -> ProductionScreenSender, one active plus one ordered pending access unit
+  -> LiveKitScreenPublicationAdapter on LiveKitRoomTransport's SDK lane
+  -> EncodedVideoSource / strict PreEncoded backend
+```
+
+`D3d11DeviceOwner` is process-scoped and exposes its adapter LUID. WGC,
+VideoProcessor conversion, and Media Foundation therefore use the same D3D11
+device. Conversion submits a BGRA-to-NV12 VideoProcessor blit with BT.709 studio
+range and never maps, flushes, or waits on a GPU fence.
+
+The preset is a box, not the stream size. As in Discord, the stream keeps the
+source's aspect ratio inside it (`fitScreenOutput`): never upscaled, a tiny
+source raised to a 320 px long side, sides in multiples of 8, the preset's FPS
+and bitrate. An ultrawide 3440x1440 monitor is sent as 1920x800, a portrait
+1080x1920 window as 600x1080. The first frame sets the size before
+publication. When the source later changes size and the new size holds for
+500 ms, the converter and encoder are replaced on the same publication: viewers
+keep their track and the H.264 stream changes size on the new encoder's
+keyframe (in the bench a 640x360 window turned 400x700 with a 92-110 ms gap).
+While a window is being dragged, frames are scaled whole into the current size
+and letterboxed with black; nothing is cropped. The encoder wraps the
+NV12 texture in an `IMFDXGISurfaceBuffer`; the only per-frame CPU copy is the
+compressed H.264 access unit into a preallocated output slot.
+
+The encoder enumerates only `MFT_ENUM_FLAG_HARDWARE` H.264 transforms. Startup
+fully configures the D3D manager, NV12 input, H.264 output, low latency, CBR,
+zero B-frames, and the selected profile before publication starts. Failure is
+typed and terminal; software H.264 is never queried.
+
+The SDK pass-through advertises a trusted rate controller so WebRTC does not
+drop dependent access units after encoding. Its offer starts near the declared
+fixed bitrate instead of the ordinary 1 Mbps raw-encoder ceiling; otherwise the
+RTP pacer accumulates seconds of video that the external encoder cannot resize
+or re-encode in response to startup bandwidth estimates.
+
+## Fixed profiles and memory
+
+| Profile | Nominal capture pool (3× BGRA) | NV12 pool (3 slots) | Encoded pool (3×2 MiB) | Nominal total |
+|---|---:|---:|---:|---:|
+| 1920×1080 @ 60, 8 Mbps | 24,883,200 B | 9,331,200 B | 6,291,456 B | 40,505,856 B |
+| 2560×1440 @ 30, 10 Mbps | 44,236,800 B | 16,588,800 B | 6,291,456 B | 67,117,056 B |
+| 1280×720 @ 30, 4 Mbps | 11,059,200 B | 4,147,200 B | 6,291,456 B | 21,497,856 B |
+
+The capture column is nominal because its textures follow source dimensions.
+Production requires only one VideoProcessor input stream. Converter and bitstream pools never
+grow. A size change cannot replace converter textures while a slot lease is
+active, so a generation is retired only after all of its leases return.
+
+## Backpressure, controls, and stop
+
+Capture and encoder inputs keep the newest frame, because screen video is lossy
+and age matters more than continuity before encoding. Capture only delivers
+frames when the screen changes. The pipeline keeps a GPU copy of the newest
+submitted capture and re-encodes it after 250 ms without a new one, so a static
+screen still answers a new viewer's keyframe request (before this, a viewer who
+joined a static window saw nothing until it changed). Encoded H.264 access units
+retain their order: occupied output slots plus accepted inputs cannot exceed
+three, and a full publication queue rejects admission without taking ownership.
+Backpressure therefore reaches raw input before any reference frame is lost.
+Publication control, key-frame requests,
+unpublish acknowledgements, and slot releases are lossless. PLI/FIR is polled
+from the pre-encoded LiveKit source and forwarded to
+`CODECAPI_AVEncVideoForceKeyFrame`. The selected preset keeps fixed target FPS
+and resolution. Under #139, live bitrate updates stay inside its finite range
+on the same encoder and publication.
+
+Stop revokes capture acceptance, joins the pipeline worker, drains the encoder,
+unpublishes the screen track, and waits for every submitted encoded slot. A
+publish, submit, drain, or unpublish timeout is reported with its stage. If a
+native/SDK call still borrows memory, stop requires media utility epoch
+retirement, while Voice Membership and Room ownership stay outside this module.
+The worker completion signal follows COM/MF cleanup. Stop waits for that signal
+within its deadline before joining; destruction of an unretired hung worker
+terminates the isolated utility process instead of detaching it. An encoder
+failure immediately fails the pipeline and initiates track unpublication. Once
+its worker has completed cleanup, a cooperative encoder failure is safe to drain
+inside the current utility; only a failure marked
+`utility_epoch_retirement_required` keeps stop terminal for the utility epoch.
+
+## Verification
+
+`gpu_screen_converter_tests` runs on the real Windows adapter and verifies all
+three strict hardware capabilities, BT.709 GPU conversion, fixed-pool
+exhaustion/reuse, a real NV12-to-H.264 output, encoder drain, and the integrated
+production lifecycle. `production_screen_sender_tests` injects overload and
+hung SDK operations to prove encoded reference preservation, independent deadlines, late
+slot return, and unpublish escalation.
+The GPU tests also hold all three
+encoded slots and verify that only pending raw input is superseded.
+
+`bench/call-bench.mjs` measures a real monitor and window share end to end.

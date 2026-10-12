@@ -1,22 +1,24 @@
-const INSTALLED_KEY = Symbol.for('syrnike13.stdioPipeErrorHandlerInstalled')
+import { Option, Schema } from 'effect'
 
-type StdioStream = NodeJS.WriteStream & {
-  [INSTALLED_KEY]?: true
-}
+const installedStreams = new WeakSet<NodeJS.WriteStream>()
+const BrokenPipeErrorSchema = Schema.Struct({
+  code: Schema.Literal('EPIPE'),
+})
 
 function isBrokenPipeError(error: unknown) {
   return (
     error instanceof Error &&
-    (error as NodeJS.ErrnoException).code === 'EPIPE'
+    Option.isSome(
+      Schema.decodeUnknownOption(BrokenPipeErrorSchema)(error),
+    )
   )
 }
 
 export function installStdioPipeErrorHandler(stream: NodeJS.WriteStream) {
-  const target = stream as StdioStream
-  if (target[INSTALLED_KEY]) return
-  target[INSTALLED_KEY] = true
+  if (installedStreams.has(stream)) return
+  installedStreams.add(stream)
 
-  target.on('error', (error) => {
+  stream.on('error', (error) => {
     if (isBrokenPipeError(error)) return
     throw error
   })

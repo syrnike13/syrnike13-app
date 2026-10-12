@@ -48,6 +48,7 @@ import { getFirstPartyChannelActivity } from '#/features/activities/channel-acti
 import { useChannelActivity } from '#/features/activities/use-channel-activity'
 import {
   getChannelVoiceParticipants,
+  sameVoiceParticipantList,
   useChannelVoiceParticipantsWithLocalOverride,
 } from '#/features/sync/voice-selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
@@ -157,8 +158,9 @@ export function VoiceStageView({
       ? s.members[`${channel.server}:${auth.user._id}`]
       : undefined,
   )
-  const storeParticipants = useSyncStore((s) =>
-    getChannelVoiceParticipants(s, channelId, auth.user?._id),
+  const storeParticipants = useSyncStore(
+    (s) => getChannelVoiceParticipants(s, channelId, auth.user?._id),
+    sameVoiceParticipantList,
   )
   const inVoiceSession = isVoiceSessionInChannel(voiceSession, channelId)
   const inThisVoiceCall = voiceSession.status === 'connected' && inVoiceSession

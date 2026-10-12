@@ -1,35 +1,36 @@
+import { Option, Schema } from 'effect'
+
 export const VOICE_MEMBER_DRAG_TYPE = 'application/x-syrnike-voice-member'
 
-export type VoiceMemberDragPayload = {
-  serverId: string
-  channelId: string
-  userId: string
-}
+const VoiceMemberDragPayloadSchema = Schema.Struct({
+  serverId: Schema.String,
+  channelId: Schema.String,
+  userId: Schema.String,
+})
+
+const VoiceMemberDragPayloadJsonSchema = Schema.fromJsonString(
+  VoiceMemberDragPayloadSchema,
+)
+
+export type VoiceMemberDragPayload = typeof VoiceMemberDragPayloadSchema.Type
 
 export function writeVoiceMemberDragPayload(
   dataTransfer: DataTransfer,
   payload: VoiceMemberDragPayload,
 ) {
   dataTransfer.effectAllowed = 'move'
-  dataTransfer.setData(VOICE_MEMBER_DRAG_TYPE, JSON.stringify(payload))
+  dataTransfer.setData(
+    VOICE_MEMBER_DRAG_TYPE,
+    Schema.encodeSync(VoiceMemberDragPayloadJsonSchema)(payload),
+  )
 }
 
 export function readVoiceMemberDragPayload(
   dataTransfer: DataTransfer,
 ): VoiceMemberDragPayload | null {
-  try {
-    const parsed = JSON.parse(
-      dataTransfer.getData(VOICE_MEMBER_DRAG_TYPE),
-    ) as Partial<VoiceMemberDragPayload>
-    if (
-      typeof parsed.serverId !== 'string' ||
-      typeof parsed.channelId !== 'string' ||
-      typeof parsed.userId !== 'string'
-    ) {
-      return null
-    }
-    return parsed as VoiceMemberDragPayload
-  } catch {
-    return null
-  }
+  return Option.getOrNull(
+    Schema.decodeUnknownOption(VoiceMemberDragPayloadJsonSchema)(
+    dataTransfer.getData(VOICE_MEMBER_DRAG_TYPE),
+    ),
+  )
 }

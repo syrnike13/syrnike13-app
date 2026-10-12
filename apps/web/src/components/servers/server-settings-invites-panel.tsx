@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { Invite } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { CopyIcon, PlusIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
@@ -17,15 +18,15 @@ import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
 import { useAuth } from '#/features/auth/auth-context'
-import { fetchServerInvites } from '#/features/api/servers-api'
+import { fetchServerInvitesEffect } from '#/features/api/servers-api'
 import {
-  deleteInvite,
+  deleteInviteEffect,
   getInviteInactiveReason,
   type InviteInactiveReason,
 } from '#/features/api/invites-api'
 import { listServerChannels } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { writeClipboardText } from '#/lib/clipboard'
+import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
 
 type ServerSettingsInvitesPanelProps = {
@@ -76,7 +77,13 @@ export function ServerSettingsInvitesPanel({
   const invitesQuery = useQuery({
     queryKey: ['server-invites', serverId],
     enabled: Boolean(token),
-    queryFn: () => fetchServerInvites(token!, serverId),
+    queryFn: ({ signal }) =>
+      Effect.runPromise(
+        token
+          ? fetchServerInvitesEffect(token, serverId)
+          : Effect.fail(new Error('Нет сессии')),
+        { signal },
+      ),
   })
 
   const invites = invitesQuery.data ?? []
@@ -91,31 +98,49 @@ export function ServerSettingsInvitesPanel({
     const body = revokeReason.trim() ? { reason: revokeReason.trim() } : {}
 
     setRevokingCode(code)
-    try {
-      await deleteInvite(token, code, body)
-      await invitesQuery.refetch()
-      setInvitePendingRevocation(null)
-      setRevokeReason('')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось отозвать приглашение',
-      )
-    } finally {
-      setRevokingCode(null)
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        yield* deleteInviteEffect(token, code, body)
+        yield* Effect.tryPromise({
+          try: () => invitesQuery.refetch(),
+          catch: (cause) => cause,
+        })
+        yield* Effect.sync(() => {
+          setInvitePendingRevocation(null)
+          setRevokeReason('')
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось отозвать приглашение',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setRevokingCode(null))),
+      ),
+    )
   }
 
   async function copyInvite(code: string) {
-    try {
-      await writeClipboardText(inviteUrl(code))
-      toast.success('Скопировано')
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось скопировать приглашение',
-      )
-    }
+    await Effect.runPromise(
+      writeClipboardTextEffect(inviteUrl(code)).pipe(
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось скопировать приглашение',
+              )
+            }),
+          onSuccess: () =>
+            Effect.sync(() => toast.success('Скопировано')),
+        }),
+      ),
+    )
   }
 
   return (

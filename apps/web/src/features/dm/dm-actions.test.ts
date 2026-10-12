@@ -1,4 +1,5 @@
 import type { Channel } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 
 import { openDirectMessageChannel } from './dm-actions'
@@ -13,7 +14,7 @@ describe('dm actions', () => {
     } as Channel
 
     const deps = {
-      openDirectMessage: vi.fn().mockResolvedValue(channel),
+      openDirectMessage: vi.fn(() => Effect.succeed(channel)),
       upsertChannel: vi.fn(),
       setSelectedServerId: vi.fn(),
       toastError: vi.fn(),
@@ -21,11 +22,13 @@ describe('dm actions', () => {
     const navigateToChannel = vi.fn(async () => {})
 
     await expect(
-      openDirectMessageChannel(
-        'token-1',
-        'target-user',
-        navigateToChannel,
-        deps,
+      Effect.runPromise(
+        openDirectMessageChannel(
+          'token-1',
+          'target-user',
+          navigateToChannel,
+          deps,
+        ),
       ),
     ).resolves.toBe(channel)
 

@@ -72,18 +72,33 @@ describe('native media support contracts', () => {
   })
 
   it('validates the runtime state crossing the preload boundary', () => {
+    const inactivePath = { revision: 0, state: 'off', warning: false }
     expect(isNativeMediaRuntimeState({
-      available: true,
-      status: 'degraded',
-      restartCount: 3,
-      degradedReason: 'circuit open',
-      degradedRetryAttempt: 1,
-      nextRetryAt: 30_000,
+      available: false,
+      status: 'unavailable',
+      restartCount: 0,
+      hostEpoch: 0,
+      paths: {
+        microphone: inactivePath,
+        camera: inactivePath,
+        screen: inactivePath,
+        output: inactivePath,
+        screen_audio: inactivePath,
+        screen_preview: inactivePath,
+        camera_preview: inactivePath,
+        remote_video: inactivePath,
+      },
+      failure: {
+        code: 'native_media_unavailable',
+        message: 'Native media is unavailable while the v2 engine is rebuilt.',
+        retryable: false,
+        stage: 'native_runtime',
+      },
     })).toBe(true)
     expect(isNativeMediaRuntimeState({
-      available: true,
-      status: 'degraded',
-      restartCount: -1,
+      available: false,
+      status: 'stopped',
+      restartCount: 0,
     })).toBe(false)
   })
 })

@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { createChannelInvite } from '#/features/api/invites-api'
+import { createChannelInviteEffect } from '#/features/api/invites-api'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   VoiceOnAirBadge,
@@ -13,7 +14,7 @@ import {
 import { useVoiceTilePalette } from '#/features/voice/use-voice-tile-palette'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import { tilePaletteStyle } from '#/lib/avatar-tile-palette'
-import { writeClipboardText } from '#/lib/clipboard'
+import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
 import { cn } from '#/lib/utils'
 
@@ -129,21 +130,30 @@ export function VoiceStageInviteTile({
       return
     }
     setBusy(true)
-    try {
-      const invite = await createChannelInvite(token, channelId)
-      const code = '_id' in invite ? invite._id : ''
-      if (!code) throw new Error('Пустой код приглашения')
-      await writeClipboardText(inviteUrl(code))
-      toast.success('Ссылка приглашения скопирована')
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось создать приглашение',
-      )
-    } finally {
-      setBusy(false)
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        const invite = yield* createChannelInviteEffect(token, channelId, {})
+        const code = '_id' in invite ? invite._id : ''
+        if (!code) {
+          return yield* Effect.fail(new Error('Пустой код приглашения'))
+        }
+        yield* writeClipboardTextEffect(inviteUrl(code))
+        yield* Effect.sync(() =>
+          toast.success('Ссылка приглашения скопирована'),
+        )
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось создать приглашение',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setBusy(false))),
+      ),
+    )
   }
 
   return (

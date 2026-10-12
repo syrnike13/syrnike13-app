@@ -10,6 +10,7 @@ import {
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import type { Channel } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelSettingsOverviewPanel } from '#/components/channels/channel-settings-overview-panel'
@@ -59,9 +60,9 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/channels-api', () => ({
-  deleteChannel: (...args: Parameters<typeof mocks.deleteChannel>) =>
+  deleteChannelEffect: (...args: Parameters<typeof mocks.deleteChannel>) =>
     mocks.deleteChannel(...args),
-  editChannel: (...args: Parameters<typeof mocks.editChannel>) =>
+  editChannelEffect: (...args: Parameters<typeof mocks.editChannel>) =>
     mocks.editChannel(...args),
 }))
 
@@ -120,8 +121,10 @@ describe('ChannelSettingsOverviewPanel', () => {
     ])
     syncStore.upsertChannel(textChannel('channel-1', 'general'))
     syncStore.upsertChannel(textChannel('channel-2', 'next'))
-    mocks.deleteChannel.mockResolvedValue(undefined)
-    mocks.editChannel.mockResolvedValue(textChannel('channel-1', 'general'))
+    mocks.deleteChannel.mockReturnValue(Effect.void)
+    mocks.editChannel.mockReturnValue(
+      Effect.succeed(textChannel('channel-1', 'general')),
+    )
     mocks.navigate.mockResolvedValue(undefined)
   })
 
@@ -170,10 +173,12 @@ describe('ChannelSettingsOverviewPanel', () => {
 
   it('saves the text channel topic from overview settings', async () => {
     const channel = textChannel('channel-1', 'general')
-    mocks.editChannel.mockResolvedValue({
-      ...channel,
-      description: 'Читайте закреп перед вопросами',
-    })
+    mocks.editChannel.mockReturnValue(
+      Effect.succeed({
+        ...channel,
+        description: 'Читайте закреп перед вопросами',
+      }),
+    )
 
     renderWithDraft(channel)
 
@@ -195,7 +200,9 @@ describe('ChannelSettingsOverviewPanel', () => {
     const channel = textChannel('channel-1', 'general', {
       description: 'Старый топик',
     })
-    mocks.editChannel.mockResolvedValue({ ...channel, description: null })
+    mocks.editChannel.mockReturnValue(
+      Effect.succeed({ ...channel, description: null }),
+    )
 
     renderWithDraft(channel)
 

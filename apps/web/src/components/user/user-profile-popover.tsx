@@ -15,12 +15,22 @@ import { cn } from '#/lib/utils'
 function focusOutsideRelatedTarget(event: unknown): EventTarget | null {
   if (!event || typeof event !== 'object') return null
 
-  const detail = (event as { detail?: { originalEvent?: FocusEvent } }).detail
-  const fromOriginal = detail?.originalEvent?.relatedTarget
-  if (fromOriginal != null) return fromOriginal
+  if (
+    'detail' in event &&
+    event.detail &&
+    typeof event.detail === 'object' &&
+    'originalEvent' in event.detail &&
+    event.detail.originalEvent instanceof FocusEvent
+  ) {
+    const fromOriginal = event.detail.originalEvent.relatedTarget
+    if (fromOriginal != null) return fromOriginal
+  }
 
   if ('relatedTarget' in event) {
-    return (event as { relatedTarget: EventTarget | null }).relatedTarget
+    const relatedTarget = event.relatedTarget
+    return relatedTarget == null || relatedTarget instanceof EventTarget
+      ? (relatedTarget ?? null)
+      : null
   }
 
   return null

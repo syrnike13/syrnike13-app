@@ -3,6 +3,7 @@ import { PinIcon } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
@@ -13,12 +14,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '#/components/ui/dialog'
-import { fetchPinnedMessages } from '#/features/api/messages-api'
+import { fetchPinnedMessagesEffect } from '#/features/api/messages-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
 import { queryKeys } from '#/lib/api/query-keys'
-import { writeClipboardText } from '#/lib/clipboard'
+import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { cn } from '#/lib/utils'
 import { serverChannelServerId } from '#/lib/channel-voice'
 
@@ -47,10 +48,10 @@ export function ChannelPinnedDialog({
 
   const pinnedQuery = useQuery({
     queryKey: queryKeys.channels.pinned(channelId),
-    queryFn: async () => {
-      const { messages, users: foundUsers } = await fetchPinnedMessages(
-        token,
-        channelId,
+    queryFn: async ({ signal }) => {
+      const { messages, users: foundUsers } = await Effect.runPromise(
+        fetchPinnedMessagesEffect(token, channelId, 50),
+        { signal },
       )
       for (const user of foundUsers) {
         syncStore.upsertUser(user)
@@ -154,9 +155,20 @@ export function ChannelPinnedDialog({
                   size="sm"
                   className="mt-2 h-auto px-0"
                   onClick={() => {
-                    void writeClipboardText(message._id)
-                      .then(() => toast.success('ID скопирован'))
-                      .catch(() => toast.error('Не удалось скопировать'))
+                    Effect.runFork(
+                      writeClipboardTextEffect(message._id).pipe(
+                        Effect.matchEffect({
+                          onFailure: () =>
+                            Effect.sync(() => {
+                              toast.error('Не удалось скопировать')
+                            }),
+                          onSuccess: () =>
+                            Effect.sync(() => {
+                              toast.success('ID скопирован')
+                            }),
+                        }),
+                      ),
+                    )
                   }}
                 >
                   Копировать ID

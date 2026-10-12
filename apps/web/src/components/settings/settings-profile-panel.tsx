@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { DataEditUser, FieldsUser, User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import {
@@ -22,10 +23,13 @@ import { UserAvatar } from '#/components/user/user-avatar'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { Textarea } from '#/components/ui/textarea'
-import { uploadMediaFile } from '#/features/api/media-api'
-import { fetchUserProfile, updateCurrentUser } from '#/features/api/users-api'
+import { uploadMediaFileEffect } from '#/features/api/media-api'
+import {
+  fetchUserProfile,
+  updateCurrentUserEffect,
+} from '#/features/api/users-api'
 import { useAuth } from '#/features/auth/auth-context'
-import { profileSchema } from '#/features/auth/schemas'
+import { profileSchema, validateForm } from '#/features/auth/schemas'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userAvatarUrl, userBannerUrl } from '#/lib/media'
 import { userProfileBannerClassName } from '#/lib/user-profile-banner'
@@ -78,7 +82,7 @@ export function SettingsProfilePanel() {
 
   const profileQuery = useQuery({
     queryKey: queryKeys.users.profile(user?._id ?? ''),
-    queryFn: () => fetchUserProfile(token!, user!._id),
+    queryFn: ({ signal }) => fetchUserProfile(token!, user!._id, signal),
     enabled: Boolean(token && user?._id),
     staleTime: 30_000,
   })
@@ -170,41 +174,58 @@ export function SettingsProfilePanel() {
   }, [avatarPreview, bannerPreview])
 
   const persistProfile = useCallback(
-    async (patch: DataEditUser) => {
-      if (!token || !user || saveInFlightRef.current) return false
+    (patch: DataEditUser) =>
+      Effect.suspend(() => {
+        if (!token || !user || saveInFlightRef.current) {
+          return Effect.succeed(false)
+        }
 
-      const remove = (patch.remove ?? []) as FieldsUser[]
-      const hasChange =
-        patch.display_name !== undefined ||
-        patch.avatar !== undefined ||
-        patch.status !== undefined ||
-        patch.profile !== undefined ||
-        remove.length > 0
+        const remove = patch.remove ?? []
+        const hasChange =
+          patch.display_name !== undefined ||
+          patch.avatar !== undefined ||
+          patch.status !== undefined ||
+          patch.profile !== undefined ||
+          remove.length > 0
 
-      if (!hasChange) return true
+        if (!hasChange) return Effect.succeed(true)
 
-      saveInFlightRef.current = true
-      setIsSaving(true)
-
-      try {
-        await updateCurrentUser(token, patch)
-        await auth.refreshUser()
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.users.profile(user._id),
-        })
-        return true
-      } catch (error) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'Не удалось сохранить профиль',
+        return Effect.sync(() => {
+          saveInFlightRef.current = true
+          setIsSaving(true)
+        }).pipe(
+          Effect.andThen(
+            Effect.gen(function*() {
+              yield* updateCurrentUserEffect(token, patch)
+              yield* auth.refreshUser()
+              yield* Effect.tryPromise({
+                try: () =>
+                  queryClient.invalidateQueries({
+                    queryKey: queryKeys.users.profile(user._id),
+                  }),
+                catch: (cause) => cause,
+              })
+              return true
+            }),
+          ),
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось сохранить профиль',
+              )
+              return false
+            }),
+          ),
+          Effect.ensuring(
+            Effect.sync(() => {
+              saveInFlightRef.current = false
+              setIsSaving(false)
+            }),
+          ),
         )
-        return false
-      } finally {
-        saveInFlightRef.current = false
-        setIsSaving(false)
-      }
-    },
+      }),
     [auth, queryClient, token, user],
   )
 
@@ -226,7 +247,7 @@ export function SettingsProfilePanel() {
   const saveTextFields = useCallback(async (): Promise<boolean> => {
     if (!user) return false
 
-    const parsed = profileSchema.safeParse({
+    const parsed = validateForm(profileSchema, {
       display_name: displayName,
       status_text: statusText,
       bio,
@@ -243,8 +264,8 @@ export function SettingsProfilePanel() {
     }
 
     const baseline = savedBaselineRef.current
-    const changes: DataEditUser = { remove: [] }
-    const remove = changes.remove as FieldsUser[]
+    const remove: FieldsUser[] = []
+    const changes: DataEditUser = { remove }
 
     if (trimmedName !== baseline.displayName.trim()) {
       changes.display_name = trimmedName.length ? trimmedName : null
@@ -266,7 +287,7 @@ export function SettingsProfilePanel() {
       }
     }
 
-    const ok = await persistProfile(changes)
+    const ok = await Effect.runPromise(persistProfile(changes))
     if (!ok) return false
 
     commitSavedBaseline({
@@ -305,16 +326,26 @@ export function SettingsProfilePanel() {
       const preview = URL.createObjectURL(file)
       setAvatarPreviewOverride(preview)
 
-      try {
-        const avatarId = await uploadMediaFile(token, 'avatars', file)
-        const ok = await persistProfile({ avatar: avatarId })
-        if (ok) setAvatarPreviewOverride(undefined)
-      } catch (error) {
-        setAvatarPreviewOverride(undefined)
-        toast.error(
-          error instanceof Error ? error.message : 'Не удалось загрузить аватар',
-        )
-      }
+      await Effect.runPromise(
+        uploadMediaFileEffect(token, 'avatars', file).pipe(
+          Effect.flatMap((avatarId) => persistProfile({ avatar: avatarId })),
+          Effect.tap((saved) =>
+            saved
+              ? Effect.sync(() => setAvatarPreviewOverride(undefined))
+              : Effect.succeed(undefined),
+          ),
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              setAvatarPreviewOverride(undefined)
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось загрузить аватар',
+              )
+            }),
+          ),
+        ),
+      )
     },
     [persistProfile, token, user],
   )
@@ -322,7 +353,9 @@ export function SettingsProfilePanel() {
   const removeAvatar = useCallback(async () => {
     if (!token || !user?.avatar) return
     setAvatarPreviewOverride(null)
-    const ok = await persistProfile({ remove: ['Avatar'] })
+    const ok = await Effect.runPromise(
+      persistProfile({ remove: ['Avatar'] }),
+    )
     if (ok) {
       setAvatarPreviewOverride(undefined)
     }
@@ -334,18 +367,30 @@ export function SettingsProfilePanel() {
       const preview = URL.createObjectURL(file)
       setBannerPreviewOverride(preview)
 
-      try {
-        const backgroundId = await uploadMediaFile(token, 'backgrounds', file)
-        const ok = await persistProfile({
-          profile: { background: backgroundId },
-        })
-        if (ok) setBannerPreviewOverride(undefined)
-      } catch (error) {
-        setBannerPreviewOverride(undefined)
-        toast.error(
-          error instanceof Error ? error.message : 'Не удалось загрузить баннер',
-        )
-      }
+      await Effect.runPromise(
+        uploadMediaFileEffect(token, 'backgrounds', file).pipe(
+          Effect.flatMap((backgroundId) =>
+            persistProfile({
+              profile: { background: backgroundId },
+            }),
+          ),
+          Effect.tap((saved) =>
+            saved
+              ? Effect.sync(() => setBannerPreviewOverride(undefined))
+              : Effect.succeed(undefined),
+          ),
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              setBannerPreviewOverride(undefined)
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось загрузить баннер',
+              )
+            }),
+          ),
+        ),
+      )
     },
     [persistProfile, token, user],
   )
@@ -353,7 +398,9 @@ export function SettingsProfilePanel() {
   const removeBanner = useCallback(async () => {
     if (!token || !profileQuery.data?.background) return
     setBannerPreviewOverride(null)
-    const ok = await persistProfile({ remove: ['ProfileBackground'] })
+    const ok = await Effect.runPromise(
+      persistProfile({ remove: ['ProfileBackground'] }),
+    )
     if (ok) {
       setBannerPreviewOverride(undefined)
     }

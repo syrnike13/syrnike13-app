@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { Effect, Fiber } from 'effect'
 import type { DesktopOverlayState } from '@syrnike13/platform'
 
 import { DesktopOverlayHud } from '#/features/overlay/desktop-overlay-hud'
@@ -28,29 +29,40 @@ function DesktopOverlayRoute() {
 
   useEffect(() => {
     if (!desktop) return
-    let cancelled = false
     let unsubscribe = () => {}
-
-    void desktop.overlay
-      .getState()
-      .then((nextState) => {
-        if (!cancelled) setState(nextState)
-      })
-      .catch((error) => {
-        console.error('[desktop-overlay] failed to load state', error)
-      })
+    let pushedStateRevision = 0
 
     try {
       unsubscribe = desktop.overlay.onStateChange((nextState) => {
-        if (!cancelled) setState(nextState)
+        pushedStateRevision += 1
+        setState(nextState)
       })
     } catch (error) {
       console.error('[desktop-overlay] failed to subscribe to state', error)
     }
 
+    const initialRevision = pushedStateRevision
+    const fiber = Effect.runFork(
+      Effect.tryPromise({
+        try: () => desktop.overlay.getState(),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              console.error('[desktop-overlay] failed to load state', error)
+            }),
+          onSuccess: (nextState) =>
+            Effect.sync(() => {
+              if (pushedStateRevision === initialRevision) setState(nextState)
+            }),
+        }),
+      ),
+    )
+
     return () => {
-      cancelled = true
       unsubscribe()
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [desktop])
 

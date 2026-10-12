@@ -3,6 +3,8 @@ import type {
   FeedbackCategory,
   FeedbackPlatform,
 } from '@syrnike13/api-types'
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Option, Schema } from 'effect'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
@@ -142,14 +144,22 @@ export function FeedbackCreateDialog({
     queryKey: queryKeys.feedback.list(viewerId ?? 'pending-session', {
       similar: normalizedTitle,
     }),
-    queryFn: () =>
-      fetchFeedbackSuggestions(token!, {
-        search: normalizedTitle,
-        sort: 'popular',
-        offset: 0,
-        limit: 3,
-      }),
-    enabled: open && step === 1 && Boolean(token && viewerId) && normalizedTitle.length >= 4,
+    queryFn: ({ signal }) =>
+      fetchFeedbackSuggestions(
+        token!,
+        {
+          search: normalizedTitle,
+          sort: 'popular',
+          offset: 0,
+          limit: 3,
+        },
+        signal,
+      ),
+    enabled:
+      open &&
+      step === 1 &&
+      Boolean(token && viewerId) &&
+      normalizedTitle.length >= 4,
     staleTime: 30_000,
   })
 
@@ -180,15 +190,19 @@ export function FeedbackCreateDialog({
   }
 
   const createMutation = useMutation({
-    mutationFn: (isAnonymous: boolean) =>
-      createFeedbackSuggestion(token!, {
+    mutationFn: (isAnonymous: boolean) => {
+      if (!category || !platform) {
+        throw new Error('Feedback category and platform are required')
+      }
+      return createFeedbackSuggestion(token!, {
         title: normalizedTitle,
         description: description.trim(),
-        category: category as FeedbackCategory,
+        category,
         area: area || undefined,
-        platform: platform as FeedbackPlatform,
+        platform,
         anonymous: isAnonymous,
-      }),
+      })
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.feedback.all })
       toast.success('Обращение отправлено на модерацию')
@@ -316,7 +330,12 @@ export function FeedbackCreateDialog({
                     <Label htmlFor="feedback-area">Область <span className="font-normal text-muted-foreground">— необязательно</span></Label>
                     <Select
                       value={area}
-                      onValueChange={(value) => setArea(value as FeedbackArea)}
+                      onValueChange={(value) => {
+                        const decoded = Schema.decodeUnknownOption(
+                          ApiSchema.FeedbackArea,
+                        )(value)
+                        if (Option.isSome(decoded)) setArea(decoded.value)
+                      }}
                     >
                       <SelectTrigger id="feedback-area" className="h-11 w-full">
                         <SelectValue placeholder="Выберите область" />
@@ -342,7 +361,12 @@ export function FeedbackCreateDialog({
                     <Label htmlFor="feedback-platform">Платформа</Label>
                     <Select
                       value={platform}
-                      onValueChange={(value) => setPlatform(value as FeedbackPlatform)}
+                      onValueChange={(value) => {
+                        const decoded = Schema.decodeUnknownOption(
+                          ApiSchema.FeedbackPlatform,
+                        )(value)
+                        if (Option.isSome(decoded)) setPlatform(decoded.value)
+                      }}
                     >
                       <SelectTrigger id="feedback-platform" className="h-11 w-full">
                         <SelectValue placeholder="Выберите платформу">

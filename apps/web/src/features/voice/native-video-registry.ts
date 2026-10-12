@@ -1,3 +1,7 @@
+import { Effect, Option, Schema } from 'effect'
+
+import { recordDiagnosticEvent } from '#/features/diagnostics/diagnostic-reporter'
+
 export type NativeVideoSource = 'camera' | 'screen'
 
 export type NativeVideoTrackMetadata = {
@@ -9,6 +13,11 @@ export type NativeVideoTrackMetadata = {
   local: boolean
   sequence: number
   rendererEpoch: number
+  nativeCaptureTimestampUs?: number
+  runtimeEpoch?: number
+  peerAlias?: string
+  timelineSampled?: boolean
+  electronImportedAtMs?: number
 }
 
 type NativeVideoFrameMessage = {
@@ -17,12 +26,128 @@ type NativeVideoFrameMessage = {
   frame: VideoFrame
 }
 
+const NativeVideoSessionMetadataSchema = Schema.Struct({
+  sessionId: Schema.String,
+  generation: Schema.Int,
+})
+
+const NativeVideoPublicationMetadataSchema = Schema.Struct({
+  trackId: Schema.String,
+  participantIdentity: Schema.String,
+  source: Schema.Literals(['camera', 'screen']),
+  sessionId: Schema.String,
+  generation: Schema.Int,
+  // The sender paused the stream (its shared window is minimized).
+  muted: Schema.optional(Schema.Boolean),
+})
+
+const OptionalNonNegativeInteger = Schema.optional(
+  Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+)
+const OptionalNonNegative = Schema.optional(
+  Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
+)
+
+const NativeVideoTrackMetadataSchema = Schema.Struct({
+  ...NativeVideoPublicationMetadataSchema.fields,
+  local: Schema.Boolean,
+  sequence: Schema.Int,
+  rendererEpoch: Schema.Int,
+  nativeCaptureTimestampUs: OptionalNonNegativeInteger,
+  runtimeEpoch: OptionalNonNegativeInteger,
+  peerAlias: Schema.optional(Schema.String),
+  timelineSampled: Schema.optional(Schema.Boolean),
+  electronImportedAtMs: OptionalNonNegative,
+})
+
+const TrackRemovedMessageSchema = Schema.Struct({
+  type: Schema.Literal('syrnike-native-video-track-removed'),
+  metadata: Schema.Struct({
+    ...NativeVideoSessionMetadataSchema.fields,
+    trackId: Schema.String,
+    transient: Schema.optional(Schema.Boolean),
+  }),
+})
+
+const SessionResetMessageSchema = Schema.Struct({
+  type: Schema.Literal('syrnike-native-video-session-reset'),
+  metadata: NativeVideoSessionMetadataSchema,
+})
+
+const PresentationResetMessageSchema = Schema.Struct({
+  type: Schema.Literal('syrnike-native-video-presentation-reset'),
+  metadata: Schema.Struct({
+    ...NativeVideoSessionMetadataSchema.fields,
+    trackId: Schema.String,
+  }),
+})
+
+const PublicationMessageSchema = Schema.Struct({
+  type: Schema.Literals([
+    'syrnike-native-video-publication-available',
+    'syrnike-native-video-publication-unavailable',
+  ]),
+  metadata: NativeVideoPublicationMetadataSchema,
+})
+
+const PublicationFailureMessageSchema = Schema.Struct({
+  type: Schema.Literal('syrnike-native-video-publication-failed'),
+  metadata: Schema.Struct({
+    ...NativeVideoSessionMetadataSchema.fields,
+    trackId: Schema.String,
+    message: Schema.String,
+  }),
+})
+
+const FrameMessageSchema = Schema.Struct({
+  type: Schema.Literal('syrnike-native-video-frame'),
+  metadata: NativeVideoTrackMetadataSchema,
+  frame: Schema.Unknown.check(
+    Schema.makeFilter(
+      (frame) =>
+        typeof VideoFrame !== 'undefined' && frame instanceof VideoFrame,
+      { expected: 'a VideoFrame' },
+    ),
+  ),
+})
+
 type CanvasConsumer = {
   canvas: HTMLCanvasElement
   context: CanvasRenderingContext2D
   onSizeChange?: (size: { width: number; height: number }) => void
-  width: number
-  height: number
+  fit: 'contain' | 'cover'
+  sourceWidth: number
+  sourceHeight: number
+  backingWidth: number
+  backingHeight: number
+}
+
+type NativeVideoPresentationCounters = {
+  framesReceived: number
+  framesDrawn: number
+  framesSuperseded: number
+  framesDroppedNoConsumer: number
+  framesDroppedHidden: number
+  framesDroppedStale: number
+  drawFailures: number
+  canvasAttachCount: number
+  canvasDetachCount: number
+  presentationResets: number
+  rendererEpochChanges: number
+  lastFrameAt: number | null
+  lastDrawAt: number | null
+  sourceWidth: number
+  sourceHeight: number
+}
+
+export type NativeVideoPresentationMetrics = Omit<
+  NativeVideoPresentationCounters,
+  'lastFrameAt' | 'lastDrawAt'
+> & {
+  activeConsumers: number
+  canvasPixels: number
+  lastFrameAgeMs?: number
+  lastDrawAgeMs?: number
 }
 
 type TrackEntry = {
@@ -31,6 +156,7 @@ type TrackEntry = {
   consumers: Map<symbol, CanvasConsumer>
   pendingFrame: VideoFrame | null
   drawRequest: number | null
+  presentation: NativeVideoPresentationCounters
 }
 
 type PublicationEntry = {
@@ -39,6 +165,7 @@ type PublicationEntry = {
   trackId: string
   participantIdentity: string
   source: NativeVideoSource
+  muted?: boolean
   error: string | null
   adapter: NativeVideoTrackAdapter
 }
@@ -67,15 +194,14 @@ export class NativeVideoTrackAdapter {
   attachCanvas(
     canvas: HTMLCanvasElement,
     onSizeChange?: (size: { width: number; height: number }) => void,
+    options?: { fit?: 'contain' | 'cover' },
   ) {
-    return this.registry.attachCanvas(this.sid, canvas, onSizeChange)
+    return this.registry.attachCanvas(this.sid, canvas, onSizeChange, options)
   }
-}
 
-export function isNativeVideoTrackAdapter(
-  track: unknown,
-): track is NativeVideoTrackAdapter {
-  return track instanceof NativeVideoTrackAdapter
+  getPresentationMetrics(now = Date.now()) {
+    return this.registry.getPresentationMetrics(this.sid, now)
+  }
 }
 
 export class NativeVideoRegistry {
@@ -86,6 +212,8 @@ export class NativeVideoRegistry {
     LOCAL_SCREEN_PREVIEW_TRACK_ID,
     this,
   )
+  private readonly localScreenPresentation =
+    createNativeVideoPresentationCounters()
   private readonly tombstones = new Map<
     string,
     { sessionId: string; generation: number }
@@ -104,9 +232,15 @@ export class NativeVideoRegistry {
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', this.onVisibilityChange)
     }
-    void window.syrnikeDesktop?.media
-      .replayRemoteVideoPublications()
-      .catch(() => undefined)
+    const replay = window.syrnikeDesktop?.media.replayRemoteVideoPublications()
+    if (replay) {
+      Effect.runFork(
+        Effect.tryPromise({
+          try: () => replay,
+          catch: (cause) => cause,
+        }).pipe(Effect.ignore),
+      )
+    }
   }
 
   stop() {
@@ -161,6 +295,50 @@ export class NativeVideoRegistry {
     return this.localScreenConsumers.size
   }
 
+  getPresentationMetrics(trackId: string, now = Date.now()) {
+    const entry = trackId === LOCAL_SCREEN_PREVIEW_TRACK_ID
+      ? [...this.tracks.values()].find(
+          (candidate) =>
+            candidate.metadata.local && candidate.metadata.source === 'screen',
+        )
+      : this.tracks.get(trackId)
+    const presentation = entry?.presentation ??
+      (trackId === LOCAL_SCREEN_PREVIEW_TRACK_ID
+        ? this.localScreenPresentation
+        : null)
+    if (!presentation) return null
+    const consumers = entry
+      ? this.consumersFor(entry)
+      : this.localScreenConsumers
+    return {
+      framesReceived: presentation.framesReceived,
+      framesDrawn: presentation.framesDrawn,
+      framesSuperseded: presentation.framesSuperseded,
+      framesDroppedNoConsumer: presentation.framesDroppedNoConsumer,
+      framesDroppedHidden: presentation.framesDroppedHidden,
+      framesDroppedStale: presentation.framesDroppedStale,
+      drawFailures: presentation.drawFailures,
+      canvasAttachCount: presentation.canvasAttachCount,
+      canvasDetachCount: presentation.canvasDetachCount,
+      presentationResets: presentation.presentationResets,
+      rendererEpochChanges: presentation.rendererEpochChanges,
+      sourceWidth: presentation.sourceWidth,
+      sourceHeight: presentation.sourceHeight,
+      activeConsumers: consumers.size,
+      canvasPixels: [...consumers.values()].reduce(
+        (total, consumer) =>
+          total + Math.max(0, consumer.canvas.width * consumer.canvas.height),
+        0,
+      ),
+      lastFrameAgeMs: presentation.lastFrameAt == null
+        ? undefined
+        : Math.max(0, now - presentation.lastFrameAt),
+      lastDrawAgeMs: presentation.lastDrawAt == null
+        ? undefined
+        : Math.max(0, now - presentation.lastDrawAt),
+    } satisfies NativeVideoPresentationMetrics
+  }
+
   listTracks(): NativeVideoRegistryTrack[] {
     return [...this.tracks.values()].map((entry) => ({
       ...entry.metadata,
@@ -194,6 +372,7 @@ export class NativeVideoRegistry {
     trackId: string,
     canvas: HTMLCanvasElement,
     onSizeChange?: (size: { width: number; height: number }) => void,
+    options?: { fit?: 'contain' | 'cover' },
   ) {
     const entry = this.tracks.get(trackId)
     const consumers = trackId === LOCAL_SCREEN_PREVIEW_TRACK_ID
@@ -206,14 +385,23 @@ export class NativeVideoRegistry {
     if (!context) return () => undefined
 
     const token = Symbol(trackId)
+    const presentation = entry?.presentation ??
+      (trackId === LOCAL_SCREEN_PREVIEW_TRACK_ID
+        ? this.localScreenPresentation
+        : null)
     consumers.set(token, {
       canvas,
       context,
       onSizeChange,
-      width: 0,
-      height: 0,
+      fit: options?.fit ?? 'contain',
+      sourceWidth: 0,
+      sourceHeight: 0,
+      backingWidth: 0,
+      backingHeight: 0,
     })
-    this.notify()
+    if (presentation) presentation.canvasAttachCount += 1
+    const localPreviewConsumer = consumers === this.localScreenConsumers
+    if (localPreviewConsumer) this.notify()
 
     let attached = true
     return () => {
@@ -227,7 +415,8 @@ export class NativeVideoRegistry {
         return
       }
       if (!consumers.delete(token)) return
-      this.notify()
+      if (presentation) presentation.canvasDetachCount += 1
+      if (localPreviewConsumer) this.notify()
     }
   }
 
@@ -252,6 +441,15 @@ export class NativeVideoRegistry {
     if (isSessionResetMessage(event.data)) {
       if (!this.isActiveRemoteSession(event.data.metadata)) return
       this.clearRemote()
+      return
+    }
+    if (isPresentationResetMessage(event.data)) {
+      const { metadata } = event.data
+      const entry = this.tracks.get(metadata.trackId)
+      if (!entry ||
+        entry.metadata.sessionId !== metadata.sessionId ||
+        entry.metadata.generation !== metadata.generation) return
+      this.resetTrackPresentation(entry)
       return
     }
     if (isPublicationFailureMessage(event.data)) {
@@ -353,10 +551,17 @@ export class NativeVideoRegistry {
       this.removeTrack(metadata.trackId)
       entry = undefined
     }
-    const rendererEpochChanged = Boolean(
-      entry && metadata.rendererEpoch !== entry.metadata.rendererEpoch,
-    )
+    const presentationEpochOrder = entry
+      ? comparePresentationEpoch(metadata, entry.metadata)
+      : 0
+    if (entry && presentationEpochOrder < 0) {
+      entry.presentation.framesDroppedStale += 1
+      frame.close()
+      return
+    }
+    const rendererEpochChanged = Boolean(entry && presentationEpochOrder > 0)
     if (entry && rendererEpochChanged) {
+      entry.presentation.rendererEpochChanges += 1
       entry.pendingFrame?.close()
       entry.pendingFrame = null
       if (entry.drawRequest !== null) {
@@ -369,7 +574,9 @@ export class NativeVideoRegistry {
       // adapter identity did not change.
       entry.metadata = metadata
     }
-    if (entry && !rendererEpochChanged && metadata.sequence <= entry.metadata.sequence) {
+    if (entry && presentationEpochOrder === 0 &&
+      metadata.sequence <= entry.metadata.sequence) {
+      entry.presentation.framesDroppedStale += 1
       frame.close()
       return
     }
@@ -385,11 +592,23 @@ export class NativeVideoRegistry {
         consumers: new Map(),
         pendingFrame: null,
         drawRequest: null,
+        presentation:
+          metadata.local && metadata.source === 'screen'
+            ? this.localScreenPresentation
+            : createNativeVideoPresentationCounters(),
       }
       this.tracks.set(metadata.trackId, entry)
       this.notify()
     } else {
       entry.metadata = metadata
+    }
+    const width = frame.displayWidth || frame.codedWidth
+    const height = frame.displayHeight || frame.codedHeight
+    entry.presentation.framesReceived += 1
+    entry.presentation.lastFrameAt = Date.now()
+    if (width > 0 && height > 0) {
+      entry.presentation.sourceWidth = width
+      entry.presentation.sourceHeight = height
     }
 
     const publication = !metadata.local
@@ -401,16 +620,21 @@ export class NativeVideoRegistry {
     }
 
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      entry.presentation.framesDroppedHidden += 1
       frame.close()
       return
     }
 
     const consumers = this.consumersFor(entry)
     if (consumers.size === 0) {
+      entry.presentation.framesDroppedNoConsumer += 1
       frame.close()
       return
     }
-    entry.pendingFrame?.close()
+    if (entry.pendingFrame) {
+      entry.presentation.framesSuperseded += 1
+      entry.pendingFrame.close()
+    }
     entry.pendingFrame = frame
     if (entry.drawRequest !== null) return
     try {
@@ -426,12 +650,31 @@ export class NativeVideoRegistry {
   private readonly onVisibilityChange = () => {
     if (typeof document === 'undefined' || document.visibilityState !== 'hidden') return
     for (const entry of this.tracks.values()) {
-      entry.pendingFrame?.close()
-      entry.pendingFrame = null
-      if (entry.drawRequest !== null) {
-        window.cancelAnimationFrame(entry.drawRequest)
-        entry.drawRequest = null
-      }
+      this.releasePendingFrame(entry)
+    }
+  }
+
+  private resetTrackPresentation(entry: TrackEntry) {
+    entry.presentation.presentationResets += 1
+    this.releasePendingFrame(entry)
+    for (const consumer of this.consumersFor(entry).values()) {
+      const width = consumer.canvas.width
+      const height = consumer.canvas.height
+      consumer.canvas.width = width
+      consumer.canvas.height = height
+      consumer.sourceWidth = 0
+      consumer.sourceHeight = 0
+      consumer.backingWidth = 0
+      consumer.backingHeight = 0
+    }
+  }
+
+  private releasePendingFrame(entry: TrackEntry) {
+    entry.pendingFrame?.close()
+    entry.pendingFrame = null
+    if (entry.drawRequest !== null) {
+      window.cancelAnimationFrame(entry.drawRequest)
+      entry.drawRequest = null
     }
   }
 
@@ -442,12 +685,24 @@ export class NativeVideoRegistry {
     if (!frame) return
     try {
       if (this.tracks.get(trackId) !== entry) return
-      for (const consumer of this.consumersFor(entry).values()) {
+      const consumers = this.consumersFor(entry)
+      if (consumers.size === 0) {
+        entry.presentation.framesDroppedNoConsumer += 1
+        return
+      }
+      let drawn = false
+      for (const consumer of consumers.values()) {
         try {
-          drawFrame(consumer, frame)
+          drawn = drawFrame(consumer, frame) || drawn
         } catch {
+          entry.presentation.drawFailures += 1
           // A detached or context-lost canvas must not retain the shared frame.
         }
+      }
+      if (drawn) {
+        entry.presentation.framesDrawn += 1
+        entry.presentation.lastDrawAt = Date.now()
+        recordRendererPresentation(entry.metadata, entry.presentation)
       }
     } finally {
       frame.close()
@@ -538,23 +793,145 @@ export class NativeVideoRegistry {
   }
 }
 
+function comparePresentationEpoch(
+  candidate: Pick<NativeVideoTrackMetadata, 'runtimeEpoch' | 'rendererEpoch'>,
+  current: Pick<NativeVideoTrackMetadata, 'runtimeEpoch' | 'rendererEpoch'>,
+) {
+  const candidateRuntime = candidate.runtimeEpoch ?? 0
+  const currentRuntime = current.runtimeEpoch ?? 0
+  if (candidateRuntime !== currentRuntime) {
+    return candidateRuntime < currentRuntime ? -1 : 1
+  }
+  if (candidate.rendererEpoch === current.rendererEpoch) return 0
+  return candidate.rendererEpoch < current.rendererEpoch ? -1 : 1
+}
+
+function recordRendererPresentation(
+  metadata: NativeVideoTrackMetadata,
+  presentation: NativeVideoPresentationCounters,
+) {
+  if (
+    !metadata.timelineSampled ||
+    metadata.nativeCaptureTimestampUs === undefined ||
+    metadata.runtimeEpoch === undefined
+  ) return
+  recordDiagnosticEvent('native-video', 'media_timeline', {
+    stage: 'renderer_presented',
+    sessionId: metadata.sessionId,
+    generation: metadata.generation,
+    trackId: metadata.trackId,
+    frameSequence: metadata.sequence,
+    nativeCaptureTimestampUs: metadata.nativeCaptureTimestampUs,
+    runtimeEpoch: metadata.runtimeEpoch,
+    rendererEpoch: metadata.rendererEpoch,
+    ...(metadata.peerAlias ? { peerAlias: metadata.peerAlias } : {}),
+    ...(metadata.electronImportedAtMs === undefined
+      ? {}
+      : {
+        durationMs: Math.max(0, Date.now() - metadata.electronImportedAtMs),
+      }),
+    metrics: {
+      framesReceived: presentation.framesReceived,
+      framesDrawn: presentation.framesDrawn,
+      framesSuperseded: presentation.framesSuperseded,
+      framesDroppedHidden: presentation.framesDroppedHidden,
+      framesDroppedStale: presentation.framesDroppedStale,
+      drawFailures: presentation.drawFailures,
+    },
+  })
+}
+
+function createNativeVideoPresentationCounters(): NativeVideoPresentationCounters {
+  return {
+    framesReceived: 0,
+    framesDrawn: 0,
+    framesSuperseded: 0,
+    framesDroppedNoConsumer: 0,
+    framesDroppedHidden: 0,
+    framesDroppedStale: 0,
+    drawFailures: 0,
+    canvasAttachCount: 0,
+    canvasDetachCount: 0,
+    presentationResets: 0,
+    rendererEpochChanges: 0,
+    lastFrameAt: null,
+    lastDrawAt: null,
+    sourceWidth: 0,
+    sourceHeight: 0,
+  }
+}
+
 function remoteSessionKey(value: { sessionId: string; generation: number }) {
   return `${value.sessionId}:${value.generation}`
 }
 
 function drawFrame(consumer: CanvasConsumer, frame: VideoFrame) {
-  const width = frame.displayWidth || frame.codedWidth
-  const height = frame.displayHeight || frame.codedHeight
-  if (width <= 0 || height <= 0) return
+  const sourceWidth = frame.displayWidth || frame.codedWidth
+  const sourceHeight = frame.displayHeight || frame.codedHeight
+  if (sourceWidth <= 0 || sourceHeight <= 0) return false
 
-  if (consumer.width !== width || consumer.height !== height) {
-    consumer.width = width
-    consumer.height = height
-    consumer.canvas.width = width
-    consumer.canvas.height = height
-    consumer.onSizeChange?.({ width, height })
+  if (
+    consumer.sourceWidth !== sourceWidth ||
+    consumer.sourceHeight !== sourceHeight
+  ) {
+    consumer.sourceWidth = sourceWidth
+    consumer.sourceHeight = sourceHeight
+    consumer.onSizeChange?.({ width: sourceWidth, height: sourceHeight })
   }
-  consumer.context.drawImage(frame, 0, 0, width, height)
+  const backing = canvasBackingSize(
+    consumer.canvas,
+    sourceWidth,
+    sourceHeight,
+    consumer.fit,
+  )
+  if (
+    consumer.backingWidth !== backing.width ||
+    consumer.backingHeight !== backing.height
+  ) {
+    consumer.backingWidth = backing.width
+    consumer.backingHeight = backing.height
+    consumer.canvas.width = backing.width
+    consumer.canvas.height = backing.height
+  }
+  consumer.context.drawImage(frame, 0, 0, backing.width, backing.height)
+  return true
+}
+
+function canvasBackingSize(
+  canvas: HTMLCanvasElement,
+  sourceWidth: number,
+  sourceHeight: number,
+  fit: 'contain' | 'cover',
+) {
+  const measuredWidth = canvas.clientWidth
+  const measuredHeight = canvas.clientHeight
+  const cssWidth = Number.isFinite(measuredWidth) ? Math.max(0, measuredWidth) : 0
+  const cssHeight = Number.isFinite(measuredHeight)
+    ? Math.max(0, measuredHeight)
+    : 0
+  if (cssWidth <= 0 || cssHeight <= 0) {
+    return { width: sourceWidth, height: sourceHeight }
+  }
+
+  const dpr = typeof window === 'undefined'
+    ? 1
+    : Math.max(1, window.devicePixelRatio || 1)
+  const sourceAspect = sourceWidth / sourceHeight
+  const scaleFromWidth = (cssWidth * dpr) / sourceWidth
+  const scaleFromHeight = (cssHeight * dpr) / sourceHeight
+  const requestedScale = fit === 'cover'
+    ? Math.max(scaleFromWidth, scaleFromHeight)
+    : Math.min(scaleFromWidth, scaleFromHeight)
+  const scale = Math.min(1, Math.max(requestedScale, 1 / Math.max(
+    sourceWidth,
+    sourceHeight,
+  )))
+  const width = Math.max(1, Math.round(sourceWidth * scale))
+  const height = Math.max(1, Math.round(width / sourceAspect))
+  return {
+    width: Math.min(sourceWidth, width),
+    height: Math.min(sourceHeight, height),
+  }
 }
 
 function isTrackRemovedMessage(value: unknown): value is {
@@ -566,18 +943,8 @@ function isTrackRemovedMessage(value: unknown): value is {
     transient?: boolean
   }
 } {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as { type?: unknown; metadata?: { trackId?: unknown } }
-  return (
-    candidate.type === 'syrnike-native-video-track-removed' &&
-    typeof candidate.metadata?.trackId === 'string' &&
-    typeof (candidate.metadata as { sessionId?: unknown }).sessionId ===
-      'string' &&
-    Number.isSafeInteger(
-      (candidate.metadata as { generation?: unknown }).generation,
-    ) &&
-    ((candidate.metadata as { transient?: unknown }).transient === undefined ||
-      typeof (candidate.metadata as { transient?: unknown }).transient === 'boolean')
+  return Option.isSome(
+    Schema.decodeUnknownOption(TrackRemovedMessageSchema)(value),
   )
 }
 
@@ -585,14 +952,18 @@ function isSessionResetMessage(value: unknown): value is {
   type: 'syrnike-native-video-session-reset'
   metadata: { sessionId: string; generation: number }
 } {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as {
-    type?: unknown
-    metadata?: { sessionId?: unknown; generation?: unknown }
-  }
-  return candidate.type === 'syrnike-native-video-session-reset' &&
-    typeof candidate.metadata?.sessionId === 'string' &&
-    Number.isSafeInteger(candidate.metadata.generation)
+  return Option.isSome(
+    Schema.decodeUnknownOption(SessionResetMessageSchema)(value),
+  )
+}
+
+function isPresentationResetMessage(value: unknown): value is {
+  type: 'syrnike-native-video-presentation-reset'
+  metadata: { sessionId: string; generation: number; trackId: string }
+} {
+  return Option.isSome(
+    Schema.decodeUnknownOption(PresentationResetMessageSchema)(value),
+  )
 }
 
 function isPublicationMessage(value: unknown): value is {
@@ -606,17 +977,8 @@ function isPublicationMessage(value: unknown): value is {
     generation: number
   }
 } {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as { type?: unknown; metadata?: Record<string, unknown> }
-  const metadata = candidate.metadata
-  return (
-    (candidate.type === 'syrnike-native-video-publication-available' ||
-      candidate.type === 'syrnike-native-video-publication-unavailable') &&
-    typeof metadata?.trackId === 'string' &&
-    typeof metadata.participantIdentity === 'string' &&
-    (metadata.source === 'camera' || metadata.source === 'screen') &&
-    typeof metadata.sessionId === 'string' &&
-    Number.isSafeInteger(metadata.generation)
+  return Option.isSome(
+    Schema.decodeUnknownOption(PublicationMessageSchema)(value),
   )
 }
 
@@ -629,34 +991,14 @@ function isPublicationFailureMessage(value: unknown): value is {
     message: string
   }
 } {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as { type?: unknown; metadata?: Record<string, unknown> }
-  const metadata = candidate.metadata
-  return candidate.type === 'syrnike-native-video-publication-failed' &&
-    typeof metadata?.trackId === 'string' &&
-    typeof metadata.sessionId === 'string' &&
-    Number.isSafeInteger(metadata.generation) &&
-    typeof metadata.message === 'string'
+  return Option.isSome(
+    Schema.decodeUnknownOption(PublicationFailureMessageSchema)(value),
+  )
 }
 
 function isFrameMessage(value: unknown): value is NativeVideoFrameMessage {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as Partial<NativeVideoFrameMessage>
-  const metadata = candidate.metadata as
-    | Partial<NativeVideoTrackMetadata>
-    | undefined
-  return (
-    candidate.type === 'syrnike-native-video-frame' &&
-    candidate.frame instanceof VideoFrame &&
-    Boolean(metadata) &&
-    typeof metadata?.trackId === 'string' &&
-    typeof metadata.sessionId === 'string' &&
-    typeof metadata.participantIdentity === 'string' &&
-    (metadata.source === 'camera' || metadata.source === 'screen') &&
-    typeof metadata.local === 'boolean' &&
-    Number.isSafeInteger(metadata.generation) &&
-    Number.isSafeInteger(metadata.sequence) &&
-    Number.isSafeInteger(metadata.rendererEpoch)
+  return Option.isSome(
+    Schema.decodeUnknownOption(FrameMessageSchema)(value),
   )
 }
 

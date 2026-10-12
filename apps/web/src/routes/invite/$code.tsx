@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { Effect } from 'effect'
 import { Loader2Icon } from '#/components/icons'
 import { toast } from 'sonner'
 
@@ -16,7 +17,7 @@ import {
   fetchPublicInvite,
   isGroupInviteJoin,
   isServerInviteJoin,
-  joinInvite,
+  joinInviteEffect,
 } from '#/features/api/invites-api'
 import { syncStore } from '#/features/sync/sync-store'
 import { loadSession } from '#/lib/session'
@@ -33,7 +34,7 @@ function InviteJoinPage() {
 
   const inviteQuery = useQuery({
     queryKey: ['invite', code],
-    queryFn: () => fetchPublicInvite(code),
+    queryFn: ({ signal }) => fetchPublicInvite(code, signal),
   })
 
   const invite = inviteQuery.data
@@ -44,41 +45,68 @@ function InviteJoinPage() {
       return
     }
 
-    try {
-      const response = await joinInvite(token, code)
-      syncStore.applyInviteJoinResponse(response)
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        const response = yield* joinInviteEffect(token, code)
+        yield* Effect.sync(() => {
+          syncStore.applyInviteJoinResponse(response)
+        })
+
       if (isServerInviteJoin(response)) {
-        syncStore.setSelectedServerId(response.server._id)
+          yield* Effect.sync(() => {
+            syncStore.setSelectedServerId(response.server._id)
+          })
         const channel = response.channels[0]
         if (channel) {
-          await navigate({
-            to: '/app/c/$channelId',
-            params: { channelId: channel._id },
-            search: { m: undefined },
+            yield* Effect.tryPromise({
+              try: () =>
+                navigate({
+                  to: '/app/c/$channelId',
+                  params: { channelId: channel._id },
+                  search: { m: undefined },
+                }),
+              catch: (cause) => cause,
           })
         } else {
-          await navigate({ to: '/app', search: { tab: 'online' } })
+            yield* Effect.tryPromise({
+              try: () =>
+                navigate({ to: '/app', search: { tab: 'online' } }),
+              catch: (cause) => cause,
+            })
         }
-        toast.success('Вы присоединились к серверу')
+          yield* Effect.sync(() =>
+            toast.success('Вы присоединились к серверу'),
+          )
         return
       }
 
       if (isGroupInviteJoin(response)) {
-        toast.success('Приглашение принято')
-        await navigate({
-          to: '/app/c/$channelId',
-          params: { channelId: response.channel._id },
-          search: { m: undefined },
+          yield* Effect.sync(() => toast.success('Приглашение принято'))
+          yield* Effect.tryPromise({
+            try: () =>
+              navigate({
+                to: '/app/c/$channelId',
+                params: { channelId: response.channel._id },
+                search: { m: undefined },
+              }),
+            catch: (cause) => cause,
         })
         return
       }
 
-      toast.error('Неизвестный тип приглашения')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось принять',
-      )
-    }
+        yield* Effect.sync(() =>
+          toast.error('Неизвестный тип приглашения'),
+        )
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось принять',
+            )
+          }),
+        ),
+      ),
+    )
   }
 
   return (

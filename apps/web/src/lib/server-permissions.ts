@@ -8,8 +8,6 @@ import { ServerPermission } from '#/features/authorization/permission-bits.gener
 
 export { ServerPermission }
 
-export type ServerPermissionName = keyof typeof ServerPermission
-
 export type PermissionOverrideField = { a: number; d: number }
 
 export type PermissionOverride = { allow: number; deny: number }
@@ -115,10 +113,6 @@ export const CHANNEL_PERMISSION_GROUPS: PermissionGroup[] = [
     ),
   })).filter((group) => group.permissions.length > 0),
 ]
-
-export const ALL_SERVER_PERMISSION_FLAGS = SERVER_PERMISSION_GROUPS.flatMap(
-  (group) => group.permissions.map((permission) => permission.flag),
-)
 
 export function getPermissionTriState(
   override: PermissionOverrideField | null | undefined,

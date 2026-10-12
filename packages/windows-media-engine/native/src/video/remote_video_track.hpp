@@ -1,0 +1,94 @@
+#pragma once
+#include <livekit/livekit.h>
+
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <optional>
+#include <thread>
+
+#include "livekit/livekit_room_transport.hpp"
+#include "video/shared_texture_pool.hpp"
+
+namespace syrnike::windows_media::video {
+struct RemoteVideoTrackStats {
+  std::uint64_t decoded = 0, reader_starts = 0, reader_ends = 0, stale_decoded = 0;
+  std::uint64_t source_timestamp_unusable = 0, expired = 0, uploaded = 0, upload_failed = 0;
+  // Uploaded frames that were decoded on the GPU and never left it.
+  std::uint64_t gpu_uploaded = 0;
+  std::uint64_t superseded_before_upload = 0, superseded_unsent = 0;
+  std::uint64_t maximum_upload_us = 0, total_upload_us = 0, slow_uploads = 0;
+};
+// One explicitly selected remote video owner. The Room transport owns this
+// delegate. SDK callbacks only replace bounded control values; subscription,
+// stream teardown and upload execute on this owner's worker, not the FFI lane.
+class RemoteVideoTrack final : public LiveKitRoomObserver {
+ public:
+  RemoteVideoTrack(std::string participant, std::string track_name, std::string publication_id = {});
+  ~RemoteVideoTrack() override;
+  void demand(bool enabled);
+  void beginStop();
+  // Seed a publication observed before this demand was installed. The caller
+  // obtains track values from SDK events, never unsynchronized Track getters.
+  void seedPublication(std::shared_ptr<livekit::RemoteTrackPublication>, std::shared_ptr<livekit::Track> = {});
+  void stop() override;
+  std::optional<TextureLease> takeFrame();
+  std::uint64_t decoded() const { return decoded_.load(); }
+  RemoteVideoTrackStats stats() const {
+    return {decoded_, reader_starts_, reader_ends_, stale_decoded_,
+            source_timestamp_unusable_, expired_, uploaded_, upload_failed_, gpu_uploaded_,
+            superseded_before_upload_, superseded_unsent_, maximum_upload_us_, total_upload_us_, slow_uploads_};
+  }
+  bool failed() const { return failed_.load(); }
+  bool sdkConnected() const { return sdk_connected_.load(); }
+  std::uint64_t sdkReconnects() const { return sdk_reconnects_.load(); }
+  void onConnectionStateChanged(
+      livekit::Room&, const livekit::ConnectionStateChangedEvent&) override;
+  std::uint64_t generation() const { return generation_.load(); }
+  void onTrackPublished(livekit::Room&,
+                        const livekit::TrackPublishedEvent&) override;
+  void onTrackUnpublished(livekit::Room&,
+                          const livekit::TrackUnpublishedEvent&) override;
+  void onTrackSubscribed(livekit::Room&,
+                         const livekit::TrackSubscribedEvent&) override;
+  void onTrackUnsubscribed(livekit::Room&,
+                           const livekit::TrackUnsubscribedEvent&) override;
+  void onParticipantDisconnected(
+      livekit::Room&, const livekit::ParticipantDisconnectedEvent&) override;
+
+ private:
+  friend class RemoteVideoFaultInjector;
+  bool acceptDecoded(std::uint64_t revision, livekit::VideoFrameEvent event);
+  // Called with mutex_ held; all enable/publication/track changes bump revision_.
+  bool hasPendingWork(std::uint64_t active_revision) const;
+  void recordUploadDuration(std::uint64_t duration_us);
+  void run() noexcept;
+  const std::string participant_;
+  const std::string track_name_;
+  const std::string publication_id_;
+  std::mutex join_mutex_;
+  std::mutex mutex_;
+  std::condition_variable changed_;
+  std::atomic<std::uint64_t> revision_{0};
+  std::atomic<std::uint64_t> decoded_{0};
+  std::atomic<std::uint64_t> reader_starts_{0}, reader_ends_{0}, stale_decoded_{0};
+  std::atomic<std::uint64_t> source_timestamp_unusable_{0}, expired_{0}, uploaded_{0}, upload_failed_{0};
+  std::atomic<std::uint64_t> gpu_uploaded_{0};
+  std::atomic<std::uint64_t> superseded_before_upload_{0}, superseded_unsent_{0};
+  std::atomic<std::uint64_t> maximum_upload_us_{0}, total_upload_us_{0}, slow_uploads_{0};
+  std::atomic<std::uint64_t> generation_{0};
+  std::atomic<bool> failed_{false};
+  std::atomic<bool> sdk_connected_{false};
+  std::atomic<std::uint64_t> sdk_reconnects_{0};
+  bool enabled_ = false;
+  bool stopping_ = false;
+  bool done_ = false;
+  std::shared_ptr<livekit::RemoteTrackPublication> publication_;
+  std::shared_ptr<livekit::Track> track_;
+  std::optional<livekit::VideoFrameEvent> newest_;
+  std::int64_t newest_ingress_us_ = 0;
+  std::optional<TextureLease> output_;
+  std::uint64_t output_revision_ = 0;
+  std::thread worker_;
+};
+}  // namespace syrnike::windows_media::video

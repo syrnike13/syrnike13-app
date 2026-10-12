@@ -1,10 +1,8 @@
 import { useEffect, useRef, type CSSProperties } from 'react'
 import type { VideoTrack } from 'livekit-client'
 
-import {
-  isNativeVideoTrackAdapter,
-  type NativeVideoTrackAdapter,
-} from '#/features/voice/native-video-registry'
+import type { VoiceStageMediaTrack } from '#/features/voice/voice-context'
+import type { NativeVideoTrackAdapter } from '#/features/voice/native-video-registry'
 import { cn } from '#/lib/utils'
 
 export const VOICE_STAGE_MEDIA_ID_ATTR = 'data-voice-stage-media-id'
@@ -34,17 +32,17 @@ export function VoiceStageVideo({
   style,
   onVideoSizeChange,
 }: {
-  track: VideoTrack
+  track: VoiceStageMediaTrack
   mediaId: string
   className?: string
   fit?: 'contain' | 'cover'
   style?: CSSProperties
   onVideoSizeChange?: (size: { width: number; height: number }) => void
 }) {
-  if (isNativeVideoTrackAdapter(track)) {
+  if (track.backend === 'native') {
     return (
       <NativeVoiceStageCanvas
-        track={track}
+        track={track.track}
         mediaId={mediaId}
         className={className}
         fit={fit}
@@ -56,7 +54,7 @@ export function VoiceStageVideo({
 
   return (
     <LiveKitVoiceStageVideo
-      track={track}
+      track={track.track}
       mediaId={mediaId}
       className={className}
       fit={fit}
@@ -174,11 +172,13 @@ function NativeVoiceStageCanvas({
     host.replaceChildren(canvas)
     const detach = track.attachCanvas(canvas, (size) => {
       onVideoSizeChangeRef.current?.(size)
-    })
+    }, { fit })
 
     return () => {
       detach()
       if (canvas.parentElement === host) host.replaceChildren()
+      canvas.width = 0
+      canvas.height = 0
       canvasRef.current = null
     }
   }, [mediaId, track])

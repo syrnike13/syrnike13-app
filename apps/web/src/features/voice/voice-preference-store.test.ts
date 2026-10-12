@@ -6,7 +6,12 @@ import {
   loadVoicePreferenceState,
   parseScreenShareCaptureMode,
   voicePreferenceStore,
+  normalizeVoicePreferenceState,
 } from '#/features/voice/voice-preference-store'
+import {
+  NATIVE_SCREEN_SHARE_PROFILES,
+  nativeScreenShareProfileSettings,
+} from '#/features/voice/voice-preference-types'
 
 describe('voicePreferenceStore', () => {
   const browserStorage = new Map<string, string>()
@@ -27,6 +32,38 @@ describe('voicePreferenceStore', () => {
     voicePreferenceStore.setAutomaticGainControl(true)
     voicePreferenceStore.setNoiseSuppression(true)
     voicePreferenceStore.setEchoCancellation(false)
+    voicePreferenceStore.setCameraProfile('hd720p30')
+    voicePreferenceStore.setNativeScreenShareProfile('720p30')
+  })
+
+  it('persists native screen profiles separately from browser quality', () => {
+    voicePreferenceStore.setScreenShareQuality('text')
+    voicePreferenceStore.setNativeScreenShareProfile('1080p60')
+    expect(loadVoicePreferenceState()).toMatchObject({
+      screenShareQuality: 'text',
+      nativeScreenShareProfile: '1080p60',
+    })
+    expect(normalizeVoicePreferenceState({}).nativeScreenShareProfile).toBe('720p30')
+    expect(normalizeVoicePreferenceState({
+      nativeScreenShareProfile: 'invalid',
+    }).nativeScreenShareProfile).toBe('720p30')
+  })
+
+  it('maps native screen choices to the runtime supported preset contract', () => {
+    expect(NATIVE_SCREEN_SHARE_PROFILES.map(nativeScreenShareProfileSettings)).toEqual([
+      { width: 960, height: 540, fps: 30, bitrate: 625_000, audioBitrate: 128_000 },
+      { width: 1_280, height: 720, fps: 30, bitrate: 2_000_000, audioBitrate: 128_000 },
+      { width: 1_280, height: 720, fps: 60, bitrate: 4_000_000, audioBitrate: 128_000 },
+      { width: 1_920, height: 1_080, fps: 30, bitrate: 6_000_000, audioBitrate: 128_000 },
+      { width: 1_920, height: 1_080, fps: 60, bitrate: 8_000_000, audioBitrate: 128_000 },
+    ])
+  })
+
+  it('persists camera profiles and defaults older or invalid preferences to 720p', () => {
+    voicePreferenceStore.setCameraProfile('hd1080p30')
+    expect(loadVoicePreferenceState().cameraProfile).toBe('hd1080p30')
+    expect(normalizeVoicePreferenceState({}).cameraProfile).toBe('hd720p30')
+    expect(normalizeVoicePreferenceState({ cameraProfile: 'invalid' }).cameraProfile).toBe('hd720p30')
   })
 
   it('persists mic preference', () => {

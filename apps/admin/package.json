@@ -19,19 +19,19 @@
     "@syrnike13/api-types": "workspace:*",
     "@t3-oss/env-core": "^0.13.10",
     "@tailwindcss/vite": "^4.1.18",
-    "@tanstack/react-query": "latest",
-    "@tanstack/react-router": "latest",
-    "@tanstack/react-start": "latest",
+    "@tanstack/react-query": "5.101.4",
+    "@tanstack/react-router": "1.170.19",
+    "@tanstack/react-start": "1.168.36",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "effect": "4.0.0-beta.103",
     "radix-ui": "^1.4.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.0.2",
     "tailwindcss": "^4.1.18",
-    "tw-animate-css": "^1.3.6",
-    "zod": "^4.3.6"
+    "tw-animate-css": "^1.3.6"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.16",
@@ -53,5 +53,5 @@
       "lightningcss"
     ]
   },
-  "version": "0.6.11"
+  "version": "0.7.0"
 }

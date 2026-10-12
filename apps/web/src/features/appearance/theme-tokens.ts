@@ -55,8 +55,6 @@ export const BRAND_LOCKED_THEME_TOKEN_KEYS = [
   'chart-5',
 ] as const satisfies readonly ThemeTokenKey[]
 
-export type BrandLockedThemeTokenKey = (typeof BRAND_LOCKED_THEME_TOKEN_KEYS)[number]
-
 export type ThemeSemanticPalette = {
   background: string
   foreground: string

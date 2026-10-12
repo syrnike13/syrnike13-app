@@ -11,6 +11,7 @@ import {
 import type { ReactNode } from 'react'
 import type { Channel, Webhook } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 import { ChannelSettingsWebhooksPanel } from '#/components/channels/channel-settings-webhooks-panel'
 
@@ -53,19 +54,23 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/channels-api', () => ({
-  createChannelWebhook: (...args: Parameters<typeof mocks.createChannelWebhook>) =>
+  createChannelWebhookEffect: (
+    ...args: Parameters<typeof mocks.createChannelWebhook>
+  ) =>
     mocks.createChannelWebhook(...args),
-  deleteWebhook: (...args: Parameters<typeof mocks.deleteWebhook>) =>
+  deleteWebhookEffect: (...args: Parameters<typeof mocks.deleteWebhook>) =>
     mocks.deleteWebhook(...args),
-  editWebhook: (...args: Parameters<typeof mocks.editWebhook>) =>
+  editWebhookEffect: (...args: Parameters<typeof mocks.editWebhook>) =>
     mocks.editWebhook(...args),
-  fetchChannelWebhooks: (...args: Parameters<typeof mocks.fetchChannelWebhooks>) =>
-    mocks.fetchChannelWebhooks(...args),
+  fetchChannelWebhooksEffect: (
+    ...args: Parameters<typeof mocks.fetchChannelWebhooks>
+  ) => mocks.fetchChannelWebhooks(...args),
 }))
 
 vi.mock('#/lib/clipboard', () => ({
-  writeClipboardText: (...args: Parameters<typeof mocks.writeClipboardText>) =>
-    mocks.writeClipboardText(...args),
+  writeClipboardTextEffect: (
+    ...args: Parameters<typeof mocks.writeClipboardText>
+  ) => mocks.writeClipboardText(...args),
 }))
 
 function textChannel(
@@ -101,15 +106,17 @@ function webhook(overrides: Partial<Webhook> = {}) {
 
 describe('ChannelSettingsWebhooksPanel', () => {
   beforeEach(() => {
-    mocks.fetchChannelWebhooks.mockResolvedValue([webhook()])
-    mocks.createChannelWebhook.mockResolvedValue(
-      webhook({ id: 'webhook-2', name: 'Build bot' }),
+    mocks.fetchChannelWebhooks.mockReturnValue(Effect.succeed([webhook()]))
+    mocks.createChannelWebhook.mockReturnValue(
+      Effect.succeed(webhook({ id: 'webhook-2', name: 'Build bot' })),
     )
-    mocks.deleteWebhook.mockResolvedValue(undefined)
-    mocks.editWebhook.mockResolvedValue(
-      webhook({ id: 'webhook-1', name: 'Deploy alerts' }),
+    mocks.deleteWebhook.mockReturnValue(Effect.void)
+    mocks.editWebhook.mockReturnValue(
+      Effect.succeed(
+        webhook({ id: 'webhook-1', name: 'Deploy alerts' }),
+      ),
     )
-    mocks.writeClipboardText.mockResolvedValue(undefined)
+    mocks.writeClipboardText.mockReturnValue(Effect.void)
   })
 
   afterEach(() => {

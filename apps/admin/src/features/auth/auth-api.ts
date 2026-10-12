@@ -1,6 +1,8 @@
-import type { DataLogin, ResponseLogin, User } from '@syrnike13/api-types'
+import type { DataLogin, ResponseLogin } from '@syrnike13/api-types'
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Effect, Schema } from 'effect'
 
-import { apiRequest } from '#/lib/api/client'
+import { apiRequestEffect } from '#/lib/api/client'
 
 const FRIENDLY_NAME = 'syrnike13 Admin'
 
@@ -14,45 +16,100 @@ export type MfaLoginPayload = {
   mfa_response: { password: string }
 }
 
-export async function loginWithCredentials(
-  credentials: LoginCredentials,
-): Promise<ResponseLogin> {
+export const loginWithCredentialsEffect = Effect.fn(
+  'admin.auth.loginWithCredentials',
+)(function*(credentials: LoginCredentials) {
   const body: DataLogin = {
     email: credentials.email,
     password: credentials.password,
     friendly_name: FRIENDLY_NAME,
   }
 
-  return apiRequest<ResponseLogin>('/auth/session/login', {
-    method: 'POST',
-    body,
-  })
-}
+  return yield* apiRequestEffect(
+    '/auth/session/login',
+    ApiSchema.LoginLogin200,
+    {
+      method: 'POST',
+      body,
+    },
+  )
+})
 
-export async function loginWithMfa(
-  payload: MfaLoginPayload,
+export function loginWithCredentials(
+  credentials: LoginCredentials,
+  signal?: AbortSignal,
 ): Promise<ResponseLogin> {
-  const body: DataLogin = {
-    mfa_ticket: payload.mfa_ticket,
-    mfa_response: payload.mfa_response,
-    friendly_name: FRIENDLY_NAME,
-  }
-
-  return apiRequest<ResponseLogin>('/auth/session/login', {
-    method: 'POST',
-    body,
-  })
+  return Effect.runPromise(
+    loginWithCredentialsEffect(credentials),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function logoutSession(token: string) {
-  return apiRequest('/auth/session/logout', {
-    method: 'POST',
-    token,
-  })
+export const loginWithMfaEffect = Effect.fn('admin.auth.loginWithMfa')(
+  function*(payload: MfaLoginPayload) {
+    const body: DataLogin = {
+      mfa_ticket: payload.mfa_ticket,
+      mfa_response: payload.mfa_response,
+      friendly_name: FRIENDLY_NAME,
+    }
+
+    return yield* apiRequestEffect(
+      '/auth/session/login',
+      ApiSchema.LoginLogin200,
+      {
+        method: 'POST',
+        body,
+      },
+    )
+  },
+)
+
+export function loginWithMfa(
+  payload: MfaLoginPayload,
+  signal?: AbortSignal,
+): Promise<ResponseLogin> {
+  return Effect.runPromise(
+    loginWithMfaEffect(payload),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function fetchCurrentUser(token: string) {
-  return apiRequest<User>('/users/@me', { token })
+export const logoutSessionEffect = Effect.fn('admin.auth.logout')(
+  function*(token: string) {
+    return yield* apiRequestEffect('/auth/session/logout', Schema.Void, {
+      method: 'POST',
+      token,
+    })
+  },
+)
+
+export function logoutSession(token: string, signal?: AbortSignal) {
+  return Effect.runPromise(
+    logoutSessionEffect(token),
+    signal ? { signal } : undefined,
+  )
+}
+
+export const fetchCurrentUserEffect = Effect.fn('admin.auth.fetchCurrentUser')(
+  function*(token: string) {
+    return yield* apiRequestEffect(
+      '/users/@me',
+      ApiSchema.FetchSelfFetch200,
+      {
+        token,
+      },
+    )
+  },
+)
+
+export function fetchCurrentUser(
+  token: string,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    fetchCurrentUserEffect(token),
+    signal ? { signal } : undefined,
+  )
 }
 
 export function isLoginSuccess(

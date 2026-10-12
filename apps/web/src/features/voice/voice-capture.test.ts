@@ -59,11 +59,16 @@ describe('createVoiceRoomOptions', () => {
 
 describe('voiceMicPublishOptions', () => {
   it('publishes microphone audio with the speech preset and dtx', () => {
-    expect(voiceMicPublishOptions(32)).toEqual({
+    expect(voiceMicPublishOptions(32_000)).toEqual({
       source: Track.Source.Microphone,
       audioPreset: { ...AudioPresets.speech, maxBitrate: 32_000 },
       dtx: true,
     })
+  })
+
+  it('keeps the bitrate inside the channel setting range', () => {
+    expect(voiceMicPublishOptions(512_000).audioPreset?.maxBitrate).toBe(96_000)
+    expect(voiceMicPublishOptions(6_000).audioPreset?.maxBitrate).toBe(8_000)
   })
 })
 

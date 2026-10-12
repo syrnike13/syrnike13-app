@@ -27,11 +27,11 @@ This file defines shared terms and architectural invariants. Detailed decisions 
 - The **Microphone Pipeline** is one warm capture/DSP path shared by publication, meter preview, and voice activity detection.
 - **Remote Audio Playout** owns decoded remote PCM ingress, mixing, the desired
   output selection, the resolved Windows endpoint, renderer health, and
-  output-local recovery. It maintains WASAPI output padding by filling all
-  writable capacity on every renderer wake; the decoded 10 ms packet size is
-  only an ingress and mixing quantum, not a cap on one output write. During
-  renderer recovery it discards incoming PCM and never changes Voice
-  Membership.
+  output-local recovery. In steady state it tops WASAPI padding up to the 30 ms
+  target; it fills the endpoint's remaining writable capacity only while
+  recovering from an underrun. The decoded 10 ms packet size is an ingress and
+  mixing quantum, not a cap on one output write. During renderer recovery it
+  discards incoming PCM and never changes Voice Membership.
 - **Media Demand** controls remote video subscription and decode plus matching screen-share audio. Remote microphone audio remains subscribed.
 - The **Remote Publication Reconciler** owns epoch-scoped desired subscription,
   actual track, transition phase, revision, and track-local recovery escalation;
@@ -44,8 +44,8 @@ This file defines shared terms and architectural invariants. Detailed decisions 
 - **Media Failure** is scoped to one track, capture device, decoder, renderer, or output path and does not initiate Voice Recovery by itself.
 - Recovery acts on the smallest failed layer: presentation generation, local bridge, subscription, capture backend, track, then runtime. A frame timeout alone is never proof that a wider layer failed.
 - **Voice Recovery** restores committed membership after terminal RTC/runtime loss while preserving Voice Intent and creating a new Connection Epoch.
-- **Runtime Loss** is termination or unresponsiveness of one Windows utility host. Media, hotkey, and overlay hosts recover independently.
-- `NativeRuntimeSupervisor` exclusively owns utility startup, handshake, crash classification, restart backoff, host epoch, and circuit state.
+- **Runtime Loss** is termination or unresponsiveness of the Windows media utility host. Global input and foreground-window hooks run in the main process (`native-hooks.ts`) on the addon's own thread and have no host to lose.
+- `MediaRuntimeSupervisor` exclusively owns media utility startup, handshake, crash classification, restart backoff, host epoch, and circuit state.
 - The **Native Event Lane** has three classes: ordered control, bounded latest-per-resource media, and lossy telemetry. Dropped media releases retained native resources exactly once.
 - A **Diagnostic Incident** is one typed causal failure with bounded sanitized evidence; related events enrich the same incident instead of creating competing reports.
 

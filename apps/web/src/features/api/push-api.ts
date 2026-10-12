@@ -1,25 +1,24 @@
 import type { WebPushSubscription } from '@syrnike13/api-types'
+import { Effect, Schema } from 'effect'
 
-import { apiRequest } from '#/lib/api/client'
+import { apiRequestEffect } from '#/lib/api/client'
 
-export async function subscribePush(
-  token: string,
-  subscription: WebPushSubscription,
-) {
-  return apiRequest<void>('/push/subscribe', {
-    method: 'POST',
-    token,
-    body: subscription,
-  })
-}
+export const subscribePushEffect = Effect.fn('web.push.subscribe')(
+  function*(token: string, subscription: WebPushSubscription) {
+    return yield* apiRequestEffect('/push/subscribe', Schema.Void, {
+      method: 'POST',
+      token,
+      body: subscription,
+    })
+  },
+)
 
-export async function unsubscribePush(
-  token: string,
-  subscription: WebPushSubscription,
-) {
-  return apiRequest<void>('/push/unsubscribe', {
-    method: 'POST',
-    token,
-    body: subscription,
-  })
-}
+export const unsubscribePushEffect = Effect.fn('web.push.unsubscribe')(
+  function*(token: string, subscription: WebPushSubscription) {
+    return yield* apiRequestEffect('/push/unsubscribe', Schema.Void, {
+      method: 'POST',
+      token,
+      body: subscription,
+    })
+  },
+)

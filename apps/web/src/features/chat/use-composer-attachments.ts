@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { Cause, Effect, Exit } from 'effect'
 
-import { uploadAttachment } from '#/features/api/media-api'
+import { uploadAttachmentEffect } from '#/features/api/media-api'
 import {
   createPendingFiles,
   fileForUpload,
@@ -12,7 +13,6 @@ export function useComposerAttachments(channelId?: string) {
   const [files, setFiles] = useState<PendingComposerFile[]>([])
   const filesRef = useRef(files)
   const controllersRef = useRef(new Map<string, AbortController>())
-  const uploadPromiseRef = useRef<Promise<string[]> | null>(null)
   filesRef.current = files
 
   function abortUploads() {
@@ -57,83 +57,107 @@ export function useComposerAttachments(channelId?: string) {
     )
   }
 
-  async function runUploads(token: string) {
-    const results = await Promise.allSettled(
-      filesRef.current.map(async (pending) => {
-        if (pending.attachmentId) return pending.attachmentId
+  function runUploads(token: string) {
+    return Effect.gen(function*() {
+      const results = yield* Effect.all(
+        filesRef.current.map((pending) => {
+          if (pending.attachmentId) {
+            return Effect.succeed(pending.attachmentId).pipe(Effect.exit)
+          }
 
-        const controller = new AbortController()
-        controllersRef.current.set(pending.id, controller)
-        setFiles((current) =>
-          current.map((file) =>
-            file.id === pending.id
-              ? { ...file, status: 'uploading', progress: 0, error: undefined }
-              : file,
-          ),
-        )
+          const controller = new AbortController()
+          controllersRef.current.set(pending.id, controller)
 
-        try {
-          const attachmentId = await uploadAttachment(
-            token,
-            fileForUpload(pending),
-            {
-              signal: controller.signal,
-              onProgress: (progress) => {
-                setFiles((current) =>
-                  current.map((file) =>
-                    file.id === pending.id ? { ...file, progress } : file,
-                  ),
-                )
+          return Effect.gen(function*() {
+            yield* Effect.sync(() => {
+              setFiles((current) =>
+                current.map((file) =>
+                  file.id === pending.id
+                    ? {
+                        ...file,
+                        status: 'uploading',
+                        progress: 0,
+                        error: undefined,
+                      }
+                    : file,
+                ),
+              )
+            })
+
+            const attachmentId = yield* uploadAttachmentEffect(
+              token,
+              fileForUpload(pending),
+              {
+                signal: controller.signal,
+                onProgress: (progress) => {
+                  setFiles((current) =>
+                    current.map((file) =>
+                      file.id === pending.id ? { ...file, progress } : file,
+                    ),
+                  )
+                },
               },
-            },
-          )
-          setFiles((current) =>
-            current.map((file) =>
-              file.id === pending.id
-                ? { ...file, attachmentId, progress: 1, status: 'uploaded' }
-                : file,
+            ).pipe(
+              Effect.tapError((error) =>
+                Effect.sync(() => {
+                  const message =
+                    error instanceof DOMException && error.name === 'AbortError'
+                      ? 'Загрузка отменена'
+                      : error instanceof Error
+                        ? error.message
+                        : 'Не удалось загрузить файл'
+                  setFiles((current) =>
+                    current.map((file) =>
+                      file.id === pending.id
+                        ? { ...file, status: 'error', error: message }
+                        : file,
+                    ),
+                  )
+                }),
+              ),
+            )
+
+            yield* Effect.sync(() => {
+              setFiles((current) =>
+                current.map((file) =>
+                  file.id === pending.id
+                    ? {
+                        ...file,
+                        attachmentId,
+                        progress: 1,
+                        status: 'uploaded',
+                      }
+                    : file,
+                ),
+              )
+            })
+
+            return attachmentId
+          }).pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                controllersRef.current.delete(pending.id)
+              }),
             ),
+            Effect.exit,
           )
-          return attachmentId
-        } catch (error) {
-          const message =
-            error instanceof DOMException && error.name === 'AbortError'
-              ? 'Загрузка отменена'
-              : error instanceof Error
-                ? error.message
-                : 'Не удалось загрузить файл'
-          setFiles((current) =>
-            current.map((file) =>
-              file.id === pending.id
-                ? { ...file, status: 'error', error: message }
-                : file,
-            ),
-          )
-          throw error
-        } finally {
-          controllersRef.current.delete(pending.id)
+        }),
+        { concurrency: 'unbounded' },
+      )
+
+      const attachmentIds: string[] = []
+      for (const result of results) {
+        if (Exit.isFailure(result)) {
+          return yield* Effect.fail(Cause.squash(result.cause))
         }
-      }),
-    )
-
-    const failed = results.find(
-      (result): result is PromiseRejectedResult => result.status === 'rejected',
-    )
-    if (failed) throw failed.reason
-
-    return results.map(
-      (result) => (result as PromiseFulfilledResult<string>).value,
-    )
+        attachmentIds.push(result.value)
+      }
+      return attachmentIds
+    })
   }
 
   function uploadAll(token: string) {
-    if (uploadPromiseRef.current) return uploadPromiseRef.current
-
-    const promise = runUploads(token).finally(() => {
-      if (uploadPromiseRef.current === promise) uploadPromiseRef.current = null
-    })
-    uploadPromiseRef.current = promise
-    return promise
+    return runUploads(token)
   }
 
   return { files, append, remove, toggleSpoiler, reset, uploadAll }

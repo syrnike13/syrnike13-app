@@ -29,7 +29,7 @@ export function MobileProfilePage() {
 
   const profileQuery = useQuery({
     queryKey: queryKeys.users.profile(user?._id ?? ''),
-    queryFn: () => fetchUserProfile(token!, user!._id),
+    queryFn: ({ signal }) => fetchUserProfile(token!, user!._id, signal),
     enabled: Boolean(token && user),
     staleTime: 60_000,
   })

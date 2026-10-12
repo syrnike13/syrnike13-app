@@ -44,6 +44,8 @@ export const IPC = {
   overlayStateChanged: 'syrnike-desktop:overlay:state-changed',
   mediaRequest: 'syrnike-desktop:media:request',
   mediaGetDisplaySources: 'syrnike-desktop:media:get-display-sources',
+  mediaGetDisplaySourceVisual:
+    'syrnike-desktop:media:get-display-source-visual',
   mediaSelectDisplaySource: 'syrnike-desktop:media:select-display-source',
   mediaCancelRequest: 'syrnike-desktop:media:cancel-request',
   mediaOpenDisplayPicker: 'syrnike-desktop:media:open-display-picker',
@@ -63,10 +65,13 @@ export const IPC = {
   mediaRemoteVideoFailed: 'syrnike-desktop:media:remote-video-failed',
   mediaRemoteVideoSessionReset:
     'syrnike-desktop:media:remote-video-session-reset',
+  mediaNativeVideoPresentationReset:
+    'syrnike-desktop:media:native-video-presentation-reset',
   mediaSetLocalScreenPreviewDemand:
     'syrnike-desktop:media:set-local-screen-preview-demand',
   voiceDispatch: 'syrnike-desktop:voice:dispatch',
   voiceGetSnapshot: 'syrnike-desktop:voice:get-snapshot',
+  voiceGetTelemetry: 'syrnike-desktop:voice:get-telemetry',
   voiceSnapshotChanged: 'syrnike-desktop:voice:snapshot-changed',
 } as const
 

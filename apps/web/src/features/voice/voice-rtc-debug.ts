@@ -1,7 +1,12 @@
-import type { Room } from 'livekit-client'
+import { Effect, Option, Schema } from 'effect'
+import type { VoiceRtcTelemetrySnapshot } from '@syrnike13/platform'
 
 import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
 import { getVoicePeerConnectionEntries } from '#/features/voice/voice-ping'
+import {
+  voiceStageMediaStreamTrack,
+  type VoiceStageMediaItem,
+} from '#/features/voice/voice-context'
 
 export const RTC_DEBUG_BROWSER_UNAVAILABLE = 'N/A'
 export const RTC_DEBUG_HISTORY_LIMIT = 180
@@ -11,49 +16,10 @@ type RtcStatsLike = Record<string, unknown> & {
   type: string
 }
 
+const RtcStatsRecordSchema = Schema.Record(Schema.String, Schema.Unknown)
+
 type RtcDebugRoomLike = {
   engine?: unknown
-}
-
-type RtcDebugMediaTrack = {
-  mediaStreamTrack?: {
-    id?: string
-    contentHint?: string
-    getSettings?: () => MediaTrackSettings
-  } | null
-}
-
-type RtcDebugPublication = {
-  trackSid?: string
-  sid?: string
-  source?: string
-  options?: RtcDebugPublishOptions
-}
-
-type RtcDebugPublishOptions = {
-  videoCodec?: string
-  codec?: string
-  simulcast?: boolean
-  degradationPreference?: string
-  screenShareEncoding?: {
-    maxBitrate?: number
-    maxFramerate?: number
-  }
-  videoEncoding?: {
-    maxBitrate?: number
-    maxFramerate?: number
-  }
-}
-
-export type RtcDebugStageMediaItem = {
-  id: string
-  userId: string
-  kind: string
-  isLocal: boolean
-  subscribed?: boolean
-  live: boolean
-  track?: RtcDebugMediaTrack | null
-  publication?: RtcDebugPublication | null
 }
 
 export type RtcDebugTransportSnapshot = {
@@ -87,9 +53,19 @@ export type RtcDebugRtpStreamSnapshot = {
   packetsSent?: number
   packetsReceived?: number
   packetsLost?: number
+  packetLossPercent?: number
+  roundTripTimeMs?: number
+  retransmittedPacketsSent?: number
   retransmittedBytesSent?: number
+  retransmittedPacketsReceived?: number
+  retransmittedBytesReceived?: number
+  packetsDiscarded?: number
   nackCount?: number
+  firCount?: number
   pliCount?: number
+  framesSent?: number
+  framesReceived?: number
+  framesRendered?: number
   framesEncoded?: number
   framesDecoded?: number
   framesDropped?: number
@@ -104,10 +80,17 @@ export type RtcDebugRtpStreamSnapshot = {
   totalSamplesReceived?: number
   concealedSamples?: number
   silentConcealedSamples?: number
+  concealmentEvents?: number
+  jitterBufferDelay?: number
+  jitterBufferTargetDelay?: number
   jitterBufferEmittedCount?: number
   jitter?: number
   freezeCount?: number
   totalFreezesDuration?: number
+  pauseCount?: number
+  totalPauseDuration?: number
+  encoderImplementation?: string
+  decoderImplementation?: string
 }
 
 export type RtcDebugScreenShareSnapshot = {
@@ -149,6 +132,34 @@ export type RtcDebugScreenShareSnapshot = {
   captureVideoNoFrameCount?: number
   captureVideoRepeatedFrameCount?: number
   captureVideoRecoverableLostCount?: number
+  captureVideoGpuPoolSlotsAvailable?: number
+  captureVideoGpuPoolSlotsTotal?: number
+  captureVideoDxgiDuplicationHoldUsMax?: number
+  captureVideoSourceUpdates?: number
+  captureVideoGpuSubmissions?: number
+  captureVideoIdleRefreshes?: number
+  captureVideoCoalescedSourceUpdates?: number
+  captureVideoEncoderBackpressureTicks?: number
+  captureVideoSupersededReadyFrames?: number
+  captureVideoGpuSlotTimeouts?: number
+  captureVideoGpuSlotsRecovered?: number
+  captureVideoGpuFramesDroppedStale?: number
+  captureVideoGpuPoolRollovers?: number
+  captureVideoGpuRolloversBlocked?: number
+  captureVideoGpuRetiredGenerations?: number
+  captureVideoGpuSlotsQuarantined?: number
+  captureVideoPreviewBridgeSubmissions?: number
+  captureVideoPreviewBridgeAcquires?: number
+  captureVideoPreviewBridgeTimeouts?: number
+  captureVideoPreviewBridgeSlotsRecovered?: number
+  captureVideoPreviewGpuSubmissions?: number
+  captureVideoPreviewFramesCompleted?: number
+  captureVideoPreviewSlotTimeouts?: number
+  captureVideoPreviewFramesDroppedStale?: number
+  captureVideoPreviewDeviceResets?: number
+  captureVideoGpuCompletionP50Us?: number
+  captureVideoGpuCompletionP95Us?: number
+  captureVideoGpuCompletionMaxUs?: number
   captureVideoAvgCaptureUs?: number
   captureVideoAvgReadbackUs?: number
   captureVideoAvgScaleUs?: number
@@ -157,6 +168,12 @@ export type RtcDebugScreenShareSnapshot = {
   captureVideoSourceHeight?: number
   captureVideoContentWidth?: number
   captureVideoContentHeight?: number
+  captureRtpStatsAvailable?: boolean
+  captureRtpPacketsSent?: number
+  captureRtpBytesSent?: number
+  captureRtpFramesSent?: number
+  captureRtpFramesEncoded?: number
+  captureEncoderImplementation?: string
   captureThreadMmcss?: boolean
   captureAudioPublished?: boolean
   captureAudioMode?: string
@@ -171,6 +188,23 @@ export type RtcDebugScreenShareSnapshot = {
   hybridGdiPrintWindowFrames: number | typeof RTC_DEBUG_BROWSER_UNAVAILABLE
   hybridGraphicsCaptureFrames: number | typeof RTC_DEBUG_BROWSER_UNAVAILABLE
   hybridVideohookFrames: typeof RTC_DEBUG_BROWSER_UNAVAILABLE
+  rendererFramesReceived?: number
+  rendererFramesDrawn?: number
+  rendererFramesSuperseded?: number
+  rendererFramesDroppedNoConsumer?: number
+  rendererFramesDroppedHidden?: number
+  rendererFramesDroppedStale?: number
+  rendererDrawFailures?: number
+  rendererCanvasAttachCount?: number
+  rendererCanvasDetachCount?: number
+  rendererPresentationResets?: number
+  rendererEpochChanges?: number
+  rendererActiveConsumers?: number
+  rendererCanvasPixels?: number
+  rendererLastFrameAgeMs?: number
+  rendererLastDrawAgeMs?: number
+  rendererFrameWidth?: number
+  rendererFrameHeight?: number
 }
 
 export type RtcDebugRates = {
@@ -180,10 +214,24 @@ export type RtcDebugRates = {
   }
   outbound: Record<string, number>
   inbound: Record<string, number>
+  quality: {
+    packetLossPercent?: number
+    inboundPacketLossPercent?: number
+    outboundPacketLossPercent?: number
+    framesDroppedPercent?: number
+    framesDroppedPerSecond?: number
+    jitterMs?: number
+    concealedAudioPercent?: number
+    rendererFramesDroppedPercent?: number
+    rendererFramesDroppedPerSecond?: number
+    rendererConsumerChurnPerSecond?: number
+    rendererDrawFailuresPerSecond?: number
+  }
 }
 
 export type RtcDebugSnapshot = {
   timestamp: number
+  source?: 'web' | 'windows_native'
   transport: RtcDebugTransportSnapshot
   outbound: RtcDebugRtpStreamSnapshot[]
   inbound: RtcDebugRtpStreamSnapshot[]
@@ -191,86 +239,195 @@ export type RtcDebugSnapshot = {
   rates?: RtcDebugRates
 }
 
-export async function collectVoiceRtcDebugSnapshot(
+export const collectVoiceRtcDebugSnapshotEffect = Effect.fn(
+  'voice.collectRtcDebugSnapshot',
+)(function*(
   room: RtcDebugRoomLike,
-  stageMediaItems: readonly RtcDebugStageMediaItem[],
+  stageMediaItems: readonly VoiceStageMediaItem[],
   timestamp = Date.now(),
   statsTimeoutMs = 1_000,
-): Promise<RtcDebugSnapshot> {
+) {
   const snapshot: RtcDebugSnapshot = {
     timestamp,
     transport: {},
     outbound: [],
     inbound: [],
     screenShares: [],
+    source: 'web',
   }
 
-  const entries = getVoicePeerConnectionEntries(room as Room)
+  const entries = getVoicePeerConnectionEntries(room)
 
-  await Promise.allSettled(entries.map(async (entry) => {
-    const report = await promiseWithTimeout(
-      entry.pc.getStats(),
-      statsTimeoutMs,
-      `RTC stats timed out for ${entry.role}`,
-    )
-    const stats = rtcStatsMap(report)
-    const codecs = new Map<string, RtcStatsLike>()
-    const candidates = new Map<string, RtcStatsLike>()
-
-    for (const stat of stats.values()) {
-      if (stat.type === 'codec') codecs.set(stat.id, stat)
-      if (stat.type === 'local-candidate' || stat.type === 'remote-candidate') {
-        candidates.set(stat.id, stat)
-      }
-    }
-
-    const pair = selectedCandidatePair(stats)
-    if (pair) {
-      mergeTransport(snapshot.transport, pair, candidates)
-    }
-
-    for (const stat of stats.values()) {
-      if (stat.type === 'outbound-rtp') {
-        snapshot.outbound.push(
-          rtpStreamSnapshot(entry.role, stat, codecs, 'outbound'),
+  yield* Effect.all(
+    entries.map((entry) =>
+      Effect.gen(function*() {
+        if (!entry.pc.getStats) return
+        const report = yield* promiseWithTimeoutEffect(
+          entry.pc.getStats(),
+          statsTimeoutMs,
+          `RTC stats timed out for ${entry.role}`,
         )
-      }
-      if (stat.type === 'inbound-rtp') {
-        snapshot.inbound.push(
-          rtpStreamSnapshot(entry.role, stat, codecs, 'inbound'),
-        )
-      }
-    }
-  }))
+        yield* Effect.sync(() => {
+            const stats = rtcStatsMap(report)
+            const codecs = new Map<string, RtcStatsLike>()
+            const candidates = new Map<string, RtcStatsLike>()
+            const remoteInbound = new Map<string, RtcStatsLike>()
+
+            for (const stat of stats.values()) {
+              if (stat.type === 'codec') codecs.set(stat.id, stat)
+              if (
+                stat.type === 'local-candidate' ||
+                stat.type === 'remote-candidate'
+              ) {
+                candidates.set(stat.id, stat)
+              }
+              if (stat.type === 'remote-inbound-rtp') {
+                const localId = stringValue(stat.localId)
+                if (localId) remoteInbound.set(localId, stat)
+              }
+            }
+
+            const pair = selectedCandidatePair(stats)
+            if (pair) {
+              mergeTransport(snapshot.transport, pair, candidates)
+            }
+
+            for (const stat of stats.values()) {
+              if (stat.type === 'outbound-rtp') {
+                snapshot.outbound.push(
+                  rtpStreamSnapshot(
+                    entry.role,
+                    stat,
+                    codecs,
+                    'outbound',
+                    remoteInbound.get(stat.id),
+                  ),
+                )
+              }
+              if (stat.type === 'inbound-rtp') {
+                snapshot.inbound.push(
+                  rtpStreamSnapshot(entry.role, stat, codecs, 'inbound'),
+                )
+              }
+            }
+        })
+      }).pipe(Effect.ignore),
+    ),
+    { concurrency: 'unbounded' },
+  )
 
   snapshot.screenShares = stageMediaItems
     .filter((item) => item.kind === 'screen')
     .map((item) => screenShareSnapshot(item, snapshot.outbound, snapshot.inbound))
 
   return snapshot
+})
+
+export function rtcDebugSnapshotFromTelemetry(
+  telemetry: VoiceRtcTelemetrySnapshot,
+  stageMediaItems: readonly VoiceStageMediaItem[],
+): RtcDebugSnapshot {
+  const capture = telemetry.nativeCapture
+  if (capture) {
+    nativeMediaEngineStatsStore.setNative(
+      { ...capture.methods },
+      capture.activeMethod,
+      undefined,
+      {
+        width: capture.width,
+        height: capture.height,
+        fps: capture.fps,
+        bitrate: capture.bitrate,
+        publishedVideo: capture.publishedVideo,
+        publishedAudio: capture.publishedAudio,
+        audioFrames: capture.audioFrames,
+        audioPackets: capture.audioPackets,
+        audioPeakDb: capture.audioPeakDb,
+        audioRmsDb: capture.audioRmsDb,
+        videoFrames: capture.videoFrames,
+        videoIntervalFrames: capture.videoIntervalFrames,
+        videoLateFrames: capture.videoLateFrames,
+        videoNoFrameCount: capture.videoNoFrameCount,
+        videoRepeatedFrameCount: capture.videoRepeatedFrameCount,
+        videoRecoverableLostCount: capture.videoRecoverableLostCount,
+        videoSourceUpdates: capture.videoSourceUpdates,
+        videoGpuSubmissions: capture.videoGpuSubmissions,
+        videoIdleRefreshes: capture.videoIdleRefreshes,
+        videoCoalescedSourceUpdates:
+          capture.videoCoalescedSourceUpdates,
+        videoEncoderBackpressureTicks: capture.videoEncoderBackpressureTicks,
+        videoSupersededReadyFrames: capture.videoSupersededReadyFrames,
+        videoGpuSlotTimeouts: capture.videoGpuSlotTimeouts,
+        videoGpuSlotsRecovered: capture.videoGpuSlotsRecovered,
+        videoGpuFramesDroppedStale: capture.videoGpuFramesDroppedStale,
+        videoGpuPoolRollovers: capture.videoGpuPoolRollovers,
+        videoGpuRolloversBlocked: capture.videoGpuRolloversBlocked,
+        videoGpuRetiredGenerations: capture.videoGpuRetiredGenerations,
+        videoGpuSlotsQuarantined: capture.videoGpuSlotsQuarantined,
+        videoPreviewBridgeSubmissions:
+          capture.videoPreviewBridgeSubmissions,
+        videoPreviewBridgeAcquires: capture.videoPreviewBridgeAcquires,
+        videoPreviewBridgeTimeouts: capture.videoPreviewBridgeTimeouts,
+        videoPreviewBridgeSlotsRecovered:
+          capture.videoPreviewBridgeSlotsRecovered,
+        videoPreviewGpuSubmissions: capture.videoPreviewGpuSubmissions,
+        videoPreviewFramesCompleted: capture.videoPreviewFramesCompleted,
+        videoPreviewSlotTimeouts: capture.videoPreviewSlotTimeouts,
+        videoPreviewFramesDroppedStale:
+          capture.videoPreviewFramesDroppedStale,
+        videoPreviewDeviceResets: capture.videoPreviewDeviceResets,
+        videoGpuCompletionP50Us: capture.videoGpuCompletionP50Us,
+        videoGpuCompletionP95Us: capture.videoGpuCompletionP95Us,
+        videoGpuCompletionMaxUs: capture.videoGpuCompletionMaxUs,
+        videoAvgCaptureUs: capture.videoAvgCaptureUs,
+        videoAvgReadbackUs: capture.videoAvgReadbackUs,
+        videoAvgScaleUs: capture.videoAvgScaleUs,
+        videoAvgPublishUs: capture.videoAvgPublishUs,
+        videoSourceWidth: capture.videoSourceWidth,
+        videoSourceHeight: capture.videoSourceHeight,
+        videoContentWidth: capture.videoContentWidth,
+        videoContentHeight: capture.videoContentHeight,
+        rtpStatsAvailable: capture.rtpStatsAvailable,
+        rtpPacketsSent: capture.rtpPacketsSent,
+        rtpBytesSent: capture.rtpBytesSent,
+        rtpFramesSent: capture.rtpFramesSent,
+        rtpFramesEncoded: capture.rtpFramesEncoded,
+        encoderImplementation: capture.encoderImplementation,
+        captureThreadMmcss: capture.captureThreadMmcss,
+      },
+    )
+  } else if (nativeMediaEngineStatsStore.getState().backend === 'native') {
+    nativeMediaEngineStatsStore.reset()
+  }
+
+  const snapshot: RtcDebugSnapshot = {
+    timestamp: telemetry.timestamp,
+    source: 'windows_native',
+    transport: { ...telemetry.transport },
+    outbound: telemetry.outbound.map((stream) => ({ ...stream })),
+    inbound: telemetry.inbound.map((stream) => ({ ...stream })),
+    screenShares: [],
+  }
+  snapshot.screenShares = stageMediaItems
+    .filter((item) => item.kind === 'screen')
+    .map((item) => screenShareSnapshot(item, snapshot.outbound, snapshot.inbound))
+  return snapshot
 }
 
-function promiseWithTimeout<T>(
+function promiseWithTimeoutEffect<T>(
   promise: Promise<T>,
   timeoutMs: number,
   message: string,
 ) {
-  return new Promise<T>((resolve, reject) => {
-    const timeout = globalThis.setTimeout(
-      () => reject(new Error(message)),
-      Math.max(1, timeoutMs),
-    )
-    promise.then(
-      (value) => {
-        globalThis.clearTimeout(timeout)
-        resolve(value)
-      },
-      (error) => {
-        globalThis.clearTimeout(timeout)
-        reject(error)
-      },
-    )
-  })
+  return Effect.tryPromise({
+    try: () => promise,
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: Math.max(1, timeoutMs),
+      orElse: () => Effect.fail(new Error(message)),
+    }),
+  )
 }
 
 export function deriveRtcRates(
@@ -282,6 +439,7 @@ export function deriveRtcRates(
     transport: {},
     outbound: {},
     inbound: {},
+    quality: {},
   }
   if (seconds <= 0) return rates
 
@@ -315,6 +473,65 @@ export function deriveRtcRates(
     )
     if (rate != null) rates.inbound[stream.id] = rate
   }
+
+  const inboundLoss = inboundPacketLossPercent(previous.inbound, current.inbound)
+  const outboundLossValues = current.outbound
+    .map((stream) => stream.packetLossPercent)
+    .filter((value): value is number => value != null && Number.isFinite(value))
+  const outboundLoss =
+    outboundLossValues.length > 0 ? Math.max(...outboundLossValues) : undefined
+  const frameQuality = droppedFrameQuality(
+    previous.inbound,
+    current.inbound,
+    seconds,
+  )
+  const jitterValues = current.inbound
+    .map((stream) => stream.jitter)
+    .filter((value): value is number => value != null && Number.isFinite(value))
+  const concealedAudioPercent = audioConcealmentPercent(
+    previous.inbound,
+    current.inbound,
+  )
+  const rendererQuality = rendererPresentationQuality(
+    previous.screenShares ?? [],
+    current.screenShares ?? [],
+    seconds,
+  )
+  setDefined(rates.quality, 'inboundPacketLossPercent', inboundLoss)
+  setDefined(rates.quality, 'outboundPacketLossPercent', outboundLoss)
+  setDefined(
+    rates.quality,
+    'packetLossPercent',
+    maximumDefined(inboundLoss, outboundLoss),
+  )
+  setDefined(rates.quality, 'framesDroppedPercent', frameQuality.percent)
+  setDefined(rates.quality, 'framesDroppedPerSecond', frameQuality.perSecond)
+  setDefined(
+    rates.quality,
+    'jitterMs',
+    jitterValues.length > 0 ? Math.max(...jitterValues) * 1000 : undefined,
+  )
+  setDefined(rates.quality, 'concealedAudioPercent', concealedAudioPercent)
+  setDefined(
+    rates.quality,
+    'rendererFramesDroppedPercent',
+    rendererQuality.percent,
+  )
+  setDefined(
+    rates.quality,
+    'rendererFramesDroppedPerSecond',
+    rendererQuality.perSecond,
+  )
+  setDefined(
+    rates.quality,
+    'rendererConsumerChurnPerSecond',
+    rendererQuality.consumerChurnPerSecond,
+  )
+  setDefined(
+    rates.quality,
+    'rendererDrawFailuresPerSecond',
+    rendererQuality.drawFailuresPerSecond,
+  )
 
   return rates
 }
@@ -365,6 +582,11 @@ export function formatRtcMs(value?: number | null) {
   return `${Math.round(value)} ms`
 }
 
+export function formatRtcPercent(value?: number | null) {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)}%`
+}
+
 export function formatRtcFps(value?: number | null) {
   if (value == null || !Number.isFinite(value)) return '—'
   return `${Number(value).toFixed(2)}`
@@ -385,8 +607,11 @@ export function formatRtcValue(value: unknown) {
 function rtcStatsMap(report: RTCStatsReport) {
   const map = new Map<string, RtcStatsLike>()
   report.forEach((stat) => {
-    const value = stat as unknown as RtcStatsLike
-    if (value.id && value.type) map.set(value.id, value)
+    const decoded = Schema.decodeUnknownOption(RtcStatsRecordSchema)(stat)
+    if (Option.isNone(decoded)) return
+    const id = stringValue(decoded.value.id)
+    const type = stringValue(decoded.value.type)
+    if (id && type) map.set(id, { ...decoded.value, id, type })
   })
   return map
 }
@@ -428,8 +653,11 @@ function mergeTransport(
   )
 
   const rtt = numberValue(pair.currentRoundTripTime)
-  if (transport.pingMs == null && rtt != null) {
-    transport.pingMs = Math.round(rtt * 1000)
+  if (rtt != null) {
+    transport.pingMs = Math.max(
+      transport.pingMs ?? 0,
+      Math.round(rtt * 1000),
+    )
   }
 
   const local = candidates.get(String(pair.localCandidateId))
@@ -443,9 +671,12 @@ function rtpStreamSnapshot(
   stat: RtcStatsLike,
   codecs: Map<string, RtcStatsLike>,
   direction: 'outbound' | 'inbound',
+  remoteInbound?: RtcStatsLike,
 ): RtcDebugRtpStreamSnapshot {
   const codec = codecs.get(String(stat.codecId))
   const kind = mediaKind(stat)
+  const remotePacketLossFraction = numberValue(remoteInbound?.fractionLost)
+  const remoteRoundTripTime = numberValue(remoteInbound?.roundTripTime)
   const stream: RtcDebugRtpStreamSnapshot = {
     id: `${role}:${stat.id}`,
     pcRole: role,
@@ -456,8 +687,21 @@ function rtpStreamSnapshot(
     codec: formatCodec(codec),
     targetBitrate: numberValue(stat.targetBitrate),
     packetsLost: numberValue(stat.packetsLost),
+    packetLossPercent:
+      remotePacketLossFraction == null
+        ? undefined
+        : Math.max(0, remotePacketLossFraction * 100),
+    roundTripTimeMs:
+      remoteRoundTripTime == null
+        ? undefined
+        : Math.max(0, remoteRoundTripTime * 1000),
+    retransmittedPacketsSent: numberValue(stat.retransmittedPacketsSent),
     nackCount: numberValue(stat.nackCount),
+    firCount: numberValue(stat.firCount),
     pliCount: numberValue(stat.pliCount),
+    framesSent: numberValue(stat.framesSent),
+    framesReceived: numberValue(stat.framesReceived),
+    framesRendered: numberValue(stat.framesRendered),
     framesEncoded: numberValue(stat.framesEncoded),
     framesDecoded: numberValue(stat.framesDecoded),
     framesDropped: numberValue(stat.framesDropped),
@@ -472,10 +716,17 @@ function rtpStreamSnapshot(
     totalSamplesReceived: numberValue(stat.totalSamplesReceived),
     concealedSamples: numberValue(stat.concealedSamples),
     silentConcealedSamples: numberValue(stat.silentConcealedSamples),
+    concealmentEvents: numberValue(stat.concealmentEvents),
+    jitterBufferDelay: numberValue(stat.jitterBufferDelay),
+    jitterBufferTargetDelay: numberValue(stat.jitterBufferTargetDelay),
     jitterBufferEmittedCount: numberValue(stat.jitterBufferEmittedCount),
     jitter: numberValue(stat.jitter),
     freezeCount: numberValue(stat.freezeCount),
     totalFreezesDuration: numberValue(stat.totalFreezesDuration),
+    pauseCount: numberValue(stat.pauseCount),
+    totalPauseDuration: numberValue(stat.totalPauseDuration),
+    encoderImplementation: stringValue(stat.encoderImplementation),
+    decoderImplementation: stringValue(stat.decoderImplementation),
   }
 
   if (direction === 'outbound') {
@@ -485,18 +736,25 @@ function rtpStreamSnapshot(
   } else {
     stream.bytesReceived = numberValue(stat.bytesReceived)
     stream.packetsReceived = numberValue(stat.packetsReceived)
+    stream.retransmittedPacketsReceived = numberValue(
+      stat.retransmittedPacketsReceived,
+    )
+    stream.retransmittedBytesReceived = numberValue(
+      stat.retransmittedBytesReceived,
+    )
+    stream.packetsDiscarded = numberValue(stat.packetsDiscarded)
   }
 
   return stream
 }
 
 function screenShareSnapshot(
-  item: RtcDebugStageMediaItem,
+  item: VoiceStageMediaItem,
   outbound: readonly RtcDebugRtpStreamSnapshot[],
   inbound: readonly RtcDebugRtpStreamSnapshot[],
 ): RtcDebugScreenShareSnapshot {
   const publication = item.publication
-  const track = item.track?.mediaStreamTrack
+  const track = voiceStageMediaStreamTrack(item.track)
   const rtpStream = screenShareRtpStream(item, outbound, inbound)
   const settings = track?.getSettings?.()
   const browserSettings = settings as
@@ -508,6 +766,11 @@ function screenShareSnapshot(
     | undefined
   const options = publication?.options
   const encoding = options?.screenShareEncoding ?? options?.videoEncoding
+  const renderer =
+    item.track?.backend === 'native' &&
+    typeof item.track.track.getPresentationMetrics === 'function'
+      ? item.track.track.getPresentationMetrics()
+      : null
 
   const nativeStats = item.isLocal ? nativeMediaEngineStatsStore.getState() : null
   const hybridUnavailable = RTC_DEBUG_BROWSER_UNAVAILABLE
@@ -518,10 +781,10 @@ function screenShareSnapshot(
     isLocal: item.isLocal,
     subscribed: item.subscribed,
     live: item.live,
-    publicationId: publication?.trackSid ?? publication?.sid,
+    publicationId: publication?.trackSid,
     rtpStreamId: rtpStream?.id,
-    trackReady: Boolean(track),
-    codec: options?.videoCodec ?? options?.codec,
+    trackReady: Boolean(item.track),
+    codec: options?.videoCodec,
     maxBitrate: encoding?.maxBitrate,
     maxFramerate: encoding?.maxFramerate,
     simulcast: options?.simulcast,
@@ -575,6 +838,106 @@ function screenShareSnapshot(
       nativeStats?.backend === 'native'
         ? nativeStats.videoRecoverableLostCount
         : undefined,
+    captureVideoSourceUpdates:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoSourceUpdates
+        : undefined,
+    captureVideoGpuSubmissions:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuSubmissions
+        : undefined,
+    captureVideoIdleRefreshes:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoIdleRefreshes
+        : undefined,
+    captureVideoCoalescedSourceUpdates:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoCoalescedSourceUpdates
+        : undefined,
+    captureVideoEncoderBackpressureTicks:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoEncoderBackpressureTicks
+        : undefined,
+    captureVideoSupersededReadyFrames:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoSupersededReadyFrames
+        : undefined,
+    captureVideoGpuSlotTimeouts:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuSlotTimeouts
+        : undefined,
+    captureVideoGpuSlotsRecovered:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuSlotsRecovered
+        : undefined,
+    captureVideoGpuFramesDroppedStale:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuFramesDroppedStale
+        : undefined,
+    captureVideoGpuPoolRollovers:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuPoolRollovers
+        : undefined,
+    captureVideoGpuRolloversBlocked:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuRolloversBlocked
+        : undefined,
+    captureVideoGpuRetiredGenerations:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuRetiredGenerations
+        : undefined,
+    captureVideoGpuSlotsQuarantined:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuSlotsQuarantined
+        : undefined,
+    captureVideoPreviewBridgeSubmissions:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewBridgeSubmissions
+        : undefined,
+    captureVideoPreviewBridgeAcquires:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewBridgeAcquires
+        : undefined,
+    captureVideoPreviewBridgeTimeouts:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewBridgeTimeouts
+        : undefined,
+    captureVideoPreviewBridgeSlotsRecovered:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewBridgeSlotsRecovered
+        : undefined,
+    captureVideoPreviewGpuSubmissions:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewGpuSubmissions
+        : undefined,
+    captureVideoPreviewFramesCompleted:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewFramesCompleted
+        : undefined,
+    captureVideoPreviewSlotTimeouts:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewSlotTimeouts
+        : undefined,
+    captureVideoPreviewFramesDroppedStale:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewFramesDroppedStale
+        : undefined,
+    captureVideoPreviewDeviceResets:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoPreviewDeviceResets
+        : undefined,
+    captureVideoGpuCompletionP50Us:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuCompletionP50Us
+        : undefined,
+    captureVideoGpuCompletionP95Us:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuCompletionP95Us
+        : undefined,
+    captureVideoGpuCompletionMaxUs:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoGpuCompletionMaxUs
+        : undefined,
     captureVideoAvgCaptureUs:
       nativeStats?.backend === 'native'
         ? nativeStats.videoAvgCaptureUs
@@ -606,6 +969,30 @@ function screenShareSnapshot(
     captureVideoContentHeight:
       nativeStats?.backend === 'native'
         ? nativeStats.videoContentHeight
+        : undefined,
+    captureRtpStatsAvailable:
+      nativeStats?.backend === 'native'
+        ? nativeStats.rtpStatsAvailable
+        : undefined,
+    captureRtpPacketsSent:
+      nativeStats?.backend === 'native'
+        ? nativeStats.rtpPacketsSent
+        : undefined,
+    captureRtpBytesSent:
+      nativeStats?.backend === 'native'
+        ? nativeStats.rtpBytesSent
+        : undefined,
+    captureRtpFramesSent:
+      nativeStats?.backend === 'native'
+        ? nativeStats.rtpFramesSent
+        : undefined,
+    captureRtpFramesEncoded:
+      nativeStats?.backend === 'native'
+        ? nativeStats.rtpFramesEncoded
+        : undefined,
+    captureEncoderImplementation:
+      nativeStats?.backend === 'native'
+        ? nativeStats.encoderImplementation
         : undefined,
     captureThreadMmcss:
       nativeStats?.backend === 'native'
@@ -642,11 +1029,28 @@ function screenShareSnapshot(
     hybridGraphicsCaptureFrames:
       nativeStats?.backend === 'native' ? nativeStats.methods.wgc_gpu : hybridUnavailable,
     hybridVideohookFrames: hybridUnavailable,
+    rendererFramesReceived: renderer?.framesReceived,
+    rendererFramesDrawn: renderer?.framesDrawn,
+    rendererFramesSuperseded: renderer?.framesSuperseded,
+    rendererFramesDroppedNoConsumer: renderer?.framesDroppedNoConsumer,
+    rendererFramesDroppedHidden: renderer?.framesDroppedHidden,
+    rendererFramesDroppedStale: renderer?.framesDroppedStale,
+    rendererDrawFailures: renderer?.drawFailures,
+    rendererCanvasAttachCount: renderer?.canvasAttachCount,
+    rendererCanvasDetachCount: renderer?.canvasDetachCount,
+    rendererPresentationResets: renderer?.presentationResets,
+    rendererEpochChanges: renderer?.rendererEpochChanges,
+    rendererActiveConsumers: renderer?.activeConsumers,
+    rendererCanvasPixels: renderer?.canvasPixels,
+    rendererLastFrameAgeMs: renderer?.lastFrameAgeMs,
+    rendererLastDrawAgeMs: renderer?.lastDrawAgeMs,
+    rendererFrameWidth: renderer?.sourceWidth,
+    rendererFrameHeight: renderer?.sourceHeight,
   }
 }
 
 function screenShareRtpStream(
-  item: RtcDebugStageMediaItem,
+  item: VoiceStageMediaItem,
   outbound: readonly RtcDebugRtpStreamSnapshot[],
   inbound: readonly RtcDebugRtpStreamSnapshot[],
 ) {
@@ -655,7 +1059,7 @@ function screenShareRtpStream(
       stream.kind === 'video' &&
       stream.pcRole === (item.isLocal ? 'publisher' : 'subscriber'),
   )
-  const trackId = item.track?.mediaStreamTrack?.id
+  const trackId = voiceStageMediaStreamTrack(item.track)?.id
   if (trackId) {
     const matching = streams.find(
       (stream) => stream.trackIdentifier === trackId,
@@ -699,14 +1103,10 @@ function addOptional(current: number | undefined, next: number | undefined) {
 }
 
 function numberRecord(value: unknown): Record<string, number> | undefined {
-  if (typeof value !== 'object' || value == null) return undefined
-
-  const result: Record<string, number> = {}
-  for (const [key, entry] of Object.entries(value)) {
-    if (typeof entry !== 'number' || !Number.isFinite(entry)) return undefined
-    result[key] = entry
-  }
-  return result
+  const decoded = Schema.decodeUnknownOption(
+    Schema.Record(Schema.String, Schema.Finite),
+  )(value)
+  return Option.isSome(decoded) ? { ...decoded.value } : undefined
 }
 
 type RtcDebugRateSnapshotInput = {
@@ -715,8 +1115,68 @@ type RtcDebugRateSnapshotInput = {
     bytesSent?: number
     bytesReceived?: number
   }
-  outbound: ReadonlyArray<{ id: string; bytesSent?: number }>
-  inbound: ReadonlyArray<{ id: string; bytesReceived?: number }>
+  outbound: ReadonlyArray<{
+    id: string
+    bytesSent?: number
+    packetLossPercent?: number
+  }>
+  inbound: ReadonlyArray<{
+    id: string
+    bytesReceived?: number
+    packetsReceived?: number
+    packetsLost?: number
+    framesDecoded?: number
+    framesDropped?: number
+    totalSamplesReceived?: number
+    concealedSamples?: number
+    jitter?: number
+  }>
+  screenShares?: ReadonlyArray<{
+    id: string
+    isLocal: boolean
+    rendererFramesReceived?: number
+    rendererFramesSuperseded?: number
+    rendererDrawFailures?: number
+    rendererCanvasAttachCount?: number
+    rendererCanvasDetachCount?: number
+  }>
+}
+
+export type RtcConnectionQuality = 'good' | 'fair' | 'poor' | 'unknown'
+
+export function rtcConnectionQuality(
+  snapshot: RtcDebugSnapshot | null,
+): RtcConnectionQuality {
+  if (!snapshot) return 'unknown'
+  const ping = snapshot.transport.pingMs
+  const quality = snapshot.rates?.quality
+  const values = [
+    ping,
+    quality?.packetLossPercent,
+    quality?.jitterMs,
+    quality?.framesDroppedPercent,
+    quality?.concealedAudioPercent,
+  ]
+  if (values.every((value) => value == null)) return 'unknown'
+  if (
+    (ping ?? 0) >= 250 ||
+    (quality?.packetLossPercent ?? 0) >= 5 ||
+    (quality?.jitterMs ?? 0) >= 60 ||
+    (quality?.framesDroppedPercent ?? 0) >= 10 ||
+    (quality?.concealedAudioPercent ?? 0) >= 10
+  ) {
+    return 'poor'
+  }
+  if (
+    (ping ?? 0) >= 120 ||
+    (quality?.packetLossPercent ?? 0) >= 2 ||
+    (quality?.jitterMs ?? 0) >= 30 ||
+    (quality?.framesDroppedPercent ?? 0) >= 3 ||
+    (quality?.concealedAudioPercent ?? 0) >= 3
+  ) {
+    return 'fair'
+  }
+  return 'good'
 }
 
 function byId<T extends { id: string }>(streams: readonly T[]) {
@@ -732,6 +1192,181 @@ function bitrateDelta(
   const delta = current - previous
   if (delta < 0) return undefined
   return Math.round((delta * 8) / seconds)
+}
+
+function inboundPacketLossPercent(
+  previous: RtcDebugRateSnapshotInput['inbound'],
+  current: RtcDebugRateSnapshotInput['inbound'],
+) {
+  const previousById = byId(previous)
+  let receivedDelta = 0
+  let lostDelta = 0
+  let hasCounters = false
+
+  for (const stream of current) {
+    const prior = previousById.get(stream.id)
+    const received = counterDelta(prior?.packetsReceived, stream.packetsReceived)
+    const lost = counterDelta(prior?.packetsLost, stream.packetsLost)
+    if (received == null && lost == null) continue
+    hasCounters = true
+    receivedDelta += received ?? 0
+    lostDelta += lost ?? 0
+  }
+
+  const total = receivedDelta + lostDelta
+  return hasCounters && total > 0 ? (lostDelta / total) * 100 : undefined
+}
+
+function droppedFrameQuality(
+  previous: RtcDebugRateSnapshotInput['inbound'],
+  current: RtcDebugRateSnapshotInput['inbound'],
+  seconds: number,
+) {
+  const previousById = byId(previous)
+  let decodedDelta = 0
+  let droppedDelta = 0
+  let hasCounters = false
+
+  for (const stream of current) {
+    if (stream.framesDecoded == null && stream.framesDropped == null) continue
+    const prior = previousById.get(stream.id)
+    const decoded = counterDelta(prior?.framesDecoded, stream.framesDecoded)
+    const dropped = counterDelta(prior?.framesDropped, stream.framesDropped)
+    if (decoded == null && dropped == null) continue
+    hasCounters = true
+    decodedDelta += decoded ?? 0
+    droppedDelta += dropped ?? 0
+  }
+
+  const total = decodedDelta + droppedDelta
+  return {
+    percent:
+      hasCounters && total > 0 ? (droppedDelta / total) * 100 : undefined,
+    perSecond:
+      hasCounters && seconds > 0 ? droppedDelta / seconds : undefined,
+  }
+}
+
+function audioConcealmentPercent(
+  previous: RtcDebugRateSnapshotInput['inbound'],
+  current: RtcDebugRateSnapshotInput['inbound'],
+) {
+  const previousById = byId(previous)
+  let samplesDelta = 0
+  let concealedDelta = 0
+  let hasCounters = false
+
+  for (const stream of current) {
+    if (
+      stream.totalSamplesReceived == null &&
+      stream.concealedSamples == null
+    ) {
+      continue
+    }
+    const prior = previousById.get(stream.id)
+    const samples = counterDelta(
+      prior?.totalSamplesReceived,
+      stream.totalSamplesReceived,
+    )
+    const concealed = counterDelta(
+      prior?.concealedSamples,
+      stream.concealedSamples,
+    )
+    if (samples == null && concealed == null) continue
+    hasCounters = true
+    samplesDelta += samples ?? 0
+    concealedDelta += concealed ?? 0
+  }
+
+  return hasCounters && samplesDelta > 0
+    ? (concealedDelta / samplesDelta) * 100
+    : undefined
+}
+
+function rendererPresentationQuality(
+  previous: NonNullable<RtcDebugRateSnapshotInput['screenShares']>,
+  current: NonNullable<RtcDebugRateSnapshotInput['screenShares']>,
+  seconds: number,
+) {
+  const previousById = byId(previous)
+  let receivedDelta = 0
+  let supersededDelta = 0
+  let drawFailureDelta = 0
+  let consumerChurnDelta = 0
+  let hasCounters = false
+
+  for (const screen of current) {
+    if (screen.isLocal) continue
+    const prior = previousById.get(screen.id)
+    const received = counterDelta(
+      prior?.rendererFramesReceived,
+      screen.rendererFramesReceived,
+    )
+    const superseded = counterDelta(
+      prior?.rendererFramesSuperseded,
+      screen.rendererFramesSuperseded,
+    )
+    const drawFailures = counterDelta(
+      prior?.rendererDrawFailures,
+      screen.rendererDrawFailures,
+    )
+    const attaches = counterDelta(
+      prior?.rendererCanvasAttachCount,
+      screen.rendererCanvasAttachCount,
+    )
+    const detaches = counterDelta(
+      prior?.rendererCanvasDetachCount,
+      screen.rendererCanvasDetachCount,
+    )
+    if (
+      received == null &&
+      superseded == null &&
+      drawFailures == null &&
+      attaches == null &&
+      detaches == null
+    ) {
+      continue
+    }
+    hasCounters = true
+    receivedDelta += received ?? 0
+    supersededDelta += superseded ?? 0
+    drawFailureDelta += drawFailures ?? 0
+    consumerChurnDelta += (attaches ?? 0) + (detaches ?? 0)
+  }
+
+  return {
+    percent:
+      hasCounters && receivedDelta > 0
+        ? (supersededDelta / receivedDelta) * 100
+        : undefined,
+    perSecond:
+      hasCounters && seconds > 0 ? supersededDelta / seconds : undefined,
+    consumerChurnPerSecond:
+      hasCounters && seconds > 0 ? consumerChurnDelta / seconds : undefined,
+    drawFailuresPerSecond:
+      hasCounters && seconds > 0 ? drawFailureDelta / seconds : undefined,
+  }
+}
+
+function counterDelta(previous?: number, current?: number) {
+  if (previous == null || current == null) return undefined
+  const delta = current - previous
+  return delta >= 0 ? delta : undefined
+}
+
+function maximumDefined(...values: Array<number | undefined>) {
+  const defined = values.filter(
+    (value): value is number => value != null && Number.isFinite(value),
+  )
+  return defined.length > 0 ? Math.max(...defined) : undefined
+}
+
+function setDefined<T extends object, K extends keyof T>(
+  target: T,
+  key: K,
+  value: T[K] | undefined,
+) {
+  if (value != null) target[key] = value
 }
 
 function numberValue(value: unknown) {

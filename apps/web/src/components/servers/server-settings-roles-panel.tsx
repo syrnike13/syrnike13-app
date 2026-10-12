@@ -23,6 +23,7 @@ import {
   ShieldOffIcon,
   Trash2Icon,
 } from '#/components/icons'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { FxImage } from '#/components/ui/fx-image'
@@ -47,10 +48,10 @@ import {
 } from '#/components/ui/floating-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import {
-  createServerRole,
-  deleteServerRole,
-  editServerRoleRanks,
-  setDefaultServerPermissions,
+  createServerRoleEffect,
+  deleteServerRoleEffect,
+  editServerRoleRanksEffect,
+  setDefaultServerPermissionsEffect,
 } from '#/features/api/servers-api'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import {
@@ -383,20 +384,27 @@ function DefaultPermissionsEditor({
     if (!isDirty) return true
 
     setSaving(true)
-    try {
-      const updated = await setDefaultServerPermissions(token, serverId, {
+    return Effect.runPromise(
+      setDefaultServerPermissionsEffect(token, serverId, {
         permissions,
-      })
-      syncStore.upsertServer(updated)
-      return true
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось сохранить права',
-      )
-      return false
-    } finally {
-      setSaving(false)
-    }
+      }).pipe(
+        Effect.tap((updated) =>
+          Effect.sync(() => syncStore.upsertServer(updated)),
+        ),
+        Effect.as(true),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось сохранить права',
+            )
+            return false
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setSaving(false))),
+      ),
+    )
   }, [isDirty, permissions, serverId, token])
 
   const draftRegistration = useMemo(
@@ -553,19 +561,26 @@ export function ServerSettingsRolesPanel({
     if (!token) return
 
     setCreating(true)
-    try {
-      const { id, role } = await createServerRole(token, serverId, {
+    await Effect.runPromise(
+      createServerRoleEffect(token, serverId, {
         name: NEW_ROLE_NAME,
-      })
-      upsertServerRole(serverId, role)
-      setSelectedId(id)
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось создать роль',
-      )
-    } finally {
-      setCreating(false)
-    }
+      }).pipe(
+        Effect.tap(({ id, role }) =>
+          Effect.sync(() => {
+            upsertServerRole(serverId, role)
+            setSelectedId(id)
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось создать роль',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setCreating(false))),
+      ),
+    )
   }
 
   function requestRoleDeletion(role: Role) {
@@ -592,28 +607,39 @@ export function ServerSettingsRolesPanel({
       return
     }
 
+    const pendingRole = rolePendingDeletion
     setDeletingRole(true)
-    try {
-      await deleteServerRole(token, serverId, rolePendingDeletion._id)
-      const currentServer = syncStore.getState().servers[serverId]
-      if (currentServer?.roles) {
-        const {
-          [rolePendingDeletion._id]: _,
-          ...remainingRoles
-        } = currentServer.roles
-        syncStore.upsertServer({ ...currentServer, roles: remainingRoles })
-      }
-      setSelectedId((current) =>
-        current === rolePendingDeletion._id ? DEFAULT_PERMISSIONS_ID : current,
-      )
-      setRolePendingDeletion(null)
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось удалить роль',
-      )
-    } finally {
-      setDeletingRole(false)
-    }
+    await Effect.runPromise(
+      deleteServerRoleEffect(token, serverId, pendingRole._id).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            const currentServer = syncStore.getState().servers[serverId]
+            if (currentServer?.roles) {
+              const {
+                [pendingRole._id]: _,
+                ...remainingRoles
+              } = currentServer.roles
+              syncStore.upsertServer({
+                ...currentServer,
+                roles: remainingRoles,
+              })
+            }
+            setSelectedId((current) =>
+              current === pendingRole._id ? DEFAULT_PERMISSIONS_ID : current,
+            )
+            setRolePendingDeletion(null)
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось удалить роль',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setDeletingRole(false))),
+      ),
+    )
   }
 
   async function persistRoleOrder(reordered: Role[]) {
@@ -627,20 +653,31 @@ export function ServerSettingsRolesPanel({
     reorderingRequestRef.current = true
     setOptimisticRoleIds(nextOrder)
     setReordering(true)
-    try {
-      const updated = await editServerRoleRanks(token, serverId, {
+    await Effect.runPromise(
+      editServerRoleRanksEffect(token, serverId, {
         ranks: roleRanksPayload(nextOrder),
-      })
-      syncStore.upsertServer(updated)
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось изменить порядок',
-      )
-    } finally {
-      reorderingRequestRef.current = false
-      setOptimisticRoleIds(null)
-      setReordering(false)
-    }
+      }).pipe(
+        Effect.tap((updated) =>
+          Effect.sync(() => syncStore.upsertServer(updated)),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось изменить порядок',
+            )
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            reorderingRequestRef.current = false
+            setOptimisticRoleIds(null)
+            setReordering(false)
+          }),
+        ),
+      ),
+    )
   }
 
   if (!server || !token || !userId) {

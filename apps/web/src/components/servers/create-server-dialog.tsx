@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { Effect } from 'effect'
 import { PlusIcon } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
@@ -25,9 +26,9 @@ import { useAuth } from '#/features/auth/auth-context'
 import {
   isGroupInviteJoin,
   isServerInviteJoin,
-  joinInvite,
+  joinInviteEffect,
 } from '#/features/api/invites-api'
-import { createServer } from '#/features/api/servers-api'
+import { createServerEffect } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore } from '#/features/sync/sync-store'
 import { parseInviteCode } from '#/lib/invite-link'
@@ -62,30 +63,43 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
     if (!token || !trimmed) return
 
     setSaving(true)
-    try {
-      const { server, member, channels } = await createServer(token, { name: trimmed })
-      syncStore.applyServerJoinBundle({ server, member, channels })
-      syncStore.setSelectedServerId(server._id)
-      handleOpenChange(false)
-      toast.success(`Сервер «${server.name}» создан`)
-
-      const firstChannel = channels[0]
-      if (firstChannel) {
-        await navigate({
-          to: `${prefix}/c/$channelId`,
-          params: { channelId: firstChannel._id },
-          search: { m: undefined },
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        const { server, member, channels } = yield* createServerEffect(token, {
+          name: trimmed,
         })
-      } else {
-        await navigate({ to: prefix, search: { tab: 'online' } })
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось создать сервер',
-      )
-    } finally {
-      setSaving(false)
-    }
+        yield* Effect.sync(() => {
+          syncStore.applyServerJoinBundle({ server, member, channels })
+          syncStore.setSelectedServerId(server._id)
+          handleOpenChange(false)
+          toast.success(`Сервер «${server.name}» создан`)
+        })
+
+        const firstChannel = channels[0]
+        yield* Effect.tryPromise({
+          try: () =>
+            firstChannel
+              ? navigate({
+                  to: `${prefix}/c/$channelId`,
+                  params: { channelId: firstChannel._id },
+                  search: { m: undefined },
+                })
+              : navigate({ to: prefix, search: { tab: 'online' } }),
+          catch: (cause) => cause,
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось создать сервер',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setSaving(false))),
+      ),
+    )
   }
 
   async function submitJoin() {
@@ -98,46 +112,67 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
     }
 
     setJoining(true)
-    try {
-      const response = await joinInvite(token, code)
-      syncStore.applyInviteJoinResponse(response)
-      if (isServerInviteJoin(response)) {
-        syncStore.setSelectedServerId(response.server._id)
-        handleOpenChange(false)
-        toast.success('Вы присоединились к серверу')
-
-        const channel = response.channels[0]
-        if (channel) {
-          await navigate({
-            to: `${prefix}/c/$channelId`,
-            params: { channelId: channel._id },
-            search: { m: undefined },
-          })
-        } else {
-          await navigate({ to: prefix, search: { tab: 'online' } })
-        }
-        return
-      }
-
-      if (isGroupInviteJoin(response)) {
-        handleOpenChange(false)
-        toast.success('Приглашение принято')
-        await navigate({
-          to: `${prefix}/c/$channelId`,
-          params: { channelId: response.channel._id },
-          search: { m: undefined },
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        const response = yield* joinInviteEffect(token, code)
+        yield* Effect.sync(() => {
+          syncStore.applyInviteJoinResponse(response)
         })
-        return
-      }
+        if (isServerInviteJoin(response)) {
+          yield* Effect.sync(() => {
+            syncStore.setSelectedServerId(response.server._id)
+            handleOpenChange(false)
+            toast.success('Вы присоединились к серверу')
+          })
 
-      toast.error('Неизвестный тип приглашения')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось присоединиться',
-      )
-    } finally {
-      setJoining(false)
-    }
+          const channel = response.channels[0]
+          yield* Effect.tryPromise({
+            try: () =>
+              channel
+                ? navigate({
+                    to: `${prefix}/c/$channelId`,
+                    params: { channelId: channel._id },
+                    search: { m: undefined },
+                  })
+                : navigate({ to: prefix, search: { tab: 'online' } }),
+            catch: (cause) => cause,
+          })
+          return
+        }
+
+        if (isGroupInviteJoin(response)) {
+          yield* Effect.sync(() => {
+            handleOpenChange(false)
+            toast.success('Приглашение принято')
+          })
+          yield* Effect.tryPromise({
+            try: () =>
+              navigate({
+                to: `${prefix}/c/$channelId`,
+                params: { channelId: response.channel._id },
+                search: { m: undefined },
+              }),
+            catch: (cause) => cause,
+          })
+          return
+        }
+
+        yield* Effect.sync(() =>
+          toast.error('Неизвестный тип приглашения'),
+        )
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось присоединиться',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setJoining(false))),
+      ),
+    )
   }
 
   return (

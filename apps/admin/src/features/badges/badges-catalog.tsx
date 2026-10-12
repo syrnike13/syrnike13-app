@@ -35,7 +35,7 @@ export function BadgesCatalogPage() {
 
   const badgesQuery = useQuery({
     queryKey: queryKeys.admin.badges,
-    queryFn: () => fetchAdminBadges(token!),
+    queryFn: ({ signal }) => fetchAdminBadges(token!, signal),
     enabled: Boolean(token),
   })
 

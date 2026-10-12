@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import type { ComponentProps, PropsWithChildren } from 'react'
 
 import { HomeIcon } from '#/components/icons'
+import { ShellTitleBar } from '#/components/layout/shell-title-bar'
 import { Card } from '#/components/ui/card'
 import { config as appConfig } from '#/lib/config'
 import { cn } from '#/lib/utils'
@@ -12,6 +13,7 @@ export function AuthLayout({ children }: PropsWithChildren) {
 
   return (
     <div className="auth-shell gradient-surface-content">
+      {isDesktop ? <ShellTitleBar /> : null}
       <main className="auth-stage">
         <header className="auth-stage-header">
           {!isDesktop ? (

@@ -4,6 +4,7 @@
 #include <tlhelp32.h>
 #include <windows.h>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -18,6 +19,62 @@
 #include "key_codes.hpp"
 
 namespace syrnike::desktop_native::hooks {
+
+namespace detail {
+
+namespace {
+
+class OwnedHandle final {
+ public:
+  explicit OwnedHandle(HANDLE handle) noexcept : handle_(handle) {}
+  ~OwnedHandle() {
+    if (handle_) CloseHandle(handle_);
+  }
+  OwnedHandle(const OwnedHandle&) = delete;
+  OwnedHandle& operator=(const OwnedHandle&) = delete;
+
+  [[nodiscard]] HANDLE get() const noexcept { return handle_; }
+
+ private:
+  HANDLE handle_ = nullptr;
+};
+
+void assignProcessPath(
+  std::wstring& destination,
+  const wchar_t* source,
+  std::size_t size
+) {
+  destination.assign(source, size);
+}
+
+}  // namespace
+
+std::wstring processPathFromOwnedHandle(
+  void* process_handle,
+  ProcessPathAssign assign
+) {
+  OwnedHandle process(static_cast<HANDLE>(process_handle));
+  if (!process.get()) return {};
+  // QueryFullProcessImageNameW permits the Windows extended path limit. Keep
+  // that storage in TLS so hook callbacks do not reserve ~64 KiB per stack
+  // frame or allocate on every foreground-window update.
+  static thread_local std::array<wchar_t, 32768> buffer{};
+  DWORD size = static_cast<DWORD>(std::size(buffer));
+  if (!QueryFullProcessImageNameW(
+        process.get(),
+        0,
+        buffer.data(),
+        &size
+      )) {
+    return {};
+  }
+  std::wstring result;
+  (assign ? assign : &assignProcessPath)(result, buffer.data(), size);
+  return result;
+}
+
+}  // namespace detail
+
 namespace {
 
 using syrnike::hotkeys::InputState;
@@ -156,7 +213,7 @@ class HotkeyActor {
       : input_state_.applyUp(source, code, label);
     if (!event) return;
     RuntimeEvent runtime_event;
-    runtime_event.type = "input";
+    runtime_event.type = NativeEventType::Input;
     runtime_event.input = InputEvent{
       event->type,
       event->source,
@@ -222,7 +279,7 @@ class HotkeyActor {
     current_hotkey_actor = nullptr;
     if (unexpected_exit) {
       RuntimeEvent event;
-      event.type = "runtimeError";
+      event.type = NativeEventType::RuntimeError;
       event.error = NativeError{
         "hotkey_loop_stopped",
         message_result < 0
@@ -275,14 +332,11 @@ std::wstring className(HWND hwnd) {
 }
 
 std::wstring processPath(DWORD process_id) {
-  HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
-  if (!process) return {};
-  wchar_t buffer[32768]{};
-  DWORD size = static_cast<DWORD>(std::size(buffer));
-  std::wstring result;
-  if (QueryFullProcessImageNameW(process, 0, buffer, &size)) result.assign(buffer, size);
-  CloseHandle(process);
-  return result;
+  return detail::processPathFromOwnedHandle(OpenProcess(
+    PROCESS_QUERY_LIMITED_INFORMATION,
+    FALSE,
+    process_id
+  ));
 }
 
 std::string processNameFromSnapshot(DWORD process_id) {
@@ -396,7 +450,7 @@ class OverlayActor {
       }
       if (!has_last || !(current == last)) {
         RuntimeEvent event;
-        event.type = "foregroundWindow";
+        event.type = NativeEventType::ForegroundWindow;
         event.foreground_window = current;
         emitter_.emit(std::move(event));
         last = std::move(current);
@@ -416,7 +470,7 @@ class OverlayActor {
 
 RuntimeEvent successfulReply(const HooksCommand& command) {
   RuntimeEvent event;
-  event.type = "reply";
+  event.type = NativeEventType::Reply;
   event.request_id = command.request_id;
   event.ok = true;
   return event;
@@ -424,7 +478,7 @@ RuntimeEvent successfulReply(const HooksCommand& command) {
 
 RuntimeEvent failedReply(const HooksCommand& command, NativeError error) {
   RuntimeEvent event;
-  event.type = "reply";
+  event.type = NativeEventType::Reply;
   event.request_id = command.request_id;
   event.ok = false;
   event.error = std::move(error);
@@ -447,7 +501,7 @@ class HooksRuntime::Implementation {
 
   bool dispatch(HooksCommand command) {
     if (shutting_down_.load()) return false;
-    const bool is_shutdown = command.type == "shutdown";
+    const bool is_shutdown = command.type == NativeCommandType::Shutdown;
     if (is_shutdown && shutting_down_.exchange(true)) return false;
     if (is_shutdown) {
       {
@@ -476,14 +530,14 @@ class HooksRuntime::Implementation {
  private:
   void runtimeError(NativeError error) {
     RuntimeEvent event;
-    event.type = "runtimeError";
+    event.type = NativeEventType::RuntimeError;
     event.error = std::move(error);
     emitter_.emit(std::move(event));
   }
 
   bool handle(const HooksCommand& command) {
     try {
-      if (command.type == "startHotkeys") {
+      if (command.type == NativeCommandType::StartHotkeys) {
         NativeError error;
         if (!hotkeys_.start(error)) {
           emitter_.emit(failedReply(command, error));
@@ -493,30 +547,35 @@ class HooksRuntime::Implementation {
         }
         return true;
       }
-      if (command.type == "stopHotkeys") {
+      if (command.type == NativeCommandType::StopHotkeys) {
         hotkeys_.stop();
         emitter_.emit(successfulReply(command));
         return true;
       }
-      if (command.type == "startOverlay") {
+      if (command.type == NativeCommandType::StartOverlay) {
         overlay_.start();
         emitter_.emit(successfulReply(command));
         return true;
       }
-      if (command.type == "probeHooksRuntime") {
+      if (command.type == NativeCommandType::ProbeHooksRuntime) {
         emitter_.emit(successfulReply(command));
         return true;
       }
-      if (command.type == "stopOverlay") {
+      if (command.type == NativeCommandType::StopOverlay) {
         overlay_.stop();
         emitter_.emit(successfulReply(command));
         return true;
       }
       emitter_.emit(failedReply(command, NativeError{
-        "unknown_command", "Unknown hooks runtime command: " + command.type, "dispatch", false,
+        "unknown_command",
+        "Unknown hooks runtime command: " + std::string(nativeCommandName(command.type)),
+        "dispatch", false,
       }));
     } catch (const std::exception& error) {
-      NativeError native_error{"hooks_command_failed", error.what(), command.type, true};
+      NativeError native_error{
+        "hooks_command_failed", error.what(),
+        std::string(nativeCommandName(command.type)), true
+      };
       emitter_.emit(failedReply(command, native_error));
       runtimeError(std::move(native_error));
     }

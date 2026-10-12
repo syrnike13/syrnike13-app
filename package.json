@@ -1,6 +1,6 @@
 {
   "name": "syrnike13-app",
-  "version": "0.6.11",
+  "version": "0.7.0",
   "private": true,
   "packageManager": "pnpm@11.3.0+sha512.2c403d6594527287672b1f7056343a1f7c3634036a67ffabfcc2b3d7595d843768f8787148d1b57cf7956c90606bbd192857c363af19e96d2d0ec9ec5741d215",
   "scripts": {
@@ -32,6 +32,12 @@
     "desktop-native:test": "pnpm --filter @syrnike13/desktop-native test:native",
     "desktop-native:test:debug": "pnpm --filter @syrnike13/desktop-native test:native:debug",
     "desktop-native:verify": "pnpm --filter @syrnike13/desktop-native verify",
+    "windows-media:build": "pnpm --filter @syrnike13/windows-media-engine build",
+    "windows-media:build:debug": "pnpm --filter @syrnike13/windows-media-engine build:debug",
+    "windows-media:build:asan": "pnpm --filter @syrnike13/windows-media-engine build:asan",
+    "windows-media:test": "pnpm --filter @syrnike13/windows-media-engine test",
+    "windows-media:test:debug": "pnpm --filter @syrnike13/windows-media-engine test:debug",
+    "windows-media:verify": "pnpm --filter @syrnike13/windows-media-engine verify",
     "platform:build": "pnpm --filter @syrnike13/platform build",
     "backend:check": "cargo check --manifest-path services/backend/Cargo.toml --workspace",
     "livekit:check": "cd services/livekit-server && go test ./..."

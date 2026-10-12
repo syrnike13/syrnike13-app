@@ -21,10 +21,13 @@ export function useVoiceStageGridLayout(
     if (!element) return
 
     const update = () => {
-      setSize({
-        width: Math.floor(element.clientWidth),
-        height: Math.floor(element.clientHeight),
-      })
+      const width = Math.floor(element.clientWidth)
+      const height = Math.floor(element.clientHeight)
+      setSize((previous) =>
+        previous.width === width && previous.height === height
+          ? previous
+          : { width, height },
+      )
     }
 
     update()

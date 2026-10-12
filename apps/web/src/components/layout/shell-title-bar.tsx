@@ -151,10 +151,3 @@ export function ShellTitleBar() {
 
   return <TitleBar heightPx={heightPx} />
 }
-
-export function useShellTitleBarHeightPx(): number {
-  const { capabilities, desktop } = usePlatform()
-
-  if (!capabilities.customWindowChrome || !desktop) return 0
-  return getShellTitleBarHeightPx(desktop.platform.os)
-}

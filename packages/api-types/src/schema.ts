@@ -8,6 +8,9 @@ export interface paths {
     /** Fetch the server configuration for this syrnike13 instance. */
     get: operations["root_root"];
   };
+  "/diagnostics/reports": {
+    post: operations["diagnostics_create_report"];
+  };
   "/users/@me": {
     /** Retrieve your user information. */
     get: operations["fetch_self_fetch"];
@@ -259,6 +262,16 @@ export interface paths {
   "/webhooks/{webhook_id}/{token}/github": {
     /** Executes a webhook specific to github and sends a message containing the relevant info about the event */
     post: operations["webhook_execute_github_webhook_execute_github"];
+  };
+  "/admin/diagnostics": {
+    get: operations["admin_diagnostics_list"];
+  };
+  "/admin/diagnostics/{id}": {
+    get: operations["admin_diagnostics_fetch"];
+    patch: operations["admin_diagnostics_update"];
+  };
+  "/admin/diagnostics/{id}/download": {
+    get: operations["admin_diagnostics_download"];
   };
   "/admin/badges": {
     get: operations["badges_list"];
@@ -546,6 +559,58 @@ export interface components {
       vapid: string;
       /** @description Build information */
       build: components["schemas"]["BuildInformation"];
+      /** @description Optional client event sound configuration */
+      ui_sounds?: {
+        event_pack?: string | null;
+      };
+    };
+    DiagnosticReportUpload: {
+      /** Format: uint8 */
+      version: number;
+      source: string;
+      release_channel: string;
+      app_version: string;
+      platform: string;
+      area: string;
+      severity: string;
+      trigger_code: string;
+      /** @default */
+      description?: string;
+      /** @description A gzip-compressed JSONL diagnostic bundle encoded as base64. */
+      payload: string;
+    };
+    DiagnosticReportCreated: {
+      id: string;
+      /** Format: uint64 */
+      created_at: number;
+    };
+    /** @enum {string} */
+    DiagnosticReportStatus: "new" | "investigating" | "resolved";
+    DiagnosticReportResponse: {
+      id: string;
+      user_id: string;
+      /** Format: uint64 */
+      created_at: number;
+      /** Format: uint64 */
+      expires_at: number;
+      source: string;
+      release_channel: string;
+      app_version: string;
+      platform: string;
+      area: string;
+      severity: string;
+      trigger_code: string;
+      description: string;
+      /** Format: uint64 */
+      size_bytes: number;
+      sha256: string;
+      status: components["schemas"]["DiagnosticReportStatus"];
+      notes: string;
+    };
+    UpdateDiagnosticReport: {
+      status: components["schemas"]["DiagnosticReportStatus"];
+      /** @default */
+      notes?: string;
     };
     /** Feature Configuration */
     SyrnikeFeatures: {
@@ -3472,6 +3537,26 @@ export interface operations {
       };
     };
   };
+  diagnostics_create_report: {
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["DiagnosticReportCreated"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DiagnosticReportUpload"];
+      };
+    };
+  };
   /** Retrieve your user information. */
   fetch_self_fetch: {
     responses: {
@@ -4851,6 +4936,99 @@ export interface operations {
     requestBody: {
       content: {
         "application/octet-stream": string;
+      };
+    };
+  };
+  admin_diagnostics_list: {
+    parameters: {
+      query: {
+        before?: string;
+        user_id?: string;
+        source?: string;
+        release_channel?: string;
+        area?: string;
+        trigger_code?: string;
+        status?: components["schemas"]["DiagnosticReportStatus"];
+        limit?: number;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["DiagnosticReportResponse"][];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  admin_diagnostics_fetch: {
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["DiagnosticReportResponse"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  admin_diagnostics_update: {
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["DiagnosticReportResponse"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateDiagnosticReport"];
+      };
+    };
+  };
+  admin_diagnostics_download: {
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
+    responses: {
+      /** Encrypted diagnostic bundle, decrypted for an authorized administrator */
+      200: {
+        content: {
+          "application/gzip": string;
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
       };
     };
   };

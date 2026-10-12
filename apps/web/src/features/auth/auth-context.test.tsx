@@ -4,12 +4,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
+import { Effect } from 'effect'
 
 import { ApiError } from '#/lib/api/client'
 
 import { AuthProvider, useAuth } from './auth-context'
-import { fetchCurrentUser } from './auth-api'
-import { fetchOnboardHello } from '#/features/api/onboard-api'
+import { fetchCurrentUserEffect } from './auth-api'
+import { fetchOnboardHelloEffect } from '#/features/api/onboard-api'
 
 vi.mock('sonner', () => ({
   toast: {
@@ -23,7 +24,7 @@ vi.mock('./auth-api', async () => {
   const actual = await vi.importActual<typeof import('./auth-api')>('./auth-api')
   return {
     ...actual,
-    fetchCurrentUser: vi.fn(),
+    fetchCurrentUserEffect: vi.fn(),
   }
 })
 
@@ -33,7 +34,7 @@ vi.mock('#/features/api/onboard-api', async () => {
   )
   return {
     ...actual,
-    fetchOnboardHello: vi.fn(),
+    fetchOnboardHelloEffect: vi.fn(),
   }
 })
 
@@ -76,7 +77,9 @@ function AuthProbe() {
 describe('AuthProvider profile loading', () => {
   beforeEach(() => {
     localStorage.setItem('syrnike13:session', JSON.stringify(storedSession))
-    vi.mocked(fetchOnboardHello).mockResolvedValue({ onboarding: false })
+    vi.mocked(fetchOnboardHelloEffect).mockReturnValue(
+      Effect.succeed({ onboarding: false }),
+    )
   })
 
   afterEach(() => {
@@ -86,8 +89,9 @@ describe('AuthProvider profile loading', () => {
   })
 
   it('keeps the session and exposes a terminal profile load error', async () => {
-    vi.mocked(fetchCurrentUser).mockRejectedValue(new ApiError('Internal', 500))
-
+    vi.mocked(fetchCurrentUserEffect).mockReturnValue(
+      Effect.fail(new ApiError('Internal', 500)),
+    )
     renderAuth(<AuthProbe />)
 
     await waitFor(() => {

@@ -1,5 +1,6 @@
 import { Outlet, useMatch, useRouterState } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import { Effect, Fiber } from 'effect'
 
 import { ConnectionStatusBanner } from '#/components/layout/connection-status-banner'
 import { NativeMediaRuntimeBanner } from '#/features/desktop/native-media-runtime-banner'
@@ -104,21 +105,26 @@ export function DesktopShell() {
       return
     }
 
-    let cancelled = false
-    void loadTelegramPromoDismissedUntil(userId).then((storedValue) => {
-      if (cancelled) return
-      const dismissedUntil =
-        storedValue != null && storedValue > Date.now()
-          ? storedValue
-          : undefined
-      setTelegramPromoState({
-        userId,
-        visible: dismissedUntil == null,
-        dismissedUntil,
-      })
-    })
+    const fiber = Effect.runFork(
+      loadTelegramPromoDismissedUntil(userId).pipe(
+        Effect.tap((storedValue) =>
+          Effect.sync(() => {
+            const dismissedUntil =
+              storedValue != null && storedValue > Date.now()
+                ? storedValue
+                : undefined
+            setTelegramPromoState({
+              userId,
+              visible: dismissedUntil == null,
+              dismissedUntil,
+            })
+          }),
+        ),
+        Effect.ignore,
+      ),
+    )
     return () => {
-      cancelled = true
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [userId])
 
@@ -126,15 +132,23 @@ export function DesktopShell() {
     const dismissedUntil = telegramPromoState.dismissedUntil
     if (!dismissedUntil || telegramPromoState.userId !== userId) return
 
-    const timeout = window.setTimeout(() => {
-      setTelegramPromoState((current) =>
-        current.userId === userId
-          ? { userId, visible: true }
-          : current,
-      )
-    }, Math.max(0, dismissedUntil - Date.now()))
+    const fiber = Effect.runFork(
+      Effect.sleep(Math.max(0, dismissedUntil - Date.now())).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            setTelegramPromoState((current) =>
+              current.userId === userId
+                ? { userId, visible: true }
+                : current,
+            )
+          }),
+        ),
+      ),
+    )
 
-    return () => window.clearTimeout(timeout)
+    return () => {
+      Effect.runFork(Fiber.interrupt(fiber))
+    }
   }, [telegramPromoState.dismissedUntil, telegramPromoState.userId, userId])
 
   const telegramPromoVisible =
@@ -145,8 +159,10 @@ export function DesktopShell() {
     if (!userId) return
     const dismissedUntil = Date.now() + TELEGRAM_PROMO_DISMISS_DURATION_MS
     setTelegramPromoState({ userId, visible: false, dismissedUntil })
-    void saveTelegramPromoDismissedUntil(userId, dismissedUntil).catch(
-      () => undefined,
+    Effect.runFork(
+      saveTelegramPromoDismissedUntil(userId, dismissedUntil).pipe(
+        Effect.ignore,
+      ),
     )
   }
 

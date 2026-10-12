@@ -12,6 +12,7 @@ import {
   UserPlusIcon,
 } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { CreateChannelDialog } from '#/components/servers/create-channel-dialog'
@@ -33,11 +34,11 @@ import {
 } from '#/components/ui/popover'
 import { Separator } from '#/components/ui/separator'
 import { useAuth } from '#/features/auth/auth-context'
-import { deleteOrLeaveServer } from '#/features/api/servers-api'
+import { deleteOrLeaveServerEffect } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { writeClipboardText } from '#/lib/clipboard'
+import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { getServerMenuPermissions } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
@@ -117,24 +118,34 @@ export function ServerHeaderMenu({
 
     setMenuOpen(false)
     setRemovingServer(true)
-    try {
-      await deleteOrLeaveServer(token, serverId)
-      syncStore.removeServer(serverId)
-      syncStore.setSelectedServerId(null)
-      toast.success(isOwner ? 'Сервер удалён' : 'Вы покинули сервер')
-      setRemoveDialogOpen(false)
-      await navigate({ to: '/app', search: { tab: 'online' } })
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : isOwner
-            ? 'Не удалось удалить сервер'
-            : 'Не удалось покинуть сервер',
-      )
-    } finally {
-      setRemovingServer(false)
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        yield* deleteOrLeaveServerEffect(token, serverId)
+        yield* Effect.sync(() => {
+          syncStore.removeServer(serverId)
+          syncStore.setSelectedServerId(null)
+          toast.success(isOwner ? 'Сервер удалён' : 'Вы покинули сервер')
+          setRemoveDialogOpen(false)
+        })
+        yield* Effect.tryPromise({
+          try: () => navigate({ to: '/app', search: { tab: 'online' } }),
+          catch: (cause) => cause,
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : isOwner
+                  ? 'Не удалось удалить сервер'
+                  : 'Не удалось покинуть сервер',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setRemovingServer(false))),
+      ),
+    )
   }
 
   const showAdminSection = Boolean(
@@ -146,13 +157,19 @@ export function ServerHeaderMenu({
   )
 
   async function copyServerId() {
-    try {
-      await writeClipboardText(serverId)
-      toast.success('ID сервера скопирован')
-      setMenuOpen(false)
-    } catch {
-      toast.error('Не удалось скопировать')
-    }
+    await Effect.runPromise(
+      writeClipboardTextEffect(serverId).pipe(
+        Effect.matchEffect({
+          onFailure: () =>
+            Effect.sync(() => toast.error('Не удалось скопировать')),
+          onSuccess: () =>
+            Effect.sync(() => {
+              toast.success('ID сервера скопирован')
+              setMenuOpen(false)
+            }),
+        }),
+      ),
+    )
   }
 
   return (

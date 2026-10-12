@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { Member, Role, Server, User } from '@syrnike13/api-types'
 import { SearchIcon, XIcon } from '#/components/icons'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { AddRoleMembersDialog } from '#/components/servers/add-role-members-dialog'
@@ -8,7 +9,7 @@ import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { useAuth } from '#/features/auth/auth-context'
-import { editServerMember } from '#/features/api/servers-api'
+import { editServerMemberEffect } from '#/features/api/servers-api'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { canToggleMemberRole } from '#/lib/member-roles'
 import { canAssignRole } from '#/features/authorization/authorization'
@@ -114,23 +115,28 @@ export function RoleMembersPanel({
     const nextRoles = (targetMember.roles ?? []).filter((id) => id !== role._id)
 
     setSavingMemberId(targetMember._id.user)
-    try {
-      const updated = await editServerMember(
+    await Effect.runPromise(
+      editServerMemberEffect(
         token,
         server._id,
         targetMember._id.user,
         { roles: nextRoles },
-      )
-      syncStore.upsertMembers([updated])
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось обновить участника',
-      )
-    } finally {
-      setSavingMemberId(null)
-    }
+      ).pipe(
+        Effect.tap((updated) =>
+          Effect.sync(() => syncStore.upsertMembers([updated])),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось обновить участника',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setSavingMemberId(null))),
+      ),
+    )
   }
 
   function renderMemberRow({ member, user }: MemberEntry) {

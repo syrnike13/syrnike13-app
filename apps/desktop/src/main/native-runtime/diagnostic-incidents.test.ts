@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { NativeDiagnosticIncidentSchema } from '@syrnike13/platform'
+import { Schema } from 'effect'
 
 import {
   captureNativeDiagnosticIncident,
@@ -17,30 +19,9 @@ describe('native diagnostic incident monitor', () => {
   })
 
   it.each([
-    ['request_rejected_queue_full', 'warning'],
-    ['restart_scheduled', 'warning'],
-    ['runtime_event_dropped_out_of_order', 'warning'],
-    ['native_contract_corruption', 'fatal'],
-    ['restart_aborted_circuit_open', 'fatal'],
-    ['runtime_contract_corrupt', 'fatal'],
+    ['presentation_stalled', 'warning'],
     ['utility_crashed', 'fatal'],
-    ['adapter_exited', 'error'],
-    ['adapter_recycled', 'error'],
-    ['bootstrap_failed', 'error'],
-    ['dispose_failed', 'error'],
-    ['frame_delivery_rejected', 'error'],
-    ['handshake_failed', 'error'],
-    ['probe_reply_error', 'error'],
-    ['probe_timed_out', 'error'],
-    ['request_post_failed', 'error'],
-    ['request_rejected', 'error'],
-    ['request_rejected_not_ready', 'error'],
-    ['request_reply_error', 'error'],
-    ['request_timed_out', 'error'],
     ['runtime_degraded', 'error'],
-    ['camera_read_stall', 'error'],
-    ['screen_publication_failed', 'error'],
-    ['session_rotation_failed', 'error'],
   ] as const)(
     'classifies typed automatic trigger %s',
     (event, severity) => {
@@ -54,38 +35,28 @@ describe('native diagnostic incident monitor', () => {
     },
   )
 
-  it('reports only backend/device exhaustion recoveries', () => {
+  it('ignores untyped events that are not failures', () => {
     expect(captureNativeDiagnosticIncident({
       scope: 'native-runtime-supervisor',
-      event: 'screen_backend_restart',
-      reason: 'reinitialize_active',
+      event: 'utility_exit',
     })).toBeNull()
-    expect(captureNativeDiagnosticIncident({
-      scope: 'native-runtime-supervisor',
-      event: 'screen_backend_restart',
-    })).toBeNull()
-    expect(captureNativeDiagnosticIncident({
-      scope: 'native-runtime-supervisor',
-      event: 'screen_backend_restart',
-      reason: 'recreate_device',
-      errorCode: 'gpu_timeout',
-    })).toMatchObject({
-      severity: 'warning',
-      reason: 'recreate_device',
-    })
   })
 
   it('refreshes evidence when repeated incidents are aggregated', () => {
     const first = captureNativeDiagnosticIncident({
       scope: 'native-runtime-supervisor',
-      event: 'screen_backend_restart',
+      event: 'engineStateChanged',
+      errorCode: 'screen_backend_restart',
+      incidentSeverity: 'warning',
       reason: 'recreate_device',
       message: 'attempt 1',
       restartCount: 1,
     }, 10_000)
     const repeated = captureNativeDiagnosticIncident({
       scope: 'native-runtime-supervisor',
-      event: 'screen_backend_restart',
+      event: 'engineStateChanged',
+      errorCode: 'screen_backend_restart',
+      incidentSeverity: 'warning',
       reason: 'recreate_device',
       message: 'attempt 2',
       restartCount: 2,
@@ -101,11 +72,111 @@ describe('native diagnostic incident monitor', () => {
     })
   })
 
+  it.each(['native', 'renderer'] as const)('preserves the highest severity of a repeated %s incident', (source) => {
+    for (const [index, severity] of (['warning', 'fatal', 'error', 'warning'] as const).entries()) {
+      if (source === 'native') {
+        captureNativeDiagnosticIncident({
+          scope: 'native-media-controller',
+          event: 'engineStateChanged',
+          errorCode: 'screen_publication_failed',
+          incidentSeverity: severity,
+        }, 10_000 + index)
+      } else {
+        captureRendererDiagnosticIncident({
+          area: 'presentation',
+          triggerCode: 'renderer_stalled',
+          severity,
+        }, 10_000 + index)
+      }
+    }
+    expect(leaseNativeDiagnosticIncidents('test-account')?.incidents).toEqual([
+      expect.objectContaining({ severity: 'fatal', occurrenceCount: 4, firstTimestampMs: 10_000 }),
+    ])
+  })
+
+  it('groups 100 explicit cross-layer episodes without merging independent causes', () => {
+    for (let index = 0; index < 100; index += 1) {
+      const episodeId = `private-owner-episode-${index}`
+      const root = captureNativeDiagnosticIncident({
+        scope: 'native-media-controller', event: 'fatalEngineFailure',
+        episodeId, errorCode: 'native_owner_stop_timeout', fatal: true,
+        hostEpoch: index, message: 'original owner failure',
+      }, 10_000 + index)
+      for (let symptom = 0; symptom < 12; symptom += 1) {
+        expect(captureNativeDiagnosticIncident({
+          scope: 'native-runtime-supervisor', event: 'runtime_degraded',
+          episodeId, errorCode: 'media_host_termination_failed', incidentSeverity: 'warning',
+          hostEpoch: index, message: `symptom ${symptom} token=super-secret`,
+        }, 20_000 + index + symptom)).toBe(root)
+      }
+    }
+    const incidents = leaseNativeDiagnosticIncidents('test-account')!.incidents
+    expect(incidents).toHaveLength(100)
+    expect(new Set(incidents.map(incident => incident.correlationId)).size).toBe(100)
+    for (const incident of incidents) {
+      expect(incident).toMatchObject({
+        scope: 'native-media-controller', event: 'fatalEngineFailure',
+        errorCode: 'native_owner_stop_timeout', message: 'original owner failure',
+        severity: 'fatal', occurrenceCount: 13,
+      })
+      expect(Schema.decodeUnknownSync(NativeDiagnosticIncidentSchema)(incident).relatedEvidence).toHaveLength(8)
+      expect(incident.relatedEvidence?.[0]?.message).toContain('symptom 4')
+    }
+    expect(JSON.stringify(incidents)).not.toContain('private-owner-episode')
+    expect(JSON.stringify(incidents)).not.toContain('super-secret')
+  })
+
+  it.each(['released', 'expired'])('keeps a leased episode immutable and merges its follow-up when %s', transition => {
+    const episodeId = 'private-runtime-episode'
+    captureNativeDiagnosticIncident({
+      scope: 'native-media-controller', event: 'fatalEngineFailure',
+      episodeId, errorCode: 'native_failure', incidentSeverity: 'error',
+    }, 10_000)
+    const leased = leaseNativeDiagnosticIncidents('test-account', 10_001)!
+    const leasedCopy = JSON.stringify(leased)
+    captureNativeDiagnosticIncident({
+      scope: 'native-runtime-supervisor', event: 'runtime_degraded',
+      episodeId, errorCode: 'host_failure', incidentSeverity: 'fatal',
+    }, 20_000)
+    expect(JSON.stringify(leased)).toBe(leasedCopy)
+    if (transition === 'released') {
+      expect(releaseNativeDiagnosticIncidents('test-account', leased.id, 20_001)).toBe(true)
+    } else {
+      expect(leaseNativeDiagnosticIncidents('test-account', 130_001)).toBeNull()
+    }
+    const retried = leaseNativeDiagnosticIncidents('test-account', transition === 'released' ? 25_002 : 135_002)!
+    expect(retried.incidents).toHaveLength(1)
+    expect(retried.incidents[0]).toMatchObject({
+      correlationId: leased.incidents[0]!.correlationId,
+      scope: 'native-media-controller', errorCode: 'native_failure',
+      severity: 'fatal', occurrenceCount: 2, firstTimestampMs: 10_000,
+    })
+    expect(retried.incidents[0]!.relatedEvidence).toHaveLength(1)
+  })
+
+  it('forgets bounded episode roots and discards their identities on account change', () => {
+    const record = {
+      scope: 'native-runtime-supervisor' as const, event: 'utility_crashed', episodeId: 'first-cause',
+    }
+    const first = captureNativeDiagnosticIncident(record, 10_000)!
+    for (let index = 0; index < 1_000; index += 1) {
+      captureNativeDiagnosticIncident({ ...record, episodeId: `other-cause-${index}` }, 10_001)
+    }
+    const recreated = captureNativeDiagnosticIncident(record, 10_002)!
+    expect(recreated.correlationId).not.toBe(first.correlationId)
+    expect(leaseNativeDiagnosticIncidents('test-account', 10_003)!.incidents).toHaveLength(100)
+    configureNativeDiagnosticIncidentAccount('another-account')
+    const otherAccount = captureNativeDiagnosticIncident(record, 10_004)!
+    expect(otherAccount.correlationId).not.toBe(recreated.correlationId)
+    expect(leaseNativeDiagnosticIncidents('another-account', 10_005)!.incidents).toEqual([otherAccount])
+  })
+
   it('captures native failures, timeouts, and restart signals', () => {
     captureNativeDiagnosticIncident(
       {
         scope: 'native-runtime-supervisor',
-        event: 'request_timed_out',
+        event: 'engineStateChanged',
+        errorCode: 'request_timed_out',
         runtime: 'media',
         lane: 'microphone',
         timeoutMs: 5_000,
@@ -115,7 +186,9 @@ describe('native diagnostic incident monitor', () => {
     captureNativeDiagnosticIncident(
       {
         scope: 'native-runtime-supervisor',
-        event: 'restart_scheduled',
+        event: 'engineStateChanged',
+        errorCode: 'restart_scheduled',
+        incidentSeverity: 'warning',
         restartCount: 1,
       },
       11_000,
@@ -144,7 +217,8 @@ describe('native diagnostic incident monitor', () => {
 
     const failure = {
       scope: 'native-media-controller' as const,
-      event: 'screen_publication_failed',
+      event: 'engineStateChanged',
+      errorCode: 'screen_publication_failed',
       errorCode: 'encoder_failed',
     }
     expect(captureNativeDiagnosticIncident(failure, 20_000)).not.toBeNull()
@@ -160,13 +234,15 @@ describe('native diagnostic incident monitor', () => {
   it('uses opaque stable correlation without exposing request identity', () => {
     const first = captureNativeDiagnosticIncident({
       scope: 'native-runtime-supervisor',
-      event: 'request_timed_out',
+      event: 'engineStateChanged',
+      errorCode: 'request_timed_out',
       requestId: 'sensitive-request-id',
       lane: 'screen',
     })
     const second = captureNativeDiagnosticIncident({
       scope: 'native-runtime-supervisor',
-      event: 'request_timed_out',
+      event: 'engineStateChanged',
+      errorCode: 'request_timed_out',
       requestId: 'sensitive-request-id',
       lane: 'screen',
     })
@@ -180,7 +256,8 @@ describe('native diagnostic incident monitor', () => {
   it('keeps a compact command correlation summary on an incident', () => {
     const incident = captureNativeDiagnosticIncident({
       scope: 'native-runtime-supervisor',
-      event: 'request_reply_error',
+      event: 'engineStateChanged',
+      errorCode: 'request_reply_error',
       actionId: 'media-action-a',
       operation: 'operation-a',
       revision: 8,
@@ -217,7 +294,8 @@ describe('native diagnostic incident monitor', () => {
   it('treats stale generations and projected voice snapshots as non-incidents', () => {
     expect(captureNativeDiagnosticIncident({
       scope: 'native-runtime-supervisor',
-      event: 'request_reply_error',
+      event: 'engineStateChanged',
+      errorCode: 'request_reply_error',
       errorCode: 'stale_generation',
     })).toBeNull()
     expect(captureNativeDiagnosticIncident({
@@ -227,31 +305,8 @@ describe('native diagnostic incident monitor', () => {
     })).toBeNull()
   })
 
-  it('keeps non-fatal gateway errors as evidence instead of root incidents', () => {
-    expect(captureNativeDiagnosticIncident({
-      scope: 'desktop-voice',
-      event: 'control_event',
-      errorCode: 'InvalidOperation',
-      fatal: false,
-    })).toBeNull()
-
-    captureNativeDiagnosticIncident({
-      scope: 'desktop-voice',
-      event: 'control_event',
-      errorCode: 'InvalidSession',
-      fatal: true,
-    })
-    expect(
-      leaseNativeDiagnosticIncidents('test-account')?.incidents[0],
-    ).toEqual(expect.objectContaining({
-      triggerCode: 'desktop-voice.InvalidSession',
-      severity: 'fatal',
-    }))
-  })
-
   it.each([
     'runtime_degraded',
-    'session_rotation_failed',
   ])('preserves non-control desktop voice diagnostic %s', (event) => {
     expect(captureNativeDiagnosticIncident({
       scope: 'desktop-voice',
@@ -331,7 +386,8 @@ describe('native diagnostic incident monitor', () => {
   it('releases the original lease alongside its bounded follow-up without duplication', () => {
     const failure = {
       scope: 'native-runtime-supervisor' as const,
-      event: 'request_timed_out',
+      event: 'engineStateChanged',
+      errorCode: 'request_timed_out',
       requestId: 'request-a',
     }
     captureNativeDiagnosticIncident(failure, 10_000)
@@ -437,7 +493,8 @@ describe('native diagnostic incident monitor', () => {
     clearNativeDiagnosticIncidentsForTests()
     captureNativeDiagnosticIncident({
       scope: 'native-runtime-supervisor',
-      event: 'bootstrap_failed',
+      event: 'engineStateChanged',
+      errorCode: 'bootstrap_failed',
     }, 10_000)
 
     configureNativeDiagnosticIncidentAccount('account-a')
@@ -477,7 +534,9 @@ describe('native diagnostic incident monitor', () => {
   it('marks contract corruption as fatal', () => {
     captureNativeDiagnosticIncident({
       scope: 'desktop-voice',
-      event: 'native_contract_corruption',
+      event: 'engineStateChanged',
+      errorCode: 'native_contract_corruption',
+      fatal: true,
     })
 
     expect(leaseNativeDiagnosticIncidents('test-account')?.incidents[0]?.severity).toBe('fatal')
@@ -486,7 +545,9 @@ describe('native diagnostic incident monitor', () => {
   it('keeps leased incidents until delivery is acknowledged', () => {
     captureNativeDiagnosticIncident({
       scope: 'desktop-voice',
-      event: 'native_contract_corruption',
+      event: 'engineStateChanged',
+      errorCode: 'native_contract_corruption',
+      fatal: true,
     })
 
     const batch = leaseNativeDiagnosticIncidents('test-account', 10_000)
@@ -504,7 +565,9 @@ describe('native diagnostic incident monitor', () => {
   it('backs off an abandoned incident lease before retrying it', () => {
     captureNativeDiagnosticIncident({
       scope: 'desktop-voice',
-      event: 'native_contract_corruption',
+      event: 'engineStateChanged',
+      errorCode: 'native_contract_corruption',
+      fatal: true,
     })
 
     const abandoned = leaseNativeDiagnosticIncidents('test-account', 10_000)
@@ -522,7 +585,8 @@ describe('native diagnostic incident monitor', () => {
   it('uses bounded retry backoff and resets it after acknowledgement', () => {
     captureNativeDiagnosticIncident({
       scope: 'native-runtime-supervisor',
-      event: 'request_timed_out',
+      event: 'engineStateChanged',
+      errorCode: 'request_timed_out',
     }, 10_000)
     const first = leaseNativeDiagnosticIncidents('test-account', 10_000)!
     expect(releaseNativeDiagnosticIncidents('test-account', first.id, 10_000)).toBe(true)
@@ -536,7 +600,8 @@ describe('native diagnostic incident monitor', () => {
 
     captureNativeDiagnosticIncident({
       scope: 'native-runtime-supervisor',
-      event: 'request_timed_out',
+      event: 'engineStateChanged',
+      errorCode: 'request_timed_out',
     }, 90_000)
     const afterAck = leaseNativeDiagnosticIncidents('test-account', 90_000)!
     expect(releaseNativeDiagnosticIncidents('test-account', afterAck.id, 90_000)).toBe(true)

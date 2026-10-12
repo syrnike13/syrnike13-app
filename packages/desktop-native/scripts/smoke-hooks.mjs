@@ -1,0 +1,59 @@
+import { createRequire } from 'node:module'
+import path from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+
+const packageRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+)
+const repoRoot = path.resolve(packageRoot, '..', '..')
+const desktopRoot = path.resolve(repoRoot, 'apps', 'desktop')
+const desktopRequire = createRequire(path.resolve(desktopRoot, 'package.json'))
+const electronPath = desktopRequire('electron')
+
+const script = String.raw`
+  const path = require('node:path')
+  const manifest = require(path.resolve('out/native/win32-x64/native-manifest.json'))
+  ;(async () => {
+    const addon = require(path.resolve('out/native/win32-x64', 'syrnike_hooks.node'))
+    const info = addon.getRuntimeInfo()
+    if (!info.available || info.runtime !== 'hooks') {
+      throw new Error('Invalid hooks runtime info')
+    }
+    if (info.commit !== manifest.commitSha ||
+        info.contractVersion !== manifest.contractVersion ||
+        Number(info.napi) !== manifest.napiVersion) {
+      throw new Error('Hooks addon does not match its artifact manifest')
+    }
+    const requestId = 'probe'
+    let runtime
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Hooks probe timed out')), 5000)
+      runtime = addon.createHooksRuntime((event) => {
+        if (event.type !== 'reply' || event.requestId !== requestId) return
+        clearTimeout(timeout)
+        if (event.ok) resolve()
+        else reject(new Error('Hooks probe failed'))
+      })
+      runtime.dispatch({ type: 'probeHooksRuntime', requestId })
+    })
+    await runtime.shutdown()
+    console.info('hooks:ok')
+  })().catch((error) => {
+    console.error(error)
+    process.exit(1)
+  })
+`
+
+const result = spawnSync(electronPath, ['-e', script], {
+  cwd: desktopRoot,
+  stdio: 'inherit',
+  shell: false,
+  env: {
+    ...process.env,
+    ELECTRON_RUN_AS_NODE: '1',
+  },
+})
+if (result.error) throw result.error
+if (result.status !== 0) process.exit(result.status ?? 1)

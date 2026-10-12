@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
@@ -12,7 +13,7 @@ import {
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { useAuth } from '#/features/auth/auth-context'
-import { editServer } from '#/features/api/servers-api'
+import { editServerEffect } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
 import { createCategoryId } from '#/lib/channel-sidebar-layout'
 
@@ -40,27 +41,36 @@ export function CreateCategoryDialog({
     if (!server) return
 
     setSaving(true)
-    try {
-      const categories = [
-        ...(server.categories ?? []),
-        {
-          id: createCategoryId(),
-          title: trimmed,
-          channels: [],
-        },
-      ]
-      const updated = await editServer(token, serverId, { categories })
-      syncStore.upsertServer(updated)
-      toast.success(`Категория «${trimmed}» создана`)
-      onOpenChange(false)
-      setTitle('')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось создать',
-      )
-    } finally {
-      setSaving(false)
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        const categories = [
+          ...(server.categories ?? []),
+          {
+            id: createCategoryId(),
+            title: trimmed,
+            channels: [],
+          },
+        ]
+        const updated = yield* editServerEffect(token, serverId, {
+          categories,
+        })
+        yield* Effect.sync(() => {
+          syncStore.upsertServer(updated)
+          toast.success(`Категория «${trimmed}» создана`)
+          onOpenChange(false)
+          setTitle('')
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось создать',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setSaving(false))),
+      ),
+    )
   }
 
   return (

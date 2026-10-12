@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useForm } from '@tanstack/react-form'
 import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import {
@@ -20,9 +21,12 @@ import {
 } from '#/components/ui/card'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
-import { createAccount } from '#/features/api/account-api'
+import { createAccountEffect } from '#/features/api/account-api'
 import { useAuth } from '#/features/auth/auth-context'
-import { createRegisterSchema } from '#/features/auth/schemas'
+import {
+  createRegisterSchema,
+  validateForm,
+} from '#/features/auth/schemas'
 import {
   isCaptchaRequired,
   isEmailVerificationEnabled,
@@ -87,13 +91,13 @@ function RegisterPage() {
       const schema = createRegisterSchema({
         requireInvite: inviteOnly,
       })
-      const parsed = schema.safeParse(value)
+      const parsed = validateForm(schema, value)
       if (!parsed.success) {
         const nextErrors: Partial<Record<RegisterFieldName, string>> = {}
         let firstInvalidField: RegisterFieldName | undefined
 
-        for (const issue of parsed.error.issues) {
-          const fieldName = issue.path[0]
+        for (const issue of parsed.issues) {
+          const fieldName = issue.path?.[0]
           if (!isRegisterFieldName(fieldName)) continue
 
           nextErrors[fieldName] ??= issue.message
@@ -111,60 +115,71 @@ function RegisterPage() {
 
       setFieldErrors({})
 
-      let captcha: string | undefined
-      if (captchaRequired) {
-        if (!siteKey) {
-          toast.error('Captcha не настроена на сервере')
-          return
-        }
-        captcha = (await executeHcaptcha(captchaRef)) ?? undefined
-        if (!captcha) {
-          toast.error('Не удалось пройти captcha')
-          return
-        }
+      if (captchaRequired && !siteKey) {
+        toast.error('Captcha не настроена на сервере')
+        return
       }
 
       setSubmitting(true)
-      try {
-        try {
-          await createAccount({
+      await Effect.runPromise(
+        Effect.gen(function*() {
+          const captcha = captchaRequired
+            ? yield* Effect.tryPromise({
+                try: () => executeHcaptcha(captchaRef),
+                catch: (cause) => cause,
+              })
+            : undefined
+          if (captchaRequired && !captcha) {
+            return yield* Effect.fail(
+              new Error('Не удалось пройти captcha'),
+            )
+          }
+
+          yield* createAccountEffect({
             email: parsed.data.email,
             password: parsed.data.password,
             invite: parsed.data.invite?.trim() || undefined,
-            captcha,
+            captcha: captcha ?? undefined,
           })
-        } catch (error) {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : 'Не удалось зарегистрироваться',
-          )
-          return
-        }
 
-        if (emailVerification) {
-          setPendingVerifyEmail(parsed.data.email)
-          toast.success('Проверьте почту для подтверждения аккаунта')
-          void navigate({ to: '/login/check', replace: true })
-          return
-        }
+          if (emailVerification) {
+            yield* Effect.sync(() => {
+              setPendingVerifyEmail(parsed.data.email)
+              toast.success('Проверьте почту для подтверждения аккаунта')
+            })
+            yield* Effect.tryPromise({
+              try: () => navigate({ to: '/login/check', replace: true }),
+              catch: (cause) => cause,
+            })
+            return
+          }
 
-        const loginResult = await auth.login({
-          email: parsed.data.email,
-          password: parsed.data.password,
-        })
-        toast.success('Аккаунт создан')
-        void navigate({
-          to: postLoginPath(loginResult?.needsOnboarding ?? false),
-          replace: true,
-        })
-      } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : 'Не удалось зарегистрироваться',
-        )
-      } finally {
-        setSubmitting(false)
-      }
+          const loginResult = yield* auth.login({
+            email: parsed.data.email,
+            password: parsed.data.password,
+          })
+          yield* Effect.sync(() => toast.success('Аккаунт создан'))
+          yield* Effect.tryPromise({
+            try: () =>
+              navigate({
+                to: postLoginPath(loginResult?.needsOnboarding ?? false),
+                replace: true,
+              }),
+            catch: (cause) => cause,
+          })
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось зарегистрироваться',
+              )
+            }),
+          ),
+          Effect.ensuring(Effect.sync(() => setSubmitting(false))),
+        ),
+      )
     },
   })
 

@@ -9,6 +9,7 @@ import {
   within,
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerSettingsRolesPanel } from '#/components/servers/server-settings-roles-panel'
@@ -101,18 +102,23 @@ vi.mock('#/features/api/media-api', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
-  createServerRole: (...args: Parameters<typeof mocks.createServerRole>) =>
+  createServerRoleEffect: (
+    ...args: Parameters<typeof mocks.createServerRole>
+  ) =>
     mocks.createServerRole(...args),
-  deleteServerRole: (...args: Parameters<typeof mocks.deleteServerRole>) =>
+  deleteServerRoleEffect: (
+    ...args: Parameters<typeof mocks.deleteServerRole>
+  ) =>
     mocks.deleteServerRole(...args),
-  editServerRole: (...args: Parameters<typeof mocks.editServerRole>) =>
+  editServerRoleEffect: (...args: Parameters<typeof mocks.editServerRole>) =>
     mocks.editServerRole(...args),
-  editServerRoleRanks: (...args: Parameters<typeof mocks.editServerRoleRanks>) =>
-    mocks.editServerRoleRanks(...args),
-  setDefaultServerPermissions: (
+  editServerRoleRanksEffect: (
+    ...args: Parameters<typeof mocks.editServerRoleRanks>
+  ) => mocks.editServerRoleRanks(...args),
+  setDefaultServerPermissionsEffect: (
     ...args: Parameters<typeof mocks.setDefaultServerPermissions>
   ) => mocks.setDefaultServerPermissions(...args),
-  setServerRolePermissions: (
+  setServerRolePermissionsEffect: (
     ...args: Parameters<typeof mocks.setServerRolePermissions>
   ) => mocks.setServerRolePermissions(...args),
 }))
@@ -186,7 +192,7 @@ describe('ServerSettingsRolesPanel', () => {
   beforeEach(() => {
     setupServer()
     grantAllAuthorizationForTest({ serverIds: ['server-1'] })
-    mocks.deleteServerRole.mockResolvedValue(undefined)
+    mocks.deleteServerRole.mockReturnValue(Effect.void)
   })
 
   afterEach(() => {
@@ -232,13 +238,15 @@ describe('ServerSettingsRolesPanel', () => {
         },
       },
     } as never)
-    mocks.editServerRole.mockResolvedValue({
-      _id: 'member',
-      name: 'Member',
-      permissions: { a: 0, d: 0 },
-      rank: 5,
-      colour: null,
-    })
+    mocks.editServerRole.mockReturnValue(
+      Effect.succeed({
+        _id: 'member',
+        name: 'Member',
+        permissions: { a: 0, d: 0 },
+        rank: 5,
+        colour: null,
+      }),
+    )
 
     renderWithDraft()
 
@@ -327,8 +335,8 @@ describe('ServerSettingsRolesPanel', () => {
         },
       },
     } as never)
-    mocks.editServerRoleRanks.mockResolvedValue(
-      syncStore.getState().servers['server-1'],
+    mocks.editServerRoleRanks.mockReturnValue(
+      Effect.succeed(syncStore.getState().servers['server-1']),
     )
 
     render(<ServerSettingsRolesPanel serverId="server-1" />)
@@ -366,8 +374,8 @@ describe('ServerSettingsRolesPanel', () => {
         },
       },
     } as never)
-    mocks.editServerRoleRanks.mockResolvedValue(
-      syncStore.getState().servers['server-1'],
+    mocks.editServerRoleRanks.mockReturnValue(
+      Effect.succeed(syncStore.getState().servers['server-1']),
     )
 
     render(<ServerSettingsRolesPanel serverId="server-1" />)
@@ -411,9 +419,7 @@ describe('ServerSettingsRolesPanel', () => {
         },
       },
     } as never)
-    mocks.editServerRoleRanks.mockImplementation(
-      () => new Promise(() => {}),
-    )
+    mocks.editServerRoleRanks.mockReturnValue(Effect.never)
 
     render(<ServerSettingsRolesPanel serverId="server-1" />)
 

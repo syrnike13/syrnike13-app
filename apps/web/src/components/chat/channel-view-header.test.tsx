@@ -11,6 +11,7 @@ import {
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import type { Channel, Member, Server, User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelView } from '#/components/chat/channel-view'
@@ -22,10 +23,14 @@ const CHANNEL_ID = 'dm-1'
 const GROUP_CHANNEL_ID = 'group-1'
 const voiceJoinMock = vi.hoisted(() => vi.fn())
 const cancelDirectMessageCallMock = vi.hoisted(() =>
-  vi.fn().mockResolvedValue(undefined),
+  vi.fn<
+    (token: string, channelId: string) => Effect.Effect<void, unknown>
+  >(() => Effect.void),
 )
 const declineDirectMessageCallMock = vi.hoisted(() =>
-  vi.fn().mockResolvedValue(undefined),
+  vi.fn<
+    (token: string, channelId: string) => Effect.Effect<void, unknown>
+  >(() => Effect.void),
 )
 const voiceState = vi.hoisted(() => ({
   channelId: null as string | null,
@@ -125,8 +130,8 @@ vi.mock('#/features/voice/voice-session-context', () => ({
 }))
 
 vi.mock('#/features/api/channels-api', () => ({
-  cancelDirectMessageCall: cancelDirectMessageCallMock,
-  declineDirectMessageCall: declineDirectMessageCallMock,
+  cancelDirectMessageCallEffect: cancelDirectMessageCallMock,
+  declineDirectMessageCallEffect: declineDirectMessageCallMock,
 }))
 
 vi.mock('#/components/voice/voice-channel-shell', () => ({
@@ -349,9 +354,7 @@ describe('ChannelView direct message header', () => {
     expect(profileButton.getAttribute('aria-pressed')).toBe('true')
 
     fireEvent.click(profileButton)
-    expect(
-      screen.getByLabelText('Профиль пользователя').getAttribute('aria-hidden'),
-    ).toBe('true')
+    expect(screen.queryByLabelText('Профиль пользователя')).toBeNull()
     expect(profileButton.getAttribute('aria-pressed')).toBe('false')
 
     fireEvent.click(profileButton)
@@ -515,6 +518,7 @@ describe('ChannelView direct message header', () => {
       channel_id: CHANNEL_ID,
       initiator_id: TARGET_USER_ID,
       started_at: 1,
+      declined_recipients: [],
     })
 
     const { container } = renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
@@ -571,7 +575,9 @@ describe('ChannelView direct message header', () => {
       channel_id: CHANNEL_ID,
       initiator_id: TARGET_USER_ID,
       started_at: 1,
+      expires_at: Date.now() + 60_000,
       recipients: [CURRENT_USER_ID],
+      declined_recipients: [],
     })
 
     const { container } = renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
@@ -603,13 +609,17 @@ describe('ChannelView direct message header', () => {
   })
 
   it('keeps the inline direct message call ringing when decline fails', async () => {
-    declineDirectMessageCallMock.mockRejectedValueOnce(new Error('boom'))
+    declineDirectMessageCallMock.mockReturnValueOnce(
+      Effect.fail(new Error('boom')),
+    )
     syncStore.handleGatewayEvent({
       type: 'VoiceCallRinging',
       channel_id: CHANNEL_ID,
       initiator_id: TARGET_USER_ID,
       started_at: 1,
+      expires_at: Date.now() + 60_000,
       recipients: [CURRENT_USER_ID],
+      declined_recipients: [],
     })
 
     renderChannelView(<ChannelView channelId={CHANNEL_ID} />)

@@ -41,6 +41,15 @@ import (
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/proto"
 
+	lkinterceptor "github.com/livekit/mediatransportutil/pkg/interceptor"
+	"github.com/livekit/mediatransportutil/pkg/rtcconfig"
+	lktwcc "github.com/livekit/mediatransportutil/pkg/twcc"
+	"github.com/livekit/protocol/codecs/mime"
+	"github.com/livekit/protocol/livekit"
+	"github.com/livekit/protocol/logger"
+	"github.com/livekit/protocol/logger/pionlogger"
+	lksdp "github.com/livekit/protocol/sdp"
+	"github.com/livekit/protocol/utils/mono"
 	"github.com/syrnike13/livekit-server/pkg/config"
 	"github.com/syrnike13/livekit-server/pkg/rtc/transport"
 	"github.com/syrnike13/livekit-server/pkg/rtc/types"
@@ -56,15 +65,6 @@ import (
 	sfuutils "github.com/syrnike13/livekit-server/pkg/sfu/utils"
 	"github.com/syrnike13/livekit-server/pkg/telemetry/prometheus"
 	"github.com/syrnike13/livekit-server/pkg/utils"
-	lkinterceptor "github.com/livekit/mediatransportutil/pkg/interceptor"
-	"github.com/livekit/mediatransportutil/pkg/rtcconfig"
-	lktwcc "github.com/livekit/mediatransportutil/pkg/twcc"
-	"github.com/livekit/protocol/codecs/mime"
-	"github.com/livekit/protocol/livekit"
-	"github.com/livekit/protocol/logger"
-	"github.com/livekit/protocol/logger/pionlogger"
-	lksdp "github.com/livekit/protocol/sdp"
-	"github.com/livekit/protocol/utils/mono"
 )
 
 const (
@@ -333,8 +333,10 @@ func newPeerConnection(
 	onBandwidthEstimator func(estimator cc.BandwidthEstimator),
 ) (*webrtc.PeerConnection, *webrtc.MediaEngine, *sfuinterceptor.RTXInfoExtractorFactory, error) {
 	directionConfig := params.DirectionConfig
-	if params.AllowPlayoutDelay {
-		directionConfig.RTPHeaderExtension.Video = append(directionConfig.RTPHeaderExtension.Video, pd.PlayoutDelayURI)
+	// Negotiate the capability before a screen track is subscribed. Only its
+	// downtrack's policy emits the extension; other video keeps its policy.
+	if (params.AllowPlayoutDelay || params.IsSendSide) && !slices.Contains(directionConfig.RTPHeaderExtension.Video, pd.PlayoutDelayURI) {
+		directionConfig.RTPHeaderExtension.Video = append(slices.Clone(directionConfig.RTPHeaderExtension.Video), pd.PlayoutDelayURI)
 	}
 
 	// Some of the browser clients do not handle H.264 High Profile in signalling properly.

@@ -1,10 +1,30 @@
 import { useEffect } from 'react'
+import { Effect, Fiber } from 'effect'
 
-import { fetchServerMembers } from '#/features/api/servers-api'
+import { fetchServerMembersEffect } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
 
 const loadedKeys = new Map<string, Set<string>>()
-const inFlight = new Map<string, Promise<void>>()
+const inFlight = new Map<
+  string,
+  { readonly id: symbol; readonly fiber: Fiber.Fiber<void, unknown> }
+>()
+
+const loadServerMembers = Effect.fn('sync.loadServerMembers')(
+  function*(token: string, serverId: string, key: string) {
+    const { members, users } = yield* fetchServerMembersEffect(
+      token,
+      serverId,
+    )
+    yield* Effect.sync(() => {
+      syncStore.upsertMembersAndUsers(members, users)
+      loadedKeys.set(
+        key,
+        new Set(members.map((member) => member._id.user)),
+      )
+    })
+  },
+)
 
 function syncKey(token: string, serverId: string) {
   return `${token}:${serverId}`
@@ -12,13 +32,15 @@ function syncKey(token: string, serverId: string) {
 
 export function clearServerMembersSyncCache() {
   loadedKeys.clear()
+  for (const operation of inFlight.values()) {
+    Effect.runFork(Fiber.interrupt(operation.fiber))
+  }
   inFlight.clear()
 }
 
-export function loadServerMembersIntoSyncStore(
-  token: string,
-  serverId: string,
-) {
+export const loadServerMembersIntoSyncStoreEffect = Effect.fn(
+  'sync.loadServerMembersIntoStore',
+)(function*(token: string, serverId: string) {
   const key = syncKey(token, serverId)
   const loadedMemberIds = loadedKeys.get(key)
   if (
@@ -27,26 +49,37 @@ export function loadServerMembersIntoSyncStore(
       Boolean(syncStore.getState().members[`${serverId}:${userId}`]),
     )
   ) {
-    return Promise.resolve()
+    return
   }
 
   const existing = inFlight.get(key)
-  if (existing) return existing
+  if (existing) return yield* Fiber.join(existing.fiber)
 
-  const promise = fetchServerMembers(token, serverId)
-    .then(({ members, users }) => {
-      syncStore.upsertMembersAndUsers(members, users)
-      loadedKeys.set(
-        key,
-        new Set(members.map((member) => member._id.user)),
-      )
-    })
-    .finally(() => {
-      inFlight.delete(key)
-    })
+  const id = Symbol(key)
+  const fiber = Effect.runFork(
+    Effect.gen(function*() {
+      yield* Effect.yieldNow
+      yield* loadServerMembers(token, serverId, key)
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (inFlight.get(key)?.id === id) inFlight.delete(key)
+        }),
+      ),
+    ),
+  )
 
-  inFlight.set(key, promise)
-  return promise
+  inFlight.set(key, { id, fiber })
+  return yield* Fiber.join(fiber)
+})
+
+export function loadServerMembersIntoSyncStore(
+  token: string,
+  serverId: string,
+) {
+  return Effect.runPromise(
+    loadServerMembersIntoSyncStoreEffect(token, serverId),
+  )
 }
 
 export function useServerMembersSync(
@@ -56,6 +89,15 @@ export function useServerMembersSync(
 ) {
   useEffect(() => {
     if (!enabled || !serverId || !token) return
-    void loadServerMembersIntoSyncStore(token, serverId).catch(() => {})
+
+    const fiber = Effect.runFork(
+      loadServerMembersIntoSyncStoreEffect(token, serverId).pipe(
+        Effect.catch(() => Effect.void),
+      ),
+    )
+
+    return () => {
+      Effect.runFork(Fiber.interrupt(fiber))
+    }
   }, [enabled, serverId, token])
 }

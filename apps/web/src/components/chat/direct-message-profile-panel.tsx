@@ -38,7 +38,7 @@ export function DirectMessageProfilePanel({
   )
   const profileQuery = useQuery({
     queryKey: queryKeys.users.profile(user._id),
-    queryFn: () => fetchUserProfile(token!, user._id),
+    queryFn: ({ signal }) => fetchUserProfile(token!, user._id, signal),
     enabled: Boolean(token),
     staleTime: 60_000,
   })

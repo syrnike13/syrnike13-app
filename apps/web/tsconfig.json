@@ -8,6 +8,12 @@
       "#/*": ["./src/*"],
       "@/*": ["./src/*"],
       "@syrnike13/api-types": ["../../packages/api-types/src/index.ts"],
+      "@syrnike13/api-types/effect-schema": [
+        "../../packages/api-types/src/effect-schema.ts"
+      ],
+      "@syrnike13/api-types/gateway-schema": [
+        "../../packages/api-types/src/gateway-schema.ts"
+      ],
       "@syrnike13/platform": ["../../packages/platform/src/index.ts"]
     },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],

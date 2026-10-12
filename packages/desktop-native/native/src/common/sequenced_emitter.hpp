@@ -1,7 +1,7 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
-#include <exception>
 #include <mutex>
 #include <utility>
 
@@ -14,16 +14,16 @@ class SequencedEmitter {
   explicit SequencedEmitter(EventSinkPtr sink) : sink_(std::move(sink)) {}
 
   bool emit(RuntimeEvent event) {
-    // Keep producer delivery serialized so sequence assignment and sink
-    // observation have the same order. close() deliberately does not take
-    // this mutex: a sink may be blocked on its bounded queue and close must be
-    // able to wake it.
-    std::lock_guard emit_lock(emit_mutex_);
+    std::lock_guard emit_lock(
+      eventLane(event) == EventLane::realtime
+        ? realtime_emit_mutex_
+        : control_emit_mutex_
+    );
     EventSinkPtr sink;
     {
       std::lock_guard lock(mutex_);
       if (sink_) {
-        event.sequence = next_sequence_++;
+        event.sequence = next_sequence_.fetch_add(1, std::memory_order_relaxed);
         sink = sink_;
       }
     }
@@ -39,8 +39,6 @@ class SequencedEmitter {
         return true;
       }
     } catch (...) {
-      // Event sinks are a fault-containment boundary. An exception must never
-      // be reclassified by the calling actor as a media/capture failure.
     }
     resource.discard();
     return false;
@@ -52,22 +50,19 @@ class SequencedEmitter {
       std::lock_guard lock(mutex_);
       sink = std::move(sink_);
     }
-    // EventSink::close may wait for a JS callback that synchronously dispatches
-    // back into this emitter. The emitter is already observably closed, so the
-    // callback sees a fast rejection instead of deadlocking on mutex_.
-    if (sink) {
-      try {
-        sink->close();
-      } catch (...) {
-      }
+    if (!sink) return;
+    try {
+      sink->close();
+    } catch (...) {
     }
   }
 
  private:
-  std::mutex emit_mutex_;
+  std::mutex control_emit_mutex_;
+  std::mutex realtime_emit_mutex_;
   std::mutex mutex_;
   EventSinkPtr sink_;
-  std::uint64_t next_sequence_ = 1;
+  std::atomic_uint64_t next_sequence_{1};
 };
 
 }  // namespace syrnike::desktop_native

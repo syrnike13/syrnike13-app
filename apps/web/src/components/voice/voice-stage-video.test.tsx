@@ -20,6 +20,13 @@ function videoTrackStub(trackSid = 'TR_screen') {
   return { track }
 }
 
+function liveKitStageTrack(track: ReturnType<typeof videoTrackStub>['track']) {
+  return {
+    backend: 'livekit' as const,
+    track: track as never,
+  }
+}
+
 function nativeTrackStub(trackSid = 'local-screen:session') {
   const detach = vi.fn()
   const attachCanvas = vi.fn(
@@ -27,6 +34,7 @@ function nativeTrackStub(trackSid = 'local-screen:session') {
       _trackId: string,
       _canvas: HTMLCanvasElement,
       _onSizeChange?: (size: { width: number; height: number }) => void,
+      _options?: { fit?: 'contain' | 'cover' },
     ) => detach,
   )
   const registry = { attachCanvas } as unknown as NativeVideoRegistry
@@ -62,7 +70,7 @@ describe('VoiceStageVideo', () => {
     const first = render(
       <VoiceStageVideo
         mediaId="remote-user:screen"
-        track={track as unknown as Parameters<typeof VoiceStageVideo>[0]['track']}
+        track={liveKitStageTrack(track)}
       />,
     )
 
@@ -85,7 +93,7 @@ describe('VoiceStageVideo', () => {
     const view = render(
       <VoiceStageVideo
         mediaId="remote-user:screen"
-        track={track as unknown as Parameters<typeof VoiceStageVideo>[0]['track']}
+        track={liveKitStageTrack(track)}
       />,
       { container: host },
     )
@@ -108,17 +116,20 @@ describe('VoiceStageVideo', () => {
     const view = render(
       <VoiceStageVideo
         mediaId="local-user:screen"
-        track={track as unknown as Parameters<typeof VoiceStageVideo>[0]['track']}
+        track={{ backend: 'native', track }}
         onVideoSizeChange={onVideoSizeChange}
       />,
     )
 
     const canvas = document.querySelector('canvas')!
+    canvas.width = 1920
+    canvas.height = 1080
     expect(document.querySelector('video')).toBeNull()
     expect(attachCanvas).toHaveBeenCalledWith(
       'local-screen:session',
       canvas,
       expect.any(Function),
+      { fit: 'cover' },
     )
     const sizeListener = attachCanvas.mock.calls[0][2]
     sizeListener?.({ width: 1920, height: 1080 })
@@ -126,6 +137,8 @@ describe('VoiceStageVideo', () => {
 
     view.unmount()
     expect(detach).toHaveBeenCalledOnce()
+    expect(canvas.width).toBe(0)
+    expect(canvas.height).toBe(0)
   })
 
   it('detaches the old native consumer before attaching a replacement track', () => {
@@ -134,14 +147,14 @@ describe('VoiceStageVideo', () => {
     const view = render(
       <VoiceStageVideo
         mediaId="local-user:screen"
-        track={first.track as unknown as Parameters<typeof VoiceStageVideo>[0]['track']}
+        track={{ backend: 'native', track: first.track }}
       />,
     )
 
     view.rerender(
       <VoiceStageVideo
         mediaId="local-user:screen"
-        track={second.track as unknown as Parameters<typeof VoiceStageVideo>[0]['track']}
+        track={{ backend: 'native', track: second.track }}
       />,
     )
 

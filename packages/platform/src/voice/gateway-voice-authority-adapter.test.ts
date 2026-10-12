@@ -63,14 +63,38 @@ const reservation: VoiceReservationRequest = {
     voiceGateEnabled: true,
     voiceGateThresholdDb: -28,
     voiceGateAutoThreshold: true,
+    microphoneBitrate: 64_000,
     outputVolume: 1,
     cameraEnabled: false,
+    cameraProfile: 'hd720p30',
     screenEnabled: false,
     screenAudioEnabled: false,
+    screenAudioMode: 'system',
   },
 }
 
 describe('GatewayVoiceAuthorityAdapter', () => {
+  it.each([
+    { type: 'LiveKitUnavailable', retryable: true },
+    { type: 'Forbidden', retryable: false },
+    { type: undefined, retryable: false },
+  ])('classifies $type authority errors without retrying permission failures', async ({ type, retryable }) => {
+    const transport = new FakeTransport()
+    const adapter = new GatewayVoiceAuthorityAdapter({ transport })
+    const pending = adapter.reserve(reservation, new AbortController().signal)
+    await vi.waitFor(() => expect(transport.sent).toHaveLength(1))
+    transport.event({
+      type: 'Error',
+      request: { operation_id: reservation.operationId },
+      data: { type },
+    })
+    await expect(pending).rejects.toMatchObject({ failure: { retryable, stage: 'voice_authority' } })
+    expect(transport.sent.at(-1)?.message).toMatchObject({ request: {
+      mode: 'disconnect', operation_id: reservation.operationId,
+    } })
+    adapter.dispose()
+  })
+
   it('sends exact engine claims and validates the returned credential lease', async () => {
     const transport = new FakeTransport()
     const adapter = new GatewayVoiceAuthorityAdapter({
@@ -111,6 +135,7 @@ describe('GatewayVoiceAuthorityAdapter', () => {
         connection_epoch: 'epoch-a',
         token: 'secret-token',
         identity: 'voice:v1|windows_native|client-a|epoch-a|voice-op-a|user-a',
+        camera_profiles: ['hd720p30'],
       },
     })
 
@@ -120,6 +145,7 @@ describe('GatewayVoiceAuthorityAdapter', () => {
       authorityVersion: 3,
       credential: {
         url: 'wss://voice.invalid',
+        cameraProfiles: ['hd720p30'],
         participantIdentity:
           'voice:v1|windows_native|client-a|epoch-a|voice-op-a|user-a',
       },
@@ -267,6 +293,7 @@ describe('GatewayVoiceAuthorityAdapter', () => {
           connection_epoch: 'epoch-b',
           token: 'secret-b',
           identity: 'identity-b',
+          camera_profiles: [],
         },
       },
     })
@@ -291,6 +318,7 @@ describe('GatewayVoiceAuthorityAdapter', () => {
           url: 'wss://voice.invalid',
           token: 'secret-b',
           participantIdentity: 'identity-b',
+          cameraProfiles: [],
         },
       },
     })

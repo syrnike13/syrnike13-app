@@ -32,12 +32,11 @@ function audioPresetWithBitrate<T extends { maxBitrate?: number }>(
   }
 }
 
-export function voiceMicPublishOptions(
-  audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
-): TrackPublishOptions {
+/** bitrate: bits per second, from the voice channel setting. */
+export function voiceMicPublishOptions(bitrate: number): TrackPublishOptions {
   return {
     source: Track.Source.Microphone,
-    audioPreset: audioPresetWithBitrate(AudioPresets.speech, audioBitrateKbps),
+    audioPreset: audioPresetWithBitrate(AudioPresets.speech, bitrate / 1000),
     dtx: true,
   }
 }

@@ -24,10 +24,13 @@ export function useVoiceStageFocusSizing(
 
     const update = () => {
       const rect = element.getBoundingClientRect()
-      setContainerSize({
-        width: Math.floor(rect.width),
-        height: Math.floor(rect.height),
-      })
+      const width = Math.floor(rect.width)
+      const height = Math.floor(rect.height)
+      setContainerSize((previous) =>
+        previous.width === width && previous.height === height
+          ? previous
+          : { width, height },
+      )
     }
 
     update()

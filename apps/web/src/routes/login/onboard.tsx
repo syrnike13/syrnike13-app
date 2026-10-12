@@ -2,6 +2,7 @@ import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useForm } from '@tanstack/react-form'
 import { Loader2Icon } from '#/components/icons'
 import { useEffect, useState } from 'react'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
@@ -16,15 +17,15 @@ import {
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { useAuth } from '#/features/auth/auth-context'
-import { usernameSchema } from '#/features/auth/schemas'
+import { usernameSchema, validateForm } from '#/features/auth/schemas'
 import { postLoginPath } from '#/lib/auth-post-login-path'
-import { loadPersistedSession } from '#/lib/session'
+import { loadPersistedSessionEffect } from '#/lib/session'
 
 export const Route = createFileRoute('/login/onboard')({
   beforeLoad: async () => {
     if (
       typeof window !== 'undefined' &&
-      !(await loadPersistedSession())
+      !(await Effect.runPromise(loadPersistedSessionEffect()))
     ) {
       throw redirect({ to: '/login' })
     }
@@ -58,15 +59,15 @@ function OnboardPage() {
   const form = useForm({
     defaultValues: { username: '' },
     onSubmit: async ({ value }) => {
-      const parsed = usernameSchema.safeParse(value.username)
+      const parsed = validateForm(usernameSchema, value.username)
       if (!parsed.success) {
-        toast.error(parsed.error.issues[0]?.message ?? 'Проверьте ник')
+        toast.error(parsed.issues[0]?.message ?? 'Проверьте ник')
         return
       }
 
       setSubmitting(true)
       try {
-        await auth.completeOnboarding(parsed.data)
+        await Effect.runPromise(auth.completeOnboarding(parsed.data))
         void navigate({ to: postLoginPath(false), replace: true })
       } catch (error) {
         toast.error(

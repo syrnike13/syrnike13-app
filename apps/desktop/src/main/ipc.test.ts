@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 const handleMock = vi.hoisted(() => vi.fn())
 const onMock = vi.hoisted(() => vi.fn())
@@ -39,8 +40,23 @@ vi.mock('./hotkeys', () => ({
 
 vi.mock('./desktop-session', () => ({
   clearDesktopSession: clearDesktopSessionMock,
+  clearDesktopSessionEffect: (filePath: string) =>
+    Effect.tryPromise({
+      try: () => clearDesktopSessionMock(filePath),
+      catch: (cause) => cause,
+    }),
   loadDesktopSession: loadDesktopSessionMock,
+  loadDesktopSessionEffect: (filePath: string) =>
+    Effect.tryPromise({
+      try: () => loadDesktopSessionMock(filePath),
+      catch: (cause) => cause,
+    }),
   saveDesktopSession: saveDesktopSessionMock,
+  saveDesktopSessionEffect: (filePath: string, session: unknown) =>
+    Effect.tryPromise({
+      try: () => saveDesktopSessionMock(filePath, session),
+      catch: (cause) => cause,
+    }),
 }))
 
 vi.mock('./desktop-local-settings', () => ({
@@ -59,7 +75,7 @@ vi.mock('./native-media-engine', () => ({
     prewarmMicrophone: vi.fn(async () => undefined),
     dispose: vi.fn(),
   })),
-  flushNativeMediaDiagnostics: vi.fn(async () => undefined),
+  flushNativeMediaDiagnosticsEffect: vi.fn(() => Effect.void),
   logNativeVoiceDiagnostic: vi.fn(),
   registerNativeMediaRuntimeIpc: vi.fn(),
 }))
@@ -87,6 +103,7 @@ describe('registerDesktopIpc', () => {
   beforeEach(() => {
     handleMock.mockClear()
     onMock.mockClear()
+    clipboardWriteTextMock.mockClear()
     updateDesktopLocalSettingsMock.mockClear()
     clearDesktopSessionMock.mockReset().mockResolvedValue(undefined)
     loadDesktopSessionMock.mockReset().mockResolvedValue(null)
@@ -135,6 +152,40 @@ describe('registerDesktopIpc', () => {
     expect(registration).toBeDefined()
     await registration?.[1]({}, 'message-id-1')
     expect(clipboardWriteTextMock).toHaveBeenCalledWith('message-id-1')
+  })
+
+  it('rejects malformed renderer input before invoking native services', async () => {
+    const { IPC } = await import('@syrnike13/platform')
+    const { registerDesktopIpc } = await import('./ipc')
+    const setCloseToTray = vi.fn()
+
+    registerDesktopIpc(() => null, {
+      ...ipcOptions(),
+      setCloseToTray,
+    })
+
+    const handler = (channel: string) => handleMock.mock.calls.find(
+      ([registeredChannel]) => registeredChannel === channel,
+    )?.[1]
+
+    expect(() => handler(IPC.clipboardWriteText)?.({}, 42)).toThrow(
+      `Invalid IPC input for ${IPC.clipboardWriteText}: text`,
+    )
+    expect(() => handler(IPC.windowSetCloseToTray)?.({}, 'yes')).toThrow(
+      `Invalid IPC input for ${IPC.windowSetCloseToTray}: closeToTray`,
+    )
+    await expect(
+      handler(IPC.authSaveSession)?.({}, {
+        _id: '',
+        user_id: 'account-a',
+        token: 'token-a',
+      }),
+    ).rejects.toThrow(
+      `Invalid IPC input for ${IPC.authSaveSession}: session`,
+    )
+    expect(clipboardWriteTextMock).not.toHaveBeenCalled()
+    expect(setCloseToTray).not.toHaveBeenCalled()
+    expect(saveDesktopSessionMock).not.toHaveBeenCalled()
   })
 
   it('persists observability preferences through the typed settings seam', async () => {
@@ -198,11 +249,15 @@ describe('registerDesktopIpc', () => {
       severity: 'error',
       triggerCode: 'runtime_lost',
     })).toBe(true)
-    expect(registration?.[1]({}, 'account-a', {
-      area: 'voice',
-      severity: 'invalid',
-      triggerCode: 'runtime_lost',
-    })).toBe(false)
+    expect(() =>
+      registration?.[1]({}, 'account-a', {
+        area: 'voice',
+        severity: 'invalid',
+        triggerCode: 'runtime_lost',
+      }),
+    ).toThrow(
+      `Invalid IPC input for ${IPC.diagnosticsEnqueueIncident}: incident`,
+    )
     expect(incidents.leaseNativeDiagnosticIncidents('account-a')?.incidents).toEqual([
       expect.objectContaining({ identity: 'renderer:voice:runtime_lost' }),
     ])

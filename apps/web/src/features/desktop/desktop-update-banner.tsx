@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Effect, Fiber } from 'effect'
 
 import { DownloadIcon } from '#/components/icons'
 import { shellTitleBarNoDragClass } from '#/components/layout/shell-chrome'
@@ -26,19 +27,30 @@ export function DesktopUpdateTitleBarButton({
 
   useEffect(() => {
     if (!desktop) return
-    let cancelled = false
 
-    void desktop.updates.getState().then((value) => {
-      if (!cancelled) setState(value)
-    })
-
+    let pushedStateRevision = 0
     const unsubscribe = desktop.updates.onStateChange((nextState) => {
-      if (!cancelled) setState(nextState)
+      pushedStateRevision += 1
+      setState(nextState)
     })
+    const initialRevision = pushedStateRevision
+    const fiber = Effect.runFork(
+      Effect.tryPromise({
+        try: () => desktop.updates.getState(),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.tap((value) =>
+          Effect.sync(() => {
+            if (pushedStateRevision === initialRevision) setState(value)
+          }),
+        ),
+        Effect.ignore,
+      ),
+    )
 
     return () => {
-      cancelled = true
       unsubscribe()
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [desktop])
 

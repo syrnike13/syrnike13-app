@@ -1,0 +1,9 @@
+session_id	generation	track_id	native_capture_timestamp_us	sampled
+session-7	3	track-video	94	1
+session-7	3	track-video	95	0
+	0		0	0
+	0		50	1
+сессия	42	трек-📺	350	1
+сессия	42	трек-📺	1234567890123	0
+decimal-boundary	9007199254740991	track-0	9007199254740965	1
+decimal-boundary	9007199254740991	track-0	9007199254740991	0

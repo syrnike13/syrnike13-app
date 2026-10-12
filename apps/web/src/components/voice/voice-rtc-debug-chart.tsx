@@ -26,7 +26,7 @@ export function RtcDebugMetricChart<T>({
           className,
         )}
       >
-        <div className="h-full w-full bg-[linear-gradient(to_right,rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:25%_100%,100%_50%]" />
+        <ChartGrid patternId={gridPatternId} />
       </div>
     )
   }
@@ -52,12 +52,46 @@ export function RtcDebugMetricChart<T>({
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="size-full">
         <defs>
           <pattern id={gridPatternId} width="25" height="50" patternUnits="userSpaceOnUse">
-            <path d="M 25 0 L 0 0 0 50" fill="none" stroke="rgba(255,255,255,0.035)" strokeWidth="0.6" />
+            <path
+              d="M 25 0 L 0 0 0 50"
+              fill="none"
+              className="stroke-border/60"
+              strokeWidth="0.6"
+            />
           </pattern>
         </defs>
         <rect width="100" height="100" fill={`url(#${gridPatternId})`} />
-        <path d={path} fill="none" stroke="var(--primary)" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
+        <path
+          d={path}
+          fill="none"
+          className="stroke-primary"
+          strokeWidth="1.8"
+          vectorEffect="non-scaling-stroke"
+        />
       </svg>
     </div>
+  )
+}
+
+function ChartGrid({ patternId }: { patternId: string }) {
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      className="size-full"
+      aria-hidden
+    >
+      <defs>
+        <pattern id={patternId} width="25" height="50" patternUnits="userSpaceOnUse">
+          <path
+            d="M 25 0 L 0 0 0 50"
+            fill="none"
+            className="stroke-border/60"
+            strokeWidth="0.6"
+          />
+        </pattern>
+      </defs>
+      <rect width="100" height="100" fill={`url(#${patternId})`} />
+    </svg>
   )
 }

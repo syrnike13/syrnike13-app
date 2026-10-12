@@ -10,12 +10,32 @@ import {
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { performance } from 'node:perf_hooks'
+import { Deferred, Effect, Fiber, Queue } from 'effect'
 
 import type { DiagnosticEnvelope } from '@syrnike13/platform'
+import type { NativeDiagnosticIncidentSeverity } from '@syrnike13/platform'
 
-import { redactSensitiveText, type NativeRuntimeKind } from './contract'
 
 export type NativeDiagnosticRole = 'electron-main' | 'utility' | 'native'
+export type NativeDiagnosticRuntime = 'hotkey' | 'overlay' | 'media'
+
+export function redactSensitiveText(
+  value: string,
+  maximumLength = 4_096,
+) {
+  return value
+    .replace(
+      /\b(token|access_token|authorization)\s*[:=]\s*([^\s,;]+)/gi,
+      '$1=[redacted]',
+    )
+    .replace(/\bBearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+    .replace(/\b(?:wss?|https?):\/\/[^\s,;]+/gi, '[redacted-url]')
+    .replace(
+      /[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
+      '[redacted]',
+    )
+    .slice(0, maximumLength)
+}
 
 export type NativeDiagnosticPaths = {
   electronMainPath: string
@@ -24,7 +44,7 @@ export type NativeDiagnosticPaths = {
 }
 
 export type NativeDiagnosticSession = {
-  runtime: NativeRuntimeKind
+  runtime: NativeDiagnosticRuntime
   runId: string
   directory: string
   latestPath: string
@@ -43,20 +63,29 @@ export type DiagnosticLogRecord = {
   lane?: string
   operation?: string
   actionId?: string
+  // An immediate owner supplies this for symptoms of one specific failure.
+  // Incident reports alias it; time proximity alone never establishes a cause.
+  episodeId?: string
   nativeEventType?: string
   nativeSequence?: number
   stage?: string
   commandStage?: string
   outcome?: string
   sessionId?: string
+  trackId?: string
+  peerAlias?: string
   requestId?: string
   hostEpoch?: number
+  runtimeEpoch?: number
   generation?: number
+  frameSequence?: number
+  nativeCaptureTimestampUs?: number
   candidateGeneration?: number
   fenceGeneration?: number
   revision?: number
   muted?: boolean
   fatal?: boolean
+  incidentSeverity?: NativeDiagnosticIncidentSeverity
   pendingCount?: number
   queueDepth?: number
   queueWaitMs?: number
@@ -74,9 +103,8 @@ export type DiagnosticLogRecord = {
   hresult?: number
   windowVisible?: boolean
   windowMinimized?: boolean
+  metrics?: Record<string, number>
 }
-
-export type DiagnosticLogSink = (record: DiagnosticLogRecord) => void
 
 export type NativeDiagnosticPrimitive =
   | null
@@ -91,14 +119,14 @@ type JsonValue = NativeDiagnosticPrimitive
 type JsonRecord = Record<string, JsonValue>
 
 type CreateNativeDiagnosticSessionOptions = {
-  runtime: NativeRuntimeKind
+  runtime: NativeDiagnosticRuntime
   rootDir: string
   now?: () => number
   randomUUID?: () => string
 }
 
 type CreateNativeDiagnosticLogOptions = {
-  runtime: NativeRuntimeKind
+  runtime: NativeDiagnosticRuntime
   role: NativeDiagnosticRole
   runId: string
   directory: string
@@ -120,14 +148,16 @@ type CreateNativeDiagnosticLogOptions = {
 }
 
 export interface NativeDiagnosticLog {
-  readonly runtime: NativeRuntimeKind
+  readonly runtime: NativeDiagnosticRuntime
   readonly role: NativeDiagnosticRole
   readonly runId: string
   readonly directory: string
   readonly filePath: string
   readonly latestPath?: string
   log(event: string, data?: unknown): void
+  flushEffect(): Effect.Effect<void>
   flush(): Promise<void>
+  closeEffect(): Effect.Effect<void>
   close(): Promise<void>
 }
 
@@ -152,7 +182,7 @@ const MAX_RETAINED_DIAGNOSTIC_SESSIONS = 20
 const MAX_RETAINED_DIAGNOSTIC_BYTES = 200 * 1024 * 1024
 
 const SENSITIVE_KEY =
-  /token|authorization|url|identity|participant|user(?:id)?|device|label|source(?:id)?|window|hwnd|room(?:id|name|url)?|process(?:id|path)|path/i
+  /token|authorization|url|identity|participant|user(?:id)?|channel(?:id)?|device|label|source(?:id)?|window|hwnd|room(?:id|name|url)?|process(?:id|path)|path/i
 
 export function createNativeDiagnosticSession({
   runtime,
@@ -176,64 +206,96 @@ export function createNativeDiagnosticSession({
   }
 }
 
-export async function pruneNativeDiagnosticSessions(
+export function pruneNativeDiagnosticSessions(
   rootDir: string,
   now = Date.now(),
 ): Promise<void> {
-  const entries = await readdir(rootDir, { withFileTypes: true }).catch(
-    (error: NodeJS.ErrnoException) => {
-      if (error.code === 'ENOENT') return []
-      throw error
-    },
+  return Effect.runPromise(
+    pruneNativeDiagnosticSessionsEffect(rootDir, now),
+  )
+}
+
+export const pruneNativeDiagnosticSessionsEffect = Effect.fn(
+  'desktop.pruneNativeDiagnosticSessions',
+)(function*(rootDir: string, now: number) {
+  const entries = yield* Effect.tryPromise({
+    try: () => readdir(rootDir, { withFileTypes: true }),
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.catch((error) =>
+      isErrnoCode(error, 'ENOENT') ? Effect.succeed([]) : Effect.fail(error)
+    ),
   )
   const cutoff = now - DIAGNOSTIC_RETENTION_MS
-  const sessions = (
-    await Promise.all(
+  const sessions = yield* Effect.all(
       entries
         .filter(
           (entry) =>
             entry.isDirectory() &&
             /^native-(?:media|hotkey|overlay)-/.test(entry.name),
         )
-        .map(async (entry) => {
-          const directory = path.join(rootDir, entry.name)
-          const [metadata, files] = await Promise.all([
-            stat(directory),
-            readdir(directory, { withFileTypes: true }).catch(() => []),
-          ])
-          const size = (
-            await Promise.all(
+        .map((entry) =>
+          Effect.gen(function*() {
+            const directory = path.join(rootDir, entry.name)
+            const [metadata, files] = yield* Effect.all(
+              [
+                Effect.tryPromise({
+                  try: () => stat(directory),
+                  catch: (cause) => cause,
+                }),
+                Effect.tryPromise({
+                  try: () => readdir(directory, { withFileTypes: true }),
+                  catch: (cause) => cause,
+                }).pipe(Effect.catch(() => Effect.succeed([]))),
+              ],
+              { concurrency: 'unbounded' },
+            )
+            const sizes = yield* Effect.all(
               files
                 .filter((file) => file.isFile())
                 .map((file) =>
-                  stat(path.join(directory, file.name))
-                    .then((fileMetadata) => fileMetadata.size)
-                    .catch(() => 0),
+                  Effect.tryPromise({
+                    try: () => stat(path.join(directory, file.name)),
+                    catch: (cause) => cause,
+                  }).pipe(
+                    Effect.map((fileMetadata) => fileMetadata.size),
+                    Effect.catch(() => Effect.succeed(0)),
+                  )
                 ),
+              { concurrency: 'unbounded' },
             )
-          ).reduce((total, fileSize) => total + fileSize, 0)
-          return { directory, modifiedAt: metadata.mtimeMs, size }
-        }),
+            const size = sizes.reduce((total, fileSize) => total + fileSize, 0)
+            return { directory, modifiedAt: metadata.mtimeMs, size }
+          })
+        ),
+      { concurrency: 'unbounded' },
     )
-  ).sort((left, right) => right.modifiedAt - left.modifiedAt)
+  sessions.sort((left, right) => right.modifiedAt - left.modifiedAt)
 
   let retainedBytes = 0
-  await Promise.all(
-    sessions.map(async (session, index) => {
-      const expired = session.modifiedAt < cutoff
-      const overCount = index >= MAX_RETAINED_DIAGNOSTIC_SESSIONS
-      const overBytes =
-        !expired &&
-        !overCount &&
-        retainedBytes + session.size > MAX_RETAINED_DIAGNOSTIC_BYTES
-      if (expired || overCount || overBytes) {
-        await rm(session.directory, { recursive: true, force: true })
-        return
+  const directoriesToRemove = sessions.flatMap((session, index) => {
+    const expired = session.modifiedAt < cutoff
+    const overCount = index >= MAX_RETAINED_DIAGNOSTIC_SESSIONS
+    const overBytes =
+      !expired &&
+      !overCount &&
+      retainedBytes + session.size > MAX_RETAINED_DIAGNOSTIC_BYTES
+    if (expired || overCount || overBytes) {
+      return [session.directory]
       }
-      retainedBytes += session.size
-    }),
+    retainedBytes += session.size
+    return []
+  })
+  yield* Effect.all(
+    directoriesToRemove.map((directory) =>
+      Effect.tryPromise({
+        try: () => rm(directory, { recursive: true, force: true }),
+        catch: (cause) => cause,
+      })
+    ),
+    { concurrency: 'unbounded' },
   )
-}
+})
 
 export function createNativeDiagnosticLog(
   options: CreateNativeDiagnosticLogOptions,
@@ -259,39 +321,96 @@ export function createNativeDiagnosticLog(
   let sequence = 0
   let writtenBytes = 0
   let pendingWrites = 0
+  let closeResult: Deferred.Deferred<void> | null = null
+  let closePromise: Promise<void> | null = null
 
-  let queue = mkdirImpl(options.directory, { recursive: true }).then(async () => {
-    writtenBytes = await statImpl(options.filePath)
-      .then((metadata) => metadata.size)
-      .catch((error: NodeJS.ErrnoException) => {
-        if (error.code === 'ENOENT') return 0
-        throw error
+  const taskQueue = Effect.runSync(
+    Queue.unbounded<Effect.Effect<void>>(),
+  )
+  Queue.offerUnsafe(
+    taskQueue,
+    Effect.gen(function*() {
+      yield* Effect.tryPromise({
+        try: () => mkdirImpl(options.directory, { recursive: true }),
+        catch: (cause) => cause,
       })
-    if (!options.latestPath || !options.paths) return
-    const latest = {
-      runtime: options.runtime,
-      runId: options.runId,
-      directoryName: path.basename(options.directory),
-      updatedAt: new Date(now()).toISOString(),
-      files: {
-        electronMain: path.basename(options.paths.electronMainPath),
-        utility: path.basename(options.paths.utilityPath),
-        native: path.basename(options.paths.nativePath),
-      },
-    }
-    await writeFileImpl(
-      options.latestPath,
-      `${JSON.stringify(latest)}\n`,
-      'utf8',
-    )
-  })
-  void queue.catch(() => undefined)
+      writtenBytes = yield* Effect.tryPromise({
+        try: () => statImpl(options.filePath),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.map((metadata) => metadata.size),
+        Effect.catch((error) =>
+          isErrnoCode(error, 'ENOENT') ? Effect.succeed(0) : Effect.fail(error),
+        ),
+      )
+      if (!options.latestPath || !options.paths) return
+      const latestPath = options.latestPath
+      const paths = options.paths
+      const latest = {
+        runtime: options.runtime,
+        runId: options.runId,
+        directoryName: path.basename(options.directory),
+        updatedAt: new Date(now()).toISOString(),
+        files: {
+          electronMain: path.basename(paths.electronMainPath),
+          utility: path.basename(paths.utilityPath),
+          native: path.basename(paths.nativePath),
+        },
+      }
+      yield* Effect.tryPromise({
+        try: () =>
+          writeFileImpl(
+            latestPath,
+            `${JSON.stringify(latest)}\n`,
+            'utf8',
+          ),
+        catch: (cause) => cause,
+      })
+    }).pipe(Effect.catch(() => Effect.void)),
+  )
 
-  const enqueue = (task: () => Promise<void>) => {
-    queue = queue.then(task, task)
-    void queue.catch(() => undefined)
-    return queue
-  }
+  const worker = Effect.runFork(
+    Effect.forever(
+      Queue.take(taskQueue).pipe(
+        Effect.flatMap((task) => task),
+      ),
+    ),
+  )
+
+  const flushQueue = Effect.fn('desktop.flushNativeDiagnosticLog')(
+    function*() {
+      const completed = yield* Deferred.make<void>()
+      const offered = Queue.offerUnsafe(
+        taskQueue,
+        Deferred.succeed(completed, undefined).pipe(Effect.asVoid),
+      )
+      if (offered) yield* Deferred.await(completed)
+    },
+  )
+  const closeAtomic = flushQueue().pipe(
+    Effect.andThen(Fiber.interrupt(worker)),
+    Effect.andThen(Queue.shutdown(taskQueue)),
+    Effect.asVoid,
+  )
+  const completeClose = (result: Deferred.Deferred<void>) =>
+    Effect.exit(closeAtomic).pipe(
+      Effect.flatMap((exit) => Deferred.done(result, exit)),
+      Effect.asVoid,
+    )
+  const closeEffect = () =>
+    Effect.suspend(() => {
+      if (closeResult) return Deferred.await(closeResult)
+      return Effect.gen(function*() {
+        const result = yield* Deferred.make<void>()
+        if (closeResult) return yield* Deferred.await(closeResult)
+        closeResult = result
+        closed = true
+        yield* completeClose(result).pipe(Effect.forkDetach)
+        return yield* Deferred.await(result)
+      })
+    })
+  const flushEffect = () =>
+    closeResult ? Deferred.await(closeResult) : flushQueue()
 
   return {
     runtime: options.runtime,
@@ -327,14 +446,15 @@ export function createNativeDiagnosticLog(
         const line = `${JSON.stringify(entry)}\n`
         const lineBytes = Buffer.byteLength(line)
         pendingWrites += 1
-        void enqueue(async () => {
-          try {
+        const offered = Queue.offerUnsafe(
+          taskQueue,
+          Effect.gen(function*() {
             if (
               maxFileBytes > 0 &&
               writtenBytes > 0 &&
               writtenBytes + lineBytes > maxFileBytes
             ) {
-              await rotateDiagnosticFile(
+              yield* rotateDiagnosticFile(
                 options.filePath,
                 maxRolledFiles,
                 renameImpl,
@@ -342,27 +462,35 @@ export function createNativeDiagnosticLog(
               )
               writtenBytes = 0
             }
-            await appendFileImpl(options.filePath, line, 'utf8')
+            yield* Effect.tryPromise({
+              try: () => appendFileImpl(options.filePath, line, 'utf8'),
+              catch: (cause) => cause,
+            })
             writtenBytes += lineBytes
-          } finally {
-            pendingWrites -= 1
-          }
-        }).catch(() => undefined)
+          }).pipe(
+            Effect.catch(() => Effect.void),
+            Effect.ensuring(
+              Effect.sync(() => {
+                pendingWrites -= 1
+              }),
+            ),
+          ),
+        )
+        if (!offered) pendingWrites -= 1
       } catch {
         // Diagnostics must never change runtime behavior.
       }
     },
-    async flush() {
-      await queue.catch(() => undefined)
+    flush() {
+      return closePromise ?? Effect.runPromise(flushEffect())
     },
-    async close() {
-      if (closed) {
-        await queue.catch(() => undefined)
-        return
-      }
-      closed = true
-      await queue.catch(() => undefined)
+    flushEffect,
+    close() {
+      if (closePromise) return closePromise
+      closePromise = Effect.runPromise(closeEffect())
+      return closePromise
     },
+    closeEffect,
   }
 }
 
@@ -372,42 +500,54 @@ export function rolledDiagnosticFilePath(filePath: string, index: number) {
   return `${stem}.${index}${extension}`
 }
 
-async function rotateDiagnosticFile(
+const rotateDiagnosticFile = Effect.fn('desktop.rotateDiagnosticFile')(
+  function*(
   filePath: string,
   maxRolledFiles: number,
   renameImpl: typeof rename,
   rmImpl: typeof rm,
-) {
+  ) {
   if (maxRolledFiles <= 0) {
-    await rmImpl(filePath, { force: true })
+      yield* Effect.tryPromise({
+        try: () => rmImpl(filePath, { force: true }),
+        catch: (cause) => cause,
+      })
     return
   }
-  await rmImpl(rolledDiagnosticFilePath(filePath, maxRolledFiles), {
-    force: true,
-  })
+    yield* Effect.tryPromise({
+      try: () =>
+        rmImpl(rolledDiagnosticFilePath(filePath, maxRolledFiles), {
+          force: true,
+        }),
+      catch: (cause) => cause,
+    })
   for (let index = maxRolledFiles - 1; index >= 1; index -= 1) {
-    await renameIfPresent(
+      yield* renameIfPresent(
       rolledDiagnosticFilePath(filePath, index),
       rolledDiagnosticFilePath(filePath, index + 1),
       renameImpl,
     )
   }
-  await renameIfPresent(
+    yield* renameIfPresent(
     filePath,
     rolledDiagnosticFilePath(filePath, 1),
     renameImpl,
   )
-}
+  },
+)
 
-async function renameIfPresent(
-  source: string,
-  destination: string,
-  renameImpl: typeof rename,
-) {
-  await renameImpl(source, destination).catch((error: NodeJS.ErrnoException) => {
-    if (error.code !== 'ENOENT') throw error
-  })
-}
+const renameIfPresent = Effect.fn('desktop.renameDiagnosticFileIfPresent')(
+  function*(source: string, destination: string, renameImpl: typeof rename) {
+    yield* Effect.tryPromise({
+      try: () => renameImpl(source, destination),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.catch((error) =>
+        isErrnoCode(error, 'ENOENT') ? Effect.void : Effect.fail(error),
+      ),
+    )
+  },
+)
 
 export function sanitizeDiagnosticValue(value: unknown): JsonValue | undefined {
   return sanitizeValue(value, 0)
@@ -454,7 +594,7 @@ export function redactDiagnosticText(
 ) {
   return redactSensitiveText(value, Number.MAX_SAFE_INTEGER)
     .replace(
-      /\b(identity|participant(?:Identity)?|user(?:Id)?|room(?:Id|Name|Url)?|device(?:Id|Name)?|source(?:Id)?|window(?:Title)?|processPath)\s*[:=]\s*(?:["']?)[^\s,;"'}\]]+/gi,
+      /\b(identity|participant(?:Identity)?|user(?:Id)?|channel(?:Id)?|room(?:Id|Name|Url)?|device(?:Id|Name)?|source(?:Id)?|window(?:Title)?|processPath)\s*[:=]\s*(?:["']?)[^\s,;"'}\]]+/gi,
       '$1=[redacted]',
     )
     .replace(/\b[A-Za-z]:[\\/][^\r\n"',;}\]]+/g, '[redacted-path]')
@@ -466,4 +606,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object') return false
   const prototype = Object.getPrototypeOf(value)
   return prototype === Object.prototype || prototype === null
+}
+
+function isErrnoCode(error: unknown, code: string) {
+  return error instanceof Error && 'code' in error && error.code === code
 }

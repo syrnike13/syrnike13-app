@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react'
+import { Effect, Fiber } from 'effect'
 
-import { fetchSyrnikeConfig } from '#/features/api/config-api'
+import { fetchSyrnikeConfigEffect } from '#/features/api/config-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { eventsGateway } from '#/features/events/gateway'
 import { syncStore } from '#/features/sync/sync-store'
-import type { GatewayServerEvent } from '#/features/sync/types'
 
 import { playUiSound } from './sound-player'
 import {
@@ -39,17 +39,24 @@ export function useEventSounds() {
   )
 
   useEffect(() => {
-    let cancelled = false
-    void fetchSyrnikeConfig()
-      .then((config) => {
-        if (cancelled) return
-        soundRuntimeConfigStore.setEventPackId(config.ui_sounds?.event_pack)
-      })
-      .catch(() => {
-        if (!cancelled) soundRuntimeConfigStore.setEventPackId(null)
-      })
+    const fiber = Effect.runFork(
+      fetchSyrnikeConfigEffect().pipe(
+        Effect.matchEffect({
+          onFailure: () =>
+            Effect.sync(() => {
+              soundRuntimeConfigStore.setEventPackId(null)
+            }),
+          onSuccess: (config) =>
+            Effect.sync(() => {
+              soundRuntimeConfigStore.setEventPackId(
+                config.ui_sounds?.event_pack,
+              )
+            }),
+        }),
+      ),
+    )
     return () => {
-      cancelled = true
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [])
 
@@ -57,13 +64,13 @@ export function useEventSounds() {
     resolverRef.current = createSoundEventResolver(
       syncStore.getState().voiceParticipants,
     )
-    const unsubscribe = eventsGateway.subscribeEvents((event) => {
+    const unsubscribe = eventsGateway.subscribeServerEvents((event) => {
       const resolver =
         resolverRef.current ??
         createSoundEventResolver(syncStore.getState().voiceParticipants)
       resolverRef.current = resolver
       const syncState = syncStore.getState()
-      const soundEvents = resolver.resolve(event as GatewayServerEvent, {
+      const soundEvents = resolver.resolve(event, {
           currentUserId: auth.user?._id,
           activeChannelId: activeChannelIdFromPath(),
           currentVoiceChannelId: currentVoiceChannelIdFromParticipants(

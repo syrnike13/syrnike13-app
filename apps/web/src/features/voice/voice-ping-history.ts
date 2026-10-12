@@ -6,6 +6,11 @@ export type VoicePingSample = {
 /** ~3 минуты при опросе раз в 2 с. */
 export const VOICE_PING_HISTORY_MAX = 90
 
+export type VoicePingSummary = {
+  averageMs: number | null
+  lastMs: number | null
+}
+
 export function appendVoicePingSample(
   history: readonly VoicePingSample[],
   sample: VoicePingSample,
@@ -15,9 +20,11 @@ export function appendVoicePingSample(
   return next.slice(next.length - VOICE_PING_HISTORY_MAX)
 }
 
-export function summarizeVoicePingHistory(history: readonly VoicePingSample[]) {
+export function summarizeVoicePingHistory(
+  history: readonly VoicePingSample[],
+): VoicePingSummary {
   if (history.length === 0) {
-    return { averageMs: null as number | null, lastMs: null as number | null }
+    return { averageMs: null, lastMs: null }
   }
 
   const lastMs = history[history.length - 1]!.ms

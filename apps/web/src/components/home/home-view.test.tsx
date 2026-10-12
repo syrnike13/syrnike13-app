@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { Effect } from 'effect'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -9,7 +10,7 @@ import { syncStore } from '#/features/sync/sync-store'
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
-  openDirectMessageChannel: vi.fn(async () => ({})),
+  openDirectMessageChannel: vi.fn(),
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -43,6 +44,7 @@ vi.mock('#/components/home/active-now-panel', () => ({
 describe('HomeView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.openDirectMessageChannel.mockReturnValue(Effect.succeed({}))
     syncStore.reset()
     syncStore.upsertUsers([
       {

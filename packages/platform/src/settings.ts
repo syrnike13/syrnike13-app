@@ -1,4 +1,7 @@
+import { Option, Schema } from 'effect'
+
 import {
+  AppearanceSettingsSchema,
   DEFAULT_APPEARANCE_SETTINGS,
   normalizeAppearanceSettings,
   normalizeAppearanceSettingsPatch,
@@ -6,9 +9,38 @@ import {
   type AppearanceSettingsPatch,
 } from './appearance'
 
-export type DesktopScreenShareQualityName = 'low' | 'high' | 'high60' | 'text'
-export type DesktopScreenShareCodec = 'auto' | 'av1'
-export type DesktopScreenShareCaptureMode = 'auto' | 'native'
+export const DesktopScreenShareQualitySchema = Schema.Literals([
+  'low',
+  'high',
+  'high60',
+  'text',
+])
+export type DesktopScreenShareQualityName =
+  typeof DesktopScreenShareQualitySchema.Type
+
+export const DesktopScreenShareCodecSchema = Schema.Literals(['auto', 'av1'])
+export type DesktopScreenShareCodec =
+  typeof DesktopScreenShareCodecSchema.Type
+
+export const DesktopScreenShareCaptureModeSchema = Schema.Literals([
+  'auto',
+  'native',
+])
+export type DesktopScreenShareCaptureMode =
+  typeof DesktopScreenShareCaptureModeSchema.Type
+
+export const DesktopCameraProfileSchema = Schema.Literals(['hd720p30', 'hd1080p30'])
+export type DesktopCameraProfile = typeof DesktopCameraProfileSchema.Type
+
+export const DesktopNativeScreenShareProfileSchema = Schema.Literals([
+  '540p30',
+  '720p30',
+  '720p60',
+  '1080p30',
+  '1080p60',
+])
+export type DesktopNativeScreenShareProfile =
+  typeof DesktopNativeScreenShareProfileSchema.Type
 
 export type DesktopVoiceSettings = {
   micEnabled: boolean
@@ -16,6 +48,7 @@ export type DesktopVoiceSettings = {
   preferredAudioInputDevice?: string
   preferredAudioOutputDevice?: string
   preferredVideoDevice?: string
+  cameraProfile: DesktopCameraProfile
   inputVolume: number
   outputVolume: number
   bypassSystemAudioInputProcessing: boolean
@@ -26,10 +59,34 @@ export type DesktopVoiceSettings = {
   voiceGateThresholdDb: number
   voiceGateAutoThreshold: boolean
   screenShareQuality: DesktopScreenShareQualityName
+  nativeScreenShareProfile: DesktopNativeScreenShareProfile
   screenShareCodec: DesktopScreenShareCodec
   screenShareAudio: boolean
   screenShareCaptureMode: DesktopScreenShareCaptureMode
 }
+
+export const DesktopVoiceSettingsSchema = Schema.Struct({
+  micEnabled: Schema.Boolean,
+  deafened: Schema.Boolean,
+  preferredAudioInputDevice: Schema.optional(Schema.String),
+  preferredAudioOutputDevice: Schema.optional(Schema.String),
+  preferredVideoDevice: Schema.optional(Schema.String),
+  cameraProfile: DesktopCameraProfileSchema,
+  inputVolume: Schema.Finite,
+  outputVolume: Schema.Finite,
+  bypassSystemAudioInputProcessing: Schema.Boolean,
+  automaticGainControl: Schema.Boolean,
+  noiseSuppression: Schema.Boolean,
+  echoCancellation: Schema.Boolean,
+  voiceGateEnabled: Schema.Boolean,
+  voiceGateThresholdDb: Schema.Finite,
+  voiceGateAutoThreshold: Schema.Boolean,
+  screenShareQuality: DesktopScreenShareQualitySchema,
+  nativeScreenShareProfile: DesktopNativeScreenShareProfileSchema,
+  screenShareCodec: DesktopScreenShareCodecSchema,
+  screenShareAudio: Schema.Boolean,
+  screenShareCaptureMode: DesktopScreenShareCaptureModeSchema,
+})
 
 export type DesktopVoiceListenerSettings = {
   userVolumes: Record<string, number>
@@ -37,6 +94,13 @@ export type DesktopVoiceListenerSettings = {
   streamVolumes: Record<string, number>
   streamMutes: Record<string, boolean>
 }
+
+export const DesktopVoiceListenerSettingsSchema = Schema.Struct({
+  userVolumes: Schema.Record(Schema.String, Schema.Finite),
+  userMutes: Schema.Record(Schema.String, Schema.Boolean),
+  streamVolumes: Schema.Record(Schema.String, Schema.Finite),
+  streamMutes: Schema.Record(Schema.String, Schema.Boolean),
+})
 
 export type DesktopOverlayGameSettings = {
   id: string
@@ -47,13 +111,28 @@ export type DesktopOverlayGameSettings = {
   lastSeenAt: number
 }
 
+export const DesktopOverlayGameSettingsSchema = Schema.Struct({
+  id: Schema.String,
+  processName: Schema.String,
+  processPath: Schema.Union([Schema.String, Schema.Null]),
+  title: Schema.String,
+  enabled: Schema.Boolean,
+  lastSeenAt: Schema.Finite,
+})
+
 export type DesktopOverlaySettings = {
   enabled: boolean
   games: DesktopOverlayGameSettings[]
 }
 
+export const DesktopOverlaySettingsSchema = Schema.Struct({
+  enabled: Schema.Boolean,
+  games: Schema.mutable(Schema.Array(DesktopOverlayGameSettingsSchema)),
+})
+
 export const SOUND_AUTHOR_PACK_IDS = ['default'] as const
-export type SoundAuthorPackId = (typeof SOUND_AUTHOR_PACK_IDS)[number]
+export const SoundAuthorPackIdSchema = Schema.Literals(SOUND_AUTHOR_PACK_IDS)
+export type SoundAuthorPackId = typeof SoundAuthorPackIdSchema.Type
 export const DEFAULT_SOUND_AUTHOR_PACK_ID: SoundAuthorPackId = 'default'
 
 export type DesktopSoundSettings = {
@@ -64,6 +143,14 @@ export type DesktopSoundSettings = {
   easterEnabled: boolean
 }
 
+export const DesktopSoundSettingsSchema = Schema.Struct({
+  enabled: Schema.Boolean,
+  authorPackId: SoundAuthorPackIdSchema,
+  volume: Schema.Finite,
+  eventVolumes: Schema.Record(Schema.String, Schema.Finite),
+  easterEnabled: Schema.Boolean,
+})
+
 export type DesktopObservabilitySettings = {
   /** Anonymous counters and timings for the Windows native runtime. */
   anonymousNativeMetrics: boolean
@@ -73,9 +160,22 @@ export type DesktopObservabilitySettings = {
   nativeCrashReports: boolean
 }
 
+export const DesktopObservabilitySettingsSchema = Schema.Struct({
+  anonymousNativeMetrics: Schema.Boolean,
+  diagnosticReports: Schema.Boolean,
+  nativeCrashReports: Schema.Boolean,
+})
+
 export type DesktopUiSettings = {
   telegramPromoDismissedUntilByUser: Record<string, number>
 }
+
+export const DesktopUiSettingsSchema = Schema.Struct({
+  telegramPromoDismissedUntilByUser: Schema.Record(
+    Schema.String,
+    Schema.Finite,
+  ),
+})
 
 export type {
   AppearanceColorMode,
@@ -86,6 +186,9 @@ export type {
 export {
   APPEARANCE_GRADIENT_MAX_COLORS,
   APPEARANCE_GRADIENT_MIN_COLORS,
+  AppearanceColorModeSchema,
+  AppearanceGradientSettingsSchema,
+  AppearanceSettingsSchema,
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_THEME_ID,
   normalizeAppearanceColorMode,
@@ -95,7 +198,7 @@ export {
 } from './appearance'
 
 export type DesktopLocalSettings = {
-  version: 3
+  version: 4
   voice: DesktopVoiceSettings
   voiceListener: DesktopVoiceListenerSettings
   overlay: DesktopOverlaySettings
@@ -104,6 +207,17 @@ export type DesktopLocalSettings = {
   observability: DesktopObservabilitySettings
   ui: DesktopUiSettings
 }
+
+export const DesktopLocalSettingsSchema = Schema.Struct({
+  version: Schema.Literal(4),
+  voice: DesktopVoiceSettingsSchema,
+  voiceListener: DesktopVoiceListenerSettingsSchema,
+  overlay: DesktopOverlaySettingsSchema,
+  appearance: AppearanceSettingsSchema,
+  sounds: DesktopSoundSettingsSchema,
+  observability: DesktopObservabilitySettingsSchema,
+  ui: DesktopUiSettingsSchema,
+})
 
 export type DesktopVoiceSettingsPatch = Partial<DesktopVoiceSettings>
 export type DesktopVoiceListenerSettingsPatch =
@@ -127,13 +241,18 @@ export type DesktopLocalSettingsPatch = {
 const VOICE_VOLUME_MAX = 3
 const SOUND_VOLUME_MAX = 1
 const DEFAULT_VOICE_GATE_THRESHOLD_DB = -28
+const UnknownSettingsRecordSchema = Schema.Record(
+  Schema.String,
+  Schema.Unknown,
+)
 
 export const DEFAULT_DESKTOP_VOICE_SETTINGS: DesktopVoiceSettings = {
+  cameraProfile: 'hd720p30',
   micEnabled: true,
   deafened: false,
   inputVolume: 1,
   outputVolume: 1,
-  bypassSystemAudioInputProcessing: true,
+  bypassSystemAudioInputProcessing: false,
   automaticGainControl: true,
   noiseSuppression: true,
   echoCancellation: false,
@@ -141,6 +260,7 @@ export const DEFAULT_DESKTOP_VOICE_SETTINGS: DesktopVoiceSettings = {
   voiceGateThresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
   voiceGateAutoThreshold: true,
   screenShareQuality: 'low',
+  nativeScreenShareProfile: '720p30',
   screenShareCodec: 'auto',
   screenShareAudio: true,
   screenShareCaptureMode: 'auto',
@@ -177,7 +297,7 @@ export const DEFAULT_DESKTOP_UI_SETTINGS: DesktopUiSettings = {
 }
 
 export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
-  version: 3,
+  version: 4,
   voice: DEFAULT_DESKTOP_VOICE_SETTINGS,
   voiceListener: DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS,
   overlay: DEFAULT_DESKTOP_OVERLAY_SETTINGS,
@@ -188,8 +308,8 @@ export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
 }
 
 function objectRecord(value: unknown) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return value as Record<string, unknown>
+  const decoded = Schema.decodeUnknownOption(UnknownSettingsRecordSchema)(value)
+  return Option.isSome(decoded) ? decoded.value : {}
 }
 
 function booleanOrDefault(value: unknown, fallback: boolean) {
@@ -208,10 +328,10 @@ function soundAuthorPackIdOrDefault(
   value: unknown,
   fallback: SoundAuthorPackId,
 ): SoundAuthorPackId {
-  return typeof value === 'string' &&
-    (SOUND_AUTHOR_PACK_IDS as readonly string[]).includes(value)
-    ? (value as SoundAuthorPackId)
-    : fallback
+  return Option.getOrElse(
+    Schema.decodeUnknownOption(SoundAuthorPackIdSchema)(value),
+    () => fallback,
+  )
 }
 
 function nonEmptyString(value: unknown): value is string {
@@ -316,6 +436,10 @@ export function normalizeDesktopVoiceSettings(
       settings.preferredAudioOutputDevice,
     ),
     preferredVideoDevice: stringOrUndefined(settings.preferredVideoDevice),
+    cameraProfile: Option.getOrElse(
+      Schema.decodeUnknownOption(DesktopCameraProfileSchema)(settings.cameraProfile),
+      () => defaults.cameraProfile,
+    ),
     inputVolume: clampNumber(
       settings.inputVolume,
       defaults.inputVolume,
@@ -361,6 +485,12 @@ export function normalizeDesktopVoiceSettings(
     screenShareQuality: screenShareQualityOrDefault(
       settings.screenShareQuality,
       defaults.screenShareQuality,
+    ),
+    nativeScreenShareProfile: Option.getOrElse(
+      Schema.decodeUnknownOption(DesktopNativeScreenShareProfileSchema)(
+        settings.nativeScreenShareProfile,
+      ),
+      () => defaults.nativeScreenShareProfile,
     ),
     screenShareCodec: screenShareCodecOrDefault(
       settings.screenShareCodec,
@@ -492,10 +622,13 @@ export function normalizeDesktopLocalSettings(
 ): DesktopLocalSettings {
   const settings = objectRecord(value)
   const voice = normalizeDesktopVoiceSettings(settings.voice, defaults.voice)
-  if (settings.version !== 2 && settings.version !== 3) {
+  if (settings.version !== 2 && settings.version !== 3 && settings.version !== 4) {
     voice.echoCancellation = false
     voice.automaticGainControl = true
   }
+  // Version 4 turns WASAPI RAW capture off once: many drivers reject it and
+  // it bypasses their microphone processing. A later explicit opt-in is kept.
+  if (settings.version !== 4) voice.bypassSystemAudioInputProcessing = false
   const observability = normalizeDesktopObservabilitySettings(
     settings.observability,
     defaults.observability,
@@ -503,9 +636,9 @@ export function normalizeDesktopLocalSettings(
   // Version 3 intentionally enables redacted diagnostics once for every
   // existing installation. A later explicit opt-out is preserved because the
   // persisted document is already version 3.
-  if (settings.version !== 3) observability.diagnosticReports = true
+  if (settings.version !== 3 && settings.version !== 4) observability.diagnosticReports = true
   return {
-    version: 3,
+    version: 4,
     voice,
     voiceListener: normalizeDesktopVoiceListenerSettings(settings.voiceListener),
     overlay: normalizeDesktopOverlaySettings(settings.overlay, defaults.overlay),
@@ -540,6 +673,12 @@ export function normalizeDesktopVoiceSettingsPatch(
   }
   if ('preferredVideoDevice' in patch) {
     next.preferredVideoDevice = stringOrUndefined(patch.preferredVideoDevice)
+  }
+  if ('cameraProfile' in patch) {
+    next.cameraProfile = Option.getOrElse(
+      Schema.decodeUnknownOption(DesktopCameraProfileSchema)(patch.cameraProfile),
+      () => DEFAULT_DESKTOP_VOICE_SETTINGS.cameraProfile,
+    )
   }
   if ('inputVolume' in patch) {
     next.inputVolume = clampNumber(patch.inputVolume, 1, 0, VOICE_VOLUME_MAX)
@@ -595,6 +734,14 @@ export function normalizeDesktopVoiceSettingsPatch(
     next.screenShareQuality = screenShareQualityOrDefault(
       patch.screenShareQuality,
       DEFAULT_DESKTOP_VOICE_SETTINGS.screenShareQuality,
+    )
+  }
+  if ('nativeScreenShareProfile' in patch) {
+    next.nativeScreenShareProfile = Option.getOrElse(
+      Schema.decodeUnknownOption(DesktopNativeScreenShareProfileSchema)(
+        patch.nativeScreenShareProfile,
+      ),
+      () => DEFAULT_DESKTOP_VOICE_SETTINGS.nativeScreenShareProfile,
     )
   }
   if ('screenShareCodec' in patch) {

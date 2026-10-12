@@ -1,11 +1,28 @@
-import type {
-  ScreenShareCaptureMode,
-  ScreenShareCodec,
-  ScreenShareQualityName,
+import {
+  ScreenShareCaptureModeSchema,
+  ScreenShareCodecSchema,
+  ScreenShareQualitySchema,
+  type ScreenShareCaptureMode,
+  type ScreenShareCodec,
+  type ScreenShareQualityName,
 } from '#/features/voice/voice-preference-types'
 import {
-  loadDesktopLocalSettings,
-  updateDesktopLocalSettings,
+  DesktopVoiceSettingsSchema,
+  DesktopCameraProfileSchema,
+  DesktopNativeScreenShareProfileSchema,
+  type DesktopCameraProfile,
+  type DesktopNativeScreenShareProfile,
+  type DesktopVoiceSettings,
+} from '@syrnike13/platform'
+import {
+  Effect,
+  Option,
+  Schema,
+  SchemaTransformation,
+} from 'effect'
+import {
+  loadDesktopLocalSettingsEffect,
+  updateDesktopLocalSettingsEffect,
 } from '#/features/settings/desktop-local-settings-client'
 import {
   DEFAULT_VOICE_GATE_THRESHOLD_DB,
@@ -18,27 +35,21 @@ const STORAGE_KEY = 'syrnike13-voice-preferences'
 const STORAGE_VERSION = 2
 
 export const VOICE_OUTPUT_VOLUME_MAX = 3
+const UnknownVoicePreferenceRecordSchema = Schema.Record(
+  Schema.String,
+  Schema.Unknown,
+)
+const UnknownJsonSchema = Schema.String.pipe(
+  Schema.decodeTo(Schema.Unknown, SchemaTransformation.fromJsonString()),
+)
+const StoredVoicePreferenceStateJsonSchema = Schema.fromJsonString(
+  Schema.Struct({
+    version: Schema.Literal(STORAGE_VERSION),
+    ...DesktopVoiceSettingsSchema.fields,
+  }),
+)
 
-export type VoicePreferenceState = {
-  micEnabled: boolean
-  deafened: boolean
-  preferredAudioInputDevice?: string
-  preferredAudioOutputDevice?: string
-  preferredVideoDevice?: string
-  inputVolume: number
-  outputVolume: number
-  bypassSystemAudioInputProcessing: boolean
-  automaticGainControl: boolean
-  noiseSuppression: boolean
-  echoCancellation: boolean
-  voiceGateEnabled: boolean
-  voiceGateThresholdDb: number
-  voiceGateAutoThreshold: boolean
-  screenShareQuality: ScreenShareQualityName
-  screenShareCodec: ScreenShareCodec
-  screenShareAudio: boolean
-  screenShareCaptureMode: ScreenShareCaptureMode
-}
+export type VoicePreferenceState = DesktopVoiceSettings
 
 export type VoiceJoinPreferences = Pick<
   VoicePreferenceState,
@@ -56,11 +67,12 @@ export function defaultScreenShareQuality(): ScreenShareQualityName {
 }
 
 const DEFAULT_STATE: VoicePreferenceState = {
+  cameraProfile: 'hd720p30',
   micEnabled: true,
   deafened: false,
   inputVolume: 1,
   outputVolume: 1,
-  bypassSystemAudioInputProcessing: true,
+  bypassSystemAudioInputProcessing: false,
   automaticGainControl: true,
   noiseSuppression: true,
   echoCancellation: false,
@@ -68,6 +80,7 @@ const DEFAULT_STATE: VoicePreferenceState = {
   voiceGateThresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
   voiceGateAutoThreshold: true,
   screenShareQuality: defaultScreenShareQuality(),
+  nativeScreenShareProfile: '720p30',
   screenShareCodec: 'auto',
   screenShareAudio: true,
   screenShareCaptureMode: 'auto',
@@ -83,30 +96,29 @@ export function effectiveVoiceJoinPreferences(
 }
 
 function parseScreenShareQuality(value: unknown): ScreenShareQualityName {
-  if (
-    value === 'low' ||
-    value === 'high' ||
-    value === 'high60' ||
-    value === 'text'
-  ) {
-    return value
-  }
-  return defaultScreenShareQuality()
+  return Option.getOrElse(
+    Schema.decodeUnknownOption(ScreenShareQualitySchema)(value),
+    defaultScreenShareQuality,
+  )
 }
 
 function parseScreenShareCodec(value: unknown): ScreenShareCodec {
-  if (value === 'av1') return 'av1'
-  return DEFAULT_STATE.screenShareCodec
+  return Option.getOrElse(
+    Schema.decodeUnknownOption(ScreenShareCodecSchema)(value),
+    () => DEFAULT_STATE.screenShareCodec,
+  )
 }
 
 export function parseScreenShareCaptureMode(value: unknown): ScreenShareCaptureMode {
-  if (value === 'native' || value === 'auto') {
-    return value
-  }
-  return DEFAULT_STATE.screenShareCaptureMode
+  return Option.getOrElse(
+    Schema.decodeUnknownOption(ScreenShareCaptureModeSchema)(value),
+    () => DEFAULT_STATE.screenShareCaptureMode,
+  )
 }
 
-function parseVoiceGateThresholdDb(parsed: Record<string, unknown>) {
+function parseVoiceGateThresholdDb(
+  parsed: Readonly<Record<string, unknown>>,
+) {
   if (typeof parsed.voiceGateThresholdDb === 'number') {
     return normalizeVoiceGateThresholdDb(parsed.voiceGateThresholdDb)
   }
@@ -117,14 +129,18 @@ function parseVoiceGateThresholdDb(parsed: Record<string, unknown>) {
 }
 
 export function normalizeVoicePreferenceState(
-  parsed: Partial<VoicePreferenceState> | null | undefined,
+  value: unknown,
 ): VoicePreferenceState {
-  if (!parsed) {
+  const decoded = Schema.decodeUnknownOption(UnknownVoicePreferenceRecordSchema)(
+    value,
+  )
+  if (Option.isNone(decoded)) {
     return {
       ...DEFAULT_STATE,
       screenShareQuality: defaultScreenShareQuality(),
     }
   }
+  const parsed = decoded.value
 
   return {
     micEnabled:
@@ -147,6 +163,10 @@ export function normalizeVoicePreferenceState(
       typeof parsed.preferredVideoDevice === 'string'
         ? parsed.preferredVideoDevice
         : undefined,
+    cameraProfile: Option.getOrElse(
+      Schema.decodeUnknownOption(DesktopCameraProfileSchema)(parsed.cameraProfile),
+      () => DEFAULT_STATE.cameraProfile,
+    ),
     inputVolume:
       typeof parsed.inputVolume === 'number' &&
       parsed.inputVolume >= 0 &&
@@ -185,6 +205,12 @@ export function normalizeVoicePreferenceState(
         ? parsed.voiceGateAutoThreshold
         : DEFAULT_STATE.voiceGateAutoThreshold,
     screenShareQuality: parseScreenShareQuality(parsed.screenShareQuality),
+    nativeScreenShareProfile: Option.getOrElse(
+      Schema.decodeUnknownOption(DesktopNativeScreenShareProfileSchema)(
+        parsed.nativeScreenShareProfile,
+      ),
+      () => DEFAULT_STATE.nativeScreenShareProfile,
+    ),
     screenShareCodec: parseScreenShareCodec(parsed.screenShareCodec),
     screenShareAudio:
       typeof parsed.screenShareAudio === 'boolean'
@@ -196,10 +222,6 @@ export function normalizeVoicePreferenceState(
   }
 }
 
-type PersistedVoicePreferenceState = Partial<VoicePreferenceState> & {
-  version?: unknown
-}
-
 export function loadVoicePreferenceState(): VoicePreferenceState {
   if (typeof window === 'undefined' || getSyrnikeDesktop()) {
     return normalizeVoicePreferenceState(null)
@@ -207,9 +229,16 @@ export function loadVoicePreferenceState(): VoicePreferenceState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return normalizeVoicePreferenceState(null)
-    const parsed = JSON.parse(raw) as PersistedVoicePreferenceState
+    const json = Schema.decodeUnknownOption(UnknownJsonSchema)(raw)
+    const parsed = Option.isSome(json)
+      ? Option.getOrUndefined(
+          Schema.decodeUnknownOption(UnknownVoicePreferenceRecordSchema)(
+            json.value,
+          ),
+        )
+      : undefined
     const normalized = normalizeVoicePreferenceState(parsed)
-    if (parsed.version !== STORAGE_VERSION) {
+    if (parsed?.version !== STORAGE_VERSION) {
       normalized.echoCancellation = false
       normalized.automaticGainControl = true
       try {
@@ -235,7 +264,9 @@ function emit() {
 function persist() {
   if (typeof window === 'undefined') return
   if (getSyrnikeDesktop()) {
-    void updateDesktopLocalSettings({ voice: state })
+    Effect.runFork(
+      updateDesktopLocalSettingsEffect({ voice: state }).pipe(Effect.ignore),
+    )
     return
   }
   try {
@@ -248,7 +279,10 @@ function persist() {
 function persistBrowserState(nextState: VoicePreferenceState) {
   localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({ version: STORAGE_VERSION, ...nextState }),
+    Schema.encodeSync(StoredVoicePreferenceStateJsonSchema)({
+      version: STORAGE_VERSION,
+      ...nextState,
+    }),
   )
 }
 
@@ -259,12 +293,20 @@ function patch(partial: Partial<VoicePreferenceState>) {
   emit()
 }
 
-export async function hydrateVoicePreferencesFromDesktop() {
+export const hydrateVoicePreferencesFromDesktopEffect = Effect.fn(
+  'voicePreferences.hydrateFromDesktop',
+)(function*() {
   const revision = stateRevision
-  const settings = await loadDesktopLocalSettings()
+  const settings = yield* loadDesktopLocalSettingsEffect()
   if (!settings || revision !== stateRevision) return
-  state = normalizeVoicePreferenceState(settings.voice)
-  emit()
+  yield* Effect.sync(() => {
+    state = normalizeVoicePreferenceState(settings.voice)
+    emit()
+  })
+})
+
+export function hydrateVoicePreferencesFromDesktop() {
+  return Effect.runPromise(hydrateVoicePreferencesFromDesktopEffect())
 }
 
 export const voicePreferenceStore = {
@@ -288,6 +330,7 @@ export const voicePreferenceStore = {
   getPreferredAudioInputDevice: () => state.preferredAudioInputDevice,
   getPreferredAudioOutputDevice: () => state.preferredAudioOutputDevice,
   getPreferredVideoDevice: () => state.preferredVideoDevice,
+  getCameraProfile: () => state.cameraProfile,
 
   setMicEnabled: (micEnabled: boolean) => {
     if (state.micEnabled === micEnabled) return
@@ -342,6 +385,10 @@ export const voicePreferenceStore = {
     if (state.preferredVideoDevice === deviceId) return
     patch({ preferredVideoDevice: deviceId })
   },
+  setCameraProfile: (cameraProfile: DesktopCameraProfile) => {
+    if (state.cameraProfile === cameraProfile) return
+    patch({ cameraProfile })
+  },
   setEchoCancellation: (echoCancellation: boolean) => {
     if (state.echoCancellation === echoCancellation) return
     patch({ echoCancellation })
@@ -365,6 +412,12 @@ export const voicePreferenceStore = {
     if (state.screenShareQuality === screenShareQuality) return
     patch({ screenShareQuality })
   },
+  setNativeScreenShareProfile: (
+    nativeScreenShareProfile: DesktopNativeScreenShareProfile,
+  ) => {
+    if (state.nativeScreenShareProfile === nativeScreenShareProfile) return
+    patch({ nativeScreenShareProfile })
+  },
   setScreenShareCodec: (screenShareCodec: ScreenShareCodec) => {
     if (state.screenShareCodec === screenShareCodec) return
     patch({ screenShareCodec })
@@ -383,4 +436,4 @@ export function readVoicePreferences() {
   return voicePreferenceStore.getState()
 }
 
-void hydrateVoicePreferencesFromDesktop()
+Effect.runFork(hydrateVoicePreferencesFromDesktopEffect())

@@ -1,9 +1,6 @@
 import { app } from 'electron'
-
-import type {
-  NativeRuntimeSupervisor,
-  NativeRuntimeSupervisorSnapshot,
-} from './runtime-supervisor'
+import { Effect } from 'effect'
+import type { RendererDiagnosticIncident } from '@syrnike13/platform'
 
 const MAX_BATCH_SIZE = 100
 const HISTOGRAM_COALESCE_BUCKETS_MS = [
@@ -22,12 +19,18 @@ export type NativeMetricCounterName =
   | 'runtime_ready'
   | 'runtime_lost'
   | 'runtime_degraded'
-  | 'session_start_succeeded'
-  | 'session_start_failed'
-  | 'session_start_cancelled'
+  | 'screen_publication_stalled'
+  | 'screen_subscription_stalled'
+  | 'screen_frames_dropped_critical'
+  | 'screen_renderer_stalled'
+  | 'screen_renderer_frames_dropped_critical'
+  | 'voice_stage_consumer_churn_critical'
+  | 'rtc_audio_concealment_critical'
+  | 'rtc_packet_loss_critical'
+  | 'rtc_jitter_critical'
+  | 'rtc_latency_critical'
 export type NativeMetricHistogramName =
   | 'runtime_handshake_ms'
-  | 'session_start_ms'
 
 export type AnonymousNativeMetric =
   | {
@@ -105,46 +108,71 @@ export class AnonymousNativeMetricsReporter {
     })
   }
 
-  async flush() {
-    if (!this.enabled || !this.endpoint || this.flushing || this.queue.length === 0) {
-      return
-    }
-    this.flushing = true
-    this.clearTimer()
-    const metrics = this.takeBatch()
-    const batch: AnonymousNativeMetricBatch = {
-      version: 1,
-      appVersion: this.options.appVersion ?? app.getVersion(),
-      releaseChannel:
-        this.options.releaseChannel ??
-        (__DESKTOP_RELEASE_CHANNEL__ === 'nightly' ? 'nightly' : 'stable'),
-      metrics,
-    }
-    try {
-      const response = await (this.options.fetch ?? fetch)(this.endpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(batch),
-        credentials: 'omit',
-        redirect: 'error',
-        referrerPolicy: 'no-referrer',
-        signal: AbortSignal.timeout(5_000),
+  flush() {
+    return Effect.runPromise(this.flushEffect())
+  }
+
+  flushEffect() {
+    return Effect.suspend(() => {
+      if (
+        !this.enabled ||
+        !this.endpoint ||
+        this.flushing ||
+        this.queue.length === 0
+      ) {
+        return Effect.void
+      }
+      this.flushing = true
+      this.clearTimer()
+      const metrics = this.takeBatch()
+      const batch: AnonymousNativeMetricBatch = {
+        version: 1,
+        appVersion: this.options.appVersion ?? app.getVersion(),
+        releaseChannel:
+          this.options.releaseChannel ??
+          (__DESKTOP_RELEASE_CHANNEL__ === 'nightly' ? 'nightly' : 'stable'),
+        metrics,
+      }
+      const send = Effect.gen({ self: this }, function*() {
+        const response = yield* Effect.tryPromise({
+          try: (signal) =>
+            (this.options.fetch ?? fetch)(this.endpoint, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(batch),
+              credentials: 'omit',
+              redirect: 'error',
+              referrerPolicy: 'no-referrer',
+              signal,
+            }),
+          catch: (cause) => cause,
+        }).pipe(Effect.timeout(5_000))
+        if (!response.ok) {
+          return yield* Effect.fail(
+            new Error(`Native metrics rejected (${response.status})`),
+          )
+        }
       })
-      if (!response.ok) throw new Error(`Native metrics rejected (${response.status})`)
-    } catch {
-      if (this.enabled) {
-        for (const metric of metrics) this.mergeMetric(metric)
-      }
-    } finally {
-      this.flushing = false
-      if (this.queue.length > 0) {
-        this.scheduleFlush(
-          this.queue.length >= MAX_BATCH_SIZE
-            ? FLUSH_INTERVAL_MS
-            : RETRY_INTERVAL_MS,
-        )
-      }
-    }
+      return send.pipe(
+        Effect.catch(() =>
+          Effect.sync(() => {
+            if (!this.enabled) return
+            for (const metric of metrics) this.mergeMetric(metric)
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            this.flushing = false
+            if (this.queue.length === 0) return
+            this.scheduleFlush(
+              this.queue.length >= MAX_BATCH_SIZE
+                ? FLUSH_INTERVAL_MS
+                : RETRY_INTERVAL_MS,
+            )
+          }),
+        ),
+      )
+    })
   }
 
   dispose() {
@@ -251,7 +279,7 @@ export class AnonymousNativeMetricsReporter {
     const schedule = this.options.schedule ?? setTimeout
     this.timer = schedule(() => {
       this.timer = null
-      void this.flush()
+      Effect.runFork(this.flushEffect())
     }, delayMs)
     this.timer.unref?.()
   }
@@ -266,36 +294,25 @@ export class AnonymousNativeMetricsReporter {
 export const anonymousNativeMetricsReporter =
   new AnonymousNativeMetricsReporter()
 
-export function attachNativeRuntimeMetrics(
-  supervisor: NativeRuntimeSupervisor,
-  runtime: NativeMetricRuntime,
+export function recordRendererDiagnosticMetrics(
+  incident: RendererDiagnosticIncident,
   reporter: AnonymousNativeMetricsReporter = anonymousNativeMetricsReporter,
 ) {
-  let previous: NativeRuntimeSupervisorSnapshot['status'] = 'stopped'
-  let handshakeStartedAt = 0
-  return supervisor.onStateChange((snapshot) => {
-    if (snapshot.status === previous) return
-    const now = performance.now()
-    if (snapshot.status === 'starting') {
-      handshakeStartedAt = now
-      reporter.increment('runtime_started', runtime)
-    } else if (snapshot.status === 'ready') {
-      reporter.increment('runtime_ready', runtime)
-      if (handshakeStartedAt > 0) {
-        reporter.observe(
-          'runtime_handshake_ms',
-          now - handshakeStartedAt,
-          runtime,
-        )
-      }
-    } else if (snapshot.status === 'recovering') {
-      handshakeStartedAt = now
-      reporter.increment('runtime_lost', runtime)
-    } else if (snapshot.status === 'degraded') {
-      reporter.increment('runtime_degraded', runtime)
-    }
-    previous = snapshot.status
-  })
+  switch (incident.triggerCode) {
+    case 'screen_publication_stalled':
+    case 'screen_subscription_stalled':
+    case 'screen_frames_dropped_critical':
+    case 'screen_renderer_stalled':
+    case 'screen_renderer_frames_dropped_critical':
+    case 'voice_stage_consumer_churn_critical':
+      reporter.increment(incident.triggerCode, 'media', 'screen')
+      return
+    case 'rtc_audio_concealment_critical':
+    case 'rtc_packet_loss_critical':
+    case 'rtc_jitter_critical':
+    case 'rtc_latency_critical':
+      reporter.increment(incident.triggerCode, 'media')
+  }
 }
 
 function isSecureMetricsEndpoint(value: string) {

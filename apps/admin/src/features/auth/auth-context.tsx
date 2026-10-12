@@ -9,6 +9,7 @@ import {
 } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { queryKeys } from '#/lib/api/query-keys'
@@ -23,9 +24,9 @@ import {
   fetchCurrentUser,
   isLoginMfa,
   isLoginSuccess,
-  loginWithCredentials,
-  loginWithMfa,
-  logoutSession,
+  loginWithCredentialsEffect,
+  loginWithMfaEffect,
+  logoutSessionEffect,
   type LoginCredentials,
   type MfaLoginPayload,
 } from './auth-api'
@@ -42,11 +43,11 @@ type AuthContextValue = {
   isLoading: boolean
   isPrivileged: boolean
   mfaChallenge: MfaChallenge | null
-  login: (credentials: LoginCredentials) => Promise<void>
-  submitMfaPassword: (password: string) => Promise<void>
+  login: (credentials: LoginCredentials) => Effect.Effect<void, unknown>
+  submitMfaPassword: (password: string) => Effect.Effect<void, unknown>
   cancelMfa: () => void
-  logout: () => Promise<void>
-  refreshUser: () => Promise<void>
+  logout: () => Effect.Effect<void>
+  refreshUser: () => Effect.Effect<void, unknown>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -64,91 +65,128 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const userQuery = useQuery({
     queryKey: queryKeys.auth.session,
-    queryFn: () => fetchCurrentUser(session!.token),
+    queryFn: ({ signal }) => fetchCurrentUser(session!.token, signal),
     enabled: hydrated && !!session?.token,
     retry: false,
   })
 
   const applySession = useCallback(
-    (next: StoredSession) => {
-      saveSession(next)
-      setSession(next)
-      setMfaChallenge(null)
-      void queryClient.invalidateQueries({ queryKey: queryKeys.auth.session })
-    },
+    (next: StoredSession) =>
+      Effect.uninterruptible(
+        Effect.sync(() => {
+          saveSession(next)
+          setSession(next)
+          setMfaChallenge(null)
+        }),
+      ).pipe(
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () =>
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.auth.session,
+              }),
+            catch: (cause) => cause,
+          }).pipe(Effect.ignore),
+        ),
+      ),
     [queryClient],
   )
 
   const login = useCallback(
-    async (credentials: LoginCredentials) => {
-      const response = await loginWithCredentials(credentials)
+    (credentials: LoginCredentials) =>
+      loginWithCredentialsEffect(credentials).pipe(
+        Effect.flatMap((response) => {
+          if (isLoginSuccess(response)) {
+            return applySession({
+              _id: response._id,
+              token: response.token,
+              user_id: response.user_id,
+            }).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => toast.success('Вы вошли в админку')),
+              ),
+            )
+          }
 
-      if (isLoginSuccess(response)) {
-        applySession({
-          _id: response._id,
-          token: response.token,
-          user_id: response.user_id,
-        })
-        toast.success('Вы вошли в админку')
-        return
-      }
+          if (isLoginMfa(response)) {
+            return Effect.sync(() => {
+              setMfaChallenge({
+                ticket: response.ticket,
+                allowedMethods: response.allowed_methods,
+              })
+              toast.message('Нужна двухфакторная аутентификация')
+            })
+          }
 
-      if (isLoginMfa(response)) {
-        setMfaChallenge({
-          ticket: response.ticket,
-          allowedMethods: response.allowed_methods,
-        })
-        toast.message('Нужна двухфакторная аутентификация')
-        return
-      }
-
-      toast.error('Аккаунт отключён')
-    },
+          return Effect.sync(() => toast.error('Аккаунт отключён'))
+        }),
+      ),
     [applySession],
   )
 
   const submitMfaPassword = useCallback(
-    async (password: string) => {
-      if (!mfaChallenge) return
+    (password: string) => {
+      if (!mfaChallenge) return Effect.void
       const payload: MfaLoginPayload = {
         mfa_ticket: mfaChallenge.ticket,
         mfa_response: { password },
       }
-      const response = await loginWithMfa(payload)
+      return loginWithMfaEffect(payload).pipe(
+        Effect.flatMap((response) => {
+          if (!isLoginSuccess(response)) {
+            return Effect.sync(() =>
+              toast.error('Не удалось подтвердить вход'),
+            )
+          }
 
-      if (!isLoginSuccess(response)) {
-        toast.error('Не удалось подтвердить вход')
-        return
-      }
-
-      applySession({
-        _id: response._id,
-        token: response.token,
-        user_id: response.user_id,
-      })
-      toast.success('Вы вошли в админку')
+          return applySession({
+            _id: response._id,
+            token: response.token,
+            user_id: response.user_id,
+          }).pipe(
+            Effect.tap(() =>
+              Effect.sync(() => toast.success('Вы вошли в админку')),
+            ),
+          )
+        }),
+      )
     },
     [applySession, mfaChallenge],
   )
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(() => {
     const token = session?.token
-    clearSession()
-    setSession(null)
-    setMfaChallenge(null)
-    queryClient.removeQueries()
-    if (token) {
-      try {
-        await logoutSession(token)
-      } catch {
-        toast.error('Сессия очищена локально, сервер не ответил')
-      }
-    }
+    return Effect.sync(() => {
+      clearSession()
+      setSession(null)
+      setMfaChallenge(null)
+      queryClient.removeQueries()
+    }).pipe(
+      Effect.andThen(
+        token
+          ? logoutSessionEffect(token).pipe(
+              Effect.catch(() =>
+                Effect.sync(() =>
+                  toast.error('Сессия очищена локально, сервер не ответил'),
+                ),
+              ),
+            )
+          : Effect.void,
+      ),
+    )
   }, [queryClient, session?.token])
 
-  const refreshUser = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session })
-  }, [queryClient])
+  const refreshUser = useCallback(
+    () =>
+      Effect.tryPromise({
+        try: () =>
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.auth.session,
+          }),
+        catch: (cause) => cause,
+      }).pipe(Effect.asVoid),
+    [queryClient],
+  )
 
   const value = useMemo<AuthContextValue>(
     () => ({

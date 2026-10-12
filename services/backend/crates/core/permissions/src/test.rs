@@ -759,6 +759,9 @@ struct ServerChannelAccessScenario {
     role_permissions: Override,
     channel_permissions: Override,
     voice_membership: bool,
+    server_owner: bool,
+    can_publish: bool,
+    can_receive: bool,
 }
 
 #[async_trait]
@@ -784,7 +787,7 @@ impl PermissionQuery for ServerChannelAccessScenario {
     }
 
     async fn are_we_server_owner(&mut self) -> bool {
-        false
+        self.server_owner
     }
 
     async fn are_we_a_member(&mut self) -> bool {
@@ -804,11 +807,11 @@ impl PermissionQuery for ServerChannelAccessScenario {
     }
 
     async fn do_we_have_publish_overwrites(&mut self) -> bool {
-        true
+        self.can_publish
     }
 
     async fn do_we_have_receive_overwrites(&mut self) -> bool {
-        true
+        self.can_receive
     }
 
     async fn get_channel_type(&mut self) -> ChannelType {
@@ -859,6 +862,9 @@ async fn administrator_grants_all_regular_permissions_and_bypasses_channel_denie
             deny: ChannelPermission::GrantAllSafe as u64,
         },
         voice_membership: false,
+        server_owner: false,
+        can_publish: true,
+        can_receive: true,
     };
 
     assert_eq!(
@@ -883,6 +889,9 @@ async fn active_voice_membership_only_bypasses_view_and_connect_denies() {
                 | ChannelPermission::Listen as u64,
         },
         voice_membership: true,
+        server_owner: false,
+        can_publish: true,
+        can_receive: true,
     };
 
     let permissions = calculate_channel_permissions(&mut query).await;
@@ -890,4 +899,44 @@ async fn active_voice_membership_only_bypasses_view_and_connect_denies() {
     assert!(permissions.has_channel_permission(ChannelPermission::Connect));
     assert!(permissions.has_channel_permission(ChannelPermission::Speak));
     assert!(!permissions.has_channel_permission(ChannelPermission::Listen));
+}
+
+#[async_std::test]
+async fn voice_moderation_preserves_video_and_overrides_channel_grants() {
+    for (server_owner, administrator) in [(false, false), (false, true), (true, false)] {
+        let mut query = ServerChannelAccessScenario {
+            server_permissions: ChannelPermission::ViewChannel as u64
+                | ChannelPermission::Speak as u64
+                | ChannelPermission::Listen as u64
+                | ChannelPermission::Video as u64,
+            role_permissions: Override {
+                allow: if administrator {
+                    ChannelPermission::Administrator as u64
+                } else {
+                    0
+                },
+                deny: 0,
+            },
+            channel_permissions: Override {
+                allow: ChannelPermission::Speak as u64 | ChannelPermission::Listen as u64,
+                deny: 0,
+            },
+            voice_membership: true,
+            server_owner,
+            can_publish: false,
+            can_receive: false,
+        };
+        let permissions = calculate_channel_permissions(&mut query).await;
+        assert!(!permissions.has_channel_permission(ChannelPermission::Speak));
+        assert!(!permissions.has_channel_permission(ChannelPermission::Listen));
+        assert!(permissions.has_channel_permission(ChannelPermission::Video));
+        assert!(permissions.has_channel_permission(ChannelPermission::Connect));
+
+        query.can_publish = true;
+        query.can_receive = true;
+        let restored = calculate_channel_permissions(&mut query).await;
+        assert!(restored.has_channel_permission(ChannelPermission::Speak));
+        assert!(restored.has_channel_permission(ChannelPermission::Listen));
+        assert!(restored.has_channel_permission(ChannelPermission::Video));
+    }
 }

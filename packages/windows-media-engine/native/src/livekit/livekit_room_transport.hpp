@@ -1,0 +1,126 @@
+#pragma once
+
+#include <condition_variable>
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <thread>
+#include <variant>
+
+#include <livekit/livekit.h>
+
+#include "core/room_owner.hpp"
+#include "livekit/livekit_network_sampler.hpp"
+
+namespace syrnike::windows_media {
+
+// Four publication owners may each have an operation and its cleanup pending.
+// Room control keeps its own reserved slot and uses the same serial SDK worker.
+inline constexpr std::size_t kLiveKitMediaTaskCapacity = 8;
+
+// A Room observer must quiesce its SDK operations/readers before SDK shutdown.
+class LiveKitRoomObserver : public livekit::RoomDelegate {
+ public:
+  // Invoked on the SDK operation lane, outside transport locks. Observers
+  // attach before connect and seed preexisting publications after authority
+  // validation. Release must quiesce readers before the Room is destroyed.
+  virtual bool attachRoom(const std::shared_ptr<livekit::Room>&) { return true; }
+  virtual bool seedConnectedRoom() { return true; }
+  virtual bool detachRoom() { return true; }
+  virtual void stop() = 0;
+};
+
+class LiveKitRoomTransport final : public RoomTransport {
+public:
+  using ActiveRoomTask =
+      std::function<void(const std::shared_ptr<livekit::Room> &)>;
+
+  explicit LiveKitRoomTransport(std::shared_ptr<LiveKitRoomObserver> delegate = {},
+      std::shared_ptr<LiveKitNetworkSampler> network_sampler = std::make_shared<LiveKitNetworkSampler>());
+  ~LiveKitRoomTransport() override;
+  void setConnectionEventCallback(RoomConnectionEventCallback callback) override;
+
+  LiveKitRoomTransport(const LiveKitRoomTransport &) = delete;
+  LiveKitRoomTransport &operator=(const LiveKitRoomTransport &) = delete;
+
+  void startConnect(std::uint64_t generation, RoomConnectRequest request,
+                    RoomOperationCompletion completion) override;
+  [[nodiscard]] bool cancelConnect(std::uint64_t generation) noexcept override;
+  void startDisconnect(std::uint64_t generation,
+                       RoomOperationCompletion completion) override;
+
+  [[nodiscard]] std::shared_ptr<livekit::Room> activeRoom() const;
+  // Serializes publication work with connect/disconnect on the SDK lane.
+  // Returns false when the bounded media queue is full or shutdown has begun.
+  [[nodiscard]] bool enqueueActiveRoomTask(ActiveRoomTask task) noexcept;
+  [[nodiscard]] std::size_t pendingOperationCount() const noexcept;
+  // One weak screen-publication observer on the existing SDK lane.
+  void setScreenFeedbackPoll(ActiveRoomTask poll);
+  [[nodiscard]] std::shared_ptr<LiveKitNetworkSampler> networkSampler() const noexcept {
+    return network_sampler_;
+  }
+
+private:
+  struct ConnectTask {
+    std::uint64_t generation;
+    RoomConnectRequest request;
+    RoomOperationCompletion completion;
+  };
+  struct DisconnectTask {
+    std::uint64_t generation;
+    RoomOperationCompletion completion;
+  };
+  struct CancellationOutcome {
+    std::uint64_t generation;
+    EngineResult result;
+  };
+  struct ActiveRoomLaneTask {
+    ActiveRoomTask task;
+  };
+  using Task = std::variant<ConnectTask, DisconnectTask, ActiveRoomLaneTask>;
+
+  void run() noexcept;
+  void runCancellationLane() noexcept;
+  void runTeardownLane() noexcept;
+  void runConnect(ConnectTask task) noexcept;
+  void runDisconnect(DisconnectTask task) noexcept;
+  void runActiveRoomTask(ActiveRoomLaneTask task) noexcept;
+  void pollScreenFeedback(const std::shared_ptr<livekit::Room>& room) noexcept;
+  void enqueue(Task task);
+
+  mutable std::mutex mutex_;
+  const std::shared_ptr<LiveKitNetworkSampler> network_sampler_;
+  std::shared_ptr<LiveKitRoomObserver> delegate_;
+  RoomConnectionEventCallback connection_event_callback_;
+  ActiveRoomTask screen_feedback_poll_;
+  bool disconnect_reported_ = false;
+  std::condition_variable changed_;
+  std::condition_variable cancellation_changed_;
+  std::condition_variable cancellation_completed_;
+  std::optional<Task> pending_task_;
+  std::deque<ActiveRoomLaneTask> media_tasks_;
+  std::optional<std::uint64_t> pending_cancellation_;
+  std::optional<std::uint64_t> cancellation_running_;
+  std::optional<CancellationOutcome> cancellation_outcome_;
+  bool operation_running_ = false;
+  bool stopping_ = false;
+  std::optional<std::uint64_t> cancelled_connect_generation_;
+  std::optional<std::uint64_t> completion_committed_generation_;
+  std::uint64_t active_generation_ = 0;
+  std::shared_ptr<livekit::Room> operation_room_;
+  std::shared_ptr<livekit::Room> active_room_;
+  // Rooms whose graceful SDK disconnect is still running. On a dead network
+  // it can block for tens of seconds; leaving and the next join never wait.
+  std::deque<std::shared_ptr<livekit::Room>> teardown_rooms_;
+  std::condition_variable teardown_changed_;
+  bool teardown_running_ = false;
+  std::thread worker_;
+  std::thread cancellation_worker_;
+  std::thread teardown_worker_;
+};
+
+} // namespace syrnike::windows_media

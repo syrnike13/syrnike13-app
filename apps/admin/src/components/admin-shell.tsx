@@ -1,5 +1,6 @@
 import { Link, Outlet, useBlocker, useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
+import { Effect } from 'effect'
 
 import {
   AdminDraftProvider,
@@ -102,7 +103,7 @@ function AdminShellContent({ children }: { children?: ReactNode }) {
                   return
                 }
                 draftController?.reset()
-                void auth.logout()
+                Effect.runFork(auth.logout())
               }}
             >
               <LogOutIcon className="size-4" aria-hidden />

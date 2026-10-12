@@ -30,6 +30,77 @@ describe('diagnostic reporter', () => {
     expect(serialized).not.toContain('private.example')
   })
 
+  it('preserves distinct native incident aliases without allowing arbitrary identifiers', () => {
+    const first = 'incident-79360566-3412-4a77-8f4b-36f392b48d6d'
+    const second = 'incident-d8d7866b-6c37-4bb2-bf4b-9d715909020b'
+    recordDiagnosticEvent('native-runtime', 'instability_detected', {
+      incidents: [
+        { correlationId: first },
+        { correlationId: second },
+        { correlationId: 'secret-value-that-is-longer-than-thirty-two-characters' },
+      ],
+      failure: { diagnosticCorrelationId: first },
+      message: first,
+      userId: second,
+    })
+    const records = JSON.parse(diagnosticEventsJsonForTests())
+    expect(records[0].data.payload).toEqual({
+      incidents: [{ correlationId: first }, { correlationId: second }, { correlationId: '[redacted]' }],
+      failure: { diagnosticCorrelationId: first },
+      message: '[redacted]',
+    })
+  })
+
+  it('keeps bounded screen degradation metrics while removing identities', () => {
+    recordDiagnosticEvent('rtc', 'health_incident', {
+      triggerCode: 'screen_frames_dropped_critical',
+      ownerUserId: 'private-user',
+      quality: {
+        framesDroppedPercent: 42,
+        framesDroppedPerSecond: 18,
+        concealedAudioPercent: 25,
+      },
+      nativeCapture: {
+        gpuFramesDroppedStale: 7,
+        rtpFramesEncoded: 12_000,
+        rtpFramesSent: 11_998,
+      },
+    })
+
+    const serialized = diagnosticEventsJsonForTests()
+    expect(serialized).toContain('screen_frames_dropped_critical')
+    expect(serialized).toContain('"framesDroppedPercent":42')
+    expect(serialized).toContain('"gpuFramesDroppedStale":7')
+    expect(serialized).not.toContain('private-user')
+    expect(serialized).not.toContain('ownerUserId')
+  })
+
+  it('keeps VoiceStage renderer evidence for near-critical reports', () => {
+    recordDiagnosticEvent('rtc', 'health_incident', {
+      triggerCode: 'screen_renderer_frames_dropped_critical',
+      renderer: {
+        framesReceived: 12_000,
+        framesDrawn: 8_400,
+        framesSuperseded: 3_500,
+        framesDroppedNoConsumer: 75,
+        drawFailures: 25,
+        canvasAttachCount: 180,
+        canvasDetachCount: 179,
+        activeConsumers: 1,
+        canvasPixels: 8_294_400,
+        maxLastDrawAgeMs: 6_500,
+      },
+    })
+
+    const serialized = diagnosticEventsJsonForTests()
+    expect(serialized).toContain(
+      'screen_renderer_frames_dropped_critical',
+    )
+    expect(serialized).toContain('"framesSuperseded":3500')
+    expect(serialized).toContain('"canvasPixels":8294400')
+    expect(serialized).toContain('"maxLastDrawAgeMs":6500')
+  })
+
   it('redacts POSIX paths and file URLs from uploaded event text', () => {
     recordDiagnosticEvent('renderer', 'renderer_error', {
       message: 'failed at /Users/alice/private.txt',

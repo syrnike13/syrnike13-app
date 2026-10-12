@@ -23,7 +23,7 @@ concurrency:
 jobs:
   version:
     name: Read nightly version
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     outputs:
       base_version: ${{ steps.version.outputs.base_version }}
       nightly_version: ${{ steps.version.outputs.nightly_version }}
@@ -41,28 +41,29 @@ jobs:
           echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
 
   native-windows:
-    name: Verify Windows DLL runtime
+    name: Build Windows native runtime
     needs: version
     uses: ./.github/workflows/native-media-windows.yml
     with:
       release_channel: nightly
       desktop_build_version: ${{ needs.version.outputs.nightly_version }}
       symbol_retention_days: 14
+      skip_tests: true
 
   web:
     name: Publish nightly web image
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: version
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: useblacksmith/build-push-action@v2
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/web/Dockerfile
@@ -83,18 +84,18 @@ jobs:
 
   admin:
     name: Publish nightly admin image
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: version
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: useblacksmith/build-push-action@v2
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/admin/Dockerfile
@@ -112,12 +113,12 @@ jobs:
 
   backend-base:
     name: Publish nightly backend base image
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: version
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -125,7 +126,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Sync release version
         run: node tooling/scripts/sync-version.mjs
-      - uses: useblacksmith/build-push-action@v2
+      - uses: docker/build-push-action@v7
         with:
           context: services/backend
           file: services/backend/Dockerfile
@@ -137,7 +138,7 @@ jobs:
 
   backend-services:
     name: Publish nightly backend service images
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs:
       - version
       - backend-base
@@ -163,8 +164,8 @@ jobs:
             dockerfile: crates/daemons/voice-ingress/Dockerfile
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -172,7 +173,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Sync release version
         run: node tooling/scripts/sync-version.mjs
-      - uses: useblacksmith/build-push-action@v2
+      - uses: docker/build-push-action@v7
         with:
           context: services/backend
           file: services/backend/${{ matrix.dockerfile }}
@@ -186,21 +187,21 @@ jobs:
 
   livekit:
     name: Publish nightly LiveKit image
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs: version
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: services/livekit-server/go.mod
-      - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: useblacksmith/build-push-action@v2
+      - uses: docker/build-push-action@v7
         with:
           context: services/livekit-server
           file: services/livekit-server/Dockerfile
@@ -212,7 +213,7 @@ jobs:
 
   deploy:
     name: Deploy nightly
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     needs:
       - web
       - admin
@@ -346,21 +347,36 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 fakeroot rpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm version:sync
-      - name: Download verified Windows native runtime
+      - name: Download verified Windows hook addons
         if: runner.os == 'Windows'
         uses: actions/download-artifact@v4
         with:
-          name: native-runtime-windows-nightly-${{ github.sha }}
+          name: native-hooks-windows-nightly-${{ github.sha }}
           path: .
-      - name: Verify downloaded Windows native runtime
+      - name: Verify downloaded Windows hook addons
         if: runner.os == 'Windows'
         run: pnpm desktop-native:verify
+      - name: Download verified Windows media lifecycle artifacts
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: media-engine-windows-nightly-${{ github.sha }}
+          path: .
+      - name: Verify downloaded Windows media lifecycle artifacts
+        if: runner.os == 'Windows'
+        run: pnpm windows-media:verify
       - name: Download Windows native debug symbols
         if: runner.os == 'Windows'
         uses: actions/download-artifact@v4
         with:
-          name: native-runtime-windows-symbols-${{ github.sha }}
+          name: native-hooks-windows-symbols-${{ github.sha }}
           path: packages/desktop-native
+      - name: Download Windows media lifecycle debug symbols
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: media-engine-windows-symbols-${{ github.sha }}
+          path: packages/windows-media-engine
       - name: Build nightly desktop
         if: runner.os != 'Windows'
         run: pnpm --filter @syrnike13/desktop build

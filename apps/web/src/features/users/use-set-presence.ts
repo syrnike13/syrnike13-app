@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ManualPresence } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
-import { updateCurrentUser } from '#/features/api/users-api'
+import { updateCurrentUserEffect } from '#/features/api/users-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { getUserPresence } from '#/lib/presence'
 import { queryKeys } from '#/lib/api/query-keys'
@@ -13,20 +14,23 @@ export function useSetPresence() {
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
-    mutationFn: async (presence: ManualPresence) => {
-      const token = auth.session?.token
-      const user = auth.user
-      if (!token || !user) {
-        throw new Error('Не авторизован')
-      }
+    mutationFn: (presence: ManualPresence) =>
+      Effect.runPromise(
+        Effect.gen(function*() {
+          const token = auth.session?.token
+          const user = auth.user
+          if (!token || !user) {
+            return yield* Effect.fail(new Error('Не авторизован'))
+          }
 
-      return updateCurrentUser(token, {
-        status: {
-          presence,
-          text: user.status?.text ?? null,
-        },
-      })
-    },
+          return yield* updateCurrentUserEffect(token, {
+            status: {
+              presence,
+              text: user.status?.text ?? null,
+            },
+          })
+        }),
+      ),
     onSuccess: (updated) => {
       syncStore.upsertUser(updated)
       queryClient.setQueryData(queryKeys.auth.session, updated)

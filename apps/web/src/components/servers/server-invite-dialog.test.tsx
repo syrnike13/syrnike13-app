@@ -9,6 +9,7 @@ import {
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
 import { syncStore } from '#/features/sync/sync-store'
@@ -47,8 +48,9 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
-  fetchServerInvites: (...args: Parameters<typeof mocks.fetchServerInvites>) =>
-    mocks.fetchServerInvites(...args),
+  fetchServerInvitesEffect: (
+    ...args: Parameters<typeof mocks.fetchServerInvites>
+  ) => mocks.fetchServerInvites(...args),
 }))
 
 vi.mock('#/features/api/invites-api', async (importOriginal) => {
@@ -57,24 +59,28 @@ vi.mock('#/features/api/invites-api', async (importOriginal) => {
   >()
   return {
     ...actual,
-    createChannelInvite: (...args: Parameters<typeof mocks.createChannelInvite>) =>
-      mocks.createChannelInvite(...args),
+    createChannelInviteEffect: (
+      ...args: Parameters<typeof mocks.createChannelInvite>
+    ) => mocks.createChannelInvite(...args),
   }
 })
 
 vi.mock('#/features/api/messages-api', () => ({
-  sendChannelMessage: (...args: Parameters<typeof mocks.sendChannelMessage>) =>
-    mocks.sendChannelMessage(...args),
+  sendChannelMessageEffect: (
+    ...args: Parameters<typeof mocks.sendChannelMessage>
+  ) => mocks.sendChannelMessage(...args),
 }))
 
 vi.mock('#/features/api/users-api', () => ({
-  openDirectMessage: (...args: Parameters<typeof mocks.openDirectMessage>) =>
-    mocks.openDirectMessage(...args),
+  openDirectMessageEffect: (
+    ...args: Parameters<typeof mocks.openDirectMessage>
+  ) => mocks.openDirectMessage(...args),
 }))
 
 vi.mock('#/lib/clipboard', () => ({
-  writeClipboardText: (...args: Parameters<typeof mocks.writeClipboardText>) =>
-    mocks.writeClipboardText(...args),
+  writeClipboardTextEffect: (
+    ...args: Parameters<typeof mocks.writeClipboardText>
+  ) => mocks.writeClipboardText(...args),
 }))
 
 describe('ServerInviteDialog', () => {
@@ -144,20 +150,26 @@ describe('ServerInviteDialog', () => {
         bot: { owner: 'user-1' },
       } as never,
     ])
-    mocks.createChannelInvite.mockResolvedValue({ _id: 'new-code' })
-    mocks.fetchServerInvites.mockResolvedValue([])
-    mocks.openDirectMessage.mockResolvedValue({
-      _id: 'dm-1',
-      channel_type: 'DirectMessage',
-      recipients: ['user-1', 'friend-1'],
-    })
-    mocks.sendChannelMessage.mockResolvedValue({
-      _id: 'message-1',
-      channel: 'dm-1',
-      author: 'user-1',
-      content: 'https://syrnike13.ru/invite/new-code',
-    })
-    mocks.writeClipboardText.mockResolvedValue(undefined)
+    mocks.createChannelInvite.mockReturnValue(
+      Effect.succeed({ _id: 'new-code' }),
+    )
+    mocks.fetchServerInvites.mockReturnValue(Effect.succeed([]))
+    mocks.openDirectMessage.mockReturnValue(
+      Effect.succeed({
+        _id: 'dm-1',
+        channel_type: 'DirectMessage',
+        recipients: ['user-1', 'friend-1'],
+      }),
+    )
+    mocks.sendChannelMessage.mockReturnValue(
+      Effect.succeed({
+        _id: 'message-1',
+        channel: 'dm-1',
+        author: 'user-1',
+        content: 'https://syrnike13.ru/invite/new-code',
+      }),
+    )
+    mocks.writeClipboardText.mockReturnValue(Effect.void)
   })
 
   afterEach(() => {
@@ -174,22 +186,24 @@ describe('ServerInviteDialog', () => {
       channels: ['channel-1', 'channel-2'],
       default_permissions: ChannelPermission.ViewChannel,
     } as never)
-    mocks.fetchServerInvites.mockResolvedValue([
-      {
-        type: 'Server',
-        _id: 'existing-code',
-        server: 'server-1',
-        channel: 'channel-1',
-        creator: 'user-1',
-        created_at: 0,
-        expires_at: null,
-        max_uses: null,
-        uses: 0,
-        revoked_at: null,
-        revoked_by: null,
-        temporary: false,
-      },
-    ])
+    mocks.fetchServerInvites.mockReturnValue(
+      Effect.succeed([
+        {
+          type: 'Server',
+          _id: 'existing-code',
+          server: 'server-1',
+          channel: 'channel-1',
+          creator: 'user-1',
+          created_at: 0,
+          expires_at: null,
+          max_uses: null,
+          uses: 0,
+          revoked_at: null,
+          revoked_by: null,
+          temporary: false,
+        },
+      ]),
+    )
 
     render(
       <ServerInviteDialog
@@ -214,7 +228,7 @@ describe('ServerInviteDialog', () => {
       channels: ['channel-1', 'channel-2'],
       default_permissions: ChannelPermission.ViewChannel,
     } as never)
-    mocks.fetchServerInvites.mockResolvedValue([
+    mocks.fetchServerInvites.mockReturnValue(Effect.succeed([
       {
         type: 'Server',
         _id: 'announcements-code',
@@ -229,7 +243,7 @@ describe('ServerInviteDialog', () => {
         revoked_by: null,
         temporary: false,
       },
-    ])
+    ]))
 
     render(
       <ServerInviteDialog
@@ -248,7 +262,7 @@ describe('ServerInviteDialog', () => {
       ...syncStore.getState().servers['server-1'],
       owner: 'user-1',
     } as never)
-    mocks.fetchServerInvites.mockResolvedValueOnce([
+    mocks.fetchServerInvites.mockReturnValueOnce(Effect.succeed([
       {
         type: 'Server',
         _id: 'stale-code',
@@ -263,7 +277,7 @@ describe('ServerInviteDialog', () => {
         revoked_by: null,
         temporary: false,
       },
-    ])
+    ]))
 
     const { rerender } = render(
       <ServerInviteDialog
@@ -274,7 +288,7 @@ describe('ServerInviteDialog', () => {
     )
     expect(await screen.findByText(/stale-code/)).toBeTruthy()
 
-    mocks.fetchServerInvites.mockResolvedValueOnce([])
+    mocks.fetchServerInvites.mockReturnValueOnce(Effect.succeed([]))
     rerender(
       <ServerInviteDialog
         serverId="server-1"
@@ -310,7 +324,7 @@ describe('ServerInviteDialog', () => {
       ...syncStore.getState().servers['server-1'],
       owner: 'user-1',
     } as never)
-    mocks.fetchServerInvites.mockResolvedValue([
+    mocks.fetchServerInvites.mockReturnValue(Effect.succeed([
       {
         type: 'Server',
         _id: 'expired-code',
@@ -325,7 +339,7 @@ describe('ServerInviteDialog', () => {
         revoked_by: null,
         temporary: false,
       },
-    ])
+    ]))
 
     render(
       <ServerInviteDialog
@@ -352,7 +366,7 @@ describe('ServerInviteDialog', () => {
       ...syncStore.getState().servers['server-1'],
       owner: 'user-1',
     } as never)
-    mocks.fetchServerInvites.mockResolvedValue([
+    mocks.fetchServerInvites.mockReturnValue(Effect.succeed([
       {
         type: 'Server',
         _id: 'soon-expired-code',
@@ -367,7 +381,7 @@ describe('ServerInviteDialog', () => {
         revoked_by: null,
         temporary: false,
       },
-    ])
+    ]))
 
     try {
       render(

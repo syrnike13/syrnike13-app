@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { Effect, Fiber } from 'effect'
 import {
   DEFAULT_DESKTOP_OVERLAY_SETTINGS,
   type DesktopOverlaySettings,
@@ -36,25 +37,37 @@ export function SettingsOverlayPanel() {
 
   useEffect(() => {
     if (!desktop || os !== 'win32') return
-    let cancelled = false
     let previousOverlayState: DesktopOverlayState | null = null
+    let loadFiber: ReturnType<typeof Effect.runFork> | undefined
 
     const loadSettings = () => {
-      void desktop.settings
-        .load()
-        .then((value) => {
-          if (!cancelled) setSettings(value.overlay)
-        })
-        .catch((error) => {
-          console.error('[settings-overlay] failed to load settings', error)
-          if (cancelled) return
-          setSettings({ ...DEFAULT_DESKTOP_OVERLAY_SETTINGS })
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : 'Не удалось загрузить настройки оверлея',
-          )
-        })
+      if (loadFiber) Effect.runFork(Fiber.interrupt(loadFiber))
+      loadFiber = Effect.runFork(
+        Effect.tryPromise({
+          try: () => desktop.settings.load(),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.matchEffect({
+            onFailure: (error) =>
+              Effect.sync(() => {
+                console.error(
+                  '[settings-overlay] failed to load settings',
+                  error,
+                )
+                setSettings({ ...DEFAULT_DESKTOP_OVERLAY_SETTINGS })
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : 'Не удалось загрузить настройки оверлея',
+                )
+              }),
+            onSuccess: (value) =>
+              Effect.sync(() => {
+                setSettings(value.overlay)
+              }),
+          }),
+        ),
+      )
     }
 
     loadSettings()
@@ -75,8 +88,8 @@ export function SettingsOverlayPanel() {
       previousOverlayState = nextOverlayState
     })
     return () => {
-      cancelled = true
       unsubscribe()
+      if (loadFiber) Effect.runFork(Fiber.interrupt(loadFiber))
     }
   }, [desktop, os])
 
@@ -104,18 +117,33 @@ export function SettingsOverlayPanel() {
     const previous = settings
     setSettings(nextSettings)
     setSaving(true)
-    void desktop.settings
-      .update({ overlay: nextSettings })
-      .then((value) => setSettings(value.overlay))
-      .catch((error) => {
-        setSettings(previous)
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'Не удалось сохранить настройки оверлея',
-        )
-      })
-      .finally(() => setSaving(false))
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () => desktop.settings.update({ overlay: nextSettings }),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              setSettings(previous)
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось сохранить настройки оверлея',
+              )
+            }),
+          onSuccess: (value) =>
+            Effect.sync(() => {
+              setSettings(value.overlay)
+            }),
+        }),
+        Effect.ensuring(
+          Effect.sync(() => {
+            setSaving(false)
+          }),
+        ),
+      ),
+    )
   }
 
   return (

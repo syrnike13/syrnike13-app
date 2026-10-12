@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerSettingsBansPanel } from '#/components/servers/server-settings-bans-panel'
@@ -28,12 +29,11 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
-  banServerMember: (...args: Parameters<typeof mocks.banServerMember>) =>
-    mocks.banServerMember(...args),
-  fetchServerBans: (...args: Parameters<typeof mocks.fetchServerBans>) =>
+  fetchServerBansEffect: (...args: Parameters<typeof mocks.fetchServerBans>) =>
     mocks.fetchServerBans(...args),
-  unbanServerMember: (...args: Parameters<typeof mocks.unbanServerMember>) =>
-    mocks.unbanServerMember(...args),
+  unbanServerMemberEffect: (
+    ...args: Parameters<typeof mocks.unbanServerMember>
+  ) => mocks.unbanServerMember(...args),
 }))
 
 vi.mock('#/components/ui/dialog', () => ({
@@ -62,23 +62,25 @@ function renderWithQuery(children: ReactNode) {
 
 describe('ServerSettingsBansPanel', () => {
   beforeEach(() => {
-    mocks.fetchServerBans.mockResolvedValue({
-      users: [
-        {
-          _id: 'user-2',
-          username: 'bad-user',
-          discriminator: '0001',
-          avatar: null,
-        },
-      ],
-      bans: [
-        {
-          _id: { server: 'server-1', user: 'user-2' },
-          reason: 'spam',
-        },
-      ],
-    })
-    mocks.unbanServerMember.mockResolvedValue(undefined)
+    mocks.fetchServerBans.mockReturnValue(
+      Effect.succeed({
+        users: [
+          {
+            _id: 'user-2',
+            username: 'bad-user',
+            discriminator: '0001',
+            avatar: null,
+          },
+        ],
+        bans: [
+          {
+            _id: { server: 'server-1', user: 'user-2' },
+            reason: 'spam',
+          },
+        ],
+      }),
+    )
+    mocks.unbanServerMember.mockReturnValue(Effect.void)
     mocks.banServerMember.mockResolvedValue(undefined)
   })
 
@@ -142,32 +144,34 @@ describe('ServerSettingsBansPanel', () => {
   })
 
   it('filters server bans by user, id, and reason', async () => {
-    mocks.fetchServerBans.mockResolvedValue({
-      users: [
-        {
-          _id: 'user-2',
-          username: 'bad-user',
-          discriminator: '0001',
-          avatar: null,
-        },
-        {
-          _id: 'user-3',
-          username: 'raid-helper',
-          discriminator: '0002',
-          avatar: null,
-        },
-      ],
-      bans: [
-        {
-          _id: { server: 'server-1', user: 'user-2' },
-          reason: 'spam',
-        },
-        {
-          _id: { server: 'server-1', user: 'user-3' },
-          reason: 'raid cleanup',
-        },
-      ],
-    })
+    mocks.fetchServerBans.mockReturnValue(
+      Effect.succeed({
+        users: [
+          {
+            _id: 'user-2',
+            username: 'bad-user',
+            discriminator: '0001',
+            avatar: null,
+          },
+          {
+            _id: 'user-3',
+            username: 'raid-helper',
+            discriminator: '0002',
+            avatar: null,
+          },
+        ],
+        bans: [
+          {
+            _id: { server: 'server-1', user: 'user-2' },
+            reason: 'spam',
+          },
+          {
+            _id: { server: 'server-1', user: 'user-3' },
+            reason: 'raid cleanup',
+          },
+        ],
+      }),
+    )
 
     renderWithQuery(<ServerSettingsBansPanel serverId="server-1" />)
 

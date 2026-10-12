@@ -2,6 +2,11 @@
 import type { components } from './schema'
 
 export type SyrnikeConfig = components['schemas']['SyrnikeConfig']
+export type DiagnosticReportUpload = components['schemas']['DiagnosticReportUpload']
+export type DiagnosticReportCreated = components['schemas']['DiagnosticReportCreated']
+export type DiagnosticReportStatus = components['schemas']['DiagnosticReportStatus']
+export type DiagnosticReportResponse = components['schemas']['DiagnosticReportResponse']
+export type UpdateDiagnosticReport = components['schemas']['UpdateDiagnosticReport']
 export type SyrnikeFeatures = components['schemas']['SyrnikeFeatures']
 export type CaptchaFeature = components['schemas']['CaptchaFeature']
 export type Feature = components['schemas']['Feature']

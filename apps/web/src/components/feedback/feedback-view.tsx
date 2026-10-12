@@ -6,6 +6,8 @@ import type {
   FeedbackSort,
   FeedbackSuggestionPage,
 } from '@syrnike13/api-types'
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Option, Schema } from 'effect'
 import { useDeferredValue, useEffect, useState } from 'react'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
@@ -136,8 +138,12 @@ export function FeedbackView({
 
   const allQuery = useInfiniteQuery({
     queryKey: queryKeys.feedback.list(viewerId ?? 'pending-session', listParams),
-    queryFn: ({ pageParam }) =>
-      fetchFeedbackSuggestions(token!, { ...listParams, offset: pageParam }),
+    queryFn: ({ pageParam, signal }) =>
+      fetchFeedbackSuggestions(
+        token!,
+        { ...listParams, offset: pageParam },
+        signal,
+      ),
     initialPageParam: 0,
     enabled: Boolean(token && viewerId) && mode === 'all',
     // Moderators update statuses in a separate app, so cached list data must be
@@ -148,8 +154,12 @@ export function FeedbackView({
 
   const mineQuery = useInfiniteQuery({
     queryKey: queryKeys.feedback.mine(viewerId ?? 'pending-session'),
-    queryFn: ({ pageParam }) =>
-      fetchMyFeedbackSuggestions(token!, { offset: pageParam, limit: PAGE_SIZE }),
+    queryFn: ({ pageParam, signal }) =>
+      fetchMyFeedbackSuggestions(
+        token!,
+        { offset: pageParam, limit: PAGE_SIZE },
+        signal,
+      ),
     initialPageParam: 0,
     enabled: Boolean(token && viewerId) && mode === 'mine',
     staleTime: 0,
@@ -161,11 +171,15 @@ export function FeedbackView({
 
     void queryClient.prefetchInfiniteQuery({
       queryKey: queryKeys.feedback.mine(viewerId),
-      queryFn: ({ pageParam }) =>
-        fetchMyFeedbackSuggestions(token, {
-          offset: pageParam,
-          limit: PAGE_SIZE,
-        }),
+      queryFn: ({ pageParam, signal }) =>
+        fetchMyFeedbackSuggestions(
+          token,
+          {
+            offset: pageParam,
+            limit: PAGE_SIZE,
+          },
+          signal,
+        ),
       initialPageParam: 0,
       staleTime: 30_000,
       getNextPageParam: getFeedbackNextPageParam,
@@ -228,7 +242,15 @@ export function FeedbackView({
               />
             </label>
 
-            <Select value={sort} onValueChange={(value) => setSort(value as FeedbackSort)}>
+            <Select
+              value={sort}
+              onValueChange={(value) => {
+                const decoded = Schema.decodeUnknownOption(
+                  ApiSchema.FeedbackSort,
+                )(value)
+                if (Option.isSome(decoded)) setSort(decoded.value)
+              }}
+            >
               <SelectTrigger aria-label="Сортировка" size="sm" className="w-32 sm:w-36">
                 <SelectValue />
               </SelectTrigger>
@@ -273,7 +295,7 @@ export function FeedbackView({
                         { value: 'all', label: 'Все типы' },
                         ...FEEDBACK_CATEGORIES,
                       ]}
-                      onChange={(value) => setCategory(value as FeedbackCategory | 'all')}
+                      onChange={setCategory}
                     />
                     <FeedbackFilterGroup
                       label="Статус"
@@ -282,7 +304,7 @@ export function FeedbackView({
                         { value: 'all', label: 'Все статусы' },
                         ...FEEDBACK_PRODUCT_STATUSES,
                       ]}
-                      onChange={(value) => setStatus(value as FeedbackProductStatus | 'all')}
+                      onChange={setStatus}
                     />
                     <FeedbackFilterGroup
                       label="Область"
@@ -291,7 +313,7 @@ export function FeedbackView({
                         { value: 'all', label: 'Все области' },
                         ...FEEDBACK_AREAS,
                       ]}
-                      onChange={(value) => setArea(value as FeedbackArea | 'all')}
+                      onChange={setArea}
                     />
                     <FeedbackFilterGroup
                       label="Платформа"
@@ -300,7 +322,7 @@ export function FeedbackView({
                         { value: 'all', label: 'Все платформы' },
                         ...FEEDBACK_PLATFORMS,
                       ]}
-                      onChange={(value) => setPlatform(value as FeedbackPlatform | 'all')}
+                      onChange={setPlatform}
                     />
                   </div>
                 </ScrollArea>
@@ -381,16 +403,16 @@ export function FeedbackView({
   )
 }
 
-function FeedbackFilterGroup({
+function FeedbackFilterGroup<Value extends string>({
   label,
   value,
   options,
   onChange,
 }: {
   label: string
-  value: string
-  options: ReadonlyArray<{ value: string; label: string }>
-  onChange: (value: string) => void
+  value: Value
+  options: ReadonlyArray<{ value: Value; label: string }>
+  onChange: (value: Value) => void
 }) {
   return (
     <div role="group" aria-label={label}>

@@ -21,32 +21,31 @@ const version =
   process.env.SYRNIKE_DESKTOP_BUILD_VERSION ||
   readFileSync(path.resolve(repoRoot, 'VERSION'), 'utf8').trim()
 const release = process.env.SENTRY_RELEASE || `syrnike13-desktop@${version}`
-const nativeBuildRoot = path.resolve(
-  repoRoot,
-  'packages',
-  'desktop-native',
-  'build',
-)
+const nativeBuildRoots = [
+  path.resolve(repoRoot, 'packages', 'desktop-native', 'build'),
+  path.resolve(repoRoot, 'packages', 'windows-media-engine', 'build'),
+]
 const sourceMapRoots = [
   path.resolve(desktopRoot, 'out', 'main'),
   path.resolve(desktopRoot, 'out', 'preload'),
   path.resolve(desktopRoot, 'out', 'utility'),
 ].filter(existsSync)
 
-if (!existsSync(nativeBuildRoot)) {
-  throw new Error(`Native symbol directory does not exist: ${nativeBuildRoot}`)
+for (const nativeBuildRoot of nativeBuildRoots) {
+  if (!existsSync(nativeBuildRoot)) {
+    throw new Error(`Native symbol directory does not exist: ${nativeBuildRoot}`)
+  }
+  runSentry([
+    'debug-files',
+    'upload',
+    '--org',
+    organization,
+    '--project',
+    project,
+    '--include-sources',
+    nativeBuildRoot,
+  ])
 }
-
-runSentry([
-  'debug-files',
-  'upload',
-  '--org',
-  organization,
-  '--project',
-  project,
-  '--include-sources',
-  nativeBuildRoot,
-])
 
 if (sourceMapRoots.length > 0) {
   runSentry(['sourcemaps', 'inject', ...sourceMapRoots])

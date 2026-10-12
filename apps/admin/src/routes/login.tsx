@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState, type FormEvent } from 'react'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { SparklesIcon } from '#/components/icons'
@@ -29,8 +30,11 @@ function LoginPage() {
     event.preventDefault()
     setSubmitting(true)
     try {
-      if (auth.mfaChallenge) await auth.submitMfaPassword(mfaPassword)
-      else await auth.login({ email, password })
+      await Effect.runPromise(
+        auth.mfaChallenge
+          ? auth.submitMfaPassword(mfaPassword)
+          : auth.login({ email, password }),
+      )
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Не удалось войти')
     } finally {

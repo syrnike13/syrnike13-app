@@ -9,49 +9,49 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as AdminRouteRouteImport } from './routes/_admin/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AdminUsersIndexRouteImport } from './routes/_admin/users/index'
-import { Route as AdminFeedbackIndexRouteImport } from './routes/_admin/feedback/index'
-import { Route as AdminDiagnosticsIndexRouteImport } from './routes/_admin/diagnostics/index'
+import { Route as AdminRouteRouteImport } from './routes/_admin/route'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminBadgesIndexRouteImport } from './routes/_admin/badges/index'
-import { Route as AdminDiagnosticsReportIdRouteImport } from './routes/_admin/diagnostics/$reportId'
-import { Route as AdminBadgesNewRouteImport } from './routes/_admin/badges/new'
 import { Route as AdminBadgesBadgeIdRouteImport } from './routes/_admin/badges/$badgeId'
+import { Route as AdminBadgesNewRouteImport } from './routes/_admin/badges/new'
+import { Route as AdminDiagnosticsIndexRouteImport } from './routes/_admin/diagnostics/index'
+import { Route as AdminDiagnosticsReportIdRouteImport } from './routes/_admin/diagnostics/$reportId'
+import { Route as AdminFeedbackIndexRouteImport } from './routes/_admin/feedback/index'
+import { Route as AdminUsersIndexRouteImport } from './routes/_admin/users/index'
 
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRouteRoute = AdminRouteRouteImport.update({
   id: '/_admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminUsersIndexRoute = AdminUsersIndexRouteImport.update({
-  id: '/users/',
-  path: '/users/',
+const AdminBadgesIndexRoute = AdminBadgesIndexRouteImport.update({
+  id: '/badges/',
+  path: '/badges/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
-const AdminFeedbackIndexRoute = AdminFeedbackIndexRouteImport.update({
-  id: '/feedback/',
-  path: '/feedback/',
+const AdminBadgesBadgeIdRoute = AdminBadgesBadgeIdRouteImport.update({
+  id: '/badges/$badgeId',
+  path: '/badges/$badgeId',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminBadgesNewRoute = AdminBadgesNewRouteImport.update({
+  id: '/badges/new',
+  path: '/badges/new',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminDiagnosticsIndexRoute = AdminDiagnosticsIndexRouteImport.update({
   id: '/diagnostics/',
   path: '/diagnostics/',
-  getParentRoute: () => AdminRouteRoute,
-} as any)
-const AdminBadgesIndexRoute = AdminBadgesIndexRouteImport.update({
-  id: '/badges/',
-  path: '/badges/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminDiagnosticsReportIdRoute =
@@ -60,14 +60,14 @@ const AdminDiagnosticsReportIdRoute =
     path: '/diagnostics/$reportId',
     getParentRoute: () => AdminRouteRoute,
   } as any)
-const AdminBadgesNewRoute = AdminBadgesNewRouteImport.update({
-  id: '/badges/new',
-  path: '/badges/new',
+const AdminFeedbackIndexRoute = AdminFeedbackIndexRouteImport.update({
+  id: '/feedback/',
+  path: '/feedback/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
-const AdminBadgesBadgeIdRoute = AdminBadgesBadgeIdRouteImport.update({
-  id: '/badges/$badgeId',
-  path: '/badges/$badgeId',
+const AdminUsersIndexRoute = AdminUsersIndexRouteImport.update({
+  id: '/users/',
+  path: '/users/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 
@@ -151,11 +151,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_admin': {
@@ -165,33 +165,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/_admin/users/': {
-      id: '/_admin/users/'
-      path: '/users'
-      fullPath: '/users/'
-      preLoaderRoute: typeof AdminUsersIndexRouteImport
-      parentRoute: typeof AdminRouteRoute
-    }
-    '/_admin/feedback/': {
-      id: '/_admin/feedback/'
-      path: '/feedback'
-      fullPath: '/feedback/'
-      preLoaderRoute: typeof AdminFeedbackIndexRouteImport
-      parentRoute: typeof AdminRouteRoute
-    }
-    '/_admin/diagnostics/': {
-      id: '/_admin/diagnostics/'
-      path: '/diagnostics'
-      fullPath: '/diagnostics/'
-      preLoaderRoute: typeof AdminDiagnosticsIndexRouteImport
-      parentRoute: typeof AdminRouteRoute
     }
     '/_admin/badges/': {
       id: '/_admin/badges/'
@@ -200,11 +179,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminBadgesIndexRouteImport
       parentRoute: typeof AdminRouteRoute
     }
-    '/_admin/diagnostics/$reportId': {
-      id: '/_admin/diagnostics/$reportId'
-      path: '/diagnostics/$reportId'
-      fullPath: '/diagnostics/$reportId'
-      preLoaderRoute: typeof AdminDiagnosticsReportIdRouteImport
+    '/_admin/badges/$badgeId': {
+      id: '/_admin/badges/$badgeId'
+      path: '/badges/$badgeId'
+      fullPath: '/badges/$badgeId'
+      preLoaderRoute: typeof AdminBadgesBadgeIdRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/_admin/badges/new': {
@@ -214,11 +193,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminBadgesNewRouteImport
       parentRoute: typeof AdminRouteRoute
     }
-    '/_admin/badges/$badgeId': {
-      id: '/_admin/badges/$badgeId'
-      path: '/badges/$badgeId'
-      fullPath: '/badges/$badgeId'
-      preLoaderRoute: typeof AdminBadgesBadgeIdRouteImport
+    '/_admin/diagnostics/': {
+      id: '/_admin/diagnostics/'
+      path: '/diagnostics'
+      fullPath: '/diagnostics/'
+      preLoaderRoute: typeof AdminDiagnosticsIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/_admin/diagnostics/$reportId': {
+      id: '/_admin/diagnostics/$reportId'
+      path: '/diagnostics/$reportId'
+      fullPath: '/diagnostics/$reportId'
+      preLoaderRoute: typeof AdminDiagnosticsReportIdRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/_admin/feedback/': {
+      id: '/_admin/feedback/'
+      path: '/feedback'
+      fullPath: '/feedback/'
+      preLoaderRoute: typeof AdminFeedbackIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/_admin/users/': {
+      id: '/_admin/users/'
+      path: '/users'
+      fullPath: '/users/'
+      preLoaderRoute: typeof AdminUsersIndexRouteImport
       parentRoute: typeof AdminRouteRoute
     }
   }

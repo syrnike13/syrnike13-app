@@ -23,13 +23,13 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/syrnike13/livekit-server/pkg/telemetry"
-	sutils "github.com/syrnike13/livekit-server/pkg/utils"
 	"github.com/livekit/protocol/codecs/mime"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
 	"github.com/livekit/protocol/observability/roomobs"
 	"github.com/livekit/protocol/utils"
+	"github.com/syrnike13/livekit-server/pkg/telemetry"
+	sutils "github.com/syrnike13/livekit-server/pkg/utils"
 
 	"github.com/syrnike13/livekit-server/pkg/rtc/types"
 	"github.com/syrnike13/livekit-server/pkg/sfu"
@@ -142,7 +142,7 @@ func NewSubscribedTrack(params SubscribedTrackParams) (*SubscribedTrack, error) 
 		SubID:              params.Subscriber.ID(),
 		StreamID:           streamID,
 		MaxTrack:           maxTrack,
-		PlayoutDelayLimit:  params.Subscriber.GetPlayoutDelayConfig(),
+		PlayoutDelayLimit:  screenSharePlayoutDelay(params.MediaTrack.Source(), params.Subscriber.GetPlayoutDelayConfig()),
 		Pacer:              params.Subscriber.GetPacer(),
 		Trailer:            trailer,
 		StripPacketTrailer: stripPacketTrailer,

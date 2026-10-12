@@ -16,9 +16,6 @@ export type SliderCheckpoint = {
   label?: React.ReactNode
 }
 
-/** @deprecated Use SliderCheckpoint */
-export type SliderMark = SliderCheckpoint
-
 type SliderProps = React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root> & {
   showTooltip?: boolean
   tooltipContent?: (value: number) => React.ReactNode

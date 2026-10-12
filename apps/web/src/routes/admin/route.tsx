@@ -1,14 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-const adminRedirectUrls = {
+const adminRedirectUrls: Record<string, string> = {
   'syrnike13.ru': 'https://admin.syrnike13.ru',
   'www.syrnike13.ru': 'https://admin.syrnike13.ru',
   'beta.syrnike13.ru': 'https://admin.beta.syrnike13.ru',
-} as const
+}
 
 export function getAdminRedirectUrl(hostname: string) {
   return (
-    adminRedirectUrls[hostname as keyof typeof adminRedirectUrls] ??
+    adminRedirectUrls[hostname] ??
     'https://admin.syrnike13.ru'
   )
 }

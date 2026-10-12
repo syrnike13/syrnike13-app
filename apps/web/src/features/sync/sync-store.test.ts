@@ -155,12 +155,19 @@ describe('syncStore voice events', () => {
       server: {
         _id: '01KT7DEM3B0T4B0BXGBXWDJ6D0',
         name: 'server',
+        channels: [
+          '01KT7DEM3B0T4B0BXGBXWDJ6D1',
+          '01KT7DEM3B0T4B0BXGBXWDJ6D2',
+        ],
+        owner: '01KT7DEM3B0T4B0BXGBXWDJ6D3',
+        default_permissions: 0,
       },
       member: {
         _id: {
           server: '01KT7DEM3B0T4B0BXGBXWDJ6D0',
           user: '01KT7DEM3B0T4B0BXGBXWDJ6D3',
         },
+        joined_at: '2026-06-12T00:00:00.000Z',
       },
       channels: [
         {
@@ -172,7 +179,7 @@ describe('syncStore voice events', () => {
         {
           _id: '01KT7DEM3B0T4B0BXGBXWDJ6D2',
           name: 'voice',
-          channel_type: 'VoiceChannel',
+          channel_type: 'TextChannel',
           server: '01KT7DEM3B0T4B0BXGBXWDJ6D0',
         },
       ],
@@ -205,7 +212,7 @@ describe('syncStore voice events', () => {
           type: 'ChannelCreate',
           _id: '01KT7DEM3B0T4B0BXGBXWDJ6B2',
           name: 'voice',
-          channel_type: 'VoiceChannel',
+          channel_type: 'TextChannel',
           server: '01KT7DEM3B0T4B0BXGBXWDJ6B1',
         },
       ],
@@ -547,6 +554,7 @@ describe('syncStore voice events', () => {
       started_at: 1,
       expires_at: '2026-06-12T00:00:30.000Z',
       recipients: ['target-user'],
+      declined_recipients: [],
     })
 
     expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toEqual({
@@ -605,6 +613,7 @@ describe('syncStore voice events', () => {
           started_at: '2026-06-12T00:00:00.000Z',
           expires_at: '2026-06-12T00:00:30.000Z',
           recipients: ['target-user'],
+          declined_recipients: [],
         },
       ],
     } as never)
@@ -632,6 +641,7 @@ describe('syncStore voice events', () => {
           phase: 'Active',
           started_at: '2026-06-12T00:00:00.000Z',
           recipients: [],
+          declined_recipients: [],
         },
       ],
     })
@@ -658,6 +668,7 @@ describe('syncStore voice events', () => {
           phase: 'active',
           started_at: '2026-06-12T00:00:00.000Z',
           recipients: [],
+          declined_recipients: [],
         },
       ],
     } as never)
@@ -711,6 +722,7 @@ describe('syncStore voice events', () => {
           phase: 'Active',
           started_at: '2026-06-12T00:00:00.000Z',
           recipients: [],
+          declined_recipients: [],
         },
       ],
     } as never)
@@ -734,6 +746,7 @@ describe('syncStore voice events', () => {
         started_at: '2026-06-12T00:00:00.000Z',
         expires_at: '2026-06-12T00:00:01.000Z',
         recipients: ['target-user'],
+        declined_recipients: [],
       })
 
       expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toMatchObject({
@@ -854,6 +867,7 @@ describe('syncStore voice events', () => {
         initiator_id: USER_ID,
         started_at: '2026-06-12T00:00:00.000Z',
         expires_at: '2026-06-12T00:00:01.000Z',
+        declined_recipients: [],
       })
 
       vi.advanceTimersByTime(999)
@@ -896,12 +910,17 @@ describe('syncStore member events', () => {
     syncStore.handleGatewayEvent({
       type: 'ServerMemberUpdate',
       id: { server: 'server-1', user: 'user-1' },
-      data: { nickname: 'Ava', roles: ['role-1'] },
+      data: {
+        joined_at: '2024-01-01T00:00:00Z',
+        nickname: 'Ava',
+        roles: ['role-1'],
+      },
       clear: ['Nickname', 'Roles'],
     } as never)
 
     expect(syncStore.getState().members['server-1:user-1']).toEqual({
       _id: { server: 'server-1', user: 'user-1' },
+      joined_at: '2024-01-01T00:00:00Z',
       roles: ['role-1'],
       nickname: 'Ava',
     })
@@ -936,6 +955,7 @@ describe('syncStore member events', () => {
       type: 'ServerMemberLeave',
       id: 'server-1',
       user: 'user-1',
+      reason: 'Leave',
     })
 
     expect(syncStore.getState().servers['server-1']).toBeUndefined()
@@ -1004,10 +1024,27 @@ describe('syncStore server events', () => {
 
     syncStore.handleGatewayEvent({
       type: 'ServerCreate',
-      server: { _id: 'server-1', name: 'Alpha' },
-      member: { _id: { server: 'server-1', user: 'user-1' } },
+      id: 'server-1',
+      server: {
+        _id: 'server-1',
+        name: 'Alpha',
+        channels: [],
+        owner: 'user-1',
+        default_permissions: 0,
+      },
+      member: {
+        _id: { server: 'server-1', user: 'user-1' },
+        joined_at: '2026-06-12T00:00:00.000Z',
+      },
       channels: [],
-      emojis: [{ _id: 'emoji-1', name: 'wave' }],
+      emojis: [
+        {
+          _id: 'emoji-1',
+          name: 'wave',
+          parent: { type: 'Server', id: 'server-1' },
+          creator_id: 'user-1',
+        },
+      ],
       voice_states: [
         {
           id: 'voice-1',
@@ -1073,6 +1110,7 @@ describe('syncStore server events', () => {
     syncStore.upsertMembers([
       {
         _id: { server: 'server-1', user: 'user-1' },
+        joined_at: '2024-01-01T00:00:00Z',
         roles: ['old-role'],
         nickname: 'Old nickname',
       } as never,
@@ -1101,6 +1139,8 @@ describe('syncStore role events', () => {
         'role-1': {
           _id: 'role-1',
           name: 'Role',
+          permissions: { a: 0, d: 0 },
+          mentionable: false,
           colour: 'red',
           icon: { _id: 'icon-1' },
         },
@@ -1312,10 +1352,11 @@ describe('syncStore server membership events', () => {
     syncStore.reset()
 
     syncStore.handleGatewayEvent({
-      type: 'ServerMemberJoin',
-      id: 'server-1',
-      user: 'user-2',
-    } as const satisfies GatewayServerEvent)
+      type: 'ServerMemberUpdate',
+      id: { server: 'server-1', user: 'user-2' },
+      data: {},
+      clear: [],
+    })
 
     const event = {
       type: 'ServerMemberJoin',
@@ -1342,12 +1383,20 @@ describe('syncStore server membership events', () => {
     const event = {
       type: 'ServerCreate',
       id: 'server-1',
-      server: { _id: 'server-1', owner: 'owner-1', name: 'Test', channels: [] },
+      server: {
+        _id: 'server-1',
+        owner: 'owner-1',
+        name: 'Test',
+        channels: [],
+        default_permissions: 0,
+      },
       channels: [],
       member: {
         _id: { server: 'server-1', user: 'user-1' },
         joined_at: '2026-06-16T12:00:00.000Z',
       },
+      emojis: [],
+      voice_states: [],
     } as const satisfies GatewayServerEvent
     syncStore.handleGatewayEvent(event)
 

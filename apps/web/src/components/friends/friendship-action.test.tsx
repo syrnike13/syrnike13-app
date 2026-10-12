@@ -2,17 +2,18 @@
 
 import type { User } from '@syrnike13/api-types'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { FriendshipAction } from '#/components/friends/friendship-action'
 
 const mocks = vi.hoisted(() => ({
-  acceptIncomingFriendRequest: vi.fn(async () => ({})),
-  cancelOutgoingFriendRequest: vi.fn(async () => ({})),
-  declineIncomingFriendRequest: vi.fn(async () => ({})),
-  removeFriend: vi.fn(async () => ({})),
-  sendFriendRequestToUser: vi.fn(async () => ({})),
-  unblockBlockedUser: vi.fn(async () => ({})),
+  acceptIncomingFriendRequest: vi.fn(),
+  cancelOutgoingFriendRequest: vi.fn(),
+  declineIncomingFriendRequest: vi.fn(),
+  removeFriend: vi.fn(),
+  sendFriendRequestToUser: vi.fn(),
+  unblockBlockedUser: vi.fn(),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({
@@ -37,6 +38,9 @@ function user(relationship: User['relationship'], id = 'target-user') {
 describe('FriendshipAction', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    for (const action of Object.values(mocks)) {
+      action.mockReturnValue(Effect.succeed({}))
+    }
   })
 
   afterEach(() => {

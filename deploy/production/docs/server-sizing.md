@@ -25,7 +25,6 @@ The stack runs several services on one host:
 - MongoDB
 - KeyDB/Redis
 - RabbitMQ
-- MinIO
 - Caddy
 - API
 - events
@@ -49,14 +48,14 @@ Open:
 - `7881/tcp`
 - `50000-50100/udp`
 
-Keep MongoDB, KeyDB/Redis, RabbitMQ, and MinIO private to Docker unless there is a specific operational reason to expose them.
+Keep MongoDB, KeyDB/Redis, and RabbitMQ private to Docker unless there is a specific operational reason to expose them.
 
 ## Storage
 
-Start with 80-120 GB if users will upload files. Back up at least:
+Uploaded files live in an external S3-compatible bucket (`[files.s3]` in
+`Syrnike.toml`), so local disk holds the database and logs. Back up at least:
 
 - `data/db`
-- `data/minio`
 - `data/rabbit`
 - `secrets.env`
 - `Syrnike.toml`

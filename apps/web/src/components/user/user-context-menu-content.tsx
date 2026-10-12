@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { Effect } from 'effect'
 import {
   BanIcon,
   CheckIcon,
@@ -36,9 +37,9 @@ import { Label } from '#/components/ui/label'
 import { FriendshipContextMenuItems } from '#/components/friends/friendship-action'
 import { useAuth } from '#/features/auth/auth-context'
 import {
-  banServerMember,
-  editServerMember,
-  kickServerMember,
+  banServerMemberEffect,
+  editServerMemberEffect,
+  kickServerMemberEffect,
 } from '#/features/api/servers-api'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { canMessageUser } from '#/features/authorization/authorization'
@@ -52,7 +53,7 @@ import {
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { UserContextMenuVoiceControls } from '#/components/user/user-context-menu-voice-controls'
-import { writeClipboardText } from '#/lib/clipboard'
+import { writeClipboardTextEffect } from '#/lib/clipboard'
 import {
   isServerVoiceChannel,
   serverChannelServerId,
@@ -168,22 +169,31 @@ function UserRolesContextMenuSub({
 
     pendingRoleEditKeys.add(pendingKey)
     setSavingRoleId(roleId)
-    try {
-      const updated = await editServerMember(
+    await Effect.runPromise(
+      editServerMemberEffect(
         token,
         server._id,
         targetMember._id.user,
         { roles: nextRoles },
-      )
-      syncStore.upsertMembers([updated])
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось обновить роли',
-      )
-    } finally {
-      pendingRoleEditKeys.delete(pendingKey)
-      setSavingRoleId(null)
-    }
+      ).pipe(
+        Effect.tap((updated) =>
+          Effect.sync(() => syncStore.upsertMembers([updated])),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось обновить роли',
+            )
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            pendingRoleEditKeys.delete(pendingKey)
+            setSavingRoleId(null)
+          }),
+        ),
+      ),
+    )
   }
 
   if (visibleRoles.length === 0) return null
@@ -344,12 +354,14 @@ export function UserContextMenuContent({
   async function openDm() {
     if (!token || !canDirectMessage) return
     try {
-      await openDirectMessageChannel(token, user._id, (channelId) =>
-        navigate({
-          to: `${prefix}/c/$channelId`,
-          params: { channelId },
-          search: { m: undefined },
-        }),
+      await Effect.runPromise(
+        openDirectMessageChannel(token, user._id, (channelId) =>
+          navigate({
+            to: `${prefix}/c/$channelId`,
+            params: { channelId },
+            search: { m: undefined },
+          }),
+        ),
       )
     } catch {
       // dm-actions already shows the concrete error toast.
@@ -359,12 +371,14 @@ export function UserContextMenuContent({
   async function startDirectCall() {
     if (!token || !canDirectMessage) return
     try {
-      const channel = await openDirectMessageChannel(token, user._id, (channelId) =>
-        navigate({
-          to: `${prefix}/c/$channelId`,
-          params: { channelId },
-          search: { m: undefined },
-        }),
+      const channel = await Effect.runPromise(
+        openDirectMessageChannel(token, user._id, (channelId) =>
+          navigate({
+            to: `${prefix}/c/$channelId`,
+            params: { channelId },
+            search: { m: undefined },
+          }),
+        ),
       )
       await voice.join(channel._id)
     } catch {
@@ -385,18 +399,25 @@ export function UserContextMenuContent({
     const body = kickReason.trim() ? { reason: kickReason.trim() } : {}
 
     setKicking(true)
-    try {
-      await kickServerMember(token, serverId, user._id, body)
-      syncStore.removeServerMember(serverId, user._id)
-      handleKickDialogOpenChange(false)
-      toast.success('Участник исключён')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось исключить',
-      )
-    } finally {
-      setKicking(false)
-    }
+    await Effect.runPromise(
+      kickServerMemberEffect(token, serverId, user._id, body).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            syncStore.removeServerMember(serverId, user._id)
+            handleKickDialogOpenChange(false)
+            toast.success('Участник исключён')
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось исключить',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setKicking(false))),
+      ),
+    )
   }
 
   function handleBanDialogOpenChange(open: boolean) {
@@ -419,25 +440,32 @@ export function UserContextMenuContent({
     }
 
     setBanning(true)
-    try {
-      await banServerMember(token, serverId, user._id, body)
-      syncStore.removeServerMember(serverId, user._id)
-      handleBanDialogOpenChange(false)
-      toast.success('Пользователь забанен')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось забанить',
-      )
-    } finally {
-      setBanning(false)
-    }
+    await Effect.runPromise(
+      banServerMemberEffect(token, serverId, user._id, body).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            syncStore.removeServerMember(serverId, user._id)
+            handleBanDialogOpenChange(false)
+            toast.success('Пользователь забанен')
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось забанить',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setBanning(false))),
+      ),
+    )
   }
 
   async function handleBlock() {
     if (!token || isSelf) return
     if (!window.confirm(`Заблокировать @${user.username}?`)) return
     try {
-      await blockUserRelationship(token, user._id)
+      await Effect.runPromise(blockUserRelationship(token, user._id))
     } catch {
       // friend-actions already shows the concrete error toast.
     }
@@ -445,7 +473,7 @@ export function UserContextMenuContent({
 
   async function copyUserId() {
     try {
-      await writeClipboardText(user._id)
+      await Effect.runPromise(writeClipboardTextEffect(user._id))
       toast.success('ID скопирован')
     } catch {
       toast.error('Не удалось скопировать')

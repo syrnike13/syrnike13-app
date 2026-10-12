@@ -1,3 +1,9 @@
+import {
+  GatewayServerEventSchema,
+  type GatewayServerEvent,
+} from '@syrnike13/api-types/gateway-schema'
+import { Effect, Fiber, Layer, ManagedRuntime, Option, Schedule, Schema } from 'effect'
+
 export type GatewayState =
   | 'idle'
   | 'connecting'
@@ -5,11 +11,10 @@ export type GatewayState =
   | 'disconnected'
   | 'reconnecting'
 
-type GatewayEvent = {
-  type?: string
-  // Raw server payload; consumers narrow per event type.
-  [key: string]: any
-}
+type GatewayEvent = Readonly<Record<string, unknown>>
+
+const GatewayEventSchema = Schema.Record(Schema.String, Schema.Unknown)
+const GatewayJsonEventSchema = Schema.fromJsonString(GatewayEventSchema)
 
 type ReliableQueueItem = {
   event: Record<string, unknown>
@@ -18,6 +23,7 @@ type ReliableQueueItem = {
 
 type StateListener = (state: GatewayState) => void
 type EventListener = (event: GatewayEvent) => void
+type ServerEventListener = (event: GatewayServerEvent) => void
 
 const READY_FIELDS = [
   'users',
@@ -49,18 +55,20 @@ function gatewayErrorIsFatal(event: GatewayEvent) {
  * WebSocket-клиент syrnike13 (протокол v1, JSON) с auto-reconnect и heartbeat.
  */
 export class EventsGateway {
+  readonly #runtime = ManagedRuntime.make(Layer.empty)
   #ws: WebSocket | undefined
   #state: GatewayState = 'idle'
   #stateListeners = new Set<StateListener>()
   #eventListeners = new Set<EventListener>()
+  #serverEventListeners = new Set<ServerEventListener>()
   #wsUrl: string | undefined
   #token: string | undefined
   #autoReconnectEnabled = false
   #manualClose = false
   #reconnectAttempt = 0
-  #reconnectTimer: ReturnType<typeof setTimeout> | undefined
-  #heartbeatTimer: ReturnType<typeof setInterval> | undefined
-  #heartbeatTimeoutTimer: ReturnType<typeof setTimeout> | undefined
+  #reconnectFiber: Fiber.Fiber<void, never> | undefined
+  #heartbeatFiber: Fiber.Fiber<void, never> | undefined
+  #heartbeatTimeoutFiber: Fiber.Fiber<void, never> | undefined
   #lastMessageAt = 0
   #onVisibilityChange: (() => void) | undefined
   #onNetworkOnline: (() => void) | undefined
@@ -79,6 +87,11 @@ export class EventsGateway {
   subscribeEvents(listener: EventListener) {
     this.#eventListeners.add(listener)
     return () => this.#eventListeners.delete(listener)
+  }
+
+  subscribeServerEvents(listener: ServerEventListener) {
+    this.#serverEventListeners.add(listener)
+    return () => this.#serverEventListeners.delete(listener)
   }
 
   enableAutoReconnect(wsUrl: string, token: string) {
@@ -168,8 +181,11 @@ export class EventsGateway {
       if (typeof message.data !== 'string') return
       this.#touchActivity()
 
-      try {
-        const event = JSON.parse(message.data) as GatewayEvent
+      const decoded = Schema.decodeUnknownOption(GatewayJsonEventSchema)(
+        message.data,
+      )
+      if (Option.isSome(decoded)) {
+        const event = decoded.value
 
         if (event.type === 'Ping') {
           this.send({ type: 'Pong', data: event.data })
@@ -181,6 +197,14 @@ export class EventsGateway {
         }
 
         this.#eventListeners.forEach((listener) => listener(event))
+        const serverEvent = Schema.decodeUnknownOption(GatewayServerEventSchema)(
+          event,
+        )
+        if (Option.isSome(serverEvent)) {
+          this.#serverEventListeners.forEach((listener) =>
+            listener(serverEvent.value),
+          )
+        }
 
         if (gatewayErrorIsFatal(event)) {
           if (this.#ws && this.#ws.readyState === WebSocket.OPEN) {
@@ -197,8 +221,6 @@ export class EventsGateway {
           this.#setState('connected')
           this.#flushReliableQueue()
         }
-      } catch {
-        // ignore malformed frames
       }
     }
 
@@ -227,7 +249,7 @@ export class EventsGateway {
 
   #scheduleReconnect() {
     if (!this.#autoReconnectEnabled || !this.#wsUrl || !this.#token) return
-    if (this.#reconnectTimer !== undefined) return
+    if (this.#reconnectFiber !== undefined) return
 
     this.#setState('reconnecting')
 
@@ -237,11 +259,25 @@ export class EventsGateway {
     )
     this.#reconnectAttempt += 1
 
-    this.#reconnectTimer = setTimeout(() => {
-      this.#reconnectTimer = undefined
-      if (!this.#autoReconnectEnabled) return
-      this.#openSocket(true)
-    }, delay)
+    let fiber: Fiber.Fiber<void, never>
+    fiber = this.#runtime.runFork(
+      Effect.sleep(delay).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            if (!this.#autoReconnectEnabled) return
+            this.#openSocket(true)
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (this.#reconnectFiber === fiber) {
+              this.#reconnectFiber = undefined
+            }
+          }),
+        ),
+      ),
+    )
+    this.#reconnectFiber = fiber
   }
 
   #forceReconnect() {
@@ -266,10 +302,9 @@ export class EventsGateway {
   }
 
   #clearReconnectTimer() {
-    if (this.#reconnectTimer !== undefined) {
-      clearTimeout(this.#reconnectTimer)
-      this.#reconnectTimer = undefined
-    }
+    const fiber = this.#reconnectFiber
+    this.#reconnectFiber = undefined
+    if (fiber) this.#runtime.runFork(Fiber.interrupt(fiber))
   }
 
   #touchActivity() {
@@ -279,39 +314,59 @@ export class EventsGateway {
 
   #startHeartbeat() {
     this.#stopHeartbeat()
-    this.#heartbeatTimer = setInterval(() => {
+    const heartbeat = Effect.sync(() => {
       if (!this.#ws || this.#ws.readyState !== WebSocket.OPEN) return
       this.send({ type: 'Ping', data: Date.now() })
       this.#resetHeartbeatTimeout()
-    }, HEARTBEAT_INTERVAL_MS)
+    }).pipe(
+      Effect.repeat(Schedule.spaced(HEARTBEAT_INTERVAL_MS)),
+      Effect.delay(HEARTBEAT_INTERVAL_MS),
+      Effect.asVoid,
+    )
+    this.#heartbeatFiber = this.#runtime.runFork(heartbeat)
     this.#resetHeartbeatTimeout()
   }
 
   #resetHeartbeatTimeout() {
-    if (this.#heartbeatTimeoutTimer !== undefined) {
-      clearTimeout(this.#heartbeatTimeoutTimer)
-    }
-    this.#heartbeatTimeoutTimer = setTimeout(() => {
-      const elapsed = Date.now() - this.#lastMessageAt
-      if (elapsed < HEARTBEAT_TIMEOUT_MS) {
-        this.#resetHeartbeatTimeout()
-        return
-      }
-      if (this.#ws && this.#ws.readyState === WebSocket.OPEN) {
-        this.#ws.close()
-      }
-    }, HEARTBEAT_TIMEOUT_MS)
+    const previous = this.#heartbeatTimeoutFiber
+    this.#heartbeatTimeoutFiber = undefined
+    if (previous) this.#runtime.runFork(Fiber.interrupt(previous))
+
+    let fiber: Fiber.Fiber<void, never>
+    fiber = this.#runtime.runFork(
+      Effect.sleep(HEARTBEAT_TIMEOUT_MS).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            const elapsed = Date.now() - this.#lastMessageAt
+            if (elapsed < HEARTBEAT_TIMEOUT_MS) {
+              this.#resetHeartbeatTimeout()
+              return
+            }
+            if (this.#ws && this.#ws.readyState === WebSocket.OPEN) {
+              this.#ws.close()
+            }
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (this.#heartbeatTimeoutFiber === fiber) {
+              this.#heartbeatTimeoutFiber = undefined
+            }
+          }),
+        ),
+      ),
+    )
+    this.#heartbeatTimeoutFiber = fiber
   }
 
   #stopHeartbeat() {
-    if (this.#heartbeatTimer !== undefined) {
-      clearInterval(this.#heartbeatTimer)
-      this.#heartbeatTimer = undefined
-    }
-    if (this.#heartbeatTimeoutTimer !== undefined) {
-      clearTimeout(this.#heartbeatTimeoutTimer)
-      this.#heartbeatTimeoutTimer = undefined
-    }
+    const heartbeat = this.#heartbeatFiber
+    this.#heartbeatFiber = undefined
+    if (heartbeat) this.#runtime.runFork(Fiber.interrupt(heartbeat))
+
+    const timeout = this.#heartbeatTimeoutFiber
+    this.#heartbeatTimeoutFiber = undefined
+    if (timeout) this.#runtime.runFork(Fiber.interrupt(timeout))
   }
 
   #sendOpen(event: Record<string, unknown>) {

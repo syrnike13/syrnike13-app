@@ -1,3 +1,5 @@
+import { Effect, Fiber, Layer, ManagedRuntime, Option, Schema } from 'effect'
+
 import type {
   VoiceGatewayTransport,
   VoiceGatewayTransportState,
@@ -6,13 +8,20 @@ import type {
 const HEARTBEAT_MS = 30_000
 const HEARTBEAT_TIMEOUT_MS = 10_000
 const RECONNECT_DELAYS_MS = [250, 1_000, 5_000]
+const UnknownGatewayRecordSchema = Schema.Record(
+  Schema.String,
+  Schema.Unknown,
+)
+const UnknownGatewayJsonRecordSchema = Schema.fromJsonString(
+  UnknownGatewayRecordSchema,
+)
 
 type SocketLike = {
   readonly readyState: number
-  onopen: (() => void) | null
-  onmessage: ((event: { data: unknown }) => void) | null
-  onerror: (() => void) | null
-  onclose: (() => void) | null
+  onopen: ((event: Event) => unknown) | null
+  onmessage: ((event: MessageEvent<unknown>) => unknown) | null
+  onerror: ((event: Event) => unknown) | null
+  onclose: ((event: CloseEvent) => unknown) | null
   send(data: string): void
   close(): void
 }
@@ -31,6 +40,7 @@ export type DesktopVoiceGatewayTransportOptions = Readonly<{
 
 /** Dedicated authenticated control socket owned by Electron main. */
 export class DesktopVoiceGatewayTransport implements VoiceGatewayTransport {
+  private readonly runtime = ManagedRuntime.make(Layer.empty)
   private readonly eventListeners = new Set<
     (event: Record<string, unknown>) => void
   >()
@@ -49,15 +59,15 @@ export class DesktopVoiceGatewayTransport implements VoiceGatewayTransport {
   private token: string | null = null
   private state: VoiceGatewayTransportState = 'unavailable'
   private reconnectAttempt = 0
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  private heartbeatTimer: ReturnType<typeof setTimeout> | null = null
-  private heartbeatTimeoutTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnectTimer: Fiber.Fiber<void, never> | null = null
+  private heartbeatTimer: Fiber.Fiber<void, never> | null = null
+  private heartbeatTimeoutTimer: Fiber.Fiber<void, never> | null = null
   private stopped = true
 
   constructor(options: DesktopVoiceGatewayTransportOptions = {}) {
     this.createSocket =
       options.createSocket ??
-      ((url) => new WebSocket(url) as unknown as SocketLike)
+      ((url) => new WebSocket(url))
     this.setTimer = options.setTimer ?? setTimeout
     this.clearTimer = options.clearTimer ?? clearTimeout
     this.diagnostics = options.diagnostics ?? (() => undefined)
@@ -139,14 +149,11 @@ export class DesktopVoiceGatewayTransport implements VoiceGatewayTransport {
 
   private handleMessage(socket: SocketLike, raw: unknown) {
     if (this.socket !== socket || typeof raw !== 'string') return
-    let event: Record<string, unknown>
-    try {
-      const parsed = JSON.parse(raw) as unknown
-      if (!isRecord(parsed)) return
-      event = parsed
-    } catch {
-      return
-    }
+    const decoded = Schema.decodeUnknownOption(UnknownGatewayJsonRecordSchema)(
+      raw,
+    )
+    if (Option.isNone(decoded)) return
+    const event = decoded.value
     this.acknowledgeHeartbeat()
     if (event.type === 'Ping') {
       socket.send(JSON.stringify({ type: 'Pong', data: event.data }))
@@ -202,10 +209,10 @@ export class DesktopVoiceGatewayTransport implements VoiceGatewayTransport {
 
   private scheduleHeartbeat(socket: SocketLike) {
     if (this.heartbeatTimer) {
-      this.clearTimer(this.heartbeatTimer)
+      this.runtime.runFork(Fiber.interrupt(this.heartbeatTimer))
       this.heartbeatTimer = null
     }
-    this.heartbeatTimer = this.setTimer(() => {
+    this.heartbeatTimer = this.schedule(() => {
       this.heartbeatTimer = null
       if (this.socket !== socket || socket.readyState !== 1) return
       this.sendHeartbeat(socket)
@@ -216,7 +223,7 @@ export class DesktopVoiceGatewayTransport implements VoiceGatewayTransport {
   private sendHeartbeat(socket: SocketLike) {
     socket.send(JSON.stringify({ type: 'Ping', data: Date.now() }))
     this.acknowledgeHeartbeat()
-    this.heartbeatTimeoutTimer = this.setTimer(() => {
+    this.heartbeatTimeoutTimer = this.schedule(() => {
       this.heartbeatTimeoutTimer = null
       this.handleSocketLoss(socket, 'control_heartbeat_timeout')
     }, HEARTBEAT_TIMEOUT_MS)
@@ -224,7 +231,7 @@ export class DesktopVoiceGatewayTransport implements VoiceGatewayTransport {
 
   private acknowledgeHeartbeat() {
     if (!this.heartbeatTimeoutTimer) return
-    this.clearTimer(this.heartbeatTimeoutTimer)
+    this.runtime.runFork(Fiber.interrupt(this.heartbeatTimeoutTimer))
     this.heartbeatTimeoutTimer = null
   }
 
@@ -253,7 +260,7 @@ export class DesktopVoiceGatewayTransport implements VoiceGatewayTransport {
       delayMs: delay,
       reconnectAttempt: this.reconnectAttempt,
     })
-    this.reconnectTimer = this.setTimer(() => {
+    this.reconnectTimer = this.schedule(() => {
       this.reconnectTimer = null
       this.openSocket()
     }, delay)
@@ -261,13 +268,13 @@ export class DesktopVoiceGatewayTransport implements VoiceGatewayTransport {
 
   private clearReconnect() {
     if (!this.reconnectTimer) return
-    this.clearTimer(this.reconnectTimer)
+    this.runtime.runFork(Fiber.interrupt(this.reconnectTimer))
     this.reconnectTimer = null
   }
 
   private stopHeartbeat() {
     if (this.heartbeatTimer) {
-      this.clearTimer(this.heartbeatTimer)
+      this.runtime.runFork(Fiber.interrupt(this.heartbeatTimer))
       this.heartbeatTimer = null
     }
     this.acknowledgeHeartbeat()
@@ -299,10 +306,24 @@ export class DesktopVoiceGatewayTransport implements VoiceGatewayTransport {
       // Diagnostics must not affect the authenticated control transport.
     }
   }
+
+  private schedule(callback: () => void, delayMs: number) {
+    return this.runtime.runFork(
+      Effect.callback<void>((resume) => {
+        const timer = this.setTimer(() => {
+          callback()
+          resume(Effect.void)
+        }, delayMs)
+        return Effect.sync(() => this.clearTimer(timer))
+      }),
+    )
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+  return Option.isSome(
+    Schema.decodeUnknownOption(UnknownGatewayRecordSchema)(value),
+  )
 }
 
 function diagnosticEventFields(event: Record<string, unknown>) {

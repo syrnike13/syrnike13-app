@@ -1,6 +1,7 @@
 import { useAuth } from '#/features/auth/auth-context'
 import {
   getChannelVoiceParticipants,
+  sameVoiceParticipantList,
   useChannelVoiceParticipantsWithLocalOverride,
 } from '#/features/sync/voice-selectors'
 import { memberRoleEntries } from '#/features/sync/selectors'
@@ -28,8 +29,9 @@ export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
     serverId ? s.servers[serverId] : undefined,
   )
   const members = useSyncStore((s) => s.members)
-  const storeParticipants = useSyncStore((s) =>
-    getChannelVoiceParticipants(s, channelId, auth.user?._id),
+  const storeParticipants = useSyncStore(
+    (s) => getChannelVoiceParticipants(s, channelId, auth.user?._id),
+    sameVoiceParticipantList,
   )
   const inThisChannel = isVoiceSessionInChannel(voice, channelId)
   const connecting =

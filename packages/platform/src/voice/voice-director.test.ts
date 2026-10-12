@@ -38,6 +38,7 @@ class FakeAuthority implements VoiceAuthorityAdapter {
         url: 'wss://voice.invalid',
         token: `token-${input.operationId}`,
         participantIdentity: `identity-${input.connectionEpoch}`,
+        cameraProfiles: ['hd720p30', 'hd1080p30'],
       },
     } satisfies VoiceLease
   }
@@ -129,12 +130,13 @@ class FakeEngine implements RtcEngineAdapter {
     this.failedChannels.set(channelId, new Error(message))
   }
 
-  failTyped(channelId: string, retryable: boolean, code = 'engine_failed') {
+  failTyped(channelId: string, retryable: boolean, code = 'engine_failed', diagnosticCorrelationId?: string) {
     const failure = {
       code,
       message: `failed ${channelId}`,
       retryable,
       stage: 'rtc_connect',
+      diagnosticCorrelationId,
     }
     this.failedChannels.set(
       channelId,
@@ -240,6 +242,27 @@ async function connect(
 }
 
 describe('VoiceDirector', () => {
+  it('keeps Room and media when the UI reasserts its current channel intent', async () => {
+    const harness = createHarness()
+    await connect(harness, 'A')
+    harness.director.dispatch({ type: 'setCamera', enabled: true })
+    harness.director.dispatch({ type: 'setScreen', enabled: true, sourceId: 'screen-a' })
+    const before = harness.director.snapshot()
+
+    harness.director.dispatch({ type: 'join', channelId: 'A' })
+    await harness.director.waitForIdle()
+
+    expect(harness.engine.connected).toHaveLength(1)
+    expect(harness.engine.disconnected).toHaveLength(0)
+    expect(harness.authority.reservations).toHaveLength(1)
+    expect(harness.director.snapshot().operationId).toBe(before.operationId)
+    expect(harness.engine.desired.at(-1)).toMatchObject({
+      cameraEnabled: true,
+      screenEnabled: true,
+      screenSourceId: 'screen-a',
+    })
+  })
+
   it('does not report connected until exact RTC presence commits membership', async () => {
     const harness = createHarness()
     harness.director.dispatch({ type: 'join', channelId: 'A' })
@@ -266,6 +289,29 @@ describe('VoiceDirector', () => {
     })
   })
 
+  it('commits membership while the media engine is unavailable', async () => {
+    const harness = createHarness()
+    harness.engine.emit({
+      type: 'availabilityChanged',
+      available: false,
+      retryable: false,
+      failure: {
+        code: 'native_media_unavailable',
+        message: 'Native media is unavailable while the v2 engine is rebuilt.',
+        retryable: false,
+        stage: 'native_runtime',
+      },
+    })
+
+    await connect(harness, 'A')
+
+    expect(harness.director.snapshot()).toMatchObject({
+      connection: 'connected',
+      intentChannelId: 'A',
+      membershipChannelId: 'A',
+    })
+  })
+
   it('performs break-before-make and leaves failed destination disconnected', async () => {
     const harness = createHarness()
     await connect(harness, 'A')
@@ -284,6 +330,73 @@ describe('VoiceDirector', () => {
       'A',
       'B',
     ])
+  })
+
+  it('applies the channel microphone bitrate without reconnecting', async () => {
+    const harness = createHarness()
+    await connect(harness, 'A')
+    expect(harness.engine.desired.at(-1)?.microphoneBitrate).toBe(64_000)
+    harness.director.dispatch({ type: 'setMicrophoneBitrate', bitrate: 96_000 })
+    expect(harness.engine.desired.at(-1)?.microphoneBitrate).toBe(96_000)
+    expect(harness.engine.connected).toHaveLength(1)
+    expect(harness.engine.disconnected).toHaveLength(0)
+  })
+
+  it('updates camera profile without reconnecting and preserves it across camera toggles', async () => {
+    const harness = createHarness()
+    await connect(harness, 'A')
+    expect(harness.engine.desired.at(-1)?.cameraProfile).toBe('hd720p30')
+    harness.director.dispatch({
+      type: 'setCamera',
+      enabled: true,
+      deviceId: 'camera-a',
+    })
+    const updates = harness.engine.desired.length
+    harness.director.dispatch({
+      type: 'setCamera',
+      enabled: true,
+      deviceId: 'camera-a',
+      profile: 'hd1080p30',
+    })
+    expect(harness.engine.desired).toHaveLength(updates + 1)
+    expect(harness.engine.desired.at(-1)).toMatchObject({
+      cameraEnabled: true,
+      cameraDeviceId: 'camera-a',
+      cameraProfile: 'hd1080p30',
+    })
+    harness.director.dispatch({ type: 'setCamera', enabled: false })
+    expect(harness.engine.desired.at(-1)?.cameraProfile).toBe('hd1080p30')
+    harness.director.dispatch({ type: 'setCamera', enabled: true })
+    expect(harness.engine.desired.at(-1)?.cameraProfile).toBe('hd1080p30')
+    expect(harness.engine.connected).toHaveLength(1)
+    expect(harness.engine.disconnected).toHaveLength(0)
+  })
+
+  it('changes screen profile while preserving source, audio mode and voice membership', async () => {
+    const harness = createHarness()
+    await connect(harness, 'A')
+    harness.director.dispatch({
+      type: 'setScreen', enabled: true, sourceId: 'screen-a',
+      audioEnabled: true, audioMode: 'process',
+      width: 1280, height: 720, fps: 30, bitrate: 2_000_000,
+      audioBitrate: 128_000,
+    })
+    const updates = harness.engine.desired.length
+    harness.director.dispatch({
+      type: 'setScreenProfile', width: 1920, height: 1080,
+      fps: 60, bitrate: 8_000_000, audioBitrate: 128_000,
+    })
+    expect(harness.engine.desired).toHaveLength(updates + 1)
+    expect(harness.engine.desired.at(-1)).toMatchObject({
+      screenEnabled: true, screenSourceId: 'screen-a',
+      screenAudioEnabled: true, screenAudioMode: 'process',
+      screenWidth: 1920, screenHeight: 1080,
+      screenFps: 60, screenBitrate: 8_000_000,
+      screenAudioBitrate: 128_000,
+    })
+    expect(harness.director.snapshot().membershipChannelId).toBe('A')
+    expect(harness.engine.connected).toHaveLength(1)
+    expect(harness.engine.disconnected).toHaveLength(0)
   })
 
   it('ends camera and screen intent on explicit leave before the next join', async () => {
@@ -422,6 +535,7 @@ describe('VoiceDirector', () => {
         url: 'wss://voice.invalid',
         token: 'admin-token-b',
         participantIdentity: 'admin-identity-b',
+        cameraProfiles: ['hd720p30', 'hd1080p30'],
       },
     }
 
@@ -466,6 +580,7 @@ describe('VoiceDirector', () => {
         url: 'wss://voice.invalid',
         token: 'stale-token',
         participantIdentity: 'stale-identity',
+        cameraProfiles: ['hd720p30', 'hd1080p30'],
       },
     }
 
@@ -499,6 +614,7 @@ describe('VoiceDirector', () => {
         url: 'wss://voice.invalid',
         token: 'admin-token-b',
         participantIdentity: 'admin-identity-b',
+        cameraProfiles: ['hd720p30', 'hd1080p30'],
       },
     }
 
@@ -571,6 +687,17 @@ describe('VoiceDirector', () => {
       userMuted: false,
       effectiveMuted: false,
     })
+  })
+
+  it('does not reconcile media for newer authority snapshots with unchanged flags', () => {
+    const harness = createHarness()
+    const initialUpdates = harness.engine.desired.length
+
+    harness.authority.emitSnapshot(null, { muted: true })
+    expect(harness.engine.desired).toHaveLength(initialUpdates + 1)
+
+    harness.authority.emitSnapshot(null, { muted: true })
+    expect(harness.engine.desired).toHaveLength(initialUpdates + 1)
   })
 
   it('updates authoritative user flags without reconnecting RTC', async () => {
@@ -663,6 +790,13 @@ describe('VoiceDirector', () => {
   it('waits for engine availability without spending recovery attempts', async () => {
     const harness = createHarness({ recoveryDelaysMs: [0, 0, 0] })
     const original = await connect(harness, 'A')
+    for (const kind of ['microphone', 'output', 'camera', 'screen', 'screen_audio'] satisfies VoiceMediaKind[]) {
+      harness.engine.emit({
+        type: 'mediaState', operationId: original.operationId,
+        connectionEpoch: original.connectionEpoch, kind, media: { state: 'running' },
+      })
+    }
+    expect(harness.director.snapshot().microphone.state).toBe('running')
     harness.engine.emit({
       type: 'availabilityChanged',
       available: false,
@@ -678,6 +812,11 @@ describe('VoiceDirector', () => {
         retryable: true,
         stage: 'native_runtime',
       },
+    })
+
+    expect(harness.director.snapshot()).toMatchObject({
+      microphone: { state: 'off' }, output: { state: 'off' }, camera: { state: 'off' },
+      screen: { state: 'off' }, screenAudio: { state: 'off' },
     })
 
     await waitUntil(() => harness.engine.disconnected.includes('recovery'))
@@ -773,7 +912,8 @@ describe('VoiceDirector', () => {
   it('stops recovery after the first non-retryable connect rejection', async () => {
     const harness = createHarness({ recoveryDelaysMs: [0, 0, 0] })
     const original = await connect(harness, 'A')
-    harness.engine.failTyped('A', false, 'runtime_degraded')
+    const diagnosticCorrelationId = 'incident-79360566-3412-4a77-8f4b-36f392b48d6d'
+    harness.engine.failTyped('A', false, 'runtime_degraded', diagnosticCorrelationId)
     harness.engine.emit({
       type: 'terminalFailure',
       operationId: original.operationId,
@@ -791,7 +931,7 @@ describe('VoiceDirector', () => {
     expect(harness.authority.reservations).toHaveLength(2)
     expect(harness.director.snapshot()).toMatchObject({
       connection: 'failed',
-      failure: { code: 'runtime_degraded', retryable: false },
+      failure: { code: 'runtime_degraded', retryable: false, diagnosticCorrelationId },
     })
   })
 
@@ -833,6 +973,24 @@ describe('VoiceDirector', () => {
 
     harness.authority.commit(harness.engine.connected.at(-1)!)
     await harness.director.waitForIdle()
+  })
+
+  it('ends the share when the shared window is closed', async () => {
+    const harness = createHarness()
+    const lease = await connect(harness, 'A')
+    harness.director.dispatch({ type: 'setScreen', enabled: true, sourceId: 'screen-a', audioEnabled: true })
+
+    harness.engine.emit({
+      type: 'mediaState',
+      kind: 'screen',
+      operationId: lease.operationId,
+      connectionEpoch: lease.connectionEpoch,
+      media: { state: 'failed', error: { code: 'source_closed', message: 'captured window closed', retryable: true } },
+    })
+
+    expect(harness.engine.desired.at(-1)).toMatchObject({ screenEnabled: false, screenAudioEnabled: false })
+    expect(harness.engine.desired.at(-1)?.screenSourceId).toBeUndefined()
+    expect(harness.engine.connected).toHaveLength(1)
   })
 
   it('does not reconnect Room when one media track fails', async () => {

@@ -1,20 +1,24 @@
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Effect } from 'effect'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { sendChannelMessage } from '#/features/api/messages-api'
 
 const mocks = vi.hoisted(() => ({
-  apiRequest: vi.fn(),
+  apiRequestEffect: vi.fn(),
 }))
 
 vi.mock('#/lib/api/client', () => ({
-  apiRequest: (...args: Parameters<typeof mocks.apiRequest>) =>
-    mocks.apiRequest(...args),
+  apiRequestEffect: (...args: Parameters<typeof mocks.apiRequestEffect>) =>
+    mocks.apiRequestEffect(...args),
 }))
 
 describe('messages api', () => {
   beforeEach(() => {
-    mocks.apiRequest.mockReset()
-    mocks.apiRequest.mockResolvedValue({ _id: 'message-1' })
+    mocks.apiRequestEffect.mockReset()
+    mocks.apiRequestEffect.mockReturnValue(
+      Effect.succeed({ _id: 'message-1' }),
+    )
   })
 
   it('passes the composer nonce in the message body', async () => {
@@ -23,8 +27,9 @@ describe('messages api', () => {
       content: ' Message ',
     })
 
-    expect(mocks.apiRequest).toHaveBeenCalledWith(
+    expect(mocks.apiRequestEffect).toHaveBeenCalledWith(
       '/channels/channel-1/messages',
+      ApiSchema.MessageSendMessageSend200,
       {
         method: 'POST',
         token: 'session-token',

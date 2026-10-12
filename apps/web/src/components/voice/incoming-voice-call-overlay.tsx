@@ -1,4 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
+import { Effect } from 'effect'
 
 import { HeadphonesIcon, PhoneOffIcon } from '#/components/icons'
 import { Button } from '#/components/ui/button'
@@ -10,7 +11,7 @@ import {
   isIncomingVoiceCall,
   isVoiceCallRingingDismissed,
 } from '#/features/sync/voice-call-utils'
-import { declineDirectMessageCall } from '#/features/api/channels-api'
+import { declineDirectMessageCallEffect } from '#/features/api/channels-api'
 import { closeVoiceCallNotification } from '#/features/notifications/voice-call-notifications'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
@@ -76,17 +77,22 @@ export function IncomingVoiceCallOverlay({
   function declineIncomingCall() {
     if (channel.channel_type === 'DirectMessage') {
       if (!token || !currentUserId) return
-      void declineDirectMessageCall(token, call.channelId)
-        .then(() => {
-          syncStore.markVoiceCallDeclined(call.channelId, currentUserId)
-          void closeVoiceCallNotification(call.channelId)
-        })
-        .catch(() => undefined)
+      Effect.runFork(
+        declineDirectMessageCallEffect(token, call.channelId).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              syncStore.markVoiceCallDeclined(call.channelId, currentUserId)
+            }),
+          ),
+          Effect.andThen(closeVoiceCallNotification(call.channelId)),
+          Effect.ignore,
+        ),
+      )
       return
     }
 
     syncStore.dismissVoiceCall(call)
-    void closeVoiceCallNotification(call.channelId)
+    Effect.runFork(closeVoiceCallNotification(call.channelId))
   }
 
   return (
@@ -127,25 +133,37 @@ export function IncomingVoiceCallOverlay({
           size="sm"
           className="flex-1 bg-chart-3 text-primary-foreground hover:bg-chart-3/90"
           onClick={() => {
-            void voice
-              .join(call.channelId)
-              .then((joined) => {
-                if (!joined) return
-                if (prefix === '/m') {
-                  void navigate({
-                    to: '/m/c/$channelId',
-                    params: { channelId: call.channelId },
-                    search: { m: undefined },
+            Effect.runFork(
+              Effect.tryPromise({
+                try: () => voice.join(call.channelId),
+                catch: (cause) => cause,
+              }).pipe(
+                Effect.flatMap((joined) => {
+                  if (!joined) return Effect.void
+                  if (prefix === '/m') {
+                    return Effect.tryPromise({
+                      try: () =>
+                        navigate({
+                          to: '/m/c/$channelId',
+                          params: { channelId: call.channelId },
+                          search: { m: undefined },
+                        }),
+                      catch: (cause) => cause,
+                    })
+                  }
+                  return Effect.tryPromise({
+                    try: () =>
+                      navigate({
+                        to: '/app/c/$channelId',
+                        params: { channelId: call.channelId },
+                        search: { m: undefined },
+                      }),
+                    catch: (cause) => cause,
                   })
-                  return
-                }
-                void navigate({
-                  to: '/app/c/$channelId',
-                  params: { channelId: call.channelId },
-                  search: { m: undefined },
-                })
-              })
-              .catch(() => undefined)
+                }),
+                Effect.ignore,
+              ),
+            )
           }}
         >
           <HeadphonesIcon className="size-4" />

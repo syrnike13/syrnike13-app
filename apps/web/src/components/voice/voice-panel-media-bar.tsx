@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { Effect } from 'effect'
 import {
   ActivityIcon,
   Loader2Icon,
@@ -171,12 +172,29 @@ export function VoicePanelMediaBar() {
                 voiceStage.setActivityLauncherOpen(false)
                 return
               }
-              if (!voiceSession.channelId) return
-              void navigate({
-                to: routePrefix === '/m' ? '/m/c/$channelId' : '/app/c/$channelId',
-                params: { channelId: voiceSession.channelId },
-                search: { m: undefined },
-              }).then(() => voiceStage.setActivityLauncherOpen(true))
+              const channelId = voiceSession.channelId
+              if (!channelId) return
+              Effect.runFork(
+                Effect.tryPromise({
+                  try: () =>
+                    navigate({
+                      to:
+                        routePrefix === '/m'
+                          ? '/m/c/$channelId'
+                          : '/app/c/$channelId',
+                      params: { channelId },
+                      search: { m: undefined },
+                    }),
+                  catch: (cause) => cause,
+                }).pipe(
+                  Effect.tap(() =>
+                    Effect.sync(() => {
+                      voiceStage.setActivityLauncherOpen(true)
+                    }),
+                  ),
+                  Effect.ignore,
+                ),
+              )
             }}
           >
             <ActivityIcon className="size-[1.125rem]" />

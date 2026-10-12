@@ -6,6 +6,9 @@ describe('desktop IPC contract', () => {
   it('keeps support channels without legacy lifecycle channels', () => {
     expect(IPC.mediaStartMicrophonePreview).toBe('syrnike-desktop:media:start-microphone-preview')
     expect(IPC.mediaSetRemoteVideoDemand).toBe('syrnike-desktop:media:set-remote-video-demand')
+    expect(IPC.voiceGetTelemetry).toBe(
+      'syrnike-desktop:voice:get-telemetry',
+    )
     expect(IPC).not.toHaveProperty('mediaApplyLocalMediaIntent')
     expect(IPC).not.toHaveProperty('mediaConfigureMicrophonePipeline')
     expect(IPC).not.toHaveProperty('mediaGetState')

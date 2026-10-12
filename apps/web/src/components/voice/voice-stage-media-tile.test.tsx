@@ -23,10 +23,13 @@ const screenItem: VoiceStageMediaItem = {
 const screenItemWithTrack: VoiceStageMediaItem = {
   ...screenItem,
   track: {
-    mediaStreamTrack: {},
-    attach: vi.fn((element: HTMLVideoElement) => element),
-    detach: vi.fn(),
-  } as unknown as VoiceStageMediaItem['track'],
+    backend: 'livekit',
+    track: {
+      mediaStreamTrack: {},
+      attach: vi.fn((element: HTMLVideoElement) => element),
+      detach: vi.fn(),
+    } as never,
+  },
 }
 
 describe('StageMediaTile', () => {
@@ -246,6 +249,21 @@ describe('StageMediaTile', () => {
 
     expect(screen.queryByRole('button', { name: 'Смотреть' })).toBeNull()
     expect(document.querySelector('video')).toBeTruthy()
+  })
+
+  it('shows a paused stream instead of a frozen frame while the sharer is paused', () => {
+    render(
+      <StageMediaTile
+        item={{ ...screenItemWithTrack, live: false }}
+        displayName="Remote User"
+        variant="grid"
+        onFocus={vi.fn()}
+        onSetSubscribed={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Трансляция на паузе')).toBeTruthy()
+    expect(document.querySelector('video')).toBeNull()
   })
 
   it('keeps strip avatars compact instead of filling the tile', () => {

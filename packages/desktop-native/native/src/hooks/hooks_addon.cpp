@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <thread>
 
-#include "../common/async_cleanup_dispatcher.hpp"
+#include "../common/cleanup_supervisor.hpp"
 #include "../common/native_contract_version.hpp"
 #include "../common/node_event_sink.hpp"
 #include "../common/runtime_types.hpp"
@@ -17,16 +17,6 @@
 namespace syrnike::desktop_native::hooks {
 namespace {
 
-#if defined(SYRNIKE_HOOK_RUNTIME_hotkey)
-constexpr auto kRuntimeName = "hotkey";
-constexpr auto kCapability = "hotkeys";
-constexpr auto kCreateRuntimeName = "createHotkeyRuntime";
-#else
-constexpr auto kRuntimeName = "overlay";
-constexpr auto kCapability = "overlay";
-constexpr auto kCreateRuntimeName = "createOverlayRuntime";
-#endif
-
 HooksCommand parseHooksCommand(const Napi::Object& object) {
   HooksCommand command;
   const auto type = object.Get("type");
@@ -34,22 +24,16 @@ HooksCommand parseHooksCommand(const Napi::Object& object) {
   if (!type.IsString() || !request_id.IsString()) {
     throw std::invalid_argument("command.type and command.requestId are required");
   }
-  command.type = type.As<Napi::String>().Utf8Value();
+  const auto wire_type = type.As<Napi::String>().Utf8Value();
+  const auto parsed_type = parseNativeCommandType(wire_type);
+  if (!parsed_type) {
+    throw std::invalid_argument("command is absent from the typed hooks policy");
+  }
+  command.type = *parsed_type;
   command.request_id = request_id.As<Napi::String>().Utf8Value();
-  if (command.type.empty() || command.request_id.empty()) {
+  if (command.request_id.empty()) {
     throw std::invalid_argument("command.type and command.requestId are required");
   }
-#if defined(SYRNIKE_HOOK_RUNTIME_hotkey)
-  if (command.type != "startHotkeys" && command.type != "stopHotkeys" &&
-      command.type != "probeHooksRuntime" && command.type != "shutdown") {
-    throw std::invalid_argument("command is not supported by the hotkey runtime");
-  }
-#else
-  if (command.type != "startOverlay" && command.type != "stopOverlay" &&
-      command.type != "probeHooksRuntime" && command.type != "shutdown") {
-    throw std::invalid_argument("command is not supported by the overlay runtime");
-  }
-#endif
   return command;
 }
 
@@ -93,7 +77,7 @@ void releaseRuntime(
 struct AsyncCleanupRegistration final {
   uv_loop_t* loop = nullptr;
   std::shared_ptr<HooksRuntimeRegistry> registry;
-  std::shared_ptr<AsyncCleanupNode> cleanup_node;
+  std::shared_ptr<CleanupJob> cleanup_job;
   bool fail_dispatch_after_uv_init = false;
 };
 
@@ -156,16 +140,17 @@ void asyncCleanup(napi_async_cleanup_hook_handle handle, void* data) {
     if (registration->fail_dispatch_after_uv_init) {
       throw std::bad_alloc();
     }
-    registration->cleanup_node->prepareRaw(
+    registration->cleanup_job->prepareRaw(
       context,
+      reinterpret_cast<CleanupResourceKey>(context),
       [](void* owner) noexcept {
         completeAsyncCleanup(
           static_cast<AsyncCleanupContext*>(owner)
         );
       }
     );
-    AsyncCleanupDispatcher::instance().submit(
-      std::move(registration->cleanup_node)
+    CleanupSupervisor::instance().submitOrEscalate(
+      std::move(registration->cleanup_job), "hooks_addon"
     );
   } catch (...) {
     completeAsyncCleanup(context);
@@ -306,13 +291,14 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
   auto result = Napi::Object::New(info.Env());
   result.Set("platform", "win32");
   result.Set("available", true);
-  result.Set("runtime", kRuntimeName);
+  result.Set("runtime", "hooks");
   result.Set("contractVersion", kNativeRuntimeContractVersion);
   result.Set("pid", GetCurrentProcessId());
   result.Set("napi", std::to_string(NAPI_VERSION));
   result.Set("commit", SYRNIKE_NATIVE_COMMIT);
-  auto capabilities = Napi::Array::New(info.Env(), 1);
-  capabilities.Set(uint32_t{0}, kCapability);
+  auto capabilities = Napi::Array::New(info.Env(), 2);
+  capabilities.Set(uint32_t{0}, "hotkeys");
+  capabilities.Set(uint32_t{1}, "overlay");
   result.Set("capabilities", capabilities);
   return result;
 }
@@ -321,7 +307,7 @@ Napi::Object initialize(Napi::Env env, Napi::Object exports) {
   auto* state = new HooksAddonState;
   env.SetInstanceData(state);
   HooksRuntimeBinding::initialize(env);
-  static_cast<void>(AsyncCleanupDispatcher::instance());
+  static_cast<void>(CleanupSupervisor::instance());
   uv_loop_t* loop = nullptr;
   if (napi_get_uv_event_loop(env, &loop) != napi_ok || !loop) {
     throw Napi::Error::New(env, "hooks addon uv loop is unavailable");
@@ -329,8 +315,8 @@ Napi::Object initialize(Napi::Env env, Napi::Object exports) {
   auto* cleanup_registration = new AsyncCleanupRegistration{
     loop,
     state->registry,
-    std::make_shared<AsyncCleanupNode>(
-      failFirstAsyncCleanupLauncher(injectionEnabled(
+    std::make_shared<CleanupJob>(
+      failFirstCleanupStartProbe(injectionEnabled(
         "SYRNIKE_NATIVE_FAIL_ASYNC_CLEANUP_LAUNCH_ONCE"
       ))
     ),
@@ -348,7 +334,7 @@ Napi::Object initialize(Napi::Env env, Napi::Object exports) {
     delete cleanup_registration;
     throw Napi::Error::New(env, "hooks addon cleanup hook registration failed");
   }
-  exports.Set(kCreateRuntimeName, Napi::Function::New(env, createHooksRuntime));
+  exports.Set("createHooksRuntime", Napi::Function::New(env, createHooksRuntime));
   exports.Set("getRuntimeInfo", Napi::Function::New(env, getRuntimeInfo));
   return exports;
 }

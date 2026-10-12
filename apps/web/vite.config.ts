@@ -10,6 +10,14 @@ import tailwindcss from '@tailwindcss/vite'
 
 const webRoot = path.dirname(fileURLToPath(import.meta.url))
 const apiTypesEntry = path.resolve(webRoot, '../../packages/api-types/src/index.ts')
+const apiTypesEffectSchemaEntry = path.resolve(
+  webRoot,
+  '../../packages/api-types/src/effect-schema.ts',
+)
+const apiTypesGatewaySchemaEntry = path.resolve(
+  webRoot,
+  '../../packages/api-types/src/gateway-schema.ts',
+)
 const platformEntry = path.resolve(webRoot, '../../packages/platform/src/index.ts')
 /** Пакет помечен `type:module`, но `main` указывает на CJS `dist/index.js`. */
 const squircleReactEntry = path.resolve(
@@ -40,6 +48,8 @@ const config = defineConfig({
   },
   resolve: {
     alias: {
+      '@syrnike13/api-types/effect-schema': apiTypesEffectSchemaEntry,
+      '@syrnike13/api-types/gateway-schema': apiTypesGatewaySchemaEntry,
       '@syrnike13/api-types': apiTypesEntry,
       '@syrnike13/platform': platformEntry,
       '@squircle-js/react': squircleReactEntry,

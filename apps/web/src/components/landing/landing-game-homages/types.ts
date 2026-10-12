@@ -1,6 +1,15 @@
+import { Schema } from 'effect'
+
 export type HomageKind = 'sideShooter' | 'snake' | 'paddleBall'
 
-export type HomageAnchorId = 'logo' | 'download' | 'platforms' | 'header-cta' | 'hero'
+export const HomageAnchorIdSchema = Schema.Literals([
+  'logo',
+  'download',
+  'platforms',
+  'header-cta',
+  'hero',
+])
+export type HomageAnchorId = typeof HomageAnchorIdSchema.Type
 
 export interface AnchorRect {
   id: HomageAnchorId

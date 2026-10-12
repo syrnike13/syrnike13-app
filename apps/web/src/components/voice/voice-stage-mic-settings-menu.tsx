@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { CheckIcon, ChevronRightIcon, Settings2Icon } from '#/components/icons'
+import { Effect, Fiber } from 'effect'
 
 import { Slider } from '#/components/ui/slider'
 import {
@@ -14,7 +15,7 @@ import {
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import {
-  ensureMediaDevicePermission,
+  ensureMediaDevicePermissionEffect,
   useMediaDevices,
 } from '#/features/voice/use-media-devices'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
@@ -62,7 +63,12 @@ function useMicInputSettingsModel() {
   )
 
   useEffect(() => {
-    void ensureMediaDevicePermission('audio')
+    const fiber = Effect.runFork(
+      ensureMediaDevicePermissionEffect('audio').pipe(Effect.ignore),
+    )
+    return () => {
+      Effect.runFork(Fiber.interrupt(fiber))
+    }
   }, [])
 
   const inputSubtitle = useMemo(
@@ -256,7 +262,12 @@ export function VoiceSoundSettingsMenuContent() {
   const outputDevices = useMediaDevices('audiooutput')
 
   useEffect(() => {
-    void ensureMediaDevicePermission('audio')
+    const fiber = Effect.runFork(
+      ensureMediaDevicePermissionEffect('audio').pipe(Effect.ignore),
+    )
+    return () => {
+      Effect.runFork(Fiber.interrupt(fiber))
+    }
   }, [])
 
   const outputSubtitle = useMemo(

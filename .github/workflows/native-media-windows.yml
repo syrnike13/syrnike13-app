@@ -1,15 +1,15 @@
-name: Native Media Windows
+name: Windows Native Boundary
 
 on:
   workflow_call:
     inputs:
       release_channel:
-        description: Desktop release channel used by the package smoke test.
+        description: Desktop release channel used by packaging.
         required: false
         type: string
         default: stable
       desktop_build_version:
-        description: Desktop version embedded into the staged native runtime.
+        description: Desktop version embedded into staged hook addons.
         required: false
         type: string
         default: ""
@@ -18,6 +18,11 @@ on:
         required: false
         type: number
         default: 14
+      skip_tests:
+        description: Build and stage native artifacts without running test suites. Release pipelines set this because pull requests already ran them.
+        required: false
+        type: boolean
+        default: false
   pull_request:
     paths:
       - .github/workflows/native-media-windows.yml
@@ -26,12 +31,15 @@ on:
       - apps/desktop/scripts/**
       - apps/desktop/src/main/native-runtime/**
       - apps/desktop/src/main/native-media-engine*
+      - apps/desktop/src/main/media-runtime/**
+      - apps/desktop/src/main/voice/**
       - apps/desktop/src/utility/**
-      - apps/desktop/tsup.config.ts
-      - apps/web/src/features/voice/**
+      - apps/desktop/tsup*.ts
+      - apps/web/src/features/desktop/native-media-runtime-banner*
+      - docs/adr/0007-native-media-utility-lifetime.md
       - packages/desktop-native/**
+      - packages/windows-media-engine/**
       - packages/platform/src/media*
-      - packages/platform/src/ipc*
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
@@ -40,9 +48,12 @@ on:
 permissions:
   contents: read
 
+env:
+  WINDOWS_MEDIA_CAPTURE_THREAD_DIAGNOSTIC: "1"
+
 jobs:
-  native-runtime:
-    name: DLL runtime, Electron ABI, and package
+  native-boundary:
+    name: Hook addons and media lifecycle boundary
     runs-on: windows-2025-vs2026
     env:
       SYRNIKE_DESKTOP_CHANNEL: ${{ inputs.release_channel || 'stable' }}
@@ -54,81 +65,93 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Set up pinned vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: fb87e2bb3fe69e16c224989acb5a61349166c782
-      - name: Restore vcpkg binary cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}\vcpkg-binary-cache
-          key: vcpkg-binaries-v1-${{ runner.os }}-${{ runner.arch }}-fb87e2bb3fe69e16c224989acb5a61349166c782-${{ hashFiles('packages/desktop-native/vendor/livekit-client/vcpkg.json', 'packages/desktop-native/vendor/livekit-client/vcpkg-configuration.json') }}
-      - name: Configure native build caches
-        shell: pwsh
-        run: |
-          $cacheRoot = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
-          $rustTargetRoot = Join-Path $env:RUNNER_TEMP 'syrnike13-livekit-rust-target'
-          New-Item -ItemType Directory -Force -Path $cacheRoot | Out-Null
-          "VCPKG_DEFAULT_BINARY_CACHE=$cacheRoot" >> $env:GITHUB_ENV
-          "VCPKG_BINARY_SOURCES=clear;files,$cacheRoot,readwrite" >> $env:GITHUB_ENV
-          "SYRNIKE_LIVEKIT_RUST_TARGET_DIR=$rustTargetRoot" >> $env:GITHUB_ENV
-      - name: Restore LiveKit Rust build cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}\syrnike13-livekit-rust-target
-          key: livekit-rust-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/desktop-native/vendor/livekit-client/client-sdk-rust/Cargo.lock', 'packages/desktop-native/scripts/build.mjs') }}
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build Debug DLL runtime
-        run: pnpm desktop-native:build:debug
-      - name: Test Debug native core
-        run: pnpm desktop-native:test:debug
-      - name: Build Release DLL runtime
-        run: pnpm desktop-native:build
-      - name: Test Release native core
-        run: pnpm desktop-native:test
-      - name: Verify staged DLL-only runtime
-        run: pnpm desktop-native:verify
-      - name: Typecheck desktop media contract
-        run: pnpm desktop:typecheck
-      - name: Test desktop runtime behavior
-        run: pnpm desktop:test
-      - name: Build utility hosts
+      - name: Verify generated media protocol is committed
+        run: pnpm --filter @syrnike13/windows-media-engine protocol:check
+      - name: Build and test Debug media lifecycle engine
+        if: ${{ !inputs.skip_tests }}
         run: |
-          pnpm --filter @syrnike13/platform build
-          pnpm --filter @syrnike13/desktop exec tsup
-      - name: Smoke-test Electron ABI and utility handshakes
-        run: pnpm --filter @syrnike13/desktop-native smoke:electron
-      - name: Verify Crashpad minidump capture
-        run: pnpm --filter @syrnike13/desktop-native smoke:crashpad
-      - name: Build web assets for packaged smoke
-        run: pnpm web:build
-      - name: Verify packaged web assets
-        run: pnpm --filter @syrnike13/desktop verify:web-dist
+          pnpm windows-media:build:debug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Avoid forwarding regex alternation through the package-script cmd shell.
+          ctest --test-dir packages/windows-media-engine/build -C Debug --output-on-failure --label-exclude 'requires-gpu-video|requires-audio-device'
+      - name: Build, test, and verify Release media lifecycle engine
+        run: |
+          pnpm windows-media:build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ('${{ inputs.skip_tests }}' -ne 'true') {
+            ctest --test-dir packages/windows-media-engine/build -C Release --output-on-failure --label-exclude 'requires-gpu-video|requires-audio-device'
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          pnpm windows-media:verify
+      - name: Build and test Debug hook addons
+        if: ${{ !inputs.skip_tests }}
+        run: |
+          pnpm desktop-native:build:debug
+          pnpm desktop-native:test:debug
+      - name: Build, test, and verify Release hook addons
+        run: |
+          pnpm desktop-native:build
+          if ('${{ inputs.skip_tests }}' -ne 'true') { pnpm desktop-native:test }
+          pnpm desktop-native:verify
+          if ('${{ inputs.skip_tests }}' -ne 'true') { pnpm --filter @syrnike13/desktop-native smoke:hooks }
+      - name: Verify desktop boundary
+        if: ${{ !inputs.skip_tests }}
+        run: |
+          pnpm desktop:typecheck
+          pnpm desktop:test
+      - name: Build desktop assets for package
+        if: ${{ !inputs.skip_tests }}
+        run: pnpm desktop:build
+      - name: Run 50-cycle Electron media lifecycle smoke
+        if: ${{ !inputs.skip_tests }}
+        run: pnpm --filter @syrnike13/desktop smoke:media-lifecycle
       - name: Build and verify unpacked Windows package
+        if: ${{ !inputs.skip_tests }}
         run: pnpm --filter @syrnike13/desktop package:prepared
-      - name: Upload verified Windows native runtime
+      - name: Upload verified Windows hook addons
         uses: actions/upload-artifact@v4
         with:
-          name: native-runtime-windows-${{ inputs.release_channel || 'stable' }}-${{ github.sha }}
+          name: native-hooks-windows-${{ inputs.release_channel || 'stable' }}-${{ github.sha }}
           if-no-files-found: error
           retention-days: 1
           path: |
             packages/desktop-native/dist/win32-x64/**
             apps/desktop/out/native/win32-x64/**
+      - name: Upload verified Windows media lifecycle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: media-engine-windows-${{ inputs.release_channel || 'stable' }}-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            packages/windows-media-engine/dist/win32-x64/**
+            apps/desktop/out/media-native/win32-x64/**
       - name: Upload native debug symbols
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: native-runtime-windows-symbols-${{ github.sha }}
+          name: native-hooks-windows-symbols-${{ github.sha }}
           if-no-files-found: warn
           retention-days: ${{ inputs.symbol_retention_days || 14 }}
           path: |
             packages/desktop-native/build/**/*.pdb
             packages/desktop-native/dist/win32-x64/native-manifest.json
+      - name: Upload media lifecycle debug symbols
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: media-engine-windows-symbols-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: ${{ inputs.symbol_retention_days || 14 }}
+          path: |
+            packages/windows-media-engine/build/**/*.pdb
+            packages/windows-media-engine/dist/win32-x64/media-manifest.json
 
-  native-core-asan:
-    name: Native core AddressSanitizer
+  native-hooks-asan:
+    name: Hook addons AddressSanitizer
+    if: ${{ !inputs.skip_tests }}
     runs-on: windows-2025-vs2026
     steps:
       - uses: actions/checkout@v4
@@ -137,25 +160,14 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Set up pinned vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: fb87e2bb3fe69e16c224989acb5a61349166c782
-      - name: Restore vcpkg binary cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}\vcpkg-binary-cache
-          key: vcpkg-binaries-v1-${{ runner.os }}-${{ runner.arch }}-fb87e2bb3fe69e16c224989acb5a61349166c782-${{ hashFiles('packages/desktop-native/vendor/livekit-client/vcpkg.json', 'packages/desktop-native/vendor/livekit-client/vcpkg-configuration.json') }}
-      - name: Use supported vcpkg binary cache
-        shell: pwsh
-        run: |
-          $cacheRoot = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
-          New-Item -ItemType Directory -Force -Path $cacheRoot | Out-Null
-          "VCPKG_DEFAULT_BINARY_CACHE=$cacheRoot" >> $env:GITHUB_ENV
-          "VCPKG_BINARY_SOURCES=clear;files,$cacheRoot,readwrite" >> $env:GITHUB_ENV
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build Debug native core with AddressSanitizer
-        run: pnpm desktop-native:build:asan
-      - name: Test AddressSanitizer native core
-        run: pnpm desktop-native:test:debug
+      - name: Build and test Debug hook addons with AddressSanitizer
+        run: |
+          pnpm desktop-native:build:asan
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm desktop-native:test:debug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm windows-media:build:asan
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir packages/windows-media-engine/build -C Debug --output-on-failure --label-exclude 'requires-gpu-video|requires-audio-device'

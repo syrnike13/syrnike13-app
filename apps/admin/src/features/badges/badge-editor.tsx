@@ -2,6 +2,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Badge } from '@syrnike13/api-types'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { BadgeIcon } from '#/components/badge-icon'
@@ -32,13 +33,13 @@ import { Input } from '#/components/ui/input'
 import { Switch } from '#/components/ui/switch'
 import { Textarea } from '#/components/ui/textarea'
 import {
-  assignAdminUserBadge,
-  createAdminBadge,
-  deleteAdminBadge,
-  fetchAdminUser,
-  updateAdminBadge,
+  assignAdminUserBadgeEffect,
+  createAdminBadgeEffect,
+  deleteAdminBadgeEffect,
+  fetchAdminUserEffect,
+  updateAdminBadgeEffect,
 } from '#/features/api/admin-api'
-import { uploadMediaFile } from '#/features/api/media-api'
+import { uploadMediaFileEffect } from '#/features/api/media-api'
 import {
   emptyBadgeForm,
   formToCreatePayload,
@@ -107,13 +108,19 @@ export function BadgeEditorPage({
   }, [iconFile, previewUrl])
 
   const createMutation = useMutation({
-    mutationFn: async () => {
-      if (!token) throw new Error('Нет сессии')
-      const iconFileId = iconFile
-        ? await uploadMediaFile(token, 'badges', iconFile)
-        : undefined
-      return createAdminBadge(token, formToCreatePayload(form, iconFileId))
-    },
+    mutationFn: () =>
+      Effect.runPromise(
+        Effect.gen(function*() {
+          if (!token) return yield* Effect.fail(new Error('Нет сессии'))
+          const iconFileId = iconFile
+            ? yield* uploadMediaFileEffect(token, 'badges', iconFile)
+            : undefined
+          return yield* createAdminBadgeEffect(
+            token,
+            formToCreatePayload(form, iconFileId),
+          )
+        }),
+      ),
     onSuccess: (created) => {
       queryClient.setQueryData<Badge[]>(queryKeys.admin.badges, (c = []) => [
         ...c,
@@ -128,17 +135,22 @@ export function BadgeEditorPage({
   })
 
   const updateMutation = useMutation({
-    mutationFn: async () => {
-      if (!token || !badge) throw new Error('Бейдж не выбран')
-      const iconFileId = iconFile
-        ? await uploadMediaFile(token, 'badges', iconFile)
-        : undefined
-      return updateAdminBadge(
-        token,
-        badge._id,
-        formToEditPayload(form, iconFileId, removeIcon && !iconFile),
-      )
-    },
+    mutationFn: () =>
+      Effect.runPromise(
+        Effect.gen(function*() {
+          if (!token || !badge) {
+            return yield* Effect.fail(new Error('Бейдж не выбран'))
+          }
+          const iconFileId = iconFile
+            ? yield* uploadMediaFileEffect(token, 'badges', iconFile)
+            : undefined
+          return yield* updateAdminBadgeEffect(
+            token,
+            badge._id,
+            formToEditPayload(form, iconFileId, removeIcon && !iconFile),
+          )
+        }),
+      ),
     onSuccess: (updated) => {
       queryClient.setQueryData<Badge[]>(queryKeys.admin.badges, (c = []) =>
         c.map((item) => (item._id === updated._id ? updated : item)),
@@ -153,11 +165,16 @@ export function BadgeEditorPage({
   })
 
   const deleteMutation = useMutation({
-    mutationFn: async () => {
-      if (!token || !badge) throw new Error('Бейдж не выбран')
-      await deleteAdminBadge(token, badge._id)
-      return badge
-    },
+    mutationFn: () =>
+      Effect.runPromise(
+        Effect.gen(function*() {
+          if (!token || !badge) {
+            return yield* Effect.fail(new Error('Бейдж не выбран'))
+          }
+          yield* deleteAdminBadgeEffect(token, badge._id)
+          return badge
+        }),
+      ),
     onSuccess: (deleted) => {
       queryClient.setQueryData<Badge[]>(queryKeys.admin.badges, (c = []) =>
         c.filter((item) => item._id !== deleted._id),
@@ -171,11 +188,20 @@ export function BadgeEditorPage({
   })
 
   const assignMutation = useMutation({
-    mutationFn: async () => {
-      if (!token || !badge) throw new Error('Бейдж не выбран')
-      const user = await fetchAdminUser(token, assignQuery.trim())
-      return assignAdminUserBadge(token, user._id, badge._id)
-    },
+    mutationFn: () =>
+      Effect.runPromise(
+        Effect.gen(function*() {
+          if (!token || !badge) {
+            return yield* Effect.fail(new Error('Бейдж не выбран'))
+          }
+          const user = yield* fetchAdminUserEffect(token, assignQuery.trim())
+          return yield* assignAdminUserBadgeEffect(
+            token,
+            user._id,
+            badge._id,
+          )
+        }),
+      ),
     onSuccess: () => {
       toast.success('Выдано')
       setAssignOpen(false)

@@ -5,11 +5,11 @@ import type {
   FeedbackPlatform,
   FeedbackProductStatus,
   FeedbackSort,
-  FeedbackSuggestion,
-  FeedbackSuggestionPage,
 } from '@syrnike13/api-types'
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Effect } from 'effect'
 
-import { apiRequest } from '#/lib/api/client'
+import { apiRequestEffect } from '#/lib/api/client'
 
 export type FeedbackListParams = {
   search?: string
@@ -43,50 +43,141 @@ function feedbackQuery(params: FeedbackListParams) {
   return query.toString()
 }
 
-export async function fetchFeedbackSuggestions(
+export const fetchFeedbackSuggestionsEffect = Effect.fn(
+  'web.feedback.fetchSuggestions',
+)(function*(token: string, params: FeedbackListParams) {
+  return yield* apiRequestEffect(
+    `/feedback?${feedbackQuery(params)}`,
+    ApiSchema.FeedbackList200,
+    { token },
+  )
+})
+
+export function fetchFeedbackSuggestions(
   token: string,
   params: FeedbackListParams,
+  signal?: AbortSignal,
 ) {
-  return apiRequest<FeedbackSuggestionPage>(`/feedback?${feedbackQuery(params)}`, {
-    token,
-  })
-}
-
-export async function fetchMyFeedbackSuggestions(
-  token: string,
-  params: Pick<FeedbackListParams, 'offset' | 'limit'> = {},
-) {
-  return apiRequest<FeedbackSuggestionPage>(
-    `/feedback/mine?${feedbackQuery(params)}`,
-    { token },
+  return Effect.runPromise(
+    fetchFeedbackSuggestionsEffect(token, params),
+    signal ? { signal } : undefined,
   )
 }
 
-export async function fetchFeedbackSuggestion(token: string, id: string) {
-  return apiRequest<FeedbackSuggestion>(`/feedback/${id}`, { token })
+export const fetchMyFeedbackSuggestionsEffect = Effect.fn(
+  'web.feedback.fetchMine',
+)(function*(
+  token: string,
+  params: Pick<FeedbackListParams, 'offset' | 'limit'> = {},
+) {
+  return yield* apiRequestEffect(
+    `/feedback/mine?${feedbackQuery(params)}`,
+    ApiSchema.FeedbackMine200,
+    { token },
+  )
+})
+
+export function fetchMyFeedbackSuggestions(
+  token: string,
+  params: Pick<FeedbackListParams, 'offset' | 'limit'> = {},
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    fetchMyFeedbackSuggestionsEffect(token, params),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function createFeedbackSuggestion(
+export const fetchFeedbackSuggestionEffect = Effect.fn(
+  'web.feedback.fetchSuggestion',
+)(function*(token: string, id: string) {
+  return yield* apiRequestEffect(
+    `/feedback/${id}`,
+    ApiSchema.FeedbackDetail200,
+    { token },
+  )
+})
+
+export function fetchFeedbackSuggestion(
+  token: string,
+  id: string,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    fetchFeedbackSuggestionEffect(token, id),
+    signal ? { signal } : undefined,
+  )
+}
+
+export const createFeedbackSuggestionEffect = Effect.fn(
+  'web.feedback.createSuggestion',
+)(function*(token: string, data: DataCreateFeedbackSuggestion) {
+  return yield* apiRequestEffect(
+    '/feedback',
+    ApiSchema.FeedbackCreate200,
+    {
+      method: 'POST',
+      token,
+      body: data,
+    },
+  )
+})
+
+export function createFeedbackSuggestion(
   token: string,
   data: DataCreateFeedbackSuggestion,
+  signal?: AbortSignal,
 ) {
-  return apiRequest<FeedbackSuggestion>('/feedback', {
-    method: 'POST',
-    token,
-    body: data,
-  })
+  return Effect.runPromise(
+    createFeedbackSuggestionEffect(token, data),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function addFeedbackVote(token: string, id: string) {
-  return apiRequest<FeedbackSuggestion>(`/feedback/${id}/vote`, {
-    method: 'PUT',
-    token,
-  })
+export const addFeedbackVoteEffect = Effect.fn('web.feedback.addVote')(
+  function*(token: string, id: string) {
+    return yield* apiRequestEffect(
+      `/feedback/${id}/vote`,
+      ApiSchema.FeedbackAddVote200,
+      {
+        method: 'PUT',
+        token,
+      },
+    )
+  },
+)
+
+export function addFeedbackVote(
+  token: string,
+  id: string,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    addFeedbackVoteEffect(token, id),
+    signal ? { signal } : undefined,
+  )
 }
 
-export async function removeFeedbackVote(token: string, id: string) {
-  return apiRequest<FeedbackSuggestion>(`/feedback/${id}/vote`, {
-    method: 'DELETE',
-    token,
-  })
+export const removeFeedbackVoteEffect = Effect.fn('web.feedback.removeVote')(
+  function*(token: string, id: string) {
+    return yield* apiRequestEffect(
+      `/feedback/${id}/vote`,
+      ApiSchema.FeedbackRemoveVote200,
+      {
+        method: 'DELETE',
+        token,
+      },
+    )
+  },
+)
+
+export function removeFeedbackVote(
+  token: string,
+  id: string,
+  signal?: AbortSignal,
+) {
+  return Effect.runPromise(
+    removeFeedbackVoteEffect(token, id),
+    signal ? { signal } : undefined,
+  )
 }

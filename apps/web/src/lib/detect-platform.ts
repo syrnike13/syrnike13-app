@@ -1,8 +1,10 @@
+import { Option, Schema } from 'effect'
+
 import type { DesktopPlatform } from '#/lib/config'
 
-interface UserAgentDataLike {
-  platform?: string
-}
+const UserAgentDataSchema = Schema.Struct({
+  platform: Schema.optionalKey(Schema.String),
+})
 
 /**
  * Определяет десктоп-платформу по данным браузера.
@@ -11,8 +13,10 @@ interface UserAgentDataLike {
 export function detectDesktopPlatform(): DesktopPlatform | null {
   if (typeof navigator === 'undefined') return null
 
-  const uaData = (navigator as Navigator & { userAgentData?: UserAgentDataLike })
-    .userAgentData
+  const userAgentData: unknown = Reflect.get(navigator, 'userAgentData')
+  const uaData = Option.getOrUndefined(
+    Schema.decodeUnknownOption(UserAgentDataSchema)(userAgentData),
+  )
   const source = `${uaData?.platform ?? ''} ${navigator.platform ?? ''} ${
     navigator.userAgent ?? ''
   }`.toLowerCase()

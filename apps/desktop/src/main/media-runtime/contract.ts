@@ -1,0 +1,588 @@
+import { Option, Schema } from 'effect'
+import { DiagnosticCorrelationIdSchema } from '@syrnike13/platform'
+import {
+  MicrophoneIntentSchema,
+  CameraIntentSchema,
+  ScreenIntentSchema,
+  OutputIntentSchema,
+} from './media-models.generated'
+
+import {
+  MEDIA_LIFECYCLE_GENERATED_VERSION,
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS,
+  MEDIA_LIFECYCLE_SCHEMA_SHA256,
+  MEDIA_UTILITY_GENERATED_BOOTSTRAP_MESSAGE,
+  MEDIA_LIFECYCLE_TRACK_KINDS,
+  MEDIA_LIFECYCLE_TRACK_STATES,
+} from './protocol.generated'
+
+export { MEDIA_LIFECYCLE_SCHEMA_SHA256 }
+
+export const MEDIA_LIFECYCLE_PROTOCOL_VERSION = MEDIA_LIFECYCLE_GENERATED_VERSION
+// Private Electron parent/utility synchronization. This is intentionally not
+// part of the public native lifecycle protocol.
+export const MEDIA_UTILITY_BOOTSTRAP_MESSAGE =
+  MEDIA_UTILITY_GENERATED_BOOTSTRAP_MESSAGE
+export const MEDIA_LIFECYCLE_CONTROL_QUEUE_CAPACITY =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.controlQueueCapacity
+export const MEDIA_LIFECYCLE_MAX_PENDING_REQUESTS =
+  MEDIA_LIFECYCLE_CONTROL_QUEUE_CAPACITY
+export const MEDIA_LIFECYCLE_EVENT_QUEUE_CAPACITY =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.eventQueueCapacity
+export const MEDIA_LIFECYCLE_MAX_REQUEST_ID_LENGTH =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumRequestIdLength
+export const MEDIA_LIFECYCLE_MAX_IDENTIFIER_LENGTH =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumIdentifierLength
+export const MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumRemoteVideoDemands
+export const MEDIA_LIFECYCLE_MAX_ACTIVE_SPEAKERS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumActiveSpeakers
+export const MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_METRICS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDiagnosticMetrics
+export const MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_FIELDS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDiagnosticFields
+export const MEDIA_LIFECYCLE_MAX_DEADLINE_MS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumRequestDeadlineMs
+export const MEDIA_LIFECYCLE_ROOM_CONNECT_TIMEOUT_MS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.roomConnectDeadlineMs
+export const MEDIA_LIFECYCLE_ROOM_DISCONNECT_TIMEOUT_MS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.roomDisconnectDeadlineMs
+export const MEDIA_LIFECYCLE_ROOM_CANCELLATION_TIMEOUT_MS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.roomCancellationDeadlineMs
+export const MEDIA_LIFECYCLE_START_TIMEOUT_MS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.startDeadlineMs
+export const MEDIA_LIFECYCLE_HANDSHAKE_TIMEOUT_MS = 5_000
+export const MEDIA_LIFECYCLE_PING_TIMEOUT_MS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.pingDeadlineMs
+export const MEDIA_LIFECYCLE_SHUTDOWN_TIMEOUT_MS =
+  MEDIA_LIFECYCLE_PROTOCOL_LIMITS.shutdownDeadlineMs
+export const MEDIA_LIFECYCLE_OUTER_SHUTDOWN_MS = 1_500
+
+const boundedString = (maximumLength: number, minimumLength = 1) =>
+  Schema.String.check(
+    Schema.isMinLength(minimumLength),
+    Schema.isMaxLength(maximumLength),
+  )
+
+const protocolInteger = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(0),
+  Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
+)
+const positiveProtocolInteger = protocolInteger.check(Schema.isGreaterThan(0))
+const requestIdSchema = boundedString(MEDIA_LIFECYCLE_MAX_REQUEST_ID_LENGTH)
+const identifierSchema = boundedString(MEDIA_LIFECYCLE_MAX_IDENTIFIER_LENGTH).check(
+  Schema.isPattern(/^[\x21-\x7e]+$/),
+)
+
+export const MediaLifecycleFailureSchema = Schema.Struct({
+  code: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureCodeLength),
+  message: boundedString(
+    MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureMessageLength,
+  ),
+  stage: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureStageLength),
+  retryable: Schema.Boolean,
+  causeSequence: Schema.optional(Schema.Int.check(
+    Schema.isBetween({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+  )),
+  causeTimestampMs: Schema.optional(positiveProtocolInteger),
+})
+
+export class MediaLifecycleError extends Schema.TaggedErrorClass<
+  MediaLifecycleError
+>()('MediaLifecycleError', {
+  // Main may add its report alias to a rejected operation. The native wire
+  // failure remains the smaller schema above and cannot supply this alias.
+  failure: Schema.Struct({
+    ...MediaLifecycleFailureSchema.fields,
+    diagnosticCorrelationId: Schema.optional(DiagnosticCorrelationIdSchema),
+  }),
+}) {}
+
+export const MediaEngineStateSchema = Schema.Literals([
+  'stopped', 'starting', 'running', 'stopping', 'failed',
+])
+
+const MediaBuildIdentitySchema = Schema.Struct({
+  commit: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/i)),
+  napi: Schema.String.check(Schema.isPattern(/^\d+$/)),
+  protocolSchemaSha256: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/i)),
+})
+
+export const RoomIntentSchema = Schema.Struct({
+  roomId: identifierSchema,
+  participantIdentity: identifierSchema,
+  credentialLeaseId: identifierSchema,
+})
+
+export const MediaCredentialLeaseSchema = Schema.Struct({
+  leaseId: identifierSchema,
+  serverUrl: boundedString(
+    MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumServerUrlLength,
+  ).check(Schema.isPattern(/^wss?:\/\//)),
+  accessToken: boundedString(
+    MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumAccessTokenLength,
+  ),
+})
+
+export const RemoteVideoDemandSchema = Schema.Struct({
+  participantIdentity: identifierSchema,
+  publicationId: identifierSchema,
+})
+
+export const EngineDesiredStateSchema = Schema.Struct({
+  revision: positiveProtocolInteger,
+  room: Schema.Union([RoomIntentSchema, Schema.Null]),
+  microphone: MicrophoneIntentSchema,
+  camera: CameraIntentSchema,
+  screen: ScreenIntentSchema,
+  output: OutputIntentSchema,
+  remoteVideoDemand: Schema.Array(RemoteVideoDemandSchema).check(
+    Schema.isMaxLength(MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS),
+  ),
+  rendererId: Schema.Union([identifierSchema, Schema.Null]),
+})
+
+export const MediaPathSnapshotSchema = Schema.Struct({
+  revision: protocolInteger,
+  state: Schema.Literals(MEDIA_LIFECYCLE_TRACK_STATES),
+  warning: Schema.Boolean,
+  failure: Schema.optional(MediaLifecycleFailureSchema),
+})
+const TrackPublicStateSchema = Schema.Struct({
+  microphone: MediaPathSnapshotSchema,
+  camera: MediaPathSnapshotSchema,
+  screen: MediaPathSnapshotSchema,
+  output: MediaPathSnapshotSchema,
+  screen_audio: MediaPathSnapshotSchema,
+  screen_preview: MediaPathSnapshotSchema,
+  camera_preview: MediaPathSnapshotSchema,
+  remote_video: MediaPathSnapshotSchema,
+})
+
+export const MediaEngineSnapshotSchema = Schema.Struct({
+  engineState: MediaEngineStateSchema,
+  acceptedRevision: Schema.Union([protocolInteger, Schema.Null]),
+  desiredState: Schema.Union([EngineDesiredStateSchema, Schema.Null]),
+  roomState: Schema.Literals([
+    'off', 'connecting', 'connected', 'disconnecting', 'failed',
+  ]),
+  roomFailure: Schema.optional(MediaLifecycleFailureSchema),
+  tracks: TrackPublicStateSchema,
+})
+
+export const MediaDesiredStateAcceptedSchema = Schema.Struct({
+  type: Schema.Literal('desiredStateAccepted'),
+  acceptedRevision: positiveProtocolInteger,
+  disposition: Schema.Literals(['accepted', 'duplicate']),
+})
+
+export const MediaCredentialLeaseInstalledSchema = Schema.Struct({
+  type: Schema.Literal('credentialLeaseInstalled'),
+  leaseId: identifierSchema,
+})
+
+export const MediaAddonHandshakeSchema = Schema.Struct({
+  protocolVersion: Schema.Int,
+  engineState: MediaEngineStateSchema,
+  build: MediaBuildIdentitySchema,
+})
+
+export const MediaAddonPingSchema = Schema.Struct({
+  type: Schema.Literal('pong'),
+  engineState: Schema.Literal('running'),
+})
+
+export const MediaAddonSnapshotSchema = Schema.Struct({
+  type: Schema.Literal('snapshot'),
+  snapshot: MediaEngineSnapshotSchema,
+})
+
+const DeviceCatalogStatusSchema = Schema.Literals(['ready', 'enumeration_failed', 'capacity_exceeded'])
+export const MediaInventorySchema = Schema.Struct({
+  microphoneMeter: Schema.Struct({
+    revision: protocolInteger,
+    inputLevel: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
+    gateThreshold: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
+    gateOpen: Schema.Boolean,
+    speaking: Schema.Boolean,
+  }),
+  activeSpeakers: Schema.Array(identifierSchema).check(
+    Schema.isMaxLength(MEDIA_LIFECYCLE_MAX_ACTIVE_SPEAKERS),
+  ),
+  audio: Schema.Struct({
+    revision: protocolInteger,
+    status: DeviceCatalogStatusSchema,
+    devices: Schema.Array(Schema.Struct({
+      id: identifierSchema,
+      label: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDeviceLabelLength, 0),
+      direction: Schema.Literals(['input', 'output']),
+      isDefault: Schema.Boolean,
+    })).check(Schema.isMaxLength(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumAudioDevices)),
+  }),
+  cameras: Schema.Struct({
+    revision: protocolInteger,
+    status: DeviceCatalogStatusSchema,
+    devices: Schema.Array(Schema.Struct({
+      id: identifierSchema,
+      label: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDeviceLabelLength, 0),
+      available: Schema.Boolean,
+      isDefault: Schema.Boolean,
+    })).check(Schema.isMaxLength(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumCameraDevices)),
+  }),
+  sources: Schema.Struct({
+    revision: protocolInteger,
+    complete: Schema.Boolean,
+    ok: Schema.Boolean,
+    truncated: Schema.Boolean,
+    entries: Schema.Array(Schema.Struct({
+      id: identifierSchema,
+      kind: Schema.Literals(['monitor', 'window']),
+      title: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumSourceLabelLength, 0),
+      label: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumSourceLabelLength, 0),
+      available: Schema.Boolean,
+      minimized: Schema.Boolean,
+      audioAvailable: Schema.Boolean,
+      primary: Schema.Boolean,
+    })).check(Schema.isMaxLength(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumScreenSources)),
+  }),
+  video: Schema.Struct({
+    revision: protocolInteger,
+    publications: Schema.Array(Schema.Struct({
+      participantIdentity: identifierSchema,
+      publicationId: identifierSchema,
+      source: Schema.Literals(['camera', 'screen']),
+      // The sender muted the track: its shared window is minimized or hidden.
+      muted: Schema.Boolean,
+    })).check(Schema.isMaxLength(MEDIA_LIFECYCLE_MAX_REMOTE_VIDEO_DEMANDS)),
+  }),
+})
+export const MediaSourceQuerySchema = Schema.Struct({
+  revision: positiveProtocolInteger,
+  kind: Schema.Literals(['all', 'monitor', 'window']),
+})
+export const MediaThumbnailQuerySchema = Schema.Struct({
+  revision: positiveProtocolInteger,
+  sourceId: Schema.Union([identifierSchema, Schema.Null]),
+})
+export const MediaAddonThumbnailSchema = Schema.Struct({
+  type: Schema.Literal('thumbnail'),
+  revision: protocolInteger,
+  state: Schema.Literals(['pending', 'ready', 'failed', 'cancelled']),
+  code: Schema.optional(boundedString(128)),
+  pixels: Schema.optional(Schema.Uint8Array.check(Schema.makeFilter(
+    value => value.byteLength === MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumThumbnailBytes,
+    { expected: 'one fixed 320 by 180 BGRA thumbnail' },
+  ))),
+}).check(Schema.makeFilter(value => (value.state === 'ready') === (value.pixels !== undefined),
+  { expected: 'pixels only for a ready thumbnail' }))
+export const MediaAddonInventorySchema = Schema.Struct({
+  type: Schema.Literal('inventory'),
+  inventory: MediaInventorySchema,
+})
+export const MediaSourcesQueryAcceptedSchema = Schema.Struct({
+  type: Schema.Literal('sourcesQueryAccepted'),
+  revision: positiveProtocolInteger,
+})
+export const MediaFrameReleaseSchema = Schema.Struct({
+  generation: positiveProtocolInteger,
+  sequence: positiveProtocolInteger,
+  // SharedTexturePool::kSlots in the native engine.
+  slot: protocolInteger.check(Schema.isLessThan(12)),
+})
+export const MediaExportedFrameSchema = Schema.Struct({
+  ...MediaFrameReleaseSchema.fields,
+  kind: Schema.Literals(['remote', 'screen_preview', 'camera_preview']),
+  revision: positiveProtocolInteger,
+  rendererId: identifierSchema,
+  publicationId: identifierSchema,
+  participantIdentity: identifierSchema,
+  width: positiveProtocolInteger.check(Schema.isLessThanOrEqualTo(3840)),
+  height: positiveProtocolInteger.check(Schema.isLessThanOrEqualTo(2160)),
+  timestamp: protocolInteger,
+  ingressUs: protocolInteger,
+  handle: positiveProtocolInteger,
+})
+export const MediaAddonFramesSchema = Schema.Struct({
+  type: Schema.Literal('frames'),
+  frames: Schema.Array(MediaExportedFrameSchema).check(Schema.isMaxLength(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumExportedFrames)),
+})
+
+export const MediaLifecycleHandshakeResultSchema = Schema.Struct({
+  type: Schema.Literal('handshake'),
+  protocolVersion: Schema.Literal(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
+  engineState: Schema.Literal('running'),
+  build: MediaBuildIdentitySchema,
+})
+
+export const MediaLifecycleReadySchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal('ready'),
+    protocolVersion: Schema.Literal(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
+    engineState: Schema.Literal('running'),
+    build: MediaBuildIdentitySchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('ready'),
+    protocolVersion: Schema.Literal(0),
+    engineState: Schema.Literal('failed'),
+    build: Schema.optional(MediaBuildIdentitySchema),
+    failure: MediaLifecycleFailureSchema,
+  }),
+])
+
+export const MediaLifecycleCommandSchema = Schema.Union([
+  Schema.Struct({ type: Schema.Literal('handshake') }),
+  Schema.Struct({
+    type: Schema.Literal('installCredentialLease'),
+    lease: MediaCredentialLeaseSchema,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('applyDesiredState'),
+    desiredState: EngineDesiredStateSchema,
+  }),
+  Schema.Struct({ type: Schema.Literal('querySnapshot') }),
+  Schema.Struct({ type: Schema.Literal('queryInventory') }),
+  Schema.Struct({ type: Schema.Literal('querySources'), query: MediaSourceQuerySchema }),
+  Schema.Struct({ type: Schema.Literal('queryThumbnail'), query: MediaThumbnailQuerySchema }),
+  Schema.Struct({
+    type: Schema.Literal('queryFrames'),
+    releases: Schema.Array(MediaFrameReleaseSchema).check(Schema.isMaxLength(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFrameReleases)),
+  }),
+  Schema.Struct({ type: Schema.Literal('ping') }),
+  Schema.Struct({ type: Schema.Literal('shutdown') }),
+])
+
+export const MediaLifecycleRequestSchema = Schema.Struct({
+  type: Schema.Literal('request'),
+  protocolVersion: Schema.Literal(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
+  requestId: requestIdSchema,
+  hostEpoch: positiveProtocolInteger,
+  deadlineMs: positiveProtocolInteger.check(
+    Schema.isLessThanOrEqualTo(MEDIA_LIFECYCLE_MAX_DEADLINE_MS),
+  ),
+  command: MediaLifecycleCommandSchema,
+})
+
+export const MediaLifecycleReplySchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal('reply'),
+    protocolVersion: Schema.Literal(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
+    requestId: requestIdSchema,
+    ok: Schema.Literal(true),
+    // Decoded by the requester against the command-specific result schema.
+    result: Schema.Unknown,
+  }),
+  Schema.Struct({
+    type: Schema.Literal('reply'),
+    protocolVersion: Schema.Literal(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
+    requestId: requestIdSchema,
+    ok: Schema.Literal(false),
+    failure: MediaLifecycleFailureSchema,
+  }),
+])
+
+export const MediaLifecycleEventSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal('engineStateChanged'),
+    sequence: positiveProtocolInteger,
+    previous: MediaEngineStateSchema,
+    state: MediaEngineStateSchema,
+    failure: Schema.optional(MediaLifecycleFailureSchema),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('roomStateChanged'),
+    sequence: positiveProtocolInteger,
+    revision: positiveProtocolInteger,
+    state: Schema.Literals([
+      'off', 'connecting', 'connected', 'disconnecting', 'failed',
+    ]),
+    failure: Schema.optional(MediaLifecycleFailureSchema),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('trackStateChanged'),
+    sequence: positiveProtocolInteger,
+    revision: positiveProtocolInteger,
+    track: Schema.Literals(MEDIA_LIFECYCLE_TRACK_KINDS),
+    state: Schema.Literals(MEDIA_LIFECYCLE_TRACK_STATES),
+    warning: Schema.Boolean,
+    failure: Schema.optional(MediaLifecycleFailureSchema),
+  }),
+  Schema.Struct({
+    type: Schema.Literal('fatalEngineFailure'),
+    sequence: positiveProtocolInteger,
+    failure: MediaLifecycleFailureSchema,
+  }),
+])
+
+const DiagnosticMetricSchema = Schema.Struct({
+  name: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDiagnosticNameLength),
+  value: Schema.Finite,
+})
+const DiagnosticImplementationFieldSchema = Schema.Struct({
+  name: boundedString(MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDiagnosticNameLength),
+  value: boundedString(
+    MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumDiagnosticValueLength,
+    0,
+  ),
+})
+export const MediaLifecycleDiagnosticEventSchema = Schema.Struct({
+  sequence: positiveProtocolInteger,
+  timestampMs: protocolInteger,
+  component: boundedString(64),
+  operation: boundedString(128),
+  code: boundedString(128),
+  metrics: Schema.Array(DiagnosticMetricSchema).check(
+    Schema.isMaxLength(MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_METRICS),
+  ),
+  implementation: Schema.optional(
+    Schema.Array(DiagnosticImplementationFieldSchema).check(
+      Schema.isMaxLength(MEDIA_LIFECYCLE_MAX_DIAGNOSTIC_FIELDS),
+    ),
+  ),
+})
+
+export const MediaLifecyclePublicEventMessageSchema = Schema.Struct({
+  type: Schema.Literal('event'),
+  protocolVersion: Schema.Literal(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
+  event: MediaLifecycleEventSchema,
+})
+
+export const MediaLifecycleDiagnosticMessageSchema = Schema.Struct({
+  type: Schema.Literal('diagnostic'),
+  protocolVersion: Schema.Literal(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
+  event: MediaLifecycleDiagnosticEventSchema,
+})
+
+// Coalesced wakeup: the engine cached new frames for the next queryFrames.
+export const MediaFramesReadyMessageSchema = Schema.Struct({
+  type: Schema.Literal('framesReady'),
+  protocolVersion: Schema.Literal(MEDIA_LIFECYCLE_PROTOCOL_VERSION),
+})
+
+export const MediaLifecycleMessageSchema = Schema.Union([
+  MediaLifecycleReadySchema,
+  MediaLifecycleReplySchema,
+  MediaLifecyclePublicEventMessageSchema,
+  MediaLifecycleDiagnosticMessageSchema,
+  MediaFramesReadyMessageSchema,
+])
+
+export type MediaLifecycleFailure = typeof MediaLifecycleFailureSchema.Type
+export type MediaPathSnapshot = typeof MediaPathSnapshotSchema.Type
+export type EngineDesiredState = typeof EngineDesiredStateSchema.Type
+export type MediaEngineSnapshot = typeof MediaEngineSnapshotSchema.Type
+export function createInactiveMediaPaths(revision = 0): MediaEngineSnapshot['tracks'] {
+  const off: MediaPathSnapshot = { revision, state: 'off', warning: false }
+  return {
+    microphone: off, camera: off, screen: off, output: off,
+    screen_audio: off, screen_preview: off, camera_preview: off, remote_video: off,
+  }
+}
+export type MediaDesiredStateAccepted = typeof MediaDesiredStateAcceptedSchema.Type
+export type MediaCredentialLease = typeof MediaCredentialLeaseSchema.Type
+export type MediaInventory = typeof MediaInventorySchema.Type
+export type MediaThumbnailQuery = typeof MediaThumbnailQuerySchema.Type
+export type MediaSourceQuery = typeof MediaSourceQuerySchema.Type
+export type MediaFrameRelease = typeof MediaFrameReleaseSchema.Type
+export type MediaExportedFrame = typeof MediaExportedFrameSchema.Type
+export type MediaLifecycleReady = typeof MediaLifecycleReadySchema.Type
+export type MediaLifecycleCommand = typeof MediaLifecycleCommandSchema.Type
+export type MediaLifecycleRequest = typeof MediaLifecycleRequestSchema.Type
+export type MediaLifecycleReply = typeof MediaLifecycleReplySchema.Type
+export type MediaLifecycleEvent = typeof MediaLifecycleEventSchema.Type
+export type MediaLifecycleDiagnosticEvent = typeof MediaLifecycleDiagnosticEventSchema.Type
+export type MediaLifecycleMessage = typeof MediaLifecycleMessageSchema.Type
+
+export function isMediaLifecycleRequest(value: unknown): value is MediaLifecycleRequest {
+  return Option.isSome(
+    Schema.decodeUnknownOption(MediaLifecycleRequestSchema, {
+      onExcessProperty: 'error',
+    })(value),
+  )
+}
+
+export function isMediaLifecycleMessage(value: unknown): value is MediaLifecycleMessage {
+  return Option.isSome(
+    Schema.decodeUnknownOption(MediaLifecycleMessageSchema, {
+      onExcessProperty: 'error',
+    })(value),
+  )
+}
+
+export function mediaLifecycleFailure(
+  code: string,
+  message: string,
+  stage: string,
+  retryable = false,
+): MediaLifecycleFailure {
+  return {
+    code: boundedText(
+      code,
+      MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureCodeLength,
+    ),
+    message: boundedText(
+      redactMediaLifecycleText(message),
+      MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureMessageLength,
+    ),
+    stage: boundedText(
+      stage,
+      MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureStageLength,
+    ),
+    retryable,
+  }
+}
+
+export function mediaLifecycleError(
+  code: string,
+  message: string,
+  stage: string,
+  retryable = false,
+) {
+  return MediaLifecycleError.make({
+    failure: mediaLifecycleFailure(code, message, stage, retryable),
+  })
+}
+
+export function failureFromUnknown(cause: unknown, stage: string): MediaLifecycleFailure {
+  if (cause instanceof MediaLifecycleError) return cause.failure
+  if (typeof cause === 'object' && cause !== null) {
+    const decoded = Schema.decodeUnknownOption(MediaLifecycleFailureSchema)({
+      code: Reflect.get(cause, 'code'),
+      message: Reflect.get(cause, 'message'),
+      stage: Reflect.get(cause, 'stage') ?? stage,
+      retryable: Reflect.get(cause, 'retryable') ?? false,
+      causeSequence: Reflect.get(cause, 'causeSequence'),
+      causeTimestampMs: Reflect.get(cause, 'causeTimestampMs'),
+    })
+    if (Option.isSome(decoded)) {
+      return {
+        ...decoded.value,
+        message: boundedText(
+          redactMediaLifecycleText(decoded.value.message),
+          MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureMessageLength,
+        ),
+      }
+    }
+  }
+  return mediaLifecycleFailure(
+    'media_lifecycle_failure',
+    cause instanceof Error ? cause.message : 'Windows media lifecycle failed',
+    stage,
+  )
+}
+
+function boundedText(value: string, maximumLength: number) {
+  const normalized = value.trim() || 'unknown'
+  return normalized.slice(0, maximumLength)
+}
+
+export function redactMediaLifecycleText(value: string) {
+  return value
+    .replace(
+      /\b(token|access_token|authorization)\s*[:=]\s*([^\s,;]+)/gi,
+      '$1=[redacted]',
+    )
+    .replace(/\bBearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+    .replace(/\b(?:wss?|https?):\/\/[^\s,;]+/gi, '[redacted-url]')
+    .slice(0, MEDIA_LIFECYCLE_PROTOCOL_LIMITS.maximumFailureMessageLength)
+}

@@ -10,6 +10,7 @@ import {
 } from '#/components/icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Message } from '@syrnike13/api-types'
+import { Effect, Fiber } from 'effect'
 
 import {
   Dialog,
@@ -26,7 +27,7 @@ import {
 } from '#/features/command-palette/build-command-items'
 import type { CommandItem } from '#/features/command-palette/types'
 import { useCommandPalette } from '#/features/command-palette/command-palette-context'
-import { searchChannelMessages } from '#/features/api/messages-api'
+import { searchChannelMessagesEffect } from '#/features/api/messages-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { syncStore } from '#/features/sync/sync-store'
@@ -154,47 +155,46 @@ export function CommandPalette() {
       activeChannelId,
       auth.user?._id,
     )
-    let cancelled = false
-    const timer = window.setTimeout(() => {
-      setSearchingMessages(true)
-      void Promise.all(
-        channelIds.map(async (channelId) => {
-          try {
-            const { messages, users } = await searchChannelMessages(
-              token,
-              channelId,
-              trimmed,
-              8,
-            )
-            syncStore.upsertUsers(users)
-            const state = syncStore.getState()
-            const channel = state.channels[channelId]
-            const channelLabel = channel
-              ? channelLabelForMessage(channel, state, auth.user?._id)
-              : 'Канал'
-            return messages.map((message) => ({
-              message,
-              channelId,
-              channelLabel,
-            }))
-          } catch {
-            return []
-          }
-        }),
-      )
-        .then((batches) => {
-          if (cancelled) return
+
+    const fiber = Effect.runFork(
+      Effect.gen(function*() {
+        yield* Effect.sleep(280)
+        yield* Effect.sync(() => setSearchingMessages(true))
+
+        const batches = yield* Effect.all(
+          channelIds.map((channelId) =>
+            searchChannelMessagesEffect(token, channelId, trimmed, 8).pipe(
+              Effect.flatMap(({ messages, users }) =>
+                Effect.sync(() => {
+                  syncStore.upsertUsers(users)
+                  const state = syncStore.getState()
+                  const channel = state.channels[channelId]
+                  const channelLabel = channel
+                    ? channelLabelForMessage(channel, state, auth.user?._id)
+                    : 'Канал'
+                  return messages.map((message) => ({
+                    message,
+                    channelId,
+                    channelLabel,
+                  }))
+                }),
+              ),
+              Effect.catch(() => Effect.succeed([])),
+            ),
+          ),
+          { concurrency: 'unbounded' },
+        )
+
+        yield* Effect.sync(() => {
           const flat = batches.flat().slice(0, 12)
           setMessageHits(flat)
+          setSearchingMessages(false)
         })
-        .finally(() => {
-          if (!cancelled) setSearchingMessages(false)
-        })
-    }, 280)
+      }),
+    )
 
     return () => {
-      cancelled = true
-      window.clearTimeout(timer)
+      Effect.runFork(Fiber.interrupt(fiber))
     }
   }, [open, query, auth.session?.token, activeChannelId, auth.user?._id])
 

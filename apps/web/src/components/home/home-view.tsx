@@ -11,6 +11,7 @@ import {
 } from '#/components/icons'
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { ActiveNowPanel } from '#/components/home/active-now-panel'
@@ -39,7 +40,7 @@ import { selectFriendRequestNotificationBadge } from '#/features/notifications/n
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listUsersByRelationship } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { writeClipboardText } from '#/lib/clipboard'
+import { writeClipboardTextEffect } from '#/lib/clipboard'
 import { isUserOnline, presenceLabel } from '#/lib/presence'
 import { cn } from '#/lib/utils'
 
@@ -82,7 +83,7 @@ function HomeFriendRow({
 
   async function copyUserId() {
     try {
-      await writeClipboardText(user._id)
+      await Effect.runPromise(writeClipboardTextEffect(user._id))
       toast.success('ID скопирован')
     } catch {
       toast.error('Не удалось скопировать')
@@ -92,7 +93,9 @@ function HomeFriendRow({
   function handleBlock() {
     if (!token) return
     if (!window.confirm(`Заблокировать @${user.username}?`)) return
-    void blockUserRelationship(token, user._id).catch(() => undefined)
+    Effect.runFork(
+      blockUserRelationship(token, user._id).pipe(Effect.ignore),
+    )
   }
 
   return (
@@ -155,8 +158,10 @@ function HomeFriendRow({
               {user.relationship === 'Incoming' ? (
                 <FloatingMenuItem
                   onClick={() => {
-                    void declineIncomingFriendRequest(token, user._id).catch(
-                      () => undefined,
+                    Effect.runFork(
+                      declineIncomingFriendRequest(token, user._id).pipe(
+                        Effect.ignore,
+                      ),
                     )
                   }}
                 >
@@ -167,8 +172,10 @@ function HomeFriendRow({
               {user.relationship === 'Outgoing' ? (
                 <FloatingMenuItem
                   onClick={() => {
-                    void cancelOutgoingFriendRequest(token, user._id).catch(
-                      () => undefined,
+                    Effect.runFork(
+                      cancelOutgoingFriendRequest(token, user._id).pipe(
+                        Effect.ignore,
+                      ),
                     )
                   }}
                 >
@@ -179,7 +186,9 @@ function HomeFriendRow({
               {user.relationship === 'Friend' ? (
                 <FloatingMenuItem
                   onClick={() => {
-                    void removeFriend(token, user._id).catch(() => undefined)
+                    Effect.runFork(
+                      removeFriend(token, user._id).pipe(Effect.ignore),
+                    )
                   }}
                 >
                   <UserMinusIcon className="size-3.5" />
@@ -280,13 +289,15 @@ export function HomeView({ tab }: HomeViewProps) {
 
   async function openDm(userId: string) {
     if (!token) return
-    await openDirectMessageChannel(token, userId, (channelId) =>
-      navigate({
-        to: `${prefix}/c/$channelId`,
-        params: { channelId },
-        search: { m: undefined },
-      }),
-    ).catch(() => undefined)
+    await Effect.runPromise(
+      openDirectMessageChannel(token, userId, (channelId) =>
+        navigate({
+          to: `${prefix}/c/$channelId`,
+          params: { channelId },
+          search: { m: undefined },
+        }),
+      ).pipe(Effect.ignore),
+    )
   }
 
   async function handleSendRequest() {
@@ -296,7 +307,7 @@ export function HomeView({ tab }: HomeViewProps) {
 
     setSending(true)
     try {
-      await sendFriendRequestByUsername(token, trimmed)
+      await Effect.runPromise(sendFriendRequestByUsername(token, trimmed))
       setUsername('')
       setAddOpen(false)
     } catch {
@@ -425,10 +436,12 @@ export function HomeView({ tab }: HomeViewProps) {
                               size="sm"
                               variant="secondary"
                               onClick={() => {
-                                void acceptIncomingFriendRequest(
-                                  token,
-                                  user._id,
-                                ).catch(() => undefined)
+                                Effect.runFork(
+                                  acceptIncomingFriendRequest(
+                                    token,
+                                    user._id,
+                                  ).pipe(Effect.ignore),
+                                )
                               }}
                             >
                               Принять
@@ -440,17 +453,21 @@ export function HomeView({ tab }: HomeViewProps) {
                             variant="ghost"
                             onClick={() => {
                               if (isIncoming) {
-                                void declineIncomingFriendRequest(
-                                  token,
-                                  user._id,
-                                ).catch(() => undefined)
+                                Effect.runFork(
+                                  declineIncomingFriendRequest(
+                                    token,
+                                    user._id,
+                                  ).pipe(Effect.ignore),
+                                )
                                 return
                               }
 
-                              void cancelOutgoingFriendRequest(
-                                token,
-                                user._id,
-                              ).catch(() => undefined)
+                              Effect.runFork(
+                                cancelOutgoingFriendRequest(
+                                  token,
+                                  user._id,
+                                ).pipe(Effect.ignore),
+                              )
                             }}
                           >
                             {isOutgoing ? 'Отменить' : 'Отклонить'}

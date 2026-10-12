@@ -1,14 +1,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2Icon, MonitorIcon, Trash2Icon } from '#/components/icons'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { SettingsBlock } from '#/components/settings/settings-panels'
 import { Button } from '#/components/ui/button'
 import { useAuth } from '#/features/auth/auth-context'
 import {
-  deleteSession,
+  deleteSessionEffect,
   fetchSessions,
-  revokeOtherSessions,
+  revokeOtherSessionsEffect,
 } from '#/features/api/sessions-api'
 import { loadSession } from '#/lib/session'
 
@@ -29,38 +30,74 @@ export function SettingsSessionsPanel() {
 
   const sessionsQuery = useQuery({
     queryKey: ['auth', 'sessions'],
-    queryFn: () => fetchSessions(token!),
+    queryFn: ({ signal }) => fetchSessions(token!, signal),
     enabled: Boolean(token),
   })
 
-  async function revokeSession(sessionId: string) {
+  function revokeSession(sessionId: string) {
     if (!token) return
     if (!window.confirm('Завершить эту сессию?')) return
 
-    try {
-      await deleteSession(token, sessionId)
-      await queryClient.invalidateQueries({ queryKey: ['auth', 'sessions'] })
-      toast.success('Сессия завершена')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось завершить сессию',
-      )
-    }
+    Effect.runFork(
+      deleteSessionEffect(token, sessionId).pipe(
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () =>
+              queryClient.invalidateQueries({
+                queryKey: ['auth', 'sessions'],
+              }),
+            catch: (cause) => cause,
+          }),
+        ),
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось завершить сессию',
+              )
+            }),
+          onSuccess: () =>
+            Effect.sync(() => {
+              toast.success('Сессия завершена')
+            }),
+        }),
+      ),
+    )
   }
 
-  async function revokeAllOthers() {
+  function revokeAllOthers() {
     if (!token) return
     if (!window.confirm('Завершить все сессии, кроме текущей?')) return
 
-    try {
-      await revokeOtherSessions(token)
-      await queryClient.invalidateQueries({ queryKey: ['auth', 'sessions'] })
-      toast.success('Другие сессии завершены')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось завершить сессии',
-      )
-    }
+    Effect.runFork(
+      revokeOtherSessionsEffect(token).pipe(
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () =>
+              queryClient.invalidateQueries({
+                queryKey: ['auth', 'sessions'],
+              }),
+            catch: (cause) => cause,
+          }),
+        ),
+        Effect.matchEffect({
+          onFailure: (error) =>
+            Effect.sync(() => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось завершить сессии',
+              )
+            }),
+          onSuccess: () =>
+            Effect.sync(() => {
+              toast.success('Другие сессии завершены')
+            }),
+        }),
+      ),
+    )
   }
 
   if (sessionsQuery.isLoading) {

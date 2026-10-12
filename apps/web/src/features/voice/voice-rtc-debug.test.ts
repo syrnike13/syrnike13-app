@@ -1,10 +1,12 @@
+import { Effect } from 'effect'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import {
   appendRtcDebugSample,
   attachRtcRatesToScreenShares,
-  collectVoiceRtcDebugSnapshot,
+  collectVoiceRtcDebugSnapshotEffect,
   deriveRtcRates,
+  rtcDebugSnapshotFromTelemetry,
   RTC_DEBUG_BROWSER_UNAVAILABLE,
 } from './voice-rtc-debug'
 import { nativeMediaEngineStatsStore } from './native-media-engine-stats'
@@ -61,8 +63,7 @@ describe('voice rtc debug', () => {
   })
 
   it('collects transport, outbound, inbound, and screen share diagnostics from RTC stats', async () => {
-    const snapshot = await collectVoiceRtcDebugSnapshot(
-      roomWithStats([
+    const snapshot = await Effect.runPromise(collectVoiceRtcDebugSnapshotEffect(roomWithStats([
         {
           id: 'codec-video',
           type: 'codec',
@@ -120,6 +121,13 @@ describe('voice rtc debug', () => {
           },
         },
         {
+          id: 'remote-in-video',
+          type: 'remote-inbound-rtp',
+          localId: 'out-video',
+          fractionLost: 0.025,
+          roundTripTime: 0.071,
+        },
+        {
           id: 'in-video',
           type: 'inbound-rtp',
           kind: 'video',
@@ -135,8 +143,7 @@ describe('voice rtc debug', () => {
           frameWidth: 1920,
           frameHeight: 1080,
         },
-      ]),
-      [
+      ]), [
         {
           id: 'user:screen',
           userId: 'user',
@@ -146,20 +153,26 @@ describe('voice rtc debug', () => {
           subscribed: true,
           live: true,
           track: {
-            mediaStreamTrack: {
-              id: 'screen-media-track',
-              contentHint: 'motion',
-              getSettings: () => ({
-                width: 1920,
-                height: 1080,
-                frameRate: 60,
-                displaySurface: 'monitor',
-              }),
-            },
+            backend: 'livekit',
+            track: {
+              mediaStreamTrack: {
+                id: 'screen-media-track',
+                contentHint: 'motion',
+                getSettings: () => ({
+                  width: 1920,
+                  height: 1080,
+                  frameRate: 60,
+                  displaySurface: 'monitor',
+                }),
+              },
+            } as never,
           },
           publication: {
+            backend: 'livekit',
             trackSid: 'TR_screen',
-            source: 'screen_share',
+            source: 'screen',
+            isMuted: false,
+            isSubscribed: true,
             options: {
               videoCodec: 'vp8',
               screenShareEncoding: {
@@ -171,9 +184,7 @@ describe('voice rtc debug', () => {
             },
           },
         },
-      ] as never,
-      1_000,
-    )
+      ] as never, 1_000))
 
     expect(snapshot.transport.pingMs).toBe(63)
     expect(snapshot.transport.availableOutgoingBitrate).toBe(6_000_000)
@@ -189,7 +200,10 @@ describe('voice rtc debug', () => {
         none: 12,
         cpu: 0,
       },
+      packetLossPercent: 2.5,
+      roundTripTimeMs: 71,
     })
+    expect(snapshot.outbound).toHaveLength(1)
     expect(snapshot.inbound[0]).toMatchObject({
       id: 'publisher:in-video',
       kind: 'video',
@@ -238,9 +252,7 @@ describe('voice rtc debug', () => {
       },
     )
 
-    const snapshot = await collectVoiceRtcDebugSnapshot(
-      roomWithStats([]),
-      [
+    const snapshot = await Effect.runPromise(collectVoiceRtcDebugSnapshotEffect(roomWithStats([]), [
         {
           id: 'user:screen',
           userId: 'user',
@@ -250,18 +262,31 @@ describe('voice rtc debug', () => {
           subscribed: true,
           live: true,
           track: {
-            mediaStreamTrack: {
-              getSettings: () => ({
-                width: 1920,
-                height: 1080,
-                frameRate: 30,
+            backend: 'native',
+            track: {
+              getPresentationMetrics: () => ({
+                framesReceived: 120,
+                framesDrawn: 100,
+                framesSuperseded: 18,
+                framesDroppedNoConsumer: 2,
+                framesDroppedHidden: 0,
+                framesDroppedStale: 0,
+                drawFailures: 0,
+                canvasAttachCount: 3,
+                canvasDetachCount: 2,
+                presentationResets: 1,
+                rendererEpochChanges: 0,
+                activeConsumers: 1,
+                canvasPixels: 1920 * 1038,
+                lastFrameAgeMs: 16,
+                lastDrawAgeMs: 20,
+                sourceWidth: 1920,
+                sourceHeight: 1038,
               }),
             },
           },
         },
-      ] as never,
-      1_000,
-    )
+      ] as never, 1_000))
 
     expect(snapshot.screenShares[0]).toMatchObject({
       captureBackend: 'native',
@@ -284,12 +309,38 @@ describe('voice rtc debug', () => {
       captureAudioPeakDb: -6.5,
       captureAudioRmsDb: -18.25,
       hybridGraphicsCaptureFrames: 60,
+      rendererFramesReceived: 120,
+      rendererFramesDrawn: 100,
+      rendererFramesSuperseded: 18,
+      rendererActiveConsumers: 1,
+      rendererCanvasPixels: 1920 * 1038,
+      rendererLastDrawAgeMs: 20,
+      rendererFrameWidth: 1920,
+      rendererFrameHeight: 1038,
     })
   })
 
+  it('clears stale native capture diagnostics when telemetry no longer includes capture stats', () => {
+    nativeMediaEngineStatsStore.setNative(
+      { wgc_gpu: 60, dxgi_gpu: 0 },
+      'wgc_gpu',
+    )
+
+    rtcDebugSnapshotFromTelemetry(
+      {
+        timestamp: 1_000,
+        transport: {},
+        outbound: [],
+        inbound: [],
+      },
+      [],
+    )
+
+    expect(nativeMediaEngineStatsStore.getState().backend).toBe('chromium')
+  })
+
   it('preserves audio receive and concealment counters needed to diagnose silence', async () => {
-    const snapshot = await collectVoiceRtcDebugSnapshot(
-      roomWithStats([
+    const snapshot = await Effect.runPromise(collectVoiceRtcDebugSnapshotEffect(roomWithStats([
         {
           id: 'codec-opus',
           type: 'codec',
@@ -313,10 +364,7 @@ describe('voice rtc debug', () => {
           silentConcealedSamples: 240,
           jitterBufferEmittedCount: 47_520,
         },
-      ]),
-      [],
-      1_000,
-    )
+      ]), [], 1_000))
 
     expect(snapshot.inbound[0]).toMatchObject({
       kind: 'audio',
@@ -334,8 +382,7 @@ describe('voice rtc debug', () => {
   })
 
   it('sums transport counters from publisher and subscriber peer connections', async () => {
-    const snapshot = await collectVoiceRtcDebugSnapshot(
-      roomWithPublisherAndSubscriberStats({
+    const snapshot = await Effect.runPromise(collectVoiceRtcDebugSnapshotEffect(roomWithPublisherAndSubscriberStats({
         publisher: [
           {
             id: 'publisher-pair',
@@ -360,10 +407,7 @@ describe('voice rtc debug', () => {
             packetsReceived: 40,
           },
         ],
-      }),
-      [],
-      1_000,
-    )
+      }), [], 1_000))
 
     expect(snapshot.transport.bytesSent).toBe(4_000)
     expect(snapshot.transport.bytesReceived).toBe(6_000)
@@ -396,12 +440,7 @@ describe('voice rtc debug', () => {
       },
     }
 
-    const snapshot = await collectVoiceRtcDebugSnapshot(
-      room,
-      [],
-      1_000,
-      5,
-    )
+    const snapshot = await Effect.runPromise(collectVoiceRtcDebugSnapshotEffect(room, [], 1_000, 5))
 
     expect(snapshot.inbound).toContainEqual(
       expect.objectContaining({
@@ -414,8 +453,7 @@ describe('voice rtc debug', () => {
   })
 
   it('drops invalid quality limitation durations from RTC stats', async () => {
-    const snapshot = await collectVoiceRtcDebugSnapshot(
-      roomWithStats([
+    const snapshot = await Effect.runPromise(collectVoiceRtcDebugSnapshotEffect(roomWithStats([
         {
           id: 'out-video',
           type: 'outbound-rtp',
@@ -425,10 +463,7 @@ describe('voice rtc debug', () => {
             cpu: 'bad',
           },
         },
-      ]),
-      [],
-      1_000,
-    )
+      ]), [], 1_000))
 
     expect(snapshot.outbound[0]?.qualityLimitationDurations).toBeUndefined()
   })
@@ -456,7 +491,126 @@ describe('voice rtc debug', () => {
       },
       outbound: { out: 8_000 },
       inbound: { in: 16_000 },
+      quality: {},
     })
+  })
+
+  it('derives packet loss, frame drops, jitter, and concealed audio from deltas', () => {
+    const previous = {
+      timestamp: 1_000,
+      transport: {},
+      outbound: [{ id: 'out', packetLossPercent: 1.5 }],
+      inbound: [{
+        id: 'in',
+        packetsReceived: 100,
+        packetsLost: 5,
+        framesDecoded: 100,
+        framesDropped: 2,
+        totalSamplesReceived: 48_000,
+        concealedSamples: 480,
+        jitter: 0.012,
+      }],
+    }
+    const current = {
+      timestamp: 3_000,
+      transport: {},
+      outbound: [{ id: 'out', packetLossPercent: 3 }],
+      inbound: [{
+        id: 'in',
+        packetsReceived: 290,
+        packetsLost: 15,
+        framesDecoded: 190,
+        framesDropped: 12,
+        totalSamplesReceived: 144_000,
+        concealedSamples: 1_440,
+        jitter: 0.02,
+      }],
+    }
+
+    expect(deriveRtcRates(previous, current).quality).toEqual({
+      inboundPacketLossPercent: 5,
+      outboundPacketLossPercent: 3,
+      packetLossPercent: 5,
+      framesDroppedPercent: 10,
+      framesDroppedPerSecond: 5,
+      jitterMs: 20,
+      concealedAudioPercent: 1,
+    })
+  })
+
+  it('separates renderer supersession and consumer churn from WebRTC drops', () => {
+    const previous = {
+      timestamp: 1_000,
+      transport: {},
+      outbound: [],
+      inbound: [],
+      screenShares: [{
+        id: 'remote:screen',
+        isLocal: false,
+        rendererFramesReceived: 100,
+        rendererFramesSuperseded: 10,
+        rendererDrawFailures: 1,
+        rendererCanvasAttachCount: 2,
+        rendererCanvasDetachCount: 1,
+      }],
+    }
+    const current = {
+      timestamp: 3_000,
+      transport: {},
+      outbound: [],
+      inbound: [],
+      screenShares: [{
+        id: 'remote:screen',
+        isLocal: false,
+        rendererFramesReceived: 160,
+        rendererFramesSuperseded: 25,
+        rendererDrawFailures: 3,
+        rendererCanvasAttachCount: 7,
+        rendererCanvasDetachCount: 6,
+      }],
+    }
+
+    expect(deriveRtcRates(previous, current).quality).toEqual({
+      rendererFramesDroppedPercent: 25,
+      rendererFramesDroppedPerSecond: 7.5,
+      rendererConsumerChurnPerSecond: 5,
+      rendererDrawFailuresPerSecond: 1,
+    })
+  })
+
+  it('ignores reset counters instead of reporting negative quality rates', () => {
+    const quality = deriveRtcRates(
+      {
+        timestamp: 1_000,
+        transport: {},
+        outbound: [],
+        inbound: [{
+          id: 'in',
+          packetsReceived: 100,
+          packetsLost: 10,
+          framesDecoded: 100,
+          framesDropped: 10,
+          totalSamplesReceived: 48_000,
+          concealedSamples: 480,
+        }],
+      },
+      {
+        timestamp: 2_000,
+        transport: {},
+        outbound: [],
+        inbound: [{
+          id: 'in',
+          packetsReceived: 5,
+          packetsLost: 0,
+          framesDecoded: 5,
+          framesDropped: 0,
+          totalSamplesReceived: 2_400,
+          concealedSamples: 0,
+        }],
+      },
+    ).quality
+
+    expect(quality).toEqual({})
   })
 
   it('attaches a remote screen bitrate to its matching inbound RTP stream', () => {
@@ -483,6 +637,7 @@ describe('voice rtc debug', () => {
         transport: {},
         outbound: {},
         inbound: { 'subscriber:in-screen': 2_500_000 },
+        quality: {},
       },
     })
 

@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Loader2Icon } from '#/components/icons'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { Effect, Fiber } from 'effect'
 
 import { AuthCard, AuthLayout } from '#/components/auth/auth-layout'
 import { Button } from '#/components/ui/button'
@@ -12,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from '#/components/ui/card'
-import { verifyAccount } from '#/features/api/account-api'
+import { verifyAccountEffect } from '#/features/api/account-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { clearPendingVerifyEmail } from '#/lib/auth-verify-email'
 import { postLoginPath } from '#/lib/auth-post-login-path'
@@ -39,44 +40,47 @@ function VerifyEmailPage() {
   const [state, setState] = useState<VerifyState>({ status: 'loading' })
 
   useEffect(() => {
-    let active = true
-
-    async function run() {
-      try {
-        const response = await verifyAccount(token)
-        if (!active) return
-
-        const ticket = response.ticket?.token
-        if (ticket) {
-          const loginResult = await auth.completeEmailVerification(ticket)
-          clearPendingVerifyEmail()
-          if (active) {
-            setState({ status: 'success', hasTicket: true })
-            void navigate({
-              to: postLoginPath(loginResult?.needsOnboarding ?? false),
-              replace: true,
-            })
-          }
+    const fiber = Effect.runFork(
+      Effect.gen(function*() {
+        const response = yield* verifyAccountEffect(token)
+        const ticket = response?.ticket.token
+        if (!ticket) {
+          yield* Effect.sync(() => {
+            setState({ status: 'success', hasTicket: false })
+            toast.success('Email подтверждён')
+          })
           return
         }
 
-        setState({ status: 'success', hasTicket: false })
-        toast.success('Email подтверждён')
-      } catch (error) {
-        if (!active) return
-        setState({
-          status: 'error',
-          message:
-            error instanceof Error
-              ? error.message
-              : 'Не удалось подтвердить email',
+        const loginResult = yield* auth.completeEmailVerification(ticket)
+        yield* Effect.sync(() => {
+          clearPendingVerifyEmail()
+          setState({ status: 'success', hasTicket: true })
         })
-      }
-    }
-
-    void run()
+        yield* Effect.tryPromise({
+          try: () =>
+            navigate({
+              to: postLoginPath(loginResult?.needsOnboarding ?? false),
+              replace: true,
+            }),
+          catch: (cause) => cause,
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            setState({
+              status: 'error',
+              message:
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось подтвердить email',
+            })
+          }),
+        ),
+      ),
+    )
     return () => {
-      active = false
+      Effect.runFork(Fiber.interrupt(fiber))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- один раз на token
   }, [token])

@@ -20,16 +20,36 @@ const nativeDirectory = path.resolve(
   'native',
   'win32-x64',
 )
-const verifier = path.resolve(
+const hookVerifier = path.resolve(
   repoRoot,
   'packages',
   'desktop-native',
   'scripts',
   'verify-artifacts.mjs',
 )
+const mediaVerifier = path.resolve(
+  repoRoot,
+  'packages',
+  'windows-media-engine',
+  'scripts',
+  'verify-artifacts.mjs',
+)
+const mediaDirectory = path.resolve(
+  desktopRoot,
+  outputDirectory,
+  'win-unpacked',
+  'resources',
+  'media-engine',
+  'win32-x64',
+)
 
-const result = spawnSync(process.execPath, [verifier, nativeDirectory], {
-  stdio: 'inherit',
-})
-if (result.error) throw result.error
-if (result.status !== 0) process.exit(result.status ?? 1)
+runVerifier(hookVerifier, nativeDirectory)
+runVerifier(mediaVerifier, mediaDirectory)
+
+function runVerifier(verifier, directory) {
+  const result = spawnSync(process.execPath, [verifier, directory], {
+    stdio: 'inherit',
+  })
+  if (result.error) throw result.error
+  if (result.status !== 0) process.exit(result.status ?? 1)
+}

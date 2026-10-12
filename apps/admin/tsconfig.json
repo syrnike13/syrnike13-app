@@ -7,7 +7,10 @@
     "paths": {
       "#/*": ["./src/*"],
       "@/*": ["./src/*"],
-      "@syrnike13/api-types": ["../../packages/api-types/src/index.ts"]
+      "@syrnike13/api-types": ["../../packages/api-types/src/index.ts"],
+      "@syrnike13/api-types/effect-schema": [
+        "../../packages/api-types/src/effect-schema.ts"
+      ]
     },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],

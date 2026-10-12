@@ -168,5 +168,6 @@ describe('hotkey combo helpers', () => {
 
     expect(pushToTalk?.available).toBe(true)
     expect(canRegisterHotkeyAction('push-to-talk')).toBe(true)
+    expect(canRegisterHotkeyAction('toggle-vad')).toBe(true)
   })
 })

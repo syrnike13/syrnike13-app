@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import type { Channel, User } from '@syrnike13/api-types'
+import { Effect, Fiber } from 'effect'
 import { toast } from 'sonner'
 
 import { LogOutIcon, SettingsIcon, UserMinusIcon } from '#/components/icons'
@@ -23,14 +24,14 @@ import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { Textarea } from '#/components/ui/textarea'
 import {
-  addGroupMember,
-  deleteChannel,
-  editChannel,
-  fetchGroupMembers,
-  removeGroupMember,
-  transferGroupOwnership,
+  addGroupMemberEffect,
+  deleteChannelEffect,
+  editChannelEffect,
+  fetchGroupMembersEffect,
+  removeGroupMemberEffect,
+  transferGroupOwnershipEffect,
 } from '#/features/api/channels-api'
-import { uploadMediaFile } from '#/features/api/media-api'
+import { uploadMediaFileEffect } from '#/features/api/media-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { canInviteUser } from '#/features/authorization/authorization'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
@@ -88,25 +89,39 @@ function GroupManagementDialogContent({
     setRemoveIcon(false)
   }, [channel.description, channel.icon, channel.name, open])
 
-  async function refreshMembers() {
-    if (!token) return
-    setLoadingMembers(true)
-    try {
-      const found = await fetchGroupMembers(token, channel._id)
-      for (const user of found) syncStore.upsertUser(user)
-      setMembers(found)
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось загрузить участников',
-      )
-    } finally {
-      setLoadingMembers(false)
-    }
+  function refreshMembers() {
+    if (!token) return Effect.void
+    return Effect.sync(() => setLoadingMembers(true)).pipe(
+      Effect.andThen(fetchGroupMembersEffect(token, channel._id)),
+      Effect.tap((found) =>
+        Effect.sync(() => {
+          for (const user of found) syncStore.upsertUser(user)
+          setMembers(found)
+        }),
+      ),
+      Effect.catch((error) =>
+        Effect.sync(() => {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : 'Не удалось загрузить участников',
+          )
+        }),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          setLoadingMembers(false)
+        }),
+      ),
+    )
   }
 
   useEffect(() => {
     if (!open) return
-    void refreshMembers()
+    const fiber = Effect.runFork(refreshMembers())
+    return () => {
+      Effect.runFork(Fiber.interrupt(fiber))
+    }
   }, [open, token, channel._id, channel.owner, recipientKey])
 
   const memberIds = useMemo(
@@ -148,41 +163,56 @@ function GroupManagementDialogContent({
     }
 
     setBusy(true)
-    try {
-      const data: Parameters<typeof editChannel>[2] = {
-        name: trimmedName,
-      }
-      const trimmedDescription = description.trim()
-      if (trimmedDescription) {
-        data.description = trimmedDescription
-      } else if (channel.description) {
-        data.remove = [...(data.remove ?? []), 'Description']
-      }
-      if (iconFile) {
-        data.icon = await uploadMediaFile(token, 'icons', iconFile)
-      } else if (removeIcon && channel.icon) {
-        data.remove = [...(data.remove ?? []), 'Icon']
-      }
+    return Effect.runPromise(
+      Effect.gen(function*() {
+        const data: Parameters<typeof editChannelEffect>[2] = {
+          name: trimmedName,
+        }
+        const trimmedDescription = description.trim()
+        if (trimmedDescription) {
+          data.description = trimmedDescription
+        } else if (channel.description) {
+          data.remove = [...(data.remove ?? []), 'Description']
+        }
+        if (iconFile) {
+          data.icon = yield* uploadMediaFileEffect(
+            token,
+            'icons',
+            iconFile,
+          )
+        } else if (removeIcon && channel.icon) {
+          data.remove = [...(data.remove ?? []), 'Icon']
+        }
 
-      const updated = await editChannel(token, channel._id, data)
-      if (updated.channel_type !== 'Group') {
-        throw new Error('Сервер вернул некорректный тип канала')
-      }
-      syncStore.upsertChannel(updated)
-      setName(updated.name)
-      setSavedName(updated.name)
-      setDescription(updated.description ?? '')
-      setSavedDescription(updated.description ?? '')
-      setIconFile(null)
-      setRemoveIcon(false)
-      toast.success('Группа обновлена')
-      return true
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Не удалось сохранить')
-      return false
-    } finally {
-      setBusy(false)
-    }
+        const updated = yield* editChannelEffect(token, channel._id, data)
+        if (updated.channel_type !== 'Group') {
+          return yield* Effect.fail(
+            new Error('Сервер вернул некорректный тип канала'),
+          )
+        }
+        yield* Effect.sync(() => {
+          syncStore.upsertChannel(updated)
+          setName(updated.name)
+          setSavedName(updated.name)
+          setDescription(updated.description ?? '')
+          setSavedDescription(updated.description ?? '')
+          setIconFile(null)
+          setRemoveIcon(false)
+          toast.success('Группа обновлена')
+        })
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось сохранить',
+            )
+            return false
+          },
+          onSuccess: () => true,
+        }),
+        Effect.ensuring(Effect.sync(() => setBusy(false))),
+      ),
+    )
   }
 
   function resetProfileDraft() {
@@ -207,51 +237,86 @@ function GroupManagementDialogContent({
   async function addMember(user: User) {
     if (!token) return
     setBusy(true)
-    try {
-      await addGroupMember(token, channel._id, user._id)
-      syncStore.patchChannel(channel._id, {
-        recipients: [...new Set([...channel.recipients, user._id])],
-      } as Partial<Channel>)
-      await refreshMembers()
-      toast.success(`${user.display_name ?? user.username} добавлен`)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Не удалось добавить')
-    } finally {
-      setBusy(false)
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        yield* addGroupMemberEffect(token, channel._id, user._id)
+        yield* Effect.sync(() => {
+          syncStore.patchChannel(channel._id, {
+            recipients: [...new Set([...channel.recipients, user._id])],
+          })
+        })
+        yield* refreshMembers()
+        yield* Effect.sync(() =>
+          toast.success(`${user.display_name ?? user.username} добавлен`),
+        )
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось добавить',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setBusy(false))),
+      ),
+    )
   }
 
   async function removeMember(user: User) {
     if (!token || !isOwner || user._id === currentUserId) return
     if (!window.confirm(`Удалить @${user.username} из группы?`)) return
     setBusy(true)
-    try {
-      await removeGroupMember(token, channel._id, user._id)
-      syncStore.patchChannel(channel._id, {
-        recipients: channel.recipients.filter((id) => id !== user._id),
-      } as Partial<Channel>)
-      setMembers((current) => current.filter((item) => item._id !== user._id))
-      toast.success('Участник удалён')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Не удалось удалить')
-    } finally {
-      setBusy(false)
-    }
+    await Effect.runPromise(
+      removeGroupMemberEffect(token, channel._id, user._id).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            syncStore.patchChannel(channel._id, {
+              recipients: channel.recipients.filter(
+                (id) => id !== user._id,
+              ),
+            })
+            setMembers((current) =>
+              current.filter((item) => item._id !== user._id),
+            )
+            toast.success('Участник удалён')
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось удалить',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setBusy(false))),
+      ),
+    )
   }
 
   async function transferOwnership(user: User) {
     if (!token || !isOwner || user._id === currentUserId) return
     if (!window.confirm(`Передать группу @${user.username}?`)) return
     setBusy(true)
-    try {
-      const updated = await transferGroupOwnership(token, channel._id, user._id)
-      syncStore.upsertChannel(updated)
-      toast.success('Владелец группы изменён')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Не удалось передать группу')
-    } finally {
-      setBusy(false)
-    }
+    await Effect.runPromise(
+      transferGroupOwnershipEffect(token, channel._id, user._id).pipe(
+        Effect.tap((updated) =>
+          Effect.sync(() => {
+            syncStore.upsertChannel(updated)
+            toast.success('Владелец группы изменён')
+          }),
+        ),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось передать группу',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setBusy(false))),
+      ),
+    )
   }
 
   async function leaveGroup() {
@@ -265,15 +330,29 @@ function GroupManagementDialogContent({
       : ''
     if (!window.confirm(`Выйти из группы?${suffix}`)) return
     setBusy(true)
-    try {
-      await deleteChannel(token, channel._id)
-      syncStore.removeChannel(channel._id)
-      setOpen(false)
-      await navigate({ to: `${prefix}`, search: { tab: 'online' } })
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Не удалось выйти')
-      setBusy(false)
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        yield* deleteChannelEffect(token, channel._id)
+        yield* Effect.sync(() => {
+          syncStore.removeChannel(channel._id)
+          setOpen(false)
+        })
+        yield* Effect.tryPromise({
+          try: () =>
+            navigate({ to: `${prefix}`, search: { tab: 'online' } }),
+          catch: (cause) => cause,
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось выйти',
+            )
+            setBusy(false)
+          }),
+        ),
+      ),
+    )
   }
 
   const currentIconUrl =

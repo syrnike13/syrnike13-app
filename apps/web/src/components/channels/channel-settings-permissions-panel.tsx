@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Member, Role, Server } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { FxImage } from '#/components/ui/fx-image'
@@ -11,9 +12,9 @@ import {
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import {
-  setChannelRolePermissions,
-  setChannelUserPermissions,
-  setDefaultChannelPermissions,
+  setChannelRolePermissionsEffect,
+  setChannelUserPermissionsEffect,
+  setDefaultChannelPermissionsEffect,
 } from '#/features/api/channels-api'
 import {
   listServerMembers,
@@ -34,8 +35,6 @@ import {
   overrideFieldFromRole,
   overrideFieldToApi,
   roleColourStyle,
-  SERVER_PERMISSION_GROUPS,
-  ServerPermission,
   setPermissionTriState,
   sortRolesByHierarchy,
   type PermissionOverrideField,
@@ -104,33 +103,42 @@ function ChannelPermissionEditor({
     if (!isDirty) return true
 
     setSaving(true)
-    try {
-      const payload = { permissions: overrideFieldToApi(permissions) }
-      const updated = userTargetId
-        ? await setChannelUserPermissions(
+    const payload = { permissions: overrideFieldToApi(permissions) }
+    const savePermissions = userTargetId
+      ? setChannelUserPermissionsEffect(
+          token,
+          channel._id,
+          userTargetId,
+          payload,
+        )
+      : roleId === null
+        ? setDefaultChannelPermissionsEffect(token, channel._id, payload)
+        : setChannelRolePermissionsEffect(
             token,
             channel._id,
-            userTargetId,
+            roleId,
             payload,
           )
-        : roleId === null
-          ? await setDefaultChannelPermissions(token, channel._id, payload)
-          : await setChannelRolePermissions(
-              token,
-              channel._id,
-              roleId,
-              payload,
+
+    return Effect.runPromise(
+      savePermissions.pipe(
+        Effect.tap((updated) =>
+          Effect.sync(() => syncStore.patchChannel(channel._id, updated)),
+        ),
+        Effect.as(true),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось сохранить права',
             )
-      syncStore.patchChannel(channel._id, updated)
-      return true
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось сохранить права',
-      )
-      return false
-    } finally {
-      setSaving(false)
-    }
+            return false
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setSaving(false))),
+      ),
+    )
   }, [channel._id, isDirty, permissions, roleId, token, userTargetId])
 
   const draftRegistration = useMemo(

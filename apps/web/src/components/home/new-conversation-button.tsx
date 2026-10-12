@@ -1,4 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
+import { Effect } from 'effect'
 import { MessageCircleIcon, PlusIcon, UsersIcon } from '#/components/icons'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -21,7 +22,7 @@ import {
 } from '#/components/ui/popover'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
-import { createGroupChannel } from '#/features/api/channels-api'
+import { createGroupChannelEffect } from '#/features/api/channels-api'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listUsersByRelationship } from '#/features/sync/selectors'
@@ -85,14 +86,16 @@ export function NewConversationButton() {
 
     setBusy(true)
     try {
-      await openDirectMessageChannel(token, userId, (channelId) => {
-        closeDialog()
-        return navigate({
-          to: `${prefix}/c/$channelId`,
-          params: { channelId },
-          search: { m: undefined },
-        })
-      })
+      await Effect.runPromise(
+        openDirectMessageChannel(token, userId, (channelId) => {
+          closeDialog()
+          return navigate({
+            to: `${prefix}/c/$channelId`,
+            params: { channelId },
+            search: { m: undefined },
+          })
+        }),
+      )
     } catch {
       // dm-actions already shows the concrete error toast.
     } finally {
@@ -106,24 +109,41 @@ export function NewConversationButton() {
     if (!token || !trimmed) return
 
     setBusy(true)
-    try {
-      const channel = await createGroupChannel(token, trimmed, selectedIds)
-      syncStore.upsertChannel(channel)
-      syncStore.setSelectedServerId(null)
-      closeDialog()
-      toast.success('Группа создана')
-      await navigate({
-        to: `${prefix}/c/$channelId`,
-        params: { channelId: channel._id },
-        search: { m: undefined },
-      })
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось создать группу',
-      )
-    } finally {
-      setBusy(false)
-    }
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        const channel = yield* createGroupChannelEffect(
+          token,
+          trimmed,
+          selectedIds,
+        )
+        yield* Effect.sync(() => {
+          syncStore.upsertChannel(channel)
+          syncStore.setSelectedServerId(null)
+          closeDialog()
+          toast.success('Группа создана')
+        })
+        yield* Effect.tryPromise({
+          try: () =>
+            navigate({
+              to: `${prefix}/c/$channelId`,
+              params: { channelId: channel._id },
+              search: { m: undefined },
+            }),
+          catch: (cause) => cause,
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось создать группу',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setBusy(false))),
+      ),
+    )
   }
 
   return (

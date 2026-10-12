@@ -99,19 +99,19 @@ function groupChannel(): Channel {
   } as Channel
 }
 
-function legacyVoiceChannel(
+function serverVoiceChannel(
   id = 'voice-1',
   name = 'Voice',
 ): Channel {
   return {
     _id: id,
-    channel_type: 'VoiceChannel',
+    channel_type: 'TextChannel',
     server: 'server-1',
     name,
     default_permissions: null,
     role_permissions: {},
     voice: { max_users: null },
-  } as unknown as Channel
+  }
 }
 
 function renderShell(channel: Channel) {
@@ -181,7 +181,7 @@ describe('VoiceChannelShell', () => {
     expect(screen.getByTestId('channel-chat-panel')).toBeTruthy()
   })
   it('shows the chat toggle in a server voice stage', () => {
-    renderShell(legacyVoiceChannel())
+    renderShell(serverVoiceChannel())
 
     expect(screen.getByTestId('voice-stage-title').textContent).toBe('Voice')
     expect(
@@ -195,8 +195,8 @@ describe('VoiceChannelShell', () => {
   })
 
   it('remounts the side chat when the opened voice channel changes', () => {
-    const channelA = legacyVoiceChannel('voice-a', 'A')
-    const channelB = legacyVoiceChannel('voice-b', 'B')
+    const channelA = serverVoiceChannel('voice-a', 'A')
+    const channelB = serverVoiceChannel('voice-b', 'B')
     syncStore.applyReady({
       users: [currentUser, targetUser],
       servers: [

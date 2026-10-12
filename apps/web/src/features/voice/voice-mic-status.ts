@@ -117,14 +117,3 @@ export function shouldResetMicPreferenceOnIssue(options: {
       !options.micPublishing,
   )
 }
-
-export function micControlTitle(options: {
-  inVoice: boolean
-  micMuted: boolean
-  micIssue: VoiceMicIssue | null
-}) {
-  if (options.micIssue) {
-    return options.micIssue.hint
-  }
-  return options.micMuted ? 'Включить микрофон' : 'Выключить микрофон'
-}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { useNavigate } from '@tanstack/react-router'
 import { Trash2Icon } from '#/components/icons'
 import type { DataEditChannel, FieldsChannel } from '@syrnike13/api-types'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
@@ -30,7 +31,10 @@ import {
   type DraftController,
 } from '#/components/settings/draft-controller-context'
 import { useAuth } from '#/features/auth/auth-context'
-import { deleteChannel, editChannel } from '#/features/api/channels-api'
+import {
+  deleteChannelEffect,
+  editChannelEffect,
+} from '#/features/api/channels-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { pickDefaultChannelId } from '#/features/sync/selectors'
 import {
@@ -211,44 +215,49 @@ export function ChannelSettingsOverviewPanel({
       voiceChannel && maxUsers !== channelMaxUsers(channel)
 
     setSaving(true)
-    try {
-      const patch: DataEditChannel = {}
-      const remove: FieldsChannel[] = []
+    const patch: DataEditChannel = {}
+    const remove: FieldsChannel[] = []
 
-      if (nameChanged) patch.name = trimmedName
-      if (topicChanged) {
-        if (trimmedTopic) {
-          patch.description = trimmedTopic
-        } else {
-          remove.push('Description')
-        }
+    if (nameChanged) patch.name = trimmedName
+    if (topicChanged) {
+      if (trimmedTopic) {
+        patch.description = trimmedTopic
+      } else {
+        remove.push('Description')
       }
-      if (slowmodeChanged) patch.slowmode = slowmode
-      if (nsfwChanged) patch.nsfw = nsfw
-      if (voiceChannel && (audioBitrateChanged || maxUsersChanged)) {
-        Object.assign(
-          patch,
-          buildVoiceChannelVoicePatch(channel, {
-            ...(audioBitrateChanged
-              ? { audio_bitrate_kbps: audioBitrateKbps }
-              : {}),
-            ...(maxUsersChanged ? { max_users: maxUsers } : {}),
-          }),
-        )
-      }
-      if (remove.length) patch.remove = remove
-
-      const updated = await editChannel(token, channel._id, patch)
-      syncStore.patchChannel(channel._id, updated)
-      return true
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось сохранить',
-      )
-      return false
-    } finally {
-      setSaving(false)
     }
+    if (slowmodeChanged) patch.slowmode = slowmode
+    if (nsfwChanged) patch.nsfw = nsfw
+    if (voiceChannel && (audioBitrateChanged || maxUsersChanged)) {
+      Object.assign(
+        patch,
+        buildVoiceChannelVoicePatch(channel, {
+          ...(audioBitrateChanged
+            ? { audio_bitrate_kbps: audioBitrateKbps }
+            : {}),
+          ...(maxUsersChanged ? { max_users: maxUsers } : {}),
+        }),
+      )
+    }
+    if (remove.length) patch.remove = remove
+
+    return Effect.runPromise(
+      editChannelEffect(token, channel._id, patch).pipe(
+        Effect.tap((updated) =>
+          Effect.sync(() => syncStore.patchChannel(channel._id, updated)),
+        ),
+        Effect.as(true),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось сохранить',
+            )
+            return false
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setSaving(false))),
+      ),
+    )
   }, [
     audioBitrateKbps,
     auth.session?.token,
@@ -280,32 +289,43 @@ export function ChannelSettingsOverviewPanel({
     if (!token) return
 
     setDeletingChannel(true)
-    try {
-      await deleteChannel(token, channel._id)
-      syncStore.removeChannel(channel._id)
-      setDeleteDialogOpen(false)
-      toast.success('Канал удалён')
-
-      const fallback = pickDefaultChannelId(
-        syncStore.getState(),
-        auth.user?._id,
-      )
-      if (fallback) {
-        await navigate({
-          to: `${prefix}/c/$channelId`,
-          params: { channelId: fallback },
-          search: { m: undefined },
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        yield* deleteChannelEffect(token, channel._id)
+        yield* Effect.sync(() => {
+          syncStore.removeChannel(channel._id)
+          setDeleteDialogOpen(false)
+          toast.success('Канал удалён')
         })
-      } else {
-        await navigate({ to: prefix, search: { tab: 'online' } })
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось удалить канал',
-      )
-    } finally {
-      setDeletingChannel(false)
-    }
+
+        const fallback = pickDefaultChannelId(
+          syncStore.getState(),
+          auth.user?._id,
+        )
+        yield* Effect.tryPromise({
+          try: () =>
+            fallback
+              ? navigate({
+                  to: `${prefix}/c/$channelId`,
+                  params: { channelId: fallback },
+                  search: { m: undefined },
+                })
+              : navigate({ to: prefix, search: { tab: 'online' } }),
+          catch: (cause) => cause,
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось удалить канал',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setDeletingChannel(false))),
+      ),
+    )
   }
 
   return (

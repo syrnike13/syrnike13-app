@@ -5,6 +5,8 @@
 - **Revised:** 2026-07-19 — redacted reports are enabled by default
 - **Implementation clarification:** 2026-07-21 — typed causal incidents and a
   single automatic trigger owner
+- **Implementation clarification:** 2026-08-10 — sustained RTC/media
+  degradation is an automatic incident before a process crash
 
 ## Context
 
@@ -18,11 +20,13 @@ download a report instead of asking a user to locate several local log files.
 Web and desktop clients keep a bounded in-memory stream of structured diagnostic
 events. Redacted diagnostic collection and automatic upload are enabled by
 default and are triggered for fatal renderer errors, typed voice or media
-failures, and a stalled local screen publication. The version 3 desktop settings
-and version 2 browser preference migrations enable reports once for existing
-installations; a later explicit opt-out remains durable. A user can also send a
-report manually from settings. Repeated automatic reports for the same area and
-trigger are limited by a client cooldown and a server rate limit.
+failures, stalled local or remote screen pipelines, sustained critical frame
+drops, audio concealment, packet loss, jitter, and latency. The version 3
+desktop settings and version 2 browser preference migrations enable reports
+once for existing installations; a later explicit opt-out remains durable. A
+user can also send a report manually from settings. Repeated automatic reports
+for the same area and trigger are limited by a client cooldown and a server rate
+limit.
 
 Automatic upload classification is based on typed Diagnostic Incidents, not
 regex matching against log text. The incident identity includes the stable
@@ -45,11 +49,21 @@ into the diagnostic bundle.
 The Windows desktop main process also treats native request errors and timeouts,
 queue exhaustion, out-of-order control events, degraded states, unexpected
 utility exits, restarts, recycling, incompatibility, contract corruption, and
-bootstrap/disposal failures as incidents. It queues sanitized incident summaries
-until the authenticated renderer is ready; the renderer drains them every two
-seconds and sends a report without prompting. Identical incidents are collapsed
-for five seconds, and native automatic uploads use a one-minute client cooldown
-so a restart loop cannot create an unbounded upload storm.
+bootstrap/disposal failures as incidents. Presentation stalls, failed
+shared-texture operations, exhausted retained-texture budgets, degraded viewer
+recovery, encoder/RTP stalls, and failed publisher recovery use the same path.
+It queues sanitized incident summaries until the authenticated renderer is
+ready; the renderer drains them every two seconds and sends a report without
+prompting. Identical incidents are collapsed for five seconds, and native
+automatic uploads use a one-minute client cooldown so a restart loop cannot
+create an unbounded upload storm.
+
+The renderer RTC health monitor requires three consecutive degraded telemetry
+samples before creating an incident. It rearms only after a healthy sample and
+records a bounded evidence event before enqueueing the compact incident. This
+keeps transient network spikes out of automatic reports while preserving the
+quality values, thresholds, screen counts, and native capture/RTP counters in
+the uploaded renderer ring.
 
 The event sanitizer removes credentials, URLs, filesystem paths, network
 addresses, device labels, and user, room, channel, or participant identifiers.

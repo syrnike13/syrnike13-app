@@ -63,7 +63,11 @@ describe('useUserBadges', () => {
     await waitFor(() => {
       expect(result.current).toHaveLength(1)
     })
-    expect(fetchUser).toHaveBeenCalledWith('token', 'user-1')
+    expect(fetchUser).toHaveBeenCalledWith(
+      'token',
+      'user-1',
+      expect.any(AbortSignal),
+    )
     expect(result.current?.[0]?.slug).toBe('developer')
   })
 })

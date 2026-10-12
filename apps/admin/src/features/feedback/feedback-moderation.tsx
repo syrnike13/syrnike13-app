@@ -1,4 +1,5 @@
 import type { FeedbackSuggestion } from '@syrnike13/api-types'
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
 import { RiArrowRightLine, RiGitMergeLine, RiUserLine } from '@remixicon/react'
 import {
   useInfiniteQuery,
@@ -8,6 +9,7 @@ import {
 } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { Effect, Option, Schema } from 'effect'
 import { toast } from 'sonner'
 
 import {
@@ -44,10 +46,10 @@ import {
   fetchAllPublishedFeedback,
   fetchPendingFeedback,
   fetchPublishedFeedback,
-  hideFeedback,
+  hideFeedbackEffect,
   mergeFeedback,
   rejectFeedback,
-  updateFeedback,
+  updateFeedbackEffect,
 } from '#/features/api/feedback-api'
 import {
   FEEDBACK_PRODUCT_STATUSES,
@@ -105,11 +107,15 @@ function FeedbackModerationContent() {
 
   const pendingQuery = useInfiniteQuery({
     queryKey: queryKeys.admin.feedbackPending,
-    queryFn: ({ pageParam }) =>
-      fetchPendingFeedback(token!, {
-        offset: pageParam,
-        limit: FEEDBACK_PAGE_SIZE,
-      }),
+    queryFn: ({ pageParam, signal }) =>
+      fetchPendingFeedback(
+        token!,
+        {
+          offset: pageParam,
+          limit: FEEDBACK_PAGE_SIZE,
+        },
+        signal,
+      ),
     initialPageParam: 0,
     enabled: Boolean(token),
     getNextPageParam: (lastPage) => {
@@ -119,11 +125,15 @@ function FeedbackModerationContent() {
   })
   const publishedQuery = useInfiniteQuery({
     queryKey: queryKeys.admin.feedbackPublished,
-    queryFn: ({ pageParam }) =>
-      fetchPublishedFeedback(token!, {
-        offset: pageParam,
-        limit: FEEDBACK_PAGE_SIZE,
-      }),
+    queryFn: ({ pageParam, signal }) =>
+      fetchPublishedFeedback(
+        token!,
+        {
+          offset: pageParam,
+          limit: FEEDBACK_PAGE_SIZE,
+        },
+        signal,
+      ),
     initialPageParam: 0,
     enabled: Boolean(token),
     getNextPageParam: (lastPage) => {
@@ -133,7 +143,8 @@ function FeedbackModerationContent() {
   })
   const publishedCatalogQuery = useQuery({
     queryKey: queryKeys.admin.feedbackPublishedCatalog,
-    queryFn: () => fetchAllPublishedFeedback(token!),
+    queryFn: ({ signal }) =>
+      Effect.runPromise(fetchAllPublishedFeedback(token!), { signal }),
     enabled: Boolean(token) && mode === 'pending',
     staleTime: 30_000,
   })
@@ -953,16 +964,27 @@ function PublishedFeedbackEditor({
   const hasChanges = statusChanged || responseChanged
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!token) throw new Error('Missing authentication token')
-      if (!status) throw new Error('Missing feedback product status')
+    mutationFn: () =>
+      Effect.runPromise(
+        Effect.gen(function*() {
+          if (!token) {
+            return yield* Effect.fail(
+              new Error('Missing authentication token'),
+            )
+          }
+          if (!status) {
+            return yield* Effect.fail(
+              new Error('Missing feedback product status'),
+            )
+          }
 
-      return updateFeedback(token, suggestion._id, {
-        expected_updated_at: baseline.updatedAt,
-        status,
-        response: normalizedResponse,
-      })
-    },
+          return yield* updateFeedbackEffect(token, suggestion._id, {
+            expected_updated_at: baseline.updatedAt,
+            status,
+            response: normalizedResponse,
+          })
+        }),
+      ),
     onSuccess: (updated) => {
       const next = publishedFeedbackDraft(updated)
       setBaseline(next)
@@ -982,10 +1004,12 @@ function PublishedFeedbackEditor({
     },
   })
   const hideMutation = useMutation({
-    mutationFn: async () => {
-      if (!token) throw new Error('Missing authentication token')
-      return hideFeedback(token, suggestion._id)
-    },
+    mutationFn: () =>
+      Effect.runPromise(
+        token
+          ? hideFeedbackEffect(token, suggestion._id)
+          : Effect.fail(new Error('Missing authentication token')),
+      ),
     onSuccess: () => {
       toast.success('Обращение скрыто')
       onSaved()
@@ -1034,7 +1058,14 @@ function PublishedFeedbackEditor({
           <Label htmlFor={`status-${suggestion._id}`}>Статус</Label>
           <Select
             value={status}
-            onValueChange={(value) => setStatus(value as PublicFeedbackProductStatus)}
+            onValueChange={(value) => {
+              const decoded = Schema.decodeUnknownOption(
+                ApiSchema.FeedbackProductStatus,
+              )(value)
+              if (Option.isSome(decoded) && decoded.value !== 'collecting') {
+                setStatus(decoded.value)
+              }
+            }}
           >
             <SelectTrigger id={`status-${suggestion._id}`} className="w-full">
               <SelectValue placeholder="Статус не назначен" />

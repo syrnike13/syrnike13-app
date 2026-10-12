@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { Member, Role, Server } from '@syrnike13/api-types'
+import type {
+  FieldsRole,
+  Member,
+  Role,
+  Server,
+} from '@syrnike13/api-types'
 import { MoreHorizontalIcon, Trash2Icon } from '#/components/icons'
+import { Effect } from 'effect'
 import { toast } from 'sonner'
 
 import { RoleColourPicker } from '#/components/servers/role-colour-picker'
@@ -17,10 +23,10 @@ import {
 } from '#/components/ui/popover'
 import { SettingsToggleRow } from '#/components/settings/settings-panels'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { uploadMediaFile } from '#/features/api/media-api'
+import { uploadMediaFileEffect } from '#/features/api/media-api'
 import {
-  editServerRole,
-  setServerRolePermissions,
+  editServerRoleEffect,
+  setServerRolePermissionsEffect,
 } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
 import { roleIconUrl } from '#/lib/media'
@@ -221,75 +227,90 @@ export function ServerSettingsRoleEditor({
     }
 
     setSaving(true)
-    try {
-      const colourChanged =
-        normalizeRoleColour(colour) !== normalizeRoleColour(role.colour)
-      const nameChanged = trimmedName !== role.name
-      const hoistChanged = hoist !== Boolean(role.hoist)
-      const mentionableChanged =
-        mentionable !== (role.mentionable !== false)
-      const iconChanged = Boolean(iconFile) || removeIcon
+    return Effect.runPromise(
+      Effect.gen(function*() {
+        const colourChanged =
+          normalizeRoleColour(colour) !== normalizeRoleColour(role.colour)
+        const nameChanged = trimmedName !== role.name
+        const hoistChanged = hoist !== Boolean(role.hoist)
+        const mentionableChanged =
+          mentionable !== (role.mentionable !== false)
+        const iconChanged = Boolean(iconFile) || removeIcon
 
-      if (
-        canEditRole &&
-        (nameChanged ||
-          colourChanged ||
-          hoistChanged ||
-          mentionableChanged ||
-          iconChanged)
-      ) {
-        let iconAttachmentId: string | undefined
-        if (iconFile) {
-          iconAttachmentId = await uploadMediaFile(token, 'icons', iconFile)
+        if (
+          canEditRole &&
+          (nameChanged ||
+            colourChanged ||
+            hoistChanged ||
+            mentionableChanged ||
+            iconChanged)
+        ) {
+          const iconAttachmentId = iconFile
+            ? yield* uploadMediaFileEffect(token, 'icons', iconFile)
+            : undefined
+          const trimmedColour = colour.trim()
+          const fieldsToRemove: FieldsRole[] = []
+          if (colourChanged && !trimmedColour) {
+            fieldsToRemove.push('Colour')
+          }
+          if (removeIcon) {
+            fieldsToRemove.push('Icon')
+          }
+
+          const updatedRole = yield* editServerRoleEffect(
+            token,
+            serverId,
+            role._id,
+            {
+              ...(nameChanged ? { name: trimmedName } : {}),
+              ...(colourChanged && trimmedColour
+                ? { colour: trimmedColour }
+                : {}),
+              ...(hoistChanged ? { hoist } : {}),
+              ...(mentionableChanged ? { mentionable } : {}),
+              ...(iconAttachmentId ? { icon: iconAttachmentId } : {}),
+              ...(fieldsToRemove.length > 0
+                ? { remove: fieldsToRemove }
+                : {}),
+            },
+          )
+          yield* Effect.sync(() => {
+            upsertServerRole(serverId, updatedRole)
+            setIconFile(null)
+            setRemoveIcon(false)
+          })
         }
-        const trimmedColour = colour.trim()
 
-        const updatedRole = await editServerRole(token, serverId, role._id, {
-          ...(nameChanged ? { name: trimmedName } : {}),
-          ...(colourChanged && trimmedColour ? { colour: trimmedColour } : {}),
-          ...(hoistChanged ? { hoist } : {}),
-          ...(mentionableChanged ? { mentionable } : {}),
-          ...(iconAttachmentId ? { icon: iconAttachmentId } : {}),
-          ...((colourChanged && !trimmedColour) || removeIcon
-            ? {
-                remove: [
-                  ...(colourChanged && !trimmedColour
-                    ? (['Colour'] as const)
-                    : []),
-                  ...(removeIcon ? (['Icon'] as const) : []),
-                ],
-              }
-            : {}),
-        })
-        upsertServerRole(serverId, updatedRole)
-        setIconFile(null)
-        setRemoveIcon(false)
-      }
+        const currentPermissions = overrideFieldFromRole(role.permissions)
+        const permissionsChanged =
+          permissions.a !== currentPermissions.a ||
+          permissions.d !== currentPermissions.d
 
-      const currentPermissions = overrideFieldFromRole(role.permissions)
-      const permissionsChanged =
-        permissions.a !== currentPermissions.a ||
-        permissions.d !== currentPermissions.d
-
-      if (permissionsChanged && canEditPermissions) {
-        const serverAfterPermissions = await setServerRolePermissions(
-          token,
-          serverId,
-          role._id,
-          { permissions: overrideFieldToApi(permissions) },
-        )
-        syncStore.upsertServer(serverAfterPermissions)
-      }
-
-      return true
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось сохранить роль',
-      )
-      return false
-    } finally {
-      setSaving(false)
-    }
+        if (permissionsChanged && canEditPermissions) {
+          const serverAfterPermissions =
+            yield* setServerRolePermissionsEffect(
+              token,
+              serverId,
+              role._id,
+              { permissions: overrideFieldToApi(permissions) },
+            )
+          yield* Effect.sync(() =>
+            syncStore.upsertServer(serverAfterPermissions),
+          )
+        }
+      }).pipe(
+        Effect.as(true),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error ? error.message : 'Не удалось сохранить роль',
+            )
+            return false
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setSaving(false))),
+      ),
+    )
   }, [
     colour,
     hoist,

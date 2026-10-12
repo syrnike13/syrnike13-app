@@ -1,3 +1,5 @@
+import * as ApiSchema from '@syrnike13/api-types/effect-schema'
+import { Effect, Option, Schema } from 'effect'
 import { useState } from 'react'
 import { HashIcon, Volume2BoldIcon } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
@@ -20,7 +22,10 @@ import {
   SelectValue,
 } from '#/components/ui/select'
 import { useAuth } from '#/features/auth/auth-context'
-import { createServerChannel, editServer } from '#/features/api/servers-api'
+import {
+  createServerChannelEffect,
+  editServerEffect,
+} from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore } from '#/features/sync/sync-store'
 import { appendChannelToCategory } from '#/lib/channel-sidebar-layout'
@@ -52,58 +57,77 @@ export function CreateChannelDialog({
     if (!token || !trimmed) return
 
     setSaving(true)
-    try {
-      const created = await createServerChannel(token, serverId, {
-        name: trimmed,
-        type,
-      })
-      const channel = normalizeServerChannel(created, type)
-      syncStore.upsertChannel(channel)
+    await Effect.runPromise(
+      Effect.gen(function*() {
+        const created = yield* createServerChannelEffect(token, serverId, {
+          name: trimmed,
+          type,
+        })
+        const channel = normalizeServerChannel(created, type)
+        yield* Effect.sync(() => {
+          syncStore.upsertChannel(channel)
+        })
 
-      if (categoryId) {
-        const server = syncStore.getState().servers[serverId]
-        if (server) {
-          const isVoice = type === 'Voice'
-          const isVoiceId = (id: string) => {
-            const existing = syncStore.getState().channels[id]
-            if (existing) return isServerVoiceChannel(existing)
-            return id === channel._id && isVoice
-          }
-          const categories = appendChannelToCategory(
-            server.categories,
-            categoryId,
-            channel._id,
-            { isVoice, isVoiceId },
-          )
-          try {
-            const updated = await editServer(token, serverId, { categories })
-            syncStore.upsertServer(updated)
-          } catch (error) {
-            toast.error(
-              error instanceof Error
-                ? `Канал создан, но не удалось добавить в категорию: ${error.message}`
-                : 'Канал создан, но не удалось добавить в категорию',
+        if (categoryId) {
+          const server = syncStore.getState().servers[serverId]
+          if (server) {
+            const isVoice = type === 'Voice'
+            const isVoiceId = (id: string) => {
+              const existing = syncStore.getState().channels[id]
+              if (existing) return isServerVoiceChannel(existing)
+              return id === channel._id && isVoice
+            }
+            const categories = appendChannelToCategory(
+              server.categories,
+              categoryId,
+              channel._id,
+              { isVoice, isVoiceId },
+            )
+            yield* editServerEffect(token, serverId, { categories }).pipe(
+              Effect.tap((updated) =>
+                Effect.sync(() => syncStore.upsertServer(updated)),
+              ),
+              Effect.catch((error) =>
+                Effect.sync(() => {
+                  toast.error(
+                    error instanceof Error
+                      ? `Канал создан, но не удалось добавить в категорию: ${error.message}`
+                      : 'Канал создан, но не удалось добавить в категорию',
+                  )
+                }),
+              ),
             )
           }
         }
-      }
 
-      onOpenChange(false)
-      setName('')
-      setType('Text')
-      toast.success(`Канал «${trimmed}» создан`)
-      await navigate({
-        to: `${prefix}/c/$channelId`,
-        params: { channelId: channel._id },
-        search: { m: undefined },
-      })
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось создать канал',
-      )
-    } finally {
-      setSaving(false)
-    }
+        yield* Effect.sync(() => {
+          onOpenChange(false)
+          setName('')
+          setType('Text')
+          toast.success(`Канал «${trimmed}» создан`)
+        })
+        yield* Effect.tryPromise({
+          try: () =>
+            navigate({
+              to: `${prefix}/c/$channelId`,
+              params: { channelId: channel._id },
+              search: { m: undefined },
+            }),
+          catch: (cause) => cause,
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось создать канал',
+            )
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setSaving(false))),
+      ),
+    )
   }
 
   return (
@@ -133,7 +157,12 @@ export function CreateChannelDialog({
             <Label>Тип</Label>
             <Select
               value={type}
-              onValueChange={(value) => setType(value as 'Text' | 'Voice')}
+              onValueChange={(value) => {
+                const decoded = Schema.decodeUnknownOption(
+                  ApiSchema.LegacyServerChannelType,
+                )(value)
+                if (Option.isSome(decoded)) setType(decoded.value)
+              }}
             >
               <SelectTrigger>
                 <SelectValue />

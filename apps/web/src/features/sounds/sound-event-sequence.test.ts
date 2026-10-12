@@ -71,7 +71,7 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: REMOTE_USER_ID, screensharing: true },
+          state: voiceState(REMOTE_USER_ID, { screensharing: true }),
         },
         baseContext,
       ),
@@ -82,7 +82,10 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: REMOTE_USER_ID, screensharing: true, self_mute: true },
+          state: voiceState(REMOTE_USER_ID, {
+            screensharing: true,
+            self_mute: true,
+          }),
         },
         baseContext,
       ),
@@ -102,7 +105,7 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: REMOTE_USER_ID, screensharing: false },
+          state: voiceState(REMOTE_USER_ID, { screensharing: false }),
         },
         baseContext,
       ),
@@ -113,7 +116,7 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: REMOTE_USER_ID, screensharing: false },
+          state: voiceState(REMOTE_USER_ID, { screensharing: false }),
         },
         baseContext,
       ),
@@ -132,7 +135,7 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: CURRENT_USER_ID, screensharing: true },
+          state: voiceState(CURRENT_USER_ID, { screensharing: true }),
         },
         baseContext,
       ),
@@ -143,7 +146,7 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: CURRENT_USER_ID, screensharing: true },
+          state: voiceState(CURRENT_USER_ID, { screensharing: true }),
         },
         baseContext,
       ),
@@ -163,7 +166,7 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: REMOTE_USER_ID, camera: false },
+          state: voiceState(REMOTE_USER_ID, { camera: false }),
         },
         baseContext,
       ),
@@ -174,7 +177,7 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: REMOTE_USER_ID, camera: false },
+          state: voiceState(REMOTE_USER_ID, { camera: false }),
         },
         baseContext,
       ),
@@ -196,7 +199,7 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OTHER_ID,
-          state: { id: REMOTE_USER_ID, screensharing: true },
+          state: voiceState(REMOTE_USER_ID, { screensharing: true }),
         },
         baseContext,
       ),
@@ -207,14 +210,14 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: REMOTE_USER_ID, camera: true },
+          state: voiceState(REMOTE_USER_ID, { camera: true }),
         },
         { ...baseContext, currentVoiceChannelId: null },
       ),
     ).toEqual([])
   })
 
-  it('preserves cached media flags when a voice state update only changes one flag', () => {
+  it('tracks unchanged flags across full voice state snapshots', () => {
     const resolver = createSoundEventResolver({
       [VOICE_OPEN_ID]: {
         [CURRENT_USER_ID]: voiceState(CURRENT_USER_ID),
@@ -227,7 +230,10 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: REMOTE_USER_ID, screensharing: true },
+          state: voiceState(REMOTE_USER_ID, {
+            screensharing: true,
+            camera: true,
+          }),
         },
         baseContext,
       ),
@@ -238,7 +244,10 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: REMOTE_USER_ID, camera: false },
+          state: voiceState(REMOTE_USER_ID, {
+            screensharing: true,
+            camera: false,
+          }),
         },
         baseContext,
       ),
@@ -271,7 +280,7 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: REMOTE_USER_ID, screensharing: true },
+          state: voiceState(REMOTE_USER_ID, { screensharing: true }),
         },
         baseContext,
       ),
@@ -294,17 +303,17 @@ describe('sound event sequence resolver', () => {
             {
               type: 'VoiceStateUpdate',
               channel_id: VOICE_OPEN_ID,
-              state: { id: REMOTE_USER_ID, camera: true },
+              state: voiceState(REMOTE_USER_ID, { camera: true }),
             },
             {
               type: 'VoiceStateUpdate',
               channel_id: VOICE_OPEN_ID,
-              state: { id: REMOTE_USER_ID, camera: true },
+              state: voiceState(REMOTE_USER_ID, { camera: true }),
             },
             {
               type: 'VoiceStateUpdate',
               channel_id: VOICE_OTHER_ID,
-              state: { id: REMOTE_USER_ID, screensharing: true },
+              state: voiceState(REMOTE_USER_ID, { screensharing: true }),
             },
           ],
         },
@@ -386,6 +395,7 @@ describe('sound event sequence resolver', () => {
           user: REMOTE_USER_ID,
           from: VOICE_OPEN_ID,
           to: VOICE_OTHER_ID,
+          state: voiceState(REMOTE_USER_ID),
         },
         outsideVoice,
       ),
@@ -404,7 +414,7 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: CURRENT_USER_ID, self_mute: true },
+          state: voiceState(CURRENT_USER_ID, { self_mute: true }),
         },
         baseContext,
       ),
@@ -414,7 +424,7 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: CURRENT_USER_ID, self_mute: true },
+          state: voiceState(CURRENT_USER_ID, { self_mute: true }),
         },
         baseContext,
       ),
@@ -494,7 +504,7 @@ describe('sound event sequence resolver', () => {
         {
           type: 'VoiceStateUpdate',
           channel_id: VOICE_OPEN_ID,
-          state: { id: REMOTE_USER_ID, screensharing: false },
+          state: voiceState(REMOTE_USER_ID, { screensharing: false }),
         },
         baseContext,
       ),

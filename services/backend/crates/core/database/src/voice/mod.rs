@@ -25,7 +25,7 @@ pub mod call_lifecycle;
 mod join;
 mod session;
 mod voice_client;
-pub use crate::events::client::{VoiceRtcCredential, VoiceRtcEngine};
+pub use crate::events::client::{VoiceCameraProfile, VoiceRtcCredential, VoiceRtcEngine};
 pub use join::*;
 pub use session::*;
 pub use voice_client::VoiceClient;
@@ -391,21 +391,85 @@ pub async fn get_user_voice_channel_in_server(
         .map(|session| session.channel.id))
 }
 
+fn get_allowed_track_sources(
+    limits: &FeaturesLimits,
+    permissions: PermissionValue,
+) -> Vec<TrackSource> {
+    let mut allowed_sources = Vec::new();
+
+    if permissions.has(ChannelPermission::Speak as u64) {
+        allowed_sources.push(TrackSource::Microphone)
+    };
+
+    if permissions.has(ChannelPermission::Video as u64) && limits.video {
+        allowed_sources.extend([
+            TrackSource::Camera,
+            TrackSource::ScreenShare,
+            TrackSource::ScreenShareAudio,
+        ]);
+    };
+
+    allowed_sources
+}
+
+/// Fixed native camera modes admitted by the same video limits as ingress.
+pub fn native_camera_profiles(
+    limits: &FeaturesLimits,
+    permissions: PermissionValue,
+) -> Vec<VoiceCameraProfile> {
+    if !limits.video || !permissions.has(ChannelPermission::Video as u64) {
+        return Vec::new();
+    }
+    let [minimum_aspect, maximum_aspect] = limits.video_aspect_ratio;
+    if minimum_aspect != maximum_aspect
+        && !(minimum_aspect..=maximum_aspect).contains(&(16.0_f32 / 9.0))
+    {
+        return Vec::new();
+    }
+    let [width_limit, height_limit] = limits.video_resolution;
+    let unlimited_area = width_limit == 0 || height_limit == 0;
+    let maximum_area = u64::from(width_limit) * u64::from(height_limit);
+    [
+        (VoiceCameraProfile::Hd720p30, 1280_u64 * 720),
+        (VoiceCameraProfile::Hd1080p30, 1920_u64 * 1080),
+    ]
+    .into_iter()
+    .filter_map(|(profile, area)| (unlimited_area || area <= maximum_area).then_some(profile))
+    .collect()
+}
+
 pub fn get_allowed_sources(
     limits: &FeaturesLimits,
     permissions: PermissionValue,
 ) -> Vec<&'static str> {
-    let mut allowed_sources = Vec::new();
+    get_allowed_track_sources(limits, permissions)
+        .into_iter()
+        .map(|source| match source {
+            TrackSource::Microphone => "microphone",
+            TrackSource::Camera => "camera",
+            TrackSource::ScreenShare => "screen_share",
+            TrackSource::ScreenShareAudio => "screen_share_audio",
+            TrackSource::Unknown => "unknown",
+        })
+        .collect()
+}
 
-    if permissions.has(ChannelPermission::Speak as u64) {
-        allowed_sources.push("microphone")
-    };
+fn livekit_participant_permission(
+    limits: &FeaturesLimits,
+    permissions: PermissionValue,
+) -> ParticipantPermission {
+    let allowed_sources = get_allowed_track_sources(limits, permissions)
+        .into_iter()
+        .map(|source| source as i32)
+        .collect::<Vec<_>>();
 
-    if permissions.has(ChannelPermission::Video as u64) && limits.video {
-        allowed_sources.extend(["camera", "screen_share", "screen_share_audio"]);
-    };
-
-    allowed_sources
+    ParticipantPermission {
+        can_subscribe: permissions.has_channel_permission(ChannelPermission::Listen),
+        can_publish: !allowed_sources.is_empty(),
+        can_publish_data: false,
+        can_publish_sources: allowed_sources,
+        ..Default::default()
+    }
 }
 
 pub async fn delete_voice_state(
@@ -1042,7 +1106,6 @@ pub async fn reconcile_server_voice_permissions(
             );
         }
     }
-
 }
 
 pub async fn reconcile_active_voice_permissions(
@@ -1146,13 +1209,20 @@ pub async fn sync_user_voice_permissions(
 
         let before = update_event.clone();
 
-        let can_video =
-            limits.video && permissions.has_channel_permission(ChannelPermission::Video);
         let can_speak = permissions.has_channel_permission(ChannelPermission::Speak);
         let can_listen = permissions.has_channel_permission(ChannelPermission::Listen);
+        let participant_permission = livekit_participant_permission(&limits, permissions);
 
-        update_event.camera = voice_state.camera.then_some(can_video);
-        update_event.screensharing = voice_state.screensharing.then_some(can_video);
+        update_event.camera = voice_state.camera.then_some(
+            participant_permission
+                .can_publish_sources
+                .contains(&(TrackSource::Camera as i32)),
+        );
+        update_event.screensharing = voice_state.screensharing.then_some(
+            participant_permission
+                .can_publish_sources
+                .contains(&(TrackSource::ScreenShare as i32)),
+        );
         update_event.server_muted = (voice_state.server_muted != !can_speak).then_some(!can_speak);
         update_event.server_deafened =
             (voice_state.server_deafened != !can_listen).then_some(!can_listen);
@@ -1170,12 +1240,7 @@ pub async fn sync_user_voice_permissions(
                     &active_session.connection_epoch,
                 ),
                 channel_id,
-                ParticipantPermission {
-                    can_subscribe: can_listen,
-                    can_publish: can_speak,
-                    can_publish_data: can_speak,
-                    ..Default::default()
-                },
+                participant_permission,
             )
             .await?;
 
@@ -1183,6 +1248,9 @@ pub async fn sync_user_voice_permissions(
             if let Some(state) = get_voice_state(&user_voice_channel, &user.id).await? {
                 publish_voice_state_snapshot(channel_id, &state).await;
             }
+            // Voice Director consumes the private authority stream, while the
+            // public channel snapshot updates participant presentation.
+            publish_authoritative_voice_snapshot(&user.id).await?;
         };
     };
 
@@ -1364,55 +1432,7 @@ pub async fn reconcile_pending_voice_transport_cleanups(
     voice_client: &VoiceClient,
 ) -> Result<()> {
     for cleanup in list_voice_transport_cleanups().await? {
-        let participants = match async_std::future::timeout(
-            std::time::Duration::from_secs(2),
-            voice_client.list_room_participants(&cleanup.node, &cleanup.channel.id),
-        )
-        .await
-        {
-            Ok(Ok(Some(participants))) => participants,
-            Ok(Ok(None)) => {
-                if let Err(error) =
-                    complete_voice_transport_cleanup_with_membership(db, &cleanup).await
-                {
-                    syrnike_config::capture_internal_error!(&error);
-                    warn!(
-                        "Failed to complete voice cleanup {} for user {}: {error:?}",
-                        cleanup.operation_id, cleanup.user_id
-                    );
-                }
-                continue;
-            }
-            Ok(Err(_)) | Err(_) => continue,
-        };
-
-        let identities = participants
-            .iter()
-            .filter(|participant| voice_cleanup_matches_participant(&cleanup, participant))
-            .map(|participant| participant.identity.clone())
-            .collect::<Vec<_>>();
-        for identity in identities {
-            let _ = async_std::future::timeout(
-                std::time::Duration::from_secs(2),
-                voice_client.remove_user(&cleanup.node, &identity, &cleanup.channel.id),
-            )
-            .await;
-        }
-
-        let remaining = match async_std::future::timeout(
-            std::time::Duration::from_secs(2),
-            voice_client.list_room_participants(&cleanup.node, &cleanup.channel.id),
-        )
-        .await
-        {
-            Ok(Ok(Some(participants))) => participants,
-            Ok(Ok(None)) => Vec::new(),
-            Ok(Err(_)) | Err(_) => continue,
-        };
-        if !remaining
-            .iter()
-            .any(|participant| voice_cleanup_matches_participant(&cleanup, participant))
-        {
+        if retire_voice_transport(voice_client, &cleanup).await {
             if let Err(error) = complete_voice_transport_cleanup_with_membership(db, &cleanup).await
             {
                 syrnike_config::capture_internal_error!(&error);
@@ -1424,6 +1444,74 @@ pub async fn reconcile_pending_voice_transport_cleanups(
         }
     }
     Ok(())
+}
+
+// A crashed client's old SFU transport can outlive its retired authority.
+// Do not issue another credential until those exact transports are absent.
+// Keep failed cleanup records for the existing background reconciler.
+pub async fn retire_pending_user_voice_transports(
+    db: &Database,
+    voice_client: &VoiceClient,
+    user_id: &str,
+) -> Result<()> {
+    async_std::future::timeout(std::time::Duration::from_secs(6), async {
+        for cleanup in list_voice_transport_cleanups().await? {
+            if cleanup.user_id != user_id {
+                continue;
+            }
+            if !retire_voice_transport(voice_client, &cleanup).await {
+                return Err(create_error!(LiveKitUnavailable));
+            }
+            complete_voice_transport_cleanup_with_membership(db, &cleanup).await?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| create_error!(LiveKitUnavailable))?
+}
+
+async fn retire_voice_transport(
+    voice_client: &VoiceClient,
+    cleanup: &VoiceTransportCleanup,
+) -> bool {
+    let participants = match async_std::future::timeout(
+        std::time::Duration::from_secs(2),
+        voice_client.list_room_participants(&cleanup.node, &cleanup.channel.id),
+    )
+    .await
+    {
+        Ok(Ok(Some(participants))) => participants,
+        Ok(Ok(None)) => return true,
+        Ok(Err(_)) | Err(_) => return false,
+    };
+    let identities = participants
+        .iter()
+        .filter(|participant| voice_cleanup_matches_participant(cleanup, participant))
+        .map(|participant| participant.identity.as_str())
+        .collect::<Vec<_>>();
+    if identities.is_empty() {
+        return true;
+    }
+    for identity in identities {
+        let _ = async_std::future::timeout(
+            std::time::Duration::from_secs(2),
+            voice_client.remove_user(&cleanup.node, identity, &cleanup.channel.id),
+        )
+        .await;
+    }
+    // An RPC acknowledgement alone does not establish transport retirement.
+    match async_std::future::timeout(
+        std::time::Duration::from_secs(2),
+        voice_client.list_room_participants(&cleanup.node, &cleanup.channel.id),
+    )
+    .await
+    {
+        Ok(Ok(Some(remaining))) => !remaining
+            .iter()
+            .any(|participant| voice_cleanup_matches_participant(cleanup, participant)),
+        Ok(Ok(None)) => true,
+        Ok(Err(_)) | Err(_) => false,
+    }
 }
 
 async fn complete_voice_transport_cleanup_with_membership(
@@ -1622,11 +1710,17 @@ impl FromRedisValue for UserVoiceChannel {
 
 #[cfg(test)]
 mod tests {
-    use super::partial_voice_state_for_track;
+    use super::{
+        livekit_participant_permission, native_camera_profiles, partial_voice_state_for_track,
+        VoiceCameraProfile,
+    };
     use crate::{SystemMessage, VoiceCallEndReason};
     use iso8601_timestamp::{Duration, Timestamp};
+    use livekit_protocol::TrackSource;
     use std::collections::HashMap;
+    use syrnike_config::FeaturesLimits;
     use syrnike_models::v0::PartialUserVoiceState;
+    use syrnike_permissions::{ChannelPermission, PermissionValue};
 
     #[test]
     fn consistent_voice_node_requires_one_shared_node() {
@@ -1681,6 +1775,116 @@ mod tests {
         assert_eq!(partial, PartialUserVoiceState::default());
     }
 
+    fn video_limits() -> FeaturesLimits {
+        FeaturesLimits {
+            outgoing_friend_requests: 0,
+            bots: 0,
+            message_length: 0,
+            message_attachments: 0,
+            servers: 0,
+            voice_quality: 0,
+            video: true,
+            video_resolution: [1280, 720],
+            video_aspect_ratio: [0.3, 2.5],
+            screen_share_resolution: [1920, 1080],
+            screen_share_bitrate: 10_000_000,
+            file_upload_size_limit: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn native_camera_profiles_follow_ingress_pixel_area() {
+        let permissions = PermissionValue::from(ChannelPermission::Video as u64);
+        for (resolution, expected) in [
+            ([1080, 720], vec![]),
+            ([1280, 720], vec![VoiceCameraProfile::Hd720p30]),
+            ([720, 1280], vec![VoiceCameraProfile::Hd720p30]),
+            (
+                [1920, 1080],
+                vec![VoiceCameraProfile::Hd720p30, VoiceCameraProfile::Hd1080p30],
+            ),
+        ] {
+            let limits = FeaturesLimits {
+                video_resolution: resolution,
+                ..video_limits()
+            };
+            assert_eq!(
+                native_camera_profiles(&limits, permissions),
+                expected,
+                "{resolution:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_camera_profiles_require_video_entitlement_and_permission() {
+        let permissions = PermissionValue::from(ChannelPermission::Video as u64);
+        assert!(native_camera_profiles(&video_limits(), PermissionValue::from(0_u64)).is_empty());
+        let limits = FeaturesLimits {
+            video: false,
+            ..video_limits()
+        };
+        assert!(native_camera_profiles(&limits, permissions).is_empty());
+    }
+
+    #[test]
+    fn native_camera_profiles_follow_ingress_aspect_range() {
+        let permissions = PermissionValue::from(ChannelPermission::Video as u64);
+        for (aspect, allowed) in [
+            ([0.3, 1.5], false),
+            ([2.0, 2.5], false),
+            ([16.0_f32 / 9.0, 2.5], true),
+            ([0.3, 16.0_f32 / 9.0], true),
+            ([1.0, 1.0], true),
+        ] {
+            let limits = FeaturesLimits {
+                video_aspect_ratio: aspect,
+                ..video_limits()
+            };
+            assert_eq!(
+                !native_camera_profiles(&limits, permissions).is_empty(),
+                allowed,
+                "{aspect:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_camera_profiles_disable_area_cap_if_either_dimension_is_zero() {
+        let permissions = PermissionValue::from(ChannelPermission::Video as u64);
+        for resolution in [[0, 720], [1280, 0], [0, 0]] {
+            let limits = FeaturesLimits {
+                video_resolution: resolution,
+                ..video_limits()
+            };
+            assert_eq!(
+                native_camera_profiles(&limits, permissions),
+                vec![VoiceCameraProfile::Hd720p30, VoiceCameraProfile::Hd1080p30]
+            );
+        }
+    }
+
+    #[test]
+    fn server_mute_revokes_only_microphone_publication() {
+        let limits = video_limits();
+        let permissions = PermissionValue::from(
+            ChannelPermission::Listen as u64 | ChannelPermission::Video as u64,
+        );
+
+        let permission = livekit_participant_permission(&limits, permissions);
+
+        assert!(permission.can_publish);
+        assert!(!permission.can_publish_data);
+        assert_eq!(
+            permission.can_publish_sources,
+            vec![
+                TrackSource::Camera as i32,
+                TrackSource::ScreenShare as i32,
+                TrackSource::ScreenShareAudio as i32,
+            ]
+        );
+    }
+
     #[test]
     fn screen_share_audio_does_not_clear_streaming_state() {
         let partial = partial_voice_state_for_track(false, 4);
@@ -1711,6 +1915,63 @@ mod tests {
         assert_eq!(claims.connection_epoch, "epoch-a");
         assert_eq!(super::base_voice_identity(&identity), "user-a");
         assert!(super::voice_participant_claims("user-a:desktop-native:old:screen").is_none());
+    }
+
+    fn retired_transport() -> super::VoiceTransportCleanup {
+        let session = super::VoiceSession::new_awaiting_join(super::VoiceSessionCreate {
+            operation_id: "voice-op-550e8400-e29b-41d4-a716-446655440000".to_string(),
+            user_id: "user-a".to_string(),
+            channel: super::UserVoiceChannel {
+                id: "voice-a".to_string(),
+                server_id: None,
+            },
+            node: "node-a".to_string(),
+            rtc_engine: super::VoiceRtcEngine::WindowsNative,
+            client_instance_id: "client-a".to_string(),
+            connection_epoch: "epoch-a".to_string(),
+            self_mute: false,
+            self_deaf: false,
+            created_at: Timestamp::UNIX_EPOCH,
+            expires_at: Timestamp::UNIX_EPOCH + Duration::seconds(120),
+        });
+        super::VoiceTransportCleanup::from(&session)
+    }
+
+    #[test]
+    fn transport_retirement_cannot_remove_a_replacement_or_another_participant() {
+        let cleanup = retired_transport();
+        let participant = livekit_protocol::ParticipantInfo {
+            identity: super::voice_participant_identity(
+                &cleanup.user_id,
+                cleanup.rtc_engine,
+                &cleanup.client_instance_id,
+                &cleanup.operation_id,
+                &cleanup.connection_epoch,
+            ),
+            ..Default::default()
+        };
+        assert!(super::voice_cleanup_matches_participant(
+            &cleanup,
+            &participant
+        ));
+        let mut replacements = vec![cleanup.clone(); 5];
+        replacements[0].user_id = "user-b".to_string();
+        replacements[1].operation_id = "voice-op-550e8400-e29b-41d4-a716-446655440001".to_string();
+        replacements[2].rtc_engine = super::VoiceRtcEngine::Web;
+        replacements[3].client_instance_id = "client-b".to_string();
+        replacements[4].connection_epoch = "epoch-b".to_string();
+        for replacement in replacements {
+            assert!(!super::voice_cleanup_matches_participant(
+                &replacement,
+                &participant
+            ));
+        }
+    }
+
+    #[async_std::test]
+    async fn transport_retirement_does_not_treat_an_unavailable_node_as_absence() {
+        let voice_client = super::VoiceClient::new(HashMap::new());
+        assert!(!super::retire_voice_transport(&voice_client, &retired_transport()).await);
     }
 
     #[test]
