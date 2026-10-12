@@ -294,6 +294,11 @@ target_link_libraries(microphone_dsp_tests PRIVATE media_microphone_dsp)
 add_test(NAME microphone-dsp COMMAND microphone_dsp_tests)
 set_tests_properties(microphone-dsp PROPERTIES TIMEOUT 10)
 
+add_executable(microphone_dsp_bench tests/microphone_dsp_bench.cpp)
+windows_media_target(microphone_dsp_bench)
+target_link_libraries(microphone_dsp_bench PRIVATE media_microphone_dsp media_microphone_livekit)
+windows_media_copy_livekit_runtime(microphone_dsp_bench)
+
 add_executable(remote_audio_tests tests/remote_audio_test.cpp)
 windows_media_target(remote_audio_tests)
 target_include_directories(remote_audio_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")

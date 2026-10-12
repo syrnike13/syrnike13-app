@@ -57,8 +57,10 @@ running.
 ## DSP
 
 Per 10 ms frame: LiveKit's fixed-frame WebRTC AEC (with the rendered reference)
-and noise suppression, input volume, voice gate, AGC, a final silence guard for
+and noise suppression, input volume, voice gate, AGC2 adaptive digital gain, a final silence guard for
 mute, push-to-talk and the closed gate, and a limiter.
+The gate and activity detector measure the post-AEC/NS level before AGC2, so
+gain adaptation does not change the gate's dBFS threshold semantics.
 
 - AEC keeps running across renderer epochs (new call, output device switch):
   AEC3 re-estimates delay and re-converges by itself. Renderer epochs are unique

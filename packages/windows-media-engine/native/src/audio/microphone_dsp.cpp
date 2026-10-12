@@ -67,11 +67,17 @@ void MicrophoneDsp::process(MicrophoneFrame& frame, std::int64_t now_100ns, Echo
   const bool effective_send = !config_.muted && (!config_.push_to_talk || config_.push_to_talk_pressed);
   // The indicator shares the hangover, so it does not flicker between frames.
   stats_.speaking = effective_send && gate_hold_frames_ != 0;
-  if (config_.automatic_gain && stats_.gate_open && rms > 0.0001f) {
-    const float target = (std::clamp)(0.1f / rms, 0.25f, 6.0f);
-    gain_ += (target < gain_ ? 0.3f : 0.01f) * (target - gain_);
-  } else if (!config_.automatic_gain) gain_ = 1.0f;
-  stats_.automatic_gain = gain_;
+  if (config_.automatic_gain) {
+    // AGC2 receives input-volume-adjusted PCM16 only after the gate measurement.
+    // Keep adapting while the gate is closed; the final silence guard still wins.
+    for (std::size_t index = 0; index < samples.size(); ++index)
+      frame.samples[index] = static_cast<std::int16_t>(std::lround(
+          (std::clamp)(samples[index] * 32768.0f, -32768.0f, 32767.0f)));
+    const auto pre_gain = frame.samples;
+    if (!enhancement_->processGain(frame.samples)) frame.samples = pre_gain;
+    for (std::size_t index = 0; index < samples.size(); ++index)
+      samples[index] = static_cast<float>(frame.samples[index]) / 32768.0f;
+  }
   float output_energy = 0;
   // A closing gate fades out across one frame instead of clicking; opening is
   // immediate so speech onset is not attenuated. Mute and PTT stay immediate:
@@ -84,7 +90,7 @@ void MicrophoneDsp::process(MicrophoneFrame& frame, std::int64_t now_100ns, Echo
     // or limiter history can escape a closed gate/mute/PTT state.
     const float ramp = gate_from + (gate_to - gate_from) * static_cast<float>(index + 1) /
         static_cast<float>(samples.size());
-    const float output = ramp > 0 ? (std::clamp)(samples[index] * gain_ * ramp, -0.98f, 0.98f) : 0.0f;
+    const float output = ramp > 0 ? (std::clamp)(samples[index] * ramp, -0.98f, 0.98f) : 0.0f;
     frame.samples[index] = static_cast<std::int16_t>(std::lround(output * 32767.0f));
     output_energy += output * output;
   }

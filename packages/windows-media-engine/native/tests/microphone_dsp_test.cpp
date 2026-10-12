@@ -12,11 +12,19 @@ class Enhancement final : public MicrophoneEnhancement {
   std::uint64_t calls = 0, resets = 0;
   bool noise_enabled = false;
   bool reset_ok = true;
+  bool boost_gain = false;
+  bool gain_ok = true;
+  std::uint64_t gain_calls = 0;
   EchoAvailability process(std::array<std::int16_t, 480>&, const EchoReferenceFrame* reference,
                            bool noise, bool echo) noexcept override {
     ++calls;
     noise_enabled = noise;
     return !echo ? EchoAvailability::disabled : reference ? EchoAvailability::active : EchoAvailability::unavailable;
+  }
+  bool processGain(std::array<std::int16_t, 480>& samples) noexcept override {
+    ++gain_calls;
+    if (boost_gain) samples.fill(16000);
+    return gain_ok;
   }
   bool resetEcho() noexcept override { ++resets; return reset_ok; }
 };
@@ -57,6 +65,7 @@ void silenceAndControls() {
     require(frame.samples[1] > 0 && dsp.stats().speaking, "Unmute did not reopen effective output");
   }
   require(adapter.calls == 401, "Mute bypassed the warm DSP path");
+  require(adapter.gain_calls == adapter.calls, "Closed gate or mute bypassed the warm AGC2 path");
   config.input_volume = (std::numeric_limits<float>::quiet_NaN)();
   require(!dsp.configure(500, config) && dsp.stats().config_revision == 401, "Invalid config committed");
   config.input_volume = 2;
@@ -153,6 +162,37 @@ void productControlRange() {
   require(!dsp.configure(3, config) && dsp.stats().config_revision == 2,
           "Invalid gate changed committed controls");
 }
+void gateMeasuresBeforeGain() {
+  auto enhancement = std::make_unique<Enhancement>();
+  auto& adapter = *enhancement;
+  adapter.boost_gain = true;
+  MicrophoneDsp dsp(std::move(enhancement));
+  MicrophoneDspConfig config;
+  require(dsp.configure(1, config), "Gate/gain config rejected");
+  auto frame = signal(50);
+  dsp.process(frame, 1'000'000, nullptr);
+  require(!dsp.stats().gate_open && !dsp.stats().speaking && frame.samples == std::array<std::int16_t, 480>{},
+          "AGC2 boosted noise opened the gate or escaped the silence guard");
+  frame = signal(1000);
+  dsp.process(frame, 1'000'000, nullptr);
+  require(dsp.stats().gate_open && dsp.stats().speaking && frame.samples[1] == 16000,
+          "Voiced frame did not reach the separate AGC2 stage");
+  require(dsp.stats().input_level < 0.031f && dsp.stats().output_level > 0.48f,
+          "Input meter used the post-AGC2 level");
+  for (int index = 0; index < 32; ++index) {
+    frame = signal(50);
+    dsp.process(frame, 1'000'000, nullptr);
+  }
+  require(!dsp.stats().gate_open && !dsp.stats().speaking && frame.samples == std::array<std::int16_t, 480>{},
+          "AGC2 gain kept the gate's activity hangover alive");
+  config.automatic_gain = false;
+  config.gate_enabled = false;
+  require(dsp.configure(2, config), "Gain bypass config rejected");
+  const auto gain_calls = adapter.gain_calls;
+  frame = signal(1000);
+  dsp.process(frame, 1'000'000, nullptr);
+  require(adapter.gain_calls == gain_calls && frame.samples[1] == 1000, "AGC2 bypass still applied automatic gain");
+}
 void renderedReferenceRetirement() {
   RenderedEchoReference port(2);
   EchoReferenceFrame frame;
@@ -178,10 +218,26 @@ void renderedReferenceRetirement() {
   frame.sequence = 102;
   require(!port.take() && !port.publish(frame), "Lost output retained an available echo reference");
 }
+void gainFailurePreservesFrameAndEcho() {
+  auto enhancement = std::make_unique<Enhancement>();
+  enhancement->boost_gain = true;
+  enhancement->gain_ok = false;
+  MicrophoneDsp dsp(std::move(enhancement));
+  MicrophoneDspConfig config;
+  config.input_volume = 2;
+  config.gate_enabled = false;
+  require(dsp.configure(1, config), "Gain failure config rejected");
+  auto frame = signal(1000);
+  dsp.process(frame, 1'000'000, nullptr);
+  require(frame.samples == signal(2000).samples, "Failed gain discarded the pre-gain frame");
+  require(dsp.stats().echo == EchoAvailability::unavailable, "Gain failure mislabeled echo availability");
+}
 }  // namespace
 int main() try {
   silenceAndControls();
   productControlRange();
+  gateMeasuresBeforeGain();
+  gainFailurePreservesFrameAndEcho();
   referenceFreshness();
   renderedReferenceRetirement();
   std::cout << "Microphone DSP contracts passed\n";

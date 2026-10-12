@@ -12,6 +12,9 @@ class LiveKitMicrophoneEnhancement final : public MicrophoneEnhancement {
     if (result != livekit::RealtimeAudioProcessingResult::ok) return EchoAvailability::failed;
     return !echo ? EchoAvailability::disabled : reference ? EchoAvailability::active : EchoAvailability::unavailable;
   }
+  bool processGain(std::array<std::int16_t, kMicrophoneFrameSamples>& samples) noexcept override {
+    return processor_.processGain(samples) == livekit::RealtimeAudioProcessingResult::ok;
+  }
   bool resetEcho() noexcept override {
     // WebRTC Initialize reallocates its echo history, so it never runs on the
     // frame owner. AEC3 re-estimates delay and re-converges its filter on a new
