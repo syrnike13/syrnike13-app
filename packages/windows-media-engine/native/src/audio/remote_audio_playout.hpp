@@ -16,6 +16,9 @@ namespace syrnike::windows_media::audio {
 struct RemoteAudioPlayoutStats {
   std::uint64_t decoded = 0, sdk_dropped = 0, sdk_stale = 0, sdk_discontinuities = 0;
   std::uint64_t jitter_underruns = 0, jitter_overruns = 0, jitter_trimmed = 0;
+  std::uint64_t sdk_dropped_microphone = 0, sdk_dropped_screen_audio = 0;
+  std::uint64_t sdk_discontinuities_microphone = 0, sdk_discontinuities_screen_audio = 0;
+  std::uint64_t jitter_underruns_microphone = 0, jitter_underruns_screen_audio = 0;
   std::uint64_t rendered_frames = 0, device_starved = 0, late_wakes = 0, device_opens = 0;
   std::uint32_t reading = 0, latency_ms = 0;
   bool device_open = false;

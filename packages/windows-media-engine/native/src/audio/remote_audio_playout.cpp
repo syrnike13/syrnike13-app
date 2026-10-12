@@ -64,6 +64,10 @@ struct Mmcss {
   HANDLE value = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task);
   ~Mmcss() { if (value) AvRevertMmThreadCharacteristics(value); }
 };
+struct ExternalPlayout {
+  ExternalPlayout() { livekit::setExternalAudioPlayout(true); }
+  ~ExternalPlayout() { livekit::setExternalAudioPlayout(false); }
+};
 }  // namespace
 
 // One open shared-mode render client, owned by the playout thread.
@@ -373,10 +377,13 @@ void RemoteAudioPlayout::run() noexcept {
   bool deafened = false, device_fallback = false;
   // Counters of released readers, so published totals never go backwards.
   RemoteAudioJitterStats retired_jitter;
+  std::uint64_t retired_microphone_underruns = 0, retired_screen_audio_underruns = 0;
   const auto releaseReader = [&](Reader& reader) {
     if (reader.stream) {
       const auto value = reader.jitter.stats();
       retired_jitter.underruns += value.underruns;
+      auto& source_underruns = reader.microphone ? retired_microphone_underruns : retired_screen_audio_underruns;
+      source_underruns += value.underruns;
       retired_jitter.overruns += value.overruns;
       retired_jitter.trimmed += value.trimmed;
     }
@@ -390,6 +397,7 @@ void RemoteAudioPlayout::run() noexcept {
   try {
     Apartment apartment;
     Mmcss mmcss;  // Scheduling hint only; absent when the MMCSS service is disabled.
+    ExternalPlayout external_playout;
     for (;;) {
       const HANDLE events[]{control_event_, device ? device->event : nullptr};
       const auto wake = WaitForMultipleObjects(device ? 2 : 1, events, FALSE, device ? 50 : 10);
@@ -503,27 +511,34 @@ void RemoteAudioPlayout::run() noexcept {
       }
       applied = {desired.revision, desired.device_revision, desired.intent, needed};
 
-      // Read: drain every SDK reader into its jitter buffer.
-      std::uint32_t reading = 0;
-      for (auto& reader : readers) {
-        if (!reader.stream) continue;
-        ++reading;
-        for (std::size_t count = 0; count < RemoteAudioJitter::kCapacity; ++count) {
-          livekit::FreshAudioFrame decoded;
-          const auto result = reader.stream->tryRead(decoded, 200'000);
-          const auto sdk = reader.stream->stats();
-          stats.sdk_dropped += sdk.dropped - reader.observed_dropped;
-          stats.sdk_stale += sdk.stale - reader.observed_stale;
-          reader.observed_dropped = sdk.dropped;
-          reader.observed_stale = sdk.stale;
-          if (result != livekit::FreshAudioReadResult::frame) break;
-          ++stats.decoded;
-          reader.ingress_age_us = decoded.age_us;
-          if (decoded.discontinuity) ++stats.sdk_discontinuities;
-          reader.jitter.push(decoded.samples);
-          if (reader.microphone) reader.activity.observe(decoded.samples, now);
+      const auto drainReaders = [&] {
+        for (auto& reader : readers) {
+          if (!reader.stream) continue;
+          for (std::size_t count = 0; count < RemoteAudioJitter::kCapacity; ++count) {
+            livekit::FreshAudioFrame decoded;
+            const auto result = reader.stream->tryRead(decoded, 200'000);
+            const auto sdk = reader.stream->stats();
+            const auto dropped = sdk.dropped - reader.observed_dropped;
+            stats.sdk_dropped += dropped;
+            auto& source_dropped = reader.microphone ? stats.sdk_dropped_microphone : stats.sdk_dropped_screen_audio;
+            source_dropped += dropped;
+            stats.sdk_stale += sdk.stale - reader.observed_stale;
+            reader.observed_dropped = sdk.dropped;
+            reader.observed_stale = sdk.stale;
+            if (result != livekit::FreshAudioReadResult::frame) break;
+            ++stats.decoded;
+            reader.ingress_age_us = decoded.age_us;
+            if (decoded.discontinuity) {
+              ++stats.sdk_discontinuities;
+              auto& source_discontinuities = reader.microphone
+                  ? stats.sdk_discontinuities_microphone : stats.sdk_discontinuities_screen_audio;
+              ++source_discontinuities;
+            }
+            reader.jitter.push(decoded.samples);
+            if (reader.microphone) reader.activity.observe(decoded.samples, Clock::now());
+          }
         }
-      }
+      };
 
       // Render: whole 10 ms frames until the 20 ms device buffer is full.
       std::array<RemoteAudioMixInput, kPublicationCapacity> inputs{};
@@ -531,6 +546,10 @@ void RemoteAudioPlayout::run() noexcept {
       for (auto& reader : readers)
         if (reader.stream) inputs[input_count++] = {&reader.jitter, reader.volume, reader.muted, &reader.gain};
       const auto mixOne = [&](RemoteAudioFrame& frame) {
+        // One device-clocked pull fills all track sinks synchronously. Drain
+        // only here, so even a multi-frame wake gets new PCM for each mix.
+        (void)livekit::pullAudioPlayout();
+        drainReaders();
         (void)mixer.mix(std::span(inputs.data(), input_count), deafened, frame);
       };
       RemoteAudioFrame frame;
@@ -578,8 +597,8 @@ void RemoteAudioPlayout::run() noexcept {
           retry_at = Clock::now() + 250ms;
         }
       } else {
-        // No device: keep consuming at the decode rate so speaker activity and
-        // jitter state stay current, without letting a backlog build up.
+        // No device: drive WebRTC every 10 ms so speaker activity and jitter
+        // state stay current, without letting a backlog build up.
         for (unsigned count = 0; now >= next_tick && count < 2; ++count) {
           mixOne(frame);
           next_tick += 10ms;
@@ -604,17 +623,21 @@ void RemoteAudioPlayout::run() noexcept {
         livekit::setAudioPlayoutDelay(std::chrono::milliseconds{reported_delay_ms});
       }
       RemoteAudioJitterStats jitter = retired_jitter;
+      stats.jitter_underruns_microphone = retired_microphone_underruns;
+      stats.jitter_underruns_screen_audio = retired_screen_audio_underruns;
       for (auto& reader : readers) {
         if (!reader.stream) continue;
         const auto value = reader.jitter.stats();
         jitter.underruns += value.underruns;
+        auto& source_underruns = reader.microphone ? stats.jitter_underruns_microphone : stats.jitter_underruns_screen_audio;
+        source_underruns += value.underruns;
         jitter.overruns += value.overruns;
         jitter.trimmed += value.trimmed;
       }
       stats.jitter_underruns = jitter.underruns;
       stats.jitter_overruns = jitter.overruns;
       stats.jitter_trimmed = jitter.trimmed;
-      stats.reading = reading;
+      stats.reading = static_cast<std::uint32_t>(input_count);
       stats.device_open = device != nullptr;
       stats.latency_ms = output_delay_ms;
       {

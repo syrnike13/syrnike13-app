@@ -182,7 +182,9 @@ try {
   const voiceMetrics = sample => ({
     remoteAudio: {
       ...sample.delta('remote_audio_ingress_metrics', ['decoded', 'sdk_dropped', 'sdk_stale', 'sdk_discontinuities',
-        'app_overrun', 'app_stale', 'jitter_underruns', 'jitter_overruns', 'jitter_trimmed']),
+        'app_overrun', 'app_stale', 'jitter_underruns', 'jitter_overruns', 'jitter_trimmed',
+        'sdk_dropped_microphone', 'sdk_dropped_screen_audio', 'sdk_discontinuities_microphone',
+        'sdk_discontinuities_screen_audio', 'jitter_underruns_microphone', 'jitter_underruns_screen_audio']),
       ...sample.delta('remote_audio_output_metrics', ['underruns', 'stale_fragments', 'mix_discontinuities',
         'device_starved', 'late_wakes']),
     },
@@ -338,6 +340,7 @@ try {
   report.screenView = {
     firstFrameMs, cpuPercentOfOneCore: watching.cpuPercentOfOneCore, threads: watching.threads,
     exportedFps: Number(((frames.get(publication.publicationId) - watchFramesBefore) / (watching.elapsedMs / 1000)).toFixed(1)),
+    ...voiceMetrics(watching),
   }
   const stereoWatch = await stereoWatcher.done
   // A synchronized pair leads by roughly 0 ms despite the injected skew.
