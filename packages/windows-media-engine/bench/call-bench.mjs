@@ -10,6 +10,7 @@
 // The output device volume is 0, so bots are mixed and rendered but silent.
 import { spawn, execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
+import { closeSync, openSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -76,9 +77,12 @@ function bot(identity, room, args) {
   return { child, done }
 }
 
+// --dev already enables debug logging; --server-log captures it for a single run.
+const serverLog = options['server-log'] ? openSync(options['server-log'], 'w') : null
 const server = spawn(serverPath, ['--dev', '--bind', '127.0.0.1', ...(port === 7880 ? [] : ['--config-body',
   `{port: ${port}, rtc: {tcp_port: ${port + 1}, udp_port: ${port + 2}}, keys: {devkey: secret}}`])],
-  { stdio: 'ignore' })
+  { stdio: serverLog === null ? 'ignore' : ['ignore', serverLog, serverLog] })
+if (serverLog !== null) closeSync(serverLog)
 if (proxied) {
   const net = await import('node:net')
   const delayed = (from, to) => from.on('data', chunk => setTimeout(() => {
@@ -236,10 +240,43 @@ try {
   }
 
   // Voice.
+  // The engine watcher also publishes a plain SDK microphone. Its peer watches
+  // that same publication, so outbound stats and TrackInfo describe one sender.
+  const voiceWatchers = [self, 'voice-watcher-0'].map((identity, index) =>
+    bot(`voice-watcher-${index}`, 'bench-a', ['--seconds', String(phaseSeconds + 2), '--watch', identity,
+      ...(index === 0 ? ['--speak', '1'] : [])]))
+  bots.push(...voiceWatchers)
+  // Same tone, bitrate and duration; only RED differs. RTP payload counters
+  // include redundant frames even when codecId describes the inner Opus codec.
+  const redWatchers = [1, 0].map(red =>
+    bot(`red-watcher-${red}`, 'bench-a', ['--seconds', String(phaseSeconds), '--watch', `red-${red}`]))
+  const redBots = [1, 0].map(red =>
+    bot(`red-${red}`, 'bench-a', ['--seconds', String(phaseSeconds + 2), '--speak', '1',
+      '--mic-bitrate', '48000', '--red', String(red)]))
+  bots.push(...redWatchers, ...redBots)
   const voice = await measure(phaseSeconds)
   report.voice = {
     cpuPercentOfOneCore: voice.cpuPercentOfOneCore, threads: voice.threads,
     ...voiceMetrics(voice),
+  }
+  const voiceWatchResults = await Promise.all(voiceWatchers.map(value => value.done))
+  const redResults = await Promise.all(redBots.map(value => value.done))
+  const redWatchResults = await Promise.all(redWatchers.map(value => value.done))
+  if (redResults.some(value => !value?.speakMicrophone?.packetsSent))
+    throw new Error('RED comparison did not capture both microphone outbound RTP streams')
+  if (redWatchResults.some(value => !value?.watchMicrophone?.packetsReceived))
+    throw new Error('RED comparison did not capture both microphone inbound RTP streams')
+  report.voiceResilience = {
+    engineMicrophone: voiceWatchResults[0]?.watchMicrophone ?? null,
+    botMicrophone: voiceWatchResults[1]?.watchMicrophone ?? null,
+    botMicrophoneCodec: voiceWatchResults[0]?.speakMicrophoneCodec ?? null,
+    redComparison: redResults.map((value, index) => ({
+      identity: `red-${[1, 0][index]}`, red: [1, 0][index], requestedBitrate: 48_000,
+      targetBitrate: value.speakTargetBitrate, mimeType: value.speakMicrophoneCodec,
+      ...value.speakMicrophone,
+      watcherIdentity: `red-watcher-${[1, 0][index]}`,
+      watcherMicrophone: redWatchResults[index].watchMicrophone,
+    })),
   }
 
   // Switch output and input devices mid-call and back to the defaults.

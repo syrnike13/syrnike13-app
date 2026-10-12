@@ -1,7 +1,8 @@
 // Synthetic call participant for local measurements against a LiveKit server.
 // It talks (tone bursts on a microphone track), optionally shares a synthetic
 // screen with stereo screen audio, and optionally watches another
-// participant's screen share, then prints one JSON line with what it observed.
+// participant's screen share and microphone, then prints one JSON line with
+// what it observed.
 #include <windows.h>
 #include <timeapi.h>
 #include <livekit/livekit.h>
@@ -13,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <variant>
@@ -28,6 +30,8 @@ struct Options {
   int screen_width = 0, screen_height = 0, screen_fps = 0;
   // Opus target of the spoken microphone, bits per second (0: SDK default).
   int mic_bitrate = 0;
+  // Unset preserves the SDK default (RED enabled).
+  std::optional<bool> red;
   // Stamps screen frames this much earlier than their audio, so a viewer's
   // audio/video synchronization has a known offset to remove.
   int screen_skew_ms = 0;
@@ -45,6 +49,13 @@ Options parse(int argc, char** argv) {
     else if (key == "--screen-audio") options.screen_audio = value == "1";
     else if (key == "--screen-skew-ms") options.screen_skew_ms = std::atoi(value.c_str());
     else if (key == "--mic-bitrate") options.mic_bitrate = std::atoi(value.c_str());
+    else if (key == "--red") {
+      if (value != "0" && value != "1") {
+        std::fprintf(stderr, "--red must be 0 or 1\n");
+        std::exit(2);
+      }
+      options.red = value == "1";
+    }
     else if (key == "--screen")
       sscanf_s(value.c_str(), "%dx%d@%d", &options.screen_width, &options.screen_height, &options.screen_fps);
   }
@@ -84,7 +95,7 @@ int main(int argc, char** argv) {
   const auto options = parse(argc, argv);
   if (options.url.empty() || options.token.empty()) {
     std::fprintf(stderr, "usage: bench_bot --url ws://... --token T [--seconds N] [--speak 1] "
-                         "[--screen 1920x1080@30] [--screen-audio 1] [--screen-skew-ms N] [--mic-bitrate N] [--watch identity]\n");
+                         "[--screen 1920x1080@30] [--screen-audio 1] [--screen-skew-ms N] [--mic-bitrate N] [--red 0|1] [--watch identity]\n");
     return 2;
   }
   livekit::initialize(livekit::LogLevel::Warn);
@@ -142,6 +153,7 @@ int main(int argc, char** argv) {
         livekit::TrackPublishOptions publish;
         publish.source = livekit::TrackSource::SOURCE_MICROPHONE;
         publish.dtx = false;
+        publish.red = options.red;
         if (options.mic_bitrate > 0)
           publish.audio_encoding = livekit::AudioEncodingOptions{static_cast<std::uint64_t>(options.mic_bitrate)};
         participant->publishTrack(track, publish);
@@ -230,21 +242,38 @@ int main(int argc, char** argv) {
     }
 
     std::this_thread::sleep_for(std::chrono::seconds{options.seconds});
-    std::string speak_target_bitrate = "null";
+    std::string speak_target_bitrate = "null", speak_microphone_codec = "null";
+    std::string speak_microphone = "null";
     if (options.speak) try {
       std::shared_ptr<livekit::LocalAudioTrack> track;
       {
         std::scoped_lock lock(speaker_mutex);
         track = speaker_track;
       }
-      if (track)
-        for (const auto& value : track->getStats().get())
-          if (const auto* outbound = std::get_if<livekit::RtcOutboundRtpStats>(&value.stats))
+      if (track) {
+        const auto stats = track->getStats().get();
+        for (const auto& value : stats)
+          if (const auto* outbound = std::get_if<livekit::RtcOutboundRtpStats>(&value.stats);
+              outbound && outbound->stream.kind == "audio") {
             speak_target_bitrate = std::to_string(static_cast<long long>(std::llround(outbound->outbound.target_bitrate)));
+            const auto packets_sent = outbound->sent.packets_sent;
+            const auto bytes_sent = outbound->sent.bytes_sent;
+            speak_microphone = "{\"packetsSent\":" + std::to_string(packets_sent) +
+                ",\"bytesSent\":" + std::to_string(bytes_sent) +
+                ",\"headerBytesSent\":" + std::to_string(outbound->outbound.header_bytes_sent) +
+                ",\"payloadBytesPerPacket\":" + (packets_sent
+                    ? std::to_string(static_cast<double>(bytes_sent) / static_cast<double>(packets_sent)) : "null") + "}";
+            for (const auto& codec_value : stats)
+              if (const auto* codec = std::get_if<livekit::RtcCodecStats>(&codec_value.stats);
+                  codec && codec->rtc.id == outbound->stream.codec_id)
+                speak_microphone_codec = "\"" + codec->codec.mime_type + "\"";
+          }
+      }
     } catch (const std::exception& error) { std::fprintf(stderr, "speak stats: %s\n", error.what()); }
     // The negotiated codec of the watched sharer's screen audio and, once
     // WebRTC synchronizes that pair, how far the picture leads the sound.
     std::string watched_audio_codec = "null", watched_av_offset = "null";
+    std::string watched_microphone = "null";
     if (!options.watch.empty()) try {
       double audio_playout = 0, video_playout = 0;
       if (const auto sharer_participant = room.remoteParticipant(options.watch).lock())
@@ -252,8 +281,35 @@ int main(int argc, char** argv) {
           if (!publication || !publication->track()) continue;
           const auto source = publication->source();
           if (source != livekit::TrackSource::SOURCE_SCREENSHARE &&
-              source != livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO) continue;
-          for (const auto& value : publication->track()->getStats().get()) {
+              source != livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO &&
+              source != livekit::TrackSource::SOURCE_MICROPHONE) continue;
+          const auto stats = publication->track()->getStats().get();
+          for (const auto& value : stats) {
+            if (source == livekit::TrackSource::SOURCE_MICROPHONE) {
+              const auto* inbound = std::get_if<livekit::RtcInboundRtpStats>(&value.stats);
+              if (!inbound || inbound->stream.kind != "audio") continue;
+              std::string mime_type = "null";
+              for (const auto& codec_value : stats)
+                if (const auto* codec = std::get_if<livekit::RtcCodecStats>(&codec_value.stats);
+                    codec && codec->rtc.id == inbound->stream.codec_id)
+                  mime_type = "\"" + codec->codec.mime_type + "\"";
+              const auto packets_received = inbound->received.packets_received;
+              const auto bytes_received = inbound->inbound.bytes_received;
+              watched_microphone = "{\"mimeType\":" + mime_type +
+                  ",\"publicationMimeType\":\"" + publication->mimeType() + "\"" +
+                  ",\"packetsReceived\":" + std::to_string(packets_received) +
+                  ",\"bytesReceived\":" + std::to_string(bytes_received) +
+                  ",\"headerBytesReceived\":" + std::to_string(inbound->inbound.header_bytes_received) +
+                  ",\"payloadBytesPerPacket\":" + (packets_received
+                      ? std::to_string(static_cast<double>(bytes_received) / static_cast<double>(packets_received)) : "null") +
+                  ",\"packetsLost\":" + std::to_string(inbound->received.packets_lost) +
+                  ",\"fecPacketsReceived\":" + std::to_string(inbound->inbound.fec_packets_received) +
+                  ",\"fecPacketsDiscarded\":" + std::to_string(inbound->inbound.fec_packets_discarded) +
+                  ",\"concealedSamples\":" + std::to_string(inbound->inbound.concealed_samples) +
+                  ",\"silentConcealedSamples\":" + std::to_string(inbound->inbound.silent_concealed_samples) +
+                  ",\"totalSamplesReceived\":" + std::to_string(inbound->inbound.total_samples_received) + "}";
+              continue;
+            }
             if (const auto* inbound = std::get_if<livekit::RtcInboundRtpStats>(&value.stats))
               (source == livekit::TrackSource::SOURCE_SCREENSHARE ? video_playout : audio_playout) =
                   inbound->inbound.estimated_playout_timestamp;
@@ -280,14 +336,16 @@ int main(int argc, char** argv) {
     std::printf("{\"connectMs\":%.1f,\"firstFrameMs\":%.1f,\"watchFrames\":%llu,\"watchFps\":%.2f,\"watchWidth\":%d,"
                 "\"watchHeight\":%d,\"watchMaxWidth\":%d,\"watchMaxHeight\":%d,\"watchSmallFrames\":%llu,"
                 "\"watchMaxGapMs\":%.1f,\"watchGapsOver100ms\":%llu,\"watchMuted\":%d,\"watchUnmuted\":%d,"
-                "\"watchScreenAudioCodec\":%s,\"watchScreenAvOffsetMs\":%s,\"speakTargetBitrate\":%s,\"watchMicrophonePublished\":%d}\n",
+                "\"watchScreenAudioCodec\":%s,\"watchScreenAvOffsetMs\":%s,\"speakTargetBitrate\":%s,"
+                "\"speakMicrophoneCodec\":%s,\"speakMicrophone\":%s,\"watchMicrophonePublished\":%d,\"watchMicrophone\":%s}\n",
                 connect_ms, first_frame_ms, static_cast<unsigned long long>(watch.frames),
                 watched_s > 0 ? static_cast<double>(watch.frames - 1) / watched_s : 0.0,
                 watch.width, watch.height, watch.max_width, watch.max_height,
                 static_cast<unsigned long long>(watch.small_frames), watch.max_gap_ms,
                 static_cast<unsigned long long>(watch.gaps_over_100ms), mute_watch.muted.load(),
                 mute_watch.unmuted.load(), watched_audio_codec.c_str(), watched_av_offset.c_str(),
-                speak_target_bitrate.c_str(), mute_watch.microphone_published.load());
+                speak_target_bitrate.c_str(), speak_microphone_codec.c_str(), speak_microphone.c_str(),
+                mute_watch.microphone_published.load(), watched_microphone.c_str());
     std::fflush(stdout);
   }
   livekit::shutdown();
