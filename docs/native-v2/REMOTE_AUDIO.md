@@ -10,7 +10,8 @@ flowchart LR
   Room[Room callbacks: publication metadata] --> Playout
   Controls[Output intent: device, volume, deafen, per-user/stream mix, screen demand] --> Playout
   subgraph Playout[RemoteAudioPlayout thread, woken by the device event]
-    Readers[FreshAudioStream per subscribed track] --> Jitter[Per-track jitter buffer]
+    Pull[WebRTC: pull one 10 ms frame] --> Readers[FreshAudioStream per subscribed track]
+    Readers --> Jitter[Per-track safety buffer]
     Jitter --> Mix[Mix + limiter]
     Mix --> Render[WASAPI shared-mode render, 20 ms buffer]
     Mix --> Echo[Rendered echo reference FIFO]
@@ -26,22 +27,25 @@ flowchart LR
    Listener volume and mute are keyed by user id and apply to every Room
    identity (`voice:v1|engine|instance|epoch|operation|userId`) of that user.
    A changed gain ramps across one 10 ms frame instead of stepping.
-2. Drain every `FreshAudioStream` into its track's jitter buffer and update
-   speaker activity from decoded microphone PCM.
-3. While the device buffer has room for a 10 ms frame, mix one frame from every
-   track, write it, and publish exactly that frame (downmixed) as the echo
-   reference.
+2. For each 10 ms frame the device buffer can accept, call
+   `livekit::pullAudioPlayout()`. WebRTC decodes all receiving tracks and fills
+   their sinks synchronously on this thread, across every active Room.
+3. Immediately drain every `FreshAudioStream`, update microphone speaker
+   activity, mix, write, and publish exactly that frame (downmixed) as the echo
+   reference. There is no separate pre-render drain.
 
-Without a device (none available, or reopening) the loop still consumes at the
-decode rate so speaking indicators and buffers stay current.
+The thread enables external SDK playout on entry and restores the SDK timer on
+exit, including exceptions. Without a device (none available, or reopening) it
+still pulls and consumes every 10 ms so speaking indicators and buffers stay
+current. The synthetic ADM's repeating task stays alive but does not pull.
 
 ## Jitter buffer
 
 `RemoteAudioJitter` (`remote_audio_mix.hpp`) holds up to 8 frames per track. It
-primes 2 frames (20 ms) before playing, re-primes after an underrun, and trims a
-backlog above 6 frames back to 3, so drift between the SDK decode clock and the
-device clock can never grow latency without bound. Muted and deafened inputs are
-still consumed, so unmute never plays old audio.
+primes with 1 frame, so the newly pulled PCM plays immediately, including after
+an underrun. Capacity and trimming a backlog above 6 frames back to 3 remain a
+startup/recovery safety net, not a buffer between independent clocks. Muted and
+deafened inputs are still consumed, so unmute never plays old audio.
 
 ## Subscriptions
 
@@ -65,17 +69,19 @@ device gets a new process-unique renderer epoch for the echo reference.
 ## Diagnostics
 
 `remote_audio_ingress_metrics`: decoded, SDK dropped/stale/discontinuities,
-jitter underruns/overruns/trimmed, readers. `remote_audio_output_metrics`:
+jitter underruns/overruns/trimmed, readers. SDK dropped/discontinuities and jitter
+underruns also have `_microphone` and `_screen_audio` counters; totals survive
+reader replacement. `remote_audio_output_metrics`:
 rendered frames, device starved, late wakes, device opens, latency, device open.
 Latency is the delay after the SDK: the oldest decoded-ingress age plus jitter
 queue, the device buffer and the device latency. The same value goes to
 `livekit::setAudioPlayoutDelay`, so WebRTC's audio/video synchronization
 accounts for it.
 
-## Measurements
+## Earlier measurements
 
 `bench/call-bench.mjs` with three talking participants, 15 s per phase, average
-of two runs:
+of two runs, before device-pulled SDK decoding:
 
 | | before (develop) | after |
 | --- | --- | --- |

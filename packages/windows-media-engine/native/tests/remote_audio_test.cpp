@@ -17,13 +17,18 @@ RemoteAudioFrame filled(std::int16_t sample) {
 void jitterPrimesTrimsAndRecovers() {
   RemoteAudioJitter jitter;
   jitter.push(filled(1));
-  require(!jitter.pop(), "Jitter buffer played before priming two frames");
-  jitter.push(filled(2));
   const auto* first = jitter.pop();
-  require(first && (*first)[0] == 1, "Primed jitter buffer reordered frames");
-  require(jitter.pop() && !jitter.pop() && jitter.stats().underruns == 1, "Underrun was not counted");
+  require(first && (*first)[0] == 1, "Device-pulled frame was delayed by priming");
+  require(!jitter.pop() && jitter.stats().underruns == 1, "Underrun was not counted");
+  jitter.push(filled(2));
+  const auto* recovered = jitter.pop();
+  require(recovered && (*recovered)[0] == 2, "Jitter buffer did not recover on the next pulled frame");
+  for (int tick = 0; tick < 1000; ++tick) {
+    jitter.push(filled(2));
+    require(jitter.pop() && jitter.stats().depth == 0, "Device-clocked playout accumulated latency");
+  }
+  require(jitter.stats().underruns == 1, "Synchronous pulls caused jitter underruns");
   jitter.push(filled(3));
-  require(!jitter.pop(), "Jitter buffer did not re-prime after an underrun");
   for (std::int16_t value = 4; value < 4 + static_cast<std::int16_t>(RemoteAudioJitter::kCapacity) + 2; ++value)
     jitter.push(filled(value));
   require(jitter.stats().overruns == 3, "Full jitter buffer did not drop the oldest frames");

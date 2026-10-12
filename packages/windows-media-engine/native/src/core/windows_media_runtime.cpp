@@ -261,7 +261,7 @@ void WindowsMediaRuntime::run() noexcept {
       } else snapshot_.microphone_metrics.reset();
       if (desired_.output.state == OutputIntentState::on && room_generation_) {
         const auto& audio_stats = output.stats;
-        snapshot_.remote_audio_ingress_metrics = std::array<DiagnosticMetric, 8>{{
+        snapshot_.remote_audio_ingress_metrics = std::array<DiagnosticMetric, 14>{{
           {"decoded", static_cast<double>(audio_stats.decoded)},
           {"sdk_dropped", static_cast<double>(audio_stats.sdk_dropped)},
           {"sdk_stale", static_cast<double>(audio_stats.sdk_stale)},
@@ -270,6 +270,12 @@ void WindowsMediaRuntime::run() noexcept {
           {"jitter_overruns", static_cast<double>(audio_stats.jitter_overruns)},
           {"jitter_trimmed", static_cast<double>(audio_stats.jitter_trimmed)},
           {"reading", static_cast<double>(audio_stats.reading)},
+          {"sdk_dropped_microphone", static_cast<double>(audio_stats.sdk_dropped_microphone)},
+          {"sdk_dropped_screen_audio", static_cast<double>(audio_stats.sdk_dropped_screen_audio)},
+          {"sdk_discontinuities_microphone", static_cast<double>(audio_stats.sdk_discontinuities_microphone)},
+          {"sdk_discontinuities_screen_audio", static_cast<double>(audio_stats.sdk_discontinuities_screen_audio)},
+          {"jitter_underruns_microphone", static_cast<double>(audio_stats.jitter_underruns_microphone)},
+          {"jitter_underruns_screen_audio", static_cast<double>(audio_stats.jitter_underruns_screen_audio)},
         }};
         snapshot_.remote_audio_output_metrics = std::array<DiagnosticMetric, 6>{{
           {"rendered_frames", static_cast<double>(audio_stats.rendered_frames)},

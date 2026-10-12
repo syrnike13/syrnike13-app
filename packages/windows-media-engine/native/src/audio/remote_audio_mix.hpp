@@ -19,13 +19,12 @@ struct RemoteAudioJitterStats {
   std::uint32_t depth = 0;
 };
 
-// Per-track buffer between the SDK's decode clock and the output device clock,
-// owned by the playout thread only. It primes two frames (20 ms) to absorb
-// wake-up phase jitter, re-primes after an underrun, and trims back down when
-// the two clocks drift apart so latency cannot grow without bound.
+// Per-track safety buffer owned by the device-clocked playout thread. A single
+// synchronously pulled frame primes it; capacity and trimming bound any backlog
+// left by startup or recovery without adding a second clock's phase delay.
 class RemoteAudioJitter final {
  public:
-  static constexpr std::size_t kCapacity = 8, kPrime = 2, kHigh = 6, kTrim = 3;
+  static constexpr std::size_t kCapacity = 8, kPrime = 1, kHigh = 6, kTrim = 3;
   void push(const RemoteAudioFrame& frame) noexcept {
     if (depth_ == kCapacity) {
       head_ = (head_ + 1) % kCapacity;
