@@ -13,6 +13,69 @@ using namespace std::chrono_literals;
 void require(bool condition, const char* message) {
   if (!condition) throw std::runtime_error(message);
 }
+void inboundNetworkDiagnostics() {
+  const auto audio_report = [](const char* id, std::int64_t lost, std::uint64_t concealed) {
+    livekit::RtcInboundRtpStats report{};
+    report.stream.kind = "audio";
+    report.inbound.track_identifier = id;
+    report.received.packets_received = 100;
+    report.received.packets_lost = lost;
+    report.inbound.concealed_samples = concealed;
+    report.inbound.silent_concealed_samples = 3;
+    report.inbound.concealment_events = 4;
+    report.inbound.inserted_samples_for_deceleration = 5;
+    report.inbound.removed_samples_for_acceleration = 6;
+    report.inbound.jitter_buffer_delay = 0.5;
+    report.inbound.jitter_buffer_emitted_count = 10;
+    return livekit::RtcStats{report};
+  };
+  livekit::RtcInboundRtpStats video{};
+  video.stream.kind = "video";
+  video.received.packets_received = 200;
+  video.received.packets_lost = 7;
+  video.inbound.frames_decoded = 60;
+  video.inbound.frames_dropped = 8;
+  video.inbound.freeze_count = 2;
+  video.inbound.total_freeze_duration = 1.25;
+  video.inbound.pause_count = 3;
+  video.inbound.total_pause_duration = 2;
+  const std::array reports{audio_report("mic", -1, 11), audio_report("mic2", 2, 12),
+      audio_report("screen", 4, 30), audio_report("unknown", 99, 99), livekit::RtcStats{video},
+      livekit::RtcStats{livekit::RtcOutboundRtpStats{}}};
+  const std::array tracks{InboundTrackSource{"mic", livekit::TrackSource::SOURCE_MICROPHONE},
+      InboundTrackSource{"mic2", livekit::TrackSource::SOURCE_MICROPHONE},
+      InboundTrackSource{"screen", livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO}};
+  const auto metrics = inboundNetworkObservation(reports, tracks, 1234);
+  const auto metric = [](const auto& values, std::string_view name) {
+    const auto found = std::find_if(values.begin(), values.end(), [&](const auto& value) { return value.name == name; });
+    require(found != values.end(), "network diagnostic metric missing");
+    return found->value;
+  };
+  require(metric(metrics.microphone, "streams") == 2 && metric(metrics.screen_audio, "streams") == 1,
+      "microphone and screen audio attribution");
+  require(metric(metrics.microphone, "packets_lost") == 1 && metric(metrics.screen_audio, "packets_lost") == 4,
+      "signed packet loss aggregated without clamping");
+  require(metric(metrics.microphone, "concealed_samples") == 23 && metric(metrics.screen_audio, "concealed_samples") == 30,
+      "concealment must not mix audio sources");
+  require(metric(metrics.screen_audio, "silent_concealed_samples") == 3 &&
+      metric(metrics.screen_audio, "concealment_events") == 4 &&
+      metric(metrics.screen_audio, "inserted_samples_for_deceleration") == 5 &&
+      metric(metrics.screen_audio, "removed_samples_for_acceleration") == 6 &&
+      metric(metrics.screen_audio, "jitter_buffer_delay") == 0.5 &&
+      metric(metrics.screen_audio, "jitter_buffer_emitted_count") == 10, "audio SDK stats projection");
+  require(metric(metrics.microphone, "unmapped_streams") == 1 && metric(metrics.screen_audio, "unmapped_streams") == 1,
+      "unknown audio must be visible but not misattributed");
+  require(metric(metrics.video, "packets_lost") == 7 && metric(metrics.video, "frames_dropped") == 8 &&
+      metric(metrics.video, "freeze_count") == 2 && metric(metrics.video, "total_freezes_duration") == 1.25 &&
+      metric(metrics.video, "pause_count") == 3, "video SDK stats projection");
+  require(metric(metrics.video, "sampled_at_ms") == 1234, "sample freshness timestamp");
+  std::vector<livekit::RtcStats> oversized(257, livekit::RtcStats{video});
+  const auto bounded = inboundNetworkObservation(oversized, {}, 2000);
+  require(metric(bounded.video, "streams") == 256 && metric(bounded.video, "reports_truncated") == 1,
+      "room stats diagnostics must remain bounded and mark truncation");
+  require(metric(inboundNetworkObservation({}, {}, 2000, true).microphone, "reports_truncated") == 1,
+      "publication truncation must be visible");
+}
 template <typename Predicate>
 void await(Predicate predicate, const char* message) {
   const auto deadline = std::chrono::steady_clock::now() + 3s;
@@ -168,6 +231,7 @@ void run(bool test_thumbnails) {
 }  // namespace
 int main(int argc, char** argv) {
   try {
+    inboundNetworkDiagnostics();
     run(argc == 2 && std::string_view(argv[1]) == "--thumbnails");
     std::cout << "product runtime lifecycle passed\n";
     return 0;

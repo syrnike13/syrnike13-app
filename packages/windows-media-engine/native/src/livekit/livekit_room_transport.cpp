@@ -42,8 +42,9 @@ EngineResult cancelLiveKitRoom(const std::shared_ptr<livekit::Room> &room) {
 
 } // namespace
 
-LiveKitRoomTransport::LiveKitRoomTransport(std::shared_ptr<LiveKitRoomObserver> delegate)
-    : delegate_(std::move(delegate)) {
+LiveKitRoomTransport::LiveKitRoomTransport(std::shared_ptr<LiveKitRoomObserver> delegate,
+                                         std::shared_ptr<LiveKitNetworkSampler> network_sampler)
+    : network_sampler_(std::move(network_sampler)), delegate_(std::move(delegate)) {
   livekit::initialize(livekit::LogLevel::Info);
   worker_ = std::thread([this] { run(); });
   cancellation_worker_ = std::thread([this] { runCancellationLane(); });

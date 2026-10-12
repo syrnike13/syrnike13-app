@@ -341,6 +341,14 @@ try {
     firstFrameMs, cpuPercentOfOneCore: watching.cpuPercentOfOneCore, threads: watching.threads,
     exportedFps: Number(((frames.get(publication.publicationId) - watchFramesBefore) / (watching.elapsedMs / 1000)).toFixed(1)),
     ...voiceMetrics(watching),
+    pipeline: watching.delta('remote_video_metrics', ['decoded', 'uploaded', 'upload_failed',
+      'superseded_before_upload', 'superseded_unsent', 'total_upload_us', 'slow_uploads']),
+    maximumUploadUs: watching.metrics.remote_video_metrics?.maximum_upload_us,
+    network: {
+      microphone: watching.metrics.remote_microphone_network_metrics,
+      screenAudio: watching.metrics.remote_screen_audio_network_metrics,
+      video: watching.metrics.remote_video_network_metrics,
+    },
   }
   const stereoWatch = await stereoWatcher.done
   // A synchronized pair leads by roughly 0 ms despite the injected skew.

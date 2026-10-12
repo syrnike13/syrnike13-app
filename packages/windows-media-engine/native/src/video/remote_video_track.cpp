@@ -119,10 +119,21 @@ bool RemoteVideoTrack::acceptDecoded(std::uint64_t revision,
     ++stale_decoded_;
     return false;
   }
+  if (newest_) ++superseded_before_upload_;
   newest_ = std::move(event);
   newest_ingress_us_ = nowUs();
   changed_.notify_all();
   return true;
+}
+bool RemoteVideoTrack::hasPendingWork(std::uint64_t active_revision) const {
+  return stopping_ || newest_.has_value() || revision_ != active_revision;
+}
+void RemoteVideoTrack::recordUploadDuration(std::uint64_t duration_us) {
+  // Only the upload worker writes these lifetime counters. Include failed
+  // attempts: pool contention can fail after spending time on GPU work.
+  maximum_upload_us_ = (std::max)(maximum_upload_us_.load(), duration_us);
+  total_upload_us_ += duration_us;
+  if (duration_us > 33000) ++slow_uploads_;
 }
 void RemoteVideoTrack::run() noexcept {
   auto& pool = SharedTexturePool::processPool();
@@ -161,7 +172,8 @@ void RemoteVideoTrack::run() noexcept {
       std::int64_t ingress_us = 0;
       {
         std::unique_lock lock(mutex_);
-        changed_.wait_for(lock, std::chrono::milliseconds(16));
+        // No polling: control changes notify, and failed_ is only read by callers.
+        changed_.wait(lock, [&] { return hasPendingWork(active_revision); });
         if (stopping_) break;
         revision = revision_;
         known_publication = publication_;
@@ -241,11 +253,13 @@ void RemoteVideoTrack::run() noexcept {
       const auto* decoded = frame->frame.type() == livekit::VideoBufferType::External
           ? static_cast<const std::shared_ptr<DecodedVideoFrame>*>(frame->frame.externalFrame())
           : nullptr;
+      const auto upload_started_us = nowUs();
       auto lease = decoded
           ? pool.upload(generation, width, height, timestamp_us, (*decoded)->texture.Get(),
                         ingress_us)
           : pool.upload(generation, width, height, timestamp_us,
                         {frame->frame.data(), frame->frame.dataSize()}, ingress_us);
+      recordUploadDuration(static_cast<std::uint64_t>(nowUs() - upload_started_us));
       const bool gpu = decoded != nullptr;
       frame.reset();  // returns the decoder texture
       if (!lease) {
@@ -264,6 +278,7 @@ void RemoteVideoTrack::run() noexcept {
           previous = lease;
         else {
           previous = std::exchange(output_, lease);
+          if (previous) ++superseded_unsent_;
           output_revision_ = revision;
           published = true;
         }

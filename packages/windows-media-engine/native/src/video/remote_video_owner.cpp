@@ -269,6 +269,11 @@ void RemoteVideoOwner::run() noexcept {
         total.uploaded += stats.uploaded;
         total.upload_failed += stats.upload_failed;
         total.gpu_uploaded += stats.gpu_uploaded;
+        total.superseded_before_upload += stats.superseded_before_upload;
+        total.superseded_unsent += stats.superseded_unsent;
+        total.maximum_upload_us = (std::max)(total.maximum_upload_us, stats.maximum_upload_us);
+        total.total_upload_us += stats.total_upload_us;
+        total.slow_uploads += stats.slow_uploads;
       }
       current.metrics = {{
         {"publications", static_cast<double>(publications.size())},
@@ -277,14 +282,21 @@ void RemoteVideoOwner::run() noexcept {
         {"sdk_tracks", static_cast<double>(std::count_if(publications.begin(), publications.end(),
             [](const auto& publication) { return publication.track != nullptr; }))},
         {"decoded", static_cast<double>(total.decoded)},
-        {"reader_starts", static_cast<double>(total.reader_starts)},
-        {"reader_ends", static_cast<double>(total.reader_ends)},
         {"stale_decoded", static_cast<double>(total.stale_decoded)},
         {"source_timestamp_unusable", static_cast<double>(total.source_timestamp_unusable)},
         {"expired", static_cast<double>(total.expired)},
         {"uploaded", static_cast<double>(total.uploaded)},
         {"upload_failed", static_cast<double>(total.upload_failed)},
         {"gpu_uploaded", static_cast<double>(total.gpu_uploaded)},
+        {"superseded_before_upload", static_cast<double>(total.superseded_before_upload)},
+        {"superseded_unsent", static_cast<double>(total.superseded_unsent)},
+        {"maximum_upload_us", static_cast<double>(total.maximum_upload_us)},
+        {"total_upload_us", static_cast<double>(total.total_upload_us)},
+        {"slow_uploads", static_cast<double>(total.slow_uploads)},
+      }};
+      current.lifecycle_metrics = {{
+        {"reader_starts", static_cast<double>(total.reader_starts)},
+        {"reader_ends", static_cast<double>(total.reader_ends)},
         {"owner_creations", static_cast<double>(created)},
         {"owner_retirements", static_cast<double>(retired)},
       }};
