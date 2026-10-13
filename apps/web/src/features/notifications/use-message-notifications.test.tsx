@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, render } from '@testing-library/react'
-import type { Channel, Message, User } from '@syrnike13/api-types'
+import type { Channel, Member, Message, User } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useMessageNotifications } from '#/features/notifications/use-message-notifications'
@@ -128,6 +128,124 @@ describe('useMessageNotifications local mutes', () => {
     render(<Probe />)
 
     emit(message({ mentions: [mocks.currentUserId] }))
+
+    expect(mocks.notify).toHaveBeenCalledOnce()
+  })
+
+  function mentionsOnly() {
+    syncStore.setChannelNotificationLevel('text-general', 'mentions')
+  }
+
+  function addCurrentMember(roles: string[]) {
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: mocks.currentUserId },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles,
+      } as Member,
+    ])
+  }
+
+  function addCurrentUser(online: boolean) {
+    syncStore.upsertUser({
+      _id: mocks.currentUserId,
+      username: 'alice',
+      discriminator: '0001',
+      relationship: 'User',
+      online,
+    } as User)
+  }
+
+  it('notifies a mentions-only channel on @everyone', () => {
+    mentionsOnly()
+    render(<Probe />)
+
+    emit(message({ flags: 1 << 2 }))
+
+    expect(mocks.notify).toHaveBeenCalledOnce()
+  })
+
+  it('does not treat other flag bits as a mention', () => {
+    mentionsOnly()
+    render(<Probe />)
+
+    // MentionsEveryone = 2 — индекс бита, маска 1 << 2. Значение 2 — это бит 1.
+    emit(message({ flags: 2 }))
+
+    expect(mocks.notify).not.toHaveBeenCalled()
+  })
+
+  it('notifies a mentions-only channel when one of my roles is mentioned', () => {
+    mentionsOnly()
+    addCurrentMember(['role-1'])
+    render(<Probe />)
+
+    emit(message({ role_mentions: ['role-1'] }))
+
+    expect(mocks.notify).toHaveBeenCalledOnce()
+  })
+
+  it('keeps quiet when the mentioned role is not mine', () => {
+    mentionsOnly()
+    addCurrentMember(['role-2'])
+    render(<Probe />)
+
+    emit(message({ role_mentions: ['role-1'] }))
+
+    expect(mocks.notify).not.toHaveBeenCalled()
+  })
+
+  it('notifies a mentions-only channel on @online while the user is online', () => {
+    mentionsOnly()
+    addCurrentUser(true)
+    render(<Probe />)
+
+    emit(message({ flags: 1 << 3 }))
+
+    expect(mocks.notify).toHaveBeenCalledOnce()
+  })
+
+  it('keeps quiet on @online while the user is offline', () => {
+    mentionsOnly()
+    addCurrentUser(false)
+    render(<Probe />)
+
+    emit(message({ flags: 1 << 3 }))
+
+    expect(mocks.notify).not.toHaveBeenCalled()
+  })
+
+  it('keeps quiet on @everyone when the channel level is none', () => {
+    syncStore.setChannelNotificationLevel('text-general', 'none')
+    render(<Probe />)
+
+    emit(message({ flags: 1 << 2 }))
+
+    expect(mocks.notify).not.toHaveBeenCalled()
+  })
+
+  it('does not apply role mentions to a direct message', () => {
+    const dm = {
+      _id: 'dm-1',
+      channel_type: 'DirectMessage',
+      active: true,
+      recipients: [mocks.currentUserId, AUTHOR_ID],
+    } as Channel
+    syncStore.upsertChannel(dm)
+    syncStore.setChannelNotificationLevel('dm-1', 'mentions')
+    addCurrentMember(['role-1'])
+    render(<Probe />)
+
+    emit(message({ channel: 'dm-1', role_mentions: ['role-1'] }))
+
+    expect(mocks.notify).not.toHaveBeenCalled()
+  })
+
+  it('notifies on any message while the level is all', () => {
+    addCurrentMember(['role-2'])
+    render(<Probe />)
+
+    emit(message({ role_mentions: ['role-1'] }))
 
     expect(mocks.notify).toHaveBeenCalledOnce()
   })

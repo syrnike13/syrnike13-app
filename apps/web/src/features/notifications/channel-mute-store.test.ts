@@ -11,7 +11,6 @@ import {
   hasExpiredMute,
   isChannelMuted,
   loadNotificationMutes,
-  messageMentionsUser,
   normalizeNotificationMutes,
   persistNotificationMutes,
   resolveMessageNotificationLevel,
@@ -200,13 +199,6 @@ describe('notification mute state', () => {
         mentionsCurrentUser: false,
       }),
     ).toBe('all')
-  })
-
-  it('matches mentions only for the current user', () => {
-    expect(messageMentionsUser({ mentions: ['user-1'] }, 'user-1')).toBe(true)
-    expect(messageMentionsUser({ mentions: ['user-2'] }, 'user-1')).toBe(false)
-    expect(messageMentionsUser({ mentions: null }, 'user-1')).toBe(false)
-    expect(messageMentionsUser({ mentions: ['user-1'] }, undefined)).toBe(false)
   })
 
   it('formats the remaining mute time', () => {

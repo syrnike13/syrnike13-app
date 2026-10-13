@@ -205,17 +205,12 @@ export function hasExpiredMute(
   )
 }
 
-export function messageMentionsUser(
-  message: { mentions?: readonly string[] | null },
-  currentUserId: string | undefined,
-) {
-  if (!currentUserId) return false
-  return Boolean(message.mentions?.includes(currentUserId))
-}
-
 /**
  * Глушить ли всплывашку по сообщению: `'none'` — молчим, `'mentions'` —
  * только если сообщение упоминает пользователя.
+ *
+ * Упоминание считает `isMessageMentioningUser` из `#/lib/mentions`
+ * (личный `mentions`, роли, @everyone/@online) — здесь только уровень.
  */
 export function resolveMessageNotificationLevel({
   mutes,
