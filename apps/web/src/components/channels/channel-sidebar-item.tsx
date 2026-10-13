@@ -710,7 +710,10 @@ export function ChannelSidebarItem({
       {isServerChannel ? (
         <ContextMenu>
           <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-          <ContextMenuContent className="w-52">{menuItems}</ContextMenuContent>
+          {/* Ширина по содержимому: подписи в две строки не должны резаться. */}
+          <ContextMenuContent className="min-w-52">
+            {menuItems}
+          </ContextMenuContent>
         </ContextMenu>
       ) : (
         row
