@@ -39,12 +39,10 @@ export const searchServerMessages = Effect.fn('messages.searchServer')(
 
     const batches = yield* Effect.all(
       channelIds.map((channelId) =>
-        searchChannelMessagesEffect(
-          token,
-          channelId,
+        searchChannelMessagesEffect(token, channelId, {
           query,
-          limitPerChannel,
-        ).pipe(
+          limit: limitPerChannel,
+        }).pipe(
           Effect.map(({ messages, users }) => {
             const channel = state.channels[channelId]
             const channelLabel = channel

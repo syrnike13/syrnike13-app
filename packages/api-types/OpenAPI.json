@@ -12131,6 +12131,39 @@
           }
         ]
       },
+      "MessageHas": {
+        "description": "Kinds of content a message can be filtered by\n\nUsed by `has:` filters in message search.",
+        "oneOf": [
+          {
+            "description": "Message carries a link preview",
+            "type": "string",
+            "enum": [
+              "link"
+            ]
+          },
+          {
+            "description": "Message carries an image attachment or image embed",
+            "type": "string",
+            "enum": [
+              "image"
+            ]
+          },
+          {
+            "description": "Message carries an attachment",
+            "type": "string",
+            "enum": [
+              "file"
+            ]
+          },
+          {
+            "description": "Message carries a video attachment or video embed",
+            "type": "string",
+            "enum": [
+              "video"
+            ]
+          }
+        ]
+      },
       "MessageSort": {
         "description": "Message Sort\n\nSort used for retrieving messages",
         "oneOf": [
@@ -12172,6 +12205,29 @@
             "description": "Whether to only search for pinned messages, cannot be sent with `query`.",
             "type": "boolean",
             "nullable": true
+          },
+          "from": {
+            "description": "Only fetch messages sent by this user\n\nTakes a user id; unknown values simply match nothing.",
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "nullable": true
+          },
+          "mentions": {
+            "description": "Only fetch messages mentioning this user\n\nTakes a user id; unknown values simply match nothing.",
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "nullable": true
+          },
+          "has": {
+            "description": "Only fetch messages carrying this kind of content",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageHas"
+              }
+            ]
           },
           "limit": {
             "description": "Maximum number of messages to fetch",

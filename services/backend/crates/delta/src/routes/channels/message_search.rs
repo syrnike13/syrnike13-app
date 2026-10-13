@@ -47,6 +47,9 @@ pub async fn search(
     let v0::DataMessageSearch {
         query,
         pinned,
+        from,
+        mentions,
+        has,
         limit,
         before,
         after,
@@ -59,9 +62,11 @@ pub async fn search(
         MessageQuery {
             filter: MessageFilter {
                 channel: Some(channel.id().to_string()),
+                author: from,
                 query,
                 pinned,
-                ..Default::default()
+                mentions,
+                has,
             },
             time_period: MessageTimePeriod::Absolute {
                 before,

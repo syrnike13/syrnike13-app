@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Message, User } from '@syrnike13/api-types'
 import { Effect, Fiber } from 'effect'
 import { SearchIcon } from '#/components/icons'
@@ -13,7 +13,9 @@ import {
 } from '#/components/ui/popover'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { searchChannelMessagesEffect } from '#/features/api/messages-api'
+import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
+import { parseMessageSearchQuery } from '#/features/search/search-query-parser'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
 import { cn } from '#/lib/utils'
@@ -38,6 +40,7 @@ export function ChannelSearchDialog({
 }: ChannelSearchDialogProps) {
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
+  const auth = useAuth()
   const emojis = useSyncStore((s) => s.emojis)
   const channels = useSyncStore((s) => s.channels)
   const serverId = serverChannelServerId(channels[channelId])
@@ -49,6 +52,17 @@ export function ChannelSearchDialog({
   const [results, setResults] = useState<Message[]>([])
   const [searching, setSearching] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const parsed = useMemo(
+    () =>
+      parseMessageSearchQuery(query, {
+        users,
+        currentUserId: auth.user?._id,
+      }),
+    [query, users, auth.user?._id],
+  )
+  const { query: textQuery, from, mentions, has } = parsed
+  const hasFilters = parsed.filters.length > 0
 
   useEffect(() => {
     if (!open) {
@@ -64,7 +78,7 @@ export function ChannelSearchDialog({
 
   useEffect(() => {
     const trimmed = query.trim()
-    if (!open || trimmed.length < 2) {
+    if (!open || (trimmed.length < 2 && !hasFilters)) {
       setResults([])
       setSearching(false)
       return
@@ -74,7 +88,13 @@ export function ChannelSearchDialog({
       Effect.sleep(250).pipe(
         Effect.andThen(Effect.sync(() => setSearching(true))),
         Effect.andThen(
-          searchChannelMessagesEffect(token, channelId, trimmed, 25),
+          searchChannelMessagesEffect(token, channelId, {
+            query: textQuery,
+            from,
+            mentions,
+            has,
+            limit: 25,
+          }),
         ),
         Effect.matchEffect({
           onFailure: (error) =>
@@ -97,7 +117,7 @@ export function ChannelSearchDialog({
     return () => {
       Effect.runFork(Fiber.interrupt(fiber))
     }
-  }, [channelId, open, query, token])
+  }, [channelId, from, has, hasFilters, mentions, open, query, textQuery, token])
 
   function openMessage(messageId: string) {
     setOpen(false)
@@ -146,21 +166,45 @@ export function ChannelSearchDialog({
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Поиск по сообщениям…"
+            placeholder="Поиск: from:ник, mentions:me, has:image…"
             className="h-8"
           />
         </div>
+        {hasFilters ? (
+          <div className="flex flex-wrap gap-1 border-b px-2 py-1.5">
+            {parsed.filters.map((filter) => (
+              <span
+                key={filter.label}
+                title={
+                  filter.resolved
+                    ? undefined
+                    : 'Пользователь не найден — совпадений не будет'
+                }
+                className={cn(
+                  'rounded-full border px-2 py-0.5 text-xs',
+                  filter.resolved
+                    ? 'border-border bg-secondary text-secondary-foreground'
+                    : 'border-dashed border-border text-muted-foreground',
+                )}
+              >
+                {filter.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
         <ScrollArea className="max-h-80">
           <div className="flex flex-col gap-1 p-2">
             {searching ? (
               <p className="px-1 py-2 text-sm text-muted-foreground">Ищем…</p>
             ) : null}
-            {!searching && query.trim().length < 2 ? (
+            {!searching && query.trim().length < 2 && !hasFilters ? (
               <p className="px-1 py-2 text-sm text-muted-foreground">
-                Введите минимум 2 символа
+                Введите минимум 2 символа или фильтр, например has:image
               </p>
             ) : null}
-            {!searching && query.trim().length >= 2 && results.length === 0 ? (
+            {!searching &&
+            (query.trim().length >= 2 || hasFilters) &&
+            results.length === 0 ? (
               <p className="px-1 py-2 text-sm text-muted-foreground">
                 Ничего не найдено
               </p>

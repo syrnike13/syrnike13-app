@@ -4,7 +4,7 @@ use futures::StreamExt;
 use mongodb::options::FindOptions;
 use std::collections::{HashMap, HashSet};
 use std::time::SystemTime;
-use syrnike_models::v0::MessageSort;
+use syrnike_models::v0::{MessageHas, MessageSort};
 use syrnike_result::Result;
 use ulid::Ulid;
 
@@ -16,6 +16,51 @@ use crate::{
 use super::AbstractMessages;
 
 static COL: &str = "messages";
+
+/// Документ для фильтра `has:`.
+///
+/// Намеренно без regex: regex не сочетается с `$text` в одном запросе,
+/// поэтому смотрим на разобранные вложения и embeds (Metadata/Embed).
+fn has_filter_doc(has: MessageHas) -> Document {
+    match has {
+        MessageHas::Link => doc! {
+            "embeds.type": "Website"
+        },
+        MessageHas::Image => doc! {
+            "$or": [
+                {
+                    "attachments": {
+                        "$elemMatch": {
+                            "metadata.type": "Image"
+                        }
+                    }
+                },
+                {
+                    "embeds.type": "Image"
+                },
+            ]
+        },
+        MessageHas::File => doc! {
+            "attachments.0": {
+                "$exists": true
+            }
+        },
+        MessageHas::Video => doc! {
+            "$or": [
+                {
+                    "embeds.type": "Video"
+                },
+                {
+                    "attachments": {
+                        "$elemMatch": {
+                            "metadata.type": "Video"
+                        }
+                    }
+                },
+            ]
+        },
+    }
+}
 
 #[async_trait]
 impl AbstractMessages for MongoDb {
@@ -40,6 +85,20 @@ impl AbstractMessages for MongoDb {
 
         if let Some(author) = query.filter.author {
             filter.insert("author", author);
+        }
+
+        if let Some(mentions) = query.filter.mentions {
+            // Массив `mentions` содержит id упомянутого пользователя.
+            filter.insert("mentions", mentions);
+        }
+
+        // `has:` намеренно без regex: regex не сочетается с `$text` в одном запросе,
+        // поэтому смотрим на разобранные вложения и embeds (структура Metadata/Embed).
+        if let Some(has) = query.filter.has {
+            let doc = has_filter_doc(has);
+            for (key, value) in doc {
+                filter.insert(key, value);
+            }
         }
 
         let is_search_query = if let Some(query) = query.filter.query {
@@ -476,5 +535,68 @@ impl MongoDb {
             .await
             .map(|_| ())
             .map_err(|_| create_database_error!("delete_many", COL))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn link_filter_only_matches_website_embeds() {
+        assert_eq!(
+            has_filter_doc(MessageHas::Link),
+            doc! { "embeds.type": "Website" }
+        );
+    }
+
+    #[test]
+    fn file_filter_requires_an_attachment() {
+        assert_eq!(
+            has_filter_doc(MessageHas::File),
+            doc! { "attachments.0": { "$exists": true } }
+        );
+    }
+
+    #[test]
+    fn image_filter_accepts_attachments_and_embeds() {
+        assert_eq!(
+            has_filter_doc(MessageHas::Image),
+            doc! {
+                "$or": [
+                    {
+                        "attachments": {
+                            "$elemMatch": {
+                                "metadata.type": "Image"
+                            }
+                        }
+                    },
+                    {
+                        "embeds.type": "Image"
+                    },
+                ]
+            }
+        );
+    }
+
+    #[test]
+    fn video_filter_accepts_embeds_and_attachments() {
+        assert_eq!(
+            has_filter_doc(MessageHas::Video),
+            doc! {
+                "$or": [
+                    {
+                        "embeds.type": "Video"
+                    },
+                    {
+                        "attachments": {
+                            "$elemMatch": {
+                                "metadata.type": "Video"
+                            }
+                        }
+                    },
+                ]
+            }
+        );
     }
 }

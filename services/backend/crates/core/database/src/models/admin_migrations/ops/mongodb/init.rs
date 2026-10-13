@@ -202,6 +202,34 @@ pub async fn create_database(db: &MongoDb) {
                 },
                 "name": "channel_pinned_compound"
             },
+            {
+                "key": {
+                    "channel": 1_i32,
+                    "mentions": 1_i32
+                },
+                "name": "channel_mentions_compound"
+            },
+            {
+                "key": {
+                    "channel": 1_i32,
+                    "author": 1_i32
+                },
+                "name": "channel_author_compound"
+            },
+            {
+                "key": {
+                    "channel": 1_i32,
+                    "embeds.type": 1_i32
+                },
+                "name": "channel_embeds_type_compound"
+            },
+            {
+                "key": {
+                    "channel": 1_i32,
+                    "attachments.metadata.type": 1_i32
+                },
+                "name": "channel_attachments_metadata_type_compound"
+            },
         ]
     })
     .await

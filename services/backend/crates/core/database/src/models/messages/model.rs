@@ -4,8 +4,8 @@ use std::time::SystemTime;
 use std::{collections::HashSet, hash::RandomState};
 use syrnike_config::{config, FeaturesLimits};
 use syrnike_models::v0::{
-    self, BulkMessageResponse, DataMessageSend, Embed, MessageAuthor, MessageFlags, MessageSort,
-    MessageWebhook, PushNotification, ReplyIntent, SendableEmbed, Text,
+    self, BulkMessageResponse, DataMessageSend, Embed, MessageAuthor, MessageFlags, MessageHas,
+    MessageSort, MessageWebhook, PushNotification, ReplyIntent, SendableEmbed, Text,
 };
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission, PermissionValue};
 use syrnike_result::{ErrorType, Result};
@@ -199,6 +199,10 @@ auto_derived!(
         pub query: Option<String>,
         /// Search for pinned
         pub pinned: Option<bool>,
+        /// Only messages mentioning this user id
+        pub mentions: Option<String>,
+        /// Only messages carrying this kind of content
+        pub has: Option<MessageHas>,
     }
 
     /// Message Query

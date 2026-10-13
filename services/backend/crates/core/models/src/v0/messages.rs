@@ -202,6 +202,21 @@ auto_derived!(
         Oldest,
     }
 
+    /// Kinds of content a message can be filtered by
+    ///
+    /// Used by `has:` filters in message search.
+    #[serde(rename_all = "lowercase")]
+    pub enum MessageHas {
+        /// Message carries a link preview
+        Link,
+        /// Message carries an image attachment or image embed
+        Image,
+        /// Message carries an attachment
+        File,
+        /// Message carries a video attachment or video embed
+        Video,
+    }
+
     /// Push Notification
     pub struct PushNotification {
         /// Known author name
@@ -333,6 +348,19 @@ auto_derived!(
         pub query: Option<String>,
         /// Whether to only search for pinned messages, cannot be sent with `query`.
         pub pinned: Option<bool>,
+
+        /// Only fetch messages sent by this user
+        ///
+        /// Takes a user id; unknown values simply match nothing.
+        #[cfg_attr(feature = "validator", validate(length(min = 1, max = 64)))]
+        pub from: Option<String>,
+        /// Only fetch messages mentioning this user
+        ///
+        /// Takes a user id; unknown values simply match nothing.
+        #[cfg_attr(feature = "validator", validate(length(min = 1, max = 64)))]
+        pub mentions: Option<String>,
+        /// Only fetch messages carrying this kind of content
+        pub has: Option<MessageHas>,
 
         /// Maximum number of messages to fetch
         #[cfg_attr(feature = "validator", validate(range(min = 1, max = 100)))]
