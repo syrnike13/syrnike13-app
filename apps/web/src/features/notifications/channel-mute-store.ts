@@ -6,7 +6,24 @@ import { serverChannelServerId } from '#/lib/channel-voice'
 /** Уровень уведомлений канала или сервера. */
 export type NotificationLevel = 'all' | 'mentions' | 'none'
 
-/** `'forever'` — «до выключения мьюта». */
+export const NOTIFICATION_LEVELS = [
+  { value: 'all', label: 'Все сообщения' },
+  { value: 'mentions', label: 'Только @упоминания' },
+  { value: 'none', label: 'Ничего' },
+] as const satisfies ReadonlyArray<{
+  value: NotificationLevel
+  label: string
+}>
+
+/** Подпись текущего уровня — для строки «Параметры уведомлений». */
+export function notificationLevelLabel(level: NotificationLevel): string {
+  return (
+    NOTIFICATION_LEVELS.find((option) => option.value === level)?.label ??
+    NOTIFICATION_LEVELS[0].label
+  )
+}
+
+/** `'forever'` — «до тех пор, пока не включу». */
 export type ChannelMuteExpiry = number | 'forever'
 
 export type ChannelMuteEntry = {
@@ -30,11 +47,15 @@ export type NotificationMuteState = {
 }
 
 export const MUTE_DURATIONS = [
-  { id: '15m', label: '15 минут', ms: 15 * 60 * 1000 },
-  { id: '1h', label: '1 час', ms: 60 * 60 * 1000 },
-  { id: '8h', label: '8 часов', ms: 8 * 60 * 60 * 1000 },
-  { id: '24h', label: '24 часа', ms: 24 * 60 * 60 * 1000 },
+  { id: '15m', label: 'На 15 минут', ms: 15 * 60 * 1000 },
+  { id: '1h', label: 'На 1 час', ms: 60 * 60 * 1000 },
+  { id: '3h', label: 'На 3 часа', ms: 3 * 60 * 60 * 1000 },
+  { id: '8h', label: 'На 8 часов', ms: 8 * 60 * 60 * 1000 },
+  { id: '24h', label: 'На 24 часа', ms: 24 * 60 * 60 * 1000 },
 ] as const
+
+/** Последний пункт подменю мьюта — без срока. */
+export const MUTE_FOREVER_LABEL = 'До тех пор, пока не включу'
 
 export function emptyNotificationMutes(): NotificationMuteState {
   return { channels: {}, servers: {}, hideMuted: {} }
@@ -246,23 +267,27 @@ export function nextMuteExpiryAt(
   return next
 }
 
-export function formatMuteRemaining(
+/**
+ * Подпись к пункту «Включить оповещения канала»: когда мьют снимется сам.
+ * Бессрочный мьют даты не имеет, поэтому подпись без времени.
+ */
+export function formatMuteUntilLabel(
   mutedUntil: ChannelMuteExpiry | undefined,
   now = Date.now(),
 ): string | null {
   if (mutedUntil === undefined) return null
-  if (mutedUntil === 'forever') return 'до выключения'
+  if (mutedUntil === 'forever') {
+    return 'Заглушено до тех пор, пока не включу'
+  }
+  if (mutedUntil <= now) return null
 
-  const remaining = mutedUntil - now
-  if (remaining <= 0) return null
+  const date = new Date(mutedUntil)
+  const day = date.getDate()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
 
-  const minutes = Math.max(1, Math.round(remaining / 60_000))
-  if (minutes < 60) return `${minutes} мин`
-
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours} ч`
-
-  return `${Math.round(hours / 24)} дн`
+  return `Заглушено до ${day}.${month}, ${hours}:${minutes}`
 }
 
 export function withChannelMuteEntry(

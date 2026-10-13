@@ -4,14 +4,17 @@ import type { Channel } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  MUTE_DURATIONS,
+  MUTE_FOREVER_LABEL,
   channelMuteStorageKey,
   channelNotificationLevel,
   emptyNotificationMutes,
-  formatMuteRemaining,
+  formatMuteUntilLabel,
   hasExpiredMute,
   isChannelMuted,
   loadNotificationMutes,
   normalizeNotificationMutes,
+  notificationLevelLabel,
   persistNotificationMutes,
   resolveMessageNotificationLevel,
 } from '#/features/notifications/channel-mute-store'
@@ -201,14 +204,36 @@ describe('notification mute state', () => {
     ).toBe('all')
   })
 
-  it('formats the remaining mute time', () => {
-    const now = 1_000_000
+  it('formats the mute end date and the forever label', () => {
+    const now = new Date(2026, 9, 13, 12, 0, 0).getTime()
+    const until = new Date(2026, 9, 13, 12, 55, 0).getTime()
 
-    expect(formatMuteRemaining('forever', now)).toBe('до выключения')
-    expect(formatMuteRemaining(now + 14 * 60_000, now)).toBe('14 мин')
-    expect(formatMuteRemaining(now + 2 * 60 * 60_000, now)).toBe('2 ч')
-    expect(formatMuteRemaining(now - 1, now)).toBeNull()
-    expect(formatMuteRemaining(undefined, now)).toBeNull()
+    expect(formatMuteUntilLabel('forever', now)).toBe(
+      'Заглушено до тех пор, пока не включу',
+    )
+    expect(formatMuteUntilLabel(until, now)).toBe('Заглушено до 13.10, 12:55')
+    expect(formatMuteUntilLabel(now - 1, now)).toBeNull()
+    expect(formatMuteUntilLabel(undefined, now)).toBeNull()
+  })
+
+  it('offers the mute durations from the reference menu', () => {
+    expect(MUTE_DURATIONS.map((option) => option.label)).toEqual([
+      'На 15 минут',
+      'На 1 час',
+      'На 3 часа',
+      'На 8 часов',
+      'На 24 часа',
+    ])
+    expect(MUTE_DURATIONS.find((option) => option.id === '3h')?.ms).toBe(
+      3 * 60 * 60 * 1000,
+    )
+    expect(MUTE_FOREVER_LABEL).toBe('До тех пор, пока не включу')
+  })
+
+  it('labels the notification levels for the submenu caption', () => {
+    expect(notificationLevelLabel('all')).toBe('Все сообщения')
+    expect(notificationLevelLabel('mentions')).toBe('Только @упоминания')
+    expect(notificationLevelLabel('none')).toBe('Ничего')
   })
 })
 

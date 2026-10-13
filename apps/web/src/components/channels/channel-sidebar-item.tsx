@@ -50,8 +50,11 @@ import { createChannelInviteEffect } from '#/features/api/invites-api'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
 import {
   MUTE_DURATIONS,
-  formatMuteRemaining,
+  MUTE_FOREVER_LABEL,
+  NOTIFICATION_LEVELS,
+  formatMuteUntilLabel,
   isChannelMuted,
+  notificationLevelLabel,
   serverNotificationLevel,
   type NotificationLevel,
 } from '#/features/notifications/channel-mute-store'
@@ -106,6 +109,26 @@ type ChannelSidebarItemProps = {
   canInvite?: boolean
   dragHandleProps?: DraggableProvidedDragHandleProps
   dragging?: boolean
+}
+
+/** Пункт меню в две строки: название и подпись с текущим состоянием. */
+function MenuLabel({
+  title,
+  description,
+}: {
+  title: string
+  description?: string
+}) {
+  return (
+    <span className="flex min-w-0 flex-col text-left">
+      <span className="truncate">{title}</span>
+      {description ? (
+        <span className="truncate text-xs text-muted-foreground">
+          {description}
+        </span>
+      ) : null}
+    </span>
+  )
 }
 
 export function ChannelSidebarItem({
@@ -227,7 +250,7 @@ export function ChannelSidebarItem({
   const notificationMutes = useSyncStore((s) => s.notificationMutes)
   const muted = isChannelMuted(notificationMutes, channel._id)
   const now = useMuteCountdown(muted)
-  const muteRemaining = formatMuteRemaining(
+  const muteUntilLabel = formatMuteUntilLabel(
     notificationMutes.channels[channel._id]?.mutedUntil,
     now,
   )
@@ -492,6 +515,8 @@ export function ChannelSidebarItem({
             canManage &&
               dragHandleProps &&
               'cursor-grab touch-none active:cursor-grabbing',
+            // Заглушённый канал приглушаем прозрачностью: отдельной иконки нет.
+            muted && 'opacity-60 transition-opacity hover:opacity-100',
           )}
           onClick={serverVoice ? handleVoiceChannelClick : undefined}
           {...(canManage && dragHandleProps ? dragHandleProps : {})}
@@ -529,22 +554,7 @@ export function ChannelSidebarItem({
           ) : (
             <HashIcon className="size-4 shrink-0 text-muted-foreground" />
           )}
-          <span
-            className={cn(
-              'min-w-0 flex-1 truncate',
-              muted && 'text-muted-foreground',
-            )}
-          >
-            {label}
-          </span>
-          {muted ? (
-            <span
-              title="Канал заглушён"
-              className="flex size-5 shrink-0 items-center justify-center text-muted-foreground"
-            >
-              <VolumeXIcon aria-hidden="true" className="size-3.5" />
-            </span>
-          ) : null}
+          <span className="min-w-0 flex-1 truncate">{label}</span>
           {voiceCallMarkerTitle ? (
             <span
               title={voiceCallMarkerTitle}
@@ -611,10 +621,11 @@ export function ChannelSidebarItem({
             <ContextMenuItem
               onSelect={() => syncStore.setChannelMute(channel._id, null)}
             >
-              <VolumeXIcon className="size-3.5" />
-              {muteRemaining
-                ? `Снять мьют (осталось ${muteRemaining})`
-                : 'Снять мьют'}
+              <BellIcon className="size-3.5" />
+              <MenuLabel
+                title="Включить оповещения канала"
+                description={muteUntilLabel ?? undefined}
+              />
             </ContextMenuItem>
           ) : null}
           <ContextMenuSub>
@@ -638,14 +649,17 @@ export function ChannelSidebarItem({
                   syncStore.setChannelMute(channel._id, 'forever')
                 }
               >
-                До выключения мьюта
+                {MUTE_FOREVER_LABEL}
               </ContextMenuItem>
             </ContextMenuSubContent>
           </ContextMenuSub>
           <ContextMenuSub>
             <ContextMenuSubTrigger>
               <BellIcon className="size-3.5" />
-              Настройки уведомлений
+              <MenuLabel
+                title="Параметры уведомлений"
+                description={notificationLevelLabel(notificationLevel)}
+              />
             </ContextMenuSubTrigger>
             <ContextMenuSubContent>
               <ContextMenuRadioGroup
@@ -657,15 +671,11 @@ export function ChannelSidebarItem({
                   )
                 }
               >
-                <ContextMenuRadioItem value="all">
-                  Все сообщения
-                </ContextMenuRadioItem>
-                <ContextMenuRadioItem value="mentions">
-                  Только @упоминания
-                </ContextMenuRadioItem>
-                <ContextMenuRadioItem value="none">
-                  Ничего
-                </ContextMenuRadioItem>
+                {NOTIFICATION_LEVELS.map((option) => (
+                  <ContextMenuRadioItem key={option.value} value={option.value}>
+                    {option.label}
+                  </ContextMenuRadioItem>
+                ))}
               </ContextMenuRadioGroup>
             </ContextMenuSubContent>
           </ContextMenuSub>

@@ -40,9 +40,9 @@ import { deleteOrLeaveServerEffect } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
 import {
+  NOTIFICATION_LEVELS,
   isServerHidingMuted,
   serverNotificationLevel,
-  type NotificationLevel,
 } from '#/features/notifications/channel-mute-store'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardTextEffect } from '#/lib/clipboard'
@@ -54,15 +54,6 @@ type ServerHeaderMenuProps = {
   serverName: string
   overBanner?: boolean
 }
-
-const SERVER_NOTIFICATION_LEVELS: ReadonlyArray<{
-  value: NotificationLevel
-  label: string
-}> = [
-  { value: 'all', label: 'Все сообщения' },
-  { value: 'mentions', label: 'Только @упоминания' },
-  { value: 'none', label: 'Ничего' },
-]
 
 function ServerHeaderMenuItem({
   children,
@@ -301,7 +292,7 @@ export function ServerHeaderMenu({
           <div className="px-2 pt-1 pb-1 text-xs font-medium text-muted-foreground">
             Уведомления сервера
           </div>
-          {SERVER_NOTIFICATION_LEVELS.map((option) => (
+          {NOTIFICATION_LEVELS.map((option) => (
             <ServerHeaderMenuItem
               key={option.value}
               icon={
