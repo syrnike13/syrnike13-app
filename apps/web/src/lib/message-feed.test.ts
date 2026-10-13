@@ -2,6 +2,7 @@ import type { Message } from '@syrnike13/api-types'
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildMessageFeedItems,
   feedItemEstimateHeight,
   type MessageFeedItem,
 } from '#/lib/message-feed'
@@ -27,5 +28,56 @@ describe('message feed item height estimates', () => {
     }
 
     expect(feedItemEstimateHeight(item)).toBe(104)
+  })
+})
+
+const AUTHOR = '00000000000000000000000000'
+
+function textMessage(id: string, content: string): Message {
+  return { _id: id, channel: 'channel-id', author: AUTHOR, content } as Message
+}
+
+function embedMessage(id: string): Message {
+  return {
+    _id: id,
+    channel: 'channel-id',
+    author: AUTHOR,
+    embeds: [
+      {
+        type: 'Image',
+        url: 'https://cdn.example.com/photo.jpg',
+        width: 800,
+        height: 600,
+        size: 'Large',
+      },
+    ],
+  } as Message
+}
+
+describe('message feed grouping around embeds', () => {
+  it('does not compact the message with the embed or the one after it', () => {
+    const items = buildMessageFeedItems([
+      textMessage('01KT7DEM3B0T4B0BXGBXWDJ710', 'смотри'),
+      embedMessage('01KT7DEM3B0T4B0BXGBXWDJ711'),
+      textMessage('01KT7DEM3B0T4B0BXGBXWDJ712', 'и вот'),
+    ])
+
+    const rows = items.filter((item) => item.type === 'message')
+    expect(rows).toHaveLength(3)
+    // Карточка embed рвёт группу с обеих сторон: ни она, ни соседние строки не «хвост».
+    expect(
+      rows.every((item) => item.type === 'message' && item.compact === false),
+    ).toBe(true)
+  })
+
+  it('estimates an embed card taller than a plain row', () => {
+    const item: MessageFeedItem = {
+      type: 'message',
+      key: '01KT7DEM3B0T4B0BXGBXWDJ711',
+      compact: false,
+      message: embedMessage('01KT7DEM3B0T4B0BXGBXWDJ711'),
+    }
+
+    expect(feedItemEstimateHeight(item)).toBe(240)
   })
 })

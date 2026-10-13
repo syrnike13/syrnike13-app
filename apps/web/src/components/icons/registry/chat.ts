@@ -6,6 +6,7 @@ import {
   RiFileLine,
   RiLink,
   RiMoreLine,
+  RiPlayFill,
   RiPushpinLine,
   RiReplyLine,
   RiUnpinLine,
@@ -74,4 +75,9 @@ export const FileIcon = defineIcon(RiFileLine, {
 export const CheckCheckIcon = defineIcon(RiCheckDoubleLine, {
   pack: 'remixicon',
   name: 'RiCheckDoubleLine',
+})
+
+export const PlayIcon = defineIcon(RiPlayFill, {
+  pack: 'remixicon',
+  name: 'RiPlayFill',
 })
