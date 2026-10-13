@@ -21,6 +21,9 @@ import {
   subscribePushEffect,
   unsubscribePushEffect,
 } from '#/features/api/push-api'
+import { isChannelMuted } from '#/features/notifications/channel-mute-store'
+import { getChannelLabel } from '#/features/sync/channel-label'
+import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -35,6 +38,49 @@ function urlBase64ToUint8Array(base64String: string) {
 
 type NotificationSettingsProps = {
   layout?: 'card' | 'settings'
+}
+
+/** Локальные мьюты каналов: список и «снять все». */
+function MutedChannelsBlock() {
+  const auth = useAuth()
+  const channels = useSyncStore((s) => s.channels)
+  const users = useSyncStore((s) => s.users)
+  const mutes = useSyncStore((s) => s.notificationMutes)
+  const muted = Object.values(channels).filter((channel) =>
+    isChannelMuted(mutes, channel._id),
+  )
+
+  return (
+    <SettingsBlock title="Заглушённые каналы">
+      <SettingsRow
+        label={
+          muted.length
+            ? `Заглушено каналов: ${muted.length}`
+            : 'Нет заглушённых каналов'
+        }
+        hint="Мьюты хранятся локально на этом устройстве и не синхронизируются между устройствами."
+      >
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={muted.length === 0}
+          onClick={() => syncStore.clearAllChannelMutes()}
+        >
+          Снять все мьюты
+        </Button>
+      </SettingsRow>
+      {muted.length ? (
+        <ul className="px-1 pb-2 text-sm text-muted-foreground">
+          {muted.map((channel) => (
+            <li key={channel._id} className="truncate">
+              {getChannelLabel(channel, users, auth.user?._id)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </SettingsBlock>
+  )
 }
 
 export function NotificationSettings({
@@ -212,6 +258,8 @@ export function NotificationSettings({
     return (
       <div className="space-y-2">
         <SoundSettings />
+
+        <MutedChannelsBlock />
 
         <SettingsBlock title="Браузер">
           <SettingsRow

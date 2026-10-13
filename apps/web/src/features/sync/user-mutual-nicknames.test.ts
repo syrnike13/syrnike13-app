@@ -2,6 +2,7 @@ import type { Member, Server, User } from '@syrnike13/api-types'
 import { describe, expect, it } from 'vitest'
 
 import type { SyncState } from '#/features/sync/types'
+import { emptyNotificationMutes } from '#/features/notifications/channel-mute-store'
 
 import { listUserMutualServerNicknames } from './selectors'
 
@@ -60,6 +61,7 @@ function state(overrides: Partial<SyncState> = {}): SyncState {
     voiceParticipants: {},
     voiceCalls: {},
     dismissedVoiceCallKeys: {},
+    notificationMutes: emptyNotificationMutes(),
     ...overrides,
   }
 }

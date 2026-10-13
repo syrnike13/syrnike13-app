@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Effect } from 'effect'
 
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
+import { isChannelMuted } from '#/features/notifications/channel-mute-store'
 import { syncStore } from '#/features/sync/sync-store'
 import { ChannelPermission } from '#/features/authorization/authorization'
 import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
@@ -122,6 +123,29 @@ vi.mock('#/components/ui/context-menu', () => ({
   ContextMenuSeparator: () => null,
   ContextMenuTrigger: ({ children }: { children: ReactNode }) => (
     <>{children}</>
+  ),
+  ContextMenuSub: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ContextMenuSubTrigger: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ContextMenuSubContent: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ContextMenuRadioGroup: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ContextMenuRadioItem: ({
+    children,
+    value,
+  }: {
+    children: ReactNode
+    value: string
+  }) => (
+    <button type="button" data-value={value}>
+      {children}
+    </button>
   ),
 }))
 
@@ -665,5 +689,64 @@ describe('ChannelSidebarItem voice navigation', () => {
       )
     })
     expect(syncStore.getState().channels['text-general']).toBeUndefined()
+  })
+})
+
+describe('ChannelSidebarItem notification mutes', () => {
+  beforeEach(() => {
+    syncStore.reset()
+    grantAllAuthorizationForTest({
+      serverIds: ['server-1'],
+      channelIds: ['text-general'],
+    })
+    upsertTextServerChannel()
+  })
+
+  afterEach(() => {
+    cleanup()
+    syncStore.reset()
+  })
+
+  function renderTextChannel() {
+    render(
+      <ChannelSidebarItem
+        channel={textServerChannel}
+        activeChannelId="other-channel"
+        users={{}}
+        currentUserId="user-1"
+        unreads={{}}
+      />,
+    )
+  }
+
+  it('mutes the channel for 15 minutes from the context menu', () => {
+    renderTextChannel()
+
+    fireEvent.click(screen.getByRole('button', { name: '15 минут' }))
+
+    expect(
+      isChannelMuted(syncStore.getState().notificationMutes, 'text-general'),
+    ).toBe(true)
+    expect(screen.getByTitle('Канал заглушён')).toBeTruthy()
+  })
+
+  it('clears the mute from the row menu', () => {
+    syncStore.setChannelMute('text-general', 'forever')
+    renderTextChannel()
+
+    fireEvent.click(screen.getByRole('button', { name: /Снять мьют/ }))
+
+    expect(
+      isChannelMuted(syncStore.getState().notificationMutes, 'text-general'),
+    ).toBe(false)
+    expect(screen.queryByTitle('Канал заглушён')).toBeNull()
+  })
+
+  it('offers the notification level menu for server channels', () => {
+    renderTextChannel()
+
+    expect(
+      screen.getByRole('button', { name: 'Только @упоминания' }),
+    ).toBeTruthy()
   })
 })

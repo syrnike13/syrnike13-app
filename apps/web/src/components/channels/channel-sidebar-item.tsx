@@ -1,5 +1,6 @@
 import { Link, useMatch, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
+  BellIcon,
   CheckCheckIcon,
   HashIcon,
   HeadphonesIcon,
@@ -8,6 +9,7 @@ import {
   SettingsIcon,
   Trash2Icon,
   UsersIcon,
+  VolumeXIcon,
 } from '#/components/icons'
 import { useState, type DragEvent, type MouseEvent } from 'react'
 import type { Channel } from '@syrnike13/api-types'
@@ -23,7 +25,12 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuRadioGroup,
+  ContextMenuRadioItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '#/components/ui/context-menu'
 import {
@@ -41,6 +48,13 @@ import { editServerMemberEffect } from '#/features/api/servers-api'
 import { deleteChannelEffect } from '#/features/api/channels-api'
 import { createChannelInviteEffect } from '#/features/api/invites-api'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
+import {
+  MUTE_DURATIONS,
+  channelNotificationLevel,
+  formatMuteRemaining,
+  isChannelMuted,
+  type NotificationLevel,
+} from '#/features/notifications/channel-mute-store'
 import type { ChannelUnreadState } from '#/features/sync/types'
 import {
   getChannelLabel,
@@ -206,6 +220,16 @@ export function ChannelSidebarItem({
   const active = channel._id === activeChannelId
   const notificationBadge = useSyncStore((s) =>
     selectChannelNotificationBadge(s, channel),
+  )
+  // Локальные мьюты и уровни уведомлений (localStorage), не серверные настройки.
+  const notificationMutes = useSyncStore((s) => s.notificationMutes)
+  const muted = isChannelMuted(notificationMutes, channel._id)
+  const muteRemaining = formatMuteRemaining(
+    notificationMutes.channels[channel._id]?.mutedUntil,
+  )
+  const notificationLevel = channelNotificationLevel(
+    notificationMutes,
+    channel,
   )
   const voiceCall = useSyncStore((s) => s.voiceCalls[channel._id])
   const voiceCallRingingDismissed = useSyncStore((s) =>
@@ -497,7 +521,22 @@ export function ChannelSidebarItem({
           ) : (
             <HashIcon className="size-4 shrink-0 text-muted-foreground" />
           )}
-          <span className="min-w-0 flex-1 truncate">{label}</span>
+          <span
+            className={cn(
+              'min-w-0 flex-1 truncate',
+              muted && 'text-muted-foreground',
+            )}
+          >
+            {label}
+          </span>
+          {muted ? (
+            <span
+              title="Канал заглушён"
+              className="flex size-5 shrink-0 items-center justify-center text-muted-foreground"
+            >
+              <VolumeXIcon aria-hidden="true" className="size-3.5" />
+            </span>
+          ) : null}
           {voiceCallMarkerTitle ? (
             <span
               title={voiceCallMarkerTitle}
@@ -556,6 +595,73 @@ export function ChannelSidebarItem({
           <LinkIcon className="size-3.5" />
           Приглашение
         </ContextMenuItem>
+      ) : null}
+      {isServerChannel ? (
+        <>
+          <ContextMenuSeparator />
+          {muted ? (
+            <ContextMenuItem
+              onSelect={() => syncStore.setChannelMute(channel._id, null)}
+            >
+              <VolumeXIcon className="size-3.5" />
+              {muteRemaining
+                ? `Снять мьют (осталось ${muteRemaining})`
+                : 'Снять мьют'}
+            </ContextMenuItem>
+          ) : null}
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              <VolumeXIcon className="size-3.5" />
+              {muted ? 'Изменить мьют' : 'Заглушить канал'}
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              {MUTE_DURATIONS.map((option) => (
+                <ContextMenuItem
+                  key={option.id}
+                  onSelect={() =>
+                    syncStore.setChannelMute(channel._id, option.ms)
+                  }
+                >
+                  {option.label}
+                </ContextMenuItem>
+              ))}
+              <ContextMenuItem
+                onSelect={() =>
+                  syncStore.setChannelMute(channel._id, 'forever')
+                }
+              >
+                До выключения мьюта
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              <BellIcon className="size-3.5" />
+              Настройки уведомлений
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              <ContextMenuRadioGroup
+                value={notificationLevel}
+                onValueChange={(value) =>
+                  syncStore.setChannelNotificationLevel(
+                    channel._id,
+                    value as NotificationLevel,
+                  )
+                }
+              >
+                <ContextMenuRadioItem value="all">
+                  Все сообщения
+                </ContextMenuRadioItem>
+                <ContextMenuRadioItem value="mentions">
+                  Только @упоминания
+                </ContextMenuRadioItem>
+                <ContextMenuRadioItem value="none">
+                  Ничего
+                </ContextMenuRadioItem>
+              </ContextMenuRadioGroup>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+        </>
       ) : null}
       {canManage && isServerChannel ? (
         <>

@@ -3,6 +3,10 @@ import type { Message } from '@syrnike13/api-types'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { eventsGateway } from '#/features/events/gateway'
+import {
+  messageMentionsUser,
+  resolveMessageNotificationLevel,
+} from '#/features/notifications/channel-mute-store'
 import { getChannelLabel } from '#/features/sync/channel-label'
 import { syncStore } from '#/features/sync/sync-store'
 
@@ -46,6 +50,15 @@ export function useMessageNotifications() {
       const author = syncStore.getState().users[message.author]
       if (author?.relationship === 'Blocked') return
 
+      // Локальный мьют и уровень уведомлений: 'none' молчит, 'mentions' — только по упоминанию.
+      const state = syncStore.getState()
+      const notificationLevel = resolveMessageNotificationLevel({
+        mutes: state.notificationMutes,
+        channel: state.channels[message.channel],
+        mentionsCurrentUser: messageMentionsUser(message, auth.user?._id),
+      })
+      if (notificationLevel === 'none') return
+
       if (
         document.hasFocus() &&
         activeChannelIdFromPath() === message.channel
@@ -57,7 +70,11 @@ export function useMessageNotifications() {
 
       const body =
         message.content?.trim().slice(0, 140) ||
-        (message.attachments?.length ? 'Вложение' : 'Сообщение')
+        (message.attachments?.length
+          ? 'Вложение'
+          : message.embeds?.length
+            ? 'Превью ссылки'
+            : 'Сообщение')
 
       const notification = new Notification(
         notificationTitle(message, auth.user?._id),

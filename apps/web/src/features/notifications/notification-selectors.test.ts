@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest'
 
 import type { ChannelUnreadState, SyncState } from '#/features/sync/types'
 import { ChannelPermission } from '#/features/authorization/authorization'
+import { emptyNotificationMutes } from '#/features/notifications/channel-mute-store'
 
 import {
+  EMPTY_NOTIFICATION_BADGE,
   selectChannelNotificationBadge,
   selectFriendRequestNotificationBadge,
   selectHomeNotificationBadge,
@@ -79,6 +81,7 @@ function state(overrides: Partial<SyncState> = {}): SyncState {
     voiceParticipants: {},
     voiceCalls: {},
     dismissedVoiceCallKeys: {},
+    notificationMutes: emptyNotificationMutes(),
     ...overrides,
   }
 }
@@ -287,6 +290,99 @@ describe('notification selectors', () => {
       count: 2,
       hasUnread: true,
       urgent: true,
+    })
+  })
+})
+
+describe('notification selectors with local mutes', () => {
+  it('returns no badge for a muted channel', () => {
+    const channel = serverChannel('unread', 'server-1', 'message-2')
+    const syncState = state({
+      channels: { unread: channel },
+      unreads: { unread: unread('message-1') },
+      notificationMutes: {
+        ...emptyNotificationMutes(),
+        channels: { unread: { mutedUntil: 'forever' } },
+      },
+    })
+
+    expect(selectChannelNotificationBadge(syncState, channel)).toEqual(
+      EMPTY_NOTIFICATION_BADGE,
+    )
+  })
+
+  it('badges a mentions-only channel only on mentions', () => {
+    const channel = serverChannel('unread', 'server-1', 'message-2')
+    const mutes = {
+      ...emptyNotificationMutes(),
+      channels: { unread: { level: 'mentions' as const } },
+    }
+
+    const onlyUnread = state({
+      channels: { unread: channel },
+      unreads: { unread: unread('message-1') },
+      notificationMutes: mutes,
+    })
+    expect(selectChannelNotificationBadge(onlyUnread, channel)).toEqual(
+      EMPTY_NOTIFICATION_BADGE,
+    )
+
+    const withMention = state({
+      channels: { unread: channel },
+      unreads: { unread: unread('message-1', ['message-2']) },
+      notificationMutes: mutes,
+    })
+    expect(selectChannelNotificationBadge(withMention, channel)).toEqual({
+      count: 1,
+      hasUnread: true,
+      urgent: true,
+    })
+  })
+
+  it('mutes every channel of a muted server but not another server', () => {
+    const mutedChannel = serverChannel('unread-a', 'server-1', 'message-2')
+    const otherChannel = serverChannel('other-server-unread', 'server-2', 'message-2')
+    const syncState = state({
+      servers: {
+        'server-1': {
+          _id: 'server-1',
+          name: 'Server One',
+          owner: CURRENT_USER_ID,
+          channels: ['unread-a'],
+          default_permissions: 0,
+        },
+        'server-2': {
+          _id: 'server-2',
+          name: 'Server Two',
+          owner: CURRENT_USER_ID,
+          channels: ['other-server-unread'],
+          default_permissions: 0,
+        },
+      },
+      channels: {
+        'unread-a': mutedChannel,
+        'other-server-unread': otherChannel,
+      },
+      unreads: {
+        'unread-a': unread('message-1'),
+        'other-server-unread': unread('message-1'),
+      },
+      notificationMutes: {
+        ...emptyNotificationMutes(),
+        servers: { 'server-1': 'none' },
+      },
+    })
+
+    expect(
+      selectServerNotificationBadge(syncState, 'server-1', CURRENT_USER_ID),
+    ).toEqual(EMPTY_NOTIFICATION_BADGE)
+    expect(selectChannelNotificationBadge(syncState, mutedChannel)).toEqual(
+      EMPTY_NOTIFICATION_BADGE,
+    )
+    expect(selectChannelNotificationBadge(syncState, otherChannel)).toEqual({
+      count: 1,
+      hasUnread: true,
+      urgent: false,
     })
   })
 })
