@@ -8,6 +8,7 @@ import {
   channelNotificationLevel,
   emptyNotificationMutes,
   formatMuteRemaining,
+  hasExpiredMute,
   isChannelMuted,
   loadNotificationMutes,
   messageMentionsUser,
@@ -43,7 +44,7 @@ describe('notification mute state', () => {
           empty: {},
         },
         servers: { 'server-1': 'none' },
-        hideMuted: true,
+        hideMuted: { 'server-1': true },
       },
       now,
     )
@@ -52,7 +53,7 @@ describe('notification mute state', () => {
     expect(mutes.channels.forever).toEqual({ mutedUntil: 'forever' })
     expect(mutes.channels.level).toEqual({ level: 'mentions' })
     expect(mutes.servers).toEqual({ 'server-1': 'none' })
-    expect(mutes.hideMuted).toBe(true)
+    expect(mutes.hideMuted).toEqual({ 'server-1': true })
   })
 
   it('keeps partial payloads and broken json out of the way', () => {
@@ -69,8 +70,40 @@ describe('notification mute state', () => {
     expect(loadNotificationMutes('user-1')).toEqual({
       channels: { 'text-general': { level: 'mentions' } },
       servers: {},
-      hideMuted: false,
+      hideMuted: {},
     })
+  })
+
+  it('sees an expired numeric mute even when the entry keeps a level', () => {
+    const now = 1_000_000
+
+    expect(
+      hasExpiredMute(
+        normalizeNotificationMutes(
+          { channels: { aaa: { level: 'none', mutedUntil: now - 1 } } },
+          now,
+        ),
+        now,
+      ),
+    ).toBe(false)
+    expect(
+      hasExpiredMute(
+        { channels: { aaa: { level: 'none', mutedUntil: now - 1 } }, servers: {}, hideMuted: {} },
+        now,
+      ),
+    ).toBe(true)
+    expect(
+      hasExpiredMute(
+        { channels: { aaa: { mutedUntil: now + 1_000 } }, servers: {}, hideMuted: {} },
+        now,
+      ),
+    ).toBe(false)
+    expect(
+      hasExpiredMute(
+        { channels: { aaa: { mutedUntil: 'forever' } }, servers: {}, hideMuted: {} },
+        now,
+      ),
+    ).toBe(false)
   })
 
   it('does not leak one account mutes into another', () => {
@@ -113,7 +146,7 @@ describe('notification mute state', () => {
         muted: { mutedUntil: 'forever' as const },
       },
       servers: { 'server-1': 'mentions' as const },
-      hideMuted: false,
+      hideMuted: {},
     }
 
     // Переопределение канала важнее уровня сервера.
@@ -246,6 +279,29 @@ describe('sync store channel mutes', () => {
     expect(
       syncStore.getState().notificationMutes.channels['text-general'],
     ).toEqual({ level: 'mentions' })
+  })
+
+  it('re-arms the timer for the next mute when the first one expires', () => {
+    syncStore.setCurrentUserId('user-1')
+    syncStore.setChannelNotificationLevel('aaa', 'none')
+    syncStore.setChannelMute('aaa', 60_000)
+    syncStore.setChannelMute('bbb', 120_000)
+
+    // 'aaa' теряет мьют, но сохраняет уровень — по числу ключей это не видно.
+    vi.advanceTimersByTime(60_000 + 500)
+
+    expect(syncStore.getState().notificationMutes.channels['aaa']).toEqual({
+      level: 'none',
+    })
+    expect(
+      isChannelMuted(syncStore.getState().notificationMutes, 'bbb'),
+    ).toBe(true)
+
+    vi.advanceTimersByTime(60_000 + 500)
+
+    expect(
+      syncStore.getState().notificationMutes.channels['bbb'],
+    ).toBeUndefined()
   })
 
   it('resets mutes on logout without touching the stored keys', () => {

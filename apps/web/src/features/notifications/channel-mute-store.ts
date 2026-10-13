@@ -25,8 +25,8 @@ export type NotificationMuteState = {
   channels: Record<string, ChannelMuteEntry>
   /** serverId → уровень для всех каналов сервера. */
   servers: Record<string, NotificationLevel>
-  /** Скрывать в сайдбаре каналы с активным мьютом. */
-  hideMuted: boolean
+  /** serverId → скрывать ли в сайдбаре каналы с активным мьютом. */
+  hideMuted: Record<string, boolean>
 }
 
 export const MUTE_DURATIONS = [
@@ -37,7 +37,7 @@ export const MUTE_DURATIONS = [
 ] as const
 
 export function emptyNotificationMutes(): NotificationMuteState {
-  return { channels: {}, servers: {}, hideMuted: false }
+  return { channels: {}, servers: {}, hideMuted: {} }
 }
 
 export function channelMuteStorageKey(userId: string) {
@@ -61,7 +61,9 @@ const NotificationMuteStateSchema = Schema.Struct({
   servers: Schema.optionalKey(
     Schema.Record(Schema.String, NotificationLevelSchema),
   ),
-  hideMuted: Schema.optionalKey(Schema.Boolean),
+  hideMuted: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.Boolean),
+  ),
 })
 const NotificationMuteStateJsonSchema = Schema.fromJsonString(
   NotificationMuteStateSchema,
@@ -70,7 +72,7 @@ const NotificationMuteStateJsonSchema = Schema.fromJsonString(
 type StoredNotificationMutes = {
   channels?: Record<string, ChannelMuteEntry>
   servers?: Record<string, NotificationLevel>
-  hideMuted?: boolean
+  hideMuted?: Record<string, boolean>
 }
 
 /** Отбрасывает истёкшие мьюты и пустые записи. */
@@ -102,7 +104,9 @@ export function normalizeNotificationMutes(
   return {
     channels,
     servers: { ...(value?.servers ?? {}) },
-    hideMuted: value?.hideMuted === true,
+    hideMuted: Object.fromEntries(
+      Object.entries(value?.hideMuted ?? {}).filter(([, hide]) => hide === true),
+    ),
   }
 }
 
@@ -178,6 +182,27 @@ export function serverNotificationLevel(
   serverId: string,
 ): NotificationLevel {
   return mutes.servers[serverId] ?? 'all'
+}
+
+export function isServerHidingMuted(
+  mutes: NotificationMuteState,
+  serverId: string,
+) {
+  return mutes.hideMuted[serverId] === true
+}
+
+/**
+ * Есть ли истёкший числовой мьют. Нужен, чтобы не сравнивать число ключей:
+ * у записи с `level` ключ остаётся, и по длине объекта истечение не видно.
+ */
+export function hasExpiredMute(
+  mutes: NotificationMuteState,
+  now = Date.now(),
+) {
+  return Object.values(mutes.channels).some(
+    (entry) =>
+      typeof entry.mutedUntil === 'number' && entry.mutedUntil <= now,
+  )
 }
 
 export function messageMentionsUser(

@@ -279,6 +279,8 @@ describe('ServerHeaderMenu', () => {
       screen.getByRole('button', { name: 'Скрыть заглушённые каналы' }),
     )
 
-    expect(syncStore.getState().notificationMutes.hideMuted).toBe(true)
+    expect(syncStore.getState().notificationMutes.hideMuted['server-1']).toBe(
+      true,
+    )
   })
 })

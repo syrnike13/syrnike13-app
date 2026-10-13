@@ -40,6 +40,7 @@ import { deleteOrLeaveServerEffect } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
 import {
+  isServerHidingMuted,
   serverNotificationLevel,
   type NotificationLevel,
 } from '#/features/notifications/channel-mute-store'
@@ -110,7 +111,9 @@ export function ServerHeaderMenu({
   const serverLevel = useSyncStore((s) =>
     serverNotificationLevel(s.notificationMutes, serverId),
   )
-  const hideMuted = useSyncStore((s) => s.notificationMutes.hideMuted)
+  const hideMuted = useSyncStore((s) =>
+    isServerHidingMuted(s.notificationMutes, serverId),
+  )
   const menuPermissions = server
     ? getServerMenuPermissions(
         server,
@@ -321,7 +324,7 @@ export function ServerHeaderMenu({
                 <EyeOffIcon className="size-4" />
               )
             }
-            onClick={() => syncStore.setHideMuted(!hideMuted)}
+            onClick={() => syncStore.setHideMuted(serverId, !hideMuted)}
           >
             Скрыть заглушённые каналы
           </ServerHeaderMenuItem>

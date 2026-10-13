@@ -36,6 +36,7 @@ import { isValidVoiceUserId } from './voice-participant-resolve'
 import { serverChannelServerId } from '#/lib/channel-voice'
 import {
   emptyNotificationMutes,
+  hasExpiredMute,
   loadNotificationMutes,
   nextMuteExpiryAt,
   normalizeNotificationMutes,
@@ -148,6 +149,9 @@ function scheduleMuteExpiry() {
   muteExpiryTimer = setTimeout(() => {
     muteExpiryTimer = null
     syncStore.pruneExpiredMutes()
+    // Перепланируем всегда: следующий мьют мог остаться без таймера,
+    // если prune не изменил состояние.
+    scheduleMuteExpiry()
   }, Math.max(0, expiresAt - Date.now() + 250))
 }
 
@@ -509,9 +513,13 @@ export const syncStore = {
     applyNotificationMutes({ ...mutes, servers })
   },
 
-  setHideMuted(hideMuted: boolean) {
+  setHideMuted(serverId: string, hide: boolean) {
     const mutes = state.notificationMutes
-    if (mutes.hideMuted === hideMuted) return
+    const hideMuted = { ...mutes.hideMuted }
+
+    if (hide) hideMuted[serverId] = true
+    else delete hideMuted[serverId]
+
     applyNotificationMutes({ ...mutes, hideMuted })
   },
 
@@ -527,13 +535,8 @@ export const syncStore = {
   /** Истёкшие мьюты убирает таймер, а не только чтение. */
   pruneExpiredMutes() {
     const mutes = state.notificationMutes
-    const next = normalizeNotificationMutes(mutes)
-    if (
-      Object.keys(next.channels).length === Object.keys(mutes.channels).length
-    ) {
-      return
-    }
-    applyNotificationMutes(next)
+    if (!hasExpiredMute(mutes)) return
+    applyNotificationMutes(normalizeNotificationMutes(mutes))
   },
 
   setSelectedServerId(serverId: string | null) {

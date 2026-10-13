@@ -172,7 +172,7 @@ describe('ServerChannelList', () => {
     expect(channelNames()).toEqual(['Alpha', 'Beta'])
 
     act(() => {
-      syncStore.setHideMuted(true)
+      syncStore.setHideMuted('server-a', true)
     })
     expect(channelNames()).toEqual(['Alpha'])
 

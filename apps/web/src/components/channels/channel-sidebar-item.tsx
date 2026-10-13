@@ -50,11 +50,12 @@ import { createChannelInviteEffect } from '#/features/api/invites-api'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
 import {
   MUTE_DURATIONS,
-  channelNotificationLevel,
   formatMuteRemaining,
   isChannelMuted,
+  serverNotificationLevel,
   type NotificationLevel,
 } from '#/features/notifications/channel-mute-store'
+import { useMuteCountdown } from '#/features/notifications/use-mute-countdown'
 import type { ChannelUnreadState } from '#/features/sync/types'
 import {
   getChannelLabel,
@@ -77,6 +78,7 @@ import { useOptionalMobileVoiceChannelDrawer } from '#/features/navigation/mobil
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import {
   isServerVoiceChannel,
+  serverChannelServerId,
 } from '#/lib/channel-voice'
 import {
   canManageChannel,
@@ -224,13 +226,19 @@ export function ChannelSidebarItem({
   // Локальные мьюты и уровни уведомлений (localStorage), не серверные настройки.
   const notificationMutes = useSyncStore((s) => s.notificationMutes)
   const muted = isChannelMuted(notificationMutes, channel._id)
+  const now = useMuteCountdown(muted)
   const muteRemaining = formatMuteRemaining(
     notificationMutes.channels[channel._id]?.mutedUntil,
+    now,
   )
-  const notificationLevel = channelNotificationLevel(
-    notificationMutes,
-    channel,
-  )
+  // Радио показывает сохранённый уровень канала, иначе — уровень сервера:
+  // активный мьют рисуется отдельной строкой и выбор уровня не снимает.
+  const channelServerId = serverChannelServerId(channel)
+  const notificationLevel =
+    notificationMutes.channels[channel._id]?.level ??
+    (channelServerId
+      ? serverNotificationLevel(notificationMutes, channelServerId)
+      : 'all')
   const voiceCall = useSyncStore((s) => s.voiceCalls[channel._id])
   const voiceCallRingingDismissed = useSyncStore((s) =>
     isVoiceCallRingingDismissed(voiceCall, s.dismissedVoiceCallKeys),

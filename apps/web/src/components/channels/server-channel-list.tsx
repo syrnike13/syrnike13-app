@@ -29,7 +29,7 @@ import {
 } from '#/components/ui/floating-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerEffect } from '#/features/api/servers-api'
-import { isChannelMuted } from '#/features/notifications/channel-mute-store'
+import { isChannelMuted, isServerHidingMuted } from '#/features/notifications/channel-mute-store'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import type { ChannelUnreadState } from '#/features/sync/types'
@@ -530,13 +530,14 @@ export function ServerChannelList({
   }, [optimisticSections, computedSections, canManage])
 
   const notificationMutes = useSyncStore((s) => s.notificationMutes)
+  const hideMuted = isServerHidingMuted(notificationMutes, serverId)
   /**
    * «Скрыть заглушённые» — только отображение: layout сервера и порядок
    * каналов считаются по полному списку, поэтому при фильтре перетаскивание
    * выключено (иначе индексы Draggable разъедутся с серверным порядком).
    */
   const displaySections = useMemo(() => {
-    if (!notificationMutes.hideMuted) return sections
+    if (!hideMuted) return sections
 
     return sections
       .map((section) => ({
@@ -545,10 +546,8 @@ export function ServerChannelList({
           (channel) => !isChannelMuted(notificationMutes, channel._id),
         ),
       }))
-      .filter(
-        (section) => section.channels.length > 0 || section.title === null,
-      )
-  }, [sections, notificationMutes])
+      .filter((section) => section.channels.length > 0)
+  }, [sections, notificationMutes, hideMuted])
 
   const [collapsedByCategory, setCollapsedByCategory] = useState<
     Record<string, boolean>
@@ -687,7 +686,7 @@ export function ServerChannelList({
       unreads={unreads}
       canManage={canManage}
       canInvite={canInvite}
-      canDrag={canManage && !reordering && !notificationMutes.hideMuted}
+      canDrag={canManage && !reordering && !hideMuted}
       collapsed={section.title !== null ? getCollapsed(section.id) : false}
       onToggleCollapsed={
         section.title !== null

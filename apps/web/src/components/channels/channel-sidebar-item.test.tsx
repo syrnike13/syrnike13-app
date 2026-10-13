@@ -8,6 +8,7 @@ import {
   screen,
   waitFor,
   within,
+  act,
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -133,8 +134,23 @@ vi.mock('#/components/ui/context-menu', () => ({
   ContextMenuSubContent: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
-  ContextMenuRadioGroup: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
+  ContextMenuRadioGroup: ({
+    children,
+    value,
+    onValueChange,
+  }: {
+    children: ReactNode
+    value?: string
+    onValueChange?: (value: string) => void
+  }) => (
+    <div data-testid="level-group" data-value={value}>
+      {children}
+      {onValueChange ? (
+        <button type="button" onClick={() => onValueChange('none')}>
+          set-level-none
+        </button>
+      ) : null}
+    </div>
   ),
   ContextMenuRadioItem: ({
     children,
@@ -748,5 +764,58 @@ describe('ChannelSidebarItem notification mutes', () => {
     expect(
       screen.getByRole('button', { name: 'Только @упоминания' }),
     ).toBeTruthy()
+  })
+
+  it('keeps the saved level visible while the channel is muted', () => {
+    syncStore.setChannelNotificationLevel('text-general', 'mentions')
+    syncStore.setChannelMute('text-general', 'forever')
+    renderTextChannel()
+
+    // Мьют не подменяет уровень на «Ничего»: он показан отдельной строкой.
+    expect(
+      screen.getByTestId('level-group').getAttribute('data-value'),
+    ).toBe('mentions')
+    expect(screen.getByRole('button', { name: /Снять мьют/ })).toBeTruthy()
+  })
+
+  it('falls back to the server level when the channel has no override', () => {
+    syncStore.setServerNotificationLevel('server-1', 'mentions')
+    renderTextChannel()
+
+    expect(
+      screen.getByTestId('level-group').getAttribute('data-value'),
+    ).toBe('mentions')
+  })
+
+  it('does not clear the mute when a notification level is picked', () => {
+    syncStore.setChannelMute('text-general', 'forever')
+    renderTextChannel()
+
+    fireEvent.click(screen.getByRole('button', { name: 'set-level-none' }))
+
+    expect(
+      isChannelMuted(syncStore.getState().notificationMutes, 'text-general'),
+    ).toBe(true)
+    expect(
+      syncStore.getState().notificationMutes.channels['text-general'],
+    ).toEqual({ level: 'none', mutedUntil: 'forever' })
+  })
+
+  it('ticks the mute countdown while the channel stays muted', () => {
+    vi.useFakeTimers()
+    try {
+      syncStore.setChannelMute('text-general', 2 * 60_000)
+      renderTextChannel()
+
+      expect(screen.getByRole('button', { name: 'Снять мьют (осталось 2 мин)' })).toBeTruthy()
+
+      act(() => {
+        vi.advanceTimersByTime(60_000)
+      })
+
+      expect(screen.getByRole('button', { name: 'Снять мьют (осталось 1 мин)' })).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
