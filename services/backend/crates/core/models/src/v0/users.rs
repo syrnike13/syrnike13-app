@@ -267,6 +267,9 @@ auto_derived_partial!(
         pub server_deafened: bool,
         pub screensharing: bool,
         pub camera: bool,
+        /// Users whose screen share this participant is watching
+        #[cfg_attr(feature = "serde", serde(default))]
+        pub watching: Vec<String>,
         /// Monotonic version for ordering voice state snapshots
         pub version: u64,
     },

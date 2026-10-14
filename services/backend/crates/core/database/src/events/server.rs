@@ -91,6 +91,10 @@ pub enum ClientMessage {
         channel_id: String,
         request: ChannelActivityRequest,
     },
+    /// Screen shares the user watches in its current voice channel
+    VoiceWatchUpdate {
+        watching: Vec<String>,
+    },
 }
 
 #[cfg(test)]
@@ -129,6 +133,20 @@ mod tests {
                 connection_epoch: "epoch-1".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn voice_watch_update_deserializes_watch_list() {
+        let message = serde_json::from_value::<ClientMessage>(serde_json::json!({
+            "type": "VoiceWatchUpdate",
+            "watching": ["owner-1"]
+        }))
+        .expect("voice watch update deserializes");
+
+        let ClientMessage::VoiceWatchUpdate { watching } = message else {
+            panic!("expected VoiceWatchUpdate");
+        };
+        assert_eq!(watching, vec!["owner-1".to_string()]);
     }
 
     #[test]
