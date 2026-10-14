@@ -93,6 +93,9 @@ export class VoiceDirector {
   private desiredRevision = 0
   private activeLease: VoiceLease | null = null
   private forcedLease: VoiceLease | null = null
+  // The committed lease whose transport was lost. A moderator disconnect for
+  // it may arrive after recovery has already started a new operation.
+  private lostLease: VoiceLease | null = null
   private activeCommitted = false
   private latestAuthoritySnapshot: AuthoritativeVoiceSnapshot | null = null
   private transitionInProgress = false
@@ -333,6 +336,7 @@ export class VoiceDirector {
   }
 
   private setIntent(channelId: string | null, recovery: boolean) {
+    this.lostLease = null
     this.resetCameraAndScreenForIntentChange(channelId)
     this.desiredChannelId = channelId
     if (channelId === null) this.desiredRecipients = undefined
@@ -753,6 +757,10 @@ export class VoiceDirector {
       this.handleForcedMove(event.from, event.lease)
       return
     }
+    if (event.type === 'forcedDisconnect') {
+      this.handleForcedDisconnect(event.from)
+      return
+    }
     if (event.type !== 'snapshot') return
     const incoming = event.snapshot
     if (
@@ -816,6 +824,19 @@ export class VoiceDirector {
     this.forcedLease = lease
     this.desiredRecipients = undefined
     this.setIntent(lease.channelId, false)
+  }
+
+  // Like Discord, a moderator disconnect ends the session: recovering from the
+  // transport removal that enforces it would put the user straight back.
+  private handleForcedDisconnect(
+    from: NonNullable<AuthoritativeVoiceSnapshot['membership']>,
+  ) {
+    const owned =
+      (this.activeLease !== null && membershipMatchesLease(from, this.activeLease)) ||
+      (this.lostLease !== null && membershipMatchesLease(from, this.lostLease))
+    if (!owned || this.desiredChannelId !== from.channelId) return
+    this.forcedLease = null
+    this.setIntent(null, false)
   }
 
   private resetCameraAndScreenForIntentChange(
@@ -911,6 +932,7 @@ export class VoiceDirector {
     }
     if (event.type === 'terminalFailure') {
       if (!this.activeCommitted) return
+      this.lostLease = lease
       this.recoveryRequested = event.failure.retryable
       this.terminalCleanupRequested = !event.failure.retryable
       this.desiredRevision += 1

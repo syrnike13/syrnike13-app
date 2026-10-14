@@ -71,6 +71,20 @@ async fn disconnect_member_from_voice(
         .await?
         .filter(|session| session.channel.server_id.as_deref() == Some(server_id));
     if let Some(session) = active_session {
+        // The LiveKit removal alone looks like a lost connection to the client,
+        // which would recover into the channel again. Name the exact membership
+        // first so the owning client ends it instead.
+        EventV1::VoiceAuthorityDisconnect {
+            from: VoiceAuthorityMembershipClaim {
+                operation_id: session.operation_id.clone(),
+                channel_id: session.channel.id.clone(),
+                rtc_engine: session.rtc_engine,
+                client_instance_id: session.client_instance_id.clone(),
+                connection_epoch: session.connection_epoch.clone(),
+            },
+        }
+        .private(user_id.to_string())
+        .await;
         remove_user_from_voice_channel(&session.channel, user_id).await?;
         publish_authoritative_voice_snapshot(user_id).await?;
 
@@ -81,6 +95,9 @@ async fn disconnect_member_from_voice(
             &session.operation_id,
             &session.connection_epoch,
         );
+        // As with a move, let the directive reach the client before the forced
+        // transport removal, which only enforces it on a non-compliant client.
+        async_std::task::sleep(std::time::Duration::from_millis(500)).await;
         let removal = async_std::future::timeout(
             std::time::Duration::from_secs(2),
             voice_client.remove_user(&session.node, &identity, &session.channel.id),
@@ -354,9 +371,11 @@ pub async fn edit(
     }
 
     if data.voice_channel.is_some() || data.remove.contains(&FieldsMember::VoiceChannel) {
+        let voice_channel_before =
+            get_user_voice_channel_in_server(&target_user.id, &server.id).await?;
         change_entries.push((
             "voice_channel",
-            audit_mutation::audit_change(None::<String>, data.voice_channel.clone())?,
+            audit_mutation::audit_change(voice_channel_before, data.voice_channel.clone())?,
         ));
     }
 

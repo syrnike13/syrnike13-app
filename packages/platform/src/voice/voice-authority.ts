@@ -51,6 +51,10 @@ export type VoiceAuthorityEvent =
       from: VoiceMembership
       lease: VoiceLease
     }>
+  | Readonly<{
+      type: 'forcedDisconnect'
+      from: VoiceMembership
+    }>
 
 export interface VoiceAuthorityAdapter {
   reserve(

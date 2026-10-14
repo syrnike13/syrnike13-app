@@ -106,6 +106,21 @@ class FakeAuthority implements VoiceAuthorityAdapter {
       })
     }
   }
+
+  forceDisconnect(from: VoiceLease) {
+    for (const listener of this.listeners) {
+      listener({
+        type: 'forcedDisconnect',
+        from: {
+          channelId: from.channelId,
+          rtcEngine: from.rtcEngine,
+          clientInstanceId: from.clientInstanceId,
+          operationId: from.operationId,
+          connectionEpoch: from.connectionEpoch,
+        },
+      })
+    }
+  }
 }
 
 class FakeEngine implements RtcEngineAdapter {
@@ -784,6 +799,73 @@ describe('VoiceDirector', () => {
       membershipChannelId: 'A',
       operationId: recovered.operationId,
       connectionEpoch: recovered.connectionEpoch,
+    })
+  })
+
+  it('leaves without recovery when a moderator disconnects the current membership', async () => {
+    const harness = createHarness({ recoveryDelaysMs: [0, 0, 0] })
+    const original = await connect(harness, 'A')
+
+    harness.authority.forceDisconnect(original)
+    harness.engine.emit({
+      type: 'terminalFailure',
+      operationId: original.operationId,
+      connectionEpoch: original.connectionEpoch,
+      failure: {
+        code: 'room_connection_lost',
+        message: 'LiveKit Room disconnected unexpectedly',
+        retryable: true,
+      },
+    })
+    await harness.director.waitForIdle()
+
+    expect(harness.engine.connected).toHaveLength(1)
+    expect(harness.authority.reservations).toHaveLength(1)
+    expect(harness.director.snapshot()).toMatchObject({
+      connection: 'disconnected',
+      intentChannelId: null,
+      membershipChannelId: null,
+    })
+  })
+
+  it('stops an already started recovery when the moderator disconnect arrives late', async () => {
+    const harness = createHarness({ recoveryDelaysMs: [0, 0, 0] })
+    const original = await connect(harness, 'A')
+    harness.engine.block('A')
+
+    harness.engine.emit({
+      type: 'terminalFailure',
+      operationId: original.operationId,
+      connectionEpoch: original.connectionEpoch,
+      failure: {
+        code: 'room_connection_lost',
+        message: 'LiveKit Room disconnected unexpectedly',
+        retryable: true,
+      },
+    })
+    await waitUntil(() => harness.authority.reservations.length === 2)
+
+    harness.authority.forceDisconnect(original)
+    harness.engine.unblock('A')
+    await harness.director.waitForIdle()
+
+    expect(harness.director.snapshot()).toMatchObject({
+      connection: 'disconnected',
+      intentChannelId: null,
+      membershipChannelId: null,
+    })
+  })
+
+  it('ignores a moderator disconnect for a membership it does not own', async () => {
+    const harness = createHarness()
+    const original = await connect(harness, 'A')
+
+    harness.authority.forceDisconnect({ ...original, operationId: 'op-other' })
+    await harness.director.waitForIdle()
+
+    expect(harness.director.snapshot()).toMatchObject({
+      connection: 'connected',
+      intentChannelId: 'A',
     })
   })
 

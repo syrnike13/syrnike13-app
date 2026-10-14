@@ -567,6 +567,10 @@ pub enum EventV1 {
         from: VoiceAuthorityMembershipClaim,
         lease: VoiceAuthorityLease,
     },
+    /// A moderator ended this membership; the owning client must not recover it.
+    VoiceAuthorityDisconnect {
+        from: VoiceAuthorityMembershipClaim,
+    },
     ChannelActivitySnapshot {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
@@ -750,6 +754,26 @@ mod tests {
             value["lease"]["credential"]["connection_epoch"],
             json!("epoch-b")
         );
+    }
+
+    #[test]
+    fn voice_authority_disconnect_serializes_the_exact_claim() {
+        let event = EventV1::VoiceAuthorityDisconnect {
+            from: VoiceAuthorityMembershipClaim {
+                operation_id: "op-a".to_string(),
+                channel_id: "channel-a".to_string(),
+                rtc_engine: VoiceRtcEngine::WindowsNative,
+                client_instance_id: "client-a".to_string(),
+                connection_epoch: "epoch-a".to_string(),
+            },
+        };
+
+        let value = serde_json::to_value(event).expect("event serializes");
+        assert_eq!(value["type"], json!("VoiceAuthorityDisconnect"));
+        assert_eq!(value["from"]["operation_id"], json!("op-a"));
+        assert_eq!(value["from"]["channel_id"], json!("channel-a"));
+        assert_eq!(value["from"]["rtc_engine"], json!("windows_native"));
+        assert_eq!(value["from"]["connection_epoch"], json!("epoch-a"));
     }
 
     #[test]
