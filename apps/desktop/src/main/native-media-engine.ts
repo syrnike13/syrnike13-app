@@ -186,18 +186,22 @@ export function createNativeRtcEngineAdapter() {
       episodeId: event.failure ? runtime.getFailureEpisodeId(event.failure.causeSequence) : undefined,
       fatal: event.type === 'fatalEngineFailure',
     }
+    // A warning (such as a device fallback) leaves the track working: journal
+    // it, but never raise an automatic report for it.
+    const warning = event.type === 'trackStateChanged' && event.warning
     // The engine re-announces every track on each accepted revision. Journal
     // only per-track transitions; incidents still see every failure.
     if (event.type === 'trackStateChanged') {
       const key = `${runtime.getHostEpoch()}:${event.track}`
       const value = `${event.state}:${event.failure?.code ?? ''}:${event.warning}`
       if (loggedTrackStates.get(key) === value) {
-        captureNativeDiagnosticIncident(record)
+        if (!warning) captureNativeDiagnosticIncident(record)
         return
       }
       loggedTrackStates.set(key, value)
     }
-    recordMediaDiagnostic(record)
+    if (warning) logNativeVoiceDiagnostic(record.event, record)
+    else recordMediaDiagnostic(record)
   }), runtime.onDiagnostic(event => {
     const causeSequence = event.metrics.find(metric => metric.name === 'cause_sequence')?.value
     const episodeId = typeof causeSequence === 'number' && Number.isSafeInteger(causeSequence) && causeSequence > 0

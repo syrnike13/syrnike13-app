@@ -152,6 +152,13 @@ const INITIAL_SNAPSHOT: VoiceSnapshot = {
   speakingUserIds: [],
 }
 
+const DEVICE_FALLBACK_WARNINGS: Partial<Record<string, string>> = {
+  output_device_fallback:
+    'Выбранное устройство вывода недоступно. Используем устройство по умолчанию.',
+  microphone_device_fallback:
+    'Выбранный микрофон недоступен. Используем микрофон по умолчанию.',
+}
+
 let remoteAudioCommandRevision = 0
 // Coalesces slider drags into at most one native mix update per interval.
 const REMOTE_AUDIO_PUBLISH_INTERVAL_MS = 40
@@ -689,18 +696,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       ? `${mediaFailure?.[0]}:${error.code}:${snapshot.operationId ?? ''}`
       : null
     if (failureKey && failureKey !== previousMediaFailureRef.current) {
-      if (error?.code === 'output_device_fallback') {
-        toast.warning(desktop
-          ? 'Выбранное устройство вывода недоступно. Используем устройство по умолчанию.'
-          : error.message)
+      // A fallback keeps media working on the default device: warn the user,
+      // but it is not a failure worth an automatic report.
+      const fallback = DEVICE_FALLBACK_WARNINGS[error?.code ?? '']
+      if (fallback) {
+        toast.warning(desktop ? fallback : error?.message ?? fallback)
       } else if (!desktop) {
         // Desktop path failures already have localized, actionable runtime banners.
         toast.error(error?.message ?? 'Медиа недоступно')
       }
-      if (auth.session?.token && error && mediaFailure && !error.diagnosticCorrelationId) {
+      if (!fallback && auth.session?.token && error && mediaFailure && !error.diagnosticCorrelationId) {
         enqueueAutomaticDiagnosticIncident({
           area: mediaFailure[0] === 'screen_audio' ? 'screen' : mediaFailure[0],
-          severity: error.code === 'output_device_fallback' ? 'warning' : 'error',
+          severity: 'error',
           triggerCode: error.code,
           context: { snapshot, rtcHistory: diagnosticRtcHistoryRef.current },
         })

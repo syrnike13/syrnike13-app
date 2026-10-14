@@ -139,7 +139,9 @@ MicrophonePipelineFailure MicrophonePipeline::selectInput(AudioDeviceRegistry& r
                                                          std::stop_token cancellation) {
   if (!onOwner() || intent.direction != AudioDirection::input) return MicrophonePipelineFailure::invalid_state;
   const auto endpoint = registry.resolve(intent);
-  if (!endpoint) return MicrophonePipelineFailure::input_unavailable;
+  if (!endpoint)
+    return registry.status() == AudioRegistryStatus::ready ? MicrophonePipelineFailure::input_unavailable
+                                                           : MicrophonePipelineFailure::device_list_unavailable;
   const auto failure = selectInput(*endpoint, cancellation);
   if (failure == MicrophonePipelineFailure::none) input_intent_ = intent;
   return failure;

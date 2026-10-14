@@ -43,6 +43,8 @@ EngineFailure inputFailure(MicrophonePipelineFailure failure, const MicrophonePi
   };
   if (failure == MicrophonePipelineFailure::input_unavailable)
     return {"microphone_device_unavailable", "No microphone input device is available", "microphone", true};
+  if (failure == MicrophonePipelineFailure::device_list_unavailable)
+    return {"microphone_device_list_unavailable", "Windows audio device list is unavailable", "microphone", true};
   if (failure != MicrophonePipelineFailure::capture_failed)
     return make("microphone_input_failed", "Microphone input transaction failed");
   switch (stats.candidate_failure) {
