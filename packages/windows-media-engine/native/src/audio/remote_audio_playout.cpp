@@ -544,7 +544,7 @@ void RemoteAudioPlayout::run() noexcept {
       std::array<RemoteAudioMixInput, kPublicationCapacity> inputs{};
       std::size_t input_count = 0;
       for (auto& reader : readers)
-        if (reader.stream) inputs[input_count++] = {&reader.jitter, reader.volume, reader.muted, &reader.gain};
+        if (reader.stream) inputs[input_count++] = {&reader.jitter, reader.volume, reader.muted, &reader.gain, reader.microphone};
       const auto mixOne = [&](RemoteAudioFrame& frame) {
         // One device-clocked pull fills all track sinks synchronously. Drain
         // only here, so even a multi-frame wake gets new PCM for each mix.
