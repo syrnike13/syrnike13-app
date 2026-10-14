@@ -488,7 +488,9 @@ void RemoteAudioPlayout::run() noexcept {
         if (device_fallback) endpoint = devices_.resolve({AudioDirection::output, {}});
         if (!endpoint) {
           device.reset();
-          problem = EngineFailure{"output_device_unavailable", "No output device is available", "output", true};
+          problem = devices_.status() == AudioRegistryStatus::ready
+              ? EngineFailure{"output_device_unavailable", "No output device is available", "output", true}
+              : EngineFailure{"output_device_list_unavailable", "Windows audio device list is unavailable", "output", true};
           retry_at = now + kDeviceRetry;
         } else if (!device || device->endpoint_id != endpoint->endpoint_id) {
           {
@@ -504,6 +506,7 @@ void RemoteAudioPlayout::run() noexcept {
             problem.reset();
             last_render = Clock::now();
           } else {
+            stats.device_platform_result = status;
             problem = EngineFailure{"output_device_failed", "Output device could not be opened", "output", true};
             retry_at = now + kDeviceRetry;
           }
@@ -544,7 +547,7 @@ void RemoteAudioPlayout::run() noexcept {
       std::array<RemoteAudioMixInput, kPublicationCapacity> inputs{};
       std::size_t input_count = 0;
       for (auto& reader : readers)
-        if (reader.stream) inputs[input_count++] = {&reader.jitter, reader.volume, reader.muted, &reader.gain};
+        if (reader.stream) inputs[input_count++] = {&reader.jitter, reader.volume, reader.muted, &reader.gain, reader.microphone};
       const auto mixOne = [&](RemoteAudioFrame& frame) {
         // One device-clocked pull fills all track sinks synchronously. Drain
         // only here, so even a multi-frame wake gets new PCM for each mix.
@@ -583,6 +586,7 @@ void RemoteAudioPlayout::run() noexcept {
           }
           device_buffered_ms = padding / (kRemoteAudioRate / 1000);
           if (FAILED(status)) {
+            stats.device_platform_result = status;
             device.reset();
             problem = EngineFailure{"output_device_lost", "Output device stopped rendering", "output", true};
             retry_at = Clock::now() + 250ms;

@@ -84,6 +84,8 @@ struct RemoteAudioMixInput {
   // Gain last applied to this input. When present, volume, mute and deafen
   // changes ramp across one frame instead of stepping, which would click.
   float* gain = nullptr;
+  // Deafen silences microphones only; screen-share audio stays audible.
+  bool microphone = true;
 };
 
 // Sums one 10 ms frame from every input. Muted inputs are still consumed so an
@@ -96,7 +98,7 @@ class RemoteAudioMixer final {
     bool audible = false;
     for (const auto& input : inputs) {
       const auto* frame = input.jitter->pop();
-      const float target = deafened || input.muted ? 0.0f : (std::max)(input.volume, 0.0f);
+      const float target = (deafened && input.microphone) || input.muted ? 0.0f : (std::max)(input.volume, 0.0f);
       const float from = input.gain ? *input.gain : target;
       if (input.gain) *input.gain = frame ? target : 0.0f;
       if (!frame || (from <= 0 && target <= 0)) continue;

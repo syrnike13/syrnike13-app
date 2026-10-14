@@ -90,6 +90,10 @@ AudioDeviceSnapshot AudioDeviceRegistry::refresh() {
   snapshot_.status = AudioRegistryStatus::ready;
   return snapshot_;
 }
+AudioRegistryStatus AudioDeviceRegistry::status() const {
+  std::lock_guard cache_lock(cache_mutex_);
+  return snapshot_.status;
+}
 std::optional<AudioEndpoint> AudioDeviceRegistry::resolve(const AudioDeviceIntent& intent) const {
   std::lock_guard cache_lock(cache_mutex_);
   // A failed refresh cannot safely resolve a removed/default endpoint from a

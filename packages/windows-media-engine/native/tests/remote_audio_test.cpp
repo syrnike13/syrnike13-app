@@ -52,6 +52,19 @@ void mixVolumesMuteAndDeafen() {
   require(!mixer.mix(inputs, true, output) && output[0] == 0, "Deafen leaked audio");
   require(left.stats().played == 3 && right.stats().played == 3, "Muted or deafened inputs built a backlog");
 }
+void deafenKeepsScreenAudio() {
+  RemoteAudioJitter microphone, screen;
+  for (int index = 0; index < 2; ++index) {
+    microphone.push(filled(1000));
+    screen.push(filled(2000));
+  }
+  RemoteAudioMixer mixer;
+  RemoteAudioFrame output;
+  std::array<RemoteAudioMixInput, 2> inputs{{{&microphone, 1.0f, false}, {&screen, 1.0f, false, nullptr, false}}};
+  require(mixer.mix(inputs, true, output) && output[0] == 2000, "Deafen did not keep only screen-share audio");
+  inputs[1].muted = true;
+  require(!mixer.mix(inputs, true, output) && output[0] == 0, "Muted stream leaked while deafened");
+}
 void volumeChangesRampAcrossOneFrame() {
   RemoteAudioJitter jitter;
   for (int index = 0; index < 6; ++index) jitter.push(filled(1000));
@@ -110,6 +123,7 @@ void receivedSpeechActivity() {
 int main() try {
   jitterPrimesTrimsAndRecovers();
   mixVolumesMuteAndDeafen();
+  deafenKeepsScreenAudio();
   volumeChangesRampAcrossOneFrame();
   mixControlsMatchRoomIdentitiesByUser();
   limiterPreventsClipping();

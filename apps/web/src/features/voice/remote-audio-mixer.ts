@@ -269,8 +269,9 @@ export class RemoteAudioMixer {
           entry.source === 'stream'
             ? voiceListenerStore.getStreamVolume(entry.userId)
             : voiceListenerStore.getUserVolume(entry.userId)
+        // Deafen silences voices only; screen-share audio stays audible.
         const gain =
-          globallyDeafened || channelMuted
+          (globallyDeafened && entry.source === 'mic') || channelMuted
             ? 0
             : clampRemoteGain(channelVolume * outputVolume)
         entry.gainNode.gain.value = gain

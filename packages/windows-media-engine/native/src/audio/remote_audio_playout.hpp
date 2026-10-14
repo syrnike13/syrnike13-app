@@ -21,6 +21,8 @@ struct RemoteAudioPlayoutStats {
   std::uint64_t jitter_underruns_microphone = 0, jitter_underruns_screen_audio = 0;
   std::uint64_t rendered_frames = 0, device_starved = 0, late_wakes = 0, device_opens = 0;
   std::uint32_t reading = 0, latency_ms = 0;
+  // HRESULT of the last output open or render failure; 0 while none happened.
+  std::int32_t device_platform_result = 0;
   bool device_open = false;
 };
 struct RemoteAudioPlayoutSnapshot {

@@ -113,6 +113,10 @@ const GatewayEventSchema = Schema.Union([
     lease: VoiceLeaseSchema,
   }),
   Schema.Struct({
+    type: Schema.Literal('VoiceAuthorityDisconnect'),
+    from: VoiceMembershipSchema,
+  }),
+  Schema.Struct({
     type: Schema.Literal('Ready'),
     voice_authority: Schema.optional(AuthoritySnapshotSchema),
   }),
@@ -524,6 +528,12 @@ export class GatewayVoiceAuthorityAdapter implements VoiceAuthorityAdapter {
           type: 'forcedMove',
           from: parseVoiceMembership(event.from),
           lease: parseVoiceLease(event.lease),
+        })
+        return
+      case 'VoiceAuthorityDisconnect':
+        this.emit({
+          type: 'forcedDisconnect',
+          from: parseVoiceMembership(event.from),
         })
         return
       case 'Ready': {

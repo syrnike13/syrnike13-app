@@ -255,14 +255,19 @@ void WindowsMediaRuntime::run() noexcept {
       } else snapshot_.camera_metrics.reset();
       if (desired_.microphone.state != MicrophoneIntentState::off) {
         const auto& capture = microphone.pipeline.capture;
+        // A failed switch candidate explains the failure first; otherwise it is
+        // the running capture that stopped (for example a removed device).
+        const bool candidate_failed = microphone.pipeline.candidate_failure != audio::MicrophoneCaptureFailure::none;
+        const auto capture_failure = candidate_failed ? microphone.pipeline.candidate_failure : capture.failure;
+        const auto capture_platform_result =
+            candidate_failed ? microphone.pipeline.candidate_platform_result : capture.platform_result;
         snapshot_.microphone_metrics = std::array<DiagnosticMetric, 15>{{
           {"capture_frames", static_cast<double>(capture.frames)},
           {"dsp_frames", static_cast<double>(microphone.pipeline.output_frames)},
           {"dsp_stale", static_cast<double>(microphone.pipeline.stale_frames)},
           {"capture_state", static_cast<double>(capture.state)},
-          {"capture_failure", static_cast<double>(microphone.pipeline.candidate_failure)},
-          {"capture_platform_result", static_cast<double>(
-              static_cast<std::uint32_t>(microphone.pipeline.candidate_platform_result))},
+          {"capture_failure", static_cast<double>(capture_failure)},
+          {"capture_platform_result", static_cast<double>(static_cast<std::uint32_t>(capture_platform_result))},
           {"raw_processing", capture.raw_processing ? 1.0 : 0.0},
           {"mmcss_registered", capture.mmcss_registered ? 1.0 : 0.0},
           {"published", microphone.sender.published ? 1.0 : 0.0},
@@ -292,13 +297,14 @@ void WindowsMediaRuntime::run() noexcept {
           {"jitter_underruns_microphone", static_cast<double>(audio_stats.jitter_underruns_microphone)},
           {"jitter_underruns_screen_audio", static_cast<double>(audio_stats.jitter_underruns_screen_audio)},
         }};
-        snapshot_.remote_audio_output_metrics = std::array<DiagnosticMetric, 6>{{
+        snapshot_.remote_audio_output_metrics = std::array<DiagnosticMetric, 7>{{
           {"rendered_frames", static_cast<double>(audio_stats.rendered_frames)},
           {"device_starved", static_cast<double>(audio_stats.device_starved)},
           {"late_wakes", static_cast<double>(audio_stats.late_wakes)},
           {"device_opens", static_cast<double>(audio_stats.device_opens)},
           {"latency_ms", static_cast<double>(audio_stats.latency_ms)},
           {"device_open", audio_stats.device_open ? 1.0 : 0.0},
+          {"device_platform_result", static_cast<double>(static_cast<std::uint32_t>(audio_stats.device_platform_result))},
         }};
       } else {
         snapshot_.remote_audio_ingress_metrics.reset();
