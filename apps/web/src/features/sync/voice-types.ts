@@ -8,6 +8,8 @@ export type UserVoiceState = {
   server_deafened: boolean
   screensharing: boolean
   camera: boolean
+  /** User ids whose screen share this participant watches. */
+  watching: string[]
   version: number
 }
 

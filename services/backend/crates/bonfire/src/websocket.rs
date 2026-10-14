@@ -702,6 +702,23 @@ async fn worker(
                             write.lock().await.send(config.encode(&event)).await.ok();
                         }
                     }
+                    ClientMessage::VoiceWatchUpdate { watching } => {
+                        match syrnike_database::voice::update_watched_screens(&user.id, watching)
+                            .await
+                        {
+                            Ok(Some((channel_id, state))) => {
+                                syrnike_database::voice::publish_voice_state_snapshot(
+                                    &channel_id,
+                                    &state,
+                                )
+                                .await;
+                            }
+                            Ok(None) => {}
+                            Err(error) => {
+                                warn!("Failed to update watched screens: {error:?}");
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }

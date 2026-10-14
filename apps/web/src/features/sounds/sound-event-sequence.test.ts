@@ -32,6 +32,7 @@ function voiceState(
     server_muted: false,
     server_deafened: false,
     screensharing: false,
+    watching: [],
     camera: false,
     version: 1,
     ...overrides,

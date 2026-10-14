@@ -201,6 +201,7 @@ describe('ServerRail', () => {
       server_muted: false,
       server_deafened: false,
       screensharing: false,
+      watching: [],
       camera: false,
       version: 1,
     }
@@ -212,6 +213,7 @@ describe('ServerRail', () => {
       server_muted: false,
       server_deafened: false,
       screensharing: true,
+      watching: [],
       camera: false,
       version: 1,
     }

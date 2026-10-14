@@ -80,6 +80,8 @@ import {
 } from '#/features/voice/use-voice-stage-chrome-visible'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
+import { streamViewerIds } from '#/features/voice/stream-viewers'
+import type { StreamViewer } from '#/components/voice/voice-stream-viewers'
 import {
   buildVoiceStageViewSessions,
   type VoiceStageViewSession,
@@ -478,6 +480,25 @@ export function VoiceStageView({
     [auth.user, users],
   )
 
+  const streamViewersByOwner = useMemo(() => {
+    const viewersByOwner = new Map<string, StreamViewer[]>()
+    for (const owner of participants) {
+      const viewers = streamViewerIds(participants, owner.id)
+      if (viewers.length === 0) continue
+      viewersByOwner.set(
+        owner.id,
+        viewers.map((viewerId) => ({
+          id: viewerId,
+          user:
+            users[viewerId] ??
+            (viewerId === auth.user?._id ? (auth.user ?? undefined) : undefined),
+          displayName: resolveParticipantDisplayName(viewerId),
+        })),
+      )
+    }
+    return viewersByOwner
+  }, [auth.user, participants, resolveParticipantDisplayName, users])
+
   const viewSessions = useMemo(
     () =>
       buildVoiceStageViewSessions({
@@ -584,6 +605,11 @@ export function VoiceStageView({
             (isLocal ? (auth.user ?? undefined) : undefined)
           }
           participant={participantsById.get(item.userId)}
+          viewers={
+            item.kind === 'screen'
+              ? streamViewersByOwner.get(item.userId)
+              : undefined
+          }
           displayName={voiceParticipantDisplayName(
             item.userId,
             users,
@@ -610,6 +636,7 @@ export function VoiceStageView({
       focusMedia,
       inThisVoiceCall,
       participantsById,
+      streamViewersByOwner,
       users,
       voiceStage.setStageMediaSubscribed,
       voiceSession.speakingUserIds,

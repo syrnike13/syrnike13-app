@@ -71,6 +71,7 @@ export function applyLocalVoiceSessionOverride(
       server_deafened: false,
       camera: false,
       screensharing: false,
+      watching: [],
       version: 0,
     },
   ]

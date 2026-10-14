@@ -384,6 +384,10 @@ pub struct VoiceSession {
     pub server_deafened: bool,
     pub screensharing: bool,
     pub camera: bool,
+    /// Users whose screen share this participant watches. A new operation
+    /// starts empty; the client declares its watches again.
+    #[serde(default)]
+    pub watching: Vec<String>,
     pub version: u64,
     pub joined_at: Option<Timestamp>,
     pub created_at: Timestamp,
@@ -494,6 +498,7 @@ impl VoiceReservation {
             server_deafened: self.server_deafened,
             screensharing: self.screensharing,
             camera: self.camera,
+            watching: Vec::new(),
             version: self.version,
             joined_at: None,
             created_at: self.created_at,
@@ -573,6 +578,7 @@ impl VoiceSession {
             server_deafened: false,
             screensharing: false,
             camera: false,
+            watching: Vec::new(),
             version: 1,
             joined_at: None,
             created_at: input.created_at,
@@ -654,6 +660,7 @@ impl VoiceSession {
             server_deafened: self.server_deafened,
             screensharing: self.screensharing,
             camera: self.camera,
+            watching: self.watching.clone(),
             version: self.version,
         }
     }

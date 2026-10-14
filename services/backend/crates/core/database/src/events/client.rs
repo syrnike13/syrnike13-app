@@ -671,6 +671,7 @@ mod tests {
             server_deafened: false,
             screensharing: false,
             camera: false,
+            watching: Vec::new(),
             version: 1,
         }
     }

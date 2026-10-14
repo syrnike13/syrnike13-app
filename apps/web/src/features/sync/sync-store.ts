@@ -360,6 +360,11 @@ function findVoiceParticipantInAnyChannel(userId: string) {
   return undefined
 }
 
+function sameStringList(left: readonly string[], right: readonly string[]) {
+  return left.length === right.length &&
+    left.every((value, index) => value === right[index])
+}
+
 function voiceStateEquals(
   left: UserVoiceState | undefined,
   right: UserVoiceState | undefined,
@@ -375,6 +380,7 @@ function voiceStateEquals(
     left.server_deafened === right.server_deafened &&
     left.camera === right.camera &&
     left.screensharing === right.screensharing &&
+    sameStringList(left.watching, right.watching) &&
     left.version === right.version
   )
 }

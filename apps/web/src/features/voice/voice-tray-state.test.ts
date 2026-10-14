@@ -15,6 +15,7 @@ function participant(patch: Partial<UserVoiceState> = {}): UserVoiceState {
     server_deafened: false,
     camera: false,
     screensharing: false,
+    watching: [],
     version: 1,
     ...patch,
   }

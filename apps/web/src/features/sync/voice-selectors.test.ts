@@ -25,6 +25,7 @@ function participant(
     server_deafened: false,
     camera: false,
     screensharing: false,
+    watching: [],
     version: 1,
     ...overrides,
   }

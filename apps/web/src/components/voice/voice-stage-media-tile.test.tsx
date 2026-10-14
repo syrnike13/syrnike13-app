@@ -96,6 +96,7 @@ describe('StageMediaTile', () => {
           server_deafened: false,
           camera: false,
           screensharing: true,
+          watching: [],
         }}
         onFocus={vi.fn()}
         onSetSubscribed={vi.fn()}
@@ -121,6 +122,7 @@ describe('StageMediaTile', () => {
           server_deafened: false,
           camera: false,
           screensharing: true,
+          watching: [],
         }}
         onFocus={vi.fn()}
         onSetSubscribed={vi.fn()}
@@ -180,6 +182,7 @@ describe('StageMediaTile', () => {
           server_deafened: false,
           camera: false,
           screensharing: true,
+          watching: [],
         }}
         onFocus={vi.fn()}
         onSetSubscribed={onSetSubscribed}
@@ -213,6 +216,7 @@ describe('StageMediaTile', () => {
           server_deafened: false,
           camera: false,
           screensharing: true,
+          watching: [],
         }}
         onFocus={vi.fn()}
         onSetSubscribed={onSetSubscribed}
@@ -241,6 +245,7 @@ describe('StageMediaTile', () => {
           server_deafened: false,
           camera: false,
           screensharing: true,
+          watching: [],
         }}
         onFocus={vi.fn()}
         onSetSubscribed={vi.fn()}

@@ -111,11 +111,13 @@ import {
 } from '#/features/voice/voice-ping-history'
 import { playUiSound } from '#/features/sounds/sound-player'
 import {
-  SCREEN_VIEWER_SOUND_TOPIC,
-  createScreenViewerSoundPayload,
-  screenViewerSoundEventFromData,
-  screenViewerWatchNotification,
-} from '#/features/voice/voice-screen-viewer-sounds'
+  normalizeWatchedOwnerIds,
+  sameWatchedOwnerIds,
+  streamViewerSnapshot,
+  streamViewerTransitionSound,
+  type StreamViewerSnapshot,
+} from '#/features/voice/stream-viewers'
+import { eventsGateway } from '#/features/events/gateway'
 import { voiceSnapshotTransitionSounds } from '#/features/voice/voice-transition-sounds'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 import { recordDiagnosticEvent } from '#/features/diagnostics/diagnostic-reporter'
@@ -256,7 +258,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       ),
     )
   }, [desktop])
-  const notifiedScreenViewerIdsRef = useRef(new Set<string>())
   const previousFailureRef = useRef<string | null>(null)
   const previousMediaFailureRef = useRef<string | null>(null)
   const voicePreferences = useVoicePreferences()
@@ -452,7 +453,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         screenRepublishGraceTimersRef.current.delete(mediaId)
         if (!pendingScreenWatchIdsRef.current.delete(mediaId)) return
         watchedScreenViewerChannelsRef.current.delete(mediaId)
-        notifiedScreenViewerIdsRef.current.delete(mediaId)
         setRoomRevision((revision) => revision + 1)
       }, 5_000)
       screenRepublishGraceTimersRef.current.set(mediaId, timer)
@@ -538,109 +538,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       browserSubscriptionErrorsRef.current.clear()
     }
   }, [cancelScreenRepublishGrace, preserveScreenWatchDuringRepublish, room])
-
-  const publishScreenViewerSound = useCallback(
-    (activeRoom: Room, screenOwnerId: string, action: 'join' | 'leave') => {
-      const owner = Array.from(activeRoom.remoteParticipants.values()).find(
-        (participant) => baseVoiceIdentity(participant.identity) === screenOwnerId,
-      )
-      if (!owner) return false
-      Effect.runFork(
-        Effect.tryPromise({
-          try: () =>
-            activeRoom.localParticipant.publishData(
-              createScreenViewerSoundPayload({ action, screenOwnerId }),
-              {
-                reliable: true,
-                destinationIdentities: [owner.identity],
-                topic: SCREEN_VIEWER_SOUND_TOPIC,
-              },
-            ),
-          catch: (cause) => cause,
-        }).pipe(
-          Effect.catch((error) =>
-            Effect.sync(() => {
-              if (import.meta.env.DEV) {
-                console.warn(
-                  'Failed to publish screen viewer sound intent',
-                  error,
-                )
-              }
-            }),
-          ),
-        ),
-      )
-      return true
-    },
-    [],
-  )
-
-  const updateScreenViewerNotification = useCallback(
-    (
-      activeRoom: Room,
-      mediaId: string,
-      screenOwnerId: string,
-      subscribed: boolean,
-    ) => {
-      const watched = notifiedScreenViewerIdsRef.current
-      const action = screenViewerWatchNotification({
-        isLocal:
-          screenOwnerId === auth.user?._id ||
-          screenOwnerId === baseVoiceIdentity(activeRoom.localParticipant.identity),
-        wasWatching: watched.has(mediaId),
-        subscribed,
-      })
-      if (!action) return
-      const published = publishScreenViewerSound(
-        activeRoom,
-        screenOwnerId,
-        action,
-      )
-      if (subscribed && published) watched.add(mediaId)
-      if (!subscribed) watched.delete(mediaId)
-    },
-    [auth.user?._id, publishScreenViewerSound],
-  )
-
-  useEffect(() => {
-    if (!room) return
-    const onDataReceived = (
-      payload: Uint8Array,
-      participant?: { identity: string },
-      _kind?: unknown,
-      topic?: string,
-    ) => {
-      const sound = screenViewerSoundEventFromData({
-        payload,
-        topic,
-        senderIdentity: participant?.identity,
-        currentUserId: auth.user?._id,
-      })
-      if (sound) playUiSound(sound)
-    }
-    room.on(RoomEvent.DataReceived, onDataReceived)
-    return () => {
-      room.off(RoomEvent.DataReceived, onDataReceived)
-      for (const mediaId of notifiedScreenViewerIdsRef.current) {
-        const screenOwnerId = stageScreenMediaUserId(mediaId)
-        if (screenOwnerId) {
-          publishScreenViewerSound(room, screenOwnerId, 'leave')
-        }
-      }
-      notifiedScreenViewerIdsRef.current.clear()
-    }
-  }, [auth.user?._id, publishScreenViewerSound, room])
-
-  useEffect(() => {
-    if (!room || snapshot.connection !== 'connected') return
-    for (const [mediaId, targetChannelId] of watchedScreenViewerChannelsRef.current) {
-      if (targetChannelId !== snapshot.membershipChannelId) continue
-      const screenOwnerId = stageScreenMediaUserId(mediaId)
-      if (screenOwnerId) {
-        updateScreenViewerNotification(room, mediaId, screenOwnerId, true)
-      }
-    }
-  }, [room, roomRevision, snapshot, updateScreenViewerNotification])
 
   useEffect(() => {
     if (
@@ -758,7 +655,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       removedWatch =
         watchedScreenViewerChannelsRef.current.delete(mediaId) || removedWatch
       pendingScreenWatchIdsRef.current.delete(mediaId)
-      notifiedScreenViewerIdsRef.current.delete(mediaId)
     }
     if (removedWatch) {
       setRoomRevision((revision) => revision + 1)
@@ -942,6 +838,49 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [channelId, roomRevision],
   )
 
+  const watchedOwnerIds = useMemo(
+    () =>
+      normalizeWatchedOwnerIds(
+        viewedRemoteScreenIds.flatMap(
+          (mediaId) => stageScreenMediaUserId(mediaId) ?? [],
+        ),
+      ),
+    [viewedRemoteScreenIds],
+  )
+  const serverWatchedOwnerIds = participants.find(
+    (participant) => participant.id === auth.user?._id,
+  )?.watching
+
+  // The server holds who watches which stream, so every client derives the
+  // same viewer lists. Resent until the echoed voice state matches.
+  useEffect(() => {
+    if (status !== 'connected' || !serverWatchedOwnerIds) return
+    if (sameWatchedOwnerIds(serverWatchedOwnerIds, watchedOwnerIds)) return
+    eventsGateway.sendReliable(
+      { type: 'VoiceWatchUpdate', watching: watchedOwnerIds },
+      'voice-watch',
+    )
+  }, [serverWatchedOwnerIds, status, watchedOwnerIds])
+
+  const streamViewers = useMemo(
+    () =>
+      streamViewerSnapshot({
+        channelId: status === 'connected' ? channelId : null,
+        currentUserId: auth.user?._id ?? null,
+        participants,
+        watchedOwnerIds,
+      }),
+    [auth.user?._id, channelId, participants, status, watchedOwnerIds],
+  )
+  const previousStreamViewersRef = useRef<StreamViewerSnapshot | null>(null)
+  useEffect(() => {
+    const previous = previousStreamViewersRef.current
+    previousStreamViewersRef.current = streamViewers
+    if (!previous) return
+    const sound = streamViewerTransitionSound(previous, streamViewers)
+    if (sound) playUiSound(sound)
+  }, [streamViewers])
+
   const stageMediaItems = useMemo(() => {
     const watchedRemoteScreenIds = new Set(viewedRemoteScreenIds)
     const items = buildStageItems({
@@ -1087,7 +1026,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       removedWatch =
         watchedScreenViewerChannelsRef.current.delete(mediaId) || removedWatch
       pendingScreenWatchIdsRef.current.delete(mediaId)
-      notifiedScreenViewerIdsRef.current.delete(mediaId)
     }
     if (removedWatch) {
       setRoomRevision((revision) => revision + 1)
@@ -1225,23 +1163,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           return
         }
       }
-      const activeRoom = clientRef.current?.room()
-      const currentSnapshot = clientRef.current?.snapshot()
-      if (
-        activeRoom &&
-        currentSnapshot?.connection === 'connected' &&
-        currentSnapshot.membershipChannelId === targetChannelId
-      ) {
-        updateScreenViewerNotification(
-          activeRoom,
-          mediaId,
-          userId,
-          true,
-        )
-      }
       setFocusedMediaId(mediaId)
     },
-    [channelId, join, setFocusedMediaId, status, updateScreenViewerNotification],
+    [channelId, join, setFocusedMediaId, status],
   )
 
   const setStageMediaSubscribed = useCallback(
@@ -1262,9 +1186,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             watchedScreenViewerChannelsRef.current.delete(item.id)
             pendingScreenWatchIdsRef.current.delete(item.id)
           }
-          if (room) {
-            updateScreenViewerNotification(room, item.id, item.userId, subscribed)
-          }
         }
       } else if (screenUserId) {
         if (subscribed && channelId) {
@@ -1274,14 +1195,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           cancelScreenRepublishGrace(mediaId)
           watchedScreenViewerChannelsRef.current.delete(mediaId)
           pendingScreenWatchIdsRef.current.delete(mediaId)
-        }
-        if (room) {
-          updateScreenViewerNotification(
-            room,
-            mediaId,
-            screenUserId,
-            subscribed,
-          )
         }
       } else {
         setVoiceStageMediaPublicationSubscribed(
@@ -1295,9 +1208,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       cancelScreenRepublishGrace,
       channelId,
       dispatchVoice,
-      room,
       stageMediaItems,
-      updateScreenViewerNotification,
     ],
   )
 

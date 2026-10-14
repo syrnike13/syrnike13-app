@@ -22,6 +22,7 @@ function participant(id: string, version = 1): UserVoiceState {
     server_deafened: false,
     camera: false,
     screensharing: false,
+    watching: [],
     version,
   }
 }

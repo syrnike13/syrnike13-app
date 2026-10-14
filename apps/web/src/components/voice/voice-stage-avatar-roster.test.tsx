@@ -22,6 +22,7 @@ const participant: UserVoiceState = {
   server_deafened: false,
   camera: false,
   screensharing: false,
+  watching: [],
   version: 0,
 }
 
