@@ -154,6 +154,7 @@ end
 
 redis.call('SETEX', KEYS[2], tonumber(ARGV[3]), ARGV[2])
 redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3]))
+if not cjson.decode(ARGV[2]).screensharing then redis.call('DEL', KEYS[3]) end
 return 1
 "#;
 
@@ -241,6 +242,7 @@ if ARGV[12] ~= '' then
   redis.call('SETEX', KEYS[9], tonumber(ARGV[6]), ARGV[12])
   redis.call('SADD', KEYS[12], ARGV[3])
   redis.call('SETEX', KEYS[13], tonumber(ARGV[16]), ARGV[15])
+  redis.call('DEL', KEYS[14])
   if ARGV[14] ~= ARGV[8] then
     redis.call('SREM', KEYS[10], ARGV[13])
   end
@@ -264,6 +266,7 @@ redis.call('SREM', KEYS[3], ARGV[2])
 redis.call('DEL', KEYS[1])
 redis.call('DEL', KEYS[2])
 redis.call('SADD', KEYS[5], ARGV[1])
+redis.call('DEL', KEYS[7])
 redis.call('SETEX', KEYS[6], tonumber(ARGV[4]), ARGV[3])
 return 1
 "#;
@@ -939,10 +942,14 @@ pub async fn save_current_voice_session(
     session: &VoiceSession,
 ) -> Result<bool> {
     let previous_raw = serde_json::to_string(previous_session).to_internal_error()?;
-    let saved: i64 = run_eval(SAVE_CURRENT_VOICE_SESSION, 2, |command| {
+    let saved: i64 = run_eval(SAVE_CURRENT_VOICE_SESSION, 3, |command| {
         command
             .arg(voice_current_key(&session.user_id))
             .arg(voice_session_key(&session.operation_id))
+            .arg(super::stream_preview::stream_preview_key(
+                &session.channel.id,
+                &session.user_id,
+            ))
             .arg(&session.operation_id)
             .arg(session)
             .arg(VOICE_SESSION_TTL_SECONDS)
@@ -1150,7 +1157,7 @@ async fn persist_active_voice_session_from_reservation(
             .map(|retired| retired.operation_id.as_str())
             .unwrap_or(&session.operation_id),
     );
-    let committed: i64 = run_eval(COMMIT_VOICE_RESERVATION_JOIN, 13, |command| {
+    let committed: i64 = run_eval(COMMIT_VOICE_RESERVATION_JOIN, 14, |command| {
         command
             .arg(voice_current_key(&session.user_id))
             .arg(voice_reservation_current_key(&session.user_id))
@@ -1165,6 +1172,10 @@ async fn persist_active_voice_session_from_reservation(
             .arg(voice_channel_reservations_key(&session.channel.id))
             .arg(voice_transport_cleanups_key())
             .arg(retired_cleanup_key)
+            .arg(super::stream_preview::stream_preview_key(
+                previous_channel_id,
+                previous_user_id,
+            ))
             .arg(&session.operation_id)
             .arg(reservation_raw)
             .arg(
@@ -1203,7 +1214,7 @@ pub async fn list_active_voice_channel_ids() -> Result<Vec<String>> {
 pub async fn delete_current_voice_session(session: &VoiceSession) -> Result<bool> {
     let cleanup_raw =
         serde_json::to_string(&VoiceTransportCleanup::from(session)).to_internal_error()?;
-    let deleted: i64 = run_eval(DELETE_CURRENT_VOICE_SESSION, 6, |command| {
+    let deleted: i64 = run_eval(DELETE_CURRENT_VOICE_SESSION, 7, |command| {
         command
             .arg(voice_current_key(&session.user_id))
             .arg(voice_session_key(&session.operation_id))
@@ -1211,6 +1222,10 @@ pub async fn delete_current_voice_session(session: &VoiceSession) -> Result<bool
             .arg(voice_reservation_current_key(&session.user_id))
             .arg(voice_transport_cleanups_key())
             .arg(voice_transport_cleanup_key(&session.operation_id))
+            .arg(super::stream_preview::stream_preview_key(
+                &session.channel.id,
+                &session.user_id,
+            ))
             .arg(&session.operation_id)
             .arg(&session.user_id)
             .arg(cleanup_raw)

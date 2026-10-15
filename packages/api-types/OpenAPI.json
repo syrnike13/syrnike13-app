@@ -34,6 +34,52 @@
     }
   ],
   "paths": {
+    "/channels/{target}/voice/stream-preview": {
+      "put": {
+        "tags": ["Voice"],
+        "summary": "Upload Stream Preview",
+        "description": "Upload a WebP or JPEG image (maximum 262144 bytes). Requires an active screensharing session in this channel. Expires after 10 minutes and is deleted on stream end or leave.",
+        "operationId": "voice_stream_preview_put_preview",
+        "security": [{"Session Token": []}],
+        "parameters": [{"name": "target", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "image/webp": {"schema": {"type": "string", "format": "binary"}},
+            "image/jpeg": {"schema": {"type": "string", "format": "binary"}}
+          }
+        },
+        "responses": {
+          "204": {"description": "Preview stored"},
+          "default": {"description": "Invalid image or inactive screensharing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/channels/{target}/voice/stream-preview/{user_id}": {
+      "get": {
+        "tags": ["Voice"],
+        "summary": "Fetch Stream Preview",
+        "description": "Requires ViewChannel permission. Returns no-store image bytes without subscribing to the stream.",
+        "operationId": "voice_stream_preview_get_preview",
+        "security": [{"Session Token": []}],
+        "parameters": [
+          {"name": "target", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Stream preview image",
+            "headers": {"Cache-Control": {"schema": {"type": "string"}}, "X-Stream-Preview-Updated-At": {"schema": {"type": "string"}}},
+            "content": {
+              "image/webp": {"schema": {"type": "string", "format": "binary"}},
+              "image/jpeg": {"schema": {"type": "string", "format": "binary"}}
+            }
+          },
+          "404": {"description": "Preview unavailable"},
+          "default": {"description": "An error occurred", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
     "/": {
       "get": {
         "tags": [

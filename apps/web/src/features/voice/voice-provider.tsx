@@ -122,6 +122,8 @@ import { voiceSnapshotTransitionSounds } from '#/features/voice/voice-transition
 import { getSyrnikeDesktop } from '#/platform/runtime'
 import { recordDiagnosticEvent } from '#/features/diagnostics/diagnostic-reporter'
 import { enqueueAutomaticDiagnosticIncident } from '#/features/diagnostics/automatic-diagnostic-incidents'
+import { useVoiceStagePresentation } from './use-voice-stage-presentation'
+import { useStreamPreviewUpload } from './use-stream-preview-upload'
 
 type VoiceClient = {
   dispatch(command: VoiceCommand): void
@@ -777,6 +779,15 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         ? snapshot.intentChannelId
         : null
 
+  const presentation = useVoiceStagePresentation(channelId)
+  const sessionStageMounted = presentation.mountedStageChannelIds.includes(
+    channelId ?? '',
+  )
+  useEffect(() => {
+    if (!sessionStageMounted && !presentation.popoutWindow)
+      setStageFullscreen(false)
+  }, [sessionStageMounted, presentation.popoutWindow])
+
   useEffect(() => {
     setActivityLauncherOpen(false)
   }, [channelId])
@@ -924,7 +935,61 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setNativeVideoDemand,
     viewedRemoteScreenIds,
   ])
-  stageMediaItemsRef.current = stageMediaItems
+  // Screen ownership and subscriptions are independent of the stage's display filters.
+  const streamMediaItems = useMemo(
+    () =>
+      buildStageItems({
+        room: room
+          ? createStageRoomFromLiveKit(
+              room,
+              browserSubscriptionErrorsRef.current,
+            )
+          : null,
+        participants,
+        currentUserId: auth.user?._id ?? null,
+        filters: {
+          showOwnStream: true,
+          showRemoteStreams: true,
+          showParticipantsWithoutMedia: false,
+        },
+        watchedRemoteScreenIds: new Set(viewedRemoteScreenIds),
+        nativeTracks: nativeVideoTracks,
+        nativePublications: nativeVideoPublications,
+        localScreenPreview:
+          desktop && localScreenPreviewActive && auth.user?._id
+            ? {
+                userId: auth.user._id,
+                track: nativeVideoRegistry.getLocalScreenPreviewTrack(),
+              }
+            : null,
+        setNativeDemand: setNativeVideoDemand,
+      }).filter((item) => item.kind === 'screen'),
+    [
+      room,
+      roomRevision,
+      participants,
+      auth.user?._id,
+      viewedRemoteScreenIds,
+      nativeVideoTracks,
+      nativeVideoPublications,
+      desktop,
+      localScreenPreviewActive,
+      setNativeVideoDemand,
+    ],
+  )
+  stageMediaItemsRef.current = [
+    ...stageMediaItems,
+    ...streamMediaItems.filter(
+      (item) => !stageMediaItems.some((visible) => visible.id === item.id),
+    ),
+  ]
+  const localPreviewTrack =
+    streamMediaItems.find((item) => item.isLocal)?.track ?? null
+  useStreamPreviewUpload(
+    snapshot.screen.state === 'running' ? channelId : null,
+    auth.session?.token,
+    localPreviewTrack,
+  )
 
   useEffect(() => {
     if (!desktop) {
@@ -1143,10 +1208,25 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const setFocusedMediaId = useCallback((mediaId: string | null) => {
-    setFocusedMediaIdState(mediaId)
-    if (mediaId) setStageFocusNonce((nonce) => nonce + 1)
-  }, [])
+  const setFocusedMediaId = useCallback(
+    (mediaId: string | null) => {
+      const item = stageMediaItemsRef.current.find(
+        (candidate) => candidate.id === mediaId,
+      )
+      if (item?.kind === 'screen') {
+        setStageMediaFilters((filters) => {
+          if (item.isLocal ? filters.showOwnStream : filters.showRemoteStreams)
+            return filters
+          return item.isLocal
+            ? { ...filters, showOwnStream: true }
+            : { ...filters, showRemoteStreams: true }
+        })
+      }
+      setFocusedMediaIdState(mediaId)
+      if (mediaId) setStageFocusNonce((nonce) => nonce + 1)
+    },
+    [setStageMediaFilters],
+  )
 
   const watchParticipantScreenShare = useCallback(
     async (targetChannelId: string, userId: string) => {
@@ -1170,7 +1250,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const setStageMediaSubscribed = useCallback(
     (mediaId: string, subscribed: boolean) => {
-      const item = stageMediaItems.find((candidate) => candidate.id === mediaId)
+      const item = stageMediaItemsRef.current.find(
+        (candidate) => candidate.id === mediaId,
+      )
       const screenUserId = stageScreenMediaUserId(mediaId)
       if (item?.kind === 'screen') {
         const action = setStageScreenSubscription(item, subscribed)
@@ -1204,12 +1286,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
       setRoomRevision((revision) => revision + 1)
     },
-    [
-      cancelScreenRepublishGrace,
-      channelId,
-      dispatchVoice,
-      stageMediaItems,
-    ],
+    [cancelScreenRepublishGrace, channelId, dispatchVoice],
   )
 
   const sessionValue = useMemo<VoiceSessionContextValue>(
@@ -1269,6 +1346,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     () => ({
       stageChannelId: channelId,
       stageMediaItems,
+      streamMediaItems,
+      ...presentation,
       viewedRemoteScreenIds,
       focusedMediaId,
       setFocusedMediaId,
@@ -1293,6 +1372,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       stageFullscreen,
       stageMediaFilters,
       stageMediaItems,
+      streamMediaItems,
+      presentation,
       viewedRemoteScreenIds,
       watchParticipantScreenShare,
     ],

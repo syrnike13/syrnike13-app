@@ -111,6 +111,13 @@ const FrameMessageSchema = Schema.Struct({
   ),
 })
 
+type CanvasCaptureOptions = {
+  fit?: 'contain' | 'cover'
+  /** Explicit pixel bounds for detached capture canvases, independent of CSS and DPR. */
+  backingSize?: { width: number; height: number }
+  onFrame?: () => void
+}
+
 type CanvasConsumer = {
   canvas: HTMLCanvasElement
   context: CanvasRenderingContext2D
@@ -120,6 +127,8 @@ type CanvasConsumer = {
   sourceHeight: number
   backingWidth: number
   backingHeight: number
+  backingSize?: { width: number; height: number }
+  onFrame?: () => void
 }
 
 type NativeVideoPresentationCounters = {
@@ -194,7 +203,7 @@ export class NativeVideoTrackAdapter {
   attachCanvas(
     canvas: HTMLCanvasElement,
     onSizeChange?: (size: { width: number; height: number }) => void,
-    options?: { fit?: 'contain' | 'cover' },
+    options?: CanvasCaptureOptions,
   ) {
     return this.registry.attachCanvas(this.sid, canvas, onSizeChange, options)
   }
@@ -372,7 +381,7 @@ export class NativeVideoRegistry {
     trackId: string,
     canvas: HTMLCanvasElement,
     onSizeChange?: (size: { width: number; height: number }) => void,
-    options?: { fit?: 'contain' | 'cover' },
+    options?: CanvasCaptureOptions,
   ) {
     const entry = this.tracks.get(trackId)
     const consumers = trackId === LOCAL_SCREEN_PREVIEW_TRACK_ID
@@ -398,6 +407,8 @@ export class NativeVideoRegistry {
       sourceHeight: 0,
       backingWidth: 0,
       backingHeight: 0,
+      backingSize: options?.backingSize,
+      onFrame: options?.onFrame,
     })
     if (presentation) presentation.canvasAttachCount += 1
     const localPreviewConsumer = consumers === this.localScreenConsumers
@@ -883,6 +894,7 @@ function drawFrame(consumer: CanvasConsumer, frame: VideoFrame) {
     sourceWidth,
     sourceHeight,
     consumer.fit,
+    consumer.backingSize,
   )
   if (
     consumer.backingWidth !== backing.width ||
@@ -894,6 +906,7 @@ function drawFrame(consumer: CanvasConsumer, frame: VideoFrame) {
     consumer.canvas.height = backing.height
   }
   consumer.context.drawImage(frame, 0, 0, backing.width, backing.height)
+  consumer.onFrame?.()
   return true
 }
 
@@ -902,7 +915,19 @@ function canvasBackingSize(
   sourceWidth: number,
   sourceHeight: number,
   fit: 'contain' | 'cover',
+  backingSize?: { width: number; height: number },
 ) {
+  if (backingSize) {
+    const scale = Math.min(
+      1,
+      backingSize.width / sourceWidth,
+      backingSize.height / sourceHeight,
+    )
+    return {
+      width: Math.max(1, Math.round(sourceWidth * scale)),
+      height: Math.max(1, Math.round(sourceHeight * scale)),
+    }
+  }
   const measuredWidth = canvas.clientWidth
   const measuredHeight = canvas.clientHeight
   const cssWidth = Number.isFinite(measuredWidth) ? Math.max(0, measuredWidth) : 0

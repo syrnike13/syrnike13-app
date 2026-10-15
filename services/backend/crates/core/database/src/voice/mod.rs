@@ -24,6 +24,7 @@ use syrnike_result::{create_error, Result, ToSyrnikeError};
 pub mod call_lifecycle;
 mod join;
 mod session;
+pub mod stream_preview;
 mod voice_client;
 pub use crate::events::client::{VoiceCameraProfile, VoiceRtcCredential, VoiceRtcEngine};
 pub use join::*;
@@ -477,11 +478,14 @@ pub async fn delete_voice_state(
     user_id: &str,
 ) -> Result<Option<String>> {
     let Some(mut session) = get_current_voice_session(user_id).await? else {
+        // Atomically remove thumbnails whose stream authority expired.
+        stream_preview::prune_stream_preview(&channel.id, user_id).await?;
         return Ok(None);
     };
 
     if !same_voice_channel(&session.channel, channel) || session.state != VoiceSessionState::Active
     {
+        stream_preview::prune_stream_preview(&channel.id, user_id).await?;
         return Ok(None);
     }
 
@@ -499,6 +503,7 @@ pub async fn delete_voice_state_for_session(
     session_id: &str,
 ) -> Result<Option<String>> {
     let Some(mut session) = get_current_voice_session(user_id).await? else {
+        stream_preview::prune_stream_preview(&channel.id, user_id).await?;
         return Ok(None);
     };
 
@@ -541,6 +546,7 @@ pub async fn delete_channel_voice_state(
     pipeline.srem(voice_active_channels_key(), &channel.id);
 
     for user_id in user_ids {
+        pipeline.del(stream_preview::stream_preview_key(&channel.id, user_id));
         if let Some(mut session) = get_current_voice_session(user_id).await? {
             if same_voice_channel(&session.channel, channel) {
                 let operation_id = session.operation_id.clone();
@@ -573,6 +579,7 @@ pub async fn delete_channel_voice_state_for_room(
     let mut deleted_sessions = Vec::new();
     for user_id in user_ids {
         let Some(mut session) = get_current_voice_session(user_id).await? else {
+            stream_preview::prune_stream_preview(&channel.id, user_id).await?;
             continue;
         };
         if same_voice_channel(&session.channel, channel)
@@ -585,6 +592,8 @@ pub async fn delete_channel_voice_state_for_room(
             if delete_current_voice_session(&session).await? {
                 deleted_sessions.push((user_id.clone(), operation_id));
             }
+        } else {
+            stream_preview::prune_stream_preview(&channel.id, user_id).await?;
         }
     }
     Ok(Some(deleted_sessions))

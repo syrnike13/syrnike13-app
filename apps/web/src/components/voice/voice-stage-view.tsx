@@ -4,7 +4,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
   type Ref,
@@ -20,7 +19,6 @@ import type {
   UserVoiceState,
   VoiceCallState,
 } from '#/features/sync/voice-types'
-import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -101,7 +99,7 @@ type VoiceStageViewProps = {
   channel: Channel
   title: string
   chatOpen: boolean
-  onToggleChat: () => void
+  onToggleChat?: () => void
   showChatToggle?: boolean
   /** Встроен в мобильный drawer — без popout/fullscreen. */
   mobileDrawer?: boolean
@@ -112,9 +110,9 @@ type VoiceStageViewProps = {
   onDeclineVoiceCall?: () => void
   dmHeader?: VoiceStageDmHeader
   headerTrailing?: ReactNode
+  popoutSurface?: boolean
 }
 
-const STAGE_POPOUT_WINDOW_NAME = 'syrnike13-voice-stage'
 const EMPTY_STAGE_MEDIA_ITEMS: readonly VoiceStageMediaItem[] = []
 const ChannelActivityLauncher = lazy(() =>
   import('#/features/activities/channel-activity-panel').then((module) => ({
@@ -144,6 +142,7 @@ export function VoiceStageView({
   onDeclineVoiceCall,
   dmHeader,
   headerTrailing,
+  popoutSurface = false,
 }: VoiceStageViewProps) {
   const auth = useAuth()
   const voiceSession = useVoiceSession()
@@ -197,41 +196,19 @@ export function VoiceStageView({
     joinButtonLabel ?? (isDmVoiceStage ? 'Присоединиться' : undefined)
   const [requestedMode, setRequestedMode] =
     useState<VoiceStageLayoutMode>('grid')
-  const [popoutWindow, setPopoutWindow] = useState<Window | null>(null)
-  const popoutWindowRef = useRef<Window | null>(null)
-  const popoutOpen = popoutWindow != null && !popoutWindow.closed
+  const { popoutWindow, closeStagePopout: closePopout } = voiceStage
+  const popoutOpen =
+    voiceStage.popoutChannelId === channelId &&
+    popoutWindow != null &&
+    !popoutWindow.closed
   const { stageRef, chromeVisible } = useVoiceStageChromeVisible(
     popoutOpen ? 'popout' : 'embedded',
   )
 
   useEffect(() => {
-    popoutWindowRef.current = popoutWindow
-  }, [popoutWindow])
-
-  useEffect(() => {
-    if (!popoutWindow) return
-
-    const handlePopoutClosed = () => {
-      setPopoutWindow((current) => (current === popoutWindow ? null : current))
-    }
-
-    popoutWindow.addEventListener('beforeunload', handlePopoutClosed)
-    popoutWindow.addEventListener('unload', handlePopoutClosed)
-
-    return () => {
-      popoutWindow.removeEventListener('beforeunload', handlePopoutClosed)
-      popoutWindow.removeEventListener('unload', handlePopoutClosed)
-    }
-  }, [popoutWindow])
-
-  useEffect(() => {
-    return () => {
-      const current = popoutWindowRef.current
-      if (current && !current.closed) {
-        current.close()
-      }
-    }
-  }, [])
+    if (popoutSurface) return
+    return voiceStage.registerStageView(channelId)
+  }, [channelId, popoutSurface, voiceStage.registerStageView])
 
   const participants = useChannelVoiceParticipantsWithLocalOverride(
     channelId,
@@ -415,7 +392,7 @@ export function VoiceStageView({
   )
 
   useEffect(() => {
-    if (!voiceStage.stageFullscreen) return
+    if (!voiceStage.stageFullscreen || (popoutOpen && !popoutSurface)) return
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
@@ -423,21 +400,10 @@ export function VoiceStageView({
       }
     }
 
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [voiceStage])
-
-  const closePopout = useCallback(() => {
-    const win = popoutWindowRef.current
-    setPopoutWindow(null)
-    if (win && !win.closed) {
-      try {
-        win.close()
-      } catch {
-        // окно уже закрыто
-      }
-    }
-  }, [])
+    const targetWindow = popoutSurface ? popoutWindow : window
+    targetWindow?.addEventListener('keydown', onKeyDown)
+    return () => targetWindow?.removeEventListener('keydown', onKeyDown)
+  }, [voiceStage, popoutOpen, popoutSurface, popoutWindow])
 
   const toggleStagePopout = useCallback(() => {
     if (popoutOpen && popoutWindow) {
@@ -450,25 +416,10 @@ export function VoiceStageView({
       voiceStage.toggleStageFullscreen()
     }
 
-    const childWindow = window.open(
-      '',
-      STAGE_POPOUT_WINDOW_NAME,
-      'popup=yes,width=1280,height=720',
-    )
-    if (!childWindow) {
-      toast.error('Браузер заблокировал отдельное окно стейджа')
-      return
-    }
-
-    setPopoutWindow((current) => {
-      if (current && current !== childWindow && !current.closed) {
-        current.close()
-      }
-      return childWindow
-    })
-    childWindow.focus()
+    voiceStage.openStagePopout(channelId)
   }, [
     canToggleStageFullscreen,
+    channelId,
     closePopout,
     popoutOpen,
     popoutWindow,
@@ -987,7 +938,7 @@ export function VoiceStageView({
 
   return (
     <>
-      {popoutOpen ? (
+      {popoutOpen && !popoutSurface ? (
         <VoiceStagePopoutPlaceholder
           title={title}
           onReturn={closePopout}
@@ -998,12 +949,12 @@ export function VoiceStageView({
           }}
         />
       ) : null}
-      {!popoutOpen ? (
+      {!popoutOpen && !popoutSurface ? (
         <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
           {renderStageSurface(stageRef, 'embedded')}
         </div>
       ) : null}
-      {popoutOpen && popoutWindow ? (
+      {popoutSurface && popoutOpen && popoutWindow ? (
         <VoiceStagePopout
           childWindow={popoutWindow}
           title={title}

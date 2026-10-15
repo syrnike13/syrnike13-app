@@ -14,11 +14,14 @@ type DragState = {
   startX: number
   startY: number
   moved: boolean
+  offsetX: number
+  offsetY: number
 }
 
 export function useFloatingCornerAnchor(
   storageKey: string,
   fallback: FloatingCorner = 'top-right',
+  preservePointerOffset = false,
 ) {
   const [corner, setCorner] = useState(() =>
     floatingCornerFromStorage(storageKey, fallback),
@@ -37,15 +40,27 @@ export function useFloatingCornerAnchor(
     [storageKey],
   )
 
-  const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    event.currentTarget.setPointerCapture(event.pointerId)
-    dragStateRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      moved: false,
-    }
-  }, [])
+  const onPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (event.button !== 0 || !event.isPrimary) return
+      suppressClickRef.current = false
+      event.currentTarget.setPointerCapture(event.pointerId)
+      const rect = event.currentTarget.getBoundingClientRect()
+      dragStateRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false,
+        offsetX: preservePointerOffset
+          ? rect.left + rect.width / 2 - event.clientX
+          : 0,
+        offsetY: preservePointerOffset
+          ? rect.top + rect.height / 2 - event.clientY
+          : 0,
+      }
+    },
+    [preservePointerOffset],
+  )
 
   const onPointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     const state = dragStateRef.current
@@ -56,7 +71,10 @@ export function useFloatingCornerAnchor(
     if (!state.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
 
     state.moved = true
-    setDragPoint({ x: event.clientX, y: event.clientY })
+    setDragPoint({
+      x: event.clientX + state.offsetX,
+      y: event.clientY + state.offsetY,
+    })
   }, [])
 
   const onPointerUp = useCallback(
@@ -69,8 +87,8 @@ export function useFloatingCornerAnchor(
         suppressClickRef.current = true
         persistCorner(
           nearestFloatingCorner(
-            event.clientX,
-            event.clientY,
+            event.clientX + state.offsetX,
+            event.clientY + state.offsetY,
             window.innerWidth,
             window.innerHeight,
           ),
@@ -86,6 +104,7 @@ export function useFloatingCornerAnchor(
       const state = dragStateRef.current
       if (!state || state.pointerId !== event.pointerId) return
       dragStateRef.current = null
+      suppressClickRef.current = state.moved
       setDragPoint(null)
     },
     [],
