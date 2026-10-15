@@ -1,5 +1,5 @@
 import type { User } from '@syrnike13/api-types'
-import type { DragEvent } from 'react'
+import { useState, type DragEvent } from 'react'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserInteractiveShell } from '#/components/user/user-interactive-shell'
@@ -16,6 +16,7 @@ import { useSyncStore } from '#/features/sync/sync-store'
 import { canMoveServerMember } from '#/features/authorization/authorization'
 import { writeVoiceMemberDragPayload } from '#/features/voice/voice-member-drag'
 import { cn } from '#/lib/utils'
+import { VoiceStreamPreviewHoverCard } from './voice-stream-preview-hover-card'
 
 type VoiceParticipantRowProps = {
   channelId?: string
@@ -47,6 +48,7 @@ export function VoiceParticipantRow({
   roles,
 }: VoiceParticipantRowProps) {
   const auth = useAuth()
+  const [profileOpen, setProfileOpen] = useState(false)
   const watchScreenShare = useWatchParticipantScreenShare()
   const server = useSyncStore((state) =>
     serverId ? state.servers[serverId] : undefined,
@@ -155,11 +157,9 @@ export function VoiceParticipantRow({
     </>
   )
 
-  if (!user) {
-    return <div className={rowClassName}>{content}</div>
-  }
-
-  return (
+  const row = !user ? (
+    <div className={rowClassName}>{content}</div>
+  ) : (
     <UserInteractiveShell
       user={user}
       serverId={serverId}
@@ -168,6 +168,7 @@ export function VoiceParticipantRow({
       side="right"
       align="start"
       inVoice
+      onProfileOpenChange={setProfileOpen}
     >
       <button
         type="button"
@@ -192,5 +193,16 @@ export function VoiceParticipantRow({
         {content}
       </button>
     </UserInteractiveShell>
+  )
+  return participant.screensharing && channelId ? (
+    <VoiceStreamPreviewHoverCard
+      channelId={channelId}
+      userId={participant.id}
+      suspended={profileOpen}
+    >
+      {row}
+    </VoiceStreamPreviewHoverCard>
+  ) : (
+    row
   )
 }

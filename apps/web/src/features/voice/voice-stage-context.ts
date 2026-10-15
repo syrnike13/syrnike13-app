@@ -12,6 +12,14 @@ export type VoiceStageContextValue = {
   /** Канал RTC-сессии, для которой построены stageMediaItems. */
   stageChannelId: string | null
   stageMediaItems: readonly VoiceStageMediaItem[]
+  /** Screen publications independent of the stage's display filters. */
+  streamMediaItems: readonly VoiceStageMediaItem[]
+  popoutWindow: Window | null
+  popoutChannelId: string | null
+  openStagePopout: (channelId?: string) => void
+  closeStagePopout: () => void
+  registerStageView: (channelId: string) => () => void
+  mountedStageChannelIds: readonly string[]
   /** Удалённые трансляции, просмотр которых явно включил пользователь. */
   viewedRemoteScreenIds: readonly string[]
   focusedMediaId: string | null

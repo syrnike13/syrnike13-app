@@ -20,6 +20,7 @@ type UserInteractiveShellProps = {
   align?: 'start' | 'center' | 'end'
   inVoice?: boolean
   children: ReactElement
+  onProfileOpenChange?: (open: boolean) => void
 }
 
 export function UserInteractiveShell({
@@ -31,6 +32,7 @@ export function UserInteractiveShell({
   align = 'start',
   inVoice = false,
   children,
+  onProfileOpenChange,
 }: UserInteractiveShellProps) {
   const auth = useAuth()
   const [profileOpen, setProfileOpen] = useState(false)
@@ -39,6 +41,7 @@ export function UserInteractiveShell({
 
   function openGlobalProfile() {
     setProfileOpen(false)
+    onProfileOpenChange?.(false)
     setGlobalProfileOpen(true)
   }
 
@@ -52,7 +55,10 @@ export function UserInteractiveShell({
         side={side}
         align={align}
         open={profileOpen}
-        onOpenChange={setProfileOpen}
+        onOpenChange={(open) => {
+          setProfileOpen(open)
+          onProfileOpenChange?.(open)
+        }}
         onOpenGlobalProfile={openGlobalProfile}
       >
         <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>

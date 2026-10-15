@@ -10,6 +10,8 @@ import { DesktopTrayVoicePublisher } from '#/features/voice/desktop-tray-voice-p
 import { AuthedGate } from '#/features/auth/authed-gate'
 import { loadSession } from '#/lib/session'
 import { isDesktopRuntime } from '#/platform/runtime'
+import { VoiceStreamMiniPlayer } from '#/components/voice/voice-stream-mini-player'
+import { VoiceStagePopoutHost } from '#/components/voice/voice-stage-popout-host'
 
 /**
  * Layout route для `/app` — десктопная раскладка.
@@ -37,6 +39,8 @@ function DesktopLayout() {
           <DesktopOverlayPublisher />
           <DesktopTrayVoicePublisher />
           <DesktopShell />
+          <VoiceStreamMiniPlayer />
+          <VoiceStagePopoutHost />
           <CommandPalette />
           <SettingsModal />
         </DesktopHotkeyProvider>

@@ -17,6 +17,10 @@ const testState = vi.hoisted(() => ({
     join: vi.fn(),
   },
   stage: {
+    popoutWindow: null,
+    registerStageView: vi.fn(() => () => {}),
+    openStagePopout: vi.fn(),
+    closeStagePopout: vi.fn(),
     stageChannelId: 'voice-a' as string | null,
     stageMediaItems: [] as Array<{
       id: string
