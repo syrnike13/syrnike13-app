@@ -43,16 +43,33 @@ auto_derived!(
         Icon,
     }
 
+    /// How a badge reached the user
+    #[derive(Default)]
+    pub enum BadgeAssignmentSource {
+        /// Assigned by a privileged user
+        #[default]
+        Manual,
+        /// Granted automatically by a badge rule
+        Rule,
+    }
+
     /// User badge assignment
     pub struct UserBadgeAssignment {
         /// User id
         pub user_id: String,
         /// Badge id
         pub badge_id: String,
+        /// How the badge was granted
+        #[serde(default)]
+        pub source: BadgeAssignmentSource,
         /// Privileged user who assigned the badge
-        pub assigned_by: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub assigned_by: Option<String>,
         /// Assignment timestamp
         pub assigned_at: Timestamp,
+        /// Whether the user has not seen the unlock notification yet
+        #[serde(skip_serializing_if = "crate::if_false", default)]
+        pub unseen: bool,
     }
 );
 
@@ -238,7 +255,10 @@ pub fn sort_badges_for_display(badges: &mut [Badge]) {
 
 #[cfg(test)]
 mod tests {
-    use super::{sort_badges_for_display, Badge, FieldsBadge, PartialBadge, UserBadgeAssignment};
+    use super::{
+        sort_badges_for_display, Badge, BadgeAssignmentSource, FieldsBadge, PartialBadge,
+        UserBadgeAssignment,
+    };
     use iso8601_timestamp::Timestamp;
 
     #[async_std::test]
@@ -262,12 +282,14 @@ mod tests {
             let assignment = UserBadgeAssignment {
                 user_id: "user".to_string(),
                 badge_id: badge.id.clone(),
-                assigned_by: "admin".to_string(),
+                source: BadgeAssignmentSource::Manual,
+                assigned_by: Some("admin".to_string()),
                 assigned_at: Timestamp::now_utc(),
+                unseen: true,
             };
 
-            db.assign_user_badge(&assignment).await.unwrap();
-            db.assign_user_badge(&assignment).await.unwrap();
+            assert!(db.assign_user_badge(&assignment).await.unwrap());
+            assert!(!db.assign_user_badge(&assignment).await.unwrap());
 
             assert_eq!(
                 db.fetch_user_badge_assignments("user").await.unwrap().len(),

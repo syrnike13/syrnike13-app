@@ -1,4 +1,5 @@
 pub mod acks;
+pub mod badge_rules;
 pub mod diagnostic_reports;
 pub mod file_deletion;
 pub mod prune_dangling_files;
