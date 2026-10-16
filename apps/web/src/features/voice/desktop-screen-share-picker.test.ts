@@ -38,7 +38,10 @@ const platform = vi.hoisted<{
 }>(() => ({ desktop: null, requestHandler: null }))
 
 vi.mock('#/platform/use-platform', () => ({
-  usePlatform: () => ({ desktop: platform.desktop }),
+  usePlatform: () => ({
+    desktop: platform.desktop,
+    capabilities: { nativeScreenShare: true },
+  }),
 }))
 
 import {
