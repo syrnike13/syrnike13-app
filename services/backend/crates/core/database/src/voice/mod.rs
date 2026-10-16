@@ -765,6 +765,36 @@ pub async fn update_watched_screens(
     Ok(None)
 }
 
+/// The user stopped their camera/screen share on purpose: clear the flag now
+/// instead of waiting for the LiveKit unpublish webhook (which is deferred so a
+/// quality-change republish does not flash the flag off and on).
+pub async fn clear_voice_media_track(
+    user_id: &str,
+    source: crate::events::server::VoiceMediaSource,
+) -> Result<Option<(String, UserVoiceState)>> {
+    let track = match source {
+        crate::events::server::VoiceMediaSource::Camera => TrackSource::Camera,
+        crate::events::server::VoiceMediaSource::Screen => TrackSource::ScreenShare,
+    };
+    for _ in 0..VOICE_SESSION_MUTATION_RETRY_LIMIT {
+        let Some(previous) = get_current_voice_session(user_id).await? else {
+            return Ok(None);
+        };
+        let mut next = previous.clone();
+        if next.set_track_state(false, track as i32) != VoiceSessionTransition::Applied {
+            return Ok(None);
+        }
+        if save_current_voice_session(&previous, &next).await? {
+            return Ok(Some((
+                next.channel.id.clone(),
+                next.voice_state(Timestamp::UNIX_EPOCH),
+            )));
+        }
+    }
+
+    Ok(None)
+}
+
 pub async fn publish_voice_state_snapshot(channel_id: &str, state: &UserVoiceState) {
     EventV1::VoiceStateUpdate {
         channel_id: channel_id.to_string(),

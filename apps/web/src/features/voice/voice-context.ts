@@ -6,7 +6,7 @@ import type {
   StageMediaTrackSource,
 } from '#/features/voice/voice-stage-media'
 
-export type VoiceStageMediaTrack =
+export type VoiceStageMediaTrack = (
   | {
       backend: 'livekit'
       track: VideoTrack
@@ -15,6 +15,10 @@ export type VoiceStageMediaTrack =
       backend: 'native'
       track: NativeVideoTrackAdapter
     }
+) & {
+  /** Stream quality is switching: show a loading overlay over the last frame. */
+  reconnecting?: boolean
+}
 
 export type VoiceStageMediaPublicationOptions = {
   videoCodec?: string

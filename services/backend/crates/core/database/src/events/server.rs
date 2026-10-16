@@ -95,11 +95,37 @@ pub enum ClientMessage {
     VoiceWatchUpdate {
         watching: Vec<String>,
     },
+    /// The user stopped their own camera or screen share on purpose
+    VoiceMediaStopped {
+        source: VoiceMediaSource,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceMediaSource {
+    Camera,
+    Screen,
 }
 
 #[cfg(test)]
 mod tests {
     use super::{ChannelActivityRequest, ClientMessage, VoiceStateUpdateRequest};
+
+    #[test]
+    fn voice_media_stopped_deserializes() {
+        let message = serde_json::from_value::<ClientMessage>(serde_json::json!({
+            "type": "VoiceMediaStopped",
+            "source": "screen"
+        }))
+        .expect("voice media stopped deserializes");
+        assert!(matches!(
+            message,
+            ClientMessage::VoiceMediaStopped {
+                source: super::VoiceMediaSource::Screen
+            }
+        ));
+    }
 
     #[test]
     fn voice_state_update_deserializes_refresh_request() {

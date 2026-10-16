@@ -1,4 +1,5 @@
-import { useEffect, useRef, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { Loader2Icon } from '#/components/icons'
 import type { VideoTrack } from 'livekit-client'
 
 import type { VoiceStageMediaTrack } from '#/features/voice/voice-context'
@@ -24,6 +25,35 @@ function applyMediaElementPresentation(
   }
 }
 
+/** How long a replaced video may stay on screen waiting for its successor. */
+const MEDIA_SWAP_FALLBACK_MS = 3_000
+
+/** Frees every media element left in the host once the component unmounts. */
+function useReleaseMediaOnUnmount(hostRef: { current: HTMLElement | null }) {
+  useEffect(() => {
+    const host = hostRef.current
+    return () => {
+      if (host) retireStaleMediaElements(host, null)
+    }
+  }, [hostRef])
+}
+
+function retireStaleMediaElements(
+  host: HTMLElement,
+  current: HTMLElement | null,
+) {
+  for (const element of [...host.children]) {
+    if (element === current) continue
+    element.remove()
+    if (element instanceof HTMLCanvasElement) {
+      element.width = 0
+      element.height = 0
+    } else if (element instanceof HTMLVideoElement) {
+      element.srcObject = null
+    }
+  }
+}
+
 export function VoiceStageVideo({
   track,
   mediaId,
@@ -39,8 +69,10 @@ export function VoiceStageVideo({
   style?: CSSProperties
   onVideoSizeChange?: (size: { width: number; height: number }) => void
 }) {
-  if (track.backend === 'native') {
-    return (
+  // A replacement track is attached but has not drawn its first frame yet.
+  const [swapping, setSwapping] = useState(false)
+  const video =
+    track.backend === 'native' ? (
       <NativeVoiceStageCanvas
         track={track.track}
         mediaId={mediaId}
@@ -48,19 +80,41 @@ export function VoiceStageVideo({
         fit={fit}
         style={style}
         onVideoSizeChange={onVideoSizeChange}
+        onSwappingChange={setSwapping}
+      />
+    ) : (
+      <LiveKitVoiceStageVideo
+        track={track.track}
+        mediaId={mediaId}
+        className={className}
+        fit={fit}
+        style={style}
+        onVideoSizeChange={onVideoSizeChange}
+        onSwappingChange={setSwapping}
       />
     )
-  }
 
   return (
-    <LiveKitVoiceStageVideo
-      track={track.track}
-      mediaId={mediaId}
-      className={className}
-      fit={fit}
-      style={style}
-      onVideoSizeChange={onVideoSizeChange}
-    />
+    <>
+      {video}
+      {track.reconnecting || swapping ? <QualitySwitchOverlay /> : null}
+    </>
+  )
+}
+
+/** Shown over the last frame while the stream switches resolution/FPS. */
+function QualitySwitchOverlay() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="pointer-events-none absolute inset-0 z-[1] flex flex-col items-center justify-center gap-2 bg-black/50 px-2 text-white"
+    >
+      <Loader2Icon className="size-6 shrink-0 animate-spin" aria-hidden />
+      <span className="max-w-full truncate text-xs font-medium">
+        Переключение качества…
+      </span>
+    </div>
   )
 }
 
@@ -71,6 +125,7 @@ function LiveKitVoiceStageVideo({
   fit,
   style,
   onVideoSizeChange,
+  onSwappingChange,
 }: {
   track: VideoTrack
   mediaId: string
@@ -78,11 +133,15 @@ function LiveKitVoiceStageVideo({
   fit: 'contain' | 'cover'
   style?: CSSProperties
   onVideoSizeChange?: (size: { width: number; height: number }) => void
+  onSwappingChange?: (swapping: boolean) => void
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
+  useReleaseMediaOnUnmount(hostRef)
   const elementRef = useRef<HTMLVideoElement | null>(null)
   const onVideoSizeChangeRef = useRef(onVideoSizeChange)
   onVideoSizeChangeRef.current = onVideoSizeChange
+  const onSwappingChangeRef = useRef(onSwappingChange)
+  onSwappingChangeRef.current = onSwappingChange
   const trackSid = track.sid ?? mediaId
 
   useEffect(() => {
@@ -98,7 +157,19 @@ function LiveKitVoiceStageVideo({
     applyMediaElementPresentation(element, className, fit, style)
     const attachedElement = track.attach(element) as HTMLVideoElement
     elementRef.current = attachedElement
-    host.replaceChildren(attachedElement)
+    // Keep the previous video visible until this one has a frame (see canvas).
+    host.appendChild(attachedElement)
+    if (host.children.length > 1) onSwappingChangeRef.current?.(true)
+    const retirePrevious = () => {
+      retireStaleMediaElements(host, attachedElement)
+      onSwappingChangeRef.current?.(false)
+    }
+    const fallback = setTimeout(retirePrevious, MEDIA_SWAP_FALLBACK_MS)
+    const onFirstFrame = () => {
+      clearTimeout(fallback)
+      retirePrevious()
+    }
+    attachedElement.addEventListener('loadeddata', onFirstFrame, { once: true })
 
     const emitSize = () => {
       if (attachedElement.videoWidth > 0 && attachedElement.videoHeight > 0) {
@@ -119,14 +190,13 @@ function LiveKitVoiceStageVideo({
     onLoadedMetadata()
 
     return () => {
+      clearTimeout(fallback)
+      attachedElement.removeEventListener('loadeddata', onFirstFrame)
       attachedElement.removeEventListener('loadedmetadata', onLoadedMetadata)
       attachedElement.removeEventListener('resize', emitSize)
       track.detach(attachedElement)
-      if (attachedElement.parentElement === host) {
-        host.replaceChildren()
-      }
+      // Detached, it keeps showing its last frame until the next element plays.
       attachedElement.pause()
-      attachedElement.srcObject = null
       elementRef.current = null
     }
   }, [mediaId, track, trackSid])
@@ -148,6 +218,7 @@ function NativeVoiceStageCanvas({
   fit,
   style,
   onVideoSizeChange,
+  onSwappingChange,
 }: {
   track: NativeVideoTrackAdapter
   mediaId: string
@@ -155,11 +226,15 @@ function NativeVoiceStageCanvas({
   fit: 'contain' | 'cover'
   style?: CSSProperties
   onVideoSizeChange?: (size: { width: number; height: number }) => void
+  onSwappingChange?: (swapping: boolean) => void
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
+  useReleaseMediaOnUnmount(hostRef)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const onVideoSizeChangeRef = useRef(onVideoSizeChange)
   onVideoSizeChangeRef.current = onVideoSizeChange
+  const onSwappingChangeRef = useRef(onSwappingChange)
+  onSwappingChangeRef.current = onSwappingChange
 
   useEffect(() => {
     const host = hostRef.current
@@ -169,16 +244,31 @@ function NativeVoiceStageCanvas({
     canvas.setAttribute(VOICE_STAGE_MEDIA_ID_ATTR, mediaId)
     applyMediaElementPresentation(canvas, className, fit, style)
     canvasRef.current = canvas
-    host.replaceChildren(canvas)
+    // The previous canvas keeps its last frame on screen until this one draws:
+    // a quality change republishes the stream and must not flash empty.
+    host.appendChild(canvas)
+    if (host.children.length > 1) onSwappingChangeRef.current?.(true)
+    const retirePrevious = () => {
+      retireStaleMediaElements(host, canvas)
+      onSwappingChangeRef.current?.(false)
+    }
+    const fallback = setTimeout(retirePrevious, MEDIA_SWAP_FALLBACK_MS)
+    let drewFirstFrame = false
     const detach = track.attachCanvas(canvas, (size) => {
       onVideoSizeChangeRef.current?.(size)
-    }, { fit })
+    }, {
+      fit,
+      onFrame: () => {
+        if (drewFirstFrame) return
+        drewFirstFrame = true
+        clearTimeout(fallback)
+        retirePrevious()
+      },
+    })
 
     return () => {
+      clearTimeout(fallback)
       detach()
-      if (canvas.parentElement === host) host.replaceChildren()
-      canvas.width = 0
-      canvas.height = 0
       canvasRef.current = null
     }
   }, [mediaId, track])
