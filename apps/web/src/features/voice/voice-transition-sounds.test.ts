@@ -1,7 +1,10 @@
 import { createInactiveMediaSnapshot, type VoiceSnapshot } from '@syrnike13/platform'
 import { describe, expect, it } from 'vitest'
 
-import { voiceSnapshotTransitionSounds } from './voice-transition-sounds'
+import {
+  createVoiceMediaLiveness,
+  voiceSnapshotTransitionSounds,
+} from './voice-transition-sounds'
 
 describe('voiceSnapshotTransitionSounds', () => {
   it('plays the self join sound only when a snapshot becomes connected', () => {
@@ -18,6 +21,24 @@ describe('voiceSnapshotTransitionSounds', () => {
     expect(voiceSnapshotTransitionSounds(connected, connected)).toEqual([])
     expect(voiceSnapshotTransitionSounds(recovering, connected)).toEqual([
       'voice.user_join',
+    ])
+  })
+
+  it('stays silent when a quality change restarts a running screenshare', () => {
+    const connected = snapshot({ connection: 'connected' })
+    const starting = snapshot({ connection: 'connected', screenState: 'starting' })
+    const running = snapshot({ connection: 'connected', screenState: 'running' })
+    const liveness = createVoiceMediaLiveness(connected)
+
+    expect(voiceSnapshotTransitionSounds(connected, starting, liveness)).toEqual([])
+    expect(voiceSnapshotTransitionSounds(starting, running, liveness)).toEqual([
+      'screen_share.started',
+    ])
+    expect(voiceSnapshotTransitionSounds(running, starting, liveness)).toEqual([])
+    expect(voiceSnapshotTransitionSounds(starting, running, liveness)).toEqual([])
+    expect(voiceSnapshotTransitionSounds(running, starting, liveness)).toEqual([])
+    expect(voiceSnapshotTransitionSounds(starting, connected, liveness)).toEqual([
+      'screen_share.stopped',
     ])
   })
 

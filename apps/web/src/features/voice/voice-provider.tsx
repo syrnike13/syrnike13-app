@@ -18,6 +18,7 @@ import {
   VoiceDirector,
   createInactiveMediaSnapshot,
   type VoiceCommand,
+  type VoiceMediaState,
   type VoiceSnapshot,
 } from '@syrnike13/platform'
 import { Effect, Fiber, Schedule } from 'effect'
@@ -110,6 +111,7 @@ import {
   type VoicePingSample,
 } from '#/features/voice/voice-ping-history'
 import { playUiSound } from '#/features/sounds/sound-player'
+import type { SoundEventId } from '#/features/sounds/sound-events'
 import {
   normalizeWatchedOwnerIds,
   sameWatchedOwnerIds,
@@ -118,7 +120,10 @@ import {
   type StreamViewerSnapshot,
 } from '#/features/voice/stream-viewers'
 import { eventsGateway } from '#/features/events/gateway'
-import { voiceSnapshotTransitionSounds } from '#/features/voice/voice-transition-sounds'
+import {
+  createVoiceMediaLiveness,
+  voiceSnapshotTransitionSounds,
+} from '#/features/voice/voice-transition-sounds'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 import { recordDiagnosticEvent } from '#/features/diagnostics/diagnostic-reporter'
 import { enqueueAutomaticDiagnosticIncident } from '#/features/diagnostics/automatic-diagnostic-incidents'
@@ -166,6 +171,9 @@ const DEVICE_FALLBACK_WARNINGS: Partial<Record<string, string>> = {
 let remoteAudioCommandRevision = 0
 // Coalesces slider drags into at most one native mix update per interval.
 const REMOTE_AUDIO_PUBLISH_INTERVAL_MS = 40
+
+/** Сколько ждать перед звуком остановки стрима/камеры (см. playTransitionSound). */
+const MEDIA_STOP_SOUND_GRACE_MS = 2_000
 
 export function VoiceProvider({ children }: { children: ReactNode }) {
   const auth = useAuth()
@@ -268,6 +276,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     : screenQuality(voicePreferences.screenShareQuality).fps
   const localScreenPreviewActive = snapshot.screen.state === 'starting' ||
     snapshot.screen.state === 'running'
+  const screenMedia = useRestartAwareMediaState(snapshot.screen.state)
+  const cameraMedia = useRestartAwareMediaState(snapshot.camera.state)
 
   useEffect(() => {
     if (!desktop) return
@@ -337,14 +347,41 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     screenRepublishGraceTimersRef.current.clear()
     clientRef.current = client
     let previousSnapshot = client.snapshot()
+    const mediaLiveness = createVoiceMediaLiveness(previousSnapshot)
     setSnapshot(previousSnapshot)
     setRoom(client.room())
+    // Пересборка стрима/камеры при смене качества может провести медиа через
+    // «выключено» на долю секунды. Звук остановки ждёт, и если медиа за это
+    // время вернулось, не играют ни «остановлено», ни «запущено».
+    const pendingStopSounds = new Map<string, ReturnType<typeof setTimeout>>()
+    const playTransitionSound = (sound: SoundEventId) => {
+      const [kind, phase] = sound.split('.')
+      if (phase === 'stopped' && (kind === 'screen_share' || kind === 'camera')) {
+        const previousTimer = pendingStopSounds.get(kind)
+        if (previousTimer) clearTimeout(previousTimer)
+        pendingStopSounds.set(
+          kind,
+          setTimeout(() => {
+            pendingStopSounds.delete(kind)
+            playUiSound(sound)
+          }, MEDIA_STOP_SOUND_GRACE_MS),
+        )
+        return
+      }
+      if (phase === 'started' && pendingStopSounds.has(kind)) {
+        clearTimeout(pendingStopSounds.get(kind))
+        pendingStopSounds.delete(kind)
+        return
+      }
+      playUiSound(sound)
+    }
     const unsubscribeSnapshot = client.subscribe((nextSnapshot) => {
       for (const sound of voiceSnapshotTransitionSounds(
         previousSnapshot,
         nextSnapshot,
+        mediaLiveness,
       )) {
-        playUiSound(sound)
+        playTransitionSound(sound)
       }
       previousSnapshot = nextSnapshot
       setSnapshot(nextSnapshot)
@@ -354,6 +391,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
     return () => {
       unsubscribeSnapshot()
+      for (const timer of pendingStopSounds.values()) clearTimeout(timer)
+      pendingStopSounds.clear()
       unsubscribeRoom()
       if (clientRef.current === client) clientRef.current = null
       Effect.runFork(client.disposeEffect())
@@ -996,7 +1035,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const localPreviewTrack =
     streamMediaItems.find((item) => item.isLocal)?.track ?? null
   useStreamPreviewUpload(
-    snapshot.screen.state === 'running' ? channelId : null,
+    screenMedia.live ? channelId : null,
     auth.session?.token,
     localPreviewTrack,
   )
@@ -1342,9 +1381,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     () => ({
       micIssue,
       mediaAvailability,
-      cameraEnabled: snapshot.camera.state === 'running',
-      screenShareEnabled: snapshot.screen.state === 'running',
-      screenShareStarting: snapshot.screen.state === 'starting',
+      cameraEnabled: cameraMedia.live,
+      screenShareEnabled: screenMedia.live,
+      screenShareStarting: screenMedia.starting,
       toggleCamera,
       toggleScreenShare,
       changeScreenShareSource: desktop ? openDesktopDisplayPicker : undefined,
@@ -1357,8 +1396,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       mediaAvailability,
       micIssue,
       setSelfMonitoringActive,
-      snapshot.camera.state,
-      snapshot.screen.state,
+      cameraMedia.live,
+      screenMedia.live,
+      screenMedia.starting,
       toggleCamera,
       toggleScreenShare,
     ],
@@ -1648,4 +1688,20 @@ function screenQuality(quality: string) {
 function subscriptionFailureDetail(reason: unknown) {
   if (reason == null) return ''
   return reason instanceof Error ? reason.message : String(reason)
+}
+
+/**
+ * Смена разрешения/FPS пересобирает публикацию: движок проводит уже идущий
+ * стрим через `running → starting → running`. Для интерфейса это не выключение
+ * и не новый запуск — плашка трансляции, кнопки и превью не должны мигать.
+ */
+function useRestartAwareMediaState(state: VoiceMediaState) {
+  const wasLiveRef = useRef(false)
+  if (state === 'running') wasLiveRef.current = true
+  else if (state !== 'starting') wasLiveRef.current = false
+  const restarting = state === 'starting' && wasLiveRef.current
+  return {
+    live: state === 'running' || restarting,
+    starting: state === 'starting' && !restarting,
+  }
 }

@@ -63,7 +63,7 @@ function readWidth() {
 }
 
 const miniIconButtonClass =
-  'pointer-events-auto flex size-8 shrink-0 items-center justify-center rounded-md text-foreground/80 transition-colors hover:bg-foreground/15 hover:text-foreground focus-visible:outline focus-visible:outline-ring data-[state=open]:bg-foreground/15 data-[state=open]:text-foreground'
+  'pointer-events-auto flex size-8 shrink-0 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline focus-visible:outline-ring data-[state=open]:bg-white/15 data-[state=open]:text-white'
 
 function MiniControl({
   label,
@@ -328,7 +328,7 @@ export function VoiceStreamMiniPlayer() {
       >
         <div
           className={cn(
-            'relative size-full overflow-hidden rounded-lg bg-background text-foreground shadow-xl ring-1 ring-shell-divider transition-[transform,box-shadow] duration-200 ease-out motion-reduce:transition-none',
+            'relative size-full overflow-hidden rounded-lg bg-black text-white shadow-xl ring-1 ring-shell-divider transition-[transform,box-shadow] duration-200 ease-out motion-reduce:transition-none',
             anchor.dragging && 'scale-[1.03] shadow-2xl',
           )}
         >
@@ -347,7 +347,7 @@ export function VoiceStreamMiniPlayer() {
                 fit="contain"
               />
             ) : (
-              <span className="text-sm text-muted-foreground">
+              <span className="text-sm text-white/70">
                 {item.error
                   ? 'Трансляция недоступна'
                   : 'Подключение к трансляции…'}
@@ -359,7 +359,7 @@ export function VoiceStreamMiniPlayer() {
           <div
             className={cn(
               chromeVisibility,
-              'top-0 h-16 items-start bg-linear-to-b from-background/85 via-background/40 to-transparent pt-1.5',
+              'top-0 h-16 items-start bg-linear-to-b from-black/75 via-black/35 to-transparent pt-1.5',
             )}
           >
             <button
@@ -367,7 +367,7 @@ export function VoiceStreamMiniPlayer() {
               data-mini-control
               aria-label="Вернуться в канал"
               title={channelName}
-              className="pointer-events-auto flex min-w-0 items-center gap-0.5 rounded-md py-0.5 pr-2 pl-0.5 text-sm font-semibold text-foreground/90 transition-colors hover:bg-foreground/15 hover:text-foreground focus-visible:outline focus-visible:outline-ring"
+              className="pointer-events-auto flex min-w-0 items-center gap-0.5 rounded-md py-0.5 pr-2 pl-0.5 text-sm font-semibold text-white/90 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline focus-visible:outline-ring"
               onClick={returnToChannel}
             >
               <ChevronLeftIcon className="size-5 shrink-0" />
@@ -379,10 +379,10 @@ export function VoiceStreamMiniPlayer() {
           <div
             className={cn(
               chromeVisibility,
-              'bottom-0 h-16 items-end bg-linear-to-t from-background/90 via-background/45 to-transparent pb-1.5',
+              'bottom-0 h-16 items-end bg-linear-to-t from-black/80 via-black/40 to-transparent pb-1.5',
             )}
           >
-            <span className="min-w-0 flex-1 truncate pb-1.5 pl-1 text-sm font-semibold text-foreground drop-shadow">
+            <span className="min-w-0 flex-1 truncate pb-1.5 pl-1 text-sm font-semibold text-white drop-shadow">
               {streamerName}
             </span>
             {!item.isLocal ? (
