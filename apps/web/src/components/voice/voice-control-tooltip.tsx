@@ -28,6 +28,7 @@ export function VoiceControlTooltip({
       <TooltipContent
         side="top"
         sideOffset={8}
+        collisionPadding={8}
         className={contentClassName}
       >
         {content ?? title}

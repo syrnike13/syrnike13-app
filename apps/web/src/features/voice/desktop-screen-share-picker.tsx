@@ -551,14 +551,14 @@ function ScreenSharePickerSettings({
       <PopoverTrigger asChild>
         <Button
           type="button"
-          variant="default"
+          variant="outline"
           size="icon"
           aria-label="Настройки стрима"
           title="Настройки стрима"
           disabled={disabled}
-          className="group/gear relative cursor-pointer overflow-visible bg-primary text-primary-foreground shadow-md ring-1 ring-primary/40 transition-[transform,box-shadow,background-color] duration-200 hover:scale-105 hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/40 active:scale-95 disabled:cursor-not-allowed data-[state=open]:shadow-lg data-[state=open]:shadow-primary/40"
+          className="group/gear cursor-pointer disabled:cursor-not-allowed"
         >
-          <SpinningGearIcon />
+          <Settings2Icon className="size-5 transition-transform duration-500 ease-out group-hover/gear:rotate-90 group-data-[state=open]/gear:rotate-90 motion-reduce:transition-none" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -602,35 +602,5 @@ function ScreenSharePickerSettings({
         </div>
       </PopoverContent>
     </Popover>
-  )
-}
-
-/**
- * Шестерёнка, которая крутится при наведении (и пока меню открыто),
- * оставляя за собой мягкий «слаймовый» шлейф из размытых отстающих копий.
- */
-function SpinningGearIcon() {
-  const spin =
-    'motion-safe:group-hover/gear:animate-[spin_1.1s_cubic-bezier(0.45,0.05,0.35,1)_infinite] motion-safe:group-data-[state=open]/gear:animate-[spin_1.1s_cubic-bezier(0.45,0.05,0.35,1)_infinite]'
-  const ghost =
-    'pointer-events-none absolute inset-0 m-auto size-5 opacity-0 transition-opacity duration-300 group-hover/gear:opacity-100 group-data-[state=open]/gear:opacity-100 motion-reduce:hidden'
-  return (
-    <span className="relative grid size-5 place-items-center" aria-hidden>
-      <Settings2Icon
-        className={cn(
-          ghost,
-          spin,
-          'scale-125 text-primary-foreground/25 blur-[3px] [animation-delay:140ms]',
-        )}
-      />
-      <Settings2Icon
-        className={cn(
-          ghost,
-          spin,
-          'scale-110 text-primary-foreground/45 blur-[1.5px] [animation-delay:70ms]',
-        )}
-      />
-      <Settings2Icon className={cn('relative size-5', spin)} />
-    </span>
   )
 }

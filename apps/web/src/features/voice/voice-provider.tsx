@@ -296,6 +296,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     stageFullscreen,
   ])
 
+  // Снимаем спрос на превью только при размонтировании. Если держать fps в
+  // зависимостях, смена FPS стрима сначала выключала превью, а следующий
+  // эффект тут же включал его снова — локальный стрим мигал.
+  const localScreenPreviewFpsRef = useRef(localScreenPreviewFps)
+  localScreenPreviewFpsRef.current = localScreenPreviewFps
   useEffect(() => {
     if (!desktop) return
     return () => {
@@ -306,13 +311,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               demanded: false,
               width: 1280,
               height: 720,
-              fps: localScreenPreviewFps,
+              fps: localScreenPreviewFpsRef.current,
             }),
           catch: (cause) => cause,
         }).pipe(Effect.ignore),
       )
     }
-  }, [desktop, localScreenPreviewFps])
+  }, [desktop])
 
   const inputDevices = useMediaDevices('audioinput')
   const videoDevices = useMediaDevices('videoinput')
