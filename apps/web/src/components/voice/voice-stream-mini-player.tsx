@@ -367,7 +367,7 @@ export function VoiceStreamMiniPlayer() {
               data-mini-control
               aria-label="Вернуться в канал"
               title={channelName}
-              className="pointer-events-auto flex min-w-0 items-center gap-0.5 rounded-md py-0.5 pr-1.5 text-sm font-semibold text-white/90 transition-colors hover:text-white focus-visible:outline focus-visible:outline-ring"
+              className="pointer-events-auto flex min-w-0 items-center gap-0.5 rounded-md py-0.5 pr-2 pl-0.5 text-sm font-semibold text-white/90 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline focus-visible:outline-ring"
               onClick={returnToChannel}
             >
               <ChevronLeftIcon className="size-5 shrink-0" />

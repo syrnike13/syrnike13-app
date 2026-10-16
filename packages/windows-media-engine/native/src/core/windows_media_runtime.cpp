@@ -186,6 +186,9 @@ void WindowsMediaRuntime::run() noexcept {
           camera.stopped && screen.stopped) thumbnail_admission_.publicationDrained();
       const auto video = video_->snapshot();
       const auto network = transport_->networkSampler()->inboundSnapshot();
+      const auto transport_network = transport_->networkSampler()->transportSnapshot();
+      if (room_generation_ && transport_network) snapshot_.transport_network_metrics = transport_network;
+      else snapshot_.transport_network_metrics.reset();
       if (room_generation_ && network) {
         snapshot_.remote_microphone_network_metrics = network->microphone;
         snapshot_.remote_screen_audio_network_metrics = network->screen_audio;

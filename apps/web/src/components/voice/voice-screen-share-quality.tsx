@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ChevronRightIcon,
   MonitorUpIcon,
@@ -6,10 +6,15 @@ import {
 } from '#/components/icons'
 
 import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from '#/components/ui/popover'
+import {
+  voiceStagePopoverContentClass,
   voiceStagePopoverMenuItemClass,
   voiceStagePopoverNavRowClass,
   voiceStagePopoverSeparatorClass,
-  voiceStagePopoverSubmenuClass,
 } from '#/components/voice/voice-stage-popover-styles'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
@@ -172,7 +177,7 @@ function RadioRow({
       aria-checked={checked}
       className={cn(
         voiceStagePopoverMenuItemClass,
-        'w-full justify-between gap-3',
+        'w-full cursor-pointer justify-between gap-3',
       )}
       onClick={onSelect}
     >
@@ -235,7 +240,10 @@ export function ScreenShareQualitySections() {
   )
 }
 
-/** Строка меню со вложенным подменю справа или слева (как в Discord). */
+/**
+ * Строка меню со вложенным подменю (как в Discord). Подменю — отдельный
+ * поповер в портале: сам упирается в края окна, не обрезается контейнером.
+ */
 export function StreamSettingsSubmenu({
   label,
   hint,
@@ -248,36 +256,58 @@ export function StreamSettingsSubmenu({
   children: ReactNode
 }) {
   const [open, setOpen] = useState(false)
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelClose = () => {
+    if (closeTimer.current !== null) clearTimeout(closeTimer.current)
+    closeTimer.current = null
+  }
+  const scheduleClose = () => {
+    cancelClose()
+    closeTimer.current = setTimeout(() => setOpen(false), 160)
+  }
+  useEffect(() => cancelClose, [])
+  const show = () => {
+    cancelClose()
+    setOpen(true)
+  }
   return (
-    <div className="relative" onPointerLeave={() => setOpen(false)}>
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className={cn(voiceStagePopoverNavRowClass, open && 'bg-accent/70')}
-        onPointerEnter={() => setOpen(true)}
-        onFocus={() => setOpen(true)}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-        {hint ? (
-          <span className="shrink-0 text-xs text-muted-foreground">{hint}</span>
-        ) : null}
-        <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
-      </button>
-      {open ? (
-        <div
-          role="menu"
-          className={cn(
-            voiceStagePopoverSubmenuClass,
-            side === 'left' && 'right-full left-auto mr-1 ml-0',
-          )}
-          onPointerEnter={() => setOpen(true)}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverAnchor asChild>
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          className={cn(voiceStagePopoverNavRowClass, open && 'bg-accent/70')}
+          onPointerEnter={show}
+          onPointerLeave={scheduleClose}
+          onFocus={show}
+          onClick={show}
         >
-          {children}
-        </div>
-      ) : null}
-    </div>
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {hint ? (
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {hint}
+            </span>
+          ) : null}
+          <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+        </button>
+      </PopoverAnchor>
+      <PopoverContent
+        role="menu"
+        side={side}
+        align="start"
+        sideOffset={6}
+        collisionPadding={8}
+        data-mini-control
+        className={cn(voiceStagePopoverContentClass, 'z-[520] w-60 p-1')}
+        onPointerEnter={cancelClose}
+        onPointerLeave={scheduleClose}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+      >
+        {children}
+      </PopoverContent>
+    </Popover>
   )
 }
 

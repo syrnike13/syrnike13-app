@@ -22,11 +22,12 @@ import {
 } from '../media-runtime/contract'
 import type { MediaRuntimeSupervisor } from '../media-runtime/media-runtime-supervisor'
 import { getNativeDiagnosticCorrelationId } from '../native-runtime/diagnostic-incidents'
+import { NativeVoiceTelemetry } from './native-voice-telemetry'
 
 type RuntimePort = Pick<MediaRuntimeSupervisor,
   'start' | 'getSnapshot' | 'getHostEpoch' | 'getFailureEpisodeId' | 'onStateChange' | 'onEvent' |
   'onSnapshot' | 'installCredentialLease' | 'applyDesiredState' | 'querySnapshot' | 'shutdown'
->
+> & Partial<Pick<MediaRuntimeSupervisor, 'onDiagnostic'>>
 
 type RoomWaiter = {
   revision: number
@@ -173,6 +174,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
   private activeSpeakerIdentities: readonly string[] = []
   private microphoneSpeaking = false
   private speakingIdentities = new Set<string>()
+  private readonly networkTelemetry = new NativeVoiceTelemetry()
 
   constructor(
     private readonly runtime: RuntimePort,
@@ -193,6 +195,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
             roomState: 'off', tracks: createInactiveMediaPaths(),
           }
           this.clearSpeakerObservations()
+          this.networkTelemetry.reset()
           for (const listener of this.snapshotListeners) listener(this.current)
         }
         this.emitAvailability()
@@ -211,6 +214,9 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
       }),
       runtime.onEvent(event => this.observeEvent(event)),
       runtime.onSnapshot(snapshot => this.observeSnapshot(snapshot)),
+      runtime.onDiagnostic?.(event => {
+        if (!this.disposed) this.networkTelemetry.observe(event)
+      }) ?? (() => undefined),
     ]
   }
 
@@ -219,6 +225,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     if (signal.aborted) return Promise.reject(new DOMException('Voice operation superseded', 'AbortError'))
     this.cancelWaiter()
     this.clearSpeakerObservations()
+    this.networkTelemetry.reset()
     this.binding = { lease: structuredClone(lease), credentialLeaseId: this.newId(), revision: this.revision + 1 }
     this.desired = { ...desired }
     this.terminalReported = false
@@ -231,6 +238,7 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     if (this.disposed) return this.shutdownPromise ?? Promise.resolve()
     this.cancelWaiter()
     this.clearSpeakerObservations()
+    this.networkTelemetry.reset()
     this.binding = null
     this.warm = false
     this.remoteVideoDemand = []
@@ -330,7 +338,11 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
 
   snapshot(): MediaEngineSnapshot { return this.current }
   desiredSnapshot(): EngineDesiredState | null { return this.latest }
-  telemetry() { return this.current }
+  /** Live network health of the bound Room; null until the engine reports it. */
+  telemetry() {
+    if (this.disposed || !this.binding || this.current.roomState !== 'connected') return null
+    return this.networkTelemetry.snapshot()
+  }
 
   dispose(): Promise<void> {
     if (this.shutdownPromise) return this.shutdownPromise

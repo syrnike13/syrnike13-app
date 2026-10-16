@@ -23,8 +23,10 @@ struct MediaRuntimeSnapshot {
   std::optional<std::array<DiagnosticMetric, 7>> remote_audio_output_metrics;
   std::optional<std::array<DiagnosticMetric, 16>> remote_video_metrics;
   std::optional<std::array<DiagnosticMetric, 4>> remote_video_lifecycle_metrics;
-  std::optional<std::array<DiagnosticMetric, 13>> remote_microphone_network_metrics, remote_screen_audio_network_metrics;
+  std::optional<std::array<DiagnosticMetric, 16>> remote_microphone_network_metrics, remote_screen_audio_network_metrics;
   std::optional<std::array<DiagnosticMetric, 13>> remote_video_network_metrics;
+  // Ping, throughput and SFU-reported outgoing loss for the connection panel.
+  std::optional<std::array<DiagnosticMetric, 14>> transport_network_metrics;
 };
 
 // Native media composition port. The Engine control thread calls these

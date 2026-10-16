@@ -1125,6 +1125,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setRtcDebugHistory([])
       return
     }
+    let rtcSampleFailureLogged = false
     const collectSample = desktop
       ? Effect.tryPromise({
           try: () => desktop.voice.getTelemetry(),
@@ -1189,7 +1190,15 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           }
         }),
       ),
-      Effect.catch(() => Effect.void),
+      // A failing sample must not stop the poller, but it must not be silent:
+      // a contract mismatch here once left every network panel empty.
+      Effect.catch((cause) =>
+        Effect.sync(() => {
+          if (rtcSampleFailureLogged) return
+          rtcSampleFailureLogged = true
+          console.warn('[voice] RTC telemetry sample failed', cause)
+        }),
+      ),
     )
     const fiber = Effect.runFork(
       sample.pipe(
