@@ -702,6 +702,23 @@ async fn worker(
                             write.lock().await.send(config.encode(&event)).await.ok();
                         }
                     }
+                    ClientMessage::VoiceMediaStopped { source } => {
+                        match syrnike_database::voice::clear_voice_media_track(&user.id, source)
+                            .await
+                        {
+                            Ok(Some((channel_id, state))) => {
+                                syrnike_database::voice::publish_voice_state_snapshot(
+                                    &channel_id,
+                                    &state,
+                                )
+                                .await;
+                            }
+                            Ok(None) => {}
+                            Err(error) => {
+                                warn!("Failed to clear stopped voice media: {error:?}");
+                            }
+                        }
+                    }
                     ClientMessage::VoiceWatchUpdate { watching } => {
                         match syrnike_database::voice::update_watched_screens(&user.id, watching)
                             .await

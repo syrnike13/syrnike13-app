@@ -13,6 +13,8 @@ export type VoiceMediaContextValue = {
   screenShareStarting: boolean
   toggleCamera: () => void
   toggleScreenShare: () => void
+  /** Открыть выбор источника заново, не останавливая стрим (только desktop). */
+  changeScreenShareSource?: () => void
   setSelfMonitoringActive: (active: boolean) => void
   /** Трек активной native mic-сессии для превью в настройках без второго захвата. */
   getNativeMicrophonePreviewTrack: () => MediaStreamTrack | null

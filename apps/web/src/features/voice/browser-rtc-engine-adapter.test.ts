@@ -23,6 +23,7 @@ const livekit = vi.hoisted(() => {
     disconnect: ReturnType<typeof vi.fn>
     switchActiveDevice: ReturnType<typeof vi.fn>
     localParticipant: {
+      permissions?: { canPublish: boolean; canPublishSources: number[] }
       setMicrophoneEnabled: ReturnType<typeof vi.fn>
       setCameraEnabled: ReturnType<typeof vi.fn>
       setScreenShareEnabled: ReturnType<typeof vi.fn>
@@ -88,6 +89,9 @@ vi.mock('livekit-client', () => {
     readonly disconnect = vi.fn(async () => undefined)
     readonly switchActiveDevice = vi.fn(async () => undefined)
     readonly localParticipant = {
+      permissions: undefined as
+        | { canPublish: boolean; canPublishSources: number[] }
+        | undefined,
       setMicrophoneEnabled: vi.fn(async () => {
         const publication = {
           trackSid: `TR_MIC_${this.publications.length + 1}`,
@@ -132,6 +136,7 @@ vi.mock('livekit-client', () => {
       Reconnected: 'reconnected',
       Disconnected: 'disconnected',
       LocalTrackUnpublished: 'localTrackUnpublished',
+      ParticipantPermissionsChanged: 'participantPermissionsChanged',
       TrackPublished: 'trackPublished',
       TrackSubscribed: 'trackSubscribed',
       TrackUnsubscribed: 'trackUnsubscribed',
@@ -340,6 +345,38 @@ describe('BrowserRtcEngineAdapter', () => {
         room.publications[1].unmute.mock.calls.length === 1,
     )
     expect(room.publications[1].unmute).toHaveBeenCalledTimes(1)
+    expect(room.connect).toHaveBeenCalledTimes(1)
+    await adapter.dispose()
+  })
+
+  it('waits for restored LiveKit permission before republishing after server unmute', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    await adapter.connect(lease, desired(), new AbortController().signal)
+    const room = livekit.rooms[0]
+    await waitUntil(() => room.publications.length === 1)
+    const removed = room.publications[0]
+
+    room.localParticipant.permissions = { canPublish: false, canPublishSources: [] }
+    adapter.updateDesiredMedia(desired({
+      serverMuted: true,
+      effectiveMuted: true,
+    }))
+    await waitUntil(() => removed.mute.mock.calls.length === 1)
+    room.emit('localTrackUnpublished', removed)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    // The authority snapshot clears serverMuted before the SFU permission.
+    adapter.updateDesiredMedia(desired())
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(room.publications).toHaveLength(1)
+
+    room.localParticipant.permissions = { canPublish: true, canPublishSources: [2] }
+    room.emit('participantPermissionsChanged', undefined, room.localParticipant)
+    await waitUntil(
+      () =>
+        room.publications.length === 2 &&
+        room.publications[1].unmute.mock.calls.length === 1,
+    )
     expect(room.connect).toHaveBeenCalledTimes(1)
     await adapter.dispose()
   })

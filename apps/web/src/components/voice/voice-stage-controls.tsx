@@ -50,7 +50,9 @@ import {
 import { isMicVisuallyMuted } from '#/features/voice/voice-mic-status'
 import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { VoiceMicSplitControl } from '#/components/voice/voice-mic-split-control'
+import { VoiceStreamSettingsMenuContent } from '#/components/voice/voice-screen-share-quality'
 import {
+  VoiceSplitControl,
   splitControlDangerChevronClass,
   splitControlDangerMainClass,
   splitControlDangerStandaloneClass,
@@ -715,11 +717,14 @@ function VoiceStageOverlayControlBar({
       </div>
 
       <div className={stageControlGroupClass}>
-        <StageIconButton
-          title={screenShareControl.title}
-          highlight={sharingScreen || screenShareStarting}
+        <VoiceSplitControl
+          surface="stage"
+          success={sharingScreen || screenShareStarting}
           disabled={screenShareControl.disabled}
-          onClick={onToggleScreenShare}
+          mainTitle={screenShareControl.title}
+          chevronTitle="Настройки стрима"
+          onMainClick={onToggleScreenShare}
+          popoverContent={<VoiceStreamSettingsMenuContent />}
         >
           {screenShareStarting ? (
             <Loader2Icon className="size-5 animate-spin" />
@@ -728,7 +733,7 @@ function VoiceStageOverlayControlBar({
           ) : (
             <MonitorUpIcon className="size-5" />
           )}
-        </StageIconButton>
+        </VoiceSplitControl>
 
         <StageIconButton
           title={soundOff ? 'Включить звук' : 'Выключить звук'}

@@ -15,7 +15,14 @@ export type VoiceSplitControlSurface = 'stage' | 'panel'
 
 type SegmentState = {
   danger?: boolean
+  success?: boolean
 }
+
+const splitControlSuccessMainClass =
+  'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/30 group-hover/media:text-chart-3'
+
+const splitControlSuccessChevronClass =
+  'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/12 group-hover/media:text-chart-3'
 
 export const splitControlDangerMainClass =
   'bg-destructive/20 text-destructive group-hover/media:bg-destructive/30 group-hover/media:text-destructive'
@@ -28,12 +35,16 @@ export const splitControlDangerStandaloneClass =
 
 export function splitControlMainButtonClass(
   surface: VoiceSplitControlSurface,
-  { danger }: SegmentState,
+  { danger, success }: SegmentState,
 ) {
   if (surface === 'stage') {
     return cn(
       'flex h-9 min-w-12 shrink-0 items-center justify-center rounded-l-md rounded-r-none px-2 text-white/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
-      danger ? splitControlDangerMainClass : 'group-hover/media:bg-white/10 group-hover/media:text-white',
+      danger
+        ? splitControlDangerMainClass
+        : success
+          ? splitControlSuccessMainClass
+          : 'group-hover/media:bg-white/10 group-hover/media:text-white',
     )
   }
 
@@ -41,20 +52,24 @@ export function splitControlMainButtonClass(
     'flex size-9 shrink-0 items-center justify-center rounded-l-md rounded-r-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
     danger
       ? splitControlDangerMainClass
-      : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
+      : success
+        ? splitControlSuccessMainClass
+        : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
   )
 }
 
 export function splitControlChevronButtonClass(
   surface: VoiceSplitControlSurface,
-  { danger }: SegmentState,
+  { danger, success }: SegmentState,
 ) {
   if (surface === 'stage') {
     return cn(
       'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-white/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
       danger
         ? splitControlDangerChevronClass
-        : 'group-hover/media:bg-white/[0.06] group-hover/media:text-white',
+        : success
+          ? splitControlSuccessChevronClass
+          : 'group-hover/media:bg-white/[0.06] group-hover/media:text-white',
     )
   }
 
@@ -62,7 +77,9 @@ export function splitControlChevronButtonClass(
     'flex h-9 w-5 shrink-0 items-center justify-center rounded-r-md rounded-l-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
     danger
       ? splitControlDangerChevronClass
-      : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
+      : success
+        ? splitControlSuccessChevronClass
+        : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
   )
 }
 
@@ -70,16 +87,18 @@ function SplitControlChevron({
   surface,
   disabled,
   danger,
+  success,
   title,
   popoverContent,
 }: {
   surface: VoiceSplitControlSurface
   disabled: boolean
   danger?: boolean
+  success?: boolean
   title: string
   popoverContent: ReactNode
 }) {
-  const segmentState = { danger }
+  const segmentState = { danger, success }
 
   return (
     <Popover>
@@ -117,6 +136,7 @@ function SplitControlChevron({
 export function VoiceSplitControl({
   surface,
   danger,
+  success,
   disabled,
   mainTitle,
   chevronTitle,
@@ -126,6 +146,7 @@ export function VoiceSplitControl({
 }: {
   surface: VoiceSplitControlSurface
   danger?: boolean
+  success?: boolean
   disabled?: boolean
   mainTitle: string
   chevronTitle: string
@@ -133,7 +154,7 @@ export function VoiceSplitControl({
   popoverContent: ReactNode
   children: ReactNode
 }) {
-  const segmentState = { danger }
+  const segmentState = { danger, success }
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -153,6 +174,7 @@ export function VoiceSplitControl({
           surface={surface}
           disabled={Boolean(disabled)}
           danger={danger}
+          success={success}
           title={chevronTitle}
           popoverContent={popoverContent}
         />

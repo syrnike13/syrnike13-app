@@ -5,6 +5,7 @@ import {
   Gamepad2Icon,
   Loader2Icon,
   MonitorIcon,
+  Settings2Icon,
 } from '#/components/icons'
 import { toast } from 'sonner'
 import type {
@@ -27,7 +28,23 @@ import {
   TabsTrigger,
 } from '#/components/ui/tabs'
 import { usePlatform } from '#/platform/use-platform'
-import { Switch } from '#/components/ui/switch'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '#/components/ui/popover'
+import {
+  ScreenShareFpsOptions,
+  ScreenShareResolutionOptions,
+  StreamSettingsSubmenu,
+  useScreenShareQuality,
+} from '#/components/voice/voice-screen-share-quality'
+import {
+  voiceStagePopoverCheckboxClass,
+  voiceStagePopoverContentClass,
+  voiceStagePopoverSeparatorClass,
+} from '#/components/voice/voice-stage-popover-styles'
+import { cn } from '#/lib/utils'
 import {
   desktopScreenShareSourceLabel,
   rememberDesktopScreenShareBroadcastSource,
@@ -291,7 +308,7 @@ export function DesktopScreenSharePicker() {
           }}
           className="min-h-0 gap-0"
         >
-          <TabsList className="mt-4 ml-4 w-[calc(100%-5rem)] shrink-0">
+          <TabsList className="mx-4 mt-4 w-[calc(100%-2rem)] shrink-0">
             {SOURCE_TABS.map((tab) => {
               const Icon = tab.icon
               const count =
@@ -331,19 +348,8 @@ export function DesktopScreenSharePicker() {
           </TabsContent>
         </Tabs>
 
-        <DialogFooter className="flex-row items-center justify-between border-t border-border px-4 py-3">
-          {request?.nativeVideo ? (
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Switch
-                checked={audioRequested}
-                onCheckedChange={setAudioRequested}
-                disabled={submitting}
-              />
-              <span>Звук</span>
-            </label>
-          ) : (
-            <span />
-          )}
+        <DialogFooter className="flex-row items-center justify-between border-t border-border px-4 py-3 sm:justify-between">
+          <ScreenSharePickerQualitySummary />
           <div className="flex items-center gap-2">
             {hasPreviousPage || hasNextPage ? (
               <>
@@ -378,6 +384,12 @@ export function DesktopScreenSharePicker() {
             >
               Отмена
             </Button>
+            <ScreenSharePickerSettings
+              audioSupported={Boolean(request?.nativeVideo)}
+              audioRequested={audioRequested}
+              onAudioRequestedChange={setAudioRequested}
+              disabled={submitting}
+            />
           </div>
         </DialogFooter>
       </DialogContent>
@@ -507,5 +519,88 @@ function DisplaySourceTile({
         <span className="truncate text-sm font-medium">{sourceLabel}</span>
       </div>
     </div>
+  )
+}
+
+function ScreenSharePickerQualitySummary() {
+  const quality = useScreenShareQuality()
+  return (
+    <div className="mr-auto min-w-0 text-left">
+      <p className="text-sm font-semibold text-foreground">Качество стрима</p>
+      <p className="text-xs text-muted-foreground">
+        {quality.resolutionLabel(quality.resolution)} · {quality.fps} FPS
+      </p>
+    </div>
+  )
+}
+
+function ScreenSharePickerSettings({
+  audioSupported,
+  audioRequested,
+  onAudioRequestedChange,
+  disabled,
+}: {
+  audioSupported: boolean
+  audioRequested: boolean
+  onAudioRequestedChange: (value: boolean) => void
+  disabled: boolean
+}) {
+  const quality = useScreenShareQuality()
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="Настройки стрима"
+          title="Настройки стрима"
+          disabled={disabled}
+          className="group/gear cursor-pointer disabled:cursor-not-allowed"
+        >
+          <Settings2Icon className="size-5 transition-transform duration-500 ease-out group-hover/gear:rotate-90 group-data-[state=open]/gear:rotate-90 motion-reduce:transition-none" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="end"
+        sideOffset={8}
+        className={cn(voiceStagePopoverContentClass, 'w-64')}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <div className="flex flex-col gap-0.5">
+          <StreamSettingsSubmenu
+            label="Разрешение экрана"
+            hint={quality.resolutionLabel(quality.resolution)}
+            side="left"
+          >
+            <ScreenShareResolutionOptions />
+          </StreamSettingsSubmenu>
+          <StreamSettingsSubmenu
+            label="Частота кадров"
+            hint={`${quality.fps} FPS`}
+            side="left"
+          >
+            <ScreenShareFpsOptions />
+          </StreamSettingsSubmenu>
+          {audioSupported ? (
+            <>
+              <div className={voiceStagePopoverSeparatorClass} role="separator" />
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-accent/70">
+                <span>Заглушить аудио стрима</span>
+                <input
+                  type="checkbox"
+                  className={voiceStagePopoverCheckboxClass}
+                  checked={!audioRequested}
+                  onChange={(event) =>
+                    onAudioRequestedChange(!event.target.checked)
+                  }
+                />
+              </label>
+            </>
+          ) : null}
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
