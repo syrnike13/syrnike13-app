@@ -14,6 +14,7 @@ import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as AppRouteRouteImport } from './routes/app/route'
 import { Route as MRouteRouteImport } from './routes/m/route'
 import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppAchievementsDebugRouteImport } from './routes/app/achievements-debug'
 import { Route as AppFriendsRouteImport } from './routes/app/friends'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppVoiceDebugRouteImport } from './routes/app/voice-debug'
@@ -65,6 +66,11 @@ const MRouteRoute = MRouteRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppAchievementsDebugRoute = AppAchievementsDebugRouteImport.update({
+  id: '/achievements-debug',
+  path: '/achievements-debug',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppFriendsRoute = AppFriendsRouteImport.update({
@@ -210,6 +216,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteRoute
   '/app': typeof AppRouteRouteWithChildren
   '/m': typeof MRouteRouteWithChildren
+  '/app/achievements-debug': typeof AppAchievementsDebugRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
@@ -242,6 +249,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRoute
+  '/app/achievements-debug': typeof AppAchievementsDebugRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
@@ -277,6 +285,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteRoute
   '/app': typeof AppRouteRouteWithChildren
   '/m': typeof MRouteRouteWithChildren
+  '/app/achievements-debug': typeof AppAchievementsDebugRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
@@ -313,6 +322,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/m'
+    | '/app/achievements-debug'
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
@@ -345,6 +355,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/admin'
+    | '/app/achievements-debug'
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
@@ -379,6 +390,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/m'
+    | '/app/achievements-debug'
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
@@ -460,6 +472,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/achievements-debug': {
+      id: '/app/achievements-debug'
+      path: '/achievements-debug'
+      fullPath: '/app/achievements-debug'
+      preLoaderRoute: typeof AppAchievementsDebugRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/app/friends': {
@@ -655,6 +674,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteRouteChildren {
+  AppAchievementsDebugRoute: typeof AppAchievementsDebugRoute
   AppFriendsRoute: typeof AppFriendsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppVoiceDebugRoute: typeof AppVoiceDebugRoute
@@ -667,6 +687,7 @@ interface AppRouteRouteChildren {
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppAchievementsDebugRoute: AppAchievementsDebugRoute,
   AppFriendsRoute: AppFriendsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppVoiceDebugRoute: AppVoiceDebugRoute,

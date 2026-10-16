@@ -10,6 +10,7 @@ import {
   listServerChannels,
 } from '#/features/sync/selectors'
 import { matchScore } from '#/lib/fuzzy-match'
+import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 
 type BuildCommandItemsOptions = {
   state: SyncState
@@ -86,6 +87,20 @@ export function buildCommandItems({
             setSelectedServerId(null)
           }
         },
+      },
+      q,
+    )
+  }
+
+  if (uiFeatureFlags.achievementDebug) {
+    pushItem(
+      items,
+      {
+        id: 'debug-achievements',
+        group: 'Отладка',
+        label: 'Отладка достижений',
+        keywords: 'отладка достижения бейджи debug achievements badges',
+        run: () => void navigate({ to: '/app/achievements-debug' }),
       },
       q,
     )

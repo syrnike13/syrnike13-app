@@ -168,6 +168,86 @@
         ]
       }
     },
+    "/users/@me/badges/unseen": {
+      "get": {
+        "tags": [
+          "User Information"
+        ],
+        "summary": "Fetch Unseen Badges",
+        "description": "Retrieve badges whose unlock notification has not been shown yet.",
+        "operationId": "unseen_badges_fetch",
+        "responses": {
+          "default": {
+            "description": "An error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserBadge"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Session Token": []
+          }
+        ]
+      }
+    },
+    "/users/@me/badges/seen": {
+      "put": {
+        "tags": [
+          "User Information"
+        ],
+        "summary": "Acknowledge Badges",
+        "description": "Mark badge unlock notifications as shown.",
+        "operationId": "unseen_badges_acknowledge",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataAcknowledgeBadges"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "An error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "Session Token": []
+          }
+        ]
+      }
+    },
     "/users/@me": {
       "get": {
         "tags": [
@@ -14897,6 +14977,24 @@
           "onboarding": {
             "description": "Whether onboarding is required",
             "type": "boolean"
+          }
+        }
+      },
+      "DataAcknowledgeBadges": {
+        "title": "Seen Badges",
+        "type": "object",
+        "required": [
+          "badges"
+        ],
+        "properties": {
+          "badges": {
+            "description": "Badge ids whose unlock notification was shown",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1
           }
         }
       },

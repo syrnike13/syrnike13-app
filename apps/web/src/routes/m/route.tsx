@@ -1,5 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
+import { AchievementToastHost } from '#/components/achievements/achievement-toast-host'
 import { SettingsModal } from '#/components/settings/settings-modal'
 import { MobileShell } from '#/components/layout/mobile/mobile-shell'
 import { MobileVoiceChannelDrawer } from '#/components/voice/mobile-voice-channel-drawer'
@@ -48,6 +49,7 @@ function MobileLayout() {
           <MobileShell />
           <SettingsModal />
           <MobileVoiceChannelDrawer />
+          <AchievementToastHost />
         </MobileVoiceChannelDrawerProvider>
       </CommandPaletteProvider>
     </AuthedGate>

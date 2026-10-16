@@ -688,6 +688,71 @@ html {
   }
 }
 
+.achievement-toast {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    transform 420ms cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 260ms cubic-bezier(0.23, 1, 0.32, 1);
+  will-change: transform, opacity;
+}
+
+.achievement-toast[data-phase='exiting'] {
+  opacity: 0;
+  transform: translateY(calc(100% + 1rem));
+  transition-duration: 340ms, 240ms;
+}
+
+@starting-style {
+  .achievement-toast {
+    opacity: 0;
+    transform: translateY(calc(100% + 1rem));
+  }
+}
+
+.achievement-toast-shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 30%,
+    color-mix(in oklab, var(--foreground) 32%, transparent) 50%,
+    transparent 70%
+  );
+  transform: translateX(-110%);
+  animation: achievement-toast-shine 1100ms 380ms cubic-bezier(0.4, 0, 0.2, 1)
+    both;
+}
+
+@keyframes achievement-toast-shine {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(110%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .achievement-toast,
+  .achievement-toast[data-phase='exiting'] {
+    transform: none;
+    transition: opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  @starting-style {
+    .achievement-toast {
+      opacity: 0;
+      transform: none;
+    }
+  }
+
+  .achievement-toast-shine {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 @keyframes profile-unsaved-feedback-in {
   from {
     opacity: 0;
