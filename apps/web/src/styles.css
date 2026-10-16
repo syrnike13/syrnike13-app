@@ -58,6 +58,7 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-achievement: var(--achievement);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -710,26 +711,90 @@ html {
   }
 }
 
-.achievement-toast-shine {
+.achievement-wallpaper {
   position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    110deg,
-    transparent 30%,
-    color-mix(in oklab, var(--foreground) 32%, transparent) 50%,
-    transparent 70%
-  );
-  transform: translateX(-110%);
-  animation: achievement-toast-shine 1100ms 380ms cubic-bezier(0.4, 0, 0.2, 1)
-    both;
+  top: 0;
+  left: 0;
+  width: 480px;
+  height: 240px;
+  animation: achievement-wallpaper-pan 14s linear infinite;
 }
 
-@keyframes achievement-toast-shine {
-  from {
-    transform: translateX(-110%);
-  }
+@keyframes achievement-wallpaper-pan {
   to {
-    transform: translateX(110%);
+    transform: translate(-120px, -80px);
+  }
+}
+
+.achievement-rays {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  animation: achievement-spin 40s linear infinite;
+}
+
+.achievement-ray {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.achievement-ray > span {
+  display: block;
+  border-radius: 2px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--achievement) 90%, transparent) 45%,
+    transparent
+  );
+  transform-origin: 50% 0;
+  animation: achievement-ray-morph var(--ray-duration) ease-in-out
+    var(--ray-delay) infinite alternate;
+}
+
+@keyframes achievement-ray-morph {
+  0% {
+    transform: scale(var(--ray-x1), var(--ray-y1));
+  }
+  50% {
+    transform: scale(var(--ray-x2), var(--ray-y2));
+  }
+  100% {
+    transform: scale(var(--ray-x3), var(--ray-y3));
+  }
+}
+
+.achievement-frame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  padding: 3px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--achievement) 45%, black);
+}
+
+.achievement-frame::before {
+  content: '';
+  position: absolute;
+  inset: -60%;
+  background: conic-gradient(
+    color-mix(in oklab, var(--achievement) 30%, black),
+    color-mix(in oklab, var(--achievement) 78%, black),
+    color-mix(in oklab, var(--achievement) 70%, white),
+    color-mix(in oklab, var(--achievement) 58%, black),
+    color-mix(in oklab, var(--achievement) 30%, black),
+    color-mix(in oklab, var(--achievement) 78%, black),
+    color-mix(in oklab, var(--achievement) 70%, white),
+    color-mix(in oklab, var(--achievement) 58%, black),
+    color-mix(in oklab, var(--achievement) 30%, black)
+  );
+  animation: achievement-spin 8s linear infinite;
+}
+
+@keyframes achievement-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -747,9 +812,11 @@ html {
     }
   }
 
-  .achievement-toast-shine {
+  .achievement-wallpaper,
+  .achievement-rays,
+  .achievement-ray > span,
+  .achievement-frame::before {
     animation: none;
-    opacity: 0;
   }
 }
 

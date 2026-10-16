@@ -24,6 +24,7 @@ export const THEME_TOKEN_KEYS = [
   'chart-3',
   'chart-4',
   'chart-5',
+  'achievement',
   'sidebar',
   'sidebar-foreground',
   'sidebar-primary',
@@ -53,7 +54,11 @@ export const BRAND_LOCKED_THEME_TOKEN_KEYS = [
   'chart-3',
   'chart-4',
   'chart-5',
+  'achievement',
 ] as const satisfies readonly ThemeTokenKey[]
+
+/** Золотистая бронза уведомлений о бейджах; brand-locked, одинакова во всех темах. */
+const ACHIEVEMENT_BRONZE = 'oklch(0.8100 0.1150 80.0000)'
 
 export type ThemeSemanticPalette = {
   background: string
@@ -171,6 +176,7 @@ export function createThemeTokens(
     'chart-3': colors.chart3,
     'chart-4': colors.chart4,
     'chart-5': colors.chart5,
+    achievement: ACHIEVEMENT_BRONZE,
     sidebar: colors.sidebar,
     'sidebar-foreground': colors.sidebarForeground,
     'sidebar-primary': colors.sidebarPrimary,
@@ -211,6 +217,7 @@ export function buildThemeTokens(palette: ThemeSemanticPalette): ThemeTokens {
     'chart-3': palette.chart3,
     'chart-4': palette.chart4,
     'chart-5': palette.chart5,
+    achievement: ACHIEVEMENT_BRONZE,
     sidebar: palette.sidebar,
     'sidebar-foreground': palette.sidebarForeground,
     'sidebar-primary': palette.sidebarPrimary,
