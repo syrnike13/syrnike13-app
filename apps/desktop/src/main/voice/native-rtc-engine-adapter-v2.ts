@@ -234,13 +234,15 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     return this.waitForRoom(this.binding.credentialLeaseId, signal)
   }
 
-  disconnect(_cause: VoiceDisconnectCause): Promise<void> {
+  disconnect(cause: VoiceDisconnectCause): Promise<void> {
     if (this.disposed) return this.shutdownPromise ?? Promise.resolve()
     this.cancelWaiter()
     this.clearSpeakerObservations()
     this.networkTelemetry.reset()
     this.binding = null
-    this.warm = false
+    // A move connects the next Room right away. Keep capture and DSP warm so
+    // the destination publishes without reopening the input device.
+    this.warm = cause === 'move'
     this.remoteVideoDemand = []
     this.desired = { ...this.desired, cameraEnabled: false, screenEnabled: false, screenAudioEnabled: false }
     this.commitDesired()
@@ -502,7 +504,9 @@ export class NativeRtcEngineAdapterV2 implements RtcEngineAdapter {
     if ((this.current.desiredState?.room?.credentialLeaseId ?? null) !== waiter.roomLeaseId) return
     const settled = waiter.roomLeaseId
       ? this.current.roomState === 'connected'
-      : this.current.roomState === 'off' && Object.values(this.current.tracks).every(path => path.state === 'off')
+      : this.current.roomState === 'off' && Object.entries(this.current.tracks).every(([kind, path]) =>
+          path.state === 'off' ||
+          (kind === 'microphone' && this.current.desiredState?.microphone.state === 'warm'))
     if (!settled) return
     this.waiter = null
     waiter.cleanup()

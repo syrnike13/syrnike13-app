@@ -543,6 +543,10 @@ pub async fn ingress(
                 }
                 return Ok(EmptyResponse);
             };
+            // The owning client finishes its join or move on this snapshot.
+            // Publish it before roster events and call bookkeeping so their
+            // latency does not hold the user in a connecting state.
+            publish_authoritative_voice_snapshot(user_id).await?;
             let operation_id = commit.operation_id;
             let voice_state = commit.voice_state;
             let retired_sessions = commit.retired_sessions;
@@ -592,7 +596,6 @@ pub async fn ingress(
             clear_call_notification_recipients(channel_id, user_id, &operation_id)
                 .await
                 .ok();
-            publish_authoritative_voice_snapshot(user_id).await?;
         }
         // User left a channel
         "participant_left" => {

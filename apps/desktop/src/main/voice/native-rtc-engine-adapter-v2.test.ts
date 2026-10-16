@@ -146,6 +146,39 @@ describe('NativeRtcEngineAdapterV2', () => {
     expect(adapter.telemetry()).toBeNull()
   })
 
+  it('keeps the microphone warm across a move and releases it on leave', async () => {
+    const runtime = new Runtime()
+    const adapter = new NativeRtcEngineAdapterV2(runtime)
+    await join(runtime, adapter)
+    const revision = runtime.current.acceptedRevision!
+    runtime.current = {
+      ...runtime.current,
+      tracks: { ...runtime.current.tracks, microphone: { revision, state: 'muted', warning: false } },
+    }
+
+    const applyDesiredState = runtime.applyDesiredState.bind(runtime)
+    runtime.applyDesiredState = async (value) => {
+      const accepted = await applyDesiredState(value)
+      if (value.microphone.state === 'warm') {
+        runtime.current = {
+          ...runtime.current,
+          tracks: { ...runtime.current.tracks, microphone: { revision: value.revision, state: 'muted', warning: false } },
+        }
+      }
+      return accepted
+    }
+
+    await adapter.disconnect('move')
+    expect(runtime.applied.at(-1)).toMatchObject({ room: null, microphone: { state: 'warm' } })
+
+    await join(runtime, adapter)
+    expect(runtime.applied.at(-1)?.microphone.state).toBe('on')
+
+    await adapter.disconnect('leave')
+    expect(runtime.applied.at(-1)).toMatchObject({ room: null, microphone: { state: 'off' } })
+    await adapter.dispose()
+  })
+
   it('projects local and remote speaking and clears local activity on mute and disconnect', async () => {
     const runtime = new Runtime()
     const adapter = new NativeRtcEngineAdapterV2(runtime)

@@ -63,6 +63,15 @@ impl VoiceClient {
         Self::new(config.api.livekit.nodes.clone())
     }
 
+    /// A client for one node that can outlive the request holding `self`.
+    pub fn detached_node(&self, name: &str) -> Result<VoiceClient> {
+        let room = self.get_node(name)?;
+        Ok(Self::new(HashMap::from([(
+            name.to_string(),
+            room.node.clone(),
+        )])))
+    }
+
     pub fn get_node(&self, name: &str) -> Result<&RoomClient> {
         self.rooms
             .get(name)
