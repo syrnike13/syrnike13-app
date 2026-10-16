@@ -729,31 +729,36 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     })
   }, [dispatchVoice, snapshot.camera.state])
 
+  const openDesktopDisplayPicker = useCallback(() => {
+    if (!desktop) return
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () =>
+          desktop.media.openDisplayPicker(
+            readVoicePreferences().screenShareAudio,
+          ),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось открыть выбор демонстрации',
+            )
+          }),
+        ),
+      ),
+    )
+  }, [desktop])
+
   const toggleScreenShare = useCallback(() => {
     if (snapshot.screen.state === 'running' || snapshot.screen.state === 'starting') {
       void dispatchVoice({ type: 'setScreen', enabled: false })
       return
     }
     if (desktop) {
-      Effect.runFork(
-        Effect.tryPromise({
-          try: () =>
-            desktop.media.openDisplayPicker(
-              readVoicePreferences().screenShareAudio,
-            ),
-          catch: (cause) => cause,
-        }).pipe(
-          Effect.catch((error) =>
-            Effect.sync(() => {
-              toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Не удалось открыть выбор демонстрации',
-              )
-            }),
-          ),
-        ),
-      )
+      openDesktopDisplayPicker()
       return
     }
     const prefs = readVoicePreferences()
@@ -763,7 +768,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       audioEnabled: prefs.screenShareAudio,
       ...screenQuality(prefs.screenShareQuality),
     })
-  }, [desktop, dispatchVoice, snapshot.screen.state])
+  }, [desktop, dispatchVoice, openDesktopDisplayPicker, snapshot.screen.state])
 
   const setSelfMonitoringActive = useCallback(
     (active: boolean) => {
@@ -1328,10 +1333,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       screenShareStarting: snapshot.screen.state === 'starting',
       toggleCamera,
       toggleScreenShare,
+      changeScreenShareSource: desktop ? openDesktopDisplayPicker : undefined,
       setSelfMonitoringActive,
       getNativeMicrophonePreviewTrack: () => null,
     }),
     [
+      desktop,
+      openDesktopDisplayPicker,
       mediaAvailability,
       micIssue,
       setSelfMonitoringActive,

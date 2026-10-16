@@ -1,23 +1,47 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent,
+  type ReactNode,
+} from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
-  ExternalLinkIcon,
-  LogOutIcon,
-  Maximize2Icon,
+  ChevronLeftIcon,
   MonitorXIcon,
+  Settings2Icon,
+  Volume2Icon,
+  VolumeXIcon,
 } from '#/components/icons'
-import { Button } from '#/components/ui/button'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '#/components/ui/popover'
+import { Slider } from '#/components/ui/slider'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '#/components/ui/tooltip'
+import { ScreenShareQualitySections } from '#/components/voice/voice-screen-share-quality'
+import {
+  voiceStagePopoverContentClass,
+  voiceStagePopoverSeparatorClass,
+} from '#/components/voice/voice-stage-popover-styles'
+import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { useAuth } from '#/features/auth/auth-context'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
-import { useFloatingCornerAnchor } from '#/hooks/use-floating-corner-anchor'
+import {
+  formatUserVolumeLabel,
+  useVoiceListenerStore,
+  voiceListenerStore,
+  VOICE_USER_VOLUME_MAX,
+} from '#/features/voice/voice-listener-store'
+import { useSpringCornerDrag } from '#/hooks/use-spring-corner-drag'
 import {
   clampMiniPlayerPosition,
   miniPlayerCornerPosition,
@@ -27,6 +51,7 @@ import {
   MINI_PLAYER_WIDTH_KEY,
   selectMiniPlayerStream,
 } from '#/features/voice/stream-mini-player'
+import { cn } from '#/lib/utils'
 import { VoiceStageVideo } from './voice-stage-video'
 
 function readWidth() {
@@ -37,22 +62,174 @@ function readWidth() {
   }
 }
 
+const miniIconButtonClass =
+  'pointer-events-auto flex size-8 shrink-0 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline focus-visible:outline-ring data-[state=open]:bg-white/15 data-[state=open]:text-white'
+
+function MiniControl({
+  label,
+  children,
+  onClick,
+}: {
+  label: string
+  children: ReactNode
+  onClick: () => void
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          data-mini-control
+          aria-label={label}
+          className={miniIconButtonClass}
+          onClick={onClick}
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function MiniStreamVolumeSection({ userId }: { userId: string }) {
+  const muted = useVoiceListenerStore((s) => s.getStreamMuted(userId))
+  const volume = useVoiceListenerStore((s) => s.getStreamVolume(userId))
+  return (
+    <>
+      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-2 hover:bg-accent/70">
+        <span>Заглушить стрим</span>
+        <input
+          type="checkbox"
+          className="size-4 rounded border-input accent-primary"
+          checked={muted}
+          onChange={(event) =>
+            voiceListenerStore.setStreamMuted(userId, event.target.checked)
+          }
+        />
+      </label>
+      <div className="px-2 pt-1 pb-2">
+        <div className="pb-2 text-xs text-muted-foreground">
+          Громкость стрима
+        </div>
+        <div className="flex items-center gap-2">
+          <Slider
+            className="flex-1"
+            min={0}
+            max={VOICE_USER_VOLUME_MAX}
+            step={0.1}
+            value={[muted ? 0 : volume]}
+            onValueChange={([next]) => {
+              if (muted && next > 0) {
+                voiceListenerStore.setStreamMuted(userId, false)
+              }
+              voiceListenerStore.setStreamVolume(userId, next)
+            }}
+            aria-label="Громкость стрима"
+          />
+          <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+            {formatUserVolumeLabel(muted ? 0 : volume)}
+          </span>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function MiniStreamSettings({
+  remoteUserId,
+  showOwnQuality,
+  onOpenChange,
+}: {
+  /** Чей стрим смотрим (для громкости); null — показан свой стрим. */
+  remoteUserId: string | null
+  /** Пользователь сам стримит — даём менять разрешение и FPS. */
+  showOwnQuality: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  if (!remoteUserId && !showOwnQuality) return null
+  return (
+    <Popover onOpenChange={onOpenChange}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              data-mini-control
+              aria-label="Настройки трансляции"
+              className={miniIconButtonClass}
+            >
+              <Settings2Icon className="size-[18px]" />
+            </button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Настройки трансляции</TooltipContent>
+      </Tooltip>
+      <PopoverContent
+        data-mini-control
+        side="top"
+        align="end"
+        sideOffset={8}
+        collisionPadding={8}
+        className={cn(
+          voiceStagePopoverContentClass,
+          'z-[510] max-h-[min(70vh,32rem)] w-64 overflow-y-auto',
+        )}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        {remoteUserId ? <MiniStreamVolumeSection userId={remoteUserId} /> : null}
+        {remoteUserId && showOwnQuality ? (
+          <div className={cn(voiceStagePopoverSeparatorClass, 'my-1.5')} />
+        ) : null}
+        {showOwnQuality ? (
+          <>
+            <p className="px-2 pt-1 text-sm font-semibold text-foreground">
+              Качество моего стрима
+            </p>
+            <ScreenShareQualitySections />
+          </>
+        ) : null}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function MiniStreamMuteButton({ userId }: { userId: string }) {
+  const muted = useVoiceListenerStore((s) => s.getStreamMuted(userId))
+  const volume = useVoiceListenerStore((s) => s.getStreamVolume(userId))
+  const silent = muted || volume === 0
+  return (
+    <MiniControl
+      label={muted ? 'Включить звук стрима' : 'Выключить звук стрима'}
+      onClick={() => voiceListenerStore.setStreamMuted(userId, !muted)}
+    >
+      {silent ? (
+        <VolumeXIcon className="size-[18px]" />
+      ) : (
+        <Volume2Icon className="size-[18px]" />
+      )}
+    </MiniControl>
+  )
+}
+
 export function VoiceStreamMiniPlayer() {
   const voice = useVoiceStage()
+  const voiceMedia = useVoiceMedia()
+  const ownStreamActive =
+    voiceMedia.screenShareEnabled || voiceMedia.screenShareStarting
   const auth = useAuth()
   const users = useSyncStore((state) => state.users)
+  const channel = useSyncStore((state) =>
+    voice.stageChannelId ? state.channels[voice.stageChannelId] : undefined,
+  )
   const navigate = useNavigate()
   const params = useParams({ strict: false })
-  const anchor = useFloatingCornerAnchor(
-    MINI_PLAYER_CORNER_KEY,
-    'bottom-left',
-    true,
-  )
   const [viewport, setViewport] = useState(() => ({
     width: window.innerWidth,
     height: window.innerHeight,
   }))
   const [requestedWidth, setRequestedWidth] = useState(readWidth)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const resize = useRef<{
     pointerId: number
     x: number
@@ -61,6 +238,15 @@ export function VoiceStreamMiniPlayer() {
   } | null>(null)
   const suppressResizeClick = useRef(false)
   const width = miniPlayerWidth(requestedWidth, viewport)
+  const height = (width * 9) / 16
+  const anchor = useSpringCornerDrag({
+    storageKey: MINI_PLAYER_CORNER_KEY,
+    fallback: 'bottom-left',
+    cornerPosition: (corner) =>
+      miniPlayerCornerPosition(corner, width, viewport),
+    clamp: (point) => clampMiniPlayerPosition(point.x, point.y, width, viewport),
+    size: { width, height },
+  })
   useEffect(() => {
     const update = () =>
       setViewport({ width: window.innerWidth, height: window.innerHeight })
@@ -83,16 +269,17 @@ export function VoiceStreamMiniPlayer() {
     fullscreen: voice.stageFullscreen,
   })
   if (!visible || !item || !voice.stageChannelId) return null
-  const position = anchor.dragPoint
-    ? clampMiniPlayerPosition(
-        anchor.dragPoint.x - width / 2,
-        anchor.dragPoint.y - (width * 9) / 32,
-        width,
-        viewport,
-      )
-    : miniPlayerCornerPosition(anchor.corner, width, viewport)
   const right = anchor.corner.endsWith('right')
   const bottom = anchor.corner.startsWith('bottom')
+  const channelName =
+    channel && 'name' in channel ? channel.name : 'Голосовой канал'
+  const streamerName = voiceParticipantDisplayName(
+    item.userId,
+    users,
+    auth.user,
+  )
+  const isControl = (target: EventTarget) =>
+    target instanceof Element && target.closest('[data-mini-control]') !== null
   const returnToChannel = () => {
     if (anchor.consumeSuppressedClick() || suppressResizeClick.current) {
       suppressResizeClick.current = false
@@ -116,122 +303,120 @@ export function VoiceStreamMiniPlayer() {
     }
     event.stopPropagation()
   }
+  const chromeVisibility = cn(
+    'pointer-events-none absolute inset-x-0 flex items-center gap-1 px-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100',
+    (settingsOpen || anchor.dragging) && 'opacity-100',
+  )
   return (
     <TooltipProvider>
       <section
+        ref={anchor.ref}
         aria-label="Мини-плеер трансляции"
-        className="group fixed z-40 touch-none select-none overflow-hidden rounded-lg border bg-card text-card-foreground shadow-xl ring-1 ring-shell-divider"
-        style={{
-          left: position.x,
-          top: position.y,
-          width,
-          aspectRatio: '16 / 9',
-        }}
+        className="group fixed top-0 left-0 z-[500] touch-none select-none will-change-transform"
+        style={{ width, aspectRatio: '16 / 9' }}
         onClick={(event) => {
-          if (
-            event.target instanceof Element &&
-            event.target.closest('[data-mini-control]')
-          )
-            return
+          if (isControl(event.target)) return
           returnToChannel()
         }}
         onPointerDown={(event) => {
-          if (
-            event.target instanceof Element &&
-            event.target.closest('[data-mini-control]')
-          )
-            return
+          if (isControl(event.target)) return
           anchor.onPointerDown(event)
         }}
         onPointerMove={anchor.onPointerMove}
         onPointerUp={anchor.onPointerUp}
         onPointerCancel={anchor.onPointerCancel}
       >
-        <button
-          type="button"
-          className="absolute inset-0 cursor-grab focus-visible:outline focus-visible:outline-ring active:cursor-grabbing"
-          aria-label="Вернуться в канал"
-        >
-          {item.track ? (
-            <VoiceStageVideo
-              track={item.track}
-              mediaId={item.id}
-              fit="contain"
-            />
-          ) : (
-            <span className="text-sm text-muted-foreground">
-              {item.error
-                ? 'Трансляция недоступна'
-                : 'Подключение к трансляции…'}
-            </span>
-          )}
-        </button>
         <div
-          className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-1 bg-card/90 p-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-          style={{
-            paddingLeft: bottom && right ? 32 : 8,
-            paddingRight: bottom && !right ? 32 : 8,
-          }}
+          className={cn(
+            'relative size-full overflow-hidden rounded-lg bg-black text-white shadow-xl ring-1 ring-shell-divider transition-[transform,box-shadow] duration-200 ease-out motion-reduce:transition-none',
+            anchor.dragging && 'scale-[1.03] shadow-2xl',
+          )}
         >
-          <span className="min-w-0 flex-1 truncate text-xs font-medium">
-            {voiceParticipantDisplayName(item.userId, users, auth.user)}
-          </span>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                data-mini-control
-                className="pointer-events-auto"
-                size="icon-sm"
-                variant="ghost"
-                aria-label="Вернуться в канал"
-                onClick={returnToChannel}
+          <button
+            type="button"
+            className={cn(
+              'absolute inset-0 flex items-center justify-center focus-visible:outline focus-visible:outline-ring',
+              anchor.dragging ? 'cursor-grabbing' : 'cursor-pointer',
+            )}
+            aria-label="Вернуться в канал"
+          >
+            {item.track ? (
+              <VoiceStageVideo
+                track={item.track}
+                mediaId={item.id}
+                fit="contain"
+              />
+            ) : (
+              <span className="text-sm text-white/70">
+                {item.error
+                  ? 'Трансляция недоступна'
+                  : 'Подключение к трансляции…'}
+              </span>
+            )}
+          </button>
+
+          {/* Верх: тень сверху рассеивается вниз, название канала. */}
+          <div
+            className={cn(
+              chromeVisibility,
+              'top-0 h-16 items-start bg-linear-to-b from-black/75 via-black/35 to-transparent pt-1.5',
+            )}
+          >
+            <button
+              type="button"
+              data-mini-control
+              aria-label="Вернуться в канал"
+              title={channelName}
+              className="pointer-events-auto flex min-w-0 items-center gap-0.5 rounded-md py-0.5 pr-1.5 text-sm font-semibold text-white/90 transition-colors hover:text-white focus-visible:outline focus-visible:outline-ring"
+              onClick={returnToChannel}
+            >
+              <ChevronLeftIcon className="size-5 shrink-0" />
+              <span className="truncate">{channelName}</span>
+            </button>
+          </div>
+
+          {/* Низ: тень снизу рассеивается вверх, ник и управление. */}
+          <div
+            className={cn(
+              chromeVisibility,
+              'bottom-0 h-16 items-end bg-linear-to-t from-black/80 via-black/40 to-transparent pb-1.5',
+            )}
+          >
+            <span className="min-w-0 flex-1 truncate pb-1.5 pl-1 text-sm font-semibold text-white drop-shadow">
+              {streamerName}
+            </span>
+            {!item.isLocal ? (
+              <MiniStreamMuteButton userId={item.userId} />
+            ) : null}
+            <MiniStreamSettings
+              remoteUserId={item.isLocal ? null : item.userId}
+              showOwnQuality={ownStreamActive}
+              onOpenChange={setSettingsOpen}
+            />
+            {item.isLocal ? (
+              <MiniControl
+                label="Прекратить стрим"
+                onClick={voiceMedia.toggleScreenShare}
               >
-                <LogOutIcon className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Вернуться в канал</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                data-mini-control
-                className="pointer-events-auto"
-                size="icon-sm"
-                variant="ghost"
-                aria-label="Открыть в отдельном окне"
-                onClick={() => {
-                  voice.setFocusedMediaId(item.id)
-                  voice.openStagePopout()
-                }}
+                <MonitorXIcon className="size-[18px]" />
+              </MiniControl>
+            ) : (
+              <MiniControl
+                label="Прекратить просмотр"
+                onClick={() => voice.setStageMediaSubscribed(item.id, false)}
               >
-                <ExternalLinkIcon className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Открыть в отдельном окне</TooltipContent>
-          </Tooltip>
-          {!item.isLocal ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  data-mini-control
-                  className="pointer-events-auto"
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label="Прекратить просмотр"
-                  onClick={() => voice.setStageMediaSubscribed(item.id, false)}
-                >
-                  <MonitorXIcon className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Прекратить просмотр</TooltipContent>
-            </Tooltip>
-          ) : null}
+                <MonitorXIcon className="size-[18px]" />
+              </MiniControl>
+            )}
+          </div>
         </div>
+
+        {/* Невидимая зона изменения размера во внутреннем углу. */}
         <button
           type="button"
           data-mini-control
           aria-label="Изменить размер мини-плеера"
-          className="absolute size-6 text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-ring"
+          className="absolute size-4 focus-visible:outline focus-visible:outline-ring"
           style={{
             [right ? 'left' : 'right']: 0,
             [bottom ? 'top' : 'bottom']: 0,
@@ -290,9 +475,7 @@ export function VoiceStreamMiniPlayer() {
               /* Storage may be unavailable. */
             }
           }}
-        >
-          <Maximize2Icon className="mx-auto size-3" />
-        </button>
+        />
       </section>
     </TooltipProvider>
   )

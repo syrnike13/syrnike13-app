@@ -4,6 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({
   channelId: 'text',
+  media: {
+    screenShareEnabled: false,
+    screenShareStarting: false,
+    toggleScreenShare: vi.fn(),
+  },
   navigate: vi.fn(),
   stage: {
     stageChannelId: 'voice',
@@ -35,6 +40,12 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 vi.mock('#/features/voice/voice-stage-context', () => ({
   useVoiceStage: () => state.stage,
+}))
+vi.mock('#/features/voice/voice-media-context', () => ({
+  useVoiceMedia: () => state.media,
+}))
+vi.mock('#/platform/use-platform', () => ({
+  usePlatform: () => ({ capabilities: { nativeScreenShare: true } }),
 }))
 vi.mock('#/features/diagnostics/diagnostic-reporter', () => ({
   recordDiagnosticEvent: vi.fn(),
@@ -88,12 +99,11 @@ describe('mini player controls and pointer interactions', () => {
       search: { m: undefined },
     })
   })
-  it('stops remote viewing and opens the shared popout without navigating', () => {
+  it('stops remote viewing without navigating and no longer offers a popout', () => {
     render(<VoiceStreamMiniPlayer />)
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Открыть в отдельном окне' }),
-    )
-    expect(state.stage.openStagePopout).toHaveBeenCalledOnce()
+    expect(
+      screen.queryByRole('button', { name: 'Открыть в отдельном окне' }),
+    ).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Прекратить просмотр' }))
     expect(state.stage.setStageMediaSubscribed).toHaveBeenCalledWith(
       'alice:screen',
@@ -101,13 +111,21 @@ describe('mini player controls and pointer interactions', () => {
     )
     expect(state.navigate).not.toHaveBeenCalled()
   })
-  it('never offers stopping the local screenshare', () => {
+  it('offers stopping the own stream instead of stopping viewing', () => {
     state.stage.streamMediaItems[0].isLocal = true
     state.stage.viewedRemoteScreenIds = []
+    state.media.screenShareEnabled = true
     render(<VoiceStreamMiniPlayer />)
     expect(
       screen.queryByRole('button', { name: 'Прекратить просмотр' }),
     ).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Прекратить стрим' }))
+    expect(state.media.toggleScreenShare).toHaveBeenCalledOnce()
+    expect(
+      screen.getByRole('button', { name: 'Настройки трансляции' }),
+    ).toBeTruthy()
+    expect(state.navigate).not.toHaveBeenCalled()
+    state.media.screenShareEnabled = false
   })
   it('snaps a drag to a persisted corner and suppresses its click', () => {
     render(<VoiceStreamMiniPlayer />)
