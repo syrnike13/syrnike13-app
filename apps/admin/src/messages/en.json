@@ -4,5 +4,13 @@
   },
   "common": {
     "language": "Language"
+  },
+  "feedback": {
+    "similarity": {
+      "similarTitle": "similar title",
+      "sameArea": "same area",
+      "samePlatform": "same platform",
+      "sameType": "same type"
+    }
   }
 }

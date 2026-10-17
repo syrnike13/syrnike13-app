@@ -40,6 +40,7 @@ export function ChannelChatPanel({
   onClose,
 }: ChannelChatPanelProps) {
   const t = useTranslations('chat')
+  const tf = useTranslations('friends')
   const [composerHeight, setComposerHeight] = useState(56)
   const chat = useChannelChat({
     channelId,
@@ -81,7 +82,7 @@ export function ChannelChatPanel({
     )
   }
 
-  const title = getChannelLabel(channel, users, auth.user?._id)
+  const title = getChannelLabel(channel, users, auth.user?._id, t)
   const dmRecipientId = getDmRecipientId(channel, auth.user?._id)
   const dmRecipientRelationship = dmRecipientId
     ? users[dmRecipientId]?.relationship
@@ -145,7 +146,7 @@ export function ChannelChatPanel({
             if (!token || message.author === auth.user?._id) return
             if (!window.confirm(t('blockConfirm'))) return
             Effect.runFork(
-              blockUserRelationship(token, message.author).pipe(Effect.ignore),
+              blockUserRelationship(token, message.author, tf).pipe(Effect.ignore),
             )
           }}
           onPin={(message) => void handlePin(message)}

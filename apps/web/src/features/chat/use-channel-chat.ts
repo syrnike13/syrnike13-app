@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Message } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
@@ -38,6 +39,7 @@ export function useChannelChat({
   highlightMessageId,
   enabled = true,
 }: UseChannelChatOptions) {
+  const t = useTranslations('chat')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -160,7 +162,7 @@ export function useChannelChat({
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось загрузить сообщения',
+                  : t('messagesLoadError'),
               )
             }
           }),
@@ -174,12 +176,12 @@ export function useChannelChat({
         ),
       ),
     )
-  }, [channelId, enabled, loadingOlder, token])
+  }, [channelId, enabled, loadingOlder, t, token])
 
   const handleDelete = useCallback(
     async (message: Message) => {
       if (!token) return
-      if (!window.confirm('Удалить это сообщение?')) return
+      if (!window.confirm(t('deleteMessageConfirm'))) return
 
       syncStore.removeMessage(channelId, message._id)
       await Effect.runPromise(
@@ -198,14 +200,14 @@ export function useChannelChat({
             Effect.sync(() => {
               syncStore.upsertMessage(message)
               toast.error(
-                error instanceof Error ? error.message : 'Не удалось удалить',
+                error instanceof Error ? error.message : t('deleteMessageError'),
               )
             }),
           ),
         ),
       )
     },
-    [channelId, composerAction, token],
+    [channelId, composerAction, t, token],
   )
 
   const handlePin = useCallback(
@@ -215,7 +217,7 @@ export function useChannelChat({
       await Effect.runPromise(
         pinChannelMessageEffect(token, channelId, message._id).pipe(
           Effect.tap(() =>
-            Effect.sync(() => toast.success('Сообщение закреплено')),
+            Effect.sync(() => toast.success(t('messagePinned'))),
           ),
           Effect.catch((error) =>
             Effect.sync(() => {
@@ -225,14 +227,14 @@ export function useChannelChat({
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось закрепить',
+                  : t('pinMessageError'),
               )
             }),
           ),
         ),
       )
     },
-    [channelId, token],
+    [channelId, t, token],
   )
 
   const jumpToMessage = useCallback(
@@ -254,7 +256,7 @@ export function useChannelChat({
       await Effect.runPromise(
         unpinChannelMessageEffect(token, channelId, message._id).pipe(
           Effect.tap(() =>
-            Effect.sync(() => toast.success('Сообщение откреплено')),
+            Effect.sync(() => toast.success(t('messageUnpinned'))),
           ),
           Effect.catch((error) =>
             Effect.sync(() => {
@@ -264,14 +266,14 @@ export function useChannelChat({
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось открепить',
+                  : t('unpinMessageError'),
               )
             }),
           ),
         ),
       )
     },
-    [channelId, token],
+    [channelId, t, token],
   )
 
   const replyTo =

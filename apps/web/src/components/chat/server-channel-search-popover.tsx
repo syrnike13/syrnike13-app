@@ -79,6 +79,7 @@ export function ServerChannelSearchPopover({
             trimmed,
             auth.user?._id,
             {},
+            t,
           ),
         ),
         Effect.matchEffect({

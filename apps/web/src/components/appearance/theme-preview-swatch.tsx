@@ -1,4 +1,5 @@
 import type { AppearanceSettings } from '@syrnike13/platform'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { CheckIcon } from '#/components/icons'
 import {
@@ -30,6 +31,9 @@ export function ThemePreviewSwatch({
   prefersDark,
   onSelect,
 }: ThemePreviewSwatchProps) {
+  const t = useTranslations('themes')
+  const themeName = t(`${theme.id}.name`)
+  const themeDescription = t(`${theme.id}.description`)
   const variant = previewVariantForTheme(theme, settings, prefersDark)
   const preview = themePreviewColors(theme, variant)
   const gradient = themeGradientForPreview(
@@ -47,7 +51,7 @@ export function ThemePreviewSwatch({
       <TooltipTrigger asChild>
         <button
           type="button"
-          aria-label={`Тема «${theme.name}»`}
+          aria-label={t('ariaLabel', { name: themeName })}
           aria-pressed={active}
           onClick={onSelect}
           className={cn(
@@ -74,10 +78,8 @@ export function ThemePreviewSwatch({
         </button>
       </TooltipTrigger>
       <TooltipContent side="top" sideOffset={8} className="max-w-56">
-        <p className="font-medium">{theme.name}</p>
-        {theme.description ? (
-          <p className="mt-0.5 text-muted-foreground">{theme.description}</p>
-        ) : null}
+        <p className="font-medium">{themeName}</p>
+        <p className="mt-0.5 text-muted-foreground">{themeDescription}</p>
       </TooltipContent>
     </Tooltip>
   )

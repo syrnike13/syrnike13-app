@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { ThemePreviewSwatch } from '#/components/appearance/theme-preview-swatch'
 import { Badge } from '#/components/ui/badge'
 import {
@@ -11,6 +12,7 @@ import { useAppearance } from '#/features/appearance/appearance-context'
 import { CUSTOM_GRADIENT_CONTROLS_ENABLED } from '#/features/appearance/appearance-feature-flags'
 
 export function ThemePickerGrid() {
+  const t = useTranslations('settings.appearance')
   const { settings, themes, setThemeId } = useAppearance()
   const prefersDark = readSystemPrefersDark()
   const solidThemes = themes.filter((theme) => theme.kind === 'solid')
@@ -21,18 +23,23 @@ export function ThemePickerGrid() {
   )
 
   const groups = [
-    { label: 'Обычные', themes: solidThemes, beta: false },
-    { label: 'Градиентные', themes: gradientThemes, beta: true },
+    { id: 'solid', labelKey: 'groups.solid', themes: solidThemes, beta: false },
+    {
+      id: 'gradient',
+      labelKey: 'groups.gradient',
+      themes: gradientThemes,
+      beta: true,
+    },
   ]
 
   return (
     <TooltipProvider delayDuration={250}>
       <div className="flex flex-col gap-6 pt-2">
         {groups.map((group) => (
-          <section key={group.label} className="flex flex-col gap-2">
+          <section key={group.id} className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                {group.label}
+                {t(group.labelKey)}
               </p>
               {group.beta ? (
                 <Tooltip>
@@ -40,20 +47,20 @@ export function ThemePickerGrid() {
                     <Badge
                       variant="secondary"
                       tabIndex={0}
-                      aria-label="Бета: функционал находится в разработке"
+                      aria-label={t('betaAria')}
                     >
-                      БЕТА
+                      {t('beta')}
                     </Badge>
                   </TooltipTrigger>
                   <TooltipContent side="top" sideOffset={6}>
-                    Функционал находится в разработке
+                    {t('betaTooltip')}
                   </TooltipContent>
                 </Tooltip>
               ) : null}
             </div>
             <div
               role="group"
-              aria-label={group.label}
+              aria-label={t(group.labelKey)}
               className="flex flex-wrap gap-2.5"
             >
               {group.themes.map((theme) => (

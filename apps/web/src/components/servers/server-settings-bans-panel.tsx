@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { BannedUser, ServerBan } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { SearchIcon } from '#/components/icons'
 import { Button } from '#/components/ui/button'
@@ -41,6 +42,7 @@ function BanRow({
   removing: boolean
   onRemove: (userId: string, userLabel: string) => void
 }) {
+  const t = useTranslations('servers.bans')
   const userId = ban._id.user
   const userLabel = bannedUserLabel(user, userId)
 
@@ -50,7 +52,7 @@ function BanRow({
         <p className="truncate text-sm font-semibold">{userLabel}</p>
         <p className="truncate text-xs text-muted-foreground">{userId}</p>
         <p className="mt-1 truncate text-sm text-muted-foreground">
-          {ban.reason ?? 'Причина не указана'}
+          {ban.reason ?? t('reasonMissing')}
         </p>
       </div>
       <Button
@@ -60,7 +62,7 @@ function BanRow({
         disabled={removing}
         onClick={() => onRemove(userId, userLabel)}
       >
-        Разбанить
+        {t('unban')}
       </Button>
     </li>
   )
@@ -69,6 +71,7 @@ function BanRow({
 export function ServerSettingsBansPanel({
   serverId,
 }: ServerSettingsBansPanelProps) {
+  const t = useTranslations('servers.bans')
   const auth = useAuth()
   const token = auth.session?.token
   const [removingUserId, setRemovingUserId] = useState<string | null>(null)
@@ -86,7 +89,7 @@ export function ServerSettingsBansPanel({
       Effect.runPromise(
         token
           ? fetchServerBansEffect(token, serverId)
-          : Effect.fail(new Error('Нет сессии')),
+          : Effect.fail(new Error(t('noSession'))),
         { signal },
       ),
   })
@@ -129,7 +132,7 @@ export function ServerSettingsBansPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось снять бан',
+              error instanceof Error ? error.message : t('unbanError'),
             )
           }),
         ),
@@ -160,10 +163,9 @@ export function ServerSettingsBansPanel({
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-base font-semibold">Баны</h3>
+        <h3 className="text-base font-semibold">{t('title')}</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          {bans.length === 1 ? '1 забанен' : `${bans.length} забанено`} на
-          сервере.
+          {t('summary', { count: bans.length })}
         </p>
       </div>
 
@@ -173,20 +175,20 @@ export function ServerSettingsBansPanel({
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Поиск банов…"
-            className="h-9 bg-muted/40 pl-9"
+            placeholder={t('search')}
+            className="pl-9"
           />
         </div>
       ) : null}
 
       {bansQuery.isLoading ? (
-        <p className="text-sm text-muted-foreground">Загрузка...</p>
+        <p className="text-sm text-muted-foreground">{t('loading')}</p>
       ) : bansQuery.error ? (
-        <p className="text-sm text-destructive">Не удалось загрузить баны.</p>
+        <p className="text-sm text-destructive">{t('loadError')}</p>
       ) : bans.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Банов пока нет</p>
+        <p className="text-sm text-muted-foreground">{t('empty')}</p>
       ) : filteredBans.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Баны не найдены</p>
+        <p className="text-sm text-muted-foreground">{t('noResults')}</p>
       ) : (
         <ul className="space-y-2">
           {filteredBans.map((ban) => (
@@ -210,13 +212,13 @@ export function ServerSettingsBansPanel({
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Снять бан с {unbanTarget?.userLabel}?</DialogTitle>
-            <DialogDescription>
-              Пользователь сможет снова зайти на сервер по приглашению.
-            </DialogDescription>
+            <DialogTitle>
+              {t('unbanTitle', { name: unbanTarget?.userLabel ?? '' })}
+            </DialogTitle>
+            <DialogDescription>{t('unbanDescription')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5 py-2">
-            <Label htmlFor="unban-reason">Причина снятия бана</Label>
+            <Label htmlFor="unban-reason">{t('unbanReasonLabel')}</Label>
             <Input
               id="unban-reason"
               value={unbanReason}
@@ -232,7 +234,7 @@ export function ServerSettingsBansPanel({
               disabled={removingUserId !== null}
               onClick={closeUnbanDialog}
             >
-              Отмена
+              {t('cancel')}
             </Button>
             <Button
               type="button"
@@ -240,7 +242,7 @@ export function ServerSettingsBansPanel({
               disabled={removingUserId !== null}
               onClick={() => void removeBan()}
             >
-              Снять бан
+              {t('unbanConfirm')}
             </Button>
           </DialogFooter>
         </DialogContent>

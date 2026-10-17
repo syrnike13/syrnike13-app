@@ -25,6 +25,7 @@ import { cn } from '#/lib/utils'
  */
 export function MobileVoiceChannelDrawer() {
   const t = useTranslations('voice')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const voice = useVoiceSession()
   const { channelId, openVoiceChannelDrawer, closeVoiceChannelDrawer } =
@@ -75,7 +76,7 @@ export function MobileVoiceChannelDrawer() {
 
   const title =
     channel && auth.user
-      ? getChannelLabel(channel, users, auth.user._id)
+      ? getChannelLabel(channel, users, auth.user._id, tChat)
       : t('channel')
 
   return (

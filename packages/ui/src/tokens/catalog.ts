@@ -559,8 +559,6 @@ const KONTRAST_DARK_COLORS: ShadcnColorVariables = {
 
 export type ThemeDefinition = {
   id: string
-  name: string
-  description?: string
   kind: 'solid' | 'gradient'
   customizable?: boolean
   variants: Partial<Record<ThemeVariant, ThemeTokens>>
@@ -570,8 +568,6 @@ export type ThemeDefinition = {
 export const THEME_CATALOG: ThemeDefinition[] = [
   {
     id: 'syrnike',
-    name: 'Сырники',
-    description: 'Базовая фирменная тема',
     kind: 'solid',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
@@ -580,8 +576,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'lug',
-    name: 'Луг',
-    description: 'Мягкая зелёная палитра',
     kind: 'solid',
     variants: {
       light: createThemeTokens(LUG_LIGHT_COLORS, false),
@@ -590,8 +584,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'iskra',
-    name: 'Искра',
-    description: 'Контрастные красные акценты',
     kind: 'solid',
     variants: {
       light: createThemeTokens(ISKRA_LIGHT_COLORS, false),
@@ -600,8 +592,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'matrix',
-    name: 'Матрица',
-    description: 'Терминальная зелёная палитра',
     kind: 'solid',
     variants: {
       dark: createThemeTokens(MATRIX_DARK_COLORS, true),
@@ -609,8 +599,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'monolit',
-    name: 'Монолит',
-    description: 'Нейтральная монохромная палитра',
     kind: 'solid',
     variants: {
       light: createThemeTokens(MONOLIT_LIGHT_COLORS, false),
@@ -619,8 +607,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'pergament',
-    name: 'Пергамент',
-    description: 'Тёплые кремовые тона',
     kind: 'solid',
     variants: {
       light: createThemeTokens(PERGAMENT_LIGHT_COLORS, false),
@@ -629,8 +615,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'grafit',
-    name: 'Графит',
-    description: 'Нейтральная серая палитра с холодным оттенком',
     kind: 'solid',
     variants: {
       light: createThemeTokens(GRAFIT_LIGHT_COLORS, false),
@@ -639,8 +623,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'kontrast',
-    name: 'Контраст',
-    description: 'Резкий чёрно-белый контраст с зелёным акцентом',
     kind: 'solid',
     variants: {
       light: createThemeTokens(KONTRAST_LIGHT_COLORS, false),
@@ -649,8 +631,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'gradient-twilight',
-    name: 'Сумерки',
-    description: 'Холодный индиго с тёплым закатом',
     kind: 'gradient',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
@@ -663,8 +643,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'gradient-aurora',
-    name: 'Аврора',
-    description: 'Глубокий синий, бирюза и фиолетовый',
     kind: 'gradient',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
@@ -677,8 +655,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'gradient-sunset',
-    name: 'Закат',
-    description: 'Коралловый свет на фиолетовом фоне',
     kind: 'gradient',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
@@ -691,8 +667,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'gradient-ocean',
-    name: 'Океан',
-    description: 'Глубокий синий и чистая бирюза',
     kind: 'gradient',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
@@ -705,8 +679,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'gradient-orchid',
-    name: 'Орхидея',
-    description: 'Лиловый свет с розовым акцентом',
     kind: 'gradient',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
@@ -719,8 +691,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'gradient-northern-lights',
-    name: 'Сияние',
-    description: 'Изумрудный свет на ночном небе',
     kind: 'gradient',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
@@ -733,8 +703,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'gradient-mango',
-    name: 'Манго',
-    description: 'Солнечный жёлтый, апельсин и коралл',
     kind: 'gradient',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
@@ -747,8 +715,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'gradient-sakura',
-    name: 'Сакура',
-    description: 'Нежный розовый и прохладная сирень',
     kind: 'gradient',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
@@ -761,8 +727,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'gradient-midnight',
-    name: 'Полночь',
-    description: 'Тёмный индиго с электрическим синим',
     kind: 'gradient',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
@@ -775,8 +739,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'gradient-mint',
-    name: 'Мята',
-    description: 'Свежая мята с небесно-голубым',
     kind: 'gradient',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
@@ -789,8 +751,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'gradient-ember',
-    name: 'Жар',
-    description: 'Алый огонь и тёплый янтарь',
     kind: 'gradient',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
@@ -803,8 +763,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'gradient-dunes',
-    name: 'Дюны',
-    description: 'Песочные тона с мягким кораллом',
     kind: 'gradient',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
@@ -817,8 +775,6 @@ export const THEME_CATALOG: ThemeDefinition[] = [
   },
   {
     id: 'gradient',
-    name: 'Свой градиент',
-    description: 'Настраиваемая многослойная тема',
     kind: 'gradient',
     customizable: true,
     variants: {

@@ -71,26 +71,28 @@ export function findDirectMessageChannelWithUser(
   )
 }
 
-export function selectDirectMessageCallActionLabel(
+export type DirectMessageCallAction = 'call' | 'answer' | 'join'
+
+export function selectDirectMessageCallAction(
   state: SyncState,
   currentUserId: string | undefined,
   userId: string | undefined,
-) {
+): DirectMessageCallAction {
   const channel = findDirectMessageChannelWithUser(
     state,
     currentUserId,
     userId,
   )
   const call = channel ? state.voiceCalls[channel._id] : undefined
-  if (!call) return 'Позвонить'
+  if (!call) return 'call'
   if (
     !isVoiceCallRingingDismissed(call, state.dismissedVoiceCallKeys) &&
     isIncomingVoiceCall(call, currentUserId)
   ) {
-    return 'Ответить'
+    return 'answer'
   }
 
-  return 'Присоединиться'
+  return 'join'
 }
 
 function isCurrentUserInChannelVoice(

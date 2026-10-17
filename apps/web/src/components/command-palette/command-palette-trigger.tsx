@@ -1,5 +1,6 @@
 import { SearchIcon } from '#/components/icons'
 import { useMemo } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { useCommandPalette } from '#/features/command-palette/command-palette-context'
 import { cn } from '#/lib/utils'
@@ -16,8 +17,10 @@ type CommandPaletteTriggerProps = {
 
 export function CommandPaletteTrigger({
   className,
-  placeholder = 'Найти или начать беседу',
+  placeholder,
 }: CommandPaletteTriggerProps) {
+  const t = useTranslations('commandPalette')
+  const label = placeholder ?? t('triggerPlaceholder')
   const { setOpen } = useCommandPalette()
   const shortcut = useMemo(() => shortcutLabel(), [])
 
@@ -33,8 +36,8 @@ export function CommandPaletteTrigger({
       )}
     >
       <SearchIcon className="size-4 shrink-0 opacity-80" />
-      <span className="min-w-0 flex-1 truncate">{placeholder}</span>
-      <kbd className="hidden shrink-0 rounded border border-sidebar-border bg-sidebar px-1 py-0.5 text-[10px] font-medium text-sidebar-foreground sm:inline">
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <kbd className="hidden shrink-0 rounded border border-sidebar-border bg-sidebar px-1 py-0.5 text-[0.625rem] font-medium text-sidebar-foreground sm:inline">
         {shortcut}
       </kbd>
     </button>

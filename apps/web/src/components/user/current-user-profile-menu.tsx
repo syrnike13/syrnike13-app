@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { PencilFillIcon, ChevronDownIcon, SettingsIcon } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
@@ -43,6 +44,7 @@ export function CurrentUserProfileMenu({
   hidePresenceRow = false,
   bannerOverlay,
 }: CurrentUserProfileMenuProps) {
+  const t = useTranslations('users')
   const auth = useAuth()
   const navigate = useNavigate()
   const { openSettings } = useSettingsModal()
@@ -97,8 +99,8 @@ export function CurrentUserProfileMenu({
           />
           <button
             type="button"
-            title={onAvatarPress ? 'Выбрать статус' : 'Открыть профиль'}
-            aria-label={onAvatarPress ? 'Выбрать статус' : 'Открыть профиль'}
+            title={onAvatarPress ? t('selectStatus') : t('openProfile')}
+            aria-label={onAvatarPress ? t('selectStatus') : t('openProfile')}
             className="group/avatar-button cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
             onClick={(event) => {
               event.stopPropagation()
@@ -120,7 +122,7 @@ export function CurrentUserProfileMenu({
               />
               <span
                 aria-hidden
-                className="pointer-events-none absolute inset-0 rounded-full bg-black/0 transition-colors group-hover/avatar-button:bg-black/25"
+                className="pointer-events-none absolute inset-0 rounded-full bg-media-backdrop/0 transition-colors group-hover/avatar-button:bg-media-backdrop/25"
               />
             </span>
           </button>
@@ -131,8 +133,8 @@ export function CurrentUserProfileMenu({
         {onAvatarPress ? (
           <button
             type="button"
-            title="Выбрать статус"
-            aria-label="Выбрать статус"
+            title={t('selectStatus')}
+            aria-label={t('selectStatus')}
             className="group/display-name flex w-full min-w-0 items-center gap-0.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onAvatarPress}
           >
@@ -168,7 +170,7 @@ export function CurrentUserProfileMenu({
             onClick={() => openSettings('profile')}
           >
             <PencilFillIcon className="size-4" aria-hidden />
-            Редактировать профиль
+            {t('editProfile')}
           </Button>
         </div>
       ) : (
@@ -185,7 +187,7 @@ export function CurrentUserProfileMenu({
               className="size-4 shrink-0 opacity-75 transition-opacity group-hover:opacity-100"
               aria-hidden
             />
-            <span className="truncate">Редактировать профиль</span>
+            <span className="truncate">{t('editProfile')}</span>
           </button>
           {canAccessAdmin() ? (
             <button
@@ -200,7 +202,7 @@ export function CurrentUserProfileMenu({
                 className="size-4 shrink-0 opacity-75 transition-opacity group-hover:opacity-100"
                 aria-hidden
               />
-              <span className="truncate">Админка</span>
+              <span className="truncate">{t('admin')}</span>
             </button>
           ) : null}
           <PresenceStatusSelect />

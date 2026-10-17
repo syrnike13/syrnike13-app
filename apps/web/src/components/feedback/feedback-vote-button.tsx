@@ -1,5 +1,6 @@
 import type { FeedbackSuggestion } from '@syrnike13/api-types'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
 import { ArrowUpIcon, Loader2Icon } from '#/components/icons'
 import {
@@ -19,6 +20,8 @@ export function FeedbackVoteButton({
   token: string
   compact?: boolean
 }) {
+  const t = useTranslations('feedback.vote')
+  const { locale } = useLocale()
   const auth = useAuth()
   const queryClient = useQueryClient()
   const mutation = useMutation({
@@ -51,8 +54,8 @@ export function FeedbackVoteButton({
       aria-pressed={suggestion.voted}
       aria-label={
         suggestion.voted
-          ? `Снять голос, сейчас ${suggestion.vote_count}`
-          : `Проголосовать, сейчас ${suggestion.vote_count}`
+          ? t('removeAria', { count: suggestion.vote_count })
+          : t('castAria', { count: suggestion.vote_count })
       }
       onClick={() => mutation.mutate()}
     >
@@ -67,7 +70,7 @@ export function FeedbackVoteButton({
           aria-hidden
         />
       )}
-      <span>{suggestion.vote_count.toLocaleString('ru-RU')}</span>
+      <span>{suggestion.vote_count.toLocaleString(locale)}</span>
     </button>
   )
 }

@@ -23,6 +23,7 @@ export function VoiceChannelShell({
   highlightMessageId,
 }: VoiceChannelShellProps) {
   const t = useTranslations('voice')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const channel = useSyncStore((s) => s.channels[channelId])
   const users = useSyncStore((s) => s.users)
@@ -57,7 +58,7 @@ export function VoiceChannelShell({
     return null
   }
 
-  const title = getChannelLabel(channel, users, auth.user?._id)
+  const title = getChannelLabel(channel, users, auth.user?._id, tChat)
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">

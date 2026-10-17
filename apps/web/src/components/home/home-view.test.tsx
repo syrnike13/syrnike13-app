@@ -80,6 +80,7 @@ describe('HomeView', () => {
         'session-token',
         'friend-1',
         expect.any(Function),
+        expect.anything(),
       )
     })
   })
@@ -107,7 +108,7 @@ describe('HomeView', () => {
     render(<HomeView tab="online" />)
 
     expect(
-      screen.getByRole('link', { name: /Заявки.*1 уведомлений/ }),
+      screen.getByRole('link', { name: /Заявки.*1 уведомление/ }),
     ).toBeTruthy()
   })
 })

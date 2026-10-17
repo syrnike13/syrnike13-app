@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Effect } from 'effect'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { PlusIcon } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
@@ -38,6 +39,7 @@ type CreateServerDialogProps = {
 }
 
 export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
+  const t = useTranslations('servers.create')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -72,7 +74,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
           syncStore.applyServerJoinBundle({ server, member, channels })
           syncStore.setSelectedServerId(server._id)
           handleOpenChange(false)
-          toast.success(`Сервер «${server.name}» создан`)
+          toast.success(t('created', { name: server.name }))
         })
 
         const firstChannel = channels[0]
@@ -93,7 +95,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось создать сервер',
+                : t('createError'),
             )
           }),
         ),
@@ -107,7 +109,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
     const code = parseInviteCode(inviteInput)
     if (!token) return
     if (!code) {
-      toast.error('Вставьте ссылку приглашения или код')
+      toast.error(t('inviteRequired'))
       return
     }
 
@@ -122,7 +124,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
           yield* Effect.sync(() => {
             syncStore.setSelectedServerId(response.server._id)
             handleOpenChange(false)
-            toast.success('Вы присоединились к серверу')
+            toast.success(t('joinSuccess'))
           })
 
           const channel = response.channels[0]
@@ -143,7 +145,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         if (isGroupInviteJoin(response)) {
           yield* Effect.sync(() => {
             handleOpenChange(false)
-            toast.success('Приглашение принято')
+            toast.success(t('inviteAccepted'))
           })
           yield* Effect.tryPromise({
             try: () =>
@@ -158,7 +160,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         }
 
         yield* Effect.sync(() =>
-          toast.error('Неизвестный тип приглашения'),
+          toast.error(t('unknownInvite')),
         )
       }).pipe(
         Effect.catch((error) =>
@@ -166,7 +168,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось присоединиться',
+                : t('joinError'),
             )
           }),
         ),
@@ -185,7 +187,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
               size="icon"
               variant="ghost"
               className={cn(railIconButtonClass, railIconIdleClass)}
-              title="Создать сервер"
+              title={t('triggerAria')}
             >
               <PlusIcon className={railGlyphClass} />
             </Button>
@@ -196,7 +198,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         {mode === 'create' ? (
           <>
             <DialogHeader>
-              <DialogTitle>Создать сервер</DialogTitle>
+              <DialogTitle>{t('title')}</DialogTitle>
             </DialogHeader>
             <form
               className="flex flex-col gap-4"
@@ -206,23 +208,23 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
               }}
             >
               <div className="flex flex-col gap-2">
-                <Label htmlFor="server-name">Название</Label>
+                <Label htmlFor="server-name">{t('name')}</Label>
                 <Input
                   id="server-name"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
-                  placeholder="Мой сервер"
+                  placeholder={t('namePlaceholder')}
                   autoFocus
                 />
               </div>
               <Button type="submit" disabled={saving || !name.trim()}>
-                Создать
+                {t('create')}
               </Button>
             </form>
 
             <div className="-mx-6 -mb-6 mt-2 flex flex-col gap-3 border-t border-border bg-muted/40 px-6 py-4">
               <p className="text-center text-sm text-secondary-foreground">
-                Вас уже пригласили?
+                {t('invited')}
               </p>
               <Button
                 type="button"
@@ -230,14 +232,14 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
                 className="w-full"
                 onClick={() => setMode('join')}
               >
-                Зайти на сервер
+                {t('joinServer')}
               </Button>
             </div>
           </>
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>Зайти на сервер</DialogTitle>
+              <DialogTitle>{t('joinTitle')}</DialogTitle>
             </DialogHeader>
             <form
               className="flex flex-col gap-4"
@@ -247,12 +249,12 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
               }}
             >
               <div className="flex flex-col gap-2">
-                <Label htmlFor="server-invite">Ссылка или код приглашения</Label>
+                <Label htmlFor="server-invite">{t('inviteLabel')}</Label>
                 <Input
                   id="server-invite"
                   value={inviteInput}
                   onChange={(event) => setInviteInput(event.target.value)}
-                  placeholder="https://syrnike13.ru/invite/…"
+                  placeholder={t('invitePlaceholder')}
                   autoFocus
                 />
               </div>
@@ -260,14 +262,14 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
                 type="submit"
                 disabled={joining || !inviteInput.trim()}
               >
-                Присоединиться
+                {t('join')}
               </Button>
               <Button
                 type="button"
                 variant="ghost"
                 onClick={() => setMode('create')}
               >
-                Назад
+                {t('back')}
               </Button>
             </form>
           </>

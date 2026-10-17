@@ -1,4 +1,5 @@
 import { useEffect, useRef, type PointerEvent, type RefObject } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import type { VoiceGateMetrics } from '#/features/voice/voice-gate-stage'
 import {
@@ -27,6 +28,7 @@ export function VoiceGateSensitivityBar({
   auto,
   onThresholdChange,
 }: VoiceGateSensitivityBarProps) {
+  const t = useTranslations('settings.voice')
   const trackRef = useRef<HTMLDivElement | null>(null)
   const levelRef = useRef<HTMLDivElement | null>(null)
   const markerRef = useRef<HTMLDivElement | null>(null)
@@ -110,7 +112,7 @@ export function VoiceGateSensitivityBar({
         aria-valuemin={VOICE_GATE_DB_MIN}
         aria-valuemax={VOICE_GATE_DB_MAX}
         aria-valuenow={thresholdDb}
-        aria-label="Порог гейта микрофона"
+        aria-label={t('gateAria')}
         aria-disabled={auto}
         className={cn(
           'relative h-2 overflow-hidden rounded-full bg-muted',
@@ -132,11 +134,13 @@ export function VoiceGateSensitivityBar({
           style={{ left: '0%' }}
         />
       </div>
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground tabular-nums">
+      <div className="flex items-center justify-between text-[0.6875rem] text-muted-foreground tabular-nums">
         <span>{VOICE_GATE_DB_MIN} dB</span>
         <span>
-          Порог: <span ref={labelRef}>{formatGateThresholdDb(thresholdDb)}</span>
-          {auto ? ' · авто' : ''}
+          {t('gateThreshold', {
+            value: formatGateThresholdDb(thresholdDb),
+          })}
+          {auto ? t('gateAuto') : ''}
         </span>
         <span>{VOICE_GATE_DB_MAX} dB</span>
       </div>

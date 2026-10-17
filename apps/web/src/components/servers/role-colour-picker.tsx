@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { CheckIcon, PencilIcon } from '#/components/icons'
 
 import { Label } from '#/components/ui/label'
@@ -51,6 +52,7 @@ export function RoleColourPicker({
   disabled,
   className,
 }: RoleColourPickerProps) {
+  const t = useTranslations('servers.roles')
   const colourInputRef = useRef<HTMLInputElement>(null)
   const trimmed = value.trim()
   const hasColour = Boolean(trimmed)
@@ -66,10 +68,8 @@ export function RoleColourPicker({
   return (
     <div className={cn('space-y-3', className)}>
       <div className="space-y-1">
-        <Label>Цвет</Label>
-        <p className="text-sm text-muted-foreground">
-          Цвет ника участника задаётся самой высокой ролью в списке ролей.
-        </p>
+        <Label>{t('colour')}</Label>
+        <p className="text-sm text-muted-foreground">{t('colourHint')}</p>
       </div>
 
       <div className="flex items-start gap-2">
@@ -77,7 +77,7 @@ export function RoleColourPicker({
           <button
             type="button"
             disabled={disabled}
-            title="Без цвета"
+            title={t('noColour')}
             className={cn(
               'relative m-0 box-border shrink-0 appearance-none rounded-lg border-2 p-0',
               TWIN_ROW_SWATCH_CLASS,
@@ -93,7 +93,7 @@ export function RoleColourPicker({
           <button
             type="button"
             disabled={disabled}
-            title="Свой цвет"
+            title={t('customColour')}
             className={cn(
               'relative m-0 box-border shrink-0 appearance-none overflow-hidden rounded-lg border-2 p-0',
               TWIN_ROW_SWATCH_CLASS,
@@ -105,7 +105,7 @@ export function RoleColourPicker({
             style={{ backgroundColor: customDisplayColour }}
             onClick={() => colourInputRef.current?.click()}
           >
-            <span className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-sm bg-black/45 text-white">
+            <span className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-sm bg-scrim text-on-scrim">
               <PencilIcon className="size-3" />
             </span>
             <input
@@ -143,7 +143,7 @@ export function RoleColourPicker({
                 >
                   {selected ? (
                     <CheckIcon
-                      className="absolute inset-0 m-auto size-4 text-white drop-shadow-sm"
+                      className="absolute inset-0 m-auto size-4 text-on-scrim drop-shadow-sm"
                       strokeWidth={3}
                       aria-hidden
                     />

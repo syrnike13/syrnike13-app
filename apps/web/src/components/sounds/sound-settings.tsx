@@ -1,3 +1,5 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
+
 import {
   SettingsBlock,
   SettingsRow,
@@ -29,17 +31,14 @@ function sliderToVolume(value: number) {
 }
 
 export function SoundSettings() {
+  const t = useTranslations('sounds')
   const preferences = useSoundPreferences()
   const authorPacks = authorSoundPackOptions()
   const soundEvents = soundEventVolumeOptions(preferences.authorPackId)
 
   return (
-    <SettingsBlock
-      title="Звуки уведомлений"
-    >
-      <SettingsRow
-        label="Выбор паков звуков уведомлений"
-      >
+    <SettingsBlock title={t('title')}>
+      <SettingsRow label={t('packLabel')}>
         <Select
           value={preferences.authorPackId}
           onValueChange={(authorPackId) => {
@@ -49,7 +48,7 @@ export function SoundSettings() {
           }}
           disabled={!preferences.enabled}
         >
-          <SelectTrigger className="w-[220px] max-w-full">
+          <SelectTrigger className="w-55 max-w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -63,7 +62,7 @@ export function SoundSettings() {
       </SettingsRow>
 
       <SettingsRow
-        label="Громкость UI-звуков"
+        label={t('volume')}
         value={`${volumeToSlider(preferences.volume)}%`}
         stacked
       >
@@ -86,7 +85,7 @@ export function SoundSettings() {
         return (
           <SettingsRow
             key={event.id}
-            label={event.label}
+            label={t(event.labelKey)}
             value={`${volumeToSlider(eventVolume)}%`}
             stacked
           >

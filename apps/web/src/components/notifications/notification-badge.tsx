@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Badge } from '#/components/ui/badge'
 import type { NotificationBadgeState } from '#/features/notifications/notification-selectors'
 import { cn } from '#/lib/utils'
@@ -17,18 +18,21 @@ export function NotificationBadge({
   max = 99,
   mode = 'count',
 }: NotificationBadgeProps) {
+  const t = useTranslations('notifications')
   if (!badge.hasUnread && !badge.urgent) return null
 
   const countLabel =
-    badge.count > 0 ? `${badge.count} уведомлений` : 'Есть уведомления'
+    badge.count > 0
+      ? t('count', { count: badge.count })
+      : t('hasUnread')
 
   if (mode === 'dot') {
     return (
       <Badge
-        variant="destructive"
+        variant="contrast"
         aria-label={countLabel}
         className={cn(
-          'pointer-events-none size-2 min-w-0 shrink-0 rounded-full border-background p-0',
+          'pointer-events-none size-2 min-w-0 shrink-0 p-0',
           className,
         )}
       />
@@ -39,10 +43,10 @@ export function NotificationBadge({
 
   return (
     <Badge
-      variant="destructive"
+      variant="contrast"
       aria-label={countLabel}
       className={cn(
-        'pointer-events-none h-4 min-w-4 border-background px-1 text-[10px] leading-none shadow-sm',
+        'pointer-events-none h-4 min-w-4 px-1 text-[0.625rem] leading-none',
         className,
       )}
     >

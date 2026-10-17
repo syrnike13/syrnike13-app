@@ -59,6 +59,7 @@ export function VoiceStageActivityTile({
   onAspectRatioChange,
 }: VoiceStageActivityTileProps) {
   const t = useTranslations('voice')
+  const tA = useTranslations('activities')
   const application = getFirstPartyChannelActivity(item.instance.application_id)
   const joined = item.instance.participant_ids.includes(currentUserId)
   const [joining, setJoining] = useState(false)
@@ -104,7 +105,7 @@ export function VoiceStageActivityTile({
             >
               <Gamepad2Icon className="size-6 text-primary" aria-hidden />
               <span className="max-w-full truncate text-xs font-semibold">
-                {application?.title ?? t('activity.title')}
+                {application ? tA(application.titleKey) : t('activity.title')}
               </span>
             </button>
           ) : joined && application ? (
@@ -164,7 +165,7 @@ export function VoiceStageActivityTile({
             <div className="pointer-events-none absolute bottom-2 left-2 z-20 flex max-w-[calc(100%-3.5rem)] items-center gap-1.5 rounded bg-card/90 px-2 py-1 text-xs font-medium text-card-foreground shadow-sm">
               <Gamepad2Icon className="size-3.5 shrink-0 text-primary" />
               <span className="truncate">
-                {application?.title ?? t('activity.title')}
+                {application ? tA(application.titleKey) : t('activity.title')}
               </span>
             </div>
           ) : null}
@@ -219,6 +220,7 @@ function ActivityJoinState({
   onJoin: () => void
 }) {
   const t = useTranslations('voice')
+  const tA = useTranslations('activities')
 
   return (
     <div className="flex size-full flex-col items-center justify-center gap-3 bg-muted/40 p-5 text-center">
@@ -227,7 +229,7 @@ function ActivityJoinState({
       </div>
       <div>
         <h2 className="text-base font-semibold">
-          {application?.title ?? t('activity.unsupported')}
+          {application ? tA(application.titleKey) : t('activity.unsupported')}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {application

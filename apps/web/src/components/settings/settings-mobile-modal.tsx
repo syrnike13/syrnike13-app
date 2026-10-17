@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -38,12 +39,13 @@ function mobileNavRowClass(active = false) {
   )
 }
 
-function screenTitle(screen: MobileSettingsScreen) {
-  if (screen.kind === 'general') return 'Настройки'
-  return settingsSectionTitle(screen.section)
+function screenTitle(screen: MobileSettingsScreen, t: Translator) {
+  if (screen.kind === 'general') return t('title')
+  return settingsSectionTitle(screen.section, t)
 }
 
 export function SettingsMobileModal() {
+  const t = useTranslations('settings')
   const auth = useAuth()
   const navigate = useNavigate()
   const { open, setOpen, section, setSection } = useSettingsModal()
@@ -139,7 +141,7 @@ export function SettingsMobileModal() {
             size="icon"
             className="size-10 shrink-0"
             onClick={handleBack}
-            aria-label="Назад"
+            aria-label={t('back')}
           >
             <ChevronLeftIcon className="size-5" />
           </Button>
@@ -147,7 +149,7 @@ export function SettingsMobileModal() {
           <span className="size-10 shrink-0" aria-hidden />
         )}
         <h1 className="min-w-0 flex-1 truncate text-center text-base font-semibold">
-          {screenTitle(currentScreen)}
+          {screenTitle(currentScreen, t)}
         </h1>
         <Button
           type="button"
@@ -155,7 +157,7 @@ export function SettingsMobileModal() {
           size="icon"
           className="size-10 shrink-0"
           onClick={() => setOpen(false)}
-          aria-label="Закрыть"
+          aria-label={t('close')}
         >
           <XIcon className="size-5" />
         </Button>
@@ -203,6 +205,8 @@ function MobileGeneralSettingsMenu({
   onLogout: () => void
   loggingOut: boolean
 }) {
+  const t = useTranslations('settings')
+
   return (
     <div className="flex flex-col gap-1">
       {GENERAL_SETTINGS_NAV.map((item) => {
@@ -217,7 +221,7 @@ function MobileGeneralSettingsMenu({
           >
             <Icon className="size-5 shrink-0 text-muted-foreground" aria-hidden />
             <span className="min-w-0 flex-1 truncate text-base">
-              {item.label}
+              {t(item.labelKey)}
             </span>
             <ChevronRightIcon
               className="size-4 shrink-0 text-muted-foreground"
@@ -239,7 +243,7 @@ function MobileGeneralSettingsMenu({
         >
           <LogOutIcon className="size-5 shrink-0" aria-hidden />
           <span className="min-w-0 flex-1 truncate text-base">
-            {loggingOut ? 'Выход…' : 'Выйти'}
+            {loggingOut ? t('loggingOut') : t('logout')}
           </span>
         </button>
       </div>

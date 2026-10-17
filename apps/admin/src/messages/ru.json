@@ -4,5 +4,13 @@
   },
   "common": {
     "language": "Язык"
+  },
+  "feedback": {
+    "similarity": {
+      "similarTitle": "похожее название",
+      "sameArea": "та же область",
+      "samePlatform": "та же платформа",
+      "sameType": "тот же тип"
+    }
   }
 }

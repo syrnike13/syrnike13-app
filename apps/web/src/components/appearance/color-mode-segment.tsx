@@ -1,12 +1,16 @@
 import type { AppearanceColorMode } from '@syrnike13/platform'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { cn } from '#/lib/utils'
 
 const MODES = [
-  { id: 'light', label: 'Светлая' },
-  { id: 'dark', label: 'Тёмная' },
-  { id: 'system', label: 'Системная' },
-] as const satisfies ReadonlyArray<{ id: AppearanceColorMode; label: string }>
+  { id: 'light', labelKey: 'modes.light' },
+  { id: 'dark', labelKey: 'modes.dark' },
+  { id: 'system', labelKey: 'modes.system' },
+] as const satisfies ReadonlyArray<{
+  id: AppearanceColorMode
+  labelKey: string
+}>
 
 type ColorModeSegmentProps = {
   value: AppearanceColorMode
@@ -19,6 +23,8 @@ export function ColorModeSegment({
   disabled,
   onChange,
 }: ColorModeSegmentProps) {
+  const t = useTranslations('settings.appearance')
+
   return (
     <div
       className={cn(
@@ -26,7 +32,7 @@ export function ColorModeSegment({
         disabled && 'pointer-events-none opacity-50',
       )}
       role="group"
-      aria-label="Режим отображения"
+      aria-label={t('displayMode')}
     >
       {MODES.map((mode) => (
         <button
@@ -41,7 +47,7 @@ export function ColorModeSegment({
               : 'text-muted-foreground hover:text-foreground',
           )}
         >
-          {mode.label}
+          {t(mode.labelKey)}
         </button>
       ))}
     </div>

@@ -15,6 +15,7 @@ import {
 import { useMemo, useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
+import { useLocale, useTranslations } from '@syrnike13/ui/i18n'
 
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -70,8 +71,8 @@ function roleDotStyle(colour: string | null) {
   return { backgroundColor: colour.startsWith('#') ? colour : `#${colour}` }
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('ru-RU', {
+function formatDate(iso: string, locale: string) {
+  return new Date(iso).toLocaleDateString(locale, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -95,6 +96,9 @@ export function UserGlobalProfileSidebar({
   onUnblock,
   onEditProfile,
 }: UserGlobalProfileSidebarProps) {
+  const t = useTranslations('users')
+  const tf = useTranslations('friends')
+  const { locale } = useLocale()
   const auth = useAuth()
   const token = auth.session?.token
   const displayName = user.display_name ?? user.username
@@ -182,7 +186,7 @@ export function UserGlobalProfileSidebar({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось убрать роль',
+              error instanceof Error ? error.message : t('removeRoleError'),
             )
           }),
         ),
@@ -230,7 +234,7 @@ export function UserGlobalProfileSidebar({
                   wrapperClassName="block h-full w-full"
                   className="h-full w-full object-cover"
                 />
-                <div className="pointer-events-none absolute inset-0 bg-black/20" aria-hidden />
+                <div className="pointer-events-none absolute inset-0 bg-media-backdrop/20" aria-hidden />
               </>
             ) : null}
           </div>
@@ -273,7 +277,7 @@ export function UserGlobalProfileSidebar({
               onClick={onEditProfile}
             >
               <SettingsIcon className="size-3.5" />
-              Редактировать
+              {t('editProfile')}
             </Button>
           ) : (
             <>
@@ -285,7 +289,7 @@ export function UserGlobalProfileSidebar({
                   className={profilePrimaryActionClass}
                   onClick={() =>
                     void runFriendAction(() =>
-                      acceptIncomingFriendRequest(token!, user._id),
+                      acceptIncomingFriendRequest(token!, user._id, tf),
                     )
                   }
                 >
@@ -294,7 +298,7 @@ export function UserGlobalProfileSidebar({
                   ) : (
                     <UserCheckIcon className="size-3.5" />
                   )}
-                  <span className="truncate">Принять</span>
+                  <span className="truncate">{t('accept')}</span>
                 </Button>
               ) : null}
               {showAddFriend ? (
@@ -304,7 +308,9 @@ export function UserGlobalProfileSidebar({
                   disabled={actionsDisabled}
                   className={profilePrimaryActionClass}
                   onClick={() =>
-                    void runFriendAction(() => sendFriendRequestToUser(token!, user))
+                    void runFriendAction(() =>
+                      sendFriendRequestToUser(token!, user, tf),
+                    )
                   }
                 >
                   {friendBusy ? (
@@ -312,7 +318,7 @@ export function UserGlobalProfileSidebar({
                   ) : (
                     <UserPlusIcon className="size-3.5" />
                   )}
-                  <span className="truncate">Добавить в друзья</span>
+                  <span className="truncate">{t('addFriend')}</span>
                 </Button>
               ) : null}
               {canDirectMessage ? (
@@ -324,8 +330,8 @@ export function UserGlobalProfileSidebar({
                   className={
                     isFriend ? profilePrimaryActionClass : profileIconActionClass
                   }
-                  title="Сообщение"
-                  aria-label="Сообщение"
+                  title={t('message')}
+                  aria-label={t('message')}
                   onClick={onOpenDm}
                 >
                   {busy ? (
@@ -335,7 +341,7 @@ export function UserGlobalProfileSidebar({
                   ) : (
                     <MessageCircleIcon className={isFriend ? 'size-3.5' : 'size-4'} />
                   )}
-                  {isFriend ? <span className="truncate">Сообщение</span> : null}
+                  {isFriend ? <span className="truncate">{t('message')}</span> : null}
                 </Button>
               ) : null}
               <Popover>
@@ -346,8 +352,8 @@ export function UserGlobalProfileSidebar({
                     size="icon"
                     className={profileIconActionClass}
                     disabled={actionsDisabled}
-                    title="Ещё"
-                    aria-label="Ещё"
+                    title={t('more')}
+                    aria-label={t('more')}
                   >
                     <MoreHorizontalIcon className="size-4" />
                   </Button>
@@ -362,39 +368,39 @@ export function UserGlobalProfileSidebar({
                     <FloatingMenuItem
                       onClick={() =>
                         void runFriendAction(() =>
-                          declineIncomingFriendRequest(token!, user._id),
+                          declineIncomingFriendRequest(token!, user._id, tf),
                         )
                       }
                     >
                       <XIcon className="size-3.5" />
-                      Отклонить заявку
+                      {t('declineRequest')}
                     </FloatingMenuItem>
                   ) : null}
                   {user.relationship === 'Outgoing' ? (
                     <FloatingMenuItem
                       onClick={() =>
                         void runFriendAction(() =>
-                          cancelOutgoingFriendRequest(token!, user._id),
+                          cancelOutgoingFriendRequest(token!, user._id, tf),
                         )
                       }
                     >
                       <XIcon className="size-3.5" />
-                      Отменить заявку
+                      {t('cancelRequest')}
                     </FloatingMenuItem>
                   ) : null}
                   <FloatingMenuItem onClick={onCopyId}>
                     <CopyIcon className="size-3.5" />
-                    Копировать ID
+                    {t('copyId')}
                   </FloatingMenuItem>
                   {user.relationship === 'Blocked' ? (
                     <FloatingMenuItem onClick={onUnblock}>
                       <BanIcon className="size-3.5" />
-                      Разблокировать
+                      {t('unblock')}
                     </FloatingMenuItem>
                   ) : (
                     <FloatingMenuItem onClick={onBlock}>
                       <BanIcon className="size-3.5" />
-                      Заблокировать
+                      {t('block')}
                     </FloatingMenuItem>
                   )}
                 </PopoverContent>
@@ -417,18 +423,18 @@ export function UserGlobalProfileSidebar({
         {/* Member since (server context) */}
         {showServerSection && member?.joined_at ? (
           <div className="mt-4">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              На сервере с
+            <p className="mb-2 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
+              {t('memberSince')}
             </p>
-            <p className="text-sm text-foreground/90">{formatDate(member.joined_at)}</p>
+            <p className="text-sm text-foreground/90">{formatDate(member.joined_at, locale)}</p>
           </div>
         ) : null}
 
         {/* Roles (server context) */}
         {showServerSection && server && member && (roles.length > 0 || canEditRoles) ? (
           <div className="mt-4">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Роли
+            <p className="mb-2 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
+              {t('roles')}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {roles.map((role) => {
@@ -463,7 +469,7 @@ export function UserGlobalProfileSidebar({
                         type="button"
                         disabled={removingRoleId !== null}
                         className="flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-                        title={`Убрать «${role.name}»`}
+                        title={t('removeRole', { name: role.name })}
                         onClick={(e) => { e.stopPropagation(); void removeRole(role.id) }}
                       >
                         <XIcon className={cn('size-3', removing && 'opacity-50')} />
@@ -476,7 +482,7 @@ export function UserGlobalProfileSidebar({
                 <button
                   type="button"
                   className="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-background/60 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  title="Изменить роли"
+                  title={t('editRoles')}
                   onClick={(e) => { e.stopPropagation(); setRolesDialogOpen(true) }}
                 >
                   <PlusIcon className="size-3.5" />

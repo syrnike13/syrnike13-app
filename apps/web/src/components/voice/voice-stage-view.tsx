@@ -8,7 +8,7 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
-import { useTranslations } from '@syrnike13/ui/i18n'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 import {
   MessageSquareIcon,
   ChevronDownIcon,
@@ -43,7 +43,10 @@ import { VoiceStagePopoutPlaceholder } from '#/components/voice/voice-stage-popo
 import { useAuth } from '#/features/auth/auth-context'
 import { channelActivityClient } from '#/features/activities/channel-activity-client'
 import { channelActivityStageItemId } from '#/features/activities/channel-activity-stage'
-import { getFirstPartyChannelActivity } from '#/features/activities/channel-activity-catalog'
+import {
+  getFirstPartyChannelActivity,
+  type FirstPartyChannelActivity,
+} from '#/features/activities/channel-activity-catalog'
 import { useChannelActivity } from '#/features/activities/use-channel-activity'
 import {
   getChannelVoiceParticipants,
@@ -129,6 +132,14 @@ function isVoiceStageActivityItem(
   return item.kind === 'activity'
 }
 
+function activityTitle(
+  application: FirstPartyChannelActivity | undefined,
+  tA: Translator,
+  t: Translator,
+) {
+  return application ? tA(application.titleKey) : t('stage.unknownApp')
+}
+
 export function VoiceStageView({
   channel,
   title,
@@ -146,6 +157,7 @@ export function VoiceStageView({
   popoutSurface = false,
 }: VoiceStageViewProps) {
   const t = useTranslations('voice')
+  const tA = useTranslations('activities')
   const auth = useAuth()
   const voiceSession = useVoiceSession()
   const voiceStage = useVoiceStage()
@@ -328,9 +340,11 @@ export function VoiceStageView({
       return {
         user: undefined,
         kindLabel: t('stage.activity'),
-        displayName:
-          getFirstPartyChannelActivity(focusedItem.instance.application_id)
-            ?.title ?? t('stage.unknownApp'),
+        displayName: activityTitle(
+          getFirstPartyChannelActivity(focusedItem.instance.application_id),
+          tA,
+          t,
+        ),
         showOnAir: false,
         showAvatar: false,
       }
@@ -360,7 +374,7 @@ export function VoiceStageView({
         focusedItem.kind === 'screen' && Boolean(participant?.screensharing),
       showAvatar: true,
     }
-  }, [auth.user, focusedItem, participantsById, t, users])
+  }, [auth.user, focusedItem, participantsById, t, tA, users])
   const canToggleStageFullscreen =
     !mobileDrawer && (participants.length > 0 || stageItems.length > 0)
   const canInvite =
@@ -465,10 +479,13 @@ export function VoiceStageView({
                 stageItemId: activityStageItem.id,
                 instanceId: activityStageItem.instance.id,
                 channelId: activityStageItem.instance.channel_id,
-                label:
+                label: activityTitle(
                   getFirstPartyChannelActivity(
                     activityStageItem.instance.application_id,
-                  )?.title ?? t('stage.unknownApp'),
+                  ),
+                  tA,
+                  t,
+                ),
                 joined: activityStageItem.instance.participant_ids.includes(
                   currentUserId,
                 ),
@@ -480,6 +497,7 @@ export function VoiceStageView({
       currentUserId,
       resolveParticipantDisplayName,
       t,
+      tA,
       voiceStage.viewedRemoteScreenIds,
     ],
   )

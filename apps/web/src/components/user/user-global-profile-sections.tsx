@@ -1,6 +1,7 @@
 import { ServerIcon } from '#/components/icons'
 import type { Server } from '@syrnike13/api-types'
 import { useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { cn } from '#/lib/utils'
 
@@ -17,12 +18,13 @@ export function UserGlobalProfileSections({
   busy,
   onServerSelect,
 }: UserGlobalProfileSectionsProps) {
+  const t = useTranslations('users')
   const [section, setSection] = useState<GlobalProfileSection>('mutual-servers')
 
   const tabs: { id: GlobalProfileSection; label: string }[] = [
     {
       id: 'mutual-servers',
-      label: `Общие серверы — ${mutualServers.length}`,
+      label: t('mutualServers', { count: mutualServers.length }),
     },
   ]
 
@@ -58,7 +60,7 @@ export function UserGlobalProfileSections({
         {section === 'mutual-servers' ? (
           mutualServers.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Нет общих серверов.
+              {t('noMutualServers')}
             </p>
           ) : (
             <ul className="flex flex-col gap-1">

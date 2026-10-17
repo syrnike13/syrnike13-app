@@ -14,6 +14,7 @@ import {
 import { useNavigate } from '@tanstack/react-router'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { CreateChannelDialog } from '#/components/servers/create-channel-dialog'
 import { CreateCategoryDialog } from '#/components/channels/create-category-dialog'
@@ -83,6 +84,7 @@ export function ServerHeaderMenu({
   serverName,
   overBanner = false,
 }: ServerHeaderMenuProps) {
+  const t = useTranslations('servers.menu')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -124,7 +126,7 @@ export function ServerHeaderMenu({
         yield* Effect.sync(() => {
           syncStore.removeServer(serverId)
           syncStore.setSelectedServerId(null)
-          toast.success(isOwner ? 'Сервер удалён' : 'Вы покинули сервер')
+          toast.success(isOwner ? t('deleted') : t('left'))
           setRemoveDialogOpen(false)
         })
         yield* Effect.tryPromise({
@@ -138,8 +140,8 @@ export function ServerHeaderMenu({
               error instanceof Error
                 ? error.message
                 : isOwner
-                  ? 'Не удалось удалить сервер'
-                  : 'Не удалось покинуть сервер',
+                  ? t('deleteError')
+                  : t('leaveError'),
             )
           }),
         ),
@@ -161,10 +163,10 @@ export function ServerHeaderMenu({
       writeClipboardTextEffect(serverId).pipe(
         Effect.matchEffect({
           onFailure: () =>
-            Effect.sync(() => toast.error('Не удалось скопировать')),
+            Effect.sync(() => toast.error(t('copyError'))),
           onSuccess: () =>
             Effect.sync(() => {
-              toast.success('ID сервера скопирован')
+              toast.success(t('copied'))
               setMenuOpen(false)
             }),
         }),
@@ -210,7 +212,7 @@ export function ServerHeaderMenu({
               icon={<UserPlusIcon className="size-4" />}
               onClick={() => openDialog(() => setInviteOpen(true))}
             >
-              Пригласить на сервер
+              {t('invite')}
             </ServerHeaderMenuItem>
           ) : null}
           {menuPermissions?.settings ? (
@@ -225,7 +227,7 @@ export function ServerHeaderMenu({
                 })
               }}
             >
-              Настройки сервера
+              {t('settings')}
             </ServerHeaderMenuItem>
           ) : null}
           {menuPermissions?.roles ? (
@@ -240,7 +242,7 @@ export function ServerHeaderMenu({
                 })
               }}
             >
-              Роли
+              {t('roles')}
             </ServerHeaderMenuItem>
           ) : null}
           {menuPermissions?.audit ? (
@@ -255,7 +257,7 @@ export function ServerHeaderMenu({
                 })
               }}
             >
-              Журнал аудита
+              {t('audit')}
             </ServerHeaderMenuItem>
           ) : null}
           {menuPermissions?.createChannel ? (
@@ -263,7 +265,7 @@ export function ServerHeaderMenu({
               icon={<PlusCircleIcon className="size-4" />}
               onClick={() => openDialog(() => setCreateChannelOpen(true))}
             >
-              Создать канал
+              {t('createChannel')}
             </ServerHeaderMenuItem>
           ) : null}
           {menuPermissions?.createChannel ? (
@@ -271,7 +273,7 @@ export function ServerHeaderMenu({
               icon={<FolderPlusIcon className="size-4" />}
               onClick={() => openDialog(() => setCreateCategoryOpen(true))}
             >
-              Создать категорию
+              {t('createCategory')}
             </ServerHeaderMenuItem>
           ) : null}
           {showAdminSection &&
@@ -294,7 +296,7 @@ export function ServerHeaderMenu({
                 setRemoveDialogOpen(true)
               }}
             >
-              {isOwner ? 'Удалить сервер' : 'Покинуть сервер'}
+              {isOwner ? t('delete') : t('leave')}
             </ServerHeaderMenuItem>
           ) : null}
           {menuPermissions?.leave && menuPermissions?.copyId ? (
@@ -305,7 +307,7 @@ export function ServerHeaderMenu({
               icon={<CopyIcon className="size-4" />}
               onClick={() => void copyServerId()}
             >
-              Копировать ID сервера
+              {t('copyId')}
             </ServerHeaderMenuItem>
           ) : null}
         </PopoverContent>
@@ -322,13 +324,11 @@ export function ServerHeaderMenu({
             <DialogHeader>
               <DialogTitle>
                 {isOwner
-                  ? `Удалить сервер «${serverName}»?`
-                  : `Покинуть сервер «${serverName}»?`}
+                  ? t('deleteTitle', { name: serverName })
+                  : t('leaveTitle', { name: serverName })}
               </DialogTitle>
               <DialogDescription>
-                {isOwner
-                  ? 'Это действие необратимо. Сервер и его каналы будут удалены.'
-                  : 'Вы потеряете доступ к каналам этого сервера.'}
+                {isOwner ? t('deleteDescription') : t('leaveDescription')}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -338,7 +338,7 @@ export function ServerHeaderMenu({
                 disabled={removingServer}
                 onClick={() => setRemoveDialogOpen(false)}
               >
-                Отмена
+                {t('cancel')}
               </Button>
               <Button
                 type="button"
@@ -346,7 +346,7 @@ export function ServerHeaderMenu({
                 disabled={removingServer}
                 onClick={() => void handleRemoveServer()}
               >
-                {isOwner ? 'Удалить сервер' : 'Покинуть сервер'}
+                {isOwner ? t('delete') : t('leave')}
               </Button>
             </DialogFooter>
           </DialogContent>

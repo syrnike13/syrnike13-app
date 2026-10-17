@@ -158,6 +158,7 @@ export function ChannelView({
 }: ChannelViewProps) {
   const t = useTranslations('chat')
   const tv = useTranslations('chat.voice')
+  const tf = useTranslations('friends')
   const navigate = useNavigate()
   const routePrefix = useAppRoutePrefix()
   const isMobileRoute = routePrefix === '/m'
@@ -290,7 +291,7 @@ export function ChannelView({
     )
   }
 
-  const title = getChannelLabel(channel, users, auth.user?._id)
+  const title = getChannelLabel(channel, users, auth.user?._id, t)
   const dmRecipient = dmRecipientId ? users[dmRecipientId] : undefined
   const dmMessagesBlocked =
     Boolean(dmRecipient && !canMessageUser(dmRecipient._id))
@@ -711,7 +712,7 @@ export function ChannelView({
                 if (!token || message.author === auth.user?._id) return
                 if (!window.confirm(t('blockConfirm'))) return
                 Effect.runFork(
-                  blockUserRelationship(token, message.author).pipe(
+                  blockUserRelationship(token, message.author, tf).pipe(
                     Effect.ignore,
                   ),
                 )
@@ -964,7 +965,7 @@ export function ChannelView({
                 if (!token || message.author === auth.user?._id) return
                 if (!window.confirm(t('blockConfirm'))) return
                 Effect.runFork(
-                  blockUserRelationship(token, message.author).pipe(
+                  blockUserRelationship(token, message.author, tf).pipe(
                     Effect.ignore,
                   ),
                 )

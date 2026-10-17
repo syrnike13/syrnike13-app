@@ -13,15 +13,23 @@ export type GeneralSettingsSection = Exclude<SettingsSection, 'profile'>
 
 export const GENERAL_SETTINGS_NAV: {
   id: GeneralSettingsSection
-  label: string
+  labelKey: string
   icon: AppIcon
 }[] = [
-  { id: 'account', label: 'Аккаунт', icon: PencilFillIcon },
-  { id: 'voice', label: 'Голос и видео', icon: Volume2Icon },
-  { id: 'sessions', label: 'Устройства', icon: MonitorIcon },
-  { id: 'notifications', label: 'Уведомления', icon: BellIcon },
-  { id: 'appearance', label: 'Оформление', icon: PaletteIcon },
-  { id: 'language', label: 'Язык', icon: GlobeIcon },
+  { id: 'account', labelKey: 'sections.account', icon: PencilFillIcon },
+  { id: 'voice', labelKey: 'sections.voice', icon: Volume2Icon },
+  { id: 'sessions', labelKey: 'sections.sessions', icon: MonitorIcon },
+  {
+    id: 'notifications',
+    labelKey: 'sections.notifications',
+    icon: BellIcon,
+  },
+  {
+    id: 'appearance',
+    labelKey: 'sections.appearance',
+    icon: PaletteIcon,
+  },
+  { id: 'language', labelKey: 'sections.language', icon: GlobeIcon },
 ]
 
 export function isGeneralSettingsSection(

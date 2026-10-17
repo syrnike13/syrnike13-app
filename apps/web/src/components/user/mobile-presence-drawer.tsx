@@ -1,4 +1,5 @@
 import { PlusIcon } from '#/components/icons'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   Drawer,
@@ -24,15 +25,16 @@ export function MobilePresenceDrawer({
   customStatus,
   onEditCustomStatus,
 }: MobilePresenceDrawerProps) {
+  const t = useTranslations('users')
   const statusLabel = customStatus?.trim()
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Статус</DrawerTitle>
+          <DrawerTitle>{t('status')}</DrawerTitle>
           <DrawerDescription className="sr-only">
-            Выберите режим присутствия или задайте текстовый статус
+            {t('presenceDescription')}
           </DrawerDescription>
         </DrawerHeader>
 
@@ -52,7 +54,7 @@ export function MobilePresenceDrawer({
           >
             <PlusIcon className="size-4 shrink-0 opacity-70" aria-hidden />
             <span className="min-w-0 flex-1 truncate text-left">
-              {statusLabel ? `«${statusLabel}»` : 'Задать кастомный статус'}
+              {statusLabel ? `«${statusLabel}»` : t('customStatus')}
             </span>
           </button>
         </div>

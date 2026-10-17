@@ -7,6 +7,7 @@ import type {
 } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   HeadphonesIcon,
@@ -74,6 +75,7 @@ export function UserContextMenuVoiceControls({
   voiceChannelId,
   moveVoiceChannels = [],
 }: UserContextMenuVoiceControlsProps) {
+  const t = useTranslations('users.voice')
   const isSelf = actorUserId === userId
   const volume = useVoiceListenerStore((s) => s.getUserVolume(userId))
   const muted = useVoiceListenerStore((s) => s.getUserMuted(userId))
@@ -181,7 +183,7 @@ export function UserContextMenuVoiceControls({
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось изменить голос',
+                : t('updateError'),
             )
           }),
         ),
@@ -200,7 +202,7 @@ export function UserContextMenuVoiceControls({
             onClick={(event) => event.stopPropagation()}
           >
             <ContextMenuLabel className="px-0 pb-2 text-xs text-muted-foreground">
-              Громкость голоса
+              {t('volume')}
             </ContextMenuLabel>
             <div className="flex items-center gap-2">
               <Slider
@@ -226,7 +228,7 @@ export function UserContextMenuVoiceControls({
               voiceListenerStore.setUserMuted(userId, checked === true)
             }}
           >
-            Заглушить голос
+            {t('muteVoice')}
           </ContextMenuCheckboxItem>
         </>
       ) : null}
@@ -244,14 +246,12 @@ export function UserContextMenuVoiceControls({
                 void editTargetMember(
                   'mute',
                   { can_publish: checked !== true },
-                  checked === true
-                    ? 'Микрофон участника отключён'
-                    : 'Микрофон участника включён',
+                  checked === true ? t('micOff') : t('micOn'),
                 )
               }}
             >
               <MicOffIcon />
-              Отключить микрофон
+              {t('muteMic')}
             </ContextMenuCheckboxItem>
           ) : null}
           {canServerDeafen ? (
@@ -265,14 +265,12 @@ export function UserContextMenuVoiceControls({
                 void editTargetMember(
                   'deafen',
                   { can_receive: checked !== true },
-                  checked === true
-                    ? 'Звук участника отключён'
-                    : 'Звук участника включён',
+                  checked === true ? t('soundOff') : t('soundOn'),
                 )
               }}
             >
               <HeadphoneOffIcon />
-              Отключить звук
+              {t('muteSound')}
             </ContextMenuCheckboxItem>
           ) : null}
           {canServerMove && moveTargets.length > 0 ? (
@@ -282,12 +280,12 @@ export function UserContextMenuVoiceControls({
                 disabled={pendingAction !== null}
               >
                 <HeadphonesIcon />
-                Переместить в
+                {t('moveTo')}
               </ContextMenuSubTrigger>
               <ContextMenuSubContent>
                 {moveTargets.map((channel) => {
                   const channelName =
-                    runtimeChannelName(channel) ?? 'Голосовой канал'
+                    runtimeChannelName(channel) ?? t('channelFallback')
                   return (
                     <ContextMenuItem
                       key={channel._id}
@@ -296,7 +294,7 @@ export function UserContextMenuVoiceControls({
                         void editTargetMember(
                           'move',
                           { voice_channel: channel._id },
-                          `Участник перемещён в ${channelName}`,
+                          t('moved', { channel: channelName }),
                         )
                       }}
                     >
@@ -316,12 +314,12 @@ export function UserContextMenuVoiceControls({
                 void editTargetMember(
                   'disconnect',
                   { remove: ['VoiceChannel'] },
-                  'Участник отключён от голосового канала',
+                  t('disconnected'),
                 )
               }}
             >
               <PhoneOffIcon />
-              Отключить от голосового канала
+              {t('disconnectAction')}
             </ContextMenuItem>
           ) : null}
         </>

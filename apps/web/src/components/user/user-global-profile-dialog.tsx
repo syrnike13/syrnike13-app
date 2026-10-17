@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { UserGlobalProfileSections } from '#/components/user/user-global-profile-sections'
 import { UserGlobalProfileSidebar } from '#/components/user/user-global-profile-sidebar'
@@ -40,6 +41,8 @@ export function UserGlobalProfileDialog({
   open,
   onOpenChange,
 }: UserGlobalProfileDialogProps) {
+  const t = useTranslations('users')
+  const tf = useTranslations('friends')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -70,14 +73,19 @@ export function UserGlobalProfileDialog({
     setBusy(true)
     try {
       await Effect.runPromise(
-        openDirectMessageChannel(token, user._id, (channelId) => {
-          close()
-          return navigate({
-            to: `${prefix}/c/$channelId`,
-            params: { channelId },
-            search: { m: undefined },
-          })
-        }),
+        openDirectMessageChannel(
+          token,
+          user._id,
+          (channelId) => {
+            close()
+            return navigate({
+              to: `${prefix}/c/$channelId`,
+              params: { channelId },
+              search: { m: undefined },
+            })
+          },
+          t,
+        ),
       )
     } catch {
       // dm-actions already shows the concrete error toast.
@@ -89,10 +97,11 @@ export function UserGlobalProfileDialog({
   async function handleBlock() {
     const token = auth.session?.token
     if (!token || isSelf) return
-    if (!window.confirm(`Заблокировать @${user.username}?`)) return
+    if (!window.confirm(t('confirmBan', { username: user.username })))
+      return
     setBusy(true)
     try {
-      await Effect.runPromise(blockUserRelationship(token, user._id))
+      await Effect.runPromise(blockUserRelationship(token, user._id, tf))
       close()
     } catch {
       // friend-actions already shows the concrete error toast.
@@ -106,7 +115,7 @@ export function UserGlobalProfileDialog({
     if (!token || isSelf) return
     setBusy(true)
     try {
-      await Effect.runPromise(unblockBlockedUser(token, user._id))
+      await Effect.runPromise(unblockBlockedUser(token, user._id, tf))
     } catch {
       // friend-actions already shows the concrete error toast.
     } finally {
@@ -117,9 +126,9 @@ export function UserGlobalProfileDialog({
   async function copyUserId() {
     try {
       await Effect.runPromise(writeClipboardTextEffect(user._id))
-      toast.success('ID скопирован')
+      toast.success(t('idCopied'))
     } catch {
-      toast.error('Не удалось скопировать')
+      toast.error(t('copyError'))
     }
   }
 
@@ -141,12 +150,14 @@ export function UserGlobalProfileDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex h-[min(660px,90vh)] max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[900px]"
+        className="flex h-[min(41.25rem,90vh)] max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[56.25rem]"
         showCloseButton
       >
-        <DialogTitle className="sr-only">Профиль {displayName}</DialogTitle>
+        <DialogTitle className="sr-only">
+          {t('profileTitle', { name: displayName })}
+        </DialogTitle>
         <DialogDescription className="sr-only">
-          Глобальный профиль пользователя {displayName}
+          {t('profileDescription', { name: displayName })}
         </DialogDescription>
 
         <div className="flex min-h-0 flex-1 overflow-hidden p-6">

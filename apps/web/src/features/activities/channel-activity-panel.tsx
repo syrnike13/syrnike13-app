@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Gamepad2Icon } from '#/components/icons'
 
 import { Button } from '#/components/ui/button'
@@ -30,19 +31,20 @@ export function ChannelActivityLauncher({
   activity,
   onClose,
 }: ChannelActivityLauncherProps) {
+  const t = useTranslations('activities')
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center p-6">
       <div className="w-full max-w-2xl rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-xl">
         <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-primary/15 text-primary">
           <Gamepad2Icon className="size-6" />
         </div>
-        <h2 className="text-xl font-semibold">Активности</h2>
+        <h2 className="text-xl font-semibold">{t('title')}</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Запустите общее приложение для участников этого голосового канала.
+          {t('description')}
         </p>
         {activity.error ? (
           <p className="mt-3 text-sm text-destructive">
-            Не удалось запустить Активность: {activity.error}
+            {t('launchError', { error: activity.error })}
           </p>
         ) : null}
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -52,10 +54,10 @@ export function ChannelActivityLauncher({
               className="flex flex-col rounded-xl border border-border bg-background p-4"
             >
               <h3 className="font-medium text-foreground">
-                {application.title}
+                {t(application.titleKey)}
               </h3>
               <p className="mt-1 flex-1 text-sm text-muted-foreground">
-                {application.description}
+                {t(application.descriptionKey)}
               </p>
               <Button
                 type="button"
@@ -64,14 +66,14 @@ export function ChannelActivityLauncher({
                   channelActivityClient.start(channelId, application.id)
                 }
               >
-                Запустить
+                {t('start')}
               </Button>
             </div>
           ))}
         </div>
         <div className="mt-4">
           <Button type="button" variant="outline" onClick={onClose}>
-            Назад
+            {t('back')}
           </Button>
         </div>
       </div>
@@ -96,6 +98,7 @@ export function EmbeddedActivityFrame({
   onCommand: (command: unknown) => void
   onClose: () => void
 }) {
+  const t = useTranslations('activities')
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const portRef = useRef<MessagePort | null>(null)
   const commandRef = useRef(onCommand)
@@ -198,7 +201,7 @@ export function EmbeddedActivityFrame({
   return (
     <iframe
       ref={iframeRef}
-      title={application.title}
+      title={t(application.titleKey)}
       src={application.entryUrl}
       sandbox="allow-scripts"
       className="size-full min-h-0 rounded-md border-0 bg-background"

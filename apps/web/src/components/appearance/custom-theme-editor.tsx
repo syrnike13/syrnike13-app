@@ -4,6 +4,7 @@ import {
   type AppearanceGradientSettings,
 } from '@syrnike13/platform'
 import { useEffect, useState, type KeyboardEvent } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { PlusIcon, Trash2Icon } from '#/components/icons'
 import { Button } from '#/components/ui/button'
@@ -30,6 +31,7 @@ function GradientColorStop({
   onChange,
   onRemove,
 }: GradientColorStopProps) {
+  const t = useTranslations('settings.appearance')
   const [draft, setDraft] = useState(color)
 
   useEffect(() => {
@@ -58,20 +60,22 @@ function GradientColorStop({
       <label
         className="relative size-9 shrink-0 cursor-pointer overflow-hidden rounded-md border border-border shadow-sm"
         style={{ backgroundColor: color }}
-        title={`Изменить цвет ${index + 1}`}
+        title={t('editColor', { index: index + 1 })}
       >
-        <span className="sr-only">Изменить цвет {index + 1}</span>
+        <span className="sr-only">
+          {t('editColor', { index: index + 1 })}
+        </span>
         <input
           type="color"
           className="absolute inset-0 size-full cursor-pointer opacity-0"
           value={color}
-          aria-label={`Цвет ${index + 1}`}
+          aria-label={t('color', { index: index + 1 })}
           onChange={(event) => onChange(event.target.value.toUpperCase())}
         />
       </label>
       <Input
         value={draft}
-        aria-label={`HEX цвета ${index + 1}`}
+        aria-label={t('hexColor', { index: index + 1 })}
         className="font-mono uppercase"
         maxLength={7}
         spellCheck={false}
@@ -85,8 +89,8 @@ function GradientColorStop({
         size="icon"
         className="size-9 shrink-0"
         disabled={!canRemove}
-        aria-label={`Удалить цвет ${index + 1}`}
-        title={canRemove ? 'Удалить цвет' : 'Нужен хотя бы один цвет'}
+        aria-label={t('removeColor', { index: index + 1 })}
+        title={canRemove ? t('removeColorTitle') : t('lastColorHint')}
         onClick={onRemove}
       >
         <Trash2Icon className="size-4" />
@@ -121,6 +125,8 @@ export function CustomThemeEditor({
   onPreview,
   onChange,
 }: CustomThemeEditorProps) {
+  const t = useTranslations('settings.appearance')
+
   function updateColor(index: number, color: string) {
     const colors = [...gradient.colors]
     colors[index] = color
@@ -148,13 +154,13 @@ export function CustomThemeEditor({
       <div
         className="h-28 overflow-hidden rounded-xl border border-border/70 shadow-inner"
         style={{ backgroundImage: themeGradientCss(gradient) }}
-        aria-label="Предпросмотр градиента"
+        aria-label={t('previewAria')}
         role="img"
       />
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
-          <Label>Цвета</Label>
+          <Label>{t('colors')}</Label>
           <span className="text-xs text-muted-foreground">
             {gradient.colors.length}/{APPEARANCE_GRADIENT_MAX_COLORS}
           </span>
@@ -181,14 +187,14 @@ export function CustomThemeEditor({
           onClick={addColor}
         >
           <PlusIcon className="size-4" data-icon="inline-start" />
-          Добавить цвет
+          {t('addColor')}
         </Button>
       </div>
 
       <div className="space-y-5 rounded-xl border border-border/70 bg-card/55 p-4">
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-4">
-            <Label htmlFor="theme-gradient-angle">Направление градиента</Label>
+            <Label htmlFor="theme-gradient-angle">{t('angle')}</Label>
             <span className="text-sm tabular-nums text-muted-foreground">
               {gradient.angle}°
             </span>
@@ -213,7 +219,7 @@ export function CustomThemeEditor({
 
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-4">
-            <Label htmlFor="theme-gradient-saturation">Насыщенность цвета</Label>
+            <Label htmlFor="theme-gradient-saturation">{t('saturation')}</Label>
             <span className="text-sm tabular-nums text-muted-foreground">
               {gradient.saturation}%
             </span>
@@ -243,7 +249,7 @@ export function CustomThemeEditor({
           variant="secondary"
           onClick={() => onChange(randomGradient())}
         >
-          Удивите меня
+          {t('surprise')}
         </Button>
         <Button
           type="button"
@@ -252,7 +258,7 @@ export function CustomThemeEditor({
           className={cn(!customized && 'text-muted-foreground')}
           onClick={() => onChange(null)}
         >
-          Сбросить к палитре
+          {t('resetPalette')}
         </Button>
       </div>
     </div>

@@ -27,6 +27,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
   const t = useTranslations('home.dm')
   const tVoice = useTranslations('layout.voice')
   const tChannel = useTranslations('channels.channelItem')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const prefix = useAppRoutePrefix()
   const syncState = useSyncStore((s) => s)
@@ -53,7 +54,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
   return (
     <nav className={cn('flex flex-col gap-0.5', className)}>
       {dmChannels.map((channel) => {
-        const label = getChannelLabel(channel, users, auth.user?._id)
+        const label = getChannelLabel(channel, users, auth.user?._id, tChat)
         const active = channel._id === activeChannelId
         const notificationBadge = selectChannelNotificationBadge(
           syncState,

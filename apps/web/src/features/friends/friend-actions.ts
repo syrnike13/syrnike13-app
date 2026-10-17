@@ -1,6 +1,7 @@
 import type { User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+import type { Translator } from '@syrnike13/ui/i18n'
 
 import {
   acceptFriendRequestEffect,
@@ -73,106 +74,120 @@ const runFriendAction = Effect.fn('friends.runAction')(
 export function sendFriendRequestToUser(
   token: string,
   user: User,
+  t: Translator,
   deps: FriendActionDeps = defaultDeps,
 ) {
-  return sendFriendRequestByUsername(token, friendRequestUsername(user), deps)
+  return sendFriendRequestByUsername(
+    token,
+    friendRequestUsername(user),
+    t,
+    deps,
+  )
 }
 
 export function sendFriendRequestByUsername(
   token: string,
   username: string,
+  t: Translator,
   deps: FriendActionDeps = defaultDeps,
 ) {
   return runFriendAction(
     () => deps.sendFriendRequest(token, username),
     deps,
-    'Заявка отправлена',
-    'Не удалось отправить заявку',
+    t('requestSent'),
+    t('requestSendError'),
   )
 }
 
 export function acceptIncomingFriendRequest(
   token: string,
   userId: string,
+  t: Translator,
   deps: FriendActionDeps = defaultDeps,
 ) {
   return runFriendAction(
     () => deps.acceptFriendRequest(token, userId),
     deps,
-    'Заявка принята',
-    'Не удалось принять заявку',
+    t('requestAccepted'),
+    t('requestAcceptError'),
   )
 }
 
 export function declineIncomingFriendRequest(
   token: string,
   userId: string,
+  t: Translator,
   deps: FriendActionDeps = defaultDeps,
 ) {
   return runFriendAction(
     () => deps.removeFriendOrRequest(token, userId),
     deps,
-    'Заявка отклонена',
-    'Не удалось отклонить заявку',
+    t('requestDeclined'),
+    t('requestDeclineError'),
   )
 }
 
 export function cancelOutgoingFriendRequest(
   token: string,
   userId: string,
+  t: Translator,
   deps: FriendActionDeps = defaultDeps,
 ) {
   return runFriendAction(
     () => deps.removeFriendOrRequest(token, userId),
     deps,
-    'Заявка отменена',
-    'Не удалось отменить заявку',
+    t('requestCancelled'),
+    t('requestCancelError'),
   )
 }
 
 export function removeFriend(
   token: string,
   userId: string,
+  t: Translator,
   deps: FriendActionDeps = defaultDeps,
 ) {
   return runFriendAction(
     () => deps.removeFriendOrRequest(token, userId),
     deps,
-    'Пользователь удалён из друзей',
-    'Не удалось удалить из друзей',
+    t('friendRemoved'),
+    t('friendRemoveError'),
   )
 }
 
 export function blockIncomingFriendRequest(
   token: string,
   userId: string,
+  t: Translator,
   deps: FriendActionDeps = defaultDeps,
 ) {
-  return blockUserRelationship(token, userId, deps)
+  return blockUserRelationship(token, userId, t, deps)
 }
 
 export function blockUserRelationship(
   token: string,
   userId: string,
+  t: Translator,
   deps: FriendActionDeps = defaultDeps,
 ) {
   return runFriendAction(
     () => deps.blockUser(token, userId),
     deps,
-    'Пользователь заблокирован',
-    'Не удалось заблокировать',
+    t('userBlocked'),
+    t('userBlockError'),
   )
 }
 
 export function unblockBlockedUser(
   token: string,
   userId: string,
+  t: Translator,
   deps: FriendActionDeps = defaultDeps,
 ) {
   return runFriendAction(
     () => deps.unblockUser(token, userId),
     deps,
-    'Пользователь разблокирован',
-    'Не удалось разблокировать',
+    t('userUnblocked'),
+    t('userUnblockError'),
   )
 }

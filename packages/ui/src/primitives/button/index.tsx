@@ -36,6 +36,8 @@ const buttonVariants = cva(
         "floating-outline":
           "border border-border/60 bg-background/80 text-foreground shadow-sm backdrop-blur-sm hover:bg-background",
         scrim: "bg-scrim text-on-scrim hover:opacity-80",
+        "scrim-icon":
+          "rounded-full bg-scrim text-on-scrim hover:opacity-80",
         toolbar:
           "rounded-md text-muted-foreground hover:bg-muted hover:text-foreground",
         "toolbar-active":

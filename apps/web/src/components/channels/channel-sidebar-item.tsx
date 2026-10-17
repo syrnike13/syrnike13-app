@@ -105,6 +105,7 @@ export function ChannelSidebarItem({
   dragging = false,
 }: ChannelSidebarItemProps) {
   const t = useTranslations('channels.channelItem')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const voice = useVoiceSession()
   const navigate = useNavigate()
@@ -204,7 +205,7 @@ export function ChannelSidebarItem({
     )
   }
 
-  const label = getChannelLabel(channel, users, currentUserId)
+  const label = getChannelLabel(channel, users, currentUserId, tChat)
   const active = channel._id === activeChannelId
   const notificationBadge = useSyncStore((s) =>
     selectChannelNotificationBadge(s, channel),

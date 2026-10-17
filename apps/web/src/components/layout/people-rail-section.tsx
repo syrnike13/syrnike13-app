@@ -97,6 +97,7 @@ function PeopleRailButton({
   currentUserId?: string
 }) {
   const t = useTranslations('layout.voice')
+  const tChat = useTranslations('chat')
   const users = useSyncStore((s) => s.users)
   const notificationBadge = useSyncStore((s) =>
     selectChannelNotificationBadge(s, channel),
@@ -111,7 +112,7 @@ function PeopleRailButton({
   )
 
   const active = channel._id === activeChannelId
-  const label = getChannelLabel(channel, users, currentUserId)
+  const label = getChannelLabel(channel, users, currentUserId, tChat)
   const dmRecipientId = getDmRecipientId(channel, currentUserId)
   const dmUser = dmRecipientId ? users[dmRecipientId] : undefined
   const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/app/c/$channelId'

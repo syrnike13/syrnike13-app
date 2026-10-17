@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { DataCreateInvite, Invite, User } from '@syrnike13/api-types'
 import { Effect, Fiber } from 'effect'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -48,14 +49,18 @@ type ServerInviteDialogProps = {
 }
 
 const INVITE_MAX_AGE_OPTIONS = [
-  { label: '1 час', value: '3600' },
-  { label: '1 день', value: '86400' },
-  { label: '7 дней', value: '604800' },
-  { label: 'Без срока', value: '0' },
+  { labelKey: 'maxAge.oneHour', value: '3600' },
+  { labelKey: 'maxAge.oneDay', value: '86400' },
+  { labelKey: 'maxAge.sevenDays', value: '604800' },
+  { labelKey: 'maxAge.never', value: '0' },
 ]
 
-const INVITE_MAX_USES_OPTIONS = [
-  { label: 'Без лимита', value: '0' },
+type InviteMaxUsesOption =
+  | { value: string; labelKey: string }
+  | { value: string; label: string }
+
+const INVITE_MAX_USES_OPTIONS: InviteMaxUsesOption[] = [
+  { labelKey: 'maxUsesLabels.unlimited', value: '0' },
   { label: '1', value: '1' },
   { label: '5', value: '5' },
   { label: '10', value: '10' },
@@ -87,6 +92,7 @@ export function ServerInviteDialog({
   open,
   onOpenChange,
 }: ServerInviteDialogProps) {
+  const t = useTranslations('servers.invite')
   const auth = useAuth()
   const token = auth.session?.token
   const server = useSyncStore((s) => s.servers[serverId])
@@ -139,7 +145,7 @@ export function ServerInviteDialog({
       : defaultChannelId
   const activeChannelName =
     textChannels.find((channel) => channel._id === activeChannelId)?.name ??
-    'канал'
+    t('channelFallback')
   const friends = useSyncStore((s) =>
     listUsersByRelationship(s, 'Friend', auth.user?._id).filter(
       (user) => !user.bot,
@@ -170,12 +176,12 @@ export function ServerInviteDialog({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось загрузить',
+              error instanceof Error ? error.message : t('loadError'),
             )
           }),
         ),
       ),
-    [canManageServerInvites, serverId, token],
+    [canManageServerInvites, serverId, t, token],
   )
 
   useEffect(() => {
@@ -229,7 +235,7 @@ export function ServerInviteDialog({
 
       if (!token || !activeChannelId) {
         return Effect.fail(
-          new Error('Нет текстового канала для приглашения'),
+          new Error(t('noTextChannel')),
         )
       }
 
@@ -250,7 +256,7 @@ export function ServerInviteDialog({
 
             if (!code) {
               return yield* Effect.fail(
-                new Error('Сервер не вернул код приглашения'),
+                new Error(t('noCode')),
               )
             }
 
@@ -278,11 +284,11 @@ export function ServerInviteDialog({
           onFailure: (error) =>
             Effect.sync(() => {
               toast.error(
-                error instanceof Error ? error.message : 'Не удалось скопировать',
+                error instanceof Error ? error.message : t('copyError'),
               )
             }),
           onSuccess: () =>
-            Effect.sync(() => toast.success('Ссылка скопирована')),
+            Effect.sync(() => toast.success(t('copied'))),
         }),
       ),
     )
@@ -301,7 +307,10 @@ export function ServerInviteDialog({
           token,
           channel._id,
           {
-            content: `Приглашение на сервер ${server?.name ?? 'сервер'}: ${url}`,
+            content: t('message', {
+              server: server?.name ?? t('serverFallback'),
+              url,
+            }),
           },
         )
         yield* Effect.sync(() => {
@@ -309,13 +318,13 @@ export function ServerInviteDialog({
           setSentUserIds((current) =>
             current.includes(user._id) ? current : [...current, user._id],
           )
-          toast.success('Приглашение отправлено')
+          toast.success(t('sent'))
         })
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось пригласить',
+              error instanceof Error ? error.message : t('inviteError'),
             )
           }),
         ),
@@ -326,11 +335,13 @@ export function ServerInviteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[440px]">
+      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[27.5rem]">
         <DialogHeader className="px-5 pt-5 pb-3">
-          <DialogTitle>Пригласить друзей в {server?.name ?? 'сервер'}</DialogTitle>
+          <DialogTitle>
+            {t('title', { server: server?.name ?? t('serverFallback') })}
+          </DialogTitle>
           <p className="flex items-center gap-1 text-sm text-muted-foreground">
-            Участники окажутся в{' '}
+            {t('membersJoin')}{' '}
             <span className="inline-flex items-center gap-1 text-foreground">
               <HashIcon className="size-3.5" />
               {activeChannelName}
@@ -344,7 +355,7 @@ export function ServerInviteDialog({
             <Input
               value={friendSearch}
               onChange={(event) => setFriendSearch(event.target.value)}
-              placeholder="Найти друзей"
+              placeholder={t('search')}
               className="h-10 pl-9"
             />
           </div>
@@ -352,11 +363,11 @@ export function ServerInviteDialog({
 
         <div className="min-h-48 px-4 pb-4">
           <p className="px-1 pb-1 text-xs font-medium text-muted-foreground">
-            Участники сервера
+            {t('serverMembers')}
           </p>
           {visibleFriends.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              Друзья не найдены
+              {t('noFriends')}
             </p>
           ) : (
             <ul className="max-h-72 space-y-1 overflow-y-auto pr-1">
@@ -382,18 +393,18 @@ export function ServerInviteDialog({
                         size="sm"
                         variant={sent ? 'secondary' : 'default'}
                         disabled={busy || sent || creatingLink || !activeChannelId}
-                        aria-label={`Пригласить ${label}`}
+                        aria-label={t('inviteAria', { name: label })}
                         onClick={() => void inviteFriend(user)}
                       >
                         {sent ? (
                           <>
                             <CheckIcon className="size-4" />
-                            Отправлено
+                            {t('invited')}
                           </>
                         ) : busy ? (
-                          'Отправка...'
+                          t('sending')
                         ) : (
-                          'Пригласить'
+                          t('invite')
                         )}
                       </Button>
                     </div>
@@ -406,7 +417,7 @@ export function ServerInviteDialog({
 
         <div className="border-t bg-muted/20 px-5 py-4">
           <p className="mb-2 text-sm font-semibold">
-            Или отправьте другу ссылку-приглашение на сервер
+            {t('orSendLink')}
           </p>
           <div className="flex gap-2">
             <div className="flex h-10 min-w-0 flex-1 items-center rounded-md border border-input bg-background px-3 text-sm">
@@ -416,7 +427,7 @@ export function ServerInviteDialog({
                   !currentInviteUrl && 'text-muted-foreground',
                 )}
               >
-                {currentInviteUrl || 'Ссылка будет создана при копировании'}
+                {currentInviteUrl || t('linkPending')}
               </span>
             </div>
             <Button
@@ -425,7 +436,7 @@ export function ServerInviteDialog({
               onClick={() => void copyInviteLink()}
             >
               <CopyIcon className="size-4" />
-              Копировать
+              {t('copy')}
             </Button>
           </div>
           <button
@@ -433,7 +444,7 @@ export function ServerInviteDialog({
             className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
             onClick={() => setSettingsOpen((current) => !current)}
           >
-            Изменить ссылку-приглашение
+            {t('editLink')}
             <ChevronDownIcon
               className={cn(
                 'size-3.5 transition-transform',
@@ -447,7 +458,7 @@ export function ServerInviteDialog({
               {inviteChannels.length > 0 ? (
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="server-invite-channel">
-                    Канал приглашения
+                    {t('channel')}
                   </Label>
                   <select
                     id="server-invite-channel"
@@ -468,7 +479,7 @@ export function ServerInviteDialog({
               ) : null}
 
               <div className="space-y-1.5">
-                <Label htmlFor="server-invite-max-age">Срок действия</Label>
+                <Label htmlFor="server-invite-max-age">{t('expiry')}</Label>
                 <select
                   id="server-invite-max-age"
                   value={maxAgeSeconds}
@@ -480,7 +491,7 @@ export function ServerInviteDialog({
                 >
                   {INVITE_MAX_AGE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
-                      {option.label}
+                      {t(option.labelKey)}
                     </option>
                   ))}
                 </select>
@@ -488,7 +499,7 @@ export function ServerInviteDialog({
 
               <div className="space-y-1.5">
                 <Label htmlFor="server-invite-max-uses">
-                  Максимум использований
+                  {t('maxUses')}
                 </Label>
                 <select
                   id="server-invite-max-uses"
@@ -501,7 +512,9 @@ export function ServerInviteDialog({
                 >
                   {INVITE_MAX_USES_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
-                      {option.label}
+                      {'labelKey' in option
+                        ? t(option.labelKey)
+                        : option.label}
                     </option>
                   ))}
                 </select>

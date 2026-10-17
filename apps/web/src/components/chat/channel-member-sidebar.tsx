@@ -129,7 +129,7 @@ export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
 
   const sidebarItems = useMemo(() => {
     const sections = groupServerMembersForSidebar(server, visibleMembers)
-    return flattenMemberListSections(sections)
+    return flattenMemberListSections(sections, t)
   }, [server, visibleMembers])
 
   return (

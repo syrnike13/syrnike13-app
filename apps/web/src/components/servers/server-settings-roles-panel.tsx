@@ -25,6 +25,7 @@ import {
 } from '#/components/icons'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
 import { FxImage } from '#/components/ui/fx-image'
 import { ServerSettingsRoleEditor } from '#/components/servers/server-settings-role-editor'
@@ -72,7 +73,6 @@ import { roleIconUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'
 
 const DEFAULT_PERMISSIONS_ID = '__default_permissions__'
-const NEW_ROLE_NAME = 'Новая роль'
 
 const ROLE_SIDEBAR_ROW_BASE =
   'flex min-h-11 w-full items-center gap-2 rounded-md border px-3 py-2 text-left transition-colors'
@@ -99,15 +99,8 @@ function upsertServerRole(serverId: string, role: Role) {
   })
 }
 
-function formatMemberCount(count: number) {
-  const mod10 = count % 10
-  const mod100 = count % 100
-
-  if (mod10 === 1 && mod100 !== 11) return `${count} участник`
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-    return `${count} участника`
-  }
-  return `${count} участников`
+function formatMemberCount(count: number, t: Translator) {
+  return t('memberCount', { count })
 }
 
 function SortableRoleListItem({
@@ -129,6 +122,7 @@ function SortableRoleListItem({
   onSelect: () => void
   onDelete: () => void
 }) {
+  const t = useTranslations('servers.roles')
   const [menuPosition, setMenuPosition] = useState<{
     x: number
     y: number
@@ -188,14 +182,14 @@ function SortableRoleListItem({
         >
           {role.name}
         </span>
-        <span className="block truncate text-[11px] font-normal text-muted-foreground">
-          <span>{formatMemberCount(memberCount)}</span>
+        <span className="block truncate text-[0.6875rem] font-normal text-muted-foreground">
+          <span>{formatMemberCount(memberCount, t)}</span>
         </span>
       </span>
       {!manageable ? (
         <span
           className="shrink-0 text-muted-foreground"
-          title="Только просмотр"
+          title={t('viewOnly')}
         >
           <ShieldOffIcon className="size-4" />
         </span>
@@ -205,7 +199,7 @@ function SortableRoleListItem({
           <button
             type="button"
             className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label={`Действия роли ${role.name}`}
+            aria-label={t('roleActions', { name: role.name })}
             aria-haspopup="menu"
             aria-expanded={menuPosition ? true : undefined}
             onClick={(event) => {
@@ -236,7 +230,7 @@ function SortableRoleListItem({
               }}
             >
               <Trash2Icon className="size-4" />
-              Удалить роль
+              {t('deleteRole')}
             </FloatingMenuItem>
           </FloatingMenu>
         </>
@@ -366,6 +360,7 @@ function DefaultPermissionsEditor({
   token: string
   canEdit: boolean
 }) {
+  const t = useTranslations('servers.roles')
   const [permissions, setPermissions] = useState(server.default_permissions)
   const [saving, setSaving] = useState(false)
 
@@ -397,7 +392,7 @@ function DefaultPermissionsEditor({
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось сохранить права',
+                : t('savePermissionsError'),
             )
             return false
           }),
@@ -405,7 +400,7 @@ function DefaultPermissionsEditor({
         Effect.ensuring(Effect.sync(() => setSaving(false))),
       ),
     )
-  }, [isDirty, permissions, serverId, token])
+  }, [isDirty, permissions, serverId, t, token])
 
   const draftRegistration = useMemo(
     (): DraftController => ({
@@ -422,9 +417,9 @@ function DefaultPermissionsEditor({
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-base font-semibold">Права по умолчанию</h3>
+        <h3 className="text-base font-semibold">{t('defaultPermissions')}</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Базовые права для всех участников сервера без ролей.
+          {t('defaultPermissionsHint')}
         </p>
       </div>
 
@@ -482,6 +477,7 @@ function DefaultPermissionsEditor({
 export function ServerSettingsRolesPanel({
   serverId,
 }: ServerSettingsRolesPanelProps) {
+  const t = useTranslations('servers.roles')
   const auth = useAuth()
   const server = useSyncStore((s) => s.servers[serverId])
   const member = useSyncStore((s) =>
@@ -563,7 +559,7 @@ export function ServerSettingsRolesPanel({
     setCreating(true)
     await Effect.runPromise(
       createServerRoleEffect(token, serverId, {
-        name: NEW_ROLE_NAME,
+        name: t('newRole'),
       }).pipe(
         Effect.tap(({ id, role }) =>
           Effect.sync(() => {
@@ -574,7 +570,7 @@ export function ServerSettingsRolesPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось создать роль',
+              error instanceof Error ? error.message : t('createRoleError'),
             )
           }),
         ),
@@ -633,7 +629,7 @@ export function ServerSettingsRolesPanel({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось удалить роль',
+              error instanceof Error ? error.message : t('deleteRoleError'),
             )
           }),
         ),
@@ -665,7 +661,7 @@ export function ServerSettingsRolesPanel({
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось изменить порядок',
+                : t('reorderError'),
             )
           }),
         ),
@@ -695,7 +691,7 @@ export function ServerSettingsRolesPanel({
             onClick={() => void createRole()}
           >
             <PlusIcon className="size-4" />
-            Создать роль
+            {t('createRole')}
           </Button>
         ) : null}
 
@@ -715,7 +711,7 @@ export function ServerSettingsRolesPanel({
             </button>
 
             {roles.length === 0 ? (
-              <p className="px-1 text-sm text-muted-foreground">Нет ролей</p>
+              <p className="px-1 text-sm text-muted-foreground">{t('noRoles')}</p>
             ) : (
               <SortableRolesList
                 roles={roles}
@@ -771,11 +767,11 @@ export function ServerSettingsRolesPanel({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              Удалить роль «{rolePendingDeletion?.name}»?
+              {t('deleteRoleTitle', {
+                name: rolePendingDeletion?.name ?? '',
+              })}
             </DialogTitle>
-            <DialogDescription>
-              Участники потеряют эту роль. Это действие необратимо.
-            </DialogDescription>
+            <DialogDescription>{t('deleteRoleDescription')}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button
@@ -784,7 +780,7 @@ export function ServerSettingsRolesPanel({
               disabled={deletingRole}
               onClick={() => setRolePendingDeletion(null)}
             >
-              Отмена
+              {t('cancel')}
             </Button>
             <Button
               type="button"
@@ -792,7 +788,7 @@ export function ServerSettingsRolesPanel({
               disabled={deletingRole}
               onClick={() => void confirmRoleDeletion()}
             >
-              Удалить
+              {t('delete')}
             </Button>
           </DialogFooter>
         </DialogContent>

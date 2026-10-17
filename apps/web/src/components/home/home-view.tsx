@@ -75,6 +75,7 @@ function HomeFriendRow({
   actions?: ReactNode
 }) {
   const t = useTranslations('home.friends')
+  const tf = useTranslations('friends')
   const interactive = Boolean(onOpen)
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -97,7 +98,7 @@ function HomeFriendRow({
     if (!token) return
     if (!window.confirm(t('blockConfirm', { username: user.username }))) return
     Effect.runFork(
-      blockUserRelationship(token, user._id).pipe(Effect.ignore),
+      blockUserRelationship(token, user._id, tf).pipe(Effect.ignore),
     )
   }
 
@@ -162,7 +163,7 @@ function HomeFriendRow({
                 <FloatingMenuItem
                   onClick={() => {
                     Effect.runFork(
-                      declineIncomingFriendRequest(token, user._id).pipe(
+                      declineIncomingFriendRequest(token, user._id, tf).pipe(
                         Effect.ignore,
                       ),
                     )
@@ -176,7 +177,7 @@ function HomeFriendRow({
                 <FloatingMenuItem
                   onClick={() => {
                     Effect.runFork(
-                      cancelOutgoingFriendRequest(token, user._id).pipe(
+                      cancelOutgoingFriendRequest(token, user._id, tf).pipe(
                         Effect.ignore,
                       ),
                     )
@@ -190,7 +191,7 @@ function HomeFriendRow({
                 <FloatingMenuItem
                   onClick={() => {
                     Effect.runFork(
-                      removeFriend(token, user._id).pipe(Effect.ignore),
+                      removeFriend(token, user._id, tf).pipe(Effect.ignore),
                     )
                   }}
                 >
@@ -236,6 +237,8 @@ type HomeViewProps = {
 
 export function HomeView({ tab }: HomeViewProps) {
   const t = useTranslations('home.friends')
+  const tf = useTranslations('friends')
+  const tu = useTranslations('users')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -294,12 +297,16 @@ export function HomeView({ tab }: HomeViewProps) {
   async function openDm(userId: string) {
     if (!token) return
     await Effect.runPromise(
-      openDirectMessageChannel(token, userId, (channelId) =>
-        navigate({
-          to: `${prefix}/c/$channelId`,
-          params: { channelId },
-          search: { m: undefined },
-        }),
+      openDirectMessageChannel(
+        token,
+        userId,
+        (channelId) =>
+          navigate({
+            to: `${prefix}/c/$channelId`,
+            params: { channelId },
+            search: { m: undefined },
+          }),
+        tu,
       ).pipe(Effect.ignore),
     )
   }
@@ -311,7 +318,7 @@ export function HomeView({ tab }: HomeViewProps) {
 
     setSending(true)
     try {
-      await Effect.runPromise(sendFriendRequestByUsername(token, trimmed))
+      await Effect.runPromise(sendFriendRequestByUsername(token, trimmed, tf))
       setUsername('')
       setAddOpen(false)
     } catch {
@@ -441,6 +448,7 @@ export function HomeView({ tab }: HomeViewProps) {
                                   acceptIncomingFriendRequest(
                                     token,
                                     user._id,
+                                    tf,
                                   ).pipe(Effect.ignore),
                                 )
                               }}
@@ -458,6 +466,7 @@ export function HomeView({ tab }: HomeViewProps) {
                                   declineIncomingFriendRequest(
                                     token,
                                     user._id,
+                                    tf,
                                   ).pipe(Effect.ignore),
                                 )
                                 return
@@ -467,6 +476,7 @@ export function HomeView({ tab }: HomeViewProps) {
                                 cancelOutgoingFriendRequest(
                                   token,
                                   user._id,
+                                  tf,
                                 ).pipe(Effect.ignore),
                               )
                             }}

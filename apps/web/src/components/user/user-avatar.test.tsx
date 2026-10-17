@@ -190,7 +190,7 @@ describe('UserAvatar notification badge', () => {
       />,
     )
 
-    const badge = screen.getByLabelText('3 уведомлений')
+    const badge = screen.getByLabelText('3 уведомления')
     expect(badge.textContent).toBe('3')
     expect(badge.style.backgroundColor).toBe('var(--destructive-contrast)')
   })
@@ -203,7 +203,7 @@ describe('UserAvatar notification badge', () => {
       />,
     )
 
-    expect(screen.getByLabelText('1 уведомлений')).toBeTruthy()
+    expect(screen.getByLabelText('1 уведомление')).toBeTruthy()
     expect(screen.queryByTitle('В сети')).toBeNull()
   })
 })

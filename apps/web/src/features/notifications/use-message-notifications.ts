@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import type { Message } from '@syrnike13/api-types'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { eventsGateway } from '#/features/events/gateway'
@@ -14,17 +15,27 @@ function canNotify() {
   )
 }
 
-function notificationTitle(message: Message, currentUserId?: string) {
+function notificationTitle(
+  message: Message,
+  currentUserId: string | undefined,
+  t: Translator,
+  tChat: Translator,
+) {
   const state = syncStore.getState()
   const channel = state.channels[message.channel]
-  if (!channel) return 'Новое сообщение'
+  if (!channel) return t('newMessage')
 
   const author =
     message.user ??
     state.users[message.author] ??
-    ({ username: 'Кто-то' } as const)
+    ({ username: t('someone') } as const)
 
-  const channelName = getChannelLabel(channel, state.users, currentUserId)
+  const channelName = getChannelLabel(
+    channel,
+    state.users,
+    currentUserId,
+    tChat,
+  )
   return `${author.display_name ?? author.username} · ${channelName}`
 }
 
@@ -34,6 +45,8 @@ function activeChannelIdFromPath() {
 }
 
 export function useMessageNotifications() {
+  const t = useTranslations('notifications')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
 
   useEffect(() => {
@@ -57,10 +70,10 @@ export function useMessageNotifications() {
 
       const body =
         message.content?.trim().slice(0, 140) ||
-        (message.attachments?.length ? 'Вложение' : 'Сообщение')
+        (message.attachments?.length ? t('attachment') : t('message'))
 
       const notification = new Notification(
-        notificationTitle(message, auth.user?._id),
+        notificationTitle(message, auth.user?._id, t, tChat),
         { body, tag: message._id },
       )
 
@@ -73,5 +86,5 @@ export function useMessageNotifications() {
     return () => {
       unsubscribe()
     }
-  }, [auth.user?._id])
+  }, [auth.user?._id, t, tChat])
 }

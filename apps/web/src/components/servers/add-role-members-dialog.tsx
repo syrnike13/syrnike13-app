@@ -3,6 +3,7 @@ import type { Member, Role, Server, User } from '@syrnike13/api-types'
 import { CheckIcon, SearchIcon } from '#/components/icons'
 import { Effect, Exit } from 'effect'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'
@@ -48,6 +49,7 @@ export function AddRoleMembersDialog({
   open,
   onOpenChange,
 }: AddRoleMembersDialogProps) {
+  const t = useTranslations('servers.addMembers')
   const auth = useAuth()
   useServerMembersSync(server._id, auth.session?.token, open)
   const actorMember = useSyncStore((state) =>
@@ -178,7 +180,7 @@ export function AddRoleMembersDialog({
       }
 
       if (hasFailures) {
-        toast.error('Не удалось добавить некоторых участников')
+        toast.error(t('addSomeError'))
         return
       }
 
@@ -187,7 +189,7 @@ export function AddRoleMembersDialog({
       toast.error(
         error instanceof Error
           ? error.message
-          : 'Не удалось добавить участников',
+          : t('addError'),
       )
     } finally {
       setSaving(false)
@@ -198,9 +200,9 @@ export function AddRoleMembersDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[min(32rem,90vh)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
         <DialogHeader className="space-y-2 px-6 pt-6 pb-4 text-left">
-          <DialogTitle>Добавить участников</DialogTitle>
+          <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>
-            Выберите до {MAX_MEMBERS_PER_ADD} участников для роли{' '}
+            {t('description', { max: MAX_MEMBERS_PER_ADD })}{' '}
             <span className="font-medium text-foreground">{role.name}</span>
           </DialogDescription>
         </DialogHeader>
@@ -210,15 +212,15 @@ export function AddRoleMembersDialog({
             <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
-              placeholder="Поиск участников"
-              className="bg-muted/40 pl-9"
+              placeholder={t('search')}
+              className="pl-9"
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
         </div>
 
         <p className="px-6 pb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Участники
+          {t('members')}
         </p>
 
         <ScrollArea className="min-h-0 flex-1 px-3">
@@ -273,9 +275,7 @@ export function AddRoleMembersDialog({
           </ul>
           {candidates.length === 0 ? (
             <p className="px-3 py-8 text-center text-sm text-muted-foreground">
-              {query.trim()
-                ? 'Участники не найдены.'
-                : 'Нет участников, которых можно добавить.'}
+              {query.trim() ? t('noResults') : t('noCandidates')}
             </p>
           ) : null}
         </ScrollArea>
@@ -288,7 +288,7 @@ export function AddRoleMembersDialog({
             disabled={saving}
             onClick={() => onOpenChange(false)}
           >
-            Отмена
+            {t('cancel')}
           </Button>
           <Button
             type="button"
@@ -296,7 +296,7 @@ export function AddRoleMembersDialog({
             disabled={saving || selectedIds.size === 0}
             onClick={() => void submit()}
           >
-            Добавить
+            {t('add')}
           </Button>
         </DialogFooter>
       </DialogContent>

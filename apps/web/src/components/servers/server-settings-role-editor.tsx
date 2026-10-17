@@ -8,6 +8,7 @@ import type {
 import { MoreHorizontalIcon, Trash2Icon } from '#/components/icons'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { RoleColourPicker } from '#/components/servers/role-colour-picker'
 import { RoleColourPreview } from '#/components/servers/role-colour-preview'
@@ -97,6 +98,8 @@ export function ServerSettingsRoleEditor({
   member: Member | undefined
   onDeleteRequested: () => void
 }) {
+  const t = useTranslations('servers.roles')
+  const tm = useTranslations('media')
   const canEditRole = canManageRole(
     server,
     member,
@@ -140,14 +143,14 @@ export function ServerSettingsRoleEditor({
 
   const roleEditorTabs = useMemo(
     (): { id: RoleEditorTab; label: string }[] => [
-      { id: 'display', label: 'Отображение' },
-      { id: 'permissions', label: 'Права' },
+      { id: 'display', label: t('tabs.display') },
+      { id: 'permissions', label: t('tabs.permissions') },
       {
         id: 'members',
-        label: `Управление участниками (${memberCount})`,
+        label: t('tabs.members', { count: memberCount }),
       },
     ],
-    [memberCount],
+    [memberCount, t],
   )
 
   const headerRoleName = (name.trim() || role.name).toUpperCase()
@@ -222,7 +225,7 @@ export function ServerSettingsRoleEditor({
   const save = useCallback(async (): Promise<boolean> => {
     const trimmedName = name.trim()
     if (!trimmedName) {
-      toast.error('Укажите название роли')
+      toast.error(t('nameRequired'))
       return false
     }
 
@@ -246,7 +249,7 @@ export function ServerSettingsRoleEditor({
             iconChanged)
         ) {
           const iconAttachmentId = iconFile
-            ? yield* uploadMediaFileEffect(token, 'icons', iconFile)
+            ? yield* uploadMediaFileEffect(token, 'icons', iconFile, tm)
             : undefined
           const trimmedColour = colour.trim()
           const fieldsToRemove: FieldsRole[] = []
@@ -303,7 +306,7 @@ export function ServerSettingsRoleEditor({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось сохранить роль',
+              error instanceof Error ? error.message : t('saveError'),
             )
             return false
           }),
@@ -343,7 +346,7 @@ export function ServerSettingsRoleEditor({
       <div className="space-y-0">
         <div className="flex items-center justify-between gap-4">
           <h2 className="min-w-0 truncate text-xs font-bold tracking-wide uppercase">
-            Редактирование роли — {headerRoleName}
+            {t('editTitle', { name: headerRoleName })}
           </h2>
           {canEditRole ? (
             <Popover open={menuOpen} onOpenChange={setMenuOpen}>
@@ -353,7 +356,7 @@ export function ServerSettingsRoleEditor({
                   variant="ghost"
                   size="icon"
                   className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
-                  title="Действия с ролью"
+                  title={t('roleActions')}
                 >
                   <MoreHorizontalIcon className="size-4" />
                 </Button>
@@ -361,15 +364,15 @@ export function ServerSettingsRoleEditor({
               <PopoverContent className="w-48 p-1" align="end">
                 <Button
                   type="button"
-                  variant="ghost"
-                  className="h-9 w-full justify-start px-2 font-normal text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  variant="destructive-ghost"
+                  className="h-9 w-full justify-start px-2 font-normal"
                   onClick={() => {
                     setMenuOpen(false)
                     onDeleteRequested()
                   }}
                 >
                   <Trash2Icon className="size-4" />
-                  Удалить роль
+                  {t('deleteRole')}
                 </Button>
               </PopoverContent>
             </Popover>
@@ -378,7 +381,7 @@ export function ServerSettingsRoleEditor({
 
         <nav
           className="mt-4 flex flex-wrap gap-x-6 gap-y-1 border-b border-border"
-          aria-label="Разделы редактирования роли"
+          aria-label={t('sectionsAria')}
         >
           {roleEditorTabs.map((tab) => {
             const active = activeTab === tab.id
@@ -406,12 +409,12 @@ export function ServerSettingsRoleEditor({
         <div className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="role-name">
-              Название
+              {t('name')}
               <span className="text-destructive" aria-hidden>
                 {' '}
                 *
               </span>
-              <span className="sr-only"> (обязательно)</span>
+              <span className="sr-only">{t('required')}</span>
             </Label>
             <Input
               id="role-name"
@@ -432,10 +435,8 @@ export function ServerSettingsRoleEditor({
 
           <div className="space-y-3 rounded-md border border-border px-3 py-3">
             <div>
-              <p className="text-sm font-medium">Иконка роли</p>
-              <p className="text-xs text-muted-foreground">
-                Рекомендуется квадратное изображение.
-              </p>
+              <p className="text-sm font-medium">{t('roleIcon')}</p>
+              <p className="text-xs text-muted-foreground">{t('iconHint')}</p>
             </div>
             <div className="flex items-center gap-3">
               {previewIconUrl ? (
@@ -447,7 +448,7 @@ export function ServerSettingsRoleEditor({
                 />
               ) : (
                 <div className="flex size-12 items-center justify-center rounded-full bg-muted text-xs text-muted-foreground">
-                  Нет
+                  {t('none')}
                 </div>
               )}
               <div className="flex flex-wrap gap-2">
@@ -459,7 +460,7 @@ export function ServerSettingsRoleEditor({
                   asChild
                 >
                   <label className="cursor-pointer">
-                    Загрузить
+                    {t('upload')}
                     <input
                       type="file"
                       accept="image/*"
@@ -486,7 +487,7 @@ export function ServerSettingsRoleEditor({
                       setRemoveIcon(true)
                     }}
                   >
-                    Удалить
+                    {t('delete')}
                   </Button>
                 ) : null}
               </div>
@@ -501,16 +502,16 @@ export function ServerSettingsRoleEditor({
 
           <div className="space-y-0">
             <SettingsToggleRow
-              label="Отображать роль отдельно от участников"
-              hint="Участники с этой ролью будут в отдельной группе в списке."
+              label={t('hoistLabel')}
+              hint={t('hoistHint')}
               checked={hoist}
               disabled={!canEditRole}
               onCheckedChange={setHoist}
             />
 
             <SettingsToggleRow
-              label="Позволять любому пинговать «@» эту роль"
-              hint="Если выключено, упоминать роль смогут только участники с правом «Упоминать роли»."
+              label={t('mentionableLabel')}
+              hint={t('mentionableHint')}
               checked={mentionable}
               disabled={!canEditRole}
               onCheckedChange={setMentionable}

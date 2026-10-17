@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect, Fiber } from 'effect'
 
 import { DownloadIcon } from '#/components/icons'
@@ -22,6 +23,7 @@ export function DesktopUpdateTitleBarButton({
 }: {
   className?: string
 }) {
+  const t = useTranslations('desktopUpdates')
   const { desktop } = usePlatform()
   const [state, setState] = useState<DesktopUpdateState | null>(null)
 
@@ -59,8 +61,8 @@ export function DesktopUpdateTitleBarButton({
 
   const ready = state.status === 'ready'
   const tooltip = ready
-    ? `Доступно обновление v${state.version}. Нажмите, чтобы перезапустить и установить.`
-    : `Загрузка обновления… ${Math.round(state.percent)}%`
+    ? t('available', { version: state.version })
+    : t('downloading', { percent: Math.round(state.percent) })
 
   return (
     <TooltipProvider delayDuration={300}>

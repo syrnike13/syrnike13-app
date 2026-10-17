@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   DEFAULT_DESKTOP_OVERLAY_SETTINGS,
   type DesktopOverlaySettings,
@@ -31,6 +32,7 @@ export function overlayStateNeedsSettingsReload(
 }
 
 export function SettingsOverlayPanel() {
+  const t = useTranslations('settings.overlay')
   const { desktop, os } = usePlatform()
   const [settings, setSettings] = useState<DesktopOverlaySettings | null>(null)
   const [saving, setSaving] = useState(false)
@@ -58,7 +60,7 @@ export function SettingsOverlayPanel() {
                 toast.error(
                   error instanceof Error
                     ? error.message
-                    : 'Не удалось загрузить настройки оверлея',
+                    : t('loadError'),
                 )
               }),
             onSuccess: (value) =>
@@ -91,7 +93,7 @@ export function SettingsOverlayPanel() {
       unsubscribe()
       if (loadFiber) Effect.runFork(Fiber.interrupt(loadFiber))
     }
-  }, [desktop, os])
+  }, [desktop, os, t])
 
   const games = useMemo(
     () =>
@@ -103,10 +105,10 @@ export function SettingsOverlayPanel() {
 
   if (!desktop || os !== 'win32') {
     return (
-      <SettingsBlock title="Оверлей">
+      <SettingsBlock title={t('title')}>
         <SettingsRow
-          label="Недоступно"
-          value="Оверлей работает только в Windows-приложении."
+          label={t('unavailable')}
+          value={t('unavailableHint')}
         />
       </SettingsBlock>
     )
@@ -129,7 +131,7 @@ export function SettingsOverlayPanel() {
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось сохранить настройки оверлея',
+                  : t('saveError'),
               )
             }),
           onSuccess: (value) =>
@@ -148,10 +150,10 @@ export function SettingsOverlayPanel() {
 
   return (
     <div className="space-y-2">
-      <SettingsBlock title="Оверлей">
+      <SettingsBlock title={t('title')}>
         <SettingsRow
-          label="Включить оверлей"
-          hint="Оверлей показывается только поверх активных окон, которые детектор распознал как игры."
+          label={t('enable')}
+          hint={t('enableHint')}
         >
           <Switch
             checked={settings?.enabled ?? true}
@@ -165,14 +167,14 @@ export function SettingsOverlayPanel() {
       </SettingsBlock>
 
       <SettingsBlock
-        title="Игры"
-        description="Игра появится здесь после того, как станет активным окном и пройдет детект по runtime-сигналам."
+        title={t('games')}
+        description={t('gamesDescription')}
       >
         {!settings ? (
-          <p className="text-sm text-muted-foreground">Загрузка…</p>
+          <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : games.length === 0 ? (
           <div className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-            Детектнутых игр пока нет.
+            {t('noGames')}
           </div>
         ) : (
           <div className="divide-y divide-border/40">

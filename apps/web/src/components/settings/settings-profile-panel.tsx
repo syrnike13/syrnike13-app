@@ -57,7 +57,9 @@ function revokeObjectUrl(url: string | null) {
 }
 
 export function SettingsProfilePanel() {
+  const t = useTranslations('settings.profile')
   const tv = useTranslations('validation')
+  const tm = useTranslations('media')
   const auth = useAuth()
   const queryClient = useQueryClient()
   const user = auth.user
@@ -215,7 +217,7 @@ export function SettingsProfilePanel() {
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось сохранить профиль',
+                  : t('saveError'),
               )
               return false
             }),
@@ -228,7 +230,7 @@ export function SettingsProfilePanel() {
           ),
         )
       }),
-    [auth, queryClient, token, user],
+    [auth, queryClient, t, token, user],
   )
 
   const resetTextFields = useCallback((): boolean => {
@@ -329,7 +331,7 @@ export function SettingsProfilePanel() {
       setAvatarPreviewOverride(preview)
 
       await Effect.runPromise(
-        uploadMediaFileEffect(token, 'avatars', file).pipe(
+        uploadMediaFileEffect(token, 'avatars', file, tm).pipe(
           Effect.flatMap((avatarId) => persistProfile({ avatar: avatarId })),
           Effect.tap((saved) =>
             saved
@@ -342,14 +344,14 @@ export function SettingsProfilePanel() {
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось загрузить аватар',
+                  : t('avatarUploadError'),
               )
             }),
           ),
         ),
       )
     },
-    [persistProfile, token, user],
+    [persistProfile, t, tm, token, user],
   )
 
   const removeAvatar = useCallback(async () => {
@@ -370,7 +372,7 @@ export function SettingsProfilePanel() {
       setBannerPreviewOverride(preview)
 
       await Effect.runPromise(
-        uploadMediaFileEffect(token, 'backgrounds', file).pipe(
+        uploadMediaFileEffect(token, 'backgrounds', file, tm).pipe(
           Effect.flatMap((backgroundId) =>
             persistProfile({
               profile: { background: backgroundId },
@@ -387,14 +389,14 @@ export function SettingsProfilePanel() {
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось загрузить баннер',
+                  : t('bannerUploadError'),
               )
             }),
           ),
         ),
       )
     },
-    [persistProfile, token, user],
+    [persistProfile, t, tm, token, user],
   )
 
   const removeBanner = useCallback(async () => {
@@ -456,17 +458,17 @@ export function SettingsProfilePanel() {
       <div className="order-2 space-y-6 lg:order-1">
         <section className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="profile-display-name">Отображаемое имя</Label>
+            <Label htmlFor="profile-display-name">{t('displayName')}</Label>
             <Input
               id="profile-display-name"
               value={displayName}
               maxLength={32}
               onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="Как вас видят другие"
+              placeholder={t('displayNamePlaceholder')}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="profile-username">Имя пользователя</Label>
+            <Label htmlFor="profile-username">{t('username')}</Label>
             <Input
               id="profile-username"
               value={`@${username}`}
@@ -475,14 +477,14 @@ export function SettingsProfilePanel() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="profile-bio">О себе</Label>
+            <Label htmlFor="profile-bio">{t('bio')}</Label>
             <Textarea
               id="profile-bio"
               value={bio}
               rows={4}
               maxLength={2000}
               onChange={(event) => setBio(event.target.value)}
-              placeholder="Расскажите о себе…"
+              placeholder={t('bioPlaceholder')}
             />
           </div>
         </section>
@@ -490,7 +492,7 @@ export function SettingsProfilePanel() {
 
       <aside className="order-1 lg:order-2 lg:sticky lg:top-0 lg:self-start">
         <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Предпросмотр
+          {t('preview')}
         </p>
         <ProfilePreviewCard
           displayName={displayName.trim() || username}
@@ -565,11 +567,13 @@ function ProfilePreviewCard({
   onRemoveBanner?: () => void
   onEditStatus: () => void
 }) {
+  const t = useTranslations('settings.profile')
+
   return (
     <div className="gradient-surface-card overflow-visible rounded-xl border border-border bg-card shadow-sm">
       <ProfileMediaContextMenu
-        editLabel="Изменить баннер"
-        removeLabel="Удалить баннер"
+        editLabel={t('editBanner')}
+        removeLabel={t('removeBanner')}
         disabled={mediaBusy}
         onEdit={onEditBanner}
         onRemove={onRemoveBanner}
@@ -589,7 +593,7 @@ function ProfilePreviewCard({
             />
           ) : null}
           <ProfileMediaEditOverlay
-            label={hasBanner ? 'Изменить баннер' : 'Добавить баннер'}
+            label={hasBanner ? t('editBanner') : t('addBanner')}
             disabled={mediaBusy}
             onClick={onEditBanner}
             className="rounded-none"
@@ -599,8 +603,8 @@ function ProfilePreviewCard({
       <div className="relative px-4 pb-4">
         <div className="-mt-8 mb-2 w-fit">
           <ProfileMediaContextMenu
-            editLabel="Изменить аватар"
-            removeLabel="Удалить аватар"
+            editLabel={t('editAvatar')}
+            removeLabel={t('removeAvatar')}
             disabled={mediaBusy}
             onEdit={onEditAvatar}
             onRemove={onRemoveAvatar}
@@ -614,7 +618,7 @@ function ProfilePreviewCard({
                   showPresence={false}
                 />
                 <ProfileMediaEditOverlay
-                  label={hasAvatar ? 'Изменить аватар' : 'Добавить аватар'}
+                  label={hasAvatar ? t('editAvatar') : t('addAvatar')}
                   disabled={mediaBusy}
                   onClick={onEditAvatar}
                   className="rounded-full group-hover/profile-avatar:opacity-100"
@@ -659,14 +663,14 @@ function ProfileMediaEditOverlay({
         onClick()
       }}
       className={cn(
-        'absolute inset-0 flex cursor-pointer items-center justify-center border-0 bg-black/55 opacity-0 transition-opacity',
+        'absolute inset-0 flex cursor-pointer items-center justify-center border-0 bg-scrim opacity-0 transition-opacity',
         'group-hover/banner:opacity-100',
         'focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
         'disabled:pointer-events-none disabled:opacity-0',
         className,
       )}
     >
-      <PencilFillIcon className="size-5 text-white drop-shadow-sm" aria-hidden />
+      <PencilFillIcon className="size-5 text-on-scrim drop-shadow-sm" aria-hidden />
     </button>
   )
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { PencilIcon, Trash2Icon } from '#/components/icons'
 import type {
   DataEditServer,
@@ -76,8 +77,6 @@ const SYSTEM_MESSAGE_KEYS = [
   'user_banned',
 ] as const
 const SERVER_EMOJI_NAME_PATTERN = /^[A-Za-z0-9_]+$/
-const SERVER_EMOJI_NAME_ERROR =
-  'Имя emoji должно содержать только латиницу, цифры и подчёркивания.'
 
 function SettingsField({
   label,
@@ -176,28 +175,29 @@ function ServerProfilePreview({
   onRemoveBanner: () => void
   onRestoreBanner: () => void
 }) {
-  const previewName = name.trim() || 'Название сервера'
+  const t = useTranslations('servers.settings')
+  const previewName = name.trim() || t('serverNamePlaceholder')
   const previewDescription =
-    description.trim() || 'Описание сервера появится здесь.'
+    description.trim() || t('serverDescriptionPlaceholder')
 
   return (
-    <aside aria-label="Предпросмотр профиля сервера">
+    <aside aria-label={t('previewAria')}>
       <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-        Предпросмотр
+        {t('preview')}
       </p>
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              aria-label="Открыть меню баннера сервера"
+              aria-label={t('bannerMenuAria')}
               disabled={saving}
               className="group/banner relative block h-28 w-full cursor-pointer overflow-hidden bg-linear-to-br from-primary/30 via-accent to-muted text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
             >
               {bannerUrl ? (
                 <FxImage
                   src={bannerUrl}
-                  alt="Предпросмотр баннера сервера"
+                  alt={t('bannerPreviewAlt')}
                   wrapperClassName="size-full"
                   className="size-full"
                 />
@@ -207,36 +207,36 @@ function ServerProfilePreview({
                 className="absolute inset-0 flex items-center justify-center gap-1.5 bg-background/55 text-xs font-medium text-foreground opacity-0 transition-opacity group-hover/banner:opacity-100 group-focus-visible/banner:opacity-100 group-data-[state=open]/banner:opacity-100 motion-reduce:transition-none"
               >
                 <PencilIcon className="size-4" />
-                Изменить
+                {t('edit')}
               </span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="center" side="bottom">
             <DropdownMenuGroup>
               <DropdownMenuItem
-                aria-label="Загрузить баннер"
+                aria-label={t('uploadBanner')}
                 onSelect={onUploadBanner}
                 disabled={saving}
               >
-                Загрузить
+                {t('upload')}
               </DropdownMenuItem>
               {bannerRemoved ? (
                 <DropdownMenuItem
-                  aria-label="Вернуть баннер"
+                  aria-label={t('restoreBanner')}
                   onSelect={onRestoreBanner}
                   disabled={saving}
                 >
-                  Вернуть
+                  {t('restore')}
                 </DropdownMenuItem>
               ) : (
                 <DropdownMenuItem
-                  aria-label="Удалить баннер"
+                  aria-label={t('removeBanner')}
                   variant="destructive"
                   disabled={saving || !bannerUrl}
                   onSelect={onRemoveBanner}
                 >
                   <Trash2Icon />
-                  Удалить
+                  {t('remove')}
                 </DropdownMenuItem>
               )}
             </DropdownMenuGroup>
@@ -249,14 +249,14 @@ function ServerProfilePreview({
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  aria-label="Открыть меню иконки сервера"
+                  aria-label={t('iconMenuAria')}
                   disabled={saving}
                   className="group/icon relative flex size-16 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-4 border-card bg-primary text-xl font-semibold text-primary-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
                 >
                   {iconUrl ? (
                     <FxImage
                       src={iconUrl}
-                      alt="Предпросмотр иконки сервера"
+                      alt={t('iconPreviewAlt')}
                       wrapperClassName="size-full"
                       className="size-full"
                     />
@@ -274,29 +274,29 @@ function ServerProfilePreview({
               <DropdownMenuContent align="start" side="right">
                 <DropdownMenuGroup>
                   <DropdownMenuItem
-                    aria-label="Загрузить иконку"
+                    aria-label={t('uploadIcon')}
                     onSelect={onUploadIcon}
                     disabled={saving}
                   >
-                    Загрузить
+                    {t('upload')}
                   </DropdownMenuItem>
                   {iconRemoved ? (
                     <DropdownMenuItem
-                      aria-label="Вернуть иконку"
+                      aria-label={t('restoreIcon')}
                       onSelect={onRestoreIcon}
                       disabled={saving}
                     >
-                      Вернуть
+                      {t('restore')}
                     </DropdownMenuItem>
                   ) : (
                     <DropdownMenuItem
-                      aria-label="Удалить иконку"
+                      aria-label={t('removeIcon')}
                       variant="destructive"
                       disabled={saving || !iconUrl}
                       onSelect={onRemoveIcon}
                     >
                       <Trash2Icon />
-                      Удалить
+                      {t('remove')}
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuGroup>
@@ -323,6 +323,8 @@ function ServerSettingsGeneralPanel({
   serverId: string
   serverName: string
 }) {
+  const t = useTranslations('servers.settings')
+  const tm = useTranslations('media')
   const auth = useAuth()
   const server = useSyncStore((s) => s.servers[serverId])
   const [name, setName] = useState(serverName)
@@ -418,7 +420,12 @@ function ServerSettingsGeneralPanel({
           }
         }
         if (iconFile) {
-          patch.icon = yield* uploadMediaFileEffect(token, 'icons', iconFile)
+          patch.icon = yield* uploadMediaFileEffect(
+            token,
+            'icons',
+            iconFile,
+            tm,
+          )
         } else if (removeIcon) {
           remove.push('Icon')
         }
@@ -427,6 +434,7 @@ function ServerSettingsGeneralPanel({
             token,
             'banners',
             bannerFile,
+            tm,
           )
         } else if (removeBanner) {
           remove.push('Banner')
@@ -449,7 +457,7 @@ function ServerSettingsGeneralPanel({
         Effect.match({
           onFailure: (error) => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось сохранить',
+              error instanceof Error ? error.message : t('saveError'),
             )
             return false
           },
@@ -503,16 +511,16 @@ function ServerSettingsGeneralPanel({
     >
       <section className="pb-6">
         <div>
-          <h2 className="text-xl font-semibold">Профиль сервера</h2>
+          <h2 className="text-xl font-semibold">{t('profileTitle')}</h2>
           <p className="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">
-            Настройте, как сервер выглядит в списке, приглашениях и профиле.
+            {t('profileDescription')}
           </p>
         </div>
 
         <div className="mt-6 grid gap-8 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
           <div className="min-w-0 space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="server-rename">Название</Label>
+              <Label htmlFor="server-rename">{t('name')}</Label>
               <Input
                 id="server-rename"
                 value={name}
@@ -523,7 +531,7 @@ function ServerSettingsGeneralPanel({
 
             <div className="space-y-2">
               <div className="flex items-baseline justify-between gap-3">
-                <Label htmlFor="server-description">Описание</Label>
+                <Label htmlFor="server-description">{t('description')}</Label>
                 <span className="text-xs text-muted-foreground">
                   {description.length}/1024
                 </span>
@@ -533,7 +541,7 @@ function ServerSettingsGeneralPanel({
                 value={description}
                 rows={5}
                 maxLength={1024}
-                placeholder="Расскажите, о чём этот сервер"
+                placeholder={t('descriptionPlaceholder')}
                 onChange={(event) => setDescription(event.target.value)}
               />
             </div>
@@ -544,7 +552,7 @@ function ServerSettingsGeneralPanel({
               type="file"
               accept="image/*"
               disabled={saving}
-              aria-label="Иконка сервера"
+              aria-label={t('iconAria')}
               className="sr-only"
               onChange={(event) => {
                 const file = event.target.files?.[0]
@@ -557,7 +565,7 @@ function ServerSettingsGeneralPanel({
               type="file"
               accept="image/*"
               disabled={saving}
-              aria-label="Баннер сервера"
+              aria-label={t('bannerAria')}
               className="sr-only"
               onChange={(event) => {
                 const file = event.target.files?.[0]
@@ -590,6 +598,7 @@ function ServerSettingsGeneralPanel({
 }
 
 function ServerSettingsEngagementPanel({ serverId }: { serverId: string }) {
+  const t = useTranslations('servers.settings')
   const auth = useAuth()
   const server = useSyncStore((s) => s.servers[serverId])
   const systemMessageChannels = useSyncStore((s) =>
@@ -638,7 +647,7 @@ function ServerSettingsEngagementPanel({ serverId }: { serverId: string }) {
         Effect.match({
           onFailure: (error) => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось сохранить',
+              error instanceof Error ? error.message : t('saveError'),
             )
             return false
           },
@@ -675,20 +684,19 @@ function ServerSettingsEngagementPanel({ serverId }: { serverId: string }) {
       }}
     >
       <div>
-        <h2 className="text-xl font-semibold">Вовлеченность</h2>
+        <h2 className="text-xl font-semibold">{t('engagementTitle')}</h2>
         <p className="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">
-          Настройте события, которые помогают участникам следить за жизнью
-          сервера.
+          {t('engagementDescription')}
         </p>
       </div>
 
       <SettingsField
-        label="Системные сообщения"
-        description="Канал, куда сервер отправляет сообщения о входах и модерации."
+        label={t('systemMessages')}
+        description={t('systemMessagesDescription')}
       >
         <div className="flex max-w-xl flex-col gap-2">
           <Label htmlFor="server-system-messages-channel">
-            Канал системных сообщений
+            {t('systemMessagesChannel')}
           </Label>
           <Select
             value={systemMessagesChannelId}
@@ -702,10 +710,12 @@ function ServerSettingsEngagementPanel({ serverId }: { serverId: string }) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={SYSTEM_MESSAGES_NONE}>Не отправлять</SelectItem>
+              <SelectItem value={SYSTEM_MESSAGES_NONE}>
+                {t('dontSend')}
+              </SelectItem>
               {systemMessagesChannelId === SYSTEM_MESSAGES_MIXED ? (
                 <SelectItem value={SYSTEM_MESSAGES_MIXED} disabled>
-                  Разные каналы
+                  {t('mixedChannels')}
                 </SelectItem>
               ) : null}
               {systemMessageChannels.map((channel) => (
@@ -723,6 +733,8 @@ function ServerSettingsEngagementPanel({ serverId }: { serverId: string }) {
 }
 
 function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
+  const t = useTranslations('servers.settings')
+  const tm = useTranslations('media')
   const auth = useAuth()
   const [emojis, setEmojis] = useState<Emoji[]>([])
   const [emojiLoading, setEmojiLoading] = useState(false)
@@ -746,7 +758,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось загрузить emoji',
+                  : t('emojiLoadError'),
               )
               setEmojiLoading(false)
             }),
@@ -771,12 +783,12 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
     const token = auth.session?.token
     const trimmedName = emojiName.trim()
     if (!token || !trimmedName) {
-      toast.error('Укажите имя emoji')
+      toast.error(t('emojiNameRequired'))
       if (emojiFileRef.current) emojiFileRef.current.value = ''
       return
     }
     if (!SERVER_EMOJI_NAME_PATTERN.test(trimmedName)) {
-      toast.error(SERVER_EMOJI_NAME_ERROR)
+      toast.error(t('emojiNameError'))
       if (emojiFileRef.current) emojiFileRef.current.value = ''
       return
     }
@@ -784,7 +796,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
     setEmojiUploading(true)
     await Effect.runPromise(
       Effect.gen(function*() {
-        const autumnId = yield* uploadEmojiEffect(token, file)
+        const autumnId = yield* uploadEmojiEffect(token, file, tm)
         const created = yield* createServerEmojiEffect(
           token,
           autumnId,
@@ -803,7 +815,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось создать emoji',
+                : t('emojiCreateError'),
             )
             if (emojiFileRef.current) emojiFileRef.current.value = ''
           }),
@@ -833,7 +845,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось удалить',
+              error instanceof Error ? error.message : t('emojiDeleteError'),
             )
           }),
         ),
@@ -845,12 +857,12 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
   return (
     <>
       <SettingsField
-        label="Добавить emoji"
-        description="Имя — латиница, без пробелов. Файл — изображение."
+        label={t('addEmoji')}
+        description={t('addEmojiDescription')}
       >
         <div className="space-y-3">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="emoji-name">Имя</Label>
+            <Label htmlFor="emoji-name">{t('nameLabel')}</Label>
             <Input
               id="emoji-name"
               value={emojiName}
@@ -860,7 +872,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
             />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="emoji-file">Файл</Label>
+            <Label htmlFor="emoji-file">{t('fileLabel')}</Label>
             <Input
               id="emoji-file"
               ref={emojiFileRef}
@@ -876,11 +888,11 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
         </div>
       </SettingsField>
 
-      <SettingsField label="Серверные emoji">
+      <SettingsField label={t('serverEmoji')}>
         {emojiLoading ? (
-          <p className="text-sm text-muted-foreground">Загрузка…</p>
+          <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : emojis.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Нет серверных emoji</p>
+          <p className="text-sm text-muted-foreground">{t('noEmoji')}</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {emojis.map((emoji) => (
@@ -897,7 +909,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
                   variant="ghost"
                   size="icon"
                   className="size-8 shrink-0"
-                  title="Удалить"
+                  title={t('delete')}
                   onClick={() => setEmojiPendingDeletion(emoji)}
                 >
                   <Trash2Icon className="size-4" />
@@ -918,11 +930,9 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              Удалить emoji :{emojiPendingDeletion?.name}:?
+              {t('deleteTitle', { name: emojiPendingDeletion?.name ?? '' })}
             </DialogTitle>
-            <DialogDescription>
-              Emoji исчезнет с сервера и из новых сообщений.
-            </DialogDescription>
+            <DialogDescription>{t('deleteDescription')}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button
@@ -931,7 +941,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
               disabled={emojiDeleting}
               onClick={() => setEmojiPendingDeletion(null)}
             >
-              Отмена
+              {t('cancel')}
             </Button>
             <Button
               type="button"
@@ -939,7 +949,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
               disabled={emojiDeleting}
               onClick={() => void handleEmojiDelete()}
             >
-              Удалить emoji
+              {t('deleteEmoji')}
             </Button>
           </DialogFooter>
         </DialogContent>

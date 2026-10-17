@@ -1,4 +1,5 @@
 import type { Channel } from '@syrnike13/api-types'
+import type { Translator } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
@@ -30,6 +31,7 @@ const openDirectMessageChannelEffect = Effect.fn('dm.openChannel')(
     token: string,
     userId: string,
     navigateToChannel: NavigateToDmChannel,
+    t: Translator,
     deps: DmActionDeps,
   ) {
     const action = Effect.gen(function*() {
@@ -51,7 +53,7 @@ const openDirectMessageChannelEffect = Effect.fn('dm.openChannel')(
     return yield* action.pipe(
       Effect.tapError((error) =>
         Effect.sync(() => {
-          deps.toastError(errorMessage(error, 'Не удалось открыть ЛС'))
+          deps.toastError(errorMessage(error, t('dmOpenError')))
         }),
       ),
     )
@@ -62,12 +64,14 @@ export function openDirectMessageChannel(
   token: string,
   userId: string,
   navigateToChannel: NavigateToDmChannel,
+  t: Translator,
   deps: DmActionDeps = defaultDeps,
 ) {
   return openDirectMessageChannelEffect(
     token,
     userId,
     navigateToChannel,
+    t,
     deps,
   )
 }

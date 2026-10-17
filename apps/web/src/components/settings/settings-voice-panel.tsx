@@ -71,6 +71,7 @@ function DeviceSelectField({
   devices: MediaDeviceInfo[]
   onChange: (deviceId: string) => void
 }) {
+  const ts = useTranslations('settings.voice')
   const selectableDevices = devices.filter((device) => device.deviceId.length > 0)
   const selectValue = value.length > 0 ? value : 'default'
   const unavailable = selectValue !== 'default' &&
@@ -81,17 +82,19 @@ function DeviceSelectField({
       <p className="text-base font-medium">{label}</p>
       <Select value={selectValue} onValueChange={onChange}>
         <SelectTrigger aria-label={label} className="w-full">
-          <SelectValue placeholder="По умолчанию" />
+          <SelectValue placeholder={ts('defaultOption')} />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-            <SelectItem value="default">По умолчанию</SelectItem>
+            <SelectItem value="default">{ts('defaultOption')}</SelectItem>
             {unavailable ? (
-              <SelectItem value={selectValue} disabled>Устройство недоступно</SelectItem>
+              <SelectItem value={selectValue} disabled>
+                {ts('deviceUnavailable')}
+              </SelectItem>
             ) : null}
             {selectableDevices.map((device) => (
               <SelectItem key={device.deviceId} value={device.deviceId}>
-                {device.label || 'Устройство'}
+                {device.label || ts('device')}
               </SelectItem>
             ))}
           </SelectGroup>
@@ -155,6 +158,7 @@ function MicInputMeter({ levels }: { levels: readonly number[] }) {
 
 export function SettingsVoicePanel() {
   const t = useTranslations('voice')
+  const ts = useTranslations('settings.voice')
   const prefs = useVoicePreferences()
   const { capabilities, os } = usePlatform()
   const { setSelfMonitoringActive } = useVoiceMedia()
@@ -217,9 +221,9 @@ export function SettingsVoicePanel() {
   return (
     <div className="space-y-2">
       {os === 'win32' ? (
-        <SettingsBlock title="Камера">
+        <SettingsBlock title={ts('camera')}>
           <DeviceSelectField
-            label="Устройство камеры"
+            label={ts('cameraDevice')}
             devices={cameraDevices}
             value={prefs.preferredVideoDevice ?? 'default'}
             onChange={(deviceId) => {
@@ -228,7 +232,7 @@ export function SettingsVoicePanel() {
               )
             }}
           />
-          <SettingsRow label="Качество видео">
+          <SettingsRow label={ts('videoQuality')}>
             <Select
               value={prefs.cameraProfile}
               onValueChange={(value) => {
@@ -241,8 +245,8 @@ export function SettingsVoicePanel() {
               }}
             >
               <SelectTrigger
-                aria-label="Качество видео камеры"
-                className="w-[220px] max-w-full"
+                aria-label={ts('cameraQualityAria')}
+                className="w-[13.75rem] max-w-full"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -256,11 +260,11 @@ export function SettingsVoicePanel() {
           </SettingsRow>
         </SettingsBlock>
       ) : null}
-      <SettingsBlock title="Устройства">
+      <SettingsBlock title={ts('devices')}>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div className="space-y-4">
             <DeviceSelectField
-              label="Микрофон"
+              label={ts('microphone')}
               devices={inputDevices}
               value={inputValue}
               onChange={(deviceId) => {
@@ -271,7 +275,7 @@ export function SettingsVoicePanel() {
             />
             <VolumeSliderField
               id="voice-input-volume"
-              label="Громкость микрофона"
+              label={ts('micVolume')}
               value={prefs.inputVolume}
               onChange={(value) => {
                 voicePreferenceStore.setInputVolume(value)
@@ -281,7 +285,7 @@ export function SettingsVoicePanel() {
 
           <div className="space-y-4">
             <DeviceSelectField
-              label="Динамики / наушники"
+              label={ts('speakers')}
               devices={outputDevices}
               value={outputValue}
               onChange={(deviceId) => {
@@ -292,7 +296,7 @@ export function SettingsVoicePanel() {
             />
             <VolumeSliderField
               id="voice-output-volume"
-              label="Громкость"
+              label={ts('volume')}
               value={prefs.outputVolume}
               onChange={(value) => {
                 voicePreferenceStore.setOutputVolume(value)
@@ -309,24 +313,24 @@ export function SettingsVoicePanel() {
                 className="shrink-0"
                 onClick={() => setMicTestActive((value) => !value)}
               >
-                {micTestActive ? 'Остановить' : 'Проверка микрофона'}
+                {micTestActive ? ts('stop') : ts('testMic')}
               </Button>
               <MicInputMeter levels={meterLevels} />
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
               {micTestActive
-                ? 'Слышите обработанный сигнал с выбранного микрофона — как в голосовом канале. Лучше в наушниках.'
-                : 'Воспроизведёт обработанный сигнал через выбранный вывод.'}
+                ? ts('micTestActiveHint')
+                : ts('micTestHint')}
             </p>
           </div>
         </div>
       </SettingsBlock>
 
-      <SettingsBlock title="Обработка звука">
+      <SettingsBlock title={ts('processing')}>
         {os === 'win32' ? (
           <SettingsToggleRow
-            label="Обход системной обработки микрофона"
-            hint="Запрашивает необработанный сигнал у Windows; если RAW не поддерживается, используется обычный режим"
+            label={ts('bypassProcessing')}
+            hint={ts('bypassProcessingHint')}
             checked={prefs.bypassSystemAudioInputProcessing}
             onCheckedChange={(checked) =>
               voicePreferenceStore.setBypassSystemAudioInputProcessing(checked)
@@ -335,8 +339,8 @@ export function SettingsVoicePanel() {
         ) : null}
 
         <SettingsToggleRow
-          label="Автоматическая регулировка усиления"
-          hint="Выравнивает громкость тихой и громкой речи"
+          label={ts('agc')}
+          hint={ts('agcHint')}
           checked={prefs.automaticGainControl}
           onCheckedChange={(checked) =>
             voicePreferenceStore.setAutomaticGainControl(checked)
@@ -344,8 +348,8 @@ export function SettingsVoicePanel() {
         />
 
         <SettingsRow
-          label="Автоматическая чувствительность"
-          hint="Регулируйте порог передачи звука в Сырниках"
+          label={ts('autoSensitivity')}
+          hint={ts('autoSensitivityHint')}
         >
           <Switch
             checked={prefs.voiceGateAutoThreshold}
@@ -367,7 +371,7 @@ export function SettingsVoicePanel() {
         </div>
 
         <SettingsToggleRow
-          label="Шумоподавление"
+          label={ts('noiseSuppression')}
           checked={prefs.noiseSuppression}
           onCheckedChange={(checked) =>
             voicePreferenceStore.setNoiseSuppression(checked)
@@ -375,7 +379,7 @@ export function SettingsVoicePanel() {
         />
 
         <SettingsToggleRow
-          label="Эхоподавление"
+          label={ts('echoCancellation')}
           checked={prefs.echoCancellation}
           onCheckedChange={(checked) =>
             voicePreferenceStore.setEchoCancellation(checked)
@@ -383,8 +387,8 @@ export function SettingsVoicePanel() {
         />
       </SettingsBlock>
 
-      <SettingsBlock title="Демонстрация экрана">
-        <SettingsRow label="Качество по умолчанию">
+      <SettingsBlock title={ts('screenShare')}>
+        <SettingsRow label={ts('defaultQuality')}>
           {capabilities.nativeScreenShare ? (
             <Select
               value={prefs.nativeScreenShareProfile}
@@ -398,8 +402,8 @@ export function SettingsVoicePanel() {
               }}
             >
               <SelectTrigger
-                aria-label="Качество демонстрации экрана"
-                className="w-[220px] max-w-full"
+                aria-label={ts('screenShareQualityAria')}
+                className="w-[13.75rem] max-w-full"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -425,7 +429,7 @@ export function SettingsVoicePanel() {
                 }
               }}
             >
-              <SelectTrigger className="w-[220px] max-w-full">
+              <SelectTrigger className="w-[13.75rem] max-w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -440,7 +444,7 @@ export function SettingsVoicePanel() {
         </SettingsRow>
 
         {capabilities.nativeScreenShare ? (
-          <SettingsRow label="Захват экрана">
+          <SettingsRow label={ts('screenCapture')}>
             <Select
               value={prefs.screenShareCaptureMode}
               onValueChange={(value) => {
@@ -454,7 +458,7 @@ export function SettingsVoicePanel() {
                 }
               }}
             >
-              <SelectTrigger className="w-[220px] max-w-full">
+              <SelectTrigger className="w-[13.75rem] max-w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -469,8 +473,8 @@ export function SettingsVoicePanel() {
         ) : null}
 
         <SettingsToggleRow
-          label="AV1 (экспериментально)"
-          hint={!av1Supported ? 'Не поддерживается в этом браузере' : undefined}
+          label={ts('av1')}
+          hint={!av1Supported ? ts('av1Unsupported') : undefined}
           checked={prefs.screenShareCodec === 'av1'}
           disabled={!av1Supported}
           onCheckedChange={(checked) =>
@@ -479,7 +483,7 @@ export function SettingsVoicePanel() {
         />
 
         <SettingsToggleRow
-          label="Передавать звук с экрана по умолчанию"
+          label={ts('shareAudioByDefault')}
           checked={prefs.screenShareAudio}
           onCheckedChange={(checked) =>
             voicePreferenceStore.setScreenShareAudio(checked)

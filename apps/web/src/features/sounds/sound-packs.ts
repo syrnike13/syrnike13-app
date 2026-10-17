@@ -6,7 +6,7 @@ import {
 
 import {
   UI_SOUND_EVENTS,
-  UI_SOUND_EVENT_LABELS,
+  UI_SOUND_EVENT_LABEL_KEYS,
   type SoundEventId,
 } from './sound-events'
 
@@ -120,7 +120,7 @@ export function soundEventVolumeOptions(authorPackId: string | null | undefined)
       ? [
           {
             id: eventId,
-            label: UI_SOUND_EVENT_LABELS[eventId],
+            labelKey: UI_SOUND_EVENT_LABEL_KEYS[eventId],
           },
         ]
       : [],

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { CheckIcon, Loader2Icon, Undo2Icon } from '#/components/icons'
 
 import { useDraftContext } from '#/components/settings/draft-controller-context'
@@ -19,10 +20,12 @@ type UnsavedChangesBarProps = {
 }
 
 export function UnsavedChangesBar({
-  saveLabel = 'Сохранить',
+  saveLabel,
   className,
   placement = 'overlay',
 }: UnsavedChangesBarProps) {
+  const t = useTranslations('settings.unsaved')
+  const saveText = saveLabel ?? t('save')
   const ctx = useDraftContext()
   const controller = ctx?.controller
 
@@ -134,19 +137,19 @@ export function UnsavedChangesBar({
             <span className="flex size-6 items-center justify-center rounded-full bg-chart-3/15">
               <CheckIcon className="size-4 text-chart-3" />
             </span>
-            Изменения сохранены
+            {t('saved')}
           </div>
         ) : showResetAck ? (
           <div className="profile-unsaved-feedback flex items-center gap-2 text-sm font-medium">
             <span className="flex size-6 items-center justify-center rounded-full bg-accent">
               <Undo2Icon className="size-4 text-accent-foreground" />
             </span>
-            Изменения отменены
+            {t('reverted')}
           </div>
         ) : (
           <>
             <p className="min-w-0 flex-1 text-sm font-medium leading-snug">
-              Есть несохранённые изменения
+              {t('dirty')}
             </p>
             <div className="flex shrink-0 items-center gap-2">
               <Button
@@ -157,7 +160,7 @@ export function UnsavedChangesBar({
                 className="text-muted-foreground transition-colors hover:text-foreground"
                 onClick={handleReset}
               >
-                Сбросить
+                {t('reset')}
               </Button>
               <Button
                 type="button"
@@ -169,10 +172,10 @@ export function UnsavedChangesBar({
                 {saving ? (
                   <>
                     <Loader2Icon className="size-4 animate-spin" />
-                    Сохранение…
+                    {t('saving')}
                   </>
                 ) : (
-                  saveLabel
+                  saveText
                 )}
               </Button>
             </div>

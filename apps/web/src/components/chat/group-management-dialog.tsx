@@ -59,6 +59,7 @@ function GroupManagementDialogContent({
   channel,
 }: GroupManagementDialogProps) {
   const t = useTranslations('chat.group')
+  const tm = useTranslations('media')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -181,6 +182,7 @@ function GroupManagementDialogContent({
             token,
             'icons',
             iconFile,
+            tm,
           )
         } else if (removeIcon && channel.icon) {
           data.remove = [...(data.remove ?? []), 'Icon']

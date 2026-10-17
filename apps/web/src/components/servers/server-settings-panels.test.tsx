@@ -240,12 +240,14 @@ describe('ServerSettingsPanelContent', () => {
       'session-token',
       'icons',
       icon,
+      expect.anything(),
     )
     expect(mocks.uploadMediaFile).toHaveBeenNthCalledWith(
       2,
       'session-token',
       'banners',
       banner,
+      expect.anything(),
     )
   })
 

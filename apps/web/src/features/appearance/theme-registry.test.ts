@@ -96,7 +96,6 @@ describe('theme registry', () => {
       'gradient-dunes',
       'gradient',
     ])
-    expect(getThemeById('syrnike').name).toBe('Сырники')
     expect(getThemeById('syrnike').kind).toBe('solid')
     expect(getThemeById('gradient').kind).toBe('gradient')
     expect(getThemeById('gradient').customizable).toBe(true)

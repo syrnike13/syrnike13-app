@@ -11,6 +11,7 @@ import type { ReactNode } from 'react'
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { Effect, Option, Schema } from 'effect'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   useAdminDraftController,
@@ -806,6 +807,7 @@ function DuplicateCandidate({
   selected: boolean
   onSelect: () => void
 }) {
+  const t = useTranslations('feedback.similarity')
   const statusLabel = feedbackProductStatusLabel(candidate.suggestion.status)
 
   return (
@@ -848,7 +850,7 @@ function DuplicateCandidate({
           <span className="mt-2 flex flex-wrap gap-1.5">
             {candidate.similarity.reasons.map((reason) => (
               <FeedbackTag key={reason} tone="reason">
-                {reason}
+                {t(reason)}
               </FeedbackTag>
             ))}
           </span>

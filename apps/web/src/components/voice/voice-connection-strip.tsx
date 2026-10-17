@@ -46,6 +46,7 @@ const VOICE_STATUS_FAILED = {
 export function VoiceConnectionStrip() {
   const t = useTranslations('voice')
   const ts = useTranslations('voice.status')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const voice = useVoiceSession()
   const voiceTelemetry = useVoiceTelemetry()
@@ -63,7 +64,7 @@ export function VoiceConnectionStrip() {
 
   const channelLabel =
     channel && auth.user
-      ? getChannelLabel(channel, users, auth.user._id)
+      ? getChannelLabel(channel, users, auth.user._id, tChat)
       : t('channel')
 
   const locationLabel = server

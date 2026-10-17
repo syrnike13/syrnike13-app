@@ -58,6 +58,7 @@ function composerPlaceholder(
   isEditing: boolean,
   waitingForConnection: boolean,
   t: Translator,
+  tChat: Translator,
 ) {
   if (waitingForConnection) return t('waitingConnection')
   if (isEditing) return t('newText')
@@ -69,7 +70,7 @@ function composerPlaceholder(
     const name = runtimeChannelName(channel) || t('voiceChannel')
     return t('messageIn', { name })
   }
-  const label = getChannelLabel(channel, users, currentUserId)
+  const label = getChannelLabel(channel, users, currentUserId, tChat)
   return t('messageTo', { label })
 }
 
@@ -135,6 +136,7 @@ export function MessageComposer({
   onHeightChange,
 }: MessageComposerProps) {
   const t = useTranslations('chat.composer')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const members = useSyncStore((s) => s.members)
   const composerRef = useRef<ComposerEditorHandle>(null)
@@ -568,6 +570,7 @@ export function MessageComposer({
           isEditing,
           waitingForConnection,
           t,
+          tChat,
         ))
 
   const hasComposerHeader =

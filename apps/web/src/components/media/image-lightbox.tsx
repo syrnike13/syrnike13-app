@@ -6,6 +6,7 @@ import {
   type ReactElement,
 } from 'react'
 import type { File, User } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -65,15 +66,15 @@ const BUTTON_ZOOM = 2
 const PAN_DRAG_THRESHOLD_PX = 3
 
 const lightboxActionClass =
-  'inline-flex size-9 items-center justify-center rounded-lg text-zinc-200 transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none'
+  'inline-flex size-9 items-center justify-center rounded-lg text-on-media transition-colors hover:bg-on-media/10 focus-visible:ring-2 focus-visible:ring-on-media/60 focus-visible:outline-none'
 
 const lightboxChromeClass =
-  'rounded-xl bg-[#2b2d31]/95 text-zinc-200 shadow-2xl'
+  'rounded-xl bg-media-backdrop/95 text-on-media shadow-2xl'
 
 const lightboxNavClass = cn(
   'absolute top-1/2 z-10 inline-flex size-10 -translate-y-1/2 items-center justify-center',
   lightboxChromeClass,
-  'transition-colors hover:bg-[#3a3c41] focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none',
+  'transition-colors hover:bg-on-media/15 focus-visible:ring-2 focus-visible:ring-on-media/60 focus-visible:outline-none',
 )
 
 function stopBubble(event: { stopPropagation: () => void }) {
@@ -145,6 +146,7 @@ export function ImageLightbox({
   onOpenChange,
   author,
 }: ImageLightboxProps) {
+  const t = useTranslations('media')
   const [zoom, setZoom] = useState(MIN_ZOOM)
   const [offset, setOffset] = useState<PanOffset>({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
@@ -208,7 +210,7 @@ export function ImageLightbox({
   if (!open || !file) return null
 
   const src = attachmentOriginalUrl(file)
-  const title = file.filename ?? 'Изображение'
+  const title = file.filename ?? t('imageFallback')
 
   const endDrag = (event: ReactPointerEvent<HTMLImageElement>) => {
     const drag = dragRef.current
@@ -231,7 +233,7 @@ export function ImageLightbox({
         aria-describedby={undefined}
         showCloseButton={false}
         themedSurface={false}
-        overlayClassName="bg-black/85"
+        overlayClassName="bg-media-backdrop/85"
         className={cn(
           'fixed inset-0 top-0 left-0 z-[300] flex h-screen w-screen max-w-none translate-x-0 translate-y-0 items-center justify-center overflow-hidden',
           'rounded-none border-none bg-transparent p-0 shadow-none outline-none sm:max-w-none',
@@ -254,7 +256,7 @@ export function ImageLightbox({
               />
               <div className="min-w-0">
                 <p
-                  className="truncate text-sm font-semibold text-zinc-100"
+                  className="truncate text-sm font-semibold text-on-media"
                   style={
                     author.nameColor ? { color: author.nameColor } : undefined
                   }
@@ -262,7 +264,7 @@ export function ImageLightbox({
                   {author.name}
                 </p>
                 <time
-                  className="block truncate text-xs text-zinc-400"
+                  className="block truncate text-xs text-on-media/70"
                   dateTime={formatMessageTimestamp(author.createdAt)}
                 >
                   {formatMessageTimestamp(author.createdAt)}
@@ -279,13 +281,11 @@ export function ImageLightbox({
             onClick={stopBubble}
           >
             <LightboxTooltip
-              label={zoomed ? 'Сбросить масштаб' : 'Приблизить'}
+              label={zoomed ? t('resetZoom') : t('zoomIn')}
             >
               <button
                 type="button"
-                aria-label={
-                  zoomed ? 'Сбросить масштаб' : 'Приблизить изображение'
-                }
+                aria-label={zoomed ? t('resetZoom') : t('zoomInImage')}
                 aria-pressed={zoomed}
                 className={lightboxActionClass}
                 onClick={() => {
@@ -299,22 +299,22 @@ export function ImageLightbox({
                 <SearchIcon className="size-4" aria-hidden />
               </button>
             </LightboxTooltip>
-            <LightboxTooltip label="Скачать">
+            <LightboxTooltip label={t('download')}>
               <a
                 href={src}
                 download={file.filename ?? 'image'}
-                aria-label="Скачать изображение"
+                aria-label={t('downloadImage')}
                 className={lightboxActionClass}
               >
                 <DownloadIcon className="size-4" aria-hidden />
               </a>
             </LightboxTooltip>
-            <LightboxTooltip label="Открыть оригинал">
+            <LightboxTooltip label={t('openOriginal')}>
               <a
                 href={src}
                 target="_blank"
                 rel="noreferrer noopener"
-                aria-label="Открыть оригинал"
+                aria-label={t('openOriginal')}
                 className={lightboxActionClass}
               >
                 <ExternalLinkIcon className="size-4" aria-hidden />
@@ -325,11 +325,11 @@ export function ImageLightbox({
           <DialogClose asChild>
             <button
               type="button"
-              aria-label="Закрыть просмотр изображения"
+              aria-label={t('closeViewer')}
               className={cn(
                 'absolute top-5 right-4 z-10 inline-flex size-10 items-center justify-center',
                 lightboxChromeClass,
-                'transition-colors hover:bg-[#3a3c41] focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none',
+                'transition-colors hover:bg-on-media/15 focus-visible:ring-2 focus-visible:ring-on-media/60 focus-visible:outline-none',
               )}
               onClick={stopBubble}
             >
@@ -339,10 +339,10 @@ export function ImageLightbox({
 
           {hasGallery ? (
             <>
-              <LightboxTooltip label="Предыдущее" side="right">
+              <LightboxTooltip label={t('previous')} side="right">
                 <button
                   type="button"
-                  aria-label="Предыдущее изображение"
+                  aria-label={t('previousImage')}
                   className={cn(lightboxNavClass, 'left-4')}
                   onClick={(event) => {
                     stopBubble(event)
@@ -352,10 +352,10 @@ export function ImageLightbox({
                   <ChevronLeftIcon className="size-5" aria-hidden />
                 </button>
               </LightboxTooltip>
-              <LightboxTooltip label="Следующее" side="left">
+              <LightboxTooltip label={t('next')} side="left">
                 <button
                   type="button"
-                  aria-label="Следующее изображение"
+                  aria-label={t('nextImage')}
                   className={cn(lightboxNavClass, 'right-4')}
                   onClick={(event) => {
                     stopBubble(event)
@@ -462,20 +462,20 @@ export function ImageLightbox({
         {hasGallery ? (
             <div
               role="list"
-              aria-label="Миниатюры вложений"
+              aria-label={t('attachments')}
               className="absolute inset-x-0 bottom-0 z-10 flex justify-center px-4 pb-4 pt-2"
               onClick={stopBubble}
             >
               <div
                 className={cn(
                   'flex max-w-full items-center gap-1.5 overflow-x-auto',
-                  '[scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20',
+                  '[scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-on-media/20',
                 )}
               >
                 {files.map((item, itemIndex) => {
                   const active = itemIndex === index
                   const thumbTitle =
-                    item.filename ?? `Изображение ${itemIndex + 1}`
+                    item.filename ?? t('imageNumber', { index: itemIndex + 1 })
                   const isFirst = itemIndex === 0
                   const isLast = itemIndex === files.length - 1
                   return (
@@ -493,7 +493,7 @@ export function ImageLightbox({
                         isLast && !isFirst && 'rounded-r-xl rounded-l-xs',
                         !isFirst && !isLast && 'rounded-xs',
                         active
-                          ? 'opacity-100 ring-2 ring-inset ring-white'
+                          ? 'opacity-100 ring-2 ring-inset ring-on-media'
                           : 'opacity-55 hover:opacity-85',
                       )}
                       onClick={() => onIndexChange(itemIndex)}

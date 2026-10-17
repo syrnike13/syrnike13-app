@@ -234,6 +234,7 @@ describe('UserContextMenuContent', () => {
         'session-token',
         '01JVOICETARGET0000001',
         expect.any(Function),
+        expect.anything(),
       )
     })
     expect(navigateMock).toHaveBeenCalledWith({

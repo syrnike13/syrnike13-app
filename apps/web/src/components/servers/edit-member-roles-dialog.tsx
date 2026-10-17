@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Member, Server, User } from '@syrnike13/api-types'
 import { SearchIcon } from '#/components/icons'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { MemberRolesEditor } from '#/components/servers/member-roles-editor'
 import {
@@ -28,6 +29,7 @@ export function EditMemberRolesDialog({
   open,
   onOpenChange,
 }: EditMemberRolesDialogProps) {
+  const t = useTranslations('servers.editMemberRoles')
   const nickname =
     targetMember.nickname?.trim() ||
     targetUser.display_name ||
@@ -43,18 +45,18 @@ export function EditMemberRolesDialog({
       <DialogContent className="grid w-full max-w-md gap-0 overflow-hidden p-0 sm:max-w-md">
         <DialogHeader className="gap-2.5 border-b border-border px-5 py-3.5 pr-12 text-left sm:text-left">
           <DialogTitle className="truncate text-base leading-snug">
-            Роли «{nickname}»
+            {t('title', { name: nickname })}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Изменение ролей участника на сервере.
+            {t('description')}
           </DialogDescription>
           <div className="relative">
             <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
-              placeholder="Поиск ролей"
-              aria-label="Поиск ролей"
-              className="h-8 border-0 bg-muted/50 pl-8 text-sm shadow-none focus-visible:bg-muted/70 focus-visible:ring-1 focus-visible:ring-ring/40"
+              placeholder={t('searchRoles')}
+              aria-label={t('searchRolesAria')}
+              className="h-8 pl-8 text-sm"
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>

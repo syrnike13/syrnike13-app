@@ -34,6 +34,7 @@ type DialogMode = 'dm' | 'group' | null
 
 export function NewConversationButton() {
   const t = useTranslations('home.newConversation')
+  const tu = useTranslations('users')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -96,7 +97,7 @@ export function NewConversationButton() {
             params: { channelId },
             search: { m: undefined },
           })
-        }),
+        }, tu),
       )
     } catch {
       // dm-actions already shows the concrete error toast.

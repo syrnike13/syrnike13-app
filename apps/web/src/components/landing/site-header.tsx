@@ -9,7 +9,7 @@ export function SiteHeader() {
   const t = useTranslations('landing')
 
   return (
-    <header className="relative z-10 mx-auto flex w-full max-w-[1200px] items-center justify-between px-6 py-5">
+    <header className="relative z-10 mx-auto flex w-full max-w-300 items-center justify-between px-6 py-5">
       <Link to="/" className="flex items-center gap-2">
         <img
           src={APP_LOGO_SRC}

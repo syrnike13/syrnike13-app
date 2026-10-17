@@ -1,5 +1,6 @@
 import type { User } from '@syrnike13/api-types'
 import { useState } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   Avatar,
@@ -45,11 +46,12 @@ export function AvatarNotificationBadge({
   ringClassName = 'border-card',
   max = 99,
 }: AvatarNotificationBadgeProps) {
+  const t = useTranslations('notifications')
   if (!badge.hasUnread && !badge.urgent) return null
 
   const layout = resolvePresenceBadgeLayoutForAvatar(className, fallbackClassName)
   const countLabel =
-    badge.count > 0 ? `${badge.count} уведомлений` : 'Есть уведомления'
+    badge.count > 0 ? t('count', { count: badge.count }) : t('hasUnread')
   const display = badge.count > max ? `${max}+` : String(badge.count || '!')
 
   return (

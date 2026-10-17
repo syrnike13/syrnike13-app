@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
+import { useTranslations, type Translator } from '@syrnike13/ui/i18n'
 
 import { SettingsBlock, SettingsRow } from '#/components/settings/settings-panels'
 import { Button } from '#/components/ui/button'
@@ -27,6 +28,7 @@ const DEFAULT_OBSERVABILITY_SETTINGS: DesktopObservabilitySettings = {
 }
 
 export function SettingsDesktopPanel() {
+  const t = useTranslations('settings.desktop')
   const auth = useAuth()
   const { desktop } = usePlatform()
   const [versions, setVersions] = useState<DesktopVersions | null>(null)
@@ -125,7 +127,7 @@ export function SettingsDesktopPanel() {
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось проверить обновления',
+                  : t('checkError'),
               )
             }),
           onSuccess: (state) =>
@@ -144,13 +146,13 @@ export function SettingsDesktopPanel() {
 
   return (
     <div className="space-y-2">
-      <SettingsBlock title="Приложение">
+      <SettingsBlock title={t('app')}>
         <SettingsRow
-          label="Версия"
+          label={t('version')}
           value={
             versions
               ? `${versions.app} · Electron ${versions.electron}`
-              : 'Загрузка…'
+              : t('loading')
           }
         />
         <SettingsRow
@@ -161,15 +163,15 @@ export function SettingsDesktopPanel() {
         />
       </SettingsBlock>
 
-      <SettingsBlock title="Обновления">
+      <SettingsBlock title={t('updates')}>
         <SettingsRow
-          label="Статус"
-          value={formatUpdateStatus(updateState)}
+          label={t('status')}
+          value={formatUpdateStatus(updateState, t)}
         >
           <div className="flex items-center gap-2">
             {updateState?.status === 'ready' ? (
               <Button size="sm" onClick={() => desktop?.updates.install()}>
-                Перезапустить
+                {t('restart')}
               </Button>
             ) : null}
             <Button
@@ -179,17 +181,17 @@ export function SettingsDesktopPanel() {
               onClick={checkForUpdates}
             >
               {checkingUpdates || updateState?.status === 'checking'
-                ? 'Проверка…'
-                : 'Проверить'}
+                ? t('checking')
+                : t('check')}
             </Button>
           </div>
         </SettingsRow>
       </SettingsBlock>
 
-      <SettingsBlock title="Запуск">
+      <SettingsBlock title={t('startup')}>
         <SettingsRow
-          label="Запускать при входе в систему"
-          hint="syrnike13 откроется после включения компьютера"
+          label={t('launchAtLogin')}
+          hint={t('launchAtLoginHint')}
         >
           <Switch
             checked={windowPreferences?.openAtLogin ?? true}
@@ -214,7 +216,7 @@ export function SettingsDesktopPanel() {
                         toast.error(
                           error instanceof Error
                             ? error.message
-                            : 'Не удалось сохранить настройку автозапуска',
+                            : t('saveLaunchError'),
                         )
                       }),
                     onSuccess: (value) =>
@@ -234,8 +236,8 @@ export function SettingsDesktopPanel() {
         </SettingsRow>
       </SettingsBlock>
 
-      <SettingsBlock title="Окно">
-        <SettingsRow label="Закрывать в трей">
+      <SettingsBlock title={t('window')}>
+        <SettingsRow label={t('closeToTray')}>
           <Switch
             checked={windowPreferences?.closeToTray ?? true}
             disabled={!windowPreferences || savingCloseToTray}
@@ -259,7 +261,7 @@ export function SettingsDesktopPanel() {
                         toast.error(
                           error instanceof Error
                             ? error.message
-                            : 'Не удалось сохранить настройку окна',
+                            : t('saveWindowError'),
                         )
                       }),
                     onSuccess: (value) =>
@@ -280,12 +282,12 @@ export function SettingsDesktopPanel() {
       </SettingsBlock>
 
       <SettingsBlock
-        title="Конфиденциальность и диагностика"
-        description="Эти настройки относятся только к нативным функциям Windows: микрофону, демонстрации экрана, горячим клавишам и оверлею."
+        title={t('privacyTitle')}
+        description={t('privacyDescription')}
       >
         <SettingsRow
-          label="Анонимная статистика стабильности"
-          hint="Отправляет только агрегированные счётчики запусков, сбоев и времени операций. Не отправляет токены, адреса комнат, ID пользователей, названия окон и устройств, пути, содержимое аудио или экрана."
+          label={t('anonymousMetrics')}
+          hint={t('anonymousMetricsHint')}
         >
           <Switch
             checked={
@@ -299,8 +301,8 @@ export function SettingsDesktopPanel() {
           />
         </SettingsRow>
         <SettingsRow
-          label="Автоматические диагностические отчёты"
-          hint="При сбое голоса, демонстрации экрана, глобальной ошибке интерфейса или необработанном отклонении Promise отправляет ограниченный структурированный пакет без токенов, адресов комнат, содержимого сообщений, аудио и экрана. Изменение подробных native-логов вступит в силу после перезапуска приложения."
+          label={t('autoReports')}
+          hint={t('autoReportsHint')}
         >
           <Switch
             checked={
@@ -314,8 +316,8 @@ export function SettingsDesktopPanel() {
           />
         </SettingsRow>
         <SettingsRow
-          label="Полные отчёты о сбоях"
-          hint="Могут содержать фрагменты памяти процесса. Выключены по умолчанию, отправляются только после вашего согласия. Изменение вступит в силу после перезапуска приложения."
+          label={t('fullCrashReports')}
+          hint={t('fullCrashReportsHint')}
         >
           <Switch
             checked={
@@ -329,8 +331,8 @@ export function SettingsDesktopPanel() {
           />
         </SettingsRow>
         <SettingsRow
-          label="Отправить отчёт сейчас"
-          hint="Собирает текущий ограниченный журнал renderer и последние redacted native-логи, затем показывает ID отчёта для обращения в поддержку."
+          label={t('sendReport')}
+          hint={t('sendReportHint')}
         >
           <Button
             type="button"
@@ -356,13 +358,13 @@ export function SettingsDesktopPanel() {
                         toast.error(
                           error instanceof Error
                             ? error.message
-                            : 'Не удалось отправить диагностический отчёт',
+                            : t('reportError'),
                         )
                       }),
                     onSuccess: (report) =>
                       Effect.sync(() => {
                         if (report) {
-                          toast.success(`Отчёт отправлен: ${report.id}`)
+                          toast.success(t('reportSent', { id: report.id }))
                         }
                       }),
                   }),
@@ -375,16 +377,13 @@ export function SettingsDesktopPanel() {
               )
             }}
           >
-            {sendingDiagnosticReport ? 'Отправка…' : 'Отправить'}
+            {sendingDiagnosticReport ? t('sending') : t('send')}
           </Button>
         </SettingsRow>
       </SettingsBlock>
 
-      <SettingsBlock title="Активность">
-        <SettingsRow
-          label="Статус"
-          value="Скоро: игра / просмотр / прослушивание"
-        />
+      <SettingsBlock title={t('activity')}>
+        <SettingsRow label={t('status')} value={t('activitySoon')} />
       </SettingsBlock>
     </div>
   )
@@ -408,7 +407,7 @@ export function SettingsDesktopPanel() {
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : 'Не удалось сохранить настройки диагностики',
+                  : t('saveDiagnosticsError'),
               )
             }),
           onSuccess: (settings) =>
@@ -426,22 +425,24 @@ export function SettingsDesktopPanel() {
   }
 }
 
-function formatUpdateStatus(state: DesktopUpdateState | null) {
-  if (!state) return 'Загрузка…'
+function formatUpdateStatus(state: DesktopUpdateState | null, t: Translator) {
+  if (!state) return t('loading')
 
   switch (state.status) {
     case 'idle':
-      return 'Установлена последняя версия'
+      return t('updateIdle')
     case 'checking':
-      return 'Проверка обновлений…'
+      return t('updateChecking')
     case 'available':
-      return `Доступно v${state.version}, загрузка…`
+      return t('updateAvailable', { version: state.version })
     case 'downloading':
-      return `Загрузка… ${Math.round(state.percent)}%`
+      return t('updateDownloading', {
+        percent: Math.round(state.percent),
+      })
     case 'ready':
-      return `Готово к установке: v${state.version}`
+      return t('updateReady', { version: state.version })
     case 'installing':
-      return `Установка v${state.version}…`
+      return t('updateInstalling', { version: state.version })
     case 'error':
       return state.message
   }

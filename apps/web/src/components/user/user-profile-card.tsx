@@ -12,6 +12,7 @@ import {
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { UserProfileCardHeader } from '#/components/user/user-profile-card-header'
 import { Button } from '#/components/ui/button'
@@ -53,6 +54,8 @@ export function UserProfileCard({
   onClose,
   onOpenGlobalProfile,
 }: UserProfileCardProps) {
+  const t = useTranslations('users')
+  const tf = useTranslations('friends')
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
@@ -79,10 +82,10 @@ export function UserProfileCard({
   async function handleBlock() {
     const token = auth.session?.token
     if (!token || isSelf) return
-    if (!window.confirm(`Заблокировать @${profile.username}?`)) return
+    if (!window.confirm(t('confirmBan', { username: profile.username }))) return
     setBusy(true)
     try {
-      await Effect.runPromise(blockUserRelationship(token, profile._id))
+      await Effect.runPromise(blockUserRelationship(token, profile._id, tf))
       dismiss()
     } catch {
       // friend-actions already shows the concrete error toast.
@@ -96,7 +99,7 @@ export function UserProfileCard({
     if (!token || !canAddFriend) return
     setBusy(true)
     try {
-      await Effect.runPromise(sendFriendRequestToUser(token, profile))
+      await Effect.runPromise(sendFriendRequestToUser(token, profile, tf))
     } catch {
       // friend-actions already shows the concrete error toast.
     } finally {
@@ -107,9 +110,9 @@ export function UserProfileCard({
   async function copyUserId() {
     try {
       await Effect.runPromise(writeClipboardTextEffect(profile._id))
-      toast.success('ID скопирован')
+      toast.success(t('idCopied'))
     } catch {
-      toast.error('Не удалось скопировать')
+      toast.error(t('copyError'))
     }
   }
 
@@ -119,18 +122,23 @@ export function UserProfileCard({
     setBusy(true)
     try {
       await Effect.runPromise(
-        openDirectMessageChannel(token, profile._id, (channelId) => {
-          dismiss()
-          setMessageDraft('')
-          return navigate({
-            to: `${prefix}/c/$channelId`,
-            params: { channelId },
-            search: { m: undefined },
-          })
-        }),
+        openDirectMessageChannel(
+          token,
+          profile._id,
+          (channelId) => {
+            dismiss()
+            setMessageDraft('')
+            return navigate({
+              to: `${prefix}/c/$channelId`,
+              params: { channelId },
+              search: { m: undefined },
+            })
+          },
+          t,
+        ),
       )
       if (prefill?.trim()) {
-        toast.message('Откройте чат и отправьте сообщение', {
+        toast.message(t('openChatHint'), {
           description: prefill.trim(),
         })
       }
@@ -162,12 +170,12 @@ export function UserProfileCard({
               {canAddFriend ? (
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="scrim-icon"
                   size="icon"
                   disabled={busy}
-                  title="Добавить в друзья"
-                  aria-label="Добавить в друзья"
-                  className="size-8 rounded-full bg-black/45 text-white shadow-sm backdrop-blur-sm hover:bg-black/60 hover:text-white"
+                  title={t('addFriend')}
+                  aria-label={t('addFriend')}
+                  className="size-8"
                   onClick={(event) => {
                     event.stopPropagation()
                     void handleAddFriend()
@@ -206,8 +214,10 @@ export function UserProfileCard({
             <Input
               value={messageDraft}
               disabled={busy}
-              placeholder={`Сообщение @${profile.username}`}
-              className="h-10 rounded-lg border-border bg-secondary pr-10 text-sm text-secondary-foreground shadow-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 dark:bg-accent dark:text-accent-foreground"
+              placeholder={t('messagePlaceholder', {
+                username: profile.username,
+              })}
+              className="h-10 pr-10 text-sm"
               onChange={(event) => setMessageDraft(event.target.value)}
             />
             <Button
@@ -215,9 +225,9 @@ export function UserProfileCard({
               variant="ghost"
               size="icon"
               disabled={busy}
-              className="absolute top-1/2 right-1.5 size-8 -translate-y-1/2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              title="Открыть ЛС"
-              aria-label="Открыть ЛС"
+              className="absolute top-1/2 right-1.5 size-8 -translate-y-1/2"
+              title={t('openDm')}
+              aria-label={t('openDm')}
             >
               {busy ? (
                 <Loader2Icon className="size-4 animate-spin" />
@@ -245,17 +255,19 @@ function UserProfileCardBannerMenu({
   onBlock: () => void
   onCopyUserId: () => void
 }) {
+  const t = useTranslations('users')
+
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button
           type="button"
-          variant="ghost"
+          variant="scrim-icon"
           size="icon"
           disabled={disabled}
-          title="Ещё"
-          aria-label="Действия профиля"
-          className="size-8 rounded-full bg-black/45 text-white shadow-sm backdrop-blur-sm hover:bg-black/60 hover:text-white"
+          title={t('more')}
+          aria-label={t('profileActions')}
+          className="size-8"
           onClick={(event) => event.stopPropagation()}
         >
           <MoreHorizontalIcon className="size-4" />
@@ -270,16 +282,16 @@ function UserProfileCardBannerMenu({
         {canViewProfile ? (
           <FloatingMenuItem onClick={onViewProfile}>
             <UserIcon className="size-3.5" />
-            Посмотреть профиль
+            {t('viewProfile')}
           </FloatingMenuItem>
         ) : null}
         <FloatingMenuItem onClick={onBlock} destructive>
           <BanIcon className="size-3.5" />
-          Заблокировать
+          {t('block')}
         </FloatingMenuItem>
         <FloatingMenuItem onClick={onCopyUserId}>
           <CopyIcon className="size-3.5" />
-          Копировать user ID
+          {t('copyUserId')}
         </FloatingMenuItem>
       </PopoverContent>
     </Popover>

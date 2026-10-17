@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ManualPresence } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
 
@@ -10,6 +11,7 @@ import { queryKeys } from '#/lib/api/query-keys'
 import { syncStore } from '#/features/sync/sync-store'
 
 export function useSetPresence() {
+  const t = useTranslations('users')
   const auth = useAuth()
   const queryClient = useQueryClient()
 
@@ -20,7 +22,7 @@ export function useSetPresence() {
           const token = auth.session?.token
           const user = auth.user
           if (!token || !user) {
-            return yield* Effect.fail(new Error('Не авторизован'))
+            return yield* Effect.fail(new Error(t('notAuthorized')))
           }
 
           return yield* updateCurrentUserEffect(token, {
@@ -39,7 +41,7 @@ export function useSetPresence() {
       toast.error(
         error instanceof Error
           ? error.message
-          : 'Не удалось сменить статус',
+          : t('presenceUpdateError'),
       )
     },
   })

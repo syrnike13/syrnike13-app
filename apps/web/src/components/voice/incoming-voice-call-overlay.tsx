@@ -25,6 +25,7 @@ export function IncomingVoiceCallOverlay({
   activeChannelId,
 }: IncomingVoiceCallOverlayProps) {
   const t = useTranslations('voice')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const voice = useVoiceSession()
   const navigate = useNavigate()
@@ -54,7 +55,7 @@ export function IncomingVoiceCallOverlay({
         call,
         channel,
         initiator: state.users[call.initiatorId],
-        channelTitle: getChannelLabel(channel, state.users, currentUserId),
+        channelTitle: getChannelLabel(channel, state.users, currentUserId, tChat),
       }
     }
 

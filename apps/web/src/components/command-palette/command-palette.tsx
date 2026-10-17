@@ -11,6 +11,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Message } from '@syrnike13/api-types'
 import { Effect, Fiber } from 'effect'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   Dialog,
@@ -35,19 +36,19 @@ import { cn } from '#/lib/utils'
 
 function groupIcon(group: string) {
   switch (group) {
-    case 'Навигация':
+    case 'navigation':
       return HomeIcon
-    case 'Серверы':
+    case 'servers':
       return ServerIcon
-    case 'Каналы':
+    case 'channels':
       return HashIcon
-    case 'Личные сообщения':
+    case 'dms':
       return MessageSquareIcon
-    case 'Друзья':
+    case 'friends':
       return UsersIcon
-    case 'Сообщения':
+    case 'messages':
       return MessageSquareIcon
-    case 'Настройки':
+    case 'settings':
       return SettingsIcon
     default:
       return UserIcon
@@ -55,6 +56,8 @@ function groupIcon(group: string) {
 }
 
 export function CommandPalette() {
+  const t = useTranslations('commandPalette')
+  const tChat = useTranslations('chat')
   const { open, setOpen } = useCommandPalette()
   const auth = useAuth()
   const navigate = useNavigate()
@@ -83,14 +86,16 @@ export function CommandPalette() {
       navigate: (opts) => navigate(opts as never),
       setSelectedServerId: syncStore.setSelectedServerId,
       openSettings: () => openSettings('account'),
+      t,
+      tChat,
     })
-  }, [open, auth.user?._id, query, activeChannelId, navigate, openSettings])
+  }, [open, auth.user?._id, query, activeChannelId, navigate, openSettings, t, tChat])
 
   const messageItems = useMemo((): CommandItem[] => {
     return messageHits.map((hit) => ({
       id: `msg-${hit.message._id}`,
-      group: 'Сообщения',
-      label: hit.message.content?.slice(0, 80) || 'Вложение',
+      group: 'messages',
+      label: hit.message.content?.slice(0, 80) || t('attachment'),
       subtitle: hit.channelLabel,
       keywords: hit.message.content ?? '',
       score: 50,
@@ -108,7 +113,7 @@ export function CommandPalette() {
         })
       },
     }))
-  }, [messageHits, navigate])
+  }, [messageHits, navigate, t])
 
   const items = useMemo(
     () => [...staticItems, ...messageItems].slice(0, 50),
@@ -170,8 +175,13 @@ export function CommandPalette() {
                   const state = syncStore.getState()
                   const channel = state.channels[channelId]
                   const channelLabel = channel
-                    ? channelLabelForMessage(channel, state, auth.user?._id)
-                    : 'Канал'
+                    ? channelLabelForMessage(
+                        channel,
+                        state,
+                        auth.user?._id,
+                        tChat,
+                      )
+                    : t('channel')
                   return messages.map((message) => ({
                     message,
                     channelId,
@@ -196,7 +206,7 @@ export function CommandPalette() {
     return () => {
       Effect.runFork(Fiber.interrupt(fiber))
     }
-  }, [open, query, auth.session?.token, activeChannelId, auth.user?._id])
+  }, [open, query, auth.session?.token, activeChannelId, auth.user?._id, t])
 
   function runItem(item: CommandItem) {
     setOpen(false)
@@ -224,9 +234,9 @@ export function CommandPalette() {
         showCloseButton={false}
         className="gap-0 overflow-hidden p-0 sm:max-w-xl"
       >
-        <DialogTitle className="sr-only">Быстрый поиск</DialogTitle>
+        <DialogTitle className="sr-only">{t('title')}</DialogTitle>
         <DialogDescription className="sr-only">
-          Поиск по каналам, друзьям и сообщениям. Ctrl+K
+          {t('description')}
         </DialogDescription>
         <div className="flex items-center gap-3 border-b px-4">
           <Input
@@ -235,10 +245,11 @@ export function CommandPalette() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Куда перейти? Кого найти?"
-            className="h-12 flex-1 rounded-none border-0 px-0 shadow-none focus-visible:ring-0 [&::-webkit-search-cancel-button]:hidden"
+            placeholder={t('placeholder')}
+            variant="borderless"
+            className="h-12 flex-1 px-0 [&::-webkit-search-cancel-button]:hidden"
           />
-          <kbd className="hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline">
+          <kbd className="hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 text-[0.625rem] text-muted-foreground sm:inline">
             Esc
           </kbd>
         </div>
@@ -247,10 +258,10 @@ export function CommandPalette() {
           {items.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
               {searchingMessages
-                ? 'Ищем сообщения…'
+                ? t('searching')
                 : query.trim()
-                  ? 'Ничего не найдено'
-                  : 'Введите запрос или выберите пункт'}
+                  ? t('noResults')
+                  : t('typeQuery')}
             </p>
           ) : (
             <div className="p-2">
@@ -259,7 +270,7 @@ export function CommandPalette() {
                 return (
                   <div key={group} className="mb-2 last:mb-0">
                     <p className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                      {group}
+                      {t(`groups.${group}`)}
                     </p>
                     <ul>
                       {groupItems.map((item) => {
@@ -299,8 +310,8 @@ export function CommandPalette() {
           )}
         </ScrollArea>
 
-        <div className="flex items-center justify-between border-t bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
-          <span>↑↓ выбор · Enter открыть</span>
+        <div className="flex items-center justify-between border-t bg-muted/30 px-3 py-2 text-[0.6875rem] text-muted-foreground">
+          <span>{t('footer')}</span>
           <span>
             <kbd className="rounded border bg-background px-1">Ctrl</kbd>+
             <kbd className="rounded border bg-background px-1">K</kbd>

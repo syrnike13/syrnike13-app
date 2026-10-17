@@ -36,6 +36,7 @@ import { cn } from '#/lib/utils'
  */
 export function MobileVoiceFloatingTile() {
   const t = useTranslations('layout.voice')
+  const tChat = useTranslations('chat')
   const auth = useAuth()
   const voiceSession = useVoiceSession()
   const voiceMedia = useVoiceMedia()
@@ -81,7 +82,7 @@ export function MobileVoiceFloatingTile() {
 
   const channelLabel =
     channel && auth.user
-      ? getChannelLabel(channel, users, auth.user._id)
+      ? getChannelLabel(channel, users, auth.user._id, tChat)
       : t('channel')
   const title = server ? `${server.name} / ${channelLabel}` : channelLabel
 

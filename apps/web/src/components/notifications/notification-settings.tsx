@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import {
   SettingsBlock,
@@ -40,6 +41,9 @@ type NotificationSettingsProps = {
 export function NotificationSettings({
   layout = 'card',
 }: NotificationSettingsProps) {
+  const t = useTranslations('settings.notifications')
+  const permissionLabel = (value: NotificationPermission) =>
+    t(`permissions.${value}`)
   const auth = useAuth()
   const [permission, setPermission] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'default',
@@ -72,7 +76,7 @@ export function NotificationSettings({
 
   function enableDesktop() {
     if (!('Notification' in window)) {
-      toast.error('Браузер не поддерживает уведомления')
+      toast.error(t('unsupported'))
       return
     }
 
@@ -85,9 +89,9 @@ export function NotificationSettings({
           Effect.sync(() => {
             setPermission(result)
             if (result === 'granted') {
-              toast.success('Уведомления включены для открытых вкладок')
+              toast.success(t('granted'))
             } else if (result === 'denied') {
-              toast.error('Доступ к уведомлениям запрещён')
+              toast.error(t('denied'))
             }
           }),
         ),
@@ -99,7 +103,7 @@ export function NotificationSettings({
   function enablePush() {
     const token = auth.session?.token
     if (!token || !vapidKey) {
-      toast.error('Push недоступен на этом узле')
+      toast.error(t('pushUnavailable'))
       return
     }
 
@@ -136,7 +140,7 @@ export function NotificationSettings({
         const auth = json.keys?.auth
         const p256dh = json.keys?.p256dh
         if (!endpoint || !auth || !p256dh) {
-          return yield* Effect.fail(new Error('Некорректная подписка'))
+          return yield* Effect.fail(new Error(t('invalidSubscription')))
         }
         yield* subscribePushEffect(token, {
           endpoint,
@@ -144,7 +148,7 @@ export function NotificationSettings({
           p256dh,
         })
         yield* Effect.sync(() => {
-          toast.success('Push-уведомления включены')
+          toast.success(t('pushEnabled'))
         })
       }).pipe(
         Effect.catch((error) =>
@@ -152,7 +156,7 @@ export function NotificationSettings({
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось включить push (нужен service worker)',
+                : t('pushError'),
             )
           }),
         ),
@@ -194,13 +198,13 @@ export function NotificationSettings({
           })
         }
         yield* Effect.sync(() => {
-          toast.success('Push отключён')
+          toast.success(t('pushDisabled'))
         })
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось отключить',
+              error instanceof Error ? error.message : t('disableError'),
             )
           }),
         ),
@@ -213,10 +217,12 @@ export function NotificationSettings({
       <div className="space-y-2">
         <SoundSettings />
 
-        <SettingsBlock title="Браузер">
+        <SettingsBlock title={t('browser')}>
           <SettingsRow
-            label="Уведомления в браузере"
-            hint={`Текущий статус: ${permission}. Сообщения приходят, когда вкладка не в фокусе.`}
+            label={t('browserNotifications')}
+            hint={t('browserStatus', {
+              status: permissionLabel(permission),
+            })}
           >
             <Button
               type="button"
@@ -224,20 +230,20 @@ export function NotificationSettings({
               size="sm"
               onClick={enableDesktop}
             >
-              Разрешить
+              {t('allow')}
             </Button>
           </SettingsRow>
         </SettingsBlock>
 
         {pushReady && vapidKey ? (
-          <SettingsBlock title="Push">
+          <SettingsBlock title={t('push')}>
             <SettingsRow
-              label="Фоновые push-уведомления"
-              hint="Работают, когда вкладка закрыта, через service worker."
+              label={t('backgroundPush')}
+              hint={t('backgroundHint')}
             >
               <div className="flex items-center gap-2">
                 <Button type="button" size="sm" onClick={enablePush}>
-                  Включить
+                  {t('enable')}
                 </Button>
                 <Button
                   type="button"
@@ -245,7 +251,7 @@ export function NotificationSettings({
                   size="sm"
                   onClick={disablePush}
                 >
-                  Отключить
+                  {t('disable')}
                 </Button>
               </div>
             </SettingsRow>
@@ -258,19 +264,19 @@ export function NotificationSettings({
   const actions = (
     <div className="flex flex-col gap-2">
       <Button type="button" variant="outline" onClick={enableDesktop}>
-        Разрешить уведомления в браузере
+        {t('allowBrowser')}
       </Button>
       {pushReady && vapidKey ? (
         <>
           <Button type="button" onClick={enablePush}>
-            Включить push (фон)
+            {t('enablePush')}
           </Button>
           <Button
             type="button"
             variant="ghost"
             onClick={disablePush}
           >
-            Отключить push
+            {t('disablePush')}
           </Button>
         </>
       ) : null}
@@ -280,9 +286,9 @@ export function NotificationSettings({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Уведомления</CardTitle>
+        <CardTitle>{t('cardTitle')}</CardTitle>
         <CardDescription>
-          Статус: {permission}. Сообщения приходят, когда вкладка не в фокусе.
+          {t('cardStatus', { status: permissionLabel(permission) })}
         </CardDescription>
       </CardHeader>
       <CardContent>{actions}</CardContent>

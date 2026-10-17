@@ -57,6 +57,7 @@ describe('FriendshipAction', () => {
       expect(mocks.sendFriendRequestToUser).toHaveBeenCalledWith(
         'session-token',
         target,
+        expect.anything(),
       )
     })
   })
@@ -70,6 +71,7 @@ describe('FriendshipAction', () => {
       expect(mocks.acceptIncomingFriendRequest).toHaveBeenCalledWith(
         'session-token',
         'target-user',
+        expect.anything(),
       )
     })
   })
@@ -83,6 +85,7 @@ describe('FriendshipAction', () => {
       expect(mocks.declineIncomingFriendRequest).toHaveBeenCalledWith(
         'session-token',
         'target-user',
+        expect.anything(),
       )
     })
   })
@@ -96,6 +99,7 @@ describe('FriendshipAction', () => {
       expect(mocks.cancelOutgoingFriendRequest).toHaveBeenCalledWith(
         'session-token',
         'target-user',
+        expect.anything(),
       )
     })
   })
@@ -109,6 +113,7 @@ describe('FriendshipAction', () => {
       expect(mocks.removeFriend).toHaveBeenCalledWith(
         'session-token',
         'target-user',
+        expect.anything(),
       )
     })
   })
@@ -122,6 +127,7 @@ describe('FriendshipAction', () => {
       expect(mocks.unblockBlockedUser).toHaveBeenCalledWith(
         'session-token',
         'target-user',
+        expect.anything(),
       )
     })
   })

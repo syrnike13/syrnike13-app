@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { toast } from 'sonner'
 import { Effect, Fiber } from 'effect'
 
@@ -16,6 +17,7 @@ export function useJumpToMessage(
   messageId: string | undefined,
   token: string | undefined,
 ) {
+  const t = useTranslations('chat')
   const lastJumped = useRef<string | null>(null)
 
   useEffect(() => {
@@ -77,7 +79,7 @@ export function useJumpToMessage(
         yield* nextAnimationFrame
         yield* Effect.sync(() => {
           if (!scrollTo()) {
-            toast.error('Сообщение не найдено в ленте')
+            toast.error(t('messageNotFound'))
           } else {
             lastJumped.current = messageId
           }
@@ -88,7 +90,7 @@ export function useJumpToMessage(
             toast.error(
               error instanceof Error
                 ? error.message
-                : 'Не удалось открыть сообщение',
+                : t('openMessageError'),
             )
           }),
         ),
@@ -98,5 +100,5 @@ export function useJumpToMessage(
     return () => {
       Effect.runFork(Fiber.interrupt(fiber))
     }
-  }, [channelId, messageId, token])
+  }, [channelId, messageId, t, token])
 }

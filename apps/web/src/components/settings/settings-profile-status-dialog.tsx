@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { User } from '@syrnike13/api-types'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { PlusIcon } from '#/components/icons'
 import { Button } from '#/components/ui/button'
@@ -44,6 +45,7 @@ export function SettingsProfileStatusDialog({
   avatarUrl,
   bannerUrl,
 }: SettingsProfileStatusDialogProps) {
+  const t = useTranslations('settings.status')
   const [draft, setDraft] = useState('')
   const [baseline, setBaseline] = useState('')
   const [dirty, setDirty] = useState(false)
@@ -81,15 +83,13 @@ export function SettingsProfileStatusDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="gap-5 sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Кастомный статус</DialogTitle>
-          <DialogDescription>
-            Короткая фраза рядом с аватаром — её увидят другие пользователи.
-          </DialogDescription>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-2">
           <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            Предпросмотр
+            {t('preview')}
           </p>
           <ProfileStatusLivePreview
             user={user}
@@ -102,7 +102,7 @@ export function SettingsProfileStatusDialog({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="profile-status-edit">Текст статуса</Label>
+          <Label htmlFor="profile-status-edit">{t('textLabel')}</Label>
           <Input
             id="profile-status-edit"
             value={draft}
@@ -112,7 +112,7 @@ export function SettingsProfileStatusDialog({
               setCleared(false)
               setDirty(true)
             }}
-            placeholder="Чем заняты?"
+            placeholder={t('placeholder')}
             autoFocus
           />
           <p className="text-right text-xs text-muted-foreground">
@@ -123,19 +123,18 @@ export function SettingsProfileStatusDialog({
         <DialogFooter className="gap-2 sm:justify-between">
           <Button
             type="button"
-            variant="ghost"
+            variant="destructive-ghost"
             disabled={!canReset}
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive disabled:text-muted-foreground"
             onClick={handleReset}
           >
-            Сбросить
+            {t('reset')}
           </Button>
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Отмена
+              {t('cancel')}
             </Button>
             <Button type="button" onClick={handleApply}>
-              Готово
+              {t('done')}
             </Button>
           </div>
         </DialogFooter>
@@ -212,13 +211,14 @@ export function ProfileStatusBubbleTrigger({
   onClick: () => void
   className?: string
 }) {
+  const t = useTranslations('settings.status')
   const text = status.trim()
 
   return (
     <button
       type="button"
-      title={text ? 'Изменить статус' : 'Добавить статус'}
-      aria-label={text ? 'Изменить статус' : 'Добавить статус'}
+      title={text ? t('edit') : t('add')}
+      aria-label={text ? t('edit') : t('add')}
       onClick={onClick}
       className={cn(
         'group/status-trigger absolute z-20 cursor-pointer rounded-2xl outline-none transition-[filter] hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring',
@@ -235,6 +235,8 @@ export function ProfileStatusBubbleTrigger({
 }
 
 function ProfileStatusEmptyBubble() {
+  const t = useTranslations('settings.status')
+
   return (
     <div className="relative">
       <span
@@ -250,7 +252,7 @@ function ProfileStatusEmptyBubble() {
           className="size-3.5 shrink-0 opacity-70 group-hover/status-trigger:opacity-100"
           aria-hidden
         />
-        <span>Добавить статус</span>
+        <span>{t('add')}</span>
       </div>
     </div>
   )

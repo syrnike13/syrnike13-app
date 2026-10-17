@@ -4,6 +4,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { Effect } from 'effect'
 import { toast } from 'sonner'
+import { useTranslations } from '@syrnike13/ui/i18n'
 
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -60,6 +61,7 @@ export function UserProfileCardHeader({
   modal = false,
   className,
 }: UserProfileCardHeaderProps) {
+  const t = useTranslations('users')
   const layout = modal ? 'modal' : compact ? 'compact' : 'default'
   const auth = useAuth()
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false)
@@ -143,7 +145,7 @@ export function UserProfileCardHeader({
         Effect.catch((error) =>
           Effect.sync(() => {
             toast.error(
-              error instanceof Error ? error.message : 'Не удалось убрать роль',
+              error instanceof Error ? error.message : t('rolesUpdateError'),
             )
           }),
         ),
@@ -203,7 +205,7 @@ export function UserProfileCardHeader({
           {onAvatarClick ? (
             <button
               type="button"
-              title="Открыть профиль"
+              title={t('openProfile')}
               className="group/avatar-button cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
               onClick={(event) => {
                 event.stopPropagation()
@@ -234,7 +236,7 @@ export function UserProfileCardHeader({
                 />
                 <span
                   aria-hidden
-                  className="pointer-events-none absolute inset-0 rounded-full bg-black/0 transition-colors group-hover/avatar-button:bg-black/25"
+                  className="pointer-events-none absolute inset-0 rounded-full bg-media-backdrop/0 transition-colors group-hover/avatar-button:bg-media-backdrop/25"
                 />
               </span>
             </button>
@@ -317,7 +319,7 @@ export function UserProfileCardHeader({
 
       {server && member && (roles.length > 0 || canEditRoles) ? (
         <div className="px-4 pb-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <p className="mb-2 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
             Роли
           </p>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -354,8 +356,8 @@ export function UserProfileCardHeader({
                       type="button"
                       disabled={removingRoleId !== null}
                       className="flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-                      title={`Убрать роль «${role.name}»`}
-                      aria-label={`Убрать роль «${role.name}»`}
+                      title={t('removeRole', { name: role.name })}
+                      aria-label={t('removeRole', { name: role.name })}
                       onClick={(event) => {
                         event.stopPropagation()
                         void removeRole(role.id)
@@ -373,8 +375,8 @@ export function UserProfileCardHeader({
               <button
                 type="button"
                 className="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                title="Изменить роли"
-                aria-label="Изменить роли"
+                title={t('editRoles')}
+                aria-label={t('editRoles')}
                 onClick={(event) => {
                   event.stopPropagation()
                   setRolesDialogOpen(true)

@@ -1,3 +1,4 @@
+import { useTranslations } from '@syrnike13/ui/i18n'
 import { FxImage } from '#/components/ui/fx-image'
 import { useAppearance } from '#/features/appearance/appearance-context'
 import {
@@ -15,13 +16,17 @@ type RoleColourPreviewProps = {
   className?: string
 }
 
-function chatPaletteFromTheme(themeId: string, variant: ThemeVariant) {
+function chatPaletteFromTheme(
+  themeId: string,
+  variant: ThemeVariant,
+  label: string,
+) {
   const theme = getThemeById(themeId)
   const tokens = theme.variants[variant]
   if (!tokens) return null
   return {
     id: variant,
-    label: variant === 'light' ? 'Светлая тема' : 'Тёмная тема',
+    label,
     surface: tokens.background,
     text: tokens.foreground,
     muted: tokens['muted-foreground'],
@@ -34,23 +39,25 @@ export function RoleColourPreview({
   iconUrl,
   className,
 }: RoleColourPreviewProps) {
+  const t = useTranslations('servers.roles')
   const { settings } = useAppearance()
   const theme = getThemeById(settings.themeId)
-  const displayName = name.trim() || 'Новая роль'
+  const displayName = name.trim() || t('newRole')
   const roleStyle = roleColourStyle(colour.trim() || null)
 
   const palettes = (['light', 'dark'] as const).flatMap((variant) => {
     if (!themeHasVariant(theme, variant)) return []
-    const palette = chatPaletteFromTheme(settings.themeId, variant)
+    const label = variant === 'light' ? t('lightTheme') : t('darkTheme')
+    const palette = chatPaletteFromTheme(settings.themeId, variant, label)
     return palette ? [palette] : []
   })
 
   return (
     <div className={cn('space-y-3', className)}>
       <div>
-        <p className="text-sm font-medium">Предпросмотр в чате</p>
+        <p className="text-sm font-medium">{t('previewTitle')}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Как имя роли выглядит в сообщениях в разных режимах палитры.
+          {t('previewHint')}
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -89,12 +96,12 @@ export function RoleColourPreview({
               </div>
               <p>
                 <span className="font-medium" style={{ color: palette.text }}>
-                  Участник
+                  {t('member')}
                 </span>
                 <span style={{ color: palette.muted }}> — </span>
                 <span style={roleStyle}>@{displayName}</span>
                 <span style={{ color: palette.muted }}>
-                  , добро пожаловать на сервер!
+                  {t('welcome')}
                 </span>
               </p>
             </div>
