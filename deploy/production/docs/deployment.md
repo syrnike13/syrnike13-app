@@ -133,10 +133,20 @@ Caddy serves that directory read-only from `data/desktop`. The directory is serv
 
 Publishing flow:
 
-1. Push a `VERSION` change on `main` to run `.github/workflows/desktop-release.yml`.
+1. Push a `VERSION` change on `main` to run `.github/workflows/release-images-and-deploy.yml`.
 2. GitHub Actions builds Windows, macOS, and Linux packages.
-3. The workflow uploads installers, `latest*.yml`, and `*.blockmap` files to `data/desktop/` on the production server.
-4. Packaged desktop clients check `https://syrnike13.ru/downloads/desktop/` for updates.
+3. The workflow publishes the desktop packages to the public GitHub Release, then sends only release metadata and `tooling/scripts/publish-desktop-release.py` to the production server. The server needs `curl`, Python 3, and PyYAML (`python3-yaml` on Ubuntu); GitHub credentials are not sent to it.
+4. The server downloads packages over HTTPS into a private staging directory inside `data/desktop/`. It verifies GitHub's SHA-256 digests and manifest SHA-512 hashes and sizes, reusing already-verified packages on retries. Original Windows filenames with spaces are preserved even though GitHub normalizes release asset names.
+5. Only after all packages pass verification does the publisher atomically replace package files and stable aliases, then publish `latest*.yml` last. A failed download leaves the previous public feed unchanged. Old release history is pruned only after successful publication.
+6. Packaged desktop clients check `https://syrnike13.ru/downloads/desktop/` for updates.
+
+The publication lock prevents concurrent publishers. Run publisher regression checks with:
+
+```bash
+python3 tooling/scripts/test_publish_desktop_release.py
+```
+
+To retry an already-published stable desktop release from a machine with GitHub CLI access, copy the publisher to the server and pipe `gh api repos/syrnike13/syrnike13-app/releases/tags/v<VERSION>` into `python3 <publisher-path> <DEPLOY_PATH>/data/desktop <VERSION>` over SSH. Do not upload new manifests separately or resume the old bulk SSH upload alongside the publisher.
 
 Before the first desktop release upload, deploy production once so Caddy picks up the `/downloads/desktop/*` route and the `data/desktop` volume mount:
 
@@ -160,7 +170,7 @@ The landing page links to stable URLs that always point at the latest desktop re
 - `https://<domain>/downloads/syrnike13-setup.exe`
 - `https://<domain>/downloads/syrnike13.AppImage`
 
-Caddy serves these from symlinks in `data/desktop/`. The desktop release workflow updates the symlinks from `latest*.yml` after each upload via `tooling/scripts/update-download-aliases.sh`.
+Caddy serves these from symlinks in `data/desktop/`. The verified release publisher updates the symlinks from the staged manifests after checking every payload and before making the new feed public.
 
 Health check:
 
